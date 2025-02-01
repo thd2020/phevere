@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "target": "ES6",
+    "lib": ["DOM", "ES6", "ES2017", "ESNext"],
+    "types": ["node"],
+    "resolveJsonModule": true
+  },
+  "include": ["src/global.d.ts", "src"]
+}  
