@@ -1,0 +1,18 @@
+{
+  "name": "native",
+  "version": "0.1.0",
+  "description": "Backend code for Phevere listening to os-level events",
+  "main": "lib/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thd2020/phevere.git"
+  },
+  "author": "xiangyuxiao <xiangyuxiao420@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "neon-cli": "^0.10.1"
+  },
+  "scripts": {
+    "install": "neon build"
+  }
+}
