@@ -1,6 +1,6 @@
 use core_foundation::{
     base::TCFType,
-    runloop::{CFRunLoop, CFRunLoopAddSource, CFRunLoopGetCurrent, CFRunLoopRun, kCFRunLoopCommonModes},
+    runloop::{CFRunLoop, CFRunLoopAddSource, CFRunLoopGetCurrent, CFRunLoopRun, CFRunLoopSource, CFRunLoopSourceContext, kCFRunLoopCommonModes},
     string::CFString,
 };
 use core_graphics::event::{CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType};
@@ -9,6 +9,7 @@ use std::{
     sync::{Arc, Mutex},
     thread,
 };
+use crate::platform::{SelectionListener, SelectionError};
 
 /// Manages the selection listener on macOS.
 pub struct MacOSListener {
@@ -21,7 +22,7 @@ impl MacOSListener {
     pub fn new() -> Self {
         Self {
             state: Arc::new(Mutex::new(None)),
-            runloop: unsafe { CFRunLoopGetCurrent() },
+            runloop: unsafe { CFRunLoop::wrap_under_get_rule(CFRunLoopGetCurrent()) },
         }
     }
 
@@ -42,20 +43,21 @@ impl MacOSListener {
         let state = self.state.clone();
         let event_tap = CGEventTap::new(
             CGEventTapLocation::HID,
-            CGEventTapPlacement::Head,
-            CGEventTapOptions::DEFAULT,
-            &[CGEventType::KeyDown, CGEventType::FlagsChanged],
+            CGEventTapPlacement::HeadInsertEventTap,
+            CGEventTapOptions::Default,
+            vec![CGEventType::KeyDown, CGEventType::FlagsChanged],
             move |_, _, _| {
                 if let Some(text) = get_selected_text() {
                     *state.lock().unwrap() = Some(text);
                 }
                 None
             },
-        ).map_err(|e| format!("Failed to create event tap: {}", e))?;
+        ).map_err(|e| format!("Failed to create event tap: {:?}", e))?;
+        let run_loop_source = unsafe { CFRunLoopSource::create(0, &run_loop_source_context) };
 
         // Add event source and spawn monitoring thread
         unsafe {
-            CFRunLoopAddSource(self.runloop, event_tap.mach_port(), kCFRunLoopCommonModes);
+            CFRunLoopAddSource(self.runloop.as_concrete_TypeRef(), run_loop_source.as_concrete_TypeRef(), kCFRunLoopCommonModes);
         }
 
         thread::spawn(|| unsafe { CFRunLoopRun() });
@@ -79,9 +81,9 @@ fn get_selected_text() -> Option<String> {
     unsafe {
         let element = AXUIElementCreateSystemWide();
         let text_attr = CFString::new("AXSelectedText");
-        let mut value: *mut std::ffi::c_void = std::ptr::null_mut();
+        let mut value: *mut *const std::ffi::c_void = std::ptr::null_mut();
 
-        if AXUIElementCopyAttributeValue(element, text_attr.as_concrete_TypeRef() as _, &mut value) == 0 && !value.is_null() {
+        if AXUIElementCopyAttributeValue(element, text_attr.as_concrete_TypeRef() as _, value) == 0 && !value.is_null() {
             Some(CFString::wrap_under_get_rule(value as *const _).to_string())
         } else {
             None
@@ -96,4 +98,19 @@ extern "C" {
         attribute: *const std::ffi::c_void,
         value: *mut *const std::ffi::c_void,
     ) -> i32;
+}
+
+impl SelectionListener for MacOSListener {
+    fn start(&mut self) -> Result<(), SelectionError> {
+        self.start().map_err(|e| SelectionError::MonitoringError(e.to_string()))
+    }
+
+    fn stop(&mut self) -> Result<(), SelectionError> {
+        self.stop();
+        Ok(())
+    }
+
+    fn get_selection(&self) -> Option<String> {
+        self.get_selection()
+    }
 }
