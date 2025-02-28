@@ -1,6 +1,6 @@
 use core_foundation::{
     base::TCFType,
-    runloop::{CFRunLoop, CFRunLoopAddSource, CFRunLoopGetCurrent, CFRunLoopRun, CFRunLoopSource, CFRunLoopSourceContext, kCFRunLoopCommonModes},
+    runloop::{CFRunLoop, CFRunLoopAddSource, CFRunLoopGetCurrent, CFRunLoopRun, CFRunLoopSource, CFRunLoopSourceCreate, CFRunLoopSourceContext, kCFRunLoopCommonModes},
     string::CFString,
 };
 use core_graphics::event::{CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType};
@@ -53,11 +53,25 @@ impl MacOSListener {
                 None
             },
         ).map_err(|e| format!("Failed to create event tap: {:?}", e))?;
-        let run_loop_source = unsafe { CFRunLoopSource::create(0, &run_loop_source_context) };
+        
+        let mut run_loop_source_context = CFRunLoopSourceContext {
+            version: 0,
+            info: std::ptr::null_mut(),
+            retain: None,
+            release: None,
+            copy_description: None,
+            equal: None,
+            hash: None,
+            schedule: None,
+            cancel: None,
+            perform: Some(event_tap.perform),
+        };
+
+        let run_loop_source_ref = unsafe { CFRunLoopSourceCreate(std::ptr::null_mut(), 0, &mut run_loop_source_context) };
 
         // Add event source and spawn monitoring thread
         unsafe {
-            CFRunLoopAddSource(self.runloop.as_concrete_TypeRef(), run_loop_source.as_concrete_TypeRef(), kCFRunLoopCommonModes);
+            CFRunLoopAddSource(self.runloop.as_concrete_TypeRef(), run_loop_source_ref, kCFRunLoopCommonModes);
         }
 
         thread::spawn(|| unsafe { CFRunLoopRun() });
