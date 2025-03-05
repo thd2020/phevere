@@ -6,6 +6,7 @@ use core_foundation::{
 use core_graphics::event::{CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType};
 use objc::{class, msg_send, sel, sel_impl};
 use std::{
+    ffi::c_void,
     sync::{Arc, Mutex},
     thread,
 };
@@ -16,6 +17,7 @@ pub struct MacOSListener {
     state: Arc<Mutex<Option<String>>>,
     runloop: CFRunLoop,
 }
+
 
 impl MacOSListener {
     /// Creates a new selection listener.
@@ -53,18 +55,28 @@ impl MacOSListener {
                 None
             },
         ).map_err(|e| format!("Failed to create event tap: {:?}", e))?;
+
+        struct MyContext {
+            // Define any fields you need
+        }
         
+        extern "C" fn callback(info: *const c_void) {
+            println!("CFRunLoopSource event triggered!");
+        }
+
+        let context_data = Box::into_raw(Box::new(MyContext {}));
+
         let mut run_loop_source_context = CFRunLoopSourceContext {
             version: 0,
             info: std::ptr::null_mut(),
             retain: None,
             release: None,
-            copy_description: None,
+            copyDescription: None,
             equal: None,
             hash: None,
             schedule: None,
             cancel: None,
-            perform: Some(event_tap.perform),
+            perform: callback,
         };
 
         let run_loop_source_ref = unsafe { CFRunLoopSourceCreate(std::ptr::null_mut(), 0, &mut run_loop_source_context) };

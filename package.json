@@ -9,7 +9,8 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx ."
+    "lint": "eslint --ext .ts,.tsx .",
+    "install": "neon build"
   },
   "keywords": [],
   "author": "xiangyuxiao",
@@ -36,11 +37,12 @@
     "style-loader": "^3.3.4",
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
-    "typescript": "~4.5.4"
+    "typescript": "~4.5.4",
+    "neon-cli": "^0.10.1"
   },
   "dependencies": {
     "koffi": "^3.0.0",
     "electron-squirrel-startup": "^1.0.1",
-    "native": "file:./native"
+    "rust-native": "file:./rust-native"
   }
 }

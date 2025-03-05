@@ -90,3 +90,8 @@ typings/
 
 # Electron-Forge
 out/
+
+# Neon bindings
+rust-native/target
+rust-native/index.node
+rust-native/artifacts.json
