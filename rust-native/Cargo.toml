@@ -9,7 +9,10 @@ exclude = ["artifacts.json", "index.node"]
 
 [lib]
 name = "native"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
+
+[build]
+out-dir = "../phevere/"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.51", features = [
@@ -39,3 +42,6 @@ config = "0.13"
 
 [build-dependencies]
 neon-build = "0.9"
+
+[dev-dependencies]
+neon = "0.10" # If your project uses Neon, ensure it's included for test builds
