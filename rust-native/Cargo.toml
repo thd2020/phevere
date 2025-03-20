@@ -32,7 +32,6 @@ block = "0.1.0"
 x11rb = { version = "0.13.1" }
 
 [dependencies]
-[dependencies]
 neon = "1"
 winapi = { version = "0.3", features = ["winuser"] }
 nix = "0.27.0"
