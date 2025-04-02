@@ -1,33 +1,82 @@
-use windows::Win32::UI::TextServices::*;
-use windows::core::Interface;
+use windows::{
+    core::*,
+    Win32::{
+        Foundation::*,
+        System::Com::{CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED},
+        UI::Accessibility::*,
+    },
+};
+use std::{
+    ptr::null_mut,
+    sync::{Arc, Mutex},
+    thread,
+};
+use crate::platform::{SelectionError, SelectionListener};
 
 pub struct WindowsListener {
-    context: ITfContext,
-    // 使用COM接口管理文本选择事件[6](@ref)
+    automation: Option<IUIAutomation>,
+    state: Arc<Mutex<Option<String>>>,
+    stop_flag: Arc<Mutex<bool>>,
+}
+
+impl WindowsListener {
+    pub fn new() -> Self {
+        Self {
+            automation: None,
+            state: Arc::new(Mutex::new(None)),
+            stop_flag: Arc::new(Mutex::new(false)),
+        }
+    }
+
+    pub fn start_impl(&mut self) -> Result<(), String> {
+        let state = self.state.clone();
+        let stop_flag = self.stop_flag.clone();
+
+        thread::spawn(move || {
+            unsafe {
+                CoInitializeEx(null_mut(), COINIT_MULTITHREADED).ok().unwrap();
+
+                let automation: IUIAutomation = CoCreateInstance(
+                    &CUIAutomation::IID,
+                    None,
+                    CLSCTX_INPROC_SERVER,
+                ).unwrap();
+
+                // 🚧 Step 2 will go here: Register event handler
+
+                // Stay alive (for now)
+                while !*stop_flag.lock().unwrap() {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+
+                CoUninitialize();
+            }
+        });
+
+        Ok(())
+    }
+
+    pub fn stop_impl(&self) {
+        *self.stop_flag.lock().unwrap() = true;
+    }
+
+    pub fn get_selection(&self) -> Option<String> {
+        self.state.lock().unwrap().clone()
+    }
 }
 
 impl SelectionListener for WindowsListener {
-    fn start_listening(&mut self) -> Result<(), String> {
-        unsafe {
-            let source: ITfSource = self.context.cast().map_err(|e| e.to_string())?;
-            source.AdviseSink(&ITfSelectionSink::IID, self as *mut _ as *mut _, 0).map_err(|e| e.to_string())?;
-            Ok(())
-        }
+    fn start(&mut self) -> Result<(), SelectionError> {
+        self.start_impl()
+            .map_err(|e| SelectionError::MonitoringError(e))
     }
-    
-    fn get_selected_text(&self) -> Option<String> {
-        unsafe {
-            let mut selection: [ITfRange; 1] = [std::ptr::null_mut(); 1];
-            let mut fetched: u32 = 0;
-            self.context.GetSelection(TF_DEFAULT_SELECTION, 1, &mut selection, &mut fetched).ok()?;
-            if fetched == 1 {
-                let mut text: [u16; 256] = [0; 256];
-                let mut fetched_text: u32 = 0;
-                selection[0].GetText(TF_TF_MOVESTART, &mut text, 256, &mut fetched_text).ok()?;
-                Some(String::from_utf16_lossy(&text[..fetched_text as usize]))
-            } else {
-                None
-            }
-        }
+
+    fn stop(&mut self) -> Result<(), SelectionError> {
+        self.stop_impl();
+        Ok(())
+    }
+
+    fn get_selection(&self) -> Option<String> {
+        self.get_selection()
     }
 }

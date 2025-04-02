@@ -37,7 +37,7 @@ pub struct MacOSListener {
     }
 
     /// Starts listening for selection events.
-    pub fn start(&self) -> Result<(), String> {
+    pub fn start_impl(&self) -> Result<(), String> {
         Self::check_accessibility_permissions()?;
 
         let state: Arc<Mutex<Option<String>>> = self.state.clone();
@@ -78,7 +78,7 @@ pub struct MacOSListener {
     }
 
     /// Stops the listener.
-    pub fn stop(&self) {
+    pub fn stop_impl(&self) {
         CFRunLoop::get_current().stop();
     }
 
@@ -133,11 +133,12 @@ unsafe extern "C" {
 
 impl SelectionListener for MacOSListener {
     fn start(&mut self) -> Result<(), SelectionError> {
-        self.start().map_err(|e: SelectionError| SelectionError::MonitoringError(e.to_string()))
+        self.start_impl()
+            .map_err(|e| SelectionError::MonitoringError(e.to_string()))
     }
 
     fn stop(&mut self) -> Result<(), SelectionError> {
-        self.stop();
+        self.stop_impl();
         Ok(())
     }
 
