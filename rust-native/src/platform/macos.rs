@@ -1,25 +1,23 @@
-use core_foundation::{
-    base::TCFType,
-    runloop::{CFRunLoop, CFRunLoopAddSource, CFRunLoopGetCurrent, CFRunLoopRun, CFRunLoopSource, CFRunLoopSourceCreate, CFRunLoopSourceContext, kCFRunLoopCommonModes},
-    string::CFString,
-};
-use core_graphics::event::{CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType};
-use objc::{class, msg_send, sel, sel_impl};
 use std::{
     ffi::c_void,
     sync::{Arc, Mutex},
     thread,
 };
+use objc::{class, msg_send, sel, sel_impl};
+use core_foundation::{
+    base::{CFTypeRef, TCFType},
+    runloop::{kCFRunLoopCommonModes, CFRunLoop, CFRunLoopAddSource, CFRunLoopGetCurrent, CFRunLoopRun, CFRunLoopSource,},
+    string::{CFString, CFStringRef},
+};
+use core_graphics::event::{CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType};
+use accessibility_sys::AXUIElementRef;
 use crate::platform::{SelectionListener, SelectionError};
 
 /// Manages the selection listener on macOS.
 pub struct MacOSListener {
     state: Arc<Mutex<Option<String>>>,
     runloop: CFRunLoop,
-}
-
-
-impl MacOSListener {
+} impl MacOSListener {
     /// Creates a new selection listener.
     pub fn new() -> Self {
         Self {
@@ -42,53 +40,41 @@ impl MacOSListener {
     pub fn start(&self) -> Result<(), String> {
         Self::check_accessibility_permissions()?;
 
-        let state = self.state.clone();
-        let event_tap = CGEventTap::new(
+        let state: Arc<Mutex<Option<String>>> = self.state.clone();
+
+        let event_tap: CGEventTap<'_> = CGEventTap::new(
             CGEventTapLocation::HID,
             CGEventTapPlacement::HeadInsertEventTap,
             CGEventTapOptions::Default,
-            vec![CGEventType::KeyDown, CGEventType::FlagsChanged],
+            vec![CGEventType::LeftMouseUp],
             move |_, _, _| {
                 if let Some(text) = get_selected_text() {
                     *state.lock().unwrap() = Some(text);
                 }
                 None
             },
-        ).map_err(|e| format!("Failed to create event tap: {:?}", e))?;
+        ).map_err(|e: ()| format!("Failed to create event tap: {:?}", e))?;
 
-        struct MyContext {
-            // Define any fields you need
-        }
-        
-        extern "C" fn callback(info: *const c_void) {
-            println!("CFRunLoopSource event triggered!");
-        }
+        let runloop_source: CFRunLoopSource = event_tap
+            .mach_port
+            .create_runloop_source(0)
+            .expect("Failed to create run loop source");
 
-        let context_data = Box::into_raw(Box::new(MyContext {}));
-
-        let mut run_loop_source_context = CFRunLoopSourceContext {
-            version: 0,
-            info: std::ptr::null_mut(),
-            retain: None,
-            release: None,
-            copyDescription: None,
-            equal: None,
-            hash: None,
-            schedule: None,
-            cancel: None,
-            perform: callback,
-        };
-
-        let run_loop_source_ref = unsafe { CFRunLoopSourceCreate(std::ptr::null_mut(), 0, &mut run_loop_source_context) };
-
-        // Add event source and spawn monitoring thread
         unsafe {
-            CFRunLoopAddSource(self.runloop.as_concrete_TypeRef(), run_loop_source_ref, kCFRunLoopCommonModes);
+            CFRunLoopAddSource(
+                self.runloop.as_concrete_TypeRef(),
+                runloop_source.as_concrete_TypeRef(),
+                kCFRunLoopCommonModes,
+            );
+            CGEventTap::enable(&event_tap);
         }
 
-        thread::spawn(|| unsafe { CFRunLoopRun() });
+        thread::spawn(|| unsafe {
+            CFRunLoopRun();
+        });
 
         Ok(())
+        
     }
 
     /// Stops the listener.
@@ -102,24 +88,43 @@ impl MacOSListener {
     }
 }
 
-/// Retrieves the selected text from the focused UI element.
 fn get_selected_text() -> Option<String> {
     unsafe {
-        let element = AXUIElementCreateSystemWide();
-        let text_attr = CFString::new("AXSelectedText");
-        let mut value: *mut *const std::ffi::c_void = std::ptr::null_mut();
+        let system_element: *const c_void = AXUIElementCreateSystemWide();
+        let focused_element_attr: CFString = CFString::new("AXFocusedUIElement");
+        let mut focused_element: CFTypeRef = std::ptr::null_mut();
 
-        if AXUIElementCopyAttributeValue(element, text_attr.as_concrete_TypeRef() as _, value) == 0 && !value.is_null() {
-            Some(CFString::wrap_under_get_rule(value as *const _).to_string())
-        } else {
-            None
+        // Get the currently focused UI element
+        if AXUIElementCopyAttributeValue(
+            system_element,
+            focused_element_attr.as_concrete_TypeRef() as *const c_void,
+            &mut focused_element,
+        ) != 0 || focused_element.is_null() {
+            return None;
         }
+
+        let selected_text_attr: CFString = CFString::new("AXSelectedText");
+        let mut selected_text: CFTypeRef = std::ptr::null_mut();
+
+        // Get the selected text from the focused element
+        if AXUIElementCopyAttributeValue(
+            focused_element as AXUIElementRef as *const c_void,
+            selected_text_attr.as_concrete_TypeRef() as *const c_void,
+            &mut selected_text,
+        ) != 0 || selected_text.is_null() {
+            return None;
+        }
+
+        // Convert CFStringRef to Rust String
+        let cf_string: CFString = CFString::wrap_under_get_rule(selected_text as CFStringRef);
+        Some(cf_string.to_string())
     }
 }
 
-extern "C" {
-    fn AXUIElementCreateSystemWide() -> *const std::ffi::c_void;
-    fn AXUIElementCopyAttributeValue(
+#[link(name = "ApplicationServices", kind = "framework")]
+unsafe extern "C" {
+    unsafe fn AXUIElementCreateSystemWide() -> *const std::ffi::c_void;
+    unsafe fn AXUIElementCopyAttributeValue(
         element: *const std::ffi::c_void,
         attribute: *const std::ffi::c_void,
         value: *mut *const std::ffi::c_void,
@@ -128,7 +133,7 @@ extern "C" {
 
 impl SelectionListener for MacOSListener {
     fn start(&mut self) -> Result<(), SelectionError> {
-        self.start().map_err(|e| SelectionError::MonitoringError(e.to_string()))
+        self.start().map_err(|e: SelectionError| SelectionError::MonitoringError(e.to_string()))
     }
 
     fn stop(&mut self) -> Result<(), SelectionError> {
