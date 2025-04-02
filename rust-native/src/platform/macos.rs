@@ -53,7 +53,7 @@ pub struct MacOSListener {
                 }
                 None
             },
-        ).map_err(|e: ()| format!("Failed to create event tap: {:?}", e))?;
+        ).map_err(|e| format!("Failed to create event tap: {:?}", e))?;
 
         let runloop_source: CFRunLoopSource = event_tap
             .mach_port
