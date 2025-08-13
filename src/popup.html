@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Phevere Dictionary</title>
+    <link rel="stylesheet" href="./index.css">
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #ffffff;
+        color: #333;
+        overflow: hidden;
+        height: 100vh;
+        user-select: none;
+      }
+
+      .popup-container {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        background: #ffffff;
+        border: 1px solid #e1e5e9;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      /* Toolbar Styles */
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        background: #f8f9fa;
+        border-bottom: 1px solid #e1e5e9;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        min-height: 56px;
+      }
+
+      .toolbar.collapsed {
+        padding: 8px 16px;
+        min-height: 48px;
+      }
+
+      .toolbar-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .toolbar-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #2d3748;
+        opacity: 1;
+        transition: opacity 0.3s ease;
+      }
+
+      .toolbar.collapsed .toolbar-title {
+        opacity: 0;
+        width: 0;
+        overflow: hidden;
+      }
+
+      .toolbar-icons {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .toolbar-icon {
+        width: 36px;
+        height: 36px;
+        border: none;
+        background: #ffffff;
+        border-radius: 8px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        color: #64748b;
+        font-size: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+
+      .toolbar-icon:hover {
+        background: #f1f5f9;
+        color: #475569;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      }
+
+      .toolbar-icon.active {
+        background: #3b82f6;
+        color: #ffffff;
+      }
+
+      .toolbar-icon.active:hover {
+        background: #2563eb;
+      }
+
+      .toolbar-icon .icon-text {
+        font-size: 12px;
+        font-weight: 500;
+        margin-top: 2px;
+      }
+
+      /* Content Area */
+      .content-area {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .content-area.collapsed {
+        opacity: 0;
+        transform: translateY(-10px);
+        pointer-events: none;
+      }
+
+      /* Input Section */
+      .input-section {
+        padding: 20px 16px 16px;
+        border-bottom: 1px solid #e1e5e9;
+        background: #ffffff;
+      }
+
+      .input-container {
+        position: relative;
+      }
+
+      .text-input {
+        width: 100%;
+        padding: 12px 16px;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 500;
+        color: #2d3748;
+        background: #ffffff;
+        transition: all 0.2s ease;
+        outline: none;
+      }
+
+      .text-input:focus {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+      }
+
+      /* Tabs */
+      .tabs {
+        display: flex;
+        background: #f8f9fa;
+        border-bottom: 1px solid #e1e5e9;
+        padding: 0 16px;
+      }
+
+      .tab {
+        padding: 12px 16px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        color: #64748b;
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s ease;
+        position: relative;
+      }
+
+      .tab:hover {
+        color: #475569;
+        background: #f1f5f9;
+      }
+
+      .tab.active {
+        color: #3b82f6;
+        border-bottom-color: #3b82f6;
+        background: #ffffff;
+      }
+
+      /* Results Section */
+      .results-section {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        background: #ffffff;
+      }
+
+      .loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 20px;
+        color: #64748b;
+        font-style: italic;
+      }
+
+      .loading::after {
+        content: '';
+        width: 16px;
+        height: 16px;
+        border: 2px solid #e2e8f0;
+        border-top: 2px solid #3b82f6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-left: 8px;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      /* Dictionary Results */
+      .dictionary-results {
+        display: none;
+        animation: fadeIn 0.3s ease-in;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .result-card {
+        background: #ffffff;
+        border: 1px solid #e1e5e9;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+
+      .result-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .result-icon {
+        width: 32px;
+        height: 32px;
+        background: #10b981;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .result-meta {
+        flex: 1;
+      }
+
+      .result-source {
+        font-size: 12px;
+        color: #64748b;
+        margin-bottom: 4px;
+      }
+
+      .result-confidence {
+        font-size: 12px;
+        color: #10b981;
+        font-weight: 500;
+      }
+
+      .result-word {
+        font-size: 24px;
+        font-weight: 700;
+        color: #1e293b;
+        margin-bottom: 8px;
+      }
+
+      .result-pronunciation {
+        color: #64748b;
+        font-size: 14px;
+        font-family: 'Courier New', monospace;
+        margin-bottom: 16px;
+      }
+
+      .result-section {
+        margin-bottom: 20px;
+      }
+
+      .result-section-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #475569;
+        margin-bottom: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .definition-item {
+        background: #f8f9fa;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        border-left: 3px solid #3b82f6;
+      }
+
+      .definition-pos {
+        color: #10b981;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+
+      .definition-text {
+        color: #1e293b;
+        line-height: 1.5;
+      }
+
+      .translation-item {
+        background: #f8f9fa;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        border-left: 3px solid #f59e0b;
+      }
+
+      .translation-lang {
+        color: #f59e0b;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+
+      .example-item {
+        background: #f8f9fa;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        border-left: 3px solid #8b5cf6;
+        font-style: italic;
+        color: #475569;
+      }
+
+      .result-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid #e1e5e9;
+      }
+
+      .action-btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .action-btn-primary {
+        background: #3b82f6;
+        color: #ffffff;
+      }
+
+      .action-btn-primary:hover {
+        background: #2563eb;
+        transform: translateY(-1px);
+      }
+
+      .action-btn-secondary {
+        background: #10b981;
+        color: #ffffff;
+      }
+
+      .action-btn-secondary:hover {
+        background: #059669;
+        transform: translateY(-1px);
+      }
+
+      .action-btn-info {
+        background: #8b5cf6;
+        color: #ffffff;
+      }
+
+      .action-btn-info:hover {
+        background: #7c3aed;
+        transform: translateY(-1px);
+      }
+
+      .error-message {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #dc2626;
+        padding: 16px;
+        border-radius: 8px;
+        text-align: center;
+        font-style: italic;
+      }
+
+      /* Notification */
+      .notification {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #10b981;
+        color: #ffffff;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-weight: 600;
+        z-index: 1000;
+        animation: slideIn 0.3s ease-out;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      }
+
+      @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+
+      /* Settings */
+      .settings-panel {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background: #ffffff;
+        border: 1px solid #e1e5e9;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        padding: 16px;
+        min-width: 200px;
+        z-index: 1000;
+        display: none;
+      }
+
+      .settings-panel.show {
+        display: block;
+        animation: fadeIn 0.2s ease-in;
+      }
+
+      .setting-item {
+        margin-bottom: 12px;
+      }
+
+      .setting-item:last-child {
+        margin-bottom: 0;
+      }
+
+      .setting-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        color: #475569;
+        cursor: pointer;
+      }
+
+      .setting-checkbox {
+        width: 16px;
+        height: 16px;
+        accent-color: #3b82f6;
+      }
+
+      /* Responsive */
+      @media (max-width: 480px) {
+        .toolbar {
+          padding: 8px 12px;
+        }
+        
+        .toolbar-icons {
+          gap: 4px;
+        }
+        
+        .toolbar-icon {
+          width: 32px;
+          height: 32px;
+          font-size: 14px;
+        }
+        
+        .input-section {
+          padding: 16px 12px 12px;
+        }
+        
+        .results-section {
+          padding: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="popup-container">
+      <!-- Toolbar -->
+      <div class="toolbar" id="toolbar">
+        <div class="toolbar-left">
+          <div class="toolbar-title">Phevere Dictionary</div>
+        </div>
+        <div class="toolbar-icons">
+          <button class="toolbar-icon" id="dictionaryIcon" title="Dictionary">
+            📚
+            <div class="icon-text">Dict</div>
+          </button>
+          <button class="toolbar-icon" id="translationIcon" title="Translation">
+            🌐
+            <div class="icon-text">Trans</div>
+          </button>
+          <button class="toolbar-icon" id="clipboardIcon" title="Clipboard">
+            📋
+            <div class="icon-text">Clip</div>
+          </button>
+          <button class="toolbar-icon" id="searchIcon" title="Search">
+            🔍
+            <div class="icon-text">Search</div>
+          </button>
+          <button class="toolbar-icon" id="settingsIcon" title="Settings">
+            ⚙️
+            <div class="icon-text">Settings</div>
+          </button>
+          <button class="toolbar-icon" id="closeIcon" title="Close">
+            ✕
+            <div class="icon-text">Close</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Settings Panel -->
+      <div class="settings-panel" id="settingsPanel">
+        <div class="setting-item">
+          <label class="setting-label">
+            <input type="checkbox" class="setting-checkbox" id="expandableMode">
+            <span>Expandable toolbar mode</span>
+          </label>
+        </div>
+        <div class="setting-item">
+          <label class="setting-label">
+            <input type="checkbox" class="setting-checkbox" id="preloadContent">
+            <span>Preload dictionary content</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Content Area -->
+      <div class="content-area" id="contentArea">
+        <!-- Input Section -->
+        <div class="input-section">
+          <div class="input-container">
+            <input type="text" class="text-input" id="textInput" placeholder="Enter text to look up..." autocomplete="off">
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+          <button class="tab active" data-tab="translation">Translation</button>
+          <button class="tab" data-tab="dictionary">Free Dictionary API</button>
+          <button class="tab" data-tab="wiktionary">Wiktionary</button>
+        </div>
+
+        <!-- Results Section -->
+        <div class="results-section">
+          <div class="loading" id="loadingElement">
+            Looking up definition...
+          </div>
+          
+          <div class="dictionary-results" id="dictionary-results">
+            <!-- Dictionary results will be populated here -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Global variables
+      let currentText = '';
+      let currentTab = 'translation';
+      let isExpanded = true;
+      let settings = {
+        expandableMode: true,
+        preloadContent: true
+      };
+
+      // DOM elements
+      const toolbar = document.getElementById('toolbar');
+      const contentArea = document.getElementById('contentArea');
+      const textInput = document.getElementById('textInput');
+      const loadingElement = document.getElementById('loadingElement');
+      const dictionaryResults = document.getElementById('dictionary-results');
+      const settingsPanel = document.getElementById('settingsPanel');
+      const expandableModeCheckbox = document.getElementById('expandableMode');
+      const preloadContentCheckbox = document.getElementById('preloadContent');
+
+      // Initialize
+      function initialize() {
+        loadSettings();
+        setupEventListeners();
+        setupToolbarBehavior();
+        
+        // Set initial state based on settings
+        if (settings.expandableMode) {
+          collapseToolbar();
+        }
+      }
+
+      // Load settings from localStorage
+      function loadSettings() {
+        const savedSettings = localStorage.getItem('phevereSettings');
+        if (savedSettings) {
+          settings = { ...settings, ...JSON.parse(savedSettings) };
+        }
+        
+        expandableModeCheckbox.checked = settings.expandableMode;
+        preloadContentCheckbox.checked = settings.preloadContent;
+      }
+
+      // Save settings to localStorage
+      function saveSettings() {
+        localStorage.setItem('phevereSettings', JSON.stringify(settings));
+      }
+
+      // Setup event listeners
+      function setupEventListeners() {
+        // Toolbar icon clicks
+        document.getElementById('dictionaryIcon').addEventListener('click', () => {
+          activateTab('dictionary');
+          expandToolbar();
+        });
+
+        document.getElementById('translationIcon').addEventListener('click', () => {
+          activateTab('translation');
+          expandToolbar();
+        });
+
+        document.getElementById('clipboardIcon').addEventListener('click', () => {
+          if (window.electronAPI) {
+            window.electronAPI.send('open-clipboard');
+          }
+        });
+
+        document.getElementById('searchIcon').addEventListener('click', () => {
+          if (currentText) {
+            searchWeb(currentText);
+          }
+        });
+
+        document.getElementById('settingsIcon').addEventListener('click', () => {
+          toggleSettingsPanel();
+        });
+
+        document.getElementById('closeIcon').addEventListener('click', () => {
+          window.close();
+        });
+
+        // Settings checkboxes
+        expandableModeCheckbox.addEventListener('change', (e) => {
+          settings.expandableMode = e.target.checked;
+          saveSettings();
+          setupToolbarBehavior();
+        });
+
+        preloadContentCheckbox.addEventListener('change', (e) => {
+          settings.preloadContent = e.target.checked;
+          saveSettings();
+        });
+
+        // Tab clicks
+        document.querySelectorAll('.tab').forEach(tab => {
+          tab.addEventListener('click', () => {
+            const tabName = tab.dataset.tab;
+            activateTab(tabName);
+          });
+        });
+
+        // Text input
+        textInput.addEventListener('input', (e) => {
+          currentText = e.target.value;
+          if (settings.preloadContent && currentText.trim()) {
+            lookupText(currentText);
+          }
+        });
+
+        textInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            lookupText(currentText);
+          }
+        });
+
+        // Close settings panel when clicking outside
+        document.addEventListener('click', (e) => {
+          if (!e.target.closest('#settingsIcon') && !e.target.closest('#settingsPanel')) {
+            settingsPanel.classList.remove('show');
+          }
+        });
+
+        // Handle escape key
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') {
+            if (settingsPanel.classList.contains('show')) {
+              settingsPanel.classList.remove('show');
+            } else if (!isExpanded) {
+              expandToolbar();
+            } else {
+              window.close();
+            }
+          }
+        });
+      }
+
+      // Setup toolbar behavior based on settings
+      function setupToolbarBehavior() {
+        if (settings.expandableMode) {
+          // Add click handler to toolbar for expansion
+          toolbar.addEventListener('click', (e) => {
+            if (!e.target.closest('.toolbar-icons') && !isExpanded) {
+              expandToolbar();
+            }
+          });
+        } else {
+          // Remove click handler and ensure expanded
+          toolbar.removeEventListener('click', expandToolbar);
+          expandToolbar();
+        }
+      }
+
+      // Collapse toolbar
+      function collapseToolbar() {
+        if (!settings.expandableMode) return;
+        
+        toolbar.classList.add('collapsed');
+        contentArea.classList.add('collapsed');
+        isExpanded = false;
+      }
+
+      // Expand toolbar
+      function expandToolbar() {
+        toolbar.classList.remove('collapsed');
+        contentArea.classList.remove('collapsed');
+        isExpanded = true;
+        
+        // Focus on input if there's text
+        if (currentText) {
+          textInput.focus();
+        }
+      }
+
+      // Toggle settings panel
+      function toggleSettingsPanel() {
+        settingsPanel.classList.toggle('show');
+      }
+
+      // Activate tab
+      function activateTab(tabName) {
+        currentTab = tabName;
+        
+        // Update tab UI
+        document.querySelectorAll('.tab').forEach(tab => {
+          tab.classList.remove('active');
+        });
+        document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+        
+        // Update toolbar icons
+        document.querySelectorAll('.toolbar-icon').forEach(icon => {
+          icon.classList.remove('active');
+        });
+        
+        if (tabName === 'dictionary') {
+          document.getElementById('dictionaryIcon').classList.add('active');
+        } else if (tabName === 'translation') {
+          document.getElementById('translationIcon').classList.add('active');
+        }
+        
+        // Lookup text if available
+        if (currentText) {
+          lookupText(currentText);
+        }
+      }
+
+      // Lookup text
+      function lookupText(text) {
+        if (!text.trim()) return;
+        
+        showLoading();
+        
+        if (window.dictionaryAPI) {
+          window.dictionaryAPI.lookup(text)
+            .then(result => {
+              console.log('✅ Dictionary result received:', result);
+              displayDictionaryResult(result);
+            })
+            .catch(error => {
+              console.error('❌ Dictionary lookup failed:', error);
+              displayErrorResult(text, error);
+            });
+        } else {
+          console.log('⚠️ Dictionary API not available, using mock data');
+          displayMockResult(text);
+        }
+      }
+
+      // Show loading
+      function showLoading() {
+        loadingElement.style.display = 'flex';
+        dictionaryResults.style.display = 'none';
+      }
+
+      // Display dictionary result
+      function displayDictionaryResult(result) {
+        loadingElement.style.display = 'none';
+        dictionaryResults.style.display = 'block';
+        
+        const definitionsHtml = result.definitions.map((def) => `
+          <div class="definition-item">
+            <div class="definition-pos">${def.partOfSpeech}</div>
+            <div class="definition-text">${def.meaning}</div>
+            ${def.synonyms && def.synonyms.length > 0 ? 
+              `<div style="margin-top: 8px; font-size: 12px; color: #64748b; font-style: italic;">
+                Synonyms: ${def.synonyms.join(', ')}
+              </div>` : ''}
+          </div>
+        `).join('');
+        
+        const translationsHtml = result.translations.map((trans) => `
+          <div class="translation-item">
+            <div class="translation-lang">${trans.language.toUpperCase()}</div>
+            <div class="definition-text">${trans.text}</div>
+            ${trans.pronunciation ? `<div style="margin-top: 4px; font-size: 12px; color: #64748b; font-family: 'Courier New', monospace;">${trans.pronunciation}</div>` : ''}
+          </div>
+        `).join('');
+        
+        const examplesHtml = result.examples.map((example) => `
+          <div class="example-item">
+            <em>"${example}"</em>
+          </div>
+        `).join('');
+        
+        dictionaryResults.innerHTML = `
+          <div class="result-card">
+            <div class="result-header">
+              <div class="result-icon">EN</div>
+              <div class="result-meta">
+                <div class="result-source">${result.sources.join(', ')}</div>
+                <div class="result-confidence">85%</div>
+              </div>
+            </div>
+            <div class="result-word">${result.word}</div>
+            ${result.pronunciation ? `<div class="result-pronunciation">${result.pronunciation}</div>` : ''}
+            
+            ${definitionsHtml ? `
+              <div class="result-section">
+                <div class="result-section-title">Definitions</div>
+                ${definitionsHtml}
+              </div>
+            ` : ''}
+            
+            ${translationsHtml ? `
+              <div class="result-section">
+                <div class="result-section-title">Translations</div>
+                ${translationsHtml}
+              </div>
+            ` : ''}
+            
+            ${examplesHtml ? `
+              <div class="result-section">
+                <div class="result-section-title">Examples</div>
+                ${examplesHtml}
+              </div>
+            ` : ''}
+            
+            <div class="result-actions">
+              <button onclick="copyToClipboard('${result.word}')" class="action-btn action-btn-primary">
+                📋 Copy
+              </button>
+              <button onclick="searchWikipedia('${result.word}')" class="action-btn action-btn-secondary">
+                📚 Wikipedia
+              </button>
+              <button onclick="searchWeb('${result.word}')" class="action-btn action-btn-info">
+                🔍 Web Search
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      // Display mock result
+      function displayMockResult(text) {
+        loadingElement.style.display = 'none';
+        dictionaryResults.style.display = 'block';
+        
+        dictionaryResults.innerHTML = `
+          <div class="result-card">
+            <div class="result-header">
+              <div class="result-icon">EN</div>
+              <div class="result-meta">
+                <div class="result-source">Mock Data</div>
+                <div class="result-confidence">100%</div>
+              </div>
+            </div>
+            <div class="result-word">${text}</div>
+            <div class="result-pronunciation">/həˈloʊ/</div>
+            <div class="result-section">
+              <div class="result-section-title">Definition</div>
+              <div class="definition-item">
+                <div class="definition-pos">interjection</div>
+                <div class="definition-text">Used as a greeting or to begin a phone conversation.</div>
+              </div>
+            </div>
+            <div class="result-section">
+              <div class="result-section-title">Example</div>
+              <div class="example-item">
+                <em>"Hello, how are you today?"</em>
+              </div>
+            </div>
+            <div class="result-actions">
+              <button onclick="copyToClipboard('${text}')" class="action-btn action-btn-primary">
+                📋 Copy
+              </button>
+              <button onclick="searchWikipedia('${text}')" class="action-btn action-btn-secondary">
+                📚 Wikipedia
+              </button>
+              <button onclick="searchWeb('${text}')" class="action-btn action-btn-info">
+                🔍 Web Search
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      // Display error result
+      function displayErrorResult(text, error) {
+        loadingElement.style.display = 'none';
+        dictionaryResults.style.display = 'block';
+        
+        dictionaryResults.innerHTML = `
+          <div class="error-message">
+            Failed to load definition for "${text}"
+            <br><small>Error: ${error.message || 'Unknown error'}</small>
+          </div>
+        `;
+      }
+
+      // Utility functions
+      function showNotification(message) {
+        const notification = document.createElement('div');
+        notification.className = 'notification';
+        notification.textContent = message;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+          if (notification.parentElement) {
+            notification.remove();
+          }
+        }, 3000);
+      }
+
+      function copyToClipboard(text) {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(text).then(() => {
+            showNotification('Copied to clipboard!');
+          });
+        } else {
+          const textArea = document.createElement('textarea');
+          textArea.value = text;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+          showNotification('Copied to clipboard!');
+        }
+      }
+
+      function searchWikipedia(term) {
+        if (window.electronAPI) {
+          window.electronAPI.send('search-wikipedia', term);
+        }
+      }
+
+      function searchWeb(term) {
+        if (window.electronAPI) {
+          window.electronAPI.send('search-web', term);
+        }
+      }
+
+      // Listen for text from main process
+      if (window.electronAPI) {
+        window.electronAPI.onPopupText((text) => {
+          currentText = text;
+          textInput.value = text;
+          
+          // Look up definition if preload is enabled
+          if (settings.preloadContent) {
+            lookupText(text);
+          }
+        });
+      }
+
+      // Initialize when DOM is loaded
+      document.addEventListener('DOMContentLoaded', initialize);
+
+      // Auto-close after 30 seconds
+      setTimeout(() => {
+        window.close();
+      }, 30000);
+    </script>
+  </body>
+</html> 

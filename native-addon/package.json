@@ -1,0 +1,27 @@
+{
+  "name": "phevere-native-selection",
+  "version": "1.0.0",
+  "description": "Native text selection monitoring for Phevere Dictionary",
+  "main": "index.js",
+  "scripts": {
+    "install": "node-gyp rebuild",
+    "build": "node-gyp rebuild",
+    "clean": "node-gyp clean"
+  },
+  "keywords": [
+    "native",
+    "selection",
+    "windows",
+    "text",
+    "monitoring"
+  ],
+  "author": "xiangyuxiao <xiangyuxiao420@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "node-addon-api": "^7.0.0"
+  },
+  "devDependencies": {
+    "node-gyp": "^10.0.0"
+  },
+  "gypfile": true
+} 

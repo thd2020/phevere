@@ -1,0 +1,13 @@
+@echo off
+echo Building Phevere Dictionary App...
+
+echo Installing dependencies...
+call npm install
+
+echo Building Rust native module...
+call npm run build
+
+echo Starting development server...
+call npm start
+
+pause 

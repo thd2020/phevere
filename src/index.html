@@ -2,11 +2,49 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Hello World!</title>
-
+    <title>Phevere - Text Selection Monitor</title>
+    <link rel="stylesheet" href="./index.css">
   </head>
-  <body>
-    <h1>💖 Hello World!</h1>
-    <p>Welcome to your Electron application.</p>
+  <body class="main-window">
+    <div class="titlebar">
+      <div class="title" style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:18px">🔍</span>
+        <span>Phevere</span>
+      </div>
+      <div class="window-controls">
+        <button id="minimize-btn" class="window-control">-</button>
+        <button id="maximize-btn" class="window-control">+</button>
+        <button id="close-btn" class="window-control" style="color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.7)">x</button>
+      </div>
+    </div>
+    <div class="container">
+      <h1 style="display:flex; align-items:center; gap:10px;">
+        <span style="font-size:24px">🔍</span> Phevere
+      </h1>
+      
+      <div class="controls">
+        <button id="startBtn" class="btn btn-primary">Start Monitoring</button>
+        <button id="stopBtn" class="btn btn-secondary">Stop Monitoring</button>
+        <button id="settingsBtn" class="btn btn-info">⚙️ Settings</button>
+        <button id="testPopupBtn" class="btn">Test Popup</button>
+      </div>
+      
+      <!-- status moved to bottom bar -->
+      
+      <div class="recent-selections" style="min-height:140px;">
+        <h3>Recent Selections</h3>
+        <div id="selectionsList" class="selections-list">
+          <p class="empty-message">No selections yet. Start monitoring to see selections here.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom status bar -->
+    <div style="position:fixed; bottom:0; left:0; right:0; background:#f8f9fa; border-top:1px solid #e9ecef; padding:8px 12px; display:flex; gap:24px; align-items:center;">
+      <div><strong>Selection:</strong> <span id="selectionStatus">Stopped</span></div>
+      <div><strong>Clipboard:</strong> <span id="clipboardStatus">Stopped</span></div>
+    </div>
+    
+    <!-- Script is automatically injected by webpack -->
   </body>
 </html>
