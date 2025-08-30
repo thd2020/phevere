@@ -33,6 +33,7 @@ function checkAdminPrivileges(): boolean {
 let mainWindow: BrowserWindow | null = null;
 let popupWindows: BrowserWindow[] = [];
 let settingsWindow: BrowserWindow | null = null;
+let externalWindows: BrowserWindow[] = []; // Track external windows opened by the app
 let isMonitoring = false;
 let lastSelectedText = '';
 let lastSelectionEvent: SelectionEvent | null = null;
@@ -44,8 +45,19 @@ const nativeSelectionService = createNativeSelectionService();
 
 // Open custom wiki window in standalone web window (not inside dictionary popup)
 ipcMain.on('open-wiki', (_e, term: string) => {
-  const url = `https://en.wikipedia.org/wiki/${encodeURIComponent(term)}`;
-  createWebWindow(url);
+  try {
+    if (!term || typeof term !== 'string' || term.trim().length === 0) {
+      console.warn('[MAIN] Invalid Wikipedia term received:', term);
+      return;
+    }
+
+    const cleanTerm = term.trim();
+    const url = `https://en.wikipedia.org/wiki/${encodeURIComponent(cleanTerm)}`;
+    console.log('[MAIN] Opening Wikipedia for term:', cleanTerm);
+    createWebWindow(url);
+  } catch (error) {
+    console.error('[MAIN] Error opening Wikipedia:', error);
+  }
 });
 
 const createMainWindow = (): void => {
@@ -87,13 +99,11 @@ const createMainWindow = (): void => {
 
 const createPopupWindow = (x: number, y: number): void => {
   console.log(`[DEBUG] Creating popup window at position (${x}, ${y})`);
-  console.log('[MAIN-POPUP] entry constant =', POPUP_WINDOW_WEBPACK_ENTRY);
 
   // Get screen dimensions and scale
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
   const scaleFactor = primaryDisplay.scaleFactor || 1;
-  console.log(`[DEBUG] Screen dimensions: ${screenWidth}x${screenHeight}, scaleFactor=${scaleFactor}`);
 
                 // Calculate popup position and size - razor-slim toolbar initially
               const popupWidth = 360;
@@ -104,11 +114,14 @@ const createPopupWindow = (x: number, y: number): void => {
               let popupX = Math.round(x / scaleFactor);
               let popupY = Math.round(y / scaleFactor);
 
-              // Guard against invalid coordinates from UIA; fallback to cursor point
-              if (popupX < 0 || popupX > screenWidth || popupY < 0 || popupY > screenHeight) {
+              // Use provided coordinates if valid, otherwise use cursor as fallback
+              if (popupX < 0 || popupX > screenWidth || popupY < 0 || popupY > screenHeight || isNaN(popupX) || isNaN(popupY)) {
                 const cur = screen.getCursorScreenPoint();
                 popupX = cur.x;
                 popupY = cur.y;
+                console.log(`[DEBUG] Using cursor fallback position: (${popupX}, ${popupY})`);
+              } else {
+                console.log(`[DEBUG] Using selection position: (${popupX}, ${popupY})`);
               }
               
               // Adjust position to show popup near the text, not under the cursor
@@ -127,16 +140,19 @@ const createPopupWindow = (x: number, y: number): void => {
               if (popupY + popupHeight > screenHeight) {
                 popupY = screenHeight - popupHeight - 10;
               }
-              
               console.log(`[DEBUG] Popup position: (${popupX}, ${popupY}), size: ${popupWidth}x${popupHeight}`);
-
-  console.log(`[DEBUG] Creating BrowserWindow with preload: ${MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY}`);
 
   // Coalesce duplicate requests for the same text within a short period
   const textForPopup = (lastSelectionEvent && (lastSelectionEvent.text || '').trim()) || lastSelectedText || '';
   const nowTs = Date.now();
-  if (textForPopup && lastPopupText === textForPopup && (nowTs - lastPopupAt) < 1500) {
-    console.log('[DEBUG] Skipping duplicate popup within 1500ms for same text');
+  if (textForPopup && lastPopupText === textForPopup && (nowTs - lastPopupAt) < 1000) {
+    console.log('[DEBUG] Skipping duplicate popup within 1000ms for same text');
+    return;
+  }
+
+  // Additional check: prevent rapid successive popups regardless of text
+  if (lastPopupAt && (nowTs - lastPopupAt) < 300) {
+    console.log('[DEBUG] Skipping rapid successive popup (300ms cooldown)');
     return;
   }
 
@@ -182,23 +198,28 @@ const createPopupWindow = (x: number, y: number): void => {
                   contextIsolation: true,
                 },
               });
-  console.log(`[DEBUG] BrowserWindow created successfully`);
-
   // Close on blur to match intended UX
   newPopupWindow.on('blur', () => {
-    // Do not close immediately on blur; allow quick reselection without flicker
+    // Use a shorter timeout to be more responsive, but still allow for focus transitions
     setTimeout(() => {
       try {
+        if (newPopupWindow.isDestroyed()) return;
+
         const focused = BrowserWindow.getFocusedWindow();
-        console.log('[MAIN-POPUP] blur->close check focusedIsPopup:', focused === newPopupWindow);
-        if (!newPopupWindow.isDestroyed() && !newPopupWindow.isFocused()) {
-          console.log('[MAIN-POPUP] closing on blur (not focused)');
+        const isPopupFocused = focused === newPopupWindow;
+
+        // Only close if popup is not focused and no other app windows are focused
+        // This prevents closing when user clicks between app windows
+        if (!isPopupFocused && (!focused || !popupWindows.includes(focused))) {
+          console.log('[MAIN-POPUP] closing on blur (popup not focused)');
           newPopupWindow.close();
+        } else {
+          console.log('[MAIN-POPUP] keeping popup open (still has focus or app window focused)');
         }
       } catch (e) {
         console.warn('[MAIN-POPUP] blur close check failed:', e);
       }
-    }, 250);
+    }, 150); // Reduced from 250ms to be more responsive
   });
 // (moved) wiki handler registered at top-level below
 
@@ -208,13 +229,9 @@ const createPopupWindow = (x: number, y: number): void => {
   });
 
   // FIXED: Load the correct HTML file for the new popup using webpack entry point
-  console.log('[MAIN-POPUP] webpack entry:', POPUP_WINDOW_WEBPACK_ENTRY);
-  console.log('[MAIN-POPUP] load start');
   // Load the dedicated popup bundle (popup-new.html) without #popup so its own DOM is used
   const popupUrl = POPUP_WINDOW_WEBPACK_ENTRY;
-  newPopupWindow.loadURL(popupUrl).then(() => {
-    console.log('[MAIN-POPUP] loadURL done');
-  }).catch((error) => {
+  newPopupWindow.loadURL(popupUrl).catch((error) => {
     console.error('[MAIN-POPUP] loadURL failed:', error);
   });
 
@@ -223,10 +240,7 @@ const createPopupWindow = (x: number, y: number): void => {
     try {
       const textToSend = (lastSelectionEvent && lastSelectionEvent.text) || lastSelectedText || '';
       if (textToSend) {
-        console.log('[MAIN-POPUP] did-finish-load send popup-text:', textToSend);
         newPopupWindow.webContents.send('popup-text', textToSend);
-      } else {
-        console.log('[MAIN-POPUP] did-finish-load no text to send');
       }
       lastPopupText = textToSend;
       lastPopupAt = Date.now();
@@ -237,37 +251,19 @@ const createPopupWindow = (x: number, y: number): void => {
 
   // Show popup when ready
   newPopupWindow.once('ready-to-show', () => {
-    console.log('[DEBUG] ready-to-show event fired, showing popup');
     newPopupWindow.show();
     try { newPopupWindow.focus(); } catch {}
-    console.log('[DEBUG] Popup window shown successfully');
   });
 
                 newPopupWindow.on('closed', () => {
-                console.log('[DEBUG] Popup window closed');
                 popupWindows = popupWindows.filter(win => win !== newPopupWindow);
-                
+
                 // Reset selection state to allow same word to trigger popup again
-                console.log('[DEBUG] Resetting selection state for next popup');
                 lastSelectionEvent = null; // Reset the main process selection state
                 lastSelectedText = ''; // Reset the last selected text
               });
 
-  // Add more event listeners for debugging
-  newPopupWindow.on('show', () => {
-    console.log('[DEBUG] Popup show event fired');
-  });
-
-  newPopupWindow.on('hide', () => {
-    console.log('[DEBUG] Popup hide event fired');
-  });
-
-  newPopupWindow.on('focus', () => {
-    console.log('[DEBUG] Popup focus event fired');
-  });
-
   popupWindows.push(newPopupWindow);
-  console.log(`[DEBUG] Popup window added to array. Total popups: ${popupWindows.length}`);
 };
 
 const createSettingsWindow = (): void => {
@@ -310,61 +306,46 @@ const createSettingsWindow = (): void => {
 
 const startSelectionMonitoring = (): void => {
   console.log('[DEBUG] ===== STARTING PURE NATIVE SELECTION MONITORING =====');
-  
+
   if (isMonitoring) {
-    console.log('[DEBUG] Selection monitoring already active, returning');
     return;
   }
 
   // Check administrator privileges for UIAutomation
   const isAdmin = checkAdminPrivileges();
-  console.log(`[DEBUG] Administrator privileges: ${isAdmin ? 'Yes' : 'No'}`);
-  
+
   if (!isAdmin) {
     console.warn('[WARNING] ⚠️ NOT RUNNING AS ADMINISTRATOR!');
     console.warn('[WARNING] UIAutomation selection detection requires administrator privileges');
     console.warn('[WARNING] To enable UIAutomation: Run as Administrator or use "npm run start-admin"');
   }
 
-  console.log('[DEBUG] Setting isMonitoring = true');
   isMonitoring = true;
 
   try {
-    // Test native selection service
-    console.log('[DEBUG] === NATIVE SELECTION SERVICE TEST ===');
-    console.log('[DEBUG] NativeSelectionService object:', typeof nativeSelectionService);
-    console.log('[DEBUG] NativeSelectionService methods:', Object.keys(nativeSelectionService));
-    console.log('[DEBUG] isSupported:', nativeSelectionService.isSupported());
-    
     // Start pure native selection service
-    console.log('[DEBUG] === STARTING PURE NATIVE SELECTION ===');
     nativeSelectionService.start().then(() => {
       console.log('[DEBUG] Pure native selection service started successfully');
       
-      // Register selection callback with detailed logging
+      // Register selection callback
       nativeSelectionService.onSelection((event: SelectionEvent) => {
-        console.log(`[UIA] select "${event.text}" @(${event.x},${event.y}) len=${event.text.length}`);
-
         // Guard: ignore when one of our windows has focus to prevent loops
         const focused = BrowserWindow.getFocusedWindow();
-        if (focused && (popupWindows.includes(focused) || focused === mainWindow)) {
-          console.log('[MAIN] ignore selection: app/popup focused');
+        if (focused && (
+          popupWindows.includes(focused) ||
+          focused === mainWindow ||
+          focused === settingsWindow ||
+          externalWindows.includes(focused)
+        )) {
           return;
         }
         lastSelectionEvent = event; // Store the full event
-        console.log('[MAIN] lastSelectionEvent set', {
-          text: event.text,
-          x: event.x,
-          y: event.y,
-          ts: event.timestamp
-        });
-    // Notify main window to update recent selections list
-    try { mainWindow?.webContents.send('selection-changed', event.text); console.log('[MAIN] sent selection-changed'); } catch (e) { console.warn('[MAIN] send selection-changed failed', e);} 
+        // Notify main window to update recent selections list
+        try { mainWindow?.webContents.send('selection-changed', event.text); } catch (e) { console.warn('[MAIN] send selection-changed failed', e);}
         // Ensure popup shows the exact selected text. Avoid trimming chars.
         createPopupWindow(event.x, event.y);
       });
       
-      console.log('[DEBUG] Selection callback registered with detailed logging');
     }).catch((error) => {
       console.error('[ERROR] Failed to start native selection service:', error);
       if (!isAdmin) {
@@ -374,13 +355,9 @@ const startSelectionMonitoring = (): void => {
     });
 
     // Register global shortcuts
-    console.log('[DEBUG] === REGISTERING GLOBAL SHORTCUTS ===');
     registerGlobalShortcuts();
-    console.log('[DEBUG] Global shortcuts registered');
-    
+
     console.log('[DEBUG] ===== PURE NATIVE SELECTION MONITORING STARTED SUCCESSFULLY =====');
-    console.log('[DEBUG] 🎯 UIAutomation is now listening for text selections...');
-    console.log('[DEBUG] 📝 Test: Select text in any application and wait 500ms');
     
   } catch (error) {
     console.error('[ERROR] Failed to start selection monitoring:', error);
@@ -420,7 +397,7 @@ ipcMain.handle('test-text-selection', () => {
   
   // Simulate a text selection
   const testText = 'hello world';
-  console.log(`[DEBUG] Test text: "${testText}"`);
+  console.log(`[DEBUG] Test text of length: ${testText.length}`);
   
   // Get cursor position
   const cursorPosition = screen.getCursorScreenPoint();
@@ -755,19 +732,12 @@ const registerGlobalShortcuts = (): void => {
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
   console.log('[DEBUG] ===== APP READY EVENT =====');
-  
-  console.log('[DEBUG] Creating main window...');
+
   createMainWindow();
-  
-  console.log('[DEBUG] Registering global shortcuts...');
   registerGlobalShortcuts();
-  
-  console.log('[DEBUG] Starting selection monitoring...');
   startSelectionMonitoring();
-  
-  console.log('[DEBUG] Starting clipboard monitoring...');
   clipboardService.startMonitoring();
-  
+
   console.log('[DEBUG] ===== APP INITIALIZATION COMPLETE =====');
 });
 
@@ -775,8 +745,6 @@ app.on('ready', () => {
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
-  console.log('[DEBUG] All windows closed, cleaning up...');
-  
   // Force close any lingering popup windows
   popupWindows.forEach(win => {
     if (win && !win.isDestroyed()) {
@@ -784,14 +752,21 @@ app.on('window-all-closed', () => {
     }
   });
   popupWindows = [];
-  
+
+  // Force close any lingering external windows
+  externalWindows.forEach(win => {
+    if (win && !win.isDestroyed()) {
+      win.close();
+    }
+  });
+  externalWindows = [];
+
   stopSelectionMonitoring();
   clipboardService.stopMonitoring();
   globalShortcut.unregisterAll();
-  
+
   // Force quit on Windows (and Linux too)
   if (process.platform !== 'darwin') {
-    console.log('[DEBUG] Force quitting app...');
     app.quit();
   }
 });
@@ -896,25 +871,7 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
 
             ipcMain.on('show-settings', () => {
               console.log('[DEBUG] Opening settings window');
-              // Create a settings window
-              const settingsWindow = new BrowserWindow({
-                width: 600,
-                height: 500,
-                frame: false,
-                resizable: true,
-                alwaysOnTop: true,
-                webPreferences: {
-                  preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
-                  nodeIntegration: false,
-                  contextIsolation: true,
-                },
-              });
-
-              settingsWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY + '#settings');
-
-              settingsWindow.on('closed', () => {
-                console.log('[DEBUG] Settings window closed');
-              });
+              createSettingsWindow();
             });
 
             ipcMain.on('open-external', (event, url: string) => {
@@ -923,7 +880,7 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
             });
 
             ipcMain.on('create-new-popup', (event, text: string) => {
-              console.log('[DEBUG] Creating new popup for text:', text);
+              console.log(`[DEBUG] Creating new popup for text of length: ${text.length}`);
               // Get current mouse position for new popup
               const mousePosition = screen.getCursorScreenPoint();
               // Set last selection so popup can render the word immediately
@@ -1010,8 +967,13 @@ function createWebWindow(url: string): void {
 
   webWindow.on('closed', () => {
     openWebWindows[url] = null;
+    // Remove from external windows tracking
+    externalWindows = externalWindows.filter(win => win !== webWindow);
     webWindow = null;
   });
+
+  // Track external window for selection monitoring
+  externalWindows.push(webWindow);
 
   // Allow multiple subsequent popups of different URLs without blocking by the map
   setTimeout(() => {

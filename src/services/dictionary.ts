@@ -201,8 +201,16 @@ export class DictionaryService extends BaseService {
   private async getGoogleTranslateUnofficial(text: string, targetLanguage: string, sourceLanguage: string): Promise<Translation | null> {
     // Use the public "gtx" endpoint to avoid fragile client libraries that regex-parse HTML
     try {
-      console.log(`[DEBUG] Calling unofficial translate for: "${text}"`, { to: targetLanguage, from: sourceLanguage });
-      const normalized = text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+      let normalized = text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+
+      // Check text length limits (Google Translate has ~5000 char limit)
+      const MAX_TRANSLATE_LENGTH = 4500; // Leave some buffer
+      if (normalized.length > MAX_TRANSLATE_LENGTH) {
+        console.warn(`[DEBUG] Text too long for translation (${normalized.length} chars), truncating to ${MAX_TRANSLATE_LENGTH}`);
+        normalized = normalized.substring(0, MAX_TRANSLATE_LENGTH);
+      }
+
+      console.log(`[DEBUG] Calling unofficial translate for text of length ${normalized.length}`, { to: targetLanguage, from: sourceLanguage });
       const sl = sourceLanguage && sourceLanguage !== 'auto' ? sourceLanguage : 'auto';
       const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(targetLanguage)}&dt=t&q=${encodeURIComponent(normalized)}`;
       const response = await this.request<any>(url);
@@ -254,7 +262,7 @@ export class DictionaryService extends BaseService {
     // Check cache first
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
-      console.log(`✅ Cache hit for "${text}" (${Date.now() - startTime}ms)`);
+      console.log(`✅ Cache hit for text of length ${text.length} (${Date.now() - startTime}ms)`);
       return cached.result;
     }
 
@@ -270,7 +278,7 @@ export class DictionaryService extends BaseService {
       
       let result: DictionaryResult;
       
-      console.log('[DBG] lookup input:', { text: normalized, targetLanguage, enabledSources });
+      console.log('[DBG] lookup input:', { textLength: normalized.length, targetLanguage, enabledSources });
       if (isSentence) {
         // For sentences, focus on translation with proper language handling
         result = await this.handleSentenceTranslationOptimized(normalized, targetLanguage, detectedLanguage);
@@ -825,7 +833,7 @@ export class DictionaryService extends BaseService {
       
       // If no results and language is not English, try English as fallback
       if ((!response || response.length === 0) && apiLanguage !== 'en') {
-        console.log(`No results for "${text}" in ${apiLanguage}, trying English fallback`);
+        console.log(`No results for text of length ${text.length} in ${apiLanguage}, trying English fallback`);
         url = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(text)}`;
         response = await this.request<any[]>(url);
       }
@@ -1230,7 +1238,7 @@ export class DictionaryService extends BaseService {
    */
   private async fetchEtymologyFromWikitext(text: string): Promise<string | undefined> {
     try {
-      console.log('📖 [DEBUG] Fetching etymology from Wiktionary for:', text);
+      console.log(`📖 [DEBUG] Fetching etymology from Wiktionary for text of length ${text.length}`);
       const parseUrl = `https://en.wiktionary.org/w/api.php?action=parse&page=${encodeURIComponent(text)}&prop=wikitext&format=json&origin=*`;
       console.log('📖 [DEBUG] Etymology URL:', parseUrl);
       

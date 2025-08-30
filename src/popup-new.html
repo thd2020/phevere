@@ -752,11 +752,16 @@
            });
             document.getElementById('wikiIcon').addEventListener('click', async () => {
                 if (!currentText) return;
-                // Open in a separate app window to avoid clashing with dictionary tab
-                if (window.electronAPI && window.electronAPI.send) {
-                  window.electronAPI.send('open-wiki', currentText);
-                } else {
-                  await showWikipediaPanel(currentText);
+                try {
+                  // Open in a separate app window to avoid clashing with dictionary tab
+                  if (window.electronAPI && window.electronAPI.send) {
+                    window.electronAPI.send('open-wiki', currentText);
+                  } else {
+                    await showWikipediaPanel(currentText);
+                  }
+                } catch (error) {
+                  console.error('[POPUP] Wikipedia button error:', error.message || 'Unknown error');
+                  showToast('Failed to open Wikipedia');
                 }
             });
             document.getElementById('audioIcon').addEventListener('click', () => {
@@ -1210,21 +1215,53 @@
        }
 
        window.playAudio = (text, language) => {
-         console.log('[POPUP] playAudio called with:', text, language);
+         console.log('[POPUP] playAudio called with text of length:', text.length, 'language:', language);
          if ('speechSynthesis' in window) {
-           const guessLang = (txt) => {
-             if (/[\u4e00-\u9fff]/.test(txt)) return 'zh-CN';
-             if (/[\u3040-\u309f\u30a0-\u30ff]/.test(txt)) return 'ja-JP';
-             if (/[\uac00-\ud7af]/.test(txt)) return 'ko-KR';
-             return 'en-US';
-           };
-           const utterance = new SpeechSynthesisUtterance(text);
-           const lang = language ? (language === 'zh' ? 'zh-CN' : language) : guessLang(text);
-           utterance.lang = lang;
-           utterance.rate = 0.9;
-           speechSynthesis.cancel();
-           speechSynthesis.speak(utterance);
-           console.log('[POPUP] Audio playback started');
+           try {
+             // Validate and clean the text
+             if (!text || typeof text !== 'string') {
+               console.error('[POPUP] Invalid text for audio playback');
+               return;
+             }
+
+             // Clean the text of problematic characters
+             const cleanText = text
+               .replace(/[\u200B-\u200D\uFEFF]/g, '') // Remove zero-width characters
+               .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
+               .trim();
+
+             if (cleanText.length === 0) {
+               console.error('[POPUP] Text is empty after cleaning');
+               return;
+             }
+
+             // Limit text length to prevent issues
+             const maxLength = 500;
+             const truncatedText = cleanText.length > maxLength ? cleanText.substring(0, maxLength) + '...' : cleanText;
+
+             const guessLang = (txt) => {
+               if (/[\u4e00-\u9fff]/.test(txt)) return 'zh-CN';
+               if (/[\u3040-\u309f\u30a0-\u30ff]/.test(txt)) return 'ja-JP';
+               if (/[\uac00-\ud7af]/.test(txt)) return 'ko-KR';
+               return 'en-US';
+             };
+
+             const utterance = new SpeechSynthesisUtterance(truncatedText);
+             const lang = language ? (language === 'zh' ? 'zh-CN' : language) : guessLang(truncatedText);
+             utterance.lang = lang;
+             utterance.rate = 0.9;
+
+             // Add error handling
+             utterance.onerror = (event) => {
+               console.error('[POPUP] Speech synthesis error:', event.error);
+             };
+
+             speechSynthesis.cancel();
+             speechSynthesis.speak(utterance);
+             console.log('[POPUP] Audio playback started for language:', lang);
+           } catch (error) {
+             console.error('[POPUP] Error in playAudio:', error);
+           }
          } else {
            console.error('[POPUP] Speech synthesis not available');
          }

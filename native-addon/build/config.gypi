@@ -459,6 +459,7 @@
     "npm_version": "10.9.2",
     "prefix": "C:\\Users\\11195\\AppData\\Roaming\\npm",
     "userconfig": "C:\\Users\\11195\\.npmrc",
-    "user_agent": "npm/10.9.2 node/v22.13.1 win32 x64 workspaces/false"
+    "user_agent": "npm/10.9.2 node/v22.13.1 win32 x64 workspaces/false",
+    "yes": "true"
   }
 }

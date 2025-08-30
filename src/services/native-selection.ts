@@ -73,37 +73,23 @@ export class WindowsNativeSelectionService implements NativeSelectionService {
 
   private async startUIAutomationMonitoring(): Promise<void> {
     try {
-      console.log('[UIA-SERVICE] Starting UIAutomation monitoring with debouncing');
-      console.log('[UIA-SERVICE] Native addon object:', typeof this.nativeAddon);
-      console.log('[UIA-SERVICE] Native addon methods:', Object.keys(this.nativeAddon || {}));
       
       // Set up callback for debounced selection events
       this.nativeAddon.onSelection((payload: { text: string; x: number; y: number }) => {
         const { text, x, y } = payload || { text: '', x: 0, y: 0 };
-        console.log(`[UIA-SERVICE] 🎯 Debounced selection detected: "${text}" at (${x}, ${y})`);
-        console.log(`[UIA-SERVICE] 📏 Text length: ${text.length} characters`);
-        console.log(`[UIA-SERVICE] ⏰ Timestamp: ${new Date().toISOString()}`);
         this.handleSelection(text, 'native', x, y);
       });
 
       // Start UIAutomation monitoring
-      console.log('[UIA-SERVICE] Calling native addon start()...');
       const success = this.nativeAddon.start();
-      console.log('[UIA-SERVICE] Native addon start() returned:', success);
-      
+
       if (success) {
         console.log('[UIA-SERVICE] ✅ UIAutomation monitoring started successfully');
-        console.log('[UIA-SERVICE] ✅ Using debounced selection detection (500ms delay)');
-        console.log('[UIA-SERVICE] 🎯 Now listening for text selections in any application...');
-        console.log('[UIA-SERVICE] 📝 Test: Select text in Notepad, Word, or browser');
-        console.log('[UIA-SERVICE] ⏱️ Wait 500ms after stopping selection for debounced detection');
       } else {
         throw new Error('Failed to start UIAutomation monitoring');
       }
     } catch (error) {
       console.error('[UIA-SERVICE] ❌ Error starting UIAutomation:', error);
-      console.error('[UIA-SERVICE] Error details:', error.message);
-      console.error('[UIA-SERVICE] Error stack:', error.stack);
       throw error;
     }
   }
@@ -148,21 +134,23 @@ export class WindowsNativeSelectionService implements NativeSelectionService {
    */
   private handleSelection(text: string, source: 'native', selX?: number, selY?: number): void {
     try {
-      console.log(`[UIA-SERVICE] 🔄 Processing selection: "${text}" from ${source}`);
-      
       // Validate the selection
       if (!this.isValidTextSelection(text)) {
-        console.log(`[UIA-SERVICE] ❌ Invalid selection, skipping: "${text}"`);
         return;
       }
       
       // Check for duplicate selections - allow duplicates after some time
       const now = Date.now();
       const timeSinceLastSelection = now - (this.lastSelectionTime || 0);
-      // Allow re-triggering even for the same text. Only rate-limit extremely fast repeats.
-      const MIN_RETRIGGER_INTERVAL_MS = 200; // avoid spamming when the OS fires bursts
+
+      // More aggressive rate limiting to prevent bursts
+      const MIN_RETRIGGER_INTERVAL_MS = 300; // increased from 200ms to prevent bursts
       if (timeSinceLastSelection < MIN_RETRIGGER_INTERVAL_MS) {
-        console.log(`[UIA-SERVICE] ⏭️ Ignoring rapid repeat within ${MIN_RETRIGGER_INTERVAL_MS}ms`);
+        return;
+      }
+
+      // Additional check: if we just processed the same text very recently, be more restrictive
+      if (this.lastSelection === text && timeSinceLastSelection < 800) {
         return;
       }
       
@@ -170,40 +158,33 @@ export class WindowsNativeSelectionService implements NativeSelectionService {
       this.lastSelection = text;
       this.lastSelectionTime = now;
       
-      // Prefer selection bounding center if provided; fall back to cursor
-      const cursorPosition = selX != null && selY != null ? { x: selX, y: selY } : screen.getCursorScreenPoint();
-      console.log(`[UIA-SERVICE] 📍 Popup anchor position: (${cursorPosition.x}, ${cursorPosition.y})`);
+      // Use selection bounds if provided, otherwise fall back to cursor position
+      let anchorPosition = screen.getCursorScreenPoint();
+      if (selX != null && selY != null) {
+        // Use the provided selection coordinates as the anchor point
+        anchorPosition = { x: selX, y: selY };
+      }
       
       // Create selection event
       const selectionEvent: SelectionEvent = {
         text,
-        x: cursorPosition.x,
-        y: cursorPosition.y,
+        x: anchorPosition.x,
+        y: anchorPosition.y,
         timestamp: Date.now(),
         source
       };
-      
-      console.log(`[UIA-SERVICE] ✅ Selection event created: "${text}" from ${source}`);
-      console.log(`[UIA-SERVICE] 📊 Event details: length=${text.length}, timestamp=${selectionEvent.timestamp}`);
-      
+
       // Notify all callbacks
-      console.log(`[UIA-SERVICE] 📢 Notifying ${this.selectionCallbacks.length} callback(s)...`);
-      this.selectionCallbacks.forEach((callback, index) => {
+      this.selectionCallbacks.forEach((callback) => {
         try {
-          console.log(`[UIA-SERVICE] 📞 Calling callback #${index + 1}...`);
           callback(selectionEvent);
-          console.log(`[UIA-SERVICE] ✅ Callback #${index + 1} completed successfully`);
         } catch (error) {
-          console.error(`[UIA-SERVICE] ❌ Error in callback #${index + 1}:`, error);
+          console.error(`[UIA-SERVICE] Error in callback:`, error);
         }
       });
       
-      console.log(`[UIA-SERVICE] 🎉 Selection processing completed successfully`);
-      
     } catch (error) {
-      console.error('[UIA-SERVICE] ❌ Error handling selection:', error);
-      console.error('[UIA-SERVICE] Error details:', error.message);
-      console.error('[UIA-SERVICE] Error stack:', error.stack);
+      console.error('[UIA-SERVICE] Error handling selection:', error);
     }
   }
 
