@@ -692,13 +692,24 @@ export class DictionaryService extends BaseService {
     const uniqueSources = Array.from(new Set(sources.map(s => (s || '').trim())));
 
     // Ensure etymology is available by fetching from Wiktionary if needed
+    console.log(`[ETY-DEBUG] Checking etymology for text: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
+    console.log(`[ETY-DEBUG] Current etymology value: ${etymology ? 'EXISTS' : 'UNDEFINED'}`);
+
     if (!etymology) {
-      console.log(`[ETY-DEBUG] No existing etymology found for "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}", attempting to fetch from Wiktionary`);
+      console.log(`[ETY-DEBUG] No existing etymology found, attempting to fetch from Wiktionary`);
       try {
+        console.log(`[ETY-DEBUG] Calling fetchEtymologyFromWikitext...`);
         etymology = await this.fetchEtymologyFromWikitext(text);
-        console.log(`[ETY-DEBUG] Etymology fetch result: ${etymology ? 'SUCCESS' : 'FAILED'} - "${etymology?.substring(0, 100)}${etymology && etymology.length > 100 ? '...' : ''}"`);
+        console.log(`[ETY-DEBUG] fetchEtymologyFromWikitext returned: ${etymology ? 'SUCCESS' : 'FAILED/UNDEFINED'}`);
+        if (etymology) {
+          console.log(`[ETY-DEBUG] Etymology result: "${etymology.substring(0, 100)}${etymology.length > 100 ? '...' : ''}"`);
+        } else {
+          console.log(`[ETY-DEBUG] Etymology fetch returned null/undefined`);
+        }
       } catch (e) {
-        console.log(`[ETY-DEBUG] Etymology fetch failed with error:`, e);
+        console.log(`[ETY-DEBUG] Etymology fetch failed with exception:`, e);
+        console.log(`[ETY-DEBUG] Error type: ${e.constructor.name}`);
+        console.log(`[ETY-DEBUG] Error message: ${e.message}`);
         // Etymology fetch failed, continue without it
       }
     } else {
@@ -723,6 +734,13 @@ export class DictionaryService extends BaseService {
       detectedLanguage: sourceLanguage,
       sources: uniqueSources
     };
+
+    console.log(`[ETY-DEBUG] Final result etymology: ${result.etymology ? 'PRESENT' : 'MISSING'}`);
+    if (result.etymology) {
+      console.log(`[ETY-DEBUG] Final etymology content: "${result.etymology.substring(0, 100)}${result.etymology.length > 100 ? '...' : ''}"`);
+    } else {
+      console.log(`[ETY-DEBUG] No etymology in final result`);
+    }
 
     return result;
   }
@@ -1292,13 +1310,48 @@ export class DictionaryService extends BaseService {
 
   private extractEtymologyFromWikitext(wikitext: string): string | undefined {
     console.log(`[ETY-DEBUG] === Starting etymology extraction from ${wikitext.length} chars of wikitext ===`);
+    console.log(`[ETY-DEBUG] First 500 chars of wikitext:\n${wikitext.substring(0, 500)}`);
 
-    // Look for etymology sections with multiple patterns
+    // Look for ALL section headings to understand the page structure
+    const sectionPattern = /==+([^=\n]+)==+/g;
+    const sections: string[] = [];
+    let sectionMatch;
+    while ((sectionMatch = sectionPattern.exec(wikitext)) !== null) {
+      sections.push(sectionMatch[1].trim());
+    }
+    console.log(`[ETY-DEBUG] Found sections in page:`, sections);
+
+    // Look for etymology-related sections
+    const etymologySections = sections.filter(section =>
+      /etymology|origin|history|derivation/i.test(section)
+    );
+    console.log(`[ETY-DEBUG] Etymology-related sections found:`, etymologySections);
+
+    // For multi-language pages, prioritize English etymology
+    const englishSectionIndex = wikitext.indexOf('==English==');
+    if (englishSectionIndex !== -1) {
+      console.log(`[ETY-DEBUG] Found English section at position ${englishSectionIndex}, extracting English-specific content`);
+      // Extract content from English section onwards
+      const englishContent = wikitext.substring(englishSectionIndex);
+      // Look for etymology in the English section
+      const englishEtymologyMatch = englishContent.match(/===Etymology===([\s\S]*?)(?====|$)/);
+      if (englishEtymologyMatch) {
+        console.log(`[ETY-DEBUG] Found English etymology section`);
+        return this.processEtymologyText(englishEtymologyMatch[1]);
+      }
+    }
+
+    // If we didn't find English-specific etymology, try the general patterns
     const etymologyPatterns = [
       /===\s*Etymology\s*===\s*\n(.+?)(?=\n===|$)/, // Level 3 heading
       /==\s*Etymology\s*==\s*\n(.+?)(?=\n==|$)/,    // Level 2 heading
+      /=\s*Etymology\s*=\s*\n(.+?)(?=\n=|$)/,      // Level 1 heading
       /Etymology\s*\n(.+?)(?=\n==|$)/,             // Without heading markers
-      /Origin\s*\n(.+?)(?=\n==|$)/                 // Alternative "Origin" section
+      /Origin\s*\n(.+?)(?=\n==|$)/,                // Alternative "Origin" section
+      /History\s*\n(.+?)(?=\n==|$)/,               // Alternative "History" section
+      /Derivation\s*\n(.+?)(?=\n==|$)/,            // Alternative "Derivation" section
+      /===\s*Etymology\s*\d*\s*===\s*\n(.+?)(?=\n===|$)/, // Etymology 1, 2, etc.
+      /==\s*Etymology\s*\d*\s*==\s*\n(.+?)(?=\n==|$)/,    // Etymology 1, 2, etc.
     ];
 
     console.log(`[ETY-DEBUG] Testing ${etymologyPatterns.length} regex patterns for etymology`);
@@ -1308,47 +1361,235 @@ export class DictionaryService extends BaseService {
     for (let i = 0; i < etymologyPatterns.length; i++) {
       const pattern = etymologyPatterns[i];
       const match = wikitext.match(pattern);
-      console.log(`[ETY-DEBUG] Pattern ${i + 1} ${match ? 'MATCHED' : 'failed'}: ${pattern.source}`);
+      console.log(`[ETY-DEBUG] Pattern ${i + 1} ${match ? 'MATCHED' : 'FAILED'}: ${pattern.source}`);
       if (match && match[1]) {
         etymologyText = match[1];
-        console.log(`[ETY-DEBUG] Matched pattern ${i + 1}, extracted text length: ${etymologyText.length}`);
-        console.log(`[ETY-DEBUG] Extracted text (first 50 chars): "${etymologyText.substring(0, 50).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ')}"`);
-        break;
+        console.log(`[ETY-DEBUG] ✅ Matched pattern ${i + 1}, extracted text length: ${etymologyText.length}`);
+        console.log(`[ETY-DEBUG] Raw extracted text (first 100 chars):\n"${etymologyText.substring(0, 100)}"`);
+        return this.processEtymologyText(etymologyText);
       }
     }
 
     if (!etymologyText) {
-      console.log(`[ETY-DEBUG] No etymology patterns matched in wikitext`);
+      console.log(`[ETY-DEBUG] No etymology patterns matched, trying fallback approach...`);
+
+      // Fallback: Look for any content that mentions etymology-related keywords
+      const etymologyKeywords = ['etymology', 'origin', 'from', 'derived from', 'comes from', 'root'];
+      const lines = wikitext.split('\n');
+      const etymologyLines: string[] = [];
+
+      for (const line of lines) {
+        const lowerLine = line.toLowerCase();
+        if (etymologyKeywords.some(keyword => lowerLine.includes(keyword)) && !line.includes('==') && line.trim().length > 10) {
+          etymologyLines.push(line);
+        }
+      }
+
+      console.log(`[ETY-DEBUG] Fallback approach found ${etymologyLines.length} lines with etymology keywords`);
+
+      if (etymologyLines.length > 0) {
+        etymologyText = etymologyLines.slice(0, 3).join(' '); // Take first 3 relevant lines
+        console.log(`[ETY-DEBUG] Using fallback etymology text: "${etymologyText.substring(0, 100)}..."`);
+        return this.processEtymologyText(etymologyText);
+      } else {
+        console.log(`[ETY-DEBUG] No etymology content found even with fallback approach`);
+        return undefined;
+      }
+    }
+
+    return this.processEtymologyText(etymologyText);
+  }
+
+  /**
+   * Process and clean etymology text with enhanced formatting
+   */
+  private processEtymologyText(etymologyText: string): string | undefined {
+    if (!etymologyText || etymologyText.trim().length < 10) {
       return undefined;
     }
 
-    // Enhanced cleanup of wikitext
-    etymologyText = etymologyText
-      .replace(/\{\{[^}]*\|([^}]*)\}\}/g, '$1') // Extract display text from templates
-      .replace(/\{\{[^}]*\}\}/g, '') // Remove other templates
-      .replace(/\[\[(?:[^|\]]+\|)?([^\]]+)\]\]/g, '$1') // Simplify wikilinks
-      .replace(/'''([^']*)'''/g, '<strong>$1</strong>') // Convert bold to HTML
-      .replace(/''([^']*)''/g, '<em>$1</em>') // Convert italics to HTML
-      .replace(/<ref[^>]*>.*?<\/ref>/g, '') // Remove references
-      .replace(/\s+/g, ' ') // Normalize whitespace
+    // Enhanced cleanup of wikitext with better formatting
+    let cleanedText = etymologyText
+      // Handle complex templates with multiple parameters
+      .replace(/\{\{([^|]+)\|([^}]+)\}\}/g, (match, template, params) => {
+        const paramList = params.split('|');
+        const templateLower = template.toLowerCase();
+
+        // Handle different template types intelligently
+        if (templateLower === 'inh' || templateLower === 'inherited') {
+          // {{inh|en|enm|primitif}} -> "Middle English primitif"
+          if (paramList.length >= 3) {
+            const targetLang = paramList[0];
+            const sourceLang = paramList[1];
+            const word = paramList[2];
+            // Simplify language codes to readable names
+            const langNames: Record<string, string> = {
+              'en': 'English', 'enm': 'Middle English', 'fro': 'Old French',
+              'la': 'Latin', 'grc': 'Ancient Greek', 'de': 'German',
+              'fr': 'French', 'it': 'Italian', 'es': 'Spanish'
+            };
+            const readableSource = langNames[sourceLang] || sourceLang;
+            return `${readableSource} ${word}`;
+          }
+        } else if (templateLower === 'der' || templateLower === 'derived') {
+          // {{der|en|fro|primitif}} -> "Old French primitif"
+          if (paramList.length >= 3) {
+            const targetLang = paramList[0];
+            const sourceLang = paramList[1];
+            const word = paramList[2];
+            const langNames: Record<string, string> = {
+              'en': 'English', 'enm': 'Middle English', 'fro': 'Old French',
+              'la': 'Latin', 'grc': 'Ancient Greek', 'de': 'German',
+              'fr': 'French', 'it': 'Italian', 'es': 'Spanish'
+            };
+            const readableSource = langNames[sourceLang] || sourceLang;
+            return `${readableSource} ${word}`;
+          }
+        } else if (templateLower === 'bor' || templateLower === 'borrowed') {
+          // {{bor|en|fr|sibérien}} -> "borrowed from French sibérien"
+          if (paramList.length >= 3) {
+            const targetLang = paramList[0];
+            const sourceLang = paramList[1];
+            const word = paramList[2];
+            const langNames: Record<string, string> = {
+              'en': 'English', 'enm': 'Middle English', 'fro': 'Old French',
+              'la': 'Latin', 'grc': 'Ancient Greek', 'de': 'German',
+              'fr': 'French', 'it': 'Italian', 'es': 'Spanish'
+            };
+            const readableSource = langNames[sourceLang] || sourceLang;
+            return `borrowed from ${readableSource} ${word}`;
+          }
+        } else if (templateLower === 'af' || templateLower === 'affix') {
+          // {{af|en|base|-al}} -> "base + -al"
+          if (paramList.length >= 3) {
+            const lang = paramList[0];
+            const root = paramList[1];
+            const suffix = paramList[2];
+            return `${root} + ${suffix}`;
+          }
+        } else if (templateLower === 'root') {
+          // {{root|en|ine-pro|*gʷem-}} -> "from Proto-Indo-European *gʷem-"
+          if (paramList.length >= 3) {
+            const lang = paramList[0];
+            const family = paramList[1];
+            const rootWord = paramList[2];
+
+            // Map common language families to readable names
+            const familyNames: Record<string, string> = {
+              'ine-pro': 'Proto-Indo-European',
+              'gem-pro': 'Proto-Germanic',
+              'enm': 'Middle English',
+              'fro': 'Old French',
+              'la': 'Latin'
+            };
+
+            const readableFamily = familyNames[family] || family.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
+            return `from ${readableFamily} ${rootWord}`;
+          }
+        } else if (templateLower === 'm' || templateLower === 'mention') {
+          // {{m|la|prīmits|t=first}} -> "Latin prīmits ("first")"
+          if (paramList.length >= 2) {
+            const lang = paramList[0];
+            const word = paramList[1];
+            let gloss = '';
+            // Look for gloss parameter (t=...)
+            for (const param of paramList.slice(2)) {
+              if (param.startsWith('t=')) {
+                gloss = param.substring(2);
+                break;
+              }
+            }
+            const langNames: Record<string, string> = {
+              'en': 'English', 'enm': 'Middle English', 'fro': 'Old French',
+              'la': 'Latin', 'grc': 'Ancient Greek', 'de': 'German',
+              'fr': 'French', 'it': 'Italian', 'es': 'Spanish'
+            };
+            const readableLang = langNames[lang] || lang;
+            return gloss ? `${readableLang} ${word} ("${gloss}")` : `${readableLang} ${word}`;
+          }
+        } else if (templateLower === 'doublet') {
+          // {{doublet|en|primitivo}} -> "doublet of primitivo"
+          if (paramList.length >= 2) {
+            const lang = paramList[0];
+            const doubletWord = paramList[1];
+            return `doublet of ${doubletWord}`;
+          }
+        } else if (templateLower === 'cog' || templateLower === 'cognate') {
+          // {{cog|fr|base}} -> "cognate with French base"
+          if (paramList.length >= 2) {
+            const lang = paramList[0];
+            const cognateWord = paramList[1];
+            const langNames: Record<string, string> = {
+              'en': 'English', 'enm': 'Middle English', 'fro': 'Old French',
+              'la': 'Latin', 'grc': 'Ancient Greek', 'de': 'German',
+              'fr': 'French', 'it': 'Italian', 'es': 'Spanish'
+            };
+            const readableLang = langNames[lang] || lang;
+            return `cognate with ${readableLang} ${cognateWord}`;
+          }
+        }
+
+        // For other templates, try to extract the most meaningful content
+        // Filter out parameters that look like language codes or metadata
+        const meaningfulParams = paramList.filter((param: string) =>
+          !param.match(/^(en|fr|de|la|grc|fro|enm|ang)$/) && // Not just language codes
+          !param.startsWith('t=') && // Not gloss parameters
+          param.length > 1 // Not single characters
+        );
+
+        return meaningfulParams.length > 0 ? meaningfulParams[meaningfulParams.length - 1] : '';
+      })
+      .replace(/\{\{[^}]*\}\}/g, '') // Remove any remaining unprocessed templates
+      // Convert wikilinks to readable format
+      .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '<strong>$2</strong>') // [[target|display]] -> bold display
+      .replace(/\[\[([^\]]+)\]\]/g, '<strong>$1</strong>') // [[word]] -> bold word
+      // Preserve emphasis
+      .replace(/'''([^']*)'''/g, '<strong>$1</strong>')
+      .replace(/''([^']*)''/g, '<em>$1</em>')
+      // Remove references and other markup
+      .replace(/<ref[^>]*>.*?<\/ref>/g, '')
+      .replace(/<[^>]*>/g, '') // Remove any remaining HTML tags
+      // Clean up whitespace and formatting
+      .replace(/\s+/g, ' ')
+      .replace(/\n\s*\n/g, '\n\n') // Preserve paragraph breaks
       .trim();
 
-    console.log(`[ETY-DEBUG] Etymology text after cleanup: ${etymologyText.length} chars (HTML stripped)`);
 
-    // Extract the most informative part (first meaningful paragraph)
-    const sentences = etymologyText.split(/[.!?]+/).filter(s => s.trim().length > 10);
-    console.log(`[ETY-DEBUG] Found ${sentences.length} meaningful sentences`);
 
-    if (sentences.length > 0) {
-      const result = sentences.slice(0, 2).join('. ').trim() + '.';
-      console.log(`[ETY-DEBUG] Final result (first 1-2 sentences): "${result}"`);
-      return result;
+    if (cleanedText.length < 10) {
+      return undefined;
     }
 
-    // Fallback to first line
-    const firstLineResult = etymologyText.split('\n')[0].trim();
-    console.log(`[ETY-DEBUG] Final result (first line): "${firstLineResult}"`);
-    return firstLineResult;
+    // For etymology, we want to preserve the full derivation chain
+    // Only truncate if it's extremely long (>1000 chars)
+    if (cleanedText.length > 1000) {
+      // Try to find a good breaking point
+      const truncatedAtSentence = cleanedText.substring(0, 800);
+      const lastSentenceEnd = Math.max(
+        truncatedAtSentence.lastIndexOf('.'),
+        truncatedAtSentence.lastIndexOf(';'),
+        truncatedAtSentence.lastIndexOf(',')
+      );
+
+      if (lastSentenceEnd > 600) {
+        return cleanedText.substring(0, lastSentenceEnd + 1).trim() + '...';
+      } else {
+        return cleanedText.substring(0, 800).trim() + '...';
+      }
+    }
+
+    // Clean up redundant "from" keywords that might appear from the original text structure
+    let finalText = cleanedText
+      // Fix duplicate "from" patterns: "from from" -> "from"
+      .replace(/\bfrom\s+from\b/gi, 'from')
+      // Clean up any awkward spacing
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    console.log(`[ETY-DEBUG] Final processed etymology: "${finalText.substring(0, 150)}..."`);
+
+    // Return the full cleaned text for etymology (it's important to show the complete derivation)
+    return finalText;
   }
 
   /**

@@ -362,23 +362,115 @@
         color: #475569;
       }
 
-      .etymology-content {
-        background: linear-gradient(135deg, #fef7ed 0%, #fef3c7 100%);
-        padding: 16px 20px;
+      /* Enhanced Etymology Styling */
+      .etymology-container {
+        margin-bottom: 16px;
+        background: linear-gradient(135deg, #fefefe 0%, #f8fafc 100%);
+        border: 1px solid #e2e8f0;
         border-radius: 12px;
-        margin-bottom: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+
+      .etymology-header {
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        color: white;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        font-size: 14px;
+      }
+
+      .etymology-icon {
+        font-size: 16px;
+      }
+
+      .etymology-title {
+        flex: 1;
+      }
+
+      .etymology-content {
+        padding: 16px 20px;
+        background: linear-gradient(135deg, #fef7ed 0%, #fef3c7 100%);
         border-left: 4px solid #f59e0b;
-        color: #92400e;
+      }
+
+      .etymology-text {
         line-height: 1.6;
         font-size: 14px;
-        border: 1px solid rgba(245, 158, 11, 0.2);
+        color: #92400e;
       }
 
-      .etymology-content strong {
-        color: #78350f;
+      .etymology-sentence {
+        margin-bottom: 8px;
+        padding: 4px 0;
+      }
+
+      .etymology-keyword {
+        color: #dc2626;
         font-weight: 600;
+        background: rgba(220, 38, 38, 0.1);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 13px;
       }
 
+      .etymology-language {
+        color: #7c3aed;
+        font-weight: 600;
+        background: rgba(124, 58, 237, 0.1);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-style: italic;
+        font-size: 13px;
+      }
+
+      .etymology-pos {
+        color: #059669;
+        font-weight: 600;
+        background: rgba(5, 150, 105, 0.1);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .etymology-no-data {
+        padding: 20px;
+        text-align: center;
+        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+        border-left: 4px solid #64748b;
+      }
+
+      .no-data-icon {
+        font-size: 32px;
+        margin-bottom: 12px;
+        opacity: 0.6;
+      }
+
+      .no-data-text {
+        color: #64748b;
+      }
+
+      .no-data-text ul {
+        text-align: left;
+        margin: 12px 0;
+        padding-left: 20px;
+      }
+
+      .no-data-text li {
+        margin: 6px 0;
+        font-size: 13px;
+      }
+
+      .no-data-text em {
+        color: #475569;
+        font-style: italic;
+      }
+
+      /* Legacy support for old etymology styling */
       .etymology-info {
         background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
         padding: 16px 20px;
@@ -938,7 +1030,7 @@
           }
       }
 
-             // Dedicated etymology display function
+             // Enhanced etymology display function with professional formatting
         function displayEtymologyResult(result) {
           console.log('[POPUP] displayEtymologyResult called with:', result);
           document.getElementById('loadingElement').style.display = 'none';
@@ -948,12 +1040,20 @@
           let etymologyHtml = '';
 
           if (result.etymology && result.etymology.length > 0) {
+            // Parse and format the etymology text
+            const formattedEtymology = formatEtymologyText(result.etymology);
+
             etymologyHtml = `
               <div class="result-card">
                   <div class="result-word">${result.word}</div>
-                  <div class="result-section">
-                    <div class="result-section-title">📚 Word Origin & Etymology</div>
-                    <div class="etymology-content">${result.etymology}</div>
+                  <div class="etymology-container">
+                    <div class="etymology-header">
+                      <span class="etymology-icon">📚</span>
+                      <span class="etymology-title">Word Origin & Etymology</span>
+                    </div>
+                    <div class="etymology-content">
+                      ${formattedEtymology}
+                    </div>
                   </div>
                   <div class="result-actions">
                       <button onclick="playAudio('${result.word}', 'en')" class="audio-button" title="Play pronunciation">🔊</button>
@@ -964,17 +1064,23 @@
             etymologyHtml = `
               <div class="result-card">
                   <div class="result-word">${result.word}</div>
-                  <div class="result-section">
-                    <div class="result-section-title">📚 Word Origin & Etymology</div>
-                    <div class="etymology-info">
-                      <p>Etymology information is not available for this term.</p>
-                      <p><small>This may be because:</small></p>
-                      <ul>
-                        <li>The word is too recent or technical</li>
-                        <li>The word originates from a language not well-documented in etymology databases</li>
-                        <li>The term is a proper name or acronym</li>
-                      </ul>
-                      <p><small>For better results, try searching for the root word or related terms.</small></p>
+                  <div class="etymology-container">
+                    <div class="etymology-header">
+                      <span class="etymology-icon">📚</span>
+                      <span class="etymology-title">Word Origin & Etymology</span>
+                    </div>
+                    <div class="etymology-no-data">
+                      <div class="no-data-icon">❓</div>
+                      <div class="no-data-text">
+                        <p><strong>No etymology information found</strong></p>
+                        <p>This may be because:</p>
+                        <ul>
+                          <li>The word is too recent or technical</li>
+                          <li>The word originates from a language not well-documented in etymology databases</li>
+                          <li>The term is a proper name or acronym</li>
+                        </ul>
+                        <p><em>Try searching for the root word or related terms for better results.</em></p>
+                      </div>
                     </div>
                   </div>
                   <div class="result-actions">
@@ -985,7 +1091,33 @@
           }
 
           resultsContainer.innerHTML = etymologyHtml;
-          console.log('[POPUP] Etymology content displayed');
+          console.log('[POPUP] Enhanced etymology content displayed');
+        }
+
+        // Format etymology text with professional styling
+        function formatEtymologyText(etymologyText) {
+          if (!etymologyText) return '';
+
+          // Split into sentences for better formatting
+          const sentences = etymologyText.split(/[.!?]+/).filter(s => s.trim().length > 3);
+
+          let formattedHtml = '<div class="etymology-text">';
+
+          sentences.forEach((sentence, index) => {
+            const trimmedSentence = sentence.trim();
+            if (trimmedSentence) {
+              // Highlight key linguistic terms
+              let highlightedSentence = trimmedSentence
+                .replace(/\b(From|Derived from|Borrowed from|Inherited from|Root|Origin|Etymology)\b/gi, '<span class="etymology-keyword">$1</span>')
+                .replace(/\b(Latin|Greek|French|German|Old English|Middle English|Anglo-Saxon|Proto-Germanic|Indo-European)\b/gi, '<span class="etymology-language">$1</span>')
+                .replace(/\b(verb|noun|adjective|adverb|pronoun|preposition|conjunction|interjection)\b/gi, '<span class="etymology-pos">$1</span>');
+
+              formattedHtml += `<div class="etymology-sentence">${highlightedSentence}${index < sentences.length - 1 ? '.' : ''}</div>`;
+            }
+          });
+
+          formattedHtml += '</div>';
+          return formattedHtml;
         }
 
         // Collapse toolbar
