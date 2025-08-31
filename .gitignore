@@ -30,7 +30,51 @@ coverage
 .lock-wscript
 
 # Compiled binary addons (https://nodejs.org/api/addons.html)
+build/
 build/Release
+*.node
+
+# Visual Studio build artifacts
+*.suo
+*.user
+*.aps
+*.pch
+*.vspscc
+*_i.c
+*_p.c
+*.ncb
+*.suo
+*.tlb
+*.tlh
+*.tmp
+*.tmp_proj
+*.log
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.log
+*.svclog
+*.scc
+
+# Intermediate Program Database files
+*.ipdb
+*.iobj
+*.pdb
+*.ilk
+
+# Build directories
+bin/
+obj/
+Debug/
+Release/
+x64/
+Win32/
+
+# MSBuild
+[Bb]in/
+[Oo]bj/
+.vs/
 
 # Dependency directories
 node_modules/
@@ -95,3 +139,33 @@ out/
 rust-native/target
 rust-native/index.node
 rust-native/artifacts.json
+
+# Additional native addon build artifacts
+*.tlog
+*.lastbuildstate
+*.unsuccessfulbuild
+*.recipe
+*.cache
+*.VC.db
+*.VC.VC.opendb
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~

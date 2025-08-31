@@ -362,6 +362,48 @@
         color: #475569;
       }
 
+      .etymology-content {
+        background: linear-gradient(135deg, #fef7ed 0%, #fef3c7 100%);
+        padding: 16px 20px;
+        border-radius: 12px;
+        margin-bottom: 8px;
+        border-left: 4px solid #f59e0b;
+        color: #92400e;
+        line-height: 1.6;
+        font-size: 14px;
+        border: 1px solid rgba(245, 158, 11, 0.2);
+      }
+
+      .etymology-content strong {
+        color: #78350f;
+        font-weight: 600;
+      }
+
+      .etymology-info {
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        padding: 16px 20px;
+        border-radius: 12px;
+        margin-bottom: 8px;
+        border-left: 4px solid #f59e0b;
+        color: #92400e;
+        line-height: 1.5;
+        font-size: 14px;
+      }
+
+      .etymology-info ul {
+        margin: 8px 0;
+        padding-left: 20px;
+      }
+
+      .etymology-info li {
+        margin: 4px 0;
+      }
+
+      .etymology-info small {
+        color: #a16207;
+        font-style: italic;
+      }
+
       .result-actions {
         display: flex;
         gap: 8px;
@@ -630,8 +672,9 @@
          <!-- Tabs -->
          <div class="tabs" id="tabsContainer" style="display: none;">
            <button class="tab active" data-tab="translation">Translation</button>
-           <button class="tab" data-tab="dictionary">Free Dictionary API</button>
-           <button class="tab" data-tab="wiktionary">Wiktionary</button>
+                       <button class="tab" data-tab="dictionary">Free Dictionary API</button>
+            <button class="tab" data-tab="wiktionary">Wiktionary</button>
+            <button class="tab" data-tab="etymology">📚 Etymology</button>
          </div>
 
         <!-- Results Section -->
@@ -895,7 +938,57 @@
           }
       }
 
-             // Collapse toolbar
+             // Dedicated etymology display function
+        function displayEtymologyResult(result) {
+          console.log('[POPUP] displayEtymologyResult called with:', result);
+          document.getElementById('loadingElement').style.display = 'none';
+          const resultsContainer = document.getElementById('dictionary-results');
+          resultsContainer.style.display = 'block';
+
+          let etymologyHtml = '';
+
+          if (result.etymology && result.etymology.length > 0) {
+            etymologyHtml = `
+              <div class="result-card">
+                  <div class="result-word">${result.word}</div>
+                  <div class="result-section">
+                    <div class="result-section-title">📚 Word Origin & Etymology</div>
+                    <div class="etymology-content">${result.etymology}</div>
+                  </div>
+                  <div class="result-actions">
+                      <button onclick="playAudio('${result.word}', 'en')" class="audio-button" title="Play pronunciation">🔊</button>
+                      <button onclick="searchWeb('${result.word}')" class="action-btn action-btn-info">🔍 Search Web</button>
+                  </div>
+              </div>`;
+          } else {
+            etymologyHtml = `
+              <div class="result-card">
+                  <div class="result-word">${result.word}</div>
+                  <div class="result-section">
+                    <div class="result-section-title">📚 Word Origin & Etymology</div>
+                    <div class="etymology-info">
+                      <p>Etymology information is not available for this term.</p>
+                      <p><small>This may be because:</small></p>
+                      <ul>
+                        <li>The word is too recent or technical</li>
+                        <li>The word originates from a language not well-documented in etymology databases</li>
+                        <li>The term is a proper name or acronym</li>
+                      </ul>
+                      <p><small>For better results, try searching for the root word or related terms.</small></p>
+                    </div>
+                  </div>
+                  <div class="result-actions">
+                      <button onclick="playAudio('${result.word}', 'en')" class="audio-button" title="Play pronunciation">🔊</button>
+                      <button onclick="searchWeb('${result.word}')" class="action-btn action-btn-info">🔍 Search Web</button>
+                  </div>
+              </div>`;
+          }
+
+          resultsContainer.innerHTML = etymologyHtml;
+          console.log('[POPUP] Etymology content displayed');
+        }
+
+        // Collapse toolbar
        function collapseToolbar() {
          console.log('[POPUP] Collapsing toolbar...');
          if (!settings.expandableMode) {
@@ -966,8 +1059,13 @@
          document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
          document.querySelectorAll('.toolbar-icon').forEach(icon => icon.classList.remove('active'));
          
-         if (tabName.includes('dict')) document.getElementById('dictionaryIcon').classList.add('active');
-         else document.getElementById('translationIcon').classList.add('active');
+                   if (tabName === 'etymology') {
+            document.getElementById('wikiIcon').classList.add('active');
+          } else if (tabName.includes('dict')) {
+            document.getElementById('dictionaryIcon').classList.add('active');
+          } else {
+            document.getElementById('translationIcon').classList.add('active');
+          }
          
          // Show/hide language selection for translation
          const languageSelection = document.getElementById('languageSelection');
@@ -981,8 +1079,14 @@
            tabsContainer.style.display = 'flex';
          }
          
-         // Re-render content for the activated tab
-         if(currentResult) displayDictionaryResult(currentResult);
+                   // Re-render content for the activated tab
+          if(currentResult) {
+            if (tabName === 'etymology') {
+              displayEtymologyResult(currentResult);
+            } else {
+              displayDictionaryResult(currentResult);
+            }
+          }
        }
 
                            async function lookupText(text) {
@@ -1214,13 +1318,41 @@
          }
        }
 
+       // Preload voices to ensure they're available
+       let voicesLoaded = false;
+       let availableVoices = [];
+
+       function loadVoices() {
+         if (voicesLoaded) return availableVoices;
+
+         availableVoices = speechSynthesis.getVoices();
+         voicesLoaded = true;
+
+         console.log(`[AUDIO-DEBUG] Voices loaded: ${availableVoices.length} voices`);
+         console.log(`[AUDIO-DEBUG] Voice list:`, availableVoices.map(v => `${v.name} (${v.lang}) [${v.default ? 'default' : 'secondary'}]`));
+
+         return availableVoices;
+       }
+
+       // Load voices when speech synthesis becomes available
+       if ('speechSynthesis' in window) {
+         if (speechSynthesis.getVoices().length > 0) {
+           loadVoices();
+         } else {
+           speechSynthesis.addEventListener('voiceschanged', loadVoices);
+         }
+       }
+
        window.playAudio = (text, language) => {
-         console.log('[POPUP] playAudio called with text of length:', text.length, 'language:', language);
+         console.log(`[AUDIO-DEBUG] === Starting audio playback ===`);
+         console.log(`[AUDIO-DEBUG] Input text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+         console.log(`[AUDIO-DEBUG] Input language: ${language}`);
+
          if ('speechSynthesis' in window) {
            try {
              // Validate and clean the text
              if (!text || typeof text !== 'string') {
-               console.error('[POPUP] Invalid text for audio playback');
+               console.error('[AUDIO-DEBUG] Invalid text for audio playback - text is null/undefined or not a string');
                return;
              }
 
@@ -1231,7 +1363,7 @@
                .trim();
 
              if (cleanText.length === 0) {
-               console.error('[POPUP] Text is empty after cleaning');
+               console.error('[AUDIO-DEBUG] Text is empty after cleaning');
                return;
              }
 
@@ -1240,30 +1372,154 @@
              const truncatedText = cleanText.length > maxLength ? cleanText.substring(0, maxLength) + '...' : cleanText;
 
              const guessLang = (txt) => {
-               if (/[\u4e00-\u9fff]/.test(txt)) return 'zh-CN';
-               if (/[\u3040-\u309f\u30a0-\u30ff]/.test(txt)) return 'ja-JP';
-               if (/[\uac00-\ud7af]/.test(txt)) return 'ko-KR';
+               console.log(`[AUDIO-DEBUG] Running language detection on: "${txt.substring(0, 30)}${txt.length > 30 ? '...' : ''}"`);
+
+               // Chinese characters
+               if (/[\u4e00-\u9fff]/.test(txt)) {
+                 console.log(`[AUDIO-DEBUG] Detected Chinese characters`);
+                 return 'zh-CN';
+               }
+               // Japanese Hiragana/Katakana
+               if (/[\u3040-\u309f\u30a0-\u30ff]/.test(txt)) {
+                 console.log(`[AUDIO-DEBUG] Detected Japanese Hiragana/Katakana`);
+                 return 'ja-JP';
+               }
+               // Korean Hangul
+               if (/[\uac00-\ud7af]/.test(txt)) {
+                 console.log(`[AUDIO-DEBUG] Detected Korean Hangul`);
+                 return 'ko-KR';
+               }
+               // Cyrillic (Russian, etc.)
+               if (/[\u0400-\u04ff]/.test(txt)) {
+                 console.log(`[AUDIO-DEBUG] Detected Cyrillic (Russian)`);
+                 return 'ru-RU';
+               }
+               // Arabic
+               if (/[\u0600-\u06ff]/.test(txt)) {
+                 console.log(`[AUDIO-DEBUG] Detected Arabic`);
+                 return 'ar-SA';
+               }
+               // Hebrew
+               if (/[\u0590-\u05ff]/.test(txt)) {
+                 console.log(`[AUDIO-DEBUG] Detected Hebrew`);
+                 return 'he-IL';
+               }
+               // Greek
+               if (/[\u0370-\u03ff]/.test(txt)) {
+                 console.log(`[AUDIO-DEBUG] Detected Greek`);
+                 return 'el-GR';
+               }
+
+               console.log(`[AUDIO-DEBUG] No specific language detected, defaulting to English`);
+               // Default to English
                return 'en-US';
              };
 
+             // Determine language
+             const detectedLang = guessLang(truncatedText);
+             console.log(`[AUDIO-DEBUG] Language detection result: ${detectedLang}`);
+
              const utterance = new SpeechSynthesisUtterance(truncatedText);
-             const lang = language ? (language === 'zh' ? 'zh-CN' : language) : guessLang(truncatedText);
+             const lang = language ? (language === 'zh' ? 'zh-CN' : language) : detectedLang;
              utterance.lang = lang;
              utterance.rate = 0.9;
 
-             // Add error handling
-             utterance.onerror = (event) => {
-               console.error('[POPUP] Speech synthesis error:', event.error);
+             // Enhanced voice selection with better fallback logic
+             const voices = loadVoices(); // Use preloaded voices
+             console.log(`[AUDIO-DEBUG] Using preloaded voices: ${voices.length} voices`);
+             console.log(`[AUDIO-DEBUG] Available voices:`, voices.map(v => `${v.name} (${v.lang}) [${v.default ? 'default' : 'secondary'}]`));
+
+             // Priority order for voice selection
+             const voiceSelectionStrategies = [
+               // 1. Exact language match with preferred voice names
+               () => voices.find(voice =>
+                 voice.lang === lang &&
+                 (voice.name.toLowerCase().includes('natural') ||
+                  voice.name.toLowerCase().includes('premium') ||
+                  voice.name.toLowerCase().includes('female') ||
+                  voice.name.toLowerCase().includes('male') ||
+                  voice.default)
+               ),
+               // 2. Language prefix match with preferred names
+               () => voices.find(voice =>
+                 voice.lang.startsWith(lang.substring(0, 2)) &&
+                 (voice.name.toLowerCase().includes('natural') ||
+                  voice.name.toLowerCase().includes('premium') ||
+                  voice.name.toLowerCase().includes('female') ||
+                  voice.name.toLowerCase().includes('male') ||
+                  voice.default)
+               ),
+               // 3. Any voice with exact language match
+               () => voices.find(voice => voice.lang === lang),
+               // 4. Any voice with language prefix match
+               () => voices.find(voice => voice.lang.startsWith(lang.substring(0, 2))),
+               // 5. Default voice as last resort
+               () => voices.find(voice => voice.default),
+               // 6. First available voice
+               () => voices[0]
+             ];
+
+             let selectedVoice = null;
+             let selectedStrategy = -1;
+
+             for (let i = 0; i < voiceSelectionStrategies.length; i++) {
+               selectedVoice = voiceSelectionStrategies[i]();
+               if (selectedVoice) {
+                 selectedStrategy = i;
+                 break;
+               }
+             }
+
+             if (selectedVoice) {
+               utterance.voice = selectedVoice;
+               console.log(`[AUDIO-DEBUG] Selected voice using strategy ${selectedStrategy + 1}:`, {
+                 name: selectedVoice.name,
+                 lang: selectedVoice.lang,
+                 default: selectedVoice.default,
+                 localService: selectedVoice.localService
+               });
+             } else {
+               console.warn(`[AUDIO-DEBUG] No suitable voice found for language: ${lang}`);
+               console.warn(`[AUDIO-DEBUG] Available voices:`, voices.map(v => `${v.name} (${v.lang})`));
+             }
+
+             console.log(`[AUDIO-DEBUG] Utterance setup complete - lang: ${utterance.lang}, voice: ${utterance.voice?.name || 'none'}, rate: ${utterance.rate}`);
+
+             // Check if we have any voices for this language before attempting to speak
+             const hasVoicesForLang = voices.some(voice => voice.lang.startsWith(lang.substring(0, 2)));
+             if (!hasVoicesForLang) {
+               console.warn(`[AUDIO-DEBUG] No voices available for ${lang}, trying English fallback`);
+               utterance.lang = 'en-US';
+               utterance.voice = voices.find(voice => voice.lang.startsWith('en') && voice.default) || voices.find(voice => voice.default) || null;
+             }
+
+             // Add comprehensive event handlers
+             utterance.onstart = () => {
+               console.log(`[AUDIO-DEBUG] Speech synthesis started successfully for ${lang}`);
              };
 
+             utterance.onend = () => {
+               console.log(`[AUDIO-DEBUG] Speech synthesis completed for ${lang}`);
+             };
+
+             utterance.onerror = (event) => {
+               console.error(`[AUDIO-DEBUG] Speech synthesis error for ${lang}:`, event.error);
+               console.error(`[AUDIO-DEBUG] Error details:`, {
+                 error: event.error,
+                 utteranceLang: utterance.lang,
+                 utteranceVoice: utterance.voice?.name || 'none'
+               });
+             };
+
+             console.log(`[AUDIO-DEBUG] About to call speechSynthesis.speak()`);
              speechSynthesis.cancel();
              speechSynthesis.speak(utterance);
-             console.log('[POPUP] Audio playback started for language:', lang);
+             console.log(`[AUDIO-DEBUG] speechSynthesis.speak() called for language: ${lang}`);
            } catch (error) {
-             console.error('[POPUP] Error in playAudio:', error);
+             console.error('[AUDIO-DEBUG] Error in playAudio:', error);
            }
          } else {
-           console.error('[POPUP] Speech synthesis not available');
+           console.error('[AUDIO-DEBUG] Speech synthesis not available');
          }
        }
 

@@ -460,7 +460,7 @@ export class DictionaryService extends BaseService {
     const hasCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(text);
     const isAsianLanguage = ['zh', 'ja', 'ko'].includes(sourceLanguage) || hasCJK;
     
-    console.log('[DBG] aggregate parallel:', { text, targetLanguage, sourceLanguage, enabledSources });
+    console.log(`[DBG] Processing ${text.length} chars: ${sourceLanguage} → ${targetLanguage}`);
     // Prepare all API calls to run in parallel
     const apiPromises: Promise<any>[] = [];
     
@@ -691,6 +691,20 @@ export class DictionaryService extends BaseService {
     // 5) Sources: unique and trimmed
     const uniqueSources = Array.from(new Set(sources.map(s => (s || '').trim())));
 
+    // Ensure etymology is available by fetching from Wiktionary if needed
+    if (!etymology) {
+      console.log(`[ETY-DEBUG] No existing etymology found for "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}", attempting to fetch from Wiktionary`);
+      try {
+        etymology = await this.fetchEtymologyFromWikitext(text);
+        console.log(`[ETY-DEBUG] Etymology fetch result: ${etymology ? 'SUCCESS' : 'FAILED'} - "${etymology?.substring(0, 100)}${etymology && etymology.length > 100 ? '...' : ''}"`);
+      } catch (e) {
+        console.log(`[ETY-DEBUG] Etymology fetch failed with error:`, e);
+        // Etymology fetch failed, continue without it
+      }
+    } else {
+      console.log(`[ETY-DEBUG] Existing etymology found: "${etymology.substring(0, 100)}${etymology.length > 100 ? '...' : ''}"`);
+    }
+
     // Create final result
     const result: DictionaryResult = {
       word: text,
@@ -907,7 +921,7 @@ export class DictionaryService extends BaseService {
       const term = text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
       const restUrl = `https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(term)}`;
       const response = await this.request<any>(restUrl).catch((): null => null);
-      console.log('Wiktionary API response:', JSON.stringify(response, null, 2));
+      // Removed verbose API response logging to prevent HTML floods
 
       // Prioritize the language detected or specified
       const langData = response ? response[language] || response['en'] : null;
@@ -1238,40 +1252,103 @@ export class DictionaryService extends BaseService {
    */
   private async fetchEtymologyFromWikitext(text: string): Promise<string | undefined> {
     try {
-      console.log(`📖 [DEBUG] Fetching etymology from Wiktionary for text of length ${text.length}`);
-      const parseUrl = `https://en.wiktionary.org/w/api.php?action=parse&page=${encodeURIComponent(text)}&prop=wikitext&format=json&origin=*`;
-      console.log('📖 [DEBUG] Etymology URL:', parseUrl);
-      
+      // For etymology, we need to use English words, not the original text
+      // Extract the first English word from the text for etymology lookup
+      const englishWordMatch = text.match(/\b[a-zA-Z]+\b/);
+      if (!englishWordMatch) {
+        console.log(`[ETY-DEBUG] No English words found in text for etymology lookup`);
+        return undefined;
+      }
+
+      const englishWord = englishWordMatch[0].toLowerCase();
+      console.log(`[ETY-DEBUG] Extracted English word for etymology: "${englishWord}"`);
+
+      const wiktionaryUrl = `https://en.wiktionary.org`;
+      const parseUrl = `${wiktionaryUrl}/w/api.php?action=parse&page=${encodeURIComponent(englishWord)}&prop=wikitext&format=json&origin=*`;
+      console.log(`[ETY-DEBUG] Etymology API URL: ${parseUrl}`);
+
       const response = await this.request<{ parse?: { wikitext?: { '*': string } } }>(parseUrl);
-      console.log('📖 [DEBUG] Wiktionary response structure:', {
+      console.log(`[ETY-DEBUG] API Response received:`, {
+        hasResponse: !!response,
         hasParse: !!response?.parse,
         hasWikitext: !!response?.parse?.wikitext,
         wikitextLength: response?.parse?.wikitext?.['*']?.length || 0
       });
 
       const wikitext = response?.parse?.wikitext?.['*'];
-      if (!wikitext) return undefined;
-
-      // FIXED: Regex now correctly looks for a level 3 heading "Etymology"
-      const etymologyRegex = /===\s*Etymology\s*===\s*\n(.+?)(?=\n===|$)/;
-      const match = wikitext.match(etymologyRegex);
-
-      if (match && match[1]) {
-        // Clean up the wikitext to make it readable
-        let etymologyText = match[1]
-          .replace(/\{\{.+?\}\}/g, '') // Remove templates
-          .replace(/\[\[(?:[^|\]]+\|)?([^\]]+)\]\]/g, '$1') // Simplify wikilinks
-          .replace(/'''|''/g, '') // Remove bold/italics
-          .replace(/<ref[^>]*>.*?<\/ref>/g, '') // Remove references
-          .trim();
-        
-        // Return the first line as a concise summary
-        return etymologyText.split('\n')[0];
+      if (!wikitext) {
+        console.log(`[ETY-DEBUG] No wikitext found for word: ${englishWord}`);
+        return undefined;
       }
+
+      console.log(`[ETY-DEBUG] Found wikitext (${wikitext.length} chars), extracting etymology...`);
+      return this.extractEtymologyFromWikitext(wikitext);
+
     } catch (error) {
-      console.warn(`Wiktionary wikitext parsing failed for "${text}":`, error);
+      console.warn(`[ETY-DEBUG] Wiktionary etymology fetch failed for text of length ${text.length}:`, error);
     }
     return undefined;
+  }
+
+  private extractEtymologyFromWikitext(wikitext: string): string | undefined {
+    console.log(`[ETY-DEBUG] === Starting etymology extraction from ${wikitext.length} chars of wikitext ===`);
+
+    // Look for etymology sections with multiple patterns
+    const etymologyPatterns = [
+      /===\s*Etymology\s*===\s*\n(.+?)(?=\n===|$)/, // Level 3 heading
+      /==\s*Etymology\s*==\s*\n(.+?)(?=\n==|$)/,    // Level 2 heading
+      /Etymology\s*\n(.+?)(?=\n==|$)/,             // Without heading markers
+      /Origin\s*\n(.+?)(?=\n==|$)/                 // Alternative "Origin" section
+    ];
+
+    console.log(`[ETY-DEBUG] Testing ${etymologyPatterns.length} regex patterns for etymology`);
+
+    let etymologyText = '';
+
+    for (let i = 0; i < etymologyPatterns.length; i++) {
+      const pattern = etymologyPatterns[i];
+      const match = wikitext.match(pattern);
+      console.log(`[ETY-DEBUG] Pattern ${i + 1} ${match ? 'MATCHED' : 'failed'}: ${pattern.source}`);
+      if (match && match[1]) {
+        etymologyText = match[1];
+        console.log(`[ETY-DEBUG] Matched pattern ${i + 1}, extracted text length: ${etymologyText.length}`);
+        console.log(`[ETY-DEBUG] Extracted text (first 50 chars): "${etymologyText.substring(0, 50).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ')}"`);
+        break;
+      }
+    }
+
+    if (!etymologyText) {
+      console.log(`[ETY-DEBUG] No etymology patterns matched in wikitext`);
+      return undefined;
+    }
+
+    // Enhanced cleanup of wikitext
+    etymologyText = etymologyText
+      .replace(/\{\{[^}]*\|([^}]*)\}\}/g, '$1') // Extract display text from templates
+      .replace(/\{\{[^}]*\}\}/g, '') // Remove other templates
+      .replace(/\[\[(?:[^|\]]+\|)?([^\]]+)\]\]/g, '$1') // Simplify wikilinks
+      .replace(/'''([^']*)'''/g, '<strong>$1</strong>') // Convert bold to HTML
+      .replace(/''([^']*)''/g, '<em>$1</em>') // Convert italics to HTML
+      .replace(/<ref[^>]*>.*?<\/ref>/g, '') // Remove references
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim();
+
+    console.log(`[ETY-DEBUG] Etymology text after cleanup: ${etymologyText.length} chars (HTML stripped)`);
+
+    // Extract the most informative part (first meaningful paragraph)
+    const sentences = etymologyText.split(/[.!?]+/).filter(s => s.trim().length > 10);
+    console.log(`[ETY-DEBUG] Found ${sentences.length} meaningful sentences`);
+
+    if (sentences.length > 0) {
+      const result = sentences.slice(0, 2).join('. ').trim() + '.';
+      console.log(`[ETY-DEBUG] Final result (first 1-2 sentences): "${result}"`);
+      return result;
+    }
+
+    // Fallback to first line
+    const firstLineResult = etymologyText.split('\n')[0].trim();
+    console.log(`[ETY-DEBUG] Final result (first line): "${firstLineResult}"`);
+    return firstLineResult;
   }
 
   /**

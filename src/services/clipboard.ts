@@ -73,7 +73,7 @@ export class ClipboardService {
       
       // Check if text has changed and is not empty
       if (currentText !== this.lastClipboardText && currentText.trim().length > 0) {
-        console.log(`[DEBUG] ClipboardService.checkClipboard: New content detected: "${currentText?.substring(0, 50)}${currentText?.length > 50 ? '...' : ''}"`);
+        console.log(`[DEBUG] ClipboardService.checkClipboard: New content detected (${currentText?.length || 0} chars)`);
         this.addToHistory(currentText, 'text');
         this.lastClipboardText = currentText;
       }
@@ -106,7 +106,7 @@ export class ClipboardService {
       this.history = this.history.slice(0, this.maxHistorySize);
     }
 
-    console.log(`Added to clipboard history: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+    console.log(`Added to clipboard history: ${text.length} chars`);
   }
 
   /**
@@ -157,7 +157,7 @@ export class ClipboardService {
     try {
       clipboard.writeText(text);
       this.addToHistory(text, 'text');
-      console.log(`Copied to clipboard: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+      console.log(`Copied to clipboard: ${text.length} chars`);
     } catch (error) {
       console.error('Error copying to clipboard:', error);
     }
