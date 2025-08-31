@@ -691,16 +691,16 @@ export class DictionaryService extends BaseService {
     // 5) Sources: unique and trimmed
     const uniqueSources = Array.from(new Set(sources.map(s => (s || '').trim())));
 
-    // Ensure etymology is available by fetching from Wiktionary if needed
+    // Ensure etymology is available by fetching from multiple sources if needed
     console.log(`[ETY-DEBUG] Checking etymology for text: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
     console.log(`[ETY-DEBUG] Current etymology value: ${etymology ? 'EXISTS' : 'UNDEFINED'}`);
 
     if (!etymology) {
-      console.log(`[ETY-DEBUG] No existing etymology found, attempting to fetch from Wiktionary`);
+      console.log(`[ETY-DEBUG] No existing etymology found, attempting to fetch from multiple sources`);
       try {
-        console.log(`[ETY-DEBUG] Calling fetchEtymologyFromWikitext...`);
-        etymology = await this.fetchEtymologyFromWikitext(text);
-        console.log(`[ETY-DEBUG] fetchEtymologyFromWikitext returned: ${etymology ? 'SUCCESS' : 'FAILED/UNDEFINED'}`);
+        console.log(`[ETY-DEBUG] Calling fetchEtymologyFromMultipleSources...`);
+        etymology = await this.fetchEtymologyFromMultipleSources(text);
+        console.log(`[ETY-DEBUG] fetchEtymologyFromMultipleSources returned: ${etymology ? 'SUCCESS' : 'FAILED/UNDEFINED'}`);
         if (etymology) {
           console.log(`[ETY-DEBUG] Etymology result: "${etymology.substring(0, 100)}${etymology.length > 100 ? '...' : ''}"`);
         } else {
@@ -983,7 +983,7 @@ export class DictionaryService extends BaseService {
 
         // If etymology is still not found, try parsing the wikitext
         if (!etymology) {
-          etymology = await this.fetchEtymologyFromWikitext(term);
+          etymology = await this.fetchEtymologyFromMultipleSources(term);
         }
 
         // Pivot to base lemma for richer content if current entry appears to be an inflected form
@@ -1017,8 +1017,8 @@ export class DictionaryService extends BaseService {
 
         return { definitions, pronunciation, etymology };
       } else {
-        // If the primary lookup fails, go straight to the wikitext parsing for etymology.
-        const etymology = await this.fetchEtymologyFromWikitext(term);
+        // If the primary lookup fails, go straight to the multi-source etymology parsing.
+        const etymology = await this.fetchEtymologyFromMultipleSources(term);
         return { definitions: [], etymology };
       }
 
@@ -1265,6 +1265,124 @@ export class DictionaryService extends BaseService {
   }
 
   /**
+   * Fetches etymology from multiple sources for comprehensive coverage
+   */
+  private async fetchEtymologyFromMultipleSources(text: string): Promise<string | undefined> {
+    const sources: string[] = [];
+
+    // Try Wiktionary first (most comprehensive)
+    try {
+      const wiktionaryEtymology = await this.fetchEtymologyFromWikitext(text);
+      if (wiktionaryEtymology) {
+        sources.push(wiktionaryEtymology);
+      }
+    } catch (error) {
+      console.warn(`[ETY-DEBUG] Wiktionary etymology fetch failed:`, error);
+    }
+
+    // Try Etymonline API if available
+    try {
+      const etymonlineEtymology = await this.fetchEtymologyFromEtymonline(text);
+      if (etymonlineEtymology) {
+        sources.push(etymonlineEtymology);
+      }
+    } catch (error) {
+      console.warn(`[ETY-DEBUG] Etymonline etymology fetch failed:`, error);
+    }
+
+    // Try Oxford if available
+    if (this.oxfordAppId && this.oxfordAppKey) {
+      try {
+        const oxfordEtymology = await this.fetchEtymologyFromOxford(text);
+        if (oxfordEtymology) {
+          sources.push(oxfordEtymology);
+        }
+      } catch (error) {
+        console.warn(`[ETY-DEBUG] Oxford etymology fetch failed:`, error);
+      }
+    }
+
+    // Combine sources if multiple are available
+    if (sources.length > 1) {
+      return sources.join('\n\n--- Alternative etymology ---\n\n');
+    } else if (sources.length === 1) {
+      return sources[0];
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Fetches etymology from Etymonline API
+   */
+  private async fetchEtymologyFromEtymonline(text: string): Promise<string | undefined> {
+    try {
+      // Etymonline doesn't have a public API, so we'll use a web scraping approach
+      // Note: This is a fallback and may not be reliable
+      const url = `https://www.etymonline.com/word/${encodeURIComponent(text)}`;
+      const response = await this.request<any>(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+
+      // Simple HTML parsing to extract etymology (this is fragile)
+      const html = typeof response === 'string' ? response : response?.data || '';
+      const etymologyMatch = html.match(/<dd[^>]*>([\s\S]*?)<\/dd>/);
+
+      if (etymologyMatch) {
+        let etymology = etymologyMatch[1]
+          .replace(/<[^>]*>/g, '') // Remove HTML tags
+          .replace(/\s+/g, ' ') // Normalize whitespace
+          .trim();
+
+        if (etymology.length > 20) {
+          return `From Etymonline: ${etymology}`;
+        }
+      }
+    } catch (error) {
+      console.warn(`[ETY-DEBUG] Etymonline fetch failed:`, error);
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Fetches etymology from Oxford Dictionary API
+   */
+  private async fetchEtymologyFromOxford(text: string): Promise<string | undefined> {
+    if (!this.oxfordAppId || !this.oxfordAppKey) return undefined;
+
+    try {
+      const url = `https://od-api.oxforddictionaries.com/api/v2/entries/en-gb/${encodeURIComponent(text.toLowerCase())}`;
+      const response = await this.request<any>(url, {
+        headers: {
+          'app_id': this.oxfordAppId,
+          'app_key': this.oxfordAppKey
+        }
+      });
+
+      const results = response?.results || [];
+      if (Array.isArray(results) && results.length > 0) {
+        const lexicalEntries = results[0]?.lexicalEntries || [];
+        if (Array.isArray(lexicalEntries) && lexicalEntries.length > 0) {
+          const entries = lexicalEntries[0]?.entries || [];
+          if (Array.isArray(entries) && entries.length > 0) {
+            const etymology = entries[0]?.etymologies;
+            if (Array.isArray(etymology) && etymology.length > 0) {
+              return `From Oxford Dictionary: ${etymology[0]}`;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`[ETY-DEBUG] Oxford etymology fetch failed:`, error);
+    }
+
+    return undefined;
+  }
+
+  /**
    * Fetches and parses raw Wiktionary wikitext to find the etymology section.
    * This is a reliable fallback for getting etymology data.
    */
@@ -1410,6 +1528,8 @@ export class DictionaryService extends BaseService {
 
     // Enhanced cleanup of wikitext with better formatting
     let cleanedText = etymologyText
+      // Handle multiple etymology entries (numbered sections)
+      .replace(/===\s*Etymology\s+(\d+)\s*===\s*\n/g, '\n\n=== Etymology $1 ===\n')
       // Handle complex templates with multiple parameters
       .replace(/\{\{([^|]+)\|([^}]+)\}\}/g, (match, template, params) => {
         const paramList = params.split('|');
@@ -1478,12 +1598,20 @@ export class DictionaryService extends BaseService {
             const familyNames: Record<string, string> = {
               'ine-pro': 'Proto-Indo-European',
               'gem-pro': 'Proto-Germanic',
+              'itc-pro': 'Proto-Italic',
+              'grk-pro': 'Proto-Hellenic',
+              'cel-pro': 'Proto-Celtic',
               'enm': 'Middle English',
+              'ang': 'Old English',
               'fro': 'Old French',
-              'la': 'Latin'
+              'la': 'Latin',
+              'grc': 'Ancient Greek',
+              'sa': 'Sanskrit',
+              'got': 'Gothic',
+              'xno': 'Old Norse'
             };
 
-            const readableFamily = familyNames[family] || family.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
+            const readableFamily = familyNames[family] || family.replace('-', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
             return `from ${readableFamily} ${rootWord}`;
           }
         } else if (templateLower === 'm' || templateLower === 'mention') {

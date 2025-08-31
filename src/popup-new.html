@@ -437,6 +437,68 @@
         text-transform: uppercase;
       }
 
+      .etymology-reconstructed {
+        color: #dc2626;
+        font-family: 'Times New Roman', serif;
+        font-style: italic;
+        font-weight: 500;
+      }
+
+      .etymology-accent {
+        color: #d97706;
+        font-size: 0.85em;
+        font-style: italic;
+        opacity: 0.8;
+      }
+
+      .etymology-century {
+        color: #7c3aed;
+        font-weight: 500;
+      }
+
+      .etymology-era {
+        color: #ea580c;
+        font-weight: 500;
+        font-variant: small-caps;
+      }
+
+      .etymology-separator {
+        margin: 15px 0;
+        text-align: center;
+        position: relative;
+      }
+
+      .etymology-separator::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(to right, transparent, #d1d5db, transparent);
+      }
+
+      .etymology-separator span {
+        background: #f9fafb;
+        padding: 0 15px;
+        color: #6b7280;
+        font-size: 0.85em;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .etymology-text.alternative {
+        opacity: 0.9;
+        font-size: 0.95em;
+      }
+
+      .etymology-text.alternative .etymology-sentence {
+        margin-bottom: 6px;
+      }
+
       .etymology-no-data {
         padding: 20px;
         text-align: center;
@@ -1098,25 +1160,44 @@
         function formatEtymologyText(etymologyText) {
           if (!etymologyText) return '';
 
-          // Split into sentences for better formatting
-          const sentences = etymologyText.split(/[.!?]+/).filter(s => s.trim().length > 3);
+          // Handle multiple etymology sources separated by our delimiter
+          const sources = etymologyText.split(/\n\n--- Alternative etymology ---\n\n/);
+          let formattedHtml = '';
 
-          let formattedHtml = '<div class="etymology-text">';
-
-          sentences.forEach((sentence, index) => {
-            const trimmedSentence = sentence.trim();
-            if (trimmedSentence) {
-              // Highlight key linguistic terms
-              let highlightedSentence = trimmedSentence
-                .replace(/\b(From|Derived from|Borrowed from|Inherited from|Root|Origin|Etymology)\b/gi, '<span class="etymology-keyword">$1</span>')
-                .replace(/\b(Latin|Greek|French|German|Old English|Middle English|Anglo-Saxon|Proto-Germanic|Indo-European)\b/gi, '<span class="etymology-language">$1</span>')
-                .replace(/\b(verb|noun|adjective|adverb|pronoun|preposition|conjunction|interjection)\b/gi, '<span class="etymology-pos">$1</span>');
-
-              formattedHtml += `<div class="etymology-sentence">${highlightedSentence}${index < sentences.length - 1 ? '.' : ''}</div>`;
+          sources.forEach((sourceText, sourceIndex) => {
+            if (sourceIndex > 0) {
+              formattedHtml += '<div class="etymology-separator"><span>Alternative Origin</span></div>';
             }
+
+            // Split into sentences for better formatting
+            const sentences = sourceText.split(/[.!?]+/).filter(s => s.trim().length > 3);
+
+            if (sourceIndex === 0) {
+              formattedHtml += '<div class="etymology-text">';
+            } else {
+              formattedHtml += '<div class="etymology-text alternative">';
+            }
+
+            sentences.forEach((sentence, index) => {
+              const trimmedSentence = sentence.trim();
+              if (trimmedSentence) {
+                // Highlight key linguistic terms with improved patterns
+                let highlightedSentence = trimmedSentence
+                  .replace(/\b(From|Derived from|Borrowed from|Inherited from|Root|Origin|Etymology|Cognate with|Doublet of)\b/gi, '<span class="etymology-keyword">$1</span>')
+                  .replace(/\b(Latin|Greek|French|German|Old English|Middle English|Anglo-Saxon|Proto-Germanic|Proto-Indo-European|Ancient Greek|Sanskrit|Gothic|Old Norse|Old French|Proto-Italic|Proto-Hellenic|Proto-Celtic)\b/gi, '<span class="etymology-language">$1</span>')
+                  .replace(/\b(verb|noun|adjective|adverb|pronoun|preposition|conjunction|interjection|prefix|suffix)\b/gi, '<span class="etymology-pos">$1</span>')
+                  .replace(/\*[\w\u0300-\u036f]+/g, '<span class="etymology-reconstructed">$&</span>') // Reconstructed forms with accents
+                  .replace(/\([^)]*accent[^)]*\)/gi, '<span class="etymology-accent">$&</span>') // Accent information
+                  .replace(/(\d+)(st|nd|rd|th)\s+century/gi, '<span class="etymology-century">$&</span>') // Centuries
+                  .replace(/\b(BCE?|CE|AD|BC)\b/g, '<span class="etymology-era">$&</span>'); // Time periods
+
+                formattedHtml += `<div class="etymology-sentence">${highlightedSentence}${index < sentences.length - 1 ? '.' : ''}</div>`;
+              }
+            });
+
+            formattedHtml += '</div>';
           });
 
-          formattedHtml += '</div>';
           return formattedHtml;
         }
 
