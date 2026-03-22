@@ -1,4 +1,3 @@
-const path = require('path');
 const { MakerSquirrel } = require('@electron-forge/maker-squirrel');
 const { MakerZIP } = require('@electron-forge/maker-zip');
 const { MakerDeb } = require('@electron-forge/maker-deb');
@@ -9,13 +8,11 @@ const { WebpackPlugin } = require('@electron-forge/plugin-webpack');
 const { mainConfig } = require('./webpack.main.config.js');
 const { rendererConfig } = require('./webpack.renderer.config.js');
 
-// Tray asset lives next to the repo (see scripts/make-tray-icon.ps1), not under phevere/resources/.
-const trayIconSource = path.join(__dirname, '..', 'resources', 'tray-icon.png');
-
 module.exports = {
   packagerConfig: {
     asar: true,
-    extraResource: [trayIconSource],
+    // Relative to project root (Forge cwd); sibling ../resources/ — see scripts/make-tray-icon.ps1.
+    extraResource: ['../resources/tray-icon.png'],
   },
   rebuildConfig: {},
   makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
