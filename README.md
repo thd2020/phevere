@@ -46,6 +46,14 @@ Phevere is designed to provide instant dictionary lookups when you **select text
 - **Cross-platform compatibility** - Works on Windows, macOS, and Linux
 - **Accessibility features** - Keyboard navigation and screen reader support
 
+## Development: tray Quit vs terminal
+
+When you run **`npm run start`** or **`npm run start-admin`**, Electron Forge starts a **webpack dev server** (watch mode) and launches Electron. Choosing **Quit** from the **tray** (notification area) menu exits the **Electron app** and tears down the tray icon as expected.
+
+The **terminal** may **keep running** after that, because Forge’s Node process is still hosting the webpack watcher. That is **normal in development**. Press **Ctrl+C** in that terminal once to stop the dev server.
+
+A packaged app (`npm run package` / the installed `.exe`) has no separate webpack process, so Quit fully ends the program.
+
 ## 🏗️ Architecture
 
 ### **Current Implementation Status**

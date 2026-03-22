@@ -1,50 +1,94 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Phevere - Text Selection Monitor</title>
-    <link rel="stylesheet" href="./index.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Phevere</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./index.css" />
   </head>
   <body class="main-window">
-    <div class="titlebar">
-      <div class="title" style="display:flex; align-items:center; gap:8px;">
-        <span style="font-size:18px">🔍</span>
-        <span>Phevere</span>
+    <header class="titlebar" role="banner">
+      <div class="titlebar-brand">
+        <span class="titlebar-icon" aria-hidden="true">
+          <svg class="titlebar-logo-svg" viewBox="0 0 32 32" width="22" height="22" focusable="false">
+            <defs>
+              <linearGradient id="phevereLogoGrad" x1="4" y1="28" x2="28" y2="4" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="#5c4d7a" />
+                <stop offset="1" stop-color="#8b5cf6" />
+              </linearGradient>
+            </defs>
+            <rect x="2" y="2" width="28" height="28" rx="8" fill="url(#phevereLogoGrad)" />
+            <path
+              fill="#fff"
+              fill-opacity="0.95"
+              d="M14 10a6 6 0 1 0 3.35 10.99l3.7 3.7a1 1 0 0 0 1.42-1.42l-3.7-3.7A6 6 0 0 0 14 10zm0 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"
+            />
+          </svg>
+        </span>
+        <span class="titlebar-title">Phevere</span>
       </div>
-      <div class="window-controls">
-        <button id="minimize-btn" class="window-control">-</button>
-        <button id="maximize-btn" class="window-control">+</button>
-        <button id="close-btn" class="window-control" style="color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.7)">x</button>
-      </div>
-    </div>
-    <div class="container">
-      <h1 style="display:flex; align-items:center; gap:10px;">
-        <span style="font-size:24px">🔍</span> Phevere
-      </h1>
-      
-      <div class="controls">
-        <button id="startBtn" class="btn btn-primary">Start Monitoring</button>
-        <button id="stopBtn" class="btn btn-secondary">Stop Monitoring</button>
-        <button id="settingsBtn" class="btn btn-info">⚙️ Settings</button>
-        <button id="testPopupBtn" class="btn">Test Popup</button>
-      </div>
-      
-      <!-- status moved to bottom bar -->
-      
-      <div class="recent-selections" style="min-height:140px;">
-        <h3>Recent Selections</h3>
-        <div id="selectionsList" class="selections-list">
-          <p class="empty-message">No selections yet. Start monitoring to see selections here.</p>
+      <div class="titlebar-end">
+        <button type="button" id="settingsBtn" class="titlebar-gear" title="Settings" aria-label="Settings">
+          <svg class="titlebar-gear-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+            />
+            <path fill="currentColor" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
+          </svg>
+        </button>
+        <div class="window-controls" role="toolbar" aria-label="Window">
+          <button type="button" id="minimize-btn" class="window-control window-control-minimize" title="Minimize" aria-label="Minimize">
+            <svg class="window-control-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <!-- 2px bar, vertically centered in 16×16 -->
+              <rect x="3" y="7" width="10" height="2" rx="0.5" fill="currentColor" />
+            </svg>
+          </button>
+          <button type="button" id="maximize-btn" class="window-control window-control-maximize" title="Maximize" aria-label="Maximize">
+            <svg class="window-control-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <path fill="currentColor" d="M4 4h8v8H4V4zm1 1v6h6V5H5z" />
+            </svg>
+          </button>
+          <button type="button" id="close-btn" class="window-control window-control-close" title="Close" aria-label="Close">
+            <svg class="window-control-icon window-control-icon--stroke" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none">
+              <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" />
+            </svg>
+          </button>
         </div>
       </div>
-    </div>
+    </header>
 
-    <!-- Bottom status bar -->
-    <div style="position:fixed; bottom:0; left:0; right:0; background:#f8f9fa; border-top:1px solid #e9ecef; padding:8px 12px; display:flex; gap:24px; align-items:center;">
-      <div><strong>Selection:</strong> <span id="selectionStatus">Stopped</span></div>
-      <div><strong>Clipboard:</strong> <span id="clipboardStatus">Stopped</span></div>
-    </div>
-    
-    <!-- Script is automatically injected by webpack -->
+    <main class="container main-shell">
+      <section class="main-intro main-intro--slogan" aria-labelledby="main-slogan">
+        <p id="main-slogan" class="main-slogan">Select text anywhere — definitions follow.</p>
+      </section>
+
+      <section class="recent-selections" aria-labelledby="recent-heading">
+        <div class="recent-selections__header">
+          <h2 id="recent-heading" class="section-heading">Recent selections</h2>
+          <span class="recent-selections__hint">Click a row to open the full lookup</span>
+        </div>
+        <div id="selectionsList" class="selections-list">
+          <p class="empty-message">No selections yet. When the monitor is On or Shortcut, chosen text appears here.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="status-bar" role="group" aria-label="Monitoring toggles">
+      <button type="button" id="selectionToggle" class="status-bar-item status-pill status-toggle" aria-pressed="true">
+        <span class="status-label">Selection</span>
+        <span id="selectionStatus" class="status-value running">On</span>
+      </button>
+      <button type="button" id="clipboardToggle" class="status-bar-item status-pill status-toggle" aria-pressed="true">
+        <span class="status-label">Clipboard</span>
+        <span id="clipboardStatus" class="status-value running">Running</span>
+      </button>
+    </footer>
   </body>
 </html>

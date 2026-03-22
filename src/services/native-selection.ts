@@ -9,6 +9,9 @@
  */
 
 import { screen } from 'electron';
+import { wrapConsole } from '../logger';
+
+const console = wrapConsole('native-selection');
 
 export interface SelectionEvent {
   text: string;

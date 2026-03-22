@@ -26,8 +26,15 @@
  * ```
  */
 
-console.log('🚀 Phevere Renderer Process Started');
 import './index.css';
+import { captureNextShortcut } from './shortcut-capture';
+
+const rlog = (...args: unknown[]) => {
+  if (!__PHEVERE_DEV__) return;
+  console.log(...args);
+};
+
+rlog('🚀 Phevere renderer started');
 
 // Wait for DOM to be ready
 document.addEventListener('DOMContentLoaded', () => {
@@ -37,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // If we're on the dedicated popup bundle (/popup_window), DO NOT rebuild DOM.
   // The markup and behavior come from popup-new.html itself.
   if (path.includes('popup_window')) {
-    console.log('[POPUP-RENDERER] Detected /popup_window. Skipping initializePopup() to use popup-new.html. hash=', hash);
+    rlog('[POPUP-RENDERER] Detected /popup_window. Skipping initializePopup() to use popup-new.html. hash=', hash);
   } else if (hash === '#popup') {
     // Legacy hash-based popup route (main bundle)
     initializePopup();
@@ -54,69 +61,209 @@ document.addEventListener('DOMContentLoaded', () => {
 // IMPORTANT: Avoid double init. We rely solely on DOMContentLoaded above
 
 function initializeSettingsWindow() {
-  console.log('🚀 Initializing settings window...');
+  rlog('🚀 Initializing settings window...');
+
+  document.body.className = 'settings-page';
 
   const settingsHTML = `
-    <div class="settings-container">
-      <div class="settings-header" style="-webkit-app-region: drag; display:flex; align-items:center; justify-content: space-between;">
-        <h1 style="margin:0; font-size:16px;">⚙️ Settings</h1>
-        <button id="settings-close" class="close-btn" style="-webkit-app-region: no-drag;">×</button>
-      </div>
-      <div class="settings-content">
-        <div class="settings-section">
-          <h4>🔑 API Configuration</h4>
-          <div class="setting-item">
-            <label for="google-api-key">Google Translate API Key:</label>
-            <input type="password" id="google-api-key" placeholder="Enter your Google API key" class="setting-input">
-            <button onclick="saveGoogleApiKey()" class="btn btn-primary">Save</button>
-          </div>
-          <div class="setting-item">
-            <label for="deepl-api-key">DeepL API Key:</label>
-            <input type="password" id="deepl-api-key" placeholder="Enter your DeepL API key" class="setting-input">
-            <button onclick="saveDeepLApiKey()" class="btn btn-primary">Save</button>
-          </div>
+    <div class="settings-app">
+      <header class="settings-titlebar">
+        <div class="settings-titlebar__lead">
+          <svg class="settings-titlebar__icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path fill="currentColor" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
+          </svg>
+          <h1 class="settings-titlebar__heading">Settings</h1>
         </div>
-        <div class="settings-section">
-          <h4>📚 Dictionary Sources</h4>
+        <button type="button" id="settings-close" class="settings-close-btn" title="Close" aria-label="Close">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" />
+          </svg>
+        </button>
+      </header>
+      <main class="settings-main">
+        <section class="settings-card" aria-labelledby="settings-monitor-heading">
+          <h2 id="settings-monitor-heading" class="settings-card__title">Selection monitor</h2>
+          <p class="settings-hint">
+            Cycles Off→On→Shortcut. In Shortcut mode: hold the trigger while you finish selecting, or select first and press the trigger within about a minute. Global registration; focused apps may take the same keys first (e.g. Chrome).
+          </p>
+          <div class="settings-field">
+            <span id="label-monitor-cycle" class="settings-field-label">Cycle mode shortcut</span>
+            <div class="settings-shortcut-row">
+              <input
+                type="text"
+                id="monitor-cycle-shortcut"
+                readonly
+                class="setting-input settings-shortcut-input"
+                spellcheck="false"
+                autocomplete="off"
+                placeholder="Set… or double-click"
+                aria-labelledby="label-monitor-cycle"
+              />
+              <button type="button" class="btn btn-secondary settings-shortcut-set" id="monitor-cycle-set">Set…</button>
+            </div>
+          </div>
+          <div class="settings-field">
+            <span id="label-monitor-trigger" class="settings-field-label">Popup trigger (hold while selecting)</span>
+            <div class="settings-shortcut-row">
+              <input
+                type="text"
+                id="monitor-trigger-shortcut"
+                readonly
+                class="setting-input settings-shortcut-input"
+                spellcheck="false"
+                autocomplete="off"
+                placeholder="Set… or double-click"
+                aria-labelledby="label-monitor-trigger"
+              />
+              <button type="button" class="btn btn-secondary settings-shortcut-set" id="monitor-trigger-set">Set…</button>
+            </div>
+          </div>
+          <div class="settings-actions settings-actions--wrap">
+            <button type="button" id="monitor-save-shortcuts" class="btn btn-primary">Save shortcuts</button>
+            <span id="monitor-shortcuts-status" class="settings-inline-status" role="status" aria-live="polite"></span>
+          </div>
+        </section>
+        <section class="settings-card" aria-labelledby="settings-api-heading">
+          <h2 id="settings-api-heading" class="settings-card__title">API keys</h2>
+          <div class="settings-field">
+            <label for="google-api-key">Google Translate API key</label>
+            <input type="password" id="google-api-key" placeholder="Paste your Google Cloud API key" class="setting-input" autocomplete="off" />
+            <div class="settings-actions">
+              <button type="button" onclick="saveGoogleApiKey()" class="btn btn-primary">Save</button>
+            </div>
+          </div>
+          <div class="settings-field">
+            <label for="deepl-api-key">DeepL API key</label>
+            <input type="password" id="deepl-api-key" placeholder="Paste your DeepL API key" class="setting-input" autocomplete="off" />
+            <div class="settings-actions">
+              <button type="button" onclick="saveDeepLApiKey()" class="btn btn-primary">Save</button>
+            </div>
+          </div>
+        </section>
+        <section class="settings-card" aria-labelledby="settings-sources-heading">
+          <h2 id="settings-sources-heading" class="settings-card__title">Dictionary sources</h2>
           <div id="main-source-toggles"></div>
-        </div>
-        <div class="settings-section">
-          <h4>Audio Settings</h4>
+        </section>
+        <section class="settings-card" aria-labelledby="settings-audio-heading">
+          <h2 id="settings-audio-heading" class="settings-card__title">Audio</h2>
+          <div class="settings-row" role="group" aria-labelledby="enable-audio-label">
+            <span id="enable-audio-label" class="settings-row__label">Enable pronunciation</span>
+            <label class="settings-toggle-label">
+              <input class="toggle-input" type="checkbox" id="enable-audio" checked />
+              <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
+            </label>
           </div>
-      </div>
+          <p class="settings-hint">When off, lookup audio from the popup is skipped.</p>
+          <div class="settings-field">
+            <label for="audio-speed">Playback speed</label>
+            <div class="settings-audio-range">
+              <input type="range" id="audio-speed" min="0.5" max="2" step="0.1" value="1" />
+              <span id="speed-value">1x</span>
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
   `;
   document.body.innerHTML = settingsHTML;
 
-  // Inject modern styles specifically for the settings window so they always apply
-  const settingsStyle = document.createElement('style');
-  settingsStyle.textContent = `
-    body { margin: 0; padding: 0; }
-    .settings-container { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#1f2937; }
-    .settings-header { background: linear-gradient(135deg, #5b67e7 0%, #6c58b9 50%, #3a2e7e 100%); color:#fff; padding: 10px 14px; }
-    .settings-header .close-btn { background: rgba(255,255,255,0.15); color:#fff; border:none; width:28px; height:28px; border-radius:6px; cursor:pointer; }
-    .settings-header .close-btn:hover { background: rgba(255,255,255,0.3); }
-    .settings-content { padding: 16px; }
-    .settings-section { background:#fff; border:1px solid #e9ecef; border-radius:12px; padding:16px; margin-bottom:16px; box-shadow:0 6px 24px rgba(0,0,0,.06); }
-    .setting-item { display:flex; flex-direction:column; gap:8px; margin:12px 0; }
-    .setting-input { padding:10px 12px; border:2px solid #e9ecef; border-radius:8px; font-size:14px; }
-    .btn.btn-primary { background:#0d6efd; color:#fff; padding:10px 18px; border-radius:10px; border:none; cursor:pointer; font-weight:600; }
-    .btn.btn-primary:hover { background:#0b5ed7; }
-    #main-source-toggles .source-toggle-main { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border:1px solid #e9ecef; border-radius:10px; margin-bottom:8px; background:#f8f9fa; }
-    .toggle-input { position:absolute; opacity:0; width:0; height:0; }
-    .toggle-switch { position:relative; width:48px; height:26px; background:#ccc; border-radius:13px; cursor:pointer; display:inline-block; }
-    .toggle-slider { position:absolute; top:2px; left:2px; width:22px; height:22px; background:#fff; border-radius:50%; transition:transform .2s ease; box-shadow:0 2px 4px rgba(0,0,0,.2); }
-    .toggle-input:checked + .toggle-switch { background:#22c55e; }
-    .toggle-input:checked + .toggle-switch .toggle-slider { transform: translateX(22px); }
-  `;
-  document.head.appendChild(settingsStyle);
-
   // Load settings data
   loadMainSourceToggles();
   setupAudioSettings();
-  document.getElementById('settings-close')?.addEventListener('click', () => {
-    window.close();
+  void wireMonitorSettingsFields().then(({ stopCapture }) => {
+    document.getElementById('settings-close')?.addEventListener('click', () => {
+      stopCapture();
+      window.close();
+    });
   });
+}
+
+async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }> {
+  const noop = (): void => {};
+  const api = window.electronAPI as {
+    getMonitorState?: () => Promise<{ cycleShortcut: string; triggerShortcut: string }>;
+    setMonitorShortcuts?: (p: { cycleShortcut: string; triggerShortcut: string }) => Promise<{ success: boolean; error?: string }>;
+  };
+  if (!api?.getMonitorState || !api?.setMonitorShortcuts) {
+    return { stopCapture: noop };
+  }
+  const cycleEl = document.getElementById('monitor-cycle-shortcut') as HTMLInputElement | null;
+  const triggerEl = document.getElementById('monitor-trigger-shortcut') as HTMLInputElement | null;
+  const cycleSetBtn = document.getElementById('monitor-cycle-set') as HTMLButtonElement | null;
+  const triggerSetBtn = document.getElementById('monitor-trigger-set') as HTMLButtonElement | null;
+
+  let cancelCapture: (() => void) | null = null;
+
+  function stopCaptureUi(): void {
+    cancelCapture?.();
+    cancelCapture = null;
+    if (cycleSetBtn) {
+      cycleSetBtn.textContent = 'Set…';
+      cycleSetBtn.classList.remove('is-recording');
+    }
+    if (triggerSetBtn) {
+      triggerSetBtn.textContent = 'Set…';
+      triggerSetBtn.classList.remove('is-recording');
+    }
+  }
+
+  function bindCapture(
+    input: HTMLInputElement,
+    setBtn: HTMLButtonElement,
+  ): void {
+    const start = (): void => {
+      stopCaptureUi();
+      setBtn.textContent = 'Press keys…';
+      setBtn.classList.add('is-recording');
+      cancelCapture = captureNextShortcut((acc) => {
+        cancelCapture = null;
+        setBtn.textContent = 'Set…';
+        setBtn.classList.remove('is-recording');
+        if (acc) {
+          input.value = acc;
+        }
+      });
+    };
+
+    setBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      start();
+    });
+    input.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      start();
+    });
+  }
+
+  if (cycleEl && cycleSetBtn) {
+    bindCapture(cycleEl, cycleSetBtn);
+  }
+  if (triggerEl && triggerSetBtn) {
+    bindCapture(triggerEl, triggerSetBtn);
+  }
+
+  try {
+    const st = await api.getMonitorState();
+    if (cycleEl) cycleEl.value = st.cycleShortcut || '';
+    if (triggerEl) triggerEl.value = st.triggerShortcut || '';
+  } catch {
+    /* ignore */
+  }
+  const btn = document.getElementById('monitor-save-shortcuts');
+  const statusEl = document.getElementById('monitor-shortcuts-status');
+  btn?.addEventListener('click', async () => {
+    if (!cycleEl || !triggerEl || !statusEl) return;
+    statusEl.textContent = '';
+    const r = await api.setMonitorShortcuts({
+      cycleShortcut: cycleEl.value.trim(),
+      triggerShortcut: triggerEl.value.trim(),
+    });
+    statusEl.textContent = r.success ? 'Saved.' : (r.error || 'Could not save.');
+    statusEl.style.color = r.success ? '' : 'var(--md-error, #b91c1c)';
+  });
+
+  return { stopCapture: stopCaptureUi };
 }
 
 let __popupInitDone = false;
@@ -124,11 +271,11 @@ let __lastRenderedText = '';
 let __lastResizedForText = '';
 function initializePopup() {
   if (__popupInitDone) {
-    console.log('[POPUP-RENDERER] initializePopup skipped (already initialized)');
+    rlog('[POPUP-RENDERER] initializePopup skipped (already initialized)');
     return;
   }
   __popupInitDone = true;
-  console.log('[POPUP-RENDERER] initializePopup start hash=', window.location.hash, 'href=', window.location.href);
+  rlog('[POPUP-RENDERER] initializePopup start hash=', window.location.hash, 'href=', window.location.href);
   
   // Create modern popup UI with tabs and language selection
   const popupHTML = `
@@ -213,84 +360,94 @@ function initializePopup() {
     
     .popup-header {
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-start;
       align-items: center;
-      padding: 16px 20px;
-      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      gap: 10px;
+      padding: 10px 12px 10px 16px;
+      background: #ece6f0;
+      border-bottom: 1px solid rgba(121, 116, 126, 0.28);
+      flex-wrap: nowrap;
+      min-height: 52px;
+      box-sizing: border-box;
     }
     
     .popup-title {
       display: flex;
       flex-direction: column;
       gap: 2px;
-      flex: 1;
+      flex: 1 1 auto;
+      min-width: 0;
     }
     
     .title-text {
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 600;
-      color: #2c3e50;
+      color: #1d1b20;
+      letter-spacing: 0.01em;
     }
     
     .title-subtitle {
       font-size: 12px;
-      color: #6c757d;
+      color: #49454f;
       font-weight: 400;
     }
     
     .toolbar {
       display: flex;
-      gap: 8px;
-      margin: 0 16px;
+      gap: 4px;
+      margin: 0;
+      flex: 0 0 auto;
+      align-items: center;
     }
     
     .toolbar-btn {
-      background: rgba(255, 255, 255, 0.8);
-      border: 1px solid rgba(0, 0, 0, 0.1);
-      color: #6c757d;
+      background: rgba(103, 80, 164, 0.1);
+      border: none;
+      color: #49454f;
       cursor: pointer;
-      font-size: 16px;
-      padding: 8px;
-      border-radius: 6px;
-      transition: all 0.2s ease;
+      font-size: 15px;
+      padding: 0;
+      border-radius: 10px;
+      transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+      width: 34px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+    
+    .toolbar-btn:hover {
+      background: rgba(103, 80, 164, 0.18);
+      color: #1d1b20;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    }
+    
+    .toolbar-btn:active {
+      filter: brightness(0.96);
+    }
+    
+    .close-btn {
+      background: transparent;
+      border: none;
+      color: #49454f;
+      cursor: pointer;
+      font-size: 20px;
+      line-height: 1;
+      padding: 0;
+      border-radius: 10px;
+      transition: background-color 0.15s ease, color 0.15s ease;
       width: 36px;
       height: 36px;
       display: flex;
       align-items: center;
       justify-content: center;
-    }
-    
-    .toolbar-btn:hover {
-      background: rgba(33, 150, 243, 0.1);
-      color: #2196f3;
-      transform: translateY(-1px);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    }
-    
-    .toolbar-btn:active {
-      transform: translateY(0);
-    }
-    
-    .close-btn {
-      background: none;
-      border: none;
-      color: #6c757d;
-      cursor: pointer;
-      font-size: 20px;
-      padding: 8px;
-      border-radius: 6px;
-      transition: all 0.2s ease;
-      width: 32px;
-      height: 32px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      flex-shrink: 0;
     }
     
     .close-btn:hover {
-      color: #495057;
-      background: rgba(0, 0, 0, 0.05);
+      color: #1d1b20;
+      background: rgba(103, 80, 164, 0.12);
     }
     
     .popup-content {
@@ -865,7 +1022,7 @@ function initializePopup() {
   initializeLanguageSelectors();
   
   // Set up toolbar button handlers
-  console.log('[POPUP-RENDERER] initializePopup start');
+  rlog('[POPUP-RENDERER] initializePopup start');
   document.getElementById('copy-btn')?.addEventListener('click', async () => {
     const selectedText = document.getElementById('selected-text')?.textContent || '';
     if (window.clipboardAPI) {
@@ -911,20 +1068,20 @@ function initializePopup() {
   
   // Handle close button
   document.getElementById('close-btn')?.addEventListener('click', () => {
-    console.log('[POPUP-RENDERER] Close button clicked');
+    rlog('[POPUP-RENDERER] Close button clicked');
     window.close();
   });
   
   // Listen for popup data from main process
   if (window.electronAPI) {
-    console.log('[POPUP-RENDERER] getLastSelection invoke');
+    rlog('[POPUP-RENDERER] getLastSelection invoke');
     try {
       const envInfo = (window as any).electronAPI.__debugInfo ? (window as any).electronAPI.__debugInfo() : null;
-      console.log('[POPUP-RENDERER] env', envInfo);
+      rlog('[POPUP-RENDERER] env', envInfo);
     } catch {}
     window.electronAPI.getLastSelection().then(selection => {
       const txt = (selection && selection.text) ? selection.text : '';
-      console.log('[POPUP-RENDERER] getLastSelection OK (deferred lookup):', txt);
+      rlog('[POPUP-RENDERER] getLastSelection OK (deferred lookup):', txt);
       const selectedTextElement = document.getElementById('selected-text');
       if (selectedTextElement && txt) selectedTextElement.textContent = txt;
       if (txt) (window as any).__popupCurrentText = txt;
@@ -936,21 +1093,21 @@ function initializePopup() {
       const t = (text || '').trim();
       if (!t || t === lastPushed) return;
       lastPushed = t;
-      console.log('[POPUP-RENDERER] onPopupText (deferred lookup):', t);
+      rlog('[POPUP-RENDERER] onPopupText (deferred lookup):', t);
       const selectedTextElement = document.getElementById('selected-text');
       if (selectedTextElement) selectedTextElement.textContent = t;
       (window as any).__popupCurrentText = t;
       // Do NOT call updatePopupContent here; wait for user click
     });
   } else {
-    console.log('[POPUP-RENDERER] electronAPI not available');
+    rlog('[POPUP-RENDERER] electronAPI not available');
     updatePopupContent('Error: electronAPI not available.');
   }
   
   // Handle escape key to close popup
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
-      console.log('🚀 Escape key pressed, closing popup');
+      rlog('🚀 Escape key pressed, closing popup');
       window.close();
     }
   });
@@ -975,88 +1132,99 @@ function initializePopup() {
 
 
 function initializeMainWindow() {
-  // Initialize controls for the existing HTML structure
   initializeMainWindowControls();
-  
-  // Start monitoring automatically
-  startMonitoring();
 
-  // Inject a compact visual refresh for the main window (targets existing DOM in src/index.html)
-  const mainStyle = document.createElement('style');
-  mainStyle.textContent = `
-    .container { max-width: 880px; margin: 0 auto; padding: 16px 20px; }
-    .container h1 { font-size: 28px; font-weight: 800; color:#1f2937; display:flex; align-items:center; gap:10px; }
-    .controls { display:flex; gap:10px; }
-    .btn { padding:10px 18px; border-radius:10px; font-weight:600; }
-    .recent-selections { background:#fff; border:1px solid #e9ecef; border-radius:12px; box-shadow:0 6px 24px rgba(0,0,0,.06); }
-  `;
-  document.head.appendChild(mainStyle);
+  loadRecentSelectionsIntoDom();
+
+  void attachSelectionChangeListenerOnly();
 }
 
 function initializeMainWindowControls() {
-  const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
-  const stopBtn = document.getElementById('stopBtn') as HTMLButtonElement;
-  const testBtn = document.getElementById('testPopupBtn') as HTMLButtonElement;
   const settingsBtn = document.getElementById('settingsBtn') as HTMLButtonElement;
+  const selectionToggle = document.getElementById('selectionToggle') as HTMLButtonElement;
+  const clipboardToggle = document.getElementById('clipboardToggle') as HTMLButtonElement;
   const selectionStatus = document.getElementById('selectionStatus') as HTMLElement;
   const clipboardStatus = document.getElementById('clipboardStatus') as HTMLElement;
-  
-  // Window control buttons
+
   const minimizeBtn = document.getElementById('minimize-btn') as HTMLButtonElement;
   const maximizeBtn = document.getElementById('maximize-btn') as HTMLButtonElement;
   const closeBtn = document.getElementById('close-btn') as HTMLButtonElement;
-  
-  let isMonitoring = false;
-  
-  // Window control event listeners
+
+  let isClipboardMonitoring = false;
+
+  const selectionModeLabels: Record<string, string> = {
+    off: 'Off',
+    on: 'On',
+    shortcut: 'Shortcut',
+  };
+
+  function syncSelectionMonitorUi(mode: string): void {
+    if (!selectionStatus || !selectionToggle) return;
+    const label = selectionModeLabels[mode] || mode;
+    selectionStatus.textContent = label;
+    selectionStatus.className =
+      mode === 'on'
+        ? 'status-value running'
+        : mode === 'shortcut'
+          ? 'status-value shortcut'
+          : 'status-value stopped';
+    selectionToggle.setAttribute('aria-pressed', mode !== 'off' ? 'true' : 'false');
+    selectionToggle.setAttribute('aria-label', `Selection monitor: ${label}. Click to cycle Off, On, Shortcut.`);
+  }
+
+  function syncClipboardUi(running: boolean): void {
+    if (!clipboardStatus || !clipboardToggle) return;
+    clipboardStatus.textContent = running ? 'Running' : 'Stopped';
+    clipboardStatus.className = running ? 'status-value running' : 'status-value stopped';
+    clipboardToggle.setAttribute('aria-pressed', running ? 'true' : 'false');
+  }
+
   if (minimizeBtn) {
     minimizeBtn.addEventListener('click', () => {
       window.electronAPI?.minimizeWindow();
     });
   }
-  
+
   if (maximizeBtn) {
     maximizeBtn.addEventListener('click', () => {
       window.electronAPI?.maximizeWindow();
     });
   }
-  
+
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
       window.electronAPI?.closeWindow();
     });
   }
-  
-  if (startBtn) {
-    startBtn.addEventListener('click', async () => {
+
+  if (selectionToggle && window.electronAPI?.cycleMonitorMode) {
+    selectionToggle.addEventListener('click', async () => {
       try {
-        await startMonitoring();
-        selectionStatus.textContent = 'Running';
-        selectionStatus.className = 'status-value running';
-        isMonitoring = true;
+        await window.electronAPI.cycleMonitorMode();
+        const st = await window.electronAPI.getMonitorState?.();
+        if (st?.mode) {
+          syncSelectionMonitorUi(st.mode);
+        }
       } catch (error) {
-        console.error('Start monitoring failed:', error);
+        console.error('Selection monitor cycle failed:', error);
       }
     });
   }
-  
-  if (stopBtn) {
-    stopBtn.addEventListener('click', async () => {
+
+  if (clipboardToggle && window.clipboardAPI) {
+    clipboardToggle.addEventListener('click', async () => {
       try {
-        await stopMonitoring();
-        selectionStatus.textContent = 'Stopped';
-        selectionStatus.className = 'status-value stopped';
-        isMonitoring = false;
+        if (isClipboardMonitoring) {
+          await window.clipboardAPI.stopMonitoring();
+          syncClipboardUi(false);
+          isClipboardMonitoring = false;
+        } else {
+          await window.clipboardAPI.startMonitoring();
+          syncClipboardUi(true);
+          isClipboardMonitoring = true;
+        }
       } catch (error) {
-        console.error('Stop monitoring failed:', error);
-      }
-    });
-  }
-  
-  if (testBtn) {
-    testBtn.addEventListener('click', async () => {
-      if (window.electronAPI) {
-        await window.electronAPI.testPopup();
+        console.error('Clipboard monitoring toggle failed:', error);
       }
     });
   }
@@ -1067,81 +1235,111 @@ function initializeMainWindowControls() {
     });
   }
 
-  // Listen for clipboard history shortcut
   if (window.electronAPI) {
     window.electronAPI.onShowClipboardHistory(() => {
       showClipboardHistory();
     });
+    window.electronAPI.onMonitorModeChanged?.((payload: { mode: string }) => {
+      syncSelectionMonitorUi(payload.mode);
+    });
   }
-  
-  // Update clipboard status to show it's running
-  clipboardStatus.textContent = 'Running';
-  clipboardStatus.className = 'status-value running';
-  
-  // Update selection status to show it's running (since it starts automatically)
-  selectionStatus.textContent = 'Running';
-  selectionStatus.className = 'status-value running';
-  isMonitoring = true;
+
+  syncClipboardUi(true);
+  isClipboardMonitoring = true;
+
+  void (async () => {
+    try {
+      const st = await window.electronAPI?.getMonitorState?.();
+      if (st?.mode) {
+        syncSelectionMonitorUi(st.mode);
+      }
+    } catch {
+      syncSelectionMonitorUi('on');
+    }
+  })();
 }
 
-async function startMonitoring() {
+async function attachSelectionChangeListenerOnly(): Promise<void> {
   try {
-    // Ask main process to start native monitoring and open popup on selection
-    if (window.electronAPI && typeof window.electronAPI.startMonitoring === 'function') {
-      await window.electronAPI.startMonitoring();
-    }
-    // Ensure we have a listener to update the recent selections list when the selection event arrives
-    if (window.electronAPI) {
+    if (window.electronAPI && !__selectionListenerAttached) {
       window.electronAPI.onSelectionChange((text: string) => {
-        console.log('[DBG] renderer received selection-changed:', text);
-        // Ignore only if this window is focused (selection originated inside app)
-        if (document.hasFocus()) {
-          console.log('[DBG] ignoring selection because window is focused');
-          return;
-        }
+        rlog('[DBG] renderer received selection-changed:', text);
         addToRecentSelections(text);
       });
+      __selectionListenerAttached = true;
     }
-    console.log('Monitoring started');
+    rlog('Selection listener attached');
   } catch (error) {
-    console.error('Failed to start monitoring:', error);
+    console.error('Failed to attach selection listener:', error);
   }
 }
 
-async function stopMonitoring() {
+let __selectionListenerAttached = false;
+
+const RECENT_SELECTIONS_STORAGE_KEY = 'phevereRecentSelections';
+const MAX_RECENT_SELECTIONS = 10;
+
+function escapeHtmlSelection(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function persistRecentSelections(entries: { text: string; time: string }[]): void {
   try {
-    if (window.electronAPI && typeof window.electronAPI.stopMonitoring === 'function') {
-      await window.electronAPI.stopMonitoring();
-    }
-    console.log('Monitoring stopped');
-  } catch (error) {
-    console.error('Failed to stop monitoring:', error);
+    localStorage.setItem(RECENT_SELECTIONS_STORAGE_KEY, JSON.stringify(entries));
+  } catch {
+    /* ignore quota */
   }
 }
 
-function addToRecentSelections(text: string) {
-  // Harmonize with index.html id
+function loadRecentSelectionsIntoDom(): void {
   const recentList = document.getElementById('selectionsList') || document.getElementById('recent-list');
   if (!recentList) return;
-
-  const last = recentList.firstElementChild as HTMLElement | null;
-  if (last && last.querySelector('.selection-text')?.textContent === text) {
-    // Debounce duplicates produced by same selection event burst
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(RECENT_SELECTIONS_STORAGE_KEY);
+  } catch {
     return;
   }
-  
+  if (!raw) return;
+  try {
+    const entries = JSON.parse(raw) as { text: string; time?: string }[];
+    if (!Array.isArray(entries)) return;
+    const empty = recentList.querySelector('.empty-message');
+    empty?.remove();
+    // Stored order is newest-first; prepend each row, so apply oldest → newest.
+    const slice = entries.slice(0, MAX_RECENT_SELECTIONS);
+    for (let i = slice.length - 1; i >= 0; i--) {
+      const e = slice[i];
+      if (!e?.text) continue;
+      appendRecentSelectionRow(e.text, e.time || '', recentList, false);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function appendRecentSelectionRow(
+  text: string,
+  timeLabel: string,
+  recentList: HTMLElement,
+  save: boolean
+): void {
   const selectionItem = document.createElement('button');
   selectionItem.className = 'selection-item';
   selectionItem.setAttribute('type', 'button');
   selectionItem.setAttribute('aria-label', `Lookup ${text}`);
-  selectionItem.style.textAlign = 'left';
-  selectionItem.style.width = '100%';
-  selectionItem.style.background = 'transparent';
-  selectionItem.style.border = 'none';
-  selectionItem.style.cursor = 'pointer';
+  const safe = escapeHtmlSelection(text);
+  const t = timeLabel || new Date().toLocaleTimeString();
   selectionItem.innerHTML = `
-    <span class="selection-text">${text}</span>
-    <span class="selection-time">${new Date().toLocaleTimeString()}</span>
+    <span class="selection-item__accent" aria-hidden="true"></span>
+    <span class="selection-item__body">
+      <span class="selection-text">${safe}</span>
+      <span class="selection-time">${escapeHtmlSelection(t)}</span>
+    </span>
   `;
   selectionItem.addEventListener('click', async (e) => {
     e.stopPropagation();
@@ -1158,12 +1356,40 @@ function addToRecentSelections(text: string) {
   
   // Add to beginning of list
   recentList.insertBefore(selectionItem, recentList.firstChild);
-  
-  // Keep only last 10 selections
-  const items = recentList.querySelectorAll('.selection-item');
-  if (items.length > 10) {
-    recentList.removeChild(items[items.length - 1]);
+
+  while (recentList.querySelectorAll('.selection-item').length > MAX_RECENT_SELECTIONS) {
+    const all = recentList.querySelectorAll('.selection-item');
+    recentList.removeChild(all[all.length - 1]);
   }
+
+  if (save) {
+    syncRecentSelectionsStorageFromDom(recentList);
+  }
+}
+
+function syncRecentSelectionsStorageFromDom(recentList: HTMLElement): void {
+  const items = recentList.querySelectorAll('.selection-item');
+  const entries: { text: string; time: string }[] = [];
+  items.forEach((el) => {
+    const text = el.querySelector('.selection-text')?.textContent || '';
+    const time = el.querySelector('.selection-time')?.textContent || '';
+    if (text) {
+      entries.push({ text, time });
+    }
+  });
+  persistRecentSelections(entries);
+}
+
+function addToRecentSelections(text: string): void {
+  const recentList = document.getElementById('selectionsList') || document.getElementById('recent-list');
+  if (!recentList) return;
+  const first = recentList.querySelector('.selection-item');
+  if (first && first.querySelector('.selection-text')?.textContent === text) {
+    return;
+  }
+  const empty = recentList.querySelector('.empty-message');
+  empty?.remove();
+  appendRecentSelectionRow(text, new Date().toLocaleTimeString(), recentList, true);
 }
 
 function showTestPopup(text: string) {
@@ -1191,6 +1417,44 @@ function showTestPopup(text: string) {
   }, 5000);
 }
 
+function escapeHtmlClipboard(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function formatClipboardTimestamp(ts: unknown): string {
+  try {
+    const d = ts instanceof Date ? ts : new Date(ts as string | number);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString();
+  } catch {
+    return '';
+  }
+}
+
+function renderClipboardItemsHtml(entries: { id: string; text: string; timestamp: unknown }[]): string {
+  if (entries.length === 0) {
+    return '<p class="empty-state">No clipboard history yet</p>';
+  }
+  return entries
+    .map(
+      (entry) => `
+        <div class="clipboard-item" data-id="${escapeHtmlClipboard(entry.id)}">
+          <div class="clipboard-text">${escapeHtmlClipboard(entry.text.substring(0, 200))}${entry.text.length > 200 ? '…' : ''}</div>
+          <div class="clipboard-meta">
+            <span class="clipboard-time">${escapeHtmlClipboard(formatClipboardTimestamp(entry.timestamp))}</span>
+            <button type="button" class="copy-btn" data-copy-id="${escapeHtmlClipboard(entry.id)}">Copy</button>
+            <button type="button" class="remove-btn" data-remove-id="${escapeHtmlClipboard(entry.id)}">×</button>
+          </div>
+        </div>
+      `
+    )
+    .join('');
+}
+
 async function showClipboardHistory() {
   if (!window.clipboardAPI) {
     console.error('Clipboard API not available');
@@ -1200,97 +1464,98 @@ async function showClipboardHistory() {
   try {
     const history = await window.clipboardAPI.getHistory();
     const stats = await window.clipboardAPI.getStats();
-    
-    // Create clipboard history popup
+
+    const textById = new Map<string, string>();
+    history.forEach((e) => textById.set(e.id, e.text));
+
     const popup = document.createElement('div');
     popup.className = 'clipboard-popup';
     popup.innerHTML = `
       <div class="popup-header">
         <h3>📋 Clipboard History (${stats.totalEntries} items)</h3>
         <div class="popup-controls">
-          <button id="clear-clipboard" class="btn btn-danger">Clear All</button>
-          <button onclick="this.parentElement.parentElement.parentElement.remove()" class="close-btn">×</button>
+          <button type="button" id="clear-clipboard" class="btn btn-danger">Clear All</button>
+          <button type="button" class="close-btn" data-close-clipboard aria-label="Close">×</button>
         </div>
       </div>
       <div class="popup-content">
         <div class="clipboard-search">
           <input type="text" id="clipboard-search" placeholder="Search clipboard history..." class="search-input">
         </div>
-        <div id="clipboard-list" class="clipboard-list">
-          ${history.length === 0 ? '<p class="empty-state">No clipboard history yet</p>' : ''}
-        </div>
+        <div id="clipboard-list" class="clipboard-list">${renderClipboardItemsHtml(history)}</div>
       </div>
     `;
-    
+
     document.body.appendChild(popup);
-    
-    // Populate clipboard list
-    const clipboardList = document.getElementById('clipboard-list');
-    if (clipboardList && history.length > 0) {
-      clipboardList.innerHTML = history.map(entry => `
-        <div class="clipboard-item" data-id="${entry.id}">
-          <div class="clipboard-text">${entry.text.substring(0, 100)}${entry.text.length > 100 ? '...' : ''}</div>
-          <div class="clipboard-meta">
-            <span class="clipboard-time">${entry.timestamp.toLocaleTimeString()}</span>
-            <button class="copy-btn" onclick="copyClipboardText('${entry.text.replace(/'/g, "\\'")}')">Copy</button>
-            <button class="remove-btn" onclick="removeClipboardEntry('${entry.id}')">×</button>
-          </div>
-        </div>
-      `).join('');
-    }
-    
-    // Handle search
+
+    const clipboardListEl = () => document.getElementById('clipboard-list');
+
+    const setList = (entries: typeof history) => {
+      entries.forEach((e) => textById.set(e.id, e.text));
+      const el = clipboardListEl();
+      if (el) {
+        el.innerHTML = renderClipboardItemsHtml(entries);
+      }
+    };
+
+    popup.addEventListener('click', async (ev) => {
+      const target = ev.target as HTMLElement;
+      if (target.closest('[data-close-clipboard]')) {
+        popup.remove();
+        return;
+      }
+      const copyId = target.closest('[data-copy-id]')?.getAttribute('data-copy-id');
+      if (copyId && window.clipboardAPI) {
+        const text = textById.get(copyId);
+        if (text !== undefined) {
+          await window.clipboardAPI.copy(text);
+          const notification = document.createElement('div');
+          notification.className = 'copy-notification';
+          notification.textContent = 'Copied to clipboard!';
+          document.body.appendChild(notification);
+          setTimeout(() => notification.remove(), 2000);
+        }
+        return;
+      }
+      const removeId = target.closest('[data-remove-id]')?.getAttribute('data-remove-id');
+      if (removeId && window.clipboardAPI) {
+        await window.clipboardAPI.removeEntry(removeId);
+        textById.delete(removeId);
+        const next = await window.clipboardAPI.getHistory();
+        next.forEach((e) => textById.set(e.id, e.text));
+        setList(next);
+      }
+    });
+
     const searchInput = document.getElementById('clipboard-search') as HTMLInputElement;
     searchInput?.addEventListener('input', async (e) => {
       const query = (e.target as HTMLInputElement).value;
       if (query.trim()) {
         const results = await window.clipboardAPI.search(query);
-        updateClipboardList(results);
+        setList(results);
       } else {
         const allHistory = await window.clipboardAPI.getHistory();
-        updateClipboardList(allHistory);
+        setList(allHistory);
       }
     });
-    
-    // Handle clear all
+
     document.getElementById('clear-clipboard')?.addEventListener('click', async () => {
       if (confirm('Are you sure you want to clear all clipboard history?')) {
         await window.clipboardAPI.clear();
         popup.remove();
       }
     });
-    
-    // Auto-remove on escape
-    document.addEventListener('keydown', (event) => {
+
+    const onKeydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         popup.remove();
+        document.removeEventListener('keydown', onKeydown);
       }
-    });
-    
+    };
+    document.addEventListener('keydown', onKeydown);
   } catch (error) {
     console.error('Error loading clipboard history:', error);
   }
-}
-
-function updateClipboardList(entries: any[]) {
-  const clipboardList = document.getElementById('clipboard-list');
-  if (!clipboardList) return;
-  
-  if (entries.length === 0) {
-    clipboardList.innerHTML = '<p class="empty-state">No matching entries</p>';
-    return;
-  }
-  
-  clipboardList.innerHTML = entries.map(entry => `
-    <div class="clipboard-item" data-id="${entry.id}">
-      <div class="clipboard-text">${entry.text.substring(0, 100)}${entry.text.length > 100 ? '...' : ''}</div>
-      <div class="clipboard-meta">
-        <span class="clipboard-time">${new Date(entry.timestamp).toLocaleTimeString()}</span>
-        <button class="copy-btn" onclick="copyClipboardText('${entry.text.replace(/'/g, "\\'")}')">Copy</button>
-        <button class="remove-btn" onclick="removeClipboardEntry('${entry.id}')">×</button>
-      </div>
-    </div>
-  `).join('');
 }
 
 // Make popup resizable
@@ -1448,8 +1713,8 @@ async function loadMainSourceToggles() {
     if (window.dictionaryAPI) {
       const sourceStats = await window.dictionaryAPI.getSourceStats();
       const enabledSources = await window.dictionaryAPI.getEnabledSources();
-      console.log('[DBG][Settings] sourceStats:', sourceStats);
-      console.log('[DBG][Settings] enabledSources:', enabledSources);
+      rlog('[DBG][Settings] sourceStats:', sourceStats);
+      rlog('[DBG][Settings] enabledSources:', enabledSources);
       
       const sourceToggles = document.getElementById('main-source-toggles');
       if (sourceToggles && sourceStats.sources) {
@@ -1585,7 +1850,7 @@ function setupAudioSettings() {
  * FIXED: Replaced placeholder audio function with the actual Web Speech API implementation.
  */
 (window as any).playAudio = function(word: string, accent: string = 'en-US') {
-  console.log(`🔊 Playing audio for "${word}" with ${accent} accent`);
+  rlog(`🔊 Playing audio for "${word}" with ${accent} accent`);
   
   try {
     if ('speechSynthesis' in window) {
@@ -1751,7 +2016,7 @@ async function initializeLanguageSelectors() {
         event.stopPropagation(); 
       });
         sourceLangSelect.addEventListener('change', (e) => {
-          console.log('🔄 [DEBUG] Source language changed:', (e.target as HTMLSelectElement).value);
+          rlog('🔄 [DEBUG] Source language changed:', (e.target as HTMLSelectElement).value);
           const text = document.getElementById('selected-text')?.textContent;
           if (text) {
             updatePopupContent(text);
@@ -1759,7 +2024,7 @@ async function initializeLanguageSelectors() {
         });
         
         targetLangSelect.addEventListener('change', (e) => {
-          console.log('🔄 [DEBUG] Target language changed:', (e.target as HTMLSelectElement).value);
+          rlog('🔄 [DEBUG] Target language changed:', (e.target as HTMLSelectElement).value);
           const text = document.getElementById('selected-text')?.textContent;
           if (text) {
             updatePopupContent(text);
@@ -1767,7 +2032,7 @@ async function initializeLanguageSelectors() {
         });
         
         // Debug: Log initial dropdown setup
-        console.log('🔄 [DEBUG] Language selectors initialized:', {
+        rlog('🔄 [DEBUG] Language selectors initialized:', {
           sourceOptions: sourceLangSelect.options.length,
           targetOptions: targetLangSelect.options.length,
           sourceValue: sourceLangSelect.value,
@@ -2044,11 +2309,11 @@ function createSingleTranslationSourceTab(result: any, sourceName: string): stri
 }
 
 async function updatePopupContent(text: string) {
-  console.log('[POPUP-RENDERER] updatePopupContent with text:', (text||'').slice(0,80), `(${text.length} chars)`);
+  rlog('[POPUP-RENDERER] updatePopupContent with text:', (text||'').slice(0,80), `(${text.length} chars)`);
   const key = (text || '').trim();
   if (!key) return;
   if (key === __lastRenderedText) {
-    console.log('[POPUP-RENDERER] skip duplicate render for same text');
+    rlog('[POPUP-RENDERER] skip duplicate render for same text');
     return;
   }
   __lastRenderedText = key;
@@ -2076,13 +2341,13 @@ async function updatePopupContent(text: string) {
     let enabledSources: string[] | undefined;
     if (window.dictionaryAPI && typeof window.dictionaryAPI.getEnabledSources === 'function') {
       enabledSources = await window.dictionaryAPI.getEnabledSources();
-      console.log('[DBG] Enabled sources at lookup time:', enabledSources);
+      rlog('[DBG] Enabled sources at lookup time:', enabledSources);
     }
     
     // Use the dictionary service to get real results
     if (window.dictionaryAPI && typeof window.dictionaryAPI.lookup === 'function') {
       const result = await window.dictionaryAPI.lookup(text, targetLang, enabledSources);
-      console.log('[POPUP-RENDERER] lookup summary:', {
+      rlog('[POPUP-RENDERER] lookup summary:', {
         word: result.word,
         definitions: result.definitions?.length || 0,
         sources: result.sources,
@@ -2116,7 +2381,7 @@ async function updatePopupContent(text: string) {
       
       // Prefer runtime result.sources so tabs reflect APIs actually used
       const tabSources = Array.isArray(result.sources) && result.sources.length > 0 ? result.sources : (enabledSources || []);
-      console.log('[POPUP-RENDERER] creating tabs for:', tabSources);
+      rlog('[POPUP-RENDERER] creating tabs for:', tabSources);
       createTabs(result, tabSources);
 
       // Ask main to resize the window once per text to prevent jumping
@@ -2126,11 +2391,11 @@ async function updatePopupContent(text: string) {
           const desiredH = 260;
           window.electronAPI?.resizeWindow(desiredW, desiredH);
           __lastResizedForText = key;
-          console.log('[POPUP-RENDERER] requested one-time resize:', desiredW, desiredH);
+          rlog('[POPUP-RENDERER] requested one-time resize:', desiredW, desiredH);
         }
       } catch {}
     } else {
-      console.log('⚠️ Dictionary API not available, using mock data');
+      rlog('⚠️ Dictionary API not available, using mock data');
       displayMockResult(text);
     }
   } catch (error) {
@@ -2313,8 +2578,8 @@ function getWordOrigin(word: string): string {
 
 // Audio playback function using Web Speech API
 function playAudio(word: string, accent: string = 'en-US') {
-  console.log(`🔊 [DEBUG] playAudio called with word: "${word}", accent: "${accent}"`);
-  console.log(`🔊 [DEBUG] speechSynthesis available:`, 'speechSynthesis' in window);
+  rlog(`🔊 [DEBUG] playAudio called with word: "${word}", accent: "${accent}"`);
+  rlog(`🔊 [DEBUG] speechSynthesis available:`, 'speechSynthesis' in window);
   
   try {
     // Check if Web Speech API is supported
@@ -2322,10 +2587,10 @@ function playAudio(word: string, accent: string = 'en-US') {
       const initVoices = () => {
         const voices = window.speechSynthesis.getVoices();
         if (voices.length > 0) {
-          console.log(`🔊 [DEBUG] Voices loaded: ${voices.length}`);
+          rlog(`🔊 [DEBUG] Voices loaded: ${voices.length}`);
           speak(word, accent, voices);
         } else {
-          console.log(`🔊 [DEBUG] Voices not loaded yet, will try again`);
+          rlog(`🔊 [DEBUG] Voices not loaded yet, will try again`);
         }
       };
 
@@ -2347,12 +2612,12 @@ function playAudio(word: string, accent: string = 'en-US') {
 }
 
 function speak(word: string, accent: string, voices: SpeechSynthesisVoice[]) {
-  console.log(`🔊 [DEBUG] speak called with word: "${word}", accent: "${accent}"`);
+  rlog(`🔊 [DEBUG] speak called with word: "${word}", accent: "${accent}"`);
   
   try {
     // Cancel any ongoing speech
     window.speechSynthesis.cancel();
-    console.log(`🔊 [DEBUG] Previous speech cancelled`);
+    rlog(`🔊 [DEBUG] Previous speech cancelled`);
     
     // Create speech utterance
     const utterance = new SpeechSynthesisUtterance(word);
@@ -2575,13 +2840,13 @@ async function clearAllCaches() {
 // Test function for multi-source dictionary
 (window as any).testMultiSourceDictionary = async function() {
   try {
-    console.log('🧪 Testing multi-source dictionary service...');
+    rlog('🧪 Testing multi-source dictionary service...');
     
     // Test with a common word
     const testWord = 'hello';
     const result = await window.dictionaryAPI?.lookup(testWord, 'zh');
     
-    console.log('✅ Multi-source dictionary test result:', result);
+    rlog('✅ Multi-source dictionary test result:', result);
     
     if (result) {
       showNotification(`✅ Multi-source lookup successful! Sources: ${result.sources?.join(', ') || 'None'}`);
@@ -2811,17 +3076,17 @@ function showPopup(x: number, y: number, text: string) {
 
 async function performLookup(text: string, popup: HTMLElement) {
   try {
-    console.log('🔍 Performing lookup for:', text);
+    rlog('🔍 Performing lookup for:', text);
     
     // Use the dictionary service to get real results
     if (window.dictionaryAPI && typeof window.dictionaryAPI.lookup === 'function') {
       const result = await window.dictionaryAPI.lookup(text);
-      console.log('✅ Dictionary result received:', result);
+      rlog('✅ Dictionary result received:', result);
       
       // Update popup content with results
       displayDictionaryResultInPopup(result, popup);
     } else {
-      console.log('⚠️ Dictionary API not available, using mock data');
+      rlog('⚠️ Dictionary API not available, using mock data');
       // Fallback to mock data
       displayMockResultInPopup(text, popup);
     }

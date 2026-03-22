@@ -30,6 +30,9 @@ export interface Definition {
 
 import { BaseService, DictionaryError } from './base';
 import * as crypto from 'crypto';
+import { wrapConsole } from '../logger';
+
+const console = wrapConsole('dictionary');
 
 export interface Translation {
   language: string;
@@ -493,31 +496,33 @@ export class DictionaryService extends BaseService {
       }
     }
 
-    // Only try dictionary APIs for languages they support (primarily English)
-    if (!isAsianLanguage || sourceLanguage === 'en') {
-      // Check if source is enabled
-      const isSourceEnabled = (sourceName: string) => {
-        if (enabledSources) return enabledSources.includes(sourceName);
-        const s = this.sources.find(s => s.name === sourceName);
-        return s ? s.enabled && s.isAvailable : false;
-      };
-      
-      if (isSourceEnabled('Free Dictionary API')) {
-        apiPromises.push(
-          this.getFreeDictionaryData(text, 'en') // force English for Free Dictionary API for clarity
-            .then(data => ({ type: 'freeDictionary', data }))
-            .catch(error => ({ type: 'freeDictionary', error }))
-        );
-      }
+    // Free Dictionary + Wiktionary: run for all languages (JA/KO/ZH were wrongly skipped — only translation showed).
+    const langForDict = sourceLanguage || 'en';
+    const isSourceEnabled = (sourceName: string) => {
+      if (enabledSources) return enabledSources.includes(sourceName);
+      const s = this.sources.find(s => s.name === sourceName);
+      return s ? s.enabled && s.isAvailable : false;
+    };
 
-      if (isSourceEnabled('Wiktionary')) {
-        apiPromises.push(
-          this.getWiktionaryData(text, sourceLanguage || 'en')
-            .then(data => ({ type: 'wiktionary', data }))
-            .catch(error => ({ type: 'wiktionary', error }))
-        );
-      }
+    if (isSourceEnabled('Free Dictionary API')) {
+      apiPromises.push(
+        this.getFreeDictionaryData(text, langForDict)
+          .then(data => ({ type: 'freeDictionary', data }))
+          .catch(error => ({ type: 'freeDictionary', error }))
+      );
+    }
 
+    if (isSourceEnabled('Wiktionary')) {
+      apiPromises.push(
+        this.getWiktionaryData(text, langForDict)
+          .then(data => ({ type: 'wiktionary', data }))
+          .catch(error => ({ type: 'wiktionary', error }))
+      );
+    }
+
+    // English-centric premium APIs — still useful when source is English or lemma is Latin script
+    const allowEnglishPremium = !isAsianLanguage || sourceLanguage === 'en';
+    if (allowEnglishPremium) {
       if (isSourceEnabled('Oxford Dictionary API') && this.oxfordAppId && this.oxfordAppKey) {
         apiPromises.push(
           this.getOxfordData(text)
@@ -772,39 +777,34 @@ export class DictionaryService extends BaseService {
       console.warn('Translation failed:', error);
     }
     
-    // Only try dictionary APIs for languages they support (primarily English)
-    if (!isAsianLanguage || sourceLanguage === 'en') {
-      // Try Free Dictionary API
-      try {
-        const freeDictData = await this.getFreeDictionaryData(text, sourceLanguage);
-        if (freeDictData.definitions.length > 0) {
-          definitions.push(...freeDictData.definitions);
-          examples.push(...freeDictData.examples);
-          synonyms.push(...freeDictData.synonyms);
-          antonyms.push(...freeDictData.antonyms);
-          pronunciation = freeDictData.pronunciation;
-          sources.push('Free Dictionary API');
-        }
-      } catch (error) {
-        console.warn('Free Dictionary API failed:', error);
+    // Dictionary APIs for all languages (same as parallel path — do not skip CJK)
+    try {
+      const freeDictData = await this.getFreeDictionaryData(text, sourceLanguage);
+      if (freeDictData.definitions.length > 0) {
+        definitions.push(...freeDictData.definitions);
+        examples.push(...freeDictData.examples);
+        synonyms.push(...freeDictData.synonyms);
+        antonyms.push(...freeDictData.antonyms);
+        pronunciation = freeDictData.pronunciation;
+        sources.push('Free Dictionary API');
       }
+    } catch (error) {
+      console.warn('Free Dictionary API failed:', error);
+    }
 
-      // Try Wiktionary API
-      try {
-        const wikiData = await this.getWiktionaryData(text, sourceLanguage);
-        if (wikiData.definitions.length > 0) {
-          // Merge definitions, avoiding duplicates
-          const existingMeanings = new Set(definitions.map(d => d.meaning));
-          const newDefinitions = wikiData.definitions.filter(d => !existingMeanings.has(d.meaning));
-          definitions.push(...newDefinitions);
-          
-          if (wikiData.etymology) etymology = wikiData.etymology;
-          if (!pronunciation && wikiData.pronunciation) pronunciation = wikiData.pronunciation;
-          sources.push('Wiktionary');
-        }
-      } catch (error) {
-        console.warn('Wiktionary API failed:', error);
+    try {
+      const wikiData = await this.getWiktionaryData(text, sourceLanguage);
+      if (wikiData.definitions.length > 0) {
+        const existingMeanings = new Set(definitions.map(d => d.meaning));
+        const newDefinitions = wikiData.definitions.filter(d => !existingMeanings.has(d.meaning));
+        definitions.push(...newDefinitions);
+
+        if (wikiData.etymology) etymology = wikiData.etymology;
+        if (!pronunciation && wikiData.pronunciation) pronunciation = wikiData.pronunciation;
+        sources.push('Wiktionary');
       }
+    } catch (error) {
+      console.warn('Wiktionary API failed:', error);
     }
 
     // Create final result

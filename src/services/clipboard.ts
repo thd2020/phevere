@@ -34,9 +34,13 @@ export class ClipboardService {
     
     try {
       this.lastClipboardText = clipboard.readText();
-      console.log(`[DEBUG] ClipboardService: Initial clipboard text length=${this.lastClipboardText?.length || 0}`);
     } catch (error) {
       console.error('[ERROR] ClipboardService: Error reading initial clipboard:', error);
+    }
+
+    // Seed history so the panel is not empty when the user already had text copied
+    if (this.lastClipboardText && this.lastClipboardText.trim().length > 0) {
+      this.addToHistory(this.lastClipboardText, 'text');
     }
 
     // Check clipboard every 2 seconds
@@ -107,6 +111,27 @@ export class ClipboardService {
     }
 
     console.log(`Added to clipboard history: ${text.length} chars`);
+  }
+
+  /**
+   * Read clipboard now and append to history if the text changed (e.g. before opening the panel).
+   */
+  syncFromClipboard(): void {
+    if (!this.isMonitoring) {
+      return;
+    }
+    try {
+      const currentText = clipboard.readText();
+      if (!currentText || currentText.trim().length === 0) {
+        return;
+      }
+      if (currentText !== this.lastClipboardText) {
+        this.addToHistory(currentText, 'text');
+        this.lastClipboardText = currentText;
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
   /**

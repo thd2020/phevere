@@ -15,6 +15,9 @@ const mainConfig = {
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
   },
+  externals: {
+    koffi: 'commonjs2 koffi',
+  },
 };
 
 module.exports = { mainConfig }; 

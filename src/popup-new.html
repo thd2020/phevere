@@ -24,8 +24,11 @@
 
        .popup-container {
          height: 100vh;
+         min-height: 0;
          display: flex;
          flex-direction: column;
+         justify-content: flex-start;
+         align-items: stretch;
          background: #ffffff;
          border: none;
          border-radius: 0;
@@ -34,25 +37,35 @@
          padding: 0;
        }
 
-      /* Toolbar */
+      /* Toolbar — icons flush left; ::after fills the row so the rest stays draggable */
        .toolbar {
+          flex: 0 0 auto;
           display: flex;
           align-items: center;
-           justify-content: flex-start; /* align icons to the left for no empty gap */
-          padding: 0 8px; /* zero vertical padding for razor-slim bar */
-          background: transparent; /* no bar background */
+          justify-content: flex-start;
+          gap: 0;
+          padding: 0 1px 0 2px;
+          background: transparent;
           border-bottom: none;
-          min-height: 28px; /* shorter */
-          -webkit-app-region: drag; /* Make toolbar draggable */
+          min-height: 26px;
+          -webkit-app-region: drag;
           cursor: move;
-          position: relative; /* for dropdown anchoring */
+          position: relative;
+        }
+
+       .toolbar::after {
+          content: '';
+          flex: 1 1 auto;
+          align-self: stretch;
+          min-height: 20px;
+          -webkit-app-region: drag;
         }
 
        .toolbar-icon {
          -webkit-app-region: no-drag; /* Prevent icons from being draggable */
        }
 
-      .toolbar.collapsed { padding: 0 8px; min-height: 28px; }
+      .toolbar.collapsed { padding: 0 1px 0 2px; min-height: 26px; }
 
       .toolbar-left { display: none; }
 
@@ -70,62 +83,72 @@
         overflow: hidden;
       }
 
-      .toolbar-icons { display: flex; align-items: center; gap: 8px; }
+      .toolbar-icons {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        flex-wrap: nowrap;
+        -webkit-app-region: no-drag;
+      }
 
       .toolbar-icon {
-        width: 26px; /* larger, modern */
-        height: 26px;
+        width: 24px;
+        height: 24px;
         border: none;
-        background: rgba(255,255,255,0.6); /* subtle reflective plate */
-        border-radius: 4px;
+        background: rgba(103, 80, 164, 0.08);
+        border-radius: 10px;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: color 0.15s ease, background 0.15s ease;
-        color: #4b5563;
-        font-size: 16px;
+        transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+        color: #49454F;
+        font-size: 14px;
+        line-height: 1;
         box-shadow: none;
         user-select: none;
       }
 
-      .toolbar-icon:hover { background: rgba(255,255,255,0.85); color: #111827; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
-
-      /* Add slim separators between icon groups */
-      .toolbar-icons button + button::before {
-        content: '';
-        display: inline-block;
-        width: 1px;
-        height: 14px;
-        margin: 0 6px 0 0;
-        background: rgba(0,0,0,0.06);
+      .toolbar-icon:hover {
+        background: rgba(103, 80, 164, 0.14);
+        color: #1D1B20;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.08);
       }
 
-      .toolbar-icon.active { background: rgba(59,130,246,.15); color: #1d4ed8; }
+      .toolbar-icon.active {
+        background: rgba(103, 80, 164, 0.2);
+        color: #381E72;
+      }
 
       /* Prevent accidental text selection in the toolbar/tabs */
       .toolbar, .toolbar * , .tabs, .tabs * { user-select: none; }
 
       /* Results Area */
       .results-area {
-        flex: 1;
+        flex: 1 1 auto;
+        min-height: 0;
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: opacity 0.25s ease, flex 0.25s ease, max-height 0.25s ease;
         opacity: 1;
         transform: translateY(0);
-        padding: 0; /* remove bottom padding */
-        margin: 0;  /* remove extra margins */
+        padding: 0;
+        margin: 0;
       }
 
       .results-area.collapsed {
         opacity: 0;
-        transform: translateY(-10px);
+        flex: 0 0 0;
+        min-height: 0;
+        max-height: 0;
+        height: 0;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
         pointer-events: none;
-         height: 0;
-         padding: 0;
-         margin: 0;
+        transform: none;
+        border: none;
       }
 
       /* Input Section removed for slim toolbar */
@@ -587,7 +610,7 @@
 
       .action-btn-primary:hover {
         background: #2563eb;
-        transform: translateY(-1px);
+        filter: brightness(0.98);
       }
 
       .action-btn-secondary {
@@ -597,7 +620,7 @@
 
       .action-btn-secondary:hover {
         background: #059669;
-        transform: translateY(-1px);
+        filter: brightness(0.98);
       }
 
       .action-btn-info {
@@ -607,7 +630,7 @@
 
       .action-btn-info:hover {
         background: #7c3aed;
-        transform: translateY(-1px);
+        filter: brightness(0.98);
       }
 
       .error-message {
@@ -623,8 +646,8 @@
       /* Settings Panel */
        .settings-panel {
          position: absolute; /* anchor within popup to avoid overflowing viewport */
-         top: 32px;
-         right: 8px;
+         top: 28px;
+         right: 6px;
         background: #ffffff;
         border: 1px solid #e1e5e9;
         border-radius: 8px;
@@ -743,7 +766,7 @@
 
        .audio-button:hover {
          background: #059669;
-         transform: translateY(-1px);
+         filter: brightness(0.98);
        }
     </style>
   </head>
@@ -845,7 +868,12 @@
     </div>
 
     <script>
-      console.log('[POPUP] Script tag loaded - popup-new.html is being executed!');
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var dev = params.get('phevere_dev') !== '0';
+        window.pvLog = dev ? console.log.bind(console) : function () {};
+      })();
+      pvLog('[POPUP] Script tag loaded - popup-new.html is being executed!');
       // Global variables
       let currentText = '';
       let currentResult = null;
@@ -856,25 +884,38 @@
         preloadContent: true,
         openExternal: false
       };
+      let autoCloseTimeout = null;
+      let timeoutDuration = 10000; // 10 seconds
+
+      /** Pre-fetch dictionary/translation while toolbar is still collapsed (QoL). Mirrors legacy popup.html behavior. */
+      function maybePreloadLookup(text) {
+        if (!settings.preloadContent) return;
+        const t = (text || '').trim();
+        if (!t) return;
+        void lookupText(t, { silent: !isExpanded });
+      }
 
       // Initialize when the DOM is ready
-      console.log('[POPUP] DOMContentLoaded event fired');
+      pvLog('[POPUP] DOMContentLoaded event fired');
       document.addEventListener('DOMContentLoaded', initialize);
 
              // Main initialization function
        async function initialize() {
-         console.log('[POPUP] Initialize function called');
-         console.log('[POPUP] DOM ready, setting up popup...');
+         pvLog('[POPUP] Initialize function called');
+         pvLog('[POPUP] DOM ready, setting up popup...');
          
          loadSettings();
-         console.log('[POPUP] Settings loaded:', settings);
+         pvLog('[POPUP] Settings loaded:', settings);
          
          setupEventListeners();
-         console.log('[POPUP] Event listeners set up');
+         pvLog('[POPUP] Event listeners set up');
          
           // Old behavior: sharp tool strip by default (collapsed) and expand only when icon/tab clicked
           setupToolbarBehavior();
           collapseToolbar();
+
+          // Start auto-close timeout for collapsed popup
+          startAutoCloseTimeout();
 
         // This is the CRITICAL FIX:
         // Actively fetch the last selected text from the main process
@@ -891,27 +932,36 @@
                   expandToolbar();
                   lookupText(currentText);
                 } else {
-                  // Slim popup – stay collapsed
+                  // Slim popup – stay collapsed; optional background fetch (same as legacy onPopupText preload)
                   activateTab('dictionary');
+                  maybePreloadLookup(currentText);
                 }
               }
             } catch (e) {}
           }
-      }
 
-      // Listen for popup-text push from main
-      try {
-        if (window.electronAPI && typeof window.electronAPI.onPopupText === 'function') {
-          console.log('[POPUP] Registering onPopupText listener');
-          window.electronAPI.onPopupText((text) => {
-            console.log('[POPUP] onPopupText:', text);
-            currentText = text || currentText;
-          });
-        } else {
-          console.log('[POPUP] electronAPI.onPopupText not available');
+        try {
+          if (window.electronAPI && typeof window.electronAPI.onPopupText === 'function') {
+            pvLog('[POPUP] Registering onPopupText listener');
+            window.electronAPI.onPopupText((text) => {
+              pvLog('[POPUP] onPopupText:', text);
+              currentText = (text || currentText || '').trim();
+              window['__popupCurrentText'] = currentText;
+              activateTab('dictionary');
+              maybePreloadLookup(currentText);
+              var tb = document.getElementById('toolbar');
+              if (tb && tb.classList.contains('collapsed')) {
+                requestAnimationFrame(function () {
+                  requestAnimationFrame(resizeToCollapsedStrip);
+                });
+              }
+            });
+          } else {
+            pvLog('[POPUP] electronAPI.onPopupText not available');
+          }
+        } catch (e) {
+          console.error('[POPUP] Failed to register onPopupText:', e);
         }
-      } catch (e) {
-        console.error('[POPUP] Failed to register onPopupText:', e);
       }
 
       // Load settings from localStorage
@@ -962,21 +1012,21 @@
                 }
             });
             document.getElementById('audioIcon').addEventListener('click', () => {
-               console.log('[POPUP] Audio button clicked');
+               pvLog('[POPUP] Audio button clicked');
                if (currentText) {
                      const lang = window['__audioLang'] || 'en';
                     playAudio(currentText, lang);
                }
            });
             document.getElementById('clipboardIcon').addEventListener('click', async () => {
-               console.log('[POPUP] Clipboard copy button clicked');
+               pvLog('[POPUP] Clipboard copy button clicked');
                if (currentText && window.clipboardAPI && window.clipboardAPI.copy) {
                    await window.clipboardAPI.copy(currentText);
                    showToast('Copied');
                }
            });
             document.getElementById('searchIcon').addEventListener('click', () => {
-              console.log('[POPUP] Search button clicked');
+              pvLog('[POPUP] Search button clicked');
               if (currentText && window.electronAPI && window.electronAPI.send) {
                   // create independent window for search
                   const url = `https://www.google.com/search?q=${encodeURIComponent(currentText)}`;
@@ -984,11 +1034,11 @@
               }
             });
             document.getElementById('closeIcon').addEventListener('click', () => {
-              console.log('[POPUP] Close clicked');
+              pvLog('[POPUP] Close clicked');
               window.close();
             });
            document.getElementById('settingsIcon').addEventListener('click', () => {
-              console.log('[POPUP] Settings button clicked');
+              pvLog('[POPUP] Settings button clicked');
               // Always show quick settings panel even when collapsed
               if (!isExpanded) {
                 const toolbar = document.getElementById('toolbar');
@@ -1045,7 +1095,7 @@
             }
             if (inResults && selection && selection.toString().trim()) {
               const selectedText = selection.toString().trim();
-              console.log('[POPUP] Text selected:', selectedText);
+              pvLog('[POPUP] Text selected:', selectedText);
               
               // Store selected text for potential lookup
               if (selectedText.length > 0 && selectedText.length < 100) {
@@ -1064,7 +1114,7 @@
             }
             if (inResults && selection && selection.toString().trim()) {
               const selectedText = selection.toString().trim();
-              console.log('[POPUP] Double-clicked text:', selectedText);
+              pvLog('[POPUP] Double-clicked text:', selectedText);
               
               if (selectedText.length > 0 && selectedText.length < 100) {
                 currentText = selectedText;
@@ -1072,6 +1122,12 @@
               }
             }
           });
+
+          // Add event listeners to reset auto-close timeout on user interaction
+          document.addEventListener('mousemove', resetAutoCloseTimeout);
+          document.addEventListener('mousedown', resetAutoCloseTimeout);
+          document.addEventListener('keydown', resetAutoCloseTimeout);
+          document.addEventListener('scroll', resetAutoCloseTimeout);
       }
 
       // Toolbar behavior logic
@@ -1094,10 +1150,11 @@
 
              // Enhanced etymology display function with professional formatting
         function displayEtymologyResult(result) {
-          console.log('[POPUP] displayEtymologyResult called with:', result);
+          pvLog('[POPUP] displayEtymologyResult called with:', result);
           document.getElementById('loadingElement').style.display = 'none';
           const resultsContainer = document.getElementById('dictionary-results');
           resultsContainer.style.display = 'block';
+          const speechLang = window['__audioLang'] || result.detectedLanguage || 'en';
 
           let etymologyHtml = '';
 
@@ -1118,8 +1175,8 @@
                     </div>
                   </div>
                   <div class="result-actions">
-                      <button onclick="playAudio('${result.word}', 'en')" class="audio-button" title="Play pronunciation">🔊</button>
-                      <button onclick="searchWeb('${result.word}')" class="action-btn action-btn-info">🔍 Search Web</button>
+                      <button onclick='playAudio(${JSON.stringify(result.word)}, ${JSON.stringify(speechLang)})' class="audio-button" title="Play pronunciation">🔊</button>
+                      <button onclick='searchWeb(${JSON.stringify(result.word)})' class="action-btn action-btn-info">🔍 Search Web</button>
                   </div>
               </div>`;
           } else {
@@ -1146,14 +1203,14 @@
                     </div>
                   </div>
                   <div class="result-actions">
-                      <button onclick="playAudio('${result.word}', 'en')" class="audio-button" title="Play pronunciation">🔊</button>
-                      <button onclick="searchWeb('${result.word}')" class="action-btn action-btn-info">🔍 Search Web</button>
+                      <button onclick='playAudio(${JSON.stringify(result.word)}, ${JSON.stringify(speechLang)})' class="audio-button" title="Play pronunciation">🔊</button>
+                      <button onclick='searchWeb(${JSON.stringify(result.word)})' class="action-btn action-btn-info">🔍 Search Web</button>
                   </div>
               </div>`;
           }
 
           resultsContainer.innerHTML = etymologyHtml;
-          console.log('[POPUP] Enhanced etymology content displayed');
+          pvLog('[POPUP] Enhanced etymology content displayed');
         }
 
         // Format etymology text with professional styling
@@ -1201,41 +1258,95 @@
           return formattedHtml;
         }
 
+        // Auto-close timeout functions
+       function startAutoCloseTimeout() {
+         if (isExpanded) return; // Don't start timeout if expanded
+
+         clearAutoCloseTimeout(); // Clear any existing timeout
+         pvLog('[POPUP] Starting 10-second auto-close timeout...');
+         autoCloseTimeout = setTimeout(() => {
+           pvLog('[POPUP] Auto-close timeout reached, closing popup...');
+           window.close();
+         }, timeoutDuration);
+       }
+
+       function clearAutoCloseTimeout() {
+         if (autoCloseTimeout) {
+           pvLog('[POPUP] Clearing auto-close timeout');
+           clearTimeout(autoCloseTimeout);
+           autoCloseTimeout = null;
+         }
+       }
+
+       function resetAutoCloseTimeout() {
+         if (!isExpanded) {
+           startAutoCloseTimeout();
+         }
+       }
+
+       /** Shrink OS window to the actual icon strip — avoids 360px-wide “ghost” frame. */
+       function resizeToCollapsedStrip() {
+         if (!window.electronAPI || !window.electronAPI.resizeWindow) return;
+         if (!settings.expandableMode || isExpanded) return;
+         const toolbar = document.getElementById('toolbar');
+         const icons = document.getElementById('toolbar-icons');
+         if (!toolbar || !icons) return;
+         var iw = icons.getBoundingClientRect().width;
+         var th = toolbar.getBoundingClientRect().height;
+         if (!(iw > 0) || !(th > 0)) return;
+         var padX = 6;
+         var padY = 4;
+         var w = Math.max(160, Math.ceil(iw + padX));
+         var h = Math.max(28, Math.ceil(th + padY));
+         pvLog('[POPUP] resizeToCollapsedStrip', w, h);
+         window.electronAPI.resizeWindow(w, h);
+       }
+
         // Collapse toolbar
        function collapseToolbar() {
-         console.log('[POPUP] Collapsing toolbar...');
+         pvLog('[POPUP] Collapsing toolbar...');
          if (!settings.expandableMode) {
-           console.log('[POPUP] Expandable mode disabled, not collapsing');
+           pvLog('[POPUP] Expandable mode disabled, not collapsing');
            return;
          }
          
           const toolbar = document.getElementById('toolbar');
           const resultsArea = document.getElementById('resultsArea');
          
-         console.log('[POPUP] Adding collapsed classes...');
+         pvLog('[POPUP] Adding collapsed classes...');
           toolbar.classList.add('collapsed');
           resultsArea.classList.add('collapsed');
          isExpanded = false;
          
-         console.log('[POPUP] Toolbar collapsed, isExpanded:', isExpanded);
+         pvLog('[POPUP] Toolbar collapsed, isExpanded:', isExpanded);
+
+         // Start auto-close timeout when collapsed
+         startAutoCloseTimeout();
+
+         requestAnimationFrame(function () {
+           requestAnimationFrame(resizeToCollapsedStrip);
+         });
        }
 
        // Expand toolbar
        function expandToolbar() {
-         console.log('[POPUP] Expanding toolbar...');
+         pvLog('[POPUP] Expanding toolbar...');
           const toolbar = document.getElementById('toolbar');
           const resultsArea = document.getElementById('resultsArea');
          
-         console.log('[POPUP] Removing collapsed classes...');
+         pvLog('[POPUP] Removing collapsed classes...');
           toolbar.classList.remove('collapsed');
           resultsArea.classList.remove('collapsed');
          isExpanded = true;
          
-         console.log('[POPUP] Toolbar expanded, isExpanded:', isExpanded);
-         
+         pvLog('[POPUP] Toolbar expanded, isExpanded:', isExpanded);
+
+         // Clear auto-close timeout when expanded
+         clearAutoCloseTimeout();
+
          // Resize window to accommodate expanded content
          if (window.electronAPI && window.electronAPI.resizeWindow) {
-           console.log('[POPUP] Resizing window for expanded content...');
+           pvLog('[POPUP] Resizing window for expanded content...');
            window.electronAPI.resizeWindow(400, 500);
          }
        }
@@ -1302,13 +1413,17 @@
           }
        }
 
-                           async function lookupText(text) {
-          if (!text.trim()) return;
-          console.log('[POPUP] lookupText called with:', text, 'currentTab:', currentTab);
-          showLoading();
+                           async function lookupText(text, opts) {
+          opts = opts || {};
+          const silent = !!opts.silent;
+          if (!text || !text.trim()) return;
+          pvLog('[POPUP] lookupText called with:', text, 'currentTab:', currentTab, 'silent:', silent);
+          if (!silent) {
+            showLoading();
+          }
           try {
             if (window.dictionaryAPI) {
-              console.log('[POPUP] dictionaryAPI available, calling lookup...');
+              pvLog('[POPUP] dictionaryAPI available, calling lookup...');
               
               // Get language settings for translation
               let sourceLang = 'en';
@@ -1319,20 +1434,20 @@
                 const targetSelect = document.getElementById('targetLanguage');
                 if (sourceSelect) sourceLang = sourceSelect.value;
                 if (targetSelect) targetLang = targetSelect.value;
-                console.log('[POPUP] Translation mode - sourceLang:', sourceLang, 'targetLang:', targetLang);
+                pvLog('[POPUP] Translation mode - sourceLang:', sourceLang, 'targetLang:', targetLang);
               } else {
-                console.log('[POPUP] Dictionary mode - using default languages');
+                pvLog('[POPUP] Dictionary mode - using default languages');
               }
               
-              console.log('[POPUP] Calling dictionaryAPI.lookup with:', text, targetLang);
+              pvLog('[POPUP] Calling dictionaryAPI.lookup with:', text, targetLang);
               currentResult = await window.dictionaryAPI.lookup(text, targetLang);
-              console.log('[POPUP] Dictionary lookup result:', currentResult);
+              pvLog('[POPUP] Dictionary lookup result:', currentResult);
               // Derive audio language: if metadata.detectedLanguage present, use it; else use target when translating, 'en' for dictionary
               var audioLang = (currentResult && currentResult.detectedLanguage) ? currentResult.detectedLanguage : (currentTab === 'translation' ? targetLang : 'en');
               window['__audioLang'] = audioLang;
               displayDictionaryResult(currentResult);
             } else {
-              console.log('[POPUP] dictionaryAPI not available, using mock result');
+              pvLog('[POPUP] dictionaryAPI not available, using mock result');
               displayMockResult(text); // Fallback for dev
             }
           } catch (error) {
@@ -1348,8 +1463,8 @@
       }
 
              function displayDictionaryResult(result) {
-         console.log('[POPUP] displayDictionaryResult called with:', result);
-         console.log('[POPUP] Current tab:', currentTab);
+         pvLog('[POPUP] displayDictionaryResult called with:', result);
+         pvLog('[POPUP] Current tab:', currentTab);
          
          document.getElementById('loadingElement').style.display = 'none';
          const resultsContainer = document.getElementById('dictionary-results');
@@ -1357,28 +1472,29 @@
 
          let contentHtml = '';
          if (currentTab === 'translation') {
-             console.log('[POPUP] Processing translation tab');
-             console.log('[POPUP] Translations:', result.translations);
-             contentHtml = (result.translations || []).map(t => createTranslationCard(result.word, t)).join('');
+             pvLog('[POPUP] Processing translation tab');
+             pvLog('[POPUP] Translations:', result.translations);
+             contentHtml = (result.translations || []).map(t => createTranslationCard(result.word, t, result.detectedLanguage)).join('');
          } else {
-             console.log('[POPUP] Processing dictionary tab:', currentTab);
+             pvLog('[POPUP] Processing dictionary tab:', currentTab);
              const sourceName = currentTab === 'dictionary' ? 'Free Dictionary API' : 'Wiktionary';
-             console.log('[POPUP] Source name:', sourceName);
-             console.log('[POPUP] Definitions:', result.definitions);
+             pvLog('[POPUP] Source name:', sourceName);
+             pvLog('[POPUP] Definitions:', result.definitions);
              contentHtml = createDefinitionCard(result, sourceName);
          }
 
-         console.log('[POPUP] Generated content HTML length:', contentHtml.length);
+         pvLog('[POPUP] Generated content HTML length:', contentHtml.length);
          if (!contentHtml) {
-             console.log('[POPUP] No content generated, showing error message');
+             pvLog('[POPUP] No content generated, showing error message');
              contentHtml = `<div class="error-message">No relevant data found for this tab.</div>`;
          }
 
           resultsContainer.innerHTML = contentHtml;
-         console.log('[POPUP] Content displayed successfully');
+         pvLog('[POPUP] Content displayed successfully');
        }
 
-             function createTranslationCard(word, trans) {
+             function createTranslationCard(word, trans, wordLang) {
+         const origLang = wordLang || window['__audioLang'] || 'en';
          return `
            <div class="result-card">
              <div class="result-header">
@@ -1392,17 +1508,17 @@
              <div class="result-word">${trans.text}</div>
              ${trans.pronunciation ? `<div class="result-pronunciation">${trans.pronunciation}</div>` : ''}
                            <div class="result-actions">
-                <button onclick="playAudio('${word}', 'en')" class="audio-button" title="Play original text pronunciation">🔊 Original</button>
-                <button onclick="playAudio('${trans.text}', '${trans.language}')" class="audio-button" title="Play translation pronunciation">🔊 ${trans.language.toUpperCase()}</button>
-                <button onclick="searchWeb('${trans.text}')" class="action-btn action-btn-info">🔍 Search Web</button>
+                <button onclick='playAudio(${JSON.stringify(word)}, ${JSON.stringify(origLang)})' class="audio-button" title="Play original text pronunciation">🔊 Original</button>
+                <button onclick='playAudio(${JSON.stringify(trans.text)}, ${JSON.stringify(trans.language)})' class="audio-button" title="Play translation pronunciation">🔊 ${trans.language.toUpperCase()}</button>
+                <button onclick='searchWeb(${JSON.stringify(trans.text)})' class="action-btn action-btn-info">🔍 Search Web</button>
               </div>
            </div>
          `;
        }
 
                            function createDefinitionCard(result, source) {
-            console.log('[POPUP] createDefinitionCard called with source:', source);
-            console.log('[POPUP] Result definitions:', result.definitions);
+            pvLog('[POPUP] createDefinitionCard called with source:', source);
+            pvLog('[POPUP] Result definitions:', result.definitions);
             
             // Filter definitions by source
             let defs = [];
@@ -1415,13 +1531,13 @@
             // If no filtered definitions, show all definitions
             if (defs.length === 0) {
                 defs = result.definitions || [];
-                console.log('[POPUP] No source-specific definitions, showing all:', defs.length);
+                pvLog('[POPUP] No source-specific definitions, showing all:', defs.length);
             } else {
-                console.log('[POPUP] Found source-specific definitions:', defs.length);
+                pvLog('[POPUP] Found source-specific definitions:', defs.length);
             }
             
             if (defs.length === 0) {
-                console.log('[POPUP] No definitions found');
+                pvLog('[POPUP] No definitions found');
                 return `<div class="error-message">No definitions found for ${source}.</div>`;
             }
             
@@ -1463,8 +1579,8 @@
                   </div>` : ''
                 }
                 <div class="result-actions">
-                    <button onclick="playAudio('${result.word}', 'en')" class="audio-button" title="Play pronunciation">🔊</button>
-                    <button onclick="searchWeb('${result.word}')" class="action-btn action-btn-info">🔍 Search Web</button>
+                    <button onclick='playAudio(${JSON.stringify(result.word)}, ${JSON.stringify(result.detectedLanguage || window['__audioLang'] || 'en')})' class="audio-button" title="Play pronunciation">🔊</button>
+                    <button onclick='searchWeb(${JSON.stringify(result.word)})' class="action-btn action-btn-info">🔍 Search Web</button>
                 </div>
             </div>`;
         }
@@ -1505,7 +1621,7 @@
               <button onclick="searchWikipedia('${text}')" class="action-btn action-btn-secondary">
                 📚 Wikipedia
               </button>
-              <button onclick="searchWeb('${text}')" class="action-btn action-btn-info">
+              <button onclick='searchWeb(${JSON.stringify(text)})' class="action-btn action-btn-info">
                 🔍 Web Search
               </button>
             </div>
@@ -1522,9 +1638,9 @@
       
              // Expose utility functions to the window object for onclick handlers
        window.searchWeb = (term) => {
-         console.log('[POPUP] searchWeb called with:', term);
+         pvLog('[POPUP] searchWeb called with:', term);
          if (window.electronAPI && window.electronAPI.send) {
-           console.log('[POPUP] Sending search-web request to main process');
+           pvLog('[POPUP] Sending search-web request to main process');
            window.electronAPI.send('search-web', term);
          } else {
            console.error('[POPUP] electronAPI.send not available');
@@ -1541,8 +1657,8 @@
          availableVoices = speechSynthesis.getVoices();
          voicesLoaded = true;
 
-         console.log(`[AUDIO-DEBUG] Voices loaded: ${availableVoices.length} voices`);
-         console.log(`[AUDIO-DEBUG] Voice list:`, availableVoices.map(v => `${v.name} (${v.lang}) [${v.default ? 'default' : 'secondary'}]`));
+         pvLog(`[AUDIO-DEBUG] Voices loaded: ${availableVoices.length} voices`);
+         pvLog(`[AUDIO-DEBUG] Voice list:`, availableVoices.map(v => `${v.name} (${v.lang}) [${v.default ? 'default' : 'secondary'}]`));
 
          return availableVoices;
        }
@@ -1557,9 +1673,9 @@
        }
 
        window.playAudio = (text, language) => {
-         console.log(`[AUDIO-DEBUG] === Starting audio playback ===`);
-         console.log(`[AUDIO-DEBUG] Input text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
-         console.log(`[AUDIO-DEBUG] Input language: ${language}`);
+         pvLog(`[AUDIO-DEBUG] === Starting audio playback ===`);
+         pvLog(`[AUDIO-DEBUG] Input text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+         pvLog(`[AUDIO-DEBUG] Input language: ${language}`);
 
          if ('speechSynthesis' in window) {
            try {
@@ -1584,67 +1700,89 @@
              const maxLength = 500;
              const truncatedText = cleanText.length > maxLength ? cleanText.substring(0, maxLength) + '...' : cleanText;
 
-             const guessLang = (txt) => {
-               console.log(`[AUDIO-DEBUG] Running language detection on: "${txt.substring(0, 30)}${txt.length > 30 ? '...' : ''}"`);
+             function normalizeBcp47(lang) {
+               if (!lang || typeof lang !== 'string') return 'en-US';
+               const l = lang.toLowerCase().trim();
+               const map = {
+                 zh: 'zh-CN', en: 'en-US', ja: 'ja-JP', ko: 'ko-KR', fr: 'fr-FR', de: 'de-DE',
+                 es: 'es-ES', it: 'it-IT', pt: 'pt-BR', ru: 'ru-RU', ar: 'ar-SA', hi: 'hi-IN',
+                 th: 'th-TH', vi: 'vi-VN', nl: 'nl-NL', pl: 'pl-PL', tr: 'tr-TR', el: 'el-GR', he: 'he-IL'
+               };
+               if (map[l]) return map[l];
+               if (/^[a-z]{2}-[a-z0-9]+$/i.test(lang)) return lang;
+               if (l.length === 2) return l + '-' + l.toUpperCase();
+               return 'en-US';
+             }
 
-               // Chinese characters
-               if (/[\u4e00-\u9fff]/.test(txt)) {
-                 console.log(`[AUDIO-DEBUG] Detected Chinese characters`);
-                 return 'zh-CN';
-               }
-               // Japanese Hiragana/Katakana
+             const guessLang = (txt) => {
+               pvLog(`[AUDIO-DEBUG] Running language detection on: "${txt.substring(0, 30)}${txt.length > 30 ? '...' : ''}"`);
+
+               // Kana before Han — avoids classifying こんにちは+Kanji as Chinese
                if (/[\u3040-\u309f\u30a0-\u30ff]/.test(txt)) {
-                 console.log(`[AUDIO-DEBUG] Detected Japanese Hiragana/Katakana`);
+                 pvLog(`[AUDIO-DEBUG] Detected Japanese Hiragana/Katakana`);
                  return 'ja-JP';
                }
-               // Korean Hangul
                if (/[\uac00-\ud7af]/.test(txt)) {
-                 console.log(`[AUDIO-DEBUG] Detected Korean Hangul`);
+                 pvLog(`[AUDIO-DEBUG] Detected Korean Hangul`);
                  return 'ko-KR';
+               }
+               if (/[\u4e00-\u9fff]/.test(txt)) {
+                 pvLog(`[AUDIO-DEBUG] Detected CJK ideographs (default zh-CN; use detectedLanguage hint when ambiguous)`);
+                 return 'zh-CN';
                }
                // Cyrillic (Russian, etc.)
                if (/[\u0400-\u04ff]/.test(txt)) {
-                 console.log(`[AUDIO-DEBUG] Detected Cyrillic (Russian)`);
+                 pvLog(`[AUDIO-DEBUG] Detected Cyrillic (Russian)`);
                  return 'ru-RU';
                }
                // Arabic
                if (/[\u0600-\u06ff]/.test(txt)) {
-                 console.log(`[AUDIO-DEBUG] Detected Arabic`);
+                 pvLog(`[AUDIO-DEBUG] Detected Arabic`);
                  return 'ar-SA';
                }
                // Hebrew
                if (/[\u0590-\u05ff]/.test(txt)) {
-                 console.log(`[AUDIO-DEBUG] Detected Hebrew`);
+                 pvLog(`[AUDIO-DEBUG] Detected Hebrew`);
                  return 'he-IL';
                }
                // Greek
                if (/[\u0370-\u03ff]/.test(txt)) {
-                 console.log(`[AUDIO-DEBUG] Detected Greek`);
+                 pvLog(`[AUDIO-DEBUG] Detected Greek`);
                  return 'el-GR';
                }
 
-               console.log(`[AUDIO-DEBUG] No specific language detected, defaulting to English`);
+               pvLog(`[AUDIO-DEBUG] No specific language detected, defaulting to English`);
                // Default to English
                return 'en-US';
              };
 
-             // Determine language
              const detectedLang = guessLang(truncatedText);
-             console.log(`[AUDIO-DEBUG] Language detection result: ${detectedLang}`);
+             pvLog(`[AUDIO-DEBUG] Language detection result: ${detectedLang}`);
+
+             const rawHint = (language && String(language).trim()) ? String(language).trim() : '';
+             const hintLower = rawHint.toLowerCase();
+             let lang;
+             if (rawHint && hintLower !== 'en' && !hintLower.startsWith('en')) {
+               lang = normalizeBcp47(rawHint);
+             } else if (detectedLang !== 'en-US') {
+               lang = normalizeBcp47(detectedLang);
+             } else {
+               lang = rawHint ? normalizeBcp47(rawHint) : 'en-US';
+             }
+             pvLog(`[AUDIO-DEBUG] Resolved speech lang: ${lang} (hint=${rawHint || 'none'})`);
 
              const utterance = new SpeechSynthesisUtterance(truncatedText);
-             const lang = language ? (language === 'zh' ? 'zh-CN' : language) : detectedLang;
              utterance.lang = lang;
              utterance.rate = 0.9;
 
              // Enhanced voice selection with better fallback logic
              const voices = loadVoices(); // Use preloaded voices
-             console.log(`[AUDIO-DEBUG] Using preloaded voices: ${voices.length} voices`);
-             console.log(`[AUDIO-DEBUG] Available voices:`, voices.map(v => `${v.name} (${v.lang}) [${v.default ? 'default' : 'secondary'}]`));
+             pvLog(`[AUDIO-DEBUG] Using preloaded voices: ${voices.length} voices`);
+             pvLog(`[AUDIO-DEBUG] Available voices:`, voices.map(v => `${v.name} (${v.lang}) [${v.default ? 'default' : 'secondary'}]`));
 
-             // Priority order for voice selection
+             const langBase = lang.split('-')[0] || 'en';
+
              const voiceSelectionStrategies = [
-               // 1. Exact language match with preferred voice names
                () => voices.find(voice =>
                  voice.lang === lang &&
                  (voice.name.toLowerCase().includes('natural') ||
@@ -1653,22 +1791,17 @@
                   voice.name.toLowerCase().includes('male') ||
                   voice.default)
                ),
-               // 2. Language prefix match with preferred names
                () => voices.find(voice =>
-                 voice.lang.startsWith(lang.substring(0, 2)) &&
+                 voice.lang.startsWith(langBase) &&
                  (voice.name.toLowerCase().includes('natural') ||
                   voice.name.toLowerCase().includes('premium') ||
                   voice.name.toLowerCase().includes('female') ||
                   voice.name.toLowerCase().includes('male') ||
                   voice.default)
                ),
-               // 3. Any voice with exact language match
                () => voices.find(voice => voice.lang === lang),
-               // 4. Any voice with language prefix match
-               () => voices.find(voice => voice.lang.startsWith(lang.substring(0, 2))),
-               // 5. Default voice as last resort
+               () => voices.find(voice => voice.lang.startsWith(langBase)),
                () => voices.find(voice => voice.default),
-               // 6. First available voice
                () => voices[0]
              ];
 
@@ -1685,7 +1818,7 @@
 
              if (selectedVoice) {
                utterance.voice = selectedVoice;
-               console.log(`[AUDIO-DEBUG] Selected voice using strategy ${selectedStrategy + 1}:`, {
+               pvLog(`[AUDIO-DEBUG] Selected voice using strategy ${selectedStrategy + 1}:`, {
                  name: selectedVoice.name,
                  lang: selectedVoice.lang,
                  default: selectedVoice.default,
@@ -1696,23 +1829,26 @@
                console.warn(`[AUDIO-DEBUG] Available voices:`, voices.map(v => `${v.name} (${v.lang})`));
              }
 
-             console.log(`[AUDIO-DEBUG] Utterance setup complete - lang: ${utterance.lang}, voice: ${utterance.voice?.name || 'none'}, rate: ${utterance.rate}`);
+             pvLog(`[AUDIO-DEBUG] Utterance setup complete - lang: ${utterance.lang}, voice: ${utterance.voice?.name || 'none'}, rate: ${utterance.rate}`);
 
-             // Check if we have any voices for this language before attempting to speak
-             const hasVoicesForLang = voices.some(voice => voice.lang.startsWith(lang.substring(0, 2)));
+             const hasVoicesForLang = voices.some(voice => voice.lang.startsWith(langBase));
+             const isCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(truncatedText);
              if (!hasVoicesForLang) {
-               console.warn(`[AUDIO-DEBUG] No voices available for ${lang}, trying English fallback`);
-               utterance.lang = 'en-US';
-               utterance.voice = voices.find(voice => voice.lang.startsWith('en') && voice.default) || voices.find(voice => voice.default) || null;
+               console.warn(`[AUDIO-DEBUG] No installed voice for ${lang} — leave lang as-is (Chromium may still speak). Install language pack in OS speech settings for best results.`);
+               utterance.voice = null;
+               if (!isCJK) {
+                 utterance.lang = 'en-US';
+                 utterance.voice = voices.find(voice => voice.lang.startsWith('en') && voice.default) || voices.find(voice => voice.default) || null;
+               }
              }
 
              // Add comprehensive event handlers
              utterance.onstart = () => {
-               console.log(`[AUDIO-DEBUG] Speech synthesis started successfully for ${lang}`);
+               pvLog(`[AUDIO-DEBUG] Speech synthesis started successfully for ${lang}`);
              };
 
              utterance.onend = () => {
-               console.log(`[AUDIO-DEBUG] Speech synthesis completed for ${lang}`);
+               pvLog(`[AUDIO-DEBUG] Speech synthesis completed for ${lang}`);
              };
 
              utterance.onerror = (event) => {
@@ -1724,10 +1860,10 @@
                });
              };
 
-             console.log(`[AUDIO-DEBUG] About to call speechSynthesis.speak()`);
+             pvLog(`[AUDIO-DEBUG] About to call speechSynthesis.speak()`);
              speechSynthesis.cancel();
              speechSynthesis.speak(utterance);
-             console.log(`[AUDIO-DEBUG] speechSynthesis.speak() called for language: ${lang}`);
+             pvLog(`[AUDIO-DEBUG] speechSynthesis.speak() called for language: ${lang}`);
            } catch (error) {
              console.error('[AUDIO-DEBUG] Error in playAudio:', error);
            }
@@ -1737,9 +1873,9 @@
        }
 
        window.searchWikipedia = (term) => {
-         console.log('[POPUP] searchWikipedia called with:', term);
+         pvLog('[POPUP] searchWikipedia called with:', term);
          if (window.electronAPI && window.electronAPI.send) {
-           console.log('[POPUP] Sending search-wikipedia request to main process');
+           pvLog('[POPUP] Sending search-wikipedia request to main process');
            window.electronAPI.send('search-wikipedia', term);
          } else {
            console.error('[POPUP] electronAPI.send not available');
@@ -1747,10 +1883,10 @@
        }
 
        window.copyToClipboard = (text) => {
-         console.log('[POPUP] copyToClipboard called with:', text);
+         pvLog('[POPUP] copyToClipboard called with:', text);
          if (navigator.clipboard) {
            navigator.clipboard.writeText(text).then(() => {
-             console.log('[POPUP] Text copied to clipboard');
+             pvLog('[POPUP] Text copied to clipboard');
            }).catch(err => {
              console.error('[POPUP] Failed to copy to clipboard:', err);
            });

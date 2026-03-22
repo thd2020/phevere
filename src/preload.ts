@@ -168,6 +168,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     hash: typeof window !== 'undefined' ? window.location?.hash : 'n/a'
   }),
   onSelectionChange: (callback: (text: string) => void) => {
+    ipcRenderer.removeAllListeners('selection-changed');
     ipcRenderer.on('selection-changed', (_event: any, text: string) => callback(text));
   },
   onPopupText: (callback: (text: string) => void) => {
@@ -184,9 +185,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onShowClipboardHistory: (callback: () => void) => {
     ipcRenderer.on('show-clipboard-history', () => callback());
-  },
-  testPopup: () => {
-    return ipcRenderer.invoke('test-popup');
   },
   testTextSelection: () => {
     return ipcRenderer.invoke('test-text-selection');
@@ -206,6 +204,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopMonitoring: (): Promise<{ success: boolean }> => {
     return ipcRenderer.invoke('stop-monitoring');
   },
+  getMonitorState: (): Promise<{ mode: string; cycleShortcut: string; triggerShortcut: string }> => {
+    return ipcRenderer.invoke('monitor-get-state');
+  },
+  setMonitorMode: (mode: string): Promise<{ success: boolean; error?: string }> => {
+    return ipcRenderer.invoke('monitor-set-mode', mode);
+  },
+  cycleMonitorMode: (): Promise<{ success: boolean; mode?: string }> => {
+    return ipcRenderer.invoke('monitor-cycle-mode');
+  },
+  setMonitorShortcuts: (
+    payload: { cycleShortcut: string; triggerShortcut: string },
+  ): Promise<{ success: boolean; error?: string }> => {
+    return ipcRenderer.invoke('monitor-set-shortcuts', payload);
+  },
+  onMonitorModeChanged: (callback: (payload: { mode: string }) => void) => {
+    ipcRenderer.removeAllListeners('monitor-mode-changed');
+    ipcRenderer.on('monitor-mode-changed', (_event: any, payload: { mode: string }) => callback(payload));
+  },
   openExternal: (url: string) => {
     ipcRenderer.send('open-external', url);
   },
@@ -219,7 +235,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('window-maximize');
   },
   closeWindow: () => {
-    ipcRenderer.send('window-close');
+    return ipcRenderer.invoke('window-hide-to-tray');
   },
   resizeWindow: (width: number, height: number) => {
     ipcRenderer.send('window-resize', { width, height });
@@ -355,7 +371,6 @@ declare global {
       showPopup: (x: number, y: number, text: string) => void;
       hidePopup: () => void;
       onShowClipboardHistory: (callback: () => void) => void;
-      testPopup: () => Promise<{ success: boolean }>;
       testTextSelection: () => Promise<{ success: boolean; text: string }>;
       showSettingsWindow: () => Promise<void>;
       getLastSelection: () => Promise<SelectionEvent>;
@@ -363,11 +378,19 @@ declare global {
       openExternal: (url: string) => void;
       minimizeWindow: () => void;
       maximizeWindow: () => void;
-      closeWindow: () => void;
+      closeWindow: () => Promise<{ ok: boolean }>;
       resizeWindow: (width: number, height: number) => void;
       send: (channel: string, ...args: any[]) => void;
       startMonitoring?: () => Promise<{ success: boolean }>;
       stopMonitoring?: () => Promise<{ success: boolean }>;
+      getMonitorState: () => Promise<{ mode: string; cycleShortcut: string; triggerShortcut: string }>;
+      setMonitorMode: (mode: string) => Promise<{ success: boolean; error?: string }>;
+      cycleMonitorMode: () => Promise<{ success: boolean; mode?: string }>;
+      setMonitorShortcuts: (payload: {
+        cycleShortcut: string;
+        triggerShortcut: string;
+      }) => Promise<{ success: boolean; error?: string }>;
+      onMonitorModeChanged: (callback: (payload: { mode: string }) => void) => void;
     };
     clipboardAPI: {
       startMonitoring: () => Promise<{ success: boolean }>;

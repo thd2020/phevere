@@ -11,6 +11,7 @@ const { rendererConfig } = require('./webpack.renderer.config.js');
 module.exports = {
   packagerConfig: {
     asar: true,
+    extraResource: ['resources/tray-icon.png'],
   },
   rebuildConfig: {},
   makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
