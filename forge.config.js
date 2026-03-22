@@ -11,8 +11,9 @@ const { rendererConfig } = require('./webpack.renderer.config.js');
 module.exports = {
   packagerConfig: {
     asar: true,
-    // Relative to project root (Forge cwd); sibling ../resources/ — see scripts/make-tray-icon.ps1.
-    extraResource: ['../resources/tray-icon.png'],
+    // Bundled next to app.asar via extraResource; runtime loads process.resourcesPath/tray-icon.png.
+    // Source: resources/tray-icon.png (generate with scripts/make-tray-icon.ps1).
+    extraResource: ['resources/tray-icon.png'],
   },
   rebuildConfig: {},
   makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
