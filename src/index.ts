@@ -24,11 +24,6 @@ declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 declare const POPUP_WINDOW_WEBPACK_ENTRY: string;
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) {
-  app.quit();
-}
-
 // Check administrator privileges for UIAutomation
 function checkAdminPrivileges(): boolean {
   try {
@@ -144,12 +139,19 @@ function onTriggerShortcutAfterSelection(): void {
   if (monitorSettings.mode !== 'shortcut') {
     return;
   }
+  const now = Date.now();
+  // Avoid second open when global hotkey fires right after "hold trigger while selecting"
+  // (selection path already committed lastPopupAt synchronously).
+  if (lastPopupAt && now - lastPopupAt < 450) {
+    log.debug('main', 'Trigger shortcut: skip (popup just opened)');
+    return;
+  }
   const ev = lastSelectionEvent;
   if (!ev || !String(ev.text || '').trim()) {
     log.debug('main', 'Trigger shortcut: no stored selection');
     return;
   }
-  const age = Date.now() - ev.timestamp;
+  const age = now - ev.timestamp;
   if (age > TRIGGER_AFTER_SELECTION_MAX_MS) {
     log.debug('main', 'Trigger shortcut: selection too old', { ageMs: age });
     return;
@@ -527,6 +529,12 @@ const createPopupWindow = (x: number, y: number): void => {
     return;
   }
 
+  // Commit immediately — do not wait for did-finish-load. Otherwise shortcut mode can
+  // double-open: selection (keys held) + global trigger fire almost together, both pass
+  // cooldown because lastPopupAt was still unset from the async popup path.
+  lastPopupAt = nowTs;
+  lastPopupText = textForPopup;
+
   // If a popup already exists, reuse it by moving and updating content (but do not resize here)
   const existing = popupWindows.find(win => win && !win.isDestroyed());
   if (existing) {
@@ -537,8 +545,6 @@ const createPopupWindow = (x: number, y: number): void => {
       existing.show();
       try { existing.focus(); } catch {}
       if (textForPopup) existing.webContents.send('popup-text', textForPopup);
-      lastPopupText = textForPopup;
-      lastPopupAt = nowTs;
       log.debug('main', 'Reuse existing popup');
       return;
     } catch (e) {
@@ -614,7 +620,6 @@ const createPopupWindow = (x: number, y: number): void => {
         newPopupWindow.webContents.send('popup-text', textToSend);
       }
       lastPopupText = textToSend;
-      lastPopupAt = Date.now();
     } catch (e) {
       log.warn('main', 'Send popup-text failed', { err: String(e) });
     }

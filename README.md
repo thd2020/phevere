@@ -2,6 +2,10 @@
 
 A cross-platform dictionary application that triggers on **pure native text selection**, built with Electron and Microsoft UI Automation.
 
+## Download (Windows)
+
+Prebuilt **x64 MSI** installers are on [GitHub Releases](https://github.com/thd2020/phevere/releases). Users do not need Node.js. For full UIAutomation selection monitoring, run the installed app **as administrator** (see below). Maintainer build steps: `PACKAGING.md` and `docs/RELEASE.md`.
+
 ## 🎯 Project Overview
 
 Phevere is designed to provide instant dictionary lookups when you **select text anywhere on your screen** - **no copying, no additional keys, just pure selection**. It supports multiple languages with a focus on Chinese ↔ English translations.

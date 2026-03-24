@@ -4,6 +4,9 @@
  * the user holds the trigger while finishing a selection.
  *
  * Other platforms: returns true (shortcut mode behaves like "on" until per-OS support exists).
+ *
+ * If koffi cannot load (e.g. native binary not unpacked from ASAR), returns **false**
+ * so we never treat "keys held" — avoids double popups with the global trigger shortcut.
  */
 
 export interface ParsedAccelerator {
@@ -15,6 +18,7 @@ export interface ParsedAccelerator {
 }
 
 let getAsyncKeyState: ((vk: number) => number) | null | undefined;
+let warnedKoffiUnavailable = false;
 
 function loadWin32(): ((vk: number) => number) | null {
   if (process.platform !== 'win32') {
@@ -157,7 +161,8 @@ export function parseElectronAccelerator(accelerator: string): ParsedAccelerator
 
 /**
  * True if every part of the accelerator appears to be held (Windows).
- * If parsing fails or key VK is unknown, returns true so we do not block popups unexpectedly.
+ * On failure to load koffi or parse the accelerator, returns **false** (assume not held)
+ * so shortcut mode does not open on selection alone — the global trigger path still works.
  */
 export function isAcceleratorPhysicallyHeld(accelerator: string): boolean {
   if (process.platform !== 'win32') {
@@ -166,12 +171,20 @@ export function isAcceleratorPhysicallyHeld(accelerator: string): boolean {
 
   const fn = loadWin32();
   if (!fn) {
-    return true;
+    if (!warnedKoffiUnavailable) {
+      warnedKoffiUnavailable = true;
+      console.warn(
+        '[phevere] GetAsyncKeyState unavailable (koffi not loaded). ' +
+          '"Hold trigger while selecting" is off; use select-then-trigger. ' +
+          'Ensure koffi is unpacked from app.asar (see forge packagerConfig.asarUnpack).',
+      );
+    }
+    return false;
   }
 
   const parsed = parseElectronAccelerator(accelerator);
   if (!parsed || parsed.keyVk == null) {
-    return true;
+    return false;
   }
 
   const { ctrl, shift, alt, meta, keyVk } = parsed;
