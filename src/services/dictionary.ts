@@ -259,41 +259,40 @@ export class DictionaryService extends BaseService {
    */
   async lookup(text: string, targetLanguage: string = 'en', enabledSources?: string[]): Promise<DictionaryResult> {
     const startTime = Date.now();
-    const normalized = (text || '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    
+    // Check if it's a sentence first using your existing logic
+    const isSentence = this.isSentence(text);
+    
+    // Only strip stray quotes/wrapping characters if it's a single word/term
+    const processedText = isSentence 
+      ? text 
+      : (text || '').trim().replace(/^["'`]+|["'`]+$/g, '').trim();
+
+    const normalized = processedText.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const cacheKey = `${normalized.toLowerCase()}_${targetLanguage}`;
     
     // Check cache first
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
-      console.log(`✅ Cache hit for text of length ${text.length} (${Date.now() - startTime}ms)`);
+      console.log(`✅ Cache hit for text (${Date.now() - startTime}ms)`);
       return cached.result;
     }
-
+    
     try {
-      // Detect language first (but don't wait for it if it's slow)
       const detectedLanguage = await Promise.race([
-        this.detectLanguage(text),
-        new Promise<string>(resolve => setTimeout(() => resolve(this.simpleLanguageDetection(text)), 1000))
+        this.detectLanguage(processedText),
+        new Promise<string>(resolve => setTimeout(() => resolve(this.simpleLanguageDetection(processedText)), 1000))
       ]);
-      
-      // Smart detection: sentence vs word
-      const isSentence = this.isSentence(text);
       
       let result: DictionaryResult;
       
-      console.log('[DBG] lookup input:', { textLength: normalized.length, targetLanguage, enabledSources });
       if (isSentence) {
-        // For sentences, focus on translation with proper language handling
         result = await this.handleSentenceTranslationOptimized(normalized, targetLanguage, detectedLanguage);
       } else {
-        // For words, use parallel dictionary lookup
         result = await this.aggregateDictionaryDataParallel(normalized, targetLanguage, detectedLanguage, enabledSources);
       }
 
-      // Cache the result
       this.cache.set(cacheKey, { result, timestamp: Date.now() });
-      
-      console.log(`[DBG] ✅ lookup completed in ${Date.now() - startTime}ms; sources=`, result.sources);
       return result;
     } catch (error) {
       console.error('❌ Dictionary lookup error:', error);
@@ -1313,27 +1312,45 @@ export class DictionaryService extends BaseService {
   }
 
   /**
-   * Fetches etymology from Etymonline API
+     * Helper utility to extract clean word tokens for external web endpoints
+     */
+  private cleanWordForEtymology(text: string): string {
+    if (!text) return '';
+    return text
+      .trim()
+      .replace(/^[^\w]+|[^\w]+$/g, '') // Strips quotes, spaces, periods, commas, etc.
+      .toLowerCase();
+  }
+
+  /**
+   * Fetches etymology from Etymonline safely without crashing on HTML
    */
   private async fetchEtymologyFromEtymonline(text: string): Promise<string | undefined> {
+    const cleanWord = this.cleanWordForEtymology(text);
+    if (!cleanWord) return undefined;
+
     try {
-      // Etymonline doesn't have a public API, so we'll use a web scraping approach
-      // Note: This is a fallback and may not be reliable
-      const url = `https://www.etymonline.com/word/${encodeURIComponent(text)}`;
-      const response = await this.request<any>(url, {
+      const url = `https://www.etymonline.com/word/${encodeURIComponent(cleanWord)}`;
+      
+      // Use net.fetch directly to handle HTML raw text instead of JSON parsing
+      const response = await net.fetch(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
       });
 
-      // Simple HTML parsing to extract etymology (this is fragile)
-      const html = typeof response === 'string' ? response : response?.data || '';
-      const etymologyMatch = html.match(/<dd[^>]*>([\s\S]*?)<\/dd>/);
+      if (!response.ok) {
+        console.warn(`[ETY-DEBUG] Etymonline returned HTTP status ${response.status} for ${cleanWord}`);
+        return undefined;
+      }
 
-      if (etymologyMatch) {
-        let etymology = etymologyMatch[1]
+      const html = await response.text();
+      const etymologyMatch = html.match(/<dd[^>]*>([\s\S]*?)<\/dd>/i) || html.match(/<section[^>]*class="[^"]*word__defination[^"]*"[^>]*>([\s\S]*?)<\/section>/i);
+
+      if (etymologyMatch && etymologyMatch[1]) {
+        const etymology = etymologyMatch[1]
           .replace(/<[^>]*>/g, '') // Remove HTML tags
-          .replace(/\s+/g, ' ') // Normalize whitespace
+          .replace(/\s+/g, ' ')    // Normalize whitespace
           .trim();
 
         if (etymology.length > 20) {
@@ -1341,7 +1358,7 @@ export class DictionaryService extends BaseService {
         }
       }
     } catch (error) {
-      console.warn(`[ETY-DEBUG] Etymonline fetch failed:`, error);
+      console.warn(`[ETY-DEBUG] Etymonline fetch failed for "${cleanWord}":`, error);
     }
 
     return undefined;
@@ -1383,45 +1400,26 @@ export class DictionaryService extends BaseService {
   }
 
   /**
-   * Fetches and parses raw Wiktionary wikitext to find the etymology section.
-   * This is a reliable fallback for getting etymology data.
+   * Fetches and parses raw Wiktionary wikitext for etymology
    */
   private async fetchEtymologyFromWikitext(text: string): Promise<string | undefined> {
     try {
-      // For etymology, we need to use English words, not the original text
-      // Extract the first English word from the text for etymology lookup
-      const englishWordMatch = text.match(/\b[a-zA-Z]+\b/);
-      if (!englishWordMatch) {
-        console.log(`[ETY-DEBUG] No English words found in text for etymology lookup`);
-        return undefined;
-      }
+      const cleanWord = this.cleanWordForEtymology(text);
+      if (!cleanWord) return undefined;
 
-      const englishWord = englishWordMatch[0].toLowerCase();
-      console.log(`[ETY-DEBUG] Extracted English word for etymology: "${englishWord}"`);
+      const parseUrl = `https://en.wiktionary.org/w/api.php?action=parse&page=${encodeURIComponent(cleanWord)}&prop=wikitext&format=json&origin=*`;
 
-      const wiktionaryUrl = `https://en.wiktionary.org`;
-      const parseUrl = `${wiktionaryUrl}/w/api.php?action=parse&page=${encodeURIComponent(englishWord)}&prop=wikitext&format=json&origin=*`;
-      console.log(`[ETY-DEBUG] Etymology API URL: ${parseUrl}`);
-
-      const response = await this.request<{ parse?: { wikitext?: { '*': string } } }>(parseUrl);
-      console.log(`[ETY-DEBUG] API Response received:`, {
-        hasResponse: !!response,
-        hasParse: !!response?.parse,
-        hasWikitext: !!response?.parse?.wikitext,
-        wikitextLength: response?.parse?.wikitext?.['*']?.length || 0
-      });
+      const response = await this.request<{ parse?: { wikitext?: { '*': string } } }>(parseUrl).catch((): null => null);
 
       const wikitext = response?.parse?.wikitext?.['*'];
       if (!wikitext) {
-        console.log(`[ETY-DEBUG] No wikitext found for word: ${englishWord}`);
         return undefined;
       }
 
-      console.log(`[ETY-DEBUG] Found wikitext (${wikitext.length} chars), extracting etymology...`);
       return this.extractEtymologyFromWikitext(wikitext);
 
     } catch (error) {
-      console.warn(`[ETY-DEBUG] Wiktionary etymology fetch failed for text of length ${text.length}:`, error);
+      console.warn(`[ETY-DEBUG] Wiktionary etymology fetch failed for "${text}":`, error);
     }
     return undefined;
   }

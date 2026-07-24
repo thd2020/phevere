@@ -29,12 +29,26 @@
 import './index.css';
 import { captureNextShortcut } from './shortcut-capture';
 
+// Inside your main window initialization or setup block:
+const clearBtn = document.getElementById('clearSelectionsBtn') as HTMLButtonElement;
+const recentList = document.getElementById('selectionsList');
+
 const rlog = (...args: unknown[]) => {
   if (!__PHEVERE_DEV__) return;
   console.log(...args);
 };
 
 rlog('🚀 Phevere renderer started');
+
+if (clearBtn && recentList) {
+  clearBtn.addEventListener('click', () => {
+    localStorage.removeItem(RECENT_SELECTIONS_STORAGE_KEY);
+    recentList.innerHTML = `
+      <p class="empty-message">No selections yet. When the monitor is On or Shortcut, chosen text appears here.</p>
+    `;
+    updateClearButtonVisibility(); // <-- Will hide the button automatically
+  });
+}
 
 // Wait for DOM to be ready
 document.addEventListener('DOMContentLoaded', () => {
@@ -59,6 +73,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Also try immediate execution if DOM is already ready
 // IMPORTANT: Avoid double init. We rely solely on DOMContentLoaded above
+function updateClearButtonVisibility(): void {
+  const clearBtn = document.getElementById('clearSelectionsBtn') as HTMLButtonElement;
+  const recentList = document.getElementById('selectionsList') || document.getElementById('recent-list');
+  if (!clearBtn || !recentList) return;
+  
+  const hasItems = recentList.querySelectorAll('.selection-item').length > 0;
+  clearBtn.style.display = hasItems ? 'inline-flex' : 'none';
+}
 
 function initializeSettingsWindow() {
   rlog('🚀 Initializing settings window...');
@@ -1310,13 +1332,13 @@ function loadRecentSelectionsIntoDom(): void {
     if (!Array.isArray(entries)) return;
     const empty = recentList.querySelector('.empty-message');
     empty?.remove();
-    // Stored order is newest-first; prepend each row, so apply oldest → newest.
     const slice = entries.slice(0, MAX_RECENT_SELECTIONS);
     for (let i = slice.length - 1; i >= 0; i--) {
       const e = slice[i];
       if (!e?.text) continue;
       appendRecentSelectionRow(e.text, e.time || '', recentList, false);
     }
+    updateClearButtonVisibility(); // <-- Add here
   } catch {
     /* ignore */
   }
@@ -1356,6 +1378,7 @@ function appendRecentSelectionRow(
   
   // Add to beginning of list
   recentList.insertBefore(selectionItem, recentList.firstChild);
+  updateClearButtonVisibility(); // <-- Add here
 
   while (recentList.querySelectorAll('.selection-item').length > MAX_RECENT_SELECTIONS) {
     const all = recentList.querySelectorAll('.selection-item');

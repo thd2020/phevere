@@ -252,10 +252,16 @@ body.main-window .section-heading {
 body.main-window .recent-selections__header {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center; /* changed from baseline to center for clean alignment */
   justify-content: space-between;
   gap: 8px 16px;
   margin-bottom: 14px;
+}
+
+body.main-window .recent-selections__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 body.main-window .recent-selections__hint {

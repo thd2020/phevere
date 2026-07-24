@@ -82,7 +82,11 @@ function cycleMonitoringMode(): void {
   const order: MonitorMode[] = ['off', 'on', 'shortcut'];
   const i = order.indexOf(monitorSettings.mode);
   const next = order[(i + 1) % order.length];
-  setMonitoringMode(next);
+  
+  // Defer state change to prevent re-entrancy crash during globalShortcut callback
+  setTimeout(() => {
+    setMonitoringMode(next);
+  }, 0);
 }
 
 function unregisterCycleMonitorShortcut(): void {
@@ -174,6 +178,10 @@ function registerFixedAppShortcuts(): void {
 function tryRegisterAccelerator(accelerator: string): boolean {
   if (!accelerator || !accelerator.trim()) {
     return false;
+  }
+  // If it's already the currently registered accelerator, it's valid by default
+  if (accelerator === registeredCycleAccelerator || accelerator === registeredTriggerAccelerator) {
+    return true;
   }
   try {
     const ok = globalShortcut.register(accelerator, () => {});
@@ -666,7 +674,7 @@ const createSettingsWindow = (): void => {
   settingsWindow.loadURL(settingsUrl);
 
   settingsWindow.once('ready-to-show', () => {
-    settingsWindow.show();
+    settingsWindow?.show();
   });
 
   settingsWindow.on('closed', () => {
@@ -1344,7 +1352,7 @@ function createWebWindow(url: string): void {
     width: 1024,
     height: 768,
     show: false,
-    parent: mainWindow,
+    parent: mainWindow || undefined,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

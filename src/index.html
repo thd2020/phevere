@@ -72,7 +72,10 @@
       <section class="recent-selections" aria-labelledby="recent-heading">
         <div class="recent-selections__header">
           <h2 id="recent-heading" class="section-heading">Recent selections</h2>
-          <span class="recent-selections__hint">Click a row to open the full lookup</span>
+          <div class="recent-selections__actions">
+            <span class="recent-selections__hint">Click a row to open the full lookup</span>
+            <button type="button" id="clearSelectionsBtn" class="btn btn-outlined btn-small" style="display: none;">Clear all</button>
+          </div>
         </div>
         <div id="selectionsList" class="selections-list">
           <p class="empty-message">No selections yet. When the monitor is On or Shortcut, chosen text appears here.</p>

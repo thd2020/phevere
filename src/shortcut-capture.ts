@@ -99,25 +99,26 @@ export function keyboardEventToElectronAccelerator(ev: KeyboardEvent): string | 
   const mac = isMac();
   const parts: string[] = [];
 
+  // Explicitly check both ctrlKey and modifiers to prevent dropping Ctrl leading combos
+  const hasCtrl = ev.ctrlKey || ev.key === 'Control';
+  const hasMeta = ev.metaKey;
+  const hasAlt = ev.altKey;
+  const hasShift = ev.shiftKey;
+
   if (mac) {
-    if (ev.metaKey) {
-      parts.push('CommandOrControl');
-    }
-    if (ev.ctrlKey) {
-      parts.push('Control');
-    }
+    if (hasMeta) parts.push('CommandOrControl');
+    if (hasCtrl) parts.push('Control');
   } else {
-    if (ev.ctrlKey) {
+    // Ensure Ctrl on Windows maps correctly to CommandOrControl for cross-platform safety
+    if (hasCtrl || hasMeta) {
       parts.push('CommandOrControl');
-    }
-    if (ev.metaKey) {
-      parts.push('Super');
     }
   }
-  if (ev.altKey) {
+  
+  if (hasAlt) {
     parts.push('Alt');
   }
-  if (ev.shiftKey) {
+  if (hasShift) {
     parts.push('Shift');
   }
 
@@ -126,7 +127,11 @@ export function keyboardEventToElectronAccelerator(ev: KeyboardEvent): string | 
     return null;
   }
 
-  // Require at least one modifier for typical global shortcuts (single F-keys etc. still ok)
+  // If the user only pressed a modifier key by itself, ignore it
+  if (['Control', 'Shift', 'Alt', 'Meta'].includes(ev.key)) {
+    return null;
+  }
+
   parts.push(token);
   return parts.join('+');
 }
