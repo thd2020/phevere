@@ -43,7 +43,12 @@ private:
     HHOOK hMouseHook = nullptr;
     static POINT mouseDownPt;
     static std::chrono::steady_clock::time_point lastUiaEventTime;
-    std::atomic<int> active_fallback_threads{0};
+    
+    // Double-click detection and thread synchronization
+    static POINT lastClickPt;
+    static std::chrono::steady_clock::time_point lastClickTime;
+    static std::atomic<int> active_fallback_threads;
+    
     void triggerSyntheticCopyFallback(int x, int y);
     static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam);
 
@@ -126,21 +131,12 @@ public:
     }
 
     void test_focused_element() {
-        // This is tricky because pAutomation lives on another thread.
-        // For testing, it's better to rely on the event-driven approach.
-        // If you must have this, you'd need to use PostThreadMessage to ask
-        // the monitor thread to perform the check and return the result, which is complex.
         if (debugEnabled) std::cout << "[UIA] test_focused_element is best handled by events in a multi-threaded model." << std::endl;
     }
 
 private:
-    // This is the main function for our dedicated UIA thread
     void monitorLoop(); 
-
-    // This method is called by the event handler when an event is received
     void handleSelectionChanged(IUIAutomationElement* sender);
-
-    // Debouncing mechanism
     void debounceLoop();
     void updatePendingSelection(const std::string& newSelection, int x, int y);
 
@@ -150,7 +146,6 @@ private:
     bool getSelectionCenter(IUIAutomationElement* element, int& outX, int& outY);
     bool isFromCurrentProcess(IUIAutomationElement* element);
 
-    // Event handler class implementation remains inside the .cpp file
     class UIAutomationEventHandler : public IUIAutomationEventHandler {
     private:
         LONG refCount;
@@ -158,7 +153,6 @@ private:
         UIAutomationEventHandler() : refCount(1) {}
         ~UIAutomationEventHandler() {}
 
-        // IUnknown methods
         ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&refCount); }
         ULONG STDMETHODCALLTYPE Release() override {
             LONG newCount = InterlockedDecrement(&refCount);
@@ -175,10 +169,7 @@ private:
             return E_NOINTERFACE;
         }
 
-        // The actual event handler callback
         HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement* sender, EVENTID eventId) override {
-            // Treat multiple text-related events as potential selection changes.
-            // Many apps/browsers fire different events; we debounce downstream.
             if (UIAutomationSelectionMonitor::instance && (
                 eventId == UIA_Text_TextSelectionChangedEventId ||
                 eventId == UIA_Text_TextChangedEventId ||
@@ -194,11 +185,13 @@ private:
 };
 bool UIAutomationSelectionMonitor::debugEnabled = false;
 
-// Define the static instance pointer
+// Define static variables
 UIAutomationSelectionMonitor* UIAutomationSelectionMonitor::instance = nullptr;
-
 POINT UIAutomationSelectionMonitor::mouseDownPt = {0, 0};
 std::chrono::steady_clock::time_point UIAutomationSelectionMonitor::lastUiaEventTime{};
+POINT UIAutomationSelectionMonitor::lastClickPt = {0, 0};
+std::chrono::steady_clock::time_point UIAutomationSelectionMonitor::lastClickTime = std::chrono::steady_clock::now();
+std::atomic<int> UIAutomationSelectionMonitor::active_fallback_threads{0};
 
 // Implementation of the monitor loop
 void UIAutomationSelectionMonitor::monitorLoop() {
@@ -239,7 +232,6 @@ void UIAutomationSelectionMonitor::monitorLoop() {
         ~MonitorLoopGuard() { if (cleanup) cleanup(); }
     } guard{cleanupMonitorResources};
     
-    // Step 1: Initialize COM on this thread
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     if (FAILED(hr)) {
         std::cerr << "[UIA] THREAD: Failed to initialize COM. HRESULT: " << hr << std::endl;
@@ -250,7 +242,6 @@ void UIAutomationSelectionMonitor::monitorLoop() {
     monitor_thread_id = GetCurrentThreadId();
     if (debugEnabled) std::cout << "[UIA] THREAD: COM initialized, thread ID: " << monitor_thread_id << std::endl;
     
-    // Step 2: Create UIA objects on this thread
     hr = CoCreateInstance(__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, __uuidof(IUIAutomation), (void**)&pAutomation);
     if (FAILED(hr) || !pAutomation) {
         std::cerr << "[UIA] THREAD: Failed to create UIA object. HRESULT: " << hr << std::endl;
@@ -265,7 +256,6 @@ void UIAutomationSelectionMonitor::monitorLoop() {
     }
     if (debugEnabled) std::cout << "[UIA] THREAD: Desktop element obtained successfully" << std::endl;
 
-    // Step 3: Create and register the event handler
     pEventHandler = new UIAutomationEventHandler();
     if (debugEnabled) std::cout << "[UIA] THREAD: Registering text-related event handlers..." << std::endl;
     HRESULT hrSel = pAutomation->AddAutomationEventHandler(
@@ -284,7 +274,6 @@ void UIAutomationSelectionMonitor::monitorLoop() {
         pEventHandler
     );
 
-    // TextEdit-specific changes (some providers use this)
     HRESULT hrEditChanged = pAutomation->AddAutomationEventHandler(
         UIA_TextEdit_TextChangedEventId,
         pDesktopElement,
@@ -309,15 +298,6 @@ void UIAutomationSelectionMonitor::monitorLoop() {
         std::cerr << "[UIA] THREAD: No text-related handlers could be registered." << std::endl;
     }
 
-    // Step 4: Run the message loop
-    // if (debugEnabled) std::cout << "[UIA] THREAD: Entering Windows message loop..." << std::endl;
-    // MSG msg;
-    // while (running.load() && GetMessage(&msg, NULL, 0, 0)) {
-    //     TranslateMessage(&msg);
-    //     DispatchMessage(&msg);
-    // }
-
-    // Step 4: Register Low-Level Mouse Hook and run the message loop
     if (debugEnabled) std::cout << "[UIA] THREAD: Installing fallback mouse hook and entering message loop..." << std::endl;
     
     hMouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, GetModuleHandle(nullptr), 0);
@@ -334,14 +314,11 @@ void UIAutomationSelectionMonitor::monitorLoop() {
     if (debugEnabled) std::cout << "[UIA] THREAD: Message loop exited. Cleaning up..." << std::endl;
 }
 
-// Implementation of the selection handler (now debounced)
 void UIAutomationSelectionMonitor::handleSelectionChanged(IUIAutomationElement* sender) {
     if (!sender) return;
 
-    // Record timestamp so the mouse hook knows UIA handled this event
     lastUiaEventTime = std::chrono::steady_clock::now();
 
-    // Ignore events coming from our own Electron process to avoid self-triggering
     if (isFromCurrentProcess(sender)) {
         if (debugEnabled) std::cout << "[UIA] IGNORE: Selection from current process (popup/app window)" << std::endl;
         return;
@@ -349,38 +326,31 @@ void UIAutomationSelectionMonitor::handleSelectionChanged(IUIAutomationElement* 
 
     std::string selectedText = getSelectedTextFromElement(sender);
     if (selectedText.empty()) {
-        // Fallback: try focused element or element under cursor
         selectedText = getSelectedTextFromFocusedOrPoint();
     }
     int selX = 0, selY = 0;
     if (!getSelectionCenter(sender, selX, selY)) {
-        // Fallback to current cursor if we cannot compute the rectangle
         POINT pt; GetCursorPos(&pt); selX = pt.x; selY = pt.y;
     }
 
     if (!selectedText.empty()) {
-        // Only log in debug mode - too verbose for normal operation
-        // std::cout << "[UIA] EVENT: Raw selection detected: \"" << selectedText << "\"" << std::endl;
         updatePendingSelection(selectedText, selX, selY);
     }
 }
 
-// Debouncing mechanism implementation
 void UIAutomationSelectionMonitor::updatePendingSelection(const std::string& newSelection, int x, int y) {
     std::lock_guard<std::mutex> lock(debounce_mutex);
     pending_selection = newSelection;
     pending_x = x;
     pending_y = y;
     last_selection_time = std::chrono::steady_clock::now();
-    // Only log in debug mode - too verbose for normal operation
-    // std::cout << "[UIA] DEBOUNCE: Updated pending selection: \"" << newSelection << "\"" << std::endl;
 }
 
 void UIAutomationSelectionMonitor::debounceLoop() {
     if (debugEnabled) std::cout << "[UIA] DEBOUNCE: Starting debounce thread..." << std::endl;
     
     while (debounce_running.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50)); // Check every 50ms
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
         
         std::lock_guard<std::mutex> lock(debounce_mutex);
         
@@ -389,8 +359,6 @@ void UIAutomationSelectionMonitor::debounceLoop() {
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_selection_time);
             
             if (elapsed.count() >= DEBOUNCE_DELAY_MS) {
-                // Selection has settled, always notify (even if same text as before)
-                // This allows re-triggering the popup when the same word is selected again
                 last_selection = pending_selection;
                 if (debugEnabled) std::cout << "[UIA] DEBOUNCE: Selection settled after " << elapsed.count() << "ms: \"" << pending_selection << "\"" << std::endl;
 
@@ -398,7 +366,7 @@ void UIAutomationSelectionMonitor::debounceLoop() {
                     callback(pending_selection, pending_x, pending_y);
                 }
 
-                pending_selection.clear(); // Clear pending selection
+                pending_selection.clear();
             }
         }
     }
@@ -406,7 +374,6 @@ void UIAutomationSelectionMonitor::debounceLoop() {
     if (debugEnabled) std::cout << "[UIA] DEBOUNCE: Debounce thread stopped." << std::endl;
 }
 
-// Helper function wrapping your original WideCharToMultiByte logic
 static std::string bstrToUtf8(BSTR bstr) {
     if (!bstr) return "";
     int len = SysStringLen(bstr);
@@ -421,11 +388,9 @@ static std::string bstrToUtf8(BSTR bstr) {
     return result;
 }
 
-// Implementation of the text retrieval function
 std::string UIAutomationSelectionMonitor::getSelectedTextFromElement(IUIAutomationElement* element) {
     if (!element) return "";
 
-    // --- TIER 1: Try TextPattern (Browsers, Modern Win11 Apps) ---
     CComPtr<IUIAutomationTextPattern> pTextPattern;
     HRESULT hr = element->GetCurrentPattern(UIA_TextPatternId, (IUnknown**)&pTextPattern);
     if (FAILED(hr) || !pTextPattern) {
@@ -437,7 +402,6 @@ std::string UIAutomationSelectionMonitor::getSelectedTextFromElement(IUIAutomati
         }
     }
 
-    
     if (SUCCEEDED(hr) && pTextPattern) {
         CComPtr<IUIAutomationTextRangeArray> pSelection;
         if (SUCCEEDED(pTextPattern->GetSelection(&pSelection)) && pSelection) {
@@ -450,7 +414,7 @@ std::string UIAutomationSelectionMonitor::getSelectedTextFromElement(IUIAutomati
                     BSTR bstr = nullptr;
                     pRange->GetText(-1, &bstr);
                     if (bstr && SysStringLen(bstr) > 0) {
-                        std::string res = bstrToUtf8(bstr); // Use your existing conversion logic
+                        std::string res = bstrToUtf8(bstr);
                         SysFreeString(bstr);
                         return res;
                     }
@@ -460,7 +424,6 @@ std::string UIAutomationSelectionMonitor::getSelectedTextFromElement(IUIAutomati
         }
     }
 
-    // --- TIER 2: Try ValuePattern (Win10 Explorer, Edit boxes) ---
     CComPtr<IUIAutomationValuePattern> pValuePattern;
     hr = element->GetCurrentPattern(UIA_ValuePatternId, (IUnknown**)&pValuePattern);
     if (SUCCEEDED(hr) && pValuePattern) {
@@ -475,12 +438,10 @@ std::string UIAutomationSelectionMonitor::getSelectedTextFromElement(IUIAutomati
         }
     }
 
-    // --- TIER 3: Try LegacyIAccessible (WeChat, Custom MSAA Controls) ---
     CComPtr<IUIAutomationLegacyIAccessiblePattern> pLegacyPattern;
     hr = element->GetCurrentPattern(UIA_LegacyIAccessiblePatternId, (IUnknown**)&pLegacyPattern);
     if (SUCCEEDED(hr) && pLegacyPattern) {
         BSTR bstrLegacy = nullptr;
-        // First try CurrentValue, fallback to CurrentName if Value is empty
         if (SUCCEEDED(pLegacyPattern->get_CurrentValue(&bstrLegacy)) && bstrLegacy && SysStringLen(bstrLegacy) > 0) {
             std::string res = bstrToUtf8(bstrLegacy);
             SysFreeString(bstrLegacy);
@@ -513,18 +474,15 @@ bool UIAutomationSelectionMonitor::isFromCurrentProcess(IUIAutomationElement* el
     return isCurrent;
 }
 
-// Attempt to retrieve selection text from focused element or element under cursor
 std::string UIAutomationSelectionMonitor::getSelectedTextFromFocusedOrPoint() {
     if (!pAutomation) return "";
 
-    // Try focused element first
     CComPtr<IUIAutomationElement> focused;
     if (SUCCEEDED(pAutomation->GetFocusedElement(&focused)) && focused) {
         std::string text = getSelectedTextFromElement(focused);
         if (!text.empty()) return text;
     }
 
-    // Try element under cursor
     POINT pt; GetCursorPos(&pt);
     CComPtr<IUIAutomationElement> atPoint;
     if (SUCCEEDED(pAutomation->ElementFromPoint(pt, &atPoint)) && atPoint) {
@@ -535,15 +493,13 @@ std::string UIAutomationSelectionMonitor::getSelectedTextFromFocusedOrPoint() {
     return "";
 }
 
-// Walk up the tree to find an ancestor that supports TextPattern
 CComPtr<IUIAutomationElement> UIAutomationSelectionMonitor::findAncestorWithTextPattern(IUIAutomationElement* start) {
     if (!start || !pAutomation) return nullptr;
     CComPtr<IUIAutomationTreeWalker> walker;
     if (FAILED(pAutomation->get_ControlViewWalker(&walker)) || !walker) return nullptr;
 
     CComPtr<IUIAutomationElement> current = start;
-    for (int i = 0; i < 5 && current; ++i) { // Limit depth to avoid long climbs
-        // Check TextPattern on current
+    for (int i = 0; i < 5 && current; ++i) {
         VARIANT v;
         VariantInit(&v);
         if (SUCCEEDED(current->GetCurrentPropertyValue(UIA_IsTextPatternAvailablePropertyId, &v))) {
@@ -560,28 +516,21 @@ CComPtr<IUIAutomationElement> UIAutomationSelectionMonitor::findAncestorWithText
     return nullptr;
 }
 
-// Try to compute the geometric center of the selected text using UIA bounding rectangles
 bool UIAutomationSelectionMonitor::getSelectionCenter(IUIAutomationElement* element, int& outX, int& outY) {
     outX = 0; outY = 0;
     if (!element) return false;
 
     CComPtr<IUIAutomationTextPattern> pTextPattern;
     HRESULT hr = element->GetCurrentPattern(UIA_TextPatternId, (IUnknown**)&pTextPattern);
-    if (FAILED(hr) || !pTextPattern) {
-        return false;
-    }
+    if (FAILED(hr) || !pTextPattern) return false;
 
     CComPtr<IUIAutomationTextRangeArray> pSelection;
     hr = pTextPattern->GetSelection(&pSelection);
-    if (FAILED(hr) || !pSelection) {
-        return false;
-    }
+    if (FAILED(hr) || !pSelection) return false;
 
     int selectionLength = 0;
     pSelection->get_Length(&selectionLength);
-    if (selectionLength == 0) {
-        return false;
-    }
+    if (selectionLength == 0) return false;
 
     CComPtr<IUIAutomationTextRange> pRange;
     pSelection->GetElement(0, &pRange);
@@ -589,9 +538,7 @@ bool UIAutomationSelectionMonitor::getSelectionCenter(IUIAutomationElement* elem
 
     SAFEARRAY* rects = nullptr;
     hr = pRange->GetBoundingRectangles(&rects);
-    if (FAILED(hr) || !rects) {
-        return false;
-    }
+    if (FAILED(hr) || !rects) return false;
 
     LONG lBound = 0, uBound = -1;
     SafeArrayGetLBound(rects, 1, &lBound);
@@ -609,7 +556,6 @@ bool UIAutomationSelectionMonitor::getSelectionCenter(IUIAutomationElement* elem
         return false;
     }
 
-    // Each rectangle: left, top, width, height
     double sumX = 0.0, sumY = 0.0; int rectCount = 0;
     double minLeft = 1e12, minTop = 1e12;
     for (LONG i = 0; i + 3 < count; i += 4) {
@@ -630,16 +576,12 @@ bool UIAutomationSelectionMonitor::getSelectionCenter(IUIAutomationElement* elem
 
     if (rectCount == 0) return false;
 
-    // Prefer left/top anchor for precise popup placement near selection start
     outX = static_cast<int>(minLeft);
     outY = static_cast<int>(minTop);
     return true;
 }
 
-// --- SYNTHETIC COPY FALLBACK IMPLEMENTATION ---
-
 void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
-    // 1. Check if a UIA event already fired very recently (within 150ms)
     auto now = std::chrono::steady_clock::now();
     auto elapsedSinceUia = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastUiaEventTime).count();
     if (elapsedSinceUia < 150) {
@@ -649,7 +591,6 @@ void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
 
     if (debugEnabled) std::cout << "[FALLBACK] No UIA event detected. Triggering synthetic Ctrl+C..." << std::endl;
 
-    // 2. Backup existing clipboard text
     std::wstring backupText;
     if (OpenClipboard(nullptr)) {
         HANDLE hData = GetClipboardData(CF_UNICODETEXT);
@@ -663,7 +604,6 @@ void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
         CloseClipboard();
     }
 
-    // 3. Inject synthetic Ctrl+C
     auto fillKeyEvent = [](INPUT& input, WORD vk, DWORD flags) {
         input.type = INPUT_KEYBOARD;
         input.ki.wVk = vk;
@@ -678,10 +618,8 @@ void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
 
     SendInput(4, inputs, sizeof(INPUT));
 
-    // 4. Wait briefly for the target app (Okular/Foxit) to process the copy and write to clipboard
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
 
-    // 5. Read the newly copied text
     std::string capturedText = "";
     if (OpenClipboard(nullptr)) {
         HANDLE hData = GetClipboardData(CF_UNICODETEXT);
@@ -700,7 +638,6 @@ void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
         CloseClipboard();
     }
 
-    // 6. Restore original clipboard content so the user's pasteboard isn't polluted
     if (OpenClipboard(nullptr)) {
         EmptyClipboard();
         if (!backupText.empty()) {
@@ -720,7 +657,6 @@ void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
         CloseClipboard();
     }
 
-    // 7. If we successfully captured text via fallback, send it to the debouncer
     if (!capturedText.empty()) {
         if (debugEnabled) std::cout << "[FALLBACK] Captured text: \"" << capturedText << "\"" << std::endl;
         updatePendingSelection(capturedText, x, y);
@@ -738,27 +674,27 @@ LRESULT CALLBACK UIAutomationSelectionMonitor::LowLevelMouseProc(int nCode, WPAR
             int dx = std::abs(pMouseStruct->pt.x - mouseDownPt.x);
             int dy = std::abs(pMouseStruct->pt.y - mouseDownPt.y);
 
-            // If the user dragged the mouse more than 15 pixels, treat it as a potential text selection
-            if (dx > 15 || dy > 15) {
+            auto now = std::chrono::steady_clock::now();
+            auto elapsedClickMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastClickTime).count();
+            int clickDx = std::abs(pMouseStruct->pt.x - lastClickPt.x);
+            int clickDy = std::abs(pMouseStruct->pt.y - lastClickPt.y);
+
+            bool isDoubleClick = (elapsedClickMs <= GetDoubleClickTime()) && (clickDx <= 5 && clickDy <= 5);
+
+            lastClickTime = now;
+            lastClickPt = pMouseStruct->pt;
+
+            if (dx > 15 || dy > 15 || isDoubleClick) {
                 int dropX = pMouseStruct->pt.x;
                 int dropY = pMouseStruct->pt.y;
                 
-                UIAutomationSelectionMonitor* mon = instance;
-                mon->active_fallback_threads.fetch_add(1);
-                std::thread([mon, dropX, dropY]() {
-                    struct FallbackThreadGuard {
-                        UIAutomationSelectionMonitor* monitor;
-                        ~FallbackThreadGuard() {
-                            if (monitor) {
-                                monitor->active_fallback_threads.fetch_sub(1);
-                            }
-                        }
-                    } guard{mon};
-
+                std::thread([dropX, dropY]() {
+                    active_fallback_threads.fetch_add(1);
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    if (mon && mon->running.load()) {
-                        mon->triggerSyntheticCopyFallback(dropX, dropY);
+                    if (instance && instance->running.load()) {
+                        instance->triggerSyntheticCopyFallback(dropX, dropY);
                     }
+                    active_fallback_threads.fetch_sub(1);
                 }).detach();
             }
         }
@@ -766,7 +702,6 @@ LRESULT CALLBACK UIAutomationSelectionMonitor::LowLevelMouseProc(int nCode, WPAR
     return CallNextHookEx(nullptr, nCode, wParam, lParam);
 }
 
-// NAPI wrapper class
 class UIAutomationSelectionMonitorWrapper : public Napi::ObjectWrap<UIAutomationSelectionMonitorWrapper> {
 private:
     UIAutomationSelectionMonitor* monitor;
@@ -868,4 +803,4 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     return UIAutomationSelectionMonitorWrapper::Init(env, exports);
 }
 
-NODE_API_MODULE(uiautomation_selection_monitor, Init) 
+NODE_API_MODULE(uiautomation_selection_monitor, Init)
