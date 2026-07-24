@@ -1,4 +1,4 @@
-#include <napi.h>
+﻿#include <napi.h>
 #include <windows.h>
 #include <UIAutomation.h>
 #include <atlbase.h>
@@ -38,6 +38,13 @@ private:
     static constexpr int DEBOUNCE_DELAY_MS = 500; // 500ms delay like Youdao Dictionary
     // Debug flag (enabled via env var PHEVERE_DEBUG_UIA=1)
     static bool debugEnabled;
+
+    // Mouse hook and fallback tracking
+    HHOOK hMouseHook = nullptr;
+    static POINT mouseDownPt;
+    static std::chrono::steady_clock::time_point lastUiaEventTime;
+    void triggerSyntheticCopyFallback(int x, int y);
+    static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam);
 
 public:
     UIAutomationSelectionMonitor() {
@@ -170,7 +177,7 @@ private:
             )) {
                 UIAutomationSelectionMonitor::instance->handleSelectionChanged(sender);
             } else {
-                if (UIAutomationSelectionMonitor::debugEnabled) std::cout << "[UIA] ❓ UNKNOWN EVENT: " << eventId << std::endl;
+                if (UIAutomationSelectionMonitor::debugEnabled) std::cout << "[UIA] [?] UNKNOWN EVENT: " << eventId << std::endl;
             }
             return S_OK;
         }
@@ -180,6 +187,9 @@ bool UIAutomationSelectionMonitor::debugEnabled = false;
 
 // Define the static instance pointer
 UIAutomationSelectionMonitor* UIAutomationSelectionMonitor::instance = nullptr;
+
+POINT UIAutomationSelectionMonitor::mouseDownPt = {0, 0};
+std::chrono::steady_clock::time_point UIAutomationSelectionMonitor::lastUiaEventTime = std::chrono::steady_clock::now();
 
 // Implementation of the monitor loop
 void UIAutomationSelectionMonitor::monitorLoop() {
@@ -258,7 +268,21 @@ void UIAutomationSelectionMonitor::monitorLoop() {
     }
 
     // Step 4: Run the message loop
-    if (debugEnabled) std::cout << "[UIA] THREAD: Entering Windows message loop..." << std::endl;
+    // if (debugEnabled) std::cout << "[UIA] THREAD: Entering Windows message loop..." << std::endl;
+    // MSG msg;
+    // while (running.load() && GetMessage(&msg, NULL, 0, 0)) {
+    //     TranslateMessage(&msg);
+    //     DispatchMessage(&msg);
+    // }
+
+    // Step 4: Register Low-Level Mouse Hook and run the message loop
+    if (debugEnabled) std::cout << "[UIA] THREAD: Installing fallback mouse hook and entering message loop..." << std::endl;
+    
+    hMouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, GetModuleHandle(nullptr), 0);
+    if (!hMouseHook) {
+        std::cerr << "[UIA] THREAD: Failed to install low-level mouse hook." << std::endl;
+    }
+
     MSG msg;
     while (running.load() && GetMessage(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
@@ -266,21 +290,30 @@ void UIAutomationSelectionMonitor::monitorLoop() {
     }
     
     // Step 5: Clean up
+    // if (debugEnabled) std::cout << "[UIA] THREAD: Message loop exited. Cleaning up..." << std::endl;
+    // // Best-effort unregister (ignore failures)
+    // pAutomation->RemoveAutomationEventHandler(UIA_Text_TextSelectionChangedEventId, pDesktopElement, pEventHandler);
+    // pAutomation->RemoveAutomationEventHandler(UIA_Text_TextChangedEventId, pDesktopElement, pEventHandler);
+    // pAutomation->RemoveAutomationEventHandler(UIA_TextEdit_TextChangedEventId, pDesktopElement, pEventHandler);
+    // pEventHandler.Release();
+    // pDesktopElement.Release();
+    // pAutomation.Release();
+    // CoUninitialize();
+    // if (debugEnabled) std::cout << "[UIA] THREAD: Cleanup complete." << std::endl;
+    // Step 5: Clean up
     if (debugEnabled) std::cout << "[UIA] THREAD: Message loop exited. Cleaning up..." << std::endl;
-    // Best-effort unregister (ignore failures)
-    pAutomation->RemoveAutomationEventHandler(UIA_Text_TextSelectionChangedEventId, pDesktopElement, pEventHandler);
-    pAutomation->RemoveAutomationEventHandler(UIA_Text_TextChangedEventId, pDesktopElement, pEventHandler);
-    pAutomation->RemoveAutomationEventHandler(UIA_TextEdit_TextChangedEventId, pDesktopElement, pEventHandler);
-    pEventHandler.Release();
-    pDesktopElement.Release();
-    pAutomation.Release();
-    CoUninitialize();
-    if (debugEnabled) std::cout << "[UIA] THREAD: Cleanup complete." << std::endl;
+    if (hMouseHook) {
+        UnhookWindowsHookEx(hMouseHook);
+        hMouseHook = nullptr;
+    }
 }
 
 // Implementation of the selection handler (now debounced)
 void UIAutomationSelectionMonitor::handleSelectionChanged(IUIAutomationElement* sender) {
     if (!sender) return;
+
+    // Record timestamp so the mouse hook knows UIA handled this event
+    lastUiaEventTime = std::chrono::steady_clock::now();
 
     // Ignore events coming from our own Electron process to avoid self-triggering
     if (isFromCurrentProcess(sender)) {
@@ -347,53 +380,97 @@ void UIAutomationSelectionMonitor::debounceLoop() {
     if (debugEnabled) std::cout << "[UIA] DEBOUNCE: Debounce thread stopped." << std::endl;
 }
 
+// Helper function wrapping your original WideCharToMultiByte logic
+static std::string bstrToUtf8(BSTR bstr) {
+    if (!bstr) return "";
+    int len = SysStringLen(bstr);
+    if (len == 0) return "";
+    
+    std::wstring_view wsv(bstr, len);
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wsv[0], (int)wsv.size(), NULL, 0, NULL, NULL);
+    if (size_needed <= 0) return "";
+    
+    std::string result(size_needed, 0);
+    WideCharToMultiByte(CP_UTF8, 0, &wsv[0], (int)wsv.size(), &result[0], size_needed, NULL, NULL);
+    return result;
+}
+
 // Implementation of the text retrieval function
 std::string UIAutomationSelectionMonitor::getSelectedTextFromElement(IUIAutomationElement* element) {
     if (!element) return "";
 
+    // --- TIER 1: Try TextPattern (Browsers, Modern Win11 Apps) ---
     CComPtr<IUIAutomationTextPattern> pTextPattern;
     HRESULT hr = element->GetCurrentPattern(UIA_TextPatternId, (IUnknown**)&pTextPattern);
     if (FAILED(hr) || !pTextPattern) {
-        // Try to find an ancestor that supports TextPattern
         CComPtr<IUIAutomationElement> withText = findAncestorWithTextPattern(element);
         if (withText) {
             element = withText;
             pTextPattern.Release();
             hr = element->GetCurrentPattern(UIA_TextPatternId, (IUnknown**)&pTextPattern);
         }
-        if (FAILED(hr) || !pTextPattern) {
-            return ""; // No TextPattern available in chain
+    }
+
+    
+    if (SUCCEEDED(hr) && pTextPattern) {
+        CComPtr<IUIAutomationTextRangeArray> pSelection;
+        if (SUCCEEDED(pTextPattern->GetSelection(&pSelection)) && pSelection) {
+            int len = 0;
+            pSelection->get_Length(&len);
+            if (len > 0) {
+                CComPtr<IUIAutomationTextRange> pRange;
+                pSelection->GetElement(0, &pRange);
+                if (pRange) {
+                    BSTR bstr = nullptr;
+                    pRange->GetText(-1, &bstr);
+                    if (bstr && SysStringLen(bstr) > 0) {
+                        std::string res = bstrToUtf8(bstr); // Use your existing conversion logic
+                        SysFreeString(bstr);
+                        return res;
+                    }
+                    if (bstr) SysFreeString(bstr);
+                }
+            }
         }
     }
 
-    CComPtr<IUIAutomationTextRangeArray> pSelection;
-    hr = pTextPattern->GetSelection(&pSelection);
-    if (FAILED(hr) || !pSelection) {
-        return "";
+    // --- TIER 2: Try ValuePattern (Win10 Explorer, Edit boxes) ---
+    CComPtr<IUIAutomationValuePattern> pValuePattern;
+    hr = element->GetCurrentPattern(UIA_ValuePatternId, (IUnknown**)&pValuePattern);
+    if (SUCCEEDED(hr) && pValuePattern) {
+        BSTR bstrVal = nullptr;
+        if (SUCCEEDED(pValuePattern->get_CurrentValue(&bstrVal)) && bstrVal) {
+            if (SysStringLen(bstrVal) > 0) {
+                std::string res = bstrToUtf8(bstrVal);
+                SysFreeString(bstrVal);
+                return res;
+            }
+            SysFreeString(bstrVal);
+        }
     }
 
-    int selectionLength = 0;
-    pSelection->get_Length(&selectionLength);
-    if (selectionLength == 0) {
-        return "";
+    // --- TIER 3: Try LegacyIAccessible (WeChat, Custom MSAA Controls) ---
+    CComPtr<IUIAutomationLegacyIAccessiblePattern> pLegacyPattern;
+    hr = element->GetCurrentPattern(UIA_LegacyIAccessiblePatternId, (IUnknown**)&pLegacyPattern);
+    if (SUCCEEDED(hr) && pLegacyPattern) {
+        BSTR bstrLegacy = nullptr;
+        // First try CurrentValue, fallback to CurrentName if Value is empty
+        if (SUCCEEDED(pLegacyPattern->get_CurrentValue(&bstrLegacy)) && bstrLegacy && SysStringLen(bstrLegacy) > 0) {
+            std::string res = bstrToUtf8(bstrLegacy);
+            SysFreeString(bstrLegacy);
+            return res;
+        }
+        if (bstrLegacy) SysFreeString(bstrLegacy);
+
+        if (SUCCEEDED(pLegacyPattern->get_CurrentName(&bstrLegacy)) && bstrLegacy && SysStringLen(bstrLegacy) > 0) {
+            std::string res = bstrToUtf8(bstrLegacy);
+            SysFreeString(bstrLegacy);
+            return res;
+        }
+        if (bstrLegacy) SysFreeString(bstrLegacy);
     }
 
-    CComPtr<IUIAutomationTextRange> pRange;
-    pSelection->GetElement(0, &pRange);
-    if (!pRange) return "";
-
-    BSTR bstr = nullptr;
-    pRange->GetText(-1, &bstr);
-    if (!bstr) return "";
-
-    // Convert BSTR (wide string) to std::string (UTF-8)
-    std::wstring_view wsv(bstr, SysStringLen(bstr));
-    int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wsv[0], (int)wsv.size(), NULL, 0, NULL, NULL);
-    std::string result(size_needed, 0);
-    WideCharToMultiByte(CP_UTF8, 0, &wsv[0], (int)wsv.size(), &result[0], size_needed, NULL, NULL);
-    
-    SysFreeString(bstr);
-    return result;
+    return "";
 }
 
 bool UIAutomationSelectionMonitor::isFromCurrentProcess(IUIAutomationElement* element) {
@@ -531,6 +608,128 @@ bool UIAutomationSelectionMonitor::getSelectionCenter(IUIAutomationElement* elem
     outX = static_cast<int>(minLeft);
     outY = static_cast<int>(minTop);
     return true;
+}
+
+// --- SYNTHETIC COPY FALLBACK IMPLEMENTATION ---
+
+void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
+    // 1. Check if a UIA event already fired very recently (within 150ms)
+    auto now = std::chrono::steady_clock::now();
+    auto elapsedSinceUia = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastUiaEventTime).count();
+    if (elapsedSinceUia < 150) {
+        if (debugEnabled) std::cout << "[FALLBACK] UIA already handled this selection. Aborting fallback." << std::endl;
+        return;
+    }
+
+    if (debugEnabled) std::cout << "[FALLBACK] No UIA event detected. Triggering synthetic Ctrl+C..." << std::endl;
+
+    // 2. Backup existing clipboard text
+    std::wstring backupText;
+    if (OpenClipboard(nullptr)) {
+        HANDLE hData = GetClipboardData(CF_UNICODETEXT);
+        if (hData) {
+            wchar_t* pszText = static_cast<wchar_t*>(GlobalLock(hData));
+            if (pszText) {
+                backupText = pszText;
+                GlobalUnlock(hData);
+            }
+        }
+        CloseClipboard();
+    }
+
+    // 3. Inject synthetic Ctrl+C
+    INPUT inputs[4] = {};
+    inputs[0].type = INPUT_KEYBOARD;
+    inputs[0].ki.wVk = VK_CONTROL;
+    
+    inputs[1].type = INPUT_KEYBOARD;
+    inputs[1].ki.wVk = 'C';
+    
+    inputs[2].type = INPUT_KEYBOARD;
+    inputs[2].ki.wVk = 'C';
+    inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
+    
+    inputs[3].type = INPUT_KEYBOARD;
+    inputs[3].ki.wVk = VK_CONTROL;
+    inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+
+    SendInput(4, inputs, sizeof(INPUT));
+
+    // 4. Wait briefly for the target app (Okular/Foxit) to process the copy and write to clipboard
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+
+    // 5. Read the newly copied text
+    std::string capturedText = "";
+    if (OpenClipboard(nullptr)) {
+        HANDLE hData = GetClipboardData(CF_UNICODETEXT);
+        if (hData) {
+            wchar_t* pszText = static_cast<wchar_t*>(GlobalLock(hData));
+            if (pszText && wcslen(pszText) > 0) {
+                std::wstring_view wsv(pszText);
+                int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wsv[0], (int)wsv.size(), NULL, 0, NULL, NULL);
+                if (size_needed > 0) {
+                    capturedText.resize(size_needed, 0);
+                    WideCharToMultiByte(CP_UTF8, 0, &wsv[0], (int)wsv.size(), &capturedText[0], size_needed, NULL, NULL);
+                }
+                GlobalUnlock(hData);
+            }
+        }
+        CloseClipboard();
+    }
+
+    // 6. Restore original clipboard content so the user's pasteboard isn't polluted
+    if (OpenClipboard(nullptr)) {
+        EmptyClipboard();
+        if (!backupText.empty()) {
+            size_t sizeInBytes = (backupText.size() + 1) * sizeof(wchar_t);
+            HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE, sizeInBytes);
+            if (hGlobal) {
+                memcpy(GlobalLock(hGlobal), backupText.c_str(), sizeInBytes);
+                GlobalUnlock(hGlobal);
+                SetClipboardData(CF_UNICODETEXT, hGlobal);
+            }
+        }
+        CloseClipboard();
+    }
+
+    // 7. If we successfully captured text via fallback, send it to the debouncer
+    if (!capturedText.empty()) {
+        if (debugEnabled) std::cout << "[FALLBACK] Captured text: \"" << capturedText << "\"" << std::endl;
+        updatePendingSelection(capturedText, x, y);
+    }
+}
+
+LRESULT CALLBACK UIAutomationSelectionMonitor::LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode == HC_ACTION && instance) {
+        MSLLHOOKSTRUCT* pMouseStruct = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
+
+        if (wParam == WM_LBUTTONDOWN) {
+            mouseDownPt = pMouseStruct->pt;
+        } 
+        else if (wParam == WM_LBUTTONUP) {
+            int dx = std::abs(pMouseStruct->pt.x - mouseDownPt.x);
+            int dy = std::abs(pMouseStruct->pt.y - mouseDownPt.y);
+
+            // If the user dragged the mouse more than 15 pixels, treat it as a potential text selection
+            if (dx > 15 || dy > 15) {
+                int dropX = pMouseStruct->pt.x;
+                int dropY = pMouseStruct->pt.y;
+                
+                // Spawn a short detached thread to allow UIA 100ms to fire first before executing fallback
+                std::thread([dropX, dropY]() {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    // if (instance && running.load()) {
+                    //     instance->triggerSyntheticCopyFallback(dropX, dropY);
+                    // }
+                    // New (corrected):
+                    if (instance && instance->running.load()) {
+                        instance->triggerSyntheticCopyFallback(dropX, dropY);
+                    }
+                }).detach();
+            }
+        }
+    }
+    return CallNextHookEx(nullptr, nCode, wParam, lParam);
 }
 
 // NAPI wrapper class

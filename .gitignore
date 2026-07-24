@@ -33,6 +33,7 @@ coverage
 build/
 build/Release
 *.node
+native-addon/build
 
 # Visual Studio build artifacts
 *.suo
