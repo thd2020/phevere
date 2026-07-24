@@ -43,6 +43,7 @@ private:
     HHOOK hMouseHook = nullptr;
     static POINT mouseDownPt;
     static std::chrono::steady_clock::time_point lastUiaEventTime;
+    std::atomic<int> active_fallback_threads{0};
     void triggerSyntheticCopyFallback(int x, int y);
     static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam);
 
@@ -58,6 +59,9 @@ public:
 
     ~UIAutomationSelectionMonitor() {
         stop();
+        if (instance == this) {
+            instance = nullptr;
+        }
         if (debugEnabled) std::cout << "[UIA] Destructor called" << std::endl;
     }
 
@@ -108,6 +112,11 @@ public:
             monitor_thread.join();
         }
         monitor_thread_id = 0;
+
+        // Wait for detached fallback threads so they never touch a destroyed instance
+        for (int i = 0; i < 50 && active_fallback_threads.load() > 0; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
         
         if (debugEnabled) std::cout << "[UIA] Selection monitoring stopped" << std::endl;
     }
@@ -189,11 +198,46 @@ bool UIAutomationSelectionMonitor::debugEnabled = false;
 UIAutomationSelectionMonitor* UIAutomationSelectionMonitor::instance = nullptr;
 
 POINT UIAutomationSelectionMonitor::mouseDownPt = {0, 0};
-std::chrono::steady_clock::time_point UIAutomationSelectionMonitor::lastUiaEventTime = std::chrono::steady_clock::now();
+std::chrono::steady_clock::time_point UIAutomationSelectionMonitor::lastUiaEventTime{};
 
 // Implementation of the monitor loop
 void UIAutomationSelectionMonitor::monitorLoop() {
     if (debugEnabled) std::cout << "[UIA] THREAD: Starting dedicated UIA monitor thread..." << std::endl;
+
+    lastUiaEventTime = std::chrono::steady_clock::time_point{};
+
+    bool comInitialized = false;
+    bool handlersRegistered = false;
+    CComPtr<IUIAutomationElement> pDesktopElement;
+    CComPtr<IUIAutomationEventHandler> pEventHandler;
+
+    auto cleanupMonitorResources = [&]() {
+        if (hMouseHook) {
+            UnhookWindowsHookEx(hMouseHook);
+            hMouseHook = nullptr;
+        }
+        if (handlersRegistered && pAutomation && pDesktopElement && pEventHandler) {
+            pAutomation->RemoveAutomationEventHandler(
+                UIA_Text_TextSelectionChangedEventId, pDesktopElement, pEventHandler);
+            pAutomation->RemoveAutomationEventHandler(
+                UIA_Text_TextChangedEventId, pDesktopElement, pEventHandler);
+            pAutomation->RemoveAutomationEventHandler(
+                UIA_TextEdit_TextChangedEventId, pDesktopElement, pEventHandler);
+            handlersRegistered = false;
+        }
+        pEventHandler.Release();
+        pDesktopElement.Release();
+        pAutomation.Release();
+        if (comInitialized) {
+            CoUninitialize();
+            comInitialized = false;
+        }
+    };
+
+    struct MonitorLoopGuard {
+        std::function<void()> cleanup;
+        ~MonitorLoopGuard() { if (cleanup) cleanup(); }
+    } guard{cleanupMonitorResources};
     
     // Step 1: Initialize COM on this thread
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -201,6 +245,7 @@ void UIAutomationSelectionMonitor::monitorLoop() {
         std::cerr << "[UIA] THREAD: Failed to initialize COM. HRESULT: " << hr << std::endl;
         return;
     }
+    comInitialized = true;
     
     monitor_thread_id = GetCurrentThreadId();
     if (debugEnabled) std::cout << "[UIA] THREAD: COM initialized, thread ID: " << monitor_thread_id << std::endl;
@@ -209,23 +254,19 @@ void UIAutomationSelectionMonitor::monitorLoop() {
     hr = CoCreateInstance(__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, __uuidof(IUIAutomation), (void**)&pAutomation);
     if (FAILED(hr) || !pAutomation) {
         std::cerr << "[UIA] THREAD: Failed to create UIA object. HRESULT: " << hr << std::endl;
-        CoUninitialize();
         return;
     }
     if (debugEnabled) std::cout << "[UIA] THREAD: UIA object created successfully" << std::endl;
 
-    CComPtr<IUIAutomationElement> pDesktopElement;
     hr = pAutomation->GetRootElement(&pDesktopElement);
     if (FAILED(hr) || !pDesktopElement) {
         std::cerr << "[UIA] THREAD: Failed to get root element. HRESULT: " << hr << std::endl;
-        pAutomation.Release();
-        CoUninitialize();
         return;
     }
     if (debugEnabled) std::cout << "[UIA] THREAD: Desktop element obtained successfully" << std::endl;
 
     // Step 3: Create and register the event handler
-    CComPtr<IUIAutomationEventHandler> pEventHandler = new UIAutomationEventHandler();
+    pEventHandler = new UIAutomationEventHandler();
     if (debugEnabled) std::cout << "[UIA] THREAD: Registering text-related event handlers..." << std::endl;
     HRESULT hrSel = pAutomation->AddAutomationEventHandler(
         UIA_Text_TextSelectionChangedEventId,
@@ -262,6 +303,7 @@ void UIAutomationSelectionMonitor::monitorLoop() {
         if (debugEnabled) std::cout << "[UIA] THREAD: TextEdit_TextChanged handler registration failed (may be unsupported). HRESULT: " << hrEditChanged << std::endl;
     }
     if (SUCCEEDED(hrSel) || SUCCEEDED(hrChanged) || SUCCEEDED(hrEditChanged)) {
+        handlersRegistered = true;
         if (debugEnabled) std::cout << "[UIA] THREAD: Event handlers registered. Waiting for events..." << std::endl;
     } else {
         std::cerr << "[UIA] THREAD: No text-related handlers could be registered." << std::endl;
@@ -288,24 +330,8 @@ void UIAutomationSelectionMonitor::monitorLoop() {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
-    
-    // Step 5: Clean up
-    // if (debugEnabled) std::cout << "[UIA] THREAD: Message loop exited. Cleaning up..." << std::endl;
-    // // Best-effort unregister (ignore failures)
-    // pAutomation->RemoveAutomationEventHandler(UIA_Text_TextSelectionChangedEventId, pDesktopElement, pEventHandler);
-    // pAutomation->RemoveAutomationEventHandler(UIA_Text_TextChangedEventId, pDesktopElement, pEventHandler);
-    // pAutomation->RemoveAutomationEventHandler(UIA_TextEdit_TextChangedEventId, pDesktopElement, pEventHandler);
-    // pEventHandler.Release();
-    // pDesktopElement.Release();
-    // pAutomation.Release();
-    // CoUninitialize();
-    // if (debugEnabled) std::cout << "[UIA] THREAD: Cleanup complete." << std::endl;
-    // Step 5: Clean up
+
     if (debugEnabled) std::cout << "[UIA] THREAD: Message loop exited. Cleaning up..." << std::endl;
-    if (hMouseHook) {
-        UnhookWindowsHookEx(hMouseHook);
-        hMouseHook = nullptr;
-    }
 }
 
 // Implementation of the selection handler (now debounced)
@@ -638,20 +664,17 @@ void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
     }
 
     // 3. Inject synthetic Ctrl+C
+    auto fillKeyEvent = [](INPUT& input, WORD vk, DWORD flags) {
+        input.type = INPUT_KEYBOARD;
+        input.ki.wVk = vk;
+        input.ki.wScan = static_cast<WORD>(MapVirtualKey(vk, MAPVK_VK_TO_VSC));
+        input.ki.dwFlags = flags;
+    };
     INPUT inputs[4] = {};
-    inputs[0].type = INPUT_KEYBOARD;
-    inputs[0].ki.wVk = VK_CONTROL;
-    
-    inputs[1].type = INPUT_KEYBOARD;
-    inputs[1].ki.wVk = 'C';
-    
-    inputs[2].type = INPUT_KEYBOARD;
-    inputs[2].ki.wVk = 'C';
-    inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
-    
-    inputs[3].type = INPUT_KEYBOARD;
-    inputs[3].ki.wVk = VK_CONTROL;
-    inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+    fillKeyEvent(inputs[0], VK_CONTROL, 0);
+    fillKeyEvent(inputs[1], static_cast<WORD>('C'), 0);
+    fillKeyEvent(inputs[2], static_cast<WORD>('C'), KEYEVENTF_KEYUP);
+    fillKeyEvent(inputs[3], VK_CONTROL, KEYEVENTF_KEYUP);
 
     SendInput(4, inputs, sizeof(INPUT));
 
@@ -684,9 +707,14 @@ void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
             size_t sizeInBytes = (backupText.size() + 1) * sizeof(wchar_t);
             HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE, sizeInBytes);
             if (hGlobal) {
-                memcpy(GlobalLock(hGlobal), backupText.c_str(), sizeInBytes);
-                GlobalUnlock(hGlobal);
-                SetClipboardData(CF_UNICODETEXT, hGlobal);
+                void* locked = GlobalLock(hGlobal);
+                if (locked) {
+                    memcpy(locked, backupText.c_str(), sizeInBytes);
+                    GlobalUnlock(hGlobal);
+                    SetClipboardData(CF_UNICODETEXT, hGlobal);
+                } else {
+                    GlobalFree(hGlobal);
+                }
             }
         }
         CloseClipboard();
@@ -715,15 +743,21 @@ LRESULT CALLBACK UIAutomationSelectionMonitor::LowLevelMouseProc(int nCode, WPAR
                 int dropX = pMouseStruct->pt.x;
                 int dropY = pMouseStruct->pt.y;
                 
-                // Spawn a short detached thread to allow UIA 100ms to fire first before executing fallback
-                std::thread([dropX, dropY]() {
+                UIAutomationSelectionMonitor* mon = instance;
+                mon->active_fallback_threads.fetch_add(1);
+                std::thread([mon, dropX, dropY]() {
+                    struct FallbackThreadGuard {
+                        UIAutomationSelectionMonitor* monitor;
+                        ~FallbackThreadGuard() {
+                            if (monitor) {
+                                monitor->active_fallback_threads.fetch_sub(1);
+                            }
+                        }
+                    } guard{mon};
+
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    // if (instance && running.load()) {
-                    //     instance->triggerSyntheticCopyFallback(dropX, dropY);
-                    // }
-                    // New (corrected):
-                    if (instance && instance->running.load()) {
-                        instance->triggerSyntheticCopyFallback(dropX, dropY);
+                    if (mon && mon->running.load()) {
+                        mon->triggerSyntheticCopyFallback(dropX, dropY);
                     }
                 }).detach();
             }
