@@ -11,7 +11,17 @@ function allowVerbose(): boolean {
   }
 }
 
+// 1. Define numerical weights for each log level
+const LEVEL_WEIGHTS: Record<Level, number> = { debug: 0, info: 1, warn: 2, error: 3 };
+
+// 2. Set your active threshold here (change to 'info' to mute debug logs)
+const ACTIVE_LEVEL: Level = (process.env.LOG_LEVEL as Level) || 'info';
+
 function emit(level: Level, scope: string, message: string, meta?: Record<string, unknown>): void {
+  // 3. Drop any log falling below the active threshold
+  if (LEVEL_WEIGHTS[level] < LEVEL_WEIGHTS[ACTIVE_LEVEL]) return;
+  
+  // Keep your existing unpackaged/production check as a secondary gate
   if ((level === 'debug' || level === 'info') && !allowVerbose()) return;
 
   const payload: Record<string, unknown> = {

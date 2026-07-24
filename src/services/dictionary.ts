@@ -31,6 +31,7 @@ export interface Definition {
 import { BaseService, DictionaryError } from './base';
 import * as crypto from 'crypto';
 import { wrapConsole } from '../logger';
+import { net } from 'electron';
 
 const console = wrapConsole('dictionary');
 
@@ -142,8 +143,7 @@ export class DictionaryService extends BaseService {
 
   private async loadCcCedictViaNodeFetch(url: string): Promise<boolean> {
     try {
-      const { default: fetch } = await import('node-fetch');
-      const res = await fetch(url);
+      const res = await net.fetch(url);
       if (!res.ok) return false;
       const text = await res.text();
       let count = 0;
