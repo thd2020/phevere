@@ -33,7 +33,7 @@ Edit `electron-builder.yml` → `nsis:`:
 - `createDesktopShortcut` / `createStartMenuShortcut`
 - `include: packaging/installer.nsh` — custom NSIS macros (welcome copy, finish page, extra files)
 
-Replace `packaging/icon.png` with a proper **`.ico`** (256px) when you have branded art for a sharper header.
+Replace `packaging/icon.ico` with branded multi-size art when you have it (NSIS requires `.ico`, not `.png`).
 
 ### Optional: WiX MSI (enterprise / GPO)
 

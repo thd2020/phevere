@@ -27,7 +27,7 @@ win:
     - target: nsis
       arch:
         - x64
-  icon: packaging/icon.png
+  icon: packaging/icon.ico
   artifactName: ${productName}-Setup-${version}-${arch}.${ext}
 nsis:
   oneClick: false
@@ -37,9 +37,9 @@ nsis:
   createDesktopShortcut: always
   createStartMenuShortcut: true
   shortcutName: Phevere
-  installerIcon: packaging/icon.png
-  uninstallerIcon: packaging/icon.png
-  installerHeaderIcon: packaging/icon.png
+  installerIcon: packaging/icon.ico
+  uninstallerIcon: packaging/icon.ico
+  installerHeaderIcon: packaging/icon.ico
   include: packaging/installer.nsh
   license: LICENSE
   runAfterFinish: true

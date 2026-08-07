@@ -170,3 +170,7 @@ Thumbs.db
 *.swp
 *.swo
 *~
+# SpecStory / local agent chat dumps (not product source)
+.specstory/
+.cursorindexingignore
+
