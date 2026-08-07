@@ -12,6 +12,7 @@ import { captureScreenRegion } from './services/screen-capture';
 import { ocrEngine, textNearPoint } from './services/ocr-engine';
 import { isLookupWorthy } from './services/text-normalize';
 import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
+import { showWorkProgress, updateWorkProgress, closeWorkProgress } from './services/work-progress';
 import { isAcceleratorPhysicallyHeld } from './services/accelerator-key-state';
 import {
   loadMonitorSettings,
@@ -174,8 +175,19 @@ function onTriggerShortcutAfterSelection(): void {
 }
 
 function registerFixedAppShortcuts(): void {
+  // Toggle OCR region picker (open / cancel)
   globalShortcut.register('CommandOrControl+Shift+O', () => {
+    if (ocrOverlayWindow && !ocrOverlayWindow.isDestroyed()) {
+      closeOcrOverlay();
+      log.info('main', 'OCR ROI overlay cancelled via shortcut');
+      return;
+    }
     void startOcrRegionCapture();
+  });
+
+  // Toggle hover-to-word lookup
+  globalShortcut.register('CommandOrControl+Shift+H', () => {
+    setHoverEnabled(!monitorSettings.hoverEnabled);
   });
 
   globalShortcut.register('CommandOrControl+Shift+V', () => {
@@ -183,6 +195,33 @@ function registerFixedAppShortcuts(): void {
       mainWindow.webContents.send('show-clipboard-history');
     }
   });
+}
+
+function setHoverEnabled(enabled: boolean): void {
+  monitorSettings = mergeMonitorSettings({ hoverEnabled: enabled }, monitorSettings);
+  saveMonitorSettingsFile(monitorSettings);
+  applyHoverFromSettings();
+  updateTrayContextMenu();
+  log.info('main', enabled ? 'Hover lookup enabled' : 'Hover lookup disabled');
+  try {
+    if (tray && !tray.isDestroyed()) {
+      tray.displayBalloon?.({
+        title: 'Phevere',
+        content: enabled ? 'Hover lookup on (Ctrl+Shift+H)' : 'Hover lookup off (Ctrl+Shift+H)',
+      });
+    }
+  } catch {
+    /* balloon optional */
+  }
+}
+
+function applyHoverFromSettings(): void {
+  const hover = ensureHoverLookup();
+  if (monitorSettings.hoverEnabled) {
+    if (!hover.isRunning()) hover.start();
+  } else if (hover.isRunning()) {
+    hover.stop();
+  }
 }
 
 function tryRegisterAccelerator(accelerator: string): boolean {
@@ -331,6 +370,24 @@ function buildTrayContextMenu(): Electron.Menu {
           click: () => setMonitoringMode('shortcut'),
         },
       ],
+    },
+    {
+      label: 'Hover lookup',
+      type: 'checkbox',
+      checked: !!monitorSettings.hoverEnabled,
+      accelerator: 'CommandOrControl+Shift+H',
+      click: (item) => setHoverEnabled(!!item.checked),
+    },
+    {
+      label: 'OCR region…',
+      accelerator: 'CommandOrControl+Shift+O',
+      click: () => {
+        if (ocrOverlayWindow && !ocrOverlayWindow.isDestroyed()) {
+          closeOcrOverlay();
+        } else {
+          void startOcrRegionCapture();
+        }
+      },
     },
     {
       label: 'Clipboard history',
@@ -852,19 +909,48 @@ async function handleOcrRegionSelected(region: {
     height: Math.round(region.height),
   };
 
+  const progressX = screenRegion.x + Math.floor(screenRegion.width / 2);
+  const progressY = screenRegion.y + screenRegion.height;
+
   log.info('main', 'OCR region selected', screenRegion);
+
+  showWorkProgress(progressX, progressY, {
+    title: 'Recognizing text…',
+    subtitle: 'Capturing screen region',
+  });
 
   const capture = await captureScreenRegion(screenRegion);
   if (!capture) {
+    closeWorkProgress();
     log.warn('main', 'Screen capture failed for OCR region');
     return;
   }
 
-  const ocr = await ocrEngine.recognize(capture.png);
-  // Region select wants everything in the box; hover uses textNearPoint instead.
+  updateWorkProgress({
+    title: 'Recognizing text…',
+    subtitle: 'Running PP-OCRv6 (RapidOCR) — large regions can take several seconds',
+  });
+
+  const started = Date.now();
+  const tick = setInterval(() => {
+    const secs = Math.round((Date.now() - started) / 1000);
+    updateWorkProgress({
+      title: 'Recognizing text…',
+      subtitle: `Still working… ${secs}s`,
+    });
+  }, 800);
+
+  let ocr;
+  try {
+    ocr = await ocrEngine.recognize(capture.png);
+  } finally {
+    clearInterval(tick);
+  }
+
   const text = (ocr.text || '').trim();
 
   if (!text || !isLookupWorthy(text)) {
+    closeWorkProgress();
     log.warn('main', 'OCR produced no lookup-worthy text', {
       engine: ocr.engine,
       language: ocr.language,
@@ -875,8 +961,8 @@ async function handleOcrRegionSelected(region: {
       text: available
         ? '(No text recognized in selection)'
         : '(OCR unavailable — RapidOCR/Python not found. Set PHEVERE_PYTHON to your python.exe)',
-      x: screenRegion.x + screenRegion.width / 2,
-      y: screenRegion.y + screenRegion.height,
+      x: progressX,
+      y: progressY,
       timestamp: Date.now(),
       origin: 'ocr',
       confidence: 0,
@@ -886,10 +972,18 @@ async function handleOcrRegionSelected(region: {
     return;
   }
 
+  updateWorkProgress({
+    title: 'Looking up…',
+    subtitle: text.length > 48 ? text.slice(0, 48) + '…' : text,
+  });
+
+  // Brief beat so the user sees the transition, then hand off to the popup.
+  setTimeout(() => closeWorkProgress(), 180);
+
   contextCaptureHub.emit({
     text,
-    x: screenRegion.x + screenRegion.width / 2,
-    y: screenRegion.y + screenRegion.height,
+    x: progressX,
+    y: progressY,
     timestamp: Date.now(),
     origin: 'ocr',
     confidence: ocr.confidence,
@@ -945,7 +1039,6 @@ function startSelectionMonitoring(): void {
       .start()
       .then(() => {
         log.info('main', 'Native selection service started');
-        ensureHoverLookup().start();
         updateTrayContextMenu();
       })
       .catch((error) => {
@@ -954,8 +1047,6 @@ function startSelectionMonitoring(): void {
         if (!isAdmin) {
           log.error('main', 'Try running as Administrator for UIAutomation');
         }
-        // Hover OCR fallback can still work without UIA selection events.
-        ensureHoverLookup().start();
         updateTrayContextMenu();
       });
   } catch (error: any) {
@@ -965,14 +1056,13 @@ function startSelectionMonitoring(): void {
 }
 
 async function stopSelectionMonitoring(): Promise<void> {
-  if (!nativeSelectionActive && !(hoverLookup && hoverLookup.isRunning())) {
+  if (!nativeSelectionActive) {
     return;
   }
 
   try {
     nativeSelectionActive = false;
     log.debug('main', 'Stopping selection monitoring');
-    hoverLookup?.stop();
 
     await nativeSelectionService.stop();
     log.info('main', 'Native selection service stopped');
@@ -1026,6 +1116,7 @@ ipcMain.handle('monitor-get-state', () => {
     mode: monitorSettings.mode,
     cycleShortcut: monitorSettings.cycleShortcut,
     triggerShortcut: monitorSettings.triggerShortcut,
+    hoverEnabled: monitorSettings.hoverEnabled,
   };
 });
 
@@ -1135,7 +1226,7 @@ ipcMain.handle('clipboard-import', (event, jsonData: string) => {
 });
 
 // Dictionary service IPC handlers
-ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: string = 'en', enabledSources?: string[]) => {
+ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: string = 'auto', enabledSources?: string[]) => {
   try {
     const result = await dictionaryService.lookup(text, targetLanguage, enabledSources);
     log.debug('main', 'Dictionary lookup OK', { wordLen: (text || '').length });
@@ -1352,6 +1443,7 @@ app.on('ready', () => {
   registerFixedAppShortcuts();
   syncGlobalMonitorShortcuts();
   applyMonitoringFromMode();
+  applyHoverFromSettings();
   clipboardService.startMonitoring();
   // Warm RapidOCR models in the background so Ctrl+Shift+O is responsive.
   void ocrEngine
@@ -1524,6 +1616,8 @@ app.on('before-quit', () => {
 app.on('will-quit', () => {
   log.info('main', 'Will quit');
   void stopSelectionMonitoring();
+  hoverLookup?.stop();
+  closeWorkProgress();
   clipboardService.stopMonitoring();
   ocrEngine.dispose?.();
   globalShortcut.unregisterAll();

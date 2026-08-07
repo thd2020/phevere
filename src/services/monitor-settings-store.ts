@@ -8,6 +8,8 @@ export interface MonitorSettings {
   mode: MonitorMode;
   cycleShortcut: string;
   triggerShortcut: string;
+  /** Hover-to-word lookup (UIA / OCR under cursor). */
+  hoverEnabled: boolean;
 }
 
 const FILE_NAME = 'monitor-settings.json';
@@ -17,6 +19,7 @@ const DEFAULTS: MonitorSettings = {
   /** Avoid Ctrl+Shift+D — Chrome uses it for “bookmark all tabs”. */
   cycleShortcut: 'CommandOrControl+Alt+Shift+M',
   triggerShortcut: 'CommandOrControl+Alt+Shift+Y',
+  hoverEnabled: true,
 };
 
 function resolvePath(): string {
@@ -42,6 +45,7 @@ export function loadMonitorSettings(): MonitorSettings {
         typeof data.triggerShortcut === 'string' && data.triggerShortcut.trim()
           ? data.triggerShortcut.trim()
           : DEFAULTS.triggerShortcut,
+      hoverEnabled: typeof data.hoverEnabled === 'boolean' ? data.hoverEnabled : DEFAULTS.hoverEnabled,
     };
   } catch {
     return { ...DEFAULTS };
@@ -62,6 +66,7 @@ export function mergeMonitorSettings(partial: Partial<MonitorSettings>, current:
     mode: partial.mode !== undefined ? partial.mode : current.mode,
     cycleShortcut: partial.cycleShortcut !== undefined ? partial.cycleShortcut : current.cycleShortcut,
     triggerShortcut: partial.triggerShortcut !== undefined ? partial.triggerShortcut : current.triggerShortcut,
+    hoverEnabled: partial.hoverEnabled !== undefined ? partial.hoverEnabled : current.hoverEnabled,
   };
   if (merged.mode !== 'off' && merged.mode !== 'on' && merged.mode !== 'shortcut') {
     merged.mode = current.mode;

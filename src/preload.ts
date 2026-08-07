@@ -176,6 +176,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onPopupText: (callback: (text: string) => void) => {
     ipcRenderer.on('popup-text', (_event: any, text: string) => callback(text));
   },
+  onPopupProgress: (callback: (payload: {
+    title?: string;
+    subtitle?: string;
+    percent?: number;
+    stages?: string[];
+    activeStage?: number;
+  }) => void) => {
+    ipcRenderer.removeAllListeners('popup-progress');
+    ipcRenderer.on('popup-progress', (_event: any, payload: any) => callback(payload));
+  },
   removeAllListeners: (channel: string) => {
     ipcRenderer.removeAllListeners(channel);
   },
@@ -206,7 +216,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopMonitoring: (): Promise<{ success: boolean }> => {
     return ipcRenderer.invoke('stop-monitoring');
   },
-  getMonitorState: (): Promise<{ mode: string; cycleShortcut: string; triggerShortcut: string }> => {
+  getMonitorState: (): Promise<{
+    mode: string;
+    cycleShortcut: string;
+    triggerShortcut: string;
+    hoverEnabled?: boolean;
+  }> => {
     return ipcRenderer.invoke('monitor-get-state');
   },
   setMonitorMode: (mode: string): Promise<{ success: boolean; error?: string }> => {
@@ -369,6 +384,13 @@ declare global {
     electronAPI: {
       onSelectionChange: (callback: (text: string) => void) => void;
       onPopupText: (callback: (text: string) => void) => void;
+      onPopupProgress?: (callback: (payload: {
+        title?: string;
+        subtitle?: string;
+        percent?: number;
+        stages?: string[];
+        activeStage?: number;
+      }) => void) => void;
       removeAllListeners: (channel: string) => void;
       showPopup: (x: number, y: number, text: string) => void;
       hidePopup: () => void;

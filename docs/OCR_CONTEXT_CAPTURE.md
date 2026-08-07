@@ -1,17 +1,17 @@
 # Beyond selectable text — context capture & OCR plan
 
-Status: **active** · Phases 0–2 partially shipped  
+Status: **active** · Core selection + OCR ROI + hover shipped; media/PDF phases open  
 Audience: implementers extending Phevere past UIAutomation-selectable text  
-Related: `src/services/native-selection.ts`, `src/services/hover-lookup.ts`, `scripts/ocr_worker.py`, OCR shortcut `CommandOrControl+Shift+O`
+Related: `src/services/native-selection.ts`, `src/services/hover-lookup.ts`, `scripts/ocr_worker.py`
 
 ## Access modes
 
-| Mode | How |
-|------|-----|
-| Drag / double-click select | Existing UIA + gesture gate |
-| Shortcut + hold | Monitor mode `shortcut` |
-| **Hover dwell** | ~450 ms idle over a word → UIA `RangeFromPoint`, else OCR under cursor |
-| Region OCR | `Ctrl+Shift+O` → drag rectangle → RapidOCR |
+| Mode | How | Shortcut |
+|------|-----|----------|
+| Drag / double-click select | UIA + gesture gate | — |
+| Shortcut + hold | Monitor mode `shortcut` | cycle / trigger (settings) |
+| **Hover dwell** | ~450 ms idle → UIA `RangeFromPoint`, else OCR under cursor | **Ctrl+Shift+H** toggle |
+| Region OCR | Drag rectangle → RapidOCR | **Ctrl+Shift+O** toggle overlay |
 
 ## Principle
 

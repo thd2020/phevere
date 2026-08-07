@@ -269,7 +269,7 @@ export class DictionaryService extends BaseService {
   /**
    * Main lookup function - aggregates data from multiple sources with parallel processing
    */
-  async lookup(text: string, targetLanguage: string = 'en', enabledSources?: string[]): Promise<DictionaryResult> {
+  async lookup(text: string, targetLanguage: string = 'auto', enabledSources?: string[]): Promise<DictionaryResult> {
     const startTime = Date.now();
 
     const query = normalizeQuery(text);
@@ -285,27 +285,38 @@ export class DictionaryService extends BaseService {
       };
     }
 
-    const cacheKey = cacheKeyFor(query, targetLanguage);
-
-    const cached = this.cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
-      console.log(`✅ Cache hit for text (${Date.now() - startTime}ms)`);
-      return cached.result;
-    }
-
     try {
       const detectedLanguage = await Promise.race([
         this.detectLanguage(query.trimmed),
         new Promise<string>(resolve => setTimeout(() => resolve(this.simpleLanguageDetection(query.trimmed)), 1000))
       ]);
 
+      // zh → en and en → zh by default; honour an explicit cross-language target.
+      const resolvedTarget = this.resolveTargetLanguage(detectedLanguage, targetLanguage);
+      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}`);
+
+      const cached = this.cache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+        console.log(`✅ Cache hit for text (${Date.now() - startTime}ms)`);
+        return cached.result;
+      }
+
       let result: DictionaryResult;
 
       if (query.kind === 'sentence') {
-        result = await this.handleSentenceTranslationOptimized(query.trimmed, targetLanguage, detectedLanguage);
+        result = await this.handleSentenceTranslationOptimized(query.trimmed, resolvedTarget, detectedLanguage);
       } else {
-        result = await this.lookupWithCandidates(query, targetLanguage, detectedLanguage, enabledSources);
+        result = await this.lookupWithCandidates(query, resolvedTarget, detectedLanguage, enabledSources);
       }
+
+      result.detectedLanguage = detectedLanguage;
+      result.metadata = {
+        ...(result.metadata || {}),
+        sourceLanguage: detectedLanguage,
+        targetLanguage: resolvedTarget,
+        originalTargetLanguage: targetLanguage,
+        autoPaired: !targetLanguage || targetLanguage === 'auto' || targetLanguage === detectedLanguage,
+      };
 
       this.cache.set(cacheKey, { result, timestamp: Date.now() });
       return result;
@@ -313,6 +324,33 @@ export class DictionaryService extends BaseService {
       console.error('❌ Dictionary lookup error:', error);
       this.handleError(error);
     }
+  }
+
+  /**
+   * Default pairing: Chinese (and other CJK) → English; English → Chinese.
+   * Pass an explicit different target to override.
+   */
+  resolveTargetLanguage(sourceLanguage: string, requestedTarget: string = 'auto'): string {
+    const source = (sourceLanguage || 'en').toLowerCase().split('-')[0];
+    const requested = (requestedTarget || 'auto').toLowerCase().split('-')[0];
+
+    if (!requested || requested === 'auto') {
+      return this.defaultTargetForSource(source);
+    }
+
+    // Same-language request on the primary pair → flip (popup often defaults both to zh or en).
+    if (source === requested && (source === 'zh' || source === 'en' || source === 'ja' || source === 'ko')) {
+      return this.defaultTargetForSource(source);
+    }
+
+    return requested;
+  }
+
+  defaultTargetForSource(sourceLanguage: string): string {
+    const source = (sourceLanguage || 'en').toLowerCase().split('-')[0];
+    if (source === 'zh' || source === 'ja' || source === 'ko') return 'en';
+    if (source === 'en') return 'zh';
+    return 'en';
   }
 
   /**
@@ -399,12 +437,8 @@ export class DictionaryService extends BaseService {
     const translations: Translation[] = [];
     
     // Intelligent target language selection based on detected source
-    let actualTargetLanguage = targetLanguage;
-    if (sourceLanguage === 'en' && targetLanguage === 'en') {
-      actualTargetLanguage = 'zh'; // Default to Chinese for English sentences
-    } else if ((sourceLanguage === 'zh' || sourceLanguage === 'ja' || sourceLanguage === 'ko') && targetLanguage === 'en') {
-      actualTargetLanguage = 'en'; // Default to English for CJK sentences
-    }
+    // Target is already resolved by lookup(); keep a safety net for direct callers.
+    let actualTargetLanguage = this.resolveTargetLanguage(sourceLanguage, targetLanguage);
     
     console.log('🔄 [DEBUG] Language mapping result:', {
       originalTarget: targetLanguage,

@@ -212,23 +212,75 @@
        }
 
       .loading {
-        display: flex;
-        align-items: center;
+        display: none;
+        flex-direction: column;
+        align-items: stretch;
         justify-content: center;
-        padding: 40px 20px;
-        color: #64748b;
-        font-style: italic;
+        gap: 10px;
+        padding: 28px 20px;
+        color: #475569;
       }
 
-      .loading::after {
-        content: '';
-        width: 16px;
-        height: 16px;
-        border: 2px solid #e2e8f0;
-        border-top: 2px solid #3b82f6;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        margin-left: 8px;
+      .loading-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #0f172a;
+        letter-spacing: 0.01em;
+      }
+
+      .loading-sub {
+        font-size: 11px;
+        color: #64748b;
+      }
+
+      .loading-track {
+        height: 3px;
+        border-radius: 999px;
+        background: #e2e8f0;
+        overflow: hidden;
+      }
+
+      .loading-bar {
+        height: 100%;
+        width: 40%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #38bdf8, #818cf8, #c084fc);
+        animation: loading-slide 1.15s ease-in-out infinite;
+      }
+
+      .loading-bar.determinate {
+        animation: none;
+        transition: width 0.25s ease;
+      }
+
+      .loading-stages {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .loading-stage {
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #94a3b8;
+      }
+
+      .loading-stage.active {
+        background: #e0e7ff;
+        color: #4338ca;
+        font-weight: 600;
+      }
+
+      .loading-stage.done {
+        background: #ecfdf5;
+        color: #047857;
+      }
+
+      @keyframes loading-slide {
+        0% { transform: translateX(-120%); }
+        100% { transform: translateX(280%); }
       }
 
       @keyframes spin {
@@ -857,7 +909,10 @@
         <!-- Results Section -->
         <div class="results-section">
           <div class="loading" id="loadingElement">
-            Looking up definition...
+            <div class="loading-title" id="loadingTitle">Looking up…</div>
+            <div class="loading-track"><div class="loading-bar" id="loadingBar"></div></div>
+            <div class="loading-sub" id="loadingSub">Fetching definitions and translations</div>
+            <div class="loading-stages" id="loadingStages"></div>
           </div>
           
           <div class="dictionary-results" id="dictionary-results">
@@ -1419,30 +1474,34 @@
           if (!text || !text.trim()) return;
           pvLog('[POPUP] lookupText called with:', text, 'currentTab:', currentTab, 'silent:', silent);
           if (!silent) {
-            showLoading();
+            showLoading({
+              title: 'Looking up…',
+              subtitle: 'Detecting language and fetching sources',
+              stages: ['Detect', 'Dictionary', 'Translate'],
+              activeStage: 0
+            });
           }
           try {
             if (window.dictionaryAPI) {
-              pvLog('[POPUP] dictionaryAPI available, calling lookup...');
-              
-              // Get language settings for translation
-              let sourceLang = 'en';
-              let targetLang = 'zh';
+              // Dictionary mode uses auto pairing (zh↔en). Translation tab honours the selects.
+              let targetLang = 'auto';
               
               if (currentTab === 'translation') {
-                const sourceSelect = document.getElementById('sourceLanguage');
                 const targetSelect = document.getElementById('targetLanguage');
-                if (sourceSelect) sourceLang = sourceSelect.value;
                 if (targetSelect) targetLang = targetSelect.value;
-                pvLog('[POPUP] Translation mode - sourceLang:', sourceLang, 'targetLang:', targetLang);
-              } else {
-                pvLog('[POPUP] Dictionary mode - using default languages');
               }
               
-              pvLog('[POPUP] Calling dictionaryAPI.lookup with:', text, targetLang);
+              if (!silent) {
+                showLoading({
+                  title: 'Looking up…',
+                  subtitle: 'Querying dictionary sources',
+                  stages: ['Detect', 'Dictionary', 'Translate'],
+                  activeStage: 1
+                });
+              }
+
               currentResult = await window.dictionaryAPI.lookup(text, targetLang);
-              pvLog('[POPUP] Dictionary lookup result:', currentResult);
-              // Derive audio language: if metadata.detectedLanguage present, use it; else use target when translating, 'en' for dictionary
+              syncLanguageSelectsFromResult(currentResult);
               var audioLang = (currentResult && currentResult.detectedLanguage) ? currentResult.detectedLanguage : (currentTab === 'translation' ? targetLang : 'en');
               window['__audioLang'] = audioLang;
               displayDictionaryResult(currentResult);
@@ -1456,10 +1515,66 @@
           }
         }
 
+      function syncLanguageSelectsFromResult(result) {
+        if (!result) return;
+        const source = result.detectedLanguage || result.metadata?.sourceLanguage;
+        const target = result.metadata?.targetLanguage || result.language;
+        const sourceSelect = document.getElementById('sourceLanguage');
+        const targetSelect = document.getElementById('targetLanguage');
+        if (sourceSelect && source) {
+          // Keep "auto" if user left it; otherwise reflect detection.
+          if (sourceSelect.value === 'auto' || !sourceSelect.value) {
+            // leave auto selected, but ensure option exists for display via title
+            sourceSelect.title = 'Detected: ' + source;
+          } else {
+            sourceSelect.value = source;
+          }
+        }
+        if (targetSelect && target) {
+          targetSelect.value = target;
+        }
+      }
+
       // Show loading
-      function showLoading() {
-        document.getElementById('loadingElement').style.display = 'flex';
+      function showLoading(opts) {
+        opts = opts || {};
+        const el = document.getElementById('loadingElement');
+        el.style.display = 'flex';
         document.getElementById('dictionary-results').style.display = 'none';
+
+        const title = document.getElementById('loadingTitle');
+        const sub = document.getElementById('loadingSub');
+        const bar = document.getElementById('loadingBar');
+        const stagesEl = document.getElementById('loadingStages');
+
+        if (title) title.textContent = opts.title || 'Looking up…';
+        if (sub) sub.textContent = opts.subtitle || '';
+
+        if (bar) {
+          if (typeof opts.percent === 'number') {
+            bar.classList.add('determinate');
+            bar.style.width = Math.max(0, Math.min(100, opts.percent)) + '%';
+          } else {
+            bar.classList.remove('determinate');
+            bar.style.width = '';
+          }
+        }
+
+        if (stagesEl) {
+          const stages = opts.stages || [];
+          const active = typeof opts.activeStage === 'number' ? opts.activeStage : -1;
+          stagesEl.innerHTML = stages.map((label, i) => {
+            const cls = i < active ? 'loading-stage done' : (i === active ? 'loading-stage active' : 'loading-stage');
+            return '<span class="' + cls + '">' + label + '</span>';
+          }).join('');
+        }
+      }
+
+      // Listen for main-process progress (OCR → lookup pipeline)
+      if (window.electronAPI && window.electronAPI.onPopupProgress) {
+        window.electronAPI.onPopupProgress(function (payload) {
+          showLoading(payload || {});
+        });
       }
 
              function displayDictionaryResult(result) {
