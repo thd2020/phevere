@@ -290,6 +290,11 @@ function setHoverEnabled(enabled: boolean): void {
   saveMonitorSettingsFile(monitorSettings);
   applyHoverFromSettings();
   updateTrayContextMenu();
+  try {
+    mainWindow?.webContents.send('monitor-hover-changed', { hoverEnabled: enabled });
+  } catch {
+    /* ignore */
+  }
   log.info('main', enabled ? 'Hover lookup enabled' : 'Hover lookup disabled');
   try {
     if (tray && !tray.isDestroyed()) {
@@ -1454,6 +1459,25 @@ ipcMain.handle('monitor-get-state', () => {
     ocrShortcut: monitorSettings.ocrShortcut,
     hoverShortcut: monitorSettings.hoverShortcut,
   };
+});
+
+ipcMain.handle('monitor-set-hover', (_event, enabled: boolean) => {
+  setHoverEnabled(!!enabled);
+  return { success: true, hoverEnabled: monitorSettings.hoverEnabled };
+});
+
+ipcMain.handle('monitor-toggle-hover', () => {
+  setHoverEnabled(!monitorSettings.hoverEnabled);
+  return { success: true, hoverEnabled: monitorSettings.hoverEnabled };
+});
+
+ipcMain.handle('start-ocr-region', () => {
+  if (ocrOverlayWindow && !ocrOverlayWindow.isDestroyed()) {
+    closeOcrOverlay();
+    return { success: true, open: false };
+  }
+  void startOcrRegionCapture();
+  return { success: true, open: true };
 });
 
 ipcMain.handle('monitor-set-mode', (_event, mode: MonitorMode) => {

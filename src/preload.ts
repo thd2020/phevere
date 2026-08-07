@@ -243,6 +243,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ): Promise<{ success: boolean; error?: string }> => {
     return ipcRenderer.invoke('monitor-set-shortcuts', payload);
   },
+  setHoverEnabled: (enabled: boolean): Promise<{ success: boolean; hoverEnabled?: boolean }> => {
+    return ipcRenderer.invoke('monitor-set-hover', enabled);
+  },
+  toggleHoverEnabled: (): Promise<{ success: boolean; hoverEnabled?: boolean }> => {
+    return ipcRenderer.invoke('monitor-toggle-hover');
+  },
+  startOcrRegion: (): Promise<{ success: boolean; open?: boolean }> => {
+    return ipcRenderer.invoke('start-ocr-region');
+  },
+  onMonitorHoverChanged: (callback: (payload: { hoverEnabled: boolean }) => void) => {
+    ipcRenderer.removeAllListeners('monitor-hover-changed');
+    ipcRenderer.on('monitor-hover-changed', (_event: any, payload: { hoverEnabled: boolean }) =>
+      callback(payload),
+    );
+  },
   ocrImageFile: (filePath: string): Promise<{ success: boolean; error?: string }> => {
     return ipcRenderer.invoke('ocr-image-file', filePath);
   },
@@ -438,6 +453,10 @@ declare global {
         hoverShortcut?: string;
         hoverEnabled?: boolean;
       }) => Promise<{ success: boolean; error?: string }>;
+      setHoverEnabled?: (enabled: boolean) => Promise<{ success: boolean; hoverEnabled?: boolean }>;
+      toggleHoverEnabled?: () => Promise<{ success: boolean; hoverEnabled?: boolean }>;
+      startOcrRegion?: () => Promise<{ success: boolean; open?: boolean }>;
+      onMonitorHoverChanged?: (callback: (payload: { hoverEnabled: boolean }) => void) => void;
       ocrImageFile?: (filePath: string) => Promise<{ success: boolean; error?: string }>;
       ocrImageData?: (dataUrl: string) => Promise<{ success: boolean; error?: string }>;
       onMonitorModeChanged: (callback: (payload: { mode: string }) => void) => void;

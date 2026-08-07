@@ -1357,14 +1357,20 @@ function initializeMainWindowControls() {
   const settingsBtn = document.getElementById('settingsBtn') as HTMLButtonElement;
   const selectionToggle = document.getElementById('selectionToggle') as HTMLButtonElement;
   const clipboardToggle = document.getElementById('clipboardToggle') as HTMLButtonElement;
+  const hoverToggle = document.getElementById('hoverToggle') as HTMLButtonElement;
+  const audioToggle = document.getElementById('audioToggle') as HTMLButtonElement;
+  const ocrStatusBtn = document.getElementById('ocrStatusBtn') as HTMLButtonElement;
   const selectionStatus = document.getElementById('selectionStatus') as HTMLElement;
   const clipboardStatus = document.getElementById('clipboardStatus') as HTMLElement;
+  const hoverStatus = document.getElementById('hoverStatus') as HTMLElement;
+  const audioStatus = document.getElementById('audioStatus') as HTMLElement;
 
   const minimizeBtn = document.getElementById('minimize-btn') as HTMLButtonElement;
   const maximizeBtn = document.getElementById('maximize-btn') as HTMLButtonElement;
   const closeBtn = document.getElementById('close-btn') as HTMLButtonElement;
 
   let isClipboardMonitoring = false;
+  const AUDIO_KEY = 'phevereAudioEnabled';
 
   const selectionModeLabels: Record<string, string> = {
     off: 'Off',
@@ -1391,6 +1397,22 @@ function initializeMainWindowControls() {
     clipboardStatus.textContent = running ? 'Running' : 'Stopped';
     clipboardStatus.className = running ? 'status-value running' : 'status-value stopped';
     clipboardToggle.setAttribute('aria-pressed', running ? 'true' : 'false');
+  }
+
+  function syncHoverUi(enabled: boolean): void {
+    if (!hoverStatus || !hoverToggle) return;
+    hoverStatus.textContent = enabled ? 'On' : 'Off';
+    hoverStatus.className = enabled ? 'status-value running' : 'status-value stopped';
+    hoverToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    hoverToggle.setAttribute('aria-label', `Hover lookup: ${enabled ? 'On' : 'Off'}. Click to toggle.`);
+  }
+
+  function syncAudioUi(enabled: boolean): void {
+    if (!audioStatus || !audioToggle) return;
+    audioStatus.textContent = enabled ? 'On' : 'Off';
+    audioStatus.className = enabled ? 'status-value running' : 'status-value stopped';
+    audioToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    audioToggle.setAttribute('aria-label', `Pronunciation audio: ${enabled ? 'On' : 'Off'}. Click to toggle.`);
   }
 
   if (minimizeBtn) {
@@ -1443,6 +1465,31 @@ function initializeMainWindowControls() {
     });
   }
 
+  if (hoverToggle && window.electronAPI?.toggleHoverEnabled) {
+    hoverToggle.addEventListener('click', async () => {
+      try {
+        const r = await window.electronAPI.toggleHoverEnabled!();
+        if (typeof r?.hoverEnabled === 'boolean') syncHoverUi(r.hoverEnabled);
+      } catch (error) {
+        console.error('Hover toggle failed:', error);
+      }
+    });
+  }
+
+  if (audioToggle) {
+    audioToggle.addEventListener('click', () => {
+      const next = localStorage.getItem(AUDIO_KEY) === '0';
+      localStorage.setItem(AUDIO_KEY, next ? '1' : '0');
+      syncAudioUi(next);
+    });
+  }
+
+  if (ocrStatusBtn && window.electronAPI?.startOcrRegion) {
+    ocrStatusBtn.addEventListener('click', () => {
+      void window.electronAPI.startOcrRegion!();
+    });
+  }
+
   if (settingsBtn) {
     settingsBtn.addEventListener('click', () => {
       window.electronAPI.showSettingsWindow();
@@ -1456,10 +1503,14 @@ function initializeMainWindowControls() {
     window.electronAPI.onMonitorModeChanged?.((payload: { mode: string }) => {
       syncSelectionMonitorUi(payload.mode);
     });
+    window.electronAPI.onMonitorHoverChanged?.((payload: { hoverEnabled: boolean }) => {
+      syncHoverUi(!!payload.hoverEnabled);
+    });
   }
 
   syncClipboardUi(true);
   isClipboardMonitoring = true;
+  syncAudioUi(localStorage.getItem(AUDIO_KEY) !== '0');
 
   void (async () => {
     try {
@@ -1467,8 +1518,14 @@ function initializeMainWindowControls() {
       if (st?.mode) {
         syncSelectionMonitorUi(st.mode);
       }
+      if (typeof st?.hoverEnabled === 'boolean') {
+        syncHoverUi(st.hoverEnabled);
+      } else {
+        syncHoverUi(true);
+      }
     } catch {
       syncSelectionMonitorUi('on');
+      syncHoverUi(true);
     }
   })();
 }
@@ -1972,9 +2029,18 @@ async function loadMainSourceToggles() {
 
 // Setup audio settings
 function setupAudioSettings() {
+  const AUDIO_KEY = 'phevereAudioEnabled';
   const audioSpeedInput = document.getElementById('audio-speed') as HTMLInputElement;
   const speedValue = document.getElementById('speed-value');
-  
+  const enableAudio = document.getElementById('enable-audio') as HTMLInputElement | null;
+
+  if (enableAudio) {
+    enableAudio.checked = localStorage.getItem(AUDIO_KEY) !== '0';
+    enableAudio.addEventListener('change', () => {
+      localStorage.setItem(AUDIO_KEY, enableAudio.checked ? '1' : '0');
+    });
+  }
+
   if (audioSpeedInput && speedValue) {
     audioSpeedInput.addEventListener('input', () => {
       speedValue.textContent = audioSpeedInput.value + 'x';

@@ -8,3 +8,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Settings: OCR region + hover shortcuts editable; sidebar UI restyle (ink/ember, Outfit).
 - OCR: grab-under-cursor, read foreground window, clipboard image OCR + watcher, SMTC now-playing, image drop/paste.
 - Fix: dual-monitor popup placement via `screenToDipPoint` + nearest display workArea (no primary-only clamp).
+- Lexicon: default merged definitions tab (all sources + badges); Wiktionary spelling-lemma pivot; etymology formal restyle; status bar Hover/Audio/OCR.

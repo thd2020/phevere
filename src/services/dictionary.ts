@@ -1076,12 +1076,16 @@ export class DictionaryService extends BaseService {
           if (entry.definitions && Array.isArray(entry.definitions)) {
             entry.definitions.forEach((def: any) => {
               const meaning: string = def.definition;
-              // Extract lemma candidate from definition HTML if it's a form-of entry
+              // Extract lemma candidate from definition HTML if it's a form-of / spelling variant
               const lower = (meaning || '').toLowerCase();
-              if (/(plural|past|present|gerund|participle)\s+of/.test(lower)) {
-                const m = meaning.match(/href=\"\/wiki\/([^\"#]+)(?:#English)?\"/);
+              if (
+                /(plural|past|present|gerund|participle|alternative spelling|misspelling|common misspelling|obsolete spelling|archaic spelling|form)\s+of/.test(
+                  lower,
+                )
+              ) {
+                const m = meaning.match(/href=\"\/wiki\/([^\"#]+)(?:#[^\"]*)?\"/);
                 if (m && m[1]) {
-                  const candidate = decodeURIComponent(m[1]);
+                  const candidate = decodeURIComponent(m[1].replace(/_/g, ' '));
                   if (candidate && candidate.toLowerCase() !== term.toLowerCase()) {
                     lemmaCandidates.add(candidate);
                   }
@@ -1430,7 +1434,7 @@ export class DictionaryService extends BaseService {
     const top = Array.isArray(entries) ? entries[0] : null;
     // `sp=` is a wildcard match, so confirm we got the word we asked for.
     if (top && typeof top.word === 'string' && top.word.toLocaleLowerCase() === word && Array.isArray(top.defs)) {
-      for (const raw of top.defs.slice(0, 6)) {
+      for (const raw of top.defs.slice(0, 12)) {
         const [pos, ...rest] = String(raw).split('\t');
         const meaning = rest.join('\t').trim();
         if (!meaning) continue;

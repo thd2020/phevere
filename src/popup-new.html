@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <title>Phevere Dictionary</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet" />
     <style>
       * {
         margin: 0;
@@ -437,29 +440,169 @@
         color: #475569;
       }
 
-      /* Enhanced Etymology Styling */
+      /* Lexicon / definition entries — formal reference style */
+      .definition-item {
+        background: transparent;
+        padding: 0 0 14px 0;
+        border-radius: 0;
+        margin-bottom: 14px;
+        border-left: none;
+        border-bottom: 1px solid #e8e6e1;
+      }
+
+      .definition-item:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+        padding-bottom: 0;
+      }
+
+      .definition-sense-row {
+        display: grid;
+        grid-template-columns: 28px 1fr;
+        gap: 8px;
+        align-items: start;
+      }
+
+      .definition-sense-num {
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        font-size: 12px;
+        font-weight: 500;
+        color: #64748b;
+        padding-top: 2px;
+      }
+
+      .definition-pos {
+        color: #0f766e;
+        font-size: 11px;
+        font-weight: 600;
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        text-transform: lowercase;
+        font-style: italic;
+        margin-bottom: 4px;
+        letter-spacing: 0.02em;
+      }
+
+      .definition-text {
+        color: #1e293b;
+        line-height: 1.55;
+        font-size: 14px;
+        cursor: text;
+        user-select: text;
+      }
+
+      .definition-text:hover {
+        background: transparent;
+        padding: 0;
+      }
+
+      .definition-text a {
+        color: #0f766e;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
+      .definition-source-badge {
+        display: inline-block;
+        margin-top: 6px;
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #64748b;
+        border: 1px solid #d6d3cd;
+        border-radius: 3px;
+        padding: 1px 6px;
+      }
+
+      .definition-examples {
+        margin-top: 8px;
+        padding-left: 0;
+      }
+
+      .definition-example {
+        font-family: 'Source Serif 4', Georgia, serif;
+        font-size: 13px;
+        font-style: italic;
+        color: #475569;
+        margin: 4px 0;
+        padding-left: 12px;
+        border-left: 2px solid #cbd5e1;
+      }
+
+      .lexicon-pos-group {
+        margin-bottom: 18px;
+      }
+
+      .lexicon-pos-heading {
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #334155;
+        margin: 0 0 10px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid #14212b;
+      }
+
+      .lexicon-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 6px 0 14px;
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        font-size: 11px;
+        color: #64748b;
+      }
+
+      .result-section-title {
+        font-size: 11px;
+        font-weight: 600;
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        color: #475569;
+        margin-bottom: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .example-item {
+        background: transparent;
+        padding: 8px 0 8px 12px;
+        border-radius: 0;
+        margin-bottom: 6px;
+        border-left: 2px solid #94a3b8;
+        font-style: italic;
+        color: #475569;
+        font-family: 'Source Serif 4', Georgia, serif;
+      }
+
+      /* Etymology — formal / geek reference layout */
       .etymology-container {
         margin-bottom: 16px;
-        background: linear-gradient(135deg, #fefefe 0%, #f8fafc 100%);
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
+        background: #faf9f7;
+        border: 1px solid #d6d3cd;
+        border-radius: 2px;
         overflow: hidden;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        box-shadow: none;
       }
 
       .etymology-header {
-        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-        color: white;
-        padding: 12px 16px;
+        background: #14212b;
+        color: #e8e6e1;
+        padding: 10px 14px;
         display: flex;
         align-items: center;
-        gap: 8px;
-        font-weight: 600;
-        font-size: 14px;
+        gap: 10px;
+        font-weight: 500;
+        font-size: 12px;
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
       }
 
       .etymology-icon {
-        font-size: 16px;
+        display: none;
       }
 
       .etymology-title {
@@ -467,147 +610,134 @@
       }
 
       .etymology-content {
-        padding: 16px 20px;
-        background: linear-gradient(135deg, #fef7ed 0%, #fef3c7 100%);
-        border-left: 4px solid #f59e0b;
+        padding: 16px 18px 18px;
+        background: #faf9f7;
+        border-left: 3px solid #14212b;
       }
 
       .etymology-text {
-        line-height: 1.6;
-        font-size: 14px;
-        color: #92400e;
+        line-height: 1.65;
+        font-size: 14.5px;
+        color: #1c1917;
+        font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif;
       }
 
       .etymology-sentence {
-        margin-bottom: 8px;
-        padding: 4px 0;
+        margin-bottom: 10px;
+        padding: 0;
       }
 
       .etymology-keyword {
-        color: #dc2626;
-        font-weight: 600;
-        background: rgba(220, 38, 38, 0.1);
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 13px;
+        color: #14212b;
+        font-weight: 700;
+        background: none;
+        padding: 0;
+        border-radius: 0;
+        font-size: inherit;
+        font-family: inherit;
       }
 
       .etymology-language {
-        color: #7c3aed;
+        color: #0f766e;
         font-weight: 600;
-        background: rgba(124, 58, 237, 0.1);
-        padding: 2px 6px;
-        border-radius: 4px;
+        background: none;
+        padding: 0;
+        border-radius: 0;
         font-style: italic;
-        font-size: 13px;
+        font-size: inherit;
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        font-size: 0.92em;
       }
 
       .etymology-pos {
-        color: #059669;
-        font-weight: 600;
-        background: rgba(5, 150, 105, 0.1);
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 12px;
-        text-transform: uppercase;
+        color: #57534e;
+        font-weight: 500;
+        background: none;
+        padding: 0;
+        border-radius: 0;
+        font-size: 0.9em;
+        text-transform: none;
+        font-style: italic;
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
       }
 
       .etymology-reconstructed {
-        color: #dc2626;
-        font-family: 'Times New Roman', serif;
+        color: #14212b;
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
         font-style: italic;
         font-weight: 500;
       }
 
       .etymology-accent {
-        color: #d97706;
+        color: #78716c;
         font-size: 0.85em;
         font-style: italic;
-        opacity: 0.8;
+        opacity: 1;
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
       }
 
-      .etymology-century {
-        color: #7c3aed;
-        font-weight: 500;
-      }
-
+      .etymology-century,
       .etymology-era {
-        color: #ea580c;
-        font-weight: 500;
-        font-variant: small-caps;
+        color: #44403c;
+        font-weight: 600;
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        font-size: 0.9em;
+        font-variant: normal;
       }
 
       .etymology-separator {
-        margin: 15px 0;
-        text-align: center;
+        margin: 18px 0 14px;
+        text-align: left;
         position: relative;
+        border-top: 1px dashed #a8a29e;
+        padding-top: 10px;
       }
 
       .etymology-separator::before {
-        content: '';
-        position: absolute;
-        top: 50%;
-        left: 0;
-        right: 0;
-        height: 1px;
-        background: linear-gradient(to right, transparent, #d1d5db, transparent);
+        display: none;
       }
 
       .etymology-separator span {
-        background: #f9fafb;
-        padding: 0 15px;
-        color: #6b7280;
-        font-size: 0.85em;
-        font-weight: 500;
+        background: transparent;
+        padding: 0;
+        color: #78716c;
+        font-size: 10px;
+        font-weight: 600;
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        position: relative;
-        z-index: 1;
+        letter-spacing: 0.1em;
+        position: static;
       }
 
       .etymology-text.alternative {
-        opacity: 0.9;
-        font-size: 0.95em;
+        opacity: 1;
       }
 
       .etymology-text.alternative .etymology-sentence {
-        margin-bottom: 6px;
+        color: #44403c;
       }
 
       .etymology-no-data {
-        padding: 20px;
-        text-align: center;
-        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-        border-left: 4px solid #64748b;
+        padding: 18px;
+        color: #57534e;
+        font-family: 'Source Serif 4', Georgia, serif;
+        font-size: 14px;
+        line-height: 1.55;
       }
 
-      .no-data-icon {
-        font-size: 32px;
-        margin-bottom: 12px;
-        opacity: 0.6;
+      .etymology-no-data .no-data-icon {
+        display: none;
       }
 
-      .no-data-text {
-        color: #64748b;
+      .etymology-no-data ul {
+        margin: 8px 0 0 1.1em;
+        padding: 0;
       }
 
-      .no-data-text ul {
-        text-align: left;
-        margin: 12px 0;
-        padding-left: 20px;
+      .etymology-no-data li {
+        margin-bottom: 4px;
       }
 
-      .no-data-text li {
-        margin: 6px 0;
-        font-size: 13px;
-      }
-
-      .no-data-text em {
-        color: #475569;
-        font-style: italic;
-      }
-
-      /* Legacy support for old etymology styling */
       .etymology-info {
         background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
         padding: 16px 20px;
@@ -900,10 +1030,10 @@
 
          <!-- Tabs -->
          <div class="tabs" id="tabsContainer" style="display: none;">
-           <button class="tab active" data-tab="translation">Translation</button>
-                       <button class="tab" data-tab="dictionary">Free Dictionary API</button>
-            <button class="tab" data-tab="wiktionary">Wiktionary</button>
-            <button class="tab" data-tab="etymology">📚 Etymology</button>
+           <button class="tab active" data-tab="lexicon">Lexicon</button>
+           <button class="tab" data-tab="translation">Translation</button>
+           <button class="tab" data-tab="wiktionary">Wiktionary</button>
+           <button class="tab" data-tab="etymology">Etymology</button>
          </div>
 
         <!-- Results Section -->
@@ -932,7 +1062,7 @@
       // Global variables
       let currentText = '';
       let currentResult = null;
-      let currentTab = 'dictionary';
+      let currentTab = 'lexicon';
       let isExpanded = false; // start collapsed
       let settings = {
         expandableMode: true,
@@ -983,12 +1113,12 @@
                 const openedFromHistory = (window.outerWidth || 0) > 600;
                 if (openedFromHistory) {
                   // Historical popup (expanded window) – auto-expand and run lookup once
-                  activateTab('dictionary');
+                  activateTab('lexicon');
                   expandToolbar();
                   lookupText(currentText);
                 } else {
                   // Slim popup – stay collapsed; optional background fetch (same as legacy onPopupText preload)
-                  activateTab('dictionary');
+                  activateTab('lexicon');
                   maybePreloadLookup(currentText);
                 }
               }
@@ -1002,7 +1132,7 @@
               pvLog('[POPUP] onPopupText:', text);
               currentText = (text || currentText || '').trim();
               window['__popupCurrentText'] = currentText;
-              activateTab('dictionary');
+              activateTab('lexicon');
               maybePreloadLookup(currentText);
               var tb = document.getElementById('toolbar');
               if (tb && tb.classList.contains('collapsed')) {
@@ -1041,7 +1171,7 @@
        function setupEventListeners() {
          // Toolbar icons
             document.getElementById('dictionaryIcon').addEventListener('click', () => { 
-              activateTab('dictionary');
+              activateTab('lexicon');
               expandToolbar();
               const t = currentText || window['__popupCurrentText'] || '';
               if (t) lookupText(t);
@@ -1203,27 +1333,53 @@
           }
       }
 
-             // Enhanced etymology display function with professional formatting
+        function escapeHtml(s) {
+          return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+        }
+
+        function stripHtmlToText(html) {
+          if (!html) return '';
+          if (!/[<>]/.test(html)) return html;
+          var d = document.createElement('div');
+          d.innerHTML = html;
+          return (d.textContent || d.innerText || '').replace(/\s+/g, ' ').trim();
+        }
+
+        function normalizeSourceName(src) {
+          var s = String(src || '').trim();
+          var key = s.toLowerCase();
+          if (!s || key === 'freedictionaryapi' || key === 'free dictionary api') return 'Free Dictionary';
+          if (key === 'wiktionary') return 'Wiktionary';
+          if (key === 'datamuse') return 'Datamuse';
+          if (key.indexOf('oxford') >= 0) return 'Oxford';
+          if (key.indexOf('wordsapi') >= 0 || key === 'wordsapi') return 'WordsAPI';
+          if (key.indexOf('collins') >= 0) return 'Collins';
+          if (key.indexOf('youdao') >= 0) return 'Youdao';
+          return s;
+        }
+
         function displayEtymologyResult(result) {
           pvLog('[POPUP] displayEtymologyResult called with:', result);
           document.getElementById('loadingElement').style.display = 'none';
           const resultsContainer = document.getElementById('dictionary-results');
           resultsContainer.style.display = 'block';
           const speechLang = window['__audioLang'] || result.detectedLanguage || 'en';
+          const word = escapeHtml(result.word || '');
 
           let etymologyHtml = '';
 
           if (result.etymology && result.etymology.length > 0) {
-            // Parse and format the etymology text
             const formattedEtymology = formatEtymologyText(result.etymology);
-
             etymologyHtml = `
               <div class="result-card">
-                  <div class="result-word">${result.word}</div>
+                  <div class="result-word">${word}</div>
                   <div class="etymology-container">
                     <div class="etymology-header">
-                      <span class="etymology-icon">📚</span>
-                      <span class="etymology-title">Word Origin & Etymology</span>
+                      <span class="etymology-title">Etymology</span>
                     </div>
                     <div class="etymology-content">
                       ${formattedEtymology}
@@ -1231,81 +1387,70 @@
                   </div>
                   <div class="result-actions">
                       <button onclick='playAudio(${JSON.stringify(result.word)}, ${JSON.stringify(speechLang)})' class="audio-button" title="Play pronunciation">🔊</button>
-                      <button onclick='searchWeb(${JSON.stringify(result.word)})' class="action-btn action-btn-info">🔍 Search Web</button>
+                      <button onclick='searchWeb(${JSON.stringify(result.word)})' class="action-btn action-btn-info">Search Web</button>
                   </div>
               </div>`;
           } else {
             etymologyHtml = `
               <div class="result-card">
-                  <div class="result-word">${result.word}</div>
+                  <div class="result-word">${word}</div>
                   <div class="etymology-container">
                     <div class="etymology-header">
-                      <span class="etymology-icon">📚</span>
-                      <span class="etymology-title">Word Origin & Etymology</span>
+                      <span class="etymology-title">Etymology</span>
                     </div>
                     <div class="etymology-no-data">
-                      <div class="no-data-icon">❓</div>
                       <div class="no-data-text">
-                        <p><strong>No etymology information found</strong></p>
-                        <p>This may be because:</p>
-                        <ul>
-                          <li>The word is too recent or technical</li>
-                          <li>The word originates from a language not well-documented in etymology databases</li>
-                          <li>The term is a proper name or acronym</li>
-                        </ul>
-                        <p><em>Try searching for the root word or related terms for better results.</em></p>
+                        <p><strong>No etymology found for this headword.</strong></p>
+                        <p>Common causes: recent coinages, proper names, acronyms, or lemmas not covered by Wiktionary / Etymonline parses.</p>
                       </div>
                     </div>
                   </div>
                   <div class="result-actions">
                       <button onclick='playAudio(${JSON.stringify(result.word)}, ${JSON.stringify(speechLang)})' class="audio-button" title="Play pronunciation">🔊</button>
-                      <button onclick='searchWeb(${JSON.stringify(result.word)})' class="action-btn action-btn-info">🔍 Search Web</button>
+                      <button onclick='searchWeb(${JSON.stringify(result.word)})' class="action-btn action-btn-info">Search Web</button>
                   </div>
               </div>`;
           }
 
           resultsContainer.innerHTML = etymologyHtml;
-          pvLog('[POPUP] Enhanced etymology content displayed');
         }
 
-        // Format etymology text with professional styling
         function formatEtymologyText(etymologyText) {
           if (!etymologyText) return '';
 
-          // Handle multiple etymology sources separated by our delimiter
           const sources = etymologyText.split(/\n\n--- Alternative etymology ---\n\n/);
           let formattedHtml = '';
 
           sources.forEach((sourceText, sourceIndex) => {
             if (sourceIndex > 0) {
-              formattedHtml += '<div class="etymology-separator"><span>Alternative Origin</span></div>';
+              formattedHtml += '<div class="etymology-separator"><span>Alternative account</span></div>';
             }
 
-            // Split into sentences for better formatting
-            const sentences = sourceText.split(/[.!?]+/).filter(s => s.trim().length > 3);
+            const plain = stripHtmlToText(sourceText);
+            const sentences = plain.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 3);
 
-            if (sourceIndex === 0) {
-              formattedHtml += '<div class="etymology-text">';
+            formattedHtml += sourceIndex === 0
+              ? '<div class="etymology-text">'
+              : '<div class="etymology-text alternative">';
+
+            if (sentences.length === 0) {
+              formattedHtml += `<div class="etymology-sentence">${escapeHtml(plain)}</div>`;
             } else {
-              formattedHtml += '<div class="etymology-text alternative">';
-            }
-
-            sentences.forEach((sentence, index) => {
-              const trimmedSentence = sentence.trim();
-              if (trimmedSentence) {
-                // Highlight key linguistic terms with improved patterns
-                let highlightedSentence = trimmedSentence
+              sentences.forEach((sentence) => {
+                const trimmedSentence = sentence.trim();
+                if (!trimmedSentence) return;
+                let highlightedSentence = escapeHtml(trimmedSentence)
                   .replace(/\b(From|Derived from|Borrowed from|Inherited from|Root|Origin|Etymology|Cognate with|Doublet of)\b/gi, '<span class="etymology-keyword">$1</span>')
                   .replace(/\b(Latin|Greek|French|German|Old English|Middle English|Anglo-Saxon|Proto-Germanic|Proto-Indo-European|Ancient Greek|Sanskrit|Gothic|Old Norse|Old French|Proto-Italic|Proto-Hellenic|Proto-Celtic)\b/gi, '<span class="etymology-language">$1</span>')
                   .replace(/\b(verb|noun|adjective|adverb|pronoun|preposition|conjunction|interjection|prefix|suffix)\b/gi, '<span class="etymology-pos">$1</span>')
-                  .replace(/\*[\w\u0300-\u036f]+/g, '<span class="etymology-reconstructed">$&</span>') // Reconstructed forms with accents
-                  .replace(/\([^)]*accent[^)]*\)/gi, '<span class="etymology-accent">$&</span>') // Accent information
-                  .replace(/(\d+)(st|nd|rd|th)\s+century/gi, '<span class="etymology-century">$&</span>') // Centuries
-                  .replace(/\b(BCE?|CE|AD|BC)\b/g, '<span class="etymology-era">$&</span>'); // Time periods
+                  .replace(/\*[\w\u0300-\u036f\-]+/g, '<span class="etymology-reconstructed">$&</span>')
+                  .replace(/\([^)]*accent[^)]*\)/gi, '<span class="etymology-accent">$&</span>')
+                  .replace(/(\d+)(st|nd|rd|th)\s+century/gi, '<span class="etymology-century">$&</span>')
+                  .replace(/\b(BCE?|CE|AD|BC)\b/g, '<span class="etymology-era">$&</span>');
 
-                formattedHtml += `<div class="etymology-sentence">${highlightedSentence}${index < sentences.length - 1 ? '.' : ''}</div>`;
-              }
-            });
+                formattedHtml += `<div class="etymology-sentence">${highlightedSentence}</div>`;
+              });
+            }
 
             formattedHtml += '</div>';
           });
@@ -1433,14 +1578,16 @@
        });
 
              function activateTab(tabName) {
+         if (tabName === 'dictionary') tabName = 'lexicon';
          currentTab = tabName;
          document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-         document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+         const tabBtn = document.querySelector(`[data-tab="${tabName}"]`);
+         if (tabBtn) tabBtn.classList.add('active');
          document.querySelectorAll('.toolbar-icon').forEach(icon => icon.classList.remove('active'));
          
                    if (tabName === 'etymology') {
             document.getElementById('wikiIcon').classList.add('active');
-          } else if (tabName.includes('dict')) {
+          } else if (tabName === 'lexicon' || tabName === 'wiktionary' || tabName === 'dictionary') {
             document.getElementById('dictionaryIcon').classList.add('active');
           } else {
             document.getElementById('translationIcon').classList.add('active');
@@ -1580,32 +1727,28 @@
              function displayDictionaryResult(result) {
          pvLog('[POPUP] displayDictionaryResult called with:', result);
          pvLog('[POPUP] Current tab:', currentTab);
-         
+
          document.getElementById('loadingElement').style.display = 'none';
          const resultsContainer = document.getElementById('dictionary-results');
          resultsContainer.style.display = 'block';
 
          let contentHtml = '';
          if (currentTab === 'translation') {
-             pvLog('[POPUP] Processing translation tab');
-             pvLog('[POPUP] Translations:', result.translations);
              contentHtml = (result.translations || []).map(t => createTranslationCard(result.word, t, result.detectedLanguage)).join('');
+         } else if (currentTab === 'wiktionary') {
+             contentHtml = createDefinitionCard(result, 'Wiktionary');
+         } else if (currentTab === 'dictionary') {
+             contentHtml = createDefinitionCard(result, 'Free Dictionary');
          } else {
-             pvLog('[POPUP] Processing dictionary tab:', currentTab);
-             const sourceName = currentTab === 'dictionary' ? 'Free Dictionary API' : 'Wiktionary';
-             pvLog('[POPUP] Source name:', sourceName);
-             pvLog('[POPUP] Definitions:', result.definitions);
-             contentHtml = createDefinitionCard(result, sourceName);
+             // Lexicon: merged paper-dict style view of all sources
+             contentHtml = createLexiconCard(result);
          }
 
-         pvLog('[POPUP] Generated content HTML length:', contentHtml.length);
          if (!contentHtml) {
-             pvLog('[POPUP] No content generated, showing error message');
              contentHtml = `<div class="error-message">No relevant data found for this tab.</div>`;
          }
 
           resultsContainer.innerHTML = contentHtml;
-         pvLog('[POPUP] Content displayed successfully');
        }
 
              function createTranslationCard(word, trans, wordLang) {
@@ -1613,91 +1756,148 @@
          return `
            <div class="result-card">
              <div class="result-header">
-               <div class="result-icon">${trans.language.toUpperCase()}</div>
+               <div class="result-icon">${escapeHtml((trans.language || '').toUpperCase())}</div>
                <div class="result-meta">
-                 <div class="result-source">${trans.source || 'Translation Service'}</div>
+                 <div class="result-source">${escapeHtml(trans.source || 'Translation Service')}</div>
                  ${trans.confidence ? `<div class="result-confidence">Confidence: ${Math.round(trans.confidence * 100)}%</div>` : ''}
                </div>
              </div>
-             <div class="result-original">Original: ${word}</div>
-             <div class="result-word">${trans.text}</div>
-             ${trans.pronunciation ? `<div class="result-pronunciation">${trans.pronunciation}</div>` : ''}
+             <div class="result-original">Original: ${escapeHtml(word)}</div>
+             <div class="result-word">${escapeHtml(trans.text)}</div>
+             ${trans.pronunciation ? `<div class="result-pronunciation">${escapeHtml(trans.pronunciation)}</div>` : ''}
                            <div class="result-actions">
                 <button onclick='playAudio(${JSON.stringify(word)}, ${JSON.stringify(origLang)})' class="audio-button" title="Play original text pronunciation">🔊 Original</button>
-                <button onclick='playAudio(${JSON.stringify(trans.text)}, ${JSON.stringify(trans.language)})' class="audio-button" title="Play translation pronunciation">🔊 ${trans.language.toUpperCase()}</button>
-                <button onclick='searchWeb(${JSON.stringify(trans.text)})' class="action-btn action-btn-info">🔍 Search Web</button>
+                <button onclick='playAudio(${JSON.stringify(trans.text)}, ${JSON.stringify(trans.language)})' class="audio-button" title="Play translation pronunciation">🔊 ${escapeHtml((trans.language || '').toUpperCase())}</button>
+                <button onclick='searchWeb(${JSON.stringify(trans.text)})' class="action-btn action-btn-info">Search Web</button>
               </div>
            </div>
          `;
        }
 
-                           function createDefinitionCard(result, source) {
-            pvLog('[POPUP] createDefinitionCard called with source:', source);
-            pvLog('[POPUP] Result definitions:', result.definitions);
-            
-            // Filter definitions by source
-            let defs = [];
-            if (source === 'Free Dictionary API') {
-                defs = (result.definitions || []).filter(d => !d.source || d.source === 'Free Dictionary API' || d.source === 'freedictionaryapi');
-            } else if (source === 'Wiktionary') {
-                defs = (result.definitions || []).filter(d => d.source === 'Wiktionary' || d.source === 'wiktionary');
+        function filterDefsBySource(defs, source) {
+          const want = normalizeSourceName(source).toLowerCase();
+          return (defs || []).filter(function (d) {
+            const label = normalizeSourceName(d.source).toLowerCase();
+            if (want === 'free dictionary') {
+              return !d.source || label === 'free dictionary' || label.indexOf('free dictionary') >= 0;
             }
-            
-            // If no filtered definitions, show all definitions
-            if (defs.length === 0) {
-                defs = result.definitions || [];
-                pvLog('[POPUP] No source-specific definitions, showing all:', defs.length);
-            } else {
-                pvLog('[POPUP] Found source-specific definitions:', defs.length);
+            if (want === 'wiktionary') return label === 'wiktionary';
+            return label === want;
+          });
+        }
+
+        function createLexiconCard(result) {
+          const defs = result.definitions || [];
+          if (defs.length === 0) {
+            return `<div class="error-message">No definitions found.</div>`;
+          }
+
+          // Group by part of speech; keep original order within groups
+          const groups = {};
+          const order = [];
+          defs.forEach(function (d) {
+            const pos = (d.partOfSpeech || 'unknown').toLowerCase();
+            if (!groups[pos]) {
+              groups[pos] = [];
+              order.push(pos);
             }
-            
-            if (defs.length === 0) {
-                pvLog('[POPUP] No definitions found');
-                return `<div class="error-message">No definitions found for ${source}.</div>`;
-            }
-            
-            return `
+            groups[pos].push(d);
+          });
+
+          const sourcesUsed = Array.from(new Set(defs.map(function (d) {
+            return normalizeSourceName(d.source);
+          })));
+
+          let body = '';
+          let senseCounter = 0;
+          order.forEach(function (pos) {
+            body += `<div class="lexicon-pos-group"><div class="lexicon-pos-heading">${escapeHtml(pos)}</div>`;
+            const senses = groups[pos].slice().sort(function (a, b) {
+              const la = stripHtmlToText(a.meaning || a.definition || '').length;
+              const lb = stripHtmlToText(b.meaning || b.definition || '').length;
+              return lb - la;
+            });
+            senses.forEach(function (d) {
+              senseCounter += 1;
+              const rawMeaning = d.meaning || d.definition || '';
+              const isWikiHtml = /<[a-z][\s\S]*>/i.test(rawMeaning);
+              const meaningHtml = isWikiHtml
+                ? rawMeaning
+                : escapeHtml(rawMeaning);
+              const examples = Array.isArray(d.examples) ? d.examples : [];
+              const exHtml = examples.length
+                ? `<div class="definition-examples">${examples.map(function (ex) {
+                    return `<div class="definition-example">${escapeHtml(stripHtmlToText(ex))}</div>`;
+                  }).join('')}</div>`
+                : '';
+              body += `
+                <div class="definition-item">
+                  <div class="definition-sense-row">
+                    <div class="definition-sense-num">${senseCounter}.</div>
+                    <div>
+                      <div class="definition-text">${meaningHtml || 'No definition available'}</div>
+                      ${exHtml}
+                      <span class="definition-source-badge">${escapeHtml(normalizeSourceName(d.source))}</span>
+                    </div>
+                  </div>
+                </div>`;
+            });
+            body += '</div>';
+          });
+
+          const globalExamples = (result.examples || []).slice(0, 8);
+          const syn = result.synonyms || [];
+          const ant = result.antonyms || [];
+
+          return `
             <div class="result-card">
-                <div class="result-word">${result.word}</div>
-                ${result.pronunciation ? `<div class="result-pronunciation">/${result.pronunciation}/</div>` : ''}
-                <div class="result-section">
-                  <div class="result-section-title">Definitions from ${source}</div>
-                  ${defs.map(d => `
-                      <div class="definition-item">
-                          <div class="definition-pos">${d.partOfSpeech || 'Unknown'}</div>
-                          <div class="definition-text">${d.meaning || d.definition || 'No definition available'}</div>
-                      </div>
-                  `).join('')}
+                <div class="result-word">${escapeHtml(result.word)}</div>
+                ${result.pronunciation ? `<div class="result-pronunciation">/${escapeHtml(result.pronunciation)}/</div>` : ''}
+                <div class="lexicon-meta">
+                  <span>${defs.length} sense${defs.length === 1 ? '' : 's'}</span>
+                  <span>${escapeHtml(sourcesUsed.join(' · '))}</span>
                 </div>
-                ${result.etymology ? `
-                  <div class="result-section">
-                      <div class="result-section-title">Etymology</div>
-                      <div class="example-item">${result.etymology}</div>
-                  </div>` : ''
-                }
-                ${(result.examples && result.examples.length > 0) ? `
+                <div class="result-section">
+                  ${body}
+                </div>
+                ${globalExamples.length ? `
                   <div class="result-section">
                       <div class="result-section-title">Examples</div>
-                      ${result.examples.map(ex => `<div class=\"example-item\"><em>"${ex}"</em></div>`).join('')}
-                  </div>` : ''
-                }
-                ${(result.synonyms && result.synonyms.length > 0) ? `
+                      ${globalExamples.map(function (ex) {
+                        return `<div class="example-item">${escapeHtml(stripHtmlToText(ex))}</div>`;
+                      }).join('')}
+                  </div>` : ''}
+                ${syn.length ? `
                   <div class="result-section">
                       <div class="result-section-title">Synonyms</div>
-                      <div class="example-item">${result.synonyms.join(', ')}</div>
-                  </div>` : ''
-                }
-                ${(result.antonyms && result.antonyms.length > 0) ? `
+                      <div class="example-item">${escapeHtml(syn.join(', '))}</div>
+                  </div>` : ''}
+                ${ant.length ? `
                   <div class="result-section">
                       <div class="result-section-title">Antonyms</div>
-                      <div class="example-item">${result.antonyms.join(', ')}</div>
-                  </div>` : ''
-                }
+                      <div class="example-item">${escapeHtml(ant.join(', '))}</div>
+                  </div>` : ''}
                 <div class="result-actions">
                     <button onclick='playAudio(${JSON.stringify(result.word)}, ${JSON.stringify(result.detectedLanguage || window['__audioLang'] || 'en')})' class="audio-button" title="Play pronunciation">🔊</button>
-                    <button onclick='searchWeb(${JSON.stringify(result.word)})' class="action-btn action-btn-info">🔍 Search Web</button>
+                    <button onclick='searchWeb(${JSON.stringify(result.word)})' class="action-btn action-btn-info">Search Web</button>
                 </div>
             </div>`;
+        }
+
+                           function createDefinitionCard(result, source) {
+            let defs = filterDefsBySource(result.definitions || [], source);
+
+            // Do not dump every source under a wrong label
+            if (defs.length === 0) {
+                return `<div class="error-message">No definitions from ${escapeHtml(normalizeSourceName(source))}.</div>`;
+            }
+
+            // Prefer lexicon-style layout even for a single source
+            const scoped = Object.assign({}, result, { definitions: defs });
+            return createLexiconCard(scoped).replace(
+              'class="lexicon-meta"',
+              'class="lexicon-meta" data-source-filter="' + escapeHtml(normalizeSourceName(source)) + '"'
+            );
         }
 
       // Display mock result
@@ -1788,6 +1988,8 @@
        }
 
        window.playAudio = (text, language) => {
+         try { if (localStorage.getItem('phevereAudioEnabled') === '0') { pvLog('[POPUP] Audio disabled'); return; } } catch (e) {}
+
          pvLog(`[AUDIO-DEBUG] === Starting audio playback ===`);
          pvLog(`[AUDIO-DEBUG] Input text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
          pvLog(`[AUDIO-DEBUG] Input language: ${language}`);
@@ -2081,7 +2283,7 @@
                   </div>`;
                resultsContainer.style.display = 'block';
                resultsContainer.innerHTML = html;
-               activateTab('dictionary');
+               activateTab('lexicon');
              } catch (err) {
                console.error('Wikipedia panel error', err);
              }
