@@ -540,6 +540,52 @@ body.main-window .selections-list .empty-message {
   border-radius: var(--md-shape-md);
 }
 
+body.main-window .vocab-notebook {
+  margin-top: 28px;
+}
+
+body.main-window .vocab-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor: default;
+}
+
+body.main-window .vocab-item .selection-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+body.main-window .vocab-pos {
+  font-size: 0.75rem;
+  color: var(--pv-teal, #0d7377);
+  margin-left: 8px;
+  font-family: var(--pv-font-mono, ui-monospace, monospace);
+}
+
+body.main-window .vocab-def {
+  font-size: 0.8125rem;
+  color: var(--md-on-surface-variant);
+  line-height: 1.45;
+}
+
+body.main-window .vocab-cites {
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--pv-ink-soft, #64748b);
+  font-family: var(--pv-font-mono, ui-monospace, monospace);
+}
+
+body.main-window .vocab-item .selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 /* Segmented row cards — natural height; do not shrink inside scroll region */
 body.main-window .selection-item {
   display: flex;
@@ -2030,6 +2076,28 @@ body.settings-page .settings-cheat {
   background: rgba(13, 115, 119, 0.06);
   display: grid;
   gap: 8px;
+}
+
+body.settings-page .settings-offline-packs {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+body.settings-page .settings-offline-pack {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: var(--set-radius);
+  background: var(--set-panel);
+}
+
+body.settings-page .settings-offline-pack .settings-hint {
+  display: block;
+  margin: 4px 0 0;
 }
 
 body.settings-page .settings-cheat li {

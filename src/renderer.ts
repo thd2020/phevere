@@ -108,6 +108,7 @@ function initializeSettingsWindow() {
           <button type="button" class="settings-nav__item is-active" data-section="shortcuts">Shortcuts</button>
           <button type="button" class="settings-nav__item" data-section="capture">Capture</button>
           <button type="button" class="settings-nav__item" data-section="sources">Sources</button>
+          <button type="button" class="settings-nav__item" data-section="offline">Offline</button>
           <button type="button" class="settings-nav__item" data-section="api">API keys</button>
           <button type="button" class="settings-nav__item" data-section="audio">Audio</button>
         </nav>
@@ -181,9 +182,29 @@ function initializeSettingsWindow() {
           <section class="settings-panel" data-panel="sources" aria-labelledby="settings-sources-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-sources-heading" class="settings-panel__title">Dictionary sources</h2>
-              <p class="settings-hint">Toggle which providers run on each lookup.</p>
+              <p class="settings-hint">Toggle which providers run on each lookup. Script routing still prefers Youdao/CEDICT for CJK and Free Dictionary/Wiktionary for Latin.</p>
             </div>
             <div id="main-source-toggles"></div>
+          </section>
+
+          <section class="settings-panel" data-panel="offline" aria-labelledby="settings-offline-heading">
+            <div class="settings-panel__intro">
+              <h2 id="settings-offline-heading" class="settings-panel__title">Offline dictionary</h2>
+              <p class="settings-hint">
+                Local SQLite packs for fast / offline lookups. Download free CC-CEDICT (with your consent) or import your own JSON/JSONL or CEDICT text.
+              </p>
+            </div>
+            <div class="settings-actions settings-actions--wrap">
+              <button type="button" id="offline-download-cedict" class="btn btn-primary">Download CC-CEDICT</button>
+              <button type="button" id="offline-import-json" class="btn btn-secondary">Import JSON / JSONL</button>
+              <button type="button" id="offline-import-cedict" class="btn btn-secondary">Import CEDICT file</button>
+              <button type="button" id="offline-refresh-packs" class="btn btn-outlined">Refresh</button>
+            </div>
+            <p id="offline-status" class="settings-inline-status" role="status" aria-live="polite"></p>
+            <div id="offline-packs-list" class="settings-offline-packs"></div>
+            <p class="settings-hint">
+              JSON format: array or JSONL of <code>{"headword","definition","pos?","language?"}</code>. Paid packs can be added later as optional agreements.
+            </p>
           </section>
 
           <section class="settings-panel" data-panel="api" aria-labelledby="settings-api-heading">
@@ -246,12 +267,111 @@ function initializeSettingsWindow() {
   loadMainSourceToggles();
   setupAudioSettings();
   wireSettingsImageDrop();
+  void wireOfflineSettingsPanel();
   void wireMonitorSettingsFields().then(({ stopCapture }) => {
     document.getElementById('settings-close')?.addEventListener('click', () => {
       stopCapture();
       window.close();
     });
   });
+}
+
+async function wireOfflineSettingsPanel(): Promise<void> {
+  const api = (window as any).offlineDictAPI;
+  const statusEl = document.getElementById('offline-status');
+  const listEl = document.getElementById('offline-packs-list');
+  const setStatus = (msg: string) => {
+    if (statusEl) statusEl.textContent = msg;
+  };
+
+  const refresh = async () => {
+    if (!listEl || !api?.listPacks) {
+      if (listEl) listEl.innerHTML = `<p class="settings-hint">Offline API unavailable.</p>`;
+      return;
+    }
+    try {
+      const packs = await api.listPacks();
+      if (!packs?.length) {
+        listEl.innerHTML = `<p class="settings-hint">No packs installed yet.</p>`;
+        return;
+      }
+      listEl.innerHTML = packs
+        .map(
+          (p: any) => `<div class="settings-offline-pack">
+            <div>
+              <strong>${escapeHtmlSelection(p.name)}</strong>
+              <span class="settings-hint">${escapeHtmlSelection(p.language)} · ${Number(p.entryCount) || 0} entries</span>
+            </div>
+            <button type="button" class="btn btn-outlined btn-small offline-remove" data-id="${escapeHtmlSelection(p.id)}">Remove</button>
+          </div>`,
+        )
+        .join('');
+      listEl.querySelectorAll('.offline-remove').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = (btn as HTMLElement).dataset.id;
+          if (!id) return;
+          if (!confirm(`Remove pack “${id}”?`)) return;
+          await api.removePack(id);
+          setStatus('Pack removed.');
+          await refresh();
+        });
+      });
+    } catch (error) {
+      console.error(error);
+      listEl.innerHTML = `<p class="settings-hint">Could not list packs.</p>`;
+    }
+  };
+
+  document.getElementById('offline-refresh-packs')?.addEventListener('click', () => {
+    void refresh();
+  });
+  document.getElementById('offline-import-json')?.addEventListener('click', async () => {
+    if (!api?.importJson) return;
+    setStatus('Choose a JSON / JSONL file…');
+    try {
+      const r = await api.importJson();
+      if (r?.cancelled) {
+        setStatus('Import cancelled.');
+        return;
+      }
+      setStatus(r?.success ? `Imported ${r.count} entries.` : 'Import failed.');
+      await refresh();
+    } catch (e: any) {
+      setStatus(`Import failed: ${e?.message || e}`);
+    }
+  });
+  document.getElementById('offline-import-cedict')?.addEventListener('click', async () => {
+    if (!api?.importCedictFile) return;
+    setStatus('Choose a CEDICT text file…');
+    try {
+      const r = await api.importCedictFile();
+      if (r?.cancelled) {
+        setStatus('Import cancelled.');
+        return;
+      }
+      setStatus(r?.success ? `Imported ${r.count} CEDICT entries.` : 'Import failed.');
+      await refresh();
+    } catch (e: any) {
+      setStatus(`Import failed: ${e?.message || e}`);
+    }
+  });
+  document.getElementById('offline-download-cedict')?.addEventListener('click', async () => {
+    if (!api?.downloadCedict) return;
+    const ok = confirm(
+      'Download free CC-CEDICT from mdbg.net?\n\nCreative Commons Attribution-ShareAlike 4.0. File is large; import may take a minute.',
+    );
+    if (!ok) return;
+    setStatus('Downloading & importing CC-CEDICT…');
+    try {
+      const r = await api.downloadCedict();
+      setStatus(r?.success ? `CC-CEDICT ready · ${r.count} entries.` : 'Download failed.');
+      await refresh();
+    } catch (e: any) {
+      setStatus(`Download failed: ${e?.message || e}`);
+    }
+  });
+
+  await refresh();
 }
 
 function wireSettingsImageDrop(): void {
@@ -1299,10 +1419,77 @@ function initializePopup() {
 function initializeMainWindow() {
   initializeMainWindowControls();
   wireMainWindowImageIngest();
-
   loadRecentSelectionsIntoDom();
-
+  void loadVocabNotebook();
   void attachSelectionChangeListenerOnly();
+}
+
+async function loadVocabNotebook(): Promise<void> {
+  const list = document.getElementById('vocabList');
+  if (!list) return;
+  const api = (window as any).vocabAPI;
+  if (!api?.list) {
+    list.innerHTML = `<p class="empty-message">Notebook API unavailable.</p>`;
+    return;
+  }
+  try {
+    const entries = await api.list(100);
+    if (!entries || !entries.length) {
+      list.innerHTML = `<p class="empty-message">No saved words yet. Use Save in the popup Lexicon or Translation tab.</p>`;
+      return;
+    }
+    list.innerHTML = entries
+      .map((e: any) => {
+        const def = escapeHtmlSelection((e.definition || '').slice(0, 160));
+        const tags = (e.sources || []).slice(0, 3).map((s: string) => escapeHtmlSelection(s)).join(' · ');
+        return `<div class="selection-item vocab-item" data-id="${escapeHtmlSelection(e.id)}">
+          <div class="selection-text">
+            <strong>${escapeHtmlSelection(e.lemma)}</strong>
+            ${e.partOfSpeech ? `<span class="vocab-pos">${escapeHtmlSelection(e.partOfSpeech)}</span>` : ''}
+            <div class="vocab-def">${def}</div>
+            ${tags ? `<div class="vocab-cites">${tags}</div>` : ''}
+          </div>
+          <div class="selection-actions">
+            <button type="button" class="btn btn-outlined btn-small vocab-open" data-lemma="${escapeHtmlSelection(e.lemma)}">Open</button>
+            <button type="button" class="btn btn-outlined btn-small vocab-remove" data-id="${escapeHtmlSelection(e.id)}">Remove</button>
+          </div>
+        </div>`;
+      })
+      .join('');
+
+    list.querySelectorAll('.vocab-open').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const lemma = (btn as HTMLElement).dataset.lemma;
+        if (lemma) void openFullLookup(lemma);
+      });
+    });
+    list.querySelectorAll('.vocab-remove').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = (btn as HTMLElement).dataset.id;
+        if (!id) return;
+        await api.remove(id);
+        void loadVocabNotebook();
+      });
+    });
+  } catch (error) {
+    console.error('vocab load failed', error);
+    list.innerHTML = `<p class="empty-message">Could not load notebook.</p>`;
+  }
+}
+
+document.getElementById('refreshVocabBtn')?.addEventListener('click', () => {
+  void loadVocabNotebook();
+});
+
+async function openFullLookup(text: string): Promise<void> {
+  try {
+    if ((window as any).dictionaryAPI?.recall) {
+      await (window as any).dictionaryAPI.recall(text, 'en');
+    }
+    window.electronAPI?.send?.('open-full-lookup', text);
+  } catch (error) {
+    console.error(error);
+  }
 }
 
 function wireMainWindowImageIngest(): void {

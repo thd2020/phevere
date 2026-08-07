@@ -358,9 +358,7 @@
       }
 
       .result-confidence {
-        font-size: 12px;
-        color: #10b981;
-        font-weight: 500;
+        display: none !important;
       }
 
              .result-original {
@@ -598,17 +596,17 @@
         background: var(--pv-panel);
         border: 1px solid #d6d3cd;
         border-radius: 2px;
-        padding: 16px 18px;
-        margin-bottom: 12px;
+        padding: 12px 14px;
+        margin-bottom: 10px;
       }
       .translation-card__meta {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px 12px;
+        gap: 6px 10px;
         align-items: center;
-        margin-bottom: 12px;
+        margin-bottom: 10px;
         font-family: var(--pv-font-mono);
-        font-size: 11px;
+        font-size: 10px;
         letter-spacing: 0.04em;
         color: var(--pv-ink-soft);
       }
@@ -619,28 +617,45 @@
       }
       .translation-card__pair {
         display: grid;
-        gap: 10px;
+        gap: 8px;
       }
       .translation-card__label {
         font-family: var(--pv-font-mono);
-        font-size: 10px;
+        font-size: 9px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         color: var(--pv-ink-soft);
-        margin-bottom: 4px;
+        margin-bottom: 2px;
       }
       .translation-card__original {
         font-family: var(--pv-font-serif);
-        font-size: 15px;
+        font-size: 13px;
         color: var(--pv-ink-soft);
-        line-height: 1.45;
+        line-height: 1.4;
       }
       .translation-card__text {
         font-family: var(--pv-font-serif);
-        font-size: 18px;
+        font-size: 14px;
         font-weight: 600;
         color: var(--pv-ink);
-        line-height: 1.45;
+        line-height: 1.4;
+      }
+      .translation-card .result-actions {
+        margin-top: 10px !important;
+        gap: 6px;
+      }
+      .translation-card .audio-button,
+      .translation-card .action-btn {
+        font-size: 11px !important;
+        padding: 4px 8px !important;
+        min-height: 26px;
+        line-height: 1.2;
+      }
+      .definition-source-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 6px;
       }
       .wikipedia-card {
         background: var(--pv-panel);
@@ -1929,13 +1944,11 @@ function startAutoCloseTimeout() {
 
              function createTranslationCard(word, trans, wordLang) {
          const origLang = wordLang || window['__audioLang'] || 'en';
-         const conf = trans.confidence ? Math.round(trans.confidence * 100) + '%' : '';
          return `
            <div class="translation-card">
              <div class="translation-card__meta">
                <span class="translation-card__lang">${escapeHtml((trans.language || '').toUpperCase())}</span>
                <span>${escapeHtml(trans.source || 'Translation')}</span>
-               ${conf ? `<span>${conf}</span>` : ''}
              </div>
              <div class="translation-card__pair">
                <div>
@@ -1947,11 +1960,12 @@ function startAutoCloseTimeout() {
                  <div class="translation-card__text">${escapeHtml(trans.text)}</div>
                </div>
              </div>
-             ${trans.pronunciation ? `<div class="result-pronunciation">${escapeHtml(trans.pronunciation)}</div>` : ''}
-             <div class="result-actions" style="margin-top:14px;">
-                <button onclick='playAudio(${JSON.stringify(word)}, ${JSON.stringify(origLang)})' class="audio-button" title="Play original">🔊 Source</button>
+             ${trans.pronunciation ? `<div class="result-pronunciation" style="font-size:12px;">${escapeHtml(trans.pronunciation)}</div>` : ''}
+             <div class="result-actions">
+                <button onclick='playAudio(${JSON.stringify(word)}, ${JSON.stringify(origLang)})' class="audio-button" title="Play original">🔊 Src</button>
                 <button onclick='playAudio(${JSON.stringify(trans.text)}, ${JSON.stringify(trans.language)})' class="audio-button" title="Play translation">🔊 ${escapeHtml((trans.language || '').toUpperCase())}</button>
-                <button onclick='searchWeb(${JSON.stringify(trans.text)})' class="action-btn action-btn-info">Search Web</button>
+                <button onclick='searchWeb(${JSON.stringify(trans.text)})' class="action-btn action-btn-info">Web</button>
+                <button onclick='saveVocabFromTranslation(${JSON.stringify(word)}, ${JSON.stringify(trans.text)}, ${JSON.stringify(trans.language || "")}, ${JSON.stringify(trans.source || "")})' class="action-btn action-btn-primary">Save</button>
               </div>
            </div>
          `;
@@ -1960,12 +1974,22 @@ function startAutoCloseTimeout() {
         function filterDefsBySource(defs, source) {
           const want = normalizeSourceName(source).toLowerCase();
           return (defs || []).filter(function (d) {
-            const label = normalizeSourceName(d.source).toLowerCase();
-            if (want === 'free dictionary') {
-              return !d.source || label === 'free dictionary' || label.indexOf('free dictionary') >= 0;
+            const labels = [];
+            if (Array.isArray(d.sources) && d.sources.length) {
+              d.sources.forEach(function (s) { labels.push(normalizeSourceName(s).toLowerCase()); });
             }
-            if (want === 'wiktionary') return label === 'wiktionary';
-            return label === want;
+            String(d.source || '').split(/\s*·\s*/).forEach(function (s) {
+              const n = normalizeSourceName(s).toLowerCase();
+              if (n) labels.push(n);
+            });
+            if (!labels.length) labels.push('');
+            if (want === 'free dictionary') {
+              return labels.some(function (label) {
+                return !label || label === 'free dictionary' || label.indexOf('free dictionary') >= 0;
+              });
+            }
+            if (want === 'wiktionary') return labels.some(function (label) { return label === 'wiktionary'; });
+            return labels.some(function (label) { return label === want; });
           });
         }
 
@@ -1987,8 +2011,9 @@ function startAutoCloseTimeout() {
             groups[pos].push(d);
           });
 
-          const sourcesUsed = Array.from(new Set(defs.map(function (d) {
-            return normalizeSourceName(d.source);
+          const sourcesUsed = Array.from(new Set(defs.flatMap(function (d) {
+            if (Array.isArray(d.sources) && d.sources.length) return d.sources.map(normalizeSourceName);
+            return String(d.source || '').split(/\s*·\s*/).filter(Boolean).map(normalizeSourceName);
           })));
 
           let body = '';
@@ -2013,6 +2038,12 @@ function startAutoCloseTimeout() {
                     return `<div class="definition-example">${escapeHtml(stripHtmlToText(ex))}</div>`;
                   }).join('')}</div>`
                 : '';
+              const citeSources = Array.isArray(d.sources) && d.sources.length
+                ? d.sources
+                : String(d.source || '').split(/\s*·\s*/).filter(Boolean);
+              const badges = (citeSources.length ? citeSources : ['Unknown']).map(function (s) {
+                return `<span class="definition-source-badge">${escapeHtml(normalizeSourceName(s))}</span>`;
+              }).join('');
               body += `
                 <div class="definition-item">
                   <div class="definition-sense-row">
@@ -2020,7 +2051,7 @@ function startAutoCloseTimeout() {
                     <div>
                       <div class="definition-text">${meaningHtml || 'No definition available'}</div>
                       ${exHtml}
-                      <span class="definition-source-badge">${escapeHtml(normalizeSourceName(d.source))}</span>
+                      <div class="definition-source-badges">${badges}</div>
                     </div>
                   </div>
                 </div>`;
@@ -2063,6 +2094,7 @@ function startAutoCloseTimeout() {
                 <div class="result-actions">
                     <button onclick='playAudio(${JSON.stringify(result.word)}, ${JSON.stringify(result.detectedLanguage || window['__audioLang'] || 'en')})' class="audio-button" title="Play pronunciation">🔊</button>
                     <button onclick='searchWeb(${JSON.stringify(result.word)})' class="action-btn action-btn-info">Search Web</button>
+                    <button onclick='saveVocabFromResult()' class="action-btn action-btn-primary">Save to notebook</button>
                 </div>
             </div>`;
         }
@@ -2169,6 +2201,43 @@ function startAutoCloseTimeout() {
            speechSynthesis.addEventListener('voiceschanged', loadVoices);
          }
        }
+
+       window.saveVocabFromTranslation = async (lemma, definition, targetLang, source) => {
+         try {
+           if (!window.vocabAPI) { showToast('Notebook unavailable'); return; }
+           await window.vocabAPI.add({
+             lemma,
+             definition,
+             targetLang,
+             sources: source ? [source] : [],
+             sourceLang: (currentResult && currentResult.detectedLanguage) || undefined,
+           });
+           showToast('Saved to notebook');
+         } catch (e) {
+           console.error(e);
+           showToast('Save failed');
+         }
+       };
+
+       window.saveVocabFromResult = async () => {
+         try {
+           if (!window.vocabAPI || !currentResult) { showToast('Nothing to save'); return; }
+           const defs = currentResult.definitions || [];
+           const top = defs[0];
+           await window.vocabAPI.add({
+             lemma: currentResult.word,
+             definition: top ? stripHtmlToText(top.meaning || top.definition || '') : '',
+             partOfSpeech: top ? top.partOfSpeech : undefined,
+             sources: top && top.sources ? top.sources : (top && top.source ? [top.source] : currentResult.sources),
+             sourceLang: currentResult.detectedLanguage,
+             targetLang: currentResult.language,
+           });
+           showToast('Saved to notebook');
+         } catch (e) {
+           console.error(e);
+           showToast('Save failed');
+         }
+       };
 
        window.playAudio = (text, language) => {
          try { if (localStorage.getItem('phevereAudioEnabled') === '0') { pvLog('[POPUP] Audio disabled'); return; } } catch (e) {}

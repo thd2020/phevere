@@ -388,6 +388,23 @@ contextBridge.exposeInMainWorld('wikipediaAPI', {
     ipcRenderer.invoke('wikipedia-get-cache-stats'),
 });
 
+contextBridge.exposeInMainWorld('vocabAPI', {
+  list: (limit?: number) => ipcRenderer.invoke('vocab-list', limit),
+  add: (payload: Record<string, unknown>) => ipcRenderer.invoke('vocab-add', payload),
+  remove: (id: string) => ipcRenderer.invoke('vocab-remove', id),
+  updateNote: (id: string, note: string) => ipcRenderer.invoke('vocab-update-note', id, note),
+  review: (id: string, grade: 1 | 2 | 3 | 4) => ipcRenderer.invoke('vocab-review', id, grade),
+});
+
+contextBridge.exposeInMainWorld('offlineDictAPI', {
+  listPacks: () => ipcRenderer.invoke('offline-list-packs'),
+  removePack: (packId: string) => ipcRenderer.invoke('offline-remove-pack', packId),
+  lookup: (headword: string, language?: string) => ipcRenderer.invoke('offline-lookup', headword, language),
+  importJson: () => ipcRenderer.invoke('offline-import-json'),
+  importCedictFile: () => ipcRenderer.invoke('offline-import-cedict-file'),
+  downloadCedict: () => ipcRenderer.invoke('offline-download-cedict'),
+});
+
 // Expose search API
 contextBridge.exposeInMainWorld('searchAPI', {
   getSuggestions: (query: string): Promise<SearchSuggestion[]> => 
@@ -513,6 +530,21 @@ declare global {
       notifyMouseEnter: () => void;
       notifyMouseLeave: () => void;
       notifyClicked: () => void;
+    };
+    vocabAPI: {
+      list: (limit?: number) => Promise<any[]>;
+      add: (payload: Record<string, unknown>) => Promise<any>;
+      remove: (id: string) => Promise<boolean>;
+      updateNote: (id: string, note: string) => Promise<any>;
+      review: (id: string, grade: 1 | 2 | 3 | 4) => Promise<any>;
+    };
+    offlineDictAPI: {
+      listPacks: () => Promise<any[]>;
+      removePack: (packId: string) => Promise<{ success: boolean }>;
+      lookup: (headword: string, language?: string) => Promise<any[]>;
+      importJson: () => Promise<any>;
+      importCedictFile: () => Promise<any>;
+      downloadCedict: () => Promise<any>;
     };
   }
 }

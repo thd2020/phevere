@@ -12,13 +12,12 @@ module.exports = {
   packagerConfig: {
     asar: true,
     // koffi loads a .node binary; must not stay inside app.asar or require() fails in production.
-    asarUnpack: ['**/node_modules/koffi/**/*'],
-    // Bundled next to app.asar via extraResource; runtime loads process.resourcesPath/tray-icon.png.
-    // Source: resources/tray-icon.png (generate with scripts/make-tray-icon.ps1).
+    asarUnpack: ['**/node_modules/koffi/**/*', '**/node_modules/sql.js/**/*'],
     extraResource: [
       'resources/tray-icon.png',
       'scripts/ocr_worker.py',
       'scripts/media_now_playing.ps1',
+      'node_modules/sql.js/dist/sql-wasm.wasm',
     ],
   },
   rebuildConfig: {},

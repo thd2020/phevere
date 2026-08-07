@@ -27,7 +27,10 @@ export interface Definition {
   synonyms?: string[];
   antonyms?: string[];
   examples?: string[];
+  /** Primary display label; may list multiple cites joined with " · ". */
   source: string;
+  /** All citing sources after intelligent merge. */
+  sources?: string[];
 }
 
 import { BaseService, DictionaryError } from './base';
@@ -36,6 +39,8 @@ import { wrapConsole } from '../logger';
 import { net } from 'electron';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery } from './text-normalize';
 import { buildEtymology, EtymologyLink } from './etymology';
+import { mergeSimilarDefinitions } from './definition-merge';
+import { lookupOffline } from './offline-dict-store';
 
 const console = wrapConsole('dictionary');
 
@@ -448,7 +453,19 @@ export class DictionaryService extends BaseService {
     
     // Get multiple translations in parallel for better accuracy
     const translationPromises: Array<Promise<Translation | null>> = [];
-    
+    const hasCjkScript = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(text);
+    const preferCjkTx = ['zh', 'ja', 'ko'].includes(sourceLanguage) || hasCjkScript;
+
+    if (preferCjkTx && this.youdaoAppKey && this.youdaoAppSecret) {
+      const from = sourceLanguage === 'ja' ? 'ja' : sourceLanguage === 'ko' ? 'ko' : 'zh-CHS';
+      const to = actualTargetLanguage === 'zh' || actualTargetLanguage.startsWith('zh') ? 'zh-CHS' : (actualTargetLanguage || 'en');
+      translationPromises.push(
+        this.getYoudaoData(text, from, to === 'en' ? 'en' : to)
+          .then((d) => d?.translations?.[0] ? { ...d.translations[0], source: 'Youdao API' } : null)
+          .catch((): null => null)
+      );
+    }
+
     // Prioritize unofficial translation
     translationPromises.push(
       this.getGoogleTranslateUnofficial(text, actualTargetLanguage, sourceLanguage)
@@ -556,11 +573,20 @@ export class DictionaryService extends BaseService {
         .catch(error => ({ type: 'translation', error }))
     );
     
-    // Chinese-specific APIs
+    // Smart routing by script / language (minimize user config thrash):
+    // - CJK/Asian: prefer Youdao + CC-CEDICT (+ translation); skip EN-only FreeDict/Datamuse
+    // - Latin/English: Free Dictionary + Wiktionary + Datamuse; skip Chinese-only sources
+    // Wiktionary still runs for CJK when enabled (etymology / bilingual lemmas).
     const isChinese = sourceLanguage === 'zh' || hasCJK;
-    if (isChinese && (!enabledSources || enabledSources.includes('Youdao API') || enabledSources.includes('CC-CEDICT'))) {
-      const youdaoEnabled = !enabledSources || enabledSources.includes('Youdao API');
-      if (youdaoEnabled && this.youdaoAppKey && this.youdaoAppSecret) {
+    const preferCjkSources = isAsianLanguage || isChinese;
+    const preferLatinSources = !preferCjkSources;
+
+    if (preferCjkSources && (!enabledSources || enabledSources.includes('Youdao API') || enabledSources.includes('CC-CEDICT'))) {
+      // Auto-use Youdao when credentials exist — don't require the toggle for CJK queries.
+      const youdaoToggleOk = !enabledSources || enabledSources.includes('Youdao API');
+      const youdaoSource = this.sources.find((s) => s.name === 'Youdao API');
+      const youdaoAuto = !!(this.youdaoAppKey && this.youdaoAppSecret);
+      if (youdaoToggleOk && youdaoAuto && (youdaoSource?.enabled !== false || !enabledSources)) {
         apiPromises.push(
           this.getYoudaoData(text, 'zh-CHS', 'en')
             .then(data => ({ type: 'youdao', data }))
@@ -568,7 +594,7 @@ export class DictionaryService extends BaseService {
         );
       }
 
-      // Local CC-CEDICT lookup (synchronous)
+      // Local / offline packs (CC-CEDICT memory Map + SQLite offline_entries)
       if (!enabledSources || enabledSources.includes('CC-CEDICT')) {
         const cedictDefs = this.getCcCedictData(text);
         if (cedictDefs.length > 0) {
@@ -576,9 +602,39 @@ export class DictionaryService extends BaseService {
           sources.push('CC-CEDICT');
         }
       }
+      try {
+        const offlineHits = await lookupOffline(text, preferCjkSources ? 'zh' : undefined, 12);
+        for (const hit of offlineHits) {
+          definitions.push({
+            partOfSpeech: hit.pos || 'definition',
+            meaning: hit.definition,
+            source: hit.packName || 'Offline',
+            sources: [hit.packName || 'Offline'],
+          });
+        }
+        if (offlineHits.length) sources.push('Offline');
+      } catch {
+        /* offline optional */
+      }
     }
 
-    // Free Dictionary + Wiktionary: run for all languages (JA/KO/ZH were wrongly skipped — only translation showed).
+    // Latin path: also probe offline EN packs
+    if (preferLatinSources) {
+      try {
+        const offlineHits = await lookupOffline(text, 'en', 12);
+        for (const hit of offlineHits) {
+          definitions.push({
+            partOfSpeech: hit.pos || 'definition',
+            meaning: hit.definition,
+            source: hit.packName || 'Offline',
+            sources: [hit.packName || 'Offline'],
+          });
+        }
+        if (offlineHits.length) sources.push('Offline');
+      } catch {
+        /* optional */
+      }
+    }
     const langForDict = sourceLanguage || 'en';
     const isSourceEnabled = (sourceName: string) => {
       if (enabledSources) return enabledSources.includes(sourceName);
@@ -586,7 +642,8 @@ export class DictionaryService extends BaseService {
       return s ? s.enabled && s.isAvailable : false;
     };
 
-    if (isSourceEnabled('Free Dictionary API')) {
+    // Free Dictionary + Datamuse: Latin/English path (CJK lemmas rarely have useful entries)
+    if (preferLatinSources && isSourceEnabled('Free Dictionary API')) {
       apiPromises.push(
         this.getFreeDictionaryData(text, langForDict)
           .then(data => ({ type: 'freeDictionary', data }))
@@ -594,17 +651,16 @@ export class DictionaryService extends BaseService {
       );
     }
 
+    // Wiktionary: always useful (defs + etymology). For CJK, still query when enabled.
     if (isSourceEnabled('Wiktionary')) {
       apiPromises.push(
-        this.getWiktionaryData(text, langForDict)
+        this.getWiktionaryData(text, preferCjkSources && langForDict === 'zh' ? 'zh' : langForDict === 'ja' ? 'ja' : langForDict === 'ko' ? 'ko' : 'en')
           .then(data => ({ type: 'wiktionary', data }))
           .catch(error => ({ type: 'wiktionary', error }))
       );
     }
 
-    // Datamuse is English-only but keyless, and adds WordNet-derived glosses
-    // plus synonyms that the other free sources often miss.
-    if (!hasCJK && isSourceEnabled('Datamuse')) {
+    if (preferLatinSources && !hasCJK && isSourceEnabled('Datamuse')) {
       apiPromises.push(
         this.getDatamuseData(text)
           .then(data => ({ type: 'datamuse', data }))
@@ -620,8 +676,8 @@ export class DictionaryService extends BaseService {
       );
     }
 
-    // English-centric premium APIs — still useful when source is English or lemma is Latin script
-    const allowEnglishPremium = !isAsianLanguage || sourceLanguage === 'en';
+    // English-centric premium APIs
+    const allowEnglishPremium = preferLatinSources || sourceLanguage === 'en';
     if (allowEnglishPremium) {
       if (isSourceEnabled('Oxford Dictionary API') && this.oxfordAppId && this.oxfordAppKey) {
         apiPromises.push(
@@ -771,7 +827,7 @@ export class DictionaryService extends BaseService {
     }
 
     // Deduplicate collected data
-    // 1) Definitions: unique by meaning + partOfSpeech + source
+    // 1) Exact pass (pos|meaning|source), then fuzzy cross-source merge
     const defSeen = new Set<string>();
     const uniqueDefinitions: Definition[] = [];
     for (const d of definitions) {
@@ -781,6 +837,7 @@ export class DictionaryService extends BaseService {
         uniqueDefinitions.push(d);
       }
     }
+    const mergedDefinitions = mergeSimilarDefinitions(uniqueDefinitions) as Definition[];
 
     // 2) Translations: unique by source label + translated text
     const transMap = new Map<string, Translation>();
@@ -844,7 +901,7 @@ export class DictionaryService extends BaseService {
     const result: DictionaryResult = {
       word: text,
       pronunciation,
-      definitions: uniqueDefinitions.length > 0 ? uniqueDefinitions : [{
+      definitions: mergedDefinitions.length > 0 ? mergedDefinitions : [{
         partOfSpeech: 'unknown',
         meaning: 'No definition available.',
         source: 'Fallback'
@@ -2170,7 +2227,35 @@ export class DictionaryService extends BaseService {
    * Get best available translation
    */
   private async getBestTranslation(text: string, targetLanguage: string, sourceLanguage: string): Promise<Translation | null> {
-    // Use the unofficial API as the primary method
+    const hasCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(text);
+    const preferCjk = ['zh', 'ja', 'ko'].includes(sourceLanguage) || hasCJK;
+
+    // CJK → Youdao when credentials exist (no toggle thrash)
+    if (preferCjk && this.youdaoAppKey && this.youdaoAppSecret) {
+      try {
+        const from = sourceLanguage === 'ja' ? 'ja' : sourceLanguage === 'ko' ? 'ko' : 'zh-CHS';
+        const to = targetLanguage === 'zh' || targetLanguage.startsWith('zh') ? 'zh-CHS' : (targetLanguage || 'en');
+        const youdao = await this.getYoudaoData(text, from, to === 'en' ? 'en' : to);
+        const t = youdao?.translations?.[0];
+        if (t?.text) return { ...t, source: 'Youdao API' };
+      } catch (error) {
+        console.warn('Youdao translation failed:', error);
+      }
+    }
+
+    // Latin / general → DeepL when keyed
+    if (!preferCjk && this.deeplApiKey) {
+      try {
+        const deeplTranslation = await this.getDeepLTranslation(text, targetLanguage, sourceLanguage);
+        if (deeplTranslation) {
+          return { ...deeplTranslation, source: 'DeepL API' };
+        }
+      } catch (error) {
+        console.warn('DeepL translation failed:', error);
+      }
+    }
+
+    // Use the unofficial API as a broad fallback
     try {
       const unofficialTranslation = await this.getGoogleTranslateUnofficial(text, targetLanguage, sourceLanguage);
       if (unofficialTranslation) {
@@ -2180,7 +2265,7 @@ export class DictionaryService extends BaseService {
       console.warn('Unofficial Google translation failed:', error);
     }
     
-    // Try DeepL first (if available)
+    // Try DeepL for CJK if Youdao missed (or no Youdao key)
     if (this.deeplApiKey) {
       try {
         const deeplTranslation = await this.getDeepLTranslation(text, targetLanguage, sourceLanguage);

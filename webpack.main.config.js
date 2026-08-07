@@ -17,6 +17,7 @@ const mainConfig = {
   },
   externals: {
     koffi: 'commonjs2 koffi',
+    'sql.js': 'commonjs2 sql.js',
   },
 };
 
