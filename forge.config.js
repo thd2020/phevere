@@ -15,7 +15,11 @@ module.exports = {
     asarUnpack: ['**/node_modules/koffi/**/*'],
     // Bundled next to app.asar via extraResource; runtime loads process.resourcesPath/tray-icon.png.
     // Source: resources/tray-icon.png (generate with scripts/make-tray-icon.ps1).
-    extraResource: ['resources/tray-icon.png', 'scripts/ocr_worker.py'],
+    extraResource: [
+      'resources/tray-icon.png',
+      'scripts/ocr_worker.py',
+      'scripts/media_now_playing.ps1',
+    ],
   },
   rebuildConfig: {},
   makers: [

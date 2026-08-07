@@ -91,11 +91,11 @@ function initializeSettingsWindow() {
     <div class="settings-app">
       <header class="settings-titlebar">
         <div class="settings-titlebar__lead">
-          <svg class="settings-titlebar__icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path fill="currentColor" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path fill="currentColor" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
-          </svg>
-          <h1 class="settings-titlebar__heading">Settings</h1>
+          <span class="settings-brand-mark" aria-hidden="true">P</span>
+          <div class="settings-titlebar__text">
+            <h1 class="settings-titlebar__heading">Phevere</h1>
+            <span class="settings-titlebar__sub">Settings</span>
+          </div>
         </div>
         <button type="button" id="settings-close" class="settings-close-btn" title="Close" aria-label="Close">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -103,96 +103,149 @@ function initializeSettingsWindow() {
           </svg>
         </button>
       </header>
-      <main class="settings-main">
-        <section class="settings-card" aria-labelledby="settings-monitor-heading">
-          <h2 id="settings-monitor-heading" class="settings-card__title">Selection monitor</h2>
-          <p class="settings-hint">
-            Cycles Off→On→Shortcut. In Shortcut mode: hold the trigger while you finish selecting, or select first and press the trigger within about a minute. Global registration; focused apps may take the same keys first (e.g. Chrome).
-          </p>
-          <div class="settings-field">
-            <span id="label-monitor-cycle" class="settings-field-label">Cycle mode shortcut</span>
-            <div class="settings-shortcut-row">
-              <input
-                type="text"
-                id="monitor-cycle-shortcut"
-                readonly
-                class="setting-input settings-shortcut-input"
-                spellcheck="false"
-                autocomplete="off"
-                placeholder="Set… or double-click"
-                aria-labelledby="label-monitor-cycle"
-              />
-              <button type="button" class="btn btn-secondary settings-shortcut-set" id="monitor-cycle-set">Set…</button>
+      <div class="settings-shell">
+        <nav class="settings-nav" aria-label="Settings sections">
+          <button type="button" class="settings-nav__item is-active" data-section="shortcuts">Shortcuts</button>
+          <button type="button" class="settings-nav__item" data-section="capture">Capture</button>
+          <button type="button" class="settings-nav__item" data-section="sources">Sources</button>
+          <button type="button" class="settings-nav__item" data-section="api">API keys</button>
+          <button type="button" class="settings-nav__item" data-section="audio">Audio</button>
+        </nav>
+        <main class="settings-main">
+          <section class="settings-panel is-active" data-panel="shortcuts" aria-labelledby="settings-monitor-heading">
+            <div class="settings-panel__intro">
+              <h2 id="settings-monitor-heading" class="settings-panel__title">Shortcuts</h2>
+              <p class="settings-hint">
+                Global accelerators. Click <strong>Set…</strong> then press a key combo. Focused apps may still steal the same chord.
+              </p>
             </div>
-          </div>
-          <div class="settings-field">
-            <span id="label-monitor-trigger" class="settings-field-label">Popup trigger (hold while selecting)</span>
-            <div class="settings-shortcut-row">
-              <input
-                type="text"
-                id="monitor-trigger-shortcut"
-                readonly
-                class="setting-input settings-shortcut-input"
-                spellcheck="false"
-                autocomplete="off"
-                placeholder="Set… or double-click"
-                aria-labelledby="label-monitor-trigger"
-              />
-              <button type="button" class="btn btn-secondary settings-shortcut-set" id="monitor-trigger-set">Set…</button>
+            <div class="settings-field">
+              <span id="label-monitor-cycle" class="settings-field-label">Cycle monitor mode</span>
+              <div class="settings-shortcut-row">
+                <input type="text" id="monitor-cycle-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-monitor-cycle" />
+                <button type="button" class="btn btn-secondary settings-shortcut-set" id="monitor-cycle-set">Set…</button>
+              </div>
             </div>
-          </div>
-          <div class="settings-actions settings-actions--wrap">
-            <button type="button" id="monitor-save-shortcuts" class="btn btn-primary">Save shortcuts</button>
-            <span id="monitor-shortcuts-status" class="settings-inline-status" role="status" aria-live="polite"></span>
-          </div>
-        </section>
-        <section class="settings-card" aria-labelledby="settings-api-heading">
-          <h2 id="settings-api-heading" class="settings-card__title">API keys</h2>
-          <div class="settings-field">
-            <label for="google-api-key">Google Translate API key</label>
-            <input type="password" id="google-api-key" placeholder="Paste your Google Cloud API key" class="setting-input" autocomplete="off" />
-            <div class="settings-actions">
-              <button type="button" onclick="saveGoogleApiKey()" class="btn btn-primary">Save</button>
+            <div class="settings-field">
+              <span id="label-monitor-trigger" class="settings-field-label">Popup trigger (hold while selecting)</span>
+              <div class="settings-shortcut-row">
+                <input type="text" id="monitor-trigger-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-monitor-trigger" />
+                <button type="button" class="btn btn-secondary settings-shortcut-set" id="monitor-trigger-set">Set…</button>
+              </div>
             </div>
-          </div>
-          <div class="settings-field">
-            <label for="deepl-api-key">DeepL API key</label>
-            <input type="password" id="deepl-api-key" placeholder="Paste your DeepL API key" class="setting-input" autocomplete="off" />
-            <div class="settings-actions">
-              <button type="button" onclick="saveDeepLApiKey()" class="btn btn-primary">Save</button>
+            <div class="settings-field">
+              <span id="label-ocr-shortcut" class="settings-field-label">OCR region overlay</span>
+              <div class="settings-shortcut-row">
+                <input type="text" id="ocr-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-ocr-shortcut" />
+                <button type="button" class="btn btn-secondary settings-shortcut-set" id="ocr-shortcut-set">Set…</button>
+              </div>
             </div>
-          </div>
-        </section>
-        <section class="settings-card" aria-labelledby="settings-sources-heading">
-          <h2 id="settings-sources-heading" class="settings-card__title">Dictionary sources</h2>
-          <div id="main-source-toggles"></div>
-        </section>
-        <section class="settings-card" aria-labelledby="settings-audio-heading">
-          <h2 id="settings-audio-heading" class="settings-card__title">Audio</h2>
-          <div class="settings-row" role="group" aria-labelledby="enable-audio-label">
-            <span id="enable-audio-label" class="settings-row__label">Enable pronunciation</span>
-            <label class="settings-toggle-label">
-              <input class="toggle-input" type="checkbox" id="enable-audio" checked />
-              <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
-            </label>
-          </div>
-          <p class="settings-hint">When off, lookup audio from the popup is skipped.</p>
-          <div class="settings-field">
-            <label for="audio-speed">Playback speed</label>
-            <div class="settings-audio-range">
-              <input type="range" id="audio-speed" min="0.5" max="2" step="0.1" value="1" />
-              <span id="speed-value">1x</span>
+            <div class="settings-field">
+              <span id="label-hover-shortcut" class="settings-field-label">Toggle hover lookup</span>
+              <div class="settings-shortcut-row">
+                <input type="text" id="hover-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-hover-shortcut" />
+                <button type="button" class="btn btn-secondary settings-shortcut-set" id="hover-shortcut-set">Set…</button>
+              </div>
             </div>
-          </div>
-        </section>
-      </main>
+            <div class="settings-actions settings-actions--wrap">
+              <button type="button" id="monitor-save-shortcuts" class="btn btn-primary">Save shortcuts</button>
+              <span id="monitor-shortcuts-status" class="settings-inline-status" role="status" aria-live="polite"></span>
+            </div>
+            <ul class="settings-cheat">
+              <li><kbd>Ctrl+Shift+G</kbd> Grab under cursor</li>
+              <li><kbd>Ctrl+Shift+W</kbd> Read this window</li>
+              <li><kbd>Ctrl+Shift+I</kbd> OCR clipboard image</li>
+              <li><kbd>Ctrl+Shift+P</kbd> Now playing</li>
+            </ul>
+          </section>
+
+          <section class="settings-panel" data-panel="capture" aria-labelledby="settings-capture-heading">
+            <div class="settings-panel__intro">
+              <h2 id="settings-capture-heading" class="settings-panel__title">Capture</h2>
+              <p class="settings-hint">Hover dwell and image drop/paste feed the same lookup popup as selection.</p>
+            </div>
+            <div class="settings-row" role="group" aria-labelledby="enable-hover-label">
+              <span id="enable-hover-label" class="settings-row__label">Hover lookup</span>
+              <label class="settings-toggle-label">
+                <input class="toggle-input" type="checkbox" id="enable-hover" checked />
+                <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
+              </label>
+            </div>
+            <p class="settings-hint">Dwell ~450&nbsp;ms over a word (UIA first, OCR fallback).</p>
+            <div class="settings-dropzone" id="settings-dropzone" tabindex="0">
+              <strong>Drop or paste an image</strong>
+              <span>PNG / JPG / WebP → OCR → lookup</span>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-panel="sources" aria-labelledby="settings-sources-heading">
+            <div class="settings-panel__intro">
+              <h2 id="settings-sources-heading" class="settings-panel__title">Dictionary sources</h2>
+              <p class="settings-hint">Toggle which providers run on each lookup.</p>
+            </div>
+            <div id="main-source-toggles"></div>
+          </section>
+
+          <section class="settings-panel" data-panel="api" aria-labelledby="settings-api-heading">
+            <div class="settings-panel__intro">
+              <h2 id="settings-api-heading" class="settings-panel__title">API keys</h2>
+              <p class="settings-hint">Optional paid providers. Keys stay on this machine.</p>
+            </div>
+            <div class="settings-field">
+              <label for="google-api-key">Google Translate API key</label>
+              <input type="password" id="google-api-key" placeholder="Paste your Google Cloud API key" class="setting-input" autocomplete="off" />
+              <div class="settings-actions">
+                <button type="button" onclick="saveGoogleApiKey()" class="btn btn-primary">Save</button>
+              </div>
+            </div>
+            <div class="settings-field">
+              <label for="deepl-api-key">DeepL API key</label>
+              <input type="password" id="deepl-api-key" placeholder="Paste your DeepL API key" class="setting-input" autocomplete="off" />
+              <div class="settings-actions">
+                <button type="button" onclick="saveDeepLApiKey()" class="btn btn-primary">Save</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-panel="audio" aria-labelledby="settings-audio-heading">
+            <div class="settings-panel__intro">
+              <h2 id="settings-audio-heading" class="settings-panel__title">Audio</h2>
+              <p class="settings-hint">Pronunciation playback from the popup.</p>
+            </div>
+            <div class="settings-row" role="group" aria-labelledby="enable-audio-label">
+              <span id="enable-audio-label" class="settings-row__label">Enable pronunciation</span>
+              <label class="settings-toggle-label">
+                <input class="toggle-input" type="checkbox" id="enable-audio" checked />
+                <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
+              </label>
+            </div>
+            <div class="settings-field">
+              <label for="audio-speed">Playback speed</label>
+              <div class="settings-audio-range">
+                <input type="range" id="audio-speed" min="0.5" max="2" step="0.1" value="1" />
+                <span id="speed-value">1x</span>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
     </div>
   `;
   document.body.innerHTML = settingsHTML;
 
-  // Load settings data
+  document.querySelectorAll('.settings-nav__item').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const section = (btn as HTMLElement).dataset.section;
+      document.querySelectorAll('.settings-nav__item').forEach((b) => b.classList.remove('is-active'));
+      document.querySelectorAll('.settings-panel').forEach((p) => p.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      document.querySelector(`.settings-panel[data-panel="${section}"]`)?.classList.add('is-active');
+    });
+  });
+
   loadMainSourceToggles();
   setupAudioSettings();
+  wireSettingsImageDrop();
   void wireMonitorSettingsFields().then(({ stopCapture }) => {
     document.getElementById('settings-close')?.addEventListener('click', () => {
       stopCapture();
@@ -201,39 +254,116 @@ function initializeSettingsWindow() {
   });
 }
 
+function wireSettingsImageDrop(): void {
+  const zone = document.getElementById('settings-dropzone');
+  const api = window.electronAPI as {
+    ocrImageFile?: (path: string) => Promise<{ success: boolean; error?: string }>;
+    ocrImageData?: (data: string) => Promise<{ success: boolean; error?: string }>;
+  };
+  if (!zone || (!api.ocrImageFile && !api.ocrImageData)) return;
+
+  const setBusy = (busy: boolean) => {
+    zone.classList.toggle('is-busy', busy);
+  };
+
+  zone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    zone.classList.add('is-dragover');
+  });
+  zone.addEventListener('dragleave', () => zone.classList.remove('is-dragover'));
+  zone.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    zone.classList.remove('is-dragover');
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      const anyFile = file as File & { path?: string };
+      if (anyFile.path && api.ocrImageFile) {
+        await api.ocrImageFile(anyFile.path);
+      } else if (api.ocrImageData) {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ''));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(file);
+        });
+        await api.ocrImageData(dataUrl);
+      }
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  zone.addEventListener('paste', async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items || !api.ocrImageData) return;
+    for (const item of Array.from(items)) {
+      if (!item.type.startsWith('image/')) continue;
+      e.preventDefault();
+      const blob = item.getAsFile();
+      if (!blob) return;
+      setBusy(true);
+      try {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ''));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
+        await api.ocrImageData(dataUrl);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+  });
+}
+
 async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }> {
   const noop = (): void => {};
   const api = window.electronAPI as {
-    getMonitorState?: () => Promise<{ cycleShortcut: string; triggerShortcut: string }>;
-    setMonitorShortcuts?: (p: { cycleShortcut: string; triggerShortcut: string }) => Promise<{ success: boolean; error?: string }>;
+    getMonitorState?: () => Promise<{
+      cycleShortcut: string;
+      triggerShortcut: string;
+      ocrShortcut?: string;
+      hoverShortcut?: string;
+      hoverEnabled?: boolean;
+    }>;
+    setMonitorShortcuts?: (p: {
+      cycleShortcut: string;
+      triggerShortcut: string;
+      ocrShortcut?: string;
+      hoverShortcut?: string;
+      hoverEnabled?: boolean;
+    }) => Promise<{ success: boolean; error?: string }>;
   };
   if (!api?.getMonitorState || !api?.setMonitorShortcuts) {
     return { stopCapture: noop };
   }
   const cycleEl = document.getElementById('monitor-cycle-shortcut') as HTMLInputElement | null;
   const triggerEl = document.getElementById('monitor-trigger-shortcut') as HTMLInputElement | null;
+  const ocrEl = document.getElementById('ocr-shortcut') as HTMLInputElement | null;
+  const hoverEl = document.getElementById('hover-shortcut') as HTMLInputElement | null;
+  const hoverToggle = document.getElementById('enable-hover') as HTMLInputElement | null;
   const cycleSetBtn = document.getElementById('monitor-cycle-set') as HTMLButtonElement | null;
   const triggerSetBtn = document.getElementById('monitor-trigger-set') as HTMLButtonElement | null;
+  const ocrSetBtn = document.getElementById('ocr-shortcut-set') as HTMLButtonElement | null;
+  const hoverSetBtn = document.getElementById('hover-shortcut-set') as HTMLButtonElement | null;
 
+  const setBtns = [cycleSetBtn, triggerSetBtn, ocrSetBtn, hoverSetBtn].filter(Boolean) as HTMLButtonElement[];
   let cancelCapture: (() => void) | null = null;
 
   function stopCaptureUi(): void {
     cancelCapture?.();
     cancelCapture = null;
-    if (cycleSetBtn) {
-      cycleSetBtn.textContent = 'Set…';
-      cycleSetBtn.classList.remove('is-recording');
-    }
-    if (triggerSetBtn) {
-      triggerSetBtn.textContent = 'Set…';
-      triggerSetBtn.classList.remove('is-recording');
+    for (const b of setBtns) {
+      b.textContent = 'Set…';
+      b.classList.remove('is-recording');
     }
   }
 
-  function bindCapture(
-    input: HTMLInputElement,
-    setBtn: HTMLButtonElement,
-  ): void {
+  function bindCapture(input: HTMLInputElement, setBtn: HTMLButtonElement): void {
     const start = (): void => {
       stopCaptureUi();
       setBtn.textContent = 'Press keys…';
@@ -242,12 +372,9 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
         cancelCapture = null;
         setBtn.textContent = 'Set…';
         setBtn.classList.remove('is-recording');
-        if (acc) {
-          input.value = acc;
-        }
+        if (acc) input.value = acc;
       });
     };
-
     setBtn.addEventListener('click', (e) => {
       e.preventDefault();
       start();
@@ -258,31 +385,47 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
     });
   }
 
-  if (cycleEl && cycleSetBtn) {
-    bindCapture(cycleEl, cycleSetBtn);
-  }
-  if (triggerEl && triggerSetBtn) {
-    bindCapture(triggerEl, triggerSetBtn);
-  }
+  if (cycleEl && cycleSetBtn) bindCapture(cycleEl, cycleSetBtn);
+  if (triggerEl && triggerSetBtn) bindCapture(triggerEl, triggerSetBtn);
+  if (ocrEl && ocrSetBtn) bindCapture(ocrEl, ocrSetBtn);
+  if (hoverEl && hoverSetBtn) bindCapture(hoverEl, hoverSetBtn);
 
   try {
     const st = await api.getMonitorState();
     if (cycleEl) cycleEl.value = st.cycleShortcut || '';
     if (triggerEl) triggerEl.value = st.triggerShortcut || '';
+    if (ocrEl) ocrEl.value = st.ocrShortcut || 'CommandOrControl+Shift+O';
+    if (hoverEl) hoverEl.value = st.hoverShortcut || 'CommandOrControl+Shift+H';
+    if (hoverToggle) hoverToggle.checked = st.hoverEnabled !== false;
   } catch {
     /* ignore */
   }
+
   const btn = document.getElementById('monitor-save-shortcuts');
   const statusEl = document.getElementById('monitor-shortcuts-status');
   btn?.addEventListener('click', async () => {
-    if (!cycleEl || !triggerEl || !statusEl) return;
+    if (!cycleEl || !triggerEl || !ocrEl || !hoverEl || !statusEl) return;
     statusEl.textContent = '';
     const r = await api.setMonitorShortcuts({
       cycleShortcut: cycleEl.value.trim(),
       triggerShortcut: triggerEl.value.trim(),
+      ocrShortcut: ocrEl.value.trim(),
+      hoverShortcut: hoverEl.value.trim(),
+      hoverEnabled: hoverToggle ? hoverToggle.checked : true,
     });
     statusEl.textContent = r.success ? 'Saved.' : (r.error || 'Could not save.');
-    statusEl.style.color = r.success ? '' : 'var(--md-error, #b91c1c)';
+    statusEl.classList.toggle('is-error', !r.success);
+  });
+
+  hoverToggle?.addEventListener('change', async () => {
+    if (!cycleEl || !triggerEl || !ocrEl || !hoverEl) return;
+    await api.setMonitorShortcuts({
+      cycleShortcut: cycleEl.value.trim(),
+      triggerShortcut: triggerEl.value.trim(),
+      ocrShortcut: ocrEl.value.trim(),
+      hoverShortcut: hoverEl.value.trim(),
+      hoverEnabled: hoverToggle.checked,
+    });
   });
 
   return { stopCapture: stopCaptureUi };
@@ -1155,10 +1298,59 @@ function initializePopup() {
 
 function initializeMainWindow() {
   initializeMainWindowControls();
+  wireMainWindowImageIngest();
 
   loadRecentSelectionsIntoDom();
 
   void attachSelectionChangeListenerOnly();
+}
+
+function wireMainWindowImageIngest(): void {
+  const api = window.electronAPI as {
+    ocrImageFile?: (path: string) => Promise<{ success: boolean; error?: string }>;
+    ocrImageData?: (data: string) => Promise<{ success: boolean; error?: string }>;
+  };
+  if (!api.ocrImageFile && !api.ocrImageData) return;
+
+  document.addEventListener('dragover', (e) => {
+    if (e.dataTransfer?.types?.includes('Files')) e.preventDefault();
+  });
+  document.addEventListener('drop', async (e) => {
+    const file = e.dataTransfer?.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    e.preventDefault();
+    const anyFile = file as File & { path?: string };
+    if (anyFile.path && api.ocrImageFile) {
+      await api.ocrImageFile(anyFile.path);
+    } else if (api.ocrImageData) {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      await api.ocrImageData(dataUrl);
+    }
+  });
+
+  document.addEventListener('paste', async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items || !api.ocrImageData) return;
+    for (const item of Array.from(items)) {
+      if (!item.type.startsWith('image/')) continue;
+      const blob = item.getAsFile();
+      if (!blob) return;
+      e.preventDefault();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      });
+      await api.ocrImageData(dataUrl);
+      return;
+    }
+  });
 }
 
 function initializeMainWindowControls() {

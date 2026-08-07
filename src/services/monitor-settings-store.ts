@@ -10,16 +10,22 @@ export interface MonitorSettings {
   triggerShortcut: string;
   /** Hover-to-word lookup (UIA / OCR under cursor). */
   hoverEnabled: boolean;
+  /** Toggle OCR region overlay. */
+  ocrShortcut: string;
+  /** Toggle hover lookup. */
+  hoverShortcut: string;
 }
 
 const FILE_NAME = 'monitor-settings.json';
 
-const DEFAULTS: MonitorSettings = {
+export const monitorDefaults: MonitorSettings = {
   mode: 'on',
   /** Avoid Ctrl+Shift+D — Chrome uses it for “bookmark all tabs”. */
   cycleShortcut: 'CommandOrControl+Alt+Shift+M',
   triggerShortcut: 'CommandOrControl+Alt+Shift+Y',
   hoverEnabled: true,
+  ocrShortcut: 'CommandOrControl+Shift+O',
+  hoverShortcut: 'CommandOrControl+Shift+H',
 };
 
 function resolvePath(): string {
@@ -30,25 +36,28 @@ function resolvePath(): string {
   }
 }
 
+function pickShortcut(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
 export function loadMonitorSettings(): MonitorSettings {
   const fp = resolvePath();
   try {
     if (!fs.existsSync(fp)) {
-      return { ...DEFAULTS };
+      return { ...monitorDefaults };
     }
     const raw = fs.readFileSync(fp, 'utf8');
     const data = JSON.parse(raw) as Partial<MonitorSettings>;
     return {
-      mode: data.mode === 'off' || data.mode === 'on' || data.mode === 'shortcut' ? data.mode : DEFAULTS.mode,
-      cycleShortcut: typeof data.cycleShortcut === 'string' && data.cycleShortcut.trim() ? data.cycleShortcut.trim() : DEFAULTS.cycleShortcut,
-      triggerShortcut:
-        typeof data.triggerShortcut === 'string' && data.triggerShortcut.trim()
-          ? data.triggerShortcut.trim()
-          : DEFAULTS.triggerShortcut,
-      hoverEnabled: typeof data.hoverEnabled === 'boolean' ? data.hoverEnabled : DEFAULTS.hoverEnabled,
+      mode: data.mode === 'off' || data.mode === 'on' || data.mode === 'shortcut' ? data.mode : monitorDefaults.mode,
+      cycleShortcut: pickShortcut(data.cycleShortcut, monitorDefaults.cycleShortcut),
+      triggerShortcut: pickShortcut(data.triggerShortcut, monitorDefaults.triggerShortcut),
+      hoverEnabled: typeof data.hoverEnabled === 'boolean' ? data.hoverEnabled : monitorDefaults.hoverEnabled,
+      ocrShortcut: pickShortcut(data.ocrShortcut, monitorDefaults.ocrShortcut),
+      hoverShortcut: pickShortcut(data.hoverShortcut, monitorDefaults.hoverShortcut),
     };
   } catch {
-    return { ...DEFAULTS };
+    return { ...monitorDefaults };
   }
 }
 
@@ -67,13 +76,15 @@ export function mergeMonitorSettings(partial: Partial<MonitorSettings>, current:
     cycleShortcut: partial.cycleShortcut !== undefined ? partial.cycleShortcut : current.cycleShortcut,
     triggerShortcut: partial.triggerShortcut !== undefined ? partial.triggerShortcut : current.triggerShortcut,
     hoverEnabled: partial.hoverEnabled !== undefined ? partial.hoverEnabled : current.hoverEnabled,
+    ocrShortcut: partial.ocrShortcut !== undefined ? partial.ocrShortcut : current.ocrShortcut,
+    hoverShortcut: partial.hoverShortcut !== undefined ? partial.hoverShortcut : current.hoverShortcut,
   };
   if (merged.mode !== 'off' && merged.mode !== 'on' && merged.mode !== 'shortcut') {
     merged.mode = current.mode;
   }
-  if (!merged.cycleShortcut.trim()) merged.cycleShortcut = DEFAULTS.cycleShortcut;
-  if (!merged.triggerShortcut.trim()) merged.triggerShortcut = DEFAULTS.triggerShortcut;
+  if (!merged.cycleShortcut.trim()) merged.cycleShortcut = monitorDefaults.cycleShortcut;
+  if (!merged.triggerShortcut.trim()) merged.triggerShortcut = monitorDefaults.triggerShortcut;
+  if (!merged.ocrShortcut.trim()) merged.ocrShortcut = monitorDefaults.ocrShortcut;
+  if (!merged.hoverShortcut.trim()) merged.hoverShortcut = monitorDefaults.hoverShortcut;
   return merged;
 }
-
-export const monitorDefaults = DEFAULTS;

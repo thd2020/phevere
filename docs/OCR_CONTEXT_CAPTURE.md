@@ -1,6 +1,6 @@
 # Beyond selectable text — context capture & OCR plan
 
-Status: **active** · Core selection + OCR ROI + hover shipped; media/PDF phases open  
+Status: **active** · Selection + OCR ROI/hover/grab/window/clipboard/media shipped; packaging & cross-platform media open  
 Audience: implementers extending Phevere past UIAutomation-selectable text  
 Related: `src/services/native-selection.ts`, `src/services/hover-lookup.ts`, `scripts/ocr_worker.py`
 
@@ -10,8 +10,12 @@ Related: `src/services/native-selection.ts`, `src/services/hover-lookup.ts`, `sc
 |------|-----|----------|
 | Drag / double-click select | UIA + gesture gate | — |
 | Shortcut + hold | Monitor mode `shortcut` | cycle / trigger (settings) |
-| **Hover dwell** | ~450 ms idle → UIA `RangeFromPoint`, else OCR under cursor | **Ctrl+Shift+H** toggle |
-| Region OCR | Drag rectangle → RapidOCR | **Ctrl+Shift+O** toggle overlay |
+| **Hover dwell** | ~450 ms idle → UIA `RangeFromPoint`, else OCR under cursor | **editable** (default Ctrl+Shift+H) |
+| Region OCR | Drag rectangle → RapidOCR | **editable** (default Ctrl+Shift+O) |
+| Grab under cursor | Small rect OCR at cursor | Ctrl+Shift+G |
+| Read this window | Foreground HWND bounds → OCR | Ctrl+Shift+W |
+| Clipboard image | Win+Shift+S / copy image → OCR | Ctrl+Shift+I |
+| Now playing | Windows SMTC media session | Ctrl+Shift+P |
 
 ## Principle
 
@@ -73,7 +77,7 @@ This interface is also the target for future macOS AX / Linux AT-SPI backends.
 ### Phase 1 — Screen capture
 
 - [x] Transparent overlay for region select
-- [ ] Optional “grab under cursor” small rect
+- [x] Optional “grab under cursor” small rect (`Ctrl+Shift+G`)
 - [x] Prefer Electron `desktopCapturer` for portability; consider Win32 `PrintWindow` / BitBlt for a single HWND when needed
 - [x] Persist capture only in memory / short-lived temp; never upload by default
 
@@ -93,22 +97,23 @@ This interface is also the target for future macOS AX / Linux AT-SPI backends.
 
 ### Phase 4 — Triggers
 
-- [x] Wire `Ctrl+Shift+O` → region OCR → popup
-- [x] Hover dwell lookup (UIA first, OCR fallback)
-- [ ] Explicit “read this window” action
+- [x] Wire OCR region shortcut (editable in settings; default `Ctrl+Shift+O`) → region OCR → popup
+- [x] Hover dwell lookup (UIA first, OCR fallback); toggle shortcut editable in settings
+- [x] Explicit “read this window” action (`Ctrl+Shift+W`, foreground HWND bounds + OCR)
 
 ### Phase 5 — Media sessions
 
-- [ ] Windows: `GlobalSystemMediaTransportControlsSessionManager`
+- [x] Windows: `GlobalSystemMediaTransportControlsSessionManager` via `scripts/media_now_playing.ps1` (`Ctrl+Shift+P`)
 - [ ] macOS: `MPNowPlayingInfoCenter` (when native layer exists)
 - [ ] Linux: MPRIS / D-Bus  
 Solves Spotify-class apps with clean strings and no OCR.
 
 ### Phase 6 — Images & PDFs
 
-- [ ] Drag/drop or paste image → OCR → lookup
-- [ ] Clipboard watcher: bitmap (e.g. Win+Shift+S) → offer lookup
+- [x] Drag/drop or paste image → OCR → lookup (main window + settings dropzone)
+- [x] Clipboard watcher: bitmap (e.g. Win+Shift+S) → balloon + `Ctrl+Shift+I` OCR
 - [ ] UVDoc dewarp for photographed pages when quality needs it
+- [ ] PDF page raster → OCR (deferred)
 
 ## Packaging & platform notes
 

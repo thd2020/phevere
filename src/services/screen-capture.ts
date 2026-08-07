@@ -93,3 +93,26 @@ export async function captureScreenRegion(bounds: ContextBounds): Promise<Captur
     scaleFactor: scale,
   };
 }
+
+/**
+ * Capture a rectangle centered on a DIP screen point (explicit “grab under cursor”).
+ */
+export async function captureAroundPoint(
+  x: number,
+  y: number,
+  halfWidth = 140,
+  halfHeight = 56,
+): Promise<CaptureResult | null> {
+  const display = screen.getDisplayNearestPoint({ x, y });
+  const { x: dx, y: dy, width: dw, height: dh } = display.workArea;
+  const left = Math.max(dx, Math.round(x - halfWidth));
+  const top = Math.max(dy, Math.round(y - halfHeight));
+  const right = Math.min(dx + dw, Math.round(x + halfWidth));
+  const bottom = Math.min(dy + dh, Math.round(y + halfHeight));
+  return captureScreenRegion({
+    x: left,
+    y: top,
+    width: Math.max(4, right - left),
+    height: Math.max(4, bottom - top),
+  });
+}

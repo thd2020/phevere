@@ -221,6 +221,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     cycleShortcut: string;
     triggerShortcut: string;
     hoverEnabled?: boolean;
+    ocrShortcut?: string;
+    hoverShortcut?: string;
   }> => {
     return ipcRenderer.invoke('monitor-get-state');
   },
@@ -231,9 +233,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return ipcRenderer.invoke('monitor-cycle-mode');
   },
   setMonitorShortcuts: (
-    payload: { cycleShortcut: string; triggerShortcut: string },
+    payload: {
+      cycleShortcut: string;
+      triggerShortcut: string;
+      ocrShortcut?: string;
+      hoverShortcut?: string;
+      hoverEnabled?: boolean;
+    },
   ): Promise<{ success: boolean; error?: string }> => {
     return ipcRenderer.invoke('monitor-set-shortcuts', payload);
+  },
+  ocrImageFile: (filePath: string): Promise<{ success: boolean; error?: string }> => {
+    return ipcRenderer.invoke('ocr-image-file', filePath);
+  },
+  ocrImageData: (dataUrl: string): Promise<{ success: boolean; error?: string }> => {
+    return ipcRenderer.invoke('ocr-image-data', dataUrl);
   },
   onMonitorModeChanged: (callback: (payload: { mode: string }) => void) => {
     ipcRenderer.removeAllListeners('monitor-mode-changed');
@@ -407,13 +421,25 @@ declare global {
       send: (channel: string, ...args: any[]) => void;
       startMonitoring?: () => Promise<{ success: boolean }>;
       stopMonitoring?: () => Promise<{ success: boolean }>;
-      getMonitorState: () => Promise<{ mode: string; cycleShortcut: string; triggerShortcut: string }>;
+      getMonitorState: () => Promise<{
+        mode: string;
+        cycleShortcut: string;
+        triggerShortcut: string;
+        hoverEnabled?: boolean;
+        ocrShortcut?: string;
+        hoverShortcut?: string;
+      }>;
       setMonitorMode: (mode: string) => Promise<{ success: boolean; error?: string }>;
       cycleMonitorMode: () => Promise<{ success: boolean; mode?: string }>;
       setMonitorShortcuts: (payload: {
         cycleShortcut: string;
         triggerShortcut: string;
+        ocrShortcut?: string;
+        hoverShortcut?: string;
+        hoverEnabled?: boolean;
       }) => Promise<{ success: boolean; error?: string }>;
+      ocrImageFile?: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+      ocrImageData?: (dataUrl: string) => Promise<{ success: boolean; error?: string }>;
       onMonitorModeChanged: (callback: (payload: { mode: string }) => void) => void;
     };
     clipboardAPI: {

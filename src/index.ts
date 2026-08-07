@@ -8,12 +8,16 @@ import { wikipediaService } from './services/wikipedia';
 import { searchService } from './services/search';
 import { createNativeSelectionService, SelectionEvent } from './services/native-selection';
 import { contextCaptureHub, ContextEvent, selectionToContext } from './services/context-capture';
-import { captureScreenRegion } from './services/screen-capture';
+import { captureScreenRegion, captureAroundPoint } from './services/screen-capture';
 import { ocrEngine, textNearPoint } from './services/ocr-engine';
 import { isLookupWorthy } from './services/text-normalize';
 import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
+import { placePopupNearPoint } from './services/popup-placement';
 import { showWorkProgress, updateWorkProgress, closeWorkProgress } from './services/work-progress';
 import { isAcceleratorPhysicallyHeld } from './services/accelerator-key-state';
+import { getForegroundWindowBoundsDip } from './services/foreground-window';
+import { getNowPlaying, formatNowPlayingQuery } from './services/media-session';
+import { readClipboardImage, loadImageFileAsPng, pngFromBase64 } from './services/clipboard-image';
 import {
   loadMonitorSettings,
   saveMonitorSettingsFile,
@@ -55,6 +59,14 @@ let nativeSelectionActive = false;
 let monitorSettings: MonitorSettings = { ...monitorDefaults };
 let registeredCycleAccelerator: string | null = null;
 let registeredTriggerAccelerator: string | null = null;
+let registeredOcrAccelerator: string | null = null;
+let registeredHoverAccelerator: string | null = null;
+let registeredGrabAccelerator: string | null = null;
+let registeredReadWindowAccelerator: string | null = null;
+let registeredClipboardOcrAccelerator: string | null = null;
+let registeredMediaAccelerator: string | null = null;
+let lastClipboardImageHash: string | null = null;
+let clipboardImageWatchTimer: NodeJS.Timeout | null = null;
 /** Max age of last selection for "select text, then press trigger" (ms). */
 const TRIGGER_AFTER_SELECTION_MAX_MS = 60_000;
 let nativeSelectionHandlerRegistered = false;
@@ -174,27 +186,103 @@ function onTriggerShortcutAfterSelection(): void {
   createPopupWindow(ev.x, ev.y);
 }
 
+function unregisterAccel(current: string | null): void {
+  if (!current) return;
+  try {
+    globalShortcut.unregister(current);
+  } catch {
+    /* ignore */
+  }
+}
+
+function registerOrWarn(acc: string, handler: () => void, label: string): string | null {
+  try {
+    const ok = globalShortcut.register(acc, handler);
+    if (ok) return acc;
+    log.warn('main', 'Failed to register shortcut', { label, acc });
+  } catch (error) {
+    log.warn('main', 'Exception registering shortcut', { label, acc, err: String(error) });
+  }
+  return null;
+}
+
+/** OCR / hover / grab / media shortcuts from settings + fixed clipboard-history. */
+function syncFixedAppShortcuts(): void {
+  unregisterAccel(registeredOcrAccelerator);
+  unregisterAccel(registeredHoverAccelerator);
+  unregisterAccel(registeredGrabAccelerator);
+  unregisterAccel(registeredReadWindowAccelerator);
+  unregisterAccel(registeredClipboardOcrAccelerator);
+  unregisterAccel(registeredMediaAccelerator);
+  registeredOcrAccelerator = null;
+  registeredHoverAccelerator = null;
+  registeredGrabAccelerator = null;
+  registeredReadWindowAccelerator = null;
+  registeredClipboardOcrAccelerator = null;
+  registeredMediaAccelerator = null;
+
+  registeredOcrAccelerator = registerOrWarn(
+    monitorSettings.ocrShortcut,
+    () => {
+      if (ocrOverlayWindow && !ocrOverlayWindow.isDestroyed()) {
+        closeOcrOverlay();
+        log.info('main', 'OCR ROI overlay cancelled via shortcut');
+        return;
+      }
+      void startOcrRegionCapture();
+    },
+    'ocr',
+  );
+
+  registeredHoverAccelerator = registerOrWarn(
+    monitorSettings.hoverShortcut,
+    () => setHoverEnabled(!monitorSettings.hoverEnabled),
+    'hover',
+  );
+
+  registeredGrabAccelerator = registerOrWarn(
+    'CommandOrControl+Shift+G',
+    () => void grabOcrUnderCursor(),
+    'grab',
+  );
+
+  registeredReadWindowAccelerator = registerOrWarn(
+    'CommandOrControl+Shift+W',
+    () => void readForegroundWindowOcr(),
+    'read-window',
+  );
+
+  registeredClipboardOcrAccelerator = registerOrWarn(
+    'CommandOrControl+Shift+I',
+    () => void ocrClipboardImage(),
+    'clipboard-ocr',
+  );
+
+  registeredMediaAccelerator = registerOrWarn(
+    'CommandOrControl+Shift+P',
+    () => void lookupNowPlaying(),
+    'media',
+  );
+
+  // Clipboard history panel (fixed; not settings-editable)
+  try {
+    globalShortcut.unregister('CommandOrControl+Shift+V');
+  } catch {
+    /* ignore */
+  }
+  try {
+    globalShortcut.register('CommandOrControl+Shift+V', () => {
+      if (mainWindow) {
+        mainWindow.webContents.send('show-clipboard-history');
+      }
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
 function registerFixedAppShortcuts(): void {
-  // Toggle OCR region picker (open / cancel)
-  globalShortcut.register('CommandOrControl+Shift+O', () => {
-    if (ocrOverlayWindow && !ocrOverlayWindow.isDestroyed()) {
-      closeOcrOverlay();
-      log.info('main', 'OCR ROI overlay cancelled via shortcut');
-      return;
-    }
-    void startOcrRegionCapture();
-  });
-
-  // Toggle hover-to-word lookup
-  globalShortcut.register('CommandOrControl+Shift+H', () => {
-    setHoverEnabled(!monitorSettings.hoverEnabled);
-  });
-
-  globalShortcut.register('CommandOrControl+Shift+V', () => {
-    if (mainWindow) {
-      mainWindow.webContents.send('show-clipboard-history');
-    }
-  });
+  syncFixedAppShortcuts();
 }
 
 function setHoverEnabled(enabled: boolean): void {
@@ -207,7 +295,9 @@ function setHoverEnabled(enabled: boolean): void {
     if (tray && !tray.isDestroyed()) {
       tray.displayBalloon?.({
         title: 'Phevere',
-        content: enabled ? 'Hover lookup on (Ctrl+Shift+H)' : 'Hover lookup off (Ctrl+Shift+H)',
+        content: enabled
+          ? `Hover lookup on (${monitorSettings.hoverShortcut})`
+          : `Hover lookup off (${monitorSettings.hoverShortcut})`,
       });
     }
   } catch {
@@ -229,7 +319,16 @@ function tryRegisterAccelerator(accelerator: string): boolean {
     return false;
   }
   // If it's already the currently registered accelerator, it's valid by default
-  if (accelerator === registeredCycleAccelerator || accelerator === registeredTriggerAccelerator) {
+  if (
+    accelerator === registeredCycleAccelerator ||
+    accelerator === registeredTriggerAccelerator ||
+    accelerator === registeredOcrAccelerator ||
+    accelerator === registeredHoverAccelerator ||
+    accelerator === registeredGrabAccelerator ||
+    accelerator === registeredReadWindowAccelerator ||
+    accelerator === registeredClipboardOcrAccelerator ||
+    accelerator === registeredMediaAccelerator
+  ) {
     return true;
   }
   try {
@@ -375,12 +474,12 @@ function buildTrayContextMenu(): Electron.Menu {
       label: 'Hover lookup',
       type: 'checkbox',
       checked: !!monitorSettings.hoverEnabled,
-      accelerator: 'CommandOrControl+Shift+H',
+      accelerator: monitorSettings.hoverShortcut,
       click: (item) => setHoverEnabled(!!item.checked),
     },
     {
       label: 'OCR region…',
-      accelerator: 'CommandOrControl+Shift+O',
+      accelerator: monitorSettings.ocrShortcut,
       click: () => {
         if (ocrOverlayWindow && !ocrOverlayWindow.isDestroyed()) {
           closeOcrOverlay();
@@ -390,7 +489,28 @@ function buildTrayContextMenu(): Electron.Menu {
       },
     },
     {
+      label: 'Grab under cursor',
+      accelerator: 'CommandOrControl+Shift+G',
+      click: () => void grabOcrUnderCursor(),
+    },
+    {
+      label: 'Read this window',
+      accelerator: 'CommandOrControl+Shift+W',
+      click: () => void readForegroundWindowOcr(),
+    },
+    {
+      label: 'OCR clipboard image',
+      accelerator: 'CommandOrControl+Shift+I',
+      click: () => void ocrClipboardImage(),
+    },
+    {
+      label: 'Now playing…',
+      accelerator: 'CommandOrControl+Shift+P',
+      click: () => void lookupNowPlaying(),
+    },
+    {
       label: 'Clipboard history',
+      accelerator: 'CommandOrControl+Shift+V',
       click: () => {
         showOrRestoreMainWindow();
         try {
@@ -541,54 +661,23 @@ const createMainWindow = (): void => {
 const createPopupWindow = (x: number, y: number): void => {
   log.debug('main', 'Create popup window', { x, y });
 
-  // Get screen dimensions and scale
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-  const scaleFactor = primaryDisplay.scaleFactor || 1;
+  // Slim strip: width matches 8×24px icons + gaps + padding (keep in sync with popup-new.html strip resize)
+  const POPUP_STRIP_ICON = 24;
+  const POPUP_STRIP_GAP = 2;
+  const POPUP_STRIP_PAD = 4;
+  const POPUP_STRIP_ICONS = 8;
+  const popupWidth =
+    POPUP_STRIP_PAD +
+    POPUP_STRIP_ICONS * POPUP_STRIP_ICON +
+    (POPUP_STRIP_ICONS - 1) * POPUP_STRIP_GAP;
+  const popupHeight = 34; // toolbar ~26px + small frame margin
 
-                // Slim strip: width matches 8×24px icons + gaps + padding (keep in sync with popup-new.html strip resize)
-              const POPUP_STRIP_ICON = 24;
-              const POPUP_STRIP_GAP = 2;
-              const POPUP_STRIP_PAD = 4;
-              const POPUP_STRIP_ICONS = 8;
-              const popupWidth =
-                POPUP_STRIP_PAD +
-                POPUP_STRIP_ICONS * POPUP_STRIP_ICON +
-                (POPUP_STRIP_ICONS - 1) * POPUP_STRIP_GAP;
-              const popupHeight = 34; // toolbar ~26px + small frame margin
-  
-                // Position popup near the selected text, but ensure it stays within screen bounds
-              // Convert native (physical px) coordinates to Electron's DIP coordinates
-              let popupX = Math.round(x / scaleFactor);
-              let popupY = Math.round(y / scaleFactor);
-
-              // Use provided coordinates if valid, otherwise use cursor as fallback
-              if (popupX < 0 || popupX > screenWidth || popupY < 0 || popupY > screenHeight || isNaN(popupX) || isNaN(popupY)) {
-                const cur = screen.getCursorScreenPoint();
-                popupX = cur.x;
-                popupY = cur.y;
-                log.debug('main', 'Popup position: cursor fallback', { popupX, popupY });
-              } else {
-                log.debug('main', 'Popup position: selection', { popupX, popupY });
-              }
-              
-              // Adjust position to show popup near the text, not under the cursor
-              // Place popup slightly to the right and below the selection to avoid covering text
-              const offsetX = 18; // move right
-              const offsetY = 14; // move down
-              popupX = Math.max(10, Math.min(popupX - Math.floor(popupWidth / 2) + offsetX, screenWidth - popupWidth - 10));
-              popupY = Math.max(10, Math.min(popupY + offsetY, screenHeight - popupHeight - 10));
-              
-              // Ensure popup stays within screen bounds
-              if (popupX < 10) popupX = 10;
-              if (popupY < 10) popupY = 10;
-              if (popupX + popupWidth > screenWidth) {
-                popupX = screenWidth - popupWidth - 10;
-              }
-              if (popupY + popupHeight > screenHeight) {
-                popupY = screenHeight - popupHeight - 10;
-              }
-              log.debug('main', 'Popup bounds', { popupX, popupY, popupWidth, popupHeight });
+  // Multi-monitor safe: physical → DIP via screenToDipPoint, clamp to nearest workArea
+  // (never primary.workAreaSize — that pinned secondary-monitor selections to the left screen).
+  const placed = placePopupNearPoint(x, y, popupWidth, popupHeight);
+  const popupX = placed.x;
+  const popupY = placed.y;
+  log.debug('main', 'Popup bounds', { popupX, popupY, popupWidth, popupHeight, displayId: placed.displayId });
 
   // Coalesce duplicate requests for the same text within a short period
   const textForPopup = (lastSelectionEvent && (lastSelectionEvent.text || '').trim()) || lastSelectedText || '';
@@ -724,8 +813,8 @@ const createSettingsWindow = (): void => {
   }
 
   settingsWindow = new BrowserWindow({
-    width: 600,
-    height: 700,
+    width: 760,
+    height: 780,
     parent: mainWindow || undefined,
     modal: true,
     webPreferences: {
@@ -774,8 +863,13 @@ function wireContextCaptureHubOnce(): void {
         focused === ocrOverlayWindow ||
         externalWindows.includes(focused))
     ) {
-      // OCR overlay intentionally owns focus during capture; still allow OCR results after it closes.
-      if (event.origin !== 'ocr') {
+      // Explicit capture origins (OCR / clipboard / media / manual) may finish while Phevere is focused.
+      if (
+        event.origin !== 'ocr' &&
+        event.origin !== 'clipboard' &&
+        event.origin !== 'media' &&
+        event.origin !== 'manual'
+      ) {
         return;
       }
     }
@@ -1001,6 +1095,246 @@ ipcMain.on('ocr-overlay-cancel', () => {
   closeOcrOverlay();
 });
 
+async function emitOcrFromPng(opts: {
+  png: Buffer;
+  x: number;
+  y: number;
+  bounds?: { x: number; y: number; width: number; height: number };
+  imageHash?: string;
+  origin: ContextEvent['origin'];
+  progressTitle?: string;
+  emptyMessage?: string;
+}): Promise<void> {
+  wireContextCaptureHubOnce();
+  showWorkProgress(opts.x, opts.y, {
+    title: opts.progressTitle || 'Recognizing text…',
+    subtitle: 'Running PP-OCRv6 (RapidOCR)',
+  });
+
+  const started = Date.now();
+  const tick = setInterval(() => {
+    const secs = Math.round((Date.now() - started) / 1000);
+    updateWorkProgress({
+      title: opts.progressTitle || 'Recognizing text…',
+      subtitle: `Still working… ${secs}s`,
+    });
+  }, 800);
+
+  let ocr;
+  try {
+    ocr = await ocrEngine.recognize(opts.png);
+  } finally {
+    clearInterval(tick);
+  }
+
+  const text = (ocr.text || '').trim();
+  if (!text || !isLookupWorthy(text)) {
+    closeWorkProgress();
+    const available = await ocrEngine.isAvailable().catch(() => false);
+    contextCaptureHub.emit({
+      text:
+        opts.emptyMessage ||
+        (available
+          ? '(No text recognized)'
+          : '(OCR unavailable — RapidOCR/Python not found. Set PHEVERE_PYTHON)'),
+      x: opts.x,
+      y: opts.y,
+      timestamp: Date.now(),
+      origin: opts.origin,
+      confidence: 0,
+      bounds: opts.bounds,
+      imageHash: opts.imageHash,
+    });
+    return;
+  }
+
+  updateWorkProgress({
+    title: 'Looking up…',
+    subtitle: text.length > 48 ? text.slice(0, 48) + '…' : text,
+  });
+  setTimeout(() => closeWorkProgress(), 180);
+
+  contextCaptureHub.emit({
+    text,
+    x: opts.x,
+    y: opts.y,
+    timestamp: Date.now(),
+    origin: opts.origin,
+    confidence: ocr.confidence,
+    bounds: opts.bounds,
+    imageHash: opts.imageHash,
+  });
+}
+
+async function grabOcrUnderCursor(): Promise<void> {
+  const cur = screen.getCursorScreenPoint();
+  log.info('main', 'Grab OCR under cursor', { x: cur.x, y: cur.y });
+  showWorkProgress(cur.x, cur.y + 24, {
+    title: 'Grab under cursor…',
+    subtitle: 'Capturing nearby text',
+  });
+  const capture = await captureAroundPoint(cur.x, cur.y, 160, 64);
+  if (!capture) {
+    closeWorkProgress();
+    log.warn('main', 'Grab capture failed');
+    return;
+  }
+  await emitOcrFromPng({
+    png: capture.png,
+    x: cur.x,
+    y: cur.y + 24,
+    bounds: capture.bounds,
+    imageHash: capture.imageHash,
+    origin: 'ocr',
+    progressTitle: 'Grab under cursor…',
+  });
+}
+
+async function readForegroundWindowOcr(): Promise<void> {
+  const bounds = getForegroundWindowBoundsDip();
+  const cur = screen.getCursorScreenPoint();
+  if (!bounds) {
+    log.warn('main', 'Foreground window bounds unavailable');
+    contextCaptureHub.emit({
+      text: '(Could not read foreground window bounds)',
+      x: cur.x,
+      y: cur.y,
+      timestamp: Date.now(),
+      origin: 'ocr',
+    });
+    return;
+  }
+
+  // Avoid OCR of Phevere chrome when it is focused.
+  if (phevereWindowFocused(mainWindow, popupWindows, settingsWindow, ocrOverlayWindow, externalWindows)) {
+    log.info('main', 'Read-window skipped — Phevere focused');
+    return;
+  }
+
+  log.info('main', 'Read foreground window OCR', { ...bounds });
+  showWorkProgress(bounds.x + Math.floor(bounds.width / 2), bounds.y + 40, {
+    title: 'Reading window…',
+    subtitle: 'Capturing foreground window',
+  });
+  const capture = await captureScreenRegion(bounds);
+  if (!capture) {
+    closeWorkProgress();
+    return;
+  }
+  await emitOcrFromPng({
+    png: capture.png,
+    x: bounds.x + Math.floor(bounds.width / 2),
+    y: bounds.y + 40,
+    bounds,
+    imageHash: capture.imageHash,
+    origin: 'ocr',
+    progressTitle: 'Reading window…',
+  });
+}
+
+async function ocrClipboardImage(): Promise<void> {
+  const cur = screen.getCursorScreenPoint();
+  const img = readClipboardImage();
+  if (!img) {
+    log.info('main', 'No clipboard image to OCR');
+    try {
+      tray?.displayBalloon?.({
+        title: 'Phevere',
+        content: 'No image on the clipboard (try Win+Shift+S first)',
+      });
+    } catch {
+      /* optional */
+    }
+    return;
+  }
+  lastClipboardImageHash = img.imageHash;
+  await emitOcrFromPng({
+    png: img.png,
+    x: cur.x,
+    y: cur.y,
+    imageHash: img.imageHash,
+    origin: 'clipboard',
+    progressTitle: 'OCR clipboard image…',
+  });
+}
+
+async function lookupNowPlaying(): Promise<void> {
+  wireContextCaptureHubOnce();
+  const cur = screen.getCursorScreenPoint();
+  showWorkProgress(cur.x, cur.y, {
+    title: 'Now playing…',
+    subtitle: 'Reading media session',
+  });
+  const info = await getNowPlaying();
+  closeWorkProgress();
+  if (!info) {
+    contextCaptureHub.emit({
+      text: '(No media session / now playing)',
+      x: cur.x,
+      y: cur.y,
+      timestamp: Date.now(),
+      origin: 'media',
+    });
+    return;
+  }
+  const query = formatNowPlayingQuery(info);
+  contextCaptureHub.emit({
+    text: query,
+    x: cur.x,
+    y: cur.y,
+    timestamp: Date.now(),
+    origin: 'media',
+  });
+}
+
+function startClipboardImageWatcher(): void {
+  if (clipboardImageWatchTimer) return;
+  clipboardImageWatchTimer = setInterval(() => {
+    const img = readClipboardImage();
+    if (!img) return;
+    if (img.imageHash === lastClipboardImageHash) return;
+    lastClipboardImageHash = img.imageHash;
+    try {
+      tray?.displayBalloon?.({
+        title: 'Phevere',
+        content: 'Clipboard image ready — Ctrl+Shift+I to OCR',
+      });
+    } catch {
+      /* optional */
+    }
+  }, 2000);
+}
+
+ipcMain.handle('ocr-image-file', async (_event, filePath: string) => {
+  const cur = screen.getCursorScreenPoint();
+  const img = loadImageFileAsPng(String(filePath || ''));
+  if (!img) return { success: false, error: 'Could not load image' };
+  await emitOcrFromPng({
+    png: img.png,
+    x: cur.x,
+    y: cur.y,
+    imageHash: img.imageHash,
+    origin: 'ocr',
+    progressTitle: 'OCR dropped image…',
+  });
+  return { success: true };
+});
+
+ipcMain.handle('ocr-image-data', async (_event, dataUrl: string) => {
+  const cur = screen.getCursorScreenPoint();
+  const img = pngFromBase64(String(dataUrl || ''));
+  if (!img) return { success: false, error: 'Could not decode image' };
+  await emitOcrFromPng({
+    png: img.png,
+    x: cur.x,
+    y: cur.y,
+    imageHash: img.imageHash,
+    origin: 'clipboard',
+    progressTitle: 'OCR pasted image…',
+  });
+  return { success: true };
+});
+
 function ensureHoverLookup(): HoverLookupService {
   if (!hoverLookup) {
     hoverLookup = new HoverLookupService({
@@ -1117,6 +1451,8 @@ ipcMain.handle('monitor-get-state', () => {
     cycleShortcut: monitorSettings.cycleShortcut,
     triggerShortcut: monitorSettings.triggerShortcut,
     hoverEnabled: monitorSettings.hoverEnabled,
+    ocrShortcut: monitorSettings.ocrShortcut,
+    hoverShortcut: monitorSettings.hoverShortcut,
   };
 });
 
@@ -1135,24 +1471,54 @@ ipcMain.handle('monitor-cycle-mode', () => {
 
 ipcMain.handle(
   'monitor-set-shortcuts',
-  (_event, payload: { cycleShortcut: string; triggerShortcut: string }) => {
+  (
+    _event,
+    payload: {
+      cycleShortcut: string;
+      triggerShortcut: string;
+      ocrShortcut?: string;
+      hoverShortcut?: string;
+      hoverEnabled?: boolean;
+    },
+  ) => {
     const cycle = (payload?.cycleShortcut || '').trim();
     const trigger = (payload?.triggerShortcut || '').trim();
-    if (!cycle || !trigger) {
-      return { success: false, error: 'Both shortcuts are required.' };
+    const ocr = (payload?.ocrShortcut || monitorSettings.ocrShortcut).trim();
+    const hover = (payload?.hoverShortcut || monitorSettings.hoverShortcut).trim();
+    if (!cycle || !trigger || !ocr || !hover) {
+      return { success: false, error: 'All shortcut fields are required.' };
     }
-    if (cycle === trigger) {
-      return { success: false, error: 'Cycle and trigger shortcuts must differ.' };
+    const all = [cycle, trigger, ocr, hover];
+    if (new Set(all).size !== all.length) {
+      return { success: false, error: 'Shortcuts must all be unique.' };
     }
-    if (!tryRegisterAccelerator(cycle) || !tryRegisterAccelerator(trigger)) {
+    if (
+      !tryRegisterAccelerator(cycle) ||
+      !tryRegisterAccelerator(trigger) ||
+      !tryRegisterAccelerator(ocr) ||
+      !tryRegisterAccelerator(hover)
+    ) {
       return {
         success: false,
-        error: 'Invalid accelerator. Use Electron format, e.g. CommandOrControl+Shift+D',
+        error: 'Invalid accelerator. Use Electron format, e.g. CommandOrControl+Shift+O',
       };
     }
-    monitorSettings = mergeMonitorSettings({ cycleShortcut: cycle, triggerShortcut: trigger }, monitorSettings);
+    monitorSettings = mergeMonitorSettings(
+      {
+        cycleShortcut: cycle,
+        triggerShortcut: trigger,
+        ocrShortcut: ocr,
+        hoverShortcut: hover,
+        hoverEnabled:
+          typeof payload?.hoverEnabled === 'boolean' ? payload.hoverEnabled : monitorSettings.hoverEnabled,
+      },
+      monitorSettings,
+    );
     saveMonitorSettingsFile(monitorSettings);
     syncGlobalMonitorShortcuts();
+    syncFixedAppShortcuts();
+    applyHoverFromSettings();
+    updateTrayContextMenu();
     return { success: true };
   },
 );
@@ -1441,6 +1807,7 @@ app.on('ready', () => {
   createMainWindow();
   createTray();
   registerFixedAppShortcuts();
+  startClipboardImageWatcher();
   syncGlobalMonitorShortcuts();
   applyMonitoringFromMode();
   applyHoverFromSettings();
