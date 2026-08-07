@@ -36,11 +36,14 @@ private:
     int pending_y = 0;
     std::chrono::steady_clock::time_point last_selection_time;
     static constexpr int DEBOUNCE_DELAY_MS = 500; // 500ms delay like Youdao Dictionary
+    // Reject absurdly large payloads (a whole document is never a lookup query)
+    static constexpr size_t MAX_SELECTION_BYTES = 8000;
     // Debug flag (enabled via env var PHEVERE_DEBUG_UIA=1)
     static bool debugEnabled;
 
     // Mouse hook and fallback tracking
     HHOOK hMouseHook = nullptr;
+    HHOOK hKeyboardHook = nullptr;
     static POINT mouseDownPt;
     static std::chrono::steady_clock::time_point lastUiaEventTime;
     
@@ -48,9 +51,22 @@ private:
     static POINT lastClickPt;
     static std::chrono::steady_clock::time_point lastClickTime;
     static std::atomic<int> active_fallback_threads;
+
+    // Input gate: a UIA selection event is only trusted when the user actually
+    // performed a selection gesture, and is not in the middle of typing.
+    static constexpr long long USER_GESTURE_WINDOW_MS = 1500;
+    static constexpr long long TYPING_QUIET_MS = 700;
+    static std::atomic<long long> lastSelectGestureMs;
+    static std::atomic<long long> lastTypingMs;
+    static std::atomic<bool> leftButtonDown;
+    static bool inputGateDisabled;
+
+    static long long nowMs();
+    static bool isUserSelectionGesture();
     
     void triggerSyntheticCopyFallback(int x, int y);
     static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam);
+    static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
 
 public:
     UIAutomationSelectionMonitor() {
@@ -58,6 +74,8 @@ public:
         // Enable debug only when explicitly requested
         const char* dbg = std::getenv("PHEVERE_DEBUG_UIA");
         debugEnabled = (dbg && std::string(dbg) == "1");
+        const char* gateOff = std::getenv("PHEVERE_DISABLE_INPUT_GATE");
+        inputGateDisabled = (gateOff && std::string(gateOff) == "1");
         // COM will be initialized on the dedicated thread, not here.
         if (debugEnabled) std::cout << "[UIA] Constructor called" << std::endl;
     }
@@ -170,11 +188,11 @@ private:
         }
 
         HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement* sender, EVENTID eventId) override {
-            if (UIAutomationSelectionMonitor::instance && (
-                eventId == UIA_Text_TextSelectionChangedEventId ||
-                eventId == UIA_Text_TextChangedEventId ||
-                eventId == UIA_TextEdit_TextChangedEventId
-            )) {
+            // Only TextSelectionChanged is a selection signal. TextChanged /
+            // TextEdit_TextChanged fire on every keystroke and on any control
+            // whose text is repainted (status bars, progress labels), which is
+            // the main source of spurious popups.
+            if (UIAutomationSelectionMonitor::instance && eventId == UIA_Text_TextSelectionChangedEventId) {
                 UIAutomationSelectionMonitor::instance->handleSelectionChanged(sender);
             } else {
                 if (UIAutomationSelectionMonitor::debugEnabled) std::cout << "[UIA] [?] UNKNOWN EVENT: " << eventId << std::endl;
@@ -184,6 +202,7 @@ private:
     };
 };
 bool UIAutomationSelectionMonitor::debugEnabled = false;
+bool UIAutomationSelectionMonitor::inputGateDisabled = false;
 
 // Define static variables
 UIAutomationSelectionMonitor* UIAutomationSelectionMonitor::instance = nullptr;
@@ -192,6 +211,41 @@ std::chrono::steady_clock::time_point UIAutomationSelectionMonitor::lastUiaEvent
 POINT UIAutomationSelectionMonitor::lastClickPt = {0, 0};
 std::chrono::steady_clock::time_point UIAutomationSelectionMonitor::lastClickTime = std::chrono::steady_clock::now();
 std::atomic<int> UIAutomationSelectionMonitor::active_fallback_threads{0};
+std::atomic<long long> UIAutomationSelectionMonitor::lastSelectGestureMs{0};
+std::atomic<long long> UIAutomationSelectionMonitor::lastTypingMs{0};
+std::atomic<bool> UIAutomationSelectionMonitor::leftButtonDown{false};
+
+long long UIAutomationSelectionMonitor::nowMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// A selection event is trusted only if the user made a selection gesture
+// recently and is not mid-typing. Without this, background UI repaints and
+// caret movement both look identical to a real selection.
+bool UIAutomationSelectionMonitor::isUserSelectionGesture() {
+    if (inputGateDisabled) return true;
+
+    if (leftButtonDown.load()) {
+        if (debugEnabled) std::cout << "[GATE] REJECT: drag still in progress" << std::endl;
+        return false;
+    }
+
+    const long long now = nowMs();
+    const long long gestureAge = now - lastSelectGestureMs.load();
+    if (lastSelectGestureMs.load() == 0 || gestureAge > USER_GESTURE_WINDOW_MS) {
+        if (debugEnabled) std::cout << "[GATE] REJECT: no selection gesture within " << USER_GESTURE_WINDOW_MS << "ms (age=" << gestureAge << ")" << std::endl;
+        return false;
+    }
+
+    const long long typingAge = now - lastTypingMs.load();
+    if (lastTypingMs.load() != 0 && typingAge < TYPING_QUIET_MS && typingAge < gestureAge) {
+        if (debugEnabled) std::cout << "[GATE] REJECT: user is typing (typingAge=" << typingAge << ")" << std::endl;
+        return false;
+    }
+
+    return true;
+}
 
 // Implementation of the monitor loop
 void UIAutomationSelectionMonitor::monitorLoop() {
@@ -209,13 +263,13 @@ void UIAutomationSelectionMonitor::monitorLoop() {
             UnhookWindowsHookEx(hMouseHook);
             hMouseHook = nullptr;
         }
+        if (hKeyboardHook) {
+            UnhookWindowsHookEx(hKeyboardHook);
+            hKeyboardHook = nullptr;
+        }
         if (handlersRegistered && pAutomation && pDesktopElement && pEventHandler) {
             pAutomation->RemoveAutomationEventHandler(
                 UIA_Text_TextSelectionChangedEventId, pDesktopElement, pEventHandler);
-            pAutomation->RemoveAutomationEventHandler(
-                UIA_Text_TextChangedEventId, pDesktopElement, pEventHandler);
-            pAutomation->RemoveAutomationEventHandler(
-                UIA_TextEdit_TextChangedEventId, pDesktopElement, pEventHandler);
             handlersRegistered = false;
         }
         pEventHandler.Release();
@@ -257,7 +311,7 @@ void UIAutomationSelectionMonitor::monitorLoop() {
     if (debugEnabled) std::cout << "[UIA] THREAD: Desktop element obtained successfully" << std::endl;
 
     pEventHandler = new UIAutomationEventHandler();
-    if (debugEnabled) std::cout << "[UIA] THREAD: Registering text-related event handlers..." << std::endl;
+    if (debugEnabled) std::cout << "[UIA] THREAD: Registering TextSelectionChanged event handler..." << std::endl;
     HRESULT hrSel = pAutomation->AddAutomationEventHandler(
         UIA_Text_TextSelectionChangedEventId,
         pDesktopElement,
@@ -266,43 +320,23 @@ void UIAutomationSelectionMonitor::monitorLoop() {
         pEventHandler
     );
 
-    HRESULT hrChanged = pAutomation->AddAutomationEventHandler(
-        UIA_Text_TextChangedEventId,
-        pDesktopElement,
-        TreeScope_Subtree,
-        nullptr,
-        pEventHandler
-    );
-
-    HRESULT hrEditChanged = pAutomation->AddAutomationEventHandler(
-        UIA_TextEdit_TextChangedEventId,
-        pDesktopElement,
-        TreeScope_Subtree,
-        nullptr,
-        pEventHandler
-    );
-
-    if (FAILED(hrSel)) {
+    if (SUCCEEDED(hrSel)) {
+        handlersRegistered = true;
+        if (debugEnabled) std::cout << "[UIA] THREAD: Event handler registered. Waiting for events..." << std::endl;
+    } else {
         std::cerr << "[UIA] THREAD: Failed to register TextSelectionChanged handler. HRESULT: " << hrSel << std::endl;
     }
-    if (FAILED(hrChanged)) {
-        if (debugEnabled) std::cout << "[UIA] THREAD: TextChanged handler registration failed (may be unsupported). HRESULT: " << hrChanged << std::endl;
-    }
-    if (FAILED(hrEditChanged)) {
-        if (debugEnabled) std::cout << "[UIA] THREAD: TextEdit_TextChanged handler registration failed (may be unsupported). HRESULT: " << hrEditChanged << std::endl;
-    }
-    if (SUCCEEDED(hrSel) || SUCCEEDED(hrChanged) || SUCCEEDED(hrEditChanged)) {
-        handlersRegistered = true;
-        if (debugEnabled) std::cout << "[UIA] THREAD: Event handlers registered. Waiting for events..." << std::endl;
-    } else {
-        std::cerr << "[UIA] THREAD: No text-related handlers could be registered." << std::endl;
-    }
 
-    if (debugEnabled) std::cout << "[UIA] THREAD: Installing fallback mouse hook and entering message loop..." << std::endl;
+    if (debugEnabled) std::cout << "[UIA] THREAD: Installing input hooks and entering message loop..." << std::endl;
     
     hMouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, GetModuleHandle(nullptr), 0);
     if (!hMouseHook) {
         std::cerr << "[UIA] THREAD: Failed to install low-level mouse hook." << std::endl;
+    }
+
+    hKeyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc, GetModuleHandle(nullptr), 0);
+    if (!hKeyboardHook) {
+        std::cerr << "[UIA] THREAD: Failed to install low-level keyboard hook." << std::endl;
     }
 
     MSG msg;
@@ -321,6 +355,10 @@ void UIAutomationSelectionMonitor::handleSelectionChanged(IUIAutomationElement* 
 
     if (isFromCurrentProcess(sender)) {
         if (debugEnabled) std::cout << "[UIA] IGNORE: Selection from current process (popup/app window)" << std::endl;
+        return;
+    }
+
+    if (!isUserSelectionGesture()) {
         return;
     }
 
@@ -388,6 +426,10 @@ static std::string bstrToUtf8(BSTR bstr) {
     return result;
 }
 
+// Only a real, non-degenerate TextPattern selection counts. ValuePattern and
+// LegacyIAccessible return the whole control's text even when nothing is
+// selected, which turns a bare caret click or a repainted status label into a
+// "selection".
 std::string UIAutomationSelectionMonitor::getSelectedTextFromElement(IUIAutomationElement* element) {
     if (!element) return "";
 
@@ -395,69 +437,40 @@ std::string UIAutomationSelectionMonitor::getSelectedTextFromElement(IUIAutomati
     HRESULT hr = element->GetCurrentPattern(UIA_TextPatternId, (IUnknown**)&pTextPattern);
     if (FAILED(hr) || !pTextPattern) {
         CComPtr<IUIAutomationElement> withText = findAncestorWithTextPattern(element);
-        if (withText) {
-            element = withText;
-            pTextPattern.Release();
-            hr = element->GetCurrentPattern(UIA_TextPatternId, (IUnknown**)&pTextPattern);
+        if (!withText) return "";
+        pTextPattern.Release();
+        if (FAILED(withText->GetCurrentPattern(UIA_TextPatternId, (IUnknown**)&pTextPattern)) || !pTextPattern) {
+            return "";
         }
     }
 
-    if (SUCCEEDED(hr) && pTextPattern) {
-        CComPtr<IUIAutomationTextRangeArray> pSelection;
-        if (SUCCEEDED(pTextPattern->GetSelection(&pSelection)) && pSelection) {
-            int len = 0;
-            pSelection->get_Length(&len);
-            if (len > 0) {
-                CComPtr<IUIAutomationTextRange> pRange;
-                pSelection->GetElement(0, &pRange);
-                if (pRange) {
-                    BSTR bstr = nullptr;
-                    pRange->GetText(-1, &bstr);
-                    if (bstr && SysStringLen(bstr) > 0) {
-                        std::string res = bstrToUtf8(bstr);
-                        SysFreeString(bstr);
-                        return res;
-                    }
-                    if (bstr) SysFreeString(bstr);
-                }
-            }
-        }
+    CComPtr<IUIAutomationTextRangeArray> pSelection;
+    if (FAILED(pTextPattern->GetSelection(&pSelection)) || !pSelection) return "";
+
+    int len = 0;
+    pSelection->get_Length(&len);
+    if (len <= 0) return "";
+
+    CComPtr<IUIAutomationTextRange> pRange;
+    pSelection->GetElement(0, &pRange);
+    if (!pRange) return "";
+
+    BSTR bstr = nullptr;
+    pRange->GetText(-1, &bstr);
+    std::string res;
+    if (bstr) {
+        if (SysStringLen(bstr) > 0) res = bstrToUtf8(bstr);
+        SysFreeString(bstr);
     }
 
-    CComPtr<IUIAutomationValuePattern> pValuePattern;
-    hr = element->GetCurrentPattern(UIA_ValuePatternId, (IUnknown**)&pValuePattern);
-    if (SUCCEEDED(hr) && pValuePattern) {
-        BSTR bstrVal = nullptr;
-        if (SUCCEEDED(pValuePattern->get_CurrentValue(&bstrVal)) && bstrVal) {
-            if (SysStringLen(bstrVal) > 0) {
-                std::string res = bstrToUtf8(bstrVal);
-                SysFreeString(bstrVal);
-                return res;
-            }
-            SysFreeString(bstrVal);
-        }
+    // A degenerate range (caret with no selection) yields empty/whitespace text.
+    if (res.find_first_not_of(" \t\r\n\f\v") == std::string::npos) return "";
+    if (res.size() > MAX_SELECTION_BYTES) {
+        if (debugEnabled) std::cout << "[UIA] IGNORE: selection too large (" << res.size() << " bytes)" << std::endl;
+        return "";
     }
 
-    CComPtr<IUIAutomationLegacyIAccessiblePattern> pLegacyPattern;
-    hr = element->GetCurrentPattern(UIA_LegacyIAccessiblePatternId, (IUnknown**)&pLegacyPattern);
-    if (SUCCEEDED(hr) && pLegacyPattern) {
-        BSTR bstrLegacy = nullptr;
-        if (SUCCEEDED(pLegacyPattern->get_CurrentValue(&bstrLegacy)) && bstrLegacy && SysStringLen(bstrLegacy) > 0) {
-            std::string res = bstrToUtf8(bstrLegacy);
-            SysFreeString(bstrLegacy);
-            return res;
-        }
-        if (bstrLegacy) SysFreeString(bstrLegacy);
-
-        if (SUCCEEDED(pLegacyPattern->get_CurrentName(&bstrLegacy)) && bstrLegacy && SysStringLen(bstrLegacy) > 0) {
-            std::string res = bstrToUtf8(bstrLegacy);
-            SysFreeString(bstrLegacy);
-            return res;
-        }
-        if (bstrLegacy) SysFreeString(bstrLegacy);
-    }
-
-    return "";
+    return res;
 }
 
 bool UIAutomationSelectionMonitor::isFromCurrentProcess(IUIAutomationElement* element) {
@@ -591,6 +604,8 @@ void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
 
     if (debugEnabled) std::cout << "[FALLBACK] No UIA event detected. Triggering synthetic Ctrl+C..." << std::endl;
 
+    const DWORD clipboardSeqBefore = GetClipboardSequenceNumber();
+
     std::wstring backupText;
     if (OpenClipboard(nullptr)) {
         HANDLE hData = GetClipboardData(CF_UNICODETEXT);
@@ -619,6 +634,14 @@ void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
     SendInput(4, inputs, sizeof(INPUT));
 
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
+
+    // If the clipboard never changed, the Ctrl+C hit something with no
+    // selection (a scrollbar drag, a slider, an empty canvas). Reading it
+    // anyway would resurface whatever the user copied earlier.
+    if (GetClipboardSequenceNumber() == clipboardSeqBefore) {
+        if (debugEnabled) std::cout << "[FALLBACK] Clipboard unchanged; no selection to capture." << std::endl;
+        return;
+    }
 
     std::string capturedText = "";
     if (OpenClipboard(nullptr)) {
@@ -657,7 +680,7 @@ void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
         CloseClipboard();
     }
 
-    if (!capturedText.empty()) {
+    if (!capturedText.empty() && capturedText.size() <= MAX_SELECTION_BYTES) {
         if (debugEnabled) std::cout << "[FALLBACK] Captured text: \"" << capturedText << "\"" << std::endl;
         updatePendingSelection(capturedText, x, y);
     }
@@ -669,8 +692,11 @@ LRESULT CALLBACK UIAutomationSelectionMonitor::LowLevelMouseProc(int nCode, WPAR
 
         if (wParam == WM_LBUTTONDOWN) {
             mouseDownPt = pMouseStruct->pt;
+            leftButtonDown.store(true);
         } 
         else if (wParam == WM_LBUTTONUP) {
+            leftButtonDown.store(false);
+
             int dx = std::abs(pMouseStruct->pt.x - mouseDownPt.x);
             int dy = std::abs(pMouseStruct->pt.y - mouseDownPt.y);
 
@@ -685,6 +711,10 @@ LRESULT CALLBACK UIAutomationSelectionMonitor::LowLevelMouseProc(int nCode, WPAR
             lastClickPt = pMouseStruct->pt;
 
             if (dx > 15 || dy > 15 || isDoubleClick) {
+                // A drag or multi-click is the only mouse gesture that selects text.
+                // A plain click just moves the caret and must not arm the monitor.
+                lastSelectGestureMs.store(nowMs());
+
                 int dropX = pMouseStruct->pt.x;
                 int dropY = pMouseStruct->pt.y;
                 
@@ -697,6 +727,35 @@ LRESULT CALLBACK UIAutomationSelectionMonitor::LowLevelMouseProc(int nCode, WPAR
                     active_fallback_threads.fetch_sub(1);
                 }).detach();
             }
+        }
+    }
+    return CallNextHookEx(nullptr, nCode, wParam, lParam);
+}
+
+// Classifies keystrokes so the monitor can tell "the user is selecting" from
+// "the user is typing". Nothing is recorded about which keys were pressed.
+LRESULT CALLBACK UIAutomationSelectionMonitor::LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode == HC_ACTION && instance && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)) {
+        KBDLLHOOKSTRUCT* pKey = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
+        const DWORD vk = pKey->vkCode;
+
+        const bool shiftDown = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+        const bool ctrlDown = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+
+        const bool isNavKey =
+            vk == VK_LEFT || vk == VK_RIGHT || vk == VK_UP || vk == VK_DOWN ||
+            vk == VK_HOME || vk == VK_END || vk == VK_PRIOR || vk == VK_NEXT;
+
+        const bool isModifier =
+            vk == VK_SHIFT || vk == VK_LSHIFT || vk == VK_RSHIFT ||
+            vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL ||
+            vk == VK_MENU || vk == VK_LMENU || vk == VK_RMENU ||
+            vk == VK_LWIN || vk == VK_RWIN || vk == VK_CAPITAL;
+
+        if ((shiftDown && isNavKey) || (ctrlDown && vk == 'A')) {
+            lastSelectGestureMs.store(nowMs());
+        } else if (!isModifier && !ctrlDown) {
+            lastTypingMs.store(nowMs());
         }
     }
     return CallNextHookEx(nullptr, nCode, wParam, lParam);

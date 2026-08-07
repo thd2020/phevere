@@ -7,6 +7,8 @@ export interface DictionaryResult {
   synonyms?: string[];
   antonyms?: string[];
   etymology?: string;
+  /** Structured ancestry parsed from Wiktionary etymology templates. */
+  etymologyChain?: EtymologyLink[];
   language?: string;
   detectedLanguage?: string;
   sources: string[]; // Track which APIs were used
@@ -32,6 +34,8 @@ import { BaseService, DictionaryError } from './base';
 import * as crypto from 'crypto';
 import { wrapConsole } from '../logger';
 import { net } from 'electron';
+import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery } from './text-normalize';
+import { buildEtymology, EtymologyLink } from './etymology';
 
 const console = wrapConsole('dictionary');
 
@@ -52,6 +56,12 @@ export interface DictionarySource {
 }
 
 export class DictionaryService extends BaseService {
+  // Wikimedia throttles unidentified clients to 10 req/min; a descriptive
+  // User-Agent with contact info raises that to 200 req/min.
+  // https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy
+  private static readonly WIKIMEDIA_USER_AGENT =
+    'Phevere/1.0 (https://github.com/thd2020/phevere; desktop dictionary)';
+
   private cache = new Map<string, { result: DictionaryResult; timestamp: number }>();
   private cacheTimeout = 24 * 60 * 60 * 1000; // 24 hours
   private apiKey: string | null = null;
@@ -78,7 +88,9 @@ export class DictionaryService extends BaseService {
     { name: 'Collins Dictionary API', priority: 1, isAvailable: false, enabled: false },
     { name: 'WordsAPI',            priority: 5, isAvailable: false, enabled: false },
     { name: 'Youdao API',          priority: 0, isAvailable: false, enabled: false },
-    { name: 'CC-CEDICT',           priority: 2, isAvailable: false, enabled: false }
+    { name: 'CC-CEDICT',           priority: 2, isAvailable: false, enabled: false },
+    { name: 'Datamuse',            priority: 6, isAvailable: true,  enabled: true },
+    { name: 'Tatoeba',             priority: 7, isAvailable: true,  enabled: true }
   ];
 
   constructor(apiKey?: string, deeplApiKey?: string) {
@@ -259,37 +271,40 @@ export class DictionaryService extends BaseService {
    */
   async lookup(text: string, targetLanguage: string = 'en', enabledSources?: string[]): Promise<DictionaryResult> {
     const startTime = Date.now();
-    
-    // Check if it's a sentence first using your existing logic
-    const isSentence = this.isSentence(text);
-    
-    // Only strip stray quotes/wrapping characters if it's a single word/term
-    const processedText = isSentence 
-      ? text 
-      : (text || '').trim().replace(/^["'`]+|["'`]+$/g, '').trim();
 
-    const normalized = processedText.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-    const cacheKey = `${normalized.toLowerCase()}_${targetLanguage}`;
-    
-    // Check cache first
+    const query = normalizeQuery(text);
+
+    if (!query.trimmed) {
+      return {
+        word: (text || '').trim(),
+        definitions: [],
+        translations: [],
+        examples: [],
+        sources: [],
+        metadata: { isSentence: false, empty: true }
+      };
+    }
+
+    const cacheKey = cacheKeyFor(query, targetLanguage);
+
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
       console.log(`✅ Cache hit for text (${Date.now() - startTime}ms)`);
       return cached.result;
     }
-    
+
     try {
       const detectedLanguage = await Promise.race([
-        this.detectLanguage(processedText),
-        new Promise<string>(resolve => setTimeout(() => resolve(this.simpleLanguageDetection(processedText)), 1000))
+        this.detectLanguage(query.trimmed),
+        new Promise<string>(resolve => setTimeout(() => resolve(this.simpleLanguageDetection(query.trimmed)), 1000))
       ]);
-      
+
       let result: DictionaryResult;
-      
-      if (isSentence) {
-        result = await this.handleSentenceTranslationOptimized(normalized, targetLanguage, detectedLanguage);
+
+      if (query.kind === 'sentence') {
+        result = await this.handleSentenceTranslationOptimized(query.trimmed, targetLanguage, detectedLanguage);
       } else {
-        result = await this.aggregateDictionaryDataParallel(normalized, targetLanguage, detectedLanguage, enabledSources);
+        result = await this.lookupWithCandidates(query, targetLanguage, detectedLanguage, enabledSources);
       }
 
       this.cache.set(cacheKey, { result, timestamp: Date.now() });
@@ -301,38 +316,71 @@ export class DictionaryService extends BaseService {
   }
 
   /**
-   * Determine if text is a sentence or phrase vs a single word.
-   * IMPROVED: More aggressive detection for sentences.
+   * Walks the candidate ladder and returns the first form that actually
+   * resolves, so "word." falls back to "word" and "running" to "run" without
+   * the user having to reselect. The form that matched is reported in
+   * `metadata.matchedQuery` so the UI can say what it looked up.
    */
-  private isSentence(text: string): boolean {
-    // Normalize and coalesce multiple spaces; strip zero-width characters
-    const cleanText = text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+  private async lookupWithCandidates(
+    query: NormalizedQuery,
+    targetLanguage: string,
+    detectedLanguage: string,
+    enabledSources?: string[]
+  ): Promise<DictionaryResult> {
+    const candidates = query.candidates.length > 0 ? query.candidates : [query.trimmed];
+    let firstResult: DictionaryResult | null = null;
 
-    // Any text with more than 3 words is a sentence.
-    if (cleanText.split(/\s+/).length > 3) {
-      return true;
-    }
-    
-    // Check for sentence indicators
-    const sentenceIndicators = [
-      /[.!?。！？]/,  // Punctuation marks
-      /\s+/,     // Any whitespace indicates multiple words
-      /[，、；：]/,   // Chinese punctuation
-    ];
-    
-    // If text contains any sentence indicators, it's likely a sentence
-    for (const indicator of sentenceIndicators) {
-      if (indicator.test(cleanText)) {
-        return true;
+    for (const candidate of candidates) {
+      const result = await this.aggregateDictionaryDataParallel(
+        candidate,
+        targetLanguage,
+        detectedLanguage,
+        enabledSources
+      );
+
+      if (!firstResult) firstResult = result;
+
+      if (this.hasRealDefinitions(result)) {
+        result.word = candidate;
+        result.metadata = {
+          ...(result.metadata || {}),
+          isSentence: false,
+          queryKind: query.kind,
+          originalSelection: query.raw,
+          matchedQuery: candidate,
+          normalizedFrom: candidate === query.sanitized ? undefined : query.sanitized
+        };
+        return result;
       }
     }
-    
-    // Check length - longer text is more likely to be a sentence
-    if (cleanText.length > 25) {
-      return true;
-    }
-    
-    return false;
+
+    // Nothing resolved. Keep the translation we already have and attach
+    // spelling suggestions so the popup can offer a way forward.
+    const fallback = firstResult ?? {
+      word: query.trimmed,
+      definitions: [],
+      translations: [],
+      examples: [],
+      sources: []
+    };
+
+    const suggestions = await this.fetchSpellingSuggestions(query.trimmed).catch(() => [] as string[]);
+    fallback.metadata = {
+      ...(fallback.metadata || {}),
+      isSentence: false,
+      queryKind: query.kind,
+      originalSelection: query.raw,
+      matchedQuery: null,
+      suggestions: suggestions.length > 0 ? suggestions : undefined
+    };
+
+    return fallback;
+  }
+
+  private hasRealDefinitions(result: DictionaryResult): boolean {
+    return (result.definitions || []).some(
+      (d) => d && d.source !== 'Fallback' && !!d.meaning && d.meaning !== 'No definition available.'
+    );
   }
 
   /**
@@ -457,6 +505,7 @@ export class DictionaryService extends BaseService {
     let antonyms: string[] = [];
     let pronunciation: string | undefined;
     let etymology: string | undefined;
+    let etymologyChain: EtymologyLink[] | undefined;
 
     // For Chinese/Japanese/Korean or mixed CJK+ASCII, prioritize translation over dictionary lookup
     const hasCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(text);
@@ -516,6 +565,24 @@ export class DictionaryService extends BaseService {
         this.getWiktionaryData(text, langForDict)
           .then(data => ({ type: 'wiktionary', data }))
           .catch(error => ({ type: 'wiktionary', error }))
+      );
+    }
+
+    // Datamuse is English-only but keyless, and adds WordNet-derived glosses
+    // plus synonyms that the other free sources often miss.
+    if (!hasCJK && isSourceEnabled('Datamuse')) {
+      apiPromises.push(
+        this.getDatamuseData(text)
+          .then(data => ({ type: 'datamuse', data }))
+          .catch(error => ({ type: 'datamuse', error }))
+      );
+    }
+
+    if (isSourceEnabled('Tatoeba')) {
+      apiPromises.push(
+        this.getTatoebaExamples(text, sourceLanguage, targetLanguage)
+          .then(data => ({ type: 'tatoeba', data }))
+          .catch(error => ({ type: 'tatoeba', error }))
       );
     }
 
@@ -611,6 +678,23 @@ export class DictionaryService extends BaseService {
             }
             break;
 
+          case 'datamuse':
+            if (data && (data.definitions.length > 0 || data.synonyms.length > 0)) {
+              const existing = new Set(definitions.map((d: any) => (d.meaning || '').toLowerCase()));
+              const fresh = data.definitions.filter((d: Definition) => !existing.has(d.meaning.toLowerCase()));
+              if (fresh.length > 0) definitions.push(...fresh);
+              if (data.synonyms.length > 0) synonyms.push(...data.synonyms);
+              if (fresh.length > 0 || data.synonyms.length > 0) sources.push('Datamuse');
+            }
+            break;
+
+          case 'tatoeba':
+            if (data && data.length > 0) {
+              examples.push(...data);
+              sources.push('Tatoeba');
+            }
+            break;
+
           case 'oxford':
             if (data) {
               if (data.definitions?.length) {
@@ -703,7 +787,9 @@ export class DictionaryService extends BaseService {
       console.log(`[ETY-DEBUG] No existing etymology found, attempting to fetch from multiple sources`);
       try {
         console.log(`[ETY-DEBUG] Calling fetchEtymologyFromMultipleSources...`);
-        etymology = await this.fetchEtymologyFromMultipleSources(text);
+        const fetched = await this.fetchEtymologyFromMultipleSources(text);
+        etymology = fetched?.text;
+        etymologyChain = fetched?.chain;
         console.log(`[ETY-DEBUG] fetchEtymologyFromMultipleSources returned: ${etymology ? 'SUCCESS' : 'FAILED/UNDEFINED'}`);
         if (etymology) {
           console.log(`[ETY-DEBUG] Etymology result: "${etymology.substring(0, 100)}${etymology.length > 100 ? '...' : ''}"`);
@@ -734,6 +820,7 @@ export class DictionaryService extends BaseService {
       synonyms: synonyms.length > 0 ? synonyms : undefined,
       antonyms: antonyms.length > 0 ? antonyms : undefined,
       etymology,
+      etymologyChain,
       language: targetLanguage,
       detectedLanguage: sourceLanguage,
       sources: uniqueSources
@@ -937,7 +1024,9 @@ export class DictionaryService extends BaseService {
     try {
       const term = text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
       const restUrl = `https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(term)}`;
-      const response = await this.request<any>(restUrl).catch((): null => null);
+      const response = await this.request<any>(restUrl, {
+        headers: { 'User-Agent': DictionaryService.WIKIMEDIA_USER_AGENT }
+      }).catch((): null => null);
       // Removed verbose API response logging to prevent HTML floods
 
       // Prioritize the language detected or specified
@@ -982,7 +1071,7 @@ export class DictionaryService extends BaseService {
 
         // If etymology is still not found, try parsing the wikitext
         if (!etymology) {
-          etymology = await this.fetchEtymologyFromMultipleSources(term);
+          etymology = (await this.fetchEtymologyFromMultipleSources(term))?.text;
         }
 
         // Pivot to base lemma for richer content if current entry appears to be an inflected form
@@ -1017,7 +1106,7 @@ export class DictionaryService extends BaseService {
         return { definitions, pronunciation, etymology };
       } else {
         // If the primary lookup fails, go straight to the multi-source etymology parsing.
-        const etymology = await this.fetchEtymologyFromMultipleSources(term);
+        const etymology = (await this.fetchEtymologyFromMultipleSources(term))?.text;
         return { definitions: [], etymology };
       }
 
@@ -1263,17 +1352,169 @@ export class DictionaryService extends BaseService {
     return [{ partOfSpeech: 'definition', meaning: entry, source: 'CC-CEDICT' }];
   }
 
+  /** Caps a slow source so it cannot hold up the whole aggregation. */
+  private withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms))
+    ]);
+  }
+
+  private static readonly DATAMUSE_POS: Record<string, string> = {
+    n: 'noun',
+    v: 'verb',
+    adj: 'adjective',
+    adv: 'adverb',
+    u: 'unknown'
+  };
+
+  /**
+   * Datamuse: keyless English lexical API. Supplies WordNet-derived glosses and
+   * synonyms. Free for non-commercial use; an API key becomes mandatory in 2027.
+   * https://www.datamuse.com/api/
+   */
+  private async getDatamuseData(text: string): Promise<{ definitions: Definition[]; synonyms: string[] }> {
+    const empty = { definitions: [] as Definition[], synonyms: [] as string[] };
+    const word = text.toLocaleLowerCase();
+    if (!/^[\p{L}][\p{L}'\- ]{0,40}$/u.test(word)) return empty;
+
+    const encoded = encodeURIComponent(word);
+    const [entries, related] = await Promise.all([
+      this.withTimeout(
+        this.request<any[]>(`https://api.datamuse.com/words?sp=${encoded}&md=d&max=1`).catch((): any[] => []),
+        2500,
+        [] as any[]
+      ),
+      this.withTimeout(
+        this.request<any[]>(`https://api.datamuse.com/words?rel_syn=${encoded}&max=8`).catch((): any[] => []),
+        2500,
+        [] as any[]
+      )
+    ]);
+
+    const definitions: Definition[] = [];
+    const top = Array.isArray(entries) ? entries[0] : null;
+    // `sp=` is a wildcard match, so confirm we got the word we asked for.
+    if (top && typeof top.word === 'string' && top.word.toLocaleLowerCase() === word && Array.isArray(top.defs)) {
+      for (const raw of top.defs.slice(0, 6)) {
+        const [pos, ...rest] = String(raw).split('\t');
+        const meaning = rest.join('\t').trim();
+        if (!meaning) continue;
+        definitions.push({
+          partOfSpeech: DictionaryService.DATAMUSE_POS[pos] || pos || 'unknown',
+          meaning,
+          source: 'Datamuse'
+        });
+      }
+    }
+
+    const synonyms = Array.isArray(related)
+      ? related.map((r: any) => r?.word).filter((w: any): w is string => typeof w === 'string' && w.length > 0)
+      : [];
+
+    return { definitions, synonyms };
+  }
+
+  /**
+   * Tatoeba: CC-BY corpus of human-written example sentences with translations.
+   * Uses the public search endpoint; the bulk export is the offline alternative.
+   */
+  private async getTatoebaExamples(text: string, sourceLanguage: string, targetLanguage: string): Promise<string[]> {
+    const term = text.trim();
+    if (!term || term.length > 40) return [];
+
+    const iso3: Record<string, string> = {
+      en: 'eng', zh: 'cmn', ja: 'jpn', ko: 'kor', fr: 'fra',
+      de: 'deu', es: 'spa', it: 'ita', ru: 'rus', pt: 'por'
+    };
+    const from = iso3[sourceLanguage] || 'eng';
+    const to = iso3[targetLanguage] || 'cmn';
+    if (from === to) return [];
+
+    const url = `https://tatoeba.org/en/api_v0/search?from=${from}&to=${to}&query=${encodeURIComponent(term)}&sort=relevance`;
+    const response = await this.withTimeout<any>(
+      this.request<any>(url).catch((): any => null),
+      2500,
+      null
+    );
+
+    const results = response?.results;
+    if (!Array.isArray(results)) return [];
+
+    const examples: string[] = [];
+    for (const item of results.slice(0, 4)) {
+      const original = typeof item?.text === 'string' ? item.text.trim() : '';
+      if (!original) continue;
+
+      let rendered = original;
+      const groups = Array.isArray(item?.translations) ? item.translations.flat() : [];
+      const match = groups.find((t: any) => t && t.lang === to && typeof t.text === 'string');
+      if (match) rendered = `${original} — ${match.text.trim()}`;
+
+      examples.push(rendered);
+    }
+
+    return examples;
+  }
+
+  /**
+   * Did-you-mean list for selections that resolved to nothing. Both endpoints
+   * tolerate punctuation and typos, which makes them a good last resort.
+   */
+  private async fetchSpellingSuggestions(text: string): Promise<string[]> {
+    const term = text.trim();
+    if (!term || term.length > 40) return [];
+    const encoded = encodeURIComponent(term);
+
+    const [datamuse, wiktionary] = await Promise.all([
+      this.withTimeout(
+        this.request<any[]>(`https://api.datamuse.com/sug?s=${encoded}&max=6`).catch((): any[] => []),
+        2000,
+        [] as any[]
+      ),
+      this.withTimeout(
+        this.request<any[]>(
+          `https://en.wiktionary.org/w/api.php?action=opensearch&format=json&limit=6&search=${encoded}`,
+          { headers: { 'User-Agent': DictionaryService.WIKIMEDIA_USER_AGENT } }
+        ).catch((): any[] => []),
+        2000,
+        [] as any[]
+      )
+    ]);
+
+    const out: string[] = [];
+    const seen = new Set<string>([term.toLocaleLowerCase()]);
+
+    const add = (word: unknown) => {
+      if (typeof word !== 'string') return;
+      const key = word.toLocaleLowerCase();
+      if (!key || seen.has(key) || out.length >= 6) return;
+      seen.add(key);
+      out.push(word);
+    };
+
+    if (Array.isArray(datamuse)) datamuse.forEach((d: any) => add(d?.word));
+    // opensearch returns [query, [titles], [descriptions], [urls]]
+    if (Array.isArray(wiktionary) && Array.isArray(wiktionary[1])) wiktionary[1].forEach(add);
+
+    return out;
+  }
+
   /**
    * Fetches etymology from multiple sources for comprehensive coverage
    */
-  private async fetchEtymologyFromMultipleSources(text: string): Promise<string | undefined> {
+  private async fetchEtymologyFromMultipleSources(
+    text: string
+  ): Promise<{ text: string; chain?: EtymologyLink[] } | undefined> {
     const sources: string[] = [];
+    let chain: EtymologyLink[] | undefined;
 
     // Try Wiktionary first (most comprehensive)
     try {
       const wiktionaryEtymology = await this.fetchEtymologyFromWikitext(text);
       if (wiktionaryEtymology) {
-        sources.push(wiktionaryEtymology);
+        sources.push(wiktionaryEtymology.text);
+        chain = wiktionaryEtymology.chain;
       }
     } catch (error) {
       console.warn(`[ETY-DEBUG] Wiktionary etymology fetch failed:`, error);
@@ -1301,14 +1542,12 @@ export class DictionaryService extends BaseService {
       }
     }
 
-    // Combine sources if multiple are available
-    if (sources.length > 1) {
-      return sources.join('\n\n--- Alternative etymology ---\n\n');
-    } else if (sources.length === 1) {
-      return sources[0];
-    }
+    if (sources.length === 0) return undefined;
 
-    return undefined;
+    return {
+      text: sources.length > 1 ? sources.join('\n\n--- Alternative etymology ---\n\n') : sources[0],
+      chain
+    };
   }
 
   /**
@@ -1316,10 +1555,9 @@ export class DictionaryService extends BaseService {
      */
   private cleanWordForEtymology(text: string): string {
     if (!text) return '';
-    return text
-      .trim()
-      .replace(/^[^\w]+|[^\w]+$/g, '') // Strips quotes, spaces, periods, commas, etc.
-      .toLowerCase();
+    // `\w` is ASCII-only in JavaScript, so the previous edge-strip destroyed
+    // accented Latin ("café" -> "caf") and emptied every CJK query.
+    return trimEdges(sanitize(text)).toLocaleLowerCase();
   }
 
   /**
@@ -1402,21 +1640,25 @@ export class DictionaryService extends BaseService {
   /**
    * Fetches and parses raw Wiktionary wikitext for etymology
    */
-  private async fetchEtymologyFromWikitext(text: string): Promise<string | undefined> {
+  private async fetchEtymologyFromWikitext(
+    text: string
+  ): Promise<{ text: string; chain?: EtymologyLink[] } | undefined> {
     try {
       const cleanWord = this.cleanWordForEtymology(text);
       if (!cleanWord) return undefined;
 
       const parseUrl = `https://en.wiktionary.org/w/api.php?action=parse&page=${encodeURIComponent(cleanWord)}&prop=wikitext&format=json&origin=*`;
 
-      const response = await this.request<{ parse?: { wikitext?: { '*': string } } }>(parseUrl).catch((): null => null);
+      const response = await this.request<{ parse?: { wikitext?: { '*': string } } }>(parseUrl, {
+        headers: { 'User-Agent': DictionaryService.WIKIMEDIA_USER_AGENT }
+      }).catch((): null => null);
 
       const wikitext = response?.parse?.wikitext?.['*'];
       if (!wikitext) {
         return undefined;
       }
 
-      return this.extractEtymologyFromWikitext(wikitext);
+      return this.parseEtymology(wikitext);
 
     } catch (error) {
       console.warn(`[ETY-DEBUG] Wiktionary etymology fetch failed for "${text}":`, error);
@@ -1425,8 +1667,30 @@ export class DictionaryService extends BaseService {
   }
 
   private extractEtymologyFromWikitext(wikitext: string): string | undefined {
+    return this.parseEtymology(wikitext)?.text;
+  }
+
+  /**
+   * Template-aware parse first: it handles numbered Etymology sections and
+   * renders {{inh}}/{{bor}}/{{der}}/{{root}} into an ancestry chain. Falls back
+   * to the older regex scraper when the templates yield nothing.
+   */
+  private parseEtymology(wikitext: string): { text: string; chain?: EtymologyLink[] } | undefined {
+    try {
+      const parsed = buildEtymology(wikitext);
+      if (parsed && parsed.text.length >= 10) {
+        return { text: parsed.text, chain: parsed.chain.length > 0 ? parsed.chain : undefined };
+      }
+    } catch (error) {
+      console.warn('[ETY-DEBUG] Structured etymology parse failed, falling back:', error);
+    }
+
+    const legacy = this.extractEtymologyFromWikitextLegacy(wikitext);
+    return legacy ? { text: legacy } : undefined;
+  }
+
+  private extractEtymologyFromWikitextLegacy(wikitext: string): string | undefined {
     console.log(`[ETY-DEBUG] === Starting etymology extraction from ${wikitext.length} chars of wikitext ===`);
-    console.log(`[ETY-DEBUG] First 500 chars of wikitext:\n${wikitext.substring(0, 500)}`);
 
     // Look for ALL section headings to understand the page structure
     const sectionPattern = /==+([^=\n]+)==+/g;

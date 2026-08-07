@@ -71,6 +71,7 @@
     "google-translate-api-browser": "^5.0.0",
     "koffi": "^2.15.2",
     "lowdb": "^7.0.1",
-    "node-fetch": "^2.7.0"
+    "node-fetch": "^2.7.0",
+    "wink-lemmatizer": "^3.0.4"
   }
 }

@@ -10,6 +10,7 @@
 
 import { screen } from 'electron';
 import { wrapConsole } from '../logger';
+import { isLookupWorthy, sanitize } from './text-normalize';
 
 const console = wrapConsole('native-selection');
 
@@ -34,10 +35,18 @@ export interface NativeSelectionService {
  * Uses Microsoft UI Automation with debounced selection detection
  */
 export class WindowsNativeSelectionService implements NativeSelectionService {
+  /** A lookup query is never a whole document. */
+  private static readonly MAX_SELECTION_LENGTH = 2000;
+  /** How long two consecutive selections stay comparable for typing detection. */
+  private static readonly TYPING_PATTERN_WINDOW_MS = 2500;
+
   private isRunning = false;
   private selectionCallbacks: ((event: SelectionEvent) => void)[] = [];
   private lastSelection = '';
   private lastSelectionTime = 0;
+  /** Every selection the native layer reported, accepted or not. */
+  private lastSeenText = '';
+  private lastSeenAt = 0;
   private nativeAddon: any = null;
 
   constructor() {
@@ -137,8 +146,12 @@ export class WindowsNativeSelectionService implements NativeSelectionService {
    */
   private handleSelection(text: string, source: 'native', selX?: number, selY?: number): void {
     try {
-      // Validate the selection
-      if (!this.isValidTextSelection(text)) {
+      const previousSeen = this.lastSeenText;
+      const previousSeenAt = this.lastSeenAt;
+      this.lastSeenText = text;
+      this.lastSeenAt = Date.now();
+
+      if (!this.isValidTextSelection(text, previousSeen, previousSeenAt)) {
         return;
       }
       
@@ -194,38 +207,40 @@ export class WindowsNativeSelectionService implements NativeSelectionService {
   /**
    * Validate if the selected text is worth processing
    */
-  private isValidTextSelection(text: string): boolean {
-    if (!text || text.trim().length === 0) {
+  private isValidTextSelection(text: string, previousSeen: string, previousSeenAt: number): boolean {
+    if (!isLookupWorthy(text)) {
       return false;
     }
 
-    const trimmedText = text.trim();
-    
-    // Allow single character selections for Chinese/Japanese/Korean
-    const isCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(trimmedText);
-    
-    // Skip very short selections only for Latin text
-    if (trimmedText.length < 2 && !isCJK) {
+    if (sanitize(text).length > WindowsNativeSelectionService.MAX_SELECTION_LENGTH) {
       return false;
     }
 
-    // Skip selections that are just whitespace
-    if (/^\s+$/.test(trimmedText)) {
-      return false;
-    }
-
-    // More permissive check - allow text with letters, numbers, or CJK characters
-    const hasValidContent = /[\w\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af\u0400-\u04ff\u0590-\u05ff\u0600-\u06ff]/.test(trimmedText);
-    if (!hasValidContent) {
-      return false;
-    }
-
-    // Skip selections that are just numbers (but allow numbers with text)
-    if (/^\d+$/.test(trimmedText) && trimmedText.length < 4) {
+    if (this.looksLikeTyping(text, previousSeen, previousSeenAt)) {
+      console.log('[UIA-SERVICE] Skipping selection that looks like in-progress typing');
       return false;
     }
 
     return true;
+  }
+
+  /**
+   * Second line of defence behind the native input gate: while someone types,
+   * consecutive "selections" grow or shrink one character at a time. A real
+   * selection almost never arrives as a one-character extension of the last one.
+   */
+  private looksLikeTyping(text: string, previousSeen: string, previousSeenAt: number): boolean {
+    if (!previousSeen || previousSeen === text) return false;
+    if (Date.now() - previousSeenAt > WindowsNativeSelectionService.TYPING_PATTERN_WINDOW_MS) {
+      return false;
+    }
+
+    const delta = Math.abs(text.length - previousSeen.length);
+    if (delta === 0 || delta > 2) return false;
+
+    const [shorter, longer] =
+      text.length < previousSeen.length ? [text, previousSeen] : [previousSeen, text];
+    return longer.startsWith(shorter);
   }
 }
 
