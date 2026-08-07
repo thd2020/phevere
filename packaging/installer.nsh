@@ -22,6 +22,6 @@
 !macroend
 
 !macro customInstall
-  ; Placeholders for future seed dictionary packs under $INSTDIR\resources\seed\
+  ; Ensure seed directory exists for optional offline dictionary packs.
   CreateDirectory "$INSTDIR\resources\seed"
 !macroend
