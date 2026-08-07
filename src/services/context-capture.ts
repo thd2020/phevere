@@ -5,7 +5,7 @@
  * The main process hub decides whether to open the lookup popup.
  */
 
-export type ContextOrigin = 'selection' | 'ocr' | 'media' | 'clipboard' | 'manual';
+export type ContextOrigin = 'selection' | 'hover' | 'ocr' | 'media' | 'clipboard' | 'manual';
 
 export interface ContextBounds {
   x: number;

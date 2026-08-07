@@ -11,6 +11,7 @@ import { contextCaptureHub, ContextEvent, selectionToContext } from './services/
 import { captureScreenRegion } from './services/screen-capture';
 import { ocrEngine, textNearPoint } from './services/ocr-engine';
 import { isLookupWorthy } from './services/text-normalize';
+import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
 import { isAcceleratorPhysicallyHeld } from './services/accelerator-key-state';
 import {
   loadMonitorSettings,
@@ -62,6 +63,7 @@ let lastPopupText: string = '';
 let lastPopupAt: number = 0;
 let ocrOverlayWindow: BrowserWindow | null = null;
 let contextHubWired = false;
+let hoverLookup: HoverLookupService | null = null;
 
 // Native selection service
 const nativeSelectionService = createNativeSelectionService();
@@ -724,6 +726,8 @@ function wireContextCaptureHubOnce(): void {
     lastSelectionEvent = event;
     lastSelectedText = event.text || '';
 
+    // Hover and OCR always open the popup when monitoring isn't off.
+    // Classic drag-selection still respects shortcut-mode hold semantics.
     if (event.origin === 'selection' && monitorSettings.mode === 'shortcut') {
       try {
         mainWindow?.webContents.send('selection-changed', event.text);
@@ -736,7 +740,13 @@ function wireContextCaptureHubOnce(): void {
       return;
     }
 
-    if (event.origin === 'selection' && monitorSettings.mode === 'off') {
+    if (monitorSettings.mode === 'off' && event.origin === 'selection') {
+      return;
+    }
+
+    // OCR / hover work even if the user only opened the overlay while mode was on;
+    // region OCR shortcut is always registered regardless of monitor mode.
+    if (monitorSettings.mode === 'off' && event.origin === 'hover') {
       return;
     }
 
@@ -851,7 +861,8 @@ async function handleOcrRegionSelected(region: {
   }
 
   const ocr = await ocrEngine.recognize(capture.png);
-  const text = textNearPoint(ocr, screenRegion.width / 2, screenRegion.height / 2);
+  // Region select wants everything in the box; hover uses textNearPoint instead.
+  const text = (ocr.text || '').trim();
 
   if (!text || !isLookupWorthy(text)) {
     log.warn('main', 'OCR produced no lookup-worthy text', {
@@ -859,11 +870,11 @@ async function handleOcrRegionSelected(region: {
       language: ocr.language,
       rawLen: (ocr.text || '').length,
     });
-    // Still open popup with a short status so the user knows capture ran.
+    const available = await ocrEngine.isAvailable().catch(() => false);
     contextCaptureHub.emit({
-      text: ocr.engine === 'none'
-        ? '(OCR unavailable — install a Windows OCR language pack, or wait for the bundled ONNX engine)'
-        : '(No text recognized in selection)',
+      text: available
+        ? '(No text recognized in selection)'
+        : '(OCR unavailable — RapidOCR/Python not found. Set PHEVERE_PYTHON to your python.exe)',
       x: screenRegion.x + screenRegion.width / 2,
       y: screenRegion.y + screenRegion.height,
       timestamp: Date.now(),
@@ -896,6 +907,22 @@ ipcMain.on('ocr-overlay-cancel', () => {
   closeOcrOverlay();
 });
 
+function ensureHoverLookup(): HoverLookupService {
+  if (!hoverLookup) {
+    hoverLookup = new HoverLookupService({
+      getWordAtPoint: (x, y) => {
+        if (typeof nativeSelectionService.getWordAtPoint === 'function') {
+          return nativeSelectionService.getWordAtPoint(x, y);
+        }
+        return { text: '', x, y };
+      },
+      isBlocked: () =>
+        phevereWindowFocused(mainWindow, popupWindows, settingsWindow, ocrOverlayWindow, externalWindows),
+    });
+  }
+  return hoverLookup;
+}
+
 function startSelectionMonitoring(): void {
   log.debug('main', 'Start native selection monitoring');
 
@@ -918,6 +945,7 @@ function startSelectionMonitoring(): void {
       .start()
       .then(() => {
         log.info('main', 'Native selection service started');
+        ensureHoverLookup().start();
         updateTrayContextMenu();
       })
       .catch((error) => {
@@ -926,6 +954,8 @@ function startSelectionMonitoring(): void {
         if (!isAdmin) {
           log.error('main', 'Try running as Administrator for UIAutomation');
         }
+        // Hover OCR fallback can still work without UIA selection events.
+        ensureHoverLookup().start();
         updateTrayContextMenu();
       });
   } catch (error: any) {
@@ -935,13 +965,14 @@ function startSelectionMonitoring(): void {
 }
 
 async function stopSelectionMonitoring(): Promise<void> {
-  if (!nativeSelectionActive) {
+  if (!nativeSelectionActive && !(hoverLookup && hoverLookup.isRunning())) {
     return;
   }
 
   try {
     nativeSelectionActive = false;
     log.debug('main', 'Stopping selection monitoring');
+    hoverLookup?.stop();
 
     await nativeSelectionService.stop();
     log.info('main', 'Native selection service stopped');
@@ -1322,6 +1353,13 @@ app.on('ready', () => {
   syncGlobalMonitorShortcuts();
   applyMonitoringFromMode();
   clipboardService.startMonitoring();
+  // Warm RapidOCR models in the background so Ctrl+Shift+O is responsive.
+  void ocrEngine
+    .isAvailable()
+    .then((ok) => {
+      if (ok && ocrEngine.warmUp) return ocrEngine.warmUp();
+    })
+    .catch((err) => log.warn('main', 'OCR warm-up skipped', { err: String(err) }));
   log.info('main', 'Initialization complete');
 });
 
@@ -1485,8 +1523,9 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   log.info('main', 'Will quit');
-  stopSelectionMonitoring();
+  void stopSelectionMonitoring();
   clipboardService.stopMonitoring();
+  ocrEngine.dispose?.();
   globalShortcut.unregisterAll();
   if (tray && !tray.isDestroyed()) {
     tray.destroy();

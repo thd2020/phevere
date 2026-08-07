@@ -28,6 +28,8 @@ export interface NativeSelectionService {
   onSelection(callback: (event: SelectionEvent) => void): void;
   isSupported(): boolean;
   getStatus(): { isRunning: boolean; platform: string; method: string };
+  /** Optional: UIA word under cursor for hover lookup. */
+  getWordAtPoint?(x: number, y: number): { text: string; x: number; y: number };
 }
 
 /**
@@ -139,6 +141,23 @@ export class WindowsNativeSelectionService implements NativeSelectionService {
       platform: 'windows',
       method: this.nativeAddon ? 'ui-automation' : 'not-available'
     };
+  }
+
+  getWordAtPoint(x: number, y: number): { text: string; x: number; y: number } {
+    if (!this.nativeAddon || typeof this.nativeAddon.getWordAtPoint !== 'function') {
+      return { text: '', x, y };
+    }
+    try {
+      const result = this.nativeAddon.getWordAtPoint(x, y);
+      return {
+        text: (result && result.text) || '',
+        x: typeof result?.x === 'number' ? result.x : x,
+        y: typeof result?.y === 'number' ? result.y : y,
+      };
+    } catch (error) {
+      console.warn('[UIA-SERVICE] getWordAtPoint failed', error);
+      return { text: '', x, y };
+    }
   }
 
   /**

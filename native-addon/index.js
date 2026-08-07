@@ -91,6 +91,22 @@ class NativeSelectionMonitor {
   }
 
   /**
+   * Word under screen point via UIA RangeFromPoint (hover lookup).
+   */
+  getWordAtPoint(x, y) {
+    try {
+      if (!this.monitor || typeof this.monitor.getWordAtPoint !== 'function') {
+        return { text: '', x, y };
+      }
+      const result = this.monitor.getWordAtPoint(x, y);
+      return result || { text: '', x, y };
+    } catch (error) {
+      console.error('[UIA-ADDON] Error getWordAtPoint:', error);
+      return { text: '', x, y };
+    }
+  }
+
+  /**
    * Get the status of the monitor
    */
   getStatus() {

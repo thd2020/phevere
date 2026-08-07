@@ -1,8 +1,17 @@
 # Beyond selectable text — context capture & OCR plan
 
-Status: **active** · Phase 0 in progress  
+Status: **active** · Phases 0–2 partially shipped  
 Audience: implementers extending Phevere past UIAutomation-selectable text  
-Related: `src/services/native-selection.ts`, OCR stub `CommandOrControl+Shift+O` in `src/index.ts`
+Related: `src/services/native-selection.ts`, `src/services/hover-lookup.ts`, `scripts/ocr_worker.py`, OCR shortcut `CommandOrControl+Shift+O`
+
+## Access modes
+
+| Mode | How |
+|------|-----|
+| Drag / double-click select | Existing UIA + gesture gate |
+| Shortcut + hold | Monitor mode `shortcut` |
+| **Hover dwell** | ~450 ms idle over a word → UIA `RangeFromPoint`, else OCR under cursor |
+| Region OCR | `Ctrl+Shift+O` → drag rectangle → RapidOCR |
 
 ## Principle
 
@@ -70,21 +79,22 @@ This interface is also the target for future macOS AX / Linux AT-SPI backends.
 
 ### Phase 2 — OCR engine
 
-- [ ] Bundle PP-OCRv6 **small** det+rec (+ EN mobile re-rec)
-- [ ] `onnxruntime-node` with lazy warm-up at idle
+- [x] RapidOCR PP-OCRv6 via persistent `scripts/ocr_worker.py` (uses local ONNX)
+- [ ] Bundle models inside the installer (currently uses system RapidOCR install)
+- [ ] `onnxruntime-node` in-process (optional later; Python worker is the shipping path for now)
 - [x] Cache key via `imageHash` on ContextEvent
-- [x] Optional: `Windows.Media.Ocr` when language packs exist (bootstrap path)
-- [ ] Budget ~100–300 ms for a small region on CPU
+- [ ] Windows.Media.Ocr (WinRT await still unreliable from PowerShell — deprioritized)
+- [x] Warm-up on app ready
 
 ### Phase 3 — Word targeting
 
-- [ ] Map cursor / click into OCR line boxes → token under cursor
-- [x] Feed recognized text through `text-normalize` (edge trim + candidate ladder + Datamuse sug) — OCR noise looks like selection punctuation bugs
+- [x] Map cursor into OCR boxes → token / CJK char under cursor (hover path)
+- [x] Feed recognized text through `text-normalize`
 
 ### Phase 4 — Triggers
 
 - [x] Wire `Ctrl+Shift+O` → region OCR → popup
-- [ ] Opt-in hover-OCR dwell (off by default)
+- [x] Hover dwell lookup (UIA first, OCR fallback)
 - [ ] Explicit “read this window” action
 
 ### Phase 5 — Media sessions

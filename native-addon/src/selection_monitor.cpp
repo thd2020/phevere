@@ -774,6 +774,7 @@ public:
             InstanceMethod("getCurrentSelection", &UIAutomationSelectionMonitorWrapper::GetCurrentSelection),
             InstanceMethod("setCallback", &UIAutomationSelectionMonitorWrapper::SetCallback),
             InstanceMethod("testFocusedElement", &UIAutomationSelectionMonitorWrapper::TestFocusedElement),
+            InstanceMethod("getWordAtPoint", &UIAutomationSelectionMonitorWrapper::GetWordAtPoint),
         });
 
         exports.Set("UIAutomationSelectionMonitor", func);
@@ -855,6 +856,147 @@ public:
 
         monitor->test_focused_element();
         return env.Null();
+    }
+
+    /**
+     * Synchronous UIA RangeFromPoint → ExpandToEnclosingUnit(Word).
+     * Used for hover-to-lookup. Runs on the calling thread with its own COM STA.
+     */
+    Napi::Value GetWordAtPoint(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
+        if (info.Length() < 2 || !info[0].IsNumber() || !info[1].IsNumber()) {
+            Napi::Error::New(env, "getWordAtPoint(x, y) expects two numbers").ThrowAsJavaScriptException();
+            return env.Null();
+        }
+
+        const int x = info[0].As<Napi::Number>().Int32Value();
+        const int y = info[1].As<Napi::Number>().Int32Value();
+
+        HRESULT hrInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        const bool needUninit = (hrInit == S_OK || hrInit == S_FALSE);
+
+        Napi::Object out = Napi::Object::New(env);
+        out.Set("text", Napi::String::New(env, ""));
+        out.Set("x", Napi::Number::New(env, x));
+        out.Set("y", Napi::Number::New(env, y));
+
+        CComPtr<IUIAutomation> automation;
+        HRESULT hr = CoCreateInstance(__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER,
+                                      __uuidof(IUIAutomation), (void**)&automation);
+        if (FAILED(hr) || !automation) {
+            if (needUninit) CoUninitialize();
+            return out;
+        }
+
+        POINT pt = { x, y };
+        CComPtr<IUIAutomationElement> element;
+        hr = automation->ElementFromPoint(pt, &element);
+        if (FAILED(hr) || !element) {
+            if (needUninit) CoUninitialize();
+            return out;
+        }
+
+        // Skip our own process (popup / overlay).
+        VARIANT vPid;
+        VariantInit(&vPid);
+        if (SUCCEEDED(element->GetCurrentPropertyValue(UIA_ProcessIdPropertyId, &vPid))) {
+            if ((vPid.vt == VT_I4 || vPid.vt == VT_INT) &&
+                ((vPid.vt == VT_I4) ? (DWORD)vPid.lVal : (DWORD)vPid.intVal) == GetCurrentProcessId()) {
+                VariantClear(&vPid);
+                if (needUninit) CoUninitialize();
+                return out;
+            }
+        }
+        VariantClear(&vPid);
+
+        CComPtr<IUIAutomationTextPattern> textPattern;
+        hr = element->GetCurrentPattern(UIA_TextPatternId, (IUnknown**)&textPattern);
+        if (FAILED(hr) || !textPattern) {
+            // Walk up a few ancestors for embedded text hosts.
+            CComPtr<IUIAutomationTreeWalker> walker;
+            if (SUCCEEDED(automation->get_ControlViewWalker(&walker)) && walker) {
+                CComPtr<IUIAutomationElement> current = element;
+                for (int i = 0; i < 5 && current && !textPattern; ++i) {
+                    CComPtr<IUIAutomationElement> parent;
+                    if (FAILED(walker->GetParentElement(current, &parent)) || !parent) break;
+                    current = parent;
+                    textPattern.Release();
+                    current->GetCurrentPattern(UIA_TextPatternId, (IUnknown**)&textPattern);
+                }
+            }
+        }
+
+        if (!textPattern) {
+            if (needUninit) CoUninitialize();
+            return out;
+        }
+
+        CComPtr<IUIAutomationTextRange> range;
+        hr = textPattern->RangeFromPoint(pt, &range);
+        if (FAILED(hr) || !range) {
+            if (needUninit) CoUninitialize();
+            return out;
+        }
+
+        // Prefer Word; fall back to Character for CJK editors that don't expose words.
+        range->ExpandToEnclosingUnit(TextUnit_Word);
+        BSTR bstr = nullptr;
+        range->GetText(64, &bstr);
+        std::string text;
+        if (bstr) {
+            if (SysStringLen(bstr) > 0) text = bstrToUtf8(bstr);
+            SysFreeString(bstr);
+            bstr = nullptr;
+        }
+
+        auto trimInPlace = [](std::string& s) {
+            const char* ws = " \t\r\n\f\v";
+            size_t a = s.find_first_not_of(ws);
+            if (a == std::string::npos) { s.clear(); return; }
+            size_t b = s.find_last_not_of(ws);
+            s = s.substr(a, b - a + 1);
+        };
+        trimInPlace(text);
+
+        if (text.empty() || text.size() > 64) {
+            range->ExpandToEnclosingUnit(TextUnit_Character);
+            range->GetText(8, &bstr);
+            if (bstr) {
+                if (SysStringLen(bstr) > 0) text = bstrToUtf8(bstr);
+                SysFreeString(bstr);
+            }
+            trimInPlace(text);
+        }
+
+        // Cap absurd expansions (some hosts expand to the whole paragraph).
+        if (text.size() > 64) {
+            text = text.substr(0, 64);
+            trimInPlace(text);
+        }
+
+        out.Set("text", Napi::String::New(env, text));
+
+        // Best-effort bounding rect for popup anchoring.
+        SAFEARRAY* rects = nullptr;
+        if (SUCCEEDED(range->GetBoundingRectangles(&rects)) && rects) {
+            LONG lBound = 0, uBound = -1;
+            SafeArrayGetLBound(rects, 1, &lBound);
+            SafeArrayGetUBound(rects, 1, &uBound);
+            LONG count = (uBound >= lBound) ? (uBound - lBound + 1) : 0;
+            if (count >= 4) {
+                double* data = nullptr;
+                if (SUCCEEDED(SafeArrayAccessData(rects, (void**)&data)) && data) {
+                    double left = data[0], top = data[1], width = data[2], height = data[3];
+                    out.Set("x", Napi::Number::New(env, left + width / 2.0));
+                    out.Set("y", Napi::Number::New(env, top + height));
+                    SafeArrayUnaccessData(rects);
+                }
+            }
+            SafeArrayDestroy(rects);
+        }
+
+        if (needUninit) CoUninitialize();
+        return out;
     }
 };
 

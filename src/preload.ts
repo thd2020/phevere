@@ -21,7 +21,7 @@ interface SelectionEvent {
   x: number;
   y: number;
   timestamp: number;
-  origin?: 'selection' | 'ocr' | 'media' | 'clipboard' | 'manual';
+  origin?: 'selection' | 'hover' | 'ocr' | 'media' | 'clipboard' | 'manual';
   source?: 'native' | 'manual';
   confidence?: number;
 }
