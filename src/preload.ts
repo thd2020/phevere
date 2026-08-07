@@ -21,7 +21,9 @@ interface SelectionEvent {
   x: number;
   y: number;
   timestamp: number;
-  source: 'native' | 'manual';
+  origin?: 'selection' | 'ocr' | 'media' | 'clipboard' | 'manual';
+  source?: 'native' | 'manual';
+  confidence?: number;
 }
 
 interface NativeAPI {

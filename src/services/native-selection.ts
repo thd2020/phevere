@@ -11,16 +11,16 @@
 import { screen } from 'electron';
 import { wrapConsole } from '../logger';
 import { isLookupWorthy, sanitize } from './text-normalize';
+import { ContextEvent, selectionToContext } from './context-capture';
 
 const console = wrapConsole('native-selection');
 
-export interface SelectionEvent {
-  text: string;
-  x: number;
-  y: number;
-  timestamp: number;
-  source: 'native' | 'manual';
-}
+/** Selection producer payload — a ContextEvent with selection/manual origin. */
+export type SelectionEvent = ContextEvent & {
+  origin: 'selection' | 'manual';
+  /** @deprecated Use origin; kept for older IPC consumers. */
+  source?: 'native' | 'manual';
+};
 
 export interface NativeSelectionService {
   start(): Promise<void>;
@@ -183,11 +183,9 @@ export class WindowsNativeSelectionService implements NativeSelectionService {
       
       // Create selection event
       const selectionEvent: SelectionEvent = {
-        text,
-        x: anchorPosition.x,
-        y: anchorPosition.y,
-        timestamp: Date.now(),
-        source
+        ...selectionToContext(text, anchorPosition.x, anchorPosition.y, 'native'),
+        origin: 'selection',
+        source: 'native',
       };
 
       // Notify all callbacks

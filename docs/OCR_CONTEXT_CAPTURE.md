@@ -56,34 +56,34 @@ This interface is also the target for future macOS AX / Linux AT-SPI backends.
 
 ### Phase 0 — Contract + wiring
 
-- [ ] Define `ContextEvent` (and optional `ContextProducer` interface)
-- [ ] Adapt `SelectionEvent` → `ContextEvent` (`origin: 'selection'`)
-- [ ] Route popup / IPC through the shared handler without behavior change
-- [ ] Keep OCR shortcut as stub until Phase 1–2 land
+- [x] Define `ContextEvent` (and optional `ContextProducer` interface)
+- [x] Adapt `SelectionEvent` → `ContextEvent` (`origin: 'selection'`)
+- [x] Route popup / IPC through the shared handler without behavior change
+- [x] Keep OCR shortcut wired to region capture (Phases 1–2)
 
 ### Phase 1 — Screen capture
 
-- [ ] Transparent overlay for region select
+- [x] Transparent overlay for region select
 - [ ] Optional “grab under cursor” small rect
-- [ ] Prefer Electron `desktopCapturer` for portability; consider Win32 `PrintWindow` / BitBlt for a single HWND when needed
-- [ ] Persist capture only in memory / short-lived temp; never upload by default
+- [x] Prefer Electron `desktopCapturer` for portability; consider Win32 `PrintWindow` / BitBlt for a single HWND when needed
+- [x] Persist capture only in memory / short-lived temp; never upload by default
 
 ### Phase 2 — OCR engine
 
 - [ ] Bundle PP-OCRv6 **small** det+rec (+ EN mobile re-rec)
 - [ ] `onnxruntime-node` with lazy warm-up at idle
-- [ ] Cache by `imageHash`
-- [ ] Optional: `Windows.Media.Ocr` when language packs exist
+- [x] Cache key via `imageHash` on ContextEvent
+- [x] Optional: `Windows.Media.Ocr` when language packs exist (bootstrap path)
 - [ ] Budget ~100–300 ms for a small region on CPU
 
 ### Phase 3 — Word targeting
 
 - [ ] Map cursor / click into OCR line boxes → token under cursor
-- [ ] Feed recognized text through `text-normalize` (edge trim + candidate ladder + Datamuse sug) — OCR noise looks like selection punctuation bugs
+- [x] Feed recognized text through `text-normalize` (edge trim + candidate ladder + Datamuse sug) — OCR noise looks like selection punctuation bugs
 
 ### Phase 4 — Triggers
 
-- [ ] Wire `Ctrl+Shift+O` → region OCR → popup
+- [x] Wire `Ctrl+Shift+O` → region OCR → popup
 - [ ] Opt-in hover-OCR dwell (off by default)
 - [ ] Explicit “read this window” action
 

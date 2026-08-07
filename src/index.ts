@@ -7,6 +7,10 @@ import { dictionaryService } from './services/dictionary';
 import { wikipediaService } from './services/wikipedia';
 import { searchService } from './services/search';
 import { createNativeSelectionService, SelectionEvent } from './services/native-selection';
+import { contextCaptureHub, ContextEvent, selectionToContext } from './services/context-capture';
+import { captureScreenRegion } from './services/screen-capture';
+import { ocrEngine, textNearPoint } from './services/ocr-engine';
+import { isLookupWorthy } from './services/text-normalize';
 import { isAcceleratorPhysicallyHeld } from './services/accelerator-key-state';
 import {
   loadMonitorSettings,
@@ -23,6 +27,8 @@ import {
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 declare const POPUP_WINDOW_WEBPACK_ENTRY: string;
+declare const OCR_OVERLAY_WEBPACK_ENTRY: string;
+declare const OCR_OVERLAY_PRELOAD_WEBPACK_ENTRY: string;
 
 // Check administrator privileges for UIAutomation
 function checkAdminPrivileges(): boolean {
@@ -51,9 +57,11 @@ let registeredTriggerAccelerator: string | null = null;
 const TRIGGER_AFTER_SELECTION_MAX_MS = 60_000;
 let nativeSelectionHandlerRegistered = false;
 let lastSelectedText = '';
-let lastSelectionEvent: SelectionEvent | null = null;
+let lastSelectionEvent: ContextEvent | null = null;
 let lastPopupText: string = '';
 let lastPopupAt: number = 0;
+let ocrOverlayWindow: BrowserWindow | null = null;
+let contextHubWired = false;
 
 // Native selection service
 const nativeSelectionService = createNativeSelectionService();
@@ -165,7 +173,7 @@ function onTriggerShortcutAfterSelection(): void {
 
 function registerFixedAppShortcuts(): void {
   globalShortcut.register('CommandOrControl+Shift+O', () => {
-    log.debug('main', 'OCR shortcut (not implemented)');
+    void startOcrRegionCapture();
   });
 
   globalShortcut.register('CommandOrControl+Shift+V', () => {
@@ -688,35 +696,47 @@ const createSettingsWindow = (): void => {
   });
 };
 
-function registerNativeSelectionHandlerOnce(): void {
-  if (nativeSelectionHandlerRegistered) {
+/**
+ * Phase 0 fan-in: every ContextEvent (selection, OCR, …) goes through here.
+ */
+function wireContextCaptureHubOnce(): void {
+  if (contextHubWired) {
     return;
   }
-  nativeSelectionHandlerRegistered = true;
-  nativeSelectionService.onSelection((event: SelectionEvent) => {
+  contextHubWired = true;
+
+  contextCaptureHub.onContext((event: ContextEvent) => {
     const focused = BrowserWindow.getFocusedWindow();
     if (
       focused &&
       (popupWindows.includes(focused) ||
         focused === mainWindow ||
         focused === settingsWindow ||
+        focused === ocrOverlayWindow ||
         externalWindows.includes(focused))
     ) {
-      return;
+      // OCR overlay intentionally owns focus during capture; still allow OCR results after it closes.
+      if (event.origin !== 'ocr') {
+        return;
+      }
     }
 
     lastSelectionEvent = event;
+    lastSelectedText = event.text || '';
 
-    if (monitorSettings.mode === 'shortcut') {
+    if (event.origin === 'selection' && monitorSettings.mode === 'shortcut') {
       try {
         mainWindow?.webContents.send('selection-changed', event.text);
       } catch (e) {
         log.warn('main', 'selection-changed IPC failed', { err: String(e) });
       }
-      // Popup if trigger is held when selection lands, or after selection via global trigger callback.
       if (isAcceleratorPhysicallyHeld(monitorSettings.triggerShortcut)) {
         createPopupWindow(event.x, event.y);
       }
+      return;
+    }
+
+    if (event.origin === 'selection' && monitorSettings.mode === 'off') {
       return;
     }
 
@@ -728,6 +748,153 @@ function registerNativeSelectionHandlerOnce(): void {
     createPopupWindow(event.x, event.y);
   });
 }
+
+function registerNativeSelectionHandlerOnce(): void {
+  if (nativeSelectionHandlerRegistered) {
+    return;
+  }
+  nativeSelectionHandlerRegistered = true;
+  wireContextCaptureHubOnce();
+
+  nativeSelectionService.onSelection((event: SelectionEvent) => {
+    contextCaptureHub.emit({
+      ...event,
+      origin: event.origin || 'selection',
+      source: event.source || 'native',
+    } as SelectionEvent);
+  });
+}
+
+function closeOcrOverlay(): void {
+  if (ocrOverlayWindow && !ocrOverlayWindow.isDestroyed()) {
+    ocrOverlayWindow.close();
+  }
+  ocrOverlayWindow = null;
+}
+
+async function startOcrRegionCapture(): Promise<void> {
+  wireContextCaptureHubOnce();
+
+  if (ocrOverlayWindow && !ocrOverlayWindow.isDestroyed()) {
+    ocrOverlayWindow.focus();
+    return;
+  }
+
+  const cursor = screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(cursor);
+
+  ocrOverlayWindow = new BrowserWindow({
+    x: display.bounds.x,
+    y: display.bounds.y,
+    width: display.bounds.width,
+    height: display.bounds.height,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    hasShadow: false,
+    focusable: true,
+    show: false,
+    webPreferences: {
+      preload: OCR_OVERLAY_PRELOAD_WEBPACK_ENTRY,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+
+  ocrOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+  ocrOverlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  ocrOverlayWindow.setIgnoreMouseEvents(false);
+
+  ocrOverlayWindow.on('closed', () => {
+    ocrOverlayWindow = null;
+  });
+
+  try {
+    await ocrOverlayWindow.loadURL(OCR_OVERLAY_WEBPACK_ENTRY);
+    ocrOverlayWindow.show();
+    ocrOverlayWindow.focus();
+    log.info('main', 'OCR region overlay opened');
+  } catch (error) {
+    log.error('main', 'Failed to open OCR overlay', { err: String(error) });
+    closeOcrOverlay();
+  }
+}
+
+async function handleOcrRegionSelected(region: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}): Promise<void> {
+  const overlayBounds = ocrOverlayWindow?.getBounds();
+  closeOcrOverlay();
+
+  // Overlay uses client/DIP coords relative to its window; map to screen DIP.
+  const screenRegion = {
+    x: Math.round((overlayBounds?.x || 0) + region.x),
+    y: Math.round((overlayBounds?.y || 0) + region.y),
+    width: Math.round(region.width),
+    height: Math.round(region.height),
+  };
+
+  log.info('main', 'OCR region selected', screenRegion);
+
+  const capture = await captureScreenRegion(screenRegion);
+  if (!capture) {
+    log.warn('main', 'Screen capture failed for OCR region');
+    return;
+  }
+
+  const ocr = await ocrEngine.recognize(capture.png);
+  const text = textNearPoint(ocr, screenRegion.width / 2, screenRegion.height / 2);
+
+  if (!text || !isLookupWorthy(text)) {
+    log.warn('main', 'OCR produced no lookup-worthy text', {
+      engine: ocr.engine,
+      language: ocr.language,
+      rawLen: (ocr.text || '').length,
+    });
+    // Still open popup with a short status so the user knows capture ran.
+    contextCaptureHub.emit({
+      text: ocr.engine === 'none'
+        ? '(OCR unavailable — install a Windows OCR language pack, or wait for the bundled ONNX engine)'
+        : '(No text recognized in selection)',
+      x: screenRegion.x + screenRegion.width / 2,
+      y: screenRegion.y + screenRegion.height,
+      timestamp: Date.now(),
+      origin: 'ocr',
+      confidence: 0,
+      bounds: screenRegion,
+      imageHash: capture.imageHash,
+    });
+    return;
+  }
+
+  contextCaptureHub.emit({
+    text,
+    x: screenRegion.x + screenRegion.width / 2,
+    y: screenRegion.y + screenRegion.height,
+    timestamp: Date.now(),
+    origin: 'ocr',
+    confidence: ocr.confidence,
+    bounds: screenRegion,
+    imageHash: capture.imageHash,
+  });
+}
+
+ipcMain.on('ocr-overlay-complete', (_event, region) => {
+  void handleOcrRegionSelected(region);
+});
+
+ipcMain.on('ocr-overlay-cancel', () => {
+  log.debug('main', 'OCR overlay cancelled');
+  closeOcrOverlay();
+});
 
 function startSelectionMonitoring(): void {
   log.debug('main', 'Start native selection monitoring');
@@ -869,7 +1036,7 @@ ipcMain.handle(
 );
 
 ipcMain.on('show-popup', (event, { x, y, text }) => {
-  lastSelectionEvent = { text, x, y, timestamp: Date.now(), source: 'manual' };
+  lastSelectionEvent = selectionToContext(text, x, y, 'manual');
   createPopupWindow(x, y);
 });
 
@@ -1276,13 +1443,7 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
               // Get current mouse position for new popup
               const mousePosition = screen.getCursorScreenPoint();
               // Set last selection so popup can render the word immediately
-              lastSelectionEvent = {
-                text,
-                x: mousePosition.x,
-                y: mousePosition.y,
-                timestamp: Date.now(),
-                source: 'manual',
-              };
+              lastSelectionEvent = selectionToContext(text, mousePosition.x, mousePosition.y, 'manual');
               // Also broadcast to recent selections UI
               try { mainWindow?.webContents.send('selection-changed', text); } catch {}
               createPopupWindow(mousePosition.x, mousePosition.y);
@@ -1403,7 +1564,7 @@ function createDictionaryWindow(term: string): void {
   });
 
   // Seed selection so renderer can render immediately
-  lastSelectionEvent = { text: term, x: 0, y: 0, timestamp: Date.now(), source: 'manual' };
+  lastSelectionEvent = selectionToContext(term, 0, 0, 'manual');
 
   // Use popup renderer but force #popup so it renders dictionary layout expanded
   const expandedUrl = withPopupDevFlag(POPUP_WINDOW_WEBPACK_ENTRY) + '#popup';

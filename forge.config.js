@@ -57,6 +57,14 @@ module.exports = {
               js: './src/preload.ts',
             },
           },
+          {
+            html: './src/ocr-overlay.html',
+            js: './src/ocr-overlay.ts',
+            name: 'ocr_overlay',
+            preload: {
+              js: './src/ocr-overlay-preload.ts',
+            },
+          },
         ],
       },
     }),
