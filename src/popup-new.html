@@ -5,8 +5,24 @@
     <title>Phevere Dictionary</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet" />
     <style>
+      :root {
+        --pv-ink: #14212b;
+        --pv-ink-soft: #3d4f5c;
+        --pv-paper: #f3f0ea;
+        --pv-paper-2: #ebe6dc;
+        --pv-panel: #fffcf7;
+        --pv-line: rgba(20, 33, 43, 0.12);
+        --pv-ember: #e85d04;
+        --pv-ember-deep: #c44900;
+        --pv-teal: #0d7377;
+        --pv-success: #0f766e;
+        --pv-font-ui: 'Outfit', system-ui, sans-serif;
+        --pv-font-serif: 'Source Serif 4', Georgia, serif;
+        --pv-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+      }
+
       * {
         margin: 0;
         padding: 0;
@@ -14,9 +30,9 @@
       }
 
              body {
-         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-         background: #ffffff;
-         color: #333;
+         font-family: var(--pv-font-ui);
+         background: var(--pv-panel);
+         color: var(--pv-ink);
          overflow: hidden;
          height: 100vh;
          user-select: text;
@@ -98,14 +114,14 @@
         width: 24px;
         height: 24px;
         border: none;
-        background: rgba(103, 80, 164, 0.08);
+        background: rgba(232, 93, 4, 0.08);
         border-radius: 10px;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
         transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-        color: #49454F;
+        color: var(--pv-ink-soft);
         font-size: 14px;
         line-height: 1;
         box-shadow: none;
@@ -113,14 +129,14 @@
       }
 
       .toolbar-icon:hover {
-        background: rgba(103, 80, 164, 0.14);
-        color: #1D1B20;
+        background: rgba(232, 93, 4, 0.14);
+        color: var(--pv-ink);
         box-shadow: 0 1px 2px rgba(0,0,0,0.08);
       }
 
       .toolbar-icon.active {
-        background: rgba(103, 80, 164, 0.2);
-        color: #381E72;
+        background: rgba(13, 115, 119, 0.18);
+        color: var(--pv-teal);
       }
 
       /* Prevent accidental text selection in the toolbar/tabs */
@@ -577,6 +593,155 @@
         font-family: 'Source Serif 4', Georgia, serif;
       }
 
+
+      .translation-card {
+        background: var(--pv-panel);
+        border: 1px solid #d6d3cd;
+        border-radius: 2px;
+        padding: 16px 18px;
+        margin-bottom: 12px;
+      }
+      .translation-card {
+        background: var(--pv-panel);
+        border: 1px solid #d6d3cd;
+        border-radius: 2px;
+        padding: 16px 18px;
+        margin-bottom: 12px;
+      }
+      .translation-card__meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+        align-items: center;
+        margin-bottom: 12px;
+        font-family: var(--pv-font-mono);
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        color: var(--pv-ink-soft);
+      }
+      .translation-card__lang {
+        color: var(--pv-teal);
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+      .translation-card__pair {
+        display: grid;
+        gap: 10px;
+      }
+      .translation-card__label {
+        font-family: var(--pv-font-mono);
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--pv-ink-soft);
+        margin-bottom: 4px;
+      }
+      .translation-card__original {
+        font-family: var(--pv-font-serif);
+        font-size: 15px;
+        color: var(--pv-ink-soft);
+        line-height: 1.45;
+      }
+      .translation-card__text {
+        font-family: var(--pv-font-serif);
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--pv-ink);
+        line-height: 1.45;
+      }
+      .wikipedia-card {
+        background: var(--pv-panel);
+        border: 1px solid #d6d3cd;
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .wikipedia-card__header {
+        background: var(--pv-ink);
+        color: #e8e6e1;
+        padding: 10px 14px;
+        font-family: var(--pv-font-mono);
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .wikipedia-card__body { padding: 8px 16px 14px; }
+      .wikipedia-item {
+        padding: 12px 0;
+        border-bottom: 1px solid #e8e6e1;
+      }
+      .wikipedia-item:last-child { border-bottom: none; }
+      .wikipedia-item__title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 6px;
+      }
+      .wikipedia-item__title a {
+        font-family: var(--pv-font-serif);
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--pv-teal);
+        text-decoration: none;
+      }
+      .wikipedia-item__title a:hover { text-decoration: underline; }
+      .wikipedia-item__extract {
+        font-family: var(--pv-font-serif);
+        font-size: 14px;
+        line-height: 1.55;
+        color: var(--pv-ink);
+      }
+      .wikipedia-item img {
+        width: 44px;
+        height: 44px;
+        object-fit: cover;
+        border-radius: 2px;
+        border: 1px solid #d6d3cd;
+      }
+      .etymology-source-label {
+        font-family: var(--pv-font-mono);
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--pv-teal);
+        margin: 0 0 8px;
+        font-weight: 600;
+      }
+      .etymology-chain {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        margin: 0 0 14px;
+        padding: 10px 12px;
+        border: 1px dashed rgba(13, 115, 119, 0.35);
+        background: rgba(13, 115, 119, 0.06);
+        font-family: var(--pv-font-mono);
+        font-size: 11px;
+        color: var(--pv-ink-soft);
+      }
+      .etymology-chain__node {
+        color: var(--pv-ink);
+        font-weight: 500;
+      }
+      .etymology-chain__rel {
+        color: var(--pv-ember-deep);
+        font-size: 10px;
+      }
+      .tab {
+        font-family: var(--pv-font-mono);
+        font-size: 11px;
+        letter-spacing: 0.04em;
+      }
+      .action-btn-info {
+        background: var(--pv-teal) !important;
+      }
+      .action-btn-primary {
+        background: var(--pv-ember) !important;
+      }
+
       /* Etymology — formal / geek reference layout */
       .etymology-container {
         margin-bottom: 16px;
@@ -887,9 +1052,9 @@
 
        /* Language Selection */
        .language-selection {
-         padding: 16px;
-         background: #f8f9fa;
-         border-bottom: 1px solid #e1e5e9;
+         padding: 14px 16px;
+         background: var(--pv-paper);
+         border-bottom: 1px solid var(--pv-line);
        }
 
        .language-row {
@@ -984,7 +1149,7 @@
           <div class="toolbar-icons">
             <button class="toolbar-icon" id="dictionaryIcon" title="Dictionary">📖</button>
             <button class="toolbar-icon" id="translationIcon" title="Translation">🌐</button>
-            <button class="toolbar-icon" id="wikiIcon" title="Wikipedia">🅆</button>
+            <button class="toolbar-icon" id="wikiIcon" title="Wikipedia">W</button>
             <button class="toolbar-icon" id="audioIcon" title="Play Audio">🔊</button>
             <button class="toolbar-icon" id="clipboardIcon" title="Clipboard">📋</button>
             <button class="toolbar-icon" id="searchIcon" title="Search">🔍</button>
@@ -1032,7 +1197,7 @@
          <div class="tabs" id="tabsContainer" style="display: none;">
            <button class="tab active" data-tab="lexicon">Lexicon</button>
            <button class="tab" data-tab="translation">Translation</button>
-           <button class="tab" data-tab="wiktionary">Wiktionary</button>
+           <button class="tab" data-tab="wikipedia">Wikipedia</button>
            <button class="tab" data-tab="etymology">Etymology</button>
          </div>
 
@@ -1182,19 +1347,9 @@
                const t = currentText || window['__popupCurrentText'] || '';
                if (t) lookupText(t);
            });
-            document.getElementById('wikiIcon').addEventListener('click', async () => {
-                if (!currentText) return;
-                try {
-                  // Open in a separate app window to avoid clashing with dictionary tab
-                  if (window.electronAPI && window.electronAPI.send) {
-                    window.electronAPI.send('open-wiki', currentText);
-                  } else {
-                    await showWikipediaPanel(currentText);
-                  }
-                } catch (error) {
-                  console.error('[POPUP] Wikipedia button error:', error.message || 'Unknown error');
-                  showToast('Failed to open Wikipedia');
-                }
+            document.getElementById('wikiIcon').addEventListener('click', () => {
+              activateTab('wikipedia');
+              if (!isExpanded) expandToolbar();
             });
             document.getElementById('audioIcon').addEventListener('click', () => {
                pvLog('[POPUP] Audio button clicked');
@@ -1374,6 +1529,7 @@
 
           if (result.etymology && result.etymology.length > 0) {
             const formattedEtymology = formatEtymologyText(result.etymology);
+            const chainHtml = formatEtymologyChain(result.etymologyChain);
             etymologyHtml = `
               <div class="result-card">
                   <div class="result-word">${word}</div>
@@ -1382,6 +1538,7 @@
                       <span class="etymology-title">Etymology</span>
                     </div>
                     <div class="etymology-content">
+                      ${chainHtml}
                       ${formattedEtymology}
                     </div>
                   </div>
@@ -1426,8 +1583,20 @@
               formattedHtml += '<div class="etymology-separator"><span>Alternative account</span></div>';
             }
 
-            const plain = stripHtmlToText(sourceText);
-            const sentences = plain.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 3);
+            let body = sourceText.trim();
+            const labelMatch = body.match(/^\[([^\]]+)\]\s*\n([\s\S]*)$/);
+            let label = '';
+            if (labelMatch) {
+              label = labelMatch[1].trim();
+              body = labelMatch[2].trim();
+            }
+
+            const plain = stripHtmlToText(body);
+            const sentences = plain.split(/(?<=[.!?。！？])\s+/).filter(s => s.trim().length > 2);
+
+            if (label) {
+              formattedHtml += `<div class="etymology-source-label">${escapeHtml(label)}</div>`;
+            }
 
             formattedHtml += sourceIndex === 0
               ? '<div class="etymology-text">'
@@ -1440,14 +1609,11 @@
                 const trimmedSentence = sentence.trim();
                 if (!trimmedSentence) return;
                 let highlightedSentence = escapeHtml(trimmedSentence)
-                  .replace(/\b(From|Derived from|Borrowed from|Inherited from|Root|Origin|Etymology|Cognate with|Doublet of)\b/gi, '<span class="etymology-keyword">$1</span>')
+                  .replace(/\b(From|Derived from|Borrowed from|Inherited from|Root|Origin|Etymology|Cognate with|Doublet of|来自|引申|词源)\b/gi, '<span class="etymology-keyword">$1</span>')
                   .replace(/\b(Latin|Greek|French|German|Old English|Middle English|Anglo-Saxon|Proto-Germanic|Proto-Indo-European|Ancient Greek|Sanskrit|Gothic|Old Norse|Old French|Proto-Italic|Proto-Hellenic|Proto-Celtic)\b/gi, '<span class="etymology-language">$1</span>')
-                  .replace(/\b(verb|noun|adjective|adverb|pronoun|preposition|conjunction|interjection|prefix|suffix)\b/gi, '<span class="etymology-pos">$1</span>')
                   .replace(/\*[\w\u0300-\u036f\-]+/g, '<span class="etymology-reconstructed">$&</span>')
-                  .replace(/\([^)]*accent[^)]*\)/gi, '<span class="etymology-accent">$&</span>')
                   .replace(/(\d+)(st|nd|rd|th)\s+century/gi, '<span class="etymology-century">$&</span>')
                   .replace(/\b(BCE?|CE|AD|BC)\b/g, '<span class="etymology-era">$&</span>');
-
                 formattedHtml += `<div class="etymology-sentence">${highlightedSentence}</div>`;
               });
             }
@@ -1458,8 +1624,18 @@
           return formattedHtml;
         }
 
-        // Auto-close timeout functions
-       function startAutoCloseTimeout() {
+        function formatEtymologyChain(chain) {
+          if (!Array.isArray(chain) || chain.length === 0) return '';
+          const parts = chain.slice(0, 8).map(function (link) {
+            const lang = escapeHtml(link.language || link.languageCode || '');
+            const term = escapeHtml(link.term || '');
+            const rel = escapeHtml(link.relation || '');
+            return `<span class="etymology-chain__rel">${rel}</span><span class="etymology-chain__node">${lang}${term ? ' · ' + term : ''}</span>`;
+          });
+          return `<div class="etymology-chain">${parts.join('<span aria-hidden="true">←</span>')}</div>`;
+        }
+
+function startAutoCloseTimeout() {
          if (isExpanded) return; // Don't start timeout if expanded
 
          clearAutoCloseTimeout(); // Clear any existing timeout
@@ -1585,11 +1761,13 @@
          if (tabBtn) tabBtn.classList.add('active');
          document.querySelectorAll('.toolbar-icon').forEach(icon => icon.classList.remove('active'));
          
-                   if (tabName === 'etymology') {
+                   if (tabName === 'wikipedia') {
             document.getElementById('wikiIcon').classList.add('active');
+          } else if (tabName === 'etymology') {
+            document.getElementById('wikiIcon').classList.remove('active');
           } else if (tabName === 'lexicon' || tabName === 'wiktionary' || tabName === 'dictionary') {
             document.getElementById('dictionaryIcon').classList.add('active');
-          } else {
+          } else if (tabName === 'translation') {
             document.getElementById('translationIcon').classList.add('active');
           }
          
@@ -1606,7 +1784,9 @@
          }
          
                    // Re-render content for the activated tab
-          if(currentResult) {
+          if (tabName === 'wikipedia') {
+            void displayWikipediaResult((currentResult && currentResult.word) || currentText);
+          } else if (currentResult) {
             if (tabName === 'etymology') {
               displayEtymologyResult(currentResult);
             } else {
@@ -1734,13 +1914,16 @@
 
          let contentHtml = '';
          if (currentTab === 'translation') {
-             contentHtml = (result.translations || []).map(t => createTranslationCard(result.word, t, result.detectedLanguage)).join('');
-         } else if (currentTab === 'wiktionary') {
-             contentHtml = createDefinitionCard(result, 'Wiktionary');
+             const list = result.translations || [];
+             contentHtml = list.length
+               ? list.map(tr => createTranslationCard(result.word, tr, result.detectedLanguage)).join('')
+               : `<div class="error-message">No translations yet. Pick a target language and look up again.</div>`;
+         } else if (currentTab === 'wikipedia') {
+             void displayWikipediaResult(result.word || currentText);
+             return;
          } else if (currentTab === 'dictionary') {
              contentHtml = createDefinitionCard(result, 'Free Dictionary');
          } else {
-             // Lexicon: merged paper-dict style view of all sources
              contentHtml = createLexiconCard(result);
          }
 
@@ -1753,21 +1936,28 @@
 
              function createTranslationCard(word, trans, wordLang) {
          const origLang = wordLang || window['__audioLang'] || 'en';
+         const conf = trans.confidence ? Math.round(trans.confidence * 100) + '%' : '';
          return `
-           <div class="result-card">
-             <div class="result-header">
-               <div class="result-icon">${escapeHtml((trans.language || '').toUpperCase())}</div>
-               <div class="result-meta">
-                 <div class="result-source">${escapeHtml(trans.source || 'Translation Service')}</div>
-                 ${trans.confidence ? `<div class="result-confidence">Confidence: ${Math.round(trans.confidence * 100)}%</div>` : ''}
+           <div class="translation-card">
+             <div class="translation-card__meta">
+               <span class="translation-card__lang">${escapeHtml((trans.language || '').toUpperCase())}</span>
+               <span>${escapeHtml(trans.source || 'Translation')}</span>
+               ${conf ? `<span>${conf}</span>` : ''}
+             </div>
+             <div class="translation-card__pair">
+               <div>
+                 <div class="translation-card__label">Source</div>
+                 <div class="translation-card__original">${escapeHtml(word)}</div>
+               </div>
+               <div>
+                 <div class="translation-card__label">Translation</div>
+                 <div class="translation-card__text">${escapeHtml(trans.text)}</div>
                </div>
              </div>
-             <div class="result-original">Original: ${escapeHtml(word)}</div>
-             <div class="result-word">${escapeHtml(trans.text)}</div>
              ${trans.pronunciation ? `<div class="result-pronunciation">${escapeHtml(trans.pronunciation)}</div>` : ''}
-                           <div class="result-actions">
-                <button onclick='playAudio(${JSON.stringify(word)}, ${JSON.stringify(origLang)})' class="audio-button" title="Play original text pronunciation">🔊 Original</button>
-                <button onclick='playAudio(${JSON.stringify(trans.text)}, ${JSON.stringify(trans.language)})' class="audio-button" title="Play translation pronunciation">🔊 ${escapeHtml((trans.language || '').toUpperCase())}</button>
+             <div class="result-actions" style="margin-top:14px;">
+                <button onclick='playAudio(${JSON.stringify(word)}, ${JSON.stringify(origLang)})' class="audio-button" title="Play original">🔊 Source</button>
+                <button onclick='playAudio(${JSON.stringify(trans.text)}, ${JSON.stringify(trans.language)})' class="audio-button" title="Play translation">🔊 ${escapeHtml((trans.language || '').toUpperCase())}</button>
                 <button onclick='searchWeb(${JSON.stringify(trans.text)})' class="action-btn action-btn-info">Search Web</button>
               </div>
            </div>
@@ -2253,40 +2443,73 @@
              }
            });
 
-           async function showWikipediaPanel(term) {
+           async function displayWikipediaResult(term) {
+             const resultsContainer = document.getElementById('dictionary-results');
+             const loading = document.getElementById('loadingElement');
+             if (!resultsContainer) return;
+             if (loading) {
+               loading.style.display = 'block';
+               showLoading({ title: 'Wikipedia…', subtitle: 'Fetching article summary' });
+             }
              try {
-               if (!window.wikipediaAPI) return;
-              const result = await window.wikipediaAPI.search(term, 'en', 5);
-               const resultsContainer = document.getElementById('dictionary-results');
-               const loading = document.getElementById('loadingElement');
+               if (!window.wikipediaAPI) {
+                 resultsContainer.innerHTML = `<div class="error-message">Wikipedia API unavailable.</div>`;
+                 return;
+               }
+               const q = String(term || '').trim();
+               if (!q) {
+                 resultsContainer.innerHTML = `<div class="error-message">No query for Wikipedia.</div>`;
+                 return;
+               }
+               const lang = (currentResult && currentResult.detectedLanguage) || 'en';
+               const wikiLang = (lang === 'zh' || lang === 'ja' || lang === 'ko') ? lang : 'en';
+               const result = await window.wikipediaAPI.search(q, wikiLang, 5);
                if (loading) loading.style.display = 'none';
-               if (!resultsContainer) return;
+               resultsContainer.style.display = 'block';
+               const items = (result && result.results) || [];
                const html = `
-                  <div class="result-card" style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#fff">
-                    <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #eef2f7;background:linear-gradient(135deg,#fdfbfb 0%,#ebedee 100%);">
-                      <div style="width:28px;height:28px;border-radius:6px;background:#111827;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;">W</div>
-                      <div style="font-weight:600;color:#1f2937;">Wikipedia</div>
-                      <div style="margin-left:auto;font-size:12px;color:#6b7280">curated</div>
+                  <div class="wikipedia-card">
+                    <div class="wikipedia-card__header">
+                      <span>Wikipedia</span>
+                      <span style="margin-left:auto;opacity:.7;font-size:10px;">${escapeHtml(wikiLang)}</span>
                     </div>
-                    <div style="padding:14px 16px;">
-                      ${result.results.map(r => `
-                        <div style="padding:10px 0;border-bottom:1px dashed #e5e7eb;">
-                          <div style="display:flex;align-items:center;gap:10px;">
-                            ${r.thumbnail ? `<img src="${r.thumbnail}" alt="thumb" style="width:40px;height:40px;border-radius:6px;object-fit:cover;flex-shrink:0;" />` : ''}
-                            <a href="${r.url}" style="font-weight:600;color:#1d4ed8;text-decoration:none;">${r.title}</a>
+                    <div class="wikipedia-card__body">
+                      ${items.map(r => `
+                        <div class="wikipedia-item">
+                          <div class="wikipedia-item__title">
+                            ${r.thumbnail ? `<img src="${escapeHtml(r.thumbnail)}" alt="" />` : ''}
+                            <a href="${escapeHtml(r.url)}" data-external="1">${escapeHtml(r.title)}</a>
                           </div>
-                          <div style="color:#374151;margin-top:6px;line-height:1.5;">${r.extract || ''}</div>
+                          <div class="wikipedia-item__extract">${escapeHtml(stripHtmlToText(r.extract || ''))}</div>
                         </div>
-                      `).join('')}
-                      ${result.results.length === 0 ? `<div class="empty-state">No Wikipedia articles found</div>` : ''}
+                      `).join('') || `<div class="error-message">No Wikipedia articles found.</div>`}
+                    </div>
+                    <div class="result-actions" style="padding:0 16px 14px;">
+                      <button onclick='window.electronAPI && window.electronAPI.send && window.electronAPI.send("open-wiki", ${JSON.stringify(q)})' class="action-btn action-btn-info">Open article</button>
                     </div>
                   </div>`;
-               resultsContainer.style.display = 'block';
                resultsContainer.innerHTML = html;
-               activateTab('lexicon');
+               resultsContainer.querySelectorAll('a[data-external]').forEach((a) => {
+                 a.addEventListener('click', (e) => {
+                   e.preventDefault();
+                   const href = a.getAttribute('href');
+                   if (href && window.electronAPI) {
+                     if (settings.openExternal) window.electronAPI.openExternal(href);
+                     else window.electronAPI.openInApp(href);
+                   }
+                 });
+               });
              } catch (err) {
                console.error('Wikipedia panel error', err);
+               if (loading) loading.style.display = 'none';
+               resultsContainer.style.display = 'block';
+               resultsContainer.innerHTML = `<div class="error-message">Wikipedia lookup failed.</div>`;
              }
+           }
+
+           async function showWikipediaPanel(term) {
+             activateTab('wikipedia');
+             await displayWikipediaResult(term);
            }
 
            function showToast(msg) {

@@ -1,37 +1,57 @@
-/* Material Design 3 tokens — main window (layered neutrals + purple accent) */
+/* Phevere design language — shared across main, settings, and popup chrome */
+:root {
+  --pv-ink: #14212b;
+  --pv-ink-soft: #3d4f5c;
+  --pv-paper: #f3f0ea;
+  --pv-paper-2: #ebe6dc;
+  --pv-panel: #fffcf7;
+  --pv-line: rgba(20, 33, 43, 0.12);
+  --pv-ember: #e85d04;
+  --pv-ember-deep: #c44900;
+  --pv-teal: #0d7377;
+  --pv-success: #0f766e;
+  --pv-error: #b91c1c;
+  --pv-radius: 14px;
+  --pv-radius-sm: 10px;
+  --pv-font-ui: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --pv-font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --pv-font-mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+}
+
+/* Main window — ink / ember / teal (aligned with settings + popup) */
 body.main-window {
-  --md-primary: #5b21b6;
-  --md-primary-bright: #7c3aed;
+  --md-primary: var(--pv-ember-deep);
+  --md-primary-bright: var(--pv-ember);
   --md-on-primary: #ffffff;
-  --md-primary-container: #ede9fe;
-  --md-on-primary-container: #2e1065;
-  --md-secondary-container: #e0e7ff;
-  --md-on-secondary-container: #1e1b4b;
-  --md-surface: #f8fafc;
-  --md-surface-dim: #f1f5f9;
-  --md-surface-container: #ffffff;
-  --md-surface-container-high: #f8fafc;
-  --md-on-surface: #0f172a;
-  --md-on-surface-variant: #475569;
-  --md-outline: #94a3b8;
-  --md-error: #b91c1c;
-  --md-success: #047857;
+  --md-primary-container: rgba(232, 93, 4, 0.12);
+  --md-on-primary-container: var(--pv-ink);
+  --md-secondary-container: rgba(13, 115, 119, 0.12);
+  --md-on-secondary-container: var(--pv-ink);
+  --md-surface: var(--pv-paper);
+  --md-surface-dim: var(--pv-paper-2);
+  --md-surface-container: var(--pv-panel);
+  --md-surface-container-high: #f8f5ef;
+  --md-on-surface: var(--pv-ink);
+  --md-on-surface-variant: var(--pv-ink-soft);
+  --md-outline: rgba(20, 33, 43, 0.22);
+  --md-error: var(--pv-error);
+  --md-success: var(--pv-success);
   --md-shape-pill: 9999px;
-  --md-shape-lg: 20px;
-  --md-shape-md: 12px;
+  --md-shape-lg: var(--pv-radius);
+  --md-shape-md: var(--pv-radius-sm);
   --md-titlebar-h: 40px;
   /* Reserve space for fixed footer (taller when status pills stack label + value) */
   --md-statusbar-h: 96px;
   padding-top: var(--md-titlebar-h);
   padding-bottom: var(--md-statusbar-h);
-  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--pv-font-ui);
   color: var(--md-on-surface);
   min-height: 100vh;
   background-color: var(--md-surface-dim);
   background-image:
-    radial-gradient(ellipse 120% 80% at 100% -20%, rgba(124, 58, 237, 0.14), transparent 55%),
-    radial-gradient(ellipse 90% 60% at -10% 110%, rgba(14, 165, 233, 0.08), transparent 50%),
-    linear-gradient(180deg, var(--md-surface) 0%, var(--md-surface-dim) 100%);
+    radial-gradient(ellipse 90% 70% at 0% 0%, rgba(232, 93, 4, 0.1), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 100% 100%, rgba(13, 115, 119, 0.09), transparent 50%),
+    linear-gradient(165deg, var(--pv-paper) 0%, var(--pv-paper-2) 100%);
 }
 
 /* Top bar — caption buttons align like native (full-height hit targets, flat joins) */
@@ -1659,20 +1679,20 @@ body.main-window .status-value.shortcut {
 
 /* —— Settings window (frameless, hash #settings) —— ink + ember, sidebar layout —— */
 body.settings-page {
-  --set-ink: #14212b;
-  --set-ink-soft: #3d4f5c;
-  --set-paper: #f3f0ea;
-  --set-paper-2: #ebe6dc;
-  --set-panel: #fffcf7;
-  --set-line: rgba(20, 33, 43, 0.12);
-  --set-ember: #e85d04;
-  --set-ember-deep: #c44900;
-  --set-teal: #0d7377;
-  --set-radius: 14px;
+  --set-ink: var(--pv-ink);
+  --set-ink-soft: var(--pv-ink-soft);
+  --set-paper: var(--pv-paper);
+  --set-paper-2: var(--pv-paper-2);
+  --set-panel: var(--pv-panel);
+  --set-line: var(--pv-line);
+  --set-ember: var(--pv-ember);
+  --set-ember-deep: var(--pv-ember-deep);
+  --set-teal: var(--pv-teal);
+  --set-radius: var(--pv-radius);
   --settings-titlebar-h: 48px;
   margin: 0;
   min-height: 100vh;
-  font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: var(--pv-font-ui);
   color: var(--set-ink);
   background-color: var(--set-paper-2);
   background-image:

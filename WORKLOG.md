@@ -9,3 +9,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - OCR: grab-under-cursor, read foreground window, clipboard image OCR + watcher, SMTC now-playing, image drop/paste.
 - Fix: dual-monitor popup placement via `screenToDipPoint` + nearest display workArea (no primary-only clamp).
 - Lexicon: default merged definitions tab (all sources + badges); Wiktionary spelling-lemma pivot; etymology formal restyle; status bar Hover/Audio/OCR.
+- Etymology: Youdao/童理民 + fixed Etymonline; Wikipedia tab replaces Wiktionary; shared ink/ember/teal design language across main/settings/popup.

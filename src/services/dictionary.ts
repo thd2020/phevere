@@ -813,31 +813,31 @@ export class DictionaryService extends BaseService {
     // 5) Sources: unique and trimmed
     const uniqueSources = Array.from(new Set(sources.map(s => (s || '').trim())));
 
-    // Ensure etymology is available by fetching from multiple sources if needed
+    // Always collect etymology from free sources (Wiktionary, Etymonline, Youdao/童理民)
+    // and merge with any etymology already returned by REST / paid APIs.
     console.log(`[ETY-DEBUG] Checking etymology for text: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
     console.log(`[ETY-DEBUG] Current etymology value: ${etymology ? 'EXISTS' : 'UNDEFINED'}`);
 
-    if (!etymology) {
-      console.log(`[ETY-DEBUG] No existing etymology found, attempting to fetch from multiple sources`);
-      try {
-        console.log(`[ETY-DEBUG] Calling fetchEtymologyFromMultipleSources...`);
-        const fetched = await this.fetchEtymologyFromMultipleSources(text);
-        etymology = fetched?.text;
-        etymologyChain = fetched?.chain;
-        console.log(`[ETY-DEBUG] fetchEtymologyFromMultipleSources returned: ${etymology ? 'SUCCESS' : 'FAILED/UNDEFINED'}`);
-        if (etymology) {
-          console.log(`[ETY-DEBUG] Etymology result: "${etymology.substring(0, 100)}${etymology.length > 100 ? '...' : ''}"`);
+    try {
+      const fetched = await this.fetchEtymologyFromMultipleSources(text);
+      if (fetched?.text) {
+        if (!etymology) {
+          etymology = fetched.text;
         } else {
-          console.log(`[ETY-DEBUG] Etymology fetch returned null/undefined`);
+          const tip = fetched.text.slice(0, Math.min(48, fetched.text.length));
+          if (tip && !etymology.includes(tip)) {
+            etymology = `${etymology}\n\n--- Alternative etymology ---\n\n${fetched.text}`;
+          }
         }
-      } catch (e) {
-        console.log(`[ETY-DEBUG] Etymology fetch failed with exception:`, e);
-        console.log(`[ETY-DEBUG] Error type: ${e.constructor.name}`);
-        console.log(`[ETY-DEBUG] Error message: ${e.message}`);
-        // Etymology fetch failed, continue without it
+        if (!etymologyChain && fetched.chain) {
+          etymologyChain = fetched.chain;
+        }
+        console.log(`[ETY-DEBUG] Etymology merge done, len=${etymology?.length || 0}`);
+      } else {
+        console.log(`[ETY-DEBUG] Etymology fetch returned null/undefined`);
       }
-    } else {
-      console.log(`[ETY-DEBUG] Existing etymology found: "${etymology.substring(0, 100)}${etymology.length > 100 ? '...' : ''}"`);
+    } catch (e: any) {
+      console.log(`[ETY-DEBUG] Etymology fetch failed with exception:`, e);
     }
 
     // Create final result
@@ -1544,47 +1544,49 @@ export class DictionaryService extends BaseService {
   private async fetchEtymologyFromMultipleSources(
     text: string
   ): Promise<{ text: string; chain?: EtymologyLink[] } | undefined> {
-    const sources: string[] = [];
+    const labeled: string[] = [];
     let chain: EtymologyLink[] | undefined;
 
-    // Try Wiktionary first (most comprehensive)
-    try {
-      const wiktionaryEtymology = await this.fetchEtymologyFromWikitext(text);
-      if (wiktionaryEtymology) {
-        sources.push(wiktionaryEtymology.text);
-        chain = wiktionaryEtymology.chain;
-      }
-    } catch (error) {
-      console.warn(`[ETY-DEBUG] Wiktionary etymology fetch failed:`, error);
+    const [wiktionaryEtymology, etymonlineEtymology, youdaoEtymology, oxfordEtymology] = await Promise.all([
+      this.fetchEtymologyFromWikitext(text).catch((error: unknown): undefined => {
+        console.warn(`[ETY-DEBUG] Wiktionary etymology fetch failed:`, error);
+        return undefined;
+      }),
+      this.fetchEtymologyFromEtymonline(text).catch((error: unknown): undefined => {
+        console.warn(`[ETY-DEBUG] Etymonline etymology fetch failed:`, error);
+        return undefined;
+      }),
+      this.fetchEtymologyFromYoudao(text).catch((error: unknown): undefined => {
+        console.warn(`[ETY-DEBUG] Youdao etymology fetch failed:`, error);
+        return undefined;
+      }),
+      this.oxfordAppId && this.oxfordAppKey
+        ? this.fetchEtymologyFromOxford(text).catch((error: unknown): undefined => {
+            console.warn(`[ETY-DEBUG] Oxford etymology fetch failed:`, error);
+            return undefined;
+          })
+        : Promise.resolve(undefined),
+    ]);
+
+    if (wiktionaryEtymology?.text) {
+      labeled.push(`[Wiktionary]\n${wiktionaryEtymology.text}`);
+      chain = wiktionaryEtymology.chain;
+    }
+    if (etymonlineEtymology) {
+      labeled.push(`[Etymonline]\n${etymonlineEtymology}`);
+    }
+    if (youdaoEtymology) {
+      labeled.push(youdaoEtymology);
+    }
+    if (oxfordEtymology) {
+      labeled.push(`[Oxford]\n${oxfordEtymology}`);
     }
 
-    // Try Etymonline API if available
-    try {
-      const etymonlineEtymology = await this.fetchEtymologyFromEtymonline(text);
-      if (etymonlineEtymology) {
-        sources.push(etymonlineEtymology);
-      }
-    } catch (error) {
-      console.warn(`[ETY-DEBUG] Etymonline etymology fetch failed:`, error);
-    }
-
-    // Try Oxford if available
-    if (this.oxfordAppId && this.oxfordAppKey) {
-      try {
-        const oxfordEtymology = await this.fetchEtymologyFromOxford(text);
-        if (oxfordEtymology) {
-          sources.push(oxfordEtymology);
-        }
-      } catch (error) {
-        console.warn(`[ETY-DEBUG] Oxford etymology fetch failed:`, error);
-      }
-    }
-
-    if (sources.length === 0) return undefined;
+    if (labeled.length === 0) return undefined;
 
     return {
-      text: sources.length > 1 ? sources.join('\n\n--- Alternative etymology ---\n\n') : sources[0],
-      chain
+      text: labeled.join('\n\n--- Alternative etymology ---\n\n'),
+      chain,
     };
   }
 
@@ -1607,12 +1609,11 @@ export class DictionaryService extends BaseService {
 
     try {
       const url = `https://www.etymonline.com/word/${encodeURIComponent(cleanWord)}`;
-      
-      // Use net.fetch directly to handle HTML raw text instead of JSON parsing
       const response = await net.fetch(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
       });
 
       if (!response.ok) {
@@ -1621,23 +1622,109 @@ export class DictionaryService extends BaseService {
       }
 
       const html = await response.text();
-      const etymologyMatch = html.match(/<dd[^>]*>([\s\S]*?)<\/dd>/i) || html.match(/<section[^>]*class="[^"]*word__defination[^"]*"[^>]*>([\s\S]*?)<\/section>/i);
+      let raw = '';
 
-      if (etymologyMatch && etymologyMatch[1]) {
-        const etymology = etymologyMatch[1]
-          .replace(/<[^>]*>/g, '') // Remove HTML tags
-          .replace(/\s+/g, ' ')    // Normalize whitespace
-          .trim();
+      // Modern Etymonline: OpenGraph / meta description (legacy <dd> markup is gone).
+      const og =
+        html.match(/property=["']og:description["']\s+content=["']([^"']+)["']/i) ||
+        html.match(/content=["']([^"']+)["']\s+property=["']og:description["']/i) ||
+        html.match(/name=["']description["']\s+content=["']([^"']+)["']/i);
+      if (og?.[1]) raw = og[1];
 
-        if (etymology.length > 20) {
-          return `From Etymonline: ${etymology}`;
-        }
+      if (!raw) {
+        const jsonLd = html.match(
+          /"@type"\s*:\s*"DefinedTerm"[\s\S]{0,400}?"description"\s*:\s*"((?:\\.|[^"\\])*)"/i,
+        );
+        if (jsonLd?.[1]) raw = jsonLd[1];
+      }
+
+      if (!raw) {
+        const legacy =
+          html.match(/<dd[^>]*>([\s\S]*?)<\/dd>/i) ||
+          html.match(/<section[^>]*class="[^"]*word__defination[^"]*"[^>]*>([\s\S]*?)<\/section>/i);
+        if (legacy?.[1]) raw = legacy[1];
+      }
+
+      if (!raw) return undefined;
+
+      const etymology = raw
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+        .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+        .replace(/<[^>]*>/g, '')
+        .replace(/\s+/g, ' ')
+        .replace(/\s*See origin and meaning of .+$/i, '')
+        .trim();
+
+      if (etymology.length > 20) {
+        return etymology;
       }
     } catch (error) {
       console.warn(`[ETY-DEBUG] Etymonline fetch failed for "${cleanWord}":`, error);
     }
 
     return undefined;
+  }
+
+  /**
+   * Youdao mobile jsonapi — includes Chinese etymology snippets (童理民 and others).
+   * No API key required for this public endpoint.
+   */
+  private async fetchEtymologyFromYoudao(text: string): Promise<string | undefined> {
+    const cleanWord = this.cleanWordForEtymology(text);
+    if (!cleanWord || cleanWord.length > 48) return undefined;
+
+    try {
+      const url =
+        `http://dict.youdao.com/jsonapi?jsonversion=2&client=mobile&q=${encodeURIComponent(cleanWord)}`;
+      const response = await this.withTimeout(
+        this.request<any>(url, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+          },
+        }).catch((): null => null),
+        3500,
+        null,
+      );
+
+      const etyms = response?.etym?.etyms;
+      if (!etyms || typeof etyms !== 'object') return undefined;
+
+      const chunks: string[] = [];
+      // Prefer Chinese narrative etymology (童理民), then English.
+      const order = ['zh', 'en', ...Object.keys(etyms).filter((k) => k !== 'zh' && k !== 'en')];
+      const seen = new Set<string>();
+      for (const lang of order) {
+        const arr = etyms[lang];
+        if (!Array.isArray(arr)) continue;
+        for (const item of arr) {
+          const value = typeof item?.value === 'string' ? item.value.trim() : '';
+          if (!value || value.length < 8) continue;
+          const tip = value.slice(0, 48);
+          if (seen.has(tip)) continue;
+          seen.add(tip);
+          let source = typeof item?.source === 'string' ? item.source.trim() : '';
+          // Normalize known author attribution
+          if (/童理/.test(source) || source.includes('\u7ae5\u7406\u6c11')) {
+            source = '童理民';
+          }
+          if (!source) source = lang === 'zh' ? '有道词源' : 'Youdao';
+          const desc = typeof item?.desc === 'string' && item.desc.trim() ? `（${item.desc.trim()}）` : '';
+          chunks.push(`[${source}${desc}]\n${value}`);
+        }
+      }
+
+      if (chunks.length === 0) return undefined;
+      return chunks.join('\n\n');
+    } catch (error) {
+      console.warn(`[ETY-DEBUG] Youdao etymology failed for "${cleanWord}":`, error);
+      return undefined;
+    }
   }
 
   /**
