@@ -1,46 +1,57 @@
 # Packaging & releases
 
-## Windows: WiX MSI (current setup)
+## Windows: NSIS Setup.exe (primary)
 
-Squirrel has been removed. `npm run make` on **Windows** builds a **classic MSI installer** via `@electron-forge/maker-wix`:
+We use **electron-builder NSIS** via `@electron-addons/electron-forge-maker-nsis` — the prevailed Windows desktop installer path (multi-page wizard, install directory, shortcuts, branding, custom `installer.nsh`). This is the same family of installer UX as many Chinese desktop apps (directory chooser, finish-page launch), far more flexible than plain WiX/`electron-wix-msi`.
 
-- Wizard UI, **Choose install location** (enabled in `forge.config.js` with `ui.chooseDirectory`).
-- Output: `out/make/wix/x64/phevere-*.msi` (exact filename follows version and arch).
+Config lives in **`electron-builder.yml`** + **`packaging/installer.nsh`** (welcome/finish macros, seed folder create).
 
-### Shortcut mode + `koffi`
+```bash
+npm run build-native
+npm run make:win
+# Artifact: out/make/nsis/…/Phevere-Setup-*.exe
+```
 
-The main process uses **koffi** for “hold trigger while selecting” on Windows. `forge.config.js` sets **`asarUnpack`** for `node_modules/koffi` so the native addon loads from the installed app. Without that, packaged builds could fall back to **select-then-trigger only** (no false “keys held” double popups).
+### What is solidly bundled
 
-### Prerequisite (build machine only)
+| Asset | How it ships |
+|---|---|
+| App code | `app.asar` |
+| `koffi` + `sql.js` | `asarUnpack` (native / require-able) |
+| `sql-wasm.wasm` | `extraResources` → next to exe resources |
+| OCR / media scripts, tray icon | `extraResources` |
+| Offline **seed** packs | `resources/seed/**` → `resources/seed` in install; imported once into **writable** `userData/phevere.sqlite` |
 
-Install **[WiX Toolset v3](https://github.com/wixtoolset/wix3/releases)** so `candle.exe` and `light.exe` are on your **PATH**. Without WiX, the `wix` maker step fails.
+The SQLite database itself is **not** frozen inside the installer executable as the live DB (installers are read-only; Windows apps write under `%APPDATA%`). Runtime creates/updates `phevere.sqlite` in userData; optional seed dumps are imported on first launch.
+
+### Customizing the installer (params)
+
+Edit `electron-builder.yml` → `nsis:`:
+
+- `oneClick` / `allowToChangeInstallationDirectory` — assisted vs one-click
+- `perMachine` — all-users vs current user
+- `createDesktopShortcut` / `createStartMenuShortcut`
+- `include: packaging/installer.nsh` — custom NSIS macros (welcome copy, finish page, extra files)
+
+Replace `packaging/icon.png` with a proper **`.ico`** (256px) when you have branded art for a sharper header.
+
+### Optional: WiX MSI (enterprise / GPO)
+
+`MakerWix` remains in `forge.config.js` for Intune/GPO-style `.msi`. Requires **[WiX Toolset v3](https://github.com/wixtoolset/wix3/releases)** (`candle`/`light` on PATH). Prefer NSIS for end-user installs.
 
 ### Commands
 
 ```bash
-# Native addon must be built before packaging (UIAutomation .node)
 npm run build-native
-
-# Produce the MSI (run on Windows)
-npm run make
-# or explicitly:
-npm run make:win
+npm run make          # all configured makers
+npm run make:win      # Windows only
+npm run make:nsis     # alias → make:win (NSIS primary)
 ```
 
-Artifacts for GitHub Releases: attach the `.msi` (and optionally ZIPs for other platforms from the same `make` on those OSes). Step-by-step tagging and uploading: **`docs/RELEASE.md`**.
+### Code signing
 
-### Why MSI instead of a single `.exe` (NSIS)?
-
-Forge’s first-party Windows story is **WiX → MSI**, which fits “classic installer” and enterprise-style deployment. A **Setup.exe**-style NSIS build is usually done with **electron-builder** as a separate pipeline; we can add that later if you want both artifacts.
-
-### End users
-
-The MSI bundles **Electron** and the app; users do **not** install Node.js or npm.
-
-### Code signing (recommended)
-
-Sign the MSI for fewer SmartScreen warnings (certificate + optional `windowsSign` / cert fields in WiX maker config — see [Forge MakerWix docs](https://js.electronforge.io/interfaces/_electron_forge_maker_wix.MakerWixConfig.html)).
+Sign the Setup.exe / MSI for fewer SmartScreen prompts (`win.certificateFile` / Azure Trusted Signing — see electron-builder docs).
 
 ### Microsoft Store
 
-Store distribution uses **MSIX** / Partner Center; that is a **separate** packaging step from this MSI, not a replacement for local testing of the WiX output.
+Store distribution uses **MSIX** / Partner Center — separate from NSIS/MSI.

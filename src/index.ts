@@ -668,11 +668,11 @@ const createMainWindow = (): void => {
 const createPopupWindow = (x: number, y: number): void => {
   log.debug('main', 'Create popup window', { x, y });
 
-  // Slim strip: width matches 8×24px icons + gaps + padding (keep in sync with popup-new.html strip resize)
+  // Slim strip: width matches N×24px icons + gaps + padding (keep in sync with popup-new.html strip resize)
   const POPUP_STRIP_ICON = 24;
   const POPUP_STRIP_GAP = 2;
   const POPUP_STRIP_PAD = 4;
-  const POPUP_STRIP_ICONS = 8;
+  const POPUP_STRIP_ICONS = 9; // includes vocab heart
   const popupWidth =
     POPUP_STRIP_PAD +
     POPUP_STRIP_ICONS * POPUP_STRIP_ICON +
@@ -1719,6 +1719,9 @@ ipcMain.handle('dictionary-get-supported-languages', () => {
 // Vocabulary notebook
 ipcMain.handle('vocab-list', async (_e, limit?: number) => {
   return vocabStore.listVocab(limit ?? 200);
+});
+ipcMain.handle('vocab-find', async (_e, lemma: string) => {
+  return vocabStore.findByLemma(lemma);
 });
 ipcMain.handle('vocab-add', async (_e, payload: vocabStore.VocabAddInput) => {
   return vocabStore.addVocab(payload);

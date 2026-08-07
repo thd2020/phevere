@@ -1,43 +1,48 @@
-const { MakerWix } = require('@electron-forge/maker-wix');
 const { MakerZIP } = require('@electron-forge/maker-zip');
 const { MakerDeb } = require('@electron-forge/maker-deb');
 const { MakerRpm } = require('@electron-forge/maker-rpm');
+// const { MakerWix } = require('@electron-forge/maker-wix'); // optional MSI — see PACKAGING.md
 const { AutoUnpackNativesPlugin } = require('@electron-forge/plugin-auto-unpack-natives');
 const { WebpackPlugin } = require('@electron-forge/plugin-webpack');
 
 const { mainConfig } = require('./webpack.main.config.js');
 const { rendererConfig } = require('./webpack.renderer.config.js');
 
+/** @type {import('@electron-forge/shared-types').ForgeConfig} */
 module.exports = {
   packagerConfig: {
     asar: true,
-    // koffi loads a .node binary; must not stay inside app.asar or require() fails in production.
+    // Prefer packaging/icon.ico when available; PNG is fine for electron-builder NSIS.
+    // icon: './packaging/icon',
+    // koffi + sql.js must unpack; WASM also shipped as extraResource.
     asarUnpack: ['**/node_modules/koffi/**/*', '**/node_modules/sql.js/**/*'],
     extraResource: [
       'resources/tray-icon.png',
       'scripts/ocr_worker.py',
       'scripts/media_now_playing.ps1',
       'node_modules/sql.js/dist/sql-wasm.wasm',
+      // Optional offline seed packs (JSON/JSONL/CEDICT). Copied into userData on first run.
+      'resources/seed',
     ],
   },
   rebuildConfig: {},
   makers: [
-    // Classic Windows installer (wizard, optional install dir). Requires WiX Toolset v3 (candle, light on PATH).
-    new MakerWix({
-      name: 'phevere',
-      description: 'Dictionary and text selection monitoring',
-      manufacturer: 'Phevere',
-      ui: {
-        chooseDirectory: true,
-      },
-    }),
+    // Primary Windows installer: modern NSIS Setup.exe (directory chooser, shortcuts, branding).
+    // Configured via electron-builder.yml — see PACKAGING.md.
+    {
+      name: '@electron-addons/electron-forge-maker-nsis',
+      config: {},
+      platforms: ['win32'],
+    },
+    // Optional enterprise MSI — re-enable when WiX Toolset v3 is on PATH:
+    // new MakerWix({ name: 'phevere', description: 'Dictionary and text selection monitoring', manufacturer: 'Phevere', ui: { chooseDirectory: true } }),
     new MakerZIP({}, ['darwin']),
     new MakerRpm({}),
     new MakerDeb({}),
   ],
   plugins: [
     new AutoUnpackNativesPlugin({
-      asar: true
+      asar: true,
     }),
     new WebpackPlugin({
       mainConfig,
@@ -72,4 +77,4 @@ module.exports = {
       },
     }),
   ],
-}; 
+};

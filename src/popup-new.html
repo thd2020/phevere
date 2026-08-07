@@ -139,6 +139,32 @@
         color: var(--pv-teal);
       }
 
+      .toolbar-icon.toolbar-heart {
+        color: #94a3b8;
+      }
+      .toolbar-icon.toolbar-heart svg {
+        width: 14px;
+        height: 14px;
+        display: block;
+      }
+      .toolbar-icon.toolbar-heart .heart-fill {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.6;
+        stroke-linejoin: round;
+      }
+      .toolbar-icon.toolbar-heart.is-saved {
+        color: #e11d48;
+        background: rgba(225, 29, 72, 0.12);
+      }
+      .toolbar-icon.toolbar-heart.is-saved .heart-fill {
+        fill: currentColor;
+        stroke: currentColor;
+      }
+      .toolbar-icon.toolbar-heart:hover {
+        color: #e11d48;
+      }
+
       /* Prevent accidental text selection in the toolbar/tabs */
       .toolbar, .toolbar * , .tabs, .tabs * { user-select: none; }
 
@@ -1161,6 +1187,9 @@
             <button class="toolbar-icon" id="audioIcon" title="Play Audio">🔊</button>
             <button class="toolbar-icon" id="clipboardIcon" title="Clipboard">📋</button>
             <button class="toolbar-icon" id="searchIcon" title="Search">🔍</button>
+            <button class="toolbar-icon toolbar-heart" id="vocabHeartIcon" title="Save to notebook" aria-pressed="false" aria-label="Save to notebook">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path class="heart-fill" d="M12 21s-6.7-4.35-9.33-7.4C.7 11.2 1.1 7.6 3.9 6.05 6.05 4.85 8.55 5.4 10 7.05L12 9.2l2-2.15c1.45-1.65 3.95-2.2 6.1-1 2.8 1.55 3.2 5.15 1.23 7.55C18.7 16.65 12 21 12 21z"/></svg>
+            </button>
             <button class="toolbar-icon" id="settingsIcon" title="Settings">⚙️</button>
             <button class="toolbar-icon" id="closeIcon" title="Close">✕</button>
           </div>
@@ -1380,6 +1409,9 @@
                   const url = `https://www.google.com/search?q=${encodeURIComponent(currentText)}`;
                   window.electronAPI.send('open-in-app', url);
               }
+            });
+            document.getElementById('vocabHeartIcon')?.addEventListener('click', () => {
+              void toggleVocabHeart();
             });
             document.getElementById('closeIcon').addEventListener('click', () => {
               pvLog('[POPUP] Close clicked');
@@ -1840,6 +1872,7 @@ function startAutoCloseTimeout() {
               var audioLang = (currentResult && currentResult.detectedLanguage) ? currentResult.detectedLanguage : (currentTab === 'translation' ? targetLang : 'en');
               window['__audioLang'] = audioLang;
               displayDictionaryResult(currentResult);
+              void syncVocabHeart(currentResult && currentResult.word);
             } else {
               pvLog('[POPUP] dictionaryAPI not available, using mock result');
               displayMockResult(text); // Fallback for dev
@@ -1965,7 +1998,6 @@ function startAutoCloseTimeout() {
                 <button onclick='playAudio(${JSON.stringify(word)}, ${JSON.stringify(origLang)})' class="audio-button" title="Play original">🔊 Src</button>
                 <button onclick='playAudio(${JSON.stringify(trans.text)}, ${JSON.stringify(trans.language)})' class="audio-button" title="Play translation">🔊 ${escapeHtml((trans.language || '').toUpperCase())}</button>
                 <button onclick='searchWeb(${JSON.stringify(trans.text)})' class="action-btn action-btn-info">Web</button>
-                <button onclick='saveVocabFromTranslation(${JSON.stringify(word)}, ${JSON.stringify(trans.text)}, ${JSON.stringify(trans.language || "")}, ${JSON.stringify(trans.source || "")})' class="action-btn action-btn-primary">Save</button>
               </div>
            </div>
          `;
@@ -2094,7 +2126,6 @@ function startAutoCloseTimeout() {
                 <div class="result-actions">
                     <button onclick='playAudio(${JSON.stringify(result.word)}, ${JSON.stringify(result.detectedLanguage || window['__audioLang'] || 'en')})' class="audio-button" title="Play pronunciation">🔊</button>
                     <button onclick='searchWeb(${JSON.stringify(result.word)})' class="action-btn action-btn-info">Search Web</button>
-                    <button onclick='saveVocabFromResult()' class="action-btn action-btn-primary">Save to notebook</button>
                 </div>
             </div>`;
         }
@@ -2202,42 +2233,76 @@ function startAutoCloseTimeout() {
          }
        }
 
-       window.saveVocabFromTranslation = async (lemma, definition, targetLang, source) => {
+       let savedVocabId = null;
+
+       function setVocabHeartSaved(saved, id) {
+         const btn = document.getElementById('vocabHeartIcon');
+         if (!btn) return;
+         savedVocabId = saved ? (id || savedVocabId) : null;
+         btn.classList.toggle('is-saved', !!saved);
+         btn.setAttribute('aria-pressed', saved ? 'true' : 'false');
+         btn.title = saved ? 'Remove from notebook' : 'Save to notebook';
+       }
+
+       async function syncVocabHeart(lemma) {
+         const word = String(lemma || currentResult?.word || currentText || '').trim();
+         if (!word || !window.vocabAPI?.find) {
+           setVocabHeartSaved(false);
+           return;
+         }
+         try {
+           const entry = await window.vocabAPI.find(word);
+           setVocabHeartSaved(!!entry, entry?.id);
+         } catch (e) {
+           console.warn('vocab heart sync failed', e);
+           setVocabHeartSaved(false);
+         }
+       }
+
+       async function toggleVocabHeart() {
          try {
            if (!window.vocabAPI) { showToast('Notebook unavailable'); return; }
-           await window.vocabAPI.add({
-             lemma,
-             definition,
-             targetLang,
-             sources: source ? [source] : [],
-             sourceLang: (currentResult && currentResult.detectedLanguage) || undefined,
-           });
-           showToast('Saved to notebook');
-         } catch (e) {
-           console.error(e);
-           showToast('Save failed');
-         }
-       };
+           const lemma = String((currentResult && currentResult.word) || currentText || '').trim();
+           if (!lemma) { showToast('Nothing to save'); return; }
 
-       window.saveVocabFromResult = async () => {
-         try {
-           if (!window.vocabAPI || !currentResult) { showToast('Nothing to save'); return; }
-           const defs = currentResult.definitions || [];
+           if (savedVocabId) {
+             await window.vocabAPI.remove(savedVocabId);
+             setVocabHeartSaved(false);
+             showToast('Removed from notebook');
+             return;
+           }
+
+           const existing = await window.vocabAPI.find(lemma);
+           if (existing?.id) {
+             await window.vocabAPI.remove(existing.id);
+             setVocabHeartSaved(false);
+             showToast('Removed from notebook');
+             return;
+           }
+
+           const defs = (currentResult && currentResult.definitions) || [];
            const top = defs[0];
-           await window.vocabAPI.add({
-             lemma: currentResult.word,
-             definition: top ? stripHtmlToText(top.meaning || top.definition || '') : '',
+           const translations = (currentResult && currentResult.translations) || [];
+           const tx = translations[0];
+           const entry = await window.vocabAPI.add({
+             lemma,
+             definition: top
+               ? stripHtmlToText(top.meaning || top.definition || '')
+               : (tx ? String(tx.text || '') : ''),
              partOfSpeech: top ? top.partOfSpeech : undefined,
-             sources: top && top.sources ? top.sources : (top && top.source ? [top.source] : currentResult.sources),
-             sourceLang: currentResult.detectedLanguage,
-             targetLang: currentResult.language,
+             sources: top && top.sources
+               ? top.sources
+               : (top && top.source ? [top.source] : (tx?.source ? [tx.source] : (currentResult && currentResult.sources) || [])),
+             sourceLang: currentResult && currentResult.detectedLanguage,
+             targetLang: (tx && tx.language) || (currentResult && currentResult.language),
            });
+           setVocabHeartSaved(true, entry?.id);
            showToast('Saved to notebook');
          } catch (e) {
            console.error(e);
            showToast('Save failed');
          }
-       };
+       }
 
        window.playAudio = (text, language) => {
          try { if (localStorage.getItem('phevereAudioEnabled') === '0') { pvLog('[POPUP] Audio disabled'); return; } } catch (e) {}
@@ -2539,7 +2604,7 @@ function startAutoCloseTimeout() {
                       ${items.map(r => `
                         <div class="wikipedia-item">
                           <div class="wikipedia-item__title">
-                            ${r.thumbnail ? `<img src="${escapeHtml(r.thumbnail)}" alt="" />` : ''}
+                            ${r.thumbnail ? `<img src="${escapeHtml(r.thumbnail)}" alt="" loading="lazy" onerror="this.remove()" />` : ''}
                             <a href="${escapeHtml(r.url)}" data-external="1">${escapeHtml(r.title)}</a>
                           </div>
                           <div class="wikipedia-item__extract">${escapeHtml(stripHtmlToText(r.extract || ''))}</div>

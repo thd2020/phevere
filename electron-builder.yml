@@ -1,0 +1,50 @@
+appId: com.phevere.app
+productName: Phevere
+copyright: Copyright © Phevere
+directories:
+  buildResources: packaging
+  output: out/make/nsis
+files:
+  - '**/*'
+  - '!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}'
+asar: true
+asarUnpack:
+  - '**/node_modules/koffi/**/*'
+  - '**/node_modules/sql.js/**/*'
+extraResources:
+  - from: resources/tray-icon.png
+    to: tray-icon.png
+  - from: scripts/ocr_worker.py
+    to: ocr_worker.py
+  - from: scripts/media_now_playing.ps1
+    to: media_now_playing.ps1
+  - from: node_modules/sql.js/dist/sql-wasm.wasm
+    to: sql-wasm.wasm
+  - from: resources/seed
+    to: seed
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: packaging/icon.png
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Phevere
+  installerIcon: packaging/icon.png
+  uninstallerIcon: packaging/icon.png
+  installerHeaderIcon: packaging/icon.png
+  include: packaging/installer.nsh
+  license: LICENSE
+  runAfterFinish: true
+  menuCategory: true
+  displayLanguageSelector: false
+  differentialPackage: false
+portable:
+  artifactName: ${productName}-Portable-${version}.${ext}

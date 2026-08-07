@@ -15,3 +15,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Vocabulary notebook: local SQLite (sql.js) Anki-light store; main window list + popup save.
 - Offline dictionary: Settings → Offline (download CC-CEDICT with consent, import JSON/CEDICT); sqlite packs feed lookup.
 - Smart routing: CJK → Youdao/CEDICT/offline; Latin → FreeDict/Wiktionary/Datamuse; translation prefers Youdao (CJK) / DeepL (Latin).
+- Popup: vocab heart on toolstrip (outline ↔ red); Wikipedia thumbs via main-process data URLs + title-based summary; NSIS Setup.exe packaging (electron-builder) with seed folder + sql.js resources.

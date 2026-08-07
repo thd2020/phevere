@@ -118,6 +118,14 @@ export function getVocab(id: string): VocabEntry | null {
   return row ? rowToEntry(row) : null;
 }
 
+export async function findByLemma(lemma: string): Promise<VocabEntry | null> {
+  await ensureVocabReady();
+  const q = (lemma || '').trim();
+  if (!q) return null;
+  const row = queryOne(`SELECT * FROM vocab WHERE lower(lemma) = lower(?) ORDER BY updated_at DESC LIMIT 1`, [q]);
+  return row ? rowToEntry(row) : null;
+}
+
 export async function listVocab(limit = 200): Promise<VocabEntry[]> {
   await ensureVocabReady();
   const rows = queryAll(`SELECT * FROM vocab ORDER BY updated_at DESC LIMIT ?`, [limit]);

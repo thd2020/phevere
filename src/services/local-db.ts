@@ -142,8 +142,50 @@ export async function getLocalDb(): Promise<SqlJsDatabase> {
   }
   migrate(db);
   scheduleSave();
-  console.log('Local SQLite ready', { dbPath });
+  console.log('Local SQLite ready', { dbPath, wasmPath });
+  // Fire-and-forget: import packaged seed packs once
+  void importPackagedSeeds().catch((e) => console.warn('seed import skipped', e));
   return db;
+}
+
+/** One-shot import of resources/seed dumps shipped with the installer. */
+async function importPackagedSeeds(): Promise<void> {
+  const marker = path.join(path.dirname(dbPath), '.phevere-seed-imported');
+  if (fs.existsSync(marker)) return;
+
+  const seedDirs = [
+    path.join(process.resourcesPath || '', 'seed'),
+    path.join(process.cwd(), 'resources', 'seed'),
+  ];
+  const seedDir = seedDirs.find((d) => d && fs.existsSync(d));
+  if (!seedDir) {
+    fs.writeFileSync(marker, String(Date.now()));
+    return;
+  }
+
+  const files = fs.readdirSync(seedDir).filter((f) => !f.startsWith('.') && f !== 'README.md');
+  if (!files.length) {
+    fs.writeFileSync(marker, String(Date.now()));
+    return;
+  }
+
+  // Lazy require to avoid circular init with offline-dict-store
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const offline = require('./offline-dict-store') as typeof import('./offline-dict-store');
+  for (const file of files) {
+    const full = path.join(seedDir, file);
+    try {
+      if (/\.(json|jsonl|ndjson)$/i.test(file)) {
+        await offline.importJsonFile(full, { name: file, packId: `seed-${file}` });
+      } else if (/\.(txt|u8)$/i.test(file) && /cedict/i.test(file)) {
+        await offline.importCedictTextFile(full, `seed-${file}`);
+      }
+    } catch (e) {
+      console.warn('Failed to import seed', file, e);
+    }
+  }
+  fs.writeFileSync(marker, String(Date.now()));
+  console.log('Seed packs imported', { seedDir, count: files.length });
 }
 
 export function runWrite(sql: string, params: unknown[] = []): void {

@@ -390,6 +390,7 @@ contextBridge.exposeInMainWorld('wikipediaAPI', {
 
 contextBridge.exposeInMainWorld('vocabAPI', {
   list: (limit?: number) => ipcRenderer.invoke('vocab-list', limit),
+  find: (lemma: string) => ipcRenderer.invoke('vocab-find', lemma),
   add: (payload: Record<string, unknown>) => ipcRenderer.invoke('vocab-add', payload),
   remove: (id: string) => ipcRenderer.invoke('vocab-remove', id),
   updateNote: (id: string, note: string) => ipcRenderer.invoke('vocab-update-note', id, note),
@@ -533,6 +534,7 @@ declare global {
     };
     vocabAPI: {
       list: (limit?: number) => Promise<any[]>;
+      find: (lemma: string) => Promise<any | null>;
       add: (payload: Record<string, unknown>) => Promise<any>;
       remove: (id: string) => Promise<boolean>;
       updateNote: (id: string, note: string) => Promise<any>;
