@@ -391,7 +391,14 @@ contextBridge.exposeInMainWorld('wikipediaAPI', {
 contextBridge.exposeInMainWorld('vocabAPI', {
   list: (limit?: number) => ipcRenderer.invoke('vocab-list', limit),
   find: (lemma: string) => ipcRenderer.invoke('vocab-find', lemma),
-  add: (payload: Record<string, unknown>) => ipcRenderer.invoke('vocab-add', payload),
+  add: async (payload: Record<string, unknown>) => {
+    try {
+      return await ipcRenderer.invoke('vocab-add', payload);
+    } catch (error: any) {
+      const msg = error?.message || String(error);
+      throw new Error(msg);
+    }
+  },
   remove: (id: string) => ipcRenderer.invoke('vocab-remove', id),
   updateNote: (id: string, note: string) => ipcRenderer.invoke('vocab-update-note', id, note),
   review: (id: string, grade: 1 | 2 | 3 | 4) => ipcRenderer.invoke('vocab-review', id, grade),
@@ -404,6 +411,11 @@ contextBridge.exposeInMainWorld('offlineDictAPI', {
   importJson: () => ipcRenderer.invoke('offline-import-json'),
   importCedictFile: () => ipcRenderer.invoke('offline-import-cedict-file'),
   downloadCedict: () => ipcRenderer.invoke('offline-download-cedict'),
+});
+
+contextBridge.exposeInMainWorld('ocrAPI', {
+  getStatus: () => ipcRenderer.invoke('ocr-get-status'),
+  ensureDeps: () => ipcRenderer.invoke('ocr-ensure-deps'),
 });
 
 // Expose search API
@@ -547,6 +559,16 @@ declare global {
       importJson: () => Promise<any>;
       importCedictFile: () => Promise<any>;
       downloadCedict: () => Promise<any>;
+    };
+    ocrAPI: {
+      getStatus: () => Promise<{
+        python: string;
+        script: string;
+        modelRoot: string;
+        available: boolean | null;
+        lastError: string | null;
+      }>;
+      ensureDeps: () => Promise<{ ok: boolean; detail: string }>;
     };
   }
 }

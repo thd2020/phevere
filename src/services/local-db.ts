@@ -1,14 +1,16 @@
 /**
- * Local SQLite via sql.js (WASM) — industrial SQLite without native rebuilds.
- * Persists to userData/phevere.sqlite for vocab notebook + offline dictionary packs.
+ * Local SQLite via sql.js — prefer asm.js build (no WASM file) for packaged Electron,
+ * with WASM as optional fast path when sql-wasm.wasm is present in resources.
  */
 
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { createRequire } from 'module';
 import { wrapConsole } from '../logger';
 
 const console = wrapConsole('local-db');
+const nodeRequire = createRequire(__filename);
 
 type SqlJsDatabase = {
   run: (sql: string, params?: unknown[]) => void;
@@ -23,9 +25,14 @@ type SqlJsDatabase = {
   close: () => void;
 };
 
+type SqlJsInit = (cfg?: {
+  locateFile?: (f: string) => string;
+}) => Promise<{ Database: new (data?: ArrayLike<number> | null) => SqlJsDatabase }>;
+
 let db: SqlJsDatabase | null = null;
 let saveTimer: NodeJS.Timeout | null = null;
 let dbPath = '';
+let initError: string | null = null;
 
 function resolveDbPath(): string {
   try {
@@ -35,22 +42,43 @@ function resolveDbPath(): string {
   }
 }
 
-function resolveWasmPath(): string {
+function resolveWasmPath(): string | null {
   const candidates = [
+    path.join(process.resourcesPath || '', 'sql-wasm.wasm'),
+    path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'),
     path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'),
     path.join(__dirname, '..', '..', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'),
-    path.join(process.resourcesPath || '', 'sql-wasm.wasm'),
   ];
   for (const c of candidates) {
     if (c && fs.existsSync(c)) return c;
   }
-  return candidates[0];
+  return null;
 }
 
-async function loadSqlJs(): Promise<(cfg?: { locateFile?: (f: string) => string }) => Promise<{ Database: new (data?: ArrayLike<number> | null) => SqlJsDatabase }>> {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const initSqlJs = require('sql.js');
-  return initSqlJs;
+function tryRequireSqlJs(specifier: string): SqlJsInit | null {
+  try {
+    return nodeRequire(specifier) as SqlJsInit;
+  } catch (e) {
+    console.warn('require failed', specifier, e);
+    return null;
+  }
+}
+
+function loadSqlJsInit(): { init: SqlJsInit; mode: 'asm' | 'wasm' } {
+  // Packaged Electron: prefer asm.js (no .wasm locateFile). Dev: same, then wasm.
+  const asm =
+    tryRequireSqlJs('sql.js/dist/sql-asm.js') ||
+    tryRequireSqlJs(path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules', 'sql.js', 'dist', 'sql-asm.js'));
+  if (asm) return { init: asm, mode: 'asm' };
+
+  const wasm =
+    tryRequireSqlJs('sql.js') ||
+    tryRequireSqlJs(path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules', 'sql.js'));
+  if (wasm) return { init: wasm, mode: 'wasm' };
+
+  throw new Error(
+    'sql.js not found. Reinstall the app or ensure node_modules/sql.js is unpacked (asarUnpack).',
+  );
 }
 
 function migrate(database: SqlJsDatabase): void {
@@ -121,31 +149,45 @@ export function persist(): void {
   fs.writeFileSync(dbPath, Buffer.from(data));
 }
 
+export function getLocalDbInitError(): string | null {
+  return initError;
+}
+
 export async function getLocalDb(): Promise<SqlJsDatabase> {
   if (db) return db;
+  if (initError) throw new Error(initError);
 
-  dbPath = resolveDbPath();
-  const initSqlJs = await loadSqlJs();
-  const wasmPath = resolveWasmPath();
-  const SQL = await initSqlJs({
-    locateFile: (file: string) => {
-      if (file.endsWith('.wasm') && fs.existsSync(wasmPath)) return wasmPath;
-      return path.join(path.dirname(wasmPath), file);
-    },
-  });
+  try {
+    dbPath = resolveDbPath();
+    const { init, mode } = loadSqlJsInit();
+    const wasmPath = resolveWasmPath();
+    const SQL = await init(
+      mode === 'wasm' && wasmPath
+        ? {
+            locateFile: (file: string) => {
+              if (file.endsWith('.wasm') && fs.existsSync(wasmPath)) return wasmPath;
+              return path.join(path.dirname(wasmPath), file);
+            },
+          }
+        : undefined,
+    );
 
-  if (fs.existsSync(dbPath)) {
-    const buf = fs.readFileSync(dbPath);
-    db = new SQL.Database(new Uint8Array(buf));
-  } else {
-    db = new SQL.Database();
+    if (fs.existsSync(dbPath)) {
+      const buf = fs.readFileSync(dbPath);
+      db = new SQL.Database(new Uint8Array(buf));
+    } else {
+      db = new SQL.Database();
+    }
+    migrate(db);
+    scheduleSave();
+    console.log('Local SQLite ready', { dbPath, mode, wasmPath });
+    void importPackagedSeeds().catch((e) => console.warn('seed import skipped', e));
+    return db;
+  } catch (error) {
+    initError = error instanceof Error ? error.message : String(error);
+    console.error('Local SQLite init failed', initError);
+    throw error instanceof Error ? error : new Error(initError);
   }
-  migrate(db);
-  scheduleSave();
-  console.log('Local SQLite ready', { dbPath, wasmPath });
-  // Fire-and-forget: import packaged seed packs once
-  void importPackagedSeeds().catch((e) => console.warn('seed import skipped', e));
-  return db;
 }
 
 /** One-shot import of resources/seed dumps shipped with the installer. */
@@ -169,7 +211,6 @@ async function importPackagedSeeds(): Promise<void> {
     return;
   }
 
-  // Lazy require to avoid circular init with offline-dict-store
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const offline = require('./offline-dict-store') as typeof import('./offline-dict-store');
   for (const file of files) {

@@ -172,10 +172,21 @@ function initializeSettingsWindow() {
                 <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
               </label>
             </div>
-            <p class="settings-hint">Dwell ~450&nbsp;ms over a word (UIA first, OCR fallback).</p>
+            <p class="settings-hint">Dwell ~450&nbsp;ms over a word (UIA first, OCR fallback). In <strong>shortcut</strong> monitor mode, hover does not open the popup unless the trigger key is held.</p>
             <div class="settings-dropzone" id="settings-dropzone" tabindex="0">
               <strong>Drop or paste an image</strong>
               <span>PNG / JPG / WebP → OCR → lookup</span>
+            </div>
+            <div class="settings-panel__intro" style="margin-top:20px;">
+              <h3 class="settings-panel__title" style="font-size:1rem;">OCR engine</h3>
+              <p class="settings-hint">
+                Needs Python on PATH (or <code>PHEVERE_PYTHON</code>). Fresh PCs: click Install to pip-install <code>rapidocr</code> + <code>onnxruntime</code>; models download into app data on first use.
+              </p>
+            </div>
+            <p id="ocr-status" class="settings-inline-status" role="status" aria-live="polite">Checking OCR…</p>
+            <div class="settings-actions settings-actions--wrap">
+              <button type="button" id="ocr-refresh-status" class="btn btn-outlined">Refresh status</button>
+              <button type="button" id="ocr-ensure-deps" class="btn btn-primary">Install OCR deps</button>
             </div>
           </section>
 
@@ -268,12 +279,52 @@ function initializeSettingsWindow() {
   setupAudioSettings();
   wireSettingsImageDrop();
   void wireOfflineSettingsPanel();
+  void wireOcrSettingsPanel();
   void wireMonitorSettingsFields().then(({ stopCapture }) => {
     document.getElementById('settings-close')?.addEventListener('click', () => {
       stopCapture();
       window.close();
     });
   });
+}
+
+async function wireOcrSettingsPanel(): Promise<void> {
+  const api = (window as any).ocrAPI;
+  const statusEl = document.getElementById('ocr-status');
+  const setStatus = (msg: string) => {
+    if (statusEl) statusEl.textContent = msg;
+  };
+  const refresh = async () => {
+    if (!api?.getStatus) {
+      setStatus('OCR API unavailable.');
+      return;
+    }
+    try {
+      const s = await api.getStatus();
+      const avail =
+        s.available === true ? 'ready' : s.available === false ? 'unavailable' : 'unknown';
+      setStatus(
+        `Status: ${avail} · Python: ${s.python || '?'} · Models: ${s.modelRoot || '?'} · ${s.lastError ? 'Error: ' + s.lastError : 'OK'}`,
+      );
+    } catch (e: any) {
+      setStatus(`Status check failed: ${e?.message || e}`);
+    }
+  };
+  document.getElementById('ocr-refresh-status')?.addEventListener('click', () => {
+    void refresh();
+  });
+  document.getElementById('ocr-ensure-deps')?.addEventListener('click', async () => {
+    if (!api?.ensureDeps) return;
+    setStatus('Installing rapidocr + onnxruntime (may take a few minutes)…');
+    try {
+      const r = await api.ensureDeps();
+      setStatus(r?.ok ? `OCR deps OK — ${r.detail}` : `Install failed — ${r?.detail || 'unknown'}`);
+      await refresh();
+    } catch (e: any) {
+      setStatus(`Install failed: ${e?.message || e}`);
+    }
+  });
+  await refresh();
 }
 
 async function wireOfflineSettingsPanel(): Promise<void> {

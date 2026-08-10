@@ -84,7 +84,7 @@ This interface is also the target for future macOS AX / Linux AT-SPI backends.
 ### Phase 2 — OCR engine
 
 - [x] RapidOCR PP-OCRv6 via persistent `scripts/ocr_worker.py` (uses local ONNX)
-- [ ] Bundle models inside the installer (currently uses system RapidOCR install)
+- [x] Bundle / first-run OCR models: worker auto `pip install rapidocr onnxruntime` when missing; models cache under `%APPDATA%/phevere/ocr-models` via `PHEVERE_OCR_MODEL_ROOT`. Settings → Capture → Install OCR deps.
 - [ ] `onnxruntime-node` in-process (optional later; Python worker is the shipping path for now)
 - [x] Cache key via `imageHash` on ContextEvent
 - [ ] Windows.Media.Ocr (WinRT await still unreliable from PowerShell — deprioritized)

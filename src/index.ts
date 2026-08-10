@@ -9,7 +9,7 @@ import { searchService } from './services/search';
 import { createNativeSelectionService, SelectionEvent } from './services/native-selection';
 import { contextCaptureHub, ContextEvent, selectionToContext } from './services/context-capture';
 import { captureScreenRegion, captureAroundPoint } from './services/screen-capture';
-import { ocrEngine, textNearPoint } from './services/ocr-engine';
+import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus } from './services/ocr-engine';
 import { isLookupWorthy } from './services/text-normalize';
 import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
 import { placePopupNearPoint } from './services/popup-placement';
@@ -884,9 +884,13 @@ function wireContextCaptureHubOnce(): void {
     lastSelectionEvent = event;
     lastSelectedText = event.text || '';
 
-    // Hover and OCR always open the popup when monitoring isn't off.
-    // Classic drag-selection still respects shortcut-mode hold semantics.
-    if (event.origin === 'selection' && monitorSettings.mode === 'shortcut') {
+    // Shortcut mode: store selection/hover for select-then-trigger, but only open the
+    // popup while the trigger chord is physically held. Hover must not bypass this
+    // (dwell after a drag-select was opening the popup and made shortcut mode look broken).
+    if (
+      monitorSettings.mode === 'shortcut' &&
+      (event.origin === 'selection' || event.origin === 'hover')
+    ) {
       try {
         mainWindow?.webContents.send('selection-changed', event.text);
       } catch (e) {
@@ -1058,10 +1062,12 @@ async function handleOcrRegionSelected(region: {
       rawLen: (ocr.text || '').length,
     });
     const available = await ocrEngine.isAvailable().catch(() => false);
+    const status = getOcrStatus();
+    const hint = available
+      ? '(No text recognized in selection)'
+      : `(OCR unavailable — need Python + rapidocr. Last error: ${status.lastError || 'none'}. Open Settings → Capture → Install OCR deps, or set PHEVERE_PYTHON.)`;
     contextCaptureHub.emit({
-      text: available
-        ? '(No text recognized in selection)'
-        : '(OCR unavailable — RapidOCR/Python not found. Set PHEVERE_PYTHON to your python.exe)',
+      text: hint,
       x: progressX,
       y: progressY,
       timestamp: Date.now(),
@@ -1143,7 +1149,7 @@ async function emitOcrFromPng(opts: {
         opts.emptyMessage ||
         (available
           ? '(No text recognized)'
-          : '(OCR unavailable — RapidOCR/Python not found. Set PHEVERE_PYTHON)'),
+          : `(OCR unavailable — ${getOcrStatus().lastError || 'RapidOCR/Python not found'}. Settings → Capture → Install OCR deps)`),
       x: opts.x,
       y: opts.y,
       timestamp: Date.now(),
@@ -1718,16 +1724,36 @@ ipcMain.handle('dictionary-get-supported-languages', () => {
 
 // Vocabulary notebook
 ipcMain.handle('vocab-list', async (_e, limit?: number) => {
-  return vocabStore.listVocab(limit ?? 200);
+  try {
+    return await vocabStore.listVocab(limit ?? 200);
+  } catch (error) {
+    log.error('main', 'vocab-list failed', { err: String(error) });
+    throw error;
+  }
 });
 ipcMain.handle('vocab-find', async (_e, lemma: string) => {
-  return vocabStore.findByLemma(lemma);
+  try {
+    return await vocabStore.findByLemma(lemma);
+  } catch (error) {
+    log.error('main', 'vocab-find failed', { err: String(error) });
+    throw error;
+  }
 });
 ipcMain.handle('vocab-add', async (_e, payload: vocabStore.VocabAddInput) => {
-  return vocabStore.addVocab(payload);
+  try {
+    return await vocabStore.addVocab(payload);
+  } catch (error) {
+    log.error('main', 'vocab-add failed', { err: String(error) });
+    throw error;
+  }
 });
 ipcMain.handle('vocab-remove', async (_e, id: string) => {
-  return vocabStore.removeVocab(id);
+  try {
+    return await vocabStore.removeVocab(id);
+  } catch (error) {
+    log.error('main', 'vocab-remove failed', { err: String(error) });
+    throw error;
+  }
 });
 ipcMain.handle('vocab-update-note', async (_e, id: string, note: string) => {
   return vocabStore.updateVocabNote(id, note);
@@ -1776,6 +1802,19 @@ ipcMain.handle('offline-import-cedict-file', async () => {
 ipcMain.handle('offline-download-cedict', async () => {
   const imported = await offlineDict.downloadAndImportCedict();
   return { success: true, ...imported };
+});
+
+ipcMain.handle('ocr-get-status', async () => {
+  try {
+    const available = await ocrEngine.isAvailable();
+    return { ...getOcrStatus(), available };
+  } catch (error) {
+    return { ...getOcrStatus(), available: false, lastError: String(error) };
+  }
+});
+ipcMain.handle('ocr-ensure-deps', async () => {
+  log.info('main', 'OCR ensureDeps requested');
+  return ensureOcrDeps();
 });
 
 // Wikipedia service IPC handlers

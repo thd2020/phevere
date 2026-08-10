@@ -2300,7 +2300,8 @@ function startAutoCloseTimeout() {
            showToast('Saved to notebook');
          } catch (e) {
            console.error(e);
-           showToast('Save failed');
+           const msg = (e && (e.message || e.msg)) ? String(e.message || e.msg) : String(e || 'unknown');
+           showToast(msg.length > 80 ? 'Save failed — notebook DB error' : ('Save failed: ' + msg));
          }
        }
 

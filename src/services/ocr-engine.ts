@@ -64,6 +64,9 @@ function resolvePython(): string {
   const guesses = [
     path.join(process.env.USERPROFILE || '', 'AppData', 'Local', 'anaconda3', 'python.exe'),
     path.join(process.env.LOCALAPPDATA || '', 'anaconda3', 'python.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python311', 'python.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python310', 'python.exe'),
     'python',
     'py',
   ];
@@ -72,6 +75,14 @@ function resolvePython(): string {
     if (fs.existsSync(g)) return g;
   }
   return 'python';
+}
+
+function resolveModelRoot(): string {
+  try {
+    return path.join(app.getPath('userData'), 'ocr-models');
+  } catch {
+    return path.join(os.tmpdir(), 'phevere-ocr-models');
+  }
 }
 
 function boxToBounds(pts: number[][]): OcrLine['bounds'] | undefined {
@@ -95,8 +106,21 @@ class RapidOcrWorkerEngine implements OcrEngine {
   private pending = new Map<number, Pending>();
   private starting: Promise<void> | null = null;
   private available: boolean | null = null;
+  private ensuredDeps = false;
+  private lastError: string | null = null;
   private readonly script = resolveWorkerScript();
   private readonly python = resolvePython();
+  private readonly modelRoot = resolveModelRoot();
+
+  getStatus(): { python: string; script: string; modelRoot: string; available: boolean | null; lastError: string | null } {
+    return {
+      python: this.python,
+      script: this.script,
+      modelRoot: this.modelRoot,
+      available: this.available,
+      lastError: this.lastError,
+    };
+  }
 
   async isAvailable(): Promise<boolean> {
     if (this.available !== null) return this.available;
@@ -109,24 +133,53 @@ class RapidOcrWorkerEngine implements OcrEngine {
       this.available = !!(pong && pong.ok);
     } catch (error) {
       console.warn('RapidOCR worker unavailable', error);
+      this.lastError = error instanceof Error ? error.message : String(error);
       this.available = false;
     }
     return this.available;
   }
 
+  /** pip install rapidocr/onnxruntime + set model cache dir (first-run on clean PCs). */
+  async ensureDeps(): Promise<{ ok: boolean; detail: string }> {
+    try {
+      await this.ensureChild();
+      const resp = await this.request({ cmd: 'ensure_deps' }, 600000);
+      this.ensuredDeps = !!(resp && resp.ok);
+      if (!resp?.ok) {
+        this.lastError = String(resp?.error || 'ensure_deps failed');
+        return { ok: false, detail: this.lastError };
+      }
+      this.available = true;
+      this.lastError = null;
+      return { ok: true, detail: 'RapidOCR ready' };
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      return { ok: false, detail: this.lastError };
+    }
+  }
+
   async warmUp(): Promise<void> {
-    if (!(await this.isAvailable())) return;
+    if (!(await this.isAvailable())) {
+      const ensured = await this.ensureDeps();
+      if (!ensured.ok) {
+        console.warn('OCR ensureDeps failed during warm-up', ensured.detail);
+        return;
+      }
+    }
     // Loading models happens on first real recognize; send a 1×1 PNG to force it.
     const tiny = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
       'base64'
     );
-            await this.recognize(tiny).catch((): undefined => undefined);
+    await this.recognize(tiny).catch((): undefined => undefined);
   }
 
   async recognize(png: Buffer): Promise<OcrResult> {
     if (!(await this.isAvailable())) {
-      return { text: '', lines: [], engine: 'none' };
+      const ensured = await this.ensureDeps();
+      if (!ensured.ok) {
+        return { text: '', lines: [], engine: 'none' };
+      }
     }
 
     const tmp = path.join(
@@ -135,32 +188,27 @@ class RapidOcrWorkerEngine implements OcrEngine {
     );
     try {
       fs.writeFileSync(tmp, png);
-      const resp = await this.request({ path: tmp }, 45000);
+      const resp = await this.request({ path: tmp }, 120000);
       if (!resp || !resp.ok) {
-        console.warn('RapidOCR failed', resp?.error);
+        const err = String(resp?.error || 'RapidOCR failed');
+        console.warn('RapidOCR failed', err);
+        this.lastError = err;
+        // Missing package / models — try one install pass then retry once.
+        if (!this.ensuredDeps && /No module named|rapidocr|onnxruntime|Download|model/i.test(err)) {
+          this.ensuredDeps = true;
+          const ensured = await this.ensureDeps();
+          if (ensured.ok) {
+            const retry = await this.request({ path: tmp }, 120000);
+            if (retry?.ok) {
+              return this.mapResponse(retry);
+            }
+            this.lastError = String(retry?.error || err);
+          }
+        }
         return { text: '', lines: [], engine: 'none' };
       }
 
-      const txts: string[] = Array.isArray(resp.txts) ? resp.txts.map(String) : [];
-      const scores: number[] = Array.isArray(resp.scores) ? resp.scores.map(Number) : [];
-      const boxes: number[][][] = Array.isArray(resp.boxes) ? resp.boxes : [];
-
-      const lines: OcrLine[] = txts.map((text, i) => ({
-        text,
-        bounds: boxToBounds(boxes[i]),
-      }));
-
-      const text = txts.join('\n').trim();
-      const confidence =
-        scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : text ? 0.8 : 0;
-
-      return {
-        text,
-        lines,
-        confidence,
-        engine: text ? 'onnx-rapidocr' : 'none',
-        language: 'multi',
-      };
+      return this.mapResponse(resp);
     } finally {
       try {
         fs.unlinkSync(tmp);
@@ -168,6 +216,29 @@ class RapidOcrWorkerEngine implements OcrEngine {
         /* ignore */
       }
     }
+  }
+
+  private mapResponse(resp: any): OcrResult {
+    const txts: string[] = Array.isArray(resp.txts) ? resp.txts.map(String) : [];
+    const scores: number[] = Array.isArray(resp.scores) ? resp.scores.map(Number) : [];
+    const boxes: number[][][] = Array.isArray(resp.boxes) ? resp.boxes : [];
+
+    const lines: OcrLine[] = txts.map((text, i) => ({
+      text,
+      bounds: boxToBounds(boxes[i]),
+    }));
+
+    const text = txts.join('\n').trim();
+    const confidence =
+      scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : text ? 0.8 : 0;
+
+    return {
+      text,
+      lines,
+      confidence,
+      engine: text ? 'onnx-rapidocr' : 'none',
+      language: 'multi',
+    };
   }
 
   dispose(): void {
@@ -197,11 +268,25 @@ class RapidOcrWorkerEngine implements OcrEngine {
 
     this.starting = new Promise<void>((resolve, reject) => {
       try {
-        console.log('Starting RapidOCR worker', { python: this.python, script: this.script });
+        try {
+          fs.mkdirSync(this.modelRoot, { recursive: true });
+        } catch {
+          /* ignore */
+        }
+        console.log('Starting RapidOCR worker', {
+          python: this.python,
+          script: this.script,
+          modelRoot: this.modelRoot,
+        });
         const child = spawn(this.python, ['-u', this.script], {
           stdio: ['pipe', 'pipe', 'pipe'],
           windowsHide: true,
-          env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+          env: {
+            ...process.env,
+            PYTHONIOENCODING: 'utf-8',
+            PYTHONUTF8: '1',
+            PHEVERE_OCR_MODEL_ROOT: this.modelRoot,
+          },
         });
         this.child = child;
         this.buffer = '';
@@ -237,6 +322,7 @@ class RapidOcrWorkerEngine implements OcrEngine {
         child.on('error', (err) => {
           this.child = null;
           this.available = false;
+          this.lastError = err.message;
           reject(err);
         });
         child.on('exit', (code) => {
@@ -324,6 +410,20 @@ class CompositeOcrEngine implements OcrEngine {
     return this.rapid.warmUp();
   }
 
+  async ensureDeps(): Promise<{ ok: boolean; detail: string }> {
+    return this.rapid.ensureDeps();
+  }
+
+  getStatus(): {
+    python: string;
+    script: string;
+    modelRoot: string;
+    available: boolean | null;
+    lastError: string | null;
+  } {
+    return this.rapid.getStatus();
+  }
+
   async recognize(png: Buffer): Promise<OcrResult> {
     const result = await this.rapid.recognize(png);
     if (result.text.trim()) return result;
@@ -337,6 +437,19 @@ class CompositeOcrEngine implements OcrEngine {
 
 export const ocrEngine: OcrEngine = new CompositeOcrEngine();
 
+export async function ensureOcrDeps(): Promise<{ ok: boolean; detail: string }> {
+  return (ocrEngine as CompositeOcrEngine).ensureDeps();
+}
+
+export function getOcrStatus(): {
+  python: string;
+  script: string;
+  modelRoot: string;
+  available: boolean | null;
+  lastError: string | null;
+} {
+  return (ocrEngine as CompositeOcrEngine).getStatus();
+}
 /**
  * Prefer the line / token whose box contains (relX, relY); else nearest box;
  * else full joined text. Coordinates are in image-pixel space.

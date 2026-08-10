@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { getLocalDb, queryAll, queryOne, runWrite } from './local-db';
+import { getLocalDb, getLocalDbInitError, queryAll, queryOne, runWrite } from './local-db';
 
 export interface VocabEntry {
   id: string;
@@ -59,7 +59,20 @@ function rowToEntry(row: Record<string, unknown>): VocabEntry {
 }
 
 export async function ensureVocabReady(): Promise<void> {
-  await getLocalDb();
+  try {
+    await getLocalDb();
+  } catch (error) {
+    const detail = getLocalDbInitError() || (error instanceof Error ? error.message : String(error));
+    throw new Error(`Notebook database unavailable: ${detail}`);
+  }
+}
+
+function newId(): string {
+  try {
+    return randomUUID();
+  } catch {
+    return `v-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
 }
 
 export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
@@ -87,10 +100,12 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
         id,
       ],
     );
-    return getVocab(id)!;
+    const updated = getVocab(id);
+    if (!updated) throw new Error('Failed to reload saved entry');
+    return updated;
   }
 
-  const id = randomUUID();
+  const id = newId();
   runWrite(
     `INSERT INTO vocab (id, lemma, reading, definition, part_of_speech, source_lang, target_lang, sources, note, tags, created_at, updated_at, review_due, review_interval, ease, reps)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 2.5, 0)`,
@@ -110,7 +125,9 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
       now,
     ],
   );
-  return getVocab(id)!;
+  const created = getVocab(id);
+  if (!created) throw new Error('Failed to reload saved entry');
+  return created;
 }
 
 export function getVocab(id: string): VocabEntry | null {
