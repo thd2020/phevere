@@ -672,7 +672,7 @@ const createPopupWindow = (x: number, y: number): void => {
   const POPUP_STRIP_ICON = 24;
   const POPUP_STRIP_GAP = 2;
   const POPUP_STRIP_PAD = 4;
-  const POPUP_STRIP_ICONS = 9; // includes vocab heart
+  const POPUP_STRIP_ICONS = 8; // includes vocab heart; Wikipedia is tab-only
   const popupWidth =
     POPUP_STRIP_PAD +
     POPUP_STRIP_ICONS * POPUP_STRIP_ICON +
@@ -744,6 +744,7 @@ const createPopupWindow = (x: number, y: number): void => {
                   preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
                   nodeIntegration: false,
                   contextIsolation: true,
+                  webviewTag: true,
                 },
               });
   // Close on blur to match intended UX
@@ -1065,7 +1066,7 @@ async function handleOcrRegionSelected(region: {
     const status = getOcrStatus();
     const hint = available
       ? '(No text recognized in selection)'
-      : `(OCR unavailable — need Python + rapidocr. Last error: ${status.lastError || 'none'}. Open Settings → Capture → Install OCR deps, or set PHEVERE_PYTHON.)`;
+      : `(OCR unavailable — ${status.lastError || 'embedded engine failed to load'}. Check Settings → Capture.)`;
     contextCaptureHub.emit({
       text: hint,
       x: progressX,
@@ -1149,7 +1150,7 @@ async function emitOcrFromPng(opts: {
         opts.emptyMessage ||
         (available
           ? '(No text recognized)'
-          : `(OCR unavailable — ${getOcrStatus().lastError || 'RapidOCR/Python not found'}. Settings → Capture → Install OCR deps)`),
+          : `(OCR unavailable — ${getOcrStatus().lastError || 'embedded engine failed'}. Settings → Capture)`),
       x: opts.x,
       y: opts.y,
       timestamp: Date.now(),

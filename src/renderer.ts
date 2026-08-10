@@ -180,13 +180,12 @@ function initializeSettingsWindow() {
             <div class="settings-panel__intro" style="margin-top:20px;">
               <h3 class="settings-panel__title" style="font-size:1rem;">OCR engine</h3>
               <p class="settings-hint">
-                Needs Python on PATH (or <code>PHEVERE_PYTHON</code>). Fresh PCs: click Install to pip-install <code>rapidocr</code> + <code>onnxruntime</code>; models download into app data on first use.
+                Embedded ONNX OCR ships with the app (no Python install). Status below reflects the in-process engine.
               </p>
             </div>
             <p id="ocr-status" class="settings-inline-status" role="status" aria-live="polite">Checking OCR…</p>
             <div class="settings-actions settings-actions--wrap">
               <button type="button" id="ocr-refresh-status" class="btn btn-outlined">Refresh status</button>
-              <button type="button" id="ocr-ensure-deps" class="btn btn-primary">Install OCR deps</button>
             </div>
           </section>
 
@@ -301,28 +300,21 @@ async function wireOcrSettingsPanel(): Promise<void> {
     }
     try {
       const s = await api.getStatus();
-      const avail =
-        s.available === true ? 'ready' : s.available === false ? 'unavailable' : 'unknown';
-      setStatus(
-        `Status: ${avail} · Python: ${s.python || '?'} · Models: ${s.modelRoot || '?'} · ${s.lastError ? 'Error: ' + s.lastError : 'OK'}`,
-      );
+      if (s.available === true && (s.engine === 'onnx-native' || !s.engine)) {
+        setStatus(`Embedded OCR ready · Models: ${s.modelsPath || 'bundled'}`);
+      } else if (s.available === true) {
+        setStatus(`OCR ready (${s.engine}) · ${s.lastError ? 'Note: ' + s.lastError : 'OK'}`);
+      } else if (s.available === false) {
+        setStatus(`Embedded OCR error · ${s.lastError || 'unavailable'} · Models: ${s.modelsPath || '?'}`);
+      } else {
+        setStatus(`Checking OCR… · Models: ${s.modelsPath || '?'}`);
+      }
     } catch (e: any) {
       setStatus(`Status check failed: ${e?.message || e}`);
     }
   };
   document.getElementById('ocr-refresh-status')?.addEventListener('click', () => {
     void refresh();
-  });
-  document.getElementById('ocr-ensure-deps')?.addEventListener('click', async () => {
-    if (!api?.ensureDeps) return;
-    setStatus('Installing rapidocr + onnxruntime (may take a few minutes)…');
-    try {
-      const r = await api.ensureDeps();
-      setStatus(r?.ok ? `OCR deps OK — ${r.detail}` : `Install failed — ${r?.detail || 'unknown'}`);
-      await refresh();
-    } catch (e: any) {
-      setStatus(`Install failed: ${e?.message || e}`);
-    }
   });
   await refresh();
 }
@@ -1486,25 +1478,48 @@ async function loadVocabNotebook(): Promise<void> {
   try {
     const entries = await api.list(100);
     if (!entries || !entries.length) {
-      list.innerHTML = `<p class="empty-message">No saved words yet. Use Save in the popup Lexicon or Translation tab.</p>`;
+      list.innerHTML = `<p class="empty-message">No saved words yet. Use the heart on the popup toolstrip to save a lemma.</p>`;
       return;
     }
     list.innerHTML = entries
       .map((e: any) => {
-        const def = escapeHtmlSelection((e.definition || '').slice(0, 160));
-        const tags = (e.sources || []).slice(0, 3).map((s: string) => escapeHtmlSelection(s)).join(' · ');
-        return `<div class="selection-item vocab-item" data-id="${escapeHtmlSelection(e.id)}">
-          <div class="selection-text">
-            <strong>${escapeHtmlSelection(e.lemma)}</strong>
-            ${e.partOfSpeech ? `<span class="vocab-pos">${escapeHtmlSelection(e.partOfSpeech)}</span>` : ''}
-            <div class="vocab-def">${def}</div>
-            ${tags ? `<div class="vocab-cites">${tags}</div>` : ''}
+        const defRaw = String(e.definition || '').trim();
+        const long = defRaw.length > 280 || defRaw.split(/\n/).length > 4;
+        const defHtml = escapeHtmlSelection(defRaw).replace(/\n/g, '<br>');
+        const badges = (e.sources || [])
+          .slice(0, 4)
+          .map((s: string) => `<span class="vocab-badge">${escapeHtmlSelection(s)}</span>`)
+          .join('');
+        const langPair =
+          e.sourceLang || e.targetLang
+            ? `<span class="vocab-langs">${escapeHtmlSelection(
+                [e.sourceLang, e.targetLang].filter(Boolean).join(' → '),
+              )}</span>`
+            : '';
+        const saved =
+          e.updatedAt || e.createdAt
+            ? new Date(Number(e.updatedAt || e.createdAt)).toLocaleString()
+            : '';
+        return `<article class="selection-item vocab-item" data-id="${escapeHtmlSelection(e.id)}">
+          <div class="vocab-entry">
+            <header class="vocab-entry__head">
+              <h3 class="vocab-lemma">${escapeHtmlSelection(e.lemma)}</h3>
+              ${e.reading ? `<span class="vocab-reading">/${escapeHtmlSelection(e.reading)}/</span>` : ''}
+            </header>
+            <div class="vocab-entry__meta">
+              ${e.partOfSpeech ? `<span class="vocab-pos">${escapeHtmlSelection(e.partOfSpeech)}</span>` : ''}
+              ${langPair}
+            </div>
+            ${defHtml ? `<div class="vocab-def${long ? ' is-clamped' : ''}" data-full="1">${defHtml}</div>${long ? `<button type="button" class="vocab-more btn-link">Show more</button>` : ''}` : ''}
+            ${badges ? `<div class="vocab-badges">${badges}</div>` : ''}
+            ${e.note ? `<p class="vocab-note">${escapeHtmlSelection(e.note)}</p>` : ''}
+            ${saved ? `<time class="vocab-saved" datetime="${escapeHtmlSelection(String(e.updatedAt || e.createdAt))}">Saved ${escapeHtmlSelection(saved)}</time>` : ''}
           </div>
           <div class="selection-actions">
             <button type="button" class="btn btn-outlined btn-small vocab-open" data-lemma="${escapeHtmlSelection(e.lemma)}">Open</button>
             <button type="button" class="btn btn-outlined btn-small vocab-remove" data-id="${escapeHtmlSelection(e.id)}">Remove</button>
           </div>
-        </div>`;
+        </article>`;
       })
       .join('');
 
@@ -1520,6 +1535,19 @@ async function loadVocabNotebook(): Promise<void> {
         if (!id) return;
         await api.remove(id);
         void loadVocabNotebook();
+      });
+    });
+    list.querySelectorAll('.vocab-more').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const def = (btn as HTMLElement).previousElementSibling as HTMLElement | null;
+        if (!def) return;
+        const open = def.classList.toggle('is-clamped') === false;
+        (btn as HTMLElement).textContent = open ? 'Show less' : 'Show more';
+        if (open) def.classList.remove('is-clamped');
+        else def.classList.add('is-clamped');
+        // fix toggle: after toggle is-clamped, if removed we show less
+        const clamped = def.classList.contains('is-clamped');
+        (btn as HTMLElement).textContent = clamped ? 'Show more' : 'Show less';
       });
     });
   } catch (error) {

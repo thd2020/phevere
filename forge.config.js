@@ -15,7 +15,14 @@ module.exports = {
     // Prefer packaging/icon.ico when available; PNG is fine for electron-builder NSIS.
     // icon: './packaging/icon',
     // koffi + sql.js must unpack; WASM also shipped as extraResource.
-    asarUnpack: ['**/node_modules/koffi/**/*', '**/node_modules/sql.js/**/*'],
+    asarUnpack: [
+      '**/node_modules/koffi/**/*',
+      '**/node_modules/sql.js/**/*',
+      '**/node_modules/onnxruntime-node/**/*',
+      '**/node_modules/sharp/**/*',
+      '**/node_modules/@img/**/*',
+      '**/node_modules/@gutenye/**/*',
+    ],
     extraResource: [
       'resources/tray-icon.png',
       'scripts/ocr_worker.py',
@@ -23,6 +30,8 @@ module.exports = {
       'node_modules/sql.js/dist/sql-wasm.wasm',
       // Optional offline seed packs (JSON/JSONL/CEDICT). Copied into userData on first run.
       'resources/seed',
+      // Embedded PP-OCR ONNX models (no end-user Python).
+      'resources/ocr-models',
     ],
   },
   rebuildConfig: {},

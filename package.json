@@ -17,7 +17,8 @@
     "build-native": "cd native-addon && npm install && npm run build",
     "dev": "electron-forge start",
     "test": "node test-integration.js",
-    "test-new-popup": "electron-forge start -- --test-new-popup"
+    "test-new-popup": "electron-forge start -- --test-new-popup",
+    "sync-ocr-models": "node scripts/sync-ocr-models.js"
   },
   "keywords": [
     "dictionary",
@@ -64,12 +65,21 @@
     "webpack-cli": "^6.0.1"
   },
   "dependencies": {
+    "@gutenye/ocr-node": "^1.4.8",
     "csv-parse": "^5.5.0",
     "google-translate-api-browser": "^5.0.0",
     "koffi": "^2.15.2",
     "lowdb": "^7.0.1",
     "node-fetch": "^2.7.0",
+    "onnxruntime-node": "^1.27.0",
     "sql.js": "^1.14.1",
     "wink-lemmatizer": "^3.0.4"
+  },
+  "allowScripts": {
+    "electron@28.3.3": true,
+    "electron-winstaller@5.4.0": true,
+    "koffi@2.15.2": true,
+    "onnxruntime-node@1.27.0": true,
+    "sharp@0.33.5": true
   }
 }

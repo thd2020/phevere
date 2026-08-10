@@ -18,6 +18,12 @@ const mainConfig = {
   externals: {
     koffi: 'commonjs2 koffi',
     'sql.js': 'commonjs2 sql.js',
+    '@gutenye/ocr-node': 'commonjs2 @gutenye/ocr-node',
+    '@gutenye/ocr-common': 'commonjs2 @gutenye/ocr-common',
+    '@gutenye/ocr-models': 'commonjs2 @gutenye/ocr-models',
+    '@gutenye/ocr-models/node': 'commonjs2 @gutenye/ocr-models/node',
+    'onnxruntime-node': 'commonjs2 onnxruntime-node',
+    sharp: 'commonjs2 sharp',
   },
 };
 

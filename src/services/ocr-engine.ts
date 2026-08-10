@@ -1,8 +1,8 @@
 /**
  * OCR engine facade (docs/OCR_CONTEXT_CAPTURE.md Phase 2).
  *
- * Primary: persistent RapidOCR (PP-OCRv6 ONNX) via scripts/ocr_worker.py
- * Fallback: Windows.Media.Ocr when a language pack exists and WinRT await works
+ * Primary: in-process onnxruntime-node + PP-OCR ONNX (via @gutenye/ocr-node)
+ * Fallback (dev / last resort): Python RapidOCR worker — not advertised in Settings
  */
 
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
@@ -24,7 +24,7 @@ export interface OcrResult {
   text: string;
   lines: OcrLine[];
   confidence?: number;
-  engine: 'windows-media-ocr' | 'onnx-rapidocr' | 'none';
+  engine: 'windows-media-ocr' | 'onnx-native' | 'onnx-rapidocr' | 'none';
   language?: string;
 }
 
@@ -36,11 +36,42 @@ export interface OcrEngine {
   dispose?(): void;
 }
 
+export type OcrStatus = {
+  engine: 'onnx-native' | 'python-fallback' | 'none';
+  modelsPath: string;
+  available: boolean | null;
+  lastError: string | null;
+  /** Dev-only Python fallback metadata (omit from Settings copy). */
+  python?: string;
+  script?: string;
+  modelRoot?: string;
+};
+
 type Pending = {
   resolve: (value: any) => void;
   reject: (err: Error) => void;
   timer: NodeJS.Timeout;
 };
+
+function resolveBundledModelsRoot(): string {
+  const candidates = [
+    path.join(process.resourcesPath || '', 'ocr-models'),
+    path.join(app.getAppPath(), 'resources', 'ocr-models'),
+    path.join(process.cwd(), 'resources', 'ocr-models'),
+    path.join(__dirname, '..', '..', 'resources', 'ocr-models'),
+  ];
+  for (const c of candidates) {
+    if (
+      c &&
+      fs.existsSync(path.join(c, 'ch_PP-OCRv4_det_infer.onnx')) &&
+      fs.existsSync(path.join(c, 'ch_PP-OCRv4_rec_infer.onnx')) &&
+      fs.existsSync(path.join(c, 'ppocr_keys_v1.txt'))
+    ) {
+      return c;
+    }
+  }
+  return candidates[0] || path.join(process.cwd(), 'resources', 'ocr-models');
+}
 
 function resolveWorkerScript(): string {
   const candidates = [
@@ -60,7 +91,6 @@ function resolvePython(): string {
   const fromEnv = process.env.PHEVERE_PYTHON || process.env.PYTHON;
   if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
 
-  // Prefer the Anaconda install that already has RapidOCR on this machine.
   const guesses = [
     path.join(process.env.USERPROFILE || '', 'AppData', 'Local', 'anaconda3', 'python.exe'),
     path.join(process.env.LOCALAPPDATA || '', 'anaconda3', 'python.exe'),
@@ -99,6 +129,147 @@ function boxToBounds(pts: number[][]): OcrLine['bounds'] | undefined {
   };
 }
 
+/** In-process PP-OCR via onnxruntime-node (no Python). */
+class OnnxNativeOcrEngine implements OcrEngine {
+  private ocr: any = null;
+  private initPromise: Promise<void> | null = null;
+  private available: boolean | null = null;
+  private lastError: string | null = null;
+  private readonly modelsPath = resolveBundledModelsRoot();
+
+  getStatus(): Pick<OcrStatus, 'modelsPath' | 'available' | 'lastError'> {
+    return {
+      modelsPath: this.modelsPath,
+      available: this.available,
+      lastError: this.lastError,
+    };
+  }
+
+  async isAvailable(): Promise<boolean> {
+    if (this.available !== null) return this.available;
+    try {
+      await this.ensureReady();
+      this.available = true;
+      this.lastError = null;
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      console.warn('Native OCR unavailable', this.lastError);
+      this.available = false;
+    }
+    return this.available;
+  }
+
+  async warmUp(): Promise<void> {
+    if (!(await this.isAvailable())) return;
+    const tiny = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64'
+    );
+    await this.recognize(tiny).catch((): undefined => undefined);
+  }
+
+  async recognize(png: Buffer): Promise<OcrResult> {
+    try {
+      await this.ensureReady();
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      return { text: '', lines: [], engine: 'none' };
+    }
+
+    const tmp = path.join(
+      os.tmpdir(),
+      `phevere-onnx-ocr-${Date.now()}-${Math.random().toString(36).slice(2)}.png`
+    );
+    try {
+      fs.writeFileSync(tmp, png);
+      const linesRaw: any[] = await this.ocr.detect(tmp);
+      const lines: OcrLine[] = (Array.isArray(linesRaw) ? linesRaw : [])
+        .map((row) => {
+          const frame = row?.frame || {};
+          const left = Number(frame.left) || 0;
+          const top = Number(frame.top) || 0;
+          const width = Number(frame.width) || 0;
+          const height = Number(frame.height) || 0;
+          return {
+            text: String(row?.text || ''),
+            bounds: width > 0 || height > 0 ? { x: left, y: top, width, height } : undefined,
+          };
+        })
+        .filter((l) => l.text.trim());
+
+      const scores = (Array.isArray(linesRaw) ? linesRaw : [])
+        .map((r) => Number(r?.score))
+        .filter((n) => Number.isFinite(n));
+      const text = lines
+        .map((l) => l.text)
+        .join('\n')
+        .trim();
+      const confidence =
+        scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : text ? 0.8 : 0;
+
+      return {
+        text,
+        lines,
+        confidence,
+        engine: text ? 'onnx-native' : 'none',
+        language: 'multi',
+      };
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      console.warn('Native OCR recognize failed', this.lastError);
+      return { text: '', lines: [], engine: 'none' };
+    } finally {
+      try {
+        fs.unlinkSync(tmp);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  private async ensureReady(): Promise<void> {
+    if (this.ocr) return;
+    if (this.initPromise) return this.initPromise;
+
+    this.initPromise = (async () => {
+      const det = path.join(this.modelsPath, 'ch_PP-OCRv4_det_infer.onnx');
+      const rec = path.join(this.modelsPath, 'ch_PP-OCRv4_rec_infer.onnx');
+      const dict = path.join(this.modelsPath, 'ppocr_keys_v1.txt');
+      for (const p of [det, rec, dict]) {
+        if (!fs.existsSync(p)) {
+          throw new Error(`Missing OCR model: ${p}`);
+        }
+      }
+
+      // Externalized package; resolved from node_modules at runtime.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const mod = require('@gutenye/ocr-node');
+      const Ocr = mod.default || mod;
+      console.log('Loading native OCR models', { modelsPath: this.modelsPath });
+      this.ocr = await Ocr.create({
+        models: {
+          detectionPath: det,
+          recognitionPath: rec,
+          dictionaryPath: dict,
+        },
+      });
+    })();
+
+    try {
+      await this.initPromise;
+    } catch (error) {
+      this.initPromise = null;
+      this.ocr = null;
+      throw error;
+    }
+  }
+
+  dispose(): void {
+    this.ocr = null;
+    this.initPromise = null;
+  }
+}
+
 class RapidOcrWorkerEngine implements OcrEngine {
   private child: ChildProcessWithoutNullStreams | null = null;
   private buffer = '';
@@ -112,7 +283,13 @@ class RapidOcrWorkerEngine implements OcrEngine {
   private readonly python = resolvePython();
   private readonly modelRoot = resolveModelRoot();
 
-  getStatus(): { python: string; script: string; modelRoot: string; available: boolean | null; lastError: string | null } {
+  getStatus(): {
+    python: string;
+    script: string;
+    modelRoot: string;
+    available: boolean | null;
+    lastError: string | null;
+  } {
     return {
       python: this.python,
       script: this.script,
@@ -124,9 +301,6 @@ class RapidOcrWorkerEngine implements OcrEngine {
 
   async isAvailable(): Promise<boolean> {
     if (this.available !== null) return this.available;
-    if (!fs.existsSync(this.script) && this.script.includes('ocr_worker')) {
-      // Still try — resolveWorkerScript may point at cwd that exists at runtime.
-    }
     try {
       await this.ensureChild();
       const pong = await this.request({ cmd: 'ping' }, 8000);
@@ -139,7 +313,7 @@ class RapidOcrWorkerEngine implements OcrEngine {
     return this.available;
   }
 
-  /** pip install rapidocr/onnxruntime + set model cache dir (first-run on clean PCs). */
+  /** pip install rapidocr/onnxruntime — last-resort / dev only. */
   async ensureDeps(): Promise<{ ok: boolean; detail: string }> {
     try {
       await this.ensureChild();
@@ -159,14 +333,7 @@ class RapidOcrWorkerEngine implements OcrEngine {
   }
 
   async warmUp(): Promise<void> {
-    if (!(await this.isAvailable())) {
-      const ensured = await this.ensureDeps();
-      if (!ensured.ok) {
-        console.warn('OCR ensureDeps failed during warm-up', ensured.detail);
-        return;
-      }
-    }
-    // Loading models happens on first real recognize; send a 1×1 PNG to force it.
+    if (!(await this.isAvailable())) return;
     const tiny = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
       'base64'
@@ -176,10 +343,7 @@ class RapidOcrWorkerEngine implements OcrEngine {
 
   async recognize(png: Buffer): Promise<OcrResult> {
     if (!(await this.isAvailable())) {
-      const ensured = await this.ensureDeps();
-      if (!ensured.ok) {
-        return { text: '', lines: [], engine: 'none' };
-      }
+      return { text: '', lines: [], engine: 'none' };
     }
 
     const tmp = path.join(
@@ -193,7 +357,6 @@ class RapidOcrWorkerEngine implements OcrEngine {
         const err = String(resp?.error || 'RapidOCR failed');
         console.warn('RapidOCR failed', err);
         this.lastError = err;
-        // Missing package / models — try one install pass then retry once.
         if (!this.ensuredDeps && /No module named|rapidocr|onnxruntime|Download|model/i.test(err)) {
           this.ensuredDeps = true;
           const ensured = await this.ensureDeps();
@@ -400,37 +563,89 @@ class RapidOcrWorkerEngine implements OcrEngine {
 }
 
 class CompositeOcrEngine implements OcrEngine {
+  private readonly native = new OnnxNativeOcrEngine();
   private readonly rapid = new RapidOcrWorkerEngine();
+  private preferred: 'onnx-native' | 'python-fallback' | 'none' = 'none';
 
   async isAvailable(): Promise<boolean> {
-    return this.rapid.isAvailable();
+    if (await this.native.isAvailable()) {
+      this.preferred = 'onnx-native';
+      return true;
+    }
+    if (await this.rapid.isAvailable()) {
+      this.preferred = 'python-fallback';
+      return true;
+    }
+    this.preferred = 'none';
+    return false;
   }
 
   async warmUp(): Promise<void> {
-    return this.rapid.warmUp();
+    if (await this.native.isAvailable()) {
+      this.preferred = 'onnx-native';
+      return this.native.warmUp();
+    }
+    // Do not auto-pip; only warm Python if already runnable.
+    if (await this.rapid.isAvailable()) {
+      this.preferred = 'python-fallback';
+      return this.rapid.warmUp();
+    }
   }
 
   async ensureDeps(): Promise<{ ok: boolean; detail: string }> {
-    return this.rapid.ensureDeps();
+    if (await this.native.isAvailable()) {
+      this.preferred = 'onnx-native';
+      await this.native.warmUp();
+      return { ok: true, detail: 'Embedded OCR ready' };
+    }
+    const n = this.native.getStatus();
+    return {
+      ok: false,
+      detail: n.lastError || `Embedded OCR failed to load (models: ${n.modelsPath})`,
+    };
   }
 
-  getStatus(): {
-    python: string;
-    script: string;
-    modelRoot: string;
-    available: boolean | null;
-    lastError: string | null;
-  } {
-    return this.rapid.getStatus();
+  getStatus(): OcrStatus {
+    const n = this.native.getStatus();
+    const r = this.rapid.getStatus();
+    const engine =
+      this.preferred !== 'none'
+        ? this.preferred
+        : n.available
+          ? 'onnx-native'
+          : r.available
+            ? 'python-fallback'
+            : 'none';
+    return {
+      engine,
+      modelsPath: n.modelsPath,
+      available: engine === 'none' ? (n.available === null && r.available === null ? null : false) : true,
+      lastError: n.lastError || r.lastError,
+      python: r.python,
+      script: r.script,
+      modelRoot: r.modelRoot,
+    };
   }
 
   async recognize(png: Buffer): Promise<OcrResult> {
-    const result = await this.rapid.recognize(png);
-    if (result.text.trim()) return result;
+    if (await this.native.isAvailable()) {
+      this.preferred = 'onnx-native';
+      const result = await this.native.recognize(png);
+      if (result.engine !== 'none' || result.text.trim()) return result;
+      if (!this.native.getStatus().lastError) return result;
+    }
+
+    if (await this.rapid.isAvailable()) {
+      this.preferred = 'python-fallback';
+      console.warn('Falling back to Python RapidOCR worker');
+      return this.rapid.recognize(png);
+    }
+
     return { text: '', lines: [], engine: 'none' };
   }
 
   dispose(): void {
+    this.native.dispose();
     this.rapid.dispose();
   }
 }
@@ -441,15 +656,10 @@ export async function ensureOcrDeps(): Promise<{ ok: boolean; detail: string }> 
   return (ocrEngine as CompositeOcrEngine).ensureDeps();
 }
 
-export function getOcrStatus(): {
-  python: string;
-  script: string;
-  modelRoot: string;
-  available: boolean | null;
-  lastError: string | null;
-} {
+export function getOcrStatus(): OcrStatus {
   return (ocrEngine as CompositeOcrEngine).getStatus();
 }
+
 /**
  * Prefer the line / token whose box contains (relX, relY); else nearest box;
  * else full joined text. Coordinates are in image-pixel space.
@@ -485,7 +695,6 @@ function pickTokenAt(line: string, bounds: NonNullable<OcrLine['bounds']>, relX:
   const text = line.trim();
   if (!text) return '';
 
-  // CJK-heavy: treat each character as a token.
   const cjk = (text.match(/[\u3400-\u9FFF]/g) || []).length;
   if (cjk >= text.replace(/\s/g, '').length / 2) {
     const chars = [...text.replace(/\s+/g, '')];

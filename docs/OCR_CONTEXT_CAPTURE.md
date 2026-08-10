@@ -2,7 +2,7 @@
 
 Status: **active** · Selection + OCR ROI/hover/grab/window/clipboard/media shipped; packaging & cross-platform media open  
 Audience: implementers extending Phevere past UIAutomation-selectable text  
-Related: `src/services/native-selection.ts`, `src/services/hover-lookup.ts`, `scripts/ocr_worker.py`
+Related: `src/services/native-selection.ts`, `src/services/hover-lookup.ts`, `src/services/ocr-engine.ts`, `resources/ocr-models/`
 
 ## Access modes
 
@@ -31,15 +31,13 @@ Multiple producers feed one consumer: `lookup(query, meta)`.
 
 | Asset | Notes |
 |-------|--------|
-| RapidOCR 3.x + onnxruntime 1.28 | CPU only (`CPUExecutionProvider`); no CUDA/DirectML |
-| `PP-OCRv6_det_small` / `rec_small` | ~9.5 MB + ~20.3 MB ONNX — preferred ship set |
-| Medium det/rec | ~59 / ~73 MB — quality option, larger bundle |
-| `en_PP-OCRv5_rec_mobile` + latin | ~7.5 MB each — Latin/Roman re-rec |
-| PaddleX UVDoc + orientation | Dewarp / doc orientation; available locally |
+| **Shipping:** `onnxruntime-node` + `@gutenye/ocr-node` | In-process; models under `resources/ocr-models/` |
+| PP-OCRv4 mobile det / rec / cls + `ppocr_keys_v1.txt` | ~16 MB ONNX set (Apache-2.0) |
+| Python RapidOCR worker | Dev / last-resort only if native init fails |
 | `Windows.Media.Ocr` | Present; only `zh-Hans-CN` pack installed here |
 | Tesseract | **Not** installed |
 
-Models are portable `.onnx`. Prefer **`onnxruntime-node`** in-process (no Python sidecar) so the same weights work on Win / macOS / Linux / arm64.
+Prefer **`onnxruntime-node`** in-process (no end-user Python) so the same weights work on Win / macOS / Linux / arm64.
 
 Reuse scoring from the frame-table-ocr skill: CH vs EN on the same crop; no glyph rewrite maps.
 
@@ -83,9 +81,10 @@ This interface is also the target for future macOS AX / Linux AT-SPI backends.
 
 ### Phase 2 — OCR engine
 
-- [x] RapidOCR PP-OCRv6 via persistent `scripts/ocr_worker.py` (uses local ONNX)
-- [x] Bundle / first-run OCR models: worker auto `pip install rapidocr onnxruntime` when missing; models cache under `%APPDATA%/phevere/ocr-models` via `PHEVERE_OCR_MODEL_ROOT`. Settings → Capture → Install OCR deps.
-- [ ] `onnxruntime-node` in-process (optional later; Python worker is the shipping path for now)
+- [x] **Primary:** in-process `onnxruntime-node` + PP-OCRv4 mobile ONNX under `resources/ocr-models/` (via `@gutenye/ocr-node`). No end-user Python.
+- [x] Packaging: `extraResources` → `ocr-models`; `asarUnpack` for `onnxruntime-node` / `sharp` / `@gutenye/*`
+- [x] Settings → Capture: status only (“Embedded OCR ready” / error). No pip Install UX.
+- [x] Python RapidOCR worker (`scripts/ocr_worker.py`) kept as **dev / last-resort** fallback only if native init fails (not advertised).
 - [x] Cache key via `imageHash` on ContextEvent
 - [ ] Windows.Media.Ocr (WinRT await still unreliable from PowerShell — deprioritized)
 - [x] Warm-up on app ready
@@ -127,7 +126,7 @@ Solves Spotify-class apps with clean strings and no OCR.
 ## Explicit non-goals (for now)
 
 - Continuous full-desktop OCR
-- Shipping a Python OCR sidecar
+- Requiring end-user Python for OCR (Python worker is last-resort only)
 - Scraping etymonline / Forvo as redistributed data
 - Android in the same Electron binary (separate product surface)
 

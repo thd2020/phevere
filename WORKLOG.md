@@ -17,3 +17,11 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Smart routing: CJK → Youdao/CEDICT/offline; Latin → FreeDict/Wiktionary/Datamuse; translation prefers Youdao (CJK) / DeepL (Latin).
 - Popup: vocab heart on toolstrip (outline ↔ red); Wikipedia thumbs via main-process data URLs + title-based summary; NSIS Setup.exe packaging (electron-builder) with seed folder + sql.js resources.
 - Fix: shortcut mode gates hover (no plain-selection popup); vocab DB uses sql-asm + clearer errors; OCR auto pip-installs rapidocr on fresh PCs + Settings Install OCR deps.
+
+## 2026-08-10
+
+- Vocab notebook: dictionary-style rows (headword/reading/POS/langs/full def/badges/note); heart save passes pronunciation as reading.
+- Translation tab: calm serif layout; friendly provider labels (Google/DeepL/Youdao); hide coarse lang/provider chrome.
+- Etymology: vertical source sidebar tabs + panel (split `---` / `[Label]`).
+- Wikipedia: remove toolbar W; keep tab; click hit → in-panel `<webview>` reader (Back / Open in browser); `webviewTag` on popup.
+- Native OCR: `@gutenye/ocr-node` + `onnxruntime-node`, vendored PP-OCRv4 mobile under `resources/ocr-models/`; prefer native in Composite; Python RapidOCR last-resort only; Settings status-only (no pip Install).

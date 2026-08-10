@@ -18,7 +18,9 @@ npm run make:win
 |---|---|
 | App code | `app.asar` |
 | `koffi` + `sql.js` | `asarUnpack` (native / require-able) |
+| `onnxruntime-node` + `sharp` + `@gutenye/*` | `asarUnpack` (native OCR) |
 | `sql-wasm.wasm` | `extraResources` → next to exe resources |
+| OCR models (`resources/ocr-models`) | `extraResources` → `ocr-models` |
 | OCR / media scripts, tray icon | `extraResources` |
 | Offline **seed** packs | `resources/seed/**` → `resources/seed` in install; imported once into **writable** `userData/phevere.sqlite` |
 
