@@ -1462,9 +1462,34 @@ function initializePopup() {
 function initializeMainWindow() {
   initializeMainWindowControls();
   wireMainWindowImageIngest();
+  wireMainWindowTextSelectionLookup();
   loadRecentSelectionsIntoDom();
   void loadVocabNotebook();
   void attachSelectionChangeListenerOnly();
+}
+
+/** Select-to-lookup inside the main window (UIA ignores our own process). */
+function wireMainWindowTextSelectionLookup(): void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  document.addEventListener('mouseup', (e) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest?.('button, input, textarea, select, a, .title-bar, .window-controls, .settings-panel, .status-bar')) {
+      return;
+    }
+    const text = (window.getSelection()?.toString() || '').trim();
+    if (!text || text.length > 80) return;
+    if (!/[\p{L}\p{N}]/u.test(text)) return;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      const still = (window.getSelection()?.toString() || '').trim();
+      if (still !== text) return;
+      addToRecentSelections(text);
+      const api = window.electronAPI as { showPopup?: (x: number, y: number, t: string) => void };
+      if (api?.showPopup) {
+        api.showPopup(e.screenX || 0, e.screenY || 0, text);
+      }
+    }, 280);
+  });
 }
 
 async function loadVocabNotebook(): Promise<void> {
@@ -1500,7 +1525,7 @@ async function loadVocabNotebook(): Promise<void> {
           e.updatedAt || e.createdAt
             ? new Date(Number(e.updatedAt || e.createdAt)).toLocaleString()
             : '';
-        return `<article class="selection-item vocab-item" data-id="${escapeHtmlSelection(e.id)}">
+        return `<article class="vocab-item" data-id="${escapeHtmlSelection(e.id)}">
           <div class="vocab-entry">
             <header class="vocab-entry__head">
               <h3 class="vocab-lemma">${escapeHtmlSelection(e.lemma)}</h3>
@@ -1515,7 +1540,7 @@ async function loadVocabNotebook(): Promise<void> {
             ${e.note ? `<p class="vocab-note">${escapeHtmlSelection(e.note)}</p>` : ''}
             ${saved ? `<time class="vocab-saved" datetime="${escapeHtmlSelection(String(e.updatedAt || e.createdAt))}">Saved ${escapeHtmlSelection(saved)}</time>` : ''}
           </div>
-          <div class="selection-actions">
+          <div class="vocab-actions">
             <button type="button" class="btn btn-outlined btn-small vocab-open" data-lemma="${escapeHtmlSelection(e.lemma)}">Open</button>
             <button type="button" class="btn btn-outlined btn-small vocab-remove" data-id="${escapeHtmlSelection(e.id)}">Remove</button>
           </div>

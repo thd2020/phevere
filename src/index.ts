@@ -1556,8 +1556,10 @@ ipcMain.handle(
   },
 );
 
-ipcMain.on('show-popup', (event, { x, y, text }) => {
-  lastSelectionEvent = selectionToContext(text, x, y, 'manual');
+ipcMain.on('show-popup', (_event, { x, y, text }) => {
+  const t = typeof text === 'string' ? text.trim() : '';
+  lastSelectionEvent = selectionToContext(t, x, y, 'manual');
+  lastSelectedText = t;
   createPopupWindow(x, y);
 });
 

@@ -535,10 +535,13 @@
         padding: 0;
       }
 
-      .definition-text a {
-        color: #0f766e;
+      .definition-text a,
+      .definition-text a.lemma-link {
+        color: var(--pv-teal);
         text-decoration: underline;
         text-underline-offset: 2px;
+        cursor: pointer;
+        font-weight: 600;
       }
 
       .definition-source-badge {
@@ -1559,39 +1562,46 @@
            if (e.key === 'Escape') window.close();
          });
 
-                   // Add text selection and lookup functionality - create new popup instead of reusing
+                   // Select-to-lookup inside popup results (same gesture as outside the app)
+          var __popupSelTimer = null;
           document.addEventListener('mouseup', function(evt) {
             const selection = window.getSelection();
             const target = evt.target || null;
+            if (target && typeof target.closest === 'function') {
+              if (target.closest('a, button, input, textarea, select, .toolbar, .tab, webview')) return;
+            }
             var inResults = null;
             if (target && typeof target.closest === 'function') {
-              inResults = target.closest('.results-section');
+              inResults = target.closest('.results-section, #dictionary-results');
             }
-            if (inResults && selection && selection.toString().trim()) {
-              const selectedText = selection.toString().trim();
-              pvLog('[POPUP] Text selected:', selectedText);
-              
-              // Store selected text for potential lookup
-              if (selectedText.length > 0 && selectedText.length < 100) {
-                currentText = selectedText;
-              }
-            }
+            if (!inResults || !selection) return;
+            const selectedText = selection.toString().trim();
+            if (!selectedText || selectedText.length >= 100) return;
+            currentText = selectedText;
+            if (__popupSelTimer) clearTimeout(__popupSelTimer);
+            __popupSelTimer = setTimeout(function () {
+              const still = (window.getSelection() && window.getSelection().toString().trim()) || '';
+              if (still !== selectedText) return;
+              if (!isExpanded) expandToolbar();
+              lookupText(selectedText);
+            }, 280);
           });
 
-          // Add double-click to lookup selected text in current popup
+          // Double-click still works (immediate lookup)
           document.addEventListener('dblclick', function(e) {
             const selection = window.getSelection();
             const target = e.target || null;
             var inResults = null;
             if (target && typeof target.closest === 'function') {
-              inResults = target.closest('.results-section');
+              if (target.closest('a, button, input, textarea, select, .toolbar, webview')) return;
+              inResults = target.closest('.results-section, #dictionary-results');
             }
             if (inResults && selection && selection.toString().trim()) {
               const selectedText = selection.toString().trim();
-              pvLog('[POPUP] Double-clicked text:', selectedText);
-              
               if (selectedText.length > 0 && selectedText.length < 100) {
+                if (__popupSelTimer) clearTimeout(__popupSelTimer);
                 currentText = selectedText;
+                if (!isExpanded) expandToolbar();
                 lookupText(currentText);
               }
             }
@@ -1755,7 +1765,14 @@
               body = labelMatch[2].trim();
             }
             return { id: 'ety-' + i, label: label, body: body };
-          }).filter(function (s) { return s.body; });
+          }).filter(function (s) {
+            if (!s.body) return false;
+            // Drop Etymonline site marketing / empty-miss meta
+            if (/go-to source|internet'?s go-to|quick and reliable accounts of the origin/i.test(s.body)) {
+              return false;
+            }
+            return true;
+          });
         }
 
         function formatEtymologyBody(body) {
@@ -2124,6 +2141,33 @@ function startAutoCloseTimeout() {
          `;
        }
 
+        function linkifyLemmaRefs(raw, isHtml) {
+          if (!raw) return '';
+          if (isHtml) {
+            return String(raw).replace(/<a\s+([^>]*?)href=(["'])([^"']+)\2([^>]*)>/gi, function (full, pre, q, href, post) {
+              const m = String(href).match(/\/wiki\/([^?#]+)/i);
+              if (!m) return full;
+              let title = '';
+              try {
+                title = decodeURIComponent(m[1].replace(/_/g, ' '));
+              } catch (_) {
+                title = m[1].replace(/_/g, ' ');
+              }
+              title = title.replace(/#.*$/, '').trim();
+              if (!title || /^File:|^Category:|^Special:|^Wiktionary:|^Template:/i.test(title)) return full;
+              if (/\bdata-lookup=/i.test(pre + post)) return full;
+              return `<a ${pre}href=${q}${href}${q} data-lookup="${escapeHtml(title)}" class="lemma-link"${post}>`;
+            });
+          }
+          const escaped = escapeHtml(String(raw));
+          return escaped.replace(
+            /\b((?:plural|past(?:\s+tense)?|present(?:\s+participle)?|gerund|(?:past|present)\s+participle|alternative\s+spelling|common\s+misspelling|misspelling|obsolete\s+spelling|archaic\s+spelling|inflection|form)\s+of)\s+([A-Za-z\u00C0-\u024F][A-Za-z\u00C0-\u024F'-]*)/gi,
+            function (_m, phrase, lemma) {
+              return `${phrase} <a href="#" data-lookup="${lemma}" class="lemma-link">${lemma}</a>`;
+            }
+          );
+        }
+
         function filterDefsBySource(defs, source) {
           const want = normalizeSourceName(source).toLowerCase();
           return (defs || []).filter(function (d) {
@@ -2182,9 +2226,7 @@ function startAutoCloseTimeout() {
               senseCounter += 1;
               const rawMeaning = d.meaning || d.definition || '';
               const isWikiHtml = /<[a-z][\s\S]*>/i.test(rawMeaning);
-              const meaningHtml = isWikiHtml
-                ? rawMeaning
-                : escapeHtml(rawMeaning);
+              const meaningHtml = linkifyLemmaRefs(rawMeaning, isWikiHtml);
               const examples = Array.isArray(d.examples) ? d.examples : [];
               const exHtml = examples.length
                 ? `<div class="definition-examples">${examples.map(function (ex) {
@@ -2402,19 +2444,27 @@ function startAutoCloseTimeout() {
            }
 
            const defs = (currentResult && currentResult.definitions) || [];
+           const defJoined = defs
+             .slice(0, 4)
+             .map(function (d) { return stripHtmlToText(d.meaning || d.definition || ''); })
+             .filter(Boolean)
+             .join('\n');
            const top = defs[0];
            const translations = (currentResult && currentResult.translations) || [];
            const tx = translations[0];
+           const sourceList = [];
+           defs.slice(0, 6).forEach(function (d) {
+             if (Array.isArray(d.sources)) d.sources.forEach(function (s) { if (s) sourceList.push(s); });
+             else if (d.source) String(d.source).split(/\s*·\s*/).forEach(function (s) { if (s) sourceList.push(s); });
+           });
            const entry = await window.vocabAPI.add({
              lemma,
              reading: (currentResult && currentResult.pronunciation) || undefined,
-             definition: top
-               ? stripHtmlToText(top.meaning || top.definition || '')
-               : (tx ? String(tx.text || '') : ''),
+             definition: defJoined || (tx ? String(tx.text || '') : ''),
              partOfSpeech: top ? top.partOfSpeech : undefined,
-             sources: top && top.sources
-               ? top.sources
-               : (top && top.source ? [top.source] : (tx?.source ? [tx.source] : (currentResult && currentResult.sources) || [])),
+             sources: Array.from(new Set(sourceList)).slice(0, 6).length
+               ? Array.from(new Set(sourceList)).slice(0, 6)
+               : (tx?.source ? [tx.source] : (currentResult && currentResult.sources) || []),
              sourceLang: currentResult && currentResult.detectedLanguage,
              targetLang: (tx && tx.language) || (currentResult && currentResult.language),
            });
@@ -2672,7 +2722,7 @@ function startAutoCloseTimeout() {
            }
          });
 
-                   // Handle hyperlinks in content
+                   // Handle hyperlinks in content — wiki lemma links look up in-popup
            document.addEventListener('click', function(e) {
              var t = e.target || null;
              var anchor = null;
@@ -2681,7 +2731,32 @@ function startAutoCloseTimeout() {
              }
              if (!anchor) return;
              e.preventDefault();
+             e.stopPropagation();
+             const lookupTerm = anchor.getAttribute('data-lookup') || '';
              let href = anchor.getAttribute('href') || '';
+             let wikiTitle = '';
+             if (lookupTerm) {
+               wikiTitle = lookupTerm.trim();
+             } else if (href) {
+               const m =
+                 href.match(/\/wiki\/([^?#]+)/i) ||
+                 href.match(/^\/([^?#]+)$/);
+               if (m && m[1]) {
+                 try {
+                   wikiTitle = decodeURIComponent(m[1].replace(/_/g, ' ')).replace(/#.*$/, '').trim();
+                 } catch (_) {
+                   wikiTitle = m[1].replace(/_/g, ' ').trim();
+                 }
+               }
+             }
+             // Prefer in-app dictionary lookup for wiki lemma / form-of targets
+             if (wikiTitle && !/^File:|^Category:|^Special:|^Wiktionary:|^Template:/i.test(wikiTitle)) {
+               if (!isExpanded) expandToolbar();
+               currentText = wikiTitle;
+               activateTab('lexicon');
+               lookupText(wikiTitle);
+               return;
+             }
              if (!href) return;
              if (href.startsWith('/')) {
                href = `https://en.wiktionary.org${href}`;
@@ -2776,7 +2851,11 @@ function startAutoCloseTimeout() {
                  });
                }
 
-               showList();
+               if (items.length === 1) {
+                 showArticle(items[0]);
+               } else {
+                 showList();
+               }
              } catch (err) {
                console.error('Wikipedia panel error', err);
                if (loading) loading.style.display = 'none';

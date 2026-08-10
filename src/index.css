@@ -523,7 +523,7 @@ body.main-window .selections-list {
   max-height: min(52vh, 420px);
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 4px 2px 8px 0;
+  padding: 6px 8px 12px 4px;
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.7) transparent;
 }
@@ -549,8 +549,28 @@ body.main-window .vocab-item {
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  padding: 16px 18px;
+  padding: 18px 20px;
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 14px;
+  background: var(--md-surface-container, #f8f9fa);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
   cursor: default;
+}
+
+body.main-window .vocab-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+body.main-window .vocab-item .selection-actions {
+  display: none;
 }
 
 body.main-window .vocab-entry {
@@ -659,13 +679,6 @@ body.main-window .vocab-saved {
   font-size: 0.7rem;
   color: #94a3b8;
   font-family: var(--pv-font-mono, ui-monospace, monospace);
-}
-
-body.main-window .vocab-item .selection-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  flex-shrink: 0;
 }
 
 /* Segmented row cards — natural height; do not shrink inside scroll region */

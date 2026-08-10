@@ -1717,6 +1717,14 @@ export class DictionaryService extends BaseService {
         .replace(/\s*See origin and meaning of .+$/i, '')
         .trim();
 
+      // Site-wide marketing / miss-page meta — not a word etymology.
+      if (
+        /go-to source|internet'?s go-to|the online etymology dictionary\s*\(/i.test(etymology) ||
+        /quick and reliable accounts of the origin/i.test(etymology)
+      ) {
+        return undefined;
+      }
+
       if (etymology.length > 20) {
         return etymology;
       }
