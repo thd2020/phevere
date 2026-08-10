@@ -384,13 +384,19 @@ export class DictionaryService extends BaseService {
       if (!firstResult) firstResult = result;
 
       if (this.hasRealDefinitions(result)) {
-        result.word = candidate;
+        const lemma =
+          (result.metadata && typeof result.metadata.lemma === 'string' && result.metadata.lemma.trim()) ||
+          result.word ||
+          candidate;
+        result.word = lemma;
         result.metadata = {
           ...(result.metadata || {}),
           isSentence: false,
           queryKind: query.kind,
           originalSelection: query.raw,
           matchedQuery: candidate,
+          queriedAs: candidate,
+          lemma: lemma !== candidate ? lemma : result.metadata?.lemma,
           normalizedFrom: candidate === query.sanitized ? undefined : query.sanitized
         };
         return result;
@@ -717,6 +723,7 @@ export class DictionaryService extends BaseService {
     );
 
     // Process results
+    let canonicalLemma: string | undefined;
     for (const result of results) {
       // raw debug for each promise
       if (result.status === 'rejected') {
@@ -742,6 +749,12 @@ export class DictionaryService extends BaseService {
               antonyms.push(...data.antonyms);
               pronunciation = data.pronunciation;
               sources.push('Free Dictionary API');
+              if (data.word && typeof data.word === 'string') {
+                const apiWord = data.word.trim();
+                if (apiWord && apiWord.toLowerCase() !== text.toLowerCase()) {
+                  canonicalLemma = canonicalLemma || apiWord;
+                }
+              }
             }
             break;
             
@@ -764,6 +777,9 @@ export class DictionaryService extends BaseService {
               
               if (data.etymology) etymology = data.etymology;
               if (!pronunciation && data.pronunciation) pronunciation = data.pronunciation;
+              if (data.lemma && typeof data.lemma === 'string') {
+                canonicalLemma = data.lemma.trim() || canonicalLemma;
+              }
               sources.push('Wiktionary');
             }
             break;
@@ -897,9 +913,10 @@ export class DictionaryService extends BaseService {
       console.log(`[ETY-DEBUG] Etymology fetch failed with exception:`, e);
     }
 
-    // Create final result
+    // Create final result — prefer pivoted / API lemma as the headword
+    const headword = (canonicalLemma && canonicalLemma.trim()) || text;
     const result: DictionaryResult = {
-      word: text,
+      word: headword,
       pronunciation,
       definitions: mergedDefinitions.length > 0 ? mergedDefinitions : [{
         partOfSpeech: 'unknown',
@@ -914,7 +931,11 @@ export class DictionaryService extends BaseService {
       etymologyChain,
       language: targetLanguage,
       detectedLanguage: sourceLanguage,
-      sources: uniqueSources
+      sources: uniqueSources,
+      metadata: {
+        queriedAs: text,
+        lemma: headword !== text ? headword : undefined,
+      },
     };
 
     console.log(`[ETY-DEBUG] Final result etymology: ${result.etymology ? 'PRESENT' : 'MISSING'}`);
@@ -1015,6 +1036,7 @@ export class DictionaryService extends BaseService {
     examples: string[];
     synonyms: string[];
     antonyms: string[];
+    word?: string;
   }> {
     try {
       // Map language codes to Free Dictionary API supported languages
@@ -1095,7 +1117,8 @@ export class DictionaryService extends BaseService {
         pronunciation,
         examples,
         synonyms: [...new Set(synonyms)], // Remove duplicates
-        antonyms: [...new Set(antonyms)]  // Remove duplicates
+        antonyms: [...new Set(antonyms)],  // Remove duplicates
+        word: typeof data.word === 'string' ? data.word.trim() : undefined,
       };
 
     } catch (error) {
@@ -1111,6 +1134,7 @@ export class DictionaryService extends BaseService {
     definitions: Definition[];
     pronunciation?: string;
     etymology?: string;
+    lemma?: string;
   }> {
     try {
       const term = text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
@@ -1170,8 +1194,10 @@ export class DictionaryService extends BaseService {
         }
 
         // Pivot to base lemma for richer content if current entry appears to be an inflected form
+        let lemma: string | undefined;
         if (lemmaCandidates.size > 0) {
           const base = Array.from(lemmaCandidates)[0];
+          lemma = base;
           try {
             const baseData = await this.getWiktionaryData(base, language);
             // Prefer base lemma definitions/etymology if available
@@ -1185,9 +1211,6 @@ export class DictionaryService extends BaseService {
             // Pull example sentences from wikitext for the base lemma as well
             const baseExamples = await this.fetchExamplesFromWikitext(base);
             if (baseExamples.length > 0) {
-              // Append to global examples array via aggregateDictionaryDataParallel caller
-              // This is returned by caller via data.definitions[].examples, but we also want global
-              // Therefore we will piggyback examples into the first definition of the merged ones
               if (definitions.length > 0) {
                 const first = definitions[0] as any;
                 first.examples = Array.isArray(first.examples) ? [...first.examples, ...baseExamples] : baseExamples;
@@ -1198,7 +1221,7 @@ export class DictionaryService extends BaseService {
           }
         }
 
-        return { definitions, pronunciation, etymology };
+        return { definitions, pronunciation, etymology, lemma };
       } else {
         // If the primary lookup fails, go straight to the multi-source etymology parsing.
         const etymology = (await this.fetchEtymologyFromMultipleSources(term))?.text;

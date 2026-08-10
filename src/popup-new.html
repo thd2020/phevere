@@ -1709,8 +1709,7 @@
                     </div>
                     <div class="etymology-no-data">
                       <div class="no-data-text">
-                        <p><strong>No etymology found for this headword.</strong></p>
-                        <p>Common causes: recent coinages, proper names, acronyms, or lemmas not covered by Wiktionary / Etymonline parses.</p>
+                        <p><strong>No etymology found.</strong></p>
                       </div>
                     </div>
                   </div>
@@ -2408,14 +2407,23 @@ function startAutoCloseTimeout() {
        }
 
        async function syncVocabHeart(lemma) {
-         const word = String(lemma || currentResult?.word || currentText || '').trim();
-         if (!word || !window.vocabAPI?.find) {
+         const word = String(
+           (currentResult && currentResult.metadata && currentResult.metadata.lemma) ||
+           lemma ||
+           (currentResult && currentResult.word) ||
+           currentText ||
+           ''
+         ).trim();
+         if (!word || !window.vocabAPI || !window.vocabAPI.find) {
            setVocabHeartSaved(false);
            return;
          }
          try {
-           const entry = await window.vocabAPI.find(word);
-           setVocabHeartSaved(!!entry, entry?.id);
+           let entry = await window.vocabAPI.find(word);
+           if (!entry && currentText && String(currentText).trim().toLowerCase() !== word.toLowerCase()) {
+             entry = await window.vocabAPI.find(String(currentText).trim());
+           }
+           setVocabHeartSaved(!!entry, entry && entry.id);
          } catch (e) {
            console.warn('vocab heart sync failed', e);
            setVocabHeartSaved(false);
@@ -2425,7 +2433,16 @@ function startAutoCloseTimeout() {
        async function toggleVocabHeart() {
          try {
            if (!window.vocabAPI) { showToast('Notebook unavailable'); return; }
-           const lemma = String((currentResult && currentResult.word) || currentText || '').trim();
+           if (!currentResult || !Array.isArray(currentResult.definitions)) {
+             showToast('Wait for lookup to finish');
+             return;
+           }
+           const lemma = String(
+             (currentResult.metadata && currentResult.metadata.lemma) ||
+             currentResult.word ||
+             currentText ||
+             ''
+           ).trim();
            if (!lemma) { showToast('Nothing to save'); return; }
 
            if (savedVocabId) {
@@ -2436,39 +2453,57 @@ function startAutoCloseTimeout() {
            }
 
            const existing = await window.vocabAPI.find(lemma);
-           if (existing?.id) {
+           if (existing && existing.id) {
              await window.vocabAPI.remove(existing.id);
              setVocabHeartSaved(false);
              showToast('Removed from notebook');
              return;
            }
+           const queriedAs = currentResult.metadata && currentResult.metadata.queriedAs;
+           if (queriedAs && String(queriedAs).toLowerCase() !== lemma.toLowerCase()) {
+             const orphan = await window.vocabAPI.find(String(queriedAs).trim());
+             if (orphan && orphan.id) await window.vocabAPI.remove(orphan.id);
+           }
 
-           const defs = (currentResult && currentResult.definitions) || [];
-           const defJoined = defs
+           const defs = (currentResult.definitions || []).filter(function (d) {
+             if (!d || d.source === 'Fallback') return false;
+             const m = stripHtmlToText(d.meaning || d.definition || '');
+             return !!(m && m !== 'No definition available.');
+           });
+           const substantive = defs.filter(function (d) {
+             const m = stripHtmlToText(d.meaning || d.definition || '').toLowerCase();
+             return !/^(plural|past(?:\s+tense)?|present(?:\s+participle)?|gerund|participle|form)\s+of\b/.test(m) || m.length > 64;
+           });
+           const useDefs = substantive.length ? substantive : defs;
+           const defJoined = useDefs
              .slice(0, 4)
              .map(function (d) { return stripHtmlToText(d.meaning || d.definition || ''); })
              .filter(Boolean)
              .join('\n');
-           const top = defs[0];
-           const translations = (currentResult && currentResult.translations) || [];
+           const translations = currentResult.translations || [];
            const tx = translations[0];
+           if (!defJoined && !(tx && tx.text)) {
+             showToast('No definition to save yet');
+             return;
+           }
+           const top = useDefs[0];
            const sourceList = [];
-           defs.slice(0, 6).forEach(function (d) {
+           useDefs.slice(0, 6).forEach(function (d) {
              if (Array.isArray(d.sources)) d.sources.forEach(function (s) { if (s) sourceList.push(s); });
              else if (d.source) String(d.source).split(/\s*·\s*/).forEach(function (s) { if (s) sourceList.push(s); });
            });
            const entry = await window.vocabAPI.add({
              lemma,
-             reading: (currentResult && currentResult.pronunciation) || undefined,
-             definition: defJoined || (tx ? String(tx.text || '') : ''),
+             reading: currentResult.pronunciation || undefined,
+             definition: defJoined || String(tx.text || ''),
              partOfSpeech: top ? top.partOfSpeech : undefined,
              sources: Array.from(new Set(sourceList)).slice(0, 6).length
                ? Array.from(new Set(sourceList)).slice(0, 6)
-               : (tx?.source ? [tx.source] : (currentResult && currentResult.sources) || []),
-             sourceLang: currentResult && currentResult.detectedLanguage,
-             targetLang: (tx && tx.language) || (currentResult && currentResult.language),
+               : (tx && tx.source ? [tx.source] : (currentResult.sources || [])),
+             sourceLang: currentResult.detectedLanguage,
+             targetLang: (tx && tx.language) || currentResult.language,
            });
-           setVocabHeartSaved(true, entry?.id);
+           setVocabHeartSaved(true, entry && entry.id);
            showToast('Saved to notebook');
          } catch (e) {
            console.error(e);

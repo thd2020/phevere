@@ -116,9 +116,6 @@ function initializeSettingsWindow() {
           <section class="settings-panel is-active" data-panel="shortcuts" aria-labelledby="settings-monitor-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-monitor-heading" class="settings-panel__title">Shortcuts</h2>
-              <p class="settings-hint">
-                Global accelerators. Click <strong>Set…</strong> then press a key combo. Focused apps may still steal the same chord.
-              </p>
             </div>
             <div class="settings-field">
               <span id="label-monitor-cycle" class="settings-field-label">Cycle monitor mode</span>
@@ -163,7 +160,6 @@ function initializeSettingsWindow() {
           <section class="settings-panel" data-panel="capture" aria-labelledby="settings-capture-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-capture-heading" class="settings-panel__title">Capture</h2>
-              <p class="settings-hint">Hover dwell and image drop/paste feed the same lookup popup as selection.</p>
             </div>
             <div class="settings-row" role="group" aria-labelledby="enable-hover-label">
               <span id="enable-hover-label" class="settings-row__label">Hover lookup</span>
@@ -172,27 +168,28 @@ function initializeSettingsWindow() {
                 <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
               </label>
             </div>
-            <p class="settings-hint">Dwell ~450&nbsp;ms over a word (UIA first, OCR fallback). In <strong>shortcut</strong> monitor mode, hover does not open the popup unless the trigger key is held.</p>
             <div class="settings-dropzone" id="settings-dropzone" tabindex="0">
               <strong>Drop or paste an image</strong>
-              <span>PNG / JPG / WebP → OCR → lookup</span>
+              <span>PNG / JPG / WebP</span>
             </div>
             <div class="settings-panel__intro" style="margin-top:20px;">
               <h3 class="settings-panel__title" style="font-size:1rem;">OCR engine</h3>
-              <p class="settings-hint">
-                Embedded ONNX OCR ships with the app (no Python install). Status below reflects the in-process engine.
-              </p>
+            </div>
+            <div class="settings-field">
+              <label for="ocr-profile-select">Model pack</label>
+              <select id="ocr-profile-select" class="setting-input"></select>
             </div>
             <p id="ocr-status" class="settings-inline-status" role="status" aria-live="polite">Checking OCR…</p>
             <div class="settings-actions settings-actions--wrap">
-              <button type="button" id="ocr-refresh-status" class="btn btn-outlined">Refresh status</button>
+              <button type="button" id="ocr-apply-profile" class="btn btn-primary">Apply</button>
+              <button type="button" id="ocr-upload-models" class="btn btn-secondary">Upload folder…</button>
+              <button type="button" id="ocr-refresh-status" class="btn btn-outlined">Refresh</button>
             </div>
           </section>
 
           <section class="settings-panel" data-panel="sources" aria-labelledby="settings-sources-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-sources-heading" class="settings-panel__title">Dictionary sources</h2>
-              <p class="settings-hint">Toggle which providers run on each lookup. Script routing still prefers Youdao/CEDICT for CJK and Free Dictionary/Wiktionary for Latin.</p>
             </div>
             <div id="main-source-toggles"></div>
           </section>
@@ -200,9 +197,6 @@ function initializeSettingsWindow() {
           <section class="settings-panel" data-panel="offline" aria-labelledby="settings-offline-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-offline-heading" class="settings-panel__title">Offline dictionary</h2>
-              <p class="settings-hint">
-                Local SQLite packs for fast / offline lookups. Download free CC-CEDICT (with your consent) or import your own JSON/JSONL or CEDICT text.
-              </p>
             </div>
             <div class="settings-actions settings-actions--wrap">
               <button type="button" id="offline-download-cedict" class="btn btn-primary">Download CC-CEDICT</button>
@@ -212,15 +206,11 @@ function initializeSettingsWindow() {
             </div>
             <p id="offline-status" class="settings-inline-status" role="status" aria-live="polite"></p>
             <div id="offline-packs-list" class="settings-offline-packs"></div>
-            <p class="settings-hint">
-              JSON format: array or JSONL of <code>{"headword","definition","pos?","language?"}</code>. Paid packs can be added later as optional agreements.
-            </p>
           </section>
 
           <section class="settings-panel" data-panel="api" aria-labelledby="settings-api-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-api-heading" class="settings-panel__title">API keys</h2>
-              <p class="settings-hint">Optional paid providers. Keys stay on this machine.</p>
             </div>
             <div class="settings-field">
               <label for="google-api-key">Google Translate API key</label>
@@ -241,7 +231,6 @@ function initializeSettingsWindow() {
           <section class="settings-panel" data-panel="audio" aria-labelledby="settings-audio-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-audio-heading" class="settings-panel__title">Audio</h2>
-              <p class="settings-hint">Pronunciation playback from the popup.</p>
             </div>
             <div class="settings-row" role="group" aria-labelledby="enable-audio-label">
               <span id="enable-audio-label" class="settings-row__label">Enable pronunciation</span>
@@ -290,32 +279,88 @@ function initializeSettingsWindow() {
 async function wireOcrSettingsPanel(): Promise<void> {
   const api = (window as any).ocrAPI;
   const statusEl = document.getElementById('ocr-status');
+  const selectEl = document.getElementById('ocr-profile-select') as HTMLSelectElement | null;
   const setStatus = (msg: string) => {
     if (statusEl) statusEl.textContent = msg;
   };
+
+  const fillSelect = (s: any) => {
+    if (!selectEl) return;
+    const profiles = Array.isArray(s?.profiles) ? s.profiles : [];
+    const active = String(s?.activeProfileId || 'bundled-pp-ocrv4');
+    selectEl.innerHTML = profiles
+      .map((p: any) => {
+        const mark = p.installed ? '' : p.kind === 'download' ? ' (download)' : '';
+        return `<option value="${escapeHtmlSelection(p.id)}"${p.id === active ? ' selected' : ''}>${escapeHtmlSelection(p.label)}${mark}</option>`;
+      })
+      .join('');
+    if (!profiles.length) {
+      selectEl.innerHTML = `<option value="bundled-pp-ocrv4">PP-OCRv4 mobile (bundled)</option>`;
+    }
+  };
+
   const refresh = async () => {
     if (!api?.getStatus) {
-      setStatus('OCR API unavailable.');
+      setStatus('OCR unavailable.');
       return;
     }
     try {
       const s = await api.getStatus();
-      if (s.available === true && (s.engine === 'onnx-native' || !s.engine)) {
-        setStatus(`Embedded OCR ready · Models: ${s.modelsPath || 'bundled'}`);
-      } else if (s.available === true) {
-        setStatus(`OCR ready (${s.engine}) · ${s.lastError ? 'Note: ' + s.lastError : 'OK'}`);
+      fillSelect(s);
+      const label =
+        (s.profiles || []).find((p: any) => p.id === s.activeProfileId)?.label || s.activeProfileId || 'OCR';
+      if (s.available === true) {
+        setStatus(`${label} · ready`);
       } else if (s.available === false) {
-        setStatus(`Embedded OCR error · ${s.lastError || 'unavailable'} · Models: ${s.modelsPath || '?'}`);
+        setStatus(`${label} · ${s.lastError || 'unavailable'}`);
       } else {
-        setStatus(`Checking OCR… · Models: ${s.modelsPath || '?'}`);
+        setStatus(`${label} · checking…`);
       }
     } catch (e: any) {
       setStatus(`Status check failed: ${e?.message || e}`);
     }
   };
+
   document.getElementById('ocr-refresh-status')?.addEventListener('click', () => {
     void refresh();
   });
+
+  document.getElementById('ocr-apply-profile')?.addEventListener('click', async () => {
+    if (!api?.setProfile || !selectEl) return;
+    const id = selectEl.value;
+    if (id === 'custom') {
+      setStatus('Choose a model folder…');
+      const picked = await api.pickCustomFolder?.();
+      if (!picked || picked.cancelled || !picked.path) {
+        setStatus('Cancelled.');
+        return;
+      }
+      setStatus('Loading custom models…');
+      const r = await api.setProfile('custom', picked.path);
+      setStatus(r?.ok ? r.detail : `Failed — ${r?.detail || 'unknown'}`);
+      await refresh();
+      return;
+    }
+    setStatus(id.startsWith('pp-ocr') && id !== 'bundled-pp-ocrv4' ? 'Downloading models…' : 'Switching…');
+    try {
+      const r = await api.setProfile(id);
+      setStatus(r?.ok ? r.detail : `Failed — ${r?.detail || 'unknown'}`);
+    } catch (e: any) {
+      setStatus(`Failed: ${e?.message || e}`);
+    }
+    await refresh();
+  });
+
+  document.getElementById('ocr-upload-models')?.addEventListener('click', async () => {
+    if (!api?.setProfile) return;
+    const picked = await api.pickCustomFolder?.();
+    if (!picked || picked.cancelled || !picked.path) return;
+    setStatus('Loading custom models…');
+    const r = await api.setProfile('custom', picked.path);
+    setStatus(r?.ok ? r.detail : `Failed — ${r?.detail || 'unknown'}`);
+    await refresh();
+  });
+
   await refresh();
 }
 
@@ -1503,7 +1548,7 @@ async function loadVocabNotebook(): Promise<void> {
   try {
     const entries = await api.list(100);
     if (!entries || !entries.length) {
-      list.innerHTML = `<p class="empty-message">No saved words yet. Use the heart on the popup toolstrip to save a lemma.</p>`;
+      list.innerHTML = `<p class="empty-message">No saved words yet.</p>`;
       return;
     }
     list.innerHTML = entries
@@ -1525,20 +1570,23 @@ async function loadVocabNotebook(): Promise<void> {
           e.updatedAt || e.createdAt
             ? new Date(Number(e.updatedAt || e.createdAt)).toLocaleString()
             : '';
-        return `<article class="vocab-item" data-id="${escapeHtmlSelection(e.id)}">
+        return `<article class="vocab-item is-collapsed" data-id="${escapeHtmlSelection(e.id)}" tabindex="0" role="button" aria-expanded="false">
           <div class="vocab-entry">
             <header class="vocab-entry__head">
               <h3 class="vocab-lemma">${escapeHtmlSelection(e.lemma)}</h3>
               ${e.reading ? `<span class="vocab-reading">/${escapeHtmlSelection(e.reading)}/</span>` : ''}
+              <span class="vocab-expand-hint" aria-hidden="true"></span>
             </header>
             <div class="vocab-entry__meta">
               ${e.partOfSpeech ? `<span class="vocab-pos">${escapeHtmlSelection(e.partOfSpeech)}</span>` : ''}
               ${langPair}
+              ${saved ? `<time class="vocab-saved" datetime="${escapeHtmlSelection(String(e.updatedAt || e.createdAt))}">${escapeHtmlSelection(saved)}</time>` : ''}
             </div>
-            ${defHtml ? `<div class="vocab-def${long ? ' is-clamped' : ''}" data-full="1">${defHtml}</div>${long ? `<button type="button" class="vocab-more btn-link">Show more</button>` : ''}` : ''}
-            ${badges ? `<div class="vocab-badges">${badges}</div>` : ''}
-            ${e.note ? `<p class="vocab-note">${escapeHtmlSelection(e.note)}</p>` : ''}
-            ${saved ? `<time class="vocab-saved" datetime="${escapeHtmlSelection(String(e.updatedAt || e.createdAt))}">Saved ${escapeHtmlSelection(saved)}</time>` : ''}
+            <div class="vocab-entry__details">
+              ${defHtml ? `<div class="vocab-def${long ? ' is-clamped' : ''}" data-full="1">${defHtml}</div>${long ? `<button type="button" class="vocab-more btn-link">Show more</button>` : ''}` : '<p class="vocab-note">No definition saved.</p>'}
+              ${badges ? `<div class="vocab-badges">${badges}</div>` : ''}
+              ${e.note ? `<p class="vocab-note">${escapeHtmlSelection(e.note)}</p>` : ''}
+            </div>
           </div>
           <div class="vocab-actions">
             <button type="button" class="btn btn-outlined btn-small vocab-open" data-lemma="${escapeHtmlSelection(e.lemma)}">Open</button>
@@ -1548,6 +1596,21 @@ async function loadVocabNotebook(): Promise<void> {
       })
       .join('');
 
+    list.querySelectorAll('.vocab-item').forEach((el) => {
+      el.addEventListener('click', (ev) => {
+        const t = ev.target as HTMLElement;
+        if (t.closest('.vocab-actions, .vocab-more, button, a')) return;
+        const open = el.classList.toggle('is-collapsed') === false;
+        el.classList.toggle('is-expanded', open);
+        el.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      el.addEventListener('keydown', (ev) => {
+        const ke = ev as KeyboardEvent;
+        if (ke.key !== 'Enter' && ke.key !== ' ') return;
+        ke.preventDefault();
+        (el as HTMLElement).click();
+      });
+    });
     list.querySelectorAll('.vocab-open').forEach((btn) => {
       btn.addEventListener('click', () => {
         const lemma = (btn as HTMLElement).dataset.lemma;

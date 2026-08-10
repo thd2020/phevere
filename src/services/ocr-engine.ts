@@ -9,8 +9,17 @@ import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { app } from 'electron';
+import { app, net } from 'electron';
 import { wrapConsole } from '../logger';
+import {
+  findProfile,
+  getOcrPackRoot,
+  loadOcrSettings,
+  OCR_PROFILES,
+  OcrProfileMeta,
+  OcrSettings,
+  saveOcrSettings,
+} from './ocr-settings-store';
 
 const console = wrapConsole('ocr-engine');
 
@@ -41,6 +50,8 @@ export type OcrStatus = {
   modelsPath: string;
   available: boolean | null;
   lastError: string | null;
+  activeProfileId?: string;
+  profiles?: { id: string; label: string; kind: string; installed: boolean }[];
   /** Dev-only Python fallback metadata (omit from Settings copy). */
   python?: string;
   script?: string;
@@ -129,20 +140,173 @@ function boxToBounds(pts: number[][]): OcrLine['bounds'] | undefined {
   };
 }
 
+function listOnnxTriplet(dir: string): { det: string; rec: string; dict: string } | null {
+  if (!dir || !fs.existsSync(dir)) return null;
+  const files = fs.readdirSync(dir);
+  const det =
+    files.find((f) => /det/i.test(f) && /\.onnx$/i.test(f)) ||
+    files.find((f) => /\.onnx$/i.test(f));
+  const rec =
+    files.find((f) => /rec/i.test(f) && /\.onnx$/i.test(f) && f !== det) ||
+    files.filter((f) => /\.onnx$/i.test(f) && f !== det)[0];
+  const dict =
+    files.find((f) => /keys|dict/i.test(f) && /\.txt$/i.test(f)) ||
+    files.find((f) => /\.txt$/i.test(f));
+  if (!det || !rec || !dict) return null;
+  return {
+    det: path.join(dir, det),
+    rec: path.join(dir, rec),
+    dict: path.join(dir, dict),
+  };
+}
+
+async function downloadFile(url: string, dest: string): Promise<void> {
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const res = await net.fetch(url, {
+    headers: { 'User-Agent': 'PhevereOCR/1.0' },
+  });
+  if (!res.ok) throw new Error(`Download failed ${res.status}: ${url}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  fs.writeFileSync(dest, buf);
+}
+
 /** In-process PP-OCR via onnxruntime-node (no Python). */
 class OnnxNativeOcrEngine implements OcrEngine {
   private ocr: any = null;
   private initPromise: Promise<void> | null = null;
   private available: boolean | null = null;
   private lastError: string | null = null;
-  private readonly modelsPath = resolveBundledModelsRoot();
+  private modelsPath = resolveBundledModelsRoot();
+  private modelFiles: { det: string; rec: string; dict: string } | null = null;
+  private settings: OcrSettings = loadOcrSettings();
 
-  getStatus(): Pick<OcrStatus, 'modelsPath' | 'available' | 'lastError'> {
+  getActiveProfileId(): string {
+    return this.settings.activeProfileId;
+  }
+
+  getStatus(): Pick<OcrStatus, 'modelsPath' | 'available' | 'lastError' | 'activeProfileId'> {
     return {
       modelsPath: this.modelsPath,
       available: this.available,
       lastError: this.lastError,
+      activeProfileId: this.settings.activeProfileId,
     };
+  }
+
+  listProfiles(): { id: string; label: string; kind: string; installed: boolean }[] {
+    return OCR_PROFILES.map((p) => ({
+      id: p.id,
+      label: p.label,
+      kind: p.kind,
+      installed: this.isProfileInstalled(p),
+    }));
+  }
+
+  private isProfileInstalled(p: OcrProfileMeta): boolean {
+    if (p.kind === 'bundled') return !!listOnnxTriplet(resolveBundledModelsRoot());
+    if (p.kind === 'custom') {
+      return !!(this.settings.customModelsPath && listOnnxTriplet(this.settings.customModelsPath));
+    }
+    if (p.kind === 'download' && p.packDir && p.files) {
+      const root = getOcrPackRoot(p.packDir);
+      return (
+        fs.existsSync(path.join(root, p.files.det)) &&
+        fs.existsSync(path.join(root, p.files.rec)) &&
+        fs.existsSync(path.join(root, p.files.dict))
+      );
+    }
+    return false;
+  }
+
+  async setProfile(profileId: string, customPath?: string | null): Promise<{ ok: boolean; detail: string }> {
+    const profile = findProfile(profileId);
+    if (!profile) return { ok: false, detail: 'Unknown OCR profile' };
+
+    if (profile.kind === 'custom') {
+      if (!customPath || !listOnnxTriplet(customPath)) {
+        return {
+          ok: false,
+          detail: 'Custom folder needs det*.onnx, rec*.onnx, and a keys/dict .txt',
+        };
+      }
+      this.settings = { activeProfileId: 'custom', customModelsPath: customPath };
+    } else if (profile.kind === 'download') {
+      try {
+        await this.ensureDownloaded(profile);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        return { ok: false, detail: msg };
+      }
+      this.settings = {
+        activeProfileId: profile.id,
+        customModelsPath: this.settings.customModelsPath,
+      };
+    } else {
+      this.settings = {
+        activeProfileId: profile.id,
+        customModelsPath: this.settings.customModelsPath,
+      };
+    }
+
+    saveOcrSettings(this.settings);
+    this.dispose();
+    this.available = null;
+    this.lastError = null;
+    try {
+      await this.ensureReady();
+      this.available = true;
+      return { ok: true, detail: `Using ${profile.label}` };
+    } catch (error) {
+      this.available = false;
+      this.lastError = error instanceof Error ? error.message : String(error);
+      return { ok: false, detail: this.lastError };
+    }
+  }
+
+  private async ensureDownloaded(profile: OcrProfileMeta): Promise<void> {
+    if (!profile.files || !profile.packDir) throw new Error('Invalid download profile');
+    const root = getOcrPackRoot(profile.packDir);
+    fs.mkdirSync(root, { recursive: true });
+    const targets: { url?: string; dest: string }[] = [
+      { url: profile.files.detUrl, dest: path.join(root, profile.files.det) },
+      { url: profile.files.recUrl, dest: path.join(root, profile.files.rec) },
+      { url: profile.files.dictUrl, dest: path.join(root, profile.files.dict) },
+    ];
+    for (const t of targets) {
+      if (fs.existsSync(t.dest) && fs.statSync(t.dest).size > 100) continue;
+      if (!t.url) throw new Error(`Missing download URL for ${t.dest}`);
+      console.log('Downloading OCR model', t.url);
+      await downloadFile(t.url, t.dest);
+    }
+    // Prefer bundled dict if download failed size-wise — already required above.
+  }
+
+  private resolveModelFiles(): { det: string; rec: string; dict: string; root: string } {
+    this.settings = loadOcrSettings();
+    const profile = findProfile(this.settings.activeProfileId) || OCR_PROFILES[0];
+
+    if (profile.kind === 'custom' && this.settings.customModelsPath) {
+      const trip = listOnnxTriplet(this.settings.customModelsPath);
+      if (!trip) throw new Error('Custom OCR folder incomplete');
+      return { ...trip, root: this.settings.customModelsPath };
+    }
+
+    if (profile.kind === 'download' && profile.packDir && profile.files) {
+      const root = getOcrPackRoot(profile.packDir);
+      const det = path.join(root, profile.files.det);
+      const rec = path.join(root, profile.files.rec);
+      const dict = path.join(root, profile.files.dict);
+      if (!fs.existsSync(det) || !fs.existsSync(rec) || !fs.existsSync(dict)) {
+        throw new Error(`OCR pack not installed: ${profile.label}`);
+      }
+      return { det, rec, dict, root };
+    }
+
+    const root = resolveBundledModelsRoot();
+    const det = path.join(root, 'ch_PP-OCRv4_det_infer.onnx');
+    const rec = path.join(root, 'ch_PP-OCRv4_rec_infer.onnx');
+    const dict = path.join(root, 'ppocr_keys_v1.txt');
+    return { det, rec, dict, root };
   }
 
   async isAvailable(): Promise<boolean> {
@@ -232,10 +396,10 @@ class OnnxNativeOcrEngine implements OcrEngine {
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
-      const det = path.join(this.modelsPath, 'ch_PP-OCRv4_det_infer.onnx');
-      const rec = path.join(this.modelsPath, 'ch_PP-OCRv4_rec_infer.onnx');
-      const dict = path.join(this.modelsPath, 'ppocr_keys_v1.txt');
-      for (const p of [det, rec, dict]) {
+      const files = this.resolveModelFiles();
+      this.modelsPath = files.root;
+      this.modelFiles = { det: files.det, rec: files.rec, dict: files.dict };
+      for (const p of [files.det, files.rec, files.dict]) {
         if (!fs.existsSync(p)) {
           throw new Error(`Missing OCR model: ${p}`);
         }
@@ -245,12 +409,12 @@ class OnnxNativeOcrEngine implements OcrEngine {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const mod = require('@gutenye/ocr-node');
       const Ocr = mod.default || mod;
-      console.log('Loading native OCR models', { modelsPath: this.modelsPath });
+      console.log('Loading native OCR models', { modelsPath: this.modelsPath, files: this.modelFiles });
       this.ocr = await Ocr.create({
         models: {
-          detectionPath: det,
-          recognitionPath: rec,
-          dictionaryPath: dict,
+          detectionPath: files.det,
+          recognitionPath: files.rec,
+          dictionaryPath: files.dict,
         },
       });
     })();
@@ -621,10 +785,22 @@ class CompositeOcrEngine implements OcrEngine {
       modelsPath: n.modelsPath,
       available: engine === 'none' ? (n.available === null && r.available === null ? null : false) : true,
       lastError: n.lastError || r.lastError,
+      activeProfileId: n.activeProfileId || this.native.getActiveProfileId(),
+      profiles: this.native.listProfiles(),
       python: r.python,
       script: r.script,
       modelRoot: r.modelRoot,
     };
+  }
+
+  async setProfile(profileId: string, customPath?: string | null): Promise<{ ok: boolean; detail: string }> {
+    const r = await this.native.setProfile(profileId, customPath);
+    if (r.ok) this.preferred = 'onnx-native';
+    return r;
+  }
+
+  listProfiles() {
+    return this.native.listProfiles();
   }
 
   async recognize(png: Buffer): Promise<OcrResult> {
@@ -658,6 +834,17 @@ export async function ensureOcrDeps(): Promise<{ ok: boolean; detail: string }> 
 
 export function getOcrStatus(): OcrStatus {
   return (ocrEngine as CompositeOcrEngine).getStatus();
+}
+
+export async function setOcrProfile(
+  profileId: string,
+  customPath?: string | null,
+): Promise<{ ok: boolean; detail: string }> {
+  return (ocrEngine as CompositeOcrEngine).setProfile(profileId, customPath);
+}
+
+export function listOcrProfiles() {
+  return (ocrEngine as CompositeOcrEngine).listProfiles();
 }
 
 /**

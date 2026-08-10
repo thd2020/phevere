@@ -416,6 +416,9 @@ contextBridge.exposeInMainWorld('offlineDictAPI', {
 contextBridge.exposeInMainWorld('ocrAPI', {
   getStatus: () => ipcRenderer.invoke('ocr-get-status'),
   ensureDeps: () => ipcRenderer.invoke('ocr-ensure-deps'),
+  setProfile: (profileId: string, customPath?: string | null) =>
+    ipcRenderer.invoke('ocr-set-profile', profileId, customPath),
+  pickCustomFolder: () => ipcRenderer.invoke('ocr-pick-custom-folder'),
 });
 
 // Expose search API
@@ -562,13 +565,19 @@ declare global {
     };
     ocrAPI: {
       getStatus: () => Promise<{
-        python: string;
-        script: string;
-        modelRoot: string;
+        engine?: string;
+        modelsPath?: string;
         available: boolean | null;
         lastError: string | null;
+        activeProfileId?: string;
+        profiles?: { id: string; label: string; kind: string; installed: boolean }[];
+        python?: string;
+        script?: string;
+        modelRoot?: string;
       }>;
       ensureDeps: () => Promise<{ ok: boolean; detail: string }>;
+      setProfile: (profileId: string, customPath?: string | null) => Promise<{ ok: boolean; detail: string }>;
+      pickCustomFolder: () => Promise<{ cancelled: boolean; path?: string }>;
     };
   }
 }

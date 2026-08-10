@@ -9,7 +9,7 @@ import { searchService } from './services/search';
 import { createNativeSelectionService, SelectionEvent } from './services/native-selection';
 import { contextCaptureHub, ContextEvent, selectionToContext } from './services/context-capture';
 import { captureScreenRegion, captureAroundPoint } from './services/screen-capture';
-import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus } from './services/ocr-engine';
+import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile } from './services/ocr-engine';
 import { isLookupWorthy } from './services/text-normalize';
 import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
 import { placePopupNearPoint } from './services/popup-placement';
@@ -1818,6 +1818,21 @@ ipcMain.handle('ocr-get-status', async () => {
 ipcMain.handle('ocr-ensure-deps', async () => {
   log.info('main', 'OCR ensureDeps requested');
   return ensureOcrDeps();
+});
+ipcMain.handle('ocr-set-profile', async (_e, profileId: string, customPath?: string | null) => {
+  log.info('main', 'OCR set profile', { profileId, customPath: customPath || null });
+  return setOcrProfile(profileId, customPath);
+});
+ipcMain.handle('ocr-pick-custom-folder', async () => {
+  const win = BrowserWindow.getFocusedWindow() || mainWindow;
+  const result = await dialog.showOpenDialog(win || undefined, {
+    title: 'Choose OCR model folder',
+    properties: ['openDirectory'],
+  });
+  if (result.canceled || !result.filePaths?.[0]) {
+    return { cancelled: true };
+  }
+  return { cancelled: false, path: result.filePaths[0] };
 });
 
 // Wikipedia service IPC handlers
