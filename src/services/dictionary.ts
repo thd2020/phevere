@@ -587,6 +587,35 @@ export class DictionaryService extends BaseService {
     const preferCjkSources = isAsianLanguage || isChinese;
     const preferLatinSources = !preferCjkSources;
 
+    // Offline packs (CC-CEDICT in SQLite) — always probe for CJK, independent of source toggles.
+    // Memory Map path below still respects the CC-CEDICT toggle.
+    if (preferCjkSources) {
+      try {
+        const offlineHits = await lookupOffline(text, undefined, 12);
+        for (const hit of offlineHits) {
+          const label =
+            hit.packId === 'cc-cedict' || /cedict/i.test(hit.packName || '')
+              ? 'CC-CEDICT'
+              : hit.packName || 'Offline';
+          definitions.push({
+            partOfSpeech: hit.pos || 'definition',
+            meaning: hit.definition,
+            source: label,
+            sources: [label],
+          });
+        }
+        if (offlineHits.length) {
+          if (offlineHits.some((h) => h.packId === 'cc-cedict' || /cedict/i.test(h.packName || ''))) {
+            sources.push('CC-CEDICT');
+          } else {
+            sources.push('Offline');
+          }
+        }
+      } catch {
+        /* offline optional */
+      }
+    }
+
     if (preferCjkSources && (!enabledSources || enabledSources.includes('Youdao API') || enabledSources.includes('CC-CEDICT'))) {
       // Auto-use Youdao when credentials exist — don't require the toggle for CJK queries.
       const youdaoToggleOk = !enabledSources || enabledSources.includes('Youdao API');
@@ -600,27 +629,13 @@ export class DictionaryService extends BaseService {
         );
       }
 
-      // Local / offline packs (CC-CEDICT memory Map + SQLite offline_entries)
+      // Optional in-memory CEDICT Map (legacy path)
       if (!enabledSources || enabledSources.includes('CC-CEDICT')) {
         const cedictDefs = this.getCcCedictData(text);
         if (cedictDefs.length > 0) {
           definitions.push(...cedictDefs);
-          sources.push('CC-CEDICT');
+          if (!sources.includes('CC-CEDICT')) sources.push('CC-CEDICT');
         }
-      }
-      try {
-        const offlineHits = await lookupOffline(text, preferCjkSources ? 'zh' : undefined, 12);
-        for (const hit of offlineHits) {
-          definitions.push({
-            partOfSpeech: hit.pos || 'definition',
-            meaning: hit.definition,
-            source: hit.packName || 'Offline',
-            sources: [hit.packName || 'Offline'],
-          });
-        }
-        if (offlineHits.length) sources.push('Offline');
-      } catch {
-        /* offline optional */
       }
     }
 
@@ -2685,6 +2700,17 @@ export class DictionaryService extends BaseService {
     this.sources = this.sources.map(source => {
       if (source.name === sourceName) {
         return { ...source, enabled };
+      }
+      return source;
+    });
+  }
+
+  /** Mark SQLite CC-CEDICT (or any offline pack) as available in the Sources UI. */
+  markOfflinePackAvailable(sourceName = 'CC-CEDICT', enabled = true): void {
+    this.ccCedictLoaded = true;
+    this.sources = this.sources.map((source) => {
+      if (source.name === sourceName) {
+        return { ...source, isAvailable: true, enabled };
       }
       return source;
     });

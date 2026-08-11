@@ -28,6 +28,7 @@ module.exports = {
       'scripts/ocr_worker.py',
       'scripts/media_now_playing.ps1',
       'node_modules/sql.js/dist/sql-wasm.wasm',
+      'node_modules/sql.js/dist/sql-asm.js',
       // Optional offline seed packs (JSON/JSONL/CEDICT). Copied into userData on first run.
       'resources/seed',
       // Embedded PP-OCR ONNX models (no end-user Python).

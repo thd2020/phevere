@@ -24,6 +24,8 @@ extraResources:
     to: media_now_playing.ps1
   - from: node_modules/sql.js/dist/sql-wasm.wasm
     to: sql-wasm.wasm
+  - from: node_modules/sql.js/dist/sql-asm.js
+    to: sql-asm.js
   - from: resources/seed
     to: seed
   - from: resources/ocr-models

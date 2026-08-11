@@ -2508,7 +2508,16 @@ function startAutoCloseTimeout() {
          } catch (e) {
            console.error(e);
            const msg = (e && (e.message || e.msg)) ? String(e.message || e.msg) : String(e || 'unknown');
-           showToast(msg.length > 80 ? 'Save failed — notebook DB error' : ('Save failed: ' + msg));
+           const msg = (e && (e.message || e.msg)) ? String(e.message || e.msg) : String(e || 'unknown');
+           const short = msg
+             .replace(/^Error invoking remote method '[^']+':\s*/i, '')
+             .replace(/^Error:\s*/i, '')
+             .trim();
+           showToast(
+             short.length > 90
+               ? 'Save failed — notebook DB unavailable (reinstall may fix packaging)'
+               : ('Save failed: ' + short),
+           );
          }
        }
 

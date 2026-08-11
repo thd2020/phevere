@@ -891,9 +891,18 @@ function pickTokenAt(line: string, bounds: NonNullable<OcrLine['bounds']>, relX:
     return chars[idx];
   }
 
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length <= 1) return text;
-  const ratio = bounds.width > 0 ? (x - bounds.x) / bounds.width : 0.5;
-  const idx = Math.min(words.length - 1, Math.max(0, Math.floor(ratio * words.length)));
-  return words[idx];
+  // Prefer whole word tokens; weight by character length (not equal-width slots).
+  const words = text.match(/[A-Za-z\u00C0-\u024F]+(?:['’-][A-Za-z\u00C0-\u024F]+)*/g);
+  if (!words || words.length === 0) return text;
+  if (words.length === 1) return words[0];
+
+  const widths = words.map((w) => Math.max(1, [...w].length));
+  const total = widths.reduce((a, b) => a + b, 0);
+  const ratio = bounds.width > 0 ? Math.min(1, Math.max(0, (x - bounds.x) / bounds.width)) : 0.5;
+  let pos = ratio * total;
+  for (let i = 0; i < words.length; i++) {
+    pos -= widths[i];
+    if (pos <= 0) return words[i];
+  }
+  return words[words.length - 1];
 }

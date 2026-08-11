@@ -27,3 +27,7 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Native OCR: `@gutenye/ocr-node` + `onnxruntime-node`, vendored PP-OCRv4 mobile under `resources/ocr-models/`; prefer native in Composite; Python RapidOCR last-resort only; Settings status-only (no pip Install).
 - Fix: drop Etymonline marketing blurb; Wikipedia single-hit opens article; lemma/form-of links look up in-popup; select-to-lookup inside popup + main window; vocab notebook card padding/layout (no longer crushed by `.selection-item { padding:0 }`).
 - Notebook rows collapsed by default (click to expand); OCR model packs selectable (bundled / download PP-OCRv5 / custom folder); lemma pivot saves singular headword + defs; trim trial-sounding hint copy in settings/main.
+
+## 2026-08-11
+
+- Author → thd2020; ship `sql-asm.js` as extraResource + robust resolve for packaged notebook DB; OCR min region 24px with feedback; hover OCR crop 96px + char-weighted token pick; CC-CEDICT SQLite always queried for CJK and enabled after download.

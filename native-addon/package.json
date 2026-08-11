@@ -15,7 +15,7 @@
     "text",
     "monitoring"
   ],
-  "author": "xiangyuxiao <xiangyuxiao420@gmail.com>",
+  "author": "thd2020",
   "license": "MIT",
   "dependencies": {
     "node-addon-api": "^7.0.0"

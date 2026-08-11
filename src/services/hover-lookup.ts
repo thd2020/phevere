@@ -33,7 +33,8 @@ const DEFAULTS = {
   moveTolerancePx: 6,
   dwellMs: 450,
   cooldownMs: 900,
-  ocrRadiusPx: 48,
+  /** Wider crop so long Latin words aren't clipped mid-glyph. */
+  ocrRadiusPx: 96,
 };
 
 export class HoverLookupService {

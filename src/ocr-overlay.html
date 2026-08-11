@@ -83,8 +83,8 @@
         dragging = false;
         const region = updateBox(start, dipPoint(e));
         start = null;
-        if (region.width < 8 || region.height < 8) {
-          if (window.ocrOverlayAPI) window.ocrOverlayAPI.cancel();
+        if (region.width < 24 || region.height < 24) {
+          if (window.ocrOverlayAPI) window.ocrOverlayAPI.cancel('too-small');
           return;
         }
         if (window.ocrOverlayAPI) window.ocrOverlayAPI.complete(region);

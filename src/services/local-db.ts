@@ -55,6 +55,32 @@ function resolveWasmPath(): string | null {
   return null;
 }
 
+function resolveSqlAsmPath(): string | null {
+  const candidates = [
+    path.join(process.resourcesPath || '', 'sql-asm.js'),
+    path.join(process.resourcesPath || '', 'sql.js', 'sql-asm.js'),
+    path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules', 'sql.js', 'dist', 'sql-asm.js'),
+    // Webpack main lands in .webpack/main → repo root is ../..
+    path.join(__dirname, '..', '..', 'node_modules', 'sql.js', 'dist', 'sql-asm.js'),
+    path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-asm.js'),
+  ];
+  try {
+    const appPath = app.getAppPath();
+    candidates.push(path.join(appPath, 'node_modules', 'sql.js', 'dist', 'sql-asm.js'));
+    if (appPath.includes('app.asar')) {
+      candidates.push(
+        path.join(appPath.replace('app.asar', 'app.asar.unpacked'), 'node_modules', 'sql.js', 'dist', 'sql-asm.js'),
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) return c;
+  }
+  return null;
+}
+
 function tryRequireSqlJs(specifier: string): SqlJsInit | null {
   try {
     return nodeRequire(specifier) as SqlJsInit;
@@ -65,10 +91,19 @@ function tryRequireSqlJs(specifier: string): SqlJsInit | null {
 }
 
 function loadSqlJsInit(): { init: SqlJsInit; mode: 'asm' | 'wasm' } {
-  // Packaged Electron: prefer asm.js (no .wasm locateFile). Dev: same, then wasm.
+  // Prefer absolute asm path first — survives Electron packaging better than package exports.
+  const asmFile = resolveSqlAsmPath();
+  if (asmFile) {
+    const abs = tryRequireSqlJs(asmFile);
+    if (abs) {
+      console.log('sql.js asm loaded from', asmFile);
+      return { init: abs, mode: 'asm' };
+    }
+  }
+
   const asm =
     tryRequireSqlJs('sql.js/dist/sql-asm.js') ||
-    tryRequireSqlJs(path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules', 'sql.js', 'dist', 'sql-asm.js'));
+    tryRequireSqlJs('sql.js/dist/sql-asm.js'.replace(/\//g, path.sep));
   if (asm) return { init: asm, mode: 'asm' };
 
   const wasm =
@@ -77,7 +112,7 @@ function loadSqlJsInit(): { init: SqlJsInit; mode: 'asm' | 'wasm' } {
   if (wasm) return { init: wasm, mode: 'wasm' };
 
   throw new Error(
-    'sql.js not found. Reinstall the app or ensure node_modules/sql.js is unpacked (asarUnpack).',
+    'sql.js not found. Reinstall the app or ensure sql-asm.js is shipped (extraResources / asarUnpack).',
   );
 }
 

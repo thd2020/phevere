@@ -18,6 +18,7 @@ const mainConfig = {
   externals: {
     koffi: 'commonjs2 koffi',
     'sql.js': 'commonjs2 sql.js',
+    'sql.js/dist/sql-asm.js': 'commonjs2 sql.js/dist/sql-asm.js',
     '@gutenye/ocr-node': 'commonjs2 @gutenye/ocr-node',
     '@gutenye/ocr-common': 'commonjs2 @gutenye/ocr-common',
     '@gutenye/ocr-models': 'commonjs2 @gutenye/ocr-models',

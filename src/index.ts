@@ -1029,6 +1029,11 @@ async function handleOcrRegionSelected(region: {
   if (!capture) {
     closeWorkProgress();
     log.warn('main', 'Screen capture failed for OCR region');
+    showWorkProgress(progressX, progressY, {
+      title: 'Capture failed',
+      subtitle: 'Try a larger region',
+    });
+    setTimeout(() => closeWorkProgress(), 1600);
     return;
   }
 
@@ -1104,9 +1109,17 @@ ipcMain.on('ocr-overlay-complete', (_event, region) => {
   void handleOcrRegionSelected(region);
 });
 
-ipcMain.on('ocr-overlay-cancel', () => {
-  log.debug('main', 'OCR overlay cancelled');
+ipcMain.on('ocr-overlay-cancel', (_event, reason?: string) => {
+  log.debug('main', 'OCR overlay cancelled', { reason: reason || '' });
   closeOcrOverlay();
+  if (reason === 'too-small') {
+    const cursor = screen.getCursorScreenPoint();
+    showWorkProgress(cursor.x, cursor.y, {
+      title: 'Region too small',
+      subtitle: 'Drag a larger box around the text',
+    });
+    setTimeout(() => closeWorkProgress(), 1600);
+  }
 });
 
 async function emitOcrFromPng(opts: {
@@ -1800,10 +1813,12 @@ ipcMain.handle('offline-import-cedict-file', async () => {
   });
   if (result.canceled || !result.filePaths[0]) return { success: false, cancelled: true };
   const imported = await offlineDict.importCedictTextFile(result.filePaths[0]);
+  dictionaryService.markOfflinePackAvailable('CC-CEDICT', true);
   return { success: true, ...imported };
 });
 ipcMain.handle('offline-download-cedict', async () => {
   const imported = await offlineDict.downloadAndImportCedict();
+  dictionaryService.markOfflinePackAvailable('CC-CEDICT', true);
   return { success: true, ...imported };
 });
 
@@ -1958,7 +1973,17 @@ app.on('ready', () => {
   applyHoverFromSettings();
   clipboardService.startMonitoring();
   void getLocalDb()
-    .then(() => log.info('main', 'Local SQLite (vocab + offline dict) ready'))
+    .then(async () => {
+      log.info('main', 'Local SQLite (vocab + offline dict) ready');
+      try {
+        const packs = await offlineDict.listPacks();
+        if (packs.some((p) => p.id === 'cc-cedict' || /cedict/i.test(p.name || ''))) {
+          dictionaryService.markOfflinePackAvailable('CC-CEDICT', true);
+        }
+      } catch {
+        /* optional */
+      }
+    })
     .catch((err) => log.warn('main', 'Local DB init failed', { err: String(err) }));
   // Warm RapidOCR models in the background so Ctrl+Shift+O is responsive.
   void ocrEngine
