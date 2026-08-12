@@ -5,6 +5,40 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-08-12
+
+### Added
+
+- **Native ONNX OCR** — embedded PP-OCRv4 via `onnxruntime-node` / `@gutenye/ocr-node` (Python RapidOCR is last-resort only).
+- **Pluggable OCR packs** — Settings: bundled models, download PP-OCRv5, or a custom model folder.
+- **Wikipedia in-popup reader** — article opens in an in-panel `<webview>` (toolbar W removed).
+- **Etymology source tabs** — vertical sidebar for multi-source etymology.
+- **Installer components** — optional desktop / Start menu shortcuts and OCR models; ink/teal/ember icon and wizard art.
+- **Uninstall UX** — Start menu “Uninstall Phevere”, reinforced Apps & Features entry; `scripts/remove-ghost-phevere.ps1` for stuck Program Files installs.
+
+### Changed
+
+- Default install path **`Program Files\Phevere`** (no author parent folder); publisher **thd2020**.
+- Single Setup.exe bundles OCR models again (uncheck OCR to omit from disk).
+- Vocab notebook: dictionary-style rows, collapse-on-click, lemma-safe heart save.
+- Translation / etymology / notebook UI polish; quieter trial-sounding copy.
+- `npm run make:win` uses npmmirror Electron mirrors by default (avoids `github.com` timeouts).
+
+### Fixed
+
+- Packaged vocabulary notebook wipe / sticky save failures (atomic SQLite persist, no save-on-open race).
+- Missing IPA after plural→lemma pivot (e.g. vagaries / vicissitudes).
+- Tray Quit leaving orphan OCR / UIA processes.
+- Popup load failures on some PCs (retry + optional `.disable-gpu`).
+- Packaged `sql-asm.js` resolve; OCR hover/region; CC-CEDICT lookup; shortcut hover gate; Etymonline marketing blurb; in-popup select-to-lookup / lemma links.
+
+### Notes for users
+
+- **Windows x64** — install with `Phevere-Setup-1.2.1-x64.exe`.
+- If an older Phevere folder remains with no Apps entry, run `scripts/remove-ghost-phevere.ps1` then reinstall.
+- Run elevated when you need UIAutomation across elevated / protected apps.
+- Unsigned builds may trigger SmartScreen until code signing is configured.
+
 ## [1.2.0] - 2026-08-07
 
 ### Added
@@ -64,6 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
+[1.2.1]: https://github.com/thd2020/phevere/releases/tag/v1.2.1
 [1.2.0]: https://github.com/thd2020/phevere/releases/tag/v1.2.0
 [1.1.0]: https://github.com/thd2020/phevere/releases/tag/v1.1.0
 [1.0.0]: https://github.com/thd2020/phevere/releases/tag/v1.0.0

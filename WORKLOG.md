@@ -45,3 +45,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - **Uninstaller / ghost installs:** reinforce Apps & Features registry in `customInstall`; Start menu **Uninstall Phevere** shortcut; `customUnInstall` clears shortcuts + legacy `thd2020`/`xiangyuxiao` Start Menu folders; `preInit` only seeds InstallLocation when empty (avoid orphan keys); add `scripts/remove-ghost-phevere.ps1` for stuck Program Files folders with no Control Panel entry.
 - Docs: rewrite `README.md` (NSIS not MSI; install/uninstall/ghost cleanup; current features); refresh `PACKAGING.md` + `docs/RELEASE.md`.
 - Process: project rule `.cursor/rules/update-docs-and-worklog.mdc` + user rule `update-docs-on-changes.mdc` — always update docs + granular WORKLOG on feat/fix.
+- Release **1.2.1**: bump `package.json`, CHANGELOG, tag `v1.2.1`, GitHub release with NSIS Setup.
