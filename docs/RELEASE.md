@@ -19,10 +19,11 @@ npm run build-native
 npm run make:win
 ```
 
-Primary artifact:
+Primary artifacts:
 
 ```text
 out\make\nsis\x64\Phevere-Setup-<version>-x64.exe
+out\make\nsis\x64\Phevere-OCR-Models.zip   # optional OCR sidecar — ship beside Setup
 ```
 
 Optional SHA-256:
@@ -31,7 +32,7 @@ Optional SHA-256:
 Get-FileHash -Algorithm SHA256 "out\make\nsis\x64\Phevere-Setup-*-x64.exe"
 ```
 
-WiX MSI remains optional (see `PACKAGING.md`) when WiX Toolset v3 is installed.
+Attach **both** the Setup.exe and the OCR zip on the GitHub release when you want offline OCR install. Setup alone stays lean; the installer components page installs OCR when the zip sits next to Setup.exe.
 
 ## 3. Tag the commit
 

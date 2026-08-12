@@ -1,6 +1,6 @@
 appId: com.phevere.app
 productName: Phevere
-copyright: Copyright © Phevere
+copyright: Copyright © 2026 thd2020
 directories:
   buildResources: packaging
   output: out/make/nsis
@@ -28,8 +28,8 @@ extraResources:
     to: sql-asm.js
   - from: resources/seed
     to: seed
-  - from: resources/ocr-models
-    to: ocr-models
+  # OCR models are OPTIONAL — shipped as Phevere-OCR-Models.zip sidecar (see packaging/optional/)
+  # to keep Setup.exe lean. Installer components page can install them when the zip is present.
 win:
   target:
     - target: nsis
@@ -37,22 +37,30 @@ win:
         - x64
   icon: packaging/icon.ico
   artifactName: ${productName}-Setup-${version}-${arch}.${ext}
+  publisherName: thd2020
 nsis:
   oneClick: false
   perMachine: false
+  selectPerMachineByDefault: true
   allowToChangeInstallationDirectory: true
   allowElevation: true
-  createDesktopShortcut: always
-  createStartMenuShortcut: true
+  # Shortcuts are offered as optional components in installer.nsh
+  createDesktopShortcut: false
+  createStartMenuShortcut: false
   shortcutName: Phevere
   installerIcon: packaging/icon.ico
   uninstallerIcon: packaging/icon.ico
   installerHeaderIcon: packaging/icon.ico
+  installerHeader: packaging/installerHeader.bmp
+  installerSidebar: packaging/installerSidebar.bmp
+  uninstallerSidebar: packaging/installerSidebar.bmp
   include: packaging/installer.nsh
   license: LICENSE
   runAfterFinish: true
-  menuCategory: true
+  # false → install under Program Files\Phevere (not Program Files\<author>\Phevere)
+  menuCategory: false
   displayLanguageSelector: false
   differentialPackage: false
+  uninstallDisplayName: Phevere ${version}
 portable:
   artifactName: ${productName}-Portable-${version}.${ext}

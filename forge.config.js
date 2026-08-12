@@ -31,8 +31,8 @@ module.exports = {
       'node_modules/sql.js/dist/sql-asm.js',
       // Optional offline seed packs (JSON/JSONL/CEDICT). Copied into userData on first run.
       'resources/seed',
-      // Embedded PP-OCR ONNX models (no end-user Python).
-      'resources/ocr-models',
+      // OCR models are NOT bundled by default (installer de-bloat).
+      // Ship packaging/optional/Phevere-OCR-Models.zip beside Setup.exe.
     ],
   },
   rebuildConfig: {},

@@ -2,57 +2,68 @@
 
 ## Windows: NSIS Setup.exe (primary)
 
-We use **electron-builder NSIS** via `@electron-addons/electron-forge-maker-nsis` — the prevailed Windows desktop installer path (multi-page wizard, install directory, shortcuts, branding, custom `installer.nsh`). This is the same family of installer UX as many Chinese desktop apps (directory chooser, finish-page launch), far more flexible than plain WiX/`electron-wix-msi`.
-
-Config lives in **`electron-builder.yml`** + **`packaging/installer.nsh`** (welcome/finish macros, seed folder create).
+We use **electron-builder NSIS** via `@electron-addons/electron-forge-maker-nsis` — assisted wizard (directory, components, branding).
 
 ```bash
 npm run build-native
 npm run make:win
-# Artifact: out/make/nsis/…/Phevere-Setup-*.exe
+# Artifacts:
+#   out/make/nsis/x64/Phevere-Setup-*-x64.exe
+#   out/make/nsis/x64/Phevere-OCR-Models.zip   (optional sidecar)
 ```
+
+Default install path is **`Program Files\Phevere`** (per-machine; no author parent folder). Publisher / copyright: **thd2020**.
+
+### Optional components
+
+The installer components page offers:
+
+| Component | Default | Notes |
+|---|---|---|
+| Desktop shortcut | on | |
+| Start menu shortcut | on | |
+| OCR models (~15 MB) | **off** | Requires `Phevere-OCR-Models.zip` next to Setup.exe |
+
+OCR models are **not** embedded in Setup.exe (de-bloat). `npm run prepare:installer` builds the sidecar zip from `resources/ocr-models/`; `make:win` copies it beside the Setup artifact. Users who skip OCR can still download packs later in **Settings**.
 
 ### What is solidly bundled
 
 | Asset | How it ships |
 |---|---|
 | App code | `app.asar` |
-| `koffi` + `sql.js` | `asarUnpack` (native / require-able) |
-| `onnxruntime-node` + `sharp` + `@gutenye/*` | `asarUnpack` (native OCR) |
-| `sql-wasm.wasm` + `sql-asm.js` | `extraResources` → next to exe resources |
-| OCR models (`resources/ocr-models`) | `extraResources` → `ocr-models` |
-| OCR / media scripts, tray icon | `extraResources` |
-| Offline **seed** packs | `resources/seed/**` → `resources/seed` in install; imported once into **writable** `userData/phevere.sqlite` |
+| `koffi` + `sql.js` | `asarUnpack` |
+| `onnxruntime-node` + `sharp` + `@gutenye/*` | `asarUnpack` (runtime OCR engine; models optional) |
+| `sql-wasm.wasm` + `sql-asm.js` | `extraResources` |
+| Offline **seed** packs | `resources/seed` |
+| OCR ONNX models | **Sidecar zip** / Settings download — not in Setup by default |
 
-The SQLite database itself is **not** frozen inside the installer executable as the live DB (installers are read-only; Windows apps write under `%APPDATA%`). Runtime creates/updates `phevere.sqlite` in userData; optional seed dumps are imported on first launch.
+### Branding assets
 
-### Customizing the installer (params)
+Generated/updated by `npm run prepare:installer`:
 
-Edit `electron-builder.yml` → `nsis:`:
+- `packaging/icon.ico` + `icon.png` (ink / teal / ember “P” mark)
+- `packaging/installerSidebar.bmp` (164×314)
+- `packaging/installerHeader.bmp` (150×57)
+- `resources/tray-icon.png`
+- `packaging/optional/Phevere-OCR-Models.zip`
 
-- `oneClick` / `allowToChangeInstallationDirectory` — assisted vs one-click
-- `perMachine` — all-users vs current user
-- `createDesktopShortcut` / `createStartMenuShortcut`
-- `include: packaging/installer.nsh` — custom NSIS macros (welcome copy, finish page, extra files)
-
-Replace `packaging/icon.ico` with branded multi-size art when you have it (NSIS requires `.ico`, not `.png`).
+Edit welcome copy in `packaging/installer.nsh`. NSIS options live in `electron-builder.yml` (`menuCategory: false`, `selectPerMachineByDefault: true`, custom header/sidebar).
 
 ### Optional: WiX MSI (enterprise / GPO)
 
-`MakerWix` remains in `forge.config.js` for Intune/GPO-style `.msi`. Requires **[WiX Toolset v3](https://github.com/wixtoolset/wix3/releases)** (`candle`/`light` on PATH). Prefer NSIS for end-user installs.
+`MakerWix` remains commented in `forge.config.js`. Requires WiX Toolset v3.
 
 ### Commands
 
 ```bash
+npm run prepare:installer
 npm run build-native
-npm run make          # all configured makers
-npm run make:win      # Windows only
-npm run make:nsis     # alias → make:win (NSIS primary)
+npm run make:win
 ```
 
 ### Code signing
 
-Sign the Setup.exe / MSI for fewer SmartScreen prompts (`win.certificateFile` / Azure Trusted Signing — see electron-builder docs).
+Sign the Setup.exe for fewer SmartScreen prompts (`win.certificateFile` / Azure Trusted Signing).
 
 ### Microsoft Store
 

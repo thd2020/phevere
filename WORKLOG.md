@@ -38,3 +38,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Pronunciation: keep FreeDict IPA across merge; after plural→lemma pivot, re-fetch FreeDict for singular (vagaries/vicissitudes).
 - Quit: orderly tray/OS quit awaits UIA stop, disposes OCR with Windows process-tree kill, then `app.exit`.
 - Popup home-PC harden: `sandbox: false`, one retry on did-fail-load / render-process-gone; optional `userData/.disable-gpu` flag.
+- Installer polish: default `Program Files\Phevere` (no author parent); LICENSE/copyright publisher **thd2020**; optional OCR via components + sidecar zip; new ink/teal/ember icon + sidebar/header BMPs; shortcut checkboxes.
