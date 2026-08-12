@@ -38,6 +38,20 @@ declare const POPUP_WINDOW_WEBPACK_ENTRY: string;
 declare const OCR_OVERLAY_WEBPACK_ENTRY: string;
 declare const OCR_OVERLAY_PRELOAD_WEBPACK_ENTRY: string;
 
+// Register ASAP — timed-out Promise.race fetches used to crash Electron via
+// unhandledRejection (Forge then relaunched → looked like a frozen toolstrip).
+process.on('unhandledRejection', (reason) => {
+  try {
+    // logger may not be ready yet
+    const { log: earlyLog } = require('./logger');
+    earlyLog.error('main', 'unhandledRejection (kept alive)', {
+      err: reason instanceof Error ? reason.stack || reason.message : String(reason),
+    });
+  } catch {
+    console.error('[unhandledRejection]', reason);
+  }
+});
+
 /**
  * Optional: create `%APPDATA%/phevere/.disable-gpu` (empty file) if popup/GPU
  * fails on a machine (common with some laptop iGPU drivers). Must run before ready.
@@ -856,9 +870,8 @@ const createPopupWindow = (x: number, y: number): void => {
                   backgroundThrottling: false,
                 },
               });
-  // Close on blur to match intended UX
+  // Close on blur to match intended UX (give clicks time to land on icons)
   newPopupWindow.on('blur', () => {
-    // Use a shorter timeout to be more responsive, but still allow for focus transitions
     setTimeout(() => {
       try {
         if (newPopupWindow.isDestroyed()) return;
@@ -866,8 +879,6 @@ const createPopupWindow = (x: number, y: number): void => {
         const focused = BrowserWindow.getFocusedWindow();
         const isPopupFocused = focused === newPopupWindow;
 
-        // Only close if popup is not focused and no other app windows are focused
-        // This prevents closing when user clicks between app windows
         if (!isPopupFocused && (!focused || !popupWindows.includes(focused))) {
           log.debug('main', 'Close popup on blur');
           newPopupWindow.close();
@@ -877,7 +888,7 @@ const createPopupWindow = (x: number, y: number): void => {
       } catch (e) {
         log.warn('main', 'Popup blur check failed', { err: String(e) });
       }
-    }, 150); // Reduced from 250ms to be more responsive
+    }, 400);
   });
 // (moved) wiki handler registered at top-level below
 
@@ -1779,12 +1790,18 @@ ipcMain.handle('clipboard-import', (event, jsonData: string) => {
 
 // Dictionary service IPC handlers
 ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: string = 'auto', enabledSources?: string[]) => {
+  const t0 = Date.now();
   try {
     const result = await dictionaryService.lookup(text, targetLanguage, enabledSources);
-    log.debug('main', 'Dictionary lookup OK', { wordLen: (text || '').length });
+    log.info('main', 'Dictionary lookup OK', {
+      wordLen: (text || '').length,
+      ms: Date.now() - t0,
+      defs: result?.definitions?.length || 0,
+      sources: result?.sources,
+    });
     return result;
   } catch (error) {
-    log.error('main', 'Dictionary lookup failed', { err: String(error) });
+    log.error('main', 'Dictionary lookup failed', { err: String(error), ms: Date.now() - t0 });
     throw error;
   }
 });

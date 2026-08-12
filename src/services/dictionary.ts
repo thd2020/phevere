@@ -528,11 +528,10 @@ export class DictionaryService extends BaseService {
     
     // Wait for all translations (with timeout)
     const translationResults = await Promise.allSettled(
-      translationPromises.map((p: Promise<Translation | null>) => 
-        Promise.race([p, new Promise<null>((resolve: (value: null) => void) => {
-          setTimeout(() => resolve(null), 3000);
-        })])
-      )
+      translationPromises.map(
+        (p: Promise<Translation | null>): Promise<Translation | null> =>
+          withTimeout(p, 3000, 'translation').catch((): null => null),
+      ),
     );
     
     console.log('🔄 [DEBUG] Translation results:', translationResults.map(r => ({
@@ -752,16 +751,14 @@ export class DictionaryService extends BaseService {
       }
     }
 
-    // Wait for all API calls with timeout
+    // Wait for all API calls with timeout (safe — late rejections are handled)
     const results = await Promise.allSettled(
-      apiPromises.map((promise: Promise<any>) => 
-        Promise.race([
-          promise,
-          new Promise((_: any, reject: (reason?: any) => void) => {
-            setTimeout(() => reject(new Error('Timeout')), 5000);
-          })
-        ])
-      )
+      apiPromises.map((promise: Promise<any>) =>
+        withTimeout(promise, 5000, 'dictionary.source').catch((error) => ({
+          type: 'timeout',
+          error,
+        })),
+      ),
     );
 
     // Process results
@@ -933,29 +930,10 @@ export class DictionaryService extends BaseService {
     console.log(`[ETY-DEBUG] Checking etymology for text: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
     console.log(`[ETY-DEBUG] Current etymology value: ${etymology ? 'EXISTS' : 'UNDEFINED'}`);
 
-    // Etymology is optional chrome — never block definitions/translation on it.
-    // (Wiktionary/Etymonline hangs were freezing popup IPC and making the strip look dead.)
-    console.log(`[ETY-DEBUG] Deferring etymology for "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
-    void this.fetchEtymologyFromMultipleSources(text)
-      .then((fetched) => {
-        if (!fetched?.text) return;
-        // Best-effort: stash on cache entry if present so a later tab refresh can use it.
-        try {
-          const cacheKey = cacheKeyFor(
-            normalizeQuery(text),
-            `${sourceLanguage}->${targetLanguage}`,
-          );
-          const cached = this.cache.get(cacheKey);
-          if (cached?.result && !cached.result.etymology) {
-            cached.result.etymology = fetched.text;
-            if (fetched.chain) cached.result.etymologyChain = fetched.chain;
-          }
-        } catch {
-          /* ignore */
-        }
-      })
-      .catch((e) => console.log(`[ETY-DEBUG] Background etymology failed:`, e?.message || e));
-
+    // Etymology is optional — skip network fetch on the critical path entirely.
+    // Background Etymonline was producing deceptive logs while unhandled
+    // timed-out races were killing the Electron process (frozen strip).
+    // Users still get etymology from Wiktionary when it arrives with definitions.
     // Create final result — prefer pivoted / API lemma as the headword
     const headword = (canonicalLemma && canonicalLemma.trim()) || text;
 
@@ -1543,10 +1521,7 @@ export class DictionaryService extends BaseService {
 
   /** Caps a slow source so it cannot hold up the whole aggregation. */
   private withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
-    return Promise.race([
-      promise,
-      new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms))
-    ]);
+    return withTimeout(promise, ms, 'source').catch(() => fallback);
   }
 
   private static readonly DATAMUSE_POS: Record<string, string> = {

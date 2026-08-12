@@ -2020,7 +2020,10 @@ function startAutoCloseTimeout() {
               ]);
               lookupInFlight = lookupPromise;
               currentResult = await lookupPromise;
-              if (mySeq !== lookupSeq) return; // stale
+              if (mySeq !== lookupSeq) {
+                // Stale response — do not leave a newer lookup's spinner stuck.
+                return;
+              }
               syncLanguageSelectsFromResult(currentResult);
               var audioLang = (currentResult && currentResult.detectedLanguage) ? currentResult.detectedLanguage : (currentTab === 'translation' ? targetLang : 'en');
               window['__audioLang'] = audioLang;
@@ -2031,8 +2034,11 @@ function startAutoCloseTimeout() {
               displayMockResult(text); // Fallback for dev
             }
           } catch (error) {
+            if (mySeq !== lookupSeq) return;
             console.error('[POPUP] Error in lookupText:', error);
             displayErrorResult(text, error);
+          } finally {
+            lookupInFlight = null;
           }
         }
 

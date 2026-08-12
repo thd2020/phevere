@@ -11,27 +11,48 @@ export class DictionaryError extends Error {
   }
 }
 
-/** Race a promise against a hard deadline; never leave IPC hanging forever. */
+/**
+ * Deadline wrapper that NEVER leaves the input promise's rejection unhandled.
+ * Plain `Promise.race([p, timeout])` is unsafe: when the timeout wins, a later
+ * rejection of `p` becomes an unhandledRejection and Electron can exit — which
+ * looked like a frozen popup (Forge then relaunches).
+ */
 export function withTimeout<T>(promise: Promise<T>, ms: number, label = 'operation'): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<T>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new DictionaryError(`${label} timed out after ${ms}ms`, 'TIMEOUT', true)),
-      ms,
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new DictionaryError(`${label} timed out after ${ms}ms`, 'TIMEOUT', true));
+    }, ms);
+
+    promise.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        if (settled) return; // timeout already won — rejection is still handled here
+        settled = true;
+        clearTimeout(timer);
+        reject(err);
+      },
     );
   });
-  return Promise.race([promise, timeout]).finally(() => {
-    if (timer) clearTimeout(timer);
-  }) as Promise<T>;
+}
+
+/** Like withTimeout but resolves `fallback` instead of rejecting. */
+export function withTimeoutFallback<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return withTimeout(promise, ms, 'op').catch(() => fallback);
 }
 
 /**
  * Dictionary HTTP via Node's stack (node-fetch), not Electron `net.fetch`.
- * Electron's Chromium network has been hanging / aborting SSL here even when
- * the system browser is fine; node-fetch + explicit timeout is reliable.
  */
 export abstract class BaseService {
-  protected requestTimeoutMs = 4000;
+  protected requestTimeoutMs = 6000;
 
   protected async request<T>(url: string, options?: RequestInit & { timeoutMs?: number }): Promise<T> {
     const timeoutMs = options?.timeoutMs ?? this.requestTimeoutMs;
