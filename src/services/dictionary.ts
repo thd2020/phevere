@@ -933,31 +933,28 @@ export class DictionaryService extends BaseService {
     console.log(`[ETY-DEBUG] Checking etymology for text: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
     console.log(`[ETY-DEBUG] Current etymology value: ${etymology ? 'EXISTS' : 'UNDEFINED'}`);
 
-    try {
-      const fetched = await withTimeout(
-        this.fetchEtymologyFromMultipleSources(text),
-        ETYMOLOGY_BUDGET_MS,
-        'etymology',
-      );
-      if (fetched?.text) {
-        if (!etymology) {
-          etymology = fetched.text;
-        } else {
-          const tip = fetched.text.slice(0, Math.min(48, fetched.text.length));
-          if (tip && !etymology.includes(tip)) {
-            etymology = `${etymology}\n\n--- Alternative etymology ---\n\n${fetched.text}`;
+    // Etymology is optional chrome — never block definitions/translation on it.
+    // (Wiktionary/Etymonline hangs were freezing popup IPC and making the strip look dead.)
+    console.log(`[ETY-DEBUG] Deferring etymology for "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
+    void this.fetchEtymologyFromMultipleSources(text)
+      .then((fetched) => {
+        if (!fetched?.text) return;
+        // Best-effort: stash on cache entry if present so a later tab refresh can use it.
+        try {
+          const cacheKey = cacheKeyFor(
+            normalizeQuery(text),
+            `${sourceLanguage}->${targetLanguage}`,
+          );
+          const cached = this.cache.get(cacheKey);
+          if (cached?.result && !cached.result.etymology) {
+            cached.result.etymology = fetched.text;
+            if (fetched.chain) cached.result.etymologyChain = fetched.chain;
           }
+        } catch {
+          /* ignore */
         }
-        if (!etymologyChain && fetched.chain) {
-          etymologyChain = fetched.chain;
-        }
-        console.log(`[ETY-DEBUG] Etymology merge done, len=${etymology?.length || 0}`);
-      } else {
-        console.log(`[ETY-DEBUG] Etymology fetch returned null/undefined`);
-      }
-    } catch (e: any) {
-      console.log(`[ETY-DEBUG] Etymology fetch failed/skipped:`, e?.message || e);
-    }
+      })
+      .catch((e) => console.log(`[ETY-DEBUG] Background etymology failed:`, e?.message || e));
 
     // Create final result — prefer pivoted / API lemma as the headword
     const headword = (canonicalLemma && canonicalLemma.trim()) || text;
@@ -967,7 +964,7 @@ export class DictionaryService extends BaseService {
       try {
         const lemmaPhon = await withTimeout(
           this.getFreeDictionaryData(headword, langForDict),
-          4000,
+          3000,
           'lemma.ipa',
         );
         if (lemmaPhon.pronunciation) pronunciation = lemmaPhon.pronunciation;
@@ -1253,9 +1250,19 @@ export class DictionaryService extends BaseService {
           }
         }
 
-        // If etymology is still not found, try parsing the wikitext
+        // If etymology is still not found, try a short-budget wikitext parse only
+        // (do not call full multi-source fetch here — that hung the parallel race).
         if (!etymology) {
-          etymology = (await this.fetchEtymologyFromMultipleSources(term))?.text;
+          try {
+            const wikiOnly = await this.withTimeout(
+              this.fetchEtymologyFromWikitext(term),
+              1500,
+              undefined as { text: string; chain?: EtymologyLink[] } | undefined,
+            );
+            if (wikiOnly?.text) etymology = wikiOnly.text;
+          } catch {
+            /* optional */
+          }
         }
 
         // Pivot to base lemma for richer content if current entry appears to be an inflected form
@@ -1288,9 +1295,8 @@ export class DictionaryService extends BaseService {
 
         return { definitions, pronunciation, etymology, lemma };
       } else {
-        // If the primary lookup fails, go straight to the multi-source etymology parsing.
-        const etymology = (await this.fetchEtymologyFromMultipleSources(term))?.text;
-        return { definitions: [], etymology };
+        // Primary Wiktionary REST miss — do not block on multi-source etymology.
+        return { definitions: [] };
       }
 
     } catch (error) {
@@ -1754,30 +1760,15 @@ export class DictionaryService extends BaseService {
 
     try {
       const url = `https://www.etymonline.com/word/${encodeURIComponent(cleanWord)}`;
-      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const abortTimer = setTimeout(() => {
-        try {
-          controller?.abort();
-        } catch {
-          /* ignore */
-        }
-      }, 2200);
-      let response: Response;
-      try {
-        response = await withTimeout(
-          net.fetch(url, {
-            signal: controller?.signal,
-            headers: {
-              'User-Agent':
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            },
-          } as any),
-          2300,
-          'etymonline',
-        );
-      } finally {
-        clearTimeout(abortTimer);
-      }
+      // Use BaseService/node-fetch path via request() isn't HTML — raw fetch with timeout:
+      const fetch = (await import('node-fetch')).default;
+      const response = await fetch(url, {
+        timeout: 2500,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+      });
 
       if (!response.ok) {
         console.warn(`[ETY-DEBUG] Etymonline returned HTTP status ${response.status} for ${cleanWord}`);

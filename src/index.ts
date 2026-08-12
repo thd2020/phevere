@@ -54,9 +54,10 @@ try {
   /* ignore — path may be unavailable in odd launch contexts */
 }
 
-/** Only one Phevere process — extra instances freeze SQLite / confuse tray & UIA. */
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
-if (!gotSingleInstanceLock) {
+/** Only one packaged Phevere process. Dev/Forge must allow relaunch or the
+ *  webpack restart exits immediately and leaves a wedged first instance. */
+const gotSingleInstanceLock = app.isPackaged ? app.requestSingleInstanceLock() : true;
+if (app.isPackaged && !gotSingleInstanceLock) {
   app.exit(0);
 }
 

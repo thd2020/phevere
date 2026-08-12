@@ -1477,13 +1477,13 @@
               activateTab('lexicon');
               expandToolbar();
               const t = currentText || window['__popupCurrentText'] || '';
-              if (t) lookupText(t);
+              if (t) void lookupText(t);
           });
              document.getElementById('translationIcon').addEventListener('click', () => { 
                activateTab('translation');
                expandToolbar();
                const t = currentText || window['__popupCurrentText'] || '';
-               if (t) lookupText(t);
+               if (t) void lookupText(t);
            });
             document.getElementById('audioIcon').addEventListener('click', () => {
                pvLog('[POPUP] Audio button clicked');
@@ -1971,11 +1971,18 @@ function startAutoCloseTimeout() {
           }
        }
 
+                           let lookupInFlight = null;
+                           let lookupSeq = 0;
                            async function lookupText(text, opts) {
           opts = opts || {};
           const silent = !!opts.silent;
           if (!text || !text.trim()) return;
+          // Expand strip immediately so clicks never feel dead while IPC runs.
+          if (!silent && !isExpanded) {
+            try { expandToolbar(); } catch (e) { /* ignore */ }
+          }
           pvLog('[POPUP] lookupText called with:', text, 'currentTab:', currentTab, 'silent:', silent);
+          const mySeq = ++lookupSeq;
           if (!silent) {
             showLoading({
               title: 'Looking up…',
@@ -2003,14 +2010,17 @@ function startAutoCloseTimeout() {
                 });
               }
 
-              currentResult = await Promise.race([
+              const lookupPromise = Promise.race([
                 window.dictionaryAPI.lookup(text, targetLang),
                 new Promise(function (_, reject) {
                   setTimeout(function () {
-                    reject(new Error('Lookup timed out — network may be slow or blocked'));
-                  }, 15000);
+                    reject(new Error('Lookup timed out — try again'));
+                  }, 10000);
                 }),
               ]);
+              lookupInFlight = lookupPromise;
+              currentResult = await lookupPromise;
+              if (mySeq !== lookupSeq) return; // stale
               syncLanguageSelectsFromResult(currentResult);
               var audioLang = (currentResult && currentResult.detectedLanguage) ? currentResult.detectedLanguage : (currentTab === 'translation' ? targetLang : 'en');
               window['__audioLang'] = audioLang;
