@@ -62,5 +62,6 @@ nsis:
   displayLanguageSelector: false
   differentialPackage: false
   uninstallDisplayName: Phevere ${version}
+  warningsAsErrors: false
 portable:
   artifactName: ${productName}-Portable-${version}.${ext}

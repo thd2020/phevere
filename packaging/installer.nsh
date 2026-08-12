@@ -3,6 +3,8 @@
 ; - Single Setup.exe bundles everything (incl. OCR models via extraResources)
 ; - Components page: shortcuts + optional OCR (unchecked = remove models after copy)
 ; - Publisher: thd2020
+;
+; Note: do not use MUI_FUNCTION_DESCRIPTION_* here — include runs before MUI macros exist.
 
 !include "LogicLib.nsh"
 
@@ -17,23 +19,13 @@ SectionEnd
 Section "OCR models (PP-OCRv4, ~15 MB)" SecOcr
 SectionEnd
 
-LangString DESC_SecDesktop ${LANG_ENGLISH} "Create a Phevere shortcut on the desktop."
-LangString DESC_SecStartMenu ${LANG_ENGLISH} "Add Phevere to the Start menu."
-LangString DESC_SecOcr ${LANG_ENGLISH} "On-device OCR models (included in this installer). Uncheck to save disk space; you can add OCR later in Settings."
-
-!insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-  !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} $(DESC_SecDesktop)
-  !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} $(DESC_SecStartMenu)
-  !insertmacro MUI_DESCRIPTION_TEXT ${SecOcr} $(DESC_SecOcr)
-!insertmacro MUI_FUNCTION_DESCRIPTION_END
-
 !macro customHeader
   !define MUI_WELCOMEPAGE_TITLE "Welcome to Phevere"
   !define MUI_WELCOMEPAGE_TEXT "Select-to-lookup dictionary for Windows.$\r$\n$\r$\nPublisher: thd2020$\r$\n$\r$\nThis single installer includes the app and optional OCR models. Choose folder and components on the next pages."
   !define MUI_FINISHPAGE_TITLE "Phevere is ready"
   !define MUI_FINISHPAGE_TEXT "Installation finished. Launch Phevere now, or open it from the Start menu / desktop."
   !define MUI_FINISHPAGE_RUN_TEXT "Launch Phevere"
-  !define MUI_COMPONENTSPAGE_SMALLDESC
+  !define MUI_COMPONENTSPAGE_NODESC
 !macroend
 
 !macro customWelcomePage

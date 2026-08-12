@@ -20,9 +20,6 @@ if (!process.env.ELECTRON_BUILDER_BINARIES_MIRROR) {
   process.env.ELECTRON_BUILDER_BINARIES_MIRROR =
     'https://npmmirror.com/mirrors/electron-builder-binaries/';
 }
-if (!process.env.NPM_CONFIG_ELECTRON_MIRROR) {
-  process.env.NPM_CONFIG_ELECTRON_MIRROR = process.env.ELECTRON_MIRROR;
-}
 
 console.log('[make-win] ELECTRON_MIRROR=', process.env.ELECTRON_MIRROR);
 console.log(
