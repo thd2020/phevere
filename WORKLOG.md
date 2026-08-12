@@ -31,3 +31,10 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 ## 2026-08-11
 
 - Author → thd2020; ship `sql-asm.js` as extraResource + robust resolve for packaged notebook DB; OCR min region 24px with feedback; hover OCR crop 96px + char-weighted token pick; CC-CEDICT SQLite always queried for CJK and enabled after download.
+
+## 2026-08-12
+
+- Fix installer vocab wipe: single-flight DB init, atomic persist (tmp→rename + .bak), no save-on-open race, flushPersist on quit.
+- Pronunciation: keep FreeDict IPA across merge; after plural→lemma pivot, re-fetch FreeDict for singular (vagaries/vicissitudes).
+- Quit: orderly tray/OS quit awaits UIA stop, disposes OCR with Windows process-tree kill, then `app.exit`.
+- Popup home-PC harden: `sandbox: false`, one retry on did-fail-load / render-process-gone; optional `userData/.disable-gpu` flag.

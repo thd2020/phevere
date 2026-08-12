@@ -762,7 +762,7 @@ export class DictionaryService extends BaseService {
               examples.push(...data.examples);
               synonyms.push(...data.synonyms);
               antonyms.push(...data.antonyms);
-              pronunciation = data.pronunciation;
+              if (!pronunciation && data.pronunciation) pronunciation = data.pronunciation;
               sources.push('Free Dictionary API');
               if (data.word && typeof data.word === 'string') {
                 const apiWord = data.word.trim();
@@ -930,6 +930,17 @@ export class DictionaryService extends BaseService {
 
     // Create final result — prefer pivoted / API lemma as the headword
     const headword = (canonicalLemma && canonicalLemma.trim()) || text;
+
+    // Lemma pivot often leaves plurals without IPA; re-query FreeDict for the singular.
+    if (!pronunciation && headword && headword.toLowerCase() !== text.toLowerCase() && preferLatinSources) {
+      try {
+        const lemmaPhon = await this.getFreeDictionaryData(headword, langForDict);
+        if (lemmaPhon.pronunciation) pronunciation = lemmaPhon.pronunciation;
+      } catch {
+        /* optional */
+      }
+    }
+
     const result: DictionaryResult = {
       word: headword,
       pronunciation,
@@ -1094,9 +1105,13 @@ export class DictionaryService extends BaseService {
       const synonyms: string[] = [];
       const antonyms: string[] = [];
 
-      // Get pronunciation
-      const pronunciation = data.phonetic || 
-        data.phonetics?.find((p: any) => p.text)?.text;
+      // Get pronunciation — prefer first phonetics[].text with content
+      let pronunciation =
+        (typeof data.phonetic === 'string' && data.phonetic.trim()) ||
+        (Array.isArray(data.phonetics)
+          ? data.phonetics.map((p: any) => (p && p.text ? String(p.text).trim() : '')).find(Boolean)
+          : '') ||
+        undefined;
 
       // Process meanings
       if (data.meanings) {

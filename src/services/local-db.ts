@@ -1,6 +1,11 @@
 /**
  * Local SQLite via sql.js — prefer asm.js build (no WASM file) for packaged Electron,
  * with WASM as optional fast path when sql-wasm.wasm is present in resources.
+ *
+ * Persistence rules:
+ * - Single-flight init (no double-open race that can wipe the file)
+ * - Atomic write (tmp → rename) + .bak
+ * - Never scheduleSave on pristine open (only after real writes)
  */
 
 import { app } from 'electron';
@@ -33,6 +38,7 @@ let db: SqlJsDatabase | null = null;
 let saveTimer: NodeJS.Timeout | null = null;
 let dbPath = '';
 let initError: string | null = null;
+let initPromise: Promise<SqlJsDatabase> | null = null;
 
 function resolveDbPath(): string {
   try {
@@ -60,7 +66,6 @@ function resolveSqlAsmPath(): string | null {
     path.join(process.resourcesPath || '', 'sql-asm.js'),
     path.join(process.resourcesPath || '', 'sql.js', 'sql-asm.js'),
     path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules', 'sql.js', 'dist', 'sql-asm.js'),
-    // Webpack main lands in .webpack/main → repo root is ../..
     path.join(__dirname, '..', '..', 'node_modules', 'sql.js', 'dist', 'sql-asm.js'),
     path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-asm.js'),
   ];
@@ -91,7 +96,6 @@ function tryRequireSqlJs(specifier: string): SqlJsInit | null {
 }
 
 function loadSqlJsInit(): { init: SqlJsInit; mode: 'asm' | 'wasm' } {
-  // Prefer absolute asm path first — survives Electron packaging better than package exports.
   const asmFile = resolveSqlAsmPath();
   if (asmFile) {
     const abs = tryRequireSqlJs(asmFile);
@@ -101,9 +105,7 @@ function loadSqlJsInit(): { init: SqlJsInit; mode: 'asm' | 'wasm' } {
     }
   }
 
-  const asm =
-    tryRequireSqlJs('sql.js/dist/sql-asm.js') ||
-    tryRequireSqlJs('sql.js/dist/sql-asm.js'.replace(/\//g, path.sep));
+  const asm = tryRequireSqlJs('sql.js/dist/sql-asm.js');
   if (asm) return { init: asm, mode: 'asm' };
 
   const wasm =
@@ -178,51 +180,149 @@ function scheduleSave(): void {
   }, 400);
 }
 
+/** Flush pending debounced save and persist immediately (call on quit). */
+export function flushPersist(): void {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  persist();
+}
+
+/** Atomic persist: write .tmp then rename; keep .bak of previous good file. */
 export function persist(): void {
   if (!db || !dbPath) return;
   const data = db.export();
-  fs.writeFileSync(dbPath, Buffer.from(data));
+  if (!data || data.length < 16) {
+    console.warn('skip persist: export too small', { bytes: data?.length || 0 });
+    return;
+  }
+  const dir = path.dirname(dbPath);
+  fs.mkdirSync(dir, { recursive: true });
+  const tmp = `${dbPath}.tmp`;
+  const bak = `${dbPath}.bak`;
+  fs.writeFileSync(tmp, Buffer.from(data));
+  try {
+    if (fs.existsSync(dbPath) && fs.statSync(dbPath).size > 16) {
+      try {
+        fs.copyFileSync(dbPath, bak);
+      } catch {
+        /* ignore bak failure */
+      }
+    }
+    fs.renameSync(tmp, dbPath);
+  } catch (error) {
+    // Windows/OneDrive: rename can fail if target is locked — fall back to copy.
+    try {
+      fs.copyFileSync(tmp, dbPath);
+      try {
+        fs.unlinkSync(tmp);
+      } catch {
+        /* ignore */
+      }
+    } catch (e2) {
+      console.warn('atomic persist failed', error, e2);
+      throw e2;
+    }
+  }
 }
 
 export function getLocalDbInitError(): string | null {
   return initError;
 }
 
+/** Allow a later retry after a transient init failure (e.g. OneDrive placeholder). */
+export function clearLocalDbInitError(): void {
+  initError = null;
+  initPromise = null;
+}
+
+function openDatabaseBytes(
+  SQL: { Database: new (data?: ArrayLike<number> | null) => SqlJsDatabase },
+  filePath: string,
+): SqlJsDatabase | null {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const st = fs.statSync(filePath);
+    if (st.size < 16) {
+      console.warn('sqlite file too small, skip', { filePath, size: st.size });
+      return null;
+    }
+    const buf = fs.readFileSync(filePath);
+    if (!buf.length) return null;
+    return new SQL.Database(new Uint8Array(buf));
+  } catch (error) {
+    console.warn('failed to open sqlite', filePath, error);
+    return null;
+  }
+}
+
+async function doInit(): Promise<SqlJsDatabase> {
+  dbPath = resolveDbPath();
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  console.log('Opening local DB', { dbPath });
+
+  const { init, mode } = loadSqlJsInit();
+  const wasmPath = resolveWasmPath();
+  const SQL = await init(
+    mode === 'wasm' && wasmPath
+      ? {
+          locateFile: (file: string) => {
+            if (file.endsWith('.wasm') && fs.existsSync(wasmPath)) return wasmPath;
+            return path.join(path.dirname(wasmPath), file);
+          },
+        }
+      : undefined,
+  );
+
+  let opened =
+    openDatabaseBytes(SQL, dbPath) ||
+    openDatabaseBytes(SQL, `${dbPath}.bak`) ||
+    openDatabaseBytes(SQL, `${dbPath}.tmp`);
+
+  if (!opened) {
+    opened = new SQL.Database();
+  }
+  db = opened;
+  migrate(db);
+
+  // Count rows for diagnostics (do not scheduleSave — that was wiping empty raced DBs to disk).
+  try {
+    const vocabN = db.exec('SELECT COUNT(*) AS n FROM vocab');
+    const n = Number(vocabN?.[0]?.values?.[0]?.[0] || 0);
+    console.log('Local SQLite ready', { dbPath, mode, wasmPath, vocabCount: n });
+  } catch {
+    console.log('Local SQLite ready', { dbPath, mode, wasmPath });
+  }
+
+  void importPackagedSeeds().catch((e) => console.warn('seed import skipped', e));
+  return db;
+}
+
 export async function getLocalDb(): Promise<SqlJsDatabase> {
   if (db) return db;
-  if (initError) throw new Error(initError);
+  if (initPromise) return initPromise;
 
-  try {
-    dbPath = resolveDbPath();
-    const { init, mode } = loadSqlJsInit();
-    const wasmPath = resolveWasmPath();
-    const SQL = await init(
-      mode === 'wasm' && wasmPath
-        ? {
-            locateFile: (file: string) => {
-              if (file.endsWith('.wasm') && fs.existsSync(wasmPath)) return wasmPath;
-              return path.join(path.dirname(wasmPath), file);
-            },
-          }
-        : undefined,
-    );
-
-    if (fs.existsSync(dbPath)) {
-      const buf = fs.readFileSync(dbPath);
-      db = new SQL.Database(new Uint8Array(buf));
-    } else {
-      db = new SQL.Database();
-    }
-    migrate(db);
-    scheduleSave();
-    console.log('Local SQLite ready', { dbPath, mode, wasmPath });
-    void importPackagedSeeds().catch((e) => console.warn('seed import skipped', e));
-    return db;
-  } catch (error) {
-    initError = error instanceof Error ? error.message : String(error);
-    console.error('Local SQLite init failed', initError);
-    throw error instanceof Error ? error : new Error(initError);
+  // Allow one retry after a previous sticky failure (e.g. file briefly locked).
+  if (initError) {
+    console.warn('Retrying local DB after prior error', initError);
+    initError = null;
   }
+
+  initPromise = doInit()
+    .then((database) => {
+      initError = null;
+      return database;
+    })
+    .catch((error) => {
+      initError = error instanceof Error ? error.message : String(error);
+      initPromise = null;
+      db = null;
+      console.error('Local SQLite init failed', initError);
+      throw error instanceof Error ? error : new Error(initError);
+    });
+
+  return initPromise;
 }
 
 /** One-shot import of resources/seed dumps shipped with the installer. */

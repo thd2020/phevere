@@ -575,6 +575,7 @@ class RapidOcrWorkerEngine implements OcrEngine {
     }
     this.pending.clear();
     if (this.child) {
+      const pid = this.child.pid;
       try {
         this.child.stdin.write(JSON.stringify({ cmd: 'quit' }) + '\n');
       } catch {
@@ -584,6 +585,18 @@ class RapidOcrWorkerEngine implements OcrEngine {
         this.child.kill();
       } catch {
         /* ignore */
+      }
+      // Windows: kill the whole process tree (onnxruntime children).
+      if (process.platform === 'win32' && pid) {
+        try {
+          spawn('taskkill', ['/PID', String(pid), '/T', '/F'], {
+            stdio: 'ignore',
+            windowsHide: true,
+            detached: true,
+          }).unref();
+        } catch {
+          /* ignore */
+        }
       }
       this.child = null;
     }
