@@ -7,24 +7,22 @@ We use **electron-builder NSIS** via `@electron-addons/electron-forge-maker-nsis
 ```bash
 npm run build-native
 npm run make:win
-# Artifacts:
-#   out/make/nsis/x64/Phevere-Setup-*-x64.exe
-#   out/make/nsis/x64/Phevere-OCR-Models.zip   (optional sidecar)
+# Artifact: out/make/nsis/x64/Phevere-Setup-*-x64.exe
 ```
+
+`make:win` sets **npmmirror** Electron / electron-builder-binaries mirrors by default so packaging does not hang on `github.com` (`ETIMEDOUT`). Override with `ELECTRON_MIRROR` / `ELECTRON_BUILDER_BINARIES_MIRROR` if needed.
 
 Default install path is **`Program Files\Phevere`** (per-machine; no author parent folder). Publisher / copyright: **thd2020**.
 
-### Optional components
+### Single bundled installer
 
-The installer components page offers:
+One Setup.exe includes the app **and** OCR models (`resources/ocr-models` → `extraResources`). The components page still lets users:
 
 | Component | Default | Notes |
 |---|---|---|
 | Desktop shortcut | on | |
 | Start menu shortcut | on | |
-| OCR models (~15 MB) | **off** | Requires `Phevere-OCR-Models.zip` next to Setup.exe |
-
-OCR models are **not** embedded in Setup.exe (de-bloat). `npm run prepare:installer` builds the sidecar zip from `resources/ocr-models/`; `make:win` copies it beside the Setup artifact. Users who skip OCR can still download packs later in **Settings**.
+| OCR models (~15 MB) | **on** | Uncheck to omit models from disk after install |
 
 ### What is solidly bundled
 
@@ -32,26 +30,20 @@ OCR models are **not** embedded in Setup.exe (de-bloat). `npm run prepare:instal
 |---|---|
 | App code | `app.asar` |
 | `koffi` + `sql.js` | `asarUnpack` |
-| `onnxruntime-node` + `sharp` + `@gutenye/*` | `asarUnpack` (runtime OCR engine; models optional) |
+| `onnxruntime-node` + `sharp` + `@gutenye/*` | `asarUnpack` |
 | `sql-wasm.wasm` + `sql-asm.js` | `extraResources` |
 | Offline **seed** packs | `resources/seed` |
-| OCR ONNX models | **Sidecar zip** / Settings download — not in Setup by default |
+| OCR ONNX models | `extraResources` → `ocr-models` |
 
 ### Branding assets
 
-Generated/updated by `npm run prepare:installer`:
+`npm run prepare:installer` refreshes:
 
-- `packaging/icon.ico` + `icon.png` (ink / teal / ember “P” mark)
-- `packaging/installerSidebar.bmp` (164×314)
-- `packaging/installerHeader.bmp` (150×57)
+- `packaging/icon.ico` + `icon.png`
+- `packaging/installerSidebar.bmp` / `installerHeader.bmp`
 - `resources/tray-icon.png`
-- `packaging/optional/Phevere-OCR-Models.zip`
 
-Edit welcome copy in `packaging/installer.nsh`. NSIS options live in `electron-builder.yml` (`menuCategory: false`, `selectPerMachineByDefault: true`, custom header/sidebar).
-
-### Optional: WiX MSI (enterprise / GPO)
-
-`MakerWix` remains commented in `forge.config.js`. Requires WiX Toolset v3.
+Welcome copy: `packaging/installer.nsh`. Options: `electron-builder.yml`.
 
 ### Commands
 
@@ -61,10 +53,6 @@ npm run build-native
 npm run make:win
 ```
 
-### Code signing
+### Code signing / Store
 
-Sign the Setup.exe for fewer SmartScreen prompts (`win.certificateFile` / Azure Trusted Signing).
-
-### Microsoft Store
-
-Store distribution uses **MSIX** / Partner Center — separate from NSIS/MSI.
+See earlier notes — sign Setup.exe for SmartScreen; MSIX is separate.

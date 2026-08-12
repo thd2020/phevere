@@ -31,9 +31,15 @@ module.exports = {
       'node_modules/sql.js/dist/sql-asm.js',
       // Optional offline seed packs (JSON/JSONL/CEDICT). Copied into userData on first run.
       'resources/seed',
-      // OCR models are NOT bundled by default (installer de-bloat).
-      // Ship packaging/optional/Phevere-OCR-Models.zip beside Setup.exe.
+      // PP-OCR ONNX models — bundled in the single Setup.exe; NSIS can skip installing to disk.
+      'resources/ocr-models',
     ],
+    // Avoid github.com timeouts when re-fetching Electron (npmmirror). Override via ELECTRON_MIRROR.
+    download: {
+      mirrorOptions: {
+        mirror: process.env.ELECTRON_MIRROR || 'https://npmmirror.com/mirrors/electron/',
+      },
+    },
   },
   rebuildConfig: {},
   makers: [

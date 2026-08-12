@@ -36,7 +36,7 @@ const FILE_NAME = 'ocr-settings.json';
 export const OCR_PROFILES: OcrProfileMeta[] = [
   {
     id: 'bundled-pp-ocrv4',
-    label: 'PP-OCRv4 mobile (optional install / local)',
+    label: 'PP-OCRv4 mobile (bundled)',
     kind: 'bundled',
   },
   {

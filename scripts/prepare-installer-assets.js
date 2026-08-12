@@ -112,14 +112,14 @@ async function main() {
   }
   console.log('Wrote installerSidebar.bmp + installerHeader.bmp');
 
-  // Optional OCR sidecar zip (not embedded in Setup.exe)
+  // Optional: also emit sidecar zip for advanced redistribution (not required — models are in Setup).
   const ocrSrc = path.join(root, 'resources', 'ocr-models');
   const ocrZip = path.join(outDir, 'optional', 'Phevere-OCR-Models.zip');
-  if (fs.existsSync(path.join(ocrSrc, 'ch_PP-OCRv4_det_infer.onnx'))) {
+  if (process.env.PHEVERE_BUILD_OCR_SIDECAR === '1' && fs.existsSync(path.join(ocrSrc, 'ch_PP-OCRv4_det_infer.onnx'))) {
     zipDirectory(ocrSrc, ocrZip, 'ocr-models');
     console.log('Wrote', ocrZip);
   } else {
-    console.warn('OCR models missing — skip optional zip (run npm run sync-ocr-models)');
+    console.log('OCR models ship inside Setup.exe (extraResources); sidecar zip skipped');
   }
 }
 
