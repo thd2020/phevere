@@ -20,6 +20,6 @@ If an older Phevere folder remains under Program Files with no Apps entry, run `
 
 ## SHA-256
 
-`__SHA256__  Phevere-Setup-1.2.1-x64.exe`
+`0692CD0FA4C23B8AAD7632335F8F556C7897765EEC711A0C0E07FDA70B9B0ADC  Phevere-Setup-1.2.1-x64.exe`
 
 Full notes: see CHANGELOG `[1.2.1]`.

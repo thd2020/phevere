@@ -33,7 +33,7 @@ export interface Definition {
   sources?: string[];
 }
 
-import { BaseService, DictionaryError } from './base';
+import { BaseService, DictionaryError, withTimeout } from './base';
 import * as crypto from 'crypto';
 import { wrapConsole } from '../logger';
 import { net } from 'electron';
@@ -43,6 +43,10 @@ import { mergeSimilarDefinitions } from './definition-merge';
 import { lookupOffline } from './offline-dict-store';
 
 const console = wrapConsole('dictionary');
+/** Hard ceiling so renderer IPC never waits forever (etymology / hung hosts). */
+const LOOKUP_DEADLINE_MS = 12000;
+const ETYMOLOGY_BUDGET_MS = 2500;
+const OFFLINE_BUDGET_MS = 2000;
 
 export interface Translation {
   language: string;
@@ -308,10 +312,29 @@ export class DictionaryService extends BaseService {
 
       let result: DictionaryResult;
 
-      if (query.kind === 'sentence') {
-        result = await this.handleSentenceTranslationOptimized(query.trimmed, resolvedTarget, detectedLanguage);
-      } else {
-        result = await this.lookupWithCandidates(query, resolvedTarget, detectedLanguage, enabledSources);
+      const coreLookup =
+        query.kind === 'sentence'
+          ? this.handleSentenceTranslationOptimized(query.trimmed, resolvedTarget, detectedLanguage)
+          : this.lookupWithCandidates(query, resolvedTarget, detectedLanguage, enabledSources);
+
+      try {
+        result = await withTimeout(coreLookup, LOOKUP_DEADLINE_MS, 'dictionary.lookup');
+      } catch (deadlineErr) {
+        console.warn('Lookup hit deadline; returning best-effort fallback', deadlineErr);
+        result = {
+          word: query.trimmed,
+          definitions: [
+            {
+              partOfSpeech: 'unknown',
+              meaning: 'Lookup timed out. Check your network or try again.',
+              source: 'Timeout',
+            },
+          ],
+          translations: [],
+          examples: [],
+          sources: ['Timeout'],
+          metadata: { timedOut: true, isSentence: query.kind === 'sentence' },
+        };
       }
 
       result.detectedLanguage = detectedLanguage;
@@ -591,7 +614,11 @@ export class DictionaryService extends BaseService {
     // Memory Map path below still respects the CC-CEDICT toggle.
     if (preferCjkSources) {
       try {
-        const offlineHits = await lookupOffline(text, undefined, 12);
+        const offlineHits = await withTimeout(
+          lookupOffline(text, undefined, 12),
+          OFFLINE_BUDGET_MS,
+          'offline.lookup',
+        );
         for (const hit of offlineHits) {
           const label =
             hit.packId === 'cc-cedict' || /cedict/i.test(hit.packName || '')
@@ -907,7 +934,11 @@ export class DictionaryService extends BaseService {
     console.log(`[ETY-DEBUG] Current etymology value: ${etymology ? 'EXISTS' : 'UNDEFINED'}`);
 
     try {
-      const fetched = await this.fetchEtymologyFromMultipleSources(text);
+      const fetched = await withTimeout(
+        this.fetchEtymologyFromMultipleSources(text),
+        ETYMOLOGY_BUDGET_MS,
+        'etymology',
+      );
       if (fetched?.text) {
         if (!etymology) {
           etymology = fetched.text;
@@ -925,7 +956,7 @@ export class DictionaryService extends BaseService {
         console.log(`[ETY-DEBUG] Etymology fetch returned null/undefined`);
       }
     } catch (e: any) {
-      console.log(`[ETY-DEBUG] Etymology fetch failed with exception:`, e);
+      console.log(`[ETY-DEBUG] Etymology fetch failed/skipped:`, e?.message || e);
     }
 
     // Create final result — prefer pivoted / API lemma as the headword
@@ -934,7 +965,11 @@ export class DictionaryService extends BaseService {
     // Lemma pivot often leaves plurals without IPA; re-query FreeDict for the singular.
     if (!pronunciation && headword && headword.toLowerCase() !== text.toLowerCase() && preferLatinSources) {
       try {
-        const lemmaPhon = await this.getFreeDictionaryData(headword, langForDict);
+        const lemmaPhon = await withTimeout(
+          this.getFreeDictionaryData(headword, langForDict),
+          4000,
+          'lemma.ipa',
+        );
         if (lemmaPhon.pronunciation) pronunciation = lemmaPhon.pronunciation;
       } catch {
         /* optional */
@@ -1719,19 +1754,37 @@ export class DictionaryService extends BaseService {
 
     try {
       const url = `https://www.etymonline.com/word/${encodeURIComponent(cleanWord)}`;
-      const response = await net.fetch(url, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        },
-      });
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const abortTimer = setTimeout(() => {
+        try {
+          controller?.abort();
+        } catch {
+          /* ignore */
+        }
+      }, 2200);
+      let response: Response;
+      try {
+        response = await withTimeout(
+          net.fetch(url, {
+            signal: controller?.signal,
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+          } as any),
+          2300,
+          'etymonline',
+        );
+      } finally {
+        clearTimeout(abortTimer);
+      }
 
       if (!response.ok) {
         console.warn(`[ETY-DEBUG] Etymonline returned HTTP status ${response.status} for ${cleanWord}`);
         return undefined;
       }
 
-      const html = await response.text();
+      const html = await withTimeout(response.text(), 2000, 'etymonline.body');
       let raw = '';
 
       // Modern Etymonline: OpenGraph / meta description (legacy <dd> markup is gone).

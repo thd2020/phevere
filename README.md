@@ -13,6 +13,7 @@ Prebuilt **NSIS Setup** (`Phevere-Setup-<version>-x64.exe`) is on [GitHub Releas
 | Default install path | `C:\Program Files\Phevere` (per-machine; no author parent folder) |
 | Optional components | Desktop shortcut, Start menu shortcut, OCR models (~15 MB, on by default) |
 | Uninstall | **Settings → Apps → Phevere**, or Start menu → **Uninstall Phevere** |
+| Single instance | A second launch focuses the existing app (avoids SQLite / tray conflicts) |
 
 Maintainer packaging: [`PACKAGING.md`](PACKAGING.md) · release checklist: [`docs/RELEASE.md`](docs/RELEASE.md).
 

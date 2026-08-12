@@ -2003,7 +2003,14 @@ function startAutoCloseTimeout() {
                 });
               }
 
-              currentResult = await window.dictionaryAPI.lookup(text, targetLang);
+              currentResult = await Promise.race([
+                window.dictionaryAPI.lookup(text, targetLang),
+                new Promise(function (_, reject) {
+                  setTimeout(function () {
+                    reject(new Error('Lookup timed out — network may be slow or blocked'));
+                  }, 15000);
+                }),
+              ]);
               syncLanguageSelectsFromResult(currentResult);
               var audioLang = (currentResult && currentResult.detectedLanguage) ? currentResult.detectedLanguage : (currentTab === 'translation' ? targetLang : 'en');
               window['__audioLang'] = audioLang;

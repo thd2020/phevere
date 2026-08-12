@@ -12,8 +12,8 @@ const { rendererConfig } = require('./webpack.renderer.config.js');
 module.exports = {
   packagerConfig: {
     asar: true,
-    // Prefer packaging/icon.ico when available; PNG is fine for electron-builder NSIS.
-    // icon: './packaging/icon',
+    // Prefer packaging/icon.ico so the packaged .exe / taskbar use Phevere art (not Electron default).
+    icon: './packaging/icon',
     // koffi + sql.js must unpack; WASM also shipped as extraResource.
     asarUnpack: [
       '**/node_modules/koffi/**/*',
@@ -33,6 +33,7 @@ module.exports = {
       'resources/seed',
       // PP-OCR ONNX models — bundled in the single Setup.exe; NSIS can skip installing to disk.
       'resources/ocr-models',
+      'packaging/icon.ico',
     ],
     // Avoid github.com timeouts when re-fetching Electron (npmmirror). Override via ELECTRON_MIRROR.
     download: {

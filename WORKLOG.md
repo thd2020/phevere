@@ -46,3 +46,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Docs: rewrite `README.md` (NSIS not MSI; install/uninstall/ghost cleanup; current features); refresh `PACKAGING.md` + `docs/RELEASE.md`.
 - Process: project rule `.cursor/rules/update-docs-and-worklog.mdc` + user rule `update-docs-on-changes.mdc` — always update docs + granular WORKLOG on feat/fix.
 - Release **1.2.1**: bump `package.json`, CHANGELOG, tag `v1.2.1`, GitHub release with NSIS Setup.
+- Post-1.2.1 hotfix: dictionary/etymology `net.fetch` hard timeouts (lookup no longer hangs forever; toolstrip stays usable); forge packs `packaging/icon` into exe; `requestSingleInstanceLock` + focus on second launch; AppUserModelId → `com.phevere.app`.

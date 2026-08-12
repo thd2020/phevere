@@ -54,6 +54,12 @@ try {
   /* ignore — path may be unavailable in odd launch contexts */
 }
 
+/** Only one Phevere process — extra instances freeze SQLite / confuse tray & UIA. */
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.exit(0);
+}
+
 // Check administrator privileges for UIAutomation
 function checkAdminPrivileges(): boolean {
   try {
@@ -395,15 +401,37 @@ function resolveTrayIconPath(): string {
   return candidates[0];
 }
 
+function resolveAppIconPath(): string | null {
+  const candidates = app.isPackaged
+    ? [
+        path.join(process.resourcesPath, 'icon.ico'),
+        path.join(process.resourcesPath, 'tray-icon.png'),
+        path.join(path.dirname(process.execPath), 'icon.ico'),
+      ]
+    : [
+        path.join(process.cwd(), 'packaging', 'icon.ico'),
+        path.join(process.cwd(), 'packaging', 'icon.png'),
+        path.join(process.cwd(), 'resources', 'tray-icon.png'),
+      ];
+  for (const p of candidates) {
+    try {
+      if (p && fs.existsSync(p)) return p;
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
 function getTrayIconPath(): string {
   return resolveTrayIconPath();
 }
 
-/** Same asset as tray — used for taskbar / window chrome (not the Electron default). */
+/** Taskbar / window chrome — prefer .ico in packaged builds. */
 function loadWindowIcon(): Electron.NativeImage | undefined {
   try {
-    const p = resolveTrayIconPath();
-    if (!fs.existsSync(p)) {
+    const p = resolveAppIconPath() || resolveTrayIconPath();
+    if (!p || !fs.existsSync(p)) {
       log.warn('main', 'App icon file missing', { p });
       return undefined;
     }
@@ -2068,8 +2096,10 @@ ipcMain.handle('search-get-cache-stats', () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
+  if (!gotSingleInstanceLock) return;
   if (process.platform === 'win32') {
-    app.setAppUserModelId('com.phevere.dictionary');
+    // Must match electron-builder appId for correct taskbar icon grouping.
+    app.setAppUserModelId('com.phevere.app');
   }
   log.info('main', 'App ready');
   monitorSettings = loadMonitorSettings();
@@ -2102,6 +2132,20 @@ app.on('ready', () => {
     })
     .catch((err) => log.warn('main', 'OCR warm-up skipped', { err: String(err) }));
   log.info('main', 'Initialization complete');
+});
+
+app.on('second-instance', () => {
+  log.info('main', 'Second instance attempted — focusing existing window');
+  showOrRestoreMainWindow();
+  try {
+    const existing = popupWindows.find((w) => w && !w.isDestroyed());
+    if (existing) {
+      existing.show();
+      existing.focus();
+    }
+  } catch {
+    /* ignore */
+  }
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common

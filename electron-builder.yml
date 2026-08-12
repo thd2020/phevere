@@ -30,6 +30,8 @@ extraResources:
     to: seed
   - from: resources/ocr-models
     to: ocr-models
+  - from: packaging/icon.ico
+    to: icon.ico
 win:
   target:
     - target: nsis
