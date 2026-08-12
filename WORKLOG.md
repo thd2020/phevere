@@ -34,9 +34,14 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 
 ## 2026-08-12
 
-- Fix installer vocab wipe: single-flight DB init, atomic persist (tmp→rename + .bak), no save-on-open race, flushPersist on quit.
-- Pronunciation: keep FreeDict IPA across merge; after plural→lemma pivot, re-fetch FreeDict for singular (vagaries/vicissitudes).
-- Quit: orderly tray/OS quit awaits UIA stop, disposes OCR with Windows process-tree kill, then `app.exit`.
+- Fix installer vocab wipe: single-flight DB init, atomic persist (tmp→rename + .bak), no save-on-open race, flushPersist on quit (`src/services/local-db.ts`).
+- Pronunciation: keep FreeDict IPA across merge; after plural→lemma pivot, re-fetch FreeDict for singular (vagaries/vicissitudes) (`src/services/dictionary.ts`).
+- Quit: orderly tray/OS quit awaits UIA stop, disposes OCR with Windows process-tree kill, then `app.exit` (`src/index.ts`, `ocr-engine.ts`).
 - Popup home-PC harden: `sandbox: false`, one retry on did-fail-load / render-process-gone; optional `userData/.disable-gpu` flag.
-- Installer polish: default `Program Files\Phevere` (no author parent); LICENSE/copyright publisher **thd2020**; components page for shortcuts/OCR; new ink/teal/ember icon + sidebar/header BMPs.
-- Single Setup.exe re-bundles OCR models; `make:win` uses npmmirror Electron mirrors to avoid github.com ETIMEDOUT.
+- Installer branding: default `Program Files\Phevere` (`menuCategory: false`); LICENSE/copyright publisher **thd2020** (removed xiangyuxiao); components page for shortcuts/OCR; ink/teal/ember icon + sidebar/header BMPs (`packaging/*`, `electron-builder.yml`).
+- Single Setup.exe re-bundles OCR models via `extraResources`; uncheck OCR removes `resources\ocr-models` after extract (`packaging/installer.nsh`).
+- `npm run make:win` → `scripts/make-win.js` sets npmmirror Electron / electron-builder-binaries mirrors (fixes `github.com` / `20.205.243.166` ETIMEDOUT during package).
+- NSIS: drop `MUI_FUNCTION_DESCRIPTION_*` (include runs before MUI macros; was failing makensis).
+- **Uninstaller / ghost installs:** reinforce Apps & Features registry in `customInstall`; Start menu **Uninstall Phevere** shortcut; `customUnInstall` clears shortcuts + legacy `thd2020`/`xiangyuxiao` Start Menu folders; `preInit` only seeds InstallLocation when empty (avoid orphan keys); add `scripts/remove-ghost-phevere.ps1` for stuck Program Files folders with no Control Panel entry.
+- Docs: rewrite `README.md` (NSIS not MSI; install/uninstall/ghost cleanup; current features); refresh `PACKAGING.md` + `docs/RELEASE.md`.
+- Process: project rule `.cursor/rules/update-docs-and-worklog.mdc` + user rule `update-docs-on-changes.mdc` — always update docs + granular WORKLOG on feat/fix.

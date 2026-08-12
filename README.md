@@ -1,174 +1,88 @@
-# 📚 Phevere Dictionary
+# Phevere Dictionary
 
-A cross-platform dictionary application that triggers on **pure native text selection**, built with Electron and Microsoft UI Automation.
+Select-to-lookup dictionary for Windows (Electron + Microsoft UI Automation). Select text anywhere → popup with definitions, translation, etymology, Wikipedia, and a local vocabulary notebook.
+
+Publisher: **[thd2020](https://github.com/thd2020)**.
 
 ## Download (Windows)
 
-Prebuilt **x64 MSI** installers are on [GitHub Releases](https://github.com/thd2020/phevere/releases). Users do not need Node.js. For full UIAutomation selection monitoring, run the installed app **as administrator** (see below). Maintainer build steps: `PACKAGING.md` and `docs/RELEASE.md`.
+Prebuilt **NSIS Setup** (`Phevere-Setup-<version>-x64.exe`) is on [GitHub Releases](https://github.com/thd2020/phevere/releases). No Node.js required for end users.
 
-## 🎯 Project Overview
+| | |
+|---|---|
+| Default install path | `C:\Program Files\Phevere` (per-machine; no author parent folder) |
+| Optional components | Desktop shortcut, Start menu shortcut, OCR models (~15 MB, on by default) |
+| Uninstall | **Settings → Apps → Phevere**, or Start menu → **Uninstall Phevere** |
 
-Phevere is designed to provide instant dictionary lookups when you **select text anywhere on your screen** - **no copying, no additional keys, just pure selection**. It supports multiple languages with a focus on Chinese ↔ English translations.
+Maintainer packaging: [`PACKAGING.md`](PACKAGING.md) · release checklist: [`docs/RELEASE.md`](docs/RELEASE.md).
 
-### 🎯 **Core Goal: Pure Native Text Selection**
-- **Select any text** - Just drag your mouse to select text
-- **Automatic popup** - Dictionary results appear immediately
-- **No additional actions** - No Ctrl+C, no buttons, no manual triggers
-- **Real native hooks** - Uses Microsoft UI Automation with intelligent debouncing
+### Ghost / stuck installs
 
-### Key Features (Current Focus)
+If an older Phevere folder remains under Program Files but **Apps & Features no longer lists it**, clean it then reinstall:
 
-- **🔍 Pure Text Selection Detection**: Microsoft UI Automation with 500ms debouncing (like Youdao Dictionary)
-- **📚 Multi-language Support**: Chinese ↔ English translations with pronunciation
-- **🎨 Rich Dictionary Results**: Definitions, examples, translations
-- **🌐 Wikipedia Integration**: Quick access to Wikipedia entries
-- **🔍 Google Search**: Related search results
-- **📋 Clipboard History**: Automatic clipboard monitoring and history management
-
-## 🚀 **NEW: AI-Enhanced Popup Interface**
-
-### **🎨 Modern Collapsible Toolbar Design**
-- **Eliminated margins** - Content goes to the edge for maximum space utilization
-- **Collapsible toolbar** - Only icons visible by default, expandable on click
-- **Separate dictionary and translation icons** - Clear distinction between functions
-- **Pre-loading content** - Dictionary content loads even when collapsed for consistency
-
-### **⚙️ User-Configurable Behavior**
-- **Expandable toolbar mode** - Choose between compact toolbar or full view
-- **Preload settings** - Control whether content loads before expansion
-- **Persistent preferences** - Settings saved in localStorage
-
-### **🎯 Enhanced User Experience**
-- **Smooth animations** - Professional-grade transitions and effects
-- **Intuitive navigation** - Clear icon-based interface
-- **Responsive design** - Adapts to different screen sizes
-- **Keyboard shortcuts** - Escape key for quick navigation
-
-### **🔧 Technical Improvements**
-- **Modern CSS architecture** - Clean, maintainable styling
-- **Performance optimized** - Efficient rendering and animations
-- **Cross-platform compatibility** - Works on Windows, macOS, and Linux
-- **Accessibility features** - Keyboard navigation and screen reader support
-
-## Development: tray Quit vs terminal
-
-When you run **`npm run start`** or **`npm run start-admin`**, Electron Forge starts a **webpack dev server** (watch mode) and launches Electron. Choosing **Quit** from the **tray** (notification area) menu exits the **Electron app** and tears down the tray icon as expected.
-
-The **terminal** may **keep running** after that, because Forge’s Node process is still hosting the webpack watcher. That is **normal in development**. Press **Ctrl+C** in that terminal once to stop the dev server.
-
-A packaged app (`npm run package` / the installed `.exe`) has no separate webpack process, so Quit fully ends the program.
-
-## 🏗️ Architecture
-
-### **Current Implementation Status**
-
-#### ✅ **Working Components:**
-- **Electron UI** - Modern popup and main window
-- **Dictionary API** - Google Translate integration
-- **Wikipedia API** - Article summaries and search
-- **Clipboard History** - Comprehensive clipboard management
-- **Global Shortcuts** - Keyboard shortcuts for testing
-- **UIAutomation Selection** - Real native text selection detection with debouncing
-
-#### ✅ **Recently Fixed:**
-- **Native Selection Hooks** - Microsoft UI Automation implementation working
-- **Pure Selection Detection** - Direct UIAutomation events (no indirect methods)
-- **Real Selection Events** - System-level selection monitoring with message loop
-
-### **Current Architecture: Pure Native Selection**
-
-```
-Text Selection → UIAutomation Event → 500ms Debounce → Electron → Popup
+```powershell
+# Elevated PowerShell, from a clone of this repo:
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\remove-ghost-phevere.ps1
+# Optional: also wipe vocabulary DB / settings
+.\scripts\remove-ghost-phevere.ps1 -AlsoUserData
 ```
 
-**Features:**
-- **Event-driven detection** - No polling, pure event-based
-- **Intelligent debouncing** - Waits for user to pause selection (500ms)
-- **Cross-application support** - Works in any UIA-compliant application
-- **Native C++ implementation** - High-performance UIAutomation monitoring
+Then run the latest Setup.exe. New installs register a proper uninstaller (`Uninstall Phevere.exe`) and an Apps & Features entry (publisher **thd2020**).
 
-## 🚀 Current Status
+## Features
 
-### ✅ **Completed & Working**
-- [x] **Electron Application** - Full UI and popup system
-- [x] **Dictionary API Integration** - Google Translate with fallbacks
-- [x] **Wikipedia Integration** - Article search and summaries
-- [x] **Clipboard History System** - Complete clipboard management
-- [x] **Global Shortcuts** - Testing and manual triggers
-- [x] **Modern UI** - Responsive design with rich results
-- [x] **UIAutomation Selection** - Real native text selection detection
-- [x] **Debounced Detection** - 500ms delay prevents spam (like Youdao Dictionary)
-- [x] **Cross-language Support** - Chinese, English, and other languages
+- **Native text selection** — UIAutomation (best as Administrator); shortcut / hover / OCR modes in Settings
+- **Dictionary & translation** — Free Dictionary, Wiktionary, Datamuse, Youdao / DeepL routing; CJK ↔ English
+- **Etymology & Wikipedia** — in-popup tabs; Wikipedia reader webview
+- **Vocabulary notebook** — local SQLite (`%APPDATA%\phevere`)
+- **OCR** — bundled PP-OCRv4 models (optional component); region / hover / clipboard / window capture
+- **Tray app** — Quit tears down UIA / OCR cleanly; main window can hide to tray
 
-### 🚧 **In Progress - Enhanced Features**
-- [ ] **OCR functionality** - For non-selectable text
-- [ ] **Advanced language detection** - Automatic language identification
-- [ ] **User preferences** - Customizable debounce delay and settings
-- [ ] **Performance optimizations** - Memory and CPU usage improvements
-
-### ✅ **Recently Resolved**
-- **UIAutomation Implementation** - Working with proper message loop
-- **Debounced Selection** - Intelligent waiting for user to pause
-- **Cross-application Support** - Works in Notepad, Word, browsers, etc.
-- **Administrator Privileges** - Proper privilege handling for system-wide monitoring
-
-## 🎯 **Current Features**
-
-### **Phase 1: Pure Native Selection (✅ Complete)**
-1. **Microsoft UI Automation** - Real system-level selection event monitoring
-2. **Debounced Detection** - 500ms delay prevents word-by-word spam
-3. **Cross-application Support** - Works in any UIA-compliant application
-4. **Native C++ Implementation** - High-performance UIAutomation monitoring
-
-### **Phase 2: Enhanced Features (🚧 In Progress)**
-- [ ] OCR functionality for non-selectable text
-- [ ] Advanced language detection
-- [ ] User preferences and customization
-- [ ] Performance optimizations
-
-## 🛠️ Development Setup
+## Development
 
 ### Prerequisites
-- Node.js (v16 or higher)
-- Visual Studio 2022 (for native addon compilation)
-- Windows 10/11 (for UIAutomation support)
 
-### Installation
+- Node.js 18+ recommended  
+- Visual Studio 2022 (C++ workload) for the native UIA addon  
+- Windows 10/11  
 
-#### Windows (✅ Working)
+### Setup
+
 ```bash
-# Clone the repository
-git clone <repository-url>
+git clone https://github.com/thd2020/phevere.git
 cd phevere
-
-# Install dependencies
 npm install
-
-# Build native addon
-npm run build
-
-# Start the application
+npm run build-native
 npm start
-```
-
-### **Important Notes:**
-- **Administrator Privileges**: The application requires administrator privileges for system-wide UIAutomation monitoring
-- **UIA-compliant Applications**: Works best with applications that support Microsoft UI Automation (Notepad, Word, browsers, etc.)
-- **Debounced Behavior**: The system waits 500ms after you stop selecting text before showing the popup (like Youdao Dictionary)
-- **Native Implementation**: Uses C++ UIAutomation for high-performance text selection detection
-
-### **Running the Application:**
-
-#### **For UIAutomation Selection Detection (Recommended):**
-```bash
-# Run with administrator privileges for full UIAutomation support
+# Full selection monitoring:
 npm run start-admin
 ```
 
-#### **For Development Testing:**
+### Build the installer
+
 ```bash
-# Run without administrator privileges (limited functionality)
-npm start
+npm run build-native
+npm run make:win
+# → out\make\nsis\x64\Phevere-Setup-*-x64.exe
 ```
 
-**Note:** Without administrator privileges, UIAutomation selection detection will not work. The application requires elevated privileges for system-wide monitoring. 
+`make:win` uses npmmirror Electron mirrors by default (avoids `github.com` `ETIMEDOUT` on some networks).
+
+### Tray Quit vs terminal (dev only)
+
+Tray **Quit Phevere** exits Electron. The Forge webpack terminal may keep running until **Ctrl+C** — normal in development. Packaged builds have no separate webpack process.
+
+## Architecture (short)
+
+```
+Selection / OCR / shortcut → main process → popup renderer
+                              ↓
+                     dictionary + local SQLite + OCR engine
+```
+
+Native addon: `native-addon/` (UIAutomation). Packaging: Electron Forge + electron-builder NSIS (`electron-builder.yml`, `packaging/installer.nsh`).
+
+## License
+
+MIT © thd2020 — see [`LICENSE`](LICENSE).

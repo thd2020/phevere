@@ -25,7 +25,9 @@ Primary artifact:
 out\make\nsis\x64\Phevere-Setup-<version>-x64.exe
 ```
 
-Single Setup includes optional OCR models. If packaging hits `connect ETIMEDOUT` to GitHub, use `npm run make:win` (npmmirror mirrors) or set `ELECTRON_MIRROR`.
+Single Setup includes OCR models and registers **Uninstall Phevere** (Apps & Features + Start menu link). If packaging hits `connect ETIMEDOUT` to GitHub, use `npm run make:win` (npmmirror) or set `ELECTRON_MIRROR`.
+
+If testers report a “ghost” Program Files folder with no Apps entry, have them run `scripts/remove-ghost-phevere.ps1` before reinstalling (see `README.md` / `PACKAGING.md`).
 
 Optional SHA-256:
 

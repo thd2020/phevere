@@ -2,7 +2,7 @@
 
 ## Windows: NSIS Setup.exe (primary)
 
-We use **electron-builder NSIS** via `@electron-addons/electron-forge-maker-nsis` — assisted wizard (directory, components, branding).
+We use **electron-builder NSIS** via `@electron-addons/electron-forge-maker-nsis` — assisted wizard (directory, components, branding, **uninstaller**).
 
 ```bash
 npm run build-native
@@ -10,19 +10,41 @@ npm run make:win
 # Artifact: out/make/nsis/x64/Phevere-Setup-*-x64.exe
 ```
 
-`make:win` sets **npmmirror** Electron / electron-builder-binaries mirrors by default so packaging does not hang on `github.com` (`ETIMEDOUT`). Override with `ELECTRON_MIRROR` / `ELECTRON_BUILDER_BINARIES_MIRROR` if needed.
+`make:win` (`scripts/make-win.js`) sets **npmmirror** Electron / electron-builder-binaries mirrors by default so packaging does not hang on `github.com` (`ETIMEDOUT`). Override with `ELECTRON_MIRROR` / `ELECTRON_BUILDER_BINARIES_MIRROR` if needed.
 
-Default install path is **`Program Files\Phevere`** (per-machine; no author parent folder). Publisher / copyright: **thd2020**.
+| | |
+|---|---|
+| Default path | **`Program Files\Phevere`** (per-machine default; `menuCategory: false`) |
+| Publisher | **thd2020** (`LICENSE`, `copyright`, `publisherName`, package `author`) |
+| Uninstaller | `Uninstall Phevere.exe` in the install dir + **Apps & Features** registry |
+| Start menu | Optional “Phevere” + **“Uninstall Phevere”** shortcuts |
 
 ### Single bundled installer
 
-One Setup.exe includes the app **and** OCR models (`resources/ocr-models` → `extraResources`). The components page still lets users:
+One Setup.exe includes the app **and** OCR models (`resources/ocr-models` → `extraResources`). Components page:
 
 | Component | Default | Notes |
 |---|---|---|
 | Desktop shortcut | on | |
-| Start menu shortcut | on | |
-| OCR models (~15 MB) | **on** | Uncheck to omit models from disk after install |
+| Start menu shortcut | on | Also creates **Uninstall Phevere** |
+| OCR models (~15 MB) | **on** | Uncheck → remove `resources\ocr-models` after extract |
+
+### Uninstall & ghost cleanup
+
+Normal uninstall:
+
+1. Windows **Settings → Apps → Phevere → Uninstall**, or  
+2. Start menu → **Uninstall Phevere**, or  
+3. Run `"C:\Program Files\Phevere\Uninstall Phevere.exe"`
+
+If files remain but Apps has no entry (“ghost” install — often from aborted installs or older author-folder paths):
+
+```powershell
+.\scripts\remove-ghost-phevere.ps1
+.\scripts\remove-ghost-phevere.ps1 -AlsoUserData   # also wipe %APPDATA%\phevere
+```
+
+`packaging/installer.nsh` reinforces uninstall registry keys on install and cleans Start Menu leftovers (including legacy `thd2020` / `xiangyuxiao` folders) on uninstall. `preInit` only seeds `InstallLocation` when empty, so incomplete installs are less likely to leave orphan registry rows.
 
 ### What is solidly bundled
 
@@ -34,6 +56,7 @@ One Setup.exe includes the app **and** OCR models (`resources/ocr-models` → `e
 | `sql-wasm.wasm` + `sql-asm.js` | `extraResources` |
 | Offline **seed** packs | `resources/seed` |
 | OCR ONNX models | `extraResources` → `ocr-models` |
+| Uninstaller | Written by NSIS as `Uninstall Phevere.exe` |
 
 ### Branding assets
 
@@ -43,16 +66,12 @@ One Setup.exe includes the app **and** OCR models (`resources/ocr-models` → `e
 - `packaging/installerSidebar.bmp` / `installerHeader.bmp`
 - `resources/tray-icon.png`
 
-Welcome copy: `packaging/installer.nsh`. Options: `electron-builder.yml`.
+Welcome / finish / components: `packaging/installer.nsh`. Options: `electron-builder.yml`.
 
-### Commands
+### Optional: WiX MSI
 
-```bash
-npm run prepare:installer
-npm run build-native
-npm run make:win
-```
+Commented in `forge.config.js`; needs WiX Toolset v3. Prefer NSIS for end users.
 
 ### Code signing / Store
 
-See earlier notes — sign Setup.exe for SmartScreen; MSIX is separate.
+Sign Setup.exe for fewer SmartScreen prompts. Microsoft Store uses MSIX — separate track.
