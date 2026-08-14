@@ -39,13 +39,15 @@ import { wrapConsole } from '../logger';
 import { net } from 'electron';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, latinLemmaForms } from './text-normalize';
 import { buildEtymology, EtymologyLink } from './etymology';
-import { mergeSimilarDefinitions, dedupeExamples } from './definition-merge';
+import { mergeSimilarDefinitions, dedupeExamples, canonicalPos } from './definition-merge';
 import { lookupOffline, type OfflineHit } from './offline-dict-store';
 
 const console = wrapConsole('dictionary');
 /** Hard ceiling so renderer IPC never waits forever (etymology / hung hosts). */
 const LOOKUP_DEADLINE_MS = 12000;
 const ETYMOLOGY_BUDGET_MS = 6000;
+const ETYMOLOGY_BUDGET_WHEN_DEFS_MS = 2500;
+const IPA_BUDGET_MS = 1500;
 const OFFLINE_BUDGET_MS = 2000;
 
 type LookupHolder = { current?: DictionaryResult };
@@ -503,7 +505,7 @@ export class DictionaryService extends BaseService {
           ? 'CC-CEDICT'
           : hit.packName || 'Offline';
       definitions.push({
-        partOfSpeech: hit.pos || 'definition',
+        partOfSpeech: canonicalPos(hit.pos || 'definition'),
         meaning: hit.definition,
         source: label,
         sources: [label],
@@ -647,20 +649,28 @@ export class DictionaryService extends BaseService {
     const preferCjkSources = isAsianLanguage || isChinese;
     const preferLatinSources = !preferCjkSources;
 
-    // Offline packs (SQLite) — CJK: any language; Latin: language='en' (WordNet / Webster / FreeDict).
-    // Memory Map path below still respects the CC-CEDICT toggle.
-    if (preferCjkSources) {
+    // Offline packs (SQLite) overlap network APIs — do not wait 2s before FreeDict/Wiktionary.
+    const offlinePromise = (async () => {
       try {
-        const offlineHits = await withTimeout(
-          lookupOffline(text, undefined, 16),
-          OFFLINE_BUDGET_MS,
-          'offline.lookup',
-        );
-        this.absorbOfflineHits(definitions, sources, offlineHits, true);
+        if (preferCjkSources) {
+          const offlineHits = await withTimeout(
+            lookupOffline(text, undefined, 16),
+            OFFLINE_BUDGET_MS,
+            'offline.lookup',
+          );
+          this.absorbOfflineHits(definitions, sources, offlineHits, true);
+        } else if (preferLatinSources) {
+          const offlineHits = await withTimeout(
+            lookupOffline(text, 'en', 16, latinLemmaForms(text)),
+            OFFLINE_BUDGET_MS,
+            'offline.lookup.en',
+          );
+          this.absorbOfflineHits(definitions, sources, offlineHits, false);
+        }
       } catch {
         /* offline optional */
       }
-    }
+    })();
 
     if (preferCjkSources && (!enabledSources || enabledSources.includes('Youdao API') || enabledSources.includes('CC-CEDICT'))) {
       // Auto-use Youdao when credentials exist — don't require the toggle for CJK queries.
@@ -685,19 +695,6 @@ export class DictionaryService extends BaseService {
       }
     }
 
-    // Latin path: also probe offline EN packs (WordNet / Webster / FreeDict).
-    if (preferLatinSources) {
-      try {
-        const offlineHits = await withTimeout(
-          lookupOffline(text, 'en', 16, latinLemmaForms(text)),
-          OFFLINE_BUDGET_MS,
-          'offline.lookup.en',
-        );
-        this.absorbOfflineHits(definitions, sources, offlineHits, false);
-      } catch {
-        /* optional */
-      }
-    }
     const langForDict = sourceLanguage || 'en';
     const isSourceEnabled = (sourceName: string) => {
       if (enabledSources) return enabledSources.includes(sourceName);
@@ -768,7 +765,7 @@ export class DictionaryService extends BaseService {
     }
 
     // Wait for all API calls with timeout (safe — late rejections are handled)
-    const results = await Promise.allSettled(
+    const resultsPromise = Promise.allSettled(
       apiPromises.map((promise: Promise<any>) =>
         withTimeout(promise, 5000, 'dictionary.source').catch((error) => ({
           type: 'timeout',
@@ -776,6 +773,7 @@ export class DictionaryService extends BaseService {
         })),
       ),
     );
+    const [results] = await Promise.all([resultsPromise, offlinePromise]);
 
     // Process results
     let canonicalLemma: string | undefined;
@@ -974,10 +972,11 @@ export class DictionaryService extends BaseService {
     }
 
     const etyQuery = (canonicalLemma && canonicalLemma.trim()) || text;
+    const etyBudget = this.hasRealDefinitions(result) ? ETYMOLOGY_BUDGET_WHEN_DEFS_MS : ETYMOLOGY_BUDGET_MS;
     try {
       const fetched = await withTimeout(
         this.fetchEtymologyFromMultipleSources(etyQuery),
-        ETYMOLOGY_BUDGET_MS,
+        etyBudget,
         'etymology.multi',
       );
       if (fetched?.text) {
@@ -989,21 +988,16 @@ export class DictionaryService extends BaseService {
     }
 
     if (!result.pronunciation && preferLatinSources) {
-      const ipaForms = [
-        headword,
-        ...latinLemmaForms(text),
-        ...latinLemmaForms(headword),
-      ].filter((f, i, arr) => f && f.toLowerCase() !== text.toLowerCase() && arr.indexOf(f) === i);
-      for (const form of ipaForms) {
+      const ipaWord = headword;
+      if (ipaWord && ipaWord.toLowerCase() !== text.toLowerCase()) {
         try {
           const lemmaPhon = await withTimeout(
-            this.getFreeDictionaryData(form, langForDict),
-            3000,
+            this.getFreeDictionaryData(ipaWord, langForDict),
+            IPA_BUDGET_MS,
             'lemma.ipa',
           );
           if (lemmaPhon.pronunciation) {
             result.pronunciation = lemmaPhon.pronunciation;
-            break;
           }
         } catch {
           /* optional */
@@ -2742,17 +2736,7 @@ export class DictionaryService extends BaseService {
    * Normalize part of speech strings
    */
   private normalizePartOfSpeech(pos: string): string {
-    if (!pos) return 'unknown';
-    const lowerPos = pos.toLowerCase();
-    if (lowerPos.includes('noun')) return 'noun';
-    if (lowerPos.includes('verb')) return 'verb';
-    if (lowerPos.includes('adjective')) return 'adjective';
-    if (lowerPos.includes('adverb')) return 'adverb';
-    if (lowerPos.includes('pronoun')) return 'pronoun';
-    if (lowerPos.includes('preposition')) return 'preposition';
-    if (lowerPos.includes('conjunction')) return 'conjunction';
-    if (lowerPos.includes('interjection')) return 'interjection';
-    return lowerPos;
+    return canonicalPos(pos);
   }
 }
 

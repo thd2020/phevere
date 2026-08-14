@@ -95,9 +95,66 @@ function levenshteinRatio(a: string, b: string): number {
   return 1 - dp[n] / maxLen;
 }
 
+/** Webster/GCIDE `n` / `v. t.`, Datamuse `n`, WordNet `noun` → one label. */
+const POS_ALIAS: Record<string, string> = {
+  n: 'noun',
+  noun: 'noun',
+  nouns: 'noun',
+  pl: 'noun',
+  v: 'verb',
+  vt: 'verb',
+  vi: 'verb',
+  vb: 'verb',
+  verb: 'verb',
+  verbs: 'verb',
+  a: 'adjective',
+  adj: 'adjective',
+  adjective: 'adjective',
+  pa: 'adjective',
+  adv: 'adverb',
+  adverb: 'adverb',
+  superl: 'adjective',
+  compar: 'adjective',
+  prep: 'preposition',
+  preposition: 'preposition',
+  pron: 'pronoun',
+  pronoun: 'pronoun',
+  conj: 'conjunction',
+  conjunction: 'conjunction',
+  interj: 'interjection',
+  interjection: 'interjection',
+  art: 'article',
+  article: 'article',
+  det: 'determiner',
+  determiner: 'determiner',
+  num: 'numeral',
+  numeral: 'numeral',
+};
+
+export function canonicalPos(raw?: string): string {
+  const original = (raw || '').trim();
+  if (!original) return 'unknown';
+  const lower = original.toLowerCase().replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
+  const compact = lower.replace(/[^a-z]+/g, '');
+  if (POS_ALIAS[compact]) return POS_ALIAS[compact];
+  const first = lower.split(' ')[0];
+  if (POS_ALIAS[first]) return POS_ALIAS[first];
+  if (/^v(\s+[ti])+$/.test(lower) || compact.startsWith('vb')) return 'verb';
+  if (/^p\s*(pr|p|a)\b/.test(lower)) return compact === 'pa' ? 'adjective' : 'verb';
+  if (lower.includes('noun')) return 'noun';
+  if (lower.includes('verb')) return 'verb';
+  if (lower.includes('adjective')) return 'adjective';
+  if (lower.includes('adverb')) return 'adverb';
+  if (lower.includes('pronoun')) return 'pronoun';
+  if (lower.includes('preposition')) return 'preposition';
+  if (lower.includes('conjunction')) return 'conjunction';
+  if (lower.includes('interjection')) return 'interjection';
+  return lower || 'unknown';
+}
+
 function samePos(a: string, b: string): boolean {
-  const pa = (a || 'unknown').toLowerCase().trim();
-  const pb = (b || 'unknown').toLowerCase().trim();
+  const pa = canonicalPos(a);
+  const pb = canonicalPos(b);
   if (pa === pb) return true;
   if (pa === 'unknown' || pb === 'unknown') return true;
   return false;
@@ -201,6 +258,7 @@ export function mergeSimilarDefinitions(defs: MergeableDefinition[]): MergeableD
       const sources = citeList(incoming);
       clusters.push({
         ...incoming,
+        partOfSpeech: canonicalPos(incoming.partOfSpeech),
         meaning: (incoming.meaning || '').trim(),
         sources,
         source: formatSourceLabel(sources) || incoming.source || 'Unknown',
@@ -210,8 +268,14 @@ export function mergeSimilarDefinitions(defs: MergeableDefinition[]): MergeableD
 
     const base = clusters[mergedInto];
     const sources = [...citeList(base), ...citeList(incoming)];
+    const posA = canonicalPos(base.partOfSpeech);
+    const posB = canonicalPos(incoming.partOfSpeech);
+    const mergedPos =
+      posA !== 'unknown' && posA !== 'definition' ? posA
+      : posB !== 'unknown' && posB !== 'definition' ? posB
+      : posA;
     clusters[mergedInto] = {
-      partOfSpeech: base.partOfSpeech && base.partOfSpeech !== 'unknown' ? base.partOfSpeech : incoming.partOfSpeech,
+      partOfSpeech: mergedPos,
       meaning: preferMeaning(base.meaning, incoming.meaning),
       examples: unionUnique(base.examples, incoming.examples),
       synonyms: unionUnique(base.synonyms, incoming.synonyms),

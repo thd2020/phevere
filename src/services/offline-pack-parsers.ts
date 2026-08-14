@@ -1,5 +1,7 @@
 /** Pure parsers for official/open dictionary dumps (no Node/Electron APIs). */
 
+import { canonicalPos } from './definition-merge';
+
 export interface ParsedOfflineEntry {
   headword: string;
   language: string;
@@ -29,7 +31,7 @@ export function parseWordNetData(content: string): ParsedOfflineEntry[] {
     if (!gloss) continue;
     const meta = line.slice(0, bar).trim().split(/\s+/);
     if (meta.length < 4) continue;
-    const pos = WN_POS[meta[2]] || meta[2] || 'definition';
+    const pos = WN_POS[meta[2]] || canonicalPos(meta[2]) || 'definition';
     const wCnt = parseInt(meta[3], 16);
     if (!Number.isFinite(wCnt) || wCnt < 1) continue;
     let i = 4;
@@ -92,7 +94,7 @@ export function parseGcideCide(content: string): ParsedOfflineEntry[] {
     const headword = cleanGcideHeadword(ent || hw || '');
     if (!headword || headword.length > 80) continue;
     const posRaw = (body.match(/<pos>([\s\S]*?)<\/pos>/i) || [])[1];
-    const pos = posRaw ? stripMarkup(posRaw).replace(/\.$/, '') : 'definition';
+    const pos = posRaw ? canonicalPos(stripMarkup(posRaw)) : 'definition';
     const defs: string[] = [];
     const defRe = /<def>([\s\S]*?)<\/def>/gi;
     let m: RegExpExecArray | null;
@@ -146,7 +148,7 @@ export function parseFreedictTei(content: string, language = 'en'): ParsedOfflin
     if (!glosses.length) continue;
     const definition = Array.from(new Set(glosses)).join('; ');
     const posRaw = (body.match(/<pos\b[^>]*>([\s\S]*?)<\/pos>/i) || [])[1];
-    const pos = posRaw ? stripMarkup(posRaw) : 'translation';
+    const pos = posRaw ? canonicalPos(stripMarkup(posRaw)) : 'translation';
     for (const headword of Array.from(new Set(orths))) {
       const key = `${headword.toLowerCase()}|${definition}`;
       if (seen.has(key)) continue;

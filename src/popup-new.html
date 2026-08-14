@@ -2033,7 +2033,7 @@ function startAutoCloseTimeout() {
                 new Promise(function (_, reject) {
                   setTimeout(function () {
                     reject(new Error('Lookup timed out — try again'));
-                  }, 14000);
+                  }, 12000);
                 }),
               ]);
               lookupInFlight = lookupPromise;
@@ -2046,8 +2046,9 @@ function startAutoCloseTimeout() {
               var audioLang = (currentResult && currentResult.detectedLanguage) ? currentResult.detectedLanguage : (currentTab === 'translation' ? targetLang : 'en');
               window['__audioLang'] = audioLang;
               displayDictionaryResult(currentResult);
-              void syncVocabHeart(currentResult && currentResult.word);
-              void enrichSavedVocab(currentResult);
+              void syncVocabHeart(currentResult && currentResult.word).then(function () {
+                return enrichSavedVocab(currentResult);
+              });
             } else {
               pvLog('[POPUP] dictionaryAPI not available, using mock result');
               displayMockResult(text); // Fallback for dev
@@ -2515,16 +2516,44 @@ function startAutoCloseTimeout() {
        }
 
        async function enrichSavedVocab(result) {
-         if (!window.vocabAPI || !savedVocabId || !result) return;
-         const lemma = savedVocabLemma || lemmaForSave();
-         if (!lemma) return;
-         const payload = vocabPayloadFromResult(result, lemma);
-         if (!payload.definition) return;
-         try {
-           const entry = await window.vocabAPI.add(payload);
-           if (entry && entry.id) setVocabHeartSaved(true, entry.id, lemma);
-         } catch (e) {
-           console.warn('vocab enrich failed', e);
+         if (!window.vocabAPI || !result) return;
+         const payloadBase = vocabPayloadFromResult(result, lemmaForSave());
+         if (!payloadBase.definition) return;
+         const candidates = [];
+         if (savedVocabLemma) candidates.push(savedVocabLemma);
+         if (payloadBase.lemma) candidates.push(payloadBase.lemma);
+         if (result.word) candidates.push(result.word);
+         if (result.metadata && result.metadata.queriedAs) candidates.push(result.metadata.queriedAs);
+         if (result.metadata && result.metadata.lemma) candidates.push(result.metadata.lemma);
+         if (currentText) candidates.push(String(currentText).trim());
+         const seen = {};
+         for (let i = 0; i < candidates.length; i++) {
+           const k = String(candidates[i] || '').trim();
+           if (!k) continue;
+           const lk = k.toLowerCase();
+           if (seen[lk]) continue;
+           seen[lk] = true;
+           try {
+             const entry = await window.vocabAPI.find(k);
+             if (!entry || !entry.id) continue;
+             if (entry.definition && String(entry.definition).trim()) {
+               if (entry.id) setVocabHeartSaved(true, entry.id, entry.lemma || k);
+               continue;
+             }
+             const filled = await window.vocabAPI.add({
+               lemma: entry.lemma || k,
+               reading: payloadBase.reading,
+               definition: payloadBase.definition,
+               partOfSpeech: payloadBase.partOfSpeech,
+               sources: payloadBase.sources,
+               sourceLang: payloadBase.sourceLang,
+               targetLang: payloadBase.targetLang,
+             });
+             if (filled && filled.id) setVocabHeartSaved(true, filled.id, filled.lemma || k);
+             return;
+           } catch (e) {
+             console.warn('vocab enrich failed', e);
+           }
          }
        }
 
@@ -2555,7 +2584,7 @@ function startAutoCloseTimeout() {
            if (!entry && currentText && String(currentText).trim().toLowerCase() !== word.toLowerCase()) {
              entry = await window.vocabAPI.find(String(currentText).trim());
            }
-           setVocabHeartSaved(!!entry, entry && entry.id);
+           setVocabHeartSaved(!!entry, entry && entry.id, entry && entry.lemma);
          } catch (e) {
            console.warn('vocab heart sync failed', e);
            setVocabHeartSaved(false);

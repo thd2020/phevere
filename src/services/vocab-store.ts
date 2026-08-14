@@ -89,13 +89,18 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
   if (existing) {
     const id = String(existing.id);
     await runWrite(
-      `UPDATE vocab SET definition = COALESCE(?, definition), part_of_speech = COALESCE(?, part_of_speech),
-       sources = COALESCE(?, sources), note = COALESCE(?, note), updated_at = ? WHERE id = ?`,
+      `UPDATE vocab SET definition = COALESCE(NULLIF(definition, ''), NULLIF(?, ''), definition),
+       part_of_speech = COALESCE(NULLIF(part_of_speech, ''), NULLIF(?, ''), part_of_speech),
+       sources = COALESCE(NULLIF(sources, ''), NULLIF(?, ''), sources),
+       note = COALESCE(NULLIF(note, ''), NULLIF(?, ''), note),
+       reading = COALESCE(NULLIF(reading, ''), NULLIF(?, ''), reading),
+       updated_at = ? WHERE id = ?`,
       [
         input.definition || null,
         input.partOfSpeech || null,
         input.sources ? JSON.stringify(input.sources) : null,
         input.note || null,
+        input.reading || null,
         now,
         id,
       ],
@@ -128,6 +133,35 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
   const created = await getVocab(id);
   if (!created) throw new Error('Failed to reload saved entry');
   return created;
+}
+
+/** Fill notebook rows that were saved as lemma-only (empty definition). */
+export async function fillEmptyDefinitions(
+  lemmas: string[],
+  input: Omit<VocabAddInput, 'lemma'> & { lemma?: string },
+): Promise<VocabEntry | null> {
+  if (!input.definition || !String(input.definition).trim()) return null;
+  const seen = new Set<string>();
+  for (const raw of lemmas) {
+    const lemma = (raw || '').trim();
+    if (!lemma) continue;
+    const key = lemma.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const existing = await findByLemma(lemma);
+    if (!existing) continue;
+    if (existing.definition && existing.definition.trim()) continue;
+    return addVocab({
+      lemma: existing.lemma,
+      reading: input.reading,
+      definition: input.definition,
+      partOfSpeech: input.partOfSpeech,
+      sourceLang: input.sourceLang,
+      targetLang: input.targetLang,
+      sources: input.sources,
+    });
+  }
+  return null;
 }
 
 export async function getVocab(id: string): Promise<VocabEntry | null> {

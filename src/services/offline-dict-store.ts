@@ -13,7 +13,6 @@ import { promisify } from 'util';
 import * as readline from 'readline';
 import { createReadStream } from 'fs';
 import { getLocalDb, isLocalDbReady, markDirty, queryAll, queryOne, runBatch, runWrite } from './local-db';
-import { withTimeout } from './base';
 import { wrapConsole } from '../logger';
 import { getCatalogItem, OFFLINE_CATALOG, type OfflineCatalogItem } from './offline-catalog';
 import {
@@ -107,13 +106,6 @@ export async function lookupOffline(
   limit = 20,
   extraForms: string[] = [],
 ): Promise<OfflineHit[]> {
-  if (!isLocalDbReady()) {
-    try {
-      await withTimeout(getLocalDb(), 1500, 'offline.dbReady');
-    } catch {
-      return [];
-    }
-  }
   if (!isLocalDbReady()) return [];
   const q = (headword || '').trim();
   if (!q) return [];

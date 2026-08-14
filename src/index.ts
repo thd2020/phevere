@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { log } from './logger';
 import { clipboardService } from './services/clipboard';
-import { dictionaryService } from './services/dictionary';
+import { dictionaryService, type DictionaryResult } from './services/dictionary';
 import { wikipediaService } from './services/wikipedia';
 import { searchService } from './services/search';
 import { createNativeSelectionService, SelectionEvent } from './services/native-selection';
@@ -1790,6 +1790,48 @@ ipcMain.handle('clipboard-import', (event, jsonData: string) => {
   return clipboardService.importHistory(jsonData);
 });
 
+function stripHtmlToText(s: string): string {
+  return String(s || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function fillNotebookIfPending(result?: DictionaryResult | null): void {
+  if (!result) return;
+  const defs = (result.definitions || []).filter((d) => {
+    if (!d || d.source === 'Fallback' || d.source === 'Timeout') return false;
+    const m = stripHtmlToText(d.meaning || '');
+    if (!m || m === 'No definition available.' || /lookup timed out/i.test(m)) return false;
+    return true;
+  });
+  if (!defs.length && !(result.translations && result.translations[0]?.text)) return;
+  const useDefs = defs.length ? defs : [];
+  const defJoined = useDefs
+    .slice(0, 4)
+    .map((d) => stripHtmlToText(d.meaning || ''))
+    .filter(Boolean)
+    .join('\n');
+  const tx = result.translations && result.translations[0];
+  const definition = defJoined || (tx && tx.text ? String(tx.text) : '');
+  if (!definition) return;
+  const lemmas = [
+    result.metadata?.lemma,
+    result.word,
+    result.metadata?.queriedAs,
+  ].filter((x): x is string => typeof x === 'string' && !!x.trim());
+  void vocabStore
+    .fillEmptyDefinitions(lemmas, {
+      definition,
+      reading: result.pronunciation,
+      partOfSpeech: useDefs[0]?.partOfSpeech,
+      sourceLang: result.detectedLanguage,
+      targetLang: (tx && tx.language) || result.language,
+      sources: result.sources,
+    })
+    .catch((err) => log.debug('main', 'notebook fill skipped', { err: String(err) }));
+}
+
 // Dictionary service IPC handlers
 ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: string = 'auto', enabledSources?: string[]) => {
   const t0 = Date.now();
@@ -1801,6 +1843,7 @@ ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: 
       defs: result?.definitions?.length || 0,
       sources: result?.sources,
     });
+    void fillNotebookIfPending(result);
     return result;
   } catch (error) {
     log.error('main', 'Dictionary lookup failed', { err: String(error), ms: Date.now() - t0 });
