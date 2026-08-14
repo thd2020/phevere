@@ -1558,6 +1558,12 @@ function initializeMainWindow() {
   wireMainWindowTextSelectionLookup();
   loadRecentSelectionsIntoDom();
   void loadVocabNotebook();
+  const vocabApi = (window as any).vocabAPI;
+  if (vocabApi?.onUpdated) {
+    vocabApi.onUpdated(() => {
+      void loadVocabNotebook();
+    });
+  }
   void attachSelectionChangeListenerOnly();
 }
 

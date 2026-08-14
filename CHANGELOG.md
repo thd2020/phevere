@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Packaged app crash on launch: `Cannot find module 'node-fetch'` — webpack now bundles `node-fetch` instead of leaving a runtime `require` that Forge does not copy into `app.asar`.
 - Heart icon on the collapsed strip could wait forever for lookup; it now saves the lemma immediately and fills the notebook later.
 - Offline Webster/WordNet hits were discarded when online sources hung, then the timeout string was cached for 24h. Lookups now keep local-pack defs, query inflected lemmas, and do not cache timeout stubs.
-- Notebook “later-lookup” rows stayed empty even after a successful Open lookup: enrich required a popup `savedVocabId` that independent windows never had in time. Main process now fills empty rows after lookup, and the popup finds by lemma.
+- Notebook “later-lookup” rows stayed empty even after a successful Open lookup: enrich required a popup `savedVocabId` that independent windows never had in time. Empty rows are now filled by a **main-process background queue** (startup scan + on save), independent of the popup. The notebook list refreshes when a row is patched.
 - Webster/GCIDE POS tags (`n`, `v. t.`, `adj.`) are canonicalized to noun/verb/adjective so they merge with Free Dictionary / WordNet / FreeDict TEI.
 - Lookup felt slower after the offline-lemma change: SQLite packs now run in parallel with network APIs, skip waiting for a cold sql.js worker, cap etymology when defs already exist, and the popup timeout matches the 12s server deadline.
 

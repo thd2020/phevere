@@ -366,6 +366,9 @@ contextBridge.exposeInMainWorld('vocabAPI', {
   remove: (id: string) => ipcRenderer.invoke('vocab-remove', id),
   updateNote: (id: string, note: string) => ipcRenderer.invoke('vocab-update-note', id, note),
   review: (id: string, grade: 1 | 2 | 3 | 4) => ipcRenderer.invoke('vocab-review', id, grade),
+  onUpdated: (callback: (payload: { id: string; lemma: string }) => void) => {
+    ipcRenderer.on('vocab-updated', (_event, payload) => callback(payload));
+  },
 });
 
 contextBridge.exposeInMainWorld('offlineDictAPI', {
@@ -520,6 +523,7 @@ declare global {
       remove: (id: string) => Promise<boolean>;
       updateNote: (id: string, note: string) => Promise<any>;
       review: (id: string, grade: 1 | 2 | 3 | 4) => Promise<any>;
+      onUpdated: (callback: (payload: { id: string; lemma: string }) => void) => void;
     };
     offlineDictAPI: {
       listPacks: () => Promise<any[]>;

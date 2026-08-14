@@ -164,6 +164,15 @@ export async function fillEmptyDefinitions(
   return null;
 }
 
+export async function listEmptyDefinitions(limit = 80): Promise<VocabEntry[]> {
+  await ensureVocabReady();
+  const rows = await queryAll(
+    `SELECT * FROM vocab WHERE IFNULL(TRIM(definition), '') = '' ORDER BY updated_at DESC LIMIT ?`,
+    [limit],
+  );
+  return rows.map(rowToEntry);
+}
+
 export async function getVocab(id: string): Promise<VocabEntry | null> {
   const row = await queryOne(`SELECT * FROM vocab WHERE id = ?`, [id]);
   return row ? rowToEntry(row) : null;

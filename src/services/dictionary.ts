@@ -51,6 +51,7 @@ const IPA_BUDGET_MS = 1500;
 const OFFLINE_BUDGET_MS = 2000;
 
 type LookupHolder = { current?: DictionaryResult };
+type LookupOpts = { skipEtymology?: boolean };
 
 function isTimeoutMeaning(meaning?: string): boolean {
   return /lookup timed out/i.test(meaning || '');
@@ -291,7 +292,7 @@ export class DictionaryService extends BaseService {
   /**
    * Main lookup function - aggregates data from multiple sources with parallel processing
    */
-  async lookup(text: string, targetLanguage: string = 'auto', enabledSources?: string[]): Promise<DictionaryResult> {
+  async lookup(text: string, targetLanguage: string = 'auto', enabledSources?: string[], opts?: LookupOpts): Promise<DictionaryResult> {
     const startTime = Date.now();
 
     const query = normalizeQuery(text);
@@ -332,7 +333,7 @@ export class DictionaryService extends BaseService {
       const coreLookup =
         query.kind === 'sentence'
           ? this.handleSentenceTranslationOptimized(query.trimmed, resolvedTarget, detectedLanguage)
-          : this.lookupWithCandidates(query, resolvedTarget, detectedLanguage, enabledSources, holder);
+          : this.lookupWithCandidates(query, resolvedTarget, detectedLanguage, enabledSources, holder, opts);
 
       try {
         result = await withTimeout(coreLookup, LOOKUP_DEADLINE_MS, 'dictionary.lookup');
@@ -419,6 +420,7 @@ export class DictionaryService extends BaseService {
     detectedLanguage: string,
     enabledSources?: string[],
     holder?: LookupHolder,
+    opts?: LookupOpts,
   ): Promise<DictionaryResult> {
     const candidates = query.candidates.length > 0 ? query.candidates : [query.trimmed];
     let firstResult: DictionaryResult | null = null;
@@ -430,6 +432,7 @@ export class DictionaryService extends BaseService {
         detectedLanguage,
         enabledSources,
         holder,
+        opts?.skipEtymology,
       );
 
       if (!firstResult) firstResult = result;
@@ -617,6 +620,7 @@ export class DictionaryService extends BaseService {
     sourceLanguage: string,
     enabledSources?: string[],
     holder?: LookupHolder,
+    skipEtymology = false,
   ): Promise<DictionaryResult> {
     const sources: string[] = [];
     const definitions: Definition[] = [];
@@ -967,7 +971,7 @@ export class DictionaryService extends BaseService {
     // Offline-only (GFW / no VPN): skip hung etymology/IPA so Webster/WordNet can return.
     // When a network source already answered, still try etymology — but the holder
     // above is what the outer deadline returns if those hosts never come back.
-    if (!hadNetworkSource && this.hasRealDefinitions(result)) {
+    if (skipEtymology || (!hadNetworkSource && this.hasRealDefinitions(result))) {
       return result;
     }
 

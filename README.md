@@ -37,7 +37,7 @@ Then run the latest Setup.exe. New installs register a proper uninstaller (`Unin
 - **Dictionary & translation** — Free Dictionary, Wiktionary, Datamuse, Youdao / DeepL routing; CJK ↔ English
 - **Offline packs** — Settings → Offline: WordNet, Webster 1913 (GCIDE), CC-CEDICT, FreeDict en→zh (consent download); JSON/CEDICT import. Living Oxford / Collegiate Webster / Collins are not dumped (copyright).
 - **Etymology & Wikipedia** — in-popup tabs; Wikipedia reader webview
-- **Vocabulary notebook** — local SQLite (`%APPDATA%\phevere`)
+- **Vocabulary notebook** — local SQLite (`%APPDATA%\phevere`); lemma-only saves fill in the background without keeping the popup open
 - **OCR** — bundled PP-OCRv4 models (optional component); region / hover / clipboard / window capture
 - **Tray app** — Quit tears down UIA / OCR cleanly; main window can hide to tray
 
