@@ -1669,6 +1669,10 @@
           if (key === 'wiktionary') return 'Wiktionary';
           if (key === 'datamuse') return 'Datamuse';
           if (key.indexOf('oxford') >= 0) return 'Oxford';
+          if (key.indexOf('wordnet') >= 0) return 'WordNet';
+          if (key.indexOf('webster') >= 0 || key.indexOf('gcide') >= 0) return 'Webster 1913';
+          if (key.indexOf('cedict') >= 0) return 'CC-CEDICT';
+          if (key.indexOf('freedict') >= 0) return 'FreeDict';
           if (key.indexOf('wordsapi') >= 0 || key === 'wordsapi') return 'WordsAPI';
           if (key.indexOf('collins') >= 0) return 'Collins';
           if (key.indexOf('youdao') >= 0) return 'Youdao';

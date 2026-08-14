@@ -1937,6 +1937,7 @@ ipcMain.handle('vocab-review', async (_e, id: string, grade: 1 | 2 | 3 | 4) => {
 
 // Offline dictionary packs
 ipcMain.handle('offline-list-packs', async () => offlineDict.listPacks());
+ipcMain.handle('offline-list-catalog', async () => offlineDict.listCatalogStatus());
 ipcMain.handle('offline-remove-pack', async (_e, packId: string) => {
   await offlineDict.removePack(packId);
   return { success: true };
@@ -1971,6 +1972,13 @@ ipcMain.handle('offline-import-cedict-file', async () => {
   if (result.canceled || !result.filePaths[0]) return { success: false, cancelled: true };
   const imported = await offlineDict.importCedictTextFile(result.filePaths[0]);
   dictionaryService.markOfflinePackAvailable('CC-CEDICT', true);
+  return { success: true, ...imported };
+});
+ipcMain.handle('offline-download-pack', async (_e, packId: string) => {
+  const imported = await offlineDict.downloadCatalogPack(String(packId || ''));
+  if (imported.packId === 'cc-cedict') {
+    dictionaryService.markOfflinePackAvailable('CC-CEDICT', true);
+  }
   return { success: true, ...imported };
 });
 ipcMain.handle('offline-download-cedict', async () => {

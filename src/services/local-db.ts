@@ -240,6 +240,15 @@ export async function runWrite(sql: string, params: unknown[] = []): Promise<voi
   scheduleSave();
 }
 
+/** One transaction of many parameterized statements (offline pack import). */
+export async function runBatch(sql: string, paramsList: unknown[][]): Promise<number> {
+  await getLocalDb();
+  if (!paramsList.length) return 0;
+  const result = await rpc<{ count?: number }>('runBatch', { sql, paramsList });
+  scheduleSave();
+  return Number(result?.count) || paramsList.length;
+}
+
 export async function queryAll<T extends Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
   await getLocalDb();
   const rows = await rpc<T[]>('query', { sql, params });

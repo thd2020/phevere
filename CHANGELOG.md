@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Offline dictionary catalog** — Settings → Offline can download Princeton WordNet 3.1 (en→en), Webster’s Unabridged 1913 via GNU GCIDE (en→en), CC-CEDICT (zh→en), and FreeDict English–Chinese (en→zh). Current Oxford / Collegiate Webster / Collins remain API or licensed-JSON only (publisher copyright).
+
+### Changed
+
+- Offline pack import uses batched SQLite writes so large English dumps finish in a reasonable time.
+
 ## [1.2.1] - 2026-08-12
 
 ### Added
@@ -98,6 +108,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
+[Unreleased]: https://github.com/thd2020/phevere/compare/v1.2.1...HEAD
 [1.2.1]: https://github.com/thd2020/phevere/releases/tag/v1.2.1
 [1.2.0]: https://github.com/thd2020/phevere/releases/tag/v1.2.0
 [1.1.0]: https://github.com/thd2020/phevere/releases/tag/v1.1.0

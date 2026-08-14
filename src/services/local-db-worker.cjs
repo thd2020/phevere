@@ -161,6 +161,26 @@ parentPort.on('message', (msg) => {
         db.run(msg.sql, msg.params || []);
         parentPort.postMessage({ id, ok: true });
         break;
+      case 'runBatch': {
+        const sql = msg.sql;
+        const paramsList = Array.isArray(msg.paramsList) ? msg.paramsList : [];
+        db.exec('BEGIN');
+        try {
+          for (let i = 0; i < paramsList.length; i++) {
+            db.run(sql, paramsList[i] || []);
+          }
+          db.exec('COMMIT');
+        } catch (error) {
+          try {
+            db.exec('ROLLBACK');
+          } catch {
+            /* ignore */
+          }
+          throw error;
+        }
+        parentPort.postMessage({ id, ok: true, rows: { count: paramsList.length } });
+        break;
+      }
       case 'persist':
         persist();
         parentPort.postMessage({ id, ok: true });

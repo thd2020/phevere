@@ -584,7 +584,7 @@ export class DictionaryService extends BaseService {
     const preferCjkSources = isAsianLanguage || isChinese;
     const preferLatinSources = !preferCjkSources;
 
-    // Offline packs (CC-CEDICT in SQLite) — always probe for CJK, independent of source toggles.
+    // Offline packs (SQLite) — CJK: any language; Latin: language='en' (WordNet / Webster / FreeDict).
     // Memory Map path below still respects the CC-CEDICT toggle.
     if (preferCjkSources) {
       try {
@@ -640,7 +640,7 @@ export class DictionaryService extends BaseService {
       }
     }
 
-    // Latin path: also probe offline EN packs (budgeted — sql.js is sync on main)
+    // Latin path: also probe offline EN packs (WordNet / Webster / FreeDict).
     if (preferLatinSources) {
       try {
         const offlineHits = await withTimeout(
@@ -656,7 +656,12 @@ export class DictionaryService extends BaseService {
             sources: [hit.packName || 'Offline'],
           });
         }
-        if (offlineHits.length) sources.push('Offline');
+        if (offlineHits.length) {
+          for (const hit of offlineHits) {
+            const label = hit.packName || 'Offline';
+            if (!sources.includes(label)) sources.push(label);
+          }
+        }
       } catch {
         /* optional */
       }

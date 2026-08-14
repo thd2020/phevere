@@ -198,13 +198,19 @@ function initializeSettingsWindow() {
             <div class="settings-panel__intro">
               <h2 id="settings-offline-heading" class="settings-panel__title">Offline dictionary</h2>
             </div>
+            <p class="settings-hint">
+              Download open, paper-era, or academic packs for lookup without the network.
+              Current <strong>Oxford</strong>, <strong>Merriam-Webster Collegiate</strong>, and <strong>Collins</strong>
+              editions are copyrighted and are not offered as dumps — use a licensed JSON import, or Oxford’s online API when you have keys.
+            </p>
+            <div id="offline-catalog" class="settings-offline-catalog"></div>
             <div class="settings-actions settings-actions--wrap">
-              <button type="button" id="offline-download-cedict" class="btn btn-primary">Download CC-CEDICT</button>
               <button type="button" id="offline-import-json" class="btn btn-secondary">Import JSON / JSONL</button>
               <button type="button" id="offline-import-cedict" class="btn btn-secondary">Import CEDICT file</button>
               <button type="button" id="offline-refresh-packs" class="btn btn-outlined">Refresh</button>
             </div>
             <p id="offline-status" class="settings-inline-status" role="status" aria-live="polite"></p>
+            <h3 class="settings-offline-installed-title">Installed packs</h3>
             <div id="offline-packs-list" class="settings-offline-packs"></div>
           </section>
 
@@ -368,11 +374,12 @@ async function wireOfflineSettingsPanel(): Promise<void> {
   const api = (window as any).offlineDictAPI;
   const statusEl = document.getElementById('offline-status');
   const listEl = document.getElementById('offline-packs-list');
+  const catalogEl = document.getElementById('offline-catalog');
   const setStatus = (msg: string) => {
     if (statusEl) statusEl.textContent = msg;
   };
 
-  const refresh = async () => {
+  const refreshPacks = async () => {
     if (!listEl || !api?.listPacks) {
       if (listEl) listEl.innerHTML = `<p class="settings-hint">Offline API unavailable.</p>`;
       return;
@@ -401,7 +408,7 @@ async function wireOfflineSettingsPanel(): Promise<void> {
           if (!confirm(`Remove pack “${id}”?`)) return;
           await api.removePack(id);
           setStatus('Pack removed.');
-          await refresh();
+          await refreshAll();
         });
       });
     } catch (error) {
@@ -410,8 +417,68 @@ async function wireOfflineSettingsPanel(): Promise<void> {
     }
   };
 
+  const consentById = new Map<string, string>();
+
+  const refreshCatalog = async () => {
+    if (!catalogEl) return;
+    if (!api?.listCatalog) {
+      catalogEl.innerHTML = `<p class="settings-hint">Catalog unavailable.</p>`;
+      return;
+    }
+    try {
+      const items = await api.listCatalog();
+      consentById.clear();
+      catalogEl.innerHTML = (items || [])
+        .map((c: any) => {
+          const installed = !!c.installed;
+          const count = Number(c.entryCount) || 0;
+          const state = installed ? `Installed · ${count.toLocaleString()} entries` : escapeHtmlSelection(c.sizeHint || '');
+          consentById.set(String(c.id), String(c.consent || ''));
+          return `<article class="settings-offline-offer" data-id="${escapeHtmlSelection(c.id)}">
+            <div class="settings-offline-offer__body">
+              <div class="settings-offline-offer__kicker">${escapeHtmlSelection(c.direction)} · ${escapeHtmlSelection(c.license)}</div>
+              <h3 class="settings-offline-offer__title">${escapeHtmlSelection(c.name)}</h3>
+              <p class="settings-hint">${escapeHtmlSelection(c.summary)}</p>
+              <p class="settings-hint">${state}</p>
+            </div>
+            <button type="button" class="btn ${installed ? 'btn-outlined' : 'btn-primary'} btn-small offline-download" data-id="${escapeHtmlSelection(c.id)}">
+              ${installed ? 'Re-download' : 'Download'}
+            </button>
+          </article>`;
+        })
+        .join('');
+      catalogEl.querySelectorAll('.offline-download').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = (btn as HTMLElement).dataset.id;
+          const consent = consentById.get(id || '') || 'Download this dictionary pack?';
+          if (!id || !api?.downloadPack) return;
+          if (!confirm(consent)) return;
+          (btn as HTMLButtonElement).disabled = true;
+          setStatus(`Downloading ${id}…`);
+          try {
+            const r = await api.downloadPack(id);
+            setStatus(r?.success ? `${id} ready · ${Number(r.count) || 0} entries.` : 'Download failed.');
+            await refreshAll();
+          } catch (e: any) {
+            setStatus(`Download failed: ${e?.message || e}`);
+          } finally {
+            (btn as HTMLButtonElement).disabled = false;
+          }
+        });
+      });
+    } catch (error) {
+      console.error(error);
+      catalogEl.innerHTML = `<p class="settings-hint">Could not load catalog.</p>`;
+    }
+  };
+
+  const refreshAll = async () => {
+    await refreshCatalog();
+    await refreshPacks();
+  };
+
   document.getElementById('offline-refresh-packs')?.addEventListener('click', () => {
-    void refresh();
+    void refreshAll();
   });
   document.getElementById('offline-import-json')?.addEventListener('click', async () => {
     if (!api?.importJson) return;
@@ -423,7 +490,7 @@ async function wireOfflineSettingsPanel(): Promise<void> {
         return;
       }
       setStatus(r?.success ? `Imported ${r.count} entries.` : 'Import failed.');
-      await refresh();
+      await refreshAll();
     } catch (e: any) {
       setStatus(`Import failed: ${e?.message || e}`);
     }
@@ -438,28 +505,13 @@ async function wireOfflineSettingsPanel(): Promise<void> {
         return;
       }
       setStatus(r?.success ? `Imported ${r.count} CEDICT entries.` : 'Import failed.');
-      await refresh();
+      await refreshAll();
     } catch (e: any) {
       setStatus(`Import failed: ${e?.message || e}`);
     }
   });
-  document.getElementById('offline-download-cedict')?.addEventListener('click', async () => {
-    if (!api?.downloadCedict) return;
-    const ok = confirm(
-      'Download free CC-CEDICT from mdbg.net?\n\nCreative Commons Attribution-ShareAlike 4.0. File is large; import may take a minute.',
-    );
-    if (!ok) return;
-    setStatus('Downloading & importing CC-CEDICT…');
-    try {
-      const r = await api.downloadCedict();
-      setStatus(r?.success ? `CC-CEDICT ready · ${r.count} entries.` : 'Download failed.');
-      await refresh();
-    } catch (e: any) {
-      setStatus(`Download failed: ${e?.message || e}`);
-    }
-  });
 
-  await refresh();
+  await refreshAll();
 }
 
 function wireSettingsImageDrop(): void {
@@ -2785,6 +2837,10 @@ function getDictionaryIcon(source: string): string {
     'Youdao API': '🇨🇳',
     'WordsAPI': '🧠',
     'CC-CEDICT': '📗',
+    'Princeton WordNet 3.1': '🔗',
+    'WordNet': '🔗',
+    "Webster's Unabridged 1913 (GCIDE)": '📘',
+    'FreeDict English–Chinese': '🈶',
     'General': '📚'
   };
   return icons[source] || '📚';

@@ -370,10 +370,12 @@ contextBridge.exposeInMainWorld('vocabAPI', {
 
 contextBridge.exposeInMainWorld('offlineDictAPI', {
   listPacks: () => ipcRenderer.invoke('offline-list-packs'),
+  listCatalog: () => ipcRenderer.invoke('offline-list-catalog'),
   removePack: (packId: string) => ipcRenderer.invoke('offline-remove-pack', packId),
   lookup: (headword: string, language?: string) => ipcRenderer.invoke('offline-lookup', headword, language),
   importJson: () => ipcRenderer.invoke('offline-import-json'),
   importCedictFile: () => ipcRenderer.invoke('offline-import-cedict-file'),
+  downloadPack: (packId: string) => ipcRenderer.invoke('offline-download-pack', packId),
   downloadCedict: () => ipcRenderer.invoke('offline-download-cedict'),
 });
 
@@ -521,10 +523,12 @@ declare global {
     };
     offlineDictAPI: {
       listPacks: () => Promise<any[]>;
+      listCatalog: () => Promise<any[]>;
       removePack: (packId: string) => Promise<{ success: boolean }>;
       lookup: (headword: string, language?: string) => Promise<any[]>;
       importJson: () => Promise<any>;
       importCedictFile: () => Promise<any>;
+      downloadPack: (packId: string) => Promise<any>;
       downloadCedict: () => Promise<any>;
     };
     ocrAPI: {

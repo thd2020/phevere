@@ -54,7 +54,7 @@ If files remain but Apps has no entry (“ghost” install — often from aborte
 | `koffi` + `sql.js` | `asarUnpack` |
 | `onnxruntime-node` + `sharp` + `@gutenye/*` | `asarUnpack` |
 | `sql-wasm.wasm` + `sql-asm.js` | `extraResources` |
-| Offline **seed** packs | `resources/seed` |
+| Offline **seed** packs | optional `resources/seed`; users also download WordNet / GCIDE / CEDICT / FreeDict from Settings |
 | OCR ONNX models | `extraResources` → `ocr-models` |
 | Uninstaller | Written by NSIS as `Uninstall Phevere.exe` |
 

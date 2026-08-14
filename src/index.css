@@ -2191,6 +2191,43 @@ body.settings-page .settings-cheat {
   gap: 8px;
 }
 
+body.settings-page .settings-offline-catalog {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 16px;
+}
+
+body.settings-page .settings-offline-offer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: var(--set-radius);
+  background: var(--set-panel);
+}
+
+body.settings-page .settings-offline-offer__kicker {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--set-ink-soft);
+}
+
+body.settings-page .settings-offline-offer__title {
+  margin: 4px 0 6px;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+body.settings-page .settings-offline-installed-title {
+  margin: 18px 0 8px;
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
 body.settings-page .settings-offline-packs {
   margin-top: 16px;
   display: grid;

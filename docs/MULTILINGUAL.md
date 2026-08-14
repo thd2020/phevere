@@ -18,6 +18,7 @@
 2. **Optional locale Wiktionary** (`ja.wiktionary.org` REST) for better Japanese-only lemmas — extra implementation.
 3. **Commercial “all-in-one”** options (keys + billing): **Oxford**, **Collins**, **WordsAPI**, **DeepL** (glosses), **Azure Dictionary** / **Google Cloud Translation** (not full monolingual dictionaries for all pairs).
 4. **Language-specific** free APIs when you want higher quality: e.g. **Jisho** (unofficial patterns), **Korean National Institute** datasets, etc.
+5. **Offline catalog** (Settings → Offline): Princeton WordNet 3.1 and Webster 1913/GCIDE for en→en; CC-CEDICT for zh→en; FreeDict eng–zho for en→zh. Living Oxford / Collegiate Webster / Collins are not redistributable as dumps.
 
 ## Pronunciation (speaker)
 
