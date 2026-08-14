@@ -64,3 +64,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Quiet hunt-time logging: etymology/DBG dumps gone; popup create + lookup-start back to debug; clipboard DEBUG routed through wrapConsole (hidden at default info).
 - Offline catalog: Settings → Offline now offers Princeton WordNet 3.1 and Webster 1913 (GNU GCIDE) for en→en, CC-CEDICT for zh→en, and FreeDict English–Chinese for en→zh. Living Oxford / Collegiate Webster / Collins stay out of the dump list (copyright); JSON import remains for licensed files. Pack import uses batched sql.js writes.
 - Fix `make:win`: duplicate `'WordNet'` key in `getDictionaryIcon` (TS1117) blocked webpack.
+- Packaged launch crash `Cannot find module 'node-fetch'`: stop externalizing `node-fetch` in `webpack.main.config.js` so Forge webpack bundles it into `app.asar` (pure-JS externals are not copied).

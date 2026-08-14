@@ -50,7 +50,7 @@ If files remain but Apps has no entry (“ghost” install — often from aborte
 
 | Asset | How it ships |
 |---|---|
-| App code | `app.asar` |
+| App code | `app.asar` (webpack bundle; `node-fetch` is bundled, not a runtime `require`) |
 | `koffi` + `sql.js` | `asarUnpack` |
 | `onnxruntime-node` + `sharp` + `@gutenye/*` | `asarUnpack` |
 | `sql-wasm.wasm` + `sql-asm.js` | `extraResources` |

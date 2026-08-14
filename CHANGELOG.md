@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Offline pack import uses batched SQLite writes so large English dumps finish in a reasonable time.
 
+### Fixed
+
+- Packaged app crash on launch: `Cannot find module 'node-fetch'` — webpack now bundles `node-fetch` instead of leaving a runtime `require` that Forge does not copy into `app.asar`.
+
 ## [1.2.1] - 2026-08-12
 
 ### Added

@@ -33,7 +33,9 @@ const mainConfig = {
     koffi: 'commonjs2 koffi',
     'sql.js': 'commonjs2 sql.js',
     'sql.js/dist/sql-asm.js': 'commonjs2 sql.js/dist/sql-asm.js',
-    'node-fetch': 'commonjs2 node-fetch',
+    // Do NOT externalize node-fetch. Forge webpack does not copy pure-JS
+    // externals into the packaged asar, so require('node-fetch') crashes the
+    // installed app ("Cannot find module 'node-fetch'"). Bundle it instead.
     '@gutenye/ocr-node': 'commonjs2 @gutenye/ocr-node',
     '@gutenye/ocr-common': 'commonjs2 @gutenye/ocr-common',
     '@gutenye/ocr-models': 'commonjs2 @gutenye/ocr-models',
