@@ -2838,7 +2838,6 @@ function getDictionaryIcon(source: string): string {
     'WordsAPI': '🧠',
     'CC-CEDICT': '📗',
     'Princeton WordNet 3.1': '🔗',
-    'WordNet': '🔗',
     "Webster's Unabridged 1913 (GCIDE)": '📘',
     'FreeDict English–Chinese': '🈶',
     'General': '📚'

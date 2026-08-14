@@ -63,3 +63,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Restore multi-source etymology (Wiktionary + Etymonline + Youdao/童理民, 6s budget) so the Etymology tab shows several sources again. Dedupe example sentences across merge/UI. Fetch IPA from wink lemmas so plurals like *vicissitudes* get `/…/` from the singular.
 - Quiet hunt-time logging: etymology/DBG dumps gone; popup create + lookup-start back to debug; clipboard DEBUG routed through wrapConsole (hidden at default info).
 - Offline catalog: Settings → Offline now offers Princeton WordNet 3.1 and Webster 1913 (GNU GCIDE) for en→en, CC-CEDICT for zh→en, and FreeDict English–Chinese for en→zh. Living Oxford / Collegiate Webster / Collins stay out of the dump list (copyright); JSON import remains for licensed files. Pack import uses batched sql.js writes.
+- Fix `make:win`: duplicate `'WordNet'` key in `getDictionaryIcon` (TS1117) blocked webpack.
