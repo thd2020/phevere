@@ -1448,10 +1448,6 @@ function initializePopup() {
   // Listen for popup data from main process
   if (window.electronAPI) {
     rlog('[POPUP-RENDERER] getLastSelection invoke');
-    try {
-      const envInfo = (window as any).electronAPI.__debugInfo ? (window as any).electronAPI.__debugInfo() : null;
-      rlog('[POPUP-RENDERER] env', envInfo);
-    } catch {}
     window.electronAPI.getLastSelection().then(selection => {
       const txt = (selection && selection.text) ? selection.text : '';
       rlog('[POPUP-RENDERER] getLastSelection OK (deferred lookup):', txt);
@@ -1650,9 +1646,8 @@ document.getElementById('refreshVocabBtn')?.addEventListener('click', () => {
 
 async function openFullLookup(text: string): Promise<void> {
   try {
-    if ((window as any).dictionaryAPI?.recall) {
-      await (window as any).dictionaryAPI.recall(text, 'en');
-    }
+    // Open first; lookup runs inside the dictionary window. Awaiting recall here
+    // froze history/saves behind a hung IPC with no visible window progress.
     window.electronAPI?.send?.('open-full-lookup', text);
   } catch (error) {
     console.error(error);
@@ -1966,13 +1961,11 @@ function appendRecentSelectionRow(
       <span class="selection-time">${escapeHtmlSelection(t)}</span>
     </span>
   `;
-  selectionItem.addEventListener('click', async (e) => {
+  selectionItem.addEventListener('click', (e) => {
     e.stopPropagation();
     try {
-      // Recall via cache first for fast open, then show expanded window
-      if (window.dictionaryAPI && typeof window.dictionaryAPI.recall === 'function') {
-        await window.dictionaryAPI.recall(text, 'en');
-      }
+      // Open immediately — do not await recall first (that blocked the window on hung IPC
+      // and looked like an infinitely loading lookup). The popup window looks up itself.
       window.electronAPI?.send('open-full-lookup', text);
     } catch (err) {
       console.error('Failed to open full dictionary view:', err);

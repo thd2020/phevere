@@ -59,16 +59,22 @@ export abstract class BaseService {
     const { timeoutMs: _omit, ...fetchOptions } = (options || {}) as RequestInit & { timeoutMs?: number };
 
     try {
-      const response: Response = await fetch(url, {
-        ...fetchOptions,
-        timeout: timeoutMs,
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          ...((fetchOptions?.headers as Record<string, string>) || {}),
-        },
-      });
+      // node-fetch `timeout` + outer withTimeout: either alone has failed to bound
+      // hung sockets in the webpack/Electron main bundle before.
+      const response: Response = await withTimeout(
+        fetch(url, {
+          ...fetchOptions,
+          timeout: timeoutMs,
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            ...((fetchOptions?.headers as Record<string, string>) || {}),
+          },
+        }),
+        timeoutMs + 500,
+        `fetch ${url.slice(0, 64)}`,
+      );
 
       if (!response.ok) {
         throw new DictionaryError(

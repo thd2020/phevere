@@ -7,7 +7,7 @@ import { net } from 'electron';
 import * as fs from 'fs';
 import * as readline from 'readline';
 import { createReadStream } from 'fs';
-import { getLocalDb, markDirty, queryAll, queryOne, runWrite } from './local-db';
+import { getLocalDb, isLocalDbReady, markDirty, queryAll, queryOne, runWrite } from './local-db';
 import { wrapConsole } from '../logger';
 
 const console = wrapConsole('offline-dict');
@@ -38,7 +38,8 @@ export async function ensureOfflineReady(): Promise<void> {
 
 export async function listPacks(): Promise<OfflinePack[]> {
   await ensureOfflineReady();
-  return queryAll(`SELECT * FROM offline_packs ORDER BY created_at DESC`).map((r) => ({
+  const rows = await queryAll(`SELECT * FROM offline_packs ORDER BY created_at DESC`);
+  return rows.map((r) => ({
     id: String(r.id),
     name: String(r.name),
     language: String(r.language),
@@ -50,22 +51,23 @@ export async function listPacks(): Promise<OfflinePack[]> {
 
 export async function removePack(packId: string): Promise<void> {
   await ensureOfflineReady();
-  runWrite(`DELETE FROM offline_entries WHERE pack_id = ?`, [packId]);
-  runWrite(`DELETE FROM offline_packs WHERE id = ?`, [packId]);
+  await runWrite(`DELETE FROM offline_entries WHERE pack_id = ?`, [packId]);
+  await runWrite(`DELETE FROM offline_packs WHERE id = ?`, [packId]);
 }
 
 export async function lookupOffline(headword: string, language?: string, limit = 20): Promise<OfflineHit[]> {
-  await ensureOfflineReady();
+  // Never wait for sql.js to finish opening a 40MB+ CEDICT file on the lookup path.
+  if (!isLocalDbReady()) return [];
   const q = (headword || '').trim();
   if (!q) return [];
   const rows = language
-    ? queryAll(
+    ? await queryAll(
         `SELECT e.*, p.name AS pack_name FROM offline_entries e
          LEFT JOIN offline_packs p ON p.id = e.pack_id
          WHERE e.headword = ? COLLATE NOCASE AND e.language = ? LIMIT ?`,
         [q, language, limit],
       )
-    : queryAll(
+    : await queryAll(
         `SELECT e.*, p.name AS pack_name FROM offline_entries e
          LEFT JOIN offline_packs p ON p.id = e.pack_id
          WHERE e.headword = ? COLLATE NOCASE LIMIT ?`,
@@ -81,20 +83,20 @@ export async function lookupOffline(headword: string, language?: string, limit =
   }));
 }
 
-function insertPack(meta: { id: string; name: string; language: string; source?: string }): void {
-  const existing = queryOne(`SELECT id FROM offline_packs WHERE id = ?`, [meta.id]);
+async function insertPack(meta: { id: string; name: string; language: string; source?: string }): Promise<void> {
+  const existing = await queryOne(`SELECT id FROM offline_packs WHERE id = ?`, [meta.id]);
   if (existing) {
-    runWrite(`DELETE FROM offline_entries WHERE pack_id = ?`, [meta.id]);
-    runWrite(`DELETE FROM offline_packs WHERE id = ?`, [meta.id]);
+    await runWrite(`DELETE FROM offline_entries WHERE pack_id = ?`, [meta.id]);
+    await runWrite(`DELETE FROM offline_packs WHERE id = ?`, [meta.id]);
   }
-  runWrite(
+  await runWrite(
     `INSERT INTO offline_packs (id, name, language, source, entry_count, created_at) VALUES (?, ?, ?, ?, 0, ?)`,
     [meta.id, meta.name, meta.language, meta.source || null, Date.now()],
   );
 }
 
-function bumpPackCount(packId: string, n: number): void {
-  runWrite(`UPDATE offline_packs SET entry_count = ? WHERE id = ?`, [n, packId]);
+async function bumpPackCount(packId: string, n: number): Promise<void> {
+  await runWrite(`UPDATE offline_packs SET entry_count = ? WHERE id = ?`, [n, packId]);
   markDirty();
 }
 
@@ -122,7 +124,7 @@ export async function importJsonFile(
 
   const packId = opts?.packId || `json-${Date.now()}`;
   const language = opts?.language || 'en';
-  insertPack({
+  await insertPack({
     id: packId,
     name: opts?.name || pathBasename(filePath),
     language,
@@ -134,7 +136,7 @@ export async function importJsonFile(
     const headword = String(item.headword || item.word || item.lemma || '').trim();
     const definition = String(item.definition || item.meaning || item.gloss || '').trim();
     if (!headword || !definition) continue;
-    runWrite(
+    await runWrite(
       `INSERT INTO offline_entries (headword, language, pos, definition, pack_id, extra) VALUES (?, ?, ?, ?, ?, ?)`,
       [
         headword,
@@ -147,7 +149,7 @@ export async function importJsonFile(
     );
     count += 1;
   }
-  bumpPackCount(packId, count);
+  await bumpPackCount(packId, count);
   console.log('Imported JSON pack', { packId, count });
   return { packId, count };
 }
@@ -158,7 +160,7 @@ export async function importCedictTextFile(
   packId = 'cc-cedict',
 ): Promise<{ packId: string; count: number }> {
   await ensureOfflineReady();
-  insertPack({
+  await insertPack({
     id: packId,
     name: 'CC-CEDICT',
     language: 'zh',
@@ -183,14 +185,14 @@ export async function importCedictTextFile(
     const meaning = defs.join('; ');
     const definition = `[${pinyin}] ${meaning}`;
     for (const head of Array.from(new Set([simplified, traditional]))) {
-      runWrite(
+      await runWrite(
         `INSERT INTO offline_entries (headword, language, pos, definition, pack_id, extra) VALUES (?, 'zh', NULL, ?, ?, ?)`,
         [head, definition, packId, JSON.stringify({ traditional, simplified, pinyin })],
       );
       count += 1;
     }
   }
-  bumpPackCount(packId, count);
+  await bumpPackCount(packId, count);
   console.log('Imported CEDICT', { packId, count });
   return { packId, count };
 }

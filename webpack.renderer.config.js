@@ -17,7 +17,10 @@ rendererRules.push({
 });
 
 const rendererConfig = {
-  entry: './src/renderer.ts',
+  // Do NOT set a global `entry` here. Forge's Webpack plugin supplies
+  // per-window entries (main_window, popup_window, …). A leftover
+  // `entry: './src/renderer.ts'` can be merged into the popup bundle and
+  // inject main-window CSS/JS into the lookup toolstrip.
   module: {
     rules: rendererRules,
   },

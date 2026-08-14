@@ -1,4 +1,7 @@
 import { clipboard } from 'electron';
+import { wrapConsole } from '../logger';
+
+const console = wrapConsole('clipboard');
 
 export interface ClipboardEntry {
   id: string;

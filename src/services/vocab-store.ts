@@ -80,7 +80,7 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
   const lemma = (input.lemma || '').trim();
   if (!lemma) throw new Error('lemma required');
 
-  const existing = queryOne(
+  const existing = await queryOne(
     `SELECT * FROM vocab WHERE lower(lemma) = lower(?) ORDER BY updated_at DESC LIMIT 1`,
     [lemma],
   );
@@ -88,7 +88,7 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
 
   if (existing) {
     const id = String(existing.id);
-    runWrite(
+    await runWrite(
       `UPDATE vocab SET definition = COALESCE(?, definition), part_of_speech = COALESCE(?, part_of_speech),
        sources = COALESCE(?, sources), note = COALESCE(?, note), updated_at = ? WHERE id = ?`,
       [
@@ -100,13 +100,13 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
         id,
       ],
     );
-    const updated = getVocab(id);
+    const updated = await getVocab(id);
     if (!updated) throw new Error('Failed to reload saved entry');
     return updated;
   }
 
   const id = newId();
-  runWrite(
+  await runWrite(
     `INSERT INTO vocab (id, lemma, reading, definition, part_of_speech, source_lang, target_lang, sources, note, tags, created_at, updated_at, review_due, review_interval, ease, reps)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 2.5, 0)`,
     [
@@ -125,13 +125,13 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
       now,
     ],
   );
-  const created = getVocab(id);
+  const created = await getVocab(id);
   if (!created) throw new Error('Failed to reload saved entry');
   return created;
 }
 
-export function getVocab(id: string): VocabEntry | null {
-  const row = queryOne(`SELECT * FROM vocab WHERE id = ?`, [id]);
+export async function getVocab(id: string): Promise<VocabEntry | null> {
+  const row = await queryOne(`SELECT * FROM vocab WHERE id = ?`, [id]);
   return row ? rowToEntry(row) : null;
 }
 
@@ -139,32 +139,32 @@ export async function findByLemma(lemma: string): Promise<VocabEntry | null> {
   await ensureVocabReady();
   const q = (lemma || '').trim();
   if (!q) return null;
-  const row = queryOne(`SELECT * FROM vocab WHERE lower(lemma) = lower(?) ORDER BY updated_at DESC LIMIT 1`, [q]);
+  const row = await queryOne(`SELECT * FROM vocab WHERE lower(lemma) = lower(?) ORDER BY updated_at DESC LIMIT 1`, [q]);
   return row ? rowToEntry(row) : null;
 }
 
 export async function listVocab(limit = 200): Promise<VocabEntry[]> {
   await ensureVocabReady();
-  const rows = queryAll(`SELECT * FROM vocab ORDER BY updated_at DESC LIMIT ?`, [limit]);
+  const rows = await queryAll(`SELECT * FROM vocab ORDER BY updated_at DESC LIMIT ?`, [limit]);
   return rows.map(rowToEntry);
 }
 
 export async function removeVocab(id: string): Promise<boolean> {
   await ensureVocabReady();
-  runWrite(`DELETE FROM vocab WHERE id = ?`, [id]);
+  await runWrite(`DELETE FROM vocab WHERE id = ?`, [id]);
   return true;
 }
 
 export async function updateVocabNote(id: string, note: string): Promise<VocabEntry | null> {
   await ensureVocabReady();
-  runWrite(`UPDATE vocab SET note = ?, updated_at = ? WHERE id = ?`, [note, Date.now(), id]);
+  await runWrite(`UPDATE vocab SET note = ?, updated_at = ? WHERE id = ?`, [note, Date.now(), id]);
   return getVocab(id);
 }
 
 /** Simple SM-2–ish grade: 1 again, 2 hard, 3 good, 4 easy. */
 export async function reviewVocab(id: string, grade: 1 | 2 | 3 | 4): Promise<VocabEntry | null> {
   await ensureVocabReady();
-  const row = queryOne(`SELECT * FROM vocab WHERE id = ?`, [id]);
+  const row = await queryOne(`SELECT * FROM vocab WHERE id = ?`, [id]);
   if (!row) return null;
   let ease = Number(row.ease) || 2.5;
   let interval = Number(row.review_interval) || 0;
@@ -182,7 +182,7 @@ export async function reviewVocab(id: string, grade: 1 | 2 | 3 | 4): Promise<Voc
   }
 
   const due = Date.now() + interval * 24 * 60 * 60 * 1000;
-  runWrite(
+  await runWrite(
     `UPDATE vocab SET review_due = ?, review_interval = ?, ease = ?, reps = ?, updated_at = ? WHERE id = ?`,
     [due, interval, ease, reps, Date.now(), id],
   );

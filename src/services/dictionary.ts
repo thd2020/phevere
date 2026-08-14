@@ -37,15 +37,15 @@ import { BaseService, DictionaryError, withTimeout } from './base';
 import * as crypto from 'crypto';
 import { wrapConsole } from '../logger';
 import { net } from 'electron';
-import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery } from './text-normalize';
+import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, latinLemmaForms } from './text-normalize';
 import { buildEtymology, EtymologyLink } from './etymology';
-import { mergeSimilarDefinitions } from './definition-merge';
+import { mergeSimilarDefinitions, dedupeExamples } from './definition-merge';
 import { lookupOffline } from './offline-dict-store';
 
 const console = wrapConsole('dictionary');
 /** Hard ceiling so renderer IPC never waits forever (etymology / hung hosts). */
 const LOOKUP_DEADLINE_MS = 12000;
-const ETYMOLOGY_BUDGET_MS = 2500;
+const ETYMOLOGY_BUDGET_MS = 6000;
 const OFFLINE_BUDGET_MS = 2000;
 
 export interface Translation {
@@ -234,7 +234,7 @@ export class DictionaryService extends BaseService {
         normalized = normalized.substring(0, MAX_TRANSLATE_LENGTH);
       }
 
-      console.log(`[DEBUG] Calling unofficial translate for text of length ${normalized.length}`, { to: targetLanguage, from: sourceLanguage });
+      console.log(`Unofficial translate`, { to: targetLanguage, from: sourceLanguage, chars: normalized.length });
       const sl = sourceLanguage && sourceLanguage !== 'auto' ? sourceLanguage : 'auto';
       const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(targetLanguage)}&dt=t&q=${encodeURIComponent(normalized)}`;
       const response = await this.request<any>(url);
@@ -270,7 +270,7 @@ export class DictionaryService extends BaseService {
       console.warn('Unofficial Google Translate returned unexpected response shape');
       return null;
     } catch (error) {
-      console.error('❌ CRITICAL: Unofficial Google Translate error:', error);
+      console.error('Unofficial Google Translate error:', error);
       return null;
     }
   }
@@ -306,7 +306,7 @@ export class DictionaryService extends BaseService {
 
       const cached = this.cache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
-        console.log(`✅ Cache hit for text (${Date.now() - startTime}ms)`);
+        console.log(`Cache hit (${Date.now() - startTime}ms)`);
         return cached.result;
       }
 
@@ -459,26 +459,12 @@ export class DictionaryService extends BaseService {
    * Handle sentence translation with intelligent language detection and multiple translations
    */
   private async handleSentenceTranslationOptimized(text: string, targetLanguage: string, sourceLanguage: string): Promise<DictionaryResult> {
-    console.log('🔄 [DEBUG] handleSentenceTranslationOptimized called with:', {
-      text: text.substring(0, 50),
-      targetLanguage,
-      sourceLanguage,
-      apiKey: this.apiKey ? 'SET' : 'NOT_SET',
-      deeplApiKey: this.deeplApiKey ? 'SET' : 'NOT_SET'
-    });
-
     const sources: string[] = [];
     const translations: Translation[] = [];
     
     // Intelligent target language selection based on detected source
     // Target is already resolved by lookup(); keep a safety net for direct callers.
     let actualTargetLanguage = this.resolveTargetLanguage(sourceLanguage, targetLanguage);
-    
-    console.log('🔄 [DEBUG] Language mapping result:', {
-      originalTarget: targetLanguage,
-      actualTargetLanguage,
-      sourceLanguage
-    });
     
     // Get multiple translations in parallel for better accuracy
     const translationPromises: Array<Promise<Translation | null>> = [];
@@ -519,26 +505,17 @@ export class DictionaryService extends BaseService {
     }
     
     // Always include mock translation as fallback
-    // console.log('🔄 [DEBUG] Adding mock translation as fallback');
     // translationPromises.push(
     //   Promise.resolve(this.getMockTranslation(text, actualTargetLanguage, sourceLanguage))
     // );
     
-    console.log('🔄 [DEBUG] Starting translation promises:', translationPromises.length);
-    
-    // Wait for all translations (with timeout)
     const translationResults = await Promise.allSettled(
       translationPromises.map(
         (p: Promise<Translation | null>): Promise<Translation | null> =>
           withTimeout(p, 3000, 'translation').catch((): null => null),
       ),
     );
-    
-    console.log('🔄 [DEBUG] Translation results:', translationResults.map(r => ({
-      status: r.status,
-      hasValue: r.status === 'fulfilled' && !!r.value
-    })));
-    
+
     // Process results
     for (const result of translationResults) {
       if (result.status === 'fulfilled' && result.value) {
@@ -589,8 +566,6 @@ export class DictionaryService extends BaseService {
     // For Chinese/Japanese/Korean or mixed CJK+ASCII, prioritize translation over dictionary lookup
     const hasCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(text);
     const isAsianLanguage = ['zh', 'ja', 'ko'].includes(sourceLanguage) || hasCJK;
-    
-    console.log(`[DBG] Processing ${text.length} chars: ${sourceLanguage} → ${targetLanguage}`);
     // Prepare all API calls to run in parallel
     const apiPromises: Promise<any>[] = [];
     
@@ -665,10 +640,14 @@ export class DictionaryService extends BaseService {
       }
     }
 
-    // Latin path: also probe offline EN packs
+    // Latin path: also probe offline EN packs (budgeted — sql.js is sync on main)
     if (preferLatinSources) {
       try {
-        const offlineHits = await lookupOffline(text, 'en', 12);
+        const offlineHits = await withTimeout(
+          lookupOffline(text, 'en', 12),
+          OFFLINE_BUDGET_MS,
+          'offline.lookup.en',
+        );
         for (const hit of offlineHits) {
           definitions.push({
             partOfSpeech: hit.pos || 'definition',
@@ -764,14 +743,8 @@ export class DictionaryService extends BaseService {
     // Process results
     let canonicalLemma: string | undefined;
     for (const result of results) {
-      // raw debug for each promise
-      if (result.status === 'rejected') {
-        console.warn('[DBG] api promise rejected:', result.reason);
-      }
       if (result.status === 'fulfilled' && result.value && !result.value.error) {
         const { type, data } = result.value;
-        console.log('[DBG] api fulfilled:', type, { hasData: !!data });
-        
         switch (type) {
           case 'translation':
             if (data) {
@@ -893,6 +866,9 @@ export class DictionaryService extends BaseService {
       }
     }
     const mergedDefinitions = mergeSimilarDefinitions(uniqueDefinitions) as Definition[];
+    for (const d of mergedDefinitions) {
+      if (d.examples?.length) d.examples = dedupeExamples(d.examples) || [];
+    }
 
     // 2) Translations: unique by source label + translated text
     const transMap = new Map<string, Translation>();
@@ -927,27 +903,44 @@ export class DictionaryService extends BaseService {
 
     // Always collect etymology from free sources (Wiktionary, Etymonline, Youdao/童理民)
     // and merge with any etymology already returned by REST / paid APIs.
-    console.log(`[ETY-DEBUG] Checking etymology for text: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
-    console.log(`[ETY-DEBUG] Current etymology value: ${etymology ? 'EXISTS' : 'UNDEFINED'}`);
+    const etyQuery = (canonicalLemma && canonicalLemma.trim()) || text;
+    try {
+      const fetched = await withTimeout(
+        this.fetchEtymologyFromMultipleSources(etyQuery),
+        ETYMOLOGY_BUDGET_MS,
+        'etymology.multi',
+      );
+      if (fetched?.text) {
+        etymology = fetched.text;
+        if (fetched.chain) etymologyChain = fetched.chain;
+      }
+    } catch (error) {
+      console.warn('[ETY] multi-source etymology skipped', error);
+    }
 
-    // Etymology is optional — skip network fetch on the critical path entirely.
-    // Background Etymonline was producing deceptive logs while unhandled
-    // timed-out races were killing the Electron process (frozen strip).
-    // Users still get etymology from Wiktionary when it arrives with definitions.
-    // Create final result — prefer pivoted / API lemma as the headword
     const headword = (canonicalLemma && canonicalLemma.trim()) || text;
 
-    // Lemma pivot often leaves plurals without IPA; re-query FreeDict for the singular.
-    if (!pronunciation && headword && headword.toLowerCase() !== text.toLowerCase() && preferLatinSources) {
-      try {
-        const lemmaPhon = await withTimeout(
-          this.getFreeDictionaryData(headword, langForDict),
-          3000,
-          'lemma.ipa',
-        );
-        if (lemmaPhon.pronunciation) pronunciation = lemmaPhon.pronunciation;
-      } catch {
-        /* optional */
+    // Inflected forms (vicissitudes) often have no IPA on the surface form.
+    if (!pronunciation && preferLatinSources) {
+      const ipaForms = [
+        headword,
+        ...latinLemmaForms(text),
+        ...latinLemmaForms(headword),
+      ].filter((f, i, arr) => f && f.toLowerCase() !== text.toLowerCase() && arr.indexOf(f) === i);
+      for (const form of ipaForms) {
+        try {
+          const lemmaPhon = await withTimeout(
+            this.getFreeDictionaryData(form, langForDict),
+            3000,
+            'lemma.ipa',
+          );
+          if (lemmaPhon.pronunciation) {
+            pronunciation = lemmaPhon.pronunciation;
+            break;
+          }
+        } catch {
+          /* optional */
+        }
       }
     }
 
@@ -973,13 +966,6 @@ export class DictionaryService extends BaseService {
         lemma: headword !== text ? headword : undefined,
       },
     };
-
-    console.log(`[ETY-DEBUG] Final result etymology: ${result.etymology ? 'PRESENT' : 'MISSING'}`);
-    if (result.etymology) {
-      console.log(`[ETY-DEBUG] Final etymology content: "${result.etymology.substring(0, 100)}${result.etymology.length > 100 ? '...' : ''}"`);
-    } else {
-      console.log(`[ETY-DEBUG] No etymology in final result`);
-    }
 
     return result;
   }
@@ -1260,11 +1246,9 @@ export class DictionaryService extends BaseService {
             if (!pronunciation && baseData.pronunciation) pronunciation = baseData.pronunciation;
             // Pull example sentences from wikitext for the base lemma as well
             const baseExamples = await this.fetchExamplesFromWikitext(base);
-            if (baseExamples.length > 0) {
-              if (definitions.length > 0) {
-                const first = definitions[0] as any;
-                first.examples = Array.isArray(first.examples) ? [...first.examples, ...baseExamples] : baseExamples;
-              }
+            if (baseExamples.length > 0 && definitions.length > 0) {
+              const first = definitions[0] as Definition;
+              first.examples = dedupeExamples([...(first.examples || []), ...baseExamples]) || [];
             }
           } catch (e) {
             console.warn('Lemma pivot failed for', base, e);
@@ -1675,20 +1659,20 @@ export class DictionaryService extends BaseService {
 
     const [wiktionaryEtymology, etymonlineEtymology, youdaoEtymology, oxfordEtymology] = await Promise.all([
       this.fetchEtymologyFromWikitext(text).catch((error: unknown): undefined => {
-        console.warn(`[ETY-DEBUG] Wiktionary etymology fetch failed:`, error);
+        console.warn(`Wiktionary etymology fetch failed:`, error);
         return undefined;
       }),
       this.fetchEtymologyFromEtymonline(text).catch((error: unknown): undefined => {
-        console.warn(`[ETY-DEBUG] Etymonline etymology fetch failed:`, error);
+        console.warn(`Etymonline etymology fetch failed:`, error);
         return undefined;
       }),
       this.fetchEtymologyFromYoudao(text).catch((error: unknown): undefined => {
-        console.warn(`[ETY-DEBUG] Youdao etymology fetch failed:`, error);
+        console.warn(`Youdao etymology fetch failed:`, error);
         return undefined;
       }),
       this.oxfordAppId && this.oxfordAppKey
         ? this.fetchEtymologyFromOxford(text).catch((error: unknown): undefined => {
-            console.warn(`[ETY-DEBUG] Oxford etymology fetch failed:`, error);
+            console.warn(`Oxford etymology fetch failed:`, error);
             return undefined;
           })
         : Promise.resolve(undefined),
@@ -1746,7 +1730,7 @@ export class DictionaryService extends BaseService {
       });
 
       if (!response.ok) {
-        console.warn(`[ETY-DEBUG] Etymonline returned HTTP status ${response.status} for ${cleanWord}`);
+        console.warn(`Etymonline returned HTTP status ${response.status} for ${cleanWord}`);
         return undefined;
       }
 
@@ -1801,7 +1785,7 @@ export class DictionaryService extends BaseService {
         return etymology;
       }
     } catch (error) {
-      console.warn(`[ETY-DEBUG] Etymonline fetch failed for "${cleanWord}":`, error);
+      console.warn(`Etymonline fetch failed for "${cleanWord}":`, error);
     }
 
     return undefined;
@@ -1857,9 +1841,9 @@ export class DictionaryService extends BaseService {
       }
 
       if (chunks.length === 0) return undefined;
-      return chunks.join('\n\n');
+      return chunks.join('\n\n--- Alternative etymology ---\n\n');
     } catch (error) {
-      console.warn(`[ETY-DEBUG] Youdao etymology failed for "${cleanWord}":`, error);
+      console.warn(`Youdao etymology failed for "${cleanWord}":`, error);
       return undefined;
     }
   }
@@ -1893,7 +1877,7 @@ export class DictionaryService extends BaseService {
         }
       }
     } catch (error) {
-      console.warn(`[ETY-DEBUG] Oxford etymology fetch failed:`, error);
+      console.warn(`Oxford etymology fetch failed:`, error);
     }
 
     return undefined;
@@ -1923,7 +1907,7 @@ export class DictionaryService extends BaseService {
       return this.parseEtymology(wikitext);
 
     } catch (error) {
-      console.warn(`[ETY-DEBUG] Wiktionary etymology fetch failed for "${text}":`, error);
+      console.warn(`Wiktionary etymology fetch failed for "${text}":`, error);
     }
     return undefined;
   }
@@ -1944,7 +1928,7 @@ export class DictionaryService extends BaseService {
         return { text: parsed.text, chain: parsed.chain.length > 0 ? parsed.chain : undefined };
       }
     } catch (error) {
-      console.warn('[ETY-DEBUG] Structured etymology parse failed, falling back:', error);
+      console.warn('Structured etymology parse failed, falling back:', error);
     }
 
     const legacy = this.extractEtymologyFromWikitextLegacy(wikitext);
@@ -1952,94 +1936,46 @@ export class DictionaryService extends BaseService {
   }
 
   private extractEtymologyFromWikitextLegacy(wikitext: string): string | undefined {
-    console.log(`[ETY-DEBUG] === Starting etymology extraction from ${wikitext.length} chars of wikitext ===`);
-
-    // Look for ALL section headings to understand the page structure
-    const sectionPattern = /==+([^=\n]+)==+/g;
-    const sections: string[] = [];
-    let sectionMatch;
-    while ((sectionMatch = sectionPattern.exec(wikitext)) !== null) {
-      sections.push(sectionMatch[1].trim());
-    }
-    console.log(`[ETY-DEBUG] Found sections in page:`, sections);
-
-    // Look for etymology-related sections
-    const etymologySections = sections.filter(section =>
-      /etymology|origin|history|derivation/i.test(section)
-    );
-    console.log(`[ETY-DEBUG] Etymology-related sections found:`, etymologySections);
-
-    // For multi-language pages, prioritize English etymology
     const englishSectionIndex = wikitext.indexOf('==English==');
     if (englishSectionIndex !== -1) {
-      console.log(`[ETY-DEBUG] Found English section at position ${englishSectionIndex}, extracting English-specific content`);
-      // Extract content from English section onwards
       const englishContent = wikitext.substring(englishSectionIndex);
-      // Look for etymology in the English section
       const englishEtymologyMatch = englishContent.match(/===Etymology===([\s\S]*?)(?====|$)/);
       if (englishEtymologyMatch) {
-        console.log(`[ETY-DEBUG] Found English etymology section`);
         return this.processEtymologyText(englishEtymologyMatch[1]);
       }
     }
 
-    // If we didn't find English-specific etymology, try the general patterns
     const etymologyPatterns = [
-      /===\s*Etymology\s*===\s*\n(.+?)(?=\n===|$)/, // Level 3 heading
-      /==\s*Etymology\s*==\s*\n(.+?)(?=\n==|$)/,    // Level 2 heading
-      /=\s*Etymology\s*=\s*\n(.+?)(?=\n=|$)/,      // Level 1 heading
-      /Etymology\s*\n(.+?)(?=\n==|$)/,             // Without heading markers
-      /Origin\s*\n(.+?)(?=\n==|$)/,                // Alternative "Origin" section
-      /History\s*\n(.+?)(?=\n==|$)/,               // Alternative "History" section
-      /Derivation\s*\n(.+?)(?=\n==|$)/,            // Alternative "Derivation" section
-      /===\s*Etymology\s*\d*\s*===\s*\n(.+?)(?=\n===|$)/, // Etymology 1, 2, etc.
-      /==\s*Etymology\s*\d*\s*==\s*\n(.+?)(?=\n==|$)/,    // Etymology 1, 2, etc.
+      /===\s*Etymology\s*===\s*\n(.+?)(?=\n===|$)/,
+      /==\s*Etymology\s*==\s*\n(.+?)(?=\n==|$)/,
+      /=\s*Etymology\s*=\s*\n(.+?)(?=\n=|$)/,
+      /Etymology\s*\n(.+?)(?=\n==|$)/,
+      /Origin\s*\n(.+?)(?=\n==|$)/,
+      /History\s*\n(.+?)(?=\n==|$)/,
+      /Derivation\s*\n(.+?)(?=\n==|$)/,
+      /===\s*Etymology\s*\d*\s*===\s*\n(.+?)(?=\n===|$)/,
+      /==\s*Etymology\s*\d*\s*==\s*\n(.+?)(?=\n==|$)/,
     ];
 
-    console.log(`[ETY-DEBUG] Testing ${etymologyPatterns.length} regex patterns for etymology`);
-
-    let etymologyText = '';
-
-    for (let i = 0; i < etymologyPatterns.length; i++) {
-      const pattern = etymologyPatterns[i];
+    for (const pattern of etymologyPatterns) {
       const match = wikitext.match(pattern);
-      console.log(`[ETY-DEBUG] Pattern ${i + 1} ${match ? 'MATCHED' : 'FAILED'}: ${pattern.source}`);
       if (match && match[1]) {
-        etymologyText = match[1];
-        console.log(`[ETY-DEBUG] ✅ Matched pattern ${i + 1}, extracted text length: ${etymologyText.length}`);
-        console.log(`[ETY-DEBUG] Raw extracted text (first 100 chars):\n"${etymologyText.substring(0, 100)}"`);
-        return this.processEtymologyText(etymologyText);
+        return this.processEtymologyText(match[1]);
       }
     }
 
-    if (!etymologyText) {
-      console.log(`[ETY-DEBUG] No etymology patterns matched, trying fallback approach...`);
-
-      // Fallback: Look for any content that mentions etymology-related keywords
-      const etymologyKeywords = ['etymology', 'origin', 'from', 'derived from', 'comes from', 'root'];
-      const lines = wikitext.split('\n');
-      const etymologyLines: string[] = [];
-
-      for (const line of lines) {
-        const lowerLine = line.toLowerCase();
-        if (etymologyKeywords.some(keyword => lowerLine.includes(keyword)) && !line.includes('==') && line.trim().length > 10) {
-          etymologyLines.push(line);
-        }
-      }
-
-      console.log(`[ETY-DEBUG] Fallback approach found ${etymologyLines.length} lines with etymology keywords`);
-
-      if (etymologyLines.length > 0) {
-        etymologyText = etymologyLines.slice(0, 3).join(' '); // Take first 3 relevant lines
-        console.log(`[ETY-DEBUG] Using fallback etymology text: "${etymologyText.substring(0, 100)}..."`);
-        return this.processEtymologyText(etymologyText);
-      } else {
-        console.log(`[ETY-DEBUG] No etymology content found even with fallback approach`);
-        return undefined;
+    const etymologyKeywords = ['etymology', 'origin', 'from', 'derived from', 'comes from', 'root'];
+    const etymologyLines: string[] = [];
+    for (const line of wikitext.split('\n')) {
+      const lowerLine = line.toLowerCase();
+      if (etymologyKeywords.some((keyword) => lowerLine.includes(keyword)) && !line.includes('==') && line.trim().length > 10) {
+        etymologyLines.push(line);
       }
     }
-
-    return this.processEtymologyText(etymologyText);
+    if (etymologyLines.length > 0) {
+      return this.processEtymologyText(etymologyLines.slice(0, 3).join(' '));
+    }
+    return undefined;
   }
 
   /**
@@ -2238,9 +2174,6 @@ export class DictionaryService extends BaseService {
       .replace(/\s+/g, ' ')
       .trim();
 
-    console.log(`[ETY-DEBUG] Final processed etymology: "${finalText.substring(0, 150)}..."`);
-
-    // Return the full cleaned text for etymology (it's important to show the complete derivation)
     return finalText;
   }
 
@@ -2448,11 +2381,6 @@ export class DictionaryService extends BaseService {
    * Mock translation for development/testing
    */
   private getMockTranslation(text: string, targetLanguage: string, sourceLanguage: string): Translation | null {
-    console.log('🔄 [DEBUG] getMockTranslation called:', { 
-      text: text.substring(0, 30) + (text.length > 30 ? '...' : ''), 
-      targetLanguage, 
-      sourceLanguage 
-    });
     const mockTranslations: Record<string, Record<string, string>> = {
       'hello': {
         'zh': '你好',
@@ -2560,7 +2488,6 @@ export class DictionaryService extends BaseService {
         confidence: 0.5,
         source: 'Mock Translation'
       };
-      console.log('🔄 [DEBUG] Found specific mock translation:', result);
       return result;
     }
 
@@ -2572,7 +2499,6 @@ export class DictionaryService extends BaseService {
         confidence: 0.1,
         source: 'Mock Translation'
       };
-      console.log('🔄 [DEBUG] Generated Chinese mock translation:', zhResult);
       return zhResult;
     } else if (targetLanguage === 'ja') {
       const jaResult = {
@@ -2581,7 +2507,6 @@ export class DictionaryService extends BaseService {
         confidence: 0.1,
         source: 'Mock Translation'
       };
-      console.log('🔄 [DEBUG] Generated Japanese mock translation:', jaResult);
       return jaResult;
     } else if (targetLanguage === 'ko') {
       const koResult = {
@@ -2590,7 +2515,6 @@ export class DictionaryService extends BaseService {
         confidence: 0.1,
         source: 'Mock Translation'
       };
-      console.log('🔄 [DEBUG] Generated Korean mock translation:', koResult);
       return koResult;
     }
 
@@ -2600,8 +2524,6 @@ export class DictionaryService extends BaseService {
       confidence: 0.1,
       source: 'Mock Translation'
     };
-    
-    console.log('🔄 [DEBUG] Generated fallback mock translation:', fallbackResult);
     return fallbackResult;
   }
 

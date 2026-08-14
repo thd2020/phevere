@@ -1,13 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-// Import the UIAutomation native addon (optional - not needed for renderer)
-let native: any = null;
-try {
-  // @ts-ignore
-  native = require('../native-addon');
-} catch (error) {
-  native = null;
-}
+// Do NOT require('../native-addon') here. Webpack dlopen's the UIA .node into
+// every BrowserWindow preload (popup, history lookup, settings). A second
+// UIAutomation COM instance in a renderer deadlocks while main already owns
+// the hook — the window stays infinitely loading and never binds clicks.
+// Selection monitoring belongs only in the main process (native-selection.ts).
 
 // Type definitions for better TypeScript support
 interface SelectionListener {
@@ -123,52 +120,20 @@ interface SearchResponse {
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
+const noopListener: SelectionListener = {
+  start: () => true,
+  stop: () => true,
+  getSelection: () => null,
+};
+
 contextBridge.exposeInMainWorld('nativeAPI', {
-  createListener: () => {
-    if (!native) {
-      return {
-        start: () => true,
-        stop: () => true,
-        getSelection: () => null,
-      };
-    }
-    try {
-      return native.createListener();
-    } catch (error) {
-      console.error('Failed to create listener:', error);
-      throw error;
-    }
-  },
-  start: (listener: SelectionListener) => {
-    if (!native) {
-      return true;
-    }
-    try {
-      return native.start(listener);
-    } catch (error) {
-      console.error('Failed to start listener:', error);
-      throw error;
-    }
-  },
-  stop: (listener: SelectionListener) => {
-    if (!native) {
-      return true;
-    }
-    try {
-      return native.stop(listener);
-    } catch (error) {
-      console.error('Failed to stop listener:', error);
-      throw error;
-    }
-  },
+  createListener: () => noopListener,
+  start: () => true,
+  stop: () => true,
 } as NativeAPI);
 
 // Expose IPC methods for communication with main process
 contextBridge.exposeInMainWorld('electronAPI', {
-  __debugInfo: () => ({
-    locationHref: typeof window !== 'undefined' ? window.location?.href : 'n/a',
-    hash: typeof window !== 'undefined' ? window.location?.hash : 'n/a'
-  }),
   onSelectionChange: (callback: (text: string) => void) => {
     ipcRenderer.removeAllListeners('selection-changed');
     ipcRenderer.on('selection-changed', (_event: any, text: string) => callback(text));
@@ -309,7 +274,6 @@ contextBridge.exposeInMainWorld('clipboardAPI', {
 // Expose dictionary API
 contextBridge.exposeInMainWorld('dictionaryAPI', {
   lookup: (text: string, targetLanguage?: string, enabledSources?: string[]): Promise<DictionaryResult> => {
-    console.log('🔍 Preload: dictionaryAPI.lookup called with:', { text, targetLanguage, enabledSources });
     return ipcRenderer.invoke('dictionary-lookup', text, targetLanguage, enabledSources);
   },
   setApiKey: (apiKey: string): Promise<{ success: boolean }> => {

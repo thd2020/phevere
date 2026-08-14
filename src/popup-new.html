@@ -3,9 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <title>Phevere Dictionary</title>
+    <!-- print→all so a hung fonts.googleapis.com cannot block this page's scripts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap"
+      rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
+    />
     <style>
       :root {
         --pv-ink: #14212b;
@@ -18,9 +24,9 @@
         --pv-ember-deep: #c44900;
         --pv-teal: #0d7377;
         --pv-success: #0f766e;
-        --pv-font-ui: 'Outfit', system-ui, sans-serif;
-        --pv-font-serif: 'Source Serif 4', Georgia, serif;
-        --pv-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+        --pv-font-ui: 'Outfit', system-ui, 'Segoe UI', sans-serif;
+        --pv-font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+        --pv-font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
       }
 
       * {
@@ -1383,12 +1389,17 @@
         void lookupText(t, { silent: !isExpanded });
       }
 
-      // Initialize when the DOM is ready
-      pvLog('[POPUP] DOMContentLoaded event fired');
-      document.addEventListener('DOMContentLoaded', initialize);
+      // Initialize even if this script ran after DOMContentLoaded (webpack inject / late parse).
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initialize);
+      } else {
+        void initialize();
+      }
 
              // Main initialization function
        async function initialize() {
+         if (window.__pheverePopupBooted) return;
+         window.__pheverePopupBooted = true;
          pvLog('[POPUP] Initialize function called');
          pvLog('[POPUP] DOM ready, setting up popup...');
          
@@ -1401,32 +1412,15 @@
           // Old behavior: sharp tool strip by default (collapsed) and expand only when icon/tab clicked
           setupToolbarBehavior();
           collapseToolbar();
+          // Ensure loading is hidden until lookupText asks for it (main index.css must not
+          // leak into this page anymore; belt-and-suspenders for stale builds).
+          try {
+            const loadingEl = document.getElementById('loadingElement');
+            if (loadingEl) loadingEl.style.display = 'none';
+          } catch (e) { /* ignore */ }
 
           // Start auto-close timeout for collapsed popup
           startAutoCloseTimeout();
-
-        // This is the CRITICAL FIX:
-        // Actively fetch the last selected text from the main process
-          if (window.electronAPI) {
-            try {
-              const selectionEvent = await window.electronAPI.getLastSelection();
-              if (selectionEvent && selectionEvent.text) {
-                currentText = selectionEvent.text;
-                window['__popupCurrentText'] = currentText;
-                const openedFromHistory = (window.outerWidth || 0) > 600;
-                if (openedFromHistory) {
-                  // Historical popup (expanded window) – auto-expand and run lookup once
-                  activateTab('lexicon');
-                  expandToolbar();
-                  lookupText(currentText);
-                } else {
-                  // Slim popup – stay collapsed; optional background fetch (same as legacy onPopupText preload)
-                  activateTab('lexicon');
-                  maybePreloadLookup(currentText);
-                }
-              }
-            } catch (e) {}
-          }
 
         try {
           if (window.electronAPI && typeof window.electronAPI.onPopupText === 'function') {
@@ -1450,6 +1444,26 @@
         } catch (e) {
           console.error('[POPUP] Failed to register onPopupText:', e);
         }
+
+        // Fetch last selection after the listener is armed so popup-text cannot be dropped.
+          if (window.electronAPI) {
+            try {
+              const selectionEvent = await window.electronAPI.getLastSelection();
+              if (selectionEvent && selectionEvent.text) {
+                currentText = selectionEvent.text;
+                window['__popupCurrentText'] = currentText;
+                const openedFromHistory = (window.outerWidth || 0) > 600;
+                if (openedFromHistory) {
+                  activateTab('lexicon');
+                  expandToolbar();
+                  lookupText(currentText);
+                } else {
+                  activateTab('lexicon');
+                  maybePreloadLookup(currentText);
+                }
+              }
+            } catch (e) {}
+          }
       }
 
       // Load settings from localStorage
@@ -2212,6 +2226,27 @@ function startAutoCloseTimeout() {
           });
         }
 
+        function exampleKey(s) {
+          return String(stripHtmlToText(s) || '')
+            .replace(/[\u201C\u201D]/g, '"')
+            .replace(/[\u2018\u2019]/g, "'")
+            .replace(/["']/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+        }
+        function uniqueExamples(list) {
+          const out = [];
+          const seen = new Set();
+          (list || []).forEach(function (ex) {
+            const k = exampleKey(ex);
+            if (!k || seen.has(k)) return;
+            seen.add(k);
+            out.push(ex);
+          });
+          return out;
+        }
+
         function createLexiconCard(result) {
           const defs = result.definitions || [];
           if (defs.length === 0) {
@@ -2237,6 +2272,7 @@ function startAutoCloseTimeout() {
 
           let body = '';
           let senseCounter = 0;
+          const shownExampleKeys = new Set();
           order.forEach(function (pos) {
             body += `<div class="lexicon-pos-group"><div class="lexicon-pos-heading">${escapeHtml(pos)}</div>`;
             const senses = groups[pos].slice().sort(function (a, b) {
@@ -2249,7 +2285,8 @@ function startAutoCloseTimeout() {
               const rawMeaning = d.meaning || d.definition || '';
               const isWikiHtml = /<[a-z][\s\S]*>/i.test(rawMeaning);
               const meaningHtml = linkifyLemmaRefs(rawMeaning, isWikiHtml);
-              const examples = Array.isArray(d.examples) ? d.examples : [];
+              const examples = uniqueExamples(Array.isArray(d.examples) ? d.examples : []);
+              examples.forEach(function (ex) { shownExampleKeys.add(exampleKey(ex)); });
               const exHtml = examples.length
                 ? `<div class="definition-examples">${examples.map(function (ex) {
                     return `<div class="definition-example">${escapeHtml(stripHtmlToText(ex))}</div>`;
@@ -2276,7 +2313,9 @@ function startAutoCloseTimeout() {
             body += '</div>';
           });
 
-          const globalExamples = (result.examples || []).slice(0, 8);
+          const globalExamples = uniqueExamples(result.examples || [])
+            .filter(function (ex) { return !shownExampleKeys.has(exampleKey(ex)); })
+            .slice(0, 8);
           const syn = result.synonyms || [];
           const ant = result.antonyms || [];
 
@@ -2530,7 +2569,6 @@ function startAutoCloseTimeout() {
            showToast('Saved to notebook');
          } catch (e) {
            console.error(e);
-           const msg = (e && (e.message || e.msg)) ? String(e.message || e.msg) : String(e || 'unknown');
            const msg = (e && (e.message || e.msg)) ? String(e.message || e.msg) : String(e || 'unknown');
            const short = msg
              .replace(/^Error invoking remote method '[^']+':\s*/i, '')

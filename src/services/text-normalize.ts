@@ -187,6 +187,22 @@ export function buildCandidates(sanitized: string, trimmed: string, kind: QueryK
   return candidates;
 }
 
+/** Noun/verb/adjective lemmas that differ from the surface form (e.g. vicissitudes → vicissitude). */
+export function latinLemmaForms(word: string): string[] {
+  const w = (word || '').trim().toLocaleLowerCase();
+  if (!w || !/^[\p{L}'-]+$/u.test(w)) return [];
+  const lem = getLemmatizer();
+  if (!lem) return [];
+  const out: string[] = [];
+  const seen = new Set<string>([w]);
+  for (const f of [lem.noun?.(w), lem.verb?.(w), lem.adjective?.(w)]) {
+    if (!f || seen.has(f)) continue;
+    seen.add(f);
+    out.push(f);
+  }
+  return out;
+}
+
 export function normalizeQuery(raw: string): NormalizedQuery {
   const sanitized = sanitize(raw);
   const trimmed = trimEdges(sanitized);

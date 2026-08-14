@@ -662,7 +662,7 @@ async function quitPhevere(): Promise<void> {
     log.warn('main', 'ocr dispose on quit', { err: String(e) });
   }
   try {
-    persistLocalDb();
+    await persistLocalDb();
   } catch (e) {
     log.warn('main', 'persist on quit', { err: String(e) });
   }
@@ -786,8 +786,6 @@ const createMainWindow = (): void => {
 };
 
 const createPopupWindow = (x: number, y: number): void => {
-  log.debug('main', 'Create popup window', { x, y });
-
   // Slim strip: width matches N×24px icons + gaps + padding (keep in sync with popup-new.html strip resize)
   const POPUP_STRIP_ICON = 24;
   const POPUP_STRIP_GAP = 2;
@@ -808,6 +806,7 @@ const createPopupWindow = (x: number, y: number): void => {
 
   // Coalesce duplicate requests for the same text within a short period
   const textForPopup = (lastSelectionEvent && (lastSelectionEvent.text || '').trim()) || lastSelectedText || '';
+  log.debug('main', 'Create popup window', { x, y, textLen: textForPopup.length });
   const nowTs = Date.now();
   if (textForPopup && lastPopupText === textForPopup && (nowTs - lastPopupAt) < 1000) {
     log.debug('main', 'Skip duplicate popup (same text, 1s)');
@@ -888,7 +887,7 @@ const createPopupWindow = (x: number, y: number): void => {
       } catch (e) {
         log.warn('main', 'Popup blur check failed', { err: String(e) });
       }
-    }, 400);
+    }, 150);
   });
 // (moved) wiki handler registered at top-level below
 
@@ -936,6 +935,9 @@ const createPopupWindow = (x: number, y: number): void => {
   // After the popup finishes loading, send the selected text to the renderer
   newPopupWindow.webContents.on('did-finish-load', () => {
     try {
+      if (!newPopupWindow.isDestroyed() && !newPopupWindow.isVisible()) {
+        newPopupWindow.show();
+      }
       const textToSend = (lastSelectionEvent && lastSelectionEvent.text) || lastSelectedText || '';
       if (textToSend) {
         newPopupWindow.webContents.send('popup-text', textToSend);
@@ -2245,9 +2247,17 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
 
             ipcMain.on('window-resize', (event, { width, height }) => {
               log.debug('main', 'Popup resize', { width, height });
-              const popupWindow = popupWindows.find(win => win && !win.isDestroyed());
+              // Resize the sender window (selection strip OR history full-lookup) —
+              // never assume popupWindows[0], which left history windows stuck
+              // and could resize the wrong strip when both exist.
+              const senderWin = BrowserWindow.fromWebContents(event.sender);
+              if (senderWin && !senderWin.isDestroyed()) {
+                senderWin.setSize(Math.round(width), Math.round(height));
+                return;
+              }
+              const popupWindow = popupWindows.find((win) => win && !win.isDestroyed());
               if (popupWindow) {
-                popupWindow.setSize(width, height);
+                popupWindow.setSize(Math.round(width), Math.round(height));
               }
             });
 
@@ -2328,7 +2338,7 @@ app.on('before-quit', (event) => {
     return;
   }
   try {
-    persistLocalDb();
+    void persistLocalDb();
   } catch {
     /* ignore */
   }
@@ -2438,6 +2448,9 @@ function createDictionaryWindow(term: string): void {
       nodeIntegration: false,
       contextIsolation: true,
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      sandbox: false,
+      backgroundThrottling: false,
+      webviewTag: true,
     },
   });
 
@@ -2446,7 +2459,18 @@ function createDictionaryWindow(term: string): void {
 
   // Use popup renderer but force #popup so it renders dictionary layout expanded
   const expandedUrl = withPopupDevFlag(POPUP_WINDOW_WEBPACK_ENTRY) + '#popup';
-  dictWindow.loadURL(expandedUrl).catch(() => {});
+  dictWindow.loadURL(expandedUrl).catch((error) => {
+    log.error('main', 'History lookup loadURL failed', { err: String(error) });
+  });
+  dictWindow.webContents.on('did-finish-load', () => {
+    try {
+      if (dictWindow && !dictWindow.isDestroyed() && term) {
+        dictWindow.webContents.send('popup-text', term);
+      }
+    } catch (e) {
+      log.warn('main', 'History lookup send popup-text failed', { err: String(e) });
+    }
+  });
 
   dictWindow.once('ready-to-show', () => {
     if (dictWindow && !dictWindow.isDestroyed()) dictWindow.show();

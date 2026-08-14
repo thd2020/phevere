@@ -115,14 +115,29 @@ function unionUnique(a?: string[], b?: string[]): string[] | undefined {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const x of [...(a || []), ...(b || [])]) {
-    const t = (x || '').trim();
-    if (!t) continue;
-    const k = t.toLowerCase();
-    if (seen.has(k)) continue;
+    const k = exampleKey(x);
+    if (!k || seen.has(k)) continue;
     seen.add(k);
-    out.push(t);
+    out.push(String(x).trim());
   }
   return out.length ? out : undefined;
+}
+
+/** Collapse quote/HTML/whitespace variants so the same sentence is not shown twice. */
+export function exampleKey(s: string): string {
+  return (s || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/["']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+export function dedupeExamples(list?: string[]): string[] | undefined {
+  return unionUnique(list, []) || undefined;
 }
 
 function citeList(def: MergeableDefinition): string[] {
@@ -206,5 +221,8 @@ export function mergeSimilarDefinitions(defs: MergeableDefinition[]): MergeableD
     };
   }
 
-  return clusters;
+  return clusters.map((c) => ({
+    ...c,
+    examples: unionUnique(c.examples, []) || undefined,
+  }));
 }

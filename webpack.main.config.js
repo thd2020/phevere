@@ -1,5 +1,19 @@
 const { rules } = require('./webpack.rules');
 const { plugins } = require('./webpack.plugins');
+const fs = require('fs');
+const path = require('path');
+
+class CopyLocalDbWorkerPlugin {
+  apply(compiler) {
+    compiler.hooks.afterEmit.tap('CopyLocalDbWorkerPlugin', (compilation) => {
+      const from = path.join(__dirname, 'src', 'services', 'local-db-worker.cjs');
+      const outDir = (compilation.options.output && compilation.options.output.path) || path.join(__dirname, '.webpack', 'main');
+      const to = path.join(outDir, 'local-db-worker.cjs');
+      fs.mkdirSync(outDir, { recursive: true });
+      fs.copyFileSync(from, to);
+    });
+  }
+}
 
 const mainConfig = {
   /**
@@ -11,7 +25,7 @@ const mainConfig = {
   module: {
     rules,
   },
-  plugins,
+  plugins: [...plugins, new CopyLocalDbWorkerPlugin()],
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
   },
@@ -19,6 +33,7 @@ const mainConfig = {
     koffi: 'commonjs2 koffi',
     'sql.js': 'commonjs2 sql.js',
     'sql.js/dist/sql-asm.js': 'commonjs2 sql.js/dist/sql-asm.js',
+    'node-fetch': 'commonjs2 node-fetch',
     '@gutenye/ocr-node': 'commonjs2 @gutenye/ocr-node',
     '@gutenye/ocr-common': 'commonjs2 @gutenye/ocr-common',
     '@gutenye/ocr-models': 'commonjs2 @gutenye/ocr-models',

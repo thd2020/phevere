@@ -76,7 +76,9 @@ module.exports = {
           },
           {
             html: './src/popup-new.html',
-            js: './src/renderer.ts',
+            // Dedicated stub — never bundle main renderer.ts / index.css into the popup
+            // (that overrode .loading and left a dead infinite-spinner toolstrip).
+            js: './src/popup-entry.ts',
             name: 'popup_window',
             preload: {
               js: './src/preload.ts',
