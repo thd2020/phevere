@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Notebook “later-lookup” rows stayed empty even after a successful Open lookup: enrich required a popup `savedVocabId` that independent windows never had in time. Empty rows are now filled by a **main-process background queue** (startup scan + on save), independent of the popup. The notebook list refreshes when a row is patched.
 - Webster/GCIDE POS tags (`n`, `v. t.`, `adj.`) are canonicalized to noun/verb/adjective so they merge with Free Dictionary / WordNet / FreeDict TEI.
 - Lookup felt slower after the offline-lemma change: SQLite packs now run in parallel with network APIs, skip waiting for a cold sql.js worker, cap etymology when defs already exist, and the popup timeout matches the 12s server deadline.
+- First paint waited ~7.5s even when Webster was already in hand (5s Google Translate / Tatoeba timeout + 2.5s etymology). Local packs now return immediately (~0.5s coalesce); translation, Tatoeba, and etymology fill the popup in the background.
 
 ## [1.2.1] - 2026-08-12
 

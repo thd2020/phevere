@@ -49,9 +49,16 @@ const ETYMOLOGY_BUDGET_MS = 6000;
 const ETYMOLOGY_BUDGET_WHEN_DEFS_MS = 2500;
 const IPA_BUDGET_MS = 1500;
 const OFFLINE_BUDGET_MS = 2000;
+/** Coalesce window so a fast FreeDict hit rides with Webster instead of a second paint. */
+const CORE_WAIT_WITH_LOCAL_MS = 450;
+/** Wait for network defs only when local packs missed. */
+const CORE_WAIT_WITHOUT_LOCAL_MS = 2500;
 
 type LookupHolder = { current?: DictionaryResult };
-type LookupOpts = { skipEtymology?: boolean };
+type LookupOpts = {
+  skipEtymology?: boolean;
+  onUpdate?: (result: DictionaryResult) => void;
+};
 
 function isTimeoutMeaning(meaning?: string): boolean {
   return /lookup timed out/i.test(meaning || '');
@@ -309,10 +316,14 @@ export class DictionaryService extends BaseService {
     }
 
     try {
-      const detectedLanguage = await Promise.race([
-        this.detectLanguage(query.trimmed),
-        new Promise<string>(resolve => setTimeout(() => resolve(this.simpleLanguageDetection(query.trimmed)), 1000))
-      ]);
+      const detectedLanguage = this.apiKey
+        ? await Promise.race([
+            this.detectLanguage(query.trimmed),
+            new Promise<string>((resolve) =>
+              setTimeout(() => resolve(this.simpleLanguageDetection(query.trimmed)), 800),
+            ),
+          ])
+        : this.simpleLanguageDetection(query.trimmed);
 
       // zh → en and en → zh by default; honour an explicit cross-language target.
       const resolvedTarget = this.resolveTargetLanguage(detectedLanguage, targetLanguage);
@@ -329,11 +340,20 @@ export class DictionaryService extends BaseService {
 
       let result: DictionaryResult;
       const holder: LookupHolder = {};
+      const mergedOpts: LookupOpts = {
+        ...opts,
+        onUpdate: (r) => {
+          if (!this.isUncacheableResult(r)) {
+            this.cache.set(cacheKey, { result: r, timestamp: Date.now() });
+          }
+          opts?.onUpdate?.(r);
+        },
+      };
 
       const coreLookup =
         query.kind === 'sentence'
           ? this.handleSentenceTranslationOptimized(query.trimmed, resolvedTarget, detectedLanguage)
-          : this.lookupWithCandidates(query, resolvedTarget, detectedLanguage, enabledSources, holder, opts);
+          : this.lookupWithCandidates(query, resolvedTarget, detectedLanguage, enabledSources, holder, mergedOpts);
 
       try {
         result = await withTimeout(coreLookup, LOOKUP_DEADLINE_MS, 'dictionary.lookup');
@@ -432,7 +452,7 @@ export class DictionaryService extends BaseService {
         detectedLanguage,
         enabledSources,
         holder,
-        opts?.skipEtymology,
+        opts,
       );
 
       if (!firstResult) firstResult = result;
@@ -620,7 +640,7 @@ export class DictionaryService extends BaseService {
     sourceLanguage: string,
     enabledSources?: string[],
     holder?: LookupHolder,
-    skipEtymology = false,
+    opts?: LookupOpts,
   ): Promise<DictionaryResult> {
     const sources: string[] = [];
     const definitions: Definition[] = [];
@@ -635,11 +655,26 @@ export class DictionaryService extends BaseService {
     // For Chinese/Japanese/Korean or mixed CJK+ASCII, prioritize translation over dictionary lookup
     const hasCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(text);
     const isAsianLanguage = ['zh', 'ja', 'ko'].includes(sourceLanguage) || hasCJK;
-    // Prepare all API calls to run in parallel
-    const apiPromises: Promise<any>[] = [];
-    
-    // Always get translation first (parallel with others)
-    apiPromises.push(
+    const skipEtymology = !!opts?.skipEtymology;
+    const corePromises: Promise<any>[] = [];
+    const auxPromises: Promise<any>[] = [];
+    const finished: any[] = [];
+    const track = (p: Promise<any>) => {
+      const wrapped = p.catch((error: unknown) => ({ type: 'timeout', error }));
+      void wrapped.then((v) => {
+        finished.push(v);
+      });
+      return wrapped;
+    };
+    const pushCore = (p: Promise<any>) => {
+      corePromises.push(track(p));
+    };
+    const pushAux = (p: Promise<any>) => {
+      auxPromises.push(track(p));
+    };
+
+    // Translation / Tatoeba must not hold the first paint (Google gtx often sits until timeout).
+    pushAux(
       this.getBestTranslation(text, targetLanguage, sourceLanguage)
         .then(translation => ({ type: 'translation', data: translation }))
         .catch(error => ({ type: 'translation', error }))
@@ -682,7 +717,7 @@ export class DictionaryService extends BaseService {
       const youdaoSource = this.sources.find((s) => s.name === 'Youdao API');
       const youdaoAuto = !!(this.youdaoAppKey && this.youdaoAppSecret);
       if (youdaoToggleOk && youdaoAuto && (youdaoSource?.enabled !== false || !enabledSources)) {
-        apiPromises.push(
+        pushCore(
           this.getYoudaoData(text, 'zh-CHS', 'en')
             .then(data => ({ type: 'youdao', data }))
             .catch(error => ({ type: 'youdao', error }))
@@ -708,7 +743,7 @@ export class DictionaryService extends BaseService {
 
     // Free Dictionary + Datamuse: Latin/English path (CJK lemmas rarely have useful entries)
     if (preferLatinSources && isSourceEnabled('Free Dictionary API')) {
-      apiPromises.push(
+      pushCore(
         this.getFreeDictionaryData(text, langForDict)
           .then(data => ({ type: 'freeDictionary', data }))
           .catch(error => ({ type: 'freeDictionary', error }))
@@ -717,7 +752,7 @@ export class DictionaryService extends BaseService {
 
     // Wiktionary: always useful (defs + etymology). For CJK, still query when enabled.
     if (isSourceEnabled('Wiktionary')) {
-      apiPromises.push(
+      pushCore(
         this.getWiktionaryData(text, preferCjkSources && langForDict === 'zh' ? 'zh' : langForDict === 'ja' ? 'ja' : langForDict === 'ko' ? 'ko' : 'en')
           .then(data => ({ type: 'wiktionary', data }))
           .catch(error => ({ type: 'wiktionary', error }))
@@ -725,7 +760,7 @@ export class DictionaryService extends BaseService {
     }
 
     if (preferLatinSources && !hasCJK && isSourceEnabled('Datamuse')) {
-      apiPromises.push(
+      pushCore(
         this.getDatamuseData(text)
           .then(data => ({ type: 'datamuse', data }))
           .catch(error => ({ type: 'datamuse', error }))
@@ -733,7 +768,7 @@ export class DictionaryService extends BaseService {
     }
 
     if (isSourceEnabled('Tatoeba')) {
-      apiPromises.push(
+      pushAux(
         this.getTatoebaExamples(text, sourceLanguage, targetLanguage)
           .then(data => ({ type: 'tatoeba', data }))
           .catch(error => ({ type: 'tatoeba', error }))
@@ -744,7 +779,7 @@ export class DictionaryService extends BaseService {
     const allowEnglishPremium = preferLatinSources || sourceLanguage === 'en';
     if (allowEnglishPremium) {
       if (isSourceEnabled('Oxford Dictionary API') && this.oxfordAppId && this.oxfordAppKey) {
-        apiPromises.push(
+        pushCore(
           this.getOxfordData(text)
             .then(data => ({ type: 'oxford', data }))
             .catch(error => ({ type: 'oxford', error }))
@@ -752,7 +787,7 @@ export class DictionaryService extends BaseService {
       }
 
       if (isSourceEnabled('WordsAPI') && this.wordsApiKey) {
-        apiPromises.push(
+        pushCore(
           this.getWordsApiData(text)
             .then(data => ({ type: 'wordsApi', data }))
             .catch(error => ({ type: 'wordsApi', error }))
@@ -760,7 +795,7 @@ export class DictionaryService extends BaseService {
       }
 
       if (isSourceEnabled('Collins Dictionary API') && this.collinsApiKey && this.collinsApiHost) {
-        apiPromises.push(
+        pushCore(
           this.getCollinsData(text)
             .then(data => ({ type: 'collins', data }))
             .catch(error => ({ type: 'collins', error }))
@@ -768,246 +803,237 @@ export class DictionaryService extends BaseService {
       }
     }
 
-    // Wait for all API calls with timeout (safe — late rejections are handled)
-    const resultsPromise = Promise.allSettled(
-      apiPromises.map((promise: Promise<any>) =>
-        withTimeout(promise, 5000, 'dictionary.source').catch((error) => ({
-          type: 'timeout',
-          error,
-        })),
-      ),
-    );
-    const [results] = await Promise.all([resultsPromise, offlinePromise]);
+    await offlinePromise;
+    const hasLocal = definitions.some((d) => isLocalPackSource(d.source));
+    const coreWait = hasLocal ? CORE_WAIT_WITH_LOCAL_MS : CORE_WAIT_WITHOUT_LOCAL_MS;
+    if (corePromises.length) {
+      await Promise.race([
+        Promise.all(corePromises),
+        new Promise<void>((resolve) => setTimeout(resolve, coreWait)),
+      ]);
+    }
 
-    // Process results
     let canonicalLemma: string | undefined;
-    for (const result of results) {
-      if (result.status === 'fulfilled' && result.value && !result.value.error) {
-        const { type, data } = result.value;
-        switch (type) {
-          case 'translation':
-            if (data) {
-              translations.push(data);
-              sources.push(data.source || 'Translation API');
-            }
-            break;
-            
-          case 'freeDictionary':
-            if (data.definitions.length > 0) {
-              definitions.push(...data.definitions);
-              examples.push(...data.examples);
-              synonyms.push(...data.synonyms);
-              antonyms.push(...data.antonyms);
-              if (!pronunciation && data.pronunciation) pronunciation = data.pronunciation;
-              sources.push('Free Dictionary API');
-              if (data.word && typeof data.word === 'string') {
-                const apiWord = data.word.trim();
-                if (apiWord && apiWord.toLowerCase() !== text.toLowerCase()) {
-                  canonicalLemma = canonicalLemma || apiWord;
-                }
+    const absorbed = new Set<unknown>();
+
+    const ingest = (item: any) => {
+      if (!item || item.error) return;
+      const { type, data } = item;
+      switch (type) {
+        case 'translation':
+          if (data) {
+            translations.push(data);
+            sources.push(data.source || 'Translation API');
+          }
+          break;
+        case 'freeDictionary':
+          if (data.definitions.length > 0) {
+            definitions.push(...data.definitions);
+            examples.push(...data.examples);
+            synonyms.push(...data.synonyms);
+            antonyms.push(...data.antonyms);
+            if (!pronunciation && data.pronunciation) pronunciation = data.pronunciation;
+            sources.push('Free Dictionary API');
+            if (data.word && typeof data.word === 'string') {
+              const apiWord = data.word.trim();
+              if (apiWord && apiWord.toLowerCase() !== text.toLowerCase()) {
+                canonicalLemma = canonicalLemma || apiWord;
               }
             }
-            break;
-            
-          case 'wiktionary':
-            if (data && data.definitions && data.definitions.length > 0) {
-              const existingMeanings = new Set(definitions.map((d: any) => d.meaning));
-              // Prefer non-identical definitions and keep a Wiktionary tag
-              const newDefinitions = data.definitions
-                .filter((d: any) => !existingMeanings.has(d.meaning))
-                .map((d: any) => ({ ...d, source: 'Wiktionary' }));
-              definitions.push(...newDefinitions);
-              // Aggregate example sentences globally for UI examples pane
-              try {
-                const exampleSnippets: string[] = [];
-                for (const def of data.definitions) {
-                  if (Array.isArray(def.examples)) exampleSnippets.push(...def.examples);
-                }
-                if (exampleSnippets.length > 0) examples.push(...exampleSnippets);
-              } catch {}
-              
-              if (data.etymology) etymology = data.etymology;
-              if (!pronunciation && data.pronunciation) pronunciation = data.pronunciation;
-              if (data.lemma && typeof data.lemma === 'string') {
-                canonicalLemma = data.lemma.trim() || canonicalLemma;
+          }
+          break;
+        case 'wiktionary':
+          if (data && data.definitions && data.definitions.length > 0) {
+            const existingMeanings = new Set(definitions.map((d: Definition) => d.meaning));
+            const newDefinitions = data.definitions
+              .filter((d: Definition) => !existingMeanings.has(d.meaning))
+              .map((d: Definition) => ({ ...d, source: 'Wiktionary' }));
+            definitions.push(...newDefinitions);
+            try {
+              const exampleSnippets: string[] = [];
+              for (const def of data.definitions) {
+                if (Array.isArray(def.examples)) exampleSnippets.push(...def.examples);
               }
-              sources.push('Wiktionary');
+              if (exampleSnippets.length > 0) examples.push(...exampleSnippets);
+            } catch { /* ignore */ }
+            if (data.etymology) etymology = data.etymology;
+            if (!pronunciation && data.pronunciation) pronunciation = data.pronunciation;
+            if (data.lemma && typeof data.lemma === 'string') {
+              canonicalLemma = data.lemma.trim() || canonicalLemma;
             }
-            break;
+            sources.push('Wiktionary');
+          }
+          break;
+        case 'datamuse':
+          if (data && (data.definitions.length > 0 || data.synonyms.length > 0)) {
+            const existing = new Set(definitions.map((d: Definition) => (d.meaning || '').toLowerCase()));
+            const fresh = data.definitions.filter((d: Definition) => !existing.has(d.meaning.toLowerCase()));
+            if (fresh.length > 0) definitions.push(...fresh);
+            if (data.synonyms.length > 0) synonyms.push(...data.synonyms);
+            if (fresh.length > 0 || data.synonyms.length > 0) sources.push('Datamuse');
+          }
+          break;
+        case 'tatoeba':
+          if (data && data.length > 0) {
+            examples.push(...data);
+            sources.push('Tatoeba');
+          }
+          break;
+        case 'oxford':
+          if (data) {
+            if (data.definitions?.length) definitions.unshift(...data.definitions);
+            if (!pronunciation && data.pronunciation) pronunciation = data.pronunciation;
+            if (!etymology && data.etymology) etymology = data.etymology;
+            sources.push('Oxford Dictionary API');
+          }
+          break;
+        case 'youdao':
+          if (data) {
+            if (data.definitions?.length) definitions.push(...data.definitions);
+            if (data.translations?.length) translations.push(...data.translations);
+            if (!pronunciation && data.pronunciation) pronunciation = data.pronunciation;
+            sources.push('Youdao API');
+          }
+          break;
+        case 'wordsApi':
+          if (data) {
+            if (data.definitions?.length) definitions.push(...data.definitions);
+            if (data.synonyms?.length) synonyms.push(...data.synonyms);
+            if (data.antonyms?.length) antonyms.push(...data.antonyms);
+            if (!pronunciation && data.pronunciation) pronunciation = data.pronunciation;
+            sources.push('WordsAPI');
+          }
+          break;
+        case 'collins':
+          if (data) {
+            if (data.definitions?.length) definitions.push(...data.definitions);
+            if (data.examples?.length) examples.push(...data.examples);
+            sources.push('Collins Dictionary API');
+          }
+          break;
+        default:
+          break;
+      }
+    };
 
-          case 'datamuse':
-            if (data && (data.definitions.length > 0 || data.synonyms.length > 0)) {
-              const existing = new Set(definitions.map((d: any) => (d.meaning || '').toLowerCase()));
-              const fresh = data.definitions.filter((d: Definition) => !existing.has(d.meaning.toLowerCase()));
-              if (fresh.length > 0) definitions.push(...fresh);
-              if (data.synonyms.length > 0) synonyms.push(...data.synonyms);
-              if (fresh.length > 0 || data.synonyms.length > 0) sources.push('Datamuse');
-            }
-            break;
+    const drain = () => {
+      for (const item of finished) {
+        if (absorbed.has(item)) continue;
+        absorbed.add(item);
+        ingest(item);
+      }
+    };
 
-          case 'tatoeba':
-            if (data && data.length > 0) {
-              examples.push(...data);
-              sources.push('Tatoeba');
-            }
-            break;
-
-          case 'oxford':
-            if (data) {
-              if (data.definitions?.length) {
-                definitions.unshift(...data.definitions);
-              }
-              if (!pronunciation && data.pronunciation) pronunciation = data.pronunciation;
-              if (!etymology && data.etymology) etymology = data.etymology;
-              sources.push('Oxford Dictionary API');
-            }
-            break;
-
-          case 'youdao':
-            if (data) {
-              if (data.definitions?.length) definitions.push(...data.definitions);
-              if (data.translations?.length) translations.push(...data.translations);
-              if (!pronunciation && data.pronunciation) pronunciation = data.pronunciation;
-              sources.push('Youdao API');
-            }
-            break;
-
-          case 'wordsApi':
-            if (data) {
-              if (data.definitions?.length) definitions.push(...data.definitions);
-              if (data.synonyms?.length) synonyms.push(...data.synonyms);
-              if (data.antonyms?.length) antonyms.push(...data.antonyms);
-              if (!pronunciation && data.pronunciation) pronunciation = data.pronunciation;
-              sources.push('WordsAPI');
-            }
-            break;
-
-          case 'collins':
-            if (data) {
-              if (data.definitions?.length) definitions.push(...data.definitions);
-              if (data.examples?.length) examples.push(...data.examples);
-              sources.push('Collins Dictionary API');
-            }
-            break;
+    const buildResult = (): DictionaryResult => {
+      const defSeen = new Set<string>();
+      const uniqueDefinitions: Definition[] = [];
+      for (const d of definitions) {
+        const key = `${(d.partOfSpeech || '').toLowerCase()}|${(d.meaning || '').trim().toLowerCase()}|${(d.source || '').toLowerCase()}`;
+        if (!defSeen.has(key)) {
+          defSeen.add(key);
+          uniqueDefinitions.push(d);
         }
       }
-    }
-
-    // Deduplicate collected data
-    // 1) Exact pass (pos|meaning|source), then fuzzy cross-source merge
-    const defSeen = new Set<string>();
-    const uniqueDefinitions: Definition[] = [];
-    for (const d of definitions) {
-      const key = `${(d.partOfSpeech || '').toLowerCase()}|${(d.meaning || '').trim().toLowerCase()}|${(d.source || '').toLowerCase()}`;
-      if (!defSeen.has(key)) {
-        defSeen.add(key);
-        uniqueDefinitions.push(d);
+      const mergedDefinitions = mergeSimilarDefinitions(uniqueDefinitions) as Definition[];
+      for (const d of mergedDefinitions) {
+        if (d.examples?.length) d.examples = dedupeExamples(d.examples) || [];
       }
-    }
-    const mergedDefinitions = mergeSimilarDefinitions(uniqueDefinitions) as Definition[];
-    for (const d of mergedDefinitions) {
-      if (d.examples?.length) d.examples = dedupeExamples(d.examples) || [];
-    }
 
-    // 2) Translations: unique by source label + translated text
-    const transMap = new Map<string, Translation>();
-    for (const t of translations) {
-      if (!t) continue;
-      const src = (t.source || 'translation api').trim().toLowerCase();
-      const key = `${src}|${(t.text || '').trim()}`;
-      if (!transMap.has(key)) transMap.set(key, t);
-    }
-    translations = Array.from(transMap.values());
+      const transMap = new Map<string, Translation>();
+      for (const t of translations) {
+        if (!t) continue;
+        const src = (t.source || 'translation api').trim().toLowerCase();
+        const key = `${src}|${(t.text || '').trim()}`;
+        if (!transMap.has(key)) transMap.set(key, t);
+      }
+      const uniqueTranslations = Array.from(transMap.values());
 
-    // 3) Examples: normalize quotes and trim duplicates
-    const normalizeExample = (s: string) => (s || '')
-      .replace(/[“”]/g, '"')
-      .replace(/[‘’]/g, "'")
-      .replace(/^"|"$/g, '')
-      .trim();
-    const exSet = new Set<string>();
-    const uniqueExamples: string[] = [];
-    for (const ex of examples) {
-      const n = normalizeExample(ex);
-      if (n && !exSet.has(n)) { exSet.add(n); uniqueExamples.push(n); }
-    }
-    examples = uniqueExamples;
+      const normalizeExample = (s: string) => (s || '')
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .replace(/^"|"$/g, '')
+        .trim();
+      const exSet = new Set<string>();
+      const uniqueExamples: string[] = [];
+      for (const ex of examples) {
+        const n = normalizeExample(ex);
+        if (n && !exSet.has(n)) { exSet.add(n); uniqueExamples.push(n); }
+      }
 
-    // 4) Synonyms/Antonyms: unique
-    synonyms = Array.from(new Set(synonyms.map(s => (s || '').trim()).filter(Boolean)));
-    antonyms = Array.from(new Set(antonyms.map(s => (s || '').trim()).filter(Boolean)));
-
-    // 5) Sources: unique and trimmed
-    const uniqueSources = Array.from(new Set(sources.map(s => (s || '').trim())));
-    const hadNetworkSource = uniqueSources.some(
-      (s) => s && s !== 'Timeout' && s !== 'Fallback' && !isLocalPackSource(s),
-    );
-
-    const headword = (canonicalLemma && canonicalLemma.trim()) || text;
-    const result: DictionaryResult = {
-      word: headword,
-      pronunciation,
-      definitions: mergedDefinitions.length > 0 ? mergedDefinitions : [{
-        partOfSpeech: 'unknown',
-        meaning: 'No definition available.',
-        source: 'Fallback'
-      }],
-      translations,
-      examples,
-      synonyms: synonyms.length > 0 ? synonyms : undefined,
-      antonyms: antonyms.length > 0 ? antonyms : undefined,
-      etymology,
-      etymologyChain,
-      language: targetLanguage,
-      detectedLanguage: sourceLanguage,
-      sources: uniqueSources,
-      metadata: {
-        queriedAs: text,
-        lemma: headword !== text ? headword : undefined,
-      },
+      const uniqueSynonyms = Array.from(new Set(synonyms.map((s) => (s || '').trim()).filter(Boolean)));
+      const uniqueAntonyms = Array.from(new Set(antonyms.map((s) => (s || '').trim()).filter(Boolean)));
+      const uniqueSources = Array.from(new Set(sources.map((s) => (s || '').trim())));
+      const headword = (canonicalLemma && canonicalLemma.trim()) || text;
+      return {
+        word: headword,
+        pronunciation,
+        definitions: mergedDefinitions.length > 0 ? mergedDefinitions : [{
+          partOfSpeech: 'unknown',
+          meaning: 'No definition available.',
+          source: 'Fallback',
+        }],
+        translations: uniqueTranslations,
+        examples: uniqueExamples,
+        synonyms: uniqueSynonyms.length > 0 ? uniqueSynonyms : undefined,
+        antonyms: uniqueAntonyms.length > 0 ? uniqueAntonyms : undefined,
+        etymology,
+        etymologyChain,
+        language: targetLanguage,
+        detectedLanguage: sourceLanguage,
+        sources: uniqueSources,
+        metadata: {
+          queriedAs: text,
+          lemma: headword !== text ? headword : undefined,
+        },
+      };
     };
+
+    drain();
+    const result = buildResult();
     if (holder) holder.current = result;
 
-    // Offline-only (GFW / no VPN): skip hung etymology/IPA so Webster/WordNet can return.
-    // When a network source already answered, still try etymology — but the holder
-    // above is what the outer deadline returns if those hosts never come back.
-    if (skipEtymology || (!hadNetworkSource && this.hasRealDefinitions(result))) {
-      return result;
-    }
-
-    const etyQuery = (canonicalLemma && canonicalLemma.trim()) || text;
-    const etyBudget = this.hasRealDefinitions(result) ? ETYMOLOGY_BUDGET_WHEN_DEFS_MS : ETYMOLOGY_BUDGET_MS;
-    try {
-      const fetched = await withTimeout(
-        this.fetchEtymologyFromMultipleSources(etyQuery),
-        etyBudget,
-        'etymology.multi',
-      );
-      if (fetched?.text) {
-        result.etymology = fetched.text;
-        if (fetched.chain) result.etymologyChain = fetched.chain;
-      }
-    } catch (error) {
-      console.warn('[ETY] multi-source etymology skipped', error);
-    }
-
-    if (!result.pronunciation && preferLatinSources) {
-      const ipaWord = headword;
-      if (ipaWord && ipaWord.toLowerCase() !== text.toLowerCase()) {
-        try {
-          const lemmaPhon = await withTimeout(
-            this.getFreeDictionaryData(ipaWord, langForDict),
-            IPA_BUDGET_MS,
-            'lemma.ipa',
-          );
-          if (lemmaPhon.pronunciation) {
-            result.pronunciation = lemmaPhon.pronunciation;
-          }
-        } catch {
-          /* optional */
+    void (async () => {
+      try {
+        const etyQuery = (canonicalLemma && canonicalLemma.trim()) || text;
+        const etyPromise = skipEtymology
+          ? Promise.resolve(undefined)
+          : withTimeout(
+              this.fetchEtymologyFromMultipleSources(etyQuery),
+              this.hasRealDefinitions(result) ? ETYMOLOGY_BUDGET_WHEN_DEFS_MS : ETYMOLOGY_BUDGET_MS,
+              'etymology.multi',
+            ).catch((error) => {
+              console.warn('[ETY] multi-source etymology skipped', error);
+              return undefined;
+            });
+        await Promise.allSettled([...corePromises, ...auxPromises]);
+        drain();
+        const fetched = await etyPromise;
+        if (fetched?.text) {
+          etymology = fetched.text;
+          if (fetched.chain) etymologyChain = fetched.chain;
         }
+        const late = buildResult();
+        if (!late.pronunciation && preferLatinSources) {
+          const ipaWord = late.word || text;
+          if (ipaWord && ipaWord.toLowerCase() !== text.toLowerCase()) {
+            try {
+              const lemmaPhon = await withTimeout(
+                this.getFreeDictionaryData(ipaWord, langForDict),
+                IPA_BUDGET_MS,
+                'lemma.ipa',
+              );
+              if (lemmaPhon.pronunciation) late.pronunciation = lemmaPhon.pronunciation;
+            } catch {
+              /* optional */
+            }
+          }
+        }
+        if (holder) holder.current = late;
+        opts?.onUpdate?.(late);
+      } catch (err) {
+        console.warn('Background lookup enrich failed', err);
       }
-    }
+    })();
 
     return result;
   }
@@ -1015,6 +1041,7 @@ export class DictionaryService extends BaseService {
   /**
    * Aggregate data from multiple dictionary sources (legacy method)
    */
+
   private async aggregateDictionaryData(text: string, targetLanguage: string, sourceLanguage: string): Promise<DictionaryResult> {
     const sources: string[] = [];
     const definitions: Definition[] = [];

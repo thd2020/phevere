@@ -276,6 +276,10 @@ contextBridge.exposeInMainWorld('dictionaryAPI', {
   lookup: (text: string, targetLanguage?: string, enabledSources?: string[]): Promise<DictionaryResult> => {
     return ipcRenderer.invoke('dictionary-lookup', text, targetLanguage, enabledSources);
   },
+  onLookupUpdate: (callback: (result: DictionaryResult) => void) => {
+    ipcRenderer.removeAllListeners('dictionary-lookup-update');
+    ipcRenderer.on('dictionary-lookup-update', (_event, result: DictionaryResult) => callback(result));
+  },
   setApiKey: (apiKey: string): Promise<{ success: boolean }> => {
     return ipcRenderer.invoke('dictionary-set-api-key', apiKey);
   },
@@ -478,6 +482,7 @@ declare global {
     };
     dictionaryAPI: {
       lookup: (text: string, targetLanguage?: string, enabledSources?: string[]) => Promise<DictionaryResult>;
+      onLookupUpdate?: (callback: (result: DictionaryResult) => void) => void;
       setApiKey: (apiKey: string) => Promise<{ success: boolean }>;
       setDeepLApiKey: (deeplApiKey: string) => Promise<{ success: boolean }>;
       getSources: () => Promise<DictionarySource[]>;

@@ -2122,6 +2122,26 @@ function startAutoCloseTimeout() {
         });
       }
 
+      if (window.dictionaryAPI && window.dictionaryAPI.onLookupUpdate) {
+        window.dictionaryAPI.onLookupUpdate(function (updated) {
+          if (!updated) return;
+          function norm(s) {
+            return String(s || '').replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+          }
+          const cur = norm(currentText || window['__popupCurrentText'] || '');
+          if (!cur) return;
+          const keys = [
+            updated.word,
+            updated.metadata && updated.metadata.queriedAs,
+            updated.metadata && updated.metadata.matchedQuery,
+            updated.metadata && updated.metadata.originalSelection,
+          ];
+          if (!keys.some(function (k) { return k && norm(k) === cur; })) return;
+          currentResult = updated;
+          displayDictionaryResult(updated);
+        });
+      }
+
              function displayDictionaryResult(result) {
          pvLog('[POPUP] displayDictionaryResult called with:', result);
          pvLog('[POPUP] Current tab:', currentTab);

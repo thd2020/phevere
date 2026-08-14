@@ -1800,7 +1800,20 @@ ipcMain.handle('clipboard-import', (event, jsonData: string) => {
 ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: string = 'auto', enabledSources?: string[]) => {
   const t0 = Date.now();
   try {
-    const result = await dictionaryService.lookup(text, targetLanguage, enabledSources);
+    const result = await dictionaryService.lookup(text, targetLanguage, enabledSources, {
+      onUpdate: (updated) => {
+        try {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('dictionary-lookup-update', updated);
+          }
+        } catch {
+          /* popup closed */
+        }
+        void applyDictionaryResultToNotebook(updated).catch((err) =>
+          log.debug('main', 'notebook opportunistic fill skipped', { err: String(err) }),
+        );
+      },
+    });
     log.info('main', 'Dictionary lookup OK', {
       wordLen: (text || '').length,
       ms: Date.now() - t0,
