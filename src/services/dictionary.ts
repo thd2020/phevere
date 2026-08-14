@@ -40,13 +40,24 @@ import { net } from 'electron';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, latinLemmaForms } from './text-normalize';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { mergeSimilarDefinitions, dedupeExamples } from './definition-merge';
-import { lookupOffline } from './offline-dict-store';
+import { lookupOffline, type OfflineHit } from './offline-dict-store';
 
 const console = wrapConsole('dictionary');
 /** Hard ceiling so renderer IPC never waits forever (etymology / hung hosts). */
 const LOOKUP_DEADLINE_MS = 12000;
 const ETYMOLOGY_BUDGET_MS = 6000;
 const OFFLINE_BUDGET_MS = 2000;
+
+type LookupHolder = { current?: DictionaryResult };
+
+function isTimeoutMeaning(meaning?: string): boolean {
+  return /lookup timed out/i.test(meaning || '');
+}
+
+function isLocalPackSource(source?: string): boolean {
+  const k = (source || '').toLowerCase();
+  return /wordnet|webster|gcide|cedict|freedict|^offline$/.test(k);
+}
 
 export interface Translation {
   language: string;
@@ -306,35 +317,46 @@ export class DictionaryService extends BaseService {
 
       const cached = this.cache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
-        console.log(`Cache hit (${Date.now() - startTime}ms)`);
-        return cached.result;
+        if (!this.isUncacheableResult(cached.result)) {
+          console.log(`Cache hit (${Date.now() - startTime}ms)`);
+          return cached.result;
+        }
+        this.cache.delete(cacheKey);
       }
 
       let result: DictionaryResult;
+      const holder: LookupHolder = {};
 
       const coreLookup =
         query.kind === 'sentence'
           ? this.handleSentenceTranslationOptimized(query.trimmed, resolvedTarget, detectedLanguage)
-          : this.lookupWithCandidates(query, resolvedTarget, detectedLanguage, enabledSources);
+          : this.lookupWithCandidates(query, resolvedTarget, detectedLanguage, enabledSources, holder);
 
       try {
         result = await withTimeout(coreLookup, LOOKUP_DEADLINE_MS, 'dictionary.lookup');
       } catch (deadlineErr) {
         console.warn('Lookup hit deadline; returning best-effort fallback', deadlineErr);
-        result = {
-          word: query.trimmed,
-          definitions: [
-            {
-              partOfSpeech: 'unknown',
-              meaning: 'Lookup timed out. Check your network or try again.',
-              source: 'Timeout',
-            },
-          ],
-          translations: [],
-          examples: [],
-          sources: ['Timeout'],
-          metadata: { timedOut: true, isSentence: query.kind === 'sentence' },
-        };
+        if (holder.current && this.hasRealDefinitions(holder.current)) {
+          result = {
+            ...holder.current,
+            metadata: { ...(holder.current.metadata || {}), timedOut: true },
+          };
+        } else {
+          result = {
+            word: query.trimmed,
+            definitions: [
+              {
+                partOfSpeech: 'unknown',
+                meaning: 'Lookup timed out. Check your network or try again.',
+                source: 'Timeout',
+              },
+            ],
+            translations: holder.current?.translations || [],
+            examples: [],
+            sources: ['Timeout'],
+            metadata: { timedOut: true, isSentence: query.kind === 'sentence' },
+          };
+        }
       }
 
       result.detectedLanguage = detectedLanguage;
@@ -346,7 +368,9 @@ export class DictionaryService extends BaseService {
         autoPaired: !targetLanguage || targetLanguage === 'auto' || targetLanguage === detectedLanguage,
       };
 
-      this.cache.set(cacheKey, { result, timestamp: Date.now() });
+      if (!this.isUncacheableResult(result)) {
+        this.cache.set(cacheKey, { result, timestamp: Date.now() });
+      }
       return result;
     } catch (error) {
       console.error('❌ Dictionary lookup error:', error);
@@ -391,7 +415,8 @@ export class DictionaryService extends BaseService {
     query: NormalizedQuery,
     targetLanguage: string,
     detectedLanguage: string,
-    enabledSources?: string[]
+    enabledSources?: string[],
+    holder?: LookupHolder,
   ): Promise<DictionaryResult> {
     const candidates = query.candidates.length > 0 ? query.candidates : [query.trimmed];
     let firstResult: DictionaryResult | null = null;
@@ -401,7 +426,8 @@ export class DictionaryService extends BaseService {
         candidate,
         targetLanguage,
         detectedLanguage,
-        enabledSources
+        enabledSources,
+        holder,
       );
 
       if (!firstResult) firstResult = result;
@@ -450,9 +476,40 @@ export class DictionaryService extends BaseService {
   }
 
   private hasRealDefinitions(result: DictionaryResult): boolean {
-    return (result.definitions || []).some(
-      (d) => d && d.source !== 'Fallback' && !!d.meaning && d.meaning !== 'No definition available.'
-    );
+    return (result.definitions || []).some((d) => {
+      if (!d || d.source === 'Fallback' || d.source === 'Timeout') return false;
+      const m = (d.meaning || '').trim();
+      if (!m || m === 'No definition available.' || isTimeoutMeaning(m)) return false;
+      return true;
+    });
+  }
+
+  private isUncacheableResult(result?: DictionaryResult): boolean {
+    if (!result) return true;
+    if (!this.hasRealDefinitions(result)) return true;
+    const defs = result.definitions || [];
+    return defs.length > 0 && defs.every((d) => d.source === 'Timeout' || isTimeoutMeaning(d.meaning));
+  }
+
+  private absorbOfflineHits(
+    definitions: Definition[],
+    sources: string[],
+    hits: OfflineHit[],
+    cjk: boolean,
+  ): void {
+    for (const hit of hits) {
+      const label =
+        cjk && (hit.packId === 'cc-cedict' || /cedict/i.test(hit.packName || ''))
+          ? 'CC-CEDICT'
+          : hit.packName || 'Offline';
+      definitions.push({
+        partOfSpeech: hit.pos || 'definition',
+        meaning: hit.definition,
+        source: label,
+        sources: [label],
+      });
+      if (!sources.includes(label)) sources.push(label);
+    }
   }
 
   /**
@@ -552,7 +609,13 @@ export class DictionaryService extends BaseService {
   /**
    * Aggregate data from multiple dictionary sources with parallel processing
    */
-  private async aggregateDictionaryDataParallel(text: string, targetLanguage: string, sourceLanguage: string, enabledSources?: string[]): Promise<DictionaryResult> {
+  private async aggregateDictionaryDataParallel(
+    text: string,
+    targetLanguage: string,
+    sourceLanguage: string,
+    enabledSources?: string[],
+    holder?: LookupHolder,
+  ): Promise<DictionaryResult> {
     const sources: string[] = [];
     const definitions: Definition[] = [];
     let translations: Translation[] = [];
@@ -589,29 +652,11 @@ export class DictionaryService extends BaseService {
     if (preferCjkSources) {
       try {
         const offlineHits = await withTimeout(
-          lookupOffline(text, undefined, 12),
+          lookupOffline(text, undefined, 16),
           OFFLINE_BUDGET_MS,
           'offline.lookup',
         );
-        for (const hit of offlineHits) {
-          const label =
-            hit.packId === 'cc-cedict' || /cedict/i.test(hit.packName || '')
-              ? 'CC-CEDICT'
-              : hit.packName || 'Offline';
-          definitions.push({
-            partOfSpeech: hit.pos || 'definition',
-            meaning: hit.definition,
-            source: label,
-            sources: [label],
-          });
-        }
-        if (offlineHits.length) {
-          if (offlineHits.some((h) => h.packId === 'cc-cedict' || /cedict/i.test(h.packName || ''))) {
-            sources.push('CC-CEDICT');
-          } else {
-            sources.push('Offline');
-          }
-        }
+        this.absorbOfflineHits(definitions, sources, offlineHits, true);
       } catch {
         /* offline optional */
       }
@@ -644,24 +689,11 @@ export class DictionaryService extends BaseService {
     if (preferLatinSources) {
       try {
         const offlineHits = await withTimeout(
-          lookupOffline(text, 'en', 12),
+          lookupOffline(text, 'en', 16, latinLemmaForms(text)),
           OFFLINE_BUDGET_MS,
           'offline.lookup.en',
         );
-        for (const hit of offlineHits) {
-          definitions.push({
-            partOfSpeech: hit.pos || 'definition',
-            meaning: hit.definition,
-            source: hit.packName || 'Offline',
-            sources: [hit.packName || 'Offline'],
-          });
-        }
-        if (offlineHits.length) {
-          for (const hit of offlineHits) {
-            const label = hit.packName || 'Offline';
-            if (!sources.includes(label)) sources.push(label);
-          }
-        }
+        this.absorbOfflineHits(definitions, sources, offlineHits, false);
       } catch {
         /* optional */
       }
@@ -905,50 +937,11 @@ export class DictionaryService extends BaseService {
 
     // 5) Sources: unique and trimmed
     const uniqueSources = Array.from(new Set(sources.map(s => (s || '').trim())));
-
-    // Always collect etymology from free sources (Wiktionary, Etymonline, Youdao/童理民)
-    // and merge with any etymology already returned by REST / paid APIs.
-    const etyQuery = (canonicalLemma && canonicalLemma.trim()) || text;
-    try {
-      const fetched = await withTimeout(
-        this.fetchEtymologyFromMultipleSources(etyQuery),
-        ETYMOLOGY_BUDGET_MS,
-        'etymology.multi',
-      );
-      if (fetched?.text) {
-        etymology = fetched.text;
-        if (fetched.chain) etymologyChain = fetched.chain;
-      }
-    } catch (error) {
-      console.warn('[ETY] multi-source etymology skipped', error);
-    }
+    const hadNetworkSource = uniqueSources.some(
+      (s) => s && s !== 'Timeout' && s !== 'Fallback' && !isLocalPackSource(s),
+    );
 
     const headword = (canonicalLemma && canonicalLemma.trim()) || text;
-
-    // Inflected forms (vicissitudes) often have no IPA on the surface form.
-    if (!pronunciation && preferLatinSources) {
-      const ipaForms = [
-        headword,
-        ...latinLemmaForms(text),
-        ...latinLemmaForms(headword),
-      ].filter((f, i, arr) => f && f.toLowerCase() !== text.toLowerCase() && arr.indexOf(f) === i);
-      for (const form of ipaForms) {
-        try {
-          const lemmaPhon = await withTimeout(
-            this.getFreeDictionaryData(form, langForDict),
-            3000,
-            'lemma.ipa',
-          );
-          if (lemmaPhon.pronunciation) {
-            pronunciation = lemmaPhon.pronunciation;
-            break;
-          }
-        } catch {
-          /* optional */
-        }
-      }
-    }
-
     const result: DictionaryResult = {
       word: headword,
       pronunciation,
@@ -971,6 +964,52 @@ export class DictionaryService extends BaseService {
         lemma: headword !== text ? headword : undefined,
       },
     };
+    if (holder) holder.current = result;
+
+    // Offline-only (GFW / no VPN): skip hung etymology/IPA so Webster/WordNet can return.
+    // When a network source already answered, still try etymology — but the holder
+    // above is what the outer deadline returns if those hosts never come back.
+    if (!hadNetworkSource && this.hasRealDefinitions(result)) {
+      return result;
+    }
+
+    const etyQuery = (canonicalLemma && canonicalLemma.trim()) || text;
+    try {
+      const fetched = await withTimeout(
+        this.fetchEtymologyFromMultipleSources(etyQuery),
+        ETYMOLOGY_BUDGET_MS,
+        'etymology.multi',
+      );
+      if (fetched?.text) {
+        result.etymology = fetched.text;
+        if (fetched.chain) result.etymologyChain = fetched.chain;
+      }
+    } catch (error) {
+      console.warn('[ETY] multi-source etymology skipped', error);
+    }
+
+    if (!result.pronunciation && preferLatinSources) {
+      const ipaForms = [
+        headword,
+        ...latinLemmaForms(text),
+        ...latinLemmaForms(headword),
+      ].filter((f, i, arr) => f && f.toLowerCase() !== text.toLowerCase() && arr.indexOf(f) === i);
+      for (const form of ipaForms) {
+        try {
+          const lemmaPhon = await withTimeout(
+            this.getFreeDictionaryData(form, langForDict),
+            3000,
+            'lemma.ipa',
+          );
+          if (lemmaPhon.pronunciation) {
+            result.pronunciation = lemmaPhon.pronunciation;
+            break;
+          }
+        } catch {
+          /* optional */
+        }
+      }
+    }
 
     return result;
   }

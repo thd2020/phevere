@@ -13,6 +13,7 @@ import { promisify } from 'util';
 import * as readline from 'readline';
 import { createReadStream } from 'fs';
 import { getLocalDb, isLocalDbReady, markDirty, queryAll, queryOne, runBatch, runWrite } from './local-db';
+import { withTimeout } from './base';
 import { wrapConsole } from '../logger';
 import { getCatalogItem, OFFLINE_CATALOG, type OfflineCatalogItem } from './offline-catalog';
 import {
@@ -100,23 +101,42 @@ export async function removePack(packId: string): Promise<void> {
   await runWrite(`DELETE FROM offline_packs WHERE id = ?`, [packId]);
 }
 
-export async function lookupOffline(headword: string, language?: string, limit = 20): Promise<OfflineHit[]> {
-  // Never wait for sql.js to finish opening a 40MB+ pack on the lookup path.
+export async function lookupOffline(
+  headword: string,
+  language?: string,
+  limit = 20,
+  extraForms: string[] = [],
+): Promise<OfflineHit[]> {
+  if (!isLocalDbReady()) {
+    try {
+      await withTimeout(getLocalDb(), 1500, 'offline.dbReady');
+    } catch {
+      return [];
+    }
+  }
   if (!isLocalDbReady()) return [];
   const q = (headword || '').trim();
   if (!q) return [];
+  const forms = Array.from(
+    new Set(
+      [q, ...extraForms]
+        .map((f) => (f || '').trim())
+        .filter((f) => f && f.length <= 80),
+    ),
+  );
+  const matchSql = forms.map(() => 'e.headword = ? COLLATE NOCASE').join(' OR ');
   const rows = language
     ? await queryAll(
         `SELECT e.*, p.name AS pack_name FROM offline_entries e
          LEFT JOIN offline_packs p ON p.id = e.pack_id
-         WHERE e.headword = ? COLLATE NOCASE AND e.language = ? LIMIT ?`,
-        [q, language, limit],
+         WHERE (${matchSql}) AND e.language = ? LIMIT ?`,
+        [...forms, language, limit],
       )
     : await queryAll(
         `SELECT e.*, p.name AS pack_name FROM offline_entries e
          LEFT JOIN offline_packs p ON p.id = e.pack_id
-         WHERE e.headword = ? COLLATE NOCASE LIMIT ?`,
-        [q, limit],
+         WHERE (${matchSql}) LIMIT ?`,
+        [...forms, limit],
       );
   return rows.map((r) => ({
     headword: String(r.headword),

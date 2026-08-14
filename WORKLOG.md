@@ -65,3 +65,5 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Offline catalog: Settings → Offline now offers Princeton WordNet 3.1 and Webster 1913 (GNU GCIDE) for en→en, CC-CEDICT for zh→en, and FreeDict English–Chinese for en→zh. Living Oxford / Collegiate Webster / Collins stay out of the dump list (copyright); JSON import remains for licensed files. Pack import uses batched sql.js writes.
 - Fix `make:win`: duplicate `'WordNet'` key in `getDictionaryIcon` (TS1117) blocked webpack.
 - Packaged launch crash `Cannot find module 'node-fetch'`: stop externalizing `node-fetch` in `webpack.main.config.js` so Forge webpack bundles it into `app.asar` (pure-JS externals are not copied).
+- Heart save no longer waits on lookup (collapsed strip could hang forever after a silent timeout). Saves the lemma immediately; fills the notebook row when lookup returns.
+- Offline packs (Webster/WordNet) now query wink lemmas (`gleaned`→`glean`), skip hung etymology/IPA when only local packs answered, and return those defs if the 12s deadline fires. Timeout stubs are not cached (and old timeout cache hits are ignored).

@@ -2033,7 +2033,7 @@ function startAutoCloseTimeout() {
                 new Promise(function (_, reject) {
                   setTimeout(function () {
                     reject(new Error('Lookup timed out — try again'));
-                  }, 10000);
+                  }, 14000);
                 }),
               ]);
               lookupInFlight = lookupPromise;
@@ -2047,6 +2047,7 @@ function startAutoCloseTimeout() {
               window['__audioLang'] = audioLang;
               displayDictionaryResult(currentResult);
               void syncVocabHeart(currentResult && currentResult.word);
+              void enrichSavedVocab(currentResult);
             } else {
               pvLog('[POPUP] dictionaryAPI not available, using mock result');
               displayMockResult(text); // Fallback for dev
@@ -2462,11 +2463,76 @@ function startAutoCloseTimeout() {
        }
 
        let savedVocabId = null;
+       let savedVocabLemma = null;
 
-       function setVocabHeartSaved(saved, id) {
+       function lemmaForSave() {
+         return String(
+           (currentResult && currentResult.metadata && currentResult.metadata.lemma) ||
+           (currentResult && currentResult.word) ||
+           currentText ||
+           window['__popupCurrentText'] ||
+           ''
+         ).trim();
+       }
+
+       function isUsableVocabDef(d) {
+         if (!d || d.source === 'Fallback' || d.source === 'Timeout') return false;
+         const m = stripHtmlToText(d.meaning || d.definition || '');
+         if (!m || m === 'No definition available.') return false;
+         if (/lookup timed out/i.test(m)) return false;
+         return true;
+       }
+
+       function vocabPayloadFromResult(result, lemma) {
+         const defs = ((result && result.definitions) || []).filter(isUsableVocabDef);
+         const substantive = defs.filter(function (d) {
+           const m = stripHtmlToText(d.meaning || d.definition || '').toLowerCase();
+           return !/^(plural|past(?:\s+tense)?|present(?:\s+participle)?|gerund|participle|form)\s+of\b/.test(m) || m.length > 64;
+         });
+         const useDefs = substantive.length ? substantive : defs;
+         const defJoined = useDefs
+           .slice(0, 4)
+           .map(function (d) { return stripHtmlToText(d.meaning || d.definition || ''); })
+           .filter(Boolean)
+           .join('\n');
+         const translations = (result && result.translations) || [];
+         const tx = translations[0];
+         const sourceList = [];
+         useDefs.slice(0, 6).forEach(function (d) {
+           if (Array.isArray(d.sources)) d.sources.forEach(function (s) { if (s) sourceList.push(s); });
+           else if (d.source) String(d.source).split(/\s*·\s*/).forEach(function (s) { if (s) sourceList.push(s); });
+         });
+         const sources = Array.from(new Set(sourceList)).slice(0, 6);
+         return {
+           lemma: lemma,
+           reading: result && result.pronunciation ? result.pronunciation : undefined,
+           definition: defJoined || (tx && tx.text ? String(tx.text) : undefined),
+           partOfSpeech: useDefs[0] ? useDefs[0].partOfSpeech : undefined,
+           sources: sources.length ? sources : (tx && tx.source ? [tx.source] : ((result && result.sources) || [])),
+           sourceLang: result && result.detectedLanguage,
+           targetLang: (tx && tx.language) || (result && result.language),
+         };
+       }
+
+       async function enrichSavedVocab(result) {
+         if (!window.vocabAPI || !savedVocabId || !result) return;
+         const lemma = savedVocabLemma || lemmaForSave();
+         if (!lemma) return;
+         const payload = vocabPayloadFromResult(result, lemma);
+         if (!payload.definition) return;
+         try {
+           const entry = await window.vocabAPI.add(payload);
+           if (entry && entry.id) setVocabHeartSaved(true, entry.id, lemma);
+         } catch (e) {
+           console.warn('vocab enrich failed', e);
+         }
+       }
+
+       function setVocabHeartSaved(saved, id, lemma) {
          const btn = document.getElementById('vocabHeartIcon');
          if (!btn) return;
          savedVocabId = saved ? (id || savedVocabId) : null;
+         savedVocabLemma = saved ? (lemma || savedVocabLemma) : null;
          btn.classList.toggle('is-saved', !!saved);
          btn.setAttribute('aria-pressed', saved ? 'true' : 'false');
          btn.title = saved ? 'Remove from notebook' : 'Save to notebook';
@@ -2499,16 +2565,7 @@ function startAutoCloseTimeout() {
        async function toggleVocabHeart() {
          try {
            if (!window.vocabAPI) { showToast('Notebook unavailable'); return; }
-           if (!currentResult || !Array.isArray(currentResult.definitions)) {
-             showToast('Wait for lookup to finish');
-             return;
-           }
-           const lemma = String(
-             (currentResult.metadata && currentResult.metadata.lemma) ||
-             currentResult.word ||
-             currentText ||
-             ''
-           ).trim();
+           const lemma = lemmaForSave();
            if (!lemma) { showToast('Nothing to save'); return; }
 
            if (savedVocabId) {
@@ -2525,52 +2582,17 @@ function startAutoCloseTimeout() {
              showToast('Removed from notebook');
              return;
            }
-           const queriedAs = currentResult.metadata && currentResult.metadata.queriedAs;
+           const queriedAs = currentResult && currentResult.metadata && currentResult.metadata.queriedAs;
            if (queriedAs && String(queriedAs).toLowerCase() !== lemma.toLowerCase()) {
              const orphan = await window.vocabAPI.find(String(queriedAs).trim());
              if (orphan && orphan.id) await window.vocabAPI.remove(orphan.id);
            }
 
-           const defs = (currentResult.definitions || []).filter(function (d) {
-             if (!d || d.source === 'Fallback') return false;
-             const m = stripHtmlToText(d.meaning || d.definition || '');
-             return !!(m && m !== 'No definition available.');
-           });
-           const substantive = defs.filter(function (d) {
-             const m = stripHtmlToText(d.meaning || d.definition || '').toLowerCase();
-             return !/^(plural|past(?:\s+tense)?|present(?:\s+participle)?|gerund|participle|form)\s+of\b/.test(m) || m.length > 64;
-           });
-           const useDefs = substantive.length ? substantive : defs;
-           const defJoined = useDefs
-             .slice(0, 4)
-             .map(function (d) { return stripHtmlToText(d.meaning || d.definition || ''); })
-             .filter(Boolean)
-             .join('\n');
-           const translations = currentResult.translations || [];
-           const tx = translations[0];
-           if (!defJoined && !(tx && tx.text)) {
-             showToast('No definition to save yet');
-             return;
-           }
-           const top = useDefs[0];
-           const sourceList = [];
-           useDefs.slice(0, 6).forEach(function (d) {
-             if (Array.isArray(d.sources)) d.sources.forEach(function (s) { if (s) sourceList.push(s); });
-             else if (d.source) String(d.source).split(/\s*·\s*/).forEach(function (s) { if (s) sourceList.push(s); });
-           });
-           const entry = await window.vocabAPI.add({
-             lemma,
-             reading: currentResult.pronunciation || undefined,
-             definition: defJoined || String(tx.text || ''),
-             partOfSpeech: top ? top.partOfSpeech : undefined,
-             sources: Array.from(new Set(sourceList)).slice(0, 6).length
-               ? Array.from(new Set(sourceList)).slice(0, 6)
-               : (tx && tx.source ? [tx.source] : (currentResult.sources || [])),
-             sourceLang: currentResult.detectedLanguage,
-             targetLang: (tx && tx.language) || currentResult.language,
-           });
-           setVocabHeartSaved(true, entry && entry.id);
-           showToast('Saved to notebook');
+           const payload = vocabPayloadFromResult(currentResult, lemma);
+           const entry = await window.vocabAPI.add(payload);
+           setVocabHeartSaved(true, entry && entry.id, lemma);
+           showToast(payload.definition ? 'Saved to notebook' : 'Saved — definition pending');
+           if (!currentResult && lemma) maybePreloadLookup(lemma);
          } catch (e) {
            console.error(e);
            const msg = (e && (e.message || e.msg)) ? String(e.message || e.msg) : String(e || 'unknown');

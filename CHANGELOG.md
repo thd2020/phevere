@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Packaged app crash on launch: `Cannot find module 'node-fetch'` — webpack now bundles `node-fetch` instead of leaving a runtime `require` that Forge does not copy into `app.asar`.
+- Heart icon on the collapsed strip could wait forever for lookup; it now saves the lemma immediately and fills the notebook later.
+- Offline Webster/WordNet hits were discarded when online sources hung, then the timeout string was cached for 24h. Lookups now keep local-pack defs, query inflected lemmas, and do not cache timeout stubs.
 
 ## [1.2.1] - 2026-08-12
 
