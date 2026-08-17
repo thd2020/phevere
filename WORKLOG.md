@@ -83,3 +83,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - **Etymonline:** parse `prose-lg` `<p>` bodies instead of truncated `og:description` (“…”).
 - **Senses:** keep Free Dictionary / Wiktionary native order (`senseOrder`) after merge.
 - **Notebook:** above Recent selections; IPA + play; search bar.
+- `make:win` failed TS7011 on quit `.catch(() => undefined)`, duplicate `backgroundColor` in `withWin11Chrome`, and `Definition.sources` missing from the interface. Annotated catch callbacks, single backgroundColor, added `sources?` on `Definition`.

@@ -29,6 +29,8 @@ export interface Definition {
   examples?: string[];
   /** Primary display label; may list multiple cites joined with " · ". */
   source: string;
+  /** All citing sources after intelligent merge. */
+  sources?: string[];
   /** Lower = earlier in Free Dictionary / Wiktionary (common-reading order). */
   senseOrder?: number;
 }

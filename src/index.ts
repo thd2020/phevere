@@ -666,8 +666,8 @@ async function quitPhevere(): Promise<void> {
 
   // UIA join() used to block the main thread 10s+ (Promise.race never fired) and ghost the tray.
   await Promise.allSettled([
-    bounded(stopSelectionMonitoring().catch(() => undefined), 800),
-    bounded(closeLocalDb().catch(() => undefined), 700),
+    bounded(stopSelectionMonitoring().catch((): undefined => undefined), 800),
+    bounded(closeLocalDb().catch((): undefined => undefined), 700),
   ]);
 
   if (tray && !tray.isDestroyed()) {
@@ -765,7 +765,6 @@ function withWin11Chrome(
     return { backgroundColor: '#F3F3F3', ...opts };
   }
   return {
-    backgroundColor: '#00000000',
     backgroundMaterial: material,
     ...opts,
     backgroundColor: opts.backgroundColor ?? '#00000000',
@@ -2187,7 +2186,7 @@ app.on('browser-window-created', (_event, win) => {
   win.webContents.on('dom-ready', () => {
     void win.webContents.executeJavaScript(
       `document.documentElement.classList.add('win11-mica')`,
-    ).catch(() => undefined);
+    ).catch((): undefined => undefined);
   });
 });
 

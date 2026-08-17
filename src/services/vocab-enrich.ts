@@ -68,7 +68,7 @@ export function payloadFromDictionaryResult(result?: DictionaryResult | null): v
   if (!definition) return null;
   const sourceList: string[] = [];
   useDefs.slice(0, 6).forEach((d) => {
-    if (Array.isArray(d.sources)) d.sources.forEach((s) => { if (s) sourceList.push(s); });
+    if (Array.isArray(d.sources)) d.sources.forEach((s: string) => { if (s) sourceList.push(s); });
     else if (d.source) String(d.source).split(/\s*·\s*/).forEach((s) => { if (s) sourceList.push(s); });
   });
   const sources = Array.from(new Set(sourceList.length ? sourceList : result.sources || [])).slice(0, 6);
