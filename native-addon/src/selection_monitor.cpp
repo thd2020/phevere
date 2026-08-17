@@ -10,6 +10,17 @@
 #include <chrono>
 #include <mutex>
 
+static void joinOrDetach(std::thread& t, DWORD timeoutMs) {
+    if (!t.joinable()) return;
+    HANDLE h = reinterpret_cast<HANDLE>(t.native_handle());
+    const DWORD wait = WaitForSingleObject(h, timeoutMs);
+    if (wait == WAIT_OBJECT_0) {
+        t.join();
+    } else {
+        t.detach();
+    }
+}
+
 // Forward declaration of the handler class
 class UIAutomationEventHandler;
 
@@ -119,25 +130,16 @@ public:
 
         if (debugEnabled) std::cout << "[UIA] Stopping UIAutomation selection monitoring..." << std::endl;
         
-        // Stop debounce thread first
         debounce_running.store(false);
-        if (debounce_thread.joinable()) {
-            debounce_thread.join();
-        }
-        
-        // Post a WM_QUIT message to the monitor thread to break its message loop
+        joinOrDetach(debounce_thread, 400);
+
         if (monitor_thread_id != 0) {
             PostThreadMessage(monitor_thread_id, WM_QUIT, 0, 0);
         }
-        
-        // Wait for the thread to finish
-        if (monitor_thread.joinable()) {
-            monitor_thread.join();
-        }
+        joinOrDetach(monitor_thread, 400);
         monitor_thread_id = 0;
 
-        // Wait for detached fallback threads so they never touch a destroyed instance
-        for (int i = 0; i < 50 && active_fallback_threads.load() > 0; ++i) {
+        for (int i = 0; i < 10 && active_fallback_threads.load() > 0; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }
         

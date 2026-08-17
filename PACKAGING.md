@@ -68,10 +68,24 @@ If files remain but Apps has no entry (“ghost” install — often from aborte
 
 Welcome / finish / components: `packaging/installer.nsh`. Options: `electron-builder.yml`.
 
+Sidebar/header **must** be real 24-bpp BMP (`BM` magic). `prepare:installer` writes them with `writeTrueBmp` — do not save PNG bytes as `.bmp` (NSIS then paints a blank left pane).
+
+### Code signing / SmartScreen
+
+Unsigned Setup.exe always trips SmartScreen until Windows has seen many downloads of that publisher. **Self-signed certificates do not help.**
+
+To Authenticode-sign a public build (OV or EV code-signing cert from a CA):
+
+```powershell
+$env:CSC_LINK = "C:\secure\phevere-codesign.pfx"   # or base64 of the PFX
+$env:CSC_KEY_PASSWORD = "<pfx password>"
+npm run make:win
+```
+
+Optional: `CSC_NAME` (subject CN in the Windows cert store) or `WIN_CSC_LINK`. electron-builder timestamps with DigiCert RFC3161 (`electron-builder.yml`). EV certs clear SmartScreen faster than OV; either still needs a period of reputation if the publisher is new.
+
+Do not commit `.pfx` / passwords. `make:win` warns when `CSC_LINK` is unset.
+
 ### Optional: WiX MSI
 
 Commented in `forge.config.js`; needs WiX Toolset v3. Prefer NSIS for end users.
-
-### Code signing / Store
-
-Sign Setup.exe for fewer SmartScreen prompts. Microsoft Store uses MSIX — separate track.

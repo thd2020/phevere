@@ -11,6 +11,8 @@ export interface MergeableDefinition {
   examples?: string[];
   source: string;
   sources?: string[];
+  /** Lower = more common / earlier in Free Dictionary. */
+  senseOrder?: number;
 }
 
 /** Strip sense numbers, parenthetical asides, and normalize for comparison. */
@@ -282,6 +284,7 @@ export function mergeSimilarDefinitions(defs: MergeableDefinition[]): MergeableD
       antonyms: unionUnique(base.antonyms, incoming.antonyms),
       sources,
       source: formatSourceLabel(sources),
+      senseOrder: Math.min(base.senseOrder ?? 80, incoming.senseOrder ?? 80),
     };
   }
 
@@ -289,4 +292,24 @@ export function mergeSimilarDefinitions(defs: MergeableDefinition[]): MergeableD
     ...c,
     examples: unionUnique(c.examples, []) || undefined,
   }));
+}
+
+function sourceRank(def: MergeableDefinition): number {
+  const blob = `${def.source || ''} ${(def.sources || []).join(' ')}`.toLowerCase();
+  if (blob.includes('free dictionary')) return 0;
+  if (blob.includes('wiktionary')) return 1;
+  if (blob.includes('wordnet')) return 2;
+  if (blob.includes('webster') || blob.includes('gcide')) return 3;
+  if (blob.includes('datamuse')) return 4;
+  return 5;
+}
+
+/** Free Dictionary / Wiktionary native order first (common-reading), then other packs. */
+export function sortDefinitionsByReadingOrder(defs: MergeableDefinition[]): MergeableDefinition[] {
+  return [...(defs || [])].sort((a, b) => {
+    const oa = a.senseOrder ?? 80;
+    const ob = b.senseOrder ?? 80;
+    if (oa !== ob) return oa - ob;
+    return sourceRank(a) - sourceRank(b);
+  });
 }

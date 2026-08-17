@@ -14,6 +14,7 @@ Prebuilt **NSIS Setup** (`Phevere-Setup-<version>-x64.exe`) is on [GitHub Releas
 | Optional components | Desktop shortcut, Start menu shortcut, OCR models (~15 MB, on by default) |
 | Uninstall | **Settings → Apps → Phevere**, or Start menu → **Uninstall Phevere** |
 | Single instance | A second launch focuses the existing app (avoids SQLite / tray conflicts) |
+| SmartScreen | Signed releases need `CSC_LINK` (OV/EV cert); unsigned builds may warn — see [`PACKAGING.md`](PACKAGING.md) |
 
 Maintainer packaging: [`PACKAGING.md`](PACKAGING.md) · release checklist: [`docs/RELEASE.md`](docs/RELEASE.md).
 
@@ -37,9 +38,10 @@ Then run the latest Setup.exe. New installs register a proper uninstaller (`Unin
 - **Dictionary & translation** — Free Dictionary, Wiktionary, Datamuse, Youdao / DeepL routing; CJK ↔ English
 - **Offline packs** — Settings → Offline: WordNet, Webster 1913 (GCIDE), CC-CEDICT, FreeDict en→zh (consent download); JSON/CEDICT import. Living Oxford / Collegiate Webster / Collins are not dumped (copyright).
 - **Etymology & Wikipedia** — in-popup tabs; Wikipedia reader webview
-- **Vocabulary notebook** — local SQLite (`%APPDATA%\phevere`); lemma-only saves fill in the background without keeping the popup open
+- **Vocabulary notebook** — local SQLite (`%APPDATA%\phevere`); lemma-only saves fill in the background; IPA + play, search, listed above recent selections
 - **OCR** — bundled PP-OCRv4 models (optional component); region / hover / clipboard / window capture
-- **Tray app** — Quit tears down UIA / OCR cleanly; main window can hide to tray
+- **Tray app** — Quit tears down UIA / OCR / sql.js worker promptly (no ghost tray icon)
+- **Win11 chrome** — Mica/Acrylic on app windows; NSIS wizard uses Segoe UI + branded 24-bpp sidebar BMP
 
 ## Development
 

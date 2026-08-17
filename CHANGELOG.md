@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Lookup felt slower after the offline-lemma change: SQLite packs now run in parallel with network APIs, skip waiting for a cold sql.js worker, cap etymology when defs already exist, and the popup timeout matches the 12s server deadline.
 - First paint waited ~7.5s even when Webster was already in hand (5s Google Translate / Tatoeba timeout + 2.5s etymology). Local packs now return immediately (~0.5s coalesce); translation, Tatoeba, and etymology fill the popup in the background.
 - `make:win` TS7011: annotate the background etymology `.catch` so webpack compiles.
+- Installer left pane was blank: NSIS needs 24-bpp BMP, not PNG bytes named `.bmp`.
+- Tray Exit left a ghost icon and leftover `phevere` processes: UIA `join()` blocked quit; now timed + `app.exit`.
+- Etymonline often ended with “…” because the parser used truncated OpenGraph text.
+- Notebook: IPA + pronunciation control, search, and the block sits above Recent selections.
+- Window chrome (settings / clipboard / dictionary): titlebar and Close stay put while content scrolls.
+- Authenticode: wire `CSC_LINK` for SmartScreen; unsigned builds still warn honestly.
 
 ## [1.2.1] - 2026-08-12
 

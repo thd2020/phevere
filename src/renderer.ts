@@ -65,6 +65,8 @@ document.addEventListener('DOMContentLoaded', () => {
   } else if (hash === '#settings') {
     // Settings window functionality
     initializeSettingsWindow();
+  } else if (hash === '#clipboard') {
+    initializeClipboardWindow();
   } else {
     // Main window functionality
     initializeMainWindow();
@@ -1591,6 +1593,14 @@ function wireMainWindowTextSelectionLookup(): void {
   });
 }
 
+function initializeClipboardWindow() {
+  document.body.className = 'clipboard-window main-window';
+  initializeMainWindowControls();
+  void showClipboardHistory();
+}
+
+let vocabNotebookCache: any[] = [];
+
 async function loadVocabNotebook(): Promise<void> {
   const list = document.getElementById('vocabList');
   if (!list) return;
@@ -1601,12 +1611,39 @@ async function loadVocabNotebook(): Promise<void> {
   }
   try {
     const entries = await api.list(100);
-    if (!entries || !entries.length) {
-      list.innerHTML = `<p class="empty-message">No saved words yet.</p>`;
-      return;
-    }
-    list.innerHTML = entries
-      .map((e: any) => {
+    vocabNotebookCache = entries || [];
+    renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
+  } catch (error) {
+    console.error('vocab load failed', error);
+    list.innerHTML = `<p class="empty-message">Could not load notebook.</p>`;
+  }
+}
+
+function filterVocabEntries(entries: any[]): any[] {
+  const q = ((document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '')
+    .trim()
+    .toLowerCase();
+  if (!q) return entries;
+  return entries.filter((e) => {
+    const blob = [e.lemma, e.reading, e.definition, e.partOfSpeech, e.note, ...(e.sources || [])]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return blob.includes(q);
+  });
+}
+
+function renderVocabNotebook(entries: any[]): void {
+  const list = document.getElementById('vocabList');
+  if (!list) return;
+  const api = (window as any).vocabAPI;
+  if (!entries || !entries.length) {
+    const q = ((document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '').trim();
+    list.innerHTML = `<p class="empty-message">${q ? 'No notebook matches.' : 'No saved words yet.'}</p>`;
+    return;
+  }
+  list.innerHTML = entries
+    .map((e: any) => {
         const defRaw = String(e.definition || '').trim();
         const long = defRaw.length > 280 || defRaw.split(/\n/).length > 4;
         const defHtml = escapeHtmlSelection(defRaw).replace(/\n/g, '<br>');
@@ -1624,11 +1661,14 @@ async function loadVocabNotebook(): Promise<void> {
           e.updatedAt || e.createdAt
             ? new Date(Number(e.updatedAt || e.createdAt)).toLocaleString()
             : '';
+        const ipa = String(e.reading || '').trim();
+        const lemma = String(e.lemma || '');
         return `<article class="vocab-item is-collapsed" data-id="${escapeHtmlSelection(e.id)}" tabindex="0" role="button" aria-expanded="false">
           <div class="vocab-entry">
             <header class="vocab-entry__head">
-              <h3 class="vocab-lemma">${escapeHtmlSelection(e.lemma)}</h3>
-              ${e.reading ? `<span class="vocab-reading">/${escapeHtmlSelection(e.reading)}/</span>` : ''}
+              <h3 class="vocab-lemma">${escapeHtmlSelection(lemma)}</h3>
+              ${ipa ? `<span class="vocab-reading">/${escapeHtmlSelection(ipa)}/</span>` : '<span class="vocab-reading vocab-reading--empty">IPA pending</span>'}
+              <button type="button" class="vocab-play" data-lemma="${escapeHtmlSelection(lemma)}" title="Play pronunciation" aria-label="Play pronunciation">▶</button>
               <span class="vocab-expand-hint" aria-hidden="true"></span>
             </header>
             <div class="vocab-entry__meta">
@@ -1671,6 +1711,13 @@ async function loadVocabNotebook(): Promise<void> {
         if (lemma) void openFullLookup(lemma);
       });
     });
+    list.querySelectorAll('.vocab-play').forEach((btn) => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const lemma = (btn as HTMLElement).dataset.lemma;
+        if (lemma) (window as any).playAudio?.(lemma, 'en-US');
+      });
+    });
     list.querySelectorAll('.vocab-remove').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const id = (btn as HTMLElement).dataset.id;
@@ -1683,23 +1730,19 @@ async function loadVocabNotebook(): Promise<void> {
       btn.addEventListener('click', () => {
         const def = (btn as HTMLElement).previousElementSibling as HTMLElement | null;
         if (!def) return;
-        const open = def.classList.toggle('is-clamped') === false;
-        (btn as HTMLElement).textContent = open ? 'Show less' : 'Show more';
-        if (open) def.classList.remove('is-clamped');
-        else def.classList.add('is-clamped');
-        // fix toggle: after toggle is-clamped, if removed we show less
+        def.classList.toggle('is-clamped');
         const clamped = def.classList.contains('is-clamped');
         (btn as HTMLElement).textContent = clamped ? 'Show more' : 'Show less';
       });
     });
-  } catch (error) {
-    console.error('vocab load failed', error);
-    list.innerHTML = `<p class="empty-message">Could not load notebook.</p>`;
-  }
 }
 
 document.getElementById('refreshVocabBtn')?.addEventListener('click', () => {
   void loadVocabNotebook();
+});
+
+document.getElementById('vocabSearch')?.addEventListener('input', () => {
+  renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
 });
 
 async function openFullLookup(text: string): Promise<void> {
@@ -2178,7 +2221,11 @@ async function showClipboardHistory() {
     popup.addEventListener('click', async (ev) => {
       const target = ev.target as HTMLElement;
       if (target.closest('[data-close-clipboard]')) {
-        popup.remove();
+        if (document.body.classList.contains('clipboard-window')) {
+          window.close();
+        } else {
+          popup.remove();
+        }
         return;
       }
       const copyId = target.closest('[data-copy-id]')?.getAttribute('data-copy-id');

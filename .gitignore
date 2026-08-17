@@ -174,6 +174,12 @@ Thumbs.db
 .specstory/
 .cursorindexingignore
 
+# Signing secrets — never commit
+*.pfx
+*.p12
+*.pvk
+*.spc
+
 # Optional OCR sidecar (built by prepare:installer; keep Setup lean)
 packaging/optional/*.zip
 packaging/optional/_ocr_stage/

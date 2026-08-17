@@ -71,6 +71,19 @@
         <p id="main-slogan" class="main-slogan">Select text anywhere — definitions follow.</p>
       </section>
 
+      <section class="vocab-notebook" aria-labelledby="vocab-heading">
+        <div class="recent-selections__header">
+          <h2 id="vocab-heading" class="section-heading">Vocabulary notebook</h2>
+          <div class="recent-selections__actions">
+            <input type="search" id="vocabSearch" class="vocab-search" placeholder="Search notebook…" autocomplete="off" aria-label="Search notebook" />
+            <button type="button" id="refreshVocabBtn" class="btn btn-outlined btn-small">Refresh</button>
+          </div>
+        </div>
+        <div id="vocabList" class="selections-list">
+          <p class="empty-message">No saved words yet.</p>
+        </div>
+      </section>
+
       <section class="recent-selections" aria-labelledby="recent-heading">
         <div class="recent-selections__header">
           <h2 id="recent-heading" class="section-heading">Recent selections</h2>
@@ -80,18 +93,6 @@
         </div>
         <div id="selectionsList" class="selections-list">
           <p class="empty-message">No selections yet.</p>
-        </div>
-      </section>
-
-      <section class="vocab-notebook" aria-labelledby="vocab-heading">
-        <div class="recent-selections__header">
-          <h2 id="vocab-heading" class="section-heading">Vocabulary notebook</h2>
-          <div class="recent-selections__actions">
-            <button type="button" id="refreshVocabBtn" class="btn btn-outlined btn-small">Refresh</button>
-          </div>
-        </div>
-        <div id="vocabList" class="selections-list">
-          <p class="empty-message">No saved words yet.</p>
         </div>
       </section>
     </main>

@@ -229,6 +229,25 @@ export async function flushPersist(): Promise<void> {
   await persist();
 }
 
+/** Persist then kill the sql.js worker so Quit does not leave a Node thread. */
+export async function closeLocalDb(): Promise<void> {
+  try {
+    await flushPersist();
+  } catch {
+    /* ignore */
+  }
+  const w = worker;
+  worker = null;
+  ready = false;
+  initPromise = null;
+  if (!w) return;
+  try {
+    await Promise.race([w.terminate(), new Promise<void>((resolve) => setTimeout(resolve, 400))]);
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function persist(): Promise<void> {
   if (!ready) return;
   await rpc('persist');

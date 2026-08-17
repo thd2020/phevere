@@ -14,19 +14,19 @@
     />
     <style>
       :root {
-        --pv-ink: #14212b;
-        --pv-ink-soft: #3d4f5c;
-        --pv-paper: #f3f0ea;
-        --pv-paper-2: #ebe6dc;
-        --pv-panel: #fffcf7;
-        --pv-line: rgba(20, 33, 43, 0.12);
+        --pv-ink: #1a1a1a;
+        --pv-ink-soft: #5c5c5c;
+        --pv-paper: #f3f3f3;
+        --pv-paper-2: #fafafa;
+        --pv-panel: #ffffff;
+        --pv-line: rgba(0, 0, 0, 0.08);
         --pv-ember: #e85d04;
         --pv-ember-deep: #c44900;
         --pv-teal: #0d7377;
         --pv-success: #0f766e;
-        --pv-font-ui: 'Outfit', system-ui, 'Segoe UI', sans-serif;
+        --pv-font-ui: 'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', 'Outfit', system-ui, sans-serif;
         --pv-font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
-        --pv-font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+        --pv-font-mono: 'Cascadia Mono', 'IBM Plex Mono', ui-monospace, Consolas, monospace;
       }
 
       * {
@@ -37,7 +37,7 @@
 
              body {
          font-family: var(--pv-font-ui);
-         background: var(--pv-panel);
+         background: transparent;
          color: var(--pv-ink);
          overflow: hidden;
          height: 100vh;
@@ -45,6 +45,8 @@
           margin: 0; /* remove any default margin to keep toolbar slim */
           padding: 0; /* ensure no outer padding */
          border: none;
+         -webkit-font-smoothing: antialiased;
+         text-rendering: optimizeLegibility;
        }
 
        .popup-container {
@@ -54,7 +56,8 @@
          flex-direction: column;
          justify-content: flex-start;
          align-items: stretch;
-         background: #ffffff;
+         background: rgba(255, 255, 255, 0.78);
+         backdrop-filter: blur(28px) saturate(140%);
          border: none;
          border-radius: 0;
          box-shadow: none;
@@ -70,12 +73,15 @@
           justify-content: flex-start;
           gap: 0;
           padding: 0 1px 0 2px;
-          background: transparent;
-          border-bottom: none;
+          background: rgba(255, 255, 255, 0.55);
+          backdrop-filter: blur(24px) saturate(140%);
+          border-bottom: 1px solid var(--pv-line);
           min-height: 26px;
           -webkit-app-region: drag;
           cursor: move;
-          position: relative;
+          position: sticky;
+          top: 0;
+          z-index: 40;
         }
 
        .toolbar::after {
@@ -226,9 +232,14 @@
       /* Tabs */
       .tabs {
         display: flex;
-        background: #f8f9fa;
+        flex: 0 0 auto;
+        background: rgba(248, 249, 250, 0.82);
+        backdrop-filter: blur(16px);
         border-bottom: 1px solid #e1e5e9;
         padding: 0 16px;
+        position: sticky;
+        top: 26px;
+        z-index: 30;
       }
 
       .tab {

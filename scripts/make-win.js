@@ -26,6 +26,11 @@ console.log(
   '[make-win] ELECTRON_BUILDER_BINARIES_MIRROR=',
   process.env.ELECTRON_BUILDER_BINARIES_MIRROR,
 );
+if (!process.env.CSC_LINK && !process.env.CSC_NAME && !process.env.WIN_CSC_LINK) {
+  console.warn(
+    '[make-win] No CSC_LINK / CSC_NAME — Setup.exe will be unsigned. SmartScreen stays until an OV/EV Authenticode cert is used (see PACKAGING.md).',
+  );
+}
 
 function run(cmd, args) {
   const r = spawnSync(cmd, args, {

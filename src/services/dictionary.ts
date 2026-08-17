@@ -29,8 +29,8 @@ export interface Definition {
   examples?: string[];
   /** Primary display label; may list multiple cites joined with " · ". */
   source: string;
-  /** All citing sources after intelligent merge. */
-  sources?: string[];
+  /** Lower = earlier in Free Dictionary / Wiktionary (common-reading order). */
+  senseOrder?: number;
 }
 
 import { BaseService, DictionaryError, withTimeout } from './base';
@@ -39,7 +39,7 @@ import { wrapConsole } from '../logger';
 import { net } from 'electron';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, latinLemmaForms } from './text-normalize';
 import { buildEtymology, EtymologyLink } from './etymology';
-import { mergeSimilarDefinitions, dedupeExamples, canonicalPos } from './definition-merge';
+import { mergeSimilarDefinitions, dedupeExamples, canonicalPos, sortDefinitionsByReadingOrder } from './definition-merge';
 import { lookupOffline, type OfflineHit } from './offline-dict-store';
 
 const console = wrapConsole('dictionary');
@@ -828,7 +828,9 @@ export class DictionaryService extends BaseService {
           break;
         case 'freeDictionary':
           if (data.definitions.length > 0) {
-            definitions.push(...data.definitions);
+            definitions.push(
+              ...data.definitions.map((d: Definition, i: number) => ({ ...d, senseOrder: i })),
+            );
             examples.push(...data.examples);
             synonyms.push(...data.synonyms);
             antonyms.push(...data.antonyms);
@@ -847,7 +849,7 @@ export class DictionaryService extends BaseService {
             const existingMeanings = new Set(definitions.map((d: Definition) => d.meaning));
             const newDefinitions = data.definitions
               .filter((d: Definition) => !existingMeanings.has(d.meaning))
-              .map((d: Definition) => ({ ...d, source: 'Wiktionary' }));
+              .map((d: Definition, i: number) => ({ ...d, source: 'Wiktionary', senseOrder: 40 + i }));
             definitions.push(...newDefinitions);
             try {
               const exampleSnippets: string[] = [];
@@ -934,7 +936,9 @@ export class DictionaryService extends BaseService {
           uniqueDefinitions.push(d);
         }
       }
-      const mergedDefinitions = mergeSimilarDefinitions(uniqueDefinitions) as Definition[];
+      const mergedDefinitions = sortDefinitionsByReadingOrder(
+        mergeSimilarDefinitions(uniqueDefinitions) as Definition[],
+      ) as Definition[];
       for (const d of mergedDefinitions) {
         if (d.examples?.length) d.examples = dedupeExamples(d.examples) || [];
       }
@@ -1803,15 +1807,39 @@ export class DictionaryService extends BaseService {
         return undefined;
       }
 
-      const html = await withTimeout(response.text(), 2000, 'etymonline.body');
+      const html = await withTimeout(response.text(), 4000, 'etymonline.body');
       let raw = '';
 
-      // Modern Etymonline: OpenGraph / meta description (legacy <dd> markup is gone).
-      const og =
-        html.match(/property=["']og:description["']\s+content=["']([^"']+)["']/i) ||
-        html.match(/content=["']([^"']+)["']\s+property=["']og:description["']/i) ||
-        html.match(/name=["']description["']\s+content=["']([^"']+)["']/i);
-      if (og?.[1]) raw = og[1];
+      const htmlToPlain = (s: string) =>
+        s
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&#x([0-9a-f]+);/gi, (_: string, h: string) => String.fromCharCode(parseInt(h, 16)))
+          .replace(/&#(\d+);/g, (_: string, n: string) => String.fromCharCode(parseInt(n, 10)))
+          .replace(/<[^>]*>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .replace(/\s*See origin and meaning of .+$/i, '')
+          .trim();
+
+      // Full entry lives in prose-lg paragraphs. og:description is truncated with "…".
+      const prose = html.match(/<section[^>]*class="[^"]*prose-lg[^"]*"[\s\S]{0,12000}?<\/section>/i);
+      if (prose) {
+        const paras = Array.from(prose[0].matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi))
+          .map((m) => htmlToPlain(m[1]))
+          .filter((p) => p.length > 24 && !/go-to source|internet'?s go-to/i.test(p));
+        if (paras.length) raw = paras.slice(0, 5).join('\n\n');
+      }
+
+      if (!raw) {
+        const og =
+          html.match(/property=["']og:description["']\s+content=["']([^"']+)["']/i) ||
+          html.match(/content=["']([^"']+)["']\s+property=["']og:description["']/i) ||
+          html.match(/name=["']description["']\s+content=["']([^"']+)["']/i);
+        if (og?.[1]) raw = og[1];
+      }
 
       if (!raw) {
         const jsonLd = html.match(
@@ -1829,18 +1857,7 @@ export class DictionaryService extends BaseService {
 
       if (!raw) return undefined;
 
-      const etymology = raw
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
-        .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
-        .replace(/<[^>]*>/g, '')
-        .replace(/\s+/g, ' ')
-        .replace(/\s*See origin and meaning of .+$/i, '')
-        .trim();
+      const etymology = htmlToPlain(raw).replace(/\u2026/g, '...');
 
       // Site-wide marketing / miss-page meta — not a word etymology.
       if (

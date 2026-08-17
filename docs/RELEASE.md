@@ -92,4 +92,4 @@ See CHANGELOG `[1.2.0]` for the full list.
 
 ## 5. Code signing (optional)
 
-Unsigned Setup.exe may trigger SmartScreen. See `PACKAGING.md`.
+Set `CSC_LINK` + `CSC_KEY_PASSWORD` (OV/EV Authenticode PFX) before `npm run make:win`. Self-signed certs do not clear SmartScreen. Details: `PACKAGING.md`.

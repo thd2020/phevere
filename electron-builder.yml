@@ -40,6 +40,13 @@ win:
   icon: packaging/icon.ico
   artifactName: ${productName}-Setup-${version}-${arch}.${ext}
   publisherName: thd2020
+  # Authenticode: set CSC_LINK (path or base64 of .pfx) + CSC_KEY_PASSWORD when releasing.
+  # Self-signed certs do not clear SmartScreen. OV/EV + timestamp reduce prompts; reputation still accrues.
+  rfc3161TimeStampServer: http://timestamp.digicert.com
+  timeStampServer: http://timestamp.digicert.com
+  signingHashAlgorithms:
+    - sha256
+  signAndEditExecutable: true
 nsis:
   oneClick: false
   perMachine: false

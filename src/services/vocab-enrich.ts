@@ -130,6 +130,11 @@ export function cancelVocabEnrich(lemma: string): void {
   }
 }
 
+export function stopVocabEnricher(): void {
+  queued.clear();
+  queue.length = 0;
+}
+
 export function enqueueVocabEnrich(lemma: string, delayMs = SAVE_GRACE_MS): void {
   const trimmed = (lemma || '').trim();
   if (!trimmed || trimmed.length > 80) return;

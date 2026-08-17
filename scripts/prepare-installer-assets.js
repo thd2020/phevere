@@ -82,35 +82,40 @@ async function main() {
   }
   console.log('Wrote packaging/icon.ico + icon.png + resources/tray-icon.png');
 
-  // Sidebar 164×314 BMP from generated art if present, else procedural
+  // NSIS MUI requires uncompressed 24-bpp BMP (magic BM). sharp `.toFile(.bmp)` writes PNG.
   const sidebarSrcCandidates = [
-    path.join(process.env.USERPROFILE || '', '.cursor', 'projects', 'c-Users-8114-projects-phevere', 'assets', 'installer-sidebar.png'),
     path.join(root, 'assets', 'installer-sidebar.png'),
+    path.join(process.env.USERPROFILE || '', '.cursor', 'projects', 'c-Users-8114-projects-phevere', 'assets', 'installer-sidebar.png'),
   ];
-  let sidebarSrc = sidebarSrcCandidates.find((p) => fs.existsSync(p));
+  const sidebarSrc = sidebarSrcCandidates.find((p) => fs.existsSync(p));
   if (sidebarSrc) {
-    await sharp(sidebarSrc)
-      .resize(164, 314, { fit: 'cover' })
-      .removeAlpha()
-      .toFile(path.join(outDir, 'installerSidebar.bmp'));
+    await writeTrueBmp(sharp, sidebarSrc, path.join(outDir, 'installerSidebar.bmp'), 164, 314, 'cover');
   } else {
     await writeGradientBmp(sharp, path.join(outDir, 'installerSidebar.bmp'), 164, 314);
   }
 
   const headerSrcCandidates = [
-    path.join(process.env.USERPROFILE || '', '.cursor', 'projects', 'c-Users-8114-projects-phevere', 'assets', 'installer-header.png'),
     path.join(root, 'assets', 'installer-header.png'),
+    path.join(process.env.USERPROFILE || '', '.cursor', 'projects', 'c-Users-8114-projects-phevere', 'assets', 'installer-header.png'),
   ];
-  let headerSrc = headerSrcCandidates.find((p) => fs.existsSync(p));
+  const headerSrc = headerSrcCandidates.find((p) => fs.existsSync(p));
   if (headerSrc) {
-    await sharp(headerSrc)
-      .resize(150, 57, { fit: 'cover' })
-      .removeAlpha()
-      .toFile(path.join(outDir, 'installerHeader.bmp'));
+    await writeTrueBmp(sharp, headerSrc, path.join(outDir, 'installerHeader.bmp'), 150, 57, 'cover');
   } else {
-    await writeGradientBmp(sharp, path.join(outDir, 'installerHeader.bmp'), 150, 57);
+    const headerSvg = `<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="150" height="57">
+      <defs>
+        <linearGradient id="h" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#0B1220"/><stop offset="100%" stop-color="#152238"/>
+        </linearGradient>
+      </defs>
+      <rect width="150" height="57" fill="url(#h)"/>
+      <rect width="5" height="57" fill="#1FA896"/>
+      <circle cx="32" cy="28" r="16" fill="#1FA896"/>
+      <text x="56" y="34" font-family="Segoe UI, sans-serif" font-size="16" font-weight="600" fill="#F3F3F3">Phevere</text>
+    </svg>`;
+    await writeTrueBmp(sharp, Buffer.from(headerSvg), path.join(outDir, 'installerHeader.bmp'), 150, 57, 'fill');
   }
-  console.log('Wrote installerSidebar.bmp + installerHeader.bmp');
+  console.log('Wrote installerSidebar.bmp + installerHeader.bmp (true 24-bpp BMP)');
 
   // Optional: also emit sidecar zip for advanced redistribution (not required — models are in Setup).
   const ocrSrc = path.join(root, 'resources', 'ocr-models');
@@ -123,16 +128,56 @@ async function main() {
   }
 }
 
+/** Uncompressed Windows BMP (BITMAPINFOHEADER, 24-bpp BGR, bottom-up). NSIS cannot paint PNG-in-.bmp. */
+async function writeTrueBmp(sharp, input, dest, w, h, fit = 'cover') {
+  const { data } = await sharp(input)
+    .resize(w, h, { fit, position: 'centre' })
+    .flatten({ background: '#0B1220' })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const rowStride = Math.ceil((w * 3) / 4) * 4;
+  const pixelSize = rowStride * h;
+  const buf = Buffer.alloc(54 + pixelSize);
+  buf.write('BM', 0);
+  buf.writeUInt32LE(54 + pixelSize, 2);
+  buf.writeUInt32LE(0, 6);
+  buf.writeUInt32LE(54, 10);
+  buf.writeUInt32LE(40, 14);
+  buf.writeInt32LE(w, 18);
+  buf.writeInt32LE(h, 22);
+  buf.writeUInt16LE(1, 26);
+  buf.writeUInt16LE(24, 28);
+  buf.writeUInt32LE(0, 30);
+  buf.writeUInt32LE(pixelSize, 34);
+  buf.writeInt32LE(2835, 38);
+  buf.writeInt32LE(2835, 42);
+  buf.writeUInt32LE(0, 46);
+  buf.writeUInt32LE(0, 50);
+  for (let y = 0; y < h; y++) {
+    const srcY = h - 1 - y;
+    const destRow = 54 + y * rowStride;
+    for (let x = 0; x < w; x++) {
+      const si = (srcY * w + x) * 3;
+      const di = destRow + x * 3;
+      buf[di] = data[si + 2];
+      buf[di + 1] = data[si + 1];
+      buf[di + 2] = data[si];
+    }
+  }
+  fs.writeFileSync(dest, buf);
+}
+
 async function writeGradientBmp(sharp, dest, w, h) {
-  // Solid ink + teal stripe via SVG
   const svg = `<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
     <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#0B1220"/><stop offset="100%" stop-color="#1A2744"/>
     </linearGradient></defs>
     <rect width="100%" height="100%" fill="url(#g)"/>
-    <rect y="${Math.floor(h * 0.72)}" width="100%" height="${Math.ceil(h * 0.28)}" fill="#1FA896" opacity="0.35"/>
+    <rect y="${Math.floor(h * 0.72)}" width="100%" height="${Math.ceil(h * 0.28)}" fill="#1FA896" opacity="0.55"/>
+    <text x="18" y="${Math.floor(h * 0.22)}" font-family="Segoe UI, sans-serif" font-size="22" font-weight="600" fill="#F3F3F3">Phevere</text>
   </svg>`;
-  await sharp(Buffer.from(svg)).removeAlpha().toFile(dest);
+  await writeTrueBmp(sharp, Buffer.from(svg), dest, w, h, 'fill');
 }
 
 /** Build a multi-image ICO containing PNG payloads (supported by Windows Vista+). */

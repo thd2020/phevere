@@ -76,3 +76,10 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 ## 2026-08-17
 
 - `make:win` failed TS7011 in `dictionary.ts` background etymology `.catch` (implicit `any`). Annotated `(error: unknown): undefined`.
+- **Installer:** real 24-bpp BMP sidebar/header (NSIS was given PNG-in-`.bmp` → blank left pane); Segoe UI + Per-Monitor v2 DPI; Win11 `F3F3F3` page colors (`scripts/prepare-installer-assets.js`, `packaging/installer.nsh`).
+- **Signing:** `CSC_LINK` / `CSC_KEY_PASSWORD` + DigiCert timestamp in `electron-builder.yml`; `make:win` warns when unsigned. Self-signed does not bypass SmartScreen.
+- **Fluent UI:** Mica on main/settings/clipboard/dict, Acrylic on popup; sticky titlebars (scroll no longer hides Close); Segoe UI Variable.
+- **Quit:** UIA `join()` timed/detach (was blocking the main thread 10s+); destroy tray last; terminate sql.js worker; `process.exit` fallback so phevere.exe does not linger.
+- **Etymonline:** parse `prose-lg` `<p>` bodies instead of truncated `og:description` (“…”).
+- **Senses:** keep Free Dictionary / Wiktionary native order (`senseOrder`) after merge.
+- **Notebook:** above Recent selections; IPA + play; search bar.
