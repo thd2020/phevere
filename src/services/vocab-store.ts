@@ -135,12 +135,14 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
   return created;
 }
 
-/** Fill notebook rows that were saved as lemma-only (empty definition). */
+/** Fill notebook rows that were saved as lemma-only, or that still lack IPA. */
 export async function fillEmptyDefinitions(
   lemmas: string[],
   input: Omit<VocabAddInput, 'lemma'> & { lemma?: string },
 ): Promise<VocabEntry | null> {
-  if (!input.definition || !String(input.definition).trim()) return null;
+  const incomingDef = String(input.definition || '').trim();
+  const incomingReading = String(input.reading || '').trim();
+  if (!incomingDef && !incomingReading) return null;
   const seen = new Set<string>();
   for (const raw of lemmas) {
     const lemma = (raw || '').trim();
@@ -150,11 +152,15 @@ export async function fillEmptyDefinitions(
     seen.add(key);
     const existing = await findByLemma(lemma);
     if (!existing) continue;
-    if (existing.definition && existing.definition.trim()) continue;
+    const needsDef = !existing.definition || !existing.definition.trim();
+    const needsReading = !existing.reading || !existing.reading.trim();
+    if (!needsDef && !needsReading) continue;
+    if (needsDef && !incomingDef && !needsReading) continue;
+    if (!needsDef && needsReading && !incomingReading) continue;
     return addVocab({
       lemma: existing.lemma,
-      reading: input.reading,
-      definition: input.definition,
+      reading: incomingReading || undefined,
+      definition: incomingDef || undefined,
       partOfSpeech: input.partOfSpeech,
       sourceLang: input.sourceLang,
       targetLang: input.targetLang,
@@ -168,6 +174,15 @@ export async function listEmptyDefinitions(limit = 80): Promise<VocabEntry[]> {
   await ensureVocabReady();
   const rows = await queryAll(
     `SELECT * FROM vocab WHERE IFNULL(TRIM(definition), '') = '' ORDER BY updated_at DESC LIMIT ?`,
+    [limit],
+  );
+  return rows.map(rowToEntry);
+}
+
+export async function listEmptyReadings(limit = 80): Promise<VocabEntry[]> {
+  await ensureVocabReady();
+  const rows = await queryAll(
+    `SELECT * FROM vocab WHERE IFNULL(TRIM(definition), '') != '' AND IFNULL(TRIM(reading), '') = '' ORDER BY updated_at DESC LIMIT ?`,
     [limit],
   );
   return rows.map(rowToEntry);

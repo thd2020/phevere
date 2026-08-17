@@ -66,7 +66,8 @@ export function payloadFromDictionaryResult(result?: DictionaryResult | null): v
     .join('\n');
   const tx = result.translations && result.translations[0];
   const definition = defJoined || (tx && tx.text ? String(tx.text) : '');
-  if (!definition) return null;
+  const reading = formatPronunciationLine(result.pronunciations) || result.pronunciation || '';
+  if (!definition && !reading) return null;
   const sourceList: string[] = [];
   useDefs.slice(0, 6).forEach((d) => {
     if (Array.isArray(d.sources)) d.sources.forEach((s: string) => { if (s) sourceList.push(s); });
@@ -75,8 +76,8 @@ export function payloadFromDictionaryResult(result?: DictionaryResult | null): v
   const sources = Array.from(new Set(sourceList.length ? sourceList : result.sources || [])).slice(0, 6);
   return {
     lemma: (result.metadata?.lemma || result.word || '').trim() || result.word,
-    reading: formatPronunciationLine(result.pronunciations) || result.pronunciation,
-    definition,
+    reading: reading || undefined,
+    definition: definition || undefined,
     partOfSpeech: useDefs[0]?.partOfSpeech,
     sourceLang: result.detectedLanguage,
     targetLang: (tx && tx.language) || result.language,
@@ -158,15 +159,23 @@ export function enqueueVocabEnrich(lemma: string, delayMs = SAVE_GRACE_MS): void
 async function enrichOne(job: Job): Promise<boolean> {
   const existing = await vocabStore.findByLemma(job.lemma);
   if (!existing) return true;
-  if (existing.definition && existing.definition.trim()) return true;
+  const hasDef = !!(existing.definition && existing.definition.trim());
+  const hasReading = !!(existing.reading && existing.reading.trim());
+  if (hasDef && hasReading) return true;
 
-  const result = await dictionaryService.lookup(job.lemma, 'auto', undefined, { skipEtymology: true });
+  const result = await dictionaryService.lookup(job.lemma, 'auto', undefined, {
+    skipEtymology: true,
+    onUpdate: (updated) => {
+      void applyDictionaryResultToNotebook(updated, job.lemma).catch(() => undefined);
+    },
+  });
   const filled = await applyDictionaryResultToNotebook(result, job.lemma);
   if (filled && filled.definition && filled.definition.trim()) {
-    console.log('Filled notebook row', { lemma: filled.lemma });
+    console.log('Filled notebook row', { lemma: filled.lemma, ipa: !!filled.reading });
     return true;
   }
   const still = await vocabStore.findByLemma(job.lemma);
+  if (hasDef) return true;
   return !!(still && still.definition && still.definition.trim());
 }
 
@@ -198,10 +207,17 @@ async function pump(): Promise<void> {
   }
 }
 
+let ipaScanDone = false;
+
 export async function scanEmptyVocabForEnrich(): Promise<void> {
   try {
     const rows = await vocabStore.listEmptyDefinitions(80);
     for (const row of rows) enqueueVocabEnrich(row.lemma, 0);
+    if (!ipaScanDone) {
+      ipaScanDone = true;
+      const missingIpa = await vocabStore.listEmptyReadings(80);
+      for (const row of missingIpa) enqueueVocabEnrich(row.lemma, 0);
+    }
   } catch (err) {
     console.warn('Empty-notebook scan skipped', { err: String(err) });
   }

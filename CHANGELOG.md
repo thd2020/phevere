@@ -33,7 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Authenticode: wire `CSC_LINK` for SmartScreen; unsigned builds still warn honestly.
 - `make:win` TS7011 / TS1117 / Definition.`sources`: annotate quit `.catch`, drop duplicate `backgroundColor`, add `sources?` on `Definition`.
 - `make:win` makensis abort: `MUI_BGCOLOR already defined` — `packaging/installer.nsh` now `/redef`s installer page colors.
-- Dictionary cache is per-source (timeouts retry; 404s do not). A Datamuse-only first paint no longer freezes Wiktionary for 24h. IPA shows US and UK when available; capitalized / plural / punctuated selections fold to the headword; derived words without IPA try the stem (`intensionality` → `intensional`).
+- Selecting `hello,` (trailing comma/punct) no longer flickers between a good definition and a “no definition” miss: the punctuated form is the same lemma, empty fallbacks are not merged, and a worse lookup update cannot replace a better one.
+- Notebook rows stayed on “IPA pending” after the lookup panel recovered pronunciation: empty **reading** is now patched when IPA arrives (including a one-shot startup scan of existing cards).
 
 ## [1.2.1] - 2026-08-12
 
