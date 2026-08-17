@@ -2012,16 +2012,50 @@ function startAutoCloseTimeout() {
 
                            let lookupInFlight = null;
                            let lookupSeq = 0;
+                           let lookupFold = '';
+                           function foldLookupKey(s) {
+                             return String(s || '').replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+                           }
+                           function isUsablePopupDef(d) {
+                             if (!d || d.source === 'Fallback' || d.source === 'Timeout') return false;
+                             const m = stripHtmlToText(d.meaning || d.definition || '');
+                             if (!m || m === 'No definition available.') return false;
+                             if (/lookup timed out/i.test(m)) return false;
+                             return true;
+                           }
+                           function popupResultRank(result) {
+                             if (!result) return 0;
+                             const defs = (result.definitions || []).filter(isUsablePopupDef);
+                             const ipa = !!(result.pronunciation || (result.pronunciations && result.pronunciations.length));
+                             return (defs.length ? 2 : 0) + (ipa ? 1 : 0);
+                           }
                            async function lookupText(text, opts) {
           opts = opts || {};
           const silent = !!opts.silent;
           if (!text || !text.trim()) return;
+          const folded = foldLookupKey(text);
+          if (
+            folded &&
+            currentResult &&
+            foldLookupKey(currentResult.word || '') === folded &&
+            popupResultRank(currentResult) >= 2
+          ) {
+            currentText = text;
+            window['__popupCurrentText'] = text;
+            return;
+          }
+          if (folded && lookupInFlight && lookupFold === folded) {
+            currentText = text;
+            window['__popupCurrentText'] = text;
+            return;
+          }
           // Expand strip immediately so clicks never feel dead while IPC runs.
           if (!silent && !isExpanded) {
             try { expandToolbar(); } catch (e) { /* ignore */ }
           }
           pvLog('[POPUP] lookupText called with:', text, 'currentTab:', currentTab, 'silent:', silent);
           const mySeq = ++lookupSeq;
+          lookupFold = folded;
           if (!silent) {
             showLoading({
               title: 'Looking up…',
@@ -2058,10 +2092,13 @@ function startAutoCloseTimeout() {
                 }),
               ]);
               lookupInFlight = lookupPromise;
-              currentResult = await lookupPromise;
+              const resolved = await lookupPromise;
               if (mySeq !== lookupSeq) {
                 // Stale response — do not leave a newer lookup's spinner stuck.
                 return;
+              }
+              if (popupResultRank(resolved) >= popupResultRank(currentResult)) {
+                currentResult = resolved;
               }
               syncLanguageSelectsFromResult(currentResult);
               var audioLang = (currentResult && currentResult.detectedLanguage) ? currentResult.detectedLanguage : (currentTab === 'translation' ? targetLang : 'en');
@@ -2147,7 +2184,7 @@ function startAutoCloseTimeout() {
         window.dictionaryAPI.onLookupUpdate(function (updated) {
           if (!updated) return;
           function norm(s) {
-            return String(s || '').replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+            return foldLookupKey(s);
           }
           const cur = norm(currentText || window['__popupCurrentText'] || '');
           if (!cur) return;
@@ -2158,6 +2195,7 @@ function startAutoCloseTimeout() {
             updated.metadata && updated.metadata.originalSelection,
           ];
           if (!keys.some(function (k) { return k && norm(k) === cur; })) return;
+          if (popupResultRank(updated) < popupResultRank(currentResult)) return;
           currentResult = updated;
           displayDictionaryResult(updated);
         });
@@ -2329,7 +2367,7 @@ function startAutoCloseTimeout() {
         }
 
         function createLexiconCard(result) {
-          const defs = result.definitions || [];
+          const defs = (result.definitions || []).filter(isUsablePopupDef);
           if (defs.length === 0) {
             return `<div class="error-message">No definitions found.</div>`;
           }
@@ -2581,9 +2619,29 @@ function startAutoCloseTimeout() {
          const sources = Array.from(new Set(sourceList)).slice(0, 6);
          return {
            lemma: lemma,
-           reading: result && (result.pronunciation || (result.pronunciations && result.pronunciations[0] && result.pronunciations[0].ipa))
-             ? result.pronunciation
-             : undefined,
+           reading: (function () {
+             var list = result && result.pronunciations;
+             if (list && list.length) {
+               var parts = [];
+               var used = {};
+               var us = list.find(function (p) { return p.accent === 'us'; });
+               var uk = list.find(function (p) { return p.accent === 'uk'; });
+               var push = function (label, ipa) {
+                 var clean = String(ipa || '').replace(/^\/+|\/+$/g, '');
+                 if (!clean || used[clean]) return;
+                 used[clean] = true;
+                 parts.push(label ? label + ' /' + clean + '/' : '/' + clean + '/');
+               };
+               if (us && uk && us.ipa === uk.ipa) push('', us.ipa);
+               else { if (us) push('US', us.ipa); if (uk) push('UK', uk.ipa); }
+               list.forEach(function (p) {
+                 if (p === us || p === uk) return;
+                 push(p.accent === 'us' ? 'US' : p.accent === 'uk' ? 'UK' : '', p.ipa);
+               });
+               if (parts.length) return parts.join('  ·  ');
+             }
+             return result && result.pronunciation ? result.pronunciation : undefined;
+           })(),
            definition: defJoined || (tx && tx.text ? String(tx.text) : undefined),
            partOfSpeech: useDefs[0] ? useDefs[0].partOfSpeech : undefined,
            sources: sources.length ? sources : (tx && tx.source ? [tx.source] : ((result && result.sources) || [])),

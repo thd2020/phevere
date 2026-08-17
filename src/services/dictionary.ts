@@ -40,7 +40,7 @@ import { BaseService, DictionaryError, withTimeout } from './base';
 import * as crypto from 'crypto';
 import { wrapConsole } from '../logger';
 import { net } from 'electron';
-import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, latinLemmaForms, foldLatinHeadword } from './text-normalize';
+import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, latinLemmaForms, foldLatinHeadword, foldLookupKey } from './text-normalize';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { mergeSimilarDefinitions, dedupeExamples, canonicalPos, sortDefinitionsByReadingOrder } from './definition-merge';
 import { lookupOffline, type OfflineHit } from './offline-dict-store';
@@ -465,8 +465,13 @@ export class DictionaryService extends BaseService {
     const candidates = query.candidates.length > 0 ? query.candidates : [query.trimmed];
     let acc: DictionaryResult | null = null;
     let extraTries = 0;
+    let matchedCandidate = '';
 
     for (const candidate of candidates) {
+      if (acc && this.hasRealDefinitions(acc) && this.sameLookupFold(matchedCandidate || acc.word, candidate)) {
+        continue;
+      }
+
       const result = await this.aggregateDictionaryDataParallel(
         candidate,
         targetLanguage,
@@ -476,16 +481,30 @@ export class DictionaryService extends BaseService {
         opts,
       );
 
+      if (!this.hasRealDefinitions(result)) {
+        if (!acc) {
+          acc = result;
+          if (holder) holder.current = acc;
+        } else {
+          acc = this.mergeLookupResults(acc, this.withoutFallbackDefinitions(result));
+          if (holder) holder.current = acc;
+        }
+        continue;
+      }
+
       acc = acc ? this.mergeLookupResults(acc, result) : result;
+      matchedCandidate = candidate;
       if (holder) holder.current = acc;
 
-      if (this.hasRealDefinitions(acc) && !this.shouldTryNextCandidate(acc, query)) {
+      if (!this.shouldTryNextCandidate(acc, query)) {
         return this.decorateMatchedResult(acc, query, candidate);
       }
-      if (this.hasRealDefinitions(acc)) {
-        extraTries += 1;
-        if (extraTries >= 2) return this.decorateMatchedResult(acc, query, candidate);
-      }
+      extraTries += 1;
+      if (extraTries >= 2) return this.decorateMatchedResult(acc, query, candidate);
+    }
+
+    if (acc && this.hasRealDefinitions(acc)) {
+      return this.decorateMatchedResult(acc, query, matchedCandidate || query.trimmed);
     }
 
     const firstResult = acc;
@@ -522,6 +541,20 @@ export class DictionaryService extends BaseService {
     });
   }
 
+  private sameLookupFold(a: string, b: string): boolean {
+    const fa = foldLookupKey(a);
+    return fa.length > 0 && fa === foldLookupKey(b);
+  }
+
+  private withoutFallbackDefinitions(result: DictionaryResult): DictionaryResult {
+    const definitions = (result.definitions || []).filter((d) => {
+      if (!d || d.source === 'Fallback' || d.source === 'Timeout') return false;
+      const m = (d.meaning || '').trim();
+      return !!(m && m !== 'No definition available.' && !isTimeoutMeaning(m));
+    });
+    return { ...result, definitions };
+  }
+
   private isUncacheableResult(result?: DictionaryResult): boolean {
     if (!result) return true;
     if (!this.hasRealDefinitions(result)) return true;
@@ -550,10 +583,14 @@ export class DictionaryService extends BaseService {
     query: NormalizedQuery,
     candidate: string,
   ): DictionaryResult {
-    const lemma =
+    const lemmaRaw =
       (acc.metadata && typeof acc.metadata.lemma === 'string' && acc.metadata.lemma.trim()) ||
       acc.word ||
       candidate;
+    const lemma =
+      this.sameLookupFold(lemmaRaw, query.trimmed) && query.trimmed
+        ? foldLatinHeadword(query.trimmed) || query.trimmed
+        : lemmaRaw;
     acc.word = lemma;
     acc.metadata = {
       ...(acc.metadata || {}),
@@ -572,9 +609,9 @@ export class DictionaryService extends BaseService {
     if (query.isCJK || query.kind !== 'word') return false;
     const blob = (result.sources || []).join(' ').toLowerCase();
     const rich = /free dictionary|wiktionary|oxford|wordsapi|collins/.test(blob);
-    if (!rich) return true;
-    if (!result.pronunciation && !(result.pronunciations && result.pronunciations.length)) return true;
-    return false;
+    // Missing IPA is filled on this same headword in the background; do not
+    // walk "hello," after "hello" just to hunt pronunciation.
+    return !rich;
   }
 
   private mergeLookupResults(base: DictionaryResult, extra: DictionaryResult): DictionaryResult {

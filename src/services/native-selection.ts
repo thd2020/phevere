@@ -10,7 +10,7 @@
 
 import { screen } from 'electron';
 import { wrapConsole } from '../logger';
-import { isLookupWorthy, sanitize } from './text-normalize';
+import { isLookupWorthy, sanitize, foldLookupKey } from './text-normalize';
 import { ContextEvent, selectionToContext } from './context-capture';
 
 const console = wrapConsole('native-selection');
@@ -186,6 +186,18 @@ export class WindowsNativeSelectionService implements NativeSelectionService {
 
       // Additional check: if we just processed the same text very recently, be more restrictive
       if (this.lastSelection === text && timeSinceLastSelection < 800) {
+        return;
+      }
+
+      // "hello," after "hello" is the same dictionary lemma — do not fire a second lookup
+      // that would paint a no-definition miss over a good hit.
+      if (
+        this.lastSelection &&
+        text !== this.lastSelection &&
+        foldLookupKey(text) === foldLookupKey(this.lastSelection)
+      ) {
+        this.lastSelection = text;
+        this.lastSelectionTime = now;
         return;
       }
       

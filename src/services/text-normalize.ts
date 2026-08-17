@@ -256,6 +256,11 @@ export function isLookupWorthy(raw: string): boolean {
   return true;
 }
 
+/** Letters/digits only — "hello," and "hello" are the same lookup. */
+export function foldLookupKey(text: string): string {
+  return (text || '').replace(/[^\p{L}\p{N}]+/gu, '').toLocaleLowerCase();
+}
+
 /** Stable cache key that collapses "word", "word.", "\"word\"" and "Word". */
 export function cacheKeyFor(query: NormalizedQuery, targetLanguage: string): string {
   const key = query.isCJK ? query.trimmed : query.trimmed.toLocaleLowerCase();
