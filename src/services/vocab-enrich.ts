@@ -6,6 +6,7 @@
 
 import { BrowserWindow } from 'electron';
 import { dictionaryService, type DictionaryResult } from './dictionary';
+import { formatPronunciationLine } from './pronunciation';
 import * as vocabStore from './vocab-store';
 import { wrapConsole } from '../logger';
 
@@ -74,7 +75,7 @@ export function payloadFromDictionaryResult(result?: DictionaryResult | null): v
   const sources = Array.from(new Set(sourceList.length ? sourceList : result.sources || [])).slice(0, 6);
   return {
     lemma: (result.metadata?.lemma || result.word || '').trim() || result.word,
-    reading: result.pronunciation,
+    reading: formatPronunciationLine(result.pronunciations) || result.pronunciation,
     definition,
     partOfSpeech: useDefs[0]?.partOfSpeech,
     sourceLang: result.detectedLanguage,

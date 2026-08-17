@@ -34,6 +34,18 @@ const CJK_CHAR = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\u3040-\u309F\u30A0-\u
 const CJK_CHAR_GLOBAL = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]/gu;
 const SENTENCE_PUNCT = /[.!?;。！？；]/u;
 const POSSESSIVE = /['\u2019]s$/u;
+const LATIN_ACRONYM = /^[A-Z0-9]{2,6}$/;
+
+/**
+ * Dictionary APIs (Free Dictionary, Wiktionary REST) 404 on "Marionette"
+ * while "marionette" hits. Keep short all-caps acronyms (USA, HTML).
+ */
+export function foldLatinHeadword(word: string): string {
+  const t = (word || '').trim();
+  if (!t || CJK_CHAR.test(t)) return t;
+  if (LATIN_ACRONYM.test(t)) return t;
+  return t.toLocaleLowerCase();
+}
 
 /** Longest single-token dictionary headword we will consider a "word". */
 const MAX_WORD_LENGTH = 32;
@@ -149,6 +161,13 @@ export function buildCandidates(sanitized: string, trimmed: string, kind: QueryK
   if (preferExactFirst(sanitized, trimmed)) {
     pushCandidate(candidates, seen, sanitized);
   }
+
+  const isCJK = CJK_CHAR.test(trimmed);
+  // Latin APIs are effectively lowercase; try that before the capitalized surface form
+  // so Datamuse cannot "win" and skip Free Dictionary / Wiktionary.
+  if (!isCJK) {
+    pushCandidate(candidates, seen, foldLatinHeadword(trimmed));
+  }
   pushCandidate(candidates, seen, trimmed);
   pushCandidate(candidates, seen, sanitized);
 
@@ -156,11 +175,9 @@ export function buildCandidates(sanitized: string, trimmed: string, kind: QueryK
   // and multiplies the number of network round trips.
   if (kind !== 'word') return candidates;
 
-  const isCJK = CJK_CHAR.test(trimmed);
   if (isCJK) return candidates;
 
-  const lower = trimmed.toLocaleLowerCase();
-  pushCandidate(candidates, seen, lower);
+  const lower = foldLatinHeadword(trimmed);
 
   if (POSSESSIVE.test(lower)) {
     pushCandidate(candidates, seen, lower.replace(POSSESSIVE, ''));

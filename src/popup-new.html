@@ -425,8 +425,18 @@
       .result-pronunciation {
         color: #64748b;
         font-size: 14px;
-        font-family: 'Courier New', monospace;
+        font-family: 'Segoe UI', 'Cascadia Mono', ui-monospace, monospace;
         margin-bottom: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 8px 10px;
+      }
+      .ipa-chip {
+        white-space: nowrap;
+      }
+      .ipa-sep {
+        opacity: 0.45;
       }
 
       .result-section {
@@ -2282,6 +2292,42 @@ function startAutoCloseTimeout() {
           return out;
         }
 
+        function formatPronunciationHtml(result) {
+          const list = Array.isArray(result.pronunciations) ? result.pronunciations.slice() : [];
+          if (list.length) {
+            const us = list.find(function (p) { return p.accent === 'us'; });
+            const uk = list.find(function (p) { return p.accent === 'uk'; });
+            const chips = [];
+            const used = new Set();
+            const chip = function (tag, ipa) {
+              const clean = String(ipa || '').replace(/^\/+|\/+$/g, '');
+              if (!clean || used.has(clean)) return;
+              used.add(clean);
+              chips.push(`<span class="ipa-chip">${tag ? tag + ' ' : ''}/${escapeHtml(clean)}/</span>`);
+            };
+            if (us && uk && us.ipa === uk.ipa) {
+              chip('', us.ipa);
+            } else {
+              if (us) chip('US', us.ipa);
+              if (uk) chip('UK', uk.ipa);
+            }
+            list.forEach(function (p) {
+              if (p === us || p === uk) return;
+              chip(p.accent === 'us' ? 'US' : p.accent === 'uk' ? 'UK' : '', p.ipa);
+            });
+            if (chips.length) {
+              return `<div class="result-pronunciation">${chips.join('<span class="ipa-sep">·</span>')}</div>`;
+            }
+          }
+          const line = String(result.pronunciation || '').trim();
+          if (!line) return '';
+          if (/US\s*\/|UK\s*\//.test(line) || line.indexOf('·') >= 0) {
+            return `<div class="result-pronunciation">${escapeHtml(line)}</div>`;
+          }
+          const ipa = line.replace(/^\/+|\/+$/g, '');
+          return `<div class="result-pronunciation">/${escapeHtml(ipa)}/</div>`;
+        }
+
         function createLexiconCard(result) {
           const defs = result.definitions || [];
           if (defs.length === 0) {
@@ -2357,7 +2403,7 @@ function startAutoCloseTimeout() {
           return `
             <div class="result-card">
                 <div class="result-word">${escapeHtml(result.word)}</div>
-                ${result.pronunciation ? `<div class="result-pronunciation">/${escapeHtml(result.pronunciation)}/</div>` : ''}
+                ${formatPronunciationHtml(result)}
                 <div class="lexicon-meta">
                   <span>${defs.length} sense${defs.length === 1 ? '' : 's'}</span>
                   <span>${escapeHtml(sourcesUsed.join(' · '))}</span>
@@ -2535,7 +2581,9 @@ function startAutoCloseTimeout() {
          const sources = Array.from(new Set(sourceList)).slice(0, 6);
          return {
            lemma: lemma,
-           reading: result && result.pronunciation ? result.pronunciation : undefined,
+           reading: result && (result.pronunciation || (result.pronunciations && result.pronunciations[0] && result.pronunciations[0].ipa))
+             ? result.pronunciation
+             : undefined,
            definition: defJoined || (tx && tx.text ? String(tx.text) : undefined),
            partOfSpeech: useDefs[0] ? useDefs[0].partOfSpeech : undefined,
            sources: sources.length ? sources : (tx && tx.source ? [tx.source] : ((result && result.sources) || [])),

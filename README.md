@@ -35,7 +35,7 @@ Then run the latest Setup.exe. New installs register a proper uninstaller (`Unin
 ## Features
 
 - **Native text selection** — UIAutomation (best as Administrator); shortcut / hover / OCR modes in Settings
-- **Dictionary & translation** — Free Dictionary, Wiktionary, Datamuse, Youdao / DeepL routing; CJK ↔ English
+- **Dictionary & translation** — Free Dictionary, Wiktionary, Datamuse, Youdao / DeepL routing; CJK ↔ English. Per-source cache (timeouts retry). US + UK IPA when the APIs provide them.
 - **Offline packs** — Settings → Offline: WordNet, Webster 1913 (GCIDE), CC-CEDICT, FreeDict en→zh (consent download); JSON/CEDICT import. Living Oxford / Collegiate Webster / Collins are not dumped (copyright).
 - **Etymology & Wikipedia** — in-popup tabs; Wikipedia reader webview
 - **Vocabulary notebook** — local SQLite (`%APPDATA%\phevere`); lemma-only saves fill in the background; IPA + play, search, listed above recent selections

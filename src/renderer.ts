@@ -1662,12 +1662,15 @@ function renderVocabNotebook(entries: any[]): void {
             ? new Date(Number(e.updatedAt || e.createdAt)).toLocaleString()
             : '';
         const ipa = String(e.reading || '').trim();
+        const ipaHtml = ipa
+          ? `<span class="vocab-reading">${ipa.includes('/') ? escapeHtmlSelection(ipa) : `/${escapeHtmlSelection(ipa)}/`}</span>`
+          : '<span class="vocab-reading vocab-reading--empty">IPA pending</span>';
         const lemma = String(e.lemma || '');
         return `<article class="vocab-item is-collapsed" data-id="${escapeHtmlSelection(e.id)}" tabindex="0" role="button" aria-expanded="false">
           <div class="vocab-entry">
             <header class="vocab-entry__head">
               <h3 class="vocab-lemma">${escapeHtmlSelection(lemma)}</h3>
-              ${ipa ? `<span class="vocab-reading">/${escapeHtmlSelection(ipa)}/</span>` : '<span class="vocab-reading vocab-reading--empty">IPA pending</span>'}
+              ${ipaHtml}
               <button type="button" class="vocab-play" data-lemma="${escapeHtmlSelection(lemma)}" title="Play pronunciation" aria-label="Play pronunciation">▶</button>
               <span class="vocab-expand-hint" aria-hidden="true"></span>
             </header>

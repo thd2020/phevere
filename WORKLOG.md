@@ -85,3 +85,6 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - **Notebook:** above Recent selections; IPA + play; search bar.
 - `make:win` failed TS7011 on quit `.catch(() => undefined)`, duplicate `backgroundColor` in `withWin11Chrome`, and `Definition.sources` missing from the interface. Annotated catch callbacks, single backgroundColor, added `sources?` on `Definition`.
 - `make:win` makensis: `MUI_BGCOLOR already defined` in `customHeader` — electron-builder predefines it. Use `!define /redef` for Win11 page colors.
+- Lookup cache is per-source: a Datamuse hit + Free Dictionary timeout is no longer a 24h whole-result freeze. Failed sources retry; 404s stay empty. Latin queries fold to lowercase first (Marionette, plurals, trailing punct). US+UK IPA from Free Dictionary phonetics + Wiktionary `{{IPA|en}}`.
+- Cache completeness now requires every **expected** source (Free Dictionary, Wiktionary, Datamuse) to report ok/empty — a first-paint Datamuse-only blob no longer counts as a hit. Timeouts retry after 8s; 404s stay empty 6h.
+- IPA: Wiktionary wikitext parse (US/UK when tagged `a=RP,GA`); skip narrow `[…]` transcriptions; derived heads without a Pronunciation section fall back to the stem (`intensionality` → `intensional`). Restart the app so the old in-memory whole-result cache is dropped.
