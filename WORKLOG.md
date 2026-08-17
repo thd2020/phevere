@@ -72,3 +72,7 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Lookup latency: offline sqlite was awaited (~2s) before FreeDict/Wiktionary started, and `lookupOffline` waited 1.5s for sql.js. Offline now overlaps network APIs; cold DB returns `[]` immediately. Etymology budget 2.5s when defs already exist; one lemma IPA retry instead of a 3s×N loop. Popup client race 14s → 12s.
 - Notebook fill is a **main-process queue** (`src/services/vocab-enrich.ts`), not a popup side-effect: heart-save enqueues the lemma; startup/2 min scan picks leftover empty rows; worker looks up (no etymology) and patches SQLite; `vocab-updated` refreshes the notebook list. Popup can close. Open is not required.
 - Lookup first-paint was ~7.5s with Webster already ready: `Promise.allSettled` waited for Google Translate + Tatoeba 5s timeouts, then etymology another 2.5s. First paint now returns local packs after a 450ms coalesce (2.5s only if offline missed). Translation/Tatoeba/etymology continue in the background and patch the open popup via `dictionary-lookup-update`.
+
+## 2026-08-17
+
+- `make:win` failed TS7011 in `dictionary.ts` background etymology `.catch` (implicit `any`). Annotated `(error: unknown): undefined`.

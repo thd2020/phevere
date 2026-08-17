@@ -1001,7 +1001,7 @@ export class DictionaryService extends BaseService {
               this.fetchEtymologyFromMultipleSources(etyQuery),
               this.hasRealDefinitions(result) ? ETYMOLOGY_BUDGET_WHEN_DEFS_MS : ETYMOLOGY_BUDGET_MS,
               'etymology.multi',
-            ).catch((error) => {
+            ).catch((error: unknown): undefined => {
               console.warn('[ETY] multi-source etymology skipped', error);
               return undefined;
             });
