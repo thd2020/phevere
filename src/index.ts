@@ -829,7 +829,7 @@ const createPopupWindow = (x: number, y: number): void => {
     POPUP_STRIP_PAD +
     POPUP_STRIP_ICONS * POPUP_STRIP_ICON +
     (POPUP_STRIP_ICONS - 1) * POPUP_STRIP_GAP;
-  const popupHeight = 34; // toolbar ~26px + small frame margin
+  const popupHeight = 38; // toolbar ~36px + frame inset so icons are not clipped
 
   // Multi-monitor safe: physical → DIP via screenToDipPoint, clamp to nearest workArea
   // (never primary.workAreaSize — that pinned secondary-monitor selections to the left screen).
@@ -889,7 +889,7 @@ const createPopupWindow = (x: number, y: number): void => {
                 show: false,
                 transparent: false,
                 minWidth: 160,
-                minHeight: 28,
+                minHeight: 32,
                 maxWidth: 1200,
                 maxHeight: 900,
                 movable: true, // Make window draggable
