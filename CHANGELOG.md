@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Window chrome (settings / clipboard / dictionary): titlebar and Close stay put while content scrolls.
 - Authenticode: wire `CSC_LINK` for SmartScreen; unsigned builds still warn honestly.
 - `make:win` TS7011 / TS1117 / Definition.`sources`: annotate quit `.catch`, drop duplicate `backgroundColor`, add `sources?` on `Definition`.
+- `make:win` makensis abort: `MUI_BGCOLOR already defined` — `packaging/installer.nsh` now `/redef`s installer page colors.
 
 ## [1.2.1] - 2026-08-12
 

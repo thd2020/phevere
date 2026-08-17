@@ -84,3 +84,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - **Senses:** keep Free Dictionary / Wiktionary native order (`senseOrder`) after merge.
 - **Notebook:** above Recent selections; IPA + play; search bar.
 - `make:win` failed TS7011 on quit `.catch(() => undefined)`, duplicate `backgroundColor` in `withWin11Chrome`, and `Definition.sources` missing from the interface. Annotated catch callbacks, single backgroundColor, added `sources?` on `Definition`.
+- `make:win` makensis: `MUI_BGCOLOR already defined` in `customHeader` — electron-builder predefines it. Use `!define /redef` for Win11 page colors.

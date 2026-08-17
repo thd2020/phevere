@@ -27,9 +27,10 @@ Section "OCR models (PP-OCRv4, ~15 MB)" SecOcr
 SectionEnd
 
 !macro customHeader
-  !define MUI_BGCOLOR F3F3F3
-  !define MUI_TEXTCOLOR 1A1A1A
-  !define MUI_INSTFILESPAGE_COLORS "1A1A1A F3F3F3"
+  ; electron-builder already !define's MUI_BGCOLOR (MUI default). /redef keeps Win11 paper without aborting makensis.
+  !define /redef MUI_BGCOLOR F3F3F3
+  !define /redef MUI_TEXTCOLOR 1A1A1A
+  !define /redef MUI_INSTFILESPAGE_COLORS "1A1A1A F3F3F3"
   !define MUI_WELCOMEPAGE_TITLE "Welcome to Phevere"
   !define MUI_WELCOMEPAGE_TEXT "Select-to-lookup dictionary for Windows.$\r$\n$\r$\nPublisher: thd2020$\r$\n$\r$\nThis single installer includes the app, OCR models, and a Control Panel uninstaller. Choose folder and components on the next pages.$\r$\n$\r$\nIf an older Phevere folder is stuck in Program Files with no Apps entry, run scripts\remove-ghost-phevere.ps1 from the repo (or reinstall over it)."
   !define MUI_FINISHPAGE_TITLE "Phevere is ready"
