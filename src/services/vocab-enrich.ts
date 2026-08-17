@@ -166,7 +166,7 @@ async function enrichOne(job: Job): Promise<boolean> {
   const result = await dictionaryService.lookup(job.lemma, 'auto', undefined, {
     skipEtymology: true,
     onUpdate: (updated) => {
-      void applyDictionaryResultToNotebook(updated, job.lemma).catch(() => undefined);
+      void applyDictionaryResultToNotebook(updated, job.lemma).catch((): undefined => undefined);
     },
   });
   const filled = await applyDictionaryResultToNotebook(result, job.lemma);

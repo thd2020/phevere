@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make:win` makensis abort: `MUI_BGCOLOR already defined` — `packaging/installer.nsh` now `/redef`s installer page colors.
 - Selecting `hello,` (trailing comma/punct) no longer flickers between a good definition and a “no definition” miss: the punctuated form is the same lemma, empty fallbacks are not merged, and a worse lookup update cannot replace a better one.
 - Notebook rows stayed on “IPA pending” after the lookup panel recovered pronunciation: empty **reading** is now patched when IPA arrives (including a one-shot startup scan of existing cards).
+- `make:win` TS7011 in `vocab-enrich.ts` notebook `onUpdate` `.catch` — annotate `(): undefined`.
 
 ## [1.2.1] - 2026-08-12
 
