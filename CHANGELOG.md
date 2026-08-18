@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Notebook rows stayed on “IPA pending” after the lookup panel recovered pronunciation: empty **reading** is now patched when IPA arrives (including a one-shot startup scan of existing cards).
 - `make:win` TS7011 in `vocab-enrich.ts` notebook `onUpdate` `.catch` — annotate `(): undefined`.
 - Lookup panel content sat flush against the window top (toolbar/tabs overlapping lemma spacing). Frameless chrome now has a 36px toolbar and 12px results inset.
+- Looking up `fluff` jumped to `roleplaying` because “a form of roleplaying” was treated as a Wiktionary inflection. Form-of pivot is grammatical labels only, and only when that is the first sense.
 
 ## [1.2.1] - 2026-08-12
 

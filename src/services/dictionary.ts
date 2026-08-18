@@ -40,7 +40,7 @@ import { BaseService, DictionaryError, withTimeout } from './base';
 import * as crypto from 'crypto';
 import { wrapConsole } from '../logger';
 import { net } from 'electron';
-import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, latinLemmaForms, foldLatinHeadword, foldLookupKey } from './text-normalize';
+import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, latinLemmaForms, foldLatinHeadword, foldLookupKey, isGrammaticalFormOfGloss } from './text-normalize';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { mergeSimilarDefinitions, dedupeExamples, canonicalPos, sortDefinitionsByReadingOrder } from './definition-merge';
 import { lookupOffline, type OfflineHit } from './offline-dict-store';
@@ -1478,13 +1478,8 @@ export class DictionaryService extends BaseService {
           if (entry.definitions && Array.isArray(entry.definitions)) {
             entry.definitions.forEach((def: any) => {
               const meaning: string = def.definition;
-              // Extract lemma candidate from definition HTML if it's a form-of / spelling variant
-              const lower = (meaning || '').toLowerCase();
-              if (
-                /(plural|past|present|gerund|participle|alternative spelling|misspelling|common misspelling|obsolete spelling|archaic spelling|form)\s+of/.test(
-                  lower,
-                )
-              ) {
+              // Inflection glosses only ("plural of cat"). "A form of roleplaying" is a real sense of fluff.
+              if (isGrammaticalFormOfGloss(meaning)) {
                 const m = meaning.match(/href=\"\/wiki\/([^\"#]+)(?:#[^\"]*)?\"/);
                 if (m && m[1]) {
                   const candidate = decodeURIComponent(m[1].replace(/_/g, ' '));
@@ -1528,9 +1523,11 @@ export class DictionaryService extends BaseService {
           }
         }
 
-        // Pivot to base lemma for richer content if current entry appears to be an inflected form
+        // Pivot only when this page *is* an inflected form (first gloss is grammatical),
+        // not when a later sense happens to say "a form of …" (fluff → roleplaying).
         let lemma: string | undefined;
-        if (lemmaCandidates.size > 0) {
+        const firstGloss = definitions[0]?.meaning || '';
+        if (lemmaCandidates.size > 0 && isGrammaticalFormOfGloss(firstGloss)) {
           const base = Array.from(lemmaCandidates)[0];
           lemma = base;
           try {

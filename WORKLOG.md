@@ -92,3 +92,7 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Notebook “IPA pending” after the panel already showed IPA: fill empty `reading` when pronunciation arrives (definition already saved no longer blocks it); one-shot scan of cards that have a definition but no reading.
 - `make:win` TS7011 in `vocab-enrich.ts`: notebook IPA `onUpdate` `.catch(() => undefined)` needs an explicit `(): undefined` (same noImplicitAny trap as etymology/quit).
 - Lookup panel was jammed against the frameless top edge (26px sticky toolbar, `results-section` padding-top 0). Toolbar is 36px with vertical padding; tabs/results sit in the flex column (not sticky overlay); results get 12px inset.
+
+## 2026-08-18
+
+- Looking up **fluff** showed **roleplaying**: Wiktionary sense “a form of roleplaying …” matched a greedy `form of` inflection pivot and replaced the headword. Grammatical form-of only (`plural of`, `alternative form of`, …); pivot only if the *first* gloss is that kind of inflection.

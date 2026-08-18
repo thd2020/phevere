@@ -2280,7 +2280,7 @@ function startAutoCloseTimeout() {
           }
           const escaped = escapeHtml(String(raw));
           return escaped.replace(
-            /\b((?:plural|past(?:\s+tense)?|present(?:\s+participle)?|gerund|(?:past|present)\s+participle|alternative\s+spelling|common\s+misspelling|misspelling|obsolete\s+spelling|archaic\s+spelling|inflection|form)\s+of)\s+([A-Za-z\u00C0-\u024F][A-Za-z\u00C0-\u024F'-]*)/gi,
+            /\b((?:plural|past(?:\s+tense)?|present(?:\s+participle)?|gerund|(?:past|present)\s+participle|alternative\s+(?:form|spelling)|common\s+misspelling|misspelling|obsolete\s+spelling|archaic\s+spelling|inflection)\s+of)\s+([A-Za-z\u00C0-\u024F][A-Za-z\u00C0-\u024F'-]*)/gi,
             function (_m, phrase, lemma) {
               return `${phrase} <a href="#" data-lookup="${lemma}" class="lemma-link">${lemma}</a>`;
             }

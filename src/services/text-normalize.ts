@@ -266,3 +266,19 @@ export function cacheKeyFor(query: NormalizedQuery, targetLanguage: string): str
   const key = query.isCJK ? query.trimmed : query.trimmed.toLocaleLowerCase();
   return `${key}_${targetLanguage}`;
 }
+
+/**
+ * Inflection glosses ("plural of cat"), not English "a form of roleplaying".
+ * Bare `form of` is too greedy — Wiktionary uses "alternative form of" / "inflection of".
+ */
+const GRAMMATICAL_FORM_OF =
+  /^(?:the\s+)?(?:plural|past(?:\s+tense)?|simple\s+past|present(?:\s+participle)?|gerund|(?:past|present)\s+participle|third-person\s+singular(?:\s+simple\s+present)?|alternative\s+(?:form|spelling)|(?:common\s+)?misspelling|obsolete\s+(?:form|spelling)|archaic\s+(?:form|spelling)|inflection|conjugated\s+form)\s+of\b/i;
+
+export function isGrammaticalFormOfGloss(meaning: string): boolean {
+  const text = String(meaning || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return GRAMMATICAL_FORM_OF.test(text);
+}
