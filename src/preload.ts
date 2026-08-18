@@ -362,6 +362,7 @@ contextBridge.exposeInMainWorld('wikipediaAPI', {
 contextBridge.exposeInMainWorld('vocabAPI', {
   list: (limit?: number) => ipcRenderer.invoke('vocab-list', limit),
   exportNotebook: (format?: 'json' | 'csv') => ipcRenderer.invoke('vocab-export', format),
+  importNotebook: () => ipcRenderer.invoke('vocab-import'),
   find: (lemma: string) => ipcRenderer.invoke('vocab-find', lemma),
   add: async (payload: Record<string, unknown>) => {
     try {
@@ -529,6 +530,7 @@ declare global {
     vocabAPI: {
       list: (limit?: number) => Promise<any[]>;
       exportNotebook: (format?: 'json' | 'csv') => Promise<{ cancelled?: boolean; path?: string; count?: number }>;
+      importNotebook: () => Promise<{ cancelled?: boolean; imported?: number; skipped?: number; path?: string }>;
       find: (lemma: string) => Promise<any | null>;
       add: (payload: Record<string, unknown>) => Promise<any>;
       remove: (id: string) => Promise<boolean>;

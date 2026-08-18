@@ -106,3 +106,7 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Main window: drop 640px content cap so lists use the window width; extra right padding/margin so notebook/recent inner scrollbars sit away from the window scrollbar.
 - Notebook: expand/collapse only from the headword metadata row so definition text can be selected; Recent vs A–Z sort; A–Z index overlay with scrub + letter HUD; Export JSON/CSV (`vocab-export` save dialog).
 - Installer art: generate 164×314 / 150×57 24-bpp BMPs from the P mark (`fill`, not cover of `assets/installer-sidebar.png`); light `#F3F3F3` inner header; `MUI_*_BITMAP_NOSTRETCH` in `installer.nsh`.
+- Notebook Open / recent history used a parented “serious” dictionary window. Same floating popup as a selection now (always-on-top, blur/click-outside to close).
+- Etymology/translation showed “none found” while still fetching; a 2.5s wrapper aborted all etymology sources if Etymonline 502’d. Per-source budgets, 502 retry, pending flags + in-tab progress bars.
+- Notebook Import (JSON/CSV round-trip with Export). Settings accelerators drawn as keycaps.
+- **tribulations → Appendix:Glossary**: first `/wiki/` in “plural of …” was the glossary page. One-hop deinflect (wink + content-namespace titles only); skip Appendix:/Category: links.

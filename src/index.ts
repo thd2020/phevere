@@ -2024,6 +2024,55 @@ ipcMain.handle('vocab-export', async (e, format?: string) => {
     throw error;
   }
 });
+ipcMain.handle('vocab-import', async (e) => {
+  try {
+    const win = BrowserWindow.fromWebContents(e.sender) || mainWindow;
+    const picked = await dialog.showOpenDialog(win || undefined, {
+      title: 'Import vocabulary notebook',
+      filters: [
+        { name: 'Notebook', extensions: ['json', 'csv'] },
+        { name: 'JSON', extensions: ['json'] },
+        { name: 'CSV', extensions: ['csv'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
+      properties: ['openFile'],
+    });
+    if (picked.canceled || !picked.filePaths[0]) {
+      return { cancelled: true };
+    }
+    const filePath = picked.filePaths[0];
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const rows = filePath.toLowerCase().endsWith('.csv')
+      ? vocabEntriesFromCsv(raw)
+      : vocabEntriesFromJson(raw);
+    let imported = 0;
+    let skipped = 0;
+    for (const row of rows) {
+      try {
+        if (!row.lemma?.trim()) {
+          skipped += 1;
+          continue;
+        }
+        await vocabStore.addVocab(row);
+        imported += 1;
+      } catch {
+        skipped += 1;
+      }
+    }
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (w.isDestroyed()) continue;
+      try {
+        w.webContents.send('vocab-updated', { id: '', lemma: '' });
+      } catch {
+        /* ignore */
+      }
+    }
+    return { cancelled: false, imported, skipped, path: filePath };
+  } catch (error) {
+    log.error('main', 'vocab-import failed', { err: String(error) });
+    throw error;
+  }
+});
 ipcMain.handle('vocab-find', async (_e, lemma: string) => {
   try {
     return await vocabStore.findByLemma(lemma);
@@ -2090,6 +2139,76 @@ function vocabEntriesToCsv(entries: vocabStore.VocabEntry[]): string {
       .join(','),
   );
   return [cols.join(','), ...rows].join('\r\n');
+}
+
+function vocabEntriesFromJson(raw: string): vocabStore.VocabAddInput[] {
+  const parsed = JSON.parse(raw);
+  const list = Array.isArray(parsed) ? parsed : parsed?.entries;
+  if (!Array.isArray(list)) throw new Error('JSON notebook must be an array (or { entries: [] })');
+  return list.map((row: Record<string, unknown>) => vocabRowToInput(row));
+}
+
+function vocabEntriesFromCsv(raw: string): vocabStore.VocabAddInput[] {
+  const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.length);
+  if (lines.length < 2) return [];
+  const headers = splitCsvLine(lines[0]).map((h) => h.trim());
+  const out: vocabStore.VocabAddInput[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitCsvLine(lines[i]);
+    const row: Record<string, string> = {};
+    headers.forEach((h, idx) => {
+      row[h] = cols[idx] ?? '';
+    });
+    out.push(vocabRowToInput(row));
+  }
+  return out;
+}
+
+function vocabRowToInput(row: Record<string, unknown>): vocabStore.VocabAddInput {
+  const sourcesRaw = row.sources;
+  let sources: string[] | undefined;
+  if (Array.isArray(sourcesRaw)) sources = sourcesRaw.map(String);
+  else if (typeof sourcesRaw === 'string' && sourcesRaw.trim()) {
+    sources = sourcesRaw.split(/[|,]/).map((s) => s.trim()).filter(Boolean);
+  }
+  return {
+    lemma: String(row.lemma || '').trim(),
+    reading: row.reading ? String(row.reading) : undefined,
+    definition: row.definition ? String(row.definition) : undefined,
+    partOfSpeech: row.partOfSpeech ? String(row.partOfSpeech) : undefined,
+    sourceLang: row.sourceLang ? String(row.sourceLang) : undefined,
+    targetLang: row.targetLang ? String(row.targetLang) : undefined,
+    sources,
+    note: row.note ? String(row.note) : undefined,
+  };
+}
+
+function splitCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') {
+        cur += '"';
+        i += 1;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        cur += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      out.push(cur);
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  return out;
 }
 
 // Offline dictionary packs
@@ -2616,14 +2735,36 @@ function createWebWindow(url: string): void {
 }
 
 
-// Create a dedicated dictionary window (expanded) that uses the popup renderer entry
+// Create a dedicated dictionary window that uses the same floating popup chrome
 function createDictionaryWindow(term: string): void {
-  let dictWindow: BrowserWindow | null = new BrowserWindow(withWin11Chrome({
-    width: 820,
-    height: 620,
+  const popupWidth = 400;
+  const popupHeight = 500;
+  const mb = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : undefined;
+  const placed = placePopupNearPoint(
+    (mb?.x ?? 80) + Math.round((mb?.width ?? 800) * 0.55),
+    (mb?.y ?? 80) + Math.round((mb?.height ?? 600) * 0.35),
+    popupWidth,
+    popupHeight,
+  );
+
+  lastSelectionEvent = selectionToContext(term, 0, 0, 'manual');
+
+  const dictWindow = new BrowserWindow(withWin11Chrome({
+    width: popupWidth,
+    height: popupHeight,
+    x: placed.x,
+    y: placed.y,
     show: false,
     frame: false,
-    parent: mainWindow || undefined,
+    resizable: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: true,
+    movable: true,
+    minWidth: 160,
+    minHeight: 32,
+    maxWidth: 1200,
+    maxHeight: 900,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -2632,19 +2773,29 @@ function createDictionaryWindow(term: string): void {
       backgroundThrottling: false,
       webviewTag: true,
     },
-  }));
+  }, 'acrylic'));
 
-  // Seed selection so renderer can render immediately
-  lastSelectionEvent = selectionToContext(term, 0, 0, 'manual');
+  dictWindow.on('blur', () => {
+    setTimeout(() => {
+      try {
+        if (dictWindow.isDestroyed()) return;
+        const focused = BrowserWindow.getFocusedWindow();
+        if (focused === dictWindow) return;
+        if (focused && popupWindows.includes(focused)) return;
+        dictWindow.close();
+      } catch (e) {
+        log.warn('main', 'History lookup blur check failed', { err: String(e) });
+      }
+    }, 150);
+  });
 
-  // Use popup renderer but force #popup so it renders dictionary layout expanded
   const expandedUrl = withPopupDevFlag(POPUP_WINDOW_WEBPACK_ENTRY) + '#popup';
   dictWindow.loadURL(expandedUrl).catch((error) => {
     log.error('main', 'History lookup loadURL failed', { err: String(error) });
   });
   dictWindow.webContents.on('did-finish-load', () => {
     try {
-      if (dictWindow && !dictWindow.isDestroyed() && term) {
+      if (!dictWindow.isDestroyed() && term) {
         dictWindow.webContents.send('popup-text', term);
       }
     } catch (e) {
@@ -2653,10 +2804,14 @@ function createDictionaryWindow(term: string): void {
   });
 
   dictWindow.once('ready-to-show', () => {
-    if (dictWindow && !dictWindow.isDestroyed()) dictWindow.show();
+    if (!dictWindow.isDestroyed()) {
+      dictWindow.show();
+      try { dictWindow.focus(); } catch { /* ignore */ }
+    }
   });
 
   dictWindow.on('closed', () => {
-    dictWindow = null;
+    popupWindows = popupWindows.filter((win) => win !== dictWindow);
   });
+  popupWindows.push(dictWindow);
 }

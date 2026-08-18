@@ -2336,18 +2336,76 @@ body.settings-page .settings-shortcut-row {
   gap: 10px;
   align-items: stretch;
   width: 100%;
+  position: relative;
 }
 
 body.settings-page .settings-shortcut-input {
-  flex: 1 1 280px;
-  min-width: min(100%, 240px);
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.settings-page .settings-keycaps {
+  flex: 1 1 220px;
+  min-width: min(100%, 180px);
   min-height: 32px;
-  padding: 6px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  box-sizing: border-box;
+  border: 1px solid var(--set-line);
+  border-radius: 8px;
+  background: var(--set-panel);
   cursor: pointer;
-  font-size: 0.8125rem;
-  line-height: 1.4;
-  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
-  word-break: break-all;
+}
+
+body.settings-page .settings-cheat .settings-keycaps {
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: default;
+}
+
+body.settings-page .keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  padding: 3px 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-bottom-width: 2px;
+  background: linear-gradient(180deg, #fff 0%, #f4f4f5 100%);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
+  color: var(--set-ink);
+  font-family: ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+}
+
+body.settings-page .keycap-join {
+  color: var(--set-ink-soft);
+  font-size: 0.65rem;
+  padding: 0 1px;
+}
+
+body.settings-page .keycaps-empty {
+  font-size: 0.75rem;
+  color: var(--set-ink-soft);
+}
+
+body.settings-page .settings-cheat kbd,
+body.settings-page .settings-cheat .keycap {
+  min-width: 1.5rem;
 }
 
 body.settings-page .settings-shortcut-set {
@@ -2521,19 +2579,6 @@ body.settings-page .settings-cheat li {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-body.settings-page .settings-cheat kbd {
-  font-family: ui-monospace, Consolas, monospace;
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 3px 7px;
-  border-radius: 6px;
-  background: var(--set-panel);
-  border: 1px solid var(--set-line);
-  color: var(--set-teal);
-  min-width: 7.5rem;
-  text-align: center;
 }
 
 body.settings-page .settings-row {

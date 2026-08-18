@@ -139,6 +139,7 @@ function initializeSettingsWindow() {
             <div class="settings-field">
               <span id="label-monitor-cycle" class="settings-field-label">Cycle monitor mode</span>
               <div class="settings-shortcut-row">
+                <div class="settings-keycaps" id="monitor-cycle-shortcut-keys"></div>
                 <input type="text" id="monitor-cycle-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-monitor-cycle" />
                 <button type="button" class="btn btn-secondary settings-shortcut-set" id="monitor-cycle-set">Set…</button>
               </div>
@@ -146,6 +147,7 @@ function initializeSettingsWindow() {
             <div class="settings-field">
               <span id="label-monitor-trigger" class="settings-field-label">Popup trigger (hold while selecting)</span>
               <div class="settings-shortcut-row">
+                <div class="settings-keycaps" id="monitor-trigger-shortcut-keys"></div>
                 <input type="text" id="monitor-trigger-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-monitor-trigger" />
                 <button type="button" class="btn btn-secondary settings-shortcut-set" id="monitor-trigger-set">Set…</button>
               </div>
@@ -153,6 +155,7 @@ function initializeSettingsWindow() {
             <div class="settings-field">
               <span id="label-ocr-shortcut" class="settings-field-label">OCR region overlay</span>
               <div class="settings-shortcut-row">
+                <div class="settings-keycaps" id="ocr-shortcut-keys"></div>
                 <input type="text" id="ocr-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-ocr-shortcut" />
                 <button type="button" class="btn btn-secondary settings-shortcut-set" id="ocr-shortcut-set">Set…</button>
               </div>
@@ -160,6 +163,7 @@ function initializeSettingsWindow() {
             <div class="settings-field">
               <span id="label-hover-shortcut" class="settings-field-label">Toggle hover lookup</span>
               <div class="settings-shortcut-row">
+                <div class="settings-keycaps" id="hover-shortcut-keys"></div>
                 <input type="text" id="hover-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-hover-shortcut" />
                 <button type="button" class="btn btn-secondary settings-shortcut-set" id="hover-shortcut-set">Set…</button>
               </div>
@@ -170,10 +174,10 @@ function initializeSettingsWindow() {
               <span id="monitor-shortcuts-status" class="settings-inline-status" role="status" aria-live="polite"></span>
             </div>
             <ul class="settings-cheat">
-              <li><kbd>Ctrl+Shift+G</kbd> Grab under cursor</li>
-              <li><kbd>Ctrl+Shift+W</kbd> Read this window</li>
-              <li><kbd>Ctrl+Shift+I</kbd> OCR clipboard image</li>
-              <li><kbd>Ctrl+Shift+P</kbd> Now playing</li>
+              <li><span class="settings-keycaps" data-accel="Ctrl+Shift+G"></span> Grab under cursor</li>
+              <li><span class="settings-keycaps" data-accel="Ctrl+Shift+W"></span> Read this window</li>
+              <li><span class="settings-keycaps" data-accel="Ctrl+Shift+I"></span> OCR clipboard image</li>
+              <li><span class="settings-keycaps" data-accel="Ctrl+Shift+P"></span> Now playing</li>
             </ul>
           </section>
 
@@ -606,6 +610,41 @@ function wireSettingsImageDrop(): void {
   });
 }
 
+function acceleratorParts(acc: string): string[] {
+  return (acc || '')
+    .split('+')
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => {
+      if (/^(CommandOrControl|CmdOrCtrl|Control|Ctrl)$/i.test(p)) return 'Ctrl';
+      if (/^(Command|Cmd)$/i.test(p)) return '⌘';
+      if (/^Shift$/i.test(p)) return 'Shift';
+      if (/^(Alt|Option)$/i.test(p)) return 'Alt';
+      if (/^(Super|Meta|Windows|Win)$/i.test(p)) return 'Win';
+      if (/^Plus$/i.test(p)) return '+';
+      return p.length === 1 ? p.toUpperCase() : p;
+    });
+}
+
+function keycapsInnerHtml(acc: string): string {
+  const parts = acceleratorParts(acc);
+  if (!parts.length) return '<span class="keycaps-empty">Not set</span>';
+  return parts
+    .map((k) => `<kbd class="keycap">${escapeHtmlSelection(k)}</kbd>`)
+    .join('<span class="keycap-join">+</span>');
+}
+
+function paintShortcutKeycaps(input: HTMLInputElement): void {
+  const host = document.getElementById(`${input.id}-keys`);
+  if (host) host.innerHTML = keycapsInnerHtml(input.value);
+}
+
+function paintStaticCheatKeycaps(): void {
+  document.querySelectorAll<HTMLElement>('.settings-cheat [data-accel]').forEach((el) => {
+    el.innerHTML = keycapsInnerHtml(el.dataset.accel || '');
+  });
+}
+
 async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }> {
   const noop = (): void => {};
   const api = window.electronAPI as {
@@ -658,7 +697,10 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
         cancelCapture = null;
         setBtn.textContent = 'Set…';
         setBtn.classList.remove('is-recording');
-        if (acc) input.value = acc;
+        if (acc) {
+          input.value = acc;
+          paintShortcutKeycaps(input);
+        }
       });
     };
     setBtn.addEventListener('click', (e) => {
@@ -666,6 +708,10 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
       start();
     });
     input.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      start();
+    });
+    document.getElementById(`${input.id}-keys`)?.addEventListener('click', (e) => {
       e.preventDefault();
       start();
     });
@@ -683,9 +729,14 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
     if (ocrEl) ocrEl.value = st.ocrShortcut || 'CommandOrControl+Shift+O';
     if (hoverEl) hoverEl.value = st.hoverShortcut || 'CommandOrControl+Shift+H';
     if (hoverToggle) hoverToggle.checked = st.hoverEnabled !== false;
+    if (cycleEl) paintShortcutKeycaps(cycleEl);
+    if (triggerEl) paintShortcutKeycaps(triggerEl);
+    if (ocrEl) paintShortcutKeycaps(ocrEl);
+    if (hoverEl) paintShortcutKeycaps(hoverEl);
   } catch {
     /* ignore */
   }
+  paintStaticCheatKeycaps();
 
   const btn = document.getElementById('monitor-save-shortcuts');
   const statusEl = document.getElementById('monitor-shortcuts-status');
@@ -1948,6 +1999,18 @@ document.getElementById('exportVocabBtn')?.addEventListener('click', async () =>
     await api.exportNotebook('json');
   } catch (error) {
     console.error('vocab export failed', error);
+  }
+});
+
+document.getElementById('importVocabBtn')?.addEventListener('click', async () => {
+  const api = (window as any).vocabAPI;
+  if (!api?.importNotebook) return;
+  try {
+    const result = await api.importNotebook();
+    if (result?.cancelled) return;
+    void loadVocabNotebook();
+  } catch (error) {
+    console.error('vocab import failed', error);
   }
 });
 

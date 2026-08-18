@@ -38,7 +38,7 @@ Then run the latest Setup.exe. New installs register a proper uninstaller (`Unin
 - **Dictionary & translation** — Free Dictionary, Wiktionary, Datamuse, Youdao / DeepL routing; CJK ↔ English. Per-source cache (timeouts retry). US + UK IPA when the APIs provide them.
 - **Offline packs** — Settings → Offline: WordNet, Webster 1913 (GCIDE), CC-CEDICT, FreeDict en→zh (consent download); JSON/CEDICT import. Living Oxford / Collegiate Webster / Collins are not dumped (copyright).
 - **Etymology & Wikipedia** — in-popup tabs; Wikipedia reader webview
-- **Vocabulary notebook** — local SQLite (`%APPDATA%\phevere`); lemma-only saves fill in the background; IPA + play; search; **Recent / A–Z** sort with an A–Z index scrubber; **Export** (JSON or CSV); click the headword row to expand, select text in the definition without collapsing
+- **Vocabulary notebook** — local SQLite (`%APPDATA%\phevere`); lemma-only saves fill in the background; IPA + play; search; **Recent / A–Z** sort with an A–Z index scrubber; **Export / Import** (JSON or CSV); click the headword row to expand, select text in the definition without collapsing
 - **OCR** — bundled PP-OCRv4 models (optional component); region / hover / clipboard / window capture
 - **Tray app** — Quit tears down UIA / OCR / sql.js worker promptly (no ghost tray icon)
 - **Win11 chrome** — Mica/Acrylic on app windows; NSIS wizard uses Segoe UI + branded 24-bpp sidebar BMP
