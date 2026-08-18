@@ -282,3 +282,43 @@ export function isGrammaticalFormOfGloss(meaning: string): boolean {
     .trim();
   return GRAMMATICAL_FORM_OF.test(text);
 }
+
+/**
+ * Wiktionary (and most desktop dictionaries) treat inflections as: deinflect,
+ * then look up a *content* headword. Namespace pages (Appendix:, Category:, …)
+ * are not lemmas — the first `/wiki/` href in a gloss is often
+ * `Appendix:Glossary#plural`, which is why “tribulations” became that title.
+ *
+ * Same rule GoldenDict / Yomitan use: morphological candidates first
+ * (`latinLemmaForms` / wink), wiki “plural of …” only to *fetch extra senses*,
+ * and only when the linked title looks like a dictionary word.
+ */
+const WIKI_NON_LEMMA =
+  /^(Appendix|Category|File|Image|Special|Wiktionary|Template|Module|Help|User|Talk|Reconstruction|Citations|Rhymes|Thesaurus|MediaWiki|TimedText|Sign gloss):/i;
+
+export function isContentHeadword(title: string): boolean {
+  const t = (title || '').trim();
+  if (!t || t.length > 80) return false;
+  if (WIKI_NON_LEMMA.test(t) || t.includes(':')) return false;
+  return /^[\p{L}][\p{L}\p{N}'’.\-]*(?: [\p{L}][\p{L}\p{N}'’.\-]*)*$/u.test(t);
+}
+
+/** Last content-namespace wiki title in a grammatical gloss (skip glossary links). */
+export function lemmaFromFormOfHtml(meaning: string, surface: string): string | undefined {
+  const hrefs = String(meaning || '').matchAll(/href=["']\/wiki\/([^"'#]+)(?:#[^"']*)?["']/gi);
+  const surfaceKey = foldLookupKey(surface);
+  const found: string[] = [];
+  for (const m of hrefs) {
+    let title = m[1].replace(/_/g, ' ');
+    try {
+      title = decodeURIComponent(title);
+    } catch {
+      /* keep */
+    }
+    title = title.trim();
+    if (!isContentHeadword(title)) continue;
+    if (foldLookupKey(title) === surfaceKey) continue;
+    found.push(title);
+  }
+  return found.length ? found[found.length - 1] : undefined;
+}

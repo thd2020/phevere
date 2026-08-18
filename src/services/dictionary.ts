@@ -40,7 +40,7 @@ import { BaseService, DictionaryError, withTimeout } from './base';
 import * as crypto from 'crypto';
 import { wrapConsole } from '../logger';
 import { net } from 'electron';
-import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, latinLemmaForms, foldLatinHeadword, foldLookupKey, isGrammaticalFormOfGloss } from './text-normalize';
+import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, latinLemmaForms, foldLatinHeadword, foldLookupKey, isGrammaticalFormOfGloss, isContentHeadword, lemmaFromFormOfHtml } from './text-normalize';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { mergeSimilarDefinitions, dedupeExamples, canonicalPos, sortDefinitionsByReadingOrder } from './definition-merge';
 import { lookupOffline, type OfflineHit } from './offline-dict-store';
@@ -57,8 +57,6 @@ import {
 const console = wrapConsole('dictionary');
 /** Hard ceiling so renderer IPC never waits forever (etymology / hung hosts). */
 const LOOKUP_DEADLINE_MS = 12000;
-const ETYMOLOGY_BUDGET_MS = 6000;
-const ETYMOLOGY_BUDGET_WHEN_DEFS_MS = 2500;
 const IPA_BUDGET_MS = 1500;
 const OFFLINE_BUDGET_MS = 2000;
 /** Coalesce window so a fast FreeDict hit rides with Webster instead of a second paint. */
@@ -70,6 +68,7 @@ type LookupHolder = { current?: DictionaryResult };
 type LookupOpts = {
   skipEtymology?: boolean;
   onUpdate?: (result: DictionaryResult) => void;
+  originalSelection?: string;
 };
 
 function isTimeoutMeaning(meaning?: string): boolean {
@@ -366,6 +365,7 @@ export class DictionaryService extends BaseService {
       const holder: LookupHolder = {};
       const mergedOpts: LookupOpts = {
         ...opts,
+        originalSelection: query.raw,
         onUpdate: (r) => {
           remember(r);
           opts?.onUpdate?.(r);
@@ -567,6 +567,7 @@ export class DictionaryService extends BaseService {
    * ok/empty status. A Datamuse hit must not freeze a missing Wiktionary layer.
    */
   private isIncompleteSourceCache(result?: DictionaryResult): boolean {
+    if (result?.metadata?.pendingEtymology || result?.metadata?.pendingTranslation) return true;
     const st = result?.metadata?.sourceStatus;
     if (!st || typeof st !== 'object') return true;
     const values = st as Record<string, string>;
@@ -819,13 +820,15 @@ export class DictionaryService extends BaseService {
     let pronunciations: Pronunciation[] = [];
     const sourceStatus: Record<string, string> = {};
     const expectedSources: string[] = [];
+    const skipEtymology = !!opts?.skipEtymology;
     let etymology: string | undefined;
     let etymologyChain: EtymologyLink[] | undefined;
+    let pendingEtymology = !skipEtymology;
+    let pendingTranslation = true;
 
     // For Chinese/Japanese/Korean or mixed CJK+ASCII, prioritize translation over dictionary lookup
     const hasCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(text);
     const isAsianLanguage = ['zh', 'ja', 'ko'].includes(sourceLanguage) || hasCJK;
-    const skipEtymology = !!opts?.skipEtymology;
     const corePromises: Promise<any>[] = [];
     const auxPromises: Promise<any>[] = [];
     const finished: any[] = [];
@@ -1184,9 +1187,12 @@ export class DictionaryService extends BaseService {
         sources: uniqueSources,
         metadata: {
           queriedAs: text,
+          originalSelection: opts?.originalSelection || text,
           lemma: headword !== text ? headword : undefined,
           sourceStatus: { ...sourceStatus },
           expectedSources: [...expectedSources],
+          pendingEtymology,
+          pendingTranslation,
         },
       };
     };
@@ -1200,17 +1206,18 @@ export class DictionaryService extends BaseService {
         const etyQuery = (canonicalLemma && canonicalLemma.trim()) || text;
         const etyPromise = skipEtymology
           ? Promise.resolve(undefined)
-          : withTimeout(
-              this.fetchEtymologyFromMultipleSources(etyQuery),
-              this.hasRealDefinitions(result) ? ETYMOLOGY_BUDGET_WHEN_DEFS_MS : ETYMOLOGY_BUDGET_MS,
-              'etymology.multi',
-            ).catch((error: unknown): undefined => {
+          : this.fetchEtymologyFromMultipleSources(etyQuery).catch((error: unknown): undefined => {
               console.warn('[ETY] multi-source etymology skipped', error);
               return undefined;
             });
         await Promise.allSettled([...corePromises, ...auxPromises]);
         drain();
+        pendingTranslation = false;
+        const mid = buildResult();
+        if (holder) holder.current = mid;
+        opts?.onUpdate?.(mid);
         const fetched = await etyPromise;
+        pendingEtymology = false;
         if (fetched?.text) {
           etymology = fetched.text;
           if (fetched.chain) etymologyChain = fetched.chain;
@@ -1446,7 +1453,7 @@ export class DictionaryService extends BaseService {
   /**
    * Get data from Wiktionary API with a focus on definitions and etymology.
    */
-  private async getWiktionaryData(text: string, language: string): Promise<{
+  private async getWiktionaryData(text: string, language: string, depth = 0): Promise<{
     definitions: Definition[];
     pronunciation?: string;
     pronunciations?: Pronunciation[];
@@ -1480,13 +1487,8 @@ export class DictionaryService extends BaseService {
               const meaning: string = def.definition;
               // Inflection glosses only ("plural of cat"). "A form of roleplaying" is a real sense of fluff.
               if (isGrammaticalFormOfGloss(meaning)) {
-                const m = meaning.match(/href=\"\/wiki\/([^\"#]+)(?:#[^\"]*)?\"/);
-                if (m && m[1]) {
-                  const candidate = decodeURIComponent(m[1].replace(/_/g, ' '));
-                  if (candidate && candidate.toLowerCase() !== term.toLowerCase()) {
-                    lemmaCandidates.add(candidate);
-                  }
-                }
+                const linked = lemmaFromFormOfHtml(meaning, term);
+                if (linked) lemmaCandidates.add(linked);
               }
               definitions.push({
                 partOfSpeech: this.normalizePartOfSpeech(entry.partOfSpeech),
@@ -1523,15 +1525,18 @@ export class DictionaryService extends BaseService {
           }
         }
 
-        // Pivot only when this page *is* an inflected form (first gloss is grammatical),
-        // not when a later sense happens to say "a form of …" (fluff → roleplaying).
+        // One hop only: deinflect (wink + grammatical “plural of X”), then look up X.
+        // Never follow Appendix:/Category: links; never chain pivots.
         let lemma: string | undefined;
         const firstGloss = definitions[0]?.meaning || '';
-        if (lemmaCandidates.size > 0 && isGrammaticalFormOfGloss(firstGloss)) {
-          const base = Array.from(lemmaCandidates)[0];
+        if (depth === 0 && isGrammaticalFormOfGloss(firstGloss)) {
+          const morph = latinLemmaForms(term).find((f) => isContentHeadword(f));
+          const fromWiki = [...lemmaCandidates].find((c) => isContentHeadword(c));
+          const base = (morph && lemmaCandidates.has(morph) ? morph : fromWiki) || morph || fromWiki;
+          if (base && isContentHeadword(base) && foldLookupKey(base) !== foldLookupKey(term)) {
           lemma = base;
           try {
-            const baseData = await this.getWiktionaryData(base, language);
+            const baseData = await this.getWiktionaryData(base, language, depth + 1);
             // Prefer base lemma definitions/etymology if available
             if (baseData.definitions && baseData.definitions.length > 0) {
               const existingSet = new Set(definitions.map(d => d.meaning));
@@ -1556,6 +1561,7 @@ export class DictionaryService extends BaseService {
             }
           } catch (e) {
             console.warn('Lemma pivot failed for', base, e);
+          }
           }
         }
 
@@ -2024,24 +2030,19 @@ export class DictionaryService extends BaseService {
     const labeled: string[] = [];
     let chain: EtymologyLink[] | undefined;
 
+    const one = <T,>(p: Promise<T | undefined>, ms: number, label: string): Promise<T | undefined> =>
+      withTimeout(p, ms, label).catch((error: unknown): undefined => {
+        console.warn(`${label} failed`, error);
+        return undefined;
+      });
+
+    // Per-source budgets: a 502 on Etymonline must not discard Wiktionary/Youdao.
     const [wiktionaryEtymology, etymonlineEtymology, youdaoEtymology, oxfordEtymology] = await Promise.all([
-      this.fetchEtymologyFromWikitext(text).catch((error: unknown): undefined => {
-        console.warn(`Wiktionary etymology fetch failed:`, error);
-        return undefined;
-      }),
-      this.fetchEtymologyFromEtymonline(text).catch((error: unknown): undefined => {
-        console.warn(`Etymonline etymology fetch failed:`, error);
-        return undefined;
-      }),
-      this.fetchEtymologyFromYoudao(text).catch((error: unknown): undefined => {
-        console.warn(`Youdao etymology fetch failed:`, error);
-        return undefined;
-      }),
+      one(this.fetchEtymologyFromWikitext(text), 4500, 'ety.wiktionary'),
+      one(this.fetchEtymologyFromEtymonline(text), 5500, 'ety.etymonline'),
+      one(this.fetchEtymologyFromYoudao(text), 4000, 'ety.youdao'),
       this.oxfordAppId && this.oxfordAppKey
-        ? this.fetchEtymologyFromOxford(text).catch((error: unknown): undefined => {
-            console.warn(`Oxford etymology fetch failed:`, error);
-            return undefined;
-          })
+        ? one(this.fetchEtymologyFromOxford(text), 3500, 'ety.oxford')
         : Promise.resolve(undefined),
     ]);
 
@@ -2086,20 +2087,21 @@ export class DictionaryService extends BaseService {
 
     try {
       const url = `https://www.etymonline.com/word/${encodeURIComponent(cleanWord)}`;
-      // Use BaseService/node-fetch path via request() isn't HTML — raw fetch with timeout:
       const fetch = (await import('node-fetch')).default;
-      const response = await fetch(url, {
-        timeout: 2500,
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        },
-      });
-
-      if (!response.ok) {
-        console.warn(`Etymonline returned HTTP status ${response.status} for ${cleanWord}`);
-        return undefined;
+      const headers = {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      };
+      let response: { ok: boolean; status: number; text: () => Promise<string> } | null = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        response = await fetch(url, { timeout: 4000, headers });
+        if (response.ok) break;
+        const retryable = [429, 502, 503, 504].includes(response.status);
+        console.warn(`Etymonline returned HTTP ${response.status} for ${cleanWord}${retryable && attempt === 0 ? ', retrying' : ''}`);
+        if (!retryable || attempt === 1) return undefined;
+        await new Promise((r) => setTimeout(r, 450));
       }
+      if (!response?.ok) return undefined;
 
       const html = await withTimeout(response.text(), 4000, 'etymonline.body');
       let raw = '';

@@ -340,6 +340,14 @@
         color: #047857;
       }
 
+      .tab-pending {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        padding: 22px 8px 12px;
+      }
+
       @keyframes loading-slide {
         0% { transform: translateX(-120%); }
         100% { transform: translateX(280%); }
@@ -1769,9 +1777,25 @@
           const word = escapeHtml(result.word || '');
           const sources = splitEtymologySources(result.etymology || '');
           const chainHtml = formatEtymologyChain(result.etymologyChain);
+          const pending = !!(result.metadata && result.metadata.pendingEtymology) && sources.length === 0;
 
           let etymologyHtml = '';
-          if (sources.length > 0) {
+          if (pending) {
+            etymologyHtml = `
+              <div class="result-card">
+                  <div class="result-word">${word}</div>
+                  <div class="etymology-container">
+                    <div class="etymology-header">
+                      <span class="etymology-title">Etymology</span>
+                    </div>
+                    <div class="tab-pending" role="status">
+                      <div class="loading-title">Fetching etymology…</div>
+                      <div class="loading-sub">Wiktionary, Etymonline, and other sources load independently</div>
+                      <div class="loading-track"><div class="loading-bar"></div></div>
+                    </div>
+                  </div>
+              </div>`;
+          } else if (sources.length > 0) {
             const tabs = sources.map(function (s, i) {
               return `<button type="button" class="etymology-tab${i === 0 ? ' is-active' : ''}" data-ety-idx="${i}">${escapeHtml(s.label)}</button>`;
             }).join('');
@@ -2282,7 +2306,10 @@ function startAutoCloseTimeout() {
           const sameLemma = currentResult && norm(currentResult.word) === cur;
           if (sameLemma && popupResultRank(updated) < popupResultRank(currentResult)) return;
           currentResult = updated;
-          if (isExpanded) displayDictionaryResult(updated);
+          if (isExpanded) {
+            if (currentTab === 'etymology') displayEtymologyResult(updated);
+            else displayDictionaryResult(updated);
+          }
         });
       }
 
@@ -2297,9 +2324,12 @@ function startAutoCloseTimeout() {
          let contentHtml = '';
          if (currentTab === 'translation') {
              const list = result.translations || [];
+             const pending = !!(result.metadata && result.metadata.pendingTranslation) && !list.length;
              contentHtml = list.length
                ? list.map(tr => createTranslationCard(result.word, tr, result.detectedLanguage)).join('')
-               : `<div class="error-message">No translations yet. Pick a target language and look up again.</div>`;
+               : pending
+                 ? `<div class="tab-pending" role="status"><div class="loading-title">Translating…</div><div class="loading-sub">Waiting on translation sources</div><div class="loading-track"><div class="loading-bar"></div></div></div>`
+                 : `<div class="error-message">No translation found.</div>`;
          } else if (currentTab === 'wikipedia') {
              void displayWikipediaResult(result.word || currentText);
              return;
@@ -2358,7 +2388,7 @@ function startAutoCloseTimeout() {
                 title = m[1].replace(/_/g, ' ');
               }
               title = title.replace(/#.*$/, '').trim();
-              if (!title || /^File:|^Category:|^Special:|^Wiktionary:|^Template:/i.test(title)) return full;
+              if (!title || /^(File|Category|Special|Wiktionary|Template|Appendix|Help|Module|User|Talk|Reconstruction):/i.test(title)) return full;
               if (/\bdata-lookup=/i.test(pre + post)) return full;
               return `<a ${pre}href=${q}${href}${q} data-lookup="${escapeHtml(title)}" class="lemma-link"${post}>`;
             });
@@ -3088,7 +3118,7 @@ function startAutoCloseTimeout() {
                }
              }
              // Prefer in-app dictionary lookup for wiki lemma / form-of targets
-             if (wikiTitle && !/^File:|^Category:|^Special:|^Wiktionary:|^Template:/i.test(wikiTitle)) {
+             if (wikiTitle && !/^(File|Category|Special|Wiktionary|Template|Appendix|Help|Module|User|Talk|Reconstruction):/i.test(wikiTitle)) {
                if (!isExpanded) expandToolbar();
                currentText = wikiTitle;
                activateTab('lexicon');
