@@ -14,7 +14,7 @@ git tag -a v1.2.3 -m "Release v1.2.3"
 git push origin v1.2.3
 ```
 
-Watch **Actions → release**. No Environment approval gate. Unsigned unless repo secrets `CSC_LINK` + `CSC_KEY_PASSWORD` are set (OV/EV PFX). Verify:
+Watch **Actions → release**. No Environment approval gate. Unsigned unless repo secrets `CSC_LINK` + `CSC_KEY_PASSWORD` are set (OV/EV PFX). Blank secrets are stripped in `scripts/make-win.js` so electron-builder does not treat `""` as a cert path. Verify:
 
 ```powershell
 gh attestation verify out/make/nsis/x64/Phevere-Setup-1.2.3-x64.exe -R thd2020/phevere

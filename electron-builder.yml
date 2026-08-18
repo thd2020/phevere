@@ -7,6 +7,9 @@ directories:
 files:
   - '**/*'
   - '!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}'
+# Release.yml owns the GitHub Release. A v* tag + GITHUB_TOKEN would otherwise
+# make electron-builder try to publish during `make:win`.
+publish: null
 asar: true
 asarUnpack:
   - '**/node_modules/koffi/**/*'

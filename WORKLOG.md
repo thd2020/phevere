@@ -111,3 +111,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Notebook Import (JSON/CSV round-trip with Export). Settings accelerators drawn as keycaps.
 - **tribulations → Appendix:Glossary**: first `/wiki/` in “plural of …” was the glossary page. One-hop deinflect (wink + content-namespace titles only); skip Appendix:/Category: links.
 - Cut **1.3.0** (minor): bump `package.json`, fold Unreleased into CHANGELOG, push `main` then annotated tag `v1.3.0` so `.github/workflows/release.yml` builds NSIS Setup, GitHub Release, and attestation. No local `make:win`.
+- First `v1.3.0` Actions run failed at NSIS: empty `CSC_LINK` from unset repo secrets made electron-builder resolve `WIN_CSC_LINK` to the workspace path. `make:win` now deletes blank CSC env vars and sets `CSC_IDENTITY_AUTO_DISCOVERY=false`; `electron-builder.yml` `publish: null` so the tag + `GITHUB_TOKEN` does not double-publish. Retag `v1.3.0` onto that fix (no Release assets yet).

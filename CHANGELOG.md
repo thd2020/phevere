@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expanding a notebook card and selecting definition text no longer collapses the card — only the lemma / IPA / POS / timestamp row toggles.
 - Etymology / translation tabs show a progress bar while sources are still in flight; a 502 from Etymonline no longer discards Wiktionary etymology.
 - Looking up **tribulations** no longer jumps to **Appendix:Glossary**.
+- Unsigned GitHub Actions tag builds no longer fail Authenticode when `CSC_LINK` is an empty secret.
 
 ### Notes for users
 

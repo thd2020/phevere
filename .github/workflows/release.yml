@@ -28,6 +28,7 @@ jobs:
         run: npm ci
       - name: Make NSIS Setup
         env:
+          # Unset secrets arrive as ""; make-win.js strips blanks so signing is skipped.
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: npm run make:win

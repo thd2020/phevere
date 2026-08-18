@@ -26,7 +26,26 @@ console.log(
   '[make-win] ELECTRON_BUILDER_BINARIES_MIRROR=',
   process.env.ELECTRON_BUILDER_BINARIES_MIRROR,
 );
-if (!process.env.CSC_LINK && !process.env.CSC_NAME && !process.env.WIN_CSC_LINK) {
+
+// GitHub Actions injects secrets as "" when unset. electron-builder then treats
+// CSC_LINK as a path (workspace root) and fails: "WIN_CSC_LINK is not correct".
+for (const key of [
+  'CSC_LINK',
+  'CSC_KEY_PASSWORD',
+  'CSC_NAME',
+  'WIN_CSC_LINK',
+  'WIN_CSC_KEY_PASSWORD',
+]) {
+  if (process.env[key] !== undefined && String(process.env[key]).trim() === '') {
+    delete process.env[key];
+  }
+}
+
+const hasCert = Boolean(
+  process.env.CSC_LINK || process.env.CSC_NAME || process.env.WIN_CSC_LINK,
+);
+if (!hasCert) {
+  process.env.CSC_IDENTITY_AUTO_DISCOVERY = 'false';
   console.warn(
     '[make-win] No CSC_LINK / CSC_NAME — Setup.exe will be unsigned. SmartScreen stays until an OV/EV Authenticode cert is used (see PACKAGING.md).',
   );
