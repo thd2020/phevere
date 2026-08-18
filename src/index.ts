@@ -842,15 +842,32 @@ const createPopupWindow = (x: number, y: number): void => {
   const textForPopup = (lastSelectionEvent && (lastSelectionEvent.text || '').trim()) || lastSelectedText || '';
   log.debug('main', 'Create popup window', { x, y, textLen: textForPopup.length });
   const nowTs = Date.now();
-  if (textForPopup && lastPopupText === textForPopup && (nowTs - lastPopupAt) < 1000) {
-    log.debug('main', 'Skip duplicate popup (same text, 1s)');
-    return;
-  }
+  const STRIP_MAX_H = 64;
+  const isCollapsedStrip = (win: BrowserWindow): boolean => {
+    try {
+      if (!win || win.isDestroyed()) return false;
+      const [, h] = win.getSize();
+      return h <= STRIP_MAX_H;
+    } catch {
+      return false;
+    }
+  };
+  const reusableStrip = popupWindows.find((win) => isCollapsedStrip(win));
+  const hasExpandedLookup = popupWindows.some(
+    (win) => win && !win.isDestroyed() && !isCollapsedStrip(win),
+  );
 
-  // Additional check: prevent rapid successive popups regardless of text
-  if (lastPopupAt && (nowTs - lastPopupAt) < 300) {
-    log.debug('main', 'Skip rapid popup (300ms cooldown)');
-    return;
+  // An open lookup panel must stay put. Coalesce only when we would not be
+  // spawning a sibling strip beside an expanded panel.
+  if (!hasExpandedLookup) {
+    if (textForPopup && lastPopupText === textForPopup && nowTs - lastPopupAt < 1000) {
+      log.debug('main', 'Skip duplicate popup (same text, 1s)');
+      return;
+    }
+    if (lastPopupAt && nowTs - lastPopupAt < 300) {
+      log.debug('main', 'Skip rapid popup (300ms cooldown)');
+      return;
+    }
   }
 
   // Commit immediately — do not wait for did-finish-load. Otherwise shortcut mode can
@@ -859,16 +876,15 @@ const createPopupWindow = (x: number, y: number): void => {
   lastPopupAt = nowTs;
   lastPopupText = textForPopup;
 
-  // Reuse: always snap back to strip size. Keeping currW×currH left an expanded
-  // empty panel when the renderer collapsed results but the OS window stayed 400×500.
-  const existing = popupWindows.find(win => win && !win.isDestroyed());
-  if (existing) {
+  // Reuse a collapsed toolstrip only. Never move, resize, or send popup-text to
+  // an expanded lookup — that wiped the original card and looked like a blank panel.
+  if (reusableStrip) {
     try {
-      existing.setBounds({ x: popupX, y: popupY, width: popupWidth, height: popupHeight }, false);
-      existing.show();
-      try { existing.focus(); } catch {}
-      if (textForPopup) existing.webContents.send('popup-text', textForPopup);
-      log.debug('main', 'Reuse existing popup');
+      reusableStrip.setBounds({ x: popupX, y: popupY, width: popupWidth, height: popupHeight }, false);
+      reusableStrip.show();
+      try { reusableStrip.focus(); } catch {}
+      if (textForPopup) reusableStrip.webContents.send('popup-text', textForPopup);
+      log.debug('main', 'Reuse existing toolstrip');
       return;
     } catch (e) {
       log.warn('main', 'Popup reuse failed, creating new', { err: String(e) });

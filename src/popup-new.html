@@ -1426,39 +1426,22 @@
         return (window.outerWidth || 0) > 600;
       }
 
-      /** Collapse this window to the toolstrip. Never call showPopup — that reuses/creates a full-size empty panel. */
-      function adoptSelectionAsStrip(text, screenX, screenY) {
-        const t = String(text || '').trim();
-        if (!t) return;
-        const folded = foldLookupKey(t);
-        currentText = t;
-        window['__popupCurrentText'] = t;
-        if (folded !== lookupFold) invalidateLookupState(folded);
-        collapseToolbar({ x: screenX, y: screenY });
-        maybePreloadLookup(t);
-      }
-
-      /** Panel select uses the same strip + monitor mode as global selection — not an in-place swap. */
+      /** Same as selecting outside the app: open a toolstrip. Do not mutate this window. */
       function requestInAppSelection(text, screenX, screenY) {
         const t = String(text || '').trim();
         if (!t) return;
         const api = window.electronAPI;
-        const store = function () {
-          if (api && typeof api.rememberSelection === 'function') {
-            api.rememberSelection(screenX || 0, screenY || 0, t);
-          }
+        const openStrip = function () {
+          if (api && api.showPopup) api.showPopup(screenX || 0, screenY || 0, t);
         };
         if (api && typeof api.getMonitorState === 'function') {
           api.getMonitorState().then(function (state) {
             if (state && state.mode === 'off') return;
-            store();
-            if (state && state.mode === 'shortcut') return;
-            adoptSelectionAsStrip(t, screenX, screenY);
+            openStrip();
           });
           return;
         }
-        store();
-        adoptSelectionAsStrip(t, screenX, screenY);
+        openStrip();
       }
 
       let settings = {
@@ -1517,17 +1500,21 @@
               pvLog('[POPUP] onPopupText:', text);
               const next = (text || '').trim();
               if (!next) return;
+              if (isFullLookupWindow()) {
+                currentText = next;
+                window['__popupCurrentText'] = currentText;
+                activateTab('lexicon');
+                if (!isExpanded) expandToolbar();
+                void lookupText(currentText);
+                return;
+              }
+              // An expanded lookup is its own session. New selections open another strip.
+              if (isExpanded) return;
               const folded = foldLookupKey(next);
               currentText = next;
               window['__popupCurrentText'] = currentText;
               if (folded && folded !== lookupFold) invalidateLookupState(folded);
               activateTab('lexicon');
-              if (isFullLookupWindow()) {
-                if (!isExpanded) expandToolbar();
-                void lookupText(currentText);
-                return;
-              }
-              if (isExpanded) collapseToolbar();
               maybePreloadLookup(currentText);
               var tb = document.getElementById('toolbar');
               if (tb && tb.classList.contains('collapsed')) {

@@ -38,8 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make:win` TS7011 in `vocab-enrich.ts` notebook `onUpdate` `.catch` — annotate `(): undefined`.
 - Lookup panel content sat flush against the window top (toolbar/tabs overlapping lemma spacing). Frameless chrome now has a 36px toolbar and 12px results inset.
 - Looking up `fluff` jumped to `roleplaying` because “a form of roleplaying” was treated as a Wiktionary inflection. Form-of pivot is grammatical labels only, and only when that is the first sense.
-- In-app selection ignored Off/Shortcut monitor mode, in-panel select jumped to a second lookup instead of the toolstrip, and the previous headword could stay on screen until a click.
-- Selecting a word inside an open lookup still spawned a second, blank panel: in-panel select now collapses **this** window to the toolstrip (no `showPopup` reuse of the 400×500 frame). Clicking a dictionary icon shows the preloaded card.
+- In-app selection ignored Off/Shortcut monitor mode.
+- Select-to-lookup in the main window or an open lookup now matches selecting elsewhere: a **toolstrip** appears. An expanded lookup is not reused, collapsed, or cleared — a second strip opens beside it.
 
 ## [1.2.1] - 2026-08-12
 

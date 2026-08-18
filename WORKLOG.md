@@ -96,5 +96,5 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 ## 2026-08-18
 
 - Looking up **fluff** showed **roleplaying**: Wiktionary sense “a form of roleplaying …” matched a greedy `form of` inflection pivot and replaced the headword. Grammatical form-of only (`plural of`, `alternative form of`, …); pivot only if the *first* gloss is that kind of inflection.
-- In-app select-to-lookup ignored monitor mode (always opened). It now follows Off / Shortcut / On like UIA. Selecting inside the lookup panel goes to the toolstrip instead of an instant second lookup. A new headword clears the previous card so it cannot linger until a click.
-- In-panel select still opened a second **blank** lookup: `requestInAppSelection` called `showPopup`, which reused the existing window at 400×500 after results were collapsed. Panel select now only collapses **this** window to the strip, stores the selection (`remember-selection`), and silent-preloads. Reuse of an existing popup also snaps back to strip size. Dictionary icon click paints a preloaded card instead of returning empty.
+- In-app select-to-lookup ignored monitor mode (always opened). It now follows Off / Shortcut / On like UIA.
+- Select in the main UI or an open lookup must match selecting elsewhere: popup a **toolstrip**, leave the existing lookup alone. Reuse only a collapsed strip; an expanded panel is never moved, resized, or sent `popup-text` (that was wiping the card to blank). Expanded windows also ignore later `popup-text`.
