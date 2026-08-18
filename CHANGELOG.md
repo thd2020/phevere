@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-18
+
 ### Added
 
 - Notebook: **Recent / A–Z** sort, A–Z index scrubber (tap or slide, large letter HUD), and **Export / Import** (JSON or CSV).
@@ -27,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expanding a notebook card and selecting definition text no longer collapses the card — only the lemma / IPA / POS / timestamp row toggles.
 - Etymology / translation tabs show a progress bar while sources are still in flight; a 502 from Etymonline no longer discards Wiktionary etymology.
 - Looking up **tribulations** no longer jumps to **Appendix:Glossary**.
+
+### Notes for users
+
+- **Windows x64** — `Phevere-Setup-1.3.0-x64.exe` from [GitHub Releases](https://github.com/thd2020/phevere/releases/tag/v1.3.0) (built by Actions). Unsigned unless `CSC_LINK` is set; SmartScreen may warn.
+- Run elevated when you need UIAutomation across elevated / protected apps.
 
 ## [1.2.2] - 2026-08-18
 
@@ -159,7 +166,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v1.2.2...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/thd2020/phevere/releases/tag/v1.3.0
 [1.2.2]: https://github.com/thd2020/phevere/releases/tag/v1.2.2
 [1.2.1]: https://github.com/thd2020/phevere/releases/tag/v1.2.1
 [1.2.0]: https://github.com/thd2020/phevere/releases/tag/v1.2.0

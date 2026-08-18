@@ -110,3 +110,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Etymology/translation showed “none found” while still fetching; a 2.5s wrapper aborted all etymology sources if Etymonline 502’d. Per-source budgets, 502 retry, pending flags + in-tab progress bars.
 - Notebook Import (JSON/CSV round-trip with Export). Settings accelerators drawn as keycaps.
 - **tribulations → Appendix:Glossary**: first `/wiki/` in “plural of …” was the glossary page. One-hop deinflect (wink + content-namespace titles only); skip Appendix:/Category: links.
+- Cut **1.3.0** (minor): bump `package.json`, fold Unreleased into CHANGELOG, push `main` then annotated tag `v1.3.0` so `.github/workflows/release.yml` builds NSIS Setup, GitHub Release, and attestation. No local `make:win`.
