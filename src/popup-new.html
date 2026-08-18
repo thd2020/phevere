@@ -1401,11 +1401,15 @@
         return String(s || '').replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
       }
 
-      function clearStaleLookupUi(nextFold) {
+      function invalidateLookupState(nextFold) {
         lookupSeq += 1;
         lookupFold = nextFold || '';
         currentResult = null;
         lookupInFlight = null;
+      }
+
+      function clearStaleLookupUi(nextFold) {
+        invalidateLookupState(nextFold);
         var results = document.getElementById('dictionary-results');
         if (results) {
           results.innerHTML = '';
@@ -1415,31 +1419,46 @@
         if (loading) loading.style.display = 'none';
       }
 
+      function isFullLookupWindow() {
+        try {
+          if ((window.location.hash || '') === '#popup') return true;
+        } catch (e) { /* ignore */ }
+        return (window.outerWidth || 0) > 600;
+      }
+
+      /** Collapse this window to the toolstrip. Never call showPopup — that reuses/creates a full-size empty panel. */
+      function adoptSelectionAsStrip(text, screenX, screenY) {
+        const t = String(text || '').trim();
+        if (!t) return;
+        const folded = foldLookupKey(t);
+        currentText = t;
+        window['__popupCurrentText'] = t;
+        if (folded !== lookupFold) invalidateLookupState(folded);
+        collapseToolbar({ x: screenX, y: screenY });
+        maybePreloadLookup(t);
+      }
+
       /** Panel select uses the same strip + monitor mode as global selection — not an in-place swap. */
       function requestInAppSelection(text, screenX, screenY) {
         const t = String(text || '').trim();
         if (!t) return;
         const api = window.electronAPI;
-        const goStrip = function () {
-          const folded = foldLookupKey(t);
-          if (folded !== lookupFold) clearStaleLookupUi(folded);
-          currentText = t;
-          window['__popupCurrentText'] = t;
-          if (isExpanded) collapseToolbar();
-          if (api && api.showPopup) api.showPopup(screenX || 0, screenY || 0, t);
+        const store = function () {
+          if (api && typeof api.rememberSelection === 'function') {
+            api.rememberSelection(screenX || 0, screenY || 0, t);
+          }
         };
         if (api && typeof api.getMonitorState === 'function') {
           api.getMonitorState().then(function (state) {
             if (state && state.mode === 'off') return;
-            if (state && state.mode === 'shortcut') {
-              if (api.showPopup) api.showPopup(screenX || 0, screenY || 0, t);
-              return;
-            }
-            goStrip();
+            store();
+            if (state && state.mode === 'shortcut') return;
+            adoptSelectionAsStrip(t, screenX, screenY);
           });
           return;
         }
-        goStrip();
+        store();
+        adoptSelectionAsStrip(t, screenX, screenY);
       }
 
       let settings = {
@@ -1499,10 +1518,16 @@
               const next = (text || '').trim();
               if (!next) return;
               const folded = foldLookupKey(next);
-              if (folded && folded !== lookupFold) clearStaleLookupUi(folded);
               currentText = next;
               window['__popupCurrentText'] = currentText;
+              if (folded && folded !== lookupFold) invalidateLookupState(folded);
               activateTab('lexicon');
+              if (isFullLookupWindow()) {
+                if (!isExpanded) expandToolbar();
+                void lookupText(currentText);
+                return;
+              }
+              if (isExpanded) collapseToolbar();
               maybePreloadLookup(currentText);
               var tb = document.getElementById('toolbar');
               if (tb && tb.classList.contains('collapsed')) {
@@ -1928,7 +1953,7 @@ function startAutoCloseTimeout() {
        }
 
        /** Shrink OS window to the actual icon strip — avoids 360px-wide “ghost” frame. */
-       function resizeToCollapsedStrip() {
+       function resizeToCollapsedStrip(screenX, screenY) {
          if (!window.electronAPI || !window.electronAPI.resizeWindow) return;
          if (!settings.expandableMode || isExpanded) return;
          const toolbar = document.getElementById('toolbar');
@@ -1941,12 +1966,16 @@ function startAutoCloseTimeout() {
          var padY = 8;
          var w = Math.max(160, Math.ceil(iw + padX));
          var h = Math.max(32, Math.ceil(th + padY));
-         pvLog('[POPUP] resizeToCollapsedStrip', w, h);
-         window.electronAPI.resizeWindow(w, h);
+         pvLog('[POPUP] resizeToCollapsedStrip', w, h, screenX, screenY);
+         if (typeof screenX === 'number' && typeof screenY === 'number') {
+           window.electronAPI.resizeWindow(w, h, screenX, screenY);
+         } else {
+           window.electronAPI.resizeWindow(w, h);
+         }
        }
 
         // Collapse toolbar
-       function collapseToolbar() {
+       function collapseToolbar(opts) {
          pvLog('[POPUP] Collapsing toolbar...');
          if (!settings.expandableMode) {
            pvLog('[POPUP] Expandable mode disabled, not collapsing');
@@ -1966,8 +1995,12 @@ function startAutoCloseTimeout() {
          // Start auto-close timeout when collapsed
          startAutoCloseTimeout();
 
+         var sx = opts && typeof opts.x === 'number' ? opts.x : undefined;
+         var sy = opts && typeof opts.y === 'number' ? opts.y : undefined;
          requestAnimationFrame(function () {
-           requestAnimationFrame(resizeToCollapsedStrip);
+           requestAnimationFrame(function () {
+             resizeToCollapsedStrip(sx, sy);
+           });
          });
        }
 
@@ -2087,11 +2120,23 @@ function startAutoCloseTimeout() {
           ) {
             currentText = text;
             window['__popupCurrentText'] = text;
+            if (!silent) displayDictionaryResult(currentResult);
             return;
           }
           if (folded && lookupInFlight && lookupFold === folded) {
             currentText = text;
             window['__popupCurrentText'] = text;
+            if (!silent && !isExpanded) {
+              try { expandToolbar(); } catch (e) { /* ignore */ }
+            }
+            if (!silent) {
+              showLoading({
+                title: 'Looking up…',
+                subtitle: 'Querying dictionary sources',
+                stages: ['Detect', 'Dictionary', 'Translate'],
+                activeStage: 1
+              });
+            }
             return;
           }
           // Expand strip immediately so clicks never feel dead while IPC runs.
@@ -2149,7 +2194,11 @@ function startAutoCloseTimeout() {
               syncLanguageSelectsFromResult(currentResult);
               var audioLang = (currentResult && currentResult.detectedLanguage) ? currentResult.detectedLanguage : (currentTab === 'translation' ? targetLang : 'en');
               window['__audioLang'] = audioLang;
-              displayDictionaryResult(currentResult);
+              // Silent preload on a collapsed strip must not paint — that is what made
+              // a reused 400×500 window look like a blank second lookup panel.
+              if (!silent || isExpanded) {
+                displayDictionaryResult(currentResult);
+              }
               void syncVocabHeart(currentResult && currentResult.word);
             } else {
               pvLog('[POPUP] dictionaryAPI not available, using mock result');
@@ -2158,7 +2207,9 @@ function startAutoCloseTimeout() {
           } catch (error) {
             if (mySeq !== lookupSeq) return;
             console.error('[POPUP] Error in lookupText:', error);
-            displayErrorResult(text, error);
+            if (!silent || isExpanded) {
+              displayErrorResult(text, error);
+            }
           } finally {
             lookupInFlight = null;
           }
@@ -2244,7 +2295,7 @@ function startAutoCloseTimeout() {
           const sameLemma = currentResult && norm(currentResult.word) === cur;
           if (sameLemma && popupResultRank(updated) < popupResultRank(currentResult)) return;
           currentResult = updated;
-          displayDictionaryResult(updated);
+          if (isExpanded) displayDictionaryResult(updated);
         });
       }
 

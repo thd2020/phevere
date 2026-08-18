@@ -157,6 +157,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showPopup: (x: number, y: number, text: string) => {
     ipcRenderer.send('show-popup', { x, y, text });
   },
+  rememberSelection: (x: number, y: number, text: string) => {
+    ipcRenderer.send('remember-selection', { x, y, text });
+  },
   hidePopup: () => {
     ipcRenderer.send('hide-popup');
   },
@@ -248,8 +251,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeWindow: () => {
     return ipcRenderer.invoke('window-hide-to-tray');
   },
-  resizeWindow: (width: number, height: number) => {
-    ipcRenderer.send('window-resize', { width, height });
+  resizeWindow: (width: number, height: number, x?: number, y?: number) => {
+    ipcRenderer.send('window-resize', { width, height, x, y });
   },
   send: (channel: string, ...args: any[]) => {
     ipcRenderer.send(channel, ...args);
@@ -428,6 +431,7 @@ declare global {
       }) => void) => void;
       removeAllListeners: (channel: string) => void;
       showPopup: (x: number, y: number, text: string) => void;
+      rememberSelection?: (x: number, y: number, text: string) => void;
       hidePopup: () => void;
       onShowClipboardHistory: (callback: () => void) => void;
       testTextSelection: () => Promise<{ success: boolean; text: string }>;
@@ -438,7 +442,7 @@ declare global {
       minimizeWindow: () => void;
       maximizeWindow: () => void;
       closeWindow: () => Promise<{ ok: boolean }>;
-      resizeWindow: (width: number, height: number) => void;
+      resizeWindow: (width: number, height: number, x?: number, y?: number) => void;
       send: (channel: string, ...args: any[]) => void;
       startMonitoring?: () => Promise<{ success: boolean }>;
       stopMonitoring?: () => Promise<{ success: boolean }>;

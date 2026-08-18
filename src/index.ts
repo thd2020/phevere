@@ -859,13 +859,12 @@ const createPopupWindow = (x: number, y: number): void => {
   lastPopupAt = nowTs;
   lastPopupText = textForPopup;
 
-  // If a popup already exists, reuse it by moving and updating content (but do not resize here)
+  // Reuse: always snap back to strip size. Keeping currW×currH left an expanded
+  // empty panel when the renderer collapsed results but the OS window stayed 400×500.
   const existing = popupWindows.find(win => win && !win.isDestroyed());
   if (existing) {
     try {
-      // Only move; size will be managed by renderer's one-time request
-      const [currW, currH] = existing.getSize();
-      existing.setBounds({ x: popupX, y: popupY, width: currW, height: currH }, false);
+      existing.setBounds({ x: popupX, y: popupY, width: popupWidth, height: popupHeight }, false);
       existing.show();
       try { existing.focus(); } catch {}
       if (textForPopup) existing.webContents.send('popup-text', textForPopup);
@@ -1754,10 +1753,10 @@ ipcMain.handle(
   },
 );
 
-/** In-app select-to-lookup (main window / popup) uses the same monitor mode as UIA. */
-function rememberAndMaybeOpenPopup(x: number, y: number, text: string): void {
+/** Store last in-app selection without opening or moving a popup. */
+function rememberSelection(x: number, y: number, text: string): boolean {
   const t = typeof text === 'string' ? text.trim() : '';
-  if (!t || !isLookupWorthy(t)) return;
+  if (!t || !isLookupWorthy(t)) return false;
   lastSelectionEvent = selectionToContext(t, x, y, 'manual');
   lastSelectedText = t;
   try {
@@ -1765,12 +1764,22 @@ function rememberAndMaybeOpenPopup(x: number, y: number, text: string): void {
   } catch {
     /* ignore */
   }
+  return true;
+}
+
+/** In-app select-to-lookup (main window) uses the same monitor mode as UIA. */
+function rememberAndMaybeOpenPopup(x: number, y: number, text: string): void {
+  if (!rememberSelection(x, y, text)) return;
   if (monitorSettings.mode === 'off') return;
   if (monitorSettings.mode === 'shortcut' && !isAcceleratorPhysicallyHeld(monitorSettings.triggerShortcut)) {
     return;
   }
   createPopupWindow(x, y);
 }
+
+ipcMain.on('remember-selection', (_event, { x, y, text }) => {
+  rememberSelection(x, y, text);
+});
 
 ipcMain.on('show-popup', (_event, { x, y, text }) => {
   rememberAndMaybeOpenPopup(x, y, text);
@@ -2336,20 +2345,24 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
               createWebWindow(url);
             });
 
-            ipcMain.on('window-resize', (event, { width, height }) => {
-              log.debug('main', 'Popup resize', { width, height });
+            ipcMain.on('window-resize', (event, { width, height, x, y }) => {
+              log.debug('main', 'Popup resize', { width, height, x, y });
               // Resize the sender window (selection strip OR history full-lookup) —
               // never assume popupWindows[0], which left history windows stuck
               // and could resize the wrong strip when both exist.
+              const w = Math.round(width);
+              const h = Math.round(height);
               const senderWin = BrowserWindow.fromWebContents(event.sender);
-              if (senderWin && !senderWin.isDestroyed()) {
-                senderWin.setSize(Math.round(width), Math.round(height));
+              const target = (senderWin && !senderWin.isDestroyed())
+                ? senderWin
+                : popupWindows.find((win) => win && !win.isDestroyed());
+              if (!target || target.isDestroyed()) return;
+              if (typeof x === 'number' && typeof y === 'number') {
+                const placed = placePopupNearPoint(x, y, w, h);
+                target.setBounds({ x: placed.x, y: placed.y, width: w, height: h }, false);
                 return;
               }
-              const popupWindow = popupWindows.find((win) => win && !win.isDestroyed());
-              if (popupWindow) {
-                popupWindow.setSize(Math.round(width), Math.round(height));
-              }
+              target.setSize(w, h);
             });
 
             ipcMain.on('open-clipboard', () => {
