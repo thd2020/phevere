@@ -70,7 +70,7 @@ If files remain but Apps has no entry (“ghost” install — often from aborte
 
 Welcome / finish / components: `packaging/installer.nsh`. Options: `electron-builder.yml`.
 
-Sidebar/header **must** be real 24-bpp BMP (`BM` magic). `prepare:installer` writes them with `writeTrueBmp` — do not save PNG bytes as `.bmp` (NSIS then paints a blank left pane).
+Sidebar/header **must** be real 24-bpp BMP (`BM` magic). `prepare:installer` writes them with `writeTrueBmp` at the exact MUI sizes (164×314 sidebar, 150×57 header) from the stylized-P mark — do not cover-scale a splash PNG (that warped the wizard art) and do not save PNG bytes as `.bmp` (NSIS then paints a blank pane). Inner-page header is **light** (`#F3F3F3`) so it is not a black slab on Win11 paper. `packaging/installer.nsh` sets `MUI_*_BITMAP_NOSTRETCH` so Per-Monitor v2 DPI does not stretch those bitmaps.
 
 ### Code signing / SmartScreen
 

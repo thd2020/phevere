@@ -82,40 +82,29 @@ async function main() {
   }
   console.log('Wrote packaging/icon.ico + icon.png + resources/tray-icon.png');
 
-  // NSIS MUI requires uncompressed 24-bpp BMP (magic BM). sharp `.toFile(.bmp)` writes PNG.
-  const sidebarSrcCandidates = [
-    path.join(root, 'assets', 'installer-sidebar.png'),
-    path.join(process.env.USERPROFILE || '', '.cursor', 'projects', 'c-Users-8114-projects-phevere', 'assets', 'installer-sidebar.png'),
-  ];
-  const sidebarSrc = sidebarSrcCandidates.find((p) => fs.existsSync(p));
-  if (sidebarSrc) {
-    await writeTrueBmp(sharp, sidebarSrc, path.join(outDir, 'installerSidebar.bmp'), 164, 314, 'cover');
-  } else {
-    await writeGradientBmp(sharp, path.join(outDir, 'installerSidebar.bmp'), 164, 314);
-  }
-
-  const headerSrcCandidates = [
-    path.join(root, 'assets', 'installer-header.png'),
-    path.join(process.env.USERPROFILE || '', '.cursor', 'projects', 'c-Users-8114-projects-phevere', 'assets', 'installer-header.png'),
-  ];
-  const headerSrc = headerSrcCandidates.find((p) => fs.existsSync(p));
-  if (headerSrc) {
-    await writeTrueBmp(sharp, headerSrc, path.join(outDir, 'installerHeader.bmp'), 150, 57, 'cover');
-  } else {
-    const headerSvg = `<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="150" height="57">
-      <defs>
-        <linearGradient id="h" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#0B1220"/><stop offset="100%" stop-color="#152238"/>
-        </linearGradient>
-      </defs>
-      <rect width="150" height="57" fill="url(#h)"/>
-      <rect width="5" height="57" fill="#1FA896"/>
-      <circle cx="32" cy="28" r="16" fill="#1FA896"/>
-      <text x="56" y="34" font-family="Segoe UI, sans-serif" font-size="16" font-weight="600" fill="#F3F3F3">Phevere</text>
-    </svg>`;
-    await writeTrueBmp(sharp, Buffer.from(headerSvg), path.join(outDir, 'installerHeader.bmp'), 150, 57, 'fill');
-  }
-  console.log('Wrote installerSidebar.bmp + installerHeader.bmp (true 24-bpp BMP)');
+  // NSIS MUI wants uncompressed 24-bpp BMP at the *control* size (164×314 wizard,
+  // 150×57 inner header). Cover-scaling the old phone-splash PNG warped the sidebar;
+  // a navy 150×57 header looked black on MUI_BGCOLOR F3F3F3 inner pages.
+  // Always rasterize the stylized-P mark at exact pixels (fit: fill, no cover crop).
+  await writeTrueBmp(
+    sharp,
+    Buffer.from(wizardSidebarSvg()),
+    path.join(outDir, 'installerSidebar.bmp'),
+    164,
+    314,
+    'fill',
+    '#0B1220',
+  );
+  await writeTrueBmp(
+    sharp,
+    Buffer.from(wizardHeaderSvg()),
+    path.join(outDir, 'installerHeader.bmp'),
+    150,
+    57,
+    'fill',
+    '#F3F3F3',
+  );
+  console.log('Wrote installerSidebar.bmp + installerHeader.bmp (true 24-bpp BMP, exact size)');
 
   // Optional: also emit sidecar zip for advanced redistribution (not required — models are in Setup).
   const ocrSrc = path.join(root, 'resources', 'ocr-models');
@@ -128,11 +117,55 @@ async function main() {
   }
 }
 
+function markGroup(x, y, sizePx) {
+  const s = sizePx / 1024;
+  return `<g transform="translate(${x} ${y}) scale(${s})">
+    <rect width="1024" height="1024" rx="220" ry="220" fill="#0B1220"/>
+    <path fill="url(#pvP)" d="M300 220h280c140 0 250 90 250 230s-110 230-250 230H420v204c0 28-22 50-50 50h-20c-28 0-50-22-50-50V270c0-28 22-50 50-50zm120 140v200h150c70 0 120-45 120-100s-50-100-120-100H420z"/>
+    <circle cx="690" cy="340" r="42" fill="#E86A4A"/>
+  </g>`;
+}
+
+function pGradDef() {
+  return `<linearGradient id="pvP" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#3DDBC9"/><stop offset="100%" stop-color="#1FA896"/>
+  </linearGradient>`;
+}
+
+/** Welcome / finish left pane — exact 164×314, stylized P (not the old magnifier splash). */
+function wizardSidebarSvg() {
+  const mark = 100;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="164" height="314" viewBox="0 0 164 314">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0B1220"/><stop offset="100%" stop-color="#1A2744"/>
+    </linearGradient>
+    ${pGradDef()}
+  </defs>
+  <rect width="164" height="314" fill="url(#g)"/>
+  ${markGroup((164 - mark) / 2, 78, mark)}
+  <text x="82" y="228" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="20" font-weight="600" fill="#F3F3F3">Phevere</text>
+</svg>`;
+}
+
+/** Inner MUI header (right) — light paper so it is not a black slab on F3F3F3 pages. */
+function wizardHeaderSvg() {
+  const mark = 32;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="150" height="57" viewBox="0 0 150 57">
+  <defs>${pGradDef()}</defs>
+  <rect width="150" height="57" fill="#F3F3F3"/>
+  ${markGroup(10, (57 - mark) / 2, mark)}
+  <text x="50" y="35" font-family="Segoe UI, sans-serif" font-size="16" font-weight="600" fill="#1A1A1A">Phevere</text>
+</svg>`;
+}
+
 /** Uncompressed Windows BMP (BITMAPINFOHEADER, 24-bpp BGR, bottom-up). NSIS cannot paint PNG-in-.bmp. */
-async function writeTrueBmp(sharp, input, dest, w, h, fit = 'cover') {
+async function writeTrueBmp(sharp, input, dest, w, h, fit = 'cover', flattenBg = '#0B1220') {
   const { data } = await sharp(input)
     .resize(w, h, { fit, position: 'centre' })
-    .flatten({ background: '#0B1220' })
+    .flatten({ background: flattenBg })
     .removeAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
@@ -166,18 +199,6 @@ async function writeTrueBmp(sharp, input, dest, w, h, fit = 'cover') {
     }
   }
   fs.writeFileSync(dest, buf);
-}
-
-async function writeGradientBmp(sharp, dest, w, h) {
-  const svg = `<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
-    <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0B1220"/><stop offset="100%" stop-color="#1A2744"/>
-    </linearGradient></defs>
-    <rect width="100%" height="100%" fill="url(#g)"/>
-    <rect y="${Math.floor(h * 0.72)}" width="100%" height="${Math.ceil(h * 0.28)}" fill="#1FA896" opacity="0.55"/>
-    <text x="18" y="${Math.floor(h * 0.22)}" font-family="Segoe UI, sans-serif" font-size="22" font-weight="600" fill="#F3F3F3">Phevere</text>
-  </svg>`;
-  await writeTrueBmp(sharp, Buffer.from(svg), dest, w, h, 'fill');
 }
 
 /** Build a multi-image ICO containing PNG payloads (supported by Windows Vista+). */
