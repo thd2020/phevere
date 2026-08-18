@@ -100,3 +100,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Select in the main UI or an open lookup must match selecting elsewhere: popup a **toolstrip**, leave the existing lookup alone. Reuse only a collapsed strip; an expanded panel is never moved, resized, or sent `popup-text` (that was wiping the card to blank). Expanded windows also ignore later `popup-text`.
 - Cut **1.2.2**: gather post-1.2.1 changelog (offline catalog, lookup speed, notebook queue, in-app toolstrip, installer/tray/IPA fixes), bump `package.json`, NSIS Setup + GitHub release.
 - Published **v1.2.2** — `Phevere-Setup-1.2.2-x64.exe` (~82 MB, unsigned), SHA-256 `0B46A098…126243FB`, https://github.com/thd2020/phevere/releases/tag/v1.2.2
+- Global Cursor: skill/rule **cicd-framework** (GitHub Actions floor, OIDC, `actions/attest`, language stacks). Skill/rule **migrate-cursor** (data map + PC-to-PC copy; chats are local SQLite, not account-synced — staff Aug 2026).
