@@ -7,39 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-08-18
+
 ### Added
 
-- **Offline dictionary catalog** — Settings → Offline can download Princeton WordNet 3.1 (en→en), Webster’s Unabridged 1913 via GNU GCIDE (en→en), CC-CEDICT (zh→en), and FreeDict English–Chinese (en→zh). Current Oxford / Collegiate Webster / Collins remain API or licensed-JSON only (publisher copyright).
+- **Offline dictionary catalog** — Settings → Offline can download Princeton WordNet 3.1 (en→en), Webster’s Unabridged 1913 via GNU GCIDE (en→en), CC-CEDICT (zh→en), and FreeDict English–Chinese (en→zh). Living Oxford / Collegiate Webster / Collins stay API or licensed-JSON only (publisher copyright).
+- Per-source lookup cache (timeouts retry) and US + UK IPA when sources provide them.
+- Vocab notebook: IPA + play control, search, listed above Recent selections; empty cards fill from a **background lookup queue**.
+- Win11/Fluent window chrome (Mica/Acrylic where the OS supports it); sticky titlebars; Authenticode hook via `CSC_LINK`.
 
 ### Changed
 
-- Offline pack import uses batched SQLite writes so large English dumps finish in a reasonable time.
+- Offline pack import uses batched SQLite writes; live lookup overlaps local packs with network APIs.
+- First paint returns local-pack defs in ~0.5s instead of waiting out translation/etymology timeouts (~7.5s).
+- Lookup panel inset (36px toolbar, 12px results) so chrome does not clip the lemma.
+- Select-to-lookup in the main window or an open lookup matches selecting elsewhere: a **toolstrip** appears. An expanded lookup stays put; a second strip opens beside it.
 
 ### Fixed
 
-- Packaged app crash on launch: `Cannot find module 'node-fetch'` — webpack now bundles `node-fetch` instead of leaving a runtime `require` that Forge does not copy into `app.asar`.
-- Heart icon on the collapsed strip could wait forever for lookup; it now saves the lemma immediately and fills the notebook later.
-- Offline Webster/WordNet hits were discarded when online sources hung, then the timeout string was cached for 24h. Lookups now keep local-pack defs, query inflected lemmas, and do not cache timeout stubs.
-- Notebook “later-lookup” rows stayed empty even after a successful Open lookup: enrich required a popup `savedVocabId` that independent windows never had in time. Empty rows are now filled by a **main-process background queue** (startup scan + on save), independent of the popup. The notebook list refreshes when a row is patched.
-- Webster/GCIDE POS tags (`n`, `v. t.`, `adj.`) are canonicalized to noun/verb/adjective so they merge with Free Dictionary / WordNet / FreeDict TEI.
-- Lookup felt slower after the offline-lemma change: SQLite packs now run in parallel with network APIs, skip waiting for a cold sql.js worker, cap etymology when defs already exist, and the popup timeout matches the 12s server deadline.
-- First paint waited ~7.5s even when Webster was already in hand (5s Google Translate / Tatoeba timeout + 2.5s etymology). Local packs now return immediately (~0.5s coalesce); translation, Tatoeba, and etymology fill the popup in the background.
-- `make:win` TS7011: annotate the background etymology `.catch` so webpack compiles.
-- Installer left pane was blank: NSIS needs 24-bpp BMP, not PNG bytes named `.bmp`.
-- Tray Exit left a ghost icon and leftover `phevere` processes: UIA `join()` blocked quit; now timed + `app.exit`.
-- Etymonline often ended with “…” because the parser used truncated OpenGraph text.
-- Notebook: IPA + pronunciation control, search, and the block sits above Recent selections.
-- Window chrome (settings / clipboard / dictionary): titlebar and Close stay put while content scrolls.
-- Authenticode: wire `CSC_LINK` for SmartScreen; unsigned builds still warn honestly.
-- `make:win` TS7011 / TS1117 / Definition.`sources`: annotate quit `.catch`, drop duplicate `backgroundColor`, add `sources?` on `Definition`.
-- `make:win` makensis abort: `MUI_BGCOLOR already defined` — `packaging/installer.nsh` now `/redef`s installer page colors.
-- Selecting `hello,` (trailing comma/punct) no longer flickers between a good definition and a “no definition” miss: the punctuated form is the same lemma, empty fallbacks are not merged, and a worse lookup update cannot replace a better one.
-- Notebook rows stayed on “IPA pending” after the lookup panel recovered pronunciation: empty **reading** is now patched when IPA arrives (including a one-shot startup scan of existing cards).
-- `make:win` TS7011 in `vocab-enrich.ts` notebook `onUpdate` `.catch` — annotate `(): undefined`.
-- Lookup panel content sat flush against the window top (toolbar/tabs overlapping lemma spacing). Frameless chrome now has a 36px toolbar and 12px results inset.
-- Looking up `fluff` jumped to `roleplaying` because “a form of roleplaying” was treated as a Wiktionary inflection. Form-of pivot is grammatical labels only, and only when that is the first sense.
+- Packaged launch `Cannot find module 'node-fetch'` — webpack now bundles it into `app.asar`.
+- Hung / frozen lookup: `node-fetch` timeouts, safe `Promise.race`, sql.js off the main thread, UIA native addon out of preload, popup webpack no longer pulled in main-window CSS, duplicate `const` that stopped the popup script from parsing.
+- Heart icon on the collapsed strip no longer waits forever; lemma saves immediately and the notebook fills later.
+- Offline Webster/WordNet hits were dropped when online sources hung, then timeout stubs were cached for 24h.
+- Notebook Open rows stayed empty; POS tags like GCIDE `n` / `v. t.` now merge with WordNet / Free Dictionary.
+- Punctuated selections (`hello,`) no longer flicker to “no definition”; worse updates cannot replace a better card.
+- Looking up `fluff` jumped to `roleplaying` (greedy Wiktionary “a form of”). Grammatical form-of only, and only when that is the first sense.
+- Notebook “IPA pending” after the panel already had pronunciation; recovered IPA is patched into existing rows.
 - In-app selection ignored Off/Shortcut monitor mode.
-- Select-to-lookup in the main window or an open lookup now matches selecting elsewhere: a **toolstrip** appears. An expanded lookup is not reused, collapsed, or cleared — a second strip opens beside it.
+- Installer left pane blank (PNG bytes named `.bmp`); `MUI_BGCOLOR already defined`; several `make:win` TypeScript compile breaks.
+- Tray Exit left a ghost icon and leftover processes; Etymonline entries truncated at OpenGraph “…”.
+- Window Close stayed reachable while content scrolls.
+
+### Notes for users
+
+- **Windows x64** — install with `Phevere-Setup-1.2.2-x64.exe`.
+- If an older Phevere folder remains with no Apps entry, run `scripts/remove-ghost-phevere.ps1` then reinstall.
+- Run elevated when you need UIAutomation across elevated / protected apps.
+- Unsigned builds may trigger SmartScreen until an OV/EV `CSC_LINK` cert is used.
 
 ## [1.2.1] - 2026-08-12
 
@@ -134,7 +138,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/thd2020/phevere/releases/tag/v1.2.2
 [1.2.1]: https://github.com/thd2020/phevere/releases/tag/v1.2.1
 [1.2.0]: https://github.com/thd2020/phevere/releases/tag/v1.2.0
 [1.1.0]: https://github.com/thd2020/phevere/releases/tag/v1.1.0
