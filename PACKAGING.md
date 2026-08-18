@@ -12,6 +12,8 @@ npm run make:win
 
 `make:win` (`scripts/make-win.js`) sets **npmmirror** Electron / electron-builder-binaries mirrors by default so packaging does not hang on `github.com` (`ETIMEDOUT`). Override with `ELECTRON_MIRROR` / `ELECTRON_BUILDER_BINARIES_MIRROR` if needed.
 
+GitHub Actions: `ci.yml` on PR/`main`; tag `v*.*.*` runs `release.yml` (NSIS + GitHub Release + attestation). Optional `CSC_LINK` secret. See `docs/RELEASE.md`.
+
 | | |
 |---|---|
 | Default path | **`Program Files\Phevere`** (per-machine default; `menuCategory: false`) |

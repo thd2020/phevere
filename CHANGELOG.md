@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- GitHub Actions: `ci.yml` packages on PR/`main`; `release.yml` builds unsigned NSIS Setup on `v*` tags, uploads the GitHub Release, and attests the exe. Optional `CSC_LINK` / `CSC_KEY_PASSWORD` secrets sign the installer.
+
 ## [1.2.2] - 2026-08-18
 
 ### Added

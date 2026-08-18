@@ -1,95 +1,63 @@
 # Publishing a GitHub release
 
-Use this checklist when cutting a version (keep `package.json` `version`, tag, and changelog in sync).
+Keep `package.json` `version`, the git tag, and `CHANGELOG.md` in sync.
 
-## 1. Version and changelog
+## Unattended (GitHub Actions)
 
-1. Bump `"version"` in `package.json` (e.g. `1.2.0`).
-2. Add a dated `## [x.y.z]` section to `CHANGELOG.md`.
-3. Commit and push to `main`.
+After `.github/workflows/release.yml` is on `main`:
 
-## 2. Build the Windows NSIS installer
-
-On Windows with Node.js and VS build tools (native addon):
+1. Bump `"version"` in `package.json`, add a `## [x.y.z]` section to `CHANGELOG.md`, commit, push `main`.
+2. Tag and push (this **builds** Setup.exe, **creates** the GitHub Release, and **attests** the exe):
 
 ```powershell
-cd path\to\phevere
-npm install
-npm run build-native
+git tag -a v1.2.3 -m "Release v1.2.3"
+git push origin v1.2.3
+```
+
+Watch **Actions → release**. No Environment approval gate. Unsigned unless repo secrets `CSC_LINK` + `CSC_KEY_PASSWORD` are set (OV/EV PFX). Verify:
+
+```powershell
+gh attestation verify out/make/nsis/x64/Phevere-Setup-1.2.3-x64.exe -R thd2020/phevere
+```
+
+CI (no installer): `.github/workflows/ci.yml` on every PR and push to `main`.
+
+## Local fallback (optional)
+
+Windows + Node.js + VS C++ (native addon):
+
+```powershell
+npm ci
 npm run make:win
 ```
 
-Primary artifact:
+Artifact: `out\make\nsis\x64\Phevere-Setup-<version>-x64.exe`
 
-```text
-out\make\nsis\x64\Phevere-Setup-<version>-x64.exe
-```
-
-Single Setup includes OCR models and registers **Uninstall Phevere** (Apps & Features + Start menu link). If packaging hits `connect ETIMEDOUT` to GitHub, use `npm run make:win` (npmmirror) or set `ELECTRON_MIRROR`.
-
-If testers report a “ghost” Program Files folder with no Apps entry, have them run `scripts/remove-ghost-phevere.ps1` before reinstalling (see `README.md` / `PACKAGING.md`).
-
-Optional SHA-256:
+If `github.com` times out while packaging, `make:win` already uses npmmirror. Ghost Program Files installs: `scripts/remove-ghost-phevere.ps1` (see README / PACKAGING.md).
 
 ```powershell
 Get-FileHash -Algorithm SHA256 "out\make\nsis\x64\Phevere-Setup-*-x64.exe"
 ```
 
-WiX MSI remains optional (see `PACKAGING.md`) when WiX Toolset v3 is installed.
+Prefer **not** to `gh release create` locally for the same tag — the workflow owns the release assets (GitHub immutable releases). Edit notes in the GitHub UI after the workflow finishes if needed.
 
-## 3. Tag the commit
-
-```powershell
-git tag -a v1.2.0 -m "Release v1.2.0"
-git push origin v1.2.0
-```
-
-## 4. Create the GitHub release
-
-### CLI (preferred)
-
-Draft (you only click **Publish** in the UI):
-
-```powershell
-$exe = Get-Item "out\make\nsis\x64\Phevere-Setup-*-x64.exe"
-$hash = (Get-FileHash -Algorithm SHA256 $exe).Hash
-gh release create "v1.2.0" $exe.FullName `
-  --draft `
-  --title "Phevere 1.2.0" `
-  --notes-file release-notes-v1.2.0.md
-```
-
-Or publish immediately (omit `--draft`).
-
-### Web UI
-
-1. Open https://github.com/thd2020/phevere/releases/new
-2. Choose tag `v1.2.0`, title `Phevere 1.2.0`
-3. Paste notes from `CHANGELOG.md` / template below
-4. Attach `Phevere-Setup-*-x64.exe`
-5. Publish (or save draft)
-
-### Notes template
+## Notes template (if you write notes by hand)
 
 ```markdown
 ## Downloads
 
-- **Windows x64 Setup:** `Phevere-Setup-1.2.0-x64.exe` (NSIS, directory chooser)
+- **Windows x64 Setup:** `Phevere-Setup-x.y.z-x64.exe` (NSIS, directory chooser)
 
 ## Requirements
 
 - Windows 10/11 x64
 - Administrator elevation recommended for system-wide UIAutomation selection
 
-## SHA-256
-
-`PASTE_HASH_HERE  Phevere-Setup-1.2.0-x64.exe`
-
 ## Highlights
 
-See CHANGELOG `[1.2.0]` for the full list.
+See CHANGELOG `[x.y.z]` for the full list.
 ```
 
-## 5. Code signing (optional)
+## Code signing (optional)
 
-Set `CSC_LINK` + `CSC_KEY_PASSWORD` (OV/EV Authenticode PFX) before `npm run make:win`. Self-signed certs do not clear SmartScreen. Details: `PACKAGING.md`.
+Repo secrets `CSC_LINK` + `CSC_KEY_PASSWORD`, or local env before `npm run make:win`. Self-signed certs do not clear SmartScreen. Details: `PACKAGING.md`.

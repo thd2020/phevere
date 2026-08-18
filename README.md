@@ -73,6 +73,8 @@ npm run make:win
 
 `make:win` uses npmmirror Electron mirrors by default (avoids `github.com` `ETIMEDOUT` on some networks).
 
+CI: `.github/workflows/ci.yml` on every PR and `main` (Windows package). CD: push an annotated tag `v*.*.*` → `.github/workflows/release.yml` makes Setup.exe, creates the GitHub Release, and attests it (unsigned unless `CSC_LINK` is set). See [`docs/RELEASE.md`](docs/RELEASE.md).
+
 ### Tray Quit vs terminal (dev only)
 
 Tray **Quit Phevere** exits Electron. The Forge webpack terminal may keep running until **Ctrl+C** — normal in development. Packaged builds have no separate webpack process.
