@@ -1020,9 +1020,12 @@ const createSettingsWindow = (): void => {
     return;
   }
 
+  const windowIcon = loadWindowIcon();
   settingsWindow = new BrowserWindow(withWin11Chrome({
-    width: 760,
-    height: 780,
+    width: 800,
+    height: 600,
+    minWidth: 640,
+    minHeight: 480,
     parent: mainWindow || undefined,
     modal: true,
     webPreferences: {
@@ -1032,6 +1035,7 @@ const createSettingsWindow = (): void => {
     },
     show: false,
     frame: false,
+    ...(windowIcon ? { icon: windowIcon } : {}),
   }));
 
   const settingsUrl = MAIN_WINDOW_WEBPACK_ENTRY + '#settings';
@@ -1988,9 +1992,35 @@ ipcMain.handle('dictionary-get-supported-languages', () => {
 // Vocabulary notebook
 ipcMain.handle('vocab-list', async (_e, limit?: number) => {
   try {
-    return await vocabStore.listVocab(limit ?? 200);
+    return await vocabStore.listVocab(limit ?? 2000);
   } catch (error) {
     log.error('main', 'vocab-list failed', { err: String(error) });
+    throw error;
+  }
+});
+ipcMain.handle('vocab-export', async (e, format?: string) => {
+  try {
+    const win = BrowserWindow.fromWebContents(e.sender) || mainWindow;
+    const entries = await vocabStore.listVocab(10000);
+    const wantCsv = String(format || '').toLowerCase() === 'csv';
+    const result = await dialog.showSaveDialog(win || undefined, {
+      title: 'Export vocabulary notebook',
+      defaultPath: wantCsv ? 'phevere-notebook.csv' : 'phevere-notebook.json',
+      filters: [
+        { name: 'JSON', extensions: ['json'] },
+        { name: 'CSV', extensions: ['csv'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
+    });
+    if (result.canceled || !result.filePath) {
+      return { cancelled: true };
+    }
+    const asCsv = result.filePath.toLowerCase().endsWith('.csv') || wantCsv;
+    const body = asCsv ? vocabEntriesToCsv(entries) : JSON.stringify(entries, null, 2);
+    fs.writeFileSync(result.filePath, body, 'utf8');
+    return { cancelled: false, path: result.filePath, count: entries.length };
+  } catch (error) {
+    log.error('main', 'vocab-export failed', { err: String(error) });
     throw error;
   }
 });
@@ -2032,6 +2062,35 @@ ipcMain.handle('vocab-update-note', async (_e, id: string, note: string) => {
 ipcMain.handle('vocab-review', async (_e, id: string, grade: 1 | 2 | 3 | 4) => {
   return vocabStore.reviewVocab(id, grade);
 });
+
+function vocabEntriesToCsv(entries: vocabStore.VocabEntry[]): string {
+  const cols = [
+    'lemma',
+    'reading',
+    'partOfSpeech',
+    'sourceLang',
+    'targetLang',
+    'definition',
+    'note',
+    'sources',
+    'createdAt',
+    'updatedAt',
+  ] as const;
+  const esc = (value: unknown): string => {
+    const s = value == null ? '' : String(value);
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+  const rows = entries.map((entry) =>
+    cols
+      .map((col) => {
+        if (col === 'sources') return esc((entry.sources || []).join('|'));
+        return esc(entry[col]);
+      })
+      .join(','),
+  );
+  return [cols.join(','), ...rows].join('\r\n');
+}
 
 // Offline dictionary packs
 ipcMain.handle('offline-list-packs', async () => offlineDict.listPacks());

@@ -9,7 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Notebook: **Recent / A–Z** sort, A–Z index scrubber (tap or slide, large letter HUD), and **Export** to JSON or CSV.
 - GitHub Actions: `ci.yml` packages on PR/`main`; `release.yml` builds unsigned NSIS Setup on `v*` tags, uploads the GitHub Release, and attests the exe. Optional `CSC_LINK` / `CSC_KEY_PASSWORD` secrets sign the installer.
+
+### Changed
+
+- Settings window opens at **800×600** (same as the main window), with tighter grouped rows and a centered switch thumb.
+- Main window content uses the full width; notebook/recent lists leave a gap before the window scrollbar.
+- App titlebar uses the stylized **P** mark (not the old magnifying glass).
+
+### Fixed
+
+- Installer sidebar no longer cover-crops the old splash PNG (blur/warp). Inner wizard pages use a light header bitmap instead of a navy slab that read as black.
+- Expanding a notebook card and selecting definition text no longer collapses the card — only the lemma / IPA / POS / timestamp row toggles.
 
 ## [1.2.2] - 2026-08-18
 

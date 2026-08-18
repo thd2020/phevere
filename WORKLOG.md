@@ -102,3 +102,7 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Published **v1.2.2** — `Phevere-Setup-1.2.2-x64.exe` (~82 MB, unsigned), SHA-256 `0B46A098…126243FB`, https://github.com/thd2020/phevere/releases/tag/v1.2.2
 - Global Cursor: skill/rule **cicd-framework** (GitHub Actions floor, OIDC, `actions/attest`, language stacks). Skill/rule **migrate-cursor** (data map + PC-to-PC copy; chats are local SQLite, not account-synced — staff Aug 2026).
 - GitHub Actions on phevere: `ci.yml` (Windows `electron-forge package` on PR/`main`), `release.yml` (NSIS + Release + attest on `v*` tags, unsigned unless `CSC_LINK`), Dependabot for Actions/npm. No Environment reviewers. `npm test` / `npm run lint` not in CI yet (`test-integration.js` missing; eslint import plugin missing).
+- Settings: compact grouped lists, 800×600 initial size, switch thumb vertically centered (`border: none` + 18px knob), stylized P mark in titlebars (replaced magnifying glass).
+- Main window: drop 640px content cap so lists use the window width; extra right padding/margin so notebook/recent inner scrollbars sit away from the window scrollbar.
+- Notebook: expand/collapse only from the headword metadata row so definition text can be selected; Recent vs A–Z sort; A–Z index overlay with scrub + letter HUD; Export JSON/CSV (`vocab-export` save dialog).
+- Installer art: generate 164×314 / 150×57 24-bpp BMPs from the P mark (`fill`, not cover of `assets/installer-sidebar.png`); light `#F3F3F3` inner header; `MUI_*_BITMAP_NOSTRETCH` in `installer.nsh`.

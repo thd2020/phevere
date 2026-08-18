@@ -18,19 +18,20 @@
     <header class="titlebar" role="banner">
       <div class="titlebar-brand">
         <span class="titlebar-icon" aria-hidden="true">
-          <svg class="titlebar-logo-svg" viewBox="0 0 32 32" width="22" height="22" focusable="false">
+          <svg class="titlebar-logo-svg" viewBox="0 0 1024 1024" width="22" height="22" focusable="false">
             <defs>
-              <linearGradient id="phevereLogoGrad" x1="4" y1="28" x2="28" y2="4" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stop-color="#c44900" />
-                <stop offset="1" stop-color="#e85d04" />
+              <linearGradient id="phevereMarkBg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#0B1220" />
+                <stop offset="100%" stop-color="#152238" />
+              </linearGradient>
+              <linearGradient id="phevereMarkP" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#3DDBC9" />
+                <stop offset="100%" stop-color="#1FA896" />
               </linearGradient>
             </defs>
-            <rect x="2" y="2" width="28" height="28" rx="8" fill="url(#phevereLogoGrad)" />
-            <path
-              fill="#fff"
-              fill-opacity="0.95"
-              d="M14 10a6 6 0 1 0 3.35 10.99l3.7 3.7a1 1 0 0 0 1.42-1.42l-3.7-3.7A6 6 0 0 0 14 10zm0 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8z"
-            />
+            <rect width="1024" height="1024" rx="220" ry="220" fill="url(#phevereMarkBg)" />
+            <path fill="url(#phevereMarkP)" d="M300 220h280c140 0 250 90 250 230s-110 230-250 230H420v204c0 28-22 50-50 50h-20c-28 0-50-22-50-50V270c0-28 22-50 50-50zm120 140v200h150c70 0 120-45 120-100s-50-100-120-100H420z" />
+            <circle cx="690" cy="340" r="42" fill="#E86A4A" />
           </svg>
         </span>
         <span class="titlebar-title">Phevere</span>
@@ -76,11 +77,20 @@
           <h2 id="vocab-heading" class="section-heading">Vocabulary notebook</h2>
           <div class="recent-selections__actions">
             <input type="search" id="vocabSearch" class="vocab-search" placeholder="Search notebook…" autocomplete="off" aria-label="Search notebook" />
+            <div class="vocab-sort" role="group" aria-label="Notebook sort">
+              <button type="button" id="vocabSortRecent" class="vocab-sort-btn is-active" aria-pressed="true">Recent</button>
+              <button type="button" id="vocabSortAlpha" class="vocab-sort-btn" aria-pressed="false">A–Z</button>
+            </div>
+            <button type="button" id="exportVocabBtn" class="btn btn-outlined btn-small">Export</button>
             <button type="button" id="refreshVocabBtn" class="btn btn-outlined btn-small">Refresh</button>
           </div>
         </div>
-        <div id="vocabList" class="selections-list">
-          <p class="empty-message">No saved words yet.</p>
+        <div class="vocab-list-wrap" id="vocabListWrap">
+          <div id="vocabList" class="selections-list">
+            <p class="empty-message">No saved words yet.</p>
+          </div>
+          <nav class="vocab-az" id="vocabAz" hidden aria-label="Jump to letter"></nav>
+          <div class="vocab-az-hud" id="vocabAzHud" hidden aria-hidden="true"></div>
         </div>
       </section>
 

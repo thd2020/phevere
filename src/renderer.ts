@@ -93,7 +93,23 @@ function initializeSettingsWindow() {
     <div class="settings-app">
       <header class="settings-titlebar">
         <div class="settings-titlebar__lead">
-          <span class="settings-brand-mark" aria-hidden="true">P</span>
+          <span class="settings-brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 1024 1024" width="22" height="22" focusable="false">
+              <defs>
+                <linearGradient id="settingsMarkBg" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#0B1220"/>
+                  <stop offset="100%" stop-color="#152238"/>
+                </linearGradient>
+                <linearGradient id="settingsMarkP" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#3DDBC9"/>
+                  <stop offset="100%" stop-color="#1FA896"/>
+                </linearGradient>
+              </defs>
+              <rect width="1024" height="1024" rx="220" ry="220" fill="url(#settingsMarkBg)"/>
+              <path fill="url(#settingsMarkP)" d="M300 220h280c140 0 250 90 250 230s-110 230-250 230H420v204c0 28-22 50-50 50h-20c-28 0-50-22-50-50V270c0-28 22-50 50-50zm120 140v200h150c70 0 120-45 120-100s-50-100-120-100H420z"/>
+              <circle cx="690" cy="340" r="42" fill="#E86A4A"/>
+            </svg>
+          </span>
           <div class="settings-titlebar__text">
             <h1 class="settings-titlebar__heading">Phevere</h1>
             <span class="settings-titlebar__sub">Settings</span>
@@ -119,6 +135,7 @@ function initializeSettingsWindow() {
             <div class="settings-panel__intro">
               <h2 id="settings-monitor-heading" class="settings-panel__title">Shortcuts</h2>
             </div>
+            <div class="settings-group">
             <div class="settings-field">
               <span id="label-monitor-cycle" class="settings-field-label">Cycle monitor mode</span>
               <div class="settings-shortcut-row">
@@ -147,6 +164,7 @@ function initializeSettingsWindow() {
                 <button type="button" class="btn btn-secondary settings-shortcut-set" id="hover-shortcut-set">Set…</button>
               </div>
             </div>
+            </div>
             <div class="settings-actions settings-actions--wrap">
               <button type="button" id="monitor-save-shortcuts" class="btn btn-primary">Save shortcuts</button>
               <span id="monitor-shortcuts-status" class="settings-inline-status" role="status" aria-live="polite"></span>
@@ -163,12 +181,14 @@ function initializeSettingsWindow() {
             <div class="settings-panel__intro">
               <h2 id="settings-capture-heading" class="settings-panel__title">Capture</h2>
             </div>
+            <div class="settings-group">
             <div class="settings-row" role="group" aria-labelledby="enable-hover-label">
               <span id="enable-hover-label" class="settings-row__label">Hover lookup</span>
               <label class="settings-toggle-label">
                 <input class="toggle-input" type="checkbox" id="enable-hover" checked />
                 <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
               </label>
+            </div>
             </div>
             <div class="settings-dropzone" id="settings-dropzone" tabindex="0">
               <strong>Drop or paste an image</strong>
@@ -220,6 +240,7 @@ function initializeSettingsWindow() {
             <div class="settings-panel__intro">
               <h2 id="settings-api-heading" class="settings-panel__title">API keys</h2>
             </div>
+            <div class="settings-group">
             <div class="settings-field">
               <label for="google-api-key">Google Translate API key</label>
               <input type="password" id="google-api-key" placeholder="Paste your Google Cloud API key" class="setting-input" autocomplete="off" />
@@ -234,12 +255,14 @@ function initializeSettingsWindow() {
                 <button type="button" onclick="saveDeepLApiKey()" class="btn btn-primary">Save</button>
               </div>
             </div>
+            </div>
           </section>
 
           <section class="settings-panel" data-panel="audio" aria-labelledby="settings-audio-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-audio-heading" class="settings-panel__title">Audio</h2>
             </div>
+            <div class="settings-group">
             <div class="settings-row" role="group" aria-labelledby="enable-audio-label">
               <span id="enable-audio-label" class="settings-row__label">Enable pronunciation</span>
               <label class="settings-toggle-label">
@@ -253,6 +276,7 @@ function initializeSettingsWindow() {
                 <input type="range" id="audio-speed" min="0.5" max="2" step="0.1" value="1" />
                 <span id="speed-value">1x</span>
               </div>
+            </div>
             </div>
           </section>
         </main>
@@ -1611,6 +1635,141 @@ function initializeClipboardWindow() {
 }
 
 let vocabNotebookCache: any[] = [];
+const VOCAB_SORT_KEY = 'phevere-vocab-sort';
+type VocabSortMode = 'recent' | 'alpha';
+
+function getVocabSortMode(): VocabSortMode {
+  try {
+    return localStorage.getItem(VOCAB_SORT_KEY) === 'alpha' ? 'alpha' : 'recent';
+  } catch {
+    return 'recent';
+  }
+}
+
+function setVocabSortMode(mode: VocabSortMode): void {
+  try {
+    localStorage.setItem(VOCAB_SORT_KEY, mode);
+  } catch {
+    /* ignore */
+  }
+  document.getElementById('vocabSortRecent')?.classList.toggle('is-active', mode === 'recent');
+  document.getElementById('vocabSortAlpha')?.classList.toggle('is-active', mode === 'alpha');
+  document.getElementById('vocabSortRecent')?.setAttribute('aria-pressed', mode === 'recent' ? 'true' : 'false');
+  document.getElementById('vocabSortAlpha')?.setAttribute('aria-pressed', mode === 'alpha' ? 'true' : 'false');
+  document.getElementById('vocabListWrap')?.classList.toggle('is-alpha', mode === 'alpha');
+}
+
+function vocabAzLetter(lemma: string): string {
+  const ch = (lemma || '').trim().charAt(0);
+  if (!ch) return '#';
+  const up = ch.toLocaleUpperCase('en');
+  if (up >= 'A' && up <= 'Z') return up;
+  return '#';
+}
+
+function sortVocabEntries(entries: any[]): any[] {
+  const copy = [...entries];
+  if (getVocabSortMode() === 'alpha') {
+    copy.sort((a, b) =>
+      String(a.lemma || '').localeCompare(String(b.lemma || ''), undefined, { sensitivity: 'base', numeric: true }),
+    );
+  } else {
+    copy.sort((a, b) => Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0));
+  }
+  return copy;
+}
+
+function ensureVocabAzIndex(): HTMLElement | null {
+  const nav = document.getElementById('vocabAz');
+  if (!nav) return null;
+  if (!nav.dataset.ready) {
+    const letters = ['#', ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i))];
+    nav.innerHTML = letters
+      .map((letter) => `<button type="button" class="vocab-az__letter" data-letter="${letter}">${letter}</button>`)
+      .join('');
+    nav.dataset.ready = '1';
+    wireVocabAzScrub(nav);
+  }
+  return nav;
+}
+
+function scrollVocabToLetter(letter: string): void {
+  const list = document.getElementById('vocabList');
+  if (!list) return;
+  const target =
+    list.querySelector(`[data-az="${letter}"]`) ||
+    (letter === '#' ? list.querySelector('.vocab-item') : null);
+  (target as HTMLElement | null)?.scrollIntoView({ block: 'start' });
+}
+
+function showVocabAzHud(letter: string): void {
+  const hud = document.getElementById('vocabAzHud');
+  if (!hud) return;
+  hud.textContent = letter;
+  hud.hidden = false;
+}
+
+function hideVocabAzHud(): void {
+  const hud = document.getElementById('vocabAzHud');
+  if (hud) hud.hidden = true;
+}
+
+function letterFromAzPointer(nav: HTMLElement, clientY: number): string | null {
+  const buttons = [...nav.querySelectorAll<HTMLElement>('.vocab-az__letter')];
+  if (!buttons.length) return null;
+  const rect = nav.getBoundingClientRect();
+  const t = (clientY - rect.top) / Math.max(rect.height, 1);
+  const idx = Math.max(0, Math.min(buttons.length - 1, Math.floor(t * buttons.length)));
+  return buttons[idx].dataset.letter || null;
+}
+
+function wireVocabAzScrub(nav: HTMLElement): void {
+  let scrubbing = false;
+  const onMove = (ev: PointerEvent) => {
+    const letter = letterFromAzPointer(nav, ev.clientY);
+    if (!letter) return;
+    showVocabAzHud(letter);
+    scrollVocabToLetter(letter);
+  };
+  nav.addEventListener('pointerdown', (ev) => {
+    const t = ev.target as HTMLElement;
+    const letter = t.closest('.vocab-az__letter')?.getAttribute('data-letter') || letterFromAzPointer(nav, ev.clientY);
+    if (!letter) return;
+    scrubbing = true;
+    nav.setPointerCapture(ev.pointerId);
+    showVocabAzHud(letter);
+    scrollVocabToLetter(letter);
+    ev.preventDefault();
+  });
+  nav.addEventListener('pointermove', (ev) => {
+    if (!scrubbing) return;
+    onMove(ev);
+  });
+  const endScrub = () => {
+    scrubbing = false;
+    hideVocabAzHud();
+  };
+  nav.addEventListener('pointerup', endScrub);
+  nav.addEventListener('pointercancel', endScrub);
+}
+
+function syncVocabAzAvailability(entries: any[]): void {
+  const nav = ensureVocabAzIndex();
+  const wrap = document.getElementById('vocabListWrap');
+  const alpha = getVocabSortMode() === 'alpha' && entries.length > 0;
+  if (wrap) wrap.classList.toggle('is-alpha', getVocabSortMode() === 'alpha');
+  if (!nav) return;
+  nav.hidden = !alpha;
+  if (!alpha) {
+    hideVocabAzHud();
+    return;
+  }
+  const present = new Set(entries.map((e) => vocabAzLetter(String(e.lemma || ''))));
+  nav.querySelectorAll<HTMLElement>('.vocab-az__letter').forEach((btn) => {
+    const letter = btn.dataset.letter || '';
+    btn.classList.toggle('is-empty', !present.has(letter));
+  });
+}
 
 async function loadVocabNotebook(): Promise<void> {
   const list = document.getElementById('vocabList');
@@ -1621,7 +1780,7 @@ async function loadVocabNotebook(): Promise<void> {
     return;
   }
   try {
-    const entries = await api.list(100);
+    const entries = await api.list(2000);
     vocabNotebookCache = entries || [];
     renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
   } catch (error) {
@@ -1644,16 +1803,24 @@ function filterVocabEntries(entries: any[]): any[] {
   });
 }
 
+function toggleVocabItem(el: HTMLElement): void {
+  const open = el.classList.toggle('is-collapsed') === false;
+  el.classList.toggle('is-expanded', open);
+  el.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
 function renderVocabNotebook(entries: any[]): void {
   const list = document.getElementById('vocabList');
   if (!list) return;
   const api = (window as any).vocabAPI;
-  if (!entries || !entries.length) {
+  const sorted = sortVocabEntries(entries);
+  syncVocabAzAvailability(sorted);
+  if (!sorted.length) {
     const q = ((document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '').trim();
     list.innerHTML = `<p class="empty-message">${q ? 'No notebook matches.' : 'No saved words yet.'}</p>`;
     return;
   }
-  list.innerHTML = entries
+  list.innerHTML = sorted
     .map((e: any) => {
         const defRaw = String(e.definition || '').trim();
         const long = defRaw.length > 280 || defRaw.split(/\n/).length > 4;
@@ -1677,8 +1844,10 @@ function renderVocabNotebook(entries: any[]): void {
           ? `<span class="vocab-reading">${ipa.includes('/') ? escapeHtmlSelection(ipa) : `/${escapeHtmlSelection(ipa)}/`}</span>`
           : '<span class="vocab-reading vocab-reading--empty">IPA pending</span>';
         const lemma = String(e.lemma || '');
-        return `<article class="vocab-item is-collapsed" data-id="${escapeHtmlSelection(e.id)}" tabindex="0" role="button" aria-expanded="false">
+        const az = vocabAzLetter(lemma);
+        return `<article class="vocab-item is-collapsed" data-id="${escapeHtmlSelection(e.id)}" data-az="${az}">
           <div class="vocab-entry">
+            <div class="vocab-entry__toggle" role="button" tabindex="0" aria-expanded="false">
             <header class="vocab-entry__head">
               <h3 class="vocab-lemma">${escapeHtmlSelection(lemma)}</h3>
               ${ipaHtml}
@@ -1689,6 +1858,7 @@ function renderVocabNotebook(entries: any[]): void {
               ${e.partOfSpeech ? `<span class="vocab-pos">${escapeHtmlSelection(e.partOfSpeech)}</span>` : ''}
               ${langPair}
               ${saved ? `<time class="vocab-saved" datetime="${escapeHtmlSelection(String(e.updatedAt || e.createdAt))}">${escapeHtmlSelection(saved)}</time>` : ''}
+            </div>
             </div>
             <div class="vocab-entry__details">
               ${defHtml ? `<div class="vocab-def${long ? ' is-clamped' : ''}" data-full="1">${defHtml}</div>${long ? `<button type="button" class="vocab-more btn-link">Show more</button>` : ''}` : '<p class="vocab-note">No definition saved.</p>'}
@@ -1705,18 +1875,20 @@ function renderVocabNotebook(entries: any[]): void {
       .join('');
 
     list.querySelectorAll('.vocab-item').forEach((el) => {
-      el.addEventListener('click', (ev) => {
+      const toggle = el.querySelector('.vocab-entry__toggle') as HTMLElement | null;
+      if (!toggle) return;
+      toggle.addEventListener('click', (ev) => {
         const t = ev.target as HTMLElement;
-        if (t.closest('.vocab-actions, .vocab-more, button, a')) return;
-        const open = el.classList.toggle('is-collapsed') === false;
-        el.classList.toggle('is-expanded', open);
-        el.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (t.closest('.vocab-play, button, a')) return;
+        toggleVocabItem(el as HTMLElement);
+        toggle.setAttribute('aria-expanded', el.classList.contains('is-collapsed') ? 'false' : 'true');
       });
-      el.addEventListener('keydown', (ev) => {
+      toggle.addEventListener('keydown', (ev) => {
         const ke = ev as KeyboardEvent;
         if (ke.key !== 'Enter' && ke.key !== ' ') return;
         ke.preventDefault();
-        (el as HTMLElement).click();
+        toggleVocabItem(el as HTMLElement);
+        toggle.setAttribute('aria-expanded', el.classList.contains('is-collapsed') ? 'false' : 'true');
       });
     });
     list.querySelectorAll('.vocab-open').forEach((btn) => {
@@ -1758,6 +1930,28 @@ document.getElementById('refreshVocabBtn')?.addEventListener('click', () => {
 document.getElementById('vocabSearch')?.addEventListener('input', () => {
   renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
 });
+
+document.getElementById('vocabSortRecent')?.addEventListener('click', () => {
+  setVocabSortMode('recent');
+  renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
+});
+
+document.getElementById('vocabSortAlpha')?.addEventListener('click', () => {
+  setVocabSortMode('alpha');
+  renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
+});
+
+document.getElementById('exportVocabBtn')?.addEventListener('click', async () => {
+  const api = (window as any).vocabAPI;
+  if (!api?.exportNotebook) return;
+  try {
+    await api.exportNotebook('json');
+  } catch (error) {
+    console.error('vocab export failed', error);
+  }
+});
+
+setVocabSortMode(getVocabSortMode());
 
 async function openFullLookup(text: string): Promise<void> {
   try {
