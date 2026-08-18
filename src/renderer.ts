@@ -1584,11 +1584,22 @@ function wireMainWindowTextSelectionLookup(): void {
     timer = setTimeout(() => {
       const still = (window.getSelection()?.toString() || '').trim();
       if (still !== text) return;
-      addToRecentSelections(text);
-      const api = window.electronAPI as { showPopup?: (x: number, y: number, t: string) => void };
-      if (api?.showPopup) {
-        api.showPopup(e.screenX || 0, e.screenY || 0, text);
+      const api = window.electronAPI as {
+        showPopup?: (x: number, y: number, t: string) => void;
+        getMonitorState?: () => Promise<{ mode?: string }>;
+      };
+      const open = () => {
+        addToRecentSelections(text);
+        if (api?.showPopup) api.showPopup(e.screenX || 0, e.screenY || 0, text);
+      };
+      if (!api?.getMonitorState) {
+        open();
+        return;
       }
+      void api.getMonitorState().then((state) => {
+        if (state?.mode === 'off') return;
+        open();
+      });
     }, 280);
   });
 }

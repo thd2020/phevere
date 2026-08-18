@@ -1754,11 +1754,26 @@ ipcMain.handle(
   },
 );
 
-ipcMain.on('show-popup', (_event, { x, y, text }) => {
+/** In-app select-to-lookup (main window / popup) uses the same monitor mode as UIA. */
+function rememberAndMaybeOpenPopup(x: number, y: number, text: string): void {
   const t = typeof text === 'string' ? text.trim() : '';
+  if (!t || !isLookupWorthy(t)) return;
   lastSelectionEvent = selectionToContext(t, x, y, 'manual');
   lastSelectedText = t;
+  try {
+    mainWindow?.webContents.send('selection-changed', t);
+  } catch {
+    /* ignore */
+  }
+  if (monitorSettings.mode === 'off') return;
+  if (monitorSettings.mode === 'shortcut' && !isAcceleratorPhysicallyHeld(monitorSettings.triggerShortcut)) {
+    return;
+  }
   createPopupWindow(x, y);
+}
+
+ipcMain.on('show-popup', (_event, { x, y, text }) => {
+  rememberAndMaybeOpenPopup(x, y, text);
 });
 
 ipcMain.on('hide-popup', () => {

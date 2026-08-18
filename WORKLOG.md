@@ -96,3 +96,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 ## 2026-08-18
 
 - Looking up **fluff** showed **roleplaying**: Wiktionary sense “a form of roleplaying …” matched a greedy `form of` inflection pivot and replaced the headword. Grammatical form-of only (`plural of`, `alternative form of`, …); pivot only if the *first* gloss is that kind of inflection.
+- In-app select-to-lookup ignored monitor mode (always opened). It now follows Off / Shortcut / On like UIA. Selecting inside the lookup panel goes to the toolstrip instead of an instant second lookup. A new headword clears the previous card so it cannot linger until a click.
