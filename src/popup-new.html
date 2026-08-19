@@ -2698,10 +2698,10 @@ function startAutoCloseTimeout() {
 
        function lemmaForSave() {
          return String(
-           (currentResult && currentResult.metadata && currentResult.metadata.lemma) ||
-           (currentResult && currentResult.word) ||
            currentText ||
            window['__popupCurrentText'] ||
+           (currentResult && currentResult.metadata && currentResult.metadata.queriedAs) ||
+           (currentResult && currentResult.word) ||
            ''
          ).trim();
        }
@@ -2779,10 +2779,10 @@ function startAutoCloseTimeout() {
 
        async function syncVocabHeart(lemma) {
          const word = String(
-           (currentResult && currentResult.metadata && currentResult.metadata.lemma) ||
-           lemma ||
-           (currentResult && currentResult.word) ||
            currentText ||
+           lemma ||
+           (currentResult && currentResult.metadata && currentResult.metadata.queriedAs) ||
+           (currentResult && currentResult.word) ||
            ''
          ).trim();
          if (!word || !window.vocabAPI || !window.vocabAPI.find) {
@@ -2820,11 +2820,6 @@ function startAutoCloseTimeout() {
              setVocabHeartSaved(false);
              showToast('Removed from notebook');
              return;
-           }
-           const queriedAs = currentResult && currentResult.metadata && currentResult.metadata.queriedAs;
-           if (queriedAs && String(queriedAs).toLowerCase() !== lemma.toLowerCase()) {
-             const orphan = await window.vocabAPI.find(String(queriedAs).trim());
-             if (orphan && orphan.id) await window.vocabAPI.remove(orphan.id);
            }
 
            const payload = vocabPayloadFromResult(currentResult, lemma);

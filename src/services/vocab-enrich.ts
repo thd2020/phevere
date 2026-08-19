@@ -75,7 +75,11 @@ export function payloadFromDictionaryResult(result?: DictionaryResult | null): v
   });
   const sources = Array.from(new Set(sourceList.length ? sourceList : result.sources || [])).slice(0, 6);
   return {
-    lemma: (result.metadata?.lemma || result.word || '').trim() || result.word,
+    lemma: (
+      (typeof result.metadata?.queriedAs === 'string' && result.metadata.queriedAs.trim()) ||
+      result.word ||
+      ''
+    ).trim() || result.word,
     reading: reading || undefined,
     definition: definition || undefined,
     partOfSpeech: useDefs[0]?.partOfSpeech,
@@ -88,11 +92,11 @@ export function payloadFromDictionaryResult(result?: DictionaryResult | null): v
 function lemmaCandidates(result: DictionaryResult, extra?: string): string[] {
   return [
     extra,
-    result.metadata?.lemma,
-    result.word,
     result.metadata?.queriedAs,
+    result.word,
     result.metadata?.matchedQuery,
     result.metadata?.originalSelection,
+    result.metadata?.lemma,
   ].filter((x): x is string => typeof x === 'string' && !!x.trim());
 }
 

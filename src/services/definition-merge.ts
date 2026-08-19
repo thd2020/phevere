@@ -3,6 +3,8 @@
  * into one sense with multiple citation labels (Free Dictionary · Wiktionary · Datamuse).
  */
 
+import { isGrammaticalFormOfGloss, latinLemmasByPos } from './text-normalize';
+
 export interface MergeableDefinition {
   partOfSpeech: string;
   meaning: string;
@@ -302,6 +304,28 @@ function sourceRank(def: MergeableDefinition): number {
   if (blob.includes('webster') || blob.includes('gcide')) return 3;
   if (blob.includes('datamuse')) return 4;
   return 5;
+}
+
+/**
+ * Drop lemma senses that leaked onto an inflected query (verb “tantalize”
+ * under “tantalizing”). Keep this form’s own POS and grammatical form-of
+ * glosses (“present participle of …”).
+ */
+export function stripCrossLemmaSenses<T extends MergeableDefinition>(surface: string, defs: T[]): T[] {
+  const lemmas = latinLemmasByPos(surface);
+  if (!lemmas.noun && !lemmas.verb && !lemmas.adjective) return defs;
+  return (defs || []).filter((d) => {
+    if (isGrammaticalFormOfGloss(d.meaning)) return true;
+    const pos = canonicalPos(d.partOfSpeech);
+    const raw = String(d.partOfSpeech || '');
+    const bucket =
+      pos === 'noun' ? 'noun'
+      : pos === 'verb' || /participle|gerund/i.test(raw) ? 'verb'
+      : pos === 'adjective' ? 'adjective'
+      : null;
+    if (!bucket) return true;
+    return !lemmas[bucket];
+  });
 }
 
 /** Free Dictionary / Wiktionary native order first (common-reading), then other packs. */

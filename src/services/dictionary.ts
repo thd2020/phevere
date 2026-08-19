@@ -40,9 +40,9 @@ import { BaseService, DictionaryError, withTimeout } from './base';
 import * as crypto from 'crypto';
 import { wrapConsole } from '../logger';
 import { net } from 'electron';
-import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, latinLemmaForms, foldLatinHeadword, foldLookupKey, isGrammaticalFormOfGloss, isContentHeadword, lemmaFromFormOfHtml } from './text-normalize';
+import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, latinLemmaForms, foldLatinHeadword, foldLookupKey } from './text-normalize';
 import { buildEtymology, EtymologyLink } from './etymology';
-import { mergeSimilarDefinitions, dedupeExamples, canonicalPos, sortDefinitionsByReadingOrder } from './definition-merge';
+import { mergeSimilarDefinitions, dedupeExamples, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses } from './definition-merge';
 import { lookupOffline, type OfflineHit } from './offline-dict-store';
 import {
   Pronunciation,
@@ -50,7 +50,6 @@ import {
   extractIpaFromWikitext,
   mergePronunciations,
   formatPronunciationLine,
-  derivationalStems,
   cleanIpa,
 } from './pronunciation';
 
@@ -449,22 +448,43 @@ export class DictionaryService extends BaseService {
   }
 
   /**
-   * Walks the candidate ladder and returns the first form that actually
-   * resolves, so "word." falls back to "word" and "running" to "run" without
-   * the user having to reselect. The form that matched is reported in
-   * `metadata.matchedQuery` so the UI can say what it looked up.
+   * Exact form first (punctuation variants only). Inflected lemmas such as
+   * tantalizing → tantalize are tried only when every source had zero senses
+   * for that form — never mixed into a card that already has definitions.
    */
-  private async lookupWithCandidates(
+  private splitLookupCandidates(query: NormalizedQuery): { surface: string[]; lemma: string[] } {
+    const all = query.candidates.length > 0 ? query.candidates : [query.trimmed];
+    const surfaceKey = foldLookupKey(query.trimmed);
+    const surface: string[] = [];
+    const lemma: string[] = [];
+    const seen = new Set<string>();
+    const push = (list: string[], value: string) => {
+      const v = (value || '').trim();
+      if (!v || seen.has(v)) return;
+      seen.add(v);
+      list.push(v);
+    };
+    for (const c of all) {
+      if (foldLookupKey(c) === surfaceKey) push(surface, c);
+      else push(lemma, c);
+    }
+    if (!query.isCJK && query.kind === 'word') {
+      for (const f of latinLemmaForms(query.trimmed)) push(lemma, f);
+    }
+    return { surface, lemma };
+  }
+
+  private async lookupCandidateList(
+    candidates: string[],
     query: NormalizedQuery,
     targetLanguage: string,
     detectedLanguage: string,
-    enabledSources?: string[],
-    holder?: LookupHolder,
-    opts?: LookupOpts,
-  ): Promise<DictionaryResult> {
-    const candidates = query.candidates.length > 0 ? query.candidates : [query.trimmed];
+    enabledSources: string[] | undefined,
+    holder: LookupHolder | undefined,
+    opts: LookupOpts | undefined,
+    lemmaFallback: boolean,
+  ): Promise<DictionaryResult | null> {
     let acc: DictionaryResult | null = null;
-    let extraTries = 0;
     let matchedCandidate = '';
 
     for (const candidate of candidates) {
@@ -482,32 +502,63 @@ export class DictionaryService extends BaseService {
       );
 
       if (!this.hasRealDefinitions(result)) {
-        if (!acc) {
-          acc = result;
-          if (holder) holder.current = acc;
-        } else {
-          acc = this.mergeLookupResults(acc, this.withoutFallbackDefinitions(result));
-          if (holder) holder.current = acc;
-        }
+        acc = acc ? this.mergeLookupResults(acc, this.withoutFallbackDefinitions(result)) : result;
+        if (holder) holder.current = acc;
         continue;
       }
 
-      acc = acc ? this.mergeLookupResults(acc, result) : result;
-      matchedCandidate = candidate;
-      if (holder) holder.current = acc;
-
-      if (!this.shouldTryNextCandidate(acc, query)) {
-        return this.decorateMatchedResult(acc, query, candidate);
-      }
-      extraTries += 1;
-      if (extraTries >= 2) return this.decorateMatchedResult(acc, query, candidate);
+      const merged = acc && !this.hasRealDefinitions(acc)
+        ? this.mergeLookupResults(this.withoutFallbackDefinitions(acc), result)
+        : result;
+      if (holder) holder.current = merged;
+      return this.decorateMatchedResult(merged, query, candidate, lemmaFallback);
     }
 
     if (acc && this.hasRealDefinitions(acc)) {
-      return this.decorateMatchedResult(acc, query, matchedCandidate || query.trimmed);
+      return this.decorateMatchedResult(acc, query, matchedCandidate || query.trimmed, lemmaFallback);
+    }
+    return acc;
+  }
+
+  private async lookupWithCandidates(
+    query: NormalizedQuery,
+    targetLanguage: string,
+    detectedLanguage: string,
+    enabledSources?: string[],
+    holder?: LookupHolder,
+    opts?: LookupOpts,
+  ): Promise<DictionaryResult> {
+    const { surface, lemma } = this.splitLookupCandidates(query);
+
+    const surfaceHit = await this.lookupCandidateList(
+      surface,
+      query,
+      targetLanguage,
+      detectedLanguage,
+      enabledSources,
+      holder,
+      opts,
+      false,
+    );
+    if (surfaceHit && this.hasRealDefinitions(surfaceHit)) {
+      return surfaceHit;
     }
 
-    const firstResult = acc;
+    const lemmaHit = await this.lookupCandidateList(
+      lemma,
+      query,
+      targetLanguage,
+      detectedLanguage,
+      enabledSources,
+      holder,
+      opts,
+      true,
+    );
+    if (lemmaHit && this.hasRealDefinitions(lemmaHit)) {
+      return lemmaHit;
+    }
+
+    const firstResult = surfaceHit || lemmaHit;
 
     // Nothing resolved. Keep the translation we already have and attach
     // spelling suggestions so the popup can offer a way forward.
@@ -583,36 +634,22 @@ export class DictionaryService extends BaseService {
     acc: DictionaryResult,
     query: NormalizedQuery,
     candidate: string,
+    lemmaFallback = false,
   ): DictionaryResult {
-    const lemmaRaw =
-      (acc.metadata && typeof acc.metadata.lemma === 'string' && acc.metadata.lemma.trim()) ||
-      acc.word ||
-      candidate;
-    const lemma =
-      this.sameLookupFold(lemmaRaw, query.trimmed) && query.trimmed
-        ? foldLatinHeadword(query.trimmed) || query.trimmed
-        : lemmaRaw;
-    acc.word = lemma;
+    const surface = foldLatinHeadword(query.trimmed) || query.trimmed;
+    acc.word = surface;
     acc.metadata = {
       ...(acc.metadata || {}),
       isSentence: false,
       queryKind: query.kind,
       originalSelection: query.raw,
       matchedQuery: candidate,
-      queriedAs: candidate,
-      lemma: lemma !== candidate ? lemma : acc.metadata?.lemma,
+      queriedAs: query.trimmed,
+      lemma: lemmaFallback && !this.sameLookupFold(candidate, query.trimmed) ? candidate : undefined,
+      lemmaFallback: lemmaFallback && !this.sameLookupFold(candidate, query.trimmed) ? true : undefined,
       normalizedFrom: candidate === query.sanitized ? undefined : query.sanitized,
     };
     return acc;
-  }
-
-  private shouldTryNextCandidate(result: DictionaryResult, query: NormalizedQuery): boolean {
-    if (query.isCJK || query.kind !== 'word') return false;
-    const blob = (result.sources || []).join(' ').toLowerCase();
-    const rich = /free dictionary|wiktionary|oxford|wordsapi|collins/.test(blob);
-    // Missing IPA is filled on this same headword in the background; do not
-    // walk "hello," after "hello" just to hunt pronunciation.
-    return !rich;
   }
 
   private mergeLookupResults(base: DictionaryResult, extra: DictionaryResult): DictionaryResult {
@@ -873,7 +910,7 @@ export class DictionaryService extends BaseService {
           this.absorbOfflineHits(definitions, sources, offlineHits, true);
         } else if (preferLatinSources) {
           const offlineHits = await withTimeout(
-            lookupOffline(text, 'en', 16, latinLemmaForms(text)),
+            lookupOffline(text, 'en', 16),
             OFFLINE_BUDGET_MS,
             'offline.lookup.en',
           );
@@ -1002,7 +1039,6 @@ export class DictionaryService extends BaseService {
       ]);
     }
 
-    let canonicalLemma: string | undefined;
     const absorbed = new Set<unknown>();
 
     const ingest = (item: any) => {
@@ -1029,12 +1065,6 @@ export class DictionaryService extends BaseService {
             synonyms.push(...(data.synonyms || []));
             antonyms.push(...(data.antonyms || []));
             sources.push('Free Dictionary API');
-            if (data.word && typeof data.word === 'string') {
-              const apiWord = data.word.trim();
-              if (apiWord && apiWord.toLowerCase() !== text.toLowerCase()) {
-                canonicalLemma = canonicalLemma || apiWord;
-              }
-            }
           }
           pronunciation = formatPronunciationLine(pronunciations) || pronunciation || data?.pronunciation;
           break;
@@ -1056,9 +1086,6 @@ export class DictionaryService extends BaseService {
               if (exampleSnippets.length > 0) examples.push(...exampleSnippets);
             } catch { /* ignore */ }
             if (data.etymology) etymology = data.etymology;
-            if (data.lemma && typeof data.lemma === 'string') {
-              canonicalLemma = data.lemma.trim() || canonicalLemma;
-            }
             sources.push('Wiktionary');
           }
           pronunciation = formatPronunciationLine(pronunciations) || pronunciation || data?.pronunciation;
@@ -1133,9 +1160,12 @@ export class DictionaryService extends BaseService {
           uniqueDefinitions.push(d);
         }
       }
-      const mergedDefinitions = sortDefinitionsByReadingOrder(
-        mergeSimilarDefinitions(uniqueDefinitions) as Definition[],
-      ) as Definition[];
+      const mergedDefinitions = stripCrossLemmaSenses(
+        text,
+        sortDefinitionsByReadingOrder(
+          mergeSimilarDefinitions(uniqueDefinitions) as Definition[],
+        ) as Definition[],
+      );
       for (const d of mergedDefinitions) {
         if (d.examples?.length) d.examples = dedupeExamples(d.examples) || [];
       }
@@ -1164,7 +1194,8 @@ export class DictionaryService extends BaseService {
       const uniqueSynonyms = Array.from(new Set(synonyms.map((s) => (s || '').trim()).filter(Boolean)));
       const uniqueAntonyms = Array.from(new Set(antonyms.map((s) => (s || '').trim()).filter(Boolean)));
       const uniqueSources = Array.from(new Set(sources.map((s) => (s || '').trim())));
-      const headword = (canonicalLemma && canonicalLemma.trim()) || text;
+      const surfaceForm = foldLatinHeadword(trimEdges(sanitize(opts?.originalSelection || text))) || text;
+      const headword = surfaceForm;
       const ipaList = mergePronunciations(pronunciations);
       const ipaLine = formatPronunciationLine(ipaList) || pronunciation;
       return {
@@ -1186,9 +1217,8 @@ export class DictionaryService extends BaseService {
         detectedLanguage: sourceLanguage,
         sources: uniqueSources,
         metadata: {
-          queriedAs: text,
+          queriedAs: opts?.originalSelection || text,
           originalSelection: opts?.originalSelection || text,
-          lemma: headword !== text ? headword : undefined,
           sourceStatus: { ...sourceStatus },
           expectedSources: [...expectedSources],
           pendingEtymology,
@@ -1203,7 +1233,7 @@ export class DictionaryService extends BaseService {
 
     void (async () => {
       try {
-        const etyQuery = (canonicalLemma && canonicalLemma.trim()) || text;
+        const etyQuery = text;
         const etyPromise = skipEtymology
           ? Promise.resolve(undefined)
           : this.fetchEtymologyFromMultipleSources(etyQuery).catch((error: unknown): undefined => {
@@ -1224,7 +1254,7 @@ export class DictionaryService extends BaseService {
         }
         const late = buildResult();
         if (preferLatinSources) {
-          const ipaWord = foldLatinHeadword(late.word || canonicalLemma || text);
+          const ipaWord = foldLatinHeadword(text);
           const haveUsUk =
             (late.pronunciations || []).some((p) => p.accent === 'us') &&
             (late.pronunciations || []).some((p) => p.accent === 'uk');
@@ -1394,6 +1424,10 @@ export class DictionaryService extends BaseService {
       }
 
       const data = response[0];
+      const apiWord = typeof data.word === 'string' ? data.word.trim() : '';
+      if (apiWord && foldLookupKey(apiWord) !== foldLookupKey(query)) {
+        return empty;
+      }
       const definitions: Definition[] = [];
       const examples: string[] = [];
       const synonyms: string[] = [];
@@ -1453,12 +1487,11 @@ export class DictionaryService extends BaseService {
   /**
    * Get data from Wiktionary API with a focus on definitions and etymology.
    */
-  private async getWiktionaryData(text: string, language: string, depth = 0): Promise<{
+  private async getWiktionaryData(text: string, language: string): Promise<{
     definitions: Definition[];
     pronunciation?: string;
     pronunciations?: Pronunciation[];
     etymology?: string;
-    lemma?: string;
   }> {
     const term = language === 'en' ? foldLatinHeadword(text) : text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const ipaPromise =
@@ -1479,20 +1512,13 @@ export class DictionaryService extends BaseService {
         const definitions: Definition[] = [];
         let pronunciation: string | undefined;
         let etymology: string | undefined;
-        const lemmaCandidates = new Set<string>();
 
         for (const entry of langData) {
           if (entry.definitions && Array.isArray(entry.definitions)) {
             entry.definitions.forEach((def: any) => {
-              const meaning: string = def.definition;
-              // Inflection glosses only ("plural of cat"). "A form of roleplaying" is a real sense of fluff.
-              if (isGrammaticalFormOfGloss(meaning)) {
-                const linked = lemmaFromFormOfHtml(meaning, term);
-                if (linked) lemmaCandidates.add(linked);
-              }
               definitions.push({
                 partOfSpeech: this.normalizePartOfSpeech(entry.partOfSpeech),
-                meaning,
+                meaning: def.definition,
                 examples: def.examples || [],
                 source: 'Wiktionary'
               });
@@ -1525,46 +1551,6 @@ export class DictionaryService extends BaseService {
           }
         }
 
-        // One hop only: deinflect (wink + grammatical “plural of X”), then look up X.
-        // Never follow Appendix:/Category: links; never chain pivots.
-        let lemma: string | undefined;
-        const firstGloss = definitions[0]?.meaning || '';
-        if (depth === 0 && isGrammaticalFormOfGloss(firstGloss)) {
-          const morph = latinLemmaForms(term).find((f) => isContentHeadword(f));
-          const fromWiki = [...lemmaCandidates].find((c) => isContentHeadword(c));
-          const base = (morph && lemmaCandidates.has(morph) ? morph : fromWiki) || morph || fromWiki;
-          if (base && isContentHeadword(base) && foldLookupKey(base) !== foldLookupKey(term)) {
-          lemma = base;
-          try {
-            const baseData = await this.getWiktionaryData(base, language, depth + 1);
-            // Prefer base lemma definitions/etymology if available
-            if (baseData.definitions && baseData.definitions.length > 0) {
-              const existingSet = new Set(definitions.map(d => d.meaning));
-              const merged = baseData.definitions.filter(d => !existingSet.has(d.meaning));
-              definitions.push(...merged);
-            }
-            if (!etymology && baseData.etymology) etymology = baseData.etymology;
-            if (baseData.pronunciations?.length || baseData.pronunciation) {
-              pronunciation = formatPronunciationLine(
-                mergePronunciations(
-                  pronunciation ? [{ ipa: pronunciation, accent: 'other', source: 'Wiktionary' }] : undefined,
-                  baseData.pronunciations,
-                  baseData.pronunciation ? [{ ipa: baseData.pronunciation, accent: 'other', source: 'Wiktionary' }] : undefined,
-                ),
-              ) || pronunciation || baseData.pronunciation;
-            }
-            // Pull example sentences from wikitext for the base lemma as well
-            const baseExamples = await this.fetchExamplesFromWikitext(base);
-            if (baseExamples.length > 0 && definitions.length > 0) {
-              const first = definitions[0] as Definition;
-              first.examples = dedupeExamples([...(first.examples || []), ...baseExamples]) || [];
-            }
-          } catch (e) {
-            console.warn('Lemma pivot failed for', base, e);
-          }
-          }
-        }
-
         const pronunciations = mergePronunciations(
           await ipaPromise,
           pronunciation && !/US\s|UK\s/.test(pronunciation)
@@ -1576,7 +1562,6 @@ export class DictionaryService extends BaseService {
           pronunciation: formatPronunciationLine(pronunciations) || pronunciation,
           pronunciations,
           etymology,
-          lemma,
         };
       } else {
         const pronunciations = await ipaPromise;
@@ -1629,15 +1614,7 @@ export class DictionaryService extends BaseService {
   private async getWiktionaryIpa(text: string): Promise<Pronunciation[]> {
     const head = foldLatinHeadword(text);
     if (!head) return [];
-    const seeds = [head, ...latinLemmaForms(head), ...derivationalStems(head)];
-    const seen = new Set<string>();
-    for (const w of seeds) {
-      if (!w || seen.has(w)) continue;
-      seen.add(w);
-      const found = await this.fetchWiktionaryIpaPage(w);
-      if (found.length) return found;
-    }
-    return [];
+    return this.fetchWiktionaryIpaPage(head);
   }
 
   /**

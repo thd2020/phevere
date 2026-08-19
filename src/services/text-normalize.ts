@@ -4,7 +4,8 @@
  * Follows the approach used by mature lookup tools (GoldenDict-ng's folding +
  * scored match tiers, Yomitan's preprocess-then-deinflect pipeline): sanitize
  * the raw selection, trim punctuation at the edges only, then try a ladder of
- * progressively more aggressive candidates and stop at the first hit. An exact
+ * punctuation/script variants. Inflected lemmas are not mixed into a hit;
+ * they are only a fallback when the exact form has no senses at all. An exact
  * match always outranks a normalized one, so forms like "U.S." and "C++"
  * survive while "word." still resolves to "word".
  */
@@ -189,12 +190,9 @@ export function buildCandidates(sanitized: string, trimmed: string, kind: QueryK
   const nfkc = lower.normalize('NFKC');
   pushCandidate(candidates, seen, nfkc);
 
-  const lem = getLemmatizer();
-  if (lem && /^[\p{L}'-]+$/u.test(lower)) {
-    pushCandidate(candidates, seen, lem.verb?.(lower));
-    pushCandidate(candidates, seen, lem.noun?.(lower));
-    pushCandidate(candidates, seen, lem.adjective?.(lower));
-  }
+  // Inflected lemmas (tantalizing → tantalize) are *not* mixed into the
+  // surface ladder. Dictionary lookup tries them only when every source
+  // has zero senses for this exact form.
 
   // Last resorts: strip interior punctuation, then diacritics. Diacritic
   // folding goes last so "résumé" is never answered with "resume".
@@ -204,15 +202,29 @@ export function buildCandidates(sanitized: string, trimmed: string, kind: QueryK
   return candidates;
 }
 
+export type LatinLemmaPos = 'noun' | 'verb' | 'adjective';
+
 /** Noun/verb/adjective lemmas that differ from the surface form (e.g. vicissitudes → vicissitude). */
-export function latinLemmaForms(word: string): string[] {
+export function latinLemmasByPos(word: string): Partial<Record<LatinLemmaPos, string>> {
   const w = (word || '').trim().toLocaleLowerCase();
-  if (!w || !/^[\p{L}'-]+$/u.test(w)) return [];
+  if (!w || !/^[\p{L}'-]+$/u.test(w)) return {};
   const lem = getLemmatizer();
-  if (!lem) return [];
+  if (!lem) return {};
+  const out: Partial<Record<LatinLemmaPos, string>> = {};
+  const noun = lem.noun?.(w);
+  const verb = lem.verb?.(w);
+  const adjective = lem.adjective?.(w);
+  if (noun && noun !== w) out.noun = noun;
+  if (verb && verb !== w) out.verb = verb;
+  if (adjective && adjective !== w) out.adjective = adjective;
+  return out;
+}
+
+export function latinLemmaForms(word: string): string[] {
+  const byPos = latinLemmasByPos(word);
   const out: string[] = [];
-  const seen = new Set<string>([w]);
-  for (const f of [lem.noun?.(w), lem.verb?.(w), lem.adjective?.(w)]) {
+  const seen = new Set<string>();
+  for (const f of [byPos.noun, byPos.verb, byPos.adjective]) {
     if (!f || seen.has(f)) continue;
     seen.add(f);
     out.push(f);
@@ -289,9 +301,9 @@ export function isGrammaticalFormOfGloss(meaning: string): boolean {
  * are not lemmas — the first `/wiki/` href in a gloss is often
  * `Appendix:Glossary#plural`, which is why “tribulations” became that title.
  *
- * Same rule GoldenDict / Yomitan use: morphological candidates first
- * (`latinLemmaForms` / wink), wiki “plural of …” only to *fetch extra senses*,
- * and only when the linked title looks like a dictionary word.
+ * Linked titles must still look like dictionary words (not Appendix:).
+ * Lemma *senses* are not merged into an inflected card; lookup may fall
+ * back to the lemma only when the exact form has no senses at all.
  */
 const WIKI_NON_LEMMA =
   /^(Appendix|Category|File|Image|Special|Wiktionary|Template|Module|Help|User|Talk|Reconstruction|Citations|Rhymes|Thesaurus|MediaWiki|TimedText|Sign gloss):/i;
