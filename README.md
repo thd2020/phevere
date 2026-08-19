@@ -34,7 +34,7 @@ Then run the latest Setup.exe. New installs register a proper uninstaller (`Unin
 
 ## Features
 
-- **Native text selection** — UIAutomation (best as Administrator); shortcut / hover / OCR modes in Settings. Select in the main window or an open lookup to get the same toolstrip as selecting elsewhere (the open lookup is left alone). A second selection before the first popup appears follows the latest text and position.
+- **Native text selection** — UIAutomation (best as Administrator); shortcut / hover / OCR modes in Settings. Select in the main window or an open lookup to get the same toolstrip as selecting elsewhere (the open lookup is left alone). A second selection before the first popup appears follows the latest text and position. After following a word-family or wiki link, **Back / Forward** on the dictionary tab (and the mouse extra buttons) restore the previous lookup.
 - **Dictionary & translation** — Free Dictionary, Wiktionary, Datamuse, Youdao / DeepL routing; CJK ↔ English. Looks up the **exact form** you selected (IPA and notebook save stay on that form). Headword/lemma senses are used only when every source has no definition for that form. Lexicon is split into separate cards (senses, examples, synonyms/antonyms, word family). Word-family chips can carry a small POS banner (verb, adj.) — grammar labels are not treated as extra forms. Per-source cache (timeouts retry). US + UK IPA when the APIs provide them.
 - **Offline packs** — Settings → Offline: WordNet, Webster 1913 (GCIDE), CC-CEDICT, FreeDict en→zh (consent download); JSON/CEDICT import. Living Oxford / Collegiate Webster / Collins are not dumped (copyright).
 - **Etymology & Wikipedia** — in-popup tabs; Wikipedia reader webview

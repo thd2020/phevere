@@ -142,6 +142,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onPopupText: (callback: (text: string) => void) => {
     ipcRenderer.on('popup-text', (_event: any, text: string) => callback(text));
   },
+  onPopupAppCommand: (callback: (cmd: string) => void) => {
+    ipcRenderer.removeAllListeners('popup-app-command');
+    ipcRenderer.on('popup-app-command', (_event: any, cmd: string) => callback(cmd));
+  },
   onPopupProgress: (callback: (payload: {
     title?: string;
     subtitle?: string;
@@ -425,6 +429,7 @@ declare global {
     electronAPI: {
       onSelectionChange: (callback: (text: string) => void) => void;
       onPopupText: (callback: (text: string) => void) => void;
+      onPopupAppCommand?: (callback: (cmd: string) => void) => void;
       onPopupProgress?: (callback: (payload: {
         title?: string;
         subtitle?: string;

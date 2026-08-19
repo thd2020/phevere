@@ -266,6 +266,36 @@
         background: #ffffff;
       }
 
+      .lookup-nav {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        margin: 0 10px 0 0;
+        padding-right: 10px;
+        border-right: 1px solid #e1e5e9;
+        align-self: center;
+      }
+      .lookup-nav-btn {
+        width: 28px;
+        height: 28px;
+        border: none;
+        background: transparent;
+        color: #334155;
+        cursor: pointer;
+        border-radius: 6px;
+        font-size: 16px;
+        line-height: 1;
+        font-family: inherit;
+      }
+      .lookup-nav-btn:hover:not(:disabled) {
+        background: #f1f5f9;
+        color: var(--pv-ink);
+      }
+      .lookup-nav-btn:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+
       /* Results Section */
       .results-section {
          flex: 1 1 auto;
@@ -1425,6 +1455,10 @@
 
          <!-- Tabs -->
          <div class="tabs" id="tabsContainer" style="display: none;">
+           <div class="lookup-nav" role="group" aria-label="Lookup history">
+             <button type="button" class="lookup-nav-btn" id="lookupNavBack" title="Back" aria-label="Back" disabled>←</button>
+             <button type="button" class="lookup-nav-btn" id="lookupNavForward" title="Forward" aria-label="Forward" disabled>→</button>
+           </div>
            <button class="tab active" data-tab="lexicon">Lexicon</button>
            <button class="tab" data-tab="translation">Translation</button>
            <button class="tab" data-tab="wikipedia">Wikipedia</button>
@@ -1462,8 +1496,105 @@
       let lookupInFlight = null;
       let lookupSeq = 0;
       let lookupFold = '';
+      var lookupTrail = [];
+      var lookupTrailIndex = -1;
+      var lookupNavGuardAt = 0;
+      var LOOKUP_TRAIL_CAP = 40;
       function foldLookupKey(s) {
         return String(s || '').replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+      }
+
+      function syncLookupNav() {
+        var back = document.getElementById('lookupNavBack');
+        var fwd = document.getElementById('lookupNavForward');
+        if (back) back.disabled = lookupTrailIndex <= 0;
+        if (fwd) fwd.disabled = lookupTrailIndex < 0 || lookupTrailIndex >= lookupTrail.length - 1;
+      }
+
+      function resetTrailTo(term) {
+        var t = String(term || '').trim();
+        lookupTrail = t ? [t] : [];
+        lookupTrailIndex = lookupTrail.length - 1;
+        syncLookupNav();
+      }
+
+      function rememberLookup(term) {
+        var t = String(term || '').trim();
+        if (!t) return;
+        var folded = foldLookupKey(t);
+        var cur = lookupTrail[lookupTrailIndex];
+        if (cur && foldLookupKey(cur) === folded) {
+          lookupTrail[lookupTrailIndex] = t;
+          syncLookupNav();
+          return;
+        }
+        lookupTrail = lookupTrail.slice(0, lookupTrailIndex + 1);
+        lookupTrail.push(t);
+        if (lookupTrail.length > LOOKUP_TRAIL_CAP) {
+          lookupTrail.shift();
+        }
+        lookupTrailIndex = lookupTrail.length - 1;
+        syncLookupNav();
+      }
+
+      function wikiNavBack() {
+        if (currentTab !== 'wikipedia') return false;
+        var wv = document.querySelector('.wikipedia-reader webview');
+        try {
+          if (wv && typeof wv.canGoBack === 'function' && wv.canGoBack()) {
+            wv.goBack();
+            return true;
+          }
+        } catch (e) { /* ignore */ }
+        var back = document.getElementById('wikiReaderBack');
+        if (back) {
+          back.click();
+          return true;
+        }
+        return false;
+      }
+
+      function wikiNavForward() {
+        if (currentTab !== 'wikipedia') return false;
+        var wv = document.querySelector('.wikipedia-reader webview');
+        try {
+          if (wv && typeof wv.canGoForward === 'function' && wv.canGoForward()) {
+            wv.goForward();
+            return true;
+          }
+        } catch (e) { /* ignore */ }
+        return false;
+      }
+
+      function applyTrailEntry() {
+        var t = lookupTrail[lookupTrailIndex];
+        syncLookupNav();
+        if (!t) return;
+        currentText = t;
+        window['__popupCurrentText'] = t;
+        if (!isExpanded) expandToolbar();
+        if (currentTab === 'wikipedia') activateTab('lexicon');
+        void lookupText(t, { fromHistory: true });
+      }
+
+      function lookupNavBack() {
+        var now = Date.now();
+        if (now - lookupNavGuardAt < 80) return;
+        lookupNavGuardAt = now;
+        if (wikiNavBack()) return;
+        if (lookupTrailIndex <= 0) return;
+        lookupTrailIndex -= 1;
+        applyTrailEntry();
+      }
+
+      function lookupNavForward() {
+        var now = Date.now();
+        if (now - lookupNavGuardAt < 80) return;
+        lookupNavGuardAt = now;
+        if (wikiNavForward()) return;
+        if (lookupTrailIndex < 0 || lookupTrailIndex >= lookupTrail.length - 1) return;
+        lookupTrailIndex += 1;
+        applyTrailEntry();
       }
 
       function invalidateLookupState(nextFold) {
@@ -1568,9 +1699,10 @@
               if (isFullLookupWindow()) {
                 currentText = next;
                 window['__popupCurrentText'] = currentText;
+                resetTrailTo(next);
                 activateTab('lexicon');
                 if (!isExpanded) expandToolbar();
-                void lookupText(currentText);
+                void lookupText(currentText, { fromHistory: true });
                 return;
               }
               // An expanded lookup is its own session. New selections open another strip.
@@ -1578,6 +1710,7 @@
               const folded = foldLookupKey(next);
               currentText = next;
               window['__popupCurrentText'] = currentText;
+              resetTrailTo(next);
               if (folded && folded !== lookupFold) invalidateLookupState(folded);
               activateTab('lexicon');
               maybePreloadLookup(currentText);
@@ -1606,9 +1739,11 @@
                 if (openedFromHistory) {
                   activateTab('lexicon');
                   expandToolbar();
-                  lookupText(currentText);
+                  resetTrailTo(currentText);
+                  lookupText(currentText, { fromHistory: true });
                 } else {
                   activateTab('lexicon');
+                  resetTrailTo(currentText);
                   maybePreloadLookup(currentText);
                 }
               }
@@ -1721,14 +1856,50 @@
 
         // No text input in slim design
 
-                 // Handle Escape key
+                 // Handle Escape key and lookup history
          document.addEventListener('keydown', (e) => {
            if (e.key === 'Escape') window.close();
+           if ((e.altKey || e.metaKey) && e.key === 'ArrowLeft') {
+             e.preventDefault();
+             lookupNavBack();
+           }
+           if ((e.altKey || e.metaKey) && e.key === 'ArrowRight') {
+             e.preventDefault();
+             lookupNavForward();
+           }
          });
+
+         document.getElementById('lookupNavBack')?.addEventListener('click', function (e) {
+           e.preventDefault();
+           e.stopPropagation();
+           lookupNavBack();
+         });
+         document.getElementById('lookupNavForward')?.addEventListener('click', function (e) {
+           e.preventDefault();
+           e.stopPropagation();
+           lookupNavForward();
+         });
+
+         function onMouseHistoryButton(evt) {
+           if (evt.button !== 3 && evt.button !== 4) return;
+           evt.preventDefault();
+           evt.stopPropagation();
+           if (evt.button === 3) lookupNavBack();
+           else lookupNavForward();
+         }
+         document.addEventListener('mouseup', onMouseHistoryButton, true);
+         document.addEventListener('auxclick', onMouseHistoryButton, true);
+         if (window.electronAPI && typeof window.electronAPI.onPopupAppCommand === 'function') {
+           window.electronAPI.onPopupAppCommand(function (cmd) {
+             if (cmd === 'browser-backward') lookupNavBack();
+             else if (cmd === 'browser-forward') lookupNavForward();
+           });
+         }
 
                    // Select-to-lookup inside popup results (same gesture as outside the app)
           var __popupSelTimer = null;
           document.addEventListener('mouseup', function(evt) {
+            if (evt.button !== 0) return;
             const selection = window.getSelection();
             const target = evt.target || null;
             if (target && typeof target.closest === 'function') {
@@ -2149,7 +2320,10 @@ function startAutoCloseTimeout() {
                            async function lookupText(text, opts) {
           opts = opts || {};
           const silent = !!opts.silent;
+          const fromHistory = !!opts.fromHistory;
           if (!text || !text.trim()) return;
+          if (!fromHistory && !silent) rememberLookup(text);
+          else if (!fromHistory && silent && lookupTrailIndex < 0) resetTrailTo(text);
           const folded = foldLookupKey(text);
           if (folded && folded !== lookupFold) {
             clearStaleLookupUi(folded);

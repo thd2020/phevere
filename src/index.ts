@@ -839,6 +839,19 @@ const createMainWindow = (): void => {
   
 };
 
+/** Mouse X1/X2 (browser-backward / browser-forward) would otherwise walk Chromium page history. */
+function interceptPopupHistoryKeys(win: BrowserWindow): void {
+  win.on('app-command', (event, cmd) => {
+    if (cmd !== 'browser-backward' && cmd !== 'browser-forward') return;
+    event.preventDefault();
+    try {
+      if (!win.isDestroyed()) win.webContents.send('popup-app-command', cmd);
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
 const createPopupWindow = (x: number, y: number): void => {
   // Slim strip: width matches N×24px icons + gaps + padding (keep in sync with popup-new.html strip resize)
   const POPUP_STRIP_ICON = 24;
@@ -960,6 +973,7 @@ const createPopupWindow = (x: number, y: number): void => {
                 },
               }, 'acrylic'));
   inFlightPopup = newPopupWindow;
+  interceptPopupHistoryKeys(newPopupWindow);
   // Close on blur to match intended UX (give clicks time to land on icons)
   newPopupWindow.on('blur', () => {
     setTimeout(() => {
@@ -2799,6 +2813,8 @@ function createDictionaryWindow(term: string): void {
       webviewTag: true,
     },
   }, 'acrylic'));
+
+  interceptPopupHistoryKeys(dictWindow);
 
   dictWindow.on('blur', () => {
     setTimeout(() => {
