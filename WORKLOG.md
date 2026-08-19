@@ -121,3 +121,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Win11 dark **app theme**: lock `nativeTheme.themeSource = 'light'`, `color-scheme: light`, and a paper mica wash so ink text is not on a near-black DWM surface.
 - Signing research: public trust cannot be homemade. Documented in `docs/CODE_SIGNING.md` — self-signed only for this PC; SignPath Foundation is the realistic free OSS path; OV cert if publisher name must be ours; Azure Artifact Signing not for individuals outside US/CA. EV no longer skips SmartScreen.
 - Cut **1.3.1** (patch): installer 2×/white paper, clean tray Quit, light UI under dark Win11 app theme. Tag `v1.3.1` → `release.yml`. Dependabot PRs #1–#9 left open (majors like TypeScript 5→7 / eslint-plugin 6→8 fail CI; not part of this patch).
+- Published **v1.3.1** via Actions — `Phevere-Setup-1.3.1-x64.exe` (~82 MB, unsigned), SHA-256 `3E581927…C8C36144`, https://github.com/thd2020/phevere/releases/tag/v1.3.1
