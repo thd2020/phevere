@@ -9,6 +9,7 @@ import { dictionaryService, type DictionaryResult } from './dictionary';
 import { formatPronunciationLine } from './pronunciation';
 import * as vocabStore from './vocab-store';
 import { wrapConsole } from '../logger';
+import { isGrammaticalFormOfGloss, saveLemma } from './lookup-policy';
 
 const console = wrapConsole('vocab-enrich');
 
@@ -55,8 +56,8 @@ export function payloadFromDictionaryResult(result?: DictionaryResult | null): v
   if (!result) return null;
   const defs = (result.definitions || []).filter(isUsableDef);
   const substantive = defs.filter((d) => {
-    const m = stripHtmlToText(d.meaning || '').toLowerCase();
-    return !/^(plural|past(?:\s+tense)?|present(?:\s+participle)?|gerund|participle|form)\s+of\b/.test(m) || m.length > 64;
+    const m = stripHtmlToText(d.meaning || '');
+    return !isGrammaticalFormOfGloss(m) || m.length > 64;
   });
   const useDefs = substantive.length ? substantive : defs;
   const defJoined = useDefs
@@ -75,11 +76,7 @@ export function payloadFromDictionaryResult(result?: DictionaryResult | null): v
   });
   const sources = Array.from(new Set(sourceList.length ? sourceList : result.sources || [])).slice(0, 6);
   return {
-    lemma: (
-      (typeof result.metadata?.queriedAs === 'string' && result.metadata.queriedAs.trim()) ||
-      result.word ||
-      ''
-    ).trim() || result.word,
+    lemma: saveLemma(result) || result.word,
     reading: reading || undefined,
     definition: definition || undefined,
     partOfSpeech: useDefs[0]?.partOfSpeech,
@@ -92,6 +89,7 @@ export function payloadFromDictionaryResult(result?: DictionaryResult | null): v
 function lemmaCandidates(result: DictionaryResult, extra?: string): string[] {
   return [
     extra,
+    saveLemma(result),
     result.metadata?.queriedAs,
     result.word,
     result.metadata?.matchedQuery,

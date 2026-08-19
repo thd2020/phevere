@@ -35,7 +35,7 @@ Then run the latest Setup.exe. New installs register a proper uninstaller (`Unin
 ## Features
 
 - **Native text selection** — UIAutomation (best as Administrator); shortcut / hover / OCR modes in Settings. Select in the main window or an open lookup to get the same toolstrip as selecting elsewhere (the open lookup is left alone).
-- **Dictionary & translation** — Free Dictionary, Wiktionary, Datamuse, Youdao / DeepL routing; CJK ↔ English. Looks up the **exact form** you selected (IPA and notebook save stay on that form). Headword/lemma senses are used only when every source has no definition for that form. Per-source cache (timeouts retry). US + UK IPA when the APIs provide them.
+- **Dictionary & translation** — Free Dictionary, Wiktionary, Datamuse, Youdao / DeepL routing; CJK ↔ English. Looks up the **exact form** you selected (IPA and notebook save stay on that form). Headword/lemma senses are used only when every source has no definition for that form. Lexicon shows a **Word family** row of links (forms, derived/related terms, affixes, roots) from Wiktionary — they are navigation, not mixed-in senses. Per-source cache (timeouts retry). US + UK IPA when the APIs provide them.
 - **Offline packs** — Settings → Offline: WordNet, Webster 1913 (GCIDE), CC-CEDICT, FreeDict en→zh (consent download); JSON/CEDICT import. Living Oxford / Collegiate Webster / Collins are not dumped (copyright).
 - **Etymology & Wikipedia** — in-popup tabs; Wikipedia reader webview
 - **Vocabulary notebook** — local SQLite (`%APPDATA%\phevere`); lemma-only saves fill in the background; IPA + play; search; **Recent / A–Z** sort with an A–Z index scrubber; **Export / Import** (JSON or CSV); click the headword row to expand, select text in the definition without collapsing

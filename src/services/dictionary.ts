@@ -10,6 +10,8 @@ export interface DictionaryResult {
   etymology?: string;
   /** Structured ancestry parsed from Wiktionary etymology templates. */
   etymologyChain?: EtymologyLink[];
+  /** Inflections, derivatives, affixes — links, not extra senses. */
+  wordFamily?: WordFamilyGroup[];
   language?: string;
   detectedLanguage?: string;
   sources: string[]; // Track which APIs were used
@@ -40,7 +42,8 @@ import { BaseService, DictionaryError, withTimeout } from './base';
 import * as crypto from 'crypto';
 import { wrapConsole } from '../logger';
 import { net } from 'electron';
-import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, latinLemmaForms, foldLatinHeadword, foldLookupKey } from './text-normalize';
+import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
+import { splitSurfaceAndLemma, sameLookupFold } from './lookup-policy';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { mergeSimilarDefinitions, dedupeExamples, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses } from './definition-merge';
 import { lookupOffline, type OfflineHit } from './offline-dict-store';
@@ -52,6 +55,7 @@ import {
   formatPronunciationLine,
   cleanIpa,
 } from './pronunciation';
+import { buildWordFamily, mergeWordFamilyGroups, familyFromEtymologyChain, type WordFamilyGroup } from './word-family';
 
 const console = wrapConsole('dictionary');
 /** Hard ceiling so renderer IPC never waits forever (etymology / hung hosts). */
@@ -452,28 +456,6 @@ export class DictionaryService extends BaseService {
    * tantalizing → tantalize are tried only when every source had zero senses
    * for that form — never mixed into a card that already has definitions.
    */
-  private splitLookupCandidates(query: NormalizedQuery): { surface: string[]; lemma: string[] } {
-    const all = query.candidates.length > 0 ? query.candidates : [query.trimmed];
-    const surfaceKey = foldLookupKey(query.trimmed);
-    const surface: string[] = [];
-    const lemma: string[] = [];
-    const seen = new Set<string>();
-    const push = (list: string[], value: string) => {
-      const v = (value || '').trim();
-      if (!v || seen.has(v)) return;
-      seen.add(v);
-      list.push(v);
-    };
-    for (const c of all) {
-      if (foldLookupKey(c) === surfaceKey) push(surface, c);
-      else push(lemma, c);
-    }
-    if (!query.isCJK && query.kind === 'word') {
-      for (const f of latinLemmaForms(query.trimmed)) push(lemma, f);
-    }
-    return { surface, lemma };
-  }
-
   private async lookupCandidateList(
     candidates: string[],
     query: NormalizedQuery,
@@ -488,7 +470,7 @@ export class DictionaryService extends BaseService {
     let matchedCandidate = '';
 
     for (const candidate of candidates) {
-      if (acc && this.hasRealDefinitions(acc) && this.sameLookupFold(matchedCandidate || acc.word, candidate)) {
+      if (acc && this.hasRealDefinitions(acc) && sameLookupFold(matchedCandidate || acc.word, candidate)) {
         continue;
       }
 
@@ -528,7 +510,7 @@ export class DictionaryService extends BaseService {
     holder?: LookupHolder,
     opts?: LookupOpts,
   ): Promise<DictionaryResult> {
-    const { surface, lemma } = this.splitLookupCandidates(query);
+    const { surface, lemma } = splitSurfaceAndLemma(query);
 
     const surfaceHit = await this.lookupCandidateList(
       surface,
@@ -592,11 +574,6 @@ export class DictionaryService extends BaseService {
     });
   }
 
-  private sameLookupFold(a: string, b: string): boolean {
-    const fa = foldLookupKey(a);
-    return fa.length > 0 && fa === foldLookupKey(b);
-  }
-
   private withoutFallbackDefinitions(result: DictionaryResult): DictionaryResult {
     const definitions = (result.definitions || []).filter((d) => {
       if (!d || d.source === 'Fallback' || d.source === 'Timeout') return false;
@@ -645,8 +622,8 @@ export class DictionaryService extends BaseService {
       originalSelection: query.raw,
       matchedQuery: candidate,
       queriedAs: query.trimmed,
-      lemma: lemmaFallback && !this.sameLookupFold(candidate, query.trimmed) ? candidate : undefined,
-      lemmaFallback: lemmaFallback && !this.sameLookupFold(candidate, query.trimmed) ? true : undefined,
+      lemma: lemmaFallback && !sameLookupFold(candidate, query.trimmed) ? candidate : undefined,
+      lemmaFallback: lemmaFallback && !sameLookupFold(candidate, query.trimmed) ? true : undefined,
       normalizedFrom: candidate === query.sanitized ? undefined : query.sanitized,
     };
     return acc;
@@ -685,6 +662,7 @@ export class DictionaryService extends BaseService {
       pronunciation: formatPronunciationLine(pronunciations) || extra.pronunciation || base.pronunciation,
       etymology: extra.etymology || base.etymology,
       etymologyChain: extra.etymologyChain || base.etymologyChain,
+      wordFamily: mergeWordFamilyGroups(base.wordFamily, extra.wordFamily),
       sources,
       metadata: { ...(base.metadata || {}), ...(extra.metadata || {}), sourceStatus, expectedSources },
     };
@@ -860,6 +838,7 @@ export class DictionaryService extends BaseService {
     const skipEtymology = !!opts?.skipEtymology;
     let etymology: string | undefined;
     let etymologyChain: EtymologyLink[] | undefined;
+    let wikiFamily: WordFamilyGroup[] | undefined;
     let pendingEtymology = !skipEtymology;
     let pendingTranslation = true;
 
@@ -976,7 +955,11 @@ export class DictionaryService extends BaseService {
           'wiktionary',
           wikiWord,
           () => this.getWiktionaryData(wikiWord, wikiLang),
-          (data) => (data.definitions?.length || 0) > 0 || !!data.pronunciation || !!(data.pronunciations && data.pronunciations.length),
+          (data) =>
+            (data.definitions?.length || 0) > 0
+            || !!data.pronunciation
+            || !!(data.pronunciations && data.pronunciations.length)
+            || !!(data.wordFamily && data.wordFamily.length),
         ).then((r) => ({ ...r, type: 'wiktionary' })),
       );
     }
@@ -1071,6 +1054,9 @@ export class DictionaryService extends BaseService {
         case 'wiktionary':
           if (data?.pronunciations?.length) {
             pronunciations = mergePronunciations(pronunciations, data.pronunciations);
+          }
+          if (data?.wordFamily?.length) {
+            wikiFamily = mergeWordFamilyGroups(wikiFamily, data.wordFamily);
           }
           if (data && data.definitions && data.definitions.length > 0) {
             const existingMeanings = new Set(definitions.map((d: Definition) => d.meaning));
@@ -1198,6 +1184,15 @@ export class DictionaryService extends BaseService {
       const headword = surfaceForm;
       const ipaList = mergePronunciations(pronunciations);
       const ipaLine = formatPronunciationLine(ipaList) || pronunciation;
+      const wordFamily = mergeWordFamilyGroups(
+        wikiFamily,
+        familyFromEtymologyChain(etymologyChain, headword),
+        buildWordFamily({
+          surface: headword,
+          language: sourceLanguage,
+          definitions: mergedDefinitions,
+        }),
+      );
       return {
         word: headword,
         pronunciation: ipaLine,
@@ -1213,6 +1208,7 @@ export class DictionaryService extends BaseService {
         antonyms: uniqueAntonyms.length > 0 ? uniqueAntonyms : undefined,
         etymology,
         etymologyChain,
+        wordFamily: wordFamily.length ? wordFamily : undefined,
         language: targetLanguage,
         detectedLanguage: sourceLanguage,
         sources: uniqueSources,
@@ -1492,11 +1488,13 @@ export class DictionaryService extends BaseService {
     pronunciation?: string;
     pronunciations?: Pronunciation[];
     etymology?: string;
+    wordFamily?: WordFamilyGroup[];
   }> {
     const term = language === 'en' ? foldLatinHeadword(text) : text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    const wikiTextPromise = withTimeout(this.getWiktionaryWikitext(term), 2200, 'wiki.wikitext').catch((): string => '');
     const ipaPromise =
       language === 'en'
-        ? withTimeout(this.getWiktionaryIpa(term), 2200, 'wiki.ipa.core').catch((): Pronunciation[] => [])
+        ? wikiTextPromise.then((wt) => extractIpaFromWikitext(wt)).catch((): Pronunciation[] => [])
         : Promise.resolve([] as Pronunciation[]);
     try {
       const restUrl = `https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(term)}`;
@@ -1557,37 +1555,57 @@ export class DictionaryService extends BaseService {
             ? [{ ipa: pronunciation, accent: 'other', source: 'Wiktionary' }]
             : undefined,
         );
+        const wikitext = await wikiTextPromise;
+        const wordFamily = buildWordFamily({
+          surface: term,
+          wikitext,
+          language,
+          definitions,
+        });
         return {
           definitions,
           pronunciation: formatPronunciationLine(pronunciations) || pronunciation,
           pronunciations,
           etymology,
+          wordFamily: wordFamily.length ? wordFamily : undefined,
         };
       } else {
         const pronunciations = await ipaPromise;
-        return pronunciations.length
-          ? { definitions: [], pronunciations, pronunciation: formatPronunciationLine(pronunciations) }
-          : { definitions: [] };
+        const wikitext = await wikiTextPromise;
+        const wordFamily = buildWordFamily({ surface: term, wikitext, language, definitions: [] });
+        return {
+          definitions: [],
+          pronunciations: pronunciations.length ? pronunciations : undefined,
+          pronunciation: pronunciations.length ? formatPronunciationLine(pronunciations) : undefined,
+          wordFamily: wordFamily.length ? wordFamily : undefined,
+        };
       }
 
     } catch (error) {
       if (error instanceof DictionaryError && error.code === 'HTTP_404') {
         const pronunciations = await ipaPromise;
-        return pronunciations.length
-          ? { definitions: [], pronunciations, pronunciation: formatPronunciationLine(pronunciations) }
-          : { definitions: [] };
+        const wikitext = await wikiTextPromise;
+        const wordFamily = buildWordFamily({ surface: term, wikitext, language, definitions: [] });
+        return {
+          definitions: [],
+          pronunciations: pronunciations.length ? pronunciations : undefined,
+          pronunciation: pronunciations.length ? formatPronunciationLine(pronunciations) : undefined,
+          wordFamily: wordFamily.length ? wordFamily : undefined,
+        };
       }
       console.warn(`Wiktionary API failed for "${text}":`, error);
       throw error;
     }
   }
 
-  private async fetchWiktionaryIpaPage(word: string): Promise<Pronunciation[]> {
+  private async getWiktionaryWikitext(word: string): Promise<string> {
+    const head = foldLatinHeadword(word) || word.trim();
+    if (!head) return '';
     const wrapped = await this.cachedSource(
-      'wiktionaryIpa',
-      word,
+      'wiktionaryWikitext',
+      head,
       async () => {
-        const parseUrl = `https://en.wiktionary.org/w/api.php?action=parse&page=${encodeURIComponent(word)}&prop=wikitext&format=json&origin=*`;
+        const parseUrl = `https://en.wiktionary.org/w/api.php?action=parse&page=${encodeURIComponent(head)}&prop=wikitext&format=json&origin=*`;
         try {
           const response = await this.request<{
             parse?: { wikitext?: { '*': string } };
@@ -1595,20 +1613,23 @@ export class DictionaryService extends BaseService {
           }>(parseUrl, {
             headers: { 'User-Agent': DictionaryService.WIKIMEDIA_USER_AGENT },
           });
-          if (response?.error) return [] as Pronunciation[];
-          const wikitext = response?.parse?.wikitext?.['*'];
-          if (!wikitext) return [];
-          return extractIpaFromWikitext(wikitext);
+          if (response?.error) return '';
+          return response?.parse?.wikitext?.['*'] || '';
         } catch (error) {
           if (error instanceof DictionaryError && (error.code === 'HTTP_404' || error.code === 'HTTP_400')) {
-            return [];
+            return '';
           }
           throw error;
         }
       },
       (data) => data.length > 0,
     );
-    return wrapped.data || [];
+    return wrapped.data || '';
+  }
+
+  private async fetchWiktionaryIpaPage(word: string): Promise<Pronunciation[]> {
+    const wikitext = await this.getWiktionaryWikitext(word);
+    return wikitext ? extractIpaFromWikitext(wikitext) : [];
   }
 
   private async getWiktionaryIpa(text: string): Promise<Pronunciation[]> {
@@ -2252,13 +2273,7 @@ export class DictionaryService extends BaseService {
       const cleanWord = this.cleanWordForEtymology(text);
       if (!cleanWord) return undefined;
 
-      const parseUrl = `https://en.wiktionary.org/w/api.php?action=parse&page=${encodeURIComponent(cleanWord)}&prop=wikitext&format=json&origin=*`;
-
-      const response = await this.request<{ parse?: { wikitext?: { '*': string } } }>(parseUrl, {
-        headers: { 'User-Agent': DictionaryService.WIKIMEDIA_USER_AGENT }
-      }).catch((): null => null);
-
-      const wikitext = response?.parse?.wikitext?.['*'];
+      const wikitext = await this.getWiktionaryWikitext(cleanWord);
       if (!wikitext) {
         return undefined;
       }

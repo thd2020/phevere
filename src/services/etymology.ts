@@ -286,6 +286,21 @@ function renderLink(link: EtymologyLink, withPrefix: boolean): string {
 }
 
 /**
+ * Isolates a `==Language==` block (next `== … ==` stops it). Empty if missing.
+ */
+export function extractLanguageSection(wikitext: string, language = 'English'): string {
+  if (!wikitext) return '';
+  const escaped = language.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const heading = new RegExp(`^==\\s*${escaped}\\s*==\\s*$`, 'im');
+  const match = heading.exec(wikitext);
+  if (!match) return language.toLowerCase() === 'english' ? wikitext : '';
+  const start = match.index;
+  const after = wikitext.slice(start + match[0].length);
+  const next = after.search(/^==\s*[^=\n]+\s*==\s*$/m);
+  return next === -1 ? wikitext.slice(start) : wikitext.slice(start, start + match[0].length + next);
+}
+
+/**
  * Isolates the English entry, then every Etymology section beneath it
  * (including numbered "Etymology 1" / "Etymology 2" variants).
  */

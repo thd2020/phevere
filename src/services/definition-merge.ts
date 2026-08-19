@@ -3,7 +3,8 @@
  * into one sense with multiple citation labels (Free Dictionary · Wiktionary · Datamuse).
  */
 
-import { isGrammaticalFormOfGloss, latinLemmasByPos } from './text-normalize';
+import { isGrammaticalFormOfGloss } from './lookup-policy';
+import { latinLemmasByPos } from './text-normalize';
 
 export interface MergeableDefinition {
   partOfSpeech: string;

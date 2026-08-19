@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Lexicon **Word family** section: inflections, alternative/derived/related terms, affixes, and roots as in-app links (Wiktionary headings + affix templates). Related forms are not mixed into definitions.
+
+### Changed
+
+- Lookup policy lives in one module (`lookup-policy.ts`): exact form first, lemma only if every source is empty, one grammatical form-of test, notebook save key is the queried form. IPA, etymology, and family share a single Wiktionary wikitext fetch.
+
 ### Fixed
 
 - Inflected lookups such as **tantalizing** no longer mix in verb senses, IPA, or notebook saves for the lemma **tantalize**. The card, pronunciation, and Save stay on the exact form; the headword is used only when every source has no sense for that form. Wiki form-of links still look up the linked word on their own.

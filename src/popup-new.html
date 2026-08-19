@@ -573,12 +573,48 @@
       }
 
       .definition-text a,
-      .definition-text a.lemma-link {
+      .definition-text a.lemma-link,
+      a.lemma-link {
         color: var(--pv-teal);
         text-decoration: underline;
         text-underline-offset: 2px;
         cursor: pointer;
         font-weight: 600;
+      }
+
+      .word-family-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 6px 10px;
+        margin-bottom: 10px;
+      }
+      .word-family-label {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #64748b;
+        min-width: 7.5em;
+      }
+      .word-family-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 8px;
+        flex: 1;
+      }
+      a.word-family-chip {
+        display: inline-block;
+        font-weight: 600;
+        font-size: 13px;
+        color: var(--pv-teal);
+        background: #f1f5f9;
+        border-radius: 999px;
+        padding: 2px 10px;
+        text-decoration: none;
+      }
+      a.word-family-chip:hover {
+        background: #e2e8f0;
       }
 
       .definition-source-badge {
@@ -2397,7 +2433,7 @@ function startAutoCloseTimeout() {
           }
           const escaped = escapeHtml(String(raw));
           return escaped.replace(
-            /\b((?:plural|past(?:\s+tense)?|present(?:\s+participle)?|gerund|(?:past|present)\s+participle|alternative\s+(?:form|spelling)|common\s+misspelling|misspelling|obsolete\s+spelling|archaic\s+spelling|inflection)\s+of)\s+([A-Za-z\u00C0-\u024F][A-Za-z\u00C0-\u024F'-]*)/gi,
+            /\b((?:the\s+)?(?:plural|past(?:\s+tense)?|simple\s+past|present(?:\s+participle)?|gerund|(?:past|present)\s+participle|third-person\s+singular(?:\s+simple\s+present)?|alternative\s+(?:form|spelling)|(?:common\s+)?misspelling|obsolete\s+(?:form|spelling)|archaic\s+(?:form|spelling)|inflection|conjugated\s+form)\s+of)\s+([A-Za-z\u00C0-\u024F][A-Za-z\u00C0-\u024F'-]*)/gi,
             function (_m, phrase, lemma) {
               return `${phrase} <a href="#" data-lookup="${lemma}" class="lemma-link">${lemma}</a>`;
             }
@@ -2554,6 +2590,32 @@ function startAutoCloseTimeout() {
             .slice(0, 8);
           const syn = result.synonyms || [];
           const ant = result.antonyms || [];
+          const family = Array.isArray(result.wordFamily) ? result.wordFamily : [];
+          const familyLabels = {
+            forms: 'Forms',
+            lemma: 'Lemma',
+            alternatives: 'Alternative forms',
+            derived: 'Derived',
+            related: 'Related',
+            affixes: 'Affixes',
+            roots: 'Roots',
+            seeAlso: 'See also',
+          };
+          const familyHtml = family.length
+            ? `<div class="result-section">
+                <div class="result-section-title">Word family</div>
+                ${family.map(function (g) {
+                  const label = familyLabels[g.relation] || g.relation;
+                  const chips = (g.words || []).map(function (w) {
+                    const safe = String(w || '').trim();
+                    if (!safe) return '';
+                    return `<a href="#" class="lemma-link word-family-chip" data-lookup="${escapeHtml(safe)}">${escapeHtml(safe)}</a>`;
+                  }).join('');
+                  if (!chips) return '';
+                  return `<div class="word-family-row"><span class="word-family-label">${escapeHtml(label)}</span><div class="word-family-chips">${chips}</div></div>`;
+                }).join('')}
+              </div>`
+            : '';
 
           return `
             <div class="result-card">
@@ -2583,6 +2645,7 @@ function startAutoCloseTimeout() {
                       <div class="result-section-title">Antonyms</div>
                       <div class="example-item">${escapeHtml(ant.join(', '))}</div>
                   </div>` : ''}
+                ${familyHtml}
                 <div class="result-actions">
                     <button onclick='playAudio(${JSON.stringify(result.word)}, ${JSON.stringify(result.detectedLanguage || window['__audioLang'] || 'en')})' class="audio-button" title="Play pronunciation">🔊</button>
                     <button onclick='searchWeb(${JSON.stringify(result.word)})' class="action-btn action-btn-info">Search Web</button>
@@ -2717,8 +2780,9 @@ function startAutoCloseTimeout() {
        function vocabPayloadFromResult(result, lemma) {
          const defs = ((result && result.definitions) || []).filter(isUsableVocabDef);
          const substantive = defs.filter(function (d) {
-           const m = stripHtmlToText(d.meaning || d.definition || '').toLowerCase();
-           return !/^(plural|past(?:\s+tense)?|present(?:\s+participle)?|gerund|participle|form)\s+of\b/.test(m) || m.length > 64;
+           const m = stripHtmlToText(d.meaning || d.definition || '');
+           const isFormOf = /^(?:the\s+)?(?:plural|past(?:\s+tense)?|simple\s+past|present(?:\s+participle)?|gerund|(?:past|present)\s+participle|third-person\s+singular(?:\s+simple\s+present)?|alternative\s+(?:form|spelling)|(?:common\s+)?misspelling|obsolete\s+(?:form|spelling)|archaic\s+(?:form|spelling)|inflection|conjugated\s+form)\s+of\b/i.test(m);
+           return !isFormOf || m.length > 64;
          });
          const useDefs = substantive.length ? substantive : defs;
          const defJoined = useDefs
