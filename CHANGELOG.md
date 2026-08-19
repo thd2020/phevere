@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Installer wizard uses **2×** sidebar/header bitmaps, **white** page paper (not XP grey), and HALFTONE stretch so Win11 HiDPI no longer pixelates the P-mark pane.
+
+### Fixed
+
+- **Quit Phevere** (tray / taskbar menu) no longer races `app.quit()` when windows close — UIA, OCR, and sql.js tear down first so Chromium helper processes do not linger.
+
 ## [1.3.0] - 2026-08-18
 
 ### Added

@@ -113,3 +113,8 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 - Cut **1.3.0** (minor): bump `package.json`, fold Unreleased into CHANGELOG, push `main` then annotated tag `v1.3.0` so `.github/workflows/release.yml` builds NSIS Setup, GitHub Release, and attestation. No local `make:win`.
 - First `v1.3.0` Actions run failed at NSIS: empty `CSC_LINK` from unset repo secrets made electron-builder resolve `WIN_CSC_LINK` to the workspace path. `make:win` now deletes blank CSC env vars and sets `CSC_IDENTITY_AUTO_DISCOVERY=false`; `electron-builder.yml` `publish: null` so the tag + `GITHUB_TOKEN` does not double-publish. Retag `v1.3.0` onto that fix (no Release assets yet).
 - Published **v1.3.0** via Actions — `Phevere-Setup-1.3.0-x64.exe` (~82 MB, unsigned), SHA-256 `813F6E22…7EDF3A24`, https://github.com/thd2020/phevere/releases/tag/v1.3.0
+
+## 2026-08-19
+
+- Installer: 2× BMPs (328×628 / 300×114) from the P-mark SVG; drop `MUI_*_BITMAP_NOSTRETCH` (1× + DPI nearest-neighbor looked pixelated on Win11); `MUI_BGCOLOR` / header fill `#FFFFFF`; HALFTONE in `phevereOnGuiInit`.
+- Quit: hide windows, stop UIA/OCR/sql.js, then destroy; `window-all-closed` no longer calls `app.quit()` (that left ~4 helper processes after tray Quit on Win11).
