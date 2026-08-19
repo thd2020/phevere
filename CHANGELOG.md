@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-19
+
 ### Added
 
 - Lexicon **Word family** section: inflections, alternative/derived/related terms, affixes, and roots as in-app links (Wiktionary headings + affix templates). Related forms are not mixed into definitions. POS labels such as “verb form” sit as small banners on the chip, not as fake headwords.
+- Dictionary lookup **Back / Forward** on the lexicon tab, plus mouse extra buttons (and Alt+← / Alt+→).
 
 ### Changed
 
@@ -21,7 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Inflected lookups such as **tantalizing** no longer mix in verb senses, IPA, or notebook saves for the lemma **tantalize**. The card, pronunciation, and Save stay on the exact form; the headword is used only when every source has no sense for that form. Wiki form-of links still look up the linked word on their own.
 - A quick second selection (wrong word, then the right one before the first popup appears) now retargets the in-flight strip to the latest text and screen position instead of sticking on the first pick.
-- Dictionary lookup history: **Back / Forward** on the lexicon tab, plus mouse extra buttons (and Alt+← / Alt+→). Following a word-family chip or form-of link no longer traps you with no way back; Chromium page history no longer swallows those keys.
+- Following a word-family chip or form-of link no longer traps you with no way back; Chromium page history no longer swallows mouse extra keys.
+
+### Notes for users
+
+- **Windows x64** — `Phevere-Setup-1.4.0-x64.exe` from [GitHub Releases](https://github.com/thd2020/phevere/releases/tag/v1.4.0) (Actions). Still unsigned; SmartScreen may warn. Signing options: [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
+- Run elevated when you need UIAutomation across elevated / protected apps.
 
 ## [1.3.1] - 2026-08-19
 
@@ -199,7 +207,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/thd2020/phevere/releases/tag/v1.4.0
 [1.3.1]: https://github.com/thd2020/phevere/releases/tag/v1.3.1
 [1.3.0]: https://github.com/thd2020/phevere/releases/tag/v1.3.0
 [1.2.2]: https://github.com/thd2020/phevere/releases/tag/v1.2.2
