@@ -9,7 +9,7 @@
 import {
   foldLookupKey,
   isContentHeadword,
-  latinLemmaForms,
+  latinLemmasByPos,
   lemmaFromFormOfHtml,
 } from './text-normalize';
 import { isGrammaticalFormOfGloss } from './lookup-policy';
@@ -26,9 +26,15 @@ export type WordFamilyRelation =
   | 'roots'
   | 'seeAlso';
 
+export interface WordFamilyItem {
+  word: string;
+  /** Short POS / formation banner on the chip, e.g. "verb", "adj." — not a lookup target. */
+  label?: string;
+}
+
 export interface WordFamilyGroup {
   relation: WordFamilyRelation;
-  words: string[];
+  items: WordFamilyItem[];
 }
 
 const FAMILY_CAP = 40;
@@ -116,10 +122,37 @@ function isAffixOrRootToken(term: string): boolean {
   return isContentHeadword(t);
 }
 
+/** Wiktionary `{{head|en|verb form}}` POS strings — never lookup chips. */
+function isGrammarLabel(term: string): boolean {
+  const t = cleanTerm(term).toLowerCase().replace(/\./g, '');
+  if (!t || t.length > 40) return false;
+  if (/^(verb|noun|adjective|adverb|adj|adv|proper|pronoun|preposition|conjunction|interjection|article|determiner|particle|numeral|participle|gerund|infinitive|plural|singular|comparative|superlative|head|form)s?$/i.test(t)) {
+    return true;
+  }
+  return /^(verb|noun|adj|adjective|adv|adverb|proper(?:\s+noun)?)(\s+form)?$/i.test(t);
+}
+
+function normalizeBanner(raw: string): string | undefined {
+  const t = cleanTerm(raw).toLowerCase().replace(/\./g, '');
+  if (!t) return undefined;
+  if (/verb/.test(t) && /form/.test(t)) return 'verb';
+  if (/noun/.test(t) && /form/.test(t)) return 'noun';
+  if (/(adjective|adj)/.test(t)) return 'adj.';
+  if (/(adverb|adv)/.test(t)) return 'adv.';
+  if (/present\s+participle|pres(?:ent)?\s*ptcp|gerund/.test(t)) return 'participle';
+  if (/past\s+participle|past\s*ptcp/.test(t)) return 'pp.';
+  if (/^plural|pl\b/.test(t)) return 'pl.';
+  if (/^verb$/.test(t)) return 'verb';
+  if (/^noun$/.test(t)) return 'noun';
+  if (isGrammarLabel(raw)) return t.replace(/\s+form$/, '');
+  return undefined;
+}
+
 function acceptFamilyTerm(term: string, surfaceKey: string, affixLike: boolean): string | undefined {
   const t = cleanTerm(term);
   if (!t) return undefined;
   if (foldLookupKey(t) === surfaceKey) return undefined;
+  if (isGrammarLabel(t)) return undefined;
   if (affixLike) {
     if (!isAffixOrRootToken(t)) return undefined;
     return t;
@@ -160,8 +193,10 @@ function termsFromTemplate(name: string, positional: string[], named: Record<str
   }
 
   if (INFL_TEMPLATES.has(name)) {
+    if (name === 'head') return out;
     for (const p of positional) {
       if (!p || /^(en|head|verb|noun|adjective|adverb|proper)$/i.test(p)) continue;
+      if (isGrammarLabel(p)) continue;
       if (/^(es|s|ing|ed|er|est)$/i.test(p) && p.length <= 3) continue;
       push(p);
     }
@@ -212,37 +247,47 @@ function parseHeadingGroups(scope: string, surfaceKey: string): Map<WordFamilyRe
   return groups;
 }
 
+type FamilyBuckets = Map<WordFamilyRelation, WordFamilyItem[]>;
+
 function addUnique(
-  buckets: Map<WordFamilyRelation, string[]>,
+  buckets: FamilyBuckets,
   relation: WordFamilyRelation,
   terms: string[],
   surfaceKey: string,
   affixLike = false,
+  label?: string,
 ): void {
   const acc = buckets.get(relation) || [];
-  const seen = new Set(acc.map(foldLookupKey));
+  const seen = new Set(acc.map((i) => foldLookupKey(i.word)));
   for (const raw of terms) {
     const ok = acceptFamilyTerm(raw, surfaceKey, affixLike);
     if (!ok) continue;
     const k = foldLookupKey(ok);
-    if (!k || seen.has(k)) continue;
+    if (!k) continue;
+    if (seen.has(k)) {
+      const hit = acc.find((i) => foldLookupKey(i.word) === k);
+      if (hit && label && !hit.label) hit.label = label;
+      continue;
+    }
     seen.add(k);
-    acc.push(ok);
+    acc.push({ word: ok, label });
     if (acc.length >= FAMILY_CAP) break;
   }
   if (acc.length) buckets.set(relation, acc);
 }
 
-function lemmasFromDefinitions(defs: Array<{ meaning?: string }> | undefined, surface: string): string[] {
-  const out: string[] = [];
+function lemmasFromDefinitions(defs: Array<{ meaning?: string }> | undefined, surface: string): WordFamilyItem[] {
+  const out: WordFamilyItem[] = [];
   for (const d of defs || []) {
     const meaning = d.meaning || '';
     if (!isGrammaticalFormOfGloss(meaning)) continue;
     const fromHtml = lemmaFromFormOfHtml(meaning, surface);
-    if (fromHtml) out.push(fromHtml);
     const text = meaning.replace(/<[^>]+>/g, ' ');
     const m = /\bof\s+([A-Za-z\u00C0-\u024F][A-Za-z\u00C0-\u024F'-]*)/i.exec(text);
-    if (m && m[1]) out.push(m[1]);
+    const word = fromHtml || m?.[1];
+    if (!word) continue;
+    const label = normalizeBanner(text) || undefined;
+    out.push({ word, label });
   }
   return out;
 }
@@ -259,40 +304,49 @@ export function familyFromEtymologyChain(chain?: EtymologyLink[] | null, surface
       roots.push(link.term);
     }
   }
-  const buckets = new Map<WordFamilyRelation, string[]>();
-  addUnique(buckets, 'affixes', affixes, surfaceKey, true);
-  addUnique(buckets, 'roots', roots, surfaceKey, true);
+  const buckets: FamilyBuckets = new Map();
+  addUnique(buckets, 'affixes', affixes, surfaceKey, true, 'affix');
+  addUnique(buckets, 'roots', roots, surfaceKey, true, 'root');
   return groupsFromBuckets(buckets);
 }
 
-function groupsFromBuckets(buckets: Map<WordFamilyRelation, string[]>): WordFamilyGroup[] {
+function groupsFromBuckets(buckets: FamilyBuckets): WordFamilyGroup[] {
   const order: WordFamilyRelation[] = [
     'forms', 'lemma', 'alternatives', 'derived', 'related', 'affixes', 'roots', 'seeAlso',
   ];
   const out: WordFamilyGroup[] = [];
   for (const relation of order) {
-    const words = buckets.get(relation);
-    if (!words || !words.length) continue;
+    const items = buckets.get(relation);
+    if (!items || !items.length) continue;
     const seen = new Set<string>();
-    const unique: string[] = [];
-    for (const w of words) {
-      const k = foldLookupKey(w);
-      if (!k || seen.has(k)) continue;
+    const unique: WordFamilyItem[] = [];
+    for (const it of items) {
+      const k = foldLookupKey(it.word);
+      if (!k || seen.has(k)) {
+        if (k && it.label) {
+          const hit = unique.find((u) => foldLookupKey(u.word) === k);
+          if (hit && !hit.label) hit.label = it.label;
+        }
+        continue;
+      }
       seen.add(k);
-      unique.push(w);
+      unique.push({ word: it.word, label: it.label });
       if (unique.length >= FAMILY_CAP) break;
     }
-    if (unique.length) out.push({ relation, words: unique });
+    if (unique.length) out.push({ relation, items: unique });
   }
   return out;
 }
 
 export function mergeWordFamilyGroups(...lists: Array<WordFamilyGroup[] | undefined>): WordFamilyGroup[] {
-  const buckets = new Map<WordFamilyRelation, string[]>();
+  const buckets: FamilyBuckets = new Map();
   for (const list of lists) {
     for (const g of list || []) {
       const acc = buckets.get(g.relation) || [];
-      acc.push(...g.words);
+      const items = g.items && g.items.length
+        ? g.items
+        : ((g as WordFamilyGroup & { words?: string[] }).words || []).map((word) => ({ word }));
+      acc.push(...items);
       buckets.set(g.relation, acc);
     }
   }
@@ -308,11 +362,16 @@ export function buildWordFamily(opts: {
 }): WordFamilyGroup[] {
   const surface = (opts.surface || '').trim();
   const surfaceKey = foldLookupKey(surface);
-  const buckets = new Map<WordFamilyRelation, string[]>();
+  const buckets: FamilyBuckets = new Map();
 
-  addUnique(buckets, 'forms', latinLemmaForms(surface), surfaceKey);
+  const byPos = latinLemmasByPos(surface);
+  if (byPos.verb) addUnique(buckets, 'forms', [byPos.verb], surfaceKey, false, 'verb');
+  if (byPos.noun) addUnique(buckets, 'forms', [byPos.noun], surfaceKey, false, 'noun');
+  if (byPos.adjective) addUnique(buckets, 'forms', [byPos.adjective], surfaceKey, false, 'adj.');
   addUnique(buckets, 'forms', derivationalStems(surface), surfaceKey);
-  addUnique(buckets, 'lemma', lemmasFromDefinitions(opts.definitions, surface), surfaceKey);
+  for (const it of lemmasFromDefinitions(opts.definitions, surface)) {
+    addUnique(buckets, 'lemma', [it.word], surfaceKey, false, it.label);
+  }
 
   if (opts.wikitext) {
     const scope = extractLanguageSection(opts.wikitext, langSectionName(opts.language));
@@ -320,19 +379,34 @@ export function buildWordFamily(opts: {
     for (const [rel, words] of fromHeadings) {
       addUnique(buckets, rel, words, surfaceKey);
     }
-    // Inflection / form-of templates anywhere in the language section
     const infl: string[] = [];
     const lemmaBits: string[] = [];
+    let headBanner: string | undefined;
     for (const t of scanTemplates(scope)) {
+      if (t.name === 'head') {
+        const pos = t.positional[1] || t.named.pos;
+        if (pos) headBanner = normalizeBanner(pos) || headBanner;
+        continue;
+      }
       if (INFL_TEMPLATES.has(t.name)) {
         infl.push(...termsFromTemplate(t.name, t.positional, t.named, surfaceKey));
       }
       if (FORM_OF_TEMPLATES.has(t.name)) {
-        lemmaBits.push(...termsFromTemplate(t.name, t.positional, t.named, surfaceKey));
+        const bits = termsFromTemplate(t.name, t.positional, t.named, surfaceKey);
+        lemmaBits.push(...bits);
+        const banner = normalizeBanner(t.name.replace(/\s+of$/, '')) || normalizeBanner(t.name);
+        for (const w of bits) addUnique(buckets, 'lemma', [w], surfaceKey, false, banner);
       }
     }
     addUnique(buckets, 'forms', infl, surfaceKey);
-    addUnique(buckets, 'lemma', lemmaBits, surfaceKey);
+    addUnique(buckets, 'lemma', lemmaBits, surfaceKey, false, headBanner);
+    if (headBanner) {
+      const lemmas = buckets.get('lemma') || [];
+      for (const it of lemmas) {
+        if (!it.label) it.label = headBanner;
+      }
+      if (lemmas.length) buckets.set('lemma', lemmas);
+    }
 
     const etyBits = familyFromEtymologyChain(
       (opts.etymologyChain && opts.etymologyChain.length)
@@ -340,12 +414,39 @@ export function buildWordFamily(opts: {
         : scanTemplates(scope).map(templateToLink).filter((x): x is EtymologyLink => !!x),
       surface,
     );
-    for (const g of etyBits) addUnique(buckets, g.relation, g.words, surfaceKey, g.relation === 'affixes' || g.relation === 'roots');
+    for (const g of etyBits) {
+      addUnique(
+        buckets,
+        g.relation,
+        g.items.map((i) => i.word),
+        surfaceKey,
+        g.relation === 'affixes' || g.relation === 'roots',
+        g.relation === 'affixes' ? 'affix' : g.relation === 'roots' ? 'root' : undefined,
+      );
+    }
   } else if (opts.etymologyChain) {
     for (const g of familyFromEtymologyChain(opts.etymologyChain, surface)) {
-      addUnique(buckets, g.relation, g.words, surfaceKey, g.relation === 'affixes' || g.relation === 'roots');
+      addUnique(
+        buckets,
+        g.relation,
+        g.items.map((i) => i.word),
+        surfaceKey,
+        g.relation === 'affixes' || g.relation === 'roots',
+        g.relation === 'roots' ? 'root' : 'affix',
+      );
     }
   }
 
-  return groupsFromBuckets(buckets);
+  const out = groupsFromBuckets(buckets);
+  for (const g of out) {
+    if (g.relation !== 'forms' && g.relation !== 'lemma') continue;
+    for (const it of g.items) {
+      if (it.label) continue;
+      const k = foldLookupKey(it.word);
+      if (byPos.verb && foldLookupKey(byPos.verb) === k) it.label = 'verb';
+      else if (byPos.noun && foldLookupKey(byPos.noun) === k) it.label = 'noun';
+      else if (byPos.adjective && foldLookupKey(byPos.adjective) === k) it.label = 'adj.';
+    }
+  }
+  return out;
 }

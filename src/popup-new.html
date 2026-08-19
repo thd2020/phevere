@@ -380,6 +380,25 @@
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
       }
 
+      .lexicon-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+
+      .lexicon-block {
+        padding: 16px 18px;
+        margin-bottom: 10px;
+      }
+
+      .lexicon-block--headword {
+        padding-bottom: 14px;
+      }
+
+      .lexicon-block .result-section-title {
+        margin-bottom: 10px;
+      }
+
       .result-header {
         display: flex;
         align-items: center;
@@ -603,18 +622,44 @@
         gap: 6px 8px;
         flex: 1;
       }
+      .word-family-item {
+        display: inline-flex;
+        align-items: stretch;
+        border-radius: 999px;
+        overflow: hidden;
+        background: #f1f5f9;
+      }
       a.word-family-chip {
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
         font-weight: 600;
         font-size: 13px;
         color: var(--pv-teal);
-        background: #f1f5f9;
-        border-radius: 999px;
+        background: transparent;
+        border-radius: 0;
         padding: 2px 10px;
         text-decoration: none;
       }
+      .word-family-item:not(:has(.word-family-banner)) a.word-family-chip {
+        border-radius: 999px;
+        padding: 2px 10px;
+      }
       a.word-family-chip:hover {
         background: #e2e8f0;
+      }
+      .word-family-banner {
+        display: inline-flex;
+        align-items: center;
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #64748b;
+        background: #e2e8f0;
+        padding: 0 7px;
+        border-left: 1px solid #cbd5e1;
+        white-space: nowrap;
       }
 
       .definition-source-badge {
@@ -660,16 +705,6 @@
         margin: 0 0 10px;
         padding-bottom: 6px;
         border-bottom: 1px solid #14212b;
-      }
-
-      .lexicon-meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin: 6px 0 14px;
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        font-size: 11px;
-        color: #64748b;
       }
 
       .result-section-title {
@@ -905,45 +940,29 @@
         background: var(--pv-ember) !important;
       }
 
-      /* Etymology — formal / geek reference layout */
+      /* Etymology — same paper blocks as the lexicon, no extra title chrome */
       .etymology-container {
-        margin-bottom: 16px;
-        background: #faf9f7;
-        border: 1px solid #d6d3cd;
-        border-radius: 2px;
-        overflow: hidden;
+        margin: 0;
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        overflow: visible;
         box-shadow: none;
       }
 
-      .etymology-header {
-        background: #14212b;
-        color: #e8e6e1;
-        padding: 10px 14px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-weight: 500;
-        font-size: 12px;
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-      }
-
-      .etymology-icon {
-        display: none;
-      }
-
+      .etymology-header,
+      .etymology-icon,
       .etymology-title {
-        flex: 1;
+        display: none;
       }
 
       .etymology-content {
         padding: 0;
-        background: #faf9f7;
+        background: transparent;
         border-left: none;
       }
       .etymology-content > .etymology-chain {
-        margin: 12px 14px 0;
+        margin: 0 0 12px;
       }
 
       .etymology-layout {
@@ -956,9 +975,9 @@
         display: flex;
         flex-direction: column;
         gap: 0;
-        border-right: 1px solid #d6d3cd;
-        background: #f3f1ec;
-        padding: 6px 0;
+        border-right: 1px solid #e1e5e9;
+        background: transparent;
+        padding: 4px 0;
       }
       .etymology-tab {
         border: none;
@@ -986,7 +1005,7 @@
       .etymology-panel {
         flex: 1;
         min-width: 0;
-        padding: 14px 16px 16px;
+        padding: 4px 0 0 16px;
       }
 
       .etymology-text {
@@ -1092,7 +1111,7 @@
       }
 
       .etymology-no-data {
-        padding: 18px;
+        padding: 8px 0 0;
         color: #57534e;
         font-family: 'Source Serif 4', Georgia, serif;
         font-size: 14px;
@@ -1811,7 +1830,6 @@
           document.getElementById('loadingElement').style.display = 'none';
           const resultsContainer = document.getElementById('dictionary-results');
           resultsContainer.style.display = 'block';
-          const speechLang = window['__audioLang'] || result.detectedLanguage || 'en';
           const word = escapeHtml(result.word || '');
           const sources = splitEtymologySources(result.etymology || '');
           const chainHtml = formatEtymologyChain(result.etymologyChain);
@@ -1822,15 +1840,10 @@
             etymologyHtml = `
               <div class="result-card">
                   <div class="result-word">${word}</div>
-                  <div class="etymology-container">
-                    <div class="etymology-header">
-                      <span class="etymology-title">Etymology</span>
-                    </div>
-                    <div class="tab-pending" role="status">
-                      <div class="loading-title">Fetching etymology…</div>
-                      <div class="loading-sub">Wiktionary, Etymonline, and other sources load independently</div>
-                      <div class="loading-track"><div class="loading-bar"></div></div>
-                    </div>
+                  <div class="tab-pending" role="status">
+                    <div class="loading-title">Fetching etymology…</div>
+                    <div class="loading-sub">Wiktionary, Etymonline, and other sources load independently</div>
+                    <div class="loading-track"><div class="loading-bar"></div></div>
                   </div>
               </div>`;
           } else if (sources.length > 0) {
@@ -1843,40 +1856,20 @@
             etymologyHtml = `
               <div class="result-card">
                   <div class="result-word">${word}</div>
-                  <div class="etymology-container">
-                    <div class="etymology-header">
-                      <span class="etymology-title">Etymology</span>
-                    </div>
-                    <div class="etymology-content">
-                      ${chainHtml}
-                      <div class="etymology-layout">
-                        <nav class="etymology-tabs" aria-label="Etymology sources">${tabs}</nav>
-                        <div class="etymology-panel">${panels}</div>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="result-actions">
-                      <button onclick='playAudio(${JSON.stringify(result.word)}, ${JSON.stringify(speechLang)})' class="audio-button" title="Play pronunciation">🔊</button>
-                      <button onclick='searchWeb(${JSON.stringify(result.word)})' class="action-btn action-btn-info">Search Web</button>
+                  ${chainHtml}
+                  <div class="etymology-layout">
+                    <nav class="etymology-tabs" aria-label="Etymology sources">${tabs}</nav>
+                    <div class="etymology-panel">${panels}</div>
                   </div>
               </div>`;
           } else {
             etymologyHtml = `
               <div class="result-card">
                   <div class="result-word">${word}</div>
-                  <div class="etymology-container">
-                    <div class="etymology-header">
-                      <span class="etymology-title">Etymology</span>
+                  <div class="etymology-no-data">
+                    <div class="no-data-text">
+                      <p><strong>No etymology found.</strong></p>
                     </div>
-                    <div class="etymology-no-data">
-                      <div class="no-data-text">
-                        <p><strong>No etymology found.</strong></p>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="result-actions">
-                      <button onclick='playAudio(${JSON.stringify(result.word)}, ${JSON.stringify(speechLang)})' class="audio-button" title="Play pronunciation">🔊</button>
-                      <button onclick='searchWeb(${JSON.stringify(result.word)})' class="action-btn action-btn-info">Search Web</button>
                   </div>
               </div>`;
           }
@@ -2407,7 +2400,6 @@ function startAutoCloseTimeout() {
              <div class="result-actions">
                 <button onclick='playAudio(${JSON.stringify(word)}, ${JSON.stringify(origLang)})' class="audio-button" title="Play original">🔊</button>
                 <button onclick='playAudio(${JSON.stringify(trans.text)}, ${JSON.stringify(trans.language || "en")})' class="audio-button" title="Play translation">🔊</button>
-                <button onclick='searchWeb(${JSON.stringify(trans.text)})' class="action-btn action-btn-info">Web</button>
               </div>
            </div>
          `;
@@ -2537,11 +2529,6 @@ function startAutoCloseTimeout() {
             groups[pos].push(d);
           });
 
-          const sourcesUsed = Array.from(new Set(defs.flatMap(function (d) {
-            if (Array.isArray(d.sources) && d.sources.length) return d.sources.map(normalizeSourceName);
-            return String(d.source || '').split(/\s*·\s*/).filter(Boolean).map(normalizeSourceName);
-          })));
-
           let body = '';
           let senseCounter = 0;
           const shownExampleKeys = new Set();
@@ -2602,14 +2589,20 @@ function startAutoCloseTimeout() {
             seeAlso: 'See also',
           };
           const familyHtml = family.length
-            ? `<div class="result-section">
+            ? `<div class="result-card lexicon-block">
                 <div class="result-section-title">Word family</div>
                 ${family.map(function (g) {
                   const label = familyLabels[g.relation] || g.relation;
-                  const chips = (g.words || []).map(function (w) {
-                    const safe = String(w || '').trim();
+                  const items = (Array.isArray(g.items) && g.items.length)
+                    ? g.items
+                    : (g.words || []).map(function (w) { return { word: w }; });
+                  const chips = items.map(function (it) {
+                    const safe = String((it && it.word) || '').trim();
                     if (!safe) return '';
-                    return `<a href="#" class="lemma-link word-family-chip" data-lookup="${escapeHtml(safe)}">${escapeHtml(safe)}</a>`;
+                    const banner = String((it && it.label) || '').trim();
+                    const chip = `<a href="#" class="lemma-link word-family-chip" data-lookup="${escapeHtml(safe)}">${escapeHtml(safe)}</a>`;
+                    const tag = banner ? `<span class="word-family-banner">${escapeHtml(banner)}</span>` : '';
+                    return `<span class="word-family-item">${chip}${tag}</span>`;
                   }).join('');
                   if (!chips) return '';
                   return `<div class="word-family-row"><span class="word-family-label">${escapeHtml(label)}</span><div class="word-family-chips">${chips}</div></div>`;
@@ -2618,38 +2611,32 @@ function startAutoCloseTimeout() {
             : '';
 
           return `
-            <div class="result-card">
-                <div class="result-word">${escapeHtml(result.word)}</div>
-                ${formatPronunciationHtml(result)}
-                <div class="lexicon-meta">
-                  <span>${defs.length} sense${defs.length === 1 ? '' : 's'}</span>
-                  <span>${escapeHtml(sourcesUsed.join(' · '))}</span>
+            <div class="lexicon-stack">
+                <div class="result-card lexicon-block lexicon-block--headword">
+                  <div class="result-word">${escapeHtml(result.word)}</div>
+                  ${formatPronunciationHtml(result)}
                 </div>
-                <div class="result-section">
+                <div class="result-card lexicon-block">
                   ${body}
                 </div>
                 ${globalExamples.length ? `
-                  <div class="result-section">
+                  <div class="result-card lexicon-block">
                       <div class="result-section-title">Examples</div>
                       ${globalExamples.map(function (ex) {
                         return `<div class="example-item">${escapeHtml(stripHtmlToText(ex))}</div>`;
                       }).join('')}
                   </div>` : ''}
                 ${syn.length ? `
-                  <div class="result-section">
+                  <div class="result-card lexicon-block">
                       <div class="result-section-title">Synonyms</div>
                       <div class="example-item">${escapeHtml(syn.join(', '))}</div>
                   </div>` : ''}
                 ${ant.length ? `
-                  <div class="result-section">
+                  <div class="result-card lexicon-block">
                       <div class="result-section-title">Antonyms</div>
                       <div class="example-item">${escapeHtml(ant.join(', '))}</div>
                   </div>` : ''}
                 ${familyHtml}
-                <div class="result-actions">
-                    <button onclick='playAudio(${JSON.stringify(result.word)}, ${JSON.stringify(result.detectedLanguage || window['__audioLang'] || 'en')})' class="audio-button" title="Play pronunciation">🔊</button>
-                    <button onclick='searchWeb(${JSON.stringify(result.word)})' class="action-btn action-btn-info">Search Web</button>
-                </div>
             </div>`;
         }
 
@@ -2664,8 +2651,8 @@ function startAutoCloseTimeout() {
             // Prefer lexicon-style layout even for a single source
             const scoped = Object.assign({}, result, { definitions: defs });
             return createLexiconCard(scoped).replace(
-              'class="lexicon-meta"',
-              'class="lexicon-meta" data-source-filter="' + escapeHtml(normalizeSourceName(source)) + '"'
+              'class="lexicon-stack"',
+              'class="lexicon-stack" data-source-filter="' + escapeHtml(normalizeSourceName(source)) + '"'
             );
         }
 

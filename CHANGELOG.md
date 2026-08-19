@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Lexicon **Word family** section: inflections, alternative/derived/related terms, affixes, and roots as in-app links (Wiktionary headings + affix templates). Related forms are not mixed into definitions.
+- Lexicon **Word family** section: inflections, alternative/derived/related terms, affixes, and roots as in-app links (Wiktionary headings + affix templates). Related forms are not mixed into definitions. POS labels such as “verb form” sit as small banners on the chip, not as fake headwords.
 
 ### Changed
 
 - Lookup policy lives in one module (`lookup-policy.ts`): exact form first, lemma only if every source is empty, one grammatical form-of test, notebook save key is the queried form. IPA, etymology, and family share a single Wiktionary wikitext fetch.
+- Dictionary tab: headword, senses, examples, synonyms/antonyms, and word family are separate cards. The old “N senses · Source · Source” title line is gone (POS headings and per-sense source badges remain). Pronounce / Search Web on those cards are omitted — they already live on the toolstrip.
+- Etymology tab matches the same paper cards (no black title bar, nested grey panel, or extra “Etymology” heading). Translation cards no longer duplicate the toolstrip Web button.
 
 ### Fixed
 

@@ -52,7 +52,7 @@ interface DictionaryResult {
   synonyms?: string[];
   antonyms?: string[];
   etymology?: string;
-  wordFamily?: Array<{ relation: string; words: string[] }>;
+  wordFamily?: Array<{ relation: string; items?: Array<{ word: string; label?: string }>; words?: string[] }>;
   language?: string;
   detectedLanguage?: string;
   sources: string[];
