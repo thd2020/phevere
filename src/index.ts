@@ -125,6 +125,8 @@ let lastSelectedText = '';
 let lastSelectionEvent: ContextEvent | null = null;
 let lastPopupText: string = '';
 let lastPopupAt: number = 0;
+/** Latest strip still loading or collapsed — retarget here instead of spawning another. */
+let inFlightPopup: BrowserWindow | null = null;
 let ocrOverlayWindow: BrowserWindow | null = null;
 let contextHubWired = false;
 let hoverLookup: HoverLookupService | null = null;
@@ -875,6 +877,35 @@ const createPopupWindow = (x: number, y: number): void => {
     (win) => win && !win.isDestroyed() && !isCollapsedStrip(win),
   );
 
+  const applyStripTarget = (win: BrowserWindow, px: number, py: number, text: string, showIfReady: boolean): void => {
+    try {
+      if (!win || win.isDestroyed()) return;
+      const stillStrip = isCollapsedStrip(win) || win === inFlightPopup;
+      if (!stillStrip) return;
+      const placed = placePopupNearPoint(px, py, popupWidth, popupHeight);
+      win.setBounds({ x: placed.x, y: placed.y, width: popupWidth, height: popupHeight }, false);
+      if (showIfReady) {
+        try {
+          if (!win.webContents.isLoadingMainFrame()) win.show();
+        } catch {
+          /* not ready */
+        }
+        try { win.focus(); } catch {}
+      }
+      if (text) {
+        try {
+          if (!win.webContents.isLoadingMainFrame()) {
+            win.webContents.send('popup-text', text);
+          }
+        } catch {
+          /* did-finish-load will send the latest text */
+        }
+      }
+    } catch (e) {
+      log.warn('main', 'Popup retarget failed', { err: String(e) });
+    }
+  };
+
   // An open lookup panel must stay put. Coalesce only when we would not be
   // spawning a sibling strip beside an expanded panel.
   if (!hasExpandedLookup) {
@@ -882,8 +913,15 @@ const createPopupWindow = (x: number, y: number): void => {
       log.debug('main', 'Skip duplicate popup (same text, 1s)');
       return;
     }
-    if (lastPopupAt && nowTs - lastPopupAt < 300) {
-      log.debug('main', 'Skip rapid popup (300ms cooldown)');
+    const live =
+      (inFlightPopup && !inFlightPopup.isDestroyed() ? inFlightPopup : null)
+      || reusableStrip
+      || null;
+    if (live) {
+      lastPopupAt = nowTs;
+      lastPopupText = textForPopup;
+      applyStripTarget(live, x, y, textForPopup, true);
+      log.debug('main', 'Retarget popup to latest selection');
       return;
     }
   }
@@ -893,21 +931,6 @@ const createPopupWindow = (x: number, y: number): void => {
   // cooldown because lastPopupAt was still unset from the async popup path.
   lastPopupAt = nowTs;
   lastPopupText = textForPopup;
-
-  // Reuse a collapsed toolstrip only. Never move, resize, or send popup-text to
-  // an expanded lookup — that wiped the original card and looked like a blank panel.
-  if (reusableStrip) {
-    try {
-      reusableStrip.setBounds({ x: popupX, y: popupY, width: popupWidth, height: popupHeight }, false);
-      reusableStrip.show();
-      try { reusableStrip.focus(); } catch {}
-      if (textForPopup) reusableStrip.webContents.send('popup-text', textForPopup);
-      log.debug('main', 'Reuse existing toolstrip');
-      return;
-    } catch (e) {
-      log.warn('main', 'Popup reuse failed, creating new', { err: String(e) });
-    }
-  }
 
                 const newPopupWindow = new BrowserWindow(withWin11Chrome({
                 width: popupWidth,
@@ -936,6 +959,7 @@ const createPopupWindow = (x: number, y: number): void => {
                   backgroundThrottling: false,
                 },
               }, 'acrylic'));
+  inFlightPopup = newPopupWindow;
   // Close on blur to match intended UX (give clicks time to land on icons)
   newPopupWindow.on('blur', () => {
     setTimeout(() => {
@@ -1002,10 +1026,14 @@ const createPopupWindow = (x: number, y: number): void => {
   // After the popup finishes loading, send the selected text to the renderer
   newPopupWindow.webContents.on('did-finish-load', () => {
     try {
+      const ev = lastSelectionEvent;
+      const textToSend = (ev && ev.text) || lastSelectedText || '';
+      const tx = ev && typeof ev.x === 'number' ? ev.x : x;
+      const ty = ev && typeof ev.y === 'number' ? ev.y : y;
+      applyStripTarget(newPopupWindow, tx, ty, textToSend, false);
       if (!newPopupWindow.isDestroyed() && !newPopupWindow.isVisible()) {
         newPopupWindow.show();
       }
-      const textToSend = (lastSelectionEvent && lastSelectionEvent.text) || lastSelectedText || '';
       if (textToSend) {
         newPopupWindow.webContents.send('popup-text', textToSend);
       }
@@ -1017,11 +1045,14 @@ const createPopupWindow = (x: number, y: number): void => {
 
   // Show popup when ready
   newPopupWindow.once('ready-to-show', () => {
+    const ev = lastSelectionEvent;
+    if (ev) applyStripTarget(newPopupWindow, ev.x, ev.y, ev.text || '', false);
     newPopupWindow.show();
     try { newPopupWindow.focus(); } catch {}
   });
 
                 newPopupWindow.on('closed', () => {
+                if (inFlightPopup === newPopupWindow) inFlightPopup = null;
                 popupWindows = popupWindows.filter(win => win !== newPopupWindow);
 
                 // Reset selection state to allow same word to trigger popup again

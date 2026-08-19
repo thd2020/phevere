@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Inflected lookups such as **tantalizing** no longer mix in verb senses, IPA, or notebook saves for the lemma **tantalize**. The card, pronunciation, and Save stay on the exact form; the headword is used only when every source has no sense for that form. Wiki form-of links still look up the linked word on their own.
+- A quick second selection (wrong word, then the right one before the first popup appears) now retargets the in-flight strip to the latest text and screen position instead of sticking on the first pick.
 
 ## [1.3.1] - 2026-08-19
 

@@ -178,9 +178,13 @@ export class WindowsNativeSelectionService implements NativeSelectionService {
       const now = Date.now();
       const timeSinceLastSelection = now - (this.lastSelectionTime || 0);
 
-      // More aggressive rate limiting to prevent bursts
-      const MIN_RETRIGGER_INTERVAL_MS = 300; // increased from 200ms to prevent bursts
-      if (timeSinceLastSelection < MIN_RETRIGGER_INTERVAL_MS) {
+      // Rate-limit repeats of the same fold only. A quick correction to a
+      // different word must still fire, or the popup stays on the first pick.
+      const MIN_RETRIGGER_INTERVAL_MS = 300;
+      if (
+        timeSinceLastSelection < MIN_RETRIGGER_INTERVAL_MS &&
+        foldLookupKey(text) === foldLookupKey(this.lastSelection || '')
+      ) {
         return;
       }
 
