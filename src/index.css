@@ -17,12 +17,13 @@
   --pv-font-ui: 'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', 'Outfit', system-ui, sans-serif;
   --pv-font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
   --pv-font-mono: 'Cascadia Mono', 'IBM Plex Mono', ui-monospace, Consolas, monospace;
-  --pv-mica: rgba(243, 243, 243, 0.55);
-  --pv-acrylic: rgba(255, 255, 255, 0.62);
+  --pv-mica: rgba(243, 243, 243, 0.88);
+  --pv-acrylic: rgba(255, 255, 255, 0.90);
 }
 
 html {
   height: 100%;
+  color-scheme: light;
 }
 
 html, body {
@@ -33,9 +34,11 @@ html, body {
 body.main-window {
   background-color: #f3f3f3;
 }
+/* Wash, not fully transparent — dark Windows app mode must not show through. */
 html.win11-mica body.main-window,
-html.win11-mica body.settings-page {
-  background-color: transparent;
+html.win11-mica body.settings-page,
+html.win11-mica body.clipboard-window {
+  background-color: var(--pv-mica);
 }
 
 /* Main window — ink / ember / teal (aligned with settings + popup) */
@@ -1633,7 +1636,7 @@ body.clipboard-window {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: transparent;
+  background: var(--pv-paper);
 }
 
 body.clipboard-window .main-shell,

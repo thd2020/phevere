@@ -118,3 +118,4 @@ Diary inbox pushes are **distilled** from this file — do not treat inbox as th
 
 - Installer: 2× BMPs (328×628 / 300×114) from the P-mark SVG; drop `MUI_*_BITMAP_NOSTRETCH` (1× + DPI nearest-neighbor looked pixelated on Win11); `MUI_BGCOLOR` / header fill `#FFFFFF`; HALFTONE in `phevereOnGuiInit`.
 - Quit: hide windows, stop UIA/OCR/sql.js, then destroy; `window-all-closed` no longer calls `app.quit()` (that left ~4 helper processes after tray Quit on Win11).
+- Win11 dark **app theme**: lock `nativeTheme.themeSource = 'light'`, `color-scheme: light`, and a paper mica wash so ink text is not on a near-black DWM surface.

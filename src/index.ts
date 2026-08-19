@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, screen, globalShortcut, shell, Tray, Menu, nativeImage, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, globalShortcut, shell, Tray, Menu, nativeImage, dialog, nativeTheme } from 'electron';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -45,6 +45,10 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 declare const POPUP_WINDOW_WEBPACK_ENTRY: string;
 declare const OCR_OVERLAY_WEBPACK_ENTRY: string;
 declare const OCR_OVERLAY_PRELOAD_WEBPACK_ENTRY: string;
+
+// Designed as light ink/paper. Win11 "dark" app mode otherwise tints Mica/Acrylic
+// near-black while CSS keeps dark text.
+nativeTheme.themeSource = 'light';
 
 // Register ASAP — timed-out Promise.race fetches used to crash Electron via
 // unhandledRejection (Forge then relaunched → looked like a frozen toolstrip).
@@ -779,7 +783,9 @@ function withWin11Chrome(
   return {
     backgroundMaterial: material,
     ...opts,
-    backgroundColor: opts.backgroundColor ?? '#00000000',
+    // Fully transparent + OS-dark Mica reads as a black hole. Light themeSource
+    // keeps DWM on the light material; paper-tinted 0-alpha avoids a black first paint.
+    backgroundColor: opts.backgroundColor ?? 'rgba(243, 243, 243, 0)',
   };
 }
 
@@ -2415,7 +2421,7 @@ app.on('browser-window-created', (_event, win) => {
   if (!supportsWin11Material()) return;
   win.webContents.on('dom-ready', () => {
     void win.webContents.executeJavaScript(
-      `document.documentElement.classList.add('win11-mica')`,
+      `document.documentElement.classList.add('win11-mica');document.documentElement.style.colorScheme='light'`,
     ).catch((): undefined => undefined);
   });
 });
@@ -2425,6 +2431,7 @@ app.on('ready', () => {
   if (process.platform === 'win32') {
     // Must match electron-builder appId for correct taskbar icon grouping.
     app.setAppUserModelId('com.phevere.app');
+    nativeTheme.themeSource = 'light';
   }
   log.info('main', 'App ready');
   monitorSettings = loadMonitorSettings();

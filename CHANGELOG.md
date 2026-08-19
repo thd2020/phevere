@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Quit Phevere** (tray / taskbar menu) no longer races `app.quit()` when windows close — UIA, OCR, and sql.js tear down first so Chromium helper processes do not linger.
+- Windows 11 **dark app theme** no longer paints Mica/Acrylic near-black under dark text — Phevere stays on its light paper UI.
 
 ## [1.3.0] - 2026-08-18
 

@@ -41,7 +41,7 @@ Then run the latest Setup.exe. New installs register a proper uninstaller (`Unin
 - **Vocabulary notebook** — local SQLite (`%APPDATA%\phevere`); lemma-only saves fill in the background; IPA + play; search; **Recent / A–Z** sort with an A–Z index scrubber; **Export / Import** (JSON or CSV); click the headword row to expand, select text in the definition without collapsing
 - **OCR** — bundled PP-OCRv4 models (optional component); region / hover / clipboard / window capture
 - **Tray app** — Quit Phevere tears down UIA / OCR / sql.js before destroying windows (no leftover Electron helpers)
-- **Win11 chrome** — Mica/Acrylic on app windows; NSIS wizard uses Segoe UI + branded 24-bpp sidebar BMP
+- **Win11 chrome** — Mica/Acrylic on a **light** paper UI (does not follow Windows dark app theme); NSIS wizard uses Segoe UI + branded 24-bpp sidebar BMP
 
 ## Development
 
