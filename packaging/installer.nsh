@@ -4,13 +4,13 @@
 ; - Components page: shortcuts + optional OCR (unchecked = remove models after copy)
 ; - Explicit Uninstall Start Menu link + reinforced Apps & Features registry
 ; - Publisher: thd2020
-; - Win11-era chrome: Segoe UI + Per-Monitor v2 DPI (avoids XP-grey / blurry glyphs)
+; - Win11-era chrome: Segoe UI + white MUI paper + 2× wizard BMPs (HALFTONE stretch)
 ;
 ; Note: do not use MUI_FUNCTION_DESCRIPTION_* here — include runs before MUI macros exist.
 
 !include "LogicLib.nsh"
 
-SetFont "Segoe UI" 9
+SetFont "Segoe UI" 10
 ManifestDPIAware true
 ManifestDPIAwareness "PerMonitorV2"
 XPStyle on
@@ -26,15 +26,21 @@ SectionEnd
 Section "OCR models (PP-OCRv4, ~15 MB)" SecOcr
 SectionEnd
 
+Function phevereOnGuiInit
+  ; HALFTONE so 2× sidebar/header BMPs are not nearest-neighbor when DPI stretches the pane.
+  System::Call 'user32::GetDC(p $HWNDPARENT) p .r0'
+  System::Call 'gdi32::SetStretchBltMode(p r0, i 4)'
+  System::Call 'gdi32::SetBrushOrgEx(p r0, i 0, i 0, p 0)'
+  System::Call 'user32::ReleaseDC(p $HWNDPARENT, p r0) i .n'
+FunctionEnd
+
 !macro customHeader
   ; electron-builder already !define's MUI_BGCOLOR (MUI default). /redef keeps Win11 paper without aborting makensis.
-  !define /redef MUI_BGCOLOR F3F3F3
+  !define /redef MUI_BGCOLOR FFFFFF
   !define /redef MUI_TEXTCOLOR 1A1A1A
-  !define /redef MUI_INSTFILESPAGE_COLORS "1A1A1A F3F3F3"
-  ; Per-Monitor v2 otherwise stretches 164×314 / 150×57 bitmaps → blur and warp.
-  !define MUI_HEADERIMAGE_BITMAP_NOSTRETCH
-  !define MUI_WELCOMEFINISHPAGE_BITMAP_NOSTRETCH
-  !define MUI_UNWELCOMEFINISHPAGE_BITMAP_NOSTRETCH
+  !define /redef MUI_INSTFILESPAGE_COLORS "1A1A1A FFFFFF"
+  ; 2× BMPs fill the DPI-scaled control (NOSTRETCH left a tiny/pixelated 1× blit on Win11).
+  !define /redef MUI_CUSTOMFUNCTION_GUIINIT phevereOnGuiInit
   !define MUI_WELCOMEPAGE_TITLE "Welcome to Phevere"
   !define MUI_WELCOMEPAGE_TEXT "Select-to-lookup dictionary for Windows.$\r$\n$\r$\nPublisher: thd2020$\r$\n$\r$\nThis single installer includes the app, OCR models, and a Control Panel uninstaller. Choose folder and components on the next pages.$\r$\n$\r$\nIf an older Phevere folder is stuck in Program Files with no Apps entry, run scripts\remove-ghost-phevere.ps1 from the repo (or reinstall over it)."
   !define MUI_FINISHPAGE_TITLE "Phevere is ready"

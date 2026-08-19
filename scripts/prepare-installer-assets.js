@@ -1,7 +1,7 @@
 /**
  * Prepare packaging assets for NSIS:
  * - Multi-size icon.ico + PNG from SVG mark
- * - installerSidebar.bmp (164×314) + installerHeader.bmp (150×57)
+ * - installerSidebar.bmp / installerHeader.bmp (2× MUI size so Win11 DPI stretch stays sharp)
  * - Optional OCR zip (sidecar) for selective install without bloating Setup.exe
  *
  * Usage: node scripts/prepare-installer-assets.js
@@ -82,29 +82,35 @@ async function main() {
   }
   console.log('Wrote packaging/icon.ico + icon.png + resources/tray-icon.png');
 
-  // NSIS MUI wants uncompressed 24-bpp BMP at the *control* size (164×314 wizard,
-  // 150×57 inner header). Cover-scaling the old phone-splash PNG warped the sidebar;
-  // a navy 150×57 header looked black on MUI_BGCOLOR F3F3F3 inner pages.
-  // Always rasterize the stylized-P mark at exact pixels (fit: fill, no cover crop).
+  // MUI welcome pane is 164×314 / header 150×57 *dialog units*. Per-Monitor v2
+  // enlarges those controls; stretching a 1× BMP looks pixelated on Win11 125–200%.
+  // Rasterize the P-mark SVG at 2× (fill, not cover of the old splash PNG).
+  const SIDEBAR_W = 164 * 2;
+  const SIDEBAR_H = 314 * 2;
+  const HEADER_W = 150 * 2;
+  const HEADER_H = 57 * 2;
+  const PAPER = '#FFFFFF';
   await writeTrueBmp(
     sharp,
-    Buffer.from(wizardSidebarSvg()),
+    Buffer.from(wizardSidebarSvg(SIDEBAR_W, SIDEBAR_H)),
     path.join(outDir, 'installerSidebar.bmp'),
-    164,
-    314,
+    SIDEBAR_W,
+    SIDEBAR_H,
     'fill',
     '#0B1220',
   );
   await writeTrueBmp(
     sharp,
-    Buffer.from(wizardHeaderSvg()),
+    Buffer.from(wizardHeaderSvg(HEADER_W, HEADER_H, PAPER)),
     path.join(outDir, 'installerHeader.bmp'),
-    150,
-    57,
+    HEADER_W,
+    HEADER_H,
     'fill',
-    '#F3F3F3',
+    PAPER,
   );
-  console.log('Wrote installerSidebar.bmp + installerHeader.bmp (true 24-bpp BMP, exact size)');
+  console.log(
+    `Wrote installerSidebar.bmp ${SIDEBAR_W}×${SIDEBAR_H} + installerHeader.bmp ${HEADER_W}×${HEADER_H} (24-bpp, 2× MUI)`,
+  );
 
   // Optional: also emit sidecar zip for advanced redistribution (not required — models are in Setup).
   const ocrSrc = path.join(root, 'resources', 'ocr-models');
@@ -132,32 +138,35 @@ function pGradDef() {
   </linearGradient>`;
 }
 
-/** Welcome / finish left pane — exact 164×314, stylized P (not the old magnifier splash). */
-function wizardSidebarSvg() {
-  const mark = 100;
+/** Welcome / finish left pane — 2× MUI 164×314, stylized P (not the old magnifier splash). */
+function wizardSidebarSvg(w, h) {
+  const mark = Math.round(h * 0.32);
+  const textY = Math.round(h * 0.73);
+  const font = Math.round(h * 0.064);
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="164" height="314" viewBox="0 0 164 314">
+<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#0B1220"/><stop offset="100%" stop-color="#1A2744"/>
     </linearGradient>
     ${pGradDef()}
   </defs>
-  <rect width="164" height="314" fill="url(#g)"/>
-  ${markGroup((164 - mark) / 2, 78, mark)}
-  <text x="82" y="228" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="20" font-weight="600" fill="#F3F3F3">Phevere</text>
+  <rect width="${w}" height="${h}" fill="url(#g)"/>
+  ${markGroup((w - mark) / 2, Math.round(h * 0.22), mark)}
+  <text x="${w / 2}" y="${textY}" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="${font}" font-weight="600" fill="#FFFFFF">Phevere</text>
 </svg>`;
 }
 
-/** Inner MUI header (right) — light paper so it is not a black slab on F3F3F3 pages. */
-function wizardHeaderSvg() {
-  const mark = 32;
+/** Inner MUI header (right) — white paper so Win11 pages are not XP grey. */
+function wizardHeaderSvg(w, h, paper) {
+  const mark = Math.round(h * 0.56);
+  const font = Math.round(h * 0.28);
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="150" height="57" viewBox="0 0 150 57">
+<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
   <defs>${pGradDef()}</defs>
-  <rect width="150" height="57" fill="#F3F3F3"/>
-  ${markGroup(10, (57 - mark) / 2, mark)}
-  <text x="50" y="35" font-family="Segoe UI, sans-serif" font-size="16" font-weight="600" fill="#1A1A1A">Phevere</text>
+  <rect width="${w}" height="${h}" fill="${paper}"/>
+  ${markGroup(Math.round(w * 0.067), (h - mark) / 2, mark)}
+  <text x="${Math.round(w * 0.33)}" y="${Math.round(h * 0.62)}" font-family="Segoe UI, sans-serif" font-size="${font}" font-weight="600" fill="#1A1A1A">Phevere</text>
 </svg>`;
 }
 
