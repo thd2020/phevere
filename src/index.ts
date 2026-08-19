@@ -621,24 +621,18 @@ async function quitPhevere(): Promise<void> {
     /* ignore */
   }
 
-  const closeWin = (win: BrowserWindow | null | undefined) => {
+  const hideWin = (win: BrowserWindow | null | undefined) => {
     try {
-      if (win && !win.isDestroyed()) win.destroy();
+      if (win && !win.isDestroyed()) win.hide();
     } catch {
       /* ignore */
     }
   };
-
-  closeWin(ocrOverlayWindow);
-  ocrOverlayWindow = null;
-  popupWindows.forEach((w) => closeWin(w));
-  popupWindows = [];
-  closeWin(settingsWindow);
-  settingsWindow = null;
-  externalWindows.forEach((w) => closeWin(w));
-  externalWindows = [];
-  closeWin(mainWindow);
-  mainWindow = null;
+  hideWin(ocrOverlayWindow);
+  popupWindows.forEach((w) => hideWin(w));
+  hideWin(settingsWindow);
+  externalWindows.forEach((w) => hideWin(w));
+  hideWin(mainWindow);
 
   const bounded = (p: Promise<unknown>, ms: number) =>
     Promise.race([p, new Promise<void>((resolve) => setTimeout(resolve, ms))]);
@@ -669,6 +663,24 @@ async function quitPhevere(): Promise<void> {
     bounded(stopSelectionMonitoring().catch((): undefined => undefined), 800),
     bounded(closeLocalDb().catch((): undefined => undefined), 700),
   ]);
+
+  const closeWin = (win: BrowserWindow | null | undefined) => {
+    try {
+      if (win && !win.isDestroyed()) win.destroy();
+    } catch {
+      /* ignore */
+    }
+  };
+  closeWin(ocrOverlayWindow);
+  ocrOverlayWindow = null;
+  popupWindows.forEach((w) => closeWin(w));
+  popupWindows = [];
+  closeWin(settingsWindow);
+  settingsWindow = null;
+  externalWindows.forEach((w) => closeWin(w));
+  externalWindows = [];
+  closeWin(mainWindow);
+  mainWindow = null;
 
   if (tray && !tray.isDestroyed()) {
     try {
@@ -807,7 +819,7 @@ const createMainWindow = (): void => {
   });
 
   // REMOVED: This is dangerous and bypasses proper cleanup.
-  // The 'window-all-closed' event handles this correctly.
+  // Tray Quit goes through quitPhevere(); do not app.exit from window closed.
   // mainWindow.on('closed', () => {
   //   console.log('[DEBUG] Main window closed, quitting app...');
   //   setTimeout(() => {
@@ -2466,32 +2478,7 @@ app.on('second-instance', () => {
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
-  if (!appIsQuitting) {
-    // Main window is hidden (not destroyed); popups may close independently — stay in tray.
-    return;
-  }
-
-  popupWindows.forEach((win) => {
-    if (win && !win.isDestroyed()) {
-      win.close();
-    }
-  });
-  popupWindows = [];
-
-  externalWindows.forEach((win) => {
-    if (win && !win.isDestroyed()) {
-      win.close();
-    }
-  });
-  externalWindows = [];
-
-  stopSelectionMonitoring();
-  clipboardService.stopMonitoring();
-  globalShortcut.unregisterAll();
-
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  log.debug('main', 'window-all-closed (tray resident; quitPhevere owns exit)');
 });
 
 app.on('activate', () => {
