@@ -180,6 +180,12 @@ Thumbs.db
 *.pvk
 *.spc
 
+# Personal / local-only (diary source, Cursor project rules)
+WORKLOG.md
+.cursor/rules/
+.worklog-push/
+.phevere-seed-imported
+
 # Optional OCR sidecar (built by prepare:installer; keep Setup lean)
 packaging/optional/*.zip
 packaging/optional/_ocr_stage/
