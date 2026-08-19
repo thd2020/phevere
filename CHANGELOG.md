@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-08-19
+
 ### Changed
 
 - Installer wizard uses **2×** sidebar/header bitmaps, **white** page paper (not XP grey), and HALFTONE stretch so Win11 HiDPI no longer pixelates the P-mark pane.
@@ -15,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Quit Phevere** (tray / taskbar menu) no longer races `app.quit()` when windows close — UIA, OCR, and sql.js tear down first so Chromium helper processes do not linger.
 - Windows 11 **dark app theme** no longer paints Mica/Acrylic near-black under dark text — Phevere stays on its light paper UI.
+
+### Notes for users
+
+- **Windows x64** — `Phevere-Setup-1.3.1-x64.exe` from [GitHub Releases](https://github.com/thd2020/phevere/releases/tag/v1.3.1) (Actions). Still unsigned; SmartScreen may warn. Signing options: [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
+- Run elevated when you need UIAutomation across elevated / protected apps.
 
 ## [1.3.0] - 2026-08-18
 
@@ -176,7 +183,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/thd2020/phevere/releases/tag/v1.3.1
 [1.3.0]: https://github.com/thd2020/phevere/releases/tag/v1.3.0
 [1.2.2]: https://github.com/thd2020/phevere/releases/tag/v1.2.2
 [1.2.1]: https://github.com/thd2020/phevere/releases/tag/v1.2.1

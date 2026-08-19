@@ -14,7 +14,7 @@ Prebuilt **NSIS Setup** (`Phevere-Setup-<version>-x64.exe`) is on [GitHub Releas
 | Optional components | Desktop shortcut, Start menu shortcut, OCR models (~15 MB, on by default) |
 | Uninstall | **Settings → Apps → Phevere**, or Start menu → **Uninstall Phevere** |
 | Single instance | A second launch focuses the existing app (avoids SQLite / tray conflicts) |
-| SmartScreen | Signed releases need `CSC_LINK` (OV/EV cert); unsigned builds may warn — see [`PACKAGING.md`](PACKAGING.md) |
+| SmartScreen | Public trust needs a CA (or SignPath OSS), not a homemade cert — [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md) |
 
 Maintainer packaging: [`PACKAGING.md`](PACKAGING.md) · release checklist: [`docs/RELEASE.md`](docs/RELEASE.md).
 

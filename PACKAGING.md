@@ -74,9 +74,13 @@ Sidebar/header **must** be real 24-bpp BMP (`BM` magic). `prepare:installer` wri
 
 ### Code signing / SmartScreen
 
-Unsigned Setup.exe always trips SmartScreen until Windows has seen many downloads of that publisher. **Self-signed certificates do not help.**
+**You cannot mint a cert at home that strangers’ Win11 will trust.** Self-signed / homemade CA only works on PCs that import that cert. GitHub attestations are provenance, not Authenticode.
 
-To Authenticode-sign a public build (OV or EV code-signing cert from a CA):
+Practical options (2026): **SignPath Foundation** (free OSS signing; publisher name is SignPath Foundation), a paid **OV** cert + HSM/USB/cloud, or Microsoft Store **MSIX**. Azure Artifact Signing is not available to individuals outside the USA/Canada. EV no longer skips SmartScreen.
+
+Full comparison and local test-signing PowerShell: [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
+
+To Authenticode-sign a public build with a CA PFX (OV):
 
 ```powershell
 $env:CSC_LINK = "C:\secure\phevere-codesign.pfx"   # or base64 of the PFX
@@ -84,7 +88,7 @@ $env:CSC_KEY_PASSWORD = "<pfx password>"
 npm run make:win
 ```
 
-Optional: `CSC_NAME` (subject CN in the Windows cert store) or `WIN_CSC_LINK`. electron-builder timestamps with DigiCert RFC3161 (`electron-builder.yml`). EV certs clear SmartScreen faster than OV; either still needs a period of reputation if the publisher is new.
+Optional: `CSC_NAME` (subject CN in the Windows cert store) or `WIN_CSC_LINK`. electron-builder timestamps with DigiCert RFC3161 (`electron-builder.yml`).
 
 Do not commit `.pfx` / passwords. `make:win` warns when `CSC_LINK` is unset.
 
