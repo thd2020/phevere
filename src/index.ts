@@ -2590,6 +2590,11 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
                 ? senderWin
                 : popupWindows.find((win) => win && !win.isDestroyed());
               if (!target || target.isDestroyed()) return;
+              if (h > 64) {
+                try { target.setMinimumSize(w, 120); } catch { /* ignore */ }
+              } else {
+                try { target.setMinimumSize(160, 32); } catch { /* ignore */ }
+              }
               if (typeof x === 'number' && typeof y === 'number') {
                 const placed = placePopupNearPoint(x, y, w, h);
                 target.setBounds({ x: placed.x, y: placed.y, width: w, height: h }, false);
@@ -2776,7 +2781,7 @@ function createWebWindow(url: string): void {
 
 // Create a dedicated dictionary window that uses the same floating popup chrome
 function createDictionaryWindow(term: string): void {
-  const popupWidth = 400;
+  const popupWidth = 560;
   const popupHeight = 500;
   const mb = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : undefined;
   const placed = placePopupNearPoint(

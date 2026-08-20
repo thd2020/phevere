@@ -235,6 +235,8 @@
       .tabs {
         display: flex;
         flex: 0 0 auto;
+        flex-wrap: nowrap;
+        align-items: stretch;
         background: rgba(248, 249, 250, 0.82);
         backdrop-filter: blur(16px);
         border-bottom: 1px solid #e1e5e9;
@@ -244,6 +246,8 @@
       }
 
       .tab {
+        flex: 0 0 auto;
+        white-space: nowrap;
         padding: 12px 16px;
         background: none;
         border: none;
@@ -268,6 +272,7 @@
 
       .lookup-nav {
         display: flex;
+        flex: 0 0 auto;
         align-items: center;
         gap: 2px;
         margin: 0 10px 0 0;
@@ -2217,6 +2222,38 @@ function startAutoCloseTimeout() {
          });
        }
 
+       /** Expanded lookup: wide enough for ←/→ plus Lexicon…Etymology. */
+       var EXPANDED_POPUP_H = 500;
+       var EXPANDED_POPUP_MIN_W = 520;
+
+       function widthToFitLookupChrome() {
+         var need = EXPANDED_POPUP_MIN_W;
+         var tabs = document.getElementById('tabsContainer');
+         if (tabs) {
+           var prev = tabs.style.display;
+           tabs.style.display = 'flex';
+           var tw = Math.ceil(tabs.scrollWidth || 0);
+           if (tw > need) need = tw;
+           if (prev && prev !== 'flex') tabs.style.display = prev;
+         }
+         var toolbar = document.getElementById('toolbar');
+         if (toolbar) {
+           var bw = Math.ceil(toolbar.scrollWidth || 0);
+           if (bw > need) need = bw;
+         }
+         var frame = Math.max(0, (window.outerWidth || 0) - (window.innerWidth || 0));
+         need = Math.ceil(need + frame + 8);
+         return Math.max(EXPANDED_POPUP_MIN_W, Math.min(800, need));
+       }
+
+       function resizeToExpandedPanel() {
+         if (!window.electronAPI || !window.electronAPI.resizeWindow) return;
+         if (!isExpanded) return;
+         var w = widthToFitLookupChrome();
+         pvLog('[POPUP] resizeToExpandedPanel', w, EXPANDED_POPUP_H);
+         window.electronAPI.resizeWindow(w, EXPANDED_POPUP_H);
+       }
+
        // Expand toolbar
        function expandToolbar() {
          pvLog('[POPUP] Expanding toolbar...');
@@ -2233,10 +2270,15 @@ function startAutoCloseTimeout() {
          // Clear auto-close timeout when expanded
          clearAutoCloseTimeout();
 
-         // Resize window to accommodate expanded content
+         var tabsContainer = document.getElementById('tabsContainer');
+         if (tabsContainer) tabsContainer.style.display = 'flex';
+
          if (window.electronAPI && window.electronAPI.resizeWindow) {
            pvLog('[POPUP] Resizing window for expanded content...');
-           window.electronAPI.resizeWindow(400, 500);
+           window.electronAPI.resizeWindow(widthToFitLookupChrome(), EXPANDED_POPUP_H);
+           requestAnimationFrame(function () {
+             requestAnimationFrame(resizeToExpandedPanel);
+           });
          }
        }
 
