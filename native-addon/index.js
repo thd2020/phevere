@@ -1,47 +1,53 @@
-const { UIAutomationSelectionMonitor } = require('./build/Release/uiautomation_selection_monitor.node');
+const path = require('path');
+
+function loadMonitorClass() {
+  if (process.platform === 'darwin') {
+    const binding = require('./build/Release/ax_selection_monitor.node');
+    return binding.AXSelectionMonitor;
+  }
+  const binding = require('./build/Release/uiautomation_selection_monitor.node');
+  return binding.UIAutomationSelectionMonitor;
+}
+
+const MonitorClass = loadMonitorClass();
 
 class NativeSelectionMonitor {
   constructor() {
-    this.monitor = new UIAutomationSelectionMonitor();
+    this.monitor = new MonitorClass();
     this.isRunning = false;
     this.callbacks = [];
+    this.method = process.platform === 'darwin' ? 'accessibility' : 'uiautomation';
   }
 
   /**
-   * Start monitoring for text selections using UIA
+   * Start monitoring for text selections (UIA on Windows, AX on macOS).
    */
   start() {
     if (this.isRunning) {
-      console.log('[UIA-ADDON] Already running');
+      console.log('[NATIVE-ADDON] Already running');
       return false;
     }
 
     try {
-      // Set up the callback
       this.monitor.setCallback((text, x, y) => {
-        console.log(`[UIA-ADDON] Selection detected: "${text}" @ (${x}, ${y})`);
+        console.log(`[NATIVE-ADDON] Selection detected: "${text}" @ (${x}, ${y})`);
         this.notifyCallbacks({ text, x, y });
       });
 
-      // Start monitoring
       const result = this.monitor.start();
       if (result) {
         this.isRunning = true;
-        console.log('[UIA-ADDON] UIA selection monitoring started');
+        console.log(`[NATIVE-ADDON] ${this.method} selection monitoring started`);
         return true;
-      } else {
-        console.error('[UIA-ADDON] Failed to start UIA monitoring');
-        return false;
       }
+      console.error(`[NATIVE-ADDON] Failed to start ${this.method} monitoring`);
+      return false;
     } catch (error) {
-      console.error('[UIA-ADDON] Error starting UIA monitoring:', error);
+      console.error('[NATIVE-ADDON] Error starting monitoring:', error);
       return false;
     }
   }
 
-  /**
-   * Stop monitoring for text selections
-   */
   stop() {
     if (!this.isRunning) {
       return;
@@ -50,49 +56,37 @@ class NativeSelectionMonitor {
     try {
       this.monitor.stop();
       this.isRunning = false;
-      console.log('[UIA-ADDON] UIA selection monitoring stopped');
+      console.log(`[NATIVE-ADDON] ${this.method} selection monitoring stopped`);
     } catch (error) {
-      console.error('[UIA-ADDON] Error stopping UIA monitoring:', error);
+      console.error('[NATIVE-ADDON] Error stopping monitoring:', error);
     }
   }
 
-  /**
-   * Get the current selection
-   */
   getCurrentSelection() {
     try {
       return this.monitor.getCurrentSelection();
     } catch (error) {
-      console.error('[UIA-ADDON] Error getting current selection:', error);
+      console.error('[NATIVE-ADDON] Error getting current selection:', error);
       return null;
     }
   }
 
-  /**
-   * Register a callback for selection events
-   */
   onSelection(callback) {
     if (typeof callback === 'function') {
       this.callbacks.push(callback);
     }
   }
 
-  /**
-   * Notify all registered callbacks
-   */
   notifyCallbacks(payload) {
-    this.callbacks.forEach(callback => {
+    this.callbacks.forEach((callback) => {
       try {
         callback(payload);
       } catch (error) {
-        console.error('[UIA-ADDON] Error in callback:', error);
+        console.error('[NATIVE-ADDON] Error in callback:', error);
       }
     });
   }
 
-  /**
-   * Word under screen point via UIA RangeFromPoint (hover lookup).
-   */
   getWordAtPoint(x, y) {
     try {
       if (!this.monitor || typeof this.monitor.getWordAtPoint !== 'function') {
@@ -101,22 +95,35 @@ class NativeSelectionMonitor {
       const result = this.monitor.getWordAtPoint(x, y);
       return result || { text: '', x, y };
     } catch (error) {
-      console.error('[UIA-ADDON] Error getWordAtPoint:', error);
+      console.error('[NATIVE-ADDON] Error getWordAtPoint:', error);
       return { text: '', x, y };
     }
   }
 
-  /**
-   * Get the status of the monitor
-   */
+  isTrusted(prompt = false) {
+    if (!this.monitor || typeof this.monitor.isTrusted !== 'function') {
+      return process.platform !== 'darwin';
+    }
+    try {
+      return !!this.monitor.isTrusted(prompt);
+    } catch (error) {
+      return false;
+    }
+  }
+
   getStatus() {
     return {
       isRunning: this.isRunning,
       platform: process.platform,
-      method: 'uiautomation',
-      callbacksCount: this.callbacks.length
+      method: this.method,
+      callbacksCount: this.callbacks.length,
+      binding: path.basename(
+        process.platform === 'darwin'
+          ? 'ax_selection_monitor.node'
+          : 'uiautomation_selection_monitor.node',
+      ),
     };
   }
 }
 
-module.exports = NativeSelectionMonitor; 
+module.exports = NativeSelectionMonitor;

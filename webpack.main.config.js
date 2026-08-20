@@ -2,6 +2,7 @@ const { rules } = require('./webpack.rules');
 const { plugins } = require('./webpack.plugins');
 const fs = require('fs');
 const path = require('path');
+const webpack = require('webpack');
 
 class CopyLocalDbWorkerPlugin {
   apply(compiler) {
@@ -25,7 +26,18 @@ const mainConfig = {
   module: {
     rules,
   },
-  plugins: [...plugins, new CopyLocalDbWorkerPlugin()],
+  plugins: [
+    ...plugins,
+    new CopyLocalDbWorkerPlugin(),
+    // Only one OS binding exists per build. Ignore the other so webpack does
+    // not fail to resolve a missing .node (index.js requires both paths).
+    new webpack.IgnorePlugin({
+      resourceRegExp:
+        process.platform === 'darwin'
+          ? /uiautomation_selection_monitor\.node$/
+          : /ax_selection_monitor\.node$/,
+    }),
+  ],
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
   },

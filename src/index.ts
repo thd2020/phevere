@@ -1667,7 +1667,7 @@ function startSelectionMonitoring(): void {
 
   const isAdmin = checkAdminPrivileges();
 
-  if (!isAdmin) {
+  if (process.platform === 'win32' && !isAdmin) {
     log.warn('main', 'Not running as administrator; UIAutomation may be limited');
   }
 
@@ -1685,7 +1685,12 @@ function startSelectionMonitoring(): void {
       .catch((error) => {
         nativeSelectionActive = false;
         log.error('main', 'Failed to start native selection', { err: String(error) });
-        if (!isAdmin) {
+        if (process.platform === 'darwin') {
+          log.error(
+            'main',
+            'Grant Accessibility to Electron (dev) or Phevere (packaged) in System Settings → Privacy & Security → Accessibility',
+          );
+        } else if (!isAdmin) {
           log.error('main', 'Try running as Administrator for UIAutomation');
         }
         updateTrayContextMenu();

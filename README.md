@@ -1,6 +1,6 @@
 # Phevere Dictionary
 
-Select-to-lookup dictionary for Windows (Electron + Microsoft UI Automation). Select text anywhere → popup with definitions, translation, etymology, Wikipedia, and a local vocabulary notebook.
+Select-to-lookup dictionary for Windows (Electron + Microsoft UI Automation), with a **draft macOS Accessibility backend** in source (not a shipped Mac build). Select text anywhere → popup with definitions, translation, etymology, Wikipedia, and a local vocabulary notebook.
 
 Publisher: **[thd2020](https://github.com/thd2020)**.
 
@@ -48,8 +48,8 @@ Then run the latest Setup.exe. New installs register a proper uninstaller (`Unin
 ### Prerequisites
 
 - Node.js 18+ recommended  
-- Visual Studio 2022 (C++ workload) for the native UIA addon  
-- Windows 10/11  
+- **Windows:** Visual Studio 2022 (C++ workload) for the UIA addon; Windows 10/11  
+- **macOS (draft selection only):** Xcode Command Line Tools; grant **Accessibility** to Electron — [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md) 
 
 ### Setup
 

@@ -61,7 +61,7 @@ interface ContextEvent {
 Producers (selection, OCR, media, clipboard) emit `ContextEvent`.  
 Orchestration in `index.ts` stays mode-aware (`off` / `on` / `shortcut`) and opens the same popup → `dictionaryService.lookup`.
 
-This interface is also the target for future macOS AX / Linux AT-SPI backends.
+This interface is also the target for the **macOS AX draft** (`docs/MACOS_SELECTION.md`) and a future Linux AT-SPI backend.
 
 ## Phased roadmap
 

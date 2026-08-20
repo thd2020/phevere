@@ -1,7 +1,7 @@
 {
   "name": "phevere-native-selection",
   "version": "1.0.0",
-  "description": "Native text selection monitoring for Phevere Dictionary",
+  "description": "Native text selection monitoring for Phevere (Windows UIA, macOS Accessibility)",
   "main": "index.js",
   "scripts": {
     "install": "node-gyp rebuild",
@@ -12,6 +12,8 @@
     "native",
     "selection",
     "windows",
+    "macos",
+    "accessibility",
     "text",
     "monitoring"
   ],

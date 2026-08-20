@@ -173,4 +173,4 @@ sudo node test-debounced-selection.js
 ### **Future Features**
 1. **OCR Integration** - For non-selectable text
 2. **Advanced Language Detection** - Automatic language identification
-3. **Cross-platform Support** - macOS and Linux implementations 
+3. **Cross-platform Support** - macOS AX draft (`docs/MACOS_SELECTION.md`); Linux still open 
