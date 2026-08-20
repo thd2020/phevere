@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Draft **macOS** selection backend (Accessibility + CGEvent tap) on the same `{ text, x, y }` path as Windows UIA. Compile on a Mac (`npm run build-native`); grant Accessibility to Electron/Phevere. No Mac installer yet. See [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md).
 
+### Fixed
+
+- `npm start` on macOS/Linux no longer dies on Windows-only `chcp 65001` (UTF-8 console is still set on Windows).
+
 ## [1.4.0] - 2026-08-19
 
 ### Added

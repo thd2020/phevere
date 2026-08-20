@@ -4,7 +4,7 @@
   "description": "Cross-platform dictionary application with text selection monitoring",
   "main": ".webpack/main",
   "scripts": {
-    "start": "chcp 65001 >nul && electron-forge start",
+    "start": "node scripts/utf8-console.js && electron-forge start",
     "start-admin": "sudo electron-forge start",
     "package": "electron-forge package",
     "make": "npm run prepare:installer && electron-forge make",
