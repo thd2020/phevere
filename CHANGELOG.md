@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Notes for users
 
-- **Windows x64** — `Phevere-Setup-1.4.0-x64.exe` from [GitHub Releases](https://github.com/thd2020/phevere/releases/tag/v1.4.0) (Actions). Still unsigned; SmartScreen may warn. Signing options: [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
+- **Windows x64** — `Phevere-Setup-1.4.0-x64.exe` from [GitHub Releases](https://github.com/thd2020/phevere/releases/tag/v1.4.0) (Actions). SHA-256 `6B819454…9C6128`. Still unsigned; SmartScreen may warn. Signing options: [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
 - Run elevated when you need UIAutomation across elevated / protected apps.
 
 ## [1.3.1] - 2026-08-19
