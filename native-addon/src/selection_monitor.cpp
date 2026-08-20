@@ -43,6 +43,8 @@ private:
     std::atomic<bool> debounce_running{false};
     std::mutex debounce_mutex;
     std::string pending_selection;
+
+    static bool looksLikeTypingGrowth(const std::string& a, const std::string& b);
     int pending_x = 0;
     int pending_y = 0;
     std::chrono::steady_clock::time_point last_selection_time;
@@ -380,10 +382,29 @@ void UIAutomationSelectionMonitor::handleSelectionChanged(IUIAutomationElement* 
 
 void UIAutomationSelectionMonitor::updatePendingSelection(const std::string& newSelection, int x, int y) {
     std::lock_guard<std::mutex> lock(debounce_mutex);
+    // After a word has already been emitted, a distinct correction should not wait
+    // another full debounce. Prefix growth of 1–2 chars (drag / typing) still resets.
+    const bool replacingSettled =
+        pending_selection.empty() &&
+        !last_selection.empty() &&
+        newSelection != last_selection &&
+        !looksLikeTypingGrowth(last_selection, newSelection);
     pending_selection = newSelection;
     pending_x = x;
     pending_y = y;
-    last_selection_time = std::chrono::steady_clock::now();
+    if (replacingSettled) {
+        last_selection_time = std::chrono::steady_clock::now()
+            - std::chrono::milliseconds(DEBOUNCE_DELAY_MS);
+    } else {
+        last_selection_time = std::chrono::steady_clock::now();
+    }
+}
+
+bool UIAutomationSelectionMonitor::looksLikeTypingGrowth(const std::string& a, const std::string& b) {
+    if (a.empty() || b.empty() || b.size() < a.size()) return false;
+    const size_t extra = b.size() - a.size();
+    if (extra == 0 || extra > 2) return false;
+    return b.compare(0, a.size(), a) == 0;
 }
 
 void UIAutomationSelectionMonitor::debounceLoop() {
@@ -391,23 +412,25 @@ void UIAutomationSelectionMonitor::debounceLoop() {
     
     while (debounce_running.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        
-        std::lock_guard<std::mutex> lock(debounce_mutex);
-        
-        if (!pending_selection.empty()) {
+
+        std::string text;
+        int x = 0, y = 0;
+        {
+            std::lock_guard<std::mutex> lock(debounce_mutex);
+            if (pending_selection.empty()) continue;
             auto now = std::chrono::steady_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_selection_time);
-            
-            if (elapsed.count() >= DEBOUNCE_DELAY_MS) {
-                last_selection = pending_selection;
-                if (debugEnabled) std::cout << "[UIA] DEBOUNCE: Selection settled after " << elapsed.count() << "ms: \"" << pending_selection << "\"" << std::endl;
+            if (elapsed.count() < DEBOUNCE_DELAY_MS) continue;
+            last_selection = pending_selection;
+            text = pending_selection;
+            x = pending_x;
+            y = pending_y;
+            pending_selection.clear();
+        }
 
-                if (callback) {
-                    callback(pending_selection, pending_x, pending_y);
-                }
-
-                pending_selection.clear();
-            }
+        if (debugEnabled) std::cout << "[UIA] DEBOUNCE: Selection settled: \"" << text << "\"" << std::endl;
+        if (callback) {
+            callback(text, x, y);
         }
     }
     

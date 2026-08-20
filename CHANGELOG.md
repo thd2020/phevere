@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Inflected lookups such as **tantalizing** no longer mix in verb senses, IPA, or notebook saves for the lemma **tantalize**. The card, pronunciation, and Save stay on the exact form; the headword is used only when every source has no sense for that form. Wiki form-of links still look up the linked word on their own.
-- A quick second selection (wrong word, then the right one before the first popup appears) now retargets the in-flight strip to the latest text and screen position instead of sticking on the first pick.
+- A quick second selection (wrong word, then the right one) follows the latest text: the in-flight strip is retargeted, `popup-text` is not dropped while the page is still loading, a late `getLastSelection` cannot overwrite a newer word, and a distinct correction is not held behind another 500ms native debounce.
 - Following a word-family chip or form-of link no longer traps you with no way back; Chromium page history no longer swallows mouse extra keys.
 - Expanded lookup grows to fit **Back / Forward** plus all tabs, so Etymology is not clipped off the 400px row.
 

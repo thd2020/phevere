@@ -1501,6 +1501,7 @@
       let lookupInFlight = null;
       let lookupSeq = 0;
       let lookupFold = '';
+      var lastAppliedSelectionAt = 0;
       var lookupTrail = [];
       var lookupTrailIndex = -1;
       var lookupNavGuardAt = 0;
@@ -1661,6 +1662,40 @@
         void lookupText(t, { silent: !isExpanded });
       }
 
+      function applyIncomingSelection(text, ts) {
+        const next = String(text || '').trim();
+        if (!next) return;
+        // Untimestamped IPC uses watermark 1 so a later dated event always wins.
+        // Never use Date.now() here — that lets a late getLastSelection beat popup-text.
+        const hasTs = typeof ts === 'number' && ts > 0;
+        const when = hasTs ? ts : 1;
+        if (when < lastAppliedSelectionAt) {
+          pvLog('[POPUP] ignore stale selection', next, when, lastAppliedSelectionAt);
+          return;
+        }
+        lastAppliedSelectionAt = when;
+        currentText = next;
+        window['__popupCurrentText'] = currentText;
+        resetTrailTo(next);
+        if (isFullLookupWindow()) {
+          activateTab('lexicon');
+          if (!isExpanded) expandToolbar();
+          void lookupText(currentText, { fromHistory: true });
+          return;
+        }
+        if (isExpanded) return;
+        const folded = foldLookupKey(next);
+        if (folded && folded !== lookupFold) invalidateLookupState(folded);
+        activateTab('lexicon');
+        maybePreloadLookup(currentText);
+        var tb = document.getElementById('toolbar');
+        if (tb && tb.classList.contains('collapsed')) {
+          requestAnimationFrame(function () {
+            requestAnimationFrame(resizeToCollapsedStrip);
+          });
+        }
+      }
+
       // Initialize even if this script ran after DOMContentLoaded (webpack inject / late parse).
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initialize);
@@ -1697,34 +1732,9 @@
         try {
           if (window.electronAPI && typeof window.electronAPI.onPopupText === 'function') {
             pvLog('[POPUP] Registering onPopupText listener');
-            window.electronAPI.onPopupText((text) => {
-              pvLog('[POPUP] onPopupText:', text);
-              const next = (text || '').trim();
-              if (!next) return;
-              if (isFullLookupWindow()) {
-                currentText = next;
-                window['__popupCurrentText'] = currentText;
-                resetTrailTo(next);
-                activateTab('lexicon');
-                if (!isExpanded) expandToolbar();
-                void lookupText(currentText, { fromHistory: true });
-                return;
-              }
-              // An expanded lookup is its own session. New selections open another strip.
-              if (isExpanded) return;
-              const folded = foldLookupKey(next);
-              currentText = next;
-              window['__popupCurrentText'] = currentText;
-              resetTrailTo(next);
-              if (folded && folded !== lookupFold) invalidateLookupState(folded);
-              activateTab('lexicon');
-              maybePreloadLookup(currentText);
-              var tb = document.getElementById('toolbar');
-              if (tb && tb.classList.contains('collapsed')) {
-                requestAnimationFrame(function () {
-                  requestAnimationFrame(resizeToCollapsedStrip);
-                });
-              }
+            window.electronAPI.onPopupText((text, ts) => {
+              pvLog('[POPUP] onPopupText:', text, ts);
+              applyIncomingSelection(text, ts);
             });
           } else {
             pvLog('[POPUP] electronAPI.onPopupText not available');
@@ -1733,24 +1743,13 @@
           console.error('[POPUP] Failed to register onPopupText:', e);
         }
 
-        // Fetch last selection after the listener is armed so popup-text cannot be dropped.
+        // Seed only if popup-text was dropped before the listener armed.
+        // Never apply an older getLastSelection over a newer popup-text.
           if (window.electronAPI) {
             try {
               const selectionEvent = await window.electronAPI.getLastSelection();
               if (selectionEvent && selectionEvent.text) {
-                currentText = selectionEvent.text;
-                window['__popupCurrentText'] = currentText;
-                const openedFromHistory = (window.outerWidth || 0) > 600;
-                if (openedFromHistory) {
-                  activateTab('lexicon');
-                  expandToolbar();
-                  resetTrailTo(currentText);
-                  lookupText(currentText, { fromHistory: true });
-                } else {
-                  activateTab('lexicon');
-                  resetTrailTo(currentText);
-                  maybePreloadLookup(currentText);
-                }
+                applyIncomingSelection(selectionEvent.text, selectionEvent.timestamp);
               }
             } catch (e) {}
           }

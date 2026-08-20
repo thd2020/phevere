@@ -139,8 +139,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('selection-changed');
     ipcRenderer.on('selection-changed', (_event: any, text: string) => callback(text));
   },
-  onPopupText: (callback: (text: string) => void) => {
-    ipcRenderer.on('popup-text', (_event: any, text: string) => callback(text));
+  onPopupText: (callback: (text: string, timestamp?: number) => void) => {
+    ipcRenderer.on('popup-text', (_event: any, text: string, timestamp?: number) => callback(text, timestamp));
   },
   onPopupAppCommand: (callback: (cmd: string) => void) => {
     ipcRenderer.removeAllListeners('popup-app-command');
@@ -428,7 +428,7 @@ declare global {
     nativeAPI: NativeAPI;
     electronAPI: {
       onSelectionChange: (callback: (text: string) => void) => void;
-      onPopupText: (callback: (text: string) => void) => void;
+      onPopupText: (callback: (text: string, timestamp?: number) => void) => void;
       onPopupAppCommand?: (callback: (cmd: string) => void) => void;
       onPopupProgress?: (callback: (payload: {
         title?: string;

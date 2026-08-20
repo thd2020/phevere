@@ -123,6 +123,14 @@ const TRIGGER_AFTER_SELECTION_MAX_MS = 60_000;
 let nativeSelectionHandlerRegistered = false;
 let lastSelectedText = '';
 let lastSelectionEvent: ContextEvent | null = null;
+
+/** Keep selection timestamps strictly increasing so a late getLastSelection cannot beat a newer popup-text. */
+function setLastSelectionEvent(event: ContextEvent): void {
+  const prev = lastSelectionEvent && lastSelectionEvent.timestamp ? lastSelectionEvent.timestamp : 0;
+  const raw = typeof event.timestamp === 'number' && event.timestamp > 0 ? event.timestamp : Date.now();
+  lastSelectionEvent = { ...event, timestamp: Math.max(raw, prev + 1) };
+  lastSelectedText = event.text || '';
+}
 let lastPopupText: string = '';
 let lastPopupAt: number = 0;
 /** Latest strip still loading or collapsed — retarget here instead of spawning another. */
@@ -839,6 +847,22 @@ const createMainWindow = (): void => {
   
 };
 
+function sendPopupText(win: BrowserWindow, text: string): void {
+  const t = (text || '').trim();
+  if (!t || !win || win.isDestroyed()) return;
+  const ev = lastSelectionEvent;
+  const same = ev && (ev.text || '').trim() === t;
+  const ts = same && ev.timestamp ? ev.timestamp : Date.now();
+  try {
+    // Always send, even while the frame is loading — Chromium queues IPC for the
+    // renderer. Skipping here dropped a correction until did-finish-load, which
+    // may already have run with the previous word.
+    win.webContents.send('popup-text', t, ts);
+  } catch {
+    /* renderer may not be ready; did-finish-load retries */
+  }
+}
+
 /** Mouse X1/X2 (browser-backward / browser-forward) would otherwise walk Chromium page history. */
 function interceptPopupHistoryKeys(win: BrowserWindow): void {
   win.on('app-command', (event, cmd) => {
@@ -905,15 +929,7 @@ const createPopupWindow = (x: number, y: number): void => {
         }
         try { win.focus(); } catch {}
       }
-      if (text) {
-        try {
-          if (!win.webContents.isLoadingMainFrame()) {
-            win.webContents.send('popup-text', text);
-          }
-        } catch {
-          /* did-finish-load will send the latest text */
-        }
-      }
+      if (text) sendPopupText(win, text);
     } catch (e) {
       log.warn('main', 'Popup retarget failed', { err: String(e) });
     }
@@ -1048,9 +1064,7 @@ const createPopupWindow = (x: number, y: number): void => {
       if (!newPopupWindow.isDestroyed() && !newPopupWindow.isVisible()) {
         newPopupWindow.show();
       }
-      if (textToSend) {
-        newPopupWindow.webContents.send('popup-text', textToSend);
-      }
+      sendPopupText(newPopupWindow, textToSend);
       lastPopupText = textToSend;
     } catch (e) {
       log.warn('main', 'Send popup-text failed', { err: String(e) });
@@ -1149,8 +1163,7 @@ function wireContextCaptureHubOnce(): void {
       }
     }
 
-    lastSelectionEvent = event;
-    lastSelectedText = event.text || '';
+    setLastSelectionEvent(event);
 
     // Shortcut mode: store selection/hover for select-then-trigger, but only open the
     // popup while the trigger chord is physically held. Hover must not bypass this
@@ -1840,8 +1853,7 @@ ipcMain.handle(
 function rememberSelection(x: number, y: number, text: string): boolean {
   const t = typeof text === 'string' ? text.trim() : '';
   if (!t || !isLookupWorthy(t)) return false;
-  lastSelectionEvent = selectionToContext(t, x, y, 'manual');
-  lastSelectedText = t;
+  setLastSelectionEvent(selectionToContext(t, x, y, 'manual'));
   try {
     mainWindow?.webContents.send('selection-changed', t);
   } catch {
@@ -2636,7 +2648,7 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
               // Get current mouse position for new popup
               const mousePosition = screen.getCursorScreenPoint();
               // Set last selection so popup can render the word immediately
-              lastSelectionEvent = selectionToContext(text, mousePosition.x, mousePosition.y, 'manual');
+              setLastSelectionEvent(selectionToContext(text, mousePosition.x, mousePosition.y, 'manual'));
               // Also broadcast to recent selections UI
               try { mainWindow?.webContents.send('selection-changed', text); } catch {}
               createPopupWindow(mousePosition.x, mousePosition.y);
@@ -2791,7 +2803,7 @@ function createDictionaryWindow(term: string): void {
     popupHeight,
   );
 
-  lastSelectionEvent = selectionToContext(term, 0, 0, 'manual');
+  setLastSelectionEvent(selectionToContext(term, 0, 0, 'manual'));
 
   const dictWindow = new BrowserWindow(withWin11Chrome({
     width: popupWidth,
@@ -2842,7 +2854,7 @@ function createDictionaryWindow(term: string): void {
   dictWindow.webContents.on('did-finish-load', () => {
     try {
       if (!dictWindow.isDestroyed() && term) {
-        dictWindow.webContents.send('popup-text', term);
+        dictWindow.webContents.send('popup-text', term, Date.now());
       }
     } catch (e) {
       log.warn('main', 'History lookup send popup-text failed', { err: String(e) });
