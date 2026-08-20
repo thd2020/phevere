@@ -4,6 +4,8 @@ Windows Phevere uses UI Automation. On macOS the matching producer is the **Acce
 
 There is **no** shipped Mac installer yet. This is source you can compile on a Mac.
 
+Conversation + constraints for a Mac-side agent: [`AGENT_HANDOFF_MAC.md`](AGENT_HANDOFF_MAC.md).
+
 ## What is implemented
 
 | Piece | Role |
