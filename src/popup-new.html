@@ -235,8 +235,9 @@
       .tabs {
         display: flex;
         flex: 0 0 auto;
-        flex-wrap: nowrap;
+        flex-wrap: wrap;
         align-items: stretch;
+        align-content: flex-start;
         background: rgba(248, 249, 250, 0.82);
         backdrop-filter: blur(16px);
         border-bottom: 1px solid #e1e5e9;
@@ -278,7 +279,7 @@
         margin: 0 10px 0 0;
         padding-right: 10px;
         border-right: 1px solid #e1e5e9;
-        align-self: center;
+        align-self: stretch;
       }
       .lookup-nav-btn {
         width: 28px;
