@@ -24,8 +24,17 @@ Chrome, VS Code, and some Electron apps expose incomplete AX trees. Expect gaps 
 Xcode Command Line Tools, Node 18+.
 
 ```bash
-npm install          # runs build-native → node-gyp `ax_selection_monitor`
+# Skip Electron's silent GitHub fetch (it can sit on a spinner for a long time).
+# The install hook then curls the zip from cdn.npmmirror and builds the AX addon.
+ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install
 npm start
+```
+
+If you already Ctrl+C'd a hung `npm install`, `node_modules` is probably there without `electron/dist`. Finish with:
+
+```bash
+npm run ensure-electron
+npm run build-native
 ```
 
 Binding: `native-addon/build/Release/ax_selection_monitor.node`.

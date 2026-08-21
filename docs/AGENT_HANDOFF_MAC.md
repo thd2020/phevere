@@ -20,7 +20,9 @@ git clone https://github.com/thd2020/phevere.git
 cd phevere
 git checkout main
 git pull
-npm install          # must produce native-addon/build/Release/ax_selection_monitor.node
+ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install
+# must produce native-addon/build/Release/ax_selection_monitor.node
+# and node_modules/electron/dist (curl via scripts/ensure-electron.js, not GitHub got)
 npm start
 ```
 
