@@ -762,12 +762,16 @@ function createTray(): void {
       image = nativeImage.createEmpty();
     }
   }
-  // Downscale large assets so the tray uses most of the glyph (avoids tiny centered artwork).
+  // Menu bar extras are ~16pt. Passing a 44px bitmap without scaleFactor made
+  // Electron treat it as 44pt — twice as tall as Clock / Control Centre.
   if (!image.isEmpty()) {
     const { width, height } = image.getSize();
-    const targetPx = process.platform === 'darwin' ? 44 : 32;
-    if (width > targetPx || height > targetPx) {
-      image = image.resize({ width: targetPx, height: targetPx, quality: 'best' });
+    if (process.platform === 'darwin') {
+      const px = 32;
+      const square = image.resize({ width: px, height: px, quality: 'best' });
+      image = nativeImage.createFromBuffer(square.toPNG(), { scaleFactor: 2 });
+    } else if (width > 32 || height > 32) {
+      image = image.resize({ width: 32, height: 32, quality: 'best' });
     }
   }
   tray = new Tray(image);
