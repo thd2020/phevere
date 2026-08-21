@@ -56,8 +56,7 @@ Then run the latest Setup.exe. New installs register a proper uninstaller (`Unin
 ```bash
 git clone https://github.com/thd2020/phevere.git
 cd phevere
-# On networks where github.com stalls: skip Electron's got fetch, then curl the zip.
-ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install
+npm install
 npm start
 # Full selection monitoring:
 npm run start-admin
@@ -71,7 +70,7 @@ npm run make:win
 # → out\make\nsis\x64\Phevere-Setup-*-x64.exe
 ```
 
-`make:win` uses npmmirror Electron mirrors by default (avoids `github.com` `ETIMEDOUT` on some networks). `npm install` on a Mac can hang the same way on Electron's postinstall spinner; use `ELECTRON_SKIP_BINARY_DOWNLOAD=1` so `scripts/ensure-electron.js` can curl the runtime from `cdn.npmmirror.com` instead.
+`make:win` uses npmmirror Electron mirrors by default (avoids `github.com` `ETIMEDOUT` on some networks). `npm install` skips Electron’s `got` postinstall (`.npmrc` `script-shell`) and curls the runtime via `scripts/ensure-electron.js`. `npm start` re-runs that extract if `path.txt` is missing after a cancelled install.
 
 CI: `.github/workflows/ci.yml` on every PR and `main` (Windows package). CD: push an annotated tag `v*.*.*` → `.github/workflows/release.yml` makes Setup.exe, creates the GitHub Release, and attests it (unsigned unless `CSC_LINK` is set). See [`docs/RELEASE.md`](docs/RELEASE.md).
 

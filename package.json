@@ -5,7 +5,8 @@
   "main": ".webpack/main",
   "scripts": {
     "start": "node scripts/utf8-console.js && electron-forge start",
-    "start-admin": "sudo electron-forge start",
+    "prestart": "node scripts/ensure-electron.js",
+    "start-admin": "node scripts/ensure-electron.js && sudo electron-forge start",
     "package": "electron-forge package",
     "make": "npm run prepare:installer && electron-forge make",
     "make:win": "node scripts/make-win.js",
@@ -17,7 +18,7 @@
     "build": "npm run build-native",
     "build-native": "cd native-addon && npm install && npm run build",
     "ensure-electron": "node scripts/ensure-electron.js",
-    "dev": "electron-forge start",
+    "dev": "node scripts/ensure-electron.js && electron-forge start",
     "test": "node test-integration.js",
     "test-new-popup": "electron-forge start -- --test-new-popup",
     "sync-ocr-models": "node scripts/sync-ocr-models.js"

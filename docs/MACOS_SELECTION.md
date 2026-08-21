@@ -24,11 +24,11 @@ Chrome, VS Code, and some Electron apps expose incomplete AX trees. Expect gaps 
 Xcode Command Line Tools, Node 18+.
 
 ```bash
-# Skip Electron's silent GitHub fetch (it can sit on a spinner for a long time).
-# The install hook then curls the zip from cdn.npmmirror and builds the AX addon.
-ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install
+npm install
 npm start
 ```
+
+`npm install` no longer needs `ELECTRON_SKIP_BINARY_DOWNLOAD=1`: `.npmrc` `script-shell` skips Electron’s `got` fetch, then the install hook curls the zip from `cdn.npmmirror`. `npm start` also runs `ensure-electron` so a Ctrl+C’d install that wiped `path.txt` self-heals from `~/.cache/phevere`.
 
 If you already Ctrl+C'd a hung `npm install`, `node_modules` is probably there without `electron/dist`. Finish with:
 

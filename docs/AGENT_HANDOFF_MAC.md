@@ -20,7 +20,7 @@ git clone https://github.com/thd2020/phevere.git
 cd phevere
 git checkout main
 git pull
-ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install
+npm install
 # must produce native-addon/build/Release/ax_selection_monitor.node
 # and node_modules/electron/dist (curl via scripts/ensure-electron.js, not GitHub got)
 npm start
@@ -114,7 +114,7 @@ Windows `node-gyp rebuild` was verified after the gyp split (UIA `.node` still b
 
 ## 6. First session on the Intel Mac (checklist)
 
-1. Node 18+ and Xcode CLT. `npm install` in repo root (runs `build-native`).
+1. Node 18+ and Xcode CLT. `npm install` in repo root (runs `build-native`; Electron zip is curled, not fetched with `got`).
 2. Confirm `native-addon/build/Release/ax_selection_monitor.node` exists (not the Windows UIA name).
 3. `npm start` → grant Accessibility to **Electron** → fully quit → start again.
 4. Drag-select a word in TextEdit. Collapsed toolstrip should appear near the selection; a second word while still collapsed should follow (same stale-lookup rules as Windows).
