@@ -28,7 +28,7 @@ npm install
 npm start
 ```
 
-`npm install` no longer needs `ELECTRON_SKIP_BINARY_DOWNLOAD=1`: `.npmrc` `script-shell` skips Electron’s `got` fetch, then the install hook curls the zip from `cdn.npmmirror`. `npm start` also runs `ensure-electron` so a Ctrl+C’d install that wiped `path.txt` self-heals from `~/.cache/phevere`.
+`npm install` uses `.npmrc` `electron_mirror` (npmmirror) and `scripts/ensure-electron.js` (curl) so a cancelled install that wiped `path.txt` still self-heals on `npm start`. If Electron’s `got` postinstall hangs: `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`.
 
 If you already Ctrl+C'd a hung `npm install`, `node_modules` is probably there without `electron/dist`. Finish with:
 

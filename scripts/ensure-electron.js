@@ -3,9 +3,10 @@
  * Electron's own postinstall uses `got`, which can sit on a spinner for tens of
  * minutes against github.com, or hang with no cache file on some mirrors.
  *
- * First-time `npm install`: `.npmrc` `script-shell` sets
- * ELECTRON_SKIP_BINARY_DOWNLOAD so electron's got postinstall is a no-op;
- * this script then curls the zip (install hook / `npm start` prestart).
+ * First-time `npm install`: `.npmrc` `electron_mirror` steers Electron's
+ * `got` postinstall at npmmirror. If that still hangs, set
+ * ELECTRON_SKIP_BINARY_DOWNLOAD=1 and this script curls the zip.
+ * `npm start` prestart also runs here so a Ctrl+C'd install self-heals.
  *
  * No-op when node_modules/electron/dist already matches package.json version.
  */

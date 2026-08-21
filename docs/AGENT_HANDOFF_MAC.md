@@ -22,7 +22,7 @@ git checkout main
 git pull
 npm install
 # must produce native-addon/build/Release/ax_selection_monitor.node
-# and node_modules/electron/dist (curl via scripts/ensure-electron.js, not GitHub got)
+# and node_modules/electron/dist (ensure-electron.js curl; .npmrc electron_mirror)
 npm start
 ```
 

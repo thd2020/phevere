@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `npm start` on macOS/Linux no longer dies on Windows-only `chcp 65001` (UTF-8 console is still set on Windows).
 - Expanded lookup width hugs the Back/Forward + tab row (no leftover strip after Etymology). Horizontal resize works again; the previous min-size used the window’s own width and locked it. Narrowing the window wraps Lexicon / Translation / Wikipedia / Etymology onto extra rows instead of clipping them.
-- `npm install` hanging on Electron’s silent GitHub/`got` fetch: `.npmrc` `script-shell` sets `ELECTRON_SKIP_BINARY_DOWNLOAD`; `scripts/ensure-electron.js` curls the zip. `npm start` restores `path.txt`/`dist` after a Ctrl+C’d install.
+- `npm install` hanging on Electron’s silent GitHub/`got` fetch: `.npmrc` `electron_mirror` plus `scripts/ensure-electron.js` (curl). `npm start` restores `path.txt`/`dist` after a Ctrl+C’d install.
+- `npm start` on Windows no longer dies with `spawn scripts/npm-lifecycle-shell ENOENT` (custom `script-shell` is not cross-platform; CreateProcess does not apply PATHEXT).
 - Word-family **Derived** chips now get POS banners (suffix + citation-form guess). Multi-word items move to **Phrases**.
 - macOS AX addon compiles on the current SDK (`AXValueType` vs `kAXValueCGRectType` UInt32).
 
