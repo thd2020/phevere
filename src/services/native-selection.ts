@@ -29,6 +29,10 @@ export interface NativeSelectionService {
   getStatus(): { isRunning: boolean; platform: string; method: string };
   /** Optional: word under cursor for hover lookup. */
   getWordAtPoint?(x: number, y: number): { text: string; x: number; y: number };
+  /** macOS TCC; other platforms true. */
+  isAccessibilityTrusted?(prompt?: boolean): boolean;
+  /** macOS: AX prompt so this binary appears in the Accessibility list. */
+  requestAccessibilityPrompt?(): boolean;
 }
 
 /**
@@ -85,7 +89,7 @@ class AddonBackedNativeSelectionService implements NativeSelectionService {
     if (!success) {
       if (this.platformId === 'darwin') {
         throw new Error(
-          'macOS Accessibility is off. System Settings → Privacy & Security → Accessibility — enable Electron (dev) or Phevere (packaged), then restart.',
+          'macOS Accessibility is off. Enable Electron (dev) or Phevere (packaged) in Privacy → Accessibility.',
         );
       }
       throw new Error(`Failed to start ${this.methodLabel} monitoring`);
@@ -138,6 +142,19 @@ class AddonBackedNativeSelectionService implements NativeSelectionService {
       console.warn('[NATIVE-SERVICE] getWordAtPoint failed', error);
       return { text: '', x, y };
     }
+  }
+
+  isAccessibilityTrusted(prompt = false): boolean {
+    if (this.platformId !== 'darwin') return true;
+    try {
+      return !!(this.nativeAddon && typeof this.nativeAddon.isTrusted === 'function' && this.nativeAddon.isTrusted(prompt));
+    } catch {
+      return false;
+    }
+  }
+
+  requestAccessibilityPrompt(): boolean {
+    return this.isAccessibilityTrusted(true);
   }
 
   private handleSelection(text: string, _source: 'native', selX?: number, selY?: number): void {

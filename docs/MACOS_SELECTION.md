@@ -41,18 +41,15 @@ Binding: `native-addon/build/Release/ax_selection_monitor.node`.
 
 ## Accessibility permission
 
-System Settings → Privacy & Security → **Accessibility**:
+macOS will not let an app flip **Privacy → Accessibility** by itself (TCC). Phevere:
 
-- Dev: enable **Electron** (the binary that hosts `npm start`)
-- Packaged (later): enable **Phevere**
+1. Shows a dialog with **Open Accessibility Settings** (jumps to that list).
+2. Asks the OS to list **Electron** (dev) or **Phevere** (packaged) so the toggle is there.
+3. Starts lookup automatically once you enable it (tray → **Open Accessibility Settings…** if you skipped the dialog).
 
-`start()` prompts once via `AXIsProcessTrustedWithOptions`. If the user refuses, monitoring does not start; the log tells them where to flip the switch. Restart after granting.
+If the row is already listed but off, turn it on; if it looks stuck, toggle off and on. Restart is usually unnecessary after a grant.
 
-Debug:
-
-```bash
-PHEVERE_DEBUG_AX=1 npm start
-```
+`start()` no longer only logs a menu path. Debug: `PHEVERE_DEBUG_AX=1 npm start`.
 
 Disable the typing/gesture gate (noisy): `PHEVERE_DISABLE_INPUT_GATE=1`.
 

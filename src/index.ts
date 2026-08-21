@@ -8,6 +8,10 @@ import { dictionaryService } from './services/dictionary';
 import { wikipediaService } from './services/wikipedia';
 import { searchService } from './services/search';
 import { createNativeSelectionService, SelectionEvent } from './services/native-selection';
+import {
+  openMacAccessibilitySettings,
+  promptOpenMacAccessibilitySettings,
+} from './services/mac-accessibility';
 import { contextCaptureHub, ContextEvent, selectionToContext } from './services/context-capture';
 import { captureScreenRegion, captureAroundPoint } from './services/screen-capture';
 import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile } from './services/ocr-engine';
@@ -141,6 +145,8 @@ let hoverLookup: HoverLookupService | null = null;
 
 // Native selection service
 const nativeSelectionService = createNativeSelectionService();
+let macAxPromptOpen = false;
+let macAxPollTimer: ReturnType<typeof setInterval> | null = null;
 
 function broadcastMonitorMode(): void {
   try {
@@ -609,6 +615,19 @@ function buildTrayContextMenu(): Electron.Menu {
       },
     },
     { type: 'separator' },
+    ...(process.platform === 'darwin'
+      ? [
+          {
+            label: 'Open Accessibility Settings…',
+            click: () => {
+              nativeSelectionService.requestAccessibilityPrompt?.();
+              void openMacAccessibilitySettings()
+                .then(() => pollMacAccessibilityThenStart())
+                .catch((err) => log.warn('main', 'Open Accessibility settings failed', { err: String(err) }));
+            },
+          } as Electron.MenuItemConstructorOptions,
+        ]
+      : []),
     {
       label: 'Quit Phevere',
       click: () => {
@@ -629,6 +648,7 @@ async function quitPhevere(): Promise<void> {
   } catch {
     /* ignore */
   }
+  stopMacAxPoll();
   try {
     closeWorkProgress();
   } catch {
@@ -1658,6 +1678,43 @@ function ensureHoverLookup(): HoverLookupService {
   return hoverLookup;
 }
 
+function stopMacAxPoll(): void {
+  if (macAxPollTimer) {
+    clearInterval(macAxPollTimer);
+    macAxPollTimer = null;
+  }
+}
+
+function pollMacAccessibilityThenStart(): void {
+  stopMacAxPoll();
+  const deadline = Date.now() + 120_000;
+  macAxPollTimer = setInterval(() => {
+    if (Date.now() > deadline) {
+      stopMacAxPoll();
+      log.warn('main', 'Timed out waiting for Accessibility grant');
+      return;
+    }
+    if (!nativeSelectionService.isAccessibilityTrusted?.(false)) return;
+    stopMacAxPoll();
+    log.info('main', 'Accessibility granted; starting selection monitor');
+    startSelectionMonitoring();
+  }, 1500);
+}
+
+async function offerMacAccessibilityAndRetry(): Promise<void> {
+  if (process.platform !== 'darwin' || macAxPromptOpen) return;
+  macAxPromptOpen = true;
+  try {
+    nativeSelectionService.requestAccessibilityPrompt?.();
+    const opened = await promptOpenMacAccessibilitySettings();
+    if (opened) pollMacAccessibilityThenStart();
+  } catch (err) {
+    log.warn('main', 'Accessibility prompt failed', { err: String(err) });
+  } finally {
+    macAxPromptOpen = false;
+  }
+}
+
 function startSelectionMonitoring(): void {
   log.debug('main', 'Start native selection monitoring');
 
@@ -1688,8 +1745,9 @@ function startSelectionMonitoring(): void {
         if (process.platform === 'darwin') {
           log.error(
             'main',
-            'Grant Accessibility to Electron (dev) or Phevere (packaged) in System Settings → Privacy & Security → Accessibility',
+            'Grant Accessibility to Electron (dev) or Phevere (packaged) — use the prompt or tray “Open Accessibility Settings…”',
           );
+          void offerMacAccessibilityAndRetry();
         } else if (!isAdmin) {
           log.error('main', 'Try running as Administrator for UIAutomation');
         }

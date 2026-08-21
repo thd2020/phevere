@@ -203,7 +203,7 @@ class AXSelectionMonitor {
 
   bool start() {
     if (running.load()) return true;
-    if (!isTrusted(true)) {
+    if (!isTrusted(false)) {
       axLog("not trusted — Accessibility permission missing");
       return false;
     }

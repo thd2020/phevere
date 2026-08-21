@@ -49,7 +49,7 @@ Then run the latest Setup.exe. New installs register a proper uninstaller (`Unin
 
 - Node.js 18+ recommended  
 - **Windows:** Visual Studio 2022 (C++ workload) for the UIA addon; Windows 10/11  
-- **macOS (draft selection only):** Xcode Command Line Tools; grant **Accessibility** to Electron — [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md) 
+- **macOS (draft selection only):** Xcode Command Line Tools; `npm start` offers **Open Accessibility Settings** (or tray) instead of hunting the Privacy list — [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md) 
 
 ### Setup
 
