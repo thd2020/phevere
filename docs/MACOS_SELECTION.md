@@ -11,13 +11,14 @@ Conversation + constraints for a Mac-side agent: [`AGENT_HANDOFF_MAC.md`](AGENT_
 | Piece | Role |
 |---|---|
 | `native-addon/src/ax_selection_monitor.mm` | N-API module `AXSelectionMonitor` |
-| Drag / double-click mouse-up | Read `AXSelectedText` on the focused element (event tap on Electron’s **main** run loop) |
+| Drag / double-click mouse-up | Read `AXSelectedText` / range string on the focused element (event tap on Electron’s **main** run loop) |
+| Chromium / Electron apps | If AX is empty after a select gesture, synthetic **Cmd+C**, read the pasteboard, restore the previous clipboard (same fallback as Windows Ctrl+C) |
 | `kAXSelectedTextChangedNotification` | Extra path when the front app fires it; rebinds when you switch apps |
 | 500ms debounce | Same settle window as the Windows addon |
 | `getWordAtPoint` | Hover: `AXUIElementCopyElementAtPosition` + range-for-position |
 | Own PID skip | Ignore selections inside Phevere / Electron |
 
-Chrome, VS Code, and some Electron apps expose incomplete AX trees. Expect gaps versus TextEdit / Safari / Notes.
+Chrome, VS Code, Cursor, and other Chromium apps often expose no `AXSelectedText`. After a drag or double-click, Phevere falls back to a silent Cmd+C and restores the clipboard. Password fields are skipped. A plain click still does not copy.
 
 ## Build on a Mac
 

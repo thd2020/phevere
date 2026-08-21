@@ -3,7 +3,9 @@
  *
  * Windows uses UI Automation. Here the equivalent is the Accessibility (AX) API:
  *   - CGEvent tap: drag / double-click mouse-up (same idea as the Win32 mouse hook)
- *   - AXSelectedText on the focused element
+ *   - AXSelectedText / AXStringForRange on the focused element and nearby AX nodes
+ *   - Cmd+C pasteboard fallback when Chromium (Chrome, Cursor, VS Code) exposes no AX text
+ *     (same idea as the Windows synthetic Ctrl+C path; clipboard is restored)
  *   - AXObserver for kAXSelectedTextChangedNotification when the app fires it
  *   - 500ms debounce, then N-API ThreadSafeFunction → Electron main
  *
@@ -30,6 +32,7 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 namespace {
 
@@ -38,6 +41,10 @@ static constexpr size_t kMaxSelectionBytes = 8000;
 static constexpr int kDragThresholdPx = 8;
 static constexpr int kPostMouseUpSettleMs = 80;
 static constexpr int kTypingQuietMs = 700;
+static constexpr int kClipboardFallbackDelayMs = 100;
+static constexpr int kClipboardPasteboardWaitMs = 120;
+static constexpr CGKeyCode kKeyCodeC = 8;        // kVK_ANSI_C
+static constexpr CGKeyCode kKeyCodeCommand = 55; // kVK_Command
 
 // Current SDK types kAXValueCG* as UInt32; AXValueCreate/GetValue want AXValueType.
 static AXValueType axValueType(UInt32 t) { return static_cast<AXValueType>(t); }
@@ -142,6 +149,173 @@ static std::string selectedTextFromElement(AXUIElementRef el) {
   trimInPlace(text);
   if (text.size() > kMaxSelectionBytes) text.clear();
   return text;
+}
+
+static std::string stringForSelectedRange(AXUIElementRef el) {
+  if (!el) return {};
+  CFTypeRef rangeVal = nullptr;
+  if (AXUIElementCopyAttributeValue(el, kAXSelectedTextRangeAttribute, &rangeVal) != kAXErrorSuccess ||
+      !rangeVal) {
+    return {};
+  }
+  CFTypeRef strVal = nullptr;
+  const AXError err = AXUIElementCopyParameterizedAttributeValue(
+      el, kAXStringForRangeParameterizedAttribute, rangeVal, &strVal);
+  CFRelease(rangeVal);
+  if (err != kAXErrorSuccess || !strVal) return {};
+  std::string text;
+  if (CFGetTypeID(strVal) == CFStringGetTypeID()) {
+    text = cfStringToUtf8(static_cast<CFStringRef>(strVal));
+  }
+  CFRelease(strVal);
+  trimInPlace(text);
+  if (text.size() > kMaxSelectionBytes) text.clear();
+  return text;
+}
+
+static std::string oneElementSelection(AXUIElementRef el) {
+  std::string t = selectedTextFromElement(el);
+  if (!t.empty()) return t;
+  return stringForSelectedRange(el);
+}
+
+static bool isSecureElement(AXUIElementRef el) {
+  if (!el) return false;
+  CFTypeRef role = nullptr;
+  if (AXUIElementCopyAttributeValue(el, kAXRoleAttribute, &role) != kAXErrorSuccess || !role) {
+    return false;
+  }
+  bool secure = false;
+  if (CFGetTypeID(role) == CFStringGetTypeID()) {
+    secure = [(__bridge NSString*)role isEqualToString:@"AXSecureTextField"];
+  }
+  CFRelease(role);
+  return secure;
+}
+
+static AXUIElementRef copyParent(AXUIElementRef el) {
+  if (!el) return nullptr;
+  AXUIElementRef parent = nullptr;
+  AXUIElementCopyAttributeValue(el, kAXParentAttribute, reinterpret_cast<CFTypeRef*>(&parent));
+  return parent;
+}
+
+static bool isSecureChain(AXUIElementRef start) {
+  AXUIElementRef cur = start ? static_cast<AXUIElementRef>(CFRetain(start)) : nullptr;
+  for (int i = 0; i < 12 && cur; ++i) {
+    if (isSecureElement(cur)) {
+      CFRelease(cur);
+      return true;
+    }
+    AXUIElementRef parent = copyParent(cur);
+    CFRelease(cur);
+    cur = parent;
+  }
+  if (cur) CFRelease(cur);
+  return false;
+}
+
+/** Focused node + parents + a shallow child walk (Chromium web areas). */
+static std::string selectedTextDeep(AXUIElementRef start) {
+  if (!start) return {};
+  AXUIElementRef cur = static_cast<AXUIElementRef>(CFRetain(start));
+  for (int i = 0; i < 10 && cur; ++i) {
+    std::string t = oneElementSelection(cur);
+    if (!t.empty()) {
+      CFRelease(cur);
+      return t;
+    }
+    AXUIElementRef parent = copyParent(cur);
+    CFRelease(cur);
+    cur = parent;
+  }
+  if (cur) CFRelease(cur);
+
+  std::vector<AXUIElementRef> q;
+  q.push_back(static_cast<AXUIElementRef>(CFRetain(start)));
+  int seen = 0;
+  std::string found;
+  while (!q.empty() && seen < 48) {
+    AXUIElementRef el = q.front();
+    q.erase(q.begin());
+    ++seen;
+    std::string t = oneElementSelection(el);
+    if (!t.empty()) {
+      found = std::move(t);
+      CFRelease(el);
+      break;
+    }
+    CFTypeRef children = nullptr;
+    if (AXUIElementCopyAttributeValue(el, kAXChildrenAttribute, &children) == kAXErrorSuccess && children &&
+        CFGetTypeID(children) == CFArrayGetTypeID()) {
+      const CFArrayRef arr = static_cast<CFArrayRef>(children);
+      const CFIndex n = CFArrayGetCount(arr);
+      for (CFIndex i = 0; i < n && seen + static_cast<int>(q.size()) < 48; ++i) {
+        AXUIElementRef child =
+            static_cast<AXUIElementRef>(const_cast<void*>(CFArrayGetValueAtIndex(arr, i)));
+        if (child) q.push_back(static_cast<AXUIElementRef>(CFRetain(child)));
+      }
+    }
+    if (children) CFRelease(children);
+    CFRelease(el);
+  }
+  for (AXUIElementRef leftover : q) CFRelease(leftover);
+  return found;
+}
+
+static void postCommandC() {
+  CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
+  if (!src) src = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+  if (!src) return;
+  CGEventRef cmdDown = CGEventCreateKeyboardEvent(src, kKeyCodeCommand, true);
+  CGEventRef cDown = CGEventCreateKeyboardEvent(src, kKeyCodeC, true);
+  CGEventRef cUp = CGEventCreateKeyboardEvent(src, kKeyCodeC, false);
+  CGEventRef cmdUp = CGEventCreateKeyboardEvent(src, kKeyCodeCommand, false);
+  if (cmdDown) CGEventSetFlags(cmdDown, kCGEventFlagMaskCommand);
+  if (cDown) CGEventSetFlags(cDown, kCGEventFlagMaskCommand);
+  if (cUp) CGEventSetFlags(cUp, kCGEventFlagMaskCommand);
+  if (cmdUp) CGEventSetFlags(cmdUp, kCGEventFlagMaskCommand);
+  // Session tap is enough with Accessibility; HID can require Input Monitoring.
+  if (cmdDown) CGEventPost(kCGSessionEventTap, cmdDown);
+  if (cDown) CGEventPost(kCGSessionEventTap, cDown);
+  if (cUp) CGEventPost(kCGSessionEventTap, cUp);
+  if (cmdUp) CGEventPost(kCGSessionEventTap, cmdUp);
+  if (cmdDown) CFRelease(cmdDown);
+  if (cDown) CFRelease(cDown);
+  if (cUp) CFRelease(cUp);
+  if (cmdUp) CFRelease(cmdUp);
+  CFRelease(src);
+}
+
+static NSDictionary* snapshotPasteboard() {
+  NSPasteboard* pb = [NSPasteboard generalPasteboard];
+  NSMutableDictionary* snap = [NSMutableDictionary dictionary];
+  snap[@"changeCount"] = @(pb.changeCount);
+  for (NSPasteboardType t in pb.types) {
+    NSData* data = [pb dataForType:t];
+    if (data) snap[t] = data;
+  }
+  return snap;
+}
+
+static void restorePasteboard(NSDictionary* snap) {
+  if (!snap) return;
+  NSPasteboard* pb = [NSPasteboard generalPasteboard];
+  NSMutableArray<NSPasteboardType>* types = [NSMutableArray array];
+  NSMutableDictionary* dataByType = [NSMutableDictionary dictionary];
+  for (id key in snap) {
+    if ([key isEqualToString:@"changeCount"]) continue;
+    if ([snap[key] isKindOfClass:[NSData class]]) {
+      [types addObject:key];
+      dataByType[key] = snap[key];
+    }
+  }
+  [pb clearContents];
+  if (types.count == 0) return;
+  [pb declareTypes:types owner:nil];
+  for (NSPasteboardType t in types) {
+    [pb setData:dataByType[t] forType:t];
+  }
 }
 
 static bool selectionOrigin(AXUIElementRef el, int* outX, int* outY) {
@@ -324,6 +498,8 @@ class AXSelectionMonitor {
   CGPoint last_click_pt{};
   std::atomic<int64_t> last_key_ms{0};
   std::atomic<int64_t> last_gesture_ms{0};
+  std::atomic<int64_t> last_ax_ok_ms{0};
+  std::atomic<int> fallback_inflight{0};
 
   AXObserverRef ax_observer = nullptr;
   AXUIElementRef observed_app = nullptr;
@@ -384,29 +560,22 @@ class AXSelectionMonitor {
     @autoreleasepool {
       AXUIElementRef focused = copyFocusedElement();
       if (!focused) {
-        if (fromGesture) axLog("mouse-up: no focused AX element");
+        if (fromGesture) {
+          axLog("mouse-up: no focused AX element");
+          triggerClipboardFallback(0, 0);
+        }
         return;
       }
       if (pidOf(focused) == getpid()) {
         CFRelease(focused);
         return;
       }
-      std::string text = selectedTextFromElement(focused);
-      if (text.empty()) {
+      if (isSecureChain(focused)) {
         CFRelease(focused);
-        if (fromGesture) {
-          static std::atomic<int> empty_logged{0};
-          if (empty_logged.fetch_add(1) == 0) {
-            std::cout << "[AX] mouse-up with no AXSelectedText (try TextEdit / Safari / Notes; "
-                         "Chrome and VS Code often expose no selected text). "
-                         "PHEVERE_DEBUG_AX=1 for more."
-                      << std::endl;
-          } else {
-            axLog("mouse-up: AXSelectedText empty");
-          }
-        }
+        axLog("skip secure field");
         return;
       }
+      std::string text = selectedTextDeep(focused);
       int x = 0, y = 0;
       if (!selectionOrigin(focused, &x, &y)) {
         NSPoint mouse = [NSEvent mouseLocation];
@@ -415,8 +584,63 @@ class AXSelectionMonitor {
         y = static_cast<int>(NSMaxY(primary) - mouse.y);
       }
       CFRelease(focused);
-      updatePendingSelection(text, x, y);
+      if (!text.empty()) {
+        last_ax_ok_ms.store(nowMs());
+        updatePendingSelection(text, x, y);
+        return;
+      }
+      if (fromGesture) {
+        axLog("AX selected text empty; clipboard fallback");
+        triggerClipboardFallback(x, y);
+      }
     }
+  }
+
+  void triggerClipboardFallback(int x, int y) {
+    if (fallback_inflight.exchange(1) != 0) return;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+      std::this_thread::sleep_for(std::chrono::milliseconds(kClipboardFallbackDelayMs));
+      if (!this->running.load() || nowMs() - this->last_ax_ok_ms.load() < 150) {
+        this->fallback_inflight.store(0);
+        return;
+      }
+
+      __block NSDictionary* snap = nil;
+      __block NSInteger countBefore = 0;
+      dispatch_sync(dispatch_get_main_queue(), ^{
+        @autoreleasepool {
+          snap = [snapshotPasteboard() copy];
+          countBefore = [NSPasteboard generalPasteboard].changeCount;
+        }
+      });
+
+      postCommandC();
+      std::this_thread::sleep_for(std::chrono::milliseconds(kClipboardPasteboardWaitMs));
+
+      __block std::string captured;
+      dispatch_sync(dispatch_get_main_queue(), ^{
+        @autoreleasepool {
+          NSPasteboard* pb = [NSPasteboard generalPasteboard];
+          if (pb.changeCount == countBefore) {
+            axLog("clipboard unchanged; no selection to capture");
+            return;
+          }
+          NSString* s = [pb stringForType:NSPasteboardTypeString];
+          if (s.length > 0) {
+            captured = std::string([s UTF8String] ? [s UTF8String] : "");
+            trimInPlace(captured);
+            if (captured.size() > kMaxSelectionBytes) captured.clear();
+          }
+          restorePasteboard(snap);
+        }
+      });
+
+      if (!captured.empty()) {
+        axLog(std::string("clipboard fallback: \"") + captured + "\"");
+        this->updatePendingSelection(captured, x, y);
+      }
+      this->fallback_inflight.store(0);
+    });
   }
 
   void rebindObserverToFrontApp() {
