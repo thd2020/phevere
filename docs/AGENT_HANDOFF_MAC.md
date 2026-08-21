@@ -3,7 +3,7 @@
 **Audience:** another Cursor agent on a **different Mac** (Intel).  
 **Source chat:** phevere on Windows (`C:\Users\8114\projects\phevere`), 2026-08-06 → 2026-08-20.  
 **Write date:** 2026-08-20.  
-**Checkout:** `origin/main` (not tag `v1.4.0`). Mac draft landed in `311f25b` *after* the Windows 1.4.0 installer tag.
+**Checkout:** `origin/main`. Shipped Windows installer is **1.4.1**. Mac AX is still source-only (no dmg).
 
 Companion (API/build only): [`MACOS_SELECTION.md`](MACOS_SELECTION.md). This file is the **conversation + constraints**. Do not re-litigate shipped Windows UI unless the user asks.
 
@@ -36,8 +36,8 @@ Debug: `PHEVERE_DEBUG_AX=1 npm start`
 
 | Rule | Detail |
 |---|---|
-| Version | `package.json` is **1.4.0**. Do not bump for Mac draft work. |
-| Tag `v1.4.0` | Windows NSIS only. Replacing it is `gh release delete v1.4.0 --yes --cleanup-tag` then annotated retag on a **Windows-installer** commit — **not** for Mac experiments. Never force-push `main`. |
+| Version | `package.json` is **1.4.1**. Do not bump unless the user asks. |
+| Windows tags | NSIS Setup from `release.yml` on `v*`. Never force-push `main`. Do not retag `v1.4.0` for Mac work. |
 | Dependabot | PRs **#1–#9** stay open (TypeScript 5→7 etc. break CI). Do not merge. |
 | Signing | Homemade certs do not clear SmartScreen. See `docs/CODE_SIGNING.md`. Irrelevant on Mac until packaging. |
 | Native addon | Load **only in the Electron main process**. Preload must not `dlopen` the `.node` (second AX/UIA instance deadlocks the popup). |
@@ -48,9 +48,9 @@ Product architecture the user wants long-term (Aug 6): one **capture hub**, OS-s
 
 ---
 
-## 3. Shipped Windows 1.4.0 (context — do not re-do)
+## 3. Shipped Windows 1.4.0 (frozen context — do not re-do)
 
-Shipped installer: [v1.4.0](https://github.com/thd2020/phevere/releases/tag/v1.4.0) `Phevere-Setup-1.4.0-x64.exe`, SHA-256 `9822C0A9…560AF8`. Unsigned.
+Current Windows installer is **1.4.1**. The [v1.4.0](https://github.com/thd2020/phevere/releases/tag/v1.4.0) Setup (`Phevere-Setup-1.4.0-x64.exe`, SHA-256 `9822C0A9…560AF8`, unsigned) is historical. Do not retag it.
 
 Already on `main` (and in that Setup, except the Mac commit):
 
@@ -132,7 +132,7 @@ Intel vs Apple Silicon: this handoff assumes **Intel Mac** (user stated they hav
 - Mac installer / Forge ZIP as a product / notarization / `NSAccessibilityUsageDescription`
 - `MPNowPlayingInfoCenter` (still unchecked on `docs/OCR_CONTEXT_CAPTURE.md`)
 - Merging Dependabot
-- Replacing `v1.4.0` or bumping to 1.4.1
+- Cutting another Windows release or a Mac `.dmg` unless asked
 - Changing click-away / empty-selection cancel
 - Loading the native addon from `preload.ts`
 

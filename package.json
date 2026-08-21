@@ -1,6 +1,6 @@
 {
   "name": "phevere",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Cross-platform dictionary application with text selection monitoring",
   "main": ".webpack/main",
   "scripts": {

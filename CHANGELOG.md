@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-08-21
+
 ### Added
 
-- Draft **macOS** selection backend (Accessibility + CGEvent tap) on the same `{ text, x, y }` path as Windows UIA. Compile on a Mac (`npm run build-native`). Untrusted Accessibility opens a one-click **Open Accessibility Settings** dialog (and a tray item); lookup starts when the toggle is on. See [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md).
+- Draft **macOS** selection backend (Accessibility + CGEvent tap) on the same `{ text, x, y }` path as Windows UIA. Compile on a Mac (`npm run build-native`). Untrusted Accessibility opens a one-click **Open Accessibility Settings** dialog (and a tray item); lookup starts when the toggle is on. See [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md). No Mac installer yet.
 - Lexicon **Phrases** row in Word family: multi-word derived terms (idioms, collocations) sit apart from single-word derivatives, with phrase/idiom banners instead of fake POS tags.
 
 ### Fixed
@@ -20,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `npm start` on Windows no longer dies with `spawn scripts/npm-lifecycle-shell ENOENT` (custom `script-shell` is not cross-platform; CreateProcess does not apply PATHEXT).
 - Word-family **Derived** chips now get POS banners (suffix + citation-form guess). Multi-word items move to **Phrases**.
 - macOS AX addon compiles on the current SDK (`AXValueType` vs `kAXValueCGRectType` UInt32).
+
+### Notes for users
+
+- **Windows x64** — `Phevere-Setup-1.4.1-x64.exe` from [GitHub Releases](https://github.com/thd2020/phevere/releases/tag/v1.4.1) (Actions). Still unsigned; SmartScreen may warn. Signing options: [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
+- Run elevated when you need UIAutomation across elevated / protected apps.
 
 ## [1.4.0] - 2026-08-19
 
@@ -222,7 +229,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/thd2020/phevere/releases/tag/v1.4.1
 [1.4.0]: https://github.com/thd2020/phevere/releases/tag/v1.4.0
 [1.3.1]: https://github.com/thd2020/phevere/releases/tag/v1.3.1
 [1.3.0]: https://github.com/thd2020/phevere/releases/tag/v1.3.0
