@@ -240,7 +240,7 @@
         background: rgba(248, 249, 250, 0.82);
         backdrop-filter: blur(16px);
         border-bottom: 1px solid #e1e5e9;
-        padding: 4px 16px 0;
+        padding: 4px 8px 0;
         position: relative;
         z-index: 5;
       }
@@ -2221,28 +2221,51 @@ function startAutoCloseTimeout() {
          });
        }
 
-       /** Expanded lookup: wide enough for ←/→ plus Lexicon…Etymology. */
+       /** Expanded lookup: OS window hugs ←/→ plus Lexicon…Etymology (not the stretched bar). */
        var EXPANDED_POPUP_H = 500;
-       var EXPANDED_POPUP_MIN_W = 520;
+       var EXPANDED_POPUP_MIN_W = 280;
+       var EXPANDED_POPUP_MAX_W = 1200;
+
+       function elementOuterWidth(el) {
+         var r = el.getBoundingClientRect();
+         var cs = window.getComputedStyle(el);
+         return r.width
+           + (parseFloat(cs.marginLeft) || 0)
+           + (parseFloat(cs.marginRight) || 0);
+       }
+
+       function intrinsicRowWidth(el) {
+         if (!el) return 0;
+         var cs = window.getComputedStyle(el);
+         var pad = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+         var kids = 0;
+         for (var i = 0; i < el.children.length; i++) {
+           kids += elementOuterWidth(el.children[i]);
+         }
+         return Math.ceil(kids + pad);
+       }
 
        function widthToFitLookupChrome() {
-         var need = EXPANDED_POPUP_MIN_W;
+         var need = 0;
          var tabs = document.getElementById('tabsContainer');
          if (tabs) {
            var prev = tabs.style.display;
            tabs.style.display = 'flex';
-           var tw = Math.ceil(tabs.scrollWidth || 0);
-           if (tw > need) need = tw;
+           void tabs.offsetWidth;
+           need = Math.max(need, intrinsicRowWidth(tabs));
            if (prev && prev !== 'flex') tabs.style.display = prev;
          }
          var toolbar = document.getElementById('toolbar');
-         if (toolbar) {
-           var bw = Math.ceil(toolbar.scrollWidth || 0);
-           if (bw > need) need = bw;
+         var icons = toolbar && toolbar.querySelector('.toolbar-icons');
+         if (toolbar && icons) {
+           var tcs = window.getComputedStyle(toolbar);
+           var tpad = (parseFloat(tcs.paddingLeft) || 0) + (parseFloat(tcs.paddingRight) || 0);
+           need = Math.max(need, Math.ceil(icons.getBoundingClientRect().width + tpad));
          }
          var frame = Math.max(0, (window.outerWidth || 0) - (window.innerWidth || 0));
-         need = Math.ceil(need + frame + 8);
-         return Math.max(EXPANDED_POPUP_MIN_W, Math.min(800, need));
+         need = Math.ceil(need + frame);
+         if (!(need > 0)) need = EXPANDED_POPUP_MIN_W;
+         return Math.max(EXPANDED_POPUP_MIN_W, Math.min(EXPANDED_POPUP_MAX_W, need));
        }
 
        function resizeToExpandedPanel() {

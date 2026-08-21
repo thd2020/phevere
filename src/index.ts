@@ -2608,7 +2608,10 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
                 : popupWindows.find((win) => win && !win.isDestroyed());
               if (!target || target.isDestroyed()) return;
               if (h > 64) {
-                try { target.setMinimumSize(w, 120); } catch { /* ignore */ }
+                // Do not set min width to the current width — that locks horizontal resize.
+                try { target.setMinimumSize(280, 120); } catch { /* ignore */ }
+                try { target.setMaximumSize(1200, 900); } catch { /* ignore */ }
+                try { target.setResizable(true); } catch { /* ignore */ }
               } else {
                 try { target.setMinimumSize(160, 32); } catch { /* ignore */ }
               }
