@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `npm start` on macOS/Linux no longer dies on Windows-only `chcp 65001` (UTF-8 console is still set on Windows).
 - Expanded lookup width hugs the Back/Forward + tab row (no leftover strip after Etymology). Horizontal resize works again; the previous min-size used the window’s own width and locked it.
 - `npm install` hanging on Electron’s silent GitHub fetch: `scripts/ensure-electron.js` curls the runtime (resume + cdn.npmmirror / GitHub fallback). Use `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`.
+- macOS AX addon compiles on the current SDK (`AXValueType` vs `kAXValueCGRectType` UInt32).
 
 ## [1.4.0] - 2026-08-19
 

@@ -38,6 +38,9 @@ static constexpr int kDragThresholdPx = 8;
 static constexpr int kPostMouseUpSettleMs = 80;
 static constexpr int kTypingQuietMs = 700;
 static constexpr int kGestureFreshMs = 1500;
+
+// Current SDK types kAXValueCG* as UInt32; AXValueCreate/GetValue want AXValueType.
+static AXValueType axValueType(UInt32 t) { return static_cast<AXValueType>(t); }
 static constexpr int kWordAtPointMaxChars = 64;
 
 static bool debugEnabled() {
@@ -155,7 +158,8 @@ static bool selectionOrigin(AXUIElementRef el, int* outX, int* outY) {
   if (err != kAXErrorSuccess || !boundsVal) return false;
 
   CGRect rect = CGRectZero;
-  const bool ok = AXValueGetValue(static_cast<AXValueRef>(boundsVal), kAXValueCGRectType, &rect);
+  const bool ok = AXValueGetValue(
+      static_cast<AXValueRef>(boundsVal), axValueType(kAXValueCGRectType), &rect);
   CFRelease(boundsVal);
   if (!ok || CGRectIsEmpty(rect)) return false;
   cocoaRectToTopLeft(rect, outX, outY);
@@ -262,7 +266,7 @@ class AXSelectionMonitor {
     }
 
     CGPoint cocoaPt = CGPointMake(cx, cy);
-    AXValueRef pointVal = AXValueCreate(kAXValueCGPointType, &cocoaPt);
+    AXValueRef pointVal = AXValueCreate(axValueType(kAXValueCGPointType), &cocoaPt);
     CFTypeRef rangeVal = nullptr;
     AXError err = kAXErrorFailure;
     if (pointVal) {
@@ -285,7 +289,8 @@ class AXSelectionMonitor {
               el, kAXBoundsForRangeParameterizedAttribute, rangeVal, &boundsVal) == kAXErrorSuccess &&
           boundsVal) {
         CGRect rect = CGRectZero;
-        if (AXValueGetValue(static_cast<AXValueRef>(boundsVal), kAXValueCGRectType, &rect) &&
+        if (AXValueGetValue(
+                static_cast<AXValueRef>(boundsVal), axValueType(kAXValueCGRectType), &rect) &&
             !CGRectIsEmpty(rect)) {
           cocoaRectToTopLeft(rect, outX, outY);
           *outX = static_cast<int>(rect.origin.x + rect.size.width / 2.0);
