@@ -220,6 +220,27 @@ export function latinLemmasByPos(word: string): Partial<Record<LatinLemmaPos, st
   return out;
 }
 
+/**
+ * Citation-form POS for a single Latin token (the word is already the lemma).
+ * Used for Word-family banners on derived items that are not inflections of the surface.
+ */
+export function latinCitationPos(word: string): 'verb' | 'noun' | 'adj.' | undefined {
+  const w = (word || '').trim().toLocaleLowerCase();
+  if (!w || /\s/.test(w) || !/^[\p{L}'-]+$/u.test(w)) return undefined;
+  const lem = getLemmatizer();
+  if (!lem) return undefined;
+  const isV = lem.verb?.(w) === w;
+  const isN = lem.noun?.(w) === w;
+  const isA = lem.adjective?.(w) === w;
+  const n = Number(!!isV) + Number(!!isN) + Number(!!isA);
+  if (n === 1) {
+    if (isV) return 'verb';
+    if (isN) return 'noun';
+    return 'adj.';
+  }
+  return undefined;
+}
+
 export function latinLemmaForms(word: string): string[] {
   const byPos = latinLemmasByPos(word);
   const out: string[] = [];

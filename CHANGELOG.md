@@ -10,12 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Draft **macOS** selection backend (Accessibility + CGEvent tap) on the same `{ text, x, y }` path as Windows UIA. Compile on a Mac (`npm run build-native`). Untrusted Accessibility opens a one-click **Open Accessibility Settings** dialog (and a tray item); lookup starts when the toggle is on. See [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md).
+- Lexicon **Phrases** row in Word family: multi-word derived terms (idioms, collocations) sit apart from single-word derivatives, with phrase/idiom banners instead of fake POS tags.
 
 ### Fixed
 
 - `npm start` on macOS/Linux no longer dies on Windows-only `chcp 65001` (UTF-8 console is still set on Windows).
 - Expanded lookup width hugs the Back/Forward + tab row (no leftover strip after Etymology). Horizontal resize works again; the previous min-size used the window’s own width and locked it. Narrowing the window wraps Lexicon / Translation / Wikipedia / Etymology onto extra rows instead of clipping them.
-- `npm install` hanging on Electron’s silent GitHub fetch: `scripts/ensure-electron.js` curls the runtime (resume + cdn.npmmirror / GitHub fallback). Use `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`.
+- `npm install` hanging on Electron’s silent GitHub/`got` fetch: `.npmrc` `script-shell` sets `ELECTRON_SKIP_BINARY_DOWNLOAD`; `scripts/ensure-electron.js` curls the zip. `npm start` restores `path.txt`/`dist` after a Ctrl+C’d install.
+- Word-family **Derived** chips now get POS banners (suffix + citation-form guess). Multi-word items move to **Phrases**.
 - macOS AX addon compiles on the current SDK (`AXValueType` vs `kAXValueCGRectType` UInt32).
 
 ## [1.4.0] - 2026-08-19

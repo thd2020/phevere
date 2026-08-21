@@ -9,6 +9,7 @@
 import {
   foldLookupKey,
   isContentHeadword,
+  latinCitationPos,
   latinLemmasByPos,
   lemmaFromFormOfHtml,
 } from './text-normalize';
@@ -20,6 +21,7 @@ export type WordFamilyRelation =
   | 'forms'
   | 'lemma'
   | 'derived'
+  | 'phrases'
   | 'related'
   | 'alternatives'
   | 'affixes'
@@ -70,14 +72,21 @@ const HEADING_RELATION: Record<string, WordFamilyRelation> = {
   troponyms: 'related',
   holonyms: 'related',
   meronyms: 'related',
+  idioms: 'phrases',
+  idiom: 'phrases',
+  phrases: 'phrases',
+  proverb: 'phrases',
+  proverbs: 'phrases',
+  collocations: 'phrases',
+  collocation: 'phrases',
 };
 
 const SKIP_HEADINGS = /^(etymology|pronunciation|noun|verb|adjective|adverb|pronoun|preposition|conjunction|interjection|article|determiner|particle|numeral|translations?|synonyms|antonyms|anagrams|further reading|references|usage notes|quotations|examples|conjugation|declension|mutation|trivia|gallery)$/i;
 
 const COL_TEMPLATES = new Set([
   'col', 'col1', 'col2', 'col3', 'col4', 'col5', 'col-auto',
-  'der-top', 'der-mid', 'der-bottom', 'der3', 'der4', 'der-top3',
-  'rel-top', 'rel-mid', 'rel-bottom', 'rel3', 'rel4', 'rel-top3',
+  'der-top', 'der-mid', 'der-bottom', 'der2', 'der3', 'der4', 'der5', 'der-top3',
+  'rel-top', 'rel-mid', 'rel-bottom', 'rel2', 'rel3', 'rel4', 'rel5', 'rel-top3',
 ]);
 
 const LINK_TEMPLATES = new Set(['l', 'link', 'm', 'mention', 'll']);
@@ -174,21 +183,86 @@ function collectWikiLinks(body: string, surfaceKey: string, into: string[]): voi
   }
 }
 
+function isMultiwordTerm(term: string): boolean {
+  return /\s/.test(term.trim());
+}
+
+function phraseKindLabel(raw?: string): string | undefined {
+  const t = (raw || '').toLowerCase().replace(/[_-]+/g, ' ').trim();
+  if (!t) return undefined;
+  if (/idiom/.test(t)) return 'idiom';
+  if (/proverb/.test(t)) return 'proverb';
+  if (/collocat/.test(t)) return 'colloc.';
+  if (/compound/.test(t)) return 'compound';
+  if (/phrase/.test(t)) return 'phrase';
+  return undefined;
+}
+
+function posFromWiki(raw?: string): string | undefined {
+  const t = (raw || '').toLowerCase().replace(/\./g, '').trim();
+  if (!t) return undefined;
+  if (/^(n|noun|nn)$/.test(t)) return 'noun';
+  if (/^(v|verb|vb)$/.test(t)) return 'verb';
+  if (/^(a|adj|adjective)$/.test(t)) return 'adj.';
+  if (/^(adv|adverb)$/.test(t)) return 'adv.';
+  if (/^(phrase|phrasal)$/.test(t)) return 'phrase';
+  if (/idiom/.test(t)) return 'idiom';
+  return normalizeBanner(t);
+}
+
+function suffixPosGuess(word: string): string | undefined {
+  const w = word.trim().toLocaleLowerCase();
+  if (w.length < 4 || /\s/.test(w)) return undefined;
+  if (/(?:lly|ily)$/.test(w) || (w.length > 4 && /ly$/.test(w))) return 'adv.';
+  if (/(?:tion|sion|ness|ity|ment|ism|ship|hood|ance|ence|age)$/.test(w)) return 'noun';
+  if (w.length >= 5 && /(?:ize|ise|ate|ify)$/.test(w)) return 'verb';
+  if (/(?:ous|ive|able|ible|ical|ful|less|ary|ory|ish)$/.test(w)) return 'adj.';
+  return undefined;
+}
+
+function inferPosBanner(word: string): string | undefined {
+  const t = cleanTerm(word);
+  if (!t || isMultiwordTerm(t)) return undefined;
+  return suffixPosGuess(t) || latinCitationPos(t) || undefined;
+}
+
+function inferPhraseBanner(term: string, hint?: string): string {
+  return phraseKindLabel(hint) || 'phrase';
+}
+
 function termsFromTemplate(name: string, positional: string[], named: Record<string, string>, surfaceKey: string): string[] {
-  const out: string[] = [];
-  const push = (raw: string, affix = false) => {
+  return itemsFromTemplate(name, positional, named, surfaceKey).map((i) => i.word);
+}
+
+function itemsFromTemplate(
+  name: string,
+  positional: string[],
+  named: Record<string, string>,
+  surfaceKey: string,
+  groupHint?: string,
+): WordFamilyItem[] {
+  const out: WordFamilyItem[] = [];
+  const push = (raw: string, affix = false, extraLabel?: string) => {
     const ok = acceptFamilyTerm(raw, surfaceKey, affix);
-    if (ok) out.push(ok);
+    if (!ok) return;
+    const label = extraLabel
+      || posFromWiki(named.pos)
+      || phraseKindLabel(named.q || named.qq || named.qual || named.lit || groupHint)
+      || undefined;
+    out.push({ word: ok, label });
   };
 
   if (COL_TEMPLATES.has(name) || LINK_TEMPLATES.has(name)) {
     const start = /^[a-z]{2,3}(?:-[a-z]+)?$/i.test(positional[0] || '') ? 1 : 0;
-    for (const p of positional.slice(start)) {
+    const titleHint = named.title || named.titlename || groupHint;
+    for (let i = 0; i < positional.slice(start).length; i++) {
+      const p = positional[start + i];
       if (!p || p === '-' || p.startsWith('!')) continue;
-      push(p);
+      const qn = named[`q${i + 1}`] || named[`qq${i + 1}`];
+      push(p, false, posFromWiki(qn) || phraseKindLabel(qn) || phraseKindLabel(titleHint));
     }
-    if (named.term) push(named.term);
-    if (named.alt) push(named.alt);
+    if (named.term) push(named.term, false, phraseKindLabel(titleHint));
+    if (named.alt) push(named.alt, false, phraseKindLabel(titleHint));
     return out;
   }
 
@@ -216,8 +290,8 @@ function termsFromTemplate(name: string, positional: string[], named: Record<str
   return out;
 }
 
-function parseHeadingGroups(scope: string, surfaceKey: string): Map<WordFamilyRelation, string[]> {
-  const groups = new Map<WordFamilyRelation, string[]>();
+function parseHeadingGroups(scope: string, surfaceKey: string): Map<WordFamilyRelation, WordFamilyItem[]> {
+  const groups = new Map<WordFamilyRelation, WordFamilyItem[]>();
   const heading = /^(={3,})\s*([^=\n]+?)\s*\1\s*$/gm;
   const found: Array<{ title: string; index: number; len: number }> = [];
   let hm: RegExpExecArray | null;
@@ -233,14 +307,17 @@ function parseHeadingGroups(scope: string, surfaceKey: string): Map<WordFamilyRe
     const relation = HEADING_RELATION[key];
     if (!relation) continue;
     const body = scope.slice(start, end);
+    const items: WordFamilyItem[] = [];
     const words: string[] = [];
     collectWikiLinks(body, surfaceKey, words);
+    for (const w of words) items.push({ word: w });
     for (const t of scanTemplates(body)) {
-      words.push(...termsFromTemplate(t.name, t.positional, t.named, surfaceKey));
+      const titleHint = t.named.title || t.named.titlename || found[i].title;
+      items.push(...itemsFromTemplate(t.name, t.positional, t.named, surfaceKey, titleHint));
     }
-    if (words.length) {
+    if (items.length) {
       const acc = groups.get(relation) || [];
-      acc.push(...words);
+      acc.push(...items);
       groups.set(relation, acc);
     }
   }
@@ -248,6 +325,12 @@ function parseHeadingGroups(scope: string, surfaceKey: string): Map<WordFamilyRe
 }
 
 type FamilyBuckets = Map<WordFamilyRelation, WordFamilyItem[]>;
+
+function targetRelation(relation: WordFamilyRelation, item: WordFamilyItem): WordFamilyRelation {
+  if (relation === 'phrases') return 'phrases';
+  if (relation === 'derived' && isMultiwordTerm(item.word)) return 'phrases';
+  return relation;
+}
 
 function addUnique(
   buckets: FamilyBuckets,
@@ -257,23 +340,49 @@ function addUnique(
   affixLike = false,
   label?: string,
 ): void {
-  const acc = buckets.get(relation) || [];
-  const seen = new Set(acc.map((i) => foldLookupKey(i.word)));
-  for (const raw of terms) {
-    const ok = acceptFamilyTerm(raw, surfaceKey, affixLike);
+  addUniqueItems(
+    buckets,
+    relation,
+    terms.map((word) => ({ word, label })),
+    surfaceKey,
+    affixLike,
+  );
+}
+
+function addUniqueItems(
+  buckets: FamilyBuckets,
+  relation: WordFamilyRelation,
+  items: WordFamilyItem[],
+  surfaceKey: string,
+  affixLike = false,
+): void {
+  for (const item of items) {
+    const ok = acceptFamilyTerm(item.word, surfaceKey, affixLike);
     if (!ok) continue;
+    const dest = targetRelation(relation, { word: ok, label: item.label });
+    const acc = buckets.get(dest) || [];
+    const seen = new Set(acc.map((i) => foldLookupKey(i.word)));
     const k = foldLookupKey(ok);
     if (!k) continue;
+    let banner = item.label;
+    if (!banner) {
+      banner = dest === 'phrases' ? inferPhraseBanner(ok) : inferPosBanner(ok);
+    } else if (dest === 'phrases' && posFromWiki(banner) && !phraseKindLabel(banner)) {
+      banner = inferPhraseBanner(ok, banner);
+    }
     if (seen.has(k)) {
       const hit = acc.find((i) => foldLookupKey(i.word) === k);
-      if (hit && label && !hit.label) hit.label = label;
+      if (hit && banner && !hit.label) hit.label = banner;
+      buckets.set(dest, acc);
       continue;
     }
-    seen.add(k);
-    acc.push({ word: ok, label });
-    if (acc.length >= FAMILY_CAP) break;
+    if (acc.length >= FAMILY_CAP) {
+      buckets.set(dest, acc);
+      continue;
+    }
+    acc.push({ word: ok, label: banner });
+    buckets.set(dest, acc);
   }
-  if (acc.length) buckets.set(relation, acc);
 }
 
 function lemmasFromDefinitions(defs: Array<{ meaning?: string }> | undefined, surface: string): WordFamilyItem[] {
@@ -312,7 +421,7 @@ export function familyFromEtymologyChain(chain?: EtymologyLink[] | null, surface
 
 function groupsFromBuckets(buckets: FamilyBuckets): WordFamilyGroup[] {
   const order: WordFamilyRelation[] = [
-    'forms', 'lemma', 'alternatives', 'derived', 'related', 'affixes', 'roots', 'seeAlso',
+    'forms', 'lemma', 'alternatives', 'derived', 'phrases', 'related', 'affixes', 'roots', 'seeAlso',
   ];
   const out: WordFamilyGroup[] = [];
   for (const relation of order) {
@@ -376,8 +485,8 @@ export function buildWordFamily(opts: {
   if (opts.wikitext) {
     const scope = extractLanguageSection(opts.wikitext, langSectionName(opts.language));
     const fromHeadings = parseHeadingGroups(scope, surfaceKey);
-    for (const [rel, words] of fromHeadings) {
-      addUnique(buckets, rel, words, surfaceKey);
+    for (const [rel, items] of fromHeadings) {
+      addUniqueItems(buckets, rel, items, surfaceKey);
     }
     const infl: string[] = [];
     const lemmaBits: string[] = [];
@@ -439,13 +548,20 @@ export function buildWordFamily(opts: {
 
   const out = groupsFromBuckets(buckets);
   for (const g of out) {
-    if (g.relation !== 'forms' && g.relation !== 'lemma') continue;
+    if (g.relation === 'phrases') {
+      for (const it of g.items) {
+        if (!it.label) it.label = inferPhraseBanner(it.word);
+      }
+      continue;
+    }
+    if (g.relation !== 'forms' && g.relation !== 'lemma' && g.relation !== 'derived') continue;
     for (const it of g.items) {
       if (it.label) continue;
       const k = foldLookupKey(it.word);
       if (byPos.verb && foldLookupKey(byPos.verb) === k) it.label = 'verb';
       else if (byPos.noun && foldLookupKey(byPos.noun) === k) it.label = 'noun';
       else if (byPos.adjective && foldLookupKey(byPos.adjective) === k) it.label = 'adj.';
+      else it.label = inferPosBanner(it.word);
     }
   }
   return out;
