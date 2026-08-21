@@ -79,9 +79,12 @@ function zipReady() {
 }
 
 function mirrorUrls() {
-  const fromEnv = (process.env.ELECTRON_MIRROR || '').replace(/\/?$/, '/');
+  const raw = (process.env.ELECTRON_MIRROR || process.env.npm_config_electron_mirror || '').trim();
   const urls = [];
-  if (fromEnv) urls.push(`${fromEnv}v${version}/${asset}`);
+  // Empty env must not become "/" — String#replace(/\/?$/, '/') matches ''.
+  if (/^https?:\/\//i.test(raw)) {
+    urls.push(`${raw.replace(/\/?$/, '/')}v${version}/${asset}`);
+  }
   urls.push(`https://cdn.npmmirror.com/binaries/electron/v${version}/${asset}`);
   urls.push(`https://github.com/electron/electron/releases/download/v${version}/${asset}`);
   return [...new Set(urls)];
