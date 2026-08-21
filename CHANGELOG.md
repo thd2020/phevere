@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `npm install` hanging on Electron’s silent GitHub/`got` fetch: `.npmrc` `electron_mirror` plus `scripts/ensure-electron.js` (curl). `npm start` restores `path.txt`/`dist` after a Ctrl+C’d install.
 - `npm start` on Windows no longer dies with `spawn scripts/npm-lifecycle-shell ENOENT` (custom `script-shell` is not cross-platform; CreateProcess does not apply PATHEXT).
 - Word-family **Derived** chips now get POS banners (suffix + citation-form guess). Multi-word items move to **Phrases**.
+- macOS drag/double-click lookup: event tap + AX observer run on Electron’s main run loop (a private thread never delivered mouse or AX events). Switching apps rebinds the observer. The tap is mouse-only, so Input Monitoring is not required.
 - macOS AX addon compiles on the current SDK (`AXValueType` vs `kAXValueCGRectType` UInt32).
 
 ### Notes for users

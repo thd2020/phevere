@@ -19,6 +19,7 @@
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
 #import <Foundation/Foundation.h>
+#import <dispatch/dispatch.h>
 
 #include <atomic>
 #include <chrono>
@@ -37,7 +38,6 @@ static constexpr size_t kMaxSelectionBytes = 8000;
 static constexpr int kDragThresholdPx = 8;
 static constexpr int kPostMouseUpSettleMs = 80;
 static constexpr int kTypingQuietMs = 700;
-static constexpr int kGestureFreshMs = 1500;
 
 // Current SDK types kAXValueCG* as UInt32; AXValueCreate/GetValue want AXValueType.
 static AXValueType axValueType(UInt32 t) { return static_cast<AXValueType>(t); }
@@ -210,17 +210,11 @@ class AXSelectionMonitor {
 
     running.store(true);
     debounce_running.store(true);
-    tap_status.store(0);
     debounce_thread = std::thread(&AXSelectionMonitor::debounceLoop, this);
-    monitor_thread = std::thread(&AXSelectionMonitor::monitorLoop, this);
-    for (int i = 0; i < 50 && tap_status.load() == 0; ++i) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-    if (tap_status.load() < 0) {
-      axLog("event tap failed to come up");
-      stop();
-      return false;
-    }
+
+    // N-API start() runs on Electron's main thread. Installing the tap + AX
+    // observer there (not a private CFRunLoop) is what actually delivers events.
+    runOnMain(^{ this->installOnMainRunLoop(); });
     axLog("started");
     return true;
   }
@@ -228,12 +222,8 @@ class AXSelectionMonitor {
   void stop() {
     if (!running.exchange(false)) return;
     debounce_running.store(false);
-    if (run_loop) {
-      CFRunLoopStop(run_loop);
-    }
     if (debounce_thread.joinable()) debounce_thread.join();
-    if (monitor_thread.joinable()) monitor_thread.join();
-    run_loop = nullptr;
+    runOnMain(^{ this->teardownOnMainRunLoop(); });
     axLog("stopped");
   }
 
@@ -316,11 +306,11 @@ class AXSelectionMonitor {
   std::function<void(std::string, int, int)> callback;
   std::atomic<bool> running{false};
   std::atomic<bool> debounce_running{false};
-  std::thread monitor_thread;
   std::thread debounce_thread;
   CFRunLoopRef run_loop = nullptr;
   CFMachPortRef event_tap = nullptr;
-  std::atomic<int> tap_status{0};  // 0 pending, 1 ok, -1 fail
+  CFRunLoopSourceRef tap_source = nullptr;
+  id workspace_observer = nil;
 
   std::mutex debounce_mutex;
   std::string last_selection;
@@ -377,18 +367,26 @@ class AXSelectionMonitor {
     }
   }
 
-  bool shouldAcceptAxChange() {
-    if (inputGateDisabled()) return true;
-    const int64_t now = nowMs();
-    if (now - last_key_ms.load() < kTypingQuietMs) return false;
-    if (now - last_gesture_ms.load() > kGestureFreshMs) return false;
-    return true;
+  void runOnMain(void (^block)(void)) {
+    if ([NSThread isMainThread]) {
+      block();
+    } else {
+      dispatch_sync(dispatch_get_main_queue(), block);
+    }
   }
 
-  void emitFocusedSelection() {
+  bool shouldAcceptAxChange() {
+    if (inputGateDisabled()) return true;
+    return nowMs() - last_key_ms.load() >= kTypingQuietMs;
+  }
+
+  void emitFocusedSelection(bool fromGesture) {
     @autoreleasepool {
       AXUIElementRef focused = copyFocusedElement();
-      if (!focused) return;
+      if (!focused) {
+        if (fromGesture) axLog("mouse-up: no focused AX element");
+        return;
+      }
       if (pidOf(focused) == getpid()) {
         CFRelease(focused);
         return;
@@ -396,6 +394,17 @@ class AXSelectionMonitor {
       std::string text = selectedTextFromElement(focused);
       if (text.empty()) {
         CFRelease(focused);
+        if (fromGesture) {
+          static std::atomic<int> empty_logged{0};
+          if (empty_logged.fetch_add(1) == 0) {
+            std::cout << "[AX] mouse-up with no AXSelectedText (try TextEdit / Safari / Notes; "
+                         "Chrome and VS Code often expose no selected text). "
+                         "PHEVERE_DEBUG_AX=1 for more."
+                      << std::endl;
+          } else {
+            axLog("mouse-up: AXSelectedText empty");
+          }
+        }
         return;
       }
       int x = 0, y = 0;
@@ -439,18 +448,20 @@ class AXSelectionMonitor {
         CFRelease(focused);
       }
 
-      CFRunLoopAddSource(CFRunLoopGetCurrent(), AXObserverGetRunLoopSource(observer),
-                         kCFRunLoopDefaultMode);
+      CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer),
+                         kCFRunLoopCommonModes);
       ax_observer = observer;
       observed_app = app;
       observed_pid = pid;
-      axLog(std::string("observer bound to pid ") + std::to_string(pid));
+      const char* name = front.localizedName.UTF8String;
+      axLog(std::string("observer bound to ") + (name ? name : "?") + " pid " + std::to_string(pid));
     }
   }
 
   void teardownObserver() {
-    if (ax_observer && run_loop) {
-      CFRunLoopRemoveSource(run_loop, AXObserverGetRunLoopSource(ax_observer), kCFRunLoopDefaultMode);
+    CFRunLoopRef loop = run_loop ? run_loop : CFRunLoopGetMain();
+    if (ax_observer && loop) {
+      CFRunLoopRemoveSource(loop, AXObserverGetRunLoopSource(ax_observer), kCFRunLoopCommonModes);
     }
     if (ax_observer) {
       CFRelease(ax_observer);
@@ -472,7 +483,7 @@ class AXSelectionMonitor {
       return;
     }
     if (CFEqual(notification, kAXSelectedTextChangedNotification) && self->shouldAcceptAxChange()) {
-      self->emitFocusedSelection();
+      self->emitFocusedSelection(false);
     }
   }
 
@@ -491,11 +502,6 @@ class AXSelectionMonitor {
   }
 
   void onEvent(CGEventType type, CGEventRef event) {
-    if (type == kCGEventKeyDown) {
-      last_key_ms.store(nowMs());
-      return;
-    }
-
     const CGPoint loc = CGEventGetLocation(event);
     if (type == kCGEventLeftMouseDown) {
       mouse_down = loc;
@@ -517,46 +523,62 @@ class AXSelectionMonitor {
     }
 
     last_gesture_ms.store(now);
-    std::thread([this]() {
-      std::this_thread::sleep_for(std::chrono::milliseconds(kPostMouseUpSettleMs));
-      if (!running.load()) return;
-      emitFocusedSelection();
-      CFRunLoopRef loop = run_loop;
-      if (!loop) return;
-      CFRunLoopPerformBlock(loop, kCFRunLoopDefaultMode, ^{
-        this->rebindObserverToFrontApp();
-      });
-      CFRunLoopWakeUp(loop);
-    }).detach();
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(kPostMouseUpSettleMs) * NSEC_PER_MSEC),
+        dispatch_get_main_queue(), ^{
+          if (!this->running.load()) return;
+          this->emitFocusedSelection(true);
+          this->rebindObserverToFrontApp();
+        });
   }
 
-  void monitorLoop() {
+  void installOnMainRunLoop() {
     @autoreleasepool {
-      const CGEventMask mask = CGEventMaskBit(kCGEventLeftMouseDown) | CGEventMaskBit(kCGEventLeftMouseUp) |
-                               CGEventMaskBit(kCGEventKeyDown);
-      event_tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap, kCGEventTapOptionListenOnly,
-                                   mask, &AXSelectionMonitor::tapCallback, this);
+      run_loop = CFRunLoopGetMain();
+      const CGEventMask mask =
+          CGEventMaskBit(kCGEventLeftMouseDown) | CGEventMaskBit(kCGEventLeftMouseUp);
+      event_tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
+                                   kCGEventTapOptionListenOnly, mask, &AXSelectionMonitor::tapCallback,
+                                   this);
       if (!event_tap) {
-        axLog("CGEventTapCreate failed (Accessibility / Input Monitoring?)");
-        tap_status.store(-1);
-        running.store(false);
-        debounce_running.store(false);
-        return;
+        event_tap = CGEventTapCreate(kCGHIDEventTap, kCGHeadInsertEventTap, kCGEventTapOptionListenOnly,
+                                     mask, &AXSelectionMonitor::tapCallback, this);
       }
-      tap_status.store(1);
+      if (event_tap) {
+        tap_source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, event_tap, 0);
+        CFRunLoopAddSource(run_loop, tap_source, kCFRunLoopCommonModes);
+        CGEventTapEnable(event_tap, true);
+        std::cout << "[AX] event tap on main run loop" << std::endl;
+      } else {
+        std::cout << "[AX] event tap unavailable; AX observer only (drag-select may miss)"
+                  << std::endl;
+      }
 
-      CFRunLoopSourceRef src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, event_tap, 0);
-      CFRunLoopAddSource(CFRunLoopGetCurrent(), src, kCFRunLoopCommonModes);
-      CGEventTapEnable(event_tap, true);
-      run_loop = CFRunLoopGetCurrent();
+      AXSelectionMonitor* self = this;
+      workspace_observer = [[[NSWorkspace sharedWorkspace] notificationCenter]
+          addObserverForName:NSWorkspaceDidActivateApplicationNotification
+                      object:nil
+                       queue:[NSOperationQueue mainQueue]
+                  usingBlock:^(NSNotification* /*note*/) {
+                    if (!self->running.load()) return;
+                    self->rebindObserverToFrontApp();
+                  }];
+
       rebindObserverToFrontApp();
-      axLog("run loop spinning");
-      CFRunLoopRun();
+    }
+  }
 
+  void teardownOnMainRunLoop() {
+    @autoreleasepool {
+      if (workspace_observer) {
+        [[[NSWorkspace sharedWorkspace] notificationCenter] removeObserver:workspace_observer];
+        workspace_observer = nil;
+      }
       teardownObserver();
-      if (src) {
-        CFRunLoopRemoveSource(CFRunLoopGetCurrent(), src, kCFRunLoopCommonModes);
-        CFRelease(src);
+      if (tap_source && run_loop) {
+        CFRunLoopRemoveSource(run_loop, tap_source, kCFRunLoopCommonModes);
+        CFRelease(tap_source);
+        tap_source = nullptr;
       }
       if (event_tap) {
         CGEventTapEnable(event_tap, false);

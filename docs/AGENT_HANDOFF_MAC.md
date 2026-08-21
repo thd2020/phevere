@@ -26,7 +26,7 @@ npm install
 npm start
 ```
 
-Then: **System Settings → Privacy & Security → Accessibility → enable Electron** (the host of `npm start`), quit and relaunch. Test in TextEdit / Safari / Notes first. Chrome / VS Code / other Electron apps often have a weak AX tree.
+Then: **System Settings → Privacy & Security → Accessibility → enable the Electron.app that `npm start` launched** (`node_modules/electron/dist/Electron.app`, not Cursor). Quit and relaunch if the row was added while the app was already running. Test in **TextEdit / Safari / Notes** first. Chrome / VS Code / other Electron apps often have a weak AX tree.
 
 Debug: `PHEVERE_DEBUG_AX=1 npm start`
 

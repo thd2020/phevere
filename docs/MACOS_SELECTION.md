@@ -11,8 +11,8 @@ Conversation + constraints for a Mac-side agent: [`AGENT_HANDOFF_MAC.md`](AGENT_
 | Piece | Role |
 |---|---|
 | `native-addon/src/ax_selection_monitor.mm` | N-API module `AXSelectionMonitor` |
-| Drag / double-click mouse-up | Read `AXSelectedText` on the focused element |
-| `kAXSelectedTextChangedNotification` | Extra path when the front app fires it |
+| Drag / double-click mouse-up | Read `AXSelectedText` on the focused element (event tap on Electron’s **main** run loop) |
+| `kAXSelectedTextChangedNotification` | Extra path when the front app fires it; rebinds when you switch apps |
 | 500ms debounce | Same settle window as the Windows addon |
 | `getWordAtPoint` | Hover: `AXUIElementCopyElementAtPosition` + range-for-position |
 | Own PID skip | Ignore selections inside Phevere / Electron |
