@@ -54,7 +54,7 @@ If files remain but Apps has no entry (“ghost” install — often from aborte
 |---|---|
 | App code | `app.asar` (webpack bundle; `node-fetch` is bundled, not a runtime `require`) |
 | `koffi` + `sql.js` | `asarUnpack` |
-| `onnxruntime-node` 1.23.2 + `sharp` + `@gutenye/*` | `asarUnpack` (1.23.2 last npm with Intel Mac `darwin/x64`) |
+| `onnxruntime-node` 1.23.2 + `sharp` + `@gutenye/*` | Forge `asar.unpackDir` (not `asarUnpack` — that key is electron-builder). Must also be kept by `scripts/packager-ignore.js`. 1.23.2 last npm with Intel Mac `darwin/x64` |
 | `sql-wasm.wasm` + `sql-asm.js` | `extraResources` |
 | Offline **seed** packs | optional `resources/seed`; users also download WordNet / GCIDE / CEDICT / FreeDict from Settings |
 | OCR ONNX models | `extraResources` → `ocr-models` |
@@ -95,3 +95,32 @@ Do not commit `.pfx` / passwords. `make:win` warns when `CSC_LINK` is unset.
 ### Optional: WiX MSI
 
 Commented in `forge.config.js`; needs WiX Toolset v3. Prefer NSIS for end users.
+
+## macOS: ZIP (draft, no notarized .dmg)
+
+There is **no public Mac download** yet. Maintainers can produce a per-arch zip:
+
+```bash
+npm run build-native
+npm run make:mac          # this Mac's arch
+# npm run make:mac:x64    # Intel only — must run on Intel (or CI macos-15-intel)
+# npm run make:mac:arm64  # Apple Silicon only — must run on arm64 (or CI macos-latest)
+# Artifact: out/make/zip/darwin/{arch}/Phevere-darwin-{arch}-{version}.zip
+```
+
+OCR in that zip must work on a machine with **no Node, no Python, no `npm install`**. Forge's webpack plugin would otherwise pack only `/.webpack` and drop the OCR natives (`onnxruntime-node`, `sharp`, `@gutenye/*`). `scripts/packager-ignore.js` keeps those trees (and `koffi` / `sql.js`); `packagerConfig.prune` is **false** (galactus would skip nested `@img` binaries); `asar.unpackDir` unpacks them (`asarUnpack` is electron-builder-only — `@electron/packager` ignores it). `resources/ocr-models` is `extraResource`. Do not ignore the `node_modules` directory itself or packager never copies the packages. `@gutenye/ocr-node` is ESM: `import()` cannot load from inside `app.asar`, so it must be unpacked.
+
+| Check | Path inside `Phevere.app` |
+|---|---|
+| ONNX models | `Contents/Resources/ocr-models/{det,rec,keys}` |
+| ONNX Runtime | `Contents/Resources/app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/darwin/<arch>/onnxruntime_binding.node` |
+| Gutenye | `…/app.asar.unpacked/node_modules/@gutenye/ocr-node/build/index.js` |
+| sharp | `…/app.asar.unpacked/node_modules/@img/sharp-darwin-<arch>/` |
+
+`onnxruntime-node` is pinned at **1.23.2** (last npm tarball with `darwin/x64`). Build each zip on matching hardware: the Accessibility `.node` is compiled for the host. CI (`macos-ocr-pack`) packages both `macos-15-intel` (x64) and `macos-latest` (arm64) and runs `scripts/verify-ocr-pack.js`. Packaged Electron never falls back to the user's Python.
+
+```bash
+npx electron-forge package --platform darwin
+npm run verify:ocr-pack
+```
+

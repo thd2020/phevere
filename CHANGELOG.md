@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Embedded OCR failed to start on macOS: `@gutenye/ocr-node` is ESM, so webpack `require()` threw; load it with dynamic `import()` of the real `node_modules` file (webpack’s `require.resolve` of the external was the bare package name). Python fallback looks for `python3`, not only `python`. Pin `onnxruntime-node` to 1.23.2 so Intel Macs still get a `darwin/x64` native binary (1.24+ ships arm64 only).
 - Hover lookup used a whole OCR line instead of the word under the cursor: Gutenye returns a `box` polygon (not `frame`), so line bounds were dropped. Map those boxes and pick the Latin word / CJK character at the pointer.
 - `npm start`: one Ctrl+C quits the app. `before-quit` used to `preventDefault()` and wait on teardown, so Electron stayed alive after Forge had already handled the signal.
-- macOS menu bar icon is 16pt @2x (the previous 44px bitmap was treated as 44pt and dwarfed Clock / Control Centre).
+- Packaged builds omitted webpack externals (`onnxruntime-node`, `sharp`, `@gutenye`), so OCR only worked under `npm start`. The Mac zip / Windows Setup now keep and unpack those natives for the target arch; installed OCR never uses the user's Python. CI packages darwin x64 (`macos-15-intel`) and arm64 (`macos-latest`) and checks the payload.
 
 ## [1.4.1] - 2026-08-21
 

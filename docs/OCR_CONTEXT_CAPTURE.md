@@ -31,9 +31,9 @@ Multiple producers feed one consumer: `lookup(query, meta)`.
 
 | Asset | Notes |
 |-------|--------|
-| **Shipping:** `onnxruntime-node` 1.23.2 + `@gutenye/ocr-node` | In-process; models under `resources/ocr-models/`. 1.23.2 is the last npm that includes Intel Mac (`darwin/x64`) binaries. |
+| **Shipping:** `onnxruntime-node` 1.23.2 + `@gutenye/ocr-node` | In-process; models under `resources/ocr-models/`. 1.23.2 is the last npm that includes Intel Mac (`darwin/x64`) binaries. Packaged apps load these from `app.asar.unpacked` (see `scripts/packager-ignore.js`); no end-user Python. |
 | PP-OCRv4 mobile det / rec / cls + `ppocr_keys_v1.txt` | ~16 MB ONNX set (Apache-2.0) |
-| Python RapidOCR worker | Dev / last-resort only if native init fails |
+| Python RapidOCR worker | Dev (`npm start`) only; packaged builds never spawn Python |
 | `Windows.Media.Ocr` | Present; only `zh-Hans-CN` pack installed here |
 | Tesseract | **Not** installed |
 
@@ -82,9 +82,9 @@ This interface is also the target for the **macOS AX draft** (`docs/MACOS_SELECT
 ### Phase 2 — OCR engine
 
 - [x] **Primary:** in-process `onnxruntime-node` + PP-OCRv4 mobile ONNX under `resources/ocr-models/` (via `@gutenye/ocr-node`). No end-user Python.
-- [x] Packaging: `extraResources` → `ocr-models`; `asarUnpack` for `onnxruntime-node` / `sharp` / `@gutenye/*`
+- [x] Packaging: `extraResources` → `ocr-models`; packager ignore keeps webpack externals; `asar.unpackDir` so `@gutenye` ESM and ONNX/sharp `.node` live in `app.asar.unpacked`. `ensure-ocr-natives` + `verify-ocr-pack`. CI: darwin x64 + arm64.
 - [x] Settings → Capture: status only (“Embedded OCR ready” / error). No pip Install UX.
-- [x] Python RapidOCR worker (`scripts/ocr_worker.py`) kept as **dev / last-resort** fallback only if native init fails (not advertised).
+- [x] Python RapidOCR worker (`scripts/ocr_worker.py`) kept as **dev-only** fallback when `npm start` cannot load natives (packaged Electron never uses it).
 - [x] Cache key via `imageHash` on ContextEvent
 - [ ] Windows.Media.Ocr (WinRT await still unreliable from PowerShell — deprioritized)
 - [x] Warm-up on app ready
@@ -119,14 +119,14 @@ Solves Spotify-class apps with clean strings and no OCR.
 | Concern | Approach |
 |---------|----------|
 | Installer size | ~30–40 MB for small ONNX pair; medium optional download |
-| Arch | Ship `onnxruntime-node` **1.23.2** per OS/arch (x64 + arm64). 1.24+ dropped Intel Mac (`darwin/x64`) prebuilds. |
+| Arch | Ship `onnxruntime-node` **1.23.2** per OS/arch (x64 + arm64). 1.24+ dropped Intel Mac (`darwin/x64`) prebuilds. Package each Mac zip on matching hardware (AX `.node` is host-arch). |
 | Wayland | Capture via portals; expect more friction than X11/Win |
 | Privacy | Local-only by default; AI enrichment is a later opt-in |
 
 ## Explicit non-goals (for now)
 
 - Continuous full-desktop OCR
-- Requiring end-user Python for OCR (Python worker is last-resort only)
+- Requiring end-user Python for OCR (Python worker is `npm start` only)
 - Scraping etymonline / Forvo as redistributed data
 - Android in the same Electron binary (separate product surface)
 

@@ -72,7 +72,7 @@ npm run make:win
 
 `make:win` uses npmmirror Electron mirrors by default (avoids `github.com` `ETIMEDOUT` on some networks). `npm install` uses `.npmrc` `electron_mirror` plus `scripts/ensure-electron.js` (curl) for the runtime. `npm start` re-runs that extract if `path.txt` is missing after a cancelled install. If Electron’s postinstall still hangs: `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`.
 
-CI: `.github/workflows/ci.yml` on every PR and `main` (Windows package). CD: push an annotated tag `v*.*.*` → `.github/workflows/release.yml` makes Setup.exe, creates the GitHub Release, and attests it (unsigned unless `CSC_LINK` is set). See [`docs/RELEASE.md`](docs/RELEASE.md).
+CI: `.github/workflows/ci.yml` on every PR and `main` (Windows package; macOS OCR native pack on Intel and Apple Silicon). CD: push an annotated tag `v*.*.*` → `.github/workflows/release.yml` makes Setup.exe, creates the GitHub Release, and attests it (unsigned unless `CSC_LINK` is set). See [`docs/RELEASE.md`](docs/RELEASE.md).
 
 ### Tray Quit vs terminal (dev only)
 

@@ -5,24 +5,27 @@ const { MakerRpm } = require('@electron-forge/maker-rpm');
 const { AutoUnpackNativesPlugin } = require('@electron-forge/plugin-auto-unpack-natives');
 const { WebpackPlugin } = require('@electron-forge/plugin-webpack');
 
+const { packagerIgnore } = require('./scripts/packager-ignore');
+const { ensure: ensureOcrNatives } = require('./scripts/ensure-ocr-natives');
+const { verifyDir } = require('./scripts/verify-ocr-pack');
 const { mainConfig } = require('./webpack.main.config.js');
 const { rendererConfig } = require('./webpack.renderer.config.js');
 
 /** @type {import('@electron-forge/shared-types').ForgeConfig} */
 module.exports = {
   packagerConfig: {
-    asar: true,
+    asar: {
+      // @electron/packager has no `asarUnpack` array. AutoUnpackNativesPlugin
+      // only unpacks `*.node`. Gutenye is ESM (`import()` cannot read asar).
+      unpackDir:
+        '{node_modules/onnxruntime-node,node_modules/onnxruntime-common,node_modules/sharp,node_modules/@img,node_modules/@gutenye,node_modules/koffi,node_modules/sql.js}',
+    },
+    // Our ignore already keeps only .webpack + OCR/native trees. Default prune
+    // uses galactus on package roots and can drop nested @img / optional natives.
+    prune: false,
+    ignore: packagerIgnore,
     // Prefer packaging/icon.ico so the packaged .exe / taskbar use Phevere art (not Electron default).
     icon: './packaging/icon',
-    // koffi + sql.js must unpack; WASM also shipped as extraResource.
-    asarUnpack: [
-      '**/node_modules/koffi/**/*',
-      '**/node_modules/sql.js/**/*',
-      '**/node_modules/onnxruntime-node/**/*',
-      '**/node_modules/sharp/**/*',
-      '**/node_modules/@img/**/*',
-      '**/node_modules/@gutenye/**/*',
-    ],
     extraResource: [
       'resources/tray-icon.png',
       'scripts/ocr_worker.py',
@@ -57,6 +60,26 @@ module.exports = {
     new MakerRpm({}),
     new MakerDeb({}),
   ],
+  hooks: {
+    prePackage: async (_config, platform, arch) => {
+      // Accessibility .node is compiled for this host. OCR prebuilds can be
+      // fetched cross-arch, but a mixed zip would still fail to load AX.
+      if (platform && arch && platform === process.platform && arch !== process.arch) {
+        throw new Error(
+          `Refusing to package ${platform}/${arch} on ${process.platform}/${process.arch}. ` +
+            'Build the Mac zip on matching hardware (CI: macos-latest = arm64, macos-15-intel = x64).'
+        );
+      }
+      ensureOcrNatives({ platform, arch });
+    },
+    postPackage: async (_config, pkg) => {
+      const platform = pkg.platform;
+      const arch = Array.isArray(pkg.arch) ? pkg.arch[0] : pkg.arch;
+      for (const out of pkg.outputPaths || []) {
+        verifyDir(out, platform, arch);
+      }
+    },
+  },
   plugins: [
     new AutoUnpackNativesPlugin({
       asar: true,

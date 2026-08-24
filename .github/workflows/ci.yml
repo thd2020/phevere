@@ -1,4 +1,4 @@
-# Lint/test/build on PR and main. Native UIA addon is Windows-only.
+# Lint/test/build on PR and main. Windows UIA addon + Mac OCR native pack.
 name: ci
 
 on:
@@ -36,3 +36,31 @@ jobs:
           path: out/phevere-win32-x64
           if-no-files-found: error
           retention-days: 7
+
+  macos-ocr-pack:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            electron_arch: arm64
+          - os: macos-15-intel
+            electron_arch: x64
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install (includes AX native addon)
+        env:
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+        run: npm ci
+      - name: Package darwin (${{ matrix.electron_arch }}) and verify OCR natives
+        env:
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+        run: |
+          npx electron-forge package --platform darwin --arch ${{ matrix.electron_arch }}
+          node scripts/verify-ocr-pack.js --dir out/phevere-darwin-${{ matrix.electron_arch }}

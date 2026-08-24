@@ -872,7 +872,8 @@ class CompositeOcrEngine implements OcrEngine {
       this.preferred = 'onnx-native';
       return true;
     }
-    if (await this.rapid.isAvailable()) {
+    // Packaged builds ship onnxruntime-node + models. Never require the user's Python.
+    if (!app.isPackaged && (await this.rapid.isAvailable())) {
       this.preferred = 'python-fallback';
       return true;
     }
@@ -885,8 +886,7 @@ class CompositeOcrEngine implements OcrEngine {
       this.preferred = 'onnx-native';
       return this.native.warmUp();
     }
-    // Do not auto-pip; only warm Python if already runnable.
-    if (await this.rapid.isAvailable()) {
+    if (!app.isPackaged && (await this.rapid.isAvailable())) {
       this.preferred = 'python-fallback';
       return this.rapid.warmUp();
     }
@@ -947,7 +947,7 @@ class CompositeOcrEngine implements OcrEngine {
       if (!this.native.getStatus().lastError) return result;
     }
 
-    if (await this.rapid.isAvailable()) {
+    if (!app.isPackaged && (await this.rapid.isAvailable())) {
       this.preferred = 'python-fallback';
       console.warn('Falling back to Python RapidOCR worker');
       return this.rapid.recognize(png);

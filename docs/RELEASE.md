@@ -20,7 +20,7 @@ Watch **Actions → release**. No Environment approval gate. Unsigned unless rep
 gh attestation verify out/make/nsis/x64/Phevere-Setup-1.2.3-x64.exe -R thd2020/phevere
 ```
 
-CI (no installer): `.github/workflows/ci.yml` on every PR and push to `main`.
+CI (no installer): `.github/workflows/ci.yml` on every PR and push to `main` (Windows unpackaged app + macOS OCR native pack on `macos-15-intel` / `macos-latest`).
 
 ## Local fallback (optional)
 
