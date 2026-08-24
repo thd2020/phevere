@@ -76,7 +76,7 @@ CI: `.github/workflows/ci.yml` on every PR and `main` (Windows package). CD: pus
 
 ### Tray Quit vs terminal (dev only)
 
-Tray **Quit Phevere** exits Electron. The Forge webpack terminal may keep running until **Ctrl+C** — normal in development. Packaged builds have no separate webpack process.
+In the `npm start` terminal, **Ctrl+C** once stops Electron and Forge’s webpack process. Tray **Quit Phevere** exits Electron, which also tears down that terminal. Packaged builds have no separate webpack process.
 
 ## Architecture (short)
 

@@ -735,6 +735,14 @@ async function quitPhevere(): Promise<void> {
   }, 400);
 }
 
+if (!app.isPackaged) {
+  const stopFromCli = () => {
+    void quitPhevere();
+  };
+  process.once('SIGINT', stopFromCli);
+  process.once('SIGTERM', stopFromCli);
+}
+
 function updateTrayContextMenu(): void {
   if (tray && !tray.isDestroyed()) {
     tray.setContextMenu(buildTrayContextMenu());
@@ -2756,8 +2764,15 @@ ipcMain.handle('window-hide-to-tray', (event) => {
 
 app.on('before-quit', (event) => {
   if (!appIsQuitting) {
-    // Route Cmd+Q / OS quit through orderly teardown (await UIA/OCR stop).
-    event.preventDefault();
+    if (app.isPackaged) {
+      // Tray / Cmd+Q: await UIA/OCR stop so helpers do not linger.
+      event.preventDefault();
+      void quitPhevere();
+      return;
+    }
+    // `npm start`: Ctrl+C is delivered to Electron, Forge, and webpack-dev-server.
+    // preventDefault() kept this process alive, so the terminal needed a second
+    // interrupt after Forge had already handled the first.
     void quitPhevere();
     return;
   }
