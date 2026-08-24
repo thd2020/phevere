@@ -7,7 +7,7 @@
 
 import { screen, BrowserWindow } from 'electron';
 import { wrapConsole } from '../logger';
-import { isLookupWorthy } from './text-normalize';
+import { isLookupWorthy, normalizeQuery } from './text-normalize';
 import { contextCaptureHub } from './context-capture';
 import { captureScreenRegion } from './screen-capture';
 import { ocrEngine, textNearPoint } from './ocr-engine';
@@ -33,8 +33,8 @@ const DEFAULTS = {
   moveTolerancePx: 6,
   dwellMs: 450,
   cooldownMs: 900,
-  /** Wider crop so long Latin words aren't clipped mid-glyph. */
-  ocrRadiusPx: 96,
+  /** Tight enough that PP-OCR sees one line; long Latin words still fit. */
+  ocrRadiusPx: 64,
 };
 
 export class HoverLookupService {
@@ -125,9 +125,12 @@ export class HoverLookupService {
       try {
         const hit = this.opts.getWordAtPoint(x, y);
         if (hit && hit.text && isLookupWorthy(hit.text)) {
-          text = hit.text.trim();
-          anchorX = typeof hit.x === 'number' ? hit.x : x;
-          anchorY = typeof hit.y === 'number' ? hit.y : y;
+          const q = normalizeQuery(hit.text);
+          if (q.kind === 'word' && q.trimmed) {
+            text = q.trimmed;
+            anchorX = typeof hit.x === 'number' ? hit.x : x;
+            anchorY = typeof hit.y === 'number' ? hit.y : y;
+          }
         }
       } catch (error) {
         console.warn('getWordAtPoint failed', error);

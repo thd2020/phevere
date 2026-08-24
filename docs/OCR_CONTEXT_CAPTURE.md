@@ -91,7 +91,7 @@ This interface is also the target for the **macOS AX draft** (`docs/MACOS_SELECT
 
 ### Phase 3 — Word targeting
 
-- [x] Map cursor into OCR boxes → token / CJK char under cursor (hover path)
+- [x] Map cursor into OCR boxes → token / CJK char under cursor (hover path). Gutenye `Line.box` polygons (not `frame`).
 - [x] Feed recognized text through `text-normalize`
 
 ### Phase 4 — Triggers

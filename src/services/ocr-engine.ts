@@ -230,6 +230,36 @@ function resolveModelRoot(): string {
   }
 }
 
+function pngSize(buf: Buffer): { width: number; height: number } | null {
+  if (buf.length < 24 || buf[0] !== 0x89 || buf.toString('ascii', 1, 4) !== 'PNG') return null;
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+/** Gutenye detection resizes to a multiple of 32; boxes are in that space. */
+function scaleDetBoxToPng(pts: number[][] | undefined, pngW: number, pngH: number): number[][] | undefined {
+  if (!pts || pts.length < 2 || pngW < 1 || pngH < 1) return pts;
+  const detW = Math.max(32, Math.ceil(pngW / 32) * 32);
+  const detH = Math.max(32, Math.ceil(pngH / 32) * 32);
+  const sx = pngW / detW;
+  const sy = pngH / detH;
+  if (Math.abs(sx - 1) < 1e-6 && Math.abs(sy - 1) < 1e-6) return pts;
+  return pts.map((p) => [Number(p[0]) * sx, Number(p[1]) * sy]);
+}
+
+function lineFromOcrRow(row: any, pngW?: number, pngH?: number): OcrLine {
+  const text = String(row?.text || '');
+  const pts = scaleDetBoxToPng(row?.box, pngW || 0, pngH || 0) || row?.box;
+  let bounds = boxToBounds(pts);
+  if (!bounds && row?.frame) {
+    const left = Number(row.frame.left) || 0;
+    const top = Number(row.frame.top) || 0;
+    const width = Number(row.frame.width) || 0;
+    const height = Number(row.frame.height) || 0;
+    if (width > 0 || height > 0) bounds = { x: left, y: top, width, height };
+  }
+  return { text, bounds };
+}
+
 function boxToBounds(pts: number[][]): OcrLine['bounds'] | undefined {
   if (!pts || pts.length < 2) return undefined;
   const xs = pts.map((p) => p[0]);
@@ -450,23 +480,14 @@ class OnnxNativeOcrEngine implements OcrEngine {
     );
     try {
       fs.writeFileSync(tmp, png);
+      const size = pngSize(png);
       const linesRaw: any[] = await this.ocr.detect(tmp);
       const lines: OcrLine[] = (Array.isArray(linesRaw) ? linesRaw : [])
-        .map((row) => {
-          const frame = row?.frame || {};
-          const left = Number(frame.left) || 0;
-          const top = Number(frame.top) || 0;
-          const width = Number(frame.width) || 0;
-          const height = Number(frame.height) || 0;
-          return {
-            text: String(row?.text || ''),
-            bounds: width > 0 || height > 0 ? { x: left, y: top, width, height } : undefined,
-          };
-        })
+        .map((row) => lineFromOcrRow(row, size?.width, size?.height))
         .filter((l) => l.text.trim());
 
       const scores = (Array.isArray(linesRaw) ? linesRaw : [])
-        .map((r) => Number(r?.score))
+        .map((r) => Number(r?.mean ?? r?.score))
         .filter((n) => Number.isFinite(n));
       const text = lines
         .map((l) => l.text)
@@ -967,12 +988,20 @@ export function listOcrProfiles() {
  * else full joined text. Coordinates are in image-pixel space.
  */
 export function textNearPoint(result: OcrResult, relX: number, relY: number): string {
-  const lined = result.lines.filter((l) => l.text && l.bounds);
-  if (lined.length === 0) return (result.text || '').trim();
+  const lined = result.lines.filter((l) => l.text && l.bounds && l.bounds.width > 0);
+  if (lined.length === 0) {
+    return pickTokenAt(result.text || '', { x: 0, y: 0, width: 1, height: 1 }, 0.5);
+  }
 
   const containing = lined.find((l) => {
     const b = l.bounds!;
-    return relX >= b.x && relX <= b.x + b.width && relY >= b.y && relY <= b.y + b.height;
+    const pad = Math.max(4, b.height * 0.35);
+    return (
+      relX >= b.x - pad &&
+      relX <= b.x + b.width + pad &&
+      relY >= b.y - pad &&
+      relY <= b.y + b.height + pad
+    );
   });
   if (containing) return pickTokenAt(containing.text, containing.bounds!, relX);
 
@@ -980,9 +1009,9 @@ export function textNearPoint(result: OcrResult, relX: number, relY: number): st
   let bestDist = Infinity;
   for (const line of lined) {
     const b = line.bounds!;
-    const cx = b.x + b.width / 2;
-    const cy = b.y + b.height / 2;
-    const d = (cx - relX) ** 2 + (cy - relY) ** 2;
+    const dx = relX < b.x ? b.x - relX : relX > b.x + b.width ? relX - (b.x + b.width) : 0;
+    const dy = relY < b.y ? b.y - relY : relY > b.y + b.height ? relY - (b.y + b.height) : 0;
+    const d = dx * dx + dy * dy;
     if (d < bestDist) {
       bestDist = d;
       best = line;
@@ -991,33 +1020,64 @@ export function textNearPoint(result: OcrResult, relX: number, relY: number): st
   return pickTokenAt(best.text, best.bounds!, relX);
 }
 
+const CJK_TOKEN = /[\u3400-\u9FFF\uF900-\uFAFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]/;
+const LATIN_WORD_CHAR = /[A-Za-z0-9\u00C0-\u024F'’]/;
+
 /** Split a line into words / CJK chars and pick the token under the x offset. */
-function pickTokenAt(line: string, bounds: NonNullable<OcrLine['bounds']>, relX: string | number): string {
-  const x = typeof relX === 'number' ? relX : 0;
-  const text = line.trim();
+function pickTokenAt(line: string, bounds: NonNullable<OcrLine['bounds']>, relX: number): string {
+  const text = line.replace(/\s+/g, ' ').trim();
   if (!text) return '';
+  const chars = [...text];
+  const ratio = bounds.width > 0 ? Math.min(1, Math.max(0, (relX - bounds.x) / bounds.width)) : 0.5;
+  let idx = Math.min(chars.length - 1, Math.max(0, Math.floor(ratio * chars.length)));
 
-  const cjk = (text.match(/[\u3400-\u9FFF]/g) || []).length;
-  if (cjk >= text.replace(/\s/g, '').length / 2) {
-    const chars = [...text.replace(/\s+/g, '')];
-    if (chars.length === 0) return text;
-    const ratio = bounds.width > 0 ? (x - bounds.x) / bounds.width : 0.5;
-    const idx = Math.min(chars.length - 1, Math.max(0, Math.floor(ratio * chars.length)));
-    return chars[idx];
+  const isGap = (c: string) => /\s/.test(c);
+  if (isGap(chars[idx])) {
+    let left = idx - 1;
+    let right = idx + 1;
+    while (left >= 0 || right < chars.length) {
+      if (left >= 0 && !isGap(chars[left])) {
+        idx = left;
+        break;
+      }
+      if (right < chars.length && !isGap(chars[right])) {
+        idx = right;
+        break;
+      }
+      left--;
+      right++;
+    }
   }
 
-  // Prefer whole word tokens; weight by character length (not equal-width slots).
-  const words = text.match(/[A-Za-z\u00C0-\u024F]+(?:['’-][A-Za-z\u00C0-\u024F]+)*/g);
-  if (!words || words.length === 0) return text;
-  if (words.length === 1) return words[0];
+  const ch = chars[idx];
+  if (CJK_TOKEN.test(ch)) return ch;
 
-  const widths = words.map((w) => Math.max(1, [...w].length));
-  const total = widths.reduce((a, b) => a + b, 0);
-  const ratio = bounds.width > 0 ? Math.min(1, Math.max(0, (x - bounds.x) / bounds.width)) : 0.5;
-  let pos = ratio * total;
-  for (let i = 0; i < words.length; i++) {
-    pos -= widths[i];
-    if (pos <= 0) return words[i];
+  if (!LATIN_WORD_CHAR.test(ch)) {
+    let left = idx - 1;
+    let right = idx + 1;
+    let found = -1;
+    while (left >= 0 || right < chars.length) {
+      if (left >= 0 && LATIN_WORD_CHAR.test(chars[left])) {
+        found = left;
+        break;
+      }
+      if (left >= 0 && CJK_TOKEN.test(chars[left])) return chars[left];
+      if (right < chars.length && LATIN_WORD_CHAR.test(chars[right])) {
+        found = right;
+        break;
+      }
+      if (right < chars.length && CJK_TOKEN.test(chars[right])) return chars[right];
+      left--;
+      right++;
+    }
+    if (found < 0) return '';
+    idx = found;
   }
-  return words[words.length - 1];
+
+  let start = idx;
+  let end = idx;
+  while (start > 0 && LATIN_WORD_CHAR.test(chars[start - 1])) start--;
+  while (end < chars.length - 1 && LATIN_WORD_CHAR.test(chars[end + 1])) end++;
+  const token = chars.slice(start, end + 1).join('');
+  return token.replace(/^['’-]+|['’-]+$/g, '') || token;
 }
