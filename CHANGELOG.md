@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - macOS lookup when `AXSelectedText` is empty (Chrome, Cursor, Safari, …): after a drag or double-click, try Accessibility (including Chromium text-markers after `AXManualAccessibility`), then browser AppleScript `getSelection()`, then silent Cmd+C with clipboard restore. Password fields are skipped.
-- Embedded OCR failed to start on macOS: `@gutenye/ocr-node` is ESM, so webpack `require()` threw; load it with dynamic `import()`. Python fallback looks for `python3`, not only `python`. Pin `onnxruntime-node` to 1.23.2 so Intel Macs still get a `darwin/x64` native binary (1.24+ ships arm64 only).
+- Embedded OCR failed to start on macOS: `@gutenye/ocr-node` is ESM, so webpack `require()` threw; load it with dynamic `import()` of the real `node_modules` file (webpack’s `require.resolve` of the external was the bare package name). Python fallback looks for `python3`, not only `python`. Pin `onnxruntime-node` to 1.23.2 so Intel Macs still get a `darwin/x64` native binary (1.24+ ships arm64 only).
 - macOS menu bar icon is 16pt @2x (the previous 44px bitmap was treated as 44pt and dwarfed Clock / Control Centre).
 
 ## [1.4.1] - 2026-08-21

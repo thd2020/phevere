@@ -142,16 +142,56 @@ function resolvePython(): string {
   return 'python3';
 }
 
+function nodeModuleCandidates(...parts: string[]): string[] {
+  const candidates = [
+    path.join(process.cwd(), 'node_modules', ...parts),
+    path.join(__dirname, '..', '..', 'node_modules', ...parts),
+  ];
+  try {
+    const appPath = app.getAppPath();
+    candidates.push(path.join(appPath, 'node_modules', ...parts));
+    if (appPath.includes('app.asar')) {
+      candidates.push(
+        path.join(appPath.replace('app.asar', 'app.asar.unpacked'), 'node_modules', ...parts)
+      );
+    }
+  } catch {
+    /* app not ready */
+  }
+  if (process.resourcesPath) {
+    candidates.push(path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', ...parts));
+  }
+  return candidates;
+}
+
+function resolveNodeModuleFile(...parts: string[]): string | null {
+  for (const c of nodeModuleCandidates(...parts)) {
+    if (c && fs.existsSync(c)) return c;
+  }
+  return null;
+}
+
 /** Last onnxruntime-node that ships darwin/x64 (Intel Mac); 1.24+ is arm64-only on macOS. */
 function onnxNativeBindingPath(): string {
-  const pkg = path.dirname(require.resolve('onnxruntime-node/package.json'));
-  return path.join(
-    pkg,
-    'bin',
-    'napi-v6',
-    process.platform,
-    process.arch,
-    'onnxruntime_binding.node'
+  return (
+    resolveNodeModuleFile(
+      'onnxruntime-node',
+      'bin',
+      'napi-v6',
+      process.platform,
+      process.arch,
+      'onnxruntime_binding.node'
+    ) ||
+    path.join(
+      process.cwd(),
+      'node_modules',
+      'onnxruntime-node',
+      'bin',
+      'napi-v6',
+      process.platform,
+      process.arch,
+      'onnxruntime_binding.node'
+    )
   );
 }
 
@@ -165,11 +205,20 @@ function assertOnnxNativeBinding(): void {
   }
 }
 
-/** @gutenye/ocr-node is ESM; webpack's require() of the external throws ERR_REQUIRE_ESM. */
+/**
+ * @gutenye/ocr-node is ESM. Webpack's require.resolve() of the external
+ * returns the bare specifier, so pathToFileURL() pointed at
+ * <cwd>/@gutenye/ocr-node. Resolve the file on disk and import() it
+ * through Function so webpack cannot rewrite the load.
+ */
 async function loadGutenOcr(): Promise<{ create: (opts: unknown) => Promise<any> }> {
   assertOnnxNativeBinding();
-  const resolved = require.resolve('@gutenye/ocr-node');
-  const mod = await import(/* webpackIgnore: true */ pathToFileURL(resolved).href);
+  const entry = resolveNodeModuleFile('@gutenye', 'ocr-node', 'build', 'index.js');
+  if (!entry) {
+    throw new Error('Cannot find @gutenye/ocr-node/build/index.js under node_modules');
+  }
+  const href = pathToFileURL(entry).href;
+  const mod = await (new Function('u', 'return import(u)') as (u: string) => Promise<any>)(href);
   return mod.default || mod;
 }
 
