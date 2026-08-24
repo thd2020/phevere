@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- macOS lookup in Chrome, Cursor, VS Code, and other apps that expose no `AXSelectedText`: after a drag or double-click, silent Cmd+C with clipboard restore (same fallback as Windows Ctrl+C). Password fields are skipped.
+- macOS lookup when `AXSelectedText` is empty (Chrome, Cursor, Safari, …): after a drag or double-click, try Accessibility (including Chromium text-markers after `AXManualAccessibility`), then browser AppleScript `getSelection()`, then silent Cmd+C with clipboard restore. Password fields are skipped.
 - macOS menu bar icon is 16pt @2x (the previous 44px bitmap was treated as 44pt and dwarfed Clock / Control Centre).
 
 ## [1.4.1] - 2026-08-21

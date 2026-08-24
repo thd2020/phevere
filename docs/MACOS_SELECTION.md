@@ -11,14 +11,13 @@ Conversation + constraints for a Mac-side agent: [`AGENT_HANDOFF_MAC.md`](AGENT_
 | Piece | Role |
 |---|---|
 | `native-addon/src/ax_selection_monitor.mm` | N-API module `AXSelectionMonitor` |
-| Drag / double-click mouse-up | Read `AXSelectedText` / range string on the focused element (event tap on Electron’s **main** run loop) |
-| Chromium / Electron apps | If AX is empty after a select gesture, synthetic **Cmd+C**, read the pasteboard, restore the previous clipboard (same fallback as Windows Ctrl+C) |
+| Drag / double-click mouse-up | Capture chain on Electron’s **main** run loop: (1) `AXSelectedText` / range string, (2) Chromium AX enable + text-marker range, (3) browser AppleScript `getSelection()`, (5) silent **Cmd+C** with clipboard restore |
 | `kAXSelectedTextChangedNotification` | Extra path when the front app fires it; rebinds when you switch apps |
 | 500ms debounce | Same settle window as the Windows addon |
 | `getWordAtPoint` | Hover: `AXUIElementCopyElementAtPosition` + range-for-position |
 | Own PID skip | Ignore selections inside Phevere / Electron |
 
-Chrome, VS Code, Cursor, and other Chromium apps often expose no `AXSelectedText`. After a drag or double-click, Phevere falls back to a silent Cmd+C and restores the clipboard. Password fields are skipped. A plain click still does not copy.
+Chrome, VS Code, Cursor, and other Chromium apps often expose no `AXSelectedText`. After a drag or double-click Phevere tries, in order: Accessibility (including Chromium text-markers after `AXManualAccessibility`), AppleScript `window.getSelection()` in Safari/Chrome-family (needs **Automation** plus the browser’s **Allow JavaScript from Apple Events**), then a silent Cmd+C with clipboard restore. Password fields are skipped. A plain click still does not copy.
 
 ## Build on a Mac
 

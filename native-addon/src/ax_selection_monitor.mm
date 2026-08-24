@@ -3,9 +3,12 @@
  *
  * Windows uses UI Automation. Here the equivalent is the Accessibility (AX) API:
  *   - CGEvent tap: drag / double-click mouse-up (same idea as the Win32 mouse hook)
- *   - AXSelectedText / AXStringForRange on the focused element and nearby AX nodes
- *   - Cmd+C pasteboard fallback when Chromium (Chrome, Cursor, VS Code) exposes no AX text
- *     (same idea as the Windows synthetic Ctrl+C path; clipboard is restored)
+ *   - Capture chain after drag/double-click:
+ *       1. AXSelectedText / AXStringForRange (Notes, TextEdit)
+ *       2. AXManualAccessibility (+ AXEnhancedUserInterface on Chrome-family) then
+ *          AXSelectedTextMarkerRange / AXStringForTextMarkerRange
+ *       3. Browser AppleScript window.getSelection() (Safari / Chrome-family)
+ *       5. Silent Cmd+C + pasteboard restore (last resort; same idea as Windows Ctrl+C)
  *   - AXObserver for kAXSelectedTextChangedNotification when the app fires it
  *   - 500ms debounce, then N-API ThreadSafeFunction → Electron main
  *
@@ -43,6 +46,8 @@ static constexpr int kPostMouseUpSettleMs = 80;
 static constexpr int kTypingQuietMs = 700;
 static constexpr int kClipboardFallbackDelayMs = 100;
 static constexpr int kClipboardPasteboardWaitMs = 120;
+static constexpr int kAxEnableSettleMs = 140;
+static constexpr int kAppleScriptTimeoutMs = 400;
 static constexpr CGKeyCode kKeyCodeC = 8;        // kVK_ANSI_C
 static constexpr CGKeyCode kKeyCodeCommand = 55; // kVK_Command
 
@@ -151,6 +156,29 @@ static std::string selectedTextFromElement(AXUIElementRef el) {
   return text;
 }
 
+static std::string stringForTextMarkerRange(AXUIElementRef el) {
+  if (!el) return {};
+  CFTypeRef rangeVal = nullptr;
+  if (AXUIElementCopyAttributeValue(el, CFSTR("AXSelectedTextMarkerRange"), &rangeVal) !=
+          kAXErrorSuccess ||
+      !rangeVal) {
+    return {};
+  }
+  CFTypeRef strVal = nullptr;
+  const AXError err = AXUIElementCopyParameterizedAttributeValue(
+      el, CFSTR("AXStringForTextMarkerRange"), rangeVal, &strVal);
+  CFRelease(rangeVal);
+  if (err != kAXErrorSuccess || !strVal) return {};
+  std::string text;
+  if (CFGetTypeID(strVal) == CFStringGetTypeID()) {
+    text = cfStringToUtf8(static_cast<CFStringRef>(strVal));
+  }
+  CFRelease(strVal);
+  trimInPlace(text);
+  if (text.size() > kMaxSelectionBytes) text.clear();
+  return text;
+}
+
 static std::string stringForSelectedRange(AXUIElementRef el) {
   if (!el) return {};
   CFTypeRef rangeVal = nullptr;
@@ -176,7 +204,9 @@ static std::string stringForSelectedRange(AXUIElementRef el) {
 static std::string oneElementSelection(AXUIElementRef el) {
   std::string t = selectedTextFromElement(el);
   if (!t.empty()) return t;
-  return stringForSelectedRange(el);
+  t = stringForSelectedRange(el);
+  if (!t.empty()) return t;
+  return stringForTextMarkerRange(el);
 }
 
 static bool isSecureElement(AXUIElementRef el) {
@@ -261,6 +291,108 @@ static std::string selectedTextDeep(AXUIElementRef start) {
   }
   for (AXUIElementRef leftover : q) CFRelease(leftover);
   return found;
+}
+
+static bool nameLooksLike(NSString* name, NSString* needle) {
+  if (!name.length || !needle.length) return false;
+  return [name rangeOfString:needle options:NSCaseInsensitiveSearch].location != NSNotFound;
+}
+
+static bool isSafariFamily(NSString* bid, NSString* name) {
+  if ([bid hasPrefix:@"com.apple.Safari"] || [bid isEqualToString:@"com.kagi.kagimacOS"] ||
+      [bid hasPrefix:@"com.kagi.orion"]) {
+    return true;
+  }
+  return nameLooksLike(name, @"Safari") || nameLooksLike(name, @"Orion");
+}
+
+static bool isChromeFamily(NSString* bid, NSString* name) {
+  if ([bid hasPrefix:@"com.google.Chrome"] || [bid isEqualToString:@"org.chromium.Chromium"] ||
+      [bid hasPrefix:@"com.brave.Browser"] || [bid hasPrefix:@"com.microsoft.edgemac"] ||
+      [bid isEqualToString:@"com.vivaldi.Vivaldi"] || [bid hasPrefix:@"company.thebrowser"]) {
+    return true;
+  }
+  return nameLooksLike(name, @"Chrome") || nameLooksLike(name, @"Chromium") ||
+         nameLooksLike(name, @"Brave") || nameLooksLike(name, @"Microsoft Edge") ||
+         nameLooksLike(name, @"Vivaldi") || [name isEqualToString:@"Arc"];
+}
+
+static bool isBrowserForAppleScript(NSString* bid, NSString* name) {
+  return isSafariFamily(bid, name) || isChromeFamily(bid, name);
+}
+
+/** Step 2: force Chromium/Electron to build an AX tree. Enhanced UI only on Chrome-family
+ *  (VoiceOver flag can disturb window positioning in Electron editors). */
+static bool enableChromiumAccessibility(pid_t pid) {
+  if (pid <= 0) return false;
+  AXUIElementRef app = AXUIElementCreateApplication(pid);
+  if (!app) return false;
+  const AXError manual =
+      AXUIElementSetAttributeValue(app, CFSTR("AXManualAccessibility"), kCFBooleanTrue);
+  NSRunningApplication* ra = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+  NSString* bid = ra.bundleIdentifier ?: @"";
+  NSString* name = ra.localizedName ?: @"";
+  AXError enhanced = kAXErrorSuccess;
+  if (isChromeFamily(bid, name)) {
+    enhanced = AXUIElementSetAttributeValue(app, CFSTR("AXEnhancedUserInterface"), kCFBooleanTrue);
+  }
+  CFRelease(app);
+  axLog(std::string("AXManualAccessibility=") + std::to_string(static_cast<int>(manual)) +
+        " AXEnhancedUserInterface=" + std::to_string(static_cast<int>(enhanced)));
+  return manual == kAXErrorSuccess || enhanced == kAXErrorSuccess;
+}
+
+static std::string appleScriptBrowserSelection(pid_t pid) {
+  @autoreleasepool {
+    NSRunningApplication* app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+    if (!app) return {};
+    NSString* name = app.localizedName;
+    NSString* bid = app.bundleIdentifier ?: @"";
+    if (!name.length || [name rangeOfString:@"\""].location != NSNotFound) return {};
+    if (!isBrowserForAppleScript(bid, name)) return {};
+
+    NSString* src = nil;
+    if (isSafariFamily(bid, name)) {
+      src = [NSString stringWithFormat:
+                         @"tell application \"%@\"\n"
+                          "try\n"
+                          "  if (count of windows) is 0 then return \"\"\n"
+                          "  do JavaScript \"window.getSelection().toString()\" in current tab of window 1\n"
+                          "on error\n"
+                          "  return \"\"\n"
+                          "end try\n"
+                          "end tell",
+                         name];
+    } else {
+      src = [NSString stringWithFormat:
+                         @"tell application \"%@\"\n"
+                          "try\n"
+                          "  if (count of windows) is 0 then return \"\"\n"
+                          "  tell active tab of front window to execute javascript "
+                          "\"window.getSelection().toString()\"\n"
+                          "on error\n"
+                          "  return \"\"\n"
+                          "end try\n"
+                          "end tell",
+                         name];
+    }
+
+    NSAppleScript* script = [[NSAppleScript alloc] initWithSource:src];
+    if (!script) return {};
+    NSDictionary* err = nil;
+    NSAppleEventDescriptor* result = [script executeAndReturnError:&err];
+    if (err) {
+      axLog("applescript failed (Automation / Allow JavaScript from Apple Events?)");
+      return {};
+    }
+    NSString* s = result.stringValue;
+    if (!s.length) return {};
+    const char* utf = s.UTF8String;
+    std::string out(utf ? utf : "");
+    trimInPlace(out);
+    if (out.size() > kMaxSelectionBytes) out.clear();
+    return out;
+  }
 }
 
 static void postCommandC() {
@@ -500,6 +632,8 @@ class AXSelectionMonitor {
   std::atomic<int64_t> last_gesture_ms{0};
   std::atomic<int64_t> last_ax_ok_ms{0};
   std::atomic<int> fallback_inflight{0};
+  std::atomic<pid_t> ax_forced_pid{0};
+  std::atomic<uint64_t> capture_gen{0};
 
   AXObserverRef ax_observer = nullptr;
   AXUIElementRef observed_app = nullptr;
@@ -562,11 +696,13 @@ class AXSelectionMonitor {
       if (!focused) {
         if (fromGesture) {
           axLog("mouse-up: no focused AX element");
-          triggerClipboardFallback(0, 0);
+          NSRunningApplication* front = [[NSWorkspace sharedWorkspace] frontmostApplication];
+          startCaptureChain(0, 0, front ? front.processIdentifier : 0, true);
         }
         return;
       }
-      if (pidOf(focused) == getpid()) {
+      const pid_t pid = pidOf(focused);
+      if (pid == getpid()) {
         CFRelease(focused);
         return;
       }
@@ -590,57 +726,146 @@ class AXSelectionMonitor {
         return;
       }
       if (fromGesture) {
-        axLog("AX selected text empty; clipboard fallback");
-        triggerClipboardFallback(x, y);
+        axLog("step1 AX empty; capture chain 2→3→5");
+        startCaptureChain(x, y, pid, true);
       }
     }
   }
 
-  void triggerClipboardFallback(int x, int y) {
+  std::string retryAxSelection(int* outX, int* outY) {
+    std::string text;
+    *outX = 0;
+    *outY = 0;
+    AXUIElementRef focused = copyFocusedElement();
+    if (!focused) return {};
+    if (pidOf(focused) == getpid() || isSecureChain(focused)) {
+      CFRelease(focused);
+      return {};
+    }
+    text = selectedTextDeep(focused);
+    if (!selectionOrigin(focused, outX, outY)) {
+      NSPoint mouse = [NSEvent mouseLocation];
+      const NSRect primary = primaryScreenFrame();
+      *outX = static_cast<int>(mouse.x);
+      *outY = static_cast<int>(NSMaxY(primary) - mouse.y);
+    }
+    CFRelease(focused);
+    return text;
+  }
+
+  void startCaptureChain(int x, int y, pid_t pid, bool allowEnable) {
     if (fallback_inflight.exchange(1) != 0) return;
+    const uint64_t gen = capture_gen.fetch_add(1) + 1;
+    const bool needSettle = allowEnable && pid > 0 && pid != ax_forced_pid.load();
+    if (needSettle) {
+      enableChromiumAccessibility(pid);
+      ax_forced_pid.store(pid);
+    }
+
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-      std::this_thread::sleep_for(std::chrono::milliseconds(kClipboardFallbackDelayMs));
-      if (!this->running.load() || nowMs() - this->last_ax_ok_ms.load() < 150) {
+      if (needSettle) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(kAxEnableSettleMs));
+        if (!this->running.load() || this->capture_gen.load() != gen) {
+          this->fallback_inflight.store(0);
+          return;
+        }
+        __block std::string axText;
+        __block int axX = x, axY = y;
+        dispatch_sync(dispatch_get_main_queue(), ^{
+          @autoreleasepool {
+            axText = this->retryAxSelection(&axX, &axY);
+          }
+        });
+        if (!axText.empty()) {
+          axLog("step2 AX after enable");
+          this->last_ax_ok_ms.store(nowMs());
+          this->updatePendingSelection(axText, axX, axY);
+          this->fallback_inflight.store(0);
+          return;
+        }
+      }
+
+      NSRunningApplication* app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+      NSString* bid = app.bundleIdentifier ?: @"";
+      NSString* name = app.localizedName ?: @"";
+      if (isBrowserForAppleScript(bid, name)) {
+        axLog("step3 AppleScript getSelection");
+        __block std::string jsText;
+        dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+          jsText = appleScriptBrowserSelection(pid);
+          dispatch_semaphore_signal(sem);
+        });
+        const bool timedOut =
+            dispatch_semaphore_wait(
+                sem, dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(kAppleScriptTimeoutMs) * NSEC_PER_MSEC)) !=
+            0;
+        if (!timedOut && !jsText.empty() && this->capture_gen.load() == gen && this->running.load()) {
+          axLog("step3 AppleScript hit");
+          this->updatePendingSelection(jsText, x, y);
+          this->fallback_inflight.store(0);
+          return;
+        }
+        if (timedOut) axLog("step3 AppleScript timed out");
+      }
+
+      if (!this->running.load() || this->capture_gen.load() != gen) {
+        this->fallback_inflight.store(0);
+        return;
+      }
+      if (nowMs() - this->last_ax_ok_ms.load() < 150) {
         this->fallback_inflight.store(0);
         return;
       }
 
-      __block NSDictionary* snap = nil;
-      __block NSInteger countBefore = 0;
-      dispatch_sync(dispatch_get_main_queue(), ^{
-        @autoreleasepool {
-          snap = [snapshotPasteboard() copy];
-          countBefore = [NSPasteboard generalPasteboard].changeCount;
-        }
-      });
-
-      postCommandC();
-      std::this_thread::sleep_for(std::chrono::milliseconds(kClipboardPasteboardWaitMs));
-
-      __block std::string captured;
-      dispatch_sync(dispatch_get_main_queue(), ^{
-        @autoreleasepool {
-          NSPasteboard* pb = [NSPasteboard generalPasteboard];
-          if (pb.changeCount == countBefore) {
-            axLog("clipboard unchanged; no selection to capture");
-            return;
-          }
-          NSString* s = [pb stringForType:NSPasteboardTypeString];
-          if (s.length > 0) {
-            captured = std::string([s UTF8String] ? [s UTF8String] : "");
-            trimInPlace(captured);
-            if (captured.size() > kMaxSelectionBytes) captured.clear();
-          }
-          restorePasteboard(snap);
-        }
-      });
-
-      if (!captured.empty()) {
-        axLog(std::string("clipboard fallback: \"") + captured + "\"");
-        this->updatePendingSelection(captured, x, y);
-      }
-      this->fallback_inflight.store(0);
+      axLog("step5 silent Cmd+C");
+      this->runClipboardFallback(x, y, gen);
     });
+  }
+
+  void runClipboardFallback(int x, int y, uint64_t gen) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(kClipboardFallbackDelayMs));
+    if (!this->running.load() || this->capture_gen.load() != gen ||
+        nowMs() - this->last_ax_ok_ms.load() < 150) {
+      this->fallback_inflight.store(0);
+      return;
+    }
+
+    __block NSDictionary* snap = nil;
+    __block NSInteger countBefore = 0;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+      @autoreleasepool {
+        snap = [snapshotPasteboard() copy];
+        countBefore = [NSPasteboard generalPasteboard].changeCount;
+      }
+    });
+
+    postCommandC();
+    std::this_thread::sleep_for(std::chrono::milliseconds(kClipboardPasteboardWaitMs));
+
+    __block std::string captured;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+      @autoreleasepool {
+        NSPasteboard* pb = [NSPasteboard generalPasteboard];
+        if (pb.changeCount == countBefore) {
+          axLog("clipboard unchanged; no selection to capture");
+          return;
+        }
+        NSString* s = [pb stringForType:NSPasteboardTypeString];
+        if (s.length > 0) {
+          captured = std::string([s UTF8String] ? [s UTF8String] : "");
+          trimInPlace(captured);
+          if (captured.size() > kMaxSelectionBytes) captured.clear();
+        }
+        restorePasteboard(snap);
+      }
+    });
+
+    if (!captured.empty() && this->capture_gen.load() == gen) {
+      axLog(std::string("clipboard fallback: \"") + captured + "\"");
+      this->updatePendingSelection(captured, x, y);
+    }
+    this->fallback_inflight.store(0);
   }
 
   void rebindObserverToFrontApp() {
@@ -677,6 +902,10 @@ class AXSelectionMonitor {
       ax_observer = observer;
       observed_app = app;
       observed_pid = pid;
+      if (pid != ax_forced_pid.load()) {
+        enableChromiumAccessibility(pid);
+        ax_forced_pid.store(pid);
+      }
       const char* name = front.localizedName.UTF8String;
       axLog(std::string("observer bound to ") + (name ? name : "?") + " pid " + std::to_string(pid));
     }
