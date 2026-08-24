@@ -77,15 +77,18 @@
     "koffi": "^2.15.2",
     "lowdb": "^7.0.1",
     "node-fetch": "^2.7.0",
-    "onnxruntime-node": "^1.27.0",
+    "onnxruntime-node": "1.23.2",
     "sql.js": "^1.14.1",
     "wink-lemmatizer": "^3.0.4"
+  },
+  "overrides": {
+    "onnxruntime-node": "1.23.2"
   },
   "allowScripts": {
     "electron@28.3.3": true,
     "electron-winstaller@5.4.0": true,
     "koffi@2.15.2": true,
-    "onnxruntime-node@1.27.0": true,
+    "onnxruntime-node@1.23.2": true,
     "sharp@0.33.5": true
   }
 }

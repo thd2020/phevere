@@ -54,7 +54,7 @@ If files remain but Apps has no entry (“ghost” install — often from aborte
 |---|---|
 | App code | `app.asar` (webpack bundle; `node-fetch` is bundled, not a runtime `require`) |
 | `koffi` + `sql.js` | `asarUnpack` |
-| `onnxruntime-node` + `sharp` + `@gutenye/*` | `asarUnpack` |
+| `onnxruntime-node` 1.23.2 + `sharp` + `@gutenye/*` | `asarUnpack` (1.23.2 last npm with Intel Mac `darwin/x64`) |
 | `sql-wasm.wasm` + `sql-asm.js` | `extraResources` |
 | Offline **seed** packs | optional `resources/seed`; users also download WordNet / GCIDE / CEDICT / FreeDict from Settings |
 | OCR ONNX models | `extraResources` → `ocr-models` |

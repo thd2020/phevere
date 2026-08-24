@@ -31,7 +31,7 @@ Multiple producers feed one consumer: `lookup(query, meta)`.
 
 | Asset | Notes |
 |-------|--------|
-| **Shipping:** `onnxruntime-node` + `@gutenye/ocr-node` | In-process; models under `resources/ocr-models/` |
+| **Shipping:** `onnxruntime-node` 1.23.2 + `@gutenye/ocr-node` | In-process; models under `resources/ocr-models/`. 1.23.2 is the last npm that includes Intel Mac (`darwin/x64`) binaries. |
 | PP-OCRv4 mobile det / rec / cls + `ppocr_keys_v1.txt` | ~16 MB ONNX set (Apache-2.0) |
 | Python RapidOCR worker | Dev / last-resort only if native init fails |
 | `Windows.Media.Ocr` | Present; only `zh-Hans-CN` pack installed here |
@@ -119,7 +119,7 @@ Solves Spotify-class apps with clean strings and no OCR.
 | Concern | Approach |
 |---------|----------|
 | Installer size | ~30–40 MB for small ONNX pair; medium optional download |
-| Arch | Ship `onnxruntime-node` per OS/arch (x64 + arm64) |
+| Arch | Ship `onnxruntime-node` **1.23.2** per OS/arch (x64 + arm64). 1.24+ dropped Intel Mac (`darwin/x64`) prebuilds. |
 | Wayland | Capture via portals; expect more friction than X11/Win |
 | Privacy | Local-only by default; AI enrichment is a later opt-in |
 

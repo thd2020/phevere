@@ -5,10 +5,11 @@
  * Fallback (dev / last resort): Python RapidOCR worker — not advertised in Settings
  */
 
-import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
+import { ChildProcessWithoutNullStreams, spawn, spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { pathToFileURL } from 'url';
 import { app, net } from 'electron';
 import { wrapConsole } from '../logger';
 import {
@@ -98,24 +99,78 @@ function resolveWorkerScript(): string {
   return candidates[candidates.length - 1];
 }
 
+function commandOnPath(cmd: string): boolean {
+  try {
+    const r = spawnSync(process.platform === 'win32' ? 'where' : 'which', [cmd], {
+      encoding: 'utf8',
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return r.status === 0;
+  } catch {
+    return false;
+  }
+}
+
 function resolvePython(): string {
   const fromEnv = process.env.PHEVERE_PYTHON || process.env.PYTHON;
-  if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
-
-  const guesses = [
-    path.join(process.env.USERPROFILE || '', 'AppData', 'Local', 'anaconda3', 'python.exe'),
-    path.join(process.env.LOCALAPPDATA || '', 'anaconda3', 'python.exe'),
-    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe'),
-    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python311', 'python.exe'),
-    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python310', 'python.exe'),
-    'python',
-    'py',
-  ];
-  for (const g of guesses) {
-    if (g === 'python' || g === 'py') return g;
-    if (fs.existsSync(g)) return g;
+  if (fromEnv) {
+    if (fromEnv.includes(path.sep) || fromEnv.includes('/')) {
+      if (fs.existsSync(fromEnv)) return fromEnv;
+    } else {
+      return fromEnv;
+    }
   }
-  return 'python';
+
+  if (process.platform === 'win32') {
+    const guesses = [
+      path.join(process.env.USERPROFILE || '', 'AppData', 'Local', 'anaconda3', 'python.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'anaconda3', 'python.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python311', 'python.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python310', 'python.exe'),
+    ];
+    for (const g of guesses) {
+      if (g && fs.existsSync(g)) return g;
+    }
+    if (commandOnPath('py')) return 'py';
+    return 'python';
+  }
+
+  if (commandOnPath('python3')) return 'python3';
+  if (commandOnPath('python')) return 'python';
+  return 'python3';
+}
+
+/** Last onnxruntime-node that ships darwin/x64 (Intel Mac); 1.24+ is arm64-only on macOS. */
+function onnxNativeBindingPath(): string {
+  const pkg = path.dirname(require.resolve('onnxruntime-node/package.json'));
+  return path.join(
+    pkg,
+    'bin',
+    'napi-v6',
+    process.platform,
+    process.arch,
+    'onnxruntime_binding.node'
+  );
+}
+
+function assertOnnxNativeBinding(): void {
+  const binding = onnxNativeBindingPath();
+  if (!fs.existsSync(binding)) {
+    throw new Error(
+      `onnxruntime-node has no native binary for ${process.platform}/${process.arch} (${binding}). ` +
+        'Intel Mac needs onnxruntime-node 1.23.x; 1.24+ dropped darwin/x64.'
+    );
+  }
+}
+
+/** @gutenye/ocr-node is ESM; webpack's require() of the external throws ERR_REQUIRE_ESM. */
+async function loadGutenOcr(): Promise<{ create: (opts: unknown) => Promise<any> }> {
+  assertOnnxNativeBinding();
+  const resolved = require.resolve('@gutenye/ocr-node');
+  const mod = await import(/* webpackIgnore: true */ pathToFileURL(resolved).href);
+  return mod.default || mod;
 }
 
 function resolveModelRoot(): string {
@@ -405,10 +460,8 @@ class OnnxNativeOcrEngine implements OcrEngine {
         }
       }
 
-      // Externalized package; resolved from node_modules at runtime.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const mod = require('@gutenye/ocr-node');
-      const Ocr = mod.default || mod;
+      // ESM package; do not require() it (ERR_REQUIRE_ESM under webpack/Electron).
+      const Ocr = await loadGutenOcr();
       console.log('Loading native OCR models', { modelsPath: this.modelsPath, files: this.modelFiles });
       this.ocr = await Ocr.create({
         models: {
