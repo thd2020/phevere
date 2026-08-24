@@ -96,16 +96,16 @@ Do not commit `.pfx` / passwords. `make:win` warns when `CSC_LINK` is unset.
 
 Commented in `forge.config.js`; needs WiX Toolset v3. Prefer NSIS for end users.
 
-## macOS: ZIP (draft, no notarized .dmg)
+## macOS: ZIP + unsigned DMG
 
-There is **no public Mac download** yet. Maintainers can produce a per-arch zip:
+Per-arch `Phevere.app` (Intel x64 or Apple Silicon arm64). The Accessibility addon is compiled for the **target** arch, including cross-compile on an Intel Mac (`node-gyp rebuild --arch arm64`). Wrap with `hdiutil` (no extra npm maker — Windows lockfile unchanged):
 
 ```bash
-npm run build-native
-npm run make:mac          # this Mac's arch
-# npm run make:mac:x64    # Intel only — must run on Intel (or CI macos-15-intel)
-# npm run make:mac:arm64  # Apple Silicon only — must run on arm64 (or CI macos-latest)
-# Artifact: out/make/zip/darwin/{arch}/Phevere-darwin-{arch}-{version}.zip
+npm run make:mac:x64     # this Intel Mac, or any x64 Mac
+npm run make:mac:arm64   # Apple Silicon *or* Intel cross-compile
+# App:    out/phevere-darwin-{arch}/Phevere.app
+# Zip:    out/make/zip/darwin/{arch}/
+# DMG:    out/make/dmg/Phevere-<version>-darwin-{arch}.dmg
 ```
 
 OCR in that zip must work on a machine with **no Node, no Python, no `npm install`**. Forge's webpack plugin would otherwise pack only `/.webpack` and drop the OCR natives (`onnxruntime-node`, `sharp`, `@gutenye/*`). `scripts/packager-ignore.js` keeps those trees (and `koffi` / `sql.js`); `packagerConfig.prune` is **false** (galactus would skip nested `@img` binaries); `asar.unpackDir` unpacks them (`asarUnpack` is electron-builder-only — `@electron/packager` ignores it). `resources/ocr-models` is `extraResource`. Do not ignore the `node_modules` directory itself or packager never copies the packages. `@gutenye/ocr-node` is ESM: `import()` cannot load from inside `app.asar`, so it must be unpacked.
@@ -117,7 +117,7 @@ OCR in that zip must work on a machine with **no Node, no Python, no `npm instal
 | Gutenye | `…/app.asar.unpacked/node_modules/@gutenye/ocr-node/build/index.js` |
 | sharp | `…/app.asar.unpacked/node_modules/@img/sharp-darwin-<arch>/` |
 
-`onnxruntime-node` is pinned at **1.23.2** (last npm tarball with `darwin/x64`). Build each zip on matching hardware: the Accessibility `.node` is compiled for the host. CI (`macos-ocr-pack`) packages both `macos-15-intel` (x64) and `macos-latest` (arm64) and runs `scripts/verify-ocr-pack.js`. Packaged Electron never falls back to the user's Python.
+`onnxruntime-node` is pinned at **1.23.2** (last npm tarball with `darwin/x64`). Packaged Electron never falls back to the user's Python. DMGs are **unsigned** (Gatekeeper will warn until Developer ID + notarization).
 
 ```bash
 npx electron-forge package --platform darwin

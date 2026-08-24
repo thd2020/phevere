@@ -9,6 +9,7 @@
  */
 'use strict';
 
+const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { ROOT, OCR_MODEL_FILES, argvFlag, onnxBindingRel } = require('./ocr-pack-layout');
@@ -24,6 +25,26 @@ function fail(msg) {
 
 function exists(p) {
   return Boolean(p && fs.existsSync(p));
+}
+
+function walkFiles(dir, acc = []) {
+  if (!exists(dir)) return acc;
+  for (const name of fs.readdirSync(dir)) {
+    const p = path.join(dir, name);
+    const st = fs.statSync(p);
+    if (st.isDirectory()) walkFiles(p, acc);
+    else acc.push(p);
+  }
+  return acc;
+}
+
+function assertDarwinMachO(filePath, arch) {
+  const want = arch === 'arm64' ? 'arm64' : 'x86_64';
+  const r = spawnSync('file', ['-b', filePath], { encoding: 'utf8' });
+  const out = `${r.stdout || ''}`.trim();
+  if (!out.includes(want)) {
+    fail(`Wrong CPU in ${filePath}: ${out} (want ${want})`);
+  }
 }
 
 function findAppBundle(dir) {
@@ -73,7 +94,8 @@ function verifyDir(appRoot, platform, arch) {
     fail(`Packaged OCR models missing (${models}): ${missingModels.join(', ')}`);
   }
 
-  const unpacked = path.join(res, 'app.asar.unpacked', 'node_modules');
+  const unpackedRoot = path.join(res, 'app.asar.unpacked');
+  const unpacked = path.join(unpackedRoot, 'node_modules');
   const binding = path.join(unpacked, onnxBindingRel(platform, arch));
   if (!exists(binding)) {
     fail(
@@ -88,6 +110,12 @@ function verifyDir(appRoot, platform, arch) {
   const sharpPkg = path.join(unpacked, '@img', `sharp-${platform}-${arch}`, 'package.json');
   if (!exists(sharpPkg)) {
     fail(`Packaged sharp native missing: ${sharpPkg}`);
+  }
+
+  if (platform === 'darwin') {
+    const nodes = walkFiles(unpackedRoot).filter((p) => p.endsWith('.node'));
+    if (!nodes.length) fail(`No .node files under ${unpackedRoot} (AX / OCR / koffi)`);
+    for (const n of nodes) assertDarwinMachO(n, arch);
   }
 
   console.log(`[verify-ocr-pack] ok ${platform}/${arch}  ${appRoot}`);

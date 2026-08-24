@@ -1,6 +1,6 @@
 # Phevere Dictionary
 
-Select-to-lookup dictionary for Windows (Electron + Microsoft UI Automation), with a **draft macOS Accessibility backend** in source (not a shipped Mac build). Select text anywhere → popup with definitions, translation, etymology, Wikipedia, and a local vocabulary notebook.
+Select-to-lookup dictionary for Windows (Electron + Microsoft UI Automation) and macOS (Accessibility). Select text anywhere → popup with definitions, translation, etymology, Wikipedia, and a local vocabulary notebook.
 
 Publisher: **[thd2020](https://github.com/thd2020)**.
 
@@ -31,6 +31,10 @@ Set-ExecutionPolicy -Scope Process Bypass
 ```
 
 Then run the latest Setup.exe. New installs register a proper uninstaller (`Uninstall Phevere.exe`) and an Apps & Features entry (publisher **thd2020**).
+
+## Download (macOS)
+
+Unsigned **DMGs** (`Phevere-<version>-darwin-x64.dmg` for Intel, `…-darwin-arm64.dmg` for Apple Silicon) are on the same [GitHub Releases](https://github.com/thd2020/phevere/releases) page. Open the disk image, drag **Phevere** to Applications. macOS Gatekeeper will warn until the app is signed and notarized. Right-click → Open the first time, or allow it under Privacy & Security. Enable **Accessibility** when asked (tray → Open Accessibility Settings).
 
 ## Features
 

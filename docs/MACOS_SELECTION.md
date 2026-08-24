@@ -2,7 +2,7 @@
 
 Windows Phevere uses UI Automation. On macOS the matching producer is the **Accessibility (AX)** API plus a listen-only **CGEvent tap**. Lookup, popup, and `ContextEvent` are unchanged: the native layer still emits `{ text, x, y }` into `MacOSNativeSelectionService`.
 
-There is **no** shipped Mac installer yet. This is source you can compile on a Mac.
+There is **no notarized Mac installer**. Unsigned per-arch DMGs can be attached to a GitHub Release (see [`PACKAGING.md`](../PACKAGING.md)).
 
 Conversation + constraints for a Mac-side agent: [`AGENT_HANDOFF_MAC.md`](AGENT_HANDOFF_MAC.md).
 
@@ -55,7 +55,7 @@ Disable the typing/gesture gate (noisy): `PHEVERE_DISABLE_INPUT_GATE=1`.
 
 ## Not in this draft
 
-- Mac `.dmg` / notarization / hardened runtime entitlements (`NSAccessibilityUsageDescription` when packaging)
+- Mac `.dmg` / notarization / hardened runtime entitlements (`NSAccessibilityUsageDescription` when packaging). Unsigned DMGs can still be built with `npm run make:mac:x64` / `make:mac:arm64`.
 - Click-away cancelling a pending popup (same latch-on-mouse-up model as Windows)
 - Linux AT-SPI
 - `MPNowPlayingInfoCenter` (still open on the OCR/media plan)

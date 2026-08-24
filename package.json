@@ -22,9 +22,9 @@
     "test": "node test-integration.js",
     "test-new-popup": "electron-forge start -- --test-new-popup",
     "sync-ocr-models": "node scripts/sync-ocr-models.js",
-    "make:mac": "node scripts/ensure-ocr-natives.js && electron-forge make --platform darwin",
-    "make:mac:x64": "node scripts/ensure-ocr-natives.js --platform darwin --arch x64 && electron-forge make --platform darwin --arch x64",
-    "make:mac:arm64": "node scripts/ensure-ocr-natives.js --platform darwin --arch arm64 && electron-forge make --platform darwin --arch arm64",
+    "make:mac": "node scripts/ensure-ocr-natives.js && electron-forge make --platform darwin && node scripts/make-mac-dmg.js --dir out/phevere-darwin-$(node -p process.arch)",
+    "make:mac:x64": "node scripts/ensure-ocr-natives.js --platform darwin --arch x64 && electron-forge make --platform darwin --arch x64 && node scripts/make-mac-dmg.js --dir out/phevere-darwin-x64 --arch x64",
+    "make:mac:arm64": "node scripts/ensure-ocr-natives.js --platform darwin --arch arm64 && electron-forge make --platform darwin --arch arm64 && node scripts/make-mac-dmg.js --dir out/phevere-darwin-arm64 --arch arm64",
     "verify:ocr-pack": "node scripts/verify-ocr-pack.js"
   },
   "keywords": [
@@ -51,6 +51,7 @@
     "@electron-addons/electron-forge-maker-nsis": "^7.0.2",
     "@electron-forge/cli": "^7.2.0",
     "@electron-forge/maker-deb": "^7.2.0",
+    "@electron-forge/maker-dmg": "^7.11.2",
     "@electron-forge/maker-rpm": "^7.2.0",
     "@electron-forge/maker-wix": "^7.11.1",
     "@electron-forge/maker-zip": "^7.2.0",

@@ -119,7 +119,7 @@ Solves Spotify-class apps with clean strings and no OCR.
 | Concern | Approach |
 |---------|----------|
 | Installer size | ~30–40 MB for small ONNX pair; medium optional download |
-| Arch | Ship `onnxruntime-node` **1.23.2** per OS/arch (x64 + arm64). 1.24+ dropped Intel Mac (`darwin/x64`) prebuilds. Package each Mac zip on matching hardware (AX `.node` is host-arch). |
+| Arch | Ship `onnxruntime-node` **1.23.2** per OS/arch (x64 + arm64). 1.24+ dropped Intel Mac (`darwin/x64`) prebuilds. Darwin AX addon is compiled for the package arch (`node-gyp --arch`, including Intel → arm64). |
 | Wayland | Capture via portals; expect more friction than X11/Win |
 | Privacy | Local-only by default; AI enrichment is a later opt-in |
 

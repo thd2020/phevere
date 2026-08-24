@@ -3,7 +3,7 @@
 **Audience:** another Cursor agent on a **different Mac** (Intel).  
 **Source chat:** phevere on Windows (`C:\Users\8114\projects\phevere`), 2026-08-06 → 2026-08-20.  
 **Write date:** 2026-08-20.  
-**Checkout:** `origin/main`. Shipped Windows installer is **1.4.1**. Mac AX is still source-only (no dmg).
+**Checkout:** `origin/main`. Shipped Windows installer is **1.4.1**. Unsigned Mac DMGs can be built with `npm run make:mac:x64` / `make:mac:arm64` (not notarized).
 
 Companion (API/build only): [`MACOS_SELECTION.md`](MACOS_SELECTION.md). This file is the **conversation + constraints**. Do not re-litigate shipped Windows UI unless the user asks.
 
@@ -13,7 +13,7 @@ Companion (API/build only): [`MACOS_SELECTION.md`](MACOS_SELECTION.md). This fil
 
 Phevere is an Electron select-to-lookup dictionary. Windows is production (UIA native addon + NSIS Setup). The last user turn on Windows was: **draft the macOS selection backend**. That code is on `main` and has **never been compiled or run on a Mac**.
 
-Your job is to **build, grant Accessibility, and make drag-select open the same toolstrip/popup**. Do not start a `.dmg`, notarization, or version bump unless the user asks.
+Your job is to **build, grant Accessibility, and make drag-select open the same toolstrip/popup**. Do not start notarization or a version bump unless the user asks. Unsigned DMGs: `PACKAGING.md`.
 
 ```bash
 git clone https://github.com/thd2020/phevere.git

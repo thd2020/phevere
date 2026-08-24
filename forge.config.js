@@ -8,6 +8,7 @@ const { WebpackPlugin } = require('@electron-forge/plugin-webpack');
 const { packagerIgnore } = require('./scripts/packager-ignore');
 const { ensure: ensureOcrNatives } = require('./scripts/ensure-ocr-natives');
 const { verifyDir } = require('./scripts/verify-ocr-pack');
+const { rebuildDarwinAx } = require('./scripts/rebuild-native-arch');
 const { mainConfig } = require('./webpack.main.config.js');
 const { rendererConfig } = require('./webpack.renderer.config.js');
 
@@ -62,12 +63,13 @@ module.exports = {
   ],
   hooks: {
     prePackage: async (_config, platform, arch) => {
-      // Accessibility .node is compiled for this host. OCR prebuilds can be
-      // fetched cross-arch, but a mixed zip would still fail to load AX.
-      if (platform && arch && platform === process.platform && arch !== process.arch) {
+      // Darwin: cross-compile AX for the zip's arch (Intel host can emit arm64).
+      // Other OS: still refuse a mismatched Electron/addon pair.
+      if (platform === 'darwin' && arch) {
+        rebuildDarwinAx(arch);
+      } else if (platform && arch && platform === process.platform && arch !== process.arch) {
         throw new Error(
-          `Refusing to package ${platform}/${arch} on ${process.platform}/${process.arch}. ` +
-            'Build the Mac zip on matching hardware (CI: macos-latest = arm64, macos-15-intel = x64).'
+          `Refusing to package ${platform}/${arch} on ${process.platform}/${process.arch}.`
         );
       }
       ensureOcrNatives({ platform, arch });

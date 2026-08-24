@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Draft **macOS** selection backend (Accessibility + CGEvent tap) on the same `{ text, x, y }` path as Windows UIA. Compile on a Mac (`npm run build-native`). Untrusted Accessibility opens a one-click **Open Accessibility Settings** dialog (and a tray item); lookup starts when the toggle is on. See [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md). No Mac installer yet.
+- Draft **macOS** selection backend (Accessibility + CGEvent tap) on the same `{ text, x, y }` path as Windows UIA. Compile on a Mac (`npm run build-native`). Untrusted Accessibility opens a one-click **Open Accessibility Settings** dialog (and a tray item); lookup starts when the toggle is on. See [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md). Unsigned Intel + Apple Silicon DMGs can be attached to the GitHub Release (Gatekeeper still warns).
 - Lexicon **Phrases** row in Word family: multi-word derived terms (idioms, collocations) sit apart from single-word derivatives, with phrase/idiom banners instead of fake POS tags.
 
 ### Fixed
@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Notes for users
 
 - **Windows x64** — `Phevere-Setup-1.4.1-x64.exe` from [GitHub Releases](https://github.com/thd2020/phevere/releases/tag/v1.4.1) (Actions). SHA-256 `7BFD4DE8…50310A`. Still unsigned; SmartScreen may warn. Signing options: [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
+- **macOS** — unsigned `Phevere-1.4.1-darwin-x64.dmg` (Intel, SHA-256 `79E4B422…CFA5A2E`) and `Phevere-1.4.1-darwin-arm64.dmg` (Apple Silicon, SHA-256 `5BCFF602…77885E`) on the same release. Drag Phevere into Applications. Gatekeeper will warn (not notarized).
 - Run elevated when you need UIAutomation across elevated / protected apps.
 
 ## [1.4.0] - 2026-08-19

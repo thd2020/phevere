@@ -39,7 +39,7 @@ If `github.com` times out while packaging, `make:win` already uses npmmirror. Gh
 Get-FileHash -Algorithm SHA256 "out\make\nsis\x64\Phevere-Setup-*-x64.exe"
 ```
 
-Prefer **not** to `gh release create` locally for the same tag — the workflow owns the release assets (GitHub immutable releases). Edit notes in the GitHub UI after the workflow finishes if needed.
+Prefer **not** to `gh release create` locally for the same tag — the workflow owns the Windows Setup asset (GitHub immutable releases). Extra Mac DMGs may be uploaded onto that tag with `gh release upload` after a local `npm run make:mac:*`.
 
 ## Notes template (if you write notes by hand)
 

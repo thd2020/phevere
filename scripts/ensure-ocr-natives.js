@@ -44,7 +44,11 @@ function onnxOk(platform, arch) {
 }
 
 function npmInstall(pkgs, platform, arch) {
-  const args = ['install', '--no-save', '--os', platform, '--cpu', arch, ...pkgs];
+  const args = ['install', '--no-save', '--os', platform, '--cpu', arch];
+  if (platform !== process.platform || arch !== process.arch) {
+    args.push('--force');
+  }
+  args.push(...pkgs);
   console.log('[ensure-ocr-natives] npm', args.join(' '));
   const r = spawnSync('npm', args, {
     cwd: ROOT,
