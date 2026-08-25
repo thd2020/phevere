@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Notes for users
 
 - **Windows x64** — `Phevere-Setup-1.4.1-x64.exe` from [GitHub Releases](https://github.com/thd2020/phevere/releases/tag/v1.4.1) (Actions). SHA-256 `7BFD4DE8…50310A`. Still unsigned; SmartScreen may warn. Signing options: [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
-- **macOS** — unsigned `Phevere-1.4.1-darwin-x64.dmg` (Intel, SHA-256 `40E658CC…8305F36`) and `Phevere-1.4.1-darwin-arm64.dmg` (Apple Silicon, SHA-256 `7B4B2682…314967F`) on the same release (rebuilt 2026-08-25: custom Dock icon; menu-bar **P** context menu is right-click only). Drag Phevere into Applications. Gatekeeper will warn (not notarized).
+- **macOS** — unsigned `Phevere-1.4.1-darwin-x64.dmg` (Intel, SHA-256 `B7AB0F50…B56D585`) and `Phevere-1.4.1-darwin-arm64.dmg` (Apple Silicon, SHA-256 `94405049…2AFD3B8`) on the same release (rebuilt 2026-08-25: custom Dock icon; menu-bar **P** right-click menu; shortcut mode holds the trigger). Drag Phevere into Applications. Gatekeeper will warn (not notarized).
 - Run elevated when you need UIAutomation across elevated / protected apps.
 
 ## [1.4.0] - 2026-08-19
