@@ -81,6 +81,7 @@ async function main() {
     icoWritten = true;
   }
   console.log('Wrote packaging/icon.ico + icon.png + resources/tray-icon.png');
+  await writeMacIcns(sharp, png1024, path.join(outDir, 'icon.icns'));
 
   // MUI welcome pane is 164×314 / header 150×57 *dialog units*. Per-Monitor v2
   // enlarges those controls; stretching a 1× BMP looks pixelated on Win11 125–200%.
@@ -240,6 +241,40 @@ function buildPngIco(pngBuffers, sizes) {
     e.buf.copy(out, e.offset);
   }
   return out;
+}
+
+/** Dock / .app icon. `iconutil` is darwin-only; Windows `prepare:installer` leaves the committed icns. */
+async function writeMacIcns(sharp, png1024, destIcns) {
+  if (process.platform !== 'darwin') {
+    console.log('Skip icon.icns (not darwin; using committed packaging/icon.icns)');
+    return;
+  }
+  const setDir = path.join(path.dirname(destIcns), 'icon.iconset');
+  fs.rmSync(setDir, { recursive: true, force: true });
+  fs.mkdirSync(setDir, { recursive: true });
+  const files = [
+    [16, 'icon_16x16.png'],
+    [32, 'icon_16x16@2x.png'],
+    [32, 'icon_32x32.png'],
+    [64, 'icon_32x32@2x.png'],
+    [128, 'icon_128x128.png'],
+    [256, 'icon_128x128@2x.png'],
+    [256, 'icon_256x256.png'],
+    [512, 'icon_256x256@2x.png'],
+    [512, 'icon_512x512.png'],
+    [1024, 'icon_512x512@2x.png'],
+  ];
+  for (const [px, name] of files) {
+    await sharp(png1024).resize(px, px).png().toFile(path.join(setDir, name));
+  }
+  try {
+    execFileSync('iconutil', ['-c', 'icns', setDir], { stdio: 'inherit' });
+    console.log('Wrote', destIcns);
+  } catch (e) {
+    console.warn('iconutil failed; keeping existing icon.icns if present', e.message);
+  } finally {
+    fs.rmSync(setDir, { recursive: true, force: true });
+  }
 }
 
 function zipDirectory(srcDir, destZip, rootFolderName) {

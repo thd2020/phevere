@@ -64,7 +64,7 @@ If files remain but Apps has no entry (“ghost” install — often from aborte
 
 `npm run prepare:installer` refreshes:
 
-- `packaging/icon.ico` + `icon.png`
+- `packaging/icon.ico` + `icon.png` + `icon.icns` (macOS Dock / `.app`; `iconutil` on darwin)
 - `packaging/installerSidebar.bmp` / `installerHeader.bmp`
 - `resources/tray-icon.png`
 

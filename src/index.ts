@@ -445,17 +445,36 @@ function resolveTrayIconPath(): string {
 }
 
 function resolveAppIconPath(): string | null {
+  const darwinPackaged = [
+    path.join(process.resourcesPath, `${app.getName()}.icns`),
+    path.join(process.resourcesPath, 'phevere.icns'),
+    path.join(process.resourcesPath, 'Phevere.icns'),
+    path.join(process.resourcesPath, 'icon.icns'),
+    path.join(process.resourcesPath, 'icon.png'),
+    path.join(process.resourcesPath, 'tray-icon.png'),
+  ];
+  const darwinDev = [
+    path.join(process.cwd(), 'packaging', 'icon.icns'),
+    path.join(process.cwd(), 'packaging', 'icon.png'),
+    path.join(process.cwd(), 'resources', 'tray-icon.png'),
+  ];
+  const otherPackaged = [
+    path.join(process.resourcesPath, 'icon.ico'),
+    path.join(process.resourcesPath, 'tray-icon.png'),
+    path.join(path.dirname(process.execPath), 'icon.ico'),
+  ];
+  const otherDev = [
+    path.join(process.cwd(), 'packaging', 'icon.ico'),
+    path.join(process.cwd(), 'packaging', 'icon.png'),
+    path.join(process.cwd(), 'resources', 'tray-icon.png'),
+  ];
   const candidates = app.isPackaged
-    ? [
-        path.join(process.resourcesPath, 'icon.ico'),
-        path.join(process.resourcesPath, 'tray-icon.png'),
-        path.join(path.dirname(process.execPath), 'icon.ico'),
-      ]
-    : [
-        path.join(process.cwd(), 'packaging', 'icon.ico'),
-        path.join(process.cwd(), 'packaging', 'icon.png'),
-        path.join(process.cwd(), 'resources', 'tray-icon.png'),
-      ];
+    ? process.platform === 'darwin'
+      ? darwinPackaged
+      : otherPackaged
+    : process.platform === 'darwin'
+      ? darwinDev
+      : otherDev;
   for (const p of candidates) {
     try {
       if (p && fs.existsSync(p)) return p;
@@ -468,6 +487,22 @@ function resolveAppIconPath(): string | null {
 
 function getTrayIconPath(): string {
   return resolveTrayIconPath();
+}
+
+/** macOS Dock ignores BrowserWindow `icon`; set it after ready. */
+function applyDockIcon(): void {
+  if (process.platform !== 'darwin') return;
+  try {
+    if (!app.dock) return;
+    const p = resolveAppIconPath();
+    if (!p) return;
+    const img = nativeImage.createFromPath(p);
+    if (!img.isEmpty()) {
+      app.dock.setIcon(img);
+    }
+  } catch (e) {
+    log.warn('main', 'dock.setIcon failed', { err: String(e) });
+  }
 }
 
 /** Taskbar / window chrome — prefer .ico in packaged builds. */
@@ -744,9 +779,10 @@ if (!app.isPackaged) {
 }
 
 function updateTrayContextMenu(): void {
-  if (tray && !tray.isDestroyed()) {
-    tray.setContextMenu(buildTrayContextMenu());
-  }
+  if (!tray || tray.isDestroyed()) return;
+  // macOS: setContextMenu makes a left-click open the menu. We pop up on right-click.
+  if (process.platform === 'darwin') return;
+  tray.setContextMenu(buildTrayContextMenu());
 }
 
 /** 1×1 PNG fallback so Tray never receives an empty image on Windows. */
@@ -784,10 +820,32 @@ function createTray(): void {
   }
   tray = new Tray(image);
   tray.setToolTip('Phevere — dictionary & selection');
-  tray.setContextMenu(buildTrayContextMenu());
-  tray.on('click', () => {
-    showOrRestoreMainWindow();
-  });
+  if (process.platform === 'darwin') {
+    try {
+      tray.setIgnoreDoubleClickEvents(true);
+    } catch {
+      /* older Electron */
+    }
+    // Left-click: main window only. Right-click: context menu.
+    // Some Electron builds also emit `click` after `right-click`.
+    let ignoreNextClick = false;
+    tray.on('right-click', () => {
+      ignoreNextClick = true;
+      tray?.popUpContextMenu(buildTrayContextMenu());
+      setTimeout(() => {
+        ignoreNextClick = false;
+      }, 400);
+    });
+    tray.on('click', () => {
+      if (ignoreNextClick) return;
+      showOrRestoreMainWindow();
+    });
+  } else {
+    tray.setContextMenu(buildTrayContextMenu());
+    tray.on('click', () => {
+      showOrRestoreMainWindow();
+    });
+  }
 }
 
 // Open custom wiki window in standalone web window (not inside dictionary popup)
@@ -2565,6 +2623,7 @@ app.on('ready', () => {
     app.setAppUserModelId('com.phevere.app');
     nativeTheme.themeSource = 'light';
   }
+  applyDockIcon();
   log.info('main', 'App ready');
   monitorSettings = loadMonitorSettings();
   createMainWindow();

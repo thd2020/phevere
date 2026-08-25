@@ -25,7 +25,7 @@ module.exports = {
     // uses galactus on package roots and can drop nested @img / optional natives.
     prune: false,
     ignore: packagerIgnore,
-    // Prefer packaging/icon.ico so the packaged .exe / taskbar use Phevere art (not Electron default).
+    // Win: packaging/icon.ico. Mac: packaging/icon.icns (without it the .app keeps electron.icns).
     icon: './packaging/icon',
     extraResource: [
       'resources/tray-icon.png',
@@ -38,6 +38,8 @@ module.exports = {
       // PP-OCR ONNX models — bundled in the single Setup.exe; NSIS can skip installing to disk.
       'resources/ocr-models',
       'packaging/icon.ico',
+      // Darwin only: Dock / extraResource PNG+icns. Skip on Windows so NSIS payload stays unchanged.
+      ...(process.platform === 'darwin' ? ['packaging/icon.png', 'packaging/icon.icns'] : []),
     ],
     // Avoid github.com timeouts when re-fetching Electron (npmmirror). Override via ELECTRON_MIRROR.
     download: {

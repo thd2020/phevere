@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- macOS Dock used the default Electron atom: packager needs `packaging/icon.icns`, and `npm start` now calls `app.dock.setIcon` (BrowserWindow `icon` does not set the Dock).
+- macOS menu-bar **P**: left-click only shows the main window. The context menu is right-click only (`setContextMenu` on darwin was also opening it on left-click).
 - macOS lookup when `AXSelectedText` is empty (Chrome, Cursor, Safari, …): after a drag or double-click, try Accessibility (including Chromium text-markers after `AXManualAccessibility`), then browser AppleScript `getSelection()`, then silent Cmd+C with clipboard restore. Password fields are skipped.
 - Embedded OCR failed to start on macOS: `@gutenye/ocr-node` is ESM, so webpack `require()` threw; load it with dynamic `import()` of the real `node_modules` file (webpack’s `require.resolve` of the external was the bare package name). Python fallback looks for `python3`, not only `python`. Pin `onnxruntime-node` to 1.23.2 so Intel Macs still get a `darwin/x64` native binary (1.24+ ships arm64 only).
 - Hover lookup used a whole OCR line instead of the word under the cursor: Gutenye returns a `box` polygon (not `frame`), so line bounds were dropped. Map those boxes and pick the Latin word / CJK character at the pointer.

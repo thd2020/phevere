@@ -191,3 +191,6 @@ WORKLOG.md
 packaging/optional/*.zip
 packaging/optional/_ocr_stage/
 
+# Temp iconutil input; commit packaging/icon.icns instead
+packaging/icon.iconset/
+
