@@ -19,6 +19,10 @@ Conversation + constraints for a Mac-side agent: [`AGENT_HANDOFF_MAC.md`](AGENT_
 
 Chrome, VS Code, Cursor, and other Chromium apps often expose no `AXSelectedText`. After a drag or double-click Phevere tries, in order: Accessibility (including Chromium text-markers after `AXManualAccessibility`), AppleScript `window.getSelection()` in Safari/Chrome-family (needs **Automation** plus the browser’s **Allow JavaScript from Apple Events**), then a silent Cmd+C with clipboard restore. Password fields are skipped. A plain click still does not copy.
 
+## Shortcut monitor mode
+
+Same as Windows: native capture still runs, but the lookup opens only if you **hold the popup trigger** while selecting (default **⌘⌥⇧Y**), or select first and then press the trigger. macOS uses `CGEventSourceKeyState` for the hold check (`src/services/accelerator-key-state.ts`). Until that existed, shortcut mode on Mac behaved like **On**.
+
 ## Build on a Mac
 
 Xcode Command Line Tools, Node 18+.

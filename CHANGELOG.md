@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- macOS shortcut monitor mode opened a lookup on every selection: `isAcceleratorPhysicallyHeld` always returned true off Windows. It now uses `CGEventSourceKeyState` (same hold-while-select / select-then-trigger as Windows). `CommandOrControl` is Command on Mac.
 - macOS Dock used the default Electron atom: packager needs `packaging/icon.icns`, and `npm start` now calls `app.dock.setIcon` (BrowserWindow `icon` does not set the Dock).
 - macOS menu-bar **P**: left-click only shows the main window. The context menu is right-click only (`setContextMenu` on darwin was also opening it on left-click).
 - macOS lookup when `AXSelectedText` is empty (Chrome, Cursor, Safari, …): after a drag or double-click, try Accessibility (including Chromium text-markers after `AXManualAccessibility`), then browser AppleScript `getSelection()`, then silent Cmd+C with clipboard restore. Password fields are skipped.
