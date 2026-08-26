@@ -75,10 +75,6 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      # windows-11-arm ships npm 11, which rejects a lockfile generated on
-      # Windows x64 that omits darwin-only maker-dmg. Match the x64 job (npm 10).
-      - name: Use npm 10 (same lockfile as windows-latest)
-        run: npm install -g npm@10.9.2
       - name: Install (includes native addon)
         run: npm ci
       - name: Make NSIS Setup (arm64)
