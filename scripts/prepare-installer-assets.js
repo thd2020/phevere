@@ -34,7 +34,26 @@ const ICON_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 </svg>`;
 
 async function main() {
-  const sharp = require('sharp');
+  let sharp;
+  try {
+    sharp = require('sharp');
+  } catch (e) {
+    const required = [
+      path.join(outDir, 'icon.ico'),
+      path.join(outDir, 'installerSidebar.bmp'),
+      path.join(outDir, 'installerHeader.bmp'),
+    ];
+    const missing = required.filter((p) => !fs.existsSync(p));
+    if (missing.length) {
+      console.error(
+        '[prepare-installer] sharp unavailable and assets missing:\n  ' + missing.join('\n  '),
+      );
+      process.exit(1);
+    }
+    const why = String((e && e.message) || e).split('\n')[0];
+    console.warn(`[prepare-installer] ${why}; using committed packaging/ assets (no native sharp on this arch)`);
+    return;
+  }
   fs.mkdirSync(outDir, { recursive: true });
   fs.mkdirSync(path.join(outDir, 'optional'), { recursive: true });
 
