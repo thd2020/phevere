@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Compile the macOS Accessibility addon for a target arch (including
- * cross-compile on Intel → arm64). Windows UIA is unchanged.
+ * Compile the native selection addon for a target arch (macOS AX, including
+ * Intel → arm64; Windows UIA, including x64 → arm64 when VS ARM64 tools exist).
  *
  * Usage: node scripts/rebuild-native-arch.js [--arch arm64]
  */
@@ -58,8 +58,41 @@ function rebuildDarwinAx(arch) {
   assertAxArch(arch);
 }
 
-if (require.main === module) {
-  rebuildDarwinAx(argvFlag('--arch') || process.arch);
+function rebuildWinUia(arch) {
+  if (process.platform !== 'win32') {
+    console.log('[rebuild-native] skip (not win32)');
+    return;
+  }
+  if (!arch) fail('arch required');
+  if (arch === process.arch) {
+    const binding = path.join(ADDON, 'build', 'Release', 'uiautomation_selection_monitor.node');
+    if (fs.existsSync(binding)) {
+      console.log(`[rebuild-native] UIA already built for ${arch}`);
+      return binding;
+    }
+  }
+  console.log(`[rebuild-native] node-gyp rebuild --arch ${arch}`);
+  const r = spawnSync('npx', ['node-gyp', 'rebuild', '--arch', arch], {
+    cwd: ADDON,
+    stdio: 'inherit',
+    shell: true,
+    env: {
+      ...process.env,
+      npm_config_arch: arch,
+      npm_config_target_arch: arch,
+    },
+  });
+  if (r.status !== 0) fail(`node-gyp rebuild --arch ${arch} failed`);
+  const binding = path.join(ADDON, 'build', 'Release', 'uiautomation_selection_monitor.node');
+  if (!fs.existsSync(binding)) fail(`Missing ${binding}`);
+  return binding;
 }
 
-module.exports = { rebuildDarwinAx, assertAxArch, machOToken };
+if (require.main === module) {
+  const arch = argvFlag('--arch') || process.arch;
+  if (process.platform === 'darwin') rebuildDarwinAx(arch);
+  else if (process.platform === 'win32') rebuildWinUia(arch);
+  else fail(`no native rebuild for ${process.platform}`);
+}
+
+module.exports = { rebuildDarwinAx, rebuildWinUia, assertAxArch, machOToken };

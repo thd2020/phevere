@@ -2,7 +2,7 @@
  * Windows NSIS make with mirrors that avoid github.com timeouts
  * (common on some CN networks — github.com often resolves to slow/blocked edges).
  *
- * Usage: node scripts/make-win.js
+ * Usage: node scripts/make-win.js [--arch arm64]
  */
 const { spawnSync } = require('child_process');
 const path = require('path');
@@ -64,4 +64,11 @@ function run(cmd, args) {
 }
 
 run('npm', ['run', 'prepare:installer']);
-run('npx', ['electron-forge', 'make', '--platform=win32']);
+const archArg = process.argv.find((a) => a === '--arch')
+  ? process.argv[process.argv.indexOf('--arch') + 1]
+  : (process.argv.find((a) => a.startsWith('--arch=')) || '').split('=')[1];
+const arch = archArg || process.arch;
+process.env.PHEVERE_PACK_ARCH = arch;
+process.env.PHEVERE_PACK_PLATFORM = 'win32';
+console.log('[make-win] arch=', arch);
+run('npx', ['electron-forge', 'make', '--platform=win32', `--arch=${arch}`]);

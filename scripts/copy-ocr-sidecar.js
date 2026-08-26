@@ -8,6 +8,7 @@ const root = path.join(__dirname, '..');
 const zip = path.join(root, 'packaging', 'optional', 'Phevere-OCR-Models.zip');
 const outRoots = [
   path.join(root, 'out', 'make', 'nsis', 'x64'),
+  path.join(root, 'out', 'make', 'nsis', 'arm64'),
   path.join(root, 'out', 'make', 'nsis'),
 ];
 

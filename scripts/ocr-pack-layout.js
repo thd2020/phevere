@@ -28,7 +28,8 @@ const SHARP_PLATFORM = {
   'darwin/x64': { pkg: '@img/sharp-darwin-x64', ver: '0.33.5', vips: '@img/sharp-libvips-darwin-x64', vipsVer: '1.0.4' },
   'darwin/arm64': { pkg: '@img/sharp-darwin-arm64', ver: '0.33.5', vips: '@img/sharp-libvips-darwin-arm64', vipsVer: '1.0.4' },
   'win32/x64': { pkg: '@img/sharp-win32-x64', ver: '0.33.5' },
-  'win32/arm64': { pkg: '@img/sharp-win32-arm64', ver: '0.33.5' },
+  // sharp 0.33.5 has no @img/sharp-win32-arm64 (that landed in 0.34). Use wasm.
+  'win32/arm64': { pkg: '@img/sharp-wasm32', ver: '0.33.5', wasm: true },
 };
 
 function argvFlag(name) {
@@ -40,8 +41,9 @@ function argvFlag(name) {
 }
 
 function targetPlatformArch() {
-  const platform = argvFlag('--platform') || process.platform;
-  const arch = argvFlag('--arch') || process.arch;
+  const platform =
+    process.env.PHEVERE_PACK_PLATFORM || argvFlag('--platform') || process.platform;
+  const arch = process.env.PHEVERE_PACK_ARCH || argvFlag('--arch') || process.arch;
   return { platform, arch };
 }
 

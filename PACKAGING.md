@@ -8,11 +8,13 @@ We use **electron-builder NSIS** via `@electron-addons/electron-forge-maker-nsis
 npm run build-native
 npm run make:win
 # Artifact: out/make/nsis/x64/Phevere-Setup-*-x64.exe
+# ARM64 (Windows 11 ARM host, or `npm run make:win:arm64` if VS ARM64 tools exist):
+# Artifact: out/make/nsis/arm64/Phevere-Setup-*-arm64.exe
 ```
 
 `make:win` (`scripts/make-win.js`) sets **npmmirror** Electron / electron-builder-binaries mirrors by default so packaging does not hang on `github.com` (`ETIMEDOUT`). Override with `ELECTRON_MIRROR` / `ELECTRON_BUILDER_BINARIES_MIRROR` if needed.
 
-GitHub Actions: `ci.yml` on PR/`main`; tag `v*.*.*` runs `release.yml` (NSIS + GitHub Release + attestation). Optional `CSC_LINK` secret. See `docs/RELEASE.md`. `make:win` drops blank `CSC_LINK` / `WIN_CSC_LINK` (Actions injects `""` when the secret is unset) so unsigned CI builds do not fail signing.
+GitHub Actions: `ci.yml` on PR/`main`; tag `v*.*.*` runs `release.yml` (NSIS x64 on `windows-latest` + NSIS arm64 on `windows-11-arm` + GitHub Release + attestation). Optional `CSC_LINK` secret. See `docs/RELEASE.md`. `make:win` drops blank `CSC_LINK` / `WIN_CSC_LINK` (Actions injects `""` when the secret is unset) so unsigned CI builds do not fail signing. To add ARM64 to an **existing** tag without replacing x64: Actions → release → Run workflow → `attach_tag`.
 
 | | |
 |---|---|

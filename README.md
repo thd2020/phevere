@@ -6,7 +6,7 @@ Publisher: **[thd2020](https://github.com/thd2020)**.
 
 ## Download (Windows)
 
-Prebuilt **NSIS Setup** (`Phevere-Setup-<version>-x64.exe`) is on [GitHub Releases](https://github.com/thd2020/phevere/releases). No Node.js required for end users.
+Prebuilt **NSIS Setup** (`Phevere-Setup-<version>-x64.exe` or `…-arm64.exe` on Snapdragon / Windows 11 ARM) is on [GitHub Releases](https://github.com/thd2020/phevere/releases). No Node.js required for end users.
 
 | | |
 |---|---|
@@ -72,11 +72,13 @@ npm run start-admin
 npm run build-native
 npm run make:win
 # → out\make\nsis\x64\Phevere-Setup-*-x64.exe
+# ARM64 host (or `npm run make:win:arm64` with VS ARM64 tools):
+# → out\make\nsis\arm64\Phevere-Setup-*-arm64.exe
 ```
 
 `make:win` uses npmmirror Electron mirrors by default (avoids `github.com` `ETIMEDOUT` on some networks). `npm install` uses `.npmrc` `electron_mirror` plus `scripts/ensure-electron.js` (curl) for the runtime. `npm start` re-runs that extract if `path.txt` is missing after a cancelled install. If Electron’s postinstall still hangs: `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`.
 
-CI: `.github/workflows/ci.yml` on every PR and `main` (Windows package; macOS OCR native pack on Intel and Apple Silicon). CD: push an annotated tag `v*.*.*` → `.github/workflows/release.yml` makes Setup.exe, creates the GitHub Release, and attests it (unsigned unless `CSC_LINK` is set). See [`docs/RELEASE.md`](docs/RELEASE.md).
+CI: `.github/workflows/ci.yml` on every PR and `main` (Windows package; macOS OCR native pack on Intel and Apple Silicon). CD: push an annotated tag `v*.*.*` → `.github/workflows/release.yml` makes x64 and ARM64 Setup.exe, creates the GitHub Release, and attests them (unsigned unless `CSC_LINK` is set). See [`docs/RELEASE.md`](docs/RELEASE.md).
 
 ### Tray Quit vs terminal (dev only)
 

@@ -43,10 +43,16 @@ function onnxOk(platform, arch) {
   }
 }
 
-function npmInstall(pkgs, platform, arch) {
-  const args = ['install', '--no-save', '--os', platform, '--cpu', arch];
-  if (platform !== process.platform || arch !== process.arch) {
+function npmInstall(pkgs, platform, arch, opts) {
+  const args = ['install', '--no-save'];
+  if (opts && opts.wasm) {
+    // wasm32 is not win32/arm64; --os/--cpu would skip the tarball.
     args.push('--force');
+  } else {
+    args.push('--os', platform, '--cpu', arch);
+    if (platform !== process.platform || arch !== process.arch) {
+      args.push('--force');
+    }
   }
   args.push(...pkgs);
   console.log('[ensure-ocr-natives] npm', args.join(' '));
@@ -69,7 +75,7 @@ function sharpOk(platform, arch) {
   if (!fs.existsSync(path.join(dir, 'package.json'))) {
     const pkgs = [`${spec.pkg}@${spec.ver}`];
     if (spec.vips) pkgs.push(`${spec.vips}@${spec.vipsVer}`);
-    npmInstall(pkgs, platform, arch);
+    npmInstall(pkgs, platform, arch, { wasm: Boolean(spec.wasm) });
   }
   if (!fs.existsSync(path.join(dir, 'package.json'))) {
     fail(`Still missing ${spec.pkg} after npm install (needed for packaged OCR on ${platform}/${arch})`);

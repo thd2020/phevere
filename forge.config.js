@@ -8,7 +8,7 @@ const { WebpackPlugin } = require('@electron-forge/plugin-webpack');
 const { packagerIgnore } = require('./scripts/packager-ignore');
 const { ensure: ensureOcrNatives } = require('./scripts/ensure-ocr-natives');
 const { verifyDir } = require('./scripts/verify-ocr-pack');
-const { rebuildDarwinAx } = require('./scripts/rebuild-native-arch');
+const { rebuildDarwinAx, rebuildWinUia } = require('./scripts/rebuild-native-arch');
 const { mainConfig } = require('./webpack.main.config.js');
 const { rendererConfig } = require('./webpack.renderer.config.js');
 
@@ -65,16 +65,21 @@ module.exports = {
   ],
   hooks: {
     prePackage: async (_config, platform, arch) => {
+      const packArch = Array.isArray(arch) ? arch[0] : arch;
+      if (platform) process.env.PHEVERE_PACK_PLATFORM = platform;
+      if (packArch) process.env.PHEVERE_PACK_ARCH = packArch;
       // Darwin: cross-compile AX for the zip's arch (Intel host can emit arm64).
-      // Other OS: still refuse a mismatched Electron/addon pair.
-      if (platform === 'darwin' && arch) {
-        rebuildDarwinAx(arch);
-      } else if (platform && arch && platform === process.platform && arch !== process.arch) {
+      // Windows: rebuild UIA when packaging a different arch (x64 host → arm64).
+      if (platform === 'darwin' && packArch) {
+        rebuildDarwinAx(packArch);
+      } else if (platform === 'win32' && packArch) {
+        rebuildWinUia(packArch);
+      } else if (platform && packArch && platform === process.platform && packArch !== process.arch) {
         throw new Error(
-          `Refusing to package ${platform}/${arch} on ${process.platform}/${process.arch}.`
+          `Refusing to package ${platform}/${packArch} on ${process.platform}/${process.arch}.`
         );
       }
-      ensureOcrNatives({ platform, arch });
+      ensureOcrNatives({ platform, arch: packArch });
     },
     postPackage: async (_config, pkg) => {
       const platform = pkg.platform;

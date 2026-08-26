@@ -108,8 +108,14 @@ function verifyDir(appRoot, platform, arch) {
   if (!exists(gutenye)) fail(`Packaged @gutenye/ocr-node missing: ${gutenye}`);
 
   const sharpPkg = path.join(unpacked, '@img', `sharp-${platform}-${arch}`, 'package.json');
-  if (!exists(sharpPkg)) {
-    fail(`Packaged sharp native missing: ${sharpPkg}`);
+  const sharpWasm = path.join(unpacked, '@img', 'sharp-wasm32', 'package.json');
+  const sharpOk =
+    exists(sharpPkg) || (platform === 'win32' && arch === 'arm64' && exists(sharpWasm));
+  if (!sharpOk) {
+    fail(
+      `Packaged sharp native missing: ${sharpPkg}` +
+        (platform === 'win32' && arch === 'arm64' ? ` (or wasm fallback ${sharpWasm})` : ''),
+    );
   }
 
   if (platform === 'darwin') {

@@ -122,6 +122,10 @@ function packagerIgnore(file) {
     }
 
     if (pkg.startsWith('@img/')) {
+      // sharp 0.33.5 has no win32-arm64 native; wasm32 is the OCR fallback.
+      if (pkg === '@img/sharp-wasm32' && platform === 'win32' && arch === 'arm64') {
+        return false;
+      }
       const meta = readJson(path.join(pkgDir(pkg), 'package.json'));
       const os = meta && Array.isArray(meta.os) ? meta.os : null;
       const cpu = meta && Array.isArray(meta.cpu) ? meta.cpu : null;

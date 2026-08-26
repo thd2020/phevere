@@ -37,9 +37,7 @@ extraResources:
     to: icon.ico
 win:
   target:
-    - target: nsis
-      arch:
-        - x64
+    - nsis
   icon: packaging/icon.ico
   artifactName: ${productName}-Setup-${version}-${arch}.${ext}
   publisherName: thd2020

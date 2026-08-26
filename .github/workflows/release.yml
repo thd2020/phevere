@@ -1,10 +1,18 @@
 # Unsigned NSIS Setup on v* tags. Optional CSC_LINK / CSC_KEY_PASSWORD repo secrets sign the exe.
+# workflow_dispatch: attach a Windows ARM64 Setup to an existing release without retagging.
 name: release
 
 on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      attach_tag:
+        description: 'Existing GitHub release tag to attach Windows ARM64 Setup (e.g. v1.4.1)'
+        required: true
+        default: 'v1.4.1'
+        type: string
 
 permissions:
   contents: read
@@ -48,6 +56,50 @@ jobs:
           files: ${{ steps.pkg.outputs.exe }}
           fail_on_unmatched_files: true
           generate_release_notes: true
+      - name: Attest Setup.exe
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: ${{ steps.pkg.outputs.exe }}
+
+  release-win-arm64:
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-11-arm
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install (includes native addon)
+        run: npm ci
+      - name: Make NSIS Setup (arm64)
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: npm run make:win
+      - name: Locate ARM64 Setup.exe
+        id: pkg
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Recurse -File "out\make" -Filter "Phevere-Setup-*-arm64.exe" |
+            Select-Object -First 1
+          if (-not $exe) { throw 'Phevere-Setup-*-arm64.exe not found under out\make' }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "exe=$($exe.FullName)"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "name=$($exe.Name)"
+          Write-Host "Found $($exe.FullName)"
+      - name: Upload GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
+          files: ${{ steps.pkg.outputs.exe }}
+          fail_on_unmatched_files: true
+          generate_release_notes: false
+          make_latest: false
       - name: Attest Setup.exe
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
