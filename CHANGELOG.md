@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Windows **ARM64** NSIS Setup (`Phevere-Setup-<version>-arm64.exe`) on the same GitHub Release as x64. Built on `windows-11-arm` (UIA addon compiled natively). OCR uses sharp’s wasm fallback — sharp 0.33.5 has no `@img/sharp-win32-arm64`. Attach to an existing tag with Actions **workflow_dispatch** (`attach_tag`); do not retag.
 
+### Changed
+
+- CI/dev bumps from Dependabot: Actions `checkout` / `setup-node` / `upload-artifact` v7, `action-gh-release` v3, `webpack-cli` 7, `ts-loader` 9.6, `maker-rpm` 7.11. TypeScript stays 5; `@typescript-eslint/eslint-plugin` stays 6 (PRs #7 and #9 closed — they need a matching parser / loader).
+
 ### Fixed
 
 - macOS shortcut monitor mode opened a lookup on every selection: `isAcceleratorPhysicallyHeld` always returned true off Windows. It now uses `CGEventSourceKeyState` (same hold-while-select / select-then-trigger as Windows). `CommandOrControl` is Command on Mac.

@@ -38,7 +38,7 @@ Debug: `PHEVERE_DEBUG_AX=1 npm start`
 |---|---|
 | Version | `package.json` is **1.4.1**. Do not bump unless the user asks. |
 | Windows tags | NSIS Setup from `release.yml` on `v*`. Never force-push `main`. Do not retag `v1.4.0` for Mac work. |
-| Dependabot | PRs **#1–#9** stay open (TypeScript 5→7 etc. break CI). Do not merge. |
+| Dependabot | **#1–#6 and #8** merged 2026-08-26. **#7** (TypeScript 7) and **#9** (eslint-plugin 8) stay closed until parser + ts-loader move with them. |
 | Signing | Homemade certs do not clear SmartScreen. See `docs/CODE_SIGNING.md`. Irrelevant on Mac until packaging. |
 | Native addon | Load **only in the Electron main process**. Preload must not `dlopen` the `.node` (second AX/UIA instance deadlocks the popup). |
 | Docs | Behavior/packaging changes: update README/CHANGELOG in the same change-set. `WORKLOG.md` is **gitignored** — never `git add` it. |
@@ -131,7 +131,7 @@ Intel vs Apple Silicon: this handoff assumes **Intel Mac** (user stated they hav
 - Linux AT-SPI, Android, iOS
 - Mac installer / Forge ZIP as a product / notarization / `NSAccessibilityUsageDescription`
 - `MPNowPlayingInfoCenter` (still unchecked on `docs/OCR_CONTEXT_CAPTURE.md`)
-- Merging Dependabot
+- Merging TypeScript 7 / eslint-plugin 8 without a matching parser and ts-loader
 - Cutting another Windows release or a Mac `.dmg` unless asked
 - Changing click-away / empty-selection cancel
 - Loading the native addon from `preload.ts`
