@@ -1,14 +1,36 @@
-﻿#include <napi.h>
+﻿/**
+ * Windows selection backend.
+ *
+ * UI Automation is the producer. After a drag / double-click the capture chain
+ * matches macOS (ax_selection_monitor.mm) as closely as the platform allows:
+ *   1. TextPattern GetSelection on focused / point / ancestors
+ *      (AXSelectedText / range string)
+ *   2. WM_GETOBJECT poke so Chromium builds a UIA tree, settle, retry + a
+ *      bounded Document/TextPattern search (AXManualAccessibility + text-markers)
+ *   3. skipped — no Apple Events analog; macOS only uses AppleScript for
+ *      Safari/Chrome-family, not Electron editors such as Cursor
+ *   5. Silent Ctrl+C + clipboard restore (last resort)
+ *
+ * Env: PHEVERE_DEBUG_UIA=1  PHEVERE_DISABLE_INPUT_GATE=1
+ */
+
+#include <napi.h>
 #include <windows.h>
 #include <UIAutomation.h>
+#include <UIAutomationClient.h>
 #include <atlbase.h>
 #include <string>
 #include <thread>
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <iostream>
 #include <chrono>
 #include <mutex>
+
+#ifndef UiaRootObjectId
+#define UiaRootObjectId static_cast<DWORD>(-25)
+#endif
 
 static void joinOrDetach(std::thread& t, DWORD timeoutMs) {
     if (!t.joinable()) return;
@@ -49,6 +71,9 @@ private:
     int pending_y = 0;
     std::chrono::steady_clock::time_point last_selection_time;
     static constexpr int DEBOUNCE_DELAY_MS = 500; // 500ms delay like Youdao Dictionary
+    static constexpr int kPostMouseUpSettleMs = 100;
+    static constexpr int kUiaEnableSettleMs = 140; // same as macOS kAxEnableSettleMs
+    static constexpr int kClipboardPasteWaitMs = 120;
     // Reject absurdly large payloads (a whole document is never a lookup query)
     static constexpr size_t MAX_SELECTION_BYTES = 8000;
     // Debug flag (enabled via env var PHEVERE_DEBUG_UIA=1)
@@ -67,6 +92,7 @@ private:
     static POINT lastClickPt;
     static std::chrono::steady_clock::time_point lastClickTime;
     static std::atomic<int> active_fallback_threads;
+    static std::atomic<uint64_t> capture_gen;
 
     // Input gate: a UIA selection event is only trusted when the user actually
     // performed a selection gesture, and is not in the middle of typing.
@@ -80,7 +106,8 @@ private:
     static long long nowMs();
     static bool isUserSelectionGesture();
     
-    void triggerSyntheticCopyFallback(int x, int y);
+    void triggerSyntheticCopyFallback(int x, int y, uint64_t gen);
+    void runCaptureChain(int x, int y, uint64_t gen);
     static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
 
@@ -165,9 +192,18 @@ private:
     void debounceLoop();
     void updatePendingSelection(const std::string& newSelection, int x, int y);
 
+    std::string getTextPatternSelection(IUIAutomationElement* element);
     std::string getSelectedTextFromElement(IUIAutomationElement* element);
+    std::string getSelectedTextFromElement(IUIAutomationElement* element, IUIAutomation* uia);
     std::string getSelectedTextFromFocusedOrPoint();
+    std::string getSelectedTextFromFocusedOrPoint(IUIAutomation* uia);
     CComPtr<IUIAutomationElement> findAncestorWithTextPattern(IUIAutomationElement* start);
+    CComPtr<IUIAutomationElement> findAncestorWithTextPattern(IUIAutomationElement* start, IUIAutomation* uia);
+    std::string findDocumentOrTextPatternSelection(IUIAutomation* uia, IUIAutomationElement* start);
+    bool elementIsPassword(IUIAutomationElement* element);
+    bool isPasswordChain(IUIAutomationElement* start, IUIAutomation* uia);
+    static bool elementTooLargeForScan(IUIAutomationElement* element);
+    static void pokeChromiumUia(POINT pt);
     bool getSelectionCenter(IUIAutomationElement* element, int& outX, int& outY);
     bool isFromCurrentProcess(IUIAutomationElement* element);
 
@@ -218,6 +254,7 @@ std::chrono::steady_clock::time_point UIAutomationSelectionMonitor::lastUiaEvent
 POINT UIAutomationSelectionMonitor::lastClickPt = {0, 0};
 std::chrono::steady_clock::time_point UIAutomationSelectionMonitor::lastClickTime = std::chrono::steady_clock::now();
 std::atomic<int> UIAutomationSelectionMonitor::active_fallback_threads{0};
+std::atomic<uint64_t> UIAutomationSelectionMonitor::capture_gen{0};
 std::atomic<long long> UIAutomationSelectionMonitor::lastSelectGestureMs{0};
 std::atomic<long long> UIAutomationSelectionMonitor::lastTypingMs{0};
 std::atomic<bool> UIAutomationSelectionMonitor::leftButtonDown{false};
@@ -465,18 +502,12 @@ static std::string bstrToUtf8(BSTR bstr) {
 // LegacyIAccessible return the whole control's text even when nothing is
 // selected, which turns a bare caret click or a repainted status label into a
 // "selection".
-std::string UIAutomationSelectionMonitor::getSelectedTextFromElement(IUIAutomationElement* element) {
+std::string UIAutomationSelectionMonitor::getTextPatternSelection(IUIAutomationElement* element) {
     if (!element) return "";
 
     CComPtr<IUIAutomationTextPattern> pTextPattern;
-    HRESULT hr = element->GetCurrentPattern(UIA_TextPatternId, (IUnknown**)&pTextPattern);
-    if (FAILED(hr) || !pTextPattern) {
-        CComPtr<IUIAutomationElement> withText = findAncestorWithTextPattern(element);
-        if (!withText) return "";
-        pTextPattern.Release();
-        if (FAILED(withText->GetCurrentPattern(UIA_TextPatternId, (IUnknown**)&pTextPattern)) || !pTextPattern) {
-            return "";
-        }
+    if (FAILED(element->GetCurrentPattern(UIA_TextPatternId, (IUnknown**)&pTextPattern)) || !pTextPattern) {
+        return "";
     }
 
     CComPtr<IUIAutomationTextRangeArray> pSelection;
@@ -508,6 +539,26 @@ std::string UIAutomationSelectionMonitor::getSelectedTextFromElement(IUIAutomati
     return res;
 }
 
+std::string UIAutomationSelectionMonitor::getSelectedTextFromElement(IUIAutomationElement* element) {
+    return getSelectedTextFromElement(element, pAutomation);
+}
+
+std::string UIAutomationSelectionMonitor::getSelectedTextFromElement(IUIAutomationElement* element, IUIAutomation* uia) {
+    if (!element) return "";
+
+    CComPtr<IUIAutomationTextPattern> pTextPattern;
+    HRESULT hr = element->GetCurrentPattern(UIA_TextPatternId, (IUnknown**)&pTextPattern);
+    if (SUCCEEDED(hr) && pTextPattern) {
+        // Element already exposes TextPattern. Empty GetSelection means a caret,
+        // not "look further up" — that was a status-bar false-positive source.
+        return getTextPatternSelection(element);
+    }
+
+    CComPtr<IUIAutomationElement> withText = findAncestorWithTextPattern(element, uia);
+    if (!withText) return "";
+    return getTextPatternSelection(withText);
+}
+
 bool UIAutomationSelectionMonitor::isFromCurrentProcess(IUIAutomationElement* element) {
     if (!element) return false;
     VARIANT v; VariantInit(&v);
@@ -523,18 +574,22 @@ bool UIAutomationSelectionMonitor::isFromCurrentProcess(IUIAutomationElement* el
 }
 
 std::string UIAutomationSelectionMonitor::getSelectedTextFromFocusedOrPoint() {
-    if (!pAutomation) return "";
+    return getSelectedTextFromFocusedOrPoint(pAutomation);
+}
+
+std::string UIAutomationSelectionMonitor::getSelectedTextFromFocusedOrPoint(IUIAutomation* uia) {
+    if (!uia) return "";
 
     CComPtr<IUIAutomationElement> focused;
-    if (SUCCEEDED(pAutomation->GetFocusedElement(&focused)) && focused) {
-        std::string text = getSelectedTextFromElement(focused);
+    if (SUCCEEDED(uia->GetFocusedElement(&focused)) && focused) {
+        std::string text = getSelectedTextFromElement(focused, uia);
         if (!text.empty()) return text;
     }
 
     POINT pt; GetCursorPos(&pt);
     CComPtr<IUIAutomationElement> atPoint;
-    if (SUCCEEDED(pAutomation->ElementFromPoint(pt, &atPoint)) && atPoint) {
-        std::string text = getSelectedTextFromElement(atPoint);
+    if (SUCCEEDED(uia->ElementFromPoint(pt, &atPoint)) && atPoint) {
+        std::string text = getSelectedTextFromElement(atPoint, uia);
         if (!text.empty()) return text;
     }
 
@@ -542,9 +597,13 @@ std::string UIAutomationSelectionMonitor::getSelectedTextFromFocusedOrPoint() {
 }
 
 CComPtr<IUIAutomationElement> UIAutomationSelectionMonitor::findAncestorWithTextPattern(IUIAutomationElement* start) {
-    if (!start || !pAutomation) return nullptr;
+    return findAncestorWithTextPattern(start, pAutomation);
+}
+
+CComPtr<IUIAutomationElement> UIAutomationSelectionMonitor::findAncestorWithTextPattern(IUIAutomationElement* start, IUIAutomation* uia) {
+    if (!start || !uia) return nullptr;
     CComPtr<IUIAutomationTreeWalker> walker;
-    if (FAILED(pAutomation->get_ControlViewWalker(&walker)) || !walker) return nullptr;
+    if (FAILED(uia->get_ControlViewWalker(&walker)) || !walker) return nullptr;
 
     CComPtr<IUIAutomationElement> current = start;
     for (int i = 0; i < 5 && current; ++i) {
@@ -629,7 +688,231 @@ bool UIAutomationSelectionMonitor::getSelectionCenter(IUIAutomationElement* elem
     return true;
 }
 
-void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
+bool UIAutomationSelectionMonitor::elementIsPassword(IUIAutomationElement* element) {
+    if (!element) return false;
+    VARIANT v;
+    VariantInit(&v);
+    const bool yes =
+        SUCCEEDED(element->GetCurrentPropertyValue(UIA_IsPasswordPropertyId, &v)) &&
+        v.vt == VT_BOOL && v.boolVal == VARIANT_TRUE;
+    VariantClear(&v);
+    return yes;
+}
+
+bool UIAutomationSelectionMonitor::isPasswordChain(IUIAutomationElement* start, IUIAutomation* uia) {
+    if (!start) return false;
+    if (elementIsPassword(start)) return true;
+    if (!uia) return false;
+    CComPtr<IUIAutomationTreeWalker> walker;
+    if (FAILED(uia->get_ControlViewWalker(&walker)) || !walker) return false;
+    CComPtr<IUIAutomationElement> current = start;
+    for (int i = 0; i < 8 && current; ++i) {
+        if (elementIsPassword(current)) return true;
+        CComPtr<IUIAutomationElement> parent;
+        if (FAILED(walker->GetParentElement(current, &parent)) || !parent) break;
+        current = parent;
+    }
+    return false;
+}
+
+bool UIAutomationSelectionMonitor::elementTooLargeForScan(IUIAutomationElement* element) {
+    if (!element) return true;
+    VARIANT v;
+    VariantInit(&v);
+    if (FAILED(element->GetCurrentPropertyValue(UIA_BoundingRectanglePropertyId, &v))) {
+        VariantClear(&v);
+        return false;
+    }
+    bool tooBig = false;
+    if (v.vt == (VT_R8 | VT_ARRAY) && v.parray) {
+        double* data = nullptr;
+        if (SUCCEEDED(SafeArrayAccessData(v.parray, reinterpret_cast<void**>(&data))) && data) {
+            LONG lb = 0, ub = -1;
+            SafeArrayGetLBound(v.parray, 1, &lb);
+            SafeArrayGetUBound(v.parray, 1, &ub);
+            if ((ub - lb + 1) >= 4) {
+                const double w = data[2];
+                const double h = data[3];
+                tooBig = (w * h > 1920.0 * 1200.0);
+            }
+            SafeArrayUnaccessData(v.parray);
+        }
+    }
+    VariantClear(&v);
+    return tooBig;
+}
+
+void UIAutomationSelectionMonitor::pokeChromiumUia(POINT pt) {
+    HWND hwnd = WindowFromPoint(pt);
+    if (!hwnd) return;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == GetCurrentProcessId()) return;
+
+    HWND root = GetAncestor(hwnd, GA_ROOT);
+    auto pokeOne = [](HWND h) {
+        if (!h) return;
+        DWORD_PTR ignored = 0;
+        SendMessageTimeoutW(h, WM_GETOBJECT, 0, static_cast<LPARAM>(UiaRootObjectId),
+                            SMTO_ABORTIFHUNG, 40, &ignored);
+        SendMessageTimeoutW(h, WM_GETOBJECT, 0, static_cast<LPARAM>(OBJID_CLIENT),
+                            SMTO_ABORTIFHUNG, 40, &ignored);
+    };
+    pokeOne(hwnd);
+    if (root && root != hwnd) pokeOne(root);
+}
+
+std::string UIAutomationSelectionMonitor::findDocumentOrTextPatternSelection(
+    IUIAutomation* uia, IUIAutomationElement* start) {
+    if (!uia || !start) return "";
+
+    VARIANT vtDoc;
+    VariantInit(&vtDoc);
+    vtDoc.vt = VT_I4;
+    vtDoc.lVal = UIA_DocumentControlTypeId;
+    CComPtr<IUIAutomationCondition> docCond;
+    if (SUCCEEDED(uia->CreatePropertyCondition(UIA_ControlTypePropertyId, vtDoc, &docCond)) && docCond) {
+        CComPtr<IUIAutomationElement> doc;
+        if (SUCCEEDED(start->FindFirst(TreeScope_Descendants, docCond, &doc)) && doc) {
+            std::string text = getTextPatternSelection(doc);
+            if (!text.empty()) {
+                VariantClear(&vtDoc);
+                return text;
+            }
+        }
+    }
+    VariantClear(&vtDoc);
+
+    VARIANT vtTrue;
+    VariantInit(&vtTrue);
+    vtTrue.vt = VT_BOOL;
+    vtTrue.boolVal = VARIANT_TRUE;
+    CComPtr<IUIAutomationCondition> textCond;
+    if (SUCCEEDED(uia->CreatePropertyCondition(UIA_IsTextPatternAvailablePropertyId, vtTrue, &textCond)) &&
+        textCond) {
+        CComPtr<IUIAutomationElement> withText;
+        if (SUCCEEDED(start->FindFirst(TreeScope_Descendants, textCond, &withText)) && withText) {
+            std::string text = getTextPatternSelection(withText);
+            VariantClear(&vtTrue);
+            return text;
+        }
+    }
+    VariantClear(&vtTrue);
+    return "";
+}
+
+void UIAutomationSelectionMonitor::runCaptureChain(int x, int y, uint64_t gen) {
+    auto stillCurrent = [&]() {
+        return instance == this && running.load() && capture_gen.load() == gen;
+    };
+
+    POINT pt{x, y};
+    HWND hwnd = WindowFromPoint(pt);
+    if (hwnd) {
+        DWORD pid = 0;
+        GetWindowThreadProcessId(hwnd, &pid);
+        if (pid == GetCurrentProcessId()) {
+            lastUiaEventTime = std::chrono::steady_clock::now();
+            if (debugEnabled) std::cout << "[UIA] chain skip: own process" << std::endl;
+            return;
+        }
+    }
+
+    const HRESULT ci = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const bool uninit = (ci == S_OK);
+    if (FAILED(ci) && ci != S_FALSE) {
+        if (debugEnabled) std::cout << "[UIA] chain: COM init failed, going to Ctrl+C" << std::endl;
+        triggerSyntheticCopyFallback(x, y, gen);
+        return;
+    }
+
+    bool goStep5 = false;
+    {
+        CComPtr<IUIAutomation> uia;
+        const HRESULT created = CoCreateInstance(
+            CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+            IID_IUIAutomation, reinterpret_cast<void**>(&uia));
+        if (FAILED(created) || !uia) {
+            if (debugEnabled) std::cout << "[UIA] chain: CUIAutomation failed, going to Ctrl+C" << std::endl;
+            goStep5 = true;
+        } else {
+            CComPtr<IUIAutomationElement> focused;
+            uia->GetFocusedElement(&focused);
+            if (focused && isFromCurrentProcess(focused)) {
+                lastUiaEventTime = std::chrono::steady_clock::now();
+                if (debugEnabled) std::cout << "[UIA] chain skip: focused own process" << std::endl;
+            } else if (focused && isPasswordChain(focused, uia)) {
+                if (debugEnabled) std::cout << "[UIA] chain skip: password field" << std::endl;
+            } else {
+                // 1. TextPattern (AXSelectedText analog)
+                std::string text = getSelectedTextFromFocusedOrPoint(uia);
+                if (!text.empty()) {
+                    if (debugEnabled) std::cout << "[UIA] step1 TextPattern hit" << std::endl;
+                    lastUiaEventTime = std::chrono::steady_clock::now();
+                    updatePendingSelection(text, x, y);
+                } else {
+                    if (debugEnabled) {
+                        std::cout << "[UIA] step1 TextPattern empty; capture chain 2→5" << std::endl;
+                    }
+
+                    // 2. Force Chromium to build a UIA tree, then retry
+                    pokeChromiumUia(pt);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(kUiaEnableSettleMs));
+                    if (stillCurrent()) {
+                        text = getSelectedTextFromFocusedOrPoint(uia);
+                        if (text.empty() && hwnd) {
+                            CComPtr<IUIAutomationElement> fromHwnd;
+                            if (SUCCEEDED(uia->ElementFromHandle(hwnd, &fromHwnd)) && fromHwnd) {
+                                text = getSelectedTextFromElement(fromHwnd, uia);
+                            }
+                        }
+                        if (text.empty()) {
+                            CComPtr<IUIAutomationElement> atPoint;
+                            if (SUCCEEDED(uia->ElementFromPoint(pt, &atPoint)) && atPoint &&
+                                !elementTooLargeForScan(atPoint)) {
+                                text = findDocumentOrTextPatternSelection(uia, atPoint);
+                            }
+                        }
+                        if (!text.empty()) {
+                            if (debugEnabled) {
+                                std::cout << "[UIA] step2 after WM_GETOBJECT poke" << std::endl;
+                            }
+                            lastUiaEventTime = std::chrono::steady_clock::now();
+                            updatePendingSelection(text, x, y);
+                        } else {
+                            // 3. No Apple Events analog. macOS only uses AppleScript
+                            //    for Safari/Chrome-family, not Cursor / VS Code.
+                            if (debugEnabled) {
+                                std::cout << "[UIA] step3 skipped (no Apple Events analog on Windows)"
+                                          << std::endl;
+                            }
+                            CComPtr<IUIAutomationElement> focusedAgain;
+                            uia->GetFocusedElement(&focusedAgain);
+                            if (focusedAgain && isPasswordChain(focusedAgain, uia)) {
+                                if (debugEnabled) {
+                                    std::cout << "[UIA] step5 skip: password field" << std::endl;
+                                }
+                            } else {
+                                goStep5 = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (uninit) CoUninitialize();
+
+    if (goStep5 && stillCurrent()) {
+        if (debugEnabled) std::cout << "[UIA] step5 silent Ctrl+C" << std::endl;
+        triggerSyntheticCopyFallback(x, y, gen);
+    }
+}
+
+void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y, uint64_t gen) {
+    if (capture_gen.load() != gen) return;
+
     auto now = std::chrono::steady_clock::now();
     auto elapsedSinceUia = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastUiaEventTime).count();
     // Only skip Ctrl+C when UIA already returned real text (not an empty Chromium event).
@@ -638,7 +921,7 @@ void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
         return;
     }
 
-    if (debugEnabled) std::cout << "[FALLBACK] No UIA event detected. Triggering synthetic Ctrl+C..." << std::endl;
+    if (debugEnabled) std::cout << "[FALLBACK] SendInput Ctrl+C" << std::endl;
 
     const DWORD clipboardSeqBefore = GetClipboardSequenceNumber();
 
@@ -669,7 +952,7 @@ void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
 
     SendInput(4, inputs, sizeof(INPUT));
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    std::this_thread::sleep_for(std::chrono::milliseconds(kClipboardPasteWaitMs));
 
     // If the clipboard never changed, the Ctrl+C hit something with no
     // selection (a scrollbar drag, a slider, an empty canvas). Reading it
@@ -753,12 +1036,13 @@ LRESULT CALLBACK UIAutomationSelectionMonitor::LowLevelMouseProc(int nCode, WPAR
 
                 int dropX = pMouseStruct->pt.x;
                 int dropY = pMouseStruct->pt.y;
-                
-                std::thread([dropX, dropY]() {
+                const uint64_t gen = capture_gen.fetch_add(1) + 1;
+
+                std::thread([dropX, dropY, gen]() {
                     active_fallback_threads.fetch_add(1);
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    if (instance && instance->running.load()) {
-                        instance->triggerSyntheticCopyFallback(dropX, dropY);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(kPostMouseUpSettleMs));
+                    if (instance && instance->running.load() && capture_gen.load() == gen) {
+                        instance->runCaptureChain(dropX, dropY, gen);
                     }
                     active_fallback_threads.fetch_sub(1);
                 }).detach();

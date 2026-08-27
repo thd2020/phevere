@@ -1,6 +1,6 @@
 # macOS selection backend (draft)
 
-Windows Phevere uses UI Automation. On macOS the matching producer is the **Accessibility (AX)** API plus a listen-only **CGEvent tap**. Lookup, popup, and `ContextEvent` are unchanged: the native layer still emits `{ text, x, y }` into `MacOSNativeSelectionService`.
+Windows Phevere uses UI Automation with a matching **1 → 2 → 5** capture chain after a drag/double-click (`native-addon/src/selection_monitor.cpp`): TextPattern, then a Chromium `WM_GETOBJECT` poke, then silent Ctrl+C. There is no Apple Events analog (macOS step 3). On macOS the matching producer is the **Accessibility (AX)** API plus a listen-only **CGEvent tap**. Lookup, popup, and `ContextEvent` are unchanged: the native layer still emits `{ text, x, y }` into `MacOSNativeSelectionService`.
 
 There is **no notarized Mac installer**. Unsigned per-arch DMGs can be attached to a GitHub Release (see [`PACKAGING.md`](../PACKAGING.md)).
 
