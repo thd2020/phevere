@@ -46,9 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Notes for users
 
-- **Windows Setup rebuilt 2026-08-27** on this same tag (filenames unchanged; Mac DMGs not replaced). x64 + ARM64 now include Cursor **agent output** lookup (empty Chromium UIA no longer blocks the 1→2→5 capture chain) and packaged OCR natives. SHA-256 below after Actions finishes.
-- **Windows x64** — `Phevere-Setup-1.4.1-x64.exe` from [GitHub Releases](https://github.com/thd2020/phevere/releases/tag/v1.4.1) (Actions). SHA-256 pending rebuild. Still unsigned; SmartScreen may warn. Signing options: [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
-- **Windows ARM64** — `Phevere-Setup-1.4.1-arm64.exe` on the same release (Snapdragon / Windows 11 ARM). SHA-256 pending rebuild. Unsigned. OCR uses sharp wasm (no native win32-arm64 at 0.33.5).
+- **Windows Setup rebuilt 2026-08-27** on this same tag (filenames unchanged; Mac DMGs not replaced). x64 + ARM64 now include Cursor **agent output** lookup (empty Chromium UIA no longer blocks the 1→2→5 capture chain) and packaged OCR natives.
+- **Windows x64** — `Phevere-Setup-1.4.1-x64.exe` from [GitHub Releases](https://github.com/thd2020/phevere/releases/tag/v1.4.1) (Actions). SHA-256 `7B197F30…4AFE3C`. Still unsigned; SmartScreen may warn. Signing options: [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
+- **Windows ARM64** — `Phevere-Setup-1.4.1-arm64.exe` on the same release (Snapdragon / Windows 11 ARM). SHA-256 `A5ED5894…D92D28`. Unsigned. OCR uses sharp wasm (no native win32-arm64 at 0.33.5).
 - **macOS** — unsigned `Phevere-1.4.1-darwin-x64.dmg` (Intel, SHA-256 `B7AB0F50…B56D585`) and `Phevere-1.4.1-darwin-arm64.dmg` (Apple Silicon, SHA-256 `94405049…2AFD3B8`) on the same release (rebuilt 2026-08-25: custom Dock icon; menu-bar **P** right-click menu; shortcut mode holds the trigger). Drag Phevere into Applications. Gatekeeper will warn (not notarized).
 - Run elevated when you need UIAutomation across elevated / protected apps.
 
