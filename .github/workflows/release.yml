@@ -1,5 +1,6 @@
 # Unsigned NSIS Setup on v* tags. Optional CSC_LINK / CSC_KEY_PASSWORD repo secrets sign the exe.
-# workflow_dispatch: attach a Windows ARM64 Setup to an existing release without retagging.
+# workflow_dispatch: rebuild Windows x64 + ARM64 from this ref and replace same-named
+# Setup.exe on an existing tag (does not retag, does not touch Mac DMGs).
 name: release
 
 on:
@@ -9,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       attach_tag:
-        description: 'Existing GitHub release tag to attach Windows ARM64 Setup (e.g. v1.4.1)'
+        description: 'Existing GitHub release tag to replace Windows x64 + ARM64 Setup (e.g. v1.4.1)'
         required: true
         default: 'v1.4.1'
         type: string
@@ -19,7 +20,7 @@ permissions:
 
 jobs:
   release:
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:
@@ -50,12 +51,29 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "exe=$($exe.FullName)"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "name=$($exe.Name)"
           Write-Host "Found $($exe.FullName)"
+      - name: Remove existing asset with the same name
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
+          ASSET: ${{ steps.pkg.outputs.name }}
+        shell: pwsh
+        run: |
+          $rel = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:TAG" | ConvertFrom-Json
+          $hit = @($rel.assets) | Where-Object { $_.name -eq $env:ASSET } | Select-Object -First 1
+          if ($hit) {
+            Write-Host "Deleting existing $($hit.name) id=$($hit.id)"
+            gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/releases/assets/$($hit.id)"
+          } else {
+            Write-Host "No existing asset named $env:ASSET"
+          }
       - name: Upload GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
           files: ${{ steps.pkg.outputs.exe }}
           fail_on_unmatched_files: true
-          generate_release_notes: true
+          generate_release_notes: ${{ github.ref_type == 'tag' }}
+          make_latest: ${{ github.ref_type == 'tag' }}
       - name: Attest Setup.exe
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
@@ -92,6 +110,21 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "exe=$($exe.FullName)"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "name=$($exe.Name)"
           Write-Host "Found $($exe.FullName)"
+      - name: Remove existing asset with the same name
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
+          ASSET: ${{ steps.pkg.outputs.name }}
+        shell: pwsh
+        run: |
+          $rel = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:TAG" | ConvertFrom-Json
+          $hit = @($rel.assets) | Where-Object { $_.name -eq $env:ASSET } | Select-Object -First 1
+          if ($hit) {
+            Write-Host "Deleting existing $($hit.name) id=$($hit.id)"
+            gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/releases/assets/$($hit.id)"
+          } else {
+            Write-Host "No existing asset named $env:ASSET"
+          }
       - name: Upload GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:

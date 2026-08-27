@@ -40,7 +40,7 @@ If `github.com` times out while packaging, `make:win` already uses npmmirror. Gh
 Get-FileHash -Algorithm SHA256 "out\make\nsis\x64\Phevere-Setup-*-x64.exe"
 ```
 
-Prefer **not** to `gh release create` locally for the same tag — the workflow owns the Windows Setup assets (GitHub immutable releases). Extra Mac DMGs or a Windows ARM64 Setup may be uploaded onto that tag (`gh release upload`, or Actions **workflow_dispatch** with `attach_tag`) without retagging.
+Prefer **not** to `gh release create` locally for the same tag — the workflow owns the Windows Setup assets (GitHub immutable releases). Extra Mac DMGs may still be uploaded onto that tag (`gh release upload`) without retagging. To **replace** both Windows Setups on an existing tag from current `main`: Actions → release → Run workflow → `attach_tag` (deletes the old same-named `.exe` then uploads; does not move the git tag).
 
 ## Notes template (if you write notes by hand)
 

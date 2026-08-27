@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Windows **ARM64** NSIS Setup (`Phevere-Setup-<version>-arm64.exe`) on the same GitHub Release as x64. Built on `windows-11-arm` (UIA addon compiled natively). OCR uses sharp’s wasm fallback — sharp 0.33.5 has no `@img/sharp-win32-arm64`. Attach to an existing tag with Actions **workflow_dispatch** (`attach_tag`); do not retag.
+- Windows **ARM64** NSIS Setup (`Phevere-Setup-<version>-arm64.exe`) on the same GitHub Release as x64. Built on `windows-11-arm` (UIA addon compiled natively). OCR uses sharp’s wasm fallback — sharp 0.33.5 has no `@img/sharp-win32-arm64`. Actions **workflow_dispatch** (`attach_tag`) rebuilds **both** Windows Setups onto that tag (replaces same-named `.exe`; does not retag).
 
 ### Changed
 
@@ -17,7 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Windows lookup in Chromium chat panels (Cursor **agent output**, some VS Code webviews): empty `TextSelectionChanged` events no longer count as “UIA already handled it.” After a drag/double-click, Windows now follows the same idea as macOS: (1) TextPattern on the focused/point element, (2) poke Chromium’s UIA tree (`WM_GETOBJECT`) and retry, then (5) silent Ctrl+C with clipboard restore. There is no AppleScript analog (macOS step 3); Cursor would not use that step on Mac either. Password fields are skipped. Editor, terminal, and chat input were already fine (real TextPattern).
 - macOS shortcut monitor mode opened a lookup on every selection: `isAcceleratorPhysicallyHeld` always returned true off Windows. It now uses `CGEventSourceKeyState` (same hold-while-select / select-then-trigger as Windows). `CommandOrControl` is Command on Mac.
 - macOS Dock used the default Electron atom: packager needs `packaging/icon.icns`, and `npm start` now calls `app.dock.setIcon` (BrowserWindow `icon` does not set the Dock).
 - macOS menu-bar **P**: left-click only shows the main window. The context menu is right-click only (`setContextMenu` on darwin was also opening it on left-click).
@@ -36,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Windows lookup in Chromium chat panels (Cursor **agent output**, some VS Code webviews): empty `TextSelectionChanged` events no longer count as “UIA already handled it.” After a drag/double-click, Windows now follows the same idea as macOS: (1) TextPattern on the focused/point element, (2) poke Chromium’s UIA tree (`WM_GETOBJECT`) and retry, then (5) silent Ctrl+C with clipboard restore. There is no AppleScript analog (macOS step 3); Cursor would not use that step on Mac either. Password fields are skipped. Editor, terminal, and chat input were already fine (real TextPattern).
 - `npm start` on macOS/Linux no longer dies on Windows-only `chcp 65001` (UTF-8 console is still set on Windows).
 - Expanded lookup width hugs the Back/Forward + tab row (no leftover strip after Etymology). Horizontal resize works again; the previous min-size used the window’s own width and locked it. Narrowing the window wraps Lexicon / Translation / Wikipedia / Etymology onto extra rows instead of clipping them.
 - `npm install` hanging on Electron’s silent GitHub/`got` fetch: `.npmrc` `electron_mirror` plus `scripts/ensure-electron.js` (curl). `npm start` restores `path.txt`/`dist` after a Ctrl+C’d install.
@@ -46,8 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Notes for users
 
-- **Windows x64** — `Phevere-Setup-1.4.1-x64.exe` from [GitHub Releases](https://github.com/thd2020/phevere/releases/tag/v1.4.1) (Actions). SHA-256 `7BFD4DE8…50310A`. Still unsigned; SmartScreen may warn. Signing options: [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
-- **Windows ARM64** — `Phevere-Setup-1.4.1-arm64.exe` on the same release (Snapdragon / Windows 11 ARM). SHA-256 `B8AF413B…4AB29E`. Unsigned. OCR uses sharp wasm (no native win32-arm64 at 0.33.5).
+- **Windows Setup rebuilt 2026-08-27** on this same tag (filenames unchanged; Mac DMGs not replaced). x64 + ARM64 now include Cursor **agent output** lookup (empty Chromium UIA no longer blocks the 1→2→5 capture chain) and packaged OCR natives. SHA-256 below after Actions finishes.
+- **Windows x64** — `Phevere-Setup-1.4.1-x64.exe` from [GitHub Releases](https://github.com/thd2020/phevere/releases/tag/v1.4.1) (Actions). SHA-256 pending rebuild. Still unsigned; SmartScreen may warn. Signing options: [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
+- **Windows ARM64** — `Phevere-Setup-1.4.1-arm64.exe` on the same release (Snapdragon / Windows 11 ARM). SHA-256 pending rebuild. Unsigned. OCR uses sharp wasm (no native win32-arm64 at 0.33.5).
 - **macOS** — unsigned `Phevere-1.4.1-darwin-x64.dmg` (Intel, SHA-256 `B7AB0F50…B56D585`) and `Phevere-1.4.1-darwin-arm64.dmg` (Apple Silicon, SHA-256 `94405049…2AFD3B8`) on the same release (rebuilt 2026-08-25: custom Dock icon; menu-bar **P** right-click menu; shortcut mode holds the trigger). Drag Phevere into Applications. Gatekeeper will warn (not notarized).
 - Run elevated when you need UIAutomation across elevated / protected apps.
 
