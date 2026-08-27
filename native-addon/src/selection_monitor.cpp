@@ -58,6 +58,9 @@ private:
     HHOOK hMouseHook = nullptr;
     HHOOK hKeyboardHook = nullptr;
     static POINT mouseDownPt;
+    // Last time UIA returned non-empty selected text (or a Phevere-owned HWND).
+    // Empty TextSelectionChanged must not stamp this, or Chromium webviews
+    // (Cursor agent chat) abort the drag Ctrl+C fallback.
     static std::chrono::steady_clock::time_point lastUiaEventTime;
     
     // Double-click detection and thread synchronization
@@ -355,9 +358,9 @@ void UIAutomationSelectionMonitor::monitorLoop() {
 void UIAutomationSelectionMonitor::handleSelectionChanged(IUIAutomationElement* sender) {
     if (!sender) return;
 
-    lastUiaEventTime = std::chrono::steady_clock::now();
-
     if (isFromCurrentProcess(sender)) {
+        // Suppress Ctrl+C fallback while the user is selecting inside Phevere.
+        lastUiaEventTime = std::chrono::steady_clock::now();
         if (debugEnabled) std::cout << "[UIA] IGNORE: Selection from current process (popup/app window)" << std::endl;
         return;
     }
@@ -376,7 +379,14 @@ void UIAutomationSelectionMonitor::handleSelectionChanged(IUIAutomationElement* 
     }
 
     if (!selectedText.empty()) {
+        // Stamp only a *successful* capture (same idea as macOS last_ax_ok_ms).
+        // Chromium chat panels (Cursor agent output, some VS Code webviews) fire
+        // TextSelectionChanged with an empty TextPattern. Stamping those used to
+        // abort the drag Ctrl+C fallback within 150ms, so lookup never opened.
+        lastUiaEventTime = std::chrono::steady_clock::now();
         updatePendingSelection(selectedText, selX, selY);
+    } else if (debugEnabled) {
+        std::cout << "[UIA] Empty TextPattern; leaving Ctrl+C fallback available" << std::endl;
     }
 }
 
@@ -622,8 +632,9 @@ bool UIAutomationSelectionMonitor::getSelectionCenter(IUIAutomationElement* elem
 void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y) {
     auto now = std::chrono::steady_clock::now();
     auto elapsedSinceUia = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastUiaEventTime).count();
+    // Only skip Ctrl+C when UIA already returned real text (not an empty Chromium event).
     if (elapsedSinceUia < 150) {
-        if (debugEnabled) std::cout << "[FALLBACK] UIA already handled this selection. Aborting fallback." << std::endl;
+        if (debugEnabled) std::cout << "[FALLBACK] UIA already captured this selection. Aborting fallback." << std::endl;
         return;
     }
 
