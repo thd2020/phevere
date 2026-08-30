@@ -1,6 +1,7 @@
 const { rules } = require('./webpack.rules');
 const { plugins } = require('./webpack.plugins');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const path = require('path');
 
 // Add CSS loader to rules and filter out problematic rules for renderer
 const rendererRules = rules.filter(rule => {
@@ -27,6 +28,9 @@ const rendererConfig = {
   plugins,
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css'],
+    alias: {
+      '@phevere/core': path.resolve(__dirname, 'packages/core/src'),
+    },
     fallback: {
       "path": false, // Disable path module in renderer
       "fs": false,   // Disable fs module in renderer

@@ -27,6 +27,7 @@ function loadSqlInit() {
 }
 
 function migrate(database) {
+  // Keep in sync with packages/core/src/schema.ts (VOCAB_SCHEMA_SQL).
   database.run(`
     CREATE TABLE IF NOT EXISTS vocab (
       id TEXT PRIMARY KEY,

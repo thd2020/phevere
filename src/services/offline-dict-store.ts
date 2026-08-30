@@ -48,14 +48,8 @@ export interface OfflinePack {
   createdAt: number;
 }
 
-export interface OfflineHit {
-  headword: string;
-  language: string;
-  pos?: string;
-  definition: string;
-  packId: string;
-  packName?: string;
-}
+import type { OfflineHit } from '@phevere/core';
+export type { OfflineHit };
 
 export type CatalogStatusItem = OfflineCatalogItem & {
   installed: boolean;

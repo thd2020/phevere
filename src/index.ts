@@ -1,3 +1,4 @@
+import './platform/configure-core';
 import { app, BrowserWindow, ipcMain, screen, globalShortcut, shell, Tray, Menu, nativeImage, dialog, nativeTheme } from 'electron';
 import * as fs from 'fs';
 import * as os from 'os';

@@ -40,6 +40,9 @@ const mainConfig = {
   ],
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
+    alias: {
+      '@phevere/core': path.resolve(__dirname, 'packages/core/src'),
+    },
   },
   externals: {
     koffi: 'commonjs2 koffi',
