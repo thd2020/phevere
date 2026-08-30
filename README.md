@@ -1,6 +1,6 @@
 # Phevere Dictionary
 
-Select-to-lookup dictionary for Windows (Electron + Microsoft UI Automation) and macOS (Accessibility). Select text anywhere → popup with definitions, translation, etymology, Wikipedia, and a local vocabulary notebook.
+Select-to-lookup dictionary for Windows (Electron + Microsoft UI Automation), macOS (Accessibility), and **Android / iOS** (Capacitor). On the desktop, select text anywhere → popup with definitions, translation, etymology, Wikipedia, and a local vocabulary notebook. On phones, use **Process Text** (Android), **Share** (iOS), or in-app search — same lookup core.
 
 Publisher: **[thd2020](https://github.com/thd2020)**.
 
@@ -36,9 +36,14 @@ Then run the latest Setup.exe. New installs register a proper uninstaller (`Unin
 
 Unsigned **DMGs** (`Phevere-<version>-darwin-x64.dmg` for Intel, `…-darwin-arm64.dmg` for Apple Silicon) are on the same [GitHub Releases](https://github.com/thd2020/phevere/releases) page. Open the disk image, drag **Phevere** to Applications. macOS Gatekeeper will warn until the app is signed and notarized. Right-click → Open the first time, or allow it under Privacy & Security. Enable **Accessibility** when asked (tray → Open Accessibility Settings).
 
+## Download (Android / iOS)
+
+Phone builds are **not** on GitHub Releases yet. Sideload from a clone: Android Studio / `gradlew assembleDebug`, or Xcode on a Mac. There is no global overlay on iOS; Android shows **Phevere** in the system text-selection toolbar. See [`docs/MOBILE.md`](docs/MOBILE.md).
+
 ## Features
 
-- **Native text selection** — UIAutomation on Windows (best as Administrator). After a drag/double-click: TextPattern first, then a Chromium UIA poke (`WM_GETOBJECT`) and retry, then silent Ctrl+C if the app still exposes no selected text (Cursor agent chat, some VS Code webviews). Password fields are skipped. On macOS, Accessibility first (including Chromium text-markers), then Safari/Chrome AppleScript, then a silent Cmd+C. Shortcut / hover / OCR modes in Settings. Select in the main window or an open lookup to get the same toolstrip as selecting elsewhere (the open lookup is left alone). A second selection (even before the first popup finishes loading) follows the latest text and position. After following a word-family or wiki link, **Back / Forward** on the dictionary tab (and the mouse extra buttons) restore the previous lookup.
+- **Native text selection (desktop)** — UIAutomation on Windows (best as Administrator). After a drag/double-click: TextPattern first, then a Chromium UIA poke (`WM_GETOBJECT`) and retry, then silent Ctrl+C if the app still exposes no selected text (Cursor agent chat, some VS Code webviews). Password fields are skipped. On macOS, Accessibility first (including Chromium text-markers), then Safari/Chrome AppleScript, then a silent Cmd+C. Shortcut / hover / OCR modes in Settings. Select in the main window or an open lookup to get the same toolstrip as selecting elsewhere (the open lookup is left alone). A second selection (even before the first popup finishes loading) follows the latest text and position. After following a word-family or wiki link, **Back / Forward** on the dictionary tab (and the mouse extra buttons) restore the previous lookup.
+- **Phone capture** — Android **Process Text** (Phevere in the selection toolbar) and iOS **Share** / `phevere://lookup?q=` plus in-app search. No Accessibility overlay on Android v1; iOS cannot host a global overlay. Camera OCR and offline pack install are not in the mobile v1.
 - **Dictionary & translation** — Free Dictionary, Wiktionary, Datamuse, Youdao / DeepL routing; CJK ↔ English. Looks up the **exact form** you selected (IPA and notebook save stay on that form). Headword/lemma senses are used only when every source has no definition for that form. Lexicon is split into separate cards (senses, examples, synonyms/antonyms, word family). Word-family chips can carry a small POS banner (verb, adj.) — grammar labels are not treated as extra forms. Per-source cache (timeouts retry). US + UK IPA when the APIs provide them.
 - **Offline packs** — Settings → Offline: WordNet, Webster 1913 (GCIDE), CC-CEDICT, FreeDict en→zh (consent download); JSON/CEDICT import. Living Oxford / Collegiate Webster / Collins are not dumped (copyright).
 - **Etymology & Wikipedia** — in-popup tabs; Wikipedia reader webview
@@ -53,7 +58,7 @@ Unsigned **DMGs** (`Phevere-<version>-darwin-x64.dmg` for Intel, `…-darwin-arm
 
 - Node.js 18+ recommended  
 - **Windows:** Visual Studio 2022 (C++ workload) for the UIA addon; Windows 10/11  
-- **macOS (draft selection only):** Xcode Command Line Tools; `npm start` offers **Open Accessibility Settings** (or tray) instead of hunting the Privacy list — [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md) 
+- **Android / iOS:** JDK 21 + Android Studio, or Xcode on a Mac — [`docs/MOBILE.md`](docs/MOBILE.md) 
 
 ### Setup
 
@@ -64,6 +69,8 @@ npm install
 npm start
 # Full selection monitoring:
 npm run start-admin
+# Phone web UI:
+npm run mobile:dev
 ```
 
 ### Build the installer
@@ -87,12 +94,13 @@ In the `npm start` terminal, **Ctrl+C** once stops Electron and Forge’s webpac
 ## Architecture (short)
 
 ```
-Selection / OCR / shortcut → main process → popup renderer
+Selection / OCR / shortcut (desktop)  →  Electron main  →  popup renderer
+Share / Process Text / search (mobile) →  Capacitor WebView
                               ↓
-                     dictionary + local SQLite + OCR engine
+                     packages/core (dictionary + vocab SQLite)
 ```
 
-Native addon: `native-addon/` (UIAutomation). Packaging: Electron Forge + electron-builder NSIS (`electron-builder.yml`, `packaging/installer.nsh`).
+Shared lookup: [`packages/core`](packages/core). Desktop native addon: `native-addon/` (UIAutomation / AX). Packaging: Electron Forge + electron-builder NSIS (`electron-builder.yml`, `packaging/installer.nsh`). Mobile: Capacitor in [`apps/mobile`](apps/mobile) — [`docs/MOBILE.md`](docs/MOBILE.md).
 
 ## License
 

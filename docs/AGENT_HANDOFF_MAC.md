@@ -128,13 +128,14 @@ Intel vs Apple Silicon: this handoff assumes **Intel Mac** (user stated they hav
 
 ## 7. Explicitly out of scope until asked
 
-- Linux AT-SPI, Android, iOS
+- Linux AT-SPI
 - Mac installer / Forge ZIP as a product / notarization / `NSAccessibilityUsageDescription`
 - `MPNowPlayingInfoCenter` (still unchecked on `docs/OCR_CONTEXT_CAPTURE.md`)
 - Merging TypeScript 7 / eslint-plugin 8 without a matching parser and ts-loader
 - Cutting another Windows release or a Mac `.dmg` unless asked
 - Changing click-away / empty-selection cancel
 - Loading the native addon from `preload.ts`
+- Mobile store listing / signing (Android/iOS **code** is in-tree; see [`docs/MOBILE.md`](MOBILE.md))
 
 ---
 

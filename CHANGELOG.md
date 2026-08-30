@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Android / iOS (Capacitor v1):** shared TypeScript lookup core (`packages/core`), in-app search and notebook, Android Process Text, iOS Share + `phevere://lookup`. Sideload only — see [`docs/MOBILE.md`](docs/MOBILE.md).
 - Windows **ARM64** NSIS Setup (`Phevere-Setup-<version>-arm64.exe`) on the same GitHub Release as x64. Built on `windows-11-arm` (UIA addon compiled natively). OCR uses sharp’s wasm fallback — sharp 0.33.5 has no `@img/sharp-win32-arm64`. Actions **workflow_dispatch** (`attach_tag`) rebuilds **both** Windows Setups onto that tag (replaces same-named `.exe`; does not retag).
 
 ### Changed

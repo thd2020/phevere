@@ -128,7 +128,7 @@ Solves Spotify-class apps with clean strings and no OCR.
 - Continuous full-desktop OCR
 - Requiring end-user Python for OCR (Python worker is `npm start` only)
 - Scraping etymonline / Forvo as redistributed data
-- Android in the same Electron binary (separate product surface)
+- Android in the same Electron binary (separate Capacitor app — [`docs/MOBILE.md`](MOBILE.md))
 
 ## Success criteria
 
