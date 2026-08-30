@@ -26,7 +26,10 @@
     "make:mac": "node scripts/ensure-ocr-natives.js && electron-forge make --platform darwin && node scripts/make-mac-dmg.js --dir out/phevere-darwin-$(node -p process.arch)",
     "make:mac:x64": "node scripts/ensure-ocr-natives.js --platform darwin --arch x64 && electron-forge make --platform darwin --arch x64 && node scripts/make-mac-dmg.js --dir out/phevere-darwin-x64 --arch x64",
     "make:mac:arm64": "node scripts/ensure-ocr-natives.js --platform darwin --arch arm64 && electron-forge make --platform darwin --arch arm64 && node scripts/make-mac-dmg.js --dir out/phevere-darwin-arm64 --arch arm64",
-    "verify:ocr-pack": "node scripts/verify-ocr-pack.js"
+    "verify:ocr-pack": "node scripts/verify-ocr-pack.js",
+    "mobile:dev": "npm run dev -w @phevere/mobile",
+    "mobile:build": "npm run build -w @phevere/mobile",
+    "mobile:sync": "npm run build -w @phevere/mobile && npm run cap:sync -w @phevere/mobile"
   },
   "keywords": [
     "dictionary",
@@ -40,6 +43,11 @@
     "url": "https://github.com/thd2020"
   },
   "license": "MIT",
+  "private": true,
+  "workspaces": [
+    "packages/core",
+    "apps/mobile"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/thd2020/phevere.git"
@@ -77,6 +85,7 @@
     "webpack-cli": "^7.2.2"
   },
   "dependencies": {
+    "@phevere/core": "*",
     "@gutenye/ocr-node": "^1.4.8",
     "csv-parse": "^5.5.0",
     "google-translate-api-browser": "^5.0.0",

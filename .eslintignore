@@ -1,0 +1,7 @@
+# Generated / vendor trees
+apps/mobile/android/
+apps/mobile/ios/
+apps/mobile/dist/
+native-addon/build/
+.webpack/
+out/

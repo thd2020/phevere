@@ -134,6 +134,21 @@ typings/
 # Vite
 .vite/
 
+# Capacitor mobile (keep android/ios project sources)
+apps/mobile/dist/
+apps/mobile/android/.gradle/
+apps/mobile/android/app/build/
+apps/mobile/android/build/
+apps/mobile/android/captures/
+apps/mobile/android/local.properties
+apps/mobile/android/.idea/
+apps/mobile/ios/App/Pods/
+apps/mobile/ios/App/App/public/
+apps/mobile/android/app/src/main/assets/public/
+apps/mobile/android/app/src/main/assets/capacitor.config.json
+apps/mobile/android/app/src/main/assets/capacitor.plugins.json
+*.iml
+
 # Electron-Forge
 out/
 
