@@ -2727,8 +2727,6 @@ body.settings-page .settings-tx-engine__hint {
   font-size: 0.75rem;
   color: var(--set-ink-soft);
 }
-  color: var(--set-ink-soft);
-}
 
 body.settings-page .toggle-input {
   position: absolute;

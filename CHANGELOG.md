@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Empty translation results (Google 429, missing Youdao/DeepL keys) were frozen in the 24h lookup cache, so every chip looked dead. Failed translations are no longer cached; Google gtx cools down after 429 and falls through to a second Google URL plus MyMemory.
+- `npm start` failed to compile: a stray brace in Settings CSS, and a missing macOS koffi binding after the mouse-down hover change.
 - Select-to-lookup ignored Phevere’s own windows (Settings and the notebook): UIA/AX skipped this process, and Settings was a modal child of the main window. Lookup now uses the same capture path inside the app; tray **Settings** no longer raises the main window. On Windows, a tray right-click no longer also fires the left-click “open notebook” handler.
 - Hover OCR no longer runs after a live text selection (or while the mouse button is down). Selection wins.
 - Main-window **Recent / A–Z** no longer collapses to a single letter when narrowing; those controls do not shrink, and the window has a minimum width.

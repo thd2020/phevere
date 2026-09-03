@@ -22,6 +22,7 @@ export interface ParsedAccelerator {
 }
 
 let getAsyncKeyState: ((vk: number) => number) | null | undefined;
+let cgEventSourceKeyState: ((stateId: number, keyCode: number) => number) | null | undefined;
 let cgEventSourceButtonState: ((stateId: number, button: number) => number) | null | undefined;
 let warnedKoffiUnavailable = false;
 
