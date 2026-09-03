@@ -4,7 +4,8 @@
 ; - Components page: shortcuts + optional OCR (unchecked = remove models after copy)
 ; - Explicit Uninstall Start Menu link + reinforced Apps & Features registry
 ; - Publisher: thd2020
-; - Win11-era chrome: Segoe UI + white MUI paper + 2× wizard BMPs (HALFTONE stretch)
+; - InstFiles page lists what is copying (ShowInstDetails + SetDetailsPrint both via
+;   scripts/patch-nsis-details-print.js on electron-builder's installSection.nsh)
 ;
 ; Note: do not use MUI_FUNCTION_DESCRIPTION_* here — include runs before MUI macros exist.
 
@@ -14,6 +15,9 @@ SetFont "Segoe UI" 10
 ManifestDPIAware true
 ManifestDPIAwareness "PerMonitorV2"
 XPStyle on
+ShowInstDetails show
+ShowUninstDetails show
+BrandingText "Phevere Setup — thd2020"
 
 ; --- Optional component sections (MUI components page) ---
 Section "Desktop shortcut" SecDesktop
@@ -39,6 +43,10 @@ FunctionEnd
   !define /redef MUI_BGCOLOR FFFFFF
   !define /redef MUI_TEXTCOLOR 1A1A1A
   !define /redef MUI_INSTFILESPAGE_COLORS "1A1A1A FFFFFF"
+  !ifdef MUI_INSTFILESPAGE_SUBTITLE
+    !undef MUI_INSTFILESPAGE_SUBTITLE
+  !endif
+  !define MUI_INSTFILESPAGE_SUBTITLE "Copying the app, OCR models, and native libraries"
   ; 2× BMPs fill the DPI-scaled control (NOSTRETCH left a tiny/pixelated 1× blit on Win11).
   !define /redef MUI_CUSTOMFUNCTION_GUIINIT phevereOnGuiInit
   !define MUI_WELCOMEPAGE_TITLE "Welcome to Phevere"
@@ -55,6 +63,7 @@ FunctionEnd
 
 !macro customPageAfterChangeDir
   !insertmacro MUI_PAGE_COMPONENTS
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW phevereOnInstFilesShow
 !macroend
 
 !macro customFinishPage
@@ -84,28 +93,51 @@ FunctionEnd
   ${EndIf}
 !macroend
 
+Function phevereOnInstFilesShow
+  ; Do not !insertmacro MUI_HEADER_TEXT here — this include is parsed before MUI exists.
+  SetDetailsPrint both
+  ShowInstDetails show
+  DetailPrint "Extracting Phevere into $INSTDIR"
+  DetailPrint "Copying: application files, OCR models (if kept), native OCR libraries"
+FunctionEnd
+
+!macro customInit
+  SetDetailsPrint both
+!macroend
+
 !macro customInstall
+  SetDetailsPrint both
+  ShowInstDetails show
   CreateDirectory "$INSTDIR\resources\seed"
 
   ; Shortcuts — createDesktopShortcut / createStartMenuShortcut are off; honor checkboxes.
   ${If} ${SectionIsSelected} ${SecDesktop}
+    DetailPrint "Creating desktop shortcut..."
     CreateShortCut "$DESKTOP\Phevere.lnk" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" 0
+  ${Else}
+    DetailPrint "Skipping desktop shortcut"
   ${EndIf}
 
   ${If} ${SectionIsSelected} ${SecStartMenu}
+    DetailPrint "Creating Start menu shortcuts (Phevere + Uninstall)..."
     CreateShortCut "$SMPROGRAMS\Phevere.lnk" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" 0
     ; Explicit uninstall entry next to the app (Control Panel also lists it via registry).
     CreateShortCut "$SMPROGRAMS\Uninstall Phevere.lnk" "$INSTDIR\${UNINSTALL_FILENAME}" "" "$INSTDIR\${UNINSTALL_FILENAME}" 0
+  ${Else}
+    DetailPrint "Skipping Start menu shortcuts"
   ${EndIf}
 
   ; OCR models are always packed in Setup (extraResources). If user opts out, remove after extract.
   ${IfNot} ${SectionIsSelected} ${SecOcr}
-    DetailPrint "Skipping OCR models (component unchecked)"
+    DetailPrint "Removing OCR models (you unchecked that component)..."
     RMDir /r "$INSTDIR\resources\ocr-models"
+  ${Else}
+    DetailPrint "Keeping bundled PP-OCRv4 models in resources\ocr-models"
   ${EndIf}
 
   ; Belt-and-suspenders: ensure Apps & Features can see Phevere even if SHELL_CONTEXT was odd.
   ; electron-builder already wrote SHELL_CONTEXT; mirror Publisher/DisplayName for the active install.
+  DetailPrint "Registering Apps & Features uninstaller..."
   WriteRegStr SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" DisplayName "${UNINSTALL_DISPLAY_NAME}"
   WriteRegStr SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" Publisher "thd2020"
   WriteRegStr SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" DisplayVersion "${VERSION}"
@@ -120,6 +152,7 @@ FunctionEnd
   ${EndIf}
   WriteRegDWORD SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" NoModify 1
   WriteRegDWORD SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" NoRepair 1
+  DetailPrint "Phevere ${VERSION} is installed in $INSTDIR"
 !macroend
 
 !macro customUnInstall

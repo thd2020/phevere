@@ -12,7 +12,7 @@
     "make:win": "node scripts/make-win.js",
     "make:win:arm64": "node scripts/make-win.js --arch arm64",
     "make:nsis": "npm run make:win",
-    "prepare:installer": "node scripts/prepare-installer-assets.js",
+    "prepare:installer": "node scripts/prepare-installer-assets.js && node scripts/patch-nsis-details-print.js",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "install": "node scripts/ensure-electron.js && npm run build-native",
