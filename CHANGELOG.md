@@ -9,15 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Translation tab **engine chips** (Auto / Youdao / DeepL / Google). Auto keeps CJK→Youdao and Latin→DeepL routing; an explicit pick is tried first, then the others. Preference is stored in `%APPDATA%\phevere\translation-prefs.json`.
 - **Android / iOS (Capacitor v1):** shared TypeScript lookup core (`packages/core`), in-app search and notebook, Android Process Text, iOS Share + `phevere://lookup`. Sideload only — see [`docs/MOBILE.md`](docs/MOBILE.md).
 - Windows **ARM64** NSIS Setup (`Phevere-Setup-<version>-arm64.exe`) on the same GitHub Release as x64. Built on `windows-11-arm` (UIA addon compiled natively). OCR uses sharp’s wasm fallback — sharp 0.33.5 has no `@img/sharp-win32-arm64`. Actions **workflow_dispatch** (`attach_tag`) rebuilds **both** Windows Setups onto that tag (replaces same-named `.exe`; does not retag).
 
 ### Changed
 
+- NSIS InstFiles page **names the step**: header subtitle, details list (extract / shortcuts / OCR models / Apps & Features). `prepare:installer` flips electron-builder’s `SetDetailsPrint none` so extract lines are visible.
 - CI/dev bumps from Dependabot: Actions `checkout` / `setup-node` / `upload-artifact` v7, `action-gh-release` v3, `webpack-cli` 7, `ts-loader` 9.6, `maker-rpm` 7.11. TypeScript stays 5; `@typescript-eslint/eslint-plugin` stays 6 (PRs #7 and #9 closed — they need a matching parser / loader).
 
 ### Fixed
 
+- **Installed** image OCR (hover or Ctrl+Shift+O) inserted spaces between letters (`centrific` → `c e n t r i f i c`). Packaged `desktopCapturer` thumbnails often do not match the requested pixel size; crop now uses the bitmap’s real size vs display DIP, and glyph-spaced CTC output is glued. Dev `npm start` was masking this via Python RapidOCR. Selectable UIA text was never affected.
+- Switching OCR to **PP-OCRv5** produced no text: the pack used PP-OCRv4 `ppocr_keys_v1.txt` (~6.6k classes) against a ~18k-class rec model. It now downloads RapidOCR’s `ppocrv5_dict.txt` and re-fetches if an old short dict is still on disk.
 - macOS shortcut monitor mode opened a lookup on every selection: `isAcceleratorPhysicallyHeld` always returned true off Windows. It now uses `CGEventSourceKeyState` (same hold-while-select / select-then-trigger as Windows). `CommandOrControl` is Command on Mac.
 - macOS Dock used the default Electron atom: packager needs `packaging/icon.icns`, and `npm start` now calls `app.dock.setIcon` (BrowserWindow `icon` does not set the Dock).
 - macOS menu-bar **P**: left-click only shows the main window. The context menu is right-click only (`setContextMenu` on darwin was also opening it on left-click).
