@@ -13,6 +13,7 @@ export {
   type Definition,
   type Translation,
   type DictionarySource,
+  type TranslationProvider,
 } from './dictionary';
 export { WikipediaService, wikipediaService, type WikipediaResult, type WikipediaSearchResult } from './wikipedia';
 export {

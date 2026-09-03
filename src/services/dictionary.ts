@@ -5,4 +5,5 @@ export {
   type Definition,
   type Translation,
   type DictionarySource,
+  type TranslationProvider,
 } from '@phevere/core';

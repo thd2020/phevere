@@ -32,6 +32,12 @@ import {
   MonitorMode,
   MonitorSettings,
 } from './services/monitor-settings-store';
+import {
+  loadTranslationPrefs,
+  saveTranslationPrefs,
+  parseTranslationProvider,
+  TranslationPrefs,
+} from './services/translation-prefs-store';
 import { getLocalDb, flushPersist as persistLocalDb, closeLocalDb } from './services/local-db';
 import * as vocabStore from './services/vocab-store';
 import * as offlineDict from './services/offline-dict-store';
@@ -1410,7 +1416,7 @@ async function handleOcrRegionSelected(region: {
 
   updateWorkProgress({
     title: 'Recognizing text…',
-    subtitle: 'Running PP-OCRv6 (RapidOCR) — large regions can take several seconds',
+    subtitle: 'Running PP-OCR — large regions can take several seconds',
   });
 
   const started = Date.now();
@@ -2078,10 +2084,14 @@ ipcMain.handle('clipboard-import', (event, jsonData: string) => {
 });
 
 // Dictionary service IPC handlers
-ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: string = 'auto', enabledSources?: string[]) => {
+ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: string = 'auto', enabledSources?: string[], lookupOpts?: { translationProvider?: string }) => {
   const t0 = Date.now();
+  const translationProvider = parseTranslationProvider(
+    lookupOpts?.translationProvider ?? loadTranslationPrefs().provider,
+  );
   try {
     const result = await dictionaryService.lookup(text, targetLanguage, enabledSources, {
+      translationProvider,
       onUpdate: (updated) => {
         try {
           if (!event.sender.isDestroyed()) {
@@ -2196,6 +2206,18 @@ ipcMain.handle('dictionary-set-source-enabled', (event, sourceName: string, enab
 
 ipcMain.handle('dictionary-get-supported-languages', () => {
   return dictionaryService.getSupportedLanguages();
+});
+
+ipcMain.handle('dictionary-get-translation-prefs', () => {
+  return loadTranslationPrefs();
+});
+
+ipcMain.handle('dictionary-set-translation-prefs', (_event, prefs: Partial<TranslationPrefs>) => {
+  const next = {
+    provider: parseTranslationProvider(prefs?.provider ?? loadTranslationPrefs().provider),
+  };
+  saveTranslationPrefs(next);
+  return next;
 });
 
 // Vocabulary notebook

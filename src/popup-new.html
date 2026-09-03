@@ -1327,6 +1327,54 @@
          align-items: center;
        }
 
+       .tx-source-row {
+         display: flex;
+         flex-wrap: wrap;
+         align-items: center;
+         gap: 8px;
+         margin-top: 10px;
+       }
+
+       .tx-source-label {
+         font-size: 11px;
+         font-weight: 600;
+         letter-spacing: 0.08em;
+         text-transform: uppercase;
+         color: var(--pv-ink-soft);
+         margin-right: 2px;
+       }
+
+       .tx-source-chips {
+         display: flex;
+         flex-wrap: wrap;
+         gap: 6px;
+       }
+
+       .tx-source-chip {
+         font-family: var(--pv-font-mono);
+         font-size: 11px;
+         letter-spacing: 0.04em;
+         color: var(--pv-ink);
+         background: var(--pv-panel);
+         border: 1px solid #d6d3cd;
+         padding: 4px 10px;
+         cursor: pointer;
+         line-height: 1.2;
+         transition: background-color 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+                     border-color 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+                     color 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+       }
+
+       .tx-source-chip:hover {
+         border-color: var(--pv-ink);
+       }
+
+       .tx-source-chip[aria-pressed="true"] {
+         background: var(--pv-ink);
+         color: var(--pv-paper-2);
+         border-color: var(--pv-ink);
+       }
+
        .language-group {
          display: flex;
          flex-direction: column;
@@ -1457,6 +1505,15 @@
                </select>
              </div>
            </div>
+           <div class="tx-source-row">
+             <span class="tx-source-label">Engine</span>
+             <div class="tx-source-chips" id="txSourceChips" role="radiogroup" aria-label="Translation engine">
+               <button type="button" class="tx-source-chip" data-tx-provider="auto" aria-pressed="true">Auto</button>
+               <button type="button" class="tx-source-chip" data-tx-provider="youdao" aria-pressed="false">Youdao</button>
+               <button type="button" class="tx-source-chip" data-tx-provider="deepl" aria-pressed="false">DeepL</button>
+               <button type="button" class="tx-source-chip" data-tx-provider="google" aria-pressed="false">Google</button>
+             </div>
+           </div>
          </div>
 
          <!-- Tabs -->
@@ -1507,6 +1564,7 @@
       var lookupTrailIndex = -1;
       var lookupNavGuardAt = 0;
       var LOOKUP_TRAIL_CAP = 40;
+      var translationProvider = 'auto';
       function foldLookupKey(s) {
         return String(s || '').replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
       }
@@ -2386,6 +2444,7 @@ function startAutoCloseTimeout() {
           opts = opts || {};
           const silent = !!opts.silent;
           const fromHistory = !!opts.fromHistory;
+          const force = !!opts.force;
           if (!text || !text.trim()) return;
           if (!fromHistory && !silent) rememberLookup(text);
           else if (!fromHistory && silent && lookupTrailIndex < 0) resetTrailTo(text);
@@ -2394,6 +2453,7 @@ function startAutoCloseTimeout() {
             clearStaleLookupUi(folded);
           }
           if (
+            !force &&
             folded &&
             currentResult &&
             foldLookupKey(currentResult.word || '') === folded &&
@@ -2404,7 +2464,7 @@ function startAutoCloseTimeout() {
             if (!silent) displayDictionaryResult(currentResult);
             return;
           }
-          if (folded && lookupInFlight && lookupFold === folded) {
+          if (!force && folded && lookupInFlight && lookupFold === folded) {
             currentText = text;
             window['__popupCurrentText'] = text;
             if (!silent && !isExpanded) {
@@ -2455,7 +2515,9 @@ function startAutoCloseTimeout() {
               }
 
               const lookupPromise = Promise.race([
-                window.dictionaryAPI.lookup(text, targetLang),
+                window.dictionaryAPI.lookup(text, targetLang, undefined, {
+                  translationProvider: translationProvider || 'auto',
+                }),
                 new Promise(function (_, reject) {
                   setTimeout(function () {
                     reject(new Error('Lookup timed out — try again'));
@@ -3362,17 +3424,46 @@ function startAutoCloseTimeout() {
          document.addEventListener('DOMContentLoaded', () => {
            const sourceLanguage = document.getElementById('sourceLanguage');
            const targetLanguage = document.getElementById('targetLanguage');
+
+           function paintTxSourceChips() {
+             document.querySelectorAll('#txSourceChips .tx-source-chip').forEach(function (btn) {
+               btn.setAttribute('aria-pressed', btn.getAttribute('data-tx-provider') === translationProvider ? 'true' : 'false');
+             });
+           }
+
+           document.getElementById('txSourceChips')?.addEventListener('click', (e) => {
+             const btn = e.target && e.target.closest ? e.target.closest('[data-tx-provider]') : null;
+             if (!btn) return;
+             const next = btn.getAttribute('data-tx-provider') || 'auto';
+             translationProvider = next;
+             paintTxSourceChips();
+             if (window.dictionaryAPI && window.dictionaryAPI.setTranslationPrefs) {
+               void window.dictionaryAPI.setTranslationPrefs({ provider: next });
+             }
+             if (currentText && currentTab === 'translation') {
+               lookupText(currentText, { force: true });
+             }
+           });
+
+           if (window.dictionaryAPI && window.dictionaryAPI.getTranslationPrefs) {
+             void window.dictionaryAPI.getTranslationPrefs().then(function (prefs) {
+               if (prefs && prefs.provider) translationProvider = prefs.provider;
+               paintTxSourceChips();
+             }).catch(function () { paintTxSourceChips(); });
+           } else {
+             paintTxSourceChips();
+           }
            
            if (sourceLanguage && targetLanguage) {
              sourceLanguage.addEventListener('change', () => {
                if (currentText && currentTab === 'translation') {
-                 lookupText(currentText);
+                 lookupText(currentText, { force: true });
                }
              });
              
              targetLanguage.addEventListener('change', () => {
                if (currentText && currentTab === 'translation') {
-                 lookupText(currentText);
+                 lookupText(currentText, { force: true });
                }
              });
            }

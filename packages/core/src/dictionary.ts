@@ -66,10 +66,14 @@ const CORE_WAIT_WITH_LOCAL_MS = 450;
 const CORE_WAIT_WITHOUT_LOCAL_MS = 2500;
 
 type LookupHolder = { current?: DictionaryResult };
+export type TranslationProvider = 'auto' | 'youdao' | 'deepl' | 'google';
+
 type LookupOpts = {
   skipEtymology?: boolean;
   onUpdate?: (result: DictionaryResult) => void;
   originalSelection?: string;
+  /** Translation tab: try this engine first (`auto` keeps CJK/Latin routing). */
+  translationProvider?: TranslationProvider;
 };
 
 function isTimeoutMeaning(meaning?: string): boolean {
@@ -347,7 +351,8 @@ export class DictionaryService extends BaseService {
 
       // zh → en and en → zh by default; honour an explicit cross-language target.
       const resolvedTarget = this.resolveTargetLanguage(detectedLanguage, targetLanguage);
-      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}`);
+      const txProvider = opts?.translationProvider || 'auto';
+      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}`);
 
       const remember = (r: DictionaryResult) => {
         if (this.isUncacheableResult(r) || this.isIncompleteSourceCache(r)) {
@@ -379,7 +384,12 @@ export class DictionaryService extends BaseService {
 
       const coreLookup =
         query.kind === 'sentence'
-          ? this.handleSentenceTranslationOptimized(query.trimmed, resolvedTarget, detectedLanguage)
+          ? this.handleSentenceTranslationOptimized(
+              query.trimmed,
+              resolvedTarget,
+              detectedLanguage,
+              mergedOpts,
+            )
           : this.lookupWithCandidates(query, resolvedTarget, detectedLanguage, enabledSources, holder, mergedOpts);
 
       try {
@@ -725,57 +735,35 @@ export class DictionaryService extends BaseService {
   /**
    * Handle sentence translation with intelligent language detection and multiple translations
    */
-  private async handleSentenceTranslationOptimized(text: string, targetLanguage: string, sourceLanguage: string): Promise<DictionaryResult> {
+  private async handleSentenceTranslationOptimized(
+    text: string,
+    targetLanguage: string,
+    sourceLanguage: string,
+    opts?: LookupOpts,
+  ): Promise<DictionaryResult> {
     const sources: string[] = [];
     const translations: Translation[] = [];
     
-    // Intelligent target language selection based on detected source
-    // Target is already resolved by lookup(); keep a safety net for direct callers.
     let actualTargetLanguage = this.resolveTargetLanguage(sourceLanguage, targetLanguage);
-    
-    // Get multiple translations in parallel for better accuracy
+    const provider = opts?.translationProvider || 'auto';
+
     const translationPromises: Array<Promise<Translation | null>> = [];
-    const hasCjkScript = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(text);
-    const preferCjkTx = ['zh', 'ja', 'ko'].includes(sourceLanguage) || hasCjkScript;
 
-    if (preferCjkTx && this.youdaoAppKey && this.youdaoAppSecret) {
-      const from = sourceLanguage === 'ja' ? 'ja' : sourceLanguage === 'ko' ? 'ko' : 'zh-CHS';
-      const to = actualTargetLanguage === 'zh' || actualTargetLanguage.startsWith('zh') ? 'zh-CHS' : (actualTargetLanguage || 'en');
-      translationPromises.push(
-        this.getYoudaoData(text, from, to === 'en' ? 'en' : to)
-          .then((d) => d?.translations?.[0] ? { ...d.translations[0], source: 'Youdao API' } : null)
-          .catch((): null => null)
-      );
+    if (provider === 'auto') {
+      const hasCjkScript = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(text);
+      const preferCjkTx = ['zh', 'ja', 'ko'].includes(sourceLanguage) || hasCjkScript;
+
+      if (preferCjkTx && this.youdaoAppKey && this.youdaoAppSecret) {
+        translationPromises.push(this.translateWithProvider('youdao', text, actualTargetLanguage, sourceLanguage));
+      }
+      translationPromises.push(this.translateWithProvider('google', text, actualTargetLanguage, sourceLanguage));
+      if (this.deeplApiKey) {
+        translationPromises.push(this.translateWithProvider('deepl', text, actualTargetLanguage, sourceLanguage));
+      }
+    } else {
+      translationPromises.push(this.translateWithProvider(provider, text, actualTargetLanguage, sourceLanguage));
     }
 
-    // Prioritize unofficial translation
-    translationPromises.push(
-      this.getGoogleTranslateUnofficial(text, actualTargetLanguage, sourceLanguage)
-        .then((t: any) => t ? {...t, source: 'Google Translate (Unofficial)'} : null)
-        .catch((): null => null)
-    );
-
-    if (this.deeplApiKey) {
-      translationPromises.push(
-        this.getDeepLTranslation(text, actualTargetLanguage, sourceLanguage)
-          .then((t: any) => t ? {...t, source: 'DeepL API'} : null)
-          .catch((): null => null)
-      );
-    }
-    
-    if (this.apiKey) {
-      translationPromises.push(
-        this.getGoogleTranslation(text, actualTargetLanguage, sourceLanguage)
-          .then((t: any) => t ? {...t, source: 'Google Translate API'} : null)
-          .catch((): null => null)
-      );
-    }
-    
-    // Always include mock translation as fallback
-    // translationPromises.push(
-    //   Promise.resolve(this.getMockTranslation(text, actualTargetLanguage, sourceLanguage))
-    // );
-    
     const translationResults = await Promise.allSettled(
       translationPromises.map(
         (p: Promise<Translation | null>): Promise<Translation | null> =>
@@ -783,15 +771,21 @@ export class DictionaryService extends BaseService {
       ),
     );
 
-    // Process results
     for (const result of translationResults) {
       if (result.status === 'fulfilled' && result.value) {
         translations.push(result.value);
         sources.push(result.value.source || 'Translation API');
       }
     }
-    
-    // Create result for sentences
+
+    if (!translations.length && provider !== 'auto') {
+      const fallback = await this.getBestTranslation(text, actualTargetLanguage, sourceLanguage, 'auto');
+      if (fallback) {
+        translations.push(fallback);
+        sources.push(fallback.source || 'Translation API');
+      }
+    }
+
     const result: DictionaryResult = {
       word: text,
       definitions: [{
@@ -804,12 +798,12 @@ export class DictionaryService extends BaseService {
       language: actualTargetLanguage,
       detectedLanguage: sourceLanguage,
       sources,
-      // Add metadata for UI
       metadata: {
         isSentence: true,
         sourceLanguage,
         targetLanguage: actualTargetLanguage,
-        originalTargetLanguage: targetLanguage
+        originalTargetLanguage: targetLanguage,
+        translationProvider: provider,
       }
     };
 
@@ -866,7 +860,7 @@ export class DictionaryService extends BaseService {
 
     // Translation / Tatoeba must not hold the first paint (Google gtx often sits until timeout).
     pushAux(
-      this.getBestTranslation(text, targetLanguage, sourceLanguage)
+      this.getBestTranslation(text, targetLanguage, sourceLanguage, opts?.translationProvider || 'auto')
         .then(translation => ({ type: 'translation', data: translation }))
         .catch(error => ({ type: 'translation', error }))
     );
@@ -1221,6 +1215,7 @@ export class DictionaryService extends BaseService {
           expectedSources: [...expectedSources],
           pendingEtymology,
           pendingTranslation,
+          translationProvider: opts?.translationProvider || 'auto',
         },
       };
     };
@@ -1309,7 +1304,7 @@ export class DictionaryService extends BaseService {
     
     // Always get translation first
     try {
-      const translation = await this.getBestTranslation(text, targetLanguage, sourceLanguage);
+      const translation = await this.getBestTranslation(text, targetLanguage, sourceLanguage, 'auto');
       if (translation) {
         translations.push(translation);
         sources.push(translation.source || 'Translation API');
@@ -2615,69 +2610,82 @@ export class DictionaryService extends BaseService {
   /**
    * Get best available translation
    */
-  private async getBestTranslation(text: string, targetLanguage: string, sourceLanguage: string): Promise<Translation | null> {
-    const hasCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(text);
-    const preferCjk = ['zh', 'ja', 'ko'].includes(sourceLanguage) || hasCJK;
-
-    // CJK → Youdao when credentials exist (no toggle thrash)
-    if (preferCjk && this.youdaoAppKey && this.youdaoAppSecret) {
+  private async translateWithProvider(
+    provider: Exclude<TranslationProvider, 'auto'>,
+    text: string,
+    targetLanguage: string,
+    sourceLanguage: string,
+  ): Promise<Translation | null> {
+    if (provider === 'youdao') {
+      if (!this.youdaoAppKey || !this.youdaoAppSecret) return null;
       try {
         const from = sourceLanguage === 'ja' ? 'ja' : sourceLanguage === 'ko' ? 'ko' : 'zh-CHS';
-        const to = targetLanguage === 'zh' || targetLanguage.startsWith('zh') ? 'zh-CHS' : (targetLanguage || 'en');
+        const to =
+          targetLanguage === 'zh' || targetLanguage.startsWith('zh')
+            ? 'zh-CHS'
+            : targetLanguage || 'en';
         const youdao = await this.getYoudaoData(text, from, to === 'en' ? 'en' : to);
         const t = youdao?.translations?.[0];
         if (t?.text) return { ...t, source: 'Youdao API' };
       } catch (error) {
         console.warn('Youdao translation failed:', error);
       }
+      return null;
     }
 
-    // Latin / general → DeepL when keyed
-    if (!preferCjk && this.deeplApiKey) {
+    if (provider === 'deepl') {
+      if (!this.deeplApiKey) return null;
       try {
         const deeplTranslation = await this.getDeepLTranslation(text, targetLanguage, sourceLanguage);
-        if (deeplTranslation) {
-          return { ...deeplTranslation, source: 'DeepL API' };
-        }
+        if (deeplTranslation) return { ...deeplTranslation, source: 'DeepL API' };
       } catch (error) {
         console.warn('DeepL translation failed:', error);
       }
+      return null;
     }
 
-    // Use the unofficial API as a broad fallback
     try {
-      const unofficialTranslation = await this.getGoogleTranslateUnofficial(text, targetLanguage, sourceLanguage);
-      if (unofficialTranslation) {
-        return unofficialTranslation;
-      }
+      const unofficial = await this.getGoogleTranslateUnofficial(text, targetLanguage, sourceLanguage);
+      if (unofficial) return unofficial;
     } catch (error) {
       console.warn('Unofficial Google translation failed:', error);
     }
-    
-    // Try DeepL for CJK if Youdao missed (or no Youdao key)
-    if (this.deeplApiKey) {
-      try {
-        const deeplTranslation = await this.getDeepLTranslation(text, targetLanguage, sourceLanguage);
-        if (deeplTranslation) {
-          return { ...deeplTranslation, source: 'DeepL API' };
-        }
-      } catch (error) {
-        console.warn('DeepL translation failed:', error);
-      }
-    }
-
-    // Fallback to Google Translate
     if (this.apiKey) {
       try {
         const googleTranslation = await this.getGoogleTranslation(text, targetLanguage, sourceLanguage);
-        if (googleTranslation) {
-          return { ...googleTranslation, source: 'Google Translate API' };
-        }
+        if (googleTranslation) return { ...googleTranslation, source: 'Google Translate API' };
       } catch (error) {
         console.warn('Google Translate failed:', error);
       }
     }
+    return null;
+  }
 
+  private async getBestTranslation(
+    text: string,
+    targetLanguage: string,
+    sourceLanguage: string,
+    preferred: TranslationProvider = 'auto',
+  ): Promise<Translation | null> {
+    const hasCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(text);
+    const preferCjk = ['zh', 'ja', 'ko'].includes(sourceLanguage) || hasCJK;
+
+    const autoOrder: Array<Exclude<TranslationProvider, 'auto'>> = preferCjk
+      ? ['youdao', 'google', 'deepl']
+      : ['deepl', 'google', 'youdao'];
+    const order: Array<Exclude<TranslationProvider, 'auto'>> =
+      preferred === 'youdao'
+        ? ['youdao', 'google', 'deepl']
+        : preferred === 'deepl'
+          ? ['deepl', 'google', 'youdao']
+          : preferred === 'google'
+            ? ['google', 'deepl', 'youdao']
+            : autoOrder;
+
+    for (const p of order) {
+      const hit = await this.translateWithProvider(p, text, targetLanguage, sourceLanguage);
+      if (hit) return hit;
+    }
     return null;
   }
 
