@@ -40,16 +40,17 @@ export function createNodeHttpClient(): HttpClient {
   return {
     async requestJson<T>(url: string, options?: HttpRequestInit): Promise<T> {
       const timeoutMs = options?.timeoutMs ?? 6000;
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(options?.headers || {}),
-      };
-      const response = await rawFetch(url, { ...options, headers, timeoutMs });
+      const method = (options?.method || 'GET').toUpperCase();
+      const headers: Record<string, string> = { ...(options?.headers || {}) };
+      if (options?.body && !headers['Content-Type'] && !headers['content-type']) {
+        headers['Content-Type'] = 'application/json';
+      }
+      const response = await rawFetch(url, { ...options, method, headers, timeoutMs });
       if (!response.ok) {
         throw new DictionaryError(
           `HTTP ${response.status}: ${response.statusText}`,
           `HTTP_${response.status}`,
-          response.status >= 500,
+          response.status === 429 || response.status >= 500,
         );
       }
       return (await withTimeout(response.json() as Promise<T>, timeoutMs, 'response.json')) as T;

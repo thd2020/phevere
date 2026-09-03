@@ -34,13 +34,14 @@ export function createCapacitorHttpClient(): HttpClient {
     async requestJson<T>(url: string, options?: HttpRequestInit): Promise<T> {
       const timeoutMs = options?.timeoutMs ?? 6000;
       try {
+        const headers = mergeHeaders(options);
+        if (options?.body && !headers['Content-Type'] && !headers['content-type']) {
+          headers['Content-Type'] = 'application/json';
+        }
         const response = await CapacitorHttp.request({
           url,
           method: (options?.method || 'GET') as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-            ...mergeHeaders(options),
-          },
+          headers,
           data: options?.body,
           readTimeout: timeoutMs,
           connectTimeout: timeoutMs,
@@ -50,7 +51,7 @@ export function createCapacitorHttpClient(): HttpClient {
           throw new DictionaryError(
             `HTTP ${response.status}`,
             `HTTP_${response.status}`,
-            response.status >= 500,
+            response.status === 429 || response.status >= 500,
           );
         }
         return response.data as T;

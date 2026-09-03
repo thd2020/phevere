@@ -1509,9 +1509,10 @@
              <span class="tx-source-label">Engine</span>
              <div class="tx-source-chips" id="txSourceChips" role="radiogroup" aria-label="Translation engine">
                <button type="button" class="tx-source-chip" data-tx-provider="auto" aria-pressed="true">Auto</button>
+               <button type="button" class="tx-source-chip" data-tx-provider="google" aria-pressed="false">Google</button>
+               <button type="button" class="tx-source-chip" data-tx-provider="mymemory" aria-pressed="false">MyMemory</button>
                <button type="button" class="tx-source-chip" data-tx-provider="youdao" aria-pressed="false">Youdao</button>
                <button type="button" class="tx-source-chip" data-tx-provider="deepl" aria-pressed="false">DeepL</button>
-               <button type="button" class="tx-source-chip" data-tx-provider="google" aria-pressed="false">Google</button>
              </div>
            </div>
          </div>
@@ -2682,6 +2683,7 @@ function startAutoCloseTimeout() {
                const s = String(src || '').toLowerCase();
                if (s.indexOf('deepl') >= 0) return 'DeepL';
                if (s.indexOf('youdao') >= 0) return 'Youdao';
+               if (s.indexOf('mymemory') >= 0) return 'MyMemory';
                if (s.indexOf('google') >= 0) return 'Google';
                if (s.indexOf('unofficial') >= 0) return 'Google';
                return '';

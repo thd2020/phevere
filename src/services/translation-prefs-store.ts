@@ -1,13 +1,13 @@
 /**
  * Translation-tab provider preference (userData/translation-prefs.json).
- * Auto keeps CJK→Youdao / Latin→DeepL routing; explicit picks try that engine first.
+ * Auto tries free Google then MyMemory; Youdao/DeepL still need keys. Explicit picks try that engine first.
  */
 
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 
-export type TranslationProvider = 'auto' | 'youdao' | 'deepl' | 'google';
+export type TranslationProvider = 'auto' | 'youdao' | 'deepl' | 'google' | 'mymemory';
 
 export interface TranslationPrefs {
   provider: TranslationProvider;
@@ -15,7 +15,7 @@ export interface TranslationPrefs {
 
 const FILE_NAME = 'translation-prefs.json';
 
-export const TRANSLATION_PROVIDERS: TranslationProvider[] = ['auto', 'youdao', 'deepl', 'google'];
+export const TRANSLATION_PROVIDERS: TranslationProvider[] = ['auto', 'youdao', 'deepl', 'google', 'mymemory'];
 
 export const translationPrefsDefaults: TranslationPrefs = {
   provider: 'auto',
@@ -23,7 +23,7 @@ export const translationPrefsDefaults: TranslationPrefs = {
 
 export function parseTranslationProvider(raw: unknown): TranslationProvider {
   const s = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
-  if (s === 'youdao' || s === 'deepl' || s === 'google' || s === 'auto') return s;
+  if (s === 'youdao' || s === 'deepl' || s === 'google' || s === 'mymemory' || s === 'auto') return s;
   return 'auto';
 }
 

@@ -66,13 +66,13 @@ const CORE_WAIT_WITH_LOCAL_MS = 450;
 const CORE_WAIT_WITHOUT_LOCAL_MS = 2500;
 
 type LookupHolder = { current?: DictionaryResult };
-export type TranslationProvider = 'auto' | 'youdao' | 'deepl' | 'google';
+export type TranslationProvider = 'auto' | 'youdao' | 'deepl' | 'google' | 'mymemory';
 
 type LookupOpts = {
   skipEtymology?: boolean;
   onUpdate?: (result: DictionaryResult) => void;
   originalSelection?: string;
-  /** Translation tab: try this engine first (`auto` keeps CJK/Latin routing). */
+  /** Translation tab: try this engine first (`auto` = Google then MyMemory, then keyed APIs). */
   translationProvider?: TranslationProvider;
 };
 
@@ -110,6 +110,8 @@ export class DictionaryService extends BaseService {
 
   private cache = new Map<string, { result: DictionaryResult; timestamp: number }>();
   private cacheTimeout = 24 * 60 * 60 * 1000; // 24 hours
+  /** Skip Google gtx while it is 429ing; MyMemory still runs. */
+  private googleGtxCoolUntil = 0;
   /** Per-source layer: a Datamuse hit must not freeze a Free Dictionary timeout for 24h. */
   private sourceLayer = new Map<string, { status: 'ok' | 'empty' | 'fail'; data?: unknown; ts: number }>();
   private sourceEmptyTtlMs = 6 * 60 * 60 * 1000;
@@ -260,44 +262,32 @@ export class DictionaryService extends BaseService {
   }
 
   /**
-   * Get translation from the public Google Translate endpoint without an API key.
-   * IMPROVED: Added robust error handling and defensive checks.
+   * Get translation from public Google Translate endpoints (no API key).
+   * gtx is often 429 after a burst; dict-chrome-ex is a second free path.
    */
-  private async getGoogleTranslateUnofficial(text: string, targetLanguage: string, sourceLanguage: string): Promise<Translation | null> {
-    // Use the public "gtx" endpoint to avoid fragile client libraries that regex-parse HTML
-    try {
-      let normalized = text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+  private isoLang(code: string): string {
+    const c = (code || 'en').toLowerCase().replace(/_/g, '-');
+    if (c === 'zh' || c.startsWith('zh-')) return 'zh-CN';
+    return c.split('-')[0] || 'en';
+  }
 
-      // Check text length limits (Google Translate has ~5000 char limit)
-      const MAX_TRANSLATE_LENGTH = 4500; // Leave some buffer
-      if (normalized.length > MAX_TRANSLATE_LENGTH) {
-        console.warn(`[DEBUG] Text too long for translation (${normalized.length} chars), truncating to ${MAX_TRANSLATE_LENGTH}`);
-        normalized = normalized.substring(0, MAX_TRANSLATE_LENGTH);
+  private parseGoogleTranslatePayload(response: any, targetLanguage: string): Translation | null {
+    if (Array.isArray(response) && Array.isArray(response[0]) && Array.isArray(response[0][0])) {
+      let translated = '';
+      try {
+        translated = response[0].map((seg: any) => (Array.isArray(seg) ? seg[0] : '')).join('');
+      } catch {
+        translated = '';
       }
-
-      console.log(`Unofficial translate`, { to: targetLanguage, from: sourceLanguage, chars: normalized.length });
-      const sl = sourceLanguage && sourceLanguage !== 'auto' ? sourceLanguage : 'auto';
-      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(targetLanguage)}&dt=t&q=${encodeURIComponent(normalized)}`;
-      const response = await this.request<any>(url);
-
-      // Expected response structure: [[ [ translatedText, originalText, null, null, ... ], ... ], null, detectedLang, ...]
-      if (Array.isArray(response) && Array.isArray(response[0])) {
-        let translated = '';
-        try {
-          translated = response[0].map((seg: any) => (Array.isArray(seg) ? seg[0] : '')).join('');
-        } catch (_e) {
-          translated = '';
-        }
-
-        const detected = typeof response[2] === 'string' ? response[2] : (response[8] && response[8][0] && response[8][0][0]) || undefined;
-
-        if (translated) {
-          // Normalize quote characters that often come HTML-encoded or as smart quotes
-          const cleaned = (translated || '')
-            .replace(/&quot;/g, '"')
-            .replace(/[“”]/g, '"')
-            .replace(/[‘’]/g, "'")
-            .trim();
+      const detected =
+        typeof response[2] === 'string' ? response[2] : (response[8] && response[8][0] && response[8][0][0]) || undefined;
+      if (translated) {
+        const cleaned = translated
+          .replace(/&quot;/g, '"')
+          .replace(/[“”]/g, '"')
+          .replace(/[‘’]/g, "'")
+          .trim();
+        if (cleaned) {
           return {
             language: targetLanguage,
             text: cleaned,
@@ -307,11 +297,96 @@ export class DictionaryService extends BaseService {
           };
         }
       }
+    }
+    if (Array.isArray(response) && typeof response[0] === 'string' && response[0].trim()) {
+      return {
+        language: targetLanguage,
+        text: response[0].trim(),
+        confidence: 0.8,
+        source: 'Google Translate (Unofficial)',
+      };
+    }
+    if (
+      Array.isArray(response) &&
+      Array.isArray(response[0]) &&
+      typeof response[0][0] === 'string' &&
+      response[0][0].trim()
+    ) {
+      return {
+        language: targetLanguage,
+        text: response[0][0].trim(),
+        confidence: 0.8,
+        source: 'Google Translate (Unofficial)',
+      };
+    }
+    return null;
+  }
 
-      console.warn('Unofficial Google Translate returned unexpected response shape');
+  private async getGoogleTranslateUnofficial(text: string, targetLanguage: string, sourceLanguage: string): Promise<Translation | null> {
+    try {
+      let normalized = text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+      const MAX_TRANSLATE_LENGTH = 4500;
+      if (normalized.length > MAX_TRANSLATE_LENGTH) {
+        normalized = normalized.substring(0, MAX_TRANSLATE_LENGTH);
+      }
+
+      const sl = sourceLanguage && sourceLanguage !== 'auto' ? this.isoLang(sourceLanguage) : 'auto';
+      const tl = this.isoLang(targetLanguage);
+      const q = encodeURIComponent(normalized);
+      const urls: string[] = [];
+      if (Date.now() >= this.googleGtxCoolUntil) {
+        urls.push(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(tl)}&dt=t&q=${q}`);
+      }
+      urls.push(`https://translate.googleapis.com/translate_a/t?client=dict-chrome-ex&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(tl)}&q=${q}`);
+
+      console.log(`Unofficial translate`, { to: tl, from: sl, chars: normalized.length, paths: urls.length });
+
+      for (const url of urls) {
+        try {
+          const response = await this.request<any>(url, { timeoutMs: 5000 });
+          const hit = this.parseGoogleTranslatePayload(response, targetLanguage);
+          if (hit) return hit;
+        } catch (error) {
+          const code = error instanceof DictionaryError ? error.code : '';
+          if (code === 'HTTP_429') {
+            this.googleGtxCoolUntil = Date.now() + 90_000;
+            console.warn('Google Translate rate-limited; cooling down 90s');
+            continue;
+          }
+          console.warn('Unofficial Google Translate path failed', { url: url.slice(0, 64), error });
+        }
+      }
       return null;
     } catch (error) {
-      console.error('Unofficial Google Translate error:', error);
+      console.warn('Unofficial Google Translate error:', error);
+      return null;
+    }
+  }
+
+  private async getMyMemoryTranslation(text: string, targetLanguage: string, sourceLanguage: string): Promise<Translation | null> {
+    try {
+      let normalized = text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+      if (!normalized) return null;
+      if (normalized.length > 450) normalized = normalized.slice(0, 450);
+      const sl = sourceLanguage && sourceLanguage !== 'auto' ? this.isoLang(sourceLanguage) : 'en';
+      const tl = this.isoLang(targetLanguage);
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(normalized)}&langpair=${encodeURIComponent(`${sl}|${tl}`)}`;
+      const response = await this.request<{
+        responseStatus?: number;
+        responseData?: { translatedText?: string };
+      }>(url, { timeoutMs: 8000 });
+      const translated = (response?.responseData?.translatedText || '').trim();
+      if (Number(response?.responseStatus) !== 200 || !translated) return null;
+      if (/MYMEMORY WARNING/i.test(translated)) return null;
+      if (translated.toLowerCase() === normalized.toLowerCase()) return null;
+      return {
+        language: targetLanguage,
+        text: translated,
+        confidence: 0.7,
+        source: 'MyMemory',
+      };
+    } catch (error) {
+      console.warn('MyMemory translation failed:', error);
       return null;
     }
   }
@@ -608,6 +683,7 @@ export class DictionaryService extends BaseService {
    */
   private isIncompleteSourceCache(result?: DictionaryResult): boolean {
     if (result?.metadata?.pendingEtymology || result?.metadata?.pendingTranslation) return true;
+    if (!(result?.translations || []).some((t) => (t.text || '').trim())) return true;
     const st = result?.metadata?.sourceStatus;
     if (!st || typeof st !== 'object') return true;
     const values = st as Record<string, string>;
@@ -750,13 +826,11 @@ export class DictionaryService extends BaseService {
     const translationPromises: Array<Promise<Translation | null>> = [];
 
     if (provider === 'auto') {
-      const hasCjkScript = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(text);
-      const preferCjkTx = ['zh', 'ja', 'ko'].includes(sourceLanguage) || hasCjkScript;
-
-      if (preferCjkTx && this.youdaoAppKey && this.youdaoAppSecret) {
+      translationPromises.push(this.translateWithProvider('google', text, actualTargetLanguage, sourceLanguage));
+      translationPromises.push(this.translateWithProvider('mymemory', text, actualTargetLanguage, sourceLanguage));
+      if (this.youdaoAppKey && this.youdaoAppSecret) {
         translationPromises.push(this.translateWithProvider('youdao', text, actualTargetLanguage, sourceLanguage));
       }
-      translationPromises.push(this.translateWithProvider('google', text, actualTargetLanguage, sourceLanguage));
       if (this.deeplApiKey) {
         translationPromises.push(this.translateWithProvider('deepl', text, actualTargetLanguage, sourceLanguage));
       }
@@ -767,7 +841,7 @@ export class DictionaryService extends BaseService {
     const translationResults = await Promise.allSettled(
       translationPromises.map(
         (p: Promise<Translation | null>): Promise<Translation | null> =>
-          withTimeout(p, 3000, 'translation').catch((): null => null),
+          withTimeout(p, 5500, 'translation').catch((): null => null),
       ),
     );
 
@@ -2644,21 +2718,30 @@ export class DictionaryService extends BaseService {
       return null;
     }
 
-    try {
-      const unofficial = await this.getGoogleTranslateUnofficial(text, targetLanguage, sourceLanguage);
-      if (unofficial) return unofficial;
-    } catch (error) {
-      console.warn('Unofficial Google translation failed:', error);
-    }
-    if (this.apiKey) {
+    if (provider === 'google') {
       try {
-        const googleTranslation = await this.getGoogleTranslation(text, targetLanguage, sourceLanguage);
-        if (googleTranslation) return { ...googleTranslation, source: 'Google Translate API' };
+        const unofficial = await this.getGoogleTranslateUnofficial(text, targetLanguage, sourceLanguage);
+        if (unofficial) return unofficial;
       } catch (error) {
-        console.warn('Google Translate failed:', error);
+        console.warn('Unofficial Google translation failed:', error);
       }
+      if (this.apiKey) {
+        try {
+          const googleTranslation = await this.getGoogleTranslation(text, targetLanguage, sourceLanguage);
+          if (googleTranslation) return { ...googleTranslation, source: 'Google Translate API' };
+        } catch (error) {
+          console.warn('Google Translate failed:', error);
+        }
+      }
+      return null;
     }
-    return null;
+
+    try {
+      return await this.getMyMemoryTranslation(text, targetLanguage, sourceLanguage);
+    } catch (error) {
+      console.warn('MyMemory translation failed:', error);
+      return null;
+    }
   }
 
   private async getBestTranslation(
@@ -2667,20 +2750,17 @@ export class DictionaryService extends BaseService {
     sourceLanguage: string,
     preferred: TranslationProvider = 'auto',
   ): Promise<Translation | null> {
-    const hasCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(text);
-    const preferCjk = ['zh', 'ja', 'ko'].includes(sourceLanguage) || hasCJK;
-
-    const autoOrder: Array<Exclude<TranslationProvider, 'auto'>> = preferCjk
-      ? ['youdao', 'google', 'deepl']
-      : ['deepl', 'google', 'youdao'];
+    const freeFirst: Array<Exclude<TranslationProvider, 'auto'>> = ['google', 'mymemory', 'youdao', 'deepl'];
     const order: Array<Exclude<TranslationProvider, 'auto'>> =
       preferred === 'youdao'
-        ? ['youdao', 'google', 'deepl']
+        ? ['youdao', 'google', 'mymemory', 'deepl']
         : preferred === 'deepl'
-          ? ['deepl', 'google', 'youdao']
-          : preferred === 'google'
-            ? ['google', 'deepl', 'youdao']
-            : autoOrder;
+          ? ['deepl', 'google', 'mymemory', 'youdao']
+          : preferred === 'mymemory'
+            ? ['mymemory', 'google', 'youdao', 'deepl']
+            : preferred === 'google'
+              ? ['google', 'mymemory', 'youdao', 'deepl']
+              : freeFirst;
 
     for (const p of order) {
       const hit = await this.translateWithProvider(p, text, targetLanguage, sourceLanguage);
