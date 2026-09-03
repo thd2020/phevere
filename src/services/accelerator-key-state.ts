@@ -22,7 +22,7 @@ export interface ParsedAccelerator {
 }
 
 let getAsyncKeyState: ((vk: number) => number) | null | undefined;
-let cgEventSourceKeyState: ((stateId: number, keyCode: number) => number) | null | undefined;
+let cgEventSourceButtonState: ((stateId: number, button: number) => number) | null | undefined;
 let warnedKoffiUnavailable = false;
 
 function loadWin32(): ((vk: number) => number) | null {
@@ -65,6 +65,11 @@ function loadDarwin(): ((stateId: number, keyCode: number) => number) | null {
     };
     const cg = koffi.load('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics');
     cgEventSourceKeyState = cg.func('uint8 CGEventSourceKeyState(int32, uint16)');
+    try {
+      cgEventSourceButtonState = cg.func('uint8 CGEventSourceButtonState(int32, uint32)');
+    } catch {
+      cgEventSourceButtonState = null;
+    }
     return cgEventSourceKeyState;
   } catch {
     cgEventSourceKeyState = null;
@@ -399,4 +404,26 @@ export function isAcceleratorPhysicallyHeld(accelerator: string): boolean {
     return isHeldDarwin(accelerator);
   }
   return true;
+}
+
+const VK_LBUTTON = 0x01;
+const kCGMouseButtonLeft = 0;
+
+/** True while the primary mouse button is held (drag-select). Other platforms: false. */
+export function isPrimaryMouseDown(): boolean {
+  if (process.platform === 'win32') {
+    const fn = loadWin32();
+    if (!fn) return false;
+    return isVkDown(fn, VK_LBUTTON);
+  }
+  if (process.platform === 'darwin') {
+    loadDarwin();
+    if (!cgEventSourceButtonState) return false;
+    try {
+      return cgEventSourceButtonState(kCGEventSourceStateCombinedSessionState, kCGMouseButtonLeft) !== 0;
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }

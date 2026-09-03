@@ -556,11 +556,6 @@ class AXSelectionMonitor {
     CFRelease(systemWide);
     if (!el) return;
 
-    if (pidOf(el) == getpid()) {
-      CFRelease(el);
-      return;
-    }
-
     CGPoint cocoaPt = CGPointMake(cx, cy);
     AXValueRef pointVal = AXValueCreate(axValueType(kAXValueCGPointType), &cocoaPt);
     CFTypeRef rangeVal = nullptr;
@@ -702,10 +697,6 @@ class AXSelectionMonitor {
         return;
       }
       const pid_t pid = pidOf(focused);
-      if (pid == getpid()) {
-        CFRelease(focused);
-        return;
-      }
       if (isSecureChain(focused)) {
         CFRelease(focused);
         axLog("skip secure field");
@@ -738,7 +729,7 @@ class AXSelectionMonitor {
     *outY = 0;
     AXUIElementRef focused = copyFocusedElement();
     if (!focused) return {};
-    if (pidOf(focused) == getpid() || isSecureChain(focused)) {
+    if (isSecureChain(focused)) {
       CFRelease(focused);
       return {};
     }
@@ -817,6 +808,11 @@ class AXSelectionMonitor {
         this->fallback_inflight.store(0);
         return;
       }
+      if (pid == getpid()) {
+        axLog("step5 skip: own process (no Cmd+C)");
+        this->fallback_inflight.store(0);
+        return;
+      }
 
       axLog("step5 silent Cmd+C");
       this->runClipboardFallback(x, y, gen);
@@ -873,7 +869,6 @@ class AXSelectionMonitor {
       NSRunningApplication* front = [[NSWorkspace sharedWorkspace] frontmostApplication];
       if (!front) return;
       const pid_t pid = front.processIdentifier;
-      if (pid == getpid()) return;
       if (pid == observed_pid && ax_observer) return;
 
       teardownObserver();

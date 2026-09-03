@@ -20,7 +20,7 @@ import { isLookupWorthy } from './services/text-normalize';
 import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
 import { placePopupNearPoint } from './services/popup-placement';
 import { showWorkProgress, updateWorkProgress, closeWorkProgress } from './services/work-progress';
-import { isAcceleratorPhysicallyHeld } from './services/accelerator-key-state';
+import { isAcceleratorPhysicallyHeld, isPrimaryMouseDown } from './services/accelerator-key-state';
 import { getForegroundWindowBoundsDip } from './services/foreground-window';
 import { getNowPlaying, formatNowPlayingQuery } from './services/media-session';
 import { readClipboardImage, loadImageFileAsPng, pngFromBase64 } from './services/clipboard-image';
@@ -578,7 +578,6 @@ function buildTrayContextMenu(): Electron.Menu {
     {
       label: 'Settings…',
       click: () => {
-        showOrRestoreMainWindow();
         createSettingsWindow();
       },
     },
@@ -902,6 +901,8 @@ const createMainWindow = (): void => {
   mainWindow = new BrowserWindow(withWin11Chrome({
     height: 600,
     width: 800,
+    minWidth: 560,
+    minHeight: 420,
     frame: false,
     ...(windowIcon ? { icon: windowIcon } : {}),
     webPreferences: {
@@ -1200,8 +1201,6 @@ const createSettingsWindow = (): void => {
     height: 600,
     minWidth: 640,
     minHeight: 480,
-    parent: mainWindow || undefined,
-    modal: true,
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       nodeIntegration: false,
@@ -1241,23 +1240,8 @@ function wireContextCaptureHubOnce(): void {
 
   contextCaptureHub.onContext((event: ContextEvent) => {
     const focused = BrowserWindow.getFocusedWindow();
-    if (
-      focused &&
-      (popupWindows.includes(focused) ||
-        focused === mainWindow ||
-        focused === settingsWindow ||
-        focused === ocrOverlayWindow ||
-        externalWindows.includes(focused))
-    ) {
-      // Explicit capture origins (OCR / clipboard / media / manual) may finish while Phevere is focused.
-      if (
-        event.origin !== 'ocr' &&
-        event.origin !== 'clipboard' &&
-        event.origin !== 'media' &&
-        event.origin !== 'manual'
-      ) {
-        return;
-      }
+    if (focused && focused === ocrOverlayWindow) {
+      return;
     }
 
     setLastSelectionEvent(event);
@@ -1749,7 +1733,14 @@ function ensureHoverLookup(): HoverLookupService {
         return { text: '', x, y };
       },
       isBlocked: () =>
+        isPrimaryMouseDown() ||
         phevereWindowFocused(mainWindow, popupWindows, settingsWindow, ocrOverlayWindow, externalWindows),
+      skipOcr: () => {
+        const ev = lastSelectionEvent;
+        if (!ev || !(ev.text || '').trim()) return false;
+        if (ev.origin !== 'selection' && ev.origin !== 'manual') return false;
+        return Date.now() - ev.timestamp < 2500;
+      },
     });
   }
   return hoverLookup;
@@ -2002,7 +1993,7 @@ function rememberSelection(x: number, y: number, text: string): boolean {
   return true;
 }
 
-/** In-app select-to-lookup (main window) uses the same monitor mode as UIA. */
+/** In-app select-to-lookup uses the same monitor mode as UIA. */
 function rememberAndMaybeOpenPopup(x: number, y: number, text: string): void {
   if (!rememberSelection(x, y, text)) return;
   if (monitorSettings.mode === 'off') return;

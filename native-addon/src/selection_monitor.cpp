@@ -745,9 +745,6 @@ bool UIAutomationSelectionMonitor::elementTooLargeForScan(IUIAutomationElement* 
 void UIAutomationSelectionMonitor::pokeChromiumUia(POINT pt) {
     HWND hwnd = WindowFromPoint(pt);
     if (!hwnd) return;
-    DWORD pid = 0;
-    GetWindowThreadProcessId(hwnd, &pid);
-    if (pid == GetCurrentProcessId()) return;
 
     HWND root = GetAncestor(hwnd, GA_ROOT);
     auto pokeOne = [](HWND h) {
@@ -808,21 +805,17 @@ void UIAutomationSelectionMonitor::runCaptureChain(int x, int y, uint64_t gen) {
 
     POINT pt{x, y};
     HWND hwnd = WindowFromPoint(pt);
-    if (hwnd) {
-        DWORD pid = 0;
-        GetWindowThreadProcessId(hwnd, &pid);
-        if (pid == GetCurrentProcessId()) {
-            lastUiaEventTime = std::chrono::steady_clock::now();
-            if (debugEnabled) std::cout << "[UIA] chain skip: own process" << std::endl;
-            return;
-        }
-    }
+    DWORD pid = 0;
+    if (hwnd) GetWindowThreadProcessId(hwnd, &pid);
+    const bool ownProcess = pid == GetCurrentProcessId();
 
     const HRESULT ci = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const bool uninit = (ci == S_OK);
     if (FAILED(ci) && ci != S_FALSE) {
-        if (debugEnabled) std::cout << "[UIA] chain: COM init failed, going to Ctrl+C" << std::endl;
-        triggerSyntheticCopyFallback(x, y, gen);
+        if (!ownProcess) {
+            if (debugEnabled) std::cout << "[UIA] chain: COM init failed, going to Ctrl+C" << std::endl;
+            triggerSyntheticCopyFallback(x, y, gen);
+        }
         return;
     }
 
@@ -834,14 +827,11 @@ void UIAutomationSelectionMonitor::runCaptureChain(int x, int y, uint64_t gen) {
             IID_IUIAutomation, reinterpret_cast<void**>(&uia));
         if (FAILED(created) || !uia) {
             if (debugEnabled) std::cout << "[UIA] chain: CUIAutomation failed, going to Ctrl+C" << std::endl;
-            goStep5 = true;
+            goStep5 = !ownProcess;
         } else {
             CComPtr<IUIAutomationElement> focused;
             uia->GetFocusedElement(&focused);
-            if (focused && isFromCurrentProcess(focused)) {
-                lastUiaEventTime = std::chrono::steady_clock::now();
-                if (debugEnabled) std::cout << "[UIA] chain skip: focused own process" << std::endl;
-            } else if (focused && isPasswordChain(focused, uia)) {
+            if (focused && isPasswordChain(focused, uia)) {
                 if (debugEnabled) std::cout << "[UIA] chain skip: password field" << std::endl;
             } else {
                 // 1. TextPattern (AXSelectedText analog)
@@ -892,6 +882,10 @@ void UIAutomationSelectionMonitor::runCaptureChain(int x, int y, uint64_t gen) {
                                 if (debugEnabled) {
                                     std::cout << "[UIA] step5 skip: password field" << std::endl;
                                 }
+                            } else if (ownProcess || (focusedAgain && isFromCurrentProcess(focusedAgain))) {
+                                if (debugEnabled) {
+                                    std::cout << "[UIA] step5 skip: own process (no Ctrl+C)" << std::endl;
+                                }
                             } else {
                                 goStep5 = true;
                             }
@@ -904,7 +898,7 @@ void UIAutomationSelectionMonitor::runCaptureChain(int x, int y, uint64_t gen) {
 
     if (uninit) CoUninitialize();
 
-    if (goStep5 && stillCurrent()) {
+    if (goStep5 && stillCurrent() && !ownProcess) {
         if (debugEnabled) std::cout << "[UIA] step5 silent Ctrl+C" << std::endl;
         triggerSyntheticCopyFallback(x, y, gen);
     }
@@ -1215,19 +1209,6 @@ public:
             if (needUninit) CoUninitialize();
             return out;
         }
-
-        // Skip our own process (popup / overlay).
-        VARIANT vPid;
-        VariantInit(&vPid);
-        if (SUCCEEDED(element->GetCurrentPropertyValue(UIA_ProcessIdPropertyId, &vPid))) {
-            if ((vPid.vt == VT_I4 || vPid.vt == VT_INT) &&
-                ((vPid.vt == VT_I4) ? (DWORD)vPid.lVal : (DWORD)vPid.intVal) == GetCurrentProcessId()) {
-                VariantClear(&vPid);
-                if (needUninit) CoUninitialize();
-                return out;
-            }
-        }
-        VariantClear(&vPid);
 
         CComPtr<IUIAutomationTextPattern> textPattern;
         hr = element->GetCurrentPattern(UIA_TextPatternId, (IUnknown**)&textPattern);

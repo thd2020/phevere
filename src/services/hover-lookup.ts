@@ -23,6 +23,8 @@ export interface HoverLookupOptions {
   cooldownMs?: number;
   /** Half-size of the OCR fallback crop around the cursor. */
   ocrRadiusPx?: number;
+  /** Skip OCR fallback (selection already exists, or mouse is down). */
+  skipOcr?: () => boolean;
   /** Skip while any of these windows are focused. */
   isBlocked?: () => boolean;
   /** UIA word-at-point; returns empty when unavailable. */
@@ -46,8 +48,8 @@ export class HoverLookupService {
   private lastEmitText = '';
   private lastEmitAt = 0;
   private probing = false;
-  private readonly opts: Required<Omit<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint'>> &
-    Pick<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint'>;
+  private readonly opts: Required<Omit<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'skipOcr'>> &
+    Pick<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'skipOcr'>;
 
   constructor(options: HoverLookupOptions = {}) {
     this.opts = { ...DEFAULTS, ...options };
@@ -138,6 +140,7 @@ export class HoverLookupService {
     }
 
     if (!text) {
+      if (this.opts.skipOcr?.()) return;
       const r = this.opts.ocrRadiusPx;
       const capture = await captureScreenRegion({
         x: x - r,
@@ -174,21 +177,15 @@ export class HoverLookupService {
   }
 }
 
-/** True when Phevere's own chrome has focus (don't hover-lookup ourselves). */
+/** True when the OCR region overlay has focus (don't hover-OCR the overlay itself). */
 export function phevereWindowFocused(
-  main: BrowserWindow | null,
-  popups: BrowserWindow[],
-  settings: BrowserWindow | null,
+  _main: BrowserWindow | null,
+  _popups: BrowserWindow[],
+  _settings: BrowserWindow | null,
   overlay: BrowserWindow | null,
-  external: BrowserWindow[]
+  _external: BrowserWindow[]
 ): boolean {
   const focused = BrowserWindow.getFocusedWindow();
   if (!focused) return false;
-  return (
-    focused === main ||
-    focused === settings ||
-    focused === overlay ||
-    popups.includes(focused) ||
-    external.includes(focused)
-  );
+  return !!(overlay && focused === overlay);
 }
