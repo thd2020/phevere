@@ -21,6 +21,9 @@ import {
   OcrSettings,
   saveOcrSettings,
 } from './ocr-settings-store';
+import { finalizeOcrLines, glueSpacedLetters } from './ocr-text';
+
+export { glueSpacedLetters } from './ocr-text';
 
 const console = wrapConsole('ocr-engine');
 
@@ -274,6 +277,18 @@ function boxToBounds(pts: number[][]): OcrLine['bounds'] | undefined {
   };
 }
 
+function dictLineCount(filePath: string): number {
+  try {
+    return fs
+      .readFileSync(filePath, 'utf8')
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean).length;
+  } catch {
+    return 0;
+  }
+}
+
 function listOnnxTriplet(dir: string): { det: string; rec: string; dict: string } | null {
   if (!dir || !fs.existsSync(dir)) return null;
   const files = fs.readdirSync(dir);
@@ -407,12 +422,23 @@ class OnnxNativeOcrEngine implements OcrEngine {
       { url: profile.files.dictUrl, dest: path.join(root, profile.files.dict) },
     ];
     for (const t of targets) {
-      if (fs.existsSync(t.dest) && fs.statSync(t.dest).size > 100) continue;
+      const isV5Dict =
+        profile.id === 'pp-ocrv5-mobile' && /ppocrv5_dict\.txt$/i.test(t.dest);
+      const exists = fs.existsSync(t.dest) && fs.statSync(t.dest).size > 100;
+      const staleV5Dict = isV5Dict && exists && dictLineCount(t.dest) < 8000;
+      if (exists && !staleV5Dict) continue;
+      if (staleV5Dict) {
+        console.warn('PP-OCRv5 dict looks like v4 keys; re-downloading', t.dest);
+        try {
+          fs.unlinkSync(t.dest);
+        } catch {
+          /* ignore */
+        }
+      }
       if (!t.url) throw new Error(`Missing download URL for ${t.dest}`);
       console.log('Downloading OCR model', t.url);
       await downloadFile(t.url, t.dest);
     }
-    // Prefer bundled dict if download failed size-wise — already required above.
   }
 
   private resolveModelFiles(): { det: string; rec: string; dict: string; root: string } {
@@ -485,20 +511,18 @@ class OnnxNativeOcrEngine implements OcrEngine {
       const lines: OcrLine[] = (Array.isArray(linesRaw) ? linesRaw : [])
         .map((row) => lineFromOcrRow(row, size?.width, size?.height))
         .filter((l) => l.text.trim());
+      const finalized = finalizeOcrLines(lines);
 
       const scores = (Array.isArray(linesRaw) ? linesRaw : [])
         .map((r) => Number(r?.mean ?? r?.score))
         .filter((n) => Number.isFinite(n));
-      const text = lines
-        .map((l) => l.text)
-        .join('\n')
-        .trim();
+      const text = finalized.text;
       const confidence =
         scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : text ? 0.8 : 0;
 
       return {
         text,
-        lines,
+        lines: finalized.lines,
         confidence,
         engine: text ? 'onnx-native' : 'none',
         language: 'multi',
@@ -521,6 +545,11 @@ class OnnxNativeOcrEngine implements OcrEngine {
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
+      this.settings = loadOcrSettings();
+      const profile = findProfile(this.settings.activeProfileId) || OCR_PROFILES[0];
+      if (profile.kind === 'download') {
+        await this.ensureDownloaded(profile);
+      }
       const files = this.resolveModelFiles();
       this.modelsPath = files.root;
       this.modelFiles = { det: files.det, rec: files.rec, dict: files.dict };
@@ -532,7 +561,12 @@ class OnnxNativeOcrEngine implements OcrEngine {
 
       // ESM package; do not require() it (ERR_REQUIRE_ESM under webpack/Electron).
       const Ocr = await loadGutenOcr();
-      console.log('Loading native OCR models', { modelsPath: this.modelsPath, files: this.modelFiles });
+      const dictChars = dictLineCount(files.dict);
+      console.log('Loading native OCR models', {
+        modelsPath: this.modelsPath,
+        files: this.modelFiles,
+        dictChars,
+      });
       this.ocr = await Ocr.create({
         models: {
           detectionPath: files.det,
@@ -677,14 +711,14 @@ class RapidOcrWorkerEngine implements OcrEngine {
       text,
       bounds: boxToBounds(boxes[i]),
     }));
-
-    const text = txts.join('\n').trim();
+    const finalized = finalizeOcrLines(lines);
+    const text = finalized.text;
     const confidence =
       scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : text ? 0.8 : 0;
 
     return {
       text,
-      lines,
+      lines: finalized.lines,
       confidence,
       engine: text ? 'onnx-rapidocr' : 'none',
       language: 'multi',
@@ -990,7 +1024,7 @@ export function listOcrProfiles() {
 export function textNearPoint(result: OcrResult, relX: number, relY: number): string {
   const lined = result.lines.filter((l) => l.text && l.bounds && l.bounds.width > 0);
   if (lined.length === 0) {
-    return pickTokenAt(result.text || '', { x: 0, y: 0, width: 1, height: 1 }, 0.5);
+    return pickTokenAt(glueSpacedLetters(result.text || ''), { x: 0, y: 0, width: 1, height: 1 }, 0.5);
   }
 
   const containing = lined.find((l) => {
@@ -1025,7 +1059,7 @@ const LATIN_WORD_CHAR = /[A-Za-z0-9\u00C0-\u024F'’]/;
 
 /** Split a line into words / CJK chars and pick the token under the x offset. */
 function pickTokenAt(line: string, bounds: NonNullable<OcrLine['bounds']>, relX: number): string {
-  const text = line.replace(/\s+/g, ' ').trim();
+  const text = glueSpacedLetters(line.replace(/\s+/g, ' ').trim());
   if (!text) return '';
   const chars = [...text];
   const ratio = bounds.width > 0 ? Math.min(1, Math.max(0, (relX - bounds.x) / bounds.width)) : 0.5;

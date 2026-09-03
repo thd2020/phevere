@@ -1,5 +1,7 @@
 # Beyond selectable text — context capture & OCR plan
 
+**2026-09-03:** Packaged screen crop uses the thumbnail’s real pixel size (not `display.scaleFactor` alone) so image OCR does not emit `c e n t r i f i c`. PP-OCRv5 must use `ppocrv5_dict.txt` (~18k classes), not v4 `ppocr_keys_v1.txt`.
+
 Status: **active** · Selection + OCR ROI/hover/grab/window/clipboard/media shipped; packaging & cross-platform media open  
 Audience: implementers extending Phevere past UIAutomation-selectable text  
 Related: `src/services/native-selection.ts`, `src/services/hover-lookup.ts`, `src/services/ocr-engine.ts`, `resources/ocr-models/`
@@ -76,12 +78,12 @@ This interface is also the target for the **macOS AX draft** (`docs/MACOS_SELECT
 
 - [x] Transparent overlay for region select
 - [x] Optional “grab under cursor” small rect (`Ctrl+Shift+G`)
-- [x] Prefer Electron `desktopCapturer` for portability; consider Win32 `PrintWindow` / BitBlt for a single HWND when needed
+- [x] Prefer Electron `desktopCapturer` for portability; crop in the **returned bitmap’s** pixel space (`getSize()` / display DIP). Packaged Electron often ignores `thumbnailSize`, so using `display.scaleFactor` alone sliced glyphs.
 - [x] Persist capture only in memory / short-lived temp; never upload by default
 
 ### Phase 2 — OCR engine
 
-- [x] **Primary:** in-process `onnxruntime-node` + PP-OCRv4 mobile ONNX under `resources/ocr-models/` (via `@gutenye/ocr-node`). No end-user Python.
+- [x] **Primary:** in-process `onnxruntime-node` + PP-OCRv4 mobile ONNX under `resources/ocr-models/` (via `@gutenye/ocr-node`). Optional download: PP-OCRv5 + RapidOCR `ppocrv5_dict.txt` (v4 keys file yields empty rec). No end-user Python.
 - [x] Packaging: `extraResources` → `ocr-models`; packager ignore keeps webpack externals; `asar.unpackDir` so `@gutenye` ESM and ONNX/sharp `.node` live in `app.asar.unpacked`. `ensure-ocr-natives` + `verify-ocr-pack`. CI: darwin x64 + arm64.
 - [x] Settings → Capture: status only (“Embedded OCR ready” / error). No pip Install UX.
 - [x] Python RapidOCR worker (`scripts/ocr_worker.py`) kept as **dev-only** fallback when `npm start` cannot load natives (packaged Electron never uses it).

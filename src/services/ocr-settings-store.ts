@@ -47,13 +47,15 @@ export const OCR_PROFILES: OcrProfileMeta[] = [
     files: {
       det: 'ch_PP-OCRv5_det_mobile.onnx',
       rec: 'ch_PP-OCRv5_rec_mobile.onnx',
-      dict: 'ppocr_keys_v1.txt',
+      // v5 rec logits are ~18k classes. The v4 `ppocr_keys_v1.txt` (~6.6k) maps
+      // every character to blank/garbage — Settings switch then yields empty OCR.
+      dict: 'ppocrv5_dict.txt',
       detUrl:
         'https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx',
       recUrl:
         'https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_mobile.onnx',
       dictUrl:
-        'https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/paddle/PP-OCRv4/rec/ch_PP-OCRv4_rec_mobile/ppocr_keys_v1.txt',
+        'https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/paddle/PP-OCRv5/rec/ch_PP-OCRv5_rec_mobile/ppocrv5_dict.txt',
     },
   },
   {

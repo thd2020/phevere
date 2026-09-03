@@ -64,11 +64,26 @@ export async function captureScreenRegion(bounds: ContextBounds): Promise<Captur
     return null;
   }
 
-  // Convert DIP region → physical pixels relative to this display.
-  const cropX = Math.max(0, Math.round((bounds.x - dx) * scale));
-  const cropY = Math.max(0, Math.round((bounds.y - dy) * scale));
-  const cropW = Math.min(full.getSize().width - cropX, Math.round(bounds.width * scale));
-  const cropH = Math.min(full.getSize().height - cropY, Math.round(bounds.height * scale));
+  // Packaged Electron on Windows often returns a thumbnail whose pixel size
+  // does not match thumbnailSize (DIP vs physical). Crop in *that* bitmap's
+  // space or OCR sees sliced glyphs ("c e n t r i f i c").
+  const fullSize = full.getSize();
+  const sx = dw > 0 ? fullSize.width / dw : scale;
+  const sy = dh > 0 ? fullSize.height / dh : scale;
+  const usedScale = (sx + sy) / 2;
+  if (Math.abs(fullSize.width - thumbW) > 2 || Math.abs(fullSize.height - thumbH) > 2) {
+    console.log('desktopCapturer thumbnail size ≠ request; cropping in bitmap space', {
+      requested: { w: thumbW, h: thumbH },
+      actual: fullSize,
+      usedScale,
+      displayScale: scale,
+    });
+  }
+
+  const cropX = Math.max(0, Math.round((bounds.x - dx) * sx));
+  const cropY = Math.max(0, Math.round((bounds.y - dy) * sy));
+  const cropW = Math.min(fullSize.width - cropX, Math.max(0, Math.round(bounds.width * sx)));
+  const cropH = Math.min(fullSize.height - cropY, Math.max(0, Math.round(bounds.height * sy)));
 
   if (cropW < 4 || cropH < 4) {
     console.warn('Crop too small after scale', { cropX, cropY, cropW, cropH });
@@ -90,7 +105,7 @@ export async function captureScreenRegion(bounds: ContextBounds): Promise<Captur
     bounds: { ...bounds },
     displayId: display.id,
     imageHash: hashPng(png),
-    scaleFactor: scale,
+    scaleFactor: usedScale,
   };
 }
 
