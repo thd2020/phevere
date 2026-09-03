@@ -826,31 +826,28 @@ function createTray(): void {
   }
   tray = new Tray(image);
   tray.setToolTip('Phevere — dictionary & selection');
-  if (process.platform === 'darwin') {
-    try {
-      tray.setIgnoreDoubleClickEvents(true);
-    } catch {
-      /* older Electron */
-    }
-    // Left-click: main window only. Right-click: context menu.
-    // Some Electron builds also emit `click` after `right-click`.
-    let ignoreNextClick = false;
-    tray.on('right-click', () => {
-      ignoreNextClick = true;
+  try {
+    tray.setIgnoreDoubleClickEvents(true);
+  } catch {
+    /* older Electron */
+  }
+  // Left-click: main window. Right-click: menu only (some builds also emit `click`).
+  let ignoreNextClick = false;
+  tray.on('right-click', () => {
+    ignoreNextClick = true;
+    if (process.platform === 'darwin') {
       tray?.popUpContextMenu(buildTrayContextMenu());
-      setTimeout(() => {
-        ignoreNextClick = false;
-      }, 400);
-    });
-    tray.on('click', () => {
-      if (ignoreNextClick) return;
-      showOrRestoreMainWindow();
-    });
-  } else {
+    }
+    setTimeout(() => {
+      ignoreNextClick = false;
+    }, 400);
+  });
+  tray.on('click', () => {
+    if (ignoreNextClick) return;
+    showOrRestoreMainWindow();
+  });
+  if (process.platform !== 'darwin') {
     tray.setContextMenu(buildTrayContextMenu());
-    tray.on('click', () => {
-      showOrRestoreMainWindow();
-    });
   }
 }
 
