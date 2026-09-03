@@ -214,16 +214,18 @@ function suffixPosGuess(word: string): string | undefined {
   const w = word.trim().toLocaleLowerCase();
   if (w.length < 4 || /\s/.test(w)) return undefined;
   if (/(?:lly|ily)$/.test(w) || (w.length > 4 && /ly$/.test(w))) return 'adv.';
-  if (/(?:tion|sion|ness|ity|ment|ism|ship|hood|ance|ence|age)$/.test(w)) return 'noun';
+  if (/(?:tion|sion|ness|ity|ment|ism|ship|hood|ance|ence|age|ist|ian|ee)$/.test(w)) return 'noun';
+  if (w.length >= 7 && /(?:er|or)$/.test(w)) return 'noun';
   if (w.length >= 5 && /(?:ize|ise|ate|ify)$/.test(w)) return 'verb';
-  if (/(?:ous|ive|able|ible|ical|ful|less|ary|ory|ish)$/.test(w)) return 'adj.';
+  if (/(?:ous|ive|able|ible|ical|ful|less|ary|ory|ish|al|ic)$/.test(w)) return 'adj.';
+  if (w.length >= 6 && /ing$/.test(w)) return 'verb';
   return undefined;
 }
 
 function inferPosBanner(word: string): string | undefined {
   const t = cleanTerm(word);
   if (!t || isMultiwordTerm(t)) return undefined;
-  return suffixPosGuess(t) || latinCitationPos(t) || undefined;
+  return latinCitationPos(t) || suffixPosGuess(t) || undefined;
 }
 
 function inferPhraseBanner(term: string, hint?: string): string {
@@ -259,7 +261,7 @@ function itemsFromTemplate(
       const p = positional[start + i];
       if (!p || p === '-' || p.startsWith('!')) continue;
       const qn = named[`q${i + 1}`] || named[`qq${i + 1}`];
-      push(p, false, posFromWiki(qn) || phraseKindLabel(qn) || phraseKindLabel(titleHint));
+      push(p, false, posFromWiki(qn) || posFromWiki(named.pos) || phraseKindLabel(qn) || phraseKindLabel(titleHint));
     }
     if (named.term) push(named.term, false, phraseKindLabel(titleHint));
     if (named.alt) push(named.alt, false, phraseKindLabel(titleHint));
