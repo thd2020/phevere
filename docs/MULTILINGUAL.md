@@ -8,7 +8,7 @@
 |--------|------|
 | **Free Dictionary API** (`dictionaryapi.dev`) | Word entries for many languages (`/entries/{lang}/{word}`) — already wired with language map. |
 | **English Wiktionary REST** | One HTTP host; response is **keyed by language** (`ja`, `fr`, `de`, …). Good for lemmas that exist on en.wiktionary. |
-| **Translation** | Free Google (gtx, then dict-chrome-ex) then MyMemory; Youdao / DeepL if you add keys. |
+| **Translation** | Free Google then MyMemory (engine chosen in Settings → Sources). Youdao / DeepL if you add keys. |
 
 **Bug fixed (historical):** For JA/KO/ZH, the parallel aggregator **skipped** Free Dictionary + Wiktionary entirely, so users only saw **translation**. Those sources are now **always** attempted using the **detected source language**.
 

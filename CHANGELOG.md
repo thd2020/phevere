@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Translation tab **engine chips** (Auto / Google / MyMemory / Youdao / DeepL). Auto tries **free** Google then MyMemory first; Youdao and DeepL still need keys. Preference is stored in `%APPDATA%\phevere\translation-prefs.json`.
+- Translation engines live in **Settings → Sources** (Auto / Google / MyMemory / Youdao / DeepL). The lookup Translation tab is a language pair (detect, swap, target) with speakers on source and target; preference is stored in `%APPDATA%\phevere\translation-prefs.json`.
 - **Android / iOS (Capacitor v1):** shared TypeScript lookup core (`packages/core`), in-app search and notebook, Android Process Text, iOS Share + `phevere://lookup`. Sideload only — see [`docs/MOBILE.md`](docs/MOBILE.md).
 - Windows **ARM64** NSIS Setup (`Phevere-Setup-<version>-arm64.exe`) on the same GitHub Release as x64. Built on `windows-11-arm` (UIA addon compiled natively). OCR uses sharp’s wasm fallback — sharp 0.33.5 has no `@img/sharp-win32-arm64`. Actions **workflow_dispatch** (`attach_tag`) rebuilds **both** Windows Setups onto that tag (replaces same-named `.exe`; does not retag).
 
@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Empty translation results (Google 429, missing Youdao/DeepL keys) were frozen in the 24h lookup cache, so every chip looked dead. Failed translations are no longer cached; Google gtx cools down after 429 and falls through to a second Google URL plus MyMemory.
+- Select-to-lookup ignored Phevere’s own windows (Settings and the notebook): UIA/AX skipped this process, and Settings was a modal child of the main window. Lookup now uses the same capture path inside the app; tray **Settings** no longer raises the main window.
+- Hover OCR no longer runs after a live text selection (or while the mouse button is down). Selection wins.
+- Main-window **Recent / A–Z** no longer collapses to a single letter when narrowing; those controls do not shrink, and the window has a minimum width.
+- Word-family **derived** chips missed POS banners when wink saw more than one citation form. Ambiguous forms now show `noun/verb` (etc.), and more suffixes are guessed.
 - **Installed** image OCR (hover or Ctrl+Shift+O) inserted spaces between letters (`centrific` → `c e n t r i f i c`). Packaged `desktopCapturer` thumbnails often do not match the requested pixel size; crop now uses the bitmap’s real size vs display DIP, and glyph-spaced CTC output is glued. Dev `npm start` was masking this via Python RapidOCR. Selectable UIA text was never affected.
 - Switching OCR to **PP-OCRv5** produced no text: the pack used PP-OCRv4 `ppocr_keys_v1.txt` (~6.6k classes) against a ~18k-class rec model. It now downloads RapidOCR’s `ppocrv5_dict.txt` and re-fetches if an old short dict is still on disk.
 - macOS shortcut monitor mode opened a lookup on every selection: `isAcceleratorPhysicallyHeld` always returned true off Windows. It now uses `CGEventSourceKeyState` (same hold-while-select / select-then-trigger as Windows). `CommandOrControl` is Command on Mac.
