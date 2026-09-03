@@ -300,6 +300,8 @@ body.main-window .section-heading {
   letter-spacing: -0.02em;
   color: var(--md-on-surface);
   margin: 0;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 body.main-window .recent-selections__header {
@@ -313,8 +315,15 @@ body.main-window .recent-selections__header {
 
 body.main-window .recent-selections__actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+}
+
+body.main-window .recent-selections__actions .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 body.main-window .recent-selections__hint {
@@ -728,6 +737,7 @@ body.main-window .vocab-list-wrap.is-alpha .selections-list {
 
 body.main-window .vocab-sort {
   display: inline-flex;
+  flex-shrink: 0;
   border: 1px solid var(--pv-line, rgba(148, 163, 184, 0.45));
   border-radius: 8px;
   overflow: hidden;
@@ -744,6 +754,8 @@ body.main-window .vocab-sort-btn {
   font-weight: 600;
   padding: 5px 10px;
   cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 body.main-window .vocab-sort-btn + .vocab-sort-btn {
@@ -2243,6 +2255,7 @@ body.settings-page .settings-main {
   overflow-x: hidden;
   padding: 14px 16px 20px;
   box-sizing: border-box;
+  user-select: text;
 }
 
 body.settings-page .settings-panel {
@@ -2670,6 +2683,50 @@ body.settings-page #main-source-toggles .source-name {
 }
 
 body.settings-page #main-source-toggles .source-priority {
+  font-size: 0.75rem;
+  color: var(--set-ink-soft);
+}
+
+body.settings-page .settings-tx-engines {
+  display: flex;
+  flex-direction: column;
+  background: var(--set-panel);
+  border: 1px solid var(--set-line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+body.settings-page .settings-tx-engine {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--set-line);
+  cursor: pointer;
+}
+
+body.settings-page .settings-tx-engine:last-child {
+  border-bottom: none;
+}
+
+body.settings-page .settings-tx-engine input {
+  margin-top: 3px;
+}
+
+body.settings-page .settings-tx-engine__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+body.settings-page .settings-tx-engine__name {
+  font-weight: 600;
+}
+
+body.settings-page .settings-tx-engine__hint {
+  font-size: 0.75rem;
+  color: var(--set-ink-soft);
+}
   color: var(--set-ink-soft);
 }
 

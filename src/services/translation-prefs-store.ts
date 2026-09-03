@@ -1,6 +1,7 @@
 /**
  * Translation-tab provider preference (userData/translation-prefs.json).
- * Auto tries free Google then MyMemory; Youdao/DeepL still need keys. Explicit picks try that engine first.
+ * Auto tries free Google then MyMemory; Youdao/DeepL still need keys.
+ * Stored from Settings → Sources (not the lookup popup).
  */
 
 import { app } from 'electron';

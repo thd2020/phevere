@@ -215,9 +215,13 @@ function initializeSettingsWindow() {
 
           <section class="settings-panel" data-panel="sources" aria-labelledby="settings-sources-heading">
             <div class="settings-panel__intro">
-              <h2 id="settings-sources-heading" class="settings-panel__title">Dictionary sources</h2>
+              <h2 id="settings-sources-heading" class="settings-panel__title">Sources</h2>
+              <p class="settings-hint">Dictionary packs fill the lexicon. Translation engines are used on the Translation tab (Auto tries Google, then MyMemory).</p>
             </div>
+            <h3 class="settings-offline-installed-title">Dictionary</h3>
             <div id="main-source-toggles"></div>
+            <h3 class="settings-offline-installed-title">Translation</h3>
+            <div id="translation-engine-toggles" class="settings-tx-engines" role="radiogroup" aria-label="Translation engine"></div>
           </section>
 
           <section class="settings-panel" data-panel="offline" aria-labelledby="settings-offline-heading">
@@ -300,6 +304,8 @@ function initializeSettingsWindow() {
   });
 
   loadMainSourceToggles();
+  void loadTranslationEngineToggles();
+  wireInAppTextSelectionLookup();
   setupAudioSettings();
   wireSettingsImageDrop();
   void wireOfflineSettingsPanel();
@@ -1632,7 +1638,7 @@ function initializePopup() {
 function initializeMainWindow() {
   initializeMainWindowControls();
   wireMainWindowImageIngest();
-  wireMainWindowTextSelectionLookup();
+  wireInAppTextSelectionLookup();
   loadRecentSelectionsIntoDom();
   void loadVocabNotebook();
   const vocabApi = (window as any).vocabAPI;
@@ -1644,12 +1650,12 @@ function initializeMainWindow() {
   void attachSelectionChangeListenerOnly();
 }
 
-/** Select-to-lookup inside the main window (UIA ignores our own process). */
-function wireMainWindowTextSelectionLookup(): void {
+/** Select-to-lookup in any Phevere window — same path as UIA outside the app. */
+function wireInAppTextSelectionLookup(): void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   document.addEventListener('mouseup', (e) => {
     const target = e.target as HTMLElement | null;
-    if (target?.closest?.('button, input, textarea, select, a, .title-bar, .window-controls, .settings-panel, .status-bar')) {
+    if (target?.closest?.('button, input, textarea, select, a, option, .titlebar, .settings-titlebar, .window-controls, .status-bar, .toolbar')) {
       return;
     }
     const text = (window.getSelection()?.toString() || '').trim();
@@ -1682,6 +1688,7 @@ function wireMainWindowTextSelectionLookup(): void {
 function initializeClipboardWindow() {
   document.body.className = 'clipboard-window main-window';
   initializeMainWindowControls();
+  wireInAppTextSelectionLookup();
   void showClipboardHistory();
 }
 
@@ -2712,8 +2719,10 @@ async function loadMainSourceToggles() {
       rlog('[DBG][Settings] enabledSources:', enabledSources);
       
       const sourceToggles = document.getElementById('main-source-toggles');
-      if (sourceToggles && sourceStats.sources) {
-        sourceToggles.innerHTML = sourceStats.sources.map(source => `
+      const TRANSLATION_ONLY = new Set(['DeepL API', 'Google Translate API']);
+      const dictSources = (sourceStats.sources || []).filter((source: { name: string }) => !TRANSLATION_ONLY.has(source.name));
+      if (sourceToggles && dictSources.length) {
+        sourceToggles.innerHTML = dictSources.map(source => `
           <div class="source-toggle-main">
             <div class="source-info">
               <span class="source-name">${source.name}</span>
@@ -2747,6 +2756,42 @@ async function loadMainSourceToggles() {
     }
   } catch (error) {
     console.error('Failed to load main source toggles:', error);
+  }
+}
+
+const TRANSLATION_ENGINE_OPTIONS: Array<{ id: string; label: string; hint: string }> = [
+  { id: 'auto', label: 'Auto', hint: 'Google, then MyMemory' },
+  { id: 'google', label: 'Google', hint: 'Free unofficial endpoint' },
+  { id: 'mymemory', label: 'MyMemory', hint: 'Free, no key' },
+  { id: 'youdao', label: 'Youdao', hint: 'Needs app key' },
+  { id: 'deepl', label: 'DeepL', hint: 'Needs API key' },
+];
+
+async function loadTranslationEngineToggles(): Promise<void> {
+  const host = document.getElementById('translation-engine-toggles');
+  const api = window.dictionaryAPI;
+  if (!host || !api?.getTranslationPrefs || !api?.setTranslationPrefs) return;
+  try {
+    const prefs = await api.getTranslationPrefs();
+    const current = (prefs && prefs.provider) || 'auto';
+    host.innerHTML = TRANSLATION_ENGINE_OPTIONS.map((opt) => `
+      <label class="settings-tx-engine">
+        <input type="radio" name="translation-engine" value="${opt.id}" ${opt.id === current ? 'checked' : ''} />
+        <span class="settings-tx-engine__text">
+          <span class="settings-tx-engine__name">${opt.label}</span>
+          <span class="settings-tx-engine__hint">${opt.hint}</span>
+        </span>
+      </label>
+    `).join('');
+    host.querySelectorAll('input[name="translation-engine"]').forEach((el) => {
+      el.addEventListener('change', () => {
+        const input = el as HTMLInputElement;
+        if (!input.checked) return;
+        void api.setTranslationPrefs({ provider: input.value });
+      });
+    });
+  } catch (error) {
+    console.error('Failed to load translation engines:', error);
   }
 }
 
