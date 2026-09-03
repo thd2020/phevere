@@ -395,14 +395,13 @@ void UIAutomationSelectionMonitor::monitorLoop() {
 void UIAutomationSelectionMonitor::handleSelectionChanged(IUIAutomationElement* sender) {
     if (!sender) return;
 
-    if (isFromCurrentProcess(sender)) {
-        // Suppress Ctrl+C fallback while the user is selecting inside Phevere.
-        lastUiaEventTime = std::chrono::steady_clock::now();
-        if (debugEnabled) std::cout << "[UIA] IGNORE: Selection from current process (popup/app window)" << std::endl;
-        return;
-    }
+    const bool ownProcess = isFromCurrentProcess(sender);
 
     if (!isUserSelectionGesture()) {
+        if (ownProcess) {
+            // Do not leave Ctrl+C armed while selecting in Phevere.
+            lastUiaEventTime = std::chrono::steady_clock::now();
+        }
         return;
     }
 
@@ -417,11 +416,13 @@ void UIAutomationSelectionMonitor::handleSelectionChanged(IUIAutomationElement* 
 
     if (!selectedText.empty()) {
         // Stamp only a *successful* capture (same idea as macOS last_ax_ok_ms).
-        // Chromium chat panels (Cursor agent output, some VS Code webviews) fire
-        // TextSelectionChanged with an empty TextPattern. Stamping those used to
-        // abort the drag Ctrl+C fallback within 150ms, so lookup never opened.
+        // Chromium chat panels fire TextSelectionChanged with an empty TextPattern;
+        // stamping those used to abort the drag Ctrl+C fallback within 150ms.
         lastUiaEventTime = std::chrono::steady_clock::now();
         updatePendingSelection(selectedText, selX, selY);
+    } else if (ownProcess) {
+        lastUiaEventTime = std::chrono::steady_clock::now();
+        if (debugEnabled) std::cout << "[UIA] Own-process selection empty; skip Ctrl+C" << std::endl;
     } else if (debugEnabled) {
         std::cout << "[UIA] Empty TextPattern; leaving Ctrl+C fallback available" << std::endl;
     }
