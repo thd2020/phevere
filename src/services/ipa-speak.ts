@@ -4,6 +4,7 @@
  */
 
 import { spawn, ChildProcess } from 'child_process';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -23,8 +24,12 @@ import { wrapConsole } from '../logger';
 const console = wrapConsole('ipa-speak');
 
 const MAX_AUDIO_BYTES = 2_000_000;
+const MAX_MEM_CACHE = 64;
+const MAX_DISK_FILES = 80;
+const MAX_DISK_BYTES = 40 * 1024 * 1024;
 const WIKIMEDIA_UA = 'Phevere/1.5 (https://github.com/thd2020/phevere; desktop dictionary)';
 const audioCache = new Map<string, string>();
+const audioInflight = new Map<string, Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }>>();
 let spawnChild: ChildProcess | null = null;
 let sapiHost: ChildProcess | null = null;
 let hostAcc = '';
@@ -438,53 +443,146 @@ async function resolveCommonsDirectUrl(fileName: string): Promise<string> {
   return '';
 }
 
+function audioCacheDir(): string {
+  return path.join(app.getPath('userData'), 'pronunciation-cache');
+}
+
+function audioCacheKey(url: string): string {
+  return createHash('sha256').update(url).digest('hex').slice(0, 32);
+}
+
+function rememberAudio(url: string, dataUrl: string): void {
+  if (audioCache.size >= MAX_MEM_CACHE) {
+    const first = audioCache.keys().next().value;
+    if (first) audioCache.delete(first);
+  }
+  audioCache.set(url, dataUrl);
+}
+
+function readDiskAudio(url: string): string {
+  try {
+    const key = audioCacheKey(url);
+    const dir = audioCacheDir();
+    const metaPath = path.join(dir, `${key}.json`);
+    const binPath = path.join(dir, `${key}.bin`);
+    if (!fs.existsSync(metaPath) || !fs.existsSync(binPath)) return '';
+    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')) as { mime?: string };
+    const bytes = fs.readFileSync(binPath);
+    if (!bytes.length || bytes.length > MAX_AUDIO_BYTES) return '';
+    const mime = (meta.mime || 'audio/mpeg').split(';')[0].trim() || 'audio/mpeg';
+    try {
+      fs.utimesSync(binPath, new Date(), new Date());
+    } catch {
+      /* ignore */
+    }
+    return `data:${mime};base64,${bytesToBase64(bytes)}`;
+  } catch {
+    return '';
+  }
+}
+
+function writeDiskAudio(url: string, mime: string, bytes: Buffer | Uint8Array): void {
+  try {
+    const dir = audioCacheDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const key = audioCacheKey(url);
+    fs.writeFileSync(path.join(dir, `${key}.bin`), bytes);
+    fs.writeFileSync(path.join(dir, `${key}.json`), JSON.stringify({ mime, url, savedAt: Date.now() }));
+    pruneDiskAudio(dir);
+  } catch (err) {
+    console.warn('pronunciation disk cache write failed', err);
+  }
+}
+
+function pruneDiskAudio(dir: string): void {
+  try {
+    const bins = fs.readdirSync(dir)
+      .filter((name) => name.endsWith('.bin'))
+      .map((name) => {
+        const full = path.join(dir, name);
+        const st = fs.statSync(full);
+        return { name, full, mtime: st.mtimeMs, size: st.size };
+      })
+      .sort((a, b) => a.mtime - b.mtime);
+    let total = bins.reduce((n, f) => n + f.size, 0);
+    while (bins.length > MAX_DISK_FILES || total > MAX_DISK_BYTES) {
+      const oldest = bins.shift();
+      if (!oldest) break;
+      total -= oldest.size;
+      try {
+        fs.unlinkSync(oldest.full);
+        fs.unlinkSync(oldest.full.replace(/\.bin$/, '.json'));
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function fetchPronunciationAudio(
   url: string,
 ): Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }> {
   const trimmed = String(url || '').trim();
   if (!isAllowedAudioUrl(trimmed)) {
-    return { ok: false, error: 'Blocked audio URL' };
+    return { ok: false as const, error: 'Blocked audio URL' };
   }
   const hit = audioCache.get(trimmed);
-  if (hit) return { ok: true, dataUrl: hit };
+  if (hit) return { ok: true as const, dataUrl: hit };
+  const disk = readDiskAudio(trimmed);
+  if (disk) {
+    rememberAudio(trimmed, disk);
+    return { ok: true as const, dataUrl: disk };
+  }
+  const pending = audioInflight.get(trimmed);
+  if (pending) return pending;
 
-  const tryFetch = async (target: string) => {
-    const http = getHttp();
-    const res = await http.requestBytes(target, {
-      timeoutMs: 12000,
-      headers: audioHeaders(target),
-    });
-    if (!res.ok || !res.bytes || res.bytes.byteLength < 64) {
-      return { ok: false as const, error: `HTTP ${res.status}` };
-    }
-    if (res.bytes.byteLength > MAX_AUDIO_BYTES) {
-      return { ok: false as const, error: 'Audio too large' };
-    }
-    const mime = (res.contentType || 'audio/ogg').split(';')[0].trim() || 'audio/ogg';
-    if (!isPlayableAudioMime(mime)) {
-      return { ok: false as const, error: 'Not audio' };
-    }
-    return { ok: true as const, mime, bytes: res.bytes };
-  };
-
-  try {
-    let got = await tryFetch(trimmed);
-    if (!got.ok) {
-      const fileName = fileNameFromCommonsUrl(trimmed);
-      if (fileName) {
-        const direct = await resolveCommonsDirectUrl(fileName);
-        if (direct && direct !== trimmed) got = await tryFetch(direct);
+  const work = (async () => {
+    const tryFetch = async (target: string) => {
+      const http = getHttp();
+      const res = await http.requestBytes(target, {
+        timeoutMs: 12000,
+        headers: audioHeaders(target),
+      });
+      if (!res.ok || !res.bytes || res.bytes.byteLength < 64) {
+        return { ok: false as const, error: `HTTP ${res.status}` };
       }
+      if (res.bytes.byteLength > MAX_AUDIO_BYTES) {
+        return { ok: false as const, error: 'Audio too large' };
+      }
+      const mime = (res.contentType || 'audio/ogg').split(';')[0].trim() || 'audio/ogg';
+      if (!isPlayableAudioMime(mime)) {
+        return { ok: false as const, error: 'Not audio' };
+      }
+      return { ok: true as const, mime, bytes: res.bytes, target };
+    };
+
+    try {
+      let got = await tryFetch(trimmed);
+      if (!got.ok) {
+        const fileName = fileNameFromCommonsUrl(trimmed);
+        if (fileName) {
+          const direct = await resolveCommonsDirectUrl(fileName);
+          if (direct && direct !== trimmed) got = await tryFetch(direct);
+        }
+      }
+      if (!got.ok) return { ok: false as const, error: got.error };
+      const dataUrl = `data:${got.mime};base64,${bytesToBase64(got.bytes)}`;
+      rememberAudio(trimmed, dataUrl);
+      if (got.target && got.target !== trimmed) rememberAudio(got.target, dataUrl);
+      writeDiskAudio(trimmed, got.mime, got.bytes);
+      if (got.target && got.target !== trimmed) writeDiskAudio(got.target, got.mime, got.bytes);
+      return { ok: true as const, dataUrl };
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
     }
-    if (!got.ok) return { ok: false, error: got.error };
-    const dataUrl = `data:${got.mime};base64,${bytesToBase64(got.bytes)}`;
-    if (audioCache.size > 24) {
-      const first = audioCache.keys().next().value;
-      if (first) audioCache.delete(first);
-    }
-    audioCache.set(trimmed, dataUrl);
-    return { ok: true, dataUrl };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  })();
+
+  audioInflight.set(trimmed, work);
+  try {
+    return await work;
+  } finally {
+    audioInflight.delete(trimmed);
   }
 }
