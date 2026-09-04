@@ -586,17 +586,21 @@ function writeDiskAudio(url: string, mime: string, bytes: Buffer | Uint8Array): 
   return playUrlForKey(key);
 }
 
+/** Chromium host vs path for custom schemes differs by OS; accept both shapes. */
+function clipKeyFromProtocolUrl(raw: string): string {
+  const hex = '([a-f0-9]{32})';
+  const m =
+    new RegExp(`^phevere-audio://clip/${hex}/?$`, 'i').exec(raw) ||
+    new RegExp(`/${hex}/?$`, 'i').exec(raw);
+  return m ? m[1].toLowerCase() : '';
+}
+
 export function installPronunciationAudioProtocol(): void {
   try {
     protocol.handle('phevere-audio', (request) => {
-      let key = '';
-      try {
-        key = new URL(request.url).pathname.replace(/^\//, '');
-      } catch {
+      const key = clipKeyFromProtocolUrl(request.url);
+      if (!key) {
         return new Response('Bad URL', { status: 400 });
-      }
-      if (!/^[a-f0-9]{32}$/.test(key)) {
-        return new Response('Bad key', { status: 400 });
       }
       const dir = audioCacheDir();
       const binPath = path.join(dir, `${key}.bin`);
