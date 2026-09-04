@@ -1,5 +1,7 @@
 # Phevere Dictionary
 
+**2026-09-04:** Settings → Notifications can silence the clipboard-image tray balloon. Sense numbers sit on the same baseline as the gloss.
+
 **2026-09-04:** Hover/OCR lookup follows the cursor on HiDPI displays. Toolbar 🔊 caches recorded clips on disk. Lexicon chips abbreviate only long POS (adj., adv.); noun/verb and pane headings stay full. Rail tabs in one card are a glued chip with thin hairlines.
 
 **2026-09-04:** Lexicon rail and definitions each scroll in the pane under the headword (visible rail scrollbar). Thick rule between noun/verb/… is back inside the lexicon card.
@@ -59,7 +61,7 @@ Phone builds are **not** on GitHub Releases yet. Sideload from a clone: Android 
 - **Etymology & Wikipedia** — in-popup tabs; Wikipedia reader webview
 - **Vocabulary notebook** — local SQLite (`%APPDATA%\phevere`); lemma-only saves fill in the background; IPA + play; search; **Recent / A–Z** sort with an A–Z index scrubber; **Export / Import** (JSON or CSV); language chip is lemma → gloss (`en → en` when the saved sense is English); click the headword row to expand, select text in the definition without collapsing
 - **OCR** — bundled PP-OCRv4 (optional component); Settings can download PP-OCRv5 (needs `ppocrv5_dict.txt`, not the v4 keys file). Region / hover / clipboard / window capture. Hover OCR picks the word under the cursor from detection boxes (glyph height), not a fixed pixel square. Packaged builds crop in the thumbnail’s real pixel space so image OCR does not insert spaces between letters.
-- **Tray app** — Quit Phevere tears down UIA / OCR / sql.js before destroying windows (no leftover Electron helpers). Left-click the tray icon to show the notebook; right-click for the menu (Settings does not also raise the notebook). On macOS, left-click the menu-bar **P** to show the window; right-click for the menu.
+- **Tray app** — Quit Phevere tears down UIA / OCR / sql.js before destroying windows (no leftover Electron helpers). Left-click the tray icon to show the notebook; right-click for the menu (Settings does not also raise the notebook). On macOS, left-click the menu-bar **P** to show the window; right-click for the menu. Settings → **Notifications** controls tray balloons (clipboard image ready, empty clipboard OCR, hover on/off).
 - **Win11 / macOS chrome** — Mica/Acrylic on a **light** paper UI (does not follow Windows dark app theme); durable windows use the native caption overlay (Windows) or traffic lights (macOS). NSIS wizard uses Segoe UI + branded 24-bpp sidebar BMP
 
 ## Development

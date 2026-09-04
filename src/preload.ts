@@ -236,6 +236,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setHoverEnabled: (enabled: boolean): Promise<{ success: boolean; hoverEnabled?: boolean }> => {
     return ipcRenderer.invoke('monitor-set-hover', enabled);
   },
+  getNotificationPrefs: (): Promise<{
+    clipboardImage: boolean;
+    clipboardEmpty: boolean;
+    hoverToggle: boolean;
+  }> => {
+    return ipcRenderer.invoke('get-notification-prefs');
+  },
+  setNotificationPrefs: (
+    prefs: Partial<{ clipboardImage: boolean; clipboardEmpty: boolean; hoverToggle: boolean }>,
+  ): Promise<{ clipboardImage: boolean; clipboardEmpty: boolean; hoverToggle: boolean }> => {
+    return ipcRenderer.invoke('set-notification-prefs', prefs);
+  },
   toggleHoverEnabled: (): Promise<{ success: boolean; hoverEnabled?: boolean }> => {
     return ipcRenderer.invoke('monitor-toggle-hover');
   },
@@ -502,6 +514,14 @@ declare global {
         hoverEnabled?: boolean;
       }) => Promise<{ success: boolean; error?: string }>;
       setHoverEnabled?: (enabled: boolean) => Promise<{ success: boolean; hoverEnabled?: boolean }>;
+      getNotificationPrefs?: () => Promise<{
+        clipboardImage: boolean;
+        clipboardEmpty: boolean;
+        hoverToggle: boolean;
+      }>;
+      setNotificationPrefs?: (
+        prefs: Partial<{ clipboardImage: boolean; clipboardEmpty: boolean; hoverToggle: boolean }>,
+      ) => Promise<{ clipboardImage: boolean; clipboardEmpty: boolean; hoverToggle: boolean }>;
       toggleHoverEnabled?: () => Promise<{ success: boolean; hoverEnabled?: boolean }>;
       startOcrRegion?: () => Promise<{ success: boolean; open?: boolean }>;
       onMonitorHoverChanged?: (callback: (payload: { hoverEnabled: boolean }) => void) => void;

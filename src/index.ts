@@ -43,6 +43,12 @@ import {
   parseTranslationProvider,
   TranslationPrefs,
 } from './services/translation-prefs-store';
+import {
+  loadNotificationPrefs,
+  mergeNotificationPrefs,
+  NotificationKind,
+  NotificationPrefs,
+} from './services/notification-prefs-store';
 import { getLocalDb, flushPersist as persistLocalDb, closeLocalDb } from './services/local-db';
 import * as vocabStore from './services/vocab-store';
 import * as offlineDict from './services/offline-dict-store';
@@ -149,7 +155,9 @@ function setLastSelectionEvent(event: ContextEvent): void {
 }
 
 /** Windows tray balloon; macOS Notification (displayBalloon is Win32-only). */
-function notifyUser(content: string, title = 'Phevere'): void {
+function notifyUser(content: string, kind: NotificationKind, title = 'Phevere'): void {
+  const prefs = loadNotificationPrefs();
+  if (!prefs[kind]) return;
   try {
     if (process.platform === 'win32') {
       if (tray && !tray.isDestroyed()) {
@@ -408,6 +416,7 @@ function setHoverEnabled(enabled: boolean): void {
     enabled
       ? `Hover lookup on (${monitorSettings.hoverShortcut})`
       : `Hover lookup off (${monitorSettings.hoverShortcut})`,
+    'hoverToggle',
   );
 }
 
@@ -1759,7 +1768,7 @@ async function ocrClipboardImage(): Promise<void> {
   const img = readClipboardImage();
   if (!img) {
     log.info('main', 'No clipboard image to OCR');
-    notifyUser(clipboardOcrHint());
+    notifyUser(clipboardOcrHint(), 'clipboardEmpty');
     return;
   }
   lastClipboardImageHash = img.imageHash;
@@ -1809,7 +1818,7 @@ function startClipboardImageWatcher(): void {
     if (!img) return;
     if (img.imageHash === lastClipboardImageHash) return;
     lastClipboardImageHash = img.imageHash;
-    notifyUser(clipboardOcrReadyHint());
+    notifyUser(clipboardOcrReadyHint(), 'clipboardImage');
   }, 2000);
 }
 
@@ -2357,6 +2366,12 @@ ipcMain.handle('dictionary-set-translation-prefs', (_event, prefs: Partial<Trans
   };
   saveTranslationPrefs(next);
   return next;
+});
+
+ipcMain.handle('get-notification-prefs', () => loadNotificationPrefs());
+
+ipcMain.handle('set-notification-prefs', (_event, patch: Partial<NotificationPrefs>) => {
+  return mergeNotificationPrefs(patch || {});
 });
 
 // Vocabulary notebook

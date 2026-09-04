@@ -126,6 +126,7 @@ function initializeSettingsWindow() {
         <nav class="settings-nav" aria-label="Settings sections">
           <button type="button" class="settings-nav__item is-active" data-section="shortcuts">Shortcuts</button>
           <button type="button" class="settings-nav__item" data-section="capture">Capture</button>
+          <button type="button" class="settings-nav__item" data-section="notifications">Notifications</button>
           <button type="button" class="settings-nav__item" data-section="sources">Sources</button>
           <button type="button" class="settings-nav__item" data-section="offline">Offline</button>
           <button type="button" class="settings-nav__item" data-section="api">API keys</button>
@@ -211,6 +212,36 @@ function initializeSettingsWindow() {
               <button type="button" id="ocr-apply-profile" class="btn btn-primary">Apply</button>
               <button type="button" id="ocr-upload-models" class="btn btn-secondary">Upload folder…</button>
               <button type="button" id="ocr-refresh-status" class="btn btn-outlined">Refresh</button>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-panel="notifications" aria-labelledby="settings-notifications-heading">
+            <div class="settings-panel__intro">
+              <h2 id="settings-notifications-heading" class="settings-panel__title">Notifications</h2>
+              <p class="settings-hint">Windows tray balloons and macOS banners. Lookup toasts and the OCR progress chip are not listed here.</p>
+            </div>
+            <div class="settings-group">
+            <div class="settings-row" role="group" aria-labelledby="notify-clipboard-image-label">
+              <span id="notify-clipboard-image-label" class="settings-row__label">Clipboard image ready</span>
+              <label class="settings-toggle-label">
+                <input class="toggle-input" type="checkbox" id="notify-clipboard-image" checked />
+                <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
+              </label>
+            </div>
+            <div class="settings-row" role="group" aria-labelledby="notify-clipboard-empty-label">
+              <span id="notify-clipboard-empty-label" class="settings-row__label">No image on clipboard</span>
+              <label class="settings-toggle-label">
+                <input class="toggle-input" type="checkbox" id="notify-clipboard-empty" checked />
+                <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
+              </label>
+            </div>
+            <div class="settings-row" role="group" aria-labelledby="notify-hover-toggle-label">
+              <span id="notify-hover-toggle-label" class="settings-row__label">Hover lookup on / off</span>
+              <label class="settings-toggle-label">
+                <input class="toggle-input" type="checkbox" id="notify-hover-toggle" checked />
+                <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
+              </label>
+            </div>
             </div>
           </section>
 
@@ -308,6 +339,7 @@ function initializeSettingsWindow() {
   void loadTranslationEngineToggles();
   wireInAppTextSelectionLookup();
   setupAudioSettings();
+  void wireNotificationSettings();
   wireSettingsImageDrop();
   void wireOfflineSettingsPanel();
   void wireOcrSettingsPanel();
@@ -2824,6 +2856,35 @@ async function loadTranslationEngineToggles(): Promise<void> {
   } catch (error) {
     console.error('Failed to load translation engines:', error);
   }
+}
+
+async function wireNotificationSettings(): Promise<void> {
+  const api = (window as any).electronAPI;
+  if (!api?.getNotificationPrefs || !api?.setNotificationPrefs) return;
+  const imageEl = document.getElementById('notify-clipboard-image') as HTMLInputElement | null;
+  const emptyEl = document.getElementById('notify-clipboard-empty') as HTMLInputElement | null;
+  const hoverEl = document.getElementById('notify-hover-toggle') as HTMLInputElement | null;
+  if (!imageEl || !emptyEl || !hoverEl) return;
+  try {
+    const prefs = await api.getNotificationPrefs();
+    imageEl.checked = prefs.clipboardImage !== false;
+    emptyEl.checked = prefs.clipboardEmpty !== false;
+    hoverEl.checked = prefs.hoverToggle !== false;
+  } catch {
+    imageEl.checked = true;
+    emptyEl.checked = true;
+    hoverEl.checked = true;
+  }
+  const persist = () => {
+    void api.setNotificationPrefs({
+      clipboardImage: imageEl.checked,
+      clipboardEmpty: emptyEl.checked,
+      hoverToggle: hoverEl.checked,
+    });
+  };
+  imageEl.addEventListener('change', persist);
+  emptyEl.addEventListener('change', persist);
+  hoverEl.addEventListener('change', persist);
 }
 
 // Setup audio settings

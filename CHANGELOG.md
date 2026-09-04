@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Settings → **Notifications**: turn off the clipboard-image tray balloon, the “no image on clipboard” hint, and hover on/off banners. Stored in `%APPDATA%\phevere\notification-prefs.json`.
+
 ### Changed
 
 - Lexicon **chips** (rail tabs and word-family banners) abbreviate only long POS (**adj.**, **adv.**, **prep.**, …). **Noun** and **verb** stay in full, and the part-of-speech heading in the main pane is always the full word.
