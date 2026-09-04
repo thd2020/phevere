@@ -20,7 +20,7 @@ Watch **Actions → release**. That workflow makes **four** desktop artifacts on
 gh attestation verify out/make/nsis/x64/Phevere-Setup-1.2.3-x64.exe -R thd2020/phevere
 ```
 
-CI (no installer): `.github/workflows/ci.yml` on every PR and push to `main` (Windows unpackaged app + macOS OCR native pack on `macos-15-intel` / `macos-latest`, both uploaded as artifacts).
+CI (no installer): `.github/workflows/ci.yml` on every PR and push to `main` (Windows and macOS unpackaged apps, each with `verify-ocr-pack`, uploaded as artifacts).
 
 ## Local fallback (optional)
 
@@ -40,7 +40,7 @@ If `github.com` times out while packaging, `make:win` already uses npmmirror. Gh
 Get-FileHash -Algorithm SHA256 "out\make\nsis\x64\Phevere-Setup-*-x64.exe"
 ```
 
-Prefer **not** to `gh release create` locally for the same tag — the workflow owns the Windows Setup and macOS DMG assets (GitHub immutable releases). To **replace** all four files on an existing tag from current `main`: Actions → release → Run workflow → `attach_tag` (deletes the old same-named files then uploads; does not move the git tag).
+Prefer **not** to `gh release create` locally for the same tag — the workflow owns the Windows Setup and macOS DMG assets (GitHub immutable releases). To **replace** all four files on an existing tag from current `main`: Actions → release → Run workflow → `attach_tag` (deletes the old same-named files then uploads; does not move the git tag). Windows and macOS jobs share `scripts/gh-delete-release-asset.ps1`. If the tag exists but the GitHub Release does not (the 1.5.0 YAML parse failure), the same dispatch **creates** the Release.
 
 ## Notes template (if you write notes by hand)
 

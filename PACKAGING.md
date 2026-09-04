@@ -1,5 +1,7 @@
 # Packaging & releases
 
+**2026-09-05:** `release.yml` Mac asset-delete is the same PowerShell as Windows (`scripts/gh-delete-release-asset.ps1`). CI Windows now runs `verify-ocr-pack` on the unpackaged app like macOS.
+
 **2026-09-04:** Packaged app includes `speak_ipa_host.ps1` (long-lived System.Speech for IPA chips) and `speak_ipa.ps1`. **1.5.0** ships Windows Setup and macOS DMGs from the same tag. `extraResource` includes `media_now_playing.applescript` and `foreground_window.applescript` (same Resources layout as the Windows PowerShell helper).
 
 **2026-09-03:** The NSIS copy page lists what is installing (extract / shortcuts / OCR models / registry). `npm run prepare:installer` patches electron-builder’s `SetDetailsPrint none` → `both` so those extract lines show.

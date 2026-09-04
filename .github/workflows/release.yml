@@ -1,6 +1,8 @@
 # Unsigned Windows NSIS + macOS DMGs on v* tags.
 # workflow_dispatch: rebuild all four artifacts from this ref and replace
 # same-named files on an existing tag (does not retag).
+# Keep run: | bodies indented — a flush-left line inside a Mac step
+# made GitHub reject the whole file (0-job failure on every main push).
 name: release
 
 on:
@@ -34,6 +36,8 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Install (includes native addon)
+        env:
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
         run: npm ci
       - name: Make NSIS Setup
         env:
@@ -57,20 +61,7 @@ jobs:
           TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
           ASSET: ${{ steps.pkg.outputs.name }}
         shell: pwsh
-        run: |
-          $relJson = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:TAG" 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "No release yet for $env:TAG"
-            exit 0
-          }
-          $rel = $relJson | ConvertFrom-Json
-          $hit = @($rel.assets) | Where-Object { $_.name -eq $env:ASSET } | Select-Object -First 1
-          if ($hit) {
-            Write-Host "Deleting existing $($hit.name) id=$($hit.id)"
-            gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/releases/assets/$($hit.id)"
-          } else {
-            Write-Host "No existing asset named $env:ASSET"
-          }
+        run: ./scripts/gh-delete-release-asset.ps1
       - name: Upload GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
@@ -99,12 +90,14 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Install (includes native addon)
+        env:
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
         run: npm ci
       - name: Make NSIS Setup (arm64)
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-        run: npm run make:win
+        run: npm run make:win:arm64
       - name: Locate ARM64 Setup.exe
         id: pkg
         shell: pwsh
@@ -121,20 +114,7 @@ jobs:
           TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
           ASSET: ${{ steps.pkg.outputs.name }}
         shell: pwsh
-        run: |
-          $relJson = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:TAG" 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "No release yet for $env:TAG"
-            exit 0
-          }
-          $rel = $relJson | ConvertFrom-Json
-          $hit = @($rel.assets) | Where-Object { $_.name -eq $env:ASSET } | Select-Object -First 1
-          if ($hit) {
-            Write-Host "Deleting existing $($hit.name) id=$($hit.id)"
-            gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/releases/assets/$($hit.id)"
-          } else {
-            Write-Host "No existing asset named $env:ASSET"
-          }
+        run: ./scripts/gh-delete-release-asset.ps1
       - name: Upload GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
@@ -173,13 +153,16 @@ jobs:
       - name: Install (includes AX native addon)
         env:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
         run: npm ci
       - name: Make unsigned DMG (${{ matrix.electron_arch }})
         env:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
-        run: npm run make:mac:${{ matrix.electron_arch }}
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+        run: "npm run make:mac:${{ matrix.electron_arch }}"
       - name: Locate DMG
         id: pkg
+        shell: bash
         run: |
           shopt -s nullglob
           files=(out/make/dmg/Phevere-*-darwin-${{ matrix.electron_arch }}.dmg)
@@ -195,24 +178,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
           ASSET: ${{ steps.pkg.outputs.name }}
-        run: |
-          set +e
-          json=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" 2>/dev/null)
-          status=$?
-          set -e
-          if [ "$status" -ne 0 ]; then
-            echo "No release yet for ${TAG}"
-            exit 0
-          fi
-          id=$(printf '%s' "$json" | python3 -c "import json,os,sys; rel=json.load(sys.stdin); name=os.environ['ASSET'];
-hits=[a['id'] for a in rel.get('assets') or [] if a.get('name')==name];
-print(hits[0] if hits else '')")
-          if [ -n "$id" ]; then
-            echo "Deleting existing ${ASSET} id=${id}"
-            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${id}"
-          else
-            echo "No existing asset named ${ASSET}"
-          fi
+        shell: pwsh
+        run: ./scripts/gh-delete-release-asset.ps1
       - name: Upload GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:

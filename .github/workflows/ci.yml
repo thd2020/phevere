@@ -1,4 +1,4 @@
-# Lint/test/build on PR and main. Windows UIA addon + Mac OCR native pack.
+# Lint/test/build on PR and main. Windows and macOS pack + verify OCR natives.
 name: ci
 
 on:
@@ -24,11 +24,16 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Install (includes native addon)
-        run: npm ci
-      - name: Package (webpack + Electron, no NSIS)
         env:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
-        run: npx electron-forge package --platform=win32
+        run: npm ci
+      - name: Package win32 x64 and verify OCR natives
+        env:
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+        shell: pwsh
+        run: |
+          npx electron-forge package --platform=win32 --arch=x64
+          node scripts/verify-ocr-pack.js --dir out/phevere-win32-x64
       - name: Upload unpackaged app
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
