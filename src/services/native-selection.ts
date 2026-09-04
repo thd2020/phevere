@@ -197,14 +197,17 @@ class AddonBackedNativeSelectionService implements NativeSelectionService {
       this.lastSelectionTime = now;
 
       let anchorPosition = screen.getCursorScreenPoint();
+      let coordSpace: 'dip' | 'physical' = 'dip';
       if (selX != null && selY != null) {
         anchorPosition = { x: selX, y: selY };
+        coordSpace = 'physical';
       }
 
       const selectionEvent: SelectionEvent = {
         ...selectionToContext(text, anchorPosition.x, anchorPosition.y, 'native'),
         origin: 'selection',
         source: 'native',
+        coordSpace,
       };
 
       this.selectionCallbacks.forEach((callback) => {

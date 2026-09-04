@@ -99,7 +99,7 @@ This interface is also the target for the **macOS AX draft** (`docs/MACOS_SELECT
 ### Phase 4 — Triggers
 
 - [x] Wire OCR region shortcut (editable in settings; default `Ctrl+Shift+O`) → region OCR → popup
-- [x] Hover dwell lookup (UIA first, OCR fallback); toggle shortcut editable in settings
+- [x] Hover dwell lookup (UIA first, OCR fallback); toggle shortcut editable in settings. Popup anchor is the Electron DIP cursor (`coordSpace: 'dip'`). Win32 UIA `GetWordAtPoint` is called with physical pixels; its bounding rect is **not** used for placement (HiDPI `screenToDipPoint` on DIP points pinned the strip to one workArea corner).
 - [x] Explicit “read this window” action (`Ctrl+Shift+W` / `⌘⇧W`, foreground HWND or macOS System Events bounds + OCR)
 
 ### Phase 5 — Media sessions

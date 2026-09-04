@@ -123,18 +123,21 @@ export class HoverLookupService {
     if (now - this.lastEmitAt < this.opts.cooldownMs) return;
 
     let text = '';
-    let anchorX = x;
-    let anchorY = y;
+    const anchorX = x;
+    const anchorY = y;
 
     if (this.opts.getWordAtPoint) {
       try {
-        const hit = this.opts.getWordAtPoint(x, y);
+        // Win32 UIA wants physical pixels; Electron cursor points are DIP.
+        // Never use the UIA bounding rect as the popup anchor — those rects are
+        // physical and on HiDPI they pin the strip to a workArea corner.
+        const nativePt =
+          process.platform === 'win32' ? cursorToNative(x, y) : { x, y };
+        const hit = this.opts.getWordAtPoint(nativePt.x, nativePt.y);
         if (hit && hit.text && isLookupWorthy(hit.text)) {
           const q = normalizeQuery(hit.text);
           if (q.kind === 'word' && q.trimmed) {
             text = q.trimmed;
-            anchorX = typeof hit.x === 'number' ? hit.x : x;
-            anchorY = typeof hit.y === 'number' ? hit.y : y;
           }
         }
       } catch (error) {
@@ -164,6 +167,7 @@ export class HoverLookupService {
       y: anchorY,
       timestamp: Date.now(),
       origin: 'hover',
+      coordSpace: 'dip',
       confidence: 0.85,
     });
   }
@@ -171,6 +175,14 @@ export class HoverLookupService {
 
 const HOVER_OCR_MAX_HALF_W = 360;
 const HOVER_OCR_MAX_HALF_H = 80;
+
+function cursorToNative(x: number, y: number): { x: number; y: number } {
+  try {
+    return screen.dipToScreenPoint({ x: Math.round(x), y: Math.round(y) });
+  } catch {
+    return { x, y };
+  }
+}
 
 function cursorInCapture(
   capture: { bounds: { x: number; y: number }; scaleFactor: number },

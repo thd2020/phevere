@@ -29,6 +29,12 @@ export interface ContextEvent {
   y: number;
   timestamp: number;
   origin: ContextOrigin;
+  /**
+   * Coordinate space of x/y. Electron cursor / overlay / renderer `screenX` are
+   * `'dip'`; Win32 UIA bounding rects are `'physical'`. Untagged selection
+   * events are treated as physical.
+   */
+  coordSpace?: 'dip' | 'physical';
   /** OCR / fuzzy confidence in [0, 1]. */
   confidence?: number;
   bounds?: ContextBounds;

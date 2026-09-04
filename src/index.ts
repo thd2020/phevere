@@ -21,12 +21,13 @@ import { captureScreenRegion, captureAroundPoint } from './services/screen-captu
 import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile } from './services/ocr-engine';
 import { isLookupWorthy } from './services/text-normalize';
 import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
-import { placePopupNearPoint } from './services/popup-placement';
+import { placePopupNearPoint, eventCoordSpace, type ScreenCoordSpace } from './services/popup-placement';
 import { showWorkProgress, updateWorkProgress, closeWorkProgress } from './services/work-progress';
 import { isAcceleratorPhysicallyHeld, isPrimaryMouseDown } from './services/accelerator-key-state';
 import { getForegroundWindowBoundsDip } from './services/foreground-window';
 import { getNowPlaying, formatNowPlayingQuery } from './services/media-session';
 import { speakIpa, cancelIpaSpeak, fetchPronunciationAudio } from './services/ipa-speak';
+import { recordedPronunciationUrls } from '@phevere/core';
 import { readClipboardImage, loadImageFileAsPng, pngFromBase64 } from './services/clipboard-image';
 import {
   loadMonitorSettings,
@@ -290,7 +291,7 @@ function onTriggerShortcutAfterSelection(): void {
     log.debug('main', 'Trigger shortcut: selection too old', { ageMs: age });
     return;
   }
-  createPopupWindow(ev.x, ev.y);
+  createPopupWindow(ev.x, ev.y, eventCoordSpace(ev));
 }
 
 function unregisterAccel(current: string | null): void {
@@ -1096,7 +1097,7 @@ function interceptPopupHistoryKeys(win: BrowserWindow): void {
   });
 }
 
-const createPopupWindow = (x: number, y: number): void => {
+const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'): void => {
   // Slim strip: width matches N×24px icons + gaps + padding (keep in sync with popup-new.html strip resize)
   const POPUP_STRIP_ICON = 24;
   const POPUP_STRIP_GAP = 2;
@@ -1108,12 +1109,12 @@ const createPopupWindow = (x: number, y: number): void => {
     (POPUP_STRIP_ICONS - 1) * POPUP_STRIP_GAP;
   const popupHeight = 38; // toolbar ~36px + frame inset so icons are not clipped
 
-  // Multi-monitor safe: physical → DIP via screenToDipPoint, clamp to nearest workArea
-  // (never primary.workAreaSize — that pinned secondary-monitor selections to the left screen).
-  const placed = placePopupNearPoint(x, y, popupWidth, popupHeight);
+  // Multi-monitor safe: convert physical UIA points only. DIP hover/OCR/cursor
+  // must not go through screenToDipPoint (that pins HiDPI home PCs to one corner).
+  const placed = placePopupNearPoint(x, y, popupWidth, popupHeight, { space });
   const popupX = placed.x;
   const popupY = placed.y;
-  log.debug('main', 'Popup bounds', { popupX, popupY, popupWidth, popupHeight, displayId: placed.displayId });
+  log.debug('main', 'Popup bounds', { popupX, popupY, popupWidth, popupHeight, displayId: placed.displayId, space });
 
   // Coalesce duplicate requests for the same text within a short period
   const textForPopup = (lastSelectionEvent && (lastSelectionEvent.text || '').trim()) || lastSelectedText || '';
@@ -1134,12 +1135,19 @@ const createPopupWindow = (x: number, y: number): void => {
     (win) => win && !win.isDestroyed() && !isCollapsedStrip(win),
   );
 
-  const applyStripTarget = (win: BrowserWindow, px: number, py: number, text: string, showIfReady: boolean): void => {
+  const applyStripTarget = (
+    win: BrowserWindow,
+    px: number,
+    py: number,
+    text: string,
+    showIfReady: boolean,
+    stripSpace: ScreenCoordSpace = space,
+  ): void => {
     try {
       if (!win || win.isDestroyed()) return;
       const stillStrip = isCollapsedStrip(win) || win === inFlightPopup;
       if (!stillStrip) return;
-      const placed = placePopupNearPoint(px, py, popupWidth, popupHeight);
+      const placed = placePopupNearPoint(px, py, popupWidth, popupHeight, { space: stripSpace });
       win.setBounds({ x: placed.x, y: placed.y, width: popupWidth, height: popupHeight }, false);
       if (showIfReady) {
         try {
@@ -1280,7 +1288,7 @@ const createPopupWindow = (x: number, y: number): void => {
       const textToSend = (ev && ev.text) || lastSelectedText || '';
       const tx = ev && typeof ev.x === 'number' ? ev.x : x;
       const ty = ev && typeof ev.y === 'number' ? ev.y : y;
-      applyStripTarget(newPopupWindow, tx, ty, textToSend, false);
+      applyStripTarget(newPopupWindow, tx, ty, textToSend, false, ev ? eventCoordSpace(ev) : space);
       if (!newPopupWindow.isDestroyed() && !newPopupWindow.isVisible()) {
         newPopupWindow.show();
       }
@@ -1294,7 +1302,7 @@ const createPopupWindow = (x: number, y: number): void => {
   // Show popup when ready
   newPopupWindow.once('ready-to-show', () => {
     const ev = lastSelectionEvent;
-    if (ev) applyStripTarget(newPopupWindow, ev.x, ev.y, ev.text || '', false);
+    if (ev) applyStripTarget(newPopupWindow, ev.x, ev.y, ev.text || '', false, eventCoordSpace(ev));
     newPopupWindow.show();
     try { newPopupWindow.focus(); } catch {}
   });
@@ -1385,7 +1393,7 @@ function wireContextCaptureHubOnce(): void {
         log.warn('main', 'selection-changed IPC failed', { err: String(e) });
       }
       if (isAcceleratorPhysicallyHeld(monitorSettings.triggerShortcut)) {
-        createPopupWindow(event.x, event.y);
+        createPopupWindow(event.x, event.y, eventCoordSpace(event));
       }
       return;
     }
@@ -1405,7 +1413,7 @@ function wireContextCaptureHubOnce(): void {
     } catch (e) {
       log.warn('main', 'selection-changed IPC failed', { err: String(e) });
     }
-    createPopupWindow(event.x, event.y);
+    createPopupWindow(event.x, event.y, eventCoordSpace(event));
   });
 }
 
@@ -2203,6 +2211,11 @@ ipcMain.handle('cancel-ipa-speak', () => {
   return { ok: true as const };
 });
 
+function prefetchRecordedPronunciation(result: { pronunciations?: Parameters<typeof recordedPronunciationUrls>[0] }): void {
+  const url = recordedPronunciationUrls(result?.pronunciations)[0];
+  if (url) void fetchPronunciationAudio(url);
+}
+
 ipcMain.handle('fetch-pronunciation-audio', async (_event, url: string) => {
   return fetchPronunciationAudio(String(url || ''));
 });
@@ -2224,6 +2237,7 @@ ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: 
         } catch {
           /* popup closed */
         }
+        prefetchRecordedPronunciation(updated);
         void applyDictionaryResultToNotebook(updated).catch((err) =>
           log.debug('main', 'notebook opportunistic fill skipped', { err: String(err) }),
         );
@@ -2238,6 +2252,7 @@ ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: 
     void applyDictionaryResultToNotebook(result).catch((err) =>
       log.debug('main', 'notebook opportunistic fill skipped', { err: String(err) }),
     );
+    prefetchRecordedPronunciation(result);
     return result;
   } catch (error) {
     log.error('main', 'Dictionary lookup failed', { err: String(error), ms: Date.now() - t0 });
@@ -2922,7 +2937,7 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
                 try { target.setMinimumSize(160, 32); } catch { /* ignore */ }
               }
               if (typeof x === 'number' && typeof y === 'number') {
-                const placed = placePopupNearPoint(x, y, w, h);
+                const placed = placePopupNearPoint(x, y, w, h, { space: 'dip' });
                 target.setBounds({ x: placed.x, y: placed.y, width: w, height: h }, false);
                 return;
               }
@@ -3124,6 +3139,7 @@ function createDictionaryWindow(term: string): void {
     (mb?.y ?? 80) + Math.round((mb?.height ?? 600) * 0.35),
     popupWidth,
     popupHeight,
+    { space: 'dip' },
   );
 
   setLastSelectionEvent(selectionToContext(term, 0, 0, 'manual'));
