@@ -135,6 +135,7 @@ contextBridge.exposeInMainWorld('nativeAPI', {
 
 // Expose IPC methods for communication with main process
 contextBridge.exposeInMainWorld('electronAPI', {
+  platform: process.platform,
   onSelectionChange: (callback: (text: string) => void) => {
     ipcRenderer.removeAllListeners('selection-changed');
     ipcRenderer.on('selection-changed', (_event: any, text: string) => callback(text));
@@ -437,6 +438,7 @@ declare global {
   interface Window {
     nativeAPI: NativeAPI;
     electronAPI: {
+      platform?: NodeJS.Platform;
       onSelectionChange: (callback: (text: string) => void) => void;
       onPopupText: (callback: (text: string, timestamp?: number) => void) => void;
       onPopupAppCommand?: (callback: (cmd: string) => void) => void;

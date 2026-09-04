@@ -31,6 +31,8 @@ module.exports = {
       'resources/tray-icon.png',
       'scripts/ocr_worker.py',
       'scripts/media_now_playing.ps1',
+      'scripts/media_now_playing.applescript',
+      'scripts/foreground_window.applescript',
       'node_modules/sql.js/dist/sql-wasm.wasm',
       'node_modules/sql.js/dist/sql-asm.js',
       // Optional offline seed packs (JSON/JSONL/CEDICT). Copied into userData on first run.

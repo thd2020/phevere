@@ -3,7 +3,7 @@
  * Returns null if the event is modifier-only or unrecognized.
  */
 
-function isMac(): boolean {
+export function isMac(): boolean {
   return /Mac|iPhone|iPad|iPod/i.test(navigator.platform) || navigator.userAgent.includes('Mac');
 }
 

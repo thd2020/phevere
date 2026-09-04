@@ -27,7 +27,7 @@
  */
 
 import './index.css';
-import { captureNextShortcut } from './shortcut-capture';
+import { captureNextShortcut, isMac } from './shortcut-capture';
 import { formatVocabLangPair } from '@phevere/core';
 
 // Inside your main window initialization or setup block:
@@ -175,10 +175,10 @@ function initializeSettingsWindow() {
               <span id="monitor-shortcuts-status" class="settings-inline-status" role="status" aria-live="polite"></span>
             </div>
             <ul class="settings-cheat">
-              <li><span class="settings-keycaps" data-accel="Ctrl+Shift+G"></span> Grab under cursor</li>
-              <li><span class="settings-keycaps" data-accel="Ctrl+Shift+W"></span> Read this window</li>
-              <li><span class="settings-keycaps" data-accel="Ctrl+Shift+I"></span> OCR clipboard image</li>
-              <li><span class="settings-keycaps" data-accel="Ctrl+Shift+P"></span> Now playing</li>
+              <li><span class="settings-keycaps" data-accel="CommandOrControl+Shift+G"></span> Grab under cursor</li>
+              <li><span class="settings-keycaps" data-accel="CommandOrControl+Shift+W"></span> Read this window</li>
+              <li><span class="settings-keycaps" data-accel="CommandOrControl+Shift+I"></span> OCR clipboard image</li>
+              <li><span class="settings-keycaps" data-accel="CommandOrControl+Shift+P"></span> Now playing</li>
             </ul>
           </section>
 
@@ -620,16 +620,18 @@ function wireSettingsImageDrop(): void {
 }
 
 function acceleratorParts(acc: string): string[] {
+  const mac = isMac();
   return (acc || '')
     .split('+')
     .map((p) => p.trim())
     .filter(Boolean)
     .map((p) => {
-      if (/^(CommandOrControl|CmdOrCtrl|Control|Ctrl)$/i.test(p)) return 'Ctrl';
+      if (/^(CommandOrControl|CmdOrCtrl)$/i.test(p)) return mac ? '⌘' : 'Ctrl';
+      if (/^(Control|Ctrl)$/i.test(p)) return mac ? '⌃' : 'Ctrl';
       if (/^(Command|Cmd)$/i.test(p)) return '⌘';
-      if (/^Shift$/i.test(p)) return 'Shift';
-      if (/^(Alt|Option)$/i.test(p)) return 'Alt';
-      if (/^(Super|Meta|Windows|Win)$/i.test(p)) return 'Win';
+      if (/^Shift$/i.test(p)) return mac ? '⇧' : 'Shift';
+      if (/^(Alt|Option)$/i.test(p)) return mac ? '⌥' : 'Alt';
+      if (/^(Super|Meta|Windows|Win)$/i.test(p)) return mac ? '⌘' : 'Win';
       if (/^Plus$/i.test(p)) return '+';
       return p.length === 1 ? p.toUpperCase() : p;
     });

@@ -1,8 +1,8 @@
-# macOS selection backend (draft)
+# macOS selection backend
 
 Windows Phevere uses UI Automation with a matching **1 → 2 → 5** capture chain after a drag/double-click (`native-addon/src/selection_monitor.cpp`): TextPattern, then a Chromium `WM_GETOBJECT` poke, then silent Ctrl+C. There is no Apple Events analog (macOS step 3). On macOS the matching producer is the **Accessibility (AX)** API plus a listen-only **CGEvent tap**. Lookup, popup, and `ContextEvent` are unchanged: the native layer still emits `{ text, x, y }` into `MacOSNativeSelectionService`.
 
-There is **no notarized Mac installer**. Unsigned per-arch DMGs can be attached to a GitHub Release (see [`PACKAGING.md`](../PACKAGING.md)).
+There is **no notarized Mac installer**. Unsigned per-arch DMGs ship from `release.yml` on the same `v*` tag as Windows Setup (see [`PACKAGING.md`](../PACKAGING.md) and [`RELEASE.md`](RELEASE.md)). Gatekeeper still warns.
 
 Conversation + constraints for a Mac-side agent: [`AGENT_HANDOFF_MAC.md`](AGENT_HANDOFF_MAC.md).
 
@@ -16,12 +16,16 @@ Conversation + constraints for a Mac-side agent: [`AGENT_HANDOFF_MAC.md`](AGENT_
 | 500ms debounce | Same settle window as the Windows addon |
 | `getWordAtPoint` | Hover: `AXUIElementCopyElementAtPosition` + range-for-position |
 | Own PID skip | Ignore selections inside Phevere / Electron |
+| Read this window | `scripts/foreground_window.applescript` — System Events bounds of the frontmost non-Phevere window, then the same OCR crop as Windows `GetWindowRect` |
+| Now playing | `scripts/media_now_playing.applescript` — Music.app / Spotify (same Title/Artist/Album line as the Windows SMTC script). Browser YouTube is not a public Mac API (MediaRemote is blocked from app bundles on 15.4+) |
+| Screen Recording | Same one-click Settings jump as Accessibility; hover / region / grab / read-window OCR need it |
+| Durable windows | `titleBarStyle: 'hiddenInset'` traffic lights (Windows uses `titleBarOverlay`) |
 
 Chrome, VS Code, Cursor, and other Chromium apps often expose no `AXSelectedText`. After a drag or double-click Phevere tries, in order: Accessibility (including Chromium text-markers after `AXManualAccessibility`), AppleScript `window.getSelection()` in Safari/Chrome-family (needs **Automation** plus the browser’s **Allow JavaScript from Apple Events**), then a silent Cmd+C with clipboard restore. Password fields are skipped. A plain click still does not copy.
 
 ## Shortcut monitor mode
 
-Same as Windows: native capture still runs, but the lookup opens only if you **hold the popup trigger** while selecting (default **⌘⌥⇧Y**), or select first and then press the trigger. macOS uses `CGEventSourceKeyState` for the hold check (`src/services/accelerator-key-state.ts`). Until that existed, shortcut mode on Mac behaved like **On**.
+Same as Windows: native capture still runs, but the lookup opens only if you **hold the popup trigger** while selecting (default **⌘⌥⇧Y**), or select first and then press the trigger. macOS uses `CGEventSourceKeyState` for the hold check (`src/services/accelerator-key-state.ts`). Until that existed, shortcut mode on Mac behaved like **On**. Settings keycaps show ⌘ / ⌥ / ⇧ on Mac.
 
 ## Build on a Mac
 
@@ -57,11 +61,15 @@ If the row is already listed but off, turn it on; if it looks stuck, toggle off 
 
 Disable the typing/gesture gate (noisy): `PHEVERE_DISABLE_INPUT_GATE=1`.
 
-## Not in this draft
+## Screen Recording permission
 
-- Mac `.dmg` / notarization / hardened runtime entitlements (`NSAccessibilityUsageDescription` when packaging). Unsigned DMGs can still be built with `npm run make:mac:x64` / `make:mac:arm64`.
+Hover OCR, region OCR, grab under cursor, and Read this window use `desktopCapturer`. On macOS 10.15+ that needs **Privacy → Screen Recording**. The first empty capture shows **Open Screen Recording Settings**; the tray has the same item. macOS will not flip the toggle for the app.
+
+## Not in this file (OS limits)
+
+- Mac **notarization** / hardened runtime entitlements (`NSAccessibilityUsageDescription` when packaging). Unsigned DMGs ship from Actions (`release.yml`) or `npm run make:mac:x64` / `make:mac:arm64`.
 - Click-away cancelling a pending popup (same latch-on-mouse-up model as Windows)
 - Linux AT-SPI
-- `MPNowPlayingInfoCenter` (still open on the OCR/media plan)
+- System-wide now playing from Safari/Chrome (no public API; Music and Spotify work)
 
 Coordinates: Electron points are top-left origin; AX bounds are converted from Cocoa bottom-left of the primary display. Multi-monitor edge cases need a real Mac pass.

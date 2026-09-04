@@ -1,8 +1,13 @@
 /**
- * Foreground window bounds via Win32 (koffi). Used for “read this window” OCR.
+ * Foreground window bounds. Used for “read this window” OCR.
+ * Windows: GetForegroundWindow + GetWindowRect (koffi).
+ * macOS: System Events window position/size (needs Accessibility, same as selection).
  */
 
-import { screen } from 'electron';
+import { spawnSync } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
+import { app, screen } from 'electron';
 import { ContextBounds } from './context-capture';
 import { wrapConsole } from '../logger';
 
@@ -13,7 +18,21 @@ type Rect = { left: number; top: number; right: number; bottom: number };
 let getForegroundWindow: (() => number | bigint) | null = null;
 let getWindowRect: ((hwnd: number | bigint, rect: Rect) => number | boolean) | null = null;
 
-function ensureApi(): boolean {
+function resolveDarwinScript(): string {
+  const candidates = [
+    path.join(__dirname, '..', '..', 'scripts', 'foreground_window.applescript'),
+    path.join(process.resourcesPath || '', 'foreground_window.applescript'),
+    path.join(process.resourcesPath || '', 'scripts', 'foreground_window.applescript'),
+    path.join(app.getAppPath(), 'scripts', 'foreground_window.applescript'),
+    path.join(process.cwd(), 'scripts', 'foreground_window.applescript'),
+  ];
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) return c;
+  }
+  return candidates[candidates.length - 1];
+}
+
+function ensureWin32Api(): boolean {
   if (getForegroundWindow && getWindowRect) return true;
   if (process.platform !== 'win32') return false;
   try {
@@ -43,11 +62,13 @@ function ensureApi(): boolean {
   }
 }
 
-/**
- * DIP bounds of the foreground top-level window, or null if unavailable / tiny.
- */
-export function getForegroundWindowBoundsDip(): ContextBounds | null {
-  if (!ensureApi() || !getForegroundWindow || !getWindowRect) return null;
+function boundsIfLarge(x: number, y: number, width: number, height: number): ContextBounds | null {
+  if (width < 40 || height < 40) return null;
+  return { x: Math.round(x), y: Math.round(y), width, height };
+}
+
+function getForegroundWindowBoundsWin32(): ContextBounds | null {
+  if (!ensureWin32Api() || !getForegroundWindow || !getWindowRect) return null;
 
   try {
     const hwnd = getForegroundWindow();
@@ -59,18 +80,41 @@ export function getForegroundWindowBoundsDip(): ContextBounds | null {
 
     const tl = screen.screenToDipPoint({ x: rect.left, y: rect.top });
     const br = screen.screenToDipPoint({ x: rect.right, y: rect.bottom });
-    const width = Math.round(br.x - tl.x);
-    const height = Math.round(br.y - tl.y);
-    if (width < 40 || height < 40) return null;
-
-    return {
-      x: Math.round(tl.x),
-      y: Math.round(tl.y),
-      width,
-      height,
-    };
+    return boundsIfLarge(tl.x, tl.y, Math.round(br.x - tl.x), Math.round(br.y - tl.y));
   } catch (error) {
     console.warn('GetWindowRect failed', error);
     return null;
   }
+}
+
+function getForegroundWindowBoundsDarwin(): ContextBounds | null {
+  const script = resolveDarwinScript();
+  if (!fs.existsSync(script)) {
+    console.warn('foreground_window.applescript missing', script);
+    return null;
+  }
+  try {
+    const r = spawnSync('osascript', [script, String(process.pid)], {
+      encoding: 'utf8',
+      timeout: 4000,
+      windowsHide: true,
+    });
+    const line = (r.stdout || '').trim();
+    if (!line) return null;
+    const [xs, ys, ws, hs] = line.split('\t').map((s) => Number.parseFloat((s || '').trim()));
+    if (![xs, ys, ws, hs].every((n) => Number.isFinite(n))) return null;
+    return boundsIfLarge(xs, ys, Math.round(ws), Math.round(hs));
+  } catch (error) {
+    console.warn('osascript foreground window failed', error);
+    return null;
+  }
+}
+
+/**
+ * DIP bounds of the foreground top-level window, or null if unavailable / tiny.
+ */
+export function getForegroundWindowBoundsDip(): ContextBounds | null {
+  if (process.platform === 'win32') return getForegroundWindowBoundsWin32();
+  if (process.platform === 'darwin') return getForegroundWindowBoundsDarwin();
+  return null;
 }

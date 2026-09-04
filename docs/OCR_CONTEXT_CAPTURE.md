@@ -100,19 +100,19 @@ This interface is also the target for the **macOS AX draft** (`docs/MACOS_SELECT
 
 - [x] Wire OCR region shortcut (editable in settings; default `Ctrl+Shift+O`) → region OCR → popup
 - [x] Hover dwell lookup (UIA first, OCR fallback); toggle shortcut editable in settings
-- [x] Explicit “read this window” action (`Ctrl+Shift+W`, foreground HWND bounds + OCR)
+- [x] Explicit “read this window” action (`Ctrl+Shift+W` / `⌘⇧W`, foreground HWND or macOS System Events bounds + OCR)
 
 ### Phase 5 — Media sessions
 
 - [x] Windows: `GlobalSystemMediaTransportControlsSessionManager` via `scripts/media_now_playing.ps1` (`Ctrl+Shift+P`)
-- [ ] macOS: `MPNowPlayingInfoCenter` (when native layer exists)
+- [x] macOS: Music.app / Spotify via `scripts/media_now_playing.applescript` (`⌘⇧P`). Browser sessions need private MediaRemote (blocked in app bundles on 15.4+)
 - [ ] Linux: MPRIS / D-Bus  
 Solves Spotify-class apps with clean strings and no OCR.
 
 ### Phase 6 — Images & PDFs
 
 - [x] Drag/drop or paste image → OCR → lookup (main window + settings dropzone)
-- [x] Clipboard watcher: bitmap (e.g. Win+Shift+S) → balloon + `Ctrl+Shift+I` OCR
+- [x] Clipboard watcher: bitmap (e.g. Win+Shift+S / ⌘⌃⇧4) → balloon or Notification + `Ctrl+Shift+I` / `⌘⇧I` OCR
 - [ ] UVDoc dewarp for photographed pages when quality needs it
 - [ ] PDF page raster → OCR (deferred)
 

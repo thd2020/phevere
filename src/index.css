@@ -2119,7 +2119,8 @@ html.is-resizing body.settings-page * {
   filter: none !important;
 }
 
-html.has-wco body.main-window .window-controls {
+html.has-wco body.main-window .window-controls,
+html.has-inset-chrome body.main-window .window-controls {
   display: none;
 }
 
@@ -2127,12 +2128,21 @@ html.has-wco body.main-window .titlebar-end {
   margin-right: var(--wco-inset-right, 138px);
 }
 
-html.has-wco body.settings-page .settings-close-btn {
+html.has-inset-chrome body.main-window .titlebar {
+  padding-left: 78px;
+}
+
+html.has-wco body.settings-page .settings-close-btn,
+html.has-inset-chrome body.settings-page .settings-close-btn {
   display: none;
 }
 
 html.has-wco body.settings-page .settings-titlebar {
   padding-right: var(--wco-inset-right, 138px);
+}
+
+html.has-inset-chrome body.settings-page .settings-titlebar {
+  padding-left: 78px;
 }
 
 body.settings-page .settings-app {

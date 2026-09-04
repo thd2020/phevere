@@ -1,19 +1,21 @@
-# Agent handoff — continue on an Intel Mac
+# Agent handoff — continue on a Mac
 
-**Audience:** another Cursor agent on a **different Mac** (Intel).  
-**Source chat:** phevere on Windows (`C:\Users\8114\projects\phevere`), 2026-08-06 → 2026-08-20.  
-**Write date:** 2026-08-20.  
-**Checkout:** `origin/main`. Shipped Windows installer is **1.4.1**. Unsigned Mac DMGs can be built with `npm run make:mac:x64` / `make:mac:arm64` (not notarized).
+**Audience:** another Cursor agent on a **different Mac** (Intel or Apple Silicon).  
+**Source chat:** phevere on Windows (`C:\Users\8114\projects\phevere`).  
+**Write date:** 2026-09-04.  
+**Checkout:** `origin/main`. Shipped desktop build is **1.5.0** (Windows NSIS x64/ARM64 + macOS Intel/Apple Silicon DMGs from the same `release.yml` tag). Unsigned Mac DMGs can also be built locally with `npm run make:mac:x64` / `make:mac:arm64` (not notarized).
 
-Companion (API/build only): [`MACOS_SELECTION.md`](MACOS_SELECTION.md). This file is the **conversation + constraints**. Do not re-litigate shipped Windows UI unless the user asks.
+**2026-09-04:** Mac capture actions match Windows (read-window, Music/Spotify now-playing, Screen Recording prompt, inset traffic lights, ⌘ keycaps). Selection backend is no longer a draft.
+
+Companion (API/build): [`MACOS_SELECTION.md`](MACOS_SELECTION.md). Do not re-litigate shipped Windows UI unless the user asks.
 
 ---
 
 ## 1. What you are here to do
 
-Phevere is an Electron select-to-lookup dictionary. Windows is production (UIA native addon + NSIS Setup). The last user turn on Windows was: **draft the macOS selection backend**. That code is on `main` and has **never been compiled or run on a Mac**.
+Phevere is an Electron select-to-lookup dictionary. Windows uses UIA + NSIS; macOS uses AX + unsigned DMGs from the same GitHub tag. Drag-select, hover OCR, read-window, and now-playing are implemented on both.
 
-Your job is to **build, grant Accessibility, and make drag-select open the same toolstrip/popup**. Do not start notarization or a version bump unless the user asks. Unsigned DMGs: `PACKAGING.md`.
+If you are on a Mac: grant **Accessibility** and **Screen Recording**, then confirm lookup + OCR. Do not start notarization or a version bump unless the user asks.
 
 ```bash
 git clone https://github.com/thd2020/phevere.git
@@ -26,7 +28,7 @@ npm install
 npm start
 ```
 
-Then: **System Settings → Privacy & Security → Accessibility → enable the Electron.app that `npm start` launched** (`node_modules/electron/dist/Electron.app`, not Cursor). Quit and relaunch if the row was added while the app was already running. Test in **TextEdit / Safari / Notes**, then Chrome / Cursor. Safari/Chrome AppleScript needs Automation plus the browser’s **Allow JavaScript from Apple Events**.
+Then: **System Settings → Privacy & Security → Accessibility** and **Screen Recording** → enable the Electron.app that `npm start` launched (`node_modules/electron/dist/Electron.app`, not Cursor). Quit and relaunch if the row was added while the app was already running. Test in **TextEdit / Safari / Notes**, then Chrome / Cursor. Safari/Chrome AppleScript needs Automation plus the browser’s **Allow JavaScript from Apple Events**.
 
 Debug: `PHEVERE_DEBUG_AX=1 npm start`
 
@@ -36,7 +38,7 @@ Debug: `PHEVERE_DEBUG_AX=1 npm start`
 
 | Rule | Detail |
 |---|---|
-| Version | `package.json` is **1.4.1**. Do not bump unless the user asks. |
+| Version | `package.json` is **1.5.0**. Do not bump unless the user asks. |
 | Windows tags | NSIS Setup from `release.yml` on `v*`. Never force-push `main`. Do not retag `v1.4.0` for Mac work. |
 | Dependabot | **#1–#6 and #8** merged 2026-08-26. **#7** (TypeScript 7) and **#9** (eslint-plugin 8) stay closed until parser + ts-loader move with them. |
 | Signing | Homemade certs do not clear SmartScreen. See `docs/CODE_SIGNING.md`. Irrelevant on Mac until packaging. |
@@ -50,7 +52,7 @@ Product architecture the user wants long-term (Aug 6): one **capture hub**, OS-s
 
 ## 3. Shipped Windows 1.4.0 (frozen context — do not re-do)
 
-Current Windows installer is **1.4.1**. The [v1.4.0](https://github.com/thd2020/phevere/releases/tag/v1.4.0) Setup (`Phevere-Setup-1.4.0-x64.exe`, SHA-256 `9822C0A9…560AF8`, unsigned) is historical. Do not retag it.
+Current Windows installer is **1.5.0**. The [v1.4.0](https://github.com/thd2020/phevere/releases/tag/v1.4.0) Setup is historical. Do not retag it.
 
 Already on `main` (and in that Setup, except the Mac commit):
 
@@ -79,7 +81,7 @@ User: select text, quickly click elsewhere to cancel, popup still appears second
 - Same class of behavior as desktop 划词 (Youdao / 金山). In-page extensions that re-read `getSelection()` on timer **do** abort.
 - Re-check “still selected?” before show would match click-away intent, but Word/browsers emit spurious empty AX/UIA events that would swallow real lookups.
 
-Mac draft **copies this latch model** on purpose (`docs/MACOS_SELECTION.md` “Not in this draft”).
+Mac **copies this latch model** on purpose (`docs/MACOS_SELECTION.md`).
 
 ---
 
@@ -108,31 +110,30 @@ CGEvent / AX → debounce → N-API TSFN (text, x, y)
 
 Coordinates: Electron/CGEvent top-left of primary; AX bounds converted from Cocoa bottom-left of primary. **Multi-monitor is untested.**
 
-Windows `node-gyp rebuild` was verified after the gyp split (UIA `.node` still builds). The `.mm` file has **not** been compiled on a Mac.
+Windows `node-gyp rebuild` was verified after the gyp split (UIA `.node` still builds). Darwin CI (`macos-ocr-pack`) compiles `ax_selection_monitor.mm` for x64 and arm64.
 
 ---
 
-## 6. First session on the Intel Mac (checklist)
+## 6. First session on a Mac (checklist)
 
 1. Node 18+ and Xcode CLT. `npm install` in repo root (runs `build-native`; Electron zip is curled, not fetched with `got`).
 2. Confirm `native-addon/build/Release/ax_selection_monitor.node` exists (not the Windows UIA name).
-3. `npm start` → grant Accessibility to **Electron** → fully quit → start again.
+3. `npm start` → grant **Accessibility** and **Screen Recording** to **Electron** → fully quit → start again.
 4. Drag-select a word in TextEdit. Collapsed toolstrip should appear near the selection; a second word while still collapsed should follow (same stale-lookup rules as Windows).
 5. If `start()` fails: log should mention Accessibility. `PHEVERE_DEBUG_AX=1` for tap/observer lines.
-6. Hover lookup uses `getWordAtPoint` — verify later; selection is the priority.
+6. Hover lookup / Read this window need Screen Recording; Now playing needs Music or Spotify.
 7. Fix compile errors, coordinate bugs, and apps that never fire `AXSelectedText` (mouse-up path should still read focused element). Keep debounce/input-gate behavior aligned with Windows unless the user wants a Mac-specific cancel-on-click-away.
 
-Intel vs Apple Silicon: this handoff assumes **Intel Mac** (user stated they have one). Prefer `x64` Electron matching the machine; do not add arm64 CI unless asked.
+Intel vs Apple Silicon: CI packages both (`macos-15-intel` + `macos-latest`). Prefer the Electron arch matching the machine.
 
 ---
 
 ## 7. Explicitly out of scope until asked
 
 - Linux AT-SPI
-- Mac installer / Forge ZIP as a product / notarization / `NSAccessibilityUsageDescription`
-- `MPNowPlayingInfoCenter` (still unchecked on `docs/OCR_CONTEXT_CAPTURE.md`)
+- Developer ID notarization / `NSAccessibilityUsageDescription` entitlements
+- System-wide now playing from Safari/Chrome (private MediaRemote; Music/Spotify AppleScript is shipped)
 - Merging TypeScript 7 / eslint-plugin 8 without a matching parser and ts-loader
-- Cutting another Windows release or a Mac `.dmg` unless asked
 - Changing click-away / empty-selection cancel
 - Loading the native addon from `preload.ts`
 - Mobile store listing / signing (Android/iOS **code** is in-tree; see [`docs/MOBILE.md`](MOBILE.md))

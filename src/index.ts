@@ -1,5 +1,5 @@
 import './platform/configure-core';
-import { app, BrowserWindow, ipcMain, screen, globalShortcut, shell, Tray, Menu, nativeImage, dialog, nativeTheme } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, globalShortcut, shell, Tray, Menu, nativeImage, dialog, nativeTheme, Notification } from 'electron';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -13,6 +13,9 @@ import {
   openMacAccessibilitySettings,
   promptOpenMacAccessibilitySettings,
 } from './services/mac-accessibility';
+import {
+  openMacScreenRecordingSettings,
+} from './services/mac-screen-recording';
 import { contextCaptureHub, ContextEvent, selectionToContext } from './services/context-capture';
 import { captureScreenRegion, captureAroundPoint } from './services/screen-capture';
 import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile } from './services/ocr-engine';
@@ -141,6 +144,35 @@ function setLastSelectionEvent(event: ContextEvent): void {
   const raw = typeof event.timestamp === 'number' && event.timestamp > 0 ? event.timestamp : Date.now();
   lastSelectionEvent = { ...event, timestamp: Math.max(raw, prev + 1) };
   lastSelectedText = event.text || '';
+}
+
+/** Windows tray balloon; macOS Notification (displayBalloon is Win32-only). */
+function notifyUser(content: string, title = 'Phevere'): void {
+  try {
+    if (process.platform === 'win32') {
+      if (tray && !tray.isDestroyed()) {
+        tray.displayBalloon?.({ title, content });
+      }
+      return;
+    }
+    if (Notification.isSupported()) {
+      new Notification({ title, body: content }).show();
+    }
+  } catch {
+    /* optional */
+  }
+}
+
+function clipboardOcrHint(): string {
+  return process.platform === 'darwin'
+    ? 'No image on the clipboard (try ⌘⌃⇧4 first)'
+    : 'No image on the clipboard (try Win+Shift+S first)';
+}
+
+function clipboardOcrReadyHint(): string {
+  return process.platform === 'darwin'
+    ? 'Clipboard image ready — ⌘⇧I to OCR'
+    : 'Clipboard image ready — Ctrl+Shift+I to OCR';
 }
 let lastPopupText: string = '';
 let lastPopupAt: number = 0;
@@ -370,18 +402,11 @@ function setHoverEnabled(enabled: boolean): void {
     /* ignore */
   }
   log.info('main', enabled ? 'Hover lookup enabled' : 'Hover lookup disabled');
-  try {
-    if (tray && !tray.isDestroyed()) {
-      tray.displayBalloon?.({
-        title: 'Phevere',
-        content: enabled
-          ? `Hover lookup on (${monitorSettings.hoverShortcut})`
-          : `Hover lookup off (${monitorSettings.hoverShortcut})`,
-      });
-    }
-  } catch {
-    /* balloon optional */
-  }
+  notifyUser(
+    enabled
+      ? `Hover lookup on (${monitorSettings.hoverShortcut})`
+      : `Hover lookup off (${monitorSettings.hoverShortcut})`,
+  );
 }
 
 function applyHoverFromSettings(): void {
@@ -667,6 +692,14 @@ function buildTrayContextMenu(): Electron.Menu {
                 .catch((err) => log.warn('main', 'Open Accessibility settings failed', { err: String(err) }));
             },
           } as Electron.MenuItemConstructorOptions,
+          {
+            label: 'Open Screen Recording Settings…',
+            click: () => {
+              void openMacScreenRecordingSettings().catch((err) =>
+                log.warn('main', 'Open Screen Recording settings failed', { err: String(err) }),
+              );
+            },
+          } as Electron.MenuItemConstructorOptions,
         ]
       : []),
     {
@@ -875,11 +908,21 @@ function supportsWin11Material(): boolean {
   return parts[0] === 10 && (parts[2] || 0) >= 22000;
 }
 
-/** Win11 Fluent: opaque durable windows (native caption overlay); Acrylic on flyouts. */
+/** Win11 Fluent: opaque durable windows (native caption overlay); Acrylic on flyouts.
+ *  macOS durable windows: hiddenInset traffic lights (same 40px caption as Windows WCO). */
 function withWin11Chrome(
   opts: Electron.BrowserWindowConstructorOptions,
   material: 'mica' | 'acrylic' | 'none' = 'mica',
 ): Electron.BrowserWindowConstructorOptions {
+  if (process.platform === 'darwin' && material === 'none') {
+    const { frame: _frame, titleBarOverlay: _overlay, ...rest } = opts;
+    return {
+      backgroundColor: '#F3F3F3',
+      titleBarStyle: 'hiddenInset',
+      trafficLightPosition: { x: 12, y: 12 },
+      ...rest,
+    };
+  }
   if (process.platform === 'win32' && material === 'none') {
     const { frame: _frame, ...rest } = opts;
     return {
@@ -914,6 +957,22 @@ function markWin32CaptionOverlay(win: BrowserWindow): void {
       .catch((): undefined => undefined);
   };
   win.webContents.on('dom-ready', inject);
+}
+
+function markDarwinInsetChrome(win: BrowserWindow): void {
+  if (process.platform !== 'darwin') return;
+  const inject = (): void => {
+    if (win.isDestroyed()) return;
+    void win.webContents
+      .executeJavaScript(`document.documentElement.classList.add('has-inset-chrome')`)
+      .catch((): undefined => undefined);
+  };
+  win.webContents.on('dom-ready', inject);
+}
+
+function markDurableWindowChrome(win: BrowserWindow): void {
+  markWin32CaptionOverlay(win);
+  markDarwinInsetChrome(win);
 }
 
 /** CSS blur off while the user drags an edge. Durable windows do not use Mica. */
@@ -1002,7 +1061,7 @@ const createMainWindow = (): void => {
   // });
 
   if (mainWindow) {
-    markWin32CaptionOverlay(mainWindow);
+    markDurableWindowChrome(mainWindow);
     wireLiveResizeLite(mainWindow);
   }
 };
@@ -1290,7 +1349,7 @@ const createSettingsWindow = (): void => {
     }
   });
   if (settingsWindow) {
-    markWin32CaptionOverlay(settingsWindow);
+    markDurableWindowChrome(settingsWindow);
     wireLiveResizeLite(settingsWindow);
   }
 };
@@ -1691,14 +1750,7 @@ async function ocrClipboardImage(): Promise<void> {
   const img = readClipboardImage();
   if (!img) {
     log.info('main', 'No clipboard image to OCR');
-    try {
-      tray?.displayBalloon?.({
-        title: 'Phevere',
-        content: 'No image on the clipboard (try Win+Shift+S first)',
-      });
-    } catch {
-      /* optional */
-    }
+    notifyUser(clipboardOcrHint());
     return;
   }
   lastClipboardImageHash = img.imageHash;
@@ -1748,14 +1800,7 @@ function startClipboardImageWatcher(): void {
     if (!img) return;
     if (img.imageHash === lastClipboardImageHash) return;
     lastClipboardImageHash = img.imageHash;
-    try {
-      tray?.displayBalloon?.({
-        title: 'Phevere',
-        content: 'Clipboard image ready — Ctrl+Shift+I to OCR',
-      });
-    } catch {
-      /* optional */
-    }
+    notifyUser(clipboardOcrReadyHint());
   }, 2000);
 }
 
@@ -2697,6 +2742,35 @@ app.on('browser-window-created', (_event, win) => {
   });
 });
 
+function installDarwinAppMenu(): void {
+  if (process.platform !== 'darwin') return;
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        {
+          label: 'Settings…',
+          accelerator: 'CommandOrControl+,',
+          click: () => createSettingsWindow(),
+        },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    { role: 'editMenu' },
+    { role: 'windowMenu' },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 app.on('ready', () => {
   if (!gotSingleInstanceLock) return;
   if (process.platform === 'win32') {
@@ -2705,6 +2779,7 @@ app.on('ready', () => {
     nativeTheme.themeSource = 'light';
   }
   applyDockIcon();
+  installDarwinAppMenu();
   log.info('main', 'App ready');
   monitorSettings = loadMonitorSettings();
   createMainWindow();
@@ -2850,7 +2925,7 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
               }, 'none'));
 
               clipboardWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY + '#clipboard');
-              markWin32CaptionOverlay(clipboardWindow);
+              markDurableWindowChrome(clipboardWindow);
               wireLiveResizeLite(clipboardWindow);
 
               clipboardWindow.on('closed', () => {

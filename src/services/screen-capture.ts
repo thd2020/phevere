@@ -7,6 +7,11 @@ import { desktopCapturer, screen, nativeImage, NativeImage } from 'electron';
 import { createHash } from 'crypto';
 import { ContextBounds } from './context-capture';
 import { wrapConsole } from '../logger';
+import {
+  ensureMacScreenRecordingForCapture,
+  getMacScreenRecordingStatus,
+  promptOpenMacScreenRecordingSettings,
+} from './mac-screen-recording';
 
 const console = wrapConsole('screen-capture');
 
@@ -31,6 +36,10 @@ function hashPng(png: Buffer): string {
 export async function captureScreenRegion(bounds: ContextBounds): Promise<CaptureResult | null> {
   if (bounds.width < 4 || bounds.height < 4) {
     console.warn('Region too small', bounds);
+    return null;
+  }
+
+  if (!(await ensureMacScreenRecordingForCapture())) {
     return null;
   }
 
@@ -61,6 +70,9 @@ export async function captureScreenRegion(bounds: ContextBounds): Promise<Captur
   const full = source.thumbnail;
   if (full.isEmpty()) {
     console.error('Empty thumbnail from desktopCapturer');
+    if (process.platform === 'darwin' && getMacScreenRecordingStatus() === 'denied') {
+      await promptOpenMacScreenRecordingSettings();
+    }
     return null;
   }
 
