@@ -94,6 +94,7 @@ export {
   formatPronunciationLine,
   cleanIpa,
   derivationalStems,
+  normalizePronunciationAudioUrl,
 } from './pronunciation';
 export { buildWordFamily, mergeWordFamilyGroups, familyFromEtymologyChain, type WordFamilyGroup } from './word-family';
 export {

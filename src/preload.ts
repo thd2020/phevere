@@ -44,8 +44,9 @@ interface ClipboardStats {
 
 // Dictionary service interfaces
 interface DictionaryResult {
-  word: string;
-  pronunciation?: string;
+    word: string;
+    pronunciation?: string;
+    pronunciations?: Array<{ ipa: string; accent?: string; source?: string; audioUrl?: string }>;
   definitions: Definition[];
   translations: Translation[];
   examples: string[];

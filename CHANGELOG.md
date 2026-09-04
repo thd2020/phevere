@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Lexicon part-of-speech is a **horizontal tab row** at the top of the senses block (noun / verb / adj), not stacked piles.
+
+### Added
+
+- A speaker after each US / UK / other IPA chip. Plays the dictionary’s recorded clip when Free Dictionary sent an MP3; otherwise the system voice for that accent (en-US / en-GB). There is no small library that synthesizes audio from the IPA string itself.
+
 ## [1.5.0] - 2026-09-04
 
 ### Added

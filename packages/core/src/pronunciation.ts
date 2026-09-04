@@ -8,6 +8,8 @@ export interface Pronunciation {
   ipa: string;
   accent?: AccentTag;
   source?: string;
+  /** Recorded clip when the source sent one (Free Dictionary Google MP3s). */
+  audioUrl?: string;
 }
 
 const IPA_LETTER = /[ˈˌəɚɝɨʉɪɛæɑɒɔʊʌɐɜɵɘʔθðʃʒŋː‿.ᵻᵿãẽĩõũɡɹɾɫ]/;
@@ -40,26 +42,36 @@ export function accentsFromHint(hint?: string): AccentTag[] {
   return out.length ? out : ['other'];
 }
 
+/** Protocol-relative `//ssl.gstatic.com/…` → https. Empty if not an http(s) URL. */
+export function normalizePronunciationAudioUrl(raw?: string): string {
+  if (!raw) return '';
+  let s = String(raw).trim();
+  if (!s) return '';
+  if (s.startsWith('//')) s = `https:${s}`;
+  if (!/^https?:\/\//i.test(s)) return '';
+  return s;
+}
+
 export function parseFreeDictionaryPhonetics(data: {
   phonetic?: string;
   phonetics?: Array<{ text?: string; audio?: string }>;
 }): Pronunciation[] {
   const out: Pronunciation[] = [];
   const seen = new Set<string>();
-  const add = (text: string | undefined, hint: string, source = 'Free Dictionary API') => {
+  const add = (text: string | undefined, hint: string, source = 'Free Dictionary API', audioUrl?: string) => {
     const ipa = cleanIpa(text);
     if (!ipa) return;
     for (const accent of accentsFromHint(hint)) {
       const key = `${accent}:${ipa}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ ipa, accent, source });
+      out.push({ ipa, accent, source, ...(audioUrl ? { audioUrl } : {}) });
     }
   };
 
   if (Array.isArray(data?.phonetics)) {
     for (const p of data.phonetics) {
-      add(p?.text, `${p?.audio || ''} ${p?.text || ''}`);
+      add(p?.text, `${p?.audio || ''} ${p?.text || ''}`, 'Free Dictionary API', normalizePronunciationAudioUrl(p?.audio));
     }
   }
   add(data?.phonetic, data?.phonetic || '');
@@ -164,19 +176,23 @@ export function derivationalStems(word: string): string[] {
 }
 
 export function mergePronunciations(...lists: Array<Pronunciation[] | undefined>): Pronunciation[] {
-  const out: Pronunciation[] = [];
-  const seen = new Set<string>();
+  const byKey = new Map<string, Pronunciation>();
   for (const list of lists) {
     for (const p of list || []) {
       const ipa = cleanIpa(p.ipa);
       if (!ipa) continue;
       const accent = p.accent || 'other';
       const key = `${accent}:${ipa}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ ipa, accent, source: p.source });
+      const audioUrl = p.audioUrl ? normalizePronunciationAudioUrl(p.audioUrl) : '';
+      const existing = byKey.get(key);
+      if (existing) {
+        if (!existing.audioUrl && audioUrl) existing.audioUrl = audioUrl;
+        continue;
+      }
+      byKey.set(key, { ipa, accent, source: p.source, ...(audioUrl ? { audioUrl } : {}) });
     }
   }
+  const out = [...byKey.values()];
   const us = out.filter((p) => p.accent === 'us');
   const uk = out.filter((p) => p.accent === 'uk');
   const other = out.filter((p) => p.accent !== 'us' && p.accent !== 'uk');
