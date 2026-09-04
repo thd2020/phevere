@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Lexicon part-of-speech is a **skinny left rail** of vertical labels (noun / verb / adj, no **all**). The senses panel is one stacked view; clicking a POS jumps to that section (the first POS is the top). Blocks are separated by a thick rule (heavier than the hairline between senses).
+- Lexicon is one **explorer pane**: a skinny vertical rail (noun / verb / …, then examples / synonyms / antonyms / family when present; no **all**). Click a rail item to jump. Outermost 1px frame around rail+panel; an inner frame per section; word-family rows nest one frame tighter.
 - Toolbar 🔊 plays a **recorded** clip: Free Dictionary MP3 when that API answered, otherwise the Wiktionary/Commons file from `{{audio}}`. It does not read the spelling with the system voice.
 - A speaker after each US / UK IPA chip speaks **that chip’s IPA** through a long-lived Windows System.Speech host (`<phoneme alphabet="ipa">`) or macOS `say` phonemes — not the headword and not the recorded clip.
 

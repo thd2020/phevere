@@ -429,6 +429,7 @@
 
       .lexicon-block--headword {
         padding-bottom: 14px;
+        margin-bottom: 8px;
       }
 
       .lexicon-block .result-section-title {
@@ -742,15 +743,15 @@
         border-left: 2px solid #cbd5e1;
       }
 
-      .lexicon-pos-layout {
+      .lexicon-explorer {
         display: flex;
         align-items: flex-start;
         min-height: 120px;
         gap: 0;
-      }
-      .lexicon-block--senses {
+        margin: 0;
+        border: 1px solid #14212b;
+        background: #ffffff;
         overflow: visible;
-        padding: 12px 14px 12px 4px;
       }
       .lexicon-pos-tabs {
         flex: 0 0 auto;
@@ -763,7 +764,7 @@
         align-items: stretch;
         gap: 0;
         margin: 0;
-        border-right: 1px solid #e1e5e9;
+        border-right: 1px solid #14212b;
         background: #ffffff;
         padding: 0;
         z-index: 1;
@@ -808,30 +809,60 @@
       .lexicon-pos-panel {
         flex: 1;
         min-width: 0;
-        padding: 0 0 0 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        padding: 5px;
       }
 
       .lexicon-pos-group {
-        margin-bottom: 0;
+        margin: 0;
+        padding: 8px;
+        border: 1px solid #c5ccd3;
+        background: #ffffff;
       }
 
       .lexicon-pos-heading {
         display: block;
         font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: #0f172a;
-        margin: 0 0 10px;
+        color: #14212b;
+        margin: 0 0 6px;
       }
-      .lexicon-pos-group:first-child .lexicon-pos-heading {
-        margin-top: 0;
+      .lexicon-explorer .definition-item {
+        border: 1px solid #d8dde2;
+        border-bottom: 1px solid #d8dde2;
+        border-radius: 0;
+        background: transparent;
+        margin: 0;
+        padding: 7px 8px;
       }
-      .lexicon-pos-group + .lexicon-pos-group {
-        margin-top: 18px;
-        padding-top: 16px;
-        border-top: 3px solid #14212b;
+      .lexicon-explorer .definition-item + .definition-item {
+        margin-top: 5px;
+      }
+      .lexicon-explorer .example-item {
+        background: transparent;
+        border: 1px solid #d8dde2;
+        border-radius: 0;
+        border-left: 1px solid #d8dde2;
+        margin: 0;
+        padding: 7px 8px;
+        font-style: italic;
+        color: #475569;
+      }
+      .lexicon-explorer .example-item + .example-item {
+        margin-top: 5px;
+      }
+      .lexicon-explorer .word-family-row {
+        border: 1px solid #d8dde2;
+        padding: 6px 8px;
+        margin: 0;
+      }
+      .lexicon-explorer .word-family-row + .word-family-row {
+        margin-top: 5px;
       }
 
       .result-section-title {
@@ -2861,7 +2892,7 @@ function startAutoCloseTimeout() {
         }
 
         function highlightLexiconPosTab(pos) {
-          var root = document.querySelector('.lexicon-block--senses');
+          var root = document.querySelector('.lexicon-explorer');
           if (!root) return;
           root.querySelectorAll('.lexicon-pos-tab').forEach(function (tab) {
             var on = tab.getAttribute('data-pos') === pos;
@@ -2871,7 +2902,7 @@ function startAutoCloseTimeout() {
         }
 
         function jumpToLexiconPos(pos, instant) {
-          var root = document.querySelector('.lexicon-block--senses');
+          var root = document.querySelector('.lexicon-explorer');
           var scroller = document.querySelector('.results-section');
           if (!root || !scroller) return;
           var target = null;
@@ -2899,7 +2930,7 @@ function startAutoCloseTimeout() {
 
         function onLexiconPosScroll() {
           if (posJumpLock) return;
-          var root = document.querySelector('.lexicon-block--senses');
+          var root = document.querySelector('.lexicon-explorer');
           if (!root) return;
           var scroller = document.querySelector('.results-section');
           if (!scroller) return;
@@ -3081,17 +3112,11 @@ function startAutoCloseTimeout() {
             lastLexiconPos = order[0] || '';
             lastLexiconWord = result.word || '';
           }
-          if (!lastLexiconPos || order.indexOf(lastLexiconPos) < 0) {
-            lastLexiconPos = order[0] || '';
-          }
 
           const tabBtn = function (pos, label) {
             const on = pos === lastLexiconPos;
             return `<button type="button" class="lexicon-pos-tab${on ? ' is-active' : ''}" role="tab" aria-selected="${on ? 'true' : 'false'}" data-pos="${escapeHtml(pos)}">${escapeHtml(label)}</button>`;
           };
-          const tabsHtml = order.map(function (pos) {
-            return tabBtn(pos, pos);
-          }).join('');
 
           const shownExampleKeys = new Set();
           function renderSenses(senses) {
@@ -3135,11 +3160,16 @@ function startAutoCloseTimeout() {
             return panel;
           }
 
+          function wrapGroup(id, label, inner) {
+            return `<div class="lexicon-pos-group" data-pos="${escapeHtml(id)}"><div class="lexicon-pos-heading">${escapeHtml(label)}</div>${inner}</div>`;
+          }
+
           let allInner = '';
+          const toc = [];
           order.forEach(function (pos) {
-            allInner += `<div class="lexicon-pos-group" data-pos="${escapeHtml(pos)}"><div class="lexicon-pos-heading">${escapeHtml(pos)}</div>${renderSenses(groups[pos])}</div>`;
+            toc.push({ id: pos, label: pos });
+            allInner += wrapGroup(pos, pos, renderSenses(groups[pos]));
           });
-          const body = `<div class="lexicon-pos-layout"><nav class="lexicon-pos-tabs" role="tablist" aria-label="Part of speech" tabindex="0">${tabsHtml}</nav><div class="lexicon-pos-panel">${allInner}</div></div>`;
 
           const globalExamples = uniqueExamples(result.examples || [])
             .filter(function (ex) { return !shownExampleKeys.has(exampleKey(ex)); })
@@ -3158,27 +3188,52 @@ function startAutoCloseTimeout() {
             roots: 'Roots',
             seeAlso: 'See also',
           };
-          const familyHtml = family.length
-            ? `<div class="result-card lexicon-block">
-                <div class="result-section-title">Word family</div>
-                ${family.map(function (g) {
-                  const label = familyLabels[g.relation] || g.relation;
-                  const items = (Array.isArray(g.items) && g.items.length)
-                    ? g.items
-                    : (g.words || []).map(function (w) { return { word: w }; });
-                  const chips = items.map(function (it) {
-                    const safe = String((it && it.word) || '').trim();
-                    if (!safe) return '';
-                    const banner = String((it && it.label) || '').trim();
-                    const chip = `<a href="#" class="lemma-link word-family-chip" data-lookup="${escapeHtml(safe)}">${escapeHtml(safe)}</a>`;
-                    const tag = banner ? `<span class="word-family-banner">${escapeHtml(banner)}</span>` : '';
-                    return `<span class="word-family-item">${chip}${tag}</span>`;
-                  }).join('');
-                  if (!chips) return '';
-                  return `<div class="word-family-row"><span class="word-family-label">${escapeHtml(label)}</span><div class="word-family-chips">${chips}</div></div>`;
-                }).join('')}
-              </div>`
-            : '';
+
+          if (globalExamples.length) {
+            toc.push({ id: 'examples', label: 'examples' });
+            allInner += wrapGroup('examples', 'examples', globalExamples.map(function (ex) {
+              return `<div class="example-item">${escapeHtml(stripHtmlToText(ex))}</div>`;
+            }).join(''));
+          }
+          if (syn.length) {
+            toc.push({ id: 'synonyms', label: 'synonyms' });
+            allInner += wrapGroup('synonyms', 'synonyms', `<div class="example-item">${escapeHtml(syn.join(', '))}</div>`);
+          }
+          if (ant.length) {
+            toc.push({ id: 'antonyms', label: 'antonyms' });
+            allInner += wrapGroup('antonyms', 'antonyms', `<div class="example-item">${escapeHtml(ant.join(', '))}</div>`);
+          }
+
+          let familyInner = '';
+          family.forEach(function (g) {
+            const label = familyLabels[g.relation] || g.relation;
+            const items = (Array.isArray(g.items) && g.items.length)
+              ? g.items
+              : (g.words || []).map(function (w) { return { word: w }; });
+            const chips = items.map(function (it) {
+              const safe = String((it && it.word) || '').trim();
+              if (!safe) return '';
+              const banner = String((it && it.label) || '').trim();
+              const chip = `<a href="#" class="lemma-link word-family-chip" data-lookup="${escapeHtml(safe)}">${escapeHtml(safe)}</a>`;
+              const tag = banner ? `<span class="word-family-banner">${escapeHtml(banner)}</span>` : '';
+              return `<span class="word-family-item">${chip}${tag}</span>`;
+            }).join('');
+            if (!chips) return;
+            familyInner += `<div class="word-family-row"><span class="word-family-label">${escapeHtml(label)}</span><div class="word-family-chips">${chips}</div></div>`;
+          });
+          if (familyInner) {
+            toc.push({ id: 'family', label: 'family' });
+            allInner += wrapGroup('family', 'word family', familyInner);
+          }
+
+          const tocIds = toc.map(function (t) { return t.id; });
+          if (!lastLexiconPos || tocIds.indexOf(lastLexiconPos) < 0) {
+            lastLexiconPos = order[0] || tocIds[0] || '';
+          }
+          const tabsHtml = toc.map(function (t) {
+            return tabBtn(t.id, t.label);
+          }).join('');
+          const body = `<div class="lexicon-explorer"><nav class="lexicon-pos-tabs" role="tablist" aria-label="Lexicon sections" tabindex="0">${tabsHtml}</nav><div class="lexicon-pos-panel">${allInner}</div></div>`;
 
           return `
             <div class="lexicon-stack">
@@ -3186,27 +3241,7 @@ function startAutoCloseTimeout() {
                   <div class="result-word">${escapeHtml(result.word)}</div>
                   ${formatPronunciationHtml(result)}
                 </div>
-                <div class="result-card lexicon-block lexicon-block--senses">
-                  ${body}
-                </div>
-                ${globalExamples.length ? `
-                  <div class="result-card lexicon-block">
-                      <div class="result-section-title">Examples</div>
-                      ${globalExamples.map(function (ex) {
-                        return `<div class="example-item">${escapeHtml(stripHtmlToText(ex))}</div>`;
-                      }).join('')}
-                  </div>` : ''}
-                ${syn.length ? `
-                  <div class="result-card lexicon-block">
-                      <div class="result-section-title">Synonyms</div>
-                      <div class="example-item">${escapeHtml(syn.join(', '))}</div>
-                  </div>` : ''}
-                ${ant.length ? `
-                  <div class="result-card lexicon-block">
-                      <div class="result-section-title">Antonyms</div>
-                      <div class="example-item">${escapeHtml(ant.join(', '))}</div>
-                  </div>` : ''}
-                ${familyHtml}
+                ${body}
             </div>`;
         }
 
