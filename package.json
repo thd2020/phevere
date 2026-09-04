@@ -87,7 +87,7 @@
   "dependencies": {
     "@phevere/core": "*",
     "@gutenye/ocr-node": "^1.4.8",
-    "csv-parse": "^5.5.0",
+    "csv-parse": "^7.0.2",
     "google-translate-api-browser": "^5.0.0",
     "koffi": "^2.15.2",
     "lowdb": "^7.0.1",
