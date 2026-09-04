@@ -1,6 +1,6 @@
 # Phevere Dictionary
 
-**2026-09-04:** Lexicon sidebar has its own scrollbar (wheel stays on the rail). Content cards stay separate.
+**2026-09-04:** Lexicon rail is clipped to the pane with a visible scrollbar. Thick rule between noun/verb/… is back inside the lexicon card.
 
 **2026-09-04:** Toolbar 🔊 plays a recorded clip (Free Dictionary or Wiktionary Commons). IPA chips use a persistent Windows speech host so they actually speak.
 

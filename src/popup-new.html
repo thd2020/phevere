@@ -766,33 +766,33 @@
         flex-direction: column;
         margin: 0;
         padding: 0;
+        height: calc(100vh - 56px);
         max-height: calc(100vh - 56px);
-        overflow: hidden;
+        overflow-x: hidden;
+        overflow-y: scroll;
         border-right: 1px solid #e1e5e9;
         background: #ffffff;
+        scrollbar-gutter: stable;
+        scrollbar-width: auto;
+        scrollbar-color: #64748b #e8eaed;
+      }
+      .lexicon-pos-tabs::-webkit-scrollbar {
+        width: 10px;
+      }
+      .lexicon-pos-tabs::-webkit-scrollbar-track {
+        background: #e8eaed;
+      }
+      .lexicon-pos-tabs::-webkit-scrollbar-thumb {
+        background: #64748b;
+        border-radius: 5px;
       }
       .lexicon-rail-inner {
-        flex: 1 1 auto;
-        min-height: 0;
+        flex: 0 0 auto;
         display: flex;
         flex-direction: column;
         gap: 6px;
         padding: 8px 6px;
-        overflow-x: hidden;
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        scrollbar-width: thin;
-        scrollbar-color: #b8c0c8 transparent;
-      }
-      .lexicon-rail-inner::-webkit-scrollbar {
-        width: 6px;
-      }
-      .lexicon-rail-inner::-webkit-scrollbar-thumb {
-        background: #c5ccd3;
-        border-radius: 3px;
-      }
-      .lexicon-rail-inner::-webkit-scrollbar-track {
-        background: transparent;
+        overflow: visible;
       }
       .lexicon-rail-block {
         display: flex;
@@ -874,6 +874,11 @@
       }
       .lexicon-pos-group + .lexicon-pos-group {
         margin-top: 12px;
+      }
+      .lexicon-pane--pos .lexicon-pos-group + .lexicon-pos-group {
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 3px solid #14212b;
       }
 
       .result-section-title {
@@ -2031,7 +2036,10 @@
 
          var resultsSection = document.querySelector('.results-section');
          if (resultsSection) {
-           resultsSection.addEventListener('scroll', onLexiconPosScroll, { passive: true });
+           resultsSection.addEventListener('scroll', function () {
+             onLexiconPosScroll();
+             fitLexiconRail();
+           }, { passive: true });
            if (typeof ResizeObserver !== 'undefined') {
              try { new ResizeObserver(fitLexiconRail).observe(resultsSection); } catch (err) {}
            }
@@ -2912,23 +2920,27 @@ function startAutoCloseTimeout() {
           var nav = document.querySelector('.lexicon-pos-tabs');
           var scroller = document.querySelector('.results-section');
           if (!nav || !scroller) return;
-          nav.style.maxHeight = Math.max(80, scroller.clientHeight) + 'px';
+          var sbox = scroller.getBoundingClientRect();
+          var nbox = nav.getBoundingClientRect();
+          var top = Math.max(sbox.top, nbox.top);
+          var h = Math.floor(sbox.bottom - top);
+          if (h < 80) h = Math.max(80, scroller.clientHeight);
+          nav.style.height = h + 'px';
+          nav.style.maxHeight = h + 'px';
         }
 
         function lexiconRailScroller(fromEl) {
           var nav = fromEl && fromEl.closest ? fromEl.closest('.lexicon-pos-tabs') : document.querySelector('.lexicon-pos-tabs');
-          if (!nav) return null;
-          return nav.querySelector('.lexicon-rail-inner') || nav;
+          return nav || null;
         }
 
         function onLexiconRailWheel(e) {
           var nav = e.target && e.target.closest && e.target.closest('.lexicon-pos-tabs');
           if (!nav) return;
-          var rail = nav.querySelector('.lexicon-rail-inner') || nav;
-          if (rail.scrollHeight <= rail.clientHeight + 1) return;
+          if (nav.scrollHeight <= nav.clientHeight + 1) return;
           e.preventDefault();
           e.stopPropagation();
-          rail.scrollTop += e.deltaY;
+          nav.scrollTop += e.deltaY;
         }
 
         function revealLexiconRailTab(tab) {
@@ -3224,8 +3236,8 @@ function startAutoCloseTimeout() {
           function wrapGroup(id, label, inner) {
             return `<div class="lexicon-pos-group" data-pos="${escapeHtml(id)}"><div class="lexicon-pos-heading">${escapeHtml(label)}</div>${inner}</div>`;
           }
-          function wrapPane(inner) {
-            return `<div class="result-card lexicon-block lexicon-pane">${inner}</div>`;
+          function wrapPane(inner, extraClass) {
+            return `<div class="result-card lexicon-block lexicon-pane${extraClass ? ' ' + extraClass : ''}">${inner}</div>`;
           }
 
           let posInner = '';
@@ -3235,7 +3247,7 @@ function startAutoCloseTimeout() {
             posInner += wrapGroup(pos, pos, renderSenses(groups[pos]));
             return { id: pos, label: pos };
           });
-          let allInner = wrapPane(posInner);
+          let allInner = wrapPane(posInner, 'lexicon-pane--pos');
 
           const globalExamples = uniqueExamples(result.examples || [])
             .filter(function (ex) { return !shownExampleKeys.has(exampleKey(ex)); })
