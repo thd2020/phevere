@@ -751,6 +751,10 @@
       .lexicon-block--senses {
         overflow: visible;
         padding: 0;
+        margin: 0 0 10px;
+        background: transparent;
+        border: none;
+        box-shadow: none;
       }
       .lexicon-pos-tabs {
         flex: 0 0 auto;
@@ -822,7 +826,13 @@
       .lexicon-pos-panel {
         flex: 1;
         min-width: 0;
-        padding: 12px 14px 12px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 0 0 0 8px;
+      }
+      .lexicon-pos-panel > .result-card {
+        margin-bottom: 0;
       }
 
       .lexicon-pos-group {
@@ -3153,14 +3163,18 @@ function startAutoCloseTimeout() {
           function wrapGroup(id, label, inner) {
             return `<div class="lexicon-pos-group" data-pos="${escapeHtml(id)}"><div class="lexicon-pos-heading">${escapeHtml(label)}</div>${inner}</div>`;
           }
+          function wrapPane(inner) {
+            return `<div class="result-card lexicon-block lexicon-pane">${inner}</div>`;
+          }
 
-          let allInner = '';
+          let posInner = '';
           const tocIds = [];
           const posSections = order.map(function (pos) {
             tocIds.push(pos);
-            allInner += wrapGroup(pos, pos, renderSenses(groups[pos]));
+            posInner += wrapGroup(pos, pos, renderSenses(groups[pos]));
             return { id: pos, label: pos };
           });
+          let allInner = wrapPane(posInner);
 
           const globalExamples = uniqueExamples(result.examples || [])
             .filter(function (ex) { return !shownExampleKeys.has(exampleKey(ex)); })
@@ -3184,22 +3198,24 @@ function startAutoCloseTimeout() {
           if (globalExamples.length) {
             tocIds.push('examples');
             exampleSections.push({ id: 'examples', label: 'examples' });
-            allInner += wrapGroup('examples', 'examples', globalExamples.map(function (ex) {
+            allInner += wrapPane(wrapGroup('examples', 'examples', globalExamples.map(function (ex) {
               return `<div class="example-item">${escapeHtml(stripHtmlToText(ex))}</div>`;
-            }).join(''));
+            }).join('')));
           }
 
           const relatedSections = [];
+          let relatedInner = '';
           if (syn.length) {
             tocIds.push('synonyms');
             relatedSections.push({ id: 'synonyms', label: 'synonyms' });
-            allInner += wrapGroup('synonyms', 'synonyms', `<div class="example-item">${escapeHtml(syn.join(', '))}</div>`);
+            relatedInner += wrapGroup('synonyms', 'synonyms', `<div class="example-item">${escapeHtml(syn.join(', '))}</div>`);
           }
           if (ant.length) {
             tocIds.push('antonyms');
             relatedSections.push({ id: 'antonyms', label: 'antonyms' });
-            allInner += wrapGroup('antonyms', 'antonyms', `<div class="example-item">${escapeHtml(ant.join(', '))}</div>`);
+            relatedInner += wrapGroup('antonyms', 'antonyms', `<div class="example-item">${escapeHtml(ant.join(', '))}</div>`);
           }
+          if (relatedInner) allInner += wrapPane(relatedInner);
 
           const familySections = [];
           let familyInner = '';
@@ -3224,7 +3240,7 @@ function startAutoCloseTimeout() {
             familyInner += `<div class="word-family-row" data-pos="${escapeHtml(id)}"><span class="word-family-label">${escapeHtml(label)}</span><div class="word-family-chips">${chips}</div></div>`;
           });
           if (familyInner) {
-            allInner += `<div class="lexicon-pos-group"><div class="lexicon-pos-heading">word family</div>${familyInner}</div>`;
+            allInner += wrapPane(`<div class="lexicon-pos-heading">word family</div>${familyInner}`);
           }
 
           if (!lastLexiconPos || tocIds.indexOf(lastLexiconPos) < 0) {
@@ -3244,7 +3260,7 @@ function startAutoCloseTimeout() {
                   <div class="result-word">${escapeHtml(result.word)}</div>
                   ${formatPronunciationHtml(result)}
                 </div>
-                <div class="result-card lexicon-block lexicon-block--senses">
+                <div class="lexicon-block--senses">
                   ${body}
                 </div>
             </div>`;

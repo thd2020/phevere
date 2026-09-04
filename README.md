@@ -1,6 +1,6 @@
 # Phevere Dictionary
 
-**2026-09-04:** Lexicon sidebar: vertical section tabs inside **cards** (one card per block). Rightmost split is one line; each card’s right edge is that block’s inner line. A one-section block is just that tab. No hairlines, no LEXICON header row.
+**2026-09-04:** Lexicon / word family / synonyms are separate rounded cards again (not one merged sheet). Sidebar stays vertical tabs in small cards.
 
 **2026-09-04:** Toolbar 🔊 plays a recorded clip (Free Dictionary or Wiktionary Commons). IPA chips use a persistent Windows speech host so they actually speak.
 

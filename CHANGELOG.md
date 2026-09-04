@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Lexicon sidebar uses **cards** for blocks and **vertical** section tabs. One rightmost split; each card has its own inner vertical line. POS share a card; family relations share a card; a one-section block is a single tab. Senses stay stacked with no bold rules.
+- Lexicon sidebar uses **cards** for blocks and **vertical** section tabs. The panel matches: lexicon, examples, synonyms/antonyms, and word family are separate rounded cards (gap between them, not one merged sheet). One rightmost split; each rail card has an inner vertical line.
 - Toolbar 🔊 plays a **recorded** clip: Free Dictionary MP3 when that API answered, otherwise the Wiktionary/Commons file from `{{audio}}`. It does not read the spelling with the system voice.
 - A speaker after each US / UK IPA chip speaks **that chip’s IPA** through a long-lived Windows System.Speech host (`<phoneme alphabet="ipa">`) or macOS `say` phonemes — not the headword and not the recorded clip.
 
