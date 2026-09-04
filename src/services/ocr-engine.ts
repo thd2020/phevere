@@ -1021,11 +1021,9 @@ export function listOcrProfiles() {
  * Prefer the line / token whose box contains (relX, relY); else nearest box;
  * else full joined text. Coordinates are in image-pixel space.
  */
-export function textNearPoint(result: OcrResult, relX: number, relY: number): string {
+export function lineNearPoint(result: OcrResult, relX: number, relY: number): OcrLine | undefined {
   const lined = result.lines.filter((l) => l.text && l.bounds && l.bounds.width > 0);
-  if (lined.length === 0) {
-    return pickTokenAt(glueSpacedLetters(result.text || ''), { x: 0, y: 0, width: 1, height: 1 }, 0.5);
-  }
+  if (lined.length === 0) return undefined;
 
   const containing = lined.find((l) => {
     const b = l.bounds!;
@@ -1037,7 +1035,7 @@ export function textNearPoint(result: OcrResult, relX: number, relY: number): st
       relY <= b.y + b.height + pad
     );
   });
-  if (containing) return pickTokenAt(containing.text, containing.bounds!, relX);
+  if (containing) return containing;
 
   let best = lined[0];
   let bestDist = Infinity;
@@ -1051,7 +1049,15 @@ export function textNearPoint(result: OcrResult, relX: number, relY: number): st
       best = line;
     }
   }
-  return pickTokenAt(best.text, best.bounds!, relX);
+  return best;
+}
+
+export function textNearPoint(result: OcrResult, relX: number, relY: number): string {
+  const hit = lineNearPoint(result, relX, relY);
+  if (!hit?.bounds) {
+    return pickTokenAt(glueSpacedLetters(result.text || ''), { x: 0, y: 0, width: 1, height: 1 }, 0.5);
+  }
+  return pickTokenAt(hit.text, hit.bounds, relX);
 }
 
 const CJK_TOKEN = /[\u3400-\u9FFF\uF900-\uFAFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]/;

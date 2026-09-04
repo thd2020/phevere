@@ -18,7 +18,20 @@ function isSingleGlyphToken(p: string): boolean {
 }
 
 export function glueSpacedLetters(s: string): string {
-  const trimmed = String(s || '').replace(/\s+/g, ' ').trim();
+  const raw = String(s || '').trim();
+  if (!raw) return '';
+  // 2+ spaces are word breaks (letter-spaced CTC still uses one space per glyph).
+  const chunks = raw.split(/(\s{2,})/);
+  const glued = chunks
+    .map((chunk) => {
+      if (/^\s+$/.test(chunk)) return ' ';
+      return glueSingleSpaceGlyphRun(chunk.replace(/\s+/g, ' ').trim());
+    })
+    .join('');
+  return glued.replace(/\s+/g, ' ').trim();
+}
+
+function glueSingleSpaceGlyphRun(trimmed: string): string {
   if (!trimmed) return '';
   const parts = trimmed.split(' ');
   if (parts.length < 3) return trimmed;
@@ -74,12 +87,18 @@ export function mergeGlyphBoxes(lines: OcrTextLine[]): OcrTextLine[] {
     const g = groups[groups.length - 1];
     const prev = g?.[g.length - 1];
     if (prev && prev.bounds && line.bounds && sameOcrRow(prev, line)) {
-      const gap = line.bounds.x - (prev.bounds.x + prev.bounds.width);
-      const cw = Math.max(3, Math.min(prev.bounds.width, line.bounds.width) || 8);
-      const bothShort = [...prev.text.trim()].length <= 2 && [...line.text.trim()].length <= 2;
-      if (gap < cw * (bothShort ? 2.2 : 0.9)) {
-        g.push(line);
-        continue;
+      const prevLen = [...prev.text.trim()].length;
+      const curLen = [...line.text.trim()].length;
+      const letterLevel = prevLen <= 2 && curLen <= 2;
+      if (letterLevel) {
+        const gap = line.bounds.x - (prev.bounds.x + prev.bounds.width);
+        const em = Math.max(prev.bounds.height, line.bounds.height, 8);
+        // Inter-letter tracking is << 0.25em; word gaps are typically ≥ 0.25em.
+        // Do not use box *width* — a whole-word box would glue neighbouring words.
+        if (gap <= Math.max(2, em * 0.25)) {
+          g.push(line);
+          continue;
+        }
       }
     }
     groups.push([line]);
@@ -92,9 +111,9 @@ export function mergeGlyphBoxes(lines: OcrTextLine[]): OcrTextLine[] {
       const prev = g[i - 1];
       const cur = g[i];
       const gap = cur.bounds!.x - (prev.bounds!.x + prev.bounds!.width);
-      const cw = Math.max(4, (prev.bounds!.width + cur.bounds!.width) / 2 || 8);
+      const em = Math.max(prev.bounds!.height, cur.bounds!.height, 8);
       const glue = [...prev.text.trim()].length <= 2 && [...cur.text.trim()].length <= 2;
-      if (!glue && gap > cw * 0.85 && text && cur.text.trim()) text += ' ';
+      if (!glue && gap > em * 0.25 && text && cur.text.trim()) text += ' ';
       text += glueSpacedLetters(cur.text);
       bounds = unionBounds(bounds, cur.bounds!);
     }
@@ -108,11 +127,20 @@ export function finalizeOcrLines(lines: OcrTextLine[]): { lines: OcrTextLine[]; 
   const glyphHeavy =
     merged.length >= 3 &&
     merged.filter((l) => [...(l.text || '').trim()].length <= 1).length / merged.length >= 0.7;
-  const joined = merged
-    .map((l) => l.text)
-    .filter(Boolean)
-    .join(glyphHeavy ? '' : '\n')
-    .trim();
-  const text = glyphHeavy ? glueSpacedLetters(joined) : joined;
+  if (glyphHeavy) {
+    const joined = merged.map((l) => l.text).filter(Boolean).join('');
+    return { lines: merged, text: glueSpacedLetters(joined) };
+  }
+  const withB = merged.filter((l) => l.bounds && l.bounds.width > 0);
+  const without = merged.filter((l) => !l.bounds || l.bounds.width <= 0);
+  const rows: OcrTextLine[][] = [];
+  for (const line of withB) {
+    const row = rows[rows.length - 1];
+    const prev = row?.[row.length - 1];
+    if (prev && sameOcrRow(prev, line)) row.push(line);
+    else rows.push([line]);
+  }
+  const rowTexts = rows.map((row) => row.map((l) => l.text).filter(Boolean).join(' '));
+  const text = [...rowTexts, ...without.map((l) => l.text).filter(Boolean)].join('\n').trim();
   return { lines: merged, text };
 }

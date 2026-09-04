@@ -2,15 +2,15 @@
  * Hover-to-lookup: when the cursor dwells over a word, emit a ContextEvent.
  *
  * Prefer UIA RangeFromPoint (selectable text). If that returns nothing, OCR a
- * small rectangle under the cursor (unselectable UI).
+ * line-shaped strip under the cursor (unselectable UI) and pick the word box.
  */
 
 import { screen, BrowserWindow } from 'electron';
 import { wrapConsole } from '../logger';
 import { isLookupWorthy, normalizeQuery } from './text-normalize';
 import { contextCaptureHub } from './context-capture';
-import { captureScreenRegion } from './screen-capture';
-import { ocrEngine, textNearPoint } from './ocr-engine';
+import { captureAroundPoint } from './screen-capture';
+import { ocrEngine, lineNearPoint, textNearPoint } from './ocr-engine';
 
 const console = wrapConsole('hover-lookup');
 
@@ -21,8 +21,8 @@ export interface HoverLookupOptions {
   dwellMs?: number;
   /** Minimum gap between hover popups. */
   cooldownMs?: number;
-  /** Half-size of the OCR fallback crop around the cursor. */
-  ocrRadiusPx?: number;
+  /** Half-width of the first OCR crop (DIP). Height is derived from this. */
+  ocrHalfWidthPx?: number;
   /** Skip OCR fallback (selection already exists, or mouse is down). */
   skipOcr?: () => boolean;
   /** Skip while any of these windows are focused. */
@@ -35,8 +35,11 @@ const DEFAULTS = {
   moveTolerancePx: 6,
   dwellMs: 450,
   cooldownMs: 900,
-  /** Tight enough that PP-OCR sees one line; long Latin words still fit. */
-  ocrRadiusPx: 64,
+  /**
+   * First-pass crop is a *line strip*, not a word square. PP-OCR/DBNet finds
+   * text instances; word bounds come from those boxes (glyph height), not DIP.
+   */
+  ocrHalfWidthPx: 180,
 };
 
 export class HoverLookupService {
@@ -141,20 +144,9 @@ export class HoverLookupService {
 
     if (!text) {
       if (this.opts.skipOcr?.()) return;
-      const r = this.opts.ocrRadiusPx;
-      const capture = await captureScreenRegion({
-        x: x - r,
-        y: y - r,
-        width: r * 2,
-        height: r * 2,
-      });
-      if (capture) {
-        const ocr = await ocrEngine.recognize(capture.png);
-        const scale = capture.scaleFactor || 1;
-        const picked = textNearPoint(ocr, r * scale, r * scale);
-        if (picked && isLookupWorthy(picked)) {
-          text = picked.trim();
-        }
+      const picked = await ocrWordUnderCursor(x, y, this.opts.ocrHalfWidthPx);
+      if (picked && isLookupWorthy(picked)) {
+        text = picked.trim();
       }
     }
 
@@ -175,6 +167,64 @@ export class HoverLookupService {
       confidence: 0.85,
     });
   }
+}
+
+const HOVER_OCR_MAX_HALF_W = 360;
+const HOVER_OCR_MAX_HALF_H = 80;
+
+function cursorInCapture(
+  capture: { bounds: { x: number; y: number }; scaleFactor: number },
+  x: number,
+  y: number,
+): { px: number; py: number; scale: number } {
+  const scale = capture.scaleFactor || 1;
+  return {
+    px: (x - capture.bounds.x) * scale,
+    py: (y - capture.bounds.y) * scale,
+    scale,
+  };
+}
+
+function hitTouchesImageEdge(
+  box: { x: number; y: number; width: number; height: number },
+  imgW: number,
+  imgH: number,
+): boolean {
+  const slop = Math.max(3, box.height * 0.55);
+  return box.x <= slop || box.x + box.width >= imgW - slop || box.y <= slop || box.y + box.height >= imgH - slop;
+}
+
+/**
+ * Hover OCR: capture a line-shaped strip, let DBNet find instances, pick the
+ * box under the cursor. If that box is clipped by the crop, expand using the
+ * detected glyph height (image pixels → DIP) and recognize once more.
+ */
+async function ocrWordUnderCursor(x: number, y: number, halfW: number): Promise<string> {
+  let halfWidth = Math.max(80, halfW);
+  let halfHeight = Math.max(28, Math.round(halfWidth / 5));
+
+  const run = async (hw: number, hh: number) => {
+    const capture = await captureAroundPoint(x, y, hw, hh);
+    if (!capture) return null;
+    const ocr = await ocrEngine.recognize(capture.png);
+    const { px, py, scale } = cursorInCapture(capture, x, y);
+    const size = capture.image.getSize();
+    return { capture, ocr, px, py, scale, imgW: size.width, imgH: size.height };
+  };
+
+  let pass = await run(halfWidth, halfHeight);
+  if (!pass) return '';
+
+  const hit = lineNearPoint(pass.ocr, pass.px, pass.py);
+  if (hit?.bounds && hitTouchesImageEdge(hit.bounds, pass.imgW, pass.imgH)) {
+    const glyphDip = Math.max(12, hit.bounds.height / (pass.scale || 1));
+    halfWidth = Math.min(HOVER_OCR_MAX_HALF_W, Math.max(halfWidth, Math.round(glyphDip * 10)));
+    halfHeight = Math.min(HOVER_OCR_MAX_HALF_H, Math.max(halfHeight, Math.round(glyphDip * 1.6)));
+    const again = await run(halfWidth, halfHeight);
+    if (again) pass = again;
+  }
+
+  return textNearPoint(pass.ocr, pass.px, pass.py).trim();
 }
 
 /** True when the OCR region overlay has focus (don't hover-OCR the overlay itself). */
