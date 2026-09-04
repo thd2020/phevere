@@ -1,6 +1,6 @@
 # Phevere Dictionary
 
-**2026-09-04:** Notebook chips show the dictionary gloss language (`en → en` for English senses, not the default translation target). The Translation tab honours From/To among the listed languages. Popup 🌐 is gone (use the Translation tab); the gear no longer shrinks the panel, and clicking a tab restores its height. Hover OCR uses one probe for every PP-OCR pack. Notebook/Settings on Windows are opaque and use the native caption overlay.
+**2026-09-04:** **1.5.0** — Windows x64/ARM64 Setup and macOS Intel/Apple Silicon DMGs ship from the same GitHub tag. Mac OCR/read-window/now-playing/shortcuts match Windows (Screen Recording + Accessibility). Notebook chips show the dictionary gloss language (`en → en` for English senses). The Translation tab honours From/To. Popup 🌐 is gone; the gear no longer shrinks the panel. Hover OCR uses one probe for every PP-OCR pack.
 
 **2026-09-03:** Translation engines live in Settings → Sources (not chips on the lookup). The translation tab is a language pair (detect, swap, target) with a speaker on source and target. Lookup works inside Settings and the notebook the same as in other apps. Tray Settings no longer raises the main window. Selection beats hover OCR.
 
@@ -38,7 +38,7 @@ Then run the latest Setup.exe. New installs register a proper uninstaller (`Unin
 
 ## Download (macOS)
 
-Unsigned **DMGs** (`Phevere-<version>-darwin-x64.dmg` for Intel, `…-darwin-arm64.dmg` for Apple Silicon) are on the same [GitHub Releases](https://github.com/thd2020/phevere/releases) page. Open the disk image, drag **Phevere** to Applications. macOS Gatekeeper will warn until the app is signed and notarized. Right-click → Open the first time, or allow it under Privacy & Security. Enable **Accessibility** when asked (tray → Open Accessibility Settings).
+Unsigned **DMGs** (`Phevere-<version>-darwin-x64.dmg` for Intel, `…-darwin-arm64.dmg` for Apple Silicon) are on the same [GitHub Releases](https://github.com/thd2020/phevere/releases) page. Open the disk image, drag **Phevere** to Applications. macOS Gatekeeper will warn until the app is signed and notarized. Right-click → Open the first time, or allow it under Privacy & Security. Enable **Accessibility** (select-to-lookup) and **Screen Recording** (hover / region / window OCR) when asked. Tray → **Open Accessibility Settings…** / **Open Screen Recording Settings…**.
 
 ## Download (Android / iOS)
 
@@ -54,7 +54,7 @@ Phone builds are **not** on GitHub Releases yet. Sideload from a clone: Android 
 - **Vocabulary notebook** — local SQLite (`%APPDATA%\phevere`); lemma-only saves fill in the background; IPA + play; search; **Recent / A–Z** sort with an A–Z index scrubber; **Export / Import** (JSON or CSV); language chip is lemma → gloss (`en → en` when the saved sense is English); click the headword row to expand, select text in the definition without collapsing
 - **OCR** — bundled PP-OCRv4 (optional component); Settings can download PP-OCRv5 (needs `ppocrv5_dict.txt`, not the v4 keys file). Region / hover / clipboard / window capture. Hover OCR picks the word under the cursor from detection boxes (glyph height), not a fixed pixel square. Packaged builds crop in the thumbnail’s real pixel space so image OCR does not insert spaces between letters.
 - **Tray app** — Quit Phevere tears down UIA / OCR / sql.js before destroying windows (no leftover Electron helpers). Left-click the tray icon to show the notebook; right-click for the menu (Settings does not also raise the notebook). On macOS, left-click the menu-bar **P** to show the window; right-click for the menu.
-- **Win11 chrome** — Mica/Acrylic on a **light** paper UI (does not follow Windows dark app theme); NSIS wizard uses Segoe UI + branded 24-bpp sidebar BMP
+- **Win11 / macOS chrome** — Mica/Acrylic on a **light** paper UI (does not follow Windows dark app theme); durable windows use the native caption overlay (Windows) or traffic lights (macOS). NSIS wizard uses Segoe UI + branded 24-bpp sidebar BMP
 
 ## Development
 
@@ -89,7 +89,7 @@ npm run make:win
 
 `make:win` uses npmmirror Electron mirrors by default (avoids `github.com` `ETIMEDOUT` on some networks). `npm install` uses `.npmrc` `electron_mirror` plus `scripts/ensure-electron.js` (curl) for the runtime. `npm start` re-runs that extract if `path.txt` is missing after a cancelled install. If Electron’s postinstall still hangs: `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`.
 
-CI: `.github/workflows/ci.yml` on every PR and `main` (Windows package; macOS OCR native pack on Intel and Apple Silicon). CD: push an annotated tag `v*.*.*` → `.github/workflows/release.yml` makes x64 and ARM64 Setup.exe, creates the GitHub Release, and attests them (unsigned unless `CSC_LINK` is set). See [`docs/RELEASE.md`](docs/RELEASE.md).
+CI: `.github/workflows/ci.yml` on every PR and `main` (Windows package; macOS OCR native pack on Intel and Apple Silicon — both upload unpackaged artifacts). CD: push an annotated tag `v*.*.*` → `.github/workflows/release.yml` makes Windows x64/ARM64 Setup.exe and macOS Intel/Apple Silicon DMGs, creates the GitHub Release, and attests each file (Windows unsigned unless `CSC_LINK` is set; Mac DMGs unsigned). See [`docs/RELEASE.md`](docs/RELEASE.md).
 
 ### Tray Quit vs terminal (dev only)
 

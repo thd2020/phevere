@@ -7,18 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-04
+
 ### Added
 
 - Translation engines live in **Settings → Sources** (Auto / Google / MyMemory / Youdao / DeepL). The lookup Translation tab is a language pair (detect, swap, target) with speakers on source and target; preference is stored in `%APPDATA%\phevere\translation-prefs.json`.
 - **Android / iOS (Capacitor v1):** shared TypeScript lookup core (`packages/core`), in-app search and notebook, Android Process Text, iOS Share + `phevere://lookup`. Sideload only — see [`docs/MOBILE.md`](docs/MOBILE.md).
-- Windows **ARM64** NSIS Setup (`Phevere-Setup-<version>-arm64.exe`) on the same GitHub Release as x64. Built on `windows-11-arm` (UIA addon compiled natively). OCR uses sharp’s wasm fallback — sharp 0.33.5 has no `@img/sharp-win32-arm64`. Actions **workflow_dispatch** (`attach_tag`) rebuilds **both** Windows Setups onto that tag (replaces same-named `.exe`; does not retag).
+- Windows **ARM64** NSIS Setup (`Phevere-Setup-<version>-arm64.exe`) on the same GitHub Release as x64. Built on `windows-11-arm` (UIA addon compiled natively). OCR uses sharp’s wasm fallback — sharp 0.33.5 has no `@img/sharp-win32-arm64`.
+- GitHub **release** on `v*` builds **four** desktop artifacts onto one tag: Windows x64 + ARM64 Setup, macOS Intel + Apple Silicon DMG. Actions **workflow_dispatch** (`attach_tag`) replaces those same-named files (does not retag).
+- macOS matches the Windows capture actions: **Read this window** (frontmost AX window bounds), **Now playing** (Music / Spotify), Screen Recording prompt (same one-click Settings jump as Accessibility), native traffic-light caption on notebook/Settings/clipboard, ⌘ keycaps, and Notification instead of a tray balloon.
 
 ### Changed
 
 - Translation engines in **Settings → Sources** use the same row layout as dictionary sources, with formal names (Google Translate, MyMemory, Youdao, DeepL) and “No API key” / “API key required”.
 - The Translation tab honours the From/To selects (listed languages) instead of flipping English→English into Chinese.
 - Hover OCR is the same probe for every PP-OCR pack: DB `unclip_ratio` 2.2, locate on a line strip, recrop from glyph height (not the det-box width). PP-OCRv5’s tighter boxes no longer clip a mid-word square.
-- Durable windows (notebook, Settings, clipboard) are opaque. On Windows they use the native caption overlay so resize is not a frameless Mica drag.
+- Durable windows (notebook, Settings, clipboard) are opaque. On Windows they use the native caption overlay so resize is not a frameless Mica drag. On macOS they use `hiddenInset` traffic lights and hide the Windows-style HTML caption buttons.
 - NSIS InstFiles page **names the step**: header subtitle, details list (extract / shortcuts / OCR models / Apps & Features). `prepare:installer` flips electron-builder’s `SetDetailsPrint none` so extract lines are visible.
 - CI/dev bumps from Dependabot: Actions `checkout` / `setup-node` / `upload-artifact` v7, `action-gh-release` v3, `webpack-cli` 7, `ts-loader` 9.6, `maker-rpm` 7.11. TypeScript stays 5; `@typescript-eslint/eslint-plugin` stays 6 (PRs #7 and #9 closed — they need a matching parser / loader).
 
@@ -33,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `npm start` failed to compile: a stray brace in Settings CSS, and a missing macOS koffi binding after the mouse-down hover change.
 - Select-to-lookup ignored Phevere’s own windows (Settings and the notebook): UIA/AX skipped this process, and Settings was a modal child of the main window. Lookup now uses the same capture path inside the app; tray **Settings** no longer raises the main window. On Windows, a tray right-click no longer also fires the left-click “open notebook” handler.
 - Hover OCR no longer runs after a live text selection (or while the mouse button is down). Selection wins.
+- macOS hover / region OCR no longer fails silently when Screen Recording is off: empty captures open the same Settings jump as Accessibility.
 - Main-window **Recent / A–Z** no longer collapses to a single letter when narrowing; those controls do not shrink, and the window has a minimum width.
 - **Installed** image OCR (hover or Ctrl+Shift+O) inserted spaces between letters (`centrific` → `c e n t r i f i c`). Packaged `desktopCapturer` thumbnails often do not match the requested pixel size; crop now uses the bitmap’s real size vs display DIP, and glyph-spaced CTC output is glued. Dev `npm start` was masking this via Python RapidOCR. Selectable UIA text was never affected.
 - Switching OCR to **PP-OCRv5** produced no text: the pack used PP-OCRv4 `ppocr_keys_v1.txt` (~6.6k classes) against a ~18k-class rec model. It now downloads RapidOCR’s `ppocrv5_dict.txt` and re-fetches if an old short dict is still on disk.
@@ -44,6 +49,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hover lookup used a whole OCR line instead of the word under the cursor: Gutenye returns a `box` polygon (not `frame`), so line bounds were dropped. Map those boxes and pick the Latin word / CJK character at the pointer.
 - `npm start`: one Ctrl+C quits the app. `before-quit` used to `preventDefault()` and wait on teardown, so Electron stayed alive after Forge had already handled the signal.
 - Packaged builds omitted webpack externals (`onnxruntime-node`, `sharp`, `@gutenye`), so OCR only worked under `npm start`. The Mac zip / Windows Setup now keep and unpack those natives for the target arch; installed OCR never uses the user's Python. CI packages darwin x64 (`macos-15-intel`) and arm64 (`macos-latest`) and checks the payload.
+
+### Notes for users
+
+- **Windows x64** — `Phevere-Setup-1.5.0-x64.exe` from [GitHub Releases](https://github.com/thd2020/phevere/releases/tag/v1.5.0) (Actions). Unsigned; SmartScreen may warn. Signing options: [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
+- **Windows ARM64** — `Phevere-Setup-1.5.0-arm64.exe` on the same release (Snapdragon / Windows 11 ARM). Unsigned. OCR uses sharp wasm (no native win32-arm64 at 0.33.5).
+- **macOS Intel** — `Phevere-1.5.0-darwin-x64.dmg` from the same Actions run (`macos-15-intel`). Unsigned; Gatekeeper will warn (not notarized). Drag Phevere into Applications. Enable **Accessibility** and **Screen Recording** when asked (tray items open those panes).
+- **macOS Apple Silicon** — `Phevere-1.5.0-darwin-arm64.dmg` from the same Actions run (`macos-latest`). Same Gatekeeper note.
+- Run elevated on Windows when you need UIAutomation across elevated / protected apps.
 
 ## [1.4.1] - 2026-08-21
 
@@ -272,7 +285,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/thd2020/phevere/releases/tag/v1.5.0
 [1.4.1]: https://github.com/thd2020/phevere/releases/tag/v1.4.1
 [1.4.0]: https://github.com/thd2020/phevere/releases/tag/v1.4.0
 [1.3.1]: https://github.com/thd2020/phevere/releases/tag/v1.3.1

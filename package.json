@@ -1,6 +1,6 @@
 {
   "name": "phevere",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Cross-platform dictionary application with text selection monitoring",
   "main": ".webpack/main",
   "scripts": {
@@ -23,9 +23,9 @@
     "test": "node test-integration.js",
     "test-new-popup": "electron-forge start -- --test-new-popup",
     "sync-ocr-models": "node scripts/sync-ocr-models.js",
-    "make:mac": "node scripts/ensure-ocr-natives.js && electron-forge make --platform darwin && node scripts/make-mac-dmg.js --dir out/phevere-darwin-$(node -p process.arch)",
-    "make:mac:x64": "node scripts/ensure-ocr-natives.js --platform darwin --arch x64 && electron-forge make --platform darwin --arch x64 && node scripts/make-mac-dmg.js --dir out/phevere-darwin-x64 --arch x64",
-    "make:mac:arm64": "node scripts/ensure-ocr-natives.js --platform darwin --arch arm64 && electron-forge make --platform darwin --arch arm64 && node scripts/make-mac-dmg.js --dir out/phevere-darwin-arm64 --arch arm64",
+    "make:mac": "node scripts/ensure-ocr-natives.js && electron-forge make --platform darwin && node scripts/verify-ocr-pack.js --dir out/phevere-darwin-$(node -p process.arch) && node scripts/make-mac-dmg.js --dir out/phevere-darwin-$(node -p process.arch)",
+    "make:mac:x64": "node scripts/ensure-ocr-natives.js --platform darwin --arch x64 && electron-forge make --platform darwin --arch x64 && node scripts/verify-ocr-pack.js --dir out/phevere-darwin-x64 && node scripts/make-mac-dmg.js --dir out/phevere-darwin-x64 --arch x64",
+    "make:mac:arm64": "node scripts/ensure-ocr-natives.js --platform darwin --arch arm64 && electron-forge make --platform darwin --arch arm64 && node scripts/verify-ocr-pack.js --dir out/phevere-darwin-arm64 && node scripts/make-mac-dmg.js --dir out/phevere-darwin-arm64 --arch arm64",
     "verify:ocr-pack": "node scripts/verify-ocr-pack.js",
     "mobile:dev": "npm run dev -w @phevere/mobile",
     "mobile:build": "npm run build -w @phevere/mobile",
