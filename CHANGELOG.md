@@ -15,17 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Translation engines in **Settings → Sources** use the same row layout as dictionary sources, with formal names (Google Translate, MyMemory, Youdao, DeepL) and “No API key” / “API key required”.
 - NSIS InstFiles page **names the step**: header subtitle, details list (extract / shortcuts / OCR models / Apps & Features). `prepare:installer` flips electron-builder’s `SetDetailsPrint none` so extract lines are visible.
 - CI/dev bumps from Dependabot: Actions `checkout` / `setup-node` / `upload-artifact` v7, `action-gh-release` v3, `webpack-cli` 7, `ts-loader` 9.6, `maker-rpm` 7.11. TypeScript stays 5; `@typescript-eslint/eslint-plugin` stays 6 (PRs #7 and #9 closed — they need a matching parser / loader).
 
 ### Fixed
 
 - Empty translation results (Google 429, missing Youdao/DeepL keys) were frozen in the 24h lookup cache, so every chip looked dead. Failed translations are no longer cached; Google gtx cools down after 429 and falls through to a second Google URL plus MyMemory.
+- Word-family **derived** chips showed `noun/verb/adj.` on almost every citation form (wink marks those as all three POS). Banners are a single precise tag (wiki or suffix) or omitted; phrase chips are not labelled “phrase”.
+- Shrinking the main window felt stuck: Mica and `backdrop-filter` now turn off for the drag.
+- Hover OCR used a fixed 128×128 DIP square, so small type glued several words and large type clipped letters. It now captures a line strip, splits words from detection-box gaps (glyph height), and expands the crop if the hit box is clipped.
 - `npm start` failed to compile: a stray brace in Settings CSS, and a missing macOS koffi binding after the mouse-down hover change.
 - Select-to-lookup ignored Phevere’s own windows (Settings and the notebook): UIA/AX skipped this process, and Settings was a modal child of the main window. Lookup now uses the same capture path inside the app; tray **Settings** no longer raises the main window. On Windows, a tray right-click no longer also fires the left-click “open notebook” handler.
 - Hover OCR no longer runs after a live text selection (or while the mouse button is down). Selection wins.
 - Main-window **Recent / A–Z** no longer collapses to a single letter when narrowing; those controls do not shrink, and the window has a minimum width.
-- Word-family **derived** chips missed POS banners when wink saw more than one citation form. Ambiguous forms now show `noun/verb` (etc.), and more suffixes are guessed.
 - **Installed** image OCR (hover or Ctrl+Shift+O) inserted spaces between letters (`centrific` → `c e n t r i f i c`). Packaged `desktopCapturer` thumbnails often do not match the requested pixel size; crop now uses the bitmap’s real size vs display DIP, and glyph-spaced CTC output is glued. Dev `npm start` was masking this via Python RapidOCR. Selectable UIA text was never affected.
 - Switching OCR to **PP-OCRv5** produced no text: the pack used PP-OCRv4 `ppocr_keys_v1.txt` (~6.6k classes) against a ~18k-class rec model. It now downloads RapidOCR’s `ppocrv5_dict.txt` and re-fetches if an old short dict is still on disk.
 - macOS shortcut monitor mode opened a lookup on every selection: `isAcceleratorPhysicallyHeld` always returned true off Windows. It now uses `CGEventSourceKeyState` (same hold-while-select / select-then-trigger as Windows). `CommandOrControl` is Command on Mac.

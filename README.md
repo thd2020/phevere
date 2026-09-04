@@ -1,5 +1,7 @@
 # Phevere Dictionary
 
+**2026-09-04:** Translation engines in Settings match the dictionary list (formal names; API-key note). Word-family phrases are not tagged “phrase”; derived chips keep a single POS or none (no `noun/verb/adj.` dump). Shrinking the notebook drops Mica/blur for the drag. Hover OCR picks a word from detection boxes, not a fixed crop.
+
 **2026-09-03:** Translation engines live in Settings → Sources (not chips on the lookup). The translation tab is a language pair (detect, swap, target) with a speaker on source and target. Lookup works inside Settings and the notebook the same as in other apps. Tray Settings no longer raises the main window. Selection beats hover OCR.
 
 Select-to-lookup dictionary for Windows (Electron + Microsoft UI Automation), macOS (Accessibility), and **Android / iOS** (Capacitor). On the desktop, select text anywhere → popup with definitions, translation, etymology, Wikipedia, and a local vocabulary notebook. On phones, use **Process Text** (Android), **Share** (iOS), or in-app search — same lookup core.
@@ -50,7 +52,7 @@ Phone builds are **not** on GitHub Releases yet. Sideload from a clone: Android 
 - **Offline packs** — Settings → Offline: WordNet, Webster 1913 (GCIDE), CC-CEDICT, FreeDict en→zh (consent download); JSON/CEDICT import. Living Oxford / Collegiate Webster / Collins are not dumped (copyright).
 - **Etymology & Wikipedia** — in-popup tabs; Wikipedia reader webview
 - **Vocabulary notebook** — local SQLite (`%APPDATA%\phevere`); lemma-only saves fill in the background; IPA + play; search; **Recent / A–Z** sort with an A–Z index scrubber; **Export / Import** (JSON or CSV); click the headword row to expand, select text in the definition without collapsing
-- **OCR** — bundled PP-OCRv4 (optional component); Settings can download PP-OCRv5 (needs `ppocrv5_dict.txt`, not the v4 keys file). Region / hover / clipboard / window capture. Packaged builds crop in the thumbnail’s real pixel space so image OCR does not insert spaces between letters.
+- **OCR** — bundled PP-OCRv4 (optional component); Settings can download PP-OCRv5 (needs `ppocrv5_dict.txt`, not the v4 keys file). Region / hover / clipboard / window capture. Hover OCR picks the word under the cursor from detection boxes (glyph height), not a fixed pixel square. Packaged builds crop in the thumbnail’s real pixel space so image OCR does not insert spaces between letters.
 - **Tray app** — Quit Phevere tears down UIA / OCR / sql.js before destroying windows (no leftover Electron helpers). Left-click the tray icon to show the notebook; right-click for the menu (Settings does not also raise the notebook). On macOS, left-click the menu-bar **P** to show the window; right-click for the menu.
 - **Win11 chrome** — Mica/Acrylic on a **light** paper UI (does not follow Windows dark app theme); NSIS wizard uses Segoe UI + branded 24-bpp sidebar BMP
 
