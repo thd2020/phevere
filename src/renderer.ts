@@ -315,6 +315,7 @@ function initializeSettingsWindow() {
       stopCapture();
       window.close();
     });
+    window.addEventListener('pagehide', () => stopCapture());
   });
   wireLiveResizeClass();
 }
@@ -1640,6 +1641,26 @@ function wireLiveResizeClass(): void {
   window.electronAPI?.onMainWindowResizing?.((resizing) => {
     document.documentElement.classList.toggle('is-resizing', resizing);
   });
+  const overlay = (
+    navigator as Navigator & {
+      windowControlsOverlay?: {
+        visible?: boolean;
+        getTitlebarAreaRect?: () => { x: number; width: number };
+        addEventListener?: (type: string, fn: () => void) => void;
+      };
+    }
+  ).windowControlsOverlay;
+  const syncWco = (): void => {
+    if (!overlay?.visible) return;
+    document.documentElement.classList.add('has-wco');
+    const rect = overlay.getTitlebarAreaRect?.();
+    if (rect && Number.isFinite(rect.width)) {
+      const inset = Math.max(0, Math.round(window.innerWidth - rect.x - rect.width));
+      document.documentElement.style.setProperty('--wco-inset-right', `${inset}px`);
+    }
+  };
+  syncWco();
+  overlay?.addEventListener?.('geometrychange', syncWco);
 }
 
 function initializeMainWindow() {

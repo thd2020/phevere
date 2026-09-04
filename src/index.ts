@@ -875,11 +875,24 @@ function supportsWin11Material(): boolean {
   return parts[0] === 10 && (parts[2] || 0) >= 22000;
 }
 
-/** Win11 Fluent: Mica on durable windows, Acrylic on flyouts. Opaque fallback on Win10. */
+/** Win11 Fluent: opaque durable windows (native caption overlay); Acrylic on flyouts. */
 function withWin11Chrome(
   opts: Electron.BrowserWindowConstructorOptions,
   material: 'mica' | 'acrylic' | 'none' = 'mica',
 ): Electron.BrowserWindowConstructorOptions {
+  if (process.platform === 'win32' && material === 'none') {
+    const { frame: _frame, ...rest } = opts;
+    return {
+      backgroundColor: '#F3F3F3',
+      titleBarStyle: 'hidden',
+      titleBarOverlay: {
+        color: '#F3F3F3',
+        symbolColor: '#1a1a1a',
+        height: 40,
+      },
+      ...rest,
+    };
+  }
   if (process.platform !== 'win32' || material === 'none' || !supportsWin11Material()) {
     return { backgroundColor: '#F3F3F3', ...opts };
   }
@@ -892,24 +905,25 @@ function withWin11Chrome(
   };
 }
 
-/** Drop Mica + CSS blur while the user drags an edge (Electron 28 has no viewporter resize fix). */
-function wireLiveResizeLite(
-  win: BrowserWindow,
-  material: 'mica' | 'acrylic' | 'none',
-): void {
+function markWin32CaptionOverlay(win: BrowserWindow): void {
+  if (process.platform !== 'win32') return;
+  const inject = (): void => {
+    if (win.isDestroyed()) return;
+    void win.webContents
+      .executeJavaScript(`document.documentElement.classList.add('has-wco')`)
+      .catch((): undefined => undefined);
+  };
+  win.webContents.on('dom-ready', inject);
+}
+
+/** CSS blur off while the user drags an edge. Durable windows do not use Mica. */
+function wireLiveResizeLite(win: BrowserWindow): void {
   let live = false;
   let endTimer: ReturnType<typeof setTimeout> | null = null;
   const begin = (): void => {
     if (win.isDestroyed()) return;
     if (!live) {
       live = true;
-      if (material !== 'none' && supportsWin11Material()) {
-        try {
-          win.setBackgroundMaterial('none');
-        } catch {
-          /* Electron build without setBackgroundMaterial */
-        }
-      }
       try {
         win.webContents.send('main-window-resizing', true);
       } catch {
@@ -917,7 +931,7 @@ function wireLiveResizeLite(
       }
     }
     if (endTimer) clearTimeout(endTimer);
-    endTimer = setTimeout(finish, 140);
+    endTimer = setTimeout(finish, 160);
   };
   const finish = (): void => {
     endTimer = null;
@@ -926,13 +940,6 @@ function wireLiveResizeLite(
       return;
     }
     live = false;
-    if (material !== 'none' && supportsWin11Material()) {
-      try {
-        win.setBackgroundMaterial(material);
-      } catch {
-        /* ignore */
-      }
-    }
     try {
       win.webContents.send('main-window-resizing', false);
     } catch {
@@ -940,9 +947,7 @@ function wireLiveResizeLite(
     }
   };
   win.on('will-resize', begin);
-  if (process.platform === 'darwin') {
-    win.on('resize', begin);
-  }
+  win.on('resize', begin);
   win.on('resized', () => {
     if (endTimer) clearTimeout(endTimer);
     finish();
@@ -967,7 +972,7 @@ const createMainWindow = (): void => {
       webSecurity: true,
     },
     show: false, // Don't show main window by default
-  }));
+  }, 'none'));
 
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
@@ -997,7 +1002,8 @@ const createMainWindow = (): void => {
   // });
 
   if (mainWindow) {
-    wireLiveResizeLite(mainWindow, supportsWin11Material() ? 'mica' : 'none');
+    markWin32CaptionOverlay(mainWindow);
+    wireLiveResizeLite(mainWindow);
   }
 };
 
@@ -1265,7 +1271,7 @@ const createSettingsWindow = (): void => {
     show: false,
     frame: false,
     ...(windowIcon ? { icon: windowIcon } : {}),
-  }));
+  }, 'none'));
 
   const settingsUrl = MAIN_WINDOW_WEBPACK_ENTRY + '#settings';
   settingsWindow.loadURL(settingsUrl);
@@ -1284,7 +1290,8 @@ const createSettingsWindow = (): void => {
     }
   });
   if (settingsWindow) {
-    wireLiveResizeLite(settingsWindow, supportsWin11Material() ? 'mica' : 'none');
+    markWin32CaptionOverlay(settingsWindow);
+    wireLiveResizeLite(settingsWindow);
   }
 };
 
@@ -2839,9 +2846,11 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
                   nodeIntegration: false,
                   contextIsolation: true,
                 },
-              }));
+              }, 'none'));
 
               clipboardWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY + '#clipboard');
+              markWin32CaptionOverlay(clipboardWindow);
+              wireLiveResizeLite(clipboardWindow);
 
               clipboardWindow.on('closed', () => {
                 log.debug('main', 'Clipboard window closed');

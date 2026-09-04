@@ -38,7 +38,7 @@ body.main-window {
 html.win11-mica body.main-window,
 html.win11-mica body.settings-page,
 html.win11-mica body.clipboard-window {
-  background-color: var(--pv-mica);
+  background-color: #f3f3f3;
 }
 
 /* Main window — ink / ember / teal (aligned with settings + popup) */
@@ -84,16 +84,14 @@ body.main-window .titlebar {
   height: var(--md-titlebar-h);
   min-height: var(--md-titlebar-h);
   flex: 0 0 var(--md-titlebar-h);
-  background: var(--pv-mica);
-  backdrop-filter: blur(28px) saturate(140%);
+  background: #f3f3f3;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 0 0 0 14px;
-  position: sticky;
-  top: 0;
-  left: 0;
-  right: 0;
+  position: relative;
   z-index: 9999;
   font-weight: 500;
   border-bottom: 1px solid var(--pv-line);
@@ -278,8 +276,8 @@ body.main-window .main-intro--slogan {
   margin-bottom: 28px;
   padding: 20px 24px;
   border-radius: var(--md-shape-lg);
-  background: var(--pv-acrylic);
-  backdrop-filter: blur(20px) saturate(140%);
+  background: #ffffff;
+  backdrop-filter: none;
   border: 1px solid var(--pv-line);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   text-align: center;
@@ -591,7 +589,7 @@ body.main-window .vocab-notebook {
 
 body.main-window .vocab-search {
   width: 11rem;
-  max-width: min(42vw, 280px);
+  max-width: 280px;
   min-width: 7rem;
   flex: 1 1 8rem;
   box-sizing: border-box;
@@ -996,8 +994,8 @@ body.main-window .selection-time {
   flex-wrap: wrap;
   gap: 16px 28px;
   align-items: center;
-  background: var(--pv-mica);
-  backdrop-filter: blur(28px) saturate(140%);
+  background: #f3f3f3;
+  backdrop-filter: none;
   border-top: 1px solid var(--pv-line);
   font-size: 0.875rem;
   color: var(--md-on-surface-variant, #49454f);
@@ -2107,10 +2105,34 @@ body.settings-page {
   text-rendering: optimizeLegibility;
 }
 
+html.is-resizing {
+  --pv-panel: #ffffff;
+  --pv-mica: #f3f3f3;
+}
+
 html.is-resizing body.main-window *,
 html.is-resizing body.settings-page * {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+  transition: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+html.has-wco body.main-window .window-controls {
+  display: none;
+}
+
+html.has-wco body.main-window .titlebar-end {
+  margin-right: var(--wco-inset-right, 138px);
+}
+
+html.has-wco body.settings-page .settings-close-btn {
+  display: none;
+}
+
+html.has-wco body.settings-page .settings-titlebar {
+  padding-right: var(--wco-inset-right, 138px);
 }
 
 body.settings-page .settings-app {
@@ -2128,12 +2150,12 @@ body.settings-page .settings-titlebar {
   align-items: center;
   justify-content: space-between;
   padding: 0 0 0 16px;
-  background: var(--pv-mica);
+  background: #f3f3f3;
   border-bottom: 1px solid var(--set-line);
-  backdrop-filter: blur(28px) saturate(140%);
+  backdrop-filter: none;
   -webkit-app-region: drag;
-  position: sticky;
-  top: 0;
+  position: relative;
+  top: auto;
   z-index: 100;
 }
 
