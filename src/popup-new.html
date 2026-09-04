@@ -429,7 +429,6 @@
 
       .lexicon-block--headword {
         padding-bottom: 14px;
-        margin-bottom: 8px;
       }
 
       .lexicon-block .result-section-title {
@@ -743,15 +742,15 @@
         border-left: 2px solid #cbd5e1;
       }
 
-      .lexicon-explorer {
+      .lexicon-pos-layout {
         display: flex;
         align-items: flex-start;
         min-height: 120px;
         gap: 0;
-        margin: 0;
-        border: 1px solid #14212b;
-        background: #ffffff;
+      }
+      .lexicon-block--senses {
         overflow: visible;
+        padding: 12px 14px 12px 4px;
       }
       .lexicon-pos-tabs {
         flex: 0 0 auto;
@@ -764,7 +763,7 @@
         align-items: stretch;
         gap: 0;
         margin: 0;
-        border-right: 1px solid #14212b;
+        border-right: 1px solid #e1e5e9;
         background: #ffffff;
         padding: 0;
         z-index: 1;
@@ -809,60 +808,30 @@
       .lexicon-pos-panel {
         flex: 1;
         min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-        padding: 5px;
+        padding: 0 0 0 8px;
       }
 
       .lexicon-pos-group {
-        margin: 0;
-        padding: 8px;
-        border: 1px solid #c5ccd3;
-        background: #ffffff;
+        margin-bottom: 0;
       }
 
       .lexicon-pos-heading {
         display: block;
         font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        font-size: 11px;
+        font-size: 12px;
         font-weight: 700;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: #14212b;
-        margin: 0 0 6px;
+        color: #0f172a;
+        margin: 0 0 10px;
       }
-      .lexicon-explorer .definition-item {
-        border: 1px solid #d8dde2;
-        border-bottom: 1px solid #d8dde2;
-        border-radius: 0;
-        background: transparent;
-        margin: 0;
-        padding: 7px 8px;
+      .lexicon-pos-group:first-child .lexicon-pos-heading {
+        margin-top: 0;
       }
-      .lexicon-explorer .definition-item + .definition-item {
-        margin-top: 5px;
-      }
-      .lexicon-explorer .example-item {
-        background: transparent;
-        border: 1px solid #d8dde2;
-        border-radius: 0;
-        border-left: 1px solid #d8dde2;
-        margin: 0;
-        padding: 7px 8px;
-        font-style: italic;
-        color: #475569;
-      }
-      .lexicon-explorer .example-item + .example-item {
-        margin-top: 5px;
-      }
-      .lexicon-explorer .word-family-row {
-        border: 1px solid #d8dde2;
-        padding: 6px 8px;
-        margin: 0;
-      }
-      .lexicon-explorer .word-family-row + .word-family-row {
-        margin-top: 5px;
+      .lexicon-pos-group + .lexicon-pos-group {
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 3px solid #14212b;
       }
 
       .result-section-title {
@@ -2892,7 +2861,7 @@ function startAutoCloseTimeout() {
         }
 
         function highlightLexiconPosTab(pos) {
-          var root = document.querySelector('.lexicon-explorer');
+          var root = document.querySelector('.lexicon-block--senses');
           if (!root) return;
           root.querySelectorAll('.lexicon-pos-tab').forEach(function (tab) {
             var on = tab.getAttribute('data-pos') === pos;
@@ -2902,7 +2871,7 @@ function startAutoCloseTimeout() {
         }
 
         function jumpToLexiconPos(pos, instant) {
-          var root = document.querySelector('.lexicon-explorer');
+          var root = document.querySelector('.lexicon-block--senses');
           var scroller = document.querySelector('.results-section');
           if (!root || !scroller) return;
           var target = null;
@@ -2930,7 +2899,7 @@ function startAutoCloseTimeout() {
 
         function onLexiconPosScroll() {
           if (posJumpLock) return;
-          var root = document.querySelector('.lexicon-explorer');
+          var root = document.querySelector('.lexicon-block--senses');
           if (!root) return;
           var scroller = document.querySelector('.results-section');
           if (!scroller) return;
@@ -3233,7 +3202,7 @@ function startAutoCloseTimeout() {
           const tabsHtml = toc.map(function (t) {
             return tabBtn(t.id, t.label);
           }).join('');
-          const body = `<div class="lexicon-explorer"><nav class="lexicon-pos-tabs" role="tablist" aria-label="Lexicon sections" tabindex="0">${tabsHtml}</nav><div class="lexicon-pos-panel">${allInner}</div></div>`;
+          const body = `<div class="lexicon-pos-layout"><nav class="lexicon-pos-tabs" role="tablist" aria-label="Lexicon sections" tabindex="0">${tabsHtml}</nav><div class="lexicon-pos-panel">${allInner}</div></div>`;
 
           return `
             <div class="lexicon-stack">
@@ -3241,7 +3210,9 @@ function startAutoCloseTimeout() {
                   <div class="result-word">${escapeHtml(result.word)}</div>
                   ${formatPronunciationHtml(result)}
                 </div>
-                ${body}
+                <div class="result-card lexicon-block lexicon-block--senses">
+                  ${body}
+                </div>
             </div>`;
         }
 
