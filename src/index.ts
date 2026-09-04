@@ -1041,7 +1041,7 @@ const createPopupWindow = (x: number, y: number): void => {
   const POPUP_STRIP_ICON = 24;
   const POPUP_STRIP_GAP = 2;
   const POPUP_STRIP_PAD = 4;
-  const POPUP_STRIP_ICONS = 8; // includes vocab heart; Wikipedia is tab-only
+  const POPUP_STRIP_ICONS = 7; // dictionary, audio, clipboard, search, heart, settings, close
   const popupWidth =
     POPUP_STRIP_PAD +
     POPUP_STRIP_ICONS * POPUP_STRIP_ICON +
@@ -2141,7 +2141,7 @@ ipcMain.handle('clipboard-import', (event, jsonData: string) => {
 });
 
 // Dictionary service IPC handlers
-ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: string = 'auto', enabledSources?: string[], lookupOpts?: { translationProvider?: string }) => {
+ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: string = 'auto', enabledSources?: string[], lookupOpts?: { translationProvider?: string; sourceLanguage?: string }) => {
   const t0 = Date.now();
   const translationProvider = parseTranslationProvider(
     lookupOpts?.translationProvider ?? loadTranslationPrefs().provider,
@@ -2149,6 +2149,7 @@ ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: 
   try {
     const result = await dictionaryService.lookup(text, targetLanguage, enabledSources, {
       translationProvider,
+      sourceLanguage: lookupOpts?.sourceLanguage,
       onUpdate: (updated) => {
         try {
           if (!event.sender.isDestroyed()) {

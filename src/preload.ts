@@ -285,7 +285,7 @@ contextBridge.exposeInMainWorld('clipboardAPI', {
 
 // Expose dictionary API
 contextBridge.exposeInMainWorld('dictionaryAPI', {
-  lookup: (text: string, targetLanguage?: string, enabledSources?: string[], lookupOpts?: { translationProvider?: string }): Promise<DictionaryResult> => {
+  lookup: (text: string, targetLanguage?: string, enabledSources?: string[], lookupOpts?: { translationProvider?: string; sourceLanguage?: string }): Promise<DictionaryResult> => {
     return ipcRenderer.invoke('dictionary-lookup', text, targetLanguage, enabledSources, lookupOpts);
   },
   getTranslationPrefs: (): Promise<{ provider: string }> => {
@@ -504,7 +504,7 @@ declare global {
       import: (jsonData: string) => Promise<boolean>;
     };
     dictionaryAPI: {
-      lookup: (text: string, targetLanguage?: string, enabledSources?: string[], lookupOpts?: { translationProvider?: string }) => Promise<DictionaryResult>;
+      lookup: (text: string, targetLanguage?: string, enabledSources?: string[], lookupOpts?: { translationProvider?: string; sourceLanguage?: string }) => Promise<DictionaryResult>;
       onLookupUpdate?: (callback: (result: DictionaryResult) => void) => void;
       getTranslationPrefs?: () => Promise<{ provider: string }>;
       setTranslationPrefs?: (prefs: { provider: string }) => Promise<{ provider: string }>;

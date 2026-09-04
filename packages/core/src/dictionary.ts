@@ -74,6 +74,8 @@ type LookupOpts = {
   originalSelection?: string;
   /** Translation tab: try this engine first (`auto` = Google then MyMemory, then keyed APIs). */
   translationProvider?: TranslationProvider;
+  /** When set (and not `auto`), skip detection and translate from this language. */
+  sourceLanguage?: string;
 };
 
 function isTimeoutMeaning(meaning?: string): boolean {
@@ -415,16 +417,20 @@ export class DictionaryService extends BaseService {
     }
 
     try {
-      const detectedLanguage = this.apiKey
-        ? await Promise.race([
-            this.detectLanguage(query.trimmed),
-            new Promise<string>((resolve) =>
-              setTimeout(() => resolve(this.simpleLanguageDetection(query.trimmed)), 800),
-            ),
-          ])
-        : this.simpleLanguageDetection(query.trimmed);
+      const hintedSource = (opts?.sourceLanguage || '').toLowerCase().split('-')[0];
+      const detectedLanguage =
+        hintedSource && hintedSource !== 'auto'
+          ? hintedSource
+          : this.apiKey
+            ? await Promise.race([
+                this.detectLanguage(query.trimmed),
+                new Promise<string>((resolve) =>
+                  setTimeout(() => resolve(this.simpleLanguageDetection(query.trimmed)), 800),
+                ),
+              ])
+            : this.simpleLanguageDetection(query.trimmed);
 
-      // zh → en and en → zh by default; honour an explicit cross-language target.
+      // Auto pairing is zh↔en (and ja/ko→en). An explicit Translation-tab target is honoured.
       const resolvedTarget = this.resolveTargetLanguage(detectedLanguage, targetLanguage);
       const txProvider = opts?.translationProvider || 'auto';
       const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}`);
@@ -512,19 +518,14 @@ export class DictionaryService extends BaseService {
   }
 
   /**
-   * Default pairing: Chinese (and other CJK) → English; English → Chinese.
-   * Pass an explicit different target to override.
+   * Default pairing when the UI asks for `auto`: CJK → English; English → Chinese.
+   * An explicit target (including same-language) is left as-is.
    */
   resolveTargetLanguage(sourceLanguage: string, requestedTarget: string = 'auto'): string {
     const source = (sourceLanguage || 'en').toLowerCase().split('-')[0];
     const requested = (requestedTarget || 'auto').toLowerCase().split('-')[0];
 
     if (!requested || requested === 'auto') {
-      return this.defaultTargetForSource(source);
-    }
-
-    // Same-language request on the primary pair → flip (popup often defaults both to zh or en).
-    if (source === requested && (source === 'zh' || source === 'en' || source === 'ja' || source === 'ko')) {
       return this.defaultTargetForSource(source);
     }
 

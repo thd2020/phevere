@@ -1430,7 +1430,6 @@
           </div>
           <div class="toolbar-icons">
             <button class="toolbar-icon" id="dictionaryIcon" title="Dictionary">📖</button>
-            <button class="toolbar-icon" id="translationIcon" title="Translation">🌐</button>
             <button class="toolbar-icon" id="audioIcon" title="Play Audio">🔊</button>
             <button class="toolbar-icon" id="clipboardIcon" title="Clipboard">📋</button>
             <button class="toolbar-icon" id="searchIcon" title="Search">🔍</button>
@@ -1806,12 +1805,6 @@
               const t = currentText || window['__popupCurrentText'] || '';
               if (t) void lookupText(t);
           });
-             document.getElementById('translationIcon').addEventListener('click', () => { 
-               activateTab('translation');
-               expandToolbar();
-               const t = currentText || window['__popupCurrentText'] || '';
-               if (t) void lookupText(t);
-           });
             document.getElementById('audioIcon').addEventListener('click', () => {
                pvLog('[POPUP] Audio button clicked');
                if (currentText) {
@@ -1843,19 +1836,8 @@
             });
            document.getElementById('settingsIcon').addEventListener('click', () => {
               pvLog('[POPUP] Settings button clicked');
-              // Always show quick settings panel even when collapsed
-              if (!isExpanded) {
-                const toolbar = document.getElementById('toolbar');
-                toolbar.classList.remove('collapsed');
-              }
+              if (!isExpanded) expandToolbar();
               toggleSettingsPanel();
-              // Ensure the popup grows to fit the panel (so it won't be clipped)
-              const p = document.getElementById('settingsPanel');
-              if (p && p.classList.contains('show') && window.electronAPI && window.electronAPI.resizeWindow) {
-                // Calculate a comfortable height
-                const desiredHeight = 200; // toolbar (36) + panel + margin
-                window.electronAPI.resizeWindow(320, Math.max(120, desiredHeight));
-              }
            });
 
         // Settings
@@ -1879,7 +1861,10 @@
 
         // Tabs
         document.querySelectorAll('.tab').forEach(tab => {
-          tab.addEventListener('click', () => activateTab(tab.dataset.tab));
+          tab.addEventListener('click', () => {
+            activateTab(tab.dataset.tab);
+            restoreLookupPanelSize();
+          });
         });
 
         // No text input in slim design
@@ -2247,8 +2232,26 @@ function startAutoCloseTimeout() {
 
        /** Expanded lookup: OS window hugs ←/→ plus Lexicon…Etymology (not the stretched bar). */
        var EXPANDED_POPUP_H = 500;
+       var EXPANDED_POPUP_MIN_H = 360;
        var EXPANDED_POPUP_MIN_W = 280;
        var EXPANDED_POPUP_MAX_W = 1200;
+       var lastExpandedH = EXPANDED_POPUP_H;
+
+       function rememberExpandedSize() {
+         if (!isExpanded) return;
+         var h = window.outerHeight || 0;
+         if (h >= EXPANDED_POPUP_MIN_H) lastExpandedH = h;
+       }
+
+       function restoreLookupPanelSize() {
+         if (!isExpanded) {
+           expandToolbar();
+           return;
+         }
+         resizeToExpandedPanel();
+       }
+
+       window.addEventListener('resize', rememberExpandedSize);
 
        function elementOuterWidth(el) {
          var r = el.getBoundingClientRect();
@@ -2296,8 +2299,8 @@ function startAutoCloseTimeout() {
          if (!window.electronAPI || !window.electronAPI.resizeWindow) return;
          if (!isExpanded) return;
          var w = widthToFitLookupChrome();
-         pvLog('[POPUP] resizeToExpandedPanel', w, EXPANDED_POPUP_H);
-         window.electronAPI.resizeWindow(w, EXPANDED_POPUP_H);
+         pvLog('[POPUP] resizeToExpandedPanel', w, lastExpandedH);
+         window.electronAPI.resizeWindow(w, lastExpandedH || EXPANDED_POPUP_H);
        }
 
        // Expand toolbar
@@ -2321,7 +2324,7 @@ function startAutoCloseTimeout() {
 
          if (window.electronAPI && window.electronAPI.resizeWindow) {
            pvLog('[POPUP] Resizing window for expanded content...');
-           window.electronAPI.resizeWindow(widthToFitLookupChrome(), EXPANDED_POPUP_H);
+           window.electronAPI.resizeWindow(widthToFitLookupChrome(), lastExpandedH || EXPANDED_POPUP_H);
            requestAnimationFrame(function () {
              requestAnimationFrame(resizeToExpandedPanel);
            });
@@ -2363,9 +2366,8 @@ function startAutoCloseTimeout() {
          document.querySelectorAll('.toolbar-icon').forEach(icon => icon.classList.remove('active'));
          
                    if (tabName === 'lexicon' || tabName === 'wiktionary' || tabName === 'dictionary') {
-            document.getElementById('dictionaryIcon').classList.add('active');
-          } else if (tabName === 'translation') {
-            document.getElementById('translationIcon').classList.add('active');
+            const dictIcon = document.getElementById('dictionaryIcon');
+            if (dictIcon) dictIcon.classList.add('active');
           }
          
          // Show/hide language selection for translation
@@ -2389,6 +2391,11 @@ function startAutoCloseTimeout() {
             } else {
               displayDictionaryResult(currentResult);
             }
+          }
+          if (tabName === 'translation' && currentText) {
+            const want = (document.getElementById('targetLanguage') || {}).value;
+            const have = currentResult && ((currentResult.metadata && currentResult.metadata.targetLanguage) || currentResult.language);
+            if (want && have && want !== have) void lookupText(currentText, { force: true });
           }
        }
 
@@ -2462,12 +2469,14 @@ function startAutoCloseTimeout() {
           }
           try {
             if (window.dictionaryAPI) {
-              // Dictionary mode uses auto pairing (zh↔en). Translation tab honours the selects.
+              // Lexicon uses auto pairing. Translation tab honours From/To.
               let targetLang = 'auto';
-              
+              let sourceLang;
               if (currentTab === 'translation') {
                 const targetSelect = document.getElementById('targetLanguage');
+                const sourceSelect = document.getElementById('sourceLanguage');
                 if (targetSelect) targetLang = targetSelect.value;
+                if (sourceSelect) sourceLang = sourceSelect.value;
               }
               
               if (!silent) {
@@ -2480,7 +2489,7 @@ function startAutoCloseTimeout() {
               }
 
               const lookupPromise = Promise.race([
-                window.dictionaryAPI.lookup(text, targetLang),
+                window.dictionaryAPI.lookup(text, targetLang, undefined, sourceLang ? { sourceLanguage: sourceLang } : undefined),
                 new Promise(function (_, reject) {
                   setTimeout(function () {
                     reject(new Error('Lookup timed out — try again'));
@@ -2524,20 +2533,11 @@ function startAutoCloseTimeout() {
       function syncLanguageSelectsFromResult(result) {
         if (!result) return;
         const source = result.detectedLanguage || result.metadata?.sourceLanguage;
-        const target = result.metadata?.targetLanguage || result.language;
         const sourceSelect = document.getElementById('sourceLanguage');
-        const targetSelect = document.getElementById('targetLanguage');
         if (sourceSelect && source) {
-          // Keep "auto" if user left it; otherwise reflect detection.
           if (sourceSelect.value === 'auto' || !sourceSelect.value) {
-            // leave auto selected, but ensure option exists for display via title
             sourceSelect.title = 'Detected: ' + source;
-          } else {
-            sourceSelect.value = source;
           }
-        }
-        if (targetSelect && target) {
-          targetSelect.value = target;
         }
       }
 
@@ -3045,6 +3045,20 @@ function startAutoCloseTimeout() {
          return true;
        }
 
+       function inferVocabGlossLang(entry) {
+         var def = String(entry && entry.definition || '').trim();
+         var srcs = ((entry && entry.sources) || []).join(' ');
+         var cjkHits = def.match(/[\u3400-\u9FFF\uF900-\uFAFF]/g);
+         var mostlyCjk = cjkHits && cjkHits.length >= Math.max(2, Math.floor(def.length * 0.12));
+         if (mostlyCjk) return 'zh';
+         if (/wiktionary|wordnet|webster|gcide|free dictionary|oxford|datamuse|wordsapi|collins/i.test(srcs)) return 'en';
+         if (/cedict|cc-cedict|youdao|freedict/i.test(srcs) && def && !mostlyCjk) return 'en';
+         var src = String(entry && entry.sourceLang || '').toLowerCase().split('-')[0];
+         var tgt = String(entry && entry.targetLang || '').toLowerCase().split('-')[0];
+         if (src === 'en' && tgt === 'zh' && /[A-Za-z]{3,}/.test(def) && !mostlyCjk) return 'en';
+         return tgt || src || undefined;
+       }
+
        function vocabPayloadFromResult(result, lemma) {
          const defs = ((result && result.definitions) || []).filter(isUsableVocabDef);
          const substantive = defs.filter(function (d) {
@@ -3066,6 +3080,16 @@ function startAutoCloseTimeout() {
            else if (d.source) String(d.source).split(/\s*·\s*/).forEach(function (s) { if (s) sourceList.push(s); });
          });
          const sources = Array.from(new Set(sourceList)).slice(0, 6);
+         const usedTxFallback = !defJoined && !!(tx && tx.text);
+         const sourceLang = result && result.detectedLanguage;
+         const targetLang = usedTxFallback
+           ? ((tx && tx.language) || (result && result.language))
+           : inferVocabGlossLang({
+               sourceLang: sourceLang,
+               targetLang: result && result.language,
+               definition: defJoined || (tx && tx.text ? String(tx.text) : ''),
+               sources: sources,
+             }) || sourceLang;
          return {
            lemma: lemma,
            reading: (function () {
@@ -3094,8 +3118,8 @@ function startAutoCloseTimeout() {
            definition: defJoined || (tx && tx.text ? String(tx.text) : undefined),
            partOfSpeech: useDefs[0] ? useDefs[0].partOfSpeech : undefined,
            sources: sources.length ? sources : (tx && tx.source ? [tx.source] : ((result && result.sources) || [])),
-           sourceLang: result && result.detectedLanguage,
-           targetLang: (tx && tx.language) || (result && result.language),
+           sourceLang: sourceLang,
+           targetLang: targetLang,
          };
        }
 
@@ -3404,6 +3428,29 @@ function startAutoCloseTimeout() {
            const sourceLanguage = document.getElementById('sourceLanguage');
            const targetLanguage = document.getElementById('targetLanguage');
            const swapBtn = document.getElementById('txSwapLangs');
+
+           function fillLangSelect(select, languages, includeAuto, selected) {
+             if (!select || !languages || !languages.length) return;
+             const keep = selected || select.value;
+             select.innerHTML = '';
+             languages.forEach(function (lang) {
+               if (!includeAuto && lang.code === 'auto') return;
+               const opt = document.createElement('option');
+               opt.value = lang.code;
+               opt.textContent = lang.nativeName ? lang.nativeName + ' (' + lang.name + ')' : lang.name;
+               select.appendChild(opt);
+             });
+             if (keep && [].some.call(select.options, function (o) { return o.value === keep; })) {
+               select.value = keep;
+             }
+           }
+
+           if (window.dictionaryAPI && window.dictionaryAPI.getSupportedLanguages) {
+             void window.dictionaryAPI.getSupportedLanguages().then(function (languages) {
+               fillLangSelect(sourceLanguage, languages, true, sourceLanguage && sourceLanguage.value);
+               fillLangSelect(targetLanguage, languages, false, targetLanguage && targetLanguage.value);
+             }).catch(function () { /* keep markup defaults */ });
+           }
 
            if (swapBtn && sourceLanguage && targetLanguage) {
              swapBtn.addEventListener('click', () => {
