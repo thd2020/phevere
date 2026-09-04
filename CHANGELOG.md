@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Translation tab cards, language selects, and the swap button use the same rounded corners as lexicon result cards (12px / 8px).
 - Lexicon **chips** (rail tabs and word-family banners) abbreviate only long POS (**adj.**, **adv.**, **prep.**, …). **Noun** and **verb** stay in full, and the part-of-speech heading in the main pane is always the full word.
 - Lexicon sidebar uses **cards** for blocks and **vertical** section tabs. Below the headword, the rail and the definitions each fill the remaining pane and scroll on their own (10px rail scrollbar). Lexicon vs word family stay separate rounded cards.
 - Toolbar 🔊 plays a **recorded** clip: Free Dictionary MP3 when that API answered, otherwise the Wiktionary/Commons file from `{{audio}}`. It does not read the spelling with the system voice. Clips are cached on disk (`%APPDATA%\phevere\pronunciation-cache`) and the first URL is prefetched as soon as lookup attaches it. A click before the URL arrives waits instead of toasting “No recorded pronunciation”.
