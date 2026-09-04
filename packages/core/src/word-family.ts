@@ -194,7 +194,6 @@ function phraseKindLabel(raw?: string): string | undefined {
   if (/proverb/.test(t)) return 'proverb';
   if (/collocat/.test(t)) return 'colloc.';
   if (/compound/.test(t)) return 'compound';
-  if (/phrase/.test(t)) return 'phrase';
   return undefined;
 }
 
@@ -205,7 +204,6 @@ function posFromWiki(raw?: string): string | undefined {
   if (/^(v|verb|vb)$/.test(t)) return 'verb';
   if (/^(a|adj|adjective)$/.test(t)) return 'adj.';
   if (/^(adv|adverb)$/.test(t)) return 'adv.';
-  if (/^(phrase|phrasal)$/.test(t)) return 'phrase';
   if (/idiom/.test(t)) return 'idiom';
   return normalizeBanner(t);
 }
@@ -225,11 +223,12 @@ function suffixPosGuess(word: string): string | undefined {
 function inferPosBanner(word: string): string | undefined {
   const t = cleanTerm(word);
   if (!t || isMultiwordTerm(t)) return undefined;
-  return latinCitationPos(t) || suffixPosGuess(t) || undefined;
+  return suffixPosGuess(t) || latinCitationPos(t) || undefined;
 }
 
-function inferPhraseBanner(term: string, hint?: string): string {
-  return phraseKindLabel(hint) || 'phrase';
+function inferPhraseBanner(_term: string, hint?: string): string | undefined {
+  const kind = phraseKindLabel(hint);
+  return kind || undefined;
 }
 
 function termsFromTemplate(name: string, positional: string[], named: Record<string, string>, surfaceKey: string): string[] {
@@ -366,7 +365,7 @@ function addUniqueItems(
     const seen = new Set(acc.map((i) => foldLookupKey(i.word)));
     const k = foldLookupKey(ok);
     if (!k) continue;
-    let banner = item.label;
+    let banner = item.label && item.label !== 'phrase' ? item.label : undefined;
     if (!banner) {
       banner = dest === 'phrases' ? inferPhraseBanner(ok) : inferPosBanner(ok);
     } else if (dest === 'phrases' && posFromWiki(banner) && !phraseKindLabel(banner)) {
@@ -552,7 +551,7 @@ export function buildWordFamily(opts: {
   for (const g of out) {
     if (g.relation === 'phrases') {
       for (const it of g.items) {
-        if (!it.label) it.label = inferPhraseBanner(it.word);
+        if (it.label === 'phrase') it.label = undefined;
       }
       continue;
     }

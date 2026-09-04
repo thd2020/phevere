@@ -232,12 +232,11 @@ export function latinCitationPos(word: string): string | undefined {
   const isV = lem.verb?.(w) === w;
   const isN = lem.noun?.(w) === w;
   const isA = lem.adjective?.(w) === w;
-  const bits: string[] = [];
-  if (isN) bits.push('noun');
-  if (isV) bits.push('verb');
-  if (isA) bits.push('adj.');
-  if (!bits.length) return undefined;
-  return bits.join('/');
+  const n = Number(!!isV) + Number(!!isN) + Number(!!isA);
+  if (n !== 1) return undefined;
+  if (isV) return 'verb';
+  if (isN) return 'noun';
+  return 'adj.';
 }
 
 export function latinLemmaForms(word: string): string[] {
