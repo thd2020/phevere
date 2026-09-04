@@ -3243,9 +3243,7 @@ function startAutoCloseTimeout() {
             const on = pos === lastLexiconPos;
             return `<button type="button" class="lexicon-pos-tab${on ? ' is-active' : ''}" role="tab" aria-selected="${on ? 'true' : 'false'}" data-pos="${escapeHtml(pos)}">${escapeHtml(label)}</button>`;
           };
-          const POS_ABBR = {
-            noun: 'n.',
-            verb: 'v.',
+          const POS_CHIP_ABBR = {
             adjective: 'adj.',
             adverb: 'adv.',
             preposition: 'prep.',
@@ -3256,9 +3254,9 @@ function startAutoCloseTimeout() {
             determiner: 'det.',
             numeral: 'num.',
           };
-          function displayPosLabel(pos) {
+          function chipPosLabel(pos) {
             const key = String(pos || '').toLowerCase();
-            return POS_ABBR[key] || pos;
+            return POS_CHIP_ABBR[key] || pos;
           }
           function renderRailBlock(_l1, sections) {
             if (!sections.length) return '';
@@ -3320,8 +3318,8 @@ function startAutoCloseTimeout() {
           const tocIds = [];
           const posSections = order.map(function (pos) {
             tocIds.push(pos);
-            posInner += wrapGroup(pos, displayPosLabel(pos), renderSenses(groups[pos]));
-            return { id: pos, label: displayPosLabel(pos) };
+            posInner += wrapGroup(pos, pos, renderSenses(groups[pos]));
+            return { id: pos, label: chipPosLabel(pos) };
           });
           let allInner = wrapPane(posInner, 'lexicon-pane--pos');
 

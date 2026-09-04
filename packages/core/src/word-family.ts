@@ -31,7 +31,7 @@ export type WordFamilyRelation =
 
 export interface WordFamilyItem {
   word: string;
-  /** Short POS / formation banner on the chip, e.g. "v.", "adj." — not a lookup target. */
+  /** Short POS / formation banner on the chip: adj./adv. for long labels; noun/verb stay full. */
   label?: string;
 }
 

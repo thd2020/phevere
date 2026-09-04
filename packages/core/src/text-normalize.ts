@@ -234,8 +234,8 @@ export function latinCitationPos(word: string): string | undefined {
   const isA = lem.adjective?.(w) === w;
   const n = Number(!!isV) + Number(!!isN) + Number(!!isA);
   if (n !== 1) return undefined;
-  if (isV) return 'v.';
-  if (isN) return 'n.';
+  if (isV) return 'verb';
+  if (isN) return 'noun';
   return 'adj.';
 }
 

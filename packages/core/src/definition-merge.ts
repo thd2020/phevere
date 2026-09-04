@@ -157,9 +157,7 @@ export function canonicalPos(raw?: string): string {
   return lower || 'unknown';
 }
 
-const POS_ABBREV: Record<string, string> = {
-  noun: 'n.',
-  verb: 'v.',
+const POS_CHIP_ABBREV: Record<string, string> = {
   adjective: 'adj.',
   adverb: 'adv.',
   preposition: 'prep.',
@@ -171,10 +169,13 @@ const POS_ABBREV: Record<string, string> = {
   numeral: 'num.',
 };
 
-/** Dictionary-style short label (adj. not adjective). Unknown POS is left as-is. */
+/**
+ * Chip label only. Noun/verb stay full (short already). Long POS → adj., adv., …
+ * Headings in the main pane should use `canonicalPos`, not this.
+ */
 export function abbreviatePos(raw?: string): string {
   const canon = canonicalPos(raw);
-  return POS_ABBREV[canon] || canon;
+  return POS_CHIP_ABBREV[canon] || canon;
 }
 
 function samePos(a: string, b: string): boolean {
