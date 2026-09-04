@@ -3004,9 +3004,10 @@ function startAutoCloseTimeout() {
               }
               Promise.resolve(fetchAudio(u)).then(function (got) {
                 if (settled) return;
-                if (got && got.ok && got.dataUrl) {
+                var src = got && got.ok && (got.playUrl || got.dataUrl);
+                if (src) {
                   settled = true;
-                  resolve({ url: u, dataUrl: got.dataUrl, cached: !!got.cached });
+                  resolve({ url: u, dataUrl: src, cached: !!got.cached });
                 } else {
                   pending--;
                   if (!pending) reject(new Error('none'));

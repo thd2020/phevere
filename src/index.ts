@@ -26,7 +26,7 @@ import { showWorkProgress, updateWorkProgress, closeWorkProgress } from './servi
 import { isAcceleratorPhysicallyHeld, isPrimaryMouseDown } from './services/accelerator-key-state';
 import { getForegroundWindowBoundsDip } from './services/foreground-window';
 import { getNowPlaying, formatNowPlayingQuery } from './services/media-session';
-import { speakIpa, cancelIpaSpeak, fetchPronunciationAudio, prefetchPronunciationUrls } from './services/ipa-speak';
+import { speakIpa, cancelIpaSpeak, fetchPronunciationAudio, prefetchPronunciationUrls, installPronunciationAudioProtocol } from './services/ipa-speak';
 import { recordedPronunciationUrls } from '@phevere/core';
 import { readClipboardImage, loadImageFileAsPng, pngFromBase64 } from './services/clipboard-image';
 import {
@@ -2831,6 +2831,7 @@ app.on('ready', () => {
   applyDockIcon();
   installDarwinAppMenu();
   log.info('main', 'App ready');
+  installPronunciationAudioProtocol();
   monitorSettings = loadMonitorSettings();
   createMainWindow();
   createTray();

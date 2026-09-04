@@ -8,39 +8,54 @@ import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { app } from 'electron';
+import { app, protocol } from 'electron';
 import {
   accentToBcp47,
   buildIpaPhonemeSsml,
   buildSapiPhonemeSsml,
-  bytesToBase64,
   getHttp,
   ipaToApplePhonemes,
   ipaToEspeakPhonemes,
   normalizePronunciationAudioUrl,
   phonemeIpa,
 } from '@phevere/core';
-import { wrapConsole } from '../logger';
+import { log, wrapConsole } from '../logger';
 
 const console = wrapConsole('ipa-speak');
+
+try {
+  protocol.registerSchemesAsPrivileged([
+    {
+      scheme: 'phevere-audio',
+      privileges: {
+        standard: true,
+        secure: true,
+        supportFetchAPI: true,
+        stream: true,
+        corsEnabled: true,
+        bypassCSP: true,
+      },
+    },
+  ]);
+} catch {
+  /* hot reload */
+}
 
 const MAX_AUDIO_BYTES = 2_000_000;
 const MAX_MEM_CACHE = 64;
 const MAX_DISK_FILES = 80;
 const MAX_DISK_BYTES = 40 * 1024 * 1024;
 const WIKIMEDIA_UA = 'Phevere/1.5 (https://github.com/thd2020/phevere; desktop dictionary)';
+/** url → phevere-audio://clip/<key> */
 const audioCache = new Map<string, string>();
 const audioFailUntil = new Map<string, number>();
-const audioInflight = new Map<
-  string,
-  Promise<{ ok: true; dataUrl: string; cached: boolean } | { ok: false; error: string }>
->();
+const audioInflight = new Map<string, Promise<PronunciationAudioResult>>();
 const FAIL_TTL_NOT_FOUND = 30 * 60 * 1000;
 const FAIL_TTL_TIMEOUT = 45 * 1000;
-const AUDIO_FETCH_MS = 5000;
+const AUDIO_FETCH_MS = 4000;
 
 export type PronunciationAudioResult =
-  | { ok: true; dataUrl: string; cached: boolean }
+  | { ok: true; playUrl: string; cached: boolean }
   | { ok: false; error: string };
 let spawnChild: ChildProcess | null = null;
 let sapiHost: ChildProcess | null = null;
@@ -421,15 +436,60 @@ function isPlayableAudioMime(mime: string): boolean {
   return false;
 }
 
+function playableMime(raw?: string): string {
+  const m = (raw || '').split(';')[0].trim().toLowerCase();
+  if (m === 'application/ogg' || m === 'video/ogg') return 'audio/ogg';
+  if (m === 'audio/x-wav' || m === 'audio/wave') return 'audio/wav';
+  if (m.startsWith('audio/')) return m;
+  if (m === 'application/octet-stream') return 'audio/mpeg';
+  return m || 'audio/ogg';
+}
+
 function fileNameFromCommonsUrl(url: string): string {
   try {
     const u = new URL(url);
-    const m = u.pathname.match(/Special:FilePath\/(.+)$/i);
-    if (!m) return '';
-    return decodeURIComponent(m[1]);
+    const fp = u.pathname.match(/Special:FilePath\/(.+)$/i);
+    if (fp) return decodeURIComponent(fp[1]).replace(/^File:/i, '').replace(/ /g, '_');
+    const redir = u.pathname.match(/Special:Redirect\/file\/(.+)$/i);
+    if (redir) return decodeURIComponent(redir[1]).replace(/^File:/i, '').replace(/ /g, '_');
+    const up = u.pathname.match(/\/wikipedia\/commons\/[0-9a-f]\/[0-9a-f]{2}\/(.+)$/i);
+    if (up) return decodeURIComponent(up[1]);
   } catch {
-    return '';
+    /* ignore */
   }
+  return '';
+}
+
+function md5UploadUrl(fileName: string): string {
+  const f = fileName.replace(/^File:/i, '').trim().replace(/ /g, '_');
+  const md5 = createHash('md5').update(f).digest('hex');
+  return `https://upload.wikimedia.org/wikipedia/commons/${md5[0]}/${md5.slice(0, 2)}/${encodeURIComponent(f)}`;
+}
+
+function wikiFileNameVariants(fileName: string): string[] {
+  const f = fileName.replace(/^File:/i, '').trim().replace(/ /g, '_');
+  if (!f) return [];
+  const cap = f.charAt(0).toUpperCase() + f.slice(1);
+  return [...new Set([cap, f])];
+}
+
+/** Direct Commons bytes. Skip Special:FilePath — each 302 was 2–3s on this network. */
+function commonsFetchTargets(requestUrl: string): string[] {
+  const name = fileNameFromCommonsUrl(requestUrl);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (raw: string) => {
+    const c = canonicalAudioUrl(raw);
+    if (!c || seen.has(c) || !isAllowedAudioUrl(c)) return;
+    seen.add(c);
+    out.push(c);
+  };
+  if (name) {
+    for (const v of wikiFileNameVariants(name)) push(md5UploadUrl(v));
+  } else {
+    push(requestUrl);
+  }
+  return out;
 }
 
 async function resolveCommonsDirectUrl(fileName: string): Promise<string> {
@@ -437,7 +497,7 @@ async function resolveCommonsDirectUrl(fileName: string): Promise<string> {
   const api = `https://commons.wikimedia.org/w/api.php?action=query&format=json&redirects=1&prop=imageinfo&iiprop=url&titles=${encodeURIComponent(title)}`;
   try {
     const res = await getHttp().requestText(api, {
-      timeoutMs: 5000,
+      timeoutMs: 4000,
       headers: { 'User-Agent': WIKIMEDIA_UA },
     });
     if (!res.ok) return '';
@@ -483,46 +543,82 @@ function audioCacheKey(url: string): string {
   return createHash('sha256').update(url).digest('hex').slice(0, 32);
 }
 
-function rememberAudio(url: string, dataUrl: string): void {
+function rememberAudio(url: string, playUrl: string): void {
   if (audioCache.size >= MAX_MEM_CACHE) {
     const first = audioCache.keys().next().value;
     if (first) audioCache.delete(first);
   }
-  audioCache.set(url, dataUrl);
+  audioCache.set(url, playUrl);
 }
 
-function readDiskAudio(url: string): string {
+function playUrlForKey(key: string): string {
+  return `phevere-audio://clip/${key}`;
+}
+
+function diskPlayUrl(url: string): string {
   try {
     const key = audioCacheKey(url);
-    const dir = audioCacheDir();
-    const metaPath = path.join(dir, `${key}.json`);
-    const binPath = path.join(dir, `${key}.bin`);
-    if (!fs.existsSync(metaPath) || !fs.existsSync(binPath)) return '';
-    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')) as { mime?: string };
-    const bytes = fs.readFileSync(binPath);
-    if (!bytes.length || bytes.length > MAX_AUDIO_BYTES) return '';
-    const mime = (meta.mime || 'audio/mpeg').split(';')[0].trim() || 'audio/mpeg';
+    const binPath = path.join(audioCacheDir(), `${key}.bin`);
+    if (!fs.existsSync(binPath)) return '';
+    const st = fs.statSync(binPath);
+    if (!st.size || st.size > MAX_AUDIO_BYTES) return '';
     try {
       fs.utimesSync(binPath, new Date(), new Date());
     } catch {
       /* ignore */
     }
-    return `data:${mime};base64,${bytesToBase64(bytes)}`;
+    return playUrlForKey(key);
   } catch {
     return '';
   }
 }
 
-function writeDiskAudio(url: string, mime: string, bytes: Buffer | Uint8Array): void {
+function writeDiskAudio(url: string, mime: string, bytes: Buffer | Uint8Array): string {
+  const key = audioCacheKey(url);
+  const dir = audioCacheDir();
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${key}.bin`), bytes);
+  fs.writeFileSync(
+    path.join(dir, `${key}.json`),
+    JSON.stringify({ mime: playableMime(mime), url, savedAt: Date.now() }),
+  );
+  pruneDiskAudio(dir);
+  return playUrlForKey(key);
+}
+
+export function installPronunciationAudioProtocol(): void {
   try {
-    const dir = audioCacheDir();
-    fs.mkdirSync(dir, { recursive: true });
-    const key = audioCacheKey(url);
-    fs.writeFileSync(path.join(dir, `${key}.bin`), bytes);
-    fs.writeFileSync(path.join(dir, `${key}.json`), JSON.stringify({ mime, url, savedAt: Date.now() }));
-    pruneDiskAudio(dir);
+    protocol.handle('phevere-audio', (request) => {
+      let key = '';
+      try {
+        key = new URL(request.url).pathname.replace(/^\//, '');
+      } catch {
+        return new Response('Bad URL', { status: 400 });
+      }
+      if (!/^[a-f0-9]{32}$/.test(key)) {
+        return new Response('Bad key', { status: 400 });
+      }
+      const dir = audioCacheDir();
+      const binPath = path.join(dir, `${key}.bin`);
+      const metaPath = path.join(dir, `${key}.json`);
+      if (!fs.existsSync(binPath)) return new Response('Missing', { status: 404 });
+      let mime = 'audio/ogg';
+      try {
+        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')) as { mime?: string };
+        mime = playableMime(meta.mime || mime);
+      } catch {
+        /* default */
+      }
+      const bytes = fs.readFileSync(binPath);
+      return new Response(bytes, {
+        headers: {
+          'content-type': mime,
+          'cache-control': 'public, max-age=31536000, immutable',
+        },
+      });
+    });
   } catch (err) {
-    console.warn('pronunciation disk cache write failed', err);
+    log.warn('ipa-speak', 'pronunciation protocol already installed', { err: String(err) });
   }
 }
 
@@ -554,16 +650,21 @@ function pruneDiskAudio(dir: string): void {
 }
 
 export async function fetchPronunciationAudio(url: string): Promise<PronunciationAudioResult> {
+  const t0 = Date.now();
   const trimmed = canonicalAudioUrl(url);
   if (!isAllowedAudioUrl(trimmed)) {
     return { ok: false as const, error: 'Blocked audio URL' };
   }
   const hit = audioCache.get(trimmed);
-  if (hit) return { ok: true as const, dataUrl: hit, cached: true };
-  const disk = readDiskAudio(trimmed);
+  if (hit) {
+    log.info('ipa-speak', 'pronunciation audio', { source: 'mem', ms: Date.now() - t0, host: hostOf(trimmed) });
+    return { ok: true as const, playUrl: hit, cached: true };
+  }
+  const disk = diskPlayUrl(trimmed);
   if (disk) {
     rememberAudio(trimmed, disk);
-    return { ok: true as const, dataUrl: disk, cached: true };
+    log.info('ipa-speak', 'pronunciation audio', { source: 'disk', ms: Date.now() - t0, host: hostOf(trimmed) });
+    return { ok: true as const, playUrl: disk, cached: true };
   }
   if (failUntil(trimmed)) {
     return { ok: false as const, error: 'Known missing clip' };
@@ -573,12 +674,15 @@ export async function fetchPronunciationAudio(url: string): Promise<Pronunciatio
 
   const work = (async (): Promise<PronunciationAudioResult> => {
     const tryFetch = async (target: string) => {
+      const started = Date.now();
       const http = getHttp();
       const res = await http.requestBytes(target, {
         timeoutMs: AUDIO_FETCH_MS,
         headers: audioHeaders(target),
       });
+      const ms = Date.now() - started;
       if (!res.ok || !res.bytes || res.bytes.byteLength < 64) {
+        log.info('ipa-speak', 'pronunciation fetch miss', { host: hostOf(target), status: res.status, ms });
         return { ok: false as const, error: `HTTP ${res.status}` };
       }
       if (res.bytes.byteLength > MAX_AUDIO_BYTES) {
@@ -586,37 +690,75 @@ export async function fetchPronunciationAudio(url: string): Promise<Pronunciatio
       }
       const mime = (res.contentType || 'audio/ogg').split(';')[0].trim() || 'audio/ogg';
       if (!isPlayableAudioMime(mime)) {
+        log.info('ipa-speak', 'pronunciation not audio', { host: hostOf(target), mime, ms });
         return { ok: false as const, error: 'Not audio' };
       }
+      log.info('ipa-speak', 'pronunciation fetch hit', {
+        host: hostOf(target),
+        bytes: res.bytes.byteLength,
+        mime,
+        ms,
+      });
       return { ok: true as const, mime, bytes: res.bytes, target };
     };
 
     try {
-      let got = await tryFetch(trimmed);
+      const targets = commonsFetchTargets(trimmed);
+      let got: Awaited<ReturnType<typeof tryFetch>> = { ok: false as const, error: 'No audio URL' };
+      for (const target of targets) {
+        if (failUntil(target)) continue;
+        got = await tryFetch(target);
+        if (got.ok) break;
+      }
       if (!got.ok) {
         const fileName = fileNameFromCommonsUrl(trimmed);
-        if (fileName) {
-          const direct = await resolveCommonsDirectUrl(fileName);
+        for (const v of fileName ? wikiFileNameVariants(fileName) : []) {
+          const direct = await resolveCommonsDirectUrl(v);
           const canonDirect = direct ? canonicalAudioUrl(direct) : '';
-          if (canonDirect && canonDirect !== trimmed) got = await tryFetch(canonDirect);
+          if (canonDirect && !targets.includes(canonDirect)) {
+            got = await tryFetch(canonDirect);
+            if (got.ok) break;
+          }
         }
       }
       if (!got.ok) {
         const timeout = /timed out|timeout|TIMEOUT/i.test(got.error);
         rememberFail(trimmed, timeout ? FAIL_TTL_TIMEOUT : FAIL_TTL_NOT_FOUND);
+        log.info('ipa-speak', 'pronunciation audio', {
+          source: 'fail',
+          ms: Date.now() - t0,
+          host: hostOf(trimmed),
+          error: got.error,
+        });
         return { ok: false as const, error: got.error };
       }
-      const dataUrl = `data:${got.mime};base64,${bytesToBase64(got.bytes)}`;
-      rememberAudio(trimmed, dataUrl);
+      let playUrl = '';
+      try {
+        playUrl = writeDiskAudio(trimmed, got.mime, got.bytes);
+      } catch (err) {
+        console.warn('pronunciation disk cache write failed', err);
+        return { ok: false as const, error: 'Cache write failed' };
+      }
+      rememberAudio(trimmed, playUrl);
       const fetched = canonicalAudioUrl(got.target);
-      if (fetched && fetched !== trimmed) rememberAudio(fetched, dataUrl);
-      writeDiskAudio(trimmed, got.mime, got.bytes);
-      if (fetched && fetched !== trimmed) writeDiskAudio(fetched, got.mime, got.bytes);
-      return { ok: true as const, dataUrl, cached: false };
+      if (fetched && fetched !== trimmed) rememberAudio(fetched, playUrl);
+      log.info('ipa-speak', 'pronunciation audio', {
+        source: 'net',
+        ms: Date.now() - t0,
+        bytes: got.bytes.byteLength,
+        host: hostOf(got.target),
+      });
+      return { ok: true as const, playUrl, cached: false };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const timeout = /timed out|timeout|TIMEOUT/i.test(msg);
       rememberFail(trimmed, timeout ? FAIL_TTL_TIMEOUT : FAIL_TTL_NOT_FOUND);
+      log.info('ipa-speak', 'pronunciation audio', {
+        source: 'error',
+        ms: Date.now() - t0,
+        host: hostOf(trimmed),
+        error: msg,
+      });
       return { ok: false as const, error: msg };
     }
   })();
@@ -626,6 +768,14 @@ export async function fetchPronunciationAudio(url: string): Promise<Pronunciatio
     return await work;
   } finally {
     audioInflight.delete(trimmed);
+  }
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
   }
 }
 

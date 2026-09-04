@@ -1,6 +1,6 @@
 # Phevere Dictionary
 
-**2026-09-05:** Toolbar 🔊 replay uses the clip already in the lookup pane (no second fetch). Dead first URLs are skipped; every recorded URL prefetches together.
+**2026-09-05:** Toolbar 🔊 replay uses the clip already in the lookup pane (no second fetch). Commons audio is pulled from upload.wikimedia.org and played from disk (`phevere-audio://`), not FilePath redirects or base64 IPC.
 
 **2026-09-04:** Settings → Notifications can silence the clipboard-image tray balloon. Sense numbers sit on the same baseline as the gloss.
 

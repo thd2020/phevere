@@ -22,7 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Toolbar 🔊 still showed “Fetching pronunciation…” on a second click: replay wiped the audio element, walked dead Free Dictionary URLs again (12s, failures uncached), and only prefetched the first URL. Replay now uses the in-pane clip; missing URLs are remembered; all recorded URLs prefetch together with a 5s cap.
+- Toolbar 🔊 still showed “Fetching pronunciation…” on a second click: replay wiped the audio element, walked dead Free Dictionary URLs again (12s, failures uncached), and only prefetched the first URL. Replay now uses the in-pane clip; missing URLs are remembered; all recorded URLs prefetch together.
+- Recorded clips went through Wikimedia `Special:FilePath` (2–3s per redirect here) and were sent to the popup as base64 data URLs even when already on disk. Playback now uses `upload.wikimedia.org` (MediaWiki filename case) and a `phevere-audio://` file protocol. Lookups log `pronunciation audio` with source/ms.
 - Sense numbers sat above the gloss (`align-items: start` plus a smaller number size). Number and first line of the definition now share a baseline.
 - Hover / OCR lookup on HiDPI (and mixed-DPI) PCs opened the strip at a fixed workArea corner. Cursor and overlay points are Electron DIP; `placePopupNearPoint` no longer runs `screenToDipPoint` on them. Win32 UIA still uses physical pixels for word-at-point, but not as the popup anchor.
 - Vertical rail chips only drew a hairline before the last sub-tab (`rotate(180deg)` flipped an inset shadow). Every sub-tab in a glued rail chip is now split by a 1px gap.
