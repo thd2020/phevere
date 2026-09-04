@@ -13,6 +13,7 @@ import {
   latinLemmasByPos,
   lemmaFromFormOfHtml,
 } from './text-normalize';
+import { abbreviatePos } from './definition-merge';
 import { isGrammaticalFormOfGloss } from './lookup-policy';
 import { extractLanguageSection, scanTemplates, templateToLink, type EtymologyLink } from './etymology';
 import { derivationalStems } from './pronunciation';
@@ -30,7 +31,7 @@ export type WordFamilyRelation =
 
 export interface WordFamilyItem {
   word: string;
-  /** Short POS / formation banner on the chip, e.g. "verb", "adj." — not a lookup target. */
+  /** Short POS / formation banner on the chip, e.g. "v.", "adj." — not a lookup target. */
   label?: string;
 }
 
@@ -144,15 +145,15 @@ function isGrammarLabel(term: string): boolean {
 function normalizeBanner(raw: string): string | undefined {
   const t = cleanTerm(raw).toLowerCase().replace(/\./g, '');
   if (!t) return undefined;
-  if (/verb/.test(t) && /form/.test(t)) return 'verb';
-  if (/noun/.test(t) && /form/.test(t)) return 'noun';
-  if (/(adjective|adj)/.test(t)) return 'adj.';
-  if (/(adverb|adv)/.test(t)) return 'adv.';
+  if (/verb/.test(t) && /form/.test(t)) return abbreviatePos('verb');
+  if (/noun/.test(t) && /form/.test(t)) return abbreviatePos('noun');
+  if (/(adjective|adj)/.test(t)) return abbreviatePos('adjective');
+  if (/(adverb|adv)/.test(t)) return abbreviatePos('adverb');
   if (/present\s+participle|pres(?:ent)?\s*ptcp|gerund/.test(t)) return 'participle';
   if (/past\s+participle|past\s*ptcp/.test(t)) return 'pp.';
   if (/^plural|pl\b/.test(t)) return 'pl.';
-  if (/^verb$/.test(t)) return 'verb';
-  if (/^noun$/.test(t)) return 'noun';
+  if (/^verb$/.test(t)) return abbreviatePos('verb');
+  if (/^noun$/.test(t)) return abbreviatePos('noun');
   if (isGrammarLabel(raw)) return t.replace(/\s+form$/, '');
   return undefined;
 }
@@ -200,10 +201,10 @@ function phraseKindLabel(raw?: string): string | undefined {
 function posFromWiki(raw?: string): string | undefined {
   const t = (raw || '').toLowerCase().replace(/\./g, '').trim();
   if (!t) return undefined;
-  if (/^(n|noun|nn)$/.test(t)) return 'noun';
-  if (/^(v|verb|vb)$/.test(t)) return 'verb';
-  if (/^(a|adj|adjective)$/.test(t)) return 'adj.';
-  if (/^(adv|adverb)$/.test(t)) return 'adv.';
+  if (/^(n|noun|nn)$/.test(t)) return abbreviatePos('noun');
+  if (/^(v|verb|vb)$/.test(t)) return abbreviatePos('verb');
+  if (/^(a|adj|adjective)$/.test(t)) return abbreviatePos('adjective');
+  if (/^(adv|adverb)$/.test(t)) return abbreviatePos('adverb');
   if (/idiom/.test(t)) return 'idiom';
   return normalizeBanner(t);
 }
@@ -211,12 +212,12 @@ function posFromWiki(raw?: string): string | undefined {
 function suffixPosGuess(word: string): string | undefined {
   const w = word.trim().toLocaleLowerCase();
   if (w.length < 4 || /\s/.test(w)) return undefined;
-  if (/(?:lly|ily)$/.test(w) || (w.length > 4 && /ly$/.test(w))) return 'adv.';
-  if (/(?:tion|sion|ness|ity|ment|ism|ship|hood|ance|ence|age|ist|ian|ee)$/.test(w)) return 'noun';
-  if (w.length >= 7 && /(?:er|or)$/.test(w)) return 'noun';
-  if (w.length >= 5 && /(?:ize|ise|ate|ify)$/.test(w)) return 'verb';
-  if (/(?:ous|ive|able|ible|ical|ful|less|ary|ory|ish|al|ic)$/.test(w)) return 'adj.';
-  if (w.length >= 6 && /ing$/.test(w)) return 'verb';
+  if (/(?:lly|ily)$/.test(w) || (w.length > 4 && /ly$/.test(w))) return abbreviatePos('adverb');
+  if (/(?:tion|sion|ness|ity|ment|ism|ship|hood|ance|ence|age|ist|ian|ee)$/.test(w)) return abbreviatePos('noun');
+  if (w.length >= 7 && /(?:er|or)$/.test(w)) return abbreviatePos('noun');
+  if (w.length >= 5 && /(?:ize|ise|ate|ify)$/.test(w)) return abbreviatePos('verb');
+  if (/(?:ous|ive|able|ible|ical|ful|less|ary|ory|ish|al|ic)$/.test(w)) return abbreviatePos('adjective');
+  if (w.length >= 6 && /ing$/.test(w)) return abbreviatePos('verb');
   return undefined;
 }
 
@@ -475,9 +476,9 @@ export function buildWordFamily(opts: {
   const buckets: FamilyBuckets = new Map();
 
   const byPos = latinLemmasByPos(surface);
-  if (byPos.verb) addUnique(buckets, 'forms', [byPos.verb], surfaceKey, false, 'verb');
-  if (byPos.noun) addUnique(buckets, 'forms', [byPos.noun], surfaceKey, false, 'noun');
-  if (byPos.adjective) addUnique(buckets, 'forms', [byPos.adjective], surfaceKey, false, 'adj.');
+  if (byPos.verb) addUnique(buckets, 'forms', [byPos.verb], surfaceKey, false, abbreviatePos('verb'));
+  if (byPos.noun) addUnique(buckets, 'forms', [byPos.noun], surfaceKey, false, abbreviatePos('noun'));
+  if (byPos.adjective) addUnique(buckets, 'forms', [byPos.adjective], surfaceKey, false, abbreviatePos('adjective'));
   addUnique(buckets, 'forms', derivationalStems(surface), surfaceKey);
   for (const it of lemmasFromDefinitions(opts.definitions, surface)) {
     addUnique(buckets, 'lemma', [it.word], surfaceKey, false, it.label);

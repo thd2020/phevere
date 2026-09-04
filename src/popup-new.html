@@ -832,7 +832,8 @@
       }
       .lexicon-pos-tab {
         box-sizing: border-box;
-        border: none;
+        border: 0;
+        border-left: 2px solid transparent;
         background: transparent;
         margin: 0;
         padding: 8px 4px;
@@ -843,13 +844,15 @@
         text-transform: uppercase;
         color: var(--pv-ink-soft);
         cursor: pointer;
-        border-left: 2px solid transparent;
         line-height: 1.15;
         text-align: center;
         white-space: nowrap;
         writing-mode: vertical-rl;
         text-orientation: mixed;
         transform: rotate(180deg);
+      }
+      .lexicon-pos-tab + .lexicon-pos-tab {
+        border-top: 1px solid #c5ccd3;
       }
       @supports (writing-mode: sideways-lr) {
         .lexicon-pos-tab {
@@ -901,11 +904,19 @@
         margin-top: 0;
       }
       .lexicon-pos-group + .lexicon-pos-group {
-        margin-top: 12px;
-      }
-      .lexicon-pane--pos .lexicon-pos-group + .lexicon-pos-group {
         margin-top: 18px;
         padding-top: 16px;
+        border-top: 3px solid #14212b;
+      }
+      .lexicon-pane--pos .lexicon-pos-group + .lexicon-pos-group,
+      .lexicon-pane .lexicon-pos-group + .lexicon-pos-group {
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 3px solid #14212b;
+      }
+      .word-family-row + .word-family-row {
+        margin-top: 14px;
+        padding-top: 14px;
         border-top: 3px solid #14212b;
       }
 
@@ -1692,6 +1703,8 @@
       var posJumpTimer = null;
       let isExpanded = false; // start collapsed
       let lookupInFlight = null;
+      let pendingHumanPlay = false;
+      let toolbarHumanBusy = false;
       let lookupSeq = 0;
       let lookupFold = '';
       var lastAppliedSelectionAt = 0;
@@ -1801,6 +1814,8 @@
         lookupFold = nextFold || '';
         currentResult = null;
         lookupInFlight = null;
+        pendingHumanPlay = false;
+        toolbarHumanBusy = false;
       }
 
       function clearStaleLookupUi(nextFold) {
@@ -2722,6 +2737,7 @@ function startAutoCloseTimeout() {
             }
           } finally {
             lookupInFlight = null;
+            if (pendingHumanPlay) void playToolbarHuman();
           }
         }
 
@@ -2811,6 +2827,7 @@ function startAutoCloseTimeout() {
             if (currentTab === 'etymology') displayEtymologyResult(updated);
             else displayDictionaryResult(updated);
           }
+          if (pendingHumanPlay) void playToolbarHuman();
         });
       }
 
@@ -2906,28 +2923,52 @@ function startAutoCloseTimeout() {
         }
 
         async function playToolbarHuman() {
-          try { if (localStorage.getItem('phevereAudioEnabled') === '0') return; } catch (e) {}
+          try { if (localStorage.getItem('phevereAudioEnabled') === '0') {
+            showToast('Sound is off');
+            pendingHumanPlay = false;
+            return;
+          } } catch (e) {}
           var urls = recordedUrlsFromResult(currentResult);
           if (!urls.length) {
+            if (lookupInFlight) {
+              pendingHumanPlay = true;
+              showToast('Fetching pronunciation…');
+              return;
+            }
+            pendingHumanPlay = false;
             showToast('No recorded pronunciation');
             return;
           }
-          stopPopupSpeech();
-          var fetchAudio = window.electronAPI && window.electronAPI.fetchPronunciationAudio;
-          if (typeof fetchAudio === 'function') {
-            for (var i = 0; i < urls.length; i++) {
-              try {
-                var got = await fetchAudio(urls[i]);
-                if (got && got.ok && got.dataUrl) {
-                  playRecordedDataUrl(got.dataUrl);
-                  return;
-                }
-              } catch (e) {}
-            }
+          if (toolbarHumanBusy) {
+            pendingHumanPlay = true;
+            return;
           }
-          playRecordedDataUrl(urls[0], function () {
-            showToast('No recorded pronunciation');
-          });
+          pendingHumanPlay = false;
+          toolbarHumanBusy = true;
+          var fetchHint = setTimeout(function () { showToast('Fetching pronunciation…'); }, 250);
+          try {
+            stopPopupSpeech();
+            var fetchAudio = window.electronAPI && window.electronAPI.fetchPronunciationAudio;
+            if (typeof fetchAudio === 'function') {
+              for (var i = 0; i < urls.length; i++) {
+                try {
+                  var got = await fetchAudio(urls[i]);
+                  if (got && got.ok && got.dataUrl) {
+                    clearTimeout(fetchHint);
+                    playRecordedDataUrl(got.dataUrl);
+                    return;
+                  }
+                } catch (e) {}
+              }
+            }
+            clearTimeout(fetchHint);
+            playRecordedDataUrl(urls[0], function () {
+              showToast('No recorded pronunciation');
+            });
+          } finally {
+            clearTimeout(fetchHint);
+            toolbarHumanBusy = false;
+          }
         }
 
         var ipaSpeakBusy = false;
@@ -3215,6 +3256,23 @@ function startAutoCloseTimeout() {
             const on = pos === lastLexiconPos;
             return `<button type="button" class="lexicon-pos-tab${on ? ' is-active' : ''}" role="tab" aria-selected="${on ? 'true' : 'false'}" data-pos="${escapeHtml(pos)}">${escapeHtml(label)}</button>`;
           };
+          const POS_ABBR = {
+            noun: 'n.',
+            verb: 'v.',
+            adjective: 'adj.',
+            adverb: 'adv.',
+            preposition: 'prep.',
+            pronoun: 'pron.',
+            conjunction: 'conj.',
+            interjection: 'interj.',
+            article: 'art.',
+            determiner: 'det.',
+            numeral: 'num.',
+          };
+          function displayPosLabel(pos) {
+            const key = String(pos || '').toLowerCase();
+            return POS_ABBR[key] || pos;
+          }
           function renderRailBlock(_l1, sections) {
             if (!sections.length) return '';
             return `<div class="lexicon-rail-block">${sections.map(function (s) {
@@ -3275,8 +3333,8 @@ function startAutoCloseTimeout() {
           const tocIds = [];
           const posSections = order.map(function (pos) {
             tocIds.push(pos);
-            posInner += wrapGroup(pos, pos, renderSenses(groups[pos]));
-            return { id: pos, label: pos };
+            posInner += wrapGroup(pos, displayPosLabel(pos), renderSenses(groups[pos]));
+            return { id: pos, label: displayPosLabel(pos) };
           });
           let allInner = wrapPane(posInner, 'lexicon-pane--pos');
 

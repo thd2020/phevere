@@ -78,6 +78,7 @@ export {
   type MergeableDefinition,
   normalizeMeaningForMerge,
   canonicalPos,
+  abbreviatePos,
   exampleKey,
   dedupeExamples,
   mergeSimilarDefinitions,

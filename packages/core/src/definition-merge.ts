@@ -157,6 +157,26 @@ export function canonicalPos(raw?: string): string {
   return lower || 'unknown';
 }
 
+const POS_ABBREV: Record<string, string> = {
+  noun: 'n.',
+  verb: 'v.',
+  adjective: 'adj.',
+  adverb: 'adv.',
+  preposition: 'prep.',
+  pronoun: 'pron.',
+  conjunction: 'conj.',
+  interjection: 'interj.',
+  article: 'art.',
+  determiner: 'det.',
+  numeral: 'num.',
+};
+
+/** Dictionary-style short label (adj. not adjective). Unknown POS is left as-is. */
+export function abbreviatePos(raw?: string): string {
+  const canon = canonicalPos(raw);
+  return POS_ABBREV[canon] || canon;
+}
+
 function samePos(a: string, b: string): boolean {
   const pa = canonicalPos(a);
   const pb = canonicalPos(b);

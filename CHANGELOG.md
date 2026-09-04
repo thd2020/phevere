@@ -9,12 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Lexicon sidebar uses **cards** for blocks and **vertical** section tabs. Below the headword, the rail and the definitions each fill the remaining pane and scroll on their own (10px rail scrollbar). Noun/verb/… inside the lexicon card are divided by the original thick rule; lexicon vs word family stay separate rounded cards.
-- Toolbar 🔊 plays a **recorded** clip: Free Dictionary MP3 when that API answered, otherwise the Wiktionary/Commons file from `{{audio}}`. It does not read the spelling with the system voice.
+- Lexicon POS tabs and headings use dictionary abbreviations when they exist (**adj.**, **n.**, **v.**, **adv.**, …). Hairlines separate vertical tabs inside a rail card; the right pane uses a thick rule between sections that share one block (senses, synonyms/antonyms, word-family rows).
+- Lexicon sidebar uses **cards** for blocks and **vertical** section tabs. Below the headword, the rail and the definitions each fill the remaining pane and scroll on their own (10px rail scrollbar). Lexicon vs word family stay separate rounded cards.
+- Toolbar 🔊 plays a **recorded** clip: Free Dictionary MP3 when that API answered, otherwise the Wiktionary/Commons file from `{{audio}}`. It does not read the spelling with the system voice. Clips are cached on disk (`%APPDATA%\phevere\pronunciation-cache`) and the first URL is prefetched as soon as lookup attaches it. A click before the URL arrives waits instead of toasting “No recorded pronunciation”.
 - A speaker after each US / UK IPA chip speaks **that chip’s IPA** through a long-lived Windows System.Speech host (`<phoneme alphabet="ipa">`) or macOS `say` phonemes — not the headword and not the recorded clip.
 
 ### Fixed
 
+- Hover / OCR lookup on HiDPI (and mixed-DPI) PCs opened the strip at a fixed workArea corner. Cursor and overlay points are Electron DIP; `placePopupNearPoint` no longer runs `screenToDipPoint` on them. Win32 UIA still uses physical pixels for word-at-point, but not as the popup anchor.
 - IPA chip speakers failed on every word (`powershell.exe exit null`) because each retry killed the previous synthesizer. Toolbar 🔊 said “No recorded pronunciation” whenever Free Dictionary timed out, even when Wiktionary had a Commons recording.
 
 ## [1.5.0] - 2026-09-04
