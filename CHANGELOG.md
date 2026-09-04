@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Lexicon part-of-speech tabs start with **all**, then noun / verb / adj. In the all view, POS blocks are separated by a thick rule (heavier than the hairline between senses).
+- Lexicon part-of-speech is a **left rail** (same layout as etymology), starting with **all**, then noun / verb / adj. The senses panel is one stacked view; clicking a POS jumps to that section. Blocks are separated by a thick rule (heavier than the hairline between senses).
 - Toolbar 🔊 plays a **recorded** clip: Free Dictionary MP3 when that API answered, otherwise the Wiktionary/Commons file from `{{audio}}`. It does not read the spelling with the system voice.
 - A speaker after each US / UK IPA chip speaks **that chip’s IPA** through a long-lived Windows System.Speech host (`<phoneme alphabet="ipa">`) or macOS `say` phonemes — not the headword and not the recorded clip.
 
