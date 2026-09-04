@@ -5,7 +5,7 @@
 **Write date:** 2026-09-04.  
 **Checkout:** `origin/main`. Shipped desktop build is **1.5.0** (Windows NSIS x64/ARM64 + macOS Intel/Apple Silicon DMGs from the same `release.yml` tag). Unsigned Mac DMGs can also be built locally with `npm run make:mac:x64` / `make:mac:arm64` (not notarized).
 
-**2026-09-04:** Toolbar 🔊 is recorded audio; IPA chip speakers synthesize that transcription. Lexicon rail includes examples/synonyms/family; do not nest explorer frames on senses. Mac capture actions match Windows (read-window, Music/Spotify now-playing, Screen Recording prompt, inset traffic lights, ⌘ keycaps). Selection backend is no longer a draft.
+**2026-09-04:** Toolbar 🔊 is recorded audio; IPA chip speakers synthesize that transcription. Lexicon sidebar is two-layer (block then section tabs; flatten when a block has one section). Do not draw bold rules in the senses. Mac capture actions match Windows (read-window, Music/Spotify now-playing, Screen Recording prompt, inset traffic lights, ⌘ keycaps). Selection backend is no longer a draft.
 
 Companion (API/build): [`MACOS_SELECTION.md`](MACOS_SELECTION.md). Do not re-litigate shipped Windows UI unless the user asks.
 
