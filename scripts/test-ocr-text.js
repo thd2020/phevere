@@ -42,4 +42,11 @@ assert.strictEqual(
   ]).text,
   'cen',
 );
+assert.strictEqual(
+  finalizeOcrLines([
+    { text: 'cent', bounds: { x: 0, y: 0, width: 40, height: 20 } },
+    { text: 'rifu', bounds: { x: 41, y: 0, width: 40, height: 20 } },
+  ]).text,
+  'centrifu',
+);
 console.log('ocr-text ok');

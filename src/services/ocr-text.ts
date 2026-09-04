@@ -72,6 +72,29 @@ function sameOcrRow(a: OcrTextLine, b: OcrTextLine): boolean {
   return Math.abs(ay - by) < Math.max(ab.height, bb.height) * 0.55;
 }
 
+function ocrJoinGap(prev: OcrTextLine, next: OcrTextLine): { gap: number; em: number } {
+  const pb = prev.bounds!;
+  const nb = next.bounds!;
+  return {
+    gap: nb.x - (pb.x + pb.width),
+    em: Math.max(pb.height, nb.height, 8),
+  };
+}
+
+/** Same-row boxes that belong to one word (letter boxes or tight v5 fragments). */
+function shouldJoinOcrFragments(prev: OcrTextLine, next: OcrTextLine): boolean {
+  if (!prev.bounds || !next.bounds || !sameOcrRow(prev, next)) return false;
+  const { gap, em } = ocrJoinGap(prev, next);
+  const prevLen = [...prev.text.trim()].length;
+  const curLen = [...next.text.trim()].length;
+  // Inter-letter tracking is << 0.25em; word gaps are typically ≥ 0.25em.
+  if (prevLen <= 2 && curLen <= 2 && gap <= Math.max(2, em * 0.25)) return true;
+  // PP-OCRv5 often emits multi-letter fragments of one word with ~0 gap.
+  // Do not use box width — a whole-word box would glue neighbouring words.
+  const noSpace = !/\s/.test(prev.text) && !/\s/.test(next.text);
+  return noSpace && gap <= Math.max(1, em * 0.12);
+}
+
 /** Merge adjacent single-glyph boxes on one baseline (letter-level DB boxes). */
 export function mergeGlyphBoxes(lines: OcrTextLine[]): OcrTextLine[] {
   const withB = lines.filter((l) => l.bounds && l.bounds.width > 0);
@@ -86,20 +109,9 @@ export function mergeGlyphBoxes(lines: OcrTextLine[]): OcrTextLine[] {
   for (const line of withB) {
     const g = groups[groups.length - 1];
     const prev = g?.[g.length - 1];
-    if (prev && prev.bounds && line.bounds && sameOcrRow(prev, line)) {
-      const prevLen = [...prev.text.trim()].length;
-      const curLen = [...line.text.trim()].length;
-      const letterLevel = prevLen <= 2 && curLen <= 2;
-      if (letterLevel) {
-        const gap = line.bounds.x - (prev.bounds.x + prev.bounds.width);
-        const em = Math.max(prev.bounds.height, line.bounds.height, 8);
-        // Inter-letter tracking is << 0.25em; word gaps are typically ≥ 0.25em.
-        // Do not use box *width* — a whole-word box would glue neighbouring words.
-        if (gap <= Math.max(2, em * 0.25)) {
-          g.push(line);
-          continue;
-        }
-      }
+    if (prev && shouldJoinOcrFragments(prev, line)) {
+      g.push(line);
+      continue;
     }
     groups.push([line]);
   }

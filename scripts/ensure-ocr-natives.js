@@ -91,6 +91,8 @@ function sharpOk(platform, arch) {
 function gutenyeOk() {
   const p = path.join(ROOT, 'node_modules', '@gutenye', 'ocr-node', 'build', 'index.js');
   if (!fs.existsSync(p)) fail('Missing @gutenye/ocr-node/build/index.js');
+  const { patchGutenyeUnclip } = require('./patch-gutenye-unclip');
+  patchGutenyeUnclip(ROOT);
 }
 
 function ensure(opts) {

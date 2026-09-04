@@ -214,8 +214,23 @@ function assertOnnxNativeBinding(): void {
  * <cwd>/@gutenye/ocr-node. Resolve the file on disk and import() it
  * through Function so webpack cannot rewrite the load.
  */
+function patchGutenyeUnclip(): void {
+  const abs = resolveNodeModuleFile('@gutenye', 'ocr-common', 'build', 'backend', 'splitIntoLineImages.js');
+  if (!abs) return;
+  try {
+    const src = fs.readFileSync(abs, 'utf8');
+    if (src.includes('const unclip_ratio = 2.2')) return;
+    if (!src.includes('const unclip_ratio = 1.5')) return;
+    fs.writeFileSync(abs, src.replace('const unclip_ratio = 1.5', 'const unclip_ratio = 2.2'));
+    console.log('DB unclip_ratio 1.5 → 2.2 (same probe for v4/v5)');
+  } catch {
+    /* read-only pack */
+  }
+}
+
 async function loadGutenOcr(): Promise<{ create: (opts: unknown) => Promise<any> }> {
   assertOnnxNativeBinding();
+  patchGutenyeUnclip();
   const entry = resolveNodeModuleFile('@gutenye', 'ocr-node', 'build', 'index.js');
   if (!entry) {
     throw new Error('Cannot find @gutenye/ocr-node/build/index.js under node_modules');

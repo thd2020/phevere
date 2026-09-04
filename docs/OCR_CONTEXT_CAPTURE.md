@@ -1,6 +1,6 @@
 # Beyond selectable text — context capture & OCR plan
 
-**2026-09-03:** Packaged screen crop uses the thumbnail’s real pixel size (not `display.scaleFactor` alone) so image OCR does not emit `c e n t r i f i c`. PP-OCRv5 must use `ppocrv5_dict.txt` (~18k classes), not v4 `ppocr_keys_v1.txt`.
+**2026-09-04:** Hover OCR uses one probe for every PP-OCR pack (v5 is no longer a rigid mid-word box). Packaged screen crop uses the thumbnail’s real pixel size (not `display.scaleFactor` alone) so image OCR does not emit `c e n t r i f i c`. PP-OCRv5 must use `ppocrv5_dict.txt` (~18k classes), not v4 `ppocr_keys_v1.txt`.
 
 Status: **active** · Selection + OCR ROI/hover/grab/window/clipboard/media shipped; packaging & cross-platform media open  
 Audience: implementers extending Phevere past UIAutomation-selectable text  
@@ -93,7 +93,7 @@ This interface is also the target for the **macOS AX draft** (`docs/MACOS_SELECT
 
 ### Phase 3 — Word targeting
 
-- [x] Map cursor into OCR boxes → token / CJK char under cursor (hover path). Gutenye `Line.box` polygons (not `frame`). Hover captures a line strip; word bounds come from detection-box gaps (glyph height), not a fixed DIP square. If the hit box is clipped, expand once and re-OCR.
+- [x] Map cursor into OCR boxes → token / CJK char under cursor (hover path). Gutenye `Line.box` polygons (not `frame`). Same probe for v4 and v5: line strip to measure glyph height, recrop ~8em (Latin) / ~2em (CJK), then pick the token. DB unclip is 2.2 (Gutenye default 1.5 clips v5 rec). Adjacent letter boxes and tight fragments merge; whole-word boxes do not.
 - [x] Feed recognized text through `text-normalize`
 
 ### Phase 4 — Triggers

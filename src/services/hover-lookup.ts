@@ -185,23 +185,25 @@ function cursorInCapture(
   };
 }
 
-function hitTouchesImageEdge(
-  box: { x: number; y: number; width: number; height: number },
+/**
+ * Hover OCR: same probe for every PP-OCR pack.
+ * 1) Line strip to find a glyph height under the cursor.
+ * 2) Recrop a window sized from that height (not the det-box width — v5 boxes
+ *    are tighter than v4 at the same unclip).
+ * 3) Pick the token at the cursor in that window.
+ */
+function boxTouchesImageEdge(
+  b: { x: number; y: number; width: number; height: number },
   imgW: number,
   imgH: number,
+  pad = 3,
 ): boolean {
-  const slop = Math.max(3, box.height * 0.55);
-  return box.x <= slop || box.x + box.width >= imgW - slop || box.y <= slop || box.y + box.height >= imgH - slop;
+  return b.x <= pad || b.y <= pad || b.x + b.width >= imgW - pad || b.y + b.height >= imgH - pad;
 }
 
-/**
- * Hover OCR: capture a line-shaped strip, let DBNet find instances, pick the
- * box under the cursor. If that box is clipped by the crop, expand using the
- * detected glyph height (image pixels → DIP) and recognize once more.
- */
 async function ocrWordUnderCursor(x: number, y: number, halfW: number): Promise<string> {
-  let halfWidth = Math.max(80, halfW);
-  let halfHeight = Math.max(28, Math.round(halfWidth / 5));
+  const halfWidth = Math.max(80, halfW);
+  const halfHeight = Math.max(48, Math.round(halfWidth / 5));
 
   const run = async (hw: number, hh: number) => {
     const capture = await captureAroundPoint(x, y, hw, hh);
@@ -209,21 +211,28 @@ async function ocrWordUnderCursor(x: number, y: number, halfW: number): Promise<
     const ocr = await ocrEngine.recognize(capture.png);
     const { px, py, scale } = cursorInCapture(capture, x, y);
     const size = capture.image.getSize();
-    return { capture, ocr, px, py, scale, imgW: size.width, imgH: size.height };
+    return { ocr, px, py, scale, imgW: size.width, imgH: size.height };
   };
 
-  let pass = await run(halfWidth, halfHeight);
-  if (!pass) return '';
+  const locate = await run(halfWidth, halfHeight);
+  if (!locate) return '';
 
-  const hit = lineNearPoint(pass.ocr, pass.px, pass.py);
-  if (hit?.bounds && hitTouchesImageEdge(hit.bounds, pass.imgW, pass.imgH)) {
-    const glyphDip = Math.max(12, hit.bounds.height / (pass.scale || 1));
-    halfWidth = Math.min(HOVER_OCR_MAX_HALF_W, Math.max(halfWidth, Math.round(glyphDip * 10)));
-    halfHeight = Math.min(HOVER_OCR_MAX_HALF_H, Math.max(halfHeight, Math.round(glyphDip * 1.6)));
-    const again = await run(halfWidth, halfHeight);
-    if (again) pass = again;
-  }
-
+  const hit = lineNearPoint(locate.ocr, locate.px, locate.py);
+  const clipped = !!(hit?.bounds && boxTouchesImageEdge(hit.bounds, locate.imgW, locate.imgH));
+  let emDip = hit?.bounds ? Math.max(10, hit.bounds.height / (locate.scale || 1)) : 16;
+  if (clipped) emDip = Math.max(emDip, emDip * 1.8, 28);
+  const cjk = !!(hit?.text && /[\u3400-\u9FFF\uF900-\uFAFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]/.test(hit.text)
+    && !/[A-Za-z]{3,}/.test(hit.text));
+  const wordHalfW = Math.min(
+    HOVER_OCR_MAX_HALF_W,
+    Math.max(halfWidth, Math.round(cjk ? emDip * 2 : emDip * 8), clipped ? 240 : 0),
+  );
+  const wordHalfH = Math.min(
+    HOVER_OCR_MAX_HALF_H,
+    Math.max(halfHeight, Math.round((emDip * 5) / 4), clipped ? 56 : 0),
+  );
+  const sameCrop = Math.abs(wordHalfW - halfWidth) < 8 && Math.abs(wordHalfH - halfHeight) < 8;
+  const pass = sameCrop ? locate : (await run(wordHalfW, wordHalfH)) || locate;
   return textNearPoint(pass.ocr, pass.px, pass.py).trim();
 }
 
