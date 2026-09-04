@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Translation engines in **Settings → Sources** use the same row layout as dictionary sources, with formal names (Google Translate, MyMemory, Youdao, DeepL) and “No API key” / “API key required”.
+- The Translation tab honours the From/To selects (listed languages) instead of flipping English→English into Chinese.
 - Hover OCR is the same probe for every PP-OCR pack: DB `unclip_ratio` 2.2, locate on a line strip, recrop from glyph height (not the det-box width). PP-OCRv5’s tighter boxes no longer clip a mid-word square.
 - Durable windows (notebook, Settings, clipboard) are opaque. On Windows they use the native caption overlay so resize is not a frameless Mica drag.
 - NSIS InstFiles page **names the step**: header subtitle, details list (extract / shortcuts / OCR models / Apps & Features). `prepare:installer` flips electron-builder’s `SetDetailsPrint none` so extract lines are visible.
@@ -23,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Notebook cards showed `en → zh` on English dictionary saves because the default translation target was stored as the gloss language. The chip is now lemma → saved-sense language (`en → en` for Free Dictionary / Wiktionary).
+- Popup 🌐 duplicated the Translation tab. The gear shrunk the window to 200px and left it there; clicking Lexicon did not restore height. Gear is an overlay; tabs restore the last expanded size.
 - Empty translation results (Google 429, missing Youdao/DeepL keys) were frozen in the 24h lookup cache, so every chip looked dead. Failed translations are no longer cached; Google gtx cools down after 429 and falls through to a second Google URL plus MyMemory.
 - Word-family **derived** chips showed `noun/verb/adj.` on almost every citation form (wink marks those as all three POS). Banners are a single precise tag (wiki or suffix) or omitted; phrase chips are not labelled “phrase”.
 - Shrinking the main window felt stuck: notebook/Settings are opaque (no Mica), Windows uses `titleBarOverlay`, and live-resize drops blur/shadow/transitions.
