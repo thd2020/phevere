@@ -209,6 +209,22 @@ export function mergePronunciations(...lists: Array<Pronunciation[] | undefined>
   return deduped.slice(0, 6);
 }
 
+/** Recorded clip URLs, US then UK then other — for the toolbar speaker, not IPA chips. */
+export function recordedPronunciationUrls(list?: Pronunciation[]): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  const push = (p: Pronunciation) => {
+    const u = p.audioUrl ? normalizePronunciationAudioUrl(p.audioUrl) : '';
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    urls.push(u);
+  };
+  for (const p of list || []) if (p.accent === 'us') push(p);
+  for (const p of list || []) if (p.accent === 'uk') push(p);
+  for (const p of list || []) if (p.accent !== 'us' && p.accent !== 'uk') push(p);
+  return urls;
+}
+
 export function formatPronunciationLine(list?: Pronunciation[]): string {
   if (!list || !list.length) return '';
   const parts: string[] = [];

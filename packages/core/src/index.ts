@@ -92,10 +92,21 @@ export {
   extractIpaFromWikitext,
   mergePronunciations,
   formatPronunciationLine,
+  recordedPronunciationUrls,
   cleanIpa,
   derivationalStems,
   normalizePronunciationAudioUrl,
 } from './pronunciation';
+export {
+  type IpaAccent,
+  accentToBcp47,
+  phonemeIpa,
+  ipaToSapiPhones,
+  ipaToApplePhonemes,
+  ipaToEspeakPhonemes,
+  buildSapiPhonemeSsml,
+  buildIpaPhonemeSsml,
+} from './ipa-phonemes';
 export { buildWordFamily, mergeWordFamilyGroups, familyFromEtymologyChain, type WordFamilyGroup } from './word-family';
 export {
   parseFreedictTei,

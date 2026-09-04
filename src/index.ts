@@ -26,6 +26,7 @@ import { showWorkProgress, updateWorkProgress, closeWorkProgress } from './servi
 import { isAcceleratorPhysicallyHeld, isPrimaryMouseDown } from './services/accelerator-key-state';
 import { getForegroundWindowBoundsDip } from './services/foreground-window';
 import { getNowPlaying, formatNowPlayingQuery } from './services/media-session';
+import { speakIpa, cancelIpaSpeak, fetchPronunciationAudio } from './services/ipa-speak';
 import { readClipboardImage, loadImageFileAsPng, pngFromBase64 } from './services/clipboard-image';
 import {
   loadMonitorSettings,
@@ -2123,6 +2124,7 @@ ipcMain.on('show-popup', (_event, { x, y, text }) => {
 });
 
 ipcMain.on('hide-popup', () => {
+  cancelIpaSpeak();
   popupWindows.forEach(win => {
     if (win && !win.isDestroyed()) {
       win.close();
@@ -2186,6 +2188,25 @@ ipcMain.handle('clipboard-import', (event, jsonData: string) => {
 });
 
 // Dictionary service IPC handlers
+ipcMain.handle('speak-ipa', async (_event, payload?: { ipa?: string; accent?: string }) => {
+  try {
+    await speakIpa(String(payload?.ipa || ''), payload?.accent);
+    return { ok: true as const };
+  } catch (error) {
+    log.warn('main', 'speak-ipa failed', { err: String(error) });
+    return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle('cancel-ipa-speak', () => {
+  cancelIpaSpeak();
+  return { ok: true as const };
+});
+
+ipcMain.handle('fetch-pronunciation-audio', async (_event, url: string) => {
+  return fetchPronunciationAudio(String(url || ''));
+});
+
 ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: string = 'auto', enabledSources?: string[], lookupOpts?: { translationProvider?: string; sourceLanguage?: string }) => {
   const t0 = Date.now();
   const translationProvider = parseTranslationProvider(

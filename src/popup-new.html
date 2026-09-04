@@ -783,8 +783,24 @@
         margin-bottom: 0;
       }
 
-      .lexicon-pos-heading {
+      .lexicon-pos-panel:not([data-pos="all"]) .lexicon-pos-heading {
         display: none;
+      }
+      .lexicon-pos-panel[data-pos="all"] .lexicon-pos-heading {
+        display: block;
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #475569;
+        margin: 14px 0 8px;
+      }
+      .lexicon-pos-panel[data-pos="all"] .lexicon-pos-group:first-child .lexicon-pos-heading {
+        margin-top: 0;
+      }
+      .lexicon-pos-panel[data-pos="all"] .lexicon-pos-group {
+        margin-bottom: 8px;
       }
 
       .result-section-title {
@@ -1474,7 +1490,7 @@
           </div>
           <div class="toolbar-icons">
             <button class="toolbar-icon" id="dictionaryIcon" title="Dictionary">📖</button>
-            <button class="toolbar-icon" id="audioIcon" title="Play Audio">🔊</button>
+            <button class="toolbar-icon" id="audioIcon" title="Play recorded pronunciation">🔊</button>
             <button class="toolbar-icon" id="clipboardIcon" title="Clipboard">📋</button>
             <button class="toolbar-icon" id="searchIcon" title="Search">🔍</button>
             <button class="toolbar-icon toolbar-heart" id="vocabHeartIcon" title="Save to notebook" aria-pressed="false" aria-label="Save to notebook">
@@ -1565,7 +1581,7 @@
       let currentResult = null;
       let currentTab = 'lexicon';
       let lastLexiconWord = '';
-      let lastLexiconPos = '';
+      let lastLexiconPos = 'all';
       let isExpanded = false; // start collapsed
       let lookupInFlight = null;
       let lookupSeq = 0;
@@ -1853,10 +1869,7 @@
           });
             document.getElementById('audioIcon').addEventListener('click', () => {
                pvLog('[POPUP] Audio button clicked');
-               if (currentText) {
-                     const lang = window['__audioLang'] || 'en';
-                    playAudio(currentText, lang);
-               }
+               void playToolbarHuman();
            });
             document.getElementById('clipboardIcon').addEventListener('click', async () => {
                pvLog('[POPUP] Clipboard copy button clicked');
@@ -2701,37 +2714,86 @@ function startAutoCloseTimeout() {
                return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 10v4h3l5 4V6L7 10H4z" stroke-linejoin="round"/><path d="M16.5 8.5a5 5 0 0 1 0 7" stroke-linecap="round"/><path d="M18.5 6a8 8 0 0 1 0 12" stroke-linecap="round"/></svg>';
              }
 
-        function accentSpeechLang(accent) {
-          if (accent === 'uk') return 'en-GB';
-          if (accent === 'us') return 'en-US';
-          return window['__audioLang'] || 'en';
-        }
-
         var ipaAudioEl = null;
-        function playRecordedPronunciation(url, word, lang) {
-          try { if (localStorage.getItem('phevereAudioEnabled') === '0') return; } catch (e) {}
+        function stopPopupSpeech() {
           try { speechSynthesis.cancel(); } catch (e) {}
           try { if (ipaAudioEl) { ipaAudioEl.pause(); ipaAudioEl.src = ''; } } catch (e) {}
-          ipaAudioEl = new Audio(url);
-          ipaAudioEl.onerror = function () { playAudio(word, lang); };
-          var p = ipaAudioEl.play();
-          if (p && typeof p.catch === 'function') p.catch(function () { playAudio(word, lang); });
         }
 
-        function playIpaChip(btn) {
-          var word = (btn.getAttribute('data-word') || currentText || '').trim();
-          var accent = btn.getAttribute('data-accent') || '';
-          var audio = btn.getAttribute('data-audio') || '';
-          var lang = accentSpeechLang(accent);
-          if (audio) {
-            playRecordedPronunciation(audio, word, lang);
+        function playRecordedDataUrl(url, onFail) {
+          stopPopupSpeech();
+          ipaAudioEl = new Audio(url);
+          ipaAudioEl.onerror = function () { if (onFail) onFail(); };
+          var p = ipaAudioEl.play();
+          if (p && typeof p.catch === 'function') p.catch(function () { if (onFail) onFail(); });
+        }
+
+        function recordedUrlsFromResult(result) {
+          var list = (result && result.pronunciations) || [];
+          var urls = [];
+          var seen = {};
+          ['us', 'uk', 'other'].forEach(function (a) {
+            list.forEach(function (p) {
+              var accent = p && p.accent ? p.accent : 'other';
+              if (accent !== a) return;
+              var u = String((p && p.audioUrl) || '').trim();
+              if (!u || seen[u]) return;
+              seen[u] = 1;
+              urls.push(u);
+            });
+          });
+          return urls;
+        }
+
+        async function playToolbarHuman() {
+          try { if (localStorage.getItem('phevereAudioEnabled') === '0') return; } catch (e) {}
+          var urls = recordedUrlsFromResult(currentResult);
+          if (!urls.length) {
+            showToast('No recorded pronunciation');
             return;
           }
-          if (word) playAudio(word, lang);
+          stopPopupSpeech();
+          if (window.electronAPI && typeof window.electronAPI.cancelIpaSpeak === 'function') {
+            try { await window.electronAPI.cancelIpaSpeak(); } catch (e) {}
+          }
+          var fetchAudio = window.electronAPI && window.electronAPI.fetchPronunciationAudio;
+          if (typeof fetchAudio === 'function') {
+            for (var i = 0; i < urls.length; i++) {
+              try {
+                var got = await fetchAudio(urls[i]);
+                if (got && got.ok && got.dataUrl) {
+                  playRecordedDataUrl(got.dataUrl);
+                  return;
+                }
+              } catch (e) {}
+            }
+          }
+          showToast('No recorded pronunciation');
+        }
+
+        async function playIpaChip(btn) {
+          try { if (localStorage.getItem('phevereAudioEnabled') === '0') return; } catch (e) {}
+          var ipa = (btn.getAttribute('data-ipa') || '').trim();
+          var accent = btn.getAttribute('data-accent') || '';
+          if (!ipa) {
+            showToast('No IPA to speak');
+            return;
+          }
+          stopPopupSpeech();
+          if (!window.electronAPI || typeof window.electronAPI.speakIpa !== 'function') {
+            showToast('Cannot speak this IPA');
+            return;
+          }
+          try {
+            var res = await window.electronAPI.speakIpa({ ipa: ipa, accent: accent });
+            if (!res || !res.ok) showToast('Cannot speak this IPA');
+          } catch (e) {
+            showToast('Cannot speak this IPA');
+          }
         }
 
         function activateLexiconPos(pos) {
-          lastLexiconPos = pos || '';
+          lastLexiconPos = pos || 'all';
           var root = document.querySelector('.lexicon-block--senses');
           if (!root) return;
           root.querySelectorAll('.lexicon-pos-tab').forEach(function (tab) {
@@ -2849,7 +2911,6 @@ function startAutoCloseTimeout() {
 
         function formatPronunciationHtml(result) {
           const list = Array.isArray(result.pronunciations) ? result.pronunciations.slice() : [];
-          const word = String(result.word || currentText || '').trim();
           const chips = [];
           const used = new Set();
           const chip = function (p) {
@@ -2860,13 +2921,11 @@ function startAutoCloseTimeout() {
             if (used.has(key)) return;
             used.add(key);
             const tag = accent === 'us' ? 'US' : accent === 'uk' ? 'UK' : '';
-            const audio = String((p && p.audioUrl) || '').trim();
-            const label = tag || 'pronunciation';
-            const audioAttr = audio ? ` data-audio="${escapeHtml(audio)}"` : '';
+            const label = tag ? tag + ' transcription' : 'this transcription';
             chips.push(
               `<span class="ipa-chip">` +
                 `<span class="ipa-chip__text">${tag ? tag + ' ' : ''}/${escapeHtml(clean)}/</span>` +
-                `<button type="button" class="tx-speak ipa-speak" data-accent="${escapeHtml(accent)}" data-word="${escapeHtml(word)}"${audioAttr} title="Play ${escapeHtml(label)}" aria-label="Play ${escapeHtml(label)}">${speakIcon()}</button>` +
+                `<button type="button" class="tx-speak ipa-speak" data-accent="${escapeHtml(accent)}" data-ipa="${escapeHtml(clean)}" title="Speak ${escapeHtml(label)}" aria-label="Speak ${escapeHtml(label)}">${speakIcon()}</button>` +
               `</span>`
             );
           };
@@ -2879,8 +2938,10 @@ function startAutoCloseTimeout() {
           const line = String(result.pronunciation || '').trim();
           if (!line) return '';
           const shown = line.indexOf('/') >= 0 ? line : '/' + line.replace(/^\/+|\/+$/g, '') + '/';
-          const fallbackChip = word
-            ? `<span class="ipa-chip"><span class="ipa-chip__text">${escapeHtml(shown)}</span><button type="button" class="tx-speak ipa-speak" data-accent="other" data-word="${escapeHtml(word)}" title="Play pronunciation" aria-label="Play pronunciation">${speakIcon()}</button></span>`
+          const ipaMatch = shown.match(/\/([^/]+)\//);
+          const ipaOnly = ipaMatch ? ipaMatch[1] : line.replace(/^\/+|\/+$/g, '');
+          const fallbackChip = ipaOnly
+            ? `<span class="ipa-chip"><span class="ipa-chip__text">${escapeHtml(shown)}</span><button type="button" class="tx-speak ipa-speak" data-accent="other" data-ipa="${escapeHtml(ipaOnly)}" title="Speak this transcription" aria-label="Speak this transcription">${speakIcon()}</button></span>`
             : escapeHtml(shown);
           return `<div class="result-pronunciation">${fallbackChip}</div>`;
         }
@@ -2905,30 +2966,31 @@ function startAutoCloseTimeout() {
 
           const wordKey = foldLookupKey(result.word || '');
           if (wordKey !== foldLookupKey(lastLexiconWord)) {
-            lastLexiconPos = '';
+            lastLexiconPos = 'all';
             lastLexiconWord = result.word || '';
           }
-          if (!lastLexiconPos || order.indexOf(lastLexiconPos) < 0) {
-            lastLexiconPos = order[0] || '';
+          if (lastLexiconPos !== 'all' && order.indexOf(lastLexiconPos) < 0) {
+            lastLexiconPos = 'all';
           }
 
-          const tabsHtml = order.map(function (pos) {
+          const tabBtn = function (pos, label) {
             const on = pos === lastLexiconPos;
-            return `<button type="button" class="lexicon-pos-tab${on ? ' is-active' : ''}" role="tab" aria-selected="${on ? 'true' : 'false'}" data-pos="${escapeHtml(pos)}">${escapeHtml(pos)}</button>`;
-          }).join('');
+            return `<button type="button" class="lexicon-pos-tab${on ? ' is-active' : ''}" role="tab" aria-selected="${on ? 'true' : 'false'}" data-pos="${escapeHtml(pos)}">${escapeHtml(label)}</button>`;
+          };
+          const tabsHtml = [tabBtn('all', 'all')].concat(order.map(function (pos) {
+            return tabBtn(pos, pos);
+          })).join('');
 
-          let body = '';
           const shownExampleKeys = new Set();
-          order.forEach(function (pos) {
-            const on = pos === lastLexiconPos;
+          function renderSenses(senses) {
             let panel = '';
             let senseCounter = 0;
-            const senses = groups[pos].slice().sort(function (a, b) {
+            const sorted = senses.slice().sort(function (a, b) {
               const la = stripHtmlToText(a.meaning || a.definition || '').length;
               const lb = stripHtmlToText(b.meaning || b.definition || '').length;
               return lb - la;
             });
-            senses.forEach(function (d) {
+            sorted.forEach(function (d) {
               senseCounter += 1;
               const rawMeaning = d.meaning || d.definition || '';
               const isWikiHtml = /<[a-z][\s\S]*>/i.test(rawMeaning);
@@ -2958,7 +3020,18 @@ function startAutoCloseTimeout() {
                   </div>
                 </div>`;
             });
-            body += `<div class="lexicon-pos-panel${on ? ' is-active' : ''}" role="tabpanel" data-pos="${escapeHtml(pos)}"${on ? '' : ' hidden'}>${panel}</div>`;
+            return panel;
+          }
+
+          let allInner = '';
+          order.forEach(function (pos) {
+            allInner += `<div class="lexicon-pos-group"><div class="lexicon-pos-heading">${escapeHtml(pos)}</div>${renderSenses(groups[pos])}</div>`;
+          });
+          const allOn = lastLexiconPos === 'all';
+          let body = `<div class="lexicon-pos-panel${allOn ? ' is-active' : ''}" role="tabpanel" data-pos="all"${allOn ? '' : ' hidden'}>${allInner}</div>`;
+          order.forEach(function (pos) {
+            const on = pos === lastLexiconPos;
+            body += `<div class="lexicon-pos-panel${on ? ' is-active' : ''}" role="tabpanel" data-pos="${escapeHtml(pos)}"${on ? '' : ' hidden'}>${renderSenses(groups[pos])}</div>`;
           });
           body = `<div class="lexicon-pos-tabs" role="tablist">${tabsHtml}</div>${body}`;
 

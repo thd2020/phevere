@@ -170,6 +170,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   hidePopup: () => {
     ipcRenderer.send('hide-popup');
   },
+  speakIpa: (payload: { ipa: string; accent?: string }): Promise<{ ok: boolean; error?: string }> => {
+    return ipcRenderer.invoke('speak-ipa', payload);
+  },
+  cancelIpaSpeak: (): Promise<{ ok: boolean }> => {
+    return ipcRenderer.invoke('cancel-ipa-speak');
+  },
+  fetchPronunciationAudio: (
+    url: string,
+  ): Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }> => {
+    return ipcRenderer.invoke('fetch-pronunciation-audio', url);
+  },
   onShowClipboardHistory: (callback: () => void) => {
     ipcRenderer.on('show-clipboard-history', () => callback());
   },
@@ -454,6 +465,11 @@ declare global {
       showPopup: (x: number, y: number, text: string) => void;
       rememberSelection?: (x: number, y: number, text: string) => void;
       hidePopup: () => void;
+      speakIpa?: (payload: { ipa: string; accent?: string }) => Promise<{ ok: boolean; error?: string }>;
+      cancelIpaSpeak?: () => Promise<{ ok: boolean }>;
+      fetchPronunciationAudio?: (
+        url: string,
+      ) => Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }>;
       onShowClipboardHistory: (callback: () => void) => void;
       onMainWindowResizing?: (callback: (resizing: boolean) => void) => void;
       testTextSelection: () => Promise<{ success: boolean; text: string }>;
