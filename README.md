@@ -1,6 +1,6 @@
 # Phevere Dictionary
 
-**2026-09-04:** Lexicon / word family / synonyms are separate rounded cards again (not one merged sheet). Sidebar stays vertical tabs in small cards.
+**2026-09-04:** Lexicon sidebar has its own scrollbar (wheel stays on the rail). Content cards stay separate.
 
 **2026-09-04:** Toolbar 🔊 plays a recorded clip (Free Dictionary or Wiktionary Commons). IPA chips use a persistent Windows speech host so they actually speak.
 

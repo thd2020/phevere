@@ -759,20 +759,40 @@
       .lexicon-pos-tabs {
         flex: 0 0 auto;
         width: max-content;
+        position: sticky;
+        top: 0;
+        align-self: flex-start;
         display: flex;
         flex-direction: column;
         margin: 0;
         padding: 0;
+        max-height: calc(100vh - 56px);
+        overflow: hidden;
         border-right: 1px solid #e1e5e9;
         background: #ffffff;
       }
       .lexicon-rail-inner {
-        position: sticky;
-        top: 0;
+        flex: 1 1 auto;
+        min-height: 0;
         display: flex;
         flex-direction: column;
         gap: 6px;
         padding: 8px 6px;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        scrollbar-color: #b8c0c8 transparent;
+      }
+      .lexicon-rail-inner::-webkit-scrollbar {
+        width: 6px;
+      }
+      .lexicon-rail-inner::-webkit-scrollbar-thumb {
+        background: #c5ccd3;
+        border-radius: 3px;
+      }
+      .lexicon-rail-inner::-webkit-scrollbar-track {
+        background: transparent;
       }
       .lexicon-rail-block {
         display: flex;
@@ -2012,7 +2032,12 @@
          var resultsSection = document.querySelector('.results-section');
          if (resultsSection) {
            resultsSection.addEventListener('scroll', onLexiconPosScroll, { passive: true });
+           if (typeof ResizeObserver !== 'undefined') {
+             try { new ResizeObserver(fitLexiconRail).observe(resultsSection); } catch (err) {}
+           }
          }
+         window.addEventListener('resize', fitLexiconRail);
+         document.addEventListener('wheel', onLexiconRailWheel, { capture: true, passive: false });
 
          document.getElementById('lookupNavBack')?.addEventListener('click', function (e) {
            e.preventDefault();
@@ -2776,6 +2801,7 @@ function startAutoCloseTimeout() {
               var firstGroup = document.querySelector('.lexicon-pos-group');
               var firstPos = firstGroup ? (firstGroup.getAttribute('data-pos') || '') : '';
               highlightLexiconPosTab(lastLexiconPos || firstPos);
+              fitLexiconRail();
               if (!lastLexiconPos || lastLexiconPos === firstPos) {
                 var scroller = document.querySelector('.results-section');
                 if (scroller) scroller.scrollTop = 0;
@@ -2882,14 +2908,49 @@ function startAutoCloseTimeout() {
           }
         }
 
+        function fitLexiconRail() {
+          var nav = document.querySelector('.lexicon-pos-tabs');
+          var scroller = document.querySelector('.results-section');
+          if (!nav || !scroller) return;
+          nav.style.maxHeight = Math.max(80, scroller.clientHeight) + 'px';
+        }
+
+        function lexiconRailScroller(fromEl) {
+          var nav = fromEl && fromEl.closest ? fromEl.closest('.lexicon-pos-tabs') : document.querySelector('.lexicon-pos-tabs');
+          if (!nav) return null;
+          return nav.querySelector('.lexicon-rail-inner') || nav;
+        }
+
+        function onLexiconRailWheel(e) {
+          var nav = e.target && e.target.closest && e.target.closest('.lexicon-pos-tabs');
+          if (!nav) return;
+          var rail = nav.querySelector('.lexicon-rail-inner') || nav;
+          if (rail.scrollHeight <= rail.clientHeight + 1) return;
+          e.preventDefault();
+          e.stopPropagation();
+          rail.scrollTop += e.deltaY;
+        }
+
+        function revealLexiconRailTab(tab) {
+          var rail = lexiconRailScroller(tab);
+          if (!rail || !tab) return;
+          var t = tab.getBoundingClientRect();
+          var n = rail.getBoundingClientRect();
+          if (t.top < n.top) rail.scrollTop += t.top - n.top - 4;
+          else if (t.bottom > n.bottom) rail.scrollTop += t.bottom - n.bottom + 4;
+        }
+
         function highlightLexiconPosTab(pos) {
           var root = document.querySelector('.lexicon-block--senses');
           if (!root) return;
+          var active = null;
           root.querySelectorAll('.lexicon-pos-tab').forEach(function (tab) {
             var on = tab.getAttribute('data-pos') === pos;
             tab.classList.toggle('is-active', on);
             tab.setAttribute('aria-selected', on ? 'true' : 'false');
+            if (on) active = tab;
           });
+          if (active) revealLexiconRailTab(active);
         }
 
         function lexiconJumpNode(root, pos) {
