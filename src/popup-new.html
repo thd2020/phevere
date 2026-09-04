@@ -622,17 +622,22 @@
 
       .definition-sense-row {
         display: grid;
-        grid-template-columns: 28px 1fr;
-        gap: 8px;
-        align-items: start;
+        grid-template-columns: max-content minmax(0, 1fr);
+        column-gap: 0.35em;
+        align-items: baseline;
       }
 
       .definition-sense-num {
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        font-size: 12px;
+        font: inherit;
+        font-size: 14px;
         font-weight: 500;
+        line-height: 1.55;
         color: #64748b;
-        padding-top: 2px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .definition-sense-body {
+        min-width: 0;
       }
 
       .definition-pos {
@@ -652,6 +657,29 @@
         font-size: 14px;
         cursor: text;
         user-select: text;
+      }
+
+      .definition-text > :first-child {
+        margin: 0;
+        padding-top: 0;
+        padding-left: 0;
+      }
+
+      .definition-text p,
+      .definition-text li,
+      .definition-text dd {
+        margin: 0;
+        padding: 0;
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .definition-text ol,
+      .definition-text ul,
+      .definition-text dl {
+        margin: 0;
+        padding: 0;
+        list-style: none;
       }
 
       .definition-text:hover {
@@ -3296,7 +3324,7 @@ function startAutoCloseTimeout() {
                 <div class="definition-item">
                   <div class="definition-sense-row">
                     <div class="definition-sense-num">${senseCounter}.</div>
-                    <div>
+                    <div class="definition-sense-body">
                       <div class="definition-text">${meaningHtml || 'No definition available'}</div>
                       ${exHtml}
                       <div class="definition-source-badges">${badges}</div>

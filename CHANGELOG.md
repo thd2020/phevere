@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Sense numbers sat above the gloss (`align-items: start` plus a smaller number size). Number and first line of the definition now share a baseline.
 - Hover / OCR lookup on HiDPI (and mixed-DPI) PCs opened the strip at a fixed workArea corner. Cursor and overlay points are Electron DIP; `placePopupNearPoint` no longer runs `screenToDipPoint` on them. Win32 UIA still uses physical pixels for word-at-point, but not as the popup anchor.
 - Vertical rail chips only drew a hairline before the last sub-tab (`rotate(180deg)` flipped an inset shadow). Every sub-tab in a glued rail chip is now split by a 1px gap.
 - IPA chip speakers failed on every word (`powershell.exe exit null`) because each retry killed the previous synthesizer. Toolbar 🔊 said “No recorded pronunciation” whenever Free Dictionary timed out, even when Wiktionary had a Commons recording.
