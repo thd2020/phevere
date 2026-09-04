@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Lexicon POS tabs and headings use dictionary abbreviations when they exist (**adj.**, **n.**, **v.**, **adv.**, …). Hairlines separate vertical tabs inside a rail card; the right pane uses a thick rule between sections that share one block (senses, synonyms/antonyms, word-family rows).
+- Lexicon POS tabs and headings use dictionary abbreviations when they exist (**adj.**, **n.**, **v.**, **adv.**, …). Vertical tabs that share a rail card are one glued chip with a thin hairline between sub-tabs — not a thick rule inside the right-hand block.
 - Lexicon sidebar uses **cards** for blocks and **vertical** section tabs. Below the headword, the rail and the definitions each fill the remaining pane and scroll on their own (10px rail scrollbar). Lexicon vs word family stay separate rounded cards.
 - Toolbar 🔊 plays a **recorded** clip: Free Dictionary MP3 when that API answered, otherwise the Wiktionary/Commons file from `{{audio}}`. It does not read the spelling with the system voice. Clips are cached on disk (`%APPDATA%\phevere\pronunciation-cache`) and the first URL is prefetched as soon as lookup attaches it. A click before the URL arrives waits instead of toasting “No recorded pronunciation”.
 - A speaker after each US / UK IPA chip speaks **that chip’s IPA** through a long-lived Windows System.Speech host (`<phoneme alphabet="ipa">`) or macOS `say` phonemes — not the headword and not the recorded clip.
