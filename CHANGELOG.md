@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Lexicon sidebar uses **cards** for blocks and **vertical** section tabs. The panel matches: lexicon, examples, synonyms/antonyms, and word family are separate rounded cards. The rail is clipped to the visible pane with a **visible scrollbar**; wheel over the rail does not scroll definitions. Noun/verb/… inside the lexicon card are divided by the original thick rule.
+- Lexicon sidebar uses **cards** for blocks and **vertical** section tabs. Below the headword, the rail and the definitions each fill the remaining pane and scroll on their own (10px rail scrollbar). Noun/verb/… inside the lexicon card are divided by the original thick rule; lexicon vs word family stay separate rounded cards.
 - Toolbar 🔊 plays a **recorded** clip: Free Dictionary MP3 when that API answered, otherwise the Wiktionary/Commons file from `{{audio}}`. It does not read the spelling with the system voice.
 - A speaker after each US / UK IPA chip speaks **that chip’s IPA** through a long-lived Windows System.Speech host (`<phoneme alphabet="ipa">`) or macOS `say` phonemes — not the headword and not the recorded clip.
 

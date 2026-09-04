@@ -306,9 +306,14 @@
       .results-section {
          flex: 1 1 auto;
          min-height: 0;
+         display: flex;
+         flex-direction: column;
          overflow-y: auto;
          padding: 12px 14px 12px;
          background: #ffffff;
+       }
+      .results-section.is-lexicon-fill {
+         overflow: hidden;
        }
 
       .loading {
@@ -401,6 +406,14 @@
         display: none;
         animation: fadeIn 0.3s ease-in;
       }
+      .dictionary-results.is-fill {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        animation: none;
+      }
 
       @keyframes fadeIn {
         from { opacity: 0; transform: translateY(10px); }
@@ -419,6 +432,9 @@
       .lexicon-stack {
         display: flex;
         flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
         gap: 0;
       }
 
@@ -428,6 +444,7 @@
       }
 
       .lexicon-block--headword {
+        flex: 0 0 auto;
         padding-bottom: 14px;
       }
 
@@ -745,39 +762,42 @@
       .lexicon-pos-layout {
         display: flex;
         align-items: stretch;
-        min-height: 120px;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
         gap: 0;
       }
       .lexicon-block--senses {
-        overflow: visible;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
         padding: 0;
-        margin: 0 0 10px;
+        margin: 0;
         background: transparent;
         border: none;
         box-shadow: none;
       }
       .lexicon-pos-tabs {
         flex: 0 0 auto;
+        align-self: stretch;
         width: max-content;
-        position: sticky;
-        top: 0;
-        align-self: flex-start;
+        min-height: 0;
+        position: relative;
         display: flex;
         flex-direction: column;
         margin: 0;
         padding: 0;
-        height: calc(100vh - 56px);
-        max-height: calc(100vh - 56px);
         overflow-x: hidden;
         overflow-y: scroll;
         border-right: 1px solid #e1e5e9;
         background: #ffffff;
         scrollbar-gutter: stable;
-        scrollbar-width: auto;
-        scrollbar-color: #64748b #e8eaed;
       }
       .lexicon-pos-tabs::-webkit-scrollbar {
         width: 10px;
+        background: #e8eaed;
       }
       .lexicon-pos-tabs::-webkit-scrollbar-track {
         background: #e8eaed;
@@ -785,6 +805,10 @@
       .lexicon-pos-tabs::-webkit-scrollbar-thumb {
         background: #64748b;
         border-radius: 5px;
+        border: 2px solid #e8eaed;
+      }
+      .lexicon-pos-tabs::-webkit-scrollbar-thumb:hover {
+        background: #475569;
       }
       .lexicon-rail-inner {
         flex: 0 0 auto;
@@ -844,14 +868,18 @@
         font-weight: 600;
       }
       .lexicon-pos-panel {
-        flex: 1;
+        flex: 1 1 auto;
         min-width: 0;
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
         display: flex;
         flex-direction: column;
         gap: 10px;
         padding: 0 0 0 8px;
       }
       .lexicon-pos-panel > .result-card {
+        flex: 0 0 auto;
         margin-bottom: 0;
       }
 
@@ -1779,9 +1807,12 @@
         invalidateLookupState(nextFold);
         var results = document.getElementById('dictionary-results');
         if (results) {
+          results.classList.remove('is-fill');
           results.innerHTML = '';
           results.style.display = 'none';
         }
+        var resultsSection = document.querySelector('.results-section');
+        if (resultsSection) resultsSection.classList.remove('is-lexicon-fill');
         var loading = document.getElementById('loadingElement');
         if (loading) loading.style.display = 'none';
       }
@@ -2036,15 +2067,14 @@
 
          var resultsSection = document.querySelector('.results-section');
          if (resultsSection) {
-           resultsSection.addEventListener('scroll', function () {
-             onLexiconPosScroll();
-             fitLexiconRail();
-           }, { passive: true });
-           if (typeof ResizeObserver !== 'undefined') {
-             try { new ResizeObserver(fitLexiconRail).observe(resultsSection); } catch (err) {}
-           }
+           resultsSection.addEventListener('scroll', function (e) {
+             if (e.target && e.target.classList && e.target.classList.contains('lexicon-pos-panel')) {
+               onLexiconPosScroll();
+             } else if (e.target === resultsSection) {
+               onLexiconPosScroll();
+             }
+           }, { capture: true, passive: true });
          }
-         window.addEventListener('resize', fitLexiconRail);
          document.addEventListener('wheel', onLexiconRailWheel, { capture: true, passive: false });
 
          document.getElementById('lookupNavBack')?.addEventListener('click', function (e) {
@@ -2178,7 +2208,7 @@
           pvLog('[POPUP] displayEtymologyResult called with:', result);
           document.getElementById('loadingElement').style.display = 'none';
           const resultsContainer = document.getElementById('dictionary-results');
-          resultsContainer.style.display = 'block';
+          showDictionaryResults('flow');
           const word = escapeHtml(result.word || '');
           const sources = splitEtymologySources(result.etymology || '');
           const chainHtml = formatEtymologyChain(result.etymologyChain);
@@ -2706,12 +2736,23 @@ function startAutoCloseTimeout() {
         }
       }
 
+      function showDictionaryResults(mode) {
+        var el = document.getElementById('dictionary-results');
+        var pane = document.querySelector('.results-section');
+        var fill = mode === 'fill';
+        if (el) {
+          el.classList.toggle('is-fill', fill);
+          el.style.display = mode === 'hide' ? 'none' : (fill ? 'flex' : 'block');
+        }
+        if (pane) pane.classList.toggle('is-lexicon-fill', fill);
+      }
+
       // Show loading
       function showLoading(opts) {
         opts = opts || {};
         const el = document.getElementById('loadingElement');
         el.style.display = 'flex';
-        document.getElementById('dictionary-results').style.display = 'none';
+        showDictionaryResults('hide');
 
         const title = document.getElementById('loadingTitle');
         const sub = document.getElementById('loadingSub');
@@ -2779,7 +2820,7 @@ function startAutoCloseTimeout() {
 
          document.getElementById('loadingElement').style.display = 'none';
          const resultsContainer = document.getElementById('dictionary-results');
-         resultsContainer.style.display = 'block';
+         showDictionaryResults(currentTab === 'lexicon' ? 'fill' : 'flow');
 
          let contentHtml = '';
          if (currentTab === 'translation') {
@@ -2809,10 +2850,9 @@ function startAutoCloseTimeout() {
               var firstGroup = document.querySelector('.lexicon-pos-group');
               var firstPos = firstGroup ? (firstGroup.getAttribute('data-pos') || '') : '';
               highlightLexiconPosTab(lastLexiconPos || firstPos);
-              fitLexiconRail();
               if (!lastLexiconPos || lastLexiconPos === firstPos) {
-                var scroller = document.querySelector('.results-section');
-                if (scroller) scroller.scrollTop = 0;
+                var panel = document.querySelector('.lexicon-pos-panel');
+                if (panel) panel.scrollTop = 0;
               } else {
                 jumpToLexiconPos(lastLexiconPos, true);
               }
@@ -2916,17 +2956,8 @@ function startAutoCloseTimeout() {
           }
         }
 
-        function fitLexiconRail() {
-          var nav = document.querySelector('.lexicon-pos-tabs');
-          var scroller = document.querySelector('.results-section');
-          if (!nav || !scroller) return;
-          var sbox = scroller.getBoundingClientRect();
-          var nbox = nav.getBoundingClientRect();
-          var top = Math.max(sbox.top, nbox.top);
-          var h = Math.floor(sbox.bottom - top);
-          if (h < 80) h = Math.max(80, scroller.clientHeight);
-          nav.style.height = h + 'px';
-          nav.style.maxHeight = h + 'px';
+        function lexiconPanelScroller() {
+          return document.querySelector('.lexicon-pos-panel');
         }
 
         function lexiconRailScroller(fromEl) {
@@ -2975,7 +3006,7 @@ function startAutoCloseTimeout() {
 
         function jumpToLexiconPos(pos, instant) {
           var root = document.querySelector('.lexicon-block--senses');
-          var scroller = document.querySelector('.results-section');
+          var scroller = lexiconPanelScroller() || document.querySelector('.results-section');
           if (!root || !scroller) return;
           var target = pos ? lexiconJumpNode(root, pos) : null;
           if (!target) target = root.querySelector('.lexicon-pos-panel [data-pos]');
@@ -2999,7 +3030,7 @@ function startAutoCloseTimeout() {
           if (posJumpLock) return;
           var root = document.querySelector('.lexicon-block--senses');
           if (!root) return;
-          var scroller = document.querySelector('.results-section');
+          var scroller = lexiconPanelScroller() || document.querySelector('.results-section');
           if (!scroller) return;
           var marker = scroller.getBoundingClientRect().top + 20;
           var nodes = root.querySelectorAll('.lexicon-pos-panel [data-pos]');
@@ -3358,7 +3389,7 @@ function startAutoCloseTimeout() {
       // Display mock result
       function displayMockResult(text) {
         document.getElementById('loadingElement').style.display = 'none';
-        document.getElementById('dictionary-results').style.display = 'block';
+        showDictionaryResults('flow');
         
         document.getElementById('dictionary-results').innerHTML = `
           <div class="result-card">
@@ -3402,7 +3433,7 @@ function startAutoCloseTimeout() {
       function displayErrorResult(text, error) {
         document.getElementById('loadingElement').style.display = 'none';
         const container = document.getElementById('dictionary-results');
-        container.style.display = 'block';
+        showDictionaryResults('flow');
         container.innerHTML = `<div class="error-message">Failed to look up "${text}".<br><small>${error.message || 'Unknown error'}</small></div>`;
       }
       
@@ -4001,7 +4032,7 @@ function startAutoCloseTimeout() {
                const wikiLang = (lang === 'zh' || lang === 'ja' || lang === 'ko') ? lang : 'en';
                const result = await window.wikipediaAPI.search(q, wikiLang, 5);
                if (loading) loading.style.display = 'none';
-               resultsContainer.style.display = 'block';
+               showDictionaryResults('flow');
                const items = (result && result.results) || [];
 
                function showList() {
@@ -4070,7 +4101,7 @@ function startAutoCloseTimeout() {
              } catch (err) {
                console.error('Wikipedia panel error', err);
                if (loading) loading.style.display = 'none';
-               resultsContainer.style.display = 'block';
+               showDictionaryResults('flow');
                resultsContainer.innerHTML = `<div class="error-message">Wikipedia lookup failed.</div>`;
              }
            }
