@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Translation engines in **Settings → Sources** use the same row layout as dictionary sources, with formal names (Google Translate, MyMemory, Youdao, DeepL) and “No API key” / “API key required”.
+- Hover OCR is the same probe for every PP-OCR pack: DB `unclip_ratio` 2.2, locate on a line strip, recrop from glyph height (not the det-box width). PP-OCRv5’s tighter boxes no longer clip a mid-word square.
+- Durable windows (notebook, Settings, clipboard) are opaque. On Windows they use the native caption overlay so resize is not a frameless Mica drag.
 - NSIS InstFiles page **names the step**: header subtitle, details list (extract / shortcuts / OCR models / Apps & Features). `prepare:installer` flips electron-builder’s `SetDetailsPrint none` so extract lines are visible.
 - CI/dev bumps from Dependabot: Actions `checkout` / `setup-node` / `upload-artifact` v7, `action-gh-release` v3, `webpack-cli` 7, `ts-loader` 9.6, `maker-rpm` 7.11. TypeScript stays 5; `@typescript-eslint/eslint-plugin` stays 6 (PRs #7 and #9 closed — they need a matching parser / loader).
 
@@ -23,8 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Empty translation results (Google 429, missing Youdao/DeepL keys) were frozen in the 24h lookup cache, so every chip looked dead. Failed translations are no longer cached; Google gtx cools down after 429 and falls through to a second Google URL plus MyMemory.
 - Word-family **derived** chips showed `noun/verb/adj.` on almost every citation form (wink marks those as all three POS). Banners are a single precise tag (wiki or suffix) or omitted; phrase chips are not labelled “phrase”.
-- Shrinking the main window felt stuck: Mica and `backdrop-filter` now turn off for the drag.
-- Hover OCR used a fixed 128×128 DIP square, so small type glued several words and large type clipped letters. It now captures a line strip, splits words from detection-box gaps (glyph height), and expands the crop if the hit box is clipped.
+- Shrinking the main window felt stuck: notebook/Settings are opaque (no Mica), Windows uses `titleBarOverlay`, and live-resize drops blur/shadow/transitions.
+- Hover OCR used a fixed 128×128 DIP square, so small type glued several words and large type clipped letters. The probe is now pack-agnostic: line strip, glyph-height recrop, gap-merge of letter boxes and tight v5 fragments. Gutenye’s hard-coded DB unclip is raised to 2.2 so rec is not cropped to v5’s tight polygon.
 - `npm start` failed to compile: a stray brace in Settings CSS, and a missing macOS koffi binding after the mouse-down hover change.
 - Select-to-lookup ignored Phevere’s own windows (Settings and the notebook): UIA/AX skipped this process, and Settings was a modal child of the main window. Lookup now uses the same capture path inside the app; tray **Settings** no longer raises the main window. On Windows, a tray right-click no longer also fires the left-click “open notebook” handler.
 - Hover OCR no longer runs after a live text selection (or while the mouse button is down). Selection wins.

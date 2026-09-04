@@ -1,6 +1,6 @@
 # Phevere Dictionary
 
-**2026-09-04:** Translation engines in Settings match the dictionary list (formal names; API-key note). Word-family phrases are not tagged “phrase”; derived chips keep a single POS or none (no `noun/verb/adj.` dump). Shrinking the notebook drops Mica/blur for the drag. Hover OCR picks a word from detection boxes, not a fixed crop.
+**2026-09-04:** Hover OCR uses one probe for every PP-OCR pack (v5 is no longer a fixed crop). Notebook/Settings on Windows are opaque and use the native caption overlay, so shrinking the window is not a Mica/frameless drag. Translation engines in Settings match the dictionary list. Word-family phrases are not tagged “phrase”; derived chips keep a single POS or none.
 
 **2026-09-03:** Translation engines live in Settings → Sources (not chips on the lookup). The translation tab is a language pair (detect, swap, target) with a speaker on source and target. Lookup works inside Settings and the notebook the same as in other apps. Tray Settings no longer raises the main window. Selection beats hover OCR.
 
