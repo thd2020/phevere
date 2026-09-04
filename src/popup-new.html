@@ -1596,7 +1596,7 @@
       let currentResult = null;
       let currentTab = 'lexicon';
       let lastLexiconWord = '';
-      let lastLexiconPos = 'all';
+      let lastLexiconPos = '';
       var posJumpLock = false;
       var posJumpTimer = null;
       let isExpanded = false; // start collapsed
@@ -1966,7 +1966,7 @@
              var next = (e.key === 'ArrowDown' || e.key === 'ArrowRight')
                ? Math.min(posTabs.length - 1, cur + 1)
                : Math.max(0, cur - 1);
-             activateLexiconPos(posTabs[next].getAttribute('data-pos') || 'all');
+             activateLexiconPos(posTabs[next].getAttribute('data-pos') || posTabs[0].getAttribute('data-pos') || '');
              try { posTabs[next].focus(); } catch (err) {}
            }
          });
@@ -2735,7 +2735,15 @@ function startAutoCloseTimeout() {
           resultsContainer.innerHTML = contentHtml;
           if (currentTab === 'lexicon') {
             requestAnimationFrame(function () {
-              activateLexiconPos(lastLexiconPos, true, true);
+              var firstGroup = document.querySelector('.lexicon-pos-group');
+              var firstPos = firstGroup ? (firstGroup.getAttribute('data-pos') || '') : '';
+              highlightLexiconPosTab(lastLexiconPos || firstPos);
+              if (!lastLexiconPos || lastLexiconPos === firstPos) {
+                var scroller = document.querySelector('.results-section');
+                if (scroller) scroller.scrollTop = 0;
+              } else {
+                jumpToLexiconPos(lastLexiconPos, true);
+              }
             });
           }
        }
@@ -2850,17 +2858,16 @@ function startAutoCloseTimeout() {
           var root = document.querySelector('.lexicon-block--senses');
           var scroller = document.querySelector('.results-section');
           if (!root || !scroller) return;
-          var top = 0;
-          if (pos && pos !== 'all') {
-            var target = null;
+          var target = null;
+          if (pos) {
             root.querySelectorAll('.lexicon-pos-group').forEach(function (g) {
               if (g.getAttribute('data-pos') === pos) target = g;
             });
-            if (!target) return;
-            top = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 6;
           }
+          if (!target) target = root.querySelector('.lexicon-pos-group');
+          if (!target) return;
           posJumpLock = true;
-          top = Math.max(0, top);
+          var top = Math.max(0, target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 6);
           if (instant) {
             scroller.scrollTop = top;
           } else {
@@ -2881,8 +2888,9 @@ function startAutoCloseTimeout() {
           var scroller = document.querySelector('.results-section');
           if (!scroller) return;
           var marker = scroller.getBoundingClientRect().top + 20;
-          var pos = 'all';
-          root.querySelectorAll('.lexicon-pos-group').forEach(function (g) {
+          var groups = root.querySelectorAll('.lexicon-pos-group');
+          var pos = groups.length ? (groups[0].getAttribute('data-pos') || '') : '';
+          groups.forEach(function (g) {
             if (g.getBoundingClientRect().top <= marker + 36) pos = g.getAttribute('data-pos') || pos;
           });
           if (pos === lastLexiconPos) return;
@@ -2891,7 +2899,7 @@ function startAutoCloseTimeout() {
         }
 
         function activateLexiconPos(pos, shouldScroll, instant) {
-          lastLexiconPos = pos || 'all';
+          lastLexiconPos = pos || '';
           if (shouldScroll === undefined) shouldScroll = true;
           highlightLexiconPosTab(lastLexiconPos);
           if (shouldScroll) jumpToLexiconPos(lastLexiconPos, !!instant);
@@ -3054,20 +3062,20 @@ function startAutoCloseTimeout() {
 
           const wordKey = foldLookupKey(result.word || '');
           if (wordKey !== foldLookupKey(lastLexiconWord)) {
-            lastLexiconPos = 'all';
+            lastLexiconPos = order[0] || '';
             lastLexiconWord = result.word || '';
           }
-          if (lastLexiconPos !== 'all' && order.indexOf(lastLexiconPos) < 0) {
-            lastLexiconPos = 'all';
+          if (!lastLexiconPos || order.indexOf(lastLexiconPos) < 0) {
+            lastLexiconPos = order[0] || '';
           }
 
           const tabBtn = function (pos, label) {
             const on = pos === lastLexiconPos;
             return `<button type="button" class="lexicon-pos-tab${on ? ' is-active' : ''}" role="tab" aria-selected="${on ? 'true' : 'false'}" data-pos="${escapeHtml(pos)}">${escapeHtml(label)}</button>`;
           };
-          const tabsHtml = [tabBtn('all', 'all')].concat(order.map(function (pos) {
+          const tabsHtml = order.map(function (pos) {
             return tabBtn(pos, pos);
-          })).join('');
+          }).join('');
 
           const shownExampleKeys = new Set();
           function renderSenses(senses) {
