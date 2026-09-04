@@ -216,12 +216,12 @@ function initializeSettingsWindow() {
           <section class="settings-panel" data-panel="sources" aria-labelledby="settings-sources-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-sources-heading" class="settings-panel__title">Sources</h2>
-              <p class="settings-hint">Dictionary packs fill the lexicon. Translation engines are used on the Translation tab (Auto tries Google, then MyMemory).</p>
+              <p class="settings-hint">Dictionary sources supply definitions. The translation engine is used on the Translation tab. Auto uses Google Translate, then MyMemory.</p>
             </div>
             <h3 class="settings-offline-installed-title">Dictionary</h3>
             <div id="main-source-toggles"></div>
             <h3 class="settings-offline-installed-title">Translation</h3>
-            <div id="translation-engine-toggles" class="settings-tx-engines" role="radiogroup" aria-label="Translation engine"></div>
+            <div id="translation-engine-toggles" role="radiogroup" aria-label="Translation engine"></div>
           </section>
 
           <section class="settings-panel" data-panel="offline" aria-labelledby="settings-offline-heading">
@@ -316,6 +316,7 @@ function initializeSettingsWindow() {
       window.close();
     });
   });
+  wireLiveResizeClass();
 }
 
 async function wireOcrSettingsPanel(): Promise<void> {
@@ -1635,12 +1636,19 @@ function initializePopup() {
 
 
 
+function wireLiveResizeClass(): void {
+  window.electronAPI?.onMainWindowResizing?.((resizing) => {
+    document.documentElement.classList.toggle('is-resizing', resizing);
+  });
+}
+
 function initializeMainWindow() {
   initializeMainWindowControls();
   wireMainWindowImageIngest();
   wireInAppTextSelectionLookup();
   loadRecentSelectionsIntoDom();
   void loadVocabNotebook();
+  wireLiveResizeClass();
   const vocabApi = (window as any).vocabAPI;
   if (vocabApi?.onUpdated) {
     vocabApi.onUpdated(() => {
@@ -1689,6 +1697,7 @@ function initializeClipboardWindow() {
   document.body.className = 'clipboard-window main-window';
   initializeMainWindowControls();
   wireInAppTextSelectionLookup();
+  wireLiveResizeClass();
   void showClipboardHistory();
 }
 
@@ -2759,12 +2768,12 @@ async function loadMainSourceToggles() {
   }
 }
 
-const TRANSLATION_ENGINE_OPTIONS: Array<{ id: string; label: string; hint: string }> = [
-  { id: 'auto', label: 'Auto', hint: 'Google, then MyMemory' },
-  { id: 'google', label: 'Google', hint: 'Free unofficial endpoint' },
-  { id: 'mymemory', label: 'MyMemory', hint: 'Free, no key' },
-  { id: 'youdao', label: 'Youdao', hint: 'Needs app key' },
-  { id: 'deepl', label: 'DeepL', hint: 'Needs API key' },
+const TRANSLATION_ENGINE_OPTIONS: Array<{ id: string; label: string; detail: string }> = [
+  { id: 'auto', label: 'Auto', detail: 'Google Translate, then MyMemory' },
+  { id: 'google', label: 'Google Translate', detail: 'No API key' },
+  { id: 'mymemory', label: 'MyMemory', detail: 'No API key' },
+  { id: 'youdao', label: 'Youdao', detail: 'API key required' },
+  { id: 'deepl', label: 'DeepL', detail: 'API key required' },
 ];
 
 async function loadTranslationEngineToggles(): Promise<void> {
@@ -2775,12 +2784,12 @@ async function loadTranslationEngineToggles(): Promise<void> {
     const prefs = await api.getTranslationPrefs();
     const current = (prefs && prefs.provider) || 'auto';
     host.innerHTML = TRANSLATION_ENGINE_OPTIONS.map((opt) => `
-      <label class="settings-tx-engine">
-        <input type="radio" name="translation-engine" value="${opt.id}" ${opt.id === current ? 'checked' : ''} />
-        <span class="settings-tx-engine__text">
-          <span class="settings-tx-engine__name">${opt.label}</span>
-          <span class="settings-tx-engine__hint">${opt.hint}</span>
-        </span>
+      <label class="source-toggle-main">
+        <div class="source-info">
+          <span class="source-name">${opt.label}</span>
+          <span class="source-priority">${opt.detail}</span>
+        </div>
+        <input class="source-choice" type="radio" name="translation-engine" value="${opt.id}" ${opt.id === current ? 'checked' : ''} />
       </label>
     `).join('');
     host.querySelectorAll('input[name="translation-engine"]').forEach((el) => {

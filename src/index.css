@@ -562,7 +562,7 @@ body.main-window .selections-list {
   grid-template-columns: 1fr;
   gap: 10px;
   align-content: start;
-  max-height: min(52vh, 420px);
+  max-height: 420px;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 6px 10px 12px 4px;
@@ -2107,6 +2107,12 @@ body.settings-page {
   text-rendering: optimizeLegibility;
 }
 
+html.is-resizing body.main-window *,
+html.is-resizing body.settings-page * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 body.settings-page .settings-app {
   height: 100%;
   min-height: 0;
@@ -2658,14 +2664,16 @@ body.settings-page .settings-dropzone.is-busy {
   pointer-events: none;
 }
 
-body.settings-page #main-source-toggles {
+body.settings-page #main-source-toggles,
+body.settings-page #translation-engine-toggles {
   background: var(--set-panel);
   border: 1px solid var(--set-line);
   border-radius: 10px;
   overflow: hidden;
 }
 
-body.settings-page #main-source-toggles .source-toggle-main {
+body.settings-page #main-source-toggles .source-toggle-main,
+body.settings-page #translation-engine-toggles .source-toggle-main {
   padding: 8px 12px;
   background: transparent;
   border: none;
@@ -2674,58 +2682,33 @@ body.settings-page #main-source-toggles .source-toggle-main {
   margin-bottom: 0;
 }
 
-body.settings-page #main-source-toggles .source-toggle-main:last-child {
+body.settings-page #main-source-toggles .source-toggle-main:last-child,
+body.settings-page #translation-engine-toggles .source-toggle-main:last-child {
   margin-bottom: 0;
-}
-
-body.settings-page #main-source-toggles .source-name {
-  color: var(--set-ink);
-}
-
-body.settings-page #main-source-toggles .source-priority {
-  font-size: 0.75rem;
-  color: var(--set-ink-soft);
-}
-
-body.settings-page .settings-tx-engines {
-  display: flex;
-  flex-direction: column;
-  background: var(--set-panel);
-  border: 1px solid var(--set-line);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-body.settings-page .settings-tx-engine {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--set-line);
-  cursor: pointer;
-}
-
-body.settings-page .settings-tx-engine:last-child {
   border-bottom: none;
 }
 
-body.settings-page .settings-tx-engine input {
-  margin-top: 3px;
+body.settings-page #main-source-toggles .source-name,
+body.settings-page #translation-engine-toggles .source-name {
+  color: var(--set-ink);
 }
 
-body.settings-page .settings-tx-engine__text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-body.settings-page .settings-tx-engine__name {
-  font-weight: 600;
-}
-
-body.settings-page .settings-tx-engine__hint {
+body.settings-page #main-source-toggles .source-priority,
+body.settings-page #translation-engine-toggles .source-priority {
   font-size: 0.75rem;
   color: var(--set-ink-soft);
+}
+
+body.settings-page #translation-engine-toggles .source-toggle-main {
+  cursor: pointer;
+}
+
+body.settings-page #translation-engine-toggles .source-choice {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--set-teal);
 }
 
 body.settings-page .toggle-input {

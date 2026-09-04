@@ -892,6 +892,63 @@ function withWin11Chrome(
   };
 }
 
+/** Drop Mica + CSS blur while the user drags an edge (Electron 28 has no viewporter resize fix). */
+function wireLiveResizeLite(
+  win: BrowserWindow,
+  material: 'mica' | 'acrylic' | 'none',
+): void {
+  let live = false;
+  let endTimer: ReturnType<typeof setTimeout> | null = null;
+  const begin = (): void => {
+    if (win.isDestroyed()) return;
+    if (!live) {
+      live = true;
+      if (material !== 'none' && supportsWin11Material()) {
+        try {
+          win.setBackgroundMaterial('none');
+        } catch {
+          /* Electron build without setBackgroundMaterial */
+        }
+      }
+      try {
+        win.webContents.send('main-window-resizing', true);
+      } catch {
+        /* loading */
+      }
+    }
+    if (endTimer) clearTimeout(endTimer);
+    endTimer = setTimeout(finish, 140);
+  };
+  const finish = (): void => {
+    endTimer = null;
+    if (!live || win.isDestroyed()) {
+      live = false;
+      return;
+    }
+    live = false;
+    if (material !== 'none' && supportsWin11Material()) {
+      try {
+        win.setBackgroundMaterial(material);
+      } catch {
+        /* ignore */
+      }
+    }
+    try {
+      win.webContents.send('main-window-resizing', false);
+    } catch {
+      /* ignore */
+    }
+  };
+  win.on('will-resize', begin);
+  if (process.platform === 'darwin') {
+    win.on('resize', begin);
+  }
+  win.on('resized', () => {
+    if (endTimer) clearTimeout(endTimer);
+    finish();
+  });
+}
+
 const createMainWindow = (): void => {
   const windowIcon = loadWindowIcon();
   // Create the browser window.
@@ -939,7 +996,9 @@ const createMainWindow = (): void => {
   //   }, 100);
   // });
 
-  
+  if (mainWindow) {
+    wireLiveResizeLite(mainWindow, supportsWin11Material() ? 'mica' : 'none');
+  }
 };
 
 function sendPopupText(win: BrowserWindow, text: string): void {
@@ -1224,6 +1283,9 @@ const createSettingsWindow = (): void => {
       settingsWindow?.close();
     }
   });
+  if (settingsWindow) {
+    wireLiveResizeLite(settingsWindow, supportsWin11Material() ? 'mica' : 'none');
+  }
 };
 
 /**

@@ -171,6 +171,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onShowClipboardHistory: (callback: () => void) => {
     ipcRenderer.on('show-clipboard-history', () => callback());
   },
+  onMainWindowResizing: (callback: (resizing: boolean) => void) => {
+    ipcRenderer.removeAllListeners('main-window-resizing');
+    ipcRenderer.on('main-window-resizing', (_event, resizing: boolean) => callback(!!resizing));
+  },
   testTextSelection: () => {
     return ipcRenderer.invoke('test-text-selection');
   },
@@ -448,6 +452,7 @@ declare global {
       rememberSelection?: (x: number, y: number, text: string) => void;
       hidePopup: () => void;
       onShowClipboardHistory: (callback: () => void) => void;
+      onMainWindowResizing?: (callback: (resizing: boolean) => void) => void;
       testTextSelection: () => Promise<{ success: boolean; text: string }>;
       showSettingsWindow: () => Promise<void>;
       getLastSelection: () => Promise<SelectionEvent>;
