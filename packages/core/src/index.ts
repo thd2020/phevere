@@ -31,6 +31,7 @@ export {
   type VocabEntry,
   type VocabAddInput,
 } from './vocab-store';
+export { inferVocabGlossLang, formatVocabLangPair } from './vocab-lang';
 
 export {
   type ContextOrigin,

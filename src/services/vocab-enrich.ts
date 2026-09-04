@@ -75,13 +75,23 @@ export function payloadFromDictionaryResult(result?: DictionaryResult | null): v
     else if (d.source) String(d.source).split(/\s*·\s*/).forEach((s) => { if (s) sourceList.push(s); });
   });
   const sources = Array.from(new Set(sourceList.length ? sourceList : result.sources || [])).slice(0, 6);
+  const usedTxFallback = !defJoined && !!(tx && tx.text);
+  const sourceLang = result.detectedLanguage;
+  const targetLang = usedTxFallback
+    ? (tx && tx.language) || result.language
+    : vocabStore.inferVocabGlossLang({
+        sourceLang,
+        targetLang: result.language,
+        definition: definition || undefined,
+        sources,
+      }) || sourceLang;
   return {
     lemma: saveLemma(result) || result.word,
     reading: reading || undefined,
     definition: definition || undefined,
     partOfSpeech: useDefs[0]?.partOfSpeech,
-    sourceLang: result.detectedLanguage,
-    targetLang: (tx && tx.language) || result.language,
+    sourceLang,
+    targetLang,
     sources: sources.length ? sources : undefined,
   };
 }

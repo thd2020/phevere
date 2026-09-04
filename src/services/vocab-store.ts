@@ -13,3 +13,4 @@ export {
   type VocabEntry,
   type VocabAddInput,
 } from '@phevere/core';
+export { inferVocabGlossLang, formatVocabLangPair } from '@phevere/core';

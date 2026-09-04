@@ -87,6 +87,8 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
        sources = COALESCE(NULLIF(sources, ''), NULLIF(?, ''), sources),
        note = COALESCE(NULLIF(note, ''), NULLIF(?, ''), note),
        reading = COALESCE(NULLIF(reading, ''), NULLIF(?, ''), reading),
+       source_lang = COALESCE(NULLIF(?, ''), source_lang),
+       target_lang = COALESCE(NULLIF(?, ''), target_lang),
        updated_at = ? WHERE id = ?`,
       [
         input.definition || null,
@@ -94,6 +96,8 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
         input.sources ? JSON.stringify(input.sources) : null,
         input.note || null,
         input.reading || null,
+        input.sourceLang || null,
+        input.targetLang || null,
         now,
         id,
       ],

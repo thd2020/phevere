@@ -28,6 +28,7 @@
 
 import './index.css';
 import { captureNextShortcut } from './shortcut-capture';
+import { formatVocabLangPair } from '@phevere/core';
 
 // Inside your main window initialization or setup block:
 const clearBtn = document.getElementById('clearSelectionsBtn') as HTMLButtonElement;
@@ -1917,11 +1918,9 @@ function renderVocabNotebook(entries: any[]): void {
           .slice(0, 4)
           .map((s: string) => `<span class="vocab-badge">${escapeHtmlSelection(s)}</span>`)
           .join('');
-        const langPair =
-          e.sourceLang || e.targetLang
-            ? `<span class="vocab-langs">${escapeHtmlSelection(
-                [e.sourceLang, e.targetLang].filter(Boolean).join(' → '),
-              )}</span>`
+        const langLabel = formatVocabLangPair(e);
+        const langPair = langLabel
+            ? `<span class="vocab-langs">${escapeHtmlSelection(langLabel)}</span>`
             : '';
         const saved =
           e.updatedAt || e.createdAt
@@ -3428,7 +3427,9 @@ async function updatePopupContent(text: string) {
     
     // Use the dictionary service to get real results
     if (window.dictionaryAPI && typeof window.dictionaryAPI.lookup === 'function') {
-      const result = await window.dictionaryAPI.lookup(text, targetLang, enabledSources);
+      const result = await window.dictionaryAPI.lookup(text, targetLang, enabledSources, {
+        sourceLanguage: sourceLang,
+      });
       rlog('[POPUP-RENDERER] lookup summary:', {
         word: result.word,
         definitions: result.definitions?.length || 0,
