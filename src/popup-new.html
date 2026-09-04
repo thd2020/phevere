@@ -789,18 +789,23 @@
       .lexicon-pos-panel[data-pos="all"] .lexicon-pos-heading {
         display: block;
         font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        font-size: 11px;
-        font-weight: 600;
+        font-size: 12px;
+        font-weight: 700;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: #475569;
-        margin: 14px 0 8px;
+        color: #0f172a;
+        margin: 0 0 10px;
       }
       .lexicon-pos-panel[data-pos="all"] .lexicon-pos-group:first-child .lexicon-pos-heading {
         margin-top: 0;
       }
+      .lexicon-pos-panel[data-pos="all"] .lexicon-pos-group + .lexicon-pos-group {
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 3px solid #14212b;
+      }
       .lexicon-pos-panel[data-pos="all"] .lexicon-pos-group {
-        margin-bottom: 8px;
+        margin-bottom: 4px;
       }
 
       .result-section-title {
@@ -2753,9 +2758,6 @@ function startAutoCloseTimeout() {
             return;
           }
           stopPopupSpeech();
-          if (window.electronAPI && typeof window.electronAPI.cancelIpaSpeak === 'function') {
-            try { await window.electronAPI.cancelIpaSpeak(); } catch (e) {}
-          }
           var fetchAudio = window.electronAPI && window.electronAPI.fetchPronunciationAudio;
           if (typeof fetchAudio === 'function') {
             for (var i = 0; i < urls.length; i++) {
@@ -2768,10 +2770,14 @@ function startAutoCloseTimeout() {
               } catch (e) {}
             }
           }
-          showToast('No recorded pronunciation');
+          playRecordedDataUrl(urls[0], function () {
+            showToast('No recorded pronunciation');
+          });
         }
 
+        var ipaSpeakBusy = false;
         async function playIpaChip(btn) {
+          if (ipaSpeakBusy) return;
           try { if (localStorage.getItem('phevereAudioEnabled') === '0') return; } catch (e) {}
           var ipa = (btn.getAttribute('data-ipa') || '').trim();
           var accent = btn.getAttribute('data-accent') || '';
@@ -2784,11 +2790,14 @@ function startAutoCloseTimeout() {
             showToast('Cannot speak this IPA');
             return;
           }
+          ipaSpeakBusy = true;
           try {
             var res = await window.electronAPI.speakIpa({ ipa: ipa, accent: accent });
             if (!res || !res.ok) showToast('Cannot speak this IPA');
           } catch (e) {
             showToast('Cannot speak this IPA');
+          } finally {
+            ipaSpeakBusy = false;
           }
         }
 

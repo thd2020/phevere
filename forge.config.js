@@ -32,6 +32,7 @@ module.exports = {
       'scripts/ocr_worker.py',
       'scripts/media_now_playing.ps1',
       'scripts/speak_ipa.ps1',
+      'scripts/speak_ipa_host.ps1',
       'scripts/media_now_playing.applescript',
       'scripts/foreground_window.applescript',
       'node_modules/sql.js/dist/sql-wasm.wasm',

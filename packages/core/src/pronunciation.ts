@@ -84,6 +84,45 @@ function isEnglishIpaTemplate(args: string[]): boolean {
   return args.length > 0 && (args[0].startsWith('/') || args[0].startsWith('['));
 }
 
+function commonsFileUrl(fileName: string): string {
+  const f = String(fileName || '')
+    .replace(/^File:/i, '')
+    .trim()
+    .replace(/ /g, '_');
+  if (!f) return '';
+  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(f)}`;
+}
+
+function parseWikiAudioTemplate(argsRaw: string): { url: string; accents: AccentTag[] } | null {
+  const args = String(argsRaw || '')
+    .split('|')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  let file = '';
+  let hint = '';
+  for (const arg of args) {
+    if (/^(en|lang\s*=\s*en)$/i.test(arg)) continue;
+    if (/^(a|aa|q|qq|text|ipa|lang)\s*=/i.test(arg)) {
+      hint += ` ${arg.split('=').slice(1).join('=')}`;
+      continue;
+    }
+    if (/\.(ogg|oga|mp3|wav|flac|opus|webm)$/i.test(arg) || /^File:/i.test(arg)) {
+      file = arg.replace(/^File:/i, '');
+      continue;
+    }
+    hint += ` ${arg}`;
+  }
+  if (!file) return null;
+  const url = commonsFileUrl(file);
+  if (!url) return null;
+  const fromName = file.replace(/[-_./]/g, ' ');
+  let accents = accentsFromHint(`${hint} ${fromName}`);
+  if (accents.length === 1 && accents[0] === 'other') {
+    accents = accentsFromHint(fromName);
+  }
+  return { url, accents };
+}
+
 /** Pull {{IPA|en|/…/|a=GA}} (and nearby {{a|RP}}) from English Pronunciation. */
 export function extractIpaFromWikitext(wikitext: string): Pronunciation[] {
   if (!wikitext) return [];
@@ -95,13 +134,24 @@ export function extractIpaFromWikitext(wikitext: string): Pronunciation[] {
   const out: Pronunciation[] = [];
   const seen = new Set<string>();
 
+  const audioByAccent = new Map<AccentTag, string>();
   let lineAccents: AccentTag[] = ['other'];
   for (const line of lines) {
     const aLabel = line.match(/\{\{\s*a\s*\|([^}]+)\}\}/i);
     if (aLabel) lineAccents = accentsFromHint(aLabel[1]);
 
-    const audio = line.match(/\{\{\s*audio\s*\|[^}]*\b(a|accent)\s*=\s*([^|}]+)/i);
-    if (audio) lineAccents = accentsFromHint(audio[2]);
+    const audioHint = line.match(/\{\{\s*audio\s*\|[^}]*\b(a|accent)\s*=\s*([^|}]+)/i);
+    if (audioHint) lineAccents = accentsFromHint(audioHint[2]);
+
+    const audioRe = /\{\{\s*audio(?:-IPA)?\s*\|([^}]+)\}\}/gi;
+    let am: RegExpExecArray | null;
+    while ((am = audioRe.exec(line))) {
+      const parsed = parseWikiAudioTemplate(am[1]);
+      if (!parsed) continue;
+      for (const accent of parsed.accents) {
+        if (!audioByAccent.has(accent)) audioByAccent.set(accent, parsed.url);
+      }
+    }
 
     const re = /\{\{\s*IPA\s*\|([^}]+)\}\}/gi;
     let m: RegExpExecArray | null;
@@ -134,6 +184,15 @@ export function extractIpaFromWikitext(wikitext: string): Pronunciation[] {
         }
       }
     }
+  }
+  for (const p of out) {
+    if (p.audioUrl) continue;
+    const u = audioByAccent.get(p.accent || 'other') || audioByAccent.get('other');
+    if (u) p.audioUrl = u;
+  }
+  for (const [accent, url] of audioByAccent) {
+    if (out.some((p) => p.audioUrl === url)) continue;
+    out.push({ ipa: '', accent, source: 'Wiktionary', audioUrl: url });
   }
   return out;
 }
@@ -177,19 +236,35 @@ export function derivationalStems(word: string): string[] {
 
 export function mergePronunciations(...lists: Array<Pronunciation[] | undefined>): Pronunciation[] {
   const byKey = new Map<string, Pronunciation>();
+  const extraAudio: Pronunciation[] = [];
   for (const list of lists) {
     for (const p of list || []) {
       const ipa = cleanIpa(p.ipa);
-      if (!ipa) continue;
       const accent = p.accent || 'other';
-      const key = `${accent}:${ipa}`;
       const audioUrl = p.audioUrl ? normalizePronunciationAudioUrl(p.audioUrl) : '';
+      if (!ipa) {
+        if (audioUrl) extraAudio.push({ ipa: '', accent, source: p.source, audioUrl });
+        continue;
+      }
+      const key = `${accent}:${ipa}`;
       const existing = byKey.get(key);
       if (existing) {
         if (!existing.audioUrl && audioUrl) existing.audioUrl = audioUrl;
         continue;
       }
       byKey.set(key, { ipa, accent, source: p.source, ...(audioUrl ? { audioUrl } : {}) });
+    }
+  }
+  for (const a of extraAudio) {
+    let attached = false;
+    for (const p of byKey.values()) {
+      if (p.accent === a.accent && !p.audioUrl) {
+        p.audioUrl = a.audioUrl;
+        attached = true;
+      }
+    }
+    if (!attached && a.audioUrl) {
+      byKey.set(`audio:${a.accent}:${a.audioUrl}`, a);
     }
   }
   const out = [...byKey.values()];
@@ -234,8 +309,8 @@ export function formatPronunciationLine(list?: Pronunciation[]): string {
     used.add(ipa);
     parts.push(label ? `${label} /${ipa}/` : `/${ipa}/`);
   };
-  const us = list.find((p) => p.accent === 'us');
-  const uk = list.find((p) => p.accent === 'uk');
+  const us = list.find((p) => p.accent === 'us' && p.ipa);
+  const uk = list.find((p) => p.accent === 'uk' && p.ipa);
   if (us && uk && us.ipa === uk.ipa) {
     push('', us.ipa);
   } else {
@@ -243,6 +318,7 @@ export function formatPronunciationLine(list?: Pronunciation[]): string {
     if (uk) push('UK', uk.ipa);
   }
   for (const p of list) {
+    if (!p.ipa) continue;
     if (p === us || p === uk) continue;
     if (used.has(p.ipa)) continue;
     push(p.accent === 'us' ? 'US' : p.accent === 'uk' ? 'UK' : '', p.ipa);

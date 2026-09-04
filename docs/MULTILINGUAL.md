@@ -22,9 +22,9 @@
 
 ## Pronunciation (speaker)
 
-**Popup toolbar 🔊** plays a recorded dictionary MP3 (Free Dictionary / Google clips) fetched in the main process. It does not use `speechSynthesis` on the spelling.
+**Popup toolbar 🔊** plays a recorded clip: Free Dictionary MP3 when that API answered, otherwise the Wiktionary Commons file from `{{audio}}`. Fetched in the main process (ogg/mp3). It does not use `speechSynthesis` on the spelling.
 
-**IPA chip speakers** send that chip’s IPA to the main process. Windows uses System.Speech SSML phonemes (desktop voices); macOS uses `say` `[[inpt PHON]]`. Chromium `speechSynthesis` strips SSML, so the renderer cannot speak IPA itself.
+**IPA chip speakers** send that chip’s IPA to a long-lived System.Speech host in the main process (Windows) or `say` `[[inpt PHON]]` (macOS). Chromium `speechSynthesis` strips SSML, so the renderer cannot speak IPA itself.
 
 **Root causes addressed**
 
