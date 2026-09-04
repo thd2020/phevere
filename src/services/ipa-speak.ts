@@ -17,6 +17,7 @@ import {
   getHttp,
   ipaToApplePhonemes,
   ipaToEspeakPhonemes,
+  normalizePronunciationAudioUrl,
   phonemeIpa,
 } from '@phevere/core';
 import { wrapConsole } from '../logger';
@@ -29,7 +30,18 @@ const MAX_DISK_FILES = 80;
 const MAX_DISK_BYTES = 40 * 1024 * 1024;
 const WIKIMEDIA_UA = 'Phevere/1.5 (https://github.com/thd2020/phevere; desktop dictionary)';
 const audioCache = new Map<string, string>();
-const audioInflight = new Map<string, Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }>>();
+const audioFailUntil = new Map<string, number>();
+const audioInflight = new Map<
+  string,
+  Promise<{ ok: true; dataUrl: string; cached: boolean } | { ok: false; error: string }>
+>();
+const FAIL_TTL_NOT_FOUND = 30 * 60 * 1000;
+const FAIL_TTL_TIMEOUT = 45 * 1000;
+const AUDIO_FETCH_MS = 5000;
+
+export type PronunciationAudioResult =
+  | { ok: true; dataUrl: string; cached: boolean }
+  | { ok: false; error: string };
 let spawnChild: ChildProcess | null = null;
 let sapiHost: ChildProcess | null = null;
 let hostAcc = '';
@@ -425,7 +437,7 @@ async function resolveCommonsDirectUrl(fileName: string): Promise<string> {
   const api = `https://commons.wikimedia.org/w/api.php?action=query&format=json&redirects=1&prop=imageinfo&iiprop=url&titles=${encodeURIComponent(title)}`;
   try {
     const res = await getHttp().requestText(api, {
-      timeoutMs: 8000,
+      timeoutMs: 5000,
       headers: { 'User-Agent': WIKIMEDIA_UA },
     });
     if (!res.ok) return '';
@@ -445,6 +457,26 @@ async function resolveCommonsDirectUrl(fileName: string): Promise<string> {
 
 function audioCacheDir(): string {
   return path.join(app.getPath('userData'), 'pronunciation-cache');
+}
+
+function canonicalAudioUrl(raw: string): string {
+  let s = normalizePronunciationAudioUrl(raw) || String(raw || '').trim();
+  if (s.startsWith('http://')) s = `https://${s.slice(7)}`;
+  return s;
+}
+
+function failUntil(url: string): number | undefined {
+  const until = audioFailUntil.get(url);
+  if (!until) return undefined;
+  if (Date.now() > until) {
+    audioFailUntil.delete(url);
+    return undefined;
+  }
+  return until;
+}
+
+function rememberFail(url: string, ttlMs: number): void {
+  audioFailUntil.set(url, Date.now() + ttlMs);
 }
 
 function audioCacheKey(url: string): string {
@@ -521,28 +553,29 @@ function pruneDiskAudio(dir: string): void {
   }
 }
 
-export async function fetchPronunciationAudio(
-  url: string,
-): Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }> {
-  const trimmed = String(url || '').trim();
+export async function fetchPronunciationAudio(url: string): Promise<PronunciationAudioResult> {
+  const trimmed = canonicalAudioUrl(url);
   if (!isAllowedAudioUrl(trimmed)) {
     return { ok: false as const, error: 'Blocked audio URL' };
   }
   const hit = audioCache.get(trimmed);
-  if (hit) return { ok: true as const, dataUrl: hit };
+  if (hit) return { ok: true as const, dataUrl: hit, cached: true };
   const disk = readDiskAudio(trimmed);
   if (disk) {
     rememberAudio(trimmed, disk);
-    return { ok: true as const, dataUrl: disk };
+    return { ok: true as const, dataUrl: disk, cached: true };
+  }
+  if (failUntil(trimmed)) {
+    return { ok: false as const, error: 'Known missing clip' };
   }
   const pending = audioInflight.get(trimmed);
   if (pending) return pending;
 
-  const work = (async () => {
+  const work = (async (): Promise<PronunciationAudioResult> => {
     const tryFetch = async (target: string) => {
       const http = getHttp();
       const res = await http.requestBytes(target, {
-        timeoutMs: 12000,
+        timeoutMs: AUDIO_FETCH_MS,
         headers: audioHeaders(target),
       });
       if (!res.ok || !res.bytes || res.bytes.byteLength < 64) {
@@ -564,18 +597,27 @@ export async function fetchPronunciationAudio(
         const fileName = fileNameFromCommonsUrl(trimmed);
         if (fileName) {
           const direct = await resolveCommonsDirectUrl(fileName);
-          if (direct && direct !== trimmed) got = await tryFetch(direct);
+          const canonDirect = direct ? canonicalAudioUrl(direct) : '';
+          if (canonDirect && canonDirect !== trimmed) got = await tryFetch(canonDirect);
         }
       }
-      if (!got.ok) return { ok: false as const, error: got.error };
+      if (!got.ok) {
+        const timeout = /timed out|timeout|TIMEOUT/i.test(got.error);
+        rememberFail(trimmed, timeout ? FAIL_TTL_TIMEOUT : FAIL_TTL_NOT_FOUND);
+        return { ok: false as const, error: got.error };
+      }
       const dataUrl = `data:${got.mime};base64,${bytesToBase64(got.bytes)}`;
       rememberAudio(trimmed, dataUrl);
-      if (got.target && got.target !== trimmed) rememberAudio(got.target, dataUrl);
+      const fetched = canonicalAudioUrl(got.target);
+      if (fetched && fetched !== trimmed) rememberAudio(fetched, dataUrl);
       writeDiskAudio(trimmed, got.mime, got.bytes);
-      if (got.target && got.target !== trimmed) writeDiskAudio(got.target, got.mime, got.bytes);
-      return { ok: true as const, dataUrl };
+      if (fetched && fetched !== trimmed) writeDiskAudio(fetched, got.mime, got.bytes);
+      return { ok: true as const, dataUrl, cached: false };
     } catch (err) {
-      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+      const msg = err instanceof Error ? err.message : String(err);
+      const timeout = /timed out|timeout|TIMEOUT/i.test(msg);
+      rememberFail(trimmed, timeout ? FAIL_TTL_TIMEOUT : FAIL_TTL_NOT_FOUND);
+      return { ok: false as const, error: msg };
     }
   })();
 
@@ -584,5 +626,16 @@ export async function fetchPronunciationAudio(
     return await work;
   } finally {
     audioInflight.delete(trimmed);
+  }
+}
+
+export function prefetchPronunciationUrls(urls: string[]): void {
+  const seen = new Set<string>();
+  for (const raw of urls) {
+    const u = canonicalAudioUrl(raw);
+    if (!u || seen.has(u) || failUntil(u)) continue;
+    if (seen.size >= 4) break;
+    seen.add(u);
+    void fetchPronunciationAudio(u);
   }
 }

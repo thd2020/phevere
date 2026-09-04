@@ -1,5 +1,7 @@
 # Phevere Dictionary
 
+**2026-09-05:** Toolbar 🔊 replay uses the clip already in the lookup pane (no second fetch). Dead first URLs are skipped; every recorded URL prefetches together.
+
 **2026-09-04:** Settings → Notifications can silence the clipboard-image tray balloon. Sense numbers sit on the same baseline as the gloss.
 
 **2026-09-04:** Hover/OCR lookup follows the cursor on HiDPI displays. Toolbar 🔊 caches recorded clips on disk. Lexicon chips abbreviate only long POS (adj., adv.); noun/verb and pane headings stay full. Rail tabs in one card are a glued chip with thin hairlines.

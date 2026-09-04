@@ -17,11 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wikipedia search and article cards use the same 12px corners as lexicon result cards.
 - Lexicon **chips** (rail tabs and word-family banners) abbreviate only long POS (**adj.**, **adv.**, **prep.**, …). **Noun** and **verb** stay in full, and the part-of-speech heading in the main pane is always the full word.
 - Lexicon sidebar uses **cards** for blocks and **vertical** section tabs. Below the headword, the rail and the definitions each fill the remaining pane and scroll on their own (10px rail scrollbar). Lexicon vs word family stay separate rounded cards.
-- Toolbar 🔊 plays a **recorded** clip: Free Dictionary MP3 when that API answered, otherwise the Wiktionary/Commons file from `{{audio}}`. It does not read the spelling with the system voice. Clips are cached on disk (`%APPDATA%\phevere\pronunciation-cache`) and the first URL is prefetched as soon as lookup attaches it. A click before the URL arrives waits instead of toasting “No recorded pronunciation”.
+- Toolbar 🔊 plays a **recorded** clip: Free Dictionary MP3 when that API answered, otherwise the Wiktionary/Commons file from `{{audio}}`. It does not read the spelling with the system voice. Clips are cached in the lookup pane, in memory, and on disk (`%APPDATA%\phevere\pronunciation-cache`). Every attached URL is prefetched in parallel as soon as lookup has them. A click before the URL arrives waits instead of toasting “No recorded pronunciation”.
 - A speaker after each US / UK IPA chip speaks **that chip’s IPA** through a long-lived Windows System.Speech host (`<phoneme alphabet="ipa">`) or macOS `say` phonemes — not the headword and not the recorded clip.
 
 ### Fixed
 
+- Toolbar 🔊 still showed “Fetching pronunciation…” on a second click: replay wiped the audio element, walked dead Free Dictionary URLs again (12s, failures uncached), and only prefetched the first URL. Replay now uses the in-pane clip; missing URLs are remembered; all recorded URLs prefetch together with a 5s cap.
 - Sense numbers sat above the gloss (`align-items: start` plus a smaller number size). Number and first line of the definition now share a baseline.
 - Hover / OCR lookup on HiDPI (and mixed-DPI) PCs opened the strip at a fixed workArea corner. Cursor and overlay points are Electron DIP; `placePopupNearPoint` no longer runs `screenToDipPoint` on them. Win32 UIA still uses physical pixels for word-at-point, but not as the popup anchor.
 - Vertical rail chips only drew a hairline before the last sub-tab (`rotate(180deg)` flipped an inset shadow). Every sub-tab in a glued rail chip is now split by a 1px gap.

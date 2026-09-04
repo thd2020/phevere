@@ -26,7 +26,7 @@ import { showWorkProgress, updateWorkProgress, closeWorkProgress } from './servi
 import { isAcceleratorPhysicallyHeld, isPrimaryMouseDown } from './services/accelerator-key-state';
 import { getForegroundWindowBoundsDip } from './services/foreground-window';
 import { getNowPlaying, formatNowPlayingQuery } from './services/media-session';
-import { speakIpa, cancelIpaSpeak, fetchPronunciationAudio } from './services/ipa-speak';
+import { speakIpa, cancelIpaSpeak, fetchPronunciationAudio, prefetchPronunciationUrls } from './services/ipa-speak';
 import { recordedPronunciationUrls } from '@phevere/core';
 import { readClipboardImage, loadImageFileAsPng, pngFromBase64 } from './services/clipboard-image';
 import {
@@ -2221,8 +2221,7 @@ ipcMain.handle('cancel-ipa-speak', () => {
 });
 
 function prefetchRecordedPronunciation(result: { pronunciations?: Parameters<typeof recordedPronunciationUrls>[0] }): void {
-  const url = recordedPronunciationUrls(result?.pronunciations)[0];
-  if (url) void fetchPronunciationAudio(url);
+  prefetchPronunciationUrls(recordedPronunciationUrls(result?.pronunciations));
 }
 
 ipcMain.handle('fetch-pronunciation-audio', async (_event, url: string) => {

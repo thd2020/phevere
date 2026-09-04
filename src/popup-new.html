@@ -2913,14 +2913,55 @@ function startAutoCloseTimeout() {
              }
 
         var ipaAudioEl = null;
+        var ipaAudioSrc = '';
+        var recordedAudioCache = Object.create(null);
+        var recordedAudioCacheOrder = [];
+        var lastGoodAudioUrl = '';
+
+        function canonAudioUrl(raw) {
+          var s = String(raw || '').trim();
+          if (!s) return '';
+          if (s.indexOf('//') === 0) s = 'https:' + s;
+          if (s.indexOf('http://') === 0) s = 'https://' + s.slice(7);
+          if (!/^https:\/\//i.test(s)) return '';
+          return s;
+        }
+
+        function rememberLocalAudio(url, dataUrl) {
+          if (!url || !dataUrl) return;
+          recordedAudioCache[url] = dataUrl;
+          recordedAudioCacheOrder = recordedAudioCacheOrder.filter(function (u) { return u !== url; });
+          recordedAudioCacheOrder.push(url);
+          while (recordedAudioCacheOrder.length > 16) {
+            var old = recordedAudioCacheOrder.shift();
+            delete recordedAudioCache[old];
+          }
+        }
+
         function stopPopupSpeech() {
           try { speechSynthesis.cancel(); } catch (e) {}
-          try { if (ipaAudioEl) { ipaAudioEl.pause(); ipaAudioEl.src = ''; } } catch (e) {}
+          try { if (ipaAudioEl) ipaAudioEl.pause(); } catch (e) {}
         }
 
         function playRecordedDataUrl(url, onFail) {
-          stopPopupSpeech();
+          try { speechSynthesis.cancel(); } catch (e) {}
+          try {
+            if (window.electronAPI && typeof window.electronAPI.cancelIpaSpeak === 'function') {
+              void window.electronAPI.cancelIpaSpeak();
+            }
+          } catch (e) {}
+          if (ipaAudioEl && ipaAudioSrc === url) {
+            try {
+              ipaAudioEl.pause();
+              ipaAudioEl.currentTime = 0;
+              var replay = ipaAudioEl.play();
+              if (replay && typeof replay.catch === 'function') replay.catch(function () { if (onFail) onFail(); });
+            } catch (e) { if (onFail) onFail(); }
+            return;
+          }
+          try { if (ipaAudioEl) { ipaAudioEl.pause(); ipaAudioEl.src = ''; } } catch (e) {}
           ipaAudioEl = new Audio(url);
+          ipaAudioSrc = url;
           ipaAudioEl.onerror = function () { if (onFail) onFail(); };
           var p = ipaAudioEl.play();
           if (p && typeof p.catch === 'function') p.catch(function () { if (onFail) onFail(); });
@@ -2934,13 +2975,48 @@ function startAutoCloseTimeout() {
             list.forEach(function (p) {
               var accent = p && p.accent ? p.accent : 'other';
               if (accent !== a) return;
-              var u = String((p && p.audioUrl) || '').trim();
+              var u = canonAudioUrl((p && p.audioUrl) || '');
               if (!u || seen[u]) return;
               seen[u] = 1;
               urls.push(u);
             });
           });
+          if (lastGoodAudioUrl && seen[lastGoodAudioUrl]) {
+            urls = [lastGoodAudioUrl].concat(urls.filter(function (u) { return u !== lastGoodAudioUrl; }));
+          }
           return urls;
+        }
+
+        function firstAudioHit(urls, fetchAudio) {
+          return new Promise(function (resolve, reject) {
+            var pending = urls.length;
+            var settled = false;
+            if (!pending) {
+              reject(new Error('none'));
+              return;
+            }
+            urls.forEach(function (u) {
+              var local = recordedAudioCache[u];
+              if (local && !settled) {
+                settled = true;
+                resolve({ url: u, dataUrl: local, cached: true });
+                return;
+              }
+              Promise.resolve(fetchAudio(u)).then(function (got) {
+                if (settled) return;
+                if (got && got.ok && got.dataUrl) {
+                  settled = true;
+                  resolve({ url: u, dataUrl: got.dataUrl, cached: !!got.cached });
+                } else {
+                  pending--;
+                  if (!pending) reject(new Error('none'));
+                }
+              }, function () {
+                pending--;
+                if (!pending && !settled) reject(new Error('none'));
+              });
+            });
+          });
         }
 
         async function playToolbarHuman() {
@@ -2960,32 +3036,38 @@ function startAutoCloseTimeout() {
             showToast('No recorded pronunciation');
             return;
           }
+          var localHit = urls.find(function (u) { return recordedAudioCache[u]; });
+          if (localHit) {
+            pendingHumanPlay = false;
+            lastGoodAudioUrl = localHit;
+            playRecordedDataUrl(recordedAudioCache[localHit]);
+            return;
+          }
           if (toolbarHumanBusy) {
             pendingHumanPlay = true;
             return;
           }
           pendingHumanPlay = false;
           toolbarHumanBusy = true;
-          var fetchHint = setTimeout(function () { showToast('Fetching pronunciation…'); }, 250);
+          var fetchHint = setTimeout(function () { showToast('Fetching pronunciation…'); }, 800);
           try {
-            stopPopupSpeech();
             var fetchAudio = window.electronAPI && window.electronAPI.fetchPronunciationAudio;
-            if (typeof fetchAudio === 'function') {
-              for (var i = 0; i < urls.length; i++) {
-                try {
-                  var got = await fetchAudio(urls[i]);
-                  if (got && got.ok && got.dataUrl) {
-                    clearTimeout(fetchHint);
-                    playRecordedDataUrl(got.dataUrl);
-                    return;
-                  }
-                } catch (e) {}
-              }
+            if (typeof fetchAudio !== 'function') {
+              clearTimeout(fetchHint);
+              playRecordedDataUrl(urls[0], function () {
+                showToast('No recorded pronunciation');
+              });
+              return;
             }
+            var hit = await firstAudioHit(urls, fetchAudio);
+            if (hit.cached) clearTimeout(fetchHint);
+            rememberLocalAudio(hit.url, hit.dataUrl);
+            lastGoodAudioUrl = hit.url;
             clearTimeout(fetchHint);
-            playRecordedDataUrl(urls[0], function () {
-              showToast('No recorded pronunciation');
-            });
+            playRecordedDataUrl(hit.dataUrl);
+          } catch (e) {
+            clearTimeout(fetchHint);
+            showToast('No recorded pronunciation');
           } finally {
             clearTimeout(fetchHint);
             toolbarHumanBusy = false;

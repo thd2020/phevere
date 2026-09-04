@@ -178,7 +178,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   fetchPronunciationAudio: (
     url: string,
-  ): Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }> => {
+  ): Promise<{ ok: true; dataUrl: string; cached?: boolean } | { ok: false; error: string }> => {
     return ipcRenderer.invoke('fetch-pronunciation-audio', url);
   },
   onShowClipboardHistory: (callback: () => void) => {
@@ -481,7 +481,7 @@ declare global {
       cancelIpaSpeak?: () => Promise<{ ok: boolean }>;
       fetchPronunciationAudio?: (
         url: string,
-      ) => Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }>;
+      ) => Promise<{ ok: true; dataUrl: string; cached?: boolean } | { ok: false; error: string }>;
       onShowClipboardHistory: (callback: () => void) => void;
       onMainWindowResizing?: (callback: (resizing: boolean) => void) => void;
       testTextSelection: () => Promise<{ success: boolean; text: string }>;
