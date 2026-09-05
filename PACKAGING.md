@@ -76,7 +76,7 @@ If files remain but Apps has no entry (“ghost” install — often from aborte
 - `packaging/installerSidebar.bmp` / `installerHeader.bmp`
 - `resources/tray-icon.png`
 
-Welcome / finish / components: `packaging/installer.nsh`. Options: `electron-builder.yml`. InstFiles uses `ShowInstDetails show` plus per-step `DetailPrint`. `scripts/patch-nsis-details-print.js` (from `prepare:installer`) changes electron-builder’s install section from `SetDetailsPrint none` to `both` so the file list is not a mute bar.
+Welcome / finish / components: `packaging/installer.nsh`. Options: `electron-builder.yml`. InstFiles uses compiler-scope `ShowInstDetails show` (not inside a Function — makensis rejects that) plus per-step `DetailPrint`. `scripts/patch-nsis-details-print.js` (from `prepare:installer`) changes electron-builder’s install section from `SetDetailsPrint none` to `both` so the file list is not a mute bar.
 
 Sidebar/header **must** be real 24-bpp BMP (`BM` magic). `prepare:installer` writes them with `writeTrueBmp` at **2×** MUI size (328×628 sidebar, 300×114 header) from the stylized-P mark — do not cover-scale a splash PNG and do not save PNG bytes as `.bmp`. Inner-page header and `MUI_BGCOLOR` are **white** (`#FFFFFF`) so Win11 is not stuck on XP grey. Do **not** set `MUI_*_BITMAP_NOSTRETCH` (that left a 1× blit that DPI nearest-neighbor-scaled into a blurry pane). `installer.nsh` sets HALFTONE stretch on GUI init.
 

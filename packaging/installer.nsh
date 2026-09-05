@@ -4,8 +4,9 @@
 ; - Components page: shortcuts + optional OCR (unchecked = remove models after copy)
 ; - Explicit Uninstall Start Menu link + reinforced Apps & Features registry
 ; - Publisher: thd2020
-; - InstFiles page lists what is copying (ShowInstDetails + SetDetailsPrint both via
-;   scripts/patch-nsis-details-print.js on electron-builder's installSection.nsh)
+; - InstFiles page lists what is copying (compiler ShowInstDetails show here;
+;   SetDetailsPrint both via scripts/patch-nsis-details-print.js). Do not put
+;   ShowInstDetails inside Function/Section — makensis rejects it.
 ;
 ; Note: do not use MUI_FUNCTION_DESCRIPTION_* here — include runs before MUI macros exist.
 
@@ -95,8 +96,8 @@ FunctionEnd
 
 Function phevereOnInstFilesShow
   ; Do not !insertmacro MUI_HEADER_TEXT here — this include is parsed before MUI exists.
+  ; ShowInstDetails is a compiler flag (file scope above). Only SetDetailsPrint is legal here.
   SetDetailsPrint both
-  ShowInstDetails show
   DetailPrint "Extracting Phevere into $INSTDIR"
   DetailPrint "Copying: application files, OCR models (if kept), native OCR libraries"
 FunctionEnd
@@ -107,7 +108,6 @@ FunctionEnd
 
 !macro customInstall
   SetDetailsPrint both
-  ShowInstDetails show
   CreateDirectory "$INSTDIR\resources\seed"
 
   ; Shortcuts — createDesktopShortcut / createStartMenuShortcut are off; honor checkboxes.

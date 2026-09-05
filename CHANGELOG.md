@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - GitHub **release** workflow never parsed: the macOS asset-delete step had unindented Python, so every `main` push showed a 0-job failure and tag `v1.5.0` never got a GitHub Release. Mac now deletes/replaces assets with the same PowerShell as Windows.
+- Windows Setup failed in Actions: NSIS `ShowInstDetails` sat inside a Function (`installer.nsh`). It is a compiler flag only; the InstFiles callback keeps `SetDetailsPrint both`.
 - Toolbar 🔊 still showed “Fetching pronunciation…” on a second click: replay wiped the audio element, walked dead Free Dictionary URLs again (12s, failures uncached), and only prefetched the first URL. Replay now uses the in-pane clip; missing URLs are remembered; all recorded URLs prefetch together.
 - Recorded clips went through Wikimedia `Special:FilePath` (2–3s per redirect here) and were sent to the popup as base64 data URLs even when already on disk. Playback now uses `upload.wikimedia.org` (MediaWiki filename case) and a `phevere-audio://` file protocol (host or path clip key, same on Windows and macOS). Lookups log `pronunciation audio` with source/ms.
 - Sense numbers sat above the gloss (`align-items: start` plus a smaller number size). Number and first line of the definition now share a baseline.
