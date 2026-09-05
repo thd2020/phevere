@@ -1,121 +1,165 @@
-# Phevere Dictionary
+# Phevere
 
-**2026-09-05:** Toolbar 🔊 replay uses the clip already in the lookup pane (no second fetch). Commons audio is pulled from upload.wikimedia.org and played from disk (`phevere-audio://`), not FilePath redirects or base64 IPC.
+[![Release](https://img.shields.io/github/v/release/thd2020/phevere?display_name=tag)](https://github.com/thd2020/phevere/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/thd2020/phevere)](LICENSE)
+[![Windows](https://img.shields.io/badge/Windows-10%20%26%2011-0078D4?logo=windows&logoColor=white)](#windows)
+[![macOS](https://img.shields.io/badge/macOS-11%2B-000000?logo=apple&logoColor=white)](#macos)
 
-**2026-09-04:** Settings → Notifications can silence the clipboard-image tray balloon. Sense numbers sit on the same baseline as the gloss.
+<p align="center">
+  <img src="packaging/icon.png" width="96" height="96" alt="Phevere">
+</p>
 
-**2026-09-04:** Hover/OCR lookup follows the cursor on HiDPI displays. Toolbar 🔊 caches recorded clips on disk. Lexicon chips abbreviate only long POS (adj., adv.); noun/verb and pane headings stay full. Rail tabs in one card are a glued chip with thin hairlines.
+**Select a word anywhere, read it immediately.** Phevere is a desktop dictionary that lives in the system tray: highlight text in the browser, an editor, or a PDF, and a lookup appears with definitions, IPA, translation, etymology, Wikipedia, and a local notebook. Hover OCR covers text that is not selectable. Android and iOS share the same lookup core (sideload).
 
-**2026-09-04:** Lexicon rail and definitions each scroll in the pane under the headword (visible rail scrollbar). Thick rule between noun/verb/… is back inside the lexicon card.
+Publisher: [thd2020](https://github.com/thd2020) · Current desktop: **1.5.0** · Changelog: [`CHANGELOG.md`](CHANGELOG.md)
 
-**2026-09-04:** Toolbar 🔊 plays a recorded clip (Free Dictionary or Wiktionary Commons). IPA chips use a persistent Windows speech host so they actually speak.
+## In context
 
-**2026-09-04:** **1.5.0** — Windows x64/ARM64 Setup and macOS Intel/Apple Silicon DMGs ship from the same GitHub tag. Mac OCR/read-window/now-playing/shortcuts match Windows (Screen Recording + Accessibility). Notebook chips show the dictionary gloss language (`en → en` for English senses). The Translation tab honours From/To. Popup 🌐 is gone; the gear no longer shrinks the panel. Hover OCR uses one probe for every PP-OCR pack.
+Phevere sits with tools people already use for “look this up without leaving the page.” It is not a clone of any of them.
 
-**2026-09-03:** Translation engines live in Settings → Sources (not chips on the lookup). The translation tab is a language pair (detect, swap, target) with a speaker on source and target. Lookup works inside Settings and the notebook the same as in other apps. Tray Settings no longer raises the main window. Selection beats hover OCR.
+| If you know | Phevere is closer to |
+|---|---|
+| [PopClip](https://pilotmoon.com/popclip/) (macOS) | A system-wide selection popup, but the payload is a dictionary + notebook rather than an extension marketplace. |
+| [Microsoft PowerToys](https://github.com/microsoft/PowerToys) | An always-on Windows utility with a tray icon and OCR ([Text Extractor](https://learn.microsoft.com/en-us/windows/powertoys/text-extractor)). PowerToys is a toolkit; Phevere is lookup-first. |
+| [GoldenDict](https://github.com/goldendict/goldendict) / [GoldenDict-ng](https://github.com/xiaoyifang/goldendict-ng) | Online + offline dictionaries (WordNet, Webster 1913, CC-CEDICT). GoldenDict is a library you search; Phevere is an overlay on whatever you already selected. |
+| Youdao / Eudic 划词, Apple [Dictionary](https://support.apple.com/guide/dictionary/welcome/mac) | Instant lookup from a selection. Phevere is MIT, has no account, and also does region/hover OCR and Wikipedia in the same pane. |
+| Android **Process Text** (Translate, Dictionary) | The same system toolbar slot on Android v1. iOS uses Share / `phevere://lookup`. There is no global overlay on phones. |
 
-Select-to-lookup dictionary for Windows (Electron + Microsoft UI Automation), macOS (Accessibility), and **Android / iOS** (Capacitor). On the desktop, select text anywhere → popup with definitions, translation, etymology, Wikipedia, and a local vocabulary notebook. On phones, use **Process Text** (Android), **Share** (iOS), or in-app search — same lookup core.
+Stack: **Electron** (same class as VS Code and Obsidian) plus a small native addon — UI Automation on Windows, Accessibility on macOS — because Chromium alone cannot read another app’s selection.
 
-Publisher: **[thd2020](https://github.com/thd2020)**.
+## Install
 
-## Download (Windows)
+Prebuilt desktop binaries: **[GitHub Releases](https://github.com/thd2020/phevere/releases)**. Node.js is not required.
 
-Prebuilt **NSIS Setup** (`Phevere-Setup-<version>-x64.exe` or `…-arm64.exe` on Snapdragon / Windows 11 ARM) is on [GitHub Releases](https://github.com/thd2020/phevere/releases). No Node.js required for end users.
+| Platform | Artifact | Notes |
+|---|---|---|
+| Windows 10/11 **x64** | `Phevere-Setup-<version>-x64.exe` | NSIS wizard; default `C:\Program Files\Phevere` |
+| Windows 11 **ARM64** | `Phevere-Setup-<version>-arm64.exe` | Snapdragon / ARM PCs; match the Setup to the OS |
+| macOS **Intel** | `Phevere-<version>-darwin-x64.dmg` | Drag to Applications |
+| macOS **Apple Silicon** | `Phevere-<version>-darwin-arm64.dmg` | Same |
+| Android / iOS | not on Releases | Sideload from a clone — [`docs/MOBILE.md`](docs/MOBILE.md) |
+
+Windows Setup is **unsigned** unless a CA cert is configured (SmartScreen will warn). macOS DMGs are **unsigned** (Gatekeeper). Signing options: [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md). Packaging internals: [`PACKAGING.md`](PACKAGING.md).
+
+### Windows
+
+Run the Setup that matches the PC (x64 vs ARM64). Optional components: desktop shortcut, Start menu shortcut, OCR models (~15 MB, on by default).
 
 | | |
 |---|---|
-| Default install path | `C:\Program Files\Phevere` (per-machine; no author parent folder) |
-| Optional components | Desktop shortcut, Start menu shortcut, OCR models (~15 MB, on by default) |
 | Uninstall | **Settings → Apps → Phevere**, or Start menu → **Uninstall Phevere** |
-| Single instance | A second launch focuses the existing app (avoids SQLite / tray conflicts) |
-| SmartScreen | Public trust needs a CA (or SignPath OSS), not a homemade cert — [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md) |
+| Single instance | A second launch focuses the running app (avoids a second tray and SQLite lock) |
+| Admin | Recommended for UI Automation into other processes; lookup still works without it, with more fallbacks |
 
-Maintainer packaging: [`PACKAGING.md`](PACKAGING.md) · release checklist: [`docs/RELEASE.md`](docs/RELEASE.md).
-
-### Ghost / stuck installs
-
-If an older Phevere folder remains under Program Files but **Apps & Features no longer lists it**, clean it then reinstall:
+If an old folder remains under Program Files but Apps no longer lists Phevere:
 
 ```powershell
-# Elevated PowerShell, from a clone of this repo:
+# Elevated PowerShell, from a clone of this repo
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\remove-ghost-phevere.ps1
-# Optional: also wipe vocabulary DB / settings
+# Optional: also wipe notebook / settings
 .\scripts\remove-ghost-phevere.ps1 -AlsoUserData
 ```
 
-Then run the latest Setup.exe. New installs register a proper uninstaller (`Uninstall Phevere.exe`) and an Apps & Features entry (publisher **thd2020**).
+Then install the latest Setup.
 
-## Download (macOS)
+### macOS
 
-Unsigned **DMGs** (`Phevere-<version>-darwin-x64.dmg` for Intel, `…-darwin-arm64.dmg` for Apple Silicon) are on the same [GitHub Releases](https://github.com/thd2020/phevere/releases) page. Open the disk image, drag **Phevere** to Applications. macOS Gatekeeper will warn until the app is signed and notarized. Right-click → Open the first time, or allow it under Privacy & Security. Enable **Accessibility** (select-to-lookup) and **Screen Recording** (hover / region / window OCR) when asked. Tray → **Open Accessibility Settings…** / **Open Screen Recording Settings…**.
+Open the DMG, drag **Phevere** to Applications. First launch: right-click → **Open**, or allow it under **Privacy & Security**. Grant:
 
-## Download (Android / iOS)
+- **Accessibility** — select-to-lookup (TextEdit, Safari, Chromium apps)
+- **Screen Recording** — hover, region, and window OCR
 
-Phone builds are **not** on GitHub Releases yet. Sideload from a clone: Android Studio / `gradlew assembleDebug`, or Xcode on a Mac. There is no global overlay on iOS; Android shows **Phevere** in the system text-selection toolbar. See [`docs/MOBILE.md`](docs/MOBILE.md).
+The menu-bar **P** has **Open Accessibility Settings…** and **Open Screen Recording Settings…**. Details: [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md).
+
+### Android / iOS
+
+Not on the store yet. Android: **Phevere** in the system text-selection toolbar (Process Text). iOS: Share sheet or `phevere://lookup?q=…`. Camera OCR and a global overlay are out of scope for v1. See [`docs/MOBILE.md`](docs/MOBILE.md).
 
 ## Features
 
-- **Native text selection (desktop)** — UIAutomation on Windows (best as Administrator). After a drag/double-click: TextPattern first, then a Chromium UIA poke (`WM_GETOBJECT`) and retry, then silent Ctrl+C if the app still exposes no selected text (Cursor agent chat, some VS Code webviews). Password fields are skipped; Phevere does not Ctrl+C into its own windows. On macOS, Accessibility first (including Chromium text-markers), then Safari/Chrome AppleScript, then a silent Cmd+C. Shortcut / hover / OCR modes in Settings. Select in the notebook, Settings, a lookup, or any other app — same path. If hover and selection are both on, a live selection wins and hover will not OCR. A second selection (even before the first popup finishes loading) follows the latest text and position. After following a word-family or wiki link, **Back / Forward** on the dictionary tab (and the mouse extra buttons) restore the previous lookup.
-- **Phone capture** — Android **Process Text** (Phevere in the selection toolbar) and iOS **Share** / `phevere://lookup?q=` plus in-app search. No Accessibility overlay on Android v1; iOS cannot host a global overlay. Camera OCR and offline pack install are not in the mobile v1.
-- **Dictionary & translation** — Free Dictionary, Wiktionary, Datamuse; translation Auto uses Google (no key) then MyMemory (no key), then Youdao / DeepL if you add keys. Pick the engine in Settings → Sources. The **Translation** tab is any listed pair (detect, swap, target): en, zh, ja, ko, es, fr, de, it, pt, ru, ar, hi, th. Lexicon is a dictionary in the headword’s language (English words stay English senses), not a bilingual matrix. Looks up the **exact form** you selected (IPA and notebook save stay on that form). Headword/lemma senses are used only when every source has no definition for that form. Lexicon **part-of-speech** is a left rail of **vertical** tabs grouped in **cards** (one card per block: POS together, family relations together). Tabs in a card are one glued chip with a thin hairline between them. Rail chips abbreviate only long POS (**adj.**, **adv.**, **prep.**, …); **noun** and **verb** stay full. Headings in the main pane are always the full part of speech. Click a tab to jump. The rail and the stacked senses each scroll in the pane below the headword. Noun/verb/… **senses** in the lexicon card are divided by a thick rule. The toolbar speaker plays a recorded clip (Free Dictionary MP3 or Wiktionary Commons) and keeps the file under `%APPDATA%\phevere\pronunciation-cache` so the next play is instant. Each US / UK IPA chip has a speaker that synthesizes **that transcription**. Word-family chips can carry a small POS banner (verb, adj.) — grammar labels are not treated as extra forms. Per-source cache (timeouts retry).
-- **Offline packs** — Settings → Offline: WordNet, Webster 1913 (GCIDE), CC-CEDICT, FreeDict en→zh (consent download); JSON/CEDICT import. Living Oxford / Collegiate Webster / Collins are not dumped (copyright).
-- **Etymology & Wikipedia** — in-popup tabs; Wikipedia reader webview
-- **Vocabulary notebook** — local SQLite (`%APPDATA%\phevere`); lemma-only saves fill in the background; IPA + play; search; **Recent / A–Z** sort with an A–Z index scrubber; **Export / Import** (JSON or CSV); language chip is lemma → gloss (`en → en` when the saved sense is English); click the headword row to expand, select text in the definition without collapsing
-- **OCR** — bundled PP-OCRv4 (optional component); Settings can download PP-OCRv5 (needs `ppocrv5_dict.txt`, not the v4 keys file). Region / hover / clipboard / window capture. Hover OCR picks the word under the cursor from detection boxes (glyph height), not a fixed pixel square. Packaged builds crop in the thumbnail’s real pixel space so image OCR does not insert spaces between letters.
-- **Tray app** — Quit Phevere tears down UIA / OCR / sql.js before destroying windows (no leftover Electron helpers). Left-click the tray icon to show the notebook; right-click for the menu (Settings does not also raise the notebook). On macOS, left-click the menu-bar **P** to show the window; right-click for the menu. Settings → **Notifications** controls tray balloons (clipboard image ready, empty clipboard OCR, hover on/off).
-- **Win11 / macOS chrome** — Mica/Acrylic on a **light** paper UI (does not follow Windows dark app theme); durable windows use the native caption overlay (Windows) or traffic lights (macOS). NSIS wizard uses Segoe UI + branded 24-bpp sidebar BMP
+**Capture (desktop).** After a drag or double-click, Windows tries UI Automation (TextPattern), then a Chromium `WM_GETOBJECT` poke, then a silent Ctrl+C with clipboard restore. macOS tries Accessibility (including Chromium text-markers), then Safari/Chrome AppleScript, then silent Cmd+C. Password fields are skipped. A live selection wins over hover OCR. **Back / Forward** (and mouse extra buttons) restore the previous lookup. Capture also works inside Phevere’s own notebook and Settings.
+
+**Dictionary.** Free Dictionary, Wiktionary, and Datamuse. The lexicon is a dictionary in the headword’s language (English stays English senses), not a bilingual matrix. Exact form first; lemma senses only when no source defined that form. Offline packs in Settings → Offline: WordNet, Webster 1913 (GCIDE), CC-CEDICT, FreeDict en→zh (consent download). Living Oxford / Collegiate Webster / Collins are not dumped.
+
+**Pronunciation.** Toolbar speaker plays a **recorded** clip (Free Dictionary MP3 or Wikimedia Commons), cached on disk. Each US / UK IPA chip speaks **that transcription** (Windows System.Speech or macOS `say`), not the spelling.
+
+**Translation.** Settings → Sources: Auto (Google, then MyMemory, then Youdao / DeepL if you add keys). The Translation tab is a language pair (detect, swap, target) among listed languages.
+
+**Wikipedia & etymology.** Tabs in the same popup; Wikipedia opens in an in-panel reader.
+
+**Notebook.** Local SQLite (`%APPDATA%\phevere` on Windows, app support dir on macOS). Search, Recent / A–Z, export/import JSON or CSV. No account.
+
+**OCR.** Bundled PP-OCRv4 (optional Setup component). Settings can fetch PP-OCRv5. Region, hover, clipboard image, and “read this window.” Hover picks the word under the cursor from detection boxes.
+
+**Tray.** Left-click the icon (Windows) or the menu-bar **P** (macOS) for the notebook; right-click for the menu. Settings → Notifications can silence clipboard-image, empty-clipboard, and hover on/off banners. **Quit Phevere** tears down UIA / OCR / sql.js before windows close.
+
+**Chrome.** Light paper UI. Durable windows use the native caption on Windows and traffic lights on macOS.
+
+Languages and source notes: [`docs/MULTILINGUAL.md`](docs/MULTILINGUAL.md). OCR pipeline: [`docs/OCR_CONTEXT_CAPTURE.md`](docs/OCR_CONTEXT_CAPTURE.md).
+
+## Privacy
+
+- The notebook and settings stay on the machine. There is no Phevere account.
+- Online lookup and translation call the engines you enable (Free Dictionary, Wiktionary, Google, MyMemory, optional Youdao/DeepL).
+- Selection capture skips password fields. Silent copy restores the clipboard.
+- Screen Recording on macOS is used only for OCR / window capture, not a remote feed.
 
 ## Development
 
 ### Prerequisites
 
-- Node.js 18+ recommended  
-- **Windows:** Visual Studio 2022 (C++ workload) for the UIA addon; Windows 10/11  
-- **Android / iOS:** JDK 21 + Android Studio, or Xcode on a Mac — [`docs/MOBILE.md`](docs/MOBILE.md) 
+- Node.js 18+ (CI uses 22)
+- **Windows:** Visual Studio 2022 with the C++ workload (UI Automation addon)
+- **macOS:** Xcode Command Line Tools (Accessibility addon, `hdiutil` for DMGs)
+- **Mobile:** JDK 21 + Android Studio, or Xcode — [`docs/MOBILE.md`](docs/MOBILE.md)
 
-### Setup
+### Run from source
 
 ```bash
 git clone https://github.com/thd2020/phevere.git
 cd phevere
 npm install
 npm start
-# Full selection monitoring:
-npm run start-admin
-# Phone web UI:
-npm run mobile:dev
 ```
 
-### Build the installer
+Full selection monitoring on a Mac/Linux-style shell: `npm run start-admin`. Phone web UI: `npm run mobile:dev`.
+
+`make:win` and `npm install` use npmmirror Electron mirrors by default (avoids `github.com` timeouts on some networks). If Electron’s postinstall still hangs: `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`. `npm start` re-extracts the runtime if a cancelled install left `path.txt` missing.
+
+In the `npm start` terminal, **Ctrl+C** once stops Electron and Forge. Tray **Quit Phevere** exits Electron (and that terminal). Packaged builds have no webpack process.
+
+### Package locally
 
 ```bash
 npm run build-native
-npm run make:win
-# → out\make\nsis\x64\Phevere-Setup-*-x64.exe
-# ARM64 host (or `npm run make:win:arm64` with VS ARM64 tools):
-# → out\make\nsis\arm64\Phevere-Setup-*-arm64.exe
+npm run make:win          # out/make/nsis/x64/Phevere-Setup-*-x64.exe
+npm run make:win:arm64    # ARM64 host or VS ARM64 tools
+npm run make:mac:x64      # Intel DMG (macOS)
+npm run make:mac:arm64    # Apple Silicon DMG (macOS)
 ```
 
-`make:win` uses npmmirror Electron mirrors by default (avoids `github.com` `ETIMEDOUT` on some networks). `npm install` uses `.npmrc` `electron_mirror` plus `scripts/ensure-electron.js` (curl) for the runtime. `npm start` re-runs that extract if `path.txt` is missing after a cancelled install. If Electron’s postinstall still hangs: `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install`.
+### CI / CD
 
-CI: `.github/workflows/ci.yml` on every PR and `main` (Windows and macOS unpackaged apps, both `verify-ocr-pack`, both uploaded as artifacts). CD: push an annotated tag `v*.*.*` → `.github/workflows/release.yml` makes Windows x64/ARM64 Setup.exe and macOS Intel/Apple Silicon DMGs, creates the GitHub Release, and attests each file (Windows unsigned unless `CSC_LINK` is set; Mac DMGs unsigned). See [`docs/RELEASE.md`](docs/RELEASE.md).
+Every PR and push to `main` packages unpackaged Windows and macOS apps and runs `verify-ocr-pack`. Push an annotated tag `v*.*.*` (or **Actions → release → Run workflow**) to build both Windows Setups and both macOS DMGs, attach them to the GitHub Release, and attest each file. See [`docs/RELEASE.md`](docs/RELEASE.md).
 
-### Tray Quit vs terminal (dev only)
-
-In the `npm start` terminal, **Ctrl+C** once stops Electron and Forge’s webpack process. Tray **Quit Phevere** exits Electron, which also tears down that terminal. Packaged builds have no separate webpack process.
-
-## Architecture (short)
+## Architecture
 
 ```
-Selection / OCR / shortcut (desktop)  →  Electron main  →  popup renderer
-Share / Process Text / search (mobile) →  Capacitor WebView
+Desktop:  selection / OCR / shortcut  →  Electron main  →  popup renderer
+Mobile:   Process Text / Share / search  →  Capacitor WebView
                               ↓
                      packages/core (dictionary + vocab SQLite)
 ```
 
-Shared lookup: [`packages/core`](packages/core). Desktop native addon: `native-addon/` (UIAutomation / AX). Packaging: Electron Forge + electron-builder NSIS (`electron-builder.yml`, `packaging/installer.nsh`). Mobile: Capacitor in [`apps/mobile`](apps/mobile) — [`docs/MOBILE.md`](docs/MOBILE.md).
+| Piece | Location |
+|---|---|
+| Shared lookup + notebook types | [`packages/core`](packages/core) |
+| Windows UIA / macOS AX addon | [`native-addon/`](native-addon) |
+| Desktop shell | Electron Forge + webpack (`src/`) |
+| Windows installer | electron-builder NSIS (`electron-builder.yml`, `packaging/installer.nsh`) |
+| Mobile | Capacitor in [`apps/mobile`](apps/mobile) |
 
 ## License
 
-MIT © thd2020 — see [`LICENSE`](LICENSE).
+[MIT](LICENSE) © thd2020
