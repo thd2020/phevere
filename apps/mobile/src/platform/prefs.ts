@@ -20,9 +20,9 @@ export interface MobilePrefs {
   audioEnabled: boolean;
   audioSpeed: number;
   floatingStrip: boolean;
-  notifyClipboardImage: boolean;
-  notifyClipboardEmpty: boolean;
-  notifyHoverToggle: boolean;
+  notifyIncoming: boolean;
+  notifySaved: boolean;
+  notifyOcr: boolean;
 }
 
 export const defaultPrefs = (): MobilePrefs => ({
@@ -43,9 +43,9 @@ export const defaultPrefs = (): MobilePrefs => ({
   audioEnabled: true,
   audioSpeed: 1,
   floatingStrip: false,
-  notifyClipboardImage: true,
-  notifyClipboardEmpty: true,
-  notifyHoverToggle: true,
+  notifyIncoming: true,
+  notifySaved: true,
+  notifyOcr: true,
 });
 
 export function loadPrefs(): MobilePrefs {
@@ -53,8 +53,22 @@ export function loadPrefs(): MobilePrefs {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return base;
-    const parsed = JSON.parse(raw) as Partial<MobilePrefs>;
-    return { ...base, ...parsed, sources: { ...base.sources, ...(parsed.sources || {}) } };
+    const parsed = JSON.parse(raw) as Partial<MobilePrefs> & {
+      notifyClipboardImage?: boolean;
+      notifyClipboardEmpty?: boolean;
+      notifyHoverToggle?: boolean;
+    };
+    const merged: MobilePrefs = { ...base, ...parsed, sources: { ...base.sources, ...(parsed.sources || {}) } };
+    if (parsed.notifyIncoming === undefined && parsed.notifyClipboardImage !== undefined) {
+      merged.notifyIncoming = parsed.notifyClipboardImage;
+    }
+    if (parsed.notifySaved === undefined && parsed.notifyClipboardEmpty !== undefined) {
+      merged.notifySaved = parsed.notifyClipboardEmpty;
+    }
+    if (parsed.notifyOcr === undefined && parsed.notifyHoverToggle !== undefined) {
+      merged.notifyOcr = parsed.notifyHoverToggle;
+    }
+    return merged;
   } catch {
     return base;
   }

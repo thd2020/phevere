@@ -19,6 +19,7 @@ import androidx.core.content.ContextCompat;
 
 final class Notify {
   static final String CHANNEL_STRIP = "strip";
+  static final String CHANNEL_EVENTS = "events";
   static final int ID_STRIP = 7;
 
   private Notify() {}
@@ -27,14 +28,43 @@ final class Notify {
     if (Build.VERSION.SDK_INT < 26) return;
     NotificationManager nm = ctx.getSystemService(NotificationManager.class);
     if (nm == null) return;
-    NotificationChannel ch = new NotificationChannel(
+    NotificationChannel strip = new NotificationChannel(
         CHANNEL_STRIP,
         "Lookup strip",
         NotificationManager.IMPORTANCE_LOW
     );
-    ch.setDescription("Shown while the lookup strip floats over other apps");
-    ch.setShowBadge(false);
-    nm.createNotificationChannel(ch);
+    strip.setDescription("Shown while the lookup strip floats over other apps");
+    strip.setShowBadge(false);
+    nm.createNotificationChannel(strip);
+    NotificationChannel events = new NotificationChannel(
+        CHANNEL_EVENTS,
+        "Lookup events",
+        NotificationManager.IMPORTANCE_DEFAULT
+    );
+    events.setDescription("Incoming lookups, notebook saves, and scan results");
+    nm.createNotificationChannel(events);
+  }
+
+  static void post(Context ctx, String title, String body) {
+    ensureChannels(ctx);
+    if (!granted(ctx)) return;
+    Intent open = new Intent(ctx, MainActivity.class);
+    open.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+    int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+    if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;
+    PendingIntent pi = PendingIntent.getActivity(ctx, 2, open, flags);
+    String text = body == null ? "" : body;
+    Notification n = new NotificationCompat.Builder(ctx, CHANNEL_EVENTS)
+        .setSmallIcon(R.drawable.ic_stat_phevere)
+        .setContentTitle(title == null || title.isEmpty() ? "Phevere" : title)
+        .setContentText(text)
+        .setStyle(new NotificationCompat.BigTextStyle().bigText(text))
+        .setAutoCancel(true)
+        .setColor(ContextCompat.getColor(ctx, R.color.ember))
+        .setContentIntent(pi)
+        .build();
+    NotificationManager nm = ctx.getSystemService(NotificationManager.class);
+    if (nm != null) nm.notify((int) (System.currentTimeMillis() % 100000) + 20, n);
   }
 
   static boolean granted(Context ctx) {

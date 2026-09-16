@@ -146,6 +146,39 @@ final class BridgeRouter {
             host.runUi(host::openNotificationSettings);
             resolve(id, new JSONObject().put("ok", true));
             break;
+          case "speak": {
+            String sid = id;
+            String text = p.optString("text");
+            String lang = p.optString("lang", "en-US");
+            float rate = (float) p.optDouble("rate", 1);
+            host.runUi(() -> Speak.get(host.context()).speak(text, lang, rate, () -> {
+              try {
+                resolve(sid, new JSONObject().put("ok", true));
+              } catch (Exception ignored) {
+              }
+            }));
+            break;
+          }
+          case "playUrl": {
+            String sid = id;
+            String url = p.optString("url");
+            float rate = (float) p.optDouble("rate", 1);
+            host.runUi(() -> Speak.get(host.context()).playUrl(url, rate, () -> {
+              try {
+                resolve(sid, new JSONObject().put("ok", true));
+              } catch (Exception ignored) {
+              }
+            }));
+            break;
+          }
+          case "stopAudio":
+            host.runUi(() -> Speak.get(host.context()).stop());
+            resolve(id, new JSONObject().put("ok", true));
+            break;
+          case "notify":
+            Notify.post(host.context(), p.optString("title", "Phevere"), p.optString("body"));
+            resolve(id, new JSONObject().put("ok", true));
+            break;
           case "closeStrip":
             host.runUi(host::closeStrip);
             resolve(id, new JSONObject().put("ok", true));

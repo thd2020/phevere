@@ -35,6 +35,7 @@ final class WebViews {
     s.setJavaScriptEnabled(true);
     s.setDomStorageEnabled(true);
     s.setAllowFileAccess(false);
+    s.setMediaPlaybackRequiresUserGesture(false);
     if (Build.VERSION.SDK_INT >= 21) {
       s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
     }

@@ -51,9 +51,17 @@
 }
 
 * { box-sizing: border-box; }
-html, body {
+html {
   margin: 0;
   min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+body {
+  margin: 0;
+  min-height: 100%;
+  overflow: visible;
   background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface);
   font-family: var(--md-font-ui);
@@ -66,19 +74,17 @@ a { color: var(--md-sys-color-tertiary); }
 
 .shell {
   min-height: 100dvh;
-  padding-top: var(--pv-inset-top);
   padding-left: var(--pv-inset-left);
   padding-right: var(--pv-inset-right);
   padding-bottom: calc(var(--nav-h) + var(--pv-inset-bottom));
 }
 
 .top {
-  padding: 12px 16px 8px;
+  padding: calc(12px + var(--pv-inset-top)) 16px 8px;
   position: sticky;
   top: 0;
   z-index: 4;
-  background: color-mix(in srgb, var(--md-sys-color-surface) 92%, transparent);
-  backdrop-filter: none;
+  background: var(--md-sys-color-surface);
 }
 
 .brand-row {
@@ -234,62 +240,29 @@ a { color: var(--md-sys-color-tertiary); }
   color: var(--md-sys-color-surface);
 }
 
-.shell-lexicon {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
-  overflow: hidden;
-}
 .shell-lexicon .page {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  padding-bottom: 0;
+  overflow: visible;
 }
 .lookup-flow {
   min-height: 0;
 }
 .shell-lexicon .lookup-flow {
-  flex: 1;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
 }
-.shell-lexicon .head,
-.shell-lexicon .chips,
-.shell-lexicon .status {
-  flex-shrink: 0;
-}
-
 .lexicon-block--senses {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
   margin: 0 -16px;
 }
 .lexicon-pos-layout {
   display: flex;
-  align-items: stretch;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
+  align-items: flex-start;
 }
 .lexicon-pos-tabs {
   flex: 0 0 auto;
-  align-self: stretch;
   width: max-content;
-  min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
-  overflow-y: scroll;
   border-right: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface);
-  scrollbar-gutter: stable;
 }
 .lexicon-pos-tabs::-webkit-scrollbar {
   width: 10px;
@@ -349,9 +322,7 @@ a { color: var(--md-sys-color-tertiary); }
 .lexicon-pos-panel {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -764,28 +735,11 @@ select, .field {
   background: #fffdf9;
 }
 .shell-wiki {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
-  overflow: hidden;
+  min-height: 0;
 }
 .shell-wiki .page {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  padding-bottom: 0;
+  overflow: visible;
 }
-.shell-wiki .lookup-flow {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.shell-wiki .head,
-.shell-wiki .chips,
-.shell-wiki .status { flex-shrink: 0; }
 
 .linkish {
   border: 0;
@@ -1191,6 +1145,7 @@ html[data-mode="strip"] .brand-row h1 {
 }
 html[data-mode="strip"] .top {
   position: static;
+  padding-top: 12px;
 }
 
 .toast {

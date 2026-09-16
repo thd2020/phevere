@@ -96,6 +96,15 @@ function toast(msg: string): void {
   }, 2400);
 }
 
+function postOsNotify(kind: 'incoming' | 'saved' | 'ocr', title: string, body: string): void {
+  if (!hasNativeBridge()) return;
+  if (kind === 'incoming' && !prefs.notifyIncoming) return;
+  if (kind === 'saved' && !prefs.notifySaved) return;
+  if (kind === 'ocr' && !prefs.notifyOcr) return;
+  if (kind === 'incoming' && !stripMode && document.visibilityState === 'visible') return;
+  void nativeCall('notify', { title, body }).catch(() => undefined);
+}
+
 function paint(): void {
   document.documentElement.dataset.notify = capture.platform === 'ios' ? 'ios' : 'android';
   if (settingsSection === 'notifications' && capture.platform === 'web') settingsSection = 'capture';
@@ -415,6 +424,7 @@ async function saveCurrent(): Promise<void> {
       sources: result.sources,
     });
     toast('Saved');
+    postOsNotify('saved', 'Saved to notebook', lemma);
   }
   await refreshNotebook();
   paint();
@@ -433,8 +443,10 @@ async function runOcr(): Promise<void> {
   try {
     const res = await nativeCall<{ text?: string }>('scanOcr', {});
     const text = extractLookupQuery(res.text || '');
-    if (text) await lookup(text);
-    else toast('No text in that image');
+    if (text) {
+      postOsNotify('ocr', 'Scan finished', text);
+      await lookup(text);
+    } else toast('No text in that image');
   } catch (err) {
     toast(err instanceof Error ? err.message : 'OCR failed');
   }
@@ -515,30 +527,14 @@ function pulseSpeak(el: HTMLElement, done: Promise<void>): Promise<void> {
   });
 }
 
-function lexiconPanelScroller(): HTMLElement | null {
-  return document.querySelector('.lexicon-pos-panel');
-}
-
-function revealLexiconRailTab(tab: HTMLElement): void {
-  const rail = tab.closest('.lexicon-pos-tabs') as HTMLElement | null;
-  if (!rail) return;
-  const t = tab.getBoundingClientRect();
-  const n = rail.getBoundingClientRect();
-  if (t.top < n.top) rail.scrollTop += t.top - n.top - 4;
-  else if (t.bottom > n.bottom) rail.scrollTop += t.bottom - n.bottom + 4;
-}
-
 function highlightLexiconPosTab(pos: string): void {
   const rootEl = document.querySelector('.lexicon-block--senses');
   if (!rootEl) return;
-  let active: HTMLElement | null = null;
   rootEl.querySelectorAll('.lexicon-pos-tab').forEach((tab) => {
     const on = (tab as HTMLElement).dataset.pos === pos;
     tab.classList.toggle('is-active', on);
     tab.setAttribute('aria-selected', on ? 'true' : 'false');
-    if (on) active = tab as HTMLElement;
   });
-  if (active) revealLexiconRailTab(active);
 }
 
 function lexiconJumpNode(rootEl: Element, pos: string): HTMLElement | null {
@@ -551,18 +547,39 @@ function lexiconJumpNode(rootEl: Element, pos: string): HTMLElement | null {
 
 function jumpToLexiconPos(pos: string, instant: boolean): void {
   const rootEl = document.querySelector('.lexicon-block--senses');
-  const scroller = lexiconPanelScroller();
-  if (!rootEl || !scroller) return;
-  const target = (pos ? lexiconJumpNode(rootEl, pos) : null) || (rootEl.querySelector('.lexicon-pos-panel [data-pos]') as HTMLElement | null);
+  if (!rootEl) return;
+  const target =
+    (pos ? lexiconJumpNode(rootEl, pos) : null) ||
+    (rootEl.querySelector('.lexicon-pos-panel [data-pos]') as HTMLElement | null);
   if (!target) return;
   posJumpLock = true;
-  const top = Math.max(0, target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 6);
-  if (instant) scroller.scrollTop = top;
-  else {
-    try {
-      scroller.scrollTo({ top, behavior: 'smooth' });
-    } catch {
-      scroller.scrollTop = top;
+  const header = document.querySelector('.top') as HTMLElement | null;
+  const offset = (header?.getBoundingClientRect().height || 0) + 8;
+  if (stripMode) {
+    const scroller = document.querySelector('.page') as HTMLElement | null;
+    if (scroller) {
+      const top = Math.max(
+        0,
+        target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 6,
+      );
+      if (instant) scroller.scrollTop = top;
+      else {
+        try {
+          scroller.scrollTo({ top, behavior: 'smooth' });
+        } catch {
+          scroller.scrollTop = top;
+        }
+      }
+    }
+  } else {
+    const top = Math.max(0, window.scrollY + target.getBoundingClientRect().top - offset);
+    if (instant) window.scrollTo(0, top);
+    else {
+      try {
+        window.scrollTo({ top, behavior: 'smooth' });
+      } catch {
+        window.scrollTo(0, top);
+      }
     }
   }
   if (posJumpTimer) window.clearTimeout(posJumpTimer);
@@ -574,9 +591,9 @@ function jumpToLexiconPos(pos: string, instant: boolean): void {
 function onLexiconPosScroll(): void {
   if (posJumpLock) return;
   const rootEl = document.querySelector('.lexicon-block--senses');
-  const scroller = lexiconPanelScroller();
-  if (!rootEl || !scroller) return;
-  const marker = scroller.getBoundingClientRect().top + 20;
+  if (!rootEl) return;
+  const header = document.querySelector('.top') as HTMLElement | null;
+  const marker = (header?.getBoundingClientRect().bottom || 0) + 20;
   const nodes = rootEl.querySelectorAll('.lexicon-pos-panel [data-pos]');
   let pos = nodes.length ? (nodes[0] as HTMLElement).getAttribute('data-pos') || '' : '';
   nodes.forEach((g) => {
@@ -590,22 +607,8 @@ function onLexiconPosScroll(): void {
 }
 
 function bindLexiconPane(): void {
-  const scroller = lexiconPanelScroller();
-  if (!scroller) return;
-  scroller.addEventListener('scroll', onLexiconPosScroll, { passive: true });
-  const rail = document.querySelector('.lexicon-pos-tabs');
-  if (rail) {
-    rail.addEventListener(
-      'wheel',
-      (e) => {
-        const nav = e.currentTarget as HTMLElement;
-        if (nav.scrollHeight <= nav.clientHeight + 1) return;
-        e.preventDefault();
-        e.stopPropagation();
-        nav.scrollTop += (e as WheelEvent).deltaY;
-      },
-      { passive: false },
-    );
+  if (stripMode) {
+    document.querySelector('.page')?.addEventListener('scroll', onLexiconPosScroll, { passive: true });
   }
   if (lexiconPos) {
     highlightLexiconPosTab(lexiconPos);
@@ -702,7 +705,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'speak-ipa': {
       const i = Number(t.dataset.i);
       const p = result?.pronunciations?.[i];
-      if (p) await pulseSpeak(t, speakIpa(p, prefs));
+      if (p) await pulseSpeak(t, speakIpa(p, prefs, result?.word));
       return;
     }
     case 'speak-text':
@@ -830,10 +833,15 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'notify': {
       const on = (t as HTMLInputElement).checked;
-      if (t.dataset.key === 'clipboardImage') prefs.notifyClipboardImage = on;
-      else if (t.dataset.key === 'clipboardEmpty') prefs.notifyClipboardEmpty = on;
-      else if (t.dataset.key === 'hoverToggle') prefs.notifyHoverToggle = on;
+      if (t.dataset.key === 'incoming') prefs.notifyIncoming = on;
+      else if (t.dataset.key === 'saved') prefs.notifySaved = on;
+      else if (t.dataset.key === 'ocr') prefs.notifyOcr = on;
       persistPrefs();
+      if (on && hasNativeBridge() && capture.notificationsGranted === false) {
+        await nativeCall('requestNotifications', {});
+        await refreshCapture();
+        paint();
+      }
       return;
     }
     case 'audio-on':
@@ -943,11 +951,15 @@ export async function startApp(): Promise<void> {
   root.addEventListener('change', onChange);
   root.addEventListener('input', onChange);
   paint();
+  window.addEventListener('scroll', onLexiconPosScroll, { passive: true });
   await sqlWarm();
   await refreshNotebook();
   void fillEmptyCards();
   await refreshPacks();
-  startIncomingText((text) => {
+  startIncomingText((text, origin) => {
+    if (origin === 'process-text' || origin === 'share') {
+      postOsNotify('incoming', 'Incoming lookup', text);
+    }
     void lookup(text);
   });
   if (hasNativeBridge()) {

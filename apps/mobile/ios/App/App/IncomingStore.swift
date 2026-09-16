@@ -33,6 +33,14 @@ enum Notify {
     guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
     UIApplication.shared.open(url)
   }
+
+  static func post(title: String, body: String) {
+    let c = UNMutableNotificationContent()
+    c.title = title.isEmpty ? "Phevere" : title
+    c.body = body
+    let req = UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil)
+    UNUserNotificationCenter.current().add(req)
+  }
 }
 
 extension Notification.Name {

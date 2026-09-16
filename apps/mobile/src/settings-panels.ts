@@ -77,14 +77,25 @@ function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
     ${overlayBtn}`;
 }
 
-function notificationsPanel(capture: CaptureInfo): string {
+function notificationsPanel(prefs: MobilePrefs, capture: CaptureInfo): string {
   const allow = !capture.notificationsGranted
-    ? `${capture.platform === 'android' ? '<p class="hint">Needed for the lookup strip in the shade.</p>' : ''}
-    <div class="toolbar-row"><button type="button" class="filled" data-act="notify-allow">Allow notifications</button></div>`
+    ? `<div class="toolbar-row"><button type="button" class="filled" data-act="notify-allow">Allow notifications</button></div>`
     : '';
   return `
     ${panelIntro('Notifications')}
     ${allow}
+    <label class="toggle">
+      <span class="src-name">Incoming lookup</span>
+      <input type="checkbox" data-act="notify" data-key="incoming" ${prefs.notifyIncoming ? 'checked' : ''} />
+    </label>
+    <label class="toggle">
+      <span class="src-name">Saved to notebook</span>
+      <input type="checkbox" data-act="notify" data-key="saved" ${prefs.notifySaved ? 'checked' : ''} />
+    </label>
+    <label class="toggle">
+      <span class="src-name">Scan finished</span>
+      <input type="checkbox" data-act="notify" data-key="ocr" ${prefs.notifyOcr ? 'checked' : ''} />
+    </label>
     <div class="toolbar-row"><button type="button" class="outlined" data-act="notify-settings">Notification settings</button></div>`;
 }
 
@@ -201,7 +212,7 @@ export function settingsBody(
     section === 'capture'
       ? capturePanel(prefs, capture)
       : section === 'notifications'
-        ? notificationsPanel(capture)
+        ? notificationsPanel(prefs, capture)
         : section === 'sources'
           ? sourcesPanel(prefs, sources)
           : section === 'offline'

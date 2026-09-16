@@ -28,6 +28,7 @@ import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.webkit.WebViewAssetLoader;
 
 import com.google.mlkit.vision.common.InputImage;
@@ -125,7 +126,10 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
   protected void onCreate(Bundle savedInstanceState) {
     if (!isStrip()) SplashScreen.installSplashScreen(this);
     super.onCreate(savedInstanceState);
-    WindowCompat.setDecorFitsSystemWindows(getWindow(), !isStrip());
+    WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+    WindowInsetsControllerCompat bars = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+    bars.setAppearanceLightStatusBars(true);
+    bars.setAppearanceLightNavigationBars(true);
     setContentView(isStrip() ? R.layout.activity_strip : R.layout.activity_main);
     if (isStrip()) {
       Window w = getWindow();
@@ -144,9 +148,11 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
     });
 
     ViewCompat.setOnApplyWindowInsetsListener(web, (v, insets) -> {
-      lastInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+      Insets sys = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+      Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
+      lastInsets = Insets.of(sys.left, sys.top, sys.right, Math.max(sys.bottom, ime.bottom));
       pushInsets();
-      return insets;
+      return isStrip() ? insets : WindowInsetsCompat.CONSUMED;
     });
   }
 

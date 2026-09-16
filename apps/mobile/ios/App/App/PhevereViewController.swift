@@ -3,14 +3,19 @@ import WebKit
 import UniformTypeIdentifiers
 import Vision
 import PhotosUI
+import AVFoundation
 
-final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKURLSchemeHandler, UIDocumentPickerDelegate, PHPickerViewControllerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKURLSchemeHandler, UIDocumentPickerDelegate, PHPickerViewControllerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate, AVSpeechSynthesizerDelegate {
   var stripMode = false
   private var web: WKWebView!
   private var pendingJsId: String?
   private var pendingSaveText: String = ""
   private var pendingOcrId: String?
   private var exportingFile = false
+  private let synth = AVSpeechSynthesizer()
+  private var player: AVPlayer?
+  private var playerEnd: NSObjectProtocol?
+  private var pendingSpeakId: String?
 
   override func viewDidLoad() {
     super.viewDidLoad()
@@ -30,12 +35,17 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
     )
     conf.userContentController.addUserScript(shim)
     conf.userContentController.add(self, name: "PhevereBridge")
+    conf.allowsInlineMediaPlayback = true
+    if #available(iOS 10.0, *) {
+      conf.mediaTypesRequiringUserActionForPlayback = []
+    }
     web = WKWebView(frame: view.bounds, configuration: conf)
     web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
     web.scrollView.contentInsetAdjustmentBehavior = .never
     view.addSubview(web)
     let page = stripMode ? "app://localhost/index.html?mode=strip" : "app://localhost/index.html"
     web.load(URLRequest(url: URL(string: page)!))
+    synth.delegate = self
   }
 
   func injectPending() {
@@ -152,6 +162,50 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
       }
     case "openNotificationSettings":
       Notify.openSettings()
+      resolve(id, ["ok": true])
+    case "speak":
+      let text = (params["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+      let lang = params["lang"] as? String ?? "en-US"
+      let rate = params["rate"] as? Double ?? 1
+      finishSpeak(ok: true)
+      stopPlayback()
+      synth.stopSpeaking(at: .immediate)
+      if text.isEmpty {
+        resolve(id, ["ok": true])
+      } else {
+        pendingSpeakId = id
+        let u = AVSpeechUtterance(string: text)
+        u.voice = AVSpeechSynthesisVoice(language: lang)
+        u.rate = Float(min(1.0, max(0.35, rate * 0.5)))
+        synth.speak(u)
+      }
+    case "playUrl":
+      finishSpeak(ok: true)
+      stopPlayback()
+      pendingSpeakId = id
+      if let s = params["url"] as? String, let url = URL(string: s) {
+        let item = AVPlayerItem(url: url)
+        player = AVPlayer(playerItem: item)
+        let rate = Float(params["rate"] as? Double ?? 1)
+        playerEnd = NotificationCenter.default.addObserver(
+          forName: .AVPlayerItemDidPlayToEndTime,
+          object: item,
+          queue: .main
+        ) { [weak self] _ in
+          self?.finishSpeak(ok: true)
+        }
+        player?.play()
+        if rate > 0 { player?.rate = rate }
+      } else {
+        finishSpeak(ok: true)
+      }
+    case "stopAudio":
+      stopPlayback()
+      synth.stopSpeaking(at: .immediate)
+      finishSpeak(ok: true)
+      resolve(id, ["ok": true])
+    case "notify":
+      Notify.post(title: params["title"] as? String ?? "Phevere", body: params["body"] as? String ?? "")
       resolve(id, ["ok": true])
     case "closeStrip":
       dismiss(animated: true)
@@ -287,6 +341,29 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
   }
 
   func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {}
+
+  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+    finishSpeak(ok: true)
+  }
+
+  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+    finishSpeak(ok: true)
+  }
+
+  private func finishSpeak(ok: Bool) {
+    guard let id = pendingSpeakId else { return }
+    pendingSpeakId = nil
+    resolve(id, ["ok": ok])
+  }
+
+  private func stopPlayback() {
+    player?.pause()
+    player = nil
+    if let obs = playerEnd {
+      NotificationCenter.default.removeObserver(obs)
+      playerEnd = nil
+    }
+  }
 
   private func pushInsets() {
     let t = view.safeAreaInsets.top

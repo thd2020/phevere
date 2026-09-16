@@ -1,6 +1,6 @@
 # Phevere on Android and iOS
 
-**2026-09-16.** GitHub Actions `ci.yml` builds the **native WebView** Android APK and iOS IPA on every PR and `main` push, and keeps them as **Actions artifacts** (7 days). They are not attached to GitHub Releases. The APK is a phone shell (WebView + ML Kit OCR), not the desktop Electron app and not the Paddle OCR pack, so it stays a few megabytes next to a 180–350 MB unpackaged desktop zip. Wikipedia article links open the next page in the pane. Etymology can show Etymonline and Youdao, not only Wiktionary. Phone banners are a snackbar (Android) / top banner (iOS).
+**2026-09-16.** GitHub Actions `ci.yml` builds the **native WebView** Android APK and iOS IPA on every PR and `main` push, and keeps them as **Actions artifacts** (7 days). They are not attached to GitHub Releases. The APK is a phone shell (WebView + ML Kit OCR), not the desktop Electron app and not the Paddle OCR pack, so it stays a few megabytes next to a 180–350 MB unpackaged desktop zip. Wikipedia article links open the next page in the pane. Etymology can show Etymonline and Youdao, not only Wiktionary. Phone banners are a snackbar (Android) / top banner (iOS). Settings → Notifications has three independent switches: incoming lookup, saved to notebook, and scan finished (plus Allow / OS settings). The lookup page scrolls as one column; IPA chips speak through Android/iOS TTS (or that chip’s recorded clip).
 
 ## What it does
 
@@ -8,7 +8,7 @@
 |---|---|
 | Lookup | Material 3 search + lexicon / translation / Wikipedia / etymology. IPA chips under the headword, recorded audio, word-family links, back/forward |
 | Notebook | Save from the heart. Same list as desktop: expandable rows, Recent / A–Z, Export, Import, Refresh. Empty glosses fill in the background. |
-| Settings | Capture, Notifications (Android / iOS), Sources, Offline, API keys, Audio. Capture holds camera OCR and the **floating lookup strip**. Desktop-only items (shortcuts, hover, tray balloons, PP-OCR) are not shown. |
+| Settings | Capture, Notifications (Android / iOS), Sources, Offline, API keys, Audio. Capture holds camera OCR and the **floating lookup strip**. Notifications are three on/off rows: **Incoming lookup**, **Saved to notebook**, **Scan finished**, plus Allow / the OS screen. Desktop-only items (shortcuts, hover, tray balloons, PP-OCR) are not shown. |
 | Process Text | Android: select text → **Phevere** in the system toolbar (full app, or strip if enabled) |
 | Share / deep link | iOS: Share sheet or `phevere://lookup?q=word` (full app, or half-sheet if enabled) |
 | Camera OCR | Camera or photo → on-device text (ML Kit on Android, Vision on iOS) → lookup |

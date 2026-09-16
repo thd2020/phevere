@@ -10,12 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Settings → **Notifications**: turn off the clipboard-image tray balloon, the “no image on clipboard” hint, and hover on/off banners. Stored in `%APPDATA%\phevere\notification-prefs.json`.
-- **Android / iOS:** native WebView (not Capacitor) with a Material 3 phone UI: full lookup (lexicon, translation, Wikipedia article in the pane, etymology source tabs, IPA, recorded audio), notebook (expandable rows, export/import), settings (sources, API keys, offline packs), Process Text / Share, camera / photo OCR, and an optional compact **lookup strip** (Android overlay / iOS half-sheet). Phone **Notifications** request the system permission, open the OS notification screen, and (Android) keep a silent shade entry while the lookup strip floats. See [`docs/MOBILE.md`](docs/MOBILE.md).
+- **Android / iOS:** native WebView (not Capacitor) with a Material 3 phone UI: full lookup (lexicon, translation, Wikipedia article in the pane, etymology source tabs, IPA, recorded audio), notebook (expandable rows, export/import), settings (sources, API keys, offline packs), Process Text / Share, camera / photo OCR, and an optional compact **lookup strip** (Android overlay / iOS half-sheet). Phone **Notifications** has independent switches for incoming lookup, notebook saves, and scan finished, plus the system permission and OS settings screen. Android keeps a silent shade entry while the lookup strip floats. See [`docs/MOBILE.md`](docs/MOBILE.md).
 - GitHub Actions **android-apk** and **ios-ipa** jobs upload a debug APK and an IPA as **Actions artifacts** (not GitHub Releases).
 
 ### Changed
 
-- Phone **Settings** lists Capture, Notifications, Sources, Offline, API keys, and Audio on the device (Notifications is omitted in the Chrome preview). Shortcuts, hover, tray balloons, and PP-OCR packs stay on the desktop app. Lexicon rail jumps like desktop. Etymology waits for Wiktionary / Etymonline / Youdao, then shows source tabs; `mobile:dev` proxies those two sites so the browser preview is not stuck on Wiktionary. Wikipedia opens the article in the lookup pane; in-article links load the next page there. The notebook matches desktop: expandable rows, Recent / A–Z, Export / Import / Refresh.
+- Phone **Settings** lists Capture, Notifications, Sources, Offline, API keys, and Audio on the device (Notifications is omitted in the Chrome preview). Notifications has three switches — incoming lookup, saved to notebook, scan finished — plus Allow / the OS notification screen. Shortcuts, hover, tray balloons, and PP-OCR packs stay on the desktop app. Lexicon rail jumps like desktop. Etymology waits for Wiktionary / Etymonline / Youdao, then shows source tabs; `mobile:dev` proxies those two sites so the browser preview is not stuck on Wiktionary. Wikipedia opens the article in the lookup pane; in-article links load the next page there. The notebook matches desktop: expandable rows, Recent / A–Z, Export / Import / Refresh.
 - Phone in-app messages use a Material 3 snackbar (Android / preview) or a top banner (iOS).
 - Translation tab cards, language selects, and the swap button use the same rounded corners as lexicon result cards (12px / 8px).
 - Wikipedia search and article cards use the same 12px corners as lexicon result cards.
@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Phone lookup sat in a double status-bar and nav-bar gap on Android: the WebView already cleared the system bars and CSS padded them again. The shell is edge-to-edge; only CSS insets remain.
+- The lookup column could not scroll — only the white lexicon card did. The headword, IPA chips, tabs, and senses now move together.
+- IPA chip speakers did nothing in the Android WebView (`speechSynthesis` is missing). Chips play that accent’s recorded clip when the source sent one, otherwise Android/iOS TTS of the headword.
 - Phone Wikipedia in-pane links did nothing: Parsoid uses `./Title` hrefs, and the click handler was attached after `srcdoc` so it often missed `load`. Links now resolve against the article base, hash cites scroll in place, and File/Special URLs open in the browser.
 - Phone etymology often showed only Wiktionary in the Chrome preview because Etymonline and Youdao are blocked by CORS. Youdao also has an HTTP fallback when HTTPS is empty.
 - GitHub **release** workflow never parsed: the macOS asset-delete step had unindented Python, so every `main` push showed a 0-job failure and tag `v1.5.0` never got a GitHub Release. Mac now deletes/replaces assets with the same PowerShell as Windows.
