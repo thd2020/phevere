@@ -1,5 +1,7 @@
 # Phevere
 
+**2026-09-16.** Phone Wikipedia links stay in the lookup pane. Etymology can show Etymonline and Youdao, not only Wiktionary. Phone banners are a snackbar (Android) / top banner (iOS); Android’s lookup strip uses a silent shade notification. Settings still omit desktop-only shortcuts, hover, tray balloons, and PP-OCR. Android / iOS sideload is a **native WebView** with a Material 3 phone UI. Optional **lookup strip** for power users. Electron stays on the desktop. GitHub Actions uploads an Android APK and an iOS IPA as workflow artifacts (not GitHub Releases). Details: [`docs/MOBILE.md`](docs/MOBILE.md).
+
 [![Release](https://img.shields.io/github/v/release/thd2020/phevere?display_name=tag)](https://github.com/thd2020/phevere/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/thd2020/phevere)](LICENSE)
 [![Windows](https://img.shields.io/badge/Windows-10%20%26%2011-0078D4?logo=windows&logoColor=white)](#windows)
@@ -9,7 +11,7 @@
   <img src="packaging/icon.png" width="96" height="96" alt="Phevere">
 </p>
 
-**Select a word anywhere, read it immediately.** Phevere is a desktop dictionary that lives in the system tray: highlight text in the browser, an editor, or a PDF, and a lookup appears with definitions, IPA, translation, etymology, Wikipedia, and a local notebook. Hover OCR covers text that is not selectable. Android and iOS share the same lookup core (sideload).
+**Select a word anywhere, read it immediately.** Phevere is a desktop dictionary that lives in the system tray: highlight text in the browser, an editor, or a PDF, and a lookup appears with definitions, IPA, translation, etymology, Wikipedia, and a local notebook. Hover OCR covers text that is not selectable. Android and iOS sideload a **phone-sized Material 3 app** with the same dictionary core.
 
 Publisher: [thd2020](https://github.com/thd2020) · Current desktop: **1.5.0** · Changelog: [`CHANGELOG.md`](CHANGELOG.md)
 
@@ -74,7 +76,7 @@ The menu-bar **P** has **Open Accessibility Settings…** and **Open Screen Reco
 
 ### Android / iOS
 
-Not on the store yet. Android: **Phevere** in the system text-selection toolbar (Process Text). iOS: Share sheet or `phevere://lookup?q=…`. Camera OCR and a global overlay are out of scope for v1. See [`docs/MOBILE.md`](docs/MOBILE.md).
+Not on the store yet. Android: **Phevere** in the system text-selection toolbar (Process Text). iOS: Share sheet or `phevere://lookup?q=…`. The UI is Material 3 in a native WebView (not Capacitor, not the desktop popup). Camera / photo OCR is included. Settings can open a compact **lookup strip** instead of the full app (Android overlay if you grant Display over other apps; iOS half-sheet). GitHub Actions uploads a debug APK; see [`docs/MOBILE.md`](docs/MOBILE.md).
 
 ## Features
 
@@ -112,7 +114,7 @@ Languages and source notes: [`docs/MULTILINGUAL.md`](docs/MULTILINGUAL.md). OCR 
 - Node.js 18+ (CI uses 22)
 - **Windows:** Visual Studio 2022 with the C++ workload (UI Automation addon)
 - **macOS:** Xcode Command Line Tools (Accessibility addon, `hdiutil` for DMGs)
-- **Mobile:** JDK 21 + Android Studio, or Xcode — [`docs/MOBILE.md`](docs/MOBILE.md)
+- **Mobile:** JDK 17 + Android SDK (Studio optional), or Xcode on a Mac — [`docs/MOBILE.md`](docs/MOBILE.md). GitHub Actions uploads an Android debug APK and an iOS IPA as workflow artifacts (not GitHub Releases).
 
 ### Run from source
 
@@ -141,13 +143,13 @@ npm run make:mac:arm64    # Apple Silicon DMG (macOS)
 
 ### CI / CD
 
-Every PR and push to `main` packages unpackaged Windows and macOS apps and runs `verify-ocr-pack`. Push an annotated tag `v*.*.*` (or **Actions → release → Run workflow**) to build both Windows Setups and both macOS DMGs, attach them to the GitHub Release, and attest each file. See [`docs/RELEASE.md`](docs/RELEASE.md).
+Every PR and push to `main` packages unpackaged Windows and macOS apps and runs `verify-ocr-pack`. The same CI run also builds an Android debug APK and an iOS IPA and keeps them on the run’s **Artifacts** tab (not on a GitHub Release). Push an annotated tag `v*.*.*` (or **Actions → release → Run workflow**) to build both Windows Setups and both macOS DMGs, attach them to the GitHub Release, and attest each file. See [`docs/RELEASE.md`](docs/RELEASE.md).
 
 ## Architecture
 
 ```
 Desktop:  selection / OCR / shortcut  →  Electron main  →  popup renderer
-Mobile:   Process Text / Share / search  →  Capacitor WebView
+Mobile:   Process Text / Share / search / camera  →  native WebView  →  Material 3 UI
                               ↓
                      packages/core (dictionary + vocab SQLite)
 ```
@@ -158,7 +160,7 @@ Mobile:   Process Text / Share / search  →  Capacitor WebView
 | Windows UIA / macOS AX addon | [`native-addon/`](native-addon) |
 | Desktop shell | Electron Forge + webpack (`src/`) |
 | Windows installer | electron-builder NSIS (`electron-builder.yml`, `packaging/installer.nsh`) |
-| Mobile | Capacitor in [`apps/mobile`](apps/mobile) |
+| Mobile | Native WebView in [`apps/mobile`](apps/mobile) |
 
 ## License
 

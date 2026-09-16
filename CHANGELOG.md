@@ -10,9 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Settings → **Notifications**: turn off the clipboard-image tray balloon, the “no image on clipboard” hint, and hover on/off banners. Stored in `%APPDATA%\phevere\notification-prefs.json`.
+- **Android / iOS:** native WebView (not Capacitor) with a Material 3 phone UI: full lookup (lexicon, translation, Wikipedia article in the pane, etymology source tabs, IPA, recorded audio), notebook (expandable rows, export/import), settings (sources, API keys, offline packs), Process Text / Share, camera / photo OCR, and an optional compact **lookup strip** (Android overlay / iOS half-sheet). Phone **Notifications** request the system permission, open the OS notification screen, and (Android) keep a silent shade entry while the lookup strip floats. See [`docs/MOBILE.md`](docs/MOBILE.md).
+- GitHub Actions **android-apk** and **ios-ipa** jobs upload a debug APK and an IPA as **Actions artifacts** (not GitHub Releases).
 
 ### Changed
 
+- Phone **Settings** lists Capture, Notifications, Sources, Offline, API keys, and Audio on the device (Notifications is omitted in the Chrome preview). Shortcuts, hover, tray balloons, and PP-OCR packs stay on the desktop app. Lexicon rail jumps like desktop. Etymology waits for Wiktionary / Etymonline / Youdao, then shows source tabs; `mobile:dev` proxies those two sites so the browser preview is not stuck on Wiktionary. Wikipedia opens the article in the lookup pane; in-article links load the next page there. The notebook matches desktop: expandable rows, Recent / A–Z, Export / Import / Refresh.
+- Phone in-app messages use a Material 3 snackbar (Android / preview) or a top banner (iOS).
 - Translation tab cards, language selects, and the swap button use the same rounded corners as lexicon result cards (12px / 8px).
 - Wikipedia search and article cards use the same 12px corners as lexicon result cards.
 - Lexicon **chips** (rail tabs and word-family banners) abbreviate only long POS (**adj.**, **adv.**, **prep.**, …). **Noun** and **verb** stay in full, and the part-of-speech heading in the main pane is always the full word.
@@ -22,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Phone Wikipedia in-pane links did nothing: Parsoid uses `./Title` hrefs, and the click handler was attached after `srcdoc` so it often missed `load`. Links now resolve against the article base, hash cites scroll in place, and File/Special URLs open in the browser.
+- Phone etymology often showed only Wiktionary in the Chrome preview because Etymonline and Youdao are blocked by CORS. Youdao also has an HTTP fallback when HTTPS is empty.
 - GitHub **release** workflow never parsed: the macOS asset-delete step had unindented Python, so every `main` push showed a 0-job failure and tag `v1.5.0` never got a GitHub Release. Mac now deletes/replaces assets with the same PowerShell as Windows.
 - Windows Setup failed in Actions: NSIS `ShowInstDetails` sat inside a Function (`installer.nsh`). It is a compiler flag only; the InstFiles callback keeps `SetDetailsPrint both`.
 - Toolbar 🔊 still showed “Fetching pronunciation…” on a second click: replay wiped the audio element, walked dead Free Dictionary URLs again (12s, failures uncached), and only prefetched the first URL. Replay now uses the in-pane clip; missing URLs are remembered; all recorded URLs prefetch together.
