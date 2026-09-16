@@ -1,11 +1,13 @@
-import { App } from '@capacitor/app';
-import { ProcessText } from './plugins/process-text';
+export type IncomingOrigin = 'share' | 'process-text' | 'search' | 'ocr' | 'clipboard';
+export type IncomingHandler = (text: string, origin: IncomingOrigin) => void;
 
-export type IncomingHandler = (text: string, origin: 'share' | 'process-text' | 'search') => void;
+export function extractLookupQuery(raw: string): string {
+  return (raw || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+}
 
 function queryFromUrl(url: string): string | null {
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(url, window.location.origin);
     const q = parsed.searchParams.get('q') || parsed.searchParams.get('text');
     return q ? decodeURIComponent(q).trim() : null;
   } catch {
@@ -14,43 +16,14 @@ function queryFromUrl(url: string): string | null {
   }
 }
 
-export function extractLookupQuery(raw: string): string {
-  return (raw || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+export function queryFromLocation(): string | null {
+  const q = queryFromUrl(window.location.href);
+  return q ? extractLookupQuery(q) : null;
 }
 
-export async function startIncomingText(onText: IncomingHandler): Promise<void> {
-  const hashQ = queryFromUrl(window.location.href);
-  if (hashQ) onText(extractLookupQuery(hashQ), 'search');
-
-  App.addListener('appUrlOpen', (event) => {
-    const q = queryFromUrl(event.url);
-    if (q) onText(extractLookupQuery(q), 'share');
-  });
-
-  App.addListener('appStateChange', async ({ isActive }) => {
-    if (!isActive) return;
-    try {
-      const pending = await ProcessText.getPendingText();
-      if (pending.text) onText(extractLookupQuery(pending.text), 'process-text');
-    } catch {
-      /* web or plugin missing */
-    }
-  });
-
-  try {
-    const pending = await ProcessText.getPendingText();
-    if (pending.text) onText(extractLookupQuery(pending.text), 'process-text');
-  } catch {
-    /* web */
-  }
-
-  try {
-    const launch = await App.getLaunchUrl();
-    if (launch?.url) {
-      const q = queryFromUrl(launch.url);
-      if (q) onText(extractLookupQuery(q), 'share');
-    }
-  } catch {
-    /* web */
-  }
+export function startIncomingText(onText: IncomingHandler): void {
+  window.__pvIncoming = (text, origin) => {
+    const q = extractLookupQuery(text);
+    if (q) onText(q, (origin as IncomingOrigin) || 'share');
+  };
 }

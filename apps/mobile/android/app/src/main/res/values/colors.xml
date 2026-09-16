@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="paper">#FFF4F0EA</color>
+    <color name="ink">#FF1C1917</color>
+    <color name="ember">#FF9C3D00</color>
+    <color name="outline">#FFD7C3BB</color>
+    <color name="colorPrimary">#FF9C3D00</color>
+    <color name="colorPrimaryDark">#FF351000</color>
+    <color name="colorAccent">#FF0F6E71</color>
+</resources>

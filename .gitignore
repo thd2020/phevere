@@ -144,6 +144,7 @@ apps/mobile/android/local.properties
 apps/mobile/android/.idea/
 apps/mobile/ios/App/Pods/
 apps/mobile/ios/App/App/public/
+apps/mobile/android/app/src/main/assets/www/
 apps/mobile/android/app/src/main/assets/public/
 apps/mobile/android/app/src/main/assets/capacitor.config.json
 apps/mobile/android/app/src/main/assets/capacitor.plugins.json

@@ -1,11 +1,11 @@
 import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
-import { Capacitor } from '@capacitor/core';
-import { Directory, Filesystem } from '@capacitor/filesystem';
 import { VOCAB_SCHEMA_SQL, type VocabDb } from '@phevere/core';
 import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
+import { hasNativeBridge, nativeCall } from './native';
 
 const DB_FILE = 'phevere.sqlite';
 const SAVE_MS = 400;
+const LS_KEY = 'phevere.sqlite.b64';
 
 let SQL: SqlJsStatic | null = null;
 let db: Database | null = null;
@@ -38,15 +38,12 @@ function migrate(database: Database): void {
 
 async function readStored(): Promise<Uint8Array | null> {
   try {
-    if (Capacitor.isNativePlatform()) {
-      const file = await Filesystem.readFile({
-        path: DB_FILE,
-        directory: Directory.Data,
-      });
-      if (typeof file.data === 'string' && file.data) return base64ToBytes(file.data);
+    if (hasNativeBridge()) {
+      const res = await nativeCall<{ b64?: string | null }>('readFile', { name: DB_FILE });
+      if (typeof res.b64 === 'string' && res.b64) return base64ToBytes(res.b64);
       return null;
     }
-    const raw = localStorage.getItem('phevere.sqlite.b64');
+    const raw = localStorage.getItem(LS_KEY);
     return raw ? base64ToBytes(raw) : null;
   } catch {
     return null;
@@ -55,15 +52,11 @@ async function readStored(): Promise<Uint8Array | null> {
 
 async function writeStored(bytes: Uint8Array): Promise<void> {
   const data = bytesToBase64(bytes);
-  if (Capacitor.isNativePlatform()) {
-    await Filesystem.writeFile({
-      path: DB_FILE,
-      directory: Directory.Data,
-      data,
-    });
+  if (hasNativeBridge()) {
+    await nativeCall('writeFile', { name: DB_FILE, b64: data });
     return;
   }
-  localStorage.setItem('phevere.sqlite.b64', data);
+  localStorage.setItem(LS_KEY, data);
 }
 
 function scheduleSave(): void {
@@ -84,6 +77,14 @@ async function open(): Promise<void> {
   const stored = await readStored();
   db = stored && stored.length ? new SQL.Database(stored) : new SQL.Database();
   migrate(db);
+}
+
+export function getSqlDatabase(): Database | null {
+  return db;
+}
+
+export function markDbDirty(): void {
+  scheduleSave();
 }
 
 export const sqlJsVocabDb: VocabDb = {

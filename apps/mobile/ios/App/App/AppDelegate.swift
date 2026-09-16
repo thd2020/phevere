@@ -1,49 +1,91 @@
 import UIKit
-import Capacitor
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
+  var window: UIWindow?
 
-    var window: UIWindow?
-
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
-        return true
+  func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+    if let url = launchOptions?[.url] as? URL {
+      capture(url)
     }
+    return true
+  }
 
-    func applicationWillResignActive(_ application: UIApplication) {
-        // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
-        // Use this method to pause ongoing tasks, disable timers, and invalidate graphics rendering callbacks. Games should use this method to pause the game.
+  func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+    capture(url)
+    NotificationCenter.default.post(name: .phevereIncoming, object: nil)
+    return true
+  }
+
+  private func capture(_ url: URL) {
+    guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+    let q = comps.queryItems?.first(where: { $0.name == "q" || $0.name == "text" })?.value
+    if let q = q, !q.isEmpty {
+      IncomingStore.text = q
+      IncomingStore.origin = "share"
     }
+  }
+}
 
-    func applicationDidEnterBackground(_ application: UIApplication) {
-        // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
-        // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
+final class RootHostController: UIViewController {
+  private var full: PhevereViewController?
+
+  override func viewDidLoad() {
+    super.viewDidLoad()
+    view.backgroundColor = UIColor(red: 0.957, green: 0.941, blue: 0.918, alpha: 1)
+    if !(CapturePrefs.floatingStrip && IncomingStore.text != nil) {
+      showFull()
     }
+    NotificationCenter.default.addObserver(self, selector: #selector(onIncoming), name: .phevereIncoming, object: nil)
+    NotificationCenter.default.addObserver(self, selector: #selector(onExpand), name: .phevereExpand, object: nil)
+  }
 
-    func applicationWillEnterForeground(_ application: UIApplication) {
-        // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
+  override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    if CapturePrefs.floatingStrip, IncomingStore.text != nil, presentedViewController == nil {
+      presentStrip()
     }
+  }
 
-    func applicationDidBecomeActive(_ application: UIApplication) {
-        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+  private func showFull() {
+    if full != nil { return }
+    let vc = PhevereViewController()
+    vc.stripMode = false
+    addChild(vc)
+    vc.view.frame = view.bounds
+    vc.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    view.addSubview(vc.view)
+    vc.didMove(toParent: self)
+    full = vc
+  }
+
+  private func presentStrip() {
+    let strip = PhevereViewController()
+    strip.stripMode = true
+    strip.modalPresentationStyle = .pageSheet
+    if let sheet = strip.sheetPresentationController {
+      if #available(iOS 16.0, *) {
+        sheet.detents = [.medium(), .large()]
+      }
+      sheet.prefersGrabberVisible = true
     }
+    present(strip, animated: true)
+  }
 
-    func applicationWillTerminate(_ application: UIApplication) {
-        // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
+  @objc private func onIncoming() {
+    if let strip = presentedViewController as? PhevereViewController {
+      strip.injectPending()
+      return
     }
-
-    func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        // Called when the app was launched with a url. Feel free to add additional processing here,
-        // but if you want the App API to support tracking app url opens, make sure to keep this call
-        return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
+    if CapturePrefs.floatingStrip {
+      presentStrip()
+    } else {
+      full?.injectPending()
     }
+  }
 
-    func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
-        // Called when the app was launched with an activity, including Universal Links.
-        // Feel free to add additional processing here, but if you want the App API to support
-        // tracking app url opens, make sure to keep this call
-        return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
-    }
-
+  @objc private func onExpand() {
+    showFull()
+    full?.injectPending()
+  }
 }

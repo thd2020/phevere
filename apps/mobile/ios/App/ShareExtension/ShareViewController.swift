@@ -39,23 +39,16 @@ class ShareViewController: UIViewController {
       finish()
       return
     }
-    var responder: UIResponder? = self
-    while let current = responder {
-      if let app = current as? UIApplication {
-        app.open(url, options: [:], completionHandler: { _ in self.finish() })
-        return
-      }
-      responder = current.next
-    }
     openURL(url)
     finish()
   }
 
   @objc private func openURL(_ url: URL) {
     var responder: UIResponder? = self
+    let selector = NSSelectorFromString("openURL:")
     while let current = responder {
-      if let app = current as? UIApplication {
-        app.open(url)
+      if current.responds(to: selector) {
+        current.perform(selector, with: url)
         return
       }
       responder = current.next

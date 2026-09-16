@@ -58,6 +58,10 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Phevere reads words from a photo so you can look them up.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Phevere reads words from a photo in your library so you can look them up.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSExceptionDomains</key>
