@@ -20,7 +20,7 @@ Watch **Actions → release**. That workflow makes **four** desktop artifacts on
 gh attestation verify out/make/nsis/x64/Phevere-Setup-1.2.3-x64.exe -R thd2020/phevere
 ```
 
-CI (no installer): `.github/workflows/ci.yml` on every PR and push to `main` (Windows and macOS unpackaged apps, each with `verify-ocr-pack`, uploaded as artifacts).
+CI (no installer): `.github/workflows/ci.yml` on every PR and push to `main` (Windows and macOS unpackaged apps, each with `verify-ocr-pack`; unsigned Android APK and unsigned iOS IPA). Phone binaries stay on the run’s **Artifacts** tab — they are not attached to a GitHub Release.
 
 ## Local fallback (optional)
 
