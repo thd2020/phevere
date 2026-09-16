@@ -63,11 +63,13 @@ final class RootHostController: UIViewController {
     let strip = PhevereViewController()
     strip.stripMode = true
     strip.modalPresentationStyle = .pageSheet
-    if let sheet = strip.sheetPresentationController {
-      if #available(iOS 16.0, *) {
-        sheet.detents = [.medium(), .large()]
+    if #available(iOS 15.0, *) {
+      if let sheet = strip.sheetPresentationController {
+        if #available(iOS 16.0, *) {
+          sheet.detents = [.medium(), .large()]
+        }
+        sheet.prefersGrabberVisible = true
       }
-      sheet.prefersGrabberVisible = true
     }
     present(strip, animated: true)
   }
