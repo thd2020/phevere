@@ -96,6 +96,7 @@
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
 			);
+			path = App;
 			sourceTree = "<group>";
 		};
 		504EC4091FED796500168519 /* ShareExtension */ = {

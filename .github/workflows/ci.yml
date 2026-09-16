@@ -89,7 +89,7 @@ jobs:
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
       - name: Accept Android SDK licenses
         run: |
           set -euo pipefail
@@ -137,20 +137,6 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm run mobile:sync
-      - name: Copy Capacitor web assets for Xcode
-        working-directory: apps/mobile/ios/App
-        run: |
-          set -euo pipefail
-          # cap sync writes App/App/{public,capacitor.config.json,config.xml};
-          # this Xcode project still copies those names next to App.xcodeproj.
-          test -d App/public
-          rm -rf public
-          cp -R App/public public
-          cp -f App/capacitor.config.json capacitor.config.json
-          cp -f App/config.xml config.xml
-          test -d public
-          test -f capacitor.config.json
-          test -f config.xml
       - name: Build iOS app
         working-directory: apps/mobile/ios/App
         run: |
