@@ -2257,6 +2257,7 @@ export class DictionaryService extends BaseService {
     if (!cleanWord || cleanWord.length > 48) return undefined;
 
     try {
+      const q = encodeURIComponent(cleanWord);
       const dicts = encodeURIComponent('{"count":1,"dicts":[["etym"]]}');
       const urls = [
         `https://dict.youdao.com/jsonapi?jsonversion=2&client=mobile&le=en&q=${q}&dicts=${dicts}`,
