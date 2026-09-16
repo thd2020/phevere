@@ -71,9 +71,9 @@ export function searchHtml(query: string, canBack: boolean, canFwd: boolean, str
         <h1>Phevere</h1>
         ${tools}
       </div>
-      <form class="search" data-act="search-form">
+      <form class="search">
         <input id="q" type="search" enterkeyhint="search" placeholder="Look up a word or phrase" value="${esc(query)}" autocomplete="off" />
-        <button type="button" class="icon-btn" data-act="ocr" aria-label="Scan text">${ICO.cam}</button>
+        ${strip ? '' : `<button type="button" class="icon-btn" data-act="ocr" aria-label="Scan text">${ICO.cam}</button>`}
         <button type="submit" class="go">Look up</button>
       </form>
     </div>`;
@@ -593,6 +593,30 @@ export function notebookBody(
       <button type="button" class="outlined" data-act="nb-refresh">Refresh</button>
     </div>
     <div class="vocab-list">${rows || `<p class="empty">${q ? 'No notebook matches.' : 'No saved words yet.'}</p>`}</div>`;
+}
+
+export type ScanWord = { t: string; x: number; y: number; w: number; h: number };
+export type ScanPage = { jpeg: string; width: number; height: number; words: ScanWord[] };
+
+export function scanHtml(scan: ScanPage): string {
+  const words = (scan.words || [])
+    .filter((w) => w.t && w.w > 0 && w.h > 0)
+    .map(
+      (w) =>
+        `<span class="scan-word" data-act="scan-word" data-q="${esc(w.t)}" style="left:${(w.x * 100).toFixed(2)}%;top:${(w.y * 100).toFixed(2)}%;width:${(w.w * 100).toFixed(2)}%;height:${(w.h * 100).toFixed(2)}%">${esc(w.t)}</span>`,
+    )
+    .join('');
+  return `
+    <header class="scan-bar">
+      <button type="button" class="icon-btn" data-act="scan-close" aria-label="Back">${ICO.back}</button>
+      <h1>Scan</h1>
+    </header>
+    <div class="scan-stage">
+      <div class="scan-frame">
+        <img src="data:image/jpeg;base64,${scan.jpeg}" alt="" />
+        <div class="scan-layer">${words}</div>
+      </div>
+    </div>`;
 }
 
 export type { CaptureInfo, SettingsSection } from './settings-panels';

@@ -59,7 +59,7 @@ function packArticle(p: CatalogStatus, action: 'download' | 'remove'): string {
   </article>`;
 }
 
-function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
+function capturePanel(_prefs: MobilePrefs, capture: CaptureInfo): string {
   const overlayBtn =
     capture.platform === 'android' && !capture.canDrawOverlays
       ? `<div class="toolbar-row"><button type="button" class="outlined" data-act="overlay-perm">Allow draw over other apps</button></div>`
@@ -68,12 +68,8 @@ function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
     ${panelIntro('Capture')}
     <button type="button" class="settings-dropzone" data-act="ocr">
       <strong>Camera or photo</strong>
-      <span>PNG / JPG / WebP</span>
+      <span>Text stays on the picture</span>
     </button>
-    <label class="toggle">
-      <span class="src-name">Floating lookup strip</span>
-      <input type="checkbox" data-act="strip-on" ${prefs.floatingStrip ? 'checked' : ''} />
-    </label>
     ${overlayBtn}`;
 }
 

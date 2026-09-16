@@ -5,7 +5,7 @@ import Vision
 import PhotosUI
 import AVFoundation
 
-final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKURLSchemeHandler, UIDocumentPickerDelegate, PHPickerViewControllerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate, AVSpeechSynthesizerDelegate {
+final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKURLSchemeHandler, WKNavigationDelegate, UIDocumentPickerDelegate, PHPickerViewControllerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate, AVSpeechSynthesizerDelegate {
   var stripMode = false
   private var web: WKWebView!
   private var pendingJsId: String?
@@ -41,6 +41,7 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
     }
     web = WKWebView(frame: view.bounds, configuration: conf)
     web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    web.navigationDelegate = self
     web.scrollView.contentInsetAdjustmentBehavior = .never
     view.addSubview(web)
     let page = stripMode ? "app://localhost/index.html?mode=strip" : "app://localhost/index.html"
@@ -54,6 +55,11 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
     IncomingStore.text = nil
     let js = "window.__pvIncoming && window.__pvIncoming(\(Self.jsonString(text)), \(Self.jsonString(origin)))"
     web?.evaluateJavaScript(js, completionHandler: nil)
+  }
+
+  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    if stripMode { injectPending() }
+    pushInsets()
   }
 
   override func viewDidLayoutSubviews() {
@@ -96,6 +102,10 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
         fail(id, error.localizedDescription)
       }
     case "getPendingText":
+      if (!stripMode) {
+        resolve(id, ["text": NSNull(), "origin": NSNull()])
+        return
+      }
       let text = IncomingStore.text
       let origin = IncomingStore.origin
       IncomingStore.text = nil
@@ -274,7 +284,12 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
   }
 
   private func recognize(_ image: UIImage?) {
-    guard let cg = image?.cgImage else {
+    guard let image = image else {
+      fail(pendingOcrId, "No image")
+      return
+    }
+    let work = Self.fitted(image, maxEdge: 1600)
+    guard let cg = work.cgImage else {
       fail(pendingOcrId, "No image")
       return
     }
@@ -284,8 +299,25 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
         return
       }
       let obs = (request.results as? [VNRecognizedTextObservation]) ?? []
-      let text = obs.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
-      self.resolve(self.pendingOcrId, ["text": text])
+      var words: [[String: Any]] = []
+      for o in obs {
+        guard let t = o.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { continue }
+        let b = o.boundingBox
+        words.append([
+          "t": t,
+          "x": b.origin.x,
+          "y": 1 - b.origin.y - b.height,
+          "w": b.width,
+          "h": b.height
+        ])
+      }
+      let jpeg = work.jpegData(compressionQuality: 0.78)?.base64EncodedString() ?? ""
+      self.resolve(self.pendingOcrId, [
+        "jpeg": jpeg,
+        "width": Int(work.size.width),
+        "height": Int(work.size.height),
+        "words": words
+      ])
     }
     req.recognitionLevel = .accurate
     req.recognitionLanguages = ["en-US", "zh-Hans", "zh-Hant"]
@@ -293,6 +325,20 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
     DispatchQueue.global(qos: .userInitiated).async {
       try? handler.perform([req])
     }
+  }
+
+  private static func fitted(_ image: UIImage, maxEdge: CGFloat) -> UIImage {
+    let w = image.size.width
+    let h = image.size.height
+    let edge = max(w, h)
+    if edge <= maxEdge { return image }
+    let s = maxEdge / edge
+    let size = CGSize(width: w * s, height: h * s)
+    UIGraphicsBeginImageContextWithOptions(size, true, 1)
+    image.draw(in: CGRect(origin: .zero, size: size))
+    let out = UIGraphicsGetImageFromCurrentImageContext() ?? image
+    UIGraphicsEndImageContext()
+    return out
   }
 
   func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {

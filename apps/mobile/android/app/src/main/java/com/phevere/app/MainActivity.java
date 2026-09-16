@@ -2,10 +2,12 @@ package com.phevere.app;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.graphics.ImageDecoder;
 import android.net.Uri;
 import android.os.Build;
@@ -13,10 +15,14 @@ import android.os.Bundle;
 import android.provider.MediaStore;
 import android.provider.Settings;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 import android.view.Window;
+import android.view.WindowManager;
 
+import androidx.activity.EdgeToEdge;
+import androidx.activity.SystemBarStyle;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AlertDialog;
@@ -36,6 +42,7 @@ import com.google.mlkit.vision.text.TextRecognition;
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions;
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -126,11 +133,22 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
   protected void onCreate(Bundle savedInstanceState) {
     if (!isStrip()) SplashScreen.installSplashScreen(this);
     super.onCreate(savedInstanceState);
+    if (!isStrip()) {
+      EdgeToEdge.enable(
+          this,
+          SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+          SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT));
+    }
     WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
     WindowInsetsControllerCompat bars = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
     bars.setAppearanceLightStatusBars(true);
     bars.setAppearanceLightNavigationBars(true);
     setContentView(isStrip() ? R.layout.activity_strip : R.layout.activity_main);
+    WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+    if (!isStrip()) {
+      getWindow().setSoftInputMode(
+          WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN | WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);
+    }
     if (isStrip()) {
       Window w = getWindow();
       w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, (int) (getResources().getDisplayMetrics().heightPixels * 0.68f));
@@ -141,19 +159,23 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
 
     assets = WebViews.assets(this);
     web = findViewById(R.id.webview);
+    web.setFitsSystemWindows(false);
     WebViews.bind(web, assets, this, isStrip(), () -> {
       pageReady = true;
       pushInsets();
       if (pendingText != null) injectIncoming();
     });
 
-    ViewCompat.setOnApplyWindowInsetsListener(web, (v, insets) -> {
-      Insets sys = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-      Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
-      lastInsets = Insets.of(sys.left, sys.top, sys.right, Math.max(sys.bottom, ime.bottom));
-      pushInsets();
-      return isStrip() ? insets : WindowInsetsCompat.CONSUMED;
-    });
+    View root = findViewById(R.id.root);
+    if (root != null && !isStrip()) {
+      ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+        lastInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+        v.setPadding(0, 0, 0, 0);
+        if (web != null) web.setPadding(0, 0, 0, 0);
+        pushInsets();
+        return WindowInsetsCompat.CONSUMED;
+      });
+    }
   }
 
   @Override
@@ -230,10 +252,12 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
 
   @Override
   public void chooseOcr() {
+    boolean camera = hasImageCapture();
+    CharSequence[] items = camera ? new CharSequence[] {"Camera", "Photo"} : new CharSequence[] {"Photo"};
     new AlertDialog.Builder(this)
         .setTitle("Scan text")
-        .setItems(new CharSequence[] {"Camera", "Photo"}, (d, which) -> {
-          if (which == 0) {
+        .setItems(items, (d, which) -> {
+          if (camera && which == 0) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
               takePhoto();
             } else cameraPerm.launch(Manifest.permission.CAMERA);
@@ -325,39 +349,52 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
     if (web != null) web.evaluateJavascript(js, null);
   }
 
+  private boolean hasImageCapture() {
+    return new Intent(MediaStore.ACTION_IMAGE_CAPTURE).resolveActivity(getPackageManager()) != null;
+  }
+
   private void takePhoto() {
+    if (!hasImageCapture()) {
+      pickVisual.launch("image/*");
+      return;
+    }
     try {
       File pic = new File(getCacheDir(), "ocr.jpg");
       captureUri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", pic);
       takePicture.launch(captureUri);
     } catch (Exception e) {
-      failPending(e.getMessage());
+      String m = e.getMessage() == null ? "" : e.getMessage();
+      if (e instanceof ActivityNotFoundException || m.contains("No Activity")) {
+        pickVisual.launch("image/*");
+        return;
+      }
+      failPending(m.isEmpty() ? "Camera failed" : m);
     }
+  }
+
+  private Bitmap decodeBitmap(Uri uri) throws Exception {
+    if (Build.VERSION.SDK_INT >= 28) {
+      return ImageDecoder.decodeBitmap(ImageDecoder.createSource(getContentResolver(), uri), (decoder, info, src) -> {
+        decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+        decoder.setMutableRequired(true);
+      });
+    }
+    return MediaStore.Images.Media.getBitmap(getContentResolver(), uri);
   }
 
   private void recognize(Uri uri) {
     io.execute(() -> {
       try {
-        Bitmap bmp;
-        if (Build.VERSION.SDK_INT >= 28) {
-          bmp = ImageDecoder.decodeBitmap(ImageDecoder.createSource(getContentResolver(), uri));
-        } else {
-          bmp = MediaStore.Images.Media.getBitmap(getContentResolver(), uri);
-        }
+        Bitmap bmp = Ocr.fit(Ocr.software(decodeBitmap(uri)), 1600);
+        if (bmp == null) throw new Exception("Could not read image");
         InputImage image = InputImage.fromBitmap(bmp, 0);
         TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             .process(image)
-            .addOnSuccessListener(latin -> {
-              String t = latin.getText() == null ? "" : latin.getText().trim();
-              if (!t.isEmpty()) {
-                succeedOcr(t);
-                return;
-              }
-              TextRecognition.getClient(new ChineseTextRecognizerOptions.Builder().build())
-                  .process(image)
-                  .addOnSuccessListener(zh -> succeedOcr(zh.getText() == null ? "" : zh.getText().trim()))
-                  .addOnFailureListener(err -> failPending(err.getMessage()));
-            })
+            .addOnSuccessListener(latin ->
+                TextRecognition.getClient(new ChineseTextRecognizerOptions.Builder().build())
+                    .process(image)
+                    .addOnSuccessListener(zh -> succeedScan(bmp, latin, zh))
+                    .addOnFailureListener(err -> succeedScan(bmp, latin, null)))
             .addOnFailureListener(err -> failPending(err.getMessage()));
       } catch (Exception e) {
         failPending(e.getMessage());
@@ -365,9 +402,12 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
     });
   }
 
-  private void succeedOcr(String text) {
+  private void succeedScan(android.graphics.Bitmap bmp, com.google.mlkit.vision.text.Text latin, com.google.mlkit.vision.text.Text zh) {
     try {
-      router.resolve(pendingJsId, new JSONObject().put("text", text));
+      JSONArray words = new JSONArray();
+      Ocr.addWords(words, latin, bmp.getWidth(), bmp.getHeight());
+      Ocr.addWords(words, zh, bmp.getWidth(), bmp.getHeight());
+      router.resolve(pendingJsId, Ocr.pack(bmp, words));
     } catch (Exception e) {
       failPending(e.getMessage());
     }

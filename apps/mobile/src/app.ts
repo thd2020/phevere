@@ -37,10 +37,12 @@ import {
   lookupBody,
   navHtml,
   notebookBody,
+  scanHtml,
   searchHtml,
   settingsBody,
   type CaptureInfo,
   type ResultTab,
+  type ScanPage,
   type SettingsSection,
   type Tab,
   type WikiArticle,
@@ -79,6 +81,7 @@ let packMsg = '';
 let toastMsg = '';
 let toastTimer: number | null = null;
 let capture: CaptureInfo = { platform: 'web', canDrawOverlays: false };
+let scan: ScanPage | null = null;
 
 const stripMode = new URLSearchParams(window.location.search).get('mode') === 'strip';
 if (stripMode) document.documentElement.dataset.mode = 'strip';
@@ -105,10 +108,32 @@ function postOsNotify(kind: 'incoming' | 'saved' | 'ocr', title: string, body: s
   void nativeCall('notify', { title, body }).catch(() => undefined);
 }
 
+function lookupPaneHtml(): string {
+  const langs = dictionaryService.getSupportedLanguages();
+  if (scan && !looking && !status && !result) {
+    return `<p class="scan-hint">Select text on the picture</p>`;
+  }
+  return lookupBody({
+    looking,
+    status,
+    result,
+    saved,
+    resultTab,
+    langs,
+    sourceLang: prefs.sourceLang,
+    targetLang: prefs.targetLang,
+    wiki,
+    wikiLang: wikiLanguage(),
+    wikiArticle,
+    wikiLoading,
+    wikiError,
+    lexiconPos,
+  });
+}
+
 function paint(): void {
   document.documentElement.dataset.notify = capture.platform === 'ios' ? 'ios' : 'android';
   if (settingsSection === 'notifications' && capture.platform === 'web') settingsSection = 'capture';
-  const langs = dictionaryService.getSupportedLanguages();
   const canBack = histIndex > 0;
   const canFwd = histIndex >= 0 && histIndex < history.length - 1;
   const live = document.getElementById('q') as HTMLInputElement | null;
@@ -119,6 +144,16 @@ function paint(): void {
   const keepNbq = !!(nbqLive && document.activeElement === nbqLive);
   const nbqCaret = keepNbq ? nbqLive!.selectionStart : null;
   if (keepNbq) notebookFilter = nbqLive!.value;
+  const hit = lookupPaneHtml();
+  if (tab === 'lookup' && scan) {
+    root.innerHTML = `
+      <div class="shell shell-scan">${scanHtml(scan)}<div class="scan-hit">${hit}</div></div>
+      ${stripMode ? '' : navHtml(tab)}
+      ${toastMsg ? `<div class="toast" role="status">${esc(toastMsg)}</div>` : ''}`;
+    bindLexiconPane();
+    bindWikiReader();
+    return;
+  }
   const body =
     tab === 'notebook'
       ? notebookBody(notebook, notebookSort, notebookFilter, expandedVocab)
@@ -131,22 +166,7 @@ function paint(): void {
             capture,
             settingsSection,
           )
-        : lookupBody({
-            looking,
-            status,
-            result,
-            saved,
-            resultTab,
-            langs,
-            sourceLang: prefs.sourceLang,
-            targetLang: prefs.targetLang,
-            wiki,
-            wikiLang: wikiLanguage(),
-            wikiArticle,
-            wikiLoading,
-            wikiError,
-            lexiconPos,
-          });
+        : hit;
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
   root.innerHTML = `
     <div class="shell${tab === 'settings' ? ' shell-settings' : ''}${lexiconFill ? ' shell-lexicon' : ''}${resultTab === 'wikipedia' && wikiArticle ? ' shell-wiki' : ''}">
@@ -159,8 +179,6 @@ function paint(): void {
   if (keepFocus && q) {
     q.focus();
     if (typeof caret === 'number') q.setSelectionRange(caret, caret);
-  } else if (q && tab === 'lookup' && !looking && !result) {
-    q.focus();
   }
   const nbq = document.getElementById('nbq') as HTMLInputElement | null;
   if (keepNbq && nbq) {
@@ -441,14 +459,24 @@ async function runOcr(): Promise<void> {
     return;
   }
   try {
-    const res = await nativeCall<{ text?: string }>('scanOcr', {});
-    const text = extractLookupQuery(res.text || '');
-    if (text) {
-      postOsNotify('ocr', 'Scan finished', text);
-      await lookup(text);
-    } else toast('No text in that image');
+    const res = await nativeCall<ScanPage>('scanOcr', {});
+    if (!res?.jpeg) {
+      toast('No picture');
+      return;
+    }
+    scan = {
+      jpeg: res.jpeg,
+      width: Number(res.width) || 0,
+      height: Number(res.height) || 0,
+      words: Array.isArray(res.words) ? res.words : [],
+    };
+    tab = 'lookup';
+    postOsNotify('ocr', 'Scan finished', scan.words.length ? `${scan.words.length} words` : 'No text');
+    paint();
   } catch (err) {
-    toast(err instanceof Error ? err.message : 'OCR failed');
+    const msg = err instanceof Error ? err.message : 'OCR failed';
+    if (msg === 'Cancelled' || msg === 'No photo' || msg === 'No image') return;
+    toast(msg);
   }
 }
 
@@ -640,16 +668,19 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       }
       return;
     }
-    case 'search-form':
-      e.preventDefault();
-      {
-        const input = document.getElementById('q') as HTMLInputElement | null;
-        if (input?.value) await lookup(input.value);
-      }
-      return;
     case 'ocr':
       await runOcr();
       return;
+    case 'scan-close':
+      scan = null;
+      paint();
+      return;
+    case 'scan-word': {
+      const picked = (window.getSelection()?.toString() || '').trim() || t.dataset.q || '';
+      if (!picked) return;
+      await lookup(extractLookupQuery(picked));
+      return;
+    }
     case 'back':
       if (histIndex > 0) {
         histIndex -= 1;
@@ -941,13 +972,21 @@ function onChange(e: Event): void {
   }
 }
 
+function onSubmit(e: Event): void {
+  const form = e.target as HTMLElement | null;
+  if (!(form instanceof HTMLFormElement) || !form.classList.contains('search')) return;
+  e.preventDefault();
+  const input = document.getElementById('q') as HTMLInputElement | null;
+  if (input?.value) void lookup(input.value);
+}
+
 export async function startApp(): Promise<void> {
   installNativeCallbacks();
   applyInsets();
   applyPrefsToCore(prefs);
   await refreshCapture();
   root.addEventListener('click', onClick);
-  root.addEventListener('submit', onClick);
+  root.addEventListener('submit', onSubmit);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onChange);
   paint();

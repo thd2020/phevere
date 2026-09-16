@@ -1,6 +1,6 @@
 # Phevere
 
-**2026-09-16.** Phone lookup scrolls as one column (not only the white lexicon card). IPA chips speak through Android/iOS TTS or that chip’s recorded clip. Settings → Notifications has incoming lookup, saved to notebook, and scan finished (plus Allow / OS settings). Android no longer double-pads the status and nav bars. Phone Wikipedia links stay in the lookup pane. Etymology can show Etymonline and Youdao, not only Wiktionary. Phone banners are a snackbar (Android) / top banner (iOS); Android’s lookup strip uses a silent shade notification. Settings still omit desktop-only shortcuts, hover, tray balloons, and PP-OCR. Android / iOS sideload is a **native WebView** with a Material 3 phone UI. Optional **lookup strip** for power users. Electron stays on the desktop. GitHub Actions uploads an Android APK and an iOS IPA as workflow artifacts (not GitHub Releases). Details: [`docs/MOBILE.md`](docs/MOBILE.md).
+**2026-09-16.** Select text → **Phevere** opens a compact lookup card, not the full app. Camera/photo opens a Scan pane (picture stays, words are selectable). Phone lookup scrolls as one column. IPA chips speak through Android/iOS TTS or that chip’s recorded clip. Settings → Notifications has incoming lookup, saved to notebook, and scan finished. Phone Wikipedia links stay in the lookup pane. Etymology can show Etymonline and Youdao. Android / iOS sideload is a **native WebView** with a Material 3 phone UI. Electron stays on the desktop. GitHub Actions uploads an Android APK and an iOS IPA as workflow artifacts (not GitHub Releases). Details: [`docs/MOBILE.md`](docs/MOBILE.md).
 
 [![Release](https://img.shields.io/github/v/release/thd2020/phevere?display_name=tag)](https://github.com/thd2020/phevere/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/thd2020/phevere)](LICENSE)
@@ -76,7 +76,7 @@ The menu-bar **P** has **Open Accessibility Settings…** and **Open Screen Reco
 
 ### Android / iOS
 
-Not on the store yet. Android: **Phevere** in the system text-selection toolbar (Process Text). iOS: Share sheet or `phevere://lookup?q=…`. The UI is Material 3 in a native WebView (not Capacitor, not the desktop popup). Camera / photo OCR is included. Settings can open a compact **lookup strip** instead of the full app (Android overlay if you grant Display over other apps; iOS half-sheet). GitHub Actions uploads a debug APK; see [`docs/MOBILE.md`](docs/MOBILE.md).
+Not on the store yet. Android: **Phevere** in the system text-selection toolbar opens a compact lookup card (overlay if you grant Display over other apps, otherwise a bottom sheet). iOS: Share sheet or `phevere://lookup?q=…` opens a half-sheet. Camera / photo OCR opens a Scan pane. GitHub Actions uploads a debug APK; see [`docs/MOBILE.md`](docs/MOBILE.md).
 
 ## Features
 

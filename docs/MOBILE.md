@@ -1,6 +1,6 @@
 # Phevere on Android and iOS
 
-**2026-09-16.** GitHub Actions `ci.yml` builds the **native WebView** Android APK and iOS IPA on every PR and `main` push, and keeps them as **Actions artifacts** (7 days). They are not attached to GitHub Releases. The APK is a phone shell (WebView + ML Kit OCR), not the desktop Electron app and not the Paddle OCR pack, so it stays a few megabytes next to a 180–350 MB unpackaged desktop zip. Wikipedia article links open the next page in the pane. Etymology can show Etymonline and Youdao, not only Wiktionary. Phone banners are a snackbar (Android) / top banner (iOS). Settings → Notifications has three independent switches: incoming lookup, saved to notebook, and scan finished (plus Allow / OS settings). The lookup page scrolls as one column; IPA chips speak through Android/iOS TTS (or that chip’s recorded clip).
+**2026-09-16.** GitHub Actions `ci.yml` builds the **native WebView** Android APK and iOS IPA on every PR and `main` push, and keeps them as **Actions artifacts** (7 days). They are not attached to GitHub Releases. The APK is a phone shell (WebView + ML Kit OCR), not the desktop Electron app and not the Paddle OCR pack, so it stays a few megabytes next to a 180–350 MB unpackaged desktop zip. Wikipedia article links open the next page in the pane. Etymology can show Etymonline and Youdao, not only Wiktionary. Phone banners are a snackbar (Android) / top banner (iOS). Settings → Notifications has three independent switches: incoming lookup, saved to notebook, and scan finished (plus Allow / OS settings). The lookup page scrolls as one column; IPA chips speak through Android/iOS TTS (or that chip’s recorded clip). Select text → **Phevere** opens a compact lookup card (overlay if draw-over is granted, otherwise a bottom sheet), not the full app. Camera/photo opens **Scan**: the picture stays, words on it are selectable; tap or select a word to look it up under the image. Android 11+ camera capture declares `IMAGE_CAPTURE` and falls back to the photo picker.
 
 ## What it does
 
@@ -8,22 +8,19 @@
 |---|---|
 | Lookup | Material 3 search + lexicon / translation / Wikipedia / etymology. IPA chips under the headword, recorded audio, word-family links, back/forward |
 | Notebook | Save from the heart. Same list as desktop: expandable rows, Recent / A–Z, Export, Import, Refresh. Empty glosses fill in the background. |
-| Settings | Capture, Notifications (Android / iOS), Sources, Offline, API keys, Audio. Capture holds camera OCR and the **floating lookup strip**. Notifications are three on/off rows: **Incoming lookup**, **Saved to notebook**, **Scan finished**, plus Allow / the OS screen. Desktop-only items (shortcuts, hover, tray balloons, PP-OCR) are not shown. |
-| Process Text | Android: select text → **Phevere** in the system toolbar (full app, or strip if enabled) |
-| Share / deep link | iOS: Share sheet or `phevere://lookup?q=word` (full app, or half-sheet if enabled) |
-| Camera OCR | Camera or photo → on-device text (ML Kit on Android, Vision on iOS) → lookup |
+| Settings | Capture, Notifications (Android / iOS), Sources, Offline, API keys, Audio. Capture holds camera/photo **Scan**. Notifications are three on/off rows: **Incoming lookup**, **Saved to notebook**, **Scan finished**, plus Allow / the OS screen. Desktop-only items (shortcuts, hover, tray balloons, PP-OCR) are not shown. |
+| Process Text | Android: select text → **Phevere** in the system toolbar opens a compact lookup card. With **Display over other apps**, the card floats and the other app stays interactive. |
+| Share / deep link | iOS: Share sheet or `phevere://lookup?q=word` opens a half-sheet lookup. |
+| Camera OCR | Camera or photo opens **Scan**: the image stays on screen and the words on it are selectable. Tap or select a word to look it up under the picture. |
 | Wikipedia | Same hits as desktop. One hit (or an exact title) opens the article in the lookup pane. In-article links stay in the pane; Back walks the pages you opened, then the hit list. Open in browser is on the reader bar. |
 
 Lookups use **native HTTP** (OkHttp / URLSession), not WebView `fetch`, so dictionary APIs are not blocked by CORS. `npm run mobile:dev` proxies Etymonline and Youdao so the Chrome preview can show more than Wiktionary. The notebook is sql.js in `phevere.sqlite` (app files / Documents).
 
-## Lookup strip (optional)
+## Lookup strip
 
-Default capture is still Process Text / Share into the full app.
+Select text in another Android app and tap **Phevere**: a compact card looks the word up. If you grant **Display over other apps**, that card floats and the other app stays interactive. Otherwise it is a bottom sheet. iPhone Share uses a half-sheet; iOS cannot draw over Safari.
 
-Settings → Capture → **Floating lookup strip** opens a compact card instead:
-
-- **Android:** a bottom sheet. If you also grant **Display over other apps**, the strip is a real overlay and the other app stays interactive (this is the desktop-like popup). Sideload / power-user only; Play is hostile to overlays. While it floats, Android shows a silent **Lookup strip** notification (Android 13+ needs **Allow notifications**).
-- **iPhone:** Share presents a half-sheet. iOS cannot draw over Safari.
+While an Android overlay floats, the system shows a silent **Lookup strip** notification (Android 13+ needs **Allow notifications**).
 
 ## What phones still cannot copy from desktop
 
