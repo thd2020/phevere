@@ -27,42 +27,44 @@ final class Speak {
   }
 
   private Speak(Context ctx) {
-    tts = new TextToSpeech(ctx, status -> {
-      ready = status == TextToSpeech.SUCCESS;
-      if (ready) {
-        tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-          @Override
-          public void onStart(String utteranceId) {}
+    tts = new TextToSpeech(ctx, this::onEngineInit);
+  }
 
-          @Override
-          public void onDone(String utteranceId) {
-            if (utteranceId != null && utteranceId.equals("pv-" + gen)) fireDone();
-          }
+  private void onEngineInit(int status) {
+    ready = status == TextToSpeech.SUCCESS;
+    if (ready) {
+      tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+        @Override
+        public void onStart(String utteranceId) {}
 
-          @Deprecated
-          @Override
-          public void onError(String utteranceId) {
-            if (utteranceId != null && utteranceId.equals("pv-" + gen)) fireDone();
-          }
-        });
-        if (Build.VERSION.SDK_INT >= 21) {
-          tts.setAudioAttributes(new AudioAttributes.Builder()
-              .setUsage(AudioAttributes.USAGE_MEDIA)
-              .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-              .build());
+        @Override
+        public void onDone(String utteranceId) {
+          if (utteranceId != null && utteranceId.equals("pv-" + gen)) fireDone();
         }
+
+        @Deprecated
+        @Override
+        public void onError(String utteranceId) {
+          if (utteranceId != null && utteranceId.equals("pv-" + gen)) fireDone();
+        }
+      });
+      if (Build.VERSION.SDK_INT >= 21) {
+        tts.setAudioAttributes(new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build());
       }
-      if (pendingText != null) {
-        String text = pendingText;
-        String lang = pendingLang;
-        float rate = pendingRate;
-        pendingText = null;
-        if (ready) speakNow(text, lang, rate);
-        else fireDone();
-      } else if (!ready) {
-        fireDone();
-      }
-    });
+    }
+    if (pendingText != null) {
+      String text = pendingText;
+      String lang = pendingLang;
+      float rate = pendingRate;
+      pendingText = null;
+      if (ready) speakNow(text, lang, rate);
+      else fireDone();
+    } else if (!ready) {
+      fireDone();
+    }
   }
 
   void speak(String text, String lang, float rate, Runnable done) {
