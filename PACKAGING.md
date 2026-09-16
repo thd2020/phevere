@@ -1,6 +1,6 @@
 # Packaging & releases
 
-**2026-09-16:** `ci.yml` uploads an unsigned Android debug APK and an unsigned iOS IPA as Actions artifacts. They are not GitHub Release assets. Desktop `release.yml` is unchanged.
+**2026-09-16:** `ci.yml` uploads an Android APK and an iOS IPA as Actions artifacts. They are not GitHub Release assets. Desktop `release.yml` is unchanged.
 
 **2026-09-05:** `release.yml` Mac asset-delete is the same PowerShell as Windows (`scripts/gh-delete-release-asset.ps1`). CI Windows now runs `verify-ocr-pack` on the unpackaged app like macOS.
 
@@ -22,7 +22,7 @@ npm run make:win
 
 `make:win` (`scripts/make-win.js`) sets **npmmirror** Electron / electron-builder-binaries mirrors by default so packaging does not hang on `github.com` (`ETIMEDOUT`). Override with `ELECTRON_MIRROR` / `ELECTRON_BUILDER_BINARIES_MIRROR` if needed.
 
-GitHub Actions: `ci.yml` on PR/`main` (including unsigned Android APK + unsigned iOS IPA as **Actions artifacts**, not Release assets); tag `v*.*.*` runs `release.yml` (NSIS x64 on `windows-latest` + NSIS arm64 on `windows-11-arm` + DMG x64 on `macos-15-intel` + DMG arm64 on `macos-latest` + GitHub Release + attestation). Optional `CSC_LINK` secret for Windows. See `docs/RELEASE.md`. `make:win` drops blank `CSC_LINK` / `WIN_CSC_LINK` (Actions injects `""` when the secret is unset) so unsigned CI builds do not fail signing. To **replace** all four desktop files on an existing tag (same filenames, no retag): Actions → release → Run workflow → `attach_tag`.
+GitHub Actions: `ci.yml` on PR/`main` (including Android APK + iOS IPA as **Actions artifacts**, not Release assets); tag `v*.*.*` runs `release.yml` (NSIS x64 on `windows-latest` + NSIS arm64 on `windows-11-arm` + DMG x64 on `macos-15-intel` + DMG arm64 on `macos-latest` + GitHub Release + attestation). Optional `CSC_LINK` secret for Windows. See `docs/RELEASE.md`. `make:win` drops blank `CSC_LINK` / `WIN_CSC_LINK` (Actions injects `""` when the secret is unset) so unsigned CI builds do not fail signing. To **replace** all four desktop files on an existing tag (same filenames, no retag): Actions → release → Run workflow → `attach_tag`.
 
 | | |
 |---|---|

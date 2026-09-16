@@ -90,7 +90,19 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+      - name: Accept Android SDK licenses
+        run: |
+          set -euo pipefail
+          SDKMANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses || true
+          if [ ! -d "${ANDROID_SDK_ROOT}/platforms/android-35" ]; then
+            yes | "$SDKMANAGER" "platforms;android-35" || true
+          fi
+          if [ ! -d "${ANDROID_SDK_ROOT}/build-tools/35.0.0" ]; then
+            yes | "$SDKMANAGER" "build-tools;35.0.0" || true
+          fi
+          test -d "${ANDROID_SDK_ROOT}/platforms/android-35"
       - name: Install JS deps and sync phone UI
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
@@ -105,7 +117,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: phevere-android-debug
+          name: phevere-android
           path: apps/mobile/android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 7
@@ -125,7 +137,21 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm run mobile:sync
-      - name: Build unsigned iOS app
+      - name: Copy Capacitor web assets for Xcode
+        working-directory: apps/mobile/ios/App
+        run: |
+          set -euo pipefail
+          # cap sync writes App/App/{public,capacitor.config.json,config.xml};
+          # this Xcode project still copies those names next to App.xcodeproj.
+          test -d App/public
+          rm -rf public
+          cp -R App/public public
+          cp -f App/capacitor.config.json capacitor.config.json
+          cp -f App/config.xml config.xml
+          test -d public
+          test -f capacitor.config.json
+          test -f config.xml
+      - name: Build iOS app
         working-directory: apps/mobile/ios/App
         run: |
           set -euo pipefail
@@ -147,7 +173,7 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
             build
-      - name: Package unsigned IPA
+      - name: Package IPA
         working-directory: apps/mobile/ios/App
         run: |
           set -euo pipefail
@@ -160,7 +186,7 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: phevere-ios-unsigned
+          name: phevere-ios
           path: apps/mobile/ios/App/Phevere.ipa
           if-no-files-found: error
           retention-days: 7
