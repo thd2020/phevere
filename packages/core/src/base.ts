@@ -52,7 +52,7 @@ export function withTimeoutFallback<T>(promise: Promise<T>, ms: number, fallback
 export type CoreRequestInit = HttpRequestInit;
 
 /**
- * Dictionary HTTP via an injected HttpClient (Node fetch, Electron net, or CapacitorHttp).
+ * Dictionary HTTP via an injected HttpClient (Node fetch, Electron net, or native mobile HTTP).
  */
 export abstract class BaseService {
   protected requestTimeoutMs = 6000;

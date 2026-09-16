@@ -1142,7 +1142,9 @@ export class DictionaryService extends BaseService {
               }
               if (exampleSnippets.length > 0) examples.push(...exampleSnippets);
             } catch { /* ignore */ }
-            if (data.etymology) etymology = data.etymology;
+            // Multi-source etymology (Wiktionary wikitext, Etymonline, Youdao)
+            // replaces this. Keep the gloss snippet only when that pass is skipped.
+            if (data.etymology && skipEtymology) etymology = data.etymology;
             sources.push('Wiktionary');
           }
           pronunciation = formatPronunciationLine(pronunciations) || pronunciation || data?.pronunciation;
@@ -1166,7 +1168,7 @@ export class DictionaryService extends BaseService {
           if (data) {
             if (data.definitions?.length) definitions.unshift(...data.definitions);
             if (!pronunciation && data.pronunciation) pronunciation = data.pronunciation;
-            if (!etymology && data.etymology) etymology = data.etymology;
+            if (!etymology && data.etymology && skipEtymology) etymology = data.etymology;
             sources.push('Oxford Dictionary API');
           }
           break;
@@ -2109,8 +2111,8 @@ export class DictionaryService extends BaseService {
     // Per-source budgets: a 502 on Etymonline must not discard Wiktionary/Youdao.
     const [wiktionaryEtymology, etymonlineEtymology, youdaoEtymology, oxfordEtymology] = await Promise.all([
       one(this.fetchEtymologyFromWikitext(text), 4500, 'ety.wiktionary'),
-      one(this.fetchEtymologyFromEtymonline(text), 5500, 'ety.etymonline'),
-      one(this.fetchEtymologyFromYoudao(text), 4000, 'ety.youdao'),
+      one(this.fetchEtymologyFromEtymonline(text), 10000, 'ety.etymonline'),
+      one(this.fetchEtymologyFromYoudao(text), 12000, 'ety.youdao'),
       this.oxfordAppId && this.oxfordAppKey
         ? one(this.fetchEtymologyFromOxford(text), 3500, 'ety.oxford')
         : Promise.resolve(undefined),
@@ -2159,11 +2161,14 @@ export class DictionaryService extends BaseService {
       const url = `https://www.etymonline.com/word/${encodeURIComponent(cleanWord)}`;
       const headers = {
         'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml',
+        'Accept-Language': 'en-US,en;q=0.9',
+        Referer: 'https://www.etymonline.com/',
       };
       let html = '';
       for (let attempt = 0; attempt < 2; attempt++) {
-        const response = await getHttp().requestText(url, { headers, timeoutMs: 4000 });
+        const response = await getHttp().requestText(url, { headers, timeoutMs: 8000 });
         if (response.ok) {
           html = response.text;
           break;
@@ -2252,21 +2257,35 @@ export class DictionaryService extends BaseService {
     if (!cleanWord || cleanWord.length > 48) return undefined;
 
     try {
-      const url =
-        `http://dict.youdao.com/jsonapi?jsonversion=2&client=mobile&q=${encodeURIComponent(cleanWord)}`;
-      const response = await this.withTimeout(
-        this.request<any>(url, {
-          headers: {
-            'User-Agent':
-              'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-          },
-        }).catch((): null => null),
-        3500,
-        null,
-      );
+      const dicts = encodeURIComponent('{"count":1,"dicts":[["etym"]]}');
+      const urls = [
+        `https://dict.youdao.com/jsonapi?jsonversion=2&client=mobile&le=en&q=${q}&dicts=${dicts}`,
+        `https://dict.youdao.com/jsonapi?jsonversion=2&client=mobile&le=en&q=${q}`,
+        `http://dict.youdao.com/jsonapi?jsonversion=2&client=mobile&le=en&q=${q}&dicts=${dicts}`,
+      ];
+      const headers = {
+        'User-Agent':
+          'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        Accept: 'application/json,text/plain,*/*',
+      };
+      let etyms: any;
+      for (const url of urls) {
+        const response = await getHttp()
+          .requestText(url, { headers, timeoutMs: 5000 })
+          .catch(() => ({ ok: false, status: 0, text: '' }));
+        if (!response.ok || !response.text) continue;
+        try {
+          const data = JSON.parse(response.text) as { etym?: { etyms?: any } };
+          if (data?.etym?.etyms && typeof data.etym.etyms === 'object') {
+            etyms = data.etym.etyms;
+            break;
+          }
+        } catch {
+          /* next url */
+        }
+      }
 
-      const etyms = response?.etym?.etyms;
-      if (!etyms || typeof etyms !== 'object') return undefined;
+      if (!etyms) return undefined;
 
       const chunks: string[] = [];
       // Prefer Chinese narrative etymology (童理民), then English.

@@ -7,7 +7,7 @@ export interface WikipediaResult {
   thumbnail?: string;
 }
 
-import { BaseService } from './base';
+import { BaseService, DictionaryError } from './base';
 import { getHttp } from './runtime';
 import { bytesToBase64 } from './http';
 
@@ -19,6 +19,39 @@ export interface WikipediaSearchResult {
 
 const WIKI_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Phevere/1.0';
+
+function attrEsc(s: string): string {
+  return (s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+}
+
+function wrapWikipediaDocument(html: string, language: string, title: string): string {
+  const cleaned = String(html || '')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*')/gi, '');
+  const slug = encodeURIComponent(String(title || '').replace(/ /g, '_'));
+  const origin = `https://${language}.wikipedia.org`;
+  const base = `${origin}/wiki/${slug}`;
+  return `<!DOCTYPE html><html lang="${attrEsc(language)}"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="referrer" content="no-referrer"/>
+<base href="${attrEsc(base)}"/>
+<style>
+  html, body { margin: 0; background: #fffdf9; color: #1c1917; }
+  body { padding: 12px 14px 28px; font: 17px/1.55 Georgia, "Times New Roman", serif; }
+  img, video, audio { max-width: 100%; height: auto; }
+  table { max-width: 100%; font-size: 0.88em; }
+  a { color: #0f6e71; }
+  .mw-empty-elt, .noprint { display: none; }
+  figure { margin: 12px 0; }
+  h1, h2, h3 { font-weight: 650; letter-spacing: -0.02em; line-height: 1.2; }
+</style>
+</head><body>${cleaned}</body></html>`;
+}
 
 export class WikipediaService extends BaseService {
   private cache = new Map<string, { result: WikipediaSearchResult; timestamp: number }>();
@@ -291,6 +324,41 @@ export class WikipediaService extends BaseService {
       console.warn('Failed to get related articles:', error);
       return [];
     }
+  }
+
+  /**
+   * Title search (multiple hits). `search()` prefers an exact REST summary and
+   * often returns a single card; the Wikipedia tab wants a list like desktop.
+   */
+  async searchHits(term: string, language: string = 'en', limit: number = 5): Promise<WikipediaSearchResult> {
+    const q = (term || '').trim();
+    if (!q) return { query: term, results: [], totalResults: 0 };
+    return this.searchAPI(q, language, limit);
+  }
+
+  /**
+   * Parsoid HTML for an in-app article reader (Wikipedia refuses iframe embedding).
+   */
+  async fetchArticleHtml(title: string, language: string = 'en'): Promise<string> {
+    const slug = encodeURIComponent(String(title || '').trim().replace(/ /g, '_'));
+    if (!slug) throw new DictionaryError('No Wikipedia title', 'WIKI_TITLE', false);
+    const url = `https://${language}.wikipedia.org/api/rest_v1/page/html/${slug}`;
+    const response = await getHttp().requestText(url, {
+      headers: {
+        Accept: 'text/html; charset=utf-8; profile="https://www.mediawiki.org/wiki/Specs/HTML/2.1.0"',
+        'Api-User-Agent': 'Phevere/1.5 (https://github.com/thd2020/phevere)',
+        'User-Agent': WIKI_UA,
+      },
+      timeoutMs: 20_000,
+    });
+    if (!response.ok || !response.text) {
+      throw new DictionaryError(
+        `Wikipedia article HTTP ${response.status}`,
+        `HTTP_${response.status}`,
+        response.status >= 500,
+      );
+    }
+    return wrapWikipediaDocument(response.text, language, title);
   }
 
   clearCache(): void {
