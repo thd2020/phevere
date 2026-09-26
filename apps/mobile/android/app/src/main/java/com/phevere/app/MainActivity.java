@@ -334,10 +334,11 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
   private void pushInsets() {
     int top = 0, bottom = 0, left = 0, right = 0;
     if (lastInsets != null) {
-      top = lastInsets.top;
-      bottom = lastInsets.bottom;
-      left = lastInsets.left;
-      right = lastInsets.right;
+      float density = getResources().getDisplayMetrics().density;
+      top = Math.round(lastInsets.top / density);
+      bottom = Math.round(lastInsets.bottom / density);
+      left = Math.round(lastInsets.left / density);
+      right = Math.round(lastInsets.right / density);
     }
     if (isStrip()) {
       top = 0;
@@ -345,7 +346,9 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
     }
     String js = "window.__pvInsets={top:" + top + ",bottom:" + bottom + ",left:" + left + ",right:" + right
         + "};window.document.documentElement.style.setProperty('--pv-inset-top','" + top
-        + "px');window.document.documentElement.style.setProperty('--pv-inset-bottom','" + bottom + "px');";
+        + "px');window.document.documentElement.style.setProperty('--pv-inset-bottom','" + bottom
+        + "px');window.document.documentElement.style.setProperty('--pv-inset-left','" + left
+        + "px');window.document.documentElement.style.setProperty('--pv-inset-right','" + right + "px');";
     if (web != null) web.evaluateJavascript(js, null);
   }
 
