@@ -549,7 +549,9 @@ function pulseSpeak(el: HTMLElement, done: Promise<void>): Promise<void> {
   el.classList.add('is-speaking');
   const clear = () => el.classList.remove('is-speaking');
   const timeout = window.setTimeout(clear, 8000);
-  return done.finally(() => {
+  return done.catch((err) => {
+    toast(err instanceof Error ? err.message : 'Could not play audio');
+  }).finally(() => {
     window.clearTimeout(timeout);
     clear();
   });

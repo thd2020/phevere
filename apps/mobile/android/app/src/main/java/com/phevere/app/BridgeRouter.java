@@ -151,7 +151,8 @@ final class BridgeRouter {
             String text = p.optString("text");
             String lang = p.optString("lang", "en-US");
             float rate = (float) p.optDouble("rate", 1);
-            host.runUi(() -> Speak.get(host.context()).speak(text, lang, rate, () -> {
+            host.runUi(() -> Speak.get(host.context()).speak(text, lang, rate, error -> {
+              if (error != null) { fail(sid, error); return; }
               try {
                 resolve(sid, new JSONObject().put("ok", true));
               } catch (Exception ignored) {
@@ -163,7 +164,8 @@ final class BridgeRouter {
             String sid = id;
             String url = p.optString("url");
             float rate = (float) p.optDouble("rate", 1);
-            host.runUi(() -> Speak.get(host.context()).playUrl(url, rate, () -> {
+            host.runUi(() -> Speak.get(host.context()).playUrl(url, rate, error -> {
+              if (error != null) { fail(sid, error); return; }
               try {
                 resolve(sid, new JSONObject().put("ok", true));
               } catch (Exception ignored) {

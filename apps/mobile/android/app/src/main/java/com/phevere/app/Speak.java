@@ -4,6 +4,8 @@ import android.content.Context;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 
@@ -14,10 +16,13 @@ final class Speak {
   private static Speak inst;
   private final TextToSpeech tts;
   private volatile boolean ready;
+  private boolean initialized;
+  private final Handler main = new Handler(Looper.getMainLooper());
   private String pendingText;
   private String pendingLang = "en-US";
   private float pendingRate = 1f;
-  private Runnable pendingDone;
+  interface Completion { void finish(String error); }
+  private Completion pendingDone;
   private int gen;
   private MediaPlayer player;
 
@@ -27,10 +32,11 @@ final class Speak {
   }
 
   private Speak(Context ctx) {
-    tts = new TextToSpeech(ctx, this::onEngineInit);
+    tts = new TextToSpeech(ctx, status -> main.post(() -> onEngineInit(status)));
   }
 
   private void onEngineInit(int status) {
+    initialized = true;
     ready = status == TextToSpeech.SUCCESS;
     if (ready) {
       tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
@@ -39,13 +45,13 @@ final class Speak {
 
         @Override
         public void onDone(String utteranceId) {
-          if (utteranceId != null && utteranceId.equals("pv-" + gen)) fireDone();
+          main.post(() -> { if (utteranceId != null && utteranceId.equals("pv-" + gen)) fireDone(); });
         }
 
         @Deprecated
         @Override
         public void onError(String utteranceId) {
-          if (utteranceId != null && utteranceId.equals("pv-" + gen)) fireDone();
+          main.post(() -> { if (utteranceId != null && utteranceId.equals("pv-" + gen)) finish("Speech playback failed. Check your phone’s text-to-speech settings."); });
         }
       });
       if (Build.VERSION.SDK_INT >= 21) {
@@ -61,13 +67,11 @@ final class Speak {
       float rate = pendingRate;
       pendingText = null;
       if (ready) speakNow(text, lang, rate);
-      else fireDone();
-    } else if (!ready) {
-      fireDone();
+      else finish("No text-to-speech engine available. Enable an engine in Android Settings → Text-to-speech output.");
     }
   }
 
-  void speak(String text, String lang, float rate, Runnable done) {
+  void speak(String text, String lang, float rate, Completion done) {
     interrupt();
     pendingDone = done;
     gen++;
@@ -76,20 +80,31 @@ final class Speak {
       return;
     }
     if (!ready) {
+      if (initialized) {
+        finish("No text-to-speech engine available. Enable an engine in Android Settings → Text-to-speech output.");
+        return;
+      }
       pendingText = text;
       pendingLang = lang;
       pendingRate = rate;
+      final int token = gen;
+      main.postDelayed(() -> {
+        if (token == gen && pendingText != null) {
+          pendingText = null;
+          finish("Text-to-speech did not start. Check Android speech settings.");
+        }
+      }, 10000);
       return;
     }
     speakNow(text, lang, rate);
   }
 
-  void playUrl(String url, float rate, Runnable done) {
+  void playUrl(String url, float rate, Completion done) {
     interrupt();
     pendingDone = done;
     gen++;
     if (url == null || url.isEmpty()) {
-      fireDone();
+      finish("No pronunciation recording available.");
       return;
     }
     try {
@@ -108,18 +123,26 @@ final class Speak {
           }
         } catch (Exception ignored) {
         }
-        mp.start();
+        try { mp.start(); }
+        catch (Exception e) { stopMedia(); finish("Could not start pronunciation recording."); }
       });
       player.setOnCompletionListener(mp -> {
-        if (token == gen) fireDone();
+        if (token == gen) { stopMedia(); fireDone(); }
       });
       player.setOnErrorListener((mp, what, extra) -> {
-        if (token == gen) fireDone();
+        if (token == gen) { stopMedia(); finish("Could not play pronunciation recording."); }
         return true;
       });
       player.prepareAsync();
+      main.postDelayed(() -> {
+        if (token == gen && player != null && pendingDone != null) {
+          stopMedia();
+          finish("Pronunciation recording timed out.");
+        }
+      }, 20000);
     } catch (Exception e) {
-      fireDone();
+      stopMedia();
+      finish("Could not load pronunciation recording.");
     }
   }
 
@@ -155,18 +178,28 @@ final class Speak {
 
   private void speakNow(String text, String lang, float rate) {
     try {
-      tts.setLanguage(locale(lang));
+      int language = tts.setLanguage(locale(lang));
+      if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
+        finish("Install a voice for " + lang + " in Android text-to-speech settings.");
+        return;
+      }
       tts.setSpeechRate(clampRate(rate));
-      tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "pv-" + gen);
+      if (tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "pv-" + gen) == TextToSpeech.ERROR) {
+        finish("Text-to-speech could not start.");
+      }
     } catch (Exception e) {
-      fireDone();
+      finish("Text-to-speech playback failed.");
     }
   }
 
   private void fireDone() {
-    Runnable d = pendingDone;
+    finish(null);
+  }
+
+  private void finish(String error) {
+    Completion d = pendingDone;
     pendingDone = null;
-    if (d != null) d.run();
+    if (d != null) d.finish(error);
   }
 
   private static float clampRate(float rate) {
