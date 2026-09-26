@@ -56,6 +56,7 @@ let settingsSection: SettingsSection = 'capture';
 let query = '';
 let draft = '';
 let looking = false;
+let lookupGeneration = 0;
 let result: DictionaryResult | null = null;
 let saved: VocabEntry | null = null;
 let status = '';
@@ -84,6 +85,8 @@ let capture: CaptureInfo = { platform: 'web', canDrawOverlays: false };
 let scan: ScanPage | null = null;
 
 const stripMode = new URLSearchParams(window.location.search).get('mode') === 'strip';
+let stripCompact = false;
+let stripExpanding = false;
 if (stripMode) document.documentElement.dataset.mode = 'strip';
 
 const history: string[] = [];
@@ -132,6 +135,8 @@ function lookupPaneHtml(): string {
 }
 
 function paint(): void {
+  document.documentElement.dataset.popup = prefs.floatingStrip ? 'floating' : 'half';
+  document.documentElement.classList.toggle('strip-compact', stripCompact);
   document.documentElement.dataset.notify = capture.platform === 'ios' ? 'ios' : 'android';
   if (settingsSection === 'notifications' && capture.platform === 'web') settingsSection = 'capture';
   const canBack = histIndex > 0;
@@ -170,7 +175,15 @@ function paint(): void {
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
   root.innerHTML = `
     <div class="shell${tab === 'settings' ? ' shell-settings' : ''}${lexiconFill ? ' shell-lexicon' : ''}${resultTab === 'wikipedia' && wikiArticle ? ' shell-wiki' : ''}">
-      ${tab === 'settings' ? '' : searchHtml(draft, canBack, canFwd, stripMode)}
+      ${stripMode && capture.platform === 'android' ? `<div class="strip-actions" aria-label="Lookup actions">
+        <button type="button" class="linkish" data-act="strip-result">${esc(query || 'Lookup')}</button>
+        <button type="button" class="linkish" data-act="strip-result" data-result="lexicon">Dictionary</button>
+        <button type="button" class="linkish" data-act="strip-result" data-result="translation">Translate</button>
+        <button type="button" class="linkish" data-act="strip-result" data-result="wikipedia">Wiki</button>
+        <button type="button" class="linkish" data-act="speak-text" data-text="${esc(query)}" aria-label="Speak word"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M3 10v4h3l4 4V6L6 10zm13.5 2A4.5 4.5 0 0 0 14 8.1v7.8A4.5 4.5 0 0 0 16.5 12z"/></svg></button>
+        <button type="button" class="linkish" data-act="close-strip" aria-label="Close popup">×</button>
+      </div>` : ''}
+      ${tab === 'settings' ? '' : searchHtml(draft, canBack, canFwd, stripMode, capture.platform === 'android')}
       <main class="page">${body}</main>
     </div>
     ${stripMode ? '' : navHtml(tab)}
@@ -195,15 +208,19 @@ function wikiLanguage(): string {
 }
 
 async function loadWikiHits(term: string): Promise<void> {
+  const generation = lookupGeneration;
   wikiLoading = true;
   wikiError = '';
   try {
-    wiki = (await wikipediaService.searchHits(term, wikiLanguage(), 5)).results || [];
+    const hits = (await wikipediaService.searchHits(term, wikiLanguage(), 5)).results || [];
+    if (generation !== lookupGeneration) return;
+    wiki = hits;
   } catch (err) {
+    if (generation !== lookupGeneration) return;
     wiki = [];
     wikiError = err instanceof Error ? err.message : String(err);
   } finally {
-    wikiLoading = false;
+    if (generation === lookupGeneration) wikiLoading = false;
   }
 }
 
@@ -375,6 +392,7 @@ async function refreshPacks(): Promise<void> {
 async function lookup(raw: string, fromHist = false): Promise<void> {
   const q = extractLookupQuery(raw);
   if (!q) return;
+  const generation = ++lookupGeneration;
   query = q;
   draft = q;
   tab = 'lookup';
@@ -404,23 +422,30 @@ async function lookup(raw: string, fromHist = false): Promise<void> {
       translationProvider: prefs.translationProvider,
       sourceLanguage: prefs.sourceLang === 'auto' ? undefined : prefs.sourceLang,
       onUpdate: (partial) => {
+        if (generation !== lookupGeneration) return;
         result = partial;
         looking = false;
         paint();
       },
     });
+    if (generation !== lookupGeneration) return;
     result = next;
-    saved = await findByLemma(saveLemma(next)).catch(() => null);
+    const nextSaved = await findByLemma(saveLemma(next)).catch(() => null);
+    if (generation !== lookupGeneration) return;
+    saved = nextSaved;
     void loadWikiHits(next.word || q).then(() => {
       if (tab === 'lookup' && resultTab === 'wikipedia') {
         void maybeAutoOpenWiki().then(() => paint());
       }
     });
   } catch (err) {
+    if (generation !== lookupGeneration) return;
     status = err instanceof Error ? err.message : String(err);
   } finally {
-    looking = false;
-    paint();
+    if (generation === lookupGeneration) {
+      looking = false;
+      paint();
+    }
   }
 }
 
@@ -888,13 +913,24 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       persistPrefs();
       if (hasNativeBridge()) {
         void nativeCall('setFloatingStrip', { enabled: prefs.floatingStrip }).then(async () => {
-          if (prefs.floatingStrip && capture.platform === 'android') {
-            await nativeCall('requestNotifications', {}).catch(() => undefined);
-          }
           await refreshCapture();
           paint();
         });
       }
+      return;
+    case 'compact-strip':
+      stripCompact = true;
+      if (hasNativeBridge()) void nativeCall('resizeStrip', { compact: true }).catch(() => undefined);
+      paint();
+      return;
+    case 'strip-result':
+      stripCompact = false;
+      if (hasNativeBridge()) void nativeCall('resizeStrip', { compact: false }).catch(() => undefined);
+      if (t.dataset.result) {
+        resultTab = t.dataset.result as ResultTab;
+        if (resultTab === 'wikipedia') void loadWikiHits(result?.word || query).then(() => { paint(); });
+      }
+      paint();
       return;
     case 'overlay-perm':
       if (hasNativeBridge()) void nativeCall('requestOverlayPermission', {});
@@ -984,6 +1020,13 @@ function onSubmit(e: Event): void {
 
 export async function startApp(): Promise<void> {
   installNativeCallbacks();
+  startIncomingText((text, origin) => {
+    stripCompact = false;
+    stripExpanding = false;
+    if (stripMode && hasNativeBridge()) void nativeCall('resizeStrip', { compact: false }).catch(() => undefined);
+    if (origin === 'process-text' || origin === 'share') postOsNotify('incoming', 'Incoming lookup', text);
+    void lookup(text);
+  });
   applyInsets();
   applyPrefsToCore(prefs);
   await refreshCapture();
@@ -993,24 +1036,33 @@ export async function startApp(): Promise<void> {
   root.addEventListener('input', onChange);
   paint();
   window.addEventListener('scroll', onLexiconPosScroll, { passive: true });
-  await sqlWarm();
-  await refreshNotebook();
-  void fillEmptyCards();
-  await refreshPacks();
-  startIncomingText((text, origin) => {
-    if (origin === 'process-text' || origin === 'share') {
-      postOsNotify('incoming', 'Incoming lookup', text);
-    }
-    void lookup(text);
-  });
   if (hasNativeBridge()) {
     try {
       const pending = await nativeCall<{ text?: string; origin?: string }>('getPendingText', {});
-      if (pending.text) await lookup(pending.text);
+      if (pending.text) void lookup(pending.text);
     } catch {
       /* none */
     }
   }
+  let touchStart: { x: number; y: number } | null = null;
+  root.addEventListener('touchstart', (event) => {
+    const touch = event.touches.length === 1 ? event.touches[0] : null;
+    touchStart = touch ? { x: touch.clientX, y: touch.clientY } : null;
+  }, { passive: true });
+  root.addEventListener('touchend', (event) => {
+    const touch = event.changedTouches[0];
+    if (stripMode && capture.platform === 'android' && !prefs.floatingStrip && !stripExpanding && touchStart && touch
+        && touchStart.y - touch.clientY > 60 && Math.abs(touch.clientX - touchStart.x) < 80) {
+      stripExpanding = true;
+      void nativeCall('expandStrip', { q: query }).catch(() => { stripExpanding = false; });
+    }
+    touchStart = null;
+  }, { passive: true });
+  root.addEventListener('touchcancel', () => { touchStart = null; }, { passive: true });
+  await sqlWarm();
+  await refreshNotebook();
+  void fillEmptyCards();
+  await refreshPacks();
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') void refreshCapture().then(() => paint());
   });

@@ -9,7 +9,6 @@ import android.os.Build;
 import android.os.IBinder;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
-import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.WindowManager;
@@ -70,6 +69,7 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
     wm = (WindowManager) getSystemService(WINDOW_SERVICE);
     root = LayoutInflater.from(this).inflate(R.layout.overlay_strip, null);
     web = root.findViewById(R.id.webview);
+    web.setBackgroundColor(android.graphics.Color.TRANSPARENT);
     DisplayMetrics dm = getResources().getDisplayMetrics();
     WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
         WindowManager.LayoutParams.MATCH_PARENT,
@@ -79,14 +79,15 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
             | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
         PixelFormat.TRANSLUCENT
     );
-    lp.gravity = Gravity.BOTTOM;
+    PopupLayout.size(lp, this, false);
     lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
     WebViews.bind(web, WebViews.assets(this), this, true, () -> {
-      pageReady = true;
-      if (pendingText != null) injectIncoming();
+      // Incoming text stays pending until JS explicitly calls getPendingText.
     });
     try {
       wm.addView(root, lp);
+      PopupLayout.draggable(root.findViewById(R.id.popup_handle), this,
+          () -> (WindowManager.LayoutParams) root.getLayoutParams(), next -> wm.updateViewLayout(root, next));
     } catch (Exception e) {
       Intent i = new Intent(this, StripActivity.class);
       if (pendingText != null) i.putExtra(CapturePrefs.EXTRA_QUERY, pendingText);
@@ -138,6 +139,7 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
 
   @Override
   public String takePendingText() {
+    pageReady = true;
     String t = pendingText;
     pendingText = null;
     return t;
@@ -188,6 +190,14 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
   @Override
   public void closeStrip() {
     stopSelf();
+  }
+
+  @Override
+  public void resizeStrip(boolean compact) {
+    if (root == null || wm == null) return;
+    WindowManager.LayoutParams lp = (WindowManager.LayoutParams) root.getLayoutParams();
+    PopupLayout.size(lp, this, compact);
+    wm.updateViewLayout(root, lp);
   }
 
   @Override

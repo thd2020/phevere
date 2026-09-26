@@ -42,7 +42,7 @@ export const defaultPrefs = (): MobilePrefs => ({
   collinsHost: '',
   audioEnabled: true,
   audioSpeed: 1,
-  floatingStrip: false,
+  floatingStrip: true,
   notifyIncoming: true,
   notifySaved: true,
   notifyOcr: true,

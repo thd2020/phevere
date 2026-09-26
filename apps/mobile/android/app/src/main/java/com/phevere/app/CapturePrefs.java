@@ -11,7 +11,7 @@ public final class CapturePrefs {
   private CapturePrefs() {}
 
   public static boolean floatingStrip(Context ctx) {
-    return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(FLOATING, false);
+    return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(FLOATING, true);
   }
 
   public static void setFloatingStrip(Context ctx, boolean on) {

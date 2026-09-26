@@ -14,9 +14,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.provider.Settings;
-import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
 import android.webkit.WebView;
 import android.view.Window;
 import android.view.WindowManager;
@@ -151,19 +149,18 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
     }
     if (isStrip()) {
       Window w = getWindow();
-      w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, (int) (getResources().getDisplayMetrics().heightPixels * 0.68f));
-      w.setGravity(Gravity.BOTTOM);
+      PopupLayout.apply(w, this, false);
+      PopupLayout.draggable(findViewById(R.id.popup_handle), this, w::getAttributes, w::setAttributes);
     }
     captureIncoming(getIntent());
     Notify.ensureChannels(this);
 
     assets = WebViews.assets(this);
     web = findViewById(R.id.webview);
+    if (isStrip()) web.setBackgroundColor(Color.TRANSPARENT);
     web.setFitsSystemWindows(false);
     WebViews.bind(web, assets, this, isStrip(), () -> {
-      pageReady = true;
       pushInsets();
-      if (pendingText != null) injectIncoming();
     });
 
     View root = findViewById(R.id.root);
@@ -218,6 +215,7 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
 
   @Override
   public String takePendingText() {
+    pageReady = true;
     String t = pendingText;
     pendingText = null;
     return t;
@@ -290,6 +288,11 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
   }
 
   @Override
+  public void resizeStrip(boolean compact) {
+    if (isStrip()) PopupLayout.apply(getWindow(), this, compact);
+  }
+
+  @Override
   public void requestOverlayPermission() {
     startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName())));
   }
@@ -314,12 +317,16 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
     if (intent == null) return;
     CharSequence extra = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT);
     if (extra == null || extra.length() == 0) {
+      extra = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+    }
+    if (extra == null || extra.length() == 0) {
       extra = intent.getStringExtra(CapturePrefs.EXTRA_QUERY);
     }
     if (extra == null || extra.length() == 0) return;
     pendingText = extra.toString().trim();
     pendingOrigin = "process-text";
     intent.removeExtra(Intent.EXTRA_PROCESS_TEXT);
+    intent.removeExtra(Intent.EXTRA_TEXT);
     intent.removeExtra(CapturePrefs.EXTRA_QUERY);
   }
 

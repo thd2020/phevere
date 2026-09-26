@@ -10,12 +10,13 @@ public class ProcessTextActivity extends Activity {
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     CharSequence extra = getIntent() != null ? getIntent().getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT) : null;
+    if (extra == null && getIntent() != null) extra = getIntent().getCharSequenceExtra(Intent.EXTRA_TEXT);
     String text = extra == null ? "" : extra.toString().trim();
     if (text.isEmpty()) {
       finish();
       return;
     }
-    if (CapturePrefs.canDrawOverlays(this)) {
+    if (CapturePrefs.floatingStrip(this) && CapturePrefs.canDrawOverlays(this)) {
       OverlayService.show(this, text);
       finish();
       return;

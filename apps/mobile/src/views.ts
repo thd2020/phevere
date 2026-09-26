@@ -55,9 +55,10 @@ export function navHtml(tab: Tab): string {
   return `<nav class="nav" aria-label="Primary">${item('lookup', 'Lookup', ICO.search)}${item('notebook', 'Notebook', ICO.book)}${item('settings', 'Settings', ICO.gear)}</nav>`;
 }
 
-export function searchHtml(query: string, canBack: boolean, canFwd: boolean, strip: boolean): string {
+export function searchHtml(query: string, canBack: boolean, canFwd: boolean, strip: boolean, compactControl = false): string {
   const tools = strip
     ? `<div class="hist">
+        ${compactControl ? '<button type="button" class="linkish" data-act="compact-strip">Strip</button>' : ''}
         <button type="button" class="linkish" data-act="expand-strip">Open app</button>
         <button type="button" class="icon-btn" data-act="close-strip" aria-label="Close">${ICO.close}</button>
       </div>`

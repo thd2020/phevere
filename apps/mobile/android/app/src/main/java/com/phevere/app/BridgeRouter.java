@@ -33,6 +33,7 @@ final class BridgeRouter {
     void launchSaveFile(String name);
     void closeStrip();
     void expandToFullApp(String query);
+    void resizeStrip(boolean compact);
     void requestOverlayPermission();
     void requestNotifications();
     void openNotificationSettings();
@@ -60,12 +61,17 @@ final class BridgeRouter {
             resolve(id, new JSONObject().put("ok", true));
             break;
           case "getPendingText": {
-            JSONObject out = new JSONObject();
-            String text = host.takePendingText();
-            String origin = host.takePendingOrigin();
-            out.put("text", text == null ? JSONObject.NULL : text);
-            out.put("origin", origin == null ? JSONObject.NULL : origin);
-            resolve(id, out);
+            // This is the JS-ready handshake, serialized with incoming Android intents.
+            host.runUi(() -> {
+              try {
+                JSONObject out = new JSONObject();
+                String text = host.takePendingText();
+                String origin = host.takePendingOrigin();
+                out.put("text", text == null ? JSONObject.NULL : text);
+                out.put("origin", origin == null ? JSONObject.NULL : origin);
+                resolve(id, out);
+              } catch (Exception e) { fail(id, e.getMessage()); }
+            });
             break;
           }
           case "openUrl":
@@ -187,6 +193,10 @@ final class BridgeRouter {
             break;
           case "expandStrip":
             host.runUi(() -> host.expandToFullApp(p.optString("q")));
+            resolve(id, new JSONObject().put("ok", true));
+            break;
+          case "resizeStrip":
+            host.runUi(() -> host.resizeStrip(p.optBoolean("compact")));
             resolve(id, new JSONObject().put("ok", true));
             break;
           default:

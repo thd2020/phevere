@@ -29,6 +29,8 @@
     </style>
 
     <style name="AppTheme.Strip" parent="Theme.Material3.Light.Dialog">
+        <item name="windowNoTitle">true</item>
+        <item name="windowActionBar">false</item>
         <item name="colorPrimary">@color/ember</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowIsFloating">true</item>

@@ -9,19 +9,21 @@
         android:layout_height="match_parent"
         android:layout_gravity="bottom"
         android:background="@drawable/strip_bg"
+        android:clipToOutline="true"
         android:orientation="vertical">
 
         <View
-            android:layout_width="40dp"
-            android:layout_height="4dp"
+            android:id="@+id/popup_handle"
+            android:contentDescription="Drag popup"
+            android:layout_width="match_parent"
+            android:layout_height="18dp"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="10dp"
-            android:layout_marginBottom="4dp"
-            android:background="@color/outline" />
+            android:background="@drawable/popup_handle" />
 
         <WebView
             android:id="@+id/webview"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="0dp"
+            android:layout_weight="1" />
     </LinearLayout>
 </FrameLayout>
