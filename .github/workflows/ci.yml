@@ -102,6 +102,8 @@ jobs:
           if [ ! -d "${ANDROID_SDK_ROOT}/build-tools/35.0.0" ]; then
             yes | "$SDKMANAGER" "build-tools;35.0.0" || true
           fi
+          # NDK r28 + CMake build libttsespeak.so from source with 16 KB pages.
+          yes | "$SDKMANAGER" "ndk;28.2.13676358" "cmake;3.22.1" >/dev/null
           test -d "${ANDROID_SDK_ROOT}/platforms/android-35"
       - name: Install JS deps and sync phone UI
         env:
@@ -121,6 +123,7 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
+          python ../scripts/check-apk-16kb.py app/build/outputs/apk/debug/app-debug.apk
       - name: Enable emulator acceleration
         run: sudo chmod 666 /dev/kvm
       - name: Test embedded speech on Android

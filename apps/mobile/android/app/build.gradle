@@ -3,6 +3,8 @@ apply plugin: 'com.android.application'
 android {
     namespace "com.phevere.app"
     compileSdk rootProject.ext.compileSdkVersion
+    // r28 links 16 KB-aligned ELF segments by default (Android 15+ 16 KB page devices).
+    ndkVersion "28.2.13676358"
     defaultConfig {
         applicationId "com.phevere.app"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -10,13 +12,25 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        externalNativeBuild {
+            cmake {
+                // Same switches as espeak-ng's own Android build.
+                arguments "-DUSE_ASYNC:BOOL=OFF", "-DUSE_MBROLA:BOOL=OFF", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+                targets "ttsespeak"
+            }
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path "${buildDir}/generated/speech-v2/espeak-ng-src/android/jni/CMakeLists.txt"
+            version "3.22.1"
+        }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
     sourceSets.main.assets.srcDir "${buildDir}/generated/speech-v2/assets"
-    sourceSets.main.jniLibs.srcDir "${buildDir}/generated/speech-v2/jniLibs"
     buildTypes {
         release {
             minifyEnabled false

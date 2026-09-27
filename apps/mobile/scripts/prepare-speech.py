@@ -54,10 +54,21 @@ def main():
         if len(data) != 1:
             raise RuntimeError('Missing or ambiguous eSpeak voice data')
         (voice_root / 'espeak-data.zip').write_bytes(data[0])
-        for abi in ['arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64']:
-            dest = OUT / 'jniLibs' / abi / 'libttsespeak.so'
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(apk.read(f'lib/{abi}/libttsespeak.so'))
+    # The APK's prebuilt libttsespeak.so uses 4 KB pages, which Android 15+ 16 KB devices
+    # reject. Gradle builds it from this source tree with NDK r28 instead.
+    shutil.rmtree(OUT / 'jniLibs', ignore_errors=True)
+    source_tree = OUT / 'espeak-ng-src'
+    shutil.rmtree(source_tree, ignore_errors=True)
+    with tarfile.open(CACHE / ASSETS[2][0]) as source:
+        source.extractall(OUT, filter='data')
+    (OUT / 'espeak-ng-1.52.0').rename(source_tree)
+    # IPA chips send eSpeak [[phoneme]] input, which eSpeak only parses with espeakPHONEMES.
+    service = source_tree / 'android/jni/jni/eSpeakService.c'
+    text = service.read_text(encoding='utf-8')
+    plain = ': espeakCHARS_UTF8,             // UTF-8 encoded text'
+    if plain not in text:
+        raise RuntimeError('eSpeak JNI changed; update the phoneme-input patch')
+    service.write_text(text.replace(plain, ': espeakCHARS_UTF8 | espeakPHONEMES, // UTF-8 text, [[phonemes]] allowed'), encoding='utf-8')
     notices = OUT / 'assets' / 'speech-notices'
     notices.mkdir(parents=True, exist_ok=True)
     with tarfile.open(CACHE / ASSETS[2][0]) as source:
