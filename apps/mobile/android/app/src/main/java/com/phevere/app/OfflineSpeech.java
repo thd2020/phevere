@@ -21,9 +21,14 @@ final class OfflineSpeech {
   OfflineSpeech(Context context) { this.context = context; }
 
   File synthesize(String text, String lang, float rate, int token) throws Exception {
-    boolean chinese = (lang != null && lang.startsWith("zh")) || text.codePoints().anyMatch(c -> c >= 0x3400 && c <= 0x9fff);
+    return synthesize(text, lang, rate, token, false);
+  }
+
+  /** phonemes: text is eSpeak phoneme mnemonics from an IPA chip; only eSpeak can voice those. */
+  File synthesize(String text, String lang, float rate, int token, boolean phonemes) throws Exception {
+    boolean chinese = !phonemes && ((lang != null && lang.startsWith("zh")) || text.codePoints().anyMatch(c -> c >= 0x3400 && c <= 0x9fff));
     File wave = new File(context.getCacheDir(), "speech-" + token + ".wav");
-    if (!SpeechModels.useNeural(context)) {
+    if (phonemes || !SpeechModels.useNeural(context)) {
       if (mechanical == null) {
         File root = new File(context.getNoBackupFilesDir(), "espeak-1.52.0");
         File ready = new File(root, ".ready");
@@ -48,7 +53,7 @@ final class OfflineSpeech {
         }
         mechanical = new SpeechSynthesis(root.getAbsolutePath());
       }
-      mechanical.synthesize(text, chinese ? "cmn" : "en-GB".equalsIgnoreCase(lang) ? "en-gb" : "en-us", rate, wave);
+      mechanical.synthesize(phonemes ? "[[" + text + "]]" : text, chinese ? "cmn" : "en-GB".equalsIgnoreCase(lang) ? "en-gb" : "en-us", rate, wave);
       return wave;
     }
     if (engine == null) {

@@ -1,5 +1,6 @@
 import {
   accentToBcp47,
+  ipaToEspeakPhonemes,
   recordedPronunciationUrls,
   type DictionaryResult,
   type Pronunciation,
@@ -79,18 +80,19 @@ export async function speakText(text: string, prefs: MobilePrefs, lang?: string)
   });
 }
 
-/** Chip speaker: that clip if the source sent one, otherwise TTS of the headword in the chip’s accent. */
+/**
+ * Chip speaker: the mechanical voice reads the chip's own IPA (eSpeak [[phonemes]]),
+ * as on desktop. The headword button is the one that plays the recorded human clip.
+ */
 export async function speakIpa(p: Pronunciation, prefs: MobilePrefs, word?: string): Promise<void> {
   if (!prefs.audioEnabled) return;
   const lang = accentToBcp47(p.accent);
-  if (p.audioUrl) {
-    try {
-      await playUrl(p.audioUrl, prefs);
-      return;
-    } catch {
-      /* lemma */
-    }
+  const phonemes = ipaToEspeakPhonemes(p.ipa);
+  if (hasNativeBridge() && phonemes) {
+    await nativeCall('speak', { text: phonemes, lang, rate: rate(prefs), phonemes: true });
+    return;
   }
+  // Browser preview: speechSynthesis cannot read IPA, so say the headword in that accent.
   await speakText(word || '', prefs, lang);
 }
 

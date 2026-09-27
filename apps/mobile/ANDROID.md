@@ -1,5 +1,10 @@
 # Android build and selection-toolbar setup
 
+**2026-09-27:** `libttsespeak.so` is now compiled from the pinned eSpeak NG source
+with NDK r28, so the APK passes Android's 16 KB page-size check. IPA chips speak
+their own IPA with the mechanical voice; the headword and notebook ▶ buttons play
+the recorded human clip (mechanical only when no clip exists).
+
 ## Build
 
 The APK embeds eSpeak NG 1.52.0 as its default mechanical voice. It works offline
@@ -28,8 +33,12 @@ cd apps/mobile/android
 
 Pinned upstream binaries, data and source checksums are in `scripts/prepare-speech.py`.
 Generated files belong under `app/build/generated/speech-v2`; old `speech` output is
-not packaged. The eSpeak binary is taken unmodified from the official Android APK;
-Phevere supplies a small JNI adapter with the same ABI. The neural runtime is
+not packaged. Voice data comes from the official eSpeak Android APK, but its
+prebuilt `libttsespeak.so` uses 4 KB pages, so Gradle builds that library from the
+pinned eSpeak source (NDK r28, 16 KB pages). The only source change enables
+`espeakPHONEMES`, so IPA chips can send `[[phonemes]]`. CI runs
+`scripts/check-apk-16kb.py` on the built APK. Phevere supplies a small Java adapter
+for the JNI ABI. The neural runtime is
 sherpa-onnx 1.13.3. The optional model URL and hash are in `SpeechModels.java`.
 
 The Android binary incorporating eSpeak NG is distributed under GPL-3.0-or-later.

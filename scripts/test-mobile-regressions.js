@@ -94,7 +94,11 @@ async function audioFallback() {
   const calls = [];
   let failSpeech = false;
   const audio = load('platform/audio.ts', {
-    '@phevere/core': { accentToBcp47: () => 'en-GB', recordedPronunciationUrls: () => ['bad-clip'] },
+    '@phevere/core': {
+      accentToBcp47: () => 'en-GB',
+      ipaToEspeakPhonemes: (ipa) => (ipa ? "h@l'oU" : ''),
+      recordedPronunciationUrls: () => ['bad-clip'],
+    },
     './native': { hasNativeBridge: () => true, nativeCall: async (method, params) => {
       calls.push({ method, params });
       if (method === 'playUrl' || failSpeech) throw new Error('unavailable');
@@ -105,8 +109,12 @@ async function audioFallback() {
   assert.deepEqual(calls.map((c) => c.method), ['playUrl', 'speak']);
   assert.equal(calls[1].params.text, 'hello');
   calls.length = 0;
-  await audio.speakIpa({ accent: 'uk', audioUrl: 'broken' }, prefs, 'hello');
-  assert.equal(calls[1].params.lang, 'en-GB');
+  // IPA chips voice their own IPA mechanically, even when the source sent a clip.
+  await audio.speakIpa({ ipa: 'həˈləʊ', accent: 'uk', audioUrl: 'clip' }, prefs, 'hello');
+  assert.deepEqual(calls.map((c) => c.method), ['speak']);
+  assert.equal(calls[0].params.text, "h@l'oU");
+  assert.equal(calls[0].params.phonemes, true);
+  assert.equal(calls[0].params.lang, 'en-GB');
   failSpeech = true;
   await assert.rejects(audio.speakText('hello', prefs), /unavailable/);
 }

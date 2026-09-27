@@ -37,6 +37,12 @@ public class MechanicalSpeechTest {
       assertTrue("Speech must not be silent", audible);
       wave.delete();
     }
+    // IPA chips: eSpeak must parse [[phonemes]], not read brackets and letters aloud.
+    File ipa = speech.synthesize("h@l'oU", "en-GB", 1f, 105, true);
+    ByteBuffer ipaHeader = ByteBuffer.wrap(Files.readAllBytes(ipa.toPath())).order(ByteOrder.LITTLE_ENDIAN);
+    double seconds = ipaHeader.getInt(40) / 2.0 / ipaHeader.getInt(24);
+    assertTrue("Phoneme speech length " + seconds + "s", seconds > 0.2 && seconds < 1.5);
+    ipa.delete();
     // A stale neural preference cannot break speech when its model is missing.
     context.getSharedPreferences("speech", 0).edit().putBoolean("neural", true).commit();
     assertFalse(SpeechModels.useNeural(context));

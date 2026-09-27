@@ -160,7 +160,8 @@ final class BridgeRouter {
             String text = p.optString("text");
             String lang = p.optString("lang", "en-US");
             float rate = (float) p.optDouble("rate", 1);
-            host.runUi(() -> Speak.get(host.context()).speak(text, lang, rate, error -> {
+            boolean phonemes = p.optBoolean("phonemes", false);
+            host.runUi(() -> Speak.get(host.context()).speak(text, lang, rate, phonemes, error -> {
               if (error != null) { fail(sid, error); return; }
               try {
                 resolve(sid, new JSONObject().put("ok", true));

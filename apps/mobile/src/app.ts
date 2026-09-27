@@ -560,6 +560,20 @@ function persistPrefs(): void {
   applyPrefsToCore(prefs);
 }
 
+/** Notebook ▶ plays the same recorded human clip as the lookup headword button. */
+async function playLemma(lemma: string): Promise<void> {
+  if (!lemma) return;
+  if (result && result.word.toLowerCase() === lemma.toLowerCase()) {
+    await playRecorded(result, prefs);
+    return;
+  }
+  // Lookups are cached in core; a word saved earlier usually resolves without network.
+  const found = await dictionaryService
+    .lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), { skipEtymology: true })
+    .catch(() => null);
+  await playRecorded(found ?? { word: lemma } as DictionaryResult, prefs);
+}
+
 function pulseSpeak(el: HTMLElement, done: Promise<void>): Promise<void> {
   document.querySelectorAll('.is-speaking').forEach((n) => n.classList.remove('is-speaking'));
   el.classList.add('is-speaking');
@@ -794,7 +808,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'nb-play':
-      await pulseSpeak(t, speakText(t.dataset.lemma || '', prefs));
+      await pulseSpeak(t, playLemma(t.dataset.lemma || ''));
       return;
     case 'nb-more': {
       const def = t.previousElementSibling as HTMLElement | null;

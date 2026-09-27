@@ -33,6 +33,10 @@ final class Speak {
   }
 
   void speak(String text, String lang, float rate, Completion done) {
+    speak(text, lang, rate, false, done);
+  }
+
+  void speak(String text, String lang, float rate, boolean phonemes, Completion done) {
     interrupt();
     pendingDone = done;
     final int token = ++gen;
@@ -40,7 +44,7 @@ final class Speak {
     synthesis.execute(() -> {
       if (token != gen) return;
       try {
-        File wave = offline.synthesize(text, lang, clampRate(rate), token);
+        File wave = offline.synthesize(text, lang, clampRate(rate), token, phonemes);
         main.post(() -> {
           if (token != gen) { wave.delete(); return; }
           speechFile = wave;
