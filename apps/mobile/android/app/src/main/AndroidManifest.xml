@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- libxposed needs Android 8+; LsposedPrefs skips it below that. -->
-    <uses-sdk tools:overrideLibrary="io.github.libxposed.api,io.github.libxposed.service" />
+    <uses-sdk tools:overrideLibrary="io.github.libxposed.api,io.github.libxposed.service,io.github.libxposed.service.interfaces" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
