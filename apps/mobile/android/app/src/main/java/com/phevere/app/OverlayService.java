@@ -83,6 +83,7 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
         (int) (dm.heightPixels * 0.62f),
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+            | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
             | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
         PixelFormat.TRANSLUCENT
     );
@@ -95,6 +96,17 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
       wm.addView(root, lp);
       PopupLayout.draggable(root.findViewById(R.id.popup_handle), this,
           () -> (WindowManager.LayoutParams) root.getLayoutParams(), next -> wm.updateViewLayout(root, next));
+      PopupLayout.resizable(root, this,
+          () -> (WindowManager.LayoutParams) root.getLayoutParams(), next -> wm.updateViewLayout(root, next));
+      // Like desktop: a tap anywhere outside closes the popup (the tap still reaches that app).
+      // The keyboard is also "outside", so keep the popup while typing in it.
+      root.setOnTouchListener((view, event) -> {
+        if (event.getActionMasked() != android.view.MotionEvent.ACTION_OUTSIDE) return false;
+        androidx.core.view.WindowInsetsCompat insets = androidx.core.view.ViewCompat.getRootWindowInsets(view);
+        if (insets != null && insets.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())) return false;
+        closeStrip();
+        return true;
+      });
     } catch (Exception e) {
       Intent i = new Intent(this, StripActivity.class);
       if (pendingText != null) i.putExtra(CapturePrefs.EXTRA_QUERY, pendingText);

@@ -151,6 +151,7 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
       Window w = getWindow();
       PopupLayout.apply(w, this);
       PopupLayout.draggable(findViewById(R.id.popup_handle), this, w::getAttributes, w::setAttributes);
+      PopupLayout.resizable(findViewById(android.R.id.content), this, w::getAttributes, w::setAttributes);
     }
     captureIncoming(getIntent());
     Notify.ensureChannels(this);
