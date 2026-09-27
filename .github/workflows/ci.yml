@@ -103,7 +103,9 @@ jobs:
             yes | "$SDKMANAGER" "build-tools;35.0.0" || true
           fi
           # NDK r28 + CMake build libttsespeak.so from source with 16 KB pages.
-          yes | "$SDKMANAGER" "ndk;28.2.13676358" "cmake;3.22.1" >/dev/null
+          yes | "$SDKMANAGER" "ndk;28.2.13676358" "cmake;3.22.1" >/dev/null || true
+          test -d "${ANDROID_SDK_ROOT}/ndk/28.2.13676358"
+          test -d "${ANDROID_SDK_ROOT}/cmake/3.22.1"
           test -d "${ANDROID_SDK_ROOT}/platforms/android-35"
       - name: Install JS deps and sync phone UI
         env:
