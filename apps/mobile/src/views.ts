@@ -45,6 +45,11 @@ const ICO = {
   heart: '<svg viewBox="0 0 24 24"><path d="M12 21s-6.7-4.3-9.3-8.1C.7 10.2 1.2 6.6 4 5.1 6.1 4 8.6 4.6 12 7.4 15.4 4.6 17.9 4 20 5.1c2.8 1.5 3.3 5.1 1.3 7.8C18.7 16.7 12 21 12 21z"/></svg>',
   speaker: '<svg viewBox="0 0 24 24"><path d="M3 10v4h3l4 4V6L6 10zm13.5 2A4.5 4.5 0 0 0 14 8.1v7.8A4.5 4.5 0 0 0 16.5 12z"/></svg>',
   book: '<svg viewBox="0 0 24 24"><path d="M6 4h11a3 3 0 0 1 3 3v13H8a2 2 0 0 0-2 2V4zm2 2v12h10V7a1 1 0 0 0-1-1H8z"/></svg>',
+  expand: '<svg viewBox="0 0 24 24"><path d="M14 3h7v7h-2V6.4l-8.3 8.3-1.4-1.4L17.6 5H14zM5 5h6v2H5v12h12v-6h2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>',
+  tabLexicon: '<svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round"><path d="M3.5 5.5c2.8-1.2 5.6-1.2 8.5.6 2.9-1.8 5.7-1.8 8.5-.6v13c-2.8-1.2-5.6-1.2-8.5.6-2.9-1.8-5.7-1.8-8.5-.6z"/><path d="M12 6.1v13"/></svg>',
+  tabTranslation: '<svg viewBox="0 0 24 24"><path d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>',
+  tabWikipedia: '<svg viewBox="0 0 24 24"><text x="12" y="17.5" text-anchor="middle" font-family="Georgia, serif" font-size="17" font-weight="700">W</text></svg>',
+  tabEtymology: '<svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M12 21v-9M12 12 6.5 6.5M12 12l5.5-5.5M12 15.5l-3.5-3M6.5 6.5V3.5M17.5 6.5V3.5M4 21h16"/></svg>',
   gear: '<svg viewBox="0 0 24 24"><path d="M19.4 13a7.7 7.7 0 0 0 .1-2l2-1.5-2-3.5-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3h-6l-.4 3a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7.7 7.7 0 0 0 .1 2l-2 1.5 2 3.5 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 3h6l.4-3a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.5zM12 15.5A3.5 3.5 0 1 1 15.5 12 3.5 3.5 0 0 1 12 15.5z"/></svg>',
 };
 
@@ -56,27 +61,35 @@ export function navHtml(tab: Tab): string {
   return `<nav class="nav" aria-label="Primary">${item('lookup', 'Lookup', ICO.search)}${item('notebook', 'Notebook', ICO.book)}${item('settings', 'Settings', ICO.gear)}</nav>`;
 }
 
-export function searchHtml(query: string, canBack: boolean, canFwd: boolean, strip: boolean): string {
-  const tools = strip
-    ? `<div class="hist">
-        <button type="button" class="linkish" data-act="expand-strip">Open app</button>
-        <button type="button" class="icon-btn" data-act="close-strip" aria-label="Close">${ICO.close}</button>
-      </div>`
-    : `<div class="hist">
-        <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="Previous lookup">${ICO.back}</button>
-        <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="Next lookup">${ICO.fwd}</button>
-      </div>`;
+/** One top bar for every tab: the same "Phevere" title; Lookup adds history and search. */
+export function appBarHtml(tab: Tab, query: string, canBack: boolean, canFwd: boolean): string {
+  const lookup = tab === 'lookup';
   return `
     <div class="top">
       <div class="brand-row">
         <h1>Phevere</h1>
-        ${tools}
+        ${lookup ? `<div class="hist">
+          <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="Previous lookup">${ICO.back}</button>
+          <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="Next lookup">${ICO.fwd}</button>
+        </div>` : ''}
       </div>
-      <form class="search">
+      ${lookup ? `<form class="search">
         <input id="q" type="search" enterkeyhint="search" placeholder="Look up a word or phrase" value="${esc(query)}" autocomplete="off" />
-        ${strip ? '' : `<button type="button" class="icon-btn" data-act="ocr" aria-label="Scan text">${ICO.cam}</button>`}
+        <button type="button" class="icon-btn" data-act="ocr" aria-label="Scan text">${ICO.cam}</button>
         <button type="submit" class="go">Look up</button>
-      </form>
+      </form>` : ''}
+    </div>`;
+}
+
+/** Pop-up: one slim row — history on the left, open-in-app and close on the right. */
+export function popupBarHtml(canBack: boolean, canFwd: boolean): string {
+  return `
+    <div class="popup-bar">
+      <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="Previous lookup">${ICO.back}</button>
+      <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="Next lookup">${ICO.fwd}</button>
+      <span class="popup-bar__gap"></span>
+      <button type="button" class="icon-btn" data-act="expand-strip" aria-label="Open in Phevere" title="Open in Phevere">${ICO.expand}</button>
+      <button type="button" class="icon-btn" data-act="close-strip" aria-label="Close">${ICO.close}</button>
     </div>`;
 }
 
@@ -156,6 +169,17 @@ function wrapPane(inner: string, extra = ''): string {
   return `<div class="card lexicon-pane${extra ? ` ${extra}` : ''}">${inner}</div>`;
 }
 
+/** Desktop behaviour: "plural of X", "past tense of X" … link X to a lookup in place. */
+const FORM_OF = /\b((?:the\s+)?(?:plural|past(?:\s+tense)?|simple\s+past|present(?:\s+participle)?|gerund|(?:past|present)\s+participle|third-person\s+singular(?:\s+simple\s+present)?|alternative\s+(?:form|spelling)|(?:common\s+)?misspelling|obsolete\s+(?:form|spelling)|archaic\s+(?:form|spelling)|inflection|conjugated\s+form)\s+of)\s+([A-Za-zÀ-ɏ][A-Za-zÀ-ɏ'-]*)/gi;
+
+function linkLemmaRefs(escaped: string): string {
+  return escaped.replace(
+    FORM_OF,
+    (_m, phrase: string, lemma: string) =>
+      `${phrase} <button type="button" class="lemma-link" data-act="lookup" data-q="${lemma}">${lemma}</button>`,
+  );
+}
+
 function renderSenses(senses: Definition[], shown: Set<string>): string {
   const sorted = senses.slice().sort((a, b) => stripGlossText(b.meaning || '').length - stripGlossText(a.meaning || '').length);
   return sorted
@@ -180,7 +204,7 @@ function renderSenses(senses: Definition[], shown: Set<string>): string {
         <div class="definition-sense-row">
           <div class="definition-sense-num">${i + 1}.</div>
           <div class="definition-sense-body">
-            <div class="definition-text">${esc(stripGlossText(d.meaning))}</div>
+            <div class="definition-text">${linkLemmaRefs(esc(stripGlossText(d.meaning)))}</div>
             ${exHtml}
             <div class="definition-source-badges">${badges}</div>
           </div>
@@ -494,6 +518,12 @@ export function lookupBody(opts: {
   const ipa = formatPronunciationLine(opts.result.pronunciations) || opts.result.pronunciation || '';
   const lemma = saveLemma(opts.result);
   const tabs: ResultTab[] = ['lexicon', 'translation', 'wikipedia', 'etymology'];
+  const icons: Record<ResultTab, string> = {
+    lexicon: ICO.tabLexicon,
+    translation: ICO.tabTranslation,
+    wikipedia: ICO.tabWikipedia,
+    etymology: ICO.tabEtymology,
+  };
   const labels: Record<ResultTab, string> = {
     lexicon: 'Lexicon',
     translation: 'Translation',
@@ -520,8 +550,8 @@ export function lookupBody(opts: {
       </div>
       ${chips || (ipa ? `<p class="ipa-line">${esc(ipa)}</p>` : '')}
     </header>
-    <div class="chips" role="tablist">
-      ${tabs.map((t) => `<button type="button" class="chip" role="tab" data-act="result-tab" data-tab="${t}" aria-selected="${opts.resultTab === t}">${labels[t]}</button>`).join('')}
+    <div class="result-tabs" role="tablist">
+      ${tabs.map((t) => `<button type="button" class="result-tab" role="tab" data-act="result-tab" data-tab="${t}" aria-selected="${opts.resultTab === t}" aria-label="${labels[t]}" title="${labels[t]}">${icons[t]}</button>`).join('')}
     </div>
     ${opts.looking ? `<p class="status"><span class="md-spinner"></span> Updating…</p>` : ''}
     ${pane}

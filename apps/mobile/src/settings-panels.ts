@@ -270,10 +270,6 @@ export function settingsBody(
   return `
     <div class="settings">
       <div class="settings-sticky">
-        <header class="settings-head">
-          <p class="settings-kicker">Phevere</p>
-          <h1>Settings</h1>
-        </header>
         <div class="settings-tabs" role="tablist" aria-label="Settings sections">${tabs}</div>
       </div>
       <div class="settings-panel" role="tabpanel">${panel}</div>

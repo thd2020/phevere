@@ -39,7 +39,8 @@ import {
   navHtml,
   notebookBody,
   scanHtml,
-  searchHtml,
+  appBarHtml,
+  popupBarHtml,
   settingsBody,
   type CaptureInfo,
   type LangSide,
@@ -96,6 +97,7 @@ let stripExpanding = false;
 if (stripMode) document.documentElement.dataset.mode = 'strip';
 
 const history: string[] = [];
+const HISTORY_CAP = 40;
 let histIndex = -1;
 
 function toast(msg: string): void {
@@ -182,7 +184,7 @@ function paint(): void {
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
   root.innerHTML = `
     <div class="shell${tab === 'settings' ? ' shell-settings' : ''}${lexiconFill ? ' shell-lexicon' : ''}${resultTab === 'wikipedia' && wikiArticle ? ' shell-wiki' : ''}">
-      ${tab === 'settings' ? '' : searchHtml(draft, canBack, canFwd, stripMode)}
+      ${stripMode ? popupBarHtml(canBack || wikiCanBack(), canFwd) : appBarHtml(tab, draft, canBack, canFwd)}
       <main class="page">${body}</main>
     </div>
     ${stripMode ? '' : navHtml(tab)}
@@ -409,11 +411,7 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
   resultTab = keepTab || 'lexicon';
   lexiconPos = '';
   lexiconWord = q;
-  if (!fromHist) {
-    history.splice(histIndex + 1);
-    history.push(q);
-    histIndex = history.length - 1;
-  }
+  if (!fromHist) rememberLookup(q);
   paint();
   const enabled = dictionaryService.getEnabledSources();
   try {
@@ -592,6 +590,34 @@ function watchVoice(): void {
   }, 1000);
 }
 
+/** Desktop lookup trail: same word replaces the current entry; capped at 40. */
+function rememberLookup(q: string): void {
+  const fold = (v: string) => v.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+  if (histIndex >= 0 && fold(history[histIndex] || '') === fold(q)) {
+    history[histIndex] = q;
+    return;
+  }
+  history.splice(histIndex + 1);
+  history.push(q);
+  if (history.length > HISTORY_CAP) history.shift();
+  histIndex = history.length - 1;
+}
+
+/** A new selection from outside starts a fresh trail, as in the desktop pop-up. */
+function resetTrail(): void {
+  history.length = 0;
+  histIndex = -1;
+}
+
+function wikiCanBack(): boolean {
+  return resultTab === 'wikipedia' && !!wikiArticle;
+}
+
+/** History steps keep the open tab, except Wikipedia, which returns to Lexicon. */
+function trailTab(): ResultTab {
+  return resultTab === 'wikipedia' ? 'lexicon' : resultTab;
+}
+
 let selectionTimer: number | null = null;
 
 /**
@@ -758,15 +784,20 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'back':
+      // Desktop order: step back inside the Wikipedia reader first, then the lookup trail.
+      if (wikiCanBack()) {
+        await handleAct('wiki-back', t, e);
+        return;
+      }
       if (histIndex > 0) {
         histIndex -= 1;
-        await lookup(history[histIndex], true);
+        await lookup(history[histIndex], true, trailTab());
       }
       return;
     case 'fwd':
       if (histIndex < history.length - 1) {
         histIndex += 1;
-        await lookup(history[histIndex], true);
+        await lookup(history[histIndex], true, trailTab());
       }
       return;
     case 'lookup':
@@ -1089,6 +1120,7 @@ export async function startApp(): Promise<void> {
   startIncomingText((text, origin) => {
     stripExpanding = false;
     if (origin === 'process-text' || origin === 'share') postOsNotify('incoming', 'Incoming lookup', text);
+    resetTrail();
     void lookup(text);
   });
   applyInsets();

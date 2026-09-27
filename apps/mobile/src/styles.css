@@ -947,33 +947,7 @@ select, .field {
   padding-top: 0;
 }
 
-.settings-sticky {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  background: var(--md-sys-color-surface);
-  margin: -8px -16px 0;
-  padding: calc(var(--pv-inset-top) + 8px) 16px 0;
-}
-.settings-head {
-  padding: 0 0 4px;
-}
-.settings-kicker {
-  margin: 0 0 2px;
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--md-sys-color-on-surface-variant);
-  font-weight: 600;
-}
-.settings-head h1 {
-  margin: 0;
-  font-family: var(--md-font-display);
-  font-size: clamp(1.6rem, 6vw, 2rem);
-  font-weight: 650;
-  letter-spacing: -0.03em;
-  line-height: 1.05;
-}
+.settings-sticky { margin: -8px 0 0; }
 .settings-tabs {
   display: flex;
   gap: 8px;
@@ -1284,13 +1258,6 @@ html[data-mode="strip"] .page {
   flex: 1;
   overflow: auto;
 }
-html[data-mode="strip"] .brand-row h1 {
-  font-size: 1.25rem;
-}
-html[data-mode="strip"] .top {
-  position: static;
-  padding-top: 12px;
-}
 html[data-mode="strip"][data-popup="floating"] .shell { border-radius: 20px; }
 
 .toast {
@@ -1340,4 +1307,53 @@ html[data-notify="ios"] .toast {
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
+}
+
+/* Pop-up header: one slim row, no search box. */
+.popup-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+  min-height: 40px;
+}
+.popup-bar .icon-btn { width: 36px; height: 36px; }
+.popup-bar .icon-btn svg { width: 20px; height: 20px; }
+.popup-bar__gap { flex: 1; }
+
+/* Result tabs: icon segmented control (label in aria-label / title). */
+.result-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  padding: 3px;
+  margin: 0 0 12px;
+  border-radius: 14px;
+  background: var(--md-sys-color-surface-container);
+}
+.result-tab {
+  display: grid;
+  place-items: center;
+  height: 38px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  transition: background 0.18s var(--md-sys-motion), color 0.18s var(--md-sys-motion);
+}
+.result-tab svg { width: 22px; height: 22px; fill: currentColor; }
+.result-tab[aria-selected="true"] {
+  background: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-primary);
+  box-shadow: 0 1px 3px rgb(28 25 23 / 0.14);
+}
+
+.lemma-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  color: var(--md-sys-color-tertiary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }

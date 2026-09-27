@@ -67,7 +67,7 @@ async function startupAndGestures(floatingStrip) {
     './platform/audio': {}, './platform/native': native, './platform/notebook-io': {},
     './platform/offline': { listCatalogStatus: async () => [], markInstalledPacksOnCore: async () => {} },
     './platform/prefs': { loadPrefs: () => prefs, savePrefs: () => {}, applyPrefsToCore: () => {} },
-    './views': { esc: (s) => s, lookupBody: ({ result }) => JSON.stringify(result), searchHtml: (q) => q },
+    './views': { esc: (s) => s, lookupBody: ({ result }) => JSON.stringify(result), appBarHtml: (_t, q) => q, popupBarHtml: () => '' },
   }, globals);
   const boot = app.startApp();
   await tick();
