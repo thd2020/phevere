@@ -28,7 +28,8 @@ public class SelectionAccessibilityService extends AccessibilityService {
       rememberSelection(event);
       return;
     }
-    if (!CapturePrefs.autoPopup(this)) return;
+    // Rooted with the LSPosed module: the module presses Phevere without a bar; stay out of it.
+    if (!CapturePrefs.autoPopup(this) || CapturePrefs.moduleActive(this)) return;
     long now = SystemClock.uptimeMillis();
     if (now - pressedAt < COOLDOWN_MS) return;
     // The bar is its own small window; content changes matter only right after opening overflow.

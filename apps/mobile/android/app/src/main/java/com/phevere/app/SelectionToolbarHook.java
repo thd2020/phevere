@@ -1,59 +1,44 @@
 package com.phevere.app;
 
-import android.content.Intent;
-import android.view.MenuItem;
-import java.util.Comparator;
-import java.util.List;
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.XSharedPreferences;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
-/** Optional LSPosed module, active only in apps explicitly selected by the user. */
+/**
+ * Legacy LSPosed entry (assets/xposed_init) for frameworks without the modern API.
+ * Settings come from Phevere's world-readable preferences file (xposedsharedprefs);
+ * the behaviour itself is SelectionBar, shared with the modern entry.
+ */
 public final class SelectionToolbarHook implements IXposedHookLoadPackage {
-  private static final String INSTALLED = "phevere.selection.comparator";
+  private static XSharedPreferences prefs;
 
   @Override
   public void handleLoadPackage(XC_LoadPackage.LoadPackageParam load) {
-    // Framework classes execute inside each scoped app; no system_server hook is needed.
-    if ("android".equals(load.packageName)) return;
+    if ("android".equals(load.packageName) || SelectionBar.OUR_PACKAGE.equals(load.packageName)) return;
     Class<?> toolbar = XposedHelpers.findClassIfExists(
         "com.android.internal.widget.floatingtoolbar.FloatingToolbar", load.classLoader);
-    if (toolbar == null) return;
-    XposedBridge.hookAllMethods(toolbar, "getVisibleAndEnabledMenuItems", new XC_MethodHook() {
-      @Override protected void afterHookedMethod(MethodHookParam param) {
-        if (param.hasThrowable() || !(param.getResult() instanceof List)) return;
-        for (Object value : (List<?>) param.getResult()) {
-          if (value instanceof MenuItem && isPhevere((MenuItem) value)) {
-            MenuItem item = (MenuItem) value;
-            if (!Boolean.TRUE.equals(XposedHelpers.callMethod(item, "requiresActionButton"))) {
-              item.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
-            }
-          }
-        }
-      }
-    });
+    if (toolbar == null || !SelectionBar.claimProcess()) return;
+    SelectionBar.Settings settings = new SelectionBar.Settings() {
+      @Override public boolean instant() { return read().getBoolean(LsposedPrefs.KEY_INSTANT, false); }
+      @Override public int slot() { return read().getInt(LsposedPrefs.KEY_SLOT, -1); }
+    };
     XposedBridge.hookAllMethods(toolbar, "doShow", new XC_MethodHook() {
       @Override protected void beforeHookedMethod(MethodHookParam param) {
-        if (XposedHelpers.getAdditionalInstanceField(param.thisObject, INSTALLED) != null) return;
-        @SuppressWarnings("unchecked")
-        Comparator<MenuItem> original = (Comparator<MenuItem>)
-            XposedHelpers.getObjectField(param.thisObject, "mMenuItemComparator");
-        Comparator<MenuItem> first = (left, right) -> {
-          boolean a = isPhevere(left), b = isPhevere(right);
-          return a == b ? original.compare(left, right) : a ? -1 : 1;
-        };
-        XposedHelpers.setObjectField(param.thisObject, "mMenuItemComparator", first);
-        XposedHelpers.setAdditionalInstanceField(param.thisObject, INSTALLED, true);
+        try {
+          if (SelectionBar.onDoShow(param.thisObject, settings)) param.setResult(null);
+        } catch (Throwable t) {
+          XposedBridge.log("Phevere selection bar: " + t);
+        }
       }
     });
   }
 
-  private static boolean isPhevere(MenuItem item) {
-    Intent intent = item.getIntent();
-    return intent != null && Intent.ACTION_PROCESS_TEXT.equals(intent.getAction())
-        && intent.getComponent() != null
-        && "com.phevere.app".equals(intent.getComponent().getPackageName());
+  private static synchronized XSharedPreferences read() {
+    if (prefs == null) prefs = new XSharedPreferences(SelectionBar.OUR_PACKAGE, LsposedPrefs.LEGACY_FILE);
+    else if (prefs.hasFileChanged()) prefs.reload();
+    return prefs;
   }
 }

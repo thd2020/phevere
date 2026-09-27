@@ -138,6 +138,9 @@ final class BridgeRouter {
             out.put("notificationsGranted", Notify.granted(host.context()));
             out.put("autoPopup", CapturePrefs.autoPopup(host.context()));
             out.put("accessibilityOn", CapturePrefs.accessibilityOn(host.context()));
+            out.put("moduleActive", CapturePrefs.moduleActive(host.context()));
+            out.put("moduleFramework", LsposedPrefs.frameworkName());
+            out.put("barSlot", CapturePrefs.barSlot(host.context()));
             resolve(id, out);
             break;
           }
@@ -204,6 +207,10 @@ final class BridgeRouter {
             break;
           case "closeStrip":
             host.runUi(host::closeStrip);
+            resolve(id, new JSONObject().put("ok", true));
+            break;
+          case "setBarSlot":
+            CapturePrefs.setBarSlot(host.context(), p.optInt("slot", -1));
             resolve(id, new JSONObject().put("ok", true));
             break;
           case "setAutoPopup":

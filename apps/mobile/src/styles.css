@@ -1460,3 +1460,36 @@ html[data-notify="ios"] .toast {
 }
 .voice-row__progress span { display: block; height: 100%; background: var(--md-sys-color-primary); transition: width 0.3s var(--md-sys-motion); }
 .voice-row__status { grid-column: 1 / -1; padding: 4px 16px 10px; color: var(--md-sys-color-on-surface-variant); font-size: 0.78rem; }
+
+/* Mock selection bar for placing Phevere (LSPosed custom position). */
+.mock-bar-wrap { margin: 8px 0 12px; }
+.mock-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  overflow-x: auto;
+  border-radius: 12px;
+  background: var(--md-sys-color-surface-container-lowest);
+  box-shadow: 0 2px 10px rgb(28 25 23 / 0.16);
+  touch-action: pan-y;
+}
+.mock-bar__item {
+  flex-shrink: 0;
+  padding: 9px 9px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: var(--md-sys-color-on-surface);
+  user-select: none;
+}
+.mock-bar__ours {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  font-weight: 650;
+  cursor: grab;
+  touch-action: none;
+  transition: transform 0.15s var(--md-sys-motion), box-shadow 0.15s var(--md-sys-motion);
+}
+.mock-bar__ours.is-dragging { transform: scale(1.08); box-shadow: 0 4px 12px rgb(28 25 23 / 0.22); cursor: grabbing; }
+.mock-bar__controls { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+.mock-bar__controls .hint { margin: 0; }

@@ -49,6 +49,7 @@ import {
   type ScanPage,
   type SettingsSection,
   type VoiceStatus,
+  MOCK_BAR,
   type Tab,
   type WikiArticle,
   esc,
@@ -202,6 +203,7 @@ function paint(): void {
   }
   bindLexiconPane();
   bindWikiReader();
+  bindMockBar();
 }
 
 function wikiLanguage(): string {
@@ -617,6 +619,44 @@ function wikiCanBack(): boolean {
 /** History steps keep the open tab, except Wikipedia, which returns to Lexicon. */
 function trailTab(): ResultTab {
   return resultTab === 'wikipedia' ? 'lexicon' : resultTab;
+}
+
+async function setBarSlot(slot: number): Promise<void> {
+  capture.barSlot = slot;
+  if (hasNativeBridge()) await nativeCall('setBarSlot', { slot }).catch(() => undefined);
+  paint();
+}
+
+/** Drag the Phevere chip along the mock selection bar; the drop position becomes its slot. */
+function bindMockBar(): void {
+  const bar = document.querySelector<HTMLElement>('[data-mock-bar]');
+  const chip = bar?.querySelector<HTMLElement>('[data-drag="bar-slot"]');
+  if (!bar || !chip) return;
+  const slotAt = (x: number) => {
+    const others = [...bar.querySelectorAll<HTMLElement>('.mock-bar__item')].filter((n) => n !== chip);
+    let slot = 0;
+    for (const n of others) {
+      const r = n.getBoundingClientRect();
+      if (x > r.left + r.width / 2) slot += 1;
+    }
+    return slot;
+  };
+  chip.addEventListener('pointerdown', (e) => {
+    chip.setPointerCapture(e.pointerId);
+    chip.classList.add('is-dragging');
+  });
+  chip.addEventListener('pointermove', (e) => {
+    if (!chip.hasPointerCapture(e.pointerId)) return;
+    const slot = slotAt(e.clientX);
+    const others = [...bar.querySelectorAll<HTMLElement>('.mock-bar__item')].filter((n) => n !== chip);
+    const before = others[slot] || null;
+    if (chip.nextElementSibling !== before) bar.insertBefore(chip, before);
+  });
+  chip.addEventListener('pointerup', (e) => {
+    chip.releasePointerCapture(e.pointerId);
+    chip.classList.remove('is-dragging');
+    void setBarSlot(slotAt(e.clientX));
+  });
 }
 
 let selectionTimer: number | null = null;
@@ -1044,6 +1084,12 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       }
       return;
     }
+    case 'bar-place':
+      await setBarSlot((t as HTMLInputElement).value === 'custom' ? Math.max(0, capture.barSlot ?? 0) : -1);
+      return;
+    case 'bar-slot-step':
+      await setBarSlot(Math.max(0, Math.min(MOCK_BAR.length, (capture.barSlot ?? 0) + Number(t.dataset.step || 0))));
+      return;
     case 'a11y-settings':
       if (hasNativeBridge()) void nativeCall('openAccessibilitySettings', {});
       return;
@@ -1214,6 +1260,9 @@ async function refreshCapture(): Promise<void> {
       notificationsGranted?: boolean;
       autoPopup?: boolean;
       accessibilityOn?: boolean;
+      moduleActive?: boolean;
+      moduleFramework?: string;
+      barSlot?: number;
     }>('getCapturePrefs', {});
     if (typeof next.floatingStrip === 'boolean') prefs.floatingStrip = next.floatingStrip;
     capture = {
@@ -1222,6 +1271,9 @@ async function refreshCapture(): Promise<void> {
       notificationsGranted: !!next.notificationsGranted,
       autoPopup: !!next.autoPopup,
       accessibilityOn: !!next.accessibilityOn,
+      moduleActive: !!next.moduleActive,
+      moduleFramework: next.moduleFramework || '',
+      barSlot: typeof next.barSlot === 'number' ? next.barSlot : -1,
     };
     savePrefs(prefs);
   } catch {

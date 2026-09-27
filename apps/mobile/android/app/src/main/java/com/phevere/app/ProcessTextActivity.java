@@ -12,8 +12,12 @@ public class ProcessTextActivity extends Activity {
     CharSequence extra = getIntent() != null ? getIntent().getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT) : null;
     if (extra == null && getIntent() != null) extra = getIntent().getCharSequenceExtra(Intent.EXTRA_TEXT);
     String text = extra == null ? "" : extra.toString().trim();
+    if (getIntent() != null && getIntent().getBooleanExtra(SelectionBar.EXTRA_VIA_HOOK, false)) {
+      CapturePrefs.markModuleSeen(this);
+    }
     if (!text.isEmpty()) {
-      openPopup(this, text);
+      // The LSPosed module passes where the selection is; otherwise use what is known.
+      openPopup(this, text, SelectionAnchor.from(getIntent()));
       overridePendingTransition(0, 0);
     }
     finish();

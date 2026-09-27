@@ -1,5 +1,10 @@
 # Android build and selection-toolbar setup
 
+**2026-09-28 (night):** Rooted phones use the LSPosed module instead of accessibility.
+Settings → Capture shows two switches once the module is active: **Pop up as soon as text
+is selected** (Phevere is pressed on the bar and the bar is never drawn) and **Phevere's
+place on the bar** (system default, or drag it into a slot on a mock bar).
+
 **2026-09-28 (evening):** Without root, instant pop-up now presses Phevere on the
 system selection bar through the accessibility service (works in Chrome too).
 
@@ -80,21 +85,27 @@ When the selection bar appears in another app, the service presses its Phevere b
 bar still appears briefly. The pop-up opens beside the selection. The service acts only
 while the switch is on and reads only the selection bar and the selected word's position.
 
-## crDroid / Android 16: Phevere first
-
-The same APK includes an optional LSPosed module. On a rooted phone with LSPosed:
+## Rooted phones: LSPosed module
 
 1. Install the APK, then open **LSPosed → Modules → Phevere** and enable it.
-2. Select the apps where you select text (browser, reader, etc.). Do not select
-   System Framework; the hook runs inside the selected apps.
-3. Force-stop and reopen those apps, or reboot. Select a word. Phevere's existing
-   action should be the first visible button, outside the overflow menu.
+2. Select the apps where you select text (browser, reader, etc.). System Framework is
+   not needed; the hook runs inside the selected apps.
+3. Force-stop and reopen those apps, or reboot.
 
-The module promotes only an existing Phevere `PROCESS_TEXT` action and preserves
-the relative order of other actions. No clipboard monitoring or accessibility
-service is involved. Disable the module to restore the original ordering.
-Apps with custom selection menus or which omit Phevere entirely are outside this
-hook's scope. The setup dialog is shown once and can be reopened from Capture.
+Phevere → Settings → Capture then shows **Selection bar · LSPosed** with two switches:
+
+- **Pop up as soon as text is selected** — the module presses Phevere on the selection
+  bar before it is drawn, so no bar appears; the pop-up opens beside the selection.
+- **Phevere's place on the bar** — *System default* leaves Android's placement; *Custom*
+  shows a mock bar where you drag Phevere into a slot on the main row.
+
+Accessibility is not used while the module is active. The module ships two entries with
+identical behaviour (`SelectionBar`): the modern libxposed API (`ModernSelectionHook`,
+LSPosed API 101+) reads the switches from LSPosed remote preferences, private to the
+module; the legacy entry (`SelectionToolbarHook`, older LSPosed) reads a world-readable
+`phevere_hook` preferences file (`xposedsharedprefs`) holding only those two values. A
+process-wide guard makes sure only one entry hooks an app. Apps with their own selection
+menus are outside the hook's scope.
 
 Source basis: crDroid's [Android 16 Editor](https://github.com/crdroidandroid/android_frameworks_base/blob/16.0/core/java/android/widget/Editor.java)
 uses `SHOW_AS_ACTION_NEVER` for process-text actions. The

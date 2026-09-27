@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- libxposed needs Android 8+; LsposedPrefs skips it below that. -->
+    <uses-sdk tools:overrideLibrary="io.github.libxposed.api,io.github.libxposed.service" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -20,6 +24,7 @@
     </queries>
 
     <application
+        android:name=".PhevereApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -28,8 +33,10 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true">
         <meta-data android:name="xposedmodule" android:value="true" />
+        <!-- Older LSPosed: lets the module read the phevere_hook preferences file. -->
+        <meta-data android:name="xposedsharedprefs" android:value="true" />
         <meta-data android:name="xposeddescription" android:value="Put Phevere first in the text-selection toolbar of your selected apps" />
-        <meta-data android:name="xposedminversion" android:value="82" />
+        <meta-data android:name="xposedminversion" android:value="93" />
 
         <activity
             android:name=".MainActivity"

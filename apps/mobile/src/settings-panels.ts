@@ -26,7 +26,61 @@ export type CaptureInfo = {
   notificationsGranted?: boolean;
   autoPopup?: boolean;
   accessibilityOn?: boolean;
+  /** LSPosed module working (modern service connected, or a lookup came through it). */
+  moduleActive?: boolean;
+  moduleFramework?: string;
+  /** -1: system placement; otherwise Phevere's slot on the selection bar. */
+  barSlot?: number;
 };
+
+/** Typical main row of Android's selection bar, for placing Phevere. */
+export const MOCK_BAR = ['Cut', 'Copy', 'Paste', 'Select all', 'Share'];
+
+/** Mock selection bar: drag the Phevere chip (or use the arrows) to choose its slot. */
+export function mockBarHtml(slot: number): string {
+  const at = Math.max(0, Math.min(MOCK_BAR.length, slot));
+  const chips = MOCK_BAR.map((label) => `<span class="mock-bar__item">${esc(label)}</span>`);
+  chips.splice(at, 0, `<span class="mock-bar__item mock-bar__ours" data-drag="bar-slot" role="slider" tabindex="0"
+    aria-label="Phevere position on the selection bar" aria-valuemin="0" aria-valuemax="${MOCK_BAR.length}" aria-valuenow="${at}">Phevere</span>`);
+  return `<div class="mock-bar-wrap">
+    <div class="mock-bar" data-mock-bar>${chips.join('')}</div>
+    <div class="mock-bar__controls">
+      <button type="button" class="icon-btn" data-act="bar-slot-step" data-step="-1" aria-label="Move Phevere left" ${at === 0 ? 'disabled' : ''}>‹</button>
+      <span class="hint">Drag Phevere to its place</span>
+      <button type="button" class="icon-btn" data-act="bar-slot-step" data-step="1" aria-label="Move Phevere right" ${at === MOCK_BAR.length ? 'disabled' : ''}>›</button>
+    </div>
+  </div>`;
+}
+
+function selectionBarSection(capture: CaptureInfo): string {
+  const instant = `<label class="toggle">
+      <span class="src-name">Pop up as soon as text is selected<span class="hint">Off: select text, then tap Phevere on the selection bar</span></span>
+      <input type="checkbox" data-act="auto-popup" ${capture.autoPopup ? 'checked' : ''} />
+    </label>`;
+  if (capture.moduleActive) {
+    const slot = typeof capture.barSlot === 'number' ? capture.barSlot : -1;
+    const custom = slot >= 0;
+    return `<h3 class="settings-subhead">Selection bar · LSPosed</h3>
+    <p class="hint">Module active${capture.moduleFramework ? ` (${esc(capture.moduleFramework)})` : ''}. It works in the apps you select in LSPosed; accessibility is not needed.</p>
+    ${instant}
+    ${capture.autoPopup ? '' : `
+    <h3 class="settings-subhead">Phevere's place on the bar</h3>
+    <label class="radio"><span><span class="src-name">System default</span><span class="src-meta">Where Android puts it</span></span>
+      <input type="radio" name="bar-place" data-act="bar-place" value="default" ${custom ? '' : 'checked'} /></label>
+    <label class="radio"><span><span class="src-name">Custom</span><span class="src-meta">Drag it to the slot you want</span></span>
+      <input type="radio" name="bar-place" data-act="bar-place" value="custom" ${custom ? 'checked' : ''} /></label>
+    ${custom ? mockBarHtml(slot) : ''}`}
+    <button type="button" class="outlined" data-act="selection-setup">LSPosed setup</button>`;
+  }
+  return `<h3 class="settings-subhead">Selection bar</h3>
+    ${instant}
+    ${capture.autoPopup && !capture.accessibilityOn ? `<div class="toolbar-row">
+      <p class="hint">Without root, turn on Phevere under Accessibility once. It presses Phevere on the selection bar for you, so the bar still flashes briefly.</p>
+      <button type="button" class="outlined" data-act="a11y-settings">Open Accessibility settings</button>
+    </div>` : ''}
+    <p class="hint">Rooted with LSPosed? Enable the Phevere module instead: no bar flash, and you can choose Phevere's place on the bar.</p>
+    <button type="button" class="outlined" data-act="selection-setup">LSPosed setup</button>`;
+}
 
 export type SettingsSection = 'capture' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio';
 
@@ -82,15 +136,7 @@ function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
       <span class="src-name">Floating lookup popup</span>
       <input type="checkbox" data-act="strip-on" ${prefs.floatingStrip ? 'checked' : ''} />
     </label>
-    <label class="toggle">
-      <span class="src-name">Pop up as soon as text is selected<span class="hint">Off: select text, then tap Phevere in the selection menu</span></span>
-      <input type="checkbox" data-act="auto-popup" ${capture.autoPopup ? 'checked' : ''} />
-    </label>
-    ${capture.autoPopup && !capture.accessibilityOn ? `<div class="toolbar-row">
-      <p class="hint">Without root, turn on Phevere under Accessibility once. It presses Phevere on the selection bar for you, so the bar still flashes briefly.</p>
-      <button type="button" class="outlined" data-act="a11y-settings">Open Accessibility settings</button>
-    </div>` : ''}
-    <button type="button" class="outlined" data-act="selection-setup">Put Phevere first · LSPosed setup</button>` : ''}
+    ${selectionBarSection(capture)}` : ''}
     <button type="button" class="settings-dropzone" data-act="ocr">
       <strong>Camera or photo</strong>
       <span>Text stays on the picture</span>
