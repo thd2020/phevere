@@ -1,5 +1,8 @@
 # Android build and selection-toolbar setup
 
+**2026-09-28 (evening):** Without root, instant pop-up now presses Phevere on the
+system selection bar through the accessibility service (works in Chrome too).
+
 **2026-09-28 (later):** With **Pop up as soon as text is selected** off (default),
 selecting text anywhere in Phevere — main app, bottom sheet or floating pop-up — shows
 the selection bar; its Phevere item looks the text up. The floating pop-up draws that bar
@@ -69,14 +72,13 @@ the APK, containing this repository and the pinned eSpeak source with build scri
 ## Pop up as soon as text is selected
 
 **Settings → Capture → Pop up as soon as text is selected** (off by default; the
-default is selection menu → Phevere). When on, Phevere's accessibility service
-opens the pop-up about 0.7 s after a selection stops changing. It must be turned on
-once under Android **Settings → Accessibility → Phevere pop-up on selection**.
+default is selection menu → Phevere).
 
-It listens only to text-selection events, ignores password and editable fields,
-and does nothing while the switch is off. Android does not let it hide the system
-selection bar. Chrome does not report selections in page text to accessibility
-services, so in Chrome use the menu item (or the LSPosed module below).
+Without root, turn on **Settings → Accessibility → Phevere pop-up on selection** once.
+When the selection bar appears in another app, the service presses its Phevere button
+(opening the overflow first when Phevere sits there), so this also works in Chrome. The
+bar still appears briefly. The pop-up opens beside the selection. The service acts only
+while the switch is on and reads only the selection bar and the selected word's position.
 
 ## crDroid / Android 16: Phevere first
 

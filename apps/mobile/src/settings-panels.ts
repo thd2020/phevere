@@ -87,7 +87,7 @@ function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
       <input type="checkbox" data-act="auto-popup" ${capture.autoPopup ? 'checked' : ''} />
     </label>
     ${capture.autoPopup && !capture.accessibilityOn ? `<div class="toolbar-row">
-      <p class="hint">Needs Phevere turned on under Accessibility. Chrome does not report page selections there; use the menu item in Chrome.</p>
+      <p class="hint">Without root, turn on Phevere under Accessibility once. It presses Phevere on the selection bar for you, so the bar still flashes briefly.</p>
       <button type="button" class="outlined" data-act="a11y-settings">Open Accessibility settings</button>
     </div>` : ''}
     <button type="button" class="outlined" data-act="selection-setup">Put Phevere first · LSPosed setup</button>` : ''}

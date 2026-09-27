@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Only text-selection events; no gestures, key events or screen content beyond the selected node. -->
+<!-- Selection events (where the word is) and window changes (the selection bar appearing),
+     so the service can press Phevere on that bar. No gestures or key events. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeViewTextSelectionChanged"
+    android:accessibilityEventTypes="typeViewTextSelectionChanged|typeWindowsChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
     android:description="@string/selection_accessibility_description"
     android:notificationTimeout="100" />
