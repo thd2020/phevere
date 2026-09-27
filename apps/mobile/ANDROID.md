@@ -15,10 +15,11 @@ the recorded human clip (mechanical only when no clip exists).
 The APK embeds eSpeak NG 1.52.0 as its default mechanical voice. It works offline
 without a system TTS engine, another app, or any voice download.
 
-**Settings → Audio → Pronunciation voice** offers an optional Kokoro neural voice.
-Its 350 MB download is verified before installation, needs 1 GB free during setup,
-and runs in the background if the dialog is dismissed. Select Neural after it
-finishes. Mechanical remains the default, including after upgrading from a version
+**Settings → Audio → Pronunciation voice** offers two optional Kokoro v1.0 neural
+voices with the same speakers: **compact** (int8 weights, 132 MB download, 500 MB free
+during setup) and **full quality** (350 MB, 1 GB free). Downloads are verified before
+installation and run in the background if the dialog is dismissed. Select the voice
+after it finishes. Mechanical remains the default, including after upgrading from a version
 that bundled Kokoro. An existing unpacked Kokoro model is reused without downloading.
 Failed/cancelled downloads leave mechanical speech available. Partial downloads
 restart from the beginning. English and Mandarin are supported by both options.

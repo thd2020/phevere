@@ -16,6 +16,7 @@ import com.reecedunn.espeak.SpeechSynthesis;
 final class OfflineSpeech {
   private final Context context;
   private OfflineTts engine;
+  private File engineModel;
   private SpeechSynthesis mechanical;
 
   OfflineSpeech(Context context) { this.context = context; }
@@ -56,10 +57,15 @@ final class OfflineSpeech {
       mechanical.synthesize(phonemes ? "[[" + text + "]]" : text, chinese ? "cmn" : "en-GB".equalsIgnoreCase(lang) ? "en-gb" : "en-us", rate, wave);
       return wave;
     }
+    File modelFile = SpeechModels.modelFile(context);
+    if (engine != null && !modelFile.equals(engineModel)) {
+      engine.release();  // switched between compact and full
+      engine = null;
+    }
     if (engine == null) {
       File root = SpeechModels.root(context);
       OfflineTtsKokoroModelConfig kokoro = new OfflineTtsKokoroModelConfig();
-      kokoro.setModel(new File(root, "model.onnx").getAbsolutePath());
+      kokoro.setModel(modelFile.getAbsolutePath());
       kokoro.setVoices(new File(root, "voices.bin").getAbsolutePath());
       kokoro.setTokens(new File(root, "tokens.txt").getAbsolutePath());
       kokoro.setDataDir(new File(root, "espeak-ng-data").getAbsolutePath());
@@ -71,6 +77,7 @@ final class OfflineSpeech {
       OfflineTtsConfig config = new OfflineTtsConfig();
       config.setModel(model);
       engine = new OfflineTts(null, config);
+      engineModel = modelFile;
     }
     int speaker = chinese ? 45 : "en-GB".equalsIgnoreCase(lang) ? 20 : 0;
     GeneratedAudio audio = engine.generate(text, speaker, rate);

@@ -16,42 +16,84 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 
 /** Model downloads are opt-in. A missing/unfinished model always leaves mechanical speech usable. */
 final class SpeechModels {
-  private static final String VERSION = "kokoro-v1-sherpa-1.13.3";
-  private static final String URL_MODEL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2";
-  private static final String SHA = "c5f7e2d2caf082bc1d20fb70334a61d99d20b484500aad32e7cf84c128ea3298";
+  /** Same Kokoro v1.0 voices; the compact one stores weights as int8 (about a third of the size). */
+  enum Variant {
+    COMPACT("compact", "kokoro-int8-v1-sherpa-1.13.3", "kokoro-int8-multi-lang-v1_0", "model.int8.onnx",
+        "4c3052abaa60943a341f193888cf6abd68787dae6ab8ae5c925a706caa247e4e", 132, 500),
+    FULL("full", "kokoro-v1-sherpa-1.13.3", "kokoro-multi-lang-v1_0", "model.onnx",
+        "c5f7e2d2caf082bc1d20fb70334a61d99d20b484500aad32e7cf84c128ea3298", 350, 1000);
+
+    final String id, dir, archiveDir, model, sha;
+    final int downloadMb, freeMb;
+
+    Variant(String id, String dir, String archiveDir, String model, String sha, int downloadMb, int freeMb) {
+      this.id = id; this.dir = dir; this.archiveDir = archiveDir; this.model = model; this.sha = sha;
+      this.downloadMb = downloadMb; this.freeMb = freeMb;
+    }
+
+    String url() { return "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/" + archiveDir + ".tar.bz2"; }
+  }
+
   private static volatile boolean downloading;
   private static volatile boolean cancelled;
   private static volatile String progress = "";
   private static final Handler main = new Handler(Looper.getMainLooper());
 
-  static File root(Context c) { return new File(c.getNoBackupFilesDir(), VERSION); }
-  static boolean ready(Context c) {
-    File root = root(c);
-    return new File(root, ".ready").isFile() && new File(root, "model.onnx").isFile()
+  static File root(Context c, Variant v) { return new File(c.getNoBackupFilesDir(), v.dir); }
+  static boolean ready(Context c, Variant v) {
+    File root = root(c, v);
+    return new File(root, ".ready").isFile() && new File(root, v.model).isFile()
         && new File(root, "voices.bin").isFile();
   }
-  static boolean useNeural(Context c) {
-    return c.getSharedPreferences("speech", 0).getBoolean("neural", false) && ready(c);
+  static boolean ready(Context c) { return ready(c, Variant.COMPACT) || ready(c, Variant.FULL); }
+
+  /** Selected neural variant, or null for the built-in mechanical voice. */
+  static Variant selected(Context c) {
+    android.content.SharedPreferences prefs = c.getSharedPreferences("speech", 0);
+    String voice = prefs.getString("voice", prefs.getBoolean("neural", false) ? Variant.FULL.id : "mechanical");
+    for (Variant v : Variant.values()) if (v.id.equals(voice)) return v;
+    return null;
   }
-  private static void select(Context c, boolean neural) {
-    c.getSharedPreferences("speech", 0).edit().putBoolean("neural", neural).apply();
+  static boolean useNeural(Context c) {
+    Variant v = selected(c);
+    return v != null && ready(c, v);
+  }
+  static File modelFile(Context c) {
+    Variant v = selected(c);
+    return new File(root(c, v), v.model);
+  }
+  static File root(Context c) { return root(c, selected(c)); }
+  private static void select(Context c, Variant v) {
+    c.getSharedPreferences("speech", 0).edit().remove("neural")
+        .putString("voice", v == null ? "mechanical" : v.id).apply();
   }
 
   static void show(Activity activity) {
     if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
     if (downloading) { showProgress(activity); return; }
-    boolean installed = ready(activity);
-    String[] choices = {"Mechanical · built-in", installed ? "Neural · downloaded" : "Neural · download 350 MB"};
+    Variant[] variants = {null, Variant.COMPACT, Variant.FULL};
+    String[] choices = {
+        "Mechanical · built-in",
+        label(activity, Variant.COMPACT, "Neural compact"),
+        label(activity, Variant.FULL, "Neural full quality"),
+    };
+    Variant current = useNeural(activity) ? selected(activity) : null;
+    int checked = current == Variant.COMPACT ? 1 : current == Variant.FULL ? 2 : 0;
     new AlertDialog.Builder(activity).setTitle("Pronunciation voice")
-        .setSingleChoiceItems(choices, useNeural(activity) ? 1 : 0, (dialog, which) -> {
+        .setSingleChoiceItems(choices, checked, (dialog, which) -> {
           dialog.dismiss();
-          if (which == 0 || installed) { select(activity, which == 1); return; }
-          new AlertDialog.Builder(activity).setTitle("Download neural voice?")
-              .setMessage("350 MB download; allow 1 GB free during setup. Mechanical speech remains available.")
+          Variant v = variants[which];
+          if (v == null || ready(activity, v)) { select(activity, v); return; }
+          new AlertDialog.Builder(activity).setTitle("Download " + choices[which].split(" · ")[0].toLowerCase(java.util.Locale.ROOT) + "?")
+              .setMessage(v.downloadMb + " MB download; allow " + v.freeMb + " MB free during setup. Mechanical speech remains available.")
               .setNegativeButton("Cancel", null)
-              .setPositiveButton("Download", (d, w) -> { start(activity.getApplicationContext()); showProgress(activity); })
+              .setPositiveButton("Download", (d, w) -> { start(activity.getApplicationContext(), v); showProgress(activity); })
               .show();
         }).setNegativeButton("Close", null).show();
+  }
+
+  private static String label(Context c, Variant v, String name) {
+    return name + (ready(c, v) ? " · downloaded" : " · download " + v.downloadMb + " MB");
   }
 
   private static void showProgress(Activity activity) {
@@ -70,20 +112,20 @@ final class SpeechModels {
     main.post(refresh);
   }
 
-  private static synchronized void start(Context c) {
-    if (downloading || ready(c)) return;
+  private static synchronized void start(Context c, Variant v) {
+    if (downloading || ready(c, v)) return;
     downloading = true;
     cancelled = false;
     progress = "Connecting…";
     // A process-wide worker lets dismissing Settings leave the download running.
     Thread worker = new Thread(() -> {
-      File archive = new File(c.getNoBackupFilesDir(), VERSION + ".download");
-      File staging = new File(c.getNoBackupFilesDir(), VERSION + ".staging");
+      File archive = new File(c.getNoBackupFilesDir(), v.dir + ".download");
+      File staging = new File(c.getNoBackupFilesDir(), v.dir + ".staging");
       try {
-        if (c.getNoBackupFilesDir().getUsableSpace() < 1_000_000_000L)
-          throw new IOException("Free 1 GB of storage, then try again.");
+        if (c.getNoBackupFilesDir().getUsableSpace() < v.freeMb * 1_000_000L)
+          throw new IOException("Free " + v.freeMb + " MB of storage, then try again.");
         remove(staging);
-        HttpURLConnection connection = (HttpURLConnection) new URL(URL_MODEL).openConnection();
+        HttpURLConnection connection = (HttpURLConnection) new URL(v.url()).openConnection();
         connection.setConnectTimeout(30000);
         connection.setReadTimeout(30000);
         MessageDigest hash = MessageDigest.getInstance("SHA-256");
@@ -96,16 +138,16 @@ final class SpeechModels {
             while ((count = in.read(buffer)) != -1) {
               checkCancelled();
               total += count;
-              if (total > 400_000_000L) throw new IOException("Unexpected download size.");
+              if (total > (v.downloadMb + 50) * 1_000_000L) throw new IOException("Unexpected download size.");
               out.write(buffer, 0, count);
               hash.update(buffer, 0, count);
-              progress = "Downloading: " + total / 1_000_000 + " / 350 MB";
+              progress = "Downloading: " + total / 1_000_000 + " / " + v.downloadMb + " MB";
             }
           }
         } finally { connection.disconnect(); }
         StringBuilder hex = new StringBuilder();
         for (byte b : hash.digest()) hex.append(String.format(java.util.Locale.ROOT, "%02x", b & 255));
-        if (!SHA.equals(hex.toString())) throw new IOException("Download verification failed. Please retry.");
+        if (!v.sha.equals(hex.toString())) throw new IOException("Download verification failed. Please retry.");
         progress = "Installing voice…";
         staging.mkdirs();
         try (TarArchiveInputStream tar = new TarArchiveInputStream(new BZip2CompressorInputStream(new BufferedInputStream(new FileInputStream(archive))))) {
@@ -128,14 +170,14 @@ final class SpeechModels {
             }
           }
         }
-        File model = new File(staging, "kokoro-multi-lang-v1_0");
-        for (String name : new String[]{"model.onnx", "voices.bin", "tokens.txt", "lexicon-us-en.txt", "lexicon-zh.txt", "LICENSE"})
+        File model = new File(staging, v.archiveDir);
+        for (String name : new String[]{v.model, "voices.bin", "tokens.txt", "lexicon-us-en.txt", "lexicon-zh.txt", "LICENSE"})
           if (!new File(model, name).isFile()) throw new IOException("Incomplete voice download.");
         checkCancelled();
         // The ready marker is published only after the complete, verified directory is in place.
-        remove(root(c));
-        if (!model.renameTo(root(c))) throw new IOException("Could not install voice.");
-        try (OutputStream out = new FileOutputStream(new File(root(c), ".ready"))) { out.write(1); }
+        remove(root(c, v));
+        if (!model.renameTo(root(c, v))) throw new IOException("Could not install voice.");
+        try (OutputStream out = new FileOutputStream(new File(root(c, v), ".ready"))) { out.write(1); }
         progress = "Neural voice ready. Select it in Audio settings.";
       } catch (Exception e) {
         progress = cancelled ? "Download cancelled." : "Neural voice: " + e.getMessage();
