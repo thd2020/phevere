@@ -15,7 +15,7 @@
         android:layout_gravity="center_horizontal"
         android:background="@drawable/popup_handle" />
 
-    <WebView
+    <com.phevere.app.SelectionWebView
         android:id="@+id/webview"
         android:layout_width="match_parent"
         android:layout_height="0dp"

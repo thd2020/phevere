@@ -195,6 +195,12 @@ final class BridgeRouter {
             host.runUi(host::closeStrip);
             resolve(id, new JSONObject().put("ok", true));
             break;
+          case "openPopup": {
+            String text = p.optString("text").trim();
+            if (!text.isEmpty()) host.runUi(() -> ProcessTextActivity.openPopup(host.context(), text));
+            resolve(id, new JSONObject().put("ok", true));
+            break;
+          }
           case "expandStrip":
             host.runUi(() -> host.expandToFullApp(p.optString("q")));
             resolve(id, new JSONObject().put("ok", true));

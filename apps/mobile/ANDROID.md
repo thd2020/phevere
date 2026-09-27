@@ -1,5 +1,10 @@
 # Android build and selection-toolbar setup
 
+**2026-09-27 (later):** Selecting text inside Phevere opens the same pop-up as the
+selection tray in other apps; inside the pop-up, a selection looks up in place. The
+pop-up's From/To language lists are in-page pickers (a native `<select>` cannot open
+in an overlay window). IPA chips no longer go silent on unstressed or `æ`/`ɑ` IPA.
+
 **2026-09-27:** `libttsespeak.so` is now compiled from the pinned eSpeak NG source
 with NDK r28, so the APK passes Android's 16 KB page-size check. IPA chips speak
 their own IPA with the mechanical voice; the headword and notebook ▶ buttons play
