@@ -1048,8 +1048,10 @@ export class DictionaryService extends BaseService {
     }
 
     if (isSourceEnabled('Tatoeba')) {
+      // Examples pair with the reader's native side (en→zh), not the Translation tab's
+      // "To" pick — otherwise a one-off Japanese translation leaks into every lexicon.
       pushAux(
-        this.getTatoebaExamples(text, sourceLanguage, targetLanguage)
+        this.getTatoebaExamples(text, sourceLanguage, this.defaultTargetForSource(sourceLanguage))
           .then(data => ({ type: 'tatoeba', data }))
           .catch(error => ({ type: 'tatoeba', error }))
       );
@@ -2024,14 +2026,17 @@ export class DictionaryService extends BaseService {
     const to = iso3[targetLanguage] || 'cmn';
     if (from === to) return [];
 
-    const url = `https://tatoeba.org/en/api_v0/search?from=${from}&to=${to}&query=${encodeURIComponent(term)}&sort=relevance`;
-    const response = await this.withTimeout<any>(
-      this.request<any>(url).catch((): any => null),
+    const search = (pair: string) => this.withTimeout<any>(
+      this.request<any>(
+        `https://tatoeba.org/en/api_v0/search?from=${from}${pair}&query=${encodeURIComponent(term)}&sort=relevance`
+      ).catch((): any => null),
       2500,
       null
     );
-
-    const results = response?.results;
+    // `to=` keeps only sentences translated into that language; many words have none,
+    // so fall back to untranslated source sentences rather than showing nothing.
+    let results = (await search(`&to=${to}`))?.results;
+    if (!Array.isArray(results) || results.length === 0) results = (await search(''))?.results;
     if (!Array.isArray(results)) return [];
 
     const examples: string[] = [];
