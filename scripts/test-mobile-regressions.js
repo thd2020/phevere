@@ -131,6 +131,10 @@ async function audioFallback() {
   assert.equal(phon.ipaToEspeakPhonemes('/lɒt/'), "l'0t");
   assert.equal(phon.ipaToEspeakPhonemes('/ˈwɑɾɚ/'), "w'A:4@r");
   assert.equal(phon.ipaToEspeakPhonemes('/həˈləʊ/'), "h@l'@U");
+  // Wiktionary TemplateStyles: inline <style> CSS must not leak into sense text.
+  const { stripEmbeddedCode } = load(core + 'text-normalize.ts', {});
+  const senseHtml = 'at which those operations are to occur.<style data-mw-deduplicate="TemplateStyles:r1">.mw-parser-output .defdate{font-size:smaller}</style><script>x()</script>';
+  assert.equal(stripEmbeddedCode(senseHtml), 'at which those operations are to occur.');
   const { scrollLexiconTo } = load('lexicon-scroll.ts', {});
   let scrolled;
   const panel = { scrollTop: 40, getBoundingClientRect: () => ({ top: 200 }), scrollTo: (value) => { scrolled = value; } };
@@ -141,5 +145,5 @@ async function audioFallback() {
   scrollLexiconTo(panel, target, true);
   assert.equal(panel.scrollTop, 434, 'only the definition column should scroll');
 
-  console.log('Mobile regressions passed: cold/warm share, stale lookup, no extra toolbar, independent definition scrolling, swipe expansion, audio fallback, eSpeak IPA mapping.');
+  console.log('Mobile regressions passed: cold/warm share, stale lookup, no extra toolbar, independent definition scrolling, swipe expansion, audio fallback, eSpeak IPA mapping, Wiktionary style stripping.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

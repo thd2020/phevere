@@ -337,3 +337,8 @@ export function lemmaFromFormOfHtml(meaning: string, surface: string): string | 
   }
   return found.length ? found[found.length - 1] : undefined;
 }
+
+/** Drop Wiktionary's inline TemplateStyles/scripts so their CSS/JS never leaks into sense text. */
+export function stripEmbeddedCode(html: string): string {
+  return String(html || '').replace(/<(style|script)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '');
+}

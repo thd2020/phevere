@@ -41,7 +41,7 @@ export interface Definition {
 import { BaseService, DictionaryError, withTimeout } from './base';
 import { wrapConsole } from './log';
 import { getHttp, getLookupOffline, getSha256Hex, isCoreConfigured, type OfflineHit } from './runtime';
-import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
+import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey, stripEmbeddedCode } from './text-normalize';
 import { splitSurfaceAndLemma, sameLookupFold } from './lookup-policy';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { mergeSimilarDefinitions, dedupeExamples, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses } from './definition-merge';
@@ -1592,8 +1592,8 @@ export class DictionaryService extends BaseService {
             entry.definitions.forEach((def: any) => {
               definitions.push({
                 partOfSpeech: this.normalizePartOfSpeech(entry.partOfSpeech),
-                meaning: def.definition,
-                examples: def.examples || [],
+                meaning: stripEmbeddedCode(def.definition),
+                examples: (def.examples || []).map(stripEmbeddedCode),
                 source: 'Wiktionary'
               });
             });
