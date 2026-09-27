@@ -1,3 +1,4 @@
+import { pickerHtml } from './picker';
 import {
   abbreviatePos,
   canonicalPos,
@@ -84,7 +85,7 @@ function ipaChips(list?: Pronunciation[]): string {
   if (!chips.length) return '';
   return `<div class="ipa-chips">${chips
     .map(
-      (p, i) => `<span class="ipa-chip">${p.accent ? `${esc(p.accent.toUpperCase())} ` : ''}/${esc(p.ipa)}/<button type="button" data-act="speak-ipa" data-i="${list!.indexOf(p)}" aria-label="Speak IPA">${ICO.speaker}</button></span>`,
+      (p, i) => `<span class="ipa-chip">${p.accent ? `<b>${esc(p.accent.toUpperCase())}</b>` : ''}/${esc(p.ipa)}/<button type="button" data-act="speak-ipa" data-i="${list!.indexOf(p)}" aria-label="Speak IPA">${ICO.speaker}</button></span>`,
     )
     .join('')}</div>`;
 }
@@ -294,32 +295,25 @@ function lexiconPane(result: DictionaryResult, activePos: string): string {
 }
 
 export type LangSide = 'from' | 'to';
+export type PickerId = LangSide;
 
 function translationPane(
   result: DictionaryResult,
   langs: { code: string; name: string; nativeName: string }[],
   sourceLang: string,
   targetLang: string,
-  langMenu: LangSide | '',
+  langMenu: PickerId | '',
 ): string {
-  // In-page picker, not <select>: the pop-up is a WebView in an overlay window with no
-  // Activity, and Android WebView cannot open a native select list there.
-  const picker = (side: LangSide, label: string, selected: string) => {
-    const choices = langs.filter((l) => side === 'from' || l.code !== 'auto');
-    const current = choices.find((l) => l.code === selected) || choices[0];
-    const open = langMenu === side;
-    const items = choices
-      .map((l) => {
-        const on = l.code === current?.code;
-        return `<button type="button" role="option" aria-selected="${on}" class="lang-opt${on ? ' is-on' : ''}" data-act="lang-pick" data-side="${side}" data-code="${esc(l.code)}">${esc(l.nativeName)} <span>${esc(l.name)}</span></button>`;
-      })
-      .join('');
-    return `<div class="lang-pick">
-        <span class="lang-label" id="${side}-label">${label}</span>
-        <button type="button" class="field lang-btn" data-act="lang-open" data-side="${side}" aria-haspopup="listbox" aria-expanded="${open}" aria-labelledby="${side}-label">${esc(current?.nativeName || selected)}</button>
-        ${open ? `<div class="lang-menu" role="listbox" aria-labelledby="${side}-label">${items}</div>` : ''}
-      </div>`;
-  };
+  const picker = (side: LangSide, label: string, selected: string) =>
+    pickerHtml({
+      id: side,
+      label,
+      selected,
+      open: langMenu === side,
+      items: langs
+        .filter((l) => side === 'from' || l.code !== 'auto')
+        .map((l) => ({ value: l.code, title: l.nativeName, sub: l.name })),
+    });
   const rows = (result.translations || [])
     .map(
       (t) => `<div class="t-row">
@@ -479,7 +473,7 @@ export function lookupBody(opts: {
   langs: { code: string; name: string; nativeName: string }[];
   sourceLang: string;
   targetLang: string;
-  langMenu: LangSide | '';
+  langMenu: PickerId | '';
   wiki: WikipediaResult[];
   wikiLang: string;
   wikiArticle: WikiArticle | null;
@@ -519,12 +513,12 @@ export function lookupBody(opts: {
     <header class="head">
       <div class="word">
         <h2 class="lemma">${esc(opts.result.word || lemma)}</h2>
-        ${chips || (ipa ? `<p class="ipa-line">${esc(ipa)}</p>` : '')}
       </div>
       <div class="head-actions">
         <button type="button" class="tonal" data-act="speak" aria-label="Play recorded pronunciation">${ICO.speaker}</button>
         <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Saved' : 'Save to notebook'}">${ICO.heart}</button>
       </div>
+      ${chips || (ipa ? `<p class="ipa-line">${esc(ipa)}</p>` : '')}
     </header>
     <div class="chips" role="tablist">
       ${tabs.map((t) => `<button type="button" class="chip" role="tab" data-act="result-tab" data-tab="${t}" aria-selected="${opts.resultTab === t}">${labels[t]}</button>`).join('')}
@@ -636,6 +630,6 @@ export function scanHtml(scan: ScanPage): string {
     </div>`;
 }
 
-export type { CaptureInfo, SettingsSection } from './settings-panels';
+export type { CaptureInfo, SettingsSection, VoiceStatus } from './settings-panels';
 export { SETTINGS_SECTIONS, settingsBody } from './settings-panels';
 

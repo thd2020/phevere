@@ -1,5 +1,12 @@
 # Android build and selection-toolbar setup
 
+**2026-09-28:** Tap outside the floating pop-up to close it (the tap still reaches
+the app behind; typing on the keyboard does not close it). Drag the pop-up's left,
+right or bottom margin to resize it; the bottom sheet resizes from its top handle.
+The size is remembered. Selecting text inside Phevere opens the pop-up only when
+**Pop up as soon as text is selected** is on. The pronunciation voice is now a
+radio list in Settings → Audio, like the Translation engine list.
+
 **2026-09-27 (later):** Selecting text inside Phevere opens the same pop-up as the
 selection tray in other apps; inside the pop-up, a selection looks up in place. The
 pop-up's From/To language lists are in-page pickers (a native `<select>` cannot open

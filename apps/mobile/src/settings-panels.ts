@@ -2,6 +2,15 @@ import type { DictionarySource } from '@phevere/core';
 import type { CatalogStatus } from './platform/offline';
 import type { MobilePrefs } from './platform/prefs';
 
+export type VoiceStatus = {
+  selected: string;
+  downloading: string;
+  progress: string;
+  variants: Array<{ id: string; mb: number; ready: boolean }>;
+};
+
+const VOICE_NAMES: Record<string, string> = { compact: 'Neural compact', full: 'Neural full quality' };
+
 function esc(s: string): string {
   return (s || '')
     .replace(/&/g, '&amp;')
@@ -188,11 +197,35 @@ function apiPanel(prefs: MobilePrefs): string {
     </div>`;
 }
 
-function audioPanel(prefs: MobilePrefs, capture: CaptureInfo): string {
+/** Same radio rows as the Translation engine list in Sources. */
+function voiceList(voice: VoiceStatus | null): string {
+  if (!voice) return '';
+  const rows = [
+    { id: 'mechanical', label: 'Mechanical', detail: 'Built in · offline' },
+    ...voice.variants.map((v) => ({
+      id: v.id,
+      label: VOICE_NAMES[v.id] || v.id,
+      detail: v.ready ? 'Downloaded · offline' : voice.downloading === v.id ? 'Downloading…' : `Tap to download ${v.mb} MB`,
+    })),
+  ]
+    .map(
+      (r) => `<label class="radio"><span><span class="src-name">${esc(r.label)}</span><span class="src-meta">${esc(r.detail)}</span></span>
+        <input type="radio" name="voice" data-act="voice" value="${r.id}" ${voice.selected === r.id ? 'checked' : ''} ${voice.downloading ? 'disabled' : ''} /></label>`,
+    )
+    .join('');
+  const busy = voice.downloading
+    ? `<div class="toolbar-row"><p class="hint">${esc(voice.progress)}</p>
+        <button type="button" class="outlined" data-act="voice-cancel">Cancel download</button></div>`
+    : voice.progress && !/^(Connecting|Downloading|Installing)/.test(voice.progress)
+      ? `<p class="hint">${esc(voice.progress)}</p>`
+      : '';
+  return `<h3 class="settings-subhead">Pronunciation voice</h3>${rows}${busy}`;
+}
+
+function audioPanel(prefs: MobilePrefs, capture: CaptureInfo, voice: VoiceStatus | null): string {
   const speed = Number.isFinite(prefs.audioSpeed) ? prefs.audioSpeed : 1;
   return `
     ${panelIntro('Audio')}
-    ${capture.platform === 'android' ? '<button type="button" class="chip" data-act="speech-settings">Pronunciation voice</button>' : ''}
     <label class="toggle">
       <span class="src-name">Enable pronunciation</span>
       <input type="checkbox" data-act="audio-on" ${prefs.audioEnabled ? 'checked' : ''} />
@@ -203,7 +236,8 @@ function audioPanel(prefs: MobilePrefs, capture: CaptureInfo): string {
         <input id="audio-speed" type="range" min="0.5" max="2" step="0.1" value="${speed}" data-act="audio-speed" />
         <span id="speed-value">${speed}×</span>
       </div>
-    </div>`;
+    </div>
+    ${capture.platform === 'android' ? voiceList(voice) : ''}`;
 }
 
 export function settingsBody(
@@ -213,6 +247,7 @@ export function settingsBody(
   packMsg: string,
   capture: CaptureInfo,
   section: SettingsSection,
+  voice: VoiceStatus | null = null,
 ): string {
   const tabs = settingsSections(capture)
     .map(
@@ -231,7 +266,7 @@ export function settingsBody(
             ? offlinePanel(packs, packMsg)
             : section === 'api'
               ? apiPanel(prefs)
-              : audioPanel(prefs, capture);
+              : audioPanel(prefs, capture, voice);
   return `
     <div class="settings">
       <div class="settings-sticky">

@@ -1,7 +1,5 @@
 package com.phevere.app;
 
-import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
@@ -35,6 +33,7 @@ final class SpeechModels {
   }
 
   private static volatile boolean downloading;
+  private static volatile Variant downloadingVariant;
   private static volatile boolean cancelled;
   private static volatile String progress = "";
   private static final Handler main = new Handler(Looper.getMainLooper());
@@ -68,53 +67,35 @@ final class SpeechModels {
         .putString("voice", v == null ? "mechanical" : v.id).apply();
   }
 
-  static void show(Activity activity) {
-    if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
-    if (downloading) { showProgress(activity); return; }
-    Variant[] variants = {null, Variant.COMPACT, Variant.FULL};
-    String[] choices = {
-        "Mechanical · built-in",
-        label(activity, Variant.COMPACT, "Neural compact"),
-        label(activity, Variant.FULL, "Neural full quality"),
-    };
-    Variant current = useNeural(activity) ? selected(activity) : null;
-    int checked = current == Variant.COMPACT ? 1 : current == Variant.FULL ? 2 : 0;
-    new AlertDialog.Builder(activity).setTitle("Pronunciation voice")
-        .setSingleChoiceItems(choices, checked, (dialog, which) -> {
-          dialog.dismiss();
-          Variant v = variants[which];
-          if (v == null || ready(activity, v)) { select(activity, v); return; }
-          new AlertDialog.Builder(activity).setTitle("Download " + choices[which].split(" · ")[0].toLowerCase(java.util.Locale.ROOT) + "?")
-              .setMessage(v.downloadMb + " MB download; allow " + v.freeMb + " MB free during setup. Mechanical speech remains available.")
-              .setNegativeButton("Cancel", null)
-              .setPositiveButton("Download", (d, w) -> { start(activity.getApplicationContext(), v); showProgress(activity); })
-              .show();
-        }).setNegativeButton("Close", null).show();
+  /** State for the in-page voice picker (Settings → Audio). */
+  static org.json.JSONObject status(Context c) throws org.json.JSONException {
+    Variant current = useNeural(c) ? selected(c) : null;
+    org.json.JSONArray variants = new org.json.JSONArray();
+    for (Variant v : Variant.values()) {
+      variants.put(new org.json.JSONObject().put("id", v.id).put("mb", v.downloadMb).put("ready", ready(c, v)));
+    }
+    Variant pending = downloadingVariant;
+    return new org.json.JSONObject()
+        .put("selected", current == null ? "mechanical" : current.id)
+        .put("downloading", downloading && pending != null ? pending.id : "")
+        .put("progress", progress)
+        .put("variants", variants);
   }
 
-  private static String label(Context c, Variant v, String name) {
-    return name + (ready(c, v) ? " · downloaded" : " · download " + v.downloadMb + " MB");
+  /** Select a voice; a neural voice that is not installed yet downloads first, then is selected. */
+  static void choose(Context c, String id) {
+    Variant v = null;
+    for (Variant each : Variant.values()) if (each.id.equals(id)) v = each;
+    if (v == null || ready(c, v)) { select(c, v); return; }
+    start(c.getApplicationContext(), v);
   }
 
-  private static void showProgress(Activity activity) {
-    AlertDialog dialog = new AlertDialog.Builder(activity).setTitle("Neural voice")
-        .setMessage(progress).setPositiveButton("Background", null)
-        .setNegativeButton("Cancel download", (d, w) -> cancelled = true).create();
-    dialog.show();
-    Runnable refresh = new Runnable() {
-      public void run() {
-        if (!dialog.isShowing() || activity.isFinishing() || activity.isDestroyed()) return;
-        dialog.setMessage(progress);
-        if (downloading) main.postDelayed(this, 500);
-        else { dialog.dismiss(); show(activity); }
-      }
-    };
-    main.post(refresh);
-  }
+  static void cancel() { cancelled = true; }
 
   private static synchronized void start(Context c, Variant v) {
     if (downloading || ready(c, v)) return;
     downloading = true;
+    downloadingVariant = v;
     cancelled = false;
     progress = "Connecting…";
     // A process-wide worker lets dismissing Settings leave the download running.
@@ -178,13 +159,15 @@ final class SpeechModels {
         remove(root(c, v));
         if (!model.renameTo(root(c, v))) throw new IOException("Could not install voice.");
         try (OutputStream out = new FileOutputStream(new File(root(c, v), ".ready"))) { out.write(1); }
-        progress = "Neural voice ready. Select it in Audio settings.";
+        select(c, v);
+        progress = "Neural voice ready and selected.";
       } catch (Exception e) {
         progress = cancelled ? "Download cancelled." : "Neural voice: " + e.getMessage();
       } finally {
         archive.delete();
         remove(staging);
         downloading = false;
+        downloadingVariant = null;
         String message = progress;
         main.post(() -> Toast.makeText(c, message, Toast.LENGTH_LONG).show());
       }

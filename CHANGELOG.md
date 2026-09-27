@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Android (2026-09-28):** floating pop-up closes on a tap outside and resizes by dragging its margins (size remembered). IPA chips are compact and share a full-width row. Settings tabs wrap onto more lines. Pronunciation voice is a radio list with download progress, matching the Translation engine list. In-app selections open the pop-up only when “Pop up as soon as text is selected” is on.
 - **Android (2026-09-27):** Settings → Capture → **Pop up as soon as text is selected** (off by default) opens the pop-up on selection via an accessibility service, without root. Chrome page text still needs the selection menu.
 - **Android (2026-09-27):** Settings → Audio → Pronunciation voice adds a compact neural voice (Kokoro int8, 132 MB) beside the full 350 MB one.
 - **Android (2026-09-27, later):** selecting text inside Phevere opens the pop-up, as on desktop and in other apps; in the pop-up it looks up in place (the overlay no longer drops the selection). The pop-up's From/To language lists open again, and changing a language keeps you on the Translation tab. IPA chips no longer play silence or odd sounds for unstressed IPA or for vowels eSpeak's English voice lacks.

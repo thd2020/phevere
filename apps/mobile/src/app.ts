@@ -43,9 +43,11 @@ import {
   settingsBody,
   type CaptureInfo,
   type LangSide,
+  type PickerId,
   type ResultTab,
   type ScanPage,
   type SettingsSection,
+  type VoiceStatus,
   type Tab,
   type WikiArticle,
   esc,
@@ -63,7 +65,9 @@ let result: DictionaryResult | null = null;
 let saved: VocabEntry | null = null;
 let status = '';
 let resultTab: ResultTab = 'lexicon';
-let langMenu: LangSide | '' = '';
+let langMenu: PickerId | '' = '';
+let voice: VoiceStatus | null = null;
+let voiceTimer: number | null = null;
 let lexiconPos = '';
 let lexiconWord = '';
 let posJumpLock = false;
@@ -172,6 +176,7 @@ function paint(): void {
             packMsg,
             capture,
             settingsSection,
+            voice,
           )
         : hit;
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
@@ -563,11 +568,35 @@ function persistPrefs(): void {
   applyPrefsToCore(prefs);
 }
 
+async function refreshVoice(): Promise<void> {
+  if (!hasNativeBridge() || capture.platform !== 'android') return;
+  voice = await nativeCall<VoiceStatus>('speechVoices', {}).catch(() => null);
+  watchVoice();
+}
+
+/** Poll download progress while Audio settings is open. */
+function watchVoice(): void {
+  if (voiceTimer || !voice?.downloading) return;
+  voiceTimer = window.setInterval(async () => {
+    if (tab !== 'settings' || settingsSection !== 'audio') {
+      window.clearInterval(voiceTimer!);
+      voiceTimer = null;
+      return;
+    }
+    voice = await nativeCall<VoiceStatus>('speechVoices', {}).catch(() => voice);
+    if (!voice?.downloading) {
+      window.clearInterval(voiceTimer!);
+      voiceTimer = null;
+    }
+    paint();
+  }, 1000);
+}
+
 let selectionTimer: number | null = null;
 
 /**
- * Selecting text inside Phevere behaves like desktop and like other apps: the pop-up
- * opens on the selection. Inside the pop-up, on a scan, and in the browser preview / iOS it looks
+ * Selecting text inside Phevere behaves like other apps: with "Pop up as soon as text is
+ * selected" on, the pop-up opens on the selection. Inside the pop-up, on a scan, and in the browser preview / iOS it looks
  * up in place.
  */
 function onSelectionSettled(): void {
@@ -580,7 +609,8 @@ function onSelectionSettled(): void {
   const q = extractLookupQuery(raw);
   if (!q || q === query) return;
   if (!stripMode && !scan && hasNativeBridge() && capture.platform === 'android') {
-    void nativeCall('openPopup', { text: q }).catch(() => lookup(q));
+    // Same rule as other apps: switch off → the selection menu's Phevere item opens it.
+    if (capture.autoPopup) void nativeCall('openPopup', { text: q }).catch(() => lookup(q));
     return;
   }
   void lookup(q);
@@ -687,7 +717,7 @@ function onClick(e: Event): void {
   const t = (e.target as HTMLElement | null)?.closest?.('[data-act]') as HTMLElement | null;
   const act = t?.dataset.act;
   // Any tap outside the open language list closes it.
-  if (langMenu && act !== 'lang-open' && act !== 'lang-pick') {
+  if (langMenu && act !== 'pick-open' && act !== 'pick') {
     langMenu = '';
     if (!t) paint();
   }
@@ -707,7 +737,9 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       const next = t.dataset.section as SettingsSection | undefined;
       if (next === 'capture' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio') {
         settingsSection = next;
+        langMenu = '';
         if (next === 'offline') await refreshPacks();
+        if (next === 'audio') await refreshVoice();
         paint();
       }
       return;
@@ -796,17 +828,18 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       else paint();
       return;
     }
-    case 'lang-open': {
-      const side = t.dataset.side === 'to' ? 'to' : 'from';
-      langMenu = langMenu === side ? '' : side;
+    case 'pick-open': {
+      const id = t.dataset.picker as PickerId;
+      langMenu = langMenu === id ? '' : id;
       paint();
-      document.querySelector('.lang-menu .is-on')?.scrollIntoView({ block: 'nearest' });
+      document.querySelector('.pick-menu .is-on')?.scrollIntoView({ block: 'nearest' });
       return;
     }
-    case 'lang-pick': {
-      const code = t.dataset.code || '';
+    case 'pick': {
+      const code = t.dataset.value || '';
+      const id = t.dataset.picker as PickerId;
       langMenu = '';
-      if (t.dataset.side === 'to') prefs.targetLang = code;
+      if (id === 'to') prefs.targetLang = code;
       else prefs.sourceLang = code;
       persistPrefs();
       if (query) await lookup(query, true, 'translation');
@@ -933,8 +966,14 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       }
       return;
     }
-    case 'speech-settings':
-      if (hasNativeBridge()) void nativeCall('speechSettings', {});
+    case 'voice':
+      voice = await nativeCall<VoiceStatus>('setSpeechVoice', { id: (t as HTMLInputElement).value });
+      watchVoice();
+      paint();
+      return;
+    case 'voice-cancel':
+      voice = await nativeCall<VoiceStatus>('cancelSpeechDownload', {});
+      paint();
       return;
     case 'audio-on':
       prefs.audioEnabled = (t as HTMLInputElement).checked;
