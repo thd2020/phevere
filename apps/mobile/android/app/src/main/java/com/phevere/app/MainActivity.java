@@ -149,7 +149,7 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
     }
     if (isStrip()) {
       Window w = getWindow();
-      PopupLayout.apply(w, this, false);
+      PopupLayout.apply(w, this);
       PopupLayout.draggable(findViewById(R.id.popup_handle), this, w::getAttributes, w::setAttributes);
     }
     captureIncoming(getIntent());
@@ -161,6 +161,7 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
     web.setFitsSystemWindows(false);
     WebViews.bind(web, assets, this, isStrip(), () -> {
       pushInsets();
+      if (!isStrip()) SelectionSetup.show(this, true);
     });
 
     View root = findViewById(R.id.root);
@@ -285,11 +286,6 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
   @Override
   public void expandToFullApp(String query) {
     /* already full */
-  }
-
-  @Override
-  public void resizeStrip(boolean compact) {
-    if (isStrip()) PopupLayout.apply(getWindow(), this, compact);
   }
 
   @Override

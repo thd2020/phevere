@@ -70,17 +70,12 @@ function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
       <span class="src-name">Floating lookup popup</span>
       <input type="checkbox" data-act="strip-on" ${prefs.floatingStrip ? 'checked' : ''} />
     </label>
-    <p class="hint">Drag the top handle to move a floating popup. Use “Strip” to collapse a result to its action buttons. Turn floating off for a bottom half-screen panel; swipe upward in that panel to open the full screen.</p>
-    <details class="capture-tip"><summary>Keep Phevere near the front of the share menu</summary>
-      <p class="hint">Select a word, tap Share, then press and hold Phevere and choose Pin if your phone offers it. Some phones use an Edit or Favorites button instead.</p>
-      <p class="hint">The text-selection toolbar (Copy, Share, …) is a separate menu. If it offers Edit or Reorder, move Phevere into the visible row. Otherwise its order and overflow are controlled by Android and the app you selected text in; Phevere cannot force itself into the first row. Pinning in Share does not change that toolbar.</p>
-    </details>` : ''}
+    <button type="button" class="outlined" data-act="selection-setup">Put Phevere first · LSPosed setup</button>` : ''}
     <button type="button" class="settings-dropzone" data-act="ocr">
       <strong>Camera or photo</strong>
       <span>Text stays on the picture</span>
     </button>
-    ${overlayBtn}
-    ${overlayBtn ? '<p class="hint">Optional: keep the floating popup above other apps. Floating lookups also work without this permission.</p>' : ''}`;
+    ${overlayBtn}`;
 }
 
 function notificationsPanel(prefs: MobilePrefs, capture: CaptureInfo): string {

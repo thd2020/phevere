@@ -1237,14 +1237,7 @@ html[data-mode="strip"] .top {
   position: static;
   padding-top: 12px;
 }
-.strip-actions { display: flex; align-items: center; gap: 2px; padding: 0 8px; flex-shrink: 0; }
-.strip-actions button { min-height: 40px; padding: 4px 6px; font-size: 0.8rem; }
-.strip-actions button:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 html[data-mode="strip"][data-popup="floating"] .shell { border-radius: 20px; }
-html[data-mode="strip"].strip-compact .top,
-html[data-mode="strip"].strip-compact .page { display: none; }
-html[data-mode="strip"].strip-compact .shell { justify-content: center; padding: 0; }
-.capture-tip { margin: 16px 0; }
 
 .toast {
   position: fixed;

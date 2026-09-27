@@ -79,7 +79,7 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
             | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
         PixelFormat.TRANSLUCENT
     );
-    PopupLayout.size(lp, this, false);
+    PopupLayout.size(lp, this);
     lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
     WebViews.bind(web, WebViews.assets(this), this, true, () -> {
       // Incoming text stays pending until JS explicitly calls getPendingText.
@@ -190,14 +190,6 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
   @Override
   public void closeStrip() {
     stopSelf();
-  }
-
-  @Override
-  public void resizeStrip(boolean compact) {
-    if (root == null || wm == null) return;
-    WindowManager.LayoutParams lp = (WindowManager.LayoutParams) root.getLayoutParams();
-    PopupLayout.size(lp, this, compact);
-    wm.updateViewLayout(root, lp);
   }
 
   @Override

@@ -33,7 +33,6 @@ final class BridgeRouter {
     void launchSaveFile(String name);
     void closeStrip();
     void expandToFullApp(String query);
-    void resizeStrip(boolean compact);
     void requestOverlayPermission();
     void requestNotifications();
     void openNotificationSettings();
@@ -195,8 +194,8 @@ final class BridgeRouter {
             host.runUi(() -> host.expandToFullApp(p.optString("q")));
             resolve(id, new JSONObject().put("ok", true));
             break;
-          case "resizeStrip":
-            host.runUi(() -> host.resizeStrip(p.optBoolean("compact")));
+          case "selectionSetup":
+            host.runUi(() -> SelectionSetup.show(host.activity(), false));
             resolve(id, new JSONObject().put("ok", true));
             break;
           default:

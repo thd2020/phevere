@@ -86,7 +86,6 @@ let capture: CaptureInfo = { platform: 'web', canDrawOverlays: false };
 let scan: ScanPage | null = null;
 
 const stripMode = new URLSearchParams(window.location.search).get('mode') === 'strip';
-let stripCompact = false;
 let stripExpanding = false;
 if (stripMode) document.documentElement.dataset.mode = 'strip';
 
@@ -137,7 +136,6 @@ function lookupPaneHtml(): string {
 
 function paint(): void {
   document.documentElement.dataset.popup = prefs.floatingStrip ? 'floating' : 'half';
-  document.documentElement.classList.toggle('strip-compact', stripCompact);
   document.documentElement.dataset.notify = capture.platform === 'ios' ? 'ios' : 'android';
   if (settingsSection === 'notifications' && capture.platform === 'web') settingsSection = 'capture';
   const canBack = histIndex > 0;
@@ -176,15 +174,7 @@ function paint(): void {
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
   root.innerHTML = `
     <div class="shell${tab === 'settings' ? ' shell-settings' : ''}${lexiconFill ? ' shell-lexicon' : ''}${resultTab === 'wikipedia' && wikiArticle ? ' shell-wiki' : ''}">
-      ${stripMode && capture.platform === 'android' ? `<div class="strip-actions" aria-label="Lookup actions">
-        <button type="button" class="linkish" data-act="strip-result">${esc(query || 'Lookup')}</button>
-        <button type="button" class="linkish" data-act="strip-result" data-result="lexicon">Dictionary</button>
-        <button type="button" class="linkish" data-act="strip-result" data-result="translation">Translate</button>
-        <button type="button" class="linkish" data-act="strip-result" data-result="wikipedia">Wiki</button>
-        <button type="button" class="linkish" data-act="speak-text" data-text="${esc(query)}" aria-label="Speak word"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M3 10v4h3l4 4V6L6 10zm13.5 2A4.5 4.5 0 0 0 14 8.1v7.8A4.5 4.5 0 0 0 16.5 12z"/></svg></button>
-        <button type="button" class="linkish" data-act="close-strip" aria-label="Close popup">×</button>
-      </div>` : ''}
-      ${tab === 'settings' ? '' : searchHtml(draft, canBack, canFwd, stripMode, capture.platform === 'android')}
+      ${tab === 'settings' ? '' : searchHtml(draft, canBack, canFwd, stripMode)}
       <main class="page">${body}</main>
     </div>
     ${stripMode ? '' : navHtml(tab)}
@@ -900,19 +890,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
         });
       }
       return;
-    case 'compact-strip':
-      stripCompact = true;
-      if (hasNativeBridge()) void nativeCall('resizeStrip', { compact: true }).catch(() => undefined);
-      paint();
-      return;
-    case 'strip-result':
-      stripCompact = false;
-      if (hasNativeBridge()) void nativeCall('resizeStrip', { compact: false }).catch(() => undefined);
-      if (t.dataset.result) {
-        resultTab = t.dataset.result as ResultTab;
-        if (resultTab === 'wikipedia') void loadWikiHits(result?.word || query).then(() => { paint(); });
-      }
-      paint();
+    case 'selection-setup':
+      if (hasNativeBridge()) void nativeCall('selectionSetup', {});
       return;
     case 'overlay-perm':
       if (hasNativeBridge()) void nativeCall('requestOverlayPermission', {});
@@ -1003,9 +982,7 @@ function onSubmit(e: Event): void {
 export async function startApp(): Promise<void> {
   installNativeCallbacks();
   startIncomingText((text, origin) => {
-    stripCompact = false;
     stripExpanding = false;
-    if (stripMode && hasNativeBridge()) void nativeCall('resizeStrip', { compact: false }).catch(() => undefined);
     if (origin === 'process-text' || origin === 'share') postOsNotify('incoming', 'Incoming lookup', text);
     void lookup(text);
   });

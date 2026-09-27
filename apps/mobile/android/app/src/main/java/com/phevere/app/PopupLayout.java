@@ -12,20 +12,20 @@ import java.util.function.Supplier;
 
 /** Keep the permission-free activity and overlay popup the same size. */
 final class PopupLayout {
-  static void size(WindowManager.LayoutParams lp, Context context, boolean compact) {
+  static void size(WindowManager.LayoutParams lp, Context context) {
     DisplayMetrics dm = context.getResources().getDisplayMetrics();
     boolean floating = CapturePrefs.floatingStrip(context);
     lp.width = floating ? Math.min(dm.widthPixels - Math.round(24 * dm.density), Math.round(560 * dm.density))
         : WindowManager.LayoutParams.MATCH_PARENT;
-    lp.height = compact ? Math.round(76 * dm.density) : Math.round(dm.heightPixels * (floating ? 0.60f : 0.50f));
+    lp.height = Math.round(dm.heightPixels * (floating ? 0.60f : 0.50f));
     lp.gravity = floating ? Gravity.CENTER : Gravity.BOTTOM;
     lp.x = 0;
     lp.y = 0;
   }
 
-  static void apply(Window window, Context context, boolean compact) {
+  static void apply(Window window, Context context) {
     WindowManager.LayoutParams lp = window.getAttributes();
-    size(lp, context, compact);
+    size(lp, context);
     window.setAttributes(lp);
   }
 

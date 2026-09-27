@@ -83,11 +83,9 @@ async function startupAndGestures(floatingStrip) {
   events.touchstart({ touches: [{ clientX: 50, clientY: 250 }] });
   events.touchend({ changedTouches: [{ clientX: 55, clientY: 100 }] });
   assert.equal(calls.filter((c) => c.method === 'expandStrip').length, floatingStrip ? 0 : 1);
-  events.click({ target: { closest: () => ({ dataset: { act: 'compact-strip' } }) } });
-  assert.ok(classes.has('strip-compact'));
-  assert.ok(calls.some((c) => c.method === 'resizeStrip' && c.params.compact));
+  assert.ok(!root.innerHTML.includes('strip-actions'), 'extra button strip must be absent');
   window.__pvIncoming('third', 'process-text');
-  assert.ok(!classes.has('strip-compact'), 'new shared words reopen compact results');
+  assert.equal(lookups[2].q, 'third');
   releaseNotebook([]);
   await boot;
 }
