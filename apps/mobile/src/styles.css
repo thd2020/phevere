@@ -1090,25 +1090,47 @@ select, .field {
   min-width: 3ch;
 }
 
-.toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-}
-.toggle .src-name { font-weight: 600; }
-.toggle .src-name .hint { display: block; font-weight: 400; margin: 2px 0 0; }
-.toggle .src-meta { display: block; font-size: 0.8rem; color: var(--md-sys-color-on-surface-variant); }
-.toggle input { width: 20px; height: 20px; accent-color: var(--md-sys-color-primary); }
+/* Settings rows: dictionary sources (checkbox) and translation engine (radio) share one layout. */
+.toggle,
 .radio {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
   padding: 10px 0;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
+.toggle .src-name,
+.radio .src-name { display: block; font-weight: 600; }
+.toggle .src-name .hint { display: block; font-weight: 400; margin: 2px 0 0; }
+.toggle .src-meta,
+.radio .src-meta { display: block; font-size: 0.8rem; color: var(--md-sys-color-on-surface-variant); }
+.toggle input { flex-shrink: 0; width: 20px; height: 20px; accent-color: var(--md-sys-color-primary); }
+/* Material radio: 20 px ring, filled dot when selected. */
+.radio input {
+  appearance: none;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin: 0 2px 0 0;
+  border: 2px solid var(--md-sys-color-on-surface-variant);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  transition: border-color 0.18s var(--md-sys-motion);
+}
+.radio input::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--md-sys-color-primary);
+  transform: scale(0);
+  transition: transform 0.18s var(--md-sys-motion);
+}
+.radio input:checked { border-color: var(--md-sys-color-primary); }
+.radio input:checked::after { transform: scale(1); }
 .keys label { display: block; margin: 10px 0 4px; font-size: 0.85rem; }
 .keys input {
   width: 100%;
