@@ -1,9 +1,12 @@
-"""Exercise the exact packaged model with the matching runtime, without a system TTS engine."""
+"""Optional neural-model check: pass the path to an extracted Kokoro model directory."""
+import argparse
 from pathlib import Path
 import numpy as np
 import sherpa_onnx
 
-root = Path(__file__).resolve().parents[1] / 'android/app/build/generated/speech/assets/speech/kokoro-multi-lang-v1_0'
+parser = argparse.ArgumentParser()
+parser.add_argument('model', type=Path, help='Extracted kokoro-multi-lang-v1_0 directory')
+root = parser.parse_args().model
 config = sherpa_onnx.OfflineTtsConfig(
     model=sherpa_onnx.OfflineTtsModelConfig(
         kokoro=sherpa_onnx.OfflineTtsKokoroModelConfig(
@@ -19,4 +22,4 @@ for text, speaker in [('Hello, world.', 0), ('Dictionary.', 20), ('你好，世�
     samples = np.asarray(audio.samples)
     assert len(samples) > audio.sample_rate // 5, 'Speech was empty or truncated'
     assert np.isfinite(samples).all() and np.max(np.abs(samples)) > 0.001, 'Speech was silent or invalid'
-    print(f'Bundled speech passed: speaker {speaker}, {len(samples) / audio.sample_rate:.2f}s', flush=True)
+    print(f'Optional neural speech passed: speaker {speaker}, {len(samples) / audio.sample_rate:.2f}s', flush=True)

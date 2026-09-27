@@ -178,10 +178,12 @@ function apiPanel(prefs: MobilePrefs): string {
     </div>`;
 }
 
-function audioPanel(prefs: MobilePrefs): string {
+function audioPanel(prefs: MobilePrefs, capture: CaptureInfo): string {
   const speed = Number.isFinite(prefs.audioSpeed) ? prefs.audioSpeed : 1;
   return `
     ${panelIntro('Audio')}
+    ${capture.platform === 'android' ? '<button type="button" class="chip" data-act="speech-settings">Pronunciation voice</button>' : ''}
+    ${capture.platform === 'android' ? '<button type="button" class="chip" data-act="speech-settings">Pronunciation voice</button>' : ''}
     <label class="toggle">
       <span class="src-name">Enable pronunciation</span>
       <input type="checkbox" data-act="audio-on" ${prefs.audioEnabled ? 'checked' : ''} />
@@ -220,7 +222,7 @@ export function settingsBody(
             ? offlinePanel(packs, packMsg)
             : section === 'api'
               ? apiPanel(prefs)
-              : audioPanel(prefs);
+              : audioPanel(prefs, capture);
   return `
     <div class="settings">
       <div class="settings-sticky">

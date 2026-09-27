@@ -151,6 +151,10 @@ final class BridgeRouter {
             host.runUi(host::openNotificationSettings);
             resolve(id, new JSONObject().put("ok", true));
             break;
+          case "speechSettings":
+            host.runUi(() -> SpeechModels.show(host.activity()));
+            resolve(id, new JSONObject().put("ok", true));
+            break;
           case "speak": {
             String sid = id;
             String text = p.optString("text");

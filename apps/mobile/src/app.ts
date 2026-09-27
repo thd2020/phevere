@@ -874,6 +874,9 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       }
       return;
     }
+    case 'speech-settings':
+      if (hasNativeBridge()) void nativeCall('speechSettings', {});
+      return;
     case 'audio-on':
       prefs.audioEnabled = (t as HTMLInputElement).checked;
       persistPrefs();

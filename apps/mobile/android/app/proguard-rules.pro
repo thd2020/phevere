@@ -16,3 +16,6 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# eSpeak JNI uses this exact class and callback name.
+-keep class com.reecedunn.espeak.SpeechSynthesis { *; }

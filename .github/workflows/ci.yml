@@ -109,20 +109,37 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm run mobile:sync
-      - name: Bundle and test offline speech
-        # Voice data and runtime are embedded, with pinned SHA-256 checksums.
-        # No phone-side download or separate TTS app is required.
+      - name: Bundle mechanical speech and optional neural runtime
+        # Only the mechanical voice is included; no neural model in the APK.
         working-directory: apps/mobile
         run: |
           python scripts/prepare-speech.py
-          python -m pip install sherpa-onnx==1.13.3 numpy==2.2.6
-          python scripts/test-speech.py
+          python scripts/test-speech-package.py
           node ../../scripts/test-mobile-regressions.js
       - name: Build Android APK with bundled speech
         working-directory: apps/mobile/android
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+      - name: Test embedded speech on Android
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: true
+          working-directory: apps/mobile/android
+          script: ./gradlew connectedDebugAndroidTest --no-daemon
+      - name: Package corresponding sources
+        run: git archive --format=tar.gz HEAD -o apps/mobile/android/app/build/generated/speech-v2/sources/phevere-source.tar.gz
+      - name: Upload Android sources
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: phevere-android-sources
+          path: apps/mobile/android/app/build/generated/speech-v2/sources/*
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

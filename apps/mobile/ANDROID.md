@@ -2,10 +2,20 @@
 
 ## Build
 
-CI prepares the speech bundle, checks its SHA-256 digests, synthesizes English US/UK
-and Mandarin samples, and builds the APK. No speech engine or model download is
-required on the phone. The first playback unpacks the bundled files in app-private
-storage. This increases APK size by roughly 400 MB and also uses private storage.
+The APK embeds eSpeak NG 1.52.0 as its default mechanical voice. It works offline
+without a system TTS engine, another app, or any voice download.
+
+**Settings → Audio → Pronunciation voice** offers an optional Kokoro neural voice.
+Its 350 MB download is verified before installation, needs 1 GB free during setup,
+and runs in the background if the dialog is dismissed. Select Neural after it
+finishes. Mechanical remains the default, including after upgrading from a version
+that bundled Kokoro. An existing unpacked Kokoro model is reused without downloading.
+Failed/cancelled downloads leave mechanical speech available. Partial downloads
+restart from the beginning. English and Mandarin are supported by both options.
+
+CI verifies packaged data, builds the APK and tests real mechanical synthesis on an
+Android 35 emulator (US/UK English, Mandarin and fallback with a missing neural model).
+The neural runtime is still included, but its large model is excluded from the APK.
 
 For a local Android build:
 
@@ -16,10 +26,16 @@ cd apps/mobile/android
 ./gradlew assembleDebug
 ```
 
-The embedded runtime is sherpa-onnx 1.13.3; the bundled Kokoro v1 model supports
-English and Mandarin. Recorded source audio remains available for other languages.
-Runtime, model URLs, and SHA-256 digests are pinned in `scripts/prepare-speech.py`.
-Model files and the AAR are generated build outputs and must not be committed.
+Pinned upstream binaries, data and source checksums are in `scripts/prepare-speech.py`.
+Generated files belong under `app/build/generated/speech-v2`; old `speech` output is
+not packaged. The eSpeak binary is taken unmodified from the official Android APK;
+Phevere supplies a small JNI adapter with the same ABI. The neural runtime is
+sherpa-onnx 1.13.3. The optional model URL and hash are in `SpeechModels.java`.
+
+The Android binary incorporating eSpeak NG is distributed under GPL-3.0-or-later.
+Phevere's own source retains its MIT license. Third-party license texts are included
+in APK assets/speech-notices. Each CI run publishes `phevere-android-sources` beside
+the APK, containing this repository and the pinned eSpeak source with build scripts.
 
 ## crDroid / Android 16: Phevere first
 
