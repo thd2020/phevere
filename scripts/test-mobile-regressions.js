@@ -62,6 +62,7 @@ async function startupAndGestures(floatingStrip) {
     },
   };
   const app = load('app.ts', {
+    './lexicon-scroll': load('lexicon-scroll.ts', {}),
     './platform/configure-core': {}, '@phevere/core': core, './incoming-text': incoming,
     './platform/audio': {}, './platform/native': native, './platform/notebook-io': {},
     './platform/offline': { listCatalogStatus: async () => [], markInstalledPacksOnCore: async () => {} },
@@ -116,5 +117,15 @@ async function audioFallback() {
   await startupAndGestures(true);
   await startupAndGestures(false);
   await audioFallback();
-  console.log('Mobile regressions passed: cold/warm share, stale lookup, popup controls, swipe expansion, audio fallback.');
+  const { scrollLexiconTo } = load('lexicon-scroll.ts', {});
+  let scrolled;
+  const panel = { scrollTop: 40, getBoundingClientRect: () => ({ top: 200 }), scrollTo: (value) => { scrolled = value; } };
+  const target = { getBoundingClientRect: () => ({ top: 600 }) };
+  scrollLexiconTo(panel, target, false);
+  assert.equal(scrolled.top, 434);
+  assert.equal(scrolled.behavior, 'smooth');
+  scrollLexiconTo(panel, target, true);
+  assert.equal(panel.scrollTop, 434, 'only the definition column should scroll');
+
+  console.log('Mobile regressions passed: cold/warm share, stale lookup, no extra toolbar, independent definition scrolling, swipe expansion, audio fallback.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

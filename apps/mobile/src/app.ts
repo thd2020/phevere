@@ -1,3 +1,4 @@
+import { scrollLexiconTo } from './lexicon-scroll';
 import './platform/configure-core';
 import {
   addVocab,
@@ -608,35 +609,8 @@ function jumpToLexiconPos(pos: string, instant: boolean): void {
     (rootEl.querySelector('.lexicon-pos-panel [data-pos]') as HTMLElement | null);
   if (!target) return;
   posJumpLock = true;
-  const header = document.querySelector('.top') as HTMLElement | null;
-  const offset = (header?.getBoundingClientRect().height || 0) + 8;
-  if (stripMode) {
-    const scroller = document.querySelector('.page') as HTMLElement | null;
-    if (scroller) {
-      const top = Math.max(
-        0,
-        target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 6,
-      );
-      if (instant) scroller.scrollTop = top;
-      else {
-        try {
-          scroller.scrollTo({ top, behavior: 'smooth' });
-        } catch {
-          scroller.scrollTop = top;
-        }
-      }
-    }
-  } else {
-    const top = Math.max(0, window.scrollY + target.getBoundingClientRect().top - offset);
-    if (instant) window.scrollTo(0, top);
-    else {
-      try {
-        window.scrollTo({ top, behavior: 'smooth' });
-      } catch {
-        window.scrollTo(0, top);
-      }
-    }
-  }
+  const panel = rootEl.querySelector('.lexicon-pos-panel') as HTMLElement | null;
+  if (panel) scrollLexiconTo(panel, target, instant);
   if (posJumpTimer) window.clearTimeout(posJumpTimer);
   posJumpTimer = window.setTimeout(() => {
     posJumpLock = false;
@@ -647,8 +621,8 @@ function onLexiconPosScroll(): void {
   if (posJumpLock) return;
   const rootEl = document.querySelector('.lexicon-block--senses');
   if (!rootEl) return;
-  const header = document.querySelector('.top') as HTMLElement | null;
-  const marker = (header?.getBoundingClientRect().bottom || 0) + 20;
+  const panel = rootEl.querySelector('.lexicon-pos-panel');
+  const marker = (panel?.getBoundingClientRect().top || 0) + 20;
   const nodes = rootEl.querySelectorAll('.lexicon-pos-panel [data-pos]');
   let pos = nodes.length ? (nodes[0] as HTMLElement).getAttribute('data-pos') || '' : '';
   nodes.forEach((g) => {
@@ -661,10 +635,18 @@ function onLexiconPosScroll(): void {
   highlightLexiconPosTab(pos);
 }
 
+function sizeLexiconPane(): void {
+  const layout = document.querySelector('.lexicon-pos-layout') as HTMLElement | null;
+  if (!layout) return;
+  const viewport = window.visualViewport?.height || window.innerHeight;
+  const nav = document.querySelector('.nav');
+  const bottom = nav ? nav.getBoundingClientRect().top : viewport;
+  layout.style.height = `${Math.max(160, bottom - layout.getBoundingClientRect().top - 16)}px`;
+}
+
 function bindLexiconPane(): void {
-  if (stripMode) {
-    document.querySelector('.page')?.addEventListener('scroll', onLexiconPosScroll, { passive: true });
-  }
+  sizeLexiconPane();
+  document.querySelector('.lexicon-pos-panel')?.addEventListener('scroll', onLexiconPosScroll, { passive: true });
   if (lexiconPos) {
     highlightLexiconPosTab(lexiconPos);
     jumpToLexiconPos(lexiconPos, true);
@@ -1035,7 +1017,8 @@ export async function startApp(): Promise<void> {
   root.addEventListener('change', onChange);
   root.addEventListener('input', onChange);
   paint();
-  window.addEventListener('scroll', onLexiconPosScroll, { passive: true });
+  window.addEventListener('resize', sizeLexiconPane, { passive: true });
+  window.visualViewport?.addEventListener('resize', sizeLexiconPane, { passive: true });
   if (hasNativeBridge()) {
     try {
       const pending = await nativeCall<{ text?: string; origin?: string }>('getPendingText', {});

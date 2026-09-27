@@ -254,9 +254,14 @@ a { color: var(--md-sys-color-tertiary); }
 }
 .lexicon-pos-layout {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
+  height: 55dvh;
+  min-height: 160px;
 }
 .lexicon-pos-tabs {
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   flex: 0 0 auto;
   width: max-content;
   display: flex;
@@ -320,9 +325,11 @@ a { color: var(--md-sys-color-tertiary); }
   font-weight: 600;
 }
 .lexicon-pos-panel {
+  min-height: 0;
+  overscroll-behavior: contain;
   flex: 1 1 auto;
   min-width: 0;
-  overflow: visible;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
