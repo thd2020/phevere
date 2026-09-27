@@ -133,9 +133,8 @@ async function audioFallback() {
     '* {{a|UK|dialectal}} {{IPA|en|/ɹɒp/}}',
     "* {{IPA|en|passage=☞ This word is often pronounced ''wrop'', rhyming with ''top''.}}",
     '* {{IPA|en|/(w)ɹæp/}}', '===Verb===',
-  ].join('
-')).map((p) => `${p.accent}:${p.ipa}`);
-  assert.deepEqual(wrap, ['other:ɹæp', 'uk:ɹɒp', 'other:(w)ɹæp'], 'no prose IPA, no accent carry-over');
+  ].join('\n')).map((p) => `${p.accent}:${p.ipa}`);
+  assert.equal(JSON.stringify(wrap), JSON.stringify(['other:ɹæp', 'uk:ɹɒp', 'other:(w)ɹæp']), 'no prose IPA, no accent carry-over');
   assert.equal(phon.ipaToEspeakPhonemes('/kæt/'), "k'at");
   assert.equal(phon.ipaToEspeakPhonemes('/θɑt/'), "T'A:t");
   assert.equal(phon.ipaToEspeakPhonemes('/lɒt/'), "l'0t");
