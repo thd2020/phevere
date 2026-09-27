@@ -4,4 +4,5 @@
     <string name="title_activity_main">Phevere</string>
     <string name="package_name">com.phevere.app</string>
     <string name="custom_url_scheme">com.phevere.app</string>
+    <string name="selection_accessibility_description">Opens the Phevere lookup pop-up when you select text in other apps. Phevere reads only the selected text, only while \"Pop up on selection\" is on in Phevere settings, and never sends it anywhere except your own lookup.</string>
 </resources>

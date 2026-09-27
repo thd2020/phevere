@@ -952,6 +952,18 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
         });
       }
       return;
+    case 'auto-popup': {
+      const on = (t as HTMLInputElement).checked;
+      if (hasNativeBridge()) {
+        await nativeCall('setAutoPopup', { enabled: on });
+        await refreshCapture();
+        paint();
+      }
+      return;
+    }
+    case 'a11y-settings':
+      if (hasNativeBridge()) void nativeCall('openAccessibilitySettings', {});
+      return;
     case 'selection-setup':
       if (hasNativeBridge()) void nativeCall('selectionSetup', {});
       return;
@@ -1097,12 +1109,16 @@ async function refreshCapture(): Promise<void> {
       canDrawOverlays?: boolean;
       platform?: string;
       notificationsGranted?: boolean;
+      autoPopup?: boolean;
+      accessibilityOn?: boolean;
     }>('getCapturePrefs', {});
     if (typeof next.floatingStrip === 'boolean') prefs.floatingStrip = next.floatingStrip;
     capture = {
       platform: next.platform === 'ios' ? 'ios' : 'android',
       canDrawOverlays: !!next.canDrawOverlays,
       notificationsGranted: !!next.notificationsGranted,
+      autoPopup: !!next.autoPopup,
+      accessibilityOn: !!next.accessibilityOn,
     };
     savePrefs(prefs);
   } catch {

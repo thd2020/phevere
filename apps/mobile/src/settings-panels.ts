@@ -14,6 +14,8 @@ export type CaptureInfo = {
   platform: 'web' | 'android' | 'ios';
   canDrawOverlays: boolean;
   notificationsGranted?: boolean;
+  autoPopup?: boolean;
+  accessibilityOn?: boolean;
 };
 
 export type SettingsSection = 'capture' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio';
@@ -70,6 +72,14 @@ function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
       <span class="src-name">Floating lookup popup</span>
       <input type="checkbox" data-act="strip-on" ${prefs.floatingStrip ? 'checked' : ''} />
     </label>
+    <label class="toggle">
+      <span class="src-name">Pop up as soon as text is selected<span class="hint">Off: select text, then tap Phevere in the selection menu</span></span>
+      <input type="checkbox" data-act="auto-popup" ${capture.autoPopup ? 'checked' : ''} />
+    </label>
+    ${capture.autoPopup && !capture.accessibilityOn ? `<div class="toolbar-row">
+      <p class="hint">Needs Phevere turned on under Accessibility. Chrome does not report page selections there; use the menu item in Chrome.</p>
+      <button type="button" class="outlined" data-act="a11y-settings">Open Accessibility settings</button>
+    </div>` : ''}
     <button type="button" class="outlined" data-act="selection-setup">Put Phevere first · LSPosed setup</button>` : ''}
     <button type="button" class="settings-dropzone" data-act="ocr">
       <strong>Camera or photo</strong>
@@ -182,7 +192,6 @@ function audioPanel(prefs: MobilePrefs, capture: CaptureInfo): string {
   const speed = Number.isFinite(prefs.audioSpeed) ? prefs.audioSpeed : 1;
   return `
     ${panelIntro('Audio')}
-    ${capture.platform === 'android' ? '<button type="button" class="chip" data-act="speech-settings">Pronunciation voice</button>' : ''}
     ${capture.platform === 'android' ? '<button type="button" class="chip" data-act="speech-settings">Pronunciation voice</button>' : ''}
     <label class="toggle">
       <span class="src-name">Enable pronunciation</span>

@@ -136,6 +136,8 @@ final class BridgeRouter {
             out.put("canDrawOverlays", CapturePrefs.canDrawOverlays(host.context()));
             out.put("platform", "android");
             out.put("notificationsGranted", Notify.granted(host.context()));
+            out.put("autoPopup", CapturePrefs.autoPopup(host.context()));
+            out.put("accessibilityOn", CapturePrefs.accessibilityOn(host.context()));
             resolve(id, out);
             break;
           }
@@ -193,6 +195,18 @@ final class BridgeRouter {
             break;
           case "closeStrip":
             host.runUi(host::closeStrip);
+            resolve(id, new JSONObject().put("ok", true));
+            break;
+          case "setAutoPopup":
+            CapturePrefs.setAutoPopup(host.context(), p.optBoolean("enabled", false));
+            resolve(id, new JSONObject().put("ok", true));
+            break;
+          case "openAccessibilitySettings":
+            host.runUi(() -> {
+              android.content.Intent i = new android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS);
+              i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+              host.context().startActivity(i);
+            });
             resolve(id, new JSONObject().put("ok", true));
             break;
           case "openPopup": {

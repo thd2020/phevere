@@ -52,6 +52,18 @@ Phevere's own source retains its MIT license. Third-party license texts are incl
 in APK assets/speech-notices. Each CI run publishes `phevere-android-sources` beside
 the APK, containing this repository and the pinned eSpeak source with build scripts.
 
+## Pop up as soon as text is selected
+
+**Settings → Capture → Pop up as soon as text is selected** (off by default; the
+default is selection menu → Phevere). When on, Phevere's accessibility service
+opens the pop-up about 0.7 s after a selection stops changing. It must be turned on
+once under Android **Settings → Accessibility → Phevere pop-up on selection**.
+
+It listens only to text-selection events, ignores password and editable fields,
+and does nothing while the switch is off. Android does not let it hide the system
+selection bar. Chrome does not report selections in page text to accessibility
+services, so in Chrome use the menu item (or the LSPosed module below).
+
 ## crDroid / Android 16: Phevere first
 
 The same APK includes an optional LSPosed module. On a rooted phone with LSPosed:

@@ -30,6 +30,8 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
   private WebView web;
   private String pendingText;
   private String pendingOrigin = "process-text";
+  private String lastText;
+  private long lastAt;
   private String pendingJsId;
   private String pendingSaveText;
   private boolean pageReady;
@@ -56,7 +58,12 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
     } catch (Exception ignored) {
     }
     String text = intent != null ? intent.getStringExtra(CapturePrefs.EXTRA_QUERY) : null;
-    if (text != null && !text.isEmpty()) {
+    // The selection bar and the accessibility fallback can both report one selection.
+    boolean repeat = root != null && text != null && text.equals(lastText)
+        && android.os.SystemClock.uptimeMillis() - lastAt < 3000;
+    if (text != null && !text.isEmpty() && !repeat) {
+      lastText = text;
+      lastAt = android.os.SystemClock.uptimeMillis();
       pendingText = text;
       pendingOrigin = "process-text";
     }
