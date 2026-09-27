@@ -29,7 +29,11 @@ export function phonemeIpa(raw?: string): string {
 
 type Kind = 'v' | 'c';
 
-/** [ipa, sapi, apple, espeak] — longest IPA first after sort. */
+/**
+ * [ipa, sapi, apple, espeak] — longest IPA first after sort.
+ * eSpeak column uses only mnemonics in its English phoneme table (no &, A, Q, 8, Y);
+ * unknown ones play as a near-silent blip.
+ */
 const PHONES: Array<[string, string, string, string, Kind]> = [
   ['tʃ', 'ch', 'C', 'tS', 'c'],
   ['dʒ', 'jh', 'J', 'dZ', 'c'],
@@ -52,10 +56,10 @@ const PHONES: Array<[string, string, string, string, Kind]> = [
   ['oː', 'ao', 'AO', 'o:', 'v'],
   ['eː', 'ey', 'EY', 'e:', 'v'],
   ['ɛː', 'eh', 'EH', 'E:', 'v'],
-  ['æː', 'ae', 'AE', '&:', 'v'],
+  ['æː', 'ae', 'AE', 'a', 'v'],
   ['ʊː', 'uw', 'UW', 'U:', 'v'],
   ['ɝː', 'er', 'ER', '3:', 'v'],
-  ['ɑɹ', 'aa r', 'AA r', 'Ar', 'v'],
+  ['ɑɹ', 'aa r', 'AA r', 'A@', 'v'],
   ['ɔɹ', 'ao r', 'AO r', 'Or', 'v'],
   ['ɪɹ', 'ih r', 'IH r', 'Ir', 'v'],
   ['ɛɹ', 'eh r', 'EH r', 'Er', 'v'],
@@ -77,9 +81,9 @@ const PHONES: Array<[string, string, string, string, Kind]> = [
   ['ɝ', 'er', 'ER', '3', 'v'],
   ['ɪ', 'ih', 'IH', 'I', 'v'],
   ['ɛ', 'eh', 'EH', 'E', 'v'],
-  ['æ', 'ae', 'AE', '&', 'v'],
-  ['ɑ', 'aa', 'AA', 'A', 'v'],
-  ['ɒ', 'aa', 'AA', 'Q', 'v'],
+  ['æ', 'ae', 'AE', 'a', 'v'],
+  ['ɑ', 'aa', 'AA', 'A:', 'v'],
+  ['ɒ', 'aa', 'AA', '0', 'v'],
   ['ɔ', 'ao', 'AO', 'O', 'v'],
   ['ʊ', 'uh', 'UH', 'U', 'v'],
   ['ʌ', 'ah', 'AX', 'V', 'v'],
@@ -92,9 +96,9 @@ const PHONES: Array<[string, string, string, string, Kind]> = [
   ['a', 'aa', 'AA', 'a', 'v'],
   ['ɨ', 'ih', 'IH', 'I', 'v'],
   ['ʉ', 'uw', 'UW', 'u', 'v'],
-  ['ɵ', 'ow', 'OW', '8', 'v'],
+  ['ɵ', 'ow', 'OW', '@U', 'v'],
   ['ɘ', 'ax', 'AX', '@', 'v'],
-  ['ʏ', 'uh', 'UH', 'Y', 'v'],
+  ['ʏ', 'uh', 'UH', 'U', 'v'],
   ['ᵻ', 'ih', 'IH', 'I', 'v'],
   ['ᵿ', 'uh', 'UH', 'U', 'v'],
   ['j', 'y', 'y', 'j', 'c'],
@@ -216,8 +220,13 @@ export function ipaToApplePhonemes(raw?: string): string {
 }
 
 export function ipaToEspeakPhonemes(raw?: string): string {
+  const toks = tokenize(raw);
+  // Dictionaries omit ˈ on one-syllable words (/kæt/). eSpeak then reduces every
+  // vowel and the word is clipped to ~0.1 s, so stress the first vowel.
+  const first = toks.find((t) => t.kind === 'v');
+  if (first && !toks.some((t) => t.stress === 1)) first.stress = 1;
   let out = '';
-  for (const t of tokenize(raw)) {
+  for (const t of toks) {
     if (t.kind === 'v' && t.stress === 1) out += "'";
     else if (t.kind === 'v' && t.stress === 2) out += ',';
     out += t.espeak;

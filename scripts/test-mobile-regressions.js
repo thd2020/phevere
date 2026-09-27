@@ -123,6 +123,14 @@ async function audioFallback() {
   await startupAndGestures(true);
   await startupAndGestures(false);
   await audioFallback();
+  // IPA chips: only mnemonics in eSpeak's English table, and one stressed vowel.
+  const core = '../../../packages/core/src/';
+  const phon = load(core + 'ipa-phonemes.ts', { './pronunciation': load(core + 'pronunciation.ts', {}) });
+  assert.equal(phon.ipaToEspeakPhonemes('/kæt/'), "k'at");
+  assert.equal(phon.ipaToEspeakPhonemes('/θɑt/'), "T'A:t");
+  assert.equal(phon.ipaToEspeakPhonemes('/lɒt/'), "l'0t");
+  assert.equal(phon.ipaToEspeakPhonemes('/ˈwɑɾɚ/'), "w'A:4@r");
+  assert.equal(phon.ipaToEspeakPhonemes('/həˈləʊ/'), "h@l'@U");
   const { scrollLexiconTo } = load('lexicon-scroll.ts', {});
   let scrolled;
   const panel = { scrollTop: 40, getBoundingClientRect: () => ({ top: 200 }), scrollTo: (value) => { scrolled = value; } };
@@ -133,5 +141,5 @@ async function audioFallback() {
   scrollLexiconTo(panel, target, true);
   assert.equal(panel.scrollTop, 434, 'only the definition column should scroll');
 
-  console.log('Mobile regressions passed: cold/warm share, stale lookup, no extra toolbar, independent definition scrolling, swipe expansion, audio fallback.');
+  console.log('Mobile regressions passed: cold/warm share, stale lookup, no extra toolbar, independent definition scrolling, swipe expansion, audio fallback, eSpeak IPA mapping.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
