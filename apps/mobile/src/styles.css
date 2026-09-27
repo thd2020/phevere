@@ -603,7 +603,7 @@ a { color: var(--md-sys-color-tertiary); }
   align-items: end;
   margin-bottom: 12px;
 }
-.pair label {
+.pair .lang-label {
   display: block;
   font-size: 0.72rem;
   letter-spacing: 0.06em;
@@ -618,6 +618,45 @@ select, .field {
   border-radius: var(--md-sys-shape-sm);
   padding: 10px 12px;
 }
+.lang-pick { position: relative; min-width: 0; }
+.lang-btn {
+  display: block;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lang-btn::after { content: '▾'; float: right; margin-left: 6px; color: var(--md-sys-color-on-surface-variant); }
+.lang-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  width: max(100%, 200px);
+  max-height: min(320px, 50vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--md-sys-color-surface-container-lowest);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-md);
+  box-shadow: 0 6px 20px rgb(28 25 23 / 0.16);
+  padding: 4px 0;
+}
+.pair > .lang-pick:last-child .lang-menu { left: auto; right: 0; }
+.lang-opt {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  padding: 10px 14px;
+}
+.lang-opt span { color: var(--md-sys-color-on-surface-variant); font-size: 0.85em; }
+.lang-opt.is-on { background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
 .swap {
   width: 40px;
   height: 40px;

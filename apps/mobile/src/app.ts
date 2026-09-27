@@ -42,6 +42,7 @@ import {
   searchHtml,
   settingsBody,
   type CaptureInfo,
+  type LangSide,
   type ResultTab,
   type ScanPage,
   type SettingsSection,
@@ -62,6 +63,7 @@ let result: DictionaryResult | null = null;
 let saved: VocabEntry | null = null;
 let status = '';
 let resultTab: ResultTab = 'lexicon';
+let langMenu: LangSide | '' = '';
 let lexiconPos = '';
 let lexiconWord = '';
 let posJumpLock = false;
@@ -125,6 +127,7 @@ function lookupPaneHtml(): string {
     langs,
     sourceLang: prefs.sourceLang,
     targetLang: prefs.targetLang,
+    langMenu,
     wiki,
     wikiLang: wikiLanguage(),
     wikiArticle,
@@ -380,7 +383,7 @@ async function refreshPacks(): Promise<void> {
   }
 }
 
-async function lookup(raw: string, fromHist = false): Promise<void> {
+async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promise<void> {
   const q = extractLookupQuery(raw);
   if (!q) return;
   const generation = ++lookupGeneration;
@@ -398,7 +401,7 @@ async function lookup(raw: string, fromHist = false): Promise<void> {
   wikiError = '';
   wikiListOnly = false;
   wikiLoading = false;
-  resultTab = 'lexicon';
+  resultTab = keepTab || 'lexicon';
   lexiconPos = '';
   lexiconWord = q;
   if (!fromHist) {
@@ -560,6 +563,29 @@ function persistPrefs(): void {
   applyPrefsToCore(prefs);
 }
 
+let selectionTimer: number | null = null;
+
+/**
+ * Selecting text inside Phevere behaves like desktop and like other apps: the pop-up
+ * opens on the selection. Inside the pop-up, on a scan, and in the browser preview / iOS it looks
+ * up in place.
+ */
+function onSelectionSettled(): void {
+  const sel = window.getSelection();
+  const raw = (sel?.toString() || '').trim();
+  if (!raw || raw.length > 200) return;
+  const anchor = sel?.anchorNode;
+  const el = anchor && (anchor.nodeType === 1 ? (anchor as Element) : anchor.parentElement);
+  if (el?.closest('input, textarea, [contenteditable="true"]')) return;
+  const q = extractLookupQuery(raw);
+  if (!q || q === query) return;
+  if (!stripMode && !scan && hasNativeBridge() && capture.platform === 'android') {
+    void nativeCall('openPopup', { text: q }).catch(() => lookup(q));
+    return;
+  }
+  void lookup(q);
+}
+
 /** Notebook ▶ plays the same recorded human clip as the lookup headword button. */
 async function playLemma(lemma: string): Promise<void> {
   if (!lemma) return;
@@ -659,8 +685,13 @@ function bindLexiconPane(): void {
 
 function onClick(e: Event): void {
   const t = (e.target as HTMLElement | null)?.closest?.('[data-act]') as HTMLElement | null;
+  const act = t?.dataset.act;
+  // Any tap outside the open language list closes it.
+  if (langMenu && act !== 'lang-open' && act !== 'lang-pick') {
+    langMenu = '';
+    if (!t) paint();
+  }
   if (!t) return;
-  const act = t.dataset.act;
   void handleAct(act || '', t, e);
 }
 
@@ -761,13 +792,27 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       if (to !== 'auto') prefs.sourceLang = to;
       if (from !== 'auto') prefs.targetLang = from;
       persistPrefs();
-      if (query) await lookup(query);
+      if (query) await lookup(query, true, 'translation');
       else paint();
       return;
     }
-    case 'from':
-    case 'to':
+    case 'lang-open': {
+      const side = t.dataset.side === 'to' ? 'to' : 'from';
+      langMenu = langMenu === side ? '' : side;
+      paint();
+      document.querySelector('.lang-menu .is-on')?.scrollIntoView({ block: 'nearest' });
       return;
+    }
+    case 'lang-pick': {
+      const code = t.dataset.code || '';
+      langMenu = '';
+      if (t.dataset.side === 'to') prefs.targetLang = code;
+      else prefs.sourceLang = code;
+      persistPrefs();
+      if (query) await lookup(query, true, 'translation');
+      else paint();
+      return;
+    }
     case 'wiki-open': {
       const item = wiki[Number(t.dataset.i)];
       if (item) await openWikiArticle(item);
@@ -967,15 +1012,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
 function onChange(e: Event): void {
   const el = e.target as HTMLElement | null;
   if (!el) return;
-  if (el.id === 'from') {
-    prefs.sourceLang = (el as HTMLSelectElement).value;
-    persistPrefs();
-    if (query) void lookup(query);
-  } else if (el.id === 'to') {
-    prefs.targetLang = (el as HTMLSelectElement).value;
-    persistPrefs();
-    if (query) void lookup(query);
-  } else if (el.id === 'q') {
+  if (el.id === 'q') {
     draft = (el as HTMLInputElement).value;
   } else if (el.id === 'nbq') {
     notebookFilter = (el as HTMLInputElement).value;
@@ -1012,6 +1049,10 @@ export async function startApp(): Promise<void> {
   root.addEventListener('input', onChange);
   paint();
   window.addEventListener('resize', sizeLexiconPane, { passive: true });
+  document.addEventListener('selectionchange', () => {
+    if (selectionTimer) window.clearTimeout(selectionTimer);
+    selectionTimer = window.setTimeout(onSelectionSettled, 650);
+  });
   window.visualViewport?.addEventListener('resize', sizeLexiconPane, { passive: true });
   if (hasNativeBridge()) {
     try {

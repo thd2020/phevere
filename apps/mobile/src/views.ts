@@ -293,17 +293,33 @@ function lexiconPane(result: DictionaryResult, activePos: string): string {
   </div>`;
 }
 
+export type LangSide = 'from' | 'to';
+
 function translationPane(
   result: DictionaryResult,
   langs: { code: string; name: string; nativeName: string }[],
   sourceLang: string,
   targetLang: string,
+  langMenu: LangSide | '',
 ): string {
-  const opts = (includeAuto: boolean, selected: string) =>
-    langs
-      .filter((l) => includeAuto || l.code !== 'auto')
-      .map((l) => `<option value="${esc(l.code)}" ${l.code === selected ? 'selected' : ''}>${esc(l.nativeName)} (${esc(l.name)})</option>`)
+  // In-page picker, not <select>: the pop-up is a WebView in an overlay window with no
+  // Activity, and Android WebView cannot open a native select list there.
+  const picker = (side: LangSide, label: string, selected: string) => {
+    const choices = langs.filter((l) => side === 'from' || l.code !== 'auto');
+    const current = choices.find((l) => l.code === selected) || choices[0];
+    const open = langMenu === side;
+    const items = choices
+      .map((l) => {
+        const on = l.code === current?.code;
+        return `<button type="button" role="option" aria-selected="${on}" class="lang-opt${on ? ' is-on' : ''}" data-act="lang-pick" data-side="${side}" data-code="${esc(l.code)}">${esc(l.nativeName)} <span>${esc(l.name)}</span></button>`;
+      })
       .join('');
+    return `<div class="lang-pick">
+        <span class="lang-label" id="${side}-label">${label}</span>
+        <button type="button" class="field lang-btn" data-act="lang-open" data-side="${side}" aria-haspopup="listbox" aria-expanded="${open}" aria-labelledby="${side}-label">${esc(current?.nativeName || selected)}</button>
+        ${open ? `<div class="lang-menu" role="listbox" aria-labelledby="${side}-label">${items}</div>` : ''}
+      </div>`;
+  };
   const rows = (result.translations || [])
     .map(
       (t) => `<div class="t-row">
@@ -315,9 +331,9 @@ function translationPane(
     .join('');
   return `
     <div class="pair">
-      <div><label for="from">From</label><select id="from" data-act="from">${opts(true, sourceLang)}</select></div>
+      ${picker('from', 'From', sourceLang)}
       <button type="button" class="swap" data-act="swap" aria-label="Swap languages">⇄</button>
-      <div><label for="to">To</label><select id="to" data-act="to">${opts(false, targetLang)}</select></div>
+      ${picker('to', 'To', targetLang)}
     </div>
     <section class="card">
       <h2>Translation</h2>
@@ -463,6 +479,7 @@ export function lookupBody(opts: {
   langs: { code: string; name: string; nativeName: string }[];
   sourceLang: string;
   targetLang: string;
+  langMenu: LangSide | '';
   wiki: WikipediaResult[];
   wikiLang: string;
   wikiArticle: WikiArticle | null;
@@ -491,7 +508,7 @@ export function lookupBody(opts: {
   };
   const pane =
     opts.resultTab === 'translation'
-      ? translationPane(opts.result, opts.langs, opts.sourceLang, opts.targetLang)
+      ? translationPane(opts.result, opts.langs, opts.sourceLang, opts.targetLang, opts.langMenu)
       : opts.resultTab === 'wikipedia'
         ? wikiPane(opts.wiki, opts.wikiLang, opts.wikiArticle, opts.wikiLoading, opts.wikiError)
         : opts.resultTab === 'etymology'
