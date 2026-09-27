@@ -22,6 +22,10 @@ final class Speak {
   private Completion pendingDone;
   private volatile int gen;
   private MediaPlayer player;
+  /** Settings → Audio → Playback volume, 0–1, applied to recordings and synthesis. */
+  private volatile float volume = 1f;
+
+  void setVolume(float value) { volume = Math.max(0f, Math.min(1f, value)); }
 
   static synchronized Speak get(Context ctx) {
     if (inst == null) inst = new Speak(ctx.getApplicationContext());
@@ -85,6 +89,7 @@ final class Speak {
           }
         } catch (Exception ignored) {
         }
+        mp.setVolume(volume, volume);
         try { mp.start(); }
         catch (Exception e) { stopMedia(); finish("Could not start pronunciation recording."); }
       });

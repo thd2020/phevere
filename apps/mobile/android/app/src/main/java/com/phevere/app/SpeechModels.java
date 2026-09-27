@@ -36,6 +36,7 @@ final class SpeechModels {
   private static volatile Variant downloadingVariant;
   private static volatile boolean cancelled;
   private static volatile String progress = "";
+  private static volatile long doneMb;
   private static final Handler main = new Handler(Looper.getMainLooper());
 
   static File root(Context c, Variant v) { return new File(c.getNoBackupFilesDir(), v.dir); }
@@ -79,6 +80,7 @@ final class SpeechModels {
         .put("selected", current == null ? "mechanical" : current.id)
         .put("downloading", downloading && pending != null ? pending.id : "")
         .put("progress", progress)
+        .put("doneMb", downloading ? doneMb : 0)
         .put("variants", variants);
   }
 
@@ -96,6 +98,7 @@ final class SpeechModels {
     if (downloading || ready(c, v)) return;
     downloading = true;
     downloadingVariant = v;
+    doneMb = 0;
     cancelled = false;
     progress = "Connecting…";
     // A process-wide worker lets dismissing Settings leave the download running.
@@ -122,7 +125,8 @@ final class SpeechModels {
               if (total > (v.downloadMb + 50) * 1_000_000L) throw new IOException("Unexpected download size.");
               out.write(buffer, 0, count);
               hash.update(buffer, 0, count);
-              progress = "Downloading: " + total / 1_000_000 + " / " + v.downloadMb + " MB";
+              doneMb = total / 1_000_000;
+              progress = "Downloading: " + doneMb + " / " + v.downloadMb + " MB";
             }
           }
         } finally { connection.disconnect(); }

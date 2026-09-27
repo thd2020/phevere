@@ -30,14 +30,20 @@ function rate(prefs: MobilePrefs): number {
   return prefs.audioSpeed || 1;
 }
 
+function volume(prefs: MobilePrefs): number {
+  const v = Number(prefs.audioVolume);
+  return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 1;
+}
+
 async function playUrl(url: string, prefs: MobilePrefs): Promise<void> {
   if (!prefs.audioEnabled || !url) return;
   if (hasNativeBridge()) {
-    await nativeCall('playUrl', { url, rate: rate(prefs) });
+    await nativeCall('playUrl', { url, rate: rate(prefs), volume: volume(prefs) });
     return;
   }
   if (!clip) clip = new Audio();
   clip.playbackRate = rate(prefs);
+  clip.volume = volume(prefs);
   clip.src = url;
   const ended = waitClipEnd(clip);
   await clip.play();
@@ -65,13 +71,14 @@ export async function playRecorded(result: DictionaryResult | null, prefs: Mobil
 export async function speakText(text: string, prefs: MobilePrefs, lang?: string): Promise<void> {
   if (!prefs.audioEnabled || !text) return;
   if (hasNativeBridge()) {
-    await nativeCall('speak', { text, lang: lang || 'en-US', rate: rate(prefs) });
+    await nativeCall('speak', { text, lang: lang || 'en-US', rate: rate(prefs), volume: volume(prefs) });
     return;
   }
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.rate = rate(prefs);
+  u.volume = volume(prefs);
   if (lang) u.lang = lang;
   await new Promise<void>((resolve) => {
     u.onend = () => resolve();
@@ -89,7 +96,7 @@ export async function speakIpa(p: Pronunciation, prefs: MobilePrefs, word?: stri
   const lang = accentToBcp47(p.accent);
   const phonemes = ipaToEspeakPhonemes(p.ipa);
   if (hasNativeBridge() && phonemes) {
-    await nativeCall('speak', { text: phonemes, lang, rate: rate(prefs), phonemes: true });
+    await nativeCall('speak', { text: phonemes, lang, rate: rate(prefs), volume: volume(prefs), phonemes: true });
     return;
   }
   // Browser preview: speechSynthesis cannot read IPA, so say the headword in that accent.

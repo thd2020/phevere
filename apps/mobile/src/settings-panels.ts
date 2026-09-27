@@ -6,6 +6,7 @@ export type VoiceStatus = {
   selected: string;
   downloading: string;
   progress: string;
+  doneMb?: number;
   variants: Array<{ id: string; mb: number; ready: boolean }>;
 };
 
@@ -197,33 +198,65 @@ function apiPanel(prefs: MobilePrefs): string {
     </div>`;
 }
 
-/** Same radio rows as the Translation engine list in Sources. */
+const VOICE_ICON = {
+  wave: '<svg viewBox="0 0 24 24"><path d="M7 18h2V6H7zm4 4h2V2h-2zm-8-8h2v-4H3zm12 4h2V6h-2zm4-8v4h2v-4z"/></svg>',
+  download: '<svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5zM19 9h-4V3H9v6H5l7 7z"/></svg>',
+  check: '<svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>',
+  cancel: '<svg viewBox="0 0 24 24"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>',
+};
+const VOICE_BLURB: Record<string, string> = {
+  mechanical: 'Built in · robotic, reads IPA exactly',
+  compact: 'Natural voice · smaller download',
+  full: 'Most natural voice',
+};
+
+/**
+ * Material list pattern for downloadable options (as in Google's offline languages):
+ * tap a row to use it; rows that need a download show the size and a download icon,
+ * then a progress bar with cancel; the active voice carries a check.
+ */
 function voiceList(voice: VoiceStatus | null): string {
   if (!voice) return '';
-  const rows = [
-    { id: 'mechanical', label: 'Mechanical', detail: 'Built in · offline' },
-    ...voice.variants.map((v) => ({
-      id: v.id,
-      label: VOICE_NAMES[v.id] || v.id,
-      detail: v.ready ? 'Downloaded · offline' : voice.downloading === v.id ? 'Downloading…' : `Tap to download ${v.mb} MB`,
-    })),
-  ]
-    .map(
-      (r) => `<label class="radio"><span><span class="src-name">${esc(r.label)}</span><span class="src-meta">${esc(r.detail)}</span></span>
-        <input type="radio" name="voice" data-act="voice" value="${r.id}" ${voice.selected === r.id ? 'checked' : ''} ${voice.downloading ? 'disabled' : ''} /></label>`,
-    )
+  const rows = [{ id: 'mechanical', mb: 0, ready: true }, ...voice.variants]
+    .map((v) => {
+      const on = voice.selected === v.id;
+      const busy = voice.downloading === v.id;
+      const meta = v.id === 'mechanical'
+        ? VOICE_BLURB.mechanical
+        : `${VOICE_BLURB[v.id] || ''} · ${v.mb} MB${v.ready ? ' · downloaded' : ''}`;
+      const trailing = busy
+        ? `<button type="button" class="icon-btn voice-row__action" data-act="voice-cancel" aria-label="Cancel download">${VOICE_ICON.cancel}</button>`
+        : on
+          ? `<span class="voice-row__check" aria-hidden="true">${VOICE_ICON.check}</span>`
+          : !v.ready
+            ? `<span class="voice-row__dl" aria-hidden="true">${VOICE_ICON.download}</span>`
+            : '';
+      const pct = busy && v.mb ? Math.min(100, Math.round(((voice.doneMb || 0) / v.mb) * 100)) : 0;
+      const bar = busy
+        ? `<div class="voice-row__progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>
+           <small class="voice-row__status">${esc(voice.progress)}</small>`
+        : '';
+      const name = v.id === 'mechanical' ? 'Mechanical' : VOICE_NAMES[v.id] || v.id;
+      const blocked = !!voice.downloading && !busy && !v.ready;
+      return `<div class="voice-row${on ? ' is-on' : ''}">
+        <button type="button" class="voice-row__main" role="radio" aria-checked="${on}" data-act="voice" data-value="${v.id}" ${blocked ? 'disabled' : ''} aria-label="${esc(name)}${v.ready ? '' : `, download ${v.mb} MB`}">
+          <span class="voice-row__icon">${VOICE_ICON.wave}</span>
+          <span class="voice-row__text"><span>${esc(name)}</span><small>${esc(meta)}</small></span>
+        </button>
+        ${trailing}
+        ${bar}
+      </div>`;
+    })
     .join('');
-  const busy = voice.downloading
-    ? `<div class="toolbar-row"><p class="hint">${esc(voice.progress)}</p>
-        <button type="button" class="outlined" data-act="voice-cancel">Cancel download</button></div>`
-    : voice.progress && !/^(Connecting|Downloading|Installing)/.test(voice.progress)
-      ? `<p class="hint">${esc(voice.progress)}</p>`
-      : '';
-  return `<h3 class="settings-subhead">Pronunciation voice</h3>${rows}${busy}`;
+  const note = !voice.downloading && voice.progress && !/^(Connecting|Downloading|Installing)/.test(voice.progress)
+    ? `<p class="hint">${esc(voice.progress)}</p>`
+    : '';
+  return `<h3 class="settings-subhead">Pronunciation voice</h3><div class="voice-list" role="radiogroup" aria-label="Pronunciation voice">${rows}</div>${note}`;
 }
 
 function audioPanel(prefs: MobilePrefs, capture: CaptureInfo, voice: VoiceStatus | null): string {
   const speed = Number.isFinite(prefs.audioSpeed) ? prefs.audioSpeed : 1;
+  const volume = Math.round((Number.isFinite(prefs.audioVolume) ? prefs.audioVolume : 1) * 100);
   return `
     ${panelIntro('Audio')}
     <label class="toggle">
@@ -235,6 +268,13 @@ function audioPanel(prefs: MobilePrefs, capture: CaptureInfo, voice: VoiceStatus
       <div class="settings-audio-range">
         <input id="audio-speed" type="range" min="0.5" max="2" step="0.1" value="${speed}" data-act="audio-speed" />
         <span id="speed-value">${speed}×</span>
+      </div>
+    </div>
+    <div class="settings-field">
+      <label for="audio-volume">Playback volume</label>
+      <div class="settings-audio-range">
+        <input id="audio-volume" type="range" min="0" max="100" step="5" value="${volume}" data-act="audio-volume" />
+        <span id="volume-value">${volume}%</span>
       </div>
     </div>
     ${capture.platform === 'android' ? voiceList(voice) : ''}`;
