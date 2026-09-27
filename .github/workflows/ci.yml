@@ -99,6 +99,11 @@ jobs:
           if [ ! -d "${ANDROID_SDK_ROOT}/platforms/android-35" ]; then
             yes | "$SDKMANAGER" "platforms;android-35" || true
           fi
+          # compileSdk 36 (libxposed); the emulator test still targets 35.
+          if [ ! -d "${ANDROID_SDK_ROOT}/platforms/android-36" ]; then
+            yes | "$SDKMANAGER" "platforms;android-36" || true
+          fi
+          test -d "${ANDROID_SDK_ROOT}/platforms/android-36"
           if [ ! -d "${ANDROID_SDK_ROOT}/build-tools/35.0.0" ]; then
             yes | "$SDKMANAGER" "build-tools;35.0.0" || true
           fi

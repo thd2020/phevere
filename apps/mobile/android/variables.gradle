@@ -1,6 +1,7 @@
 ext {
     minSdkVersion = 24
-    compileSdkVersion = 35
+    // libxposed (LSPosed module API) needs compileSdk 36; targetSdk stays 35.
+    compileSdkVersion = 36
     targetSdkVersion = 35
     androidxAppCompatVersion = '1.7.0'
     coreSplashScreenVersion = '1.0.1'

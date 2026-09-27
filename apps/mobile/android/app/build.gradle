@@ -46,8 +46,9 @@ dependencies {
     compileOnly 'de.robv.android.xposed:api:82'
     // Modern LSPosed (libxposed): hook API is provided by the framework; the service
     // library gives the app remote preferences shared privately with the module.
-    compileOnly 'io.github.libxposed:api:102.0.0'
-    implementation 'io.github.libxposed:service:102.0.0'
+    // 101 (API 101): 102 needs compileSdk 37, i.e. AGP 9.
+    compileOnly 'io.github.libxposed:api:101.0.1'
+    implementation 'io.github.libxposed:service:101.0.0'
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.activity:activity:1.9.3"
     implementation "androidx.core:core:1.15.0"
