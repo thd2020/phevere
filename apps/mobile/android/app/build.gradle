@@ -15,6 +15,7 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+    sourceSets.main.assets.srcDir "${buildDir}/generated/speech/assets"
     buildTypes {
         release {
             minifyEnabled false
@@ -24,6 +25,8 @@ android {
 }
 
 dependencies {
+    implementation files("${buildDir}/generated/speech/sherpa-onnx-1.13.3.aar")
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.2.0'
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.activity:activity:1.9.3"
     implementation "androidx.core:core:1.15.0"
@@ -46,3 +49,12 @@ tasks.register('syncWebAssets', Copy) {
     onlyIf { distDir.exists() }
 }
 preBuild.dependsOn syncWebAssets
+
+tasks.register('checkBundledSpeech') {
+    doLast {
+        if (!file("${buildDir}/generated/speech/assets/speech/bundle.json").exists()) {
+            throw new GradleException('Run python ../scripts/prepare-speech.py before building Android')
+        }
+    }
+}
+preBuild.dependsOn checkBundledSpeech

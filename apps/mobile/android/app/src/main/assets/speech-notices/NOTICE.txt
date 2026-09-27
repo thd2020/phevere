@@ -1,0 +1,15 @@
+Embedded speech sources
+
+sherpa-onnx v1.13.3: https://github.com/k2-fsa/sherpa-onnx/tree/v1.13.3
+Apache License 2.0; license included beside this file.
+
+Kokoro multi-lang v1.0: https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models
+Model/data license and README are retained in assets/speech/kokoro-multi-lang-v1_0/.
+Original model: https://huggingface.co/hexgrad/Kokoro-82M
+
+The runtime and phonemizer data include third-party components. Their source and
+license notices are available in the pinned runtime source tree, including
+https://github.com/k2-fsa/sherpa-onnx/tree/v1.13.3/cmake
+and https://github.com/espeak-ng/espeak-ng (GPL-3.0-or-later).
+Phevere source: https://github.com/thd2020/phevere
+Build download URLs and checksums: apps/mobile/scripts/prepare-speech.py

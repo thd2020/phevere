@@ -6,24 +6,21 @@ import android.media.MediaPlayer;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.speech.tts.TextToSpeech;
-import android.speech.tts.UtteranceProgressListener;
 
-import java.util.Locale;
+import java.io.File;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-/** On-device TTS and streamed pronunciation clips. Android WebView has no SpeechSynthesis. */
+/** Bundled offline speech and recorded pronunciation clips. No system TTS dependency. */
 final class Speak {
   private static Speak inst;
-  private final TextToSpeech tts;
-  private volatile boolean ready;
-  private boolean initialized;
+  private final OfflineSpeech offline;
+  private final ExecutorService synthesis = Executors.newSingleThreadExecutor();
   private final Handler main = new Handler(Looper.getMainLooper());
-  private String pendingText;
-  private String pendingLang = "en-US";
-  private float pendingRate = 1f;
+  private File speechFile;
   interface Completion { void finish(String error); }
   private Completion pendingDone;
-  private int gen;
+  private volatile int gen;
   private MediaPlayer player;
 
   static synchronized Speak get(Context ctx) {
@@ -32,71 +29,29 @@ final class Speak {
   }
 
   private Speak(Context ctx) {
-    tts = new TextToSpeech(ctx, status -> main.post(() -> onEngineInit(status)));
-  }
-
-  private void onEngineInit(int status) {
-    initialized = true;
-    ready = status == TextToSpeech.SUCCESS;
-    if (ready) {
-      tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-        @Override
-        public void onStart(String utteranceId) {}
-
-        @Override
-        public void onDone(String utteranceId) {
-          main.post(() -> { if (utteranceId != null && utteranceId.equals("pv-" + gen)) fireDone(); });
-        }
-
-        @Deprecated
-        @Override
-        public void onError(String utteranceId) {
-          main.post(() -> { if (utteranceId != null && utteranceId.equals("pv-" + gen)) finish("Speech playback failed. Check your phone’s text-to-speech settings."); });
-        }
-      });
-      if (Build.VERSION.SDK_INT >= 21) {
-        tts.setAudioAttributes(new AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-            .build());
-      }
-    }
-    if (pendingText != null) {
-      String text = pendingText;
-      String lang = pendingLang;
-      float rate = pendingRate;
-      pendingText = null;
-      if (ready) speakNow(text, lang, rate);
-      else finish("No text-to-speech engine available. Enable an engine in Android Settings → Text-to-speech output.");
-    }
+    offline = new OfflineSpeech(ctx);
   }
 
   void speak(String text, String lang, float rate, Completion done) {
     interrupt();
     pendingDone = done;
-    gen++;
-    if (text == null || text.trim().isEmpty()) {
-      fireDone();
-      return;
-    }
-    if (!ready) {
-      if (initialized) {
-        finish("No text-to-speech engine available. Enable an engine in Android Settings → Text-to-speech output.");
-        return;
+    final int token = ++gen;
+    if (text == null || text.trim().isEmpty()) { fireDone(); return; }
+    synthesis.execute(() -> {
+      if (token != gen) return;
+      try {
+        File wave = offline.synthesize(text, lang, clampRate(rate), token);
+        main.post(() -> {
+          if (token != gen) { wave.delete(); return; }
+          speechFile = wave;
+          startPlayer(wave.getAbsolutePath(), 1f, token);
+        });
+      } catch (Exception | LinkageError error) {
+        main.post(() -> {
+          if (token == gen) finish("Bundled speech could not play this text. Try again.");
+        });
       }
-      pendingText = text;
-      pendingLang = lang;
-      pendingRate = rate;
-      final int token = gen;
-      main.postDelayed(() -> {
-        if (token == gen && pendingText != null) {
-          pendingText = null;
-          finish("Text-to-speech did not start. Check Android speech settings.");
-        }
-      }, 10000);
-      return;
-    }
-    speakNow(text, lang, rate);
+    });
   }
 
   void playUrl(String url, float rate, Completion done) {
@@ -107,8 +62,11 @@ final class Speak {
       finish("No pronunciation recording available.");
       return;
     }
+    startPlayer(url, rate, gen);
+  }
+
+  private void startPlayer(String url, float rate, int token) {
     try {
-      final int token = gen;
       player = new MediaPlayer();
       player.setAudioAttributes(new AudioAttributes.Builder()
           .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -134,8 +92,9 @@ final class Speak {
         return true;
       });
       player.prepareAsync();
+      final MediaPlayer preparing = player;
       main.postDelayed(() -> {
-        if (token == gen && player != null && pendingDone != null) {
+        if (token == gen && player == preparing && pendingDone != null && !player.isPlaying()) {
           stopMedia();
           finish("Pronunciation recording timed out.");
         }
@@ -152,14 +111,7 @@ final class Speak {
   }
 
   private void interrupt() {
-    pendingText = null;
     stopMedia();
-    if (ready) {
-      try {
-        tts.stop();
-      } catch (Exception ignored) {
-      }
-    }
     fireDone();
   }
 
@@ -174,22 +126,7 @@ final class Speak {
     } catch (Exception ignored) {
     }
     player = null;
-  }
-
-  private void speakNow(String text, String lang, float rate) {
-    try {
-      int language = tts.setLanguage(locale(lang));
-      if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
-        finish("Install a voice for " + lang + " in Android text-to-speech settings.");
-        return;
-      }
-      tts.setSpeechRate(clampRate(rate));
-      if (tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "pv-" + gen) == TextToSpeech.ERROR) {
-        finish("Text-to-speech could not start.");
-      }
-    } catch (Exception e) {
-      finish("Text-to-speech playback failed.");
-    }
+    if (speechFile != null) { speechFile.delete(); speechFile = null; }
   }
 
   private void fireDone() {
@@ -208,11 +145,4 @@ final class Speak {
     return rate;
   }
 
-  private static Locale locale(String lang) {
-    if (lang == null || lang.isEmpty()) return Locale.US;
-    String[] p = lang.replace('_', '-').split("-");
-    if (p.length >= 2) return new Locale(p[0], p[1]);
-    if ("en".equalsIgnoreCase(p[0])) return Locale.US;
-    return new Locale(p[0]);
-  }
 }

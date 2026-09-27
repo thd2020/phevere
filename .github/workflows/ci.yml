@@ -109,7 +109,16 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm run mobile:sync
-      - name: Assemble debug APK
+      - name: Bundle and test offline speech
+        # Voice data and runtime are embedded, with pinned SHA-256 checksums.
+        # No phone-side download or separate TTS app is required.
+        working-directory: apps/mobile
+        run: |
+          python scripts/prepare-speech.py
+          python -m pip install sherpa-onnx==1.13.3 numpy==2.2.6
+          python scripts/test-speech.py
+          node ../../scripts/test-mobile-regressions.js
+      - name: Build Android APK with bundled speech
         working-directory: apps/mobile/android
         run: |
           chmod +x gradlew
