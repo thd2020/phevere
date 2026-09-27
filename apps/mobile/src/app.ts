@@ -134,6 +134,7 @@ function lookupPaneHtml(): string {
     sourceLang: prefs.sourceLang,
     targetLang: prefs.targetLang,
     langMenu,
+    recentLangs: prefs.recentLangs || [],
     wiki,
     wikiLang: wikiLanguage(),
     wikiArticle,
@@ -743,7 +744,8 @@ function onClick(e: Event): void {
   const t = (e.target as HTMLElement | null)?.closest?.('[data-act]') as HTMLElement | null;
   const act = t?.dataset.act;
   // Any tap outside the open language list closes it.
-  if (langMenu && act !== 'pick-open' && act !== 'pick') {
+  // The language sheet is modal: taps inside it (search box, list) keep it open.
+  if (langMenu && !(e.target as HTMLElement | null)?.closest?.('.lang-sheet') && act !== 'pick-open') {
     langMenu = '';
     if (!t) paint();
   }
@@ -863,13 +865,18 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       const id = t.dataset.picker as PickerId;
       langMenu = langMenu === id ? '' : id;
       paint();
-      document.querySelector('.pick-menu .is-on')?.scrollIntoView({ block: 'nearest' });
+      document.querySelector('.lang-sheet .is-on')?.scrollIntoView({ block: 'center' });
       return;
     }
+    case 'pick-close':
+      langMenu = '';
+      paint();
+      return;
     case 'pick': {
       const code = t.dataset.value || '';
       const id = t.dataset.picker as PickerId;
       langMenu = '';
+      if (code !== 'auto') prefs.recentLangs = [code, ...(prefs.recentLangs || []).filter((c) => c !== code)].slice(0, 4);
       if (id === 'to') prefs.targetLang = code;
       else prefs.sourceLang = code;
       persistPrefs();
@@ -998,7 +1005,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'voice':
-      voice = await nativeCall<VoiceStatus>('setSpeechVoice', { id: (t as HTMLInputElement).value });
+      voice = await nativeCall<VoiceStatus>('setSpeechVoice', { id: t.dataset.value || '' });
       watchVoice();
       paint();
       return;
@@ -1011,6 +1018,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       persistPrefs();
       return;
     case 'audio-speed':
+    case 'audio-volume':
       return;
     case 'strip-on':
       prefs.floatingStrip = (t as HTMLInputElement).checked;
@@ -1094,11 +1102,25 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
 function onChange(e: Event): void {
   const el = e.target as HTMLElement | null;
   if (!el) return;
+  if (el.id === 'lang-q') {
+    // Filter in place so the search box keeps focus while typing.
+    const needle = (el as HTMLInputElement).value.trim().toLowerCase();
+    document.querySelectorAll<HTMLElement>('.lang-sheet .lang-row').forEach((row) => {
+      row.hidden = !!needle && !(row.dataset.search || '').includes(needle);
+    });
+    document.querySelectorAll<HTMLElement>('.lang-sheet__section').forEach((h) => { h.hidden = !!needle; });
+    return;
+  }
   if (el.id === 'q') {
     draft = (el as HTMLInputElement).value;
   } else if (el.id === 'nbq') {
     notebookFilter = (el as HTMLInputElement).value;
     paint();
+  } else if (el.id === 'audio-volume') {
+    prefs.audioVolume = (Number((el as HTMLInputElement).value) || 0) / 100;
+    persistPrefs();
+    const label = document.getElementById('volume-value');
+    if (label) label.textContent = `${Math.round(prefs.audioVolume * 100)}%`;
   } else if (el.id === 'audio-speed' || el.dataset.act === 'audio-speed') {
     prefs.audioSpeed = Number((el as HTMLInputElement).value) || 1;
     persistPrefs();

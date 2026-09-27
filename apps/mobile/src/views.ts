@@ -1,4 +1,4 @@
-import { pickerHtml } from './picker';
+import { langBarHtml, langSheetHtml, type LangSide } from './picker';
 import {
   abbreviatePos,
   canonicalPos,
@@ -318,7 +318,7 @@ function lexiconPane(result: DictionaryResult, activePos: string): string {
   </div>`;
 }
 
-export type LangSide = 'from' | 'to';
+export type { LangSide } from './picker';
 export type PickerId = LangSide;
 
 function translationPane(
@@ -327,17 +327,8 @@ function translationPane(
   sourceLang: string,
   targetLang: string,
   langMenu: PickerId | '',
+  recentLangs: string[],
 ): string {
-  const picker = (side: LangSide, label: string, selected: string) =>
-    pickerHtml({
-      id: side,
-      label,
-      selected,
-      open: langMenu === side,
-      items: langs
-        .filter((l) => side === 'from' || l.code !== 'auto')
-        .map((l) => ({ value: l.code, title: l.nativeName, sub: l.name })),
-    });
   const rows = (result.translations || [])
     .map(
       (t) => `<div class="t-row">
@@ -348,11 +339,8 @@ function translationPane(
     )
     .join('');
   return `
-    <div class="pair">
-      ${picker('from', 'From', sourceLang)}
-      <button type="button" class="swap" data-act="swap" aria-label="Swap languages">⇄</button>
-      ${picker('to', 'To', targetLang)}
-    </div>
+    ${langBarHtml(langs, sourceLang, targetLang)}
+    ${langMenu ? langSheetHtml(langMenu, langs, langMenu === 'from' ? sourceLang : targetLang, recentLangs) : ''}
     <section class="card">
       <h2>Translation</h2>
       ${rows || '<p class="empty">No translation yet.</p>'}
@@ -498,6 +486,7 @@ export function lookupBody(opts: {
   sourceLang: string;
   targetLang: string;
   langMenu: PickerId | '';
+  recentLangs: string[];
   wiki: WikipediaResult[];
   wikiLang: string;
   wikiArticle: WikiArticle | null;
@@ -532,7 +521,7 @@ export function lookupBody(opts: {
   };
   const pane =
     opts.resultTab === 'translation'
-      ? translationPane(opts.result, opts.langs, opts.sourceLang, opts.targetLang, opts.langMenu)
+      ? translationPane(opts.result, opts.langs, opts.sourceLang, opts.targetLang, opts.langMenu, opts.recentLangs)
       : opts.resultTab === 'wikipedia'
         ? wikiPane(opts.wiki, opts.wikiLang, opts.wikiArticle, opts.wikiLoading, opts.wikiError)
         : opts.resultTab === 'etymology'

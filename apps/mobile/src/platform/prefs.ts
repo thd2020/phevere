@@ -7,6 +7,8 @@ export interface MobilePrefs {
   translationProvider: TranslationProvider;
   sourceLang: string;
   targetLang: string;
+  /** Most recent translation languages first (language sheet "Recent"). */
+  recentLangs: string[];
   wikiLang: string;
   googleKey: string;
   deeplKey: string;
@@ -19,6 +21,8 @@ export interface MobilePrefs {
   collinsHost: string;
   audioEnabled: boolean;
   audioSpeed: number;
+  /** 0–1 */
+  audioVolume: number;
   floatingStrip: boolean;
   notifyIncoming: boolean;
   notifySaved: boolean;
@@ -30,6 +34,7 @@ export const defaultPrefs = (): MobilePrefs => ({
   translationProvider: 'auto',
   sourceLang: 'auto',
   targetLang: 'zh',
+  recentLangs: [],
   wikiLang: 'en',
   googleKey: '',
   deeplKey: '',
@@ -42,6 +47,7 @@ export const defaultPrefs = (): MobilePrefs => ({
   collinsHost: '',
   audioEnabled: true,
   audioSpeed: 1,
+  audioVolume: 1,
   floatingStrip: true,
   notifyIncoming: true,
   notifySaved: true,
