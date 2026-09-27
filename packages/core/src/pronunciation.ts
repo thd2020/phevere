@@ -21,6 +21,8 @@ export function cleanIpa(raw?: string): string {
   s = s.replace(/^[/[\s]+/, '').replace(/[/\]\s]+$/, '');
   s = s.replace(/\s+/g, ' ').trim();
   if (s.length < 2) return '';
+  // Usage notes sometimes land in IPA slots ("This word is often pronounced …").
+  if (s.length > 48 || /[=☞]/.test(s) || s.split(' ').length > 4) return '';
   if (!IPA_LETTER.test(s) && !/[ˈˌ]/.test(s)) return '';
   return s;
 }
@@ -137,6 +139,8 @@ export function extractIpaFromWikitext(wikitext: string): Pronunciation[] {
   const audioByAccent = new Map<AccentTag, string>();
   let lineAccents: AccentTag[] = ['other'];
   for (const line of lines) {
+    // {{a|UK}} labels only the bullet it sits on; nested "**" lines inherit it.
+    if (!/^\s*\*\*/.test(line)) lineAccents = ['other'];
     const aLabel = line.match(/\{\{\s*a\s*\|([^}]+)\}\}/i);
     if (aLabel) lineAccents = accentsFromHint(aLabel[1]);
 
@@ -167,6 +171,8 @@ export function extractIpaFromWikitext(wikitext: string): Pronunciation[] {
           if (/^lang\s*=/i.test(arg)) continue;
           const tagged = accentsFromHint(v);
           if (!(tagged.length === 1 && tagged[0] === 'other')) accents = tagged;
+        } else if (arg.includes('=')) {
+          continue; // other named params (passage=, ref=, nocount=…) are prose, not IPA
         } else if (arg.startsWith('[')) {
           continue; // narrow phonetic; users want phonemic /…/
         } else if (arg.startsWith('/') || IPA_LETTER.test(arg)) {

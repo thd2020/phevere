@@ -85,7 +85,7 @@ function ipaChips(list?: Pronunciation[]): string {
   if (!chips.length) return '';
   return `<div class="ipa-chips">${chips
     .map(
-      (p, i) => `<span class="ipa-chip">${p.accent ? `<b>${esc(p.accent.toUpperCase())}</b>` : ''}/${esc(p.ipa)}/<button type="button" data-act="speak-ipa" data-i="${list!.indexOf(p)}" aria-label="Speak IPA">${ICO.speaker}</button></span>`,
+      (p, i) => `<span class="ipa-chip">${p.accent === 'us' || p.accent === 'uk' ? `<b>${esc(p.accent.toUpperCase())}</b>` : ''}/${esc(p.ipa)}/<button type="button" data-act="speak-ipa" data-i="${list!.indexOf(p)}" aria-label="Speak IPA">${ICO.speaker}</button></span>`,
     )
     .join('')}</div>`;
 }

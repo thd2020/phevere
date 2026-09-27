@@ -126,6 +126,16 @@ async function audioFallback() {
   // IPA chips: only mnemonics in eSpeak's English table, and one stressed vowel.
   const core = '../../../packages/core/src/';
   const phon = load(core + 'ipa-phonemes.ts', { './pronunciation': load(core + 'pronunciation.ts', {}) });
+  const pron = load(core + 'pronunciation.ts', {});
+  const wrap = pron.extractIpaFromWikitext([
+    '==English==', '===Pronunciation===',
+    '* {{IPA|en|/ɹæp/}}',
+    '* {{a|UK|dialectal}} {{IPA|en|/ɹɒp/}}',
+    "* {{IPA|en|passage=☞ This word is often pronounced ''wrop'', rhyming with ''top''.}}",
+    '* {{IPA|en|/(w)ɹæp/}}', '===Verb===',
+  ].join('
+')).map((p) => `${p.accent}:${p.ipa}`);
+  assert.deepEqual(wrap, ['other:ɹæp', 'uk:ɹɒp', 'other:(w)ɹæp'], 'no prose IPA, no accent carry-over');
   assert.equal(phon.ipaToEspeakPhonemes('/kæt/'), "k'at");
   assert.equal(phon.ipaToEspeakPhonemes('/θɑt/'), "T'A:t");
   assert.equal(phon.ipaToEspeakPhonemes('/lɒt/'), "l'0t");
@@ -141,5 +151,5 @@ async function audioFallback() {
   scrollLexiconTo(panel, target, true);
   assert.equal(panel.scrollTop, 434, 'only the definition column should scroll');
 
-  console.log('Mobile regressions passed: cold/warm share, stale lookup, no extra toolbar, independent definition scrolling, swipe expansion, audio fallback, eSpeak IPA mapping.');
+  console.log('Mobile regressions passed: cold/warm share, stale lookup, no extra toolbar, independent definition scrolling, swipe expansion, audio fallback, eSpeak IPA mapping, Wiktionary IPA parsing.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
