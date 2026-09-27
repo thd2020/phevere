@@ -1,5 +1,12 @@
 # Android build and selection-toolbar setup
 
+**2026-09-28 (later):** With **Pop up as soon as text is selected** off (default),
+selecting text anywhere in Phevere — main app, bottom sheet or floating pop-up — shows
+the selection bar; its Phevere item looks the text up. The floating pop-up draws that bar
+itself (an overlay window cannot show the system one) with the same actions. The pop-up
+now defaults to about 360 × 460 dp and opens beside the selected word when its position
+is known (selections inside Phevere, or other apps while the accessibility fallback is on).
+
 **2026-09-28:** Tap outside the floating pop-up to close it (the tap still reaches
 the app behind; typing on the keyboard does not close it). Drag the pop-up's left,
 right or bottom margin to resize it; the bottom sheet resizes from its top handle.

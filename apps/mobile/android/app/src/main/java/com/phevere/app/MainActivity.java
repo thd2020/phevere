@@ -149,7 +149,9 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
     }
     if (isStrip()) {
       Window w = getWindow();
-      PopupLayout.apply(w, this);
+      WindowManager.LayoutParams lp = w.getAttributes();
+      PopupLayout.place(lp, this, SelectionAnchor.from(getIntent()));
+      w.setAttributes(lp);
       PopupLayout.draggable(findViewById(R.id.popup_handle), this, w::getAttributes, w::setAttributes);
       PopupLayout.resizable(findViewById(android.R.id.content), this, w::getAttributes, w::setAttributes);
     }

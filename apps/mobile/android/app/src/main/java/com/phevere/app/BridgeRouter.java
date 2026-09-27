@@ -220,7 +220,8 @@ final class BridgeRouter {
             break;
           case "openPopup": {
             String text = p.optString("text").trim();
-            if (!text.isEmpty()) host.runUi(() -> ProcessTextActivity.openPopup(host.context(), text));
+            JSONObject box = p.optJSONObject("rect");
+            if (!text.isEmpty()) host.runUi(() -> ProcessTextActivity.openPopup(host.context(), text, screenRect(box)));
             resolve(id, new JSONObject().put("ok", true));
             break;
           }
@@ -278,5 +279,17 @@ final class BridgeRouter {
     }
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
     host.context().startActivity(intent);
+  }
+
+  /** Page rectangle (CSS px) → screen pixels, for placing the pop-up beside a selection. */
+  private android.graphics.Rect screenRect(JSONObject box) {
+    android.webkit.WebView web = host.web();
+    if (box == null || web == null) return null;
+    float d = web.getResources().getDisplayMetrics().density;
+    int[] loc = new int[2];
+    web.getLocationOnScreen(loc);
+    return new android.graphics.Rect(
+        loc[0] + Math.round((float) box.optDouble("left") * d), loc[1] + Math.round((float) box.optDouble("top") * d),
+        loc[0] + Math.round((float) box.optDouble("right") * d), loc[1] + Math.round((float) box.optDouble("bottom") * d));
   }
 }

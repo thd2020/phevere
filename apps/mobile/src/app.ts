@@ -627,6 +627,9 @@ let selectionTimer: number | null = null;
  * up in place.
  */
 function onSelectionSettled(): void {
+  // Switch off (default): the system selection bar and its Phevere item handle it —
+  // in the app, the half-screen sheet and the floating pop-up alike.
+  if (!capture.autoPopup) return;
   const sel = window.getSelection();
   const raw = (sel?.toString() || '').trim();
   if (!raw || raw.length > 200) return;
@@ -635,9 +638,11 @@ function onSelectionSettled(): void {
   if (el?.closest('input, textarea, [contenteditable="true"]')) return;
   const q = extractLookupQuery(raw);
   if (!q || q === query) return;
-  if (!stripMode && !scan && hasNativeBridge() && capture.platform === 'android') {
-    // Same rule as other apps: switch off → the selection menu's Phevere item opens it.
-    if (capture.autoPopup) void nativeCall('openPopup', { text: q }).catch(() => lookup(q));
+  if (!stripMode && hasNativeBridge() && capture.platform === 'android') {
+    // Open the pop-up next to the selected words (CSS px; native converts to screen px).
+    const box = sel && sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null;
+    const rect = box ? { left: box.left, top: box.top, right: box.right, bottom: box.bottom } : null;
+    void nativeCall('openPopup', { text: q, rect }).catch(() => lookup(q));
     return;
   }
   void lookup(q);
@@ -1139,6 +1144,11 @@ function onSubmit(e: Event): void {
 
 export async function startApp(): Promise<void> {
   installNativeCallbacks();
+  // The floating pop-up's own selection bar sends its Phevere item here.
+  (window as unknown as { __pvLookupText?: (text: string) => void }).__pvLookupText = (text) => {
+    const q = extractLookupQuery(text);
+    if (q) void lookup(q);
+  };
   startIncomingText((text, origin) => {
     stripExpanding = false;
     if (origin === 'process-text' || origin === 'share') postOsNotify('incoming', 'Incoming lookup', text);

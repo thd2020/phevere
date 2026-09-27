@@ -37,8 +37,13 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
   private boolean pageReady;
 
   public static void show(Context ctx, String text) {
+    show(ctx, text, null);
+  }
+
+  public static void show(Context ctx, String text, android.graphics.Rect anchor) {
     Intent i = new Intent(ctx, OverlayService.class);
     i.putExtra(CapturePrefs.EXTRA_QUERY, text);
+    SelectionAnchor.put(i, anchor);
     try {
       if (Build.VERSION.SDK_INT >= 26) ContextCompat.startForegroundService(ctx, i);
       else ctx.startService(i);
@@ -67,12 +72,21 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
       pendingText = text;
       pendingOrigin = "process-text";
     }
-    if (root == null) attach();
-    else if (pageReady && pendingText != null) injectIncoming();
+    android.graphics.Rect anchor = repeat ? null : SelectionAnchor.from(intent);
+    if (root == null) attach(anchor);
+    else {
+      if (anchor != null) {
+        // Like desktop: each new selection brings the pop-up next to that word.
+        WindowManager.LayoutParams lp = (WindowManager.LayoutParams) root.getLayoutParams();
+        PopupLayout.place(lp, this, anchor);
+        wm.updateViewLayout(root, lp);
+      }
+      if (pageReady && pendingText != null) injectIncoming();
+    }
     return START_NOT_STICKY;
   }
 
-  private void attach() {
+  private void attach(android.graphics.Rect anchor) {
     wm = (WindowManager) getSystemService(WINDOW_SERVICE);
     root = LayoutInflater.from(this).inflate(R.layout.overlay_strip, null);
     web = root.findViewById(R.id.webview);
@@ -87,7 +101,7 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
             | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
         PixelFormat.TRANSLUCENT
     );
-    PopupLayout.size(lp, this);
+    PopupLayout.place(lp, this, anchor);
     lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE;
     WebViews.bind(web, WebViews.assets(this), this, true, () -> {
       // Incoming text stays pending until JS explicitly calls getPendingText.

@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Android (2026-09-28, later):** in-app selections use the selection bar unless “Pop up as soon as text is selected” is on (the floating pop-up draws an equivalent bar). The pop-up is smaller (≈360 × 460 dp) and opens beside the selected word when its position is known. One “Phevere” top bar on every tab; the pop-up header is a slim row without a search box; icon result tabs; Google Translate-style language bar and sheet; Material voice list with download progress; Playback volume. Back/forward and “plural of X” links follow the desktop pop-up. Wiktionary usage notes no longer appear as IPA.
 - **Android (2026-09-28):** floating pop-up closes on a tap outside and resizes by dragging its margins (size remembered). IPA chips are compact and share a full-width row. Settings tabs wrap onto more lines. Pronunciation voice is a radio list with download progress, matching the Translation engine list. In-app selections open the pop-up only when “Pop up as soon as text is selected” is on.
 - **Android (2026-09-27):** Settings → Capture → **Pop up as soon as text is selected** (off by default) opens the pop-up on selection via an accessibility service, without root. Chrome page text still needs the selection menu.
 - **Android (2026-09-27):** Settings → Audio → Pronunciation voice adds a compact neural voice (Kokoro int8, 132 MB) beside the full 350 MB one.

@@ -2,48 +2,67 @@ package com.phevere.app;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Rect;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
-import android.view.Window;
 import android.view.WindowManager;
 import android.view.MotionEvent;
 import android.view.View;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/** Keep the permission-free activity and overlay popup the same size; the user can resize both. */
+/**
+ * Size and place the pop-up (overlay window or permission-free activity). Floating pop-ups
+ * are anchored top-left in screen pixels, sit beside the selected word when its position is
+ * known, and can be moved and resized; the bottom sheet only resizes its height.
+ */
 final class PopupLayout {
   private static final int LEFT = 1, RIGHT = 2, BOTTOM = 4, TOP = 8;
   private static final int MIN_W_DP = 260, MIN_H_DP = 220;
+  /** Desktop-like default: a compact card, not half the screen. */
+  private static final int DEFAULT_W_DP = 360, DEFAULT_H_DP = 460;
+  private static final int GAP_DP = 8, MARGIN_DP = 8;
 
   private static SharedPreferences prefs(Context context) {
-    return context.getSharedPreferences("popup_size", Context.MODE_PRIVATE);
+    return context.getSharedPreferences("popup_size_v2", Context.MODE_PRIVATE);
   }
 
   static void size(WindowManager.LayoutParams lp, Context context) {
-    DisplayMetrics dm = context.getResources().getDisplayMetrics();
-    boolean floating = CapturePrefs.floatingStrip(context);
-    SharedPreferences saved = prefs(context);
-    int maxW = dm.widthPixels - Math.round(24 * dm.density);
-    int width = Math.min(maxW, Math.round(560 * dm.density));
-    int height = Math.round(dm.heightPixels * (floating ? 0.60f : 0.50f));
-    if (floating) {
-      width = clamp(Math.round(saved.getFloat("w_dp", width / dm.density) * dm.density), MIN_W_DP * dm.density, maxW);
-      height = clamp(Math.round(saved.getFloat("h_dp", height / dm.density) * dm.density), MIN_H_DP * dm.density, dm.heightPixels * 0.9f);
-    } else {
-      height = clamp(Math.round(saved.getFloat("sheet_h_dp", height / dm.density) * dm.density), MIN_H_DP * dm.density, dm.heightPixels * 0.9f);
-    }
-    lp.width = floating ? width : WindowManager.LayoutParams.MATCH_PARENT;
-    lp.height = height;
-    lp.gravity = floating ? Gravity.CENTER : Gravity.BOTTOM;
-    lp.x = 0;
-    lp.y = 0;
+    place(lp, context, null);
   }
 
-  static void apply(Window window, Context context) {
-    WindowManager.LayoutParams lp = window.getAttributes();
-    size(lp, context);
-    window.setAttributes(lp);
+  /** anchor: the selection in screen pixels, or null when unknown (then centred). */
+  static void place(WindowManager.LayoutParams lp, Context context, Rect anchor) {
+    DisplayMetrics dm = context.getResources().getDisplayMetrics();
+    float d = dm.density;
+    boolean floating = CapturePrefs.floatingStrip(context);
+    SharedPreferences saved = prefs(context);
+    if (!floating) {
+      lp.width = WindowManager.LayoutParams.MATCH_PARENT;
+      lp.height = clamp(Math.round(saved.getFloat("sheet_h_dp", dm.heightPixels * 0.5f / d) * d),
+          MIN_H_DP * d, dm.heightPixels * 0.9f);
+      lp.gravity = Gravity.BOTTOM;
+      lp.x = 0;
+      lp.y = 0;
+      return;
+    }
+    int margin = Math.round(MARGIN_DP * d);
+    lp.width = clamp(Math.round(saved.getFloat("w_dp", DEFAULT_W_DP) * d), MIN_W_DP * d, dm.widthPixels - 2 * margin);
+    lp.height = clamp(Math.round(saved.getFloat("h_dp", DEFAULT_H_DP) * d), MIN_H_DP * d,
+        Math.min(dm.heightPixels * 0.8f, dm.heightPixels - 2 * margin));
+    lp.gravity = Gravity.TOP | Gravity.START;
+    int gap = Math.round(GAP_DP * d);
+    int x = (dm.widthPixels - lp.width) / 2;
+    int y = (dm.heightPixels - lp.height) / 2;
+    if (anchor != null && !anchor.isEmpty()) {
+      x = anchor.centerX() - lp.width / 2;
+      // Below the word when it fits, else above it; otherwise the side with more room.
+      if (anchor.bottom + gap + lp.height <= dm.heightPixels - margin) y = anchor.bottom + gap;
+      else if (anchor.top - gap - lp.height >= margin) y = anchor.top - gap - lp.height;
+      else y = anchor.top > dm.heightPixels - anchor.bottom ? margin : dm.heightPixels - margin - lp.height;
+    }
+    lp.x = clamp(x, margin, dm.widthPixels - margin - lp.width);
+    lp.y = clamp(y, margin, dm.heightPixels - margin - lp.height);
   }
 
   /** Top handle: moves the floating popup; resizes the bottom sheet's height. */
@@ -60,10 +79,8 @@ final class PopupLayout {
       }
       if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
         DisplayMetrics dm = context.getResources().getDisplayMetrics();
-        int maxX = Math.max(0, (dm.widthPixels - lp.width) / 2);
-        int maxY = Math.max(0, (dm.heightPixels - lp.height) / 2 - Math.round(32 * dm.density));
-        lp.x = Math.max(-maxX, Math.min(maxX, Math.round(start[2] + event.getRawX() - start[0])));
-        lp.y = Math.max(-maxY, Math.min(maxY, Math.round(start[3] + event.getRawY() - start[1])));
+        lp.x = clamp(Math.round(start[2] + event.getRawX() - start[0]), 0, dm.widthPixels - lp.width);
+        lp.y = clamp(Math.round(start[3] + event.getRawY() - start[1]), 0, dm.heightPixels - lp.height);
         update.accept(lp);
         return true;
       }
@@ -83,7 +100,7 @@ final class PopupLayout {
       if (edge == null) continue;
       edge.setVisibility(floating ? View.VISIBLE : View.GONE);
       final int which = edges[i];
-      final float[] start = new float[4];
+      final float[] start = new float[5];
       edge.setOnTouchListener((view, event) -> resize(event, which, context, params, update, start));
     }
   }
@@ -92,24 +109,26 @@ final class PopupLayout {
       Supplier<WindowManager.LayoutParams> params, Consumer<WindowManager.LayoutParams> update, float[] start) {
     WindowManager.LayoutParams lp = params.get();
     DisplayMetrics dm = context.getResources().getDisplayMetrics();
+    float d = dm.density;
     switch (event.getActionMasked()) {
       case MotionEvent.ACTION_DOWN:
         start[0] = event.getRawX(); start[1] = event.getRawY();
-        start[2] = lp.width; start[3] = lp.height;
+        start[2] = lp.width; start[3] = lp.height; start[4] = lp.x;
         return true;
       case MotionEvent.ACTION_MOVE: {
         float dx = event.getRawX() - start[0], dy = event.getRawY() - start[1];
-        int oldW = lp.width, oldH = lp.height;
-        if ((edge & (LEFT | RIGHT)) != 0) {
-          float w = start[2] + ((edge & RIGHT) != 0 ? dx : -dx);
-          lp.width = clamp(Math.round(w), MIN_W_DP * dm.density, dm.widthPixels - 8 * dm.density);
-          // Gravity is centred: shift by half the change so the opposite edge stays put.
-          lp.x += ((edge & RIGHT) != 0 ? 1 : -1) * (lp.width - oldW) / 2;
-        }
-        if ((edge & (BOTTOM | TOP)) != 0) {
-          float h = start[3] + ((edge & BOTTOM) != 0 ? dy : -dy);
-          lp.height = clamp(Math.round(h), MIN_H_DP * dm.density, dm.heightPixels * 0.9f);
-          if ((edge & BOTTOM) != 0) lp.y += (lp.height - oldH) / 2;
+        if (edge == RIGHT) {
+          lp.width = clamp(Math.round(start[2] + dx), MIN_W_DP * d, dm.widthPixels - lp.x);
+        } else if (edge == LEFT) {
+          // Keep the right edge fixed: grow leftwards by moving x.
+          int right = Math.round(start[4] + start[2]);
+          lp.width = clamp(Math.round(start[2] - dx), MIN_W_DP * d, right);
+          lp.x = right - lp.width;
+        } else if (edge == BOTTOM) {
+          lp.height = clamp(Math.round(start[3] + dy), MIN_H_DP * d, dm.heightPixels - lp.y);
+        } else {
+          // Bottom sheet: drag the top handle up to grow.
+          lp.height = clamp(Math.round(start[3] - dy), MIN_H_DP * d, dm.heightPixels * 0.9f);
         }
         update.accept(lp);
         return true;
@@ -117,11 +136,8 @@ final class PopupLayout {
       case MotionEvent.ACTION_UP:
       case MotionEvent.ACTION_CANCEL: {
         SharedPreferences.Editor edit = prefs(context).edit();
-        if (CapturePrefs.floatingStrip(context)) {
-          edit.putFloat("w_dp", lp.width / dm.density).putFloat("h_dp", lp.height / dm.density);
-        } else {
-          edit.putFloat("sheet_h_dp", lp.height / dm.density);
-        }
+        if (edge == TOP) edit.putFloat("sheet_h_dp", lp.height / d);
+        else edit.putFloat("w_dp", lp.width / d).putFloat("h_dp", lp.height / d);
         edit.apply();
         return true;
       }
