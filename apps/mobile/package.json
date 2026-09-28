@@ -11,6 +11,7 @@
     "sync": "node scripts/sync-native.mjs"
   },
   "dependencies": {
+    "@fontsource/charis-sil": "^5.3.0",
     "@phevere/core": "*",
     "sql.js": "^1.14.1"
   },
