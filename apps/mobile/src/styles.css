@@ -1593,3 +1593,97 @@ html[data-notify="ios"] .toast {
 }
 .mock-bar__ours.is-dragging { transform: scale(1.08); box-shadow: 0 4px 12px rgb(28 25 23 / 0.22); cursor: grabbing; }
 
+/*
+ * iOS: Liquid Glass (iOS 26). Content and layout are the same as Android. Only the chrome
+ * changes: the tab bar floats as a glass capsule, controls become glass pills, and the header
+ * blurs what scrolls under it. Solid fills return with Reduce Transparency.
+ */
+:root[data-platform="ios"] {
+  --glass-fill: rgb(255 253 249 / 0.58);
+  --glass-fill-strong: rgb(255 253 249 / 0.78);
+  --glass-rim: rgb(255 255 255 / 0.85);
+  --glass-edge: rgb(28 25 23 / 0.09);
+  --glass-shadow: 0 10px 30px rgb(28 25 23 / 0.13), 0 1px 3px rgb(28 25 23 / 0.08);
+  --glass-blur: blur(24px) saturate(185%);
+  --glass-spring: cubic-bezier(0.32, 0.72, 0, 1);
+}
+[data-platform="ios"] .nav {
+  left: calc(20px + var(--pv-inset-left));
+  right: calc(20px + var(--pv-inset-right));
+  bottom: max(10px, calc(var(--pv-inset-bottom) - 10px));
+  height: 62px;
+  padding: 4px;
+  gap: 2px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 31px;
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 1px rgb(255 255 255 / 0.3), var(--glass-shadow);
+}
+[data-platform="ios"] .nav button {
+  justify-content: center;
+  gap: 1px;
+  border-radius: 27px;
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+  transition: background-color 0.35s var(--glass-spring), color 0.35s var(--glass-spring);
+}
+[data-platform="ios"] .nav .ico { width: auto; height: 28px; background: none; }
+[data-platform="ios"] .nav button[aria-current="page"] {
+  color: var(--md-sys-color-primary);
+  background: rgb(255 255 255 / 0.72);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.95), 0 1px 4px rgb(28 25 23 / 0.1);
+}
+[data-platform="ios"] .nav button[aria-current="page"] .ico { background: none; color: inherit; }
+
+/* Header: the page scrolls under a soft blur that fades out, instead of a hard edge. */
+[data-platform="ios"] .top { background: transparent; }
+[data-platform="ios"] .top::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 -18px;
+  z-index: -1;
+  background: linear-gradient(var(--md-sys-color-surface) 45%, rgb(244 240 234 / 0));
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  -webkit-mask-image: linear-gradient(#000 72%, transparent);
+  mask-image: linear-gradient(#000 72%, transparent);
+  pointer-events: none;
+}
+[data-platform="ios"] .search,
+[data-platform="ios"] .hist .icon-btn,
+[data-platform="ios"] .chip,
+[data-platform="ios"] .result-tabs {
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 var(--glass-rim), 0 2px 10px rgb(28 25 23 / 0.07);
+}
+[data-platform="ios"] .search { border-radius: 999px; }
+[data-platform="ios"] .search .go { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 2px 8px rgb(156 61 0 / 0.28); }
+[data-platform="ios"] .hist .icon-btn:disabled { opacity: 0.45; }
+[data-platform="ios"] .chip { border-radius: 999px; }
+[data-platform="ios"] .chip[aria-selected="true"] {
+  border-color: transparent;
+  background: var(--md-sys-color-on-surface);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18), 0 2px 10px rgb(28 25 23 / 0.18);
+}
+[data-platform="ios"] .result-tabs { border-radius: 999px; }
+[data-platform="ios"] .result-tab { border-radius: 999px; }
+[data-platform="ios"] .result-tab[aria-selected="true"] {
+  background: rgb(255 255 255 / 0.85);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 4px rgb(28 25 23 / 0.12);
+}
+[data-platform="ios"] .segmented {
+  border-color: var(--glass-edge);
+  background: var(--glass-fill);
+  box-shadow: inset 0 1px 0 var(--glass-rim);
+}
+[data-platform="ios"] .segmented__item + .segmented__item { border-left-color: var(--glass-edge); }
+
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-platform="ios"] { --glass-fill: var(--md-sys-color-surface-container-lowest); --glass-blur: none; }
+  [data-platform="ios"] .top::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
