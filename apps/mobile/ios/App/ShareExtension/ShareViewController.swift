@@ -43,13 +43,27 @@ class ShareViewController: UIViewController {
     finish()
   }
 
-  @objc private func openURL(_ url: URL) {
+  /**
+   * Extensions cannot call UIApplication.open directly, so find the application in the
+   * responder chain. iOS 18 ignores the old one-argument openURL:, so call
+   * openURL:options:completionHandler: first and keep the old selector for iOS 14 to 17.
+   */
+  private func openURL(_ url: URL) {
+    typealias OpenWithOptions = @convention(c) (AnyObject, Selector, URL, NSDictionary, Any?) -> Void
+    let modern = NSSelectorFromString("openURL:options:completionHandler:")
+    let legacy = NSSelectorFromString("openURL:")
     var responder: UIResponder? = self
-    let selector = NSSelectorFromString("openURL:")
     while let current = responder {
-      if current.responds(to: selector) {
-        current.perform(selector, with: url)
-        return
+      if current is UIApplication {
+        if current.responds(to: modern) {
+          let call = unsafeBitCast(current.method(for: modern), to: OpenWithOptions.self)
+          call(current, modern, url, NSDictionary(), nil)
+          return
+        }
+        if current.responds(to: legacy) {
+          current.perform(legacy, with: url)
+          return
+        }
       }
       responder = current.next
     }
