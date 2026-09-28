@@ -43,43 +43,62 @@ export function mockBarHtml(slot: number): string {
   chips.splice(at, 0, `<span class="mock-bar__item mock-bar__ours" data-drag="bar-slot" role="slider" tabindex="0"
     aria-label="Phevere position on the selection bar" aria-valuemin="0" aria-valuemax="${MOCK_BAR.length}" aria-valuenow="${at}">Phevere</span>`);
   return `<div class="mock-bar-wrap">
+    <button type="button" class="icon-btn" data-act="bar-slot-step" data-step="-1" aria-label="Move Phevere left" ${at === 0 ? 'disabled' : ''}>${ICON.left}</button>
     <div class="mock-bar" data-mock-bar>${chips.join('')}</div>
-    <div class="mock-bar__controls">
-      <button type="button" class="icon-btn" data-act="bar-slot-step" data-step="-1" aria-label="Move Phevere left" ${at === 0 ? 'disabled' : ''}>‹</button>
-      <span class="hint">Drag Phevere to its place</span>
-      <button type="button" class="icon-btn" data-act="bar-slot-step" data-step="1" aria-label="Move Phevere right" ${at === MOCK_BAR.length ? 'disabled' : ''}>›</button>
-    </div>
+    <button type="button" class="icon-btn" data-act="bar-slot-step" data-step="1" aria-label="Move Phevere right" ${at === MOCK_BAR.length ? 'disabled' : ''}>${ICON.right}</button>
   </div>`;
+}
+
+const ICON = {
+  left: '<svg viewBox="0 0 24 24"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4-4.6-4.6z"/></svg>',
+  right: '<svg viewBox="0 0 24 24"><path d="M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z"/></svg>',
+  check: '<svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>',
+  camera: '<svg viewBox="0 0 24 24"><path d="M12 17.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9m0-2a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5M9 3 7.2 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3z"/></svg>',
+  select: '<svg viewBox="0 0 24 24"><path d="M3 5h2V3a2 2 0 0 0-2 2m0 8h2v-2H3zm4 8h2v-2H7zM3 9h2V7H3zm10-6h-2v2h2zm6 0v2h2a2 2 0 0 0-2-2M5 21v-2H3a2 2 0 0 0 2 2m-2-4h2v-2H3zM9 3H7v2h2zm2 18h2v-2h-2zm8-8h2v-2h-2zm0 8a2 2 0 0 0 2-2h-2zm0-12h2V7h-2zm0 8h2v-2h-2zm-4 4h2v-2h-2zm0-16h2V3h-2zM7 17h10V7H7zm2-8h6v6H9z"/></svg>',
+  a11y: '<svg viewBox="0 0 24 24"><path d="M12 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4m9 7h-6v13h-2v-6h-2v6H9V9H3V7h18z"/></svg>',
+  chevron: '<svg viewBox="0 0 24 24"><path d="M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z"/></svg>',
+};
+
+/** Material list row that opens something: leading icon, label, optional value, chevron. */
+function navRow(act: string, icon: string, label: string, value = ''): string {
+  return `<button type="button" class="nav-row" data-act="${act}">
+    <span class="nav-row__icon" aria-hidden="true">${icon}</span>
+    <span class="nav-row__label">${esc(label)}</span>
+    ${value ? `<span class="nav-row__value">${esc(value)}</span>` : ''}
+    <span class="nav-row__chevron" aria-hidden="true">${ICON.chevron}</span>
+  </button>`;
 }
 
 function selectionBarSection(capture: CaptureInfo): string {
   const instant = `<label class="toggle">
-      <span class="src-name">Pop up as soon as text is selected<span class="hint">Off: select text, then tap Phevere on the selection bar</span></span>
-      <input type="checkbox" data-act="auto-popup" ${capture.autoPopup ? 'checked' : ''} />
+      <span class="src-name">Pop up on selection</span>
+      <input type="checkbox" role="switch" data-act="auto-popup" ${capture.autoPopup ? 'checked' : ''} />
     </label>`;
   if (capture.moduleActive) {
     const slot = typeof capture.barSlot === 'number' ? capture.barSlot : -1;
     const custom = slot >= 0;
-    return `<h3 class="settings-subhead">Selection bar · LSPosed</h3>
-    <p class="hint">Module active${capture.moduleFramework ? ` (${esc(capture.moduleFramework)})` : ''}. It works in the apps you select in LSPosed; accessibility is not needed.</p>
+    const status = `<span class="status-pill">${ICON.check}${esc(capture.moduleFramework || 'LSPosed')}</span>`;
+    const place = capture.autoPopup ? '' : `
+    <div class="setting-row">
+      <span class="src-name" id="bar-place-label">Position on bar</span>
+      <div class="segmented" role="radiogroup" aria-labelledby="bar-place-label">
+        <label class="segmented__item"><input type="radio" name="bar-place" data-act="bar-place" value="default" ${custom ? '' : 'checked'} />${ICON.check}System</label>
+        <label class="segmented__item"><input type="radio" name="bar-place" data-act="bar-place" value="custom" ${custom ? 'checked' : ''} />${ICON.check}Custom</label>
+      </div>
+    </div>
+    ${custom ? mockBarHtml(slot) : ''}`;
+    return `<h3 class="settings-subhead settings-subhead--status">Selection bar ${status}</h3>
     ${instant}
-    ${capture.autoPopup ? '' : `
-    <h3 class="settings-subhead">Phevere's place on the bar</h3>
-    <label class="radio"><span><span class="src-name">System default</span><span class="src-meta">Where Android puts it</span></span>
-      <input type="radio" name="bar-place" data-act="bar-place" value="default" ${custom ? '' : 'checked'} /></label>
-    <label class="radio"><span><span class="src-name">Custom</span><span class="src-meta">Drag it to the slot you want</span></span>
-      <input type="radio" name="bar-place" data-act="bar-place" value="custom" ${custom ? 'checked' : ''} /></label>
-    ${custom ? mockBarHtml(slot) : ''}`}
-    <button type="button" class="outlined" data-act="selection-setup">LSPosed setup</button>`;
+    ${place}
+    ${navRow('selection-setup', ICON.select, 'LSPosed setup')}`;
   }
+  const a11y = capture.autoPopup && !capture.accessibilityOn
+    ? navRow('a11y-settings', ICON.a11y, 'Accessibility service', 'Off')
+    : '';
   return `<h3 class="settings-subhead">Selection bar</h3>
     ${instant}
-    ${capture.autoPopup && !capture.accessibilityOn ? `<div class="toolbar-row">
-      <p class="hint">Without root, turn on Phevere under Accessibility once. It presses Phevere on the selection bar for you, so the bar still flashes briefly.</p>
-      <button type="button" class="outlined" data-act="a11y-settings">Open Accessibility settings</button>
-    </div>` : ''}
-    <p class="hint">Rooted with LSPosed? Enable the Phevere module instead: no bar flash, and you can choose Phevere's place on the bar.</p>
-    <button type="button" class="outlined" data-act="selection-setup">LSPosed setup</button>`;
+    ${a11y}
+    ${navRow('selection-setup', ICON.select, 'LSPosed module', 'Inactive')}`;
 }
 
 export type SettingsSection = 'capture' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio';
@@ -106,10 +125,9 @@ export function settingsSections(capture: CaptureInfo): Array<{ id: SettingsSect
 
 const TRANSLATION_ONLY = new Set(['DeepL API', 'Google Translate API']);
 
-function panelIntro(title: string): string {
-  return `<div class="settings-panel__intro">
-    <h2 class="settings-panel__title">${esc(title)}</h2>
-  </div>`;
+/** The selected tab already names the panel, so panels open straight on their rows. */
+function panelIntro(_title: string): string {
+  return '';
 }
 
 function packArticle(p: CatalogStatus, action: 'download' | 'remove'): string {
@@ -127,21 +145,19 @@ function packArticle(p: CatalogStatus, action: 'download' | 'remove'): string {
 
 function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
   const overlayBtn =
-    capture.platform === 'android' && !capture.canDrawOverlays
+    capture.platform === 'android' && prefs.floatingStrip && !capture.canDrawOverlays
       ? `<div class="toolbar-row"><button type="button" class="outlined" data-act="overlay-perm">Allow draw over other apps</button></div>`
       : '';
   return `
     ${panelIntro('Capture')}
     ${capture.platform === 'android' ? `<label class="toggle">
-      <span class="src-name">Floating lookup popup</span>
-      <input type="checkbox" data-act="strip-on" ${prefs.floatingStrip ? 'checked' : ''} />
+      <span class="src-name">Floating pop-up</span>
+      <input type="checkbox" role="switch" data-act="strip-on" ${prefs.floatingStrip ? 'checked' : ''} />
     </label>
-    ${selectionBarSection(capture)}` : ''}
-    <button type="button" class="settings-dropzone" data-act="ocr">
-      <strong>Camera or photo</strong>
-      <span>Text stays on the picture</span>
-    </button>
-    ${overlayBtn}`;
+    ${overlayBtn}
+    ${selectionBarSection(capture)}
+    <h3 class="settings-subhead">Scan</h3>` : ''}
+    ${navRow('ocr', ICON.camera, 'Camera or photo')}`;
 }
 
 function notificationsPanel(prefs: MobilePrefs, capture: CaptureInfo): string {
@@ -153,15 +169,15 @@ function notificationsPanel(prefs: MobilePrefs, capture: CaptureInfo): string {
     ${allow}
     <label class="toggle">
       <span class="src-name">Incoming lookup</span>
-      <input type="checkbox" data-act="notify" data-key="incoming" ${prefs.notifyIncoming ? 'checked' : ''} />
+      <input type="checkbox" role="switch" data-act="notify" data-key="incoming" ${prefs.notifyIncoming ? 'checked' : ''} />
     </label>
     <label class="toggle">
       <span class="src-name">Saved to notebook</span>
-      <input type="checkbox" data-act="notify" data-key="saved" ${prefs.notifySaved ? 'checked' : ''} />
+      <input type="checkbox" role="switch" data-act="notify" data-key="saved" ${prefs.notifySaved ? 'checked' : ''} />
     </label>
     <label class="toggle">
       <span class="src-name">Scan finished</span>
-      <input type="checkbox" data-act="notify" data-key="ocr" ${prefs.notifyOcr ? 'checked' : ''} />
+      <input type="checkbox" role="switch" data-act="notify" data-key="ocr" ${prefs.notifyOcr ? 'checked' : ''} />
     </label>
     <div class="toolbar-row"><button type="button" class="outlined" data-act="notify-settings">Notification settings</button></div>`;
 }
@@ -171,10 +187,10 @@ function sourcesPanel(prefs: MobilePrefs, sources: DictionarySource[]): string {
   const src =
     dictSources
       .map((s) => {
-        const avail = s.isAvailable ? '' : ' · Needs a key or pack';
+        const avail = s.isAvailable ? '' : '<span class="src-meta">Needs a key or pack</span>';
         return `<label class="toggle">
-        <span><span class="src-name">${esc(s.name)}</span><span class="src-meta">Priority: ${s.priority}${avail}</span></span>
-        <input type="checkbox" data-act="src" data-name="${esc(s.name)}" ${s.enabled ? 'checked' : ''} />
+        <span><span class="src-name">${esc(s.name)}</span>${avail}</span>
+        <input type="checkbox" role="switch" data-act="src" data-name="${esc(s.name)}" ${s.enabled ? 'checked' : ''} />
       </label>`;
       })
       .join('') || '<p class="hint">No dictionary sources loaded.</p>';
@@ -250,11 +266,7 @@ const VOICE_ICON = {
   check: '<svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>',
   cancel: '<svg viewBox="0 0 24 24"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>',
 };
-const VOICE_BLURB: Record<string, string> = {
-  mechanical: 'Built in · robotic, reads IPA exactly',
-  compact: 'Natural voice · smaller download',
-  full: 'Most natural voice',
-};
+
 
 /**
  * Material list pattern for downloadable options (as in Google's offline languages):
@@ -267,9 +279,7 @@ function voiceList(voice: VoiceStatus | null): string {
     .map((v) => {
       const on = voice.selected === v.id;
       const busy = voice.downloading === v.id;
-      const meta = v.id === 'mechanical'
-        ? VOICE_BLURB.mechanical
-        : `${VOICE_BLURB[v.id] || ''} · ${v.mb} MB${v.ready ? ' · downloaded' : ''}`;
+      const meta = v.id === 'mechanical' ? 'Built in' : v.ready ? 'Downloaded' : `${v.mb} MB`;
       const trailing = busy
         ? `<button type="button" class="icon-btn voice-row__action" data-act="voice-cancel" aria-label="Cancel download">${VOICE_ICON.cancel}</button>`
         : on
@@ -306,8 +316,8 @@ function audioPanel(prefs: MobilePrefs, capture: CaptureInfo, voice: VoiceStatus
   return `
     ${panelIntro('Audio')}
     <label class="toggle">
-      <span class="src-name">Enable pronunciation</span>
-      <input type="checkbox" data-act="audio-on" ${prefs.audioEnabled ? 'checked' : ''} />
+      <span class="src-name">Pronunciation</span>
+      <input type="checkbox" role="switch" data-act="audio-on" ${prefs.audioEnabled ? 'checked' : ''} />
     </label>
     <div class="settings-field">
       <label for="audio-speed">Playback speed</label>

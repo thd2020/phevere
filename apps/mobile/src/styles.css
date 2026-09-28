@@ -1052,24 +1052,6 @@ select, .field {
   font-size: 0.92rem;
 }
 .toggle.is-disabled { opacity: 0.58; }
-.settings-dropzone {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  width: 100%;
-  margin: 12px 0;
-  padding: 18px 16px;
-  border: 1px dashed var(--md-sys-color-outline);
-  border-radius: var(--md-sys-shape-md);
-  background: var(--md-sys-color-surface-container-lowest);
-  text-align: left;
-}
-.settings-dropzone strong { font-size: 1rem; }
-.settings-dropzone span {
-  font-size: 0.85rem;
-  color: var(--md-sys-color-on-surface-variant);
-}
 .setting-select {
   width: 100%;
   border: 1px solid var(--md-sys-color-outline-variant);
@@ -1109,6 +1091,119 @@ select, .field {
 .toggle .src-meta,
 .radio .src-meta { display: block; font-size: 0.8rem; color: var(--md-sys-color-on-surface-variant); }
 .toggle input { flex-shrink: 0; width: 20px; height: 20px; accent-color: var(--md-sys-color-primary); }
+/* Material 3 switch: 52 x 32 track; the handle grows from 16 to 24 px when on. */
+.toggle input[role="switch"] {
+  appearance: none;
+  position: relative;
+  width: 52px;
+  height: 32px;
+  margin: 0;
+  border: 2px solid var(--md-sys-color-outline);
+  border-radius: 999px;
+  background: var(--md-sys-color-surface-container-high);
+  transition: background-color 0.2s var(--md-sys-motion), border-color 0.2s var(--md-sys-motion);
+}
+.toggle input[role="switch"]::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--md-sys-color-outline);
+  transform: translateY(-50%);
+  transition: left 0.2s var(--md-sys-motion), width 0.2s var(--md-sys-motion), height 0.2s var(--md-sys-motion), background-color 0.2s var(--md-sys-motion);
+}
+.toggle input[role="switch"]:checked {
+  border-color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-primary);
+}
+.toggle input[role="switch"]:checked::after {
+  left: 22px;
+  width: 24px;
+  height: 24px;
+  background: var(--md-sys-color-on-primary);
+}
+.toggle input[role="switch"]:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
+
+/* A label with a control on the right, e.g. the segmented position picker. */
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 0;
+}
+.setting-row .src-name { font-weight: 600; }
+
+/* Material 3 segmented button: outlined, the selected segment tinted with a check. */
+.segmented {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.segmented__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 14px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+  cursor: pointer;
+  transition: background-color 0.18s var(--md-sys-motion);
+}
+.segmented__item + .segmented__item { border-left: 1px solid var(--md-sys-color-outline); }
+.segmented__item input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented__item svg { width: 0; height: 18px; fill: currentColor; transition: width 0.18s var(--md-sys-motion); }
+.segmented__item:has(input:checked) {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+.segmented__item:has(input:checked) svg { width: 18px; }
+.segmented__item:has(input:focus-visible) { outline: 2px solid var(--md-sys-color-primary); outline-offset: -2px; }
+
+/* List row that opens a screen or dialog. */
+.nav-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  font: inherit;
+  text-align: left;
+}
+.nav-row:active { background: var(--md-sys-color-surface-container-low); }
+.nav-row__icon svg,
+.nav-row__chevron svg { display: block; width: 24px; height: 24px; fill: var(--md-sys-color-on-surface-variant); }
+.nav-row__label { flex: 1; font-weight: 600; }
+.nav-row__value { font-size: 0.86rem; color: var(--md-sys-color-on-surface-variant); }
+
+/* Subhead with a status pill on the right, e.g. the active LSPosed framework. */
+.settings-subhead--status { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px 3px 6px;
+  border-radius: 999px;
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+  font-size: 0.74rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+.status-pill svg { width: 14px; height: 14px; fill: currentColor; }
 /* Material radio: 20 px ring, filled dot when selected. */
 .radio input {
   appearance: none;
@@ -1464,8 +1559,10 @@ html[data-notify="ios"] .toast {
 .voice-row__status { grid-column: 1 / -1; padding: 4px 16px 10px; color: var(--md-sys-color-on-surface-variant); font-size: 0.78rem; }
 
 /* Mock selection bar for placing Phevere (LSPosed custom position). */
-.mock-bar-wrap { margin: 8px 0 12px; }
+.mock-bar-wrap { display: flex; align-items: center; gap: 4px; margin: 4px 0 8px; }
 .mock-bar {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -1475,7 +1572,9 @@ html[data-notify="ios"] .toast {
   background: var(--md-sys-color-surface-container-lowest);
   box-shadow: 0 2px 10px rgb(28 25 23 / 0.16);
   touch-action: pan-y;
+  scrollbar-width: none;
 }
+.mock-bar::-webkit-scrollbar { display: none; }
 .mock-bar__item {
   flex-shrink: 0;
   padding: 9px 9px;
@@ -1493,5 +1592,4 @@ html[data-notify="ios"] .toast {
   transition: transform 0.15s var(--md-sys-motion), box-shadow 0.15s var(--md-sys-motion);
 }
 .mock-bar__ours.is-dragging { transform: scale(1.08); box-shadow: 0 4px 12px rgb(28 25 23 / 0.22); cursor: grabbing; }
-.mock-bar__controls { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
-.mock-bar__controls .hint { margin: 0; }
+

@@ -5,6 +5,12 @@
 build from a newer commit installs as an upgrade. IPA uses the bundled Charis SIL font,
 so letters the phone's fonts lack no longer show as boxes. A normal press of Phevere on
 the LSPosed-managed bar now opens the pop-up beside the word, not in the middle.
+The module also recognises Phevere on Jetpack Compose selection bars, which carry no
+intent (X is the suspected case), and logs a bar's items once per app to the LSPosed log
+when Phevere is missing from it. Settings → Capture is now plain Material 3 rows:
+**Pop up on selection** and **Floating pop-up** are switches, the module state is a
+pill on the Selection bar heading, and **Position on bar** is a System | Custom
+segmented button.
 
 **2026-09-28 (night):** Rooted phones use the LSPosed module instead of accessibility.
 Settings → Capture shows two switches once the module is active: **Pop up as soon as text
