@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,3 +22,15 @@ async function sync(dest) {
 
 await sync(androidWww);
 await sync(iosPublic);
+
+// iOS version: MARKETING_VERSION follows package.json, like Android's versionName. The app and
+// its share extension must carry the same version. The build number (CURRENT_PROJECT_VERSION)
+// is the commit count, passed by CI on the xcodebuild command line.
+const { version } = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+const pbxproj = path.join(root, 'ios', 'App', 'App.xcodeproj', 'project.pbxproj');
+const before = await readFile(pbxproj, 'utf8');
+const after = before.replace(/MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${version};`);
+if (after !== before) {
+  await writeFile(pbxproj, after);
+  console.log('iOS MARKETING_VERSION', version);
+}
