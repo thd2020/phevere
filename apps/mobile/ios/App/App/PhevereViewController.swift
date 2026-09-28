@@ -461,8 +461,21 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
     case "png": return "image/png"
     case "svg": return "image/svg+xml"
     case "woff2": return "font/woff2"
+    case "woff": return "font/woff"
     default: return "application/octet-stream"
     }
+  }
+
+  /** Decode in the charset the server declared (GBK, Latin-1…); UTF-8 when it names none. */
+  private static func decode(_ bytes: Data, charset: String?) -> String {
+    var encoding = String.Encoding.utf8
+    if let name = charset {
+      let cf = CFStringConvertIANACharSetNameToEncoding(name as CFString)
+      if cf != kCFStringEncodingInvalidId {
+        encoding = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(cf))
+      }
+    }
+    return String(data: bytes, encoding: encoding) ?? String(decoding: bytes, as: UTF8.self)
   }
 
   private static func http(_ params: [String: Any], done: @escaping (Result<[String: Any], Error>) -> Void) {
@@ -489,7 +502,7 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
       if asBytes {
         done(.success(["status": status, "contentType": ct, "b64": bytes.base64EncodedString()]))
       } else {
-        done(.success(["status": status, "contentType": ct, "text": String(data: bytes, encoding: .utf8) ?? ""]))
+        done(.success(["status": status, "contentType": ct, "text": Self.decode(bytes, charset: resp?.textEncodingName)]))
       }
     }.resume()
   }
