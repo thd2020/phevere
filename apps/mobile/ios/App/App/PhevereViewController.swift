@@ -5,9 +5,40 @@ import Vision
 import PhotosUI
 import AVFoundation
 
+/**
+ * The page's web view, with Phevere in the text-selection menu, as Android lists Phevere on
+ * its selection bar. iOS 16+ builds the edit menu through buildMenu(with:); older systems
+ * read UIMenuController's custom items.
+ */
+final class PhevereWebView: WKWebView {
+  var onLookup: (() -> Void)?
+
+  override func buildMenu(with builder: UIMenuBuilder) {
+    super.buildMenu(with: builder)
+    if #available(iOS 16.0, *), builder.system == .context {
+      let item = UICommand(title: "Phevere", action: #selector(phevereLookup(_:)))
+      builder.insertChild(UIMenu(title: "", options: .displayInline, children: [item]), atStartOfMenu: .root)
+    }
+  }
+
+  override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+    if action == #selector(phevereLookup(_:)) { return true }
+    return super.canPerformAction(action, withSender: sender)
+  }
+
+  @objc func phevereLookup(_ sender: Any?) {
+    onLookup?()
+  }
+
+  static func installLegacyMenuItem() {
+    if #available(iOS 16.0, *) { return }
+    UIMenuController.shared.menuItems = [UIMenuItem(title: "Phevere", action: #selector(phevereLookup(_:)))]
+  }
+}
+
 final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKURLSchemeHandler, WKNavigationDelegate, UIDocumentPickerDelegate, PHPickerViewControllerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate, AVSpeechSynthesizerDelegate {
   var stripMode = false
-  private var web: WKWebView!
+  private var web: PhevereWebView!
   private var pendingJsId: String?
   private var pendingSaveText: String = ""
   private var pendingOcrId: String?
@@ -39,7 +70,9 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
     if #available(iOS 10.0, *) {
       conf.mediaTypesRequiringUserActionForPlayback = []
     }
-    web = WKWebView(frame: view.bounds, configuration: conf)
+    web = PhevereWebView(frame: view.bounds, configuration: conf)
+    web.onLookup = { [weak self] in self?.lookUpSelection() }
+    PhevereWebView.installLegacyMenuItem()
     web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
     web.navigationDelegate = self
     web.scrollView.contentInsetAdjustmentBehavior = .never
@@ -60,6 +93,36 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     if stripMode { injectPending() }
     pushInsets()
+  }
+
+  /** The edit menu's Phevere item: look up in place inside the pop-up, else open the pop-up. */
+  private func lookUpSelection() {
+    let js = """
+    (function(){var s=window.getSelection();var t=(s?String(s):'').trim();
+    if(!t||!s.rangeCount)return null;var r=s.getRangeAt(0).getBoundingClientRect();
+    return {text:t,left:r.left,top:r.top,right:r.right,bottom:r.bottom};})()
+    """
+    web.evaluateJavaScript(js) { [weak self] value, _ in
+      guard let self = self, let box = value as? [String: Any], let text = box["text"] as? String else { return }
+      if self.stripMode {
+        self.web.evaluateJavaScript("window.__pvLookupText && window.__pvLookupText(\(Self.jsonString(text)))", completionHandler: nil)
+      } else {
+        self.openPopup(text, rect: Self.rect(box))
+      }
+    }
+  }
+
+  /** Page rectangle in CSS px, which WKWebView lays out 1:1 in points. */
+  private static func rect(_ box: [String: Any]?) -> CGRect? {
+    guard let box = box, let l = box["left"] as? Double, let t = box["top"] as? Double,
+          let r = box["right"] as? Double, let b = box["bottom"] as? Double else { return nil }
+    return CGRect(x: l, y: t, width: max(1, r - l), height: max(1, b - t))
+  }
+
+  private func openPopup(_ text: String, rect: CGRect?) {
+    IncomingStore.text = text
+    IncomingStore.origin = "selection"
+    (parent as? RootHostController)?.presentStrip(anchor: rect, in: web)
   }
 
   override func viewDidLayoutSubviews() {
@@ -161,9 +224,22 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
           "floatingStrip": CapturePrefs.floatingStrip,
           "canDrawOverlays": false,
           "platform": "ios",
-          "notificationsGranted": ok
+          "notificationsGranted": ok,
+          "autoPopup": CapturePrefs.autoPopup
         ])
       }
+    case "setAutoPopup":
+      CapturePrefs.autoPopup = params["enabled"] as? Bool ?? false
+      resolve(id, ["ok": true])
+    case "openPopup":
+      let text = (params["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+      if !text.isEmpty { openPopup(text, rect: Self.rect(params["rect"] as? [String: Any])) }
+      resolve(id, ["ok": true])
+    case "speechVoices", "cancelSpeechDownload":
+      resolve(id, Self.voiceStatus())
+    case "setSpeechVoice":
+      CapturePrefs.speechVoice = params["id"] as? String ?? ""
+      resolve(id, Self.voiceStatus())
     case "requestOverlayPermission":
       resolve(id, ["ok": true])
     case "requestNotifications":
@@ -180,14 +256,21 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
       finishSpeak(ok: true)
       stopPlayback()
       synth.stopSpeaking(at: .immediate)
-      if text.isEmpty {
-        resolve(id, ["ok": true])
+      let utterance: AVSpeechUtterance?
+      if params["phonemes"] as? Bool == true {
+        // IPA chip: Android's eSpeak reads [[phonemes]]; iOS speaks the chip's own IPA.
+        utterance = Self.ipaUtterance(ipa: params["ipa"] as? String ?? "", word: params["word"] as? String ?? "")
       } else {
+        utterance = text.isEmpty ? nil : AVSpeechUtterance(string: text)
+      }
+      if let u = utterance {
         pendingSpeakId = id
-        let u = AVSpeechUtterance(string: text)
-        u.voice = AVSpeechSynthesisVoice(language: lang)
+        u.voice = Self.voice(for: lang)
         u.rate = Float(min(1.0, max(0.35, rate * 0.5)))
+        u.volume = Float(params["volume"] as? Double ?? 1)
         synth.speak(u)
+      } else {
+        resolve(id, ["ok": true])
       }
     case "playUrl":
       finishSpeak(ok: true)
@@ -204,6 +287,7 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
         ) { [weak self] _ in
           self?.finishSpeak(ok: true)
         }
+        player?.volume = Float(params["volume"] as? Double ?? 1)
         player?.play()
         if rate > 0 { player?.rate = rate }
       } else {
@@ -412,9 +496,12 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
   }
 
   private func pushInsets() {
-    let t = view.safeAreaInsets.top
-    let b = view.safeAreaInsets.bottom
-    let js = "window.__pvInsets={top:\(t),bottom:\(b),left:0,right:0};document.documentElement.style.setProperty('--pv-inset-top','\(t)px');document.documentElement.style.setProperty('--pv-inset-bottom','\(b)px');"
+    let i = view.safeAreaInsets
+    let t = stripMode ? 0 : i.top
+    let js = "window.__pvInsets={top:\(t),bottom:\(i.bottom),left:\(i.left),right:\(i.right)};"
+      + "var s=document.documentElement.style;s.setProperty('--pv-inset-top','\(t)px');"
+      + "s.setProperty('--pv-inset-bottom','\(i.bottom)px');s.setProperty('--pv-inset-left','\(i.left)px');"
+      + "s.setProperty('--pv-inset-right','\(i.right)px');"
     web?.evaluateJavaScript(js, completionHandler: nil)
   }
 
@@ -464,6 +551,50 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
     case "woff": return "font/woff"
     default: return "application/octet-stream"
     }
+  }
+
+  /**
+   * The word, pronounced as its IPA through AVSpeechSynthesisIPANotationAttribute. Slashes
+   * and brackets are stripped; Apple's notation does not use them.
+   */
+  private static func ipaUtterance(ipa: String, word: String) -> AVSpeechUtterance? {
+    let clean = ipa.trimmingCharacters(in: CharacterSet(charactersIn: "/[] \t\n"))
+    let label = word.isEmpty ? clean : word
+    if label.isEmpty { return nil }
+    if clean.isEmpty { return AVSpeechUtterance(string: label) }
+    let key = NSAttributedString.Key(rawValue: AVSpeechSynthesisIPANotationAttribute)
+    return AVSpeechUtterance(attributedString: NSAttributedString(string: label, attributes: [key: clean]))
+  }
+
+  /** English voices installed on the phone, best quality first, novelty voices left out. */
+  private static func englishVoices() -> [AVSpeechSynthesisVoice] {
+    AVSpeechSynthesisVoice.speechVoices()
+      .filter { $0.language == "en-US" || $0.language == "en-GB" }
+      .filter { voice in
+        if #available(iOS 17.0, *) { return !voice.voiceTraits.contains(.isNoveltyVoice) }
+        return true
+      }
+      .sorted { a, b in
+        a.quality.rawValue != b.quality.rawValue ? a.quality.rawValue > b.quality.rawValue : a.name < b.name
+      }
+  }
+
+  /** The chosen voice when it speaks this accent; otherwise the best installed voice for it. */
+  private static func voice(for lang: String) -> AVSpeechSynthesisVoice? {
+    let chosen = CapturePrefs.speechVoice
+    if !chosen.isEmpty, let v = AVSpeechSynthesisVoice(identifier: chosen), v.language == lang { return v }
+    return englishVoices().first { $0.language == lang } ?? AVSpeechSynthesisVoice(language: lang)
+  }
+
+  private static func voiceStatus() -> [String: Any] {
+    var rows: [[String: String]] = [["id": "", "name": "Automatic", "detail": "Best voice per accent"]]
+    for v in englishVoices() {
+      let accent = v.language == "en-GB" ? "UK" : "US"
+      var quality = v.quality == .enhanced ? "Enhanced" : "Default"
+      if #available(iOS 16.0, *), v.quality == .premium { quality = "Premium" }
+      rows.append(["id": v.identifier, "name": v.name, "detail": "\(accent) · \(quality)"])
+    }
+    return ["selected": CapturePrefs.speechVoice, "downloading": "", "progress": "", "variants": [], "rows": rows]
   }
 
   /** Decode in the charset the server declared (GBK, Latin-1…); UTF-8 when it names none. */

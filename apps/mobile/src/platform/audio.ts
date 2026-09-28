@@ -96,7 +96,10 @@ export async function speakIpa(p: Pronunciation, prefs: MobilePrefs, word?: stri
   const lang = accentToBcp47(p.accent);
   const phonemes = ipaToEspeakPhonemes(p.ipa);
   if (hasNativeBridge() && phonemes) {
-    await nativeCall('speak', { text: phonemes, lang, rate: rate(prefs), volume: volume(prefs), phonemes: true });
+    // Android's eSpeak reads the [[phonemes]]; iOS speaks the word with the raw IPA attached.
+    await nativeCall('speak', {
+      text: phonemes, lang, rate: rate(prefs), volume: volume(prefs), phonemes: true, ipa: p.ipa, word: word || '',
+    });
     return;
   }
   // Browser preview: speechSynthesis cannot read IPA, so say the headword in that accent.

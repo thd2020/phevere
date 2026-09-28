@@ -41,7 +41,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
   }
 }
 
-final class RootHostController: UIViewController {
+final class RootHostController: UIViewController, UIPopoverPresentationControllerDelegate {
   private var full: PhevereViewController?
 
   override func viewDidLoad() {
@@ -71,26 +71,53 @@ final class RootHostController: UIViewController {
     full = vc
   }
 
-  private func presentStrip() {
+  /**
+   * The pop-up, as on Android: with "Floating pop-up" on, a compact card beside the selected
+   * word (centred when the position is unknown, e.g. text from the share sheet); otherwise a
+   * bottom sheet. Each new selection replaces the card so it moves next to that word.
+   */
+  func presentStrip(anchor: CGRect? = nil, in source: UIView? = nil) {
+    if let open = presentedViewController as? PhevereViewController {
+      if !CapturePrefs.floatingStrip || anchor == nil {
+        open.injectPending()
+        return
+      }
+      open.dismiss(animated: false)
+    }
     let strip = PhevereViewController()
     strip.stripMode = true
-    strip.modalPresentationStyle = .pageSheet
-    if #available(iOS 15.0, *) {
-      if let sheet = strip.sheetPresentationController {
-        if #available(iOS 16.0, *) {
-          sheet.detents = [.medium(), .large()]
+    if CapturePrefs.floatingStrip {
+      strip.modalPresentationStyle = .popover
+      let bounds = view.bounds
+      strip.preferredContentSize = CGSize(width: min(360, bounds.width - 16), height: min(460, bounds.height * 0.6))
+      if let pop = strip.popoverPresentationController {
+        pop.delegate = self
+        if let anchor = anchor, let source = source {
+          pop.sourceView = source
+          pop.sourceRect = anchor
+          pop.permittedArrowDirections = [.up, .down]
+        } else {
+          pop.sourceView = view
+          pop.sourceRect = CGRect(x: bounds.midX, y: bounds.midY, width: 1, height: 1)
+          pop.permittedArrowDirections = []
         }
+      }
+    } else {
+      strip.modalPresentationStyle = .pageSheet
+      if #available(iOS 15.0, *), let sheet = strip.sheetPresentationController {
+        sheet.detents = [.medium(), .large()]
         sheet.prefersGrabberVisible = true
       }
     }
     present(strip, animated: true)
   }
 
+  /** Keep the floating card a popover on iPhone instead of turning it into a sheet. */
+  func adaptivePresentationStyle(for controller: UIPresentationController, traitCollection: UITraitCollection) -> UIModalPresentationStyle {
+    .none
+  }
+
   @objc private func onIncoming() {
-    if let strip = presentedViewController as? PhevereViewController {
-      strip.injectPending()
-      return
-    }
     presentStrip()
   }
 

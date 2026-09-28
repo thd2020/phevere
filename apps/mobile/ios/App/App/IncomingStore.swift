@@ -11,6 +11,16 @@ enum CapturePrefs {
     get { UserDefaults.standard.bool(forKey: "floatingStrip") }
     set { UserDefaults.standard.set(newValue, forKey: "floatingStrip") }
   }
+  /** Selecting text inside Phevere opens the pop-up without the edit menu's Phevere item. */
+  static var autoPopup: Bool {
+    get { UserDefaults.standard.bool(forKey: "autoPopup") }
+    set { UserDefaults.standard.set(newValue, forKey: "autoPopup") }
+  }
+  /** AVSpeechSynthesisVoice identifier; empty means the best installed voice per accent. */
+  static var speechVoice: String {
+    get { UserDefaults.standard.string(forKey: "speechVoice") ?? "" }
+    set { UserDefaults.standard.set(newValue, forKey: "speechVoice") }
+  }
 }
 
 enum Notify {

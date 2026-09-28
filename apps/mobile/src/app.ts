@@ -148,6 +148,7 @@ function lookupPaneHtml(): string {
 function paint(): void {
   document.documentElement.dataset.popup = prefs.floatingStrip ? 'floating' : 'half';
   document.documentElement.dataset.notify = capture.platform === 'ios' ? 'ios' : 'android';
+  document.documentElement.dataset.platform = capture.platform;
   if (settingsSection === 'notifications' && capture.platform === 'web') settingsSection = 'capture';
   const canBack = histIndex > 0;
   const canFwd = histIndex >= 0 && histIndex < history.length - 1;
@@ -570,7 +571,7 @@ function persistPrefs(): void {
 }
 
 async function refreshVoice(): Promise<void> {
-  if (!hasNativeBridge() || capture.platform !== 'android') return;
+  if (!hasNativeBridge() || capture.platform === 'web') return;
   voice = await nativeCall<VoiceStatus>('speechVoices', {}).catch(() => null);
   watchVoice();
 }
@@ -662,9 +663,9 @@ function bindMockBar(): void {
 let selectionTimer: number | null = null;
 
 /**
- * Selecting text inside Phevere behaves like other apps: with "Pop up as soon as text is
- * selected" on, the pop-up opens on the selection. Inside the pop-up, on a scan, and in the browser preview / iOS it looks
- * up in place.
+ * Selecting text inside Phevere behaves like other apps: with "Pop up on selection" on, the
+ * pop-up opens beside the selection (Android and iOS). Inside the pop-up, on a scan, and in the
+ * browser preview it looks up in place.
  */
 function onSelectionSettled(): void {
   // Switch off (default): the system selection bar and its Phevere item handle it —
@@ -678,7 +679,7 @@ function onSelectionSettled(): void {
   if (el?.closest('input, textarea, [contenteditable="true"]')) return;
   const q = extractLookupQuery(raw);
   if (!q || q === query) return;
-  if (!stripMode && hasNativeBridge() && capture.platform === 'android') {
+  if (!stripMode && hasNativeBridge() && capture.platform !== 'web') {
     // Open the pop-up next to the selected words (CSS px; native converts to screen px).
     const box = sel && sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null;
     const rect = box ? { left: box.left, top: box.top, right: box.right, bottom: box.bottom } : null;

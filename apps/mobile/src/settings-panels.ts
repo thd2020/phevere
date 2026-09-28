@@ -4,6 +4,8 @@ import type { MobilePrefs } from './platform/prefs';
 
 export type VoiceStatus = {
   selected: string;
+  /** iOS: the installed system voices, listed as plain choices (no downloads). */
+  rows?: Array<{ id: string; name: string; detail: string }>;
   downloading: string;
   progress: string;
   doneMb?: number;
@@ -157,6 +159,16 @@ function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
     ${overlayBtn}
     ${selectionBarSection(capture)}
     <h3 class="settings-subhead">Scan</h3>` : ''}
+    ${capture.platform === 'ios' ? `<label class="toggle">
+      <span class="src-name">Floating pop-up</span>
+      <input type="checkbox" role="switch" data-act="strip-on" ${prefs.floatingStrip ? 'checked' : ''} />
+    </label>
+    <h3 class="settings-subhead">Selection</h3>
+    <label class="toggle">
+      <span class="src-name">Pop up on selection</span>
+      <input type="checkbox" role="switch" data-act="auto-popup" ${capture.autoPopup ? 'checked' : ''} />
+    </label>
+    <h3 class="settings-subhead">Scan</h3>` : ''}
     ${navRow('ocr', ICON.camera, 'Camera or photo')}`;
 }
 
@@ -275,6 +287,7 @@ const VOICE_ICON = {
  */
 function voiceList(voice: VoiceStatus | null): string {
   if (!voice) return '';
+  if (voice.rows) return systemVoiceList(voice.selected, voice.rows);
   const rows = [{ id: 'mechanical', mb: 0, ready: true }, ...voice.variants]
     .map((v) => {
       const on = voice.selected === v.id;
@@ -310,6 +323,23 @@ function voiceList(voice: VoiceStatus | null): string {
   return `<h3 class="settings-subhead">Pronunciation voice</h3><div class="voice-list" role="radiogroup" aria-label="Pronunciation voice">${rows}</div>${note}`;
 }
 
+/** iOS: installed voices as radio rows; iOS downloads more under Settings → Accessibility. */
+function systemVoiceList(selected: string, rows: NonNullable<VoiceStatus['rows']>): string {
+  const items = rows
+    .map((v) => {
+      const on = selected === v.id;
+      return `<div class="voice-row${on ? ' is-on' : ''}">
+        <button type="button" class="voice-row__main" role="radio" aria-checked="${on}" data-act="voice" data-value="${esc(v.id)}" aria-label="${esc(v.name)}">
+          <span class="voice-row__icon">${VOICE_ICON.wave}</span>
+          <span class="voice-row__text"><span>${esc(v.name)}</span><small>${esc(v.detail)}</small></span>
+        </button>
+        ${on ? `<span class="voice-row__check" aria-hidden="true">${VOICE_ICON.check}</span>` : ''}
+      </div>`;
+    })
+    .join('');
+  return `<h3 class="settings-subhead">Pronunciation voice</h3><div class="voice-list" role="radiogroup" aria-label="Pronunciation voice">${items}</div>`;
+}
+
 function audioPanel(prefs: MobilePrefs, capture: CaptureInfo, voice: VoiceStatus | null): string {
   const speed = Number.isFinite(prefs.audioSpeed) ? prefs.audioSpeed : 1;
   const volume = Math.round((Number.isFinite(prefs.audioVolume) ? prefs.audioVolume : 1) * 100);
@@ -333,7 +363,7 @@ function audioPanel(prefs: MobilePrefs, capture: CaptureInfo, voice: VoiceStatus
         <span id="volume-value">${volume}%</span>
       </div>
     </div>
-    ${capture.platform === 'android' ? voiceList(voice) : ''}`;
+    ${capture.platform !== 'web' ? voiceList(voice) : ''}`;
 }
 
 export function settingsBody(
