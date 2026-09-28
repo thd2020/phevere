@@ -149,6 +149,8 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
     }
     if (isStrip()) {
       Window w = getWindow();
+      // Selection anchors are screen coordinates, so place the window against the whole screen.
+      w.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN);
       WindowManager.LayoutParams lp = w.getAttributes();
       PopupLayout.place(lp, this, SelectionAnchor.from(getIntent()));
       w.setAttributes(lp);
@@ -183,6 +185,13 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
   protected void onNewIntent(Intent intent) {
     super.onNewIntent(intent);
     setIntent(intent);
+    android.graphics.Rect anchor = isStrip() ? SelectionAnchor.from(intent) : null;
+    if (anchor != null) {
+      // The pop-up is a single instance: each new selection brings it next to that word.
+      WindowManager.LayoutParams lp = getWindow().getAttributes();
+      PopupLayout.place(lp, this, anchor);
+      getWindow().setAttributes(lp);
+    }
     captureIncoming(intent);
     if (pageReady && pendingText != null) injectIncoming();
   }

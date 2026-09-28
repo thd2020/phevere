@@ -56,16 +56,19 @@ final class SelectionBar {
     for (MenuItem item : items) if (isOurs(item)) ours = item;
     if (ours == null) return false;
     Intent intent = ours.getIntent();
-    if (intent != null) intent.putExtra(EXTRA_VIA_HOOK, true);
+    if (intent != null) {
+      intent.putExtra(EXTRA_VIA_HOOK, true);
+      // The pop-up opens beside the selection whether the bar is pressed now or by the user.
+      Rect content = (Rect) field(type, "mContentRect").get(toolbar);
+      if (content != null && !content.isEmpty()) {
+        intent.putExtra(SelectionAnchor.EXTRA, new int[] {content.left, content.top, content.right, content.bottom});
+      }
+    }
     MenuItem.OnMenuItemClickListener click =
         (MenuItem.OnMenuItemClickListener) field(type, "mMenuItemClickListener").get(toolbar);
 
     if (settings.instant()) {
-      // Instant: never draw the bar; press Phevere as the user would, beside the selection.
-      Rect content = (Rect) field(type, "mContentRect").get(toolbar);
-      if (intent != null && content != null && !content.isEmpty()) {
-        intent.putExtra(SelectionAnchor.EXTRA, new int[] {content.left, content.top, content.right, content.bottom});
-      }
+      // Instant: never draw the bar; press Phevere as the user would.
       final MenuItem item = ours;
       new Handler(Looper.getMainLooper()).post(() -> click.onMenuItemClick(item));
       return true;
