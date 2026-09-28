@@ -10,6 +10,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
@@ -65,9 +66,15 @@ final class NativeIo {
       byte[] bytes = rb.bytes();
       if (bytes.length > MAX_BYTES) throw new Exception("Response too large");
       if ("bytes".equals(as)) out.put("b64", Base64.encodeToString(bytes, Base64.NO_WRAP));
-      else out.put("text", new String(bytes, StandardCharsets.UTF_8));
+      else out.put("text", new String(bytes, charset(rb.contentType())));
       return out;
     }
+  }
+
+  /** The charset the server declared (GBK, Latin-1…); UTF-8 when it names none. */
+  private static Charset charset(MediaType type) {
+    Charset declared = type == null ? null : type.charset(null);
+    return declared != null ? declared : StandardCharsets.UTF_8;
   }
 
   static JSONObject readFile(Context ctx, String name) throws Exception {
