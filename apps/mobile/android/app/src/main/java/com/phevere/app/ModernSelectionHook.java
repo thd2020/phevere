@@ -34,6 +34,7 @@ public final class ModernSelectionHook extends XposedModule {
     SelectionBar.Settings settings = new SelectionBar.Settings() {
       @Override public boolean instant() { return prefs != null && prefs.getBoolean(LsposedPrefs.KEY_INSTANT, false); }
       @Override public int slot() { return prefs == null ? -1 : prefs.getInt(LsposedPrefs.KEY_SLOT, -1); }
+      @Override public void log(String message) { ModernSelectionHook.this.log(Log.INFO, "Phevere", pkg + ": " + message, null); }
     };
     try {
       Method doShow = toolbar.getDeclaredMethod("doShow");

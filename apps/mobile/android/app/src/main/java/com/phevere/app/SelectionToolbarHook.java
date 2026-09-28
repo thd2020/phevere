@@ -24,6 +24,7 @@ public final class SelectionToolbarHook implements IXposedHookLoadPackage {
     SelectionBar.Settings settings = new SelectionBar.Settings() {
       @Override public boolean instant() { return read().getBoolean(LsposedPrefs.KEY_INSTANT, false); }
       @Override public int slot() { return read().getInt(LsposedPrefs.KEY_SLOT, -1); }
+      @Override public void log(String message) { XposedBridge.log("Phevere " + load.packageName + ": " + message); }
     };
     XposedBridge.hookAllMethods(toolbar, "doShow", new XC_MethodHook() {
       @Override protected void beforeHookedMethod(MethodHookParam param) {

@@ -22,6 +22,8 @@ import java.util.List;
  */
 final class SelectionBar {
   static final String OUR_PACKAGE = "com.phevere.app";
+  /** ProcessTextActivity's label (@string/app_name); the hook cannot read Phevere's resources. */
+  static final String APP_LABEL = "Phevere";
   /** Marks lookups that came through the module, so Phevere can show it is active. */
   static final String EXTRA_VIA_HOOK = "com.phevere.app.VIA_HOOK";
   /** Set once per process: whichever entry (modern or legacy) hooks first wins. */
@@ -32,7 +34,11 @@ final class SelectionBar {
     boolean instant();
     /** -1: leave the system's placement; otherwise Phevere's slot on the bar's main row. */
     int slot();
+    /** Write to the LSPosed log, so a bar that ignores Phevere can be diagnosed per app. */
+    void log(String message);
   }
+
+  private static boolean reportedMissing;
 
   private SelectionBar() {}
 
@@ -54,7 +60,15 @@ final class SelectionBar {
     List<MenuItem> items = (List<MenuItem>) visible.invoke(null, menu);
     MenuItem ours = null;
     for (MenuItem item : items) if (isOurs(item)) ours = item;
-    if (ours == null) return false;
+    if (ours == null) {
+      if (!reportedMissing) {
+        reportedMissing = true;
+        StringBuilder titles = new StringBuilder();
+        for (MenuItem item : items) titles.append(" [").append(item.getTitle()).append(']');
+        settings.log("selection bar without Phevere:" + titles);
+      }
+      return false;
+    }
     Intent intent = ours.getIntent();
     if (intent != null) {
       intent.putExtra(EXTRA_VIA_HOOK, true);
@@ -96,9 +110,15 @@ final class SelectionBar {
 
   static boolean isOurs(MenuItem item) {
     Intent intent = item.getIntent();
-    return intent != null && Intent.ACTION_PROCESS_TEXT.equals(intent.getAction())
-        && intent.getComponent() != null
-        && OUR_PACKAGE.equals(intent.getComponent().getPackageName());
+    if (intent != null) {
+      if (!Intent.ACTION_PROCESS_TEXT.equals(intent.getAction())) return false;
+      String pkg = intent.getComponent() != null ? intent.getComponent().getPackageName() : intent.getPackage();
+      return OUR_PACKAGE.equals(pkg);
+    }
+    // Jetpack Compose text menus (X and other Compose apps) add process-text entries without an
+    // intent and launch them from their own click handler; only the label identifies them.
+    CharSequence title = item.getTitle();
+    return title != null && APP_LABEL.contentEquals(title.toString().trim());
   }
 
   private static boolean requiresOverflow(MenuItem item) {
