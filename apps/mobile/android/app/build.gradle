@@ -1,5 +1,24 @@
 apply plugin: 'com.android.application'
 
+// Version: the name comes from apps/mobile/package.json (semver, bumped per release); the
+// code is the number of commits on HEAD, so every build from a newer commit installs as an
+// upgrade. Debug builds also carry the commit, e.g. 0.2.0-dev.412+8e5f006.
+def mobilePackage = new groovy.json.JsonSlurper().parse(file("${rootProject.projectDir}/../package.json"))
+def git = { List<String> args ->
+    def out = providers.exec {
+        commandLine(['git'] + args)
+        workingDir rootProject.projectDir
+        ignoreExitValue true
+    }
+    try {
+        return out.result.get().exitValue == 0 ? out.standardOutput.asText.get().trim() : ''
+    } catch (Exception ignored) {
+        return ''  // git missing, e.g. a build from a source archive
+    }
+}
+def commitCount = git(['rev-list', '--count', 'HEAD'])
+def commitSha = git(['rev-parse', '--short=7', 'HEAD'])
+
 android {
     namespace "com.phevere.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -9,8 +28,8 @@ android {
         applicationId "com.phevere.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode commitCount.isInteger() ? commitCount.toInteger() : 1
+        versionName mobilePackage.version
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
             cmake {
@@ -32,6 +51,9 @@ android {
     }
     sourceSets.main.assets.srcDir "${buildDir}/generated/speech-v2/assets"
     buildTypes {
+        debug {
+            versionNameSuffix "-dev.${commitCount ?: 0}" + (commitSha ? "+${commitSha}" : '')
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

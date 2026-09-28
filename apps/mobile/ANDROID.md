@@ -1,5 +1,11 @@
 # Android build and selection-toolbar setup
 
+**2026-09-28 (late night):** The APK now has a real version. The installer shows
+`0.2.0-dev.<commits>+<sha>` for CI and local debug builds instead of `1.0`, and every
+build from a newer commit installs as an upgrade. IPA uses the bundled Charis SIL font,
+so letters the phone's fonts lack no longer show as boxes. A normal press of Phevere on
+the LSPosed-managed bar now opens the pop-up beside the word, not in the middle.
+
 **2026-09-28 (night):** Rooted phones use the LSPosed module instead of accessibility.
 Settings → Capture shows two switches once the module is active: **Pop up as soon as text
 is selected** (Phevere is pressed on the bar and the bar is never drawn) and **Phevere's
@@ -49,6 +55,15 @@ restart from the beginning. English and Mandarin are supported by both options.
 CI verifies packaged data, builds the APK and tests real mechanical synthesis on an
 Android 35 emulator (US/UK English, Mandarin and fallback with a missing neural model).
 The neural runtime is still included, but its large model is excluded from the APK.
+
+### Version
+
+`versionName` is the `version` in `apps/mobile/package.json`; bump it there for a
+release. `versionCode` is `git rev-list --count HEAD`, so it grows with every commit on
+the branch and Android accepts each newer build as an upgrade. Debug builds add
+`-dev.<commit count>+<short sha>` to the name, which is what the installer and Android's
+app info show. CI checks out the full history (`fetch-depth: 0`) for the count; a build
+without git falls back to code 1.
 
 For a local Android build:
 
