@@ -342,7 +342,7 @@ function systemVoiceList(selected: string, rows: NonNullable<VoiceStatus['rows']
 
 function audioPanel(prefs: MobilePrefs, capture: CaptureInfo, voice: VoiceStatus | null): string {
   const speed = Number.isFinite(prefs.audioSpeed) ? prefs.audioSpeed : 1;
-  const volume = Math.round((Number.isFinite(prefs.audioVolume) ? prefs.audioVolume : 1) * 100);
+  const volume = Math.round((Number.isFinite(prefs.audioVolume) ? prefs.audioVolume : 0.5) * 100);
   return `
     ${panelIntro('Audio')}
     <label class="toggle">

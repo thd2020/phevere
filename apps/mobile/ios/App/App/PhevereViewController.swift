@@ -267,7 +267,7 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
         pendingSpeakId = id
         u.voice = Self.voice(for: lang)
         u.rate = Float(min(1.0, max(0.35, rate * 0.5)))
-        u.volume = Float(params["volume"] as? Double ?? 1)
+        u.volume = Float(min(1, params["volume"] as? Double ?? 1))  // gain 0–2; AVSpeech tops out at 1
         synth.speak(u)
       } else {
         resolve(id, ["ok": true])
@@ -287,7 +287,7 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
         ) { [weak self] _ in
           self?.finishSpeak(ok: true)
         }
-        player?.volume = Float(params["volume"] as? Double ?? 1)
+        player?.volume = Float(min(1, params["volume"] as? Double ?? 1))
         player?.play()
         if rate > 0 { player?.rate = rate }
       } else {

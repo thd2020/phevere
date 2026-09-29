@@ -30,9 +30,11 @@ function rate(prefs: MobilePrefs): number {
   return prefs.audioSpeed || 1;
 }
 
+/** Playback gain 0–2 from the 0–1 slider; the browser preview caps it at 1. */
 function volume(prefs: MobilePrefs): number {
   const v = Number(prefs.audioVolume);
-  return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 1;
+  const gain = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) * 2 : 1;
+  return hasNativeBridge() ? gain : Math.min(1, gain);
 }
 
 async function playUrl(url: string, prefs: MobilePrefs): Promise<void> {

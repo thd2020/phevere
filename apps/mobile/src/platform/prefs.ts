@@ -21,8 +21,13 @@ export interface MobilePrefs {
   collinsHost: string;
   audioEnabled: boolean;
   audioSpeed: number;
-  /** 0–1 */
+  /**
+   * Slider position 0–1. Playback gain is twice this, so the default 0.5 is the player's
+   * full level and the upper half boosts quiet clips.
+   */
   audioVolume: number;
+  /** 2 once audioVolume uses the doubled-gain scale above. */
+  volumeScale?: number;
   floatingStrip: boolean;
   notifyIncoming: boolean;
   notifySaved: boolean;
@@ -47,7 +52,8 @@ export const defaultPrefs = (): MobilePrefs => ({
   collinsHost: '',
   audioEnabled: true,
   audioSpeed: 1,
-  audioVolume: 1,
+  audioVolume: 0.5,
+  volumeScale: 2,
   floatingStrip: true,
   notifyIncoming: true,
   notifySaved: true,
@@ -73,6 +79,12 @@ export function loadPrefs(): MobilePrefs {
     }
     if (parsed.notifyOcr === undefined && parsed.notifyHoverToggle !== undefined) {
       merged.notifyOcr = parsed.notifyHoverToggle;
+    }
+    if (parsed.volumeScale !== 2) {
+      // Old slider value was the gain itself; keep the same loudness on the new scale.
+      const old = Number(parsed.audioVolume);
+      merged.audioVolume = Number.isFinite(old) ? Math.max(0, Math.min(1, old / 2)) : 0.5;
+      merged.volumeScale = 2;
     }
     return merged;
   } catch {

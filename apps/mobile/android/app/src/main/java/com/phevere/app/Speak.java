@@ -3,6 +3,7 @@ package com.phevere.app;
 import android.content.Context;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
+import android.media.audiofx.LoudnessEnhancer;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -22,10 +23,14 @@ final class Speak {
   private Completion pendingDone;
   private volatile int gen;
   private MediaPlayer player;
-  /** Settings → Audio → Playback volume, 0–1, applied to recordings and synthesis. */
+  private LoudnessEnhancer boost;
+  /**
+   * Settings → Audio → Playback volume as a gain, 0–2: the slider's middle (50%) is the
+   * player's full level, and the upper half boosts quiet clips and speech.
+   */
   private volatile float volume = 1f;
 
-  void setVolume(float value) { volume = Math.max(0f, Math.min(1f, value)); }
+  void setVolume(float value) { volume = Math.max(0f, Math.min(2f, value)); }
 
   static synchronized Speak get(Context ctx) {
     if (inst == null) inst = new Speak(ctx.getApplicationContext());
@@ -89,7 +94,9 @@ final class Speak {
           }
         } catch (Exception ignored) {
         }
-        mp.setVolume(volume, volume);
+        float level = Math.min(1f, volume);
+        mp.setVolume(level, level);
+        applyBoost(mp);
         try { mp.start(); }
         catch (Exception e) { stopMedia(); finish("Could not start pronunciation recording."); }
       });
@@ -124,7 +131,27 @@ final class Speak {
     fireDone();
   }
 
+  /** Gain above 1 goes through LoudnessEnhancer, in millibels: 20·log10(gain)·100. */
+  private void applyBoost(MediaPlayer mp) {
+    releaseBoost();
+    if (volume <= 1.01f) return;
+    try {
+      boost = new LoudnessEnhancer(mp.getAudioSessionId());
+      boost.setTargetGain(Math.round((float) (2000 * Math.log10(volume))));
+      boost.setEnabled(true);
+    } catch (RuntimeException ignored) {
+      releaseBoost();  // no effect on this device: play at full level
+    }
+  }
+
+  private void releaseBoost() {
+    if (boost == null) return;
+    try { boost.release(); } catch (RuntimeException ignored) {}
+    boost = null;
+  }
+
   private void stopMedia() {
+    releaseBoost();
     if (player == null) return;
     try {
       player.stop();
