@@ -91,9 +91,10 @@ a { color: var(--md-sys-color-tertiary); }
 
 .brand-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-height: 44px;
   margin-bottom: 10px;
 }
 .brand-row h1 {
@@ -142,15 +143,19 @@ a { color: var(--md-sys-color-tertiary); }
   font-size: 1rem;
 }
 .search .go {
+  display: grid;
+  place-items: center;
+  width: 48px;
   height: 48px;
-  padding: 0 18px;
+  flex-shrink: 0;
+  padding: 0;
   border: 0;
   border-radius: 999px;
   background: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
-  font-weight: 600;
-  letter-spacing: 0.02em;
 }
+.search .go svg { width: 24px; height: 24px; }
+.icon-btn svg.ico-line { fill: none; }
 
 .page { padding: 8px 16px 24px; }
 
@@ -799,15 +804,8 @@ select, .field {
   font-size: 0.72rem;
   flex-shrink: 0;
 }
-.wikipedia-reader__back,
-.wikipedia-reader__ext {
-  border: 0;
-  background: transparent;
-  color: var(--md-sys-color-tertiary);
-  font: inherit;
-  padding: 4px;
-}
-.wikipedia-reader__ext { color: var(--md-sys-color-on-surface-variant); }
+.wikipedia-reader__bar .icon-btn { width: 36px; height: 36px; }
+.wikipedia-reader__bar .icon-btn svg { width: 20px; height: 20px; }
 .wikipedia-reader__title {
   flex: 1;
   min-width: 0;
@@ -927,8 +925,11 @@ select, .field {
 }
 .vocab-reading--empty { opacity: 0.65; }
 .vocab-play {
+  display: grid;
+  place-items: center;
   width: 28px;
   height: 28px;
+  padding: 0;
   border: 0;
   border-radius: 999px;
   background: color-mix(in srgb, var(--md-sys-color-tertiary) 14%, transparent);
@@ -969,23 +970,32 @@ select, .field {
   color: var(--md-sys-color-on-surface-variant);
 }
 .vocab-note { margin: 6px 0 0; color: var(--md-sys-color-on-surface-variant); font-size: 0.88rem; }
-.vocab-actions { display: flex; flex-wrap: wrap; gap: 6px; flex-shrink: 0; }
+.vocab-play svg { width: 16px; height: 16px; fill: currentColor; }
+.vocab-actions { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; margin: -6px -8px 0 0; }
+.vocab-sort-btn { display: grid; place-items: center; width: 40px; height: 34px; padding: 0; }
+.vocab-sort-btn svg { width: 20px; height: 20px; }
+
+/* Pull down at the top of the notebook to refresh it. */
+.ptr {
+  display: grid;
+  place-items: center;
+  height: 0;
+  overflow: hidden;
+  opacity: 0.4;
+  transition: height 0.2s var(--md-sys-motion), opacity 0.2s var(--md-sys-motion);
+}
+.ptr.is-armed, .ptr.is-loading { opacity: 1; }
+.ptr .md-spinner { animation-play-state: paused; }
+.ptr.is-loading .md-spinner { animation-play-state: running; }
 
 .shell-settings {
   padding-top: 0;
 }
 
 .settings-sticky { margin: -8px 0 0; }
-.settings-tabs {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 8px 0 12px;
-}
-.settings-tabs .chip {
-  text-transform: none;
-  letter-spacing: 0.01em;
-  font-size: 0.88rem;
+.result-tabs.settings-tabs {
+  grid-template-columns: repeat(var(--tabs, 6), 1fr);
+  margin: 0 0 12px;
 }
 .settings-panel__intro {
   margin-bottom: 8px;
@@ -1186,6 +1196,7 @@ select, .field {
 .nav-row:active { background: var(--md-sys-color-surface-container-low); }
 .nav-row__icon svg,
 .nav-row__chevron svg { display: block; width: 24px; height: 24px; fill: var(--md-sys-color-on-surface-variant); }
+.nav-row__icon svg.ico-line { fill: none; color: var(--md-sys-color-on-surface-variant); }
 .nav-row__label { flex: 1; font-weight: 600; }
 .nav-row__sub { display: block; margin-top: 2px; font-size: 0.78rem; font-weight: 400; line-height: 1.35; color: var(--md-sys-color-on-surface-variant); }
 .nav-row__value { font-size: 0.86rem; color: var(--md-sys-color-on-surface-variant); }
@@ -1238,9 +1249,14 @@ select, .field {
   background: var(--md-sys-color-surface-container-lowest);
 }
 .pack {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 12px 0;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
+.pack__text { flex: 1; min-width: 0; }
+.pack__action { flex-shrink: 0; color: var(--md-sys-color-primary); }
 .pack strong { display: block; }
 .hint { font-size: 0.85rem; color: var(--md-sys-color-on-surface-variant); margin: 4px 0 8px; }
 .danger {
@@ -1583,6 +1599,7 @@ html[data-notify="ios"] .toast {
   font-size: 0.8rem;
   color: var(--md-sys-color-on-surface);
   user-select: none;
+  transition: transform 0.2s var(--md-sys-motion);
 }
 .mock-bar__ours {
   background: var(--md-sys-color-primary-container);
@@ -1592,7 +1609,13 @@ html[data-notify="ios"] .toast {
   touch-action: none;
   transition: transform 0.15s var(--md-sys-motion), box-shadow 0.15s var(--md-sys-motion);
 }
-.mock-bar__ours.is-dragging { transform: scale(1.08); box-shadow: 0 4px 12px rgb(28 25 23 / 0.22); cursor: grabbing; }
+.mock-bar__ours.is-dragging {
+  position: relative;
+  z-index: 1;
+  transition: box-shadow 0.15s var(--md-sys-motion);
+  box-shadow: 0 4px 12px rgb(28 25 23 / 0.22);
+  cursor: grabbing;
+}
 
 /*
  * iOS: Liquid Glass (iOS 26). Content and layout are the same as Android. Only the chrome

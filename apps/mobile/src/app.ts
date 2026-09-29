@@ -628,36 +628,96 @@ async function setBarSlot(slot: number): Promise<void> {
   paint();
 }
 
-/** Drag the Phevere chip along the mock selection bar; the drop position becomes its slot. */
+/** Notebook: pull down from the top of the list to reload it (no Refresh button). */
+function bindPullToRefresh(): void {
+  const ARM = 56;
+  let startY: number | null = null;
+  let pulled = 0;
+  const indicator = () => document.querySelector<HTMLElement>('.ptr');
+  root.addEventListener('touchstart', (e) => {
+    startY = tab === 'notebook' && window.scrollY <= 0 && e.touches.length === 1 ? e.touches[0].clientY : null;
+    pulled = 0;
+  }, { passive: true });
+  root.addEventListener('touchmove', (e) => {
+    const el = indicator();
+    if (startY === null || !el) return;
+    pulled = Math.min(72, Math.max(0, (e.touches[0].clientY - startY) * 0.5));
+    el.style.height = `${pulled}px`;
+    el.classList.toggle('is-armed', pulled >= ARM);
+  }, { passive: true });
+  root.addEventListener('touchend', () => {
+    const el = indicator();
+    if (startY === null || !el) return;
+    startY = null;
+    if (pulled < ARM) {
+      el.style.height = '0';
+      return;
+    }
+    el.classList.add('is-loading');
+    el.style.height = '48px';
+    void refreshNotebook().then(() => paint());
+  }, { passive: true });
+}
+
+/**
+ * Drag the Phevere chip freely along the mock selection bar, like a reorderable list: the chip
+ * follows the finger, the chips it passes slide aside, and the drop position becomes its slot.
+ * The DOM is not reordered mid-drag, which would drop the pointer capture after one step.
+ */
 function bindMockBar(): void {
   const bar = document.querySelector<HTMLElement>('[data-mock-bar]');
   const chip = bar?.querySelector<HTMLElement>('[data-drag="bar-slot"]');
   if (!bar || !chip) return;
-  const slotAt = (x: number) => {
-    const others = [...bar.querySelectorAll<HTMLElement>('.mock-bar__item')].filter((n) => n !== chip);
-    let slot = 0;
-    for (const n of others) {
-      const r = n.getBoundingClientRect();
-      if (x > r.left + r.width / 2) slot += 1;
-    }
-    return slot;
+  let drag: {
+    x: number; left: number; width: number; from: number; to: number; step: number;
+    min: number; max: number; others: HTMLElement[]; centres: number[];
+  } | null = null;
+  const finish = (commit: boolean) => {
+    if (!drag) return;
+    const { from, to, others } = drag;
+    drag = null;
+    chip.classList.remove('is-dragging');
+    chip.style.transform = '';
+    others.forEach((n) => { n.style.transform = ''; });
+    if (commit && to !== from) void setBarSlot(to);
   };
   chip.addEventListener('pointerdown', (e) => {
+    const all = [...bar.querySelectorAll<HTMLElement>('.mock-bar__item')];
+    const others = all.filter((n) => n !== chip);
+    const gap = parseFloat(getComputedStyle(bar).columnGap) || 0;
+    const from = all.indexOf(chip);
+    const box = chip.getBoundingClientRect();
+    drag = {
+      x: e.clientX,
+      left: box.left,
+      width: box.width,
+      from,
+      to: from,
+      step: box.width + gap,
+      // The chip may travel from the first chip's left edge to the last chip's right edge.
+      min: Math.min(box.left, ...others.map((n) => n.getBoundingClientRect().left)),
+      max: Math.max(box.right, ...others.map((n) => n.getBoundingClientRect().right)),
+      others,
+      centres: others.map((n) => { const r = n.getBoundingClientRect(); return r.left + r.width / 2; }),
+    };
     chip.setPointerCapture(e.pointerId);
     chip.classList.add('is-dragging');
   });
   chip.addEventListener('pointermove', (e) => {
-    if (!chip.hasPointerCapture(e.pointerId)) return;
-    const slot = slotAt(e.clientX);
-    const others = [...bar.querySelectorAll<HTMLElement>('.mock-bar__item')].filter((n) => n !== chip);
-    const before = others[slot] || null;
-    if (chip.nextElementSibling !== before) bar.insertBefore(chip, before);
+    if (!drag) return;
+    const d = drag;
+    const dx = Math.max(d.min - d.left, Math.min(d.max - d.width - d.left, e.clientX - d.x));
+    chip.style.transform = `translateX(${dx}px) scale(1.08)`;
+    // The finger, not the chip's centre, picks the slot, so a narrow end chip can be passed.
+    d.to = d.centres.filter((c) => c < e.clientX).length;
+    d.others.forEach((n, i) => {
+      // Chips between the old and new slot slide one chip-width toward the gap.
+      const shift = i >= d.from && i < d.to ? -d.step : i < d.from && i >= d.to ? d.step : 0;
+      n.style.transform = shift ? `translateX(${shift}px)` : '';
+    });
   });
-  chip.addEventListener('pointerup', (e) => {
-    chip.releasePointerCapture(e.pointerId);
-    chip.classList.remove('is-dragging');
-    void setBarSlot(slotAt(e.clientX));
-  });
+  chip.addEventListener('pointerup', () => finish(true));
+  chip.addEventListener('pointercancel', () => finish(false));
 }
 
 let selectionTimer: number | null = null;
@@ -979,10 +1039,6 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       t.textContent = def.classList.contains('is-clamped') ? 'Show more' : 'Show less';
       return;
     }
-    case 'nb-refresh':
-      await refreshNotebook();
-      paint();
-      return;
     case 'nb-del':
       if (t.dataset.id) {
         await removeVocab(t.dataset.id);
@@ -1009,24 +1065,6 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       prefs.translationProvider = (t as HTMLInputElement).value as MobilePrefs['translationProvider'];
       persistPrefs();
       return;
-    case 'keys-save': {
-      root.querySelectorAll<HTMLInputElement>('[data-pref]').forEach((el) => {
-        const key = el.dataset.pref as keyof MobilePrefs;
-        if (key) (prefs as unknown as Record<string, unknown>)[key] = el.value;
-      });
-      persistPrefs();
-      toast('Keys saved on this device');
-      return;
-    }
-    case 'key-save': {
-      const key = t.dataset.pref as keyof MobilePrefs | undefined;
-      if (!key) return;
-      const input = root.querySelector<HTMLInputElement>(`[data-pref="${key}"]`);
-      if (input) (prefs as unknown as Record<string, unknown>)[key] = input.value;
-      persistPrefs();
-      toast(key === 'googleKey' ? 'Google API key saved' : key === 'deeplKey' ? 'DeepL API key saved' : 'Key saved');
-      return;
-    }
     case 'notify-allow':
       if (hasNativeBridge()) {
         await nativeCall('requestNotifications', {});
@@ -1141,11 +1179,6 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     }
-    case 'pack-refresh':
-      packMsg = '';
-      await refreshPacks();
-      paint();
-      return;
     default:
       return;
   }
@@ -1168,6 +1201,11 @@ function onChange(e: Event): void {
   } else if (el.id === 'nbq') {
     notebookFilter = (el as HTMLInputElement).value;
     paint();
+  } else if (e.type === 'change' && el.dataset.pref && el instanceof HTMLInputElement) {
+    // API keys save as you leave the field.
+    (prefs as unknown as Record<string, unknown>)[el.dataset.pref] = el.value.trim();
+    persistPrefs();
+    toast('Saved');
   } else if (el.id === 'audio-volume') {
     prefs.audioVolume = (Number((el as HTMLInputElement).value) || 0) / 100;
     persistPrefs();
@@ -1239,6 +1277,7 @@ export async function startApp(): Promise<void> {
     touchStart = null;
   }, { passive: true });
   root.addEventListener('touchcancel', () => { touchStart = null; }, { passive: true });
+  bindPullToRefresh();
   await sqlWarm();
   await refreshNotebook();
   void fillEmptyCards();

@@ -52,10 +52,17 @@ export function mockBarHtml(slot: number): string {
 }
 
 const ICON = {
+  trash: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  import: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M12 4v11M7 10l5 5 5-5M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  download: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  bell: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M6 16v-5a6 6 0 1 1 12 0v5l2 2H4zM10 21h4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  layers: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 7h16M4 12h16M4 17h10" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  overlay: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 5h11v11H4zM9 10h11v10H9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+
   left: '<svg viewBox="0 0 24 24"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4-4.6-4.6z"/></svg>',
   right: '<svg viewBox="0 0 24 24"><path d="M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z"/></svg>',
   check: '<svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>',
-  camera: '<svg viewBox="0 0 24 24"><path d="M12 17.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9m0-2a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5M9 3 7.2 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3z"/></svg>',
+  camera: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M8 9.5h8M8 12.5h8M8 15.5h5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   select: '<svg viewBox="0 0 24 24"><path d="M3 5h2V3a2 2 0 0 0-2 2m0 8h2v-2H3zm4 8h2v-2H7zM3 9h2V7H3zm10-6h-2v2h2zm6 0v2h2a2 2 0 0 0-2-2M5 21v-2H3a2 2 0 0 0 2 2m-2-4h2v-2H3zM9 3H7v2h2zm2 18h2v-2h-2zm8-8h2v-2h-2zm0 8a2 2 0 0 0 2-2h-2zm0-12h2V7h-2zm0 8h2v-2h-2zm-4 4h2v-2h-2zm0-16h2V3h-2zM7 17h10V7H7zm2-8h6v6H9z"/></svg>',
   a11y: '<svg viewBox="0 0 24 24"><path d="M12 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4m9 7h-6v13h-2v-6h-2v6H9V9H3V7h18z"/></svg>',
   chevron: '<svg viewBox="0 0 24 24"><path d="M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z"/></svg>',
@@ -108,6 +115,15 @@ function selectionBarSection(capture: CaptureInfo): string {
 
 export type SettingsSection = 'capture' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio';
 
+const TAB_ICON: Record<SettingsSection, string> = {
+  capture: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M9 9h6M12 9v7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  notifications: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M6 16v-5a6 6 0 1 1 12 0v5l2 2H4zM10 21h4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  sources: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M5 4.5h4v15H5zM10.5 4.5h4v15h-4zM16 6l3.6-1 3 14.2-3.6 1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  offline: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM12 7v7M9 11l3 3 3-3M8.5 17h7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  api: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M11 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM11 12h10M18 12v3M21 12v2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  audio: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4zM15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+};
+
 export const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = [
   { id: 'capture', label: 'Capture' },
   { id: 'sources', label: 'Sources' },
@@ -138,12 +154,14 @@ function panelIntro(_title: string): string {
 function packArticle(p: CatalogStatus, action: 'download' | 'remove'): string {
   const btn =
     action === 'remove'
-      ? `<button type="button" class="danger" data-act="pack-rm" data-id="${esc(p.id)}">Remove</button>`
-      : `<button type="button" class="filled" data-act="pack-dl" data-id="${esc(p.id)}">Download</button>`;
+      ? `<button type="button" class="icon-btn pack__action" data-act="pack-rm" data-id="${esc(p.id)}" aria-label="Remove ${esc(p.name)}" title="Remove">${ICON.trash}</button>`
+      : `<button type="button" class="icon-btn pack__action" data-act="pack-dl" data-id="${esc(p.id)}" aria-label="Download ${esc(p.name)}" title="Download">${ICON.download}</button>`;
   const extra = p.installed ? ` · ${p.entryCount} entries` : '';
   return `<article class="pack">
-    <strong>${esc(p.name)}</strong>
-    <p class="hint">${esc(p.summary)} · ${esc(p.sizeHint)} · ${esc(p.license)}${extra}</p>
+    <div class="pack__text">
+      <strong>${esc(p.name)}</strong>
+      <p class="hint">${esc(p.summary)} · ${esc(p.sizeHint)} · ${esc(p.license)}${extra}</p>
+    </div>
     ${btn}
   </article>`;
 }
@@ -151,7 +169,7 @@ function packArticle(p: CatalogStatus, action: 'download' | 'remove'): string {
 function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
   const overlayBtn =
     capture.platform === 'android' && prefs.floatingStrip && !capture.canDrawOverlays
-      ? `<div class="toolbar-row"><button type="button" class="outlined" data-act="overlay-perm">Allow draw over other apps</button></div>`
+      ? navRow('overlay-perm', ICON.overlay, 'Draw over other apps', 'Off')
       : '';
   return `
     ${panelIntro('Capture')}
@@ -177,7 +195,7 @@ function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
 
 function notificationsPanel(prefs: MobilePrefs, capture: CaptureInfo): string {
   const allow = !capture.notificationsGranted
-    ? `<div class="toolbar-row"><button type="button" class="filled" data-act="notify-allow">Allow notifications</button></div>`
+    ? navRow('notify-allow', ICON.bell, 'Notifications', 'Off')
     : '';
   return `
     ${panelIntro('Notifications')}
@@ -194,7 +212,7 @@ function notificationsPanel(prefs: MobilePrefs, capture: CaptureInfo): string {
       <span class="src-name">Scan finished</span>
       <input type="checkbox" role="switch" data-act="notify" data-key="ocr" ${prefs.notifyOcr ? 'checked' : ''} />
     </label>
-    <div class="toolbar-row"><button type="button" class="outlined" data-act="notify-settings">Notification settings</button></div>`;
+    ${navRow('notify-settings', ICON.bell, 'System notification settings')}`;
 }
 
 function sourcesPanel(prefs: MobilePrefs, sources: DictionarySource[]): string {
@@ -241,11 +259,7 @@ function offlinePanel(packs: CatalogStatus[], packMsg: string): string {
   return `
     ${panelIntro('Offline dictionary')}
     ${catalogHtml}
-    <div class="toolbar-row">
-      <button type="button" class="outlined" data-act="pack-file">Import JSON / JSONL</button>
-      <button type="button" class="outlined" data-act="pack-file">Import CEDICT file</button>
-      <button type="button" class="outlined" data-act="pack-refresh">Refresh</button>
-    </div>
+    ${navRow('pack-file', ICON.import, 'Import pack', 'JSON, JSONL, CEDICT')}
     ${packMsg ? `<p class="status">${esc(packMsg)}</p>` : ''}
     <h3 class="settings-subhead">Installed packs</h3>
     ${installedHtml}`;
@@ -257,10 +271,8 @@ function apiPanel(prefs: MobilePrefs): string {
     <div class="keys">
       <label for="google-api-key">Google Translate API key</label>
       <input id="google-api-key" data-pref="googleKey" type="password" value="${esc(prefs.googleKey)}" placeholder="Paste your Google Cloud API key" autocomplete="off" />
-      <div class="toolbar-row"><button type="button" class="filled" data-act="key-save" data-pref="googleKey">Save</button></div>
       <label for="deepl-api-key">DeepL API key</label>
       <input id="deepl-api-key" data-pref="deeplKey" type="password" value="${esc(prefs.deeplKey)}" placeholder="Paste your DeepL API key" autocomplete="off" />
-      <div class="toolbar-row"><button type="button" class="filled" data-act="key-save" data-pref="deeplKey">Save</button></div>
     </div>
     <h3 class="settings-subhead">Oxford, Collins, Youdao, WordsAPI</h3>
     <div class="keys">
@@ -271,7 +283,6 @@ function apiPanel(prefs: MobilePrefs): string {
       <label>WordsAPI (RapidAPI)</label><input data-pref="wordsKey" type="password" value="${esc(prefs.wordsKey)}" autocomplete="off" />
       <label>Collins RapidAPI key</label><input data-pref="collinsKey" type="password" value="${esc(prefs.collinsKey)}" autocomplete="off" />
       <label>Collins host</label><input data-pref="collinsHost" value="${esc(prefs.collinsHost)}" autocomplete="off" />
-      <div class="toolbar-row" style="margin-top:12px"><button type="button" class="filled" data-act="keys-save">Save keys</button></div>
     </div>`;
 }
 
@@ -381,7 +392,7 @@ export function settingsBody(
   const tabs = settingsSections(capture)
     .map(
       (s) =>
-        `<button type="button" class="chip" role="tab" data-act="settings-section" data-section="${s.id}" aria-selected="${section === s.id}">${s.label}</button>`,
+        `<button type="button" class="result-tab" role="tab" data-act="settings-section" data-section="${s.id}" aria-selected="${section === s.id}" aria-label="${s.label}" title="${s.label}">${TAB_ICON[s.id]}</button>`,
     )
     .join('');
   const panel =
@@ -399,7 +410,7 @@ export function settingsBody(
   return `
     <div class="settings">
       <div class="settings-sticky">
-        <div class="settings-tabs" role="tablist" aria-label="Settings sections">${tabs}</div>
+        <div class="result-tabs settings-tabs" role="tablist" aria-label="Settings sections" style="--tabs:${settingsSections(capture).length}">${tabs}</div>
       </div>
       <div class="settings-panel" role="tabpanel">${panel}</div>
     </div>`;

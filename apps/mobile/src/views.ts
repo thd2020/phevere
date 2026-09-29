@@ -37,6 +37,15 @@ export function esc(s: string): string {
 }
 
 const ICO = {
+  scan: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M8 9.5h8M8 12.5h8M8 15.5h5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  go: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  open: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M7 17 17 7M9 7h8v8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  export: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M12 15V4M7 9l5-5 5 5M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  import: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M12 4v11M7 10l5 5 5-5M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  recent: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  az: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M3.5 17 7 7l3.5 10M4.8 13.5h4.4M14 7h6l-6 10h6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+
   back: '<svg viewBox="0 0 24 24"><path d="M15.5 19.5 8 12l7.5-7.5 1.5 1.5L11 12l6 6z"/></svg>',
   fwd: '<svg viewBox="0 0 24 24"><path d="M8.5 4.5 16 12l-7.5 7.5-1.5-1.5 6-6-6-6z"/></svg>',
   search: '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>',
@@ -72,11 +81,15 @@ export function appBarHtml(tab: Tab, query: string, canBack: boolean, canFwd: bo
           <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="Previous lookup">${ICO.back}</button>
           <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="Next lookup">${ICO.fwd}</button>
         </div>` : ''}
+        ${tab === 'notebook' ? `<div class="hist">
+          <button type="button" class="icon-btn" data-act="nb-import" aria-label="Import notebook" title="Import">${ICO.import}</button>
+          <button type="button" class="icon-btn" data-act="nb-export" data-fmt="json" aria-label="Export notebook" title="Export">${ICO.export}</button>
+        </div>` : ''}
       </div>
       ${lookup ? `<form class="search">
         <input id="q" type="search" enterkeyhint="search" placeholder="Look up a word or phrase" value="${esc(query)}" autocomplete="off" />
-        <button type="button" class="icon-btn" data-act="ocr" aria-label="Scan text">${ICO.cam}</button>
-        <button type="submit" class="go">Look up</button>
+        <button type="button" class="icon-btn" data-act="ocr" aria-label="Scan text" title="Scan text">${ICO.scan}</button>
+        <button type="submit" class="go" aria-label="Look up" title="Look up">${ICO.go}</button>
       </form>` : ''}
     </div>`;
 }
@@ -359,9 +372,9 @@ function wikiPane(
   if (article) {
     return `<section class="wikipedia-card wikipedia-reader">
       <div class="wikipedia-reader__bar">
-        <button type="button" class="wikipedia-reader__back" data-act="wiki-back">← Back</button>
+        <button type="button" class="icon-btn" data-act="wiki-back" aria-label="Back">${ICO.back}</button>
         <div class="wikipedia-reader__title">${esc(article.title)}</div>
-        <button type="button" class="wikipedia-reader__ext" data-act="wiki-ext" data-url="${esc(article.url)}">Open in browser</button>
+        <button type="button" class="icon-btn" data-act="wiki-ext" data-url="${esc(article.url)}" aria-label="Open in browser" title="Open in browser">${ICO.open}</button>
       </div>
       ${loading ? `<p class="status"><span class="md-spinner"></span> Loading article…</p>` : ''}
       ${error ? `<p class="status">${esc(error)}</p>` : ''}
@@ -589,7 +602,7 @@ export function notebookBody(
             <header class="vocab-entry__head">
               <h3 class="vocab-lemma">${esc(e.lemma)}</h3>
               ${ipaHtml}
-              <button type="button" class="vocab-play" data-act="nb-play" data-lemma="${esc(e.lemma)}" aria-label="Play pronunciation">▶</button>
+              <button type="button" class="vocab-play" data-act="nb-play" data-lemma="${esc(e.lemma)}" aria-label="Play pronunciation">${ICO.speaker}</button>
               <span class="vocab-expand-hint" aria-hidden="true"></span>
             </header>
             <div class="vocab-entry__meta">
@@ -605,8 +618,8 @@ export function notebookBody(
           </div>
         </div>
         <div class="vocab-actions">
-          <button type="button" class="outlined" data-act="lookup" data-q="${esc(e.lemma)}">Open</button>
-          <button type="button" class="outlined" data-act="nb-del" data-id="${esc(e.id)}">Remove</button>
+          <button type="button" class="icon-btn" data-act="lookup" data-q="${esc(e.lemma)}" aria-label="Look up ${esc(e.lemma)}" title="Look up">${ICO.open}</button>
+          <button type="button" class="icon-btn" data-act="nb-del" data-id="${esc(e.id)}" aria-label="Remove ${esc(e.lemma)}" title="Remove">${ICO.trash}</button>
         </div>
       </article>`;
     })
@@ -615,13 +628,11 @@ export function notebookBody(
     <div class="nb-head">
       <input id="nbq" type="search" class="vocab-search" placeholder="Search notebook…" value="${esc(filter)}" autocomplete="off" aria-label="Search notebook" />
       <div class="vocab-sort" role="group" aria-label="Notebook sort">
-        <button type="button" class="vocab-sort-btn${sort === 'recent' ? ' is-active' : ''}" data-act="nb-sort" data-sort="recent" aria-pressed="${sort === 'recent'}">Recent</button>
-        <button type="button" class="vocab-sort-btn${sort === 'az' ? ' is-active' : ''}" data-act="nb-sort" data-sort="az" aria-pressed="${sort === 'az'}">A–Z</button>
+        <button type="button" class="vocab-sort-btn${sort === 'recent' ? ' is-active' : ''}" data-act="nb-sort" data-sort="recent" aria-pressed="${sort === 'recent'}" aria-label="Most recent first" title="Recent">${ICO.recent}</button>
+        <button type="button" class="vocab-sort-btn${sort === 'az' ? ' is-active' : ''}" data-act="nb-sort" data-sort="az" aria-pressed="${sort === 'az'}" aria-label="Alphabetical" title="A–Z">${ICO.az}</button>
       </div>
-      <button type="button" class="outlined" data-act="nb-export" data-fmt="json">Export</button>
-      <button type="button" class="outlined" data-act="nb-import">Import</button>
-      <button type="button" class="outlined" data-act="nb-refresh">Refresh</button>
     </div>
+    <div class="ptr" aria-hidden="true"><span class="md-spinner"></span></div>
     <div class="vocab-list">${rows || `<p class="empty">${q ? 'No notebook matches.' : 'No saved words yet.'}</p>`}</div>`;
 }
 
