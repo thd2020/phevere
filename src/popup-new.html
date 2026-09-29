@@ -180,6 +180,7 @@
       .toolbar-icon.toolbar-heart.is-saved { color: var(--tertiary); }
       .toolbar-icon.toolbar-heart.is-saved .heart-fill { fill: currentColor; }
       .toolbar-icon.is-speaking { color: var(--tertiary); }
+      .tx-speak.is-speaking { background: var(--tertiary-container); color: var(--on-tertiary-container); }
 
       /*
        * Result views as tabs. Closed: an icon like the rest. Open: the pill under the icon
@@ -267,53 +268,118 @@
       }
       .results-section.is-lexicon-fill { overflow: hidden; padding-bottom: 0; }
 
-      /* Loading */
+      /*
+       * Loading: a skeleton of the result. The selected word shows at once in the
+       * headword face; shimmering blocks stand where IPA, the rail and senses will land,
+       * so the result replaces them without a jump. A thin bar appears only when the
+       * caller reports real progress (OCR).
+       */
       .loading {
         display: none;
         flex-direction: column;
-        align-items: stretch;
-        justify-content: center;
-        gap: 10px;
-        padding: 28px 12px;
+        flex: 1 1 auto;
+        min-height: 0;
+        gap: 0;
         color: var(--on-surface-variant);
+        animation: fadeIn 0.24s var(--motion);
       }
-      .loading-title { font-size: 14px; font-weight: 600; color: var(--on-surface); }
-      .loading-sub { font-size: 12.5px; color: var(--on-surface-variant); }
+      .skel-head { padding: 0 2px 12px; }
+      .skel-word {
+        font-family: var(--font-display);
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: -0.035em;
+        line-height: 1.05;
+        color: var(--on-surface);
+        overflow-wrap: anywhere;
+        min-height: 32px;
+      }
+      .skel-word:empty {
+        width: 46%;
+        height: 30px;
+        border-radius: 8px;
+      }
+      .skel-chips { display: flex; gap: 6px; margin-top: 10px; }
+      .skel,
+      .skel-word:empty {
+        background: linear-gradient(100deg, #ebe6df 0%, #ebe6df 38%, #f7f3ee 50%, #ebe6df 62%, #ebe6df 100%);
+        background-size: 250% 100%;
+        animation: skel-shimmer 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+      .skel-pill { display: block; width: 96px; height: 28px; border-radius: 999px; }
+      .skel-pill + .skel-pill { width: 82px; }
+      .skel-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        margin: 0 -14px 0 -16px;
+        border-top: 1px solid var(--outline-variant);
+      }
+      .skel-rail {
+        flex: 0 0 38px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px 6px 0 8px;
+        border-right: 1px solid var(--outline-variant);
+      }
+      .skel-rail .skel { width: 22px; height: 56px; border-radius: 999px; }
+      .skel-rail .skel + .skel { height: 44px; }
+      .skel-card {
+        flex: 1 1 auto;
+        margin: 12px 6px 0 12px;
+        padding: 16px;
+        align-self: flex-start;
+        width: 100%;
+        background: var(--surface-lowest);
+        border: 1px solid var(--outline-variant);
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .skel-line { display: block; height: 12px; border-radius: 6px; }
+      .skel-line.w-label { width: 22%; height: 11px; margin-bottom: 4px; }
+      .skel-line.w-90 { width: 92%; }
+      .skel-line.w-75 { width: 76%; }
+      .skel-line.w-55 { width: 56%; }
+      .skel-line.w-gap { margin-top: 10px; }
+      .skel-status {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        padding: 12px 2px 4px;
+        min-height: 20px;
+      }
+      .loading-title { font-size: 13px; font-weight: 600; color: var(--on-surface-variant); }
+      .loading-sub { font-size: 12.5px; color: var(--on-surface-variant); opacity: 0.8; }
+      .loading-title:empty, .loading-sub:empty { display: none; }
       .loading-track {
-        height: 4px;
-        border-radius: 999px;
-        background: var(--primary-container);
-        overflow: hidden;
-      }
-      .loading-bar {
-        height: 100%;
-        width: 40%;
-        border-radius: 999px;
-        background: var(--primary);
-        animation: loading-slide 1.2s var(--motion) infinite;
-      }
-      .loading-bar.determinate { animation: none; transition: width 0.25s var(--motion); }
-      .loading-stages { display: flex; gap: 6px; flex-wrap: wrap; }
-      .loading-stage {
-        font-size: 11.5px;
-        font-weight: 600;
-        padding: 3px 10px;
+        display: none;
+        height: 3px;
+        margin: 2px 2px 0;
         border-radius: 999px;
         background: var(--surface-container);
-        color: var(--on-surface-variant);
-        opacity: 0.7;
+        overflow: hidden;
       }
-      .loading-stage.active {
-        background: var(--primary-container);
-        color: var(--on-primary-container);
-        opacity: 1;
+      .loading.has-progress .loading-track { display: block; }
+      .loading-bar {
+        height: 100%;
+        width: 0;
+        border-radius: 999px;
+        background: var(--primary);
+        transition: width 0.3s var(--motion);
       }
-      .loading-stage.done {
-        background: var(--tertiary-container);
-        color: var(--on-tertiary-container);
-        opacity: 1;
+      .loading-stages { display: none; }
+      /* OCR has no word yet: the status line leads, above the skeleton. */
+      .loading.no-word .skel-status { order: -1; padding: 0 2px 12px; }
+      .loading.no-word .loading-title { font-size: 15px; color: var(--on-surface); }
+      .tab-pending { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 12px; }
+      .tab-pending .skel-card { margin: 0; }
+      @keyframes skel-shimmer {
+        from { background-position: 100% 0; }
+        to { background-position: -150% 0; }
       }
-      .tab-pending { display: flex; flex-direction: column; gap: 10px; padding: 22px 4px 12px; }
       @keyframes loading-slide {
         0% { transform: translateX(-120%); }
         100% { transform: translateX(280%); }
@@ -414,16 +480,27 @@
       .ipa-sep { display: none; }
 
       .result-section { margin-bottom: 18px; }
-      .result-section-title,
+      .result-section-title {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--on-surface-variant);
+        margin: 0 0 12px;
+      }
+      /* Part of speech as dictionaries print it: italic serif, lower case, in the accent colour. */
       .lexicon-pos-heading {
         display: block;
-        font-family: var(--font-mono);
-        font-size: 11.5px;
+        font-family: var(--font-display);
+        font-size: 19px;
+        font-style: italic;
         font-weight: 600;
-        letter-spacing: 0.09em;
-        text-transform: uppercase;
-        color: var(--on-surface);
-        margin: 0 0 12px;
+        letter-spacing: -0.01em;
+        text-transform: lowercase;
+        color: var(--primary);
+        margin: 0 0 10px;
+        line-height: 1.2;
       }
 
       /* Senses */
@@ -499,15 +576,14 @@
       .definition-source-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
       .definition-source-badge {
         display: inline-block;
-        font-family: var(--font-mono);
-        font-size: 10px;
+        font-family: var(--font-ui);
+        font-size: 11px;
         font-weight: 500;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
+        letter-spacing: 0.01em;
         color: var(--on-surface-variant);
-        background: var(--surface-low);
-        border-radius: 4px;
-        padding: 2px 6px;
+        background: var(--surface-container);
+        border-radius: 6px;
+        padding: 2px 8px;
       }
 
       /* Word family */
@@ -607,26 +683,27 @@
         padding-top: 10px;
         border-top: 1px solid var(--outline-variant);
       }
+      /*
+       * Vertical labels read top to bottom (vertical-rl) with no rotate(): a transformed
+       * text layer loses subpixel positioning and small type turns blurry on Windows.
+       */
       .lexicon-pos-tab {
         border: 0;
         border-radius: 999px;
         background: transparent;
-        padding: 10px 6px;
-        font-family: var(--font-mono);
-        font-size: 10.5px;
-        font-weight: 500;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
+        padding: 12px 5px;
+        font-family: var(--font-ui);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: capitalize;
         color: var(--on-surface-variant);
-        line-height: 1.1;
+        line-height: 1;
         text-align: center;
         white-space: nowrap;
         writing-mode: vertical-rl;
-        transform: rotate(180deg);
+        text-orientation: mixed;
         transition: background-color 0.18s var(--motion), color 0.18s var(--motion);
-      }
-      @supports (writing-mode: sideways-lr) {
-        .lexicon-pos-tab { writing-mode: sideways-lr; transform: none; }
       }
       .lexicon-pos-tab:hover { background: var(--surface-container); color: var(--on-surface); }
       .lexicon-pos-tab.is-active {
@@ -651,7 +728,7 @@
       .lexicon-pane--pos .lexicon-pos-group + .lexicon-pos-group {
         margin-top: 18px;
         padding-top: 16px;
-        border-top: 2px solid var(--on-surface);
+        border-top: 1px solid var(--outline-variant);
       }
 
       /* Translation */
@@ -1177,10 +1254,23 @@
 
         <!-- Results Section -->
         <div class="results-section">
-          <div class="loading" id="loadingElement">
-            <div class="loading-title" id="loadingTitle">Looking up…</div>
+          <div class="loading" id="loadingElement" role="status" aria-live="polite">
+            <div class="skel-head">
+              <div class="skel-word" id="loadingWord"></div>
+              <div class="skel-chips" aria-hidden="true"><span class="skel skel-pill"></span><span class="skel skel-pill"></span></div>
+            </div>
+            <div class="skel-body" aria-hidden="true">
+              <div class="skel-rail"><span class="skel"></span><span class="skel"></span></div>
+              <div class="skel-card">
+                <span class="skel skel-line w-label"></span>
+                <span class="skel skel-line w-90"></span>
+                <span class="skel skel-line w-75"></span>
+                <span class="skel skel-line w-90 w-gap"></span>
+                <span class="skel skel-line w-55"></span>
+              </div>
+            </div>
+            <div class="skel-status"><span class="loading-title" id="loadingTitle"></span><span class="loading-sub" id="loadingSub"></span></div>
             <div class="loading-track"><div class="loading-bar" id="loadingBar"></div></div>
-            <div class="loading-sub" id="loadingSub">Fetching definitions and translations</div>
             <div class="loading-stages" id="loadingStages"></div>
           </div>
 
@@ -1736,10 +1826,8 @@
             etymologyHtml = `
               <div class="result-card">
                   <div class="result-word">${word}</div>
-                  <div class="tab-pending" role="status">
-                    <div class="loading-title">Fetching etymology…</div>
-                    <div class="loading-sub">Wiktionary, Etymonline, and other sources load independently</div>
-                    <div class="loading-track"><div class="loading-bar"></div></div>
+                  <div class="tab-pending" role="status" aria-label="Loading etymology">
+                    <div class="skel-card" aria-hidden="true"><span class="skel skel-line w-label"></span><span class="skel skel-line w-90"></span><span class="skel skel-line w-75"></span><span class="skel skel-line w-55"></span></div>
                   </div>
               </div>`;
           } else if (sources.length > 0) {
@@ -2258,32 +2346,23 @@ function startAutoCloseTimeout() {
         el.style.display = 'flex';
         showDictionaryResults('hide');
 
+        const word = String(opts.word != null ? opts.word : (currentText || window['__popupCurrentText'] || '')).trim();
+        const wordEl = document.getElementById('loadingWord');
+        if (wordEl) wordEl.textContent = word.length > 60 ? word.slice(0, 60) + '…' : word;
+        // A plain dictionary lookup needs no words: the skeleton says it. Only OCR and
+        // other callers with real progress get a status line and a bar.
+        const hasProgress = typeof opts.percent === 'number';
+        const quiet = !hasProgress && !!word && /^(Looking up|Wikipedia)/.test(opts.title || 'Looking up');
+        el.classList.toggle('has-progress', hasProgress);
+        el.classList.toggle('no-word', !word);
+
         const title = document.getElementById('loadingTitle');
         const sub = document.getElementById('loadingSub');
+        if (title) title.textContent = quiet ? '' : (opts.title || '');
+        if (sub) sub.textContent = quiet ? '' : (opts.subtitle || '');
+
         const bar = document.getElementById('loadingBar');
-        const stagesEl = document.getElementById('loadingStages');
-
-        if (title) title.textContent = opts.title || 'Looking up…';
-        if (sub) sub.textContent = opts.subtitle || '';
-
-        if (bar) {
-          if (typeof opts.percent === 'number') {
-            bar.classList.add('determinate');
-            bar.style.width = Math.max(0, Math.min(100, opts.percent)) + '%';
-          } else {
-            bar.classList.remove('determinate');
-            bar.style.width = '';
-          }
-        }
-
-        if (stagesEl) {
-          const stages = opts.stages || [];
-          const active = typeof opts.activeStage === 'number' ? opts.activeStage : -1;
-          stagesEl.innerHTML = stages.map((label, i) => {
-            const cls = i < active ? 'loading-stage done' : (i === active ? 'loading-stage active' : 'loading-stage');
-            return '<span class="' + cls + '">' + label + '</span>';
-          }).join('');
-        }
+        if (bar) bar.style.width = hasProgress ? Math.max(0, Math.min(100, opts.percent)) + '%' : '0';
       }
 
       // Listen for main-process progress (OCR → lookup pipeline)
@@ -2334,7 +2413,7 @@ function startAutoCloseTimeout() {
              contentHtml = list.length
                ? list.map(tr => createTranslationCard(result.word, tr, result.detectedLanguage)).join('')
                : pending
-                 ? `<div class="tab-pending" role="status"><div class="loading-title">Translating…</div><div class="loading-sub">Waiting on translation sources</div><div class="loading-track"><div class="loading-bar"></div></div></div>`
+                 ? `<div class="tab-pending" role="status" aria-label="Translating"><div class="skel-card" aria-hidden="true"><span class="skel skel-line w-label"></span><span class="skel skel-line w-90"></span><span class="skel skel-line w-75"></span><span class="skel skel-line w-55"></span></div></div>`
                  : `<div class="error-message">No translation found. Check the network, or pick an engine in Settings → Sources.</div>`;
          } else if (currentTab === 'wikipedia') {
              void displayWikipediaResult(result.word || currentText);
@@ -2410,6 +2489,45 @@ function startAutoCloseTimeout() {
           try { if (ipaAudioEl) ipaAudioEl.pause(); } catch (e) {}
         }
 
+        /* Audio settings live in the main process (Settings → Audio), shared with the notebook. */
+        var audioPrefs = { enabled: true, speed: 1, volume: 1, voice: 'mechanical' };
+        (function loadAudioPrefs() {
+          var api = window.electronAPI;
+          if (!api || typeof api.getAudioPrefs !== 'function') return;
+          api.getAudioPrefs().then(function (p) { if (p) audioPrefs = p; }).catch(function () {});
+          if (typeof api.onAudioPrefsChanged === 'function') {
+            api.onAudioPrefsChanged(function (p) { if (p) audioPrefs = p; });
+          }
+        })();
+
+        function applyPlayback(el, recorded) {
+          try {
+            el.volume = Math.max(0, Math.min(1, Number(audioPrefs.volume)));
+            // Synthetic speech already carries the speed; recorded clips get it here.
+            el.preservesPitch = true;
+            el.playbackRate = recorded ? Math.max(0.5, Math.min(2, Number(audioPrefs.speed) || 1)) : 1;
+          } catch (e) { /* ignore */ }
+        }
+
+        var synthAudioEl = null;
+        /** Speak with the engine picked in Settings (eSpeak or Kokoro). Resolves false on failure. */
+        async function speakSynthetic(req) {
+          var api = window.electronAPI;
+          if (!api || typeof api.synthesizeSpeech !== 'function') return false;
+          try {
+            var res = await api.synthesizeSpeech(req);
+            if (!res || !res.ok || !res.dataUrl) return false;
+            try { if (synthAudioEl) synthAudioEl.pause(); } catch (e) {}
+            try { if (ipaAudioEl) ipaAudioEl.pause(); } catch (e) {}
+            synthAudioEl = new Audio(res.dataUrl);
+            applyPlayback(synthAudioEl, false);
+            await synthAudioEl.play();
+            return true;
+          } catch (e) {
+            return false;
+          }
+        }
+
         function playRecordedDataUrl(url, onFail) {
           try { speechSynthesis.cancel(); } catch (e) {}
           try {
@@ -2421,13 +2539,16 @@ function startAutoCloseTimeout() {
             try {
               ipaAudioEl.pause();
               ipaAudioEl.currentTime = 0;
+              applyPlayback(ipaAudioEl, true);
               var replay = ipaAudioEl.play();
               if (replay && typeof replay.catch === 'function') replay.catch(function () { if (onFail) onFail(); });
             } catch (e) { if (onFail) onFail(); }
             return;
           }
           try { if (ipaAudioEl) { ipaAudioEl.pause(); ipaAudioEl.src = ''; } } catch (e) {}
+          try { if (synthAudioEl) synthAudioEl.pause(); } catch (e) {}
           ipaAudioEl = new Audio(url);
+          applyPlayback(ipaAudioEl, true);
           ipaAudioSrc = url;
           ipaAudioEl.onerror = function () { if (onFail) onFail(); };
           var p = ipaAudioEl.play();
@@ -2487,12 +2608,21 @@ function startAutoCloseTimeout() {
           });
         }
 
+        /** No recorded clip plays: say the headword with the chosen voice, as the phone does. */
+        async function speakHeadwordFallback() {
+          var word = String((currentResult && currentResult.word) || currentText || '').trim();
+          if (!word) return;
+          var lang = (currentResult && currentResult.detectedLanguage) || 'en';
+          var ok = await speakSynthetic({ text: word, lang: lang });
+          if (!ok) showToast('Cannot play pronunciation');
+        }
+
         async function playToolbarHuman() {
-          try { if (localStorage.getItem('phevereAudioEnabled') === '0') {
+          if (audioPrefs.enabled === false) {
             showToast('Sound is off');
             pendingHumanPlay = false;
             return;
-          } } catch (e) {}
+          }
           var urls = recordedUrlsFromResult(currentResult);
           if (!urls.length) {
             if (lookupInFlight) {
@@ -2501,7 +2631,7 @@ function startAutoCloseTimeout() {
               return;
             }
             pendingHumanPlay = false;
-            showToast('No recorded pronunciation');
+            void speakHeadwordFallback();
             return;
           }
           var localHit = urls.find(function (u) { return recordedAudioCache[u]; });
@@ -2523,7 +2653,7 @@ function startAutoCloseTimeout() {
             if (typeof fetchAudio !== 'function') {
               clearTimeout(fetchHint);
               playRecordedDataUrl(urls[0], function () {
-                showToast('No recorded pronunciation');
+                void speakHeadwordFallback();
               });
               return;
             }
@@ -2535,7 +2665,7 @@ function startAutoCloseTimeout() {
             playRecordedDataUrl(hit.dataUrl);
           } catch (e) {
             clearTimeout(fetchHint);
-            showToast('No recorded pronunciation');
+            void speakHeadwordFallback();
           } finally {
             clearTimeout(fetchHint);
             toolbarHumanBusy = false;
@@ -2545,7 +2675,7 @@ function startAutoCloseTimeout() {
         var ipaSpeakBusy = false;
         async function playIpaChip(btn) {
           if (ipaSpeakBusy) return;
-          try { if (localStorage.getItem('phevereAudioEnabled') === '0') return; } catch (e) {}
+          if (audioPrefs.enabled === false) return;
           var ipa = (btn.getAttribute('data-ipa') || '').trim();
           var accent = btn.getAttribute('data-accent') || '';
           if (!ipa) {
@@ -2553,18 +2683,21 @@ function startAutoCloseTimeout() {
             return;
           }
           stopPopupSpeech();
-          if (!window.electronAPI || typeof window.electronAPI.speakIpa !== 'function') {
-            showToast('Cannot speak this IPA');
-            return;
-          }
           ipaSpeakBusy = true;
+          btn.classList.add('is-speaking');
           try {
-            var res = await window.electronAPI.speakIpa({ ipa: ipa, accent: accent });
-            if (!res || !res.ok) showToast('Cannot speak this IPA');
+            // eSpeak NG with the IPA as phonemes (the phone's mechanical voice).
+            var ok = await speakSynthetic({ ipa: ipa, accent: accent });
+            if (!ok && window.electronAPI && typeof window.electronAPI.speakIpa === 'function') {
+              var res = await window.electronAPI.speakIpa({ ipa: ipa, accent: accent });
+              ok = !!(res && res.ok);
+            }
+            if (!ok) showToast('Cannot speak this IPA');
           } catch (e) {
             showToast('Cannot speak this IPA');
           } finally {
             ipaSpeakBusy = false;
+            setTimeout(function () { btn.classList.remove('is-speaking'); }, 400);
           }
         }
 
@@ -3292,7 +3425,13 @@ function startAutoCloseTimeout() {
        }
 
        window.playAudio = (text, language) => {
-         try { if (localStorage.getItem('phevereAudioEnabled') === '0') { pvLog('[POPUP] Audio disabled'); return; } } catch (e) {}
+         if (audioPrefs.enabled === false) { pvLog('[POPUP] Audio disabled'); return; }
+         void speakSynthetic({ text: String(text || ''), lang: String(language || '') }).then(function (ok) {
+           if (!ok) playAudioWebSpeech(text, language);
+         });
+       };
+
+       function playAudioWebSpeech(text, language) {
 
          pvLog(`[AUDIO-DEBUG] === Starting audio playback ===`);
          pvLog(`[AUDIO-DEBUG] Input text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
@@ -3481,6 +3620,8 @@ function startAutoCloseTimeout() {
                });
              };
 
+             utterance.rate = Math.max(0.5, Math.min(2, Number(audioPrefs.speed) || 1));
+             utterance.volume = Math.max(0, Math.min(1, Number(audioPrefs.volume)));
              pvLog(`[AUDIO-DEBUG] About to call speechSynthesis.speak()`);
              speechSynthesis.cancel();
              speechSynthesis.speak(utterance);

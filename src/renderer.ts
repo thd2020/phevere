@@ -201,9 +201,7 @@ function initializeSettingsWindow() {
               <strong>Drop or paste an image</strong>
               <span>PNG / JPG / WebP</span>
             </div>
-            <div class="settings-panel__intro" style="margin-top:20px;">
-              <h3 class="settings-panel__title" style="font-size:1rem;">OCR engine</h3>
-            </div>
+            <h3 class="settings-subhead">OCR engine</h3>
             <div class="settings-field">
               <label for="ocr-profile-select">Model pack</label>
               <select id="ocr-profile-select" class="setting-input"></select>
@@ -249,9 +247,9 @@ function initializeSettingsWindow() {
             <div class="settings-panel__intro">
               <h2 id="settings-sources-heading" class="settings-panel__title">Sources</h2>
             </div>
-            <h3 class="settings-offline-installed-title">Dictionary</h3>
+            <h3 class="settings-subhead">Dictionary</h3>
             <div id="main-source-toggles"></div>
-            <h3 class="settings-offline-installed-title">Translation</h3>
+            <h3 class="settings-subhead">Translation</h3>
             <div id="translation-engine-toggles" role="radiogroup" aria-label="Translation engine"></div>
           </section>
 
@@ -259,15 +257,22 @@ function initializeSettingsWindow() {
             <div class="settings-panel__intro">
               <h2 id="settings-offline-heading" class="settings-panel__title">Offline dictionary</h2>
             </div>
-            <div id="offline-catalog" class="settings-offline-catalog"></div>
-            <div class="settings-actions settings-actions--wrap">
-              <button type="button" id="offline-import-json" class="btn btn-secondary">Import JSON / JSONL</button>
-              <button type="button" id="offline-import-cedict" class="btn btn-secondary">Import CEDICT file</button>
-              <button type="button" id="offline-refresh-packs" class="btn btn-outlined">Refresh</button>
-            </div>
+            <h3 class="settings-subhead">Packs</h3>
+            <div id="offline-catalog" class="pack-list"></div>
             <p id="offline-status" class="settings-inline-status" role="status" aria-live="polite"></p>
-            <h3 class="settings-offline-installed-title">Installed packs</h3>
-            <div id="offline-packs-list" class="settings-offline-packs"></div>
+            <h3 class="settings-subhead">Your files</h3>
+            <button type="button" id="offline-import-json" class="nav-row">
+              <span class="nav-row__icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span class="nav-row__label">Import pack<span class="nav-row__sub">JSON or JSONL</span></span>
+              <span class="nav-row__chevron"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </button>
+            <button type="button" id="offline-import-cedict" class="nav-row">
+              <span class="nav-row__icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span class="nav-row__label">Import CEDICT file<span class="nav-row__sub">cedict_ts.u8</span></span>
+              <span class="nav-row__chevron"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </button>
+            <h3 class="settings-subhead">Installed</h3>
+            <div id="offline-packs-list" class="pack-list"></div>
           </section>
 
           <section class="settings-panel" data-panel="api" aria-labelledby="settings-api-heading">
@@ -277,17 +282,11 @@ function initializeSettingsWindow() {
             <div class="settings-group">
             <div class="settings-field">
               <label for="google-api-key">Google Translate API key</label>
-              <input type="password" id="google-api-key" placeholder="Paste your Google Cloud API key" class="setting-input" autocomplete="off" />
-              <div class="settings-actions">
-                <button type="button" onclick="saveGoogleApiKey()" class="btn btn-primary">Save</button>
-              </div>
+              <input type="password" id="google-api-key" placeholder="Google Cloud API key" class="setting-input" autocomplete="off" />
             </div>
             <div class="settings-field">
               <label for="deepl-api-key">DeepL API key</label>
-              <input type="password" id="deepl-api-key" placeholder="Paste your DeepL API key" class="setting-input" autocomplete="off" />
-              <div class="settings-actions">
-                <button type="button" onclick="saveDeepLApiKey()" class="btn btn-primary">Save</button>
-              </div>
+              <input type="password" id="deepl-api-key" placeholder="DeepL API key" class="setting-input" autocomplete="off" />
             </div>
             </div>
           </section>
@@ -298,17 +297,31 @@ function initializeSettingsWindow() {
             </div>
             <div class="settings-group">
             <div class="settings-row" role="group" aria-labelledby="enable-audio-label">
-              <span id="enable-audio-label" class="settings-row__label">Enable pronunciation</span>
+              <span id="enable-audio-label" class="settings-row__label">Pronunciation</span>
               <label class="settings-toggle-label">
                 <input class="toggle-input" type="checkbox" id="enable-audio" checked />
                 <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
               </label>
             </div>
+            </div>
+            <div id="voice-section" hidden>
+              <h3 class="settings-subhead">Pronunciation voice</h3>
+              <div class="voice-list" id="voice-list" role="radiogroup" aria-label="Pronunciation voice"></div>
+            </div>
+            <h3 class="settings-subhead">Playback</h3>
+            <div class="settings-group">
             <div class="settings-field">
-              <label for="audio-speed">Playback speed</label>
+              <label for="audio-speed">Speed</label>
               <div class="settings-audio-range">
                 <input type="range" id="audio-speed" min="0.5" max="2" step="0.1" value="1" />
-                <span id="speed-value">1x</span>
+                <span id="speed-value">1×</span>
+              </div>
+            </div>
+            <div class="settings-field">
+              <label for="audio-volume">Volume</label>
+              <div class="settings-audio-range">
+                <input type="range" id="audio-volume" min="0" max="100" step="5" value="100" />
+                <span id="volume-value">100%</span>
               </div>
             </div>
             </div>
@@ -328,6 +341,10 @@ function initializeSettingsWindow() {
       document.querySelector(`.settings-panel[data-panel="${section}"]`)?.classList.add('is-active');
     });
   });
+
+  // API keys save when the field changes, as on the phone.
+  document.getElementById('google-api-key')?.addEventListener('change', () => void (window as any).saveGoogleApiKey());
+  document.getElementById('deepl-api-key')?.addEventListener('change', () => void (window as any).saveDeepLApiKey());
 
   loadMainSourceToggles();
   void loadTranslationEngineToggles();
@@ -457,13 +474,13 @@ async function wireOfflineSettingsPanel(): Promise<void> {
       }
       listEl.innerHTML = packs
         .map(
-          (p: any) => `<div class="settings-offline-pack">
-            <div>
+          (p: any) => `<article class="pack">
+            <div class="pack__text">
               <strong>${escapeHtmlSelection(p.name)}</strong>
-              <span class="settings-hint">${escapeHtmlSelection(p.language)} · ${Number(p.entryCount) || 0} entries</span>
+              <p class="pack__meta">${escapeHtmlSelection(String(p.language || '').toUpperCase())} · ${(Number(p.entryCount) || 0).toLocaleString()} entries</p>
             </div>
-            <button type="button" class="btn btn-outlined btn-small offline-remove" data-id="${escapeHtmlSelection(p.id)}">Remove</button>
-          </div>`,
+            <button type="button" class="icon-btn pack__action offline-remove" data-id="${escapeHtmlSelection(p.id)}" title="Remove" aria-label="Remove ${escapeHtmlSelection(p.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          </article>`,
         )
         .join('');
       listEl.querySelectorAll('.offline-remove').forEach((btn) => {
@@ -497,18 +514,16 @@ async function wireOfflineSettingsPanel(): Promise<void> {
         .map((c: any) => {
           const installed = !!c.installed;
           const count = Number(c.entryCount) || 0;
-          const state = installed ? `Installed · ${count.toLocaleString()} entries` : escapeHtmlSelection(c.sizeHint || '');
+          const state = installed ? `${count.toLocaleString()} entries` : escapeHtmlSelection(c.sizeHint || '');
           consentById.set(String(c.id), String(c.consent || ''));
-          return `<article class="settings-offline-offer" data-id="${escapeHtmlSelection(c.id)}">
-            <div class="settings-offline-offer__body">
-              <div class="settings-offline-offer__kicker">${escapeHtmlSelection(c.direction)} · ${escapeHtmlSelection(c.license)}</div>
-              <h3 class="settings-offline-offer__title">${escapeHtmlSelection(c.name)}</h3>
-              <p class="settings-hint">${escapeHtmlSelection(c.summary)}</p>
-              <p class="settings-hint">${state}</p>
+          return `<article class="pack${installed ? ' is-installed' : ''}" data-id="${escapeHtmlSelection(c.id)}">
+            <div class="pack__text">
+              <strong>${escapeHtmlSelection(c.name)}</strong>
+              <p class="pack__meta">${escapeHtmlSelection(c.direction)} · ${state} · ${escapeHtmlSelection(c.license)}</p>
             </div>
-            <button type="button" class="btn ${installed ? 'btn-outlined' : 'btn-primary'} btn-small offline-download" data-id="${escapeHtmlSelection(c.id)}">
-              ${installed ? 'Re-download' : 'Download'}
-            </button>
+            ${installed
+              ? `<span class="pack__done" title="Installed" aria-label="Installed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`
+              : `<button type="button" class="icon-btn pack__action offline-download" data-id="${escapeHtmlSelection(c.id)}" title="Download" aria-label="Download ${escapeHtmlSelection(c.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`}
           </article>`;
         })
         .join('');
@@ -2016,7 +2031,7 @@ function renderVocabNotebook(entries: any[]): void {
       btn.addEventListener('click', (ev) => {
         ev.stopPropagation();
         const lemma = (btn as HTMLElement).dataset.lemma;
-        if (lemma) (window as any).playAudio?.(lemma, 'en-US');
+        if (lemma) void playLemmaPronunciation(lemma, btn as HTMLElement);
       });
     });
     list.querySelectorAll('.vocab-remove').forEach((btn) => {
@@ -2262,8 +2277,11 @@ function initializeMainWindowControls() {
   }
 
   if (audioToggle) {
-    audioToggle.addEventListener('click', () => {
-      const next = localStorage.getItem(AUDIO_KEY) === '0';
+    audioToggle.addEventListener('click', async () => {
+      const api = window.electronAPI as any;
+      const cur = api?.getAudioPrefs ? await api.getAudioPrefs() : { enabled: localStorage.getItem(AUDIO_KEY) !== '0' };
+      const next = cur?.enabled === false;
+      if (api?.setAudioPrefs) await api.setAudioPrefs({ enabled: next });
       localStorage.setItem(AUDIO_KEY, next ? '1' : '0');
       syncAudioUi(next);
     });
@@ -2296,6 +2314,11 @@ function initializeMainWindowControls() {
   syncClipboardUi(true);
   isClipboardMonitoring = true;
   syncAudioUi(localStorage.getItem(AUDIO_KEY) !== '0');
+  {
+    const api = window.electronAPI as any;
+    void api?.getAudioPrefs?.().then((p: any) => syncAudioUi(p?.enabled !== false));
+    api?.onAudioPrefsChanged?.((p: any) => syncAudioUi(p?.enabled !== false));
+  }
 
   void (async () => {
     try {
@@ -2783,7 +2806,7 @@ async function loadMainSourceToggles() {
           <div class="source-toggle-main">
             <div class="source-info">
               <span class="source-name">${source.name}</span>
-              <span class="source-priority">Priority: ${source.priority}</span>
+              ${(source as any).isAvailable === false ? '<span class="source-priority">Needs a key or pack</span>' : ''}
             </div>
             <label>
               <input class="toggle-input" type="checkbox" data-source="${source.name}" ${enabledSources.includes(source.name) ? 'checked' : ''} />
@@ -2881,25 +2904,147 @@ async function wireNotificationSettings(): Promise<void> {
   hoverEl.addEventListener('change', persist);
 }
 
-// Setup audio settings
+let lemmaAudio: HTMLAudioElement | null = null;
+
+/**
+ * Notebook ▶, same rule as the phone's playLemma: recorded clip (US, UK, other) from the
+ * word's lookup, usually cached; otherwise the voice chosen in Settings → Audio.
+ */
+async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise<void> {
+  const api = window.electronAPI as any;
+  const prefs = (await api?.getAudioPrefs?.()) || { enabled: true, speed: 1, volume: 1 };
+  if (prefs.enabled === false) return;
+  btn?.classList.add('is-speaking');
+  const play = async (src: string, recorded: boolean) => {
+    try {
+      lemmaAudio?.pause();
+    } catch {
+      /* ignore */
+    }
+    const el = new Audio(src);
+    el.volume = Math.max(0, Math.min(1, Number(prefs.volume)));
+    el.preservesPitch = true;
+    el.playbackRate = recorded ? Math.max(0.5, Math.min(2, Number(prefs.speed) || 1)) : 1;
+    lemmaAudio = el;
+    await el.play();
+  };
+  try {
+    let urls: string[] = [];
+    try {
+      const result: any = await window.dictionaryAPI?.lookup(lemma, 'auto');
+      const list: any[] = (result && result.pronunciations) || [];
+      for (const accent of ['us', 'uk', 'other']) {
+        for (const p of list) {
+          const u = String(p?.audioUrl || '');
+          if ((p?.accent || 'other') === accent && u && !urls.includes(u)) urls.push(u);
+        }
+      }
+    } catch {
+      urls = [];
+    }
+    for (const u of urls) {
+      try {
+        const got = await api?.fetchPronunciationAudio?.(u);
+        const src = got && got.ok ? got.playUrl || got.dataUrl : '';
+        if (!src) continue;
+        await play(src, true);
+        return;
+      } catch {
+        /* next clip */
+      }
+    }
+    const speech = await api?.synthesizeSpeech?.({ text: lemma, lang: 'en' });
+    if (speech?.ok && speech.dataUrl) await play(speech.dataUrl, false);
+    else showNotification('Cannot play pronunciation');
+  } finally {
+    setTimeout(() => btn?.classList.remove('is-speaking'), 500);
+  }
+}
+
+// Setup audio settings (stored in the main process; the pop-up and notebook read the same prefs)
+const VOICE_ICON: Record<string, string> = {
+  wave: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18V6M11 22V2M3 14v-4M15 18V6M19 14v-4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  download: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  cancel: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+};
+
 function setupAudioSettings() {
-  const AUDIO_KEY = 'phevereAudioEnabled';
-  const audioSpeedInput = document.getElementById('audio-speed') as HTMLInputElement;
+  const api = window.electronAPI as any;
+  const speed = document.getElementById('audio-speed') as HTMLInputElement | null;
   const speedValue = document.getElementById('speed-value');
-  const enableAudio = document.getElementById('enable-audio') as HTMLInputElement | null;
+  const volume = document.getElementById('audio-volume') as HTMLInputElement | null;
+  const volumeValue = document.getElementById('volume-value');
+  const enable = document.getElementById('enable-audio') as HTMLInputElement | null;
+  const voiceSection = document.getElementById('voice-section');
+  const voiceList = document.getElementById('voice-list');
+  if (!api?.getAudioPrefs) return;
 
-  if (enableAudio) {
-    enableAudio.checked = localStorage.getItem(AUDIO_KEY) !== '0';
-    enableAudio.addEventListener('change', () => {
-      localStorage.setItem(AUDIO_KEY, enableAudio.checked ? '1' : '0');
-    });
-  }
+  const showPrefs = (p: { enabled: boolean; speed: number; volume: number }) => {
+    if (enable) enable.checked = p.enabled !== false;
+    if (speed) speed.value = String(p.speed ?? 1);
+    if (speedValue) speedValue.textContent = `${Number(p.speed ?? 1).toFixed(1)}×`;
+    if (volume) volume.value = String(Math.round((p.volume ?? 1) * 100));
+    if (volumeValue) volumeValue.textContent = `${Math.round((p.volume ?? 1) * 100)}%`;
+  };
+  void api.getAudioPrefs().then(showPrefs);
+  api.onAudioPrefsChanged?.((p: any) => showPrefs(p));
+  enable?.addEventListener('change', () => void api.setAudioPrefs({ enabled: enable.checked }));
+  speed?.addEventListener('input', () => {
+    if (speedValue) speedValue.textContent = `${Number(speed.value).toFixed(1)}×`;
+  });
+  speed?.addEventListener('change', () => void api.setAudioPrefs({ speed: Number(speed.value) }));
+  volume?.addEventListener('input', () => {
+    if (volumeValue) volumeValue.textContent = `${volume.value}%`;
+  });
+  volume?.addEventListener('change', () => void api.setAudioPrefs({ volume: Number(volume.value) / 100 }));
 
-  if (audioSpeedInput && speedValue) {
-    audioSpeedInput.addEventListener('input', () => {
-      speedValue.textContent = audioSpeedInput.value + 'x';
-    });
-  }
+  let poll: number | null = null;
+  const renderVoices = (state: { voices: any[]; selected: string }) => {
+    if (!voiceList || !voiceSection) return;
+    // One built-in voice and nothing to download: no choice to offer.
+    voiceSection.hidden = (state.voices || []).length < 2;
+    voiceList.innerHTML = (state.voices || [])
+      .map((v: any) => {
+        const on = v.id === state.selected;
+        const pct = Math.round((v.progress || 0) * 100);
+        const detail = v.downloading ? `Downloading · ${pct}%` : v.error ? v.error : v.installed ? (v.id === 'mechanical' ? v.detail : 'Downloaded') : v.detail;
+        const trailing = v.downloading
+          ? `<button type="button" class="icon-btn voice-row__action" data-cancel="${v.id}" title="Cancel" aria-label="Cancel download">${VOICE_ICON.cancel}</button>`
+          : on
+            ? `<span class="voice-row__check">${VOICE_ICON.check}</span>`
+            : !v.installed
+              ? `<span class="voice-row__dl">${VOICE_ICON.download}</span>`
+              : '';
+        return `<div class="voice-row${on ? ' is-on' : ''}">
+          <button type="button" class="voice-row__main" role="radio" aria-checked="${on}" data-voice="${v.id}" ${v.downloading ? 'disabled' : ''}>
+            <span class="voice-row__icon">${VOICE_ICON.wave}</span>
+            <span class="voice-row__text"><span>${escapeHtmlSelection(v.name)}</span><small>${escapeHtmlSelection(detail)}</small></span>
+          </button>
+          ${trailing}
+          ${v.downloading ? `<div class="voice-row__progress"><span style="width:${pct}%"></span></div>` : ''}
+        </div>`;
+      })
+      .join('');
+    const busy = (state.voices || []).some((v: any) => v.downloading);
+    if (busy && poll == null) {
+      poll = window.setInterval((): void => void api.speechVoices().then(renderVoices), 600);
+    } else if (!busy && poll != null) {
+      window.clearInterval(poll);
+      poll = null;
+    }
+  };
+  voiceList?.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const cancel = t.closest('[data-cancel]') as HTMLElement | null;
+    if (cancel) {
+      void api.cancelSpeechDownload(cancel.dataset.cancel).then(renderVoices);
+      return;
+    }
+    const row = t.closest('[data-voice]') as HTMLElement | null;
+    if (row) void api.selectSpeechVoice(row.dataset.voice).then(renderVoices);
+  });
+  void api.speechVoices?.().then(renderVoices);
 }
 
 // Global functions for API key saving
@@ -3951,7 +4096,7 @@ async function clearAllCaches() {
   try {
     if (window.dictionaryAPI) {
       await window.dictionaryAPI.setApiKey(apiKey);
-      showNotification('Google API key saved successfully');
+      showNotification('Google API key saved');
     }
   } catch (error) {
     showNotification('Failed to save Google API key');
@@ -3970,7 +4115,7 @@ async function clearAllCaches() {
   try {
     if (window.dictionaryAPI) {
       await window.dictionaryAPI.setDeepLApiKey(apiKey);
-      showNotification('DeepL API key saved successfully');
+      showNotification('DeepL API key saved');
     }
   } catch (error) {
     showNotification('Failed to save DeepL API key');

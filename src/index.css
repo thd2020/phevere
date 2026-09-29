@@ -253,9 +253,7 @@ body.main-window .window-control:focus-visible {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: var(--pv-font-ui);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.6;
@@ -539,7 +537,7 @@ kbd {
   border-radius: 4px;
   padding: 2px 6px;
   font-size: 0.85em;
-  font-family: monospace;
+  font-family: var(--pv-font-mono);
 }
 
 .recent-selections {
@@ -680,7 +678,7 @@ body.main-window .vocab-entry__head {
 
 body.main-window .vocab-lemma {
   margin: 0;
-  font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  font-family: var(--pv-font-serif);
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--pv-ink, #1c1917);
@@ -688,7 +686,7 @@ body.main-window .vocab-lemma {
 }
 
 body.main-window .vocab-reading {
-  font-family: var(--pv-font-mono, ui-monospace, monospace);
+  font-family: 'Charis SIL', var(--pv-font-serif);
   font-size: 0.8125rem;
   color: var(--pv-ink-soft, #64748b);
 }
@@ -842,7 +840,7 @@ body.main-window .vocab-pos {
   font-size: 0.75rem;
   font-style: italic;
   color: var(--pv-teal, #0d7377);
-  font-family: 'Source Serif 4', Georgia, serif;
+  font-family: var(--pv-font-serif);
 }
 
 body.main-window .vocab-langs {
@@ -854,7 +852,7 @@ body.main-window .vocab-langs {
 }
 
 body.main-window .vocab-def {
-  font-family: 'Source Serif 4', Georgia, serif;
+  font-family: var(--pv-font-serif);
   font-size: 0.9375rem;
   color: var(--pv-ink, #1c1917);
   line-height: 1.55;
@@ -886,13 +884,15 @@ body.main-window .vocab-badges {
 }
 
 body.main-window .vocab-badge {
-  font-family: var(--pv-font-mono, ui-monospace, monospace);
-  font-size: 0.65rem;
-  letter-spacing: 0.04em;
-  padding: 2px 6px;
-  border: 1px solid rgba(148, 163, 184, 0.55);
-  color: var(--pv-ink-soft, #64748b);
-  border-radius: 2px;
+  font-family: var(--pv-font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 2px 8px;
+  border: 0;
+  background: var(--pv-surface-container);
+  color: var(--pv-ink-soft);
+  border-radius: 6px;
 }
 
 body.main-window .vocab-note {
@@ -1249,7 +1249,7 @@ body.main-window .status-value.shortcut {
 }
 
 .pronunciation {
-  font-family: monospace;
+  font-family: "Charis SIL", var(--pv-font-serif);
   color: #6c757d;
   font-size: 0.9rem;
   margin-bottom: 15px;
@@ -2448,7 +2448,7 @@ body.settings-page .keycap {
   background: linear-gradient(180deg, #fff 0%, #f4f4f5 100%);
   box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
   color: var(--set-ink);
-  font-family: ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  font-family: var(--pv-font-mono);
   font-size: 0.72rem;
   font-weight: 650;
   line-height: 1.1;
@@ -3058,24 +3058,68 @@ body.main-window .vocab-sort {
 }
 body.main-window .vocab-sort-btn { font-family: inherit; font-size: 12.5px; font-weight: 600; border-radius: 0; }
 body.main-window .vocab-sort-btn.is-active { background: var(--pv-tertiary-container); color: var(--pv-on-tertiary-container); }
-body.main-window .status-bar { background: var(--pv-paper-2); border-top: 1px solid var(--pv-line); }
+/*
+ * Monitor toggles: slim single-line chips. A status dot carries the colour
+ * (teal on, ember shortcut, grey off); the chip itself stays on paper.
+ */
+body.main-window .status-bar {
+  background: var(--pv-paper);
+  border-top: 1px solid var(--pv-line);
+  padding: 10px 16px;
+  gap: 8px;
+  align-items: center;
+}
 body.main-window .status-pill.status-toggle,
 body.main-window .status-pill.status-action {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 14px 0 12px;
+  border-radius: 999px;
   background: var(--pv-panel);
   border: 1px solid var(--pv-line);
-  border-radius: 14px;
   box-shadow: none;
   font-family: inherit;
+  color: var(--pv-ink);
+  transition: background-color 0.18s var(--pv-motion), border-color 0.18s var(--pv-motion);
 }
 body.main-window .status-pill.status-toggle:hover,
-body.main-window .status-pill.status-action:hover { background: var(--pv-surface-container); }
-body.main-window .status-toggle[aria-pressed='true'] {
-  background: var(--pv-tertiary-container);
-  border-color: transparent;
+body.main-window .status-pill.status-action:hover {
+  background: var(--pv-surface-container);
+  border-color: var(--pv-line);
+  box-shadow: none;
 }
-body.main-window .status-value.running { color: var(--pv-teal); }
-body.main-window .status-value.stopped { color: var(--pv-ink-soft); }
-body.main-window .status-value.shortcut { color: var(--pv-ember); }
+body.main-window .status-toggle[aria-pressed='true'],
+body.main-window .status-toggle[aria-pressed='false'] { background: var(--pv-panel); border-color: var(--pv-line); opacity: 1; }
+body.main-window .status-pill.status-toggle::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--pv-outline);
+  opacity: 0.55;
+  transition: background-color 0.18s var(--pv-motion);
+}
+body.main-window .status-pill.status-toggle:has(.status-value.running)::before { background: var(--pv-teal); opacity: 1; }
+body.main-window .status-pill.status-toggle:has(.status-value.shortcut)::before { background: var(--pv-ember); opacity: 1; }
+body.main-window .status-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--pv-ink);
+}
+body.main-window .status-value,
+body.main-window .status-value.running,
+body.main-window .status-value.stopped,
+body.main-window .status-value.shortcut {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--pv-ink-soft);
+}
+body.main-window .status-pill.status-action .status-value { color: var(--pv-ember); font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) {
   body.main-window *, body.settings-page * { transition: none !important; animation: none !important; }
@@ -3107,3 +3151,216 @@ body.settings-page input[type='radio']::after {
 body.settings-page input[type='radio']:checked { border-color: var(--pv-ember); }
 body.settings-page input[type='radio']:checked::after { transform: scale(1); }
 body.settings-page input[type='radio']:focus-visible { outline: 2px solid var(--pv-ember); outline-offset: 2px; }
+
+/* ------------------------------------------------------------------
+ * Settings, phone layout (apps/mobile/src/styles.css): flat rows on the
+ * page with hairline dividers, small uppercase subheads, icon actions,
+ * no panel title repeating the selected section.
+ * ------------------------------------------------------------------ */
+body.settings-page .settings-panel > .settings-panel__intro:first-child {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+body.settings-page .settings-main { padding-top: 12px; }
+body.settings-page .settings-subhead,
+body.settings-page .settings-offline-installed-title {
+  margin: 22px 0 6px;
+  font-family: var(--pv-font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pv-ink-soft);
+}
+body.settings-page .settings-panel > .settings-subhead:first-of-type { margin-top: 4px; }
+body.settings-page .settings-group,
+body.settings-page #main-source-toggles,
+body.settings-page #translation-engine-toggles {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+  margin: 0;
+}
+body.settings-page .settings-row,
+body.settings-page .settings-field,
+body.settings-page .source-toggle-main,
+body.settings-page #translation-engine-toggles .source-toggle-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+  padding: 10px 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--pv-line);
+  border-radius: 0;
+  box-shadow: none;
+}
+body.settings-page .settings-field { flex-direction: column; align-items: stretch; gap: 8px; }
+body.settings-page .settings-field:has(.settings-shortcut-row) { flex-direction: row; align-items: center; }
+body.settings-page .settings-row__label,
+body.settings-page .settings-field-label,
+body.settings-page .settings-field > label,
+body.settings-page .source-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--pv-ink);
+  text-transform: none;
+  letter-spacing: 0;
+}
+body.settings-page .source-priority {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--pv-ink-soft);
+}
+body.settings-page .source-toggle-main:hover { background: transparent; }
+body.settings-page .settings-shortcut-row { display: flex; align-items: center; gap: 8px; }
+body.settings-page .settings-shortcut-input { width: 170px; min-height: 34px; }
+body.settings-page .settings-shortcut-set { min-height: 34px; }
+body.settings-page .settings-cheat {
+  margin: 18px 0 0;
+  padding: 6px 0 0;
+  list-style: none;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--pv-line);
+  border-radius: 0;
+}
+body.settings-page .settings-cheat li { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 14px; }
+body.settings-page .settings-dropzone {
+  margin: 14px 0 0;
+  border: 1.5px dashed var(--pv-line);
+  border-radius: 12px;
+  background: transparent;
+}
+body.settings-page .settings-inline-status { font-size: 13px; color: var(--pv-ink-soft); }
+
+/* Settings buttons: the phone's 8px shape. */
+body.settings-page .btn { border-radius: 8px; }
+
+/* Icon buttons, packs and list rows */
+body.settings-page .icon-btn {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pv-ember);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background-color 0.18s var(--pv-motion);
+}
+body.settings-page .icon-btn:hover { background: var(--pv-surface-container); }
+body.settings-page .icon-btn:disabled { opacity: 0.4; cursor: default; }
+body.settings-page .icon-btn svg,
+body.settings-page .pack__done svg { width: 22px; height: 22px; }
+body.settings-page .pack-list { display: flex; flex-direction: column; }
+body.settings-page .pack {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--pv-line);
+}
+body.settings-page .pack__text { flex: 1; min-width: 0; }
+body.settings-page .pack strong { display: block; font-size: 15px; font-weight: 600; }
+body.settings-page .pack__meta { margin: 3px 0 0; font-size: 13px; line-height: 1.35; color: var(--pv-ink-soft); }
+body.settings-page .pack__done { width: 40px; display: grid; place-items: center; color: var(--pv-teal); }
+body.settings-page .pack-list .settings-hint { padding: 12px 0; margin: 0; }
+body.settings-page .nav-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--pv-line);
+  background: transparent;
+  color: var(--pv-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+body.settings-page .nav-row:hover { background: color-mix(in srgb, var(--pv-surface-container) 55%, transparent); }
+body.settings-page .nav-row__icon svg,
+body.settings-page .nav-row__chevron svg { display: block; width: 22px; height: 22px; color: var(--pv-ink-soft); }
+body.settings-page .nav-row__label { flex: 1; font-size: 15px; font-weight: 600; }
+body.settings-page .nav-row__sub { display: block; margin-top: 2px; font-size: 13px; font-weight: 400; color: var(--pv-ink-soft); }
+
+/* Pronunciation voice list, as on the phone: rows with an icon tile, trailing check or download. */
+body.settings-page .voice-list {
+  border: 1px solid var(--pv-line);
+  border-radius: 12px;
+  background: var(--pv-panel);
+  overflow: hidden;
+}
+body.settings-page .voice-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  border-top: 1px solid var(--pv-line);
+}
+body.settings-page .voice-row:first-child { border-top: 0; }
+body.settings-page .voice-row__main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 64px;
+  padding: 8px 8px 8px 16px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+body.settings-page .voice-row__main:disabled { cursor: default; }
+body.settings-page .voice-row__icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--pv-surface-container);
+  color: var(--pv-ink-soft);
+}
+body.settings-page .voice-row__icon svg,
+body.settings-page .voice-row__check svg,
+body.settings-page .voice-row__dl svg,
+body.settings-page .voice-row__action svg { width: 22px; height: 22px; }
+body.settings-page .voice-row__text { display: flex; flex-direction: column; min-width: 0; }
+body.settings-page .voice-row__text span { font-size: 15px; font-weight: 600; }
+body.settings-page .voice-row__text small { font-size: 13px; line-height: 1.3; color: var(--pv-ink-soft); }
+body.settings-page .voice-row.is-on .voice-row__icon { background: var(--pv-primary-container); color: var(--pv-on-primary-container); }
+body.settings-page .voice-row__check,
+body.settings-page .voice-row__dl { display: grid; padding: 0 16px; color: var(--pv-ember); pointer-events: none; }
+body.settings-page .voice-row__action.icon-btn { margin-right: 8px; }
+body.settings-page .voice-row__progress {
+  grid-column: 1 / -1;
+  height: 4px;
+  margin: 0 16px 12px;
+  border-radius: 999px;
+  background: var(--pv-surface-high);
+  overflow: hidden;
+}
+body.settings-page .voice-row__progress span {
+  display: block;
+  height: 100%;
+  background: var(--pv-ember);
+  transition: width 0.3s var(--pv-motion);
+}
+body.settings-page .settings-audio-range span { min-width: 3.5em; font-variant-numeric: tabular-nums; color: var(--pv-ink-soft); }
+body.main-window .vocab-play.is-speaking { color: var(--pv-teal); }

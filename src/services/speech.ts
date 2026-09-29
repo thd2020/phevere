@@ -23,12 +23,12 @@ export interface AudioPrefs {
   enabled: boolean;
   /** 0.5–2; applies to recorded clips and synthetic speech. */
   speed: number;
-  /** 0–1 slider; playback gain is twice this, so 0.5 is full level. */
+  /** 0–1, the audio element's volume (1 = full level; the phone's boost above full needs Android). */
   volume: number;
   voice: VoiceId;
 }
 
-const DEFAULT_PREFS: AudioPrefs = { enabled: true, speed: 1, volume: 0.5, voice: 'mechanical' };
+const DEFAULT_PREFS: AudioPrefs = { enabled: true, speed: 1, volume: 1, voice: 'mechanical' };
 
 interface Variant {
   id: Exclude<VoiceId, 'mechanical'>;
