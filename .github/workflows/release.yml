@@ -1,5 +1,5 @@
-# Unsigned Windows NSIS + macOS DMGs on v* tags.
-# workflow_dispatch: rebuild all four artifacts from this ref and replace
+# Unsigned Windows NSIS + macOS DMGs + Android APK + iOS IPA on v* tags.
+# workflow_dispatch: rebuild the chosen artifacts from this ref and replace
 # same-named files on an existing tag (does not retag).
 # Keep run: | bodies indented — a flush-left line inside a Mac step
 # made GitHub reject the whole file (0-job failure on every main push).
@@ -14,15 +14,24 @@ on:
       attach_tag:
         description: 'Existing GitHub release tag to replace Win x64/ARM64 Setup + Mac x64/arm64 DMG (e.g. v1.5.0)'
         required: true
-        default: 'v1.5.0'
+        default: 'v2.0.0'
         type: string
+      targets:
+        description: 'Which builds to make and attach'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - desktop
+          - phone
 
 permissions:
   contents: read
 
 jobs:
   release:
-    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.targets != 'phone')
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:
@@ -76,7 +85,7 @@ jobs:
           subject-path: ${{ steps.pkg.outputs.exe }}
 
   release-win-arm64:
-    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.targets != 'phone')
     runs-on: windows-11-arm
     timeout-minutes: 60
     permissions:
@@ -129,7 +138,7 @@ jobs:
           subject-path: ${{ steps.pkg.outputs.exe }}
 
   release-mac:
-    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.targets != 'phone')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -192,3 +201,160 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: ${{ steps.pkg.outputs.dmg }}
+
+  # Phone builds. The APK is debug-signed (installable; there is no release keystore
+  # yet) and the IPA is unsigned, as in ci.yml. The emulator test stays in ci.yml.
+  release-android:
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.targets != 'desktop')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0  # the APK versionCode counts commits
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Accept Android SDK licenses
+        run: |
+          set -euo pipefail
+          SDKMANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses || true
+          yes | "$SDKMANAGER" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" >/dev/null || true
+          yes | "$SDKMANAGER" "ndk;28.2.13676358" "cmake;3.22.1" >/dev/null || true
+          test -d "${ANDROID_SDK_ROOT}/platforms/android-36"
+          test -d "${ANDROID_SDK_ROOT}/ndk/28.2.13676358"
+      - name: Install JS deps and sync phone UI
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: |
+          npm ci --ignore-scripts
+          npm run mobile:sync
+      - name: Bundle mechanical speech
+        working-directory: apps/mobile
+        run: |
+          python scripts/prepare-speech.py
+          python scripts/test-speech-package.py
+      - name: Build Android APK
+        working-directory: apps/mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          python ../scripts/check-apk-16kb.py app/build/outputs/apk/debug/app-debug.apk
+      - name: Name APK
+        id: pkg
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./apps/mobile/package.json').version")"
+          NAME="Phevere-${VERSION}-android.apk"
+          cp apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk "$NAME"
+          echo "file=$PWD/$NAME" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+      - name: Remove existing asset with the same name
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
+          ASSET: ${{ steps.pkg.outputs.name }}
+        shell: pwsh
+        run: ./scripts/gh-delete-release-asset.ps1
+      - name: Upload GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
+          files: ${{ steps.pkg.outputs.file }}
+          fail_on_unmatched_files: true
+          generate_release_notes: false
+          make_latest: false
+      - name: Attest APK
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: ${{ steps.pkg.outputs.file }}
+
+  release-ios:
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.targets != 'desktop')
+    runs-on: macos-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0  # the build number counts commits
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install JS deps and sync phone UI
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: |
+          npm ci --ignore-scripts
+          npm run mobile:sync
+      - name: Build iOS app
+        working-directory: apps/mobile/ios/App
+        run: |
+          set -euo pipefail
+          if [ -f Podfile ]; then
+            pod install
+            PROJECT_ARGS=(-workspace App.xcworkspace)
+          else
+            PROJECT_ARGS=(-project App.xcodeproj)
+          fi
+          xcodebuild \
+            "${PROJECT_ARGS[@]}" \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            CURRENT_PROJECT_VERSION="$(git rev-list --count HEAD)" \
+            build
+      - name: Package IPA
+        id: pkg
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./apps/mobile/package.json').version")"
+          NAME="Phevere-${VERSION}-ios-unsigned.ipa"
+          APP="$PWD/apps/mobile/ios/App/build/Build/Products/Release-iphoneos/App.app"
+          test -d "$APP"
+          rm -rf ipa
+          mkdir -p ipa/Payload
+          ditto "$APP" ipa/Payload/App.app
+          (cd ipa && zip -qry "../$NAME" Payload)
+          echo "file=$PWD/$NAME" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+      - name: Remove existing asset with the same name
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
+          ASSET: ${{ steps.pkg.outputs.name }}
+        shell: pwsh
+        run: ./scripts/gh-delete-release-asset.ps1
+      - name: Upload GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
+          files: ${{ steps.pkg.outputs.file }}
+          fail_on_unmatched_files: true
+          generate_release_notes: false
+          make_latest: false
+      - name: Attest IPA
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: ${{ steps.pkg.outputs.file }}

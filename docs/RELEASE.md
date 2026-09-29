@@ -40,7 +40,7 @@ If `github.com` times out while packaging, `make:win` already uses npmmirror. Gh
 Get-FileHash -Algorithm SHA256 "out\make\nsis\x64\Phevere-Setup-*-x64.exe"
 ```
 
-Prefer **not** to `gh release create` locally for the same tag — the workflow owns the Windows Setup and macOS DMG assets (GitHub immutable releases). To **replace** all four files on an existing tag from current `main`: Actions → release → Run workflow → `attach_tag` (deletes the old same-named files then uploads; does not move the git tag). Windows and macOS jobs share `scripts/gh-delete-release-asset.ps1`. If the tag exists but the GitHub Release does not (the 1.5.0 YAML parse failure), the same dispatch **creates** the Release.
+Prefer **not** to `gh release create` locally for the same tag — the workflow owns the Windows Setup and macOS DMG assets (GitHub immutable releases). The same tag also gets the Android APK and the unsigned iOS IPA (the phone version comes from `apps/mobile/package.json`). To **replace** files on an existing tag from current `main`: Actions → release → Run workflow → `attach_tag`, with `targets` set to all, desktop, or phone (deletes the old same-named files then uploads; does not move the git tag). Windows and macOS jobs share `scripts/gh-delete-release-asset.ps1`. If the tag exists but the GitHub Release does not (the 1.5.0 YAML parse failure), the same dispatch **creates** the Release.
 
 ## Notes template (if you write notes by hand)
 
@@ -51,6 +51,8 @@ Prefer **not** to `gh release create` locally for the same tag — the workflow 
 - **Windows ARM64 Setup:** `Phevere-Setup-x.y.z-arm64.exe` (Snapdragon / Windows 11 ARM)
 - **macOS Intel DMG:** `Phevere-x.y.z-darwin-x64.dmg`
 - **macOS Apple Silicon DMG:** `Phevere-x.y.z-darwin-arm64.dmg`
+- **Android APK:** `Phevere-x.y.z-android.apk` (debug-signed; each build is signed with that runner's debug key, so an update may need an uninstall first)
+- **iOS IPA:** `Phevere-x.y.z-ios-unsigned.ipa` (unsigned; sideload with your own signing tool)
 
 ## Requirements
 
