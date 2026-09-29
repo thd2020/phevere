@@ -53,6 +53,7 @@ import {
   formatPronunciationLine,
   cleanIpa,
 } from './pronunciation';
+import { cmuIpaFor } from './cmu-ipa';
 import { buildWordFamily, mergeWordFamilyGroups, familyFromEtymologyChain, type WordFamilyGroup } from './word-family';
 
 const console = wrapConsole('dictionary');
@@ -1178,6 +1179,12 @@ export class DictionaryService extends BaseService {
 
     const lookupWord = preferLatinSources ? foldLatinHeadword(text) : text;
 
+    // Local US IPA from CMUdict, used only when no online source has a transcription.
+    let cmuIpa = '';
+    if (preferLatinSources && !hasCJK) {
+      pushCore(cmuIpaFor(lookupWord).then((ipa) => ({ type: 'cmu', data: ipa })));
+    }
+
     // Free Dictionary + Datamuse: Latin/English path (CJK lemmas rarely have useful entries)
     if (preferLatinSources && isSourceEnabled('Free Dictionary API')) {
       if (!this.isSourceDown('freeDictionary')) expectedSources.push('freeDictionary');
@@ -1332,6 +1339,9 @@ export class DictionaryService extends BaseService {
             if (fresh.length > 0 || data.synonyms.length > 0) sources.push('Datamuse');
           }
           break;
+        case 'cmu':
+          if (typeof data === 'string') cmuIpa = data;
+          break;
         case 'tatoeba':
           if (data && data.length > 0) {
             examples.push(...data);
@@ -1429,7 +1439,10 @@ export class DictionaryService extends BaseService {
       const uniqueSources = Array.from(new Set(sources.map((s) => (s || '').trim())));
       const surfaceForm = foldLatinHeadword(trimEdges(sanitize(opts?.originalSelection || text))) || text;
       const headword = surfaceForm;
-      const ipaList = mergePronunciations(pronunciations);
+      const ipaList = mergePronunciations(
+        pronunciations,
+        cmuIpa && !pronunciations.some((p) => p.ipa) ? [{ ipa: cmuIpa, accent: 'us', source: 'CMUdict' }] : undefined,
+      );
       const ipaLine = formatPronunciationLine(ipaList) || pronunciation;
       const wordFamily = mergeWordFamilyGroups(
         wikiFamily,
