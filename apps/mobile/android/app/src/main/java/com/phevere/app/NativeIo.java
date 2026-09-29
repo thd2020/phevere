@@ -25,6 +25,12 @@ import okhttp3.ResponseBody;
 final class NativeIo {
   static final int MAX_BYTES = 24 * 1024 * 1024;
 
+  /**
+   * One client for every request, so DNS, TCP and TLS setup is paid once per host.
+   * newBuilder() below shares its connection pool and dispatcher.
+   */
+  private static final OkHttpClient SHARED = new OkHttpClient();
+
   private NativeIo() {}
 
   static JSONObject http(JSONObject p) throws Exception {
@@ -32,7 +38,7 @@ final class NativeIo {
     String method = p.optString("method", "GET");
     int timeout = p.optInt("timeoutMs", 8000);
     String as = p.optString("responseType", "text");
-    OkHttpClient client = new OkHttpClient.Builder()
+    OkHttpClient client = SHARED.newBuilder()
         .connectTimeout(timeout, TimeUnit.MILLISECONDS)
         .readTimeout(timeout, TimeUnit.MILLISECONDS)
         .callTimeout(timeout + 2000L, TimeUnit.MILLISECONDS)
