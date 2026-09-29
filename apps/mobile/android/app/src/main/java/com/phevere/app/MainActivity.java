@@ -19,6 +19,7 @@ import android.webkit.WebView;
 import android.view.Window;
 import android.view.WindowManager;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.activity.EdgeToEdge;
 import androidx.activity.SystemBarStyle;
 import androidx.activity.result.ActivityResultLauncher;
@@ -149,8 +150,11 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
     }
     if (isStrip()) {
       Window w = getWindow();
-      // Selection anchors are screen coordinates, so place the window against the whole screen.
-      w.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN);
+      // The floating card is placed by screen coordinates (the selection's anchor), so it lays
+      // out against the whole screen. The bottom sheet must not: it would slide under the
+      // navigation bar and lose its lower edge.
+      if (CapturePrefs.floatingStrip(this)) w.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN);
+      else w.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN);
       WindowManager.LayoutParams lp = w.getAttributes();
       PopupLayout.place(lp, this, SelectionAnchor.from(getIntent()));
       w.setAttributes(lp);
@@ -169,6 +173,29 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
       if (!isStrip()) SelectionSetup.show(this, true);
     });
 
+    if (!isStrip()) {
+      // Back (button or gesture) goes to the page first: it closes the Scan panel, then Scan,
+      // then returns to Lookup. Only when the page has nothing to undo does Back leave the app.
+      getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+        @Override
+        public void handleOnBackPressed() {
+          if (web == null || !pageReady) {
+            leave();
+            return;
+          }
+          web.evaluateJavascript("window.__pvBack ? window.__pvBack() : false", handled -> {
+            if (!"true".equals(handled)) leave();
+          });
+        }
+
+        private void leave() {
+          setEnabled(false);
+          getOnBackPressedDispatcher().onBackPressed();
+          setEnabled(true);
+        }
+      });
+    }
+
     View root = findViewById(R.id.root);
     if (root != null && !isStrip()) {
       ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
@@ -185,7 +212,7 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
   protected void onNewIntent(Intent intent) {
     super.onNewIntent(intent);
     setIntent(intent);
-    android.graphics.Rect anchor = isStrip() ? SelectionAnchor.from(intent) : null;
+    android.graphics.Rect anchor = isStrip() && CapturePrefs.floatingStrip(this) ? SelectionAnchor.from(intent) : null;
     if (anchor != null) {
       // The pop-up is a single instance: each new selection brings it next to that word.
       WindowManager.LayoutParams lp = getWindow().getAttributes();
