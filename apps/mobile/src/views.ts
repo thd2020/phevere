@@ -636,27 +636,42 @@ export function notebookBody(
     <div class="vocab-list">${rows || `<p class="empty">${q ? 'No notebook matches.' : 'No saved words yet.'}</p>`}</div>`;
 }
 
-export type ScanWord = { t: string; x: number; y: number; w: number; h: number };
+/** One OCR word: text plus its box as fractions of the picture; l is its line on the page. */
+export type ScanWord = { t: string; x: number; y: number; w: number; h: number; l?: number };
 export type ScanPage = { jpeg: string; width: number; height: number; words: ScanWord[] };
 
-export function scanHtml(scan: ScanPage): string {
-  const words = (scan.words || [])
-    .filter((w) => w.t && w.w > 0 && w.h > 0)
-    .map(
-      (w) =>
-        `<span class="scan-word" data-act="scan-word" data-q="${esc(w.t)}" style="left:${(w.x * 100).toFixed(2)}%;top:${(w.y * 100).toFixed(2)}%;width:${(w.w * 100).toFixed(2)}%;height:${(w.h * 100).toFixed(2)}%">${esc(w.t)}</span>`,
-    )
-    .join('');
+/**
+ * Scan: the picture fills the screen and carries its recognised text as an invisible, selectable
+ * layer (like Live Text), so a long press selects a word and the selection stays visible.
+ * Words on one line are joined by spaces and lines by newlines, so a selection copies as text.
+ * The result opens in a bottom sheet over the picture.
+ */
+export function scanHtml(scan: ScanPage, id: number): string {
+  const words = (scan.words || []).filter((w) => w.t && w.w > 0 && w.h > 0);
+  const parts: string[] = [];
+  words.forEach((w, i) => {
+    if (i > 0) parts.push(words[i - 1].l !== undefined && words[i - 1].l !== w.l ? '\n' : ' ');
+    parts.push(
+      `<span class="scan-word" data-w="${w.w}" style="left:${(w.x * 100).toFixed(3)}%;top:${(w.y * 100).toFixed(3)}%;height:${(w.h * 100).toFixed(3)}%">${esc(w.t)}</span>`,
+    );
+  });
   return `
-    <header class="scan-bar">
-      <button type="button" class="icon-btn" data-act="scan-close" aria-label="Back">${ICO.back}</button>
-      <h1>Scan</h1>
-    </header>
-    <div class="scan-stage">
-      <div class="scan-frame">
-        <img src="data:image/jpeg;base64,${scan.jpeg}" alt="" />
-        <div class="scan-layer">${words}</div>
+    <div class="scan-view" data-scan-id="${id}">
+      <div class="scan-stage">
+        <div class="scan-canvas">
+          <div class="scan-frame" data-ratio="${scan.width && scan.height ? scan.width / scan.height : 0.75}">
+            <img src="data:image/jpeg;base64,${scan.jpeg}" alt="Scanned picture" draggable="false" />
+            <div class="scan-layer">${parts.join('')}</div>
+          </div>
+        </div>
       </div>
+      <button type="button" class="icon-btn scan-close" data-act="scan-close" aria-label="Back">${ICO.back}</button>
+      <p class="scan-hint">${words.length ? 'Long-press text to select it' : 'No text found'}</p>
+      <section class="scan-sheet" data-state="closed" aria-label="Lookup">
+        <div class="scan-sheet__handle" data-drag="scan-sheet" role="button" tabindex="0" aria-label="Resize lookup"><span></span></div>
+        <div class="scan-sheet__body"></div>
+      </section>
+      <div class="scan-toast"></div>
     </div>`;
 }
 

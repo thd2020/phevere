@@ -92,6 +92,10 @@ let toastMsg = '';
 let toastTimer: number | null = null;
 let capture: CaptureInfo = { platform: 'web', canDrawOverlays: false };
 let scan: ScanPage | null = null;
+/** Bumped per picture, so a repaint keeps the rendered picture (and its selection) in place. */
+let scanId = 0;
+type SheetState = 'closed' | 'half' | 'full';
+let scanSheet: SheetState = 'closed';
 
 const stripMode = new URLSearchParams(window.location.search).get('mode') === 'strip';
 let stripExpanding = false;
@@ -122,9 +126,6 @@ function postOsNotify(kind: 'incoming' | 'saved' | 'ocr', title: string, body: s
 
 function lookupPaneHtml(): string {
   const langs = dictionaryService.getSupportedLanguages();
-  if (scan && !looking && !status && !result) {
-    return `<p class="scan-hint">Select text on the picture</p>`;
-  }
   return lookupBody({
     looking,
     status,
@@ -162,12 +163,7 @@ function paint(): void {
   if (keepNbq) notebookFilter = nbqLive!.value;
   const hit = lookupPaneHtml();
   if (tab === 'lookup' && scan) {
-    root.innerHTML = `
-      <div class="shell shell-scan">${scanHtml(scan)}<div class="scan-hit">${hit}</div></div>
-      ${stripMode ? '' : navHtml(tab)}
-      ${toastMsg ? `<div class="toast" role="status">${esc(toastMsg)}</div>` : ''}`;
-    bindLexiconPane();
-    bindWikiReader();
+    paintScan(scan, hit);
     return;
   }
   const body =
@@ -479,6 +475,189 @@ function formatReading(r: DictionaryResult): string | undefined {
   return line || undefined;
 }
 
+/**
+ * Scan repaints only the sheet: rebuilding the picture would drop the reader's selection,
+ * zoom and pan every time a lookup updates.
+ */
+function paintScan(page: ScanPage, hit: string): void {
+  let view = root.querySelector<HTMLElement>('.scan-view');
+  if (!view || view.dataset.scanId !== String(scanId)) {
+    root.innerHTML = scanHtml(page, scanId);
+    view = root.querySelector<HTMLElement>('.scan-view')!;
+    bindScanViewer(view);
+  }
+  const sheet = view.querySelector<HTMLElement>('.scan-sheet')!;
+  sheet.dataset.state = scanSheet;
+  view.dataset.sheet = scanSheet;
+  const body = view.querySelector<HTMLElement>('.scan-sheet__body')!;
+  body.innerHTML = scanSheet === 'closed' ? '' : hit;
+  view.querySelector<HTMLElement>('.scan-toast')!.innerHTML = toastMsg
+    ? `<div class="toast" role="status">${esc(toastMsg)}</div>`
+    : '';
+  bindLexiconPane();
+  bindWikiReader();
+}
+
+/** Keep the looked-up words highlighted after the system selection goes away. */
+function markScanPick(): void {
+  const sel = window.getSelection();
+  const layer = root.querySelector('.scan-layer');
+  if (!sel || !sel.rangeCount || !layer || !layer.contains(sel.getRangeAt(0).commonAncestorContainer)) return;
+  const reg = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights;
+  const Hl = (window as unknown as { Highlight?: new (r: Range) => unknown }).Highlight;
+  if (reg && Hl) reg.set('scan-pick', new Hl(sel.getRangeAt(0).cloneRange()));
+}
+
+function clearScanPick(): void {
+  (CSS as unknown as { highlights?: Map<string, unknown> }).highlights?.delete('scan-pick');
+}
+
+/** Look up where the text is: in the pop-up itself, or in the Scan sheet. */
+function lookupInPlace(text: string): void {
+  const q = extractLookupQuery(text);
+  if (!q) return;
+  if (scan) {
+    markScanPick();
+    if (scanSheet === 'closed') scanSheet = 'half';
+  }
+  void lookup(q);
+}
+
+/** Fit each invisible word over its box: font size from the box height, width by scaleX. */
+function fitScanWords(frame: HTMLElement): void {
+  const width = frame.clientWidth;
+  frame.querySelectorAll<HTMLElement>('.scan-word').forEach((el) => {
+    const h = el.offsetHeight;
+    el.style.fontSize = `${Math.max(4, h * 0.82)}px`;
+    el.style.lineHeight = `${h}px`;
+    el.style.transform = '';
+    const natural = el.offsetWidth;
+    const target = Number(el.dataset.w || 0) * width;
+    if (natural > 0 && target > 0) el.style.transform = `scaleX(${target / natural})`;
+  });
+}
+
+/**
+ * Picture viewer: fit to the screen, pinch to zoom (1-6x), drag to pan when zoomed, double-tap
+ * to zoom in or out. A still long press is left to the browser, which selects text.
+ * The bottom sheet's handle drags between closed, half and full.
+ */
+function bindScanViewer(view: HTMLElement): void {
+  const stage = view.querySelector<HTMLElement>('.scan-stage')!;
+  const canvas = view.querySelector<HTMLElement>('.scan-canvas')!;
+  const frame = view.querySelector<HTMLElement>('.scan-frame')!;
+  const ratio = Number(frame.dataset.ratio) || 0.75;
+  let s = 1, x = 0, y = 0;
+  const apply = () => { canvas.style.transform = `translate(${x}px, ${y}px) scale(${s})`; };
+  const clamp = () => {
+    const W = stage.clientWidth, H = stage.clientHeight;
+    const fw = frame.offsetWidth * s, fh = frame.offsetHeight * s;
+    const ox = frame.offsetLeft * s, oy = frame.offsetTop * s;
+    x = fw <= W ? (W - fw) / 2 - ox : Math.min(-ox, Math.max(W - fw - ox, x));
+    y = fh <= H ? (H - fh) / 2 - oy : Math.min(-oy, Math.max(H - fh - oy, y));
+  };
+  const layout = () => {
+    const W = stage.clientWidth, H = stage.clientHeight;
+    const fw = Math.min(W, H * ratio);
+    frame.style.width = `${fw}px`;
+    frame.style.height = `${fw / ratio}px`;
+    fitScanWords(frame);
+    clamp();
+    apply();
+  };
+  const zoomAt = (px: number, py: number, next: number) => {
+    const r = stage.getBoundingClientRect();
+    const cx = px - r.left, cy = py - r.top;
+    next = Math.max(1, Math.min(6, next));
+    x = cx - ((cx - x) * next) / s;
+    y = cy - ((cy - y) * next) / s;
+    s = next;
+    clamp();
+    apply();
+  };
+  layout();
+  new ResizeObserver(layout).observe(stage);
+
+  const pts = new Map<number, { x: number; y: number }>();
+  let pinch: { d: number; s: number } | null = null;
+  let pan: { x: number; y: number; ox: number; oy: number; moved: boolean } | null = null;
+  let lastTap = { t: 0, x: 0, y: 0 };
+  const dist = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  const mid = () => { const [a, b] = [...pts.values()]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; };
+  stage.addEventListener('pointerdown', (e) => {
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) { pinch = { d: dist(), s }; pan = null; }
+    else if (pts.size === 1) pan = { x: e.clientX, y: e.clientY, ox: x, oy: y, moved: false };
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pts.size === 2) {
+      const m = mid();
+      zoomAt(m.x, m.y, (pinch.s * dist()) / pinch.d);
+    } else if (pan && s > 1) {
+      const dx = e.clientX - pan.x, dy = e.clientY - pan.y;
+      if (!pan.moved && Math.hypot(dx, dy) < 8) return;
+      pan.moved = true;
+      x = pan.ox + dx;
+      y = pan.oy + dy;
+      clamp();
+      apply();
+    }
+  });
+  const up = (e: PointerEvent) => {
+    const wasPan = pan?.moved;
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (pts.size === 0) {
+      if (!wasPan && e.type === 'pointerup') {
+        const now = Date.now();
+        if (now - lastTap.t < 300 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 24) {
+          zoomAt(e.clientX, e.clientY, s > 1.2 ? 1 : 2.5);
+          lastTap = { t: 0, x: 0, y: 0 };
+        } else lastTap = { t: now, x: e.clientX, y: e.clientY };
+      }
+      pan = null;
+    }
+  };
+  stage.addEventListener('pointerup', up);
+  stage.addEventListener('pointercancel', up);
+
+  const sheet = view.querySelector<HTMLElement>('.scan-sheet')!;
+  const handle = view.querySelector<HTMLElement>('.scan-sheet__handle')!;
+  let drag: { y: number; top: number; moved: boolean } | null = null;
+  handle.addEventListener('pointerdown', (e) => {
+    handle.setPointerCapture(e.pointerId);
+    drag = { y: e.clientY, top: sheet.getBoundingClientRect().top, moved: false };
+    sheet.classList.add('is-dragging');
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const dy = e.clientY - drag.y;
+    if (Math.abs(dy) > 6) drag.moved = true;
+    const full = sheet.offsetHeight;
+    const offset = Math.max(0, drag.top + dy - (window.innerHeight - full));
+    sheet.style.transform = `translateY(${offset}px)`;
+  });
+  const release = (e: PointerEvent) => {
+    if (!drag) return;
+    const dy = e.clientY - drag.y;
+    const moved = drag.moved;
+    drag = null;
+    sheet.classList.remove('is-dragging');
+    sheet.style.transform = '';
+    let next: SheetState = scanSheet;
+    if (!moved) next = scanSheet === 'full' ? 'half' : 'full';
+    else if (dy < -60) next = 'full';
+    else if (dy > 60) next = scanSheet === 'full' && dy < window.innerHeight * 0.4 ? 'half' : 'closed';
+    if (next === 'closed') clearScanPick();
+    scanSheet = next;
+    paint();
+  };
+  handle.addEventListener('pointerup', release);
+  handle.addEventListener('pointercancel', release);
+}
+
 async function runOcr(): Promise<void> {
   if (!hasNativeBridge()) {
     toast('Camera OCR runs in the Android / iOS app');
@@ -490,6 +669,9 @@ async function runOcr(): Promise<void> {
       toast('No picture');
       return;
     }
+    scanId += 1;
+    scanSheet = 'closed';
+    clearScanPick();
     scan = {
       jpeg: res.jpeg,
       width: Number(res.width) || 0,
@@ -739,6 +921,10 @@ function onSelectionSettled(): void {
   if (el?.closest('input, textarea, [contenteditable="true"]')) return;
   const q = extractLookupQuery(raw);
   if (!q || q === query) return;
+  if (scan) {
+    lookupInPlace(raw);
+    return;
+  }
   if (!stripMode && hasNativeBridge() && capture.platform !== 'web') {
     // Open the pop-up next to the selected words (CSS px; native converts to screen px).
     const box = sel && sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null;
@@ -833,7 +1019,7 @@ function sizeLexiconPane(): void {
   if (!layout) return;
   const viewport = window.visualViewport?.height || window.innerHeight;
   const nav = document.querySelector('.nav');
-  const bottom = nav ? nav.getBoundingClientRect().top : viewport;
+  const bottom = layout.closest('.scan-sheet') ? viewport : nav ? nav.getBoundingClientRect().top : viewport;
   layout.style.height = `${Math.max(160, bottom - layout.getBoundingClientRect().top - 16)}px`;
 }
 
@@ -883,14 +1069,10 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'scan-close':
       scan = null;
+      scanSheet = 'closed';
+      clearScanPick();
       paint();
       return;
-    case 'scan-word': {
-      const picked = (window.getSelection()?.toString() || '').trim() || t.dataset.q || '';
-      if (!picked) return;
-      await lookup(extractLookupQuery(picked));
-      return;
-    }
     case 'back':
       // Desktop order: step back inside the Wikipedia reader first, then the lookup trail.
       if (wikiCanBack()) {
@@ -1230,9 +1412,23 @@ function onSubmit(e: Event): void {
 export async function startApp(): Promise<void> {
   installNativeCallbacks();
   // The floating pop-up's own selection bar sends its Phevere item here.
-  (window as unknown as { __pvLookupText?: (text: string) => void }).__pvLookupText = (text) => {
-    const q = extractLookupQuery(text);
-    if (q) void lookup(q);
+  const hooks = window as unknown as {
+    __pvLookupText?: (text: string) => void;
+    __pvSelectionAction?: () => { text: string; inPlace: boolean; rect: Record<string, number> | null } | null;
+  };
+  hooks.__pvLookupText = (text) => lookupInPlace(text);
+  // Phevere on the selection bar (Android) or edit menu (iOS): the pop-up and Scan look up in
+  // place; elsewhere native opens the pop-up beside the selection.
+  hooks.__pvSelectionAction = () => {
+    const sel = window.getSelection();
+    const text = (sel?.toString() || '').trim();
+    if (!text) return null;
+    if (stripMode || scan) {
+      lookupInPlace(text);
+      return { text, inPlace: true, rect: null };
+    }
+    const box = sel && sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null;
+    return { text, inPlace: false, rect: box ? { left: box.left, top: box.top, right: box.right, bottom: box.bottom } : null };
   };
   startIncomingText((text, origin) => {
     stripExpanding = false;
