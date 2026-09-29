@@ -80,7 +80,8 @@ async function startupAndGestures(floatingStrip) {
   await tick();
   assert.ok(root.innerHTML.includes('second'));
   assert.ok(!root.innerHTML.includes('stale'), 'late results must not replace the latest shared word');
-  events.touchstart({ touches: [{ clientX: 50, clientY: 250 }] });
+  // The swipe starts on the pop-up header; swipes on the content only scroll.
+  events.touchstart({ touches: [{ clientX: 50, clientY: 250 }], target: { closest: () => ({}) } });
   events.touchend({ changedTouches: [{ clientX: 55, clientY: 100 }] });
   assert.equal(calls.filter((c) => c.method === 'expandStrip').length, floatingStrip ? 0 : 1);
   assert.ok(!root.innerHTML.includes('strip-actions'), 'extra button strip must be absent');

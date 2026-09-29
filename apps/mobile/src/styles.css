@@ -1326,12 +1326,16 @@ select, .field {
   position: fixed;
   inset: 0;
   z-index: 5;
+  display: flex;
+  flex-direction: column;
   background: #141210;
   overflow: hidden;
 }
+/* The picture takes whatever the panel leaves; the two always split the screen. */
 .scan-stage {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  flex: 1;
+  min-height: 96px;
   overflow: hidden;
   touch-action: none;
 }
@@ -1374,6 +1378,7 @@ select, .field {
 ::highlight(scan-pick) { background-color: color-mix(in srgb, var(--md-sys-color-primary) 42%, transparent); color: transparent; }
 .scan-close {
   position: absolute;
+  z-index: 4;
   top: calc(8px + var(--pv-inset-top));
   left: calc(8px + var(--pv-inset-left));
   z-index: 2;
@@ -1385,6 +1390,7 @@ select, .field {
 .scan-close:hover { background: rgb(20 18 16 / 0.7); }
 .scan-hint {
   position: absolute;
+  z-index: 4;
   left: 50%;
   bottom: calc(24px + var(--pv-inset-bottom));
   transform: translateX(-50%);
@@ -1402,23 +1408,22 @@ select, .field {
 }
 .scan-view:not([data-sheet="closed"]) .scan-hint { opacity: 0; }
 .scan-sheet {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  position: relative;
   z-index: 3;
-  height: calc(100dvh - var(--pv-inset-top) - 48px);
+  flex-shrink: 0;
+  height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: var(--md-sys-color-surface);
   border-radius: 24px 24px 0 0;
   box-shadow: 0 -8px 28px rgb(0 0 0 / 0.28);
-  transform: translateY(100%);
-  transition: transform 0.38s cubic-bezier(0.32, 0.72, 0, 1);
+  transition: height 0.38s cubic-bezier(0.32, 0.72, 0, 1);
 }
-.scan-sheet[data-state="half"] { transform: translateY(calc(100% - 52dvh)); }
-.scan-sheet[data-state="full"] { transform: translateY(0); }
-.scan-sheet.is-dragging { transition: none; }
+.scan-sheet[data-state="closed"] { box-shadow: none; }
+.scan-sheet[data-state="half"] { height: 50%; }
+.scan-sheet[data-state="full"] { height: calc(100% - 96px - var(--pv-inset-top)); }
+.scan-view.is-dragging .scan-sheet { transition: none; }
 .scan-sheet__handle {
   display: grid;
   place-items: center;

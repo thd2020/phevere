@@ -582,6 +582,7 @@ function bindScanViewer(view: HTMLElement): void {
   let pinch: { d: number; s: number } | null = null;
   let pan: { x: number; y: number; ox: number; oy: number; moved: boolean } | null = null;
   let lastTap = { t: 0, x: 0, y: 0 };
+  let tapTimer = 0;
   const dist = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
   const mid = () => { const [a, b] = [...pts.values()]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; };
   stage.addEventListener('pointerdown', (e) => {
@@ -613,9 +614,17 @@ function bindScanViewer(view: HTMLElement): void {
       if (!wasPan && e.type === 'pointerup') {
         const now = Date.now();
         if (now - lastTap.t < 300 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 24) {
+          window.clearTimeout(tapTimer);
           zoomAt(e.clientX, e.clientY, s > 1.2 ? 1 : 2.5);
           lastTap = { t: 0, x: 0, y: 0 };
-        } else lastTap = { t: now, x: e.clientX, y: e.clientY };
+        } else {
+          lastTap = { t: now, x: e.clientX, y: e.clientY };
+          // A plain tap on the picture (not a double tap, not a selection) puts the panel away.
+          window.clearTimeout(tapTimer);
+          tapTimer = window.setTimeout(() => {
+            if (scanSheet !== 'closed' && !(window.getSelection()?.toString() || '').trim()) setScanSheet('closed');
+          }, 320);
+        }
       }
       pan = null;
     }
@@ -623,39 +632,48 @@ function bindScanViewer(view: HTMLElement): void {
   stage.addEventListener('pointerup', up);
   stage.addEventListener('pointercancel', up);
 
+  // The panel shares the screen with the picture: dragging its handle changes its height, the
+  // picture's area shrinks or grows with it, and the picture re-fits (ResizeObserver above).
   const sheet = view.querySelector<HTMLElement>('.scan-sheet')!;
   const handle = view.querySelector<HTMLElement>('.scan-sheet__handle')!;
-  let drag: { y: number; top: number; moved: boolean } | null = null;
+  let drag: { id: number; y: number; h: number; moved: boolean } | null = null;
   handle.addEventListener('pointerdown', (e) => {
     handle.setPointerCapture(e.pointerId);
-    drag = { y: e.clientY, top: sheet.getBoundingClientRect().top, moved: false };
-    sheet.classList.add('is-dragging');
+    drag = { id: e.pointerId, y: e.clientY, h: sheet.offsetHeight, moved: false };
+    view.classList.add('is-dragging');
   });
   handle.addEventListener('pointermove', (e) => {
-    if (!drag) return;
+    if (!drag || e.pointerId !== drag.id) return;
     const dy = e.clientY - drag.y;
     if (Math.abs(dy) > 6) drag.moved = true;
-    const full = sheet.offsetHeight;
-    const offset = Math.max(0, drag.top + dy - (window.innerHeight - full));
-    sheet.style.transform = `translateY(${offset}px)`;
+    const max = view.clientHeight - 96;
+    sheet.style.height = `${Math.max(0, Math.min(max, drag.h - dy))}px`;
   });
+  // Every way a drag can end (release, cancel, lost capture) settles on a state and clears the
+  // inline height, so the panel can never be left half-drawn.
   const release = (e: PointerEvent) => {
     if (!drag) return;
-    const dy = e.clientY - drag.y;
     const moved = drag.moved;
+    const h = sheet.offsetHeight;
     drag = null;
-    sheet.classList.remove('is-dragging');
-    sheet.style.transform = '';
-    let next: SheetState = scanSheet;
-    if (!moved) next = scanSheet === 'full' ? 'half' : 'full';
-    else if (dy < -60) next = 'full';
-    else if (dy > 60) next = scanSheet === 'full' && dy < window.innerHeight * 0.4 ? 'half' : 'closed';
-    if (next === 'closed') clearScanPick();
-    scanSheet = next;
-    paint();
+    view.classList.remove('is-dragging');
+    sheet.style.height = '';
+    if (e.type !== 'pointerup') { paint(); return; }
+    const vh = view.clientHeight;
+    const next: SheetState = !moved
+      ? (scanSheet === 'full' ? 'half' : 'full')
+      : h < vh * 0.22 ? 'closed' : h < vh * 0.66 ? 'half' : 'full';
+    setScanSheet(next);
   };
   handle.addEventListener('pointerup', release);
   handle.addEventListener('pointercancel', release);
+  handle.addEventListener('lostpointercapture', release);
+}
+
+function setScanSheet(next: SheetState): void {
+  if (next === 'closed') clearScanPick();
+  scanSheet = next;
+  paint();
 }
 
 async function runOcr(): Promise<void> {
@@ -1415,6 +1433,19 @@ function onSubmit(e: Event): void {
 export async function startApp(): Promise<void> {
   installNativeCallbacks();
   // The floating pop-up's own selection bar sends its Phevere item here.
+  // Android Back (button or gesture): the page steps back first; native leaves the app only
+  // when this returns false.
+  (window as unknown as { __pvBack?: () => boolean }).__pvBack = () => {
+    if (langMenu) { langMenu = ''; paint(); return true; }
+    if (scan) {
+      if (scanSheet !== 'closed') setScanSheet('closed');
+      else { scan = null; clearScanPick(); paint(); }
+      return true;
+    }
+    if (wikiArticle && wikiCanBack()) { void handleAct('wiki-back', root, new Event('back')); return true; }
+    if (tab !== 'lookup') { tab = 'lookup'; paint(); return true; }
+    return false;
+  };
   const hooks = window as unknown as {
     __pvLookupText?: (text: string) => void;
     __pvSelectionAction?: () => { text: string; inPlace: boolean; rect: Record<string, number> | null } | null;
@@ -1462,9 +1493,12 @@ export async function startApp(): Promise<void> {
     }
   }
   let touchStart: { x: number; y: number } | null = null;
+  // Bottom-sheet pop-up: a swipe up from its header opens the full app. Swipes on the content
+  // scroll the definitions; they must not throw the reader into the app.
   root.addEventListener('touchstart', (event) => {
     const touch = event.touches.length === 1 ? event.touches[0] : null;
-    touchStart = touch ? { x: touch.clientX, y: touch.clientY } : null;
+    const onHeader = !!(event.target as Element | null)?.closest?.('.popup-bar');
+    touchStart = touch && onHeader ? { x: touch.clientX, y: touch.clientY } : null;
   }, { passive: true });
   root.addEventListener('touchend', (event) => {
     const touch = event.changedTouches[0];

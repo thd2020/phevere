@@ -666,7 +666,7 @@ export function scanHtml(scan: ScanPage, id: number): string {
         </div>
       </div>
       <button type="button" class="icon-btn scan-close" data-act="scan-close" aria-label="Back">${ICO.back}</button>
-      <p class="scan-hint">${words.length ? 'Long-press text to select it' : 'No text found'}</p>
+      <p class="scan-hint">${words.length ? 'Select text' : 'No text found'}</p>
       <section class="scan-sheet" data-state="closed" aria-label="Lookup">
         <div class="scan-sheet__handle" data-drag="scan-sheet" role="button" tabindex="0" aria-label="Resize lookup"><span></span></div>
         <div class="scan-sheet__body"></div>
