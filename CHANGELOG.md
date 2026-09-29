@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Pronunciation voices on desktop (2026-09-30):** the phone's engines. eSpeak NG is built in (the Mechanical voice, and every IPA chip, spoken from the IPA itself); Kokoro neural voices can be downloaded in Settings → Audio (compact 132 MB, full 350 MB), except on Windows on ARM, which sherpa-onnx does not support. The headword speaker plays the recorded clip and, when there is none, speaks the word with the chosen voice; notebook ▶ does the same; translation speakers use the chosen voice. Speed and volume now apply.
+- **IPA for every English word (2026-09-30):** when no online source has a transcription (Wiktionary's "rejuvenation" has only audio), US IPA comes from the CMU Pronouncing Dictionary.
+
+### Changed
+
+- **Installer (2026-09-30):** one page instead of a wizard: an illustration, an Install button and the license checkbox, with Custom options for the folder, shortcuts and OCR models. Installing shows one progress bar; the last page opens Phevere. Always installs for all users in Program Files, which was already the default.
+- **Loading (2026-09-30):** lookups show a skeleton of the result with the selected word already in place, instead of a progress bar with stage chips. OCR keeps its progress bar.
+- **Settings (2026-09-30):** laid out like the phone: flat rows, section subheads, offline packs as rows with download and remove icons, API keys saved when edited, no internal priority numbers.
+- **Look (2026-09-30):** sharper part-of-speech rail labels (desktop and phone), parts of speech in italic serif, soft source chips, slim monitor toggles with a status dot, and window buttons on the paper colour instead of a grey band.
+
 ## [2.0.0] - 2026-09-29
 
 ### Added
