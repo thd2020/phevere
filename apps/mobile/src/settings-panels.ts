@@ -62,14 +62,17 @@ const ICON = {
 };
 
 /** Material list row that opens something: leading icon, label, optional value, chevron. */
-function navRow(act: string, icon: string, label: string, value = ''): string {
+function navRow(act: string, icon: string, label: string, value = '', sub = ''): string {
   return `<button type="button" class="nav-row" data-act="${act}">
     <span class="nav-row__icon" aria-hidden="true">${icon}</span>
-    <span class="nav-row__label">${esc(label)}</span>
+    <span class="nav-row__label">${esc(label)}${sub ? `<small class="nav-row__sub">${esc(sub)}</small>` : ''}</span>
     ${value ? `<span class="nav-row__value">${esc(value)}</span>` : ''}
     <span class="nav-row__chevron" aria-hidden="true">${ICON.chevron}</span>
   </button>`;
 }
+
+/** What the LSPosed module does, for people who meet it here before reading the README. */
+const MODULE_ABOUT = "Hooks the system selection toolbar in apps you scope: Phevere's slot, Phevere where apps hide it, and the instant press";
 
 function selectionBarSection(capture: CaptureInfo): string {
   const instant = `<label class="toggle">
@@ -92,7 +95,7 @@ function selectionBarSection(capture: CaptureInfo): string {
     return `<h3 class="settings-subhead settings-subhead--status">Selection bar ${status}</h3>
     ${instant}
     ${place}
-    ${navRow('selection-setup', ICON.select, 'LSPosed setup')}`;
+    ${navRow('selection-setup', ICON.select, 'LSPosed setup', '', MODULE_ABOUT)}`;
   }
   const a11y = capture.autoPopup && !capture.accessibilityOn
     ? navRow('a11y-settings', ICON.a11y, 'Accessibility service', 'Off')
@@ -100,7 +103,7 @@ function selectionBarSection(capture: CaptureInfo): string {
   return `<h3 class="settings-subhead">Selection bar</h3>
     ${instant}
     ${a11y}
-    ${navRow('selection-setup', ICON.select, 'LSPosed module', 'Inactive')}`;
+    ${navRow('selection-setup', ICON.select, 'LSPosed module', 'Inactive', MODULE_ABOUT)}`;
 }
 
 export type SettingsSection = 'capture' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio';

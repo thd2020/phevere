@@ -11,10 +11,12 @@ final class SelectionSetup {
     if (once && prefs.getBoolean("shown_v2", false)) return;
     new AlertDialog.Builder(activity)
         .setTitle("LSPosed module")
-        .setMessage("1. In LSPosed → Modules, enable Phevere.\n\n"
+        .setMessage("Hooks the system text-selection toolbar (FloatingToolbar) in the apps you scope: "
+            + "puts Phevere in the slot you choose, adds it where an app hides other apps' actions, "
+            + "and can press it for you on selection.\n\n"
+            + "1. In LSPosed → Modules, enable Phevere.\n\n"
             + "2. Select the apps where you select text.\n\n"
-            + "3. Force-stop and reopen those apps.\n\n"
-            + "An app still ignores Phevere? LSPosed → Logs shows its selection bar's items.")
+            + "3. Force-stop and reopen those apps.")
         .setPositiveButton("Got it", (dialog, which) -> prefs.edit().putBoolean("shown_v2", true).apply())
         .show();
   }
