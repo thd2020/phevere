@@ -38,8 +38,93 @@ public class SelectionWebView extends WebView {
   @Override
   public ActionMode startActionMode(ActionMode.Callback callback, int type) {
     if (CapturePrefs.autoPopup(getContext())) return new QuietMode(this);
+    // Activities (main app, bottom sheet) show the system bar with a Phevere item of our own;
+    // the overlay pop-up has no Activity and draws the bar itself.
+    if (getContext() instanceof android.app.Activity) {
+      return super.startActionMode(new PhevereItemCallback(callback), type);
+    }
     BarMode mode = new BarMode(this, callback);
     return mode.start() ? mode : new QuietMode(this);
+  }
+
+  private static final int PHEVERE_ITEM = 0x50686576;
+
+  /**
+   * The system selection bar, plus Phevere. Chromium may already list Phevere as a
+   * process-text app; either way the press is handled here, so the page decides: the pop-up
+   * and Scan look up in place, anywhere else opens the pop-up beside the selection.
+   */
+  private final class PhevereItemCallback extends ActionMode.Callback2 {
+    private final ActionMode.Callback base;
+
+    PhevereItemCallback(ActionMode.Callback base) { this.base = base; }
+
+    @Override public boolean onCreateActionMode(ActionMode mode, Menu menu) {
+      boolean ok = base.onCreateActionMode(mode, menu);
+      if (ok) ensureItem(menu);
+      return ok;
+    }
+
+    @Override public boolean onPrepareActionMode(ActionMode mode, Menu menu) {
+      boolean changed = base.onPrepareActionMode(mode, menu);
+      return ensureItem(menu) || changed;
+    }
+
+    @Override public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
+      if (item.getItemId() != PHEVERE_ITEM && !isOwnProcessText(item)) return base.onActionItemClicked(mode, item);
+      // Read the selection before finishing the mode: finishing clears it.
+      evaluateJavascript("JSON.stringify(window.__pvSelectionAction ? window.__pvSelectionAction() : null)", value -> {
+        mode.finish();
+        try {
+          String json = new JSONArray("[" + value + "]").optString(0, "null");
+          org.json.JSONObject out = "null".equals(json) ? null : new org.json.JSONObject(json);
+          if (out == null || out.optBoolean("inPlace")) return;
+          String text = out.optString("text").trim();
+          if (!text.isEmpty()) ProcessTextActivity.openPopup(getContext(), text, screenRect(out.optJSONObject("rect")));
+        } catch (Exception ignored) {
+        }
+      });
+      return true;
+    }
+
+    @Override public void onDestroyActionMode(ActionMode mode) { base.onDestroyActionMode(mode); }
+
+    @Override public void onGetContentRect(ActionMode mode, View view, Rect outRect) {
+      if (base instanceof ActionMode.Callback2) ((ActionMode.Callback2) base).onGetContentRect(mode, view, outRect);
+      else super.onGetContentRect(mode, view, outRect);
+    }
+
+    /** @return true when the item was added now. */
+    private boolean ensureItem(Menu menu) {
+      if (menu.findItem(PHEVERE_ITEM) != null) return false;
+      for (int i = 0; i < menu.size(); i++) {
+        if (isOwnProcessText(menu.getItem(i))) {
+          menu.getItem(i).setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
+          return false;
+        }
+      }
+      menu.add(Menu.NONE, PHEVERE_ITEM, 0, getContext().getString(R.string.app_name))
+          .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
+      return true;
+    }
+
+    private boolean isOwnProcessText(MenuItem item) {
+      Intent intent = item.getIntent();
+      return intent != null && Intent.ACTION_PROCESS_TEXT.equals(intent.getAction())
+          && intent.getComponent() != null
+          && getContext().getPackageName().equals(intent.getComponent().getPackageName());
+    }
+  }
+
+  /** Page rectangle (CSS px) to screen pixels, for placing the pop-up beside the selection. */
+  private Rect screenRect(org.json.JSONObject box) {
+    if (box == null) return null;
+    float d = getResources().getDisplayMetrics().density;
+    int[] loc = new int[2];
+    getLocationOnScreen(loc);
+    return new Rect(
+        loc[0] + Math.round((float) box.optDouble("left") * d), loc[1] + Math.round((float) box.optDouble("top") * d),
+        loc[0] + Math.round((float) box.optDouble("right") * d), loc[1] + Math.round((float) box.optDouble("bottom") * d));
   }
 
   @Override

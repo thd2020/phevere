@@ -6,7 +6,7 @@
     android:fitsSystemWindows="false"
     android:background="@color/paper">
 
-    <WebView
+    <com.phevere.app.SelectionWebView
         android:id="@+id/webview"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />

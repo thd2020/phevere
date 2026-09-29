@@ -39,8 +39,10 @@ final class Ocr {
 
   static void addWords(JSONArray words, Text text, int width, int height) throws Exception {
     if (text == null || width < 1 || height < 1) return;
+    int lineNo = 0;
     for (Text.TextBlock block : text.getTextBlocks()) {
       for (Text.Line line : block.getLines()) {
+        lineNo++;
         for (Text.Element el : line.getElements()) {
           Rect r = el.getBoundingBox();
           String t = el.getText() == null ? "" : el.getText().trim();
@@ -51,6 +53,7 @@ final class Ocr {
           w.put("y", r.top / (double) height);
           w.put("w", r.width() / (double) width);
           w.put("h", r.height() / (double) height);
+          w.put("l", lineNo);  // the page joins a line's words with spaces, lines with newlines
           words.put(w);
         }
       }

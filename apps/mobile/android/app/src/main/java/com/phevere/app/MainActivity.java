@@ -422,9 +422,12 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
 
   private void succeedScan(android.graphics.Bitmap bmp, com.google.mlkit.vision.text.Text latin, com.google.mlkit.vision.text.Text zh) {
     try {
+      // One text layer: two recognisers' results would overlap and select twice. The Chinese
+      // model also reads Latin script, so it wins whenever it found Chinese.
       JSONArray words = new JSONArray();
-      Ocr.addWords(words, latin, bmp.getWidth(), bmp.getHeight());
-      Ocr.addWords(words, zh, bmp.getWidth(), bmp.getHeight());
+      boolean chinese = zh != null && zh.getText() != null && zh.getText().codePoints()
+          .anyMatch(c -> Character.UnicodeScript.of(c) == Character.UnicodeScript.HAN);
+      Ocr.addWords(words, chinese ? zh : latin, bmp.getWidth(), bmp.getHeight());
       router.resolve(pendingJsId, Ocr.pack(bmp, words));
     } catch (Exception e) {
       failPending(e.getMessage());

@@ -1,5 +1,10 @@
 # Android build and selection-toolbar setup
 
+**2026-09-29:**
+- **X and apps like it:** X's selection bar (Copy, Ask Grok, Mute, Select all) drops every app's text action. When a bar with Copy has no Phevere, the LSPosed module now adds it. To get the selected text, it reads the selected text view first. If that fails, it copies the selection and restores your previous clipboard. The custom slot and the instant press work on the added item.
+- **Phevere's own screens:** the system text bar there carries Phevere. The page decides what the press does: Scan and the pop-up look up in place, and anywhere else the pop-up opens beside the word.
+- **Settings:** the LSPosed row says in one line what the module does.
+
 **2026-09-28 (late night):** The APK now has a real version. The installer shows
 `0.2.0-dev.<commits>+<sha>` for CI and local debug builds instead of `1.0`, and every
 build from a newer commit installs as an upgrade. IPA uses the bundled Charis SIL font,
