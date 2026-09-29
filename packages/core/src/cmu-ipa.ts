@@ -91,7 +91,7 @@ function loadTable(): Promise<Record<string, string> | null> {
   if (!table) {
     table = import('cmu-pronouncing-dictionary')
       .then((m: { dictionary?: Record<string, string> }) => m.dictionary || null)
-      .catch(() => null);
+      .catch((): null => null);
   }
   return table;
 }
