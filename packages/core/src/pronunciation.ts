@@ -17,12 +17,14 @@ const IPA_LETTER = /[ˈˌəɚɝɨʉɪɛæɑɒɔʊʌɐɜɵɘʔθðʃʒŋː‿.ᵻ
 export function cleanIpa(raw?: string): string {
   if (!raw) return '';
   let s = String(raw).normalize('NFC').trim();
+  // Wiktionary inline modifiers: `/ˈsʌnɪt/<q:obsolete><ref:{{R:…}}>` keeps only the IPA.
+  s = s.replace(/<[\s\S]*$/, '').replace(/\{\{[\s\S]*$/, '').trim();
   s = s.replace(/\\/g, '/');
   s = s.replace(/^[/[\s]+/, '').replace(/[/\]\s]+$/, '');
   s = s.replace(/\s+/g, ' ').trim();
   if (s.length < 2) return '';
   // Usage notes sometimes land in IPA slots ("This word is often pronounced …").
-  if (s.length > 48 || /[=☞]/.test(s) || s.split(' ').length > 4) return '';
+  if (s.length > 48 || /[=☞<>{}|]/.test(s) || s.split(' ').length > 4) return '';
   if (!IPA_LETTER.test(s) && !/[ˈˌ]/.test(s)) return '';
   return s;
 }
