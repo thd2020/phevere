@@ -11,6 +11,7 @@ import { isLookupWorthy, normalizeQuery } from './text-normalize';
 import { contextCaptureHub } from './context-capture';
 import { captureAroundPoint } from './screen-capture';
 import { ocrEngine, lineNearPoint, textNearPoint } from './ocr-engine';
+import type { WordAtPoint } from './native-selection';
 
 const console = wrapConsole('hover-lookup');
 
@@ -28,7 +29,7 @@ export interface HoverLookupOptions {
   /** Skip while any of these windows are focused. */
   isBlocked?: () => boolean;
   /** UIA word-at-point; returns empty when unavailable. */
-  getWordAtPoint?: (x: number, y: number) => { text: string; x: number; y: number };
+  getWordAtPoint?: (x: number, y: number) => WordAtPoint;
 }
 
 const DEFAULTS = {
@@ -134,7 +135,9 @@ export class HoverLookupService {
         const nativePt =
           process.platform === 'win32' ? cursorToNative(x, y) : { x, y };
         const hit = this.opts.getWordAtPoint(nativePt.x, nativePt.y);
-        if (hit && hit.text && isLookupWorthy(hit.text)) {
+        if (hit && hit.text && !wordBoxHolds(hit, nativePt)) {
+          console.log('UIA word is beside the cursor; reading pixels instead', hit.text);
+        } else if (hit && hit.text && isLookupWorthy(hit.text)) {
           const q = normalizeQuery(hit.text);
           if (q.kind === 'word' && q.trimmed) {
             text = q.trimmed;
@@ -182,6 +185,17 @@ function cursorToNative(x: number, y: number): { x: number; y: number } {
   } catch {
     return { x, y };
   }
+}
+
+/**
+ * Chromium answers RangeFromPoint with the neighbouring word at some page zooms and
+ * window positions. Trust the UIA word only when its box contains the cursor.
+ */
+function wordBoxHolds(hit: WordAtPoint, pt: { x: number; y: number }): boolean {
+  const b = hit.bounds;
+  if (!b || !(b.width > 0) || !(b.height > 0)) return true;
+  const pad = 2;
+  return pt.x >= b.x - pad && pt.x <= b.x + b.width + pad && pt.y >= b.y - pad && pt.y <= b.y + b.height + pad;
 }
 
 function cursorInCapture(

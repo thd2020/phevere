@@ -21,6 +21,14 @@ export type SelectionEvent = ContextEvent & {
   source?: 'native' | 'manual';
 };
 
+/** UIA word under a point. `bounds` is the word box in physical pixels, when the host reports one. */
+export interface WordAtPoint {
+  text: string;
+  x: number;
+  y: number;
+  bounds?: { x: number; y: number; width: number; height: number };
+}
+
 export interface NativeSelectionService {
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -28,7 +36,7 @@ export interface NativeSelectionService {
   isSupported(): boolean;
   getStatus(): { isRunning: boolean; platform: string; method: string };
   /** Optional: word under cursor for hover lookup. */
-  getWordAtPoint?(x: number, y: number): { text: string; x: number; y: number };
+  getWordAtPoint?(x: number, y: number): WordAtPoint;
   /** macOS TCC; other platforms true. */
   isAccessibilityTrusted?(prompt?: boolean): boolean;
   /** macOS: AX prompt so this binary appears in the Accessibility list. */
@@ -127,7 +135,7 @@ class AddonBackedNativeSelectionService implements NativeSelectionService {
     };
   }
 
-  getWordAtPoint(x: number, y: number): { text: string; x: number; y: number } {
+  getWordAtPoint(x: number, y: number): WordAtPoint {
     if (!this.nativeAddon || typeof this.nativeAddon.getWordAtPoint !== 'function') {
       return { text: '', x, y };
     }
@@ -137,6 +145,7 @@ class AddonBackedNativeSelectionService implements NativeSelectionService {
         text: (result && result.text) || '',
         x: typeof result?.x === 'number' ? result.x : x,
         y: typeof result?.y === 'number' ? result.y : y,
+        ...(result?.bounds && typeof result.bounds.width === 'number' ? { bounds: result.bounds } : {}),
       };
     } catch (error) {
       console.warn('[NATIVE-SERVICE] getWordAtPoint failed', error);

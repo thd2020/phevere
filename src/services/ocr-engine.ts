@@ -1078,13 +1078,44 @@ export function textNearPoint(result: OcrResult, relX: number, relY: number): st
 const CJK_TOKEN = /[\u3400-\u9FFF\uF900-\uFAFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]/;
 const LATIN_WORD_CHAR = /[A-Za-z0-9\u00C0-\u024F'’]/;
 
+/**
+ * Rough advance width in em for a proportional sans (Segoe UI, Arial, Helvetica).
+ * OCR gives one box per line, not per glyph, so this stands in for glyph positions.
+ */
+function advanceEm(c: string): number {
+  if (CJK_TOKEN.test(c) || /[＀-￯　-〿]/.test(c)) return 1;
+  if (/\s/.test(c)) return 0.28;
+  if (/[ijl.,:;'’!|]/.test(c)) return 0.26;
+  if (/[frtI()[\]\-"]/.test(c)) return 0.36;
+  if (/[mw]/.test(c)) return 0.82;
+  if (/[MW@%]/.test(c)) return 0.9;
+  if (/[0-9]/.test(c)) return 0.55;
+  if (/[a-z]/.test(c)) return 0.52;
+  if (/[A-Z]/.test(c)) return 0.64;
+  return 0.56;
+}
+
+/** Character under `ratio` (0..1 across the line box), weighting each glyph by its advance. */
+function charIndexAtRatio(chars: string[], ratio: number): number {
+  if (!chars.length) return 0;
+  const widths = chars.map(advanceEm);
+  const total = widths.reduce((a, b) => a + b, 0);
+  const target = ratio * total;
+  let acc = 0;
+  for (let i = 0; i < chars.length; i++) {
+    acc += widths[i];
+    if (target < acc) return i;
+  }
+  return chars.length - 1;
+}
+
 /** Split a line into words / CJK chars and pick the token under the x offset. */
 function pickTokenAt(line: string, bounds: NonNullable<OcrLine['bounds']>, relX: number): string {
   const text = glueSpacedLetters(line.replace(/\s+/g, ' ').trim());
   if (!text) return '';
   const chars = [...text];
   const ratio = bounds.width > 0 ? Math.min(1, Math.max(0, (relX - bounds.x) / bounds.width)) : 0.5;
-  let idx = Math.min(chars.length - 1, Math.max(0, Math.floor(ratio * chars.length)));
+  let idx = charIndexAtRatio(chars, ratio);
 
   const isGap = (c: string) => /\s/.test(c);
   if (isGap(chars[idx])) {

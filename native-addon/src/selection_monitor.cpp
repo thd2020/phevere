@@ -1291,6 +1291,15 @@ public:
                     double left = data[0], top = data[1], width = data[2], height = data[3];
                     out.Set("x", Napi::Number::New(env, left + width / 2.0));
                     out.Set("y", Napi::Number::New(env, top + height));
+                    // Physical-pixel word box. Some hosts (Chromium at non-100% page zoom)
+                    // answer RangeFromPoint with a neighbouring word; callers check that
+                    // the queried point is inside this box.
+                    Napi::Object box = Napi::Object::New(env);
+                    box.Set("x", Napi::Number::New(env, left));
+                    box.Set("y", Napi::Number::New(env, top));
+                    box.Set("width", Napi::Number::New(env, width));
+                    box.Set("height", Napi::Number::New(env, height));
+                    out.Set("bounds", box);
                     SafeArrayUnaccessData(rects);
                 }
             }
