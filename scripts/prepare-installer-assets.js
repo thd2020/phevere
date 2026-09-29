@@ -42,6 +42,10 @@ async function main() {
       path.join(outDir, 'icon.ico'),
       path.join(outDir, 'installerSidebar.bmp'),
       path.join(outDir, 'installerHeader.bmp'),
+      path.join(outDir, 'installerHero.bmp'),
+      path.join(outDir, 'installerButton.bmp'),
+      path.join(outDir, 'installerButtonOff.bmp'),
+      path.join(outDir, 'installerOpen.bmp'),
     ];
     const missing = required.filter((p) => !fs.existsSync(p));
     if (missing.length) {
@@ -131,6 +135,19 @@ async function main() {
   console.log(
     `Wrote installerSidebar.bmp ${SIDEBAR_W}×${SIDEBAR_H} + installerHeader.bmp ${HEADER_W}×${HEADER_H} (24-bpp, 2× MUI)`,
   );
+
+  // One-page installer (installer.nsh): hero illustration and big buttons, 2× size.
+  const { heroSvg, buttonSvg, PAPER: ART_PAPER } = require('./installer-art');
+  const art = [
+    ['installerHero.bmp', heroSvg(994, 448), 994, 448],
+    ['installerButton.bmp', buttonSvg(320, 88, 'Install'), 320, 88],
+    ['installerButtonOff.bmp', buttonSvg(320, 88, 'Install', true), 320, 88],
+    ['installerOpen.bmp', buttonSvg(320, 88, 'Open Phevere'), 320, 88],
+  ];
+  for (const [name, svg, w, h] of art) {
+    await writeTrueBmp(sharp, Buffer.from(svg), path.join(outDir, name), w, h, 'fill', ART_PAPER);
+  }
+  console.log('Wrote installerHero.bmp and installer button bitmaps');
 
   // Optional: also emit sidecar zip for advanced redistribution (not required — models are in Setup).
   const ocrSrc = path.join(root, 'resources', 'ocr-models');

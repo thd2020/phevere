@@ -50,11 +50,12 @@ win:
   signAndEditExecutable: true
 nsis:
   oneClick: false
-  perMachine: false
-  selectPerMachineByDefault: true
-  allowToChangeInstallationDirectory: true
+  # One install mode (Program Files, as before by default), so no "just me / everyone" page.
+  perMachine: true
+  # The folder is chosen under "Custom options" on the one-page installer (installer-pages.nsh).
+  allowToChangeInstallationDirectory: false
   allowElevation: true
-  # Shortcuts are offered as optional components in installer.nsh
+  # Shortcuts are optional choices under Custom options (installer.nsh sections)
   createDesktopShortcut: false
   createStartMenuShortcut: false
   shortcutName: Phevere
@@ -65,7 +66,7 @@ nsis:
   installerSidebar: packaging/installerSidebar.bmp
   uninstallerSidebar: packaging/installerSidebar.bmp
   include: packaging/installer.nsh
-  license: LICENSE
+  # No licence page: the install page has an agreement checkbox linking to LICENSE.
   runAfterFinish: true
   # false → install under Program Files\Phevere (not Program Files\<author>\Phevere)
   menuCategory: false

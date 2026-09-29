@@ -1,5 +1,9 @@
 # Packaging & releases
 
+**2026-09-30:** The Windows installer is one page instead of a wizard (`packaging/installer-pages.nsh`): illustration, Install button, license checkbox, and Custom options for folder, shortcuts and OCR models; then one progress bar and an "Open Phevere" page. It always installs for all users (`perMachine: true`), the license page is gone, and the folder is chosen under Custom options (`allowToChangeInstallationDirectory: false`). Art comes from `scripts/installer-art.js` through `prepare:installer`.
+
+**2026-09-30:** Packages carry the speech engines in `resources/speech` (staged by `scripts/stage-speech.js` at prePackage): eSpeak NG WebAssembly (GPL-3.0, with its licence and source note), the bundled speech worker, and sherpa-onnx for Kokoro where a binary exists (not Windows on ARM). About 41 MB.
+
 **2026-09-16:** `ci.yml` uploads an Android APK and an iOS IPA as Actions artifacts. They are not GitHub Release assets. Desktop `release.yml` is unchanged.
 
 **2026-09-05:** `release.yml` Mac asset-delete is the same PowerShell as Windows (`scripts/gh-delete-release-asset.ps1`). CI Windows now runs `verify-ocr-pack` on the unpackaged app like macOS.
@@ -10,7 +14,7 @@
 
 ## Windows: NSIS Setup.exe (primary)
 
-We use **electron-builder NSIS** via `@electron-addons/electron-forge-maker-nsis` — assisted wizard (directory, components, branding, **uninstaller**).
+We use **electron-builder NSIS** via `@electron-addons/electron-forge-maker-nsis`, with our own one-page UI (install, progress, finish) and the standard **uninstaller**.
 
 ```bash
 npm run build-native
@@ -33,7 +37,7 @@ GitHub Actions: `ci.yml` on PR/`main` (including Android APK + iOS IPA as **Acti
 
 ### Single bundled installer
 
-One Setup.exe includes the app **and** OCR models (`resources/ocr-models` → `extraResources`). Components page:
+One Setup.exe includes the app **and** OCR models (`resources/ocr-models` → `extraResources`). Custom options on the install page:
 
 | Component | Default | Notes |
 |---|---|---|
@@ -75,10 +79,11 @@ If files remain but Apps has no entry (“ghost” install — often from aborte
 `npm run prepare:installer` refreshes:
 
 - `packaging/icon.ico` + `icon.png` + `icon.icns` (macOS Dock / `.app`; `iconutil` on darwin)
-- `packaging/installerSidebar.bmp` / `installerHeader.bmp`
+- `packaging/installerSidebar.bmp` / `installerHeader.bmp` (uninstaller)
+- `packaging/installerHero.bmp`, `installerButton.bmp`, `installerButtonOff.bmp`, `installerOpen.bmp` (install pages, from `scripts/installer-art.js`)
 - `resources/tray-icon.png`
 
-Welcome / finish / components: `packaging/installer.nsh`. Options: `electron-builder.yml`. InstFiles uses compiler-scope `ShowInstDetails show` (not inside a Function — makensis rejects that) plus per-step `DetailPrint`. `scripts/patch-nsis-details-print.js` (from `prepare:installer`) changes electron-builder’s install section from `SetDetailsPrint none` to `both` so the file list is not a mute bar.
+Install, progress and finish pages: `packaging/installer-pages.nsh` (each page takes the full window like Modern UI's welcome page, and the big buttons are bitmaps that send NSIS's next-page message). Sections, shortcuts and registry: `packaging/installer.nsh`. Options: `electron-builder.yml`. InstFiles uses compiler-scope `ShowInstDetails show` (not inside a Function — makensis rejects that) plus per-step `DetailPrint`. `scripts/patch-nsis-details-print.js` (from `prepare:installer`) changes electron-builder’s install section from `SetDetailsPrint none` to `both` so the file list is not a mute bar.
 
 Sidebar/header **must** be real 24-bpp BMP (`BM` magic). `prepare:installer` writes them with `writeTrueBmp` at **2×** MUI size (328×628 sidebar, 300×114 header) from the stylized-P mark — do not cover-scale a splash PNG and do not save PNG bytes as `.bmp`. Inner-page header and `MUI_BGCOLOR` are **white** (`#FFFFFF`) so Win11 is not stuck on XP grey. Do **not** set `MUI_*_BITMAP_NOSTRETCH` (that left a 1× blit that DPI nearest-neighbor-scaled into a blurry pane). `installer.nsh` sets HALFTONE stretch on GUI init.
 
