@@ -40,7 +40,7 @@ export interface Definition {
 
 import { BaseService, DictionaryError, withTimeout } from './base';
 import { wrapConsole } from './log';
-import { getHttp, getLookupOffline, getSha256Hex, isCoreConfigured, type OfflineHit } from './runtime';
+import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigured, type OfflineHit } from './runtime';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
 import { splitSurfaceAndLemma, sameLookupFold } from './lookup-policy';
 import { buildEtymology, EtymologyLink } from './etymology';
@@ -62,8 +62,20 @@ const IPA_BUDGET_MS = 1500;
 const OFFLINE_BUDGET_MS = 2000;
 /** Coalesce window so a fast FreeDict hit rides with Webster instead of a second paint. */
 const CORE_WAIT_WITH_LOCAL_MS = 450;
-/** Wait for network defs only when local packs missed. */
+/** Longest wait for network defs when local packs missed. Normally the first primary hit ends it. */
 const CORE_WAIT_WITHOUT_LOCAL_MS = 2500;
+/** After Free Dictionary or Wiktionary returns senses, how long the others get to join the first paint. */
+const FIRST_PAINT_GRACE_MS = 200;
+/** Late pieces (translation, IPA, etymology) that land together go out as one update. */
+const UPDATE_COALESCE_MS = 120;
+/** A result missing a failed source is cached, but only this long, so the source gets another try. */
+const PARTIAL_CACHE_TTL_MS = 10 * 60 * 1000;
+/** Persistent entries are kept this long. */
+const PERSISTED_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const PARTIAL_PERSIST_TTL_MS = 24 * 60 * 60 * 1000;
+/** A source whose host keeps failing is skipped for this long, doubling per further failure. */
+const SOURCE_DOWN_BASE_MS = 3 * 60 * 1000;
+const SOURCE_DOWN_MAX_MS = 30 * 60 * 1000;
 
 type LookupHolder = { current?: DictionaryResult };
 export type TranslationProvider = 'auto' | 'youdao' | 'deepl' | 'google' | 'mymemory';
@@ -110,8 +122,15 @@ export class DictionaryService extends BaseService {
   private static readonly WIKIMEDIA_USER_AGENT =
     'Phevere/1.0 (https://github.com/thd2020/phevere; desktop dictionary)';
 
-  private cache = new Map<string, { result: DictionaryResult; timestamp: number }>();
+  private cache = new Map<string, { result: DictionaryResult; timestamp: number; ttl?: number }>();
   private cacheTimeout = 24 * 60 * 60 * 1000; // 24 hours
+  /**
+   * Lookups still filling in (translation, etymology, IPA pending). A second request for
+   * the same key gets the latest partial result and joins the remaining updates.
+   */
+  private inflight = new Map<string, { latest?: DictionaryResult; listeners: Set<(r: DictionaryResult) => void> }>();
+  /** Consecutive network failures per source; a source that keeps failing is skipped for a while. */
+  private sourceHealth = new Map<string, { fails: number; downUntil: number }>();
   /** Skip Google gtx while it is 429ing; MyMemory still runs. */
   private googleGtxCoolUntil = 0;
   /** Per-source layer: a Datamuse hit must not freeze a Free Dictionary timeout for 24h. */
@@ -436,21 +455,73 @@ export class DictionaryService extends BaseService {
       const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}`);
 
       const remember = (r: DictionaryResult) => {
-        if (this.isUncacheableResult(r) || this.isIncompleteSourceCache(r)) {
-          this.cache.delete(cacheKey);
-          return;
+        if (this.isUncacheableResult(r) || this.isStillFilling(r)) return;
+        // A failed or missing source is usually a flaky host. Keep the result, but
+        // only briefly, so the next lookup after that tries the source again.
+        const partial = this.isIncompleteSourceCache(r);
+        const ttl = partial ? PARTIAL_CACHE_TTL_MS : this.cacheTimeout;
+        const now = Date.now();
+        this.cache.set(cacheKey, { result: r, timestamp: now, ttl });
+        try {
+          // A partial result is stored as if saved 13 days ago, so it lasts one day on disk.
+          const savedAt = partial ? now - (PERSISTED_CACHE_TTL_MS - PARTIAL_PERSIST_TTL_MS) : now;
+          void Promise.resolve(getLookupCache()?.set(cacheKey, r, savedAt)).catch((): undefined => undefined);
+        } catch {
+          /* persistence optional */
         }
-        this.cache.set(cacheKey, { result: r, timestamp: Date.now() });
       };
 
       const cached = this.cache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
-        if (!this.isUncacheableResult(cached.result) && !this.isIncompleteSourceCache(cached.result)) {
-          console.log(`Cache hit (${Date.now() - startTime}ms)`);
-          return cached.result;
-        }
-        this.cache.delete(cacheKey);
+      if (cached && Date.now() - cached.timestamp < (cached.ttl ?? this.cacheTimeout)) {
+        console.log(`Cache hit (${Date.now() - startTime}ms)`);
+        return cached.result;
       }
+      if (cached) this.cache.delete(cacheKey);
+
+      const store = getLookupCache();
+      if (store) {
+        try {
+          const saved = await store.get(cacheKey);
+          const value = saved?.value as DictionaryResult | undefined;
+          if (saved && value && Date.now() - saved.savedAt < PERSISTED_CACHE_TTL_MS && !this.isUncacheableResult(value)) {
+            this.cache.set(cacheKey, { result: value, timestamp: Date.now(), ttl: this.cacheTimeout });
+            console.log(`Persistent cache hit (${Date.now() - startTime}ms)`);
+            return value;
+          }
+        } catch {
+          /* persistence optional */
+        }
+      }
+
+      // Same word already loading: hand back what it has and send this caller the rest.
+      const running = this.inflight.get(cacheKey);
+      if (running) {
+        if (opts?.onUpdate) running.listeners.add(opts.onUpdate);
+        if (running.latest && this.hasRealDefinitions(running.latest)) {
+          console.log(`Joined in-flight lookup (${Date.now() - startTime}ms)`);
+          return running.latest;
+        }
+      }
+      const flight = running || { listeners: new Set<(r: DictionaryResult) => void>() };
+      if (!running) {
+        if (opts?.onUpdate) flight.listeners.add(opts.onUpdate);
+        this.inflight.set(cacheKey, flight);
+        // Safety net: a background step that never settles must not pin the entry.
+        setTimeout(() => {
+          if (this.inflight.get(cacheKey) === flight) this.inflight.delete(cacheKey);
+        }, LOOKUP_DEADLINE_MS * 2);
+      }
+      const decorate = (r: DictionaryResult): DictionaryResult => {
+        r.detectedLanguage = detectedLanguage;
+        r.metadata = {
+          ...(r.metadata || {}),
+          sourceLanguage: detectedLanguage,
+          targetLanguage: resolvedTarget,
+          originalTargetLanguage: targetLanguage,
+          autoPaired: !targetLanguage || targetLanguage === 'auto' || targetLanguage === detectedLanguage,
+        };
+        return r;
+      };
 
       let result: DictionaryResult;
       const holder: LookupHolder = {};
@@ -458,8 +529,17 @@ export class DictionaryService extends BaseService {
         ...opts,
         originalSelection: query.raw,
         onUpdate: (r) => {
+          decorate(r);
           remember(r);
-          opts?.onUpdate?.(r);
+          flight.latest = r;
+          if (!this.isStillFilling(r) && this.inflight.get(cacheKey) === flight) this.inflight.delete(cacheKey);
+          for (const listener of flight.listeners) {
+            try {
+              listener(r);
+            } catch (e) {
+              console.warn('lookup update listener failed', e);
+            }
+          }
         },
       };
 
@@ -500,16 +580,12 @@ export class DictionaryService extends BaseService {
         }
       }
 
-      result.detectedLanguage = detectedLanguage;
-      result.metadata = {
-        ...(result.metadata || {}),
-        sourceLanguage: detectedLanguage,
-        targetLanguage: resolvedTarget,
-        originalTargetLanguage: targetLanguage,
-        autoPaired: !targetLanguage || targetLanguage === 'auto' || targetLanguage === detectedLanguage,
-      };
-
+      decorate(result);
       remember(result);
+      if (this.hasRealDefinitions(result) && (!flight.latest || !this.hasRealDefinitions(flight.latest))) {
+        flight.latest = result;
+      }
+      if (!this.isStillFilling(result) && this.inflight.get(cacheKey) === flight) this.inflight.delete(cacheKey);
       return result;
     } catch (error) {
       console.error('❌ Dictionary lookup error:', error);
@@ -682,6 +758,11 @@ export class DictionaryService extends BaseService {
    * Whole-result cache is only final when every *expected* source has a terminal
    * ok/empty status. A Datamuse hit must not freeze a missing Wiktionary layer.
    */
+  /** Translation or etymology still on the way; the result will be updated. */
+  private isStillFilling(result?: DictionaryResult): boolean {
+    return !!(result?.metadata?.pendingEtymology || result?.metadata?.pendingTranslation);
+  }
+
   private isIncompleteSourceCache(result?: DictionaryResult): boolean {
     if (result?.metadata?.pendingEtymology || result?.metadata?.pendingTranslation) return true;
     if (!(result?.translations || []).some((t) => (t.text || '').trim())) return true;
@@ -757,12 +838,95 @@ export class DictionaryService extends BaseService {
     };
   }
 
+  /**
+   * First paint: as soon as Free Dictionary or Wiktionary brings senses, give the rest
+   * FIRST_PAINT_GRACE_MS and go. If both come back empty or failed, go after the grace
+   * as well. `capMs` bounds the whole wait; `minMs` keeps the local-pack coalesce window.
+   */
+  private waitForFirstPaint(
+    all: Promise<any>[],
+    primaries: Promise<any>[],
+    minMs: number,
+    capMs: number,
+  ): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const started = Date.now();
+      let done = false;
+      let graceTimer: ReturnType<typeof setTimeout> | null = null;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        if (graceTimer) clearTimeout(graceTimer);
+        clearTimeout(capTimer);
+        resolve();
+      };
+      const capTimer = setTimeout(finish, capMs);
+      const graceThenFinish = () => {
+        if (done || graceTimer) return;
+        const wait = Math.max(FIRST_PAINT_GRACE_MS, minMs - (Date.now() - started));
+        graceTimer = setTimeout(finish, wait);
+      };
+      void Promise.all(all).then(() => {
+        const left = minMs - (Date.now() - started);
+        if (left > 0) setTimeout(finish, left);
+        else finish();
+      });
+      let settled = 0;
+      for (const p of primaries) {
+        void p.then((r: any) => {
+          settled += 1;
+          const senses = r?.status === 'ok' && (r?.data?.definitions?.length || 0) > 0;
+          if (senses || settled === primaries.length) graceThenFinish();
+        });
+      }
+    });
+  }
+
+  /** Cheap fingerprint so identical background updates are not re-sent. */
+  private updateSignature(r: DictionaryResult): string {
+    return [
+      (r.definitions || []).length,
+      (r.pronunciations || []).map((p) => `${p.accent}:${p.ipa}`).join(','),
+      (r.translations || []).map((t) => t.text).join('|'),
+      (r.examples || []).length,
+      (r.etymology || '').length,
+      (r.wordFamily || []).length,
+      r.metadata?.pendingTranslation ? 1 : 0,
+      r.metadata?.pendingEtymology ? 1 : 0,
+    ].join('#');
+  }
+
+  /** True while a source's host is being skipped after repeated network failures. */
+  private isSourceDown(source: string): boolean {
+    const h = this.sourceHealth.get(source);
+    return !!h && h.downUntil > Date.now();
+  }
+
+  private noteSourceResult(source: string, error?: unknown): void {
+    const networkFailure =
+      !!error && (!(error instanceof DictionaryError) || error.retryable || /TIMEOUT|NETWORK/.test(error.code));
+    if (!networkFailure) {
+      this.sourceHealth.delete(source);
+      return;
+    }
+    const h = this.sourceHealth.get(source) || { fails: 0, downUntil: 0 };
+    // Requests already in flight when the skip began report late; they are the same outage.
+    if (h.downUntil > Date.now()) return;
+    h.fails += 1;
+    if (h.fails >= 2) {
+      const backoff = Math.min(SOURCE_DOWN_MAX_MS, SOURCE_DOWN_BASE_MS * 2 ** (h.fails - 2));
+      h.downUntil = Date.now() + backoff;
+      console.warn(`${source} keeps failing; skipping it for ${Math.round(backoff / 1000)}s`);
+    }
+    this.sourceHealth.set(source, h);
+  }
+
   private async cachedSource<T>(
     source: string,
     word: string,
     fn: () => Promise<T>,
     useful: (data: T) => boolean,
-  ): Promise<{ type: string; data?: T; error?: unknown; status: 'ok' | 'empty' | 'fail' }> {
+  ): Promise<{ type: string; data?: T; error?: unknown; status: 'ok' | 'empty' | 'fail' | 'skip' }> {
     const key = `${source}:${foldLatinHeadword(word)}`;
     const now = Date.now();
     const hit = this.sourceLayer.get(key);
@@ -777,12 +941,17 @@ export class DictionaryService extends BaseService {
         return { type: source, error: 'cached-fail', status: 'fail' };
       }
     }
+    if (this.isSourceDown(source)) {
+      return { type: source, error: 'source-down', status: 'skip' };
+    }
     try {
       const data = await fn();
+      this.noteSourceResult(source);
       const status: 'ok' | 'empty' = useful(data) ? 'ok' : 'empty';
       this.sourceLayer.set(key, { status, data, ts: now });
       return { type: source, data, status };
     } catch (error) {
+      this.noteSourceResult(source, error);
       this.sourceLayer.set(key, { status: 'fail', ts: now });
       return { type: source, error, status: 'fail' };
     }
@@ -927,14 +1096,20 @@ export class DictionaryService extends BaseService {
       return wrapped;
     };
     const pushCore = (p: Promise<any>) => {
-      corePromises.push(track(p));
+      const t = track(p);
+      corePromises.push(t);
+      return t;
     };
     const pushAux = (p: Promise<any>) => {
-      auxPromises.push(track(p));
+      const t = track(p);
+      auxPromises.push(t);
+      return t;
     };
+    /** Free Dictionary and Wiktionary carry senses and IPA; the first paint waits for one of them. */
+    const primaryPromises: Promise<any>[] = [];
 
     // Translation / Tatoeba must not hold the first paint (Google gtx often sits until timeout).
-    pushAux(
+    const translationPromise = pushAux(
       this.getBestTranslation(text, targetLanguage, sourceLanguage, opts?.translationProvider || 'auto')
         .then(translation => ({ type: 'translation', data: translation }))
         .catch(error => ({ type: 'translation', error }))
@@ -1005,23 +1180,23 @@ export class DictionaryService extends BaseService {
 
     // Free Dictionary + Datamuse: Latin/English path (CJK lemmas rarely have useful entries)
     if (preferLatinSources && isSourceEnabled('Free Dictionary API')) {
-      expectedSources.push('freeDictionary');
-      pushCore(
+      if (!this.isSourceDown('freeDictionary')) expectedSources.push('freeDictionary');
+      primaryPromises.push(pushCore(
         this.cachedSource(
           'freeDictionary',
           lookupWord,
           () => this.getFreeDictionaryData(lookupWord, langForDict),
           (data) => (data.definitions?.length || 0) > 0 || !!(data.pronunciations && data.pronunciations.length) || !!data.pronunciation,
         ).then((r) => ({ ...r, type: 'freeDictionary' })),
-      );
+      ));
     }
 
     // Wiktionary: always useful (defs + etymology). For CJK, still query when enabled.
     if (isSourceEnabled('Wiktionary')) {
-      expectedSources.push('wiktionary');
+      if (!this.isSourceDown('wiktionary')) expectedSources.push('wiktionary');
       const wikiLang = preferCjkSources && langForDict === 'zh' ? 'zh' : langForDict === 'ja' ? 'ja' : langForDict === 'ko' ? 'ko' : 'en';
       const wikiWord = wikiLang === 'en' ? lookupWord : text;
-      pushCore(
+      primaryPromises.push(pushCore(
         this.cachedSource(
           'wiktionary',
           wikiWord,
@@ -1032,11 +1207,11 @@ export class DictionaryService extends BaseService {
             || !!(data.pronunciations && data.pronunciations.length)
             || !!(data.wordFamily && data.wordFamily.length),
         ).then((r) => ({ ...r, type: 'wiktionary' })),
-      );
+      ));
     }
 
     if (preferLatinSources && !hasCJK && isSourceEnabled('Datamuse')) {
-      expectedSources.push('datamuse');
+      if (!this.isSourceDown('datamuse')) expectedSources.push('datamuse');
       pushCore(
         this.cachedSource(
           'datamuse',
@@ -1089,10 +1264,7 @@ export class DictionaryService extends BaseService {
     const hasLocal = definitions.some((d) => isLocalPackSource(d.source));
     const coreWait = hasLocal ? CORE_WAIT_WITH_LOCAL_MS : CORE_WAIT_WITHOUT_LOCAL_MS;
     if (corePromises.length) {
-      await Promise.race([
-        Promise.all(corePromises),
-        new Promise<void>((resolve) => setTimeout(resolve, coreWait)),
-      ]);
+      await this.waitForFirstPaint(corePromises, primaryPromises, hasLocal ? coreWait : 0, coreWait);
     }
 
     const absorbed = new Set<unknown>();
@@ -1303,63 +1475,75 @@ export class DictionaryService extends BaseService {
     const result = buildResult();
     if (holder) holder.current = result;
 
-    void (async () => {
-      try {
-        const etyQuery = text;
-        const etyPromise = skipEtymology
-          ? Promise.resolve(undefined)
-          : this.fetchEtymologyFromMultipleSources(etyQuery).catch((error: unknown): undefined => {
-              console.warn('[ETY] multi-source etymology skipped', error);
-              return undefined;
-            });
-        await Promise.allSettled([...corePromises, ...auxPromises]);
-        drain();
-        pendingTranslation = false;
-        const mid = buildResult();
-        if (holder) holder.current = mid;
-        opts?.onUpdate?.(mid);
-        const fetched = await etyPromise;
-        pendingEtymology = false;
-        if (fetched?.text) {
-          etymology = fetched.text;
-          if (fetched.chain) etymologyChain = fetched.chain;
-        }
-        const late = buildResult();
-        if (preferLatinSources) {
-          const ipaWord = foldLatinHeadword(text);
-          const haveUsUk =
-            (late.pronunciations || []).some((p) => p.accent === 'us') &&
-            (late.pronunciations || []).some((p) => p.accent === 'uk');
-          if (ipaWord && !haveUsUk) {
-            try {
-              const [lemmaPhon, wikiIpa] = await Promise.all([
-                withTimeout(this.getFreeDictionaryData(ipaWord, 'en'), IPA_BUDGET_MS, 'lemma.ipa').catch(
-                  (): { pronunciations?: Pronunciation[]; pronunciation?: string } => ({}),
-                ),
-                withTimeout(this.getWiktionaryIpa(ipaWord), IPA_BUDGET_MS * 2, 'wiki.ipa').catch(
-                  (): Pronunciation[] => [],
-                ),
-              ]);
-              pronunciations = mergePronunciations(
-                pronunciations,
-                lemmaPhon.pronunciations,
-                !lemmaPhon.pronunciations?.length && lemmaPhon.pronunciation && !/US\s|UK\s/.test(lemmaPhon.pronunciation)
-                  ? [{ ipa: lemmaPhon.pronunciation, accent: 'other', source: 'Free Dictionary API' }]
-                  : undefined,
-                wikiIpa,
-              );
-            } catch {
-              /* optional */
-            }
-          }
-        }
-        const patched = buildResult();
-        if (holder) holder.current = patched;
-        opts?.onUpdate?.(patched);
-      } catch (err) {
-        console.warn('Background lookup enrich failed', err);
+    // Everything that lands after the first paint goes out as it arrives, coalesced,
+    // instead of waiting for the slowest piece (translation engines, etymology hosts).
+    let lastSent = this.updateSignature(result);
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    const flush = () => {
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
       }
-    })();
+      drain();
+      const next = buildResult();
+      const sig = this.updateSignature(next);
+      if (sig === lastSent) return;
+      lastSent = sig;
+      if (holder) holder.current = next;
+      opts?.onUpdate?.(next);
+    };
+    const schedule = () => {
+      if (!flushTimer) flushTimer = setTimeout(() => flush(), UPDATE_COALESCE_MS);
+    };
+
+    const coreDone = Promise.allSettled(corePromises).then(async () => {
+      drain();
+      if (!preferLatinSources) return;
+      const ipaWord = foldLatinHeadword(text);
+      const haveUsUk =
+        pronunciations.some((p) => p.accent === 'us' && p.ipa) && pronunciations.some((p) => p.accent === 'uk' && p.ipa);
+      if (!ipaWord || haveUsUk) return;
+      // US/UK top-up for forms whose entry has no accent labels. It runs as soon as the
+      // dictionaries are in, not after translation and etymology.
+      const [lemmaPhon, wikiIpa] = await Promise.all([
+        this.cachedSource('freeDictionary', ipaWord, () => this.getFreeDictionaryData(ipaWord, 'en'), () => true)
+          .then((r) => (r.data || {}) as { pronunciations?: Pronunciation[]; pronunciation?: string }),
+        withTimeout(this.getWiktionaryIpa(ipaWord), IPA_BUDGET_MS * 2, 'wiki.ipa').catch((): Pronunciation[] => []),
+      ]);
+      pronunciations = mergePronunciations(
+        pronunciations,
+        lemmaPhon.pronunciations,
+        !lemmaPhon.pronunciations?.length && lemmaPhon.pronunciation && !/US\s|UK\s/.test(lemmaPhon.pronunciation)
+          ? [{ ipa: lemmaPhon.pronunciation, accent: 'other', source: 'Free Dictionary API' }]
+          : undefined,
+        wikiIpa,
+      );
+    }).catch((): undefined => undefined);
+
+    for (const p of corePromises) void p.then(schedule);
+    void coreDone.then(schedule);
+    const translationDone = translationPromise.then(() => {
+      pendingTranslation = false;
+      schedule();
+    });
+    for (const p of auxPromises) void p.then(schedule);
+    const etymologyDone = (skipEtymology
+      ? Promise.resolve(undefined)
+      : this.fetchEtymologyFromMultipleSources(text).catch((error: unknown): undefined => {
+          console.warn('[ETY] multi-source etymology skipped', error);
+          return undefined;
+        })
+    ).then((fetched) => {
+      pendingEtymology = false;
+      if (fetched?.text) {
+        etymology = fetched.text;
+        if (fetched.chain) etymologyChain = fetched.chain;
+      }
+      schedule();
+    });
+    void Promise.allSettled([coreDone, translationDone, etymologyDone, ...auxPromises])
+      .then(() => flush())
+      .catch((err) => console.warn('Background lookup enrich failed', err));
 
     return result;
   }

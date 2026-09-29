@@ -2,8 +2,8 @@ export { DictionaryError, BaseService, withTimeout, withTimeoutFallback } from '
 export type { CoreRequestInit } from './base';
 export type { HttpClient, HttpRequestInit, HttpTextResponse, HttpBytesResponse } from './http';
 export { bytesToBase64 } from './http';
-export { configureCore, getHttp, getSha256Hex, getLookupOffline, getVocabDb, getNewId, isCoreConfigured } from './runtime';
-export type { CoreRuntime, LookupOffline, OfflineHit, VocabDb, Sha256Hex } from './runtime';
+export { configureCore, getHttp, getSha256Hex, getLookupOffline, getVocabDb, getNewId, getLookupCache, isCoreConfigured } from './runtime';
+export type { CoreRuntime, LookupOffline, OfflineHit, VocabDb, Sha256Hex, LookupCacheStore } from './runtime';
 export { wrapConsole } from './log';
 
 export {

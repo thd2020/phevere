@@ -26,12 +26,22 @@ export interface VocabDb {
 
 export type Sha256Hex = (input: string) => Promise<string> | string;
 
+/**
+ * Optional persistent store for finished lookups, so a result survives a restart
+ * (the phone kills its WebView often). Values are plain JSON; `savedAt` is epoch ms.
+ */
+export interface LookupCacheStore {
+  get(key: string): Promise<{ value: unknown; savedAt: number } | null> | { value: unknown; savedAt: number } | null;
+  set(key: string, value: unknown, savedAt: number): Promise<void> | void;
+}
+
 export interface CoreRuntime {
   http: HttpClient;
   sha256Hex: Sha256Hex;
   lookupOffline?: LookupOffline;
   vocabDb?: VocabDb;
   newId?: () => string;
+  lookupCache?: LookupCacheStore;
 }
 
 let http: HttpClient | null = null;
@@ -39,6 +49,7 @@ let sha256Hex: Sha256Hex | null = null;
 let lookupOffline: LookupOffline = async () => [];
 let vocabDb: VocabDb | null = null;
 let newId: () => string = () => `v-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+let lookupCache: LookupCacheStore | null = null;
 
 export function configureCore(opts: CoreRuntime): void {
   http = opts.http;
@@ -46,6 +57,11 @@ export function configureCore(opts: CoreRuntime): void {
   if (opts.lookupOffline) lookupOffline = opts.lookupOffline;
   if (opts.vocabDb) vocabDb = opts.vocabDb;
   if (opts.newId) newId = opts.newId;
+  if (opts.lookupCache) lookupCache = opts.lookupCache;
+}
+
+export function getLookupCache(): LookupCacheStore | null {
+  return lookupCache;
 }
 
 export function getHttp(): HttpClient {
