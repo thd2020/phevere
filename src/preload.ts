@@ -176,6 +176,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cancelIpaSpeak: (): Promise<{ ok: boolean }> => {
     return ipcRenderer.invoke('cancel-ipa-speak');
   },
+  getAudioPrefs: () => ipcRenderer.invoke('audio-prefs-get'),
+  setAudioPrefs: (patch: Record<string, unknown>) => ipcRenderer.invoke('audio-prefs-set', patch),
+  onAudioPrefsChanged: (callback: (prefs: unknown) => void) => {
+    ipcRenderer.removeAllListeners('audio-prefs-changed');
+    ipcRenderer.on('audio-prefs-changed', (_e, prefs) => callback(prefs));
+  },
+  speechVoices: () => ipcRenderer.invoke('speech-voices'),
+  selectSpeechVoice: (id: string) => ipcRenderer.invoke('speech-select-voice', id),
+  cancelSpeechDownload: (id: string) => ipcRenderer.invoke('speech-cancel-download', id),
+  synthesizeSpeech: (req: { text?: string; ipa?: string; accent?: string; lang?: string }) =>
+    ipcRenderer.invoke('speech-synthesize', req),
   fetchPronunciationAudio: (
     url: string,
   ): Promise<{ ok: true; playUrl: string; cached?: boolean } | { ok: false; error: string }> => {
@@ -479,6 +490,13 @@ declare global {
       hidePopup: () => void;
       speakIpa?: (payload: { ipa: string; accent?: string }) => Promise<{ ok: boolean; error?: string }>;
       cancelIpaSpeak?: () => Promise<{ ok: boolean }>;
+      getAudioPrefs?: () => Promise<{ enabled: boolean; speed: number; volume: number; voice: string }>;
+      setAudioPrefs?: (patch: Record<string, unknown>) => Promise<{ enabled: boolean; speed: number; volume: number; voice: string }>;
+      onAudioPrefsChanged?: (callback: (prefs: unknown) => void) => void;
+      speechVoices?: () => Promise<{ voices: Array<{ id: string; name: string; detail: string; installed: boolean; downloading: boolean; progress: number; error?: string }>; selected: string }>;
+      selectSpeechVoice?: (id: string) => Promise<unknown>;
+      cancelSpeechDownload?: (id: string) => Promise<unknown>;
+      synthesizeSpeech?: (req: { text?: string; ipa?: string; accent?: string; lang?: string }) => Promise<{ ok: boolean; dataUrl?: string; error?: string }>;
       fetchPronunciationAudio?: (
         url: string,
       ) => Promise<{ ok: true; playUrl: string; cached?: boolean } | { ok: false; error: string }>;

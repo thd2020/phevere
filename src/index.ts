@@ -27,6 +27,18 @@ import { isAcceleratorPhysicallyHeld, isPrimaryMouseDown } from './services/acce
 import { getForegroundWindowBoundsDip } from './services/foreground-window';
 import { getNowPlaying, formatNowPlayingQuery } from './services/media-session';
 import { speakIpa, cancelIpaSpeak, fetchPronunciationAudio, prefetchPronunciationUrls, installPronunciationAudioProtocol } from './services/ipa-speak';
+import {
+  getAudioPrefs,
+  setAudioPrefs,
+  listVoices,
+  selectVoice,
+  cancelVoiceDownload,
+  synthesize,
+  stopSpeechWorker,
+  type AudioPrefs,
+  type SpeakRequest,
+  type VoiceId,
+} from './services/speech';
 import { recordedPronunciationUrls } from '@phevere/core';
 import { readClipboardImage, loadImageFileAsPng, pngFromBase64 } from './services/clipboard-image';
 import {
@@ -928,7 +940,7 @@ function withWin11Chrome(
   if (process.platform === 'darwin' && material === 'none') {
     const { frame: _frame, titleBarOverlay: _overlay, ...rest } = opts;
     return {
-      backgroundColor: '#F3F3F3',
+      backgroundColor: '#F4F0EA',
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 12, y: 12 },
       ...rest,
@@ -937,25 +949,25 @@ function withWin11Chrome(
   if (process.platform === 'win32' && material === 'none') {
     const { frame: _frame, ...rest } = opts;
     return {
-      backgroundColor: '#F3F3F3',
+      backgroundColor: '#F4F0EA',
       titleBarStyle: 'hidden',
       titleBarOverlay: {
-        color: '#F3F3F3',
-        symbolColor: '#1a1a1a',
+        color: '#F4F0EA',
+        symbolColor: '#1c1917',
         height: 40,
       },
       ...rest,
     };
   }
   if (process.platform !== 'win32' || material === 'none' || !supportsWin11Material()) {
-    return { backgroundColor: '#F3F3F3', ...opts };
+    return { backgroundColor: '#F4F0EA', ...opts };
   }
   return {
     backgroundMaterial: material,
     ...opts,
     // Fully transparent + OS-dark Mica reads as a black hole. Light themeSource
     // keeps DWM on the light material; paper-tinted 0-alpha avoids a black first paint.
-    backgroundColor: opts.backgroundColor ?? 'rgba(243, 243, 243, 0)',
+    backgroundColor: opts.backgroundColor ?? 'rgba(244, 240, 234, 0)',
   };
 }
 
@@ -2207,6 +2219,39 @@ ipcMain.handle('clipboard-export', () => {
 ipcMain.handle('clipboard-import', (event, jsonData: string) => {
   return clipboardService.importHistory(jsonData);
 });
+
+// Synthetic speech (eSpeak NG / Kokoro), same rules as the phone app.
+ipcMain.handle('audio-prefs-get', () => getAudioPrefs());
+ipcMain.handle('audio-prefs-set', (_event, patch: Partial<AudioPrefs>) => {
+  const next = setAudioPrefs(patch || {});
+  for (const w of BrowserWindow.getAllWindows()) {
+    try {
+      if (!w.isDestroyed()) w.webContents.send('audio-prefs-changed', next);
+    } catch {
+      /* closing */
+    }
+  }
+  return next;
+});
+ipcMain.handle('speech-voices', () => ({ voices: listVoices(), selected: getAudioPrefs().voice }));
+ipcMain.handle('speech-select-voice', (_event, id: VoiceId) => {
+  selectVoice(id);
+  return { voices: listVoices(), selected: getAudioPrefs().voice };
+});
+ipcMain.handle('speech-cancel-download', (_event, id: VoiceId) => {
+  cancelVoiceDownload(id);
+  return { voices: listVoices(), selected: getAudioPrefs().voice };
+});
+ipcMain.handle('speech-synthesize', async (_event, req: SpeakRequest) => {
+  try {
+    const wav = await synthesize(req || {});
+    return { ok: true as const, dataUrl: `data:audio/wav;base64,${Buffer.from(wav).toString('base64')}` };
+  } catch (error) {
+    log.warn('main', 'speech-synthesize failed', { err: String(error) });
+    return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+app.on('will-quit', () => stopSpeechWorker());
 
 // Dictionary service IPC handlers
 ipcMain.handle('speak-ipa', async (_event, payload?: { ipa?: string; accent?: string }) => {

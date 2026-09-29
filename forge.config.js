@@ -8,6 +8,7 @@ const { WebpackPlugin } = require('@electron-forge/plugin-webpack');
 const { packagerIgnore } = require('./scripts/packager-ignore');
 const { ensure: ensureOcrNatives } = require('./scripts/ensure-ocr-natives');
 const { verifyDir } = require('./scripts/verify-ocr-pack');
+const { stage: stageSpeech } = require('./scripts/stage-speech');
 const { rebuildDarwinAx, rebuildWinUia } = require('./scripts/rebuild-native-arch');
 const { mainConfig } = require('./webpack.main.config.js');
 const { rendererConfig } = require('./webpack.renderer.config.js');
@@ -33,6 +34,8 @@ module.exports = {
       'scripts/media_now_playing.ps1',
       'scripts/speak_ipa.ps1',
       'scripts/speak_ipa_host.ps1',
+      // Speech engines (eSpeak NG, sherpa-onnx for Kokoro) staged by prePackage.
+      'build/speech',
       'scripts/media_now_playing.applescript',
       'scripts/foreground_window.applescript',
       'node_modules/sql.js/dist/sql-wasm.wasm',
@@ -84,6 +87,7 @@ module.exports = {
         );
       }
       ensureOcrNatives({ platform, arch: packArch });
+      stageSpeech(platform || process.platform, packArch || process.arch);
     },
     postPackage: async (_config, pkg) => {
       const platform = pkg.platform;
