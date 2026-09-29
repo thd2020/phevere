@@ -810,24 +810,27 @@ async function setBarSlot(slot: number): Promise<void> {
   paint();
 }
 
-/** Notebook: pull down from the top of the list to reload it (no Refresh button). */
+/**
+ * Notebook: pull down from the top of the list to reload it (no Refresh button). Listens on
+ * document so it stays apart from the pop-up's swipe-up gesture on root.
+ */
 function bindPullToRefresh(): void {
   const ARM = 56;
   let startY: number | null = null;
   let pulled = 0;
   const indicator = () => document.querySelector<HTMLElement>('.ptr');
-  root.addEventListener('touchstart', (e) => {
+  document.addEventListener('touchstart', (e) => {
     startY = tab === 'notebook' && window.scrollY <= 0 && e.touches.length === 1 ? e.touches[0].clientY : null;
     pulled = 0;
   }, { passive: true });
-  root.addEventListener('touchmove', (e) => {
+  document.addEventListener('touchmove', (e) => {
     const el = indicator();
     if (startY === null || !el) return;
     pulled = Math.min(72, Math.max(0, (e.touches[0].clientY - startY) * 0.5));
     el.style.height = `${pulled}px`;
     el.classList.toggle('is-armed', pulled >= ARM);
   }, { passive: true });
-  root.addEventListener('touchend', () => {
+  document.addEventListener('touchend', () => {
     const el = indicator();
     if (startY === null || !el) return;
     startY = null;
