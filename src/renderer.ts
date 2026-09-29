@@ -26,6 +26,7 @@
  * ```
  */
 
+import './fonts';
 import './index.css';
 import { captureNextShortcut, isMac } from './shortcut-capture';
 import { formatVocabLangPair } from '@phevere/core';
@@ -218,7 +219,6 @@ function initializeSettingsWindow() {
           <section class="settings-panel" data-panel="notifications" aria-labelledby="settings-notifications-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-notifications-heading" class="settings-panel__title">Notifications</h2>
-              <p class="settings-hint">Windows tray balloons and macOS banners. Lookup toasts and the OCR progress chip are not listed here.</p>
             </div>
             <div class="settings-group">
             <div class="settings-row" role="group" aria-labelledby="notify-clipboard-image-label">
@@ -248,7 +248,6 @@ function initializeSettingsWindow() {
           <section class="settings-panel" data-panel="sources" aria-labelledby="settings-sources-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-sources-heading" class="settings-panel__title">Sources</h2>
-              <p class="settings-hint">Dictionary sources supply definitions. The translation engine is used on the Translation tab. Auto uses Google Translate, then MyMemory.</p>
             </div>
             <h3 class="settings-offline-installed-title">Dictionary</h3>
             <div id="main-source-toggles"></div>
@@ -260,11 +259,6 @@ function initializeSettingsWindow() {
             <div class="settings-panel__intro">
               <h2 id="settings-offline-heading" class="settings-panel__title">Offline dictionary</h2>
             </div>
-            <p class="settings-hint">
-              Download open, paper-era, or academic packs for lookup without the network.
-              Current <strong>Oxford</strong>, <strong>Merriam-Webster Collegiate</strong>, and <strong>Collins</strong>
-              editions are copyrighted and are not offered as dumps — use a licensed JSON import, or Oxford’s online API when you have keys.
-            </p>
             <div id="offline-catalog" class="settings-offline-catalog"></div>
             <div class="settings-actions settings-actions--wrap">
               <button type="button" id="offline-import-json" class="btn btn-secondary">Import JSON / JSONL</button>

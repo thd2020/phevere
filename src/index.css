@@ -1,24 +1,33 @@
 /* Phevere design language — Win11 Fluent 2 + brand ember/teal */
 :root {
-  --pv-ink: #1a1a1a;
-  --pv-ink-soft: #5c5c5c;
-  --pv-paper: #f3f3f3;
-  --pv-paper-2: #fafafa;
-  --pv-panel: rgba(255, 255, 255, 0.72);
-  --pv-panel-solid: #ffffff;
-  --pv-line: rgba(0, 0, 0, 0.08);
-  --pv-ember: #e85d04;
-  --pv-ember-deep: #c44900;
-  --pv-teal: #0d7377;
-  --pv-success: #0f766e;
-  --pv-error: #c42b1c;
-  --pv-radius: 8px;
-  --pv-radius-sm: 4px;
-  --pv-font-ui: 'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', 'Outfit', system-ui, sans-serif;
-  --pv-font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
-  --pv-font-mono: 'Cascadia Mono', 'IBM Plex Mono', ui-monospace, Consolas, monospace;
-  --pv-mica: rgba(243, 243, 243, 0.88);
-  --pv-acrylic: rgba(255, 255, 255, 0.90);
+  /* Same palette and type as the phone app and the pop-up (apps/mobile/src/styles.css). */
+  --pv-ink: #1c1917;
+  --pv-ink-soft: #5c534e;
+  --pv-paper: #f4f0ea;
+  --pv-paper-2: #eeeae4;
+  --pv-panel: #fffdf9;
+  --pv-panel-solid: #fffdf9;
+  --pv-line: #d7c3bb;
+  --pv-ember: #9c3d00;
+  --pv-ember-deep: #9c3d00;
+  --pv-teal: #0f6e71;
+  --pv-success: #0f6e71;
+  --pv-error: #ba1a1a;
+  --pv-radius: 12px;
+  --pv-radius-sm: 8px;
+  --pv-font-ui: Outfit, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --pv-font-serif: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif;
+  --pv-font-mono: 'IBM Plex Mono', 'Cascadia Mono', ui-monospace, Consolas, monospace;
+  --pv-mica: #f4f0ea;
+  --pv-acrylic: #fffdf9;
+  --pv-primary-container: #ffdbcc;
+  --pv-on-primary-container: #351000;
+  --pv-tertiary-container: #c5f0f1;
+  --pv-on-tertiary-container: #002021;
+  --pv-surface-container: #e8e4de;
+  --pv-surface-high: #e3ded8;
+  --pv-outline: #85736c;
+  --pv-motion: cubic-bezier(0.2, 0, 0, 1);
 }
 
 html {
@@ -32,13 +41,13 @@ html, body {
 }
 
 body.main-window {
-  background-color: #f3f3f3;
+  background-color: var(--pv-paper);
 }
 /* Wash, not fully transparent — dark Windows app mode must not show through. */
 html.win11-mica body.main-window,
 html.win11-mica body.settings-page,
 html.win11-mica body.clipboard-window {
-  background-color: #f3f3f3;
+  background-color: var(--pv-paper);
 }
 
 /* Main window — ink / ember / teal (aligned with settings + popup) */
@@ -72,7 +81,7 @@ body.main-window {
   flex-direction: column;
   font-family: var(--pv-font-ui);
   color: var(--md-on-surface);
-  background-color: #f3f3f3;
+  background-color: var(--pv-paper);
   background-image: none;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -84,7 +93,7 @@ body.main-window .titlebar {
   height: var(--md-titlebar-h);
   min-height: var(--md-titlebar-h);
   flex: 0 0 var(--md-titlebar-h);
-  background: #f3f3f3;
+  background: var(--pv-paper);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   display: flex;
@@ -994,7 +1003,7 @@ body.main-window .selection-time {
   flex-wrap: wrap;
   gap: 16px 28px;
   align-items: center;
-  background: #f3f3f3;
+  background: var(--pv-paper);
   backdrop-filter: none;
   border-top: 1px solid var(--pv-line);
   font-size: 0.875rem;
@@ -2099,7 +2108,7 @@ body.settings-page {
   overflow: hidden;
   font-family: var(--pv-font-ui);
   color: var(--set-ink);
-  background-color: #f3f3f3;
+  background-color: var(--pv-paper);
   background-image: none;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -2107,7 +2116,7 @@ body.settings-page {
 
 html.is-resizing {
   --pv-panel: #ffffff;
-  --pv-mica: #f3f3f3;
+  --pv-mica: var(--pv-paper);
 }
 
 html.is-resizing body.main-window *,
@@ -2160,7 +2169,7 @@ body.settings-page .settings-titlebar {
   align-items: center;
   justify-content: space-between;
   padding: 0 0 0 16px;
-  background: #f3f3f3;
+  background: var(--pv-paper);
   border-bottom: 1px solid var(--set-line);
   backdrop-filter: none;
   -webkit-app-region: drag;
@@ -2822,3 +2831,279 @@ body.settings-page #speed-value {
     border-bottom: 1px solid var(--set-line);
   }
 }
+
+
+/* ------------------------------------------------------------------
+ * Phone design layer (2026-09-29). Re-skins the main and settings
+ * windows on the phone app's tokens: pill buttons, filled fields,
+ * Material 3 switches, tonal navigation, one scrollbar style.
+ * ------------------------------------------------------------------ */
+body.main-window,
+body.settings-page,
+body.clipboard-window {
+  font-family: var(--pv-font-ui);
+  font-size: 15px;
+  letter-spacing: 0.005em;
+  background: var(--pv-paper);
+  color: var(--pv-ink);
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgb(28 25 23 / 0.2);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  min-height: 32px;
+}
+::-webkit-scrollbar-thumb:hover { background-color: rgb(28 25 23 / 0.36); }
+::-webkit-scrollbar-button, ::-webkit-scrollbar-corner { display: none; }
+::selection { background: color-mix(in srgb, var(--pv-ember) 22%, transparent); }
+
+/* Buttons: filled ember for the one main action, outlined pills otherwise. */
+body.main-window .btn,
+body.settings-page .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: none;
+  filter: none;
+  transition: background-color 0.18s var(--pv-motion), border-color 0.18s var(--pv-motion), color 0.18s var(--pv-motion);
+}
+body.main-window .btn.btn-small,
+body.settings-page .btn.btn-small { min-height: 32px; padding: 0 14px; font-size: 13px; }
+body.main-window .btn-filled.btn-primary,
+body.settings-page .btn.btn-primary {
+  background: var(--pv-ember);
+  color: #fff7f3;
+  border: 0;
+  box-shadow: none;
+}
+body.main-window .btn-filled.btn-primary:hover,
+body.settings-page .btn.btn-primary:hover { background: #7f3100; box-shadow: none; filter: none; }
+body.settings-page .btn.btn-primary:active { transform: scale(0.98); }
+body.main-window .btn-outlined,
+body.settings-page .btn.btn-secondary,
+body.settings-page .btn-outlined {
+  background: transparent;
+  color: var(--pv-ink);
+  border: 1px solid var(--pv-outline);
+}
+body.main-window .btn-outlined:hover,
+body.settings-page .btn.btn-secondary:hover,
+body.settings-page .btn-outlined:hover { background: var(--pv-surface-container); border-color: var(--pv-outline); color: var(--pv-ink); }
+body.main-window .btn-tonal,
+body.settings-page .btn-tonal { background: var(--pv-primary-container); color: var(--pv-on-primary-container); border: 0; }
+body.main-window .btn:focus-visible,
+body.settings-page .btn:focus-visible { outline: 2px solid var(--pv-ember); outline-offset: 2px; }
+
+/* Text fields and drop-downs */
+body.main-window input[type='search'],
+body.main-window input[type='text'],
+body.settings-page input[type='text'],
+body.settings-page input[type='password'],
+body.settings-page input[type='search'],
+body.settings-page input[type='number'],
+body.settings-page .setting-input,
+body.settings-page .settings-shortcut-input,
+body.settings-page select,
+body.settings-page .voice-select {
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--pv-ink);
+  background-color: var(--pv-panel);
+  border: 1px solid var(--pv-line);
+  border-radius: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  box-shadow: none;
+  outline: none;
+  transition: border-color 0.18s var(--pv-motion), box-shadow 0.18s var(--pv-motion);
+}
+body.main-window .vocab-search { border-radius: 999px; padding: 0 16px; }
+body.main-window input:focus,
+body.settings-page input:focus,
+body.settings-page select:focus,
+body.settings-page .setting-input:focus {
+  border-color: var(--pv-ember);
+  box-shadow: 0 0 0 1px var(--pv-ember);
+}
+body.settings-page select,
+body.settings-page .voice-select {
+  appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 10l5 5 5-5' fill='none' stroke='%235c534e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 16px;
+  cursor: pointer;
+}
+body.settings-page input[type='range'] { accent-color: var(--pv-ember); }
+body.settings-page input[type='checkbox']:not(.toggle-input),
+body.settings-page input[type='radio'] { accent-color: var(--pv-ember); width: 18px; height: 18px; }
+
+/* Material 3 switch: 52 x 32 track; the handle grows when on. */
+body.settings-page .toggle-switch {
+  width: 52px;
+  height: 32px;
+  border: 2px solid var(--pv-outline);
+  border-radius: 999px;
+  background: var(--pv-surface-high);
+  transition: background-color 0.2s var(--pv-motion), border-color 0.2s var(--pv-motion);
+}
+body.settings-page .toggle-slider {
+  top: 50%;
+  left: 6px;
+  width: 16px;
+  height: 16px;
+  background: var(--pv-outline);
+  box-shadow: none;
+  transform: translateY(-50%);
+  transition: left 0.2s var(--pv-motion), width 0.2s var(--pv-motion), height 0.2s var(--pv-motion), background-color 0.2s var(--pv-motion);
+}
+body.settings-page .toggle-input:checked + .toggle-switch { background: var(--pv-ember); border-color: var(--pv-ember); }
+body.settings-page .toggle-input:checked + .toggle-switch .toggle-slider {
+  left: 22px;
+  width: 24px;
+  height: 24px;
+  background: #fff7f3;
+  transform: translateY(-50%);
+}
+
+/* Settings navigation: tonal pill for the open section */
+body.settings-page .settings-nav__item {
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--pv-ink-soft);
+  transition: background-color 0.18s var(--pv-motion), color 0.18s var(--pv-motion);
+}
+body.settings-page .settings-nav__item:hover { background: var(--pv-surface-container); color: var(--pv-ink); }
+body.settings-page .settings-nav__item.is-active {
+  background: var(--pv-primary-container);
+  color: var(--pv-on-primary-container);
+  font-weight: 600;
+  box-shadow: none;
+}
+body.settings-page .settings-panel__title {
+  font-family: var(--pv-font-ui);
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+body.settings-page .settings-group {
+  background: var(--pv-panel);
+  border: 1px solid var(--pv-line);
+  border-radius: 12px;
+  box-shadow: none;
+}
+body.settings-page .settings-group .settings-row { border-color: var(--pv-line); }
+body.settings-page .keycap,
+body.main-window kbd,
+body.settings-page kbd {
+  font-family: var(--pv-font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--pv-panel);
+  border: 1px solid var(--pv-line);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  box-shadow: none;
+  color: var(--pv-ink);
+}
+body.settings-page .settings-close-btn,
+body.main-window .titlebar-gear { border-radius: 999px; }
+body.settings-page .settings-close-btn:hover,
+body.main-window .titlebar-gear:hover { background: var(--pv-surface-container); }
+
+/* Main window: notebook and recent lists as phone cards, status bar as tonal pills */
+body.main-window .section-heading {
+  font-family: var(--pv-font-serif);
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+body.main-window .selections-list,
+body.main-window .selection-item,
+body.main-window .vocab-item {
+  border-color: var(--pv-line);
+  box-shadow: none;
+}
+body.main-window .selections-list { background: transparent; }
+body.main-window .selection-item,
+body.main-window .vocab-item { background: var(--pv-panel); border-radius: 12px; }
+body.main-window .selection-item:hover,
+body.main-window .vocab-item:hover { background: #f8f4ee; }
+body.main-window .selections-list .empty-message {
+  color: var(--pv-ink-soft);
+  border: 1px dashed var(--pv-line);
+  border-radius: 12px;
+  background: transparent;
+}
+body.main-window .vocab-sort {
+  border: 1px solid var(--pv-line);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--pv-panel);
+}
+body.main-window .vocab-sort-btn { font-family: inherit; font-size: 12.5px; font-weight: 600; border-radius: 0; }
+body.main-window .vocab-sort-btn.is-active { background: var(--pv-tertiary-container); color: var(--pv-on-tertiary-container); }
+body.main-window .status-bar { background: var(--pv-paper-2); border-top: 1px solid var(--pv-line); }
+body.main-window .status-pill.status-toggle,
+body.main-window .status-pill.status-action {
+  background: var(--pv-panel);
+  border: 1px solid var(--pv-line);
+  border-radius: 14px;
+  box-shadow: none;
+  font-family: inherit;
+}
+body.main-window .status-pill.status-toggle:hover,
+body.main-window .status-pill.status-action:hover { background: var(--pv-surface-container); }
+body.main-window .status-toggle[aria-pressed='true'] {
+  background: var(--pv-tertiary-container);
+  border-color: transparent;
+}
+body.main-window .status-value.running { color: var(--pv-teal); }
+body.main-window .status-value.stopped { color: var(--pv-ink-soft); }
+body.main-window .status-value.shortcut { color: var(--pv-ember); }
+
+@media (prefers-reduced-motion: reduce) {
+  body.main-window *, body.settings-page * { transition: none !important; animation: none !important; }
+}
+
+/* Material radio, as on the phone: 20px ring, filled dot when selected. */
+body.settings-page input[type='radio'] {
+  appearance: none;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  border: 2px solid var(--pv-ink-soft);
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  transition: border-color 0.18s var(--pv-motion);
+}
+body.settings-page input[type='radio']::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--pv-ember);
+  transform: scale(0);
+  transition: transform 0.18s var(--pv-motion);
+}
+body.settings-page input[type='radio']:checked { border-color: var(--pv-ember); }
+body.settings-page input[type='radio']:checked::after { transform: scale(1); }
+body.settings-page input[type='radio']:focus-visible { outline: 2px solid var(--pv-ember); outline-offset: 2px; }
