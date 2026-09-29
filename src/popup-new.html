@@ -4,32 +4,46 @@
     <meta charset="UTF-8" />
     <meta name="color-scheme" content="light" />
     <title>Phevere Dictionary</title>
-    <!-- print→all so a hung fonts.googleapis.com cannot block this page's scripts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap"
-      rel="stylesheet"
-      media="print"
-      onload="this.media='all'"
-    />
     <style>
+      /*
+       * Design Read — the desktop pop-up follows the phone app (apps/mobile/src/styles.css).
+       * Palette: warm paper #f4f0ea, ink #1c1917, ember #9c3d00; teal #0f6e71 for IPA and saved.
+       * Type: Outfit for UI and body, Source Serif 4 for the headword and examples,
+       *   Charis SIL for IPA, IBM Plex Mono for labels. All bundled (popup-entry.ts).
+       * Layout: one toolbar row. The four result views are icons in it; the open one grows
+       *   into a tab that joins the page below, the way a browser tab joins its page.
+       * Motion: cubic-bezier(0.2, 0, 0, 1) throughout; reduced motion respected.
+       */
       :root {
         color-scheme: light;
-        --pv-ink: #1a1a1a;
-        --pv-ink-soft: #5c5c5c;
-        --pv-paper: #f3f3f3;
-        --pv-paper-2: #fafafa;
-        --pv-panel: #ffffff;
-        --pv-line: rgba(0, 0, 0, 0.08);
-        --pv-ember: #e85d04;
-        --pv-ember-deep: #c44900;
-        --pv-teal: #0d7377;
-        --pv-success: #0f766e;
-        --pv-font-ui: 'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', 'Outfit', system-ui, sans-serif;
-        --pv-font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
-        --pv-font-mono: 'Cascadia Mono', 'IBM Plex Mono', ui-monospace, Consolas, monospace;
-        --popup-toolbar-h: 36px;
+        --primary: #9c3d00;
+        --on-primary: #fff7f3;
+        --primary-container: #ffdbcc;
+        --on-primary-container: #351000;
+        --tertiary: #0f6e71;
+        --tertiary-container: #c5f0f1;
+        --on-tertiary-container: #002021;
+        --surface: #f4f0ea;
+        --surface-lowest: #fffdf9;
+        --surface-low: #eeeae4;
+        --surface-container: #e8e4de;
+        --surface-high: #e3ded8;
+        --surface-highest: #dcd6cf;
+        --on-surface: #1c1917;
+        --on-surface-variant: #5c534e;
+        --outline: #85736c;
+        --outline-variant: #d7c3bb;
+        --hairline: rgb(28 25 23 / 0.1);
+        --error: #ba1a1a;
+        --inverse-surface: #322f2d;
+        --inverse-on-surface: #f4f0ea;
+        --font-ui: Outfit, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+        --font-display: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif;
+        --font-mono: 'IBM Plex Mono', 'Cascadia Mono', ui-monospace, Consolas, monospace;
+        --font-ipa: 'Charis SIL', 'Segoe UI', serif;
+        --motion: cubic-bezier(0.2, 0, 0, 1);
+        --bar-pad: 5px;
+        --popup-toolbar-h: 40px;
       }
 
       * {
@@ -38,374 +52,275 @@
         box-sizing: border-box;
       }
 
-             body {
-         font-family: var(--pv-font-ui);
-         background: transparent;
-         color: var(--pv-ink);
-         overflow: hidden;
-         height: 100vh;
-         user-select: text;
-          margin: 0; /* remove any default margin to keep toolbar slim */
-          padding: 0; /* ensure no outer padding */
-         border: none;
-         -webkit-font-smoothing: antialiased;
-         text-rendering: optimizeLegibility;
-       }
-
-       .popup-container {
-         height: 100vh;
-         min-height: 0;
-         display: flex;
-         flex-direction: column;
-         justify-content: flex-start;
-         align-items: stretch;
-         background: rgba(255, 255, 255, 0.78);
-         backdrop-filter: blur(28px) saturate(140%);
-         border: none;
-         border-radius: 0;
-         box-shadow: none;
-         margin: 0;
-         padding: 0;
-       }
-
-      /* Toolbar — flex sibling of the scroll pane (not sticky overlay). */
-       .toolbar {
-          flex: 0 0 auto;
-          display: flex;
-          align-items: center;
-          justify-content: flex-start;
-          gap: 0;
-          padding: 6px 8px;
-          background: rgba(255, 255, 255, 0.55);
-          backdrop-filter: blur(24px) saturate(140%);
-          border-bottom: 1px solid var(--pv-line);
-          min-height: var(--popup-toolbar-h);
-          -webkit-app-region: drag;
-          cursor: move;
-          position: relative;
-          z-index: 40;
-        }
-
-       .toolbar::after {
-          content: '';
-          flex: 1 1 auto;
-          align-self: stretch;
-          min-height: 20px;
-          -webkit-app-region: drag;
-        }
-
-       .toolbar-icon {
-         -webkit-app-region: no-drag; /* Prevent icons from being draggable */
-       }
-
-      .toolbar.collapsed { padding: 3px 4px; min-height: 30px; }
-
-      .toolbar-left { display: none; }
-
-      .toolbar-title {
-        font-size: 16px;
-        font-weight: 600;
-        color: #2d3748;
-        opacity: 1;
-        transition: opacity 0.3s ease;
-      }
-
-      .toolbar.collapsed .toolbar-title {
-        opacity: 0;
-        width: 0;
+      html, body { height: 100%; }
+      body {
+        font-family: var(--font-ui);
+        font-size: 15px;
+        letter-spacing: 0.005em;
+        background: var(--surface);
+        color: var(--on-surface);
         overflow: hidden;
+        user-select: text;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      button, input, select, textarea { font: inherit; color: inherit; }
+      button { cursor: pointer; }
+      svg { display: block; }
+
+      /* One scrollbar everywhere: thin, round, no arrows, track invisible until hovered. */
+      ::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb {
+        background: rgb(28 25 23 / 0.2);
+        border: 3px solid transparent;
+        border-radius: 999px;
+        background-clip: padding-box;
+        min-height: 32px;
+      }
+      ::-webkit-scrollbar-thumb:hover { background-color: rgb(28 25 23 / 0.36); }
+      ::-webkit-scrollbar-thumb:active { background-color: rgb(28 25 23 / 0.5); }
+      ::-webkit-scrollbar-button, ::-webkit-scrollbar-corner { display: none; }
+
+      ::selection { background: color-mix(in srgb, var(--primary) 22%, transparent); }
+
+      .popup-container {
+        height: 100vh;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--surface);
+        box-shadow: inset 0 0 0 1px var(--hairline);
       }
 
+      /* ---------- Toolbar ---------- */
+      .toolbar {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        min-height: var(--popup-toolbar-h);
+        padding: var(--bar-pad) 6px;
+        background: var(--surface-high);
+        -webkit-app-region: drag;
+        position: relative;
+        z-index: 40;
+        transition: background-color 0.24s var(--motion);
+      }
+      .toolbar.collapsed {
+        min-height: 0;
+        padding: 4px;
+        background: var(--surface-lowest);
+      }
       .toolbar-icons {
         display: flex;
         align-items: center;
         gap: 2px;
+        flex: 1 1 auto;
         flex-wrap: nowrap;
         -webkit-app-region: no-drag;
       }
+      .toolbar.collapsed .toolbar-icons { flex: 0 0 auto; }
+      .toolbar-group { display: flex; align-items: center; gap: 2px; }
+      .toolbar-spacer {
+        flex: 1 1 auto;
+        align-self: stretch;
+        min-width: 12px;
+        -webkit-app-region: drag;
+      }
+      .toolbar.collapsed .toolbar-spacer,
+      .toolbar.collapsed .lookup-nav { display: none; }
+      .toolbar-divider {
+        width: 1px;
+        height: 18px;
+        margin: 0 5px;
+        background: var(--outline-variant);
+      }
+      .toolbar.collapsed .toolbar-divider { margin: 0 3px; }
 
-      .toolbar-icon {
-        width: 24px;
-        height: 24px;
-        border: none;
-        background: rgba(232, 93, 4, 0.08);
-        border-radius: 10px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-        color: var(--pv-ink-soft);
-        font-size: 14px;
-        line-height: 1;
-        box-shadow: none;
+      .toolbar-icon,
+      .lookup-nav-btn {
+        position: relative;
+        isolation: isolate;
+        width: 30px;
+        height: 30px;
+        flex: 0 0 auto;
+        border: 0;
+        border-radius: 9px;
+        background: transparent;
+        color: var(--on-surface-variant);
+        display: grid;
+        place-items: center;
         user-select: none;
+        -webkit-app-region: no-drag;
+        transition: color 0.18s var(--motion), background-color 0.18s var(--motion);
       }
+      .toolbar.collapsed .toolbar-icon { width: 28px; height: 28px; }
+      .toolbar-icon svg,
+      .lookup-nav-btn svg { width: 18px; height: 18px; position: relative; z-index: 1; }
+      .toolbar-icon:hover,
+      .lookup-nav-btn:hover:not(:disabled) {
+        background: var(--surface-container);
+        color: var(--on-surface);
+      }
+      .toolbar:not(.collapsed) .toolbar-icon:hover,
+      .toolbar:not(.collapsed) .lookup-nav-btn:hover:not(:disabled) { background: var(--surface-highest); }
+      .toolbar-icon:active { transform: scale(0.94); }
+      .toolbar-icon:focus-visible,
+      .lookup-nav-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+      .lookup-nav { display: flex; align-items: center; gap: 0; }
+      .lookup-nav-btn:disabled { opacity: 0.32; cursor: default; }
+      .lookup-nav-btn { width: 26px; }
 
-      .toolbar-icon:hover {
-        background: rgba(232, 93, 4, 0.14);
-        color: var(--pv-ink);
-        box-shadow: 0 1px 2px rgba(0,0,0,0.08);
-      }
-
-      .toolbar-icon.active {
-        background: rgba(13, 115, 119, 0.18);
-        color: var(--pv-teal);
-      }
-
-      .toolbar-icon.toolbar-heart {
-        color: #94a3b8;
-      }
-      .toolbar-icon.toolbar-heart svg {
-        width: 14px;
-        height: 14px;
-        display: block;
-      }
       .toolbar-icon.toolbar-heart .heart-fill {
         fill: none;
         stroke: currentColor;
-        stroke-width: 1.6;
+        stroke-width: 1.9;
         stroke-linejoin: round;
       }
-      .toolbar-icon.toolbar-heart.is-saved {
-        color: #e11d48;
-        background: rgba(225, 29, 72, 0.12);
+      .toolbar-icon.toolbar-heart.is-saved { color: var(--tertiary); }
+      .toolbar-icon.toolbar-heart.is-saved .heart-fill { fill: currentColor; }
+      .toolbar-icon.is-speaking { color: var(--tertiary); }
+
+      /*
+       * Result views as tabs. Closed: an icon like the rest. Open: the pill under the icon
+       * grows down past the toolbar edge in the page colour, with the two concave feet
+       * a browser tab has, so the tab and the page read as one sheet.
+       */
+      .tab-icon::before,
+      .tab-icon::after {
+        content: '';
+        position: absolute;
+        z-index: 0;
+        pointer-events: none;
       }
-      .toolbar-icon.toolbar-heart.is-saved .heart-fill {
-        fill: currentColor;
-        stroke: currentColor;
+      .tab-icon::before {
+        inset: 0;
+        border-radius: 9px;
+        background: transparent;
+        transition:
+          inset 0.3s var(--motion),
+          border-radius 0.3s var(--motion),
+          background-color 0.18s var(--motion);
       }
-      .toolbar-icon.toolbar-heart:hover {
-        color: #e11d48;
+      .tab-icon:hover { background: transparent !important; }
+      .tab-icon:hover::before { background: var(--surface-container); }
+      .toolbar:not(.collapsed) .tab-icon:hover::before { background: var(--surface-highest); }
+      .tab-icon::after {
+        left: -12px;
+        right: -12px;
+        bottom: calc(-1 * var(--bar-pad));
+        height: 8px;
+        opacity: 0;
+        background:
+          radial-gradient(circle at 0 0, transparent 7.5px, var(--surface) 8px) left bottom / 8px 8px no-repeat,
+          radial-gradient(circle at 100% 0, transparent 7.5px, var(--surface) 8px) right bottom / 8px 8px no-repeat;
+        transition: opacity 0.12s var(--motion);
+      }
+      .toolbar:not(.collapsed) .tab-icon.active { color: var(--primary); }
+      .toolbar:not(.collapsed) .tab-icon.active::before,
+      .toolbar:not(.collapsed) .tab-icon.active:hover::before {
+        inset: -1px -4px calc(-1 * var(--bar-pad)) -4px;
+        border-radius: 10px 10px 0 0;
+        background: var(--surface);
+      }
+      .toolbar:not(.collapsed) .tab-icon.active::after {
+        opacity: 1;
+        transition-delay: 0.16s;
+      }
+      .tab-icon .tab-w {
+        font-family: var(--font-display);
+        font-size: 17px;
+        font-weight: 700;
+        line-height: 1;
+        position: relative;
+        z-index: 1;
       }
 
-      /* Prevent accidental text selection in the toolbar/tabs */
-      .toolbar, .toolbar * , .tabs, .tabs * { user-select: none; }
+      .toolbar, .toolbar * { user-select: none; }
 
-      /* Results Area */
+      /* ---------- Results ---------- */
       .results-area {
         flex: 1 1 auto;
         min-height: 0;
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        transition: opacity 0.25s ease, flex 0.25s ease, max-height 0.25s ease;
-        opacity: 1;
-        transform: translateY(0);
-        padding: 0;
-        margin: 0;
+        background: var(--surface);
+        transition: opacity 0.22s var(--motion);
       }
-
       .results-area.collapsed {
         opacity: 0;
         flex: 0 0 0;
-        min-height: 0;
         max-height: 0;
         height: 0;
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
         pointer-events: none;
-        transform: none;
-        border: none;
       }
+      .input-section, .text-input { display: none; }
 
-      /* Input Section removed for slim toolbar */
-      .input-section { display: none; }
-
-      .text-input {
-        width: 100%;
-        padding: 12px 16px;
-        border: 2px solid #e2e8f0;
-        border-radius: 8px;
-        font-size: 16px;
-        font-weight: 500;
-        color: #2d3748;
-        background: #ffffff;
-        transition: all 0.2s ease;
-        outline: none;
-      }
-
-      .text-input:focus {
-        border-color: #3b82f6;
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-      }
-
-      /* Tabs */
-      .tabs {
-        display: flex;
-        flex: 0 0 auto;
-        flex-wrap: wrap;
-        align-items: stretch;
-        align-content: flex-start;
-        background: rgba(248, 249, 250, 0.82);
-        backdrop-filter: blur(16px);
-        border-bottom: 1px solid #e1e5e9;
-        padding: 4px 8px 0;
-        position: relative;
-        z-index: 5;
-      }
-
-      .tab {
-        flex: 0 0 auto;
-        white-space: nowrap;
-        padding: 12px 16px;
-        background: none;
-        border: none;
-        cursor: pointer;
-        font-size: 14px;
-        font-weight: 500;
-        color: #64748b;
-        border-bottom: 2px solid transparent;
-        transition: all 0.2s ease;
-      }
-
-      .tab:hover {
-        color: #475569;
-        background: #f1f5f9;
-      }
-
-      .tab.active {
-        color: #3b82f6;
-        border-bottom-color: #3b82f6;
-        background: #ffffff;
-      }
-
-      .lookup-nav {
-        display: flex;
-        flex: 0 0 auto;
-        align-items: center;
-        gap: 2px;
-        margin: 0 10px 0 0;
-        padding-right: 10px;
-        border-right: 1px solid #e1e5e9;
-        align-self: stretch;
-      }
-      .lookup-nav-btn {
-        width: 28px;
-        height: 28px;
-        border: none;
-        background: transparent;
-        color: #334155;
-        cursor: pointer;
-        border-radius: 6px;
-        font-size: 16px;
-        line-height: 1;
-        font-family: inherit;
-      }
-      .lookup-nav-btn:hover:not(:disabled) {
-        background: #f1f5f9;
-        color: var(--pv-ink);
-      }
-      .lookup-nav-btn:disabled {
-        opacity: 0.35;
-        cursor: default;
-      }
-
-      /* Results Section */
       .results-section {
-         flex: 1 1 auto;
-         min-height: 0;
-         display: flex;
-         flex-direction: column;
-         overflow-y: auto;
-         padding: 12px 14px 12px;
-         background: #ffffff;
-       }
-      .results-section.is-lexicon-fill {
-         overflow: hidden;
-       }
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+        padding: 14px 14px 14px 16px;
+      }
+      .results-section.is-lexicon-fill { overflow: hidden; padding-bottom: 0; }
 
+      /* Loading */
       .loading {
         display: none;
         flex-direction: column;
         align-items: stretch;
         justify-content: center;
         gap: 10px;
-        padding: 28px 20px;
-        color: #475569;
+        padding: 28px 12px;
+        color: var(--on-surface-variant);
       }
-
-      .loading-title {
-        font-size: 13px;
-        font-weight: 600;
-        color: #0f172a;
-        letter-spacing: 0.01em;
-      }
-
-      .loading-sub {
-        font-size: 11px;
-        color: #64748b;
-      }
-
+      .loading-title { font-size: 14px; font-weight: 600; color: var(--on-surface); }
+      .loading-sub { font-size: 12.5px; color: var(--on-surface-variant); }
       .loading-track {
-        height: 3px;
+        height: 4px;
         border-radius: 999px;
-        background: #e2e8f0;
+        background: var(--primary-container);
         overflow: hidden;
       }
-
       .loading-bar {
         height: 100%;
         width: 40%;
         border-radius: 999px;
-        background: linear-gradient(90deg, #38bdf8, #818cf8, #c084fc);
-        animation: loading-slide 1.15s ease-in-out infinite;
+        background: var(--primary);
+        animation: loading-slide 1.2s var(--motion) infinite;
       }
-
-      .loading-bar.determinate {
-        animation: none;
-        transition: width 0.25s ease;
-      }
-
-      .loading-stages {
-        display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
-      }
-
+      .loading-bar.determinate { animation: none; transition: width 0.25s var(--motion); }
+      .loading-stages { display: flex; gap: 6px; flex-wrap: wrap; }
       .loading-stage {
-        font-size: 10px;
-        padding: 2px 8px;
-        border-radius: 999px;
-        background: #f1f5f9;
-        color: #94a3b8;
-      }
-
-      .loading-stage.active {
-        background: #e0e7ff;
-        color: #4338ca;
+        font-size: 11.5px;
         font-weight: 600;
+        padding: 3px 10px;
+        border-radius: 999px;
+        background: var(--surface-container);
+        color: var(--on-surface-variant);
+        opacity: 0.7;
       }
-
+      .loading-stage.active {
+        background: var(--primary-container);
+        color: var(--on-primary-container);
+        opacity: 1;
+      }
       .loading-stage.done {
-        background: #ecfdf5;
-        color: #047857;
+        background: var(--tertiary-container);
+        color: var(--on-tertiary-container);
+        opacity: 1;
       }
-
-      .tab-pending {
-        display: flex;
-        flex-direction: column;
-        align-items: stretch;
-        gap: 10px;
-        padding: 22px 8px 12px;
-      }
-
+      .tab-pending { display: flex; flex-direction: column; gap: 10px; padding: 22px 4px 12px; }
       @keyframes loading-slide {
         0% { transform: translateX(-120%); }
         100% { transform: translateX(280%); }
       }
+      @keyframes spin { to { transform: rotate(360deg); } }
 
-      @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-      }
-
-      /* Dictionary Results */
-      .dictionary-results {
-        display: none;
-        animation: fadeIn 0.3s ease-in;
-      }
+      .dictionary-results { display: none; animation: fadeIn 0.28s var(--motion); }
       .dictionary-results.is-fill {
         flex: 1 1 auto;
         min-height: 0;
@@ -414,289 +329,188 @@
         flex-direction: column;
         animation: none;
       }
-
       @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: none; }
       }
 
+      /* Generic card (translation, etymology, Wikipedia, sense panes) */
       .result-card {
-        background: #ffffff;
-        border: 1px solid #e1e5e9;
+        background: var(--surface-lowest);
+        border: 1px solid var(--outline-variant);
         border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 16px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        padding: 14px 16px;
+        margin-bottom: 10px;
+      }
+      .result-header, .result-icon, .result-meta, .result-source, .result-confidence { display: none !important; }
+      .result-original { display: none; }
+
+      .result-word {
+        font-family: var(--font-display);
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: -0.035em;
+        line-height: 1.05;
+        color: var(--on-surface);
+        margin-bottom: 6px;
+        overflow-wrap: anywhere;
       }
 
+      /* Headword + IPA chips, as on the phone: no card around the head */
       .lexicon-stack {
         display: flex;
         flex-direction: column;
         flex: 1 1 auto;
         min-height: 0;
         overflow: hidden;
-        gap: 0;
       }
-
-      .lexicon-block {
-        padding: 16px 18px;
-        margin-bottom: 10px;
-      }
-
+      .lexicon-block { padding: 14px 16px; margin-bottom: 10px; }
       .lexicon-block--headword {
         flex: 0 0 auto;
-        padding-bottom: 14px;
+        background: transparent;
+        border: 0;
+        border-radius: 0;
+        padding: 0 2px 12px;
+        margin: 0;
       }
-
-      .lexicon-block .result-section-title {
-        margin-bottom: 10px;
-      }
-
-      .result-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 16px;
-      }
-
-      .result-icon {
-        width: 32px;
-        height: 32px;
-        background: #10b981;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #ffffff;
-        font-size: 14px;
-        font-weight: 600;
-      }
-
-      .result-meta {
-        flex: 1;
-      }
-
-      .result-source {
-        font-size: 12px;
-        color: #64748b;
-        margin-bottom: 4px;
-      }
-
-      .result-confidence {
-        display: none !important;
-      }
-
-             .result-original {
-         font-size: 14px;
-         color: #64748b;
-         font-style: italic;
-         margin-bottom: 8px;
-         padding: 8px 12px;
-         background: #f1f5f9;
-         border-radius: 6px;
-         border-left: 3px solid #94a3b8;
-       }
-
-       .result-word {
-         font-size: 24px;
-         font-weight: 700;
-         color: #1e293b;
-         margin-bottom: 8px;
-       }
-
       .result-pronunciation {
-        color: #64748b;
-        font-size: 14px;
-        font-family: 'Segoe UI', 'Cascadia Mono', ui-monospace, monospace;
-        margin-bottom: 16px;
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 8px 12px;
+        gap: 6px;
+        margin-top: 8px;
       }
       .ipa-chip {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
+        gap: 2px;
+        max-width: 100%;
+        border: 1px solid var(--outline-variant);
+        background: var(--surface-low);
+        border-radius: 999px;
+        padding: 1px 2px 1px 9px;
+        font-family: var(--font-ipa);
+        font-size: 14.5px;
+        line-height: 1.35;
+        color: var(--on-surface);
         white-space: nowrap;
       }
+      .ipa-chip b {
+        font-family: var(--font-ui);
+        font-size: 10.5px;
+        font-weight: 650;
+        letter-spacing: 0.05em;
+        color: var(--on-surface-variant);
+        margin-right: 5px;
+      }
       .ipa-chip .tx-speak {
-        width: 22px;
-        height: 22px;
-        color: var(--pv-ink-soft);
+        width: 26px;
+        height: 26px;
+        border-radius: 999px;
+        color: var(--tertiary);
       }
-      .ipa-chip .tx-speak:hover {
-        color: var(--pv-ink);
-      }
-      .ipa-chip .tx-speak svg {
-        width: 14px;
-        height: 14px;
-      }
-      .ipa-sep {
-        opacity: 0.45;
-      }
+      .ipa-chip .tx-speak:hover { background: var(--tertiary-container); color: var(--on-tertiary-container); }
+      .ipa-chip .tx-speak svg { width: 15px; height: 15px; }
+      .ipa-sep { display: none; }
 
-      .result-section {
-        margin-bottom: 20px;
-      }
-
-      .result-section-title {
-        font-size: 14px;
+      .result-section { margin-bottom: 18px; }
+      .result-section-title,
+      .lexicon-pos-heading {
+        display: block;
+        font-family: var(--font-mono);
+        font-size: 11.5px;
         font-weight: 600;
-        color: #475569;
-        margin-bottom: 12px;
+        letter-spacing: 0.09em;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        color: var(--on-surface);
+        margin: 0 0 12px;
       }
 
-      .definition-item {
-        background: #f8f9fa;
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-bottom: 8px;
-        border-left: 3px solid #3b82f6;
-      }
-
-      .definition-pos {
-        color: #10b981;
-        font-size: 12px;
-        font-weight: 600;
-        text-transform: uppercase;
-        margin-bottom: 4px;
-      }
-
-             .definition-text {
-         color: #1e293b;
-         line-height: 1.5;
-         cursor: pointer;
-         user-select: text;
-       }
-
-       .definition-text:hover {
-         background: #f1f5f9;
-         border-radius: 4px;
-         padding: 2px 4px;
-       }
-
-      .translation-item {
-        background: #f8f9fa;
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-bottom: 8px;
-        border-left: 3px solid #f59e0b;
-      }
-
-      .translation-lang {
-        color: #f59e0b;
-        font-size: 12px;
-        font-weight: 600;
-        text-transform: uppercase;
-        margin-bottom: 4px;
-      }
-
-      .example-item {
-        background: #f8f9fa;
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-bottom: 8px;
-        border-left: 3px solid #8b5cf6;
-        font-style: italic;
-        color: #475569;
-      }
-
-      /* Lexicon / definition entries — formal reference style */
+      /* Senses */
       .definition-item {
         background: transparent;
-        padding: 0 0 14px 0;
+        padding: 0 0 12px;
+        margin: 0 0 12px;
+        border: 0;
+        border-bottom: 1px solid var(--outline-variant);
         border-radius: 0;
-        margin-bottom: 14px;
-        border-left: none;
-        border-bottom: 1px solid #e8e6e1;
       }
-
-      .definition-item:last-child {
-        border-bottom: none;
-        margin-bottom: 0;
-        padding-bottom: 0;
-      }
-
+      .definition-item:last-child { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
       .definition-sense-row {
         display: grid;
         grid-template-columns: max-content minmax(0, 1fr);
-        column-gap: 0.35em;
+        column-gap: 8px;
         align-items: baseline;
       }
-
       .definition-sense-num {
-        font: inherit;
-        font-size: 14px;
-        font-weight: 500;
-        line-height: 1.55;
-        color: #64748b;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--on-surface-variant);
+        min-width: 1.4em;
         font-variant-numeric: tabular-nums;
       }
-
-      .definition-sense-body {
-        min-width: 0;
-      }
-
+      .definition-sense-body { min-width: 0; }
       .definition-pos {
-        color: #0f766e;
+        color: var(--primary);
         font-size: 11px;
-        font-weight: 600;
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        text-transform: lowercase;
-        font-style: italic;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
         margin-bottom: 4px;
-        letter-spacing: 0.02em;
       }
-
-      .definition-text {
-        color: #1e293b;
-        line-height: 1.55;
-        font-size: 14px;
-        cursor: text;
-        user-select: text;
-      }
-
-      .definition-text > :first-child {
-        margin: 0;
-        padding-top: 0;
-        padding-left: 0;
-      }
-
+      .definition-text,
       .definition-text p,
       .definition-text li,
       .definition-text dd {
-        margin: 0;
-        padding: 0;
-        font-size: 14px;
-        line-height: 1.55;
+        color: var(--on-surface);
+        font-size: 15px;
+        line-height: 1.5;
+        cursor: text;
+        user-select: text;
       }
-
-      .definition-text ol,
-      .definition-text ul,
-      .definition-text dl {
-        margin: 0;
-        padding: 0;
-        list-style: none;
-      }
-
-      .definition-text:hover {
-        background: transparent;
-        padding: 0;
-      }
-
+      .definition-text p, .definition-text li, .definition-text dd { margin: 0; padding: 0; }
+      .definition-text ol, .definition-text ul, .definition-text dl { margin: 0; padding: 0; list-style: none; }
       .definition-text a,
-      .definition-text a.lemma-link,
       a.lemma-link {
-        color: var(--pv-teal);
+        color: var(--tertiary);
         text-decoration: underline;
-        text-underline-offset: 2px;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 3px;
+        text-decoration-color: color-mix(in srgb, var(--tertiary) 45%, transparent);
         cursor: pointer;
         font-weight: 600;
       }
+      .definition-text a:hover, a.lemma-link:hover { text-decoration-color: var(--tertiary); }
+      .definition-examples { margin-top: 8px; }
+      .definition-example,
+      .example-item {
+        font-family: var(--font-display);
+        font-size: 14.5px;
+        font-style: italic;
+        line-height: 1.5;
+        color: var(--on-surface-variant);
+        margin: 4px 0;
+        padding: 0 0 0 12px;
+        border: 0;
+        border-left: 2px solid var(--outline-variant);
+        border-radius: 0;
+        background: transparent;
+      }
+      .definition-source-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+      .definition-source-badge {
+        display: inline-block;
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--on-surface-variant);
+        background: var(--surface-low);
+        border-radius: 4px;
+        padding: 2px 6px;
+      }
 
+      /* Word family */
       .word-family-row {
         display: flex;
         flex-wrap: wrap;
@@ -707,192 +521,120 @@
       .word-family-label {
         font-size: 11px;
         font-weight: 600;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.05em;
         text-transform: uppercase;
-        color: #64748b;
+        color: var(--on-surface-variant);
         min-width: 7.5em;
       }
-      .word-family-chips {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px 8px;
-        flex: 1;
-      }
+      .word-family-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
       .word-family-item {
         display: inline-flex;
         align-items: stretch;
         border-radius: 999px;
         overflow: hidden;
-        background: #f1f5f9;
+        background: var(--surface-container);
       }
       a.word-family-chip {
         display: inline-flex;
         align-items: center;
         font-weight: 600;
-        font-size: 13px;
-        color: var(--pv-teal);
-        background: transparent;
-        border-radius: 0;
-        padding: 2px 10px;
+        font-size: 13.5px;
+        color: var(--tertiary);
+        padding: 3px 11px;
         text-decoration: none;
       }
-      .word-family-item:not(:has(.word-family-banner)) a.word-family-chip {
-        border-radius: 999px;
-        padding: 2px 10px;
-      }
-      a.word-family-chip:hover {
-        background: #e2e8f0;
-      }
+      a.word-family-chip:hover { background: var(--surface-high); }
       .word-family-banner {
         display: inline-flex;
         align-items: center;
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        font-size: 9px;
+        font-family: var(--font-mono);
+        font-size: 9.5px;
         font-weight: 600;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.05em;
         text-transform: uppercase;
-        color: #64748b;
-        background: #e2e8f0;
-        padding: 0 7px;
-        border-left: 1px solid #94a3b8;
+        color: var(--on-surface-variant);
+        background: var(--surface-high);
+        padding: 0 8px;
         white-space: nowrap;
       }
 
-      .definition-source-badge {
-        display: inline-block;
-        margin-top: 6px;
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        font-size: 10px;
-        font-weight: 500;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        color: #64748b;
-        border: 1px solid #d6d3cd;
-        border-radius: 3px;
-        padding: 1px 6px;
-      }
-
-      .definition-examples {
-        margin-top: 8px;
-        padding-left: 0;
-      }
-
-      .definition-example {
-        font-family: 'Source Serif 4', Georgia, serif;
-        font-size: 13px;
-        font-style: italic;
-        color: #475569;
-        margin: 4px 0;
-        padding-left: 12px;
-        border-left: 2px solid #cbd5e1;
-      }
-
-      .lexicon-pos-layout {
-        display: flex;
-        align-items: stretch;
-        flex: 1 1 auto;
-        min-height: 0;
-        overflow: hidden;
-        gap: 0;
-      }
+      /* Lexicon: part-of-speech rail on the left, senses on the right */
       .lexicon-block--senses {
         flex: 1 1 auto;
         min-height: 0;
         overflow: hidden;
         display: flex;
         flex-direction: column;
+        margin: 0 -14px 0 -16px;
         padding: 0;
-        margin: 0;
-        background: transparent;
-        border: none;
-        box-shadow: none;
+        border-top: 1px solid var(--outline-variant);
+      }
+      .lexicon-pos-layout {
+        display: flex;
+        align-items: stretch;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
       }
       .lexicon-pos-tabs {
         flex: 0 0 auto;
         align-self: stretch;
         width: max-content;
         min-height: 0;
-        position: relative;
         display: flex;
         flex-direction: column;
-        margin: 0;
-        padding: 0;
         overflow-x: hidden;
-        overflow-y: scroll;
-        border-right: 1px solid #e1e5e9;
-        background: #ffffff;
-        scrollbar-gutter: stable;
+        overflow-y: auto;
+        border-right: 1px solid var(--outline-variant);
+        background: var(--surface);
+        outline: none;
       }
-      .lexicon-pos-tabs::-webkit-scrollbar {
-        width: 10px;
-        background: #e8eaed;
-      }
-      .lexicon-pos-tabs::-webkit-scrollbar-track {
-        background: #e8eaed;
-      }
-      .lexicon-pos-tabs::-webkit-scrollbar-thumb {
-        background: #64748b;
-        border-radius: 5px;
-        border: 2px solid #e8eaed;
-      }
-      .lexicon-pos-tabs::-webkit-scrollbar-thumb:hover {
-        background: #475569;
-      }
+      .lexicon-pos-tabs::-webkit-scrollbar { width: 6px; }
+      .lexicon-pos-tabs::-webkit-scrollbar-thumb { border-width: 1px; }
       .lexicon-rail-inner {
-        flex: 0 0 auto;
         display: flex;
         flex-direction: column;
-        gap: 6px;
-        padding: 8px 6px;
-        overflow: visible;
+        gap: 10px;
+        padding: 10px 6px 12px 8px;
       }
       .lexicon-rail-block {
         display: flex;
         flex-direction: column;
         align-items: stretch;
-        gap: 1px;
-        margin: 0;
-        padding: 0;
-        background: #cbd5e1;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        overflow: hidden;
+        gap: 2px;
+      }
+      .lexicon-rail-block + .lexicon-rail-block {
+        padding-top: 10px;
+        border-top: 1px solid var(--outline-variant);
       }
       .lexicon-pos-tab {
-        box-sizing: border-box;
         border: 0;
-        background: #f1f5f9;
-        margin: 0;
-        padding: 8px 5px;
-        font-family: var(--pv-font-mono);
-        font-size: 10px;
+        border-radius: 999px;
+        background: transparent;
+        padding: 10px 6px;
+        font-family: var(--font-mono);
+        font-size: 10.5px;
         font-weight: 500;
         letter-spacing: 0.1em;
         text-transform: uppercase;
-        color: var(--pv-ink-soft);
-        cursor: pointer;
-        line-height: 1.15;
+        color: var(--on-surface-variant);
+        line-height: 1.1;
         text-align: center;
         white-space: nowrap;
         writing-mode: vertical-rl;
-        text-orientation: mixed;
         transform: rotate(180deg);
+        transition: background-color 0.18s var(--motion), color 0.18s var(--motion);
       }
       @supports (writing-mode: sideways-lr) {
-        .lexicon-pos-tab {
-          writing-mode: sideways-lr;
-          transform: none;
-        }
+        .lexicon-pos-tab { writing-mode: sideways-lr; transform: none; }
       }
-      .lexicon-pos-tab:hover {
-        color: var(--pv-ink);
-        background: rgba(13, 115, 119, 0.06);
-      }
+      .lexicon-pos-tab:hover { background: var(--surface-container); color: var(--on-surface); }
       .lexicon-pos-tab.is-active {
-        color: var(--pv-teal);
-        background: rgba(13, 115, 119, 0.14);
+        background: var(--tertiary-container);
+        color: var(--on-tertiary-container);
         font-weight: 600;
       }
+      .lexicon-pos-tab:focus-visible { outline: 2px solid var(--tertiary); outline-offset: -2px; }
       .lexicon-pos-panel {
         flex: 1 1 auto;
         min-width: 0;
@@ -902,256 +644,240 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
-        padding: 0 0 0 8px;
+        padding: 12px 6px 16px 12px;
       }
-      .lexicon-pos-panel > .result-card {
-        flex: 0 0 auto;
-        margin-bottom: 0;
-      }
-
-      .lexicon-pos-group {
-        margin-bottom: 0;
-      }
-
-      .lexicon-pos-heading {
-        display: block;
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: #0f172a;
-        margin: 0 0 10px;
-      }
-      .lexicon-pos-group:first-child .lexicon-pos-heading {
-        margin-top: 0;
-      }
-      .lexicon-pos-group + .lexicon-pos-group {
-        margin-top: 12px;
-      }
+      .lexicon-pos-panel > .result-card { flex: 0 0 auto; margin-bottom: 0; }
+      .lexicon-pos-group { margin-bottom: 0; }
       .lexicon-pane--pos .lexicon-pos-group + .lexicon-pos-group {
         margin-top: 18px;
         padding-top: 16px;
-        border-top: 3px solid #14212b;
+        border-top: 2px solid var(--on-surface);
       }
 
-      .result-section-title {
-        font-size: 11px;
-        font-weight: 600;
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        color: #475569;
-        margin-bottom: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
-
-      .example-item {
-        background: transparent;
-        padding: 8px 0 8px 12px;
-        border-radius: 0;
-        margin-bottom: 6px;
-        border-left: 2px solid #94a3b8;
-        font-style: italic;
-        color: #475569;
-        font-family: 'Source Serif 4', Georgia, serif;
-      }
-
-
+      /* Translation */
       .translation-card {
-        background: var(--pv-panel);
-        border: 1px solid #d6d3cd;
+        background: var(--surface-lowest);
+        border: 1px solid var(--outline-variant);
         border-radius: 12px;
-        padding: 14px 16px 16px;
+        padding: 14px 14px 14px 16px;
         margin-bottom: 10px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        overflow: hidden;
       }
       .translation-card__provider {
-        font-family: var(--pv-font-ui);
-        font-size: 11px;
-        font-weight: 500;
-        color: var(--pv-ink-soft);
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--on-surface-variant);
         margin-bottom: 10px;
       }
-      .translation-card__pair {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
+      .translation-card__pair { display: flex; flex-direction: column; gap: 12px; }
+      .translation-card__line + .translation-card__line {
+        padding-top: 12px;
+        border-top: 1px solid var(--outline-variant);
       }
       .translation-card__line {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 28px;
+        grid-template-columns: minmax(0, 1fr) 32px;
         gap: 8px;
         align-items: start;
       }
       .translation-card__label {
         font-size: 11px;
         font-weight: 600;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.05em;
         text-transform: uppercase;
-        color: var(--pv-ink-soft);
+        color: var(--on-surface-variant);
         margin-bottom: 4px;
       }
       .translation-card__original,
-      .translation-card__text {
-        font-family: var(--pv-font-ui);
-        line-height: 1.5;
-        color: var(--pv-ink);
-        overflow-wrap: anywhere;
-      }
-      .translation-card__original {
-        font-size: 15px;
-        font-weight: 400;
-      }
-      .translation-card__text {
-        font-size: 20px;
-        font-weight: 600;
-      }
-      .translation-card__pron {
-        font-family: var(--pv-font-ui);
-        font-size: 12px;
-        color: var(--pv-ink-soft);
-        margin-top: 4px;
-      }
+      .translation-card__text { line-height: 1.45; color: var(--on-surface); overflow-wrap: anywhere; }
+      .translation-card__original { font-size: 15px; }
+      .translation-card__text { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+      .translation-card__pron { font-family: var(--font-ipa); font-size: 13px; color: var(--tertiary); margin-top: 4px; }
       .tx-speak {
-        width: 28px;
-        height: 28px;
-        padding: 0;
-        border: none;
+        width: 32px;
+        height: 32px;
+        border: 0;
+        border-radius: 999px;
         background: transparent;
-        color: var(--pv-ink-soft);
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
+        color: var(--tertiary);
+        display: inline-grid;
+        place-items: center;
         flex-shrink: 0;
+        transition: background-color 0.18s var(--motion), color 0.18s var(--motion);
       }
-      .tx-speak:hover {
-        color: var(--pv-ink);
-      }
-      .tx-speak svg {
-        width: 16px;
-        height: 16px;
-        display: block;
-      }
-      .definition-source-badges {
-        display: flex;
-        flex-wrap: wrap;
+      .tx-speak:hover { background: var(--tertiary-container); color: var(--on-tertiary-container); }
+      .tx-speak svg { width: 18px; height: 18px; }
+
+      /* Language bar (translation) */
+      .language-selection { padding: 10px 14px 0 16px; background: var(--surface); }
+      .language-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: center;
         gap: 4px;
-        margin-top: 6px;
+        padding: 4px;
+        border-radius: 999px;
+        background: var(--surface-container);
       }
+      .language-group { min-width: 0; position: relative; }
+      .language-group label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+      }
+      .language-select {
+        width: 100%;
+        min-width: 0;
+        height: 34px;
+        padding: 0 28px 0 14px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent
+          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 10l5 5 5-5' fill='none' stroke='%239c3d00' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+          no-repeat right 9px center / 16px;
+        appearance: none;
+        font-size: 13.5px;
+        font-weight: 600;
+        color: var(--primary);
+        text-overflow: ellipsis;
+        cursor: pointer;
+        transition: background-color 0.18s var(--motion);
+      }
+      .language-select:hover { background-color: var(--surface-high); }
+      .language-select:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+      .language-select option { color: var(--on-surface); background: var(--surface-lowest); font-weight: 400; }
+      .tx-swap {
+        width: 34px;
+        height: 34px;
+        border: 0;
+        border-radius: 999px;
+        background: var(--surface-lowest);
+        color: var(--on-surface-variant);
+        display: grid;
+        place-items: center;
+        transition: color 0.18s var(--motion), transform 0.3s var(--motion);
+      }
+      .tx-swap:hover { color: var(--primary); }
+      .tx-swap:active { transform: rotate(180deg); }
+      .tx-swap svg { width: 17px; height: 17px; }
+
+      /* Wikipedia */
       .wikipedia-card {
-        background: var(--pv-panel);
-        border: 1px solid #d6d3cd;
+        background: var(--surface-lowest);
+        border: 1px solid var(--outline-variant);
         border-radius: 12px;
         overflow: hidden;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
       }
       .wikipedia-card__header {
-        background: var(--pv-ink);
-        color: #e8e6e1;
-        padding: 10px 14px;
-        font-family: var(--pv-font-mono);
-        font-size: 12px;
-        letter-spacing: 0.06em;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--outline-variant);
+        font-family: var(--font-mono);
+        font-size: 11px;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
-        display: flex;
-        align-items: center;
-        gap: 10px;
+        color: var(--on-surface-variant);
       }
-      .wikipedia-card__body { padding: 8px 16px 14px; }
+      .wikipedia-card__lang { margin-left: auto; }
+      .wikipedia-card__body { padding: 2px 16px 6px; }
       .wikipedia-item {
-        padding: 12px 0;
-        border-bottom: 1px solid #e8e6e1;
+        padding: 12px 8px;
+        margin: 0 -8px;
+        border-radius: 8px;
         cursor: pointer;
+        transition: background-color 0.18s var(--motion);
       }
-      .wikipedia-item:last-child { border-bottom: none; }
-      .wikipedia-item:hover {
-        background: rgba(13, 115, 119, 0.06);
-      }
-      .wikipedia-item__title {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 6px;
-      }
+      .wikipedia-item + .wikipedia-item { border-top: 1px solid var(--outline-variant); border-radius: 0; }
+      .wikipedia-item:hover { background: var(--surface-low); }
+      .wikipedia-item:focus-visible { outline: 2px solid var(--tertiary); outline-offset: -2px; }
+      .wikipedia-item__title { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
       .wikipedia-item__name {
-        font-family: var(--pv-font-serif);
-        font-size: 16px;
-        font-weight: 600;
-        color: var(--pv-teal);
         flex: 1;
         min-width: 0;
+        font-family: var(--font-display);
+        font-size: 17px;
+        font-weight: 650;
+        color: var(--tertiary);
       }
       .wikipedia-item__extract {
-        font-family: var(--pv-font-serif);
-        font-size: 14px;
+        font-family: var(--font-display);
+        font-size: 14.5px;
         line-height: 1.55;
-        color: var(--pv-ink);
+        color: var(--on-surface);
       }
       .wikipedia-item img {
         width: 44px;
         height: 44px;
         object-fit: cover;
         border-radius: 8px;
-        border: 1px solid #d6d3cd;
+        border: 1px solid var(--outline-variant);
       }
+      .results-section.is-reader { padding: 0; }
       .wikipedia-reader {
         display: flex;
         flex-direction: column;
+        flex: 1 1 auto;
         min-height: 320px;
+        height: 100%;
+        border: 0;
+        border-radius: 0;
       }
       .wikipedia-reader__bar {
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 8px 12px;
-        border-bottom: 1px solid #d6d3cd;
-        background: #f3f1ec;
-        font-family: var(--pv-font-mono);
-        font-size: 11px;
+        gap: 6px;
+        padding: 4px 6px;
+        border-bottom: 1px solid var(--outline-variant);
+        background: var(--surface);
       }
-      .wikipedia-reader__back {
-        border: none;
+      .wikipedia-reader__back,
+      .wikipedia-reader__ext {
+        width: 32px;
+        height: 32px;
+        border: 0;
+        border-radius: 999px;
         background: transparent;
-        color: var(--pv-teal);
-        cursor: pointer;
-        font: inherit;
-        padding: 2px 4px;
+        color: var(--on-surface-variant);
+        display: grid;
+        place-items: center;
+        flex: 0 0 auto;
+        transition: background-color 0.18s var(--motion), color 0.18s var(--motion);
       }
-      .wikipedia-reader__back:hover { text-decoration: underline; }
+      .wikipedia-reader__back:hover,
+      .wikipedia-reader__ext:hover { background: var(--surface-container); color: var(--on-surface); }
+      .wikipedia-reader__back svg,
+      .wikipedia-reader__ext svg { width: 18px; height: 18px; }
       .wikipedia-reader__title {
         flex: 1;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        color: var(--pv-ink);
-        font-family: 'Source Serif 4', Georgia, serif;
-        font-size: 13px;
+        font-family: var(--font-display);
+        font-size: 14.5px;
+        font-weight: 600;
+        color: var(--on-surface);
       }
-      .wikipedia-reader__ext {
-        border: none;
-        background: transparent;
-        color: var(--pv-ink-soft);
-        cursor: pointer;
-        font: inherit;
-        padding: 2px 4px;
-      }
-      .wikipedia-reader__ext:hover { color: var(--pv-teal); }
       .wikipedia-reader webview {
         flex: 1;
         width: 100%;
-        min-height: 340px;
-        border: none;
+        min-height: 300px;
+        border: 0;
         background: #fff;
       }
+
+      /* Etymology */
       .etymology-source-label {
-        font-family: var(--pv-font-mono);
-        font-size: 10px;
+        font-family: var(--font-mono);
+        font-size: 10.5px;
         letter-spacing: 0.1em;
         text-transform: uppercase;
-        color: var(--pv-teal);
+        color: var(--tertiary);
         margin: 0 0 8px;
         font-weight: 600;
       }
@@ -1160,441 +886,205 @@
         flex-wrap: wrap;
         gap: 6px;
         align-items: center;
-        margin: 0 0 14px;
+        margin: 6px 0 14px;
         padding: 10px 12px;
-        border: 1px dashed rgba(13, 115, 119, 0.35);
-        background: rgba(13, 115, 119, 0.06);
-        font-family: var(--pv-font-mono);
-        font-size: 11px;
-        color: var(--pv-ink-soft);
+        border-radius: 8px;
+        border: 1px dashed color-mix(in srgb, var(--tertiary) 35%, transparent);
+        background: color-mix(in srgb, var(--tertiary) 7%, transparent);
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        color: var(--on-surface-variant);
       }
-      .etymology-chain__node {
-        color: var(--pv-ink);
-        font-weight: 500;
-      }
-      .etymology-chain__rel {
-        color: var(--pv-ember-deep);
-        font-size: 10px;
-      }
-      .tab {
-        font-family: var(--pv-font-mono);
-        font-size: 11px;
-        letter-spacing: 0.04em;
-      }
-      .action-btn-info {
-        background: var(--pv-teal) !important;
-      }
-      .action-btn-primary {
-        background: var(--pv-ember) !important;
-      }
-
-      /* Etymology — same paper blocks as the lexicon, no extra title chrome */
-      .etymology-container {
-        margin: 0;
-        background: transparent;
-        border: none;
-        border-radius: 0;
-        overflow: visible;
-        box-shadow: none;
-      }
-
-      .etymology-header,
-      .etymology-icon,
-      .etymology-title {
-        display: none;
-      }
-
-      .etymology-content {
-        padding: 0;
-        background: transparent;
-        border-left: none;
-      }
-      .etymology-content > .etymology-chain {
-        margin: 0 0 12px;
-      }
-
-      .etymology-layout {
-        display: flex;
-        min-height: 160px;
-        align-items: stretch;
-      }
+      .etymology-chain__node { color: var(--on-surface); font-weight: 500; }
+      .etymology-chain__rel { color: var(--primary); font-size: 10.5px; }
+      .etymology-container { margin: 0; background: transparent; border: 0; box-shadow: none; }
+      .etymology-header, .etymology-icon, .etymology-title { display: none; }
+      .etymology-content { padding: 0; background: transparent; border: 0; }
+      .etymology-layout { display: flex; min-height: 160px; align-items: stretch; margin-top: 4px; }
       .etymology-tabs {
-        flex: 0 0 108px;
+        flex: 0 0 auto;
+        max-width: 132px;
         display: flex;
         flex-direction: column;
-        gap: 0;
-        border-right: 1px solid #e1e5e9;
-        background: transparent;
-        padding: 4px 0;
+        gap: 2px;
+        padding: 2px 10px 2px 0;
+        border-right: 1px solid var(--outline-variant);
       }
       .etymology-tab {
-        border: none;
+        border: 0;
+        border-radius: 8px;
         background: transparent;
         text-align: left;
-        padding: 8px 10px;
-        font-family: var(--pv-font-mono);
-        font-size: 10px;
-        letter-spacing: 0.04em;
-        color: var(--pv-ink-soft);
-        cursor: pointer;
-        border-left: 2px solid transparent;
+        padding: 7px 10px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        letter-spacing: 0.03em;
         line-height: 1.3;
+        color: var(--on-surface-variant);
+        transition: background-color 0.18s var(--motion), color 0.18s var(--motion);
       }
-      .etymology-tab:hover {
-        color: var(--pv-ink);
-        background: rgba(13, 115, 119, 0.06);
-      }
+      .etymology-tab:hover { background: var(--surface-container); color: var(--on-surface); }
       .etymology-tab.is-active {
-        color: var(--pv-teal);
-        border-left-color: var(--pv-teal);
-        background: rgba(13, 115, 119, 0.1);
+        background: var(--tertiary-container);
+        color: var(--on-tertiary-container);
         font-weight: 600;
       }
-      .etymology-panel {
-        flex: 1;
-        min-width: 0;
-        padding: 4px 0 0 16px;
-      }
-
+      .etymology-panel { flex: 1; min-width: 0; padding: 2px 0 0 14px; }
       .etymology-text {
+        font-family: var(--font-display);
+        font-size: 15px;
         line-height: 1.65;
-        font-size: 14.5px;
-        color: #1c1917;
-        font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+        color: var(--on-surface);
       }
-
-      .etymology-sentence {
-        margin-bottom: 10px;
-        padding: 0;
-      }
-
-      .etymology-keyword {
-        color: #14212b;
-        font-weight: 700;
-        background: none;
-        padding: 0;
-        border-radius: 0;
-        font-size: inherit;
-        font-family: inherit;
-      }
-
+      .etymology-sentence { margin-bottom: 10px; }
+      .etymology-keyword { color: var(--on-surface); font-weight: 700; }
       .etymology-language {
-        color: #0f766e;
+        color: var(--tertiary);
         font-weight: 600;
-        background: none;
-        padding: 0;
-        border-radius: 0;
         font-style: italic;
-        font-size: inherit;
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        font-size: 0.92em;
       }
-
-      .etymology-pos {
-        color: #57534e;
-        font-weight: 500;
-        background: none;
-        padding: 0;
-        border-radius: 0;
-        font-size: 0.9em;
-        text-transform: none;
-        font-style: italic;
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
-      }
-
-      .etymology-reconstructed {
-        color: #14212b;
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        font-style: italic;
-        font-weight: 500;
-      }
-
-      .etymology-accent {
-        color: #78716c;
-        font-size: 0.85em;
-        font-style: italic;
-        opacity: 1;
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
-      }
-
+      .etymology-pos { color: var(--on-surface-variant); font-style: italic; }
+      .etymology-reconstructed { font-family: var(--font-mono); font-style: italic; font-size: 0.9em; }
+      .etymology-accent { color: var(--on-surface-variant); font-size: 0.85em; font-style: italic; }
       .etymology-century,
-      .etymology-era {
-        color: #44403c;
-        font-weight: 600;
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        font-size: 0.9em;
-        font-variant: normal;
-      }
-
+      .etymology-era { color: var(--on-surface-variant); font-weight: 600; font-variant-numeric: oldstyle-nums; }
       .etymology-separator {
         margin: 18px 0 14px;
-        text-align: left;
-        position: relative;
-        border-top: 1px dashed #a8a29e;
+        border-top: 1px dashed var(--outline-variant);
         padding-top: 10px;
       }
-
-      .etymology-separator::before {
-        display: none;
-      }
-
       .etymology-separator span {
-        background: transparent;
-        padding: 0;
-        color: #78716c;
-        font-size: 10px;
+        color: var(--on-surface-variant);
+        font-family: var(--font-mono);
+        font-size: 10.5px;
         font-weight: 600;
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
-        text-transform: uppercase;
         letter-spacing: 0.1em;
-        position: static;
+        text-transform: uppercase;
       }
+      .etymology-no-data { padding: 8px 0 0; color: var(--on-surface-variant); font-size: 14.5px; line-height: 1.55; }
+      .etymology-no-data .no-data-icon { display: none; }
+      .etymology-no-data strong { font-weight: 500; }
 
-      .etymology-text.alternative {
-        opacity: 1;
-      }
-
-      .etymology-text.alternative .etymology-sentence {
-        color: #44403c;
-      }
-
-      .etymology-no-data {
-        padding: 8px 0 0;
-        color: #57534e;
-        font-family: 'Source Serif 4', Georgia, serif;
-        font-size: 14px;
-        line-height: 1.55;
-      }
-
-      .etymology-no-data .no-data-icon {
-        display: none;
-      }
-
-      .etymology-no-data ul {
-        margin: 8px 0 0 1.1em;
-        padding: 0;
-      }
-
-      .etymology-no-data li {
-        margin-bottom: 4px;
-      }
-
-      .etymology-info {
-        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-        padding: 16px 20px;
-        border-radius: 12px;
-        margin-bottom: 8px;
-        border-left: 4px solid #f59e0b;
-        color: #92400e;
-        line-height: 1.5;
-        font-size: 14px;
-      }
-
-      .etymology-info ul {
-        margin: 8px 0;
-        padding-left: 20px;
-      }
-
-      .etymology-info li {
-        margin: 4px 0;
-      }
-
-      .etymology-info small {
-        color: #a16207;
-        font-style: italic;
-      }
-
-      .result-actions {
-        display: flex;
-        gap: 8px;
-        margin-top: 20px;
-        padding-top: 16px;
-        border-top: 1px solid #e1e5e9;
-      }
-
-      .action-btn {
-        padding: 8px 16px;
-        border: none;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      .action-btn-primary {
-        background: #3b82f6;
-        color: #ffffff;
-      }
-
-      .action-btn-primary:hover {
-        background: #2563eb;
-        filter: brightness(0.98);
-      }
-
-      .action-btn-secondary {
-        background: #10b981;
-        color: #ffffff;
-      }
-
-      .action-btn-secondary:hover {
-        background: #059669;
-        filter: brightness(0.98);
-      }
-
-      .action-btn-info {
-        background: #8b5cf6;
-        color: #ffffff;
-      }
-
-      .action-btn-info:hover {
-        background: #7c3aed;
-        filter: brightness(0.98);
-      }
-
+      /* Empty and error states: a quiet line, not an alarm box */
       .error-message {
-        background: #fef2f2;
-        border: 1px solid #fecaca;
-        color: #dc2626;
-        padding: 16px;
-        border-radius: 8px;
-        text-align: center;
-        font-style: italic;
+        padding: 20px 4px;
+        color: var(--on-surface-variant);
+        font-size: 14.5px;
+        line-height: 1.5;
       }
+      .error-message small { display: block; margin-top: 4px; font-size: 12.5px; opacity: 0.8; }
 
-      /* Settings Panel */
-       .settings-panel {
-         position: absolute; /* anchor within popup to avoid overflowing viewport */
-         top: 40px;
-         right: 6px;
-        background: #ffffff;
-        border: 1px solid #e1e5e9;
-        border-radius: 8px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-        padding: 16px;
-        min-width: 200px;
+      /* Pop-up options menu */
+      .settings-panel {
+        position: absolute;
+        top: 44px;
+        right: 8px;
         z-index: 1000;
         display: none;
+        min-width: 260px;
+        padding: 6px 0;
+        background: var(--surface-lowest);
+        border: 1px solid var(--outline-variant);
+        border-radius: 14px;
+        box-shadow: 0 10px 28px rgb(28 25 23 / 0.16), 0 2px 6px rgb(28 25 23 / 0.08);
+        transform-origin: top right;
       }
-
-      .settings-panel.show {
-        display: block;
-        animation: fadeIn 0.2s ease-in;
+      .settings-panel.show { display: block; animation: menu-in 0.18s var(--motion); }
+      @keyframes menu-in {
+        from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+        to { opacity: 1; transform: none; }
       }
-
-      .setting-item {
-        margin-bottom: 12px;
-      }
-
-      .setting-item:last-child {
-        margin-bottom: 0;
-      }
-
+      .setting-item + .setting-item { border-top: 1px solid var(--outline-variant); }
       .setting-label {
         display: flex;
         align-items: center;
-        gap: 8px;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 10px 14px 10px 16px;
         font-size: 14px;
-        color: #475569;
+        font-weight: 500;
+        color: var(--on-surface);
         cursor: pointer;
       }
-
-      /* Provide a visible close affordance for settings panel */
-      .settings-panel::after {
-        content: '×';
+      .setting-label span { order: -1; }
+      .setting-checkbox {
+        appearance: none;
+        position: relative;
+        flex-shrink: 0;
+        width: 40px;
+        height: 24px;
+        border: 2px solid var(--outline);
+        border-radius: 999px;
+        background: var(--surface-high);
+        cursor: pointer;
+        transition: background-color 0.2s var(--motion), border-color 0.2s var(--motion);
+      }
+      .setting-checkbox::after {
+        content: '';
         position: absolute;
-        top: 6px;
-        right: 8px;
-        width: 18px;
-        height: 18px;
-        line-height: 18px;
-        text-align: center;
-        border-radius: 4px;
-        color: #fff;
-        background: #111827;
-        cursor: pointer;
+        top: 50%;
+        left: 4px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--outline);
+        transform: translateY(-50%);
+        transition: left 0.2s var(--motion), width 0.2s var(--motion), height 0.2s var(--motion), background-color 0.2s var(--motion);
       }
-      .settings-panel:hover::after { background: #374151; }
+      .setting-checkbox:checked { border-color: var(--primary); background: var(--primary); }
+      .setting-checkbox:checked::after { left: 18px; width: 16px; height: 16px; background: var(--on-primary); }
+      .setting-checkbox:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
-             .setting-checkbox {
-         width: 16px;
-         height: 16px;
-         accent-color: #3b82f6;
-       }
+      /* Buttons in the dev mock result */
+      .result-actions { display: flex; gap: 8px; margin-top: 16px; }
+      .action-btn {
+        border: 1px solid var(--outline);
+        background: transparent;
+        border-radius: 999px;
+        padding: 7px 14px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .action-btn:hover { background: var(--surface-container); }
 
-       /* Language Selection */
-       .language-selection {
-         padding: 14px 16px;
-         background: var(--pv-paper);
-         border-bottom: 1px solid var(--pv-line);
-       }
+      /* Toast */
+      .pv-toast {
+        position: fixed;
+        left: 50%;
+        bottom: 12px;
+        z-index: 2000;
+        max-width: calc(100vw - 24px);
+        padding: 8px 14px;
+        border-radius: 8px;
+        background: var(--inverse-surface);
+        color: var(--inverse-on-surface);
+        font-size: 13px;
+        line-height: 1.3;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        box-shadow: 0 4px 12px rgb(28 25 23 / 0.25);
+        transform: translateX(-50%);
+        animation: toast-in 0.24s var(--motion);
+        pointer-events: none;
+      }
+      body.is-strip .pv-toast {
+        top: 50%;
+        bottom: auto;
+        padding: 4px 10px;
+        font-size: 12px;
+        border-radius: 6px;
+        transform: translate(-50%, -50%);
+        animation: none;
+      }
+      @keyframes toast-in {
+        from { opacity: 0; transform: translate(-50%, 8px); }
+        to { opacity: 1; transform: translate(-50%, 0); }
+      }
 
-       .language-row {
-         display: flex;
-         gap: 10px;
-         align-items: flex-end;
-       }
-
-       .language-group {
-         display: flex;
-         flex-direction: column;
-         gap: 4px;
-         flex: 1 1 0;
-         min-width: 0;
-       }
-
-       .language-group label {
-         font-size: 11px;
-         font-weight: 600;
-         color: var(--pv-ink-soft);
-         text-transform: uppercase;
-         letter-spacing: 0.04em;
-       }
-
-       .language-select {
-         min-width: 0;
-         width: 100%;
-         padding: 6px 10px;
-         font-size: 13px;
-         font-family: var(--pv-font-ui);
-         color: var(--pv-ink);
-         background: var(--pv-panel);
-         border: 1px solid #d6d3cd;
-         border-radius: 8px;
-         cursor: pointer;
-       }
-
-       .language-select:focus {
-         border-color: var(--pv-ink);
-         outline: none;
-       }
-
-       .tx-swap {
-         flex: 0 0 auto;
-         width: 32px;
-         height: 32px;
-         margin-bottom: 1px;
-         padding: 0;
-         border: 1px solid #d6d3cd;
-         border-radius: 8px;
-         background: var(--pv-panel);
-         color: var(--pv-ink);
-         cursor: pointer;
-         display: inline-flex;
-         align-items: center;
-         justify-content: center;
-       }
-       .tx-swap:hover {
-         border-color: var(--pv-ink);
-       }
-       .tx-swap svg {
-         width: 16px;
-         height: 16px;
-       }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation: none !important; transition: none !important; }
+      }
     </style>
   </head>
   <body>
@@ -1621,21 +1111,29 @@
         </div>
       </div>
 
-      <!-- Toolbar: always visible slim strip -->
+      <!-- Toolbar: slim strip when collapsed; tab strip when expanded -->
       <div class="toolbar" id="toolbar">
-          <div class="toolbar-left">
-            <div class="toolbar-title">Phevere Dictionary</div>
-          </div>
-          <div class="toolbar-icons">
-            <button class="toolbar-icon" id="dictionaryIcon" title="Dictionary">📖</button>
-            <button class="toolbar-icon" id="audioIcon" title="Play recorded pronunciation">🔊</button>
-            <button class="toolbar-icon" id="clipboardIcon" title="Clipboard">📋</button>
-            <button class="toolbar-icon" id="searchIcon" title="Search">🔍</button>
-            <button class="toolbar-icon toolbar-heart" id="vocabHeartIcon" title="Save to notebook" aria-pressed="false" aria-label="Save to notebook">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path class="heart-fill" d="M12 21s-6.7-4.35-9.33-7.4C.7 11.2 1.1 7.6 3.9 6.05 6.05 4.85 8.55 5.4 10 7.05L12 9.2l2-2.15c1.45-1.65 3.95-2.2 6.1-1 2.8 1.55 3.2 5.15 1.23 7.55C18.7 16.65 12 21 12 21z"/></svg>
-            </button>
-            <button class="toolbar-icon" id="settingsIcon" title="Settings">⚙️</button>
-            <button class="toolbar-icon" id="closeIcon" title="Close">✕</button>
+          <div class="toolbar-icons" id="toolbar-icons">
+            <div class="lookup-nav" role="group" aria-label="Lookup history">
+              <button type="button" class="lookup-nav-btn" id="lookupNavBack" title="Back (Alt+Left)" aria-label="Back" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="lookup-nav-btn" id="lookupNavForward" title="Forward (Alt+Right)" aria-label="Forward" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+            <div class="toolbar-group" role="tablist" aria-label="Views">
+              <button type="button" class="toolbar-icon tab-icon" role="tab" data-tab="lexicon" id="dictionaryIcon" title="Lexicon" aria-label="Lexicon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5.5c2.8-1.2 5.6-1.2 8.5.6 2.9-1.8 5.7-1.8 8.5-.6v13c-2.8-1.2-5.6-1.2-8.5.6-2.9-1.8-5.7-1.8-8.5-.6zM12 6.1v13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="toolbar-icon tab-icon" role="tab" data-tab="translation" title="Translation" aria-label="Translation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h9M8.5 3.5v2M11 5.5c-.8 3.8-3.4 6.9-6.5 8.5M6.5 8.5c1.3 2.3 3.3 4.3 5.5 5.5M12.5 20.5l4-9.5 4 9.5M14 17h5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="toolbar-icon tab-icon" role="tab" data-tab="wikipedia" title="Wikipedia" aria-label="Wikipedia"><span class="tab-w" aria-hidden="true">W</span></button>
+              <button type="button" class="toolbar-icon tab-icon" role="tab" data-tab="etymology" title="Etymology" aria-label="Etymology"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21v-9M12 12 6.5 6.5M12 12l5.5-5.5M12 15.5l-3.5-3M6.5 6.5V3.5M17.5 6.5V3.5M4 21h16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+            <span class="toolbar-spacer" aria-hidden="true"></span>
+            <span class="toolbar-divider" aria-hidden="true"></span>
+            <div class="toolbar-group">
+              <button type="button" class="toolbar-icon" id="audioIcon" title="Play pronunciation" aria-label="Play pronunciation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4zM15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="toolbar-icon" id="clipboardIcon" title="Copy" aria-label="Copy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1zM5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="toolbar-icon" id="searchIcon" title="Search the web" aria-label="Search the web"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="toolbar-icon toolbar-heart" id="vocabHeartIcon" title="Save to notebook" aria-pressed="false" aria-label="Save to notebook"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="heart-fill" d="M12 20s-7-4.4-8.9-8.6C1.8 8.4 3.6 5 6.9 5c2 0 3.3 1 5.1 3 1.8-2 3.1-3 5.1-3 3.3 0 5.1 3.4 3.8 6.4C19 15.6 12 20 12 20z"/></svg></button>
+              <button type="button" class="toolbar-icon" id="settingsIcon" title="Options" aria-label="Options"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 13.5l1.6 1.2-2 3.4-1.9-.7a7.6 7.6 0 0 1-2 1.2L14.8 21h-4l-.4-2.4a7.6 7.6 0 0 1-2-1.2l-2 .8-2-3.5 1.6-1.2a7.4 7.4 0 0 1 0-2.4L4.4 9.9l2-3.4 2 .7a7.6 7.6 0 0 1 2-1.2L10.8 3.6h4l.4 2.4a7.6 7.6 0 0 1 2 1.2l2-.8 2 3.5-1.6 1.2a7.4 7.4 0 0 1 0 2.4z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="toolbar-icon" id="closeIcon" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
           </div>
         </div>
 
@@ -1659,9 +1157,7 @@
                </select>
              </div>
              <button type="button" class="tx-swap" id="txSwapLangs" title="Swap languages" aria-label="Swap languages">
-               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                 <path d="M7 7h11M15 4l3 3-3 3M17 17H6M9 14l-3 3 3 3" stroke-linecap="round" stroke-linejoin="round"/>
-               </svg>
+               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h11M15 4l3 3-3 3M17 17H6M9 14l-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
              </button>
              <div class="language-group">
                <label for="targetLanguage">To</label>
@@ -1679,18 +1175,6 @@
            </div>
          </div>
 
-         <!-- Tabs -->
-         <div class="tabs" id="tabsContainer" style="display: none;">
-           <div class="lookup-nav" role="group" aria-label="Lookup history">
-             <button type="button" class="lookup-nav-btn" id="lookupNavBack" title="Back" aria-label="Back" disabled>←</button>
-             <button type="button" class="lookup-nav-btn" id="lookupNavForward" title="Forward" aria-label="Forward" disabled>→</button>
-           </div>
-           <button class="tab active" data-tab="lexicon">Lexicon</button>
-           <button class="tab" data-tab="translation">Translation</button>
-           <button class="tab" data-tab="wikipedia">Wikipedia</button>
-           <button class="tab" data-tab="etymology">Etymology</button>
-         </div>
-
         <!-- Results Section -->
         <div class="results-section">
           <div class="loading" id="loadingElement">
@@ -1699,7 +1183,7 @@
             <div class="loading-sub" id="loadingSub">Fetching definitions and translations</div>
             <div class="loading-stages" id="loadingStages"></div>
           </div>
-          
+
           <div class="dictionary-results" id="dictionary-results">
             <!-- Dictionary results will be populated here -->
           </div>
@@ -1941,13 +1425,13 @@
          window.__pheverePopupBooted = true;
          pvLog('[POPUP] Initialize function called');
          pvLog('[POPUP] DOM ready, setting up popup...');
-         
+
          loadSettings();
          pvLog('[POPUP] Settings loaded:', settings);
-         
+
          setupEventListeners();
          pvLog('[POPUP] Event listeners set up');
-         
+
           // Old behavior: sharp tool strip by default (collapsed) and expand only when icon/tab clicked
           setupToolbarBehavior();
           collapseToolbar();
@@ -1993,7 +1477,7 @@
         if (savedSettings) {
           settings = { ...settings, ...JSON.parse(savedSettings) };
         }
-        
+
         document.getElementById('expandableMode').checked = settings.expandableMode;
         document.getElementById('preloadContent').checked = settings.preloadContent;
         const openExternalLinks = document.getElementById('openExternalLinks');
@@ -2008,12 +1492,6 @@
              // Setup event listeners for all UI elements
        function setupEventListeners() {
          // Toolbar icons
-            document.getElementById('dictionaryIcon').addEventListener('click', () => { 
-              activateTab('lexicon');
-              expandToolbar();
-              const t = currentText || window['__popupCurrentText'] || '';
-              if (t) void lookupText(t);
-          });
             document.getElementById('audioIcon').addEventListener('click', () => {
                pvLog('[POPUP] Audio button clicked');
                void playToolbarHuman();
@@ -2066,10 +1544,13 @@
         }
 
         // Tabs
-        document.querySelectorAll('.tab').forEach(tab => {
+        document.querySelectorAll('.tab-icon').forEach(tab => {
           tab.addEventListener('click', () => {
+            const wasExpanded = isExpanded;
             activateTab(tab.dataset.tab);
             restoreLookupPanelSize();
+            const t = currentText || window['__popupCurrentText'] || '';
+            if (!wasExpanded && t && tab.dataset.tab !== 'wikipedia') void lookupText(t);
           });
         });
 
@@ -2147,7 +1628,7 @@
             const selection = window.getSelection();
             const target = evt.target || null;
             if (target && typeof target.closest === 'function') {
-              if (target.closest('a, button, input, textarea, select, .toolbar, .tab, webview')) return;
+              if (target.closest('a, button, input, textarea, select, .toolbar, webview')) return;
             }
             var inResults = null;
             if (target && typeof target.closest === 'function') {
@@ -2355,7 +1836,7 @@
               if (!trimmedSentence) return;
               const highlightedSentence = escapeHtml(trimmedSentence)
                 .replace(/\b(From|Derived from|Borrowed from|Inherited from|Root|Origin|Etymology|Cognate with|Doublet of|来自|引申|词源)\b/gi, '<span class="etymology-keyword">$1</span>')
-                .replace(/\b(Latin|Greek|French|German|Old English|Middle English|Anglo-Saxon|Proto-Germanic|Proto-Indo-European|Ancient Greek|Sanskrit|Gothic|Old Norse|Old French|Proto-Italic|Proto-Hellenic|Proto-Celtic)\b/gi, '<span class="etymology-language">$1</span>')
+                .replace(/\b(Proto-Indo-European|Proto-Germanic|Proto-Italic|Proto-Hellenic|Proto-Celtic|Ancient Greek|Late Latin|Medieval Latin|Old English|Middle English|Old French|Middle French|Anglo-Norman|Old Norse|Old High German|Middle Dutch|Old Occitan|Old Provençal|Anglo-Saxon|Latin|Greek|French|German|Italian|Spanish|Portuguese|Dutch|Arabic|Persian|Sanskrit|Gothic)\b/gi, '<span class="etymology-language">$1</span>')
                 .replace(/\*[\w\u0300-\u036f\-]+/g, '<span class="etymology-reconstructed">$&</span>')
                 .replace(/(\d+)(st|nd|rd|th)\s+century/gi, '<span class="etymology-century">$&</span>')
                 .replace(/\b(BCE?|CE|AD|BC)\b/g, '<span class="etymology-era">$&</span>');
@@ -2419,10 +1900,10 @@ function startAutoCloseTimeout() {
          var iw = icons.getBoundingClientRect().width;
          var th = toolbar.getBoundingClientRect().height;
          if (!(iw > 0) || !(th > 0)) return;
-         var padX = 8;
-         var padY = 8;
+         var tcs = window.getComputedStyle(toolbar);
+         var padX = (parseFloat(tcs.paddingLeft) || 0) + (parseFloat(tcs.paddingRight) || 0);
          var w = Math.max(160, Math.ceil(iw + padX));
-         var h = Math.max(32, Math.ceil(th + padY));
+         var h = Math.max(32, Math.ceil(th));
          pvLog('[POPUP] resizeToCollapsedStrip', w, h, screenX, screenY);
          if (typeof screenX === 'number' && typeof screenY === 'number') {
            window.electronAPI.resizeWindow(w, h, screenX, screenY);
@@ -2438,15 +1919,16 @@ function startAutoCloseTimeout() {
            pvLog('[POPUP] Expandable mode disabled, not collapsing');
            return;
          }
-         
+
           const toolbar = document.getElementById('toolbar');
           const resultsArea = document.getElementById('resultsArea');
-         
+
          pvLog('[POPUP] Adding collapsed classes...');
           toolbar.classList.add('collapsed');
           resultsArea.classList.add('collapsed');
+          document.body.classList.add('is-strip');
          isExpanded = false;
-         
+
          pvLog('[POPUP] Toolbar collapsed, isExpanded:', isExpanded);
 
          // Start auto-close timeout when collapsed
@@ -2464,7 +1946,7 @@ function startAutoCloseTimeout() {
        /** Expanded lookup: OS window hugs ←/→ plus Lexicon…Etymology (not the stretched bar). */
        var EXPANDED_POPUP_H = 500;
        var EXPANDED_POPUP_MIN_H = 360;
-       var EXPANDED_POPUP_MIN_W = 280;
+       var EXPANDED_POPUP_MIN_W = 460;
        var EXPANDED_POPUP_MAX_W = 1200;
        var lastExpandedH = EXPANDED_POPUP_H;
 
@@ -2505,20 +1987,18 @@ function startAutoCloseTimeout() {
 
        function widthToFitLookupChrome() {
          var need = 0;
-         var tabs = document.getElementById('tabsContainer');
-         if (tabs) {
-           var prev = tabs.style.display;
-           tabs.style.display = 'flex';
-           void tabs.offsetWidth;
-           need = Math.max(need, intrinsicRowWidth(tabs));
-           if (prev && prev !== 'flex') tabs.style.display = prev;
-         }
          var toolbar = document.getElementById('toolbar');
-         var icons = toolbar && toolbar.querySelector('.toolbar-icons');
+         var icons = document.getElementById('toolbar-icons');
          if (toolbar && icons) {
            var tcs = window.getComputedStyle(toolbar);
            var tpad = (parseFloat(tcs.paddingLeft) || 0) + (parseFloat(tcs.paddingRight) || 0);
-           need = Math.max(need, Math.ceil(icons.getBoundingClientRect().width + tpad));
+           var kids = 0;
+           for (var i = 0; i < icons.children.length; i++) {
+             var c = icons.children[i];
+             if (c.classList.contains('toolbar-spacer')) { kids += 24; continue; }
+             kids += elementOuterWidth(c);
+           }
+           need = Math.ceil(kids + tpad);
          }
          var frame = Math.max(0, (window.outerWidth || 0) - (window.innerWidth || 0));
          need = Math.ceil(need + frame);
@@ -2529,7 +2009,8 @@ function startAutoCloseTimeout() {
        function resizeToExpandedPanel() {
          if (!window.electronAPI || !window.electronAPI.resizeWindow) return;
          if (!isExpanded) return;
-         var w = widthToFitLookupChrome();
+         // Keep a width the user dragged wider; only grow to fit the toolbar.
+         var w = Math.max(widthToFitLookupChrome(), Math.min(EXPANDED_POPUP_MAX_W, window.outerWidth || 0));
          pvLog('[POPUP] resizeToExpandedPanel', w, lastExpandedH);
          window.electronAPI.resizeWindow(w, lastExpandedH || EXPANDED_POPUP_H);
        }
@@ -2539,19 +2020,19 @@ function startAutoCloseTimeout() {
          pvLog('[POPUP] Expanding toolbar...');
           const toolbar = document.getElementById('toolbar');
           const resultsArea = document.getElementById('resultsArea');
-         
+
          pvLog('[POPUP] Removing collapsed classes...');
           toolbar.classList.remove('collapsed');
           resultsArea.classList.remove('collapsed');
          isExpanded = true;
-         
+
          pvLog('[POPUP] Toolbar expanded, isExpanded:', isExpanded);
 
          // Clear auto-close timeout when expanded
          clearAutoCloseTimeout();
 
-         var tabsContainer = document.getElementById('tabsContainer');
-         if (tabsContainer) tabsContainer.style.display = 'flex';
+         document.body.classList.remove('is-strip');
+         syncTabIcons();
 
          if (window.electronAPI && window.electronAPI.resizeWindow) {
            pvLog('[POPUP] Resizing window for expanded content...');
@@ -2576,43 +2057,29 @@ function startAutoCloseTimeout() {
          if (!p.classList.contains('show')) return;
          const t = e.target;
          // Allow clicking the pseudo close button (panel ::after)
-         const rect = p.getBoundingClientRect();
-         var x = 0; var y = 0;
-         var ev = e || {};
-         if (typeof ev.clientX === 'number') x = ev.clientX;
-         if (typeof ev.clientY === 'number') y = ev.clientY;
-         const closeHit = x >= rect.right - 26 && x <= rect.right - 6 && y >= rect.top + 6 && y <= rect.top + 24;
-         if ((p && typeof p.contains==='function' && p.contains(t)) || (btn && typeof btn.contains==='function' && btn.contains(t))) {
-           if (!closeHit) return;
-         }
+         if (p.contains(t) || (btn && btn.contains(t))) return;
          p.classList.remove('show');
        });
+
+      function syncTabIcons() {
+        document.querySelectorAll('.tab-icon').forEach(function (tab) {
+          var on = tab.dataset.tab === currentTab;
+          tab.classList.toggle('active', on);
+          tab.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+      }
 
              function activateTab(tabName) {
          if (tabName === 'dictionary') tabName = 'lexicon';
          currentTab = tabName;
-         document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-         const tabBtn = document.querySelector(`[data-tab="${tabName}"]`);
-         if (tabBtn) tabBtn.classList.add('active');
-         document.querySelectorAll('.toolbar-icon').forEach(icon => icon.classList.remove('active'));
-         
-                   if (tabName === 'lexicon' || tabName === 'wiktionary' || tabName === 'dictionary') {
-            const dictIcon = document.getElementById('dictionaryIcon');
-            if (dictIcon) dictIcon.classList.add('active');
-          }
-         
+         syncTabIcons();
+         var rs = document.querySelector('.results-section');
+         if (rs) rs.classList.remove('is-reader');
+
          // Show/hide language selection for translation
          const languageSelection = document.getElementById('languageSelection');
-         const tabsContainer = document.getElementById('tabsContainer');
-         
-         if (tabName === 'translation') {
-           languageSelection.style.display = 'block';
-           tabsContainer.style.display = 'flex';
-         } else {
-           languageSelection.style.display = 'none';
-           tabsContainer.style.display = 'flex';
-         }
-         
+         languageSelection.style.display = tabName === 'translation' ? 'block' : 'none';
+
                    // Re-render content for the activated tab
           if (tabName === 'wikipedia') {
             void displayWikipediaResult((currentResult && currentResult.word) || currentText);
@@ -2709,7 +2176,7 @@ function startAutoCloseTimeout() {
                 if (targetSelect) targetLang = targetSelect.value;
                 if (sourceSelect) sourceLang = sourceSelect.value;
               }
-              
+
               if (!silent) {
                 showLoading({
                   title: 'Looking up…',
@@ -2909,7 +2376,7 @@ function startAutoCloseTimeout() {
              }
 
              function speakIcon() {
-               return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 10v4h3l5 4V6L7 10H4z" stroke-linejoin="round"/><path d="M16.5 8.5a5 5 0 0 1 0 7" stroke-linecap="round"/><path d="M18.5 6a8 8 0 0 1 0 12" stroke-linecap="round"/></svg>';
+               return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4zM15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
              }
 
         var ipaAudioEl = null;
@@ -3195,12 +2662,22 @@ function startAutoCloseTimeout() {
           if (shouldScroll) jumpToLexiconPos(lastLexiconPos, !!instant);
         }
 
+             function languageLabel(code) {
+               const c = String(code || '').trim();
+               if (!c) return '';
+               try {
+                 return new Intl.DisplayNames(['en'], { type: 'language' }).of(c) || c;
+               } catch (e) {
+                 return c;
+               }
+             }
+
              function createTranslationCard(word, trans, wordLang) {
          const origLang = wordLang || window['__audioLang'] || 'en';
          const provider = friendlyTranslationSource(trans.source);
-         const srcLangLabel = origLang === 'zh' ? 'Chinese' : (origLang || 'source');
+         const srcLangLabel = languageLabel(origLang) || 'Source';
          const tgtLang = trans.language || 'en';
-         const tgtLabel = tgtLang === 'zh' || String(tgtLang).indexOf('zh') === 0 ? 'Chinese' : tgtLang;
+         const tgtLabel = languageLabel(tgtLang);
          return `
            <div class="translation-card">
              ${provider ? `<div class="translation-card__provider">via ${escapeHtml(provider)}</div>` : ''}
@@ -3295,12 +2772,19 @@ function startAutoCloseTimeout() {
           return out;
         }
 
+        /** Older cached results may still carry Wiktionary markup after the IPA. */
+        function displayIpa(raw) {
+          var s = String(raw || '').replace(/<[\s\S]*$/, '').replace(/\{\{[\s\S]*$/, '').trim();
+          s = s.replace(/^\/+|\/+$/g, '').trim();
+          return /[<>{}|=]/.test(s) ? '' : s;
+        }
+
         function formatPronunciationHtml(result) {
           const list = Array.isArray(result.pronunciations) ? result.pronunciations.slice() : [];
           const chips = [];
           const used = new Set();
           const chip = function (p) {
-            const clean = String((p && p.ipa) || '').replace(/^\/+|\/+$/g, '');
+            const clean = displayIpa(p && p.ipa);
             if (!clean) return;
             const accent = (p && p.accent) || 'other';
             const key = accent + ':' + clean;
@@ -3310,7 +2794,7 @@ function startAutoCloseTimeout() {
             const label = tag ? tag + ' transcription' : 'this transcription';
             chips.push(
               `<span class="ipa-chip">` +
-                `<span class="ipa-chip__text">${tag ? tag + ' ' : ''}/${escapeHtml(clean)}/</span>` +
+                `<span class="ipa-chip__text">${tag ? '<b>' + tag + '</b>' : ''}/${escapeHtml(clean)}/</span>` +
                 `<button type="button" class="tx-speak ipa-speak" data-accent="${escapeHtml(accent)}" data-ipa="${escapeHtml(clean)}" title="Speak ${escapeHtml(label)}" aria-label="Speak ${escapeHtml(label)}">${speakIcon()}</button>` +
               `</span>`
             );
@@ -3321,7 +2805,7 @@ function startAutoCloseTimeout() {
               return `<div class="result-pronunciation">${chips.join('<span class="ipa-sep">·</span>')}</div>`;
             }
           }
-          const line = String(result.pronunciation || '').trim();
+          const line = String(result.pronunciation || '').replace(/<[\s\S]*$/, '').trim();
           if (!line) return '';
           const shown = line.indexOf('/') >= 0 ? line : '/' + line.replace(/^\/+|\/+$/g, '') + '/';
           const ipaMatch = shown.match(/\/([^/]+)\//);
@@ -3550,7 +3034,7 @@ function startAutoCloseTimeout() {
       function displayMockResult(text) {
         document.getElementById('loadingElement').style.display = 'none';
         showDictionaryResults('flow');
-        
+
         document.getElementById('dictionary-results').innerHTML = `
           <div class="result-card">
             <div class="result-header">
@@ -3596,7 +3080,7 @@ function startAutoCloseTimeout() {
         showDictionaryResults('flow');
         container.innerHTML = `<div class="error-message">Failed to look up "${text}".<br><small>${error.message || 'Unknown error'}</small></div>`;
       }
-      
+
              // Expose utility functions to the window object for onclick handlers
        window.searchWeb = (term) => {
          pvLog('[POPUP] searchWeb called with:', term);
@@ -4073,14 +3557,14 @@ function startAutoCloseTimeout() {
                }
              });
            }
-           
+
            if (sourceLanguage && targetLanguage) {
              sourceLanguage.addEventListener('change', () => {
                if (currentText && currentTab === 'translation') {
                  lookupText(currentText, { force: true });
                }
              });
-             
+
              targetLanguage.addEventListener('change', () => {
                if (currentText && currentTab === 'translation') {
                  lookupText(currentText, { force: true });
@@ -4196,11 +3680,14 @@ function startAutoCloseTimeout() {
                const items = (result && result.results) || [];
 
                function showList() {
+                 var rsec = document.querySelector('.results-section');
+                 if (rsec) rsec.classList.remove('is-reader');
+                 showDictionaryResults('flow');
                  const html = `
                   <div class="wikipedia-card">
                     <div class="wikipedia-card__header">
                       <span>Wikipedia</span>
-                      <span style="margin-left:auto;opacity:.7;font-size:10px;">${escapeHtml(wikiLang)}</span>
+                      <span class="wikipedia-card__lang">${escapeHtml(wikiLang)}</span>
                     </div>
                     <div class="wikipedia-card__body">
                       ${items.map((r, i) => `
@@ -4234,12 +3721,15 @@ function startAutoCloseTimeout() {
                function showArticle(item) {
                  const title = item.title || q;
                  const url = item.url || `https://${wikiLang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
+                 var rsec = document.querySelector('.results-section');
+                 if (rsec) rsec.classList.add('is-reader');
+                 showDictionaryResults('fill');
                  resultsContainer.innerHTML = `
                   <div class="wikipedia-card wikipedia-reader">
                     <div class="wikipedia-reader__bar">
-                      <button type="button" class="wikipedia-reader__back" id="wikiReaderBack">← Back</button>
+                      <button type="button" class="wikipedia-reader__back" id="wikiReaderBack" title="Back to results" aria-label="Back to results"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                       <div class="wikipedia-reader__title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
-                      <button type="button" class="wikipedia-reader__ext" id="wikiReaderExt">Open in browser</button>
+                      <button type="button" class="wikipedia-reader__ext" id="wikiReaderExt" title="Open in browser" aria-label="Open in browser"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                     </div>
                     <webview src="${escapeHtml(url)}" partition="persist:wikipedia" allowpopups></webview>
                   </div>`;
@@ -4271,19 +3761,22 @@ function startAutoCloseTimeout() {
              await displayWikipediaResult(term);
            }
 
+           var toastTimer = null;
            function showToast(msg) {
-             const el = document.createElement('div');
-             el.style.position = 'fixed';
-             el.style.right = '10px';
-             el.style.top = '10px';
-             el.style.background = '#111827';
-             el.style.color = '#fff';
-             el.style.padding = '6px 10px';
-             el.style.borderRadius = '6px';
-             el.style.fontSize = '12px';
+             var el = document.getElementById('pvToast');
+             if (!el) {
+               el = document.createElement('div');
+               el.id = 'pvToast';
+               el.className = 'pv-toast';
+               el.setAttribute('role', 'status');
+               document.body.appendChild(el);
+             }
              el.textContent = msg;
-             document.body.appendChild(el);
-             setTimeout(() => el.remove(), 1400);
+             el.style.animation = 'none';
+             void el.offsetWidth;
+             el.style.animation = '';
+             clearTimeout(toastTimer);
+             toastTimer = setTimeout(function () { el.remove(); }, 1600);
            }
     </script>
   </body>

@@ -17,6 +17,12 @@ rendererRules.push({
   use: [{ loader: 'style-loader' }, { loader: 'css-loader' }],
 });
 
+// Bundled @fontsource fonts (pop-up): emit the font files next to the page.
+rendererRules.push({
+  test: /\.(woff2?|ttf|otf)$/,
+  type: 'asset/resource',
+});
+
 const rendererConfig = {
   // Do NOT set a global `entry` here. Forge's Webpack plugin supplies
   // per-window entries (main_window, popup_window, …). A leftover

@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Desktop pop-up (2026-09-29):** restyled to match the phone app: warm paper colours, line icons, Outfit for text, Source Serif 4 for the headword and examples, and Charis SIL for IPA (all bundled, so they load without Google Fonts). Lexicon, Translation, Wikipedia and Etymology are now icons in the toolbar; the open one becomes a tab joined to the page below, and the old text tab row is gone. Back and forward sit at the left of the toolbar. One thin scrollbar style throughout. The options menu uses switches, and the pop-up keeps a width you dragged wider when you change views.
+- **Hover lookup (2026-09-29):** reads the word under the cursor instead of its neighbour. A UI Automation word whose box does not contain the cursor is ignored in favour of OCR, and OCR now weights glyph widths when mapping the cursor to a character.
+
 - **Android (2026-09-28, night):** rooted phones: the LSPosed module presses Phevere with no selection bar when “Pop up as soon as text is selected” is on, and Settings → Capture adds **Phevere's place on the bar** (system default, or drag it into a slot on a mock bar). Modern LSPosed shares these switches through its private remote preferences; older LSPosed falls back to a readable preferences file. Without root, accessibility presses Phevere on the bar (Chrome included).
 - **Android (2026-09-28, later):** in-app selections use the selection bar unless “Pop up as soon as text is selected” is on (the floating pop-up draws an equivalent bar). The pop-up is smaller (≈360 × 460 dp) and opens beside the selected word when its position is known. One “Phevere” top bar on every tab; the pop-up header is a slim row without a search box; icon result tabs; Google Translate-style language bar and sheet; Material voice list with download progress; Playback volume. Back/forward and “plural of X” links follow the desktop pop-up. Wiktionary usage notes no longer appear as IPA.
 - **Android (2026-09-28):** floating pop-up closes on a tap outside and resizes by dragging its margins (size remembered). IPA chips are compact and share a full-width row. Settings tabs wrap onto more lines. Pronunciation voice is a radio list with download progress, matching the Translation engine list. In-app selections open the pop-up only when “Pop up as soon as text is selected” is on.
@@ -33,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- IPA no longer shows Wiktionary markup such as `<q:obsolete><ref:{{R:…` after the transcription.
 - Android lookup had a double status-bar and nav-bar gap: the WebView sat below the system bars and CSS padded them again. The page now draws edge-to-edge and `--pv-inset-*` is applied once. Focusing search emptied the page because a tap on the box was treated as submit (`closest('[data-act]')` hit the search form) and the keyboard height was added on top of `adjustResize`. Taps only focus; Enter / Look up still search. The window pans instead of resizing.
 - Camera capture failed with `No Activity found to handle Intent IMAGE_CAPTURE` on Android 11+ (package visibility). The manifest now declares that intent, and the app falls back to the photo picker if no camera app answers.
 - Camera/photo OCR no longer dumps the whole transcript into the search box. **Scan** keeps the picture; words on it are selectable and look up in place.

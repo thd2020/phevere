@@ -1107,16 +1107,20 @@ function interceptPopupHistoryKeys(win: BrowserWindow): void {
 }
 
 const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'): void => {
-  // Slim strip: width matches N×24px icons + gaps + padding (keep in sync with popup-new.html strip resize)
-  const POPUP_STRIP_ICON = 24;
+  // Slim strip: ten 28px icons (four views, then audio, copy, search, save, options, close)
+  // with 2px gaps, a divider and 4px padding. Keep in sync with the collapsed toolbar
+  // in popup-new.html, which measures itself and corrects this after load.
+  const POPUP_STRIP_ICON = 28;
   const POPUP_STRIP_GAP = 2;
   const POPUP_STRIP_PAD = 4;
-  const POPUP_STRIP_ICONS = 7; // dictionary, audio, clipboard, search, heart, settings, close
+  const POPUP_STRIP_ICONS = 10;
+  const POPUP_STRIP_DIVIDER = 7;
   const popupWidth =
-    POPUP_STRIP_PAD +
+    POPUP_STRIP_PAD * 2 +
     POPUP_STRIP_ICONS * POPUP_STRIP_ICON +
-    (POPUP_STRIP_ICONS - 1) * POPUP_STRIP_GAP;
-  const popupHeight = 38; // toolbar ~36px + frame inset so icons are not clipped
+    POPUP_STRIP_ICONS * POPUP_STRIP_GAP +
+    POPUP_STRIP_DIVIDER;
+  const popupHeight = POPUP_STRIP_ICON + POPUP_STRIP_PAD * 2;
 
   // Multi-monitor safe: convert physical UIA points only. DIP hover/OCR/cursor
   // must not go through screenToDipPoint (that pins HiDPI home PCs to one corner).

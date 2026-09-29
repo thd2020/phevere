@@ -29,6 +29,7 @@ The current desktop release is **1.5.0**. Changes are listed in [`CHANGELOG.md`]
 - Select-to-lookup in other applications. On Windows, Phevere reads the selection through UI Automation, then a Chromium accessibility request, then a silent copy that restores the clipboard. On macOS it uses the Accessibility API, then AppleScript for Safari and Chrome, then a silent copy. Password fields are skipped.
 - OCR for text that cannot be selected: hover, region, clipboard image, and whole window, using bundled PP-OCRv4 models (PP-OCRv5 is available as a download).
 - Back and forward through recent lookups, including the mouse's extra buttons.
+- A slim toolbar opens beside the selection. Its first four icons open the Lexicon, Translation, Wikipedia, and Etymology views, and the open view shows as a tab joined to the page.
 
 **Android**
 
