@@ -95,20 +95,16 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
     pushInsets()
   }
 
-  /** The edit menu's Phevere item: look up in place inside the pop-up, else open the pop-up. */
+  /**
+   * The edit menu's Phevere item. The page decides, as on Android: the pop-up and Scan look up
+   * in place; anywhere else the pop-up opens beside the selection.
+   */
   private func lookUpSelection() {
-    let js = """
-    (function(){var s=window.getSelection();var t=(s?String(s):'').trim();
-    if(!t||!s.rangeCount)return null;var r=s.getRangeAt(0).getBoundingClientRect();
-    return {text:t,left:r.left,top:r.top,right:r.right,bottom:r.bottom};})()
-    """
+    let js = "window.__pvSelectionAction ? window.__pvSelectionAction() : null"
     web.evaluateJavaScript(js) { [weak self] value, _ in
-      guard let self = self, let box = value as? [String: Any], let text = box["text"] as? String else { return }
-      if self.stripMode {
-        self.web.evaluateJavaScript("window.__pvLookupText && window.__pvLookupText(\(Self.jsonString(text)))", completionHandler: nil)
-      } else {
-        self.openPopup(text, rect: Self.rect(box))
-      }
+      guard let self = self, let out = value as? [String: Any], let text = out["text"] as? String,
+            out["inPlace"] as? Bool != true else { return }
+      self.openPopup(text, rect: Self.rect(out["rect"] as? [String: Any]))
     }
   }
 
@@ -384,16 +380,23 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
       }
       let obs = (request.results as? [VNRecognizedTextObservation]) ?? []
       var words: [[String: Any]] = []
-      for o in obs {
-        guard let t = o.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { continue }
-        let b = o.boundingBox
-        words.append([
-          "t": t,
-          "x": b.origin.x,
-          "y": 1 - b.origin.y - b.height,
-          "w": b.width,
-          "h": b.height
-        ])
+      // Vision reports lines; split each into words with their own boxes, as ML Kit does,
+      // and number the lines so the page can rebuild spaces and line breaks.
+      for (lineNo, o) in obs.enumerated() {
+        guard let candidate = o.topCandidates(1).first else { continue }
+        let line = candidate.string
+        var found = false
+        line.enumerateSubstrings(in: line.startIndex..<line.endIndex, options: .byWords) { word, range, _, _ in
+          guard let word = word, let box = (try? candidate.boundingBox(for: range))?.boundingBox else { return }
+          words.append(["t": word, "x": box.origin.x, "y": 1 - box.origin.y - box.height,
+                        "w": box.width, "h": box.height, "l": lineNo])
+          found = true
+        }
+        let whole = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !found && !whole.isEmpty {
+          let b = o.boundingBox
+          words.append(["t": whole, "x": b.origin.x, "y": 1 - b.origin.y - b.height, "w": b.width, "h": b.height, "l": lineNo])
+        }
       }
       let jpeg = work.jpegData(compressionQuality: 0.78)?.base64EncodedString() ?? ""
       self.resolve(self.pendingOcrId, [
