@@ -1,11 +1,20 @@
 package com.phevere.app;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
+import android.content.res.Resources;
 import android.graphics.Rect;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.Window;
+import android.widget.TextView;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Comparator;
@@ -61,6 +70,11 @@ final class SelectionBar {
     MenuItem ours = null;
     for (MenuItem item : items) if (isOurs(item)) ours = item;
     if (ours == null) {
+      // Apps such as X build their own menu and drop every app's text action; add Phevere back.
+      ours = inject(toolbar, type, menu);
+      if (ours != null) items = (List<MenuItem>) visible.invoke(null, menu);
+    }
+    if (ours == null) {
       if (!reportedMissing) {
         reportedMissing = true;
         StringBuilder titles = new StringBuilder();
@@ -108,6 +122,108 @@ final class SelectionBar {
     return true;
   }
 
+  /** Menu id of the Phevere item the module adds; "Phev" in ASCII, clear of app ids. */
+  private static final int INJECTED_ID = 0x50686576;
+
+  /**
+   * Add Phevere to a text-selection bar that lacks it. Only bars with Copy count as text
+   * selection. The item runs its own click listener, which MenuItem invokes before the app's
+   * callback, so the app never sees an item it does not know.
+   */
+  private static MenuItem inject(Object toolbar, Class<?> type, Menu menu) throws Exception {
+    MenuItem copy = findCopy(menu);
+    if (copy == null) return null;
+    Window window = (Window) field(type, "mWindow").get(toolbar);
+    MenuItem item = menu.add(Menu.NONE, INJECTED_ID, copy.getOrder(), APP_LABEL);
+    item.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
+    item.setOnMenuItemClickListener(clicked -> {
+      Rect anchor = null;
+      try {
+        anchor = new Rect((Rect) field(type, "mContentRect").get(toolbar));
+      } catch (ReflectiveOperationException ignored) {
+      }
+      launchWithSelection(window, menu, copy, anchor);
+      return true;
+    });
+    return item;
+  }
+
+  private static MenuItem findCopy(Menu menu) {
+    MenuItem byId = menu.findItem(android.R.id.copy);
+    if (byId != null) return byId;
+    String label = Resources.getSystem().getString(android.R.string.copy);
+    for (int i = 0; i < menu.size(); i++) {
+      MenuItem item = menu.getItem(i);
+      if (item.getTitle() != null && label.contentEquals(item.getTitle().toString().trim())) return item;
+    }
+    return null;
+  }
+
+  /**
+   * Read the selection from the selected TextView; custom views (X's posts) expose it only
+   * through Copy, so fall back to the clipboard and put the previous clip back.
+   */
+  private static void launchWithSelection(Window window, Menu menu, MenuItem copy, Rect anchor) {
+    Context ctx = window.getContext();
+    String text = selectedText(window.getDecorView());
+    if (text != null) {
+      openPhevere(ctx, text, anchor);
+      return;
+    }
+    ClipboardManager clipboard = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+    if (clipboard == null) return;
+    ClipData before = clipboard.getPrimaryClip();
+    menu.performIdentifierAction(copy.getItemId(), 0);
+    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+      ClipData clip = clipboard.getPrimaryClip();
+      CharSequence copied = clip != null && clip.getItemCount() > 0 ? clip.getItemAt(0).coerceToText(ctx) : null;
+      try {
+        if (before != null) clipboard.setPrimaryClip(before);
+        else if (Build.VERSION.SDK_INT >= 28) clipboard.clearPrimaryClip();
+      } catch (RuntimeException ignored) {
+      }
+      String picked = copied == null ? "" : copied.toString().trim();
+      if (!picked.isEmpty()) openPhevere(ctx, picked, anchor);
+    }, 150);
+  }
+
+  private static String selectedText(View view) {
+    if (view instanceof TextView) {
+      TextView tv = (TextView) view;
+      int start = Math.min(tv.getSelectionStart(), tv.getSelectionEnd());
+      int end = Math.max(tv.getSelectionStart(), tv.getSelectionEnd());
+      if (start >= 0 && end > start && end <= tv.getText().length()) {
+        String t = tv.getText().subSequence(start, end).toString().trim();
+        if (!t.isEmpty()) return t;
+      }
+    }
+    if (view instanceof ViewGroup) {
+      ViewGroup group = (ViewGroup) view;
+      for (int i = 0; i < group.getChildCount(); i++) {
+        String t = selectedText(group.getChildAt(i));
+        if (t != null) return t;
+      }
+    }
+    return null;
+  }
+
+  private static void openPhevere(Context ctx, String text, Rect anchor) {
+    Intent intent = new Intent(Intent.ACTION_PROCESS_TEXT)
+        .setClassName(OUR_PACKAGE, OUR_PACKAGE + ".ProcessTextActivity")
+        .setType("text/plain")
+        .putExtra(Intent.EXTRA_PROCESS_TEXT, text)
+        .putExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, true)
+        .putExtra(EXTRA_VIA_HOOK, true)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    if (anchor != null && !anchor.isEmpty()) {
+      intent.putExtra(SelectionAnchor.EXTRA, new int[] {anchor.left, anchor.top, anchor.right, anchor.bottom});
+    }
+    try {
+      ctx.startActivity(intent);
+    } catch (RuntimeException ignored) {
+    }
+  }
+
   static boolean isOurs(MenuItem item) {
     Intent intent = item.getIntent();
     if (intent != null) {
@@ -115,8 +231,8 @@ final class SelectionBar {
       String pkg = intent.getComponent() != null ? intent.getComponent().getPackageName() : intent.getPackage();
       return OUR_PACKAGE.equals(pkg);
     }
-    // Jetpack Compose text menus (X and other Compose apps) add process-text entries without an
-    // intent and launch them from their own click handler; only the label identifies them.
+    // Compose text menus add process-text entries without an intent, and the item inject()
+    // adds has none either; only the label identifies them.
     CharSequence title = item.getTitle();
     return title != null && APP_LABEL.contentEquals(title.toString().trim());
   }
