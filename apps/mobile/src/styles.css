@@ -273,8 +273,9 @@ a { color: var(--md-sys-color-tertiary); }
   max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
-  flex: 0 0 auto;
-  width: max-content;
+  /* Fixed width: max-content of vertical-writing children is too narrow on older WebViews. */
+  flex: 0 0 42px;
+  width: 42px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--md-sys-color-outline-variant);
@@ -311,15 +312,17 @@ a { color: var(--md-sys-color-tertiary); }
   border: 0;
   background: var(--md-sys-color-surface-container);
   margin: 0;
-  padding: 10px 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 0;
   font-family: var(--md-font-ui);
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: capitalize;
   color: var(--md-sys-color-on-surface-variant);
-  line-height: 1;
-  text-align: center;
+  line-height: 1.2;
   white-space: nowrap;
   writing-mode: vertical-rl;
   text-orientation: mixed;
