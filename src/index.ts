@@ -3006,6 +3006,17 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
                 return;
               }
               target.setSize(w, h);
+              // The pop-up grows to fit its content; keep it inside the screen.
+              try {
+                const b = target.getBounds();
+                const wa = screen.getDisplayMatching(b).workArea;
+                const bottom = wa.y + wa.height;
+                if (b.y + b.height > bottom) {
+                  target.setPosition(b.x, Math.max(wa.y, bottom - b.height));
+                }
+              } catch {
+                /* ignore */
+              }
             });
 
             ipcMain.on('open-clipboard', () => {

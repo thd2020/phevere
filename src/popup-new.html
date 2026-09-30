@@ -1872,6 +1872,10 @@
 
           resultsContainer.innerHTML = etymologyHtml;
           wireEtymologyTabs(resultsContainer);
+          fitPanelHeight();
+          resultsContainer.querySelectorAll('.etymology-tab').forEach(function (t) {
+            t.addEventListener('click', fitPanelHeight);
+          });
         }
 
         function wireEtymologyTabs(root) {
@@ -2109,10 +2113,64 @@ function startAutoCloseTimeout() {
        function resizeToExpandedPanel() {
          if (!window.electronAPI || !window.electronAPI.resizeWindow) return;
          if (!isExpanded) return;
-         // Keep a width the user dragged wider; only grow to fit the toolbar.
+         // Keep a width the user dragged wider; only grow to fit the toolbar. The height
+         // follows the content (fitPanelHeight) once the view has rendered.
          var w = Math.max(widthToFitLookupChrome(), Math.min(EXPANDED_POPUP_MAX_W, window.outerWidth || 0));
-         pvLog('[POPUP] resizeToExpandedPanel', w, lastExpandedH);
-         window.electronAPI.resizeWindow(w, lastExpandedH || EXPANDED_POPUP_H);
+         pvLog('[POPUP] resizeToExpandedPanel', w);
+         window.electronAPI.resizeWindow(w, window.outerHeight || lastExpandedH || EXPANDED_POPUP_H);
+       }
+
+       /*
+        * Window height follows what is on screen: a two-line translation gets a short
+        * panel, a long entry stops at PANEL_MAX_H and scrolls inside. Wikipedia's article
+        * reader keeps a reading height.
+        */
+       var PANEL_MIN_H = 200;
+       var PANEL_MAX_H = 620;
+       var READER_H = 600;
+       var fitTimer = null;
+
+       function fitPanelHeight() {
+         if (fitTimer) cancelAnimationFrame(fitTimer);
+         fitTimer = requestAnimationFrame(function () {
+           fitTimer = requestAnimationFrame(doFitPanelHeight);
+         });
+       }
+
+       function doFitPanelHeight() {
+         fitTimer = null;
+         if (!isExpanded || !window.electronAPI || !window.electronAPI.resizeWindow) return;
+         var loading = document.getElementById('loadingElement');
+         if (loading && loading.style.display !== 'none' && loading.style.display !== '') return;
+         var pane = document.querySelector('.results-section');
+         var results = document.getElementById('dictionary-results');
+         var toolbar = document.getElementById('toolbar');
+         if (!pane || !results || !toolbar) return;
+         var h;
+         if (pane.classList.contains('is-reader')) {
+           h = READER_H;
+         } else {
+           var cs = window.getComputedStyle(pane);
+           var pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+           var content;
+           if (pane.classList.contains('is-lexicon-fill')) {
+             var head = document.querySelector('.lexicon-block--headword');
+             var panel = document.querySelector('.lexicon-pos-panel');
+             var rail = document.querySelector('.lexicon-rail-inner');
+             content = (head ? head.getBoundingClientRect().height : 0)
+               + Math.max(panel ? panel.scrollHeight : 0, rail ? rail.scrollHeight : 0) + 1;
+           } else {
+             content = results.scrollHeight;
+           }
+           var lang = document.getElementById('languageSelection');
+           var langH = lang && lang.style.display !== 'none' ? lang.getBoundingClientRect().height : 0;
+           var frame = Math.max(0, (window.outerHeight || 0) - (window.innerHeight || 0));
+           h = toolbar.getBoundingClientRect().height + langH + pad + content + frame;
+         }
+         h = Math.round(Math.max(PANEL_MIN_H, Math.min(PANEL_MAX_H, h)));
+         if (Math.abs(h - (window.outerHeight || 0)) < 4) return;
+         lastExpandedH = h;
+         window.electronAPI.resizeWindow(window.outerWidth || EXPANDED_POPUP_MIN_W, h);
        }
 
        // Expand toolbar
@@ -2457,6 +2515,7 @@ function startAutoCloseTimeout() {
               }
             });
           }
+          fitPanelHeight();
        }
 
              function friendlyTranslationSource(src) {
@@ -3227,6 +3286,7 @@ function startAutoCloseTimeout() {
         const container = document.getElementById('dictionary-results');
         showDictionaryResults('flow');
         container.innerHTML = `<div class="error-message">Failed to look up "${text}".<br><small>${error.message || 'Unknown error'}</small></div>`;
+        fitPanelHeight();
       }
 
              // Expose utility functions to the window object for onclick handlers
@@ -3858,6 +3918,7 @@ function startAutoCloseTimeout() {
                     </div>
                   </div>`;
                  resultsContainer.innerHTML = html;
+                 fitPanelHeight();
                  resultsContainer.querySelectorAll('.wikipedia-item').forEach((el) => {
                    const open = () => {
                      const idx = Number(el.getAttribute('data-wiki-idx'));
@@ -3889,6 +3950,7 @@ function startAutoCloseTimeout() {
                     </div>
                     <webview src="${escapeHtml(url)}" partition="persist:wikipedia" allowpopups></webview>
                   </div>`;
+                 fitPanelHeight();
                  document.getElementById('wikiReaderBack')?.addEventListener('click', showList);
                  document.getElementById('wikiReaderExt')?.addEventListener('click', () => {
                    if (window.electronAPI && window.electronAPI.openExternal) {
