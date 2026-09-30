@@ -2491,9 +2491,10 @@ export class DictionaryService extends BaseService {
       if (!etyms) return undefined;
 
       const chunks: string[] = [];
-      // Prefer Chinese narrative etymology (童理民), then English.
+      // Chinese narrative etymology first, then English.
       const order = ['zh', 'en', ...Object.keys(etyms).filter((k) => k !== 'zh' && k !== 'en')];
       const seen = new Set<string>();
+      const langCounts = new Map<string, number>();
       for (const lang of order) {
         const arr = etyms[lang];
         if (!Array.isArray(arr)) continue;
@@ -2503,14 +2504,14 @@ export class DictionaryService extends BaseService {
           const tip = value.slice(0, 48);
           if (seen.has(tip)) continue;
           seen.add(tip);
-          let source = typeof item?.source === 'string' ? item.source.trim() : '';
-          // Normalize known author attribution
-          if (/童理/.test(source) || source.includes('\u7ae5\u7406\u6c11')) {
-            source = '童理民';
-          }
-          if (!source) source = lang === 'zh' ? '有道词源' : 'Youdao';
-          const desc = typeof item?.desc === 'string' && item.desc.trim() ? `（${item.desc.trim()}）` : '';
-          chunks.push(`[${source}${desc}]\n${value}`);
+          // Tabs name the source and language, like Wiktionary and Etymonline. Youdao's own
+          // attribution (a contributor such as 童理民, or "wiktionary" for text it mirrors) and
+          // its gloss of the headword are not source names.
+          const langName = lang === 'zh' ? '中文' : lang === 'en' ? 'English' : lang;
+          const count = (langCounts.get(lang) || 0) + 1;
+          langCounts.set(lang, count);
+          const label = `Youdao · ${langName}${count > 1 ? ` ${count}` : ''}`;
+          chunks.push(`[${label}]\n${value}`);
         }
       }
 
