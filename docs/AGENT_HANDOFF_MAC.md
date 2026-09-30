@@ -3,7 +3,7 @@
 **Audience:** another Cursor agent on a **different Mac** (Intel or Apple Silicon).  
 **Source chat:** phevere on Windows (`C:\Users\8114\projects\phevere`).  
 **Write date:** 2026-09-04.  
-**Checkout:** `origin/main`. Shipped desktop build is **2.0.0** (Windows NSIS x64/ARM64 + macOS Intel/Apple Silicon DMGs from the same `release.yml` tag). Unsigned Mac DMGs can also be built locally with `npm run make:mac:x64` / `make:mac:arm64` (not notarized).
+**Checkout:** `origin/main`. Shipped desktop build is **2.1.0** (Windows NSIS x64/ARM64 + macOS Intel/Apple Silicon DMGs from the same `release.yml` tag). Unsigned Mac DMGs can also be built locally with `npm run make:mac:x64` / `make:mac:arm64` (not notarized).
 
 **2026-09-04:** Toolbar 🔊 is recorded audio; IPA chip speakers synthesize that transcription. Lexicon rail is vertical tabs in block cards; below the headword the rail and definitions scroll separately (visible rail scrollbar). Thick POS rules sit inside the lexicon card. Panel uses separate rounded cards per block. Mac capture actions match Windows (read-window, Music/Spotify now-playing, Screen Recording prompt, inset traffic lights, ⌘ keycaps). Selection backend is no longer a draft.
 
@@ -38,7 +38,7 @@ Debug: `PHEVERE_DEBUG_AX=1 npm start`
 
 | Rule | Detail |
 |---|---|
-| Version | `package.json` is **2.0.0**. Do not bump unless the user asks. |
+| Version | `package.json` is **2.1.0**. Do not bump unless the user asks. |
 | Windows tags | NSIS Setup from `release.yml` on `v*`. Never force-push `main`. Do not retag `v1.4.0` for Mac work. |
 | Dependabot | **#1–#6 and #8** merged 2026-08-26. **#7** (TypeScript 7) and **#9** (eslint-plugin 8) stay closed until parser + ts-loader move with them. |
 | Signing | Homemade certs do not clear SmartScreen. See `docs/CODE_SIGNING.md`. Irrelevant on Mac until packaging. |
@@ -52,7 +52,7 @@ Product architecture the user wants long-term (Aug 6): one **capture hub**, OS-s
 
 ## 3. Shipped Windows 1.4.0 (frozen context — do not re-do)
 
-Current Windows installer is **2.0.0**. The [v1.4.0](https://github.com/thd2020/phevere/releases/tag/v1.4.0) Setup is historical. Do not retag it.
+Current Windows installer is **2.1.0**. The [v1.4.0](https://github.com/thd2020/phevere/releases/tag/v1.4.0) Setup is historical. Do not retag it.
 
 Already on `main` (and in that Setup, except the Mac commit):
 

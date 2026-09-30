@@ -14,7 +14,7 @@ on:
       attach_tag:
         description: 'Existing GitHub release tag to replace Win x64/ARM64 Setup + Mac x64/arm64 DMG (e.g. v1.5.0)'
         required: true
-        default: 'v2.0.0'
+        default: 'v2.1.0'
         type: string
       targets:
         description: 'Which builds to make and attach'

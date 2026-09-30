@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-30
+
 ### Added
 
 - **Pronunciation voices on desktop (2026-09-30):** the phone's engines. eSpeak NG is built in (the Mechanical voice, and every IPA chip, spoken from the IPA itself); Kokoro neural voices can be downloaded in Settings → Audio (compact 132 MB, full 350 MB), except on Windows on ARM, which sherpa-onnx does not support. The headword speaker plays the recorded clip and, when there is none, speaks the word with the chosen voice; notebook ▶ does the same; translation speakers use the chosen voice. Speed and volume now apply.
@@ -348,7 +350,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/thd2020/phevere/releases/tag/v2.1.0
 [2.0.0]: https://github.com/thd2020/phevere/releases/tag/v2.0.0
 [1.5.0]: https://github.com/thd2020/phevere/releases/tag/v1.5.0
 [1.4.1]: https://github.com/thd2020/phevere/releases/tag/v1.4.1

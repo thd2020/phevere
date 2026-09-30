@@ -11,7 +11,7 @@ Phevere is a dictionary for text you are already reading. Select a word in any a
 </p>
 <p align="center"><sub>Android app: a lookup, a word selected on a scanned page, and the selection-bar settings.</sub></p>
 
-The current desktop release is **2.0.0**. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
+The current desktop release is **2.1.0**. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
