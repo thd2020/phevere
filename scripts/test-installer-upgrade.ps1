@@ -41,6 +41,8 @@ $ownedInstallRoots = @($customInstallRoot)
 $appExe = Join-Path $installRoot 'Phevere.exe'
 $stateHelper = Join-Path $PSScriptRoot 'test-installer-state.js'
 $electronExe = Join-Path $repo 'node_modules\electron\dist\electron.exe'
+$exitProbeHelper = Join-Path $PSScriptRoot 'test-electron-exit-probe.js'
+$packagedAppExe = Join-Path (Split-Path (Split-Path $PackagedAsar -Parent) -Parent) 'Phevere.exe'
 $fixtureHtml = Join-Path $fixtureRoot 'storage.html'
 $desktop = [Environment]::GetFolderPath('CommonDesktopDirectory')
 $programs = [Environment]::GetFolderPath('CommonPrograms')
@@ -49,6 +51,127 @@ $startupRegistryPath = 'Software\Microsoft\Windows\CurrentVersion\Run'
 $startupFixtureCommand = $null
 
 function Assert-True([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
+function Format-ExitCode([int]$Code) {
+    $unsigned = [BitConverter]::ToUInt32([BitConverter]::GetBytes($Code), 0)
+    return "$Code (0x$($unsigned.ToString('X8')))"
+}
+function Start-FixtureApp([string]$Executable, [string]$Arguments, [string]$Stdout, [string]$Stderr) {
+    $diagnosticEnvironment = @{ ELECTRON_ENABLE_STACK_DUMPING = '1'; ELECTRON_ENABLE_LOGGING = '1'; ELECTRON_LOG_FILE = "$Stdout.chromium.log"; PHEVERE_LOG = '1'; LOG_LEVEL = 'debug' }
+    $previousEnvironment = @{}
+    try {
+        foreach ($name in $diagnosticEnvironment.Keys) {
+            $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+            [Environment]::SetEnvironmentVariable($name, $diagnosticEnvironment[$name], 'Process')
+        }
+        $startOptions = @{ FilePath = $Executable; WindowStyle = 'Hidden'; PassThru = $true; RedirectStandardOutput = $Stdout; RedirectStandardError = $Stderr }
+        if ($Arguments) { $startOptions.ArgumentList = $Arguments }
+        $process = Start-Process @startOptions
+        $null = $process.Handle
+        return $process
+    } finally {
+        foreach ($name in $previousEnvironment.Keys) {
+            if ($null -eq $previousEnvironment[$name]) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
+            else { [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], 'Process') }
+        }
+    }
+}
+function Write-FixtureLogs([string[]]$Paths) {
+    $allPaths = @($Paths)
+    foreach ($logPath in $Paths) { if ($logPath.EndsWith('.stdout')) { $allPaths += "$logPath.chromium.log" } }
+    foreach ($logPath in $allPaths) {
+        if (Test-Path -LiteralPath $logPath) {
+            Write-Host "Fixture evidence: $logPath"
+            Get-Content -LiteralPath $logPath -Tail 80 | ForEach-Object { Write-Host $_ }
+        }
+    }
+}
+function Write-WindowsFaultEvents {
+    try {
+        $events = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = @(1000, 1001); StartTime = $fixtureStartedAt } -ErrorAction Stop |
+            Where-Object { $_.Message -match '(?i)\b(phevere|electron)\.exe\b' })
+        if (-not $events.Count) { Write-Host 'No Phevere/Electron Application 1000/1001 fault events were recorded during this fixture.' }
+        foreach ($event in $events) {
+            Write-Host "Windows fault evidence: time=$($event.TimeCreated.ToUniversalTime().ToString('o')), eventId=$($event.Id)"
+            Write-Host $event.Message
+        }
+    } catch { Write-Host "Windows fault event query: $($_.Exception.Message)" }
+}
+function Stop-OwnedFixtureProcesses {
+    foreach ($process in @(Get-Process -Name 'Phevere' -ErrorAction SilentlyContinue)) {
+        if ($process.Path -and $process.Path -in @($packagedAppExe, $appExe)) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+    }
+}
+function Invoke-DiagnosticCase([string]$Name, [string]$Executable, [string]$Arguments, [int]$ExpectedCode) {
+    $stdout = Join-Path $fixtureRoot "$Name.stdout"
+    $stderr = Join-Path $fixtureRoot "$Name.stderr"
+    $process = $null
+    try {
+        $process = Start-FixtureApp $Executable $Arguments $stdout $stderr
+        if (-not $process.WaitForExit(30000)) {
+            Write-Host "Diagnostic $Name timed out: PID=$($process.Id)"
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        } else {
+            Write-Host "Diagnostic $Name finished: PID=$($process.Id), expected=$ExpectedCode, exit=$(Format-ExitCode $process.ExitCode)"
+        }
+        Write-FixtureLogs @($stdout, $stderr)
+    } catch { Write-Host "Diagnostic $Name could not complete: $($_.Exception.Message)" }
+    finally {
+        if ($null -ne $process) {
+            $process.Refresh()
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+        }
+        Stop-OwnedFixtureProcesses
+    }
+}
+function Invoke-FailureDiagnostics {
+    Write-Host 'Diagnostic comparison only. Its results cannot turn the failed release gate into a pass.'
+    foreach ($mode in @('standard', 'disable-gpu')) {
+        $gpuArgument = if ($mode -eq 'disable-gpu') { ' --disable-gpu' } else { '' }
+        foreach ($code in @(0, 1)) {
+            foreach ($cycle in @(1, 2)) {
+                $name = "minimal-$mode-exit$code-cycle$cycle"
+                $profile = Join-Path $fixtureRoot "$name-profile"
+                Invoke-DiagnosticCase $name $electronExe ('"' + $exitProbeHelper + '" "' + $profile + '" ' + $code + $gpuArgument) $code
+            }
+        }
+        foreach ($model in @('none', 'invalid')) {
+            foreach ($cycle in @(1, 2)) {
+                $name = "packaged-$mode-$model-cycle$cycle"
+                $profile = Join-Path $fixtureRoot "$name-profile"
+                New-Item -ItemType Directory -Path $profile | Out-Null
+                if ($mode -eq 'disable-gpu') { New-Item -ItemType File -Path (Join-Path $profile '.disable-gpu') | Out-Null }
+                $expected = if ($model -eq 'none') { 0 } else { 1 }
+                Invoke-DiagnosticCase $name $packagedAppExe ('--user-data-dir="' + $profile + '" --install-audio-model=' + $model + $gpuArgument) $expected
+            }
+        }
+    }
+}
+function Invoke-BaselineStartupDiagnostic {
+    $profile = Join-Path $fixtureRoot 'baseline-startup-profile'
+    New-Item -ItemType Directory -Path $profile | Out-Null
+    Copy-Item -LiteralPath (Join-Path $userData 'monitor-settings.json') -Destination (Join-Path $profile 'monitor-settings.json')
+    $stdout = Join-Path $fixtureRoot 'baseline-startup.stdout'
+    $stderr = Join-Path $fixtureRoot 'baseline-startup.stderr'
+    $process = $null
+    try {
+        $process = Start-FixtureApp $appExe ('--user-data-dir="' + $profile + '"') $stdout $stderr
+        Start-Sleep -Seconds 8
+        $process.Refresh()
+        if ($process.HasExited) {
+            $process.WaitForExit()
+            Write-Host "Published baseline startup exited: PID=$($process.Id), exit=$(Format-ExitCode $process.ExitCode)"
+            Write-FixtureLogs @($stdout, $stderr, (Join-Path $profile 'diagnostics\lifecycle.jsonl'))
+        } else { Write-Host "Published baseline stayed alive for eight seconds: PID=$($process.Id)" }
+    } catch { Write-Host "Published baseline startup diagnostic: $($_.Exception.Message)" }
+    finally {
+        if ($null -ne $process) {
+            $process.Refresh()
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+        }
+        Stop-OwnedFixtureProcesses
+        try { Assert-FixtureProcessesStopped } catch { Write-Host "Published baseline teardown: $($_.Exception.Message)" }
+    }
+}
 function Get-StartupCommand {
     $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser, [Microsoft.Win32.RegistryView]::Registry64)
     try {
@@ -135,8 +258,7 @@ function Assert-HeadlessAudio([string]$Model, [int]$ExpectedExitCode, [string]$E
     $suffix = if ($Model) { $Model } else { 'empty' }
     $stdout = Join-Path $fixtureRoot "audio-$suffix.stdout"
     $stderr = Join-Path $fixtureRoot "audio-$suffix.stderr"
-    $process = Start-Process -FilePath $appExe -ArgumentList "--install-audio-model=$Model" -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-    $null = $process.Handle
+    $process = Start-FixtureApp $appExe "--install-audio-model=$Model" $stdout $stderr
     $deadline = [DateTime]::UtcNow.AddSeconds([Math]::Min($TimeoutSeconds, 60))
     $helperWindows = @{}
     try {
@@ -149,7 +271,11 @@ function Assert-HeadlessAudio([string]$Model, [int]$ExpectedExitCode, [string]$E
             $process.Refresh()
         } while (-not $process.HasExited)
         $process.WaitForExit()
-        Assert-True ($process.ExitCode -eq $ExpectedExitCode) "Audio CLI '$Model' exited with $($process.ExitCode), expected $ExpectedExitCode. stderr: $(Get-Content -LiteralPath $stderr -Raw)"
+        if ($process.ExitCode -ne $ExpectedExitCode) {
+            Write-Host "Audio CLI '$Model' failed: PID=$($process.Id), expected=$ExpectedExitCode, exit=$(Format-ExitCode $process.ExitCode)"
+            Write-FixtureLogs @($stdout, $stderr)
+            throw "Audio CLI '$Model' exited with $(Format-ExitCode $process.ExitCode), expected $ExpectedExitCode."
+        }
         $events = @()
         foreach ($line in Get-Content -LiteralPath $stdout) {
             if ($line.TrimStart().StartsWith('{')) {
@@ -250,6 +376,7 @@ foreach ($existingPath in $allowedHistoricalRoots) {
 Assert-True (Test-Path -LiteralPath $electronExe) 'Install npm dependencies before running this test.'
 Assert-True ([IO.Path]::GetFullPath($fixtureRoot).StartsWith($runnerRoot + '\', [StringComparison]::OrdinalIgnoreCase)) 'The fixture must be under RUNNER_TEMP.'
 $createdUserData = $false
+$fixtureStartedAt = Get-Date
 try {
     New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
     # Detect visible top-level UI and hidden Electron BrowserWindows. Titled,
@@ -313,6 +440,7 @@ public static class InstallerTestWindows {
     Invoke-Hidden $electronExe ('"' + $stateHelper + '" storage-seed "' + $userData + '" "' + $fixtureHtml + '"')
     $settingsHash = (Get-FileHash -LiteralPath (Join-Path $userData 'monitor-settings.json')).Hash
     $databaseHash = (Get-FileHash -LiteralPath (Join-Path $userData 'phevere.sqlite')).Hash
+    Invoke-BaselineStartupDiagnostic
     Set-Choices $entry 'legacy'
     foreach ($link in $links) { if (Test-Path -LiteralPath $link) { Remove-Item -LiteralPath $link -Force } }
     Remove-OwnedTree (Join-Path $installRoot 'resources\ocr-models')
@@ -356,20 +484,14 @@ public static class InstallerTestWindows {
         Set-Choices (Get-OwnedEntry) $choice
         $startupStdout = Join-Path $fixtureRoot "startup-choice-$choice.stdout"
         $startupStderr = Join-Path $fixtureRoot "startup-choice-$choice.stderr"
-        $running = Start-Process -FilePath $appExe -WindowStyle Hidden -PassThru -RedirectStandardOutput $startupStdout -RedirectStandardError $startupStderr
-        $null = $running.Handle
+        $running = Start-FixtureApp $appExe '' $startupStdout $startupStderr
         Start-Sleep -Seconds 8
         $running.Refresh()
         if ($running.HasExited) {
             $running.WaitForExit()
-            Write-Host "Installed startup failed: PID=$($running.Id), exitCode=$($running.ExitCode), executable=$appExe"
-            foreach ($logPath in @($startupStdout, $startupStderr, (Join-Path $userData 'diagnostics\lifecycle.jsonl'))) {
-                if (Test-Path -LiteralPath $logPath) {
-                    Write-Host "Fixture startup evidence: $logPath"
-                    Get-Content -LiteralPath $logPath -Tail 80 | ForEach-Object { Write-Host $_ }
-                }
-            }
-            throw "The installed app exited before the running-app upgrade test (exitCode=$($running.ExitCode))."
+            Write-Host "Installed startup failed: PID=$($running.Id), exit=$(Format-ExitCode $running.ExitCode), executable=$appExe"
+            Write-FixtureLogs @($startupStdout, $startupStderr, (Join-Path $userData 'diagnostics\lifecycle.jsonl'))
+            throw "The installed app exited before the running-app upgrade test (exit=$(Format-ExitCode $running.ExitCode))."
         }
         Write-Host "Reinstalling the same version with saved component choice $choice while the app is running."
         Invoke-Hidden $Installer '/S'
@@ -401,6 +523,15 @@ public static class InstallerTestWindows {
     foreach ($link in $links) { Assert-True (-not (Test-Path -LiteralPath $link)) 'Uninstall left a shortcut.' }
     Assert-State
     Write-Host 'PASS: upgrade, same-version replacement, running-app shutdown, component switches, startup lifecycle, wrapper exit propagation, headless audio, notebook, localStorage and uninstall preservation.'
+} catch {
+    $fixtureFailure = $_
+    Write-Host "Original release gate failure: $($fixtureFailure.Exception.Message)"
+    Write-FixtureLogs @((Join-Path $userData 'diagnostics\lifecycle.jsonl'))
+    $crashDirectory = Join-Path $userData 'diagnostics\crashes'
+    if (Test-Path -LiteralPath $crashDirectory) { Get-ChildItem -LiteralPath $crashDirectory -File -Recurse | Select-Object FullName, Length | Format-Table | Out-String | Write-Host }
+    try { Invoke-FailureDiagnostics } catch { Write-Host "Failure diagnostics could not complete: $($_.Exception.Message)" }
+    Write-WindowsFaultEvents
+    throw $fixtureFailure
 } finally {
     # Stop only processes whose executable belongs to this fixture.
     foreach ($process in @(Get-Process -Name 'Phevere' -ErrorAction SilentlyContinue)) {
