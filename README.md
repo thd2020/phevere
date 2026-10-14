@@ -2,6 +2,8 @@
 
 2026-10-14 (unreleased): desktop lookup panels keep a minimum width of 460 pixels so Save and Close remain visible. New selections leave an expanded panel in place.
 
+The Windows selection monitor now owns and joins its capture workers and releases replaced callbacks. Local crash dumps and exit records go to `%APPDATA%\phevere\diagnostics`; they are not uploaded. The reported exit after a day of idle time has not yet been reproduced.
+
 ![Screenshot of the desktop lookup at its minimum width, with Save and Close visible](README.assets/desktop-popup-minimum.png)
 
 The Electron regression fixture at the minimum panel size. Run `node scripts/test-popup-sizing.js --screenshot` to refresh the capture and verify the toolbar, views, Save, Options, and Close.

@@ -27,21 +27,12 @@
 #include <iostream>
 #include <chrono>
 #include <mutex>
+#include <condition_variable>
+#include <memory>
 
 #ifndef UiaRootObjectId
 #define UiaRootObjectId static_cast<DWORD>(-25)
 #endif
-
-static void joinOrDetach(std::thread& t, DWORD timeoutMs) {
-    if (!t.joinable()) return;
-    HANDLE h = reinterpret_cast<HANDLE>(t.native_handle());
-    const DWORD wait = WaitForSingleObject(h, timeoutMs);
-    if (wait == WAIT_OBJECT_0) {
-        t.join();
-    } else {
-        t.detach();
-    }
-}
 
 // Forward declaration of the handler class
 class UIAutomationEventHandler;
@@ -50,7 +41,7 @@ class UIAutomationSelectionMonitor {
 private:
     std::atomic<bool> running{false};
     std::thread monitor_thread;
-    DWORD monitor_thread_id = 0; // Store thread ID to post messages to it
+    std::atomic<DWORD> monitor_thread_id{0};
     std::function<void(std::string, int, int)> callback;
     std::string last_selection;
     
@@ -59,6 +50,18 @@ private:
 
     // Static instance pointer for the event handler to call back into the class
     static UIAutomationSelectionMonitor* instance;
+    struct EventTarget {
+        std::mutex mutex;
+        UIAutomationSelectionMonitor* monitor = nullptr;
+    };
+    std::shared_ptr<EventTarget> eventTarget = std::make_shared<EventTarget>();
+    std::thread capture_thread;
+    std::mutex capture_mutex;
+    std::condition_variable capture_ready;
+    bool capture_pending = false;
+    int capture_x = 0;
+    int capture_y = 0;
+    uint64_t pending_capture_gen = 0;
 
     // Debouncing mechanism
     std::thread debounce_thread;
@@ -86,12 +89,11 @@ private:
     // Last time UIA returned non-empty selected text (or a Phevere-owned HWND).
     // Empty TextSelectionChanged must not stamp this, or Chromium webviews
     // (Cursor agent chat) abort the drag Ctrl+C fallback.
-    static std::chrono::steady_clock::time_point lastUiaEventTime;
+    static std::atomic<long long> lastUiaEventTime;
     
     // Double-click detection and thread synchronization
     static POINT lastClickPt;
     static std::chrono::steady_clock::time_point lastClickTime;
-    static std::atomic<int> active_fallback_threads;
     static std::atomic<uint64_t> capture_gen;
 
     // Input gate: a UIA selection event is only trusted when the user actually
@@ -145,6 +147,11 @@ public:
         if (debugEnabled) std::cout << "[UIA] Starting UIAutomation selection monitoring..." << std::endl;
         running.store(true);
         debounce_running.store(true);
+        {
+            std::lock_guard<std::mutex> lock(eventTarget->mutex);
+            eventTarget->monitor = this;
+        }
+        capture_thread = std::thread(&UIAutomationSelectionMonitor::captureLoop, this);
         
         // Start the dedicated monitor thread
         monitor_thread = std::thread(&UIAutomationSelectionMonitor::monitorLoop, this);
@@ -163,22 +170,41 @@ public:
         if (debugEnabled) std::cout << "[UIA] Stopping UIAutomation selection monitoring..." << std::endl;
         
         debounce_running.store(false);
-        joinOrDetach(debounce_thread, 400);
+        capture_gen.fetch_add(1);
+        {
+            // Pair the stop notification with the worker's wait mutex so it
+            // cannot be lost between the predicate check and entering wait.
+            std::lock_guard<std::mutex> lock(capture_mutex);
+            capture_pending = false;
+        }
+        capture_ready.notify_all();
 
         if (monitor_thread_id != 0) {
             PostThreadMessage(monitor_thread_id, WM_QUIT, 0, 0);
         }
-        joinOrDetach(monitor_thread, 400);
+        if (monitor_thread.joinable()) monitor_thread.join();
         monitor_thread_id = 0;
-
-        for (int i = 0; i < 10 && active_fallback_threads.load() > 0; ++i) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        {
+            // UIA can deliver a callback already in flight after unregistering.
+            std::lock_guard<std::mutex> lock(eventTarget->mutex);
+            eventTarget->monitor = nullptr;
+        }
+        if (capture_thread.joinable()) capture_thread.join();
+        if (debounce_thread.joinable()) debounce_thread.join();
+        {
+            std::lock_guard<std::mutex> lock(capture_mutex);
+            capture_pending = false;
+        }
+        {
+            std::lock_guard<std::mutex> lock(debounce_mutex);
+            pending_selection.clear();
         }
         
         if (debugEnabled) std::cout << "[UIA] Selection monitoring stopped" << std::endl;
     }
 
     std::string get_current_selection() {
+        std::lock_guard<std::mutex> lock(debounce_mutex);
         return last_selection;
     }
 
@@ -188,6 +214,7 @@ public:
 
 private:
     void monitorLoop(); 
+    void captureLoop();
     void handleSelectionChanged(IUIAutomationElement* sender);
     void debounceLoop();
     void updatePendingSelection(const std::string& newSelection, int x, int y);
@@ -210,8 +237,10 @@ private:
     class UIAutomationEventHandler : public IUIAutomationEventHandler {
     private:
         LONG refCount;
+        std::shared_ptr<EventTarget> target;
     public:
-        UIAutomationEventHandler() : refCount(1) {}
+        explicit UIAutomationEventHandler(std::shared_ptr<EventTarget> target)
+            : refCount(1), target(std::move(target)) {}
         ~UIAutomationEventHandler() {}
 
         ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&refCount); }
@@ -235,8 +264,9 @@ private:
             // TextEdit_TextChanged fire on every keystroke and on any control
             // whose text is repainted (status bars, progress labels), which is
             // the main source of spurious popups.
-            if (UIAutomationSelectionMonitor::instance && eventId == UIA_Text_TextSelectionChangedEventId) {
-                UIAutomationSelectionMonitor::instance->handleSelectionChanged(sender);
+            std::lock_guard<std::mutex> lock(target->mutex);
+            if (target->monitor && target->monitor->running.load() && eventId == UIA_Text_TextSelectionChangedEventId) {
+                target->monitor->handleSelectionChanged(sender);
             } else {
                 if (UIAutomationSelectionMonitor::debugEnabled) std::cout << "[UIA] [?] UNKNOWN EVENT: " << eventId << std::endl;
             }
@@ -250,10 +280,9 @@ bool UIAutomationSelectionMonitor::inputGateDisabled = false;
 // Define static variables
 UIAutomationSelectionMonitor* UIAutomationSelectionMonitor::instance = nullptr;
 POINT UIAutomationSelectionMonitor::mouseDownPt = {0, 0};
-std::chrono::steady_clock::time_point UIAutomationSelectionMonitor::lastUiaEventTime{};
+std::atomic<long long> UIAutomationSelectionMonitor::lastUiaEventTime{0};
 POINT UIAutomationSelectionMonitor::lastClickPt = {0, 0};
 std::chrono::steady_clock::time_point UIAutomationSelectionMonitor::lastClickTime = std::chrono::steady_clock::now();
-std::atomic<int> UIAutomationSelectionMonitor::active_fallback_threads{0};
 std::atomic<uint64_t> UIAutomationSelectionMonitor::capture_gen{0};
 std::atomic<long long> UIAutomationSelectionMonitor::lastSelectGestureMs{0};
 std::atomic<long long> UIAutomationSelectionMonitor::lastTypingMs{0};
@@ -295,7 +324,7 @@ bool UIAutomationSelectionMonitor::isUserSelectionGesture() {
 void UIAutomationSelectionMonitor::monitorLoop() {
     if (debugEnabled) std::cout << "[UIA] THREAD: Starting dedicated UIA monitor thread..." << std::endl;
 
-    lastUiaEventTime = std::chrono::steady_clock::time_point{};
+    lastUiaEventTime.store(0);
 
     bool comInitialized = false;
     bool handlersRegistered = false;
@@ -316,9 +345,12 @@ void UIAutomationSelectionMonitor::monitorLoop() {
                 UIA_Text_TextSelectionChangedEventId, pDesktopElement, pEventHandler);
             handlersRegistered = false;
         }
-        pEventHandler.Release();
-        pDesktopElement.Release();
-        pAutomation.Release();
+        {
+            std::lock_guard<std::mutex> lock(eventTarget->mutex);
+            pEventHandler.Release();
+            pDesktopElement.Release();
+            pAutomation.Release();
+        }
         if (comInitialized) {
             CoUninitialize();
             comInitialized = false;
@@ -338,7 +370,9 @@ void UIAutomationSelectionMonitor::monitorLoop() {
     comInitialized = true;
     
     monitor_thread_id = GetCurrentThreadId();
-    if (debugEnabled) std::cout << "[UIA] THREAD: COM initialized, thread ID: " << monitor_thread_id << std::endl;
+    MSG initialMessage;
+    PeekMessage(&initialMessage, nullptr, WM_USER, WM_USER, PM_NOREMOVE);
+    if (debugEnabled) std::cout << "[UIA] THREAD: COM initialized, thread ID: " << monitor_thread_id.load() << std::endl;
     
     hr = CoCreateInstance(__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER, __uuidof(IUIAutomation), (void**)&pAutomation);
     if (FAILED(hr) || !pAutomation) {
@@ -354,7 +388,7 @@ void UIAutomationSelectionMonitor::monitorLoop() {
     }
     if (debugEnabled) std::cout << "[UIA] THREAD: Desktop element obtained successfully" << std::endl;
 
-    pEventHandler = new UIAutomationEventHandler();
+    pEventHandler.Attach(new UIAutomationEventHandler(eventTarget));
     if (debugEnabled) std::cout << "[UIA] THREAD: Registering TextSelectionChanged event handler..." << std::endl;
     HRESULT hrSel = pAutomation->AddAutomationEventHandler(
         UIA_Text_TextSelectionChangedEventId,
@@ -384,7 +418,7 @@ void UIAutomationSelectionMonitor::monitorLoop() {
     }
 
     MSG msg;
-    while (running.load() && GetMessage(&msg, NULL, 0, 0)) {
+    while (running.load() && GetMessage(&msg, NULL, 0, 0) > 0) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
@@ -400,7 +434,7 @@ void UIAutomationSelectionMonitor::handleSelectionChanged(IUIAutomationElement* 
     if (!isUserSelectionGesture()) {
         if (ownProcess) {
             // Do not leave Ctrl+C armed while selecting in Phevere.
-            lastUiaEventTime = std::chrono::steady_clock::now();
+            lastUiaEventTime.store(nowMs());
         }
         return;
     }
@@ -418,10 +452,10 @@ void UIAutomationSelectionMonitor::handleSelectionChanged(IUIAutomationElement* 
         // Stamp only a *successful* capture (same idea as macOS last_ax_ok_ms).
         // Chromium chat panels fire TextSelectionChanged with an empty TextPattern;
         // stamping those used to abort the drag Ctrl+C fallback within 150ms.
-        lastUiaEventTime = std::chrono::steady_clock::now();
+        lastUiaEventTime.store(nowMs());
         updatePendingSelection(selectedText, selX, selY);
     } else if (ownProcess) {
-        lastUiaEventTime = std::chrono::steady_clock::now();
+        lastUiaEventTime.store(nowMs());
         if (debugEnabled) std::cout << "[UIA] Own-process selection empty; skip Ctrl+C" << std::endl;
     } else if (debugEnabled) {
         std::cout << "[UIA] Empty TextPattern; leaving Ctrl+C fallback available" << std::endl;
@@ -430,6 +464,7 @@ void UIAutomationSelectionMonitor::handleSelectionChanged(IUIAutomationElement* 
 
 void UIAutomationSelectionMonitor::updatePendingSelection(const std::string& newSelection, int x, int y) {
     std::lock_guard<std::mutex> lock(debounce_mutex);
+    if (!running.load()) return;
     // After a word has already been emitted, a distinct correction should not wait
     // another full debounce. Prefix growth of 1–2 chars (drag / typing) still resets.
     const bool replacingSettled =
@@ -839,7 +874,7 @@ void UIAutomationSelectionMonitor::runCaptureChain(int x, int y, uint64_t gen) {
                 std::string text = getSelectedTextFromFocusedOrPoint(uia);
                 if (!text.empty()) {
                     if (debugEnabled) std::cout << "[UIA] step1 TextPattern hit" << std::endl;
-                    lastUiaEventTime = std::chrono::steady_clock::now();
+                    lastUiaEventTime.store(nowMs());
                     updatePendingSelection(text, x, y);
                 } else {
                     if (debugEnabled) {
@@ -868,7 +903,7 @@ void UIAutomationSelectionMonitor::runCaptureChain(int x, int y, uint64_t gen) {
                             if (debugEnabled) {
                                 std::cout << "[UIA] step2 after WM_GETOBJECT poke" << std::endl;
                             }
-                            lastUiaEventTime = std::chrono::steady_clock::now();
+                            lastUiaEventTime.store(nowMs());
                             updatePendingSelection(text, x, y);
                         } else {
                             // 3. No Apple Events analog. macOS only uses AppleScript
@@ -908,8 +943,7 @@ void UIAutomationSelectionMonitor::runCaptureChain(int x, int y, uint64_t gen) {
 void UIAutomationSelectionMonitor::triggerSyntheticCopyFallback(int x, int y, uint64_t gen) {
     if (capture_gen.load() != gen) return;
 
-    auto now = std::chrono::steady_clock::now();
-    auto elapsedSinceUia = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastUiaEventTime).count();
+    auto elapsedSinceUia = nowMs() - lastUiaEventTime.load();
     // Only skip Ctrl+C when UIA already returned real text (not an empty Chromium event).
     if (elapsedSinceUia < 150) {
         if (debugEnabled) std::cout << "[FALLBACK] UIA already captured this selection. Aborting fallback." << std::endl;
@@ -1033,18 +1067,39 @@ LRESULT CALLBACK UIAutomationSelectionMonitor::LowLevelMouseProc(int nCode, WPAR
                 int dropY = pMouseStruct->pt.y;
                 const uint64_t gen = capture_gen.fetch_add(1) + 1;
 
-                std::thread([dropX, dropY, gen]() {
-                    active_fallback_threads.fetch_add(1);
-                    std::this_thread::sleep_for(std::chrono::milliseconds(kPostMouseUpSettleMs));
-                    if (instance && instance->running.load() && capture_gen.load() == gen) {
-                        instance->runCaptureChain(dropX, dropY, gen);
-                    }
-                    active_fallback_threads.fetch_sub(1);
-                }).detach();
+                {
+                    std::lock_guard<std::mutex> lock(instance->capture_mutex);
+                    instance->capture_x = dropX;
+                    instance->capture_y = dropY;
+                    instance->pending_capture_gen = gen;
+                    instance->capture_pending = true;
+                }
+                instance->capture_ready.notify_one();
             }
         }
     }
     return CallNextHookEx(nullptr, nCode, wParam, lParam);
+}
+
+void UIAutomationSelectionMonitor::captureLoop() {
+    std::unique_lock<std::mutex> lock(capture_mutex);
+    while (running.load()) {
+        capture_ready.wait(lock, [this] { return !running.load() || capture_pending; });
+        if (!running.load()) break;
+        const int x = capture_x;
+        const int y = capture_y;
+        const uint64_t gen = pending_capture_gen;
+        capture_pending = false;
+        if (capture_ready.wait_for(lock, std::chrono::milliseconds(kPostMouseUpSettleMs),
+                [this, gen] { return !running.load() || capture_gen.load() != gen; })) continue;
+        lock.unlock();
+        try {
+            if (running.load() && capture_gen.load() == gen) runCaptureChain(x, y, gen);
+        } catch (const std::exception& error) {
+            std::cerr << "[UIA] Capture failed: " << error.what() << std::endl;
+        }
+        lock.lock();
+    }
 }
 
 // Classifies keystrokes so the monitor can tell "the user is selecting" from
@@ -1080,6 +1135,7 @@ class UIAutomationSelectionMonitorWrapper : public Napi::ObjectWrap<UIAutomation
 private:
     UIAutomationSelectionMonitor* monitor;
     Napi::ThreadSafeFunction callback_tsfn;
+    bool callback_initialized = false;
 
 public:
     static Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -1105,6 +1161,7 @@ public:
         if (monitor) {
             delete monitor;
         }
+        if (callback_initialized) callback_tsfn.Release();
     }
 
     Napi::Value Start(const Napi::CallbackInfo& info) {
@@ -1146,7 +1203,11 @@ public:
         }
 
         Napi::Function callback = info[0].As<Napi::Function>();
-        callback_tsfn = Napi::ThreadSafeFunction::New(env, callback, "UIAutomationCallback", 0, 1);
+        // Stop producers before replacing the callback they use.
+        monitor->stop();
+        if (callback_initialized) callback_tsfn.Release();
+        callback_tsfn = Napi::ThreadSafeFunction::New(env, callback, "UIAutomationCallback", 32, 1);
+        callback_initialized = true;
 
         monitor->set_callback([this](std::string text, int x, int y) {
             auto callback = [text, x, y](Napi::Env env, Napi::Function jsCallback) {
@@ -1156,7 +1217,7 @@ public:
                     Napi::Number::New(env, y)
                 });
             };
-            callback_tsfn.BlockingCall(callback);
+            callback_tsfn.NonBlockingCall(callback);
         });
 
         return env.Null();

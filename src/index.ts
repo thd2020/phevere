@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { log } from './logger';
+import { installDesktopDiagnostics } from './services/desktop-diagnostics';
 import { clipboardService } from './services/clipboard';
 import { dictionaryService } from './services/dictionary';
 import { wikipediaService } from './services/wikipedia';
@@ -84,6 +85,7 @@ declare const OCR_OVERLAY_PRELOAD_WEBPACK_ENTRY: string;
 // Designed as light ink/paper. Win11 "dark" app mode otherwise tints Mica/Acrylic
 // near-black while CSS keeps dark text.
 nativeTheme.themeSource = 'light';
+installDesktopDiagnostics();
 
 // Register ASAP — timed-out Promise.race fetches used to crash Electron via
 // unhandledRejection (Forge then relaunched → looked like a frozen toolstrip).

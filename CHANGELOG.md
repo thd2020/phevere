@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Desktop popup sizing (2026-10-14): expanded panels enforce a toolbar-safe minimum width, keep pending content fitting from reusing strip dimensions, and stop treating a loaded panel as an in-flight selection strip.
+- Windows selection monitor (2026-10-14): replace detached capture threads with an owned worker, join workers before destruction, release replaced callbacks and the UI Automation handler, and bound pending callbacks.
+
+### Added
+
+- Local desktop diagnostics (2026-10-14): record sleep, resume, process exits, and crashes under the app's local data directory without uploading reports. The reported day-long idle exit remains unverified.
 
 ## [2.1.0] - 2026-09-30
 
