@@ -1185,7 +1185,7 @@
         <div class="setting-item">
           <label class="setting-label">
             <input type="checkbox" class="setting-checkbox" id="expandableMode">
-            <span>Expandable toolbar mode</span>
+            <span>Open full lookup panel</span>
           </label>
         </div>
         <div class="setting-item">
@@ -1497,7 +1497,7 @@
         currentText = next;
         window['__popupCurrentText'] = currentText;
         resetTrailTo(next);
-        if (isFullLookupWindow()) {
+        if (isFullLookupWindow() || !settings.expandableMode) {
           activateTab('lexicon');
           if (!isExpanded) expandToolbar();
           void lookupText(currentText, { fromHistory: true });
@@ -1582,7 +1582,7 @@
           settings = { ...settings, ...JSON.parse(savedSettings) };
         }
 
-        document.getElementById('expandableMode').checked = settings.expandableMode;
+        document.getElementById('expandableMode').checked = !settings.expandableMode;
         document.getElementById('preloadContent').checked = settings.preloadContent;
         const openExternalLinks = document.getElementById('openExternalLinks');
         if (openExternalLinks) openExternalLinks.checked = settings.openExternal;
@@ -1630,9 +1630,12 @@
 
         // Settings
         document.getElementById('expandableMode').addEventListener('change', (e) => {
-          settings.expandableMode = e.target.checked;
+          settings.expandableMode = !e.target.checked;
           saveSettings();
           setupToolbarBehavior();
+          if (!settings.expandableMode && currentText) {
+            void lookupText(currentText, { fromHistory: true });
+          }
         });
         document.getElementById('preloadContent').addEventListener('change', (e) => {
           settings.preloadContent = e.target.checked;

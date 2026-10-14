@@ -1,5 +1,11 @@
 # Phevere
 
+2026-10-14, 2.1.0 desktop refresh: enable Open full lookup panel under the popup's Options button to show the lookup immediately. The preference carries across popup windows; the default remains the icon strip.
+
+![Screenshot of popup Options with Open full lookup panel enabled](README.assets/desktop-popup-opening.png)
+
+Open full lookup panel is stored with the popup preferences.
+
 2026-10-14, 2.1.0 desktop refresh: etymology tabs retain contributor names such as 童理民 and group their passages by language. Etymonline request failures have an Open entry action. Pronunciation-only lookups use a separate cache from full lookups.
 
 ![Screenshot of orientation with the three passages attributed to Tong Limin grouped in one Chinese source tab](README.assets/desktop-etymology-sources.png)
