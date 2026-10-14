@@ -158,7 +158,7 @@ function Invoke-BaselineStartupDiagnostic {
         Start-Sleep -Seconds 8
         $process.Refresh()
         if ($process.HasExited) {
-            $process.WaitForExit()
+            $null = $process.WaitForExit(0)
             Write-Host "Published baseline startup exited: PID=$($process.Id), exit=$(Format-ExitCode $process.ExitCode)"
             Write-FixtureLogs @($stdout, $stderr, (Join-Path $profile 'diagnostics\lifecycle.jsonl'))
         } else { Write-Host "Published baseline stayed alive for eight seconds: PID=$($process.Id)" }
@@ -270,19 +270,31 @@ function Assert-HeadlessAudio([string]$Model, [int]$ExpectedExitCode, [string]$E
             Start-Sleep -Milliseconds 25
             $process.Refresh()
         } while (-not $process.HasExited)
-        $process.WaitForExit()
+        # A parameterless WaitForExit also waits for inherited stdout/stderr
+        # pipes to reach EOF. A surviving Electron helper can keep them open.
+        $null = $process.WaitForExit(0)
         if ($process.ExitCode -ne $ExpectedExitCode) {
             Write-Host "Audio CLI '$Model' failed: PID=$($process.Id), expected=$ExpectedExitCode, exit=$(Format-ExitCode $process.ExitCode)"
             Write-FixtureLogs @($stdout, $stderr)
             throw "Audio CLI '$Model' exited with $(Format-ExitCode $process.ExitCode), expected $ExpectedExitCode."
         }
-        $events = @()
-        foreach ($line in Get-Content -LiteralPath $stdout) {
-            if ($line.TrimStart().StartsWith('{')) {
-                try { $events += $line | ConvertFrom-Json } catch { throw "Invalid JSON audio event: $line" }
+        $eventDeadline = [DateTime]::UtcNow.AddSeconds(2)
+        do {
+            $events = @()
+            $malformed = @()
+            foreach ($line in Get-Content -LiteralPath $stdout) {
+                if ($line.TrimStart().StartsWith('{')) {
+                    try { $events += $line | ConvertFrom-Json } catch { $malformed += $line }
+                }
             }
-        }
-        $matching = @($events | Where-Object { $_.PSObject.Properties['event'] -and $_.PSObject.Properties['model'] -and $_.event -eq $ExpectedEvent -and $_.model -eq $Model })
+            $matching = @($events | Where-Object { $_.PSObject.Properties['event'] -and $_.PSObject.Properties['model'] -and $_.event -eq $ExpectedEvent -and $_.model -eq $Model })
+            if ($matching.Count -eq 1 -and $malformed.Count -eq 0) { break }
+            if ([DateTime]::UtcNow -ge $eventDeadline) {
+                if ($malformed.Count) { throw "Invalid JSON audio event: $($malformed -join '; ')" }
+                break
+            }
+            Start-Sleep -Milliseconds 50
+        } while ($true)
         Assert-True ($matching.Count -eq 1) "Audio CLI '$Model' did not flush its $ExpectedEvent JSON event. stdout: $(Get-Content -LiteralPath $stdout -Raw)"
         Assert-FixtureProcessesStopped
         if ($helperWindows.Count) { Write-Host "Headless audio '$Model' used only hidden helper windows: $($helperWindows.Keys -join '; ')" }
@@ -488,7 +500,7 @@ public static class InstallerTestWindows {
         Start-Sleep -Seconds 8
         $running.Refresh()
         if ($running.HasExited) {
-            $running.WaitForExit()
+            $null = $running.WaitForExit(0)
             Write-Host "Installed startup failed: PID=$($running.Id), exit=$(Format-ExitCode $running.ExitCode), executable=$appExe"
             Write-FixtureLogs @($startupStdout, $startupStderr, (Join-Path $userData 'diagnostics\lifecycle.jsonl'))
             throw "The installed app exited before the running-app upgrade test (exit=$(Format-ExitCode $running.ExitCode))."
