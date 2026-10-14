@@ -1,5 +1,11 @@
 # Phevere
 
+2026-10-14 (unreleased): desktop lookup panels keep a minimum width of 460 pixels so Save and Close remain visible. New selections leave an expanded panel in place.
+
+![Screenshot of the desktop lookup at its minimum width, with Save and Close visible](README.assets/desktop-popup-minimum.png)
+
+The Electron regression fixture at the minimum panel size. Run `node scripts/test-popup-sizing.js --screenshot` to refresh the capture and verify the toolbar, views, Save, Options, and Close.
+
 [![Release](https://img.shields.io/github/v/release/thd2020/phevere?display_name=tag)](https://github.com/thd2020/phevere/releases/latest)
 [![CI](https://github.com/thd2020/phevere/actions/workflows/ci.yml/badge.svg)](https://github.com/thd2020/phevere/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/thd2020/phevere)](LICENSE)

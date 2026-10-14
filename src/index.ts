@@ -22,6 +22,7 @@ import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile } 
 import { isLookupWorthy } from './services/text-normalize';
 import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
 import { placePopupNearPoint, eventCoordSpace, type ScreenCoordSpace } from './services/popup-placement';
+import { popupSize } from './services/popup-size';
 import { showWorkProgress, updateWorkProgress, closeWorkProgress } from './services/work-progress';
 import { isAcceleratorPhysicallyHeld, isPrimaryMouseDown } from './services/accelerator-key-state';
 import { getForegroundWindowBoundsDip } from './services/foreground-window';
@@ -1170,7 +1171,7 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
   ): void => {
     try {
       if (!win || win.isDestroyed()) return;
-      const stillStrip = isCollapsedStrip(win) || win === inFlightPopup;
+      const stillStrip = isCollapsedStrip(win);
       if (!stillStrip) return;
       const placed = placePopupNearPoint(px, py, popupWidth, popupHeight, { space: stripSpace });
       win.setBounds({ x: placed.x, y: placed.y, width: popupWidth, height: popupHeight }, false);
@@ -1322,6 +1323,7 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
     } catch (e) {
       log.warn('main', 'Send popup-text failed', { err: String(e) });
     }
+    if (inFlightPopup === newPopupWindow) inFlightPopup = null;
   });
 
   // Show popup when ready
@@ -2980,27 +2982,25 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
               createWebWindow(url);
             });
 
-            ipcMain.on('window-resize', (event, { width, height, x, y }) => {
+            ipcMain.on('window-resize', (event, { width, height, x, y, mode, minWidth }) => {
               log.debug('main', 'Popup resize', { width, height, x, y });
               // Resize the sender window (selection strip OR history full-lookup) —
               // never assume popupWindows[0], which left history windows stuck
               // and could resize the wrong strip when both exist.
-              const w = Math.round(width);
-              const h = Math.round(height);
+              const size = popupSize(width, height, { mode, minWidth });
+              if (!size) return;
+              const w = size.width;
+              const h = size.height;
               const senderWin = BrowserWindow.fromWebContents(event.sender);
-              const target = (senderWin && !senderWin.isDestroyed())
-                ? senderWin
-                : popupWindows.find((win) => win && !win.isDestroyed());
+              const target = senderWin;
               if (!target || target.isDestroyed()) return;
-              if (h > 64) {
-                // Do not set min width to the current width — that locks horizontal resize.
-                try { target.setMinimumSize(280, 120); } catch { /* ignore */ }
+              try { target.setMinimumSize(size.minWidth, size.minHeight); } catch { /* ignore */ }
+              if (!size.strip) {
+                if (inFlightPopup === target) inFlightPopup = null;
                 try { target.setMaximumSize(1200, 900); } catch { /* ignore */ }
                 try { target.setResizable(true); } catch { /* ignore */ }
-              } else {
-                try { target.setMinimumSize(160, 32); } catch { /* ignore */ }
               }
-              if (typeof x === 'number' && typeof y === 'number') {
+              if (Number.isFinite(x) && Number.isFinite(y)) {
                 const placed = placePopupNearPoint(x, y, w, h, { space: 'dip' });
                 target.setBounds({ x: placed.x, y: placed.y, width: w, height: h }, false);
                 return;

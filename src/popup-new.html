@@ -120,7 +120,7 @@
         -webkit-app-region: no-drag;
       }
       .toolbar.collapsed .toolbar-icons { flex: 0 0 auto; }
-      .toolbar-group { display: flex; align-items: center; gap: 2px; }
+      .toolbar-group { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
       .toolbar-spacer {
         flex: 1 1 auto;
         align-self: stretch;
@@ -130,6 +130,7 @@
       .toolbar.collapsed .toolbar-spacer,
       .toolbar.collapsed .lookup-nav { display: none; }
       .toolbar-divider {
+        flex: 0 0 auto;
         width: 1px;
         height: 18px;
         margin: 0 5px;
@@ -167,7 +168,7 @@
       .toolbar-icon:active { transform: scale(0.94); }
       .toolbar-icon:focus-visible,
       .lookup-nav-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
-      .lookup-nav { display: flex; align-items: center; gap: 0; }
+      .lookup-nav { display: flex; align-items: center; gap: 0; flex: 0 0 auto; }
       .lookup-nav-btn:disabled { opacity: 0.32; cursor: default; }
       .lookup-nav-btn { width: 26px; }
 
@@ -2010,9 +2011,9 @@ function startAutoCloseTimeout() {
          var h = Math.max(32, Math.ceil(th));
          pvLog('[POPUP] resizeToCollapsedStrip', w, h, screenX, screenY);
          if (typeof screenX === 'number' && typeof screenY === 'number') {
-           window.electronAPI.resizeWindow(w, h, screenX, screenY);
+           window.electronAPI.resizeWindow(w, h, screenX, screenY, { mode: 'strip', minWidth: w });
          } else {
-           window.electronAPI.resizeWindow(w, h);
+           window.electronAPI.resizeWindow(w, h, undefined, undefined, { mode: 'strip', minWidth: w });
          }
        }
 
@@ -2117,7 +2118,8 @@ function startAutoCloseTimeout() {
          // follows the content (fitPanelHeight) once the view has rendered.
          var w = Math.max(widthToFitLookupChrome(), Math.min(EXPANDED_POPUP_MAX_W, window.outerWidth || 0));
          pvLog('[POPUP] resizeToExpandedPanel', w);
-         window.electronAPI.resizeWindow(w, window.outerHeight || lastExpandedH || EXPANDED_POPUP_H);
+         window.electronAPI.resizeWindow(w, lastExpandedH || EXPANDED_POPUP_H, undefined, undefined,
+           { mode: 'panel', minWidth: widthToFitLookupChrome() });
        }
 
        /*
@@ -2170,7 +2172,8 @@ function startAutoCloseTimeout() {
          h = Math.round(Math.max(PANEL_MIN_H, Math.min(PANEL_MAX_H, h)));
          if (Math.abs(h - (window.outerHeight || 0)) < 4) return;
          lastExpandedH = h;
-         window.electronAPI.resizeWindow(window.outerWidth || EXPANDED_POPUP_MIN_W, h);
+         window.electronAPI.resizeWindow(Math.max(window.outerWidth || 0, widthToFitLookupChrome()), h,
+           undefined, undefined, { mode: 'panel', minWidth: widthToFitLookupChrome() });
        }
 
        // Expand toolbar
@@ -2194,7 +2197,8 @@ function startAutoCloseTimeout() {
 
          if (window.electronAPI && window.electronAPI.resizeWindow) {
            pvLog('[POPUP] Resizing window for expanded content...');
-           window.electronAPI.resizeWindow(widthToFitLookupChrome(), lastExpandedH || EXPANDED_POPUP_H);
+           window.electronAPI.resizeWindow(widthToFitLookupChrome(), lastExpandedH || EXPANDED_POPUP_H,
+             undefined, undefined, { mode: 'panel', minWidth: widthToFitLookupChrome() });
            requestAnimationFrame(function () {
              requestAnimationFrame(resizeToExpandedPanel);
            });

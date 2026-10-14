@@ -296,8 +296,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeWindow: () => {
     return ipcRenderer.invoke('window-hide-to-tray');
   },
-  resizeWindow: (width: number, height: number, x?: number, y?: number) => {
-    ipcRenderer.send('window-resize', { width, height, x, y });
+  resizeWindow: (width: number, height: number, x?: number, y?: number, options?: { mode?: 'strip' | 'panel'; minWidth?: number }) => {
+    ipcRenderer.send('window-resize', { width, height, x, y, ...options });
   },
   send: (channel: string, ...args: any[]) => {
     ipcRenderer.send(channel, ...args);
@@ -510,7 +510,7 @@ declare global {
       minimizeWindow: () => void;
       maximizeWindow: () => void;
       closeWindow: () => Promise<{ ok: boolean }>;
-      resizeWindow: (width: number, height: number, x?: number, y?: number) => void;
+      resizeWindow: (width: number, height: number, x?: number, y?: number, options?: { mode?: 'strip' | 'panel'; minWidth?: number }) => void;
       send: (channel: string, ...args: any[]) => void;
       startMonitoring?: () => Promise<{ success: boolean }>;
       stopMonitoring?: () => Promise<{ success: boolean }>;

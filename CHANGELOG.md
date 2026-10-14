@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Desktop popup sizing (2026-10-14): expanded panels enforce a toolbar-safe minimum width, keep pending content fitting from reusing strip dimensions, and stop treating a loaded panel as an in-flight selection strip.
+
 ## [2.1.0] - 2026-09-30
 
 ### Added
