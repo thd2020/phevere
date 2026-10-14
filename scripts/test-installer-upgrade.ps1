@@ -354,10 +354,23 @@ public static class InstallerTestWindows {
     } finally { $startupBase.Dispose() }
     foreach ($choice in @('0', '1')) {
         Set-Choices (Get-OwnedEntry) $choice
-        $running = Start-Process -FilePath $appExe -WindowStyle Hidden -PassThru
+        $startupStdout = Join-Path $fixtureRoot "startup-choice-$choice.stdout"
+        $startupStderr = Join-Path $fixtureRoot "startup-choice-$choice.stderr"
+        $running = Start-Process -FilePath $appExe -WindowStyle Hidden -PassThru -RedirectStandardOutput $startupStdout -RedirectStandardError $startupStderr
+        $null = $running.Handle
         Start-Sleep -Seconds 8
         $running.Refresh()
-        Assert-True (-not $running.HasExited) 'The installed app exited before the running-app upgrade test.'
+        if ($running.HasExited) {
+            $running.WaitForExit()
+            Write-Host "Installed startup failed: PID=$($running.Id), exitCode=$($running.ExitCode), executable=$appExe"
+            foreach ($logPath in @($startupStdout, $startupStderr, (Join-Path $userData 'diagnostics\lifecycle.jsonl'))) {
+                if (Test-Path -LiteralPath $logPath) {
+                    Write-Host "Fixture startup evidence: $logPath"
+                    Get-Content -LiteralPath $logPath -Tail 80 | ForEach-Object { Write-Host $_ }
+                }
+            }
+            throw "The installed app exited before the running-app upgrade test (exitCode=$($running.ExitCode))."
+        }
         Write-Host "Reinstalling the same version with saved component choice $choice while the app is running."
         Invoke-Hidden $Installer '/S'
         $running.Refresh()
