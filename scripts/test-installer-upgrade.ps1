@@ -266,7 +266,9 @@ public static class InstallerTestWindows {
     foreach ($choice in @('0', '1')) {
         $opposite = if ($choice -eq '0') { '1' } else { '0' }
         Set-Choices (Get-OwnedEntry) $opposite
-        Invoke-Hidden $Installer "/S --desktop-shortcut=$choice --start-menu-shortcut=$choice --ocr-models=$choice"
+        # Match the frontend exactly: the final --ocr-models option is followed
+        # by an unquoted, space-containing NSIS /D path.
+        Invoke-Hidden $Installer "/S --desktop-shortcut=$choice --start-menu-shortcut=$choice --ocr-models=$choice /D=$installRoot"
         Assert-Payload
         Assert-Components ($choice -eq '1')
         Assert-State

@@ -99,9 +99,19 @@ FunctionEnd
   ClearErrors
   ${GetOptions} $R1 "${OPTION}=" $R0
   ${IfNot} ${Errors}
-    ${If} $R0 == "1"
+    ; GetOptions uses the option's leading '-' as its delimiter. The final
+    ; --ocr-models value therefore includes the trailing /D= path from the
+    ; frontend. Read one strict 0/1 token and reject longer numeric/text values.
+    StrCpy $R2 $R0 1
+    StrCpy $R3 $R0 1 1
+    ${If} $R3 != ""
+    ${AndIf} $R3 != " "
+      SetErrorLevel 2
+      Abort "Invalid ${OPTION} value. Expected 0 or 1."
+    ${EndIf}
+    ${If} $R2 == "1"
       SectionSetFlags ${SECTION} ${SF_SELECTED}
-    ${ElseIf} $R0 == "0"
+    ${ElseIf} $R2 == "0"
       SectionSetFlags ${SECTION} 0
     ${Else}
       SetErrorLevel 2
