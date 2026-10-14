@@ -110,9 +110,12 @@ function Assert-HeadlessAudio([string]$Model, [int]$ExpectedExitCode, [string]$E
     $process = Start-Process -FilePath $appExe -ArgumentList "--install-audio-model=$Model" -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
     $null = $process.Handle
     $deadline = [DateTime]::UtcNow.AddSeconds([Math]::Min($TimeoutSeconds, 60))
+    $helperWindows = @{}
     try {
         do {
-            Assert-True (-not [InstallerTestWindows]::HasApplicationWindow($process.Id)) "Audio CLI '$Model' opened a desktop window."
+            $windows = @([InstallerTestWindows]::ApplicationWindows($process.Id))
+            Assert-True ($windows.Count -eq 0) "Audio CLI '$Model' opened a desktop window: $($windows -join '; ')"
+            foreach ($helper in [InstallerTestWindows]::OwnedWindows($process.Id)) { $helperWindows[$helper] = $true }
             if ([DateTime]::UtcNow -ge $deadline) { throw "Headless audio CLI timed out for '$Model'." }
             Start-Sleep -Milliseconds 25
             $process.Refresh()
@@ -128,6 +131,7 @@ function Assert-HeadlessAudio([string]$Model, [int]$ExpectedExitCode, [string]$E
         $matching = @($events | Where-Object { $_.PSObject.Properties['event'] -and $_.PSObject.Properties['model'] -and $_.event -eq $ExpectedEvent -and $_.model -eq $Model })
         Assert-True ($matching.Count -eq 1) "Audio CLI '$Model' did not flush its $ExpectedEvent JSON event. stdout: $(Get-Content -LiteralPath $stdout -Raw)"
         Assert-True (@(Get-Process -Name 'Phevere' -ErrorAction SilentlyContinue).Count -eq 0) 'Headless audio left an application process running.'
+        if ($helperWindows.Count) { Write-Host "Headless audio '$Model' used only hidden helper windows: $($helperWindows.Keys -join '; ')" }
         Assert-State
     } finally {
         $process.Refresh()
@@ -218,25 +222,42 @@ Assert-True ([IO.Path]::GetFullPath($fixtureRoot).StartsWith($runnerRoot + '\', 
 $createdUserData = $false
 try {
     New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
-    # Enumerate actual top-level HWNDs during packaged CLI execution, including
-    # titled hidden windows. Electron message-only IPC HWNDs are excluded by EnumWindows.
+    # Detect visible top-level UI and hidden Electron BrowserWindows. Titled,
+    # hidden COM/IPC helper HWNDs are infrastructure, not application windows.
     Add-Type -TypeDefinition @'
 using System;
+using System.Collections.Generic;
+using System.Text;
 using System.Runtime.InteropServices;
 public static class InstallerTestWindows {
     private delegate bool Callback(IntPtr hwnd, IntPtr data);
     [DllImport("user32.dll")] private static extern bool EnumWindows(Callback callback, IntPtr data);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
-    [DllImport("user32.dll")] private static extern int GetWindowTextLength(IntPtr hwnd);
-    public static bool HasApplicationWindow(int processId) {
-        bool found = false;
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int length);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr hwnd, StringBuilder text, int length);
+    public static string[] ApplicationWindows(int processId) {
+        return InspectWindows(processId, false);
+    }
+    public static string[] OwnedWindows(int processId) {
+        return InspectWindows(processId, true);
+    }
+    private static string[] InspectWindows(int processId, bool includeHelpers) {
+        var windows = new List<string>();
         EnumWindows(delegate(IntPtr hwnd, IntPtr ignored) {
             uint owner; GetWindowThreadProcessId(hwnd, out owner);
-            if (owner == processId && (IsWindowVisible(hwnd) || GetWindowTextLength(hwnd) > 0)) { found = true; return false; }
+            if (owner != processId) return true;
+            var className = new StringBuilder(256);
+            var title = new StringBuilder(512);
+            GetClassName(hwnd, className, className.Capacity);
+            GetWindowText(hwnd, title, title.Capacity);
+            bool visible = IsWindowVisible(hwnd);
+            if (includeHelpers || visible || className.ToString() == "Chrome_WidgetWin_1") {
+                windows.Add(String.Format("HWND=0x{0:X}, class={1}, title={2}, visible={3}", hwnd.ToInt64(), className, title, visible));
+            }
             return true;
         }, IntPtr.Zero);
-        return found;
+        return windows.ToArray();
     }
 }
 '@
