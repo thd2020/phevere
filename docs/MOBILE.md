@@ -1,6 +1,6 @@
 # Phevere on Android and iOS
 
-2026-10-14 source update: etymology tabs retain contributor names and the chosen source as results arrive. Etymonline failures show an Open entry action. Published phone downloads remain unchanged in this desktop release refresh.
+2026-10-14, 2.1.0 refresh: etymology tabs retain contributor names and the chosen source as results arrive. Etymonline failures show an Open entry action. The Android APK and unsigned iOS IPA have been rebuilt on the existing release. Android upgrade certificate compatibility with the previous APK remains unverified.
 
 **2026-09-29.**
 - **Scan:** now opens full screen. Pinch or double-tap to zoom, and drag to pan. The recognised text is an invisible, selectable layer over the photo. A long press selects a word, the selection stays highlighted, and a single tap does nothing. Phevere on the text bar (Android) or edit menu (iOS) opens the result in a bottom sheet over the photo; swipe it up to full height or down to close. With **Pop up on selection** on, there is no bar and the sheet opens straight away.
