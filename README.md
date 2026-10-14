@@ -1,10 +1,12 @@
 # Phevere
 
-2026-10-14 (unreleased): Windows Setup retains the illustrated one-page layout. Custom options now include pronunciation models and startup preferences. Replacement installs retain the existing folder, notebook, settings, and component choices.
+2026-10-14, 2.1.0 desktop refresh: Windows Setup retains the illustrated one-page layout. Custom options now include pronunciation models and startup preferences. Replacement installs retain the existing folder, notebook, settings, and component choices.
 
-2026-10-14 (unreleased): desktop lookup panels keep a minimum width of 460 pixels so Save and Close remain visible. New selections leave an expanded panel in place.
+2026-10-14, 2.1.0 desktop refresh: desktop lookup panels keep a minimum width of 460 pixels so Save and Close remain visible. New selections leave an expanded panel in place.
 
 The Windows selection monitor now owns and joins its capture workers and releases replaced callbacks. Local crash dumps and exit records go to `%APPDATA%\phevere\diagnostics`; they are not uploaded. The reported exit after a day of idle time has not yet been reproduced.
+
+Windows ARM64 showed intermittent native startup failures during release checks. The final upgrade run passed, but their cause remains unresolved.
 
 ![Screenshot of the desktop lookup at its minimum width, with Save and Close visible](README.assets/desktop-popup-minimum.png)
 

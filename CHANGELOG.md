@@ -5,7 +5,9 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## Desktop refresh for 2.1.0 (2026-10-14)
+
+The four desktop downloads were replaced on the existing 2.1.0 release. Phone downloads and the git tag are unchanged. Windows x64 and ARM64 passed the real upgrade checks. Earlier intermittent ARM64 native startup failures remain unexplained.
 
 ### Fixed
 
