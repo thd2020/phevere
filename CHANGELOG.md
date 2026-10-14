@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Desktop and phone refresh for 2.1.0 (2026-10-14)
 
-All six downloads were replaced on the existing 2.1.0 release; the git tag is unchanged. Windows x64 and ARM64 passed the real upgrade checks. Mobile builds and the Android emulator speech test passed. Android remains debug-signed; upgrade certificate compatibility with the previous APK is unverified. Earlier intermittent ARM64 native startup failures remain unexplained.
+All six downloads were replaced on the existing 2.1.0 release; the git tag is unchanged. Windows x64 and ARM64 passed the real upgrade checks. Mobile builds and the Android emulator speech test passed. The Android CI and release APKs have different debug signing certificates; upgrade compatibility with the previous published APK is unverified. Earlier intermittent ARM64 native startup failures remain unexplained.
 
 ### Fixed
 
