@@ -75,13 +75,36 @@ function Start-FixtureApp([string]$Executable, [string]$Arguments, [string]$Stdo
         }
     }
 }
+function Read-FixtureSnapshot([string]$Path, [int]$MaximumBytes = 65536) {
+    $sharing = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, $sharing)
+    try {
+        # Capture the length once. Never follow a concurrently growing log.
+        $length = $stream.Length
+        $count = [int][Math]::Min($length, $MaximumBytes)
+        if ($count -eq 0) { return '' }
+        $null = $stream.Seek([Math]::Max(0, $length - $count), [IO.SeekOrigin]::Begin)
+        $buffer = [byte[]]::new($count)
+        $offset = 0
+        while ($offset -lt $count) {
+            $read = $stream.Read($buffer, $offset, $count - $offset)
+            if ($read -eq 0) { break }
+            $offset += $read
+        }
+        return [Text.Encoding]::UTF8.GetString($buffer, 0, $offset)
+    } finally { $stream.Dispose() }
+}
 function Write-FixtureLogs([string[]]$Paths) {
     $allPaths = @($Paths)
     foreach ($logPath in $Paths) { if ($logPath.EndsWith('.stdout')) { $allPaths += "$logPath.chromium.log" } }
     foreach ($logPath in $allPaths) {
         if (Test-Path -LiteralPath $logPath) {
             Write-Host "Fixture evidence: $logPath"
-            Get-Content -LiteralPath $logPath -Tail 80 | ForEach-Object { Write-Host $_ }
+            try {
+                $lines = (Read-FixtureSnapshot $logPath) -split '\r?\n'
+                $lines | Select-Object -Last 80 | ForEach-Object { Write-Host $_ }
+                Write-Host "Fixture evidence snapshot complete: $logPath"
+            } catch { Write-Host "Fixture evidence snapshot unavailable: $logPath, $($_.Exception.Message)" }
         }
     }
 }
@@ -282,7 +305,7 @@ function Assert-HeadlessAudio([string]$Model, [int]$ExpectedExitCode, [string]$E
         do {
             $events = @()
             $malformed = @()
-            foreach ($line in Get-Content -LiteralPath $stdout) {
+            foreach ($line in ((Read-FixtureSnapshot $stdout 262144) -split '\r?\n')) {
                 if ($line.TrimStart().StartsWith('{')) {
                     try { $events += $line | ConvertFrom-Json } catch { $malformed += $line }
                 }
@@ -295,7 +318,7 @@ function Assert-HeadlessAudio([string]$Model, [int]$ExpectedExitCode, [string]$E
             }
             Start-Sleep -Milliseconds 50
         } while ($true)
-        Assert-True ($matching.Count -eq 1) "Audio CLI '$Model' did not flush its $ExpectedEvent JSON event. stdout: $(Get-Content -LiteralPath $stdout -Raw)"
+        Assert-True ($matching.Count -eq 1) "Audio CLI '$Model' did not flush its $ExpectedEvent JSON event. stdout snapshot: $(Read-FixtureSnapshot $stdout 262144)"
         Assert-FixtureProcessesStopped
         if ($helperWindows.Count) { Write-Host "Headless audio '$Model' used only hidden helper windows: $($helperWindows.Keys -join '; ')" }
         Assert-State
