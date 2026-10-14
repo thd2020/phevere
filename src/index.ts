@@ -309,12 +309,6 @@ function onTriggerShortcutAfterSelection(): void {
     return;
   }
   const now = Date.now();
-  // Avoid second open when global hotkey fires right after "hold trigger while selecting"
-  // (selection path already committed lastPopupAt synchronously).
-  if (lastPopupAt && now - lastPopupAt < 450) {
-    log.debug('main', 'Trigger shortcut: skip (popup just opened)');
-    return;
-  }
   const ev = lastSelectionEvent;
   if (!ev || !String(ev.text || '').trim()) {
     log.debug('main', 'Trigger shortcut: no stored selection');
@@ -325,7 +319,7 @@ function onTriggerShortcutAfterSelection(): void {
     log.debug('main', 'Trigger shortcut: selection too old', { ageMs: age });
     return;
   }
-  createPopupWindow(ev.x, ev.y, eventCoordSpace(ev));
+  createPopupWindow(ev.x, ev.y, eventCoordSpace(ev), true);
 }
 
 function unregisterAccel(current: string | null): void {
@@ -1132,7 +1126,7 @@ function interceptPopupHistoryKeys(win: BrowserWindow): void {
   });
 }
 
-const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'): void => {
+const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip', explicitTrigger = false): void => {
   // Slim strip: ten 28px icons (four views, then audio, copy, search, save, options, close)
   // with 2px gaps, a divider and 4px padding. Keep in sync with the collapsed toolbar
   // in popup-new.html, which measures itself and corrects this after load.
@@ -1202,15 +1196,15 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
     }
   };
 
-  // An open lookup panel must stay put. Coalesce only when we would not be
-  // spawning a sibling strip beside an expanded panel.
-  if (!hasExpandedLookup) {
-    if (textForPopup && lastPopupText === textForPopup && nowTs - lastPopupAt < 1000) {
+  // An open lookup panel must stay put. Explicit shortcuts can immediately
+  // reopen the selected word, while any loading strip still handles only one request.
+  if (!hasExpandedLookup || explicitTrigger) {
+    if (!explicitTrigger && textForPopup && lastPopupText === textForPopup && nowTs - lastPopupAt < 1000) {
       log.debug('main', 'Skip duplicate popup (same text, 1s)');
       return;
     }
     const live =
-      (inFlightPopup && !inFlightPopup.isDestroyed() ? inFlightPopup : null)
+      (inFlightPopup && isCollapsedStrip(inFlightPopup) ? inFlightPopup : null)
       || reusableStrip
       || null;
     if (live) {
@@ -1351,9 +1345,8 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
                 if (inFlightPopup === newPopupWindow) inFlightPopup = null;
                 popupWindows = popupWindows.filter(win => win !== newPopupWindow);
 
-                // Reset selection state to allow same word to trigger popup again
-                lastSelectionEvent = null; // Reset the main process selection state
-                lastSelectedText = ''; // Reset the last selected text
+                // Keep the selected text available for an immediate explicit relookup.
+                // Selection expiry is checked by the shortcut handler.
               });
 
   popupWindows.push(newPopupWindow);

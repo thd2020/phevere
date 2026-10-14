@@ -11,6 +11,7 @@ The four desktop downloads were replaced on the existing 2.1.0 release. Phone do
 
 ### Fixed
 
+- Desktop lookup shortcut (2026-10-14): immediately reopen the same selected word after closing its popup, retain the selected text until it expires, and reuse a loading strip when the shortcut repeats.
 - Windows installer upgrades (2026-10-14): preserve component choices, honor shortcut retention during replacement, and avoid creating installation registry entries before installation succeeds. Release jobs verify a real upgrade and same-version replacement before upload.
 - Desktop popup sizing (2026-10-14): expanded panels enforce a toolbar-safe minimum width, keep pending content fitting from reusing strip dimensions, and stop treating a loaded panel as an in-flight selection strip.
 - Windows selection monitor (2026-10-14): replace detached capture threads with an owned worker, join workers before destruction, release replaced callbacks and the UI Automation handler, and bound pending callbacks.

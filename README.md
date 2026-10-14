@@ -1,5 +1,7 @@
 # Phevere
 
+2026-10-14, 2.1.0 desktop refresh: the lookup shortcut can reopen the same selected word immediately after closing its popup. Repeated shortcuts reuse a loading strip.
+
 2026-10-14, 2.1.0 desktop refresh: Windows Setup retains the illustrated one-page layout. Custom options now include pronunciation models and startup preferences. Replacement installs retain the existing folder, notebook, settings, and component choices.
 
 2026-10-14, 2.1.0 desktop refresh: desktop lookup panels keep a minimum width of 460 pixels so Save and Close remain visible. New selections leave an expanded panel in place.
