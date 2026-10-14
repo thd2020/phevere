@@ -40,7 +40,7 @@ The release check upgrades the published installer at its actual recorded path. 
 
 We use electron-builder NSIS via `@electron-addons/electron-forge-maker-nsis` for installation, replacement upgrades, and the uninstaller. `scripts/build-installer-shell.js` wraps that backend with the native WPF frontend in `packaging/installer-ui`. Setup requests administrator approval when installation starts. The frontend, illustration, and private Outfit fonts are bundled inside the same Setup.exe; fonts are not installed globally.
 
-Silent `/S` invocations go directly to the backend and return its exit code. The wrapper restores a final `/D=` folder from NSIS's parsed directory so paths containing spaces reach the backend intact. Interactive setup passes its component choices explicitly. The frontend downloads a selected audio model through the installed app's headless `--install-audio-model=` command and reads progress from its JSON output.
+Silent `/S` invocations go directly to the backend and return its exit code. Backend launch failures return an error without a shell error dialog. The wrapper restores a final `/D=` folder from NSIS's parsed directory so paths containing spaces reach the backend intact. Interactive setup passes its component choices explicitly. The frontend downloads a selected audio model through the installed app's headless `--install-audio-model=` command and reads progress from its JSON output.
 
 ```bash
 npm run build-native

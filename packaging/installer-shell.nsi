@@ -61,7 +61,8 @@ Function runBackendAndWait
     !define PV_SHELLEXECUTEINFO_SIZE 60
   !endif
   System::Call '*(&i${PV_SHELLEXECUTEINFO_SIZE}) p .r0'
-  System::Call '*$0(i ${PV_SHELLEXECUTEINFO_SIZE}, i 0x40, p 0, w "runas", w "$PLUGINSDIR\Backend.exe", w "$parameters", p 0, i 0)'
+  ; Keep the process handle and suppress launch-error dialogs in silent setup.
+  System::Call '*$0(i ${PV_SHELLEXECUTEINFO_SIZE}, i 0x440, p 0, w "runas", w "$PLUGINSDIR\Backend.exe", w "$parameters", p 0, i 0)'
   System::Call 'shell32::ShellExecuteExW(p r0) i .r1 ?e'
   Pop $2
   ${If} $1 == 0
