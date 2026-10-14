@@ -1054,6 +1054,7 @@
       .etymology-no-data { padding: 8px 0 0; color: var(--on-surface-variant); font-size: 14.5px; line-height: 1.55; }
       .etymology-no-data .no-data-icon { display: none; }
       .etymology-no-data strong { font-weight: 500; }
+      .etymology-open-entry { border: 0; padding: 0; background: transparent; color: var(--primary); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 
       /* Empty and error states: a quiet line, not an alarm box */
       .error-message {
@@ -1831,6 +1832,22 @@
           showDictionaryResults('flow');
           const word = escapeHtml(result.word || '');
           const sources = splitEtymologySources(result.etymology || '');
+          const unavailable = Array.isArray(result.metadata?.etymologyUnavailable)
+            ? result.metadata.etymologyUnavailable.find(function (s) { return s?.source === 'Etymonline' && (s.status === 'blocked' || s.status === 'unavailable'); })
+            : null;
+          if (unavailable && !sources.some(function (s) { return s.label.split(' · ')[0].toLowerCase() === 'etymonline'; })) {
+            try {
+              const url = new URL(unavailable.url);
+              if (url.protocol === 'https:' && url.hostname === 'www.etymonline.com' && !url.username && !url.password && !url.port && /^\/word\/[^/]+\/?$/.test(url.pathname)) {
+                sources.push({ id: 'ety-etymonline-unavailable', label: 'Etymonline', body: '', unavailable: unavailable.status, url: url.href });
+              }
+            } catch { /* Ignore invalid saved provider metadata. */ }
+          }
+          const wordKey = String(result.word || '').trim().toLowerCase();
+          const previousSource = resultsContainer.dataset.etymologyWord === wordKey ? resultsContainer.dataset.etymologySource : '';
+          const activeIndex = Math.max(0, sources.findIndex(function (s) { return s.label === previousSource; }));
+          resultsContainer.dataset.etymologyWord = wordKey;
+          resultsContainer.dataset.etymologySource = sources[activeIndex]?.label || previousSource || '';
           const chainHtml = formatEtymologyChain(result.etymologyChain);
           const pending = !!(result.metadata && result.metadata.pendingEtymology) && sources.length === 0;
 
@@ -1845,10 +1862,13 @@
               </div>`;
           } else if (sources.length > 0) {
             const tabs = sources.map(function (s, i) {
-              return `<button type="button" class="etymology-tab${i === 0 ? ' is-active' : ''}" data-ety-idx="${i}">${escapeHtml(s.label)}</button>`;
+              return `<button type="button" class="etymology-tab${i === activeIndex ? ' is-active' : ''}" data-ety-idx="${i}" data-ety-source="${escapeHtml(s.label)}">${escapeHtml(s.label)}</button>`;
             }).join('');
             const panels = sources.map(function (s, i) {
-              return `<div class="etymology-panel-body" data-ety-panel="${i}" style="${i === 0 ? '' : 'display:none'}">${formatEtymologyBody(s.body)}</div>`;
+              const body = s.unavailable
+                ? `<div class="etymology-no-data"><p>${s.unavailable === 'blocked' ? 'Etymonline blocked this request.' : 'Etymonline is unavailable.'}</p><button type="button" class="etymology-open-entry" data-ety-open="${escapeHtml(s.url)}">Open entry</button></div>`
+                : formatEtymologyBody(s.body);
+              return `<div class="etymology-panel-body" data-ety-panel="${i}" style="${i === activeIndex ? '' : 'display:none'}">${body}</div>`;
             }).join('');
             etymologyHtml = `
               <div class="result-card">
@@ -1883,6 +1903,7 @@
           const tabs = root.querySelectorAll('.etymology-tab');
           if (!tabs.length) return;
           const activate = function (idx) {
+            root.dataset.etymologySource = tabs[idx]?.getAttribute('data-ety-source') || '';
             tabs.forEach(function (t) {
               t.classList.toggle('is-active', Number(t.getAttribute('data-ety-idx')) === idx);
             });
@@ -1893,6 +1914,13 @@
           tabs.forEach(function (t) {
             t.addEventListener('click', function () {
               activate(Number(t.getAttribute('data-ety-idx')) || 0);
+            });
+          });
+          root.querySelectorAll('[data-ety-open]').forEach(function (button) {
+            button.addEventListener('click', function () {
+              const url = button.getAttribute('data-ety-open');
+              if (window.electronAPI?.openExternal) window.electronAPI.openExternal(url);
+              else window.open(url, '_blank', 'noopener');
             });
           });
           root.querySelector('.etymology-tabs')?.addEventListener('keydown', function (e) {
@@ -2478,6 +2506,10 @@ function startAutoCloseTimeout() {
              function displayDictionaryResult(result) {
          pvLog('[POPUP] displayDictionaryResult called with:', result);
          pvLog('[POPUP] Current tab:', currentTab);
+         if (currentTab === 'etymology') {
+           displayEtymologyResult(result);
+           return;
+         }
 
          document.getElementById('loadingElement').style.display = 'none';
          const resultsContainer = document.getElementById('dictionary-results');

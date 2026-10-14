@@ -461,23 +461,40 @@ function formatEtymologyChain(result: DictionaryResult): string {
   return `<div class="etymology-chain">${parts.join('<span aria-hidden="true">←</span>')}</div>`;
 }
 
-function etymPane(result: DictionaryResult): string {
-  const sources = splitEtymologySources(result.etymology || '');
+export function etymologyEntryUrl(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' && url.hostname === 'www.etymonline.com' &&
+      !url.username && !url.password && !url.port && /^\/word\/[^/]+$/.test(url.pathname)
+      ? url.href : null;
+  } catch { return null; }
+}
+
+function etymPane(result: DictionaryResult, selectedSource = ''): string {
+  const sources: Array<{ label: string; body: string; unavailable?: string; url?: string }> = splitEtymologySources(result.etymology || '');
+  const unavailable = result.metadata?.etymologyUnavailable?.find((s) => s.source === 'Etymonline' && (s.status === 'blocked' || s.status === 'unavailable'));
+  if (unavailable && !sources.some((s) => s.label.split(' · ')[0].toLowerCase() === 'etymonline')) {
+    const url = etymologyEntryUrl(unavailable.url);
+    if (url) sources.push({ label: 'Etymonline', body: '', unavailable: unavailable.status, url });
+  }
   const pending = !!(result.metadata && result.metadata.pendingEtymology);
-  if (pending) {
+  if (pending && !sources.length) {
     return `<p class="status"><span class="md-spinner"></span> Fetching etymology…</p>`;
   }
   if (!sources.length) return `<p class="empty">No etymology found.</p>`;
+  const activeIndex = Math.max(0, sources.findIndex((s) => s.label === selectedSource));
   const tabs = sources
     .map(
       (s, i) =>
-        `<button type="button" class="etymology-tab${i === 0 ? ' is-active' : ''}" data-act="ety-tab" data-i="${i}">${esc(s.label)}</button>`,
+        `<button type="button" class="etymology-tab${i === activeIndex ? ' is-active' : ''}" data-act="ety-tab" data-i="${i}" data-source="${esc(s.label)}">${esc(s.label)}</button>`,
     )
     .join('');
   const panels = sources
     .map(
       (s, i) =>
-        `<div class="etymology-panel-body" data-ety-panel="${i}" ${i === 0 ? '' : 'hidden'}>${formatEtymologyBody(s.body)}</div>`,
+        `<div class="etymology-panel-body" data-ety-panel="${i}" ${i === activeIndex ? '' : 'hidden'}>${s.unavailable
+          ? `<div class="etymology-unavailable"><p>${s.unavailable === 'blocked' ? 'Etymonline blocked this request.' : 'Etymonline is unavailable.'}</p><button type="button" class="etymology-open-entry" data-act="ety-open" data-url="${esc(s.url || '')}">Open entry</button></div>`
+          : formatEtymologyBody(s.body)}</div>`,
     )
     .join('');
   return `<section class="card etymology-card">
@@ -506,6 +523,7 @@ export function lookupBody(opts: {
   wikiLoading: boolean;
   wikiError: string;
   lexiconPos: string;
+  etymologySource?: string;
 }): string {
   if (opts.looking && !opts.result) {
     return `<p class="status"><span class="md-spinner"></span> Looking up…</p>`;
@@ -538,7 +556,7 @@ export function lookupBody(opts: {
       : opts.resultTab === 'wikipedia'
         ? wikiPane(opts.wiki, opts.wikiLang, opts.wikiArticle, opts.wikiLoading, opts.wikiError)
         : opts.resultTab === 'etymology'
-          ? etymPane(opts.result)
+          ? etymPane(opts.result, opts.etymologySource)
           : lexiconPane(opts.result, opts.lexiconPos);
   return `
     <div class="lookup-flow">

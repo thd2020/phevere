@@ -20,8 +20,33 @@ export interface DictionaryResult {
     sourceLanguage?: string;
     targetLanguage?: string;
     originalTargetLanguage?: string;
+    etymologyUnavailable?: EtymologyUnavailable[];
     [key: string]: any;
   };
+}
+
+export interface EtymologyUnavailable {
+  source: 'Etymonline';
+  status: 'blocked' | 'unavailable';
+  url: string;
+  code: string;
+}
+
+type EtymonlineResult = { text?: string; unavailable?: EtymologyUnavailable };
+type EtymologyResult = { text?: string; chain?: EtymologyLink[]; unavailable?: EtymologyUnavailable[] };
+
+function etymonlineUnavailable(word: string, code: string): EtymonlineResult {
+  return { unavailable: {
+    source: 'Etymonline',
+    status: code === 'HTTP_403' || code === 'HTTP_429' ? 'blocked' : 'unavailable',
+    url: `https://www.etymonline.com/word/${encodeURIComponent(word)}`,
+    code,
+  } };
+}
+
+function etymologyErrorCode(error: unknown): string {
+  if (error instanceof DictionaryError) return error.code;
+  return /timeout|timed out|abort/i.test(error instanceof Error ? error.message : String(error)) ? 'TIMEOUT' : 'NETWORK_ERROR';
 }
 
 export interface Definition {
@@ -44,6 +69,7 @@ import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigur
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
 import { splitSurfaceAndLemma, sameLookupFold } from './lookup-policy';
 import { buildEtymology, EtymologyLink } from './etymology';
+import { groupYoudaoEtymologies, serializeEtymologySources } from './etymology-sources';
 import { mergeSimilarDefinitions, dedupeExamples, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses } from './definition-merge';
 import {
   Pronunciation,
@@ -453,7 +479,7 @@ export class DictionaryService extends BaseService {
       // Auto pairing is zh↔en (and ja/ko→en). An explicit Translation-tab target is honoured.
       const resolvedTarget = this.resolveTargetLanguage(detectedLanguage, targetLanguage);
       const txProvider = opts?.translationProvider || 'auto';
-      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}`);
+      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}`);
 
       const remember = (r: DictionaryResult) => {
         if (this.isUncacheableResult(r) || this.isStillFilling(r)) return;
@@ -464,8 +490,10 @@ export class DictionaryService extends BaseService {
         const now = Date.now();
         this.cache.set(cacheKey, { result: r, timestamp: now, ttl });
         try {
-          // A partial result is stored as if saved 13 days ago, so it lasts one day on disk.
-          const savedAt = partial ? now - (PERSISTED_CACHE_TTL_MS - PARTIAL_PERSIST_TTL_MS) : now;
+          // Failed etymology hosts get another chance after ten minutes, even
+          // after a restart. Other partial results keep the existing disk TTL.
+          const partialPersistTtl = r.metadata?.etymologyUnavailable?.length ? PARTIAL_CACHE_TTL_MS : PARTIAL_PERSIST_TTL_MS;
+          const savedAt = partial ? now - (PERSISTED_CACHE_TTL_MS - partialPersistTtl) : now;
           void Promise.resolve(getLookupCache()?.set(cacheKey, r, savedAt)).catch((): undefined => undefined);
         } catch {
           /* persistence optional */
@@ -485,7 +513,9 @@ export class DictionaryService extends BaseService {
           const saved = await store.get(cacheKey);
           const value = saved?.value as DictionaryResult | undefined;
           if (saved && value && Date.now() - saved.savedAt < PERSISTED_CACHE_TTL_MS && !this.isUncacheableResult(value)) {
-            this.cache.set(cacheKey, { result: value, timestamp: Date.now(), ttl: this.cacheTimeout });
+            const remaining = PERSISTED_CACHE_TTL_MS - (Date.now() - saved.savedAt);
+            const ttl = this.isIncompleteSourceCache(value) ? Math.min(PARTIAL_CACHE_TTL_MS, remaining) : this.cacheTimeout;
+            this.cache.set(cacheKey, { result: value, timestamp: Date.now(), ttl });
             console.log(`Persistent cache hit (${Date.now() - startTime}ms)`);
             return value;
           }
@@ -766,6 +796,7 @@ export class DictionaryService extends BaseService {
 
   private isIncompleteSourceCache(result?: DictionaryResult): boolean {
     if (result?.metadata?.pendingEtymology || result?.metadata?.pendingTranslation) return true;
+    if (result?.metadata?.etymologyUnavailable?.length) return true;
     if (!(result?.translations || []).some((t) => (t.text || '').trim())) return true;
     const st = result?.metadata?.sourceStatus;
     if (!st || typeof st !== 'object') return true;
@@ -891,6 +922,7 @@ export class DictionaryService extends BaseService {
       (r.translations || []).map((t) => t.text).join('|'),
       (r.examples || []).length,
       (r.etymology || '').length,
+      JSON.stringify(r.metadata?.etymologyUnavailable || []),
       (r.wordFamily || []).length,
       r.metadata?.pendingTranslation ? 1 : 0,
       r.metadata?.pendingEtymology ? 1 : 0,
@@ -1079,6 +1111,7 @@ export class DictionaryService extends BaseService {
     const skipEtymology = !!opts?.skipEtymology;
     let etymology: string | undefined;
     let etymologyChain: EtymologyLink[] | undefined;
+    let etymologyUnavailableSources: EtymologyUnavailable[] | undefined;
     let wikiFamily: WordFamilyGroup[] | undefined;
     let pendingEtymology = !skipEtymology;
     let pendingTranslation = true;
@@ -1478,6 +1511,7 @@ export class DictionaryService extends BaseService {
           sourceStatus: { ...sourceStatus },
           expectedSources: [...expectedSources],
           pendingEtymology,
+          etymologyUnavailable: etymologyUnavailableSources,
           pendingTranslation,
           translationProvider: opts?.translationProvider || 'auto',
         },
@@ -1548,6 +1582,7 @@ export class DictionaryService extends BaseService {
         })
     ).then((fetched) => {
       pendingEtymology = false;
+      etymologyUnavailableSources = fetched?.unavailable;
       if (fetched?.text) {
         etymology = fetched.text;
         if (fetched.chain) etymologyChain = fetched.chain;
@@ -2300,7 +2335,7 @@ export class DictionaryService extends BaseService {
    */
   private async fetchEtymologyFromMultipleSources(
     text: string
-  ): Promise<{ text: string; chain?: EtymologyLink[] } | undefined> {
+  ): Promise<EtymologyResult | undefined> {
     const labeled: string[] = [];
     let chain: EtymologyLink[] | undefined;
 
@@ -2313,7 +2348,8 @@ export class DictionaryService extends BaseService {
     // Per-source budgets: a 502 on Etymonline must not discard Wiktionary/Youdao.
     const [wiktionaryEtymology, etymonlineEtymology, youdaoEtymology, oxfordEtymology] = await Promise.all([
       one(this.fetchEtymologyFromWikitext(text), 4500, 'ety.wiktionary'),
-      one(this.fetchEtymologyFromEtymonline(text), 10000, 'ety.etymonline'),
+      withTimeout(this.fetchEtymologyFromEtymonline(text), 10000, 'ety.etymonline')
+        .catch((error: unknown) => etymonlineUnavailable(this.cleanWordForEtymology(text), etymologyErrorCode(error))),
       one(this.fetchEtymologyFromYoudao(text), 12000, 'ety.youdao'),
       this.oxfordAppId && this.oxfordAppKey
         ? one(this.fetchEtymologyFromOxford(text), 3500, 'ety.oxford')
@@ -2324,8 +2360,8 @@ export class DictionaryService extends BaseService {
       labeled.push(`[Wiktionary]\n${wiktionaryEtymology.text}`);
       chain = wiktionaryEtymology.chain;
     }
-    if (etymonlineEtymology) {
-      labeled.push(`[Etymonline]\n${etymonlineEtymology}`);
+    if (etymonlineEtymology?.text) {
+      labeled.push(`[Etymonline]\n${etymonlineEtymology.text}`);
     }
     if (youdaoEtymology) {
       labeled.push(youdaoEtymology);
@@ -2334,11 +2370,13 @@ export class DictionaryService extends BaseService {
       labeled.push(`[Oxford]\n${oxfordEtymology}`);
     }
 
-    if (labeled.length === 0) return undefined;
+    const unavailable = etymonlineEtymology?.unavailable ? [etymonlineEtymology.unavailable] : undefined;
+    if (labeled.length === 0 && !unavailable?.length) return undefined;
 
     return {
-      text: labeled.join('\n\n--- Alternative etymology ---\n\n'),
+      text: labeled.length ? labeled.join('\n\n--- Alternative etymology ---\n\n') : undefined,
       chain,
+      unavailable,
     };
   }
 
@@ -2355,7 +2393,7 @@ export class DictionaryService extends BaseService {
   /**
    * Fetches etymology from Etymonline safely without crashing on HTML
    */
-  private async fetchEtymologyFromEtymonline(text: string): Promise<string | undefined> {
+  private async fetchEtymologyFromEtymonline(text: string): Promise<EtymonlineResult | undefined> {
     const cleanWord = this.cleanWordForEtymology(text);
     if (!cleanWord) return undefined;
 
@@ -2377,7 +2415,9 @@ export class DictionaryService extends BaseService {
         }
         const retryable = [429, 502, 503, 504].includes(response.status);
         console.warn(`Etymonline returned HTTP ${response.status} for ${cleanWord}${retryable && attempt === 0 ? ', retrying' : ''}`);
-        if (!retryable || attempt === 1) return undefined;
+        if (!retryable || attempt === 1) {
+          return response.status === 404 ? undefined : etymonlineUnavailable(cleanWord, `HTTP_${response.status}`);
+        }
         await new Promise((r) => setTimeout(r, 450));
       }
       if (!html) return undefined;
@@ -2441,10 +2481,11 @@ export class DictionaryService extends BaseService {
       }
 
       if (etymology.length > 20) {
-        return etymology;
+        return { text: etymology };
       }
     } catch (error) {
       console.warn(`Etymonline fetch failed for "${cleanWord}":`, error);
+      return etymonlineUnavailable(cleanWord, etymologyErrorCode(error));
     }
 
     return undefined;
@@ -2490,33 +2531,7 @@ export class DictionaryService extends BaseService {
 
       if (!etyms) return undefined;
 
-      const chunks: string[] = [];
-      // Chinese narrative etymology first, then English.
-      const order = ['zh', 'en', ...Object.keys(etyms).filter((k) => k !== 'zh' && k !== 'en')];
-      const seen = new Set<string>();
-      const langCounts = new Map<string, number>();
-      for (const lang of order) {
-        const arr = etyms[lang];
-        if (!Array.isArray(arr)) continue;
-        for (const item of arr) {
-          const value = typeof item?.value === 'string' ? item.value.trim() : '';
-          if (!value || value.length < 8) continue;
-          const tip = value.slice(0, 48);
-          if (seen.has(tip)) continue;
-          seen.add(tip);
-          // Tabs name the source and language, like Wiktionary and Etymonline. Youdao's own
-          // attribution (a contributor such as 童理民, or "wiktionary" for text it mirrors) and
-          // its gloss of the headword are not source names.
-          const langName = lang === 'zh' ? '中文' : lang === 'en' ? 'English' : lang;
-          const count = (langCounts.get(lang) || 0) + 1;
-          langCounts.set(lang, count);
-          const label = `Youdao · ${langName}${count > 1 ? ` ${count}` : ''}`;
-          chunks.push(`[${label}]\n${value}`);
-        }
-      }
-
-      if (chunks.length === 0) return undefined;
-      return chunks.join('\n\n--- Alternative etymology ---\n\n');
+      return serializeEtymologySources(groupYoudaoEtymologies(etyms));
     } catch (error) {
       console.warn(`Youdao etymology failed for "${cleanWord}":`, error);
       return undefined;

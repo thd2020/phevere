@@ -11,6 +11,7 @@ The four desktop downloads were replaced on the existing 2.1.0 release. Phone do
 
 ### Fixed
 
+- Etymology sources (2026-10-14): restore contributor attribution, combine passages from the same contributor and language without dropping distinct continuations, retain the chosen tab as results arrive, and separate pronunciation-only caches. Etymonline request failures remain visible with an Open entry action and retry after ten minutes.
 - Desktop lookup shortcut (2026-10-14): immediately reopen the same selected word after closing its popup, retain the selected text until it expires, and reuse a loading strip when the shortcut repeats.
 - Windows installer upgrades (2026-10-14): preserve component choices, honor shortcut retention during replacement, and avoid creating installation registry entries before installation succeeds. Release jobs verify a real upgrade and same-version replacement before upload.
 - Desktop popup sizing (2026-10-14): expanded panels enforce a toolbar-safe minimum width, keep pending content fitting from reusing strip dimensions, and stop treating a loaded panel as an in-flight selection strip.

@@ -36,6 +36,7 @@ import {
 import { applyPrefsToCore, loadPrefs, savePrefs, type MobilePrefs } from './platform/prefs';
 import {
   lookupBody,
+  etymologyEntryUrl,
   navHtml,
   notebookBody,
   scanHtml,
@@ -72,6 +73,7 @@ let voice: VoiceStatus | null = null;
 let voiceTimer: number | null = null;
 let lexiconPos = '';
 let lexiconWord = '';
+let etymologySource = '';
 let posJumpLock = false;
 let posJumpTimer: number | null = null;
 let wiki: WikipediaResult[] = [];
@@ -143,6 +145,7 @@ function lookupPaneHtml(): string {
     wikiLoading,
     wikiError,
     lexiconPos,
+    etymologySource,
   });
 }
 
@@ -410,6 +413,7 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
   wikiLoading = false;
   resultTab = keepTab || 'lexicon';
   lexiconPos = '';
+  etymologySource = '';
   lexiconWord = q;
   if (!fromHist) rememberLookup(q);
   paint();
@@ -1135,6 +1139,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'ety-tab': {
       const idx = Number(t.dataset.i);
+      etymologySource = t.dataset.source || '';
       const rootEty = t.closest('.etymology-card') || document;
       rootEty.querySelectorAll('.etymology-tab').forEach((btn) => {
         const on = Number((btn as HTMLElement).dataset.i) === idx;
@@ -1143,6 +1148,11 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       rootEty.querySelectorAll('[data-ety-panel]').forEach((p) => {
         (p as HTMLElement).hidden = Number((p as HTMLElement).dataset.etyPanel) !== idx;
       });
+      return;
+    }
+    case 'ety-open': {
+      const url = etymologyEntryUrl(t.dataset.url || '');
+      if (url) openExternal(url);
       return;
     }
     case 'save':

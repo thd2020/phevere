@@ -10,6 +10,7 @@ export {
   DictionaryService,
   dictionaryService,
   type DictionaryResult,
+  type EtymologyUnavailable,
   type Definition,
   type Translation,
   type DictionarySource,

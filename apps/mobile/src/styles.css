@@ -592,6 +592,15 @@ a { color: var(--md-sys-color-tertiary); }
 }
 .etymology-panel { flex: 1; min-width: 0; padding: 4px 0 0 14px; }
 .etymology-panel-body[hidden] { display: none; }
+.etymology-unavailable p { margin: 4px 0 12px; }
+.etymology-open-entry {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  padding: 8px 12px;
+  font: inherit;
+}
 .etymology-text {
   line-height: 1.65;
   font-size: 0.95rem;

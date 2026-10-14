@@ -1,5 +1,11 @@
 # Phevere
 
+2026-10-14, 2.1.0 desktop refresh: etymology tabs retain contributor names such as 童理民 and group their passages by language. Etymonline request failures have an Open entry action. Pronunciation-only lookups use a separate cache from full lookups.
+
+![Screenshot of orientation with the three passages attributed to Tong Limin grouped in one Chinese source tab](README.assets/desktop-etymology-sources.png)
+
+The Youdao response for orientation, captured on 2026-10-14. The Etymonline tab remains available when its request is blocked.
+
 2026-10-14, 2.1.0 desktop refresh: the lookup shortcut can reopen the same selected word immediately after closing its popup. Repeated shortcuts reuse a loading strip.
 
 2026-10-14, 2.1.0 desktop refresh: Windows Setup retains the illustrated one-page layout. Custom options now include pronunciation models and startup preferences. Replacement installs retain the existing folder, notebook, settings, and component choices.
