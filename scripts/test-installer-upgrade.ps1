@@ -27,7 +27,17 @@ if ($LASTEXITCODE -ne 0 -or $guid -notmatch '^[0-9a-f-]{36}$') { throw 'Could no
 $userData = Join-Path $env:APPDATA 'phevere'
 $runnerRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')
 $fixtureRoot = Join-Path $runnerRoot ('Phevere upgrade fixture ' + [guid]::NewGuid().ToString('N'))
-$installRoot = Join-Path $fixtureRoot 'Custom install with spaces'
+$customInstallRoot = Join-Path $fixtureRoot 'Custom install with spaces'
+$installRoot = $customInstallRoot
+$allowedHistoricalRoots = @((Join-Path $env:ProgramFiles 'Phevere'), (Join-Path $env:LOCALAPPDATA 'Programs\Phevere'))
+if (${env:ProgramFiles(x86)}) { $allowedHistoricalRoots += Join-Path ${env:ProgramFiles(x86)} 'Phevere' }
+# Old electron-builder backends parse /D through StdUtils and can stop at the
+# first space. Accept only this exact derived fixture path, never a broad prefix.
+$legacyTruncatedRoot = $customInstallRoot.Split(' ')[0]
+if ([IO.Path]::GetFullPath($legacyTruncatedRoot).StartsWith($runnerRoot + '\', [StringComparison]::OrdinalIgnoreCase) -and $legacyTruncatedRoot -eq (Join-Path $runnerRoot 'Phevere')) {
+    $allowedHistoricalRoots += $legacyTruncatedRoot
+}
+$ownedInstallRoots = @($customInstallRoot)
 $appExe = Join-Path $installRoot 'Phevere.exe'
 $stateHelper = Join-Path $PSScriptRoot 'test-installer-state.js'
 $electronExe = Join-Path $repo 'node_modules\electron\dist\electron.exe'
@@ -61,12 +71,13 @@ function Get-Entries {
         }
     }
 }
-function Get-OwnedEntry {
+function Get-OwnedEntry([bool]$AllowHistoricalDefault = $false) {
     $entries = @(Get-Entries)
     Assert-True ($entries.Count -eq 1) "Expected one Phevere uninstall entry; found $($entries.Count)."
     $entry = $entries[0]
     Assert-True ($entry.Guid -eq $guid) 'The installer changed the stable application GUID.'
-    Assert-True ([IO.Path]::GetFullPath($entry.Path).TrimEnd('\') -eq $installRoot) 'The upgrade did not reuse the recorded custom installation path.'
+    $recordedRoot = [IO.Path]::GetFullPath($entry.Path).TrimEnd('\')
+    Assert-True (($recordedRoot -eq $installRoot) -or ($AllowHistoricalDefault -and $recordedRoot -in $allowedHistoricalRoots)) "The installation path is '$recordedRoot'; expected '$installRoot'."
     return $entry
 }
 function Set-Choices([object]$Entry, [string]$Value) {
@@ -125,7 +136,11 @@ function Assert-HeadlessAudio([string]$Model, [int]$ExpectedExitCode, [string]$E
 }
 function Remove-OwnedTree([string]$Target) {
     $resolved = [IO.Path]::GetFullPath($Target)
-    Assert-True ($resolved.StartsWith($fixtureRoot + '\', [StringComparison]::OrdinalIgnoreCase)) 'Refusing recursive deletion outside the fixture.'
+    $owned = $resolved.StartsWith($fixtureRoot + '\', [StringComparison]::OrdinalIgnoreCase)
+    foreach ($ownedRoot in $ownedInstallRoots) {
+        if ($resolved.StartsWith($ownedRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { $owned = $true }
+    }
+    Assert-True $owned 'Refusing recursive deletion outside the confirmed fixture installations.'
     if (Test-Path -LiteralPath $resolved) { Remove-Item -LiteralPath $resolved -Recurse -Force }
 }
 function Assert-Components([bool]$Selected) {
@@ -165,6 +180,19 @@ function Assert-Payload {
     Assert-True ((Get-FileHash -LiteralPath (Join-Path $installRoot 'resources\app.asar')).Hash -eq (Get-FileHash -LiteralPath $PackagedAsar).Hash) 'The installed payload does not match the current packaged application.'
     Assert-True ((Get-FileHash -LiteralPath $appExe).Hash -eq (Get-FileHash -LiteralPath (Join-Path (Split-Path (Split-Path $PackagedAsar -Parent) -Parent) 'Phevere.exe')).Hash) 'The installed executable differs from the current packaged application.'
 }
+function Invoke-OwnedUninstall {
+    $entry = Get-OwnedEntry
+    $uninstaller = $entry.Uninstall.Trim('"')
+    Assert-True ([IO.Path]::GetFullPath($uninstaller).StartsWith($installRoot + '\', [StringComparison]::OrdinalIgnoreCase)) 'Refusing an uninstaller outside the confirmed fixture installation.'
+    Invoke-Hidden $uninstaller '/S'
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ((Test-Path -LiteralPath $appExe) -or @(Get-Entries).Count -gt 0) {
+        if ([DateTime]::UtcNow -ge $deadline) { throw 'Timed out waiting for normal uninstall to finish.' }
+        Start-Sleep -Milliseconds 250
+    }
+    foreach ($link in $links) { Assert-True (-not (Test-Path -LiteralPath $link)) 'Uninstall left a shortcut.' }
+    Assert-State
+}
 
 # Refuse any existing app, notebook, shortcut or legacy directory before touching the runner.
 Assert-True (@(Get-Entries).Count -eq 0) 'Refusing to run with an existing Phevere installation.'
@@ -182,7 +210,7 @@ Assert-True (-not (Test-Path -LiteralPath $userData)) 'Refusing to run with exis
 foreach ($link in $links + @((Join-Path ([Environment]::GetFolderPath('Desktop')) 'Phevere.lnk'), (Join-Path ([Environment]::GetFolderPath('Programs')) 'Phevere.lnk'), (Join-Path $programs 'thd2020'), (Join-Path $programs 'xiangyuxiao'))) {
     Assert-True (-not (Test-Path -LiteralPath $link)) "Refusing to touch an existing shortcut or legacy folder: $link"
 }
-foreach ($existingPath in @((Join-Path $env:ProgramFiles 'Phevere'), (Join-Path $env:LOCALAPPDATA 'Programs\Phevere'))) {
+foreach ($existingPath in $allowedHistoricalRoots) {
     Assert-True (-not (Test-Path -LiteralPath $existingPath)) "Refusing an existing Phevere installation folder: $existingPath"
 }
 Assert-True (Test-Path -LiteralPath $electronExe) 'Install npm dependencies before running this test.'
@@ -216,9 +244,17 @@ public static class InstallerTestWindows {
     Write-Host 'Installing the baseline into a custom path with spaces.'
     # NSIS /D must be last, with no quotes around its value.
     Invoke-Hidden $PreviousInstaller ("/S /D=$installRoot")
-    $entry = Get-OwnedEntry
-    Assert-True (Test-Path -LiteralPath $appExe) 'The baseline executable is missing.'
+    $entry = Get-OwnedEntry $true
+    $recordedRoot = [IO.Path]::GetFullPath($entry.Path).TrimEnd('\')
     $baselineVersion = (Get-Item -LiteralPath $PreviousInstaller).VersionInfo.ProductVersion
+    $baselineExe = Join-Path $recordedRoot 'Phevere.exe'
+    Assert-True (Test-Path -LiteralPath $baselineExe) 'The registered baseline executable is missing.'
+    Assert-True ((Get-Item -LiteralPath $baselineExe).VersionInfo.ProductVersion -eq $baselineVersion) 'The baseline executable version differs from the supplied installer.'
+    $installRoot = $recordedRoot
+    $appExe = $baselineExe
+    $ownedInstallRoots += $recordedRoot
+    Write-Host "The published baseline recorded '$installRoot'; its executable and version are verified."
+    Assert-True (Test-Path -LiteralPath $appExe) 'The baseline executable is missing.'
     Assert-True ($entry.Version -eq $baselineVersion) 'The baseline registry version differs from the installer version.'
     $createdUserData = $true
     & node $stateHelper seed $userData $fixtureHtml
@@ -246,6 +282,16 @@ public static class InstallerTestWindows {
     Assert-Payload
     Assert-Components $false
     Assert-State
+    if ($installRoot -ne $customInstallRoot) {
+        Write-Host 'Uninstalling the upgraded historical path, then installing the current wrapper at a custom path without deleting historical registry leftovers.'
+        Invoke-OwnedUninstall
+        $installRoot = $customInstallRoot
+        $appExe = Join-Path $installRoot 'Phevere.exe'
+        Invoke-Hidden $Installer "/S --desktop-shortcut=0 --start-menu-shortcut=0 --ocr-models=0 /D=$installRoot"
+        Assert-Payload
+        Assert-Components $false
+        Assert-State
+    }
     foreach ($choice in @('0', '1')) {
         Set-Choices (Get-OwnedEntry) $choice
         $running = Start-Process -FilePath $appExe -WindowStyle Hidden -PassThru
@@ -273,17 +319,8 @@ public static class InstallerTestWindows {
         Assert-Components ($choice -eq '1')
         Assert-State
     }
-    $entry = Get-OwnedEntry
-    $uninstaller = $entry.Uninstall.Trim('"')
-    Assert-True ([IO.Path]::GetFullPath($uninstaller).StartsWith($installRoot + '\', [StringComparison]::OrdinalIgnoreCase)) 'Refusing an uninstaller outside the fixture.'
     Write-Host 'Checking that normal uninstall preserves the notebook and preferences.'
-    Invoke-Hidden $uninstaller '/S'
-    # NSIS may hand off to its temporary uninstaller copy before the first process exits.
-    $uninstallDeadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
-    while ((Test-Path -LiteralPath $appExe) -or @(Get-Entries).Count -gt 0) {
-        if ([DateTime]::UtcNow -ge $uninstallDeadline) { throw 'Timed out waiting for normal uninstall to finish.' }
-        Start-Sleep -Milliseconds 250
-    }
+    Invoke-OwnedUninstall
     Assert-True (@(Get-Entries).Count -eq 0) 'Uninstall left a Phevere registry entry.'
     Assert-True (-not (Test-Path -LiteralPath $appExe)) 'Uninstall left the application executable.'
     foreach ($link in $links) { Assert-True (-not (Test-Path -LiteralPath $link)) 'Uninstall left a shortcut.' }
@@ -295,10 +332,27 @@ public static class InstallerTestWindows {
         if ($process.Path -and $process.Path.StartsWith($installRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { Stop-Process -Id $process.Id -Force }
     }
     $remaining = @(Get-Entries)
-    if ($remaining.Count -eq 1 -and $remaining[0].Path -eq $installRoot) {
+    if ($remaining.Count -eq 1 -and $remaining[0].Path -in $ownedInstallRoots) {
         $ownedUninstaller = $remaining[0].Uninstall.Trim('"')
         if (Test-Path -LiteralPath $ownedUninstaller) {
             try { Invoke-Hidden $ownedUninstaller '/S' } catch { Write-Warning "Fixture uninstall failed: $_" }
+        }
+    }
+    # The historical installer wrote phantom preferences into other hives/views.
+    # Every GUID key was absent at preflight; remove only keys with our own paths,
+    # and only in final cleanup after all observable upgrade assertions have run.
+    foreach ($hive in @([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryHive]::CurrentUser)) {
+        foreach ($view in @([Microsoft.Win32.RegistryView]::Registry64, [Microsoft.Win32.RegistryView]::Registry32)) {
+            $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey($hive, $view)
+            try {
+                $key = $base.OpenSubKey("Software\$guid")
+                if ($null -ne $key) {
+                    $location = [string]$key.GetValue('InstallLocation', '')
+                    $key.Dispose()
+                    if ($location -in ($ownedInstallRoots + $allowedHistoricalRoots)) { $base.DeleteSubKeyTree("Software\$guid", $false) }
+                    else { Write-Warning "Refusing to clean an unexpected fixture registry path: $location" }
+                }
+            } finally { $base.Dispose() }
         }
     }
     if ($createdUserData -and (Test-Path -LiteralPath $userData)) {

@@ -14,6 +14,15 @@
 
 !include "LogicLib.nsh"
 
+Var pvNativeInstallDirectory
+
+!macro preInit
+  ; NSIS reads its final, unquoted /D argument as one complete directory.
+  ; electron-builder later reparses it through StdUtils, which splits spaces.
+  ; Preserve the native value before that install-mode initialization runs.
+  StrCpy $pvNativeInstallDirectory $INSTDIR
+!macroend
+
 SetFont "Segoe UI" 10
 ManifestDPIAware true
 ManifestDPIAwareness "PerMonitorV2"
@@ -99,19 +108,9 @@ FunctionEnd
   ClearErrors
   ${GetOptions} $R1 "${OPTION}=" $R0
   ${IfNot} ${Errors}
-    ; GetOptions uses the option's leading '-' as its delimiter. The final
-    ; --ocr-models value therefore includes the trailing /D= path from the
-    ; frontend. Read one strict 0/1 token and reject longer numeric/text values.
-    StrCpy $R2 $R0 1
-    StrCpy $R3 $R0 1 1
-    ${If} $R3 != ""
-    ${AndIf} $R3 != " "
-      SetErrorLevel 2
-      Abort "Invalid ${OPTION} value. Expected 0 or 1."
-    ${EndIf}
-    ${If} $R2 == "1"
+    ${If} $R0 == "1"
       SectionSetFlags ${SECTION} ${SF_SELECTED}
-    ${ElseIf} $R2 == "0"
+    ${ElseIf} $R0 == "0"
       SectionSetFlags ${SECTION} 0
     ${Else}
       SetErrorLevel 2
@@ -122,6 +121,10 @@ FunctionEnd
 
 !macro customInit
   SetDetailsPrint both
+  ${StdUtils.GetParameter} $R0 "D" ""
+  ${If} $R0 != ""
+    StrCpy $INSTDIR $pvNativeInstallDirectory
+  ${EndIf}
   ${If} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
     !insertmacro PV_RESTORE_COMPONENT ${SecDesktop} DesktopShortcut "$DESKTOP\Phevere.lnk"
     !insertmacro PV_RESTORE_COMPONENT ${SecStartMenu} StartMenuShortcut "$SMPROGRAMS\Phevere.lnk"

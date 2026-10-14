@@ -8,19 +8,21 @@ Custom options replace the illustration within the same window.
 
 ![Screenshot of Windows Setup custom options for components, installation folder, and shortcuts](PACKAGING.assets/installer-options.png)
 
-2026-10-14: Windows replacement installs reuse the recorded installation folder and preserve the notebook and settings. Optional shortcuts and OCR choices carry over, including choices made with older installers. Each Windows release job tests a real upgrade before replacing the download.
+2026-10-14: Windows replacement installs reuse the recorded installation folder and preserve the notebook and settings. Custom folders retain their full path, including spaces. Optional shortcuts and OCR choices carry over, including choices made with older installers. Each Windows release job tests a real upgrade before replacing the download.
 
 ```mermaid
 flowchart LR
-  A[Existing Setup.exe] --> B[Custom install folder]
+  A[Existing Setup.exe] --> B[Recorded installation folder]
   B --> C[Saved notebook and settings]
   C --> D[Replacement Setup.exe]
   D --> E[Same folder and component choices]
   E --> F[Verify SQLite row and localStorage]
-  F --> G[Replace release download]
+  F --> G[Current build in custom folder]
+  G --> H[Same-version replacement]
+  H --> I[Replace release download]
 ```
 
-The release check also replaces the same version while the app is running and verifies that normal uninstall keeps user data. It runs only on a fresh administrator GitHub Windows runner; it refuses a developer machine or an existing installation.
+The release check upgrades the published installer at its actual recorded path. If the older installer uses a different folder, the check then uninstalls it and installs the current build in a custom folder with spaces while keeping the notebook and settings. It replaces the same version while the app is running and verifies that normal uninstall keeps user data. It runs only on a fresh administrator GitHub Windows runner; it refuses a developer machine or an existing installation.
 
 **2026-09-30:** Windows Setup introduced the illustrated single-page layout. Art comes from `scripts/installer-art.js` through `prepare:installer`.
 

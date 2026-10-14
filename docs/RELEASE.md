@@ -2,7 +2,7 @@
 
 2026-10-14: Windows builds wrap the NSIS upgrade backend with the illustrated native setup frontend. Selected audio models download before setup finishes. Local builds require the Windows .NET Framework compiler and WPF assemblies, which are also present on the GitHub Windows runners.
 
-2026-10-14: Windows uploads require the installer upgrade check to pass. The check installs the previously published build into a custom folder, applies the replacement, and verifies the notebook, settings, component choices, and running-app shutdown. Same-version replacement is checked too.
+2026-10-14: Windows uploads require the installer upgrade check to pass. The check upgrades the previously published build at its actual recorded path and verifies the notebook and settings. If the older installer uses a different folder, the check then uninstalls that fixture and installs the current build in a custom folder with spaces without deleting user data. Same-version replacement, component choices, and running-app shutdown are checked there.
 
 ```mermaid
 flowchart LR
