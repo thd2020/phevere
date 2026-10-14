@@ -1,5 +1,7 @@
 # Publishing a GitHub release
 
+2026-10-14: A Windows ARM64 release can be retried alone with `targets=windows-arm64`.
+
 2026-10-14: Windows builds wrap the NSIS upgrade backend with the illustrated native setup frontend. Selected audio models download before setup finishes. Local builds require the Windows .NET Framework compiler and WPF assemblies, which are also present on the GitHub Windows runners.
 
 2026-10-14: Windows uploads require the installer upgrade check to pass. The check upgrades the previously published build at its actual recorded path and verifies the notebook and settings. If the older installer uses a different folder, the check then uninstalls that fixture and installs the current build in a custom folder with spaces without deleting user data. Same-version replacement, component choices, and running-app shutdown are checked there.
@@ -52,7 +54,7 @@ If `github.com` times out while packaging, `make:win` already uses npmmirror. Gh
 Get-FileHash -Algorithm SHA256 "out\make\nsis\x64\Phevere-Setup-*-x64.exe"
 ```
 
-Prefer **not** to `gh release create` locally for the same tag — the workflow owns the Windows Setup and macOS DMG assets (GitHub immutable releases). The same tag also gets the Android APK and the unsigned iOS IPA (the phone version comes from `apps/mobile/package.json`). To **replace** files on an existing tag from current `main`: Actions → release → Run workflow → `attach_tag`, with `targets` set to all, desktop, or phone (deletes the old same-named files then uploads; does not move the git tag). Windows and macOS jobs share `scripts/gh-delete-release-asset.ps1`. If the tag exists but the GitHub Release does not (the 1.5.0 YAML parse failure), the same dispatch **creates** the Release.
+The workflow owns the Windows Setup and macOS DMG assets. The same tag also gets the Android APK and unsigned iOS IPA; the phone version comes from `apps/mobile/package.json`. To replace files on an existing tag from current `main`, run Actions → release with `attach_tag` and `targets` set to all, desktop, or phone. Use `windows-arm64` to retry only that installer. The workflow replaces same-named files after their checks pass and keeps the git tag in place. Windows and macOS jobs share `scripts/gh-delete-release-asset.ps1`. If the tag exists without a GitHub Release, dispatch creates the Release.
 
 ## Notes template (if you write notes by hand)
 
