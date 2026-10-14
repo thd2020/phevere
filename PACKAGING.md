@@ -88,7 +88,7 @@ If files remain but Apps has no entry (“ghost” install — often from aborte
 .\scripts\remove-ghost-phevere.ps1 -AlsoUserData   # also wipe %APPDATA%\phevere
 ```
 
-`packaging/installer.nsh` reinforces uninstall registry keys after installation and cleans its shortcuts on normal uninstall. Installation paths are selected by electron-builder's existing-install detection. The installer writes no default path registry entries before installation succeeds.
+`packaging/installer.nsh` reinforces uninstall registry keys after installation and cleans its shortcuts on normal uninstall. Normal uninstall also removes the startup entry when it points to this installation; upgrades preserve it. Installation paths are selected by electron-builder's existing-install detection. The installer writes no default path registry entries before installation succeeds.
 
 ### What is solidly bundled
 

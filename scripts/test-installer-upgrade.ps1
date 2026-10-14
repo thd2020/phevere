@@ -45,8 +45,18 @@ $fixtureHtml = Join-Path $fixtureRoot 'storage.html'
 $desktop = [Environment]::GetFolderPath('CommonDesktopDirectory')
 $programs = [Environment]::GetFolderPath('CommonPrograms')
 $links = @((Join-Path $desktop 'Phevere.lnk'), (Join-Path $programs 'Phevere.lnk'), (Join-Path $programs 'Uninstall Phevere.lnk'))
+$startupRegistryPath = 'Software\Microsoft\Windows\CurrentVersion\Run'
+$startupFixtureCommand = $null
 
 function Assert-True([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
+function Get-StartupCommand {
+    $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser, [Microsoft.Win32.RegistryView]::Registry64)
+    try {
+        $key = $base.OpenSubKey($startupRegistryPath)
+        if ($null -eq $key) { return $null }
+        try { return $key.GetValue('Phevere', $null) } finally { $key.Dispose() }
+    } finally { $base.Dispose() }
+}
 function Get-Entries {
     foreach ($hive in @([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryHive]::CurrentUser)) {
         foreach ($view in @([Microsoft.Win32.RegistryView]::Registry64, [Microsoft.Win32.RegistryView]::Registry32)) {
@@ -195,11 +205,13 @@ function Invoke-OwnedUninstall {
         Start-Sleep -Milliseconds 250
     }
     foreach ($link in $links) { Assert-True (-not (Test-Path -LiteralPath $link)) 'Uninstall left a shortcut.' }
+    Assert-True ($null -eq (Get-StartupCommand)) 'Normal uninstall left the fixture startup command.'
     Assert-State
 }
 
 # Refuse any existing app, notebook, shortcut or legacy directory before touching the runner.
 Assert-True (@(Get-Entries).Count -eq 0) 'Refusing to run with an existing Phevere installation.'
+Assert-True ($null -eq (Get-StartupCommand)) 'Refusing to run with an existing Phevere startup entry.'
 foreach ($hive in @([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryHive]::CurrentUser)) {
     foreach ($view in @([Microsoft.Win32.RegistryView]::Registry64, [Microsoft.Win32.RegistryView]::Registry32)) {
         $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey($hive, $view)
@@ -313,6 +325,15 @@ public static class InstallerTestWindows {
         Assert-Components $false
         Assert-State
     }
+    # Seed the exact current-user startup command written by the setup frontend.
+    # Its absence was verified before installation; ownership is the exact path.
+    $startupFixtureCommand = '"' + $appExe + '"'
+    $startupBase = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser, [Microsoft.Win32.RegistryView]::Registry64)
+    try {
+        $startupKey = $startupBase.CreateSubKey($startupRegistryPath)
+        try { $startupKey.SetValue('Phevere', $startupFixtureCommand, [Microsoft.Win32.RegistryValueKind]::String) }
+        finally { $startupKey.Dispose() }
+    } finally { $startupBase.Dispose() }
     foreach ($choice in @('0', '1')) {
         Set-Choices (Get-OwnedEntry) $choice
         $running = Start-Process -FilePath $appExe -WindowStyle Hidden -PassThru
@@ -326,6 +347,7 @@ public static class InstallerTestWindows {
         Assert-True (@(Get-Process -Name 'Phevere' -ErrorAction SilentlyContinue).Count -eq 0) 'A previous Phevere process survived the silent upgrade.'
         Assert-Payload
         Assert-Components ($choice -eq '1')
+        Assert-True ((Get-StartupCommand) -ceq $startupFixtureCommand) 'Same-version replacement removed or changed the startup command.'
         Assert-State
     }
     # Exercise the same explicit switches that the WPF frontend sends. Saved
@@ -338,6 +360,7 @@ public static class InstallerTestWindows {
         Invoke-Hidden $Installer "/S --desktop-shortcut=$choice --start-menu-shortcut=$choice --ocr-models=$choice /D=$installRoot"
         Assert-Payload
         Assert-Components ($choice -eq '1')
+        Assert-True ((Get-StartupCommand) -ceq $startupFixtureCommand) 'Explicit component replacement removed or changed the startup command.'
         Assert-State
     }
     Write-Host 'Checking that normal uninstall preserves the notebook and preferences.'
@@ -346,7 +369,7 @@ public static class InstallerTestWindows {
     Assert-True (-not (Test-Path -LiteralPath $appExe)) 'Uninstall left the application executable.'
     foreach ($link in $links) { Assert-True (-not (Test-Path -LiteralPath $link)) 'Uninstall left a shortcut.' }
     Assert-State
-    Write-Host 'PASS: upgrade, same-version replacement, running-app shutdown, component switches, wrapper exit propagation, headless audio, notebook, localStorage and uninstall preservation.'
+    Write-Host 'PASS: upgrade, same-version replacement, running-app shutdown, component switches, startup lifecycle, wrapper exit propagation, headless audio, notebook, localStorage and uninstall preservation.'
 } finally {
     # Stop only processes whose executable belongs to this fixture.
     foreach ($process in @(Get-Process -Name 'Phevere' -ErrorAction SilentlyContinue)) {
@@ -358,6 +381,15 @@ public static class InstallerTestWindows {
         if (Test-Path -LiteralPath $ownedUninstaller) {
             try { Invoke-Hidden $ownedUninstaller '/S' } catch { Write-Warning "Fixture uninstall failed: $_" }
         }
+    }
+    if ($startupFixtureCommand -and (Get-StartupCommand) -ceq $startupFixtureCommand) {
+        $startupBase = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser, [Microsoft.Win32.RegistryView]::Registry64)
+        try {
+            $startupKey = $startupBase.OpenSubKey($startupRegistryPath, $true)
+            if ($null -ne $startupKey) {
+                try { $startupKey.DeleteValue('Phevere', $false) } finally { $startupKey.Dispose() }
+            }
+        } finally { $startupBase.Dispose() }
     }
     # The historical installer wrote phantom preferences into other hives/views.
     # Every GUID key was absent at preflight; remove only keys with our own paths,

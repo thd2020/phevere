@@ -195,6 +195,16 @@ FunctionEnd
 !macroend
 
 !macro customUnInstall
+  ; The frontend owns this current-user startup value. Remove only our exact
+  ; executable on a normal uninstall; replacement installs retain it.
+  ${IfNot} ${isUpdated}
+  ${AndIfNot} ${isKeepShortcuts}
+    ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Phevere"
+    ${If} $R0 == '"$INSTDIR\${APP_EXECUTABLE_FILENAME}"'
+      DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Phevere"
+    ${EndIf}
+  ${EndIf}
+
   ; Updates pass --keep-shortcuts. Preserve existing choices until the new
   ; install applies its selected components; normal uninstall removes them.
   ${IfNot} ${isKeepShortcuts}
