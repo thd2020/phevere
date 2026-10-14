@@ -11,7 +11,7 @@ The four desktop downloads were replaced on the existing 2.1.0 release. Phone do
 
 ### Fixed
 
-- Full-panel opening (2026-10-14): expose the existing preference as Open full lookup panel and perform the lookup when selected text arrives after the panel has already expanded.
+- Full-panel opening (2026-10-14): expose the existing preference as Open full lookup panel and perform the lookup when selected text arrives after the panel has already expanded. Duplicate startup messages retain the chosen view.
 - Etymology sources (2026-10-14): restore contributor attribution, combine passages from the same contributor and language without dropping distinct continuations, retain the chosen tab as results arrive, and separate pronunciation-only caches. Etymonline request failures remain visible with an Open entry action and retry after ten minutes.
 - Desktop lookup shortcut (2026-10-14): immediately reopen the same selected word after closing its popup, retain the selected text until it expires, and reuse a loading strip when the shortcut repeats.
 - Windows installer upgrades (2026-10-14): preserve component choices, honor shortcut retention during replacement, and avoid creating installation registry entries before installation succeeds. Release jobs verify a real upgrade and same-version replacement before upload.

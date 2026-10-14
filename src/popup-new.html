@@ -1493,6 +1493,7 @@
           pvLog('[POPUP] ignore stale selection', next, when, lastAppliedSelectionAt);
           return;
         }
+        if (when === lastAppliedSelectionAt && next === currentText) return;
         lastAppliedSelectionAt = when;
         currentText = next;
         window['__popupCurrentText'] = currentText;

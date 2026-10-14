@@ -89,6 +89,13 @@ app.whenReady().then(async () => {
   await assertPanel('selected');
   win.webContents.send('fixture-selection','shortcut',3);
   await assertPanel('shortcut');
+  await js(`activateTab('etymology');`);
+  win.webContents.send('fixture-selection','shortcut',3);
+  await tick();
+  assert.equal(await js(`currentTab`), 'etymology', 'duplicate startup IPC must retain the chosen view');
+  win.webContents.send('fixture-selection','shortcut',4);
+  await assertPanel('shortcut');
+  assert.equal(await js(`currentTab`), 'lexicon', 'a fresh same-word selection still opens the full lookup');
   await js(`const option=document.getElementById('expandableMode');option.checked=false;
     option.dispatchEvent(new Event('change',{bubbles:true}));`);
   await win.reload();
