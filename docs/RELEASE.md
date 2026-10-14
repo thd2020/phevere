@@ -1,5 +1,15 @@
 # Publishing a GitHub release
 
+2026-10-14: Windows uploads require the installer upgrade check to pass. The check installs the previously published build into a custom folder, applies the replacement, and verifies the notebook, settings, component choices, and running-app shutdown. Same-version replacement is checked too.
+
+```mermaid
+flowchart LR
+  A[Build Setup.exe] --> B[Install published Setup.exe]
+  B --> C[Upgrade in the existing folder]
+  C --> D[Check notebook and preferences]
+  D --> E[Upload replacement]
+```
+
 Keep `package.json` `version`, the git tag, and `CHANGELOG.md` in sync.
 
 ## Unattended (GitHub Actions)

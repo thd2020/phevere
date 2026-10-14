@@ -66,32 +66,42 @@ FunctionEnd
   Page custom pvFinishPage
 !macroend
 
-!macro preInit
-  ; Seed default InstallLocation only when no prior install is recorded.
-  ; Writing both hives unconditionally left "ghost" InstallLocation keys without a real uninstaller.
-  SetRegView 64
-  ReadRegStr $R0 HKLM "${INSTALL_REGISTRY_KEY}" InstallLocation
+; electron-builder selects a recorded install path and supplies the default path
+; when none exists. Do not write registry keys until installation succeeds.
+
+!macro PV_RESTORE_COMPONENT SECTION VALUE EXISTS
+  ReadRegStr $R0 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" "${VALUE}"
   ${If} $R0 == ""
-    WriteRegExpandStr HKLM "${INSTALL_REGISTRY_KEY}" InstallLocation "$PROGRAMFILES64\Phevere"
+    ; Older installers did not record component choices. Infer their on-disk state
+    ; before uninstallOldVersion removes the old installation.
+    ${If} ${FileExists} "${EXISTS}"
+      StrCpy $R0 "1"
+    ${Else}
+      StrCpy $R0 "0"
+    ${EndIf}
   ${EndIf}
-  ReadRegStr $R0 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
-  ${If} $R0 == ""
-    WriteRegExpandStr HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation "$LOCALAPPDATA\Programs\Phevere"
-  ${EndIf}
-  SetRegView 32
-  ReadRegStr $R0 HKLM "${INSTALL_REGISTRY_KEY}" InstallLocation
-  ${If} $R0 == ""
-    WriteRegExpandStr HKLM "${INSTALL_REGISTRY_KEY}" InstallLocation "$PROGRAMFILES\Phevere"
-  ${EndIf}
-  ReadRegStr $R0 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
-  ${If} $R0 == ""
-    WriteRegExpandStr HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation "$LOCALAPPDATA\Programs\Phevere"
+  ${If} $R0 == "1"
+    SectionSetFlags ${SECTION} ${SF_SELECTED}
+  ${Else}
+    SectionSetFlags ${SECTION} 0
   ${EndIf}
 !macroend
 
+!macro PV_STORE_COMPONENT SECTION VALUE
+  ${If} ${SectionIsSelected} ${SECTION}
+    WriteRegStr SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" "${VALUE}" "1"
+  ${Else}
+    WriteRegStr SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" "${VALUE}" "0"
+  ${EndIf}
+!macroend
 
 !macro customInit
   SetDetailsPrint both
+  ${If} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+    !insertmacro PV_RESTORE_COMPONENT ${SecDesktop} DesktopShortcut "$DESKTOP\Phevere.lnk"
+    !insertmacro PV_RESTORE_COMPONENT ${SecStartMenu} StartMenuShortcut "$SMPROGRAMS\Phevere.lnk"
+    !insertmacro PV_RESTORE_COMPONENT ${SecOcr} OcrModels "$INSTDIR\resources\ocr-models\*.*"
+  ${EndIf}
 !macroend
 
 !macro customInstall
@@ -104,6 +114,7 @@ FunctionEnd
     CreateShortCut "$DESKTOP\Phevere.lnk" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" 0
   ${Else}
     DetailPrint "Skipping desktop shortcut"
+    Delete "$DESKTOP\Phevere.lnk"
   ${EndIf}
 
   ${If} ${SectionIsSelected} ${SecStartMenu}
@@ -113,7 +124,13 @@ FunctionEnd
     CreateShortCut "$SMPROGRAMS\Uninstall Phevere.lnk" "$INSTDIR\${UNINSTALL_FILENAME}" "" "$INSTDIR\${UNINSTALL_FILENAME}" 0
   ${Else}
     DetailPrint "Skipping Start menu shortcuts"
+    Delete "$SMPROGRAMS\Phevere.lnk"
+    Delete "$SMPROGRAMS\Uninstall Phevere.lnk"
   ${EndIf}
+
+  !insertmacro PV_STORE_COMPONENT ${SecDesktop} DesktopShortcut
+  !insertmacro PV_STORE_COMPONENT ${SecStartMenu} StartMenuShortcut
+  !insertmacro PV_STORE_COMPONENT ${SecOcr} OcrModels
 
   ; OCR models are always packed in Setup (extraResources). If user opts out, remove after extract.
   ${IfNot} ${SectionIsSelected} ${SecOcr}
@@ -144,10 +161,13 @@ FunctionEnd
 !macroend
 
 !macro customUnInstall
-  ; Remove Start Menu / desktop shortcuts we created (in case electron-builder keepShortcuts skipped them).
-  Delete "$DESKTOP\Phevere.lnk"
-  Delete "$SMPROGRAMS\Phevere.lnk"
-  Delete "$SMPROGRAMS\Uninstall Phevere.lnk"
+  ; Updates pass --keep-shortcuts. Preserve existing choices until the new
+  ; install applies its selected components; normal uninstall removes them.
+  ${IfNot} ${isKeepShortcuts}
+    Delete "$DESKTOP\Phevere.lnk"
+    Delete "$SMPROGRAMS\Phevere.lnk"
+    Delete "$SMPROGRAMS\Uninstall Phevere.lnk"
+  ${EndIf}
 
   ; Clean legacy author-folder Start Menu leftovers from older builds.
   RMDir /r "$SMPROGRAMS\thd2020"

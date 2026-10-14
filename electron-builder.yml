@@ -49,6 +49,8 @@ win:
     - sha256
   signAndEditExecutable: true
 nsis:
+  # Same-version replacement and future upgrades keep the notebook and settings.
+  deleteAppDataOnUninstall: false
   oneClick: false
   # One install mode (Program Files, as before by default), so no "just me / everyone" page.
   perMachine: true

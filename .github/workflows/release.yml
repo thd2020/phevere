@@ -64,6 +64,22 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "exe=$($exe.FullName)"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "name=$($exe.Name)"
           Write-Host "Found $($exe.FullName)"
+      - name: Verify in-place Windows upgrade
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
+        shell: pwsh
+        run: |
+          $previousDir = Join-Path $env:RUNNER_TEMP 'phevere-previous-installer'
+          New-Item -ItemType Directory -Path $previousDir -Force | Out-Null
+          gh release download $env:TAG --pattern 'Phevere-Setup-*-x64.exe' --dir $previousDir --clobber
+          if ($LASTEXITCODE -ne 0 -and '${{ github.event_name }}' -eq 'workflow_dispatch') { throw 'Could not download the existing x64 installer for the upgrade check.' }
+          $previous = Get-ChildItem -LiteralPath $previousDir -Filter '*.exe' | Select-Object -First 1
+          if ($previous) {
+            ./scripts/test-installer-upgrade.ps1 -Installer '${{ steps.pkg.outputs.exe }}' -PreviousInstaller $previous.FullName
+          } else {
+            ./scripts/test-installer-upgrade.ps1 -Installer '${{ steps.pkg.outputs.exe }}'
+          }
       - name: Remove existing asset with the same name
         env:
           GH_TOKEN: ${{ github.token }}
@@ -117,6 +133,22 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "exe=$($exe.FullName)"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "name=$($exe.Name)"
           Write-Host "Found $($exe.FullName)"
+      - name: Verify in-place Windows ARM64 upgrade
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
+        shell: pwsh
+        run: |
+          $previousDir = Join-Path $env:RUNNER_TEMP 'phevere-previous-installer'
+          New-Item -ItemType Directory -Path $previousDir -Force | Out-Null
+          gh release download $env:TAG --pattern 'Phevere-Setup-*-arm64.exe' --dir $previousDir --clobber
+          if ($LASTEXITCODE -ne 0 -and '${{ github.event_name }}' -eq 'workflow_dispatch') { throw 'Could not download the existing ARM64 installer for the upgrade check.' }
+          $previous = Get-ChildItem -LiteralPath $previousDir -Filter '*.exe' | Select-Object -First 1
+          if ($previous) {
+            ./scripts/test-installer-upgrade.ps1 -Installer '${{ steps.pkg.outputs.exe }}' -PreviousInstaller $previous.FullName
+          } else {
+            ./scripts/test-installer-upgrade.ps1 -Installer '${{ steps.pkg.outputs.exe }}'
+          }
       - name: Remove existing asset with the same name
         env:
           GH_TOKEN: ${{ github.token }}

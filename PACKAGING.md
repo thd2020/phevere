@@ -1,5 +1,19 @@
 # Packaging & releases
 
+2026-10-14: Windows replacement installs reuse the recorded installation folder and preserve the notebook and settings. Optional shortcuts and OCR choices carry over, including choices made with older installers. Each Windows release job tests a real upgrade before replacing the download.
+
+```mermaid
+flowchart LR
+  A[Existing Setup.exe] --> B[Custom install folder]
+  B --> C[Saved notebook and settings]
+  C --> D[Replacement Setup.exe]
+  D --> E[Same folder and component choices]
+  E --> F[Verify SQLite row and localStorage]
+  F --> G[Replace release download]
+```
+
+The release check also replaces the same version while the app is running and verifies that normal uninstall keeps user data. It runs only on a fresh administrator GitHub Windows runner; it refuses a developer machine or an existing installation.
+
 **2026-09-30:** The Windows installer is one page instead of a wizard (`packaging/installer-pages.nsh`): illustration, Install button, license checkbox, and Custom options for folder, shortcuts and OCR models; then one progress bar and an "Open Phevere" page. It always installs for all users (`perMachine: true`), the license page is gone, and the folder is chosen under Custom options (`allowToChangeInstallationDirectory: false`). Art comes from `scripts/installer-art.js` through `prepare:installer`.
 
 **2026-09-30:** Packages carry the speech engines in `resources/speech` (staged by `scripts/stage-speech.js` at prePackage): eSpeak NG WebAssembly (GPL-3.0, with its licence and source note), the bundled speech worker, and sherpa-onnx for Kokoro where a binary exists (not Windows on ARM). About 41 MB.
@@ -60,7 +74,7 @@ If files remain but Apps has no entry (“ghost” install — often from aborte
 .\scripts\remove-ghost-phevere.ps1 -AlsoUserData   # also wipe %APPDATA%\phevere
 ```
 
-`packaging/installer.nsh` reinforces uninstall registry keys on install and cleans Start Menu leftovers (including legacy `thd2020` / `xiangyuxiao` folders) on uninstall. `preInit` only seeds `InstallLocation` when empty, so incomplete installs are less likely to leave orphan registry rows.
+`packaging/installer.nsh` reinforces uninstall registry keys after installation and cleans its shortcuts on normal uninstall. Installation paths are selected by electron-builder's existing-install detection. The installer writes no default path registry entries before installation succeeds.
 
 ### What is solidly bundled
 

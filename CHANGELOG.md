@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Windows installer upgrades (2026-10-14): preserve component choices, honor shortcut retention during replacement, and avoid creating installation registry entries before installation succeeds. Release jobs verify a real upgrade and same-version replacement before upload.
 - Desktop popup sizing (2026-10-14): expanded panels enforce a toolbar-safe minimum width, keep pending content fitting from reusing strip dimensions, and stop treating a loaded panel as an in-flight selection strip.
 - Windows selection monitor (2026-10-14): replace detached capture threads with an owned worker, join workers before destruction, release replaced callbacks and the UI Automation handler, and bound pending callbacks.
 
