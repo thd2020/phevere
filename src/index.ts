@@ -84,10 +84,13 @@ declare const POPUP_WINDOW_WEBPACK_ENTRY: string;
 declare const OCR_OVERLAY_WEBPACK_ENTRY: string;
 declare const OCR_OVERLAY_PRELOAD_WEBPACK_ENTRY: string;
 
-// Designed as light ink/paper. Win11 "dark" app mode otherwise tints Mica/Acrylic
-// near-black while CSS keeps dark text.
-nativeTheme.themeSource = 'light';
-installDesktopDiagnostics();
+const installerAudioModel = installerAudioModelArgument(process.argv);
+if (installerAudioModel === undefined) {
+  // Designed as light ink/paper. Win11 "dark" app mode otherwise tints Mica/Acrylic
+  // near-black while CSS keeps dark text.
+  nativeTheme.themeSource = 'light';
+  installDesktopDiagnostics();
+}
 
 // Register ASAP — timed-out Promise.race fetches used to crash Electron via
 // unhandledRejection (Forge then relaunched → looked like a frozen toolstrip).
@@ -121,7 +124,6 @@ try {
 
 /** Only one packaged Phevere process. Dev/Forge must allow relaunch or the
  *  webpack restart exits immediately and leaves a wedged first instance. */
-const installerAudioModel = installerAudioModelArgument(process.argv);
 const gotSingleInstanceLock = app.isPackaged && installerAudioModel === undefined ? app.requestSingleInstanceLock() : true;
 if (app.isPackaged && !gotSingleInstanceLock) {
   app.exit(0);

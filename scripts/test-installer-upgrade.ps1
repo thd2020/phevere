@@ -113,6 +113,24 @@ function Invoke-Hidden([string]$Executable, [string]$Arguments, [int]$ExpectedEx
     }
     Assert-True ($process.ExitCode -eq $ExpectedExitCode) "Expected exit code $ExpectedExitCode, received $($process.ExitCode): $Executable"
 }
+function Assert-FixtureProcessesStopped {
+    # Electron's main-process handle can signal before its GPU/utility helpers
+    # finish exiting. Give those owned processes a bounded teardown interval.
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        $remaining = @(Get-Process -Name 'Phevere' -ErrorAction SilentlyContinue)
+        if ($remaining.Count -eq 0) { return }
+        if ([DateTime]::UtcNow -ge $deadline) {
+            $details = @($remaining | ForEach-Object {
+                $record = Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction SilentlyContinue
+                $commandLine = if ($null -ne $record) { $record.CommandLine } else { 'exited before diagnostic snapshot' }
+                "PID=$($_.Id), path=$($_.Path), commandLine=$commandLine"
+            })
+            throw "Fixture application processes survived after ten seconds: $($details -join '; ')"
+        }
+        Start-Sleep -Milliseconds 100
+    } while ($true)
+}
 function Assert-HeadlessAudio([string]$Model, [int]$ExpectedExitCode, [string]$ExpectedEvent) {
     $suffix = if ($Model) { $Model } else { 'empty' }
     $stdout = Join-Path $fixtureRoot "audio-$suffix.stdout"
@@ -140,7 +158,7 @@ function Assert-HeadlessAudio([string]$Model, [int]$ExpectedExitCode, [string]$E
         }
         $matching = @($events | Where-Object { $_.PSObject.Properties['event'] -and $_.PSObject.Properties['model'] -and $_.event -eq $ExpectedEvent -and $_.model -eq $Model })
         Assert-True ($matching.Count -eq 1) "Audio CLI '$Model' did not flush its $ExpectedEvent JSON event. stdout: $(Get-Content -LiteralPath $stdout -Raw)"
-        Assert-True (@(Get-Process -Name 'Phevere' -ErrorAction SilentlyContinue).Count -eq 0) 'Headless audio left an application process running.'
+        Assert-FixtureProcessesStopped
         if ($helperWindows.Count) { Write-Host "Headless audio '$Model' used only hidden helper windows: $($helperWindows.Keys -join '; ')" }
         Assert-State
     } finally {
@@ -344,7 +362,7 @@ public static class InstallerTestWindows {
         Invoke-Hidden $Installer '/S'
         $running.Refresh()
         Assert-True $running.HasExited 'The installer did not close the old running app.'
-        Assert-True (@(Get-Process -Name 'Phevere' -ErrorAction SilentlyContinue).Count -eq 0) 'A previous Phevere process survived the silent upgrade.'
+        Assert-FixtureProcessesStopped
         Assert-Payload
         Assert-Components ($choice -eq '1')
         Assert-True ((Get-StartupCommand) -ceq $startupFixtureCommand) 'Same-version replacement removed or changed the startup command.'
