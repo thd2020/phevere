@@ -83,14 +83,45 @@ function Set-Choices([object]$Entry, [string]$Value) {
         } finally { $key.Dispose() }
     } finally { $base.Dispose() }
 }
-function Invoke-Hidden([string]$Executable, [string]$Arguments) {
+function Invoke-Hidden([string]$Executable, [string]$Arguments, [int]$ExpectedExitCode = 0) {
     $process = Start-Process -FilePath $Executable -ArgumentList $Arguments -WindowStyle Hidden -PassThru
     $null = $process.Handle
     if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
         throw "Process timed out: $Executable"
     }
-    Assert-True ($process.ExitCode -eq 0) "Process failed with exit code $($process.ExitCode): $Executable"
+    Assert-True ($process.ExitCode -eq $ExpectedExitCode) "Expected exit code $ExpectedExitCode, received $($process.ExitCode): $Executable"
+}
+function Assert-HeadlessAudio([string]$Model, [int]$ExpectedExitCode, [string]$ExpectedEvent) {
+    $suffix = if ($Model) { $Model } else { 'empty' }
+    $stdout = Join-Path $fixtureRoot "audio-$suffix.stdout"
+    $stderr = Join-Path $fixtureRoot "audio-$suffix.stderr"
+    $process = Start-Process -FilePath $appExe -ArgumentList "--install-audio-model=$Model" -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    $null = $process.Handle
+    $deadline = [DateTime]::UtcNow.AddSeconds([Math]::Min($TimeoutSeconds, 60))
+    try {
+        do {
+            Assert-True (-not [InstallerTestWindows]::HasApplicationWindow($process.Id)) "Audio CLI '$Model' opened a desktop window."
+            if ([DateTime]::UtcNow -ge $deadline) { throw "Headless audio CLI timed out for '$Model'." }
+            Start-Sleep -Milliseconds 25
+            $process.Refresh()
+        } while (-not $process.HasExited)
+        $process.WaitForExit()
+        Assert-True ($process.ExitCode -eq $ExpectedExitCode) "Audio CLI '$Model' exited with $($process.ExitCode), expected $ExpectedExitCode. stderr: $(Get-Content -LiteralPath $stderr -Raw)"
+        $events = @()
+        foreach ($line in Get-Content -LiteralPath $stdout) {
+            if ($line.TrimStart().StartsWith('{')) {
+                try { $events += $line | ConvertFrom-Json } catch { throw "Invalid JSON audio event: $line" }
+            }
+        }
+        $matching = @($events | Where-Object { $_.PSObject.Properties['event'] -and $_.PSObject.Properties['model'] -and $_.event -eq $ExpectedEvent -and $_.model -eq $Model })
+        Assert-True ($matching.Count -eq 1) "Audio CLI '$Model' did not flush its $ExpectedEvent JSON event. stdout: $(Get-Content -LiteralPath $stdout -Raw)"
+        Assert-True (@(Get-Process -Name 'Phevere' -ErrorAction SilentlyContinue).Count -eq 0) 'Headless audio left an application process running.'
+        Assert-State
+    } finally {
+        $process.Refresh()
+        if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+    }
 }
 function Remove-OwnedTree([string]$Target) {
     $resolved = [IO.Path]::GetFullPath($Target)
@@ -159,6 +190,28 @@ Assert-True ([IO.Path]::GetFullPath($fixtureRoot).StartsWith($runnerRoot + '\', 
 $createdUserData = $false
 try {
     New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
+    # Enumerate actual top-level HWNDs during packaged CLI execution, including
+    # titled hidden windows. Electron message-only IPC HWNDs are excluded by EnumWindows.
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class InstallerTestWindows {
+    private delegate bool Callback(IntPtr hwnd, IntPtr data);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(Callback callback, IntPtr data);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern int GetWindowTextLength(IntPtr hwnd);
+    public static bool HasApplicationWindow(int processId) {
+        bool found = false;
+        EnumWindows(delegate(IntPtr hwnd, IntPtr ignored) {
+            uint owner; GetWindowThreadProcessId(hwnd, out owner);
+            if (owner == processId && (IsWindowVisible(hwnd) || GetWindowTextLength(hwnd) > 0)) { found = true; return false; }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+}
+'@
     Set-Content -LiteralPath $fixtureHtml -Value '<!doctype html><title>Installer storage fixture</title>'
     Write-Host 'Installing the baseline into a custom path with spaces.'
     # NSIS /D must be last, with no quotes around its value.
@@ -185,6 +238,14 @@ try {
     Assert-Components $false
     Assert-True ((Get-FileHash -LiteralPath (Join-Path $userData 'phevere.sqlite')).Hash -eq $databaseHash) 'Installation modified the SQLite file.'
     Assert-State
+    Write-Host 'Checking packaged headless audio commands and wrapper error propagation.'
+    Assert-HeadlessAudio 'none' 0 'audio-model-complete'
+    Assert-HeadlessAudio 'invalid' 1 'audio-model-error'
+    Assert-HeadlessAudio '' 1 'audio-model-error'
+    Invoke-Hidden $Installer '/S --desktop-shortcut=invalid' 2
+    Assert-Payload
+    Assert-Components $false
+    Assert-State
     foreach ($choice in @('0', '1')) {
         Set-Choices (Get-OwnedEntry) $choice
         $running = Start-Process -FilePath $appExe -WindowStyle Hidden -PassThru
@@ -196,6 +257,16 @@ try {
         $running.Refresh()
         Assert-True $running.HasExited 'The installer did not close the old running app.'
         Assert-True (@(Get-Process -Name 'Phevere' -ErrorAction SilentlyContinue).Count -eq 0) 'A previous Phevere process survived the silent upgrade.'
+        Assert-Payload
+        Assert-Components ($choice -eq '1')
+        Assert-State
+    }
+    # Exercise the same explicit switches that the WPF frontend sends. Saved
+    # choices are deliberately opposite, so silent upgrade cannot pass by inference.
+    foreach ($choice in @('0', '1')) {
+        $opposite = if ($choice -eq '0') { '1' } else { '0' }
+        Set-Choices (Get-OwnedEntry) $opposite
+        Invoke-Hidden $Installer "/S --desktop-shortcut=$choice --start-menu-shortcut=$choice --ocr-models=$choice"
         Assert-Payload
         Assert-Components ($choice -eq '1')
         Assert-State
@@ -215,7 +286,7 @@ try {
     Assert-True (-not (Test-Path -LiteralPath $appExe)) 'Uninstall left the application executable.'
     foreach ($link in $links) { Assert-True (-not (Test-Path -LiteralPath $link)) 'Uninstall left a shortcut.' }
     Assert-State
-    Write-Host 'PASS: upgrade, same-version replacement, running-app shutdown, component choices, notebook, localStorage and uninstall preservation.'
+    Write-Host 'PASS: upgrade, same-version replacement, running-app shutdown, component switches, wrapper exit propagation, headless audio, notebook, localStorage and uninstall preservation.'
 } finally {
     # Stop only processes whose executable belongs to this fixture.
     foreach ($process in @(Get-Process -Name 'Phevere' -ErrorAction SilentlyContinue)) {

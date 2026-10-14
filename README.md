@@ -1,5 +1,7 @@
 # Phevere
 
+2026-10-14 (unreleased): Windows Setup retains the illustrated one-page layout. Custom options now include pronunciation models and startup preferences. Replacement installs retain the existing folder, notebook, settings, and component choices.
+
 2026-10-14 (unreleased): desktop lookup panels keep a minimum width of 460 pixels so Save and Close remain visible. New selections leave an expanded panel in place.
 
 The Windows selection monitor now owns and joins its capture workers and releases replaced callbacks. Local crash dumps and exit records go to `%APPDATA%\phevere\diagnostics`; they are not uploaded. The reported exit after a day of idle time has not yet been reproduced.
@@ -66,7 +68,7 @@ Download the installer for your platform from [GitHub Releases](https://github.c
 
 Release builds are not code-signed, so Windows SmartScreen and macOS Gatekeeper will ask for confirmation on first launch. [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md) describes how to sign your own builds.
 
-**Windows.** The installer places Phevere in `C:\Program Files\Phevere` and optionally installs the OCR models (about 15 MB). Running Phevere as administrator lets UI Automation read selections in elevated applications. To uninstall, use **Settings → Apps → Phevere**. If an earlier installation left files behind that the Apps list no longer shows, run `scripts\remove-ghost-phevere.ps1` from an elevated PowerShell prompt.
+**Windows.** Select Install, or open Custom options to choose the folder, OCR models (about 15 MB), pronunciation model, shortcuts, and startup preference. Compact (132 MB) and Full (350 MB) pronunciation models download during setup on x64. The default folder is `C:\Program Files\Phevere`; replacement installs reuse the existing folder and preserve your notebook and settings. Running Phevere as administrator lets UI Automation read selections in elevated applications. To uninstall, use **Settings → Apps → Phevere**. Normal uninstall retains your notebook and settings. If an earlier installation left files behind that the Apps list no longer shows, run `scripts\remove-ghost-phevere.ps1` from an elevated PowerShell prompt.
 
 **macOS.** Drag Phevere to Applications and open it with right-click → **Open** the first time. Grant **Accessibility** for select-to-lookup and **Screen Recording** for OCR; the menu-bar icon links to both settings. See [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md).
 

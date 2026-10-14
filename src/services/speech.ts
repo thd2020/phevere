@@ -14,6 +14,8 @@ import { app, net, utilityProcess, type UtilityProcess } from 'electron';
 import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import { ipaToEspeakPhonemes } from '@phevere/core';
 import { log } from '../logger';
 
@@ -261,6 +263,7 @@ interface DownloadState {
   abort: AbortController;
 }
 const downloads = new Map<string, DownloadState>();
+const downloadJobs = new Map<VoiceId, Promise<void>>();
 
 export interface VoiceRow {
   id: VoiceId;
@@ -294,16 +297,29 @@ export function listVoices(): VoiceRow[] {
 
 /** Picks a voice; a neural voice not yet downloaded starts downloading and is picked once ready. */
 export function selectVoice(id: VoiceId): void {
+  void installAndSelectVoice(id).catch((err) => log.warn('speech', 'voice download failed', { id, err: String(err) }));
+}
+
+/** Awaitable selection used by installer provisioning and the settings download flow. */
+export async function installAndSelectVoice(id: VoiceId): Promise<void> {
   if (id === 'mechanical' || isInstalled(id)) {
     setAudioPrefs({ voice: id });
     return;
   }
   const v = VARIANTS.find((x) => x.id === id);
-  if (!v || !neuralSupported() || (downloads.has(id) && !downloads.get(id)?.error)) return;
-  void downloadVariant(v).then(
-    () => setAudioPrefs({ voice: id }),
-    (err) => log.warn('speech', 'voice download failed', { id, err: String(err) }),
-  );
+  if (!v) throw new Error('Unknown pronunciation voice');
+  if (!neuralSupported()) throw new Error('Neural speech engine is unavailable on this computer');
+  let job = downloadJobs.get(id);
+  if (!job) {
+    job = downloadVariant(v);
+    downloadJobs.set(id, job);
+  }
+  try {
+    await job;
+    setAudioPrefs({ voice: id });
+  } finally {
+    if (downloadJobs.get(id) === job) downloadJobs.delete(id);
+  }
 }
 
 export function cancelVoiceDownload(id: VoiceId): void {
@@ -327,16 +343,24 @@ async function downloadVariant(v: Variant): Promise<void> {
     const out = fs.createWriteStream(archive);
     const reader = res.body.getReader();
     let got = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      hash.update(value);
-      got += value.length;
-      // Unpacking takes the last few percent.
-      state.progress = Math.min(0.95, (got / total) * 0.95);
-      if (!out.write(value)) await new Promise<void>((r) => out.once('drain', () => r()));
-    }
-    await new Promise<void>((resolve, reject) => out.end((err?: Error | null) => (err ? reject(err) : resolve())));
+    const chunks = async function* () {
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          hash.update(value);
+          got += value.length;
+          // Unpacking takes the last few percent.
+          state.progress = Math.min(0.95, (got / total) * 0.95);
+          yield value;
+        }
+      } finally {
+        await reader.cancel().catch(() => { /* network may already have stopped */ });
+        reader.releaseLock();
+      }
+    };
+    // pipeline owns errors and closes the file before cleanup, including disk-full failures.
+    await pipeline(Readable.from(chunks()), out);
     if (hash.digest('hex') !== v.sha) throw new Error('Download verification failed. Please retry.');
     fs.rmSync(staging, { recursive: true, force: true });
     fs.mkdirSync(staging, { recursive: true });

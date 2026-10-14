@@ -1,5 +1,13 @@
 # Packaging & releases
 
+2026-10-14: Windows Setup keeps the illustrated single-page layout and uses native, keyboard-accessible controls. Custom options include the installation folder, OCR, pronunciation models, shortcuts, startup, and opening the app after installation. A selected pronunciation model downloads during setup; Windows ARM64 omits this choice.
+
+![Screenshot of the illustrated Windows installer with its Install button and Custom options](PACKAGING.assets/installer-main.png)
+
+Custom options replace the illustration within the same window.
+
+![Screenshot of Windows Setup custom options for components, installation folder, and shortcuts](PACKAGING.assets/installer-options.png)
+
 2026-10-14: Windows replacement installs reuse the recorded installation folder and preserve the notebook and settings. Optional shortcuts and OCR choices carry over, including choices made with older installers. Each Windows release job tests a real upgrade before replacing the download.
 
 ```mermaid
@@ -14,7 +22,7 @@ flowchart LR
 
 The release check also replaces the same version while the app is running and verifies that normal uninstall keeps user data. It runs only on a fresh administrator GitHub Windows runner; it refuses a developer machine or an existing installation.
 
-**2026-09-30:** The Windows installer is one page instead of a wizard (`packaging/installer-pages.nsh`): illustration, Install button, license checkbox, and Custom options for folder, shortcuts and OCR models; then one progress bar and an "Open Phevere" page. It always installs for all users (`perMachine: true`), the license page is gone, and the folder is chosen under Custom options (`allowToChangeInstallationDirectory: false`). Art comes from `scripts/installer-art.js` through `prepare:installer`.
+**2026-09-30:** Windows Setup introduced the illustrated single-page layout. Art comes from `scripts/installer-art.js` through `prepare:installer`.
 
 **2026-09-30:** Packages carry the speech engines in `resources/speech` (staged by `scripts/stage-speech.js` at prePackage): eSpeak NG WebAssembly (GPL-3.0, with its licence and source note), the bundled speech worker, and sherpa-onnx for Kokoro where a binary exists (not Windows on ARM). About 41 MB.
 
@@ -28,7 +36,9 @@ The release check also replaces the same version while the app is running and ve
 
 ## Windows: NSIS Setup.exe (primary)
 
-We use **electron-builder NSIS** via `@electron-addons/electron-forge-maker-nsis`, with our own one-page UI (install, progress, finish) and the standard **uninstaller**.
+We use electron-builder NSIS via `@electron-addons/electron-forge-maker-nsis` for installation, replacement upgrades, and the uninstaller. `scripts/build-installer-shell.js` wraps that backend with the native WPF frontend in `packaging/installer-ui`. Setup requests administrator approval when installation starts. The frontend, illustration, and private Outfit fonts are bundled inside the same Setup.exe; fonts are not installed globally.
+
+Silent `/S` invocations go directly to the backend and preserve the original arguments, including a final `/D=` folder containing spaces. Interactive setup passes its component choices explicitly. The frontend downloads a selected audio model through the installed app's headless `--install-audio-model=` command and reads progress from its JSON output.
 
 ```bash
 npm run build-native
@@ -60,6 +70,8 @@ One Setup.exe includes the app **and** OCR models (`resources/ocr-models` → `e
 | OCR models (~15 MB) | **on** | Uncheck → remove `resources\ocr-models` after extract |
 
 ### Uninstall & ghost cleanup
+
+Custom options also offer a pronunciation model (None, Compact at 132 MB, or Full at 350 MB), Start with Windows, and Open after installation. Pronunciation models download during setup on x64. Upgrades preserve an existing startup preference.
 
 Normal uninstall:
 

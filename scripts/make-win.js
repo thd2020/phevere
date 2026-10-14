@@ -56,7 +56,7 @@ function run(cmd, args) {
     cwd: root,
     env: process.env,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
+    shell: process.platform === 'win32' && ['npm', 'npx'].includes(cmd),
   });
   if (r.status !== 0) {
     process.exit(r.status || 1);
@@ -72,3 +72,4 @@ process.env.PHEVERE_PACK_ARCH = arch;
 process.env.PHEVERE_PACK_PLATFORM = 'win32';
 console.log('[make-win] arch=', arch);
 run('npx', ['electron-forge', 'make', '--platform=win32', `--arch=${arch}`]);
+run(process.execPath, ['scripts/build-installer-shell.js', '--arch', arch]);

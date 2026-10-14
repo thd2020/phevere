@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Windows Setup component choices (2026-10-14): optional Compact and Full pronunciation models download during installation on x64; startup and post-install launch choices sit under Custom options. Native controls retain the original illustrated single-page layout and support keyboard navigation.
 - Local desktop diagnostics (2026-10-14): record sleep, resume, process exits, and crashes under the app's local data directory without uploading reports. The reported day-long idle exit remains unverified.
 
 ## [2.1.0] - 2026-09-30

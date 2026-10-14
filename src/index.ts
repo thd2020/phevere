@@ -5,11 +5,13 @@ import * as os from 'os';
 import * as path from 'path';
 import { log } from './logger';
 import { installDesktopDiagnostics } from './services/desktop-diagnostics';
+import { provisionInstallerAudio } from './services/installer-provisioning';
+import { installerAudioModelArgument, runInstallerAudioCommand } from './services/installer-audio-cli';
 import { clipboardService } from './services/clipboard';
 import { dictionaryService } from './services/dictionary';
 import { wikipediaService } from './services/wikipedia';
 import { searchService } from './services/search';
-import { createNativeSelectionService, SelectionEvent } from './services/native-selection';
+import { createNativeSelectionService, SelectionEvent, type NativeSelectionService } from './services/native-selection';
 import {
   openMacAccessibilitySettings,
   promptOpenMacAccessibilitySettings,
@@ -119,7 +121,8 @@ try {
 
 /** Only one packaged Phevere process. Dev/Forge must allow relaunch or the
  *  webpack restart exits immediately and leaves a wedged first instance. */
-const gotSingleInstanceLock = app.isPackaged ? app.requestSingleInstanceLock() : true;
+const installerAudioModel = installerAudioModelArgument(process.argv);
+const gotSingleInstanceLock = app.isPackaged && installerAudioModel === undefined ? app.requestSingleInstanceLock() : true;
 if (app.isPackaged && !gotSingleInstanceLock) {
   app.exit(0);
 }
@@ -208,7 +211,13 @@ let contextHubWired = false;
 let hoverLookup: HoverLookupService | null = null;
 
 // Native selection service
-const nativeSelectionService = createNativeSelectionService();
+const nativeSelectionService: NativeSelectionService = installerAudioModel === undefined ? createNativeSelectionService() : {
+  start: async () => {},
+  stop: async () => {},
+  onSelection: () => {},
+  isSupported: () => false,
+  getStatus: () => ({ isRunning: false, platform: process.platform, method: 'installer' }),
+};
 let macAxPromptOpen = false;
 let macAxPollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -2875,6 +2884,10 @@ function installDarwinAppMenu(): void {
 }
 
 app.on('ready', () => {
+  if (installerAudioModel !== undefined) {
+    void runInstallerAudioCommand(installerAudioModel).then((exitCode) => app.exit(exitCode), () => app.exit(1));
+    return;
+  }
   if (!gotSingleInstanceLock) return;
   if (process.platform === 'win32') {
     // Must match electron-builder appId for correct taskbar icon grouping.
@@ -2916,6 +2929,7 @@ app.on('ready', () => {
     })
     .catch((err) => log.warn('main', 'OCR warm-up skipped', { err: String(err) }));
   log.info('main', 'Initialization complete');
+  void provisionInstallerAudio().catch((err) => log.warn('installer', 'audio provisioning failed', { err: String(err) }));
 });
 
 app.on('second-instance', () => {
@@ -2940,6 +2954,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
+  if (installerAudioModel !== undefined) return;
   if (BrowserWindow.getAllWindows().length === 0) {
     createMainWindow();
   } else {

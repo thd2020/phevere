@@ -95,6 +95,21 @@ FunctionEnd
   ${EndIf}
 !macroend
 
+!macro PV_COMPONENT_ARGUMENT SECTION OPTION
+  ClearErrors
+  ${GetOptions} $R1 "${OPTION}=" $R0
+  ${IfNot} ${Errors}
+    ${If} $R0 == "1"
+      SectionSetFlags ${SECTION} ${SF_SELECTED}
+    ${ElseIf} $R0 == "0"
+      SectionSetFlags ${SECTION} 0
+    ${Else}
+      SetErrorLevel 2
+      Abort "Invalid ${OPTION} value. Expected 0 or 1."
+    ${EndIf}
+  ${EndIf}
+!macroend
+
 !macro customInit
   SetDetailsPrint both
   ${If} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
@@ -102,6 +117,12 @@ FunctionEnd
     !insertmacro PV_RESTORE_COMPONENT ${SecStartMenu} StartMenuShortcut "$SMPROGRAMS\Phevere.lnk"
     !insertmacro PV_RESTORE_COMPONENT ${SecOcr} OcrModels "$INSTDIR\resources\ocr-models\*.*"
   ${EndIf}
+  ; The WPF frontend sends explicit choices to the silent backend. A plain /S
+  ; upgrade omits these switches and retains the saved or inferred choices.
+  ${GetParameters} $R1
+  !insertmacro PV_COMPONENT_ARGUMENT ${SecDesktop} --desktop-shortcut
+  !insertmacro PV_COMPONENT_ARGUMENT ${SecStartMenu} --start-menu-shortcut
+  !insertmacro PV_COMPONENT_ARGUMENT ${SecOcr} --ocr-models
 !macroend
 
 !macro customInstall
