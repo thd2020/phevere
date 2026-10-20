@@ -2,46 +2,6 @@
 
 <img src="README.assets/phevere-icon.png" width="96" alt="The Phevere icon: a lowercase p whose stem is an orange text cursor, with a peach highlighter stroke">
 
-2026-10-20, 2.2.0: a new icon, a lowercase p whose stem is a text cursor with a highlighter stroke through it, on a light tile. In-app text uses one name per thing: Notebook, Recent lookups, and Scan for every text recognition action (Scan region, Scan under pointer, Scan active window, Scan clipboard image). Failures read "Could not …". The pop-up's Options button is now Pop-up settings, and the neural voices are Neural (standard) and Neural (high quality).
-
-2026-10-20: the Etymonline tab shows the entry inside the app again, read from Etymonline's JSON endpoint rather than the page Cloudflare now challenges. The summary above the etymology tabs reads from the oldest ancestor to the headword.
-
-![Screenshot of the etymology view for separate, with the history line from Proto-Indo-European *per- through Latin and Middle English to English](README.assets/desktop-etymology-history.jpg)
-
-The history line comes from the Wiktionary templates; each arrow names how the next form came about.
-
-2026-10-20: with a neural voice installed, IPA chips on desktop speak their transcription with that voice. Stacked lookup popups close one per outside click. The settings gear stays beside the window controls and reopens Settings every time.
-
-![Screenshot of the Shortcuts settings with labels, key boxes and Set buttons in aligned columns](README.assets/desktop-settings-shortcuts.png)
-
-The Shortcuts settings, rendered from the settings markup and stylesheet in a browser.
-
-2026-10-14, 2.1.0 desktop refresh: enable Open full lookup panel under the pop-up's Pop-up settings button to show the lookup immediately. The preference carries across popup windows; the default remains the icon strip.
-
-![Screenshot of popup Options with Open full lookup panel enabled](README.assets/desktop-popup-opening.png)
-
-Open full lookup panel is stored with the popup preferences.
-
-2026-10-14, 2.1.0 desktop and phone refresh: etymology tabs retain contributor names such as 童理民 and group their passages by language. Etymonline request failures have an Open on Etymonline action. Pronunciation-only lookups use a separate cache from full lookups. All six release downloads have been rebuilt; the git tag is unchanged.
-
-![Screenshot of orientation with the three passages attributed to Tong Limin grouped in one Chinese source tab](README.assets/desktop-etymology-sources.png)
-
-The Youdao response for orientation, captured on 2026-10-14. The Etymonline tab remains available when its request is blocked.
-
-2026-10-14, 2.1.0 desktop refresh: the lookup shortcut can reopen the same selected word immediately after closing its popup. Repeated shortcuts reuse a loading strip.
-
-2026-10-14, 2.1.0 desktop refresh: Windows Setup retains the illustrated one-page layout. Custom options now include pronunciation models and startup preferences. Replacement installs retain the existing folder, notebook, settings, and component choices.
-
-2026-10-14, 2.1.0 desktop refresh: desktop lookup panels keep a minimum width of 460 pixels so Save and Close remain visible. New selections leave an expanded panel in place.
-
-The Windows selection monitor now owns and joins its capture workers and releases replaced callbacks. Local crash dumps and exit records go to `%APPDATA%\phevere\diagnostics`; they are not uploaded. The reported exit after a day of idle time has not yet been reproduced.
-
-Windows ARM64 showed intermittent native startup failures during release checks. The final upgrade run passed, but their cause remains unresolved.
-
-![Screenshot of the desktop lookup at its minimum width, with Save and Close visible](README.assets/desktop-popup-minimum.png)
-
-The Electron regression fixture at the minimum panel size. Run `node scripts/test-popup-sizing.js --screenshot` to refresh the capture and verify the toolbar, views, Save, Options, and Close.
-
 [![Release](https://img.shields.io/github/v/release/thd2020/phevere?display_name=tag)](https://github.com/thd2020/phevere/releases/latest)
 [![CI](https://github.com/thd2020/phevere/actions/workflows/ci.yml/badge.svg)](https://github.com/thd2020/phevere/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/thd2020/phevere)](LICENSE)
