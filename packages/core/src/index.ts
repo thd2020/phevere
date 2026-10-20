@@ -33,6 +33,7 @@ export {
   type VocabAddInput,
 } from './vocab-store';
 export { inferVocabGlossLang, formatVocabLangPair } from './vocab-lang';
+export { vocabPayloadFromResult } from './vocab-payload';
 
 export {
   type ContextOrigin,
