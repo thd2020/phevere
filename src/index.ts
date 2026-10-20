@@ -27,7 +27,7 @@ import { HoverLookupService, phevereWindowFocused } from './services/hover-looku
 import { placePopupNearPoint, eventCoordSpace, type ScreenCoordSpace } from './services/popup-placement';
 import { popupSize } from './services/popup-size';
 import { showWorkProgress, updateWorkProgress, closeWorkProgress } from './services/work-progress';
-import { isAcceleratorPhysicallyHeld, isPrimaryMouseDown } from './services/accelerator-key-state';
+import { isAcceleratorPhysicallyHeld, isPrimaryMouseDown, primaryMousePressedSinceLastPoll } from './services/accelerator-key-state';
 import { getForegroundWindowBoundsDip } from './services/foreground-window';
 import { getNowPlaying, formatNowPlayingQuery } from './services/media-session';
 import { speakIpa, cancelIpaSpeak, fetchPronunciationAudio, prefetchPronunciationUrls, installPronunciationAudioProtocol } from './services/ipa-speak';
@@ -178,6 +178,8 @@ function frontPopup(): BrowserWindow | undefined {
 function closePopupForOutsideClick(win: BrowserWindow): void {
   win.close();
   stopOutsideClickWatch();
+  // Clear the press that closed the front popup before watching for the next one.
+  primaryMousePressedSinceLastPoll();
   let wasDown = true;
   outsideClickWatch = setInterval(() => {
     const front = frontPopup();
@@ -186,7 +188,7 @@ function closePopupForOutsideClick(win: BrowserWindow): void {
       stopOutsideClickWatch();
       return;
     }
-    const down = isPrimaryMouseDown();
+    const down = primaryMousePressedSinceLastPoll();
     if (down && !wasDown) {
       const p = screen.getCursorScreenPoint();
       const inside = popupWindows.some((w) => {
@@ -199,8 +201,8 @@ function closePopupForOutsideClick(win: BrowserWindow): void {
         front.close();
       }
     }
-    wasDown = down;
-  }, 40);
+    wasDown = down && isPrimaryMouseDown();
+  }, 30);
 }
 let settingsWindow: BrowserWindow | null = null;
 let externalWindows: BrowserWindow[] = []; // Track external windows opened by the app

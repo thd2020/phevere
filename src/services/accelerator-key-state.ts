@@ -428,3 +428,18 @@ export function isPrimaryMouseDown(): boolean {
   }
   return false;
 }
+
+/**
+ * True when the primary button is held now or, on Windows, was pressed at any
+ * point since the previous call. GetAsyncKeyState sets bit 0 for a press that
+ * happened between polls, so a quick click is not lost to the polling interval.
+ * https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-getasynckeystate
+ */
+export function primaryMousePressedSinceLastPoll(): boolean {
+  if (process.platform === 'win32') {
+    const fn = loadWin32();
+    if (!fn) return false;
+    return (fn(VK_LBUTTON) & 0x8001) !== 0;
+  }
+  return isPrimaryMouseDown();
+}
