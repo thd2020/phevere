@@ -263,28 +263,25 @@ export function buildIpaPhonemeSsml(ipa: string, lang: string): string | null {
 }
 
 /**
- * Kokoro (misaki) phoneme symbols for an IPA transcription, so the neural voice
- * can read a chip's own IPA. Kokoro writes diphthongs as single letters
- * (eɪ → A, aɪ → I, oʊ → O, əʊ → Q, aʊ → W, ɔɪ → Y) and puts stress marks just
- * before the stressed vowel rather than at the syllable start.
- * https://github.com/hexgrad/misaki/blob/main/EN_PHONES.md
+ * Kokoro input for an IPA transcription, so the neural voice can read a chip's
+ * own IPA. sherpa-onnx feeds Kokoro plain eSpeak-style IPA, one token per
+ * character (oʊ, tʃ and ɚ stay as written), with each stress mark just before
+ * its vowel. Matching that keeps a chip sounding like the rest of the app.
  */
 export function ipaToKokoroPhonemes(raw?: string, accent?: string): string {
   const gb = accentToBcp47(accent) === 'en-GB';
   // "(r)" marks a linking r that British speech drops before a consonant or pause.
   const linked = String(raw || '').replace(/\((?:r|ɹ)\)/g, gb ? '' : 'ɹ');
-  let s = prepareIpa(linked).replace(/[.\s\-‿ˑ']/g, (c) => (c === "'" ? 'ˈ' : ''));
-  const rules: Array<[RegExp, string]> = [
-    [/t͡?ʃ/g, 'ʧ'], [/d͡?ʒ/g, 'ʤ'],
-    [/eɪ|ei/g, 'A'], [/aɪ|ai/g, 'I'], [/ɔɪ|oi/g, 'Y'], [/aʊ|au/g, 'W'],
-    [/əʊ|əu|oʊ|ou/g, gb ? 'Q' : 'O'],
-    [/ɝ/g, 'ɜɹ'], [/ɚ/g, 'əɹ'], [/r/g, 'ɹ'], [/g/g, 'ɡ'], [/ɫ/g, 'l'], [/ʍ/g, 'w'],
-    [/ɐ|ɘ|ɵ/g, 'ə'], [/ᵻ/g, 'ɪ'], [/ᵿ/g, 'ʊ'], [/ʉ/g, 'u'], [/eə|ɛə/g, 'ɛː'], [/e/g, 'ɛ'],
-  ];
-  for (const [re, to] of rules) s = s.replace(re, to);
-  if (!gb) s = s.replace(/ɒ/g, 'ɑ');
+  const s = prepareIpa(linked)
+    .replace(/'/g, 'ˈ')
+    .replace(/[.\s\-‿ˑ]/g, '')
+    .replace(/r/g, 'ɹ')
+    .replace(/g/g, 'ɡ')
+    .replace(/ɫ/g, 'l')
+    .replace(/ʍ/g, 'w')
+    .replace(/ɝ/g, 'ɜː');
   // Move each stress mark from the syllable onset to just before its vowel.
-  const vowel = /[aeiouɑɒæɔəɛɜɪʊʌAIOQWYᵊ]/;
+  const vowel = /[aeiouɑɒæɔəɛɜɪʊʌɚɐᵻ]/;
   let out = '';
   let pending = '';
   for (const ch of Array.from(s)) {
