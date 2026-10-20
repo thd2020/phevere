@@ -1414,6 +1414,10 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
 
 const createSettingsWindow = (): void => {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
+    // A window that never painted stays hidden; focus() alone would leave the
+    // gear doing nothing until restart.
+    if (settingsWindow.isMinimized()) settingsWindow.restore();
+    if (!settingsWindow.isVisible()) settingsWindow.show();
     settingsWindow.focus();
     return;
   }
@@ -1437,9 +1441,13 @@ const createSettingsWindow = (): void => {
   const settingsUrl = MAIN_WINDOW_WEBPACK_ENTRY + '#settings';
   settingsWindow.loadURL(settingsUrl);
 
-  settingsWindow.once('ready-to-show', () => {
-    settingsWindow?.show();
-  });
+  const revealSettings = (): void => {
+    if (settingsWindow && !settingsWindow.isDestroyed() && !settingsWindow.isVisible()) settingsWindow.show();
+  };
+  settingsWindow.once('ready-to-show', revealSettings);
+  // ready-to-show can be skipped when the first load is interrupted (a dev
+  // rebuild, a reload); show the window once the page has loaded anyway.
+  settingsWindow.webContents.once('did-finish-load', () => setTimeout(revealSettings, 400));
 
   settingsWindow.on('closed', () => {
     settingsWindow = null;
