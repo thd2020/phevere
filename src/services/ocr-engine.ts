@@ -390,7 +390,7 @@ class OnnxNativeOcrEngine implements OcrEngine {
       if (!customPath || !listOnnxTriplet(customPath)) {
         return {
           ok: false,
-          detail: 'Custom folder needs det*.onnx, rec*.onnx, and a keys/dict .txt',
+          detail: 'This folder does not contain an OCR model.',
         };
       }
       this.settings = { activeProfileId: 'custom', customModelsPath: customPath };
@@ -950,7 +950,7 @@ class CompositeOcrEngine implements OcrEngine {
     const n = this.native.getStatus();
     return {
       ok: false,
-      detail: n.lastError || `Embedded OCR failed to load (models: ${n.modelsPath})`,
+      detail: n.lastError || `Text recognition could not start (models: ${n.modelsPath})`,
     };
   }
 

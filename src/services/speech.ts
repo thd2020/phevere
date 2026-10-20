@@ -45,7 +45,7 @@ interface Variant {
 const VARIANTS: Variant[] = [
   {
     id: 'compact',
-    name: 'Neural compact',
+    name: 'Neural (standard)',
     dir: 'kokoro-int8-v1',
     archiveDir: 'kokoro-int8-multi-lang-v1_0',
     model: 'model.int8.onnx',
@@ -54,7 +54,7 @@ const VARIANTS: Variant[] = [
   },
   {
     id: 'full',
-    name: 'Neural full quality',
+    name: 'Neural (high quality)',
     dir: 'kokoro-v1',
     archiveDir: 'kokoro-multi-lang-v1_0',
     model: 'model.onnx',
@@ -315,7 +315,7 @@ export interface VoiceRow {
 
 export function listVoices(): VoiceRow[] {
   const rows: VoiceRow[] = [
-    { id: 'mechanical', name: 'Mechanical', detail: 'Built in', installed: true, downloading: false, progress: 1 },
+    { id: 'mechanical', name: 'Mechanical', detail: 'Built-in', installed: true, downloading: false, progress: 1 },
   ];
   if (!neuralSupported()) return rows;
   for (const v of VARIANTS) {

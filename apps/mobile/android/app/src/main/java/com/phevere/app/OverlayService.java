@@ -207,17 +207,17 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
 
   @Override
   public void chooseOcr() {
-    router.fail(pendingJsId, "Camera OCR needs the full app");
+    router.fail(pendingJsId, "Open Phevere to scan");
   }
 
   @Override
   public void launchPickFile() {
-    router.fail(pendingJsId, "Import needs the full app");
+    router.fail(pendingJsId, "Open Phevere to import");
   }
 
   @Override
   public void launchSaveFile(String name) {
-    router.fail(pendingJsId, "Export needs the full app");
+    router.fail(pendingJsId, "Open Phevere to export");
   }
 
   @Override

@@ -46,7 +46,7 @@ if (clearBtn && recentList) {
   clearBtn.addEventListener('click', () => {
     localStorage.removeItem(RECENT_SELECTIONS_STORAGE_KEY);
     recentList.innerHTML = `
-      <p class="empty-message">No selections yet. When the monitor is On or Shortcut, chosen text appears here.</p>
+      <p class="empty-message">No recent lookups.</p>
     `;
     updateClearButtonVisibility(); // <-- Will hide the button automatically
   });
@@ -141,7 +141,7 @@ function initializeSettingsWindow() {
             </div>
             <div class="settings-group">
             <div class="settings-field">
-              <span id="label-monitor-cycle" class="settings-field-label">Cycle monitor mode</span>
+              <span id="label-monitor-cycle" class="settings-field-label">Selection mode</span>
               <div class="settings-shortcut-row">
                 <div class="settings-keycaps" id="monitor-cycle-shortcut-keys"></div>
                 <input type="text" id="monitor-cycle-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-monitor-cycle" />
@@ -149,7 +149,7 @@ function initializeSettingsWindow() {
               </div>
             </div>
             <div class="settings-field">
-              <span id="label-monitor-trigger" class="settings-field-label">Popup trigger<small class="settings-field-sub">Hold while selecting</small></span>
+              <span id="label-monitor-trigger" class="settings-field-label">Pop-up trigger<small class="settings-field-sub">Hold while selecting</small></span>
               <div class="settings-shortcut-row">
                 <div class="settings-keycaps" id="monitor-trigger-shortcut-keys"></div>
                 <input type="text" id="monitor-trigger-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-monitor-trigger" />
@@ -157,7 +157,7 @@ function initializeSettingsWindow() {
               </div>
             </div>
             <div class="settings-field">
-              <span id="label-ocr-shortcut" class="settings-field-label">OCR region overlay</span>
+              <span id="label-ocr-shortcut" class="settings-field-label">Scan region</span>
               <div class="settings-shortcut-row">
                 <div class="settings-keycaps" id="ocr-shortcut-keys"></div>
                 <input type="text" id="ocr-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-ocr-shortcut" />
@@ -165,7 +165,7 @@ function initializeSettingsWindow() {
               </div>
             </div>
             <div class="settings-field">
-              <span id="label-hover-shortcut" class="settings-field-label">Toggle hover lookup</span>
+              <span id="label-hover-shortcut" class="settings-field-label">Hover lookup</span>
               <div class="settings-shortcut-row">
                 <div class="settings-keycaps" id="hover-shortcut-keys"></div>
                 <input type="text" id="hover-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-hover-shortcut" />
@@ -174,15 +174,15 @@ function initializeSettingsWindow() {
             </div>
             </div>
             <div class="settings-actions settings-actions--wrap">
-              <button type="button" id="monitor-save-shortcuts" class="btn btn-primary">Save shortcuts</button>
+              <button type="button" id="monitor-save-shortcuts" class="btn btn-primary">Save</button>
               <span id="monitor-shortcuts-status" class="settings-inline-status" role="status" aria-live="polite"></span>
             </div>
-            <h3 class="settings-subhead">Fixed</h3>
+            <h3 class="settings-subhead">Built-in</h3>
             <ul class="settings-cheat">
-              <li><span class="settings-cheat__label">Grab under cursor</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+G"></span></li>
-              <li><span class="settings-cheat__label">Read this window</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+W"></span></li>
-              <li><span class="settings-cheat__label">OCR clipboard image</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+I"></span></li>
-              <li><span class="settings-cheat__label">Now playing</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+P"></span></li>
+              <li><span class="settings-cheat__label">Scan under pointer</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+G"></span></li>
+              <li><span class="settings-cheat__label">Scan active window</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+W"></span></li>
+              <li><span class="settings-cheat__label">Scan clipboard image</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+I"></span></li>
+              <li><span class="settings-cheat__label">Look up now playing</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+P"></span></li>
             </ul>
           </section>
 
@@ -201,17 +201,17 @@ function initializeSettingsWindow() {
             </div>
             <div class="settings-dropzone" id="settings-dropzone" tabindex="0">
               <strong>Drop or paste an image</strong>
-              <span>PNG / JPG / WebP</span>
+              <span>PNG, JPEG or WebP</span>
             </div>
-            <h3 class="settings-subhead">OCR engine</h3>
+            <h3 class="settings-subhead">Text recognition</h3>
             <div class="settings-field">
-              <label for="ocr-profile-select">Model pack</label>
+              <label for="ocr-profile-select">Model</label>
               <select id="ocr-profile-select" class="setting-input"></select>
             </div>
-            <p id="ocr-status" class="settings-inline-status" role="status" aria-live="polite">Checking OCR…</p>
+            <p id="ocr-status" class="settings-inline-status" role="status" aria-live="polite">Checking…</p>
             <div class="settings-actions settings-actions--wrap">
               <button type="button" id="ocr-apply-profile" class="btn btn-primary">Apply</button>
-              <button type="button" id="ocr-upload-models" class="btn btn-secondary">Upload folder…</button>
+              <button type="button" id="ocr-upload-models" class="btn btn-secondary">Choose folder…</button>
               <button type="button" id="ocr-refresh-status" class="btn btn-outlined">Refresh</button>
             </div>
           </section>
@@ -222,7 +222,7 @@ function initializeSettingsWindow() {
             </div>
             <div class="settings-group">
             <div class="settings-row" role="group" aria-labelledby="notify-clipboard-image-label">
-              <span id="notify-clipboard-image-label" class="settings-row__label">Clipboard image ready</span>
+              <span id="notify-clipboard-image-label" class="settings-row__label">Image copied</span>
               <label class="settings-toggle-label">
                 <input class="toggle-input" type="checkbox" id="notify-clipboard-image" checked />
                 <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
@@ -236,7 +236,7 @@ function initializeSettingsWindow() {
               </label>
             </div>
             <div class="settings-row" role="group" aria-labelledby="notify-hover-toggle-label">
-              <span id="notify-hover-toggle-label" class="settings-row__label">Hover lookup on / off</span>
+              <span id="notify-hover-toggle-label" class="settings-row__label">Hover lookup switched on or off</span>
               <label class="settings-toggle-label">
                 <input class="toggle-input" type="checkbox" id="notify-hover-toggle" checked />
                 <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
@@ -262,7 +262,7 @@ function initializeSettingsWindow() {
             <h3 class="settings-subhead">Packs</h3>
             <div id="offline-catalog" class="pack-list"></div>
             <p id="offline-status" class="settings-inline-status" role="status" aria-live="polite"></p>
-            <h3 class="settings-subhead">Your files</h3>
+            <h3 class="settings-subhead">Import</h3>
             <button type="button" id="offline-import-json" class="nav-row">
               <span class="nav-row__icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
               <span class="nav-row__label">Import pack<span class="nav-row__sub">JSON or JSONL</span></span>
@@ -391,7 +391,7 @@ async function wireOcrSettingsPanel(): Promise<void> {
 
   const refresh = async () => {
     if (!api?.getStatus) {
-      setStatus('OCR unavailable.');
+      setStatus('Text recognition unavailable.');
       return;
     }
     try {
@@ -400,14 +400,14 @@ async function wireOcrSettingsPanel(): Promise<void> {
       const label =
         (s.profiles || []).find((p: any) => p.id === s.activeProfileId)?.label || s.activeProfileId || 'OCR';
       if (s.available === true) {
-        setStatus(`${label} · ready`);
+        setStatus(`${label}: ready`);
       } else if (s.available === false) {
-        setStatus(`${label} · ${s.lastError || 'unavailable'}`);
+        setStatus(`${label}: ${s.lastError || 'unavailable'}`);
       } else {
-        setStatus(`${label} · checking…`);
+        setStatus(`${label}: checking…`);
       }
     } catch (e: any) {
-      setStatus(`Status check failed: ${e?.message || e}`);
+      setStatus(`Could not check status: ${e?.message || e}`);
     }
   };
 
@@ -427,16 +427,16 @@ async function wireOcrSettingsPanel(): Promise<void> {
       }
       setStatus('Loading custom models…');
       const r = await api.setProfile('custom', picked.path);
-      setStatus(r?.ok ? r.detail : `Failed — ${r?.detail || 'unknown'}`);
+      setStatus(r?.ok ? r.detail : `Could not switch model: ${r?.detail || 'unknown'}`);
       await refresh();
       return;
     }
     setStatus(id.startsWith('pp-ocr') && id !== 'bundled-pp-ocrv4' ? 'Downloading models…' : 'Switching…');
     try {
       const r = await api.setProfile(id);
-      setStatus(r?.ok ? r.detail : `Failed — ${r?.detail || 'unknown'}`);
+      setStatus(r?.ok ? r.detail : `Could not switch model: ${r?.detail || 'unknown'}`);
     } catch (e: any) {
-      setStatus(`Failed: ${e?.message || e}`);
+      setStatus(`Could not switch model: ${e?.message || e}`);
     }
     await refresh();
   });
@@ -447,7 +447,7 @@ async function wireOcrSettingsPanel(): Promise<void> {
     if (!picked || picked.cancelled || !picked.path) return;
     setStatus('Loading custom models…');
     const r = await api.setProfile('custom', picked.path);
-    setStatus(r?.ok ? r.detail : `Failed — ${r?.detail || 'unknown'}`);
+    setStatus(r?.ok ? r.detail : `Could not switch model: ${r?.detail || 'unknown'}`);
     await refresh();
   });
 
@@ -465,13 +465,13 @@ async function wireOfflineSettingsPanel(): Promise<void> {
 
   const refreshPacks = async () => {
     if (!listEl || !api?.listPacks) {
-      if (listEl) listEl.innerHTML = `<p class="settings-hint">Offline API unavailable.</p>`;
+      if (listEl) listEl.innerHTML = `<p class="settings-hint">Offline dictionaries unavailable.</p>`;
       return;
     }
     try {
       const packs = await api.listPacks();
       if (!packs?.length) {
-        listEl.innerHTML = `<p class="settings-hint">No packs installed yet.</p>`;
+        listEl.innerHTML = `<p class="settings-hint">No packs installed.</p>`;
         return;
       }
       listEl.innerHTML = packs
@@ -489,7 +489,7 @@ async function wireOfflineSettingsPanel(): Promise<void> {
         btn.addEventListener('click', async () => {
           const id = (btn as HTMLElement).dataset.id;
           if (!id) return;
-          if (!confirm(`Remove pack “${id}”?`)) return;
+          if (!confirm(`Remove ${id}?`)) return;
           await api.removePack(id);
           setStatus('Pack removed.');
           await refreshAll();
@@ -539,7 +539,7 @@ async function wireOfflineSettingsPanel(): Promise<void> {
           setStatus(`Downloading ${id}…`);
           try {
             const r = await api.downloadPack(id);
-            setStatus(r?.success ? `${id} ready · ${Number(r.count) || 0} entries.` : 'Download failed.');
+            setStatus(r?.success ? `Installed ${id} (${Number(r.count) || 0} entries).` : 'Download failed.');
             await refreshAll();
           } catch (e: any) {
             setStatus(`Download failed: ${e?.message || e}`);
@@ -564,7 +564,7 @@ async function wireOfflineSettingsPanel(): Promise<void> {
   });
   document.getElementById('offline-import-json')?.addEventListener('click', async () => {
     if (!api?.importJson) return;
-    setStatus('Choose a JSON / JSONL file…');
+    setStatus('Choose a JSON or JSONL file…');
     try {
       const r = await api.importJson();
       if (r?.cancelled) {
@@ -579,7 +579,7 @@ async function wireOfflineSettingsPanel(): Promise<void> {
   });
   document.getElementById('offline-import-cedict')?.addEventListener('click', async () => {
     if (!api?.importCedictFile) return;
-    setStatus('Choose a CEDICT text file…');
+    setStatus('Choose a CEDICT file…');
     try {
       const r = await api.importCedictFile();
       if (r?.cancelled) {
@@ -745,7 +745,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
   function bindCapture(input: HTMLInputElement, setBtn: HTMLButtonElement): void {
     const start = (): void => {
       stopCaptureUi();
-      setBtn.textContent = 'Press keys…';
+      setBtn.textContent = 'Press a shortcut…';
       setBtn.classList.add('is-recording');
       cancelCapture = captureNextShortcut((acc) => {
         cancelCapture = null;
@@ -804,7 +804,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
       hoverShortcut: hoverEl.value.trim(),
       hoverEnabled: hoverToggle ? hoverToggle.checked : true,
     });
-    statusEl.textContent = r.success ? 'Saved.' : (r.error || 'Could not save.');
+    statusEl.textContent = r.success ? 'Saved' : (r.error || 'Could not save');
     statusEl.classList.toggle('is-error', !r.success);
   });
 
@@ -1916,7 +1916,7 @@ async function loadVocabNotebook(): Promise<void> {
   if (!list) return;
   const api = (window as any).vocabAPI;
   if (!api?.list) {
-    list.innerHTML = `<p class="empty-message">Notebook API unavailable.</p>`;
+    list.innerHTML = `<p class="empty-message">Notebook unavailable.</p>`;
     return;
   }
   try {
@@ -1957,7 +1957,7 @@ function renderVocabNotebook(entries: any[]): void {
   syncVocabAzAvailability(sorted);
   if (!sorted.length) {
     const q = ((document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '').trim();
-    list.innerHTML = `<p class="empty-message">${q ? 'No notebook matches.' : 'No saved words yet.'}</p>`;
+    list.innerHTML = `<p class="empty-message">${q ? 'No matching words.' : 'No saved words.'}</p>`;
     return;
   }
   list.innerHTML = sorted
@@ -1999,13 +1999,13 @@ function renderVocabNotebook(entries: any[]): void {
             </div>
             </div>
             <div class="vocab-entry__details">
-              ${defHtml ? `<div class="vocab-def${long ? ' is-clamped' : ''}" data-full="1">${defHtml}</div>${long ? `<button type="button" class="vocab-more btn-link">Show more</button>` : ''}` : '<p class="vocab-note">No definition saved.</p>'}
+              ${defHtml ? `<div class="vocab-def${long ? ' is-clamped' : ''}" data-full="1">${defHtml}</div>${long ? `<button type="button" class="vocab-more btn-link">Show more</button>` : ''}` : '<p class="vocab-note">No definition.</p>'}
               ${badges ? `<div class="vocab-badges">${badges}</div>` : ''}
               ${e.note ? `<p class="vocab-note">${escapeHtmlSelection(e.note)}</p>` : ''}
             </div>
           </div>
           <div class="vocab-actions">
-            <button type="button" class="btn btn-outlined btn-small vocab-open" data-lemma="${escapeHtmlSelection(e.lemma)}">Open</button>
+            <button type="button" class="btn btn-outlined btn-small vocab-open" data-lemma="${escapeHtmlSelection(e.lemma)}">Look up</button>
             <button type="button" class="btn btn-outlined btn-small vocab-remove" data-id="${escapeHtmlSelection(e.id)}">Remove</button>
           </div>
         </article>`;
@@ -2197,12 +2197,12 @@ function initializeMainWindowControls() {
           ? 'status-value shortcut'
           : 'status-value stopped';
     selectionToggle.setAttribute('aria-pressed', mode !== 'off' ? 'true' : 'false');
-    selectionToggle.setAttribute('aria-label', `Selection monitor: ${label}. Click to cycle Off, On, Shortcut.`);
+    selectionToggle.setAttribute('aria-label', `Selection mode: ${label}`);
   }
 
   function syncClipboardUi(running: boolean): void {
     if (!clipboardStatus || !clipboardToggle) return;
-    clipboardStatus.textContent = running ? 'Running' : 'Stopped';
+    clipboardStatus.textContent = running ? 'On' : 'Off';
     clipboardStatus.className = running ? 'status-value running' : 'status-value stopped';
     clipboardToggle.setAttribute('aria-pressed', running ? 'true' : 'false');
   }
@@ -2212,7 +2212,7 @@ function initializeMainWindowControls() {
     hoverStatus.textContent = enabled ? 'On' : 'Off';
     hoverStatus.className = enabled ? 'status-value running' : 'status-value stopped';
     hoverToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
-    hoverToggle.setAttribute('aria-label', `Hover lookup: ${enabled ? 'On' : 'Off'}. Click to toggle.`);
+    hoverToggle.setAttribute('aria-label', `Hover lookup: ${enabled ? 'On' : 'Off'}`);
   }
 
   function syncAudioUi(enabled: boolean): void {
@@ -2220,7 +2220,7 @@ function initializeMainWindowControls() {
     audioStatus.textContent = enabled ? 'On' : 'Off';
     audioStatus.className = enabled ? 'status-value running' : 'status-value stopped';
     audioToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
-    audioToggle.setAttribute('aria-label', `Pronunciation audio: ${enabled ? 'On' : 'Off'}. Click to toggle.`);
+    audioToggle.setAttribute('aria-label', `Pronunciation: ${enabled ? 'On' : 'Off'}`);
   }
 
   if (minimizeBtn) {
@@ -2418,7 +2418,7 @@ function appendRecentSelectionRow(
   const selectionItem = document.createElement('button');
   selectionItem.className = 'selection-item';
   selectionItem.setAttribute('type', 'button');
-  selectionItem.setAttribute('aria-label', `Lookup ${text}`);
+  selectionItem.setAttribute('aria-label', `Look up ${text}`);
   const safe = escapeHtmlSelection(text);
   const t = timeLabel || new Date().toLocaleTimeString();
   selectionItem.innerHTML = `
@@ -2523,7 +2523,7 @@ function formatClipboardTimestamp(ts: unknown): string {
 
 function renderClipboardItemsHtml(entries: { id: string; text: string; timestamp: unknown }[]): string {
   if (entries.length === 0) {
-    return '<p class="empty-state">No clipboard history yet</p>';
+    return '<p class="empty-state">No clipboard items.</p>';
   }
   return entries
     .map(
@@ -2533,7 +2533,7 @@ function renderClipboardItemsHtml(entries: { id: string; text: string; timestamp
           <div class="clipboard-meta">
             <span class="clipboard-time">${escapeHtmlClipboard(formatClipboardTimestamp(entry.timestamp))}</span>
             <button type="button" class="copy-btn" data-copy-id="${escapeHtmlClipboard(entry.id)}">Copy</button>
-            <button type="button" class="remove-btn" data-remove-id="${escapeHtmlClipboard(entry.id)}">×</button>
+            <button type="button" class="remove-btn" data-remove-id="${escapeHtmlClipboard(entry.id)}" aria-label="Remove" title="Remove">×</button>
           </div>
         </div>
       `
@@ -2558,15 +2558,15 @@ async function showClipboardHistory() {
     popup.className = 'clipboard-popup';
     popup.innerHTML = `
       <div class="popup-header">
-        <h3>📋 Clipboard History (${stats.totalEntries} items)</h3>
+        <h3>Clipboard history (${stats.totalEntries})</h3>
         <div class="popup-controls">
-          <button type="button" id="clear-clipboard" class="btn btn-danger">Clear All</button>
+          <button type="button" id="clear-clipboard" class="btn btn-danger">Clear</button>
           <button type="button" class="close-btn" data-close-clipboard aria-label="Close">×</button>
         </div>
       </div>
       <div class="popup-content">
         <div class="clipboard-search">
-          <input type="text" id="clipboard-search" placeholder="Search clipboard history..." class="search-input">
+          <input type="text" id="clipboard-search" placeholder="Search clipboard…" class="search-input">
         </div>
         <div id="clipboard-list" class="clipboard-list">${renderClipboardItemsHtml(history)}</div>
       </div>
@@ -2601,7 +2601,7 @@ async function showClipboardHistory() {
           await window.clipboardAPI.copy(text);
           const notification = document.createElement('div');
           notification.className = 'copy-notification';
-          notification.textContent = 'Copied to clipboard!';
+          notification.textContent = 'Copied';
           document.body.appendChild(notification);
           setTimeout(() => notification.remove(), 2000);
         }
@@ -2630,7 +2630,7 @@ async function showClipboardHistory() {
     });
 
     document.getElementById('clear-clipboard')?.addEventListener('click', async () => {
-      if (confirm('Are you sure you want to clear all clipboard history?')) {
+      if (confirm('Clear clipboard history?')) {
         await window.clipboardAPI.clear();
         popup.remove();
       }
@@ -2814,7 +2814,7 @@ async function loadMainSourceToggles() {
           <div class="source-toggle-main">
             <div class="source-info">
               <span class="source-name">${source.name}</span>
-              ${(source as any).isAvailable === false ? '<span class="source-priority">Needs a key or pack</span>' : ''}
+              ${(source as any).isAvailable === false ? '<span class="source-priority">Requires an API key or offline pack</span>' : ''}
             </div>
             <label>
               <input class="toggle-input" type="checkbox" data-source="${source.name}" ${enabledSources.includes(source.name) ? 'checked' : ''} />
@@ -2848,7 +2848,7 @@ async function loadMainSourceToggles() {
 }
 
 const TRANSLATION_ENGINE_OPTIONS: Array<{ id: string; label: string; detail: string }> = [
-  { id: 'auto', label: 'Auto', detail: 'Google Translate, then MyMemory' },
+  { id: 'auto', label: 'Automatic', detail: 'Google Translate, then MyMemory' },
   { id: 'google', label: 'Google Translate', detail: 'No API key' },
   { id: 'mymemory', label: 'MyMemory', detail: 'No API key' },
   { id: 'youdao', label: 'Youdao', detail: 'API key required' },
@@ -2963,7 +2963,7 @@ async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise
     }
     const speech = await api?.synthesizeSpeech?.({ text: lemma, lang: 'en' });
     if (speech?.ok && speech.dataUrl) await play(speech.dataUrl, false);
-    else showNotification('Cannot play pronunciation');
+    else showNotification('Could not play pronunciation');
   } finally {
     setTimeout(() => btn?.classList.remove('is-speaking'), 500);
   }
@@ -3016,7 +3016,7 @@ function setupAudioSettings() {
       .map((v: any) => {
         const on = v.id === state.selected;
         const pct = Math.round((v.progress || 0) * 100);
-        const detail = v.downloading ? `Downloading · ${pct}%` : v.error ? v.error : v.installed ? (v.id === 'mechanical' ? v.detail : 'Downloaded') : v.detail;
+        const detail = v.downloading ? `Downloading ${pct}%` : v.error ? v.error : v.installed ? (v.id === 'mechanical' ? v.detail : 'Downloaded') : v.detail;
         const trailing = v.downloading
           ? `<button type="button" class="icon-btn voice-row__action" data-cancel="${v.id}" title="Cancel" aria-label="Cancel download">${VOICE_ICON.cancel}</button>`
           : on
@@ -3081,7 +3081,7 @@ function setupAudioSettings() {
     // Show feedback
     const notification = document.createElement('div');
     notification.className = 'copy-notification';
-    notification.textContent = 'Copied to clipboard!';
+    notification.textContent = 'Copied';
     document.body.appendChild(notification);
     setTimeout(() => notification.remove(), 2000);
   }
@@ -3100,7 +3100,7 @@ function setupAudioSettings() {
 (window as any).copyToClipboard = async function(text: string) {
   if (window.clipboardAPI) {
     await window.clipboardAPI.copy(text);
-    showNotification('Copied to clipboard!');
+    showNotification('Copied');
   }
 };
 

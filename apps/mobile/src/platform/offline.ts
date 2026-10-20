@@ -27,7 +27,7 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
     id: 'wordnet-3.1',
     name: 'Princeton WordNet 3.1',
     language: 'en',
-    direction: 'en→en',
+    direction: 'English',
     license: 'WordNet License (Princeton University)',
     summary: 'Academic English glosses and synonym sets.',
     sizeHint: '~16 MB download',
@@ -39,7 +39,7 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
     id: 'webster-1913',
     name: "Webster's Unabridged 1913 (GCIDE)",
     language: 'en',
-    direction: 'en→en',
+    direction: 'English',
     license: 'GPL-3+ (GNU GCIDE)',
     summary: "Webster's Revised Unabridged Dictionary (1913).",
     sizeHint: '~18 MB download',
@@ -54,7 +54,7 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
     id: 'cc-cedict',
     name: 'CC-CEDICT',
     language: 'zh',
-    direction: 'zh→en',
+    direction: 'Chinese–English',
     license:'CC BY-SA 4.0',
     summary: 'Community Chinese–English dictionary.',
     sizeHint: 'large; import may take a minute',
@@ -66,11 +66,11 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
     id: 'freedict-eng-zho',
     name: 'FreeDict English–Chinese',
     language: 'en',
-    direction: 'en→zh',
+    direction: 'English–Chinese',
     license: 'GPL (FreeDict)',
     summary: 'English headwords with Chinese glosses. Auto-download is xz; import a .tei from Files if the download cannot unpack.',
     sizeHint: '~2 MB download',
-    consent: 'FreeDict English–Chinese is GPL. Prefer importing the .tei if xz unpack fails.',
+    consent: 'Download FreeDict English–Chinese from download.freedict.org? GNU GPL.',
     urls: ['https://download.freedict.org/dictionaries/eng-zho/2025.11.23/freedict-eng-zho-2025.11.23.src.tar.xz'],
     kind: 'freedict-tei',
   },
@@ -196,7 +196,7 @@ async function writePack(
 
 async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
   if (typeof DecompressionStream === 'undefined') {
-    throw new Error('This WebView cannot gunzip archives');
+    throw new Error('This pack cannot be installed here.');
   }
   const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'));
   return new Uint8Array(await new Response(stream).arrayBuffer());
@@ -314,10 +314,10 @@ export async function downloadCatalogPack(
   if (item.kind === 'cedict') {
     onProgress?.('Unpacking…');
     const text = new TextDecoder('utf-8').decode(await gunzip(bytes));
-    return importTextPack(item, text, (d, t) => onProgress?.(`Importing ${d}/${t}`));
+    return importTextPack(item, text, (d, t) => onProgress?.(`Importing ${d} of ${t}…`));
   }
   if (item.kind === 'freedict-tei') {
-    throw new Error('This pack is an .xz archive. Import the .tei from Files instead.');
+    throw new Error('This pack cannot be installed here. Import the .tei file instead.');
   }
   onProgress?.('Unpacking archive…');
   const unpacked = extractTar(await gunzip(bytes), (name) => {
@@ -326,7 +326,7 @@ export async function downloadCatalogPack(
   });
   if (!unpacked.size) throw new Error('Archive had no dictionary files');
   const joined = [...unpacked.values()].join('\n');
-  return importTextPack(item, joined, (d, t) => onProgress?.(`Importing ${d}/${t}`));
+  return importTextPack(item, joined, (d, t) => onProgress?.(`Importing ${d} of ${t}…`));
 }
 
 export async function importUserFile(

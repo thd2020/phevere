@@ -22,13 +22,10 @@ export async function promptOpenMacAccessibilitySettings(): Promise<boolean> {
   const label = macAccessibilityAppLabel();
   const r = await dialog.showMessageBox({
     type: 'info',
-    title: 'Allow selected-text lookup',
-    message: `${label} needs Accessibility to read text you select in other apps.`,
-    detail:
-      'macOS does not allow apps to turn this on by themselves. Open Settings, enable the toggle for ' +
-      `${label}, then return here — lookup starts on its own. If the row is listed but off, turn it on; ` +
-      'if it looks stuck on, toggle it off and on.',
-    buttons: ['Open Accessibility Settings', 'Not now'],
+    title: 'Accessibility access required',
+    message: `${label} needs Accessibility access to read selected text.`,
+    detail: `In System Settings, open Privacy & Security, then Accessibility, and turn on ${label}.`,
+    buttons: ['Open System Settings', 'Not Now'],
     defaultId: 0,
     cancelId: 1,
   });

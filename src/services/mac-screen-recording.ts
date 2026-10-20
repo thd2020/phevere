@@ -39,13 +39,10 @@ export async function promptOpenMacScreenRecordingSettings(): Promise<boolean> {
   const label = macScreenRecordingAppLabel();
   const r = await dialog.showMessageBox({
     type: 'info',
-    title: 'Allow screen text (OCR)',
-    message: `${label} needs Screen Recording to read text from a screenshot.`,
-    detail:
-      'Hover lookup, region OCR, grab under cursor, and Read this window use a screen capture. ' +
-      'macOS does not allow apps to turn this on by themselves. Open Settings, enable the toggle for ' +
-      `${label}, then try the OCR action again.`,
-    buttons: ['Open Screen Recording Settings', 'Not now'],
+    title: 'Screen Recording access required',
+    message: `${label} needs Screen Recording access to read text on screen.`,
+    detail: `In System Settings, open Privacy & Security, then Screen Recording, and turn on ${label}.`,
+    buttons: ['Open System Settings', 'Not Now'],
     defaultId: 0,
     cancelId: 1,
   });

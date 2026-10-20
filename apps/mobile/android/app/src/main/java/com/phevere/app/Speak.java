@@ -61,7 +61,7 @@ final class Speak {
         });
       } catch (Exception | LinkageError error) {
         main.post(() -> {
-          if (token == gen) finish("Bundled speech could not play this text. Try again.");
+          if (token == gen) finish("Could not play pronunciation.");
         });
       }
     });
@@ -72,7 +72,7 @@ final class Speak {
     pendingDone = done;
     gen++;
     if (url == null || url.isEmpty()) {
-      finish("No pronunciation recording available.");
+      finish("No recording available.");
       return;
     }
     startPlayer(url, rate, gen);

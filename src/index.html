@@ -60,7 +60,7 @@
     <main class="container main-shell">
       <section class="vocab-notebook" aria-labelledby="vocab-heading">
         <div class="recent-selections__header">
-          <h2 id="vocab-heading" class="section-heading">Vocabulary notebook</h2>
+          <h2 id="vocab-heading" class="section-heading">Notebook</h2>
           <div class="recent-selections__actions">
             <input type="search" id="vocabSearch" class="vocab-search" placeholder="Search notebook…" autocomplete="off" aria-label="Search notebook" />
             <div class="vocab-sort" role="group" aria-label="Notebook sort">
@@ -74,7 +74,7 @@
         </div>
         <div class="vocab-list-wrap" id="vocabListWrap">
           <div id="vocabList" class="selections-list">
-            <p class="empty-message">No saved words yet.</p>
+            <p class="empty-message">No saved words.</p>
           </div>
           <nav class="vocab-az" id="vocabAz" hidden aria-label="Jump to letter"></nav>
           <div class="vocab-az-hud" id="vocabAzHud" hidden aria-hidden="true"></div>
@@ -83,13 +83,13 @@
 
       <section class="recent-selections" aria-labelledby="recent-heading">
         <div class="recent-selections__header">
-          <h2 id="recent-heading" class="section-heading">Recent selections</h2>
+          <h2 id="recent-heading" class="section-heading">Recent lookups</h2>
           <div class="recent-selections__actions">
-            <button type="button" id="clearSelectionsBtn" class="btn btn-outlined btn-small" style="display: none;">Clear all</button>
+            <button type="button" id="clearSelectionsBtn" class="btn btn-outlined btn-small" style="display: none;">Clear</button>
           </div>
         </div>
         <div id="selectionsList" class="selections-list">
-          <p class="empty-message">No selections yet.</p>
+          <p class="empty-message">No recent lookups.</p>
         </div>
       </section>
     </main>
@@ -101,7 +101,7 @@
       </button>
       <button type="button" id="clipboardToggle" class="status-bar-item status-pill status-toggle" aria-pressed="true">
         <span class="status-label">Clipboard</span>
-        <span id="clipboardStatus" class="status-value running">Running</span>
+        <span id="clipboardStatus" class="status-value running">On</span>
       </button>
       <button type="button" id="hoverToggle" class="status-bar-item status-pill status-toggle" aria-pressed="true">
         <span class="status-label">Hover</span>

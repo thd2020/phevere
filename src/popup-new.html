@@ -1206,13 +1206,13 @@
         <div class="setting-item">
           <label class="setting-label">
             <input type="checkbox" class="setting-checkbox" id="preloadContent">
-            <span>Preload dictionary content</span>
+            <span>Look up before expanding</span>
           </label>
         </div>
         <div class="setting-item">
           <label class="setting-label">
             <input type="checkbox" class="setting-checkbox" id="openExternalLinks">
-             <span>Open links in external browser</span>
+             <span>Open links in browser</span>
           </label>
         </div>
       </div>
@@ -1237,7 +1237,7 @@
               <button type="button" class="toolbar-icon" id="clipboardIcon" title="Copy" aria-label="Copy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1zM5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
               <button type="button" class="toolbar-icon" id="searchIcon" title="Search the web" aria-label="Search the web"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
               <button type="button" class="toolbar-icon toolbar-heart" id="vocabHeartIcon" title="Save to notebook" aria-pressed="false" aria-label="Save to notebook"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="heart-fill" d="M12 20s-7-4.4-8.9-8.6C1.8 8.4 3.6 5 6.9 5c2 0 3.3 1 5.1 3 1.8-2 3.1-3 5.1-3 3.3 0 5.1 3.4 3.8 6.4C19 15.6 12 20 12 20z"/></svg></button>
-              <button type="button" class="toolbar-icon" id="settingsIcon" title="Options" aria-label="Options"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 13.5l1.6 1.2-2 3.4-1.9-.7a7.6 7.6 0 0 1-2 1.2L14.8 21h-4l-.4-2.4a7.6 7.6 0 0 1-2-1.2l-2 .8-2-3.5 1.6-1.2a7.4 7.4 0 0 1 0-2.4L4.4 9.9l2-3.4 2 .7a7.6 7.6 0 0 1 2-1.2L10.8 3.6h4l.4 2.4a7.6 7.6 0 0 1 2 1.2l2-.8 2 3.5-1.6 1.2a7.4 7.4 0 0 1 0 2.4z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="toolbar-icon" id="settingsIcon" title="Pop-up settings" aria-label="Pop-up settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 13.5l1.6 1.2-2 3.4-1.9-.7a7.6 7.6 0 0 1-2 1.2L14.8 21h-4l-.4-2.4a7.6 7.6 0 0 1-2-1.2l-2 .8-2-3.5 1.6-1.2a7.4 7.4 0 0 1 0-2.4L4.4 9.9l2-3.4 2 .7a7.6 7.6 0 0 1 2-1.2L10.8 3.6h4l.4 2.4a7.6 7.6 0 0 1 2 1.2l2-.8 2 3.5-1.6 1.2a7.4 7.4 0 0 1 0 2.4z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
               <button type="button" class="toolbar-icon" id="closeIcon" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             </div>
           </div>
@@ -1885,7 +1885,7 @@
             }).join('');
             const panels = sources.map(function (s, i) {
               const body = s.unavailable
-                ? `<div class="etymology-no-data"><p>${s.unavailable === 'blocked' ? 'Etymonline blocked this request.' : 'Etymonline is unavailable.'}</p><button type="button" class="etymology-open-entry" data-ety-open="${escapeHtml(s.url)}">Open entry</button></div>`
+                ? `<div class="etymology-no-data"><p>${s.unavailable === 'blocked' ? 'Etymonline blocked this request.' : 'Etymonline is unavailable.'}</p><button type="button" class="etymology-open-entry" data-ety-open="${escapeHtml(s.url)}">Open on Etymonline</button></div>`
                 : formatEtymologyBody(s.body);
               return `<div class="etymology-panel-body" data-ety-panel="${i}" style="${i === activeIndex ? '' : 'display:none'}">${body}</div>`;
             }).join('');
@@ -2439,7 +2439,7 @@ function startAutoCloseTimeout() {
                 window.dictionaryAPI.lookup(text, targetLang, undefined, sourceLang ? { sourceLanguage: sourceLang } : undefined),
                 new Promise(function (_, reject) {
                   setTimeout(function () {
-                    reject(new Error('Lookup timed out — try again'));
+                    reject(new Error('Lookup timed out.'));
                   }, 12000);
                 }),
               ]);
@@ -2582,7 +2582,7 @@ function startAutoCloseTimeout() {
                ? list.map(tr => createTranslationCard(result.word, tr, result.detectedLanguage)).join('')
                : pending
                  ? `<div class="tab-pending" role="status" aria-label="Translating"><div class="skel-card" aria-hidden="true"><span class="skel skel-line w-label"></span><span class="skel skel-line w-90"></span><span class="skel skel-line w-75"></span><span class="skel skel-line w-55"></span></div></div>`
-                 : `<div class="error-message">No translation found. Check the network, or pick an engine in Settings → Sources.</div>`;
+                 : `<div class="error-message">No translation found.</div>`;
          } else if (currentTab === 'wikipedia') {
              void displayWikipediaResult(result.word || currentText);
              return;
@@ -2593,7 +2593,7 @@ function startAutoCloseTimeout() {
          }
 
          if (!contentHtml) {
-             contentHtml = `<div class="error-message">No relevant data found for this tab.</div>`;
+             contentHtml = `<div class="error-message">No results.</div>`;
          }
 
           resultsContainer.innerHTML = contentHtml;
@@ -2783,12 +2783,12 @@ function startAutoCloseTimeout() {
           if (!word) return;
           var lang = (currentResult && currentResult.detectedLanguage) || 'en';
           var ok = await speakSynthetic({ text: word, lang: lang });
-          if (!ok) showToast('Cannot play pronunciation');
+          if (!ok) showToast('Could not play pronunciation');
         }
 
         async function playToolbarHuman() {
           if (audioPrefs.enabled === false) {
-            showToast('Sound is off');
+            showToast('Pronunciation is off');
             pendingHumanPlay = false;
             return;
           }
@@ -2796,7 +2796,7 @@ function startAutoCloseTimeout() {
           if (!urls.length) {
             if (lookupInFlight) {
               pendingHumanPlay = true;
-              showToast('Fetching pronunciation…');
+              showToast('Loading pronunciation…');
               return;
             }
             pendingHumanPlay = false;
@@ -2816,7 +2816,7 @@ function startAutoCloseTimeout() {
           }
           pendingHumanPlay = false;
           toolbarHumanBusy = true;
-          var fetchHint = setTimeout(function () { showToast('Fetching pronunciation…'); }, 800);
+          var fetchHint = setTimeout(function () { showToast('Loading pronunciation…'); }, 800);
           try {
             var fetchAudio = window.electronAPI && window.electronAPI.fetchPronunciationAudio;
             if (typeof fetchAudio !== 'function') {
@@ -2848,7 +2848,7 @@ function startAutoCloseTimeout() {
           var ipa = (btn.getAttribute('data-ipa') || '').trim();
           var accent = btn.getAttribute('data-accent') || '';
           if (!ipa) {
-            showToast('No IPA to speak');
+            showToast('No IPA for this word');
             return;
           }
           stopPopupSpeech();
@@ -2861,9 +2861,9 @@ function startAutoCloseTimeout() {
               var res = await window.electronAPI.speakIpa({ ipa: ipa, accent: accent });
               ok = !!(res && res.ok);
             }
-            if (!ok) showToast('Cannot speak this IPA');
+            if (!ok) showToast('Could not play this IPA');
           } catch (e) {
-            showToast('Cannot speak this IPA');
+            showToast('Could not play this IPA');
           } finally {
             ipaSpeakBusy = false;
             setTimeout(function () { btn.classList.remove('is-speaking'); }, 400);
@@ -3093,11 +3093,11 @@ function startAutoCloseTimeout() {
             if (used.has(key)) return;
             used.add(key);
             const tag = accent === 'us' ? 'US' : accent === 'uk' ? 'UK' : '';
-            const label = tag ? tag + ' transcription' : 'this transcription';
+            const label = tag ? tag + ' pronunciation' : 'pronunciation';
             chips.push(
               `<span class="ipa-chip">` +
                 `<span class="ipa-chip__text">${tag ? '<b>' + tag + '</b>' : ''}/${escapeHtml(clean)}/</span>` +
-                `<button type="button" class="tx-speak ipa-speak" data-accent="${escapeHtml(accent)}" data-ipa="${escapeHtml(clean)}" title="Speak ${escapeHtml(label)}" aria-label="Speak ${escapeHtml(label)}">${speakIcon()}</button>` +
+                `<button type="button" class="tx-speak ipa-speak" data-accent="${escapeHtml(accent)}" data-ipa="${escapeHtml(clean)}" title="Play ${escapeHtml(label)}" aria-label="Play ${escapeHtml(label)}">${speakIcon()}</button>` +
               `</span>`
             );
           };
@@ -3113,7 +3113,7 @@ function startAutoCloseTimeout() {
           const ipaMatch = shown.match(/\/([^/]+)\//);
           const ipaOnly = ipaMatch ? ipaMatch[1] : line.replace(/^\/+|\/+$/g, '');
           const fallbackChip = ipaOnly
-            ? `<span class="ipa-chip"><span class="ipa-chip__text">${escapeHtml(shown)}</span><button type="button" class="tx-speak ipa-speak" data-accent="other" data-ipa="${escapeHtml(ipaOnly)}" title="Speak this transcription" aria-label="Speak this transcription">${speakIcon()}</button></span>`
+            ? `<span class="ipa-chip"><span class="ipa-chip__text">${escapeHtml(shown)}</span><button type="button" class="tx-speak ipa-speak" data-accent="other" data-ipa="${escapeHtml(ipaOnly)}" title="Play pronunciation" aria-label="Play pronunciation">${speakIcon()}</button></span>`
             : escapeHtml(shown);
           return `<div class="result-pronunciation">${fallbackChip}</div>`;
         }
@@ -3200,7 +3200,7 @@ function startAutoCloseTimeout() {
                   <div class="definition-sense-row">
                     <div class="definition-sense-num">${senseCounter}.</div>
                     <div class="definition-sense-body">
-                      <div class="definition-text">${meaningHtml || 'No definition available'}</div>
+                      <div class="definition-text">${meaningHtml || 'No definition.'}</div>
                       ${exHtml}
                       <div class="definition-source-badges">${badges}</div>
                     </div>
@@ -3380,7 +3380,7 @@ function startAutoCloseTimeout() {
         document.getElementById('loadingElement').style.display = 'none';
         const container = document.getElementById('dictionary-results');
         showDictionaryResults('flow');
-        container.innerHTML = `<div class="error-message">Failed to look up "${text}".<br><small>${error.message || 'Unknown error'}</small></div>`;
+        container.innerHTML = `<div class="error-message">Could not look up "${text}".<br><small>${error.message || 'Unknown error'}</small></div>`;
         fitPanelHeight();
       }
 
@@ -3577,7 +3577,7 @@ function startAutoCloseTimeout() {
            const payload = vocabPayloadFromResult(currentResult, lemma);
            const entry = await window.vocabAPI.add(payload);
            setVocabHeartSaved(true, entry && entry.id, lemma);
-           showToast(payload.definition ? 'Saved to notebook' : 'Saved — definition pending');
+           showToast(payload.definition ? 'Saved to notebook' : 'Saved to notebook');
            if (!currentResult && lemma) maybePreloadLookup(lemma);
          } catch (e) {
            console.error(e);
@@ -3588,8 +3588,8 @@ function startAutoCloseTimeout() {
              .trim();
            showToast(
              short.length > 90
-               ? 'Save failed — notebook DB unavailable (reinstall may fix packaging)'
-               : ('Save failed: ' + short),
+               ? 'Could not save. Notebook unavailable.'
+               : ('Could not save: ' + short),
            );
          }
        }
@@ -3975,12 +3975,12 @@ function startAutoCloseTimeout() {
              }
              try {
                if (!window.wikipediaAPI) {
-                 resultsContainer.innerHTML = `<div class="error-message">Wikipedia API unavailable.</div>`;
+                 resultsContainer.innerHTML = `<div class="error-message">Wikipedia unavailable.</div>`;
                  return;
                }
                const q = String(term || '').trim();
                if (!q) {
-                 resultsContainer.innerHTML = `<div class="error-message">No query for Wikipedia.</div>`;
+                 resultsContainer.innerHTML = `<div class="error-message">Nothing to search.</div>`;
                  return;
                }
                const lang = (currentResult && currentResult.detectedLanguage) || 'en';

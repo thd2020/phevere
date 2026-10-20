@@ -318,7 +318,7 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
     let sheet = UIAlertController(title: "Scan text", message: nil, preferredStyle: .actionSheet)
     sheet.addAction(UIAlertAction(title: "Camera", style: .default) { _ in
       guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
-        self.fail(self.pendingOcrId, "Camera not available")
+        self.fail(self.pendingOcrId, "Camera unavailable")
         return
       }
       let picker = UIImagePickerController()
@@ -590,7 +590,7 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
   }
 
   private static func voiceStatus() -> [String: Any] {
-    var rows: [[String: String]] = [["id": "", "name": "Automatic", "detail": "Best voice per accent"]]
+    var rows: [[String: String]] = [["id": "", "name": "Automatic", "detail": "Default for each accent"]]
     for v in englishVoices() {
       let accent = v.language == "en-GB" ? "UK" : "US"
       var quality = v.quality == .enhanced ? "Enhanced" : "Default"

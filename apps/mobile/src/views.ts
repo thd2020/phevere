@@ -91,8 +91,8 @@ export function appBarHtml(tab: Tab, query: string, canBack: boolean, canFwd: bo
       <div class="brand-row">
         <h1>Phevere</h1>
         ${lookup ? `<div class="hist">
-          <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="Previous lookup">${ICO.back}</button>
-          <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="Next lookup">${ICO.fwd}</button>
+          <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="Back">${ICO.back}</button>
+          <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="Forward">${ICO.fwd}</button>
         </div>` : ''}
         ${tab === 'notebook' ? `<div class="hist">
           <button type="button" class="icon-btn" data-act="nb-import" aria-label="Import notebook" title="Import">${ICO.import}</button>
@@ -111,8 +111,8 @@ export function appBarHtml(tab: Tab, query: string, canBack: boolean, canFwd: bo
 export function popupBarHtml(canBack: boolean, canFwd: boolean, hasWord = false): string {
   return `
     <div class="popup-bar">
-      <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="Previous lookup">${ICO.back}</button>
-      <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="Next lookup">${ICO.fwd}</button>
+      <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="Back">${ICO.back}</button>
+      <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="Forward">${ICO.fwd}</button>
       <span class="popup-bar__gap"></span>
       ${hasWord ? `<button type="button" class="icon-btn" data-act="copy" aria-label="Copy" title="Copy">${ICO.copy}</button>
       <button type="button" class="icon-btn" data-act="web-search" aria-label="Search the web" title="Search the web">${ICO.web}</button>` : ''}
@@ -134,8 +134,8 @@ function displayIpa(raw: string): string {
 
 function ipaChip(ipa: string, accent: string, shown: string): string {
   const tag = accent === 'us' ? 'US' : accent === 'uk' ? 'UK' : '';
-  const label = tag ? `${tag} transcription` : 'this transcription';
-  return `<span class="ipa-chip">${tag ? `<b>${tag}</b>` : ''}${esc(shown)}<button type="button" data-act="speak-ipa" data-ipa="${esc(ipa)}" data-accent="${esc(accent)}" aria-label="Speak ${label}" title="Speak ${label}">${ICO.speaker}</button></span>`;
+  const label = tag ? `${tag} pronunciation` : 'pronunciation';
+  return `<span class="ipa-chip">${tag ? `<b>${tag}</b>` : ''}${esc(shown)}<button type="button" data-act="speak-ipa" data-ipa="${esc(ipa)}" data-accent="${esc(accent)}" aria-label="Play ${label}" title="Play ${label}">${ICO.speaker}</button></span>`;
 }
 
 function ipaChips(list: Pronunciation[] | undefined, fallback: string): string {
@@ -304,7 +304,7 @@ function renderSenses(senses: Definition[], shown: Set<string>): string {
 
 function lexiconPane(result: DictionaryResult, activePos: string): string {
   const defs = (result.definitions || []).filter(usableDef);
-  if (!defs.length) return `<div class="card empty">No definitions yet.</div>`;
+  if (!defs.length) return `<div class="card empty">No definitions found.</div>`;
 
   const groups = new Map<string, Definition[]>();
   const order: string[] = [];
@@ -494,7 +494,7 @@ function translationPane(
     ? list.map((t) => translationCard(result.word, t, wordLang)).join('')
     : pending
       ? tabPending('Translating')
-      : '<div class="error-message">No translation found. Check the network, or pick an engine in Settings → Sources.</div>';
+      : '<div class="error-message">No translation found.</div>';
   return `
     ${langBarHtml(langs, sourceLang, targetLang)}
     ${langMenu ? langSheetHtml(langMenu, langs, langMenu === 'from' ? sourceLang : targetLang, recentLangs) : ''}
@@ -668,7 +668,7 @@ function etymPane(result: DictionaryResult, selectedSource = ''): string {
     .map(
       (s, i) =>
         `<div class="etymology-panel-body" data-ety-panel="${i}" ${i === activeIndex ? '' : 'hidden'}>${s.unavailable
-          ? `<div class="etymology-unavailable"><p>${s.unavailable === 'blocked' ? 'Etymonline blocked this request.' : 'Etymonline is unavailable.'}</p><button type="button" class="etymology-open-entry" data-act="ety-open" data-url="${esc(s.url || '')}">Open entry</button></div>`
+          ? `<div class="etymology-unavailable"><p>${s.unavailable === 'blocked' ? 'Etymonline blocked this request.' : 'Etymonline is unavailable.'}</p><button type="button" class="etymology-open-entry" data-act="ety-open" data-url="${esc(s.url || '')}">Open on Etymonline</button></div>`
           : formatEtymologyBody(s.body)}</div>`,
     )
     .join('');
@@ -707,7 +707,7 @@ export function lookupBody(opts: {
 }): string {
   if (opts.looking && !opts.result) return lookupSkeleton(opts.query || '');
   if (opts.error && !opts.result) {
-    return `<div class="error-message">Failed to look up "${esc(opts.query || '')}".<small>${esc(opts.error || 'Unknown error')}</small></div>`;
+    return `<div class="error-message">Could not look up "${esc(opts.query || '')}".<small>${esc(opts.error || 'Unknown error')}</small></div>`;
   }
   if (opts.status && !opts.result) return `<p class="status">${esc(opts.status)}</p>`;
   if (!opts.result) {
@@ -751,8 +751,8 @@ export function lookupBody(opts: {
       <div class="head-actions">
         ${opts.headTools ? `<button type="button" class="icon-btn" data-act="copy" aria-label="Copy" title="Copy">${ICO.copy}</button>
         <button type="button" class="icon-btn" data-act="web-search" aria-label="Search the web" title="Search the web">${ICO.web}</button>` : ''}
-        <button type="button" class="tonal" data-act="speak" aria-label="Play recorded pronunciation">${ICO.speaker}</button>
-        <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Saved' : 'Save to notebook'}">${ICO.heart}</button>
+        <button type="button" class="tonal" data-act="speak" aria-label="Play pronunciation">${ICO.speaker}</button>
+        <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Remove from notebook' : 'Save to notebook'}">${ICO.heart}</button>
       </div>
       ${chips}
     </header>
@@ -815,7 +815,7 @@ export function notebookBody(
             </div>
           </div>
           <div class="vocab-entry__details">
-            ${defHtml ? `<div class="vocab-def${long ? ' is-clamped' : ''}">${defHtml}</div>${long ? `<button type="button" class="vocab-more" data-act="nb-more">Show more</button>` : ''}` : '<p class="vocab-note">No definition saved.</p>'}
+            ${defHtml ? `<div class="vocab-def${long ? ' is-clamped' : ''}">${defHtml}</div>${long ? `<button type="button" class="vocab-more" data-act="nb-more">Show more</button>` : ''}` : '<p class="vocab-note">No definition.</p>'}
             ${badges ? `<div class="vocab-badges">${badges}</div>` : ''}
             ${e.note ? `<p class="vocab-note">${esc(e.note)}</p>` : ''}
           </div>
@@ -836,7 +836,7 @@ export function notebookBody(
       </div>
     </div>
     <div class="ptr" aria-hidden="true"><span class="md-spinner"></span></div>
-    <div class="vocab-list">${rows || `<p class="empty">${q ? 'No notebook matches.' : 'No saved words yet.'}</p>`}</div>
+    <div class="vocab-list">${rows || `<p class="empty">${q ? 'No matching words.' : 'No saved words.'}</p>`}</div>
     ${sort === 'az' && list.length ? vocabAzRail(new Set(list.map((e) => vocabAzLetter(e.lemma)))) : ''}`;
 }
 

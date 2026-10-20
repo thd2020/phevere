@@ -6,7 +6,7 @@
  * for keyed online lookup; licensed JSON dumps can still be imported by file.
  */
 
-export type OfflineDirection = 'en→en' | 'zh→en' | 'en→zh';
+export type OfflineDirection = 'English' | 'Chinese–English' | 'English–Chinese';
 
 export interface OfflineCatalogItem {
   id: string;
@@ -24,7 +24,7 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
   {
     id: 'wordnet-3.1',
     name: 'Princeton WordNet 3.1',
-    direction: 'en→en',
+    direction: 'English',
     language: 'en',
     license: 'WordNet License (Princeton University)',
     summary: 'Academic English glosses and synonym sets — the standard computational lexicon.',
@@ -36,19 +36,19 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
   {
     id: 'webster-1913',
     name: "Webster's Unabridged 1913 (GCIDE)",
-    direction: 'en→en',
+    direction: 'English',
     language: 'en',
     license: 'GPL-3+ (GNU GCIDE; 1913 Webster text is public domain)',
     summary: "Paper Webster's Revised Unabridged Dictionary (1913), as published by the GNU Collaborative International Dictionary of English.",
     sizeHint: '~18 MB download',
     consent:
       "Download GNU GCIDE (Webster's Revised Unabridged Dictionary, 1913) from ftp.gnu.org?\n\n" +
-      'GNU GPL v3 or later. Definitions are a century old. File is large; import may take a few minutes.',
+      'GNU GPL v3 or later. File is large; import may take a few minutes.',
   },
   {
     id: 'cc-cedict',
     name: 'CC-CEDICT',
-    direction: 'zh→en',
+    direction: 'Chinese–English',
     language: 'zh',
     license: 'CC BY-SA 4.0',
     summary: 'Community Chinese–English dictionary (simplified and traditional headwords).',
@@ -59,7 +59,7 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
   {
     id: 'freedict-eng-zho',
     name: 'FreeDict English–Chinese',
-    direction: 'en→zh',
+    direction: 'English–Chinese',
     language: 'en',
     license: 'GPL (FreeDict)',
     summary: 'Bilingual English headwords with Chinese glosses from the FreeDict project.',

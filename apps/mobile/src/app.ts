@@ -511,11 +511,11 @@ async function saveCurrent(): Promise<void> {
     } else {
       const payload = vocabPayloadFromResult(result, lemma);
       saved = await addVocab(payload);
-      toast(payload.definition ? 'Saved to notebook' : 'Saved — definition pending');
+      toast(payload.definition ? 'Saved to notebook' : 'Saved to notebook');
       postOsNotify('saved', 'Saved to notebook', lemma);
     }
   } catch (err) {
-    toast(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+    toast(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
   }
   await refreshNotebook();
   paint();
@@ -724,7 +724,7 @@ function setScanSheet(next: SheetState): void {
 
 async function runOcr(): Promise<void> {
   if (!hasNativeBridge()) {
-    toast('Camera OCR runs in the Android / iOS app');
+    toast('Scanning requires the Android or iOS app.');
     return;
   }
   try {
@@ -746,7 +746,7 @@ async function runOcr(): Promise<void> {
     postOsNotify('ocr', 'Scan finished', scan.words.length ? `${scan.words.length} words` : 'No text');
     paint();
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'OCR failed';
+    const msg = err instanceof Error ? err.message : 'Could not scan';
     if (msg === 'Cancelled' || msg === 'No photo' || msg === 'No image') return;
     toast(msg);
   }
@@ -767,10 +767,10 @@ async function pickAndImportNotebook(): Promise<void> {
     if (!text) return;
     const out = await importNotebookText(name, text);
     await refreshNotebook();
-    toast(`Imported ${out.imported}, skipped ${out.skipped}`);
+    toast(`Imported ${out.imported}. Skipped ${out.skipped}.`);
     paint();
   } catch (err) {
-    toast(err instanceof Error ? err.message : 'Import failed');
+    toast(err instanceof Error ? err.message : 'Could not import');
   }
 }
 
@@ -796,7 +796,7 @@ function pickLocalFile(): Promise<string> {
 async function downloadPack(id: string): Promise<void> {
   const item = packs.find((p) => p.id === id);
   if (item && !window.confirm(item.consent)) return;
-  packMsg = 'Starting…';
+  packMsg = 'Downloading…';
   paint();
   try {
     const out = await downloadCatalogPack(id, (msg) => {
@@ -1019,7 +1019,7 @@ async function playLemma(lemma: string): Promise<void> {
 /** A speaker tapped with Pronunciation switched off says why nothing plays. */
 function soundOff(): boolean {
   if (prefs.audioEnabled) return false;
-  toast('Sound is off');
+  toast('Pronunciation is off');
   return true;
 }
 
@@ -1033,7 +1033,7 @@ async function copyText(text: string): Promise<void> {
     });
     toast('Copied');
   } catch {
-    toast('Copy failed');
+    toast('Could not copy');
   }
 }
 
@@ -1120,7 +1120,7 @@ function pulseSpeak(el: HTMLElement, done: Promise<void>): Promise<void> {
   const clear = () => el.classList.remove('is-speaking');
   const timeout = window.setTimeout(clear, 8000);
   return done.catch((err) => {
-    toast(err instanceof Error ? err.message : 'Could not play audio');
+    toast(err instanceof Error ? err.message : 'Could not play pronunciation');
   }).finally(() => {
     window.clearTimeout(timeout);
     clear();
@@ -1310,7 +1310,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       if (soundOff()) return;
       // Recorded clips come over the network: say so if one is slow to start.
       const hint = recordedUrls(result).length
-        ? window.setTimeout(() => toast('Fetching pronunciation…'), 800)
+        ? window.setTimeout(() => toast('Loading pronunciation…'), 800)
         : 0;
       const started = () => window.clearTimeout(hint);
       await pulseSpeak(t, playRecorded(result, prefs, started).finally(started));
@@ -1323,7 +1323,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       const accent = t.dataset.accent;
       const p: Pronunciation = { ipa, accent: accent === 'us' || accent === 'uk' ? accent : 'other' };
       await pulseSpeak(t, speakIpa(p, prefs, result?.word).catch(() => {
-        throw new Error('Cannot speak this IPA');
+        throw new Error('Could not play this IPA');
       }));
       return;
     }
@@ -1425,7 +1425,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'nb-export':
       await exportNotebook('json');
-      toast('Exported');
+      toast('Notebook exported');
       return;
     case 'nb-import':
       await pickAndImportNotebook();
@@ -1547,7 +1547,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       try {
         const out = await importUserFile(name, text, t.dataset.kind === 'cedict' ? 'cedict' : undefined);
-        packMsg = `Imported ${out.count}`;
+        packMsg = `Imported ${out.count} entries`;
         await refreshPacks();
       } catch (err) {
         packMsg = err instanceof Error ? err.message : String(err);
@@ -1581,7 +1581,7 @@ function onChange(e: Event): void {
     // API keys save as you leave the field.
     (prefs as unknown as Record<string, unknown>)[el.dataset.pref] = el.value.trim();
     persistPrefs();
-    toast('Saved');
+    toast('Key saved');
   } else if (el.id === 'audio-volume') {
     prefs.audioVolume = (Number((el as HTMLInputElement).value) || 0) / 100;
     persistPrefs();

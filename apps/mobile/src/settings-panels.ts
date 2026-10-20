@@ -12,7 +12,7 @@ export type VoiceStatus = {
   variants: Array<{ id: string; mb: number; ready: boolean }>;
 };
 
-const VOICE_NAMES: Record<string, string> = { compact: 'Neural compact', full: 'Neural full quality' };
+const VOICE_NAMES: Record<string, string> = { compact: 'Neural (standard)', full: 'Neural (high quality)' };
 
 function esc(s: string): string {
   return (s || '')
@@ -79,7 +79,7 @@ function navRow(act: string, icon: string, label: string, value = '', sub = '', 
 }
 
 /** What the LSPosed module does, for people who meet it here before reading the README. */
-const MODULE_ABOUT = "Hooks the system selection toolbar in apps you scope: Phevere's slot, Phevere where apps hide it, and the instant press";
+const MODULE_ABOUT = 'Adds Phevere to the text selection menu in chosen apps';
 
 function selectionBarSection(capture: CaptureInfo): string {
   const instant = `<label class="toggle">
@@ -102,7 +102,7 @@ function selectionBarSection(capture: CaptureInfo): string {
     return `<h3 class="settings-subhead settings-subhead--status">Selection bar ${status}</h3>
     ${instant}
     ${place}
-    ${navRow('selection-setup', ICON.select, 'LSPosed setup', '', MODULE_ABOUT)}`;
+    ${navRow('selection-setup', ICON.select, 'LSPosed module', '', MODULE_ABOUT)}`;
   }
   const a11y = capture.autoPopup && !capture.accessibilityOn
     ? navRow('a11y-settings', ICON.a11y, 'Accessibility service', 'Off')
@@ -179,7 +179,7 @@ function installedPack(p: CatalogStatus): string {
 function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
   const overlayBtn =
     capture.platform === 'android' && prefs.floatingStrip && !capture.canDrawOverlays
-      ? navRow('overlay-perm', ICON.overlay, 'Draw over other apps', 'Off')
+      ? navRow('overlay-perm', ICON.overlay, 'Display over other apps', 'Off')
       : '';
   return `
     ${panelIntro('Capture')}
@@ -230,7 +230,7 @@ function sourcesPanel(prefs: MobilePrefs, sources: DictionarySource[]): string {
   const src =
     dictSources
       .map((s) => {
-        const avail = s.isAvailable ? '' : '<span class="src-meta">Needs a key or pack</span>';
+        const avail = s.isAvailable ? '' : '<span class="src-meta">Requires an API key or offline pack</span>';
         return `<label class="toggle">
         <span><span class="src-name">${esc(s.name)}</span>${avail}</span>
         <input type="checkbox" role="switch" data-act="src" data-name="${esc(s.name)}" ${s.enabled ? 'checked' : ''} />
@@ -238,7 +238,7 @@ function sourcesPanel(prefs: MobilePrefs, sources: DictionarySource[]): string {
       })
       .join('') || '<p class="hint">No dictionary sources loaded.</p>';
   const engines: Array<{ id: MobilePrefs['translationProvider']; label: string; detail: string }> = [
-    { id: 'auto', label: 'Auto', detail: 'Google Translate, then MyMemory' },
+    { id: 'auto', label: 'Automatic', detail: 'Google Translate, then MyMemory' },
     { id: 'google', label: 'Google Translate', detail: 'No API key' },
     { id: 'mymemory', label: 'MyMemory', detail: 'No API key' },
     { id: 'youdao', label: 'Youdao', detail: 'API key required' },
@@ -261,13 +261,13 @@ function sourcesPanel(prefs: MobilePrefs, sources: DictionarySource[]): string {
 function offlinePanel(packs: CatalogStatus[], packMsg: string): string {
   const installed = packs.filter((p) => p.installed);
   const installedHtml =
-    installed.map(installedPack).join('') || '<p class="hint">No packs installed yet.</p>';
+    installed.map(installedPack).join('') || '<p class="hint">No packs installed.</p>';
   return `
     ${panelIntro('Offline dictionary')}
     <h3 class="settings-subhead">Packs</h3>
     <div class="pack-list">${packs.map(catalogPack).join('')}</div>
     ${packMsg ? `<p class="status" role="status">${esc(packMsg)}</p>` : ''}
-    <h3 class="settings-subhead">Your files</h3>
+    <h3 class="settings-subhead">Import</h3>
     ${navRow('pack-file', ICON.import, 'Import pack', '', 'WordNet, GCIDE or FreeDict TEI')}
     ${navRow('pack-file', ICON.import, 'Import CEDICT file', '', 'cedict_ts.u8', 'cedict')}
     <h3 class="settings-subhead">Installed</h3>
@@ -279,19 +279,19 @@ function apiPanel(prefs: MobilePrefs): string {
     ${panelIntro('API keys')}
     <div class="keys">
       <label for="google-api-key">Google Translate API key</label>
-      <input id="google-api-key" data-pref="googleKey" type="password" value="${esc(prefs.googleKey)}" placeholder="Paste your Google Cloud API key" autocomplete="off" />
+      <input id="google-api-key" data-pref="googleKey" type="password" value="${esc(prefs.googleKey)}" placeholder="Google Cloud API key" autocomplete="off" />
       <label for="deepl-api-key">DeepL API key</label>
-      <input id="deepl-api-key" data-pref="deeplKey" type="password" value="${esc(prefs.deeplKey)}" placeholder="Paste your DeepL API key" autocomplete="off" />
+      <input id="deepl-api-key" data-pref="deeplKey" type="password" value="${esc(prefs.deeplKey)}" placeholder="DeepL API key" autocomplete="off" />
     </div>
     <h3 class="settings-subhead">Oxford, Collins, Youdao, WordsAPI</h3>
     <div class="keys">
       <label>Youdao app key</label><input data-pref="youdaoKey" type="password" value="${esc(prefs.youdaoKey)}" autocomplete="off" />
       <label>Youdao secret</label><input data-pref="youdaoSecret" type="password" value="${esc(prefs.youdaoSecret)}" autocomplete="off" />
-      <label>Oxford app id</label><input data-pref="oxfordId" type="password" value="${esc(prefs.oxfordId)}" autocomplete="off" />
+      <label>Oxford app ID</label><input data-pref="oxfordId" type="password" value="${esc(prefs.oxfordId)}" autocomplete="off" />
       <label>Oxford app key</label><input data-pref="oxfordKey" type="password" value="${esc(prefs.oxfordKey)}" autocomplete="off" />
-      <label>WordsAPI (RapidAPI)</label><input data-pref="wordsKey" type="password" value="${esc(prefs.wordsKey)}" autocomplete="off" />
-      <label>Collins RapidAPI key</label><input data-pref="collinsKey" type="password" value="${esc(prefs.collinsKey)}" autocomplete="off" />
-      <label>Collins host</label><input data-pref="collinsHost" value="${esc(prefs.collinsHost)}" autocomplete="off" />
+      <label>WordsAPI key</label><input data-pref="wordsKey" type="password" value="${esc(prefs.wordsKey)}" autocomplete="off" />
+      <label>Collins API key</label><input data-pref="collinsKey" type="password" value="${esc(prefs.collinsKey)}" autocomplete="off" />
+      <label>Collins API host</label><input data-pref="collinsHost" value="${esc(prefs.collinsHost)}" autocomplete="off" />
     </div>`;
 }
 
@@ -317,8 +317,8 @@ function voiceList(voice: VoiceStatus | null): string {
       const busy = voice.downloading === v.id;
       const pct = busy && v.mb ? Math.min(100, Math.round(((voice.doneMb || 0) / v.mb) * 100)) : 0;
       const meta = busy
-        ? `Downloading · ${pct}%`
-        : v.id === 'mechanical' ? 'Built in' : v.ready ? 'Downloaded' : `${v.mb} MB`;
+        ? `Downloading ${pct}%`
+        : v.id === 'mechanical' ? 'Built-in' : v.ready ? 'Downloaded' : `${v.mb} MB`;
       const trailing = busy
         ? `<button type="button" class="icon-btn voice-row__action" data-act="voice-cancel" aria-label="Cancel download">${VOICE_ICON.cancel}</button>`
         : on

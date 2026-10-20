@@ -30,18 +30,18 @@ final class Notify {
     if (nm == null) return;
     NotificationChannel strip = new NotificationChannel(
         CHANNEL_STRIP,
-        "Lookup strip",
+        "Floating pop-up",
         NotificationManager.IMPORTANCE_LOW
     );
-    strip.setDescription("Shown while the lookup strip floats over other apps");
+    strip.setDescription("Shown while the pop-up is open over other apps");
     strip.setShowBadge(false);
     nm.createNotificationChannel(strip);
     NotificationChannel events = new NotificationChannel(
         CHANNEL_EVENTS,
-        "Lookup events",
+        "Activity",
         NotificationManager.IMPORTANCE_DEFAULT
     );
-    events.setDescription("Incoming lookups, notebook saves, and scan results");
+    events.setDescription("Incoming lookups, notebook saves and scans");
     nm.createNotificationChannel(events);
   }
 
@@ -82,8 +82,8 @@ final class Notify {
     PendingIntent pi = PendingIntent.getActivity(svc, 0, open, flags);
     Notification n = new NotificationCompat.Builder(svc, CHANNEL_STRIP)
         .setSmallIcon(R.drawable.ic_stat_phevere)
-        .setContentTitle("Lookup strip")
-        .setContentText("Phevere is showing over other apps")
+        .setContentTitle("Floating pop-up")
+        .setContentText("Pop-up is open")
         .setOngoing(true)
         .setSilent(true)
         .setColor(ContextCompat.getColor(svc, R.color.ember))

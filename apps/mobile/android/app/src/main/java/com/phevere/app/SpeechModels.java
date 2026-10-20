@@ -164,9 +164,9 @@ final class SpeechModels {
         if (!model.renameTo(root(c, v))) throw new IOException("Could not install voice.");
         try (OutputStream out = new FileOutputStream(new File(root(c, v), ".ready"))) { out.write(1); }
         select(c, v);
-        progress = "Neural voice ready and selected.";
+        progress = "Voice downloaded";
       } catch (Exception e) {
-        progress = cancelled ? "Download cancelled." : "Neural voice: " + e.getMessage();
+        progress = cancelled ? "Download cancelled." : "Could not download voice: " + e.getMessage();
       } finally {
         archive.delete();
         remove(staging);

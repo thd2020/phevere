@@ -256,14 +256,14 @@ function notifyUser(content: string, kind: NotificationKind, title = 'Phevere'):
 
 function clipboardOcrHint(): string {
   return process.platform === 'darwin'
-    ? 'No image on the clipboard (try ⌘⌃⇧4 first)'
-    : 'No image on the clipboard (try Win+Shift+S first)';
+    ? 'No image on the clipboard. Press ⌘⌃⇧4 to capture one.'
+    : 'No image on the clipboard. Press Win+Shift+S to capture one.';
 }
 
 function clipboardOcrReadyHint(): string {
   return process.platform === 'darwin'
-    ? 'Clipboard image ready — ⌘⇧I to OCR'
-    : 'Clipboard image ready — Ctrl+Shift+I to OCR';
+    ? 'Image copied. Press ⌘⇧I to scan it.'
+    : 'Image copied. Press Ctrl+Shift+I to scan it.';
 }
 let lastPopupText: string = '';
 let lastPopupAt: number = 0;
@@ -700,7 +700,7 @@ function buildTrayContextMenu(): Electron.Menu {
     },
     { type: 'separator' },
     {
-      label: 'Selection monitor',
+      label: 'Selection mode',
       submenu: [
         {
           label: 'Off',
@@ -715,7 +715,7 @@ function buildTrayContextMenu(): Electron.Menu {
           click: () => setMonitoringMode('on'),
         },
         {
-          label: 'Shortcut (hold trigger while selecting)',
+          label: 'Shortcut (hold the trigger key)',
           type: 'radio',
           checked: monitorSettings.mode === 'shortcut',
           click: () => setMonitoringMode('shortcut'),
@@ -730,7 +730,7 @@ function buildTrayContextMenu(): Electron.Menu {
       click: (item) => setHoverEnabled(!!item.checked),
     },
     {
-      label: 'OCR region…',
+      label: 'Scan region…',
       accelerator: monitorSettings.ocrShortcut,
       click: () => {
         if (ocrOverlayWindow && !ocrOverlayWindow.isDestroyed()) {
@@ -741,22 +741,22 @@ function buildTrayContextMenu(): Electron.Menu {
       },
     },
     {
-      label: 'Grab under cursor',
+      label: 'Scan under pointer',
       accelerator: 'CommandOrControl+Shift+G',
       click: () => void grabOcrUnderCursor(),
     },
     {
-      label: 'Read this window',
+      label: 'Scan active window',
       accelerator: 'CommandOrControl+Shift+W',
       click: () => void readForegroundWindowOcr(),
     },
     {
-      label: 'OCR clipboard image',
+      label: 'Scan clipboard image',
       accelerator: 'CommandOrControl+Shift+I',
       click: () => void ocrClipboardImage(),
     },
     {
-      label: 'Now playing…',
+      label: 'Look up now playing',
       accelerator: 'CommandOrControl+Shift+P',
       click: () => void lookupNowPlaying(),
     },
@@ -950,7 +950,7 @@ function createTray(): void {
     }
   }
   tray = new Tray(image);
-  tray.setToolTip('Phevere — dictionary & selection');
+  tray.setToolTip('Phevere');
   try {
     tray.setIgnoreDoubleClickEvents(true);
   } catch {
@@ -1642,7 +1642,7 @@ async function handleOcrRegionSelected(region: {
 
   updateWorkProgress({
     title: 'Recognizing text…',
-    subtitle: 'Running PP-OCR — large regions can take several seconds',
+    subtitle: 'Reading text',
   });
 
   const started = Date.now();
@@ -1673,8 +1673,8 @@ async function handleOcrRegionSelected(region: {
     const available = await ocrEngine.isAvailable().catch(() => false);
     const status = getOcrStatus();
     const hint = available
-      ? '(No text recognized in selection)'
-      : `(OCR unavailable — ${status.lastError || 'embedded engine failed to load'}. Check Settings → Capture.)`;
+      ? '(No text found)'
+      : `(Text recognition unavailable: ${status.lastError || 'embedded engine failed to load'})`;
     contextCaptureHub.emit({
       text: hint,
       x: progressX,
@@ -1719,7 +1719,7 @@ ipcMain.on('ocr-overlay-cancel', (_event, reason?: string) => {
     const cursor = screen.getCursorScreenPoint();
     showWorkProgress(cursor.x, cursor.y, {
       title: 'Region too small',
-      subtitle: 'Drag a larger box around the text',
+      subtitle: 'Select a larger area.',
     });
     setTimeout(() => closeWorkProgress(), 1600);
   }
@@ -1738,7 +1738,7 @@ async function emitOcrFromPng(opts: {
   wireContextCaptureHubOnce();
   showWorkProgress(opts.x, opts.y, {
     title: opts.progressTitle || 'Recognizing text…',
-    subtitle: 'Running PP-OCRv6 (RapidOCR)',
+    subtitle: 'Reading text',
   });
 
   const started = Date.now();
@@ -1765,8 +1765,8 @@ async function emitOcrFromPng(opts: {
       text:
         opts.emptyMessage ||
         (available
-          ? '(No text recognized)'
-          : `(OCR unavailable — ${getOcrStatus().lastError || 'embedded engine failed'}. Settings → Capture)`),
+          ? '(No text found)'
+          : `(Text recognition unavailable: ${getOcrStatus().lastError || 'embedded engine failed'})`),
       x: opts.x,
       y: opts.y,
       timestamp: Date.now(),
@@ -1800,7 +1800,7 @@ async function grabOcrUnderCursor(): Promise<void> {
   const cur = screen.getCursorScreenPoint();
   log.info('main', 'Grab OCR under cursor', { x: cur.x, y: cur.y });
   showWorkProgress(cur.x, cur.y + 24, {
-    title: 'Grab under cursor…',
+    title: 'Scanning under pointer…',
     subtitle: 'Capturing nearby text',
   });
   const capture = await captureAroundPoint(cur.x, cur.y, 160, 64);
@@ -1816,7 +1816,7 @@ async function grabOcrUnderCursor(): Promise<void> {
     bounds: capture.bounds,
     imageHash: capture.imageHash,
     origin: 'ocr',
-    progressTitle: 'Grab under cursor…',
+    progressTitle: 'Scanning under pointer…',
   });
 }
 
@@ -1826,7 +1826,7 @@ async function readForegroundWindowOcr(): Promise<void> {
   if (!bounds) {
     log.warn('main', 'Foreground window bounds unavailable');
     contextCaptureHub.emit({
-      text: '(Could not read foreground window bounds)',
+      text: '(Could not scan this window)',
       x: cur.x,
       y: cur.y,
       timestamp: Date.now(),
@@ -1843,7 +1843,7 @@ async function readForegroundWindowOcr(): Promise<void> {
 
   log.info('main', 'Read foreground window OCR', { ...bounds });
   showWorkProgress(bounds.x + Math.floor(bounds.width / 2), bounds.y + 40, {
-    title: 'Reading window…',
+    title: 'Scanning window…',
     subtitle: 'Capturing foreground window',
   });
   const capture = await captureScreenRegion(bounds);
@@ -1858,7 +1858,7 @@ async function readForegroundWindowOcr(): Promise<void> {
     bounds,
     imageHash: capture.imageHash,
     origin: 'ocr',
-    progressTitle: 'Reading window…',
+    progressTitle: 'Scanning window…',
   });
 }
 
@@ -1877,7 +1877,7 @@ async function ocrClipboardImage(): Promise<void> {
     y: cur.y,
     imageHash: img.imageHash,
     origin: 'clipboard',
-    progressTitle: 'OCR clipboard image…',
+    progressTitle: 'Scanning clipboard image…',
   });
 }
 
@@ -1886,13 +1886,13 @@ async function lookupNowPlaying(): Promise<void> {
   const cur = screen.getCursorScreenPoint();
   showWorkProgress(cur.x, cur.y, {
     title: 'Now playing…',
-    subtitle: 'Reading media session',
+    subtitle: 'Checking what is playing',
   });
   const info = await getNowPlaying();
   closeWorkProgress();
   if (!info) {
     contextCaptureHub.emit({
-      text: '(No media session / now playing)',
+      text: '(Nothing is playing)',
       x: cur.x,
       y: cur.y,
       timestamp: Date.now(),
@@ -2175,7 +2175,7 @@ ipcMain.handle(
     }
     const all = [cycle, trigger, ocr, hover];
     if (new Set(all).size !== all.length) {
-      return { success: false, error: 'Shortcuts must all be unique.' };
+      return { success: false, error: 'Each shortcut must be different.' };
     }
     if (
       !tryRegisterAccelerator(cycle) ||
@@ -2185,7 +2185,7 @@ ipcMain.handle(
     ) {
       return {
         success: false,
-        error: 'Invalid accelerator. Use Electron format, e.g. CommandOrControl+Shift+O',
+        error: 'This shortcut is not valid.',
       };
     }
     monitorSettings = mergeMonitorSettings(
@@ -2520,7 +2520,7 @@ ipcMain.handle('vocab-export', async (e, format?: string) => {
     const entries = await vocabStore.listVocab(10000);
     const wantCsv = String(format || '').toLowerCase() === 'csv';
     const result = await dialog.showSaveDialog(win || undefined, {
-      title: 'Export vocabulary notebook',
+      title: 'Export notebook',
       defaultPath: wantCsv ? 'phevere-notebook.csv' : 'phevere-notebook.json',
       filters: [
         { name: 'JSON', extensions: ['json'] },
@@ -2544,7 +2544,7 @@ ipcMain.handle('vocab-import', async (e) => {
   try {
     const win = BrowserWindow.fromWebContents(e.sender) || mainWindow;
     const picked = await dialog.showOpenDialog(win || undefined, {
-      title: 'Import vocabulary notebook',
+      title: 'Import notebook',
       filters: [
         { name: 'Notebook', extensions: ['json', 'csv'] },
         { name: 'JSON', extensions: ['json'] },
@@ -2740,7 +2740,7 @@ ipcMain.handle('offline-lookup', async (_e, headword: string, language?: string)
 ipcMain.handle('offline-import-json', async () => {
   const win = BrowserWindow.getFocusedWindow() || mainWindow;
   const result = await dialog.showOpenDialog(win || undefined, {
-    title: 'Import offline dictionary (JSON / JSONL)',
+    title: 'Import dictionary pack',
     filters: [
       { name: 'Dictionary JSON', extensions: ['json', 'jsonl', 'ndjson'] },
       { name: 'All files', extensions: ['*'] },
@@ -2754,7 +2754,7 @@ ipcMain.handle('offline-import-json', async () => {
 ipcMain.handle('offline-import-cedict-file', async () => {
   const win = BrowserWindow.getFocusedWindow() || mainWindow;
   const result = await dialog.showOpenDialog(win || undefined, {
-    title: 'Import CC-CEDICT text file',
+    title: 'Import CC-CEDICT file',
     filters: [
       { name: 'CEDICT', extensions: ['txt', 'u8'] },
       { name: 'All files', extensions: ['*'] },

@@ -68,7 +68,7 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
   private final ActivityResultLauncher<String> cameraPerm =
       registerForActivityResult(new ActivityResultContracts.RequestPermission(), ok -> {
         if (ok) takePhoto();
-        else failPending("Camera permission denied");
+        else failPending("Camera access denied");
       });
 
   private final ActivityResultLauncher<Uri> takePicture =
@@ -413,7 +413,7 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
         pickVisual.launch("image/*");
         return;
       }
-      failPending(m.isEmpty() ? "Camera failed" : m);
+      failPending(m.isEmpty() ? "Could not open the camera" : m);
     }
   }
 
