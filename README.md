@@ -66,13 +66,13 @@ Release builds are not code-signed, so Windows SmartScreen and macOS Gatekeeper 
 
 ### Android
 
-Android 7.0 (API 24) or later. The phone apps are not yet published to an app store. Each CI run on `main` builds a debug APK, which you can download from the run's **Artifacts** section as `phevere-android`. The version shown by the installer has the form `0.2.0-dev.<build>+<commit>`.
+Android 7.0 (API 24) or later. Download `Phevere-<version>-android.apk` from [GitHub Releases](https://github.com/thd2020/phevere/releases/latest); the app is not in an app store. The APK is debug-signed, and each build is signed with its runner's debug key, so installing a newer release may require uninstalling the old one first. The version shown by the installer has the form `<version>-dev.<build>+<commit>`. Each CI run on `main` also builds an APK, available from the run's **Artifacts** section as `phevere-android`.
 
 The LSPosed module is optional and requires a rooted device. Enabled in LSPosed for the apps you choose, it hooks the system text-selection toolbar so that Phevere appears at a position you set, is added back in apps that hide third-party actions (X, for example), and can be pressed automatically on selection. Setup steps are in [`apps/mobile/ANDROID.md`](apps/mobile/ANDROID.md).
 
 ### iOS
 
-iOS 14 or later. CI produces an unsigned IPA (`phevere-ios`), which must be signed before it can be installed on a device.
+iOS 14 or later. Download `Phevere-<version>-ios-unsigned.ipa` from [GitHub Releases](https://github.com/thd2020/phevere/releases/latest) and sign it with your own signing tool before installing it on a device.
 
 ## Privacy
 
@@ -132,7 +132,7 @@ For iOS, open `apps/mobile/ios/App/App.xcodeproj` in Xcode. Further detail is in
 
 ### Continuous integration and releases
 
-Every pull request and every push to `main` builds the desktop applications for Windows and macOS, the Android APK, and the iOS IPA, and runs the mobile regression tests. Pushing a tag of the form `v*.*.*` builds the Windows installers and macOS disk images, attaches them to a GitHub Release, and publishes build provenance attestations. See [`docs/RELEASE.md`](docs/RELEASE.md).
+Every pull request and every push to `main` builds the desktop applications for Windows and macOS, the Android APK, and the iOS IPA, and runs the mobile regression tests. Pushing a tag of the form `v*.*.*` builds the Windows installers, macOS disk images, Android APK, and iOS IPA, attaches them to a GitHub Release, and publishes build provenance attestations. See [`docs/RELEASE.md`](docs/RELEASE.md).
 
 ## Project structure
 
