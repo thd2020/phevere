@@ -1,5 +1,17 @@
 # Phevere
 
+2026-10-20: the Etymonline tab shows the entry inside the app again, read from Etymonline's JSON endpoint rather than the page Cloudflare now challenges. The summary above the etymology tabs reads from the oldest ancestor to the headword.
+
+![Screenshot of the etymology view for separate, with the history line from Proto-Indo-European *per- through Latin and Middle English to English](README.assets/desktop-etymology-history.jpg)
+
+The history line comes from the Wiktionary templates; each arrow names how the next form came about.
+
+2026-10-20: with a neural voice installed, IPA chips on desktop speak their transcription with that voice. Stacked lookup popups close one per outside click. The settings gear stays beside the window controls.
+
+![Screenshot of the Shortcuts settings with labels, key boxes and Set buttons in aligned columns](README.assets/desktop-settings-shortcuts.png)
+
+The Shortcuts settings, rendered from the settings markup and stylesheet in a browser.
+
 2026-10-14, 2.1.0 desktop refresh: enable Open full lookup panel under the popup's Options button to show the lookup immediately. The preference carries across popup windows; the default remains the icon strip.
 
 ![Screenshot of popup Options with Open full lookup panel enabled](README.assets/desktop-popup-opening.png)
