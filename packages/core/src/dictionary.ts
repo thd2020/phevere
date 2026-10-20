@@ -3084,8 +3084,9 @@ export class DictionaryService extends BaseService {
       return null;
     } catch (error) {
       console.error('DeepL translation error:', error);
-      if (error.response) {
-        console.error('DeepL response:', error.response.data);
+      const response = (error as { response?: { data?: unknown } }).response;
+      if (response) {
+        console.error('DeepL response:', response.data);
       }
       return null;
     }
@@ -3123,8 +3124,9 @@ export class DictionaryService extends BaseService {
       return null;
     } catch (error) {
       console.error('Google Translate error:', error);
-      if (error.response) {
-        console.error('Google Translate response:', error.response.data);
+      const response = (error as { response?: { data?: unknown } }).response;
+      if (response) {
+        console.error('Google Translate response:', response.data);
       }
       return null;
     }
