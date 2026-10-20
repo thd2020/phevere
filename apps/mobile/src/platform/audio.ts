@@ -37,10 +37,12 @@ function volume(prefs: MobilePrefs): number {
   return hasNativeBridge() ? gain : Math.min(1, gain);
 }
 
-async function playUrl(url: string, prefs: MobilePrefs): Promise<void> {
+/** onStart fires once the clip is playing; native reports only the end, so it fires then. */
+async function playUrl(url: string, prefs: MobilePrefs, onStart?: () => void): Promise<void> {
   if (!prefs.audioEnabled || !url) return;
   if (hasNativeBridge()) {
     await nativeCall('playUrl', { url, rate: rate(prefs), volume: volume(prefs) });
+    onStart?.();
     return;
   }
   if (!clip) clip = new Audio();
@@ -49,24 +51,31 @@ async function playUrl(url: string, prefs: MobilePrefs): Promise<void> {
   clip.src = url;
   const ended = waitClipEnd(clip);
   await clip.play();
+  onStart?.();
   await ended;
 }
 
-export async function playRecorded(result: DictionaryResult | null, prefs: MobilePrefs): Promise<void> {
+export async function playRecorded(
+  result: DictionaryResult | null,
+  prefs: MobilePrefs,
+  onStart?: () => void,
+): Promise<void> {
   if (!prefs.audioEnabled) return;
   const urls = recordedUrls(result);
   if (!urls.length) {
+    onStart?.();
     await speakText(result?.word || '', prefs);
     return;
   }
   for (const url of urls) {
     try {
-      await playUrl(url, prefs);
+      await playUrl(url, prefs, onStart);
       return;
     } catch {
       /* try next */
     }
   }
+  onStart?.();
   await speakText(result?.word || '', prefs);
 }
 

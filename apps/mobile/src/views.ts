@@ -2,13 +2,13 @@ import { langBarHtml, langSheetHtml, type LangSide } from './picker';
 import {
   abbreviatePos,
   canonicalPos,
-  formatPronunciationLine,
   formatVocabLangPair,
   saveLemma,
   stripGlossText,
   type Definition,
   type DictionaryResult,
   type Pronunciation,
+  type Translation,
   type VocabEntry,
   type WikipediaResult,
 } from '@phevere/core';
@@ -36,6 +36,17 @@ export function esc(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/** Plain text of an HTML snippet (Wikipedia extracts), entities decoded. */
+function htmlToText(s: string): string {
+  const raw = String(s || '');
+  if (!/[<&]/.test(raw)) return raw;
+  try {
+    return (new DOMParser().parseFromString(raw, 'text/html').body.textContent || '').replace(/\s+/g, ' ').trim();
+  } catch {
+    return stripGlossText(raw);
+  }
+}
+
 const ICO = {
   scan: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M8 9.5h8M8 12.5h8M8 15.5h5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   go: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -45,6 +56,8 @@ const ICO = {
   import: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M12 4v11M7 10l5 5 5-5M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   recent: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   az: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M3.5 17 7 7l3.5 10M4.8 13.5h4.4M14 7h6l-6 10h6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1zM5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  web: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 
   back: '<svg viewBox="0 0 24 24"><path d="M15.5 19.5 8 12l7.5-7.5 1.5 1.5L11 12l6 6z"/></svg>',
   fwd: '<svg viewBox="0 0 24 24"><path d="M8.5 4.5 16 12l-7.5 7.5-1.5-1.5 6-6-6-6z"/></svg>',
@@ -95,25 +108,56 @@ export function appBarHtml(tab: Tab, query: string, canBack: boolean, canFwd: bo
 }
 
 /** Pop-up: one slim row — history on the left, open-in-app and close on the right. */
-export function popupBarHtml(canBack: boolean, canFwd: boolean): string {
+export function popupBarHtml(canBack: boolean, canFwd: boolean, hasWord = false): string {
   return `
     <div class="popup-bar">
       <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="Previous lookup">${ICO.back}</button>
       <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="Next lookup">${ICO.fwd}</button>
       <span class="popup-bar__gap"></span>
+      ${hasWord ? `<button type="button" class="icon-btn" data-act="copy" aria-label="Copy" title="Copy">${ICO.copy}</button>
+      <button type="button" class="icon-btn" data-act="web-search" aria-label="Search the web" title="Search the web">${ICO.web}</button>` : ''}
       <button type="button" class="icon-btn" data-act="expand-strip" aria-label="Open in Phevere" title="Open in Phevere">${ICO.expand}</button>
       <button type="button" class="icon-btn" data-act="close-strip" aria-label="Close">${ICO.close}</button>
     </div>`;
 }
 
-function ipaChips(list?: Pronunciation[]): string {
-  const chips = (list || []).filter((p) => p.ipa);
-  if (!chips.length) return '';
-  return `<div class="ipa-chips">${chips
-    .map(
-      (p, i) => `<span class="ipa-chip">${p.accent === 'us' || p.accent === 'uk' ? `<b>${esc(p.accent.toUpperCase())}</b>` : ''}/${esc(p.ipa)}/<button type="button" data-act="speak-ipa" data-i="${list!.indexOf(p)}" aria-label="Speak IPA">${ICO.speaker}</button></span>`,
-    )
-    .join('')}</div>`;
+/** Older cached results may still carry Wiktionary markup after the IPA. */
+function displayIpa(raw: string): string {
+  const s = String(raw || '')
+    .replace(/<[\s\S]*$/, '')
+    .replace(/\{\{[\s\S]*$/, '')
+    .trim()
+    .replace(/^\/+|\/+$/g, '')
+    .trim();
+  return /[<>{}|=]/.test(s) ? '' : s;
+}
+
+function ipaChip(ipa: string, accent: string, shown: string): string {
+  const tag = accent === 'us' ? 'US' : accent === 'uk' ? 'UK' : '';
+  const label = tag ? `${tag} transcription` : 'this transcription';
+  return `<span class="ipa-chip">${tag ? `<b>${tag}</b>` : ''}${esc(shown)}<button type="button" data-act="speak-ipa" data-ipa="${esc(ipa)}" data-accent="${esc(accent)}" aria-label="Speak ${label}" title="Speak ${label}">${ICO.speaker}</button></span>`;
+}
+
+function ipaChips(list: Pronunciation[] | undefined, fallback: string): string {
+  const used = new Set<string>();
+  const chips: string[] = [];
+  for (const p of list || []) {
+    const clean = displayIpa(p?.ipa);
+    if (!clean) continue;
+    const accent = p.accent || 'other';
+    const key = `${accent}:${clean}`;
+    if (used.has(key)) continue;
+    used.add(key);
+    chips.push(ipaChip(clean, accent, `/${clean}/`));
+  }
+  if (chips.length) return `<div class="ipa-chips">${chips.join('')}</div>`;
+  const line = String(fallback || '').replace(/<[\s\S]*$/, '').trim();
+  if (!line) return '';
+  const shown = line.includes('/') ? line : `/${line.replace(/^\/+|\/+$/g, '')}/`;
+  const ipa = (shown.match(/\/([^/]+)\//) || [])[1] || line.replace(/^\/+|\/+$/g, '');
+  return ipa
+    ? `<div class="ipa-chips">${ipaChip(ipa, 'other', shown)}</div>`
+    : `<p class="ipa-line">${esc(shown)}</p>`;
 }
 
 function exampleKey(s: string): string {
@@ -193,6 +237,37 @@ function linkLemmaRefs(escaped: string): string {
   );
 }
 
+const WIKI_SKIP_NS = /^(File|Category|Special|Wiktionary|Template|Appendix|Help|Module|User|Talk|Reconstruction):/i;
+
+/**
+ * Sense text for display. Wiktionary HTML keeps its /wiki/ links as in-place lookups (as on
+ * desktop); plain text links "plural of X" and the like.
+ */
+function senseHtml(raw: string): string {
+  const meaning = String(raw || '');
+  if (!/<[a-z][\s\S]*>/i.test(meaning)) return linkLemmaRefs(esc(stripGlossText(meaning)));
+  const links: Array<{ title: string; text: string }> = [];
+  const marked = meaning.replace(/<a\s[^>]*?href=(["'])([^"']+)\1[^>]*>([\s\S]*?)<\/a>/gi, (_full, _q, href: string, inner: string) => {
+    const m = String(href).match(/\/wiki\/([^?#]+)/i);
+    const text = stripGlossText(inner);
+    if (!m || !text) return inner;
+    let title = '';
+    try {
+      title = decodeURIComponent(m[1].replace(/_/g, ' '));
+    } catch {
+      title = m[1].replace(/_/g, ' ');
+    }
+    title = title.replace(/#.*$/, '').trim();
+    if (!title || WIKI_SKIP_NS.test(title)) return inner;
+    links.push({ title, text });
+    return `\u0001${links.length - 1}\u0002`;
+  });
+  return esc(stripGlossText(marked)).replace(/\u0001(\d+)\u0002/g, (_m, i: string) => {
+    const l = links[Number(i)];
+    return l ? `<button type="button" class="lemma-link" data-act="lookup" data-q="${esc(l.title)}">${esc(l.text)}</button>` : '';
+  });
+}
+
 function renderSenses(senses: Definition[], shown: Set<string>): string {
   const sorted = senses.slice().sort((a, b) => stripGlossText(b.meaning || '').length - stripGlossText(a.meaning || '').length);
   return sorted
@@ -217,7 +292,7 @@ function renderSenses(senses: Definition[], shown: Set<string>): string {
         <div class="definition-sense-row">
           <div class="definition-sense-num">${i + 1}.</div>
           <div class="definition-sense-body">
-            <div class="definition-text">${linkLemmaRefs(esc(stripGlossText(d.meaning)))}</div>
+            <div class="definition-text">${senseHtml(d.meaning)}</div>
             ${exHtml}
             <div class="definition-source-badges">${badges}</div>
           </div>
@@ -334,6 +409,76 @@ function lexiconPane(result: DictionaryResult, activePos: string): string {
 export type { LangSide } from './picker';
 export type PickerId = LangSide;
 
+/** Skeleton card that stands where a tab's content will land. */
+function tabPending(label: string): string {
+  return `<div class="tab-pending" role="status" aria-label="${esc(label)}"><div class="skel-card" aria-hidden="true"><span class="skel skel-line w-label"></span><span class="skel skel-line w-90"></span><span class="skel skel-line w-75"></span><span class="skel skel-line w-55"></span></div></div>`;
+}
+
+/** Lookup in flight: the word in the headword face, shimmer where IPA, rail and senses land. */
+export function lookupSkeleton(query: string): string {
+  const word = query.length > 60 ? `${query.slice(0, 60)}…` : query;
+  return `<div class="loading" role="status" aria-live="polite" aria-label="Looking up">
+    <div class="skel-head">
+      <div class="skel-word">${esc(word)}</div>
+      <div class="skel-chips" aria-hidden="true"><span class="skel skel-pill"></span><span class="skel skel-pill"></span></div>
+    </div>
+    <div class="skel-body" aria-hidden="true">
+      <div class="skel-rail"><span class="skel"></span><span class="skel"></span></div>
+      <div class="skel-card">
+        <span class="skel skel-line w-label"></span>
+        <span class="skel skel-line w-90"></span>
+        <span class="skel skel-line w-75"></span>
+        <span class="skel skel-line w-90 w-gap"></span>
+        <span class="skel skel-line w-55"></span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function languageLabel(code: string): string {
+  const c = String(code || '').trim();
+  if (!c) return '';
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'language' }).of(c) || c;
+  } catch {
+    return c;
+  }
+}
+
+function friendlyTranslationSource(src?: string): string {
+  const s = String(src || '').toLowerCase();
+  if (s.includes('deepl')) return 'DeepL';
+  if (s.includes('youdao')) return 'Youdao';
+  if (s.includes('mymemory')) return 'MyMemory';
+  if (s.includes('google') || s.includes('unofficial')) return 'Google';
+  return '';
+}
+
+function translationCard(word: string, t: Translation, wordLang: string): string {
+  const provider = friendlyTranslationSource(t.source);
+  const tgt = t.language || 'en';
+  return `<div class="translation-card">
+    ${provider ? `<div class="translation-card__provider">via ${esc(provider)}</div>` : ''}
+    <div class="translation-card__pair">
+      <div class="translation-card__line">
+        <div>
+          <div class="translation-card__label">${esc(languageLabel(wordLang) || 'Source')}</div>
+          <div class="translation-card__original">${esc(word)}</div>
+        </div>
+        <button type="button" class="icon-btn tx-speak" data-act="speak-text" data-text="${esc(word)}" data-lang="${esc(wordLang)}" aria-label="Play source" title="Play source">${ICO.speaker}</button>
+      </div>
+      <div class="translation-card__line">
+        <div>
+          <div class="translation-card__label">${esc(languageLabel(tgt))}</div>
+          <div class="translation-card__text">${esc(t.text)}</div>
+          ${t.pronunciation ? `<div class="translation-card__pron">${esc(t.pronunciation)}</div>` : ''}
+        </div>
+        <button type="button" class="icon-btn tx-speak" data-act="speak-text" data-text="${esc(t.text)}" data-lang="${esc(tgt)}" aria-label="Play translation" title="Play translation">${ICO.speaker}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function translationPane(
   result: DictionaryResult,
   langs: { code: string; name: string; nativeName: string }[],
@@ -342,22 +487,18 @@ function translationPane(
   langMenu: PickerId | '',
   recentLangs: string[],
 ): string {
-  const rows = (result.translations || [])
-    .map(
-      (t) => `<div class="t-row">
-        <span class="t-lang">${esc(t.language)}</span>
-        <span class="t-text">${esc(t.text)}</span>
-        <button type="button" class="icon-btn" data-act="speak-text" data-text="${esc(t.text)}" data-lang="${esc(t.language)}" aria-label="Speak translation">${ICO.speaker}</button>
-      </div>`,
-    )
-    .join('');
+  const list = result.translations || [];
+  const pending = !!result.metadata?.pendingTranslation && !list.length;
+  const wordLang = result.detectedLanguage || (sourceLang !== 'auto' ? sourceLang : '') || 'en';
+  const body = list.length
+    ? list.map((t) => translationCard(result.word, t, wordLang)).join('')
+    : pending
+      ? tabPending('Translating')
+      : '<div class="error-message">No translation found. Check the network, or pick an engine in Settings → Sources.</div>';
   return `
     ${langBarHtml(langs, sourceLang, targetLang)}
     ${langMenu ? langSheetHtml(langMenu, langs, langMenu === 'from' ? sourceLang : targetLang, recentLangs) : ''}
-    <section class="card">
-      <h2>Translation</h2>
-      ${rows || '<p class="empty">No translation yet.</p>'}
-    </section>`;
+    ${body}`;
 }
 
 export type WikiArticle = { title: string; url: string; html: string; lang: string };
@@ -388,18 +529,23 @@ function wikiPane(
           ${it.thumbnail ? `<img src="${esc(it.thumbnail)}" alt="" loading="lazy" />` : ''}
           <span class="wikipedia-item__name">${esc(it.title)}</span>
         </div>
-        <div class="wikipedia-item__extract">${esc(it.extract || '')}</div>
+        <div class="wikipedia-item__extract">${esc(htmlToText(it.extract || ''))}</div>
       </button>`,
     )
     .join('');
+  const empty = error
+    ? '<div class="error-message">Wikipedia lookup failed.</div>'
+    : loading
+      ? ''
+      : '<div class="error-message">No Wikipedia articles found.</div>';
   return `<section class="wikipedia-card">
     <div class="wikipedia-card__header">
       <span>Wikipedia</span>
       <span class="wikipedia-card__lang">${esc(wikiLang)}</span>
     </div>
     <div class="wikipedia-card__body">
-      ${loading ? `<p class="status"><span class="md-spinner"></span> Searching Wikipedia…</p>` : ''}
-      ${list || '<p class="empty">No Wikipedia articles found.</p>'}
+      ${loading && !list ? tabPending('Searching Wikipedia') : ''}
+      ${list || empty}
     </div>
   </section>`;
 }
@@ -416,6 +562,8 @@ function splitEtymologySources(etymologyText: string): Array<{ label: string; bo
         label = labelMatch[1].trim() || label;
         body = labelMatch[2].trim();
       }
+      // Older cached Wiktionary text opens with the reversed "English ← …" line the chain now shows.
+      body = body.replace(/^English ← [^\n]*(\n\n|$)/, '').trim();
       return { label, body: stripGlossText(body) };
     })
     .filter((s) => {
@@ -435,7 +583,7 @@ function formatEtymologyBody(body: string): string {
         '<span class="etymology-keyword">$1</span>',
       )
       .replace(
-        /\b(Latin|Greek|French|German|Old English|Middle English|Anglo-Saxon|Proto-Germanic|Proto-Indo-European|Ancient Greek|Sanskrit|Gothic|Old Norse|Old French|Proto-Italic|Proto-Hellenic|Proto-Celtic)\b/gi,
+        /\b(Proto-Indo-European|Proto-Germanic|Proto-Italic|Proto-Hellenic|Proto-Celtic|Ancient Greek|Late Latin|Medieval Latin|Old English|Middle English|Old French|Middle French|Anglo-Norman|Old Norse|Old High German|Middle Dutch|Old Occitan|Old Provençal|Anglo-Saxon|Latin|Greek|French|German|Italian|Spanish|Portuguese|Dutch|Arabic|Persian|Sanskrit|Gothic)\b/gi,
         '<span class="etymology-language">$1</span>',
       )
       .replace(/\*[\w\u0300-\u036f\-]+/g, '<span class="etymology-reconstructed">$&</span>')
@@ -449,23 +597,50 @@ function formatEtymologyBody(body: string): string {
   return `<div class="etymology-text">${inner}</div>`;
 }
 
+/** How each older form reached the next, read left to right. */
+const ETYMOLOGY_STEP: Record<string, string> = {
+  inherited: 'inherited',
+  borrowed: 'borrowed',
+  'learned borrowing': 'learned borrowing',
+  'semi-learned borrowing': 'borrowed',
+  derived: 'derived',
+  calque: 'calque',
+  root: 'root',
+};
+
+/** The first sense of a gloss, so one long gloss does not stretch the line. */
+function shortGloss(gloss?: string): string {
+  const first = String(gloss || '').split(/[,;]/)[0].trim();
+  return first.length > 28 ? '' : first;
+}
+
+/** Oldest ancestor first, ending at the headword, as on desktop. */
 function formatEtymologyChain(result: DictionaryResult): string {
-  const chain = result.etymologyChain || [];
-  if (!chain.length) return '';
-  const parts = chain.slice(0, 8).map((link) => {
-    const lang = esc(link.language || '');
-    const term = esc(link.term || '');
-    const rel = esc(link.relation || '');
-    return `<span class="etymology-chain__rel">${rel}</span><span class="etymology-chain__node">${lang}${term ? ` · ${term}` : ''}</span>`;
-  });
-  return `<div class="etymology-chain">${parts.join('<span aria-hidden="true">←</span>')}</div>`;
+  const links = (result.etymologyChain || []).slice(0, 8).filter((l) => l && (l.term || l.language || l.languageCode));
+  if (!links.length) return '';
+  const node = (lang: string, term: string, gloss: string, isHead: boolean): string =>
+    `<span class="etymology-chain__node${isHead ? ' is-head' : ''}"><span class="etymology-chain__lang">${esc(lang)}</span>${
+      term ? `<span class="etymology-chain__term">${esc(term)}</span>` : ''}${
+      gloss ? `<span class="etymology-chain__gloss">“${esc(gloss)}”</span>` : ''}</span>`;
+  const step = (rel: string): string => {
+    const label = ETYMOLOGY_STEP[rel] || '';
+    return `<span class="etymology-chain__step" aria-hidden="true">${label ? `<span class="etymology-chain__rel">${esc(label)}</span>` : ''}<span class="etymology-chain__arrow">→</span></span>`;
+  };
+  const parts: string[] = [];
+  for (let i = links.length - 1; i >= 0; i--) {
+    const l = links[i];
+    parts.push(node(l.language || l.languageCode || '', l.term || '', shortGloss(l.gloss), false));
+    parts.push(step(l.relation));
+  }
+  parts.push(node('English', result.word || '', '', true));
+  return `<div class="etymology-chain" role="list" aria-label="Word history, oldest first">${parts.join('')}</div>`;
 }
 
 export function etymologyEntryUrl(raw: string): string | null {
   try {
     const url = new URL(raw);
     return url.protocol === 'https:' && url.hostname === 'www.etymonline.com' &&
-      !url.username && !url.password && !url.port && /^\/word\/[^/]+$/.test(url.pathname)
+      !url.username && !url.password && !url.port && /^\/word\/[^/]+\/?$/.test(url.pathname)
       ? url.href : null;
   } catch { return null; }
 }
@@ -478,10 +653,8 @@ function etymPane(result: DictionaryResult, selectedSource = ''): string {
     if (url) sources.push({ label: 'Etymonline', body: '', unavailable: unavailable.status, url });
   }
   const pending = !!(result.metadata && result.metadata.pendingEtymology);
-  if (pending && !sources.length) {
-    return `<p class="status"><span class="md-spinner"></span> Fetching etymology…</p>`;
-  }
-  if (!sources.length) return `<p class="empty">No etymology found.</p>`;
+  if (pending && !sources.length) return tabPending('Loading etymology');
+  if (!sources.length) return `<div class="etymology-no-data"><p><strong>No etymology found.</strong></p></div>`;
   const activeIndex = Math.max(0, sources.findIndex((s) => s.label === selectedSource));
   const tabs = sources
     .map(
@@ -524,18 +697,27 @@ export function lookupBody(opts: {
   wikiError: string;
   lexiconPos: string;
   etymologySource?: string;
+  query?: string;
+  error?: string;
+  recent?: string[];
+  /** Copy and web search sit in the head; the pop-up carries them in its bar instead. */
+  headTools?: boolean;
 }): string {
-  if (opts.looking && !opts.result) {
-    return `<p class="status"><span class="md-spinner"></span> Looking up…</p>`;
+  if (opts.looking && !opts.result) return lookupSkeleton(opts.query || '');
+  if (opts.error && !opts.result) {
+    return `<div class="error-message">Failed to look up "${esc(opts.query || '')}".<small>${esc(opts.error || 'Unknown error')}</small></div>`;
   }
   if (opts.status && !opts.result) return `<p class="status">${esc(opts.status)}</p>`;
   if (!opts.result) {
+    const recent = (opts.recent || []).filter(Boolean);
     return `<div class="empty">
       <p>Type a word, or select text in another app.</p>
+      ${recent.length ? `<div class="recent-lookups" aria-label="Recent lookups">${recent
+        .map((w) => `<button type="button" class="recent-chip" data-act="lookup" data-q="${esc(w)}">${esc(w)}</button>`)
+        .join('')}</div>` : ''}
     </div>`;
   }
-  const chips = ipaChips(opts.result.pronunciations);
-  const ipa = formatPronunciationLine(opts.result.pronunciations) || opts.result.pronunciation || '';
+  const chips = ipaChips(opts.result.pronunciations, opts.result.pronunciation || '');
   const lemma = saveLemma(opts.result);
   const tabs: ResultTab[] = ['lexicon', 'translation', 'wikipedia', 'etymology'];
   const icons: Record<ResultTab, string> = {
@@ -565,15 +747,16 @@ export function lookupBody(opts: {
         <h2 class="lemma">${esc(opts.result.word || lemma)}</h2>
       </div>
       <div class="head-actions">
+        ${opts.headTools ? `<button type="button" class="icon-btn" data-act="copy" aria-label="Copy" title="Copy">${ICO.copy}</button>
+        <button type="button" class="icon-btn" data-act="web-search" aria-label="Search the web" title="Search the web">${ICO.web}</button>` : ''}
         <button type="button" class="tonal" data-act="speak" aria-label="Play recorded pronunciation">${ICO.speaker}</button>
         <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Saved' : 'Save to notebook'}">${ICO.heart}</button>
       </div>
-      ${chips || (ipa ? `<p class="ipa-line">${esc(ipa)}</p>` : '')}
+      ${chips}
     </header>
     <div class="result-tabs" role="tablist">
       ${tabs.map((t) => `<button type="button" class="result-tab" role="tab" data-act="result-tab" data-tab="${t}" aria-selected="${opts.resultTab === t}" aria-label="${labels[t]}" title="${labels[t]}">${icons[t]}</button>`).join('')}
     </div>
-    ${opts.looking ? `<p class="status"><span class="md-spinner"></span> Updating…</p>` : ''}
     ${pane}
     </div>`;
 }
@@ -586,7 +769,7 @@ export function notebookBody(
 ): string {
   const q = filter.trim().toLowerCase();
   let list = [...entries];
-  if (sort === 'az') list.sort((a, b) => a.lemma.localeCompare(b.lemma, undefined, { sensitivity: 'base' }));
+  if (sort === 'az') list.sort((a, b) => a.lemma.localeCompare(b.lemma, undefined, { sensitivity: 'base', numeric: true }));
   else list.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
   if (q) {
     list = list.filter((e) =>
@@ -614,7 +797,7 @@ export function notebookBody(
         ? `<span class="vocab-reading">${ipa.includes('/') ? esc(ipa) : `/${esc(ipa)}/`}</span>`
         : '<span class="vocab-reading vocab-reading--empty">IPA pending</span>';
       const open = expanded.has(e.id);
-      return `<article class="vocab-item ${open ? 'is-expanded' : 'is-collapsed'}" data-id="${esc(e.id)}">
+      return `<article class="vocab-item ${open ? 'is-expanded' : 'is-collapsed'}" data-id="${esc(e.id)}" data-az="${vocabAzLetter(e.lemma)}">
         <div class="vocab-entry">
           <div class="vocab-entry__toggle" data-act="nb-toggle" data-id="${esc(e.id)}" role="button" tabindex="0" aria-expanded="${open}">
             <header class="vocab-entry__head">
@@ -651,7 +834,22 @@ export function notebookBody(
       </div>
     </div>
     <div class="ptr" aria-hidden="true"><span class="md-spinner"></span></div>
-    <div class="vocab-list">${rows || `<p class="empty">${q ? 'No notebook matches.' : 'No saved words yet.'}</p>`}</div>`;
+    <div class="vocab-list">${rows || `<p class="empty">${q ? 'No notebook matches.' : 'No saved words yet.'}</p>`}</div>
+    ${sort === 'az' && list.length ? vocabAzRail(new Set(list.map((e) => vocabAzLetter(e.lemma)))) : ''}`;
+}
+
+/** First letter for the A–Z rail; anything outside A–Z files under #. */
+function vocabAzLetter(lemma: string): string {
+  const up = (lemma || '').trim().charAt(0).toLocaleUpperCase('en');
+  return up >= 'A' && up <= 'Z' ? up : '#';
+}
+
+function vocabAzRail(present: Set<string>): string {
+  const letters = ['#', ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i))];
+  return `<nav class="vocab-az" data-az-rail aria-label="Jump to letter">${letters
+    .map((l) => `<button type="button" class="vocab-az__letter${present.has(l) ? '' : ' is-empty'}" data-letter="${l}">${l}</button>`)
+    .join('')}</nav>
+    <div class="vocab-az-hud" hidden aria-hidden="true"></div>`;
 }
 
 /** One OCR word: text plus its box as fractions of the picture; l is its line on the page. */

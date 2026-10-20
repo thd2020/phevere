@@ -11,8 +11,6 @@
  * Motion: M3 emphasized cubic-bezier(0.2, 0, 0, 1). Reduced-motion respected.
  */
 
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500&family=Outfit:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,650;8..60,700&display=swap');
-
 :root {
   --md-sys-color-primary: #9c3d00;
   --md-sys-color-on-primary: #fff7f3;
@@ -41,7 +39,7 @@
   --md-sys-shape-xl: 28px;
   --md-sys-motion: cubic-bezier(0.2, 0, 0, 1);
   --md-font-ui: Outfit, system-ui, sans-serif;
-  --md-font-display: 'Source Serif 4', Georgia, serif;
+  --md-font-display: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif;
   --md-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
   /* Bundled: phone system fonts miss IPA letters and show them as boxes. */
   --md-font-ipa: 'Charis SIL', 'Noto Sans', serif;
@@ -550,18 +548,33 @@ a { color: var(--md-sys-color-tertiary); }
 .etymology-chain {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
+  align-items: flex-end;
+  gap: 6px 4px;
   margin: 0 0 14px;
   padding: 10px 12px;
-  border: 1px dashed color-mix(in srgb, var(--md-sys-color-tertiary) 35%, transparent);
+  border-radius: 8px;
   background: color-mix(in srgb, var(--md-sys-color-tertiary) 8%, transparent);
-  font-family: var(--md-font-mono);
-  font-size: 0.72rem;
-  color: var(--md-sys-color-on-surface-variant);
 }
-.etymology-chain__node { color: var(--md-sys-color-on-surface); font-weight: 500; }
-.etymology-chain__rel { color: var(--md-sys-color-primary); font-size: 0.65rem; }
+.etymology-chain__node { display: inline-flex; flex-direction: column; min-width: 0; }
+.etymology-chain__lang {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--md-sys-color-on-surface-variant);
+  white-space: nowrap;
+}
+.etymology-chain__term {
+  font-family: var(--md-font-display);
+  font-style: italic;
+  font-size: 0.95rem;
+  line-height: 1.3;
+  color: var(--md-sys-color-on-surface);
+}
+.etymology-chain__gloss { font-size: 0.7rem; color: var(--md-sys-color-on-surface-variant); }
+.etymology-chain__node.is-head .etymology-chain__term { font-style: normal; font-weight: 600; color: var(--md-sys-color-tertiary); }
+.etymology-chain__step { display: inline-flex; flex-direction: column; align-items: center; padding: 0 2px 1px; }
+.etymology-chain__rel { font-size: 0.6rem; color: var(--md-sys-color-on-surface-variant); white-space: nowrap; }
+.etymology-chain__arrow { color: var(--md-sys-color-tertiary); font-size: 0.9rem; line-height: 1.2; }
 .etymology-layout { display: flex; min-height: 160px; align-items: stretch; }
 .etymology-tabs {
   flex: 0 0 108px;
@@ -1761,3 +1774,203 @@ html[data-notify="ios"] .toast {
   :root[data-platform="ios"] { --glass-fill: var(--md-sys-color-surface-container-lowest); --glass-blur: none; }
   [data-platform="ios"] .top::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+
+/*
+ * Loading skeleton, ported from the desktop pop-up: the word in the headword face,
+ * shimmer where the IPA chips, rail and senses will land. Reduced motion stops the
+ * shimmer (the global rule above, plus this one for clarity).
+ */
+.loading { display: flex; flex-direction: column; color: var(--md-sys-color-on-surface-variant); }
+.skel-head { padding: 4px 0 12px; }
+.skel-word {
+  font-family: var(--md-font-display);
+  font-size: clamp(2rem, 8vw, 2.6rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+  color: var(--md-sys-color-on-surface);
+  overflow-wrap: anywhere;
+  min-height: 34px;
+}
+.skel-word:empty { width: 46%; height: 34px; border-radius: 8px; }
+.skel-chips { display: flex; gap: 6px; margin-top: 10px; }
+.skel,
+.skel-word:empty {
+  background: linear-gradient(
+    100deg,
+    var(--md-sys-color-surface-container) 0%,
+    var(--md-sys-color-surface-container) 38%,
+    var(--md-sys-color-surface-container-lowest) 50%,
+    var(--md-sys-color-surface-container) 62%,
+    var(--md-sys-color-surface-container) 100%
+  );
+  background-size: 250% 100%;
+  animation: skel-shimmer 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+.skel-pill { display: block; width: 96px; height: 28px; border-radius: 999px; }
+.skel-pill + .skel-pill { width: 82px; }
+.skel-body { display: flex; border-top: 1px solid var(--md-sys-color-outline-variant); }
+.skel-rail {
+  flex: 0 0 38px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 6px 0 0;
+  border-right: 1px solid var(--md-sys-color-outline-variant);
+}
+.skel-rail .skel { width: 22px; height: 56px; border-radius: 999px; }
+.skel-rail .skel + .skel { height: 44px; }
+.skel-card {
+  flex: 1 1 auto;
+  margin: 12px 0 0 12px;
+  padding: 16px;
+  align-self: flex-start;
+  background: var(--md-sys-color-surface-container-lowest);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-md);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.skel-line { display: block; height: 12px; border-radius: 6px; }
+.skel-line.w-label { width: 22%; height: 11px; margin-bottom: 4px; }
+.skel-line.w-90 { width: 92%; }
+.skel-line.w-75 { width: 76%; }
+.skel-line.w-55 { width: 56%; }
+.skel-line.w-gap { margin-top: 10px; }
+.tab-pending { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 12px; }
+.tab-pending .skel-card { margin: 0; width: 100%; }
+@keyframes skel-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel, .skel-word:empty { animation: none; background-position: 0 0; }
+}
+
+/* Empty and error states: a quiet line, not an alarm box. */
+.error-message {
+  padding: 20px 4px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.error-message small { display: block; margin-top: 4px; font-size: 0.8rem; opacity: 0.8; }
+.etymology-no-data { padding: 8px 0 0; color: var(--md-sys-color-on-surface-variant); font-size: 0.92rem; line-height: 1.55; }
+.etymology-no-data strong { font-weight: 500; }
+
+/* Lookup head: copy and web search beside the speaker and heart. */
+.head-actions { align-items: center; gap: 4px; }
+.head-actions .icon-btn { width: 36px; height: 36px; }
+.head-actions .icon-btn svg { width: 20px; height: 20px; }
+
+/* Translation card, as on desktop. */
+.translation-card {
+  background: var(--md-sys-color-surface-container-lowest);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-md);
+  padding: 14px 10px 14px 16px;
+  margin-bottom: 10px;
+}
+.translation-card__provider {
+  font-family: var(--md-font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--md-sys-color-on-surface-variant);
+  margin-bottom: 10px;
+}
+.translation-card__pair { display: flex; flex-direction: column; gap: 12px; }
+.translation-card__line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  gap: 8px;
+  align-items: start;
+}
+.translation-card__line + .translation-card__line {
+  padding-top: 12px;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+.translation-card__label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--md-sys-color-on-surface-variant);
+  margin-bottom: 4px;
+}
+.translation-card__original,
+.translation-card__text { line-height: 1.45; color: var(--md-sys-color-on-surface); overflow-wrap: anywhere; }
+.translation-card__original { font-size: 15px; }
+.translation-card__text { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.translation-card__pron { font-family: var(--md-font-ipa); font-size: 13px; color: var(--md-sys-color-tertiary); margin-top: 4px; }
+.tx-speak { color: var(--md-sys-color-tertiary); }
+
+/* Recent lookups in the empty Lookup state. */
+.recent-lookups { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.recent-chip {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-sm);
+  background: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-on-surface);
+  padding: 8px 14px;
+  font-size: 0.9rem;
+  min-height: 40px;
+}
+.recent-chip:active { background: var(--md-sys-color-surface-container); }
+
+/* Notebook A–Z rail (sort A–Z) and the letter shown while scrubbing. */
+.vocab-item { scroll-margin-top: calc(var(--pv-inset-top) + 84px); }
+.vocab-az {
+  position: fixed;
+  right: calc(var(--pv-inset-right) + 1px);
+  top: calc(var(--pv-inset-top) + 140px);
+  bottom: calc(var(--nav-h) + var(--pv-inset-bottom) + 12px);
+  width: 16px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  align-items: center;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.vocab-az__letter {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  width: 16px;
+  font-size: 9.5px;
+  line-height: 1;
+  font-weight: 650;
+  color: var(--md-sys-color-tertiary);
+}
+.vocab-az__letter.is-empty { opacity: 0.28; }
+.vocab-az-hud {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 88px;
+  height: 88px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--md-sys-color-inverse-surface) 82%, transparent);
+  color: var(--md-sys-color-inverse-on-surface);
+  font-family: var(--md-font-display);
+  font-size: 2.75rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 9;
+}
+.vocab-az-hud[hidden] { display: none; }
+
+/* Offline packs: catalogue with a check once installed. */
+.pack__meta { font-size: 0.82rem; color: var(--md-sys-color-on-surface-variant); margin: 2px 0 0; }
+.pack__done { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; color: var(--md-sys-color-tertiary); }
+.pack__done svg { width: 22px; height: 22px; fill: currentColor; }

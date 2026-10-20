@@ -10,14 +10,15 @@ import {
   listVocab,
   removeVocab,
   saveLemma,
-  stripGlossText,
+  vocabPayloadFromResult,
   wikipediaService,
+  type Pronunciation,
   type DictionaryResult,
   type VocabEntry,
   type WikipediaResult,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
-import { playRecorded, speakIpa, speakText } from './platform/audio';
+import { playRecorded, recordedUrls, speakIpa, speakText } from './platform/audio';
 import {
   applyInsets,
   hasNativeBridge,
@@ -83,8 +84,48 @@ let wikiFetch = 0;
 let wikiLoading = false;
 let wikiError = '';
 let wikiListOnly = false;
+let lookupError = '';
 let notebook: VocabEntry[] = [];
-let notebookSort: 'recent' | 'az' = 'recent';
+
+const NOTEBOOK_SORT_KEY = 'phevere.notebookSort';
+const RECENT_KEY = 'phevere.recentLookups';
+const RECENT_CAP = 12;
+
+function readStore(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStore(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    /* storage blocked: the setting lasts this session only */
+  }
+}
+
+function loadRecent(): string[] {
+  try {
+    const list = JSON.parse(readStore(RECENT_KEY) || '[]');
+    return Array.isArray(list) ? list.filter((w): w is string => typeof w === 'string' && !!w.trim()).slice(0, RECENT_CAP) : [];
+  } catch {
+    return [];
+  }
+}
+
+let notebookSort: 'recent' | 'az' = readStore(NOTEBOOK_SORT_KEY) === 'az' ? 'az' : 'recent';
+let recentLookups: string[] = loadRecent();
+
+/** Newest first, one entry per word (case-folded), capped. */
+function rememberRecent(q: string): void {
+  const key = q.trim().toLowerCase();
+  if (!key) return;
+  recentLookups = [q.trim(), ...recentLookups.filter((w) => w.trim().toLowerCase() !== key)].slice(0, RECENT_CAP);
+  writeStore(RECENT_KEY, JSON.stringify(recentLookups));
+}
 let notebookFilter = '';
 let expandedVocab = new Set<string>();
 let prefs: MobilePrefs = loadPrefs();
@@ -146,6 +187,10 @@ function lookupPaneHtml(): string {
     wikiError,
     lexiconPos,
     etymologySource,
+    query,
+    error: lookupError,
+    recent: recentLookups,
+    headTools: !stripMode,
   });
 }
 
@@ -186,7 +231,7 @@ function paint(): void {
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
   root.innerHTML = `
     <div class="shell${tab === 'settings' ? ' shell-settings' : ''}${lexiconFill ? ' shell-lexicon' : ''}${resultTab === 'wikipedia' && wikiArticle ? ' shell-wiki' : ''}">
-      ${stripMode ? popupBarHtml(canBack || wikiCanBack(), canFwd) : appBarHtml(tab, draft, canBack, canFwd)}
+      ${stripMode ? popupBarHtml(canBack || wikiCanBack(), canFwd, !!query) : appBarHtml(tab, draft, canBack, canFwd)}
       <main class="page">${body}</main>
     </div>
     ${stripMode ? '' : navHtml(tab)}
@@ -204,6 +249,7 @@ function paint(): void {
   bindLexiconPane();
   bindWikiReader();
   bindMockBar();
+  bindAzRail();
 }
 
 function wikiLanguage(): string {
@@ -402,6 +448,7 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
   tab = 'lookup';
   looking = true;
   status = '';
+  lookupError = '';
   result = null;
   saved = null;
   wiki = [];
@@ -415,7 +462,10 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
   lexiconPos = '';
   etymologySource = '';
   lexiconWord = q;
-  if (!fromHist) rememberLookup(q);
+  if (!fromHist) {
+    rememberLookup(q);
+    rememberRecent(q);
+  }
   paint();
   const enabled = dictionaryService.getEnabledSources();
   try {
@@ -441,7 +491,7 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
     });
   } catch (err) {
     if (generation !== lookupGeneration) return;
-    status = err instanceof Error ? err.message : String(err);
+    lookupError = err instanceof Error ? err.message : String(err);
   } finally {
     if (generation === lookupGeneration) {
       looking = false;
@@ -453,30 +503,22 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
 async function saveCurrent(): Promise<void> {
   if (!result) return;
   const lemma = saveLemma(result);
-  if (saved) {
-    await removeVocab(saved.id);
-    saved = null;
-    toast('Removed from notebook');
-  } else {
-    saved = await addVocab({
-      lemma,
-      reading: formatReading(result),
-      definition: stripGlossText(result.definitions[0]?.meaning || '') || undefined,
-      partOfSpeech: result.definitions[0]?.partOfSpeech,
-      sourceLang: result.detectedLanguage,
-      targetLang: prefs.targetLang,
-      sources: result.sources,
-    });
-    toast('Saved');
-    postOsNotify('saved', 'Saved to notebook', lemma);
+  try {
+    if (saved) {
+      await removeVocab(saved.id);
+      saved = null;
+      toast('Removed from notebook');
+    } else {
+      const payload = vocabPayloadFromResult(result, lemma);
+      saved = await addVocab(payload);
+      toast(payload.definition ? 'Saved to notebook' : 'Saved — definition pending');
+      postOsNotify('saved', 'Saved to notebook', lemma);
+    }
+  } catch (err) {
+    toast(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
   }
   await refreshNotebook();
   paint();
-}
-
-function formatReading(r: DictionaryResult): string | undefined {
-  const line = r.pronunciations?.map((p) => p.ipa).filter(Boolean).join(' ') || r.pronunciation;
-  return line || undefined;
 }
 
 /**
@@ -974,6 +1016,104 @@ async function playLemma(lemma: string): Promise<void> {
   await playRecorded(found ?? { word: lemma } as DictionaryResult, prefs);
 }
 
+/** A speaker tapped with Pronunciation switched off says why nothing plays. */
+function soundOff(): boolean {
+  if (prefs.audioEnabled) return false;
+  toast('Sound is off');
+  return true;
+}
+
+async function copyText(text: string): Promise<void> {
+  const value = text.trim();
+  if (!value) return;
+  try {
+    if (hasNativeBridge()) await nativeCall('copy', { text: value });
+    else await navigator.clipboard.writeText(value).catch(() => {
+      if (!legacyCopy(value)) throw new Error('copy');
+    });
+    toast('Copied');
+  } catch {
+    toast('Copy failed');
+  }
+}
+
+/** Browser preview without clipboard permission: copy through a hidden text area. */
+function legacyCopy(text: string): boolean {
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.cssText = 'position:fixed;opacity:0;left:-9999px';
+  document.body.appendChild(area);
+  area.select();
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    ok = false;
+  }
+  area.remove();
+  return ok;
+}
+
+/**
+ * Notebook A–Z rail (sort A–Z): tap or drag along the letters to jump; a large letter
+ * shows in the middle of the screen while the finger is down, as on desktop.
+ */
+function bindAzRail(): void {
+  const nav = document.querySelector<HTMLElement>('[data-az-rail]');
+  const hud = document.querySelector<HTMLElement>('.vocab-az-hud');
+  if (!nav || !hud) return;
+  const letters = [...nav.querySelectorAll<HTMLElement>('.vocab-az__letter')];
+  const letterAt = (y: number): string | null => {
+    const r = nav.getBoundingClientRect();
+    const i = Math.max(0, Math.min(letters.length - 1, Math.floor(((y - r.top) / Math.max(r.height, 1)) * letters.length)));
+    return letters[i]?.dataset.letter || null;
+  };
+  let current = '';
+  const jump = (letter: string | null) => {
+    if (!letter) return;
+    hud.textContent = letter;
+    hud.hidden = false;
+    if (letter === current) return;
+    current = letter;
+    const target =
+      document.querySelector<HTMLElement>(`.vocab-list [data-az="${letter}"]`) ||
+      (letter === '#' ? document.querySelector<HTMLElement>('.vocab-list .vocab-item') : null);
+    target?.scrollIntoView({ block: 'start' });
+  };
+  let scrubbing = false;
+  nav.addEventListener('pointerdown', (e) => {
+    scrubbing = true;
+    current = '';
+    try {
+      nav.setPointerCapture(e.pointerId);
+    } catch {
+      /* pointer already gone */
+    }
+    jump((e.target as HTMLElement).closest<HTMLElement>('.vocab-az__letter')?.dataset.letter || letterAt(e.clientY));
+    e.preventDefault();
+  });
+  nav.addEventListener('pointermove', (e) => {
+    if (scrubbing) jump(letterAt(e.clientY));
+  });
+  const end = () => {
+    scrubbing = false;
+    hud.hidden = true;
+  };
+  nav.addEventListener('pointerup', end);
+  nav.addEventListener('pointercancel', end);
+  nav.addEventListener('lostpointercapture', end);
+  // Keyboard and screen readers: a click on a letter jumps without the HUD.
+  nav.addEventListener('click', (e) => {
+    const letter = (e.target as HTMLElement).closest<HTMLElement>('.vocab-az__letter')?.dataset.letter;
+    if (letter && !scrubbing) {
+      current = '';
+      jump(letter);
+      hud.hidden = true;
+    }
+  });
+}
+
 function pulseSpeak(el: HTMLElement, done: Promise<void>): Promise<void> {
   document.querySelectorAll('.is-speaking').forEach((n) => n.classList.remove('is-speaking'));
   el.classList.add('is-speaking');
@@ -1158,16 +1298,37 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'save':
       await saveCurrent();
       return;
-    case 'speak':
-      await pulseSpeak(t, playRecorded(result, prefs));
+    case 'copy':
+      await copyText(result?.word || query);
       return;
+    case 'web-search': {
+      const term = (result?.word || query).trim();
+      if (term) openExternal(`https://www.google.com/search?q=${encodeURIComponent(term)}`);
+      return;
+    }
+    case 'speak': {
+      if (soundOff()) return;
+      // Recorded clips come over the network: say so if one is slow to start.
+      const hint = recordedUrls(result).length
+        ? window.setTimeout(() => toast('Fetching pronunciation…'), 800)
+        : 0;
+      const started = () => window.clearTimeout(hint);
+      await pulseSpeak(t, playRecorded(result, prefs, started).finally(started));
+      return;
+    }
     case 'speak-ipa': {
-      const i = Number(t.dataset.i);
-      const p = result?.pronunciations?.[i];
-      if (p) await pulseSpeak(t, speakIpa(p, prefs, result?.word));
+      if (soundOff()) return;
+      const ipa = t.dataset.ipa || '';
+      if (!ipa) return;
+      const accent = t.dataset.accent;
+      const p: Pronunciation = { ipa, accent: accent === 'us' || accent === 'uk' ? accent : 'other' };
+      await pulseSpeak(t, speakIpa(p, prefs, result?.word).catch(() => {
+        throw new Error('Cannot speak this IPA');
+      }));
       return;
     }
     case 'speak-text':
+      if (soundOff()) return;
       await pulseSpeak(t, speakText(t.dataset.text || '', prefs, t.dataset.lang));
       return;
     case 'swap': {
@@ -1232,6 +1393,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     }
     case 'nb-sort':
       notebookSort = t.dataset.sort === 'az' ? 'az' : 'recent';
+      writeStore(NOTEBOOK_SORT_KEY, notebookSort);
       paint();
       return;
     case 'nb-toggle': {
@@ -1243,6 +1405,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'nb-play':
+      if (soundOff()) return;
       await pulseSpeak(t, playLemma(t.dataset.lemma || ''));
       return;
     case 'nb-more': {
@@ -1383,7 +1546,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       packMsg = 'Importing…';
       paint();
       try {
-        const out = await importUserFile(name, text);
+        const out = await importUserFile(name, text, t.dataset.kind === 'cedict' ? 'cedict' : undefined);
         packMsg = `Imported ${out.count}`;
         await refreshPacks();
       } catch (err) {
@@ -1428,7 +1591,7 @@ function onChange(e: Event): void {
     prefs.audioSpeed = Number((el as HTMLInputElement).value) || 1;
     persistPrefs();
     const label = document.getElementById('speed-value');
-    if (label) label.textContent = `${prefs.audioSpeed}×`;
+    if (label) label.textContent = `${prefs.audioSpeed.toFixed(1)}×`;
   }
 }
 
@@ -1487,6 +1650,11 @@ export async function startApp(): Promise<void> {
   root.addEventListener('submit', onSubmit);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onChange);
+  // A Wikipedia thumbnail that fails to load is dropped rather than shown broken.
+  root.addEventListener('error', (e) => {
+    const img = e.target;
+    if (img instanceof HTMLImageElement && img.closest('.wikipedia-item')) img.remove();
+  }, true);
   paint();
   window.addEventListener('resize', sizeLexiconPane, { passive: true });
   document.addEventListener('selectionchange', () => {
@@ -1575,11 +1743,12 @@ async function fillEmptyCards(): Promise<void> {
       const next = await dictionaryService.lookup(row.lemma, prefs.targetLang, undefined, {
         skipEtymology: true,
       });
+      const payload = vocabPayloadFromResult(next, row.lemma);
       await fillEmptyDefinitions([row.lemma], {
-        definition: stripGlossText(next.definitions[0]?.meaning || '') || undefined,
-        reading: formatReading(next),
-        partOfSpeech: next.definitions[0]?.partOfSpeech,
-        sources: next.sources,
+        definition: payload.definition,
+        reading: payload.reading,
+        partOfSpeech: payload.partOfSpeech,
+        sources: payload.sources,
       });
     } catch {
       /* skip this card */

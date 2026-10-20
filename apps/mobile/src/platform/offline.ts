@@ -13,6 +13,7 @@ export type OfflineCatalogItem = {
   id: string;
   name: string;
   language: string;
+  direction: string;
   license: string;
   summary: string;
   sizeHint: string;
@@ -26,6 +27,7 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
     id: 'wordnet-3.1',
     name: 'Princeton WordNet 3.1',
     language: 'en',
+    direction: 'en→en',
     license: 'WordNet License (Princeton University)',
     summary: 'Academic English glosses and synonym sets.',
     sizeHint: '~16 MB download',
@@ -37,6 +39,7 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
     id: 'webster-1913',
     name: "Webster's Unabridged 1913 (GCIDE)",
     language: 'en',
+    direction: 'en→en',
     license: 'GPL-3+ (GNU GCIDE)',
     summary: "Webster's Revised Unabridged Dictionary (1913).",
     sizeHint: '~18 MB download',
@@ -51,7 +54,8 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
     id: 'cc-cedict',
     name: 'CC-CEDICT',
     language: 'zh',
-    license: 'CC BY-SA 4.0',
+    direction: 'zh→en',
+    license:'CC BY-SA 4.0',
     summary: 'Community Chinese–English dictionary.',
     sizeHint: 'large; import may take a minute',
     consent: 'Download CC-CEDICT from mdbg.net? Creative Commons Attribution-ShareAlike 4.0.',
@@ -62,9 +66,10 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
     id: 'freedict-eng-zho',
     name: 'FreeDict English–Chinese',
     language: 'en',
+    direction: 'en→zh',
     license: 'GPL (FreeDict)',
     summary: 'English headwords with Chinese glosses. Auto-download is xz; import a .tei from Files if the download cannot unpack.',
-    sizeHint: '~2 MB',
+    sizeHint: '~2 MB download',
     consent: 'FreeDict English–Chinese is GPL. Prefer importing the .tei if xz unpack fails.',
     urls: ['https://download.freedict.org/dictionaries/eng-zho/2025.11.23/freedict-eng-zho-2025.11.23.src.tar.xz'],
     kind: 'freedict-tei',
@@ -324,9 +329,13 @@ export async function downloadCatalogPack(
   return importTextPack(item, joined, (d, t) => onProgress?.(`Importing ${d}/${t}`));
 }
 
-export async function importUserFile(name: string, text: string): Promise<{ packId: string; count: number }> {
+export async function importUserFile(
+  name: string,
+  text: string,
+  kind?: 'cedict',
+): Promise<{ packId: string; count: number }> {
   const lower = name.toLowerCase();
-  if (lower.includes('cedict') || /\.(u8|txt)$/.test(lower)) {
+  if (kind === 'cedict' || lower.includes('cedict') || /\.(u8|txt)$/.test(lower)) {
     const item = OFFLINE_CATALOG.find((c) => c.id === 'cc-cedict')!;
     return importTextPack(item, text);
   }

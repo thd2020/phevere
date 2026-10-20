@@ -69,8 +69,8 @@ const ICON = {
 };
 
 /** Material list row that opens something: leading icon, label, optional value, chevron. */
-function navRow(act: string, icon: string, label: string, value = '', sub = ''): string {
-  return `<button type="button" class="nav-row" data-act="${act}">
+function navRow(act: string, icon: string, label: string, value = '', sub = '', kind = ''): string {
+  return `<button type="button" class="nav-row" data-act="${act}"${kind ? ` data-kind="${esc(kind)}"` : ''}>
     <span class="nav-row__icon" aria-hidden="true">${icon}</span>
     <span class="nav-row__label">${esc(label)}${sub ? `<small class="nav-row__sub">${esc(sub)}</small>` : ''}</span>
     ${value ? `<span class="nav-row__value">${esc(value)}</span>` : ''}
@@ -151,18 +151,28 @@ function panelIntro(_title: string): string {
   return '';
 }
 
-function packArticle(p: CatalogStatus, action: 'download' | 'remove'): string {
-  const btn =
-    action === 'remove'
-      ? `<button type="button" class="icon-btn pack__action" data-act="pack-rm" data-id="${esc(p.id)}" aria-label="Remove ${esc(p.name)}" title="Remove">${ICON.trash}</button>`
-      : `<button type="button" class="icon-btn pack__action" data-act="pack-dl" data-id="${esc(p.id)}" aria-label="Download ${esc(p.name)}" title="Download">${ICON.download}</button>`;
-  const extra = p.installed ? ` · ${p.entryCount} entries` : '';
+/** Catalogue row, as on desktop: a check once installed, otherwise a download button. */
+function catalogPack(p: CatalogStatus): string {
+  const state = p.installed ? `${p.entryCount.toLocaleString()} entries` : p.sizeHint;
+  const trailing = p.installed
+    ? `<span class="pack__done" title="Installed" aria-label="Installed">${ICON.check}</span>`
+    : `<button type="button" class="icon-btn pack__action" data-act="pack-dl" data-id="${esc(p.id)}" aria-label="Download ${esc(p.name)}" title="Download">${ICON.download}</button>`;
+  return `<article class="pack${p.installed ? ' is-installed' : ''}">
+    <div class="pack__text">
+      <strong>${esc(p.name)}</strong>
+      <p class="pack__meta">${esc(p.direction)} · ${esc(state)} · ${esc(p.license)}</p>
+    </div>
+    ${trailing}
+  </article>`;
+}
+
+function installedPack(p: CatalogStatus): string {
   return `<article class="pack">
     <div class="pack__text">
       <strong>${esc(p.name)}</strong>
-      <p class="hint">${esc(p.summary)} · ${esc(p.sizeHint)} · ${esc(p.license)}${extra}</p>
+      <p class="pack__meta">${esc(p.language.toUpperCase())} · ${p.entryCount.toLocaleString()} entries</p>
     </div>
-    ${btn}
+    <button type="button" class="icon-btn pack__action" data-act="pack-rm" data-id="${esc(p.id)}" aria-label="Remove ${esc(p.name)}" title="Remove">${ICON.trash}</button>
   </article>`;
 }
 
@@ -249,20 +259,19 @@ function sourcesPanel(prefs: MobilePrefs, sources: DictionarySource[]): string {
 }
 
 function offlinePanel(packs: CatalogStatus[], packMsg: string): string {
-  const catalog = packs.filter((p) => !p.installed);
   const installed = packs.filter((p) => p.installed);
-  const catalogHtml =
-    catalog.map((p) => packArticle(p, 'download')).join('') ||
-    '<p class="hint">All catalog packs are installed.</p>';
   const installedHtml =
-    installed.map((p) => packArticle(p, 'remove')).join('') || '<p class="hint">None yet.</p>';
+    installed.map(installedPack).join('') || '<p class="hint">No packs installed yet.</p>';
   return `
     ${panelIntro('Offline dictionary')}
-    ${catalogHtml}
-    ${navRow('pack-file', ICON.import, 'Import pack', 'JSON, JSONL, CEDICT')}
-    ${packMsg ? `<p class="status">${esc(packMsg)}</p>` : ''}
-    <h3 class="settings-subhead">Installed packs</h3>
-    ${installedHtml}`;
+    <h3 class="settings-subhead">Packs</h3>
+    <div class="pack-list">${packs.map(catalogPack).join('')}</div>
+    ${packMsg ? `<p class="status" role="status">${esc(packMsg)}</p>` : ''}
+    <h3 class="settings-subhead">Your files</h3>
+    ${navRow('pack-file', ICON.import, 'Import pack', '', 'WordNet, GCIDE or FreeDict TEI')}
+    ${navRow('pack-file', ICON.import, 'Import CEDICT file', '', 'cedict_ts.u8', 'cedict')}
+    <h3 class="settings-subhead">Installed</h3>
+    <div class="pack-list">${installedHtml}</div>`;
 }
 
 function apiPanel(prefs: MobilePrefs): string {
@@ -306,7 +315,10 @@ function voiceList(voice: VoiceStatus | null): string {
     .map((v) => {
       const on = voice.selected === v.id;
       const busy = voice.downloading === v.id;
-      const meta = v.id === 'mechanical' ? 'Built in' : v.ready ? 'Downloaded' : `${v.mb} MB`;
+      const pct = busy && v.mb ? Math.min(100, Math.round(((voice.doneMb || 0) / v.mb) * 100)) : 0;
+      const meta = busy
+        ? `Downloading · ${pct}%`
+        : v.id === 'mechanical' ? 'Built in' : v.ready ? 'Downloaded' : `${v.mb} MB`;
       const trailing = busy
         ? `<button type="button" class="icon-btn voice-row__action" data-act="voice-cancel" aria-label="Cancel download">${VOICE_ICON.cancel}</button>`
         : on
@@ -314,10 +326,8 @@ function voiceList(voice: VoiceStatus | null): string {
           : !v.ready
             ? `<span class="voice-row__dl" aria-hidden="true">${VOICE_ICON.download}</span>`
             : '';
-      const pct = busy && v.mb ? Math.min(100, Math.round(((voice.doneMb || 0) / v.mb) * 100)) : 0;
       const bar = busy
-        ? `<div class="voice-row__progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>
-           <small class="voice-row__status">${esc(voice.progress)}</small>`
+        ? `<div class="voice-row__progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>`
         : '';
       const name = v.id === 'mechanical' ? 'Mechanical' : VOICE_NAMES[v.id] || v.id;
       const blocked = !!voice.downloading && !busy && !v.ready;
@@ -363,21 +373,22 @@ function audioPanel(prefs: MobilePrefs, capture: CaptureInfo, voice: VoiceStatus
       <span class="src-name">Pronunciation</span>
       <input type="checkbox" role="switch" data-act="audio-on" ${prefs.audioEnabled ? 'checked' : ''} />
     </label>
+    ${capture.platform !== 'web' ? voiceList(voice) : ''}
+    <h3 class="settings-subhead">Playback</h3>
     <div class="settings-field">
-      <label for="audio-speed">Playback speed</label>
+      <label for="audio-speed">Speed</label>
       <div class="settings-audio-range">
         <input id="audio-speed" type="range" min="0.5" max="2" step="0.1" value="${speed}" data-act="audio-speed" />
-        <span id="speed-value">${speed}×</span>
+        <span id="speed-value">${speed.toFixed(1)}×</span>
       </div>
     </div>
     <div class="settings-field">
-      <label for="audio-volume">Playback volume</label>
+      <label for="audio-volume">Volume</label>
       <div class="settings-audio-range">
         <input id="audio-volume" type="range" min="0" max="100" step="5" value="${volume}" data-act="audio-volume" />
         <span id="volume-value">${volume}%</span>
       </div>
-    </div>
-    ${capture.platform !== 'web' ? voiceList(voice) : ''}`;
+    </div>`;
 }
 
 export function settingsBody(
