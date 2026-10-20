@@ -616,8 +616,10 @@ function shortGloss(gloss?: string): string {
 
 /** Oldest ancestor first, ending at the headword, as on desktop. */
 function formatEtymologyChain(result: DictionaryResult): string {
-  const links = (result.etymologyChain || []).slice(0, 8).filter((l) => l && (l.term || l.language || l.languageCode));
-  if (!links.length) return '';
+  const found = (result.etymologyChain || []).slice(0, 8).filter((l) => l && (l.term || l.language || l.languageCode));
+  if (!found.length) return '';
+  // A root names the oldest ancestor wherever Wiktionary placed its template.
+  const links = [...found.filter((l) => l.relation !== 'root'), ...found.filter((l) => l.relation === 'root')];
   const node = (lang: string, term: string, gloss: string, isHead: boolean): string =>
     `<span class="etymology-chain__node${isHead ? ' is-head' : ''}"><span class="etymology-chain__lang">${esc(lang)}</span>${
       term ? `<span class="etymology-chain__term">${esc(term)}</span>` : ''}${

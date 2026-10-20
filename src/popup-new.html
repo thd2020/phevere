@@ -2030,6 +2030,9 @@
           if (!Array.isArray(chain) || chain.length === 0) return '';
           var links = chain.slice(0, 8).filter(function (l) { return l && (l.term || l.language || l.languageCode); });
           if (!links.length) return '';
+          // A root names the oldest ancestor wherever Wiktionary placed its template.
+          links = links.filter(function (l) { return l.relation !== 'root'; })
+            .concat(links.filter(function (l) { return l.relation === 'root'; }));
           var node = function (lang, term, gloss, isHead) {
             return '<span class="etymology-chain__node' + (isHead ? ' is-head' : '') + '">' +
               '<span class="etymology-chain__lang">' + escapeHtml(lang) + '</span>' +

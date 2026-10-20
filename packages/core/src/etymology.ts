@@ -412,6 +412,11 @@ export function buildEtymology(wikitext: string): ParsedEtymology | undefined {
   const body = rendered.join('\n\n').trim();
   if (!body && chain.length === 0) return undefined;
 
+  // {{root}} sits at the top of a section but names the oldest ancestor, so it
+  // goes to the far end of the newest-first chain.
+  const ordered = [...chain.filter((l) => l.relation !== 'root'), ...chain.filter((l) => l.relation === 'root')];
+  chain.splice(0, chain.length, ...ordered);
+
   // The chain is returned structured and drawn oldest-first by the UI, so the
   // prose no longer opens with a reversed "English ← …" line repeating it.
   return { text: body, chain };
