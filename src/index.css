@@ -120,6 +120,7 @@ body.main-window .titlebar-brand {
 
 body.main-window .titlebar-end {
   -webkit-app-region: no-drag;
+  margin-left: auto;
   display: flex;
   align-items: stretch;
   align-self: stretch;

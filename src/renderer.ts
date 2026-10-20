@@ -1698,13 +1698,19 @@ function wireLiveResizeClass(): void {
     if (!overlay?.visible) return;
     document.documentElement.classList.add('has-wco');
     const rect = overlay.getTitlebarAreaRect?.();
-    if (rect && Number.isFinite(rect.width)) {
-      const inset = Math.max(0, Math.round(window.innerWidth - rect.x - rect.width));
-      document.documentElement.style.setProperty('--wco-inset-right', `${inset}px`);
-    }
+    // A hidden or not-yet-laid-out window reports a zero-width title bar area,
+    // which would turn the inset into the whole window width and push the gear
+    // to the left. Keep the last good value (or the CSS default) instead.
+    if (!rect || !(rect.width > 0) || !Number.isFinite(rect.x)) return;
+    const inset = Math.round(window.innerWidth - rect.x - rect.width);
+    if (inset <= 0 || inset > 320) return;
+    document.documentElement.style.setProperty('--wco-inset-right', `${inset}px`);
   };
   syncWco();
   overlay?.addEventListener?.('geometrychange', syncWco);
+  window.addEventListener('resize', syncWco);
+  window.addEventListener('focus', syncWco);
+  document.addEventListener('visibilitychange', syncWco);
 }
 
 function initializeMainWindow() {
