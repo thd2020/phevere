@@ -38,7 +38,8 @@ export default defineConfig({
               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
             );
             proxyReq.setHeader('Accept-Language', 'en-US,en;q=0.9');
-            proxyReq.setHeader('Accept', 'text/html,application/xhtml+xml');
+            // The JSON endpoint answers an HTML Accept with an error page.
+            if (!proxyReq.path.startsWith('/api/')) proxyReq.setHeader('Accept', 'text/html,application/xhtml+xml');
           });
         },
       },
