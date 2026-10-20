@@ -387,7 +387,8 @@ All six downloads were replaced on the existing 2.1.0 release; the git tag is un
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/thd2020/phevere/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/thd2020/phevere/releases/tag/v2.1.0
 [2.0.0]: https://github.com/thd2020/phevere/releases/tag/v2.0.0
 [1.5.0]: https://github.com/thd2020/phevere/releases/tag/v1.5.0
