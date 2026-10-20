@@ -10,9 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Etymonline (2026-10-20): entries load inside the app again. The /word/ pages sit behind a Cloudflare challenge, so lookups now use Etymonline's JSON endpoint and fall back to the page. Every entry for a word (verb, adjective, noun) is shown.
-- Neural voice on IPA chips (2026-10-20): with Neural compact or Neural full quality installed, desktop IPA chips read their own transcription with Kokoro instead of eSpeak. On Android the chip says its headword in the chip's accent with the neural voice. Mechanical still uses eSpeak.
+- Neural voice on IPA chips (2026-10-20): with Neural compact or Neural full quality installed, desktop IPA chips read their own transcription with Kokoro instead of eSpeak, in the same phoneme style the headword voice uses. On Android the chip says its headword in the chip's accent with the neural voice. Mechanical still uses eSpeak.
 - Settings gear (2026-10-20): stays beside the window controls. A zero-width title bar reading while the window was hidden used to push it next to the title.
 - Stacked lookups (2026-10-20): each outside click closes the front popup, then the next one, instead of closing only the first.
+- Settings and main window (2026-10-20): the gear reopens Settings every time. A window whose first paint was skipped used to stay hidden, so the gear did nothing until restart; the main window could start hidden the same way.
+- Word history (2026-10-20): a Wiktionary root now sits at the oldest end, so "orientation" reads Proto-Indo-European, French, English.
 
 ### Changed
 

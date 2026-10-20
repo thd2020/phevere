@@ -6,7 +6,7 @@
 
 The history line comes from the Wiktionary templates; each arrow names how the next form came about.
 
-2026-10-20: with a neural voice installed, IPA chips on desktop speak their transcription with that voice. Stacked lookup popups close one per outside click. The settings gear stays beside the window controls.
+2026-10-20: with a neural voice installed, IPA chips on desktop speak their transcription with that voice. Stacked lookup popups close one per outside click. The settings gear stays beside the window controls and reopens Settings every time.
 
 ![Screenshot of the Shortcuts settings with labels, key boxes and Set buttons in aligned columns](README.assets/desktop-settings-shortcuts.png)
 
