@@ -16,7 +16,7 @@ import fs from 'fs';
 import path from 'path';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
-import { ipaToEspeakPhonemes } from '@phevere/core';
+import { ipaToEspeakPhonemes, ipaToKokoroPhonemes } from '@phevere/core';
 import { log } from '../logger';
 
 export type VoiceId = 'mechanical' | 'compact' | 'full';
@@ -115,7 +115,7 @@ function devRoot(): string {
   return path.resolve(__dirname, '..', '..');
 }
 
-function engineDirs(): { worker: string; espeak: string; sherpa: string } {
+function engineDirs(): { worker: string; espeak: string; sherpa: string; ort: string } {
   const res = process.resourcesPath || '';
   const root = devRoot();
   return {
@@ -125,6 +125,11 @@ function engineDirs(): { worker: string; espeak: string; sherpa: string } {
     sherpa: firstExisting([
       path.join(res, 'speech', 'sherpa-onnx-node'),
       path.join(root, 'node_modules', 'sherpa-onnx-node'),
+    ]),
+    // Shipped unpacked for OCR (forge.config.js); the IPA chip engine reuses it.
+    ort: firstExisting([
+      path.join(res, 'app.asar.unpacked', 'node_modules', 'onnxruntime-node'),
+      path.join(root, 'node_modules', 'onnxruntime-node'),
     ]),
   };
 }
@@ -139,17 +144,26 @@ export function neuralSupported(): boolean {
 
 // ---------- worker ----------
 
-let worker: UtilityProcess | null = null;
+/** 'main' runs eSpeak and sherpa-onnx; 'ipa' runs Kokoro from IPA on onnxruntime-node. */
+type WorkerKind = 'main' | 'ipa';
+const workers: Record<WorkerKind, UtilityProcess | null> = { main: null, ipa: null };
+const ownedJobs = new WeakMap<UtilityProcess, Set<number>>();
 let seq = 0;
 const pending = new Map<number, { resolve: (b: Uint8Array) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
 
-function ensureWorker(): UtilityProcess {
-  if (worker) return worker;
+function ensureWorker(kind: WorkerKind): UtilityProcess {
+  const existing = workers[kind];
+  if (existing) return existing;
   const dirs = engineDirs();
   if (!dirs.worker || !dirs.espeak) throw new Error('Speech engine files are missing');
   const args = ['--espeak', dirs.espeak];
-  if (dirs.sherpa && neuralSupported()) args.push('--sherpa', dirs.sherpa);
-  const w = utilityProcess.fork(dirs.worker, args, { serviceName: 'Phevere speech', stdio: 'pipe' });
+  if (kind === 'ipa') {
+    if (!dirs.ort) throw new Error('Neural IPA voice is not available on this system');
+    args.push('--ort', dirs.ort);
+  } else if (dirs.sherpa && neuralSupported()) {
+    args.push('--sherpa', dirs.sherpa);
+  }
+  const w = utilityProcess.fork(dirs.worker, args, { serviceName: kind === 'ipa' ? 'Phevere IPA speech' : 'Phevere speech', stdio: 'pipe' });
   w.stderr?.on('data', (d) => log.warn('speech', 'worker stderr', { msg: String(d).slice(0, 400) }));
   w.on('message', (msg: { id: number; ok: boolean; wav?: Uint8Array; error?: string }) => {
     const job = pending.get(msg.id);
@@ -159,38 +173,47 @@ function ensureWorker(): UtilityProcess {
     if (msg.ok) job.resolve(msg.wav || new Uint8Array(0));
     else job.reject(new Error(msg.error || 'Speech failed'));
   });
+  const owned = new Set<number>();
   w.on('exit', () => {
-    worker = null;
-    for (const [id, job] of pending) {
+    workers[kind] = null;
+    for (const id of owned) {
+      const job = pending.get(id);
+      if (!job) continue;
       clearTimeout(job.timer);
       job.reject(new Error('Speech engine stopped'));
       pending.delete(id);
     }
   });
-  worker = w;
+  ownedJobs.set(w, owned);
+  workers[kind] = w;
   return w;
 }
 
-function runWorker(job: Record<string, unknown>, timeoutMs: number): Promise<Uint8Array> {
-  const w = ensureWorker();
+
+function runWorker(job: Record<string, unknown>, timeoutMs: number, kind: WorkerKind = 'main'): Promise<Uint8Array> {
+  const w = ensureWorker(kind);
   const id = ++seq;
-  return new Promise((resolve, reject) => {
+  const owned = ownedJobs.get(w);
+  owned?.add(id);
+  return new Promise<Uint8Array>((resolve, reject) => {
     const timer = setTimeout(() => {
       pending.delete(id);
       reject(new Error('Speech timed out'));
     }, timeoutMs);
     pending.set(id, { resolve, reject, timer });
     w.postMessage({ id, ...job });
-  });
+  }).finally(() => owned?.delete(id));
 }
 
 export function stopSpeechWorker(): void {
-  try {
-    worker?.kill();
-  } catch {
-    /* ignore */
+  for (const kind of ['main', 'ipa'] as const) {
+    try {
+      workers[kind]?.kill();
+    } catch {
+      /* ignore */
+    }
+    workers[kind] = null;
   }
-  worker = null;
 }
 
 // ---------- rules ----------
@@ -223,10 +246,25 @@ export async function synthesize(req: SpeakRequest): Promise<Uint8Array> {
   const speed = prefs.speed;
   const ipa = String(req.ipa || '').trim();
   if (ipa) {
+    const gb = req.accent === 'uk';
+    // A chosen neural voice reads the chip's own IPA, so the chip sounds like the
+    // rest of the app instead of always falling back to the mechanical voice.
+    const variant = VARIANTS.find((v) => v.id === prefs.voice);
+    const kokoro = ipaToKokoroPhonemes(ipa, req.accent);
+    if (variant && kokoro && isInstalled(variant.id)) {
+      try {
+        return await runWorker(
+          { engine: 'kokoro-ipa', text: kokoro, speaker: gb ? 20 : 0, speed, model: { dir: installDir(variant), file: variant.model } },
+          30000,
+          'ipa',
+        );
+      } catch (err) {
+        log.warn('speech', 'neural IPA voice failed; using eSpeak', { err: String(err) });
+      }
+    }
     const phonemes = ipaToEspeakPhonemes(ipa);
     if (!phonemes) throw new Error('Cannot speak this IPA');
-    const voice = req.accent === 'uk' ? 'en-gb' : 'en-us';
-    return runWorker({ engine: 'espeak', text: `[[${phonemes}]]`, voice, speed }, 15000);
+    return runWorker({ engine: 'espeak', text: `[[${phonemes}]]`, voice: gb ? 'en-gb' : 'en-us', speed }, 15000);
   }
   const text = String(req.text || '').trim().slice(0, 500);
   if (!text) throw new Error('Nothing to speak');

@@ -6,8 +6,12 @@
  * Runs apart from the main process so onnxruntime here never meets the OCR one, and a
  * slow synthesis never blocks the UI.
  *
- * argv: --espeak <dir with espeak-ng.js> [--sherpa <dir with sherpa-onnx-node>]
- * Request:  { id, engine: 'espeak' | 'kokoro', text, voice?, speed?, model? }
+ *   - Kokoro read straight from IPA (engine 'kokoro-ipa') through onnxruntime-node, for
+ *     IPA chips when a neural voice is chosen. sherpa-onnx only takes text, and it ships
+ *     its own onnxruntime.dll, so this engine runs in a second worker started with --ort.
+ *
+ * argv: --espeak <dir with espeak-ng.js> [--sherpa <dir with sherpa-onnx-node>] [--ort <dir with onnxruntime-node>]
+ * Request:  { id, engine: 'espeak' | 'kokoro' | 'kokoro-ipa', text, voice?, speed?, model? }
  *           { id, engine: 'unpack', archive, dest }   (Kokoro .tar.bz2 downloads)
  * Response: { id, ok, wav?: Uint8Array, error? }
  */
@@ -22,6 +26,7 @@ function arg(name) {
 
 const espeakDir = arg('--espeak');
 const sherpaDir = arg('--sherpa');
+const ortDir = arg('--ort');
 
 let espeakFactory = null;
 async function espeak(text, voice, speed) {
@@ -63,6 +68,47 @@ function kokoroEngine(dir, modelFile) {
   });
   kokoroDir = dir;
   return kokoro;
+}
+
+let ort = null;
+let ipaSession = null;
+let ipaModel = '';
+let ipaVocab = null;
+let ipaVoices = null;
+/** Kokoro from phoneme symbols: tokens are [0, ...ids, 0], style is voices[speaker][count]. */
+async function kokoroFromPhonemes(model, phonemes, speaker, speed) {
+  if (!ortDir) throw new Error('Neural IPA voice is not available on this system');
+  if (!ort) ort = require(ortDir);
+  const modelPath = path.join(model.dir, model.file);
+  if (!ipaSession || ipaModel !== modelPath) {
+    ipaSession = await ort.InferenceSession.create(modelPath);
+    ipaModel = modelPath;
+    ipaVocab = new Map();
+    for (const line of fs.readFileSync(path.join(model.dir, 'tokens.txt'), 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^(.+) (\d+)$/);
+      if (m) ipaVocab.set(m[1], Number(m[2]));
+    }
+    ipaVoices = fs.readFileSync(path.join(model.dir, 'voices.bin'));
+  }
+  const ids = [];
+  for (const ch of Array.from(String(phonemes || ''))) {
+    if (ipaVocab.has(ch)) ids.push(ipaVocab.get(ch));
+  }
+  if (!ids.length) throw new Error('No phonemes to speak');
+  const n = Math.min(ids.length, 509);
+  // voices.bin is float32 [speakers][510][256]; the row is picked by token count.
+  const offset = ((speaker || 0) * 510 + n) * 256 * 4;
+  if (offset + 1024 > ipaVoices.length) throw new Error('Unknown neural speaker');
+  const style = new Float32Array(ipaVoices.buffer.slice(ipaVoices.byteOffset + offset, ipaVoices.byteOffset + offset + 1024));
+  const tokens = BigInt64Array.from([0, ...ids.slice(0, n), 0].map(BigInt));
+  const out = await ipaSession.run({
+    tokens: new ort.Tensor('int64', tokens, [1, tokens.length]),
+    style: new ort.Tensor('float32', style, [1, 256]),
+    speed: new ort.Tensor('float32', Float32Array.from([speed || 1]), [1]),
+  });
+  const audio = out.audio || out[ipaSession.outputNames[0]];
+  if (!audio || !audio.data || !audio.data.length) throw new Error('No speech generated for this IPA');
+  return toWav(audio.data, 24000);
 }
 
 function toWav(samples, sampleRate) {
@@ -136,6 +182,9 @@ async function handle(msg) {
   if (msg.engine === 'unpack') {
     await unpack(msg.archive, msg.dest);
     return new Uint8Array(0);
+  }
+  if (msg.engine === 'kokoro-ipa') {
+    return kokoroFromPhonemes(msg.model, msg.text, msg.speaker, msg.speed);
   }
   if (msg.engine === 'kokoro') {
     const engine = kokoroEngine(msg.model.dir, msg.model.file);

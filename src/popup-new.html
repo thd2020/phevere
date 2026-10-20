@@ -2852,7 +2852,7 @@ function startAutoCloseTimeout() {
           ipaSpeakBusy = true;
           btn.classList.add('is-speaking');
           try {
-            // eSpeak NG with the IPA as phonemes (the phone's mechanical voice).
+            // The chosen voice reads the chip's IPA: Kokoro when a neural voice is installed, else eSpeak NG.
             var ok = await speakSynthetic({ ipa: ipa, accent: accent });
             if (!ok && window.electronAPI && typeof window.electronAPI.speakIpa === 'function') {
               var res = await window.electronAPI.speakIpa({ ipa: ipa, accent: accent });

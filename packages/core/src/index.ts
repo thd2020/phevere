@@ -106,6 +106,7 @@ export {
   ipaToSapiPhones,
   ipaToApplePhonemes,
   ipaToEspeakPhonemes,
+  ipaToKokoroPhonemes,
   buildSapiPhonemeSsml,
   buildIpaPhonemeSsml,
 } from './ipa-phonemes';

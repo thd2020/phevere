@@ -173,8 +173,17 @@ final class BridgeRouter {
             String lang = p.optString("lang", "en-US");
             float rate = (float) p.optDouble("rate", 1);
             boolean phonemes = p.optBoolean("phonemes", false);
+            String word = p.optString("word", "").trim();
+            // Kokoro on Android reads text only. With a neural voice chosen, an IPA chip
+            // says its headword in the chip's accent rather than the mechanical eSpeak voice.
+            if (phonemes && !word.isEmpty() && SpeechModels.useNeural(host.context())) {
+              text = word;
+              phonemes = false;
+            }
+            final String spokenText = text;
+            final boolean spokenPhonemes = phonemes;
             Speak.get(host.context()).setVolume((float) p.optDouble("volume", 1));
-            host.runUi(() -> Speak.get(host.context()).speak(text, lang, rate, phonemes, error -> {
+            host.runUi(() -> Speak.get(host.context()).speak(spokenText, lang, rate, spokenPhonemes, error -> {
               if (error != null) { fail(sid, error); return; }
               try {
                 resolve(sid, new JSONObject().put("ok", true));
