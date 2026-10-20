@@ -2397,6 +2397,15 @@ export class DictionaryService extends BaseService {
     const cleanWord = this.cleanWordForEtymology(text);
     if (!cleanWord) return undefined;
 
+    // The site's own JSON endpoint answers without the Cloudflare page challenge
+    // that guards /word/ pages, so it comes first and the HTML scrape is the fallback.
+    try {
+      const fromApi = await this.fetchEtymonlineApi(cleanWord);
+      if (fromApi !== undefined) return fromApi.text ? fromApi : undefined;
+    } catch (error) {
+      console.warn(`Etymonline API failed for "${cleanWord}", trying the page:`, error);
+    }
+
     try {
       const url = `https://www.etymonline.com/word/${encodeURIComponent(cleanWord)}`;
       const headers = {
@@ -2489,6 +2498,47 @@ export class DictionaryService extends BaseService {
     }
 
     return undefined;
+  }
+
+  /**
+   * Etymonline's `/api/etymology?word=` JSON. Returns `{}` for a confirmed miss,
+   * `undefined` when the response is not usable so the caller can try the page.
+   */
+  private async fetchEtymonlineApi(word: string, redirected = false): Promise<EtymonlineResult | undefined> {
+    const response = await getHttp().requestText(
+      `https://www.etymonline.com/api/etymology?word=${encodeURIComponent(word)}`,
+      { headers: { Accept: 'application/json' }, timeoutMs: 8000 },
+    );
+    if (!response.ok) return undefined;
+    let payload: {
+      code?: number;
+      data?: { items?: Array<{ replaced?: string; vocabularies?: Array<{ word?: string; property?: string; etymology_plain?: string }> }> };
+    };
+    try {
+      payload = JSON.parse(response.text);
+    } catch {
+      return undefined;
+    }
+    // 10001 is the API's "Resource does not exist".
+    if (payload.code === 10001) return {};
+    if (payload.code !== 200 || !Array.isArray(payload.data?.items)) return undefined;
+
+    const entries: string[] = [];
+    let replaced: string | undefined;
+    for (const item of payload.data.items) {
+      if (typeof item.replaced === 'string' && item.replaced) replaced = item.replaced;
+      for (const v of item.vocabularies || []) {
+        const body = String(v.etymology_plain || '').replace(/\s+/g, ' ').trim();
+        if (body.length < 12) continue;
+        const head = [v.word, v.property].filter(Boolean).join(' ');
+        entries.push(head ? `${head}: ${body}` : body);
+        if (entries.length >= 4) break;
+      }
+    }
+    if (entries.length) return { text: entries.join('\n\n') };
+    // "café" comes back as { replaced: "cafe" } with no entries.
+    if (replaced && !redirected && replaced !== word) return this.fetchEtymonlineApi(replaced, true);
+    return {};
   }
 
   /**
