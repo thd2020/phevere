@@ -148,7 +148,7 @@ function initializeSettingsWindow() {
               </div>
             </div>
             <div class="settings-field">
-              <span id="label-monitor-trigger" class="settings-field-label">Popup trigger (hold while selecting)</span>
+              <span id="label-monitor-trigger" class="settings-field-label">Popup trigger<small class="settings-field-sub">Hold while selecting</small></span>
               <div class="settings-shortcut-row">
                 <div class="settings-keycaps" id="monitor-trigger-shortcut-keys"></div>
                 <input type="text" id="monitor-trigger-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-monitor-trigger" />
@@ -176,11 +176,12 @@ function initializeSettingsWindow() {
               <button type="button" id="monitor-save-shortcuts" class="btn btn-primary">Save shortcuts</button>
               <span id="monitor-shortcuts-status" class="settings-inline-status" role="status" aria-live="polite"></span>
             </div>
+            <h3 class="settings-subhead">Fixed</h3>
             <ul class="settings-cheat">
-              <li><span class="settings-keycaps" data-accel="CommandOrControl+Shift+G"></span> Grab under cursor</li>
-              <li><span class="settings-keycaps" data-accel="CommandOrControl+Shift+W"></span> Read this window</li>
-              <li><span class="settings-keycaps" data-accel="CommandOrControl+Shift+I"></span> OCR clipboard image</li>
-              <li><span class="settings-keycaps" data-accel="CommandOrControl+Shift+P"></span> Now playing</li>
+              <li><span class="settings-cheat__label">Grab under cursor</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+G"></span></li>
+              <li><span class="settings-cheat__label">Read this window</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+W"></span></li>
+              <li><span class="settings-cheat__label">OCR clipboard image</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+I"></span></li>
+              <li><span class="settings-cheat__label">Now playing</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+P"></span></li>
             </ul>
           </section>
 
