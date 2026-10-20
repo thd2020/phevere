@@ -1,5 +1,7 @@
 # Phevere on Android and iOS
 
+2026-10-20: the phone now matches the desktop lookup. Lookups show a loading skeleton, translations use the desktop cards, and the lookup header has Copy and Search the web. Recent lookups appear as chips on the empty screen. The notebook has an A–Z rail you can scrub, and it remembers the sort. Settings → Offline and Settings → Audio use the desktop layout. Fonts ship with the app instead of loading from Google Fonts. The Etymonline tab loads entries again, and the etymology summary reads from the oldest ancestor to the headword. With a neural voice chosen, an IPA chip says its headword in the neural voice.
+
 2026-10-14, 2.1.0 refresh: etymology tabs retain contributor names and the chosen source as results arrive. Etymonline failures show an Open entry action. The Android APK and unsigned iOS IPA have been rebuilt on the existing release. The current Android CI and release APKs have different debug signing certificates. Compatibility with the previous published APK remains unverified; Android requires the same signing key for an update ([Android signing](https://developer.android.com/studio/publish/app-signing)).
 
 **2026-09-29.**
