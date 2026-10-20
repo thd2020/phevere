@@ -1062,6 +1062,20 @@ function markDarwinInsetChrome(win: BrowserWindow): void {
   win.webContents.on('dom-ready', inject);
 }
 
+/**
+ * Show a window created with show:false on its first paint. ready-to-show can
+ * be skipped when that first load is interrupted (a rebuild, a reload), which
+ * left the main or settings window existing but invisible; the page finishing
+ * its load shows it too.
+ */
+function showWhenLoaded(win: BrowserWindow): void {
+  const reveal = (): void => {
+    if (!win.isDestroyed() && !win.isVisible()) win.show();
+  };
+  win.once('ready-to-show', reveal);
+  win.webContents.once('did-finish-load', () => setTimeout(reveal, 400));
+}
+
 function markDurableWindowChrome(win: BrowserWindow): void {
   markWin32CaptionOverlay(win);
   markDarwinInsetChrome(win);
@@ -1128,10 +1142,7 @@ const createMainWindow = (): void => {
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
-  // Show window when ready
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
-  });
+  showWhenLoaded(mainWindow);
 
   mainWindow.on('close', (event) => {
     if (!appIsQuitting) {
@@ -1443,13 +1454,7 @@ const createSettingsWindow = (): void => {
   const settingsUrl = MAIN_WINDOW_WEBPACK_ENTRY + '#settings';
   settingsWindow.loadURL(settingsUrl);
 
-  const revealSettings = (): void => {
-    if (settingsWindow && !settingsWindow.isDestroyed() && !settingsWindow.isVisible()) settingsWindow.show();
-  };
-  settingsWindow.once('ready-to-show', revealSettings);
-  // ready-to-show can be skipped when the first load is interrupted (a dev
-  // rebuild, a reload); show the window once the page has loaded anyway.
-  settingsWindow.webContents.once('did-finish-load', () => setTimeout(revealSettings, 400));
+  showWhenLoaded(settingsWindow);
 
   settingsWindow.on('closed', () => {
     settingsWindow = null;
