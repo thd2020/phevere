@@ -974,19 +974,34 @@
       .etymology-chain {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
-        align-items: center;
+        align-items: flex-end;
+        gap: 6px 4px;
         margin: 6px 0 14px;
         padding: 10px 12px;
         border-radius: 8px;
-        border: 1px dashed color-mix(in srgb, var(--tertiary) 35%, transparent);
         background: color-mix(in srgb, var(--tertiary) 7%, transparent);
-        font-family: var(--font-mono);
-        font-size: 11.5px;
-        color: var(--on-surface-variant);
       }
-      .etymology-chain__node { color: var(--on-surface); font-weight: 500; }
-      .etymology-chain__rel { color: var(--primary); font-size: 10.5px; }
+      .etymology-chain__node { display: inline-flex; flex-direction: column; min-width: 0; }
+      .etymology-chain__lang {
+        font-family: var(--font-ui);
+        font-size: 10.5px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        color: var(--on-surface-variant);
+        white-space: nowrap;
+      }
+      .etymology-chain__term {
+        font-family: var(--font-display);
+        font-style: italic;
+        font-size: 15px;
+        line-height: 1.3;
+        color: var(--on-surface);
+      }
+      .etymology-chain__gloss { font-family: var(--font-ui); font-size: 11px; color: var(--on-surface-variant); }
+      .etymology-chain__node.is-head .etymology-chain__term { font-style: normal; font-weight: 600; color: var(--tertiary); }
+      .etymology-chain__step { display: inline-flex; flex-direction: column; align-items: center; padding: 0 2px 1px; }
+      .etymology-chain__rel { font-family: var(--font-ui); font-size: 9.5px; color: var(--on-surface-variant); white-space: nowrap; }
+      .etymology-chain__arrow { color: var(--tertiary); font-size: 14px; line-height: 1.2; }
       .etymology-container { margin: 0; background: transparent; border: 0; box-shadow: none; }
       .etymology-header, .etymology-icon, .etymology-title { display: none; }
       .etymology-content { padding: 0; background: transparent; border: 0; }
@@ -1852,7 +1867,7 @@
           const activeIndex = Math.max(0, sources.findIndex(function (s) { return s.label === previousSource; }));
           resultsContainer.dataset.etymologyWord = wordKey;
           resultsContainer.dataset.etymologySource = sources[activeIndex]?.label || previousSource || '';
-          const chainHtml = formatEtymologyChain(result.etymologyChain);
+          const chainHtml = formatEtymologyChain(result.etymologyChain, result.word || '');
           const pending = !!(result.metadata && result.metadata.pendingEtymology) && sources.length === 0;
 
           let etymologyHtml = '';
@@ -1950,6 +1965,8 @@
               label = labelMatch[1].trim() || label;
               body = labelMatch[2].trim();
             }
+            // Older cached Wiktionary text opens with the reversed "English ← …" line the chain now shows.
+            body = body.replace(/^English ← [^\n]*(\n\n|$)/, '').trim();
             return { id: 'ety-' + i, label: label, body: body };
           }).filter(function (s) {
             if (!s.body) return false;
@@ -1991,15 +2008,50 @@
           }).join('');
         }
 
-        function formatEtymologyChain(chain) {
+        /** How each older form reached the next, read left to right. */
+        var ETYMOLOGY_STEP = {
+          inherited: 'inherited',
+          borrowed: 'borrowed',
+          'learned borrowing': 'learned borrowing',
+          'semi-learned borrowing': 'borrowed',
+          derived: 'derived',
+          calque: 'calque',
+          root: 'root'
+        };
+
+        /** The first sense of a gloss, so one long gloss does not stretch the line. */
+        function shortGloss(gloss) {
+          var first = String(gloss || '').split(/[,;]/)[0].trim();
+          return first.length > 28 ? '' : first;
+        }
+
+        /** Oldest ancestor first, ending at the headword: PIE *per- → Latin sēparātus → … → English separate. */
+        function formatEtymologyChain(chain, headword) {
           if (!Array.isArray(chain) || chain.length === 0) return '';
-          const parts = chain.slice(0, 8).map(function (link) {
-            const lang = escapeHtml(link.language || link.languageCode || '');
-            const term = escapeHtml(link.term || '');
-            const rel = escapeHtml(link.relation || '');
-            return `<span class="etymology-chain__rel">${rel}</span><span class="etymology-chain__node">${lang}${term ? ' · ' + term : ''}</span>`;
-          });
-          return `<div class="etymology-chain">${parts.join('<span aria-hidden="true">←</span>')}</div>`;
+          var links = chain.slice(0, 8).filter(function (l) { return l && (l.term || l.language || l.languageCode); });
+          if (!links.length) return '';
+          var node = function (lang, term, gloss, isHead) {
+            return '<span class="etymology-chain__node' + (isHead ? ' is-head' : '') + '">' +
+              '<span class="etymology-chain__lang">' + escapeHtml(lang) + '</span>' +
+              (term ? '<span class="etymology-chain__term">' + escapeHtml(term) + '</span>' : '') +
+              (gloss ? '<span class="etymology-chain__gloss">“' + escapeHtml(gloss) + '”</span>' : '') +
+              '</span>';
+          };
+          var step = function (rel) {
+            var label = ETYMOLOGY_STEP[rel] || '';
+            return '<span class="etymology-chain__step" aria-hidden="true">' +
+              (label ? '<span class="etymology-chain__rel">' + escapeHtml(label) + '</span>' : '') +
+              '<span class="etymology-chain__arrow">→</span></span>';
+          };
+          var parts = [];
+          for (var i = links.length - 1; i >= 0; i--) {
+            var l = links[i];
+            parts.push(node(l.language || l.languageCode || '', l.term || '', shortGloss(l.gloss), false));
+            // The relation on link i says how the newer form (link i-1, or the headword) came from it.
+            parts.push(step(l.relation));
+          }
+          parts.push(node('English', headword || '', '', true));
+          return '<div class="etymology-chain" role="list" aria-label="Word history, oldest first">' + parts.join('') + '</div>';
         }
 
 function startAutoCloseTimeout() {

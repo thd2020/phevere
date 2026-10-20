@@ -373,6 +373,8 @@ function renderSectionText(section: string): string {
     .replace(/\s+([;,.])/g, '$1')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
+    // A section that opened with an invisible template leaves its comma behind.
+    .replace(/^[,;:.]\s*/, '')
     // Templates expand to lowercase wording, so re-capitalize sentence starts.
     .replace(/(^|[.!?]\s+)(\p{Ll})/gu, (_m, lead: string, ch: string) => lead + ch.toLocaleUpperCase());
 }
@@ -410,15 +412,7 @@ export function buildEtymology(wikitext: string): ParsedEtymology | undefined {
   const body = rendered.join('\n\n').trim();
   if (!body && chain.length === 0) return undefined;
 
-  const parts: string[] = [];
-  if (chain.length > 0) {
-    const line = chain
-      .map(link => renderLink(link, false))
-      .filter(Boolean)
-      .join(' ← ');
-    if (line) parts.push(`English ← ${line}`);
-  }
-  if (body) parts.push(body);
-
-  return { text: parts.join('\n\n'), chain };
+  // The chain is returned structured and drawn oldest-first by the UI, so the
+  // prose no longer opens with a reversed "English ← …" line repeating it.
+  return { text: body, chain };
 }

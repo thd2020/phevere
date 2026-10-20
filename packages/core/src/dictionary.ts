@@ -2658,7 +2658,7 @@ export class DictionaryService extends BaseService {
   private parseEtymology(wikitext: string): { text: string; chain?: EtymologyLink[] } | undefined {
     try {
       const parsed = buildEtymology(wikitext);
-      if (parsed && parsed.text.length >= 10) {
+      if (parsed && (parsed.text.length >= 10 || parsed.chain.length > 0)) {
         return { text: parsed.text, chain: parsed.chain.length > 0 ? parsed.chain : undefined };
       }
     } catch (error) {
