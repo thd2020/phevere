@@ -143,6 +143,65 @@ function checkAdminPrivileges(): boolean {
 // Global variables
 let mainWindow: BrowserWindow | null = null;
 let popupWindows: BrowserWindow[] = [];
+/** Popups in the order they last had focus; the end is the foreground one. */
+let popupFocusOrder: BrowserWindow[] = [];
+
+function trackPopupFocus(win: BrowserWindow): void {
+  win.on('focus', () => {
+    popupFocusOrder = popupFocusOrder.filter((w) => w !== win && !w.isDestroyed());
+    popupFocusOrder.push(win);
+  });
+  win.on('closed', () => {
+    popupFocusOrder = popupFocusOrder.filter((w) => w !== win);
+  });
+}
+
+/**
+ * An outside click closed the foreground popup. The popups behind it are not
+ * focused, so they get no blur of their own. Until one of them is focused
+ * again, watch the mouse: each later press outside every popup closes the
+ * popup that is now in front, one per click.
+ */
+let outsideClickWatch: ReturnType<typeof setInterval> | null = null;
+
+function stopOutsideClickWatch(): void {
+  if (outsideClickWatch) clearInterval(outsideClickWatch);
+  outsideClickWatch = null;
+}
+
+function frontPopup(): BrowserWindow | undefined {
+  const live = popupWindows.filter((w) => !w.isDestroyed() && w.isVisible());
+  const ordered = [...popupFocusOrder].reverse().find((w) => live.includes(w));
+  return ordered || live[live.length - 1];
+}
+
+function closePopupForOutsideClick(win: BrowserWindow): void {
+  win.close();
+  stopOutsideClickWatch();
+  let wasDown = true;
+  outsideClickWatch = setInterval(() => {
+    const front = frontPopup();
+    const focused = BrowserWindow.getFocusedWindow();
+    if (!front || (focused && popupWindows.includes(focused))) {
+      stopOutsideClickWatch();
+      return;
+    }
+    const down = isPrimaryMouseDown();
+    if (down && !wasDown) {
+      const p = screen.getCursorScreenPoint();
+      const inside = popupWindows.some((w) => {
+        if (w.isDestroyed() || !w.isVisible()) return false;
+        const b = w.getBounds();
+        return p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
+      });
+      if (!inside) {
+        log.debug('main', 'Close background popup on outside click');
+        front.close();
+      }
+    }
+    wasDown = down;
+  }, 40);
+}
 let settingsWindow: BrowserWindow | null = null;
 let externalWindows: BrowserWindow[] = []; // Track external windows opened by the app
 let tray: Tray | null = null;
@@ -1251,6 +1310,7 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
               }, 'acrylic'));
   inFlightPopup = newPopupWindow;
   interceptPopupHistoryKeys(newPopupWindow);
+  trackPopupFocus(newPopupWindow);
   // Close on blur to match intended UX (give clicks time to land on icons)
   newPopupWindow.on('blur', () => {
     setTimeout(() => {
@@ -1262,7 +1322,7 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
 
         if (!isPopupFocused && (!focused || !popupWindows.includes(focused))) {
           log.debug('main', 'Close popup on blur');
-          newPopupWindow.close();
+          closePopupForOutsideClick(newPopupWindow);
         } else {
           log.debug('main', 'Keep popup (focus)');
         }
@@ -3258,6 +3318,7 @@ function createDictionaryWindow(term: string): void {
   }, 'acrylic'));
 
   interceptPopupHistoryKeys(dictWindow);
+  trackPopupFocus(dictWindow);
 
   dictWindow.on('blur', () => {
     setTimeout(() => {
@@ -3266,7 +3327,7 @@ function createDictionaryWindow(term: string): void {
         const focused = BrowserWindow.getFocusedWindow();
         if (focused === dictWindow) return;
         if (focused && popupWindows.includes(focused)) return;
-        dictWindow.close();
+        closePopupForOutsideClick(dictWindow);
       } catch (e) {
         log.warn('main', 'History lookup blur check failed', { err: String(e) });
       }
