@@ -14,8 +14,8 @@ Related: `src/services/native-selection.ts`, `src/services/hover-lookup.ts`, `sr
 | Shortcut + hold | Monitor mode `shortcut` | cycle / trigger (settings) |
 | **Hover dwell** | ~450 ms idle → UIA `RangeFromPoint`, else OCR under cursor | **editable** (default Ctrl+Shift+H) |
 | Region OCR | Drag rectangle → RapidOCR | **editable** (default Ctrl+Shift+O) |
-| Grab under cursor | Small rect OCR at cursor | Ctrl+Shift+G |
-| Read this window | Foreground HWND bounds → OCR | Ctrl+Shift+W |
+| Scan under pointer | Small rect OCR at cursor | Ctrl+Shift+G |
+| Scan active window | Foreground HWND bounds → OCR | Ctrl+Shift+W |
 | Clipboard image | Win+Shift+S / copy image → OCR | Ctrl+Shift+I |
 | Now playing | Windows SMTC media session | Ctrl+Shift+P |
 

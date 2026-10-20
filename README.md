@@ -1,5 +1,9 @@
 # Phevere
 
+<img src="README.assets/phevere-icon.png" width="96" alt="The Phevere icon: a lowercase p whose stem is an orange text cursor, with a peach highlighter stroke">
+
+2026-10-20, 2.2.0: a new icon, a lowercase p whose stem is a text cursor with a highlighter stroke through it, on a light tile. In-app text uses one name per thing: Notebook, Recent lookups, and Scan for every text recognition action (Scan region, Scan under pointer, Scan active window, Scan clipboard image). Failures read "Could not …". The pop-up's Options button is now Pop-up settings, and the neural voices are Neural (standard) and Neural (high quality).
+
 2026-10-20: the Etymonline tab shows the entry inside the app again, read from Etymonline's JSON endpoint rather than the page Cloudflare now challenges. The summary above the etymology tabs reads from the oldest ancestor to the headword.
 
 ![Screenshot of the etymology view for separate, with the history line from Proto-Indo-European *per- through Latin and Middle English to English](README.assets/desktop-etymology-history.jpg)
@@ -12,13 +16,13 @@ The history line comes from the Wiktionary templates; each arrow names how the n
 
 The Shortcuts settings, rendered from the settings markup and stylesheet in a browser.
 
-2026-10-14, 2.1.0 desktop refresh: enable Open full lookup panel under the popup's Options button to show the lookup immediately. The preference carries across popup windows; the default remains the icon strip.
+2026-10-14, 2.1.0 desktop refresh: enable Open full lookup panel under the pop-up's Pop-up settings button to show the lookup immediately. The preference carries across popup windows; the default remains the icon strip.
 
 ![Screenshot of popup Options with Open full lookup panel enabled](README.assets/desktop-popup-opening.png)
 
 Open full lookup panel is stored with the popup preferences.
 
-2026-10-14, 2.1.0 desktop and phone refresh: etymology tabs retain contributor names such as 童理民 and group their passages by language. Etymonline request failures have an Open entry action. Pronunciation-only lookups use a separate cache from full lookups. All six release downloads have been rebuilt; the git tag is unchanged.
+2026-10-14, 2.1.0 desktop and phone refresh: etymology tabs retain contributor names such as 童理民 and group their passages by language. Etymonline request failures have an Open on Etymonline action. Pronunciation-only lookups use a separate cache from full lookups. All six release downloads have been rebuilt; the git tag is unchanged.
 
 ![Screenshot of orientation with the three passages attributed to Tong Limin grouped in one Chinese source tab](README.assets/desktop-etymology-sources.png)
 
@@ -49,7 +53,7 @@ Phevere is a dictionary for text you are already reading. Select a word in any a
 </p>
 <p align="center"><sub>Android app: a lookup, a word selected on a scanned page, and the selection-bar settings.</sub></p>
 
-The current desktop release is **2.1.0**. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
+The current release is **2.2.0** on desktop and phone. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 

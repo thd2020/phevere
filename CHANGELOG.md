@@ -5,7 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased (2026-10-20)
+## [2.2.0] - 2026-10-20
+
+### Changed
+
+- Icon (2026-10-20): a light tile with a lowercase p whose stem is a text cursor and a highlighter stroke through it replaces the dark teal P. Windows, macOS, tray, installer, Android launcher, iOS and the splash screens all come from `packaging/icon.svg`; the phone splash no longer shows the Capacitor placeholder.
+- In-app text (2026-10-20): one name per thing on desktop and phone (Notebook, Recent lookups, Scan region, Scan under pointer, Scan active window, Scan clipboard image, Pop-up settings, Back and Forward). Failures read "Could not …", empty states are short, status chips read On or Off, and messages no longer name the OCR engine or the notebook database. Voices are Built-in, Neural (standard) and Neural (high quality).
 
 ### Fixed
 

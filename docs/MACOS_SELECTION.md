@@ -16,7 +16,7 @@ Conversation + constraints for a Mac-side agent: [`AGENT_HANDOFF_MAC.md`](AGENT_
 | 500ms debounce | Same settle window as the Windows addon |
 | `getWordAtPoint` | Hover: `AXUIElementCopyElementAtPosition` + range-for-position |
 | Own PID skip | Ignore selections inside Phevere / Electron |
-| Read this window | `scripts/foreground_window.applescript` — System Events bounds of the frontmost non-Phevere window, then the same OCR crop as Windows `GetWindowRect` |
+| Scan active window | `scripts/foreground_window.applescript` — System Events bounds of the frontmost non-Phevere window, then the same OCR crop as Windows `GetWindowRect` |
 | Now playing | `scripts/media_now_playing.applescript` — Music.app / Spotify (same Title/Artist/Album line as the Windows SMTC script). Browser YouTube is not a public Mac API (MediaRemote is blocked from app bundles on 15.4+) |
 | Screen Recording | Same one-click Settings jump as Accessibility; hover / region / grab / read-window OCR need it |
 | Durable windows | `titleBarStyle: 'hiddenInset'` traffic lights (Windows uses `titleBarOverlay`) |
