@@ -3380,6 +3380,9 @@ body.settings-page .settings-field:has(.settings-shortcut-row) {
   padding: 10px 0;
 }
 body.settings-page .settings-field-label { line-height: 1.3; }
+/* Rows inside a group start flush with the subheads and lists around them. */
+body.settings-page .settings-group .settings-field,
+body.settings-page .settings-group .settings-row { padding: 10px 0; }
 body.settings-page .settings-cheat__label { font-weight: 600; }
 body.settings-page .settings-field-sub {
   display: block;
