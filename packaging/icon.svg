@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Phevere mark: a lowercase p whose stem is a text cursor, with a highlighter
+       stroke through it. Source for every icon; run scripts/prepare-installer-assets.js
+       and scripts/make-mobile-icons.js after editing. -->
+  <defs>
+    <linearGradient id="pvTile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFDFA"/><stop offset="1" stop-color="#F2ECE4"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="228" fill="url(#pvTile)"/>
+  <rect x="1.5" y="1.5" width="1021" height="1021" rx="226.5" fill="none" stroke="#1C1917" stroke-opacity="0.10" stroke-width="3"/>
+  <g id="pvGlyph" transform="translate(-60 -30)">
+    <rect x="300" y="476" width="560" height="150" rx="28" fill="#FFD3BF" transform="rotate(-4 580 551)"/>
+    <circle cx="590" cy="470" r="168" fill="none" stroke="#1C1917" stroke-width="72"/>
+    <rect x="362" y="244" width="72" height="600" rx="10" fill="#C2410C"/>
+    <rect x="296" y="232" width="204" height="48" rx="24" fill="#C2410C"/>
+    <rect x="296" y="808" width="204" height="48" rx="24" fill="#C2410C"/>
+  </g>
+</svg>

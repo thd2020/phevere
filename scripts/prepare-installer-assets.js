@@ -15,23 +15,10 @@ const packaging = path.join(root, 'packaging');
 const assetsDir = path.join(root, '.cursor-assets-cache'); // unused; sources below
 const outDir = packaging;
 
-const ICON_SVG = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#0B1220"/>
-      <stop offset="100%" stop-color="#152238"/>
-    </linearGradient>
-    <linearGradient id="p" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#3DDBC9"/>
-      <stop offset="100%" stop-color="#1FA896"/>
-    </linearGradient>
-  </defs>
-  <rect width="1024" height="1024" rx="220" ry="220" fill="url(#bg)"/>
-  <!-- stylized P -->
-  <path fill="url(#p)" d="M300 220h280c140 0 250 90 250 230s-110 230-250 230H420v204c0 28-22 50-50 50h-20c-28 0-50-22-50-50V270c0-28 22-50 50-50zm120 140v200h150c70 0 120-45 120-100s-50-100-120-100H420z"/>
-  <circle cx="690" cy="340" r="42" fill="#E86A4A"/>
-</svg>`;
+// packaging/icon.svg is the one source for the app, tray and installer icons.
+const ICON_SVG = fs.readFileSync(path.join(packaging, 'icon.svg'), 'utf8');
+/** The mark without its XML wrapper, for embedding inside larger artwork. */
+const ICON_INNER = ICON_SVG.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
 
 async function main() {
   let sharp;
@@ -121,7 +108,7 @@ async function main() {
     SIDEBAR_W,
     SIDEBAR_H,
     'fill',
-    '#0B1220',
+    '#F4F0EA',
   );
   await writeTrueBmp(
     sharp,
@@ -162,17 +149,7 @@ async function main() {
 
 function markGroup(x, y, sizePx) {
   const s = sizePx / 1024;
-  return `<g transform="translate(${x} ${y}) scale(${s})">
-    <rect width="1024" height="1024" rx="220" ry="220" fill="#0B1220"/>
-    <path fill="url(#pvP)" d="M300 220h280c140 0 250 90 250 230s-110 230-250 230H420v204c0 28-22 50-50 50h-20c-28 0-50-22-50-50V270c0-28 22-50 50-50zm120 140v200h150c70 0 120-45 120-100s-50-100-120-100H420z"/>
-    <circle cx="690" cy="340" r="42" fill="#E86A4A"/>
-  </g>`;
-}
-
-function pGradDef() {
-  return `<linearGradient id="pvP" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0%" stop-color="#3DDBC9"/><stop offset="100%" stop-color="#1FA896"/>
-  </linearGradient>`;
+  return `<g transform="translate(${x} ${y}) scale(${s})">${ICON_INNER}</g>`;
 }
 
 /** Welcome / finish left pane — 2× MUI 164×314, stylized P (not the old magnifier splash). */
@@ -184,13 +161,12 @@ function wizardSidebarSvg(w, h) {
 <svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0B1220"/><stop offset="100%" stop-color="#1A2744"/>
+      <stop offset="0%" stop-color="#FBF8F3"/><stop offset="100%" stop-color="#F1EBE3"/>
     </linearGradient>
-    ${pGradDef()}
   </defs>
   <rect width="${w}" height="${h}" fill="url(#g)"/>
   ${markGroup((w - mark) / 2, Math.round(h * 0.22), mark)}
-  <text x="${w / 2}" y="${textY}" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="${font}" font-weight="600" fill="#FFFFFF">Phevere</text>
+  <text x="${w / 2}" y="${textY}" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="${font}" font-weight="600" fill="#1C1917">Phevere</text>
 </svg>`;
 }
 
@@ -200,7 +176,6 @@ function wizardHeaderSvg(w, h, paper) {
   const font = Math.round(h * 0.28);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <defs>${pGradDef()}</defs>
   <rect width="${w}" height="${h}" fill="${paper}"/>
   ${markGroup(Math.round(w * 0.067), (h - mark) / 2, mark)}
   <text x="${Math.round(w * 0.33)}" y="${Math.round(h * 0.62)}" font-family="Segoe UI, sans-serif" font-size="${font}" font-weight="600" fill="#1A1A1A">Phevere</text>
@@ -280,37 +255,33 @@ function buildPngIco(pngBuffers, sizes) {
 }
 
 /** Dock / .app icon. `iconutil` is darwin-only; Windows `prepare:installer` leaves the committed icns. */
+/**
+ * macOS icon. The art sits on Apple's 824 px grid inside the 1024 px canvas, as
+ * other Mac app icons do, so the full-bleed tile is shrunk with a margin.
+ * Written directly as an ICNS container of PNGs, so it builds on any OS.
+ */
 async function writeMacIcns(sharp, png1024, destIcns) {
-  if (process.platform !== 'darwin') {
-    console.log('Skip icon.icns (not darwin; using committed packaging/icon.icns)');
-    return;
+  const art = await sharp(png1024).resize(824, 824).png().toBuffer();
+  const canvas = await sharp({ create: { width: 1024, height: 1024, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: art, left: 100, top: 100 }])
+    .png()
+    .toBuffer();
+  // OSType → pixel size of the PNG stored under it.
+  const types = [['icp4', 16], ['icp5', 32], ['icp6', 64], ['ic07', 128], ['ic08', 256], ['ic09', 512], ['ic10', 1024], ['ic11', 32], ['ic12', 64], ['ic13', 256], ['ic14', 512]];
+  const chunks = [];
+  for (const [type, px] of types) {
+    const png = await sharp(canvas).resize(px, px).png().toBuffer();
+    const head = Buffer.alloc(8);
+    head.write(type, 0, 'ascii');
+    head.writeUInt32BE(png.length + 8, 4);
+    chunks.push(head, png);
   }
-  const setDir = path.join(path.dirname(destIcns), 'icon.iconset');
-  fs.rmSync(setDir, { recursive: true, force: true });
-  fs.mkdirSync(setDir, { recursive: true });
-  const files = [
-    [16, 'icon_16x16.png'],
-    [32, 'icon_16x16@2x.png'],
-    [32, 'icon_32x32.png'],
-    [64, 'icon_32x32@2x.png'],
-    [128, 'icon_128x128.png'],
-    [256, 'icon_128x128@2x.png'],
-    [256, 'icon_256x256.png'],
-    [512, 'icon_256x256@2x.png'],
-    [512, 'icon_512x512.png'],
-    [1024, 'icon_512x512@2x.png'],
-  ];
-  for (const [px, name] of files) {
-    await sharp(png1024).resize(px, px).png().toFile(path.join(setDir, name));
-  }
-  try {
-    execFileSync('iconutil', ['-c', 'icns', setDir], { stdio: 'inherit' });
-    console.log('Wrote', destIcns);
-  } catch (e) {
-    console.warn('iconutil failed; keeping existing icon.icns if present', e.message);
-  } finally {
-    fs.rmSync(setDir, { recursive: true, force: true });
-  }
+  const body = Buffer.concat(chunks);
+  const header = Buffer.alloc(8);
+  header.write('icns', 0, 'ascii');
+  header.writeUInt32BE(body.length + 8, 4);
+  fs.writeFileSync(destIcns, Buffer.concat([header, body]));
+  console.log('Wrote', destIcns);
 }
 
 function zipDirectory(srcDir, destZip, rootFolderName) {
