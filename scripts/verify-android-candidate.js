@@ -1,0 +1,36 @@
+// Verify public APK metadata only. This step receives no signing credentials.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
+const apk = 'apps/mobile/android/app/build/outputs/apk/release/app-release.apk';
+const tools = path.join(process.env.ANDROID_SDK_ROOT, 'build-tools/35.0.0');
+const run = (exe, args) => execFileSync(exe, args, { encoding: 'utf8' });
+const certificates = run(path.join(tools, 'apksigner'), ['verify', '--verbose', '--print-certs', apk]);
+const fingerprints = [...certificates.matchAll(/^Signer #\d+ certificate SHA-256 digest: ([a-fA-F0-9]{64})$/gm)];
+assert.equal(fingerprints.length, 1, 'expected one signer');
+const certificateSha256 = fingerprints[0][1].toLowerCase();
+assert.equal(certificateSha256, process.env.EXPECTED_CERT_SHA256?.toLowerCase(), 'approved certificate');
+const badging = run(path.join(tools, 'aapt'), ['dump', 'badging', apk]);
+const packageMatch = badging.match(/^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'/m);
+assert.ok(packageMatch, 'APK package metadata');
+const [, packageName, versionCode, versionName] = packageMatch;
+assert.equal(packageName, 'com.phevere.app');
+assert.equal(versionCode, run('git', ['rev-list', '--count', 'HEAD']).trim());
+assert.equal(versionName, require('../apps/mobile/package.json').version);
+assert.doesNotMatch(badging, /^application-debuggable/m, 'release APK must not be debuggable');
+const sourceCommit = run('git', ['rev-parse', 'HEAD']).trim();
+assert.equal(sourceCommit, process.env.GITHUB_SHA, 'checked-out commit must match workflow source');
+const bytes = fs.readFileSync(apk);
+const apkSha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+const directory = 'android-candidate';
+fs.mkdirSync(directory, { recursive: true });
+const filename = `Phevere-${versionName}-android-signed-candidate.apk`;
+fs.copyFileSync(apk, path.join(directory, filename));
+const metadata = { sourceCommit, packageName, versionCode: Number(versionCode), versionName,
+  certificateSha256, apkSha256, size: bytes.length, debuggable: false, publication: false };
+fs.writeFileSync(path.join(directory, 'verification.json'), JSON.stringify(metadata, null, 2) + '\n');
+fs.writeFileSync(path.join(directory, 'apksigner-verification.txt'), certificates);
+fs.writeFileSync(path.join(directory, 'SHA256SUMS'), `${apkSha256}  ${filename}\n`);
+console.log(JSON.stringify(metadata));
