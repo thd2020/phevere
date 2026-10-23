@@ -121,6 +121,7 @@ async function audioFallback() {
 }
 
 (async () => {
+  await require('./test-notebook-csv')();
   await startupAndGestures(true);
   await startupAndGestures(false);
   await audioFallback();

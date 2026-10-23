@@ -31,26 +31,56 @@ export function vocabEntriesToCsv(entries: VocabEntry[]): string {
   return [cols.join(','), ...rows].join('\r\n');
 }
 
-function splitCsvLine(line: string): string[] {
-  const out: string[] = [];
+function parseCsvRecords(raw: string): string[][] {
+  const records: string[][] = [];
+  let row: string[] = [];
   let cur = '';
   let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
+  let closedQuote = false;
+  let recordStarted = false;
+  const endField = () => {
+    row.push(cur);
+    cur = '';
+    closedQuote = false;
+  };
+  const endRecord = () => {
+    // Ignore physical blank lines, but retain explicitly empty CSV fields.
+    if (recordStarted) {
+      endField();
+      records.push(row);
+    }
+    row = [];
+    recordStarted = false;
+  };
+  const text = raw.replace(/^\uFEFF/, '');
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
     if (inQuotes) {
-      if (ch === '"' && line[i + 1] === '"') {
+      if (ch === '"' && text[i + 1] === '"') {
         cur += '"';
         i += 1;
-      } else if (ch === '"') inQuotes = false;
+      } else if (ch === '"') {
+        inQuotes = false;
+        closedQuote = true;
+      } else cur += ch;
+    } else if (ch === ',') {
+      endField();
+      recordStarted = true;
+    } else if (ch === '\r' || ch === '\n') {
+      endRecord();
+      if (ch === '\r' && text[i + 1] === '\n') i += 1;
+    } else {
+      if (closedQuote || (ch === '"' && cur.length > 0)) {
+        throw new Error('Invalid CSV: unexpected character or quote in record ' + (records.length + 1));
+      }
+      recordStarted = true;
+      if (ch === '"') inQuotes = true;
       else cur += ch;
-    } else if (ch === '"') inQuotes = true;
-    else if (ch === ',') {
-      out.push(cur);
-      cur = '';
-    } else cur += ch;
+    }
   }
-  out.push(cur);
-  return out;
+  if (inQuotes) throw new Error('Invalid CSV: unterminated quoted field');
+  endRecord();
+  return records;
 }
 
 function vocabRowToInput(row: Record<string, unknown>): VocabAddInput {
@@ -80,13 +110,19 @@ export function vocabEntriesFromJson(raw: string): VocabAddInput[] {
 }
 
 export function vocabEntriesFromCsv(raw: string): VocabAddInput[] {
-  const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.length);
-  if (lines.length < 2) return [];
-  const headers = splitCsvLine(lines[0]).map((h) => h.trim());
+  const records = parseCsvRecords(raw);
+  if (!records.length) return [];
+  const headers = records[0].map((h) => h.trim());
+  if (!headers.includes('lemma') || headers.some((h) => !h) || new Set(headers).size !== headers.length) {
+    throw new Error('Invalid CSV: expected unique, non-empty headers including lemma');
+  }
   const out: VocabAddInput[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = splitCsvLine(lines[i]);
-    const row: Record<string, string> = {};
+  for (let i = 1; i < records.length; i++) {
+    const cols = records[i];
+    if (cols.length !== headers.length) {
+      throw new Error('Invalid CSV: column count does not match headers in record ' + (i + 1));
+    }
+    const row: Record<string, string> = Object.create(null);
     headers.forEach((h, idx) => {
       row[h] = cols[idx] ?? '';
     });
