@@ -193,6 +193,8 @@ Thumbs.db
 
 # Signing secrets — never commit
 *.pfx
+*.jks
+*.keystore
 *.p12
 *.pvk
 *.spc

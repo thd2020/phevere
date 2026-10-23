@@ -25,6 +25,7 @@ on:
           - all
           - desktop
           - phone
+          - android
           - windows-arm64
 
 permissions:
@@ -32,7 +33,7 @@ permissions:
 
 jobs:
   release:
-    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.targets == 'all' || github.event.inputs.targets == 'desktop'))
+    if: (github.event_name == 'push' && github.ref_type == 'tag') || (github.event_name == 'workflow_dispatch' && (github.event.inputs.targets == 'all' || github.event.inputs.targets == 'desktop'))
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:
@@ -102,7 +103,7 @@ jobs:
           subject-path: ${{ steps.pkg.outputs.exe }}
 
   release-win-arm64:
-    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.targets != 'phone')
+    if: (github.event_name == 'push' && github.ref_type == 'tag') || (github.event_name == 'workflow_dispatch' && (github.event.inputs.targets == 'all' || github.event.inputs.targets == 'desktop' || github.event.inputs.targets == 'windows-arm64'))
     runs-on: windows-11-arm
     timeout-minutes: 60
     permissions:
@@ -171,7 +172,7 @@ jobs:
           subject-path: ${{ steps.pkg.outputs.exe }}
 
   release-mac:
-    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.targets == 'all' || github.event.inputs.targets == 'desktop'))
+    if: (github.event_name == 'push' && github.ref_type == 'tag') || (github.event_name == 'workflow_dispatch' && (github.event.inputs.targets == 'all' || github.event.inputs.targets == 'desktop'))
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -235,10 +236,10 @@ jobs:
         with:
           subject-path: ${{ steps.pkg.outputs.dmg }}
 
-  # Phone builds. The APK is debug-signed (installable; there is no release keystore
-  # yet) and the IPA is unsigned, as in ci.yml. The emulator test stays in ci.yml.
+  # Release APKs require a persistent signing identity. CI remains debug-signed.
+  # The IPA is unsigned. The emulator test stays in ci.yml.
   release-android:
-    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.targets == 'all' || github.event.inputs.targets == 'phone'))
+    if: (github.event_name == 'push' && github.ref_type == 'tag') || (github.event_name == 'workflow_dispatch' && (github.event.inputs.targets == 'all' || github.event.inputs.targets == 'phone' || github.event.inputs.targets == 'android'))
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -257,6 +258,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Prepare release signing
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: node scripts/prepare-android-signing.js
       - name: Accept Android SDK licenses
         run: |
           set -euo pipefail
@@ -272,6 +282,8 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
         run: |
           npm ci --ignore-scripts
+          node scripts/test-mobile-regressions.js
+          node scripts/test-android-release.js
           npm run mobile:sync
       - name: Bundle mechanical speech
         working-directory: apps/mobile
@@ -280,19 +292,69 @@ jobs:
           python scripts/test-speech-package.py
       - name: Build Android APK
         working-directory: apps/mobile/android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/phevere-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-          python ../scripts/check-apk-16kb.py app/build/outputs/apk/debug/app-debug.apk
+          ./gradlew assembleRelease --no-daemon
+          python ../scripts/check-apk-16kb.py app/build/outputs/apk/release/app-release.apk
+      - name: Remove temporary signing material
+        if: always() && steps.signing.outcome == 'success'
+        run: rm -f -- "$RUNNER_TEMP/phevere-release.jks"
       - name: Name APK
         id: pkg
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./apps/mobile/package.json').version")"
           NAME="Phevere-${VERSION}-android.apk"
-          cp apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk "$NAME"
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "$NAME"
           echo "file=$PWD/$NAME" >> "$GITHUB_OUTPUT"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
+      - name: Verify signing identity and preserve previous APK
+        id: previous
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
+          APK: ${{ steps.pkg.outputs.file }}
+          ASSET: ${{ steps.pkg.outputs.name }}
+          EXPECTED_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+          IS_REPLACEMENT: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          set -euo pipefail
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/new-apk-certificate.txt"
+          ACTUAL_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/new-apk-certificate.txt")"
+          test "$(grep -c '^Signer #[0-9]* certificate SHA-256 digest:' "$RUNNER_TEMP/new-apk-certificate.txt")" = 1
+          test "${ACTUAL_SHA256,,}" = "${EXPECTED_SHA256,,}"
+          if [ "$IS_REPLACEMENT" = true ]; then
+            mkdir -p "$RUNNER_TEMP/android-rollback"
+            gh release view "$TAG" --json assets,tagName,targetCommitish > "$RUNNER_TEMP/android-rollback/release.json"
+            jq -r '.assets[].name' "$RUNNER_TEMP/android-rollback/release.json" > "$RUNNER_TEMP/asset-names.txt"
+            if grep -Fxq -- "$ASSET" "$RUNNER_TEMP/asset-names.txt"; then
+              gh release download "$TAG" --pattern "$ASSET" --dir "$RUNNER_TEMP/android-rollback"
+              "$APKSIGNER" verify --verbose --print-certs "$RUNNER_TEMP/android-rollback/$ASSET" > "$RUNNER_TEMP/previous-apk-certificate.txt"
+              PREVIOUS_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/previous-apk-certificate.txt")"
+              test "$(grep -c '^Signer #[0-9]* certificate SHA-256 digest:' "$RUNNER_TEMP/previous-apk-certificate.txt")" = 1
+              if [ "${PREVIOUS_SHA256,,}" != "${ACTUAL_SHA256,,}" ]; then
+                echo 'Refusing replacement: the published APK uses a different signing identity.' >&2
+                exit 1
+              fi
+              (cd "$RUNNER_TEMP/android-rollback" && sha256sum "$ASSET" > SHA256SUMS)
+              echo 'exists=true' >> "$GITHUB_OUTPUT"
+            fi
+          fi
+      - name: Retain Android rollback copy
+        if: steps.previous.outputs.exists == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-rollback-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/android-rollback/
+          retention-days: 30
+          if-no-files-found: error
       - name: Remove existing asset with the same name
         env:
           GH_TOKEN: ${{ github.token }}
@@ -314,7 +376,7 @@ jobs:
           subject-path: ${{ steps.pkg.outputs.file }}
 
   release-ios:
-    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.targets == 'all' || github.event.inputs.targets == 'phone'))
+    if: (github.event_name == 'push' && github.ref_type == 'tag') || (github.event_name == 'workflow_dispatch' && (github.event.inputs.targets == 'all' || github.event.inputs.targets == 'phone'))
     runs-on: macos-latest
     timeout-minutes: 40
     permissions:

@@ -19,6 +19,12 @@ def git = { List<String> args ->
 def commitCount = git(['rev-list', '--count', 'HEAD'])
 def commitSha = git(['rev-parse', '--short=7', 'HEAD'])
 
+// Credentials are supplied only to the release job, never stored in the project.
+def releaseSigning = ['ANDROID_KEYSTORE_PATH', 'ANDROID_KEYSTORE_PASSWORD',
+                      'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD'].collectEntries {
+    [(it): providers.environmentVariable(it).orNull]
+}
+
 android {
     namespace "com.phevere.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -50,14 +56,42 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     sourceSets.main.assets.srcDir "${buildDir}/generated/speech-v2/assets"
+    signingConfigs {
+        release {
+            storeFile releaseSigning.ANDROID_KEYSTORE_PATH ? file(releaseSigning.ANDROID_KEYSTORE_PATH) : null
+            storePassword releaseSigning.ANDROID_KEYSTORE_PASSWORD
+            keyAlias releaseSigning.ANDROID_KEY_ALIAS
+            keyPassword releaseSigning.ANDROID_KEY_PASSWORD
+        }
+    }
     buildTypes {
         debug {
             versionNameSuffix "-dev.${commitCount ?: 0}" + (commitSha ? "+${commitSha}" : '')
         }
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+    }
+}
+
+def validateReleaseCredentials = tasks.register('validateReleaseCredentials') {
+    doLast {
+        def missing = releaseSigning.findAll { name, value -> !value }.keySet()
+        if (missing) throw new GradleException("Missing release signing inputs: ${missing.join(', ')}")
+        def keystore = file(releaseSigning.ANDROID_KEYSTORE_PATH)
+        if (!keystore.isFile() || !keystore.canRead()) {
+            throw new GradleException('Release keystore is not a readable file')
+        }
+        if (!commitCount.isInteger() || commitCount.toInteger() < 1) {
+            throw new GradleException('Release requires Git history for a valid versionCode')
+        }
+    }
+}
+tasks.configureEach {
+    if (name == 'preReleaseBuild' || name == 'validateSigningRelease') {
+        dependsOn validateReleaseCredentials
     }
 }
 

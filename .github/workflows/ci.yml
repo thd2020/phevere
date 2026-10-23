@@ -127,6 +127,7 @@ jobs:
           python scripts/prepare-speech.py
           python scripts/test-speech-package.py
           node ../../scripts/test-mobile-regressions.js
+          node ../../scripts/test-android-release.js
       - name: Build Android APK with bundled speech
         working-directory: apps/mobile/android
         run: |
