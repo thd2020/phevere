@@ -262,6 +262,29 @@ async function loadGutenOcrLinux(): Promise<{ create: (opts: unknown) => Promise
   return common.default;
 }
 
+type ProcessHandlers = { uncaught: Function[]; rejection: Function[] };
+
+function snapshotProcessHandlers(): ProcessHandlers {
+  return {
+    uncaught: process.listeners('uncaughtException'),
+    rejection: process.listeners('unhandledRejection'),
+  };
+}
+
+/**
+ * opencv.js (Emscripten, pulled in by GutenYe) adds process handlers that rethrow
+ * any unhandled rejection and exit with code 7, overriding our keep-alive handler.
+ * A dismissed Wayland screencast picker was enough to quit the app.
+ */
+function dropHandlersAddedSince(before: ProcessHandlers): void {
+  for (const fn of process.listeners('uncaughtException')) {
+    if (!before.uncaught.includes(fn)) (process as NodeJS.EventEmitter).removeListener('uncaughtException', fn as (...a: unknown[]) => void);
+  }
+  for (const fn of process.listeners('unhandledRejection')) {
+    if (!before.rejection.includes(fn)) (process as NodeJS.EventEmitter).removeListener('unhandledRejection', fn as (...a: unknown[]) => void);
+  }
+}
+
 async function loadGutenOcr(): Promise<{ create: (opts: unknown) => Promise<any> }> {
   assertOnnxNativeBinding();
   patchGutenyeUnclip();
@@ -610,6 +633,7 @@ class OnnxNativeOcrEngine implements OcrEngine {
       }
 
       // ESM package; do not require() it (ERR_REQUIRE_ESM under webpack/Electron).
+      const handlersBefore = snapshotProcessHandlers();
       const Ocr = await loadGutenOcr();
       const dictChars = dictLineCount(files.dict);
       console.log('Loading native OCR models', {
@@ -617,13 +641,17 @@ class OnnxNativeOcrEngine implements OcrEngine {
         files: this.modelFiles,
         dictChars,
       });
-      this.ocr = await Ocr.create({
-        models: {
-          detectionPath: files.det,
-          recognitionPath: files.rec,
-          dictionaryPath: files.dict,
-        },
-      });
+      try {
+        this.ocr = await Ocr.create({
+          models: {
+            detectionPath: files.det,
+            recognitionPath: files.rec,
+            dictionaryPath: files.dict,
+          },
+        });
+      } finally {
+        dropHandlersAddedSince(handlersBefore);
+      }
     })();
 
     try {
