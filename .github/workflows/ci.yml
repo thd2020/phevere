@@ -1,4 +1,4 @@
-# Lint/test/build on PR and main. Windows and macOS pack + verify OCR natives.
+# Lint/test/build on PR and main. Windows, macOS and Linux pack + verify OCR natives.
 name: ci
 
 on:
@@ -74,6 +74,48 @@ jobs:
         with:
           name: phevere-darwin-${{ matrix.electron_arch }}
           path: out/phevere-darwin-${{ matrix.electron_arch }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # Ubuntu 22.04 (glibc 2.35) so the selection addon loads on every distro we target.
+  linux-ocr-pack:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            electron_arch: x64
+          - os: ubuntu-22.04-arm
+            electron_arch: arm64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install build libraries for the selection addon
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libx11-dev libxfixes-dev \
+            libatspi2.0-dev libglib2.0-dev libwayland-dev
+      - name: Install (includes Linux selection addon)
+        env:
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+          ONNXRUNTIME_NODE_INSTALL: skip
+        run: npm ci
+      - name: Package linux (${{ matrix.electron_arch }}) and verify OCR natives
+        env:
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+        run: |
+          npx electron-forge package --platform linux --arch ${{ matrix.electron_arch }}
+          node scripts/verify-ocr-pack.js --dir out/phevere-linux-${{ matrix.electron_arch }}
+      - name: Upload unpackaged app
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: phevere-linux-${{ matrix.electron_arch }}
+          path: out/phevere-linux-${{ matrix.electron_arch }}
           if-no-files-found: error
           retention-days: 7
 
