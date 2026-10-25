@@ -1,0 +1,8 @@
+/* Export only the N-API entry points. The addon links libstdc++ statically;
+   leaking its symbols breaks other addons' C++ runtime (onnxruntime crashed). */
+{
+  global:
+    napi_register_module_v1;
+    node_api_module_get_api_version_v1;
+  local: *;
+};

@@ -29,13 +29,14 @@ const mainConfig = {
   plugins: [
     ...plugins,
     new CopyLocalDbWorkerPlugin(),
-    // Only one OS binding exists per build. Ignore the other so webpack does
-    // not fail to resolve a missing .node (index.js requires both paths).
+    // Only one OS binding exists per build. Ignore the others so webpack does
+    // not fail to resolve a missing .node (index.js requires every path).
     new webpack.IgnorePlugin({
       resourceRegExp:
-        process.platform === 'darwin'
-          ? /uiautomation_selection_monitor\.node$/
-          : /ax_selection_monitor\.node$/,
+        {
+          darwin: /(uiautomation|linux)_selection_monitor\.node$/,
+          linux: /(uiautomation|ax)_selection_monitor\.node$/,
+        }[process.platform] || /(ax|linux)_selection_monitor\.node$/,
     }),
   ],
   resolve: {

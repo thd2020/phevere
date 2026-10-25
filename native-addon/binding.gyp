@@ -64,6 +64,41 @@
           "type": "none"
         }]
       ]
+    },
+    {
+      "target_name": "linux_selection_monitor",
+      "conditions": [
+        ["OS=='linux'", {
+          "sources": [
+            "src/linux_selection_monitor.cpp",
+            "src/linux_wayland_primary.cpp",
+            "src/linux_kwin_script.cpp",
+            "src/wayland/ext-data-control-v1-protocol.c",
+            "src/wayland/wlr-data-control-unstable-v1-protocol.c"
+          ],
+          "include_dirs": [
+            "<!@(node -p \"require('node-addon-api').include\")"
+          ],
+          "dependencies": [
+            "<!(node -p \"require('node-addon-api').gyp\")"
+          ],
+          "cflags!": [ "-fno-exceptions" ],
+          "cflags_cc!": [ "-fno-exceptions" ],
+          "cflags": [ "<!@(pkg-config --cflags atspi-2 gio-2.0 x11 xfixes wayland-client)" ],
+          "cflags_cc": [
+            "-std=c++17", "-fvisibility=hidden", "-fvisibility-inlines-hidden",
+            "<!@(pkg-config --cflags atspi-2 gio-2.0 x11 xfixes wayland-client)"
+          ],
+          "defines": [ "NAPI_DISABLE_CPP_EXCEPTIONS" ],
+          "ldflags": [
+            "-static-libstdc++", "-static-libgcc", "-Wl,--exclude-libs,ALL",
+            "-Wl,--version-script,<(module_root_dir)/src/linux_exports.map"
+          ],
+          "libraries": [ "<!@(pkg-config --libs atspi-2 gio-2.0 x11 xfixes wayland-client)" ]
+        }, {
+          "type": "none"
+        }]
+      ]
     }
   ]
 }
