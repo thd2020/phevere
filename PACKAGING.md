@@ -178,7 +178,7 @@ sudo apt install build-essential pkg-config libx11-dev libxfixes-dev libatspi2.0
 npm run make:linux:arm64   # or make:linux:x64
 # App:      out/phevere-linux-{arch}/
 # deb:      out/make/deb/{arch}/phevere_<version>_{amd64|arm64}.deb
-# rpm:      out/make/rpm/{arch}/phevere-<version>-1.{x86_64|aarch64}.rpm
+# rpm:      out/make/rpm/{arch}/phevere-<version>-1.{x86_64|arm64}.rpm
 # AppImage: out/make/AppImage/{arch}/Phevere-<version>-{arch}.AppImage
 ```
 

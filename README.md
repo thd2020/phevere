@@ -58,7 +58,7 @@ Download the installer for your platform from [GitHub Releases](https://github.c
 | macOS 11 or later, Intel | `Phevere-<version>-darwin-x64.dmg` |
 | macOS 11 or later, Apple silicon | `Phevere-<version>-darwin-arm64.dmg` |
 | Debian, Ubuntu 22.04 or later, x64 / arm64 | `phevere_<version>_amd64.deb` / `phevere_<version>_arm64.deb` |
-| Fedora, openSUSE, x64 / arm64 | `phevere-<version>-1.x86_64.rpm` / `phevere-<version>-1.aarch64.rpm` |
+| Fedora, openSUSE, x64 / arm64 | `phevere-<version>-1.x86_64.rpm` / `phevere-<version>-1.arm64.rpm` |
 | Any glibc 2.35+ distribution, x64 / arm64 | `Phevere-<version>-x64.AppImage` / `Phevere-<version>-arm64.AppImage` |
 
 Release builds are not code-signed, so Windows SmartScreen and macOS Gatekeeper will ask for confirmation on first launch. [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md) describes how to sign your own builds.
