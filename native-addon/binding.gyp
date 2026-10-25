@@ -84,17 +84,17 @@
           ],
           "cflags!": [ "-fno-exceptions" ],
           "cflags_cc!": [ "-fno-exceptions" ],
-          "cflags": [ "<!@(pkg-config --cflags atspi-2 gio-2.0 x11 xfixes wayland-client)" ],
+          "cflags": [ "<!@(pkg-config --cflags atspi-2 gio-2.0 gio-unix-2.0 x11 xfixes wayland-client)" ],
           "cflags_cc": [
             "-std=c++17", "-fvisibility=hidden", "-fvisibility-inlines-hidden",
-            "<!@(pkg-config --cflags atspi-2 gio-2.0 x11 xfixes wayland-client)"
+            "<!@(pkg-config --cflags atspi-2 gio-2.0 gio-unix-2.0 x11 xfixes wayland-client)"
           ],
           "defines": [ "NAPI_DISABLE_CPP_EXCEPTIONS" ],
           "ldflags": [
             "-static-libstdc++", "-static-libgcc", "-Wl,--exclude-libs,ALL",
             "-Wl,--version-script,<(module_root_dir)/src/linux_exports.map"
           ],
-          "libraries": [ "<!@(pkg-config --libs atspi-2 gio-2.0 x11 xfixes wayland-client)" ]
+          "libraries": [ "<!@(pkg-config --libs atspi-2 gio-2.0 gio-unix-2.0 x11 xfixes wayland-client)" ]
         }, {
           "type": "none"
         }]
