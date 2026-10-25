@@ -6,14 +6,14 @@
 [![CI](https://github.com/thd2020/phevere/actions/workflows/ci.yml/badge.svg)](https://github.com/thd2020/phevere/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/thd2020/phevere)](LICENSE)
 
-Phevere is a dictionary for text you are already reading. Select a word in any application and a lookup opens beside it, with definitions, pronunciation, translation, etymology, and Wikipedia, and a local notebook for the words you keep. It runs on Windows and macOS as a tray application, and on Android and iOS as a phone app built on the same dictionary core.
+Phevere is a dictionary for text you are already reading. Select a word in any application and a lookup opens beside it, with definitions, pronunciation, translation, etymology, and Wikipedia, and a local notebook for the words you keep. It runs on Windows, macOS, and Linux as a tray application, and on Android and iOS as a phone app built on the same dictionary core.
 
 <p align="center">
   <img src="README.assets/phone-overview.png" width="860" alt="Screenshots of the Android app: a lookup of serendipity, Scan with a selected word, and Capture settings">
 </p>
 <p align="center"><sub>Android app: a lookup, a word selected on a scanned page, and the selection-bar settings.</sub></p>
 
-The current release is **2.2.0** on desktop and phone. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
+The current release is **2.2.0** on desktop and phone. Linux packages (deb, rpm, AppImage for x64 and arm64) were added to the 2.2.0 release on 2026-10-25. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -26,9 +26,9 @@ The current release is **2.2.0** on desktop and phone. Changes are listed in [`C
 - Offline packs: WordNet, Webster 1913 (GCIDE), CC-CEDICT, and FreeDict English–Chinese.
 - A notebook stored locally in SQLite, with search, sorting, and JSON or CSV import and export. There is no account.
 
-**Desktop (Windows, macOS)**
+**Desktop (Windows, macOS, Linux)**
 
-- Select-to-lookup in other applications. On Windows, Phevere reads the selection through UI Automation, then a Chromium accessibility request, then a silent copy that restores the clipboard. On macOS it uses the Accessibility API, then AppleScript for Safari and Chrome, then a silent copy. Password fields are skipped.
+- Select-to-lookup in other applications. On Windows, Phevere reads the selection through UI Automation, then a Chromium accessibility request, then a silent copy that restores the clipboard. On macOS it uses the Accessibility API, then AppleScript for Safari and Chrome, then a silent copy. On Linux it watches the primary selection that every toolkit sets on select (Wayland data-control on KDE Plasma and wlroots desktops, XFixes on X11), so nothing is copied. Password fields are skipped.
 - OCR for text that cannot be selected: hover, region, clipboard image, and whole window, using bundled PP-OCRv4 models (PP-OCRv5 is available as a download).
 - Back and forward through recent lookups, including the mouse's extra buttons.
 - A slim toolbar opens beside the selection. Its first four icons open the Lexicon, Translation, Wikipedia, and Etymology views, and the open view shows as a tab joined to the page.
@@ -47,7 +47,7 @@ The current release is **2.2.0** on desktop and phone. Changes are listed in [`C
 
 ## Installation
 
-### Windows and macOS
+### Windows, macOS, and Linux
 
 Download the installer for your platform from [GitHub Releases](https://github.com/thd2020/phevere/releases/latest). Node.js is not required.
 
@@ -57,12 +57,17 @@ Download the installer for your platform from [GitHub Releases](https://github.c
 | Windows 11, ARM64 | `Phevere-Setup-<version>-arm64.exe` |
 | macOS 11 or later, Intel | `Phevere-<version>-darwin-x64.dmg` |
 | macOS 11 or later, Apple silicon | `Phevere-<version>-darwin-arm64.dmg` |
+| Debian, Ubuntu 22.04 or later, x64 / arm64 | `phevere_<version>_amd64.deb` / `phevere_<version>_arm64.deb` |
+| Fedora, openSUSE, x64 / arm64 | `phevere-<version>-1.x86_64.rpm` / `phevere-<version>-1.aarch64.rpm` |
+| Any glibc 2.35+ distribution, x64 / arm64 | `Phevere-<version>-x64.AppImage` / `Phevere-<version>-arm64.AppImage` |
 
 Release builds are not code-signed, so Windows SmartScreen and macOS Gatekeeper will ask for confirmation on first launch. [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md) describes how to sign your own builds.
 
 **Windows.** Select Install, or open Custom options to choose the folder, OCR models (about 15 MB), pronunciation model, shortcuts, and startup preference. Compact (132 MB) and Full (350 MB) pronunciation models download during setup on x64. The default folder is `C:\Program Files\Phevere`; replacement installs reuse the existing folder and preserve your notebook and settings. Running Phevere as administrator lets UI Automation read selections in elevated applications. To uninstall, use **Settings → Apps → Phevere**. Normal uninstall retains your notebook and settings. If an earlier installation left files behind that the Apps list no longer shows, run `scripts\remove-ghost-phevere.ps1` from an elevated PowerShell prompt.
 
 **macOS.** Drag Phevere to Applications and open it with right-click → **Open** the first time. Grant **Accessibility** for select-to-lookup and **Screen Recording** for OCR; the menu-bar icon links to both settings. See [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md).
+
+**Linux.** Install the deb with `sudo apt install ./phevere_<version>_amd64.deb` or the rpm with `sudo dnf install ./phevere-<version>-1.x86_64.rpm`; or make the AppImage executable and run it. Select-to-lookup works without setup on KDE Plasma, wlroots desktops (Sway, Hyprland) and any X11 session. On KDE Plasma Wayland the popup opens at the pointer and hover lookup follows it there too. GNOME on Wayland gives applications no background access to the selection; bind the command `phevere --lookup-selection` to a keyboard shortcut in **Settings → Keyboard → Custom Shortcuts** and press it after selecting. The tray menu needs the AppIndicator extension on GNOME. Notebook and settings live in `~/.config/phevere`. See [`docs/LINUX_SELECTION.md`](docs/LINUX_SELECTION.md).
 
 ### Android
 
@@ -89,6 +94,7 @@ iOS 14 or later. Download `Phevere-<version>-ios-unsigned.ipa` from [GitHub Rele
 - Node.js 18 or later (CI uses Node.js 22)
 - Windows: Visual Studio 2022 with the *Desktop development with C++* workload, for the UI Automation addon
 - macOS: Xcode Command Line Tools
+- Linux: `build-essential pkg-config libx11-dev libxfixes-dev libatspi2.0-dev libglib2.0-dev libwayland-dev`, plus `fakeroot rpm squashfs-tools` to build packages
 - Android: JDK 17 or later and the Android SDK (API 36, NDK 28.2, CMake 3.22.1); Python 3 for the speech bundle
 - iOS: Xcode on macOS
 
@@ -109,6 +115,8 @@ npm run make:win          # Windows x64 installer
 npm run make:win:arm64    # Windows ARM64 installer
 npm run make:mac:x64      # macOS Intel DMG
 npm run make:mac:arm64    # macOS Apple silicon DMG
+npm run make:linux:x64    # Linux x64 deb, rpm, AppImage (cross-builds from an arm64 machine)
+npm run make:linux:arm64  # Linux arm64 deb, rpm, AppImage
 ```
 
 Output is written to `out/make`. [`PACKAGING.md`](PACKAGING.md) covers the installer configuration. If the Electron download stalls during `npm install`, set `ELECTRON_SKIP_BINARY_DOWNLOAD=1`; the install and start scripts then fetch the runtime with `scripts/ensure-electron.js`.
@@ -132,7 +140,7 @@ For iOS, open `apps/mobile/ios/App/App.xcodeproj` in Xcode. Further detail is in
 
 ### Continuous integration and releases
 
-Every pull request and every push to `main` builds the desktop applications for Windows and macOS, the Android APK, and the iOS IPA, and runs the mobile regression tests. Pushing a tag of the form `v*.*.*` builds the Windows installers, macOS disk images, Android APK, and iOS IPA, attaches them to a GitHub Release, and publishes build provenance attestations. See [`docs/RELEASE.md`](docs/RELEASE.md).
+Every pull request and every push to `main` builds the desktop applications for Windows, macOS, and Linux, the Android APK, and the iOS IPA, and runs the mobile regression tests. Pushing a tag of the form `v*.*.*` builds the Windows installers, macOS disk images, Linux packages, Android APK, and iOS IPA, attaches them to a GitHub Release, and publishes build provenance attestations. See [`docs/RELEASE.md`](docs/RELEASE.md).
 
 ## Project structure
 
@@ -140,7 +148,7 @@ Every pull request and every push to `main` builds the desktop applications for 
 |---|---|
 | [`packages/core`](packages/core) | Dictionary sources, merging, translation, pronunciation, and notebook storage, shared by all platforms |
 | [`src`](src) | Desktop application (Electron main process and renderer) |
-| [`native-addon`](native-addon) | Selection capture: UI Automation on Windows, Accessibility on macOS |
+| [`native-addon`](native-addon) | Selection capture: UI Automation on Windows, Accessibility on macOS, primary selection and AT-SPI on Linux |
 | [`apps/mobile`](apps/mobile) | Phone user interface, and the native Android and iOS projects that host it |
 | [`packaging`](packaging) | Installer configuration and icons |
 | [`docs`](docs) | Platform notes, release process, and design documents |
@@ -150,9 +158,10 @@ Every pull request and every push to `main` builds the desktop applications for 
 - [`docs/MOBILE.md`](docs/MOBILE.md): phone apps, architecture, and limitations
 - [`apps/mobile/ANDROID.md`](apps/mobile/ANDROID.md): Android build, speech, versioning, and the LSPosed module
 - [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md): macOS permissions and selection capture
+- [`docs/LINUX_SELECTION.md`](docs/LINUX_SELECTION.md): Linux selection capture, desktops, and limits
 - [`docs/MULTILINGUAL.md`](docs/MULTILINGUAL.md): supported languages and sources
 - [`docs/OCR_CONTEXT_CAPTURE.md`](docs/OCR_CONTEXT_CAPTURE.md): the OCR pipeline
 
 ## License
 
-Phevere is released under the [MIT License](LICENSE). The Android application bundles eSpeak NG, which is licensed under GPL-3.0-or-later; see [`apps/mobile/ANDROID.md`](apps/mobile/ANDROID.md) for the licence terms of the distributed APK.
+Phevere is released under the [MIT License](LICENSE). The Android application and the desktop builds bundle eSpeak NG, which is licensed under GPL-3.0-or-later; see [`apps/mobile/ANDROID.md`](apps/mobile/ANDROID.md) for the licence terms of the distributed APK.

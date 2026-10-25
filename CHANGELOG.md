@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Linux desktop (2026-10-25): deb, rpm and AppImage for x64 and arm64, attached to the 2.2.0 release. Select-to-lookup reads the primary selection (Wayland data-control on KDE Plasma and wlroots, XFixes on X11); GNOME Wayland uses a `phevere --lookup-selection` shortcut. Hover lookup (AT-SPI, then OCR), read-this-window, now playing (MPRIS), hold-to-trigger, and OCR work as on Windows. See `docs/LINUX_SELECTION.md`.
+
 ## [2.2.0] - 2026-10-20
 
 ### Changed

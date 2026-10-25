@@ -1,5 +1,7 @@
 # Packaging & releases
 
+2026-10-25: Linux packages. `npm run make:linux:x64` / `make:linux:arm64` build a deb, an rpm and an AppImage per arch (`scripts/make-linux.js`, one maker at a time to save memory). Releases build them on Ubuntu 22.04 runners. See the Linux section below.
+
 2026-10-14: Windows Setup keeps the illustrated single-page layout and uses native, keyboard-accessible controls. Custom options include the installation folder, OCR, pronunciation models, shortcuts, startup, and opening the app after installation. A selected pronunciation model downloads during setup; Windows ARM64 omits this choice.
 
 ![Screenshot of the illustrated Windows installer with its Install button and Custom options](PACKAGING.assets/installer-main.png)
@@ -167,3 +169,21 @@ npx electron-forge package --platform darwin
 npm run verify:ocr-pack
 ```
 
+
+## Linux: deb, rpm, AppImage
+
+```bash
+sudo apt install build-essential pkg-config libx11-dev libxfixes-dev libatspi2.0-dev \
+  libglib2.0-dev libwayland-dev fakeroot rpm squashfs-tools
+npm run make:linux:arm64   # or make:linux:x64
+# App:      out/phevere-linux-{arch}/
+# deb:      out/make/deb/{arch}/phevere_<version>_{amd64|arm64}.deb
+# rpm:      out/make/rpm/{arch}/phevere-<version>-1.{x86_64|aarch64}.rpm
+# AppImage: out/make/AppImage/{arch}/Phevere-<version>-{arch}.AppImage
+```
+
+- The selection addon is compiled for the target arch in prePackage. An arm64 machine cross-builds x64 with `g++-x86-64-linux-gnu` and a small Ubuntu sysroot fetched by `scripts/linux-cross-sysroot.js` (no apt source changes).
+- deb and rpm install `chrome-sandbox` setuid root. The rpm spec is `packaging/linux/phevere.spec.ejs` (rpm 4.20 no longer runs the install step in the BUILD dir). The desktop entry, with a **Look Up Selection** action, is `packaging/linux/phevere.desktop.ejs`.
+- The AppImage starts through `phevere-appimage`, which adds `--no-sandbox` only where the kernel blocks unprivileged user namespaces (Ubuntu 24.04 AppArmor): an AppImage cannot carry a setuid sandbox.
+- Linux packages ship no sharp; OCR decodes images with `nativeImage`. `verify-ocr-pack` checks the ONNX binding, the selection addon, and that every ELF file matches the arch.
+- deb recommends `wl-clipboard`, `espeak-ng`, `playerctl`, `libnotify4`; none is required.
