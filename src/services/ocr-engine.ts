@@ -22,6 +22,7 @@ import {
   saveOcrSettings,
 } from './ocr-settings-store';
 import { finalizeOcrLines, glueSpacedLetters } from './ocr-text';
+import { createElectronImageRaw } from './ocr-image-electron';
 
 export { glueSpacedLetters } from './ocr-text';
 
@@ -228,15 +229,49 @@ function patchGutenyeUnclip(): void {
   }
 }
 
+const importEsm = new Function('u', 'return import(u)') as (u: string) => Promise<any>;
+
+/**
+ * Linux: assemble the GutenYe backend ourselves so sharp never loads. Its
+ * bundled GLib collides with the system GLib inside Electron; images go
+ * through nativeImage instead (ocr-image-electron.ts).
+ */
+async function loadGutenOcrLinux(): Promise<{ create: (opts: unknown) => Promise<any> }> {
+  const file = (...parts: string[]) => {
+    const abs = resolveNodeModuleFile(...parts);
+    if (!abs) throw new Error(`Cannot find ${parts.join('/')} under node_modules`);
+    return pathToFileURL(abs).href;
+  };
+  const common = await importEsm(file('@gutenye', 'ocr-common', 'build', 'index.js'));
+  const split = await importEsm(file('@gutenye', 'ocr-common', 'build', 'backend', 'splitIntoLineImages.js'));
+  const models = await importEsm(file('@gutenye', 'ocr-models', 'node.js'));
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { InferenceSession } = require('onnxruntime-node');
+  class FileUtils extends common.FileUtilsBase {
+    static async read(p: string): Promise<string> {
+      return fs.promises.readFile(p, 'utf8');
+    }
+  }
+  common.registerBackend({
+    FileUtils,
+    ImageRaw: createElectronImageRaw(common.ImageRawBase),
+    InferenceSession,
+    splitIntoLineImages: split.splitIntoLineImages,
+    defaultModels: models.default,
+  });
+  return common.default;
+}
+
 async function loadGutenOcr(): Promise<{ create: (opts: unknown) => Promise<any> }> {
   assertOnnxNativeBinding();
   patchGutenyeUnclip();
+  if (process.platform === 'linux') return loadGutenOcrLinux();
   const entry = resolveNodeModuleFile('@gutenye', 'ocr-node', 'build', 'index.js');
   if (!entry) {
     throw new Error('Cannot find @gutenye/ocr-node/build/index.js under node_modules');
   }
   const href = pathToFileURL(entry).href;
-  const mod = await (new Function('u', 'return import(u)') as (u: string) => Promise<any>)(href);
+  const mod = await importEsm(href);
   return mod.default || mod;
 }
 
