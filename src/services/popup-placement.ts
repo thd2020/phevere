@@ -20,7 +20,25 @@ export function eventCoordSpace(
   return 'dip';
 }
 
+/**
+ * Linux X11 / Xwayland: Electron has no screenToDipPoint. X root pixels are DIP
+ * times the display's scale factor (Chromium applies one scale per X screen).
+ */
+function linuxScaleAt(x: number, y: number, space: ScreenCoordSpace): number {
+  for (const d of screen.getAllDisplays()) {
+    const s = d.scaleFactor || 1;
+    const k = space === 'physical' ? s : 1;
+    const b = d.bounds;
+    if (x >= b.x * k && x < (b.x + b.width) * k && y >= b.y * k && y < (b.y + b.height) * k) return s;
+  }
+  return screen.getPrimaryDisplay().scaleFactor || 1;
+}
+
 export function physicalToDip(x: number, y: number): { x: number; y: number } {
+  if (process.platform === 'linux') {
+    const s = linuxScaleAt(x, y, 'physical');
+    return { x: Math.round(x / s), y: Math.round(y / s) };
+  }
   try {
     return screen.screenToDipPoint({ x: Math.round(x), y: Math.round(y) });
   } catch {
@@ -29,6 +47,10 @@ export function physicalToDip(x: number, y: number): { x: number; y: number } {
 }
 
 export function dipToPhysical(x: number, y: number): { x: number; y: number } {
+  if (process.platform === 'linux') {
+    const s = linuxScaleAt(x, y, 'dip');
+    return { x: Math.round(x * s), y: Math.round(y * s) };
+  }
   try {
     return screen.dipToScreenPoint({ x: Math.round(x), y: Math.round(y) });
   } catch {

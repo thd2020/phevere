@@ -131,6 +131,7 @@ if (app.isPackaged && !gotSingleInstanceLock) {
 
 // Check administrator privileges for UIAutomation
 function checkAdminPrivileges(): boolean {
+  if (process.platform !== 'win32') return true;
   try {
     const { execSync } = require('child_process');
     execSync('net session', { stdio: 'ignore' });
@@ -235,7 +236,7 @@ function setLastSelectionEvent(event: ContextEvent): void {
   lastSelectedText = event.text || '';
 }
 
-/** Windows tray balloon; macOS Notification (displayBalloon is Win32-only). */
+/** Windows tray balloon; macOS / Linux Notification (displayBalloon is Win32-only). */
 function notifyUser(content: string, kind: NotificationKind, title = 'Phevere'): void {
   const prefs = loadNotificationPrefs();
   if (!prefs[kind]) return;
@@ -255,9 +256,9 @@ function notifyUser(content: string, kind: NotificationKind, title = 'Phevere'):
 }
 
 function clipboardOcrHint(): string {
-  return process.platform === 'darwin'
-    ? 'No image on the clipboard. Press ⌘⌃⇧4 to capture one.'
-    : 'No image on the clipboard. Press Win+Shift+S to capture one.';
+  if (process.platform === 'darwin') return 'No image on the clipboard. Press ⌘⌃⇧4 to capture one.';
+  if (process.platform === 'linux') return 'No image on the clipboard. Copy a region with Print Screen first.';
+  return 'No image on the clipboard. Press Win+Shift+S to capture one.';
 }
 
 function clipboardOcrReadyHint(): string {
@@ -380,6 +381,21 @@ function onTriggerShortcutAfterSelection(): void {
     log.debug('main', 'Trigger shortcut: selection too old', { ageMs: age });
     return;
   }
+  createPopupWindow(ev.x, ev.y, eventCoordSpace(ev), true);
+}
+
+/** Linux desktop shortcut → `phevere --lookup-selection`: look up PRIMARY now, whatever the mode. */
+const LOOKUP_SELECTION_FLAG = '--lookup-selection';
+
+async function lookupSelectionFromCli(): Promise<void> {
+  if (typeof nativeSelectionService.readCurrentSelection !== 'function') return;
+  wireContextCaptureHubOnce();
+  const ev = await nativeSelectionService.readCurrentSelection();
+  if (!ev) {
+    log.info('main', 'lookup-selection: nothing selected');
+    return;
+  }
+  setLastSelectionEvent(ev);
   createPopupWindow(ev.x, ev.y, eventCoordSpace(ev), true);
 }
 
@@ -582,6 +598,15 @@ function resolveAppIconPath(): string | null {
     path.join(process.cwd(), 'packaging', 'icon.png'),
     path.join(process.cwd(), 'resources', 'tray-icon.png'),
   ];
+  // Linux: nativeImage cannot decode .ico; ship and prefer the PNG.
+  const linuxPackaged = [
+    path.join(process.resourcesPath, 'icon.png'),
+    path.join(process.resourcesPath, 'tray-icon.png'),
+  ];
+  const linuxDev = [
+    path.join(process.cwd(), 'packaging', 'icon.png'),
+    path.join(process.cwd(), 'resources', 'tray-icon.png'),
+  ];
   const otherPackaged = [
     path.join(process.resourcesPath, 'icon.ico'),
     path.join(process.resourcesPath, 'tray-icon.png'),
@@ -595,10 +620,14 @@ function resolveAppIconPath(): string | null {
   const candidates = app.isPackaged
     ? process.platform === 'darwin'
       ? darwinPackaged
-      : otherPackaged
+      : process.platform === 'linux'
+        ? linuxPackaged
+        : otherPackaged
     : process.platform === 'darwin'
       ? darwinDev
-      : otherDev;
+      : process.platform === 'linux'
+        ? linuxDev
+        : otherDev;
   for (const p of candidates) {
     try {
       if (p && fs.existsSync(p)) return p;
@@ -1951,9 +1980,32 @@ ipcMain.handle('ocr-image-data', async (_event, dataUrl: string) => {
   return { success: true };
 });
 
+/** Plasma Wayland: KWin reports the pointer; Electron's freezes over Wayland windows. */
+function linuxHoverCursor(): { point: () => { x: number; y: number }; start: () => void; stop: () => void } | undefined {
+  if (process.platform !== 'linux' || !process.env.WAYLAND_DISPLAY) return undefined;
+  let addon: any;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    addon = require('../native-addon');
+  } catch {
+    return undefined;
+  }
+  if (typeof addon.watchCursor !== 'function') return undefined;
+  return {
+    start: () => {
+      addon.watchCursor(true);
+    },
+    stop: () => {
+      addon.watchCursor(false);
+    },
+    point: () => addon.getWatchedCursor() || screen.getCursorScreenPoint(),
+  };
+}
+
 function ensureHoverLookup(): HoverLookupService {
   if (!hoverLookup) {
     hoverLookup = new HoverLookupService({
+      cursor: linuxHoverCursor(),
       getWordAtPoint: (x, y) => {
         if (typeof nativeSelectionService.getWordAtPoint === 'function') {
           return nativeSelectionService.getWordAtPoint(x, y);
@@ -2999,10 +3051,17 @@ app.on('ready', () => {
     })
     .catch((err) => log.warn('main', 'OCR warm-up skipped', { err: String(err) }));
   log.info('main', 'Initialization complete');
+  if (process.argv.includes(LOOKUP_SELECTION_FLAG)) {
+    setTimeout(() => void lookupSelectionFromCli(), 600);
+  }
   void provisionInstallerAudio().catch((err) => log.warn('installer', 'audio provisioning failed', { err: String(err) }));
 });
 
-app.on('second-instance', () => {
+app.on('second-instance', (_event, argv) => {
+  if (argv.includes(LOOKUP_SELECTION_FLAG)) {
+    void lookupSelectionFromCli();
+    return;
+  }
   log.info('main', 'Second instance attempted — focusing existing window');
   showOrRestoreMainWindow();
   try {

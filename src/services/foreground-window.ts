@@ -2,6 +2,7 @@
  * Foreground window bounds. Used for “read this window” OCR.
  * Windows: GetForegroundWindow + GetWindowRect (koffi).
  * macOS: System Events window position/size (needs Accessibility, same as selection).
+ * Linux: KWin (Plasma Wayland) or EWMH _NET_ACTIVE_WINDOW via the selection addon.
  */
 
 import { spawnSync } from 'child_process';
@@ -9,6 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { app, screen } from 'electron';
 import { ContextBounds } from './context-capture';
+import { physicalToDip } from './popup-placement';
 import { wrapConsole } from '../logger';
 
 const console = wrapConsole('foreground-window');
@@ -111,10 +113,33 @@ function getForegroundWindowBoundsDarwin(): ContextBounds | null {
 }
 
 /**
+ * Linux: the selection addon asks KWin on Plasma Wayland (DIP, sees native Wayland
+ * windows) and falls back to EWMH _NET_ACTIVE_WINDOW (X11 pixels).
+ */
+function getForegroundWindowBoundsLinux(): ContextBounds | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const addon = require('../../native-addon');
+    const win = addon.getActiveWindow?.();
+    if (!win || win.pid === process.pid) return null;
+    if (win.space === 'physical') {
+      const tl = physicalToDip(win.x, win.y);
+      const br = physicalToDip(win.x + win.width, win.y + win.height);
+      return boundsIfLarge(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+    }
+    return boundsIfLarge(win.x, win.y, Math.round(win.width), Math.round(win.height));
+  } catch (error) {
+    console.warn('Linux active window lookup failed', error);
+    return null;
+  }
+}
+
+/**
  * DIP bounds of the foreground top-level window, or null if unavailable / tiny.
  */
 export function getForegroundWindowBoundsDip(): ContextBounds | null {
   if (process.platform === 'win32') return getForegroundWindowBoundsWin32();
   if (process.platform === 'darwin') return getForegroundWindowBoundsDarwin();
+  if (process.platform === 'linux') return getForegroundWindowBoundsLinux();
   return null;
 }

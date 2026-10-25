@@ -6,7 +6,9 @@
  *
  * - Windows: GetAsyncKeyState via koffi
  * - macOS: CGEventSourceKeyState via koffi
- * - Other platforms: returns true (shortcut mode behaves like "on")
+ * - Linux: XQueryKeymap / XQueryPointer (libX11) via koffi. Under Wayland this is
+ *   Xwayland's view: modifiers follow KWin's "Legacy X11 app support" setting.
+ * - Other platforms: returns false
  *
  * If koffi cannot load (e.g. native binary not unpacked from ASAR), returns **false**
  * so we never treat "keys held" — avoids double popups with the global trigger shortcut.
@@ -75,6 +77,160 @@ function loadDarwin(): ((stateId: number, keyCode: number) => number) | null {
   } catch {
     cgEventSourceKeyState = null;
     return null;
+  }
+}
+
+interface X11Api {
+  dpy: unknown;
+  root: number | bigint;
+  queryKeymap: (dpy: unknown, keys: Buffer) => number;
+  keysymToKeycode: (dpy: unknown, keysym: number) => number;
+  queryPointer: (
+    dpy: unknown,
+    win: number | bigint,
+    root: Buffer,
+    child: Buffer,
+    rx: Buffer,
+    ry: Buffer,
+    wx: Buffer,
+    wy: Buffer,
+    mask: Buffer,
+  ) => number;
+}
+
+let x11Api: X11Api | null | undefined;
+
+function loadX11(): X11Api | null {
+  if (process.platform !== 'linux') return null;
+  if (x11Api !== undefined) return x11Api;
+  x11Api = null;
+  if (!process.env.DISPLAY) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const koffi = require('koffi') as { load: (name: string) => { func: (sig: string) => any } };
+    const lib = koffi.load('libX11.so.6');
+    const openDisplay = lib.func('void *XOpenDisplay(const char *name)');
+    const defaultRoot = lib.func('unsigned long XDefaultRootWindow(void *dpy)');
+    const dpy = openDisplay(null);
+    if (!dpy) return null;
+    x11Api = {
+      dpy,
+      root: defaultRoot(dpy),
+      queryKeymap: lib.func('int XQueryKeymap(void *dpy, _Out_ uint8_t *keys)'),
+      keysymToKeycode: lib.func('uint8_t XKeysymToKeycode(void *dpy, unsigned long keysym)'),
+      queryPointer: lib.func(
+        'int XQueryPointer(void *dpy, unsigned long w, _Out_ unsigned long *root, _Out_ unsigned long *child, ' +
+          '_Out_ int *rx, _Out_ int *ry, _Out_ int *wx, _Out_ int *wy, _Out_ unsigned int *mask)',
+      ),
+    };
+  } catch {
+    x11Api = null;
+  }
+  return x11Api;
+}
+
+const XK_Shift_L = 0xffe1;
+const XK_Shift_R = 0xffe2;
+const XK_Control_L = 0xffe3;
+const XK_Control_R = 0xffe4;
+const XK_Alt_L = 0xffe9;
+const XK_Alt_R = 0xffea;
+const XK_Super_L = 0xffeb;
+const XK_Super_R = 0xffec;
+const X_Button1Mask = 1 << 8;
+
+/** Electron accelerator token → X11 keysym (best effort; US layout names). */
+export function keyNameToKeysym(name: string): number | null {
+  const raw = name.trim();
+  if (!raw) return null;
+  const u = raw.toUpperCase();
+  if (u.length === 1 && u >= 'A' && u <= 'Z') return u.toLowerCase().charCodeAt(0);
+  if (u.length === 1 && u >= '0' && u <= '9') return u.charCodeAt(0);
+  const f = /^F(\d{1,2})$/i.exec(u);
+  if (f) {
+    const n = parseInt(f[1], 10);
+    if (n >= 1 && n <= 24) return 0xffbe + n - 1;
+  }
+  const named: Record<string, number> = {
+    SPACE: 0x20,
+    TAB: 0xff09,
+    ENTER: 0xff0d,
+    RETURN: 0xff0d,
+    ESCAPE: 0xff1b,
+    ESC: 0xff1b,
+    BACKSPACE: 0xff08,
+    DELETE: 0xffff,
+    UP: 0xff52,
+    DOWN: 0xff54,
+    LEFT: 0xff51,
+    RIGHT: 0xff53,
+    HOME: 0xff50,
+    END: 0xff57,
+    PAGEUP: 0xff55,
+    PAGEDOWN: 0xff56,
+    PLUS: 0x3d,
+    '=': 0x3d,
+    MINUS: 0x2d,
+    COMMA: 0x2c,
+    PERIOD: 0x2e,
+    SLASH: 0x2f,
+    SEMICOLON: 0x3b,
+    '[': 0x5b,
+    ']': 0x5d,
+    '\\': 0x5c,
+    QUOTE: 0x27,
+    '`': 0x60,
+  };
+  return named[u] !== undefined ? named[u] : null;
+}
+
+function x11Keymap(api: X11Api): Buffer | null {
+  const keys = Buffer.alloc(32);
+  try {
+    api.queryKeymap(api.dpy, keys);
+    return keys;
+  } catch {
+    return null;
+  }
+}
+
+function isKeysymDown(api: X11Api, keys: Buffer, keysym: number): boolean {
+  const code = api.keysymToKeycode(api.dpy, keysym);
+  if (!code) return false;
+  return (keys[code >> 3] & (1 << (code & 7))) !== 0;
+}
+
+function isHeldLinux(accelerator: string): boolean {
+  const api = loadX11();
+  if (!api) {
+    warnKoffiOnce('XQueryKeymap');
+    return false;
+  }
+  const parsed = parseElectronAccelerator(accelerator);
+  if (!parsed) return false;
+  const keysym = keyNameToKeysym(parsed.keyToken);
+  if (keysym == null) return false;
+  const keys = x11Keymap(api);
+  if (!keys) return false;
+  const down = (a: number, b: number) => isKeysymDown(api, keys, a) || isKeysymDown(api, keys, b);
+  const { ctrl, shift, alt, meta } = parsed;
+  if (ctrl && !down(XK_Control_L, XK_Control_R)) return false;
+  if (shift && !down(XK_Shift_L, XK_Shift_R)) return false;
+  if (alt && !down(XK_Alt_L, XK_Alt_R)) return false;
+  if (meta && !down(XK_Super_L, XK_Super_R)) return false;
+  return isKeysymDown(api, keys, keysym);
+}
+
+function isPrimaryMouseDownLinux(): boolean {
+  const api = loadX11();
+  if (!api) return false;
+  const u32 = () => Buffer.alloc(8);
+  const mask = Buffer.alloc(4);
+  try {
+    api.queryPointer(api.dpy, api.root, u32(), u32(), u32(), u32(), u32(), u32(), mask);
+    return (mask.readUInt32LE(0) & X_Button1Mask) !== 0;
+  } catch {
+    return false;
   }
 }
 
@@ -404,7 +560,10 @@ export function isAcceleratorPhysicallyHeld(accelerator: string): boolean {
   if (process.platform === 'darwin') {
     return isHeldDarwin(accelerator);
   }
-  return true;
+  if (process.platform === 'linux') {
+    return isHeldLinux(accelerator);
+  }
+  return false;
 }
 
 const VK_LBUTTON = 0x01;
@@ -425,6 +584,9 @@ export function isPrimaryMouseDown(): boolean {
     } catch {
       return false;
     }
+  }
+  if (process.platform === 'linux') {
+    return isPrimaryMouseDownLinux();
   }
   return false;
 }

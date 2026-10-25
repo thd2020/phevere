@@ -7,6 +7,10 @@ export function isMac(): boolean {
   return /Mac|iPhone|iPad|iPod/i.test(navigator.platform) || navigator.userAgent.includes('Mac');
 }
 
+export function isLinux(): boolean {
+  return /Linux/i.test(navigator.platform) && !/Android/i.test(navigator.userAgent);
+}
+
 /** Map non-printable / special keys to Electron accelerator names. */
 function keyToAcceleratorToken(ev: KeyboardEvent): string | null {
   const k = ev.key;

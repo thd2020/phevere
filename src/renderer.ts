@@ -28,7 +28,7 @@
 
 import './fonts';
 import './index.css';
-import { captureNextShortcut, isMac } from './shortcut-capture';
+import { captureNextShortcut, isLinux, isMac } from './shortcut-capture';
 import { formatVocabLangPair } from '@phevere/core';
 
 // Inside your main window initialization or setup block:
@@ -674,7 +674,7 @@ function acceleratorParts(acc: string): string[] {
       if (/^(Command|Cmd)$/i.test(p)) return '⌘';
       if (/^Shift$/i.test(p)) return mac ? '⇧' : 'Shift';
       if (/^(Alt|Option)$/i.test(p)) return mac ? '⌥' : 'Alt';
-      if (/^(Super|Meta|Windows|Win)$/i.test(p)) return mac ? '⌘' : 'Win';
+      if (/^(Super|Meta|Windows|Win)$/i.test(p)) return mac ? '⌘' : isLinux() ? 'Super' : 'Win';
       if (/^Plus$/i.test(p)) return '+';
       return p.length === 1 ? p.toUpperCase() : p;
     });

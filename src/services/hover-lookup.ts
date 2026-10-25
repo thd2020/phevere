@@ -29,7 +29,12 @@ export interface HoverLookupOptions {
   /** Skip while any of these windows are focused. */
   isBlocked?: () => boolean;
   /** UIA word-at-point; returns empty when unavailable. */
-  getWordAtPoint?: (x: number, y: number) => WordAtPoint;
+  getWordAtPoint?: (x: number, y: number) => WordAtPoint | Promise<WordAtPoint>;
+  /**
+   * Pointer in DIP. Default: Electron's. Plasma Wayland passes KWin's, because
+   * Xwayland's copy freezes while the pointer is over a native Wayland window.
+   */
+  cursor?: { point: () => { x: number; y: number }; start?: () => void; stop?: () => void };
 }
 
 const DEFAULTS = {
@@ -52,8 +57,8 @@ export class HoverLookupService {
   private lastEmitText = '';
   private lastEmitAt = 0;
   private probing = false;
-  private readonly opts: Required<Omit<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'skipOcr'>> &
-    Pick<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'skipOcr'>;
+  private readonly opts: Required<Omit<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'skipOcr' | 'cursor'>> &
+    Pick<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'skipOcr' | 'cursor'>;
 
   constructor(options: HoverLookupOptions = {}) {
     this.opts = { ...DEFAULTS, ...options };
@@ -62,7 +67,8 @@ export class HoverLookupService {
   start(): void {
     if (this.running) return;
     this.running = true;
-    const pos = screen.getCursorScreenPoint();
+    this.opts.cursor?.start?.();
+    const pos = this.cursorPoint();
     this.anchor = { x: pos.x, y: pos.y };
     this.dwellStartedAt = Date.now();
     this.dwellConsumed = false;
@@ -73,6 +79,7 @@ export class HoverLookupService {
   stop(): void {
     if (!this.running) return;
     this.running = false;
+    this.opts.cursor?.stop?.();
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
@@ -84,6 +91,10 @@ export class HoverLookupService {
     return this.running;
   }
 
+  private cursorPoint(): { x: number; y: number } {
+    return this.opts.cursor ? this.opts.cursor.point() : screen.getCursorScreenPoint();
+  }
+
   private resetDwell(x: number, y: number): void {
     this.anchor = { x, y };
     this.dwellStartedAt = Date.now();
@@ -93,7 +104,7 @@ export class HoverLookupService {
   private async tick(): Promise<void> {
     if (!this.running || this.probing) return;
 
-    const pos = screen.getCursorScreenPoint();
+    const pos = this.cursorPoint();
 
     if (this.opts.isBlocked && this.opts.isBlocked()) {
       this.resetDwell(pos.x, pos.y);
@@ -134,7 +145,7 @@ export class HoverLookupService {
         // physical and on HiDPI they pin the strip to a workArea corner.
         const nativePt =
           process.platform === 'win32' ? cursorToNative(x, y) : { x, y };
-        const hit = this.opts.getWordAtPoint(nativePt.x, nativePt.y);
+        const hit = await this.opts.getWordAtPoint(nativePt.x, nativePt.y);
         if (hit && hit.text && !wordBoxHolds(hit, nativePt)) {
           console.log('UIA word is beside the cursor; reading pixels instead', hit.text);
         } else if (hit && hit.text && isLookupWorthy(hit.text)) {
