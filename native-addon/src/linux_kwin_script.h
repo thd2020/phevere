@@ -7,6 +7,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace phevere {
 
@@ -19,6 +20,14 @@ bool kwinCursorPos(int timeoutMs, int* x, int* y);
 bool kwinWatchCursor(bool on);
 // Latest pointer from the watch; false when not watching yet.
 bool kwinWatchedCursor(int* x, int* y);
+struct KwinImage {
+  int width = 0, height = 0, stride = 0;
+  std::vector<char> data;  // BGRA rows, `stride` bytes each
+};
+// KWin ScreenShot2 of a logical-pixel area, at physical resolution. Needs the
+// desktop entry key X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
+// with Exec at the canonical executable path; false (NoAuthorized) otherwise.
+bool kwinCaptureArea(int x, int y, int w, int h, KwinImage* out);
 // Active window frame (x, y, width, height) and its pid. False when none.
 bool kwinActiveWindow(int timeoutMs, int* x, int* y, int* w, int* h, int* pid);
 

@@ -30,6 +30,7 @@ Add a custom shortcut in **Settings → Keyboard → View and Customise Shortcut
 - **Hold-to-trigger shortcut mode:** `XQueryKeymap` via koffi (`accelerator-key-state.ts`). On Plasma Wayland this sees modifiers when *Legacy X11 app support* allows it.
 - **Read this window:** KWin's active window on Plasma Wayland, else EWMH `_NET_ACTIVE_WINDOW`.
 - **Now playing:** MPRIS2 through `playerctl` when installed, else `busctl`.
+- **Screen capture (OCR):** on Plasma Wayland the deb / rpm capture silently through KWin ScreenShot2; their desktop entry carries `X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2` with `Exec` at `/usr/lib/phevere/phevere`, which is what KWin checks. Elsewhere on Wayland (AppImage, GNOME, dev runs) capture goes through the screencast portal, which asks for a screen each time, so hover lookup skips OCR there. X11 captures directly.
 - **OCR:** images decode through Electron's `nativeImage`. sharp is not shipped on Linux: its bundled GLib collides with the system GLib inside Electron and aborts.
 
 ## Debug switches
@@ -39,7 +40,7 @@ Add a custom shortcut in **Settings → Keyboard → View and Customise Shortcut
 | `PHEVERE_DEBUG_LINUX_SEL=1` | Log selection events from the addon |
 | `PHEVERE_LINUX_SELECTION=x11` or `wayland` | Force one source |
 | `PHEVERE_DISABLE_ATSPI=1` | No AT-SPI hover word (OCR only) |
-| `PHEVERE_DISABLE_KWIN_SCRIPT=1` | No KWin pointer / active-window queries |
+| `PHEVERE_DISABLE_KWIN_SCRIPT=1` | No KWin pointer, active-window or screenshot calls |
 
 ## Build
 

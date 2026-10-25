@@ -30,6 +30,49 @@ function hashPng(png: Buffer): string {
 }
 
 /**
+ * Linux Wayland: KWin ScreenShot2 captures without a dialog when the installed
+ * desktop entry grants it (deb / rpm). Elsewhere desktopCapturer goes through the
+ * screencast portal, which asks the user to pick a screen on every capture.
+ */
+function captureViaKwin(bounds: ContextBounds): CaptureResult | null {
+  if (process.platform !== 'linux' || !process.env.WAYLAND_DISPLAY) return null;
+  let shot: { width: number; height: number; data: Buffer } | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    shot = require('../../native-addon').captureArea?.(bounds.x, bounds.y, bounds.width, bounds.height) || null;
+  } catch {
+    shot = null;
+  }
+  if (!shot || shot.width < 4 || shot.height < 4) return null;
+  const image = nativeImage.createFromBitmap(shot.data, { width: shot.width, height: shot.height });
+  const png = image.toPNG();
+  const display = screen.getDisplayNearestPoint({ x: Math.round(bounds.x), y: Math.round(bounds.y) });
+  return {
+    image,
+    png,
+    bounds: { ...bounds },
+    displayId: display.id,
+    imageHash: hashPng(png),
+    scaleFactor: shot.width / bounds.width,
+  };
+}
+
+let silentCaptureProbe: boolean | null = null;
+
+/**
+ * False only on a Wayland session where every capture would open the portal
+ * picker. Hover OCR fires on its own, so it must not run there.
+ */
+export function canCaptureWithoutPrompt(): boolean {
+  if (process.platform !== 'linux' || !process.env.WAYLAND_DISPLAY) return true;
+  if (silentCaptureProbe === null) {
+    silentCaptureProbe = captureViaKwin({ x: 0, y: 0, width: 8, height: 8 }) !== null;
+    console.log('Silent screen capture on Wayland', silentCaptureProbe ? 'via KWin' : 'unavailable (portal only)');
+  }
+  return silentCaptureProbe;
+}
+
+/**
  * Capture a rectangle in **DIP** screen coordinates (Electron's usual space).
  * Internally converts to physical pixels using the display's scaleFactor.
  */
@@ -38,6 +81,9 @@ export async function captureScreenRegion(bounds: ContextBounds): Promise<Captur
     console.warn('Region too small', bounds);
     return null;
   }
+
+  const viaKwin = captureViaKwin(bounds);
+  if (viaKwin) return viaKwin;
 
   if (!(await ensureMacScreenRecordingForCapture())) {
     return null;
@@ -51,10 +97,17 @@ export async function captureScreenRegion(bounds: ContextBounds): Promise<Captur
   const thumbW = Math.max(1, Math.round(dw * scale));
   const thumbH = Math.max(1, Math.round(dh * scale));
 
-  const sources = await desktopCapturer.getSources({
-    types: ['screen'],
-    thumbnailSize: { width: thumbW, height: thumbH },
-  });
+  let sources: Electron.DesktopCapturerSource[];
+  try {
+    sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: thumbW, height: thumbH },
+    });
+  } catch (error) {
+    // Wayland portal dismissed or timed out.
+    console.warn('desktopCapturer.getSources failed', String(error));
+    return null;
+  }
 
   // Match by display id when possible; fall back to primary / first.
   const displayIdStr = String(display.id);

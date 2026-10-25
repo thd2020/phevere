@@ -693,6 +693,7 @@ class LinuxSelectionMonitorWrapper : public Napi::ObjectWrap<LinuxSelectionMonit
         InstanceMethod("getCursorPos", &LinuxSelectionMonitorWrapper::GetCursorPos),
         InstanceMethod("getActiveWindow", &LinuxSelectionMonitorWrapper::GetActiveWindow),
         InstanceMethod("getModulePath", &LinuxSelectionMonitorWrapper::GetModulePath),
+        InstanceMethod("captureArea", &LinuxSelectionMonitorWrapper::CaptureArea),
         InstanceMethod("watchCursor", &LinuxSelectionMonitorWrapper::WatchCursor),
         InstanceMethod("getWatchedCursor", &LinuxSelectionMonitorWrapper::GetWatchedCursor),
     });
@@ -803,6 +804,29 @@ class LinuxSelectionMonitorWrapper : public Napi::ObjectWrap<LinuxSelectionMonit
     Napi::Object out = Napi::Object::New(info.Env());
     out.Set("x", Napi::Number::New(info.Env(), x));
     out.Set("y", Napi::Number::New(info.Env(), y));
+    return out;
+  }
+
+  // KWin screenshot of a DIP rect → { width, height, data: BGRA Buffer } or null.
+  Napi::Value CaptureArea(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 4 || !phevere::kwinScriptAvailable()) return env.Null();
+    phevere::KwinImage img;
+    if (!phevere::kwinCaptureArea(info[0].As<Napi::Number>().Int32Value(), info[1].As<Napi::Number>().Int32Value(),
+                                  info[2].As<Napi::Number>().Int32Value(), info[3].As<Napi::Number>().Int32Value(),
+                                  &img)) {
+      return env.Null();
+    }
+    // Repack to tight rows: nativeImage.createFromBitmap assumes stride = width * 4.
+    const size_t row = static_cast<size_t>(img.width) * 4;
+    Napi::Buffer<char> buf = Napi::Buffer<char>::New(env, row * img.height);
+    for (int y = 0; y < img.height; ++y) {
+      std::memcpy(buf.Data() + row * y, img.data.data() + static_cast<size_t>(img.stride) * y, row);
+    }
+    Napi::Object out = Napi::Object::New(env);
+    out.Set("width", Napi::Number::New(env, img.width));
+    out.Set("height", Napi::Number::New(env, img.height));
+    out.Set("data", buf);
     return out;
   }
 

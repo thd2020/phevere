@@ -2,7 +2,7 @@
 Name=<%= productName %>
 Comment=<%= description %>
 GenericName=<%= genericName %>
-Exec=<%= name %> %U
+Exec=/usr/lib/<%= name %>/<%= name %> %U
 Icon=<%= name %>
 Type=Application
 StartupNotify=true
@@ -10,7 +10,9 @@ StartupWMClass=phevere
 Categories=<%= categories.join(';') %>;
 Keywords=dictionary;lookup;translate;vocabulary;OCR;pronunciation;
 Actions=lookup-selection;
+# KWin grants silent screenshots (OCR) only to an entry whose Exec is the real binary path.
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
 
 [Desktop Action lookup-selection]
 Name=Look Up Selection
-Exec=<%= name %> --lookup-selection
+Exec=/usr/lib/<%= name %>/<%= name %> --lookup-selection

@@ -20,7 +20,7 @@ import {
   openMacScreenRecordingSettings,
 } from './services/mac-screen-recording';
 import { contextCaptureHub, ContextEvent, selectionToContext } from './services/context-capture';
-import { captureScreenRegion, captureAroundPoint } from './services/screen-capture';
+import { captureScreenRegion, captureAroundPoint, canCaptureWithoutPrompt } from './services/screen-capture';
 import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile } from './services/ocr-engine';
 import { isLookupWorthy } from './services/text-normalize';
 import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
@@ -2016,6 +2016,8 @@ function ensureHoverLookup(): HoverLookupService {
         isPrimaryMouseDown() ||
         phevereWindowFocused(mainWindow, popupWindows, settingsWindow, ocrOverlayWindow, externalWindows),
       skipOcr: () => {
+        // Wayland without KWin capture: each OCR would open the screencast picker.
+        if (!canCaptureWithoutPrompt()) return true;
         const ev = lastSelectionEvent;
         if (!ev || !(ev.text || '').trim()) return false;
         if (ev.origin !== 'selection' && ev.origin !== 'manual') return false;

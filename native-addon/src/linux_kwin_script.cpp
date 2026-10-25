@@ -1,6 +1,9 @@
 #include "linux_kwin_script.h"
 
 #include <gio/gio.h>
+#include <gio/gunixfdlist.h>
+#include <fcntl.h>
+#include <poll.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -253,6 +256,60 @@ bool kwinActiveWindow(int timeoutMs, int* x, int* y, int* w, int* h, int* pid) {
   *w = static_cast<int>(v[2]);
   *h = static_cast<int>(v[3]);
   *pid = static_cast<int>(v[4]);
+  return true;
+}
+
+bool kwinCaptureArea(int x, int y, int w, int h, KwinImage* out) {
+  if (!ready() || w <= 0 || h <= 0) return false;
+  int fds[2];
+  if (pipe2(fds, O_CLOEXEC) != 0) return false;
+  GUnixFDList* fdList = g_unix_fd_list_new();
+  const gint idx = g_unix_fd_list_append(fdList, fds[1], nullptr);
+  ::close(fds[1]);
+  GVariantBuilder opts;
+  g_variant_builder_init(&opts, G_VARIANT_TYPE("a{sv}"));
+  // Physical pixels: OCR reads small glyphs better than the logical-size image.
+  g_variant_builder_add(&opts, "{sv}", "native-resolution", g_variant_new_boolean(TRUE));
+  GError* err = nullptr;
+  GVariant* reply = g_dbus_connection_call_with_unix_fd_list_sync(
+      g_conn, "org.kde.KWin", "/org/kde/KWin/ScreenShot2", "org.kde.KWin.ScreenShot2", "CaptureArea",
+      g_variant_new("(iiuua{sv}h)", x, y, static_cast<guint>(w), static_cast<guint>(h), &opts, idx),
+      G_VARIANT_TYPE("(a{sv})"), G_DBUS_CALL_FLAGS_NONE, 3000, fdList, nullptr, nullptr, &err);
+  g_object_unref(fdList);
+  if (!reply) {
+    if (err) g_error_free(err);  // NoAuthorized unless the desktop entry grants ScreenShot2
+    ::close(fds[0]);
+    return false;
+  }
+  GVariant* meta = g_variant_get_child_value(reply, 0);
+  guint32 width = 0, height = 0, stride = 0, format = 0;
+  const gchar* type = nullptr;
+  g_variant_lookup(meta, "width", "u", &width);
+  g_variant_lookup(meta, "height", "u", &height);
+  g_variant_lookup(meta, "stride", "u", &stride);
+  g_variant_lookup(meta, "format", "u", &format);
+  g_variant_lookup(meta, "type", "&s", &type);
+  const bool raw = type && std::strcmp(type, "raw") == 0;
+  g_variant_unref(meta);
+  g_variant_unref(reply);
+
+  const size_t want = static_cast<size_t>(stride) * height;
+  out->data.clear();
+  out->data.reserve(want);
+  char buf[65536];
+  while (out->data.size() < want) {
+    struct pollfd pfd = {fds[0], POLLIN, 0};
+    if (poll(&pfd, 1, 2000) <= 0) break;
+    const ssize_t n = ::read(fds[0], buf, sizeof buf);
+    if (n <= 0) break;
+    out->data.insert(out->data.end(), buf, buf + n);
+  }
+  ::close(fds[0]);
+  // 4/5/6 = QImage RGB32 / ARGB32 / ARGB32_Premultiplied: BGRA bytes on little-endian.
+  if (!raw || (format != 4 && format != 5 && format != 6) || out->data.size() < want) return false;
+  out->width = static_cast<int>(width);
+  out->height = static_cast<int>(height);
+  out->stride = static_cast<int>(stride);
   return true;
 }
 

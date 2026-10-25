@@ -286,6 +286,21 @@ NativeSelectionMonitor.getActiveWindow = function getActiveWindow() {
   }
 };
 
+/**
+ * Linux (Plasma Wayland): silent screenshot of a DIP rect through KWin ScreenShot2,
+ * as { width, height, data: BGRA Buffer } at physical resolution, or null when KWin
+ * has not authorized this executable (dev runs, AppImage).
+ */
+NativeSelectionMonitor.captureArea = function captureArea(x, y, width, height) {
+  if (process.platform !== 'linux') return null;
+  try {
+    if (!desktopProbe) desktopProbe = new MonitorClass();
+    return desktopProbe.captureArea(Math.round(x), Math.round(y), Math.round(width), Math.round(height));
+  } catch {
+    return null;
+  }
+};
+
 /** Linux (Plasma Wayland): keep KWin reporting the pointer while hover lookup runs. */
 NativeSelectionMonitor.watchCursor = function watchCursor(on) {
   if (process.platform !== 'linux') return false;
