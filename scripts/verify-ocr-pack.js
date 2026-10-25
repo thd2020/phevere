@@ -12,7 +12,7 @@
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { ROOT, OCR_MODEL_FILES, argvFlag, onnxBindingRel } = require('./ocr-pack-layout');
+const { ROOT, OCR_MODEL_FILES, argvFlag, onnxBindingRel, usesSharp } = require('./ocr-pack-layout');
 
 function fail(msg) {
   const text = `[verify-ocr-pack] ${msg}`;
@@ -43,6 +43,15 @@ function assertDarwinMachO(filePath, arch) {
   const r = spawnSync('file', ['-b', filePath], { encoding: 'utf8' });
   const out = `${r.stdout || ''}`.trim();
   if (!out.includes(want)) {
+    fail(`Wrong CPU in ${filePath}: ${out} (want ${want})`);
+  }
+}
+
+function assertLinuxElf(filePath, arch) {
+  const want = arch === 'arm64' ? 'aarch64' : 'x86-64';
+  const r = spawnSync('file', ['-b', filePath], { encoding: 'utf8' });
+  const out = `${r.stdout || ''}`.trim();
+  if (r.status === 0 && out.startsWith('ELF') && !out.includes(want)) {
     fail(`Wrong CPU in ${filePath}: ${out} (want ${want})`);
   }
 }
@@ -110,7 +119,7 @@ function verifyDir(appRoot, platform, arch) {
   const sharpPkg = path.join(unpacked, '@img', `sharp-${platform}-${arch}`, 'package.json');
   const sharpWasm = path.join(unpacked, '@img', 'sharp-wasm32', 'package.json');
   const sharpOk =
-    exists(sharpPkg) || (platform === 'win32' && arch === 'arm64' && exists(sharpWasm));
+    !usesSharp(platform) || exists(sharpPkg) || (platform === 'win32' && arch === 'arm64' && exists(sharpWasm));
   if (!sharpOk) {
     fail(
       `Packaged sharp native missing: ${sharpPkg}` +
@@ -122,6 +131,17 @@ function verifyDir(appRoot, platform, arch) {
     const nodes = walkFiles(unpackedRoot).filter((p) => p.endsWith('.node'));
     if (!nodes.length) fail(`No .node files under ${unpackedRoot} (AX / OCR / koffi)`);
     for (const n of nodes) assertDarwinMachO(n, arch);
+  }
+
+  if (platform === 'linux') {
+    const nodes = walkFiles(unpackedRoot).filter((p) => p.endsWith('.node'));
+    // Webpack's relocator renames the addon to a content hash; look inside instead.
+    if (!nodes.some((n) => fs.readFileSync(n).includes('LinuxSelectionMonitor'))) {
+      fail(`Linux selection addon missing under ${unpackedRoot} (select-to-look-up would be off)`);
+    }
+    for (const n of nodes) assertLinuxElf(n, arch);
+    for (const n of walkFiles(path.join(res, 'speech')).filter((p) => p.endsWith('.node'))) assertLinuxElf(n, arch);
+    assertLinuxElf(path.join(appRoot, 'phevere'), arch);
   }
 
   console.log(`[verify-ocr-pack] ok ${platform}/${arch}  ${appRoot}`);

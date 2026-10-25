@@ -16,6 +16,7 @@ const {
   targetPlatformArch,
   onnxBindingRel,
   sharpSpec,
+  usesSharp,
 } = require('./ocr-pack-layout');
 
 function fail(msg) {
@@ -102,7 +103,7 @@ function ensure(opts) {
   modelsOk();
   gutenyeOk();
   onnxOk(platform, arch);
-  sharpOk(platform, arch);
+  if (usesSharp(platform)) sharpOk(platform, arch);
   console.log('[ensure-ocr-natives] ok');
 }
 

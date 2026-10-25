@@ -18,7 +18,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { ROOT, OCR_SEED_PACKAGES, targetPlatformArch } = require('./ocr-pack-layout');
+const { ROOT, OCR_SEED_PACKAGES, targetPlatformArch, usesSharp } = require('./ocr-pack-layout');
 
 function readJson(p) {
   try {
@@ -105,6 +105,7 @@ function packagerIgnore(file) {
 
   const pkg = topPackage(normalized);
   if (pkg) {
+    if (!usesSharp(platform) && (pkg === 'sharp' || pkg === '@img' || pkg.startsWith('@img/'))) return true;
     if (isScopeOnly(pkg)) return !keepHasScope(pkg);
     if (!getKeep().has(pkg)) return true;
 

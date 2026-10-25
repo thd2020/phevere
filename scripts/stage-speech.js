@@ -53,12 +53,52 @@ function stage(platform = process.platform, arch = process.arch) {
   const plat = platform === 'win32' ? 'win' : platform;
   const native = `sherpa-onnx-${plat}-${arch}`;
   const nativeSrc = path.join(root, 'node_modules', native);
+  fetchCrossNative(native, platform, arch);
   if (fs.existsSync(path.join(nativeSrc, 'sherpa-onnx.node'))) {
     copyDir(path.join(root, 'node_modules', 'sherpa-onnx-node'), path.join(out, 'sherpa-onnx-node'));
     copyDir(nativeSrc, path.join(out, native));
     console.log(`[stage-speech] eSpeak NG + ${native}`);
   } else {
     console.log(`[stage-speech] eSpeak NG only (no ${native}; neural voices hidden on this build)`);
+  }
+}
+
+/**
+ * npm only installs the host's sherpa-onnx-<os>-<cpu>. When packaging another
+ * arch (x64 from an arm64 box), fetch the target's addon so neural voices ship too.
+ */
+function fetchCrossNative(native, platform, arch) {
+  if (fs.existsSync(path.join(root, 'node_modules', native, 'sherpa-onnx.node'))) return;
+  if (platform === process.platform && arch === process.arch) return;
+  let wanted;
+  try {
+    wanted = require(path.join(root, 'node_modules', 'sherpa-onnx-node', 'package.json')).optionalDependencies[native];
+  } catch {
+    wanted = null;
+  }
+  if (!wanted) return;
+  // npm pack + untar, not `npm install --no-save`: a reify would prune the other
+  // cross-arch natives (sharp) that ensure-ocr-natives just fetched.
+  const os = require('os');
+  const { execFileSync } = require('child_process');
+  const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'phevere-sherpa-'));
+  console.log(`[stage-speech] fetch ${native}@${wanted} for ${platform}/${arch}`);
+  try {
+    const tgz = execFileSync('npm', ['pack', `${native}@${wanted}`, '--pack-destination', cache], {
+      cwd: root,
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+    })
+      .trim()
+      .split('\n')
+      .pop();
+    const dest = path.join(root, 'node_modules', native);
+    fs.mkdirSync(dest, { recursive: true });
+    execFileSync('tar', ['-xzf', path.join(cache, tgz), '-C', dest, '--strip-components=1']);
+  } catch (err) {
+    console.warn(`[stage-speech] could not fetch ${native}: ${err.message}`);
+  } finally {
+    fs.rmSync(cache, { recursive: true, force: true });
   }
 }
 

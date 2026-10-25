@@ -1,0 +1,16 @@
+[Desktop Entry]
+Name=<%= productName %>
+Comment=<%= description %>
+GenericName=<%= genericName %>
+Exec=<%= name %> %U
+Icon=<%= name %>
+Type=Application
+StartupNotify=true
+StartupWMClass=phevere
+Categories=<%= categories.join(';') %>;
+Keywords=dictionary;lookup;translate;vocabulary;OCR;pronunciation;
+Actions=lookup-selection;
+
+[Desktop Action lookup-selection]
+Name=Look Up Selection
+Exec=<%= name %> --lookup-selection

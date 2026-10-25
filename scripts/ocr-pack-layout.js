@@ -32,6 +32,14 @@ const SHARP_PLATFORM = {
   'win32/arm64': { pkg: '@img/sharp-wasm32', ver: '0.33.5', wasm: true },
 };
 
+/**
+ * Linux OCR decodes images with Electron's nativeImage (src/services/ocr-image-electron.ts):
+ * sharp's bundled GLib aborts inside Electron there. Linux packages ship no sharp.
+ */
+function usesSharp(platform) {
+  return platform !== 'linux';
+}
+
 function argvFlag(name) {
   const eq = process.argv.find((a) => a.startsWith(`${name}=`));
   if (eq) return eq.slice(name.length + 1);
@@ -64,4 +72,5 @@ module.exports = {
   targetPlatformArch,
   onnxBindingRel,
   sharpSpec,
+  usesSharp,
 };

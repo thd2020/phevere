@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Compile the native selection addon for a target arch (macOS AX, including
- * Intel → arm64; Windows UIA, including x64 → arm64 when VS ARM64 tools exist).
+ * Intel → arm64; Windows UIA, including x64 → arm64 when VS ARM64 tools exist;
+ * Linux XFixes/Wayland/AT-SPI, cross-arch through scripts/linux-cross-sysroot.js).
  *
  * Usage: node scripts/rebuild-native-arch.js [--arch arm64]
  */
@@ -88,11 +89,54 @@ function rebuildWinUia(arch) {
   return binding;
 }
 
+function elfMachine(arch) {
+  return arch === 'arm64' ? 'aarch64' : 'x86-64';
+}
+
+function assertLinuxArch(binding, arch) {
+  const r = spawnSync('file', ['-b', binding], { encoding: 'utf8' });
+  const out = `${r.stdout || ''}`.trim();
+  if (r.status === 0 && out && !out.includes(elfMachine(arch))) fail(`Linux addon is not ${arch}: ${out}`);
+  console.log('[rebuild-native]', out || binding);
+}
+
+/** Built-for arch recorded next to the binding, so a cross build is never mistaken for native. */
+function linuxStamp() {
+  return path.join(ADDON, 'build', 'Release', 'linux_selection_monitor.arch');
+}
+
+function rebuildLinux(arch) {
+  if (process.platform !== 'linux') {
+    console.log('[rebuild-native] skip (not linux)');
+    return;
+  }
+  if (!arch) fail('arch required');
+  const binding = path.join(ADDON, 'build', 'Release', 'linux_selection_monitor.node');
+  const stamp = linuxStamp();
+  if (fs.existsSync(binding) && fs.existsSync(stamp) && fs.readFileSync(stamp, 'utf8').trim() === arch) {
+    console.log(`[rebuild-native] Linux addon already built for ${arch}`);
+    return binding;
+  }
+  const env = { ...process.env, npm_config_arch: arch, npm_config_target_arch: arch };
+  if (arch !== process.arch) {
+    Object.assign(env, require('./linux-cross-sysroot').crossEnv(arch));
+    console.log(`[rebuild-native] cross ${process.arch} → ${arch} with ${env.CXX}`);
+  }
+  console.log(`[rebuild-native] node-gyp rebuild --arch ${arch}`);
+  const r = spawnSync('npx', ['node-gyp', 'rebuild', '--arch', arch], { cwd: ADDON, stdio: 'inherit', env });
+  if (r.status !== 0) fail(`node-gyp rebuild --arch ${arch} failed`);
+  if (!fs.existsSync(binding)) fail(`Missing ${binding}`);
+  assertLinuxArch(binding, arch);
+  fs.writeFileSync(stamp, `${arch}\n`);
+  return binding;
+}
+
 if (require.main === module) {
   const arch = argvFlag('--arch') || process.arch;
   if (process.platform === 'darwin') rebuildDarwinAx(arch);
   else if (process.platform === 'win32') rebuildWinUia(arch);
+  else if (process.platform === 'linux') rebuildLinux(arch);
   else fail(`no native rebuild for ${process.platform}`);
 }
 
-module.exports = { rebuildDarwinAx, rebuildWinUia, assertAxArch, machOToken };
+module.exports = { rebuildDarwinAx, rebuildWinUia, rebuildLinux, assertAxArch, machOToken };
