@@ -2,12 +2,15 @@
 # release.yml for that tag. A tag pushed with GITHUB_TOKEN does not trigger other workflows, but a
 # workflow_dispatch does, so the release runs through its attach_tag input (targets: all), which
 # creates the GitHub Release when the tag has none. Pushing a v* tag by hand still works as before.
+#
+# Committing a change to .github/release-request.json on main rebuilds an existing release from
+# main and replaces its files: {"tag": "v2.3.0", "targets": "all", "reason": "..."}.
 name: tag-release
 
 on:
   push:
     branches: [main]
-    paths: ['package.json', '.github/workflows/tag-release.yml']
+    paths: ['package.json', '.github/workflows/tag-release.yml', '.github/release-request.json']
   workflow_dispatch:
 
 permissions:
@@ -42,3 +45,29 @@ jobs:
           git push origin "$TAG"
           gh workflow run release.yml --ref "$TAG" -f attach_tag="$TAG" -f targets=all
           echo "::notice::Tagged $TAG and started the release workflow."
+
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rebuild the requested release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          FILE=.github/release-request.json
+          if [ ! -f "$FILE" ] || ! git diff --name-only "$BEFORE" HEAD 2>/dev/null | grep -qx "$FILE"; then
+            echo "::notice::No new release request; nothing to rebuild."
+            exit 0
+          fi
+          TAG=$(node -p "require('./$FILE').tag")
+          TARGETS=$(node -p "require('./$FILE').targets || 'all'")
+          if ! git ls-remote --exit-code origin "refs/tags/$TAG" >/dev/null; then
+            echo "::error::$TAG does not exist; a request only rebuilds an existing release."
+            exit 1
+          fi
+          gh workflow run release.yml --ref main -f attach_tag="$TAG" -f targets="$TARGETS"
+          echo "::notice::Started release.yml for $TAG ($TARGETS) from main."

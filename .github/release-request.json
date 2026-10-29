@@ -1,0 +1,5 @@
+{
+  "tag": "v2.3.0",
+  "targets": "all",
+  "reason": "2.3.0 shipped without Windows installers and the Android APK (the pop-up did not compile; the Windows upgrade check found no earlier installer). Rebuild every file from main and replace them."
+}
