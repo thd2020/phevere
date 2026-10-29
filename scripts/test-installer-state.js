@@ -37,11 +37,13 @@ async function database() {
 
 async function storage() {
   const { app, BrowserWindow } = require('electron');
-  // localStorage needs no GPU, and the GPU process crashes on newer Windows Server runner images.
+  // Electron 28's GPU and sandboxed renderer crash on the 2026-10-21 Windows Server 2025 runner image.
+  // This helper only seeds and reads localStorage; the installed app's own launches still run sandboxed.
   app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch('no-sandbox');
   app.setPath('userData', userData);
   await app.whenReady();
-  const window = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
+  const window = new BrowserWindow({ show: false, webPreferences: { sandbox: false } });
   await window.loadFile(fixture);
   if (action === 'storage-seed') {
     await window.webContents.executeJavaScript(`localStorage.setItem(${JSON.stringify(sentinel)}, ${JSON.stringify(sentinel)})`);
