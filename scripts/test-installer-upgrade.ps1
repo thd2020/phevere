@@ -259,6 +259,21 @@ function Invoke-Hidden([string]$Executable, [string]$Arguments, [int]$ExpectedEx
     }
     Assert-True ($process.ExitCode -eq $ExpectedExitCode) "Expected exit code $ExpectedExitCode, received $($process.ExitCode): $Executable"
 }
+function Invoke-StorageHelper([string]$Mode) {
+    $stdout = Join-Path $fixtureRoot "storage-$Mode.stdout"
+    $stderr = Join-Path $fixtureRoot "storage-$Mode.stderr"
+    $process = Start-FixtureApp $electronExe ('"' + $stateHelper + '" storage-' + $Mode + ' "' + $userData + '" "' + $fixtureHtml + '"') $stdout $stderr
+    if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        throw "Process timed out: storage-$Mode"
+    }
+    if ($process.ExitCode -ne 0) {
+        foreach ($log in @($stdout, $stderr, "$stdout.chromium.log")) {
+            if (Test-Path -LiteralPath $log) { Write-Host "--- $log"; Get-Content -LiteralPath $log -Tail 80 | Write-Host }
+        }
+        throw "The storage-$Mode helper exited with $(Format-ExitCode $process.ExitCode)."
+    }
+}
 function Assert-FixtureProcessesStopped {
     # Electron's main-process handle can signal before its GPU/utility helpers
     # finish exiting. Give those owned processes a bounded teardown interval.
@@ -364,7 +379,7 @@ function Assert-Components([bool]$Selected) {
 function Assert-State {
     & node $stateHelper check $userData $fixtureHtml
     Assert-True ($LASTEXITCODE -eq 0) 'The notebook or monitor preferences were lost.'
-    Invoke-Hidden $electronExe ('"' + $stateHelper + '" storage-check "' + $userData + '" "' + $fixtureHtml + '"')
+    Invoke-StorageHelper 'check'
     Assert-True ((Get-FileHash -LiteralPath (Join-Path $userData 'monitor-settings.json')).Hash -eq $settingsHash) 'Monitor settings bytes changed.'
 }
 function Assert-Payload {
@@ -472,7 +487,7 @@ public static class InstallerTestWindows {
     $createdUserData = $true
     & node $stateHelper seed $userData $fixtureHtml
     Assert-True ($LASTEXITCODE -eq 0) 'Could not create the notebook fixture.'
-    Invoke-Hidden $electronExe ('"' + $stateHelper + '" storage-seed "' + $userData + '" "' + $fixtureHtml + '"')
+    Invoke-StorageHelper 'seed'
     $settingsHash = (Get-FileHash -LiteralPath (Join-Path $userData 'monitor-settings.json')).Hash
     $databaseHash = (Get-FileHash -LiteralPath (Join-Path $userData 'phevere.sqlite')).Hash
     Invoke-BaselineStartupDiagnostic
