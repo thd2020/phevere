@@ -35,7 +35,9 @@ permissions:
 jobs:
   release:
     if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.targets == 'all' || github.event.inputs.targets == 'desktop' || github.event.inputs.targets == 'windows-x64'))
-    runs-on: windows-latest
+    # Electron 28's GPU and renderer processes crash with an access violation on the
+    # 2026-10-21 windows-2025 image (windows-latest); the Windows 11 ARM64 image is unaffected.
+    runs-on: windows-2022
     timeout-minutes: 60
     permissions:
       contents: write

@@ -1,1 +1,1 @@
-{"tag":"v2.3.0","targets":"windows-x64","reason":"Retry the Windows x64 installer with the storage helper unsandboxed; Electron 28 crashes sandboxed on the new runner image."}
+{"tag":"v2.3.0","targets":"windows-x64","reason":"Retry the Windows x64 installer on windows-2022; Electron 28 crashes on the 2026-10-21 windows-2025 runner image."}
