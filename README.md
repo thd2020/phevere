@@ -167,4 +167,4 @@ Every pull request and every push to `main` builds the desktop applications for 
 
 ## License
 
-Phevere is released under the [MIT License](LICENSE). The Android application and the desktop builds bundle eSpeak NG, which is licensed under GPL-3.0-or-later; see [`apps/mobile/ANDROID.md`](apps/mobile/ANDROID.md) for the licence terms of the distributed APK.
+Phevere is released under the [MIT License](LICENSE). The names Phevere, Holarky and knowrld and their logos are not covered by it; see [`TRADEMARKS.md`](TRADEMARKS.md). The Android application and the desktop builds bundle eSpeak NG, which is licensed under GPL-3.0-or-later; see [`apps/mobile/ANDROID.md`](apps/mobile/ANDROID.md) for the licence terms of the distributed APK.
