@@ -25,6 +25,7 @@ on:
           - all
           - desktop
           - phone
+          - windows-x64
           - windows-arm64
           - linux
 
@@ -33,7 +34,7 @@ permissions:
 
 jobs:
   release:
-    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.targets == 'all' || github.event.inputs.targets == 'desktop'))
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.targets == 'all' || github.event.inputs.targets == 'desktop' || github.event.inputs.targets == 'windows-x64'))
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:

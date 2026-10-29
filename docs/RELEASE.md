@@ -2,6 +2,8 @@
 
 2026-10-25: Tags also build Linux deb, rpm and AppImage for x64 (`ubuntu-22.04`) and arm64 (`ubuntu-22.04-arm`). Rebuild only those onto an existing tag with `targets=linux`.
 
+2026-10-29: A Windows x64 release can be retried alone with `targets=windows-x64`.
+
 2026-10-14: A Windows ARM64 release can be retried alone with `targets=windows-arm64`.
 
 2026-10-14: Windows builds wrap the NSIS upgrade backend with the illustrated native setup frontend. Selected audio models download before setup finishes. Local builds require the Windows .NET Framework compiler and WPF assemblies, which are also present on the GitHub Windows runners.
@@ -58,7 +60,7 @@ If `github.com` times out while packaging, `make:win` already uses npmmirror. Gh
 Get-FileHash -Algorithm SHA256 "out\make\nsis\x64\Phevere-Setup-*-x64.exe"
 ```
 
-The workflow owns the Windows Setup and macOS DMG assets. The same tag also gets the Android APK and unsigned iOS IPA; the phone version comes from `apps/mobile/package.json`. To replace files on an existing tag from current `main`, run Actions → release with `attach_tag` and `targets` set to all, desktop, or phone. Use `windows-arm64` to retry only that installer, or `linux` for only the Linux packages. The workflow replaces same-named files after their checks pass and keeps the git tag in place. Windows and macOS jobs share `scripts/gh-delete-release-asset.ps1`. If the tag exists without a GitHub Release, dispatch creates the Release.
+The workflow owns the Windows Setup and macOS DMG assets. The same tag also gets the Android APK and unsigned iOS IPA; the phone version comes from `apps/mobile/package.json`. To replace files on an existing tag from current `main`, run Actions → release with `attach_tag` and `targets` set to all, desktop, or phone. Use `windows-x64` or `windows-arm64` to retry only that installer, or `linux` for only the Linux packages. The workflow replaces same-named files after their checks pass and keeps the git tag in place. Windows and macOS jobs share `scripts/gh-delete-release-asset.ps1`. If the tag exists without a GitHub Release, dispatch creates the Release.
 
 ## Notes template (if you write notes by hand)
 
