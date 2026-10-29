@@ -75,7 +75,16 @@ jobs:
           $previousDir = Join-Path $env:RUNNER_TEMP 'phevere-previous-installer'
           New-Item -ItemType Directory -Path $previousDir -Force | Out-Null
           gh release download $env:TAG --pattern 'Phevere-Setup-*-x64.exe' --dir $previousDir --clobber
-          if ($LASTEXITCODE -ne 0 -and '${{ github.event_name }}' -eq 'workflow_dispatch') { throw 'Could not download the existing x64 installer for the upgrade check.' }
+          if ($LASTEXITCODE -ne 0) {
+            # A new release has no installer yet: upgrade from the newest earlier release that has one.
+            $earlier = gh release list --limit 20 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName' | Where-Object { $_ -ne $env:TAG }
+            foreach ($t in $earlier) {
+              gh release download $t --pattern 'Phevere-Setup-*-x64.exe' --dir $previousDir --clobber
+              if ($LASTEXITCODE -eq 0) { Write-Host "Upgrade check starts from $t"; break }
+            }
+          }
+          if (-not (Get-ChildItem -LiteralPath $previousDir -Filter '*.exe') -and '${{ github.event_name }}' -eq 'workflow_dispatch') { throw 'Could not download an earlier x64 installer for the upgrade check.' }
+          $global:LASTEXITCODE = 0
           $previous = Get-ChildItem -LiteralPath $previousDir -Filter '*.exe' | Select-Object -First 1
           if ($previous) {
             ./scripts/test-installer-upgrade.ps1 -Installer '${{ steps.pkg.outputs.exe }}' -PreviousInstaller $previous.FullName
@@ -144,7 +153,16 @@ jobs:
           $previousDir = Join-Path $env:RUNNER_TEMP 'phevere-previous-installer'
           New-Item -ItemType Directory -Path $previousDir -Force | Out-Null
           gh release download $env:TAG --pattern 'Phevere-Setup-*-arm64.exe' --dir $previousDir --clobber
-          if ($LASTEXITCODE -ne 0 -and '${{ github.event_name }}' -eq 'workflow_dispatch') { throw 'Could not download the existing ARM64 installer for the upgrade check.' }
+          if ($LASTEXITCODE -ne 0) {
+            # A new release has no installer yet: upgrade from the newest earlier release that has one.
+            $earlier = gh release list --limit 20 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName' | Where-Object { $_ -ne $env:TAG }
+            foreach ($t in $earlier) {
+              gh release download $t --pattern 'Phevere-Setup-*-arm64.exe' --dir $previousDir --clobber
+              if ($LASTEXITCODE -eq 0) { Write-Host "Upgrade check starts from $t"; break }
+            }
+          }
+          if (-not (Get-ChildItem -LiteralPath $previousDir -Filter '*.exe') -and '${{ github.event_name }}' -eq 'workflow_dispatch') { throw 'Could not download an earlier ARM64 installer for the upgrade check.' }
+          $global:LASTEXITCODE = 0
           $previous = Get-ChildItem -LiteralPath $previousDir -Filter '*.exe' | Select-Object -First 1
           if ($previous) {
             ./scripts/test-installer-upgrade.ps1 -Installer '${{ steps.pkg.outputs.exe }}' -PreviousInstaller $previous.FullName

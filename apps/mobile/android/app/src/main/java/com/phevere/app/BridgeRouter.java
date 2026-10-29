@@ -36,10 +36,17 @@ final class BridgeRouter {
     void requestOverlayPermission();
     void requestNotifications();
     void openNotificationSettings();
-    /** Account sign-in: answer `id` with the callback URL when the browser returns to the app. */
-    void setPendingAuthJsId(String id);
+    /**
+     * Account sign-in: answer `id` with the callback URL when the browser returns to the app. Only
+     * the full app signs in; the pop-up (OverlayService) keeps these defaults.
+     */
+    default void setPendingAuthJsId(String id) {
+      throw new IllegalStateException("Sign in from the Phevere app");
+    }
     /** A sign-in callback that arrived while no page was waiting (the app had been restarted). */
-    String takePendingAuthUrl();
+    default String takePendingAuthUrl() {
+      return null;
+    }
   }
 
   private final Host host;
