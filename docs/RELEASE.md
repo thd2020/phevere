@@ -23,6 +23,8 @@ Keep `package.json` `version`, the git tag, and `CHANGELOG.md` in sync.
 After `.github/workflows/release.yml` is on `main`:
 
 1. Bump `"version"` in `package.json`, add a `## [x.y.z]` section to `CHANGELOG.md`, commit, push `main`.
+
+   2026-10-29: that push is enough. `.github/workflows/tag-release.yml` sees the new version, tags `vx.y.z` and starts the release workflow for it (step 2, done for you). Tagging by hand still works.
 2. Tag and push (this **builds** Windows Setup + macOS DMGs, **creates** the GitHub Release, and **attests** each file):
 
 ```powershell
