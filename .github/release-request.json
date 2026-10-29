@@ -1,1 +1,1 @@
-{"tag":"v2.3.0","targets":"windows-x64","reason":"The 2.3.0 rebuild replaced every file except the Windows x64 installer; its upgrade test failed in the localStorage seed helper, which passed on ARM64 and in earlier releases."}
+{"tag":"v2.3.0","targets":"windows-x64","reason":"Retry the Windows x64 installer with the storage test helper running without GPU acceleration; the 2026-10-21 Windows Server 2025 runner image crashes its GPU process."}

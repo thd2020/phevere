@@ -611,6 +611,7 @@ public static class InstallerTestWindows {
     }
     if (Test-Path -LiteralPath $fixtureRoot) {
         Assert-True ([IO.Path]::GetFullPath($fixtureRoot).StartsWith($runnerRoot + '\', [StringComparison]::OrdinalIgnoreCase)) 'Refusing cleanup outside RUNNER_TEMP.'
-        Remove-Item -LiteralPath $fixtureRoot -Recurse -Force
+        # A crashed child can still hold a file; report that without hiding the test's own failure.
+        Remove-Item -LiteralPath $fixtureRoot -Recurse -Force -ErrorAction Continue
     }
 }

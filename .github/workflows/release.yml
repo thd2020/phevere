@@ -113,7 +113,7 @@ jobs:
           subject-path: ${{ steps.pkg.outputs.exe }}
 
   release-win-arm64:
-    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.targets != 'phone' && github.event.inputs.targets != 'linux')
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.targets != 'phone' && github.event.inputs.targets != 'linux' && github.event.inputs.targets != 'windows-x64')
     runs-on: windows-11-arm
     timeout-minutes: 60
     permissions:

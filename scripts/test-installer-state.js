@@ -37,6 +37,8 @@ async function database() {
 
 async function storage() {
   const { app, BrowserWindow } = require('electron');
+  // localStorage needs no GPU, and the GPU process crashes on newer Windows Server runner images.
+  app.disableHardwareAcceleration();
   app.setPath('userData', userData);
   await app.whenReady();
   const window = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
