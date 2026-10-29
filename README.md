@@ -13,7 +13,7 @@ Phevere is a dictionary for text you are already reading. Select a word in any a
 </p>
 <p align="center"><sub>Android app: a lookup, a word selected on a scanned page, and the selection-bar settings.</sub></p>
 
-The current release is **2.2.0** on desktop and phone. Linux packages (deb, rpm, AppImage for x64 and arm64) were added to the 2.2.0 release on 2026-10-25. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
+The current release is **2.3.0** on desktop and phone (2026-10-29). It adds an optional Holarky account that keeps the notebook the same on all your devices. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -24,7 +24,8 @@ The current release is **2.2.0** on desktop and phone. Linux packages (deb, rpm,
 - Translation through Google Translate and MyMemory without a key, or through Youdao or DeepL with your own keys.
 - Etymology from Wiktionary, Etymonline, and Youdao, and a Wikipedia reader in the same pane.
 - Offline packs: WordNet, Webster 1913 (GCIDE), CC-CEDICT, and FreeDict English–Chinese.
-- A notebook stored locally in SQLite, with search, sorting, and JSON or CSV import and export. There is no account.
+- A notebook stored locally in SQLite, with search, sorting, and JSON or CSV import and export.
+- An optional Holarky account (Settings → Account), the same account that signs you in to knowrld. Sign in with email and password, a passkey, or Google; while signed in, the notebook syncs between your desktops and phones, including notes, review progress and deletions. Without an account Phevere works as before, and lookups never wait for it.
 
 **Desktop (Windows, macOS, Linux)**
 
@@ -81,7 +82,8 @@ iOS 14 or later. Download `Phevere-<version>-ios-unsigned.ipa` from [GitHub Rele
 
 ## Privacy
 
-- The notebook and settings are stored on the device. Phevere has no account or server of its own.
+- The notebook and settings are stored on the device. Without an account, Phevere keeps nothing off the device.
+- The Holarky account is optional. Sign-in runs on Auth0; while you are signed in, your profile and notebook are stored by the Holarky service on Cloudflare so that your devices match. Settings → Account deletes the account everywhere; the notebook on the device stays. See the [privacy page](https://holarky-api.thdfreelancer.workers.dev/privacy).
 - Lookups and translations are sent only to the services enabled in Settings.
 - Selection capture skips password fields, and a silent copy restores the previous clipboard contents.
 - On macOS, Screen Recording permission is used only for OCR.
@@ -140,13 +142,13 @@ For iOS, open `apps/mobile/ios/App/App.xcodeproj` in Xcode. Further detail is in
 
 ### Continuous integration and releases
 
-Every pull request and every push to `main` builds the desktop applications for Windows, macOS, and Linux, the Android APK, and the iOS IPA, and runs the mobile regression tests. Pushing a tag of the form `v*.*.*` builds the Windows installers, macOS disk images, Linux packages, Android APK, and iOS IPA, attaches them to a GitHub Release, and publishes build provenance attestations. See [`docs/RELEASE.md`](docs/RELEASE.md).
+Every pull request and every push to `main` builds the desktop applications for Windows, macOS, and Linux, the Android APK, and the iOS IPA, and runs the mobile regression tests. A tag of the form `v*.*.*` builds the Windows installers, macOS disk images, Linux packages, Android APK, and iOS IPA, attaches them to a GitHub Release, and publishes build provenance attestations. Pushing a new `version` in `package.json` to `main` creates that tag and starts the release; a tag pushed by hand works too. See [`docs/RELEASE.md`](docs/RELEASE.md).
 
 ## Project structure
 
 | Path | Contents |
 |---|---|
-| [`packages/core`](packages/core) | Dictionary sources, merging, translation, pronunciation, and notebook storage, shared by all platforms |
+| [`packages/core`](packages/core) | Dictionary sources, merging, translation, pronunciation, notebook storage, and the Holarky account and notebook sync, shared by all platforms |
 | [`src`](src) | Desktop application (Electron main process and renderer) |
 | [`native-addon`](native-addon) | Selection capture: UI Automation on Windows, Accessibility on macOS, primary selection and AT-SPI on Linux |
 | [`apps/mobile`](apps/mobile) | Phone user interface, and the native Android and iOS projects that host it |
@@ -155,6 +157,7 @@ Every pull request and every push to `main` builds the desktop applications for 
 
 ## Documentation
 
+- [`docs/ACCOUNT.md`](docs/ACCOUNT.md): the Holarky account and notebook sync
 - [`docs/MOBILE.md`](docs/MOBILE.md): phone apps, architecture, and limitations
 - [`apps/mobile/ANDROID.md`](apps/mobile/ANDROID.md): Android build, speech, versioning, and the LSPosed module
 - [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md): macOS permissions and selection capture
