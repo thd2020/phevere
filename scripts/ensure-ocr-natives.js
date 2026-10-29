@@ -66,6 +66,15 @@ function npmInstall(pkgs, platform, arch, opts) {
   if (r.status !== 0) fail(`npm install failed for ${pkgs.join(' ')}`);
 }
 
+/** Version of @emnapi/runtime that require() resolves from inside `pkgDir`. */
+function emnapiVersion(pkgDir) {
+  for (let d = pkgDir; ; d = path.dirname(d)) {
+    const meta = path.join(d, 'node_modules', '@emnapi', 'runtime', 'package.json');
+    if (fs.existsSync(meta)) return JSON.parse(fs.readFileSync(meta, 'utf8')).version;
+    if (path.dirname(d) === d) return null;
+  }
+}
+
 function sharpOk(platform, arch) {
   const spec = sharpSpec(platform, arch);
   if (!spec) {
@@ -73,13 +82,17 @@ function sharpOk(platform, arch) {
     return;
   }
   const dir = path.join(ROOT, 'node_modules', ...spec.pkg.split('/'));
-  if (!fs.existsSync(path.join(dir, 'package.json'))) {
+  if (!fs.existsSync(path.join(dir, 'package.json')) || (spec.emnapi && emnapiVersion(dir) !== spec.emnapi)) {
     const pkgs = [`${spec.pkg}@${spec.ver}`];
     if (spec.vips) pkgs.push(`${spec.vips}@${spec.vipsVer}`);
+    if (spec.emnapi) pkgs.push(`@emnapi/runtime@${spec.emnapi}`);
     npmInstall(pkgs, platform, arch, { wasm: Boolean(spec.wasm) });
   }
   if (!fs.existsSync(path.join(dir, 'package.json'))) {
     fail(`Still missing ${spec.pkg} after npm install (needed for packaged OCR on ${platform}/${arch})`);
+  }
+  if (spec.emnapi && emnapiVersion(dir) !== spec.emnapi) {
+    fail(`${spec.pkg} resolves @emnapi/runtime ${emnapiVersion(dir) || '(none)'}; it needs ${spec.emnapi}`);
   }
   if (spec.vips) {
     const vipsDir = path.join(ROOT, 'node_modules', ...spec.vips.split('/'));
