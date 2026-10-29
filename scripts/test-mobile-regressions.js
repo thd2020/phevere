@@ -61,6 +61,8 @@ async function startupAndGestures(floatingStrip) {
       return {};
     },
   };
+  const accountCalls = [];
+  const account = new Proxy({}, { get: (_t, name) => (...args) => { accountCalls.push(String(name)); } });
   const app = load('app.ts', {
     './lexicon-scroll': load('lexicon-scroll.ts', {}),
     './platform/configure-core': {}, '@phevere/core': core, './incoming-text': incoming,
@@ -68,6 +70,7 @@ async function startupAndGestures(floatingStrip) {
     './platform/offline': { listCatalogStatus: async () => [], markInstalledPacksOnCore: async () => {} },
     './platform/prefs': { loadPrefs: () => prefs, savePrefs: () => {}, applyPrefsToCore: () => {} },
     './views': { esc: (s) => s, lookupBody: ({ result }) => JSON.stringify(result), appBarHtml: (_t, q) => q, popupBarHtml: () => '' },
+    './platform/account': account,
   }, globals);
   const boot = app.startApp();
   await tick();
@@ -89,6 +92,8 @@ async function startupAndGestures(floatingStrip) {
   assert.equal(lookups[2].q, 'third');
   releaseNotebook([]);
   await boot;
+  // The pop-up never starts the account or syncs; the full app does that.
+  assert.deepEqual(accountCalls, [], 'the pop-up must not touch the Holarky account');
 }
 
 async function audioFallback() {
