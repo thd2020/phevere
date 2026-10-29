@@ -447,6 +447,7 @@ contextBridge.exposeInMainWorld('accountAPI', {
   cancelSignIn: () => ipcRenderer.invoke('account-cancel-sign-in'),
   signOut: () => ipcRenderer.invoke('account-sign-out'),
   syncNow: () => ipcRenderer.invoke('account-sync-now'),
+  deleteAccount: (confirmEmail: string) => ipcRenderer.invoke('account-delete', confirmEmail),
   onState: (callback: (state: AccountStateView) => void) => {
     ipcRenderer.on('account-state', (_event, state) => callback(state));
   },
@@ -641,6 +642,7 @@ declare global {
       cancelSignIn: () => Promise<void>;
       signOut: () => Promise<void>;
       syncNow: () => Promise<void>;
+      deleteAccount: (confirmEmail: string) => Promise<boolean>;
       onState: (callback: (state: AccountStateView) => void) => void;
     };
     offlineDictAPI: {

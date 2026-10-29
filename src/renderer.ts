@@ -318,6 +318,15 @@ function initializeSettingsWindow() {
               <div class="settings-actions settings-actions--wrap">
                 <button type="button" id="account-sync-now" class="btn btn-secondary">Sync now</button>
                 <button type="button" id="account-sign-out" class="btn btn-outlined">Sign out</button>
+                <button type="button" id="account-delete-start" class="btn btn-outlined">Delete account…</button>
+              </div>
+              <div id="account-delete" class="settings-group" hidden>
+                <p class="settings-hint">This deletes your Holarky account everywhere: the sign-in, the profile and the synced notebook, for phevere and knowrld. The notebook on this computer stays. Type the account's email to confirm.</p>
+                <input type="email" id="account-delete-email" class="setting-input" autocomplete="off" spellcheck="false" aria-label="Account email" />
+                <div class="settings-actions settings-actions--wrap">
+                  <button type="button" id="account-delete-confirm" class="btn btn-primary" disabled>Delete account</button>
+                  <button type="button" id="account-delete-cancel" class="btn btn-secondary">Cancel</button>
+                </div>
               </div>
             </div>
             <p id="account-status" class="settings-inline-status" role="status" aria-live="polite"></p>
@@ -551,6 +560,29 @@ async function wireAccountSettingsPanel(): Promise<void> {
   cancelBtn?.addEventListener('click', () => void api.cancelSignIn());
   syncBtn?.addEventListener('click', () => void api.syncNow());
   document.getElementById('account-sign-out')?.addEventListener('click', () => void api.signOut());
+  const deleteBox = document.getElementById('account-delete');
+  const deleteEmail = document.getElementById('account-delete-email') as HTMLInputElement | null;
+  const deleteConfirm = document.getElementById('account-delete-confirm') as HTMLButtonElement | null;
+  const closeDelete = () => {
+    if (deleteBox) deleteBox.hidden = true;
+    if (deleteEmail) deleteEmail.value = '';
+    if (deleteConfirm) deleteConfirm.disabled = true;
+  };
+  document.getElementById('account-delete-start')?.addEventListener('click', () => {
+    if (deleteBox) deleteBox.hidden = false;
+    deleteEmail?.focus();
+  });
+  document.getElementById('account-delete-cancel')?.addEventListener('click', closeDelete);
+  deleteEmail?.addEventListener('input', () => {
+    const want = String(current?.user?.email || '').toLowerCase();
+    if (deleteConfirm) deleteConfirm.disabled = !want || deleteEmail.value.trim().toLowerCase() !== want;
+  });
+  deleteConfirm?.addEventListener('click', async () => {
+    deleteConfirm.disabled = true;
+    const ok = await api.deleteAccount(deleteEmail?.value || '');
+    if (ok) closeDelete();
+    else deleteConfirm.disabled = false;
+  });
   // Keep "synced N minutes ago" current while the window is open.
   window.setInterval(() => {
     if (current?.user && !current.syncing) render(current);

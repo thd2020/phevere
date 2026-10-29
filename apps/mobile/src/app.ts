@@ -137,6 +137,8 @@ let toastMsg = '';
 let toastTimer: number | null = null;
 let capture: CaptureInfo = { platform: 'web', canDrawOverlays: false };
 let accountState: AccountState | null = null;
+/** Settings → Account is asking for the email to confirm deletion. */
+let accountDeleting = false;
 let scan: ScanPage | null = null;
 /** Bumped per picture, so a repaint keeps the rendered picture (and its selection) in place. */
 let scanId = 0;
@@ -230,6 +232,7 @@ function paint(): void {
             settingsSection,
             voice,
             accountState,
+            accountDeleting,
           )
         : hit;
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
@@ -1245,6 +1248,23 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'account-sign-out':
       await accountPlatform.signOut();
       return;
+    case 'account-delete-start':
+      accountDeleting = true;
+      paint();
+      return;
+    case 'account-delete-cancel':
+      accountDeleting = false;
+      paint();
+      return;
+    case 'account-delete-confirm': {
+      const typed = (document.getElementById('account-delete-email') as HTMLInputElement | null)?.value || '';
+      if (await accountPlatform.deleteAccount(typed)) {
+        accountDeleting = false;
+        toast('Account deleted');
+      }
+      paint();
+      return;
+    }
     case 'ocr':
       await runOcr();
       return;

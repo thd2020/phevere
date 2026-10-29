@@ -133,6 +133,10 @@ export function signOut(): Promise<void> {
   return controller ? controller.signOut() : Promise.resolve();
 }
 
+export function deleteAccount(confirmEmail: string): Promise<boolean> {
+  return controller ? controller.deleteAccount(confirmEmail) : Promise.resolve(false);
+}
+
 export function syncNow(): Promise<void> {
   return controller ? controller.syncNow() : Promise.resolve();
 }

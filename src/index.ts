@@ -2577,6 +2577,7 @@ ipcMain.handle('account-sign-in', () => accountService.signIn());
 ipcMain.handle('account-cancel-sign-in', () => accountService.cancelSignIn());
 ipcMain.handle('account-sign-out', () => accountService.signOut());
 ipcMain.handle('account-sync-now', () => accountService.syncNow());
+ipcMain.handle('account-delete', (_e, confirmEmail: string) => accountService.deleteAccount(String(confirmEmail || '')));
 
 // Vocabulary notebook
 ipcMain.handle('vocab-list', async (_e, limit?: number) => {

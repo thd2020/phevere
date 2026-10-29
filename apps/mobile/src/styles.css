@@ -1290,6 +1290,13 @@ select, .field {
 }
 .account-who { display: flex; flex-direction: column; min-width: 0; }
 .account-who span { font-size: 0.85rem; color: var(--md-sys-color-on-surface-variant); overflow-wrap: anywhere; }
+.account-delete { display: grid; gap: 4px; padding: 8px 0; }
+.account-delete input {
+  width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: var(--md-sys-shape-sm);
+  border: 1px solid var(--md-sys-color-outline); background: transparent;
+}
+.account-delete input:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 1px; }
+.nav-row[data-kind="danger"] { color: var(--md-sys-color-error); }
 .danger {
   background: transparent;
   border: 1px solid var(--md-sys-color-error);

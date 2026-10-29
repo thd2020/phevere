@@ -21,7 +21,7 @@ Identity is the Holarky Auth0 tenant: people sign in on its Universal Login page
 
 ## Account settings
 
-`HOLARKY_ACCOUNT` in `packages/core/src/account.ts` holds the Auth0 tenant, the API identifier and phevere's two Auth0 client ids (public values, recorded in holarky-account's `auth0/tenant.json`), and `apiBase`, the deployed Holarky API, for example `https://holarky-api.<subdomain>.workers.dev`. `apiBase` is empty until the API is deployed, and while it is empty Settings → Account says sign-in isn't set up.
+`HOLARKY_ACCOUNT` in `packages/core/src/account.ts` holds the Auth0 tenant, the API identifier and phevere's two Auth0 client ids (public values, recorded in holarky-account's `auth0/tenant.json`), and `apiBase`, the deployed Holarky API, for example `https://holarky-api.<subdomain>.workers.dev`. `apiBase` is the deployed API, `https://holarky-api.thdfreelancer.workers.dev`; set it to an empty string to build phevere with sign-in off (Settings → Account then says sign-in isn't set up).
 
 To use another API address without editing the file:
 
@@ -47,6 +47,7 @@ Each notebook row is sent as a record `{ id, updatedAt, deleted, data }` to the 
 - **The same word saved on two devices** gets two ids. After each pull, rows with the same lemma (ignoring case) fold into the row with the smallest id: text fields keep the newest non-empty value, sources and tags are combined, review progress comes from the most-reviewed row. The other rows become tombstones. Every device folds the same way.
 - **When:** after sign-in, at startup, 5 seconds after a notebook edit, every 15 minutes, when the phone app comes back to the foreground, and on Sync now.
 - **Sync state** (cursor, last push time, which account it belongs to) is in the `sync_state` table. Signing in with a different account starts over and adds this device's notebook to that account. Signing out keeps the notebook on the device.
+- **Delete account** (Settings → Account) asks for the account's email, then removes the Holarky account everywhere: the Auth0 sign-in, the profile and the synced notebook. The notebook on the device stays.
 
 ## Testing locally
 

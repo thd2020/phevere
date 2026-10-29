@@ -22,7 +22,7 @@ export const HOLARKY_ACCOUNT = {
    * is off in this build. Desktop overrides it with the PHEVERE_ACCOUNT_API environment variable,
    * mobile with VITE_PHEVERE_ACCOUNT_API at build time. See docs/ACCOUNT.md.
    */
-  apiBase: '',
+  apiBase: 'https://holarky-api.thdfreelancer.workers.dev',
 };
 
 /** The Holarky API address to use, or null when sign-in is not configured. */
@@ -162,6 +162,28 @@ export class AccountController {
     if (!account) return;
     await account.signOut();
     this.set({ user: null, lastError: null });
+  }
+
+  /**
+   * Deletes the Holarky account everywhere (sign-in, profile, synced notebook) after the person types
+   * its email. The notebook on this device stays. Returns false, with state.lastError set, on failure.
+   */
+  async deleteAccount(confirmEmail: string): Promise<boolean> {
+    const account = this.opts.account;
+    if (!account || !this.state.user) return false;
+    try {
+      await account.deleteAccount(confirmEmail.trim());
+      await this.opts.meta.remove(META_LAST_SYNC);
+      this.set({ user: null, lastSyncAt: null, lastError: null });
+      return true;
+    } catch (err) {
+      this.opts.log?.('account deletion failed', String(err));
+      const code = err instanceof HolarkyAccountError ? err.code : '';
+      this.set({
+        lastError: code === 'confirm_email_mismatch' ? "That email doesn't match this account." : describeError(err, 'The account was not deleted.'),
+      });
+      return false;
+    }
   }
 
   /** Schedules a sync shortly after a local notebook edit. */

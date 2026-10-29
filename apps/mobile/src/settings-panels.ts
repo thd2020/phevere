@@ -408,7 +408,7 @@ function timeAgo(at: number): string {
   return new Date(at).toLocaleDateString();
 }
 
-function accountPanel(account: AccountState | null): string {
+function accountPanel(account: AccountState | null, deleting = false): string {
   if (!account || !account.configured) {
     return `<p class="hint">Sign-in isn't set up in this build of phevere.</p>`;
   }
@@ -441,7 +441,15 @@ function accountPanel(account: AccountState | null): string {
     </div>
     ${statusHtml}
     ${navRow('account-sync', ICON.sync, account.syncing ? 'Syncing…' : 'Sync now')}
-    ${navRow('account-sign-out', ICON.signOut, 'Sign out', '', 'Your notebook stays on this phone')}`;
+    ${navRow('account-sign-out', ICON.signOut, 'Sign out', '', 'Your notebook stays on this phone')}
+    ${deleting
+      ? `<div class="account-delete">
+          <p class="hint">This deletes your Holarky account everywhere: the sign-in, the profile and the synced notebook, for phevere and knowrld. The notebook on this phone stays. Type the account's email to confirm.</p>
+          <input id="account-delete-email" type="email" autocomplete="off" spellcheck="false" aria-label="Account email" placeholder="${esc(user.email)}" />
+          ${navRow('account-delete-confirm', ICON.close, 'Delete account', '', '', 'danger')}
+          ${navRow('account-delete-cancel', ICON.check, 'Keep my account')}
+        </div>`
+      : navRow('account-delete-start', ICON.close, 'Delete account…', '', 'Removes it for every Holarky app')}`;
 }
 
 export function settingsBody(
@@ -453,6 +461,7 @@ export function settingsBody(
   section: SettingsSection,
   voice: VoiceStatus | null = null,
   account: AccountState | null = null,
+  accountDeleting = false,
 ): string {
   const tabs = settingsSections(capture)
     .map(
@@ -472,7 +481,7 @@ export function settingsBody(
             : section === 'api'
               ? apiPanel(prefs)
               : section === 'account'
-                ? accountPanel(account)
+                ? accountPanel(account, accountDeleting)
                 : audioPanel(prefs, capture, voice);
   return `
     <div class="settings">
