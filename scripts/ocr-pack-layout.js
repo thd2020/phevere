@@ -29,7 +29,9 @@ const SHARP_PLATFORM = {
   'darwin/arm64': { pkg: '@img/sharp-darwin-arm64', ver: '0.33.5', vips: '@img/sharp-libvips-darwin-arm64', vipsVer: '1.0.4' },
   'win32/x64': { pkg: '@img/sharp-win32-x64', ver: '0.33.5' },
   // sharp 0.33.5 has no @img/sharp-win32-arm64 (that landed in 0.34). Use wasm.
-  'win32/arm64': { pkg: '@img/sharp-wasm32', ver: '0.33.5', wasm: true },
+  // Its glue reads emnapi's cbinfoStack, which @emnapi/runtime 1.4.0 removed:
+  // loading sharp then throws "Cannot read properties of undefined (reading 'push')".
+  'win32/arm64': { pkg: '@img/sharp-wasm32', ver: '0.33.5', wasm: true, emnapi: '1.3.1' },
 };
 
 /**

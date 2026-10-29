@@ -271,17 +271,53 @@ function snapshotProcessHandlers(): ProcessHandlers {
   };
 }
 
-/**
- * opencv.js (Emscripten, pulled in by GutenYe) adds process handlers that rethrow
- * any unhandled rejection and exit with code 7, overriding our keep-alive handler.
- * A dismissed Wayland screencast picker was enough to quit the app.
- */
 function dropHandlersAddedSince(before: ProcessHandlers): void {
   for (const fn of process.listeners('uncaughtException')) {
     if (!before.uncaught.includes(fn)) (process as NodeJS.EventEmitter).removeListener('uncaughtException', fn as (...a: unknown[]) => void);
   }
   for (const fn of process.listeners('unhandledRejection')) {
     if (!before.rejection.includes(fn)) (process as NodeJS.EventEmitter).removeListener('unhandledRejection', fn as (...a: unknown[]) => void);
+  }
+}
+
+const OPENCV_SOURCE = /[\\/]@techstark[\\/]opencv-js[\\/]/;
+
+/**
+ * opencv.js (Emscripten, pulled in by GutenYe) adds process handlers that rethrow
+ * any uncaught exception and abort() on any unhandled rejection, exiting with code 7
+ * over our keep-alive handler. A dismissed Wayland screencast picker was enough to
+ * quit the app. Refuse them while the GutenYe graph loads, so a failure in that
+ * window (sharp-wasm32 on Windows ARM64) stays an OCR error, then drop anything
+ * else added meanwhile.
+ */
+async function withoutOpencvProcessHandlers<T>(load: () => Promise<T>): Promise<T> {
+  const before = snapshotProcessHandlers();
+  const proc = process as NodeJS.EventEmitter;
+  const own = {
+    on: Object.getOwnPropertyDescriptor(proc, 'on'),
+    addListener: Object.getOwnPropertyDescriptor(proc, 'addListener'),
+  };
+  const guard = (add: NodeJS.EventEmitter['on']): NodeJS.EventEmitter['on'] =>
+    function (this: NodeJS.EventEmitter, event, listener) {
+      if (
+        (event === 'uncaughtException' || event === 'unhandledRejection') &&
+        OPENCV_SOURCE.test(new Error().stack || '')
+      ) {
+        console.log(`Ignored the ${String(event)} handler opencv.js installs`);
+        return this;
+      }
+      return add.call(this, event, listener);
+    };
+  proc.on = guard(proc.on);
+  proc.addListener = guard(proc.addListener);
+  try {
+    return await load();
+  } finally {
+    for (const key of ['on', 'addListener'] as const) {
+      if (own[key]) Object.defineProperty(proc, key, own[key]);
+      else delete (proc as Partial<NodeJS.EventEmitter>)[key];
+    }
+    dropHandlersAddedSince(before);
   }
 }
 
@@ -296,6 +332,19 @@ async function loadGutenOcr(): Promise<{ create: (opts: unknown) => Promise<any>
   const href = pathToFileURL(entry).href;
   const mod = await importEsm(href);
   return mod.default || mod;
+}
+
+let gutenOcrLoad: Promise<{ create: (opts: unknown) => Promise<any> }> | null = null;
+
+/** One load at a time: overlapping handler guards would restore each other's state. */
+function loadGutenOcrOnce(): Promise<{ create: (opts: unknown) => Promise<any> }> {
+  if (!gutenOcrLoad) {
+    gutenOcrLoad = withoutOpencvProcessHandlers(loadGutenOcr).catch((error) => {
+      gutenOcrLoad = null;
+      throw error;
+    });
+  }
+  return gutenOcrLoad;
 }
 
 function resolveModelRoot(): string {
@@ -633,25 +682,20 @@ class OnnxNativeOcrEngine implements OcrEngine {
       }
 
       // ESM package; do not require() it (ERR_REQUIRE_ESM under webpack/Electron).
-      const handlersBefore = snapshotProcessHandlers();
-      const Ocr = await loadGutenOcr();
+      const Ocr = await loadGutenOcrOnce();
       const dictChars = dictLineCount(files.dict);
       console.log('Loading native OCR models', {
         modelsPath: this.modelsPath,
         files: this.modelFiles,
         dictChars,
       });
-      try {
-        this.ocr = await Ocr.create({
-          models: {
-            detectionPath: files.det,
-            recognitionPath: files.rec,
-            dictionaryPath: files.dict,
-          },
-        });
-      } finally {
-        dropHandlersAddedSince(handlersBefore);
-      }
+      this.ocr = await Ocr.create({
+        models: {
+          detectionPath: files.det,
+          recognitionPath: files.rec,
+          dictionaryPath: files.dict,
+        },
+      });
     })();
 
     try {
