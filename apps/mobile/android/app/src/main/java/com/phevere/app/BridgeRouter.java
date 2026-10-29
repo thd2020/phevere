@@ -36,6 +36,10 @@ final class BridgeRouter {
     void requestOverlayPermission();
     void requestNotifications();
     void openNotificationSettings();
+    /** Account sign-in: answer `id` with the callback URL when the browser returns to the app. */
+    void setPendingAuthJsId(String id);
+    /** A sign-in callback that arrived while no page was waiting (the app had been restarted). */
+    String takePendingAuthUrl();
   }
 
   private final Host host;
@@ -77,6 +81,16 @@ final class BridgeRouter {
             host.runUi(() -> openUrl(p.optString("url")));
             resolve(id, new JSONObject().put("ok", true));
             break;
+          case "openAuth":
+            // Resolved by MainActivity when com.phevere.app:/oauth/callback comes back.
+            host.setPendingAuthJsId(id);
+            host.runUi(() -> openUrl(p.optString("url")));
+            break;
+          case "takeAuthCallback": {
+            String url = host.takePendingAuthUrl();
+            resolve(id, new JSONObject().put("url", url == null ? JSONObject.NULL : url));
+            break;
+          }
           case "openWikipedia":
             host.runUi(() -> {
               Intent i = new Intent(host.context(), WikiActivity.class);

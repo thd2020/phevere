@@ -67,6 +67,7 @@ import {
 } from './services/notification-prefs-store';
 import { getLocalDb, flushPersist as persistLocalDb, closeLocalDb } from './services/local-db';
 import * as vocabStore from './services/vocab-store';
+import * as accountService from './services/account';
 import * as offlineDict from './services/offline-dict-store';
 import {
   applyDictionaryResultToNotebook,
@@ -2559,6 +2560,24 @@ ipcMain.handle('set-notification-prefs', (_event, patch: Partial<NotificationPre
   return mergeNotificationPrefs(patch || {});
 });
 
+function broadcastToWindows(channel: string, payload: unknown): void {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (w.isDestroyed()) continue;
+    try {
+      w.webContents.send(channel, payload);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+// Holarky account (sign-in and notebook sync)
+ipcMain.handle('account-get-state', () => accountService.getAccountState());
+ipcMain.handle('account-sign-in', () => accountService.signIn());
+ipcMain.handle('account-cancel-sign-in', () => accountService.cancelSignIn());
+ipcMain.handle('account-sign-out', () => accountService.signOut());
+ipcMain.handle('account-sync-now', () => accountService.syncNow());
+
 // Vocabulary notebook
 ipcMain.handle('vocab-list', async (_e, limit?: number) => {
   try {
@@ -3031,6 +3050,10 @@ app.on('ready', () => {
   applyMonitoringFromMode();
   applyHoverFromSettings();
   clipboardService.startMonitoring();
+  accountService.initAccount({
+    onState: (state) => broadcastToWindows('account-state', state),
+    onNotebookChanged: () => broadcastToWindows('vocab-updated', { id: '', lemma: '' }),
+  });
   void getLocalDb()
     .then(async () => {
       log.info('main', 'Local SQLite (vocab + offline dict) ready');
@@ -3252,6 +3275,7 @@ app.on('before-quit', (event) => {
     void quitPhevere();
     return;
   }
+  accountService.disposeAccount();
   try {
     void persistLocalDb();
   } catch {

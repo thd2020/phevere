@@ -2533,6 +2533,38 @@ body.settings-page .settings-inline-status {
   min-height: 1.25rem;
 }
 
+body.settings-page .account-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+}
+
+body.settings-page .account-avatar {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #fff;
+  background: var(--set-ember);
+}
+
+body.settings-page .account-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+body.settings-page .account-who span {
+  color: var(--set-ink-soft);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
 body.settings-page .settings-inline-status.is-error {
   color: #b91c1c;
 }

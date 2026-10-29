@@ -58,6 +58,8 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
   private String pendingOrigin;
   private String pendingJsId;
   private String pendingSaveText;
+  private String pendingAuthJsId;
+  private String pendingAuthUrl;
   private Uri captureUri;
   private boolean pageReady;
   private Insets lastInsets;
@@ -350,6 +352,12 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
 
   private void captureIncoming(Intent intent) {
     if (intent == null) return;
+    Uri data = intent.getData();
+    if (data != null && "com.phevere.app".equals(data.getScheme())) {
+      intent.setData(null);
+      deliverAuthCallback(data.toString());
+      return;
+    }
     CharSequence extra = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT);
     if (extra == null || extra.length() == 0) {
       extra = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
@@ -363,6 +371,32 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
     intent.removeExtra(Intent.EXTRA_PROCESS_TEXT);
     intent.removeExtra(Intent.EXTRA_TEXT);
     intent.removeExtra(CapturePrefs.EXTRA_QUERY);
+  }
+
+  private void deliverAuthCallback(String url) {
+    String id = pendingAuthJsId;
+    pendingAuthJsId = null;
+    if (id == null) {
+      pendingAuthUrl = url;
+      return;
+    }
+    try {
+      router.resolve(id, new JSONObject().put("url", url));
+    } catch (Exception e) {
+      router.fail(id, e.getMessage());
+    }
+  }
+
+  @Override
+  public void setPendingAuthJsId(String id) {
+    pendingAuthJsId = id;
+  }
+
+  @Override
+  public String takePendingAuthUrl() {
+    String url = pendingAuthUrl;
+    pendingAuthUrl = null;
+    return url;
   }
 
   private void injectIncoming() {

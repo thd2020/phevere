@@ -5,6 +5,25 @@
 
 import { getNewId, getVocabDb } from './runtime';
 
+type VocabChangeListener = () => void;
+const changeListeners = new Set<VocabChangeListener>();
+
+/** Called after any local notebook edit (not after sync applies remote edits). Returns an unsubscribe. */
+export function onVocabChanged(listener: VocabChangeListener): () => void {
+  changeListeners.add(listener);
+  return () => changeListeners.delete(listener);
+}
+
+function notifyChanged(): void {
+  for (const listener of changeListeners) {
+    try {
+      listener();
+    } catch {
+      /* a listener must not break a save */
+    }
+  }
+}
+
 export interface VocabEntry {
   id: string;
   lemma: string;
@@ -36,7 +55,7 @@ export interface VocabAddInput {
   tags?: string[];
 }
 
-function rowToEntry(row: Record<string, unknown>): VocabEntry {
+export function rowToEntry(row: Record<string, unknown>): VocabEntry {
   return {
     id: String(row.id),
     lemma: String(row.lemma || ''),
@@ -104,6 +123,7 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
     );
     const updated = await getVocab(id);
     if (!updated) throw new Error('Failed to reload saved entry');
+    notifyChanged();
     return updated;
   }
 
@@ -129,6 +149,7 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
   );
   const created = await getVocab(id);
   if (!created) throw new Error('Failed to reload saved entry');
+  notifyChanged();
   return created;
 }
 
@@ -209,13 +230,18 @@ export async function listVocab(limit = 200): Promise<VocabEntry[]> {
 
 export async function removeVocab(id: string): Promise<boolean> {
   await ensureVocabReady();
-  await getVocabDb().runWrite(`DELETE FROM vocab WHERE id = ?`, [id]);
+  const db = getVocabDb();
+  await db.runWrite(`DELETE FROM vocab WHERE id = ?`, [id]);
+  // The tombstone carries the deletion to other devices (see vocab-sync.ts).
+  await db.runWrite(`INSERT OR REPLACE INTO vocab_deleted (id, deleted_at) VALUES (?, ?)`, [id, Date.now()]);
+  notifyChanged();
   return true;
 }
 
 export async function updateVocabNote(id: string, note: string): Promise<VocabEntry | null> {
   await ensureVocabReady();
   await getVocabDb().runWrite(`UPDATE vocab SET note = ?, updated_at = ? WHERE id = ?`, [note, Date.now(), id]);
+  notifyChanged();
   return getVocab(id);
 }
 
@@ -245,5 +271,6 @@ export async function reviewVocab(id: string, grade: 1 | 2 | 3 | 4): Promise<Voc
     `UPDATE vocab SET review_due = ?, review_interval = ?, ease = ?, reps = ?, updated_at = ? WHERE id = ?`,
     [due, interval, ease, reps, Date.now(), id],
   );
+  notifyChanged();
   return getVocab(id);
 }

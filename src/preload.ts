@@ -128,6 +128,16 @@ const noopListener: SelectionListener = {
   getSelection: () => null,
 };
 
+/** Holarky account state from the main process (AccountState in @phevere/core). */
+interface AccountStateView {
+  configured: boolean;
+  user: { id: string; email: string; name: string; avatarUrl: string | null } | null;
+  signingIn: boolean;
+  syncing: boolean;
+  lastSyncAt: number | null;
+  lastError: string | null;
+}
+
 contextBridge.exposeInMainWorld('nativeAPI', {
   createListener: () => noopListener,
   start: () => true,
@@ -431,6 +441,17 @@ contextBridge.exposeInMainWorld('vocabAPI', {
   },
 });
 
+contextBridge.exposeInMainWorld('accountAPI', {
+  getState: () => ipcRenderer.invoke('account-get-state'),
+  signIn: () => ipcRenderer.invoke('account-sign-in'),
+  cancelSignIn: () => ipcRenderer.invoke('account-cancel-sign-in'),
+  signOut: () => ipcRenderer.invoke('account-sign-out'),
+  syncNow: () => ipcRenderer.invoke('account-sync-now'),
+  onState: (callback: (state: AccountStateView) => void) => {
+    ipcRenderer.on('account-state', (_event, state) => callback(state));
+  },
+});
+
 contextBridge.exposeInMainWorld('offlineDictAPI', {
   listPacks: () => ipcRenderer.invoke('offline-list-packs'),
   listCatalog: () => ipcRenderer.invoke('offline-list-catalog'),
@@ -613,6 +634,14 @@ declare global {
       updateNote: (id: string, note: string) => Promise<any>;
       review: (id: string, grade: 1 | 2 | 3 | 4) => Promise<any>;
       onUpdated: (callback: (payload: { id: string; lemma: string }) => void) => void;
+    };
+    accountAPI: {
+      getState: () => Promise<AccountStateView | null>;
+      signIn: () => Promise<void>;
+      cancelSignIn: () => Promise<void>;
+      signOut: () => Promise<void>;
+      syncNow: () => Promise<void>;
+      onState: (callback: (state: AccountStateView) => void) => void;
     };
     offlineDictAPI: {
       listPacks: () => Promise<any[]>;
