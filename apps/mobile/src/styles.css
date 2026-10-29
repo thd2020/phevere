@@ -1280,6 +1280,23 @@ select, .field {
 .pack__action { flex-shrink: 0; color: var(--md-sys-color-primary); }
 .pack strong { display: block; }
 .hint { font-size: 0.85rem; color: var(--md-sys-color-on-surface-variant); margin: 4px 0 8px; }
+.hint--error { color: var(--md-sys-color-error); }
+
+/* Account (Settings → Account) */
+.account-card { display: flex; align-items: center; gap: 12px; padding: 12px 4px; }
+.account-avatar {
+  flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  font-weight: 700; color: var(--md-sys-color-on-primary); background: var(--md-sys-color-primary);
+}
+.account-who { display: flex; flex-direction: column; min-width: 0; }
+.account-who span { font-size: 0.85rem; color: var(--md-sys-color-on-surface-variant); overflow-wrap: anywhere; }
+.account-delete { display: grid; gap: 4px; padding: 8px 0; }
+.account-delete input {
+  width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: var(--md-sys-shape-sm);
+  border: 1px solid var(--md-sys-color-outline); background: transparent;
+}
+.account-delete input:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 1px; }
+.nav-row[data-kind="danger"] { color: var(--md-sys-color-error); }
 .danger {
   background: transparent;
   border: 1px solid var(--md-sys-color-error);

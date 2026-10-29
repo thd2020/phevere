@@ -119,3 +119,21 @@ export {
   type ParsedOfflineEntry,
 } from './offline-pack-parsers';
 export { VOCAB_SCHEMA_SQL } from './schema';
+
+export { onVocabChanged } from './vocab-store';
+export { syncVocab, mergeDuplicateLemmas, VOCAB_SYNC_NAMESPACE, type VocabSyncAccount, type VocabSyncResult } from './vocab-sync';
+export {
+  HolarkyAccount,
+  HolarkyAccountError,
+  browserStorage,
+  type HolarkyUser,
+  type HolarkySession,
+  type KeyValueStorage,
+} from './holarky-account';
+export {
+  HOLARKY_ACCOUNT,
+  resolveAccountApi,
+  httpClientFetch,
+  AccountController,
+  type AccountState,
+} from './account';

@@ -1,4 +1,4 @@
-import type { DictionarySource } from '@phevere/core';
+import type { AccountState, DictionarySource } from '@phevere/core';
 import type { CatalogStatus } from './platform/offline';
 import type { MobilePrefs } from './platform/prefs';
 
@@ -66,6 +66,10 @@ const ICON = {
   select: '<svg viewBox="0 0 24 24"><path d="M3 5h2V3a2 2 0 0 0-2 2m0 8h2v-2H3zm4 8h2v-2H7zM3 9h2V7H3zm10-6h-2v2h2zm6 0v2h2a2 2 0 0 0-2-2M5 21v-2H3a2 2 0 0 0 2 2m-2-4h2v-2H3zM9 3H7v2h2zm2 18h2v-2h-2zm8-8h2v-2h-2zm0 8a2 2 0 0 0 2-2h-2zm0-12h2V7h-2zm0 8h2v-2h-2zm-4 4h2v-2h-2zm0-16h2V3h-2zM7 17h10V7H7zm2-8h6v6H9z"/></svg>',
   a11y: '<svg viewBox="0 0 24 24"><path d="M12 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4m9 7h-6v13h-2v-6h-2v6H9V9H3V7h18z"/></svg>',
   chevron: '<svg viewBox="0 0 24 24"><path d="M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z"/></svg>',
+  signIn: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 8l4 4-4 4M14 12H4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  signOut: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 8l4 4-4 4M19 12H9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  sync: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M20 12a8 8 0 0 1-14.3 4.9M4 12a8 8 0 0 1 14.3-4.9M18.5 3v4.2h-4.2M5.5 21v-4.2h4.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  close: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
 };
 
 /** Material list row that opens something: leading icon, label, optional value, chevron. */
@@ -113,7 +117,7 @@ function selectionBarSection(capture: CaptureInfo): string {
     ${navRow('selection-setup', ICON.select, 'LSPosed module', 'Inactive', MODULE_ABOUT)}`;
 }
 
-export type SettingsSection = 'capture' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio';
+export type SettingsSection = 'capture' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio' | 'account';
 
 const TAB_ICON: Record<SettingsSection, string> = {
   capture: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M9 9h6M12 9v7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -122,6 +126,7 @@ const TAB_ICON: Record<SettingsSection, string> = {
   offline: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM12 7v7M9 11l3 3 3-3M8.5 17h7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   api: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M11 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM11 12h10M18 12v3M21 12v2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   audio: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4zM15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  account: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM4.5 20a7.5 7.5 0 0 1 15 0" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
 export const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = [
@@ -130,6 +135,7 @@ export const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = 
   { id: 'offline', label: 'Offline' },
   { id: 'api', label: 'API keys' },
   { id: 'audio', label: 'Audio' },
+  { id: 'account', label: 'Account' },
 ];
 
 export function settingsSections(capture: CaptureInfo): Array<{ id: SettingsSection; label: string }> {
@@ -141,6 +147,7 @@ export function settingsSections(capture: CaptureInfo): Array<{ id: SettingsSect
     { id: 'offline', label: 'Offline' },
     { id: 'api', label: 'API keys' },
     { id: 'audio', label: 'Audio' },
+    { id: 'account', label: 'Account' },
   ];
 }
 
@@ -391,6 +398,60 @@ function audioPanel(prefs: MobilePrefs, capture: CaptureInfo, voice: VoiceStatus
     </div>`;
 }
 
+function timeAgo(at: number): string {
+  const s = Math.max(0, Math.round((Date.now() - at) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} h ago`;
+  return new Date(at).toLocaleDateString();
+}
+
+function accountPanel(account: AccountState | null, deleting = false): string {
+  if (!account || !account.configured) {
+    return `<p class="hint">Sign-in isn't set up in this build of phevere.</p>`;
+  }
+  const user = account.user;
+  const status = account.signingIn
+    ? 'Finish signing in in the browser.'
+    : account.lastError
+      ? account.lastError
+      : user && account.syncing
+        ? 'Syncing notebook…'
+        : user && account.lastSyncAt
+          ? `Notebook synced ${timeAgo(account.lastSyncAt)}.`
+          : user
+            ? 'Notebook not synced yet.'
+            : '';
+  const statusHtml = status ? `<p class="hint${account.lastError ? ' hint--error' : ''}" role="status">${esc(status)}</p>` : '';
+  if (!user) {
+    return `
+      <p class="hint">Sign in with a Holarky account to keep your notebook the same on all your devices. The same account works in knowrld.</p>
+      ${account.signingIn
+        ? navRow('account-cancel', ICON.close, 'Cancel sign-in')
+        : navRow('account-sign-in', ICON.signIn, 'Sign in', '', 'Email or Google')}
+      ${statusHtml}`;
+  }
+  const initial = esc((user.name.trim()[0] || '?').toUpperCase());
+  return `
+    <div class="account-card">
+      <span class="account-avatar" aria-hidden="true">${initial}</span>
+      <span class="account-who"><strong>${esc(user.name)}</strong><span>${esc(user.email)}</span></span>
+    </div>
+    ${statusHtml}
+    ${navRow('account-sync', ICON.sync, account.syncing ? 'Syncing…' : 'Sync now')}
+    ${navRow('account-sign-out', ICON.signOut, 'Sign out', '', 'Your notebook stays on this phone')}
+    ${deleting
+      ? `<div class="account-delete">
+          <p class="hint">This deletes your Holarky account everywhere: the sign-in, the profile and the synced notebook, for phevere and knowrld. The notebook on this phone stays. Type the account's email to confirm.</p>
+          <input id="account-delete-email" type="email" autocomplete="off" spellcheck="false" aria-label="Account email" placeholder="${esc(user.email)}" />
+          ${navRow('account-delete-confirm', ICON.close, 'Delete account', '', '', 'danger')}
+          ${navRow('account-delete-cancel', ICON.check, 'Keep my account')}
+        </div>`
+      : navRow('account-delete-start', ICON.close, 'Delete account…', '', 'Removes it for every Holarky app')}`;
+}
+
 export function settingsBody(
   prefs: MobilePrefs,
   sources: DictionarySource[],
@@ -399,6 +460,8 @@ export function settingsBody(
   capture: CaptureInfo,
   section: SettingsSection,
   voice: VoiceStatus | null = null,
+  account: AccountState | null = null,
+  accountDeleting = false,
 ): string {
   const tabs = settingsSections(capture)
     .map(
@@ -417,7 +480,9 @@ export function settingsBody(
             ? offlinePanel(packs, packMsg)
             : section === 'api'
               ? apiPanel(prefs)
-              : audioPanel(prefs, capture, voice);
+              : section === 'account'
+                ? accountPanel(account, accountDeleting)
+                : audioPanel(prefs, capture, voice);
   return `
     <div class="settings">
       <div class="settings-sticky">

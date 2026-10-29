@@ -16,6 +16,7 @@ import {
   type DictionaryResult,
   type VocabEntry,
   type WikipediaResult,
+  type AccountState,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
 import { playRecorded, recordedUrls, speakIpa, speakText } from './platform/audio';
@@ -35,6 +36,7 @@ import {
   type CatalogStatus,
 } from './platform/offline';
 import { applyPrefsToCore, loadPrefs, savePrefs, type MobilePrefs } from './platform/prefs';
+import * as accountPlatform from './platform/account';
 import {
   lookupBody,
   etymologyEntryUrl,
@@ -134,6 +136,9 @@ let packMsg = '';
 let toastMsg = '';
 let toastTimer: number | null = null;
 let capture: CaptureInfo = { platform: 'web', canDrawOverlays: false };
+let accountState: AccountState | null = null;
+/** Settings → Account is asking for the email to confirm deletion. */
+let accountDeleting = false;
 let scan: ScanPage | null = null;
 /** Bumped per picture, so a repaint keeps the rendered picture (and its selection) in place. */
 let scanId = 0;
@@ -226,6 +231,8 @@ function paint(): void {
             capture,
             settingsSection,
             voice,
+            accountState,
+            accountDeleting,
           )
         : hit;
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
@@ -1220,13 +1227,42 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'settings-section': {
       const next = t.dataset.section as SettingsSection | undefined;
-      if (next === 'capture' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio') {
+      if (next === 'capture' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio' || next === 'account') {
         settingsSection = next;
         langMenu = '';
         if (next === 'offline') await refreshPacks();
         if (next === 'audio') await refreshVoice();
         paint();
       }
+      return;
+    }
+    case 'account-sign-in':
+      await accountPlatform.signIn();
+      return;
+    case 'account-cancel':
+      accountPlatform.cancelSignIn();
+      return;
+    case 'account-sync':
+      await accountPlatform.syncNow();
+      return;
+    case 'account-sign-out':
+      await accountPlatform.signOut();
+      return;
+    case 'account-delete-start':
+      accountDeleting = true;
+      paint();
+      return;
+    case 'account-delete-cancel':
+      accountDeleting = false;
+      paint();
+      return;
+    case 'account-delete-confirm': {
+      const typed = (document.getElementById('account-delete-email') as HTMLInputElement | null)?.value || '';
+      if (await accountPlatform.deleteAccount(typed)) {
+        accountDeleting = false;
+        toast('Account deleted');
+      }
+      paint();
       return;
     }
     case 'ocr':
@@ -1693,8 +1729,23 @@ export async function startApp(): Promise<void> {
   await refreshNotebook();
   void fillEmptyCards();
   await refreshPacks();
+  if (!stripMode) {
+    accountPlatform.initAccount({
+      onState: (next) => {
+        accountState = next;
+        if (tab === 'settings' && settingsSection === 'account') paint();
+      },
+      onNotebookChanged: () => {
+        void refreshNotebook().then(() => {
+          if (tab === 'notebook') paint();
+        });
+      },
+    });
+  }
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') void refreshCapture().then(() => paint());
+    if (document.visibilityState !== 'visible') return;
+    void refreshCapture().then(() => paint());
+    if (!stripMode) accountPlatform.syncSoon();
   });
   const q = queryFromLocation();
   if (q) await lookup(q);

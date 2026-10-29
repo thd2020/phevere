@@ -50,6 +50,19 @@ function migrate(database) {
   `);
   database.run(`CREATE INDEX IF NOT EXISTS idx_vocab_lemma ON vocab(lemma);`);
   database.run(`CREATE INDEX IF NOT EXISTS idx_vocab_updated ON vocab(updated_at DESC);`);
+  // Deleted notebook ids, so a deletion reaches other devices through account sync.
+  database.run(`
+    CREATE TABLE IF NOT EXISTS vocab_deleted (
+      id TEXT PRIMARY KEY,
+      deleted_at INTEGER NOT NULL
+    );
+  `);
+  database.run(`
+    CREATE TABLE IF NOT EXISTS sync_state (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+  `);
   database.run(`
     CREATE TABLE IF NOT EXISTS offline_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

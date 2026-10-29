@@ -2,6 +2,11 @@
 
 declare const __PHEVERE_DEV__: boolean;
 
+interface ImportMetaEnv {
+  /** Holarky API address for this build; empty turns sign-in off (docs/ACCOUNT.md). */
+  readonly VITE_PHEVERE_ACCOUNT_API?: string;
+}
+
 declare module 'sql.js/dist/sql-wasm.wasm?url' {
   const url: string;
   export default url;

@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 import Vision
 import PhotosUI
 import AVFoundation
+import AuthenticationServices
 
 /**
  * The page's web view, with Phevere in the text-selection menu, as Android lists Phevere on
@@ -36,7 +37,7 @@ final class PhevereWebView: WKWebView {
   }
 }
 
-final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKURLSchemeHandler, WKNavigationDelegate, UIDocumentPickerDelegate, PHPickerViewControllerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate, AVSpeechSynthesizerDelegate {
+final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKURLSchemeHandler, WKNavigationDelegate, UIDocumentPickerDelegate, PHPickerViewControllerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate, AVSpeechSynthesizerDelegate, ASWebAuthenticationPresentationContextProviding {
   var stripMode = false
   private var web: PhevereWebView!
   private var pendingJsId: String?
@@ -47,6 +48,7 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
   private var player: AVPlayer?
   private var playerEnd: NSObjectProtocol?
   private var pendingSpeakId: String?
+  private var authSession: ASWebAuthenticationSession?
 
   override func viewDidLoad() {
     super.viewDidLoad()
@@ -177,6 +179,31 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
         UIApplication.shared.open(url)
       }
       resolve(id, ["ok": true])
+    case "openAuth":
+      // Holarky account sign-in; the sheet returns com.phevere.app:/oauth/callback?code=…
+      guard let s = params["url"] as? String, let url = URL(string: s) else {
+        fail(id, "Bad sign-in address")
+        return
+      }
+      let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "com.phevere.app") { [weak self] callback, error in
+        self?.authSession = nil
+        if let callback = callback {
+          self?.resolve(id, ["url": callback.absoluteString])
+        } else if let e = error as? ASWebAuthenticationSessionError, e.code == .canceledLogin {
+          self?.fail(id, "cancelled")
+        } else {
+          self?.fail(id, error?.localizedDescription ?? "Sign-in failed")
+        }
+      }
+      session.presentationContextProvider = self
+      authSession = session
+      if !session.start() {
+        authSession = nil
+        fail(id, "Could not open sign-in")
+      }
+    case "takeAuthCallback":
+      // The sheet hands its result straight back, so nothing is ever left waiting.
+      resolve(id, ["url": NSNull()])
     case "openWikipedia":
       if let s = params["url"] as? String, let url = URL(string: s) {
         let wiki = WikiViewController(url: url)
@@ -312,6 +339,10 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
     default:
       fail(id, "Unknown method \(method)")
     }
+  }
+
+  func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+    view.window ?? ASPresentationAnchor()
   }
 
   private func chooseOcr() {

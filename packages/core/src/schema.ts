@@ -21,6 +21,14 @@ CREATE TABLE IF NOT EXISTS vocab (
 );
 CREATE INDEX IF NOT EXISTS idx_vocab_lemma ON vocab(lemma);
 CREATE INDEX IF NOT EXISTS idx_vocab_updated ON vocab(updated_at DESC);
+CREATE TABLE IF NOT EXISTS vocab_deleted (
+  id TEXT PRIMARY KEY,
+  deleted_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sync_state (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
 CREATE TABLE IF NOT EXISTS offline_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   headword TEXT NOT NULL COLLATE NOCASE,
