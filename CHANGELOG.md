@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-29
+
 ### Added
 
+- Holarky account (2026-10-29): sign in with one Holarky account, shared with knowrld, from Settings → Account on desktop and phone (email and password, or Google, on Holarky's sign-in page). While signed in, the notebook stays the same on every device: words, notes, review progress and deletions sync, the newest edit wins, and the same word saved on two devices becomes one entry. Settings → Account also syncs on demand, signs out (the notebook stays on the device) and deletes the account everywhere. Lookups never wait for the account. See `docs/ACCOUNT.md`.
 - Linux desktop (2026-10-25): deb, rpm and AppImage for x64 and arm64, attached to the 2.2.0 release. Select-to-lookup reads the primary selection (Wayland data-control on KDE Plasma and wlroots, XFixes on X11); GNOME Wayland uses a `phevere --lookup-selection` shortcut. Hover lookup (AT-SPI, then OCR), read-this-window, now playing (MPRIS), hold-to-trigger, and OCR work as on Windows. See `docs/LINUX_SELECTION.md`.
 
 ## [2.2.0] - 2026-10-20
