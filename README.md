@@ -78,7 +78,7 @@ The LSPosed module is optional and requires a rooted device. Enabled in LSPosed 
 
 ### iOS
 
-iOS 14 or later. Download `Phevere-<version>-ios-unsigned.ipa` from [GitHub Releases](https://github.com/thd2020/phevere/releases/latest) and sign it with your own signing tool before installing it on a device.
+iOS 15.1 or later. Download `Phevere-<version>-ios-unsigned.ipa` from [GitHub Releases](https://github.com/thd2020/phevere/releases/latest) and sign it with your own signing tool before installing it on a device.
 
 ## Privacy
 
