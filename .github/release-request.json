@@ -1,1 +1,1 @@
-{"tag":"v2.3.0","targets":"phone","reason":"Retry the phone builds with the sign-in fix; the first try did not compile."}
+{"tag":"v2.3.0","targets":"all","reason":"Release-signed Android APK (same key as 2.2.0) with an upgrade test, voice-download resume, notebook redesign; the debug-signed APK was removed first."}
