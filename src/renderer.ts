@@ -471,20 +471,37 @@ function wireAccountMenu(): void {
   let open = false;
   let deleting = false;
 
+  let deleteBusy = false;
+  let buttonShown: string | null = null;
   const render = () => {
-    slot.innerHTML = accountButtonHtml(state, open);
-    const typed = (document.getElementById('account-delete-email') as HTMLInputElement | null)?.value || '';
+    // Replace the button only when it changes, and keep keyboard focus on it.
+    const buttonHtml = accountButtonHtml(state, open);
+    if (buttonShown !== buttonHtml) {
+      buttonShown = buttonHtml;
+      const hadFocus = slot.contains(document.activeElement);
+      slot.innerHTML = buttonHtml;
+      if (hadFocus) slot.querySelector<HTMLButtonElement>('.hx-account-btn')?.focus();
+    }
+    const live = document.getElementById('account-delete-email') as HTMLInputElement | null;
+    const typed = live?.value || '';
+    const keepFocus = !!(live && document.activeElement === live);
+    const caret = keepFocus ? live!.selectionStart : null;
     menu.hidden = !open || !state?.configured;
     menu.innerHTML = open ? accountPanelHtml(state, { deleting, device: 'computer' }) : '';
     const input = document.getElementById('account-delete-email') as HTMLInputElement | null;
     if (input && typed) input.value = typed;
+    if (input && keepFocus) {
+      input.focus();
+      if (typeof caret === 'number') input.setSelectionRange(caret, caret);
+    }
     const confirm = menu.querySelector<HTMLButtonElement>('[data-act="account-delete-confirm"]');
-    if (confirm) confirm.disabled = !deleteEmailMatches(state, input?.value || '');
+    if (confirm) confirm.disabled = deleteBusy || !deleteEmailMatches(state, input?.value || '');
   };
-  const setOpen = (next: boolean) => {
+  const setOpen = (next: boolean, focusButton = false) => {
     open = next;
     if (!next) deleting = false;
     render();
+    if (focusButton) slot.querySelector<HTMLButtonElement>('.hx-account-btn')?.focus();
   };
 
   slot.addEventListener('click', (e) => {
@@ -511,10 +528,16 @@ function wireAccountMenu(): void {
         render();
         break;
       case 'account-delete-confirm': {
+        if (deleteBusy) break;
+        deleteBusy = true;
         btn.disabled = true;
         const typed = (document.getElementById('account-delete-email') as HTMLInputElement | null)?.value || '';
-        if (await api.deleteAccount(typed)) setOpen(false);
-        else btn.disabled = false;
+        try {
+          if (await api.deleteAccount(typed)) setOpen(false);
+        } finally {
+          deleteBusy = false;
+          render();
+        }
         break;
       }
     }
@@ -523,7 +546,7 @@ function wireAccountMenu(): void {
     const el = e.target as HTMLInputElement;
     if (el.id !== 'account-delete-email') return;
     const confirm = menu.querySelector<HTMLButtonElement>('[data-act="account-delete-confirm"]');
-    if (confirm) confirm.disabled = !deleteEmailMatches(state, el.value);
+    if (confirm) confirm.disabled = deleteBusy || !deleteEmailMatches(state, el.value);
   });
   document.addEventListener('mousedown', (e) => {
     if (!open) return;
@@ -531,7 +554,7 @@ function wireAccountMenu(): void {
     if (!menu.contains(t) && !slot.contains(t)) setOpen(false);
   });
   document.addEventListener('keydown', (e) => {
-    if (open && e.key === 'Escape') setOpen(false);
+    if (open && e.key === 'Escape') setOpen(false, true);
   });
   api.onState?.((next: AccountState) => {
     state = next;

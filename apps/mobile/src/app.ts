@@ -142,8 +142,25 @@ let capture: CaptureInfo = { platform: 'web', canDrawOverlays: false };
 let accountState: AccountState | null = null;
 /** The account sheet is open from the app bar. */
 let accountOpen = false;
+/** The next paint opens the sheet, so it slides in; later repaints keep it still. */
+let accountSheetEntering = false;
+/** Delete account is waiting for the server. */
+let accountDeleteBusy = false;
 /** The account sheet is asking for the email to confirm deletion. */
 let accountDeleting = false;
+
+/** Swaps only the app-bar button, so a background sync doesn't reset scroll positions. */
+function refreshAccountButton(): void {
+  if (stripMode) return;
+  const html = accountButtonHtml(accountState, accountOpen);
+  const btn = document.querySelector('.hx-account-btn');
+  if (btn) {
+    if (html) btn.outerHTML = html;
+    else btn.remove();
+  } else if (html) {
+    document.querySelector('.brand-end')?.insertAdjacentHTML('beforeend', html);
+  }
+}
 
 /** What the app-bar button shows; the bar repaints only when this changes. */
 function accountBadgeKey(s: AccountState | null): string {
@@ -225,7 +242,12 @@ function paint(): void {
   const keepNbq = !!(nbqLive && document.activeElement === nbqLive);
   const nbqCaret = keepNbq ? nbqLive!.selectionStart : null;
   if (keepNbq) notebookFilter = nbqLive!.value;
-  const typedDelete = (document.getElementById('account-delete-email') as HTMLInputElement | null)?.value || '';
+  const deleteLive = document.getElementById('account-delete-email') as HTMLInputElement | null;
+  const typedDelete = deleteLive?.value || '';
+  const keepDelete = !!(deleteLive && document.activeElement === deleteLive);
+  const deleteCaret = keepDelete ? deleteLive!.selectionStart : null;
+  const entering = accountSheetEntering;
+  accountSheetEntering = false;
   const hit = lookupPaneHtml();
   if (tab === 'lookup' && scan) {
     paintScan(scan, hit);
@@ -252,8 +274,8 @@ function paint(): void {
       <main class="page">${body}</main>
     </div>
     ${stripMode ? '' : navHtml(tab)}
-    ${!stripMode && accountOpen && accountState?.configured ? `<div class="sheet-scrim" data-act="account-close"></div>
-    <section class="account-sheet" role="dialog" aria-modal="true" aria-label="Account">
+    ${!stripMode && accountOpen && accountState?.configured ? `<div class="sheet-scrim${entering ? ' is-entering' : ''}" data-act="account-close"></div>
+    <section class="account-sheet${entering ? ' is-entering' : ''}" role="dialog" aria-modal="true" aria-label="Account">
       <span class="account-sheet__grip" aria-hidden="true"></span>
       ${accountPanelHtml(accountState, { deleting: accountDeleting, device: 'phone' })}
     </section>` : ''}
@@ -272,7 +294,11 @@ function paint(): void {
   if (deleteInput && typedDelete) {
     deleteInput.value = typedDelete;
     const confirm = document.querySelector<HTMLButtonElement>('[data-act="account-delete-confirm"]');
-    if (confirm) confirm.disabled = !deleteEmailMatches(accountState, typedDelete);
+    if (confirm) confirm.disabled = accountDeleteBusy || !deleteEmailMatches(accountState, typedDelete);
+  }
+  if (deleteInput && keepDelete) {
+    deleteInput.focus();
+    if (typeof deleteCaret === 'number') deleteInput.setSelectionRange(deleteCaret, deleteCaret);
   }
   bindLexiconPane();
   bindWikiReader();
@@ -1259,6 +1285,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     }
     case 'account-open':
       accountOpen = !accountOpen;
+      accountSheetEntering = accountOpen;
       accountDeleting = false;
       paint();
       return;
@@ -1291,11 +1318,18 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'account-delete-confirm': {
+      if (accountDeleteBusy) return;
+      accountDeleteBusy = true;
+      (t as HTMLButtonElement).disabled = true;
       const typed = (document.getElementById('account-delete-email') as HTMLInputElement | null)?.value || '';
-      if (await accountPlatform.deleteAccount(typed)) {
-        accountDeleting = false;
-        accountOpen = false;
-        toast('Account deleted');
+      try {
+        if (await accountPlatform.deleteAccount(typed)) {
+          accountDeleting = false;
+          accountOpen = false;
+          toast('Account deleted');
+        }
+      } finally {
+        accountDeleteBusy = false;
       }
       paint();
       return;
@@ -1636,7 +1670,7 @@ function onChange(e: Event): void {
   if (!el) return;
   if (el.id === 'account-delete-email') {
     const confirm = document.querySelector<HTMLButtonElement>('[data-act="account-delete-confirm"]');
-    if (confirm) confirm.disabled = !deleteEmailMatches(accountState, (el as HTMLInputElement).value);
+    if (confirm) confirm.disabled = accountDeleteBusy || !deleteEmailMatches(accountState, (el as HTMLInputElement).value);
     return;
   }
   if (el.id === 'lang-q') {
@@ -1775,7 +1809,8 @@ export async function startApp(): Promise<void> {
       onState: (next) => {
         const before = accountBadgeKey(accountState);
         accountState = next;
-        if (accountOpen || before !== accountBadgeKey(next)) paint();
+        if (accountOpen) paint();
+        else if (before !== accountBadgeKey(next)) refreshAccountButton();
       },
       onNotebookChanged: () => {
         void refreshNotebook().then(() => {

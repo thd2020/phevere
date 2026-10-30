@@ -1309,16 +1309,16 @@ select, .field {
 .sheet-scrim {
   position: fixed; inset: 0; z-index: 40;
   background: rgb(28 25 23 / 0.32);
-  animation: pv-fade-in 0.2s var(--md-sys-motion);
 }
+.sheet-scrim.is-entering { animation: pv-fade-in 0.2s var(--md-sys-motion); }
 @keyframes pv-fade-in { from { opacity: 0; } }
 .account-sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
   padding: 8px 20px calc(20px + var(--pv-inset-bottom));
   border-radius: var(--md-sys-shape-xl) var(--md-sys-shape-xl) 0 0;
   background: var(--md-sys-color-surface-container-lowest);
-  animation: pv-sheet-in 0.24s var(--md-sys-motion);
 }
+.account-sheet.is-entering { animation: pv-sheet-in 0.24s var(--md-sys-motion); }
 .account-sheet__grip {
   display: block; width: 32px; height: 4px; margin: 0 auto 14px;
   border-radius: 2px; background: var(--md-sys-color-outline-variant);
