@@ -48,6 +48,8 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
   private var player: AVPlayer?
   private var playerEnd: NSObjectProtocol?
   private var pendingSpeakId: String?
+  /// Bumped by every speak and stop, so a Neural render that finishes late is dropped.
+  private var speakToken = 0
   private var authSession: ASWebAuthenticationSession?
 
   override func viewDidLoad() {
@@ -258,10 +260,13 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
       let text = (params["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
       if !text.isEmpty { openPopup(text, rect: Self.rect(params["rect"] as? [String: Any])) }
       resolve(id, ["ok": true])
-    case "speechVoices", "cancelSpeechDownload":
+    case "speechVoices":
+      resolve(id, Self.voiceStatus())
+    case "cancelSpeechDownload":
+      NeuralModels.cancel()
       resolve(id, Self.voiceStatus())
     case "setSpeechVoice":
-      CapturePrefs.speechVoice = params["id"] as? String ?? ""
+      NeuralModels.choose(params["id"] as? String ?? "")
       resolve(id, Self.voiceStatus())
     case "requestOverlayPermission":
       resolve(id, ["ok": true])
@@ -279,44 +284,35 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
       finishSpeak(ok: true)
       stopPlayback()
       synth.stopSpeaking(at: .immediate)
-      let utterance: AVSpeechUtterance?
-      if params["phonemes"] as? Bool == true {
-        // IPA chip: Android's eSpeak reads [[phonemes]]; iOS speaks the chip's own IPA.
-        utterance = Self.ipaUtterance(ipa: params["ipa"] as? String ?? "", word: params["word"] as? String ?? "")
-      } else {
-        utterance = text.isEmpty ? nil : AVSpeechUtterance(string: text)
-      }
-      if let u = utterance {
+      speakToken += 1
+      let volume = Float(min(1, params["volume"] as? Double ?? 1))  // gain 0–2; playback tops out at 1
+      if params["phonemes"] as? Bool != true, !text.isEmpty, let variant = NeuralModels.active() {
+        // Neural voice: Kokoro renders a WAV off the main thread; the Apple voice covers a failure.
         pendingSpeakId = id
-        u.voice = Self.voice(for: lang)
-        u.rate = Float(min(1.0, max(0.35, rate * 0.5)))
-        u.volume = Float(min(1, params["volume"] as? Double ?? 1))  // gain 0–2; AVSpeech tops out at 1
-        synth.speak(u)
+        let token = speakToken
+        KokoroVoice.shared.synthesize(text, lang: lang, rate: rate, variant: variant) { [weak self] wave in
+          guard let self = self, token == self.speakToken else { return }
+          if let wave = wave {
+            self.play(wave, rate: 1, volume: volume)
+          } else {
+            self.speakSystem(id: id, params: params, text: text, lang: lang, rate: rate, volume: volume)
+          }
+        }
       } else {
-        resolve(id, ["ok": true])
+        speakSystem(id: id, params: params, text: text, lang: lang, rate: rate, volume: volume)
       }
     case "playUrl":
       finishSpeak(ok: true)
       stopPlayback()
+      speakToken += 1
       pendingSpeakId = id
       if let s = params["url"] as? String, let url = URL(string: s) {
-        let item = AVPlayerItem(url: url)
-        player = AVPlayer(playerItem: item)
-        let rate = Float(params["rate"] as? Double ?? 1)
-        playerEnd = NotificationCenter.default.addObserver(
-          forName: .AVPlayerItemDidPlayToEndTime,
-          object: item,
-          queue: .main
-        ) { [weak self] _ in
-          self?.finishSpeak(ok: true)
-        }
-        player?.volume = Float(min(1, params["volume"] as? Double ?? 1))
-        player?.play()
-        if rate > 0 { player?.rate = rate }
+        play(url, rate: Float(params["rate"] as? Double ?? 1), volume: Float(min(1, params["volume"] as? Double ?? 1)))
       } else {
         finishSpeak(ok: true)
       }
     case "stopAudio":
+      speakToken += 1
       stopPlayback()
       synth.stopSpeaking(at: .immediate)
       finishSpeak(ok: true)
@@ -339,6 +335,41 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
     default:
       fail(id, "Unknown method \(method)")
     }
+  }
+
+  /** Apple voices; an IPA chip always speaks here, as Android's eSpeak reads [[phonemes]]. */
+  private func speakSystem(id: String, params: [String: Any], text: String, lang: String, rate: Double, volume: Float) {
+    pendingSpeakId = id
+    let utterance: AVSpeechUtterance?
+    if params["phonemes"] as? Bool == true {
+      utterance = Self.ipaUtterance(ipa: params["ipa"] as? String ?? "", word: params["word"] as? String ?? "")
+    } else {
+      utterance = text.isEmpty ? nil : AVSpeechUtterance(string: text)
+    }
+    guard let u = utterance else {
+      finishSpeak(ok: true)
+      return
+    }
+    u.voice = Self.voice(for: lang)
+    u.rate = Float(min(1.0, max(0.35, rate * 0.5)))
+    u.volume = volume
+    synth.speak(u)
+  }
+
+  /** Plays a pronunciation clip or a Neural voice's WAV; the page hears back when it ends. */
+  private func play(_ url: URL, rate: Float, volume: Float) {
+    let item = AVPlayerItem(url: url)
+    player = AVPlayer(playerItem: item)
+    playerEnd = NotificationCenter.default.addObserver(
+      forName: .AVPlayerItemDidPlayToEndTime,
+      object: item,
+      queue: .main
+    ) { [weak self] _ in
+      self?.finishSpeak(ok: true)
+    }
+    player?.volume = volume
+    player?.play()
+    if rate > 0 { player?.rate = rate }
   }
 
   func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
@@ -620,6 +651,7 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
     return englishVoices().first { $0.language == lang } ?? AVSpeechSynthesisVoice(language: lang)
   }
 
+  /** Apple voices as plain rows, plus the Neural downloads in Android's status shape. */
   private static func voiceStatus() -> [String: Any] {
     var rows: [[String: String]] = [["id": "", "name": "Automatic", "detail": "Default for each accent"]]
     for v in englishVoices() {
@@ -628,7 +660,13 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
       if #available(iOS 16.0, *), v.quality == .premium { quality = "Premium" }
       rows.append(["id": v.identifier, "name": v.name, "detail": "\(accent) · \(quality)"])
     }
-    return ["selected": CapturePrefs.speechVoice, "downloading": "", "progress": "", "variants": [], "rows": rows]
+    let chosen = CapturePrefs.speechVoice
+    // A Neural voice counts as selected once it is installed; until then Automatic speaks.
+    let selected = NeuralVariant(rawValue: chosen) == nil ? chosen : NeuralModels.active()?.rawValue ?? ""
+    var status = NeuralModels.status()
+    status["selected"] = selected
+    status["rows"] = rows
+    return status
   }
 
   /** Decode in the charset the server declared (GBK, Latin-1…); UTF-8 when it names none. */

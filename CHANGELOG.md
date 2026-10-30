@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- iOS Neural voices (2026-10-30): Settings → Audio on iOS lists the two Kokoro voices Android has, Neural (standard, 132 MB) and Neural (high quality, 350 MB), below the installed Apple voices. Tapping one downloads it with a progress bar and a cancel button, resumes after a dropped connection, checks its SHA-256 and then selects it. Words are then spoken by Kokoro through sherpa-onnx 1.13.3; IPA chips and any text Kokoro cannot voice still use the Apple voice. The app grows by the statically linked sherpa-onnx and onnxruntime libraries, and now needs iOS 15.1 or later, the minimum onnxruntime 1.26 is built for (every iPhone that ran iOS 14 can run iOS 15).
+
 ### Fixed
 
 - Android sign-in (2026-10-30): signing in on the phone failed with "Sign-in did not finish. (token_error)". The app's HTTP bridge read only a `Content-Type` header spelled with capitals, so the form-encoded token request went to Auth0 labelled as JSON and was rejected. Header names are now matched in any case.

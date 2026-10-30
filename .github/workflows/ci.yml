@@ -220,6 +220,8 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm run mobile:sync
+      - name: Fetch sherpa-onnx for the Neural voices
+        run: bash apps/mobile/scripts/prepare-ios-speech.sh
       - name: Build iOS app
         working-directory: apps/mobile/ios/App
         run: |
@@ -253,6 +255,10 @@ jobs:
           mkdir -p ipa/Payload
           ditto "$APP" ipa/Payload/App.app
           (cd ipa && zip -qry ../Phevere.ipa Payload)
+          # sherpa-onnx and onnxruntime are static libraries linked into the app binary.
+          grep -aq SherpaOnnxCreateOfflineTts "$APP/App"
+          grep -aq OrtGetApiBase "$APP/App"
+          ls -l Phevere.ipa
       - name: Upload IPA
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

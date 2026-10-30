@@ -20,7 +20,7 @@ The current release is **2.3.0** on desktop and phone (2026-10-29). It adds an o
 **Lookup**
 
 - Definitions from Free Dictionary, Wiktionary, and Datamuse, merged into a single lexicon in the headword's language. The exact form is preferred, and lemma senses are used only when no source defines that form.
-- IPA by accent (US and UK), each chip spoken from its own transcription by eSpeak NG. Words no online source transcribes get US IPA from the CMU Pronouncing Dictionary. Recorded pronunciations come from Free Dictionary and Wikimedia Commons and are cached on disk; when a word has none, the chosen voice says it. Neural Kokoro voices (132 MB or 350 MB) can be downloaded in Settings → Audio on the desktop and on Android.
+- IPA by accent (US and UK), each chip spoken from its own transcription by eSpeak NG. Words no online source transcribes get US IPA from the CMU Pronouncing Dictionary. Recorded pronunciations come from Free Dictionary and Wikimedia Commons and are cached on disk; when a word has none, the chosen voice says it. Neural Kokoro voices (132 MB or 350 MB) can be downloaded in Settings → Audio on the desktop, Android and iOS.
 - Translation through Google Translate and MyMemory without a key, or through Youdao or DeepL with your own keys.
 - Etymology from Wiktionary, Etymonline, and Youdao, and a Wikipedia reader in the same pane.
 - Offline packs: WordNet, Webster 1913 (GCIDE), CC-CEDICT, and FreeDict English–Chinese.
@@ -44,7 +44,7 @@ The current release is **2.3.0** on desktop and phone (2026-10-29). It adds an o
 **iOS**
 
 - Share text to Phevere, or open `phevere://lookup?q=word`, to show the lookup as a floating card or a sheet.
-- Selected text inside the app has a **Phevere** item in the edit menu. Scan uses Apple Vision, and pronunciation uses the voices installed on the device.
+- Selected text inside the app has a **Phevere** item in the edit menu. Scan uses Apple Vision. Pronunciation uses the voices installed on the device, or one of the two Neural Kokoro voices (132 MB or 350 MB) downloaded in Settings → Audio.
 
 ## Installation
 
@@ -78,7 +78,7 @@ The LSPosed module is optional and requires a rooted device. Enabled in LSPosed 
 
 ### iOS
 
-iOS 14 or later. Download `Phevere-<version>-ios-unsigned.ipa` from [GitHub Releases](https://github.com/thd2020/phevere/releases/latest) and sign it with your own signing tool before installing it on a device.
+iOS 15.1 or later. Download `Phevere-<version>-ios-unsigned.ipa` from [GitHub Releases](https://github.com/thd2020/phevere/releases/latest) and sign it with your own signing tool before installing it on a device.
 
 ## Privacy
 
