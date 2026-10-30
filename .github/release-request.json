@@ -1,1 +1,1 @@
-{"tag":"v2.3.0","targets":"phone","reason":"Add the Neural voices to the iOS build; Android keeps the release key and runs the upgrade test again."}
+{"tag":"v2.3.0","targets":"android","reason":"Retry the Android build with the iOS changes merged; the last try lost its adb connection in the upgrade test."}
