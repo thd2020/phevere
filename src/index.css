@@ -2533,38 +2533,6 @@ body.settings-page .settings-inline-status {
   min-height: 1.25rem;
 }
 
-body.settings-page .account-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-}
-
-body.settings-page .account-avatar {
-  flex: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  font-weight: 700;
-  color: #fff;
-  background: var(--set-ember);
-}
-
-body.settings-page .account-who {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  font-size: 0.875rem;
-}
-
-body.settings-page .account-who span {
-  color: var(--set-ink-soft);
-  font-size: 0.8125rem;
-  overflow-wrap: anywhere;
-}
-
 body.settings-page .settings-inline-status.is-error {
   color: #b91c1c;
 }
@@ -3470,4 +3438,97 @@ body.settings-page .settings-cheat .settings-keycaps { padding: 0 11px; }
 body.settings-page .keycap { font-size: 12px; }
 @media (max-width: 560px) {
   body.settings-page { --set-label-col: 128px; }
+}
+
+/* Account: avatar button in the title bar, popover under it */
+body.main-window .titlebar-account { display: flex; align-items: center; margin-right: 2px; }
+body.main-window .hx-account-btn {
+  position: relative;
+  display: grid; place-items: center;
+  width: 32px; height: 32px; padding: 0;
+  border: 0; border-radius: 999px;
+  background: transparent; cursor: pointer;
+  transition: background-color 0.14s var(--pv-motion);
+}
+body.main-window .hx-account-btn:hover,
+body.main-window .hx-account-btn[aria-expanded="true"] { background: var(--pv-surface-container); }
+body.main-window .hx-account-btn:focus-visible { outline: 2px solid var(--pv-ember); outline-offset: 1px; }
+body.main-window .hx-account-btn .hx-mark { display: block; width: 20px; height: auto; pointer-events: none; }
+body.main-window .hx-avatar {
+  width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center;
+  font: 600 12px/1 var(--pv-font-ui);
+  color: #fff7f3; background: var(--pv-ember);
+  pointer-events: none;
+}
+body.main-window .hx-avatar--lg { width: 40px; height: 40px; font-size: 16px; flex: none; }
+body.main-window .hx-account-btn[data-sync="syncing"] .hx-avatar { box-shadow: 0 0 0 2px var(--pv-paper), 0 0 0 3.5px var(--pv-teal); }
+body.main-window .hx-account-btn[data-sync="error"]::after {
+  content: ''; position: absolute; top: 3px; right: 3px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--pv-error); border: 2px solid var(--pv-paper);
+}
+body.main-window .account-popover {
+  position: fixed;
+  top: calc(var(--md-titlebar-h, 40px) + 4px);
+  right: 10px;
+  z-index: 1000;
+  width: min(300px, calc(100vw - 20px));
+  padding: 16px;
+  border: 1px solid var(--pv-line);
+  border-radius: var(--pv-radius);
+  background: var(--pv-panel);
+  color: var(--pv-ink);
+  font-family: var(--pv-font-ui);
+  box-shadow: 0 12px 32px -12px rgb(28 25 23 / 0.28), 0 2px 6px rgb(28 25 23 / 0.06);
+  animation: pv-pop-in 0.16s var(--pv-motion);
+  -webkit-app-region: no-drag;
+}
+body.main-window .account-popover[hidden] { display: none; }
+@keyframes pv-pop-in { from { opacity: 0; transform: translateY(-4px); } }
+body.main-window .hx-acct { display: grid; gap: 12px; }
+body.main-window .hx-acct__brand { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 650; }
+body.main-window .hx-acct__brand .hx-mark { width: 28px; height: auto; }
+body.main-window .hx-acct__who { display: flex; align-items: center; gap: 12px; }
+body.main-window .hx-acct__id { display: flex; flex-direction: column; min-width: 0; }
+body.main-window .hx-acct__id strong { font-size: 14px; font-weight: 650; }
+body.main-window .hx-acct__id span { font-size: 12.5px; color: var(--pv-ink-soft); overflow-wrap: anywhere; }
+body.main-window .hx-acct__sync {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 2px 2px 2px 12px; border-radius: var(--pv-radius-sm);
+  background: var(--pv-paper-2);
+}
+body.main-window .hx-acct__status { margin: 0; font-size: 12.5px; color: var(--pv-ink-soft); }
+body.main-window .hx-acct__status.is-error { color: var(--pv-error); }
+body.main-window .hx-acct__row { display: flex; flex-wrap: wrap; gap: 6px; }
+body.main-window .hx-acct__delete { display: grid; gap: 8px; }
+body.main-window .hx-acct__delete p { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--pv-ink-soft); }
+body.main-window .hx-acct__delete input {
+  height: 34px; padding: 0 10px; border-radius: var(--pv-radius-sm);
+  border: 1px solid var(--pv-outline); background: transparent; font: inherit; font-size: 13px;
+}
+body.main-window .hx-acct__delete input:focus-visible { outline: 2px solid var(--pv-ember); outline-offset: 1px; }
+body.main-window .hx-btn {
+  min-height: 32px; padding: 0 14px; border-radius: 999px;
+  border: 1px solid var(--pv-line); background: transparent; color: var(--pv-ink);
+  font: 600 13px/1 var(--pv-font-ui); cursor: pointer;
+  transition: background-color 0.14s var(--pv-motion);
+}
+body.main-window .hx-btn:hover { background: var(--pv-paper-2); }
+body.main-window .hx-btn--primary { width: 100%; min-height: 36px; border: 0; background: var(--pv-ember); color: #fff7f3; }
+body.main-window .hx-btn--primary:hover { background: #873400; }
+body.main-window .hx-btn--quiet { border-color: transparent; }
+body.main-window .hx-btn--danger { border: 0; background: var(--pv-error); color: #fff; }
+body.main-window .hx-btn--danger:disabled { opacity: 0.38; cursor: default; }
+body.main-window .hx-btn--danger-text { color: var(--pv-error); }
+body.main-window .hx-icon-btn {
+  display: grid; place-items: center; width: 32px; height: 32px;
+  border: 0; border-radius: 999px; background: transparent; color: var(--pv-ink-soft); cursor: pointer;
+}
+body.main-window .hx-icon-btn:hover:not(:disabled) { background: var(--pv-surface-container); }
+body.main-window .hx-icon-btn.is-spinning svg { animation: pv-spin 1s linear infinite; }
+@keyframes pv-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  body.main-window .account-popover,
+  body.main-window .hx-icon-btn.is-spinning svg { animation: none; }
 }

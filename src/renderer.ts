@@ -29,7 +29,13 @@
 import './fonts';
 import './index.css';
 import { captureNextShortcut, isLinux, isMac } from './shortcut-capture';
-import { formatVocabLangPair } from '@phevere/core';
+import {
+  accountButtonHtml,
+  accountPanelHtml,
+  deleteEmailMatches,
+  formatVocabLangPair,
+  type AccountState,
+} from '@phevere/core';
 
 // Inside your main window initialization or setup block:
 const clearBtn = document.getElementById('clearSelectionsBtn') as HTMLButtonElement;
@@ -133,7 +139,6 @@ function initializeSettingsWindow() {
           <button type="button" class="settings-nav__item" data-section="offline">Offline</button>
           <button type="button" class="settings-nav__item" data-section="api">API keys</button>
           <button type="button" class="settings-nav__item" data-section="audio">Audio</button>
-          <button type="button" class="settings-nav__item" data-section="account">Account</button>
         </nav>
         <main class="settings-main">
           <section class="settings-panel is-active" data-panel="shortcuts" aria-labelledby="settings-monitor-heading">
@@ -294,43 +299,6 @@ function initializeSettingsWindow() {
             </div>
           </section>
 
-          <section class="settings-panel" data-panel="account" aria-labelledby="settings-account-heading">
-            <div class="settings-panel__intro">
-              <h2 id="settings-account-heading" class="settings-panel__title">Account</h2>
-            </div>
-            <div id="account-signed-out">
-              <p class="settings-hint">Sign in with a Holarky account to keep your notebook the same on all your devices. The same account works in knowrld.</p>
-              <div class="settings-actions settings-actions--wrap">
-                <button type="button" id="account-sign-in" class="btn btn-primary">Sign in</button>
-                <button type="button" id="account-cancel-sign-in" class="btn btn-secondary" hidden>Cancel</button>
-              </div>
-            </div>
-            <div id="account-signed-in" hidden>
-              <div class="settings-group">
-                <div class="account-card">
-                  <span class="account-avatar" id="account-avatar" aria-hidden="true"></span>
-                  <span class="account-who">
-                    <strong id="account-name"></strong>
-                    <span id="account-email"></span>
-                  </span>
-                </div>
-              </div>
-              <div class="settings-actions settings-actions--wrap">
-                <button type="button" id="account-sync-now" class="btn btn-secondary">Sync now</button>
-                <button type="button" id="account-sign-out" class="btn btn-outlined">Sign out</button>
-                <button type="button" id="account-delete-start" class="btn btn-outlined">Delete account…</button>
-              </div>
-              <div id="account-delete" class="settings-group" hidden>
-                <p class="settings-hint">This deletes your Holarky account everywhere: the sign-in, the profile and the synced notebook, for phevere and knowrld. The notebook on this computer stays. Type the account's email to confirm.</p>
-                <input type="email" id="account-delete-email" class="setting-input" autocomplete="off" spellcheck="false" aria-label="Account email" />
-                <div class="settings-actions settings-actions--wrap">
-                  <button type="button" id="account-delete-confirm" class="btn btn-primary" disabled>Delete account</button>
-                  <button type="button" id="account-delete-cancel" class="btn btn-secondary">Cancel</button>
-                </div>
-              </div>
-            </div>
-            <p id="account-status" class="settings-inline-status" role="status" aria-live="polite"></p>
-          </section>
 
           <section class="settings-panel" data-panel="audio" aria-labelledby="settings-audio-heading">
             <div class="settings-panel__intro">
@@ -395,7 +363,6 @@ function initializeSettingsWindow() {
   wireSettingsImageDrop();
   void wireOfflineSettingsPanel();
   void wireOcrSettingsPanel();
-  void wireAccountSettingsPanel();
   void wireMonitorSettingsFields().then(({ stopCapture }) => {
     document.getElementById('settings-close')?.addEventListener('click', () => {
       stopCapture();
@@ -494,104 +461,90 @@ async function wireOcrSettingsPanel(): Promise<void> {
   await refresh();
 }
 
-function timeAgo(at: number): string {
-  const s = Math.max(0, Math.round((Date.now() - at) / 1000));
-  if (s < 60) return 'just now';
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} minute${m === 1 ? '' : 's'} ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} hour${h === 1 ? '' : 's'} ago`;
-  return new Date(at).toLocaleDateString();
-}
-
-async function wireAccountSettingsPanel(): Promise<void> {
+/** Title-bar account button and the popover under it (Holarky sign-in, sync, sign-out, delete). */
+function wireAccountMenu(): void {
   const api = (window as any).accountAPI;
-  const signedOut = document.getElementById('account-signed-out');
-  const signedIn = document.getElementById('account-signed-in');
-  const signInBtn = document.getElementById('account-sign-in') as HTMLButtonElement | null;
-  const cancelBtn = document.getElementById('account-cancel-sign-in') as HTMLButtonElement | null;
-  const syncBtn = document.getElementById('account-sync-now') as HTMLButtonElement | null;
-  const statusEl = document.getElementById('account-status');
-  let current: any = null;
+  const slot = document.getElementById('accountSlot');
+  const menu = document.getElementById('accountMenu');
+  if (!api?.getState || !slot || !menu) return;
+  let state: AccountState | null = null;
+  let open = false;
+  let deleting = false;
 
-  const render = (s: any) => {
-    current = s;
-    const user = s?.user || null;
-    if (signedOut) signedOut.hidden = !!user;
-    if (signedIn) signedIn.hidden = !user;
-    if (user) {
-      const name = String(user.name || user.email || '');
-      const avatar = document.getElementById('account-avatar');
-      if (avatar) avatar.textContent = (name.trim()[0] || '?').toUpperCase();
-      const nameEl = document.getElementById('account-name');
-      if (nameEl) nameEl.textContent = name;
-      const emailEl = document.getElementById('account-email');
-      if (emailEl) emailEl.textContent = String(user.email || '');
-    }
-    if (signInBtn) {
-      signInBtn.hidden = !s?.configured;
-      signInBtn.disabled = !!s?.signingIn;
-      signInBtn.textContent = s?.signingIn ? 'Waiting for browser…' : 'Sign in';
-    }
-    if (cancelBtn) cancelBtn.hidden = !s?.signingIn;
-    if (syncBtn) syncBtn.disabled = !!s?.syncing;
-    let msg = '';
-    let isError = false;
-    if (!s || !s.configured) msg = "Sign-in isn't set up in this build of phevere.";
-    else if (s.signingIn) msg = 'Finish signing in in your browser.';
-    else if (s.lastError) {
-      msg = s.lastError;
-      isError = true;
-    } else if (user && s.syncing) msg = 'Syncing notebook…';
-    else if (user && s.lastSyncAt) msg = `Notebook synced ${timeAgo(s.lastSyncAt)}.`;
-    else if (user) msg = 'Notebook not synced yet.';
-    if (statusEl) {
-      statusEl.textContent = msg;
-      statusEl.classList.toggle('is-error', isError);
-    }
+  const render = () => {
+    slot.innerHTML = accountButtonHtml(state, open);
+    const typed = (document.getElementById('account-delete-email') as HTMLInputElement | null)?.value || '';
+    menu.hidden = !open || !state?.configured;
+    menu.innerHTML = open ? accountPanelHtml(state, { deleting, device: 'computer' }) : '';
+    const input = document.getElementById('account-delete-email') as HTMLInputElement | null;
+    if (input && typed) input.value = typed;
+    const confirm = menu.querySelector<HTMLButtonElement>('[data-act="account-delete-confirm"]');
+    if (confirm) confirm.disabled = !deleteEmailMatches(state, input?.value || '');
+  };
+  const setOpen = (next: boolean) => {
+    open = next;
+    if (!next) deleting = false;
+    render();
   };
 
-  if (!api?.getState) {
-    render(null);
-    return;
-  }
-  api.onState?.((s: any) => render(s));
-  signInBtn?.addEventListener('click', () => void api.signIn());
-  cancelBtn?.addEventListener('click', () => void api.cancelSignIn());
-  syncBtn?.addEventListener('click', () => void api.syncNow());
-  document.getElementById('account-sign-out')?.addEventListener('click', () => void api.signOut());
-  const deleteBox = document.getElementById('account-delete');
-  const deleteEmail = document.getElementById('account-delete-email') as HTMLInputElement | null;
-  const deleteConfirm = document.getElementById('account-delete-confirm') as HTMLButtonElement | null;
-  const closeDelete = () => {
-    if (deleteBox) deleteBox.hidden = true;
-    if (deleteEmail) deleteEmail.value = '';
-    if (deleteConfirm) deleteConfirm.disabled = true;
-  };
-  document.getElementById('account-delete-start')?.addEventListener('click', () => {
-    if (deleteBox) deleteBox.hidden = false;
-    deleteEmail?.focus();
+  slot.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('[data-act="account-open"]')) setOpen(!open);
   });
-  document.getElementById('account-delete-cancel')?.addEventListener('click', closeDelete);
-  deleteEmail?.addEventListener('input', () => {
-    const want = String(current?.user?.email || '').toLowerCase();
-    if (deleteConfirm) deleteConfirm.disabled = !want || deleteEmail.value.trim().toLowerCase() !== want;
+  menu.addEventListener('click', async (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-act]');
+    if (!btn || btn.disabled) return;
+    switch (btn.dataset.act) {
+      case 'account-sign-in': void api.signIn(); break;
+      case 'account-cancel': void api.cancelSignIn(); break;
+      case 'account-sync': void api.syncNow(); break;
+      case 'account-sign-out':
+        setOpen(false);
+        void api.signOut();
+        break;
+      case 'account-delete-start':
+        deleting = true;
+        render();
+        (document.getElementById('account-delete-email') as HTMLInputElement | null)?.focus();
+        break;
+      case 'account-delete-cancel':
+        deleting = false;
+        render();
+        break;
+      case 'account-delete-confirm': {
+        btn.disabled = true;
+        const typed = (document.getElementById('account-delete-email') as HTMLInputElement | null)?.value || '';
+        if (await api.deleteAccount(typed)) setOpen(false);
+        else btn.disabled = false;
+        break;
+      }
+    }
   });
-  deleteConfirm?.addEventListener('click', async () => {
-    deleteConfirm.disabled = true;
-    const ok = await api.deleteAccount(deleteEmail?.value || '');
-    if (ok) closeDelete();
-    else deleteConfirm.disabled = false;
+  menu.addEventListener('input', (e) => {
+    const el = e.target as HTMLInputElement;
+    if (el.id !== 'account-delete-email') return;
+    const confirm = menu.querySelector<HTMLButtonElement>('[data-act="account-delete-confirm"]');
+    if (confirm) confirm.disabled = !deleteEmailMatches(state, el.value);
   });
-  // Keep "synced N minutes ago" current while the window is open.
+  document.addEventListener('mousedown', (e) => {
+    if (!open) return;
+    const t = e.target as Node;
+    if (!menu.contains(t) && !slot.contains(t)) setOpen(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (open && e.key === 'Escape') setOpen(false);
+  });
+  api.onState?.((next: AccountState) => {
+    state = next;
+    render();
+  });
+  // Keeps "Synced N min ago" current while the popover is open.
   window.setInterval(() => {
-    if (current?.user && !current.syncing) render(current);
+    if (open && state?.user && !state.syncing && !deleting) render();
   }, 60_000);
-  try {
-    render(await api.getState());
-  } catch {
-    render(null);
-  }
+  void api.getState().then((next: AccountState | null): void => {
+    state = next;
+    render();
+  }).catch((): void => undefined);
 }
 
 async function wireOfflineSettingsPanel(): Promise<void> {
@@ -1857,6 +1810,7 @@ function wireLiveResizeClass(): void {
 
 function initializeMainWindow() {
   initializeMainWindowControls();
+  wireAccountMenu();
   wireMainWindowImageIngest();
   wireInAppTextSelectionLookup();
   loadRecentSelectionsIntoDom();

@@ -137,3 +137,11 @@ export {
   AccountController,
   type AccountState,
 } from './account';
+export {
+  holarkyMarkSvg,
+  accountStatusText,
+  accountButtonHtml,
+  accountPanelHtml,
+  deleteEmailMatches,
+  type AccountPanelOptions,
+} from './account-view';

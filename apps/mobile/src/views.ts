@@ -83,13 +83,14 @@ export function navHtml(tab: Tab): string {
   return `<nav class="nav" aria-label="Primary">${item('lookup', 'Lookup', ICO.search)}${item('notebook', 'Notebook', ICO.book)}${item('settings', 'Settings', ICO.gear)}</nav>`;
 }
 
-/** One top bar for every tab: the same "Phevere" title; Lookup adds history and search. */
-export function appBarHtml(tab: Tab, query: string, canBack: boolean, canFwd: boolean): string {
+/** One top bar for every tab: the same "Phevere" title and the account button; Lookup adds history and search. */
+export function appBarHtml(tab: Tab, query: string, canBack: boolean, canFwd: boolean, accountBtn = ''): string {
   const lookup = tab === 'lookup';
   return `
     <div class="top">
       <div class="brand-row">
         <h1>Phevere</h1>
+        <div class="brand-end">
         ${lookup ? `<div class="hist">
           <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="Back">${ICO.back}</button>
           <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="Forward">${ICO.fwd}</button>
@@ -98,6 +99,8 @@ export function appBarHtml(tab: Tab, query: string, canBack: boolean, canFwd: bo
           <button type="button" class="icon-btn" data-act="nb-import" aria-label="Import notebook" title="Import">${ICO.import}</button>
           <button type="button" class="icon-btn" data-act="nb-export" data-fmt="json" aria-label="Export notebook" title="Export">${ICO.export}</button>
         </div>` : ''}
+        ${accountBtn}
+        </div>
       </div>
       ${lookup ? `<form class="search">
         <input id="q" type="search" enterkeyhint="search" placeholder="Look up a word or phrase" value="${esc(query)}" autocomplete="off" />

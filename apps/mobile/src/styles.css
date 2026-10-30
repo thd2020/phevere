@@ -1282,20 +1282,90 @@ select, .field {
 .hint { font-size: 0.85rem; color: var(--md-sys-color-on-surface-variant); margin: 4px 0 8px; }
 .hint--error { color: var(--md-sys-color-error); }
 
-/* Account (Settings → Account) */
-.account-card { display: flex; align-items: center; gap: 12px; padding: 12px 4px; }
-.account-avatar {
-  flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
-  font-weight: 700; color: var(--md-sys-color-on-primary); background: var(--md-sys-color-primary);
+/* Account: avatar button at the end of the app bar, bottom sheet under it */
+.brand-end { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.hx-account-btn {
+  position: relative;
+  width: 40px; height: 40px; padding: 0; border: 0; border-radius: 999px;
+  display: grid; place-items: center;
+  background: transparent;
+  transition: background-color 0.16s var(--md-sys-motion);
 }
-.account-who { display: flex; flex-direction: column; min-width: 0; }
-.account-who span { font-size: 0.85rem; color: var(--md-sys-color-on-surface-variant); overflow-wrap: anywhere; }
-.account-delete { display: grid; gap: 4px; padding: 8px 0; }
-.account-delete input {
-  width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: var(--md-sys-shape-sm);
+.hx-account-btn:hover, .hx-account-btn[aria-expanded="true"] { background: var(--md-sys-color-surface-container); }
+.hx-account-btn .hx-mark { display: block; }
+.hx-avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-weight: 650; font-size: 0.95rem;
+  color: var(--md-sys-color-on-primary); background: var(--md-sys-color-primary);
+}
+.hx-avatar--lg { width: 44px; height: 44px; font-size: 1.15rem; flex: none; }
+.hx-account-btn[data-sync="syncing"] .hx-avatar { box-shadow: 0 0 0 2px var(--md-sys-color-surface), 0 0 0 4px var(--md-sys-color-tertiary); }
+.hx-account-btn[data-sync="error"]::after {
+  content: ''; position: absolute; top: 6px; right: 6px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--md-sys-color-error); border: 2px solid var(--md-sys-color-surface);
+}
+.sheet-scrim {
+  position: fixed; inset: 0; z-index: 40;
+  background: rgb(28 25 23 / 0.32);
+  animation: pv-fade-in 0.2s var(--md-sys-motion);
+}
+@keyframes pv-fade-in { from { opacity: 0; } }
+.account-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
+  padding: 8px 20px calc(20px + var(--pv-inset-bottom));
+  border-radius: var(--md-sys-shape-xl) var(--md-sys-shape-xl) 0 0;
+  background: var(--md-sys-color-surface-container-lowest);
+  animation: pv-sheet-in 0.24s var(--md-sys-motion);
+}
+.account-sheet__grip {
+  display: block; width: 32px; height: 4px; margin: 0 auto 14px;
+  border-radius: 2px; background: var(--md-sys-color-outline-variant);
+}
+.hx-acct { display: grid; gap: 14px; }
+.hx-acct__brand { display: flex; align-items: center; gap: 10px; font-size: 1.15rem; font-weight: 650; letter-spacing: -0.01em; }
+.hx-acct__who { display: flex; align-items: center; gap: 14px; }
+.hx-acct__id { display: flex; flex-direction: column; min-width: 0; }
+.hx-acct__id strong { font-size: 1.05rem; font-weight: 650; }
+.hx-acct__id span { font-size: 0.875rem; color: var(--md-sys-color-on-surface-variant); overflow-wrap: anywhere; }
+.hx-acct__sync {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 4px 4px 4px 14px; border-radius: var(--md-sys-shape-md);
+  background: var(--md-sys-color-surface-container-low);
+}
+.hx-acct__status { margin: 0; font-size: 0.875rem; color: var(--md-sys-color-on-surface-variant); }
+.hx-acct__status.is-error { color: var(--md-sys-color-error); }
+.hx-acct__row { display: flex; flex-wrap: wrap; gap: 8px; }
+.hx-acct__delete { display: grid; gap: 10px; }
+.hx-acct__delete p { margin: 0; font-size: 0.875rem; color: var(--md-sys-color-on-surface-variant); }
+.hx-acct__delete input {
+  width: 100%; height: 48px; padding: 0 14px; border-radius: var(--md-sys-shape-sm);
   border: 1px solid var(--md-sys-color-outline); background: transparent;
 }
-.account-delete input:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 1px; }
+.hx-acct__delete input:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 1px; }
+.hx-btn {
+  min-height: 44px; padding: 0 20px; border-radius: 999px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: transparent; color: var(--md-sys-color-on-surface);
+  font-weight: 600;
+}
+.hx-btn--primary { width: 100%; min-height: 48px; border: 0; background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
+.hx-btn--quiet { border-color: transparent; }
+.hx-btn--danger { border: 0; background: var(--md-sys-color-error); color: #fff; }
+.hx-btn--danger:disabled { opacity: 0.38; }
+.hx-btn--danger-text { color: var(--md-sys-color-error); }
+.hx-icon-btn {
+  width: 40px; height: 40px; border: 0; border-radius: 999px;
+  display: grid; place-items: center;
+  background: transparent; color: var(--md-sys-color-on-surface-variant);
+}
+.hx-icon-btn:disabled { opacity: 0.6; }
+.hx-icon-btn.is-spinning svg { animation: pv-spin 1s linear infinite; }
+@keyframes pv-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .hx-icon-btn.is-spinning svg, .account-sheet, .sheet-scrim { animation: none; }
+}
 .nav-row[data-kind="danger"] { color: var(--md-sys-color-error); }
 .danger {
   background: transparent;

@@ -17,6 +17,9 @@ import {
   type VocabEntry,
   type WikipediaResult,
   type AccountState,
+  accountButtonHtml,
+  accountPanelHtml,
+  deleteEmailMatches,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
 import { playRecorded, recordedUrls, speakIpa, speakText } from './platform/audio';
@@ -137,8 +140,16 @@ let toastMsg = '';
 let toastTimer: number | null = null;
 let capture: CaptureInfo = { platform: 'web', canDrawOverlays: false };
 let accountState: AccountState | null = null;
-/** Settings → Account is asking for the email to confirm deletion. */
+/** The account sheet is open from the app bar. */
+let accountOpen = false;
+/** The account sheet is asking for the email to confirm deletion. */
 let accountDeleting = false;
+
+/** What the app-bar button shows; the bar repaints only when this changes. */
+function accountBadgeKey(s: AccountState | null): string {
+  if (!s?.configured) return '';
+  return [s.user?.email || '', s.user?.name || '', s.syncing, !!s.lastError, s.signingIn].join('|');
+}
 let scan: ScanPage | null = null;
 /** Bumped per picture, so a repaint keeps the rendered picture (and its selection) in place. */
 let scanId = 0;
@@ -214,6 +225,7 @@ function paint(): void {
   const keepNbq = !!(nbqLive && document.activeElement === nbqLive);
   const nbqCaret = keepNbq ? nbqLive!.selectionStart : null;
   if (keepNbq) notebookFilter = nbqLive!.value;
+  const typedDelete = (document.getElementById('account-delete-email') as HTMLInputElement | null)?.value || '';
   const hit = lookupPaneHtml();
   if (tab === 'lookup' && scan) {
     paintScan(scan, hit);
@@ -231,17 +243,20 @@ function paint(): void {
             capture,
             settingsSection,
             voice,
-            accountState,
-            accountDeleting,
           )
         : hit;
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
   root.innerHTML = `
     <div class="shell${tab === 'settings' ? ' shell-settings' : ''}${lexiconFill ? ' shell-lexicon' : ''}${resultTab === 'wikipedia' && wikiArticle ? ' shell-wiki' : ''}">
-      ${stripMode ? popupBarHtml(canBack || wikiCanBack(), canFwd, !!query) : appBarHtml(tab, draft, canBack, canFwd)}
+      ${stripMode ? popupBarHtml(canBack || wikiCanBack(), canFwd, !!query) : appBarHtml(tab, draft, canBack, canFwd, accountButtonHtml(accountState, accountOpen))}
       <main class="page">${body}</main>
     </div>
     ${stripMode ? '' : navHtml(tab)}
+    ${!stripMode && accountOpen && accountState?.configured ? `<div class="sheet-scrim" data-act="account-close"></div>
+    <section class="account-sheet" role="dialog" aria-modal="true" aria-label="Account">
+      <span class="account-sheet__grip" aria-hidden="true"></span>
+      ${accountPanelHtml(accountState, { deleting: accountDeleting, device: 'phone' })}
+    </section>` : ''}
     ${toastMsg ? `<div class="toast" role="status">${esc(toastMsg)}</div>` : ''}`;
   const q = document.getElementById('q') as HTMLInputElement | null;
   if (keepFocus && q) {
@@ -252,6 +267,12 @@ function paint(): void {
   if (keepNbq && nbq) {
     nbq.focus();
     if (typeof nbqCaret === 'number') nbq.setSelectionRange(nbqCaret, nbqCaret);
+  }
+  const deleteInput = document.getElementById('account-delete-email') as HTMLInputElement | null;
+  if (deleteInput && typedDelete) {
+    deleteInput.value = typedDelete;
+    const confirm = document.querySelector<HTMLButtonElement>('[data-act="account-delete-confirm"]');
+    if (confirm) confirm.disabled = !deleteEmailMatches(accountState, typedDelete);
   }
   bindLexiconPane();
   bindWikiReader();
@@ -1227,7 +1248,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'settings-section': {
       const next = t.dataset.section as SettingsSection | undefined;
-      if (next === 'capture' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio' || next === 'account') {
+      if (next === 'capture' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio') {
         settingsSection = next;
         langMenu = '';
         if (next === 'offline') await refreshPacks();
@@ -1236,6 +1257,16 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       }
       return;
     }
+    case 'account-open':
+      accountOpen = !accountOpen;
+      accountDeleting = false;
+      paint();
+      return;
+    case 'account-close':
+      accountOpen = false;
+      accountDeleting = false;
+      paint();
+      return;
     case 'account-sign-in':
       await accountPlatform.signIn();
       return;
@@ -1246,11 +1277,14 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       await accountPlatform.syncNow();
       return;
     case 'account-sign-out':
+      accountOpen = false;
       await accountPlatform.signOut();
+      paint();
       return;
     case 'account-delete-start':
       accountDeleting = true;
       paint();
+      (document.getElementById('account-delete-email') as HTMLInputElement | null)?.focus();
       return;
     case 'account-delete-cancel':
       accountDeleting = false;
@@ -1260,6 +1294,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       const typed = (document.getElementById('account-delete-email') as HTMLInputElement | null)?.value || '';
       if (await accountPlatform.deleteAccount(typed)) {
         accountDeleting = false;
+        accountOpen = false;
         toast('Account deleted');
       }
       paint();
@@ -1599,6 +1634,11 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
 function onChange(e: Event): void {
   const el = e.target as HTMLElement | null;
   if (!el) return;
+  if (el.id === 'account-delete-email') {
+    const confirm = document.querySelector<HTMLButtonElement>('[data-act="account-delete-confirm"]');
+    if (confirm) confirm.disabled = !deleteEmailMatches(accountState, (el as HTMLInputElement).value);
+    return;
+  }
   if (el.id === 'lang-q') {
     // Filter in place so the search box keeps focus while typing.
     const needle = (el as HTMLInputElement).value.trim().toLowerCase();
@@ -1645,6 +1685,7 @@ export async function startApp(): Promise<void> {
   // Android Back (button or gesture): the page steps back first; native leaves the app only
   // when this returns false.
   (window as unknown as { __pvBack?: () => boolean }).__pvBack = () => {
+    if (accountOpen) { accountOpen = false; accountDeleting = false; paint(); return true; }
     if (langMenu) { langMenu = ''; paint(); return true; }
     if (scan) {
       if (scanSheet !== 'closed') setScanSheet('closed');
@@ -1732,8 +1773,9 @@ export async function startApp(): Promise<void> {
   if (!stripMode) {
     accountPlatform.initAccount({
       onState: (next) => {
+        const before = accountBadgeKey(accountState);
         accountState = next;
-        if (tab === 'settings' && settingsSection === 'account') paint();
+        if (accountOpen || before !== accountBadgeKey(next)) paint();
       },
       onNotebookChanged: () => {
         void refreshNotebook().then(() => {
