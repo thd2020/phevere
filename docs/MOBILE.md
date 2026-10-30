@@ -79,7 +79,9 @@ The APK is `app/build/outputs/apk/debug/`. It does not include Electron or the d
 
 Xcode only runs on a Mac. GitHub’s `macos-latest` runner (job **ios-ipa**) builds a device IPA and uploads it next to the APK. It is not attached to a GitHub Release.
 
-Locally on a Mac: open `apps/mobile/ios/App/App.xcodeproj` (no CocoaPods). URL scheme `phevere`. Share extension `com.phevere.app.share`.
+Locally on a Mac: run `bash apps/mobile/scripts/prepare-ios-speech.sh` once, then open `apps/mobile/ios/App/App.xcodeproj` (no CocoaPods). URL scheme `phevere`. Share extension `com.phevere.app.share`.
+
+The script fetches the sherpa-onnx 1.13.3 iOS libraries (`sherpa-onnx.xcframework` and `onnxruntime.xcframework`, both static) and sherpa-onnx's official `SherpaOnnx.swift` wrapper into `apps/mobile/ios/App/Speech/`, which git ignores. Each download is pinned by SHA-256. The `ios-ipa` CI job and the `release-ios` job run it before `xcodebuild`. The Neural voices themselves are not bundled: the app downloads the Kokoro model a person picks in Settings → Audio into Application Support, excluded from iCloud backup, and unpacks the `.tar.bz2` with the SDK's `libbz2` and a small tar reader in `NeuralSpeech.swift`.
 
 Application id: `com.phevere.app` (same as the desktop `electron-builder.yml` `appId`).
 
