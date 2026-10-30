@@ -1,6 +1,6 @@
 # Phevere
 
-<img src="README.assets/phevere-icon.png" width="96" alt="The Phevere icon: a lowercase p whose stem is an orange text cursor, with a peach highlighter stroke">
+<img src="README.assets/phevere-icon.png" width="96" alt="The Phevere icon: a forward-leaning lowercase p with a plum stem and a hollow mint bowl, the Holarky family letter">
 
 [![Release](https://img.shields.io/github/v/release/thd2020/phevere?display_name=tag)](https://github.com/thd2020/phevere/releases/latest)
 [![CI](https://github.com/thd2020/phevere/actions/workflows/ci.yml/badge.svg)](https://github.com/thd2020/phevere/actions/workflows/ci.yml)
