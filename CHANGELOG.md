@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Notebook (2026-10-30): on desktop and phone the notebook is one sheet of rows grouped by day (Today, Yesterday, This week, then by month). A row shows the word, one pronunciation, the part of speech, a play button and the time, and never the meaning, so the list works as a memory check. Opening a row shows the pronunciations as US and UK chips, the senses as a numbered list (four, then Show more), the note, the sources and the save date, with Look up and Remove. The language pair appears only for translations.
 - Icon (2026-10-30): Phevere uses the Holarky family letter p from the Holarky brand kit: a lowercase p leaning 12 degrees, with a plum stem and a hollow mint bowl, on a paper tile. It replaces the text-cursor p on Windows, macOS, Linux, the tray, the installer, the Android launcher, iOS, the splash screens and the window title bars. At 16 to 32 px the bowl is a solid stroke (`packaging/icon-small.svg`). The account button's Holarky mark uses the brand's small mark too.
 - Account (2026-10-30): the Holarky account is a button in the desktop title bar and the phone app bar instead of a Settings section. Signed out it shows the Holarky mark and opens Sign in; signed in it shows your initial and opens a panel with sync status, Sync now, Sign out and Delete account. A ring on the button means a sync is running and a red dot means the last one failed.
 

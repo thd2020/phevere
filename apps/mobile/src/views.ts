@@ -11,6 +11,7 @@ import {
   type Translation,
   type VocabEntry,
   type WikipediaResult,
+  vocabListHtml,
 } from '@phevere/core';
 
 export type Tab = 'lookup' | 'notebook' | 'settings';
@@ -785,51 +786,7 @@ export function notebookBody(
         .includes(q),
     );
   }
-  const rows = list
-    .map((e) => {
-      const defRaw = stripGlossText(e.definition || '');
-      const long = defRaw.length > 280 || defRaw.split(/\n/).length > 4;
-      const defHtml = esc(defRaw).replace(/\n/g, '<br>');
-      const badges = (e.sources || [])
-        .slice(0, 4)
-        .map((s) => `<span class="vocab-badge">${esc(s)}</span>`)
-        .join('');
-      const langLabel = formatVocabLangPair(e);
-      const saved =
-        e.updatedAt || e.createdAt ? new Date(Number(e.updatedAt || e.createdAt)).toLocaleString() : '';
-      const ipa = String(e.reading || '').trim();
-      const ipaHtml = ipa
-        ? `<span class="vocab-reading">${ipa.includes('/') ? esc(ipa) : `/${esc(ipa)}/`}</span>`
-        : '<span class="vocab-reading vocab-reading--empty">IPA pending</span>';
-      const open = expanded.has(e.id);
-      return `<article class="vocab-item ${open ? 'is-expanded' : 'is-collapsed'}" data-id="${esc(e.id)}" data-az="${vocabAzLetter(e.lemma)}">
-        <div class="vocab-entry">
-          <div class="vocab-entry__toggle" data-act="nb-toggle" data-id="${esc(e.id)}" role="button" tabindex="0" aria-expanded="${open}">
-            <header class="vocab-entry__head">
-              <h3 class="vocab-lemma">${esc(e.lemma)}</h3>
-              ${ipaHtml}
-              <button type="button" class="vocab-play" data-act="nb-play" data-lemma="${esc(e.lemma)}" aria-label="Play pronunciation">${ICO.speaker}</button>
-              <span class="vocab-expand-hint" aria-hidden="true"></span>
-            </header>
-            <div class="vocab-entry__meta">
-              ${e.partOfSpeech ? `<span class="vocab-pos">${esc(e.partOfSpeech)}</span>` : ''}
-              ${langLabel ? `<span class="vocab-langs">${esc(langLabel)}</span>` : ''}
-              ${saved ? `<time class="vocab-saved">${esc(saved)}</time>` : ''}
-            </div>
-          </div>
-          <div class="vocab-entry__details">
-            ${defHtml ? `<div class="vocab-def${long ? ' is-clamped' : ''}">${defHtml}</div>${long ? `<button type="button" class="vocab-more" data-act="nb-more">Show more</button>` : ''}` : '<p class="vocab-note">No definition.</p>'}
-            ${badges ? `<div class="vocab-badges">${badges}</div>` : ''}
-            ${e.note ? `<p class="vocab-note">${esc(e.note)}</p>` : ''}
-          </div>
-        </div>
-        <div class="vocab-actions">
-          <button type="button" class="icon-btn" data-act="lookup" data-q="${esc(e.lemma)}" aria-label="Look up ${esc(e.lemma)}" title="Look up">${ICO.open}</button>
-          <button type="button" class="icon-btn" data-act="nb-del" data-id="${esc(e.id)}" aria-label="Remove ${esc(e.lemma)}" title="Remove">${ICO.trash}</button>
-        </div>
-      </article>`;
-    })
-    .join('');
+  const rows = vocabListHtml(list, { sort, expanded });
   return `
     <div class="nb-head">
       <input id="nbq" type="search" class="vocab-search" placeholder="Search notebook…" value="${esc(filter)}" autocomplete="off" aria-label="Search notebook" />

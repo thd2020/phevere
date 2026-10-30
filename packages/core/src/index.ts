@@ -33,6 +33,16 @@ export {
   type VocabAddInput,
 } from './vocab-store';
 export { inferVocabGlossLang, formatVocabLangPair } from './vocab-lang';
+export {
+  vocabReadings,
+  vocabSenses,
+  vocabDayGroup,
+  vocabWhen,
+  vocabEntryHtml,
+  vocabListHtml,
+  type VocabViewEntry,
+  type VocabListOptions,
+} from './vocab-view';
 export { vocabPayloadFromResult } from './vocab-payload';
 
 export {

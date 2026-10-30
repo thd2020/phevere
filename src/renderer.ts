@@ -34,6 +34,7 @@ import {
   accountPanelHtml,
   deleteEmailMatches,
   formatVocabLangPair,
+  vocabListHtml,
   type AccountState,
 } from '@phevere/core';
 
@@ -2078,57 +2079,10 @@ function renderVocabNotebook(entries: any[]): void {
     list.innerHTML = `<p class="empty-message">${q ? 'No matching words.' : 'No saved words.'}</p>`;
     return;
   }
-  list.innerHTML = sorted
-    .map((e: any) => {
-        const defRaw = String(e.definition || '').trim();
-        const long = defRaw.length > 280 || defRaw.split(/\n/).length > 4;
-        const defHtml = escapeHtmlSelection(defRaw).replace(/\n/g, '<br>');
-        const badges = (e.sources || [])
-          .slice(0, 4)
-          .map((s: string) => `<span class="vocab-badge">${escapeHtmlSelection(s)}</span>`)
-          .join('');
-        const langLabel = formatVocabLangPair(e);
-        const langPair = langLabel
-            ? `<span class="vocab-langs">${escapeHtmlSelection(langLabel)}</span>`
-            : '';
-        const saved =
-          e.updatedAt || e.createdAt
-            ? new Date(Number(e.updatedAt || e.createdAt)).toLocaleString()
-            : '';
-        const ipa = String(e.reading || '').trim();
-        const ipaHtml = ipa
-          ? `<span class="vocab-reading">${ipa.includes('/') ? escapeHtmlSelection(ipa) : `/${escapeHtmlSelection(ipa)}/`}</span>`
-          : '<span class="vocab-reading vocab-reading--empty">IPA pending</span>';
-        const lemma = String(e.lemma || '');
-        const az = vocabAzLetter(lemma);
-        return `<article class="vocab-item is-collapsed" data-id="${escapeHtmlSelection(e.id)}" data-az="${az}">
-          <div class="vocab-entry">
-            <div class="vocab-entry__toggle" role="button" tabindex="0" aria-expanded="false">
-            <header class="vocab-entry__head">
-              <h3 class="vocab-lemma">${escapeHtmlSelection(lemma)}</h3>
-              ${ipaHtml}
-              <button type="button" class="vocab-play" data-lemma="${escapeHtmlSelection(lemma)}" title="Play pronunciation" aria-label="Play pronunciation">▶</button>
-              <span class="vocab-expand-hint" aria-hidden="true"></span>
-            </header>
-            <div class="vocab-entry__meta">
-              ${e.partOfSpeech ? `<span class="vocab-pos">${escapeHtmlSelection(e.partOfSpeech)}</span>` : ''}
-              ${langPair}
-              ${saved ? `<time class="vocab-saved" datetime="${escapeHtmlSelection(String(e.updatedAt || e.createdAt))}">${escapeHtmlSelection(saved)}</time>` : ''}
-            </div>
-            </div>
-            <div class="vocab-entry__details">
-              ${defHtml ? `<div class="vocab-def${long ? ' is-clamped' : ''}" data-full="1">${defHtml}</div>${long ? `<button type="button" class="vocab-more btn-link">Show more</button>` : ''}` : '<p class="vocab-note">No definition.</p>'}
-              ${badges ? `<div class="vocab-badges">${badges}</div>` : ''}
-              ${e.note ? `<p class="vocab-note">${escapeHtmlSelection(e.note)}</p>` : ''}
-            </div>
-          </div>
-          <div class="vocab-actions">
-            <button type="button" class="btn btn-outlined btn-small vocab-open" data-lemma="${escapeHtmlSelection(e.lemma)}">Look up</button>
-            <button type="button" class="btn btn-outlined btn-small vocab-remove" data-id="${escapeHtmlSelection(e.id)}">Remove</button>
-          </div>
-        </article>`;
-      })
-      .join('');
+  const expanded = new Set<string>(
+    [...list.querySelectorAll<HTMLElement>('.vocab-item.is-expanded')].map((el) => el.dataset.id || ''),
+  );
+  list.innerHTML = vocabListHtml(sorted, { sort: getVocabSortMode() === 'alpha' ? 'az' : 'recent', expanded });
 
     list.querySelectorAll('.vocab-item').forEach((el) => {
       const toggle = el.querySelector('.vocab-entry__toggle') as HTMLElement | null;
