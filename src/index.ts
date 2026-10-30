@@ -30,6 +30,7 @@ import { showWorkProgress, updateWorkProgress, closeWorkProgress } from './servi
 import { isAcceleratorPhysicallyHeld, isPrimaryMouseDown, primaryMousePressedSinceLastPoll } from './services/accelerator-key-state';
 import { getForegroundWindowBoundsDip } from './services/foreground-window';
 import { getNowPlaying, formatNowPlayingQuery } from './services/media-session';
+import { probeTrayHost, watchTrayHost, linuxSessionInfo } from './services/linux-tray-host';
 import { speakIpa, cancelIpaSpeak, fetchPronunciationAudio, prefetchPronunciationUrls, installPronunciationAudioProtocol } from './services/ipa-speak';
 import {
   getAudioPrefs,
@@ -1004,6 +1005,68 @@ function createTray(): void {
   if (process.platform !== 'darwin') {
     tray.setContextMenu(buildTrayContextMenu());
   }
+}
+
+/**
+ * Linux: Electron picks the tray backend once, in `new Tray`. With no
+ * StatusNotifier host on the bus yet (panel still starting at login, or GNOME
+ * without AppIndicator) it falls back to an XEmbed icon, which Wayland panels
+ * never show. Probe first, and rebuild the Tray when a host appears.
+ */
+async function initTray(): Promise<void> {
+  if (process.platform !== 'linux') {
+    createTray();
+    return;
+  }
+  const session = linuxSessionInfo();
+  let state: Awaited<ReturnType<typeof probeTrayHost>> = 'unknown';
+  try {
+    state = await probeTrayHost();
+  } catch {
+    /* treat as unknown */
+  }
+  createTray();
+  if (state === 'ready') {
+    log.info('main', 'Tray: StatusNotifier host ready', session);
+    return;
+  }
+  if (state === 'unknown') {
+    log.warn('main', 'Tray: no gdbus, busctl or dbus-send; cannot check for a StatusNotifier host', session);
+    return;
+  }
+  log.warn('main', 'Tray: no StatusNotifier host yet; waiting for one', session);
+  watchTrayHost({
+    onReady: () => {
+      log.info('main', 'Tray: StatusNotifier host appeared; recreating tray', session);
+      if (tray && !tray.isDestroyed()) {
+        try {
+          tray.destroy();
+        } catch {
+          /* ignore */
+        }
+      }
+      tray = null;
+      createTray();
+    },
+    onSlow: () => {
+      log.error('main', 'Tray: still no StatusNotifier host; tray icon is not visible', session);
+      // X11 panels with a legacy system tray still show the XEmbed fallback.
+      const xembedHidden = session.sessionType === 'wayland' || /gnome/i.test(session.desktop);
+      if (!xembedHidden) return;
+      try {
+        if (Notification.isSupported()) {
+          new Notification({
+            title: 'Phevere',
+            body: /gnome/i.test(session.desktop)
+              ? 'No tray icon: turn on the AppIndicator extension. Run Phevere again to reopen its window.'
+              : 'No tray icon: this desktop has no system tray. Run Phevere again to reopen its window.',
+          }).show();
+        }
+      } catch {
+        /* optional */
+      }
+    },
+  });
 }
 
 // Open custom wiki window in standalone web window (not inside dictionary popup)
@@ -3044,7 +3107,7 @@ app.on('ready', () => {
   installPronunciationAudioProtocol();
   monitorSettings = loadMonitorSettings();
   createMainWindow();
-  createTray();
+  void initTray();
   registerFixedAppShortcuts();
   startClipboardImageWatcher();
   syncGlobalMonitorShortcuts();

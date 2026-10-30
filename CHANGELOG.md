@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Account (2026-10-30): the Holarky account is a button in the desktop title bar and the phone app bar instead of a Settings section. Signed out it shows the Holarky mark and opens Sign in; signed in it shows your initial and opens a panel with sync status, Sync now, Sign out and Delete account. A ring on the button means a sync is running and a red dot means the last one failed.
 
+### Fixed
+
+- Linux tray icon (2026-10-30): the icon now appears when Phevere starts before the desktop panel, which is common when it launches at login and on slower ARM machines. Electron picks the tray backend once, when the icon is created, and fell back to an old-style X11 icon that Wayland panels never show. Phevere now checks the session bus for a StatusNotifierItem host and rebuilds the icon when one appears. With no host after a minute (GNOME without the AppIndicator extension, or a panel without a tray), it logs the session type and desktop and shows one notification.
+
 ## [2.3.0] - 2026-10-29
 
 ### Added
