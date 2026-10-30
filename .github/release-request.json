@@ -1,1 +1,1 @@
-{"tag":"v2.3.0","targets":"all","reason":"Release-signed Android APK (same key as 2.2.0) with an upgrade test, voice-download resume, notebook redesign; the debug-signed APK was removed first."}
+{"tag":"v2.3.0","targets":"phone","reason":"Add the Neural voices to the iOS build; Android keeps the release key and runs the upgrade test again."}
