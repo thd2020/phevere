@@ -530,6 +530,8 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm run mobile:sync
+      - name: Fetch sherpa-onnx for the Neural voices
+        run: bash apps/mobile/scripts/prepare-ios-speech.sh
       - name: Build iOS app
         working-directory: apps/mobile/ios/App
         run: |

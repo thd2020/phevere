@@ -11,3 +11,6 @@ capacitor-cordova-ios-plugins
 # Generated Config files
 App/App/capacitor.config.json
 App/App/config.xml
+
+# sherpa-onnx libraries and Swift wrapper, fetched by apps/mobile/scripts/prepare-ios-speech.sh
+App/Speech/
