@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Android sign-in (2026-10-30): signing in on the phone failed with "Sign-in did not finish. (token_error)". The app's HTTP bridge read only a `Content-Type` header spelled with capitals, so the form-encoded token request went to Auth0 labelled as JSON and was rejected. Header names are now matched in any case.
+
 ### Changed
 
 - Icon (2026-10-30): Phevere uses the Holarky family letter p from the Holarky brand kit: a lowercase p leaning 12 degrees, with a plum stem and a hollow mint bowl, on a paper tile. It replaces the text-cursor p on Windows, macOS, Linux, the tray, the installer, the Android launcher, iOS, the splash screens and the window title bars. At 16 to 32 px the bowl is a solid stroke (`packaging/icon-small.svg`). The account button's Holarky mark uses the brand's small mark too.
