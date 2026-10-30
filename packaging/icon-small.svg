@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Small Phevere icon for 16-32 px (tray, small Windows icon sizes): the twin bowl is a solid
+       mint stroke, as the Holarky brand asks below 32 px. Same geometry as icon.svg. -->
+  <defs>
+    <linearGradient id="pvTile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F2EFE9"/><stop offset="1" stop-color="#F2EFE9"/>
+    </linearGradient>
+    <mask id="pvTwin" maskUnits="userSpaceOnUse" x="-40" y="-10" width="180" height="130">
+      <path d="M30 55 C34 48 43 45 51 45 C63 45 71 53 71 64 C71 76 63 84 51 84 C43 84 35 81 30 75" stroke="#fff" stroke-width="12" fill="none"/>
+      <polygon points="24,51 36,45 36,106 24,106" fill="#000"/>
+    </mask>
+  </defs>
+  <rect width="1024" height="1024" rx="228" fill="url(#pvTile)"/>
+  <rect x="1.5" y="1.5" width="1021" height="1021" rx="226.5" fill="none" stroke="#5E3A8C" stroke-opacity="0.12" stroke-width="3"/>
+  <g id="pvGlyph" transform="scale(8.53333) translate(10 10) translate(50 50) scale(1.1) translate(-46 -72.5) translate(14 0) skewX(-12)">
+    <rect x="-40" y="-10" width="180" height="130" fill="#2A9D84" mask="url(#pvTwin)"/>
+    <polygon points="24,51 36,45 36,106 24,106" fill="#5E3A8C"/>
+  </g>
+</svg>

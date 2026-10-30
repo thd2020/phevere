@@ -17,6 +17,8 @@ const outDir = packaging;
 
 // packaging/icon.svg is the one source for the app, tray and installer icons.
 const ICON_SVG = fs.readFileSync(path.join(packaging, 'icon.svg'), 'utf8');
+// 16-32 px and the tray use the small variant, whose twin stroke is solid.
+const ICON_SMALL_SVG = fs.readFileSync(path.join(packaging, 'icon-small.svg'), 'utf8');
 /** The mark without its XML wrapper, for embedding inside larger artwork. */
 const ICON_INNER = ICON_SVG.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
 
@@ -53,13 +55,15 @@ async function main() {
   // Master PNG
   const png1024 = await sharp(svgBuf).resize(1024, 1024).png().toBuffer();
   await sharp(png1024).resize(512, 512).png().toFile(path.join(outDir, 'icon.png'));
-  await sharp(png1024).resize(256, 256).png().toFile(path.join(root, 'resources', 'tray-icon.png'));
+  const smallPng = await sharp(Buffer.from(ICON_SMALL_SVG)).resize(256, 256).png().toBuffer();
+  await sharp(smallPng).png().toFile(path.join(root, 'resources', 'tray-icon.png'));
 
   // ICO: pack multiple PNG sizes (sharp can write ico on recent builds; fallback via png-to-ico if needed)
   const sizes = [16, 24, 32, 48, 64, 128, 256];
   const pngs = [];
   for (const s of sizes) {
-    pngs.push(await sharp(png1024).resize(s, s).png().toBuffer());
+    const src = s <= 32 ? Buffer.from(ICON_SMALL_SVG) : png1024;
+    pngs.push(await sharp(src).resize(s, s).png().toBuffer());
   }
 
   let icoWritten = false;

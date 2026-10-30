@@ -6,21 +6,19 @@
 import type { AccountState } from './account';
 
 /**
- * The Holarky mark (the Stride h), as served by holarky-account at /brand/holarky-mark.svg.
+ * The Holarky mark (the Stride h) as the brand's small icon, `brand/svg/holarky-icon-small.svg`
+ * in thd2020/holarky-account, without its paper square. Below 32 px the brand fills the twin leg.
  * `id` keeps the mask unique when the mark appears more than once in a page.
  */
 export function holarkyMarkSvg(id: string, size = 24): string {
   const mask = `hx-twin-${id}`;
-  return `<svg class="hx-mark" viewBox="-6 2 112 104" width="${size}" height="${Math.round((size * 104) / 112)}" aria-hidden="true" focusable="false">
+  return `<svg class="hx-mark" viewBox="2 2 96 96" width="${size}" height="${size}" aria-hidden="true" focusable="false">
   <defs>
     <mask id="${mask}" maskUnits="userSpaceOnUse" x="-40" y="-10" width="180" height="130">
-      <path d="M30 60 C32 50 42 45 53 45 C64 46 70 54 73 64 L79 82" fill="none" stroke="#fff" stroke-width="13"/>
-      <path d="M30 60 C32 50 42 45 53 45 C64 46 70 54 73 64 L79 82" fill="none" stroke="#000" stroke-width="8" pathLength="100" stroke-dasharray="0 1.8 96.4 1.8"/>
+      <path d="M30 60 C32 50 42 45 53 45 C64 46 70 54 73 64 L79 82" fill="none" stroke="#fff" stroke-width="12"/>
       <polygon points="24,16 36,10 36,90 24,90" fill="#000"/>
     </mask>
   </defs>
-  <path d="M6 92 H94" stroke="#5e3a8c" stroke-width="2.4" stroke-linecap="round"/>
-  <ellipse cx="76" cy="93.5" rx="8" ry="1.6" fill="#5e3a8c" fill-opacity="0.25"/>
   <g transform="translate(14 0) skewX(-12)">
     <rect x="-40" y="-10" width="180" height="130" fill="#2a9d84" mask="url(#${mask})"/>
     <polygon points="24,16 36,10 36,90 24,90" fill="#5e3a8c"/>

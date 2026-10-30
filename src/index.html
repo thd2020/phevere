@@ -13,18 +13,19 @@
         <span class="titlebar-icon" aria-hidden="true">
           <svg class="titlebar-logo-svg" viewBox="0 0 1024 1024" width="22" height="22" focusable="false">
             <defs>
-            <linearGradient id="phevereMarkTile" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="#FFFDFA"/><stop offset="1" stop-color="#F2ECE4"/>
+            <linearGradient id="pvMainTile" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#F2EFE9"/><stop offset="1" stop-color="#F2EFE9"/>
             </linearGradient>
+            <mask id="pvMainTwin" maskUnits="userSpaceOnUse" x="-40" y="-10" width="180" height="130">
+            <path d="M30 55 C34 48 43 45 51 45 C63 45 71 53 71 64 C71 76 63 84 51 84 C43 84 35 81 30 75" stroke="#fff" stroke-width="12" fill="none"/>
+            <polygon points="24,51 36,45 36,106 24,106" fill="#000"/>
+            </mask>
             </defs>
-            <rect width="1024" height="1024" rx="228" fill="url(#phevereMarkTile)"/>
-            <rect x="1.5" y="1.5" width="1021" height="1021" rx="226.5" fill="none" stroke="#1C1917" stroke-opacity="0.10" stroke-width="3"/>
-            <g transform="translate(-60 -30)">
-            <rect x="300" y="476" width="560" height="150" rx="28" fill="#FFD3BF" transform="rotate(-4 580 551)"/>
-            <circle cx="590" cy="470" r="168" fill="none" stroke="#1C1917" stroke-width="72"/>
-            <rect x="362" y="244" width="72" height="600" rx="10" fill="#C2410C"/>
-            <rect x="296" y="232" width="204" height="48" rx="24" fill="#C2410C"/>
-            <rect x="296" y="808" width="204" height="48" rx="24" fill="#C2410C"/>
+            <rect width="1024" height="1024" rx="228" fill="url(#pvMainTile)"/>
+            <rect x="1.5" y="1.5" width="1021" height="1021" rx="226.5" fill="none" stroke="#5E3A8C" stroke-opacity="0.12" stroke-width="3"/>
+            <g transform="scale(8.53333) translate(10 10) translate(50 50) scale(1.1) translate(-46 -72.5) translate(14 0) skewX(-12)">
+            <rect x="-40" y="-10" width="180" height="130" fill="#2A9D84" mask="url(#pvMainTwin)"/>
+            <polygon points="24,51 36,45 36,106 24,106" fill="#5E3A8C"/>
             </g>
           </svg>
         </span>

@@ -17,7 +17,7 @@ const source = fs.readFileSync(path.join(root, 'packaging', 'icon.svg'), 'utf8')
 const res = path.join(root, 'apps', 'mobile', 'android', 'app', 'src', 'main', 'res');
 const ios = path.join(root, 'apps', 'mobile', 'ios', 'App', 'App', 'Assets.xcassets');
 
-const PAPER = '#F4F0EA';
+const PAPER = '#F2EFE9';
 const defs = source.match(/<defs>[\s\S]*?<\/defs>/)[0];
 const glyph = source.match(/<g id="pvGlyph"[\s\S]*?<\/g>/)[0];
 
