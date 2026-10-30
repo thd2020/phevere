@@ -256,8 +256,8 @@ jobs:
           ditto "$APP" ipa/Payload/App.app
           (cd ipa && zip -qry ../Phevere.ipa Payload)
           # sherpa-onnx and onnxruntime are static libraries linked into the app binary.
-          strings "$APP/App" | grep -q SherpaOnnxCreateOfflineTts
-          strings "$APP/App" | grep -q OrtGetApiBase
+          grep -aq SherpaOnnxCreateOfflineTts "$APP/App"
+          grep -aq OrtGetApiBase "$APP/App"
           ls -l Phevere.ipa
       - name: Upload IPA
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
