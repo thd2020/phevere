@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Account (2026-10-30): the Holarky account is a button in the desktop title bar and the phone app bar instead of a Settings section. Signed out it shows the Holarky mark and opens Sign in; signed in it shows your initial and opens a panel with sync status, Sync now, Sign out and Delete account. A ring on the button means a sync is running and a red dot means the last one failed.
+
 ## [2.3.0] - 2026-10-29
 
 ### Added

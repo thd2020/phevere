@@ -25,7 +25,7 @@ The current release is **2.3.0** on desktop and phone (2026-10-29). It adds an o
 - Etymology from Wiktionary, Etymonline, and Youdao, and a Wikipedia reader in the same pane.
 - Offline packs: WordNet, Webster 1913 (GCIDE), CC-CEDICT, and FreeDict English–Chinese.
 - A notebook stored locally in SQLite, with search, sorting, and JSON or CSV import and export.
-- An optional Holarky account (Settings → Account), the same account that signs you in to knowrld. Sign in with email and password, a passkey, or Google; while signed in, the notebook syncs between your desktops and phones, including notes, review progress and deletions. Without an account Phevere works as before, and lookups never wait for it.
+- An optional Holarky account, from the button at the right of the title bar on desktop or the app bar on the phone. Sign in with email and password, a passkey, or Google; while signed in, the notebook syncs between your desktops and phones, including notes, review progress and deletions. Without an account Phevere works as before, and lookups never wait for it.
 
 **Desktop (Windows, macOS, Linux)**
 
@@ -83,7 +83,7 @@ iOS 14 or later. Download `Phevere-<version>-ios-unsigned.ipa` from [GitHub Rele
 ## Privacy
 
 - The notebook and settings are stored on the device. Without an account, Phevere keeps nothing off the device.
-- The Holarky account is optional. Sign-in runs on Auth0; while you are signed in, your profile and notebook are stored by the Holarky service on Cloudflare so that your devices match. Settings → Account deletes the account everywhere; the notebook on the device stays. See the [privacy page](https://holarky-api.thdfreelancer.workers.dev/privacy).
+- The Holarky account is optional. Sign-in runs on Auth0; while you are signed in, your profile and notebook are stored by the Holarky service on Cloudflare so that your devices match. Delete account in the account panel removes the account everywhere; the notebook on the device stays. See the [privacy page](https://holarky-api.thdfreelancer.workers.dev/privacy).
 - Lookups and translations are sent only to the services enabled in Settings.
 - Selection capture skips password fields, and a silent copy restores the previous clipboard contents.
 - On macOS, Screen Recording permission is used only for OCR.
