@@ -46,18 +46,18 @@ final class NativeIo {
     Request.Builder b = new Request.Builder().url(url);
     JSONObject headers = p.optJSONObject("headers");
     // Header names are case-insensitive; fetch() callers send them lowercased.
-    String ct = "application/json";
+    String requestType = "application/json";
     if (headers != null) {
       Iterator<String> keys = headers.keys();
       while (keys.hasNext()) {
         String k = keys.next();
-        if ("content-type".equalsIgnoreCase(k)) ct = headers.optString(k, ct);
+        if ("content-type".equalsIgnoreCase(k)) requestType = headers.optString(k, requestType);
         else b.header(k, headers.optString(k));
       }
     }
     String body = p.optString("body", null);
     if (body != null && !"null".equals(body) && !body.isEmpty() && !"GET".equalsIgnoreCase(method)) {
-      b.method(method, RequestBody.create(body, MediaType.parse(ct)));
+      b.method(method, RequestBody.create(body, MediaType.parse(requestType)));
     } else {
       b.method(method, null);
     }
