@@ -1,0 +1,91 @@
+name: Android signed candidate (no publication)
+
+on:
+  push:
+    branches: [codex/notebook-csv-android-20261023]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-candidate:
+    if: github.repository == 'thd2020/phevere' && github.ref == 'refs/heads/codex/notebook-csv-android-20261023'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Use hosted Android SDK without accepting new licenses
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          # Existing hosted-runner licenses only. Unaccepted licenses must fail.
+          "$SDKMANAGER" 'platforms;android-36' 'build-tools;35.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1' < /dev/null
+          test -d "$ANDROID_SDK_ROOT/platforms/android-36"
+          test -d "$ANDROID_SDK_ROOT/build-tools/35.0.0"
+          test -d "$ANDROID_SDK_ROOT/ndk/28.2.13676358"
+          test -d "$ANDROID_SDK_ROOT/cmake/3.22.1"
+      - name: Install, test and build phone UI
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: |
+          npm ci --ignore-scripts
+          node scripts/test-mobile-regressions.js
+          node scripts/test-android-release.js
+          node scripts/test-android-candidate-workflow.js
+          npx tsc --noEmit -p apps/mobile/tsconfig.json
+          npm run mobile:sync
+      - name: Prepare bundled speech
+        working-directory: apps/mobile
+        run: |
+          python scripts/prepare-speech.py
+          python scripts/test-speech-package.py
+      - name: Prepare signing
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: node scripts/prepare-android-signing.js
+      - name: Build signed APK
+        working-directory: apps/mobile/android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/phevere-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --console=plain
+      - name: Remove temporary key
+        if: always() && steps.signing.outcome == 'success'
+        run: rm -f -- "$RUNNER_TEMP/phevere-release.jks"
+      - name: Verify and stage candidate
+        env:
+          EXPECTED_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          python apps/mobile/scripts/check-apk-16kb.py apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+          node scripts/verify-android-candidate.js
+          git archive --format=tar.gz HEAD -o android-candidate/phevere-source.tar.gz
+          cp apps/mobile/android/app/build/generated/speech-v2/sources/espeak-ng-1.52.0.tar.gz android-candidate/
+      - name: Upload candidate only
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: phevere-android-signed-candidate-${{ github.sha }}
+          path: android-candidate/
+          retention-days: 14
+          if-no-files-found: error
