@@ -1,1 +1,1 @@
-{"tag":"v2.3.0","targets":"phone","reason":"Replace the Android and iOS files with builds that fix phone sign-in (token_error)."}
+{"tag":"v2.3.0","targets":"phone","reason":"Retry the phone builds with the sign-in fix; the first try did not compile."}
