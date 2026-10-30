@@ -1,1 +1,1 @@
-{"tag":"v2.3.0","targets":"all","reason":"Replace the 2.3.0 files with builds that use the Holarky family p icon."}
+{"tag":"v2.3.0","targets":"phone","reason":"Replace the Android and iOS files with builds that fix phone sign-in (token_error)."}
