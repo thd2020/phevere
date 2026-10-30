@@ -109,30 +109,20 @@ final class SpeechModels {
         if (c.getNoBackupFilesDir().getUsableSpace() < v.freeMb * 1_000_000L)
           throw new IOException("Free " + v.freeMb + " MB of storage, then try again.");
         remove(staging);
-        HttpURLConnection connection = (HttpURLConnection) new URL(v.url()).openConnection();
-        connection.setConnectTimeout(30000);
-        connection.setReadTimeout(30000);
+        fetchArchive(v, archive);
+        progress = "Verifying…";
         MessageDigest hash = MessageDigest.getInstance("SHA-256");
-        try {
-          if (connection.getResponseCode() != 200) throw new IOException("Download failed. Try again later.");
-          try (InputStream in = connection.getInputStream(); OutputStream out = new FileOutputStream(archive)) {
-            byte[] buffer = new byte[65536];
-            long total = 0;
-            int count;
-            while ((count = in.read(buffer)) != -1) {
-              checkCancelled();
-              total += count;
-              if (total > (v.downloadMb + 50) * 1_000_000L) throw new IOException("Unexpected download size.");
-              out.write(buffer, 0, count);
-              hash.update(buffer, 0, count);
-              doneMb = total / 1_000_000;
-              progress = "Downloading: " + doneMb + " / " + v.downloadMb + " MB";
-            }
-          }
-        } finally { connection.disconnect(); }
+        try (InputStream in = new FileInputStream(archive)) {
+          byte[] buffer = new byte[65536];
+          int count;
+          while ((count = in.read(buffer)) != -1) { checkCancelled(); hash.update(buffer, 0, count); }
+        }
         StringBuilder hex = new StringBuilder();
         for (byte b : hash.digest()) hex.append(String.format(java.util.Locale.ROOT, "%02x", b & 255));
-        if (!v.sha.equals(hex.toString())) throw new IOException("Download verification failed. Please retry.");
+        if (!v.sha.equals(hex.toString())) {
+          archive.delete();
+          throw new IOException("Download verification failed. Please retry.");
+        }
         progress = "Installing voice…";
         staging.mkdirs();
         try (TarArchiveInputStream tar = new TarArchiveInputStream(new BZip2CompressorInputStream(new BufferedInputStream(new FileInputStream(archive))))) {
@@ -165,10 +155,12 @@ final class SpeechModels {
         try (OutputStream out = new FileOutputStream(new File(root(c, v), ".ready"))) { out.write(1); }
         select(c, v);
         progress = "Voice downloaded";
+        archive.delete();
       } catch (Exception e) {
+        // A dropped connection keeps the partial archive, so the next try resumes it.
+        if (cancelled) archive.delete();
         progress = cancelled ? "Download cancelled." : "Could not download voice: " + e.getMessage();
       } finally {
-        archive.delete();
         remove(staging);
         downloading = false;
         downloadingVariant = null;
@@ -177,6 +169,56 @@ final class SpeechModels {
       }
     }, "voice-download");
     worker.start();
+  }
+  /**
+   * Downloads the archive, resuming with an HTTP range after a dropped connection.
+   * Phones on slow or filtered networks rarely fetch a few hundred MB in one go.
+   */
+  private static void fetchArchive(Variant v, File archive) throws IOException {
+    IOException last = null;
+    for (int attempt = 1; attempt <= 8; attempt++) {
+      checkCancelled();
+      long have = archive.isFile() ? archive.length() : 0;
+      HttpURLConnection connection = (HttpURLConnection) new URL(v.url()).openConnection();
+      connection.setConnectTimeout(30000);
+      connection.setReadTimeout(60000);
+      if (have > 0) connection.setRequestProperty("Range", "bytes=" + have + "-");
+      try {
+        int code = connection.getResponseCode();
+        if (have > 0 && code == 416) return; // already complete; the checksum decides
+        boolean append = have > 0 && code == 206;
+        if (code != 200 && !append) throw new IOException("HTTP " + code);
+        long total = append ? have : 0;
+        try (InputStream in = connection.getInputStream(); OutputStream out = new FileOutputStream(archive, append)) {
+          byte[] buffer = new byte[65536];
+          int count;
+          while ((count = in.read(buffer)) != -1) {
+            checkCancelled();
+            total += count;
+            if (total > (v.downloadMb + 50) * 1_000_000L) {
+              archive.delete();
+              throw new IOException("Unexpected download size.");
+            }
+            out.write(buffer, 0, count);
+            doneMb = total / 1_000_000;
+            progress = "Downloading: " + doneMb + " / " + v.downloadMb + " MB";
+          }
+        }
+        return;
+      } catch (IOException e) {
+        if (cancelled || "Unexpected download size.".equals(e.getMessage())) throw e;
+        last = e;
+        progress = "Reconnecting: " + doneMb + " / " + v.downloadMb + " MB";
+        try {
+          Thread.sleep(Math.min(30_000L, 2_000L * attempt * attempt));
+        } catch (InterruptedException interrupted) {
+          throw new IOException("Cancelled");
+        }
+      } finally {
+        connection.disconnect();
+      }
+    }
+    throw last;
   }
   private static void checkCancelled() throws IOException {
     if (cancelled) throw new IOException("Cancelled");
