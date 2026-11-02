@@ -3172,12 +3172,8 @@ function startAutoCloseTimeout() {
           function renderSenses(senses) {
             let panel = '';
             let senseCounter = 0;
-            const sorted = senses.slice().sort(function (a, b) {
-              const la = stripHtmlToText(a.meaning || a.definition || '').length;
-              const lb = stripHtmlToText(b.meaning || b.definition || '').length;
-              return lb - la;
-            });
-            sorted.forEach(function (d) {
+            // Core already orders senses by usage frequency; keep that order.
+            senses.forEach(function (d) {
               senseCounter += 1;
               const rawMeaning = d.meaning || d.definition || '';
               const isWikiHtml = /<[a-z][\s\S]*>/i.test(rawMeaning);
