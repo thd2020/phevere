@@ -1,24 +1,54 @@
-# Multilingual dictionary & TTS — roadmap
+# Multilingual dictionary and pronunciation
 
-## Dictionary (definitions, not only translation)
+Updated 2026-11-02: a Japanese, Russian, Korean, German or other non-English word now gets English definitions from a dictionary made for its language, both online and from offline packs, and Settings → Offline lists packs under their language.
 
-**What the app uses today**
+## Dictionary: any language to English
 
-| Layer | Role |
-|--------|------|
-| **Free Dictionary API** (`dictionaryapi.dev`) | Word entries for many languages (`/entries/{lang}/{word}`) — already wired with language map. |
-| **English Wiktionary REST** | One HTTP host; response is **keyed by language** (`ja`, `fr`, `de`, …). Good for lemmas that exist on en.wiktionary. |
-| **Translation** | Free Google then MyMemory (engine chosen in Settings → Sources). Youdao / DeepL if you add keys. |
+Phevere detects the language of the selection, or uses the one you pick as the source language, and asks every source that covers it in parallel. The senses are merged into one list, with the sources that agree on a sense cited together.
 
-**Bug fixed (historical):** For JA/KO/ZH, the parallel aggregator **skipped** Free Dictionary + Wiktionary entirely, so users only saw **translation**. Those sources are now **always** attempted using the **detected source language**.
+| Source | Languages | Licence of the data | Notes |
+|---|---|---|---|
+| Free Dictionary (`dictionaryapi.dev`) | English | CC BY-SA (Wiktionary) | Primary for English. |
+| English Wiktionary REST | Every language it has an entry for | CC BY-SA 4.0 | Reads the section for the detected language, so собака is answered from the Russian section. |
+| Datamuse | English | WordNet glosses | |
+| Jisho (`jisho.org/api/v1`) | Japanese | JMdict, CC BY-SA 4.0 | Exact spellings and readings, plus the dictionary form of a conjugated query (たべました gives 食べる). Words that only contain the query are dropped. |
+| OpenRussian (`api.openrussian.org`) | Russian | CC BY-SA 4.0 | Matches the lemma or an inflected form (собаки gives собака), with usage domains and example sentences. |
+| kaikki.org | Every language kaikki extracts from English Wiktionary | CC BY-SA 4.0 and GFDL | One small JSON file per word and language, with IPA and inflection glosses such as "plural of Haus". |
+| Offline packs | See below | Per pack | Packs for the word's language answer first. |
 
-**There is no single “one API” for every language pair at dictionary depth.** Realistic upgrades:
+Jisho and OpenRussian count toward the first paint the way Free Dictionary and Wiktionary do. Kaikki mostly repeats Wiktionary, so it arrives in the update that follows. Every source keeps the existing timeouts, its own cache layer and the skip-when-failing rule, and each has a switch in Settings → Sources.
 
-1. **Keep Wiktionary + Free Dictionary** as the default free stack (done).
-2. **Optional locale Wiktionary** (`ja.wiktionary.org` REST) for better Japanese-only lemmas — extra implementation.
-3. **Commercial “all-in-one”** options (keys + billing): **Oxford**, **Collins**, **WordsAPI**, **DeepL** (glosses), **Azure Dictionary** / **Google Cloud Translation** (not full monolingual dictionaries for all pairs).
-4. **Language-specific** free APIs when you want higher quality: e.g. **Jisho** (unofficial patterns), **Korean National Institute** datasets, etc.
-5. **Offline catalog** (Settings → Offline): Princeton WordNet 3.1 and Webster 1913/GCIDE for en→en; CC-CEDICT for zh→en; FreeDict eng–zho for en→zh. Living Oxford / Collegiate Webster / Collins are not redistributable as dumps.
+A single Latin-script word is detected as English unless you choose another language, because a spelling such as "Haus" or "casa" does not say which language it is. When the English sources find nothing, or only say the word is a surname (Wiktionary's only English entry for Haus), Phevere falls back to kaikki's page for that spelling in all languages and to the installed packs of other languages, and that answer becomes the first paint. Haus then shows the German noun and Häuser shows "plural of Haus". An English word that the English sources know never triggers the fallback, so "gift" is not answered with the German word for poison.
+
+An all-Han word is treated as Chinese unless it contains a kanji that only Japanese uses, such as 対 or 応 in 要対応. Kana still means Japanese and Hangul means Korean.
+
+Two choices were left out on purpose. Naver and Daum have no public API and forbid scraping, and the Korean National Institute's dictionary API needs a key, so Korean relies on Wiktionary, kaikki and the Kengdic pack. Commercial dictionaries (Oxford, Collins, WordsAPI) stay optional and keyed.
+
+## Offline packs
+
+Settings → Offline groups the catalog under the language of the headwords: English, Chinese, Japanese and Korean first, then the rest from A to Z. Each pack shows its name, its download size or, once installed, its entry count, and a Download or Remove button. The download prompt names the source and the licence.
+
+<p align="center"><img src="MULTILINGUAL.assets/offline-packs-by-language.png" width="300" alt="Screenshot of the phone's Offline settings with packs listed under English, Chinese, Japanese and Korean headings"></p>
+<p align="center"><sub>The phone's Offline settings: each language heading lists its packs with a size and a download button.</sub></p>
+
+| Pack | Headwords | Licence | Desktop | Phone |
+|---|---|---|---|---|
+| Princeton WordNet 3.1 | English | WordNet License | yes | yes |
+| Webster's Unabridged 1913 (GCIDE) | English | GPL 3 or later | yes | yes |
+| FreeDict English–Chinese | English | GPL | yes | yes |
+| CC-CEDICT | Chinese | CC BY-SA 4.0 | yes | yes |
+| JMdict, from jmdict-simplified 3.6.2 | Japanese | EDRDG, CC BY-SA 4.0 | full, 219k entries | common words, 22.6k entries |
+| Kengdic | Korean | MPL 2.0 or LGPL 2.0 or later | yes | yes |
+| FreeDict German–English (Ding) | German | GPL 3 and AGPL 3 | yes | no |
+| FreeDict French, Portuguese, Dutch, Croatian–English | those languages | GPL 2 or later | yes | yes |
+| FreeDict Hungarian–English | Hungarian | GPL 2 | yes | yes |
+| FreeDict Italian, Polish, Russian, Greek, Finnish, Catalan–English (WikDict) | those languages | CC BY-SA 3.0 | yes | yes |
+
+The German pack is 18 MB to download but unpacks to a 450 MB TEI file with 518k rows, which the phone cannot hold, so only the desktop offers it. The desktop reads every large file line by line and writes it in batches. FreeDict publishes only `.tar.xz`, which the phone now unpacks with its own decoder (`packages/core/src/xz-decode.ts`).
+
+FreeDict also has Spanish–English (4,500 headwords), Swedish–English (5,200) and Arabic–English, but the first two are marked too small by FreeDict itself and the Arabic glosses are unreliable (بيت comes back as "Bett; Pete"), so they are not offered. Current Oxford, Collegiate Webster and Collins editions are not redistributable as dumps.
+
+The catalog lives in `packages/core/src/offline-catalog.ts` and the parsers in `packages/core/src/offline-pack-parsers.ts`; `scripts/test-multilingual-sources.js` checks both against trimmed real downloads.
 
 ## Pronunciation (speaker)
 

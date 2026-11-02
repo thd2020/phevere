@@ -1,7 +1,10 @@
 /**
  * Offline dictionary packs stored in local SQLite (sql.js).
- * Import via user file upload or consent download from the catalog
- * (WordNet, Webster 1913/GCIDE, CC-CEDICT, FreeDict eng–zho).
+ * Import via user file upload or consent download from the shared catalog
+ * (`packages/core/src/offline-catalog.ts`).
+ *
+ * Big dumps are read line by line from disk and written in batches, so the
+ * 450 MB FreeDict German TEI or the 118 MB JMdict JSON never sit in memory whole.
  */
 
 import { net } from 'electron';
@@ -16,24 +19,19 @@ import { getLocalDb, isLocalDbReady, markDirty, queryAll, queryOne, runBatch, ru
 import { wrapConsole } from '../logger';
 import { getCatalogItem, OFFLINE_CATALOG, type OfflineCatalogItem } from './offline-catalog';
 import {
-  parseFreedictTei,
+  FreedictTeiStream,
+  KengdicCollector,
+  parseCedictLine,
   parseGcideCide,
+  parseJmdictLine,
   parseWordNetData,
+  wantsArchiveMember,
   type ParsedOfflineEntry,
-} from './offline-pack-parsers';
+} from '@phevere/core';
 
 const console = wrapConsole('offline-dict');
 const execFileAsync = promisify(execFile);
 const UA = 'Phevere/1.0 (offline dictionary import; https://github.com/thd2020/phevere)';
-
-const CEDICT_URL = 'https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz';
-const WORDNET_URLS = ['https://wordnetcode.princeton.edu/wn3.1.dict.tar.gz'];
-const GCIDE_URLS = [
-  'https://ftp.gnu.org/gnu/gcide/gcide-0.53.tar.gz',
-  'https://mirrors.kernel.org/gnu/gcide/gcide-0.53.tar.gz',
-];
-const FREEDICT_ENG_ZHO_XZ =
-  'https://download.freedict.org/dictionaries/eng-zho/2025.11.23/freedict-eng-zho-2025.11.23.src.tar.xz';
 
 const INSERT_ENTRY_SQL =
   'INSERT INTO offline_entries (headword, language, pos, definition, pack_id, extra) VALUES (?, ?, ?, ?, ?, ?)';
@@ -134,51 +132,99 @@ export async function lookupOffline(
   }));
 }
 
-async function insertPack(meta: { id: string; name: string; language: string; source?: string }): Promise<void> {
-  const existing = await queryOne(`SELECT id FROM offline_packs WHERE id = ?`, [meta.id]);
-  if (existing) {
-    await runWrite(`DELETE FROM offline_entries WHERE pack_id = ?`, [meta.id]);
-    await runWrite(`DELETE FROM offline_packs WHERE id = ?`, [meta.id]);
-  }
-  await runWrite(
-    `INSERT INTO offline_packs (id, name, language, source, entry_count, created_at) VALUES (?, ?, ?, ?, 0, ?)`,
-    [meta.id, meta.name, meta.language, meta.source || null, Date.now()],
-  );
-}
+type PackMeta = { id: string; name: string; language: string; source?: string };
 
-async function bumpPackCount(packId: string, n: number): Promise<void> {
-  await runWrite(`UPDATE offline_packs SET entry_count = ? WHERE id = ?`, [n, packId]);
-  markDirty();
-}
+/** Replaces a pack's rows in batches; a failed import removes what it wrote. */
+class PackWriter {
+  private pending: ParsedOfflineEntry[] = [];
+  private count = 0;
 
-async function writePack(
-  meta: { id: string; name: string; language: string; source?: string },
-  entries: ParsedOfflineEntry[],
-): Promise<{ packId: string; count: number }> {
-  await ensureOfflineReady();
-  if (!entries.length) {
-    throw new Error(`No entries parsed for ${meta.name}`);
-  }
-  await insertPack(meta);
-  let count = 0;
-  for (let i = 0; i < entries.length; i += INSERT_CHUNK) {
-    const slice = entries.slice(i, i + INSERT_CHUNK);
-    await runBatch(
-      INSERT_ENTRY_SQL,
-      slice.map((r) => [
-        r.headword,
-        r.language,
-        r.pos || null,
-        r.definition,
-        meta.id,
-        r.extra != null ? JSON.stringify(r.extra) : null,
-      ]),
+  private constructor(private meta: PackMeta) {}
+
+  static async begin(meta: PackMeta): Promise<PackWriter> {
+    await ensureOfflineReady();
+    const existing = await queryOne(`SELECT id FROM offline_packs WHERE id = ?`, [meta.id]);
+    if (existing) {
+      await runWrite(`DELETE FROM offline_entries WHERE pack_id = ?`, [meta.id]);
+      await runWrite(`DELETE FROM offline_packs WHERE id = ?`, [meta.id]);
+    }
+    await runWrite(
+      `INSERT INTO offline_packs (id, name, language, source, entry_count, created_at) VALUES (?, ?, ?, ?, 0, ?)`,
+      [meta.id, meta.name, meta.language, meta.source || null, Date.now()],
     );
-    count += slice.length;
+    return new PackWriter(meta);
   }
-  await bumpPackCount(meta.id, count);
-  console.log('Imported pack', { packId: meta.id, count });
-  return { packId: meta.id, count };
+
+  add(rows: ParsedOfflineEntry[]): void {
+    for (const r of rows) this.pending.push(r);
+  }
+
+  get full(): boolean {
+    return this.pending.length >= INSERT_CHUNK;
+  }
+
+  async flush(): Promise<void> {
+    while (this.pending.length) {
+      const slice = this.pending.splice(0, INSERT_CHUNK);
+      await runBatch(
+        INSERT_ENTRY_SQL,
+        slice.map((r) => [
+          r.headword,
+          r.language,
+          r.pos || null,
+          r.definition,
+          this.meta.id,
+          r.extra != null ? JSON.stringify(r.extra) : null,
+        ]),
+      );
+      this.count += slice.length;
+    }
+  }
+
+  async finish(): Promise<{ packId: string; count: number }> {
+    await this.flush();
+    if (!this.count) {
+      await removePack(this.meta.id);
+      throw new Error(`No entries parsed for ${this.meta.name}`);
+    }
+    await runWrite(`UPDATE offline_packs SET entry_count = ? WHERE id = ?`, [this.count, this.meta.id]);
+    markDirty();
+    console.log('Imported pack', { packId: this.meta.id, count: this.count });
+    return { packId: this.meta.id, count: this.count };
+  }
+
+  async abort(): Promise<void> {
+    this.pending = [];
+    try {
+      await removePack(this.meta.id);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+async function writePack(meta: PackMeta, entries: ParsedOfflineEntry[]): Promise<{ packId: string; count: number }> {
+  if (!entries.length) throw new Error(`No entries parsed for ${meta.name}`);
+  const writer = await PackWriter.begin(meta);
+  try {
+    writer.add(entries);
+    return await writer.finish();
+  } catch (e) {
+    await writer.abort();
+    throw e;
+  }
+}
+
+/** Read a UTF-8 file line by line, flushing the writer between lines when it fills up. */
+async function eachLine(file: string, writer: PackWriter, onLine: (line: string) => void): Promise<void> {
+  const rl = readline.createInterface({
+    input: createReadStream(file, { encoding: 'utf8' }),
+    crlfDelay: Infinity,
+  });
+  for await (const line of rl) {
+    onLine(line);
+    if (writer.full) await writer.flush();
+  }
 }
 
 async function downloadBuffer(urls: string[]): Promise<Buffer> {
@@ -230,9 +276,10 @@ function walkFiles(root: string, pred: (name: string) => boolean): string[] {
       else if (pred(e.name)) out.push(full);
     }
   }
-  return out;
+  return out.sort();
 }
 
+/** bsdtar (Windows, macOS) and GNU tar both read .tar.gz and .tar.xz. */
 async function extractArchive(archivePath: string, destDir: string): Promise<void> {
   fs.mkdirSync(destDir, { recursive: true });
   await execFileAsync('tar', ['-xf', archivePath, '-C', destDir], {
@@ -292,140 +339,90 @@ export async function importCedictTextFile(
   filePath: string,
   packId = 'cc-cedict',
 ): Promise<{ packId: string; count: number }> {
-  const entries: ParsedOfflineEntry[] = [];
-  const rl = readline.createInterface({
-    input: createReadStream(filePath, { encoding: 'utf8' }),
-    crlfDelay: Infinity,
-  });
+  return importFiles({ id: packId, name: 'CC-CEDICT', language: 'zh', source: filePath }, 'cedict', [filePath]);
+}
 
-  for await (const line of rl) {
-    if (!line || line.startsWith('#')) continue;
-    const m = line.match(/^(\S+)\s+(\S+)\s+\[([^\]]*)\]\s+\/(.+)\/\s*$/);
-    if (!m) continue;
-    const traditional = m[1];
-    const simplified = m[2];
-    const pinyin = m[3];
-    const defs = m[4]
-      .split('/')
-      .map((d) => d.trim())
-      .filter(Boolean);
-    const definition = `[${pinyin}] ${defs.join('; ')}`;
-    for (const head of Array.from(new Set([simplified, traditional]))) {
-      entries.push({
-        headword: head,
-        language: 'zh',
-        definition,
-        extra: { traditional, simplified, pinyin },
-      });
+/** Parse the unpacked files of one pack format into the pack's rows. */
+async function importFiles(
+  meta: PackMeta,
+  format: OfflineCatalogItem['format'],
+  files: string[],
+): Promise<{ packId: string; count: number }> {
+  const writer = await PackWriter.begin(meta);
+  try {
+    for (const file of files) {
+      switch (format) {
+        case 'wordnet':
+          writer.add(parseWordNetData(fs.readFileSync(file, 'utf8')));
+          break;
+        case 'gcide':
+          writer.add(parseGcideCide(fs.readFileSync(file, 'utf8')));
+          break;
+        case 'cedict':
+          await eachLine(file, writer, (line) => writer.add(parseCedictLine(line)));
+          break;
+        case 'jmdict':
+          await eachLine(file, writer, (line) => writer.add(parseJmdictLine(line)));
+          break;
+        case 'freedict-tei': {
+          const tei = new FreedictTeiStream(meta.language, (rows) => writer.add(rows));
+          await eachLine(file, writer, (line) => tei.push(`${line}\n`));
+          break;
+        }
+        case 'kengdic': {
+          const collector = new KengdicCollector();
+          await eachLine(file, writer, (line) => collector.addLine(line));
+          writer.add(collector.entries());
+          break;
+        }
+        default:
+          throw new Error(`No importer for ${format}`);
+      }
+      await writer.flush();
     }
-  }
-  return writePack(
-    {
-      id: packId,
-      name: 'CC-CEDICT',
-      language: 'zh',
-      source: filePath,
-    },
-    entries,
-  );
-}
-
-/**
- * Download CC-CEDICT (.txt.gz), gunzip via zlib, import.
- * User must agree — call only after explicit UI confirmation.
- */
-export async function downloadAndImportCedict(): Promise<{ packId: string; count: number }> {
-  const zlib = await import('zlib');
-  const gunzip = promisify(zlib.gunzip);
-  const compressed = await downloadBuffer([CEDICT_URL]);
-  const textBuf = await gunzip(compressed);
-  const work = mkWork('cedict');
-  const tmp = path.join(work, 'cedict.txt');
-  try {
-    fs.writeFileSync(tmp, textBuf);
-    return await importCedictTextFile(tmp, 'cc-cedict');
-  } finally {
-    rmWork(work);
+    return await writer.finish();
+  } catch (e) {
+    await writer.abort();
+    throw e;
   }
 }
 
-async function downloadAndImportWordNet(): Promise<{ packId: string; count: number }> {
-  const item = getCatalogItem('wordnet-3.1')!;
-  const work = mkWork('wordnet');
-  try {
-    const buf = await downloadBuffer(WORDNET_URLS);
-    const archive = path.join(work, 'wn.dict.tar.gz');
-    fs.writeFileSync(archive, buf);
-    const dest = path.join(work, 'out');
-    await extractArchive(archive, dest);
-    const dataFiles = walkFiles(dest, (n) => /^data\.(noun|verb|adj|adv)$/i.test(n));
-    if (!dataFiles.length) throw new Error('WordNet archive had no data.noun / data.verb files');
-    const entries = dataFiles.flatMap((f) => parseWordNetData(fs.readFileSync(f, 'utf8')));
-    return writePack(
-      { id: item.id, name: item.name, language: item.language, source: WORDNET_URLS[0] },
-      entries,
-    );
-  } finally {
-    rmWork(work);
-  }
-}
-
-async function downloadAndImportGcide(): Promise<{ packId: string; count: number }> {
-  const item = getCatalogItem('webster-1913')!;
-  const work = mkWork('gcide');
-  try {
-    const buf = await downloadBuffer(GCIDE_URLS);
-    const archive = path.join(work, 'gcide.tar.gz');
-    fs.writeFileSync(archive, buf);
-    const dest = path.join(work, 'out');
-    await extractArchive(archive, dest);
-    const cideFiles = walkFiles(dest, (n) => /^CIDE\.[A-Z]$/i.test(n));
-    if (!cideFiles.length) throw new Error('GCIDE archive had no CIDE.A–Z files');
-    const entries = cideFiles.flatMap((f) => parseGcideCide(fs.readFileSync(f, 'utf8')));
-    return writePack(
-      { id: item.id, name: item.name, language: item.language, source: GCIDE_URLS[0] },
-      entries,
-    );
-  } finally {
-    rmWork(work);
-  }
-}
-
-async function downloadAndImportFreedictEngZho(): Promise<{ packId: string; count: number }> {
-  const item = getCatalogItem('freedict-eng-zho')!;
-  const work = mkWork('freedict-eng-zho');
-  try {
-    const buf = await downloadBuffer([FREEDICT_ENG_ZHO_XZ]);
-    const archive = path.join(work, 'src.tar.xz');
-    fs.writeFileSync(archive, buf);
-    const dest = path.join(work, 'out');
-    await extractArchive(archive, dest);
-    const teiFiles = walkFiles(dest, (n) => n.toLowerCase().endsWith('.tei'));
-    if (!teiFiles.length) throw new Error('FreeDict archive had no .tei file');
-    const entries = teiFiles.flatMap((f) => parseFreedictTei(fs.readFileSync(f, 'utf8')));
-    return writePack(
-      { id: item.id, name: item.name, language: item.language, source: FREEDICT_ENG_ZHO_XZ },
-      entries,
-    );
-  } finally {
-    rmWork(work);
-  }
-}
-
-/** Consent download for a catalog pack id. */
+/** Download a catalog pack, unpack it to a temp folder and import it. Call only after the user agreed. */
 export async function downloadCatalogPack(packId: string): Promise<{ packId: string; count: number }> {
   const item = getCatalogItem(packId);
   if (!item) throw new Error(`Unknown catalog pack: ${packId}`);
-  switch (packId) {
-    case 'cc-cedict':
-      return downloadAndImportCedict();
-    case 'wordnet-3.1':
-      return downloadAndImportWordNet();
-    case 'webster-1913':
-      return downloadAndImportGcide();
-    case 'freedict-eng-zho':
-      return downloadAndImportFreedictEngZho();
-    default:
-      throw new Error(`No importer for ${packId}`);
+  const work = mkWork(item.id);
+  try {
+    const buf = await downloadBuffer(item.urls);
+    let files: string[];
+    if (item.archive === 'plain' || item.archive === 'gz') {
+      const file = path.join(work, 'pack.txt');
+      if (item.archive === 'gz') {
+        const zlib = await import('zlib');
+        fs.writeFileSync(file, await promisify(zlib.gunzip)(buf));
+      } else {
+        fs.writeFileSync(file, buf);
+      }
+      files = [file];
+    } else {
+      const archive = path.join(work, `pack.${item.archive}`);
+      fs.writeFileSync(archive, buf);
+      const dest = path.join(work, 'out');
+      await extractArchive(archive, dest);
+      files = walkFiles(dest, (n) => wantsArchiveMember(item.format, n));
+    }
+    if (!files.length) throw new Error(`${item.name}: the download had no dictionary files`);
+    return await importFiles(
+      { id: item.id, name: item.name, language: item.language, source: item.urls[0] },
+      item.format,
+      files,
+    );
+  } finally {
+    rmWork(work);
   }
+}
+
+/** Kept for the `offline-download-cedict` IPC channel. */
+export async function downloadAndImportCedict(): Promise<{ packId: string; count: number }> {
+  return downloadCatalogPack('cc-cedict');
 }

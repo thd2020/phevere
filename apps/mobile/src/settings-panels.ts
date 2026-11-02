@@ -1,4 +1,4 @@
-import type { DictionarySource } from '@phevere/core';
+import { groupCatalogByLanguage, type DictionarySource } from '@phevere/core';
 import type { CatalogStatus } from './platform/offline';
 import type { MobilePrefs } from './platform/prefs';
 
@@ -158,28 +158,18 @@ function panelIntro(_title: string): string {
   return '';
 }
 
-/** Catalogue row, as on desktop: a check once installed, otherwise a download button. */
+/** Catalogue row, as on desktop: name, size or entry count, and Download or Remove. */
 function catalogPack(p: CatalogStatus): string {
   const state = p.installed ? `${p.entryCount.toLocaleString()} entries` : p.sizeHint;
   const trailing = p.installed
-    ? `<span class="pack__done" title="Installed" aria-label="Installed">${ICON.check}</span>`
+    ? `<button type="button" class="icon-btn pack__action" data-act="pack-rm" data-id="${esc(p.id)}" aria-label="Remove ${esc(p.name)}" title="Remove">${ICON.trash}</button>`
     : `<button type="button" class="icon-btn pack__action" data-act="pack-dl" data-id="${esc(p.id)}" aria-label="Download ${esc(p.name)}" title="Download">${ICON.download}</button>`;
   return `<article class="pack${p.installed ? ' is-installed' : ''}">
     <div class="pack__text">
       <strong>${esc(p.name)}</strong>
-      <p class="pack__meta">${esc(p.direction)} · ${esc(state)} · ${esc(p.license)}</p>
+      <p class="pack__meta">${esc(state)}</p>
     </div>
     ${trailing}
-  </article>`;
-}
-
-function installedPack(p: CatalogStatus): string {
-  return `<article class="pack">
-    <div class="pack__text">
-      <strong>${esc(p.name)}</strong>
-      <p class="pack__meta">${esc(p.language.toUpperCase())} · ${p.entryCount.toLocaleString()} entries</p>
-    </div>
-    <button type="button" class="icon-btn pack__action" data-act="pack-rm" data-id="${esc(p.id)}" aria-label="Remove ${esc(p.name)}" title="Remove">${ICON.trash}</button>
   </article>`;
 }
 
@@ -274,20 +264,21 @@ function sourcesPanel(prefs: MobilePrefs, sources: DictionarySource[]): string {
     ${engine}`;
 }
 
+/** Packs under the language of their headwords: English, Chinese, Japanese, Korean, then A–Z. */
 function offlinePanel(packs: CatalogStatus[], packMsg: string): string {
-  const installed = packs.filter((p) => p.installed);
-  const installedHtml =
-    installed.map(installedPack).join('') || '<p class="hint">No packs installed.</p>';
+  const groups = groupCatalogByLanguage(packs)
+    .map(
+      (g) => `<h3 class="settings-subhead">${esc(g.title)}</h3>
+    <div class="pack-list" data-lang="${esc(g.language)}">${g.items.map(catalogPack).join('')}</div>`,
+    )
+    .join('');
   return `
     ${panelIntro('Offline dictionary')}
-    <h3 class="settings-subhead">Packs</h3>
-    <div class="pack-list">${packs.map(catalogPack).join('')}</div>
     ${packMsg ? `<p class="status" role="status">${esc(packMsg)}</p>` : ''}
+    ${groups}
     <h3 class="settings-subhead">Import</h3>
-    ${navRow('pack-file', ICON.import, 'Import pack', '', 'WordNet, GCIDE or FreeDict TEI')}
-    ${navRow('pack-file', ICON.import, 'Import CEDICT file', '', 'cedict_ts.u8', 'cedict')}
-    <h3 class="settings-subhead">Installed</h3>
-    <div class="pack-list">${installedHtml}</div>`;
+    ${navRow('pack-file', ICON.import, 'Import pack', '', 'FreeDict TEI, JMdict JSON, Kengdic TSV, WordNet or GCIDE')}
+    ${navRow('pack-file', ICON.import, 'Import CEDICT file', '', 'cedict_ts.u8', 'cedict')}`;
 }
 
 function apiPanel(prefs: MobilePrefs): string {

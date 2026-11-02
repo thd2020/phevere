@@ -1,80 +1,27 @@
 import {
+  catalogFor,
   dictionaryService,
+  extractTar,
   getHttp,
+  isXz,
+  KengdicCollector,
+  parseCedict,
   parseFreedictTei,
   parseGcideCide,
+  parseJmdictJson,
   parseWordNetData,
+  wantsArchiveMember,
+  xzDecompress,
+  type OfflineCatalogItem,
   type OfflineHit,
   type ParsedOfflineEntry,
 } from '@phevere/core';
 import { getSqlDatabase, markDbDirty, sqlJsVocabDb } from './sqljs-vocab-db';
 
-export type OfflineCatalogItem = {
-  id: string;
-  name: string;
-  language: string;
-  direction: string;
-  license: string;
-  summary: string;
-  sizeHint: string;
-  consent: string;
-  urls: string[];
-  kind: 'cedict' | 'wordnet' | 'gcide' | 'freedict-tei';
-};
+export type { OfflineCatalogItem };
 
-export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
-  {
-    id: 'wordnet-3.1',
-    name: 'Princeton WordNet 3.1',
-    language: 'en',
-    direction: 'English',
-    license: 'WordNet License (Princeton University)',
-    summary: 'Academic English glosses and synonym sets.',
-    sizeHint: '~16 MB download',
-    consent: 'Download Princeton WordNet 3.1 from wordnetcode.princeton.edu? WordNet License. Import may take a minute.',
-    urls: ['https://wordnetcode.princeton.edu/wn3.1.dict.tar.gz'],
-    kind: 'wordnet',
-  },
-  {
-    id: 'webster-1913',
-    name: "Webster's Unabridged 1913 (GCIDE)",
-    language: 'en',
-    direction: 'English',
-    license: 'GPL-3+ (GNU GCIDE)',
-    summary: "Webster's Revised Unabridged Dictionary (1913).",
-    sizeHint: '~18 MB download',
-    consent: "Download GNU GCIDE from ftp.gnu.org? GPL-3+. File is large; import may take a few minutes.",
-    urls: [
-      'https://ftp.gnu.org/gnu/gcide/gcide-0.53.tar.gz',
-      'https://mirrors.kernel.org/gnu/gcide/gcide-0.53.tar.gz',
-    ],
-    kind: 'gcide',
-  },
-  {
-    id: 'cc-cedict',
-    name: 'CC-CEDICT',
-    language: 'zh',
-    direction: 'Chinese–English',
-    license:'CC BY-SA 4.0',
-    summary: 'Community Chinese–English dictionary.',
-    sizeHint: 'large; import may take a minute',
-    consent: 'Download CC-CEDICT from mdbg.net? Creative Commons Attribution-ShareAlike 4.0.',
-    urls: ['https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz'],
-    kind: 'cedict',
-  },
-  {
-    id: 'freedict-eng-zho',
-    name: 'FreeDict English–Chinese',
-    language: 'en',
-    direction: 'English–Chinese',
-    license: 'GPL (FreeDict)',
-    summary: 'English headwords with Chinese glosses. Auto-download is xz; import a .tei from Files if the download cannot unpack.',
-    sizeHint: '~2 MB download',
-    consent: 'Download FreeDict English–Chinese from download.freedict.org? GNU GPL.',
-    urls: ['https://download.freedict.org/dictionaries/eng-zho/2025.11.23/freedict-eng-zho-2025.11.23.src.tar.xz'],
-    kind: 'freedict-tei',
-  },
-];
+/** Packs the phone can unpack and hold; the 450 MB German TEI and full JMdict stay on desktop. */
+export const OFFLINE_CATALOG: OfflineCatalogItem[] = catalogFor('phone');
 
 export type CatalogStatus = OfflineCatalogItem & { installed: boolean; entryCount: number };
 
@@ -183,6 +130,8 @@ async function writePack(
     } catch {
       /* ignore */
     }
+    database.run(`DELETE FROM offline_entries WHERE pack_id = ?`, [meta.id]);
+    database.run(`DELETE FROM offline_packs WHERE id = ?`, [meta.id]);
     throw err;
   } finally {
     stmt.free();
@@ -200,72 +149,6 @@ async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
   }
   const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'));
   return new Uint8Array(await new Response(stream).arrayBuffer());
-}
-
-function readOctal(buf: Uint8Array, start: number, len: number): number {
-  let s = '';
-  for (let i = 0; i < len; i++) {
-    const c = buf[start + i];
-    if (!c || c === 32) continue;
-    if (c === 0) break;
-    s += String.fromCharCode(c);
-  }
-  return s ? parseInt(s, 8) : 0;
-}
-
-function readCString(buf: Uint8Array, start: number, len: number): string {
-  let end = start;
-  const max = start + len;
-  while (end < max && buf[end] !== 0) end += 1;
-  return new TextDecoder('utf-8', { fatal: false }).decode(buf.subarray(start, end));
-}
-
-function extractTar(bytes: Uint8Array, want: (name: string) => boolean): Map<string, string> {
-  const out = new Map<string, string>();
-  const decoder = new TextDecoder('utf-8', { fatal: false });
-  let offset = 0;
-  while (offset + 512 <= bytes.length) {
-    const header = bytes.subarray(offset, offset + 512);
-    if (header[0] === 0) break;
-    const name = readCString(header, 0, 100);
-    const prefix = readCString(header, 345, 155);
-    const full = prefix ? `${prefix}/${name}` : name;
-    const size = readOctal(header, 124, 12);
-    const type = header[156];
-    offset += 512;
-    const data = bytes.subarray(offset, offset + size);
-    offset += Math.ceil(size / 512) * 512;
-    if (type === 53 || type === '5'.charCodeAt(0)) continue;
-    const base = full.split(/[/\\]/).pop() || full;
-    if (want(base) || want(full)) out.set(base, decoder.decode(data));
-  }
-  return out;
-}
-
-function parseCedict(text: string): ParsedOfflineEntry[] {
-  const entries: ParsedOfflineEntry[] = [];
-  for (const line of text.split(/\n/)) {
-    if (!line || line.startsWith('#')) continue;
-    const m = line.match(/^(\S+)\s+(\S+)\s+\[([^\]]*)\]\s+\/(.+)\/\s*$/);
-    if (!m) continue;
-    const traditional = m[1];
-    const simplified = m[2];
-    const pinyin = m[3];
-    const defs = m[4]
-      .split('/')
-      .map((d) => d.trim())
-      .filter(Boolean);
-    const definition = `[${pinyin}] ${defs.join('; ')}`;
-    for (const head of Array.from(new Set([simplified, traditional]))) {
-      entries.push({
-        headword: head,
-        language: 'zh',
-        definition,
-        extra: { traditional, simplified, pinyin },
-      });
-    }
-  }
-  return entries;
 }
 
 async function downloadFirst(urls: string[]): Promise<Uint8Array> {
@@ -286,19 +169,34 @@ async function downloadFirst(urls: string[]): Promise<Uint8Array> {
   throw new Error(`Download failed: ${last}`);
 }
 
+function parsePack(item: OfflineCatalogItem, text: string): ParsedOfflineEntry[] {
+  switch (item.format) {
+    case 'cedict':
+      return parseCedict(text);
+    case 'wordnet':
+      return parseWordNetData(text);
+    case 'gcide':
+      return parseGcideCide(text);
+    case 'jmdict':
+      return parseJmdictJson(text);
+    case 'kengdic': {
+      const c = new KengdicCollector();
+      for (const line of text.split(/\r?\n/)) c.addLine(line);
+      return c.entries();
+    }
+    default:
+      return parseFreedictTei(text, item.language);
+  }
+}
+
 export async function importTextPack(
   item: OfflineCatalogItem,
   text: string,
   onProgress?: (done: number, total: number) => void,
 ): Promise<{ packId: string; count: number }> {
-  let entries: ParsedOfflineEntry[] = [];
-  if (item.kind === 'cedict') entries = parseCedict(text);
-  else if (item.kind === 'wordnet') entries = parseWordNetData(text);
-  else if (item.kind === 'gcide') entries = parseGcideCide(text);
-  else entries = parseFreedictTei(text);
   return writePack(
     { id: item.id, name: item.name, language: item.language, source: 'import' },
-    entries,
+    parsePack(item, text),
     onProgress,
   );
 }
@@ -311,22 +209,36 @@ export async function downloadCatalogPack(
   if (!item) throw new Error(`Unknown pack ${packId}`);
   onProgress?.('Downloading…');
   const bytes = await downloadFirst(item.urls);
-  if (item.kind === 'cedict') {
-    onProgress?.('Unpacking…');
-    const text = new TextDecoder('utf-8').decode(await gunzip(bytes));
-    return importTextPack(item, text, (d, t) => onProgress?.(`Importing ${d} of ${t}…`));
+  const decoder = new TextDecoder('utf-8');
+  const progress = (d: number, t: number) => onProgress?.(`Importing ${d} of ${t}…`);
+  if (item.archive === 'plain') {
+    return importTextPack(item, decoder.decode(bytes), progress);
   }
-  if (item.kind === 'freedict-tei') {
-    throw new Error('This pack cannot be installed here. Import the .tei file instead.');
+  onProgress?.('Unpacking…');
+  if (item.archive === 'gz') {
+    return importTextPack(item, decoder.decode(await gunzip(bytes)), progress);
   }
-  onProgress?.('Unpacking archive…');
-  const unpacked = extractTar(await gunzip(bytes), (name) => {
-    if (item.kind === 'wordnet') return /^data\.(noun|verb|adj|adv)$/i.test(name);
-    return /^CIDE\.[A-Z]$/i.test(name);
-  });
-  if (!unpacked.size) throw new Error('Archive had no dictionary files');
-  const joined = [...unpacked.values()].join('\n');
-  return importTextPack(item, joined, (d, t) => onProgress?.(`Importing ${d} of ${t}…`));
+  const tar = item.archive === 'tar.xz' || isXz(bytes) ? xzDecompress(bytes) : await gunzip(bytes);
+  const files = extractTar(tar, (name) => wantsArchiveMember(item.format, name));
+  if (!files.length) throw new Error('Archive had no dictionary files');
+  const joined = files.map((f) => decoder.decode(f.bytes)).join('\n');
+  return importTextPack(item, joined, progress);
+}
+
+/** Which catalog pack a picked file belongs to, by its name and first bytes. */
+function packForFile(name: string, text: string, kind?: 'cedict'): OfflineCatalogItem {
+  const lower = name.toLowerCase();
+  const byId = (id: string) => OFFLINE_CATALOG.find((c) => c.id === id)!;
+  if (kind === 'cedict' || lower.includes('cedict') || /\.u8$/.test(lower)) return byId('cc-cedict');
+  if (lower.endsWith('.tei')) {
+    const pair = (lower.match(/([a-z]{3}-[a-z]{3})\.tei$/) || [])[1];
+    return OFFLINE_CATALOG.find((c) => c.id === `freedict-${pair}`) || byId('freedict-eng-zho');
+  }
+  if (lower.endsWith('.json') && text.includes('"words"')) return byId('jmdict-eng-common');
+  if (lower.endsWith('.tsv') || lower.includes('kengdic')) return byId('kengdic');
+  if (/cide/i.test(lower)) return byId('webster-1913');
+  if (/\.txt$/.test(lower)) return byId('cc-cedict');
+  return byId('wordnet-3.1');
 }
 
 export async function importUserFile(
@@ -334,21 +246,7 @@ export async function importUserFile(
   text: string,
   kind?: 'cedict',
 ): Promise<{ packId: string; count: number }> {
-  const lower = name.toLowerCase();
-  if (kind === 'cedict' || lower.includes('cedict') || /\.(u8|txt)$/.test(lower)) {
-    const item = OFFLINE_CATALOG.find((c) => c.id === 'cc-cedict')!;
-    return importTextPack(item, text);
-  }
-  if (lower.endsWith('.tei')) {
-    const item = OFFLINE_CATALOG.find((c) => c.id === 'freedict-eng-zho')!;
-    return importTextPack(item, text);
-  }
-  if (/cide/i.test(lower)) {
-    const item = OFFLINE_CATALOG.find((c) => c.id === 'webster-1913')!;
-    return importTextPack(item, text);
-  }
-  const item = OFFLINE_CATALOG.find((c) => c.id === 'wordnet-3.1')!;
-  return importTextPack(item, text);
+  return importTextPack(packForFile(name, text, kind), text);
 }
 
 export async function markInstalledPacksOnCore(): Promise<void> {
