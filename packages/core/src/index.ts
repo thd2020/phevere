@@ -211,3 +211,15 @@ export {
   deleteEmailMatches,
   type AccountPanelOptions,
 } from './account-view';
+export {
+  inflectionsFromKaikki,
+  selectInflections,
+  englishPossessive,
+  type WordInflections,
+  type InflectionTable,
+  type InflectionGrid,
+  type InflectionRow,
+} from './inflections';
+export { inflectionsHtml, wordFamilyHtml, type LexiconLinks } from './lexicon-parts';
+export { normalizeVocabLemma, closestSpelling, typoDistance } from './vocab-lemma';
+export { normalizeStoredLemmas } from './vocab-sync';

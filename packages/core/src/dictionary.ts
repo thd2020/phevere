@@ -10,8 +10,10 @@ export interface DictionaryResult {
   etymology?: string;
   /** Structured ancestry parsed from Wiktionary etymology templates. */
   etymologyChain?: EtymologyLink[];
-  /** Inflections, derivatives, affixes — links, not extra senses. */
+  /** Derivatives, related words, phrases and affixes: links, not extra senses. */
   wordFamily?: WordFamilyGroup[];
+  /** Tenses, participles, plural, possessive, cases and degrees; "plural of mouse" for a form. */
+  inflections?: WordInflections;
   language?: string;
   detectedLanguage?: string;
   sources: string[]; // Track which APIs were used
@@ -68,6 +70,8 @@ export interface Definition {
 import { BaseService, DictionaryError, withTimeout } from './base';
 import { detectLanguageLocal, englishCandidateWords, isAmbiguousHan, remoteFitsScript } from './lang-detect';
 import { isCmuWord, warmCmuIpa } from './cmu-ipa';
+import { fetchInflections, hasInflections, selectInflections, type WordInflections } from './inflections';
+import { closestSpelling } from './vocab-lemma';
 import { wrapConsole } from './log';
 import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigured, type OfflineHit } from './runtime';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
@@ -85,7 +89,7 @@ import {
   cleanIpa,
 } from './pronunciation';
 import { cmuIpaFor } from './cmu-ipa';
-import { buildWordFamily, mergeWordFamilyGroups, familyFromEtymologyChain, type WordFamilyGroup } from './word-family';
+import { buildWordFamily, mergeWordFamilyGroups, mergeWordFamilyGroupsFor, familyFromEtymologyChain, type WordFamilyGroup } from './word-family';
 import {
   fetchJisho,
   fetchKaikki,
@@ -130,7 +134,26 @@ type LookupOpts = {
   translationProvider?: TranslationProvider;
   /** When set (and not `auto`), skip detection and translate from this language. */
   sourceLanguage?: string;
+  /** Set on the second lookup after a spelling correction, so it cannot correct again. */
+  noCorrection?: boolean;
 };
+
+/**
+ * "Misspelling of receive." as the first sense and at least half of all senses → "receive".
+ * ("accomodate" also has a Scots sense, so "every sense" would miss it.)
+ */
+function misspellingTarget(result: DictionaryResult | null | undefined): string | null {
+  const defs = (result?.definitions || []).filter((d) => d && d.source !== 'Fallback' && d.source !== 'Timeout');
+  if (!defs.length) return null;
+  const targets = defs.map((d) => {
+    const text = String(d.meaning || '').replace(/<[^>]+>/g, '').trim();
+    // Datamuse adds the target's own sense after it: "Misspelling of receive. [To be given…]".
+    const m = /^(?:a\s+)?(?:common\s+|rare\s+|nonstandard\s+)?misspelling of\s+["“]?([\p{L}'’-]+(?: [\p{L}'’-]+){0,2})/iu.exec(text);
+    return m ? m[1].trim() : null;
+  });
+  const hits = targets.filter(Boolean).length;
+  return targets[0] && hits * 2 >= defs.length ? targets[0] : null;
+}
 
 function isTimeoutMeaning(meaning?: string): boolean {
   return /lookup timed out/i.test(meaning || '');
@@ -718,7 +741,39 @@ export class DictionaryService extends BaseService {
     return acc;
   }
 
+  /**
+   * A word whose every sense is "Misspelling of X" ("recieve", "definately") is shown and
+   * saved as X, like a typo with no entry at all.
+   */
   private async lookupWithCandidates(
+    query: NormalizedQuery,
+    targetLanguage: string,
+    detectedLanguage: string,
+    enabledSources?: string[],
+    holder?: LookupHolder,
+    opts?: LookupOpts,
+  ): Promise<DictionaryResult> {
+    const result = await this.lookupWithCandidatesOnce(query, targetLanguage, detectedLanguage, enabledSources, holder, opts);
+    const target = opts?.noCorrection ? null : misspellingTarget(result);
+    if (!target || foldLookupKey(target) === foldLookupKey(query.trimmed)) return result;
+    const fixed = await this.lookupWithCandidatesOnce(
+      normalizeQuery(target),
+      targetLanguage,
+      detectedLanguage,
+      enabledSources,
+      holder,
+      { ...(opts || {}), noCorrection: true },
+    ).catch((): null => null);
+    if (!fixed || !this.hasRealDefinitions(fixed) || misspellingTarget(fixed)) return result;
+    fixed.metadata = {
+      ...(fixed.metadata || {}),
+      correctedFrom: result.metadata?.correctedFrom || query.trimmed,
+      originalSelection: query.raw,
+    };
+    return fixed;
+  }
+
+  private async lookupWithCandidatesOnce(
     query: NormalizedQuery,
     targetLanguage: string,
     detectedLanguage: string,
@@ -769,6 +824,23 @@ export class DictionaryService extends BaseService {
     };
 
     const suggestions = await this.fetchSpellingSuggestions(query.trimmed).catch((): string[] => []);
+    // A misspelling one or two letters off ("recieve") is looked up as the word it meant,
+    // as search engines do, so the page and the saved word show the right spelling.
+    const corrected = detectedLanguage === 'en' && !opts?.noCorrection ? closestSpelling(query.trimmed, suggestions) : null;
+    if (corrected) {
+      const fixed = await this.lookupWithCandidatesOnce(
+        normalizeQuery(corrected),
+        targetLanguage,
+        detectedLanguage,
+        enabledSources,
+        holder,
+        { ...(opts || {}), noCorrection: true },
+      ).catch((): null => null);
+      if (fixed && this.hasRealDefinitions(fixed)) {
+        fixed.metadata = { ...(fixed.metadata || {}), correctedFrom: query.trimmed, originalSelection: query.raw };
+        return fixed;
+      }
+    }
     fallback.metadata = {
       ...(fallback.metadata || {}),
       isSentence: false,
@@ -889,6 +961,7 @@ export class DictionaryService extends BaseService {
       etymology: extra.etymology || base.etymology,
       etymologyChain: extra.etymologyChain || base.etymologyChain,
       wordFamily: mergeWordFamilyGroups(base.wordFamily, extra.wordFamily),
+      inflections: extra.inflections || base.inflections,
       sources,
       metadata: { ...(base.metadata || {}), ...(extra.metadata || {}), sourceStatus, expectedSources },
     };
@@ -948,6 +1021,7 @@ export class DictionaryService extends BaseService {
       (r.etymology || '').length,
       JSON.stringify(r.metadata?.etymologyUnavailable || []),
       (r.wordFamily || []).length,
+      hasInflections(r.inflections) ? (r.inflections!.tables.length + r.inflections!.formOf.length) : 0,
       r.metadata?.pendingTranslation ? 1 : 0,
       r.metadata?.pendingEtymology ? 1 : 0,
     ].join('#');
@@ -1380,6 +1454,19 @@ export class DictionaryService extends BaseService {
       hasLocalHits: () => definitions.some((d) => isLocalPackSource(d.source)),
     });
 
+    // Grammatical forms arrive after the first paint; the page is shared with kaikki senses.
+    let rawInflections: WordInflections | undefined;
+    if (isSourceEnabled('Kaikki') && !/\s/.test(languageWord.trim())) {
+      const formsKey = `${languageWord.replace(/\p{Lu}/gu, (c) => `^${c}`)}@${langForDict}`;
+      auxPromises.push(
+        this.cachedSource('inflections', formsKey, () => fetchInflections(getHttp(), languageWord, langForDict), (d) => !!d)
+          .then((r) => {
+            if (r.data) rawInflections = r.data as WordInflections;
+          })
+          .catch((): undefined => undefined),
+      );
+    }
+
     if (preferLatinSources && !hasCJK && isSourceEnabled('Datamuse')) {
       if (!this.isSourceDown('datamuse')) expectedSources.push('datamuse');
       pushCore(
@@ -1626,7 +1713,8 @@ export class DictionaryService extends BaseService {
         cmuIpa && !pronunciations.some((p) => p.ipa) ? [{ ipa: cmuIpa, accent: 'us', source: 'CMUdict' }] : undefined,
       );
       const ipaLine = formatPronunciationLine(ipaList) || pronunciation;
-      const wordFamily = mergeWordFamilyGroups(
+      const wordFamily = mergeWordFamilyGroupsFor(
+        headword,
         wikiFamily,
         familyFromEtymologyChain(etymologyChain, headword),
         buildWordFamily({
@@ -1651,6 +1739,10 @@ export class DictionaryService extends BaseService {
         etymology,
         etymologyChain,
         wordFamily: wordFamily.length ? wordFamily : undefined,
+        inflections: selectInflections(
+          rawInflections,
+          mergedDefinitions.filter((d) => d.source !== 'Fallback').map((d) => canonicalPos(d.partOfSpeech)),
+        ),
         language: targetLanguage,
         detectedLanguage: sourceLanguage,
         sources: uniqueSources,

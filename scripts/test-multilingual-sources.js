@@ -244,7 +244,9 @@ assert.ok(!langs.looksJapaneseKanji('食べる'), 'kana is detected elsewhere');
   ])]);
   seen.length = 0;
   await settle('table');
-  assert.ok(!seen.some((u) => u.includes('kaikki.org')), 'no kaikki request for an English word');
+  // Only the English page, for the word's forms; never the all-languages fallback.
+  const kaikki = seen.filter((u) => u.includes('kaikki.org'));
+  assert.ok(kaikki.every((u) => u.includes('/dictionary/English/')), `no fallback request for an English word: ${kaikki}`);
 
   Object.assign(console, quiet);
   console.log('multilingual sources ok');

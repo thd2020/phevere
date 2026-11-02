@@ -3430,18 +3430,14 @@ function startAutoCloseTimeout() {
             .slice(0, 8);
           const syn = result.synonyms || [];
           const ant = result.antonyms || [];
-          const family = Array.isArray(result.wordFamily) ? result.wordFamily : [];
-          const familyLabels = {
-            forms: 'Forms',
-            lemma: 'Lemma',
-            alternatives: 'Alternative forms',
-            derived: 'Derived',
-            phrases: 'Phrases',
-            related: 'Related',
-            affixes: 'Affixes',
-            roots: 'Roots',
-            seeAlso: 'See also',
-          };
+          const lexiconParts = window.phevereLexicon || null;
+          const formsSections = [];
+          const formsHtml = lexiconParts ? lexiconParts.inflectionsHtml(result.inflections, result.word || '', 'lookup') : '';
+          if (formsHtml) {
+            tocIds.push('forms');
+            formsSections.push({ id: 'forms', label: 'forms' });
+            allInner += wrapPane(wrapGroup('forms', 'forms', formsHtml));
+          }
 
           const exampleSections = [];
           if (globalExamples.length) {
@@ -3467,29 +3463,11 @@ function startAutoCloseTimeout() {
           if (relatedInner) allInner += wrapPane(relatedInner);
 
           const familySections = [];
-          let familyInner = '';
-          family.forEach(function (g) {
-            const rel = String(g.relation || 'related');
-            const id = 'fam:' + rel;
-            const label = familyLabels[rel] || rel;
-            const items = (Array.isArray(g.items) && g.items.length)
-              ? g.items
-              : (g.words || []).map(function (w) { return { word: w }; });
-            const chips = items.map(function (it) {
-              const safe = String((it && it.word) || '').trim();
-              if (!safe) return '';
-              const banner = String((it && it.label) || '').trim();
-              const chip = `<a href="#" class="lemma-link word-family-chip" data-lookup="${escapeHtml(safe)}">${escapeHtml(safe)}</a>`;
-              const tag = banner ? `<span class="word-family-banner">${escapeHtml(banner)}</span>` : '';
-              return `<span class="word-family-item">${chip}${tag}</span>`;
-            }).join('');
-            if (!chips) return;
-            tocIds.push(id);
-            familySections.push({ id: id, label: String(label).toLowerCase() });
-            familyInner += `<div class="word-family-row" data-pos="${escapeHtml(id)}"><span class="word-family-label">${escapeHtml(label)}</span><div class="word-family-chips">${chips}</div></div>`;
-          });
-          if (familyInner) {
-            allInner += wrapPane(`<div class="lexicon-pos-heading">word family</div>${familyInner}`);
+          const familyHtml = lexiconParts ? lexiconParts.wordFamilyHtml(result.wordFamily, 'lookup') : '';
+          if (familyHtml) {
+            tocIds.push('family');
+            familySections.push({ id: 'family', label: 'family' });
+            allInner += wrapPane(wrapGroup('family', 'word family', familyHtml));
           }
 
           if (!lastLexiconPos || tocIds.indexOf(lastLexiconPos) < 0) {
@@ -3497,9 +3475,10 @@ function startAutoCloseTimeout() {
           }
           const tabsHtml = [
             renderRailBlock('lexicon', posSections),
+            renderRailBlock('', formsSections),
             renderRailBlock('', exampleSections),
             renderRailBlock('', relatedSections),
-            renderRailBlock('family', familySections),
+            renderRailBlock('', familySections),
           ].join('');
           const body = `<div class="lexicon-pos-layout"><nav class="lexicon-pos-tabs" role="tablist" aria-label="Lexicon sections" tabindex="0"><div class="lexicon-rail-inner">${tabsHtml}</div></nav><div class="lexicon-pos-panel">${allInner}</div></div>`;
 

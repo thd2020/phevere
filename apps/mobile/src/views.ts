@@ -13,6 +13,8 @@ import {
   type VocabEntry,
   type WikipediaResult,
   vocabListHtml,
+  inflectionsHtml,
+  wordFamilyHtml,
   analyzeNotebook,
   cardsHtml,
   familiesHtml,
@@ -30,18 +32,6 @@ import {
 
 export type Tab = 'lookup' | 'notebook' | 'settings';
 export type ResultTab = 'lexicon' | 'translation' | 'wikipedia' | 'etymology';
-
-const FAMILY_LABELS: Record<string, string> = {
-  forms: 'Forms',
-  lemma: 'Lemma',
-  derived: 'Derived',
-  phrases: 'Phrases',
-  related: 'Related',
-  alternatives: 'Alternative forms',
-  affixes: 'Affixes',
-  roots: 'Roots',
-  seeAlso: 'See also',
-};
 
 export function esc(s: string): string {
   return (s || '')
@@ -386,7 +376,12 @@ function lexiconPane(result: DictionaryResult, activePos: string, images: Array<
     .slice(0, 8);
   const syn = result.synonyms || [];
   const ant = result.antonyms || [];
-  const family = result.wordFamily || [];
+  const formsHtml = inflectionsHtml(result.inflections, result.word || '', 'act');
+  const formsSections: Array<{ id: string; label: string }> = [];
+  if (formsHtml) {
+    formsSections.push({ id: 'forms', label: 'forms' });
+    allInner += wrapPane(wrapGroup('forms', 'forms', formsHtml));
+  }
 
   const exampleSections: Array<{ id: string; label: string }> = [];
   if (globalExamples.length) {
@@ -413,33 +408,15 @@ function lexiconPane(result: DictionaryResult, activePos: string, images: Array<
   if (relatedInner) allInner += wrapPane(relatedInner);
 
   const familySections: Array<{ id: string; label: string }> = [];
-  let familyInner = '';
-  for (const g of family) {
-    const rel = String(g.relation || 'related');
-    const id = `fam:${rel}`;
-    const label = FAMILY_LABELS[rel] || rel;
-    const items = g.items || [];
-    const chips = items
-      .map((it) => {
-        const word = String(it.word || '').trim();
-        if (!word) return '';
-        const banner = String(it.label || '').trim();
-        const tag = banner && banner.toLowerCase() !== word.toLowerCase()
-          ? `<span class="word-family-banner">${esc(banner)}</span>`
-          : '';
-        return `<span class="word-family-item"><button type="button" class="word-family-chip" data-act="lookup" data-q="${esc(word)}">${esc(word)}</button>${tag}</span>`;
-      })
-      .join('');
-    if (!chips) continue;
-    familySections.push({ id, label: label.toLowerCase() });
-    familyInner += `<div class="word-family-row" data-pos="${esc(id)}"><span class="word-family-label">${esc(label)}</span><div class="word-family-chips">${chips}</div></div>`;
-  }
-  if (familyInner) {
-    allInner += wrapPane(`<div class="lexicon-pos-heading">word family</div>${familyInner}`);
+  const familyHtml = wordFamilyHtml(result.wordFamily, 'act');
+  if (familyHtml) {
+    familySections.push({ id: 'family', label: 'family' });
+    allInner += wrapPane(wrapGroup('family', 'word family', familyHtml));
   }
 
   const tocIds = [
     ...posSections.map((s) => s.id),
+    ...formsSections.map((s) => s.id),
     ...exampleSections.map((s) => s.id),
     ...relatedSections.map((s) => s.id),
     ...familySections.map((s) => s.id),
@@ -447,6 +424,7 @@ function lexiconPane(result: DictionaryResult, activePos: string, images: Array<
   const active = activePos && tocIds.includes(activePos) ? activePos : tocIds[0] || '';
   const tabs = [
     railBlock(posSections, active),
+    railBlock(formsSections, active),
     railBlock(exampleSections, active),
     railBlock(relatedSections, active),
     railBlock(familySections, active),

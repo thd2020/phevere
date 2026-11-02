@@ -86,14 +86,20 @@ export function arpabetToIpa(arpabet: string): string {
 }
 
 let table: Promise<Record<string, string> | null> | null = null;
+let loaded: Record<string, string> | null = null;
 
 function loadTable(): Promise<Record<string, string> | null> {
   if (!table) {
     table = import('cmu-pronouncing-dictionary')
-      .then((m: { dictionary?: Record<string, string> }) => m.dictionary || null)
+      .then((m: { dictionary?: Record<string, string> }) => (loaded = m.dictionary || null))
       .catch((): null => null);
   }
   return table;
+}
+
+/** Whether CMUdict lists the word, when the table has already loaded; undefined before. */
+export function cmuKnownSync(word: string): boolean | undefined {
+  return loaded ? !!loaded[String(word || '').trim().toLowerCase()] : undefined;
 }
 
 /** Start loading early so the first English lookup does not wait on the parse. */

@@ -17,6 +17,7 @@ import { abbreviatePos } from './definition-merge';
 import { isGrammaticalFormOfGloss } from './lookup-policy';
 import { extractLanguageSection, scanTemplates, templateToLink, type EtymologyLink } from './etymology';
 import { derivationalStems } from './pronunciation';
+import { cmuKnownSync } from './cmu-ipa';
 
 export type WordFamilyRelation =
   | 'forms'
@@ -117,6 +118,8 @@ function cleanTerm(raw: string): string {
   t = t.split('|')[0] || t;
   t = t.replace(/#.*$/, '').replace(/_/g, ' ').trim();
   t = t.replace(/^w:/i, '').replace(/^en:/i, '');
+  // "-y<id:adjectival>", "<t:gloss>": inline modifiers from newer Wiktionary templates.
+  t = t.replace(/<[a-z]+:[^>]*>/gi, '');
   try {
     t = decodeURIComponent(t);
   } catch {
@@ -421,9 +424,31 @@ export function familyFromEtymologyChain(chain?: EtymologyLink[] | null, surface
   return groupsFromBuckets(buckets);
 }
 
-function groupsFromBuckets(buckets: FamilyBuckets): WordFamilyGroup[] {
+/** How close a family member is to the headword: its derivatives first, proper names last. */
+function familyRank(word: string, surfaceKey: string, relation: WordFamilyRelation): number {
+  const w = word.trim();
+  const k = foldLookupKey(w);
+  let score = 0;
+  if (/^\p{Lu}/u.test(w) && !/^\p{Lu}/u.test(surfaceKey)) score += 40;
+  if (relation === 'phrases') {
+    score += Math.min(30, w.split(/\s+/).length * 4) + w.length / 10;
+    if (!k.split(/\s+/).includes(surfaceKey)) score += 8;
+    return score;
+  }
+  // happy → happiness, happily: the stem drops a final y or e.
+  const stem = surfaceKey.length > 4 ? surfaceKey.replace(/[ye]$/, '') : surfaceKey;
+  if (stem && k.startsWith(stem)) score -= 10;
+  else if (stem && k.includes(stem)) score -= 4;
+  if (/[\s-]/.test(w)) score += 6;
+  // Words common enough for the pronouncing dictionary come before coinages.
+  if (cmuKnownSync(k)) score -= 6;
+  return score + w.length / 20;
+}
+
+function groupsFromBuckets(buckets: FamilyBuckets, surfaceKey = ''): WordFamilyGroup[] {
+  // Inflections and "form of" live in the Forms section (inflections.ts), not here.
   const order: WordFamilyRelation[] = [
-    'forms', 'lemma', 'alternatives', 'derived', 'phrases', 'related', 'affixes', 'roots', 'seeAlso',
+    'alternatives', 'derived', 'related', 'phrases', 'affixes', 'roots', 'seeAlso',
   ];
   const out: WordFamilyGroup[] = [];
   for (const relation of order) {
@@ -444,12 +469,24 @@ function groupsFromBuckets(buckets: FamilyBuckets): WordFamilyGroup[] {
       unique.push({ word: it.word, label: it.label });
       if (unique.length >= FAMILY_CAP) break;
     }
-    if (unique.length) out.push({ relation, items: unique });
+    if (!unique.length) continue;
+    if (relation === 'derived' || relation === 'phrases' || relation === 'related') {
+      const indexed = unique.map((it, i) => ({ it, i, r: familyRank(it.word, surfaceKey, relation) }));
+      indexed.sort((a, b) => a.r - b.r || a.i - b.i);
+      out.push({ relation, items: indexed.map((x) => x.it) });
+    } else {
+      out.push({ relation, items: unique });
+    }
   }
   return out;
 }
 
 export function mergeWordFamilyGroups(...lists: Array<WordFamilyGroup[] | undefined>): WordFamilyGroup[] {
+  return mergeWordFamilyGroupsFor('', ...lists);
+}
+
+/** Merge, then order each group by closeness to the headword. */
+export function mergeWordFamilyGroupsFor(surface: string, ...lists: Array<WordFamilyGroup[] | undefined>): WordFamilyGroup[] {
   const buckets: FamilyBuckets = new Map();
   for (const list of lists) {
     for (const g of list || []) {
@@ -461,7 +498,7 @@ export function mergeWordFamilyGroups(...lists: Array<WordFamilyGroup[] | undefi
       buckets.set(g.relation, acc);
     }
   }
-  return groupsFromBuckets(buckets);
+  return groupsFromBuckets(buckets, foldLookupKey(surface));
 }
 
 export function buildWordFamily(opts: {
@@ -484,8 +521,14 @@ export function buildWordFamily(opts: {
     addUnique(buckets, 'lemma', [it.word], surfaceKey, false, it.label);
   }
 
-  if (opts.wikitext) {
-    const scope = extractLanguageSection(opts.wikitext, langSectionName(opts.language));
+  // A page with no section for this language (an English lookup of "Haus") has no family
+  // here; reading the whole page mixed in Faroese, Malay and Icelandic words.
+  const sectionName = langSectionName(opts.language);
+  const hasSection =
+    !!opts.wikitext &&
+    (new RegExp(`^==\\s*${sectionName}\\s*==\\s*$`, 'm').test(opts.wikitext) || !/^==[^=\n]+==\s*$/m.test(opts.wikitext));
+  if (opts.wikitext && hasSection) {
+    const scope = extractLanguageSection(opts.wikitext, sectionName);
     const fromHeadings = parseHeadingGroups(scope, surfaceKey);
     for (const [rel, items] of fromHeadings) {
       addUniqueItems(buckets, rel, items, surfaceKey);
@@ -548,7 +591,7 @@ export function buildWordFamily(opts: {
     }
   }
 
-  const out = groupsFromBuckets(buckets);
+  const out = groupsFromBuckets(buckets, surfaceKey);
   for (const g of out) {
     if (g.relation === 'phrases') {
       for (const it of g.items) {

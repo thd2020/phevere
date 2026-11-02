@@ -5,9 +5,15 @@
  * bundling them into popup-new.html overrides popup styles (e.g. `.loading {
  * display: flex }`) and can leave a dead, infinitely-spinning, unexpandable UI.
  *
- * Behavior lives in popup-new.html (+ preload). This file only bundles the fonts the
- * phone app uses, so the pop-up renders the same offline and where Google Fonts is blocked.
+ * Behavior lives in popup-new.html (+ preload). This file bundles the fonts the phone app
+ * uses, so the pop-up renders the same offline and where Google Fonts is blocked, and the
+ * shared Lexicon section builders.
  */
 import './fonts';
+import '@phevere/core/lexicon-parts.css';
+import { inflectionsHtml, wordFamilyHtml } from '@phevere/core/lexicon-parts';
+
+// The Lexicon's Forms and Word family sections, built by the same code as the phone's.
+(window as unknown as { phevereLexicon: unknown }).phevereLexicon = { inflectionsHtml, wordFamilyHtml };
 
 export {};

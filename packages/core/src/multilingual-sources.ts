@@ -332,6 +332,30 @@ export async function fetchOpenRussian(http: HttpClient, word: string, timeoutMs
   return json ? parseOpenRussian(json, word) : EMPTY();
 }
 
+const kaikkiPages = new Map<string, Promise<string>>();
+
+/**
+ * One kaikki.org page, shared for a minute by everything that reads it (senses and forms
+ * both parse the same page). A missing page is an empty string.
+ */
+export function fetchKaikkiPage(http: HttpClient, word: string, language: string, timeoutMs = 5000): Promise<string> {
+  const url = kaikkiUrl(word, language);
+  const hit = kaikkiPages.get(url);
+  if (hit) return hit;
+  const p = http.requestText(url, { timeoutMs }).then((res) => {
+    if (res.status === 404) return '';
+    if (!res.ok) {
+      throw new DictionaryError(`HTTP ${res.status}`, `HTTP_${res.status}`, res.status === 429 || res.status >= 500);
+    }
+    return res.text;
+  });
+  kaikkiPages.set(url, p);
+  if (kaikkiPages.size > 40) kaikkiPages.delete(kaikkiPages.keys().next().value as string);
+  p.catch(() => kaikkiPages.delete(url));
+  setTimeout(() => kaikkiPages.delete(url), 60_000);
+  return p;
+}
+
 export async function fetchKaikki(
   http: HttpClient,
   word: string,
@@ -339,10 +363,11 @@ export async function fetchKaikki(
   opts: KaikkiOptions = {},
   timeoutMs = 5000,
 ): Promise<SourceSenses> {
-  const res = await http.requestText(kaikkiUrl(word, language), { timeoutMs });
-  if (res.status === 404) return EMPTY();
-  if (!res.ok) {
-    throw new DictionaryError(`HTTP ${res.status}`, `HTTP_${res.status}`, res.status === 429 || res.status >= 500);
-  }
-  return parseKaikki(res.text, opts);
+  return parseKaikki(await fetchKaikkiPage(http, word, language, timeoutMs), opts);
+}
+
+/** kaikki.org directory for any language code, English included. */
+export function kaikkiDirectory(code: string): string | null {
+  const c = (code || '').toLowerCase().split('-')[0];
+  return c === 'en' ? 'English' : kaikkiLanguage(c);
 }
