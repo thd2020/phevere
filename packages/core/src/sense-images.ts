@@ -84,7 +84,7 @@ const BAD_LABELS =
 
 /** Article descriptions that mean "not the thing itself": works, people, places, companies. */
 const BAD_DESCRIPTION =
-  /\b(film|movie|album|song|single|band|novel|book|magazine|newspaper|company|corporation|brand|manufacturer|rapper|singer|musician|actor|actress|politician|footballer|player|television|tv series|series|episode|video game|software|programming language|surname|given name|disambiguation|village|town|city|municipality|commune|county|district|province|region|state of|river in|mountain in|record label|organi[sz]ation|team|club|people|born|died|character|fictional|logo|website|app|operating system|census|neighbourhood|neighborhood|airport|station|school|university|journal)\b/i;
+  /\b(film|movie|album|song|band|novel|book|magazine|newspaper|company|corporation|brand|manufacturer|rapper|singer|musician|actor|actress|politician|footballer|television|tv series|episode|video game|software|programming language|surname|given name|disambiguation|village|town|city|municipality|commune|county|district|province|state of|river in|mountain in|record label|organi[sz]ation|sports team|football club|ethnic group|born|died|fictional|website|operating system|census|neighbourhood|neighborhood)\b/i;
 
 const POS_HEADINGS: Record<string, string> = {
   noun: 'noun',

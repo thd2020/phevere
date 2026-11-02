@@ -164,6 +164,7 @@ assert.ok(
   'tree: a later noun sense passes the strict rule with three shared words',
 );
 assert.ok(si.acceptWikipediaPage(page('Cat'), 'cat', 'cat', '猫', { exactGloss: true }), '猫: the gloss is the article title');
+assert.ok(si.acceptWikipediaPage(page('House'), 'house', 'house', 'Haus', { exactGloss: true }), 'Haus: "Building comprising a single dwelling" is not a record single');
 assert.strictEqual(si.shortGlossTitle('cat; (dialect) a kind of …'), 'cat');
 assert.strictEqual(si.shortGlossTitle('A surname'), 'surname');
 assert.strictEqual(si.shortGlossTitle('A common, round fruit produced by the tree Malus domestica'), '');
