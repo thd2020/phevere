@@ -61,6 +61,8 @@ export interface Definition {
   sources?: string[];
   /** Lower = earlier in Free Dictionary / Wiktionary (common-reading order). */
   senseOrder?: number;
+  /** SemCor tag count of the WordNet sense this sense aligns to (English only; see sense-frequency.ts). */
+  frequency?: number;
 }
 
 import { BaseService, DictionaryError, withTimeout } from './base';
@@ -71,6 +73,7 @@ import { splitSurfaceAndLemma, sameLookupFold } from './lookup-policy';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { groupYoudaoEtymologies, serializeEtymologySources } from './etymology-sources';
 import { mergeSimilarDefinitions, dedupeExamples, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses } from './definition-merge';
+import { orderSensesByFrequency, warmSenseFrequency } from './sense-frequency';
 import {
   Pronunciation,
   parseFreeDictionaryPhonetics,
@@ -832,9 +835,12 @@ export class DictionaryService extends BaseService {
   }
 
   private mergeLookupResults(base: DictionaryResult, extra: DictionaryResult): DictionaryResult {
-    const definitions = sortDefinitionsByReadingOrder(
+    const sorted = sortDefinitionsByReadingOrder(
       mergeSimilarDefinitions([...(base.definitions || []), ...(extra.definitions || [])]) as Definition[],
     ) as Definition[];
+    const definitions = (extra.detectedLanguage || base.detectedLanguage) === 'en'
+      ? orderSensesByFrequency(extra.word || base.word, sorted)
+      : sorted;
     const pronunciations = mergePronunciations(base.pronunciations, extra.pronunciations);
     const sourceStatus: Record<string, string> = {};
     const rank = (s?: string) => (s === 'ok' ? 3 : s === 'empty' ? 2 : s === 'skip' ? 1 : 0);
@@ -1156,6 +1162,9 @@ export class DictionaryService extends BaseService {
     const isChinese = sourceLanguage === 'zh' || hasCJK;
     const preferCjkSources = isAsianLanguage || isChinese;
     const preferLatinSources = !preferCjkSources;
+    // Sense frequencies load in parallel with the network sources.
+    const usageOrder = sourceLanguage === 'en';
+    const frequencyReady = usageOrder ? warmSenseFrequency() : null;
 
     // Offline packs (SQLite) overlap network APIs — do not wait 2s before FreeDict/Wiktionary.
     const offlinePromise = (async () => {
@@ -1306,6 +1315,7 @@ export class DictionaryService extends BaseService {
     if (corePromises.length) {
       await this.waitForFirstPaint(corePromises, primaryPromises, hasLocal ? coreWait : 0, coreWait);
     }
+    if (frequencyReady) await withTimeout(frequencyReady, 250, 'sense-frequency').catch((): undefined => undefined);
 
     const absorbed = new Set<unknown>();
 
@@ -1436,12 +1446,13 @@ export class DictionaryService extends BaseService {
           uniqueDefinitions.push(d);
         }
       }
-      const mergedDefinitions = stripCrossLemmaSenses(
+      const readingOrder = stripCrossLemmaSenses(
         text,
         sortDefinitionsByReadingOrder(
           mergeSimilarDefinitions(uniqueDefinitions) as Definition[],
         ) as Definition[],
       );
+      const mergedDefinitions = usageOrder ? orderSensesByFrequency(text, readingOrder) : readingOrder;
       for (const d of mergedDefinitions) {
         if (d.examples?.length) d.examples = dedupeExamples(d.examples) || [];
       }
