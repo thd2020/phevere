@@ -10,7 +10,8 @@
 
 import type { SyncChange, SyncResult } from './holarky-account';
 import { getVocabDb } from './runtime';
-import { ensureVocabReady, rowToEntry, type VocabEntry } from './vocab-store';
+import { ensureVocabReady, registerLemmaMigration, rowToEntry, type VocabEntry } from './vocab-store';
+import { normalizeVocabLemma } from './vocab-lemma';
 
 export const VOCAB_SYNC_NAMESPACE = 'phevere/vocab';
 const PAGE = 500;
@@ -210,3 +211,32 @@ export async function mergeDuplicateLemmas(at: number): Promise<number> {
   }
   return folded;
 }
+
+const LEMMA_NORMALIZED_KEY = 'lemma-normalized-v1';
+
+/**
+ * Saved headwords in dictionary form: "CODON" becomes "codon", "Bunny," becomes "bunny".
+ * Runs once per notebook; changed rows get a new updatedAt so other devices take the
+ * change, and words that now collide are merged like any duplicate.
+ */
+export async function normalizeStoredLemmas(): Promise<number> {
+  await ensureVocabReady();
+  const db = getVocabDb();
+  const done = await db.queryOne(`SELECT value FROM sync_state WHERE key = ?`, [LEMMA_NORMALIZED_KEY]);
+  if (done) return 0;
+  const rows = await db.queryAll(`SELECT id, lemma, part_of_speech, source_lang FROM vocab`);
+  const now = Date.now();
+  let changed = 0;
+  for (const row of rows) {
+    const lemma = String(row.lemma || '');
+    const next = normalizeVocabLemma(lemma, { pos: row.part_of_speech as string, lang: row.source_lang as string });
+    if (!next || next === lemma) continue;
+    await db.runWrite(`UPDATE vocab SET lemma = ?, updated_at = ? WHERE id = ?`, [next, now, row.id]);
+    changed += 1;
+  }
+  if (changed) await mergeDuplicateLemmas(now);
+  await db.runWrite(`INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)`, [LEMMA_NORMALIZED_KEY, String(now)]);
+  return changed;
+}
+
+registerLemmaMigration(normalizeStoredLemmas);

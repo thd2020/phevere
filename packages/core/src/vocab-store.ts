@@ -4,6 +4,7 @@
  */
 
 import { getNewId, getVocabDb } from './runtime';
+import { normalizeVocabLemma } from './vocab-lemma';
 
 type VocabChangeListener = () => void;
 const changeListeners = new Set<VocabChangeListener>();
@@ -89,7 +90,7 @@ export async function ensureVocabReady(): Promise<void> {
 export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
   await ensureVocabReady();
   const db = getVocabDb();
-  const lemma = (input.lemma || '').trim();
+  const lemma = normalizeVocabLemma(input.lemma || '', { pos: input.partOfSpeech, lang: input.sourceLang });
   if (!lemma) throw new Error('lemma required');
 
   const existing = await db.queryOne(
@@ -101,7 +102,7 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
   if (existing) {
     const id = String(existing.id);
     await db.runWrite(
-      `UPDATE vocab SET definition = COALESCE(NULLIF(definition, ''), NULLIF(?, ''), definition),
+      `UPDATE vocab SET lemma = ?, definition = COALESCE(NULLIF(definition, ''), NULLIF(?, ''), definition),
        part_of_speech = COALESCE(NULLIF(part_of_speech, ''), NULLIF(?, ''), part_of_speech),
        sources = COALESCE(NULLIF(sources, ''), NULLIF(?, ''), sources),
        note = COALESCE(NULLIF(note, ''), NULLIF(?, ''), note),
@@ -110,6 +111,7 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
        target_lang = COALESCE(NULLIF(?, ''), target_lang),
        updated_at = ? WHERE id = ?`,
       [
+        lemma,
         input.definition || null,
         input.partOfSpeech || null,
         input.sources ? JSON.stringify(input.sources) : null,
@@ -222,7 +224,19 @@ export async function findByLemma(lemma: string): Promise<VocabEntry | null> {
   return row ? rowToEntry(row) : null;
 }
 
+let lemmaMigration: (() => Promise<unknown>) | null = null;
+let lemmaMigrationRun: Promise<unknown> | null = null;
+
+/** Registered by vocab-sync: puts saved headwords in dictionary form once per launch. */
+export function registerLemmaMigration(fn: () => Promise<unknown>): void {
+  lemmaMigration = fn;
+}
+
 export async function listVocab(limit = 200): Promise<VocabEntry[]> {
+  if (lemmaMigration && !lemmaMigrationRun) {
+    lemmaMigrationRun = lemmaMigration().catch((err) => console.warn('[vocab] lemma normalization skipped', err));
+  }
+  if (lemmaMigrationRun) await lemmaMigrationRun;
   await ensureVocabReady();
   const rows = await getVocabDb().queryAll(`SELECT * FROM vocab ORDER BY updated_at DESC LIMIT ?`, [limit]);
   return rows.map(rowToEntry);
