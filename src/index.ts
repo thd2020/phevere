@@ -44,7 +44,7 @@ import {
   type SpeakRequest,
   type VoiceId,
 } from './services/speech';
-import { recordedPronunciationUrls } from '@phevere/core';
+import { fetchSenseImages, recordedPronunciationUrls } from '@phevere/core';
 import { readClipboardImage, loadImageFileAsPng, pngFromBase64 } from './services/clipboard-image';
 import {
   loadMonitorSettings,
@@ -2604,6 +2604,13 @@ ipcMain.handle('dictionary-set-source-enabled', (event, sourceName: string, enab
 ipcMain.handle('dictionary-get-supported-languages', () => {
   return dictionaryService.getSupportedLanguages();
 });
+
+// Pictures for the pop-up's senses, fetched in the main process (Node HTTP, shared cache).
+ipcMain.handle(
+  'dictionary-sense-images',
+  (_event, lemma: string, senses: Array<{ meaning: string; partOfSpeech?: string }>, opts?: { max?: number; lang?: string }) =>
+    fetchSenseImages(String(lemma || ''), Array.isArray(senses) ? senses.slice(0, 200) : [], opts),
+);
 
 ipcMain.handle('dictionary-get-translation-prefs', () => {
   return loadTranslationPrefs();
