@@ -81,6 +81,17 @@ import {
 } from './pronunciation';
 import { cmuIpaFor } from './cmu-ipa';
 import { buildWordFamily, mergeWordFamilyGroups, familyFromEtymologyChain, type WordFamilyGroup } from './word-family';
+import {
+  fetchJisho,
+  fetchKaikki,
+  fetchOpenRussian,
+  isNameOnlyGloss,
+  kaikkiLanguage,
+  KAIKKI_ALL_LANGUAGES,
+  KAIKKI_FALLBACK_LANGUAGES,
+  type SourceSenses,
+} from './multilingual-sources';
+import { looksJapaneseKanji } from './source-languages';
 
 const console = wrapConsole('dictionary');
 /** Hard ceiling so renderer IPC never waits forever (etymology / hung hosts). */
@@ -121,9 +132,16 @@ function isTimeoutMeaning(meaning?: string): boolean {
   return /lookup timed out/i.test(meaning || '');
 }
 
+/** Result `type` of a language-specific source → its name in Sources and on senses. */
+const LANGUAGE_SOURCE_LABELS: Record<string, string> = {
+  jisho: 'Jisho',
+  openRussian: 'OpenRussian',
+  kaikki: 'Kaikki',
+};
+
 function isLocalPackSource(source?: string): boolean {
   const k = (source || '').toLowerCase();
-  return /wordnet|webster|gcide|cedict|freedict|^offline$/.test(k);
+  return /wordnet|webster|gcide|cedict|freedict|jmdict|kengdic|^offline$/.test(k);
 }
 
 export interface Translation {
@@ -190,7 +208,11 @@ export class DictionaryService extends BaseService {
     { name: 'Youdao API',          priority: 0, isAvailable: false, enabled: false },
     { name: 'CC-CEDICT',           priority: 2, isAvailable: false, enabled: false },
     { name: 'Datamuse',            priority: 6, isAvailable: true,  enabled: true },
-    { name: 'Tatoeba',             priority: 7, isAvailable: true,  enabled: true }
+    { name: 'Tatoeba',             priority: 7, isAvailable: true,  enabled: true },
+    // Non-English headwords with English glosses; each runs only for its language.
+    { name: 'Jisho',               priority: 3, isAvailable: true,  enabled: true },
+    { name: 'OpenRussian',         priority: 3, isAvailable: true,  enabled: true },
+    { name: 'Kaikki',              priority: 5, isAvailable: true,  enabled: true }
   ];
 
   constructor(apiKey?: string, deeplApiKey?: string) {
@@ -990,6 +1012,96 @@ export class DictionaryService extends BaseService {
     }
   }
 
+  /**
+   * Dictionaries for one language with English glosses: Jisho (Japanese), OpenRussian
+   * (Russian) and kaikki.org (any language it covers). Jisho and OpenRussian count as
+   * primaries for the first paint; kaikki repeats Wiktionary and lands in a later update.
+   *
+   * An English lookup that English sources answer with nothing, or only with a surname
+   * (Haus, Häuser), falls back to kaikki's all-language page and to the installed packs
+   * of other languages once the English primaries have settled.
+   */
+  private queueLanguageSources(
+    text: string,
+    lang: string,
+    ctx: {
+      isSourceEnabled: (name: string) => boolean;
+      primaryPromises: Promise<any>[];
+      expectedSources: string[];
+      pushCore: (p: Promise<any>) => Promise<any>;
+      offlineReady: Promise<void>;
+      hasLocalHits: () => boolean;
+    },
+  ): void {
+    const word = text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    if (!word || word.length > 48) return;
+    const http = getHttp();
+    const hasSenses = (d: SourceSenses) => d.definitions.length > 0;
+    // The source cache folds case; kaikki pages do not (Haus and haus differ).
+    const caseKey = word.replace(/\p{Lu}/gu, (c) => `^${c}`);
+    const queue = (type: string, key: string, fn: () => Promise<SourceSenses>, primary: boolean) => {
+      if (!this.isSourceDown(type)) ctx.expectedSources.push(type);
+      const p = ctx.pushCore(this.cachedSource(type, key, fn, hasSenses).then((r) => ({ ...r, type })));
+      if (primary) ctx.primaryPromises.push(p);
+    };
+
+    if (lang === 'ja' && ctx.isSourceEnabled('Jisho')) {
+      queue('jisho', word, () => fetchJisho(http, word), true);
+    }
+    if (lang === 'ru' && ctx.isSourceEnabled('OpenRussian')) {
+      queue('openRussian', word, () => fetchOpenRussian(http, word), true);
+    }
+    const kaikkiDir = kaikkiLanguage(lang);
+    if (kaikkiDir) {
+      if (ctx.isSourceEnabled('Kaikki')) {
+        queue('kaikki', `${caseKey}@${lang}`, () => fetchKaikki(http, word, kaikkiDir, { languages: new Set([lang]) }), false);
+      }
+      return;
+    }
+    if (lang !== 'en') return;
+
+    const englishMiss = Promise.all([ctx.offlineReady, ...ctx.primaryPromises]).then(
+      ([, ...results]) =>
+        !ctx.hasLocalHits() &&
+        !results.some(
+          (r: any) =>
+            r?.status === 'ok' &&
+            (r.data?.definitions || []).some((d: Definition) => !isNameOnlyGloss(d.meaning)),
+        ),
+    );
+    // The fallbacks join the primaries: when English sources come back empty they are the
+    // answer, so the first paint waits for them (within the usual cap). Otherwise they
+    // settle at once and change nothing.
+    const fallbacks: Promise<any>[] = [
+      ctx.pushCore(
+        englishMiss.then(async (miss) => {
+          if (!miss) return { type: 'offlineFallback', data: [] as OfflineHit[] };
+          const hits = await withTimeout(getLookupOffline()(word, undefined, 16), OFFLINE_BUDGET_MS, 'offline.lookup.any').catch(
+            (): OfflineHit[] => [],
+          );
+          return { type: 'offlineFallback', data: hits.filter((h) => h.language !== 'en') };
+        }),
+      ),
+    ];
+    if (ctx.isSourceEnabled('Kaikki')) {
+      fallbacks.push(
+        ctx.pushCore(
+          englishMiss.then((miss) =>
+            miss
+              ? this.cachedSource(
+                  'kaikki',
+                  `${caseKey}@*`,
+                  () => fetchKaikki(http, word, KAIKKI_ALL_LANGUAGES, { languages: KAIKKI_FALLBACK_LANGUAGES }),
+                  hasSenses,
+                ).then((r) => ({ ...r, type: 'kaikki' }))
+              : { type: 'kaikki', status: 'skip' as const },
+          ),
+        ),
+      );
+    }
+    ctx.primaryPromises.push(...fallbacks);
+  }
+
   private absorbOfflineHits(
     definitions: Definition[],
     sources: string[],
@@ -1158,23 +1270,22 @@ export class DictionaryService extends BaseService {
     const preferLatinSources = !preferCjkSources;
 
     // Offline packs (SQLite) overlap network APIs — do not wait 2s before FreeDict/Wiktionary.
+    // Packs for the word's language answer first. A CJK word no pack of its language
+    // knows falls through to the other CJK packs (学生 in JMdict when CC-CEDICT lacks it).
+    const offlineLang = preferCjkSources
+      ? (['zh', 'ja', 'ko'].includes(sourceLanguage) ? sourceLanguage : 'zh')
+      : sourceLanguage || 'en';
     const offlinePromise = (async () => {
       try {
-        if (preferCjkSources) {
-          const offlineHits = await withTimeout(
-            getLookupOffline()(text, undefined, 16),
-            OFFLINE_BUDGET_MS,
-            'offline.lookup',
-          );
-          this.absorbOfflineHits(definitions, sources, offlineHits, true);
-        } else if (preferLatinSources) {
-          const offlineHits = await withTimeout(
-            getLookupOffline()(text, 'en', 16),
-            OFFLINE_BUDGET_MS,
-            'offline.lookup.en',
-          );
-          this.absorbOfflineHits(definitions, sources, offlineHits, false);
+        let offlineHits = await withTimeout(
+          getLookupOffline()(text, offlineLang, 16),
+          OFFLINE_BUDGET_MS,
+          `offline.lookup.${offlineLang}`,
+        );
+        if (!offlineHits.length && preferCjkSources) {
+          offlineHits = await withTimeout(getLookupOffline()(text, undefined, 16), OFFLINE_BUDGET_MS, 'offline.lookup');
         }
+        this.absorbOfflineHits(definitions, sources, offlineHits, preferCjkSources);
       } catch {
         /* offline optional */
       }
@@ -1234,7 +1345,8 @@ export class DictionaryService extends BaseService {
     // Wiktionary: always useful (defs + etymology). For CJK, still query when enabled.
     if (isSourceEnabled('Wiktionary')) {
       if (!this.isSourceDown('wiktionary')) expectedSources.push('wiktionary');
-      const wikiLang = preferCjkSources && langForDict === 'zh' ? 'zh' : langForDict === 'ja' ? 'ja' : langForDict === 'ko' ? 'ko' : 'en';
+      // en.wiktionary keys its answer by language: собака lives under `ru`, not `en`.
+      const wikiLang = langForDict === 'auto' ? 'en' : langForDict;
       const wikiWord = wikiLang === 'en' ? lookupWord : text;
       primaryPromises.push(pushCore(
         this.cachedSource(
@@ -1249,6 +1361,19 @@ export class DictionaryService extends BaseService {
         ).then((r) => ({ ...r, type: 'wiktionary' })),
       ));
     }
+
+    // kaikki.org paths are case-sensitive (Haus is German, haus is not): keep the
+    // selection's spelling when this candidate is only its folded form.
+    const selection = trimEdges(sanitize(opts?.originalSelection || ''));
+    const languageWord = selection && foldLookupKey(selection) === foldLookupKey(text) ? selection : text;
+    this.queueLanguageSources(languageWord, langForDict, {
+      isSourceEnabled,
+      primaryPromises,
+      expectedSources,
+      pushCore,
+      offlineReady: offlinePromise,
+      hasLocalHits: () => definitions.some((d) => isLocalPackSource(d.source)),
+    });
 
     if (preferLatinSources && !hasCJK && isSourceEnabled('Datamuse')) {
       if (!this.isSourceDown('datamuse')) expectedSources.push('datamuse');
@@ -1374,6 +1499,23 @@ export class DictionaryService extends BaseService {
           break;
         case 'cmu':
           if (typeof data === 'string') cmuIpa = data;
+          break;
+        case 'jisho':
+        case 'openRussian':
+        case 'kaikki': {
+          const senses = data as SourceSenses | undefined;
+          if (senses?.pronunciations?.length) {
+            pronunciations = mergePronunciations(pronunciations, senses.pronunciations);
+          }
+          if (senses?.definitions?.length) {
+            definitions.push(...(senses.definitions as Definition[]));
+            examples.push(...senses.examples);
+            sources.push(LANGUAGE_SOURCE_LABELS[type]);
+          }
+          break;
+        }
+        case 'offlineFallback':
+          if (Array.isArray(data) && data.length) this.absorbOfflineHits(definitions, sources, data, false);
           break;
         case 'tatoeba':
           if (data && data.length > 0) {
@@ -3338,6 +3480,7 @@ export class DictionaryService extends BaseService {
       // Distinguish between Chinese, Japanese, Korean
       if (/[\u3040-\u309f\u30a0-\u30ff]/.test(text)) return 'ja'; // Japanese hiragana/katakana
       if (/[\uac00-\ud7af]/.test(text)) return 'ko'; // Korean hangul
+      if (looksJapaneseKanji(text)) return 'ja'; // \u8981\u5bfe\u5fdc: \u5bfe and \u5fdc are Japanese-only forms
       return 'zh'; // Default to Chinese for CJK characters
     }
     
