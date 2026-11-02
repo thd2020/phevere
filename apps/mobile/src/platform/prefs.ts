@@ -29,6 +29,8 @@ export interface MobilePrefs {
   /** 2 once audioVolume uses the doubled-gain scale above. */
   volumeScale?: number;
   floatingStrip: boolean;
+  /** Pictures beside the senses they illustrate in the Lexicon. */
+  senseImages: boolean;
   notifyIncoming: boolean;
   notifySaved: boolean;
   notifyOcr: boolean;
@@ -55,6 +57,7 @@ export const defaultPrefs = (): MobilePrefs => ({
   audioVolume: 0.5,
   volumeScale: 2,
   floatingStrip: true,
+  senseImages: true,
   notifyIncoming: true,
   notifySaved: true,
   notifyOcr: true,

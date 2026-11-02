@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { SenseImage } from '@phevere/core';
 
 // Do NOT require('../native-addon') here. Webpack dlopen's the UIA .node into
 // every BrowserWindow preload (popup, history lookup, settings). A second
@@ -389,6 +390,13 @@ contextBridge.exposeInMainWorld('dictionaryAPI', {
   getSupportedLanguages: (): Promise<{ code: string; name: string; nativeName: string }[]> => {
     return ipcRenderer.invoke('dictionary-get-supported-languages');
   },
+  senseImages: (
+    lemma: string,
+    senses: Array<{ meaning: string; partOfSpeech?: string }>,
+    opts?: { max?: number; lang?: string },
+  ): Promise<Array<SenseImage | null>> => {
+    return ipcRenderer.invoke('dictionary-sense-images', lemma, senses, opts);
+  },
 });
 
 // Expose popup control API
@@ -596,6 +604,11 @@ declare global {
       getEnabledSources: () => Promise<string[]>;
       setSourceEnabled: (sourceName: string, enabled: boolean) => Promise<{ success: boolean }>;
       getSupportedLanguages: () => Promise<{ code: string; name: string; nativeName: string }[]>;
+      senseImages?: (
+        lemma: string,
+        senses: Array<{ meaning: string; partOfSpeech?: string }>,
+        opts?: { max?: number; lang?: string },
+      ) => Promise<Array<SenseImage | null>>;
       setOxfordCredentials?: (appId: string, appKey: string) => Promise<{ success: boolean }>;
       setYoudaoCredentials?: (appKey: string, appSecret: string) => Promise<{ success: boolean }>;
       setWordsApiCredentials?: (rapidApiKey: string, rapidApiHost?: string) => Promise<{ success: boolean }>;

@@ -8,6 +8,7 @@ import {
   type Definition,
   type DictionaryResult,
   type Pronunciation,
+  type SenseImage,
   type Translation,
   type VocabEntry,
   type WikipediaResult,
@@ -279,16 +280,52 @@ function senseHtml(raw: string): string {
     links.push({ title, text });
     return `\u0001${links.length - 1}\u0002`;
   });
-  return esc(stripGlossText(marked)).replace(/\u0001(\d+)\u0002/g, (_m, i: string) => {
-    const l = links[Number(i)];
-    return l ? `<button type="button" class="lemma-link" data-act="lookup" data-q="${esc(l.title)}">${esc(l.text)}</button>` : '';
-  });
+  return esc(stripGlossText(marked))
+    .replace(/\u0001(\d+)\u0002/g, (_m, i: string) => {
+      const l = links[Number(i)];
+      return l ? `<button type="button" class="lemma-link" data-act="lookup" data-q="${esc(l.title)}">${esc(l.text)}</button>` : '';
+    })
+    .replace(/<\/button>\s+([,.;:!?)])/g, '</button>$1')
+    // A button is an atomic box, so the comma after a link could start the next line.
+    .replace(/(<button [^>]*>[^<]*<\/button>)([,.;:!?)]+)/g, '<span class="nobr">$1$2</span>');
 }
 
-function renderSenses(senses: Definition[], shown: Set<string>): string {
-  // Core already orders senses by usage frequency; keep that order.
+/** "(countable, chiefly in combination) An institution…": the labels set small, as printed. */
+function labelLead(html: string): string {
+  return html.replace(/^\s*\(([^()<]{1,80})\)\s*/, (_m, labels: string) => `<span class="sense-label">${labels}</span> `);
+}
+
+/** The definitions the Lexicon shows, in the core's order. Sense pictures are indexed by it. */
+export function lexiconSenses(result: DictionaryResult | null): Definition[] {
+  return (result?.definitions || []).filter(usableDef);
+}
+
+/**
+ * A sense picture: a fixed aspect box (from the thumbnail's size, clamped between 3:4 and
+ * 16:10) so text never moves when the bytes arrive. Tapping it shows the credit line, whose
+ * link opens the file page on Wikimedia Commons.
+ */
+export function senseFigureHtml(img: SenseImage, index: number): string {
+  const ratio = img.width && img.height ? Math.min(1.6, Math.max(0.75, img.width / img.height)) : 1;
+  const label = `${img.title} — ${img.credit}`;
+  return `<figure class="sense-figure" data-sense-figure="${index}" style="--ar:${ratio.toFixed(3)}">
+    <button type="button" class="sense-figure__frame" data-act="sense-figure" aria-label="${esc(label)}" title="${esc(label)}">
+      <img src="${esc(img.thumb)}" alt="${esc(img.title)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('is-loaded')" onerror="this.closest('figure').remove()" />
+    </button>
+    <figcaption class="sense-figure__credit"><button type="button" class="sense-figure__link" data-act="sense-credit" data-url="${esc(img.pageUrl)}">${esc(img.credit)}</button></figcaption>
+  </figure>`;
+}
+
+function renderSenses(
+  senses: Definition[],
+  shown: Set<string>,
+  indexOf: Map<Definition, number>,
+  images: Array<SenseImage | null> | null,
+): string {
   return senses
     .map((d, i) => {
+      const at = indexOf.get(d) ?? -1;
+      const img = images && at >= 0 ? images[at] : null;
       const examples = uniqueExamples(d.examples || []);
       examples.forEach((ex) => shown.add(exampleKey(ex)));
       const cite =
@@ -305,11 +342,12 @@ function renderSenses(senses: Definition[], shown: Set<string>): string {
             .map((ex) => `<div class="definition-example">${esc(stripGlossText(ex))}</div>`)
             .join('')}</div>`
         : '';
-      return `<div class="definition-item">
+      return `<div class="definition-item" data-sense="${at}">
         <div class="definition-sense-row">
-          <div class="definition-sense-num">${i + 1}.</div>
+          <div class="definition-sense-num">${i + 1}</div>
           <div class="definition-sense-body">
-            <div class="definition-text">${senseHtml(d.meaning)}</div>
+            ${img ? senseFigureHtml(img, at) : ''}
+            <div class="definition-text">${labelLead(senseHtml(d.meaning))}</div>
             ${exHtml}
             <div class="definition-source-badges">${badges}</div>
           </div>
@@ -319,9 +357,10 @@ function renderSenses(senses: Definition[], shown: Set<string>): string {
     .join('');
 }
 
-function lexiconPane(result: DictionaryResult, activePos: string): string {
-  const defs = (result.definitions || []).filter(usableDef);
+function lexiconPane(result: DictionaryResult, activePos: string, images: Array<SenseImage | null> | null): string {
+  const defs = lexiconSenses(result);
   if (!defs.length) return `<div class="card empty">No definitions found.</div>`;
+  const indexOf = new Map<Definition, number>(defs.map((d, i) => [d, i]));
 
   const groups = new Map<string, Definition[]>();
   const order: string[] = [];
@@ -337,7 +376,7 @@ function lexiconPane(result: DictionaryResult, activePos: string): string {
   const shown = new Set<string>();
   let posInner = '';
   const posSections = order.map((pos) => {
-    posInner += wrapGroup(pos, pos, renderSenses(groups.get(pos) || [], shown));
+    posInner += wrapGroup(pos, pos, renderSenses(groups.get(pos) || [], shown, indexOf, images));
     return { id: pos, label: abbreviatePos(pos) };
   });
   let allInner = wrapPane(posInner, 'lexicon-pane--pos');
@@ -723,6 +762,8 @@ export function lookupBody(opts: {
   savedFor?: (q: string) => VocabViewEntry | undefined;
   /** Copy and web search sit in the head; the pop-up carries them in its bar instead. */
   headTools?: boolean;
+  /** Pictures for `lexiconSenses(result)`, index for index, once they have loaded. */
+  senseImages?: Array<SenseImage | null> | null;
 }): string {
   if (opts.looking && !opts.result) return lookupSkeleton(opts.query || '');
   if (opts.error && !opts.result) {
@@ -761,7 +802,7 @@ export function lookupBody(opts: {
         ? wikiPane(opts.wiki, opts.wikiLang, opts.wikiArticle, opts.wikiLoading, opts.wikiError)
         : opts.resultTab === 'etymology'
           ? etymPane(opts.result, opts.etymologySource)
-          : lexiconPane(opts.result, opts.lexiconPos);
+          : lexiconPane(opts.result, opts.lexiconPos, opts.senseImages || null);
   return `
     <div class="lookup-flow">
     <header class="head">

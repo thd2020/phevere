@@ -17,6 +17,7 @@ export {
   type TranslationProvider,
 } from './dictionary';
 export { WikipediaService, wikipediaService, type WikipediaResult, type WikipediaSearchResult } from './wikipedia';
+export { fetchSenseImages, fetchWordImage, clearSenseImageCache, type SenseImage } from './sense-images';
 export {
   addVocab,
   fillEmptyDefinitions,

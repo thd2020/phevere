@@ -197,7 +197,8 @@ a { color: var(--md-sys-color-tertiary); }
 .head .lemma {
   margin: 0;
   font-family: var(--md-font-display);
-  font-size: clamp(2rem, 8vw, 2.6rem);
+  font-size: clamp(1.75rem, 8vw, 2.6rem);
+  overflow-wrap: anywhere;
   font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 1.02;
@@ -330,6 +331,11 @@ a { color: var(--md-sys-color-tertiary); }
   background: var(--md-sys-color-tertiary-container);
   font-weight: 600;
 }
+/*
+ * The Lexicon reads as a printed page: a paper-white column beside the rail, no cards.
+ * Part-of-speech headings with a hairline structure the page; senses carry a bold serif
+ * number, the gloss in the serif, examples in a lighter italic, and sources in small caps.
+ */
 .lexicon-pos-panel {
   min-height: 0;
   overscroll-behavior: contain;
@@ -338,77 +344,167 @@ a { color: var(--md-sys-color-tertiary); }
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 0 16px 24px 8px;
+  padding: 6px 16px 32px 14px;
+  background: var(--md-sys-color-surface-container-lowest);
 }
 .lexicon-pos-panel > .card {
   flex: 0 0 auto;
-  margin-bottom: 0;
+  margin: 0;
+  padding: 14px 0 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  max-width: 40rem;
 }
+.lexicon-pos-panel > .card + .card { margin-top: 18px; }
 /* Part of speech as dictionaries print it: italic serif, lower case, accent colour. */
 .lexicon-pos-heading {
-  display: block;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   font-family: var(--md-font-display);
   font-size: 1.2rem;
   font-style: italic;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -0.01em;
   text-transform: lowercase;
   color: var(--md-sys-color-primary);
   line-height: 1.2;
-  margin: 0 0 10px;
+  margin: 0 0 12px;
 }
-.lexicon-pane--pos .lexicon-pos-group + .lexicon-pos-group {
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid var(--md-sys-color-outline-variant);
+.lexicon-pos-heading::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--md-sys-color-outline-variant);
+  transform: translateY(-0.28em);
 }
+.lexicon-pane--pos .lexicon-pos-group + .lexicon-pos-group { margin-top: 26px; }
+.definition-item { display: flow-root; }
+.definition-item + .definition-item { margin-top: 16px; }
 .definition-sense-row {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-}
-.definition-item + .definition-item {
-  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1.4em minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: baseline;
 }
 .definition-sense-num {
-  font-family: var(--md-font-mono);
-  font-size: 0.78rem;
-  color: var(--md-sys-color-on-surface-variant);
-  min-width: 1.5em;
-  padding-top: 2px;
+  font-family: var(--md-font-display);
+  font-size: 0.98rem;
+  font-weight: 700;
+  font-variant-numeric: lining-nums tabular-nums;
+  text-align: right;
+  color: var(--md-sys-color-on-surface);
 }
+.definition-sense-body { min-width: 0; display: flow-root; }
 .definition-text {
-  line-height: 1.45;
+  font-family: var(--md-font-display);
+  font-size: 1.04rem;
+  line-height: 1.5;
+  color: var(--md-sys-color-on-surface);
+  overflow-wrap: break-word;
+  hyphens: auto;
 }
-.definition-examples {
-  margin-top: 8px;
+.definition-text .nobr { white-space: nowrap; }
+.sense-label {
+  font-family: var(--md-font-ui);
+  font-size: 0.74rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--md-sys-color-on-surface-variant);
 }
+.definition-examples { margin-top: 6px; }
 .definition-example,
 .example-item {
+  position: relative;
   font-family: var(--md-font-display);
-  font-size: 0.92rem;
+  font-size: 0.96rem;
   font-style: italic;
+  font-weight: 400;
+  line-height: 1.45;
   color: var(--md-sys-color-on-surface-variant);
-  margin: 4px 0;
-  padding-left: 12px;
-  border-left: 2px solid var(--md-sys-color-outline-variant);
+  margin: 4px 0 0;
+  padding-left: 0.95em;
+}
+.definition-example::before,
+.example-item::before {
+  content: '';
+  position: absolute;
+  left: 0.15em;
+  top: 0.3em;
+  bottom: 0.3em;
+  width: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--md-sys-color-primary) 30%, transparent);
 }
 .definition-source-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 0 10px;
   margin-top: 6px;
 }
 .definition-source-badge {
-  font-family: var(--md-font-ui);
-  font-size: 0.7rem;
+  font-family: var(--md-font-mono);
+  font-size: 0.62rem;
   font-weight: 500;
-  letter-spacing: 0.01em;
-  color: var(--md-sys-color-on-surface-variant);
-  background: var(--md-sys-color-surface-container);
-  border-radius: 6px;
-  padding: 2px 8px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--md-sys-color-outline);
+}
+
+/* A sense picture floats beside its gloss in a fixed aspect box; tapping shows the credit. */
+.sense-figure {
+  float: right;
+  position: relative;
+  width: clamp(76px, 26%, 116px);
+  margin: 4px 0 8px 14px;
+}
+.sense-figure__frame {
+  display: block;
+  width: 100%;
+  aspect-ratio: var(--ar, 1);
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--md-sys-color-surface-container-low);
+  box-shadow: inset 0 0 0 1px rgb(28 25 23 / 0.08);
+}
+.sense-figure__frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.32s var(--md-sys-motion);
+}
+.sense-figure__frame.is-loaded img { opacity: 1; }
+.sense-figure__credit {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 5px 6px;
+  border-radius: 0 0 8px 8px;
+  background: rgb(28 25 23 / 0.78);
+  color: var(--md-sys-color-inverse-on-surface);
+  font-family: var(--md-font-ui);
+  font-size: 0.6rem;
+  line-height: 1.3;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s var(--md-sys-motion);
+}
+.sense-figure.is-open .sense-figure__credit { opacity: 1; pointer-events: auto; }
+.sense-figure__link {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .word-family-row {
   display: flex;
@@ -1871,7 +1967,8 @@ html[data-notify="ios"] .toast {
 .skel-head { padding: 4px 0 12px; }
 .skel-word {
   font-family: var(--md-font-display);
-  font-size: clamp(2rem, 8vw, 2.6rem);
+  font-size: clamp(1.75rem, 8vw, 2.6rem);
+  overflow-wrap: anywhere;
   font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 1.02;

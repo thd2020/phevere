@@ -117,9 +117,10 @@ function selectionBarSection(capture: CaptureInfo): string {
     ${navRow('selection-setup', ICON.select, 'LSPosed module', 'Inactive', MODULE_ABOUT)}`;
 }
 
-export type SettingsSection = 'capture' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio';
+export type SettingsSection = 'capture' | 'lookup' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio';
 
 const TAB_ICON: Record<SettingsSection, string> = {
+  lookup: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M3.5 5.5c2.8-1.2 5.6-1.2 8.5.6 2.9-1.8 5.7-1.8 8.5-.6v13c-2.8-1.2-5.6-1.2-8.5.6-2.9-1.8-5.7-1.8-8.5-.6zM12 6.1v13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   capture: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M9 9h6M12 9v7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   notifications: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M6 16v-5a6 6 0 1 1 12 0v5l2 2H4zM10 21h4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   sources: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M5 4.5h4v15H5zM10.5 4.5h4v15h-4zM16 6l3.6-1 3 14.2-3.6 1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -130,6 +131,7 @@ const TAB_ICON: Record<SettingsSection, string> = {
 
 export const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = [
   { id: 'capture', label: 'Capture' },
+  { id: 'lookup', label: 'Lookup' },
   { id: 'sources', label: 'Sources' },
   { id: 'offline', label: 'Offline' },
   { id: 'api', label: 'API keys' },
@@ -140,6 +142,7 @@ export function settingsSections(capture: CaptureInfo): Array<{ id: SettingsSect
   if (capture.platform === 'web') return SETTINGS_SECTIONS;
   return [
     { id: 'capture', label: 'Capture' },
+    { id: 'lookup', label: 'Lookup' },
     { id: 'notifications', label: 'Notifications' },
     { id: 'sources', label: 'Sources' },
     { id: 'offline', label: 'Offline' },
@@ -205,6 +208,15 @@ function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
     </label>
     <h3 class="settings-subhead">Scan</h3>` : ''}
     ${navRow('ocr', ICON.camera, 'Camera or photo')}`;
+}
+
+function lookupPanel(prefs: MobilePrefs): string {
+  return `
+    ${panelIntro('Lookup')}
+    <label class="toggle">
+      <span class="src-name">Images</span>
+      <input type="checkbox" role="switch" data-act="sense-images" ${prefs.senseImages !== false ? 'checked' : ''} />
+    </label>`;
 }
 
 function notificationsPanel(prefs: MobilePrefs, capture: CaptureInfo): string {
@@ -413,6 +425,8 @@ export function settingsBody(
   const panel =
     section === 'capture'
       ? capturePanel(prefs, capture)
+      : section === 'lookup'
+        ? lookupPanel(prefs)
       : section === 'notifications'
         ? notificationsPanel(prefs, capture)
         : section === 'sources'
