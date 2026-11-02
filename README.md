@@ -13,7 +13,7 @@ Phevere is a dictionary for text you are already reading. Select a word in any a
 </p>
 <p align="center"><sub>Android app: a lookup, a word selected on a scanned page, and the selection-bar settings.</sub></p>
 
-The current release is **2.3.0** on desktop and phone (2026-10-29). It adds an optional Holarky account that keeps the notebook the same on all your devices. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
+The current release is **3.0.0** on desktop and phone (2026-11-02). It adds English definitions for Japanese, Russian, Korean, German and other languages, a picture for every word, senses ordered by how common they are, a Forms section with tenses, plurals and cases, and a notebook you can browse by word family, as a map of related words, as picture cards, or as a daily spaced-repetition review. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 

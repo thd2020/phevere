@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-02
+
 ### Added
 
 - Forms (2026-11-02): the Lexicon has a Forms section after the senses, on desktop and phone. Verbs list the third-person singular, present participle, past and past participle; English nouns the plural and possessive; adjectives the comparative and superlative. German, Russian and other declined nouns get a table of cases by singular and plural, and French and Spanish verbs a table of persons for the present and past. Only parts of speech the lookup shows get a table, so a rare verb sense of mice adds nothing. A form says what it is (mice is the plural of mouse) and shows its lemma's forms. Russian stress is shown as a bold vowel. The forms come from Wiktextract's parse of Wiktionary's inflection tables on kaikki.org and load after the senses.
@@ -427,7 +429,9 @@ All six downloads were replaced on the existing 2.1.0 release; the git tag is un
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/thd2020/phevere/compare/v2.3.0...v3.0.0
+[2.3.0]: https://github.com/thd2020/phevere/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/thd2020/phevere/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/thd2020/phevere/releases/tag/v2.1.0
 [2.0.0]: https://github.com/thd2020/phevere/releases/tag/v2.0.0
