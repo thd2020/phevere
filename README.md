@@ -19,11 +19,11 @@ The current release is **2.3.0** on desktop and phone (2026-10-29). It adds an o
 
 **Lookup**
 
-- Definitions from Free Dictionary, Wiktionary, and Datamuse, merged into a single lexicon in the headword's language. The exact form is preferred, and lemma senses are used only when no source defines that form.
+- Definitions from Free Dictionary, Wiktionary, and Datamuse for English, and English definitions for words in other languages from Jisho (Japanese), OpenRussian (Russian) and kaikki.org (any language English Wiktionary covers). All of them are merged into a single lexicon in the headword's language. The exact form is preferred, and lemma senses are used only when no source defines that form. [`docs/MULTILINGUAL.md`](docs/MULTILINGUAL.md) lists the sources per language.
 - IPA by accent (US and UK), each chip spoken from its own transcription by eSpeak NG. Words no online source transcribes get US IPA from the CMU Pronouncing Dictionary. Recorded pronunciations come from Free Dictionary and Wikimedia Commons and are cached on disk; when a word has none, the chosen voice says it. Neural Kokoro voices (132 MB or 350 MB) can be downloaded in Settings → Audio on the desktop, Android and iOS.
 - Translation through Google Translate and MyMemory without a key, or through Youdao or DeepL with your own keys.
 - Etymology from Wiktionary, Etymonline, and Youdao, and a Wikipedia reader in the same pane.
-- Offline packs: WordNet, Webster 1913 (GCIDE), CC-CEDICT, and FreeDict English–Chinese.
+- Offline packs, listed in Settings → Offline under the language of their headwords: WordNet, Webster 1913 (GCIDE) and FreeDict English–Chinese for English; CC-CEDICT for Chinese; JMdict for Japanese; Kengdic for Korean; and FreeDict packs from German, French, Italian, Portuguese, Dutch, Polish, Russian, Greek, Finnish, Hungarian, Catalan and Croatian into English. The German pack and the full JMdict are desktop only; the phone gets JMdict's common words.
 - A notebook stored locally in SQLite, with search, sorting, and JSON or CSV import and export.
 - An optional Holarky account, from the button at the right of the title bar on desktop or the app bar on the phone. Sign in with email and password, a passkey, or Google; while signed in, the notebook syncs between your desktops and phones, including notes, review progress and deletions. Without an account Phevere works as before, and lookups never wait for it.
 

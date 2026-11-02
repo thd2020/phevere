@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Multilingual sources (2026-11-02): Japanese words get English senses from Jisho, Russian words from OpenRussian, and words in any language English Wiktionary covers from kaikki.org, each with a switch in Settings → Sources. Wiktionary now answers from the section of the detected language, so a Russian word is no longer looked up under English. A Latin-script word that English sources do not know, such as Haus or Häuser, falls back to kaikki's entry in other languages and to the installed packs of other languages.
+- Offline packs by language (2026-11-02): JMdict for Japanese (the full dictionary on desktop, common words on the phone), Kengdic for Korean, and FreeDict packs from German, French, Italian, Portuguese, Dutch, Polish, Russian, Greek, Finnish, Hungarian, Catalan and Croatian into English. German is desktop only. Settings → Offline lists every pack under the language of its headwords, with its size and a Download or Remove button, and the phone can now install FreeDict packs.
 - iOS Neural voices (2026-10-30): Settings → Audio on iOS lists the two Kokoro voices Android has, Neural (standard, 132 MB) and Neural (high quality, 350 MB), below the installed Apple voices. Tapping one downloads it with a progress bar and a cancel button, resumes after a dropped connection, checks its SHA-256 and then selects it. Words are then spoken by Kokoro through sherpa-onnx 1.13.3; IPA chips and any text Kokoro cannot voice still use the Apple voice. The app grows by the statically linked sherpa-onnx and onnxruntime libraries, and now needs iOS 15.1 or later, the minimum onnxruntime 1.26 is built for (every iPhone that ran iOS 14 can run iOS 15).
 
 ### Fixed
