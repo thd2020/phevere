@@ -34,6 +34,7 @@ import {
   accountPanelHtml,
   deleteEmailMatches,
   formatVocabLangPair,
+  groupCatalogByLanguage,
   vocabListHtml,
   type AccountState,
 } from '@phevere/core';
@@ -267,9 +268,8 @@ function initializeSettingsWindow() {
             <div class="settings-panel__intro">
               <h2 id="settings-offline-heading" class="settings-panel__title">Offline dictionary</h2>
             </div>
-            <h3 class="settings-subhead">Packs</h3>
-            <div id="offline-catalog" class="pack-list"></div>
             <p id="offline-status" class="settings-inline-status" role="status" aria-live="polite"></p>
+            <div id="offline-catalog"></div>
             <h3 class="settings-subhead">Import</h3>
             <button type="button" id="offline-import-json" class="nav-row">
               <span class="nav-row__icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
@@ -281,8 +281,8 @@ function initializeSettingsWindow() {
               <span class="nav-row__label">Import CEDICT file<span class="nav-row__sub">cedict_ts.u8</span></span>
               <span class="nav-row__chevron"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             </button>
-            <h3 class="settings-subhead">Installed</h3>
-            <div id="offline-packs-list" class="pack-list"></div>
+            <h3 id="offline-imported-heading" class="settings-subhead" hidden>Imported</h3>
+            <div id="offline-packs-list" class="pack-list" hidden></div>
           </section>
 
           <section class="settings-panel" data-panel="api" aria-labelledby="settings-api-heading">
@@ -581,83 +581,98 @@ async function wireOfflineSettingsPanel(): Promise<void> {
     if (statusEl) statusEl.textContent = msg;
   };
 
-  const refreshPacks = async () => {
-    if (!listEl || !api?.listPacks) {
-      if (listEl) listEl.innerHTML = `<p class="settings-hint">Offline dictionaries unavailable.</p>`;
-      return;
-    }
-    try {
-      const packs = await api.listPacks();
-      if (!packs?.length) {
-        listEl.innerHTML = `<p class="settings-hint">No packs installed.</p>`;
-        return;
-      }
-      listEl.innerHTML = packs
-        .map(
-          (p: any) => `<article class="pack">
+  const TRASH_SVG =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const DOWNLOAD_SVG =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const catalogIds = new Set<string>();
+  const consentById = new Map<string, string>();
+  const nameById = new Map<string, string>();
+
+  /** One pack: name, size or entry count, and Download or Remove. */
+  const packRow = (p: { id: string; name: string }, meta: string, installed: boolean) => {
+    const id = escapeHtmlSelection(p.id);
+    const name = escapeHtmlSelection(p.name);
+    nameById.set(String(p.id), String(p.name));
+    return `<article class="pack${installed ? ' is-installed' : ''}" data-id="${id}">
             <div class="pack__text">
-              <strong>${escapeHtmlSelection(p.name)}</strong>
-              <p class="pack__meta">${escapeHtmlSelection(String(p.language || '').toUpperCase())} · ${(Number(p.entryCount) || 0).toLocaleString()} entries</p>
+              <strong>${name}</strong>
+              <p class="pack__meta">${escapeHtmlSelection(meta)}</p>
             </div>
-            <button type="button" class="icon-btn pack__action offline-remove" data-id="${escapeHtmlSelection(p.id)}" title="Remove" aria-label="Remove ${escapeHtmlSelection(p.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-          </article>`,
-        )
-        .join('');
-      listEl.querySelectorAll('.offline-remove').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const id = (btn as HTMLElement).dataset.id;
-          if (!id) return;
-          if (!confirm(`Remove ${id}?`)) return;
-          await api.removePack(id);
-          setStatus('Pack removed.');
-          await refreshAll();
-        });
+            ${installed
+              ? `<button type="button" class="icon-btn pack__action offline-remove" data-id="${id}" title="Remove" aria-label="Remove ${name}">${TRASH_SVG}</button>`
+              : `<button type="button" class="icon-btn pack__action offline-download" data-id="${id}" title="Download" aria-label="Download ${name}">${DOWNLOAD_SVG}</button>`}
+          </article>`;
+  };
+  const entriesText = (n: unknown) => `${(Number(n) || 0).toLocaleString()} entries`;
+
+  const wireRemoveButtons = (root: Element) => {
+    root.querySelectorAll('.offline-remove').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = (btn as HTMLElement).dataset.id;
+        if (!id || !api?.removePack) return;
+        const name = nameById.get(id) || id;
+        if (!confirm(`Remove ${name}?`)) return;
+        (btn as HTMLButtonElement).disabled = true;
+        await api.removePack(id);
+        setStatus(`Removed ${name}.`);
+        await refreshAll();
       });
-    } catch (error) {
-      console.error(error);
-      listEl.innerHTML = `<p class="settings-hint">Could not list packs.</p>`;
-    }
+    });
   };
 
-  const consentById = new Map<string, string>();
+  /** Packs imported from files (JSON, CEDICT, seeds); catalog packs are listed under their language. */
+  const refreshPacks = async () => {
+    const heading = document.getElementById('offline-imported-heading');
+    if (!listEl || !api?.listPacks) return;
+    try {
+      const packs = ((await api.listPacks()) || []).filter((p: any) => !catalogIds.has(String(p.id)));
+      listEl.hidden = !packs.length;
+      if (heading) heading.hidden = !packs.length;
+      listEl.innerHTML = packs.map((p: any) => packRow(p, entriesText(p.entryCount), true)).join('');
+      wireRemoveButtons(listEl);
+    } catch (error) {
+      console.error(error);
+      listEl.hidden = true;
+      if (heading) heading.hidden = true;
+    }
+  };
 
   const refreshCatalog = async () => {
     if (!catalogEl) return;
     if (!api?.listCatalog) {
-      catalogEl.innerHTML = `<p class="settings-hint">Catalog unavailable.</p>`;
+      catalogEl.innerHTML = `<p class="settings-hint">Offline dictionaries unavailable.</p>`;
       return;
     }
     try {
-      const items = await api.listCatalog();
+      const items: any[] = (await api.listCatalog()) || [];
       consentById.clear();
-      catalogEl.innerHTML = (items || [])
-        .map((c: any) => {
-          const installed = !!c.installed;
-          const count = Number(c.entryCount) || 0;
-          const state = installed ? `${count.toLocaleString()} entries` : escapeHtmlSelection(c.sizeHint || '');
-          consentById.set(String(c.id), String(c.consent || ''));
-          return `<article class="pack${installed ? ' is-installed' : ''}" data-id="${escapeHtmlSelection(c.id)}">
-            <div class="pack__text">
-              <strong>${escapeHtmlSelection(c.name)}</strong>
-              <p class="pack__meta">${escapeHtmlSelection(c.direction)} · ${state} · ${escapeHtmlSelection(c.license)}</p>
-            </div>
-            ${installed
-              ? `<span class="pack__done" title="Installed" aria-label="Installed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`
-              : `<button type="button" class="icon-btn pack__action offline-download" data-id="${escapeHtmlSelection(c.id)}" title="Download" aria-label="Download ${escapeHtmlSelection(c.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`}
-          </article>`;
-        })
+      catalogIds.clear();
+      for (const c of items) {
+        catalogIds.add(String(c.id));
+        consentById.set(String(c.id), String(c.consent || ''));
+      }
+      catalogEl.innerHTML = groupCatalogByLanguage(items)
+        .map(
+          (g) => `<h3 class="settings-subhead">${escapeHtmlSelection(g.title)}</h3>
+          <div class="pack-list" data-lang="${escapeHtmlSelection(g.language)}">${g.items
+            .map((c: any) => packRow(c, c.installed ? entriesText(c.entryCount) : String(c.sizeHint || ''), !!c.installed))
+            .join('')}</div>`,
+        )
         .join('');
+      wireRemoveButtons(catalogEl);
       catalogEl.querySelectorAll('.offline-download').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const id = (btn as HTMLElement).dataset.id;
           const consent = consentById.get(id || '') || 'Download this dictionary pack?';
           if (!id || !api?.downloadPack) return;
           if (!confirm(consent)) return;
+          const name = nameById.get(id) || id;
           (btn as HTMLButtonElement).disabled = true;
-          setStatus(`Downloading ${id}…`);
+          setStatus(`Downloading ${name}…`);
           try {
             const r = await api.downloadPack(id);
-            setStatus(r?.success ? `Installed ${id} (${Number(r.count) || 0} entries).` : 'Download failed.');
+            setStatus(r?.success ? `Installed ${name}, ${entriesText(r.count)}.` : 'Download failed.');
             await refreshAll();
           } catch (e: any) {
             setStatus(`Download failed: ${e?.message || e}`);

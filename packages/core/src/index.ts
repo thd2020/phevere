@@ -124,10 +124,33 @@ export {
 export { buildWordFamily, mergeWordFamilyGroups, familyFromEtymologyChain, type WordFamilyGroup } from './word-family';
 export {
   parseFreedictTei,
+  parseFreedictTeiEntry,
+  FreedictTeiStream,
   parseGcideCide,
   parseWordNetData,
+  parseCedict,
+  parseCedictLine,
+  parseJmdictJson,
+  parseJmdictLine,
+  parseKengdicTsv,
+  KengdicCollector,
   type ParsedOfflineEntry,
 } from './offline-pack-parsers';
+export {
+  OFFLINE_CATALOG,
+  catalogFor,
+  getCatalogItem,
+  groupCatalogByLanguage,
+  wantsArchiveMember,
+  type OfflineCatalogItem,
+  type OfflinePackFormat,
+  type OfflinePackArchive,
+  type OfflinePlatform,
+  type CatalogLanguageGroup,
+} from './offline-catalog';
+export { LANGUAGE_NAMES, languageName, looksJapaneseKanji } from './source-languages';
+export { xzDecompress, isXz } from './xz-decode';
+export { extractTar, type TarFile } from './tar-extract';
 export { VOCAB_SCHEMA_SQL } from './schema';
 
 export { onVocabChanged } from './vocab-store';
