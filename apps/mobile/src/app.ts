@@ -20,7 +20,17 @@ import {
   accountButtonHtml,
   accountPanelHtml,
   deleteEmailMatches,
+  attachNotebookMap,
+  fillWordImages,
+  reviewQueue,
+  reviewVocab,
+  type FamilyGrouping,
+  type MorphKind,
+  type NotebookView,
+  type RecentLookup,
+  type ReviewState,
 } from '@phevere/core';
+import * as core from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
 import { playRecorded, recordedUrls, speakIpa, speakText } from './platform/audio';
 import {
@@ -94,7 +104,7 @@ let notebook: VocabEntry[] = [];
 
 const NOTEBOOK_SORT_KEY = 'phevere.notebookSort';
 const RECENT_KEY = 'phevere.recentLookups';
-const RECENT_CAP = 12;
+const RECENT_CAP = 30;
 
 function readStore(key: string): string | null {
   try {
@@ -112,26 +122,43 @@ function writeStore(key: string, value: string): void {
   }
 }
 
-function loadRecent(): string[] {
+/** Newest first. Lists saved before 2.4 hold bare words, which have no time. */
+function loadRecent(): RecentLookup[] {
   try {
     const list = JSON.parse(readStore(RECENT_KEY) || '[]');
-    return Array.isArray(list) ? list.filter((w): w is string => typeof w === 'string' && !!w.trim()).slice(0, RECENT_CAP) : [];
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((w: unknown) => (typeof w === 'string' ? { q: w, at: 0 } : { q: String((w as RecentLookup)?.q || ''), at: Number((w as RecentLookup)?.at) || 0 }))
+      .filter((w) => w.q.trim())
+      .slice(0, RECENT_CAP);
   } catch {
     return [];
   }
 }
 
 let notebookSort: 'recent' | 'az' = readStore(NOTEBOOK_SORT_KEY) === 'az' ? 'az' : 'recent';
-let recentLookups: string[] = loadRecent();
+let recentLookups: RecentLookup[] = loadRecent();
 
 /** Newest first, one entry per word (case-folded), capped. */
 function rememberRecent(q: string): void {
   const key = q.trim().toLowerCase();
   if (!key) return;
-  recentLookups = [q.trim(), ...recentLookups.filter((w) => w.trim().toLowerCase() !== key)].slice(0, RECENT_CAP);
+  recentLookups = [{ q: q.trim(), at: Date.now() }, ...recentLookups.filter((w) => w.q.trim().toLowerCase() !== key)].slice(0, RECENT_CAP);
   writeStore(RECENT_KEY, JSON.stringify(recentLookups));
 }
 let notebookFilter = '';
+const NB_VIEW_KEY = 'phevere.notebookView';
+const NB_GROUP_KEY = 'phevere.notebookGroup';
+const NB_MAP_KEY = 'phevere.notebookMapKinds';
+const NB_GOAL_KEY = 'phevere.reviewGoal';
+const nbState = {
+  view: (readStore(NB_VIEW_KEY) || 'list') as NotebookView,
+  group: (readStore(NB_GROUP_KEY) || 'root') as FamilyGrouping,
+  mapKinds: (readStore(NB_MAP_KEY) || 'root,prefix,char').split(',').filter(Boolean) as MorphKind[],
+  flipped: new Set<string>(),
+  review: null as ReviewState | null,
+  goal: Number(readStore(NB_GOAL_KEY)) || 10,
+};
 let expandedVocab = new Set<string>();
 let prefs: MobilePrefs = loadPrefs();
 let packs: CatalogStatus[] = [];
@@ -223,6 +250,7 @@ function lookupPaneHtml(): string {
     query,
     error: lookupError,
     recent: recentLookups,
+    savedFor: (q) => notebook.find((e) => e.lemma.trim().toLowerCase() === q.trim().toLowerCase()),
     headTools: !stripMode,
   });
 }
@@ -255,7 +283,7 @@ function paint(): void {
   }
   const body =
     tab === 'notebook'
-      ? notebookBody(notebook, notebookSort, notebookFilter, expandedVocab)
+      ? notebookBody(notebook, notebookSort, notebookFilter, expandedVocab, notebookViewState())
       : tab === 'settings'
         ? settingsBody(
             prefs,
@@ -304,6 +332,42 @@ function paint(): void {
   bindWikiReader();
   bindMockBar();
   bindAzRail();
+  if (tab === 'notebook') bindNotebookViews();
+}
+
+function notebookViewState() {
+  if (nbState.view === 'review' && !nbState.review) {
+    nbState.review = { queue: reviewQueue(notebook, nbState.goal), index: 0, revealed: false, done: 0 };
+  }
+  return nbState;
+}
+
+function bindNotebookViews(): void {
+  const page = document.querySelector('.nbv-body');
+  if (!page) return;
+  attachNotebookMap(page);
+  const fetchWordImage = (core as Record<string, unknown>).fetchWordImage;
+  if (typeof fetchWordImage === 'function') {
+    fillWordImages(page, (lemma, lang) => fetchWordImage(lemma, { lang }));
+  }
+}
+
+async function gradeReview(grade: 1 | 2 | 3 | 4): Promise<void> {
+  const r = nbState.review;
+  const id = r?.queue[r.index];
+  if (!r || !id) return;
+  try {
+    const updated = await reviewVocab(id, grade);
+    if (updated) notebook = notebook.map((e) => (e.id === id ? updated : e));
+  } catch (err) {
+    toast(err instanceof Error ? err.message : String(err));
+  }
+  // "Again" brings the word back at the end of today's session.
+  if (grade === 1) r.queue.push(id);
+  r.index += 1;
+  r.done += 1;
+  r.revealed = false;
+  paint();
 }
 
 function wikiLanguage(): string {
@@ -1215,6 +1279,15 @@ function jumpToLexiconPos(pos: string, instant: boolean): void {
   }, instant ? 80 : 480);
 }
 
+let lexiconPosFrame = 0;
+function scheduleLexiconPosScroll(): void {
+  if (lexiconPosFrame) return;
+  lexiconPosFrame = requestAnimationFrame(() => {
+    lexiconPosFrame = 0;
+    onLexiconPosScroll();
+  });
+}
+
 function onLexiconPosScroll(): void {
   if (posJumpLock) return;
   const rootEl = document.querySelector('.lexicon-block--senses');
@@ -1244,7 +1317,7 @@ function sizeLexiconPane(): void {
 
 function bindLexiconPane(): void {
   sizeLexiconPane();
-  document.querySelector('.lexicon-pos-panel')?.addEventListener('scroll', onLexiconPosScroll, { passive: true });
+  document.querySelector('.lexicon-pos-panel')?.addEventListener('scroll', scheduleLexiconPosScroll, { passive: true });
   if (lexiconPos) {
     highlightLexiconPosTab(lexiconPos);
     jumpToLexiconPos(lexiconPos, true);
@@ -1509,6 +1582,48 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     }
+    case 'nb-view':
+      nbState.view = (t.dataset.view as NotebookView) || 'list';
+      writeStore(NB_VIEW_KEY, nbState.view);
+      if (nbState.view === 'review') nbState.review = null;
+      paint();
+      window.scrollTo({ top: 0 });
+      return;
+    case 'nb-group':
+      nbState.group = (t.dataset.group as FamilyGrouping) || 'root';
+      writeStore(NB_GROUP_KEY, nbState.group);
+      paint();
+      return;
+    case 'nb-map-kind': {
+      const k = t.dataset.kind as MorphKind;
+      nbState.mapKinds = nbState.mapKinds.includes(k) ? nbState.mapKinds.filter((x) => x !== k) : [...nbState.mapKinds, k];
+      writeStore(NB_MAP_KEY, nbState.mapKinds.join(','));
+      paint();
+      return;
+    }
+    case 'nb-flip': {
+      const id = t.dataset.id;
+      if (!id) return;
+      if (nbState.flipped.has(id)) nbState.flipped.delete(id);
+      else nbState.flipped.add(id);
+      paint();
+      return;
+    }
+    case 'nb-goal':
+      nbState.goal = Number(t.dataset.goal) || 10;
+      writeStore(NB_GOAL_KEY, String(nbState.goal));
+      nbState.review = null;
+      paint();
+      return;
+    case 'nb-reveal':
+      if (nbState.review) nbState.review.revealed = true;
+      paint();
+      return;
+    case 'nb-grade':
+      await gradeReview((Number(t.dataset.grade) || 3) as 1 | 2 | 3 | 4);
+      return;
+    case 'nb-map-zoom':
+      return;
     case 'nb-play':
       if (soundOff()) return;
       await pulseSpeak(t, playLemma(t.dataset.lemma || ''));

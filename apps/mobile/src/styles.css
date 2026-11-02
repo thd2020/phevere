@@ -1993,18 +1993,16 @@ html[data-notify="ios"] .toast {
 .translation-card__pron { font-family: var(--md-font-ipa); font-size: 13px; color: var(--md-sys-color-tertiary); margin-top: 4px; }
 .tx-speak { color: var(--md-sys-color-tertiary); }
 
-/* Recent lookups in the empty Lookup state. */
-.recent-lookups { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-.recent-chip {
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-sm);
-  background: var(--md-sys-color-surface-container-lowest);
-  color: var(--md-sys-color-on-surface);
-  padding: 8px 14px;
-  font-size: 0.9rem;
-  min-height: 40px;
+/* Recent lookups in the empty Lookup state: the notebook's own rows. */
+.recent-lookups { margin: 8px 0 16px; }
+.recent-lookups__title {
+  margin: 0 4px 8px;
+  font: 600 0.72rem/1 var(--md-font-ui, inherit);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--md-sys-color-on-surface-variant);
 }
-.recent-chip:active { background: var(--md-sys-color-surface-container); }
+.recent-lookups .vocab-saved-mark { width: 7px; height: 7px; border-radius: 999px; background: var(--md-sys-color-tertiary); align-self: center; }
 
 /* Notebook A–Z rail (sort A–Z) and the letter shown while scrubbing. */
 .vocab-item { scroll-margin-top: calc(var(--pv-inset-top) + 84px); }
@@ -2184,3 +2182,34 @@ html[data-notify="ios"] .toast {
 .vocab-list .vocab-action svg { width: 18px; height: 18px; fill: none; }
 .vocab-list .vocab-remove { color: var(--md-sys-color-error); }
 @media (prefers-reduced-motion: reduce) { .vocab-list .vocab-chevron { transition: none; } }
+
+/* Look up beside Play on every notebook and recent row (2026-11-02). */
+.vocab-list .vocab-open {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  color: var(--md-sys-color-on-surface);
+  background: transparent;
+}
+.vocab-list .vocab-open svg { width: 20px; height: 20px; }
+.vocab-list .vocab-open:active,
+.vocab-list .vocab-play:active { background: var(--md-sys-color-surface-container); }
+/* Rows off screen skip layout and paint, so long notebooks scroll smoothly. */
+.vocab-list .vocab-item { content-visibility: auto; contain-intrinsic-size: auto 60px; }
+
+/* Notebook views. */
+.nb-views { margin: 0 0 12px; }
+.nb-views .nbv-switch { width: 100%; justify-content: space-between; }
+.nb-views .nbv-switch__btn { flex: 1 1 0; justify-content: center; padding: 0 6px; height: 34px; }
+.nbv-body { padding-bottom: 12px; }
+.nbv-body .nbv-cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.nbv-body .nbv-card__word { font-size: 18px; }
+.nbv-body .nbv-map { height: 62vh; }
+@media (max-width: 340px) {
+  .nb-views .nbv-switch__btn span { display: none; }
+}
+.nb-views .nbv-switch__btn { gap: 4px; font-size: 11.5px; }

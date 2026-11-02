@@ -12,6 +12,7 @@ import '@fontsource/ibm-plex-mono/600.css';
 // Phone fonts lack IPA letters; Charis SIL covers them.
 import '@fontsource/charis-sil/latin-400.css';
 import '@fontsource/charis-sil/latin-ext-400.css';
+import '@phevere/core/notebook-views.css';
 import './styles.css';
 import { startApp } from './app';
 

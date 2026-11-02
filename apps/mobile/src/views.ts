@@ -12,6 +12,19 @@ import {
   type VocabEntry,
   type WikipediaResult,
   vocabListHtml,
+  analyzeNotebook,
+  cardsHtml,
+  familiesHtml,
+  mapHtml,
+  notebookViewSwitchHtml,
+  recentListHtml,
+  reviewHtml,
+  type FamilyGrouping,
+  type MorphKind,
+  type NotebookView,
+  type RecentLookup,
+  type ReviewState,
+  type VocabViewEntry,
 } from '@phevere/core';
 
 export type Tab = 'lookup' | 'notebook' | 'settings';
@@ -705,7 +718,9 @@ export function lookupBody(opts: {
   etymologySource?: string;
   query?: string;
   error?: string;
-  recent?: string[];
+  recent?: RecentLookup[];
+  /** The notebook entry for a recent word, so its row can show the pronunciation. */
+  savedFor?: (q: string) => VocabViewEntry | undefined;
   /** Copy and web search sit in the head; the pop-up carries them in its bar instead. */
   headTools?: boolean;
 }): string {
@@ -715,13 +730,14 @@ export function lookupBody(opts: {
   }
   if (opts.status && !opts.result) return `<p class="status">${esc(opts.status)}</p>`;
   if (!opts.result) {
-    const recent = (opts.recent || []).filter(Boolean);
+    const recent = (opts.recent || []).filter((r) => r && r.q);
     return `<div class="empty">
       <p>Type a word, or select text in another app.</p>
-      ${recent.length ? `<div class="recent-lookups" aria-label="Recent lookups">${recent
-        .map((w) => `<button type="button" class="recent-chip" data-act="lookup" data-q="${esc(w)}">${esc(w)}</button>`)
-        .join('')}</div>` : ''}
-    </div>`;
+    </div>
+    ${recent.length ? `<section class="recent-lookups" aria-label="Recent lookups">
+      <h3 class="recent-lookups__title">Recent</h3>
+      <div class="vocab-list">${recentListHtml(recent, opts.savedFor || (() => undefined))}</div>
+    </section>` : ''}`;
   }
   const chips = ipaChips(opts.result.pronunciations, opts.result.pronunciation || '');
   const lemma = saveLemma(opts.result);
@@ -767,11 +783,21 @@ export function lookupBody(opts: {
     </div>`;
 }
 
+export interface NotebookViewState {
+  view: NotebookView;
+  group: FamilyGrouping;
+  mapKinds: MorphKind[];
+  flipped: Set<string>;
+  review: ReviewState | null;
+  goal: number;
+}
+
 export function notebookBody(
   entries: VocabEntry[],
   sort: 'recent' | 'az',
   filter: string,
   expanded: Set<string>,
+  nb: NotebookViewState,
 ): string {
   const q = filter.trim().toLowerCase();
   let list = [...entries];
@@ -786,21 +812,34 @@ export function notebookBody(
         .includes(q),
     );
   }
-  const rows = vocabListHtml(list, { sort, expanded });
-  return `
+  const head = `
     <div class="nb-head">
       <input id="nbq" type="search" class="vocab-search" placeholder="Search notebook…" value="${esc(filter)}" autocomplete="off" aria-label="Search notebook" />
-      <div class="vocab-sort" role="group" aria-label="Notebook sort">
+      ${nb.view === 'list' ? `<div class="vocab-sort" role="group" aria-label="Notebook sort">
         <button type="button" class="vocab-sort-btn${sort === 'recent' ? ' is-active' : ''}" data-act="nb-sort" data-sort="recent" aria-pressed="${sort === 'recent'}" aria-label="Most recent first" title="Recent">${ICO.recent}</button>
         <button type="button" class="vocab-sort-btn${sort === 'az' ? ' is-active' : ''}" data-act="nb-sort" data-sort="az" aria-pressed="${sort === 'az'}" aria-label="Alphabetical" title="A–Z">${ICO.az}</button>
-      </div>
+      </div>` : ''}
     </div>
+    <div class="nbv nb-views">${notebookViewSwitchHtml(nb.view)}</div>`;
+  if (nb.view !== 'list') {
+    const analysis = analyzeNotebook(list);
+    const body =
+      nb.view === 'families'
+        ? familiesHtml(analysis, nb.group)
+        : nb.view === 'map'
+          ? mapHtml(analysis, nb.mapKinds)
+          : nb.view === 'cards'
+            ? cardsHtml(list, analysis, nb.flipped)
+            : reviewHtml(entries, nb.review || { queue: [], index: 0, revealed: false, done: 0 }, nb.goal);
+    return `${head}<div class="nbv nbv-body">${body}</div>`;
+  }
+  const rows = vocabListHtml(list, { sort, expanded });
+  return `${head}
     <div class="ptr" aria-hidden="true"><span class="md-spinner"></span></div>
     <div class="vocab-list">${rows || `<p class="empty">${q ? 'No matching words.' : 'No saved words.'}</p>`}</div>
     ${sort === 'az' && list.length ? vocabAzRail(new Set(list.map((e) => vocabAzLetter(e.lemma)))) : ''}`;
 }
 
-/** First letter for the A–Z rail; anything outside A–Z files under #. */
 function vocabAzLetter(lemma: string): string {
   const up = (lemma || '').trim().charAt(0).toLocaleUpperCase('en');
   return up >= 'A' && up <= 'Z' ? up : '#';
