@@ -24,7 +24,8 @@ The current release is **2.3.0** on desktop and phone (2026-10-29). It adds an o
 - Translation through Google Translate and MyMemory without a key, or through Youdao or DeepL with your own keys.
 - Etymology from Wiktionary, Etymonline, and Youdao, and a Wikipedia reader in the same pane.
 - Offline packs: WordNet, Webster 1913 (GCIDE), CC-CEDICT, and FreeDict English–Chinese.
-- A notebook stored locally in SQLite, with search, sorting, and JSON or CSV import and export.
+- A notebook stored locally in SQLite, with search, sorting, and JSON or CSV import and export. Besides the list it has Families (words grouped by shared root, prefix, suffix, origin or character, and word trees), Map (the same relations as a graph), Cards (each word split into its parts, with your note as a mnemonic) and Review (spaced repetition with a daily goal and a two-week forecast).
+- Recent lookups, shown as the same rows as the notebook. The source language is detected by default, including Japanese text written only in kanji.
 - An optional Holarky account, from the button at the right of the title bar on desktop or the app bar on the phone. Sign in with email and password, a passkey, or Google; while signed in, the notebook syncs between your desktops and phones, including notes, review progress and deletions. Without an account Phevere works as before, and lookups never wait for it.
 
 **Desktop (Windows, macOS, Linux)**
