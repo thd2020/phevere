@@ -29,18 +29,32 @@
 import './fonts';
 import './index.css';
 import { captureNextShortcut, isLinux, isMac } from './shortcut-capture';
+import '@phevere/core/notebook-views.css';
+import * as core from '@phevere/core';
 import {
   accountButtonHtml,
   accountPanelHtml,
+  analyzeNotebook,
+  attachNotebookMap,
+  cardsHtml,
   deleteEmailMatches,
+  familiesHtml,
+  fillWordImages,
   formatVocabLangPair,
+  mapHtml,
+  notebookViewSwitchHtml,
+  recentListHtml,
+  reviewHtml,
+  reviewQueue,
+  vocabEntryGroup,
   vocabListHtml,
   type AccountState,
+  type FamilyGrouping,
+  type MorphKind,
+  type NotebookView,
+  type RecentLookup,
+  type ReviewState,
 } from '@phevere/core';
-
-// Inside your main window initialization or setup block:
-const clearBtn = document.getElementById('clearSelectionsBtn') as HTMLButtonElement;
-const recentList = document.getElementById('selectionsList');
 
 const rlog = (...args: unknown[]) => {
   if (!__PHEVERE_DEV__) return;
@@ -49,15 +63,10 @@ const rlog = (...args: unknown[]) => {
 
 rlog('🚀 Phevere renderer started');
 
-if (clearBtn && recentList) {
-  clearBtn.addEventListener('click', () => {
-    localStorage.removeItem(RECENT_SELECTIONS_STORAGE_KEY);
-    recentList.innerHTML = `
-      <p class="empty-message">No recent lookups.</p>
-    `;
-    updateClearButtonVisibility(); // <-- Will hide the button automatically
-  });
-}
+document.getElementById('clearSelectionsBtn')?.addEventListener('click', () => {
+  saveRecentLookups([]);
+  renderRecentLookups();
+});
 
 // Wait for DOM to be ready
 document.addEventListener('DOMContentLoaded', () => {
@@ -84,15 +93,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Also try immediate execution if DOM is already ready
 // IMPORTANT: Avoid double init. We rely solely on DOMContentLoaded above
-function updateClearButtonVisibility(): void {
-  const clearBtn = document.getElementById('clearSelectionsBtn') as HTMLButtonElement;
-  const recentList = document.getElementById('selectionsList') || document.getElementById('recent-list');
-  if (!clearBtn || !recentList) return;
-  
-  const hasItems = recentList.querySelectorAll('.selection-item').length > 0;
-  clearBtn.style.display = hasItems ? 'inline-flex' : 'none';
-}
-
 function initializeSettingsWindow() {
   rlog('🚀 Initializing settings window...');
 
@@ -1838,7 +1838,8 @@ function initializeMainWindow() {
   wireAccountMenu();
   wireMainWindowImageIngest();
   wireInAppTextSelectionLookup();
-  loadRecentSelectionsIntoDom();
+  wireMainWorkspace();
+  renderRecentLookups();
   void loadVocabNotebook();
   wireLiveResizeClass();
   const vocabApi = (window as any).vocabAPI;
@@ -1895,27 +1896,48 @@ function initializeClipboardWindow() {
 
 let vocabNotebookCache: any[] = [];
 const VOCAB_SORT_KEY = 'phevere-vocab-sort';
+const NB_VIEW_KEY = 'phevere-notebook-view';
+const NB_GROUP_KEY = 'phevere-notebook-group';
+const NB_MAP_KINDS_KEY = 'phevere-notebook-map-kinds';
+const NB_GOAL_KEY = 'phevere-review-goal';
+const WS_TAB_KEY = 'phevere-main-tab';
 type VocabSortMode = 'recent' | 'alpha';
 
-function getVocabSortMode(): VocabSortMode {
+function readPref(key: string, fallback: string): string {
   try {
-    return localStorage.getItem(VOCAB_SORT_KEY) === 'alpha' ? 'alpha' : 'recent';
+    return localStorage.getItem(key) || fallback;
   } catch {
-    return 'recent';
+    return fallback;
   }
 }
 
-function setVocabSortMode(mode: VocabSortMode): void {
+function writePref(key: string, value: string): void {
   try {
-    localStorage.setItem(VOCAB_SORT_KEY, mode);
+    localStorage.setItem(key, value);
   } catch {
-    /* ignore */
+    /* storage blocked: the choice lasts this session */
   }
+}
+
+let nbView = readPref(NB_VIEW_KEY, 'list') as NotebookView;
+let nbGroup = readPref(NB_GROUP_KEY, 'root') as FamilyGrouping;
+let nbMapKinds = readPref(NB_MAP_KINDS_KEY, 'root,prefix,char').split(',').filter(Boolean) as MorphKind[];
+let nbGoal = Number(readPref(NB_GOAL_KEY, '10')) || 10;
+let nbReview: ReviewState | null = null;
+const nbFlipped = new Set<string>();
+const nbExpanded = new Set<string>();
+let vocabRenderToken = 0;
+
+function getVocabSortMode(): VocabSortMode {
+  return readPref(VOCAB_SORT_KEY, 'recent') === 'alpha' ? 'alpha' : 'recent';
+}
+
+function setVocabSortMode(mode: VocabSortMode): void {
+  writePref(VOCAB_SORT_KEY, mode);
   document.getElementById('vocabSortRecent')?.classList.toggle('is-active', mode === 'recent');
   document.getElementById('vocabSortAlpha')?.classList.toggle('is-active', mode === 'alpha');
   document.getElementById('vocabSortRecent')?.setAttribute('aria-pressed', mode === 'recent' ? 'true' : 'false');
   document.getElementById('vocabSortAlpha')?.setAttribute('aria-pressed', mode === 'alpha' ? 'true' : 'false');
-  document.getElementById('vocabListWrap')?.classList.toggle('is-alpha', mode === 'alpha');
 }
 
 function vocabAzLetter(lemma: string): string {
@@ -2015,8 +2037,8 @@ function wireVocabAzScrub(nav: HTMLElement): void {
 function syncVocabAzAvailability(entries: any[]): void {
   const nav = ensureVocabAzIndex();
   const wrap = document.getElementById('vocabListWrap');
-  const alpha = getVocabSortMode() === 'alpha' && entries.length > 0;
-  if (wrap) wrap.classList.toggle('is-alpha', getVocabSortMode() === 'alpha');
+  const alpha = nbView === 'list' && getVocabSortMode() === 'alpha' && entries.length > 0;
+  if (wrap) wrap.classList.toggle('is-alpha', alpha);
   if (!nav) return;
   nav.hidden = !alpha;
   if (!alpha) {
@@ -2039,9 +2061,10 @@ async function loadVocabNotebook(): Promise<void> {
     return;
   }
   try {
-    const entries = await api.list(2000);
+    const entries = await api.list(5000);
     vocabNotebookCache = entries || [];
     renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
+    renderRecentLookups();
   } catch (error) {
     console.error('vocab load failed', error);
     list.innerHTML = `<p class="empty-message">Could not load notebook.</p>`;
@@ -2062,93 +2085,240 @@ function filterVocabEntries(entries: any[]): any[] {
   });
 }
 
-function toggleVocabItem(el: HTMLElement): void {
-  const open = el.classList.toggle('is-collapsed') === false;
-  el.classList.toggle('is-expanded', open);
-  el.setAttribute('aria-expanded', open ? 'true' : 'false');
+/** Pictures come from the core's word-image lookup when it is present; cards keep their letter otherwise. */
+function wordImageFetcher(): ((lemma: string, lang?: string) => Promise<any>) | null {
+  const fn = (core as any).fetchWordImage;
+  return typeof fn === 'function' ? (lemma: string, lang?: string) => fn(lemma, { lang }) : null;
 }
 
 function renderVocabNotebook(entries: any[]): void {
   const list = document.getElementById('vocabList');
-  if (!list) return;
-  const api = (window as any).vocabAPI;
+  const body = document.getElementById('nbViewBody');
+  const wrap = document.getElementById('vocabListWrap');
+  const sw = document.getElementById('nbViewSwitch');
+  if (!list || !body || !wrap) return;
+  if (sw) sw.innerHTML = notebookViewSwitchHtml(nbView);
+  document.getElementById('vocabSortGroup')?.toggleAttribute('hidden', nbView !== 'list');
+  const count = document.getElementById('vocabCount');
+  if (count) count.textContent = vocabNotebookCache.length ? String(vocabNotebookCache.length) : '';
   const sorted = sortVocabEntries(entries);
   syncVocabAzAvailability(sorted);
+  const isList = nbView === 'list';
+  wrap.hidden = !isList;
+  body.hidden = isList;
+  if (!isList) {
+    vocabRenderToken += 1;
+    list.innerHTML = '';
+    const analysis = analyzeNotebook(sorted);
+    if (nbView === 'families') body.innerHTML = familiesHtml(analysis, nbGroup);
+    else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
+    else if (nbView === 'cards') body.innerHTML = cardsHtml(sorted, analysis, nbFlipped);
+    else {
+      if (!nbReview) nbReview = { queue: reviewQueue(vocabNotebookCache, nbGoal), index: 0, revealed: false, done: 0 };
+      body.innerHTML = reviewHtml(vocabNotebookCache, nbReview, nbGoal);
+    }
+    attachNotebookMap(body);
+    const fetchImage = wordImageFetcher();
+    if (fetchImage) fillWordImages(body, fetchImage);
+    return;
+  }
+  body.innerHTML = '';
   if (!sorted.length) {
     const q = ((document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '').trim();
     list.innerHTML = `<p class="empty-message">${q ? 'No matching words.' : 'No saved words.'}</p>`;
     return;
   }
-  const expanded = new Set<string>(
-    [...list.querySelectorAll<HTMLElement>('.vocab-item.is-expanded')].map((el) => el.dataset.id || ''),
-  );
-  list.innerHTML = vocabListHtml(sorted, { sort: getVocabSortMode() === 'alpha' ? 'az' : 'recent', expanded });
+  // Long notebooks: paint the first screenful now and append the rest in idle chunks, so
+  // opening the list or typing in search never parses thousands of rows in one task.
+  const sort = getVocabSortMode() === 'alpha' ? 'az' : 'recent';
+  const token = ++vocabRenderToken;
+  const FIRST = 120;
+  const CHUNK = 300;
+  list.innerHTML = vocabListHtml(sorted.slice(0, FIRST), { sort, expanded: nbExpanded });
+  const appendFrom = (start: number) => {
+    if (token !== vocabRenderToken || start >= sorted.length) return;
+    const afterGroup = sort === 'recent' ? vocabEntryGroup(sorted[start - 1]) : '';
+    list.insertAdjacentHTML(
+      'beforeend',
+      vocabListHtml(sorted.slice(start, start + CHUNK), { sort, expanded: nbExpanded, afterGroup }),
+    );
+    setTimeout(() => appendFrom(start + CHUNK), 0);
+  };
+  setTimeout(() => appendFrom(FIRST), 0);
+}
 
-    list.querySelectorAll('.vocab-item').forEach((el) => {
-      const toggle = el.querySelector('.vocab-entry__toggle') as HTMLElement | null;
-      if (!toggle) return;
-      toggle.addEventListener('click', (ev) => {
-        const t = ev.target as HTMLElement;
-        if (t.closest('.vocab-play, button, a')) return;
-        toggleVocabItem(el as HTMLElement);
-        toggle.setAttribute('aria-expanded', el.classList.contains('is-collapsed') ? 'false' : 'true');
-      });
-      toggle.addEventListener('keydown', (ev) => {
-        const ke = ev as KeyboardEvent;
-        if (ke.key !== 'Enter' && ke.key !== ' ') return;
-        ke.preventDefault();
-        toggleVocabItem(el as HTMLElement);
-        toggle.setAttribute('aria-expanded', el.classList.contains('is-collapsed') ? 'false' : 'true');
-      });
-    });
-    list.querySelectorAll('.vocab-open').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const lemma = (btn as HTMLElement).dataset.lemma;
-        if (lemma) void openFullLookup(lemma);
-      });
-    });
-    list.querySelectorAll('.vocab-play').forEach((btn) => {
-      btn.addEventListener('click', (ev) => {
+
+function rerenderNotebook(): void {
+  renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
+}
+
+async function gradeCurrentReview(grade: 1 | 2 | 3 | 4): Promise<void> {
+  const api = (window as any).vocabAPI;
+  if (!nbReview || !api?.review) return;
+  const id = nbReview.queue[nbReview.index];
+  if (!id) return;
+  try {
+    const updated = await api.review(id, grade);
+    if (updated) vocabNotebookCache = vocabNotebookCache.map((e) => (e.id === id ? { ...e, ...updated } : e));
+  } catch (error) {
+    console.error('review failed', error);
+  }
+  // "Again" brings the word back at the end of today's session.
+  if (grade === 1) nbReview.queue.push(id);
+  nbReview.index += 1;
+  nbReview.done += 1;
+  nbReview.revealed = false;
+  rerenderNotebook();
+}
+
+/** One click handler for both lists and every notebook view, keyed on `data-act`. */
+function wireNotebookActions(root: HTMLElement): void {
+  const run = async (el: HTMLElement, ev: Event) => {
+    switch (el.dataset.act) {
+      case 'lookup': {
+        const q = el.dataset.q || el.dataset.lemma;
+        if (q) {
+          addToRecentSelections(q);
+          void openFullLookup(q);
+        }
+        return;
+      }
+      case 'nb-play':
         ev.stopPropagation();
-        const lemma = (btn as HTMLElement).dataset.lemma;
-        if (lemma) void playLemmaPronunciation(lemma, btn as HTMLElement);
-      });
-    });
-    list.querySelectorAll('.vocab-remove').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const id = (btn as HTMLElement).dataset.id;
-        if (!id) return;
-        await api.remove(id);
-        void loadVocabNotebook();
-      });
-    });
-    list.querySelectorAll('.vocab-more').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const def = (btn as HTMLElement).previousElementSibling as HTMLElement | null;
+        if (el.dataset.lemma) void playLemmaPronunciation(el.dataset.lemma, el);
+        return;
+      case 'nb-toggle': {
+        const item = el.closest<HTMLElement>('.vocab-item');
+        const id = item?.dataset.id;
+        if (!item || !id) return;
+        const open = !nbExpanded.has(id);
+        if (open) nbExpanded.add(id);
+        else nbExpanded.delete(id);
+        item.classList.toggle('is-expanded', open);
+        item.classList.toggle('is-collapsed', !open);
+        el.setAttribute('aria-expanded', open ? 'true' : 'false');
+        return;
+      }
+      case 'nb-more': {
+        const def = el.previousElementSibling as HTMLElement | null;
         if (!def) return;
         def.classList.toggle('is-clamped');
-        const clamped = def.classList.contains('is-clamped');
-        (btn as HTMLElement).textContent = clamped ? 'Show more' : 'Show less';
-      });
-    });
+        el.textContent = def.classList.contains('is-clamped') ? 'Show more' : 'Show less';
+        return;
+      }
+      case 'nb-del': {
+        const id = el.dataset.id;
+        const api = (window as any).vocabAPI;
+        if (!id || !api?.remove) return;
+        await api.remove(id);
+        nbExpanded.delete(id);
+        void loadVocabNotebook();
+        return;
+      }
+      case 'nb-view':
+        nbView = (el.dataset.view as NotebookView) || 'list';
+        writePref(NB_VIEW_KEY, nbView);
+        if (nbView === 'review') nbReview = null;
+        rerenderNotebook();
+        document.querySelector('.main-shell')?.scrollTo({ top: 0 });
+        return;
+      case 'nb-group':
+        nbGroup = (el.dataset.group as FamilyGrouping) || 'root';
+        writePref(NB_GROUP_KEY, nbGroup);
+        rerenderNotebook();
+        return;
+      case 'nb-map-kind': {
+        const k = el.dataset.kind as MorphKind;
+        nbMapKinds = nbMapKinds.includes(k) ? nbMapKinds.filter((x) => x !== k) : [...nbMapKinds, k];
+        writePref(NB_MAP_KINDS_KEY, nbMapKinds.join(','));
+        rerenderNotebook();
+        return;
+      }
+      case 'nb-flip': {
+        const id = el.dataset.id;
+        if (!id) return;
+        if (nbFlipped.has(id)) nbFlipped.delete(id);
+        else nbFlipped.add(id);
+        const open = nbFlipped.has(id);
+        el.closest<HTMLElement>('.nbv-card')?.classList.toggle('is-flipped', open);
+        el.setAttribute('aria-pressed', open ? 'true' : 'false');
+        const label = el.querySelector('.nbv-card__flip');
+        if (label) label.textContent = open ? 'Hide meaning' : 'Show meaning';
+        return;
+      }
+      case 'nb-goal':
+        nbGoal = Number(el.dataset.goal) || 10;
+        writePref(NB_GOAL_KEY, String(nbGoal));
+        nbReview = null;
+        rerenderNotebook();
+        return;
+      case 'nb-reveal':
+        if (nbReview) nbReview.revealed = true;
+        rerenderNotebook();
+        return;
+      case 'nb-grade':
+        await gradeCurrentReview((Number(el.dataset.grade) || 3) as 1 | 2 | 3 | 4);
+        return;
+      default:
+    }
+  };
+  root.addEventListener('click', (ev) => {
+    const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-act]');
+    if (!el || !root.contains(el) || el.dataset.act === 'nb-map-zoom') return;
+    void run(el, ev);
+  });
+  root.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    const el = ev.target as HTMLElement;
+    if (el.tagName === 'BUTTON' || !el.dataset?.act) return;
+    ev.preventDefault();
+    void run(el, ev);
+  });
+}
+
+function setMainTab(tab: 'notebook' | 'recent'): void {
+  writePref(WS_TAB_KEY, tab);
+  document.querySelectorAll<HTMLElement>('.ws-tab').forEach((b) => {
+    const on = b.dataset.ws === tab;
+    b.classList.toggle('is-active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  const nb = document.getElementById('paneNotebook');
+  const rc = document.getElementById('paneRecent');
+  if (nb) nb.hidden = tab !== 'notebook';
+  if (rc) rc.hidden = tab !== 'recent';
+  document.getElementById('notebookTools')?.toggleAttribute('hidden', tab !== 'notebook');
+  document.getElementById('recentTools')?.toggleAttribute('hidden', tab !== 'recent');
+  document.querySelector('.main-shell')?.scrollTo({ top: 0 });
+}
+
+function wireMainWorkspace(): void {
+  document.querySelectorAll<HTMLElement>('.ws-tab').forEach((b) =>
+    b.addEventListener('click', () => setMainTab(b.dataset.ws === 'recent' ? 'recent' : 'notebook')),
+  );
+  setMainTab(readPref(WS_TAB_KEY, 'notebook') === 'recent' ? 'recent' : 'notebook');
+  const shell = document.querySelector<HTMLElement>('.main-shell');
+  if (shell) wireNotebookActions(shell);
 }
 
 document.getElementById('refreshVocabBtn')?.addEventListener('click', () => {
   void loadVocabNotebook();
 });
 
+let vocabSearchTimer: ReturnType<typeof setTimeout> | null = null;
 document.getElementById('vocabSearch')?.addEventListener('input', () => {
-  renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
+  if (vocabSearchTimer) clearTimeout(vocabSearchTimer);
+  vocabSearchTimer = setTimeout(rerenderNotebook, 120);
 });
 
 document.getElementById('vocabSortRecent')?.addEventListener('click', () => {
   setVocabSortMode('recent');
-  renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
+  rerenderNotebook();
 });
 
 document.getElementById('vocabSortAlpha')?.addEventListener('click', () => {
   setVocabSortMode('alpha');
-  renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
+  rerenderNotebook();
 });
 
 document.getElementById('exportVocabBtn')?.addEventListener('click', async () => {
@@ -2435,9 +2605,6 @@ async function attachSelectionChangeListenerOnly(): Promise<void> {
 
 let __selectionListenerAttached = false;
 
-const RECENT_SELECTIONS_STORAGE_KEY = 'phevereRecentSelections';
-const MAX_RECENT_SELECTIONS = 10;
-
 function escapeHtmlSelection(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -2446,108 +2613,49 @@ function escapeHtmlSelection(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function persistRecentSelections(entries: { text: string; time: string }[]): void {
+const RECENT_SELECTIONS_STORAGE_KEY = 'phevereRecentSelections';
+const MAX_RECENT_SELECTIONS = 60;
+
+/** Stored newest first. Entries saved before 2.4 kept only a clock time, so they have no date. */
+function loadRecentLookups(): RecentLookup[] {
   try {
-    localStorage.setItem(RECENT_SELECTIONS_STORAGE_KEY, JSON.stringify(entries));
+    const raw = JSON.parse(localStorage.getItem(RECENT_SELECTIONS_STORAGE_KEY) || '[]');
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((e: any) => ({ q: String(e?.q ?? e?.text ?? '').trim(), at: Number(e?.at) || 0 }))
+      .filter((e) => e.q)
+      .slice(0, MAX_RECENT_SELECTIONS);
   } catch {
-    /* ignore quota */
+    return [];
   }
 }
 
-function loadRecentSelectionsIntoDom(): void {
-  const recentList = document.getElementById('selectionsList') || document.getElementById('recent-list');
-  if (!recentList) return;
-  let raw: string | null = null;
-  try {
-    raw = localStorage.getItem(RECENT_SELECTIONS_STORAGE_KEY);
-  } catch {
+function saveRecentLookups(items: RecentLookup[]): void {
+  writePref(RECENT_SELECTIONS_STORAGE_KEY, JSON.stringify(items.slice(0, MAX_RECENT_SELECTIONS)));
+}
+
+function renderRecentLookups(): void {
+  const list = document.getElementById('selectionsList');
+  if (!list) return;
+  const items = loadRecentLookups();
+  const clear = document.getElementById('clearSelectionsBtn');
+  if (clear) clear.hidden = !items.length;
+  if (!items.length) {
+    list.innerHTML = `<p class="empty-message">No recent lookups.</p>`;
     return;
   }
-  if (!raw) return;
-  try {
-    const entries = JSON.parse(raw) as { text: string; time?: string }[];
-    if (!Array.isArray(entries)) return;
-    const empty = recentList.querySelector('.empty-message');
-    empty?.remove();
-    const slice = entries.slice(0, MAX_RECENT_SELECTIONS);
-    for (let i = slice.length - 1; i >= 0; i--) {
-      const e = slice[i];
-      if (!e?.text) continue;
-      appendRecentSelectionRow(e.text, e.time || '', recentList, false);
-    }
-    updateClearButtonVisibility(); // <-- Add here
-  } catch {
-    /* ignore */
-  }
-}
-
-function appendRecentSelectionRow(
-  text: string,
-  timeLabel: string,
-  recentList: HTMLElement,
-  save: boolean
-): void {
-  const selectionItem = document.createElement('button');
-  selectionItem.className = 'selection-item';
-  selectionItem.setAttribute('type', 'button');
-  selectionItem.setAttribute('aria-label', `Look up ${text}`);
-  const safe = escapeHtmlSelection(text);
-  const t = timeLabel || new Date().toLocaleTimeString();
-  selectionItem.innerHTML = `
-    <span class="selection-item__accent" aria-hidden="true"></span>
-    <span class="selection-item__body">
-      <span class="selection-text">${safe}</span>
-      <span class="selection-time">${escapeHtmlSelection(t)}</span>
-    </span>
-  `;
-  selectionItem.addEventListener('click', (e) => {
-    e.stopPropagation();
-    try {
-      // Open immediately — do not await recall first (that blocked the window on hung IPC
-      // and looked like an infinitely loading lookup). The popup window looks up itself.
-      window.electronAPI?.send('open-full-lookup', text);
-    } catch (err) {
-      console.error('Failed to open full dictionary view:', err);
-    }
-  });
-  
-  // Add to beginning of list
-  recentList.insertBefore(selectionItem, recentList.firstChild);
-  updateClearButtonVisibility(); // <-- Add here
-
-  while (recentList.querySelectorAll('.selection-item').length > MAX_RECENT_SELECTIONS) {
-    const all = recentList.querySelectorAll('.selection-item');
-    recentList.removeChild(all[all.length - 1]);
-  }
-
-  if (save) {
-    syncRecentSelectionsStorageFromDom(recentList);
-  }
-}
-
-function syncRecentSelectionsStorageFromDom(recentList: HTMLElement): void {
-  const items = recentList.querySelectorAll('.selection-item');
-  const entries: { text: string; time: string }[] = [];
-  items.forEach((el) => {
-    const text = el.querySelector('.selection-text')?.textContent || '';
-    const time = el.querySelector('.selection-time')?.textContent || '';
-    if (text) {
-      entries.push({ text, time });
-    }
-  });
-  persistRecentSelections(entries);
+  const saved = new Map<string, any>();
+  for (const e of vocabNotebookCache) saved.set(String(e.lemma || '').trim().toLowerCase(), e);
+  list.innerHTML = recentListHtml(items, (q) => saved.get(q.trim().toLowerCase()));
 }
 
 function addToRecentSelections(text: string): void {
-  const recentList = document.getElementById('selectionsList') || document.getElementById('recent-list');
-  if (!recentList) return;
-  const first = recentList.querySelector('.selection-item');
-  if (first && first.querySelector('.selection-text')?.textContent === text) {
-    return;
-  }
-  const empty = recentList.querySelector('.empty-message');
-  empty?.remove();
-  appendRecentSelectionRow(text, new Date().toLocaleTimeString(), recentList, true);
+  const q = String(text || '').trim();
+  if (!q) return;
+  const key = q.toLowerCase();
+  const items = loadRecentLookups().filter((e) => e.q.toLowerCase() !== key);
+  saveRecentLookups([{ q, at: Date.now() }, ...items]);
+  renderRecentLookups();
 }
 
 function showTestPopup(text: string) {

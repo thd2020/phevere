@@ -3534,7 +3534,7 @@ body.main-window .hx-icon-btn.is-spinning svg { animation: pv-spin 1s linear inf
 }
 
 /* Notebook (2026-10-30): dictionary rows on one sheet; first sense visible, details on expand */
-body.main-window #vocabList {
+body.main-window :is(#vocabList, #selectionsList) {
   gap: 0;
   padding: 4px 0;
   margin-right: 14px;
@@ -3543,8 +3543,8 @@ body.main-window #vocabList {
   border-radius: 14px;
   background: var(--pv-panel);
 }
-body.main-window #vocabList > .empty-message { margin: 10px; }
-body.main-window #vocabList .vocab-group {
+body.main-window :is(#vocabList, #selectionsList) > .empty-message { margin: 10px; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-group {
   margin: 0;
   padding: 14px 18px 6px;
   font: 600 11px/1 var(--pv-font-ui);
@@ -3552,7 +3552,7 @@ body.main-window #vocabList .vocab-group {
   text-transform: uppercase;
   color: var(--pv-ink-soft);
 }
-body.main-window #vocabList .vocab-item {
+body.main-window :is(#vocabList, #selectionsList) .vocab-item {
   display: block;
   padding: 0;
   border: 0;
@@ -3560,9 +3560,9 @@ body.main-window #vocabList .vocab-item {
   background: transparent;
   box-shadow: none;
 }
-body.main-window #vocabList .vocab-item + .vocab-item { border-top: 1px solid color-mix(in srgb, var(--pv-line) 55%, transparent); }
-body.main-window #vocabList .vocab-item:hover { background: transparent; }
-body.main-window #vocabList .vocab-entry__toggle {
+body.main-window :is(#vocabList, #selectionsList) .vocab-item + .vocab-item { border-top: 1px solid color-mix(in srgb, var(--pv-line) 55%, transparent); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-item:hover { background: transparent; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-entry__toggle {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -3572,19 +3572,19 @@ body.main-window #vocabList .vocab-entry__toggle {
   border-radius: 10px;
   transition: background-color 0.14s var(--pv-motion);
 }
-body.main-window #vocabList .vocab-entry__toggle:hover { background: var(--pv-paper-2); }
-body.main-window #vocabList .vocab-entry__toggle:focus-visible { outline: 2px solid var(--pv-ember); outline-offset: -2px; }
-body.main-window #vocabList .vocab-row__main { min-width: 0; }
-body.main-window #vocabList .vocab-row__head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
-body.main-window #vocabList .vocab-lemma {
+body.main-window :is(#vocabList, #selectionsList) .vocab-entry__toggle:hover { background: var(--pv-paper-2); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-entry__toggle:focus-visible { outline: 2px solid var(--pv-ember); outline-offset: -2px; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-row__main { min-width: 0; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-row__head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-lemma {
   margin: 0;
   font: 600 17px/1.25 var(--pv-font-serif);
   letter-spacing: -0.01em;
   color: var(--pv-ink);
 }
-body.main-window #vocabList .vocab-reading { font: 13px/1.2 'Charis SIL', var(--pv-font-serif); color: var(--pv-ink-soft); }
-body.main-window #vocabList .vocab-pos { font: italic 600 12px/1 var(--pv-font-serif); color: var(--pv-ember); }
-body.main-window #vocabList .vocab-langs {
+body.main-window :is(#vocabList, #selectionsList) .vocab-reading { font: 13px/1.2 'Charis SIL', var(--pv-font-serif); color: var(--pv-ink-soft); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-pos { font: italic 600 12px/1 var(--pv-font-serif); color: var(--pv-ember); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-langs {
   padding: 2px 6px;
   border-radius: 999px;
   font: 600 10.5px/1.3 var(--pv-font-ui);
@@ -3592,7 +3592,7 @@ body.main-window #vocabList .vocab-langs {
   color: var(--pv-on-tertiary-container);
   background: var(--pv-tertiary-container);
 }
-body.main-window #vocabList .vocab-gist {
+body.main-window :is(#vocabList, #selectionsList) .vocab-gist {
   margin: 3px 0 0;
   font-size: 13px;
   line-height: 1.4;
@@ -3601,22 +3601,22 @@ body.main-window #vocabList .vocab-gist {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-body.main-window #vocabList .vocab-row__end { display: inline-flex; align-items: center; gap: 6px; }
-body.main-window #vocabList .vocab-when { font-size: 12px; color: var(--pv-ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
-body.main-window #vocabList .vocab-chevron { display: grid; color: var(--pv-ink-soft); transition: transform 0.2s var(--pv-motion); }
-body.main-window #vocabList .vocab-chevron svg { width: 18px; height: 18px; }
-body.main-window #vocabList .vocab-item.is-expanded .vocab-chevron { transform: rotate(180deg); }
-body.main-window #vocabList .vocab-item.is-expanded .vocab-gist,
-body.main-window #vocabList .vocab-item.is-expanded .vocab-when { display: none; }
-body.main-window #vocabList .vocab-item.is-collapsed .vocab-entry__details { display: none; }
-body.main-window #vocabList .vocab-item.is-expanded { background: color-mix(in srgb, var(--pv-paper) 55%, var(--pv-panel)); }
-body.main-window #vocabList .vocab-entry__details {
+body.main-window :is(#vocabList, #selectionsList) .vocab-row__end { display: inline-flex; align-items: center; gap: 6px; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-when { font-size: 12px; color: var(--pv-ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-chevron { display: grid; color: var(--pv-ink-soft); transition: transform 0.2s var(--pv-motion); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-chevron svg { width: 18px; height: 18px; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-item.is-expanded .vocab-chevron { transform: rotate(180deg); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-item.is-expanded .vocab-gist,
+body.main-window :is(#vocabList, #selectionsList) .vocab-item.is-expanded .vocab-when { display: none; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-item.is-collapsed .vocab-entry__details { display: none; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-item.is-expanded { background: color-mix(in srgb, var(--pv-paper) 55%, var(--pv-panel)); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-entry__details {
   display: grid;
   gap: 12px;
   padding: 2px 18px 16px;
 }
-body.main-window #vocabList .vocab-ipas { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-body.main-window #vocabList .vocab-play {
+body.main-window :is(#vocabList, #selectionsList) .vocab-ipas { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-play {
   display: grid;
   place-items: center;
   width: 30px;
@@ -3628,8 +3628,8 @@ body.main-window #vocabList .vocab-play {
   background: var(--pv-tertiary-container);
   cursor: pointer;
 }
-body.main-window #vocabList .vocab-play svg { width: 17px; height: 17px; }
-body.main-window #vocabList .vocab-ipa-chip {
+body.main-window :is(#vocabList, #selectionsList) .vocab-play svg { width: 17px; height: 17px; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-ipa-chip {
   display: inline-flex;
   align-items: baseline;
   gap: 5px;
@@ -3640,8 +3640,8 @@ body.main-window #vocabList .vocab-ipa-chip {
   color: var(--pv-ink);
   background: var(--pv-panel);
 }
-body.main-window #vocabList .vocab-ipa-chip b { font: 700 10px/1 var(--pv-font-ui); letter-spacing: 0.06em; color: var(--pv-teal); }
-body.main-window #vocabList .vocab-senses {
+body.main-window :is(#vocabList, #selectionsList) .vocab-ipa-chip b { font: 700 10px/1 var(--pv-font-ui); letter-spacing: 0.06em; color: var(--pv-teal); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-senses {
   margin: 0;
   padding-left: 22px;
   display: grid;
@@ -3651,11 +3651,11 @@ body.main-window #vocabList .vocab-senses {
   max-height: none;
   -webkit-line-clamp: unset;
 }
-body.main-window #vocabList .vocab-senses li::marker { font: 600 12px var(--pv-font-ui); color: var(--pv-ink-soft); }
-body.main-window #vocabList .vocab-senses.is-clamped li:nth-child(n + 5) { display: none; }
-body.main-window #vocabList .vocab-more { justify-self: start; margin-top: -6px; padding: 0; border: 0; background: none; font: 600 12.5px var(--pv-font-ui); color: var(--pv-ember); cursor: pointer; }
-body.main-window #vocabList .vocab-empty-def { margin: 0; font-size: 13px; color: var(--pv-ink-soft); }
-body.main-window #vocabList .vocab-note {
+body.main-window :is(#vocabList, #selectionsList) .vocab-senses li::marker { font: 600 12px var(--pv-font-ui); color: var(--pv-ink-soft); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-senses.is-clamped li:nth-child(n + 5) { display: none; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-more { justify-self: start; margin-top: -6px; padding: 0; border: 0; background: none; font: 600 12.5px var(--pv-font-ui); color: var(--pv-ember); cursor: pointer; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-empty-def { margin: 0; font-size: 13px; color: var(--pv-ink-soft); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-note {
   margin: 0;
   padding: 8px 12px;
   border-left: 3px solid var(--pv-ember);
@@ -3665,10 +3665,10 @@ body.main-window #vocabList .vocab-note {
   color: var(--pv-ink);
   background: color-mix(in srgb, var(--pv-primary-container) 45%, transparent);
 }
-body.main-window #vocabList .vocab-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-body.main-window #vocabList .vocab-provenance { font-size: 12px; color: var(--pv-ink-soft); }
-body.main-window #vocabList .vocab-actions { display: inline-flex; gap: 4px; padding: 0; }
-body.main-window #vocabList .vocab-action {
+body.main-window :is(#vocabList, #selectionsList) .vocab-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-provenance { font-size: 12px; color: var(--pv-ink-soft); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-actions { display: inline-flex; gap: 4px; padding: 0; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-action {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -3682,10 +3682,112 @@ body.main-window #vocabList .vocab-action {
   cursor: pointer;
   transition: background-color 0.14s var(--pv-motion);
 }
-body.main-window #vocabList .vocab-action svg { width: 15px; height: 15px; }
-body.main-window #vocabList .vocab-action:hover { background: var(--pv-paper-2); }
-body.main-window #vocabList .vocab-remove { color: var(--pv-error); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-action svg { width: 15px; height: 15px; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-action:hover { background: var(--pv-paper-2); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-remove { color: var(--pv-error); }
 @media (prefers-reduced-motion: reduce) {
-  body.main-window #vocabList .vocab-chevron,
-  body.main-window #vocabList .vocab-entry__toggle { transition: none; }
+  body.main-window :is(#vocabList, #selectionsList) .vocab-chevron,
+  body.main-window :is(#vocabList, #selectionsList) .vocab-entry__toggle { transition: none; }
 }
+
+/*
+ * Main window workspace (2026-11-02). Notebook and Recent are tabs over one scroller, the
+ * main shell; lists no longer scroll inside it, so the wheel never stalls at an inner edge.
+ * Rows off screen skip layout and paint (content-visibility), which keeps long notebooks smooth.
+ */
+body.main-window .main-shell [hidden] { display: none !important; }
+body.main-window .main-shell { padding-top: 0; overscroll-behavior: contain; }
+body.main-window :is(#vocabList, #selectionsList) {
+  max-height: none;
+  overflow: visible;
+  margin-right: 0;
+  scrollbar-gutter: auto;
+}
+body.main-window :is(#vocabList, #selectionsList) .vocab-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 58px;
+}
+body.main-window :is(#vocabList, #selectionsList) .vocab-entry__toggle { transition: none; }
+body.main-window .vocab-list-wrap.is-alpha :is(#vocabList) { margin-right: 22px; }
+
+body.main-window .ws-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin: 0 -28px 12px -20px;
+  padding: 14px 28px 10px 20px;
+  background: var(--pv-paper);
+  border-bottom: 1px solid color-mix(in srgb, var(--pv-line) 60%, transparent);
+}
+body.main-window .ws-tabs { display: flex; align-items: baseline; gap: 22px; }
+body.main-window .ws-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0 6px;
+  border: 0;
+  background: none;
+  font: 650 22px/1.1 var(--pv-font-serif);
+  letter-spacing: -0.02em;
+  color: var(--pv-ink-soft);
+  cursor: pointer;
+  transition: color 0.16s var(--pv-motion);
+}
+body.main-window .ws-tab:hover { color: var(--pv-ink); }
+body.main-window .ws-tab.is-active { color: var(--pv-ink); }
+body.main-window .ws-tab.is-active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -11px;
+  height: 2.5px;
+  border-radius: 2px;
+  background: var(--pv-ember);
+}
+body.main-window .ws-count { font: 600 12px/1 var(--pv-font-ui); color: var(--pv-ink-soft); font-variant-numeric: tabular-nums; }
+body.main-window .ws-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+body.main-window .ws-tools .vocab-search { width: 13rem; }
+
+body.main-window .nb-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin: 2px 0 12px; }
+body.main-window .nbv-body { padding-bottom: 8px; }
+
+/* A–Z rail stays in view while the shell scrolls. */
+body.main-window .vocab-az {
+  position: fixed;
+  top: calc(var(--md-titlebar-h) + 120px);
+  bottom: 64px;
+  right: 10px;
+}
+body.main-window .vocab-az-hud { position: fixed; }
+
+/* Look up sits beside Play on every row. */
+body.main-window :is(#vocabList, #selectionsList) .vocab-open {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  color: var(--pv-ink);
+  background: var(--pv-paper-2);
+  cursor: pointer;
+  transition: background-color 0.14s var(--pv-motion);
+}
+body.main-window :is(#vocabList, #selectionsList) .vocab-open:hover { background: var(--pv-surface-container); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-open svg { width: 16px; height: 16px; }
+body.main-window #selectionsList .vocab-saved-mark {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--pv-teal);
+  align-self: center;
+}
+body.main-window :is(#vocabList, #selectionsList) .vocab-when { min-width: 64px; text-align: right; }
