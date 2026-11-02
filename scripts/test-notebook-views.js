@@ -81,6 +81,11 @@ const rq = [
   { id: 'new3', lemma: 'e', reps: 0, createdAt: now - 1 * DAY },
 ];
 assert.deepEqual(views.reviewQueue(rq, 2, now), ['due', 'new1', 'new2']);
+// New words already started today count against the goal.
+assert.deepEqual(views.reviewQueue(rq, 2, now, 1), ['due', 'new1']);
+assert.deepEqual(views.reviewQueue(rq, 2, now, 5), ['due']);
+// A lapsed word ("Again": reps 0, due now) is a due review, not a new word.
+assert.deepEqual(views.reviewQueue([{ id: 'lapsed', lemma: 'f', reps: 0, reviewDue: now - 1000 }], 0, now), ['lapsed']);
 const rh = views.reviewHtml(rq, { queue: ['due'], index: 0, revealed: false, done: 0 }, 10, now);
 assert.match(rh, /Show meaning/);
 assert.match(views.reviewHtml(rq, { queue: ['due'], index: 0, revealed: true, done: 0 }, 10, now), /data-grade="4"/);

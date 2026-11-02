@@ -3791,3 +3791,5 @@ body.main-window #selectionsList .vocab-saved-mark {
   align-self: center;
 }
 body.main-window :is(#vocabList, #selectionsList) .vocab-when { min-width: 64px; text-align: right; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-item,
+body.main-window #vocabList .vocab-group { scroll-margin-top: 84px; }

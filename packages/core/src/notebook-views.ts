@@ -123,22 +123,34 @@ export function analyzeNotebook(entries: NotebookEntry[]): NotebookAnalysis {
     .filter((f) => f.ids.length > 1)
     .sort((a, b) => b.ids.length - a.ids.length || a.label.localeCompare(b.label));
 
-  // Word trees: a saved word whose stem starts another saved word is its parent.
-  const latin = [...words.values()]
-    .map((w) => ({ id: w.entry.id, lower: clean(w.entry.lemma).toLowerCase(), stem: derivationStem(w.entry.lemma) }))
-    .filter((w) => /^[a-z]+$/.test(w.lower));
+  // Word trees: a saved word whose stem starts another saved word is its parent. Stems go in
+  // a map, and each word tries the substrings that could be a parent's stem, so this stays
+  // linear in the notebook size.
+  const byStem = new Map<string, { id: string; len: number }>();
+  const latin: Array<{ id: string; lower: string }> = [];
+  for (const w of words.values()) {
+    const lower = clean(w.entry.lemma).toLowerCase();
+    if (!/^[a-z]+$/.test(lower)) continue;
+    latin.push({ id: w.entry.id, lower });
+    const stem = derivationStem(lower);
+    if (stem.length < 4) continue;
+    const prev = byStem.get(stem);
+    if (!prev || lower.length < prev.len) byStem.set(stem, { id: w.entry.id, len: lower.length });
+  }
   const parent = new Map<string, string>();
-  const byLength = [...latin].sort((a, b) => a.lower.length - b.lower.length);
-  for (const child of byLength) {
+  for (const child of latin) {
     let best: { id: string; len: number } | null = null;
-    for (const cand of byLength) {
-      if (cand.lower.length >= child.lower.length) break;
-      if (!cand.stem || cand.stem.length < 4) continue;
-      const at = child.lower.indexOf(cand.stem);
-      // The stem must start the word, or follow a prefix of at most five letters.
-      if (at < 0 || at > 5) continue;
-      if (child.lower.length - cand.stem.length > 9) continue;
-      if (!best || cand.stem.length > best.len) best = { id: cand.id, len: cand.stem.length };
+    // The stem must start the word, or follow a prefix of at most five letters.
+    for (let at = 0; at <= 5; at++) {
+      for (let end = child.lower.length - 1; end - at >= 4; end--) {
+        if (best && end - at <= best.len) break;
+        if (child.lower.length - (end - at) > 9) break;
+        const hit = byStem.get(child.lower.slice(at, end));
+        if (hit && hit.id !== child.id && hit.len < child.lower.length) {
+          best = { id: hit.id, len: end - at };
+          break;
+        }
+      }
     }
     if (best) parent.set(child.id, best.id);
   }
@@ -502,17 +514,25 @@ export interface ReviewState {
   done: number;
 }
 
-/** Reviews due by the end of today, oldest first, then new words up to the daily goal. */
-export function reviewQueue(entries: NotebookEntry[], goal: number, now = Date.now()): string[] {
+/**
+ * Reviews due by the end of today (lapsed words included), oldest first, then words never
+ * reviewed, up to the daily goal less the new words already started today.
+ */
+export function reviewQueue(entries: NotebookEntry[], goal: number, now = Date.now(), startedToday = 0): string[] {
   const end = dayStart(now) + DAY;
   const due = entries
-    .filter((e) => Number(e.reps || 0) > 0 && e.reviewDue != null && Number(e.reviewDue) < end)
+    .filter((e) => e.reviewDue != null && Number(e.reviewDue) < end)
     .sort((x, y) => Number(x.reviewDue) - Number(y.reviewDue));
   const fresh = entries
-    .filter((e) => !Number(e.reps || 0) && (e.reviewDue == null || Number(e.reviewDue) < end))
+    .filter((e) => e.reviewDue == null)
     .sort((x, y) => Number(x.createdAt || 0) - Number(y.createdAt || 0))
-    .slice(0, Math.max(0, goal));
+    .slice(0, Math.max(0, goal - startedToday));
   return [...due, ...fresh].map((e) => e.id);
+}
+
+/** Whole days from one local midnight to another, right across daylight-saving changes. */
+function daysBetween(a: number, b: number): number {
+  return Math.round((dayStart(b) - dayStart(a)) / DAY);
 }
 
 function forecastSvg(entries: NotebookEntry[], now: number): string {
@@ -520,9 +540,9 @@ function forecastSvg(entries: NotebookEntry[], now: number): string {
   const days = 14;
   const counts = new Array(days).fill(0);
   for (const e of entries) {
-    if (!Number(e.reps || 0) || e.reviewDue == null) continue;
-    const d = Math.floor((dayStart(Number(e.reviewDue)) - today) / DAY);
-    counts[Math.max(0, Math.min(days - 1, d))] += d >= days ? 0 : 1;
+    if (e.reviewDue == null) continue;
+    const d = daysBetween(today, Number(e.reviewDue));
+    if (d < days) counts[Math.max(0, d)] += 1;
   }
   const max = Math.max(1, ...counts);
   const W = 280;
@@ -543,7 +563,9 @@ function forecastSvg(entries: NotebookEntry[], now: number): string {
 function activitySvg(entries: NotebookEntry[], now: number): string {
   const weeks = 12;
   const today = dayStart(now);
-  const start = today - (weeks * 7 - 1) * DAY - new Date(today).getDay() * DAY;
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - (weeks * 7 - 1) - startDate.getDay());
+  const start = startDate.getTime();
   const counts = new Map<number, number>();
   for (const e of entries) {
     const t = Number(e.createdAt || 0);
@@ -555,21 +577,23 @@ function activitySvg(entries: NotebookEntry[], now: number): string {
   const cell = 11;
   const gap = 3;
   let cells = '';
-  for (let d = start, i = 0; d <= today; d += DAY, i++) {
+  const day = new Date(start);
+  for (let i = 0; day.getTime() <= today; i++, day.setDate(day.getDate() + 1)) {
+    const d = day.getTime();
     const c = counts.get(d) || 0;
     const level = c ? Math.min(4, Math.ceil((c / max) * 4)) : 0;
     const col = Math.floor(i / 7);
     const row = i % 7;
     cells += `<rect class="nbv-heat nbv-heat--${level}" x="${col * (cell + gap)}" y="${row * (cell + gap)}" width="${cell}" height="${cell}" rx="2.5"><title>${new Date(d).toLocaleDateString()}: ${c} added</title></rect>`;
   }
-  const cols = Math.ceil(((today - start) / DAY + 1) / 7);
+  const cols = Math.ceil((daysBetween(start, today) + 1) / 7);
   return `<svg class="nbv-activity" viewBox="0 0 ${cols * (cell + gap)} ${7 * (cell + gap)}" role="img" aria-label="Words added per day over twelve weeks">${cells}</svg>`;
 }
 
 export function reviewHtml(entries: NotebookEntry[], state: ReviewState, goal: number, now = Date.now()): string {
   const byId = new Map(entries.map((e) => [e.id, e]));
   const left = state.queue.length - state.index;
-  const learned = entries.filter((e) => Number(e.reps || 0) > 0).length;
+  const learned = entries.filter((e) => e.reviewDue != null).length;
   const week = entries.filter((e) => Number(e.createdAt || 0) >= dayStart(now) - 6 * DAY).length;
   const goals = [5, 10, 20, 40];
   const plan = `<section class="nbv-plan">

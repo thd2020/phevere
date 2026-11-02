@@ -87,8 +87,9 @@ export function vocabSenses(definition: unknown): string[] {
   return out;
 }
 
+/** When the word was saved. Reviews and sync bump updatedAt, which must not reorder the list. */
 function at(e: VocabViewEntry): number {
-  const n = Number(e.updatedAt || e.createdAt || 0);
+  const n = Number(e.createdAt || e.updatedAt || 0);
   return Number.isFinite(n) ? n : 0;
 }
 

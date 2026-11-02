@@ -159,6 +159,23 @@ const nbState = {
   review: null as ReviewState | null,
   goal: Number(readStore(NB_GOAL_KEY)) || 10,
 };
+/** Every word, for Review; the list keeps its 400 most recent. */
+let reviewPool: VocabEntry[] = [];
+let grading = false;
+
+function startedTodayKey(): string {
+  const d = new Date();
+  return `phevere.reviewStarted.${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+function startedToday(): string[] {
+  try {
+    const list = JSON.parse(readStore(startedTodayKey()) || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
 let expandedVocab = new Set<string>();
 let prefs: MobilePrefs = loadPrefs();
 let packs: CatalogStatus[] = [];
@@ -336,10 +353,18 @@ function paint(): void {
 }
 
 function notebookViewState() {
-  if (nbState.view === 'review' && !nbState.review) {
-    nbState.review = { queue: reviewQueue(notebook, nbState.goal), index: 0, revealed: false, done: 0 };
+  if (nbState.view === 'review' && !nbState.review && reviewPool.length) {
+    nbState.review = { queue: reviewQueue(reviewPool, nbState.goal, Date.now(), startedToday().length), index: 0, revealed: false, done: 0 };
   }
-  return nbState;
+  return { ...nbState, pool: reviewPool };
+}
+
+async function loadReviewPool(): Promise<void> {
+  try {
+    reviewPool = await listVocab(100_000);
+  } catch {
+    reviewPool = notebook;
+  }
 }
 
 function bindNotebookViews(): void {
@@ -355,13 +380,21 @@ function bindNotebookViews(): void {
 async function gradeReview(grade: 1 | 2 | 3 | 4): Promise<void> {
   const r = nbState.review;
   const id = r?.queue[r.index];
-  if (!r || !id) return;
+  if (!r || !id || grading) return;
+  grading = true;
+  if (reviewPool.find((e) => e.id === id)?.reviewDue == null) {
+    writeStore(startedTodayKey(), JSON.stringify([...new Set([...startedToday(), id])]));
+  }
   try {
     const updated = await reviewVocab(id, grade);
-    if (updated) notebook = notebook.map((e) => (e.id === id ? updated : e));
+    if (updated) {
+      notebook = notebook.map((e) => (e.id === id ? updated : e));
+      reviewPool = reviewPool.map((e) => (e.id === id ? updated : e));
+    }
   } catch (err) {
     toast(err instanceof Error ? err.message : String(err));
   }
+  grading = false;
   // "Again" brings the word back at the end of today's session.
   if (grade === 1) r.queue.push(id);
   r.index += 1;
@@ -1342,6 +1375,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'tab':
       tab = t.dataset.tab === 'notebook' ? 'notebook' : t.dataset.tab === 'settings' ? 'settings' : 'lookup';
       if (tab === 'notebook') await refreshNotebook();
+      if (tab === 'notebook' && nbState.view === 'review') await loadReviewPool();
       if (tab === 'settings') await refreshPacks();
       paint();
       return;
@@ -1585,7 +1619,10 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'nb-view':
       nbState.view = (t.dataset.view as NotebookView) || 'list';
       writeStore(NB_VIEW_KEY, nbState.view);
-      if (nbState.view === 'review') nbState.review = null;
+      if (nbState.view === 'review') {
+        nbState.review = null;
+        await loadReviewPool();
+      }
       paint();
       window.scrollTo({ top: 0 });
       return;
@@ -1613,6 +1650,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       nbState.goal = Number(t.dataset.goal) || 10;
       writeStore(NB_GOAL_KEY, String(nbState.goal));
       nbState.review = null;
+      await loadReviewPool();
       paint();
       return;
     case 'nb-reveal':

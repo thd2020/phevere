@@ -790,6 +790,8 @@ export interface NotebookViewState {
   flipped: Set<string>;
   review: ReviewState | null;
   goal: number;
+  /** Every saved word, for Review. */
+  pool: VocabEntry[];
 }
 
 export function notebookBody(
@@ -802,7 +804,8 @@ export function notebookBody(
   const q = filter.trim().toLowerCase();
   let list = [...entries];
   if (sort === 'az') list.sort((a, b) => a.lemma.localeCompare(b.lemma, undefined, { sensitivity: 'base', numeric: true }));
-  else list.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+  // Saved order: reviews and sync bump updatedAt, which must not move words.
+  else list.sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));
   if (q) {
     list = list.filter((e) =>
       [e.lemma, e.reading, e.definition, e.partOfSpeech, e.note, ...(e.sources || [])]
@@ -830,7 +833,7 @@ export function notebookBody(
           ? mapHtml(analysis, nb.mapKinds)
           : nb.view === 'cards'
             ? cardsHtml(list, analysis, nb.flipped)
-            : reviewHtml(entries, nb.review || { queue: [], index: 0, revealed: false, done: 0 }, nb.goal);
+            : reviewHtml(nb.pool.length ? nb.pool : entries, nb.review || { queue: [], index: 0, revealed: false, done: 0 }, nb.goal);
     return `${head}<div class="nbv nbv-body">${body}</div>`;
   }
   const rows = vocabListHtml(list, { sort, expanded });

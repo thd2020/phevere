@@ -1927,6 +1927,25 @@ let nbReview: ReviewState | null = null;
 const nbFlipped = new Set<string>();
 const nbExpanded = new Set<string>();
 let vocabRenderToken = 0;
+let nbGrading = false;
+/** Appends the rest of a chunked list at once (A–Z jumps need every row present). */
+let flushVocabChunks: (() => void) | null = null;
+let nbAnalysis: { key: unknown; q: string; value: ReturnType<typeof analyzeNotebook> } | null = null;
+
+/** New words first graded today, so the daily goal holds across visits to Review. */
+function startedTodayKey(): string {
+  const d = new Date();
+  return `phevere-review-started-${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+function startedToday(): string[] {
+  try {
+    const list = JSON.parse(readPref(startedTodayKey(), '[]'));
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
 
 function getVocabSortMode(): VocabSortMode {
   return readPref(VOCAB_SORT_KEY, 'recent') === 'alpha' ? 'alpha' : 'recent';
@@ -1955,7 +1974,8 @@ function sortVocabEntries(entries: any[]): any[] {
       String(a.lemma || '').localeCompare(String(b.lemma || ''), undefined, { sensitivity: 'base', numeric: true }),
     );
   } else {
-    copy.sort((a, b) => Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0));
+    // Saved order: reviews and sync bump updatedAt, which must not move words.
+    copy.sort((a, b) => Number(b.createdAt || b.updatedAt || 0) - Number(a.createdAt || a.updatedAt || 0));
   }
   return copy;
 }
@@ -1977,6 +1997,7 @@ function ensureVocabAzIndex(): HTMLElement | null {
 function scrollVocabToLetter(letter: string): void {
   const list = document.getElementById('vocabList');
   if (!list) return;
+  flushVocabChunks?.();
   const target =
     list.querySelector(`[data-az="${letter}"]`) ||
     (letter === '#' ? list.querySelector('.vocab-item') : null);
@@ -2108,14 +2129,23 @@ function renderVocabNotebook(entries: any[]): void {
   body.hidden = isList;
   if (!isList) {
     vocabRenderToken += 1;
+    flushVocabChunks = null;
     list.innerHTML = '';
-    const analysis = analyzeNotebook(sorted);
-    if (nbView === 'families') body.innerHTML = familiesHtml(analysis, nbGroup);
-    else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
-    else if (nbView === 'cards') body.innerHTML = cardsHtml(sorted, analysis, nbFlipped);
-    else {
-      if (!nbReview) nbReview = { queue: reviewQueue(vocabNotebookCache, nbGoal), index: 0, revealed: false, done: 0 };
+    if (nbView === 'review') {
+      if (!nbReview) {
+        nbReview = { queue: reviewQueue(vocabNotebookCache, nbGoal, Date.now(), startedToday().length), index: 0, revealed: false, done: 0 };
+      }
       body.innerHTML = reviewHtml(vocabNotebookCache, nbReview, nbGoal);
+    } else {
+      // The analysis only changes when the notebook or the search does.
+      const q = (document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '';
+      if (!nbAnalysis || nbAnalysis.key !== vocabNotebookCache || nbAnalysis.q !== q) {
+        nbAnalysis = { key: vocabNotebookCache, q, value: analyzeNotebook(sorted) };
+      }
+      const analysis = nbAnalysis.value;
+      if (nbView === 'families') body.innerHTML = familiesHtml(analysis, nbGroup);
+      else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
+      else body.innerHTML = cardsHtml(sorted, analysis, nbFlipped);
     }
     attachNotebookMap(body);
     const fetchImage = wordImageFetcher();
@@ -2132,19 +2162,34 @@ function renderVocabNotebook(entries: any[]): void {
   // opening the list or typing in search never parses thousands of rows in one task.
   const sort = getVocabSortMode() === 'alpha' ? 'az' : 'recent';
   const token = ++vocabRenderToken;
-  const FIRST = 120;
   const CHUNK = 300;
-  list.innerHTML = vocabListHtml(sorted.slice(0, FIRST), { sort, expanded: nbExpanded });
-  const appendFrom = (start: number) => {
-    if (token !== vocabRenderToken || start >= sorted.length) return;
-    const afterGroup = sort === 'recent' ? vocabEntryGroup(sorted[start - 1]) : '';
+  // Enough rows to cover where the reader is, so a re-render (a removal, a save from the
+  // pop-up) keeps the scroll position instead of clamping it to the first screen.
+  const shell = document.querySelector<HTMLElement>('.main-shell');
+  const first = Math.max(120, Math.ceil(((shell?.scrollTop || 0) + (shell?.clientHeight || 800)) / 48) + 40);
+  const scrollTop = shell?.scrollTop || 0;
+  list.innerHTML = vocabListHtml(sorted.slice(0, first), { sort, expanded: nbExpanded });
+  if (shell && scrollTop) shell.scrollTop = scrollTop;
+  let next = first;
+  const appendChunk = (size: number) => {
+    if (token !== vocabRenderToken || next >= sorted.length) return false;
+    const afterGroup = sort === 'recent' ? vocabEntryGroup(sorted[next - 1]) : '';
     list.insertAdjacentHTML(
       'beforeend',
-      vocabListHtml(sorted.slice(start, start + CHUNK), { sort, expanded: nbExpanded, afterGroup }),
+      vocabListHtml(sorted.slice(next, next + size), { sort, expanded: nbExpanded, afterGroup }),
     );
-    setTimeout(() => appendFrom(start + CHUNK), 0);
+    next += size;
+    return next < sorted.length;
   };
-  setTimeout(() => appendFrom(FIRST), 0);
+  flushVocabChunks = () => {
+    appendChunk(sorted.length);
+    flushVocabChunks = null;
+  };
+  const step = () => {
+    if (appendChunk(CHUNK)) setTimeout(step, 0);
+    else if (token === vocabRenderToken) flushVocabChunks = null;
+  };
+  setTimeout(step, 0);
 }
 
 
@@ -2154,9 +2199,14 @@ function rerenderNotebook(): void {
 
 async function gradeCurrentReview(grade: 1 | 2 | 3 | 4): Promise<void> {
   const api = (window as any).vocabAPI;
-  if (!nbReview || !api?.review) return;
+  if (!nbReview || !api?.review || nbGrading) return;
   const id = nbReview.queue[nbReview.index];
   if (!id) return;
+  nbGrading = true;
+  const entry = vocabNotebookCache.find((e) => e.id === id);
+  if (entry && entry.reviewDue == null) {
+    writePref(startedTodayKey(), JSON.stringify([...new Set([...startedToday(), id])]));
+  }
   try {
     const updated = await api.review(id, grade);
     if (updated) vocabNotebookCache = vocabNotebookCache.map((e) => (e.id === id ? { ...e, ...updated } : e));
@@ -2168,6 +2218,7 @@ async function gradeCurrentReview(grade: 1 | 2 | 3 | 4): Promise<void> {
   nbReview.index += 1;
   nbReview.done += 1;
   nbReview.revealed = false;
+  nbGrading = false;
   rerenderNotebook();
 }
 
@@ -2293,6 +2344,9 @@ function setMainTab(tab: 'notebook' | 'recent'): void {
 }
 
 function wireMainWorkspace(): void {
+  window.addEventListener('storage', (e) => {
+    if (e.key === RECENT_SELECTIONS_STORAGE_KEY) renderRecentLookups();
+  });
   document.querySelectorAll<HTMLElement>('.ws-tab').forEach((b) =>
     b.addEventListener('click', () => setMainTab(b.dataset.ws === 'recent' ? 'recent' : 'notebook')),
   );
