@@ -10,7 +10,7 @@ const js = ts.transpileModule(source, {
 }).outputText;
 const mod = { exports: {} };
 new Function('module', 'exports', js)(mod, mod.exports);
-const { detectLanguageLocal, isPlainLatinWord, remoteFitsScript } = mod.exports;
+const { detectLanguageLocal, englishCandidateWords, isAmbiguousHan, isPlainLatinWord, remoteFitsScript } = mod.exports;
 
 const sure = (text, lang) => {
   const g = detectLanguageLocal(text);
@@ -70,6 +70,23 @@ guess('Haus', 'en');
 assert.equal(isPlainLatinWord('Haus'), true);
 assert.equal(isPlainLatinWord('two words'), false);
 assert.equal(isPlainLatinWord('Straße'), false);
+
+// Short Latin text the English word list can settle, accents folded; strong letters cannot.
+assert.deepEqual(englishCandidateWords('café'), ['cafe']);
+assert.deepEqual(englishCandidateWords('naïve'), ['naive']);
+assert.deepEqual(englishCandidateWords('machine learning'), ['machine', 'learning']);
+assert.deepEqual(englishCandidateWords("I like it"), ['i', 'like', 'it']);
+assert.equal(englishCandidateWords('Straße'), null);
+assert.equal(englishCandidateWords('mañana'), null);
+assert.equal(englishCandidateWords('собака'), null);
+assert.equal(englishCandidateWords('one two three four five six seven'), null);
+
+// Han text with nothing telling is settled locally as Chinese.
+assert.equal(isAmbiguousHan('学生'), true);
+assert.equal(isAmbiguousHan('中国'), true);
+assert.equal(isAmbiguousHan('要対応'), false);
+assert.equal(isAmbiguousHan('我们'), false);
+assert.equal(isAmbiguousHan('食べる'), false);
 
 // A remote answer must fit the script.
 assert.equal(remoteFitsScript('Haus', 'de'), true);

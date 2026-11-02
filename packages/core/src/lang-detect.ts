@@ -145,7 +145,7 @@ function latinGuess(text: string): LangGuess {
 
 /** Best local guess, with whether the text itself settles it. */
 export function detectLanguageLocal(text: string): LangGuess {
-  const t = String(text || '').replace(/[​-‍﻿]/g, '').trim();
+  const t = String(text || '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
   if (!t) return { lang: 'en', confident: false };
   if (HIRAGANA_KATAKANA.test(t)) return { lang: 'ja', confident: true };
   if (HANGUL.test(t)) return { lang: 'ko', confident: true };
@@ -154,6 +154,33 @@ export function detectLanguageLocal(text: string): LangGuess {
   if (/[؀-ۿݐ-ݿ]/.test(t)) return arabicGuess(t);
   for (const [re, lang] of SCRIPTS) if (re.test(t)) return { lang, confident: true };
   return latinGuess(t);
+}
+
+/** Letters no English word uses, so an English word list cannot overrule them. */
+const STRONG_LATIN = /[ßñãõœőűłżźśćńęąřěůğışșțăđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ¿¡]/i;
+
+/**
+ * The words of a short Latin-script text with accents removed ("café" → "cafe"), when an
+ * English word list could settle its language; null for long text or letters English never
+ * borrows. English keeps loanwords such as café, naïve and résumé.
+ */
+export function englishCandidateWords(text: string): string[] | null {
+  const t = String(text || '').trim();
+  if (!t || STRONG_LATIN.test(t) || !/^[\p{Script=Latin}\p{M}\s'’-]+$/u.test(t)) return null;
+  const words = t
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .split(/[\s-]+/)
+    .map((w) => w.replace(/^'+|'+$/g, ''))
+    .filter(Boolean);
+  return words.length && words.length <= 6 ? words : null;
+}
+
+/** Han text with no character that tells Japanese from Chinese. */
+export function isAmbiguousHan(text: string): boolean {
+  const t = String(text || '');
+  return HAN.test(t) && !HIRAGANA_KATAKANA.test(t) && !HANGUL.test(t) && !detectLanguageLocal(t).confident;
 }
 
 /** True for a single plain-ASCII word, the case where an English word list can settle it. */

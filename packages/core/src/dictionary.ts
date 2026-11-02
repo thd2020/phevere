@@ -66,8 +66,8 @@ export interface Definition {
 }
 
 import { BaseService, DictionaryError, withTimeout } from './base';
-import { detectLanguageLocal, isPlainLatinWord, remoteFitsScript } from './lang-detect';
-import { isCmuWord } from './cmu-ipa';
+import { detectLanguageLocal, englishCandidateWords, isAmbiguousHan, remoteFitsScript } from './lang-detect';
+import { isCmuWord, warmCmuIpa } from './cmu-ipa';
 import { wrapConsole } from './log';
 import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigured, type OfflineHit } from './runtime';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
@@ -165,6 +165,7 @@ export class DictionaryService extends BaseService {
   private sourceHealth = new Map<string, { fails: number; downUntil: number }>();
   /** Skip Google gtx while it is 429ing; MyMemory still runs. */
   private googleGtxCoolUntil = 0;
+  private cmuWarm = setTimeout(() => warmCmuIpa(), 0);
   /** A failed remote detection pauses it, so a blocked host does not slow every lookup. */
   private remoteDetectCoolUntil = 0;
   private remoteDetectMemo = new Map<string, string>();
@@ -3299,11 +3300,21 @@ export class DictionaryService extends BaseService {
 
   private async detectSourceLanguage(text: string): Promise<string> {
     const local = detectLanguageLocal(text);
-    if (local.confident) return local.lang;
-    if (isPlainLatinWord(text)) {
-      const known = await Promise.race([isCmuWord(text), new Promise<null>((r) => setTimeout(() => r(null), 600))]);
-      if (known !== false) return 'en';
+    // Han text with nothing telling stays Chinese: a remote guess on two characters is no
+    // better, and waiting for it slowed every such lookup where Google is unreachable.
+    if (isAmbiguousHan(text)) return local.lang;
+    // Short Latin text whose words the English word list has is English, accents or not
+    // ("café", "machine learning").
+    const words = englishCandidateWords(text);
+    if (words) {
+      const known = await Promise.race([
+        Promise.all(words.map((w) => isCmuWord(w))),
+        new Promise<null>((r) => setTimeout(() => r(null), 600)),
+      ]);
+      if (known === null || known.some((k) => k === null)) return local.confident ? local.lang : 'en';
+      if (known.every(Boolean)) return 'en';
     }
+    if (local.confident) return local.lang;
     const remote = await Promise.race([
       this.remoteDetectLanguage(text),
       new Promise<string>((r) => setTimeout(() => r(''), 900)),
