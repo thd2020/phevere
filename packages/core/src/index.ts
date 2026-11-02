@@ -40,9 +40,31 @@ export {
   vocabWhen,
   vocabEntryHtml,
   vocabListHtml,
+  vocabEntryGroup,
+  recentListHtml,
+  type RecentLookup,
   type VocabViewEntry,
   type VocabListOptions,
 } from './vocab-view';
+export {
+  analyzeNotebook,
+  notebookViewSwitchHtml,
+  familyGroupings,
+  familiesHtml,
+  layoutNotebookMap,
+  mapHtml,
+  cardsHtml,
+  reviewQueue,
+  reviewHtml,
+  fillWordImages,
+  attachNotebookMap,
+  type NotebookView,
+  type FamilyGrouping,
+  type NotebookEntry,
+  type NotebookAnalysis,
+  type ReviewState,
+} from './notebook-views';
+export { analyzeMorphemes, morphBreakdown, wordOrigin, type Morph, type MorphKind } from './morphology';
 export { vocabPayloadFromResult } from './vocab-payload';
 
 export {

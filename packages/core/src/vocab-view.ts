@@ -1,8 +1,9 @@
 /**
  * Notebook rows shared by the desktop window and the phone app. The notebook doubles as a memory
  * check, so a collapsed row shows the word, one pronunciation and the part of speech but never the
- * meaning; expanding it reveals the senses, every pronunciation, the note, sources and actions.
- * Buttons carry both the desktop classes and the phone's `data-act`, so each shell wires them.
+ * meaning; expanding it reveals the senses, every pronunciation, the note, sources and Remove.
+ * Play and Look up sit at the end of every row, collapsed or not. Recent lookups use the same
+ * row, so both lists read alike. Buttons carry `data-act`, which each shell wires.
  */
 import { stripGlossText } from './lookup-policy';
 import { formatVocabLangPair } from './vocab-lang';
@@ -25,6 +26,8 @@ export interface VocabListOptions {
   sort: 'recent' | 'az';
   expanded: Set<string>;
   now?: number;
+  /** Day heading already shown above these rows, when a long list is rendered in chunks. */
+  afterGroup?: string;
 }
 
 const ICON = {
@@ -129,6 +132,14 @@ function posTag(pos: string): string {
   return `<span class="vocab-pos" title="${esc(pos)}">${esc(short)}</span>`;
 }
 
+function playButton(lemma: string): string {
+  return `<button type="button" class="vocab-play" data-act="nb-play" data-lemma="${esc(lemma)}" title="Play pronunciation" aria-label="Play ${esc(lemma)}">${ICON.play}</button>`;
+}
+
+function lookupButton(lemma: string): string {
+  return `<button type="button" class="vocab-open" data-act="lookup" data-q="${esc(lemma)}" data-lemma="${esc(lemma)}" title="Look up" aria-label="Look up ${esc(lemma)}">${ICON.lookup}</button>`;
+}
+
 export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now()): string {
   const lemma = clean(e.lemma);
   const readings = vocabReadings(e.reading);
@@ -146,7 +157,7 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
   const [from, to] = pair.split(/\s*→\s*/);
   const langs = from && to && from !== to ? pair : '';
   const id = esc(e.id);
-  const play = `<button type="button" class="vocab-play" data-act="nb-play" data-lemma="${esc(lemma)}" title="Play pronunciation" aria-label="Play ${esc(lemma)}">${ICON.play}</button>`;
+  const play = playButton(lemma);
   const head = `<div class="vocab-row__head">
         <h3 class="vocab-lemma">${esc(lemma)}</h3>
         ${readings[0] ? `<span class="vocab-reading">${esc(readings[0].ipa)}</span>` : ''}
@@ -166,7 +177,6 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
       <div class="vocab-foot">
         <span class="vocab-provenance">${esc([...(e.sources || []).map(clean).filter(Boolean).slice(0, 3), t ? new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : ''].filter(Boolean).join(' · '))}</span>
         <span class="vocab-actions">
-          <button type="button" class="vocab-action vocab-open" data-act="lookup" data-q="${esc(lemma)}" data-lemma="${esc(lemma)}">${ICON.lookup}<span>Look up</span></button>
           <button type="button" class="vocab-action vocab-remove" data-act="nb-del" data-id="${id}">${ICON.remove}<span>Remove</span></button>
         </span>
       </div>
@@ -176,6 +186,7 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
       <div class="vocab-row__main">${head}</div>
       <span class="vocab-row__end">
         ${play}
+        ${lookupButton(lemma)}
         <time class="vocab-when" datetime="${t ? new Date(t).toISOString() : ''}">${esc(vocabWhen(t, now))}</time>
         <span class="vocab-chevron" aria-hidden="true">${ICON.chevron}</span>
       </span>
@@ -184,10 +195,15 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
   </article>`;
 }
 
+/** Day heading the Recent sort puts above this entry. */
+export function vocabEntryGroup(e: VocabViewEntry, now = Date.now()): string {
+  return vocabDayGroup(at(e), now);
+}
+
 /** Rows in the given order, with day headings for the Recent sort. */
 export function vocabListHtml(entries: VocabViewEntry[], opts: VocabListOptions): string {
   const now = opts.now ?? Date.now();
-  let group = '';
+  let group = opts.afterGroup || '';
   return entries
     .map((e) => {
       let heading = '';
@@ -199,6 +215,51 @@ export function vocabListHtml(entries: VocabViewEntry[], opts: VocabListOptions)
         }
       }
       return heading + vocabEntryHtml(e, opts.expanded.has(e.id), now);
+    })
+    .join('');
+}
+
+export interface RecentLookup {
+  q: string;
+  /** Milliseconds since epoch; 0 when an old entry kept only a clock time. */
+  at: number;
+}
+
+/**
+ * Recent lookups as notebook rows: the word, and when it is in the notebook its first
+ * pronunciation and part of speech, then Play, Look up and the time. The row itself looks up.
+ */
+export function recentListHtml(
+  items: RecentLookup[],
+  saved: (q: string) => VocabViewEntry | undefined,
+  now = Date.now(),
+): string {
+  let group = '';
+  return items
+    .map((item) => {
+      const q = clean(item.q);
+      if (!q) return '';
+      const g = vocabDayGroup(item.at, now);
+      const heading = g !== group ? `<h4 class="vocab-group">${esc(g)}</h4>` : '';
+      group = g;
+      const e = saved(q);
+      const reading = e ? vocabReadings(e.reading)[0] : undefined;
+      const pos = e ? clean(e.partOfSpeech) : '';
+      return `${heading}<article class="vocab-item recent-item is-collapsed${e ? ' is-saved' : ''}" data-q="${esc(q)}">
+    <div class="vocab-entry__toggle" data-act="lookup" data-q="${esc(q)}" role="button" tabindex="0" aria-label="Look up ${esc(q)}">
+      <div class="vocab-row__main"><div class="vocab-row__head">
+        <h3 class="vocab-lemma">${esc(q)}</h3>
+        ${reading ? `<span class="vocab-reading">${esc(reading.ipa)}</span>` : ''}
+        ${posTag(pos)}
+        ${e ? '<span class="vocab-saved-mark" title="In notebook" aria-label="In notebook"></span>' : ''}
+      </div></div>
+      <span class="vocab-row__end">
+        ${playButton(q)}
+        ${lookupButton(q)}
+        <time class="vocab-when"${item.at ? ` datetime="${new Date(item.at).toISOString()}"` : ''}>${esc(vocabWhen(item.at, now))}</time>
+      </span>
+    </div>
+  </article>`;
     })
     .join('');
 }
