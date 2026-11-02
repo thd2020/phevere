@@ -120,6 +120,16 @@ export {
   sortDefinitionsByReadingOrder,
 } from './definition-merge';
 
+export {
+  type SenseFrequencyData,
+  orderSensesByFrequency,
+  alignToWordNet,
+  frequencyBand,
+  primeSenseFrequency,
+  warmSenseFrequency,
+  senseFrequencyReady,
+} from './sense-frequency';
+
 export { buildEtymology, extractLanguageSection, scanTemplates, templateToLink, type EtymologyLink } from './etymology';
 export {
   type Pronunciation,

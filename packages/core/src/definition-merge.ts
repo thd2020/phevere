@@ -16,6 +16,8 @@ export interface MergeableDefinition {
   sources?: string[];
   /** Lower = more common / earlier in Free Dictionary. */
   senseOrder?: number;
+  /** SemCor tag count of the aligned WordNet sense (see sense-frequency.ts); absent when unaligned. */
+  frequency?: number;
 }
 
 /** Strip sense numbers, parenthetical asides, and normalize for comparison. */

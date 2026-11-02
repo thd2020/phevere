@@ -286,8 +286,8 @@ function senseHtml(raw: string): string {
 }
 
 function renderSenses(senses: Definition[], shown: Set<string>): string {
-  const sorted = senses.slice().sort((a, b) => stripGlossText(b.meaning || '').length - stripGlossText(a.meaning || '').length);
-  return sorted
+  // Core already orders senses by usage frequency; keep that order.
+  return senses
     .map((d, i) => {
       const examples = uniqueExamples(d.examples || []);
       examples.forEach((ex) => shown.add(exampleKey(ex)));
