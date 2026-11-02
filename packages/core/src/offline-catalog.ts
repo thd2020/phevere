@@ -128,7 +128,7 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
     sizeHint: '12 MB',
     consent:
       'Download JMdict (English) from github.com/scriptin/jmdict-simplified?\n\n' +
-      'Electronic Dictionary Research and Development Group, Creative Commons Attribution-ShareAlike 4.0. About 215k entries; import may take a few minutes.',
+      'Electronic Dictionary Research and Development Group, Creative Commons Attribution-ShareAlike 4.0. About 219k entries; import may take a few minutes.',
     urls: [`${JMDICT_RELEASE}/jmdict-eng-3.6.2%2B20261026175559.json.tgz`],
     format: 'jmdict',
     archive: 'tar.gz',
