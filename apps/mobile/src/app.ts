@@ -3,6 +3,7 @@ import './platform/configure-core';
 import {
   addVocab,
   dictionaryService,
+  fetchSenseImages,
   fillEmptyDefinitions,
   findByLemma,
   listEmptyDefinitions,
@@ -14,6 +15,7 @@ import {
   wikipediaService,
   type Pronunciation,
   type DictionaryResult,
+  type SenseImage,
   type VocabEntry,
   type WikipediaResult,
   type AccountState,
@@ -42,6 +44,8 @@ import { applyPrefsToCore, loadPrefs, savePrefs, type MobilePrefs } from './plat
 import * as accountPlatform from './platform/account';
 import {
   lookupBody,
+  lexiconSenses,
+  senseFigureHtml,
   etymologyEntryUrl,
   navHtml,
   notebookBody,
@@ -91,6 +95,8 @@ let wikiError = '';
 let wikiListOnly = false;
 let lookupError = '';
 let notebook: VocabEntry[] = [];
+/** Pictures for the Lexicon's senses, keyed by the word and its sense list. */
+let senseImages: { key: string; list: Array<SenseImage | null> } | null = null;
 
 const NOTEBOOK_SORT_KEY = 'phevere.notebookSort';
 const RECENT_KEY = 'phevere.recentLookups';
@@ -224,7 +230,56 @@ function lookupPaneHtml(): string {
     error: lookupError,
     recent: recentLookups,
     headTools: !stripMode,
+    senseImages: currentSenseImages(),
   });
+}
+
+function senseKey(r: DictionaryResult | null): string {
+  if (!r) return '';
+  return `${r.word || ''}\n${lexiconSenses(r).map((d) => `${d.partOfSpeech || ''}|${d.meaning || ''}`).join('\n')}`;
+}
+
+function currentSenseImages(): Array<SenseImage | null> | null {
+  if (prefs.senseImages === false || !senseImages || !result) return null;
+  return senseImages.key === senseKey(result) ? senseImages.list : null;
+}
+
+/** Puts loaded pictures into the painted Lexicon without repainting it (scroll stays put). */
+function placeSenseFigures(): void {
+  const list = currentSenseImages();
+  if (!list) return;
+  list.forEach((img, i) => {
+    if (!img) return;
+    const body = root.querySelector(`.definition-item[data-sense="${i}"] .definition-sense-body`);
+    if (!body || body.querySelector('.sense-figure')) return;
+    body.insertAdjacentHTML('afterbegin', senseFigureHtml(img, i));
+  });
+}
+
+/** Fetches pictures after the text has painted; a stale lookup's pictures are dropped. */
+let senseImagesPending = '';
+
+async function loadSenseImages(generation: number): Promise<void> {
+  if (prefs.senseImages === false || !result) return;
+  const key = senseKey(result);
+  if (senseImages?.key === key || senseImagesPending === key) return;
+  const senses = lexiconSenses(result);
+  if (!senses.length) return;
+  senseImagesPending = key;
+  try {
+    const list = await fetchSenseImages(
+      result.word || query,
+      senses.map((d) => ({ meaning: d.meaning, partOfSpeech: d.partOfSpeech })),
+      { lang: result.detectedLanguage || 'en' },
+    );
+    if (generation !== lookupGeneration) return;
+    senseImages = { key, list };
+    placeSenseFigures();
+  } finally {
+    if (senseImagesPending === key) senseImagesPending = '';
+  }
+  // The result may have been replaced (a late source) while the pictures loaded.
+  if (generation === lookupGeneration && result && senseKey(result) !== key) void loadSenseImages(generation);
 }
 
 function paint(): void {
@@ -522,6 +577,7 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
   }
   paint();
   const enabled = dictionaryService.getEnabledSources();
+  let settled = false;
   try {
     const next = await dictionaryService.lookup(q, prefs.targetLang, enabled, {
       translationProvider: prefs.translationProvider,
@@ -531,13 +587,17 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
         result = partial;
         looking = false;
         paint();
+        // A source that answers after the lookup settled changes the sense list.
+        if (settled) void loadSenseImages(generation);
       },
     });
     if (generation !== lookupGeneration) return;
     result = next;
+    settled = true;
     const nextSaved = await findByLemma(saveLemma(next)).catch(() => null);
     if (generation !== lookupGeneration) return;
     saved = nextSaved;
+    void loadSenseImages(generation);
     void loadWikiHits(next.word || q).then(() => {
       if (tab === 'lookup' && resultTab === 'wikipedia') {
         void maybeAutoOpenWiki().then(() => paint());
@@ -1274,7 +1334,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'settings-section': {
       const next = t.dataset.section as SettingsSection | undefined;
-      if (next === 'capture' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio') {
+      if (next === 'capture' || next === 'lookup' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio') {
         settingsSection = next;
         langMenu = '';
         if (next === 'offline') await refreshPacks();
@@ -1581,6 +1641,17 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'audio-on':
       prefs.audioEnabled = (t as HTMLInputElement).checked;
       persistPrefs();
+      return;
+    case 'sense-images':
+      prefs.senseImages = (t as HTMLInputElement).checked;
+      persistPrefs();
+      if (prefs.senseImages && result) void loadSenseImages(lookupGeneration);
+      return;
+    case 'sense-figure':
+      t.closest('.sense-figure')?.classList.toggle('is-open');
+      return;
+    case 'sense-credit':
+      if (t.dataset.url) openExternal(t.dataset.url);
       return;
     case 'audio-speed':
     case 'audio-volume':
