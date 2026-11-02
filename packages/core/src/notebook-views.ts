@@ -653,7 +653,7 @@ type Img = { thumb: string; title: string; pageUrl: string; credit: string } | n
 
 /**
  * Fill each `[data-img-lemma]` box with a picture as boxes scroll into view. The word's first
- * sense goes along, so the picture is checked against what the word means.
+ * sense goes along when it has one, so the picture is checked against what the word means.
  */
 export function fillWordImages(root: any, fetchImage: (lemma: string, lang?: string, gloss?: string) => Promise<Img>): void {
   const boxes: any[] = Array.from(root?.querySelectorAll?.('[data-img-lemma]:not([data-img-done])') || []);
@@ -661,11 +661,7 @@ export function fillWordImages(root: any, fetchImage: (lemma: string, lang?: str
   const load = (box: any) => {
     box.setAttribute('data-img-done', '1');
     const lemma = box.getAttribute('data-img-lemma') || '';
-    const gloss = box.getAttribute('data-img-gloss') || '';
-    if (!gloss) {
-      box.classList.add('is-empty');
-      return;
-    }
+    const gloss = box.getAttribute('data-img-gloss') || undefined;
     void fetchImage(lemma, box.getAttribute('data-img-lang') || undefined, gloss)
       .then((img) => {
         if (!img || !img.thumb) {
