@@ -20,6 +20,7 @@ The current release is **2.3.0** on desktop and phone (2026-10-29). It adds an o
 **Lookup**
 
 - Definitions from Free Dictionary, Wiktionary, and Datamuse, merged into a single lexicon in the headword's language. The exact form is preferred, and lemma senses are used only when no source defines that form.
+- The Lexicon is set like a printed dictionary page, with part-of-speech headings, numbered senses in a serif face and examples in italic. Up to three senses per word get a picture beside the gloss, taken from the pictures Wiktionary editors attach to senses or, for concrete nouns, from the matching Wikipedia article. Every picture comes from Wikimedia Commons and shows its author and licence on hover or tap. Pictures can be turned off with the Images switch in the pop-up settings on the desktop and in Settings → Lookup on the phone.
 - IPA by accent (US and UK), each chip spoken from its own transcription by eSpeak NG. Words no online source transcribes get US IPA from the CMU Pronouncing Dictionary. Recorded pronunciations come from Free Dictionary and Wikimedia Commons and are cached on disk; when a word has none, the chosen voice says it. Neural Kokoro voices (132 MB or 350 MB) can be downloaded in Settings → Audio on the desktop, Android and iOS.
 - Translation through Google Translate and MyMemory without a key, or through Youdao or DeepL with your own keys.
 - Etymology from Wiktionary, Etymonline, and Youdao, and a Wikipedia reader in the same pane.
