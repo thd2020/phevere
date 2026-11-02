@@ -101,6 +101,14 @@ export function warmCmuIpa(): void {
   void loadTable();
 }
 
+/** Whether CMUdict lists the word; null when the table cannot load. */
+export async function isCmuWord(word: string): Promise<boolean | null> {
+  const key = String(word || '').trim().toLowerCase();
+  const dict = await loadTable();
+  if (!dict) return null;
+  return !!dict[key];
+}
+
 /** US IPA for one English word, or '' when CMUdict does not list it. */
 export async function cmuIpaFor(word: string): Promise<string> {
   const key = String(word || '').trim().toLowerCase();

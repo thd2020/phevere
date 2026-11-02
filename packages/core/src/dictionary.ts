@@ -64,6 +64,8 @@ export interface Definition {
 }
 
 import { BaseService, DictionaryError, withTimeout } from './base';
+import { detectLanguageLocal, isPlainLatinWord, remoteFitsScript } from './lang-detect';
+import { isCmuWord } from './cmu-ipa';
 import { wrapConsole } from './log';
 import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigured, type OfflineHit } from './runtime';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
@@ -160,6 +162,9 @@ export class DictionaryService extends BaseService {
   private sourceHealth = new Map<string, { fails: number; downUntil: number }>();
   /** Skip Google gtx while it is 429ing; MyMemory still runs. */
   private googleGtxCoolUntil = 0;
+  /** A failed remote detection pauses it, so a blocked host does not slow every lookup. */
+  private remoteDetectCoolUntil = 0;
+  private remoteDetectMemo = new Map<string, string>();
   /** Per-source layer: a Datamuse hit must not freeze a Free Dictionary timeout for 24h. */
   private sourceLayer = new Map<string, { status: 'ok' | 'empty' | 'fail'; data?: unknown; ts: number }>();
   private sourceEmptyTtlMs = 6 * 60 * 60 * 1000;
@@ -465,16 +470,7 @@ export class DictionaryService extends BaseService {
     try {
       const hintedSource = (opts?.sourceLanguage || '').toLowerCase().split('-')[0];
       const detectedLanguage =
-        hintedSource && hintedSource !== 'auto'
-          ? hintedSource
-          : this.apiKey
-            ? await Promise.race([
-                this.detectLanguage(query.trimmed),
-                new Promise<string>((resolve) =>
-                  setTimeout(() => resolve(this.simpleLanguageDetection(query.trimmed)), 800),
-                ),
-              ])
-            : this.simpleLanguageDetection(query.trimmed);
+        hintedSource && hintedSource !== 'auto' ? hintedSource : await this.detectSourceLanguage(query.trimmed);
 
       // Auto pairing is zh↔en (and ja/ko→en). An explicit Translation-tab target is honoured.
       const resolvedTarget = this.resolveTargetLanguage(detectedLanguage, targetLanguage);
@@ -3283,26 +3279,55 @@ export class DictionaryService extends BaseService {
   }
 
   /**
-   * Detect the language of the input text
+   * Detect the language of the input text: the script and letters first, then a plain word
+   * list for single ASCII words, then a remote detector for what is still ambiguous.
    */
   async detectLanguage(text: string): Promise<string> {
-    if (this.apiKey) {
-      try {
-        const url = `https://translation.googleapis.com/language/translate/v2/detect?key=${this.apiKey}`;
-        const response = await this.request<{ data: { detections: Array<Array<Array<{ language: string; confidence: number }>>> } }>(url, {
-          method: 'POST',
-          body: JSON.stringify({
-            q: text
-          })
-        });
+    return this.detectSourceLanguage(text);
+  }
 
-        return response.data.detections[0][0][0].language;
-      } catch (error) {
-        console.warn('Language detection failed, using fallback:', error);
-      }
+  private async detectSourceLanguage(text: string): Promise<string> {
+    const local = detectLanguageLocal(text);
+    if (local.confident) return local.lang;
+    if (isPlainLatinWord(text)) {
+      const known = await Promise.race([isCmuWord(text), new Promise<null>((r) => setTimeout(() => r(null), 600))]);
+      if (known !== false) return 'en';
     }
+    const remote = await Promise.race([
+      this.remoteDetectLanguage(text),
+      new Promise<string>((r) => setTimeout(() => r(''), 900)),
+    ]);
+    return remote && remoteFitsScript(text, remote) ? remote : local.lang;
+  }
 
-    return this.simpleLanguageDetection(text);
+  private async remoteDetectLanguage(text: string): Promise<string> {
+    const key = text.slice(0, 200);
+    const memo = this.remoteDetectMemo.get(key);
+    if (memo !== undefined) return memo;
+    if (Date.now() < this.remoteDetectCoolUntil) return '';
+    let lang = '';
+    try {
+      if (this.apiKey) {
+        const url = `https://translation.googleapis.com/language/translate/v2/detect?key=${this.apiKey}`;
+        const response = await this.request<{ data: { detections: Array<Array<{ language: string }>> } }>(url, {
+          method: 'POST',
+          body: JSON.stringify({ q: key }),
+          timeoutMs: 1500,
+        });
+        lang = response.data.detections[0][0].language || '';
+      } else {
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(key)}`;
+        const response = await this.request<any>(url, { timeoutMs: 1500 });
+        lang = Array.isArray(response) && typeof response[2] === 'string' ? response[2] : '';
+      }
+    } catch {
+      this.remoteDetectCoolUntil = Date.now() + 10 * 60_000;
+      return '';
+    }
+    const norm = ({ iw: 'he', jw: 'jv', 'zh-cn': 'zh', 'zh-tw': 'zh' } as Record<string, string>)[lang.toLowerCase()] || lang.toLowerCase().split('-')[0];
+    if (this.remoteDetectMemo.size > 500) this.remoteDetectMemo.clear();
+    this.remoteDetectMemo.set(key, norm);
+    return norm;
   }
 
 
@@ -3325,60 +3350,6 @@ export class DictionaryService extends BaseService {
     };
   }
 
-  /**
-   * Simple language detection for fallback
-   */
-  private simpleLanguageDetection(text: string): string {
-    // Simple heuristic-based language detection
-    const cleanText = text.replace(/[\u200B-\u200D\uFEFF]/g, '').toLowerCase().trim();
-    
-    // Chinese/Japanese/Korean detection
-    const cjkRegex = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/;
-    if (cjkRegex.test(text)) {
-      // Distinguish between Chinese, Japanese, Korean
-      if (/[\u3040-\u309f\u30a0-\u30ff]/.test(text)) return 'ja'; // Japanese hiragana/katakana
-      if (/[\uac00-\ud7af]/.test(text)) return 'ko'; // Korean hangul
-      return 'zh'; // Default to Chinese for CJK characters
-    }
-    
-    // Cyrillic (Russian)
-    if (/[\u0400-\u04ff]/.test(text)) return 'ru';
-    
-    // Arabic
-    if (/[\u0600-\u06ff]/.test(text)) return 'ar';
-    
-    // Thai
-    if (/[\u0e00-\u0e7f]/.test(text)) return 'th';
-    
-    // Common European language patterns
-    const commonWords = {
-      'es': ['el', 'la', 'de', 'que', 'y', 'en', 'un', 'es', 'se', 'no', 'te', 'lo', 'le', 'da', 'su', 'por', 'son', 'con', 'para', 'una', 'las', 'los', 'del', 'está', 'como', 'pero', 'sus', 'ese', 'ser', 'tiene', 'hace', 'dice'],
-      'fr': ['le', 'de', 'et', 'à', 'un', 'il', 'être', 'et', 'en', 'avoir', 'que', 'pour', 'dans', 'ce', 'son', 'une', 'sur', 'avec', 'ne', 'se', 'pas', 'tout', 'plus', 'par', 'grand', 'celui', 'me', 'même', 'y', 'sans', 'peut', 'sous'],
-      'de': ['der', 'die', 'und', 'in', 'den', 'von', 'zu', 'das', 'mit', 'sich', 'des', 'auf', 'für', 'ist', 'im', 'dem', 'nicht', 'ein', 'eine', 'als', 'auch', 'es', 'an', 'werden', 'aus', 'er', 'hat', 'dass', 'sie', 'nach', 'wird', 'bei'],
-      'it': ['il', 'di', 'che', 'e', 'la', 'per', 'un', 'in', 'con', 'del', 'da', 'è', 'le', 'dei', 'a', 'si', 'lo', 'alla', 'nel', 'gli', 'una', 'come', 'delle', 'più', 'anche', 'ma', 'tutto', 'della', 'questa', 'quello', 'essere', 'fare'],
-      'pt': ['o', 'de', 'a', 'e', 'que', 'do', 'da', 'em', 'um', 'para', 'é', 'com', 'não', 'uma', 'os', 'no', 'se', 'na', 'por', 'mais', 'as', 'dos', 'como', 'mas', 'foi', 'ao', 'ele', 'das', 'tem', 'à', 'seu', 'sua']
-    };
-    
-    const words = cleanText.split(/\s+/).slice(0, 10); // Check first 10 words
-    let maxMatches = 0;
-    let detectedLang = 'en';
-    
-    for (const [lang, wordList] of Object.entries(commonWords)) {
-      const matches = words.filter(word => wordList.includes(word)).length;
-      if (matches > maxMatches) {
-        maxMatches = matches;
-        detectedLang = lang;
-      }
-    }
-    
-    // If we found matches and it's significant, return the detected language
-    if (maxMatches >= 2 || maxMatches / words.length > 0.3) {
-      return detectedLang;
-    }
-    
-    // Default to English
-    return 'en';
-  }
 
   /**
    * Clear the cache
@@ -3433,6 +3404,7 @@ export class DictionaryService extends BaseService {
    */
   getSupportedLanguages(): { code: string; name: string; nativeName: string }[] {
     return [
+      { code: 'auto', name: 'Auto-detect', nativeName: 'Auto-detect' },
       { code: 'en', name: 'English', nativeName: 'English' },
       { code: 'zh', name: 'Chinese', nativeName: '中文' },
       { code: 'ja', name: 'Japanese', nativeName: '日本語' },
@@ -3446,7 +3418,6 @@ export class DictionaryService extends BaseService {
       { code: 'ar', name: 'Arabic', nativeName: 'العربية' },
       { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
       { code: 'th', name: 'Thai', nativeName: 'ไทย' },
-      { code: 'auto', name: 'Auto-detect', nativeName: 'Auto-detect' }
     ];
   }
 
