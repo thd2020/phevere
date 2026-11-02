@@ -23,6 +23,7 @@ import {
   accountPanelHtml,
   deleteEmailMatches,
   attachNotebookMap,
+  fetchWordImage,
   fillWordImages,
   reviewQueue,
   reviewVocab,
@@ -32,7 +33,6 @@ import {
   type RecentLookup,
   type ReviewState,
 } from '@phevere/core';
-import * as core from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
 import { playRecorded, recordedUrls, speakIpa, speakText } from './platform/audio';
 import {
@@ -426,9 +426,8 @@ function bindNotebookViews(): void {
   const page = document.querySelector('.nbv-body');
   if (!page) return;
   attachNotebookMap(page);
-  const fetchWordImage = (core as Record<string, unknown>).fetchWordImage;
-  if (typeof fetchWordImage === 'function') {
-    fillWordImages(page, (lemma, lang) => fetchWordImage(lemma, { lang }));
+  if (prefs.senseImages !== false) {
+    fillWordImages(page, (lemma, lang, gloss) => fetchWordImage(lemma, { lang, gloss }));
   }
 }
 

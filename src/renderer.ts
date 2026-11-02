@@ -30,7 +30,6 @@ import './fonts';
 import './index.css';
 import { captureNextShortcut, isLinux, isMac } from './shortcut-capture';
 import '@phevere/core/notebook-views.css';
-import * as core from '@phevere/core';
 import {
   accountButtonHtml,
   accountPanelHtml,
@@ -39,6 +38,7 @@ import {
   cardsHtml,
   deleteEmailMatches,
   familiesHtml,
+  fetchWordImage,
   fillWordImages,
   formatVocabLangPair,
   mapHtml,
@@ -2106,10 +2106,14 @@ function filterVocabEntries(entries: any[]): any[] {
   });
 }
 
-/** Pictures come from the core's word-image lookup when it is present; cards keep their letter otherwise. */
-function wordImageFetcher(): ((lemma: string, lang?: string) => Promise<any>) | null {
-  const fn = (core as any).fetchWordImage;
-  return typeof fn === 'function' ? (lemma: string, lang?: string) => fn(lemma, { lang }) : null;
+/** Card and review pictures follow the lookup pane's Images switch, stored by the pop-up. */
+function wordImageFetcher(): ((lemma: string, lang?: string, gloss?: string) => Promise<any>) | null {
+  try {
+    if (JSON.parse(localStorage.getItem('phevereSettings') || '{}').senseImages === false) return null;
+  } catch {
+    /* unreadable settings: images stay on, the default */
+  }
+  return (lemma, lang, gloss) => fetchWordImage(lemma, { lang, gloss });
 }
 
 function renderVocabNotebook(entries: any[]): void {

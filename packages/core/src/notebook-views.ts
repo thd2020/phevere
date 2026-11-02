@@ -489,7 +489,7 @@ export function cardsHtml(entries: NotebookEntry[], a: NotebookAnalysis, flipped
       const note = clean(e.note);
       const open = flipped.has(e.id);
       return `<article class="nbv-card${open ? ' is-flipped' : ''}" data-id="${esc(e.id)}">
-        <div class="nbv-card__pic" data-img-lemma="${esc(lemma)}" data-img-lang="${esc(clean(e.sourceLang))}" aria-hidden="true"><span>${esc(lemma.charAt(0))}</span></div>
+        <div class="nbv-card__pic" data-img-lemma="${esc(lemma)}" data-img-lang="${esc(clean(e.sourceLang))}" data-img-gloss="${esc(senses[0] || '')}" aria-hidden="true"><span>${esc(lemma.charAt(0))}</span></div>
         <div class="nbv-card__body" data-act="nb-flip" data-id="${esc(e.id)}" role="button" tabindex="0" aria-pressed="${open}">
           <h3 class="nbv-card__word">${parts.length ? parts.map((p, i) => `<span>${esc(p)}</span>${i < parts.length - 1 ? '<i>·</i>' : ''}`).join('') : esc(lemma)}</h3>
           ${reading ? `<p class="nbv-card__ipa">${esc(reading.ipa)}</p>` : ''}
@@ -627,7 +627,7 @@ export function reviewHtml(entries: NotebookEntry[], state: ReviewState, goal: n
     card = `<div class="nbv-review" data-id="${esc(cur.id)}">
       <div class="nbv-review__progress"><span style="width:${Math.round((state.index / Math.max(1, state.queue.length)) * 100)}%"></span></div>
       <div class="nbv-review__front">
-        <div class="nbv-card__pic nbv-review__pic" data-img-lemma="${esc(lemma)}" data-img-lang="${esc(clean(cur.sourceLang))}" aria-hidden="true"></div>
+        <div class="nbv-card__pic nbv-review__pic" data-img-lemma="${esc(lemma)}" data-img-lang="${esc(clean(cur.sourceLang))}" data-img-gloss="${esc(senses[0] || '')}" aria-hidden="true"></div>
         <h3 class="nbv-review__word">${esc(lemma)}</h3>
         ${reading ? `<p class="nbv-card__ipa">${esc(reading.ipa)}</p>` : ''}
         <button type="button" class="vocab-play" data-act="nb-play" data-lemma="${esc(lemma)}" aria-label="Play ${esc(lemma)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4zM15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -651,14 +651,22 @@ export function reviewHtml(entries: NotebookEntry[], state: ReviewState, goal: n
 
 type Img = { thumb: string; title: string; pageUrl: string; credit: string } | null;
 
-/** Fill each `[data-img-lemma]` box with a picture, a few at a time, as boxes scroll into view. */
-export function fillWordImages(root: any, fetchImage: (lemma: string, lang?: string) => Promise<Img>): void {
+/**
+ * Fill each `[data-img-lemma]` box with a picture as boxes scroll into view. The word's first
+ * sense goes along, so the picture is checked against what the word means.
+ */
+export function fillWordImages(root: any, fetchImage: (lemma: string, lang?: string, gloss?: string) => Promise<Img>): void {
   const boxes: any[] = Array.from(root?.querySelectorAll?.('[data-img-lemma]:not([data-img-done])') || []);
   if (!boxes.length) return;
   const load = (box: any) => {
     box.setAttribute('data-img-done', '1');
     const lemma = box.getAttribute('data-img-lemma') || '';
-    void fetchImage(lemma, box.getAttribute('data-img-lang') || undefined)
+    const gloss = box.getAttribute('data-img-gloss') || '';
+    if (!gloss) {
+      box.classList.add('is-empty');
+      return;
+    }
+    void fetchImage(lemma, box.getAttribute('data-img-lang') || undefined, gloss)
       .then((img) => {
         if (!img || !img.thumb) {
           box.classList.add('is-empty');
