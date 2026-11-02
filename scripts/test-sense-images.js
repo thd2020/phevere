@@ -1,6 +1,8 @@
 /**
  * Checks for packages/core/src/sense-images.ts against recorded Wikimedia responses
- * (scripts/fixtures/sense-images.json, trimmed to the parts the module reads).
+ * (scripts/fixtures/sense-images.json, trimmed to the parts the module reads, and
+ * scripts/fixtures/sense-images-fallback.json, keyed by request URL and recorded on 2026-11-02
+ * for the whole-word fallback).
  * Run: node scripts/test-sense-images.js
  */
 const assert = require('assert');
@@ -11,6 +13,7 @@ const ts = require('typescript');
 
 const root = path.join(__dirname, '..');
 const fx = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'sense-images.json'), 'utf8'));
+const fb = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'sense-images-fallback.json'), 'utf8'));
 
 function load(runtimeStub) {
   const src = fs.readFileSync(path.join(root, 'packages', 'core', 'src', 'sense-images.ts'), 'utf8');
@@ -191,6 +194,75 @@ assert.strictEqual(si.shortArtist('<a href="//commons.wikimedia.org/wiki/User:El
 assert.strictEqual(si.shortArtist('fir0002 flagstaffotos [at] gmail.com Canon 20D + Sigma 15mm'), 'fir0002 flagstaffotos');
 assert.strictEqual(si.shortArtist('Molly from Bronx, NY, United States of America.'), 'Molly');
 
+// ---------------------------------------------------------------- whole-word fallback
+
+for (const [word, want] of [
+  ['inspect', 'inspection'],
+  ['run', 'running'],
+  ['beautiful', 'beauty'],
+  ['ephemeral', 'ephemerality'],
+  ['happy', 'happiness'],
+  ['stable', 'stability'],
+  ['swim', 'swimming'],
+]) {
+  const titles = si.derivedTitles(word);
+  assert.strictEqual(titles[0], word, `${word}: the word itself comes first`);
+  assert.ok(titles.includes(want), `${word}: derived title ${want} in ${titles.join(', ')}`);
+  assert.ok(titles.length <= 10);
+}
+same(si.derivedTitles('猫'), ['猫']);
+
+const enReq = si.fallbackTitleQuery('inspect', [{ meaning: 'To examine critically.', partOfSpeech: 'verb' }], 'en');
+assert.ok(enReq.url.startsWith('https://en.wikipedia.org/') && enReq.url.includes('pilicense=free'));
+assert.strictEqual(enReq.exact, 1);
+const jaReq = si.fallbackTitleQuery('猫', [{ meaning: 'a cat', partOfSpeech: 'noun' }], 'ja');
+same(jaReq.titles, ['cat'], '猫: the English gloss names the article');
+assert.ok(jaReq.url.startsWith('https://en.wikipedia.org/'));
+const jaWord = si.fallbackTitleQuery('要対応', [{ meaning: '' }], 'ja');
+assert.ok(
+  jaWord.url.startsWith('https://ja.wikipedia.org/') && jaWord.url.includes(encodeURIComponent('要対応')),
+  'no gloss: the word on its own Wikipedia',
+);
+assert.strictEqual(si.commonsSearchQuery('要対応', [{ meaning: 'requires action', partOfSpeech: 'phrase' }], 'ja'), 'requires action');
+assert.strictEqual(si.commonsSearchQuery('love', [{ meaning: 'Strong affection.' }], 'en'), 'love');
+assert.strictEqual(si.commonsFileTitle('File:An action is required - geograph.org.uk - 6143024.jpg'), 'An action is required');
+assert.strictEqual(si.commonsFileTitle('File:Serendipity panel (5642891224).jpg'), 'Serendipity panel');
+
+const conceptPage = (over) => ({
+  title: 'Justice',
+  description: 'Concept of moral fairness',
+  pageimage: 'Justice_Statue_Iran.jpg',
+  thumbnail: { source: 'https://upload.wikimedia.org/x.jpg', width: 330, height: 400 },
+  ...over,
+});
+assert.ok(si.acceptConceptPage(conceptPage({})));
+assert.ok(!si.acceptConceptPage(conceptPage({ pageprops: { disambiguation: '' } })), 'disambiguation page');
+assert.ok(!si.acceptConceptPage(conceptPage({ pageimage: undefined })), 'no free lead image');
+assert.ok(!si.acceptConceptPage(conceptPage({ description: '2001 film by Peter Chelsom' })), 'a film');
+assert.ok(!si.acceptConceptPage(conceptPage({ pageimage: 'Seal_of_the_United_States_Supreme_Court.svg' })), 'a seal');
+assert.ok(si.acceptConceptPage(conceptPage({ title: 'Map', pageimage: 'Old_map_of_Europe.jpg' })), 'a map is fine for "map"');
+
+// Recorded Commons searches: portraits, logos and unrelated hits sink.
+const commonsPages = (q) => fb.responses[si.buildCommonsSearchUrl(q)].query.pages;
+const loveRanked = si.rankCommonsFiles(commonsPages('love'), 'love', 'love', []);
+assert.strictEqual(loveRanked[0].title, "Love padlocks on the Butchers' Bridge (Ljubljana)");
+assert.ok(!loveRanked.slice(0, 3).some((r) => /Sean Combs/.test(r.title)), 'love: no portrait of a man nicknamed Love near the top');
+assert.ok(/inspects meat/.test(si.rankCommonsFiles(commonsPages('inspect'), 'inspect', 'inspect', [])[0].title), 'inspect: a person inspecting');
+
+// Wiktionary pictures no sense claimed: "love" has two caption-only ones that name the word.
+const wiktFor = (w) => Object.entries(fb.responses).find(([u]) => u.includes('wiktionary.org') && u.endsWith(`titles=${w}&origin=*`))[1];
+const loveImgs = si.extractWiktionaryImages(wiktFor('love').query.pages[0].revisions[0].slots.main.content, 'en');
+const loveSenses = fb.senses.love.list;
+assert.strictEqual(si.matchWiktionaryImages(loveImgs, loveSenses, 'love').length, 0, 'love: no caption shares two gloss words');
+const loveFallback = si.rankWiktionaryFallback(loveImgs, loveSenses, 'love');
+assert.ok(loveFallback.length >= 2 && loveFallback[0].strong, 'love: the captions name the word');
+assert.ok(/Romeo and Juliet/.test(loveFallback[0].image.file));
+const runImgs = si.extractWiktionaryImages(wiktFor('run').query.pages[0].revisions[0].slots.main.content, 'en');
+assert.ok(
+  !si.rankWiktionaryFallback(runImgs, [{ meaning: 'To move swiftly.', partOfSpeech: 'verb' }], 'run').some((x) => /runner|Stocking/.test(x.image.file)),
+  'run: a picture tied to another sense by {{senseno}} is never the fallback',
+);
+
 // ---------------------------------------------------------------- end to end with recorded responses
 
 function serve(url) {
@@ -263,10 +335,107 @@ function serve(url) {
   });
   const none = await failing.fetchSenseImages('apple', [{ meaning: 'A common, round fruit.', partOfSpeech: 'noun' }]);
   same(none, [null]);
-  assert.strictEqual(await failing.fetchWordImage('apple'), null, 'no gloss, no picture');
+  assert.strictEqual(await failing.fetchWordImage('apple'), null, 'offline, no picture');
 
+  await fallbackEndToEnd();
   console.log('sense-images ok');
 })().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+/** Module instance answering from the fallback fixture by URL; an unrecorded URL fails the test. */
+function recordedModule(log) {
+  return load({
+    isCoreConfigured: () => true,
+    getHttp: () => ({
+      requestJson: async (url) => {
+        log.push(url);
+        const hit = fb.responses[url];
+        if (!hit) throw new Error('unrecorded URL ' + url);
+        return JSON.parse(JSON.stringify(hit));
+      },
+    }),
+    getLookupCache: () => null,
+  });
+}
+
+async function fallbackEndToEnd() {
+  // Every recorded word: the same pictures as on the live run, at least one, at most three.
+  for (const [word, { lang, list }] of Object.entries(fb.senses)) {
+    const imgs = await recordedModule([]).fetchSenseImages(word, list, { lang });
+    assert.strictEqual(imgs.length, list.length, `${word}: one slot per sense`);
+    const shown = imgs.map((x, i) => (x ? { i, title: x.title } : null)).filter(Boolean);
+    same(shown, fb.expected[word].map(({ i, title }) => ({ i, title })), `${word}: recorded pictures`);
+    assert.ok(shown.length >= 1 && shown.length <= 3, `${word}: one to three pictures`);
+    for (const x of imgs.filter(Boolean)) {
+      assert.ok(/Wikimedia Commons$/.test(x.credit), `${word}: credit line`);
+      assert.ok(/^https:\/\/commons\.wikimedia\.org\/wiki\/File:/.test(x.pageUrl), `${word}: file page`);
+      assert.ok(/^https:\/\/(upload|thumb)\.wikimedia\.org\/.*\/330px-/.test(x.thumb) && !x.thumb.includes('utm_'), `${word}: thumb`);
+    }
+  }
+
+  // Words with no sense-specific picture get one on the first sense. For a word with no
+  // concrete noun sense that costs three requests: Wiktionary and the title query side by side,
+  // then one imageinfo call (or the Commons search, which carries its own file info).
+  const want = {
+    serendipity: 'Serendipity',
+    love: 'Romeo and Juliet in love',
+    freedom: 'Freedom',
+    inspect: 'Inspection',
+    ephemeral: 'Ephemerality',
+    beautiful: 'Beauty',
+    justice: 'Justice',
+    happiness: 'Happiness',
+    要対応: 'An action is required',
+  };
+  for (const [word, title] of Object.entries(want)) {
+    const log = [];
+    const { lang, list } = fb.senses[word];
+    const imgs = await recordedModule(log).fetchSenseImages(word, list, { lang });
+    assert.strictEqual(imgs[0] && imgs[0].title, title, `${word}: fallback picture on the first sense`);
+    assert.ok(imgs.slice(1).every((x) => !x), `${word}: one fallback picture only`);
+    // "justice" has noun senses the strict rule tries first (two searches), so it makes more.
+    if (word !== 'justice') assert.strictEqual(log.length, 3, `${word}: three requests, not ${log.length}`);
+  }
+
+  // The title query starts before the Wiktionary answer arrives.
+  {
+    const started = [];
+    let release;
+    const gate = new Promise((r) => {
+      release = r;
+    });
+    const mod = load({
+      isCoreConfigured: () => true,
+      getHttp: () => ({
+        requestJson: async (url) => {
+          started.push(url);
+          if (started.length === 1) await gate;
+          return JSON.parse(JSON.stringify(fb.responses[url]));
+        },
+      }),
+      getLookupCache: () => null,
+    });
+    const p = mod.fetchSenseImages('happiness', fb.senses.happiness.list, { lang: 'en' });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(started.length, 2, 'happiness: Wiktionary and the title query in parallel');
+    assert.ok(started.some((u) => u.includes('wiktionary.org')) && started.some((u) => u.includes('wikipedia.org')));
+    release();
+    assert.strictEqual((await p)[0].title, 'Happiness');
+  }
+
+  // A concrete noun keeps its strict picture and makes no fallback request.
+  {
+    const log = [];
+    await recordedModule(log).fetchSenseImages('apple', fb.senses.apple.list, { lang: 'en' });
+    assert.ok(!log.some((u) => u.includes('apple%7C')), 'apple: no fallback title query');
+  }
+
+  // fetchWordImage works without a gloss and returns the best picture for the word.
+  const wordImage = (word, lang) => recordedModule([]).fetchWordImage(word, { lang });
+  assert.strictEqual((await wordImage('run', 'en')).title, 'Running');
+  assert.strictEqual((await wordImage('inspect', 'en')).title, 'Inspection');
+  assert.strictEqual((await wordImage('猫', 'ja')).title, 'ネコ', '猫: the word on Japanese Wikipedia');
+  assert.strictEqual(await wordImage('要対応', 'ja'), null, '要対応: no hit names the word, so no picture');
+}
