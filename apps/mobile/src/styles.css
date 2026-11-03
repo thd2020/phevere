@@ -2049,6 +2049,9 @@ html[data-notify="ios"] .toast {
 
 /* Notebook views. */
 .nb-views { margin: 0 0 12px; }
+/* Language chips above the views scroll sideways rather than wrap on a phone. */
+.nb-langs .nbv-chips { flex-wrap: nowrap; overflow-x: auto; margin: 0 0 10px; scrollbar-width: none; }
+.nb-langs .nbv-chip { flex: none; }
 .nb-views .nbv-switch { width: 100%; justify-content: space-between; }
 .nb-views .nbv-switch__btn { flex: 1 1 0; justify-content: center; padding: 0 6px; height: 34px; }
 .nbv-body { padding-bottom: 12px; }

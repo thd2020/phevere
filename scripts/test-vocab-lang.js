@@ -14,7 +14,7 @@ const js = ts.transpileModule(src, {
 }).outputText;
 const mod = { exports: {} };
 vm.runInNewContext(js, { module: mod, exports: mod.exports, require });
-const { formatVocabLangPair, inferVocabGlossLang } = mod.exports;
+const { formatVocabLangPair, inferVocabGlossLang, vocabLanguages, filterVocabByLang, vocabLangChipsHtml, vocabHeadwordLang } = mod.exports;
 
 assert.strictEqual(
   formatVocabLangPair({
@@ -47,4 +47,26 @@ assert.strictEqual(
 assert.strictEqual(inferVocabGlossLang({ sourceLang: 'ja', targetLang: 'en', definition: '大学などで教育を受ける者。', sources: ['Japanese Wiktionary'] }), 'ja');
 assert.strictEqual(inferVocabGlossLang({ sourceLang: 'ru', targetLang: 'en', definition: 'жилое здание', sources: ['Russian Wiktionary'] }), 'ru');
 assert.strictEqual(inferVocabGlossLang({ sourceLang: 'zh', targetLang: 'en', definition: '在學校讀書的人', sources: ['Chinese Wiktionary'] }), 'zh');
+// The Words language filter. A notebook like the author's: English, a few English phrases the
+// detector filed under other languages, one Japanese word. Nothing to choose, so no chips.
+const en = Array.from({ length: 40 }, (_, i) => ({ lemma: `word${i}`, sourceLang: 'en' }));
+const misfiled = [{ lemma: 'a priori', sourceLang: 'it' }, { lemma: 'bindery', sourceLang: 'mg' }, { lemma: 'kerning' }];
+const oneJa = [{ lemma: '学生', sourceLang: 'ja' }];
+let langs = vocabLanguages([...en, ...misfiled, ...oneJa]);
+assert.strictEqual(langs.groups.length, 0, 'one language worth a chip: no chip row');
+assert.strictEqual(langs.langOf(misfiled[0]), 'en', 'a rare Latin-script language counts as English');
+assert.strictEqual(vocabHeadwordLang({ lemma: 'собака' }), 'ru');
+assert.strictEqual(vocabHeadwordLang({ lemma: 'たべる' }), 'ja');
+assert.strictEqual(vocabLangChipsHtml(langs, 'all', 44, (c) => c), '');
+// Three Chinese words make a second language: chips appear and the filter splits the list.
+const zh = ['学生', '曰', '天气'].map((lemma) => ({ lemma }));
+const all = [...en, ...misfiled, ...zh];
+langs = vocabLanguages(all);
+assert.strictEqual(JSON.stringify(langs.groups.map((g) => [g.code, g.count])), JSON.stringify([['en', 43], ['zh', 3]]));
+assert.strictEqual(filterVocabByLang(all, 'zh', langs).length, 3);
+assert.strictEqual(filterVocabByLang(all, 'en', langs).length, 43, 'misfiled phrases stay with English');
+assert.strictEqual(filterVocabByLang(all, 'all', langs).length, all.length);
+assert.strictEqual(filterVocabByLang(all, 'ko', langs).length, all.length, 'a language without a chip shows everything');
+const html = vocabLangChipsHtml(langs, 'zh', all.length, (c) => ({ en: 'English', zh: 'Chinese' })[c]);
+assert.ok(html.includes('data-lang="all"') && html.includes('Chinese') && /data-lang="zh"[^>]*aria-selected="true"/.test(html));
 console.log('vocab-lang ok');

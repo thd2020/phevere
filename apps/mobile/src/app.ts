@@ -217,6 +217,7 @@ function rememberRecent(q: string): void {
 let notebookFilter = '';
 const NB_VIEW_KEY = 'phevere.notebookView';
 const NB_GROUP_KEY = 'phevere.notebookGroup';
+const NB_LANG_KEY = 'phevere.wordsLang';
 const NB_MAP_KEY = 'phevere.notebookMapKinds';
 const NB_GOAL_KEY = 'phevere.reviewGoal';
 const NB_CARDS_KEY = 'phevere.notebookCardsLayout';
@@ -231,6 +232,7 @@ const nbState = {
   cardLayout: (readStore(NB_CARDS_KEY) || 'piles') as CardLayout,
   review: null as ReviewState | null,
   goal: Number(readStore(NB_GOAL_KEY)) || 10,
+  lang: readStore(NB_LANG_KEY) || 'all',
 };
 /** Every word, for Review; the list keeps its 400 most recent. */
 let reviewPool: VocabEntry[] = [];
@@ -2143,6 +2145,11 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     }
+    case 'vocab-lang':
+      nbState.lang = t.dataset.lang || 'all';
+      writeStore(NB_LANG_KEY, nbState.lang);
+      paint();
+      return;
     case 'nb-group':
       nbState.group = (t.dataset.group as FamilyGrouping) || 'root';
       writeStore(NB_GROUP_KEY, nbState.group);

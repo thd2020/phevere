@@ -42,6 +42,10 @@ The Chinese edition stores most entries under traditional characters; a simplifi
 
 The senses sort after the dedicated dictionaries and before English Wiktionary. For a word in another language they count toward the first paint; for an English word they join in the update that follows. Saved words record the gloss language by script (kana is Japanese, mostly Cyrillic is Russian, mostly Han is Chinese), so a Japanese gloss is not filed as Chinese.
 
+## Words in several languages
+
+My words keeps every language in one list. When at least two languages have three or more words each, chips above the views pick one language for List, Families, Map and Cards; the counts cover the whole notebook, and on the phone a chosen language filters the whole notebook rather than the page the list has loaded. A word's language is the one recorded when it was saved, or read from its script (kana, hangul, Han, Cyrillic, otherwise English). Detection sometimes files an English phrase under another Latin-script language ("a priori" as Italian), so a Latin-script word under a language with fewer than three words counts as English. Word books stay one language each.
+
 ## Reading aloud in the right language
 
 The bundled voices read English and Chinese (neural or eSpeak) and many other languages (eSpeak). eSpeak's Japanese reads only kana, so Japanese text goes to the pop-up instead: an installed Japanese system voice reads it when there is one, otherwise Google Translate's voice does, in pieces of up to 180 characters. A voice for a different language is never used as a stand-in, so a PC whose default voice is Chinese no longer reads Japanese in Chinese. Kana or hangul in the text wins over a Chinese language hint.

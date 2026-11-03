@@ -42,6 +42,10 @@ import {
   sourcesHtml,
   type WordsContext,
   type WordsScope,
+  filterVocabByLang,
+  languageName,
+  vocabLangChipsHtml,
+  vocabLanguages,
 } from '@phevere/core';
 
 export type Tab = 'lookup' | 'notebook' | 'learn' | 'settings';
@@ -831,6 +835,8 @@ export interface NotebookViewState {
   cardLayout: CardLayout;
   /** Every saved word; the list pages through the notebook, the other views need all of it. */
   pool: VocabEntry[];
+  /** The language chip chosen above My words ('all' when none is). */
+  lang: string;
 }
 
 /** The Learn tab: today's review session over the list the Words tab has chosen. */
@@ -882,7 +888,14 @@ export function notebookBody(
   if (ctx && words!.library) return `${switcher}<div class="nbv nbv-body">${wordbookLibraryHtml(ctx)}</div>`;
   if (ctx && words!.scope === 'sources') return `${switcher}<div class="nbv nbv-body">${sourcesHtml(ctx)}</div>`;
   if (ctx && words!.scope !== 'mine') return switcher + bookScopeBody(words!, ctx, filter, nb);
-  let list = ctx ? entries.map((e) => ({ ...e, books: ctx.index.get(e.lemma.trim().toLowerCase()) })) : [...entries];
+  // Words saved in several languages: a chip per language, counted over the whole notebook.
+  const everything = nb.pool.length > entries.length ? nb.pool : entries;
+  const langs = vocabLanguages(everything);
+  const langChips = vocabLangChipsHtml(langs, nb.lang, everything.length, languageName);
+  const langOn = !!langChips && nb.lang !== 'all';
+  // A chosen language filters the whole notebook, not only the page the list has loaded.
+  const source = langOn ? filterVocabByLang(everything, nb.lang, langs) : entries;
+  let list = ctx ? source.map((e) => ({ ...e, books: ctx.index.get(e.lemma.trim().toLowerCase()) })) : [...source];
   if (sort === 'az') list.sort((a, b) => a.lemma.localeCompare(b.lemma, undefined, { sensitivity: 'base', numeric: true }));
   // Saved order: reviews and sync bump updatedAt, which must not move words.
   else list.sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));
@@ -901,10 +914,11 @@ export function notebookBody(
         <button type="button" class="vocab-sort-btn${sort === 'az' ? ' is-active' : ''}" data-act="nb-sort" data-sort="az" aria-pressed="${sort === 'az'}" aria-label="Alphabetical" title="A–Z">${ICO.az}</button>
       </div>` : ''}
     </div>
+    ${langChips ? `<div class="nbv nb-langs">${langChips}</div>` : ''}
     <div class="nbv nb-views">${notebookViewSwitchHtml(nb.view)}</div>`;
   if (nb.view !== 'list') {
     // The list pages through the notebook; the other views need all of it.
-    if (nb.pool.length > entries.length) {
+    if (!langOn && nb.pool.length > entries.length) {
       const all = [...nb.pool]
         .map((e) => (ctx ? { ...e, books: ctx.index.get(e.lemma.trim().toLowerCase()) } : e))
         .sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));

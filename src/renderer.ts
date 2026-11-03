@@ -121,6 +121,7 @@ import {
   type WordsScope,
 } from '@phevere/core';
 import { choiceRowHtml, keycapsHtml, rangeRowHtml, switchRowHtml } from '@phevere/core';
+import { filterVocabByLang, languageName, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
 
 const rlog = (...args: unknown[]) => {
   if (!__PHEVERE_DEV__) return;
@@ -2173,6 +2174,9 @@ let nbAnalysis: { key: unknown; q: string; value: ReturnType<typeof analyzeNoteb
 
 /* Word books: which list the Words tab shows (My words, a book or All books) and its data. */
 const WORDS_SCOPE_KEY = 'phevere-words-scope';
+/** The language chip chosen above My words ('all' when none is). */
+const WORDS_LANG_KEY = 'phevere-words-lang';
+let wordsLang = readPref(WORDS_LANG_KEY, 'all');
 let wbScope = readPref(WORDS_SCOPE_KEY, 'mine') as WordsScope;
 let wbLibrary = false;
 let wbLimit = BOOK_LIST_PAGE;
@@ -2603,11 +2607,17 @@ function renderVocabNotebook(entries: any[]): void {
   }
   const wbHead = document.getElementById('wbHead');
   if (wbHead) wbHead.innerHTML = wbCtx && !wbLibrary ? wordbookHeaderHtml(wbScope, wbCtx) : '';
+  const langHost = document.getElementById('vocabLangs');
+  if (langHost) langHost.innerHTML = '';
   if (renderBookScope(body, wrap, list)) {
     syncVocabAzAvailability([]);
     syncVocabTimeline([]);
     return;
   }
+  // Words saved in several languages: a chip per language, and every view shows the chosen one.
+  const langs = vocabLanguages(vocabNotebookCache);
+  if (langHost) langHost.innerHTML = vocabLangChipsHtml(langs, wordsLang, vocabNotebookCache.length, languageName);
+  entries = filterVocabByLang(entries, wordsLang, langs);
   // My words rows carry a badge for each subscribed book that lists the word.
   const index = wbCtx?.index;
   const sorted = sortVocabEntries(index ? entries.map((e) => ({ ...e, books: index.get(String(e.lemma || '').trim().toLowerCase()) })) : entries);
@@ -2621,7 +2631,7 @@ function renderVocabNotebook(entries: any[]): void {
     flushVocabChunks = null;
     list.innerHTML = '';
     // The analysis only changes when the notebook or the search does.
-    const q = (document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '';
+    const q = `${(document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || ''}|${wordsLang}`;
     if (!nbAnalysis || nbAnalysis.key !== vocabNotebookCache || nbAnalysis.q !== q) {
       nbAnalysis = { key: vocabNotebookCache, q, value: analyzeNotebook(sorted) };
     }
@@ -2898,6 +2908,12 @@ function wireNotebookActions(root: HTMLElement): void {
       case 'nb-view':
         nbView = (el.dataset.view as NotebookView) || 'list';
         writePref(NB_VIEW_KEY, nbView);
+        rerenderNotebook();
+        document.querySelector('.main-shell')?.scrollTo({ top: 0 });
+        return;
+      case 'vocab-lang':
+        wordsLang = el.dataset.lang || 'all';
+        writePref(WORDS_LANG_KEY, wordsLang);
         rerenderNotebook();
         document.querySelector('.main-shell')?.scrollTo({ top: 0 });
         return;
