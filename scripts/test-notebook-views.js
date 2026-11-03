@@ -86,10 +86,13 @@ assert.deepEqual(views.reviewQueue(rq, 2, now, 1), ['due', 'new1']);
 assert.deepEqual(views.reviewQueue(rq, 2, now, 5), ['due']);
 // A lapsed word ("Again": reps 0, due now) is a due review, not a new word.
 assert.deepEqual(views.reviewQueue([{ id: 'lapsed', lemma: 'f', reps: 0, reviewDue: now - 1000 }], 0, now), ['lapsed']);
-const rh = views.reviewHtml(rq, { queue: ['due'], index: 0, revealed: false, done: 0 }, 10, now);
-assert.match(rh, /Show meaning/);
-assert.match(views.reviewHtml(rq, { queue: ['due'], index: 0, revealed: true, done: 0 }, 10, now), /data-grade="4"/);
-assert.match(views.reviewHtml(rq, { queue: [], index: 0, revealed: false, done: 0 }, 10, now), /Nothing due today/);
+// The Review view: a start screen, then a quiz question, then the empty state.
+const rs = views.startReview(rq, 2, now);
+assert.match(views.reviewHtml(rq, rs, 10, { now }), /data-act="nb-start"/);
+rs.started = true;
+assert.match(views.reviewHtml(rq, rs, 10, { now }), /class="nbv-quiz"/);
+assert.match(views.reviewHtml([], views.startReview([], 2, now), 10, { now }), /Save words to start reviewing/);
+assert.match(views.reviewHtml(rq.slice(1, 2), views.startReview(rq.slice(1, 2), 0, now), 10, { now }), /Nothing due today/);
 
 // Rows: Look up sits in the collapsed row, not only in the details.
 const row = vocabEntryHtml({ id: 'x', lemma: 'inspect', definition: 'look' }, false, now);

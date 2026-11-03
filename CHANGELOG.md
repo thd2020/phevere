@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Review (2026-11-03): the notebook's Review view is a quiz on desktop and phone instead of a card with Again, Hard, Good and Easy buttons. A new word asks you to pick its meaning from four; as you learn it, you pick the word for a meaning or the word you hear, then type it from its meaning or from the audio, and finally fill the gap in a sentence from your note. Answers are graded from whether they were right and how long they took, and "I knew it" or "I didn't know it" overturns the grade. Each answer shows the picture, pronunciation and senses with an Open in lookup button, and a session ends with a summary of missed words. On the desktop, 1 to 4 choose and Enter continues. Scheduling moved to FSRS, the model Anki uses; words reviewed before keep their progress, converted from their old interval and ease, and older app versions keep syncing. The reasons are in [`docs/REVIEW.md`](docs/REVIEW.md).
+
 ## [3.0.0] - 2026-11-02
 
 ### Added

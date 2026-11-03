@@ -45,7 +45,13 @@ import {
   notebookViewSwitchHtml,
   recentListHtml,
   reviewHtml,
-  reviewQueue,
+  startReview,
+  answerReview,
+  overrideReview,
+  advanceReview,
+  isNewWord,
+  previewReview,
+  formatReviewGap,
   vocabEntryGroup,
   groupCatalogByLanguage,
   vocabListHtml,
@@ -2151,10 +2157,13 @@ function renderVocabNotebook(entries: any[]): void {
     flushVocabChunks = null;
     list.innerHTML = '';
     if (nbView === 'review') {
-      if (!nbReview) {
-        nbReview = { queue: reviewQueue(vocabNotebookCache, nbGoal, Date.now(), startedToday().length), index: 0, revealed: false, done: 0 };
-      }
-      body.innerHTML = reviewHtml(vocabNotebookCache, nbReview, nbGoal);
+      if (!nbReview) nbReview = startReview(vocabNotebookCache, nbGoal, Date.now(), startedToday().length);
+      body.innerHTML = reviewHtml(vocabNotebookCache, nbReview, nbGoal, {
+        audio: true,
+        preview: (e, g) => previewReview(e, g),
+        formatGap: formatReviewGap,
+      });
+      focusReview(body);
     } else {
       // The analysis only changes when the notebook or the search does.
       const q = (document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '';
@@ -2216,29 +2225,77 @@ function rerenderNotebook(): void {
   renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
 }
 
-async function gradeCurrentReview(grade: 1 | 2 | 3 | 4): Promise<void> {
-  const api = (window as any).vocabAPI;
-  if (!nbReview || !api?.review || nbGrading) return;
-  const id = nbReview.queue[nbReview.index];
-  if (!id) return;
-  nbGrading = true;
-  const entry = vocabNotebookCache.find((e) => e.id === id);
-  if (entry && entry.reviewDue == null) {
-    writePref(startedTodayKey(), JSON.stringify([...new Set([...startedToday(), id])]));
+/** After a Review render: put the cursor in the answer box, play a listening question once. */
+let nbAutoplayed = '';
+function focusReview(body: HTMLElement): void {
+  const input = body.querySelector<HTMLInputElement>('#nbv-answer');
+  if (input) input.focus();
+  else {
+    const next = body.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"]');
+    next?.focus({ preventScroll: true });
+    if (next?.dataset.act === 'nb-next') body.querySelector('.nbv-quiz__grade')?.scrollIntoView({ block: 'nearest' });
   }
+  const listen = body.querySelector<HTMLElement>('[data-autoplay]');
+  const key = listen && nbReview ? `${nbReview.index}:${listen.dataset.autoplay}` : '';
+  if (listen && key !== nbAutoplayed) {
+    nbAutoplayed = key;
+    const btn = listen.querySelector<HTMLElement>('[data-act="nb-play"]');
+    if (btn) void playLemmaPronunciation(listen.dataset.autoplay || '', btn);
+  }
+}
+
+/** Saves the answered question's grade and moves to the next one. */
+async function commitReview(): Promise<void> {
+  const api = (window as any).vocabAPI;
+  const q = nbReview?.question;
+  const a = nbReview?.answer;
+  if (!nbReview || !q || !a || nbGrading) return;
+  nbGrading = true;
+  const entry = vocabNotebookCache.find((e) => e.id === q.id);
+  if (entry && isNewWord(entry)) {
+    writePref(startedTodayKey(), JSON.stringify([...new Set([...startedToday(), q.id])]));
+  }
+  let updated: any = null;
   try {
-    const updated = await api.review(id, grade);
-    if (updated) vocabNotebookCache = vocabNotebookCache.map((e) => (e.id === id ? { ...e, ...updated } : e));
+    updated = api?.review ? await api.review(q.id, a.grade) : null;
+    if (updated) vocabNotebookCache = vocabNotebookCache.map((e) => (e.id === q.id ? { ...e, ...updated } : e));
   } catch (error) {
     console.error('review failed', error);
   }
-  // "Again" brings the word back at the end of today's session.
-  if (grade === 1) nbReview.queue.push(id);
-  nbReview.index += 1;
-  nbReview.done += 1;
-  nbReview.revealed = false;
+  advanceReview(nbReview, updated);
   nbGrading = false;
   rerenderNotebook();
+}
+
+function answerCurrentReview(input: { choice?: number; typed?: string; knew?: boolean }): void {
+  if (!nbReview || !answerReview(nbReview, input)) return;
+  rerenderNotebook();
+}
+
+/** Review keys: 1 to 4 choose, Enter starts or continues. Typing goes to the answer box. */
+function onReviewKey(ev: KeyboardEvent): void {
+  if (nbView !== 'review' || !nbReview || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  const body = document.getElementById('nbViewBody');
+  if (!body || body.hidden || document.getElementById('paneNotebook')?.hidden) return;
+  const target = ev.target as HTMLElement | null;
+  if (target && target.id !== 'nbv-answer' && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+  if (target?.id === 'nbv-answer') return;
+  if (ev.key === 'Enter') {
+    const next = body.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-reveal"]');
+    if (!next) return;
+    ev.preventDefault();
+    next.click();
+    return;
+  }
+  if (/^[1-4]$/.test(ev.key)) {
+    const n = Number(ev.key);
+    const knew = body.querySelector<HTMLElement>(`[data-act="nb-knew"][data-knew="${n === 2 ? 1 : 0}"]`);
+    const opt = body.querySelector<HTMLElement>(`[data-act="nb-choose"][data-choice="${n - 1}"]:not([disabled])`);
+    const hit = opt || (n <= 2 ? knew : null);
+    if (!hit) return;
+    ev.preventDefault();
+    hit.click();
+  }
 }
 
 /** One click handler for both lists and every notebook view, keyed on `data-act`. */
@@ -2322,12 +2379,29 @@ function wireNotebookActions(root: HTMLElement): void {
         nbReview = null;
         rerenderNotebook();
         return;
+      case 'nb-start':
+        if (nbReview) nbReview.started = true;
+        rerenderNotebook();
+        return;
       case 'nb-reveal':
         if (nbReview) nbReview.revealed = true;
         rerenderNotebook();
         return;
-      case 'nb-grade':
-        await gradeCurrentReview((Number(el.dataset.grade) || 3) as 1 | 2 | 3 | 4);
+      case 'nb-choose':
+        answerCurrentReview({ choice: Number(el.dataset.choice) });
+        return;
+      case 'nb-knew':
+        answerCurrentReview({ knew: el.dataset.knew === '1' });
+        return;
+      case 'nb-skip':
+        answerCurrentReview({});
+        return;
+      case 'nb-override':
+        if (nbReview) overrideReview(nbReview);
+        rerenderNotebook();
+        return;
+      case 'nb-next':
+        await commitReview();
         return;
       default:
     }
@@ -2336,6 +2410,13 @@ function wireNotebookActions(root: HTMLElement): void {
     const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-act]');
     if (!el || !root.contains(el) || el.dataset.act === 'nb-map-zoom') return;
     void run(el, ev);
+  });
+  root.addEventListener('submit', (ev) => {
+    const form = ev.target as HTMLElement;
+    if (!(form instanceof HTMLFormElement) || form.dataset.actForm !== 'nb-submit') return;
+    ev.preventDefault();
+    const typed = (form.querySelector('#nbv-answer') as HTMLInputElement | null)?.value || '';
+    answerCurrentReview({ typed });
   });
   root.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Enter' && ev.key !== ' ') return;
@@ -2372,6 +2453,7 @@ function wireMainWorkspace(): void {
   setMainTab(readPref(WS_TAB_KEY, 'notebook') === 'recent' ? 'recent' : 'notebook');
   const shell = document.querySelector<HTMLElement>('.main-shell');
   if (shell) wireNotebookActions(shell);
+  document.addEventListener('keydown', onReviewKey);
 }
 
 document.getElementById('refreshVocabBtn')?.addEventListener('click', () => {

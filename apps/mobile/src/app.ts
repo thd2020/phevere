@@ -25,7 +25,13 @@ import {
   attachNotebookMap,
   fetchWordImage,
   fillWordImages,
-  reviewQueue,
+  startReview,
+  answerReview,
+  overrideReview,
+  advanceReview,
+  isNewWord,
+  previewReview,
+  formatReviewGap,
   reviewVocab,
   type FamilyGrouping,
   type MorphKind,
@@ -409,9 +415,13 @@ function paint(): void {
 
 function notebookViewState() {
   if (nbState.view === 'review' && !nbState.review && reviewPool.length) {
-    nbState.review = { queue: reviewQueue(reviewPool, nbState.goal, Date.now(), startedToday().length), index: 0, revealed: false, done: 0 };
+    nbState.review = startReview(reviewPool, nbState.goal, Date.now(), startedToday().length);
   }
-  return { ...nbState, pool: reviewPool };
+  return {
+    ...nbState,
+    pool: reviewPool,
+    reviewOptions: { audio: prefs.audioEnabled !== false, preview: previewReview, formatGap: formatReviewGap },
+  };
 }
 
 async function loadReviewPool(): Promise<void> {
@@ -429,31 +439,51 @@ function bindNotebookViews(): void {
   if (prefs.senseImages !== false) {
     fillWordImages(page, (lemma, lang, gloss) => fetchWordImage(lemma, { lang, gloss }));
   }
+  if (nbState.view === 'review') focusReview(page as HTMLElement);
 }
 
-async function gradeReview(grade: 1 | 2 | 3 | 4): Promise<void> {
+/** After a Review paint: the answer box gets the cursor, a listening question plays once. */
+let reviewAutoplayed = '';
+function focusReview(page: HTMLElement): void {
+  page.querySelector<HTMLInputElement>('#nbv-answer')?.focus();
+  // After an answer, bring Continue into view with the verdict and the word above it.
+  page.querySelector<HTMLElement>('.nbv-quiz__grade')?.scrollIntoView({ block: 'nearest' });
+  const listen = page.querySelector<HTMLElement>('[data-autoplay]');
+  const key = listen && nbState.review ? `${nbState.review.index}:${listen.dataset.autoplay}` : '';
+  if (!listen || key === reviewAutoplayed || !prefs.audioEnabled) return;
+  reviewAutoplayed = key;
+  const btn = listen.querySelector<HTMLElement>('[data-act="nb-play"]');
+  if (btn) void pulseSpeak(btn, playLemma(listen.dataset.autoplay || ''));
+}
+
+function answerCurrentReview(input: { choice?: number; typed?: string; knew?: boolean }): void {
+  if (!nbState.review || !answerReview(nbState.review, input)) return;
+  paint();
+}
+
+/** Saves the answered question's grade and moves to the next one. */
+async function commitReview(): Promise<void> {
   const r = nbState.review;
-  const id = r?.queue[r.index];
-  if (!r || !id || grading) return;
+  const q = r?.question;
+  const a = r?.answer;
+  if (!r || !q || !a || grading) return;
   grading = true;
-  if (reviewPool.find((e) => e.id === id)?.reviewDue == null) {
-    writeStore(startedTodayKey(), JSON.stringify([...new Set([...startedToday(), id])]));
+  const entry = reviewPool.find((e) => e.id === q.id);
+  if (entry && isNewWord(entry)) {
+    writeStore(startedTodayKey(), JSON.stringify([...new Set([...startedToday(), q.id])]));
   }
+  let updated: VocabEntry | null = null;
   try {
-    const updated = await reviewVocab(id, grade);
+    updated = await reviewVocab(q.id, a.grade);
     if (updated) {
-      notebook = notebook.map((e) => (e.id === id ? updated : e));
-      reviewPool = reviewPool.map((e) => (e.id === id ? updated : e));
+      notebook = notebook.map((e) => (e.id === q.id ? updated! : e));
+      reviewPool = reviewPool.map((e) => (e.id === q.id ? updated! : e));
     }
   } catch (err) {
     toast(err instanceof Error ? err.message : String(err));
   }
+  advanceReview(r, updated);
   grading = false;
-  // "Again" brings the word back at the end of today's session.
-  if (grade === 1) r.queue.push(id);
-  r.index += 1;
-  r.done += 1;
-  r.revealed = false;
   paint();
 }
 
@@ -1712,12 +1742,29 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       await loadReviewPool();
       paint();
       return;
+    case 'nb-start':
+      if (nbState.review) nbState.review.started = true;
+      paint();
+      return;
     case 'nb-reveal':
       if (nbState.review) nbState.review.revealed = true;
       paint();
       return;
-    case 'nb-grade':
-      await gradeReview((Number(t.dataset.grade) || 3) as 1 | 2 | 3 | 4);
+    case 'nb-choose':
+      answerCurrentReview({ choice: Number(t.dataset.choice) });
+      return;
+    case 'nb-knew':
+      answerCurrentReview({ knew: t.dataset.knew === '1' });
+      return;
+    case 'nb-skip':
+      answerCurrentReview({});
+      return;
+    case 'nb-override':
+      if (nbState.review) overrideReview(nbState.review);
+      paint();
+      return;
+    case 'nb-next':
+      await commitReview();
       return;
     case 'nb-map-zoom':
       return;
@@ -1930,6 +1977,11 @@ function onChange(e: Event): void {
 
 function onSubmit(e: Event): void {
   const form = e.target as HTMLElement | null;
+  if (form instanceof HTMLFormElement && form.dataset.actForm === 'nb-submit') {
+    e.preventDefault();
+    answerCurrentReview({ typed: (form.querySelector('#nbv-answer') as HTMLInputElement | null)?.value || '' });
+    return;
+  }
   if (!(form instanceof HTMLFormElement) || !form.classList.contains('search')) return;
   e.preventDefault();
   const input = document.getElementById('q') as HTMLInputElement | null;

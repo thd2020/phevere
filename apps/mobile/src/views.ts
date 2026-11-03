@@ -22,11 +22,13 @@ import {
   notebookViewSwitchHtml,
   recentListHtml,
   reviewHtml,
+  startReview,
   type FamilyGrouping,
   type MorphKind,
   type NotebookView,
   type RecentLookup,
   type ReviewState,
+  type ReviewRenderOptions,
   type VocabViewEntry,
 } from '@phevere/core';
 
@@ -811,6 +813,7 @@ export interface NotebookViewState {
   goal: number;
   /** Every saved word, for Review. */
   pool: VocabEntry[];
+  reviewOptions?: ReviewRenderOptions;
 }
 
 export function notebookBody(
@@ -852,7 +855,7 @@ export function notebookBody(
           ? mapHtml(analysis, nb.mapKinds)
           : nb.view === 'cards'
             ? cardsHtml(list, analysis, nb.flipped)
-            : reviewHtml(nb.pool.length ? nb.pool : entries, nb.review || { queue: [], index: 0, revealed: false, done: 0 }, nb.goal);
+            : reviewHtml(nb.pool.length ? nb.pool : entries, nb.review || startReview([], nb.goal), nb.goal, nb.reviewOptions);
     return `${head}<div class="nbv nbv-body">${body}</div>`;
   }
   const rows = vocabListHtml(list, { sort, expanded });

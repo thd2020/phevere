@@ -14,6 +14,11 @@ export interface NotebookEntry extends VocabViewEntry {
   reviewDue?: number | null;
   reviewInterval?: number | null;
   reps?: number | null;
+  stability?: number | null;
+  difficulty?: number | null;
+  state?: number | null;
+  lapses?: number | null;
+  lastReview?: number | null;
 }
 
 export interface WordInfo {
