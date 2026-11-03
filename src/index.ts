@@ -98,6 +98,15 @@ import {
 import { getLocalDb, flushPersist as persistLocalDb, closeLocalDb } from './services/local-db';
 import * as vocabStore from './services/vocab-store';
 import { clearLookupSources, disposeSourceCapture, noteLookupSource, sourceForSavedWord } from './services/source-capture';
+import { canSynthesizeKeys, focusWindowHandle, foregroundWindowHandle } from './services/key-synth';
+import {
+  copySelection,
+  loadQuickTranslatePrefs,
+  pasteText,
+  saveQuickTranslatePrefs,
+  shapeLike,
+  type QuickTranslatePrefs,
+} from './services/quick-translate';
 import * as accountService from './services/account';
 import * as offlineDict from './services/offline-dict-store';
 import {
@@ -115,6 +124,8 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 declare const POPUP_WINDOW_WEBPACK_ENTRY: string;
 declare const OCR_OVERLAY_WEBPACK_ENTRY: string;
 declare const OCR_OVERLAY_PRELOAD_WEBPACK_ENTRY: string;
+declare const QUICK_PANEL_WEBPACK_ENTRY: string;
+declare const QUICK_PANEL_PRELOAD_WEBPACK_ENTRY: string;
 
 const installerAudioModel = installerAudioModelArgument(process.argv);
 const installerOcrPack = process.argv.includes(INSTALL_OCR_PACK_FLAG);
@@ -255,6 +266,8 @@ let registeredGrabAccelerator: string | null = null;
 let registeredReadWindowAccelerator: string | null = null;
 let registeredClipboardOcrAccelerator: string | null = null;
 let registeredMediaAccelerator: string | null = null;
+let registeredQuickReplaceAccelerator: string | null = null;
+let registeredQuickPanelAccelerator: string | null = null;
 let lastClipboardImageHash: string | null = null;
 let clipboardImageWatchTimer: NodeJS.Timeout | null = null;
 /** Max age of last selection for "select text, then press trigger" (ms). */
@@ -521,6 +534,8 @@ function syncFixedAppShortcuts(): void {
     'media',
   );
 
+  syncQuickTranslateShortcuts();
+
   // Clipboard history panel (fixed; not settings-editable)
   try {
     globalShortcut.unregister('CommandOrControl+Shift+V');
@@ -570,6 +585,175 @@ function applyHoverFromSettings(): void {
   }
 }
 
+/* ---------------------------------------------------------- quick translation */
+
+let quickPrefs: QuickTranslatePrefs = loadQuickTranslatePrefs();
+let quickBusy = false;
+let quickPanel: BrowserWindow | null = null;
+let quickSession: { text: string; backup: Awaited<ReturnType<typeof copySelection>>['backup']; hwnd: number | bigint | null } | null = null;
+
+const QUICK_ENGINE_LABEL: Record<string, string> = {
+  google: 'Google Translate',
+  mymemory: 'MyMemory',
+  deepl: 'DeepL',
+  youdao: 'Youdao',
+};
+
+/** Both quick translation shortcuts, registered only while the feature is on. */
+function syncQuickTranslateShortcuts(): void {
+  unregisterAccel(registeredQuickReplaceAccelerator);
+  unregisterAccel(registeredQuickPanelAccelerator);
+  registeredQuickReplaceAccelerator = null;
+  registeredQuickPanelAccelerator = null;
+  if (!quickPrefs.enabled || !canSynthesizeKeys()) return;
+  registeredQuickReplaceAccelerator = registerOrWarn(quickPrefs.replaceShortcut, () => void runQuickReplace(), 'quick-replace');
+  registeredQuickPanelAccelerator = registerOrWarn(quickPrefs.panelShortcut, () => void openQuickPanel(), 'quick-panel');
+}
+
+/** The engines for the panel, the Translation engine from Settings first. */
+function quickEngines(): Array<{ id: string; label: string }> {
+  const available: string[] = dictionaryService.availableTranslationProviders();
+  const preferred: string = loadTranslationPrefs().provider;
+  const ordered = preferred !== 'auto' && available.includes(preferred) ? [preferred, ...available.filter((p) => p !== preferred)] : available;
+  return ordered.map((id) => ({ id, label: QUICK_ENGINE_LABEL[id] || id }));
+}
+
+/** Translate and replace: copy, translate with the defaults, paste. */
+async function runQuickReplace(): Promise<void> {
+  if (quickBusy) return;
+  quickBusy = true;
+  clipboardService.pauseFor(4000);
+  try {
+    const { text, backup } = await copySelection();
+    if (!text) return;
+    const hit = await dictionaryService.translateText(text, quickPrefs.to, quickPrefs.from, loadTranslationPrefs().provider);
+    if (!hit?.text) {
+      notifyUser('Could not translate the selection.', 'quickTranslate');
+      return;
+    }
+    clipboardService.pauseFor(2000);
+    await pasteText(shapeLike(text, hit.text), backup);
+  } catch (error) {
+    log.warn('main', 'Quick translation failed', { err: String(error) });
+  } finally {
+    quickBusy = false;
+  }
+}
+
+function quickPanelWindow(): BrowserWindow {
+  if (quickPanel && !quickPanel.isDestroyed()) return quickPanel;
+  quickPanel = new BrowserWindow(withWin11Chrome({
+    width: 440,
+    height: 260,
+    show: false,
+    frame: false,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: true,
+    webPreferences: {
+      preload: QUICK_PANEL_PRELOAD_WEBPACK_ENTRY,
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  }, 'solid'));
+  quickPanel.on('blur', () => closeQuickPanel(false));
+  quickPanel.on('closed', () => {
+    quickPanel = null;
+  });
+  void quickPanel.loadURL(QUICK_PANEL_WEBPACK_ENTRY);
+  return quickPanel;
+}
+
+/** Choose a translation: copy the selection, then show the panel near the pointer. */
+async function openQuickPanel(): Promise<void> {
+  if (quickBusy) return;
+  quickBusy = true;
+  clipboardService.pauseFor(4000);
+  try {
+    const hwnd = foregroundWindowHandle();
+    const { text, backup } = await copySelection();
+    if (!text) return;
+    quickSession = { text, backup, hwnd };
+    const win = quickPanelWindow();
+    const cur = screen.getCursorScreenPoint();
+    const [w, h] = win.getSize();
+    const placed = placePopupNearPoint(cur.x, cur.y, w, h, { space: 'dip' });
+    win.setPosition(placed.x, placed.y);
+    const payload = {
+      text,
+      from: quickPrefs.from,
+      to: quickPrefs.to,
+      providers: quickEngines(),
+      languages: dictionaryService.getSupportedLanguages().map((l) => ({ code: l.code, name: l.name })),
+    };
+    const send = () => {
+      if (win.isDestroyed()) return;
+      win.webContents.send('quick-panel-open', payload);
+      win.show();
+      win.focus();
+    };
+    if (win.webContents.isLoadingMainFrame()) win.webContents.once('did-finish-load', send);
+    else send();
+  } catch (error) {
+    log.warn('main', 'Quick translation panel failed', { err: String(error) });
+  } finally {
+    quickBusy = false;
+  }
+}
+
+/** Hide the panel, give focus back to the app the text came from, and paste when one was chosen. */
+function closeQuickPanel(paste: string | false): void {
+  const session = quickSession;
+  quickSession = null;
+  if (quickPanel && !quickPanel.isDestroyed() && quickPanel.isVisible()) quickPanel.hide();
+  if (!session) return;
+  focusWindowHandle(session.hwnd);
+  if (process.platform === 'darwin') app.hide();
+  if (paste === false) return;
+  clipboardService.pauseFor(2000);
+  setTimeout(() => void pasteText(shapeLike(session.text, paste), session.backup), 120);
+}
+
+ipcMain.handle('quick-panel-translate', async (_e, req: { from?: string; to?: string; provider?: string }) => {
+  if (!quickSession) return null;
+  const provider = (req?.provider || 'auto') as Parameters<typeof dictionaryService.translateText>[3];
+  const hit = await dictionaryService.translateText(quickSession.text, req?.to || 'auto', req?.from || 'auto', provider);
+  return hit?.text ? { text: hit.text, language: hit.language, detected: hit.detectedSourceLanguage } : null;
+});
+ipcMain.on('quick-panel-choose', (_e, text: string) => closeQuickPanel(String(text || '')));
+ipcMain.on('quick-panel-cancel', () => closeQuickPanel(false));
+ipcMain.on('quick-panel-resize', (_e, height: number) => {
+  if (!quickPanel || quickPanel.isDestroyed() || !Number.isFinite(height)) return;
+  const [w] = quickPanel.getSize();
+  quickPanel.setSize(w, Math.max(120, Math.min(560, Math.round(height))));
+});
+
+ipcMain.handle('quick-translate-get', () => ({
+  prefs: quickPrefs,
+  supported: canSynthesizeKeys(),
+  languages: dictionaryService.getSupportedLanguages().map((l) => ({ code: l.code, name: l.name })),
+}));
+
+ipcMain.handle('quick-translate-set', (_e, patch: Partial<QuickTranslatePrefs>) => {
+  const next = { ...quickPrefs, ...(patch || {}) };
+  if (next.enabled) {
+    const replace = (next.replaceShortcut || '').trim();
+    const panel = (next.panelShortcut || '').trim();
+    const taken = [monitorSettings.cycleShortcut, monitorSettings.triggerShortcut, monitorSettings.ocrShortcut, monitorSettings.hoverShortcut];
+    if (!replace || !panel || replace === panel || taken.includes(replace) || taken.includes(panel)) {
+      return { success: false, error: 'Each shortcut must be different.', prefs: quickPrefs };
+    }
+  }
+  // Save even when another app holds a shortcut, so the reader can pick a different one.
+  quickPrefs = saveQuickTranslatePrefs(next, quickPrefs);
+  syncQuickTranslateShortcuts();
+  const inUse: string[] = [];
+  if (quickPrefs.enabled && !registeredQuickReplaceAccelerator) inUse.push('replace');
+  if (quickPrefs.enabled && !registeredQuickPanelAccelerator) inUse.push('panel');
+  return { success: true, prefs: quickPrefs, taken: inUse };
+});
+
 function tryRegisterAccelerator(accelerator: string): boolean {
   if (!accelerator || !accelerator.trim()) {
     return false;
@@ -583,7 +767,9 @@ function tryRegisterAccelerator(accelerator: string): boolean {
     accelerator === registeredGrabAccelerator ||
     accelerator === registeredReadWindowAccelerator ||
     accelerator === registeredClipboardOcrAccelerator ||
-    accelerator === registeredMediaAccelerator
+    accelerator === registeredMediaAccelerator ||
+    accelerator === registeredQuickReplaceAccelerator ||
+    accelerator === registeredQuickPanelAccelerator
   ) {
     return true;
   }

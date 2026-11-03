@@ -16,6 +16,7 @@ export class ClipboardService {
   private isMonitoring: boolean = false;
   private lastClipboardText: string = '';
   private checkInterval: NodeJS.Timeout | null = null;
+  private pausedUntil = 0;
 
   constructor(maxHistorySize: number = 50) {
     this.maxHistorySize = maxHistorySize;
@@ -72,9 +73,18 @@ export class ClipboardService {
   }
 
   /**
+   * Ignore clipboard changes for a while. Quick translation borrows the clipboard to copy the
+   * selection and paste the translation, then puts the old contents back.
+   */
+  pauseFor(ms: number): void {
+    this.pausedUntil = Math.max(this.pausedUntil, Date.now() + ms);
+  }
+
+  /**
    * Check for clipboard changes
    */
   private checkClipboard(): void {
+    if (Date.now() < this.pausedUntil) return;
     try {
       const currentText = clipboard.readText();
       

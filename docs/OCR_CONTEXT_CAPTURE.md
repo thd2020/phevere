@@ -18,6 +18,8 @@ Related: `src/services/native-selection.ts`, `src/services/hover-lookup.ts`, `sr
 | Scan active window | Foreground HWND bounds → OCR | Ctrl+Shift+W |
 | Clipboard image | Win+Shift+S / copy image → OCR | Ctrl+Shift+I |
 | Now playing | Windows SMTC media session | Ctrl+Shift+P |
+| Translate and replace | Synthetic copy, translate, synthetic paste; clipboard restored | **editable**, off by default (default Ctrl+Alt+T) |
+| Choose a translation | Same copy, then a panel of every engine; Enter pastes | **editable**, off by default (default Ctrl+Alt+Shift+T) |
 
 ## Principle
 

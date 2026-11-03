@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Quick translation (2026-11-03): on the desktop, Settings → Shortcuts → Quick translation turns on two shortcuts. Translate and replace (Ctrl+Alt+T) swaps the selected text in any application for its translation, using the From and To set there and the Translation engine from Sources. Choose a translation (Ctrl+Alt+Shift+T) opens a panel beside the pointer with each engine's translation; change the languages there, move between engines with the arrow keys, and press Enter to paste, or Esc to leave the text alone. Text already in the target language goes the other way, so Chinese with a Chinese target becomes English. The clipboard is put back afterwards and the borrowed text stays out of clipboard history. If another app holds a shortcut, Settings says which one. Linux needs `xdotool`; without it the section is not shown.
+
 ### Fixed
 
 - Words froze (2026-11-03): opening Families, or switching to it a few times, could hang the whole main window, and because Families is remembered it hung again on every launch. On the phone it hung after opening a family card. Tracing origins no longer repaints the view when nothing new came back, and the trace is saved when it ends.

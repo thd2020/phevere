@@ -278,6 +278,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ): Promise<{ clipboardImage: boolean; clipboardEmpty: boolean; hoverToggle: boolean }> => {
     return ipcRenderer.invoke('set-notification-prefs', prefs);
   },
+  /** Quick translation: settings, whether this machine can paste into other apps, languages. */
+  getQuickTranslate: (): Promise<{
+    prefs: { enabled: boolean; replaceShortcut: string; panelShortcut: string; from: string; to: string };
+    supported: boolean;
+    languages: Array<{ code: string; name: string }>;
+  }> => {
+    return ipcRenderer.invoke('quick-translate-get');
+  },
+  setQuickTranslate: (
+    patch: Partial<{ enabled: boolean; replaceShortcut: string; panelShortcut: string; from: string; to: string }>,
+  ): Promise<{ success: boolean; error?: string; taken?: string[]; prefs: { enabled: boolean; replaceShortcut: string; panelShortcut: string; from: string; to: string } }> => {
+    return ipcRenderer.invoke('quick-translate-set', patch);
+  },
   toggleHoverEnabled: (): Promise<{ success: boolean; hoverEnabled?: boolean }> => {
     return ipcRenderer.invoke('monitor-toggle-hover');
   },

@@ -258,6 +258,14 @@ module.exports = {
             },
           },
           {
+            html: './src/quick-panel.html',
+            js: './src/quick-panel.ts',
+            name: 'quick_panel',
+            preload: {
+              js: './src/quick-panel-preload.ts',
+            },
+          },
+          {
             html: './src/ocr-overlay.html',
             js: './src/ocr-overlay.ts',
             name: 'ocr_overlay',

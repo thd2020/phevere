@@ -7,12 +7,13 @@ import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 
-export type NotificationKind = 'clipboardImage' | 'clipboardEmpty' | 'hoverToggle';
+export type NotificationKind = 'clipboardImage' | 'clipboardEmpty' | 'hoverToggle' | 'quickTranslate';
 
 export interface NotificationPrefs {
   clipboardImage: boolean;
   clipboardEmpty: boolean;
   hoverToggle: boolean;
+  quickTranslate: boolean;
 }
 
 const FILE_NAME = 'notification-prefs.json';
@@ -21,6 +22,7 @@ export const notificationPrefsDefaults: NotificationPrefs = {
   clipboardImage: true,
   clipboardEmpty: true,
   hoverToggle: true,
+  quickTranslate: true,
 };
 
 function asBool(raw: unknown, fallback: boolean): boolean {
@@ -45,6 +47,7 @@ export function loadNotificationPrefs(): NotificationPrefs {
       clipboardImage: asBool(raw.clipboardImage, notificationPrefsDefaults.clipboardImage),
       clipboardEmpty: asBool(raw.clipboardEmpty, notificationPrefsDefaults.clipboardEmpty),
       hoverToggle: asBool(raw.hoverToggle, notificationPrefsDefaults.hoverToggle),
+      quickTranslate: asBool(raw.quickTranslate, notificationPrefsDefaults.quickTranslate),
     };
   } catch {
     return { ...notificationPrefsDefaults };
@@ -56,6 +59,7 @@ export function saveNotificationPrefs(next: NotificationPrefs): NotificationPref
     clipboardImage: !!next.clipboardImage,
     clipboardEmpty: !!next.clipboardEmpty,
     hoverToggle: !!next.hoverToggle,
+    quickTranslate: next.quickTranslate !== false,
   };
   const p = resolvePath();
   fs.mkdirSync(path.dirname(p), { recursive: true });
@@ -71,5 +75,6 @@ export function mergeNotificationPrefs(
     clipboardImage: patch.clipboardImage ?? base.clipboardImage,
     clipboardEmpty: patch.clipboardEmpty ?? base.clipboardEmpty,
     hoverToggle: patch.hoverToggle ?? base.hoverToggle,
+    quickTranslate: patch.quickTranslate ?? base.quickTranslate,
   });
 }

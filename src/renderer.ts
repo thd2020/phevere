@@ -251,6 +251,36 @@ function initializeSettingsWindow() {
                 <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">Scan clipboard image</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+I"></span></li>
                 <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">Look up now playing</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+P"></span></li>
               </ul>
+              <div id="qt-section" class="sv-section" hidden>
+                <header class="sv-head"><h3 class="sv-head__title">Quick translation</h3></header>
+                <div class="sv-ledger">
+                  <label class="sv-row">
+                    <span class="sv-row__text"><span class="sv-row__label" id="qt-enabled-label">Translate selected text in place</span></span>
+                    <span class="sv-ctl"><input type="checkbox" role="switch" class="sv-switch" id="qt-enabled" aria-labelledby="qt-enabled-label" /></span>
+                  </label>
+                  <div class="sv-row sv-row--keys" data-qt>
+                    <span class="sv-row__text"><span id="label-qt-replace" class="sv-row__label">Translate and replace</span></span>
+                    <div class="sv-keycaps sv-keyfield" id="qt-replace-keys"></div>
+                    <input type="text" id="qt-replace" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-qt-replace" />
+                    <button type="button" class="sv-btn" id="qt-replace-set">Set…</button>
+                  </div>
+                  <div class="sv-row sv-row--keys" data-qt>
+                    <span class="sv-row__text"><span id="label-qt-panel" class="sv-row__label">Choose a translation</span></span>
+                    <div class="sv-keycaps sv-keyfield" id="qt-panel-keys"></div>
+                    <input type="text" id="qt-panel" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-qt-panel" />
+                    <button type="button" class="sv-btn" id="qt-panel-set">Set…</button>
+                  </div>
+                  <div class="sv-row" data-qt>
+                    <span class="sv-row__text"><label for="qt-from" class="sv-row__label">From</label></span>
+                    <select id="qt-from" class="sv-select"></select>
+                  </div>
+                  <div class="sv-row" data-qt>
+                    <span class="sv-row__text"><label for="qt-to" class="sv-row__label">To</label></span>
+                    <select id="qt-to" class="sv-select"></select>
+                  </div>
+                </div>
+                <div class="sv-actions"><span id="qt-status" class="sv-actions__status" role="status" aria-live="polite"></span></div>
+              </div>
             </div>
           </section>
 
@@ -307,6 +337,7 @@ function initializeSettingsWindow() {
                 ${switchRowHtml({ label: 'Image copied', on: true, attrs: 'id="notify-clipboard-image"' })}
                 ${switchRowHtml({ label: 'No image on clipboard', on: true, attrs: 'id="notify-clipboard-empty"' })}
                 ${switchRowHtml({ label: 'Hover lookup switched on or off', on: true, attrs: 'id="notify-hover-toggle"' })}
+                ${switchRowHtml({ label: 'Quick translation failed', on: true, attrs: 'id="notify-quick-translate"' })}
               </div>
             </div>
           </section>
@@ -940,6 +971,72 @@ function paintStaticCheatKeycaps(): void {
   });
 }
 
+/** Settings → Shortcuts → Quick translation. Every change saves at once. */
+async function wireQuickTranslateSettings(
+  replaceEl: HTMLInputElement | null,
+  panelEl: HTMLInputElement | null,
+  bind: (input: HTMLInputElement, btn: HTMLButtonElement, onSet: () => void) => void,
+  buttons: Array<HTMLButtonElement | null>,
+): Promise<void> {
+  const api = window.electronAPI as any;
+  const section = document.getElementById('qt-section');
+  const enabledEl = document.getElementById('qt-enabled') as HTMLInputElement | null;
+  const fromEl = document.getElementById('qt-from') as HTMLSelectElement | null;
+  const toEl = document.getElementById('qt-to') as HTMLSelectElement | null;
+  const statusEl = document.getElementById('qt-status');
+  if (!api?.getQuickTranslate || !section || !enabledEl || !replaceEl || !panelEl || !fromEl || !toEl) return;
+  let state: Awaited<ReturnType<typeof api.getQuickTranslate>>;
+  try {
+    state = await api.getQuickTranslate();
+  } catch {
+    return;
+  }
+  // Without a way to paste into other apps (Linux without xdotool) the section is left out.
+  if (!state?.supported) return;
+  section.hidden = false;
+  const langs: Array<{ code: string; name: string }> = state.languages || [];
+  const options = (auto: string) => langs.map((l) => `<option value="${escapeHtmlSelection(l.code)}">${escapeHtmlSelection(l.code === 'auto' ? auto : l.name)}</option>`).join('');
+  fromEl.innerHTML = options('Detect language');
+  toEl.innerHTML = options('Auto');
+  const paint = (prefs: any) => {
+    enabledEl.checked = !!prefs.enabled;
+    replaceEl.value = prefs.replaceShortcut;
+    panelEl.value = prefs.panelShortcut;
+    fromEl.value = prefs.from;
+    toEl.value = prefs.to;
+    paintShortcutKeycaps(replaceEl);
+    paintShortcutKeycaps(panelEl);
+    section.querySelectorAll<HTMLElement>('[data-qt]').forEach((row) => (row.hidden = !prefs.enabled));
+  };
+  paint(state.prefs);
+  const save = async () => {
+    const r = await api.setQuickTranslate({
+      enabled: enabledEl.checked,
+      replaceShortcut: replaceEl.value.trim(),
+      panelShortcut: panelEl.value.trim(),
+      from: fromEl.value,
+      to: toEl.value,
+    });
+    const taken: string[] = r?.taken || [];
+    const note = !r?.success
+      ? r?.error || 'Could not save'
+      : taken.length
+        ? `${taken.map((t) => (t === 'replace' ? 'Translate and replace' : 'Choose a translation')).join(' and ')}: shortcut in use by another app`
+        : '';
+    if (statusEl) {
+      statusEl.textContent = note;
+      statusEl.classList.toggle('is-error', !!note);
+    }
+    if (r?.prefs) paint(r.prefs);
+  };
+  enabledEl.addEventListener('change', () => void save());
+  fromEl.addEventListener('change', () => void save());
+  toEl.addEventListener('change', () => void save());
+  const [replaceBtn, panelBtn] = buttons;
+  if (replaceBtn) bind(replaceEl, replaceBtn, () => void save());
+  if (panelBtn) bind(panelEl, panelBtn, () => void save());
+}
+
 async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }> {
   const noop = (): void => {};
   const api = window.electronAPI as {
@@ -974,8 +1071,12 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
   const triggerSetBtn = document.getElementById('monitor-trigger-set') as HTMLButtonElement | null;
   const ocrSetBtn = document.getElementById('ocr-shortcut-set') as HTMLButtonElement | null;
   const hoverSetBtn = document.getElementById('hover-shortcut-set') as HTMLButtonElement | null;
+  const qtReplaceEl = document.getElementById('qt-replace') as HTMLInputElement | null;
+  const qtPanelEl = document.getElementById('qt-panel') as HTMLInputElement | null;
+  const qtReplaceSetBtn = document.getElementById('qt-replace-set') as HTMLButtonElement | null;
+  const qtPanelSetBtn = document.getElementById('qt-panel-set') as HTMLButtonElement | null;
 
-  const setBtns = [cycleSetBtn, triggerSetBtn, ocrSetBtn, hoverSetBtn].filter(Boolean) as HTMLButtonElement[];
+  const setBtns = [cycleSetBtn, triggerSetBtn, ocrSetBtn, hoverSetBtn, qtReplaceSetBtn, qtPanelSetBtn].filter(Boolean) as HTMLButtonElement[];
   let cancelCapture: (() => void) | null = null;
 
   function stopCaptureUi(): void {
@@ -987,7 +1088,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
     }
   }
 
-  function bindCapture(input: HTMLInputElement, setBtn: HTMLButtonElement): void {
+  function bindCapture(input: HTMLInputElement, setBtn: HTMLButtonElement, onSet?: () => void): void {
     const start = (): void => {
       stopCaptureUi();
       setBtn.textContent = 'Press a shortcut…';
@@ -999,6 +1100,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
         if (acc) {
           input.value = acc;
           paintShortcutKeycaps(input);
+          onSet?.();
         }
       });
     };
@@ -1020,6 +1122,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
   if (triggerEl && triggerSetBtn) bindCapture(triggerEl, triggerSetBtn);
   if (ocrEl && ocrSetBtn) bindCapture(ocrEl, ocrSetBtn);
   if (hoverEl && hoverSetBtn) bindCapture(hoverEl, hoverSetBtn);
+  void wireQuickTranslateSettings(qtReplaceEl, qtPanelEl, (input, btn, onSet) => bindCapture(input, btn, onSet), [qtReplaceSetBtn, qtPanelSetBtn]);
 
   try {
     const st = await api.getMonitorState();
@@ -4032,12 +4135,14 @@ async function wireNotificationSettings(): Promise<void> {
   const imageEl = document.getElementById('notify-clipboard-image') as HTMLInputElement | null;
   const emptyEl = document.getElementById('notify-clipboard-empty') as HTMLInputElement | null;
   const hoverEl = document.getElementById('notify-hover-toggle') as HTMLInputElement | null;
+  const quickEl = document.getElementById('notify-quick-translate') as HTMLInputElement | null;
   if (!imageEl || !emptyEl || !hoverEl) return;
   try {
     const prefs = await api.getNotificationPrefs();
     imageEl.checked = prefs.clipboardImage !== false;
     emptyEl.checked = prefs.clipboardEmpty !== false;
     hoverEl.checked = prefs.hoverToggle !== false;
+    if (quickEl) quickEl.checked = prefs.quickTranslate !== false;
   } catch {
     imageEl.checked = true;
     emptyEl.checked = true;
@@ -4048,11 +4153,13 @@ async function wireNotificationSettings(): Promise<void> {
       clipboardImage: imageEl.checked,
       clipboardEmpty: emptyEl.checked,
       hoverToggle: hoverEl.checked,
+      quickTranslate: quickEl ? quickEl.checked : true,
     });
   };
   imageEl.addEventListener('change', persist);
   emptyEl.addEventListener('change', persist);
   hoverEl.addEventListener('change', persist);
+  quickEl?.addEventListener('change', persist);
 }
 
 let lemmaAudio: HTMLAudioElement | null = null;
