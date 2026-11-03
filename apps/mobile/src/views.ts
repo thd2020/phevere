@@ -32,6 +32,15 @@ import {
   type ReviewState,
   type ReviewRenderOptions,
   type VocabViewEntry,
+  reviewBookRows,
+  scopeEntries,
+  scopeStudySet,
+  wordbookHeaderHtml,
+  wordbookLibraryHtml,
+  wordbookListHtml,
+  wordsScopeSwitchHtml,
+  type WordsContext,
+  type WordsScope,
 } from '@phevere/core';
 
 export type Tab = 'lookup' | 'notebook' | 'settings';
@@ -89,7 +98,7 @@ export function navHtml(tab: Tab): string {
     <button type="button" data-act="tab" data-tab="${id}" ${tab === id ? 'aria-current="page"' : ''}>
       <span class="ico">${svg}</span>${label}
     </button>`;
-  return `<nav class="nav" aria-label="Primary">${item('lookup', 'Lookup', ICO.search)}${item('notebook', 'Notebook', ICO.book)}${item('settings', 'Settings', ICO.gear)}</nav>`;
+  return `<nav class="nav" aria-label="Primary">${item('lookup', 'Lookup', ICO.search)}${item('notebook', 'Words', ICO.book)}${item('settings', 'Settings', ICO.gear)}</nav>`;
 }
 
 /** One top bar for every tab: the same "Phevere" title and the account button; Lookup adds history and search. */
@@ -105,8 +114,8 @@ export function appBarHtml(tab: Tab, query: string, canBack: boolean, canFwd: bo
           <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="Forward">${ICO.fwd}</button>
         </div>` : ''}
         ${tab === 'notebook' ? `<div class="hist">
-          <button type="button" class="icon-btn" data-act="nb-import" aria-label="Import notebook" title="Import">${ICO.import}</button>
-          <button type="button" class="icon-btn" data-act="nb-export" data-fmt="json" aria-label="Export notebook" title="Export">${ICO.export}</button>
+          <button type="button" class="icon-btn" data-act="nb-import" aria-label="Import words" title="Import">${ICO.import}</button>
+          <button type="button" class="icon-btn" data-act="nb-export" data-fmt="json" aria-label="Export My words" title="Export">${ICO.export}</button>
         </div>` : ''}
         ${accountBtn}
         </div>
@@ -795,7 +804,7 @@ export function lookupBody(opts: {
         ${opts.headTools ? `<button type="button" class="icon-btn" data-act="copy" aria-label="Copy" title="Copy">${ICO.copy}</button>
         <button type="button" class="icon-btn" data-act="web-search" aria-label="Search the web" title="Search the web">${ICO.web}</button>` : ''}
         <button type="button" class="tonal" data-act="speak" aria-label="Play pronunciation">${ICO.speaker}</button>
-        <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Remove from notebook' : 'Save to notebook'}">${ICO.heart}</button>
+        <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Remove from My words' : 'Save to My words'}">${ICO.heart}</button>
       </div>
       ${chips}
     </header>
@@ -819,15 +828,28 @@ export interface NotebookViewState {
   reviewOptions?: ReviewRenderOptions;
 }
 
+/** Word books on the Words tab: which list is showing, whether the library is open, and the data. */
+export interface WordsState {
+  scope: WordsScope;
+  library: boolean;
+  ctx: WordsContext | null;
+  limit: number;
+}
+
 export function notebookBody(
   entries: VocabEntry[],
   sort: 'recent' | 'az',
   filter: string,
   expanded: Set<string>,
   nb: NotebookViewState,
+  words?: WordsState,
 ): string {
   const q = filter.trim().toLowerCase();
-  let list = [...entries];
+  const ctx = words?.ctx || null;
+  const switcher = ctx ? `<div class="nbv nb-books">${wordsScopeSwitchHtml(words!.scope, ctx, words!.library)}</div>` : '';
+  if (ctx && words!.library) return `${switcher}<div class="nbv nbv-body">${wordbookLibraryHtml(ctx)}</div>`;
+  if (ctx && words!.scope !== 'mine') return switcher + bookScopeBody(words!, ctx, filter, nb);
+  let list = ctx ? entries.map((e) => ({ ...e, books: ctx.index.get(e.lemma.trim().toLowerCase()) })) : [...entries];
   if (sort === 'az') list.sort((a, b) => a.lemma.localeCompare(b.lemma, undefined, { sensitivity: 'base', numeric: true }));
   // Saved order: reviews and sync bump updatedAt, which must not move words.
   else list.sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));
@@ -838,10 +860,10 @@ export function notebookBody(
       .toLowerCase()
       .includes(q);
   if (q) list = list.filter(matches);
-  const head = `
+  const head = `${switcher}
     <div class="nb-head">
-      <input id="nbq" type="search" class="vocab-search" placeholder="Search notebook…" value="${esc(filter)}" autocomplete="off" aria-label="Search notebook" />
-      ${nb.view === 'list' ? `<div class="vocab-sort" role="group" aria-label="Notebook sort">
+      <input id="nbq" type="search" class="vocab-search" placeholder="Search words…" value="${esc(filter)}" autocomplete="off" aria-label="Search words" />
+      ${nb.view === 'list' ? `<div class="vocab-sort" role="group" aria-label="Sort">
         <button type="button" class="vocab-sort-btn${sort === 'recent' ? ' is-active' : ''}" data-act="nb-sort" data-sort="recent" aria-pressed="${sort === 'recent'}" aria-label="Most recent first" title="Recent">${ICO.recent}</button>
         <button type="button" class="vocab-sort-btn${sort === 'az' ? ' is-active' : ''}" data-act="nb-sort" data-sort="az" aria-pressed="${sort === 'az'}" aria-label="Alphabetical" title="A–Z">${ICO.az}</button>
       </div>` : ''}
@@ -850,7 +872,9 @@ export function notebookBody(
   if (nb.view !== 'list') {
     // The list pages through the notebook; the other views need all of it.
     if (nb.pool.length > entries.length) {
-      const all = [...nb.pool].sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));
+      const all = [...nb.pool]
+        .map((e) => (ctx ? { ...e, books: ctx.index.get(e.lemma.trim().toLowerCase()) } : e))
+        .sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));
       list = q ? all.filter(matches) : all;
     }
     const analysis = analyzeNotebook(list);
@@ -869,6 +893,38 @@ export function notebookBody(
     <div class="ptr" aria-hidden="true"><span class="md-spinner"></span></div>
     <div class="vocab-list">${rows || `<p class="empty">${q ? 'No matching words.' : 'No saved words.'}</p>`}</div>
     ${sort === 'az' && list.length ? vocabAzRail(new Set(list.map((e) => vocabAzLetter(e.lemma)))) : ''}`;
+}
+
+/** A word book or All books: the same views over the book's words, with the book's header. */
+function bookScopeBody(words: WordsState, ctx: WordsContext, filter: string, nb: NotebookViewState): string {
+  const q = filter.trim().toLowerCase();
+  const all = scopeEntries(words.scope, ctx);
+  const list = q ? all.filter((e) => e.lemma.toLowerCase().includes(q)) : all;
+  const head = `${wordbookHeaderHtml(words.scope, ctx)}
+    <div class="nb-head">
+      <input id="nbq" type="search" class="vocab-search" placeholder="Search this book…" value="${esc(filter)}" autocomplete="off" aria-label="Search this book" />
+    </div>
+    <div class="nbv nb-views">${notebookViewSwitchHtml(nb.view)}</div>`;
+  let body: string;
+  if (nb.view === 'list') body = wordbookListHtml(list, { scope: words.scope, limit: words.limit, filtered: !!q });
+  else if (nb.view === 'review') {
+    body = reviewHtml(all, nb.review || startReview([], nb.goal), nb.goal, {
+      ...nb.reviewOptions,
+      books: reviewBookRows(words.scope, ctx),
+      showGoal: words.scope === 'all',
+      started: true,
+    });
+  } else {
+    const study = nb.view === 'cards' ? scopeStudySet(list) : list;
+    const analysis = analyzeNotebook(study);
+    body =
+      nb.view === 'families'
+        ? familiesHtml(analysis, nb.group, { tracing: familiesTraceProgress() })
+        : nb.view === 'map'
+          ? mapHtml(analysis, nb.mapKinds)
+          : cardsHtml(study, analysis, nb.flipped, nb.cardLayout);
+  }
+  return `<div class="nbv">${head}</div><div class="nbv nbv-body">${body}</div>`;
 }
 
 function vocabAzLetter(lemma: string): string {

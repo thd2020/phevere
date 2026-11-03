@@ -7,6 +7,9 @@
  */
 import { stripGlossText } from './lookup-policy';
 import { formatVocabLangPair } from './vocab-lang';
+import { WORDBOOK_CATALOG } from './wordbook-catalog';
+
+const BOOK_NAMES = new Map(WORDBOOK_CATALOG.map((b) => [b.id, b]));
 
 export interface VocabViewEntry {
   id: string;
@@ -24,6 +27,8 @@ export interface VocabViewEntry {
   device?: string | null;
   reviewDue?: number | null;
   reps?: number | null;
+  /** Subscribed word books that list the word, shown as small badges. */
+  books?: string[] | null;
 }
 
 export interface VocabListOptions {
@@ -195,6 +200,9 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
         ${readings[0] ? `<span class="vocab-reading">${esc(readings[0].ipa)}</span>` : ''}
         ${posTag(pos)}
         ${langs ? `<span class="vocab-langs">${esc(langs)}</span>` : ''}
+        ${e.books?.length ? `<span class="wb-badges">${e.books
+          .map((b) => `<span class="wb-badge" title="${esc(BOOK_NAMES.get(b)?.title || b)}">${esc(BOOK_NAMES.get(b)?.short || b)}</span>`)
+          .join('')}</span>` : ''}
       </div>`;
   const more = senses.length > SENSES_SHOWN;
   const details = `<div class="vocab-entry__details">

@@ -1,4 +1,11 @@
-/** Shared SQLite DDL — keep in sync with `src/services/local-db-worker.cjs` migrate(). */
+/**
+ * Shared SQLite DDL — keep in sync with `src/services/local-db-worker.cjs` migrate().
+ *
+ * Word books (wordbook-store.ts) add two tables beside `vocab`: `wordbook_subs`, the books the
+ * learner subscribed to with a daily goal each, and `book_words`, review progress for book words
+ * that are not in My words, keyed by the lowercase headword. A word saved to My words keeps its
+ * progress on its `vocab` row; nothing in `vocab` changes.
+ */
 
 export const VOCAB_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS vocab (
@@ -35,6 +42,32 @@ CREATE TABLE IF NOT EXISTS vocab_deleted (
 CREATE TABLE IF NOT EXISTS sync_state (
   key TEXT PRIMARY KEY,
   value TEXT
+);
+CREATE TABLE IF NOT EXISTS wordbook_subs (
+  book_id TEXT PRIMARY KEY,
+  daily_new INTEGER DEFAULT 10,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS book_words (
+  lemma TEXT PRIMARY KEY,
+  known INTEGER DEFAULT 0,
+  review_due INTEGER,
+  review_interval INTEGER DEFAULT 0,
+  ease REAL DEFAULT 2.5,
+  reps INTEGER DEFAULT 0,
+  stability REAL,
+  difficulty REAL,
+  state INTEGER,
+  lapses INTEGER DEFAULT 0,
+  last_review INTEGER,
+  learning_steps INTEGER DEFAULT 0,
+  definition TEXT,
+  reading TEXT,
+  part_of_speech TEXT,
+  created_at INTEGER,
+  updated_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS offline_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

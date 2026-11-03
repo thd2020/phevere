@@ -16,6 +16,11 @@ export function onVocabChanged(listener: VocabChangeListener): () => void {
   return () => changeListeners.delete(listener);
 }
 
+/** Word book edits (wordbook-store.ts) use the same signal, so they sync and repaint too. */
+export function notifyVocabChanged(): void {
+  notifyChanged();
+}
+
 function notifyChanged(): void {
   for (const listener of changeListeners) {
     try {

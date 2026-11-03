@@ -50,6 +50,8 @@ async function startupAndGestures(floatingStrip) {
     wikipediaService: { search: async () => [] },
     // Notebook views are not under test here; the shell only needs the calls to exist.
     disposeNotebookMaps: () => {},
+    listWordbookSubs: async () => [], listBookProgress: async () => [],
+    buildWordsContext: () => ({ mine: [], progress: new Map(), subs: [], books: new Map(), index: new Map(), saved: new Map() }),
   };
   const native = {
     hasNativeBridge: () => true, installNativeCallbacks: () => {}, applyInsets: () => {},

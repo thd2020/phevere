@@ -15,6 +15,8 @@ Phevere is a dictionary for text you are already reading. Select a word in any a
 
 The current release is **3.0.0** on desktop and phone (2026-11-02). It adds English definitions for Japanese, Russian, Korean, German and other languages, a picture for every word, senses ordered by how common they are, a Forms section with tenses, plurals and cases, and a notebook you can browse by word family, as a map of related words, as picture cards, or as a daily spaced-repetition review. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
 
+2026-11-03: the Notebook tab is now called **Words**. Your own list is My words, and next to it you can add word books, the graded lists Chinese learners study from: Starter 1000 for primary school, 中考, 高考, CET-4, CET-6, 考研, General English, Academic English, TOEIC and Business English. Each book has its own progress ring and daily goal, and Review can run one session across all of them. Sources and licences are in [`docs/WORDBOOKS.md`](docs/WORDBOOKS.md).
+
 ## Features
 
 **Lookup**
@@ -28,7 +30,7 @@ The current release is **3.0.0** on desktop and phone (2026-11-02). It adds Engl
 - Translation through Google Translate and MyMemory without a key, or through Youdao or DeepL with your own keys. The speaker beside either side reads it aloud with the chosen voice; a long paragraph starts playing after its first sentence is ready, and pressing the speaker again stops it. Settings → API keys checks a key with one request to its provider.
 - Etymology from Wiktionary, Etymonline, and Youdao, and a Wikipedia reader in the same pane.
 - Offline packs, listed in Settings → Offline under the language of their headwords: WordNet, Webster 1913 (GCIDE) and FreeDict English–Chinese for English; CC-CEDICT for Chinese; JMdict for Japanese; Kengdic for Korean; and FreeDict packs from German, French, Italian, Portuguese, Dutch, Polish, Russian, Greek, Finnish, Hungarian, Catalan and Croatian into English. The German pack and the full JMdict are desktop only; the phone gets JMdict's common words. Selecting a pack shows its edition, licence, source, entry count and size.
-- A notebook stored locally in SQLite, with search, sorting, and JSON or CSV import and export. Besides the list it has Families (words grouped by shared root, prefix, suffix, origin or character, and word trees), Map (the same relations as a graph), Cards (each word split into its parts, with your note as a mnemonic) and Review (a quiz scheduled with FSRS that asks each due word in a harder form as you learn it, from picking its meaning to typing it into a sentence, with a daily goal and a two-week forecast; see [`docs/REVIEW.md`](docs/REVIEW.md)).
+- Words: My words, your own list stored locally in SQLite, with search, sorting, and JSON or CSV import and export, plus word books you add from a library ordered from primary school up. A book word opens its lookup and can be added to My words, and every word shows which of your books list it. Progress belongs to the word, so learning it once counts in every book that has it. Besides the list, My words, each book and All books have Families (words grouped by shared root, prefix, suffix, origin or character, and word trees), Map (the same relations as a graph), Cards (each word split into its parts, with your note as a mnemonic) and Review (a quiz scheduled with FSRS that asks each due word in a harder form as you learn it, from picking its meaning to typing it into a sentence, with a daily goal and a two-week forecast; see [`docs/REVIEW.md`](docs/REVIEW.md)).
 - Words are saved in dictionary form (lower case, except German nouns, proper nouns and abbreviations), and words saved earlier in another form are fixed once.
 - Recent lookups, shown as the same rows as the notebook. The source language is detected by default, including Japanese text written only in kanji.
 - An optional Holarky account, from the button at the right of the title bar on desktop or the app bar on the phone. Sign in with email and password, a passkey, or Google; while signed in, the notebook syncs between your desktops and phones, including notes, review progress and deletions. Without an account Phevere works as before, and lookups never wait for it.
@@ -168,6 +170,7 @@ Every pull request and every push to `main` builds the desktop applications for 
 ## Documentation
 
 - [`docs/ACCOUNT.md`](docs/ACCOUNT.md): the Holarky account and notebook sync
+- [`docs/WORDBOOKS.md`](docs/WORDBOOKS.md): the word books, where each list comes from and its licence
 - [`docs/MOBILE.md`](docs/MOBILE.md): phone apps, architecture, and limitations
 - [`apps/mobile/ANDROID.md`](apps/mobile/ANDROID.md): Android build, speech, versioning, and the LSPosed module
 - [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md): macOS permissions and selection capture

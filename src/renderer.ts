@@ -34,6 +34,7 @@ import '@phevere/core/notebook-views.css';
 import '@phevere/core/notebook-families.css';
 import '@phevere/core/notebook-cards.css';
 import '@phevere/core/notebook-map.css';
+import '@phevere/core/wordbook-views.css';
 import '@phevere/core/settings-kit.css';
 import '@phevere/core/settings-sources.css';
 import '@phevere/core/settings-offline.css';
@@ -89,6 +90,24 @@ import {
   type NotebookView,
   type RecentLookup,
   type ReviewState,
+  BOOK_LIST_PAGE,
+  bookEntry,
+  buildWordsContext,
+  dropCurrentReview,
+  isBookOnlyId,
+  loadWordbook,
+  reviewBookRows,
+  reviewNeedsMeaning,
+  scopeEntries,
+  scopeStudySet,
+  startScopeReview,
+  wordbookHeaderHtml,
+  wordbookLibraryHtml,
+  wordbookListHtml,
+  wordbookMeta,
+  wordsScopeSwitchHtml,
+  type WordsContext,
+  type WordsScope,
 } from '@phevere/core';
 
 const rlog = (...args: unknown[]) => {
@@ -2059,6 +2078,132 @@ let nbGrading = false;
 let flushVocabChunks: (() => void) | null = null;
 let nbAnalysis: { key: unknown; q: string; value: ReturnType<typeof analyzeNotebook> } | null = null;
 
+/* Word books: which list the Words tab shows (My words, a book or All books) and its data. */
+const WORDS_SCOPE_KEY = 'phevere-words-scope';
+let wbScope = readPref(WORDS_SCOPE_KEY, 'mine') as WordsScope;
+let wbLibrary = false;
+let wbLimit = BOOK_LIST_PAGE;
+let wbSubs: any[] = [];
+let wbProgress = new Map<string, any>();
+const wbBooks = new Map<string, string[]>();
+let wbCtx: WordsContext | null = null;
+let wbAnalysis: { key: unknown; q: string; view: string; value: ReturnType<typeof analyzeNotebook> } | null = null;
+const wbMeaningInFlight = new Set<string>();
+
+function wordbookApi(): any {
+  return (window as any).wordbookAPI;
+}
+
+function setWordsScope(scope: WordsScope): void {
+  wbScope = scope;
+  wbLibrary = false;
+  wbLimit = BOOK_LIST_PAGE;
+  nbReview = null;
+  writePref(WORDS_SCOPE_KEY, scope);
+}
+
+function rebuildWordsContext(): void {
+  wbCtx = buildWordsContext(vocabNotebookCache, wbProgress, wbSubs, wbBooks);
+  if (wbScope !== 'mine' && wbScope !== 'all' && !wbSubs.some((s) => s.bookId === wbScope)) setWordsScope('mine');
+  if (wbScope === 'all' && !wbSubs.length) setWordsScope('mine');
+}
+
+/** Subscriptions and progress from the main process; each subscribed book's words load once. */
+async function refreshWords(): Promise<void> {
+  const api = wordbookApi();
+  if (!api?.state) return;
+  try {
+    const state = await api.state();
+    wbSubs = state?.subs || [];
+    wbProgress = new Map((state?.progress || []).map((p: any) => [p.lemma, p]));
+    for (const s of wbSubs) if (!wbBooks.has(s.bookId)) wbBooks.set(s.bookId, await loadWordbook(s.bookId));
+  } catch (error) {
+    console.warn('word books unavailable', error);
+  }
+  rebuildWordsContext();
+}
+
+/** Looks up the next queued book words that have no meaning yet, so their quiz can ask it. */
+async function prefetchMeanings(wait = false): Promise<void> {
+  const api = wordbookApi();
+  if (!nbReview || wbScope === 'mine' || !wbCtx || !api?.meaning) return;
+  const lemmas = reviewNeedsMeaning(nbReview, scopeEntries(wbScope, wbCtx), 4).filter((l) => !wbMeaningInFlight.has(l.toLowerCase()));
+  if (!lemmas.length) return;
+  const done = Promise.all(
+    lemmas.map(async (lemma) => {
+      const key = lemma.toLowerCase();
+      wbMeaningInFlight.add(key);
+      try {
+        const meaning = await api.meaning(lemma);
+        if (meaning) wbProgress.set(key, { ...(wbProgress.get(key) || { lemma: key, known: false, updatedAt: 0 }), ...meaning });
+      } finally {
+        wbMeaningInFlight.delete(key);
+      }
+    }),
+  ).then(() => {
+    rebuildWordsContext();
+    if (!wait && nbView === 'review' && !nbReview?.answer) rerenderNotebook();
+  });
+  if (wait) await done;
+}
+
+/** A word book or All books: the same views over the book's words. Returns false for My words. */
+function renderBookScope(body: HTMLElement, wrap: HTMLElement, list: HTMLElement): boolean {
+  if (!wbCtx || (wbScope === 'mine' && !wbLibrary)) return false;
+  vocabRenderToken += 1;
+  flushVocabChunks = null;
+  list.innerHTML = '';
+  wrap.hidden = true;
+  body.hidden = false;
+  document.getElementById('vocabSortGroup')?.setAttribute('hidden', '');
+  document.querySelector<HTMLElement>('#paneNotebook .nb-bar')?.toggleAttribute('hidden', wbLibrary);
+  if (wbLibrary) {
+    disposeNotebookMaps(true);
+    body.innerHTML = wordbookLibraryHtml(wbCtx);
+    return true;
+  }
+  const q = ((document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '').trim().toLowerCase();
+  const all = scopeEntries(wbScope, wbCtx);
+  const shown = q ? all.filter((e) => e.lemma.toLowerCase().includes(q)) : all;
+  if (nbView === 'list') {
+    disposeNotebookMaps(true);
+    body.innerHTML = wordbookListHtml(shown, { scope: wbScope, limit: wbLimit, filtered: !!q });
+    return true;
+  }
+  if (nbView === 'review') {
+    if (!nbReview) nbReview = startScopeReview(wbScope, wbCtx, { mineGoal: nbGoal, mineStartedToday: startedToday().length });
+    body.innerHTML = reviewHtml(all, nbReview, nbGoal, {
+      audio: true,
+      preview: (e, g) => previewReview(e, g),
+      formatGap: formatReviewGap,
+      books: reviewBookRows(wbScope, wbCtx),
+      showGoal: wbScope === 'all',
+      started: true,
+    });
+    focusReview(body);
+    void prefetchMeanings();
+  } else {
+    const study = nbView === 'cards' ? scopeStudySet(shown) : shown;
+    if (!wbAnalysis || wbAnalysis.key !== wbCtx || wbAnalysis.q !== q || wbAnalysis.view !== nbView) {
+      wbAnalysis = { key: wbCtx, q, view: nbView, value: analyzeNotebook(study) };
+    }
+    const analysis = wbAnalysis.value;
+    if (nbView === 'families') body.innerHTML = familiesHtml(analysis, nbGroup, { tracing: familiesTraceProgress() });
+    else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
+    else body.innerHTML = cardsHtml(study, analysis, nbFlipped, nbCardsLayout);
+  }
+  attachNotebookMap(body);
+  attachCardTable(body, {
+    onLayout: (layout) => {
+      nbCardsLayout = layout;
+      writePref(NB_CARDS_LAYOUT_KEY, layout);
+    },
+  });
+  const fetchImage = wordImageFetcher();
+  if (fetchImage) fillWordImages(body, fetchImage);
+  return true;
+}
+
 /** New words first graded today, so the daily goal holds across visits to Review. */
 function startedTodayKey(): string {
   const d = new Date();
@@ -2284,17 +2429,18 @@ async function loadVocabNotebook(): Promise<void> {
   if (!list) return;
   const api = (window as any).vocabAPI;
   if (!api?.list) {
-    list.innerHTML = `<p class="empty-message">Notebook unavailable.</p>`;
+    list.innerHTML = `<p class="empty-message">My words is unavailable.</p>`;
     return;
   }
   try {
     const entries = await api.list(5000);
     vocabNotebookCache = entries || [];
+    await refreshWords();
     renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
     renderRecentLookups();
   } catch (error) {
     console.error('vocab load failed', error);
-    list.innerHTML = `<p class="empty-message">Could not load notebook.</p>`;
+    list.innerHTML = `<p class="empty-message">Could not load My words.</p>`;
   }
 }
 
@@ -2330,9 +2476,24 @@ function renderVocabNotebook(entries: any[]): void {
   if (!list || !body || !wrap) return;
   if (sw) sw.innerHTML = notebookViewSwitchHtml(nbView);
   document.getElementById('vocabSortGroup')?.toggleAttribute('hidden', nbView !== 'list');
+  document.querySelector<HTMLElement>('#paneNotebook .nb-bar')?.removeAttribute('hidden');
   const count = document.getElementById('vocabCount');
   if (count) count.textContent = vocabNotebookCache.length ? String(vocabNotebookCache.length) : '';
-  const sorted = sortVocabEntries(entries);
+  const wbSwitch = document.getElementById('wbSwitch');
+  if (wbSwitch) {
+    wbSwitch.innerHTML = wbCtx ? wordsScopeSwitchHtml(wbScope, wbCtx, wbLibrary) : '';
+    wbSwitch.querySelector<HTMLElement>('.wb-scope.is-active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+  const wbHead = document.getElementById('wbHead');
+  if (wbHead) wbHead.innerHTML = wbCtx && !wbLibrary ? wordbookHeaderHtml(wbScope, wbCtx) : '';
+  if (renderBookScope(body, wrap, list)) {
+    syncVocabAzAvailability([]);
+    syncVocabTimeline([]);
+    return;
+  }
+  // My words rows carry a badge for each subscribed book that lists the word.
+  const index = wbCtx?.index;
+  const sorted = sortVocabEntries(index ? entries.map((e) => ({ ...e, books: index.get(String(e.lemma || '').trim().toLowerCase()) })) : entries);
   syncVocabAzAvailability(sorted);
   syncVocabTimeline(sorted);
   const isList = nbView === 'list';
@@ -2460,8 +2621,19 @@ async function commitReview(): Promise<void> {
   }
   let updated: any = null;
   try {
-    updated = api?.review ? await api.review(q.id, a.grade) : null;
-    if (updated) vocabNotebookCache = vocabNotebookCache.map((e) => (e.id === q.id ? { ...e, ...updated } : e));
+    if (isBookOnlyId(q.id)) {
+      // A book word that is not in My words: progress goes to the book_words table.
+      const p = await wordbookApi()?.review(q.lemma, a.grade);
+      if (p) wbProgress.set(p.lemma, p);
+      rebuildWordsContext();
+      updated = wbCtx ? bookEntry(q.lemma, wbCtx) : null;
+    } else {
+      updated = api?.review ? await api.review(q.id, a.grade) : null;
+      if (updated) {
+        vocabNotebookCache = vocabNotebookCache.map((e) => (e.id === q.id ? { ...e, ...updated } : e));
+        rebuildWordsContext();
+      }
+    }
   } catch (error) {
     console.error('review failed', error);
   }
@@ -2583,9 +2755,71 @@ function wireNotebookActions(root: HTMLElement): void {
         rerenderNotebook();
         return;
       case 'nb-start':
+        // Book words get their meaning looked up before the first question is built.
+        await prefetchMeanings(true);
         if (nbReview) nbReview.started = true;
         rerenderNotebook();
         return;
+      case 'wb-scope':
+        setWordsScope((el.dataset.scope as WordsScope) || 'mine');
+        rerenderNotebook();
+        document.querySelector('.main-shell')?.scrollTo({ top: 0 });
+        return;
+      case 'wb-library':
+        wbLibrary = !wbLibrary;
+        rerenderNotebook();
+        document.querySelector('.main-shell')?.scrollTo({ top: 0 });
+        return;
+      case 'wb-sub': {
+        const id = el.dataset.book || '';
+        if (!wordbookMeta(id)) return;
+        await wordbookApi()?.subscribe(id);
+        await refreshWords();
+        setWordsScope(id);
+        rerenderNotebook();
+        document.querySelector('.main-shell')?.scrollTo({ top: 0 });
+        return;
+      }
+      case 'wb-unsub': {
+        const id = el.dataset.book || '';
+        await wordbookApi()?.unsubscribe(id);
+        if (wbScope === id) setWordsScope('mine');
+        await refreshWords();
+        rerenderNotebook();
+        return;
+      }
+      case 'wb-goal':
+        await wordbookApi()?.setGoal(el.dataset.book || '', Number(el.dataset.goal) || 10);
+        nbReview = null;
+        await refreshWords();
+        rerenderNotebook();
+        return;
+      case 'wb-more':
+        wbLimit += BOOK_LIST_PAGE;
+        rerenderNotebook();
+        return;
+      case 'wb-known':
+      case 'wb-known-review': {
+        const lemma = el.dataset.q || '';
+        const p = await wordbookApi()?.known(lemma, el.dataset.act === 'wb-known-review' || el.dataset.known === '1');
+        if (p) wbProgress.set(p.lemma, p);
+        rebuildWordsContext();
+        if (el.dataset.act === 'wb-known-review' && nbReview) dropCurrentReview(nbReview);
+        rerenderNotebook();
+        return;
+      }
+      case 'wb-save': {
+        const lemma = el.dataset.q || '';
+        if (!lemma) return;
+        el.setAttribute('disabled', '');
+        try {
+          await wordbookApi()?.save(lemma, !!wbProgress.get(lemma.toLowerCase())?.definition);
+        } catch (error) {
+          console.error('save book word failed', error);
+        }
+        await loadVocabNotebook();
+        return;
+      }
       case 'nb-reveal':
         if (nbReview) nbReview.revealed = true;
         rerenderNotebook();

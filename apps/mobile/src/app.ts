@@ -36,6 +36,29 @@ import {
   previewReview,
   formatReviewGap,
   reviewVocab,
+  BOOK_LIST_PAGE,
+  bookEntry,
+  buildWordsContext,
+  cacheBookWordMeaning,
+  dropCurrentReview,
+  isBookOnlyId,
+  listBookProgress,
+  listWordbookSubs,
+  loadWordbook,
+  reviewBookWord,
+  reviewNeedsMeaning,
+  saveBookWord,
+  scopeEntries,
+  setBookWordKnown,
+  setWordbookGoal,
+  startScopeReview,
+  subscribeWordbook,
+  unsubscribeWordbook,
+  wordbookMeta,
+  type BookWordProgress,
+  type WordbookSub,
+  type WordsContext,
+  type WordsScope,
   type CardLayout,
   type FamilyGrouping,
   type MorphKind,
@@ -186,6 +209,86 @@ const nbState = {
 /** Every word, for Review; the list keeps its 400 most recent. */
 let reviewPool: VocabEntry[] = [];
 let grading = false;
+
+/* Word books: the list the Words tab shows (My words, a book or All books) and its data. */
+const WORDS_SCOPE_KEY = 'phevere.wordsScope';
+const wordsState = {
+  scope: (readStore(WORDS_SCOPE_KEY) || 'mine') as WordsScope,
+  library: false,
+  ctx: null as WordsContext | null,
+  limit: BOOK_LIST_PAGE,
+};
+let wbSubs: WordbookSub[] = [];
+let wbProgress = new Map<string, BookWordProgress>();
+const wbBooks = new Map<string, string[]>();
+const wbMeaningInFlight = new Set<string>();
+
+function rebuildWordsContext(): void {
+  const mine = reviewPool.length >= notebook.length ? reviewPool : notebook;
+  wordsState.ctx = buildWordsContext(mine, wbProgress, wbSubs, wbBooks);
+  if (wordsState.scope !== 'mine' && wordsState.scope !== 'all' && !wbSubs.some((s) => s.bookId === wordsState.scope)) {
+    setWordsScope('mine');
+  }
+  if (wordsState.scope === 'all' && !wbSubs.length) setWordsScope('mine');
+}
+
+function setWordsScope(scope: WordsScope): void {
+  wordsState.scope = scope;
+  wordsState.library = false;
+  wordsState.limit = BOOK_LIST_PAGE;
+  nbState.review = null;
+  writeStore(WORDS_SCOPE_KEY, scope);
+}
+
+/** Subscriptions, progress and the words of each subscribed book. */
+async function refreshWords(): Promise<void> {
+  try {
+    wbSubs = await listWordbookSubs();
+    wbProgress = new Map((await listBookProgress()).map((p) => [p.lemma, p]));
+    for (const s of wbSubs) if (!wbBooks.has(s.bookId)) wbBooks.set(s.bookId, await loadWordbook(s.bookId));
+    if (wordsState.scope !== 'mine' && !reviewPool.length) await loadReviewPool();
+    rebuildWordsContext();
+  } catch (err) {
+    console.warn('[words] word books unavailable', err);
+  }
+}
+
+/** The entries the current scope reviews: My words, or the scope's book words. */
+function scopePool(): Array<VocabEntry | ReturnType<typeof bookEntry>> {
+  if (wordsState.scope === 'mine' || !wordsState.ctx) return reviewPool;
+  return scopeEntries(wordsState.scope, wordsState.ctx);
+}
+
+/** Looks up the next queued book words that have no meaning yet, so their quiz can ask it. */
+async function prefetchMeanings(wait = false): Promise<void> {
+  const r = nbState.review;
+  if (!r || wordsState.scope === 'mine') return;
+  const lemmas = reviewNeedsMeaning(r, scopePool(), 4).filter((l) => !wbMeaningInFlight.has(l.toLowerCase()));
+  if (!lemmas.length) return;
+  const jobs = lemmas.map(async (lemma) => {
+    const key = lemma.toLowerCase();
+    wbMeaningInFlight.add(key);
+    try {
+      const res = await dictionaryService.lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), {
+        translationProvider: prefs.translationProvider,
+      });
+      const payload = vocabPayloadFromResult(res, lemma);
+      const meaning = { definition: payload.definition, reading: payload.reading, partOfSpeech: payload.partOfSpeech };
+      await cacheBookWordMeaning(lemma, meaning);
+      const prev = wbProgress.get(key);
+      wbProgress.set(key, { ...(prev || { lemma: key, known: false, updatedAt: 0 }), ...meaning });
+    } catch {
+      /* offline: the word is asked as a flash card */
+    } finally {
+      wbMeaningInFlight.delete(key);
+    }
+  });
+  const done = Promise.all(jobs).then(() => {
+    rebuildWordsContext();
+    if (!wait && tab === 'notebook' && nbState.view === 'review' && !nbState.review?.answer) paint();
+  });
+  if (wait) await done;
+}
 
 function startedTodayKey(): string {
   const d = new Date();
@@ -375,7 +478,7 @@ function paint(): void {
   }
   const body =
     tab === 'notebook'
-      ? notebookBody(notebook, notebookSort, notebookFilter, expandedVocab, notebookViewState())
+      ? notebookBody(notebook, notebookSort, notebookFilter, expandedVocab, notebookViewState(), wordsState)
       : tab === 'settings'
         ? settingsBody(
             prefs,
@@ -427,7 +530,10 @@ function paint(): void {
   bindAzRail();
   // A repaint replaces the map's element; release the old 3D renderer straight away.
   disposeNotebookMaps(true);
-  if (tab === 'notebook') bindNotebookViews();
+  if (tab === 'notebook') {
+    revealWordsScope();
+    bindNotebookViews();
+  }
   lib.inspectorEntering = false;
   if (lib.highlightKey && tab === 'settings' && settingsSection === 'api') {
     const card = document.querySelector(`.sv-key[data-provider="${CSS.escape(lib.highlightKey)}"]`);
@@ -437,6 +543,9 @@ function paint(): void {
 }
 
 function notebookViewState() {
+  if (nbState.view === 'review' && !nbState.review && wordsState.scope !== 'mine' && wordsState.ctx) {
+    nbState.review = startScopeReview(wordsState.scope, wordsState.ctx, { mineGoal: nbState.goal, mineStartedToday: startedToday().length });
+  }
   if (nbState.view === 'review' && !nbState.review && reviewPool.length) {
     nbState.review = startReview(reviewPool, nbState.goal, Date.now(), startedToday().length);
   }
@@ -477,7 +586,19 @@ function bindNotebookViews(): void {
   if (prefs.senseImages !== false) {
     fillWordImages(page, (lemma, lang, gloss) => fetchWordImage(lemma, { lang, gloss }));
   }
-  if (nbState.view === 'review') focusReview(page as HTMLElement);
+  if (nbState.view === 'review') {
+    focusReview(page as HTMLElement);
+    void prefetchMeanings();
+  }
+}
+
+/** Keeps the chosen list (or Add a word book) visible in the scrolling switcher. */
+function revealWordsScope(): void {
+  const chip = document.querySelector<HTMLElement>('.wb-scope.is-active');
+  const bar = chip?.parentElement;
+  if (!chip || !bar) return;
+  const left = chip.offsetLeft - bar.offsetLeft;
+  if (left < bar.scrollLeft || left + chip.offsetWidth > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = left - 16;
 }
 
 /** After a Review paint: the answer box gets the cursor, a listening question plays once. */
@@ -510,12 +631,22 @@ async function commitReview(): Promise<void> {
   if (entry && isNewWord(entry)) {
     writeStore(startedTodayKey(), JSON.stringify([...new Set([...startedToday(), q.id])]));
   }
-  let updated: VocabEntry | null = null;
+  let updated: VocabEntry | ReturnType<typeof bookEntry> | null = null;
   try {
-    updated = await reviewVocab(q.id, a.grade);
-    if (updated) {
-      notebook = notebook.map((e) => (e.id === q.id ? updated! : e));
-      reviewPool = reviewPool.map((e) => (e.id === q.id ? updated! : e));
+    if (isBookOnlyId(q.id)) {
+      // A book word that is not in My words: progress goes to the book_words table.
+      const p = await reviewBookWord(q.lemma, a.grade);
+      wbProgress.set(p.lemma, p);
+      rebuildWordsContext();
+      updated = wordsState.ctx ? bookEntry(q.lemma, wordsState.ctx) : null;
+    } else {
+      const saved = await reviewVocab(q.id, a.grade);
+      updated = saved;
+      if (saved) {
+        notebook = notebook.map((e) => (e.id === q.id ? saved : e));
+        reviewPool = reviewPool.map((e) => (e.id === q.id ? saved : e));
+        rebuildWordsContext();
+      }
     }
   } catch (err) {
     toast(err instanceof Error ? err.message : String(err));
@@ -701,6 +832,7 @@ async function refreshNotebook(): Promise<void> {
   } catch (err) {
     status = err instanceof Error ? err.message : String(err);
   }
+  await refreshWords();
 }
 
 async function refreshPacks(): Promise<void> {
@@ -785,12 +917,12 @@ async function saveCurrent(): Promise<void> {
     if (saved) {
       await removeVocab(saved.id);
       saved = null;
-      toast('Removed from notebook');
+      toast('Removed from My words');
     } else {
       const payload = vocabPayloadFromResult(result, lemma);
       saved = await addVocab(payload);
-      toast(payload.definition ? 'Saved to notebook' : 'Saved to notebook');
-      postOsNotify('saved', 'Saved to notebook', lemma);
+      toast('Saved to My words');
+      postOsNotify('saved', 'Saved to My words', lemma);
     }
   } catch (err) {
     toast(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
@@ -1546,7 +1678,10 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       tab = t.dataset.tab === 'notebook' ? 'notebook' : t.dataset.tab === 'settings' ? 'settings' : 'lookup';
       if (tab === 'notebook') await refreshNotebook();
       // Every view but the list works on the whole notebook, not the first page of it.
-      if (tab === 'notebook' && nbState.view !== 'list') await loadReviewPool();
+      if (tab === 'notebook' && (nbState.view !== 'list' || wordsState.scope !== 'mine')) {
+        await loadReviewPool();
+        rebuildWordsContext();
+      }
       if (tab === 'settings') await refreshPacks();
       paint();
       return;
@@ -1791,10 +1926,96 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       nbState.view = (t.dataset.view as NotebookView) || 'list';
       writeStore(NB_VIEW_KEY, nbState.view);
       if (nbState.view === 'review') nbState.review = null;
-      if (nbState.view !== 'list') await loadReviewPool();
+      if (nbState.view !== 'list') {
+        await loadReviewPool();
+        rebuildWordsContext();
+      }
       paint();
       window.scrollTo({ top: 0 });
       return;
+    case 'wb-scope':
+      setWordsScope((t.dataset.scope as WordsScope) || 'mine');
+      notebookFilter = '';
+      if (wordsState.scope !== 'mine' || nbState.view !== 'list') {
+        await loadReviewPool();
+        rebuildWordsContext();
+      }
+      paint();
+      window.scrollTo({ top: 0 });
+      return;
+    case 'wb-library':
+      wordsState.library = !wordsState.library;
+      paint();
+      window.scrollTo({ top: 0 });
+      return;
+    case 'wb-sub': {
+      const id = t.dataset.book || '';
+      if (!wordbookMeta(id)) return;
+      await subscribeWordbook(id);
+      await refreshWords();
+      setWordsScope(id);
+      toast(`Added ${wordbookMeta(id)!.title}`);
+      paint();
+      window.scrollTo({ top: 0 });
+      return;
+    }
+    case 'wb-unsub': {
+      const id = t.dataset.book || '';
+      await unsubscribeWordbook(id);
+      if (wordsState.scope === id) setWordsScope('mine');
+      await refreshWords();
+      toast(`Removed ${wordbookMeta(id)?.title || id}`);
+      paint();
+      return;
+    }
+    case 'wb-goal':
+      await setWordbookGoal(t.dataset.book || '', Number(t.dataset.goal) || 10);
+      nbState.review = null;
+      await refreshWords();
+      paint();
+      return;
+    case 'wb-more':
+      wordsState.limit += BOOK_LIST_PAGE;
+      paint();
+      return;
+    case 'wb-known': {
+      const p = await setBookWordKnown(t.dataset.q || '', t.dataset.known === '1');
+      wbProgress.set(p.lemma, p);
+      rebuildWordsContext();
+      paint();
+      return;
+    }
+    case 'wb-known-review': {
+      const p = await setBookWordKnown(t.dataset.q || '', true);
+      wbProgress.set(p.lemma, p);
+      rebuildWordsContext();
+      if (nbState.review) dropCurrentReview(nbState.review);
+      paint();
+      return;
+    }
+    case 'wb-save': {
+      const lemma = t.dataset.q || '';
+      if (!lemma) return;
+      try {
+        const cached = wbProgress.get(lemma.toLowerCase());
+        let payload = {};
+        if (!cached?.definition) {
+          const res = await dictionaryService.lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), {
+            translationProvider: prefs.translationProvider,
+          }).catch(() => null);
+          if (res) payload = vocabPayloadFromResult(res, lemma);
+        }
+        await saveBookWord(lemma, payload);
+        toast('Saved to My words');
+      } catch (err) {
+        toast(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      await refreshNotebook();
+      await loadReviewPool();
+      rebuildWordsContext();
+      paint();
+      return;
+    }
     case 'nb-group':
       nbState.group = (t.dataset.group as FamilyGrouping) || 'root';
       writeStore(NB_GROUP_KEY, nbState.group);
@@ -1828,6 +2049,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'nb-start':
+      // Book words get their meaning looked up before the first question is built.
+      await prefetchMeanings(true);
       if (nbState.review) nbState.review.started = true;
       paint();
       return;
@@ -1872,7 +2095,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'nb-export':
       await exportNotebook('json');
-      toast('Notebook exported');
+      toast('My words exported');
       return;
     case 'nb-import':
       await pickAndImportNotebook();

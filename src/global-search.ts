@@ -92,8 +92,8 @@ export function searchRows(q: string, src: GlobalSearchSources): Row[] {
 
 const HEADING: Record<Row['kind'], string> = {
   lookup: '',
-  word: 'Notebook',
-  all: 'Notebook',
+  word: 'My words',
+  all: 'My words',
   recent: 'Recent',
   setting: 'Settings',
 };

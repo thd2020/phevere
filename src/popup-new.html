@@ -3819,7 +3819,7 @@ function startAutoCloseTimeout() {
          savedVocabLemma = saved ? (lemma || savedVocabLemma) : null;
          btn.classList.toggle('is-saved', !!saved);
          btn.setAttribute('aria-pressed', saved ? 'true' : 'false');
-         btn.title = saved ? 'Remove from notebook' : 'Save to notebook';
+         btn.title = saved ? 'Remove from My words' : 'Save to My words';
        }
 
        async function syncVocabHeart(lemma) {
@@ -3855,7 +3855,7 @@ function startAutoCloseTimeout() {
            if (savedVocabId) {
              await window.vocabAPI.remove(savedVocabId);
              setVocabHeartSaved(false);
-             showToast('Removed from notebook');
+             showToast('Removed from My words');
              return;
            }
 
@@ -3863,14 +3863,14 @@ function startAutoCloseTimeout() {
            if (existing && existing.id) {
              await window.vocabAPI.remove(existing.id);
              setVocabHeartSaved(false);
-             showToast('Removed from notebook');
+             showToast('Removed from My words');
              return;
            }
 
            const payload = vocabPayloadFromResult(currentResult, lemma);
            const entry = await window.vocabAPI.add(payload);
            setVocabHeartSaved(true, entry && entry.id, lemma);
-           showToast(payload.definition ? 'Saved to notebook' : 'Saved to notebook');
+           showToast('Saved to My words');
            if (!currentResult && lemma) maybePreloadLookup(lemma);
          } catch (e) {
            console.error(e);
@@ -3881,7 +3881,7 @@ function startAutoCloseTimeout() {
              .trim();
            showToast(
              short.length > 90
-               ? 'Could not save. Notebook unavailable.'
+               ? 'Could not save. My words is unavailable.'
                : ('Could not save: ' + short),
            );
          }

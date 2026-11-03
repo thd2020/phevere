@@ -63,7 +63,7 @@
     <main class="container main-shell">
       <div class="ws-head">
         <div class="ws-tabs" role="tablist" aria-label="Main">
-          <button type="button" role="tab" class="ws-tab is-active" data-ws="notebook" aria-selected="true" aria-controls="paneNotebook">Notebook<span id="vocabCount" class="ws-count"></span></button>
+          <button type="button" role="tab" class="ws-tab is-active" data-ws="notebook" aria-selected="true" aria-controls="paneNotebook">Words<span id="vocabCount" class="ws-count"></span></button>
           <button type="button" role="tab" class="ws-tab" data-ws="recent" aria-selected="false" aria-controls="paneRecent">Recent</button>
         </div>
         <div class="ws-search">
@@ -79,10 +79,12 @@
         </div>
       </div>
 
-      <section id="paneNotebook" class="vocab-notebook nbv" role="tabpanel" aria-label="Notebook">
+      <section id="paneNotebook" class="vocab-notebook nbv" role="tabpanel" aria-label="Words">
+        <div id="wbSwitch"></div>
+        <div id="wbHead"></div>
         <div class="nb-bar">
           <div id="nbViewSwitch"></div>
-          <div class="vocab-sort" id="vocabSortGroup" role="group" aria-label="Notebook sort">
+          <div class="vocab-sort" id="vocabSortGroup" role="group" aria-label="Sort">
             <button type="button" id="vocabSortRecent" class="vocab-sort-btn is-active" aria-pressed="true">Recent</button>
             <button type="button" id="vocabSortAlpha" class="vocab-sort-btn" aria-pressed="false">A–Z</button>
           </div>
