@@ -31,11 +31,13 @@ import './index.css';
 import { captureNextShortcut, isLinux, isMac } from './shortcut-capture';
 import '@phevere/core/notebook-views.css';
 import '@phevere/core/notebook-families.css';
+import '@phevere/core/notebook-cards.css';
 import {
   accountButtonHtml,
   accountPanelHtml,
   analyzeNotebook,
   attachNotebookMap,
+  attachCardTable,
   cardsHtml,
   deleteEmailMatches,
   familiesHtml,
@@ -53,6 +55,7 @@ import {
   groupCatalogByLanguage,
   vocabListHtml,
   type AccountState,
+  type CardLayout,
   type FamilyGrouping,
   type MorphKind,
   type NotebookView,
@@ -1915,6 +1918,7 @@ function initializeClipboardWindow() {
 let vocabNotebookCache: any[] = [];
 const VOCAB_SORT_KEY = 'phevere-vocab-sort';
 const NB_VIEW_KEY = 'phevere-notebook-view';
+const NB_CARDS_LAYOUT_KEY = 'phevere-notebook-cards-layout';
 const NB_GROUP_KEY = 'phevere-notebook-group';
 const NB_MAP_KINDS_KEY = 'phevere-notebook-map-kinds';
 const NB_GOAL_KEY = 'phevere-review-goal';
@@ -1943,6 +1947,7 @@ let nbMapKinds = readPref(NB_MAP_KINDS_KEY, 'root,prefix,char').split(',').filte
 let nbGoal = Number(readPref(NB_GOAL_KEY, '10')) || 10;
 let nbReview: ReviewState | null = null;
 const nbFlipped = new Set<string>();
+let nbCardsLayout = readPref(NB_CARDS_LAYOUT_KEY, 'piles') as CardLayout;
 const nbExpanded = new Set<string>();
 let vocabRenderToken = 0;
 let nbGrading = false;
@@ -2177,9 +2182,15 @@ function renderVocabNotebook(entries: any[]): void {
         );
       }
       else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
-      else body.innerHTML = cardsHtml(sorted, analysis, nbFlipped);
+      else body.innerHTML = cardsHtml(sorted, analysis, nbFlipped, nbCardsLayout);
     }
     attachNotebookMap(body);
+    attachCardTable(body, {
+      onLayout: (layout) => {
+        nbCardsLayout = layout;
+        writePref(NB_CARDS_LAYOUT_KEY, layout);
+      },
+    });
     const fetchImage = wordImageFetcher();
     if (fetchImage) fillWordImages(body, fetchImage);
     return;
@@ -2325,8 +2336,8 @@ function wireNotebookActions(root: HTMLElement): void {
         const open = nbFlipped.has(id);
         el.closest<HTMLElement>('.nbv-card')?.classList.toggle('is-flipped', open);
         el.setAttribute('aria-pressed', open ? 'true' : 'false');
-        const label = el.querySelector('.nbv-card__flip');
-        if (label) label.textContent = open ? 'Hide meaning' : 'Show meaning';
+        el.setAttribute('aria-label', open ? 'Show word' : 'Show meaning');
+        el.title = open ? 'Show word' : 'Show meaning';
         return;
       }
       case 'nb-goal':

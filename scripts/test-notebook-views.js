@@ -72,6 +72,40 @@ assert.ok(m1.edges.every((e) => m1.nodes[e.a] && m1.nodes[e.b]));
 assert.ok(m1.nodes.every((n) => Number.isFinite(n.x) && Number.isFinite(n.y)));
 assert.match(views.mapHtml(a, ['root']), /<svg class="nbv-map__svg"/);
 
+// Cards: piles by when the words were saved, newest pile and newest card first.
+const piles = views.cardPiles(entries, now);
+assert.deepEqual(piles.map((p) => p.label).slice(0, 2), ['This week', 'Last week']);
+assert.equal(piles.reduce((n, p) => n + p.ids.length, 0), entries.length, 'every card in exactly one pile');
+assert.equal(piles[0].ids[0], 'id0', 'newest word on top');
+// Past six piles the oldest months fold into "Earlier".
+const longAgo = Array.from({ length: 12 }, (_, i) => ({ id: `m${i}`, lemma: `w${i}`, createdAt: Date.UTC(2025, i, 15) }));
+const folded = views.cardPiles(longAgo, now);
+assert.equal(folded.length, 6);
+assert.equal(folded[5].label, 'Earlier');
+assert.equal(folded[0].label, 'December 2025');
+assert.equal(folded.reduce((n, p) => n + p.ids.length, 0), 12);
+
+const chtml = views.cardsHtml(entries, a, new Set(['id1']), 'scatter', now);
+assert.match(chtml, /<div class="nbv-table" data-layout="scatter">/);
+assert.match(chtml, /data-cards-layout="piles"[^>]*aria-pressed="false"/);
+assert.match(chtml, /data-cards-layout="scatter"[^>]*aria-pressed="true"/);
+assert.match(chtml, /data-cards-layout="grid"/);
+// A tap on a card is a lookup; the meaning flip is its own button.
+assert.equal((chtml.match(/<article class="nbv-card[^"]*" data-act="lookup" data-q="[^"]+"/g) || []).length, entries.length);
+assert.match(chtml, /<article class="nbv-card" data-act="lookup" data-q="inspect"[^>]*tabindex="0"/);
+assert.equal((chtml.match(/<button type="button" class="nbv-card__flip" data-act="nb-flip"/g) || []).length, entries.length);
+assert.match(chtml, /class="nbv-card is-flipped" data-act="lookup" data-q="inspector"/);
+assert.match(chtml, /class="nbv-pile[^"]*" data-pile="week"/);
+assert.match(chtml, /This week<b>\d+<\/b>/);
+assert.match(chtml, /data-img-lemma="spectator"/);
+assert.match(views.cardsHtml(entries, a, new Set(), undefined, now), /data-layout="piles"/);
+assert.match(views.cardsHtml([], a, new Set()), /No saved words/);
+// Only the top cards of a big pile are drawn; the rest are marked deep.
+const many = Array.from({ length: 30 }, (_, i) => ({ id: `c${i}`, lemma: `word${i}`, createdAt: now - i * 1000 }));
+const mhtml = views.cardsHtml(many, views.analyzeNotebook(many), new Set(), 'piles', now);
+assert.equal((mhtml.match(/ data-deep /g) || []).length, 30 - views.PILE_FACE_CARDS);
+assert.match(mhtml, /class="nbv-pile has-depth"/);
+
 // Review queue: due reviews first, then new words up to the goal.
 const rq = [
   { id: 'due', lemma: 'a', reps: 2, reviewDue: now - DAY, createdAt: now - 9 * DAY },

@@ -57,6 +57,8 @@ export {
   layoutNotebookMap,
   mapHtml,
   cardsHtml,
+  cardPiles,
+  attachCardTable,
   reviewQueue,
   reviewHtml,
   fillWordImages,
@@ -66,6 +68,7 @@ export {
   type NotebookEntry,
   type NotebookAnalysis,
   type ReviewState,
+  type CardLayout,
 } from './notebook-views';
 export { analyzeMorphemes, morphBreakdown, wordOrigin, type Morph, type MorphKind } from './morphology';
 export { vocabPayloadFromResult } from './vocab-payload';

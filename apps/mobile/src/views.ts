@@ -23,6 +23,7 @@ import {
   notebookViewSwitchHtml,
   recentListHtml,
   reviewHtml,
+  type CardLayout,
   type FamilyGrouping,
   type MorphKind,
   type NotebookView,
@@ -808,6 +809,7 @@ export interface NotebookViewState {
   group: FamilyGrouping;
   mapKinds: MorphKind[];
   flipped: Set<string>;
+  cardLayout: CardLayout;
   review: ReviewState | null;
   goal: number;
   /** Every saved word, for Review. */
@@ -852,7 +854,7 @@ export function notebookBody(
         : nb.view === 'map'
           ? mapHtml(analysis, nb.mapKinds)
           : nb.view === 'cards'
-            ? cardsHtml(list, analysis, nb.flipped)
+            ? cardsHtml(list, analysis, nb.flipped, nb.cardLayout)
             : reviewHtml(nb.pool.length ? nb.pool : entries, nb.review || { queue: [], index: 0, revealed: false, done: 0 }, nb.goal);
     return `${head}<div class="nbv nbv-body">${body}</div>`;
   }
