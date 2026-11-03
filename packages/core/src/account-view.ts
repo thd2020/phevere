@@ -3,7 +3,7 @@
  * (Holarky mark when signed out, the user's initial when signed in) and the panel it opens.
  * Both return HTML strings; buttons carry `data-act` so each shell wires them its own way.
  */
-import type { AccountState } from './account';
+import { HOLARKY_ACCOUNT, progressSyncOff, type AccountState } from './account';
 
 /**
  * The Holarky mark (the Stride h) as the brand's small icon, `brand/svg/holarky-icon-small.svg`
@@ -76,6 +76,8 @@ export interface AccountPanelOptions {
   /** "phone" or "computer", for the line about the local notebook. */
   device: string;
   now?: number;
+  /** Where Get Plus leads; HOLARKY_ACCOUNT.plusUrl by default. */
+  plusUrl?: string;
 }
 
 /** Popover (desktop) or bottom sheet (phone) content. */
@@ -119,11 +121,25 @@ export function accountPanelHtml(state: AccountState | null, opts: AccountPanelO
   }
   return `<div class="hx-acct">
     ${head}
+    ${plusNoticeHtml(state, opts.plusUrl ?? HOLARKY_ACCOUNT.plusUrl)}
     <div class="hx-acct__row">
       <button type="button" class="hx-btn" data-act="account-sign-out">Sign out</button>
       <button type="button" class="hx-btn hx-btn--quiet hx-btn--danger-text" data-act="account-delete-start">Delete account…</button>
     </div>
   </div>`;
+}
+
+/**
+ * The Plus state of learning-progress sync, for the account panel and the Learn tab: one line and
+ * a Get Plus link. Empty unless signed in with Plus known to be inactive.
+ */
+export function plusNoticeHtml(state: AccountState | null, plusUrl: string): string {
+  if (!progressSyncOff(state)) return '';
+  const kept = state!.plus!.keptUntil;
+  const line = kept
+    ? `Synced progress is kept until ${new Date(kept).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
+    : 'Learning progress stays on this device';
+  return `<div class="hx-plus" role="note"><span>${esc(line)}</span><a class="hx-btn hx-btn--primary hx-plus__btn" href="${esc(plusUrl)}" target="_blank" rel="noopener noreferrer" data-act="account-plus">Get Plus</a></div>`;
 }
 
 /** Enables Delete account once the typed email matches the signed-in one. */

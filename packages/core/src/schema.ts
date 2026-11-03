@@ -84,7 +84,8 @@ CREATE TABLE IF NOT EXISTS answer_history (
   ms INTEGER,
   grade INTEGER,
   device TEXT,
-  prior TEXT
+  prior TEXT,
+  synced INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_answer_lemma ON answer_history(lemma, answered_at);
 CREATE INDEX IF NOT EXISTS idx_answer_time ON answer_history(answered_at);

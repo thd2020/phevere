@@ -9,6 +9,7 @@ import type { HttpClient } from './http';
 import { onVocabChanged } from './vocab-store';
 import { syncVocab, type VocabSyncResult } from './vocab-sync';
 import { syncWordbooks } from './wordbook-sync';
+import { PROGRESS_SYNC_NAMESPACE, syncProgress } from './progress-sync';
 
 /**
  * The Holarky account. Identity is the Holarky Auth0 tenant; profile and sync are the Holarky API.
@@ -24,6 +25,11 @@ export const HOLARKY_ACCOUNT = {
    * mobile with VITE_PHEVERE_ACCOUNT_API at build time. See docs/ACCOUNT.md.
    */
   apiBase: 'https://holarky-api.thdfreelancer.workers.dev',
+  /**
+   * Where "Get Plus" leads. A placeholder until checkout exists (Paddle for most buyers, 爱发电 in
+   * China; holarky-account docs/PAYMENTS.md describes both).
+   */
+  plusUrl: 'https://holarky.app/plus',
 };
 
 /** The Holarky API address to use, or null when sign-in is not configured. */
@@ -68,6 +74,16 @@ export interface AccountState {
   syncing: boolean;
   lastSyncAt: number | null;
   lastError: string | null;
+  /**
+   * Learning-progress sync (Plus). Null until the account's entitlements are known. `keptUntil` is
+   * when the server deletes the progress it still holds from a lapsed Plus (null: nothing kept).
+   */
+  plus: { active: boolean; keptUntil: number | null } | null;
+}
+
+/** Signed in, entitlements known, and Plus is not active: progress stays on this device. */
+export function progressSyncOff(state: AccountState | null): boolean {
+  return !!state?.configured && !!state.user && !!state.plus && !state.plus.active;
 }
 
 export interface AccountControllerOptions {
@@ -96,7 +112,7 @@ export class AccountController {
 
   constructor(opts: AccountControllerOptions) {
     this.opts = opts;
-    this.state = { configured: !!opts.account, user: null, signingIn: false, syncing: false, lastSyncAt: null, lastError: null };
+    this.state = { configured: !!opts.account, user: null, signingIn: false, syncing: false, lastSyncAt: null, lastError: null, plus: null };
   }
 
   get account(): HolarkyAccount | null {
@@ -162,7 +178,7 @@ export class AccountController {
     const account = this.opts.account;
     if (!account) return;
     await account.signOut();
-    this.set({ user: null, lastError: null });
+    this.set({ user: null, lastError: null, plus: null });
   }
 
   /**
@@ -175,7 +191,7 @@ export class AccountController {
     try {
       await account.deleteAccount(confirmEmail.trim());
       await this.opts.meta.remove(META_LAST_SYNC);
-      this.set({ user: null, lastSyncAt: null, lastError: null });
+      this.set({ user: null, lastSyncAt: null, lastError: null, plus: null });
       return true;
     } catch (err) {
       this.opts.log?.('account deletion failed', String(err));
@@ -197,6 +213,10 @@ export class AccountController {
     }, delayMs);
   }
 
+  private syncProgressIfPlus(account: HolarkyAccount): Promise<number> {
+    return syncProgressForAccount(account, (plus) => this.set({ plus }), this.opts.log);
+  }
+
   /** Syncs now. Never throws: failures land in state.lastError. */
   async syncNow(): Promise<void> {
     const account = this.opts.account;
@@ -210,9 +230,11 @@ export class AccountController {
         this.opts.log?.('word book sync failed', String(err));
         return { pushed: 0, received: 0 };
       });
+      // Learning progress (the answer history) syncs only while Plus is active.
+      const progress = await this.syncProgressIfPlus(account);
       await this.opts.meta.set(META_LAST_SYNC, String(result.at));
       this.set({ lastSyncAt: result.at, lastError: null });
-      if (result.received || result.merged || books.received) this.opts.onNotebookChanged?.(result);
+      if (result.received || result.merged || books.received || progress) this.opts.onNotebookChanged?.(result);
     } catch (err) {
       this.opts.log?.('notebook sync failed', String(err));
       const signedOut = err instanceof HolarkyAccountError && err.code === 'signed_out';
@@ -221,6 +243,43 @@ export class AccountController {
     } finally {
       this.set({ syncing: false });
     }
+  }
+}
+
+export type ProgressSyncCapable = Pick<HolarkyAccount, 'getUser' | 'sync' | 'getEntitlements'>;
+
+/**
+ * Checks the entitlements and, with Plus active, syncs the answer history. Updates state.plus and
+ * returns how many answers arrived from other devices. A server without entitlements (an older
+ * deployment) counts as no Plus; any other failure leaves state.plus as it was.
+ */
+export async function syncProgressForAccount(
+  account: ProgressSyncCapable,
+  setPlus: (plus: AccountState['plus']) => void,
+  log?: (message: string, detail?: unknown) => void,
+): Promise<number> {
+  let access = false;
+  try {
+    const ent = await account.getEntitlements();
+    const col = ent.collections?.[PROGRESS_SYNC_NAMESPACE];
+    access = !!col?.access;
+    setPlus({ active: access, keptUntil: col?.keptUntil ?? null });
+  } catch (err) {
+    if ((err as { status?: unknown })?.status === 404) setPlus({ active: false, keptUntil: null });
+    else log?.('entitlements check failed', String(err));
+    return 0;
+  }
+  if (!access) return 0;
+  try {
+    const res = await syncProgress(account);
+    if (res.status === 'plus_required') {
+      setPlus({ active: false, keptUntil: res.keptUntil });
+      return 0;
+    }
+    return res.received;
+  } catch (err) {
+    log?.('progress sync failed', String(err));
+    return 0;
   }
 }
 

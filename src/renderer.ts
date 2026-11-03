@@ -43,6 +43,8 @@ import '@phevere/core/settings-keys.css';
 import {
   accountButtonHtml,
   accountPanelHtml,
+  plusNoticeHtml,
+  HOLARKY_ACCOUNT,
   analyzeNotebook,
   attachNotebookMap,
   attachCardTable,
@@ -659,6 +661,7 @@ function wireAccountMenu(): void {
   api.onState?.((next: AccountState) => {
     state = next;
     render();
+    setLearnAccountState(next);
   });
   // Keeps "Synced N min ago" current while the popover is open.
   window.setInterval(() => {
@@ -667,6 +670,7 @@ function wireAccountMenu(): void {
   void api.getState().then((next: AccountState | null): void => {
     state = next;
     render();
+    setLearnAccountState(next);
   }).catch((): void => undefined);
 }
 
@@ -2596,6 +2600,16 @@ function loadAnswerHistory(): void {
     });
 }
 
+/* The account, for the Plus line in Learn when progress sync is off. */
+let learnNotice = '';
+
+function setLearnAccountState(next: AccountState | null): void {
+  const notice = plusNoticeHtml(next, HOLARKY_ACCOUNT.plusUrl);
+  if (notice === learnNotice) return;
+  learnNotice = notice;
+  renderLearn();
+}
+
 /** The Learn tab: today's review of the list chosen in Words (My words, a book or All books), or Progress. */
 function renderLearn(): void {
   const pane = document.getElementById('paneLearn');
@@ -2615,6 +2629,7 @@ function renderLearn(): void {
     options: { audio: true, preview: (e, g) => previewReview(e, g), formatGap: formatReviewGap },
     page: learnPage,
     history: answerHistory,
+    notice: learnNotice,
   });
   pane.querySelector<HTMLElement>('.wb-scope.is-active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   const body = pane.querySelector<HTMLElement>('.lrn-body');
@@ -2977,6 +2992,13 @@ function wireMainWorkspace(): void {
     });
   }
   document.addEventListener('keydown', onReviewKey);
+  // Links in Words, Learn and the account popover (sources, licences, Get Plus) open in the browser.
+  document.addEventListener('click', (e) => {
+    const link = (e.target as HTMLElement | null)?.closest?.('a[target="_blank"]') as HTMLAnchorElement | null;
+    if (!link?.href || !link.closest('.main-shell, #accountMenu')) return;
+    e.preventDefault();
+    window.electronAPI?.openExternal?.(link.href);
+  });
 }
 
 document.getElementById('refreshVocabBtn')?.addEventListener('click', () => {

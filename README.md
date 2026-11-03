@@ -36,7 +36,7 @@ The current release is **3.0.0** on desktop and phone (2026-11-02). It adds Engl
 - Learn: a daily quiz over My words, one book or All books, scheduled with FSRS. It asks each due word in a harder form as you learn it, from picking its meaning to typing it into a sentence, with a daily goal and a two-week forecast; see [`docs/REVIEW.md`](docs/REVIEW.md).
 - Words are saved in dictionary form (lower case, except German nouns, proper nouns and abbreviations), and words saved earlier in another form are fixed once.
 - Recent lookups, shown as the same rows as the notebook. The source language is detected by default, including Japanese text written only in kanji.
-- An optional Holarky account, from the button at the right of the title bar on desktop or the app bar on the phone. Sign in with email and password, a passkey, or Google; while signed in, the notebook syncs between your desktops and phones, including notes, review progress and deletions. Without an account Phevere works as before, and lookups never wait for it.
+- An optional Holarky account, from the button at the right of the title bar on desktop or the app bar on the phone. Sign in with email and password, a passkey, or Google; while signed in, My words and your word books sync between your desktops and phones, including notes and deletions. Learning progress syncs with a Plus membership; without it, progress stays on each device. Without an account Phevere works as before, and lookups never wait for it.
 
 **Desktop (Windows, macOS, Linux)**
 

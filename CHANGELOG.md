@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Sync (2026-11-03): saved words and word-book subscriptions keep syncing free, without review progress. Learning progress now syncs as the answer history, and only for accounts with Plus; on every device the schedule of each word is rebuilt from the merged answers. Without Plus, progress stays on the device and everything works there; the account panel and the Learn tab show one line and a Get Plus link. A word record pulled back from the server keeps this device's schedule, also when another device merged two copies of the word. See [`docs/ACCOUNT.md`](docs/ACCOUNT.md).
 - Learn tab (2026-11-03): Review left the Words switcher and became its own tab, Learn. The phone's bottom bar reads Lookup, Words, Learn, Settings, and the desktop window's tabs read Words, Learn, Recent. Words keeps List, Families, Map and Cards. Learn has a switcher for My words, each word book you added and All books, and shows today's quiz with the daily goal, the book rows and the two-week forecast. The list chosen in one tab is chosen in the other. If you had left the notebook on Review, Words opens on the list and the desktop window opens on Learn.
 
 - Phone Settings (2026-11-03): Sources, Offline and API keys on the phone use the same rows, language bands, catalogue cards, pack sheet and key cards as the desktop. Clearing a key now takes effect at once rather than after a restart, and the progress bar moves while a pack imports.

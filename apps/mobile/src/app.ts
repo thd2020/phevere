@@ -21,6 +21,8 @@ import {
   type AccountState,
   accountButtonHtml,
   accountPanelHtml,
+  plusNoticeHtml,
+  HOLARKY_ACCOUNT,
   deleteEmailMatches,
   attachNotebookMap,
   traceNotebookFamilies,
@@ -579,6 +581,7 @@ function learnViewState(): LearnState {
     reviewOptions: { audio: prefs.audioEnabled !== false, preview: previewReview, formatGap: formatReviewGap },
     page: learnPage,
     history: answerHistory,
+    notice: plusNoticeHtml(accountState, HOLARKY_ACCOUNT.plusUrl),
   };
 }
 
@@ -1712,6 +1715,13 @@ function onClick(e: Event): void {
 
 async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
   switch (act) {
+    case 'account-plus': {
+      // Get Plus: the system browser, not the app's WebView.
+      e.preventDefault();
+      const url = (t as HTMLAnchorElement).href;
+      if (url) openExternal(url);
+      return;
+    }
     case 'tab':
       tab = (['notebook', 'learn', 'settings'] as const).find((id) => id === t.dataset.tab) || 'lookup';
       if (tab === 'notebook' || tab === 'learn') await refreshNotebook();
@@ -2512,8 +2522,9 @@ export async function startApp(): Promise<void> {
     accountPlatform.initAccount({
       onState: (next) => {
         const before = accountBadgeKey(accountState);
+        const plusBefore = plusNoticeHtml(accountState, HOLARKY_ACCOUNT.plusUrl);
         accountState = next;
-        if (accountOpen) paint();
+        if (accountOpen || (tab === 'learn' && plusBefore !== plusNoticeHtml(next, HOLARKY_ACCOUNT.plusUrl))) paint();
         else if (before !== accountBadgeKey(next)) refreshAccountButton();
       },
       onNotebookChanged: () => {

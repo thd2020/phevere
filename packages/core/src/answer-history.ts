@@ -119,11 +119,17 @@ export function rowToAnswer(row: Record<string, unknown>): AnswerRecord {
   };
 }
 
-/** Inserts a record; a record already present (same id, say from a second pull) is left alone. */
-export async function insertAnswer(r: AnswerRecord): Promise<void> {
-  await getVocabDb().runWrite(
-    `INSERT OR IGNORE INTO answer_history (id, lemma, word_id, book_id, answered_at, kind, skill, correct, ms, grade, device, prior)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+/**
+ * Inserts a record; a record already present (same id, say from a second pull) is left alone.
+ * `synced` marks a record the server already holds (one pulled from it), so it is not sent back.
+ * Returns whether the record was new here.
+ */
+export async function insertAnswer(r: AnswerRecord, synced = false): Promise<boolean> {
+  const db = getVocabDb();
+  if (await db.queryOne(`SELECT 1 AS x FROM answer_history WHERE id = ?`, [r.id])) return false;
+  await db.runWrite(
+    `INSERT OR IGNORE INTO answer_history (id, lemma, word_id, book_id, answered_at, kind, skill, correct, ms, grade, device, prior, synced)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       r.id,
       answerKey(r.lemma),
@@ -137,8 +143,10 @@ export async function insertAnswer(r: AnswerRecord): Promise<void> {
       r.grade,
       r.device,
       r.prior ? JSON.stringify(r.prior) : null,
+      synced ? 1 : 0,
     ],
   );
+  return true;
 }
 
 async function hasGradedAnswer(key: string): Promise<boolean> {

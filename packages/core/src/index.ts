@@ -239,6 +239,7 @@ export {
   type BookWordMeaning,
 } from './wordbook-store';
 export { syncWordbooks, WORDBOOK_SYNC_NAMESPACE, type WordbookSyncResult } from './wordbook-sync';
+export { syncProgress, answerToEvent, eventToAnswer, PROGRESS_SYNC_NAMESPACE, type ProgressSyncResult, type ProgressSyncAccount } from './progress-sync';
 export {
   WORDBOOKS,
   wordbookMeta,
@@ -293,6 +294,7 @@ export {
   historyByWord,
   skillMastery,
   insertAnswer,
+  answerKey,
   type Skill,
   type AnswerKind,
   type AnswerRecord,
@@ -303,6 +305,10 @@ export {
 export {
   HolarkyAccount,
   HolarkyAccountError,
+  isPlusRequired,
+  PROGRESS_NAMESPACE,
+  type HolarkyEntitlements,
+  type ProgressEvent,
   browserStorage,
   type HolarkyUser,
   type HolarkySession,
@@ -313,6 +319,8 @@ export {
   resolveAccountApi,
   httpClientFetch,
   AccountController,
+  progressSyncOff,
+  syncProgressForAccount,
   type AccountState,
 } from './account';
 export {
@@ -321,6 +329,7 @@ export {
   accountButtonHtml,
   accountPanelHtml,
   deleteEmailMatches,
+  plusNoticeHtml,
   type AccountPanelOptions,
 } from './account-view';
 export {

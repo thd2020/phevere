@@ -137,6 +137,7 @@ interface AccountStateView {
   syncing: boolean;
   lastSyncAt: number | null;
   lastError: string | null;
+  plus: { active: boolean; keptUntil: number | null } | null;
 }
 
 contextBridge.exposeInMainWorld('nativeAPI', {

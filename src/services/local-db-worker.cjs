@@ -127,7 +127,8 @@ function migrate(database) {
       ms INTEGER,
       grade INTEGER,
       device TEXT,
-      prior TEXT
+      prior TEXT,
+      synced INTEGER DEFAULT 0
     );
   `);
   database.run(`CREATE INDEX IF NOT EXISTS idx_answer_lemma ON answer_history(lemma, answered_at);`);

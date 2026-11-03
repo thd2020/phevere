@@ -21,7 +21,11 @@ const bundle = esbuild.buildSync({
       export { addVocab, listVocab, getVocab, reviewVocab, updateVocabNote } from './src/vocab-store';
       export { syncVocab } from './src/vocab-sync';
       export { listAnswerHistory, replaySchedule, historyByWord, skillMastery, skillFor } from './src/answer-history';
-      export { reviewBookWord, setBookWordKnown, listBookProgress, rebuildWordSchedule } from './src/wordbook-store';
+      export { reviewBookWord, setBookWordKnown, listBookProgress, rebuildWordSchedule, subscribeWordbook, listWordbookSubs } from './src/wordbook-store';
+      export { syncProgress } from './src/progress-sync';
+      export { syncWordbooks } from './src/wordbook-sync';
+      export { syncProgressForAccount } from './src/account';
+      export { HolarkyAccountError } from './src/holarky-account';
       export { VOCAB_SCHEMA_SQL, vocabColumnMigrations } from './src/schema';
     `,
     resolveDir: path.join(root, 'packages', 'core'),
@@ -428,60 +432,157 @@ async function main() {
     assert.equal(core.skillFor('known'), null);
   }
 
-  // Sync: a newer device carries the FSRS fields; an older device's record without them keeps
-  // the local state when its review progress matches.
-  const records = new Map();
-  let seq = 0;
-  const server = {
-    sync(cursor, changes) {
-      for (const c of changes) {
-        const prev = records.get(c.id);
-        if (prev && c.updatedAt <= prev.updatedAt) continue;
-        records.set(c.id, { ...c, seq: ++seq });
-      }
-      const out = [...records.values()].filter((r) => r.seq > cursor).sort((a, b) => a.seq - b.seq);
-      return { changes: out.map(({ seq: _s, ...r }) => r), cursor: out.length ? out[out.length - 1].seq : cursor, more: false };
-    },
+  // Sync split. A fake Holarky server that behaves like holarky-account PR #4: phevere/vocab and
+  // phevere/wordbooks are free and stripped of progress fields on the way in and out;
+  // phevere/progress is append-only and answers 402 plus_required without Plus.
+  const PROGRESS_FIELDS = ['review_due', 'reviewDue', 'review_interval', 'reviewInterval', 'ease', 'reps', 'stability', 'difficulty', 'state', 'lapses', 'last_review', 'lastReview', 'learning_steps', 'learningSteps'];
+  const strip = (data) => {
+    if (!data || typeof data !== 'object') return data;
+    const out = { ...data };
+    for (const f of PROGRESS_FIELDS) delete out[f];
+    return out;
   };
-  const account = { getUser: async () => ({ id: 'u' }), sync: async (_ns, cursor, changes) => server.sync(cursor, JSON.parse(JSON.stringify(changes))) };
-
-  const deviceA = loadCore();
-  const dbA = new SQL.Database();
-  for (const stmt of deviceA.VOCAB_SCHEMA_SQL.split(';')) if (stmt.trim()) dbA.run(stmt);
-  deviceA.configureCore({ http: {}, sha256Hex: () => '', vocabDb: vocabDbOn(dbA), newId: () => 'a-001' });
-  const deviceB = loadCore();
-  const dbB = new SQL.Database();
-  for (const stmt of deviceB.VOCAB_SCHEMA_SQL.split(';')) if (stmt.trim()) dbB.run(stmt);
-  deviceB.configureCore({ http: {}, sha256Hex: () => '', vocabDb: vocabDbOn(dbB), newId: () => 'b-001' });
-
-  const saved = await deviceA.addVocab({ lemma: 'lantern', definition: 'a lamp with a case' });
-  const afterA = await deviceA.reviewVocab(saved.id, 3, Date.now());
-  await deviceA.syncVocab(account);
-  await deviceB.syncVocab(account);
-  const onB = await deviceB.getVocab(saved.id);
-  for (const k of ['stability', 'difficulty', 'state', 'lapses', 'lastReview', 'learningSteps', 'reps', 'reviewDue']) {
-    assert.equal(onB[k], afterA[k], `${k} synced`);
+  const server = { plus: true, keptUntil: null, ns: new Map(), seq: 0, sent: new Map() };
+  const store = (ns) => {
+    if (!server.ns.has(ns)) server.ns.set(ns, new Map());
+    return server.ns.get(ns);
+  };
+  function serverSync(ns, cursor, changes) {
+    const paid = ns === 'phevere/progress';
+    if (paid && !server.plus) throw new core.HolarkyAccountError('plus_required', 402, undefined, { error: 'plus_required', keptUntil: server.keptUntil });
+    const records = store(ns);
+    server.sent.set(ns, [...(server.sent.get(ns) || []), ...changes]);
+    for (const c of changes) {
+      const prev = records.get(c.id);
+      if (paid && prev && !c.id.startsWith('state:')) continue; // append-only
+      if (!paid && prev && c.updatedAt <= prev.updatedAt) continue;
+      records.set(c.id, { ...c, data: paid ? c.data : strip(c.data), seq: ++server.seq });
+    }
+    const out = [...records.values()].filter((r) => r.seq > cursor).sort((a, b) => a.seq - b.seq);
+    return { changes: out.map(({ seq: _s, ...r }) => ({ ...r, data: paid ? r.data : strip(r.data) })), cursor: out.length ? out[out.length - 1].seq : cursor, more: false };
   }
+  const account = {
+    getUser: async () => ({ id: 'u' }),
+    sync: async (ns, cursor, changes) => serverSync(ns, cursor, JSON.parse(JSON.stringify(changes))),
+    getEntitlements: async () => ({
+      plus: { active: server.plus, expiresAt: null, endedAt: null },
+      packs: [],
+      collections: { 'phevere/progress': { access: server.plus, keptUntil: server.plus ? null : server.keptUntil } },
+    }),
+  };
+  const device = (prefix) => {
+    const c = loadCore();
+    const db = new SQL.Database();
+    for (const stmt of c.VOCAB_SCHEMA_SQL.split(';')) if (stmt.trim()) db.run(stmt);
+    let n = 0;
+    c.configureCore({ http: {}, sha256Hex: () => '', vocabDb: vocabDbOn(db), newId: () => `${prefix}-${String(++n).padStart(3, '0')}`, deviceName: () => prefix });
+    return { c, db };
+  };
+  const SCHEDULE = ['reviewDue', 'reviewInterval', 'ease', 'reps', 'stability', 'difficulty', 'state', 'lapses', 'lastReview', 'learningSteps'];
+  const sched = (e) => Object.fromEntries(SCHEDULE.map((k) => [k, e[k]]));
 
-  // An older app edits the note and pushes a record without FSRS fields.
-  const legacyRecord = { ...afterA, note: 'seen in a shop window', updatedAt: Date.now() + 5000 };
-  for (const k of ['stability', 'difficulty', 'state', 'lapses', 'lastReview', 'learningSteps']) delete legacyRecord[k];
-  server.sync(0, [{ id: saved.id, updatedAt: legacyRecord.updatedAt, deleted: false, data: legacyRecord }]);
-  await deviceB.syncVocab(account);
-  const merged = await deviceB.getVocab(saved.id);
-  assert.equal(merged.note, 'seen in a shop window');
-  assert.equal(merged.stability, afterA.stability, 'memory state kept on a note-only edit');
+  const A = device('a');
+  const B = device('b');
+  const saved = await A.c.addVocab({ lemma: 'lantern', definition: 'a lamp with a case' });
+  const t1 = now;
+  await A.c.reviewVocab(saved.id, 3, t1, { kind: 'meaning-choice', correct: true, ms: 3000 });
+  const afterA = await A.c.reviewVocab(saved.id, 3, t1 + 10 * MIN, { kind: 'word-choice', correct: true, ms: 2500 });
+  await A.c.syncVocab(account);
+  const sentVocab = server.sent.get('phevere/vocab');
+  assert.ok(sentVocab.length >= 1);
+  for (const c of sentVocab) for (const f of SCHEDULE) assert.equal(c.data?.[f], undefined, `${f} is not sent in phevere/vocab`);
 
-  // An older app reviews the word itself: the state is dropped and rebuilt from SM-2 next time.
-  const reviewedOld = { ...legacyRecord, reps: afterA.reps + 1, reviewDue: afterA.reviewDue + 4 * DAY, reviewInterval: 5, updatedAt: Date.now() + 9000 };
-  server.sync(0, [{ id: saved.id, updatedAt: reviewedOld.updatedAt, deleted: false, data: reviewedOld }]);
-  await deviceB.syncVocab(account);
-  const rebuilt = await deviceB.getVocab(saved.id);
-  assert.equal(rebuilt.stability, undefined);
-  assert.equal(rebuilt.reps, afterA.reps + 1);
-  const next = await deviceB.reviewVocab(saved.id, 3, Date.now() + 10000);
-  assert.equal(next.state, 2);
-  assert.ok(next.stability >= 5, `rebuilt from the five-day interval: ${next.stability}`);
+  // A pulls its own record back stripped (another device edited the note) and keeps its schedule.
+  const stored = store('phevere/vocab').get(saved.id);
+  serverSync('phevere/vocab', 0, [{ ...stored, updatedAt: stored.updatedAt + 5000, data: { ...stored.data, note: 'seen in a shop window' } }]);
+  await A.c.syncVocab(account);
+  const back = await A.c.getVocab(saved.id);
+  assert.equal(back.note, 'seen in a shop window', 'the word edit arrives');
+  assert.deepEqual(sched(back), sched(afterA), 'a stripped record keeps the local schedule');
+  // A full re-pull from the start (a reinstall of the sync state) keeps it too.
+  A.db.run(`UPDATE sync_state SET value = '0' WHERE key = 'vocab.cursor'`);
+  await A.c.syncVocab(account);
+  assert.deepEqual(sched(await A.c.getVocab(saved.id)), sched(afterA));
+
+  // B gets the word without progress, as a new word.
+  await B.c.syncVocab(account);
+  const onB = await B.c.getVocab(saved.id);
+  assert.equal(onB.note, 'seen in a shop window');
+  assert.ok(!(onB.reps > 0) && onB.stability == null, 'no progress through the free collection');
+
+  // With Plus, the answer history syncs and B rebuilds the same schedule by replay.
+  const upA = await A.c.syncProgress(account);
+  assert.deepEqual(upA, { status: 'synced', pushed: 2, received: 0, rebuilt: 0 });
+  const events = [...store('phevere/progress').values()];
+  assert.ok(events.every((e) => e.id.startsWith('ev:') && e.data.questionType && typeof e.data.correct === 'boolean' && e.data.reviewedAt > 0 && e.data.lemma === 'lantern'));
+  const downB = await B.c.syncProgress(account);
+  assert.equal(downB.status, 'synced');
+  assert.equal(downB.received, 2);
+  assert.equal(downB.rebuilt, 1);
+  assert.deepEqual(sched(await B.c.getVocab(saved.id)), sched(afterA), 'merged history replays to the same state');
+  assert.deepEqual(await B.c.syncProgress(account), { status: 'synced', pushed: 0, received: 0, rebuilt: 0 }, 'pulled answers are not sent back');
+
+  // B reviews; A pulls B's answer and both agree.
+  const afterB = await B.c.reviewVocab(saved.id, 4, t1 + 2 * DAY, { kind: 'recall', correct: true, ms: 2000 });
+  await B.c.syncProgress(account);
+  await A.c.syncProgress(account);
+  assert.deepEqual(sched(await A.c.getVocab(saved.id)), sched(afterB));
+
+  // Book words that are not in My words: progress and "Already know it" travel only in the history.
+  await B.c.reviewBookWord('ember', 3, t1 + 3 * DAY, { kind: 'meaning-choice', correct: true, ms: 3000, bookId: 'starter' });
+  await B.c.setBookWordKnown('flint', true, t1 + 3 * DAY, 'starter');
+  await B.c.subscribeWordbook('starter', 20, t1);
+  await B.c.syncWordbooks(account);
+  assert.ok(server.sent.get('phevere/wordbooks').every((c) => c.id.startsWith('sub:')), 'phevere/wordbooks carries subscriptions only');
+  await B.c.syncProgress(account);
+  await A.c.syncWordbooks(account);
+  await A.c.syncProgress(account);
+  assert.equal((await A.c.listWordbookSubs())[0].dailyNew, 20);
+  const bookA = new Map((await A.c.listBookProgress()).map((p) => [p.lemma, p]));
+  const bookB = new Map((await B.c.listBookProgress()).map((p) => [p.lemma, p]));
+  assert.deepEqual(sched(bookA.get('ember')), sched(bookB.get('ember')), 'book-word schedule rebuilt from the history');
+  assert.equal(bookA.get('flint').known, true, 'Already know it arrives as an answer');
+
+  // Without Plus the sync reports it, keeps the answers unsent, and sends them once Plus returns.
+  server.plus = false;
+  server.keptUntil = t1 + 60 * DAY;
+  await A.c.reviewVocab(saved.id, 3, t1 + 9 * DAY, { kind: 'cloze', correct: true, ms: 5000 });
+  assert.deepEqual(await A.c.syncProgress(account), { status: 'plus_required', keptUntil: t1 + 60 * DAY });
+  const plusStates = [];
+  assert.equal(await A.c.syncProgressForAccount(account, (p) => plusStates.push(p)), 0);
+  assert.deepEqual(plusStates.at(-1), { active: false, keptUntil: t1 + 60 * DAY });
+  assert.equal(A.db.exec(`SELECT COUNT(*) FROM answer_history WHERE synced = 0`)[0].values[0][0], 1);
+  server.plus = true;
+  assert.equal(await A.c.syncProgressForAccount(account, (p) => plusStates.push(p)), 0);
+  assert.deepEqual(plusStates.at(-1), { active: true, keptUntil: null });
+  assert.equal(A.db.exec(`SELECT COUNT(*) FROM answer_history WHERE synced = 0`)[0].values[0][0], 0, 'sent once Plus is back');
+
+  // The server emptied the collection after a lapse: state:purged makes the device send everything again.
+  const before = store('phevere/progress').size;
+  store('phevere/progress').clear();
+  store('phevere/progress').set('state:purged', { id: 'state:purged', updatedAt: t1 + 70 * DAY, deleted: true, data: null, seq: ++server.seq });
+  const resent = await A.c.syncProgress(account);
+  assert.equal(resent.status, 'synced');
+  assert.equal(store('phevere/progress').size - 1, A.db.exec(`SELECT COUNT(*) FROM answer_history`)[0].values[0][0]);
+  assert.ok(before > 0);
+
+  // The same word saved on both devices: A folds B's row into its own, and B, which only had
+  // progress on its own row, keeps that progress when the tombstone for it arrives.
+  const C = device('c');
+  const D = device('d');
+  const accountCD = { ...account };
+  server.ns.delete('phevere/vocab');
+  const onC = await C.c.addVocab({ lemma: 'quill', definition: 'a pen made from a feather' });
+  const onD = await D.c.addVocab({ lemma: 'quill', definition: 'a feather pen' });
+  for (let i = 0; i < 3; i++) await D.c.reviewVocab(onD.id, 3, t1 + i * DAY, { kind: 'recall', correct: true, ms: 3000 });
+  const dSched = sched(await D.c.getVocab(onD.id));
+  await D.c.syncVocab(accountCD);
+  await C.c.syncVocab(accountCD); // C folds d-001 into c-001 and sends the tombstone.
+  assert.ok(onC.id < onD.id);
+  await D.c.syncVocab(accountCD);
+  const rowsD = D.db.exec(`SELECT id FROM vocab WHERE lemma = 'quill'`)[0].values.map((r) => r[0]);
+  assert.deepEqual(rowsD, [onC.id], 'one row left on D');
+  assert.deepEqual(sched(await D.c.getVocab(onC.id)), dSched, 'D keeps its progress on the merged row');
 
   console.log('test-review: ok');
 }
