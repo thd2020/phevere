@@ -1,6 +1,8 @@
 # Notebook review: what works and what Phevere does
 
-2026-11-03. This memo is the reason the Review view is a quiz rather than a flashcard with four self-rating buttons. It looks at how the main vocabulary apps run review, what memory research says about it, and then the design built in `packages/core/src/review-quiz.ts` (questions and grading), `review-schedule.ts` (FSRS scheduling) and `notebook-review.ts` (the view).
+2026-11-03: review moved out of the Words switcher into its own tab, Learn, on desktop and phone. The quiz and the plan described here are its Today page.
+
+2026-11-03. This memo is the reason review is a quiz rather than a flashcard with four self-rating buttons. It looks at how the main vocabulary apps run review, what memory research says about it, and then the design built in `packages/core/src/review-quiz.ts` (questions and grading), `review-schedule.ts` (FSRS scheduling) and `notebook-review.ts` (the view).
 
 ![Screenshot of a meaning question: the word abandon with four meanings to choose from](REVIEW.assets/meaning-question.png)
 

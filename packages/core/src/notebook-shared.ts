@@ -1,13 +1,13 @@
 /**
  * Pieces every notebook view shares: the entry and analysis types, HTML escaping and the
  * date helpers. Each view lives in its own module (`notebook-families.ts`, `notebook-map.ts`,
- * `notebook-cards.ts`, `notebook-review.ts`); `notebook-views.ts` holds the analysis and
+ * `notebook-cards.ts`, and the Learn tab's `notebook-review.ts`); `notebook-views.ts` holds the analysis and
  * re-exports them all.
  */
 import type { Morph, MorphKind } from './morphology';
 import type { VocabViewEntry } from './vocab-view';
 
-export type NotebookView = 'list' | 'families' | 'map' | 'cards' | 'review';
+export type NotebookView = 'list' | 'families' | 'map' | 'cards';
 export type FamilyGrouping = 'root' | 'deep' | 'prefix' | 'suffix' | 'origin' | 'tree' | 'char';
 
 export interface NotebookEntry extends VocabViewEntry {

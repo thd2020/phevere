@@ -152,6 +152,22 @@ assert.match(views.reviewHtml(rq, rs, 10, { now }), /class="nbv-quiz"/);
 assert.match(views.reviewHtml([], views.startReview([], 2, now), 10, { now }), /Save words to start reviewing/);
 assert.match(views.reviewHtml(rq.slice(1, 2), views.startReview(rq.slice(1, 2), 0, now), 10, { now }), /Nothing due today/);
 
+// Review lives in the Learn tab: the Words switcher has four views, and a saved Review view
+// becomes the list with Learn opened instead.
+const viewSwitch = views.notebookViewSwitchHtml('list');
+assert.equal((viewSwitch.match(/data-act="nb-view"/g) || []).length, 4);
+assert.doesNotMatch(viewSwitch, /data-view="review"/);
+assert.deepEqual(views.readNotebookView('review'), { view: 'list', learn: true });
+assert.deepEqual(views.readNotebookView('cards'), { view: 'cards', learn: false });
+assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false });
+{
+  const { learnHtml } = load('learn-view');
+  const html = learnHtml({ scope: 'mine', ctx: null, mine: rq, review: views.startReview(rq, 2, now), goal: 10, now });
+  assert.match(html, /data-act="nb-start"/, 'Learn starts today\'s review');
+  assert.match(html, /data-act="nb-goal"/, 'My words keeps its goal chips');
+  assert.doesNotMatch(html, /lrn-scopes/, 'no list switcher without word books');
+}
+
 // Rows: Look up sits in the collapsed row, not only in the details.
 const row = vocabEntryHtml({ id: 'x', lemma: 'inspect', definition: 'look' }, false, now);
 const head = row.slice(0, row.indexOf('vocab-entry__details'));

@@ -50,6 +50,7 @@ export {
 export {
   analyzeNotebook,
   notebookViewSwitchHtml,
+  readNotebookView,
   familyGroupings,
   familiesHtml,
   familiesTraceProgress,
@@ -270,6 +271,7 @@ export {
   reviewBookRows,
   BOOK_LIST_PAGE,
 } from './wordbook-views';
+export { learnHtml, learnTodayHtml, learnScopeSwitchHtml, learnEntries, type LearnViewInput } from './learn-view';
 export {
   HolarkyAccount,
   HolarkyAccountError,

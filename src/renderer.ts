@@ -35,6 +35,7 @@ import '@phevere/core/notebook-families.css';
 import '@phevere/core/notebook-cards.css';
 import '@phevere/core/notebook-map.css';
 import '@phevere/core/wordbook-views.css';
+import '@phevere/core/learn-views.css';
 import '@phevere/core/settings-kit.css';
 import '@phevere/core/settings-sources.css';
 import '@phevere/core/settings-offline.css';
@@ -57,7 +58,8 @@ import {
   mapHtml,
   notebookViewSwitchHtml,
   recentListHtml,
-  reviewHtml,
+  learnHtml,
+  readNotebookView,
   startReview,
   answerReview,
   overrideReview,
@@ -96,7 +98,6 @@ import {
   dropCurrentReview,
   isBookOnlyId,
   loadWordbook,
-  reviewBookRows,
   reviewNeedsMeaning,
   scopeEntries,
   scopeStudySet,
@@ -2064,7 +2065,13 @@ function writePref(key: string, value: string): void {
   }
 }
 
-let nbView = readPref(NB_VIEW_KEY, 'list') as NotebookView;
+// Review moved from the Words switcher to the Learn tab: a saved Review view opens Learn instead.
+const savedNbView = readNotebookView(readPref(NB_VIEW_KEY, 'list'));
+if (savedNbView.learn) {
+  writePref(NB_VIEW_KEY, savedNbView.view);
+  writePref(WS_TAB_KEY, 'learn');
+}
+let nbView: NotebookView = savedNbView.view;
 let nbGroup = readPref(NB_GROUP_KEY, 'root') as FamilyGrouping;
 let nbMapKinds = readPref(NB_MAP_KINDS_KEY, 'root,prefix,char').split(',').filter(Boolean) as MorphKind[];
 let nbGoal = Number(readPref(NB_GOAL_KEY, '10')) || 10;
@@ -2142,7 +2149,7 @@ async function prefetchMeanings(wait = false): Promise<void> {
     }),
   ).then(() => {
     rebuildWordsContext();
-    if (!wait && nbView === 'review' && !nbReview?.answer) rerenderNotebook();
+    if (!wait && mainTab === 'learn' && !nbReview?.answer) renderLearn();
   });
   if (wait) await done;
 }
@@ -2170,28 +2177,14 @@ function renderBookScope(body: HTMLElement, wrap: HTMLElement, list: HTMLElement
     body.innerHTML = wordbookListHtml(shown, { scope: wbScope, limit: wbLimit, filtered: !!q });
     return true;
   }
-  if (nbView === 'review') {
-    if (!nbReview) nbReview = startScopeReview(wbScope, wbCtx, { mineGoal: nbGoal, mineStartedToday: startedToday().length });
-    body.innerHTML = reviewHtml(all, nbReview, nbGoal, {
-      audio: true,
-      preview: (e, g) => previewReview(e, g),
-      formatGap: formatReviewGap,
-      books: reviewBookRows(wbScope, wbCtx),
-      showGoal: wbScope === 'all',
-      started: true,
-    });
-    focusReview(body);
-    void prefetchMeanings();
-  } else {
-    const study = nbView === 'cards' ? scopeStudySet(shown) : shown;
-    if (!wbAnalysis || wbAnalysis.key !== wbCtx || wbAnalysis.q !== q || wbAnalysis.view !== nbView) {
-      wbAnalysis = { key: wbCtx, q, view: nbView, value: analyzeNotebook(study) };
-    }
-    const analysis = wbAnalysis.value;
-    if (nbView === 'families') body.innerHTML = familiesHtml(analysis, nbGroup, { tracing: familiesTraceProgress() });
-    else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
-    else body.innerHTML = cardsHtml(study, analysis, nbFlipped, nbCardsLayout);
+  const study = nbView === 'cards' ? scopeStudySet(shown) : shown;
+  if (!wbAnalysis || wbAnalysis.key !== wbCtx || wbAnalysis.q !== q || wbAnalysis.view !== nbView) {
+    wbAnalysis = { key: wbCtx, q, view: nbView, value: analyzeNotebook(study) };
   }
+  const analysis = wbAnalysis.value;
+  if (nbView === 'families') body.innerHTML = familiesHtml(analysis, nbGroup, { tracing: familiesTraceProgress() });
+  else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
+  else body.innerHTML = cardsHtml(study, analysis, nbFlipped, nbCardsLayout);
   attachNotebookMap(body);
   attachCardTable(body, {
     onLayout: (layout) => {
@@ -2437,6 +2430,7 @@ async function loadVocabNotebook(): Promise<void> {
     vocabNotebookCache = entries || [];
     await refreshWords();
     renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
+    renderLearn();
     renderRecentLookups();
   } catch (error) {
     console.error('vocab load failed', error);
@@ -2503,35 +2497,25 @@ function renderVocabNotebook(entries: any[]): void {
     vocabRenderToken += 1;
     flushVocabChunks = null;
     list.innerHTML = '';
-    if (nbView === 'review') {
-      if (!nbReview) nbReview = startReview(vocabNotebookCache, nbGoal, Date.now(), startedToday().length);
-      body.innerHTML = reviewHtml(vocabNotebookCache, nbReview, nbGoal, {
-        audio: true,
-        preview: (e, g) => previewReview(e, g),
-        formatGap: formatReviewGap,
-      });
-      focusReview(body);
-    } else {
-      // The analysis only changes when the notebook or the search does.
-      const q = (document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '';
-      if (!nbAnalysis || nbAnalysis.key !== vocabNotebookCache || nbAnalysis.q !== q) {
-        nbAnalysis = { key: vocabNotebookCache, q, value: analyzeNotebook(sorted) };
-      }
-      const analysis = nbAnalysis.value;
-      if (nbView === 'families') {
-        body.innerHTML = familiesHtml(analysis, nbGroup, { tracing: familiesTraceProgress() });
-        traceNotebookFamilies(
-          vocabNotebookCache.map((e) => String(e.lemma || '')),
-          () => document.getElementById('nbViewBody'),
-          () => {
-            // New origins and roots: repaint unless the reader has a family open.
-            if (nbView === 'families' && !document.querySelector('#nbViewBody details[open]')) rerenderNotebook();
-          },
-        );
-      }
-      else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
-      else body.innerHTML = cardsHtml(sorted, analysis, nbFlipped, nbCardsLayout);
+    // The analysis only changes when the notebook or the search does.
+    const q = (document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '';
+    if (!nbAnalysis || nbAnalysis.key !== vocabNotebookCache || nbAnalysis.q !== q) {
+      nbAnalysis = { key: vocabNotebookCache, q, value: analyzeNotebook(sorted) };
     }
+    const analysis = nbAnalysis.value;
+    if (nbView === 'families') {
+      body.innerHTML = familiesHtml(analysis, nbGroup, { tracing: familiesTraceProgress() });
+      traceNotebookFamilies(
+        vocabNotebookCache.map((e) => String(e.lemma || '')),
+        () => document.getElementById('nbViewBody'),
+        () => {
+          // New origins and roots: repaint unless the reader has a family open.
+          if (nbView === 'families' && !document.querySelector('#nbViewBody details[open]')) rerenderNotebook();
+        },
+      );
+    }
+    else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
+    else body.innerHTML = cardsHtml(sorted, analysis, nbFlipped, nbCardsLayout);
     attachNotebookMap(body);
     attachCardTable(body, {
       onLayout: (layout) => {
@@ -2589,6 +2573,39 @@ function rerenderNotebook(): void {
   renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
 }
 
+/** The Learn tab: today's review of the list chosen in Words (My words, a book or All books). */
+function renderLearn(): void {
+  const pane = document.getElementById('paneLearn');
+  if (!pane || pane.hidden) return;
+  const scope = wbCtx ? wbScope : 'mine';
+  if (!nbReview && (scope !== 'mine' || vocabNotebookCache.length)) {
+    nbReview = wbCtx
+      ? startScopeReview(scope, wbCtx, { mineGoal: nbGoal, mineStartedToday: startedToday().length })
+      : startReview(vocabNotebookCache, nbGoal, Date.now(), startedToday().length);
+  }
+  pane.innerHTML = learnHtml({
+    scope,
+    ctx: wbCtx,
+    mine: vocabNotebookCache,
+    review: nbReview || startReview([], nbGoal),
+    goal: nbGoal,
+    options: { audio: true, preview: (e, g) => previewReview(e, g), formatGap: formatReviewGap },
+  });
+  pane.querySelector<HTMLElement>('.wb-scope.is-active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  const body = pane.querySelector<HTMLElement>('.lrn-body');
+  if (!body) return;
+  const fetchImage = wordImageFetcher();
+  if (fetchImage) fillWordImages(body, fetchImage);
+  focusReview(body);
+  void prefetchMeanings();
+}
+
+/** Repaints whichever of Words and Learn is showing. */
+function rerenderActive(): void {
+  if (mainTab === 'learn') renderLearn();
+  else rerenderNotebook();
+}
+
 /** After a Review render: put the cursor in the answer box, play a listening question once. */
 let nbAutoplayed = '';
 function focusReview(body: HTMLElement): void {
@@ -2639,19 +2656,19 @@ async function commitReview(): Promise<void> {
   }
   advanceReview(nbReview, updated);
   nbGrading = false;
-  rerenderNotebook();
+  renderLearn();
 }
 
 function answerCurrentReview(input: { choice?: number; typed?: string; knew?: boolean }): void {
   if (!nbReview || !answerReview(nbReview, input)) return;
-  rerenderNotebook();
+  renderLearn();
 }
 
 /** Review keys: 1 to 4 choose, Enter starts or continues. Typing goes to the answer box. */
 function onReviewKey(ev: KeyboardEvent): void {
-  if (nbView !== 'review' || !nbReview || ev.ctrlKey || ev.metaKey || ev.altKey) return;
-  const body = document.getElementById('nbViewBody');
-  if (!body || body.hidden || document.getElementById('paneNotebook')?.hidden) return;
+  if (mainTab !== 'learn' || !nbReview || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  const body = document.querySelector<HTMLElement>('#paneLearn .lrn-body');
+  if (!body) return;
   const target = ev.target as HTMLElement | null;
   if (target && target.id !== 'nbv-answer' && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
   if (target?.id === 'nbv-answer') return;
@@ -2720,7 +2737,6 @@ function wireNotebookActions(root: HTMLElement): void {
       case 'nb-view':
         nbView = (el.dataset.view as NotebookView) || 'list';
         writePref(NB_VIEW_KEY, nbView);
-        if (nbView === 'review') nbReview = null;
         rerenderNotebook();
         document.querySelector('.main-shell')?.scrollTo({ top: 0 });
         return;
@@ -2752,17 +2768,17 @@ function wireNotebookActions(root: HTMLElement): void {
         nbGoal = Number(el.dataset.goal) || 10;
         writePref(NB_GOAL_KEY, String(nbGoal));
         nbReview = null;
-        rerenderNotebook();
+        renderLearn();
         return;
       case 'nb-start':
         // Book words get their meaning looked up before the first question is built.
         await prefetchMeanings(true);
         if (nbReview) nbReview.started = true;
-        rerenderNotebook();
+        renderLearn();
         return;
       case 'wb-scope':
         setWordsScope((el.dataset.scope as WordsScope) || 'mine');
-        rerenderNotebook();
+        rerenderActive();
         document.querySelector('.main-shell')?.scrollTo({ top: 0 });
         return;
       case 'wb-library':
@@ -2785,14 +2801,14 @@ function wireNotebookActions(root: HTMLElement): void {
         await wordbookApi()?.unsubscribe(id);
         if (wbScope === id) setWordsScope('mine');
         await refreshWords();
-        rerenderNotebook();
+        rerenderActive();
         return;
       }
       case 'wb-goal':
         await wordbookApi()?.setGoal(el.dataset.book || '', Number(el.dataset.goal) || 10);
         nbReview = null;
         await refreshWords();
-        rerenderNotebook();
+        rerenderActive();
         return;
       case 'wb-more':
         wbLimit += BOOK_LIST_PAGE;
@@ -2805,7 +2821,7 @@ function wireNotebookActions(root: HTMLElement): void {
         if (p) wbProgress.set(p.lemma, p);
         rebuildWordsContext();
         if (el.dataset.act === 'wb-known-review' && nbReview) dropCurrentReview(nbReview);
-        rerenderNotebook();
+        rerenderActive();
         return;
       }
       case 'wb-save': {
@@ -2822,7 +2838,7 @@ function wireNotebookActions(root: HTMLElement): void {
       }
       case 'nb-reveal':
         if (nbReview) nbReview.revealed = true;
-        rerenderNotebook();
+        renderLearn();
         return;
       case 'nb-choose':
         answerCurrentReview({ choice: Number(el.dataset.choice) });
@@ -2835,7 +2851,7 @@ function wireNotebookActions(root: HTMLElement): void {
         return;
       case 'nb-override':
         if (nbReview) overrideReview(nbReview);
-        rerenderNotebook();
+        renderLearn();
         return;
       case 'nb-next':
         await commitReview();
@@ -2864,7 +2880,15 @@ function wireNotebookActions(root: HTMLElement): void {
   });
 }
 
-function setMainTab(tab: 'notebook' | 'recent'): void {
+type MainTab = 'notebook' | 'learn' | 'recent';
+let mainTab: MainTab = 'notebook';
+
+function readMainTab(value: string | undefined | null): MainTab {
+  return value === 'learn' || value === 'recent' ? value : 'notebook';
+}
+
+function setMainTab(tab: MainTab): void {
+  mainTab = tab;
   writePref(WS_TAB_KEY, tab);
   document.querySelectorAll<HTMLElement>('.ws-tab').forEach((b) => {
     const on = b.dataset.ws === tab;
@@ -2873,11 +2897,14 @@ function setMainTab(tab: 'notebook' | 'recent'): void {
   });
   const nb = document.getElementById('paneNotebook');
   const rc = document.getElementById('paneRecent');
+  const learn = document.getElementById('paneLearn');
   if (nb) nb.hidden = tab !== 'notebook';
+  if (learn) learn.hidden = tab !== 'learn';
   if (rc) rc.hidden = tab !== 'recent';
   document.getElementById('notebookTools')?.toggleAttribute('hidden', tab !== 'notebook');
   document.getElementById('recentTools')?.toggleAttribute('hidden', tab !== 'recent');
   document.querySelector('.main-shell')?.scrollTo({ top: 0 });
+  if (tab === 'learn') renderLearn();
 }
 
 function wireMainWorkspace(): void {
@@ -2885,9 +2912,9 @@ function wireMainWorkspace(): void {
     if (e.key === RECENT_SELECTIONS_STORAGE_KEY) renderRecentLookups();
   });
   document.querySelectorAll<HTMLElement>('.ws-tab').forEach((b) =>
-    b.addEventListener('click', () => setMainTab(b.dataset.ws === 'recent' ? 'recent' : 'notebook')),
+    b.addEventListener('click', () => setMainTab(readMainTab(b.dataset.ws))),
   );
-  setMainTab(readPref(WS_TAB_KEY, 'notebook') === 'recent' ? 'recent' : 'notebook');
+  setMainTab(readMainTab(readPref(WS_TAB_KEY, 'notebook')));
   const shell = document.querySelector<HTMLElement>('.main-shell');
   if (shell) wireNotebookActions(shell);
   const search = document.getElementById('vocabSearch') as HTMLInputElement | null;

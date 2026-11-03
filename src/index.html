@@ -64,6 +64,7 @@
       <div class="ws-head">
         <div class="ws-tabs" role="tablist" aria-label="Main">
           <button type="button" role="tab" class="ws-tab is-active" data-ws="notebook" aria-selected="true" aria-controls="paneNotebook">Words<span id="vocabCount" class="ws-count"></span></button>
+          <button type="button" role="tab" class="ws-tab" data-ws="learn" aria-selected="false" aria-controls="paneLearn">Learn</button>
           <button type="button" role="tab" class="ws-tab" data-ws="recent" aria-selected="false" aria-controls="paneRecent">Recent</button>
         </div>
         <div class="ws-search">
@@ -99,6 +100,8 @@
         </div>
         <div id="nbViewBody" class="nbv-body" hidden></div>
       </section>
+
+      <section id="paneLearn" class="nbv lrn" role="tabpanel" aria-label="Learn" hidden></section>
 
       <section id="paneRecent" class="recent-selections" role="tabpanel" aria-label="Recent lookups" hidden>
         <div id="selectionsList" class="selections-list">

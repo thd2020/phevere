@@ -1,0 +1,7 @@
+/*
+ * The Learn tab: the list switcher above today's review. Uses the tokens of notebook-views.css
+ * (paper, ink, ember, teal) and the chips of wordbook-views.css.
+ */
+.lrn { display: block; margin-bottom: 28px; }
+.lrn-scopes { padding-top: 0; }
+.lrn-body { min-width: 0; }
