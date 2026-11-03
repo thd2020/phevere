@@ -45,9 +45,27 @@ function migrate(database) {
       review_due INTEGER,
       review_interval INTEGER DEFAULT 0,
       ease REAL DEFAULT 2.5,
-      reps INTEGER DEFAULT 0
+      reps INTEGER DEFAULT 0,
+      stability REAL,
+      difficulty REAL,
+      state INTEGER,
+      lapses INTEGER DEFAULT 0,
+      last_review INTEGER,
+      learning_steps INTEGER DEFAULT 0
     );
   `);
+  // FSRS memory columns, added in place to notebooks created before them (VOCAB_ADDED_COLUMNS).
+  const have = new Set((queryAllOn(database, 'PRAGMA table_info(vocab)') || []).map((c) => String(c.name).toLowerCase()));
+  for (const [name, type] of [
+    ['stability', 'REAL'],
+    ['difficulty', 'REAL'],
+    ['state', 'INTEGER'],
+    ['lapses', 'INTEGER DEFAULT 0'],
+    ['last_review', 'INTEGER'],
+    ['learning_steps', 'INTEGER DEFAULT 0'],
+  ]) {
+    if (!have.has(name)) database.run(`ALTER TABLE vocab ADD COLUMN ${name} ${type}`);
+  }
   database.run(`CREATE INDEX IF NOT EXISTS idx_vocab_lemma ON vocab(lemma);`);
   database.run(`CREATE INDEX IF NOT EXISTS idx_vocab_updated ON vocab(updated_at DESC);`);
   // Deleted notebook ids, so a deletion reaches other devices through account sync.
@@ -131,7 +149,11 @@ function persist() {
 }
 
 function queryAll(sql, params) {
-  const stmt = db.prepare(sql);
+  return queryAllOn(db, sql, params);
+}
+
+function queryAllOn(database, sql, params) {
+  const stmt = database.prepare(sql);
   stmt.bind(params || []);
   const rows = [];
   while (stmt.step()) {

@@ -191,7 +191,32 @@ export {
 export { LANGUAGE_NAMES, languageName, looksJapaneseKanji } from './source-languages';
 export { xzDecompress, isXz } from './xz-decode';
 export { extractTar, type TarFile } from './tar-extract';
-export { VOCAB_SCHEMA_SQL } from './schema';
+export { VOCAB_SCHEMA_SQL, VOCAB_ADDED_COLUMNS, vocabColumnMigrations } from './schema';
+export {
+  scheduleReview,
+  previewReview,
+  formatReviewGap,
+  memoryFromSm2,
+  DESIRED_RETENTION,
+  type ReviewGrade,
+  type ScheduleFields,
+  type ScheduleUpdate,
+} from './review-schedule';
+export {
+  startReview,
+  ensureReviewQuestion,
+  answerReview,
+  overrideReview,
+  advanceReview,
+  isNewWord,
+  memoryLevel,
+  buildQuestion,
+  type ReviewQuestion,
+  type ReviewAnswer,
+  type ReviewResult,
+  type QuestionKind,
+} from './review-quiz';
+export { type ReviewRenderOptions } from './notebook-review';
 
 export { onVocabChanged } from './vocab-store';
 export { syncVocab, mergeDuplicateLemmas, VOCAB_SYNC_NAMESPACE, type VocabSyncAccount, type VocabSyncResult } from './vocab-sync';

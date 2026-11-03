@@ -12,6 +12,7 @@
     "3d-force-graph": "^1.80.1",
     "cmu-pronouncing-dictionary": "^3.0.0",
     "three": "^0.187.0",
+    "ts-fsrs": "^5.4.2",
     "wink-lemmatizer": "^3.0.4"
   },
   "devDependencies": {

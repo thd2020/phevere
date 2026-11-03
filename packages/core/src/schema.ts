@@ -17,7 +17,13 @@ CREATE TABLE IF NOT EXISTS vocab (
   review_due INTEGER,
   review_interval INTEGER DEFAULT 0,
   ease REAL DEFAULT 2.5,
-  reps INTEGER DEFAULT 0
+  reps INTEGER DEFAULT 0,
+  stability REAL,
+  difficulty REAL,
+  state INTEGER,
+  lapses INTEGER DEFAULT 0,
+  last_review INTEGER,
+  learning_steps INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_vocab_lemma ON vocab(lemma);
 CREATE INDEX IF NOT EXISTS idx_vocab_updated ON vocab(updated_at DESC);
@@ -50,3 +56,22 @@ CREATE TABLE IF NOT EXISTS offline_packs (
   created_at INTEGER NOT NULL
 );
 `;
+
+/**
+ * FSRS memory columns added after the first release. A notebook created before them gets each
+ * missing one with ALTER TABLE ADD COLUMN, so no row is rewritten or lost. Older apps ignore them.
+ */
+export const VOCAB_ADDED_COLUMNS: ReadonlyArray<readonly [name: string, type: string]> = [
+  ['stability', 'REAL'],
+  ['difficulty', 'REAL'],
+  ['state', 'INTEGER'],
+  ['lapses', 'INTEGER DEFAULT 0'],
+  ['last_review', 'INTEGER'],
+  ['learning_steps', 'INTEGER DEFAULT 0'],
+];
+
+/** ALTER TABLE statements for the columns `existing` (from PRAGMA table_info) lacks. */
+export function vocabColumnMigrations(existing: Iterable<string>): string[] {
+  const have = new Set([...existing].map((c) => String(c).toLowerCase()));
+  return VOCAB_ADDED_COLUMNS.filter(([name]) => !have.has(name)).map(([name, type]) => `ALTER TABLE vocab ADD COLUMN ${name} ${type}`);
+}

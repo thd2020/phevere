@@ -5,6 +5,7 @@
 
 import { getNewId, getVocabDb } from './runtime';
 import { normalizeVocabLemma } from './vocab-lemma';
+import { scheduleReview, type ReviewGrade } from './review-schedule';
 
 type VocabChangeListener = () => void;
 const changeListeners = new Set<VocabChangeListener>();
@@ -42,6 +43,13 @@ export interface VocabEntry {
   reviewInterval?: number;
   ease?: number;
   reps?: number;
+  /** FSRS memory state (see review-schedule.ts). Absent on rows an older app wrote. */
+  stability?: number;
+  difficulty?: number;
+  state?: number;
+  lapses?: number;
+  lastReview?: number;
+  learningSteps?: number;
 }
 
 export interface VocabAddInput {
@@ -74,6 +82,12 @@ export function rowToEntry(row: Record<string, unknown>): VocabEntry {
     reviewInterval: row.review_interval != null ? Number(row.review_interval) : undefined,
     ease: row.ease != null ? Number(row.ease) : undefined,
     reps: row.reps != null ? Number(row.reps) : undefined,
+    stability: row.stability != null ? Number(row.stability) : undefined,
+    difficulty: row.difficulty != null ? Number(row.difficulty) : undefined,
+    state: row.state != null ? Number(row.state) : undefined,
+    lapses: row.lapses != null ? Number(row.lapses) : undefined,
+    lastReview: row.last_review != null ? Number(row.last_review) : undefined,
+    learningSteps: row.learning_steps != null ? Number(row.learning_steps) : undefined,
   };
 }
 
@@ -259,31 +273,30 @@ export async function updateVocabNote(id: string, note: string): Promise<VocabEn
   return getVocab(id);
 }
 
-/** Simple SM-2–ish grade: 1 again, 2 hard, 3 good, 4 easy. */
-export async function reviewVocab(id: string, grade: 1 | 2 | 3 | 4): Promise<VocabEntry | null> {
+/** One review graded 1 Again, 2 Hard, 3 Good or 4 Easy, scheduled with FSRS. */
+export async function reviewVocab(id: string, grade: ReviewGrade, now = Date.now()): Promise<VocabEntry | null> {
   await ensureVocabReady();
   const db = getVocabDb();
   const row = await db.queryOne(`SELECT * FROM vocab WHERE id = ?`, [id]);
   if (!row) return null;
-  let ease = Number(row.ease) || 2.5;
-  let interval = Number(row.review_interval) || 0;
-  let reps = Number(row.reps) || 0;
-
-  if (grade <= 1) {
-    reps = 0;
-    interval = 0;
-  } else {
-    reps += 1;
-    if (reps === 1) interval = 1;
-    else if (reps === 2) interval = 3;
-    else interval = Math.max(1, Math.round(interval * ease));
-    ease = Math.max(1.3, ease + (0.1 - (5 - grade) * (0.08 + (5 - grade) * 0.02)));
-  }
-
-  const due = Date.now() + interval * 24 * 60 * 60 * 1000;
+  const next = scheduleReview(rowToEntry(row), grade, now);
   await db.runWrite(
-    `UPDATE vocab SET review_due = ?, review_interval = ?, ease = ?, reps = ?, updated_at = ? WHERE id = ?`,
-    [due, interval, ease, reps, Date.now(), id],
+    `UPDATE vocab SET review_due = ?, review_interval = ?, ease = ?, reps = ?, stability = ?, difficulty = ?, state = ?, lapses = ?,
+     last_review = ?, learning_steps = ?, updated_at = ? WHERE id = ?`,
+    [
+      next.reviewDue,
+      next.reviewInterval,
+      next.ease,
+      next.reps,
+      next.stability,
+      next.difficulty,
+      next.state,
+      next.lapses,
+      next.lastReview,
+      next.learningSteps,
+      now,
+      id,
+    ],
   );
   notifyChanged();
   return getVocab(id);
