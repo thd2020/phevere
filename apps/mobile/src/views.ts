@@ -22,9 +22,10 @@ import {
   mapHtml,
   notebookViewSwitchHtml,
   recentListHtml,
-  reviewHtml,
+  learnHtml,
+  type LearnPage,
+  type AnswerRecord,
   type CardLayout,
-  startReview,
   type FamilyGrouping,
   type MorphKind,
   type NotebookView,
@@ -32,7 +33,6 @@ import {
   type ReviewState,
   type ReviewRenderOptions,
   type VocabViewEntry,
-  reviewBookRows,
   scopeEntries,
   scopeStudySet,
   wordbookHeaderHtml,
@@ -44,7 +44,7 @@ import {
   type WordsScope,
 } from '@phevere/core';
 
-export type Tab = 'lookup' | 'notebook' | 'settings';
+export type Tab = 'lookup' | 'notebook' | 'learn' | 'settings';
 export type ResultTab = 'lexicon' | 'translation' | 'wikipedia' | 'etymology';
 
 export function esc(s: string): string {
@@ -86,6 +86,7 @@ const ICO = {
   heart: '<svg viewBox="0 0 24 24"><path d="M12 21s-6.7-4.3-9.3-8.1C.7 10.2 1.2 6.6 4 5.1 6.1 4 8.6 4.6 12 7.4 15.4 4.6 17.9 4 20 5.1c2.8 1.5 3.3 5.1 1.3 7.8C18.7 16.7 12 21 12 21z"/></svg>',
   speaker: '<svg viewBox="0 0 24 24"><path d="M3 10v4h3l4 4V6L6 10zm13.5 2A4.5 4.5 0 0 0 14 8.1v7.8A4.5 4.5 0 0 0 16.5 12z"/></svg>',
   book: '<svg viewBox="0 0 24 24"><path d="M6 4h11a3 3 0 0 1 3 3v13H8a2 2 0 0 0-2 2V4zm2 2v12h10V7a1 1 0 0 0-1-1H8z"/></svg>',
+  learn: '<svg viewBox="0 0 24 24"><path d="M7 2h2v2h6V2h2v2h1.5A2.5 2.5 0 0 1 21 6.5v12a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 18.5v-12A2.5 2.5 0 0 1 5.5 4H7zM5 9v9.5a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5V9zm5.6 8.2-3.3-3.3 1.4-1.4 1.9 1.9 4.6-4.6 1.4 1.4z"/></svg>',
   expand: '<svg viewBox="0 0 24 24"><path d="M14 3h7v7h-2V6.4l-8.3 8.3-1.4-1.4L17.6 5H14zM5 5h6v2H5v12h12v-6h2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>',
   tabLexicon: '<svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round"><path d="M3.5 5.5c2.8-1.2 5.6-1.2 8.5.6 2.9-1.8 5.7-1.8 8.5-.6v13c-2.8-1.2-5.6-1.2-8.5.6-2.9-1.8-5.7-1.8-8.5-.6z"/><path d="M12 6.1v13"/></svg>',
   tabTranslation: '<svg viewBox="0 0 24 24"><path d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>',
@@ -99,7 +100,7 @@ export function navHtml(tab: Tab): string {
     <button type="button" data-act="tab" data-tab="${id}" ${tab === id ? 'aria-current="page"' : ''}>
       <span class="ico">${svg}</span>${label}
     </button>`;
-  return `<nav class="nav" aria-label="Primary">${item('lookup', 'Lookup', ICO.search)}${item('notebook', 'Words', ICO.book)}${item('settings', 'Settings', ICO.gear)}</nav>`;
+  return `<nav class="nav" aria-label="Primary">${item('lookup', 'Lookup', ICO.search)}${item('notebook', 'Words', ICO.book)}${item('learn', 'Learn', ICO.learn)}${item('settings', 'Settings', ICO.gear)}</nav>`;
 }
 
 /** One top bar for every tab: the same "Phevere" title and the account button; Lookup adds history and search. */
@@ -822,11 +823,35 @@ export interface NotebookViewState {
   mapKinds: MorphKind[];
   flipped: Set<string>;
   cardLayout: CardLayout;
-  review: ReviewState | null;
+  /** Every saved word; the list pages through the notebook, the other views need all of it. */
+  pool: VocabEntry[];
+}
+
+/** The Learn tab: today's review session over the list the Words tab has chosen. */
+export interface LearnState {
+  review: ReviewState;
   goal: number;
-  /** Every saved word, for Review. */
+  /** Every saved word. */
   pool: VocabEntry[];
   reviewOptions?: ReviewRenderOptions;
+  page: LearnPage;
+  /** The answer history for Progress; null until loaded. */
+  history: AnswerRecord[] | null;
+  notice?: string;
+}
+
+export function learnBody(learn: LearnState, words: WordsState): string {
+  return `<div class="nbv lrn">${learnHtml({
+    scope: words.scope,
+    ctx: words.ctx,
+    mine: learn.pool,
+    review: learn.review,
+    goal: learn.goal,
+    options: learn.reviewOptions,
+    page: learn.page,
+    history: learn.history,
+    notice: learn.notice,
+  })}</div>`;
 }
 
 /** Word books on the Words tab: which list is showing, whether the library is open, and the data. */
@@ -885,9 +910,7 @@ export function notebookBody(
         ? familiesHtml(analysis, nb.group, { tracing: familiesTraceProgress() })
         : nb.view === 'map'
           ? mapHtml(analysis, nb.mapKinds)
-          : nb.view === 'cards'
-            ? cardsHtml(list, analysis, nb.flipped, nb.cardLayout)
-            : reviewHtml(nb.pool.length ? nb.pool : entries, nb.review || startReview([], nb.goal), nb.goal, nb.reviewOptions);
+          : cardsHtml(list, analysis, nb.flipped, nb.cardLayout);
     return `${head}<div class="nbv nbv-body">${body}</div>`;
   }
   const rows = vocabListHtml(list, { sort, expanded });
@@ -909,14 +932,7 @@ function bookScopeBody(words: WordsState, ctx: WordsContext, filter: string, nb:
     <div class="nbv nb-views">${notebookViewSwitchHtml(nb.view)}</div>`;
   let body: string;
   if (nb.view === 'list') body = wordbookListHtml(list, { scope: words.scope, limit: words.limit, filtered: !!q });
-  else if (nb.view === 'review') {
-    body = reviewHtml(all, nb.review || startReview([], nb.goal), nb.goal, {
-      ...nb.reviewOptions,
-      books: reviewBookRows(words.scope, ctx),
-      showGoal: words.scope === 'all',
-      started: true,
-    });
-  } else {
+  else {
     const study = nb.view === 'cards' ? scopeStudySet(list) : list;
     const analysis = analyzeNotebook(study);
     body =

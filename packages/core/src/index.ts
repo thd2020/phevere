@@ -74,6 +74,7 @@ export {
 export {
   analyzeNotebook,
   notebookViewSwitchHtml,
+  readNotebookView,
   familyGroupings,
   familiesHtml,
   familiesTraceProgress,
@@ -252,6 +253,7 @@ export {
   listBookProgress,
   reviewBookWord,
   setBookWordKnown,
+  rebuildWordSchedule,
   cacheBookWordMeaning,
   saveBookWord,
   bookWordKey,
@@ -269,6 +271,7 @@ export {
   type BookWordMeaning,
 } from './wordbook-store';
 export { syncWordbooks, WORDBOOK_SYNC_NAMESPACE, type WordbookSyncResult } from './wordbook-sync';
+export { syncProgress, answerToEvent, eventToAnswer, PROGRESS_SYNC_NAMESPACE, type ProgressSyncResult, type ProgressSyncAccount } from './progress-sync';
 export {
   WORDBOOKS,
   wordbookMeta,
@@ -309,8 +312,41 @@ export {
   BOOK_LIST_PAGE,
 } from './wordbook-views';
 export {
+  learnHtml,
+  learnTodayHtml,
+  learnScopeSwitchHtml,
+  learnPageSwitchHtml,
+  learnEntries,
+  scopeBookFor,
+  reviewAnswerDetails,
+  type LearnViewInput,
+  type LearnPage,
+} from './learn-view';
+export { progressHtml, progressSummary, type ProgressInput, type ProgressSummary } from './learn-progress';
+export {
+  SKILLS,
+  MASTERY_THRESHOLD,
+  skillFor,
+  listAnswerHistory,
+  replaySchedule,
+  historyByWord,
+  skillMastery,
+  insertAnswer,
+  answerKey,
+  type Skill,
+  type AnswerKind,
+  type AnswerRecord,
+  type AnswerDetails,
+  type ReplayResult,
+  type SkillScore,
+} from './answer-history';
+export {
   HolarkyAccount,
   HolarkyAccountError,
+  isPlusRequired,
+  PROGRESS_NAMESPACE,
+  type HolarkyEntitlements,
+  type ProgressEvent,
   browserStorage,
   type HolarkyUser,
   type HolarkySession,
@@ -321,6 +357,8 @@ export {
   resolveAccountApi,
   httpClientFetch,
   AccountController,
+  progressSyncOff,
+  syncProgressForAccount,
   type AccountState,
 } from './account';
 export {
@@ -329,6 +367,7 @@ export {
   accountButtonHtml,
   accountPanelHtml,
   deleteEmailMatches,
+  plusNoticeHtml,
   type AccountPanelOptions,
 } from './account-view';
 export {

@@ -9,6 +9,10 @@
  *
  * A record carries `context` (where the word was saved: page title, URL, sentence) only inside
  * this account's own namespace; nothing else ever sees it.
+ * Records carry words only. Review progress (due date, interval, ease, FSRS memory state) is never
+ * sent, and the server strips it from records an older app sends. A pulled record therefore keeps
+ * the progress this device already has for the row. Progress itself syncs as the answer history in
+ * 'phevere/progress' for Plus accounts (progress-sync.ts).
  */
 
 import type { SyncChange, SyncResult } from './holarky-account';
@@ -21,6 +25,26 @@ export const VOCAB_SYNC_NAMESPACE = 'phevere/vocab';
 const PAGE = 500;
 
 type SyncRecord = SyncChange<Partial<VocabEntry>>;
+
+/** Review progress fields of a notebook row: kept on the device, never sent in 'phevere/vocab'. */
+export const VOCAB_PROGRESS_KEYS = ['reviewDue', 'reviewInterval', 'ease', 'reps', 'stability', 'difficulty', 'state', 'lapses', 'lastReview', 'learningSteps'] as const;
+type Progress = Pick<VocabEntry, (typeof VOCAB_PROGRESS_KEYS)[number]>;
+
+function progressOf(e: Partial<VocabEntry>): Partial<Progress> {
+  const out: Partial<Progress> = {};
+  for (const k of VOCAB_PROGRESS_KEYS) if (e[k] != null) out[k] = e[k] as number;
+  return out;
+}
+
+function withoutProgress(e: Partial<VocabEntry>): Partial<VocabEntry> {
+  const out: Partial<VocabEntry> = { ...e };
+  for (const k of VOCAB_PROGRESS_KEYS) delete out[k];
+  return out;
+}
+
+function hasProgress(e: Partial<VocabEntry>): boolean {
+  return Number(e.reps) > 0 || e.lastReview != null || Number(e.state) > 0;
+}
 
 /** The part of HolarkyAccount sync needs, so tests can pass a fake. */
 export interface VocabSyncAccount {
@@ -77,13 +101,15 @@ async function runSync(account: VocabSyncAccount, now: () => number): Promise<Vo
   const startedAt = now();
   const outgoing = await localChangesSince(pushedAt);
   let received = 0;
+  // Progress of rows a remote tombstone deletes, by lemma, for the row that replaces them.
+  const carried = new Map<string, Partial<VocabEntry>>();
   const exchange = async (changes: SyncRecord[]) => {
     let offset = 0;
     let more = true;
     while (more || offset < changes.length) {
       const res = await account.sync<Partial<VocabEntry>>(VOCAB_SYNC_NAMESPACE, cursor, changes.slice(offset, offset + PAGE));
       offset += PAGE;
-      for (const change of res.changes) if (await applyRemote(change)) received += 1;
+      for (const change of res.changes) if (await applyRemote(change, carried)) received += 1;
       cursor = res.cursor;
       await writeState('vocab.cursor', String(cursor));
       more = res.more;
@@ -93,6 +119,7 @@ async function runSync(account: VocabSyncAccount, now: () => number): Promise<Vo
   await exchange(outgoing);
   await writeState('vocab.pushedAt', String(startedAt));
 
+  await settleCarriedProgress(carried);
   // Folding duplicates edits rows here; send those edits now rather than on the next sync.
   const mergeAt = now();
   const merged = await mergeDuplicateLemmas(mergeAt);
@@ -112,20 +139,30 @@ async function localChangesSince(since: number): Promise<SyncRecord[]> {
   return [
     ...rows.map((row) => {
       const entry = rowToEntry(row);
-      return { id: entry.id, updatedAt: entry.updatedAt, deleted: false, data: entry };
+      return { id: entry.id, updatedAt: entry.updatedAt, deleted: false, data: withoutProgress(entry) };
     }),
     ...tombs.map((t) => ({ id: String(t.id), updatedAt: Number(t.deleted_at), deleted: true, data: null as Partial<VocabEntry> | null })),
   ];
 }
 
 /** Applies one record from the server unless this device holds something newer. */
-async function applyRemote(change: { id: string; updatedAt: number; deleted: boolean; data: Partial<VocabEntry> | null }): Promise<boolean> {
+async function applyRemote(
+  change: { id: string; updatedAt: number; deleted: boolean; data: Partial<VocabEntry> | null },
+  carried: Map<string, Partial<VocabEntry>> = new Map(),
+): Promise<boolean> {
   const db = getVocabDb();
   const local = await db.queryOne(`SELECT * FROM vocab WHERE id = ?`, [change.id]);
   if (local && Number(local.updated_at) > change.updatedAt) return false;
 
   if (change.deleted) {
-    if (local) await db.runWrite(`DELETE FROM vocab WHERE id = ?`, [change.id]);
+    if (local) {
+      // Another device folded this row into another id. Keep its progress for that row.
+      const mine = rowToEntry(local);
+      const key = mine.lemma.trim().toLowerCase();
+      const prev = carried.get(key);
+      if (hasProgress(mine) && (!prev || Number(mine.reps) > Number(prev.reps))) carried.set(key, progressOf(mine));
+      await db.runWrite(`DELETE FROM vocab WHERE id = ?`, [change.id]);
+    }
     await db.runWrite(`INSERT OR REPLACE INTO vocab_deleted (id, deleted_at) VALUES (?, ?)`, [change.id, change.updatedAt]);
     return true;
   }
@@ -136,30 +173,46 @@ async function applyRemote(change: { id: string; updatedAt: number; deleted: boo
   if (!e || typeof e.lemma !== 'string' || !e.lemma.trim()) return false;
   // An older app sends no device; keep the one this device already knows.
   const device = (e as VocabEntry).device || (local?.device ? String(local.device) : undefined);
+  // Progress stays local: a stripped record never resets this device's schedule. A row first seen
+  // here takes whatever progress the record carries (only stored records from before stripping do).
+  const progress = local ? progressOf(rowToEntry(local)) : progressOf(e);
   // The same for where the word was saved, which older apps neither know nor send.
   const context = normalizeSourceContext((e as VocabEntry).context) || sourceContextFromJson(local?.context) || undefined;
-  await writeRow({ ...keepMemoryState(local, e), ...(e as VocabEntry), device, context, id: change.id, updatedAt: change.updatedAt });
+  await writeRow({ ...(withoutProgress(e) as VocabEntry), ...progress, device, context, id: change.id, updatedAt: change.updatedAt });
   if (tomb) await db.runWrite(`DELETE FROM vocab_deleted WHERE id = ?`, [change.id]);
   return true;
 }
 
 /**
- * An older app sends records without the FSRS fields. When such a record carries the same review
- * progress this device already has (it only edited the note, say), the local memory state stays;
- * when the older app reviewed the word itself, the state is dropped and rebuilt from SM-2.
+ * Progress carried from rows that remote tombstones deleted goes to the surviving row with the same
+ * lemma when that row has less of it (a row first seen here arrives without progress). The row's
+ * updatedAt is left alone: progress is not part of the synced record.
  */
-function keepMemoryState(local: Record<string, unknown> | null, incoming: Partial<VocabEntry>): Partial<VocabEntry> {
-  if (!local || incoming.stability != null || local.stability == null) return {};
-  const mine = rowToEntry(local);
-  if ((incoming.reps ?? 0) !== (mine.reps ?? 0) || (incoming.reviewDue ?? null) !== (mine.reviewDue ?? null)) return {};
-  return {
-    stability: mine.stability,
-    difficulty: mine.difficulty,
-    state: mine.state,
-    lapses: mine.lapses,
-    lastReview: mine.lastReview,
-    learningSteps: mine.learningSteps,
-  };
+async function settleCarriedProgress(carried: Map<string, Partial<VocabEntry>>): Promise<void> {
+  const db = getVocabDb();
+  for (const [key, p] of carried) {
+    const row = await db.queryOne(`SELECT * FROM vocab WHERE lower(lemma) = ? ORDER BY id ASC LIMIT 1`, [key]);
+    if (!row) continue;
+    const mine = rowToEntry(row);
+    if (hasProgress(mine) && Number(mine.reps || 0) >= Number(p.reps || 0)) continue;
+    await db.runWrite(
+      `UPDATE vocab SET review_due = ?, review_interval = ?, ease = ?, reps = ?, stability = ?, difficulty = ?, state = ?, lapses = ?,
+       last_review = ?, learning_steps = ? WHERE id = ?`,
+      [
+        p.reviewDue ?? null,
+        p.reviewInterval ?? 0,
+        p.ease ?? 2.5,
+        p.reps ?? 0,
+        p.stability ?? null,
+        p.difficulty ?? null,
+        p.state ?? null,
+        p.lapses ?? 0,
+        p.lastReview ?? null,
+        p.learningSteps ?? 0,
+        mine.id,
+      ],
+    );
+  }
 }
 
 async function writeRow(e: VocabEntry): Promise<void> {

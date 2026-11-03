@@ -1,11 +1,15 @@
 /**
  * Word book sync through the Holarky account ('phevere/wordbooks'), beside the notebook's own
- * namespace so older apps that know only 'phevere/vocab' never see these records.
+ * namespace so older apps that know only 'phevere/vocab' never see these records. It is free.
  *
- * Records are `sub:<bookId>` (a subscription and its daily goal) and `word:<headword>` (progress
- * on a book word that is not in My words). Like vocab-sync, each side keeps the newest updatedAt
- * per id and the server wins a tie. Nothing is ever deleted: unsubscribing is an edit. The cached
- * meaning of a book word stays on the device.
+ * Records are `sub:<bookId>`: a subscription and its daily goal. Like vocab-sync, each side keeps
+ * the newest updatedAt per id and the server wins a tie. Nothing is ever deleted: unsubscribing is
+ * an edit.
+ *
+ * Progress on book words is learning progress, so it no longer travels here. It is in the answer
+ * history, which syncs in 'phevere/progress' for Plus accounts (progress-sync.ts); "Already know
+ * it" is an answer there too. `word:<headword>` records that older apps still send are ignored,
+ * and the server strips their review fields anyway.
  *
  * A book the learner made is `book:<id>`: { name, source, words, deleted, createdAt, parts }, the
  * headwords and nothing about progress. The server caps a record at 64 KB of JSON, so a long
@@ -16,26 +20,15 @@ import type { SyncChange } from './holarky-account';
 import { getVocabDb } from './runtime';
 import type { VocabSyncAccount } from './vocab-sync';
 import { ensureVocabReady } from './vocab-store';
-import {
-  bookWordKey,
-  rowToBookWord,
-  rowToSub,
-  rowToUserBook,
-  writeBookWord,
-  writeSub,
-  writeUserBook,
-  type BookWordProgress,
-  type WordbookSub,
-} from './wordbook-store';
+import { rowToSub, rowToUserBook, writeSub, writeUserBook, type WordbookSub } from './wordbook-store';
 
 export const WORDBOOK_SYNC_NAMESPACE = 'phevere/wordbooks';
 const PAGE = 500;
 
 type SubData = Omit<WordbookSub, 'bookId' | 'updatedAt'>;
-type WordData = Omit<BookWordProgress, 'lemma' | 'updatedAt' | 'definition' | 'reading' | 'partOfSpeech'>;
 type BookData = { name: string; source?: string; words: string[]; deleted: boolean; createdAt: number; parts: number };
 type PartData = { words: string[] };
-type Record_ = SyncChange<SubData | WordData | BookData | PartData>;
+type Record_ = SyncChange<SubData | BookData | PartData>;
 
 /** JSON characters per record's word list, well under the server's 64 KB cap. */
 export const BOOK_PART_CHARS = 40000;
@@ -99,7 +92,7 @@ async function runSync(account: VocabSyncAccount, now: () => number): Promise<Wo
   let offset = 0;
   let more = true;
   while (more || offset < outgoing.length) {
-    const res = await account.sync<SubData | WordData | BookData | PartData>(WORDBOOK_SYNC_NAMESPACE, cursor, outgoing.slice(offset, offset + PAGE));
+    const res = await account.sync<SubData | BookData | PartData>(WORDBOOK_SYNC_NAMESPACE, cursor, outgoing.slice(offset, offset + PAGE));
     offset += PAGE;
     for (const change of res.changes) if (await applyRemote(change)) received += 1;
     cursor = res.cursor;
@@ -113,16 +106,11 @@ async function runSync(account: VocabSyncAccount, now: () => number): Promise<Wo
 async function localChangesSince(since: number): Promise<Record_[]> {
   const db = getVocabDb();
   const subs = (await db.queryAll(`SELECT * FROM wordbook_subs WHERE updated_at > ?`, [since])).map(rowToSub);
-  const words = (await db.queryAll(`SELECT * FROM book_words WHERE updated_at > ?`, [since])).map(rowToBookWord);
   const books = (await db.queryAll(`SELECT * FROM user_books WHERE updated_at > ?`, [since])).map(rowToUserBook);
   return [
     ...subs.map((s) => {
       const { bookId, updatedAt, ...data } = s;
       return { id: `sub:${bookId}`, updatedAt, deleted: false, data };
-    }),
-    ...words.map((w) => {
-      const { lemma, updatedAt, definition: _d, reading: _r, partOfSpeech: _p, ...data } = w;
-      return { id: `word:${lemma}`, updatedAt, deleted: false, data };
     }),
     ...books.flatMap((b) => {
       const parts = splitWords(b.words);
@@ -154,13 +142,7 @@ async function applyRemote(change: { id: string; updatedAt: number; deleted: boo
     });
     return true;
   }
-  if (change.id.startsWith('word:')) {
-    const key = bookWordKey(change.id.slice(5));
-    const local = await db.queryOne(`SELECT updated_at FROM book_words WHERE lemma = ?`, [key]);
-    if (!key || (local && Number(local.updated_at) > change.updatedAt)) return false;
-    await writeBookWord({ ...(data as WordData), lemma: key, known: data.known === true, updatedAt: change.updatedAt });
-    return true;
-  }
+  // Progress on book words travels in the answer history now; older apps' word: records are ignored.
   if (change.id.startsWith('book:')) {
     const rest = change.id.slice(5);
     const m = /^(.+):(\d+)$/.exec(rest);

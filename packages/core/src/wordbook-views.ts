@@ -266,7 +266,10 @@ export function wordbookLibraryHtml(ctx: WordsContext, now = Date.now()): string
       <div class="wb-path__card">
         <div class="wb-path__main">
           <h3>${esc(meta.title)}</h3>
-          <p class="wb-path__meta"><span>${fmt(meta.count)} words</span><a href="${esc(meta.sourceUrl)}" target="_blank" rel="noopener noreferrer" title="${esc(meta.source)}">${esc(meta.source.replace(/\s*\(.*\)$/, ''))}</a><a href="${esc(meta.licenceUrl)}" target="_blank" rel="noopener noreferrer">${esc(meta.licence)}</a></p>
+          <div class="wb-path__meta"><span>${fmt(meta.count)} words</span><details class="wb-path__src">
+            <summary>Source</summary>
+            <p><a href="${esc(meta.sourceUrl)}" target="_blank" rel="noopener noreferrer">${esc(meta.source)}</a><a href="${esc(meta.licenceUrl)}" target="_blank" rel="noopener noreferrer">${esc(meta.licence)}</a></p>
+          </details></div>
           ${p ? `<div class="wb-path__progress">${barHtml(p)}<span>${fmt(p.known)} / ${fmt(p.total)}</span></div>` : ''}
         </div>
         <div class="wb-path__acts">${

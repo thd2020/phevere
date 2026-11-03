@@ -19,6 +19,8 @@ const bundle = esbuild.buildSync({
       export * from './src/wordbooks';
       export * from './src/wordbook-store';
       export * from './src/wordbook-sync';
+      export { syncProgress } from './src/progress-sync';
+      export { wordbookLibraryHtml } from './src/wordbook-views';
       export { configureCore } from './src/runtime';
       export { addVocab, listVocab, reviewVocab, findByLemma } from './src/vocab-store';
       export { syncVocab } from './src/vocab-sync';
@@ -198,6 +200,20 @@ async function main() {
   assert.ok(ctx.saved.has('gamma'));
   assert.equal(core.bookProgress('zhongkao', ctx, now).learning, 1, 'still learning in the book');
 
+  // ---- Library: every card keeps its source and licence, folded into a Source disclosure ----
+  {
+    const lib = core.wordbookLibraryHtml(ctx);
+    const cards = lib.split('<li class="wb-path__item').slice(1);
+    assert.equal(cards.length, core.WORDBOOKS.length);
+    for (const [i, card] of cards.entries()) {
+      const meta = core.WORDBOOKS[i];
+      const src = card.slice(card.indexOf('<details class="wb-path__src">'), card.indexOf('</details>'));
+      assert.ok(src.includes('<summary>Source</summary>'), `${meta.id} has a Source disclosure`);
+      assert.ok(src.includes(`href="${meta.sourceUrl}"`) && src.includes(`href="${meta.licenceUrl}"`) && src.includes(meta.licence), `${meta.id} attribution inside it`);
+      assert.ok(!card.slice(0, card.indexOf('<details')).includes(meta.licenceUrl), `${meta.id} licence not on the card face`);
+    }
+  }
+
   // ---- Sync: subscriptions and progress reach the second device ----
   const server = fakeServer();
   const account = { getUser: async () => ({ id: 'u1' }), sync: async (ns, c, ch) => server.sync(ns, c, JSON.parse(JSON.stringify(ch))) };
@@ -208,11 +224,16 @@ async function main() {
     ['starter', 3],
     ['zhongkao', 2],
   ]);
+  assert.ok([...server.spaces.get('phevere/wordbooks').keys()].every((id) => id.startsWith('sub:')), 'only subscriptions in phevere/wordbooks');
+  assert.equal((await b.core.listBookProgress()).length, 0, 'no progress through the free collection');
+  assert.ok(!server.spaces.has('phevere/vocab'), 'word books use their own namespace');
+  // Progress and "Already know it" arrive as the answer history (phevere/progress, Plus).
+  await core.syncProgress(account);
+  await b.core.syncProgress(account);
   const bRows = await b.core.listBookProgress();
   assert.ok(bRows.find((p) => p.lemma === 'alpha').known, 'known flag synced');
   assert.ok(bRows.find((p) => p.lemma === 'gamma').reps > 0, 'progress synced');
   assert.equal(bRows.find((p) => p.lemma === 'delta'), undefined, 'cached meaning not synced');
-  assert.ok(!server.spaces.has('phevere/vocab'), 'word books use their own namespace');
 
   // Unsubscribing on device b reaches device a; the newer edit wins.
   await b.core.unsubscribeWordbook('zhongkao', Date.now() + DAY);

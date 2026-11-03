@@ -35,6 +35,7 @@ import '@phevere/core/notebook-families.css';
 import '@phevere/core/notebook-cards.css';
 import '@phevere/core/notebook-map.css';
 import '@phevere/core/wordbook-views.css';
+import '@phevere/core/learn-views.css';
 import '@phevere/core/settings-kit.css';
 import '@phevere/core/settings-sources.css';
 import '@phevere/core/settings-offline.css';
@@ -42,6 +43,8 @@ import '@phevere/core/settings-keys.css';
 import {
   accountButtonHtml,
   accountPanelHtml,
+  plusNoticeHtml,
+  HOLARKY_ACCOUNT,
   analyzeNotebook,
   attachNotebookMap,
   attachCardTable,
@@ -57,7 +60,12 @@ import {
   mapHtml,
   notebookViewSwitchHtml,
   recentListHtml,
-  reviewHtml,
+  learnHtml,
+  readNotebookView,
+  reviewAnswerDetails,
+  scopeBookFor,
+  type AnswerRecord,
+  type LearnPage,
   startReview,
   answerReview,
   overrideReview,
@@ -96,7 +104,6 @@ import {
   dropCurrentReview,
   isBookOnlyId,
   loadWordbook,
-  reviewBookRows,
   reviewNeedsMeaning,
   scopeEntries,
   scopeStudySet,
@@ -628,6 +635,7 @@ function wireAccountMenu(): void {
   api.onState?.((next: AccountState) => {
     state = next;
     render();
+    setLearnAccountState(next);
   });
   // Keeps "Synced N min ago" current while the popover is open.
   window.setInterval(() => {
@@ -636,6 +644,7 @@ function wireAccountMenu(): void {
   void api.getState().then((next: AccountState | null): void => {
     state = next;
     render();
+    setLearnAccountState(next);
   }).catch((): void => undefined);
 }
 
@@ -2039,7 +2048,13 @@ function writePref(key: string, value: string): void {
   }
 }
 
-let nbView = readPref(NB_VIEW_KEY, 'list') as NotebookView;
+// Review moved from the Words switcher to the Learn tab: a saved Review view opens Learn instead.
+const savedNbView = readNotebookView(readPref(NB_VIEW_KEY, 'list'));
+if (savedNbView.learn) {
+  writePref(NB_VIEW_KEY, savedNbView.view);
+  writePref(WS_TAB_KEY, 'learn');
+}
+let nbView: NotebookView = savedNbView.view;
 let nbGroup = readPref(NB_GROUP_KEY, 'root') as FamilyGrouping;
 let nbMapKinds = readPref(NB_MAP_KINDS_KEY, 'root,prefix,char').split(',').filter(Boolean) as MorphKind[];
 let nbGoal = Number(readPref(NB_GOAL_KEY, '10')) || 10;
@@ -2119,7 +2134,7 @@ async function prefetchMeanings(wait = false): Promise<void> {
     }),
   ).then(() => {
     rebuildWordsContext();
-    if (!wait && nbView === 'review' && !nbReview?.answer) rerenderNotebook();
+    if (!wait && mainTab === 'learn' && !nbReview?.answer) renderLearn();
   });
   if (wait) await done;
 }
@@ -2152,28 +2167,14 @@ function renderBookScope(body: HTMLElement, wrap: HTMLElement, list: HTMLElement
     body.innerHTML = wordbookListHtml(shown, { scope: wbScope, limit: wbLimit, filtered: !!q });
     return true;
   }
-  if (nbView === 'review') {
-    if (!nbReview) nbReview = startScopeReview(wbScope, wbCtx, { mineGoal: nbGoal, mineStartedToday: startedToday().length });
-    body.innerHTML = reviewHtml(all, nbReview, nbGoal, {
-      audio: true,
-      preview: (e, g) => previewReview(e, g),
-      formatGap: formatReviewGap,
-      books: reviewBookRows(wbScope, wbCtx),
-      showGoal: wbScope === 'all',
-      started: true,
-    });
-    focusReview(body);
-    void prefetchMeanings();
-  } else {
-    const study = nbView === 'cards' ? scopeStudySet(shown) : shown;
-    if (!wbAnalysis || wbAnalysis.key !== wbCtx || wbAnalysis.q !== q || wbAnalysis.view !== nbView) {
-      wbAnalysis = { key: wbCtx, q, view: nbView, value: analyzeNotebook(study) };
-    }
-    const analysis = wbAnalysis.value;
-    if (nbView === 'families') body.innerHTML = familiesHtml(analysis, nbGroup, { tracing: familiesTraceProgress() });
-    else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
-    else body.innerHTML = cardsHtml(study, analysis, nbFlipped, nbCardsLayout);
+  const study = nbView === 'cards' ? scopeStudySet(shown) : shown;
+  if (!wbAnalysis || wbAnalysis.key !== wbCtx || wbAnalysis.q !== q || wbAnalysis.view !== nbView) {
+    wbAnalysis = { key: wbCtx, q, view: nbView, value: analyzeNotebook(study) };
   }
+  const analysis = wbAnalysis.value;
+  if (nbView === 'families') body.innerHTML = familiesHtml(analysis, nbGroup, { tracing: familiesTraceProgress() });
+  else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
+  else body.innerHTML = cardsHtml(study, analysis, nbFlipped, nbCardsLayout);
   attachNotebookMap(body);
   attachCardTable(body, {
     onLayout: (layout) => {
@@ -2419,6 +2420,7 @@ async function loadVocabNotebook(): Promise<void> {
     vocabNotebookCache = entries || [];
     await refreshWords();
     renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
+    renderLearn();
     renderRecentLookups();
   } catch (error) {
     console.error('vocab load failed', error);
@@ -2485,35 +2487,25 @@ function renderVocabNotebook(entries: any[]): void {
     vocabRenderToken += 1;
     flushVocabChunks = null;
     list.innerHTML = '';
-    if (nbView === 'review') {
-      if (!nbReview) nbReview = startReview(vocabNotebookCache, nbGoal, Date.now(), startedToday().length);
-      body.innerHTML = reviewHtml(vocabNotebookCache, nbReview, nbGoal, {
-        audio: true,
-        preview: (e, g) => previewReview(e, g),
-        formatGap: formatReviewGap,
-      });
-      focusReview(body);
-    } else {
-      // The analysis only changes when the notebook or the search does.
-      const q = (document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '';
-      if (!nbAnalysis || nbAnalysis.key !== vocabNotebookCache || nbAnalysis.q !== q) {
-        nbAnalysis = { key: vocabNotebookCache, q, value: analyzeNotebook(sorted) };
-      }
-      const analysis = nbAnalysis.value;
-      if (nbView === 'families') {
-        body.innerHTML = familiesHtml(analysis, nbGroup, { tracing: familiesTraceProgress() });
-        traceNotebookFamilies(
-          vocabNotebookCache.map((e) => String(e.lemma || '')),
-          () => document.getElementById('nbViewBody'),
-          () => {
-            // New origins and roots: repaint unless the reader has a family open.
-            if (nbView === 'families' && !document.querySelector('#nbViewBody details[open]')) rerenderNotebook();
-          },
-        );
-      }
-      else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
-      else body.innerHTML = cardsHtml(sorted, analysis, nbFlipped, nbCardsLayout);
+    // The analysis only changes when the notebook or the search does.
+    const q = (document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '';
+    if (!nbAnalysis || nbAnalysis.key !== vocabNotebookCache || nbAnalysis.q !== q) {
+      nbAnalysis = { key: vocabNotebookCache, q, value: analyzeNotebook(sorted) };
     }
+    const analysis = nbAnalysis.value;
+    if (nbView === 'families') {
+      body.innerHTML = familiesHtml(analysis, nbGroup, { tracing: familiesTraceProgress() });
+      traceNotebookFamilies(
+        vocabNotebookCache.map((e) => String(e.lemma || '')),
+        () => document.getElementById('nbViewBody'),
+        () => {
+          // New origins and roots: repaint unless the reader has a family open.
+          if (nbView === 'families' && !document.querySelector('#nbViewBody details[open]')) rerenderNotebook();
+        },
+      );
+    }
+    else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
+    else body.innerHTML = cardsHtml(sorted, analysis, nbFlipped, nbCardsLayout);
     attachNotebookMap(body);
     attachCardTable(body, {
       onLayout: (layout) => {
@@ -2571,6 +2563,75 @@ function rerenderNotebook(): void {
   renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
 }
 
+/* Learn: Today or Progress, and the answer history Progress draws from (null until loaded). */
+const LEARN_PAGE_KEY = 'phevere-learn-page';
+let learnPage: LearnPage = readPref(LEARN_PAGE_KEY, 'today') === 'progress' ? 'progress' : 'today';
+let answerHistory: AnswerRecord[] | null = null;
+let answerHistoryLoading = false;
+
+function loadAnswerHistory(): void {
+  const api = (window as any).vocabAPI;
+  if (answerHistoryLoading) return;
+  answerHistoryLoading = true;
+  Promise.resolve(api?.history ? api.history() : [])
+    .catch((): AnswerRecord[] => [])
+    .then((rows: AnswerRecord[]) => {
+      answerHistory = rows || [];
+      answerHistoryLoading = false;
+      if (mainTab === 'learn' && learnPage === 'progress') renderLearn();
+    });
+}
+
+/* The account, for the Plus line in Learn when progress sync is off. */
+let learnNotice = '';
+
+function setLearnAccountState(next: AccountState | null): void {
+  const notice = plusNoticeHtml(next, HOLARKY_ACCOUNT.plusUrl);
+  if (notice === learnNotice) return;
+  learnNotice = notice;
+  renderLearn();
+}
+
+/** The Learn tab: today's review of the list chosen in Words (My words, a book or All books), or Progress. */
+function renderLearn(): void {
+  const pane = document.getElementById('paneLearn');
+  if (!pane || pane.hidden) return;
+  const scope = wbCtx ? wbScope : 'mine';
+  if (!nbReview && (scope !== 'mine' || vocabNotebookCache.length)) {
+    nbReview = wbCtx
+      ? startScopeReview(scope, wbCtx, { mineGoal: nbGoal, mineStartedToday: startedToday().length })
+      : startReview(vocabNotebookCache, nbGoal, Date.now(), startedToday().length);
+  }
+  pane.innerHTML = learnHtml({
+    scope,
+    ctx: wbCtx,
+    mine: vocabNotebookCache,
+    review: nbReview || startReview([], nbGoal),
+    goal: nbGoal,
+    options: { audio: true, preview: (e, g) => previewReview(e, g), formatGap: formatReviewGap },
+    page: learnPage,
+    history: answerHistory,
+    notice: learnNotice,
+  });
+  pane.querySelector<HTMLElement>('.wb-scope.is-active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  const body = pane.querySelector<HTMLElement>('.lrn-body');
+  if (!body) return;
+  if (learnPage === 'progress') {
+    if (!answerHistory) loadAnswerHistory();
+    return;
+  }
+  const fetchImage = wordImageFetcher();
+  if (fetchImage) fillWordImages(body, fetchImage);
+  focusReview(body);
+  void prefetchMeanings();
+}
+
+/** Repaints whichever of Words and Learn is showing. */
+function rerenderActive(): void {
+  if (mainTab === 'learn') renderLearn();
+  else rerenderNotebook();
+}
+
 /** After a Review render: put the cursor in the answer box, play a listening question once. */
 let nbAutoplayed = '';
 function focusReview(body: HTMLElement): void {
@@ -2602,15 +2663,16 @@ async function commitReview(): Promise<void> {
     writePref(startedTodayKey(), JSON.stringify([...new Set([...startedToday(), q.id])]));
   }
   let updated: any = null;
+  const details = reviewAnswerDetails(nbReview, wbCtx ? wbScope : 'mine', wbCtx);
   try {
     if (isBookOnlyId(q.id)) {
       // A book word that is not in My words: progress goes to the book_words table.
-      const p = await wordbookApi()?.review(q.lemma, a.grade);
+      const p = await wordbookApi()?.review(q.lemma, a.grade, details);
       if (p) wbProgress.set(p.lemma, p);
       rebuildWordsContext();
       updated = wbCtx ? bookEntry(q.lemma, wbCtx) : null;
     } else {
-      updated = api?.review ? await api.review(q.id, a.grade) : null;
+      updated = api?.review ? await api.review(q.id, a.grade, details) : null;
       if (updated) {
         vocabNotebookCache = vocabNotebookCache.map((e) => (e.id === q.id ? { ...e, ...updated } : e));
         rebuildWordsContext();
@@ -2620,20 +2682,21 @@ async function commitReview(): Promise<void> {
     console.error('review failed', error);
   }
   advanceReview(nbReview, updated);
+  answerHistory = null;
   nbGrading = false;
-  rerenderNotebook();
+  renderLearn();
 }
 
 function answerCurrentReview(input: { choice?: number; typed?: string; knew?: boolean }): void {
   if (!nbReview || !answerReview(nbReview, input)) return;
-  rerenderNotebook();
+  renderLearn();
 }
 
 /** Review keys: 1 to 4 choose, Enter starts or continues. Typing goes to the answer box. */
 function onReviewKey(ev: KeyboardEvent): void {
-  if (nbView !== 'review' || !nbReview || ev.ctrlKey || ev.metaKey || ev.altKey) return;
-  const body = document.getElementById('nbViewBody');
-  if (!body || body.hidden || document.getElementById('paneNotebook')?.hidden) return;
+  if (mainTab !== 'learn' || !nbReview || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  const body = document.querySelector<HTMLElement>('#paneLearn .lrn-body');
+  if (!body) return;
   const target = ev.target as HTMLElement | null;
   if (target && target.id !== 'nbv-answer' && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
   if (target?.id === 'nbv-answer') return;
@@ -2702,7 +2765,6 @@ function wireNotebookActions(root: HTMLElement): void {
       case 'nb-view':
         nbView = (el.dataset.view as NotebookView) || 'list';
         writePref(NB_VIEW_KEY, nbView);
-        if (nbView === 'review') nbReview = null;
         rerenderNotebook();
         document.querySelector('.main-shell')?.scrollTo({ top: 0 });
         return;
@@ -2734,17 +2796,24 @@ function wireNotebookActions(root: HTMLElement): void {
         nbGoal = Number(el.dataset.goal) || 10;
         writePref(NB_GOAL_KEY, String(nbGoal));
         nbReview = null;
-        rerenderNotebook();
+        renderLearn();
         return;
       case 'nb-start':
         // Book words get their meaning looked up before the first question is built.
         await prefetchMeanings(true);
         if (nbReview) nbReview.started = true;
-        rerenderNotebook();
+        renderLearn();
         return;
       case 'wb-scope':
         setWordsScope((el.dataset.scope as WordsScope) || 'mine');
-        rerenderNotebook();
+        rerenderActive();
+        document.querySelector('.main-shell')?.scrollTo({ top: 0 });
+        return;
+      case 'learn-page':
+        learnPage = el.dataset.page === 'progress' ? 'progress' : 'today';
+        writePref(LEARN_PAGE_KEY, learnPage);
+        if (learnPage === 'progress') answerHistory = null;
+        renderLearn();
         document.querySelector('.main-shell')?.scrollTo({ top: 0 });
         return;
       case 'wb-library':
@@ -2768,7 +2837,7 @@ function wireNotebookActions(root: HTMLElement): void {
         else await wordbookApi()?.unsubscribe(id);
         if (wbScope === id) setWordsScope(isUserBookId(id) ? 'sources' : 'mine');
         await refreshWords();
-        rerenderNotebook();
+        rerenderActive();
         return;
       }
       case 'src-book': {
@@ -2800,7 +2869,7 @@ function wireNotebookActions(root: HTMLElement): void {
         await wordbookApi()?.setGoal(el.dataset.book || '', Number(el.dataset.goal) || 10);
         nbReview = null;
         await refreshWords();
-        rerenderNotebook();
+        rerenderActive();
         return;
       case 'wb-more':
         wbLimit += BOOK_LIST_PAGE;
@@ -2809,11 +2878,12 @@ function wireNotebookActions(root: HTMLElement): void {
       case 'wb-known':
       case 'wb-known-review': {
         const lemma = el.dataset.q || '';
-        const p = await wordbookApi()?.known(lemma, el.dataset.act === 'wb-known-review' || el.dataset.known === '1');
+        const p = await wordbookApi()?.known(lemma, el.dataset.act === 'wb-known-review' || el.dataset.known === '1', scopeBookFor(wbScope, wbCtx, lemma));
         if (p) wbProgress.set(p.lemma, p);
+        answerHistory = null;
         rebuildWordsContext();
         if (el.dataset.act === 'wb-known-review' && nbReview) dropCurrentReview(nbReview);
-        rerenderNotebook();
+        rerenderActive();
         return;
       }
       case 'wb-save': {
@@ -2830,7 +2900,7 @@ function wireNotebookActions(root: HTMLElement): void {
       }
       case 'nb-reveal':
         if (nbReview) nbReview.revealed = true;
-        rerenderNotebook();
+        renderLearn();
         return;
       case 'nb-choose':
         answerCurrentReview({ choice: Number(el.dataset.choice) });
@@ -2843,7 +2913,7 @@ function wireNotebookActions(root: HTMLElement): void {
         return;
       case 'nb-override':
         if (nbReview) overrideReview(nbReview);
-        rerenderNotebook();
+        renderLearn();
         return;
       case 'nb-next':
         await commitReview();
@@ -2894,7 +2964,15 @@ function wireNotebookActions(root: HTMLElement): void {
   });
 }
 
-function setMainTab(tab: 'notebook' | 'recent'): void {
+type MainTab = 'notebook' | 'learn' | 'recent';
+let mainTab: MainTab = 'notebook';
+
+function readMainTab(value: string | undefined | null): MainTab {
+  return value === 'learn' || value === 'recent' ? value : 'notebook';
+}
+
+function setMainTab(tab: MainTab): void {
+  mainTab = tab;
   writePref(WS_TAB_KEY, tab);
   document.querySelectorAll<HTMLElement>('.ws-tab').forEach((b) => {
     const on = b.dataset.ws === tab;
@@ -2903,11 +2981,14 @@ function setMainTab(tab: 'notebook' | 'recent'): void {
   });
   const nb = document.getElementById('paneNotebook');
   const rc = document.getElementById('paneRecent');
+  const learn = document.getElementById('paneLearn');
   if (nb) nb.hidden = tab !== 'notebook';
+  if (learn) learn.hidden = tab !== 'learn';
   if (rc) rc.hidden = tab !== 'recent';
   document.getElementById('notebookTools')?.toggleAttribute('hidden', tab !== 'notebook');
   document.getElementById('recentTools')?.toggleAttribute('hidden', tab !== 'recent');
   document.querySelector('.main-shell')?.scrollTo({ top: 0 });
+  if (tab === 'learn') renderLearn();
 }
 
 function wireMainWorkspace(): void {
@@ -2915,9 +2996,9 @@ function wireMainWorkspace(): void {
     if (e.key === RECENT_SELECTIONS_STORAGE_KEY) renderRecentLookups();
   });
   document.querySelectorAll<HTMLElement>('.ws-tab').forEach((b) =>
-    b.addEventListener('click', () => setMainTab(b.dataset.ws === 'recent' ? 'recent' : 'notebook')),
+    b.addEventListener('click', () => setMainTab(readMainTab(b.dataset.ws))),
   );
-  setMainTab(readPref(WS_TAB_KEY, 'notebook') === 'recent' ? 'recent' : 'notebook');
+  setMainTab(readMainTab(readPref(WS_TAB_KEY, 'notebook')));
   const shell = document.querySelector<HTMLElement>('.main-shell');
   if (shell) wireNotebookActions(shell);
   const search = document.getElementById('vocabSearch') as HTMLInputElement | null;
@@ -2941,6 +3022,13 @@ function wireMainWorkspace(): void {
     });
   }
   document.addEventListener('keydown', onReviewKey);
+  // Links in Words, Learn and the account popover (sources, licences, Get Plus) open in the browser.
+  document.addEventListener('click', (e) => {
+    const link = (e.target as HTMLElement | null)?.closest?.('a[target="_blank"]') as HTMLAnchorElement | null;
+    if (!link?.href || !link.closest('.main-shell, #accountMenu')) return;
+    e.preventDefault();
+    window.electronAPI?.openExternal?.(link.href);
+  });
 }
 
 document.getElementById('refreshVocabBtn')?.addEventListener('click', () => {

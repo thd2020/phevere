@@ -1,6 +1,7 @@
 /**
- * Review view: a quiz over today's due and new words (logic in `review-quiz.ts`), the daily goal
- * for new words, the next two weeks of reviews and the words saved over twelve weeks.
+ * Review, on the Learn tab's Today page: a quiz over today's due and new words (logic in
+ * `review-quiz.ts`), the daily goal for new words, the next two weeks of reviews and the words
+ * saved over twelve weeks.
  */
 import { vocabReadings, vocabSenses } from './vocab-view';
 import { DAY, clean, dayStart, esc, type NotebookEntry } from './notebook-shared';
@@ -19,8 +20,10 @@ export interface ReviewRenderOptions {
   formatGap?: (ms: number) => string;
   /** Word books in this session: today's new and due words and progress for each (`reviewBookRows`). */
   books?: BookPlanRow[];
-  /** Show My words' daily goal chips (off when the scope is one word book, whose goal sits in its header). */
+  /** Show the daily goal chips. */
   showGoal?: boolean;
+  /** The scope is one word book: the chips set that book's goal (`wb-goal`) instead of My words'. */
+  goalBook?: { id: string; goal: number };
   /** Book scopes count words started rather than saved. */
   started?: boolean;
 }
@@ -123,6 +126,19 @@ function bookRowsHtml(rows: BookPlanRow[]): string {
     .join('')}</div>`;
 }
 
+function goalHtml(goal: number, opts: ReviewRenderOptions): string {
+  const book = opts.goalBook;
+  const current = book ? book.goal : goal;
+  const label = !book && opts.books?.length ? 'My words, new a day' : 'New words a day';
+  const hook = book ? `data-act="wb-goal" data-book="${esc(book.id)}"` : 'data-act="nb-goal"';
+  return `<div class="nbv-goal" role="group" aria-label="New words a day">
+      <span>${label}</span>
+      <div class="nbv-goal__chips">${[5, 10, 20, 40]
+        .map((g) => `<button type="button" class="nbv-chip${g === current ? ' is-active' : ''}" ${hook} data-goal="${g}" aria-pressed="${g === current}">${g}</button>`)
+        .join('')}</div>
+    </div>`;
+}
+
 function planHtml(entries: NotebookEntry[], goal: number, now: number, opts: ReviewRenderOptions = {}): string {
   // A word book word marked "already know it" counts as known without a review.
   const marked = (e: NotebookEntry) => !!(e as { known?: boolean }).known;
@@ -130,7 +146,6 @@ function planHtml(entries: NotebookEntry[], goal: number, now: number, opts: Rev
   const known = reviewed.filter((e) => marked(e) || memoryLevel(e) === 3).length;
   const week = entries.filter((e) => Number(e.createdAt || 0) >= dayStart(now) - 6 * DAY).length;
   const verb = opts.started ? 'Started' : 'Saved';
-  const goals = [5, 10, 20, 40];
   const legend = [0, 1, 2, 3, 4].map((l) => `<i class="nbv-heat-key nbv-heat--${l}"></i>`).join('');
   return `<aside class="nbv-plan">
     <div class="nbv-stats">
@@ -140,10 +155,7 @@ function planHtml(entries: NotebookEntry[], goal: number, now: number, opts: Rev
       <div><b>${week}</b><span>${verb} this week</span></div>
     </div>
     ${bookRowsHtml(opts.books || [])}
-    ${opts.showGoal === false ? '' : `<div class="nbv-goal" role="group" aria-label="New words a day">
-      <span>${opts.books?.length ? 'My words, new a day' : 'New words a day'}</span>
-      <div class="nbv-goal__chips">${goals.map((g) => `<button type="button" class="nbv-chip${g === goal ? ' is-active' : ''}" data-act="nb-goal" data-goal="${g}" aria-pressed="${g === goal}">${g}</button>`).join('')}</div>
-    </div>`}
+    ${opts.showGoal === false ? '' : goalHtml(goal, opts)}
     <figure><figcaption>Due, next 14 days</figcaption>${forecastSvg(entries, now)}</figure>
     <figure><figcaption>${verb}, last 12 weeks</figcaption>${activitySvg(entries, now)}<div class="nbv-heat-legend"><span>Fewer</span>${legend}<span>More</span></div></figure>
   </aside>`;

@@ -10,7 +10,7 @@
  * The old fields stay filled (`reviewDue`, `reviewInterval`, `reps`, `ease`), so an older app
  * that syncs the same notebook still sees sensible due dates.
  */
-import { Rating, State, createEmptyCard, default_w, fsrs, generatorParameters, type Card, type Grade } from 'ts-fsrs';
+import { Rating, State, createEmptyCard, default_w, forgetting_curve, fsrs, generatorParameters, type Card, type Grade } from 'ts-fsrs';
 
 export type ReviewGrade = 1 | 2 | 3 | 4;
 
@@ -126,6 +126,17 @@ export function scheduleReview(e: ScheduleFields, grade: ReviewGrade, now = Date
     lastReview: now,
     learningSteps: next.learning_steps,
   };
+}
+
+/**
+ * FSRS's predicted chance of recalling the word at time `at`, from its stability and last review;
+ * null for a word not in rotation.
+ */
+export function predictedRecall(e: ScheduleFields, at: number): number | null {
+  const s = num(e.stability);
+  const last = num(e.lastReview);
+  if (s == null || s <= 0 || last == null) return null;
+  return forgetting_curve(default_w, Math.max(0, (at - last) / DAY), s);
 }
 
 /** Milliseconds until the word would be due again after this grade, without saving anything. */

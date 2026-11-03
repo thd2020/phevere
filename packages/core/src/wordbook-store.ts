@@ -21,6 +21,7 @@
  */
 import { getNewId, getVocabDb } from './runtime';
 import { scheduleReview, type ReviewGrade, type ScheduleFields } from './review-schedule';
+import { listAnswerHistory, logGradedAnswer, logKnownAnswer, replaySchedule, type AnswerDetails, type AnswerRecord } from './answer-history';
 import { addVocab, ensureVocabReady, findByLemma, notifyVocabChanged, type VocabAddInput, type VocabEntry } from './vocab-store';
 
 export interface WordbookSub {
@@ -184,26 +185,63 @@ export async function writeBookWord(p: BookWordProgress): Promise<void> {
   );
 }
 
-/** One review of a book word that is not in My words, scheduled with FSRS like a saved word. */
-export async function reviewBookWord(lemma: string, grade: ReviewGrade, now = Date.now()): Promise<BookWordProgress> {
+/**
+ * One review of a book word that is not in My words, scheduled with FSRS like a saved word and
+ * recorded in the answer history.
+ */
+export async function reviewBookWord(lemma: string, grade: ReviewGrade, now = Date.now(), details: AnswerDetails = {}): Promise<BookWordProgress> {
   await ensureVocabReady();
   const key = bookWordKey(lemma);
   const prev = (await getBookWord(key)) || { lemma: key, known: false, updatedAt: 0 };
-  const next = scheduleReview({ ...prev, createdAt: prev.createdAt ?? now }, grade, now);
+  const before = { ...prev, createdAt: prev.createdAt ?? now };
+  const next = scheduleReview(before, grade, now);
   await writeBookWord({ ...prev, ...next, lemma: key, createdAt: prev.createdAt ?? now, updatedAt: now });
+  await logGradedAnswer(key, grade, now, before, details);
   notifyVocabChanged();
   return (await getBookWord(key))!;
 }
 
-/** "Already know it" (or undo): a known word is never offered as a new word. */
-export async function setBookWordKnown(lemma: string, known: boolean, now = Date.now()): Promise<BookWordProgress> {
+/** "Already know it" (or undo): a known word is never offered as a new word. Recorded in the history. */
+export async function setBookWordKnown(lemma: string, known: boolean, now = Date.now(), bookId: string | null = null): Promise<BookWordProgress> {
   await ensureVocabReady();
   const key = bookWordKey(lemma);
   const prev = (await getBookWord(key)) || { lemma: key, known: false, updatedAt: 0 };
   // Marking a word known does not start it, so it does not count against today's new words.
   await writeBookWord({ ...prev, lemma: key, known, updatedAt: now });
+  await logKnownAnswer(key, known, now, bookId);
   notifyVocabChanged();
   return (await getBookWord(key))!;
+}
+
+/**
+ * Rebuilds a word's schedule from its answer history (`replaySchedule`) and writes it where the
+ * word lives: its My words row when saved, otherwise its `book_words` row. Returns false when the
+ * word has no history. Used after answer histories from other devices are merged in.
+ */
+export async function rebuildWordSchedule(lemma: string, history?: AnswerRecord[]): Promise<boolean> {
+  await ensureVocabReady();
+  const key = bookWordKey(lemma);
+  const records = history ?? (await listAnswerHistory({ lemma: key }));
+  if (!records.length) return false;
+  const { schedule: s, known, startedAt } = replaySchedule(records);
+  const db = getVocabDb();
+  const saved = await findByLemma(key);
+  if (saved) {
+    if (!s) return false;
+    await db.runWrite(
+      `UPDATE vocab SET review_due = ?, review_interval = ?, ease = ?, reps = ?, stability = ?, difficulty = ?, state = ?, lapses = ?,
+       last_review = ?, learning_steps = ? WHERE lower(lemma) = ?`,
+      [s.reviewDue, s.reviewInterval, s.ease, s.reps, s.stability, s.difficulty, s.state, s.lapses, s.lastReview, s.learningSteps, key],
+    );
+    // "Already know it" is kept on the book row even for a saved word.
+    const prev = await getBookWord(key);
+    if (prev && prev.known !== known) await writeBookWord({ ...prev, known });
+    return true;
+  }
+  const prev = (await getBookWord(key)) || { lemma: key, known: false, updatedAt: 0 };
+  const sched = s ?? { reviewDue: null, reviewInterval: 0, ease: 2.5, reps: 0, stability: null, difficulty: null, state: null, lapses: 0, lastReview: null, learningSteps: 0 };
+  await writeBookWord({ ...prev, ...sched, lemma: key, known, createdAt: startedAt ?? prev.createdAt, updatedAt: prev.updatedAt });
+  return true;
 }
 
 /** Caches a lookup's meaning for quiz questions. Local only: `updated_at` is left alone. */

@@ -1,6 +1,8 @@
 # Notebook review: what works and what Phevere does
 
-2026-11-03. This memo is the reason the Review view is a quiz rather than a flashcard with four self-rating buttons. It looks at how the main vocabulary apps run review, what memory research says about it, and then the design built in `packages/core/src/review-quiz.ts` (questions and grading), `review-schedule.ts` (FSRS scheduling) and `notebook-review.ts` (the view).
+2026-11-03: review moved out of the Words switcher into its own tab, Learn, on desktop and phone. The quiz and the plan described here are its Today page.
+
+2026-11-03. This memo is the reason review is a quiz rather than a flashcard with four self-rating buttons. It looks at how the main vocabulary apps run review, what memory research says about it, and then the design built in `packages/core/src/review-quiz.ts` (questions and grading), `review-schedule.ts` (FSRS scheduling) and `notebook-review.ts` (the view).
 
 ![Screenshot of a meaning question: the word abandon with four meanings to choose from](REVIEW.assets/meaning-question.png)
 
@@ -63,6 +65,24 @@ One tap overturns the grade: "I knew it" after a miss (a slip of the finger or a
 
 Scheduling uses [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs) 5.4.2 (MIT) with 90% desired retention, Anki's default learning steps of 1 and 10 minutes, and interval fuzz. Version 6.0.0 came out on 2026-10-28 and requires Node 24, while the desktop app runs on Electron 28, so the 5.x line is the one that fits. The notebook keeps stability, difficulty, state, lapses, the last review time and the learning step in new columns, added with `ALTER TABLE ADD COLUMN` so no row is rewritten. A word reviewed only under the old scheduler gets its first FSRS state from its interval and ease with the same formula fsrs-rs uses when Anki switches a collection to FSRS: stability equals the old interval, and difficulty follows from the ease. The old interval, ease and due fields stay filled, so an older app syncing the same notebook still sees sensible due dates. When an older app edits only a note, the newer app keeps its memory state; when the older app reviews the word itself, the state is rebuilt from the old fields at the next review.
 
+## The answer history
+
+Every answer is also written to an append-only table, `answer_history` (`packages/core/src/answer-history.ts`), on the desktop and the phone. A row holds the headword in lower case, the `vocab` row id when the word is in My words, the word book being studied, the time, the question type, the skill it tested, whether it was right, the response time, the grade that was saved and the device. "Already know it" and its undo are rows too, with no grade. Rows are never changed or deleted.
+
+The skill comes from the question type. Picking a meaning or a word, and the plain flash card, test meaning; typing the word from its meaning or into a sentence tests spelling; the two questions that play the word test listening. There is no speaking check, so the third skill is called Listening. A word's score in a skill moves halfway towards 1 after a right answer and halfway towards 0 after a wrong one, so two right answers in a row from scratch, or three after a miss, take it past 0.75, which counts as mastered.
+
+The FSRS schedule can be rebuilt from the history. `replaySchedule` runs the graded answers in time order through the same `scheduleReview` call the live review uses, starting from a new card. ts-fsrs seeds its interval fuzz from the review time, the repetition count and the memory state, so the replay lands on exactly the state the live updates wrote; `scripts/test-review.js` checks this for a saved word, a book word and a word reviewed before the history existed. That last case is why a word's first graded row can carry a `prior`: the schedule as it stood just before, which replay starts from. `rebuildWordSchedule` writes the replayed state back to the word's `vocab` row, or to its `book_words` row when it is not in My words.
+
+## The Progress page
+
+Learn has a second page, Progress, built from the answer history and the words' FSRS state in `packages/core/src/learn-progress.ts`. It follows the list chosen in the Learn switcher, except the Words card, which always lists My words and every book.
+
+![Screenshot of the Progress page on a phone: today's new words and reviews against the goal, a one-day streak, words per state, skill bars, root families, answers per day and the forgetting curve](REVIEW.assets/learn-progress.png)
+
+*The Progress page after a session: the rings fill towards the day's goals, and the curve shows how recall would fall over a month without review.*
+
+New words today counts words whose first graded answer fell today, against the sum of the daily goals in the list. Reviews counts today's graded answers against those plus the reviews still due. The streak counts days in a row with at least one answer, ending today or, before today's first answer, yesterday. Root families are the root families of Families plus the deep roots, among the words already started or saved, so a book of thousands of new words does not bury them. The forgetting curve averages FSRS's predicted recall, from each word's stability and last review, over the words in rotation for the next 30 days, with the 90% target as a dashed line.
+
 ## What is left open
 
-Automatic grading by time is a judgement call. If the thresholds feel wrong in use, they live in `autoGrade` in `review-quiz.ts`. FSRS can fit its parameters to a learner's own history once there are a few hundred reviews; Phevere does not keep a review log yet, so it runs on the default parameters.
+Automatic grading by time is a judgement call. If the thresholds feel wrong in use, they live in `autoGrade` in `review-quiz.ts`. FSRS can fit its parameters to a learner's own history once there are a few hundred reviews. The answer history now holds what that fitting needs, but Phevere still runs on the default parameters.

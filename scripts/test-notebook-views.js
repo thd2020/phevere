@@ -152,6 +152,61 @@ assert.match(views.reviewHtml(rq, rs, 10, { now }), /class="nbv-quiz"/);
 assert.match(views.reviewHtml([], views.startReview([], 2, now), 10, { now }), /Save words to start reviewing/);
 assert.match(views.reviewHtml(rq.slice(1, 2), views.startReview(rq.slice(1, 2), 0, now), 10, { now }), /Nothing due today/);
 
+// Review lives in the Learn tab: the Words switcher has four views, and a saved Review view
+// becomes the list with Learn opened instead.
+const viewSwitch = views.notebookViewSwitchHtml('list');
+assert.equal((viewSwitch.match(/data-act="nb-view"/g) || []).length, 4);
+assert.doesNotMatch(viewSwitch, /data-view="review"/);
+assert.deepEqual(views.readNotebookView('review'), { view: 'list', learn: true });
+assert.deepEqual(views.readNotebookView('cards'), { view: 'cards', learn: false });
+assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false });
+{
+  const { learnHtml } = load('learn-view');
+  const html = learnHtml({ scope: 'mine', ctx: null, mine: rq, review: views.startReview(rq, 2, now), goal: 10, now });
+  assert.match(html, /data-act="nb-start"/, 'Learn starts today\'s review');
+  assert.match(html, /data-act="nb-goal"/, 'My words keeps its goal chips');
+  assert.doesNotMatch(html, /lrn-scopes/, 'no list switcher without word books');
+  assert.match(html, /data-act="learn-page" data-page="progress"/);
+}
+
+// Progress: today against the goal, the streak, skills, families and the forgetting curve.
+{
+  const { progressSummary, progressHtml } = load('learn-progress');
+  const t0 = new Date(2026, 10, 3, 12).getTime();
+  const DAYMS = 86_400_000;
+  const words = [
+    { id: 'p1', lemma: 'portable', reps: 4, state: 2, stability: 30, lastReview: t0 - 2 * DAYMS, reviewDue: t0 + 20 * DAYMS, createdAt: t0 - 40 * DAYMS },
+    { id: 'p2', lemma: 'transport', reps: 1, state: 1, stability: 1, lastReview: t0 - 3600_000, reviewDue: t0 + 3600_000, createdAt: t0 - 2 * DAYMS },
+    { id: 'p3', lemma: 'export', reps: 0, createdAt: t0 - DAYMS },
+  ];
+  const rec = (lemma, at, kind, skill, correct, grade = correct ? 3 : 1) => ({ id: `${lemma}-${at}`, lemma, wordId: null, bookId: null, answeredAt: at, kind, skill, correct, ms: 3000, grade, device: null, prior: null });
+  const history = [
+    rec('portable', t0 - 40 * DAYMS, 'meaning-choice', 'meaning', true),
+    rec('portable', t0 - 2 * DAYMS, 'recall', 'spelling', true),
+    rec('portable', t0 - DAYMS, 'recall', 'spelling', true),
+    rec('transport', t0 - 3600_000, 'meaning-choice', 'meaning', false),
+    rec('transport', t0 - 3000_000, 'listen-choice', 'listening', true),
+  ];
+  const s = progressSummary({ history, scope: 'mine', ctx: null, mine: words, goal: 10, now: t0 });
+  assert.equal(s.newToday, 1, 'transport was first answered today');
+  assert.equal(s.newGoal, 10);
+  assert.equal(s.reviewsToday, 2);
+  assert.equal(s.dueLeft, 1);
+  assert.equal(s.streak, 3, 'today, yesterday and the day before');
+  assert.deepEqual(s.lists[0], { id: 'mine', label: 'My words', total: 3, fresh: 1, learning: 1, known: 1 });
+  assert.deepEqual(s.skills.spelling, { mastered: 1, tested: 1 });
+  assert.deepEqual(s.skills.meaning, { mastered: 0, tested: 2 });
+  assert.equal(s.families[0].label, 'port');
+  assert.equal(s.families[0].known, 1);
+  assert.equal(s.perDay.length, 30);
+  assert.equal(s.perDay[29].right + s.perDay[29].wrong, 2);
+  assert.equal(s.inRotation, 2);
+  assert.ok(s.curve[0] > s.curve[30], 'recall falls without review');
+  const page = progressHtml({ history, scope: 'mine', ctx: null, mine: words, goal: 10, now: t0 });
+  for (const label of ['New words', 'Reviews', 'Streak', 'Skills', 'Root families', 'Answers per day', 'Forgetting curve']) assert.match(page, new RegExp(label));
+  assert.match(progressHtml({ history: [], scope: 'mine', ctx: null, mine: [], goal: 10, now: t0 }), /No answers yet/);
+}
+
 // Rows: Look up sits in the collapsed row, not only in the details.
 const row = vocabEntryHtml({ id: 'x', lemma: 'inspect', definition: 'look' }, false, now);
 const head = row.slice(0, row.indexOf('vocab-entry__details'));

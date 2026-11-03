@@ -6,8 +6,9 @@
  * - Map: the same relations drawn as a graph, words joined through the morphemes they share.
  * - Cards: a picture, the word split into its parts with their meanings, and the learner's
  *   own note as a mnemonic; the meaning sits on the back of the card.
- * - Review: today's spaced-repetition queue, a daily goal, the coming two weeks of reviews
- *   and the words added over the last twelve weeks.
+ *
+ * Review (the quiz, the daily plan and its charts) lives in `notebook-review.ts` and is shown in
+ * the Learn tab (`learn-view.ts`), not in the Words switcher.
  *
  * Everything here returns HTML strings with `data-act` hooks, like `vocab-view.ts`; the two
  * DOM helpers at the end (map pan and zoom, card pictures) use only standard DOM calls.
@@ -26,7 +27,6 @@ const ICON = {
   families: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v5M12 9H6v4M12 9h6v4M4 15h4v5H4zM16 15h4v5h-4zM10 2h4v4h-4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
   map: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="6" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="18" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.3 8.2l2.6 7.5M15.9 7.6l-2.7 8.1M8.5 6.8l7-.6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
   cards: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 15l5-4 4 3 3-2 6 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="16" cy="9" r="1.5" fill="currentColor"/></svg>',
-  review: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 10h16M9 3v4M15 3v4M9 15l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
 const VIEW_LABEL: Record<NotebookView, string> = {
@@ -34,8 +34,18 @@ const VIEW_LABEL: Record<NotebookView, string> = {
   families: 'Families',
   map: 'Map',
   cards: 'Cards',
-  review: 'Review',
 };
+
+const VIEWS: NotebookView[] = ['list', 'families', 'map', 'cards'];
+
+/**
+ * The saved Words view. Review used to be one of them; a learner who left the notebook on Review
+ * gets the list, and `learn` says to open the Learn tab instead.
+ */
+export function readNotebookView(stored: string | null | undefined): { view: NotebookView; learn: boolean } {
+  if (stored === 'review') return { view: 'list', learn: true };
+  return { view: VIEWS.includes(stored as NotebookView) ? (stored as NotebookView) : 'list', learn: false };
+}
 
 /* ------------------------------------------------------------------ analysis */
 
@@ -115,7 +125,7 @@ function treeSize(n: TreeNode): number {
 /* ------------------------------------------------------------- view switcher */
 
 export function notebookViewSwitchHtml(view: NotebookView): string {
-  const views: NotebookView[] = ['list', 'families', 'map', 'cards', 'review'];
+  const views = VIEWS;
   return `<div class="nbv-switch" role="tablist" aria-label="Notebook view">${views
     .map(
       (v) => `<button type="button" role="tab" class="nbv-switch__btn${v === view ? ' is-active' : ''}" data-act="nb-view" data-view="${v}" aria-selected="${v === view}" title="${VIEW_LABEL[v]}">${ICON[v]}<span>${VIEW_LABEL[v]}</span></button>`,

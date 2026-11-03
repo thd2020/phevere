@@ -1,5 +1,7 @@
 # Holarky account and notebook sync
 
+Recent changes (2026-11-03): saved words and word-book subscriptions sync free and carry no review progress. Learning progress syncs as the answer history in `phevere/progress`, only while the account has Plus; without it, progress stays on the device, and the account panel and Learn tab show a Get Plus line. The client was updated from holarky-account pull request #4.
+
 Recent changes (2026-10-30): the account moved out of Settings. On the desktop it is a button in the main window's title bar, left of the gear, that opens a popover; on the phone it is a button at the end of the app bar that opens a bottom sheet. The button shows the Holarky mark when signed out and the user's initial when signed in.
 
 phevere can sign in with a Holarky account, the one account shared by every Holarky app. While signed in, the notebook syncs between every desktop and phone signed in to the same account. Lookups never wait on the account or the network; without an account phevere works exactly as before.
@@ -13,6 +15,9 @@ Identity is the Holarky Auth0 tenant: people sign in on its Universal Login page
 | Client (vendored copy; edit it in holarky-account, then copy it here) | `packages/core/src/holarky-account.ts` |
 | Signed-in state, automatic sync, account settings | `packages/core/src/account.ts` |
 | Notebook sync | `packages/core/src/vocab-sync.ts` |
+| Word-book subscriptions | `packages/core/src/wordbook-sync.ts` |
+| Learning progress (Plus), entitlements check | `packages/core/src/progress-sync.ts`, `syncProgressForAccount` in `account.ts` |
+| Plus line in the account panel and Learn | `plusNoticeHtml` in `packages/core/src/account-view.ts` |
 | Desktop: session file, browser sign-in | `src/services/account.ts`, IPC in `src/index.ts`, `accountAPI` in `src/preload.ts` |
 | Account button and panel markup, Holarky mark (both platforms) | `packages/core/src/account-view.ts` |
 | Desktop: title-bar button and popover | `wireAccountMenu` in `src/renderer.ts`, `#accountSlot` and `#accountMenu` in `src/index.html` |
@@ -20,7 +25,7 @@ Identity is the Holarky Auth0 tenant: people sign in on its Universal Login page
 | Mobile: app-bar button and bottom sheet | `appBarHtml` in `apps/mobile/src/views.ts`, `accountOpen` in `apps/mobile/src/app.ts` |
 | Android callback | intent filter on `MainActivity` (`AndroidManifest.xml`), `openAuth` / `takeAuthCallback` in `BridgeRouter.java` |
 | iOS callback | `openAuth` in `PhevereViewController.swift` (`ASWebAuthenticationSession`) |
-| Test | `scripts/test-vocab-sync.js` |
+| Test | `scripts/test-vocab-sync.js`; the sync split in `scripts/test-review.js` |
 
 ## Account settings
 
@@ -43,13 +48,25 @@ The mobile session is kept in the WebView's local storage under `holarky-account
 
 ## How the notebook syncs
 
-Word book subscriptions and progress on book words that are not in My words sync in a second namespace, `phevere/wordbooks`, with records `sub:<book>` and `word:<headword>` and the same newest-wins rule. Older apps never see them, and a failure there does not stop the notebook from syncing.
+Three collections sync. Saved words (`phevere/vocab`) and word-book subscriptions (`phevere/wordbooks`) are free. Learning progress (`phevere/progress`) is the Plus membership; without it, progress stays on the device and everything still works there.
+
+| Collection | Records | Who |
+|---|---|---|
+| `phevere/vocab` | one per saved word, without review fields | everyone |
+| `phevere/wordbooks` | `sub:<book>`, a subscription and its daily goal | everyone |
+| `phevere/progress` | `ev:<id>`, one per answer in the answer history | Plus |
+
+The server strips review fields (due date, interval, ease, repetitions and the FSRS memory state) from `phevere/vocab` and `phevere/wordbooks` on the way in and out, and phevere no longer sends them. When a word record comes back, the device keeps the schedule it already has for that row. When another device folds a duplicate row into a different id, the deleted row's schedule moves to the surviving row, so `mergeDuplicateLemmas` never loses progress either. Older apps that still send `word:<headword>` records for book words are ignored; that progress now travels as answers.
+
+Progress syncs as the answer history (`packages/core/src/progress-sync.ts`). Before each sync the app reads `GET /v1/entitlements`. While `collections["phevere/progress"].access` is true it sends the answers it has not sent yet and pulls the others, and every word that received answers from another device gets its schedule rebuilt by replaying its merged history (`rebuildWordSchedule`, described in [`REVIEW.md`](REVIEW.md)). "Already know it" is an answer too. When Plus is not active the server answers 402 `plus_required` with `keptUntil`, the date it deletes what it still holds; the answers stay marked unsent and go up once Plus is back. If the server has already emptied the collection it sends `state:purged`, and the app sends its whole history again.
+
+When progress sync is off, the account panel and the Learn tab show one line ("Learning progress stays on this device", or until when synced progress is kept) and a Get Plus link. The link goes to `HOLARKY_ACCOUNT.plusUrl` in `packages/core/src/account.ts`, a placeholder until checkout exists.
 
 Each notebook row is sent as a record `{ id, updatedAt, deleted, data }` to the `phevere/vocab` collection.
 
 - **Push:** rows and deletions changed since the last push. Deleting a word now leaves a tombstone in the `vocab_deleted` table so the deletion reaches other devices.
 - **Pull:** everything the server has after this device's cursor, in pages of 500. A remote record replaces the local row unless the local row is newer; on a tie the server's copy wins, so devices converge.
-- **The same word saved on two devices** gets two ids. After each pull, rows with the same lemma (ignoring case) fold into the row with the smallest id: text fields keep the newest non-empty value, sources and tags are combined, review progress comes from the most-reviewed row. The other rows become tombstones. Every device folds the same way.
+- **The same word saved on two devices** gets two ids. After each pull, rows with the same lemma (ignoring case) fold into the row with the smallest id: text fields keep the newest non-empty value, sources and tags are combined, and the local review progress comes from the most-reviewed row. The other rows become tombstones. Every device folds the same way.
 - **When:** after sign-in, at startup, 5 seconds after a notebook edit, every 15 minutes, when the phone app comes back to the foreground, and on Sync now.
 - **Sync state** (cursor, last push time, which account it belongs to) is in the `sync_state` table. Signing in with a different account starts over and adds this device's notebook to that account. Signing out keeps the notebook on the device.
 - **Delete account** (in the account panel) asks for the account's email, then removes the Holarky account everywhere: the Auth0 sign-in, the profile and the synced notebook. The notebook on the device stays.

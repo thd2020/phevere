@@ -21,6 +21,8 @@ import {
   type AccountState,
   accountButtonHtml,
   accountPanelHtml,
+  plusNoticeHtml,
+  HOLARKY_ACCOUNT,
   deleteEmailMatches,
   attachNotebookMap,
   traceNotebookFamilies,
@@ -76,6 +78,12 @@ import {
   type FamilyGrouping,
   type MorphKind,
   type NotebookView,
+  readNotebookView,
+  reviewAnswerDetails,
+  scopeBookFor,
+  listAnswerHistory,
+  type AnswerRecord,
+  type LearnPage,
   type RecentLookup,
   type ReviewState,
   API_PROVIDERS,
@@ -109,6 +117,8 @@ import {
   etymologyEntryUrl,
   navHtml,
   notebookBody,
+  learnBody,
+  type LearnState,
   scanHtml,
   appBarHtml,
   popupBarHtml,
@@ -210,8 +220,11 @@ const NB_GROUP_KEY = 'phevere.notebookGroup';
 const NB_MAP_KEY = 'phevere.notebookMapKinds';
 const NB_GOAL_KEY = 'phevere.reviewGoal';
 const NB_CARDS_KEY = 'phevere.notebookCardsLayout';
+// Review moved from the Words switcher to the Learn tab; a saved Review view becomes the list.
+const savedView = readNotebookView(readStore(NB_VIEW_KEY));
+if (savedView.learn) writeStore(NB_VIEW_KEY, savedView.view);
 const nbState = {
-  view: (readStore(NB_VIEW_KEY) || 'list') as NotebookView,
+  view: savedView.view as NotebookView,
   group: (readStore(NB_GROUP_KEY) || 'root') as FamilyGrouping,
   mapKinds: (readStore(NB_MAP_KEY) || 'root,prefix,char').split(',').filter(Boolean) as MorphKind[],
   flipped: new Set<string>(),
@@ -222,6 +235,18 @@ const nbState = {
 /** Every word, for Review; the list keeps its 400 most recent. */
 let reviewPool: VocabEntry[] = [];
 let grading = false;
+/* Learn: Today or Progress, and the answer history Progress draws from (null until loaded). */
+const LEARN_PAGE_KEY = 'phevere.learnPage';
+let learnPage: LearnPage = readStore(LEARN_PAGE_KEY) === 'progress' ? 'progress' : 'today';
+let answerHistory: AnswerRecord[] | null = null;
+
+async function loadAnswerHistory(): Promise<void> {
+  try {
+    answerHistory = await listAnswerHistory();
+  } catch {
+    answerHistory = [];
+  }
+}
 
 /* Word books: the list the Words tab shows (My words, a book or All books) and its data. */
 const WORDS_SCOPE_KEY = 'phevere.wordsScope';
@@ -301,7 +326,7 @@ async function prefetchMeanings(wait = false): Promise<void> {
   });
   const done = Promise.all(jobs).then(() => {
     rebuildWordsContext();
-    if (!wait && tab === 'notebook' && nbState.view === 'review' && !nbState.review?.answer) paint();
+    if (!wait && tab === 'learn' && !nbState.review?.answer) paint();
   });
   if (wait) await done;
 }
@@ -494,8 +519,10 @@ function paint(): void {
   }
   const body =
     tab === 'notebook'
-      ? notebookBody(notebook, notebookSort, notebookFilter, expandedVocab, notebookViewState(), wordsState)
-      : tab === 'settings'
+      ? notebookBody(notebook, notebookSort, notebookFilter, expandedVocab, { ...nbState, pool: reviewPool }, wordsState)
+      : tab === 'learn'
+        ? learnBody(learnViewState(), wordsState)
+        : tab === 'settings'
         ? settingsBody(
             prefs,
             dictionaryService.getSourceStats().sources,
@@ -546,10 +573,9 @@ function paint(): void {
   bindAzRail();
   // A repaint replaces the map's element; release the old 3D renderer straight away.
   disposeNotebookMaps(true);
-  if (tab === 'notebook') {
-    revealWordsScope();
-    bindNotebookViews();
-  }
+  if (tab === 'notebook' || tab === 'learn') revealWordsScope();
+  if (tab === 'notebook') bindNotebookViews();
+  if (tab === 'learn') bindLearn();
   lib.inspectorEntering = false;
   if (lib.highlightKey && tab === 'settings' && settingsSection === 'api') {
     const card = document.querySelector(`.sv-key[data-provider="${CSS.escape(lib.highlightKey)}"]`);
@@ -558,17 +584,20 @@ function paint(): void {
   }
 }
 
-function notebookViewState() {
-  if (nbState.view === 'review' && !nbState.review && wordsState.scope !== 'mine' && wordsState.ctx) {
+/** The Learn tab's state, starting today's session for the chosen list when there is none. */
+function learnViewState(): LearnState {
+  if (!nbState.review && wordsState.scope !== 'mine' && wordsState.ctx) {
     nbState.review = startScopeReview(wordsState.scope, wordsState.ctx, { mineGoal: nbState.goal, mineStartedToday: startedToday().length });
   }
-  if (nbState.view === 'review' && !nbState.review && reviewPool.length) {
-    nbState.review = startReview(reviewPool, nbState.goal, Date.now(), startedToday().length);
-  }
+  if (!nbState.review && reviewPool.length) nbState.review = startReview(reviewPool, nbState.goal, Date.now(), startedToday().length);
   return {
-    ...nbState,
+    review: nbState.review || startReview([], nbState.goal),
+    goal: nbState.goal,
     pool: reviewPool,
     reviewOptions: { audio: prefs.audioEnabled !== false, preview: previewReview, formatGap: formatReviewGap },
+    page: learnPage,
+    history: answerHistory,
+    notice: plusNoticeHtml(accountState, HOLARKY_ACCOUNT.plusUrl),
   };
 }
 
@@ -602,10 +631,20 @@ function bindNotebookViews(): void {
   if (prefs.senseImages !== false) {
     fillWordImages(page, (lemma, lang, gloss) => fetchWordImage(lemma, { lang, gloss }));
   }
-  if (nbState.view === 'review') {
-    focusReview(page as HTMLElement);
-    void prefetchMeanings();
+}
+
+function bindLearn(): void {
+  const page = document.querySelector<HTMLElement>('.lrn-body');
+  if (!page) return;
+  if (learnPage === 'progress') {
+    if (!answerHistory) void loadAnswerHistory().then(() => tab === 'learn' && learnPage === 'progress' && paint());
+    return;
   }
+  if (prefs.senseImages !== false) {
+    fillWordImages(page, (lemma, lang, gloss) => fetchWordImage(lemma, { lang, gloss }));
+  }
+  focusReview(page);
+  void prefetchMeanings();
 }
 
 /** Keeps the chosen list (or Add a word book) visible in the scrolling switcher. */
@@ -648,15 +687,16 @@ async function commitReview(): Promise<void> {
     writeStore(startedTodayKey(), JSON.stringify([...new Set([...startedToday(), q.id])]));
   }
   let updated: VocabEntry | ReturnType<typeof bookEntry> | null = null;
+  const details = reviewAnswerDetails(r, wordsState.scope, wordsState.ctx);
   try {
     if (isBookOnlyId(q.id)) {
       // A book word that is not in My words: progress goes to the book_words table.
-      const p = await reviewBookWord(q.lemma, a.grade);
+      const p = await reviewBookWord(q.lemma, a.grade, Date.now(), details);
       wbProgress.set(p.lemma, p);
       rebuildWordsContext();
       updated = wordsState.ctx ? bookEntry(q.lemma, wordsState.ctx) : null;
     } else {
-      const saved = await reviewVocab(q.id, a.grade);
+      const saved = await reviewVocab(q.id, a.grade, Date.now(), details);
       updated = saved;
       if (saved) {
         notebook = notebook.map((e) => (e.id === q.id ? saved : e));
@@ -668,6 +708,7 @@ async function commitReview(): Promise<void> {
     toast(err instanceof Error ? err.message : String(err));
   }
   advanceReview(r, updated);
+  answerHistory = null;
   grading = false;
   paint();
 }
@@ -1714,11 +1755,18 @@ function onClick(e: Event): void {
 
 async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
   switch (act) {
+    case 'account-plus': {
+      // Get Plus: the system browser, not the app's WebView.
+      e.preventDefault();
+      const url = (t as HTMLAnchorElement).href;
+      if (url) openExternal(url);
+      return;
+    }
     case 'tab':
-      tab = t.dataset.tab === 'notebook' ? 'notebook' : t.dataset.tab === 'settings' ? 'settings' : 'lookup';
-      if (tab === 'notebook') await refreshNotebook();
-      // Every view but the list works on the whole notebook, not the first page of it.
-      if (tab === 'notebook' && (nbState.view !== 'list' || wordsState.scope !== 'mine')) {
+      tab = (['notebook', 'learn', 'settings'] as const).find((id) => id === t.dataset.tab) || 'lookup';
+      if (tab === 'notebook' || tab === 'learn') await refreshNotebook();
+      // Learn and every Words view but the list work on the whole notebook, not the first page of it.
+      if (tab === 'learn' || (tab === 'notebook' && (nbState.view !== 'list' || wordsState.scope !== 'mine'))) {
         await loadReviewPool();
         rebuildWordsContext();
       }
@@ -1965,7 +2013,6 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'nb-view':
       nbState.view = (t.dataset.view as NotebookView) || 'list';
       writeStore(NB_VIEW_KEY, nbState.view);
-      if (nbState.view === 'review') nbState.review = null;
       if (nbState.view !== 'list') {
         await loadReviewPool();
         rebuildWordsContext();
@@ -1980,6 +2027,13 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
         await loadReviewPool();
         rebuildWordsContext();
       }
+      paint();
+      window.scrollTo({ top: 0 });
+      return;
+    case 'learn-page':
+      learnPage = t.dataset.page === 'progress' ? 'progress' : 'today';
+      writeStore(LEARN_PAGE_KEY, learnPage);
+      if (learnPage === 'progress') await loadAnswerHistory();
       paint();
       window.scrollTo({ top: 0 });
       return;
@@ -2048,14 +2102,16 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'wb-known': {
-      const p = await setBookWordKnown(t.dataset.q || '', t.dataset.known === '1');
+      const p = await setBookWordKnown(t.dataset.q || '', t.dataset.known === '1', Date.now(), scopeBookFor(wordsState.scope, wordsState.ctx, t.dataset.q || ''));
+      answerHistory = null;
       wbProgress.set(p.lemma, p);
       rebuildWordsContext();
       paint();
       return;
     }
     case 'wb-known-review': {
-      const p = await setBookWordKnown(t.dataset.q || '', true);
+      const p = await setBookWordKnown(t.dataset.q || '', true, Date.now(), scopeBookFor(wordsState.scope, wordsState.ctx, t.dataset.q || ''));
+      answerHistory = null;
       wbProgress.set(p.lemma, p);
       rebuildWordsContext();
       if (nbState.review) dropCurrentReview(nbState.review);
@@ -2558,13 +2614,18 @@ export async function startApp(): Promise<void> {
     accountPlatform.initAccount({
       onState: (next) => {
         const before = accountBadgeKey(accountState);
+        const plusBefore = plusNoticeHtml(accountState, HOLARKY_ACCOUNT.plusUrl);
         accountState = next;
-        if (accountOpen) paint();
+        if (accountOpen || (tab === 'learn' && plusBefore !== plusNoticeHtml(next, HOLARKY_ACCOUNT.plusUrl))) paint();
         else if (before !== accountBadgeKey(next)) refreshAccountButton();
       },
       onNotebookChanged: () => {
-        void refreshNotebook().then(() => {
-          if (tab === 'notebook') paint();
+        void refreshNotebook().then(async () => {
+          if (tab === 'learn') {
+            await loadReviewPool();
+            rebuildWordsContext();
+          }
+          if (tab === 'notebook' || tab === 'learn') paint();
         });
       },
     });

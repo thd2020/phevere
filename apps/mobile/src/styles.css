@@ -1284,7 +1284,7 @@ select, .field {
   height: calc(var(--nav-h) + var(--pv-inset-bottom));
   padding: 8px 12px var(--pv-inset-bottom);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   background: var(--md-sys-color-surface-container-low);
   border-top: 1px solid var(--md-sys-color-outline-variant);
   z-index: 6;
