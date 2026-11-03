@@ -242,7 +242,8 @@ function railBlock(sections: Array<{ id: string; label: string }>, active: strin
 }
 
 function wrapGroup(id: string, label: string, inner: string): string {
-  return `<div class="lexicon-pos-group" data-pos="${esc(id)}"><div class="lexicon-pos-heading">${esc(label)}</div>${inner}</div>`;
+  const head = label ? `<div class="lexicon-pos-heading">${esc(label)}</div>` : '';
+  return `<div class="lexicon-pos-group" data-pos="${esc(id)}">${head}${inner}</div>`;
 }
 
 function wrapPane(inner: string, extra = ''): string {
@@ -327,21 +328,23 @@ function renderSenses(
   indexOf: Map<Definition, number>,
   images: Array<SenseImage | null> | null,
 ): string {
+  const citeOf = (d: Definition | undefined): string[] =>
+    Array.isArray(d?.sources) && d!.sources!.length
+      ? d!.sources!
+      : String(d?.source || '')
+          .split(/\s*·\s*/)
+          .filter(Boolean);
   return senses
     .map((d, i) => {
       const at = indexOf.get(d) ?? -1;
       const img = images && at >= 0 ? images[at] : null;
       const examples = uniqueExamples(d.examples || []);
       examples.forEach((ex) => shown.add(exampleKey(ex)));
-      const cite =
-        Array.isArray(d.sources) && d.sources.length
-          ? d.sources
-          : String(d.source || '')
-              .split(/\s*·\s*/)
-              .filter(Boolean);
-      const badges = (cite.length ? cite : ['Unknown'])
-        .map((s) => `<span class="definition-source-badge">${esc(sourceName(s))}</span>`)
-        .join('');
+      const cite = citeOf(d);
+      // Shown after the last sense of a run that shares the same sources.
+      const sameAsNext = i + 1 < senses.length && citeOf(senses[i + 1]).join('|') === cite.join('|');
+      const badges =
+        cite.length && !sameAsNext ? cite.map((s) => `<span class="definition-source-badge">${esc(sourceName(s))}</span>`).join('') : '';
       const exHtml = examples.length
         ? `<div class="definition-examples">${examples
             .map((ex) => `<div class="definition-example">${esc(stripGlossText(ex))}</div>`)
@@ -354,7 +357,7 @@ function renderSenses(
             ${img ? senseFigureHtml(img, at) : ''}
             <div class="definition-text">${labelLead(senseHtml(d.meaning))}</div>
             ${exHtml}
-            <div class="definition-source-badges">${badges}</div>
+            ${badges ? `<div class="definition-source-badges">${badges}</div>` : ''}
           </div>
         </div>
       </div>`;
@@ -380,9 +383,12 @@ function lexiconPane(result: DictionaryResult, activePos: string, images: Array<
 
   const shown = new Set<string>();
   let posInner = '';
+  // Senses with no part of speech are "other" beside real ones, and need no heading alone.
+  const several = order.length > 1;
   const posSections = order.map((pos) => {
-    posInner += wrapGroup(pos, pos, renderSenses(groups.get(pos) || [], shown, indexOf, images));
-    return { id: pos, label: abbreviatePos(pos) };
+    const unknown = pos === 'unknown';
+    posInner += wrapGroup(pos, unknown ? (several ? 'other' : '') : pos, renderSenses(groups.get(pos) || [], shown, indexOf, images));
+    return { id: pos, label: unknown ? (several ? 'other' : 'senses') : abbreviatePos(pos) };
   });
   let allInner = wrapPane(posInner, 'lexicon-pane--pos');
 

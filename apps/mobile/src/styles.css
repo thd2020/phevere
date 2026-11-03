@@ -437,19 +437,20 @@ a { color: var(--md-sys-color-tertiary); }
   border-radius: 2px;
   background: color-mix(in srgb, var(--md-sys-color-primary) 30%, transparent);
 }
+/* Where a run of senses came from: one quiet line after the run, not a label on every sense. */
 .definition-source-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 10px;
+  align-items: baseline;
   margin-top: 6px;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--md-sys-color-on-surface-variant) 78%, transparent);
 }
-.definition-source-badge {
-  font-family: var(--md-font-mono);
-  font-size: 0.62rem;
-  font-weight: 500;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--md-sys-color-outline);
+.definition-source-badge + .definition-source-badge::before {
+  content: '·';
+  margin: 0 6px;
+  color: var(--md-sys-color-outline-variant);
 }
 
 /* A sense picture floats beside its gloss in a fixed aspect box; tapping shows the credit. */

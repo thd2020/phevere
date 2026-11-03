@@ -663,17 +663,19 @@
         border-radius: 2px;
         background: color-mix(in srgb, var(--primary) 30%, transparent);
       }
-      .definition-source-badges { display: flex; flex-wrap: wrap; gap: 0 10px; margin-top: 6px; }
-      .definition-source-badge {
-        display: inline-block;
-        font-family: var(--font-mono);
-        font-size: 10px;
-        font-weight: 500;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
-        color: var(--outline);
-        background: none;
-        padding: 0;
+      /* Where a run of senses came from: one quiet line after the run, not a label on every sense. */
+      .definition-source-badges {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        margin-top: 6px;
+        font: 400 11.5px/1.35 var(--font-ui);
+        color: color-mix(in srgb, var(--on-surface-variant) 78%, transparent);
+      }
+      .definition-source-badge + .definition-source-badge::before {
+        content: '·';
+        margin: 0 6px;
+        color: var(--outline-variant);
       }
 
       /* Word family */
@@ -3494,7 +3496,12 @@ function startAutoCloseTimeout() {
             let panel = '';
             let senseCounter = 0;
             // The core's order, so its ranking reaches the page.
-            senses.forEach(function (d) {
+            const citeOf = function (d) {
+              return Array.isArray(d && d.sources) && d.sources.length
+                ? d.sources
+                : String((d && d.source) || '').split(/\s*·\s*/).filter(Boolean);
+            };
+            senses.forEach(function (d, idx) {
               senseCounter += 1;
               const at = senseIndex.has(d) ? senseIndex.get(d) : -1;
               const img = senseImages && at >= 0 ? senseImages[at] : null;
@@ -3508,12 +3515,14 @@ function startAutoCloseTimeout() {
                     return `<div class="definition-example">${escapeHtml(stripHtmlToText(ex))}</div>`;
                   }).join('')}</div>`
                 : '';
-              const citeSources = Array.isArray(d.sources) && d.sources.length
-                ? d.sources
-                : String(d.source || '').split(/\s*·\s*/).filter(Boolean);
-              const badges = (citeSources.length ? citeSources : ['Unknown']).map(function (s) {
-                return `<span class="definition-source-badge">${escapeHtml(normalizeSourceName(s))}</span>`;
-              }).join('');
+              const citeSources = citeOf(d);
+              // Shown after the last sense of a run that shares the same sources.
+              const sameAsNext = idx + 1 < senses.length && citeOf(senses[idx + 1]).join('|') === citeSources.join('|');
+              const badges = citeSources.length && !sameAsNext
+                ? citeSources.map(function (s) {
+                    return `<span class="definition-source-badge">${escapeHtml(normalizeSourceName(s))}</span>`;
+                  }).join('')
+                : '';
               panel += `
                 <div class="definition-item" data-sense="${at}">
                   <div class="definition-sense-row">
@@ -3522,7 +3531,7 @@ function startAutoCloseTimeout() {
                       ${img ? senseFigureHtml(img, at) : ''}
                       <div class="definition-text">${labelLead(meaningHtml) || 'No definition.'}</div>
                       ${exHtml}
-                      <div class="definition-source-badges">${badges}</div>
+                      ${badges ? `<div class="definition-source-badges">${badges}</div>` : ''}
                     </div>
                   </div>
                 </div>`;
@@ -3531,7 +3540,12 @@ function startAutoCloseTimeout() {
           }
 
           function wrapGroup(id, label, inner) {
-            return `<div class="lexicon-pos-group" data-pos="${escapeHtml(id)}"><div class="lexicon-pos-heading">${escapeHtml(label)}</div>${inner}</div>`;
+            const head = label ? `<div class="lexicon-pos-heading">${escapeHtml(label)}</div>` : '';
+            return `<div class="lexicon-pos-group" data-pos="${escapeHtml(id)}">${head}${inner}</div>`;
+          }
+          // Senses with no part of speech are "other" beside real ones, and need no heading alone.
+          function posHeading(pos) {
+            return pos === 'unknown' ? (order.length > 1 ? 'other' : '') : pos;
           }
           function wrapPane(inner, extraClass) {
             return `<div class="result-card lexicon-block lexicon-pane${extraClass ? ' ' + extraClass : ''}">${inner}</div>`;
@@ -3541,8 +3555,8 @@ function startAutoCloseTimeout() {
           const tocIds = [];
           const posSections = order.map(function (pos) {
             tocIds.push(pos);
-            posInner += wrapGroup(pos, pos, renderSenses(groups[pos]));
-            return { id: pos, label: chipPosLabel(pos) };
+            posInner += wrapGroup(pos, posHeading(pos), renderSenses(groups[pos]));
+            return { id: pos, label: pos === 'unknown' ? (order.length > 1 ? 'other' : 'senses') : chipPosLabel(pos) };
           });
           let allInner = wrapPane(posInner, 'lexicon-pane--pos');
 
@@ -3905,6 +3919,45 @@ function startAutoCloseTimeout() {
            if (!ok) playAudioWebSpeech(text, language);
          });
        };
+
+       /*
+        * Google Translate's voice, for languages with no installed voice (Japanese on a PC with
+        * only Chinese and English voices). It reads up to about 200 characters per request, so
+        * longer text is read piece by piece, split after sentence punctuation where possible.
+        */
+       var onlineVoiceRun = 0;
+       var onlineVoiceEl = null;
+       function onlineVoicePieces(text) {
+         var out = [];
+         var rest = String(text || '').trim();
+         while (rest.length > 180) {
+           var cut = -1;
+           var m;
+           var re = /[。！？.!?；;，,、\s]/g;
+           while ((m = re.exec(rest.slice(0, 180)))) cut = m.index + 1;
+           if (cut < 40) cut = 180;
+           out.push(rest.slice(0, cut).trim());
+           rest = rest.slice(cut).trim();
+         }
+         if (rest) out.push(rest);
+         return out;
+       }
+       function playOnlineVoice(text, lang) {
+         var tl = String(lang || 'en').toLowerCase().indexOf('zh') === 0 ? 'zh-CN' : String(lang || 'en').split('-')[0];
+         var pieces = onlineVoicePieces(text);
+         var run = ++onlineVoiceRun;
+         var i = 0;
+         var next = function () {
+           if (run !== onlineVoiceRun || i >= pieces.length) return;
+           var el = new Audio('https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=' + encodeURIComponent(tl) + '&q=' + encodeURIComponent(pieces[i++]));
+           onlineVoiceEl = el;
+           applyPlayback(el, false);
+           el.onended = next;
+           el.onerror = function () { pvLog('[AUDIO-DEBUG] Online voice failed for ' + tl); };
+           el.play().catch(function () { pvLog('[AUDIO-DEBUG] Online voice could not play'); });
+         };
+         next();
+       }
 
        function playAudioWebSpeech(text, language) {
 
