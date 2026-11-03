@@ -48,6 +48,8 @@ async function startupAndGestures(floatingStrip) {
       lookup: (q, lang, sources, options) => new Promise((resolve) => lookups.push({ q, options, resolve })),
     },
     wikipediaService: { search: async () => [] },
+    // Notebook views are not under test here; the shell only needs the calls to exist.
+    disposeNotebookMaps: () => {},
   };
   const native = {
     hasNativeBridge: () => true, installNativeCallbacks: () => {}, applyInsets: () => {},
