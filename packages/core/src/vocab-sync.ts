@@ -117,7 +117,7 @@ async function localChangesSince(since: number): Promise<SyncRecord[]> {
 /** Applies one record from the server unless this device holds something newer. */
 async function applyRemote(change: { id: string; updatedAt: number; deleted: boolean; data: Partial<VocabEntry> | null }): Promise<boolean> {
   const db = getVocabDb();
-  const local = await db.queryOne(`SELECT updated_at FROM vocab WHERE id = ?`, [change.id]);
+  const local = await db.queryOne(`SELECT * FROM vocab WHERE id = ?`, [change.id]);
   if (local && Number(local.updated_at) > change.updatedAt) return false;
 
   if (change.deleted) {
@@ -130,9 +130,28 @@ async function applyRemote(change: { id: string; updatedAt: number; deleted: boo
   if (tomb && Number(tomb.deleted_at) > change.updatedAt) return false;
   const e = change.data;
   if (!e || typeof e.lemma !== 'string' || !e.lemma.trim()) return false;
-  await writeRow({ ...(e as VocabEntry), id: change.id, updatedAt: change.updatedAt });
+  await writeRow({ ...keepMemoryState(local, e), ...(e as VocabEntry), id: change.id, updatedAt: change.updatedAt });
   if (tomb) await db.runWrite(`DELETE FROM vocab_deleted WHERE id = ?`, [change.id]);
   return true;
+}
+
+/**
+ * An older app sends records without the FSRS fields. When such a record carries the same review
+ * progress this device already has (it only edited the note, say), the local memory state stays;
+ * when the older app reviewed the word itself, the state is dropped and rebuilt from SM-2.
+ */
+function keepMemoryState(local: Record<string, unknown> | null, incoming: Partial<VocabEntry>): Partial<VocabEntry> {
+  if (!local || incoming.stability != null || local.stability == null) return {};
+  const mine = rowToEntry(local);
+  if ((incoming.reps ?? 0) !== (mine.reps ?? 0) || (incoming.reviewDue ?? null) !== (mine.reviewDue ?? null)) return {};
+  return {
+    stability: mine.stability,
+    difficulty: mine.difficulty,
+    state: mine.state,
+    lapses: mine.lapses,
+    lastReview: mine.lastReview,
+    learningSteps: mine.learningSteps,
+  };
 }
 
 async function writeRow(e: VocabEntry): Promise<void> {
@@ -140,8 +159,9 @@ async function writeRow(e: VocabEntry): Promise<void> {
   const text = (v: unknown) => (typeof v === 'string' && v ? v : null);
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
   await getVocabDb().runWrite(
-    `INSERT OR REPLACE INTO vocab (id, lemma, reading, definition, part_of_speech, source_lang, target_lang, sources, note, tags, created_at, updated_at, review_due, review_interval, ease, reps)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO vocab (id, lemma, reading, definition, part_of_speech, source_lang, target_lang, sources, note, tags, created_at, updated_at, review_due, review_interval, ease, reps,
+       stability, difficulty, state, lapses, last_review, learning_steps)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       e.id,
       e.lemma.trim(),
@@ -159,6 +179,14 @@ async function writeRow(e: VocabEntry): Promise<void> {
       num(e.reviewInterval) ?? 0,
       num(e.ease) ?? 2.5,
       num(e.reps) ?? 0,
+      // FSRS fields are optional: a record from an older app has none, and the next review
+      // rebuilds them from the SM-2 fields above.
+      num(e.stability),
+      num(e.difficulty),
+      num(e.state),
+      num(e.lapses) ?? 0,
+      num(e.lastReview),
+      num(e.learningSteps) ?? 0,
     ],
   );
 }
@@ -184,7 +212,7 @@ export async function mergeDuplicateLemmas(at: number): Promise<number> {
       const all = entries.flatMap((e) => e[key] || []);
       return all.length ? [...new Set(all)] : undefined;
     };
-    const studied = [...newest].sort((a, b) => (b.reps || 0) - (a.reps || 0))[0];
+    const studied = [...newest].sort((a, b) => (b.reps || 0) - (a.reps || 0) || (b.lastReview || 0) - (a.lastReview || 0))[0];
     await writeRow({
       id: keep.id,
       lemma: keep.lemma,
@@ -202,6 +230,12 @@ export async function mergeDuplicateLemmas(at: number): Promise<number> {
       reviewInterval: studied.reviewInterval,
       ease: studied.ease,
       reps: studied.reps,
+      stability: studied.stability,
+      difficulty: studied.difficulty,
+      state: studied.state,
+      lapses: studied.lapses,
+      lastReview: studied.lastReview,
+      learningSteps: studied.learningSteps,
     });
     for (const e of entries.slice(1)) {
       await db.runWrite(`DELETE FROM vocab WHERE id = ?`, [e.id]);

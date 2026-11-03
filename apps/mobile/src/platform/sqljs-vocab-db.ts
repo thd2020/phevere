@@ -1,5 +1,5 @@
 import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
-import { VOCAB_SCHEMA_SQL, type VocabDb } from '@phevere/core';
+import { VOCAB_SCHEMA_SQL, vocabColumnMigrations, type VocabDb } from '@phevere/core';
 import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import { hasNativeBridge, nativeCall } from './native';
 
@@ -34,6 +34,10 @@ function migrate(database: Database): void {
     const sql = stmt.trim();
     if (sql) database.run(sql);
   }
+  const info = database.exec('PRAGMA table_info(vocab)')[0];
+  const nameAt = info ? info.columns.indexOf('name') : -1;
+  const cols = info && nameAt >= 0 ? info.values.map((row) => String(row[nameAt])) : [];
+  for (const sql of vocabColumnMigrations(cols)) database.run(sql);
 }
 
 async function readStored(): Promise<Uint8Array | null> {

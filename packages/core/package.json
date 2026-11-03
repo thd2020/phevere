@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "cmu-pronouncing-dictionary": "^3.0.0",
-    "wink-lemmatizer": "^3.0.4"
+    "wink-lemmatizer": "^3.0.4",
+    "ts-fsrs": "^5.4.2"
   }
 }
