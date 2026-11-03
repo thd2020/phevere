@@ -1,6 +1,6 @@
 # Holarky account and notebook sync
 
-Recent changes (2026-11-03): saved words and word-book subscriptions sync free and carry no review progress. Learning progress syncs as the answer history in `phevere/progress`, only while the account has Plus; without it, progress stays on the device, and the account panel and Learn tab show a Get Plus line. The client was updated from holarky-account pull request #4.
+Recent changes (2026-11-03): the Plus line is a quiet text link, not a red button, and Learn shows it only when synced progress is about to be dropped. Earlier the same day: saved words and word-book subscriptions sync free and carry no review progress. Learning progress syncs as the answer history in `phevere/progress`, only while the account has Plus; without it, progress stays on the device and the account panel says so in one quiet line. The client was updated from holarky-account pull request #4.
 
 Recent changes (2026-10-30): the account moved out of Settings. On the desktop it is a button in the main window's title bar, left of the gear, that opens a popover; on the phone it is a button at the end of the app bar that opens a bottom sheet. The button shows the Holarky mark when signed out and the user's initial when signed in.
 
@@ -60,7 +60,7 @@ The server strips review fields (due date, interval, ease, repetitions and the F
 
 Progress syncs as the answer history (`packages/core/src/progress-sync.ts`). Before each sync the app reads `GET /v1/entitlements`. While `collections["phevere/progress"].access` is true it sends the answers it has not sent yet and pulls the others, and every word that received answers from another device gets its schedule rebuilt by replaying its merged history (`rebuildWordSchedule`, described in [`REVIEW.md`](REVIEW.md)). "Already know it" is an answer too. When Plus is not active the server answers 402 `plus_required` with `keptUntil`, the date it deletes what it still holds; the answers stay marked unsent and go up once Plus is back. If the server has already emptied the collection it sends `state:purged`, and the app sends its whole history again.
 
-When progress sync is off, the account panel and the Learn tab show one line ("Learning progress stays on this device", or until when synced progress is kept) and a Get Plus link. The link goes to `HOLARKY_ACCOUNT.plusUrl` in `packages/core/src/account.ts`, a placeholder until checkout exists.
+When progress sync is off, the account panel shows one muted line ("Learning progress stays on this device.") with a "Sync it with Plus" text link; there is no filled button. The Learn tab shows nothing, unless progress synced earlier is about to be dropped: then it shows "Synced progress is kept until …" with a "Keep it with Plus" link. The link goes to `HOLARKY_ACCOUNT.plusUrl` in `packages/core/src/account.ts`, a placeholder until checkout exists.
 
 Each notebook row is sent as a record `{ id, updatedAt, deleted, data }` to the `phevere/vocab` collection.
 

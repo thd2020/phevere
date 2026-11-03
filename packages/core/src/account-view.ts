@@ -130,16 +130,21 @@ export function accountPanelHtml(state: AccountState | null, opts: AccountPanelO
 }
 
 /**
- * The Plus state of learning-progress sync, for the account panel and the Learn tab: one line and
- * a Get Plus link. Empty unless signed in with Plus known to be inactive.
+ * The Plus state of learning-progress sync: one quiet line with a text link, no button.
+ *
+ * The account panel shows it whenever sync is off, since that is where sync lives. Learn shows it
+ * only when the reader meets the limit for real: progress they synced before is about to be
+ * dropped. Empty unless signed in with Plus known to be inactive.
  */
-export function plusNoticeHtml(state: AccountState | null, plusUrl: string): string {
+export function plusNoticeHtml(state: AccountState | null, plusUrl: string, where: 'account' | 'learn' = 'account'): string {
   if (!progressSyncOff(state)) return '';
   const kept = state!.plus!.keptUntil;
+  if (where === 'learn' && !kept) return '';
   const line = kept
-    ? `Synced progress is kept until ${new Date(kept).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
-    : 'Learning progress stays on this device';
-  return `<div class="hx-plus" role="note"><span>${esc(line)}</span><a class="hx-btn hx-btn--primary hx-plus__btn" href="${esc(plusUrl)}" target="_blank" rel="noopener noreferrer" data-act="account-plus">Get Plus</a></div>`;
+    ? `Synced progress is kept until ${new Date(kept).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}.`
+    : 'Learning progress stays on this device.';
+  const link = kept ? 'Keep it with Plus' : 'Sync it with Plus';
+  return `<p class="hx-plus" role="note">${esc(line)} <a class="hx-plus__link" href="${esc(plusUrl)}" target="_blank" rel="noopener noreferrer" data-act="account-plus">${link}</a></p>`;
 }
 
 /** Enables Delete account once the typed email matches the signed-in one. */

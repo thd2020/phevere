@@ -597,7 +597,7 @@ function learnViewState(): LearnState {
     reviewOptions: { audio: prefs.audioEnabled !== false, preview: previewReview, formatGap: formatReviewGap },
     page: learnPage,
     history: answerHistory,
-    notice: plusNoticeHtml(accountState, HOLARKY_ACCOUNT.plusUrl),
+    notice: plusNoticeHtml(accountState, HOLARKY_ACCOUNT.plusUrl, 'learn'),
   };
 }
 
@@ -2616,9 +2616,9 @@ export async function startApp(): Promise<void> {
     accountPlatform.initAccount({
       onState: (next) => {
         const before = accountBadgeKey(accountState);
-        const plusBefore = plusNoticeHtml(accountState, HOLARKY_ACCOUNT.plusUrl);
+        const plusBefore = plusNoticeHtml(accountState, HOLARKY_ACCOUNT.plusUrl, 'learn');
         accountState = next;
-        if (accountOpen || (tab === 'learn' && plusBefore !== plusNoticeHtml(next, HOLARKY_ACCOUNT.plusUrl))) paint();
+        if (accountOpen || (tab === 'learn' && plusBefore !== plusNoticeHtml(next, HOLARKY_ACCOUNT.plusUrl, 'learn'))) paint();
         else if (before !== accountBadgeKey(next)) refreshAccountButton();
       },
       onNotebookChanged: () => {

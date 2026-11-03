@@ -9,37 +9,20 @@
 .lrn-pages { flex: none; }
 .lrn-body { min-width: 0; }
 
-/* Plus: progress sync is off. One line and a Get Plus link, in Learn and in the account panel. */
+/* Plus: progress sync is off. A quiet line with a text link, in the account panel and, when synced progress is about to go, in Learn. */
 .hx-plus {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 8px 8px 14px;
-  border: 1px solid var(--nbv-line, #d7c3bb);
-  border-radius: 14px;
-  background: var(--nbv-paper-2, #eeeae4);
-  font: 500 13px/1.3 var(--nbv-ui, Outfit, system-ui, sans-serif);
-  color: var(--nbv-ink, #1c1917);
+  margin: 0;
+  font: 400 12.5px/1.45 var(--nbv-ui, Outfit, system-ui, sans-serif);
+  color: var(--nbv-soft, #5c534e);
 }
 .lrn .hx-plus { margin: 0 0 12px; }
-.hx-plus .hx-plus__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: auto;
-  min-height: 34px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--nbv-ember, #9c3d00);
-  color: #fff7f3;
-  font: 600 13px/1 var(--nbv-ui, Outfit, system-ui, sans-serif);
-  text-decoration: none;
-  white-space: nowrap;
+.hx-plus .hx-plus__link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 2px;
 }
-.hx-plus .hx-plus__btn:hover { background: #873400; }
+.hx-plus .hx-plus__link:hover { color: var(--nbv-ink, #1c1917); text-decoration-color: currentColor; }
 
 /* Progress */
 .lrp { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }

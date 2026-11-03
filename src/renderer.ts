@@ -2616,7 +2616,7 @@ function loadAnswerHistory(): void {
 let learnNotice = '';
 
 function setLearnAccountState(next: AccountState | null): void {
-  const notice = plusNoticeHtml(next, HOLARKY_ACCOUNT.plusUrl);
+  const notice = plusNoticeHtml(next, HOLARKY_ACCOUNT.plusUrl, 'learn');
   if (notice === learnNotice) return;
   learnNotice = notice;
   renderLearn();
