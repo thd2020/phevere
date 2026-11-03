@@ -2,7 +2,8 @@
  * Checks for packages/core/src/sense-images.ts against recorded Wikimedia responses
  * (scripts/fixtures/sense-images.json, trimmed to the parts the module reads, and
  * scripts/fixtures/sense-images-fallback.json, keyed by request URL and recorded on 2026-11-02
- * for the whole-word fallback).
+ * for the whole-word fallback; operon, arbitrage and holon and the file-name Commons searches
+ * were added on 2026-11-03).
  * Run: node scripts/test-sense-images.js
  */
 const assert = require('assert');
@@ -245,9 +246,51 @@ assert.ok(si.acceptConceptPage(conceptPage({ title: 'Map', pageimage: 'Old_map_o
 // Recorded Commons searches: portraits, logos and unrelated hits sink.
 const commonsPages = (q) => fb.responses[si.buildCommonsSearchUrl(q)].query.pages;
 const loveRanked = si.rankCommonsFiles(commonsPages('love'), 'love', 'love', []);
-assert.strictEqual(loveRanked[0].title, "Love padlocks on the Butchers' Bridge (Ljubljana)");
+assert.strictEqual(loveRanked[0].title, 'The Love of Paris and Helen by Jacques-Louis David');
 assert.ok(!loveRanked.slice(0, 3).some((r) => /Sean Combs/.test(r.title)), 'love: no portrait of a man nicknamed Love near the top');
-assert.ok(/inspects meat/.test(si.rankCommonsFiles(commonsPages('inspect'), 'inspect', 'inspect', [])[0].title), 'inspect: a person inspecting');
+assert.ok(/\binspect\b/.test(si.rankCommonsFiles(commonsPages('inspect'), 'inspect', 'inspect', [])[0].title), 'inspect: people inspecting');
+
+// A one-word Commons search looks in file names and takes drawings too: a full-text search for
+// "arbitrage" returned US Navy repair ships coded "ARB".
+const arbUrl = si.buildCommonsSearchUrl('arbitrage');
+assert.ok(decodeURIComponent(arbUrl).includes('gsrsearch=intitle:arbitrage filetype:bitmap|drawing'), arbUrl);
+assert.ok(decodeURIComponent(si.buildCommonsSearchUrl('requires action')).includes('gsrsearch=requires action filetype:bitmap|drawing'));
+const arbRanked = si.rankCommonsFiles(commonsPages('arbitrage'), 'arbitrage', 'arbitrage', si.contentTokens(fb.senses.arbitrage.list[0].meaning, 'arbitrage'));
+assert.ok(arbRanked.length && arbRanked.every((r) => /arbitrage/i.test(r.title)), 'arbitrage: every hit names the word');
+assert.strictEqual(arbRanked[0].title, 'Statistical Arbitrage with two stocks', 'arbitrage: the finance picture first');
+// "Holon" is also a city: with needGloss, city photos that share no gloss word drop out.
+const holonPages = commonsPages('holon');
+assert.ok(si.rankCommonsFiles(holonPages, 'holon', 'holon', ['part', 'whole']).length > 0, 'holon: city photos name the word');
+same(si.rankCommonsFiles(holonPages, 'holon', 'holon', ['part', 'whole'], { needGloss: true }).map((r) => r.title), [], 'holon: no city photo');
+
+// Pictures used in an article without a free lead image: the ones naming the word first, then
+// ones naming a gloss word ("Gene structure" for "structural genes"), never navbox pictures (a
+// butterfly from "Tree of life") or interface icons.
+const operonFiles = fb.responses[si.buildArticleImagesUrl('Operon')].query.pages[0].images.map((i) => i.title);
+const operonRanked = si.rankArticleImages(operonFiles, 'operon', si.contentTokens(fb.senses.operon.list[0].meaning, 'operon'));
+same(operonRanked, [
+  'Lac Operon.svg',
+  'Operon 1.png',
+  'Trp operon organization across three different bacterial species.png',
+  'Gene structure prokaryote 2 unannotated.svg',
+]);
+same(si.rankArticleImages(['File:OOjs UI icon edit-ltr-progressive.svg', 'File:Commons-logo.svg', 'File:Arbitrage.wav'], 'arbitrage', []), []);
+
+// The large view of an SVG or TIFF is Commons' PNG rendering at 960 px.
+const tif = si.imageFromInfo('Structure of L-arabinose operon of E. coli.tif', 'x', {
+  url: 'https://upload.wikimedia.org/wikipedia/commons/3/3a/Structure_of_L-arabinose_operon_of_E._coli.tif',
+  thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Structure_of_L-arabinose_operon_of_E._coli.tif/lossless-page1-330px-Structure_of_L-arabinose_operon_of_E._coli.tif.png',
+  mime: 'image/tiff',
+  width: 800,
+});
+assert.ok(tif.url.includes('/lossless-page1-960px-') && tif.url.endsWith('.tif.png'), tif.url);
+const svg = si.imageFromInfo('Lac Operon.svg', 'Lac Operon', {
+  url: 'https://upload.wikimedia.org/wikipedia/commons/2/22/Lac_Operon.svg',
+  thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Lac_Operon.svg/330px-Lac_Operon.svg.png',
+  mime: 'image/svg+xml',
+  width: 600,
+});
+assert.ok(svg.url.endsWith('/960px-Lac_Operon.svg.png'), svg.url);
 
 // Wiktionary pictures no sense claimed: "love" has two caption-only ones that name the word.
 const wiktFor = (w) => Object.entries(fb.responses).find(([u]) => u.includes('wiktionary.org') && u.endsWith(`titles=${w}&origin=*`))[1];
@@ -367,7 +410,9 @@ async function fallbackEndToEnd() {
     assert.strictEqual(imgs.length, list.length, `${word}: one slot per sense`);
     const shown = imgs.map((x, i) => (x ? { i, title: x.title } : null)).filter(Boolean);
     same(shown, fb.expected[word].map(({ i, title }) => ({ i, title })), `${word}: recorded pictures`);
-    assert.ok(shown.length >= 1 && shown.length <= 3, `${word}: one to three pictures`);
+    // "holon": its title is a city in Israel and its concept article has no picture, so none.
+    if (word === 'holon') assert.strictEqual(shown.length, 0, 'holon: no photo of the city');
+    else assert.ok(shown.length >= 1 && shown.length <= 3, `${word}: one to three pictures`);
     for (const x of imgs.filter(Boolean)) {
       assert.ok(/Wikimedia Commons$/.test(x.credit), `${word}: credit line`);
       assert.ok(/^https:\/\/commons\.wikimedia\.org\/wiki\/File:/.test(x.pageUrl), `${word}: file page`);
@@ -438,4 +483,132 @@ async function fallbackEndToEnd() {
   assert.strictEqual((await wordImage('inspect', 'en')).title, 'Inspection');
   assert.strictEqual((await wordImage('猫', 'ja')).title, 'ネコ', '猫: the word on Japanese Wikipedia');
   assert.strictEqual(await wordImage('要対応', 'ja'), null, '要対応: no hit names the word, so no picture');
+
+  // "Operon" has no free lead image; its own diagram comes from the article's pictures.
+  {
+    const log = [];
+    const imgs = await recordedModule(log).fetchSenseImages('operon', fb.senses.operon.list, { lang: 'en' });
+    assert.strictEqual(imgs[0].title, 'Lac Operon');
+    assert.ok(/\/330px-Lac_Operon\.svg\.png$/.test(imgs[0].thumb), imgs[0].thumb);
+    assert.ok(log.includes(si.buildArticleImagesUrl('Operon')), 'operon: asks for the article pictures');
+    assert.ok(!log.some((u) => u.includes('generator=search&gsrnamespace=6')), 'operon: no Commons search needed');
+  }
+  // "Arbitrage": the article has no pictures at all, so Commons, finance first, also with no gloss.
+  assert.strictEqual((await wordImage('arbitrage', 'en')).title, 'Statistical Arbitrage with two stocks');
+  assert.strictEqual((await wordImage('operon', 'en')).title, 'Lac Operon');
+  assert.strictEqual(await wordImage('holon', 'en'), null, 'holon: no photo of the city');
+
+  // Wikimedia identifies the client by User-Agent; the configured client sends ours.
+  {
+    const seen = [];
+    const mod = load({
+      isCoreConfigured: () => true,
+      getHttp: () => ({
+        requestJson: async (url, opts) => {
+          seen.push((opts && opts.headers) || {});
+          return JSON.parse(JSON.stringify(fb.responses[url]));
+        },
+      }),
+      getLookupCache: () => null,
+    });
+    await mod.fetchWordImage('operon', { lang: 'en' });
+    assert.ok(seen.length && seen.every((h) => /^Phevere\/\d.*github\.com\/thd2020\/phevere/.test(h['User-Agent'])), 'User-Agent names the app');
+  }
+
+  // At most three requests in flight, however many cards ask at once.
+  {
+    let now = 0;
+    let peak = 0;
+    const mod = load({
+      isCoreConfigured: () => true,
+      getHttp: () => ({
+        requestJson: async (url) => {
+          now += 1;
+          peak = Math.max(peak, now);
+          await new Promise((r) => setTimeout(r, 5));
+          now -= 1;
+          return JSON.parse(JSON.stringify(fb.responses[url]));
+        },
+      }),
+      getLookupCache: () => null,
+    });
+    const words = ['operon', 'arbitrage', 'holon', 'run', 'inspect', 'freedom', 'happiness', 'justice'];
+    await Promise.all(words.map((w) => mod.fetchWordImage(w, { lang: 'en' }).catch(() => null)));
+    assert.ok(peak >= 2 && peak <= 3, `peak concurrency ${peak}`);
+  }
+
+  // A 429 is retried once after a pause, and the picture still arrives.
+  {
+    const hits = new Map();
+    const mod = load({
+      isCoreConfigured: () => true,
+      getHttp: () => ({
+        requestJson: async (url) => {
+          hits.set(url, (hits.get(url) || 0) + 1);
+          if (hits.get(url) === 1 && url.includes('prop=images')) throw new Error('HTTP 429: Too Many Requests');
+          return JSON.parse(JSON.stringify(fb.responses[url]));
+        },
+      }),
+      getLookupCache: () => null,
+    });
+    assert.strictEqual((await mod.fetchWordImage('operon', { lang: 'en' })).title, 'Lac Operon');
+    assert.strictEqual(hits.get(si.buildArticleImagesUrl('Operon')), 2, 'one retry');
+  }
+
+  // A failed request leaves the result uncached, so the next call (a notebook re-render) asks again.
+  {
+    let offline = true;
+    const persisted = new Map();
+    const mod = load({
+      isCoreConfigured: () => true,
+      getHttp: () => ({
+        requestJson: async (url) => {
+          if (offline) throw new Error('offline');
+          return JSON.parse(JSON.stringify(fb.responses[url]));
+        },
+      }),
+      getLookupCache: () => ({
+        get: (k) => persisted.get(k) || null,
+        set: (k, value, savedAt) => persisted.set(k, { value, savedAt }),
+      }),
+    });
+    assert.strictEqual(await mod.fetchWordImage('operon', { lang: 'en' }), null, 'offline: no picture');
+    assert.strictEqual(persisted.size, 0, 'offline: nothing saved');
+    offline = false;
+    assert.strictEqual((await mod.fetchWordImage('operon', { lang: 'en' })).title, 'Lac Operon', 'online again: retried');
+  }
+
+  // A saved result with no picture expires after six hours (a picture keeps for two weeks), and
+  // results saved under the previous cache version are not read at all.
+  {
+    const persisted = new Map();
+    const store = {
+      get: (k) => persisted.get(k) || null,
+      set: (k, value, savedAt) => persisted.set(k, { value, savedAt }),
+    };
+    const mod = load({ isCoreConfigured: () => true, getHttp: () => ({ requestJson: async (url) => JSON.parse(JSON.stringify(fb.responses[url])) }), getLookupCache: () => store });
+    assert.strictEqual(await mod.fetchWordImage('holon', { lang: 'en' }), null);
+    const [key] = [...persisted.keys()];
+    assert.ok(key.startsWith('sense-images:v3:'), key);
+    // Seven hours later a new session asks the network again.
+    persisted.get(key).savedAt -= 7 * 60 * 60 * 1000;
+    let asked = 0;
+    const later = load({
+      isCoreConfigured: () => true,
+      getHttp: () => ({ requestJson: async (url) => { asked += 1; return JSON.parse(JSON.stringify(fb.responses[url])); } }),
+      getLookupCache: () => store,
+    });
+    await later.fetchWordImage('holon', { lang: 'en' });
+    assert.ok(asked > 0, 'an old empty result is retried');
+    // A picture saved seven hours ago is still served from the cache.
+    await later.fetchWordImage('operon', { lang: 'en' });
+    const opKey = [...persisted.keys()].find((k) => k.includes(':operon:'));
+    persisted.get(opKey).savedAt -= 7 * 60 * 60 * 1000;
+    const third = load({
+      isCoreConfigured: () => true,
+      getHttp: () => ({ requestJson: async () => { throw new Error('should not fetch'); } }),
+      getLookupCache: () => store,
+    });
+    assert.strictEqual((await third.fetchWordImage('operon', { lang: 'en' })).title, 'Lac Operon', 'a picture keeps');
+  }
 }

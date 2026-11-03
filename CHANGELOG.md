@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Pictures (2026-11-03): some words, such as operon and arbitrage, got no picture in the lookup or on notebook cards. Wikimedia now lets a client that does not name itself make about ten requests a minute, and the desktop asked for pictures with a generic browser User-Agent, so after a few words the answers were 429 errors. The empty result was then kept until the app restarted, or for two weeks on the phone. Pictures are now requested at most three at a time with Phevere's own User-Agent, a 429 is retried once, nothing is kept when a request failed, and a word that found no picture is tried again after six hours. A word whose Wikipedia article has no lead image now takes a picture used in the article that names it, SVG diagrams included, so operon shows the lac operon diagram. The Commons search looks for a one-word query in file names and takes drawings too, so arbitrage shows a trading chart instead of nothing (the full-text search returned US Navy ships coded ARB). A word whose Wikipedia title is a city, a film or a person, such as holon, no longer gets photos of that city.
+
 ## [3.0.0] - 2026-11-02
 
 ### Added
