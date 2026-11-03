@@ -1,5 +1,7 @@
 # Publishing a GitHub release
 
+2026-11-03: The Windows x64 job also uploads and attests `Phevere-OCR-PP-OCRv4.tar.gz`, the OCR pack that installers no longer include (`scripts/make-ocr-pack.js`). The app downloads it from the release, so every tag must carry it; a `windows-x64` retry replaces it too. The upgrade check now also requires that OCR models installed by an older version survive the upgrade and that a fresh install has none.
+
 2026-10-25: Tags also build Linux deb, rpm and AppImage for x64 (`ubuntu-22.04`) and arm64 (`ubuntu-22.04-arm`). Rebuild only those onto an existing tag with `targets=linux`.
 
 2026-10-29: A Windows x64 release can be retried alone with `targets=windows-x64`.
@@ -34,7 +36,7 @@ git tag -a v1.2.3 -m "Release v1.2.3"
 git push origin v1.2.3
 ```
 
-Watch **Actions → release**. That workflow makes **four** desktop artifacts onto one tag: Windows **x64** (`windows-latest`) and **ARM64** (`windows-11-arm`) Setup.exe, plus macOS **Intel** (`macos-15-intel`) and **Apple Silicon** (`macos-latest`) DMGs. Each file is uploaded and attested. No Environment approval gate. Windows Setup is unsigned unless repo secrets `CSC_LINK` + `CSC_KEY_PASSWORD` are set (OV/EV PFX). Mac DMGs are unsigned (Gatekeeper). Blank Windows secrets are stripped in `scripts/make-win.js` so electron-builder does not treat `""` as a cert path. Verify:
+Watch **Actions → release**. That workflow makes **four** desktop artifacts onto one tag: Windows **x64** (`windows-latest`) and **ARM64** (`windows-11-arm`) Setup.exe, plus macOS **Intel** (`macos-15-intel`) and **Apple Silicon** (`macos-latest`) DMGs, and the OCR pack from the x64 job. Each file is uploaded and attested. No Environment approval gate. Windows Setup is unsigned unless repo secrets `CSC_LINK` + `CSC_KEY_PASSWORD` are set (OV/EV PFX). Mac DMGs are unsigned (Gatekeeper). Blank Windows secrets are stripped in `scripts/make-win.js` so electron-builder does not treat `""` as a cert path. Verify:
 
 ```powershell
 gh attestation verify out/make/nsis/x64/Phevere-Setup-1.2.3-x64.exe -R thd2020/phevere
@@ -51,7 +53,7 @@ npm ci
 npm run make:win
 ```
 
-Artifact: `out\make\nsis\x64\Phevere-Setup-<version>-x64.exe`  
+Artifact: `out\make\nsis\x64\Phevere-Setup-<version>-x64.exe`. The OCR pack for a hand-made release: `npm run make:ocr-pack` → `out\make\Phevere-OCR-PP-OCRv4.tar.gz`.  
 ARM64 (native ARM Windows, or `npm run make:win:arm64`): `out\make\nsis\arm64\Phevere-Setup-<version>-arm64.exe`
 
 If `github.com` times out while packaging, `make:win` already uses npmmirror. Ghost Program Files installs: `scripts/remove-ghost-phevere.ps1` (see README / PACKAGING.md).
@@ -71,6 +73,7 @@ The workflow owns the Windows Setup and macOS DMG assets. The same tag also gets
 - **Windows ARM64 Setup:** `Phevere-Setup-x.y.z-arm64.exe` (Snapdragon / Windows 11 ARM)
 - **macOS Intel DMG:** `Phevere-x.y.z-darwin-x64.dmg`
 - **macOS Apple Silicon DMG:** `Phevere-x.y.z-darwin-arm64.dmg`
+- **OCR pack:** `Phevere-OCR-PP-OCRv4.tar.gz` (downloaded by the app; you do not need to fetch it yourself)
 - **Android APK:** `Phevere-x.y.z-android.apk` (debug-signed; each build is signed with that runner's debug key, so an update may need an uninstall first)
 - **iOS IPA:** `Phevere-x.y.z-ios-unsigned.ipa` (unsigned; sideload with your own signing tool)
 

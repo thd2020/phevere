@@ -33,7 +33,7 @@ Multiple producers feed one consumer: `lookup(query, meta)`.
 
 | Asset | Notes |
 |-------|--------|
-| **Shipping:** `onnxruntime-node` 1.23.2 + `@gutenye/ocr-node` | In-process; models under `resources/ocr-models/`. 1.23.2 is the last npm that includes Intel Mac (`darwin/x64`) binaries. Packaged apps load these from `app.asar.unpacked` (see `scripts/packager-ignore.js`); no end-user Python. |
+| **Shipping:** `onnxruntime-node` 1.23.2 + `@gutenye/ocr-node` | In-process; models come from the OCR pack (`src/services/ocr-pack.ts`), downloaded into `userData/ocr-packs/pp-ocrv4`; `resources/ocr-models/` serves development only. 1.23.2 is the last npm that includes Intel Mac (`darwin/x64`) binaries. Packaged apps load these from `app.asar.unpacked` (see `scripts/packager-ignore.js`); no end-user Python. |
 | PP-OCRv4 mobile det / rec / cls + `ppocr_keys_v1.txt` | ~16 MB ONNX set (Apache-2.0) |
 | Python RapidOCR worker | Dev (`npm start`) only; packaged builds never spawn Python |
 | `Windows.Media.Ocr` | Present; only `zh-Hans-CN` pack installed here |
@@ -84,7 +84,7 @@ This interface is also the target for the **macOS AX draft** (`docs/MACOS_SELECT
 ### Phase 2 — OCR engine
 
 - [x] **Primary:** in-process `onnxruntime-node` + PP-OCRv4 mobile ONNX under `resources/ocr-models/` (via `@gutenye/ocr-node`). Optional download: PP-OCRv5 + RapidOCR `ppocrv5_dict.txt` (v4 keys file yields empty rec). No end-user Python.
-- [x] Packaging: `extraResources` → `ocr-models`; packager ignore keeps webpack externals; `asar.unpackDir` so `@gutenye` ESM and ONNX/sharp `.node` live in `app.asar.unpacked`. `ensure-ocr-natives` + `verify-ocr-pack`. CI: darwin x64 + arm64.
+- [x] Packaging (2026-11-03): no models in packages; the OCR pack is a release asset installed from Settings → Capture or by Windows Setup. Packager ignore keeps webpack externals; `asar.unpackDir` so `@gutenye` ESM and ONNX/sharp `.node` live in `app.asar.unpacked`. `ensure-ocr-natives` + `verify-ocr-pack`. CI: darwin x64 + arm64.
 - [x] Settings → Capture: status only (“Embedded OCR ready” / error). No pip Install UX.
 - [x] Python RapidOCR worker (`scripts/ocr_worker.py`) kept as **dev-only** fallback when `npm start` cannot load natives (packaged Electron never uses it).
 - [x] Cache key via `imageHash` on ContextEvent

@@ -1,6 +1,6 @@
-# Embedded OCR models (PP-OCRv4 mobile)
+# OCR models for development (PP-OCRv4 mobile)
 
-Apache-2.0 weights from the PaddleOCR / RapidOCR family, vendored for offline install.
+Apache-2.0 weights from the PaddleOCR / RapidOCR family. Since 2026-11-03 packages do not include them: the app downloads the OCR pack (`src/services/ocr-pack.ts`, built by `scripts/make-ocr-pack.js`). This folder only serves `npm start`.
 
 | File | Role |
 |------|------|
@@ -9,7 +9,7 @@ Apache-2.0 weights from the PaddleOCR / RapidOCR family, vendored for offline in
 | `ch_ppocr_mobile_v2.0_cls_infer.onnx` | Optional text-line orientation |
 | `ppocr_keys_v1.txt` | Recognition dictionary |
 
-Runtime loads these from `process.resourcesPath/ocr-models` (packaged) or `resources/ocr-models` (dev) via the native `onnxruntime-node` engine (`@gutenye/ocr-node` pipeline).
+A packaged app loads the downloaded pack from `userData/ocr-packs/pp-ocrv4`, or `process.resourcesPath/ocr-models` where a 3.0 or earlier installer put them. In development it falls back to this folder.
 
 Refresh from the npm package:
 

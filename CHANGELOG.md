@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- OCR pack (2026-11-03): desktop installers no longer include the PP-OCRv4 models, so the Windows x64 Setup.exe is about 15 MB smaller. Hover lookup over text that cannot be selected, and Scan, need the OCR pack, a 14 MB download: Settings → Capture shows "Needs the OCR pack" with an Install button beside Hover lookup, and the Hover chip reads No OCR until it is installed. The app checks each file's SHA-256 and falls back to npm mirrors when GitHub is slow. Upgrading a Windows installation of 3.0 or earlier keeps the models it already has.
+- Windows Setup (2026-11-03): Custom options are grouped into install location (with the space required), Shortcuts, Startup and Downloads, each download with its size. The OCR pack can be ticked there. A new install no longer creates a desktop shortcut unless you tick it.
+
 ## [3.0.0] - 2026-11-02
 
 ### Added

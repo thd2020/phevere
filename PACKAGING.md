@@ -1,16 +1,22 @@
 # Packaging & releases
 
+2026-11-03: Desktop packages no longer carry the PP-OCRv4 models, which makes the x64 Setup.exe about 15 MB smaller (132.4 MB for 3.0.0, 117.6 MB now). Text recognition needs the OCR pack, a separate 13.7 MB release asset (`Phevere-OCR-PP-OCRv4.tar.gz`) that the app installs from Settings → Capture or that Setup downloads when you tick it under Custom options. Upgrading a Windows install made by 3.0 or earlier keeps the models it already has. See "OCR pack" below.
+
+2026-11-03: The Custom options page is regrouped: install location with the space required, Shortcuts, Startup, and Downloads with their sizes. A new install no longer creates a desktop shortcut unless you tick it.
+
 2026-10-25: Linux packages. `npm run make:linux:x64` / `make:linux:arm64` build a deb, an rpm and an AppImage per arch (`scripts/make-linux.js`, one maker at a time to save memory). Releases build them on Ubuntu 22.04 runners. See the Linux section below.
 
-2026-10-14: Windows Setup keeps the illustrated single-page layout and uses native, keyboard-accessible controls. Custom options include the installation folder, OCR, pronunciation models, shortcuts, startup, and opening the app after installation. A selected pronunciation model downloads during setup; Windows ARM64 omits this choice.
+2026-10-14: Windows Setup keeps the illustrated single-page layout and uses native, keyboard-accessible controls. A selected pronunciation model downloads during setup; Windows ARM64 omits this choice.
 
 ![Screenshot of the illustrated Windows installer with its Install button and Custom options](PACKAGING.assets/installer-main.png)
 
-Custom options replace the illustration within the same window.
+Custom options replace the illustration within the same window. Each row is one checkbox you can click anywhere on, or reach with Tab and toggle with Space.
 
-![Screenshot of Windows Setup custom options for components, installation folder, and shortcuts](PACKAGING.assets/installer-options.png)
+![Screenshot of Windows Setup custom options with install location, Shortcuts, Startup, and Downloads with sizes](PACKAGING.assets/installer-options.png)
 
-2026-10-14: Windows replacement installs reuse the recorded installation folder and preserve the notebook and settings. Custom folders retain their full path, including spaces. Optional shortcuts and OCR choices carry over, including choices made with older installers. Each Windows release job tests a real upgrade before replacing the download.
+The page as a new computer sees it: Start menu and Open Phevere after setup are on, everything else is off, and the space required counts the app plus whatever downloads are ticked.
+
+2026-10-14: Windows replacement installs reuse the recorded installation folder and preserve the notebook and settings. Custom folders retain their full path, including spaces. Optional shortcut choices carry over, including choices made with older installers. Each Windows release job tests a real upgrade before replacing the download.
 
 ```mermaid
 flowchart LR
@@ -63,19 +69,36 @@ GitHub Actions: `ci.yml` on PR/`main` (including Android APK + iOS IPA as **Acti
 | Uninstaller | `Uninstall Phevere.exe` in the install dir + **Apps & Features** registry |
 | Start menu | Optional “Phevere” + **“Uninstall Phevere”** shortcuts |
 
-### Single bundled installer
+### Custom options
 
-One Setup.exe includes the app **and** OCR models (`resources/ocr-models` → `extraResources`). Custom options on the install page:
+The WPF frontend (`packaging/installer-ui/InstallerUi.cs`) shows these choices and passes the shortcut ones to the NSIS backend as switches. Upgrades start from the saved choice.
 
-| Component | Default | Notes |
-|---|---|---|
-| Desktop shortcut | on | |
-| Start menu shortcut | on | Also creates **Uninstall Phevere** |
-| OCR models (~15 MB) | **on** | Uncheck → remove `resources\ocr-models` after extract |
+| Group | Option | New install | Size |
+|---|---|---|---|
+| Shortcuts | Start menu (also creates **Uninstall Phevere**) | on | |
+| Shortcuts | Desktop | off | |
+| Startup | Start with Windows | off | |
+| Startup | Open Phevere after setup | on | |
+| Downloads | OCR pack | off | 14 MB |
+| Downloads | Pronunciation voice (x64 only) | None | 132 or 350 MB |
+
+Downloads run after the app is installed, through `phevere.exe --install-ocr-pack` and `--install-audio-model=<model>`, which print JSON progress lines. If one fails, Setup offers Retry download or Continue without it. `InstallerUi.exe --preview --fresh --options` opens the page without installing anything, as a computer without Phevere sees it. The NSIS page in `packaging/installer-pages.nsh` only appears if someone runs the backend directly.
+
+### OCR pack
+
+No desktop package includes OCR models. The pack holds three files from the `@gutenye/ocr-models` npm package (`ch_PP-OCRv4_det_infer.onnx`, `ch_PP-OCRv4_rec_infer.onnx`, `ppocr_keys_v1.txt`, 15.6 MB on disk), listed with their SHA-256 in `src/services/ocr-pack-manifest.json`.
+
+- `npm run make:ocr-pack` writes `out/make/Phevere-OCR-PP-OCRv4.tar.gz`. The Windows x64 release job uploads and attests it on every tag; the name has no version so `releases/latest/download/` always finds it.
+- The app (`src/services/ocr-pack.ts`) tries this version's release asset, then the latest release's, then the same files from the npm tarball on npmmirror and npmjs. Every file is checked against the manifest before it is moved into `%APPDATA%\phevere\ocr-packs\pp-ocrv4` (`~/Library/Application Support/phevere/...` on macOS, `~/.config/phevere/...` on Linux).
+- The engine also loads `resources\ocr-models` next to the app, where 3.0 and earlier installed the models. The NSIS backend copies that folder aside before the old uninstaller removes the install folder during an upgrade, and puts it back afterwards (`PV_KEEP_OCR_MODELS` in `packaging/installer.nsh`). macOS and Linux replace the whole app on upgrade, so there the pack is installed again from Settings.
+- Without the pack, Settings → Capture shows "Needs the OCR pack" with an Install button beside Hover lookup, and the notebook's Hover chip reads No OCR.
+- `npm run test:ocr-pack` builds the asset and installs it through the real module with Electron stubbed: source order, a truncated download, a wrong checksum, the npm fallback, and cleanup. CI runs it.
+
+![Screenshot of Settings, Capture tab, with Needs the OCR pack and an Install button beside Hover lookup](README.assets/desktop-settings-capture-ocr.png)
 
 ### Uninstall & ghost cleanup
 
-Custom options also offer a pronunciation model (None, Compact at 132 MB, or Full at 350 MB), Start with Windows, and Open after installation. Pronunciation models download during setup on x64. Upgrades preserve an existing startup preference.
+Upgrades preserve an existing startup preference.
 
 Normal uninstall:
 
@@ -101,7 +124,7 @@ If files remain but Apps has no entry (“ghost” install — often from aborte
 | `onnxruntime-node` 1.23.2 + `sharp` + `@gutenye/*` | Forge `asar.unpackDir` (not `asarUnpack` — that key is electron-builder). Must also be kept by `scripts/packager-ignore.js`. 1.23.2 last npm with Intel Mac `darwin/x64` |
 | `sql-wasm.wasm` + `sql-asm.js` | `extraResources` |
 | Offline **seed** packs | optional `resources/seed`; users also download WordNet / GCIDE / CEDICT / FreeDict from Settings |
-| OCR ONNX models | `extraResources` → `ocr-models` |
+| OCR ONNX models | Not bundled. The OCR pack is a separate release asset (see above); `verify-ocr-pack` fails if an `.onnx` model is found in a package |
 | Uninstaller | Written by NSIS as `Uninstall Phevere.exe` |
 
 ### Branding assets
@@ -153,11 +176,10 @@ npm run make:mac:arm64   # Apple Silicon *or* Intel cross-compile
 # DMG:    out/make/dmg/Phevere-<version>-darwin-{arch}.dmg
 ```
 
-OCR in that zip must work on a machine with **no Node, no Python, no `npm install`**. Forge's webpack plugin would otherwise pack only `/.webpack` and drop the OCR natives (`onnxruntime-node`, `sharp`, `@gutenye/*`). `scripts/packager-ignore.js` keeps those trees (and `koffi` / `sql.js`); `packagerConfig.prune` is **false** (galactus would skip nested `@img` binaries); `asar.unpackDir` unpacks them (`asarUnpack` is electron-builder-only — `@electron/packager` ignores it). `resources/ocr-models` is `extraResource`. Do not ignore the `node_modules` directory itself or packager never copies the packages. `@gutenye/ocr-node` is ESM: `import()` cannot load from inside `app.asar`, so it must be unpacked.
+OCR in that zip must work on a machine with **no Node, no Python, no `npm install`**. Forge's webpack plugin would otherwise pack only `/.webpack` and drop the OCR natives (`onnxruntime-node`, `sharp`, `@gutenye/*`). `scripts/packager-ignore.js` keeps those trees (and `koffi` / `sql.js`); `packagerConfig.prune` is **false** (galactus would skip nested `@img` binaries); `asar.unpackDir` unpacks them (`asarUnpack` is electron-builder-only — `@electron/packager` ignores it). The models are not packaged; the app downloads the OCR pack. Do not ignore the `node_modules` directory itself or packager never copies the packages. `@gutenye/ocr-node` is ESM: `import()` cannot load from inside `app.asar`, so it must be unpacked.
 
 | Check | Path inside `Phevere.app` |
 |---|---|
-| ONNX models | `Contents/Resources/ocr-models/{det,rec,keys}` |
 | ONNX Runtime | `Contents/Resources/app.asar.unpacked/node_modules/onnxruntime-node/bin/napi-v6/darwin/<arch>/onnxruntime_binding.node` |
 | Gutenye | `…/app.asar.unpacked/node_modules/@gutenye/ocr-node/build/index.js` |
 | sharp | `…/app.asar.unpacked/node_modules/@img/sharp-darwin-<arch>/` |
