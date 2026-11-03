@@ -2957,6 +2957,12 @@ function wireNotebookActions(root: HTMLElement): void {
         nbReview = null;
         renderLearn();
         return;
+      case 'nb-review-exit':
+        // Back to the Learn page; answers so far are already saved and rescheduled.
+        nbReview = null;
+        renderLearn();
+        document.querySelector('.main-shell')?.scrollTo({ top: 0 });
+        return;
       case 'nb-start':
         // Book words get their meaning looked up before the first question is built.
         await prefetchMeanings(true);

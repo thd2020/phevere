@@ -198,6 +198,10 @@ function promptHtml(q: ReviewQuestion, e: NotebookEntry): string {
   }
 }
 
+const OPTION_TICK = '<svg class="nbv-option__mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7" /></svg>';
+const OPTION_CROSS = '<svg class="nbv-option__mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" /></svg>';
+const BACK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>';
+
 function optionsHtml(q: ReviewQuestion, state: ReviewState): string {
   const a = state.answer;
   return `<div class="nbv-options${q.kind === 'meaning-choice' ? ' is-meanings' : ''}" role="group" aria-label="Choices">${q.options
@@ -209,7 +213,8 @@ function optionsHtml(q: ReviewQuestion, state: ReviewState): string {
         else cls = ' is-dim';
       }
       const word = a && q.kind === 'meaning-choice' && i !== q.correct && i === a.choice ? `<small>${esc(q.optionWords[i])}</small>` : '';
-      return `<button type="button" class="nbv-option${cls}" data-act="nb-choose" data-choice="${i}"${a ? ' disabled' : ''}><kbd>${i + 1}</kbd><span>${esc(text)}${word}</span></button>`;
+      const tick = cls === ' is-right' ? OPTION_TICK : cls === ' is-wrong' ? OPTION_CROSS : '';
+      return `<button type="button" class="nbv-option${cls}" data-act="nb-choose" data-choice="${i}"${a ? ' disabled' : ''}><kbd>${i + 1}</kbd><span>${esc(text)}${word}</span>${tick}</button>`;
     })
     .join('')}</div>`;
 }
@@ -230,7 +235,30 @@ function typedHtml(q: ReviewQuestion, state: ReviewState): string {
 function verdictHtml(q: ReviewQuestion, state: ReviewState): string {
   const a = state.answer!;
   const text = a.result === 'right' ? 'Correct' : a.result === 'close' ? `Almost: ${esc(q.answers[0])}` : q.kind === 'flash' ? 'Keep practising' : 'Not quite';
-  return `<p class="nbv-verdict is-${a.result}" role="status">${text}</p>`;
+  // The mark says right or wrong; only "Almost" carries something to read, the right spelling.
+  return `<p class="nbv-verdict is-${a.result}${a.result === 'close' ? '' : ' nbv-vh'}" role="status">${text}</p>`;
+}
+
+/** Answers whose mark has been drawn, so a repaint of the same answer does not draw it again. */
+const drawnMarks = new Set<string>();
+
+/**
+ * The teacher's mark on the question: a check drawn like a pen stroke for a right answer, a
+ * lighter check for an almost, a cross for a wrong one. It takes no taps, so Continue works
+ * while it plays, and it is drawn once per answer.
+ */
+function markHtml(q: ReviewQuestion, state: ReviewState): string {
+  const a = state.answer;
+  if (!a || q.kind === 'flash') return '';
+  const key = `${q.id}:${state.index}:${a.result}:${a.overridden ? 1 : 0}`;
+  if (drawnMarks.has(key)) return '';
+  drawnMarks.add(key);
+  if (drawnMarks.size > 200) drawnMarks.clear();
+  const path =
+    a.result === 'wrong'
+      ? '<path class="nbv-mark__stroke" pathLength="1" d="M62 52 C 96 88, 132 122, 180 160"/><path class="nbv-mark__stroke nbv-mark__stroke--2" pathLength="1" d="M182 48 C 146 82, 104 124, 58 166"/>'
+      : '<path class="nbv-mark__stroke" pathLength="1" d="M38 112 C 52 120, 70 138, 90 166 C 112 122, 152 70, 214 28"/>';
+  return `<div class="nbv-mark is-${a.result}" aria-hidden="true"><svg viewBox="0 0 240 200">${path}</svg></div>`;
 }
 
 function answerCardHtml(e: NotebookEntry): string {
@@ -293,11 +321,12 @@ function questionHtml(q: ReviewQuestion, e: NotebookEntry, state: ReviewState, o
   }
   return `<section class="nbv-quiz" data-id="${esc(q.id)}" data-kind="${q.kind}"${a ? ' data-answered="1"' : ''}>
     <div class="nbv-quiz__top">
+      <button type="button" class="nbv-quiz__back" data-act="nb-review-exit" aria-label="Back to Learn" title="Back to Learn">${BACK_ICON}</button>
       <div class="nbv-progress" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${state.index}"><span style="width:${pct}%"></span></div>
       <span class="nbv-quiz__count">${Math.min(state.index + 1, total)} / ${total}</span>
     </div>
     <p class="nbv-quiz__ask">${ASK[q.kind]}</p>
-    ${promptHtml(q, e)}
+    <div class="nbv-quiz__q">${promptHtml(q, e)}${markHtml(q, state)}</div>
     ${body}
     ${feedback}
   </section>`;

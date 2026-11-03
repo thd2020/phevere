@@ -235,6 +235,74 @@
 .nbv-option.is-right { border-color: var(--nbv-teal); background: var(--nbv-teal-soft); color: #002021; }
 .nbv-option.is-wrong { border-color: #ba1a1a; background: #ffdad6; color: #410002; }
 .nbv-option.is-dim { opacity: 0.5; }
+.nbv-option { position: relative; }
+.nbv-option__mark { width: 18px; height: 18px; margin-left: auto; flex: none; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+
+/*
+ * The teacher's mark (2026-11-03): drawn over the question like a pen stroke, then lifted.
+ * Physical personality, three curves: the stroke draws with --nbv-pen, the mark settles with
+ * --nbv-spring, presses use --nbv-snap. It never takes taps, so Continue works while it plays.
+ */
+.nbv { --nbv-pen: cubic-bezier(0.16, 1, 0.3, 1); --nbv-snap: cubic-bezier(0.22, 1, 0.36, 1);
+  --nbv-spring: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.067 22.5%, 1.089 26%, 1.079 30.3%, 1.049 36%, 1.024 42.6%, 1.011 50.3%, 1.004 59.2%, 1.001 69.3%, 1); }
+.nbv-quiz__q { position: relative; display: grid; gap: inherit; }
+.nbv-mark {
+  position: absolute;
+  inset: -14px 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  animation: nbv-mark-life 1.4s var(--nbv-pen) both;
+}
+.nbv-mark svg { height: min(100%, 140px); min-height: 64px; width: auto; overflow: visible; transform: rotate(-7deg); animation: nbv-mark-settle 0.7s var(--nbv-spring) both; }
+.nbv-mark__stroke {
+  fill: none;
+  stroke: var(--nbv-teal);
+  stroke-width: 16;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: nbv-mark-draw 0.6s var(--nbv-pen) 0.05s forwards;
+}
+.nbv-mark.is-close .nbv-mark__stroke { stroke: var(--nbv-stone); stroke-width: 12; }
+.nbv-mark.is-wrong .nbv-mark__stroke { stroke: var(--nbv-ember); stroke-width: 14; animation-duration: 0.34s; }
+.nbv-mark.is-wrong .nbv-mark__stroke--2 { animation-delay: 0.36s; }
+@keyframes nbv-mark-draw { to { stroke-dashoffset: 0; } }
+@keyframes nbv-mark-settle { from { transform: rotate(-7deg) scale(0.94); } to { transform: rotate(-7deg) scale(1); } }
+/* Visible while drawn, then lifted off the page. */
+@keyframes nbv-mark-life {
+  0%, 72% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-10px) scale(1.03); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nbv-mark { animation: nbv-mark-fade 1s linear both; }
+  .nbv-mark svg { animation: none; }
+  .nbv-mark__stroke { animation: none; stroke-dashoffset: 0; }
+  @keyframes nbv-mark-fade { 0%, 50% { opacity: 1; } 100% { opacity: 0; } }
+}
+
+/* Back to the Learn page from inside a session. */
+.nbv-quiz__back {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin: -4px 2px -4px -6px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--nbv-ink);
+  cursor: pointer;
+  transition: background-color 0.16s var(--nbv-snap), transform 0.16s var(--nbv-snap);
+}
+.nbv-quiz__back svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.nbv-quiz__back:active { transform: scale(0.94); }
+@media (hover: hover) and (pointer: fine) { .nbv-quiz__back:hover { background: var(--nbv-paper-2); } }
+.nbv-vh { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 .nbv-type { display: flex; gap: 8px; }
 .nbv-type__input {

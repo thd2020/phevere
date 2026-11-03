@@ -2183,6 +2183,11 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       await loadReviewPool();
       paint();
       return;
+    case 'nb-review-exit':
+      // Back to the Learn page; answers so far are already saved and rescheduled.
+      nbState.review = null;
+      paint();
+      return;
     case 'nb-start':
       // Book words get their meaning looked up before the first question is built.
       await prefetchMeanings(true);
