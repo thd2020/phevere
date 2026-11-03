@@ -106,6 +106,9 @@ const { extractTar } = core('tar-extract.ts');
   assert.ok(yue.definitions.every((d) => d.source === 'Chinese Wiktionary'), 'senses carry the edition name');
   assert.ok(yue.definitions.some((d) => d.meaning.startsWith('〈书〉')), 'literary senses are marked 〈书〉');
   assert.ok(/[一-鿿]/.test(yue.definitions[0].meaning), 'definitions are in Chinese');
+  const yueEx = yue.definitions[0].examples || [];
+  assert.ok(yueEx.length >= 1 && new Set(yueEx.map((e) => e.split(' — ')[1])).size === yueEx.length, 'a traditional and simplified pair shows once');
+  assert.ok(yueEx.some((e) => e.includes('可以为师矣')), 'the simplified example is the one kept');
   const dom = src.parseKaikki(fixture('kaikki-ru-dom.jsonl'), { languages: new Set(['ru']), source: 'Russian Wiktionary' });
   assert.ok(dom.definitions.length > 0 && /[Ѐ-ӿ]/.test(dom.definitions[0].meaning), 'дом is defined in Russian');
   // 学生 on the Chinese edition only points to 學生; the fetcher follows that once.

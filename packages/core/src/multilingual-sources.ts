@@ -275,7 +275,14 @@ export function parseKaikki(jsonl: string, opts: KaikkiOptions = {}): SourceSens
       if (!gloss) continue;
       const label = opts.tagLabels ? tags.map((t) => opts.tagLabels![t]).find(Boolean) : '';
       const meaning = label ? `${label}${gloss}` : gloss;
-      const examples = (Array.isArray(sense?.examples) ? sense.examples : [])
+      // The Chinese edition gives each Chinese example twice, in traditional and in simplified
+      // characters, with the same translation and source; keep the simplified one.
+      const rawExamples: any[] = Array.isArray(sense?.examples) ? sense.examples : [];
+      const tagsOf = (e: any): string[] => (Array.isArray(e?.tags) ? e.tags : []);
+      const pairKey = (e: any) => `${clean(e?.translation || e?.english)}|${clean(e?.roman)}|${clean(e?.ref)}`;
+      const simplified = new Set(rawExamples.filter((e) => tagsOf(e).includes('Simplified-Chinese')).map(pairKey));
+      const examples = rawExamples
+        .filter((e) => !(tagsOf(e).includes('Traditional-Chinese') && simplified.has(pairKey(e))))
         .map((e: any) => {
           const text = clean(e?.text);
           const en = clean(e?.english || e?.translation);
