@@ -2060,3 +2060,11 @@ html[data-notify="ios"] .toast {
   .nb-views .nbv-switch__btn span { display: none; }
 }
 .nb-views .nbv-switch__btn { gap: 4px; font-size: 11.5px; }
+
+/* The settings tabs are icons, so each panel starts with its name. */
+.settings-panel__name {
+  margin: 4px 2px 12px;
+  font: 600 1.35rem/1.2 var(--md-font-display, 'Source Serif 4 Variable', Georgia, serif);
+  letter-spacing: -0.01em;
+  color: var(--md-sys-color-on-surface);
+}

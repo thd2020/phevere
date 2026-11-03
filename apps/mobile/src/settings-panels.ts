@@ -135,10 +135,9 @@ function selectionBarSection(capture: CaptureInfo): string {
     </div>`;
 }
 
-export type SettingsSection = 'capture' | 'lookup' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio';
+export type SettingsSection = 'capture' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio';
 
 const TAB_ICON: Record<SettingsSection, string> = {
-  lookup: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M3.5 5.5c2.8-1.2 5.6-1.2 8.5.6 2.9-1.8 5.7-1.8 8.5-.6v13c-2.8-1.2-5.6-1.2-8.5.6-2.9-1.8-5.7-1.8-8.5-.6zM12 6.1v13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   capture: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M9 9h6M12 9v7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   notifications: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M6 16v-5a6 6 0 1 1 12 0v5l2 2H4zM10 21h4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   sources: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M5 4.5h4v15H5zM10.5 4.5h4v15h-4zM16 6l3.6-1 3 14.2-3.6 1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -149,7 +148,6 @@ const TAB_ICON: Record<SettingsSection, string> = {
 
 export const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = [
   { id: 'capture', label: 'Capture' },
-  { id: 'lookup', label: 'Lookup' },
   { id: 'sources', label: 'Sources' },
   { id: 'offline', label: 'Offline' },
   { id: 'api', label: 'API keys' },
@@ -160,7 +158,6 @@ export function settingsSections(capture: CaptureInfo): Array<{ id: SettingsSect
   if (capture.platform === 'web') return SETTINGS_SECTIONS;
   return [
     { id: 'capture', label: 'Capture' },
-    { id: 'lookup', label: 'Lookup' },
     { id: 'notifications', label: 'Notifications' },
     { id: 'sources', label: 'Sources' },
     { id: 'offline', label: 'Offline' },
@@ -171,7 +168,7 @@ export function settingsSections(capture: CaptureInfo): Array<{ id: SettingsSect
 
 const TRANSLATION_ONLY = new Set(['DeepL API', 'Google Translate API']);
 
-/** The selected tab already names the panel, so panels open straight on their rows. */
+/** The tabs are icons, so each panel starts with its name (added in settingsBody). */
 function panelIntro(_title: string): string {
   return '';
 }
@@ -241,9 +238,11 @@ function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
   return `<div class="sv sv-page">${scan}</div>`;
 }
 
-function lookupPanel(prefs: MobilePrefs): string {
-  return `<div class="sv sv-page">
-    <div class="sv-ledger">${switchRowHtml({ label: 'Images', on: prefs.senseImages !== false, attrs: 'data-act="sense-images"' })}</div>
+/** Pictures beside senses come from Wikimedia Commons, so their switch sits with the sources. */
+function picturesHtml(prefs: MobilePrefs): string {
+  return `<div class="sv sv-sources">
+    <header class="sv-head"><h3 class="sv-head__title">Pictures</h3></header>
+    <div class="sv-ledger">${switchRowHtml({ label: 'Pictures beside senses', on: prefs.senseImages !== false, attrs: 'data-act="sense-images"' })}</div>
   </div>`;
 }
 
@@ -285,7 +284,8 @@ function sourcesPanel(prefs: MobilePrefs, sources: DictionarySource[], lib: Libr
   }));
   return `
     ${panelIntro('Sources')}
-    ${sourcesPanelHtml({ dictionary, engines })}`;
+    ${sourcesPanelHtml({ dictionary, engines })}
+    ${picturesHtml(prefs)}`;
 }
 
 /** Packs under the language of their headwords, each a catalogue card; tapping one opens its sheet. */
@@ -401,11 +401,12 @@ export function settingsBody(
         `<button type="button" class="result-tab" role="tab" data-act="settings-section" data-section="${s.id}" aria-selected="${section === s.id}" aria-label="${s.label}" title="${s.label}">${TAB_ICON[s.id]}</button>`,
     )
     .join('');
+  const sections = settingsSections(capture);
+  const current = sections.find((s) => s.id === section) || sections[0];
+  section = current.id;
   const panel =
     section === 'capture'
       ? capturePanel(prefs, capture)
-      : section === 'lookup'
-        ? lookupPanel(prefs)
       : section === 'notifications'
         ? notificationsPanel(prefs, capture)
         : section === 'sources'
@@ -420,6 +421,6 @@ export function settingsBody(
       <div class="settings-sticky">
         <div class="result-tabs settings-tabs" role="tablist" aria-label="Settings sections" style="--tabs:${settingsSections(capture).length}">${tabs}</div>
       </div>
-      <div class="settings-panel" role="tabpanel">${panel}</div>
+      <div class="settings-panel" role="tabpanel" aria-label="${current.label}"><h2 class="settings-panel__name">${current.label}</h2>${panel}</div>
     </div>`;
 }

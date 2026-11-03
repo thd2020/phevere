@@ -1780,7 +1780,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'settings-section': {
       const next = t.dataset.section as SettingsSection | undefined;
-      if (next === 'capture' || next === 'lookup' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio') {
+      if (next === 'capture' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio') {
         settingsSection = next;
         langMenu = '';
         if (next === 'offline') await refreshPacks();
