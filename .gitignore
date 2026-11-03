@@ -213,3 +213,9 @@ packaging/optional/_ocr_stage/
 # Temp iconutil input; commit packaging/icon.icns instead
 packaging/icon.iconset/
 
+
+# Notebook data used for local testing (seeds, dumps); it can hold a user's real words.
+__seed/
+*.sqlite
+*.sqlite.b64
+*.b64
