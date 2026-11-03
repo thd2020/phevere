@@ -23,10 +23,12 @@ import {
   accountPanelHtml,
   deleteEmailMatches,
   attachNotebookMap,
+  attachCardTable,
   fetchWordImage,
   fillWordImages,
   reviewQueue,
   reviewVocab,
+  type CardLayout,
   type FamilyGrouping,
   type MorphKind,
   type NotebookView,
@@ -157,11 +159,13 @@ const NB_VIEW_KEY = 'phevere.notebookView';
 const NB_GROUP_KEY = 'phevere.notebookGroup';
 const NB_MAP_KEY = 'phevere.notebookMapKinds';
 const NB_GOAL_KEY = 'phevere.reviewGoal';
+const NB_CARDS_KEY = 'phevere.notebookCardsLayout';
 const nbState = {
   view: (readStore(NB_VIEW_KEY) || 'list') as NotebookView,
   group: (readStore(NB_GROUP_KEY) || 'root') as FamilyGrouping,
   mapKinds: (readStore(NB_MAP_KEY) || 'root,prefix,char').split(',').filter(Boolean) as MorphKind[],
   flipped: new Set<string>(),
+  cardLayout: (readStore(NB_CARDS_KEY) || 'piles') as CardLayout,
   review: null as ReviewState | null,
   goal: Number(readStore(NB_GOAL_KEY)) || 10,
 };
@@ -426,6 +430,12 @@ function bindNotebookViews(): void {
   const page = document.querySelector('.nbv-body');
   if (!page) return;
   attachNotebookMap(page);
+  attachCardTable(page, {
+    onLayout: (layout) => {
+      nbState.cardLayout = layout;
+      writeStore(NB_CARDS_KEY, layout);
+    },
+  });
   if (prefs.senseImages !== false) {
     fillWordImages(page, (lemma, lang, gloss) => fetchWordImage(lemma, { lang, gloss }));
   }
@@ -1702,7 +1712,12 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       if (!id) return;
       if (nbState.flipped.has(id)) nbState.flipped.delete(id);
       else nbState.flipped.add(id);
-      paint();
+      // Turned in place: a repaint would rebuild the whole table under the reader.
+      const open = nbState.flipped.has(id);
+      t.closest('.nbv-card')?.classList.toggle('is-flipped', open);
+      t.setAttribute('aria-pressed', String(open));
+      t.setAttribute('aria-label', open ? 'Show word' : 'Show meaning');
+      t.title = open ? 'Show word' : 'Show meaning';
       return;
     }
     case 'nb-goal':

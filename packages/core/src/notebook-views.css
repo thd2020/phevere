@@ -211,18 +211,7 @@
 }
 .nbv-map__zoom button:hover { background: var(--nbv-paper-2); }
 
-/* Cards */
-.nbv-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
-.nbv-card {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--nbv-line);
-  border-radius: 16px;
-  background: var(--nbv-panel);
-  overflow: hidden;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 320px;
-}
+/* Card pieces the Review card shares; the Cards view itself is styled in notebook-cards.css. */
 .nbv-card__pic {
   position: relative;
   aspect-ratio: 4 / 3;
@@ -242,14 +231,7 @@
   transition: opacity 0.3s var(--nbv-motion);
 }
 .nbv-card__pic.has-img img { opacity: 1; }
-.nbv-card__body { display: grid; gap: 8px; padding: 12px 14px 14px; cursor: pointer; outline: none; }
-.nbv-card__body:focus-visible { box-shadow: inset 0 0 0 2px var(--nbv-ember); border-radius: 0 0 16px 16px; }
-.nbv-card__word { margin: 0; font: 600 21px/1.2 var(--nbv-serif); letter-spacing: -0.01em; }
-.nbv-card__word i { margin: 0 1px; font-style: normal; color: var(--nbv-line); }
 .nbv-card__ipa { margin: -4px 0 0; font: 14px/1.3 var(--nbv-ipa); color: var(--nbv-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nbv-card__morphs { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; font: italic 14px/1.3 var(--nbv-serif); }
-.nbv-card__morphs li { display: flex; align-items: center; gap: 8px; }
-.nbv-card__morphs .nbv-morph { height: 21px; font-size: 12.5px; font-style: normal; }
 .nbv-card__note {
   margin: 0;
   padding: 7px 10px;
@@ -258,11 +240,6 @@
   font: 13.5px/1.45 var(--nbv-ui);
   background: rgba(255, 219, 204, 0.4);
 }
-.nbv-card__back { display: none; font: 14.5px/1.5 var(--nbv-serif); }
-.nbv-card__back ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
-.nbv-card__back p { margin: 0; color: var(--nbv-soft); }
-.nbv-card.is-flipped .nbv-card__back { display: block; }
-.nbv-card__flip { font: 600 12px/1 var(--nbv-ui); color: var(--nbv-ember); }
 
 /* Review */
 .nbv-review-wrap { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
