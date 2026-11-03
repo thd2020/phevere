@@ -3366,6 +3366,38 @@ export class DictionaryService extends BaseService {
     }
   }
 
+  /** Engines that can translate now: Google and MyMemory always, DeepL and Youdao with a key. */
+  availableTranslationProviders(): Array<Exclude<TranslationProvider, 'auto'>> {
+    const out: Array<Exclude<TranslationProvider, 'auto'>> = ['google', 'mymemory'];
+    if (this.deeplApiKey) out.push('deepl');
+    if (this.youdaoAppKey && this.youdaoAppSecret) out.push('youdao');
+    return out;
+  }
+
+  /**
+   * Translate a passage with one engine, or with the first that answers for `auto`. A source of
+   * `auto` is detected first, and a target of `auto` follows the usual pairing (English to
+   * Chinese, everything else to English). Quick translation calls this.
+   */
+  async translateText(
+    text: string,
+    targetLanguage = 'auto',
+    sourceLanguage = 'auto',
+    provider: TranslationProvider = 'auto',
+  ): Promise<Translation | null> {
+    const input = String(text || '').trim();
+    if (!input) return null;
+    const source = !sourceLanguage || sourceLanguage === 'auto' ? await this.detectSourceLanguage(input) : sourceLanguage;
+    let target = this.resolveTargetLanguage(source, targetLanguage);
+    // Text already in the target language goes the other way (Chinese with a Chinese target → English).
+    if (target === source.toLowerCase().split('-')[0]) target = this.defaultTargetForSource(source);
+    const hit =
+      provider === 'auto'
+        ? await this.getBestTranslation(input, target, source, 'auto')
+        : await this.translateWithProvider(provider, input, target, source);
+    return hit ? { ...hit, language: hit.language || target, detectedSourceLanguage: hit.detectedSourceLanguage || source } : null;
+  }
+
   private async getBestTranslation(
     text: string,
     targetLanguage: string,
