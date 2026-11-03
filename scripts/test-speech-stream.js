@@ -43,6 +43,22 @@ const PARA = 'The committee met on Tuesday to review the proposal for the new li
   for (const c of chunks) assert.ok(c.length <= 300);
   assert.equal(chunks.join(' '), long);
 }
+{
+  // With growth, each chunk is at most 1.5 times the one before (floor 40), so it can
+  // synthesize while the previous one plays.
+  const zh = '委员会周二开会审议了新图书馆的建设方案和预算。几位委员认为费用自去年春天第一次估算以来上涨太快，另一些委员则认为镇上的居民已经等了很多年，旧阅览室又小又潮湿而且周末不开放，经过长时间讨论，主席提出先建一层的折中办法，最终以一票之差获得通过。';
+  for (const [text, sep] of [[PARA + ' ' + PARA, ' '], [zh, '']]) {
+    const chunks = splitSpeechText(text, { max: 300, growth: 1.5 });
+    assert.equal(chunks.join(sep), text, 'no text is lost or reordered');
+    for (let i = 1; i < chunks.length; i++) {
+      assert.ok(chunks[i].length <= Math.max(40, Math.round(chunks[i - 1].length * 1.5)), `chunk ${i} grows gradually: ${chunks.map((c) => c.length)}`);
+    }
+  }
+  assert.ok(splitSpeechText(zh, { max: 300, growth: 1.5 }).length >= 3, 'a long second sentence is split at clause marks');
+  // A long first sentence keeps CJK text unspaced when its tail is carried over.
+  const longZh = '这是一个很长的句子，'.repeat(20) + '结束。';
+  assert.equal(splitSpeechText(longZh).join(''), longZh);
+}
 // The module runs in its own vm realm, so compare arrays as JSON.
 assert.equal(JSON.stringify(splitSpeechText('  hello  ')), '["hello"]', 'a single word stays one chunk');
 assert.equal(JSON.stringify(splitSpeechText('')), '[]');
