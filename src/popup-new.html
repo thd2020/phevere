@@ -2828,18 +2828,38 @@ function startAutoCloseTimeout() {
           try { if (api && typeof api.stopSpeech === 'function') void api.stopSpeech(); } catch (e) {}
         }
 
-        function playLongChunk(dataUrl, run) {
+        /** Plays one chunk. `onNearEnd` runs once, about a second before the chunk ends. */
+        function playLongChunk(el, run, onNearEnd) {
           return new Promise(function (resolve) {
             if (run !== longSpeechRun) { resolve(false); return; }
-            var el = new Audio(dataUrl);
             longAudioEl = el;
             applyPlayback(el, false);
-            var done = function (ok) { el.onended = el.onerror = el.onpause = null; resolve(ok); };
+            var near = false;
+            var nearEnd = function () { if (!near) { near = true; onNearEnd(); } };
+            var done = function (ok) {
+              el.onended = el.onerror = el.onpause = el.ontimeupdate = null;
+              nearEnd();
+              resolve(ok);
+            };
+            el.ontimeupdate = function () {
+              if (el.duration && el.duration - el.currentTime < 1.2) nearEnd();
+            };
             el.onended = function () { done(true); };
             el.onerror = function () { done(false); };
             el.onpause = function () { if (!el.ended) done(false); };
             var p = el.play();
             if (p && typeof p.catch === 'function') p.catch(function () { done(false); });
+          });
+        }
+
+        /** Fetches chunk i and loads it into an audio element, so it can start without a gap. */
+        function loadLongChunk(api, id, index) {
+          return api.speechStreamChunk({ id: id, index: index }).then(function (res) {
+            if (!res || !res.ok || !res.dataUrl) return { res: res, el: null };
+            var el = new Audio();
+            el.preload = 'auto';
+            el.src = res.dataUrl;
+            return { res: res, el: el };
           });
         }
 
@@ -2861,17 +2881,25 @@ function startAutoCloseTimeout() {
             var start = await api.speechStreamStart({ text: text, lang: lang });
             if (run !== longSpeechRun) return true;
             if (!start || !start.ok) { finish(); return false; }
+            // Asking for chunk i + 1 near the end of chunk i also starts chunk i + 2 in the
+            // main process, so synthesis stays about one chunk ahead of what is heard.
+            var next = loadLongChunk(api, start.id, 0);
             for (var i = 0; i < start.count; i++) {
-              var res = await api.speechStreamChunk({ id: start.id, index: i });
+              var got = await next;
+              next = null;
               if (run !== longSpeechRun) return true;
-              if (!res || !res.ok || !res.dataUrl) {
+              if (!got.el) {
                 finish();
-                if (res && res.cancelled) return true;
+                if (got.res && got.res.cancelled) return true;
                 return i > 0;
               }
-              var played = await playLongChunk(res.dataUrl, run);
+              var index = i;
+              var played = await playLongChunk(got.el, run, function () {
+                if (index + 1 < start.count && run === longSpeechRun) next = loadLongChunk(api, start.id, index + 1);
+              });
               if (run !== longSpeechRun) return true;
               if (!played && i === 0) { finish(); return false; }
+              if (!next) break;
             }
             finish();
             return true;
