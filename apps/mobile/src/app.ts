@@ -614,8 +614,10 @@ function bindNotebookViews(): void {
   if (!page) return;
   attachNotebookMap(page);
   if (nbState.view === 'families') {
+    // Families groups the whole notebook (the review pool), not just the list's first page.
+    const words = reviewPool.length > notebook.length ? reviewPool : notebook;
     traceNotebookFamilies(
-      notebook.map((e) => String(e.lemma || '')),
+      words.map((e) => String(e.lemma || '')),
       () => document.querySelector('.nbv-body'),
       () => {
         if (tab === 'notebook' && nbState.view === 'families' && !document.querySelector('.nbv-body details[open]')) paint();
