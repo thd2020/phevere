@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- API keys (2026-11-03): Settings → API keys has one card per provider: Google Translate, DeepL, Youdao, Oxford Dictionaries, WordsAPI and Collins. Each card says what the key turns on and whether a key is not set, saved, verified or rejected, and its Test button sends one small request to the provider. Fields are masked, with Show and Clear buttons and a Get a key link to the provider. The desktop app now has fields for Youdao, Oxford, WordsAPI and Collins, which it could already use but had nowhere to enter.
+- API keys (2026-11-03): Settings → API keys has one card per provider: Google Translate, DeepL, Youdao, Oxford Dictionaries, WordsAPI and Collins. Each card says what the key turns on and whether a key is not set, saved, verified or rejected, and its Test button sends one small request to the provider. Fields are masked, with Show and Clear buttons and a Get a key link to the provider. The desktop app now has fields for Youdao, Oxford, WordsAPI and Collins, which it could already use but had nowhere to enter. On the desktop, keys are now kept across restarts, encrypted with the system keychain (DPAPI on Windows); before, they were lost when the app quit.
 
 ### Changed
 

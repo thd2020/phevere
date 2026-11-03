@@ -66,6 +66,7 @@ import {
   parseTranslationProvider,
   TranslationPrefs,
 } from './services/translation-prefs-store';
+import { loadApiKeys, saveApiKey } from './services/api-key-store';
 import {
   loadNotificationPrefs,
   mergeNotificationPrefs,
@@ -2584,11 +2585,13 @@ ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: 
 
 ipcMain.handle('dictionary-set-api-key', (event, apiKey: string) => {
   dictionaryService.setApiKey(apiKey);
+  saveApiKey('googleKey', apiKey);
   return { success: true };
 });
 
 ipcMain.handle('dictionary-set-deepl-api-key', (event, deeplApiKey: string) => {
   dictionaryService.setDeepLApiKey(deeplApiKey);
+  saveApiKey('deeplKey', deeplApiKey);
   return { success: true };
 });
 
@@ -2616,6 +2619,7 @@ ipcMain.handle('dictionary-set-collins-credentials', (_event, rapidApiKey: strin
 // Settings → API keys. Values go straight to the service and are never logged.
 ipcMain.handle('dictionary-set-api-credential', (_event, field: string, value: string) => {
   dictionaryService.setApiCredential(String(field || ''), String(value ?? ''));
+  saveApiKey(String(field || ''), String(value ?? ''));
   return { success: true };
 });
 ipcMain.handle('dictionary-get-api-key-presence', () => dictionaryService.getApiKeyPresence());
@@ -3218,6 +3222,8 @@ app.on('ready', () => {
     return;
   }
   if (!gotSingleInstanceLock) return;
+  // Settings → API keys saved in an earlier session (safeStorage needs the app ready).
+  for (const [field, value] of loadApiKeys()) dictionaryService.setApiCredential(field, value);
   if (process.platform === 'win32') {
     // Must match electron-builder appId for correct taskbar icon grouping.
     app.setAppUserModelId('com.phevere.app');
