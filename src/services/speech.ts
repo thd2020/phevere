@@ -373,6 +373,28 @@ function synthesizeText(
   });
 }
 
+/**
+ * Loads the neural voice in the worker before anyone presses a speaker. The first load
+ * and run take about 4 s on a desktop CPU, which otherwise lands on top of the first
+ * sentence. Called when a translation is shown; it runs once per worker and voice.
+ */
+const warmedWorkers = new WeakMap<UtilityProcess, string>();
+export function warmSpeech(): void {
+  const variant = VARIANTS.find((v) => v.id === getAudioPrefs().voice);
+  if (!variant || !isInstalled(variant.id) || !neuralSupported()) return;
+  let w: UtilityProcess;
+  try {
+    w = ensureWorker('main');
+  } catch {
+    return;
+  }
+  if (warmedWorkers.get(w) === variant.id) return;
+  warmedWorkers.set(w, variant.id);
+  runWorker({ engine: 'kokoro-warm', model: { dir: installDir(variant), file: variant.model } }, 60000).catch((err) => {
+    log.warn('speech', 'neural voice warm-up failed', { err: String(err) });
+  });
+}
+
 // ---------- long text: sentence streaming ----------
 
 /**

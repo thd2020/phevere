@@ -12,6 +12,7 @@
  *
  * argv: --espeak <dir with espeak-ng.js> [--sherpa <dir with sherpa-onnx-node>] [--ort <dir with onnxruntime-node>]
  * Request:  { id, engine: 'espeak' | 'kokoro' | 'kokoro-ipa', text, voice?, speed?, model? }
+ *           { id, engine: 'kokoro-warm', model }       (loads Kokoro ahead of the first press)
  *           { id, engine: 'unpack', archive, dest }   (Kokoro .tar.bz2 downloads)
  * Response: { id, ok, wav?: Uint8Array, error? }
  */
@@ -194,6 +195,12 @@ async function handle(msg) {
   }
   if (msg.engine === 'kokoro-ipa') {
     return kokoroFromPhonemes(msg.model, msg.text, msg.speaker, msg.speed);
+  }
+  if (msg.engine === 'kokoro-warm') {
+    // Loading the model and the first run take about 4 s; doing it before the first
+    // press keeps that out of the wait for the first sentence.
+    kokoroEngine(msg.model.dir, msg.model.file).generate({ text: 'Hi.', sid: 0, speed: 1, enableExternalBuffer: false });
+    return new Uint8Array(0);
   }
   if (msg.engine === 'kokoro') {
     const engine = kokoroEngine(msg.model.dir, msg.model.file);
