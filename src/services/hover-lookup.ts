@@ -28,6 +28,10 @@ export interface HoverLookupOptions {
   skipOcr?: () => boolean;
   /** Skip while any of these windows are focused. */
   isBlocked?: () => boolean;
+  /** Primary button state; a press after a selection ends that selection's hold on hover. */
+  isMouseDown?: () => boolean;
+  /** Longest a selection keeps hover quiet when no press is seen. */
+  selectionHoldMs?: number;
   /** UIA word-at-point; returns empty when unavailable. */
   getWordAtPoint?: (x: number, y: number) => WordAtPoint | Promise<WordAtPoint>;
   /**
@@ -46,6 +50,7 @@ const DEFAULTS = {
    * text instances; word bounds come from those boxes (glyph height), not DIP.
    */
   ocrHalfWidthPx: 180,
+  selectionHoldMs: 60_000,
 };
 
 export class HoverLookupService {
@@ -57,8 +62,14 @@ export class HoverLookupService {
   private lastEmitText = '';
   private lastEmitAt = 0;
   private probing = false;
-  private readonly opts: Required<Omit<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'skipOcr' | 'cursor'>> &
-    Pick<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'skipOcr' | 'cursor'>;
+  /** Bumped by every selection, so a probe that started before it cannot emit after it. */
+  private generation = 0;
+  private heldAt = 0;
+  private heldSawRelease = false;
+  private readonly opts: Required<
+    Omit<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'skipOcr' | 'cursor' | 'isMouseDown'>
+  > &
+    Pick<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'skipOcr' | 'cursor' | 'isMouseDown'>;
 
   constructor(options: HoverLookupOptions = {}) {
     this.opts = { ...DEFAULTS, ...options };
@@ -91,6 +102,41 @@ export class HoverLookupService {
     return this.running;
   }
 
+  /**
+   * A text selection outranks hover. Drop any probe already running and stay quiet
+   * until the next mouse press (which clears or replaces the selection).
+   */
+  holdForSelection(): void {
+    this.generation += 1;
+    this.heldAt = Date.now();
+    this.heldSawRelease = !this.opts.isMouseDown?.();
+  }
+
+  /** True while the latest selection still holds hover off. */
+  isHeldBySelection(): boolean {
+    if (!this.heldAt) return false;
+    if (Date.now() - this.heldAt > this.opts.selectionHoldMs) {
+      this.heldAt = 0;
+      return false;
+    }
+    return true;
+  }
+
+  /** The press that ends a hold must start after the selection, not be the drag that made it. */
+  private watchSelectionHold(): boolean {
+    if (!this.isHeldBySelection()) return false;
+    const down = !!this.opts.isMouseDown?.();
+    if (!down) {
+      this.heldSawRelease = true;
+      return true;
+    }
+    if (this.heldSawRelease) {
+      this.heldAt = 0;
+      return false;
+    }
+    return true;
+  }
+
   private cursorPoint(): { x: number; y: number } {
     return this.opts.cursor ? this.opts.cursor.point() : screen.getCursorScreenPoint();
   }
@@ -105,6 +151,11 @@ export class HoverLookupService {
     if (!this.running || this.probing) return;
 
     const pos = this.cursorPoint();
+
+    if (this.watchSelectionHold()) {
+      this.resetDwell(pos.x, pos.y);
+      return;
+    }
 
     if (this.opts.isBlocked && this.opts.isBlocked()) {
       this.resetDwell(pos.x, pos.y);
@@ -133,6 +184,7 @@ export class HoverLookupService {
   private async probe(x: number, y: number): Promise<void> {
     const now = Date.now();
     if (now - this.lastEmitAt < this.opts.cooldownMs) return;
+    const generation = this.generation;
 
     let text = '';
     const anchorX = x;
@@ -168,6 +220,8 @@ export class HoverLookupService {
     }
 
     if (!text) return;
+    // UIA and OCR take hundreds of ms; a selection made meanwhile wins.
+    if (generation !== this.generation || this.isHeldBySelection() || this.opts.isBlocked?.()) return;
     if (text === this.lastEmitText && now - this.lastEmitAt < this.opts.cooldownMs * 3) {
       return;
     }

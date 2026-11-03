@@ -236,6 +236,15 @@ function setLastSelectionEvent(event: ContextEvent): void {
   const raw = typeof event.timestamp === 'number' && event.timestamp > 0 ? event.timestamp : Date.now();
   lastSelectionEvent = { ...event, timestamp: Math.max(raw, prev + 1) };
   lastSelectedText = event.text || '';
+  if (event.origin === 'selection' || event.origin === 'manual') hoverLookup?.holdForSelection();
+}
+
+/** A selection, or the pop-up it opened, outranks hover until the user clicks elsewhere. */
+function hoverYieldsToSelection(): boolean {
+  if (hoverLookup?.isHeldBySelection()) return true;
+  const ev = lastSelectionEvent;
+  if (!ev || (ev.origin !== 'selection' && ev.origin !== 'manual')) return false;
+  return popupWindows.some((win) => !win.isDestroyed() && win.isVisible());
 }
 
 /** Windows tray balloon; macOS / Linux Notification (displayBalloon is Win32-only). */
@@ -1579,6 +1588,11 @@ function wireContextCaptureHubOnce(): void {
       return;
     }
 
+    // Hover must not replace the selected word, or the trigger and the strip show it instead.
+    if (event.origin === 'hover' && hoverYieldsToSelection()) {
+      return;
+    }
+
     setLastSelectionEvent(event);
 
     // Shortcut mode: store selection/hover for select-then-trigger, but only open the
@@ -2076,8 +2090,10 @@ function ensureHoverLookup(): HoverLookupService {
         }
         return { text: '', x, y };
       },
+      isMouseDown: isPrimaryMouseDown,
       isBlocked: () =>
         isPrimaryMouseDown() ||
+        hoverYieldsToSelection() ||
         phevereWindowFocused(mainWindow, popupWindows, settingsWindow, ocrOverlayWindow, externalWindows),
       skipOcr: () => {
         // Wayland without KWin capture: each OCR would open the screencast picker.
