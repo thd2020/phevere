@@ -30,6 +30,27 @@ export function stripGlossText(meaning: string): string {
     .trim();
 }
 
+const PLAIN_FORM_OF = /^(?:the\s+)?(plural|third-person\s+singular(?:\s+simple\s+present)?(?:\s+indicative)?)(?:\s+form)?\s+of\s+["“]?([\p{L}'’-]+)/iu;
+
+/**
+ * The singular when every one of `senses` says "plural of X", or for an -s form that is also a
+ * verb "third-person singular of X", with at least one plural: "acronyms" gives "acronym".
+ */
+export function plainPluralOf(senses: string[]): string | null {
+  const list = senses.map(stripGlossText).filter(Boolean);
+  if (!list.length) return null;
+  let target = '';
+  let plural = false;
+  for (const s of list) {
+    const m = PLAIN_FORM_OF.exec(s);
+    if (!m) return null;
+    if (target && m[2].toLowerCase() !== target.toLowerCase()) return null;
+    target = m[2];
+    if (/^plural$/i.test(m[1])) plural = true;
+  }
+  return plural ? target : null;
+}
+
 export function isGrammaticalFormOfGloss(meaning: string): boolean {
   return GRAMMATICAL_FORM_OF.test(stripGlossText(meaning));
 }

@@ -17,7 +17,8 @@
 
 import type { SyncChange, SyncResult } from './holarky-account';
 import { getVocabDb } from './runtime';
-import { ensureVocabReady, registerLemmaMigration, rowToEntry, type VocabEntry } from './vocab-store';
+import { ensureVocabReady, notifyVocabChanged, registerLemmaMigration, rowToEntry, type VocabEntry } from './vocab-store';
+import { plainPluralOf } from './lookup-policy';
 import { normalizeVocabLemma } from './vocab-lemma';
 import { normalizeSourceContext, sourceContextFromJson, sourceContextToJson } from './source-context';
 
@@ -339,4 +340,42 @@ export async function normalizeStoredLemmas(): Promise<number> {
   return changed;
 }
 
-registerLemmaMigration(normalizeStoredLemmas);
+const PLURALS_FOLDED_KEY = 'plurals-folded-v1';
+
+/** A regular English plural of `one`: -s, -es, or -y to -ies. Irregular ones are not trusted to a saved gloss. */
+function isRegularPlural(many: string, one: string): boolean {
+  const m = many.toLowerCase();
+  const o = one.toLowerCase();
+  return m === `${o}s` || m === `${o}es` || (o.endsWith('y') && m === `${o.slice(0, -1)}ies`);
+}
+
+/**
+ * Saved plain plurals in their singular: "scraps", saved as "plural of scrap", becomes "scrap".
+ * Its meaning and IPA are cleared so the singular's fill in, and it merges into "scrap" when that
+ * is saved too, keeping the more studied schedule. Runs once per notebook.
+ */
+export async function foldStoredPlurals(): Promise<number> {
+  await ensureVocabReady();
+  const db = getVocabDb();
+  const done = await db.queryOne(`SELECT value FROM sync_state WHERE key = ?`, [PLURALS_FOLDED_KEY]);
+  if (done) return 0;
+  const rows = await db.queryAll(`SELECT id, lemma, definition FROM vocab`);
+  const now = Date.now();
+  let changed = 0;
+  for (const row of rows) {
+    const lemma = String(row.lemma || '');
+    const one = plainPluralOf(String(row.definition || '').split('\n'));
+    if (!one || !isRegularPlural(lemma, one)) continue;
+    await db.runWrite(`UPDATE vocab SET lemma = ?, definition = '', reading = '', updated_at = ? WHERE id = ?`, [one.toLowerCase(), now, row.id]);
+    changed += 1;
+  }
+  if (changed) await mergeDuplicateLemmas(now);
+  await db.runWrite(`INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)`, [PLURALS_FOLDED_KEY, String(now)]);
+  if (changed) notifyVocabChanged();
+  return changed;
+}
+
+registerLemmaMigration(async () => {
+  await normalizeStoredLemmas();
+  await foldStoredPlurals();
+});

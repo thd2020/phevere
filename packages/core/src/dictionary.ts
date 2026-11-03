@@ -76,7 +76,7 @@ import { closestSpelling } from './vocab-lemma';
 import { wrapConsole } from './log';
 import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigured, type OfflineHit } from './runtime';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
-import { splitSurfaceAndLemma, sameLookupFold, stripGlossText } from './lookup-policy';
+import { plainPluralOf, splitSurfaceAndLemma, sameLookupFold } from './lookup-policy';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { groupYoudaoEtymologies, serializeEtymologySources } from './etymology-sources';
 import { mergeSimilarDefinitions, dedupeExamples, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses } from './definition-merge';
@@ -145,8 +145,6 @@ type LookupOpts = {
   noPluralRedirect?: boolean;
 };
 
-const SIMPLE_FORM_OF = /^(?:the\s+)?(plural|third-person\s+singular(?:\s+simple\s+present)?(?:\s+indicative)?)(?:\s+form)?\s+of\s+["“]?([\p{L}'’-]+)/iu;
-
 /**
  * A plain plural ("acronyms"): every sense Wiktionary gives says "plural of acronym", or, for an
  * -s form that is also a verb, "third-person singular of acronym". Datamuse and the Free
@@ -161,17 +159,7 @@ export function simplePluralTarget(result: DictionaryResult | null | undefined):
     const m = (d.meaning || '').trim();
     return !!m && m !== 'No definition available.' && !isTimeoutMeaning(m);
   });
-  if (!defs.length) return null;
-  let target = '';
-  let plural = false;
-  for (const d of defs) {
-    const m = SIMPLE_FORM_OF.exec(stripGlossText(d.meaning));
-    if (!m) return null;
-    if (target && foldLookupKey(m[2]) !== foldLookupKey(target)) return null;
-    target = m[2];
-    if (/^plural$/i.test(m[1])) plural = true;
-  }
-  return plural ? target : null;
+  return plainPluralOf(defs.map((d) => d.meaning));
 }
 
 /**
