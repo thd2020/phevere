@@ -60,6 +60,8 @@ import {
   recentListHtml,
   learnHtml,
   readNotebookView,
+  reviewAnswerDetails,
+  scopeBookFor,
   startReview,
   answerReview,
   overrideReview,
@@ -2637,15 +2639,16 @@ async function commitReview(): Promise<void> {
     writePref(startedTodayKey(), JSON.stringify([...new Set([...startedToday(), q.id])]));
   }
   let updated: any = null;
+  const details = reviewAnswerDetails(nbReview, wbCtx ? wbScope : 'mine', wbCtx);
   try {
     if (isBookOnlyId(q.id)) {
       // A book word that is not in My words: progress goes to the book_words table.
-      const p = await wordbookApi()?.review(q.lemma, a.grade);
+      const p = await wordbookApi()?.review(q.lemma, a.grade, details);
       if (p) wbProgress.set(p.lemma, p);
       rebuildWordsContext();
       updated = wbCtx ? bookEntry(q.lemma, wbCtx) : null;
     } else {
-      updated = api?.review ? await api.review(q.id, a.grade) : null;
+      updated = api?.review ? await api.review(q.id, a.grade, details) : null;
       if (updated) {
         vocabNotebookCache = vocabNotebookCache.map((e) => (e.id === q.id ? { ...e, ...updated } : e));
         rebuildWordsContext();
@@ -2817,7 +2820,7 @@ function wireNotebookActions(root: HTMLElement): void {
       case 'wb-known':
       case 'wb-known-review': {
         const lemma = el.dataset.q || '';
-        const p = await wordbookApi()?.known(lemma, el.dataset.act === 'wb-known-review' || el.dataset.known === '1');
+        const p = await wordbookApi()?.known(lemma, el.dataset.act === 'wb-known-review' || el.dataset.known === '1', scopeBookFor(wbScope, wbCtx, lemma));
         if (p) wbProgress.set(p.lemma, p);
         rebuildWordsContext();
         if (el.dataset.act === 'wb-known-review' && nbReview) dropCurrentReview(nbReview);

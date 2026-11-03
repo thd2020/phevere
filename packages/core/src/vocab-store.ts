@@ -6,6 +6,7 @@
 import { getDeviceName, getNewId, getVocabDb } from './runtime';
 import { normalizeVocabLemma } from './vocab-lemma';
 import { scheduleReview, type ReviewGrade } from './review-schedule';
+import { logGradedAnswer, type AnswerDetails } from './answer-history';
 
 type VocabChangeListener = () => void;
 const changeListeners = new Set<VocabChangeListener>();
@@ -282,13 +283,17 @@ export async function updateVocabNote(id: string, note: string): Promise<VocabEn
   return getVocab(id);
 }
 
-/** One review graded 1 Again, 2 Hard, 3 Good or 4 Easy, scheduled with FSRS. */
-export async function reviewVocab(id: string, grade: ReviewGrade, now = Date.now()): Promise<VocabEntry | null> {
+/**
+ * One review graded 1 Again, 2 Hard, 3 Good or 4 Easy, scheduled with FSRS and recorded in the
+ * answer history with what the shell knows about the question (`details`).
+ */
+export async function reviewVocab(id: string, grade: ReviewGrade, now = Date.now(), details: AnswerDetails = {}): Promise<VocabEntry | null> {
   await ensureVocabReady();
   const db = getVocabDb();
   const row = await db.queryOne(`SELECT * FROM vocab WHERE id = ?`, [id]);
   if (!row) return null;
-  const next = scheduleReview(rowToEntry(row), grade, now);
+  const before = rowToEntry(row);
+  const next = scheduleReview(before, grade, now);
   await db.runWrite(
     `UPDATE vocab SET review_due = ?, review_interval = ?, ease = ?, reps = ?, stability = ?, difficulty = ?, state = ?, lapses = ?,
      last_review = ?, learning_steps = ?, updated_at = ? WHERE id = ?`,
@@ -307,6 +312,7 @@ export async function reviewVocab(id: string, grade: ReviewGrade, now = Date.now
       id,
     ],
   );
+  await logGradedAnswer(before.lemma, grade, now, before, details, id);
   notifyChanged();
   return getVocab(id);
 }

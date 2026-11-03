@@ -453,7 +453,8 @@ contextBridge.exposeInMainWorld('vocabAPI', {
   },
   remove: (id: string) => ipcRenderer.invoke('vocab-remove', id),
   updateNote: (id: string, note: string) => ipcRenderer.invoke('vocab-update-note', id, note),
-  review: (id: string, grade: 1 | 2 | 3 | 4) => ipcRenderer.invoke('vocab-review', id, grade),
+  review: (id: string, grade: 1 | 2 | 3 | 4, details?: Record<string, unknown>) => ipcRenderer.invoke('vocab-review', id, grade, details),
+  history: () => ipcRenderer.invoke('vocab-history'),
   onUpdated: (callback: (payload: { id: string; lemma: string }) => void) => {
     ipcRenderer.on('vocab-updated', (_event, payload) => callback(payload));
   },
@@ -464,8 +465,8 @@ contextBridge.exposeInMainWorld('wordbookAPI', {
   subscribe: (bookId: string, dailyNew?: number) => ipcRenderer.invoke('wordbook-subscribe', bookId, dailyNew),
   unsubscribe: (bookId: string) => ipcRenderer.invoke('wordbook-unsubscribe', bookId),
   setGoal: (bookId: string, dailyNew: number) => ipcRenderer.invoke('wordbook-goal', bookId, dailyNew),
-  review: (lemma: string, grade: 1 | 2 | 3 | 4) => ipcRenderer.invoke('wordbook-review', lemma, grade),
-  known: (lemma: string, known: boolean) => ipcRenderer.invoke('wordbook-known', lemma, known),
+  review: (lemma: string, grade: 1 | 2 | 3 | 4, details?: Record<string, unknown>) => ipcRenderer.invoke('wordbook-review', lemma, grade, details),
+  known: (lemma: string, known: boolean, bookId?: string | null) => ipcRenderer.invoke('wordbook-known', lemma, known, bookId),
   meaning: (lemma: string) => ipcRenderer.invoke('wordbook-meaning', lemma),
   save: (lemma: string, hasMeaning?: boolean) => ipcRenderer.invoke('wordbook-save', lemma, hasMeaning),
 });
@@ -695,7 +696,8 @@ declare global {
       add: (payload: Record<string, unknown>) => Promise<any>;
       remove: (id: string) => Promise<boolean>;
       updateNote: (id: string, note: string) => Promise<any>;
-      review: (id: string, grade: 1 | 2 | 3 | 4) => Promise<any>;
+      review: (id: string, grade: 1 | 2 | 3 | 4, details?: Record<string, unknown>) => Promise<any>;
+      history: () => Promise<any[]>;
       onUpdated: (callback: (payload: { id: string; lemma: string }) => void) => void;
     };
     accountAPI: {

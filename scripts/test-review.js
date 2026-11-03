@@ -20,6 +20,8 @@ const bundle = esbuild.buildSync({
       export { configureCore } from './src/runtime';
       export { addVocab, listVocab, getVocab, reviewVocab, updateVocabNote } from './src/vocab-store';
       export { syncVocab } from './src/vocab-sync';
+      export { listAnswerHistory, replaySchedule, historyByWord, skillMastery, skillFor } from './src/answer-history';
+      export { reviewBookWord, setBookWordKnown, listBookProgress, rebuildWordSchedule } from './src/wordbook-store';
       export { VOCAB_SCHEMA_SQL, vocabColumnMigrations } from './src/schema';
     `,
     resolveDir: path.join(root, 'packages', 'core'),
@@ -339,6 +341,92 @@ async function main() {
   assert.equal(reviewed.lastReview, now);
   assert.ok(reviewed.reviewInterval > 10);
   assert.ok(reviewed.ease >= 1.3 && reviewed.ease <= 3);
+
+  // Answer history: every graded answer and "Already know it" is recorded, and replaying the
+  // history in time order gives exactly the state the live updates wrote.
+  {
+    const db = new SQL.Database();
+    for (const stmt of core.VOCAB_SCHEMA_SQL.split(';')) if (stmt.trim()) db.run(stmt);
+    let n = 0;
+    core.configureCore({ http: {}, sha256Hex: () => '', vocabDb: vocabDbOn(db), newId: () => `h-${++n}`, deviceName: () => 'TEST-PC' });
+    const word = await core.addVocab({ lemma: 'harbour', definition: 'a sheltered port' });
+    // A word reviewed under SM-2 before the history existed.
+    db.run(`INSERT INTO vocab (id, lemma, definition, created_at, updated_at, review_due, review_interval, ease, reps)
+      VALUES ('legacy', 'beacon', 'a signal fire', ?, ?, ?, 12, 2.3, 5)`, [now - 90 * DAY, now - 3 * DAY, now - DAY]);
+    const steps = [
+      [0, 3, 'meaning-choice', 4200],
+      [2 * MIN, 1, 'word-choice', 9000],
+      [12 * MIN, 3, 'listen-choice', 3100],
+      [1 * DAY, 3, 'word-choice', 2500],
+      [4 * DAY, 4, 'recall', 2900],
+      [15 * DAY, 2, 'recall', 16000],
+      [31 * DAY, 3, 'cloze', 5000],
+    ];
+    let live;
+    for (const [dt, grade, kind, ms] of steps) {
+      live = await core.reviewVocab(word.id, grade, now + dt, { kind, correct: grade > 1, ms });
+      await core.reviewBookWord('quay', grade, now + dt + 1000, { kind, correct: grade > 1, ms, bookId: 'starter' });
+    }
+    await core.setBookWordKnown('pier', true, now + 2 * DAY, 'starter');
+    const legacyLive = await core.reviewVocab('legacy', 3, now, { kind: 'recall', correct: true, ms: 4000 });
+    await core.reviewVocab('legacy', 1, now + 20 * DAY, { kind: 'cloze', correct: false, ms: 7000 });
+    const legacyAfter = await core.getVocab('legacy');
+
+    const history = await core.listAnswerHistory();
+    assert.equal(history.length, steps.length * 2 + 1 + 2, 'every answer and the known mark recorded');
+    const first = history.find((r) => r.lemma === 'harbour');
+    assert.equal(first.kind, 'meaning-choice');
+    assert.equal(first.skill, 'meaning');
+    assert.equal(first.ms, 4200);
+    assert.equal(first.device, 'TEST-PC');
+    assert.equal(first.wordId, word.id);
+    assert.equal(first.prior, null, 'a new word has no prior');
+    assert.equal(history.find((r) => r.lemma === 'quay').bookId, 'starter');
+    const known = history.find((r) => r.lemma === 'pier');
+    assert.equal(known.kind, 'known');
+    assert.equal(known.grade, null);
+    const legacyFirst = history.find((r) => r.lemma === 'beacon');
+    assert.equal(legacyFirst.prior.reps, 5, 'a word started before the history keeps its prior schedule');
+    assert.equal(history.filter((r) => r.lemma === 'beacon' && r.prior).length, 1, 'only the first answer carries it');
+
+    const byWord = core.historyByWord(history);
+    const FIELDS = ['reviewDue', 'reviewInterval', 'ease', 'reps', 'stability', 'difficulty', 'state', 'lapses', 'lastReview', 'learningSteps'];
+    const pick = (o) => Object.fromEntries(FIELDS.map((k) => [k, o[k]]));
+    assert.deepEqual(pick(core.replaySchedule(byWord.get('harbour')).schedule), pick(live), 'replay equals the live updates');
+    const quayRow = (await core.listBookProgress()).find((p) => p.lemma === 'quay');
+    assert.deepEqual(pick(core.replaySchedule(byWord.get('quay')).schedule), pick(quayRow), 'book words too');
+    assert.equal(core.replaySchedule(byWord.get('pier')).known, true);
+    assert.equal(core.replaySchedule(byWord.get('pier')).schedule, null, 'known does not start a word');
+    assert.deepEqual(pick(core.replaySchedule(byWord.get('beacon')).schedule), pick(legacyAfter), 'replay starts from the prior');
+    assert.ok(legacyLive.stability > 0);
+    // Shuffled input replays the same: order comes from the times, not the input.
+    const shuffled = [...byWord.get('harbour')].reverse();
+    assert.deepEqual(pick(core.replaySchedule(shuffled).schedule), pick(live));
+
+    // A schedule overwritten (say by an older device) is rebuilt from the history.
+    db.run(`UPDATE vocab SET stability = 1, reps = 99, state = 1 WHERE id = ?`, [word.id]);
+    db.run(`DELETE FROM book_words WHERE lemma = 'quay'`);
+    assert.equal(await core.rebuildWordSchedule('harbour'), true);
+    assert.equal(await core.rebuildWordSchedule('quay'), true);
+    assert.deepEqual(pick(await core.getVocab(word.id)), pick(live));
+    const quayBack = (await core.listBookProgress()).find((p) => p.lemma === 'quay');
+    assert.deepEqual(pick(quayBack), pick(quayRow));
+    assert.equal(quayBack.createdAt, now + 1000, 'started when first answered');
+    assert.equal(await core.rebuildWordSchedule('never-seen'), false);
+
+    // Mastery per skill: two right answers in a row master a skill; a miss halves the score.
+    const m = core.skillMastery(history).get('harbour');
+    assert.equal(m.meaning.answers, 3);
+    assert.equal(m.meaning.score, 0.625, 'right, wrong, right');
+    assert.equal(m.meaning.mastered, false);
+    assert.equal(m.listening.answers, 1);
+    assert.equal(m.listening.mastered, false);
+    assert.equal(m.spelling.answers, 3);
+    assert.equal(m.spelling.mastered, true, 'three typed answers right');
+    assert.equal(core.skillFor('listen-type'), 'listening');
+    assert.equal(core.skillFor('cloze'), 'spelling');
+    assert.equal(core.skillFor('known'), null);
+  }
 
   // Sync: a newer device carries the FSRS fields; an older device's record without them keeps
   // the local state when its review progress matches.

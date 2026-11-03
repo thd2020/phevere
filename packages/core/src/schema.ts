@@ -5,6 +5,9 @@
  * learner subscribed to with a daily goal each, and `book_words`, review progress for book words
  * that are not in My words, keyed by the lowercase headword. A word saved to My words keeps its
  * progress on its `vocab` row; nothing in `vocab` changes.
+ *
+ * `answer_history` (answer-history.ts) is append-only: one row per quiz answer and per "Already
+ * know it", from which every word's schedule can be rebuilt.
  */
 
 export const VOCAB_SCHEMA_SQL = `
@@ -69,6 +72,22 @@ CREATE TABLE IF NOT EXISTS book_words (
   created_at INTEGER,
   updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS answer_history (
+  id TEXT PRIMARY KEY,
+  lemma TEXT NOT NULL,
+  word_id TEXT,
+  book_id TEXT,
+  answered_at INTEGER NOT NULL,
+  kind TEXT,
+  skill TEXT,
+  correct INTEGER,
+  ms INTEGER,
+  grade INTEGER,
+  device TEXT,
+  prior TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_answer_lemma ON answer_history(lemma, answered_at);
+CREATE INDEX IF NOT EXISTS idx_answer_time ON answer_history(answered_at);
 CREATE TABLE IF NOT EXISTS offline_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   headword TEXT NOT NULL COLLATE NOCASE,

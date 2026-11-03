@@ -9,6 +9,7 @@
 import { esc, type NotebookEntry } from './notebook-shared';
 import { reviewHtml, type ReviewRenderOptions } from './notebook-review';
 import type { ReviewState } from './review-quiz';
+import type { AnswerDetails } from './answer-history';
 import { bookProgress, scopeEntries, wordbookMeta, type WordsContext, type WordsScope } from './wordbooks';
 import { progressRingSvg, reviewBookRows } from './wordbook-views';
 
@@ -43,6 +44,21 @@ export function learnScopeSwitchHtml(scope: WordsScope, ctx: WordsContext | null
     })
     .join('');
   return `<div class="wb-switch lrn-scopes" role="tablist" aria-label="Study list">${btn('mine', 'My words')}${books}${btn('all', 'All books', STACK)}</div>`;
+}
+
+/** The book a scope studies a word from: the scope's own book, or in All books the first book that lists it. */
+export function scopeBookFor(scope: WordsScope, ctx: WordsContext | null, lemma: string): string | null {
+  if (scope === 'mine' || !ctx) return null;
+  if (scope !== 'all') return scope;
+  return ctx.index.get(String(lemma || '').trim().toLowerCase())?.[0] ?? null;
+}
+
+/** What the answer history records about the question just answered, beyond its grade. */
+export function reviewAnswerDetails(state: ReviewState, scope: WordsScope, ctx: WordsContext | null): AnswerDetails {
+  const q = state.question;
+  const a = state.answer;
+  if (!q || !a) return {};
+  return { kind: q.kind, correct: a.grade > 1, ms: a.ms, bookId: scopeBookFor(scope, ctx, q.lemma) };
 }
 
 /** The scope's entries for review: My words, or the book words of a book or of All books. */

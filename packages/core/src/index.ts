@@ -229,6 +229,7 @@ export {
   listBookProgress,
   reviewBookWord,
   setBookWordKnown,
+  rebuildWordSchedule,
   cacheBookWordMeaning,
   saveBookWord,
   bookWordKey,
@@ -271,7 +272,23 @@ export {
   reviewBookRows,
   BOOK_LIST_PAGE,
 } from './wordbook-views';
-export { learnHtml, learnTodayHtml, learnScopeSwitchHtml, learnEntries, type LearnViewInput } from './learn-view';
+export { learnHtml, learnTodayHtml, learnScopeSwitchHtml, learnEntries, scopeBookFor, reviewAnswerDetails, type LearnViewInput } from './learn-view';
+export {
+  SKILLS,
+  MASTERY_THRESHOLD,
+  skillFor,
+  listAnswerHistory,
+  replaySchedule,
+  historyByWord,
+  skillMastery,
+  insertAnswer,
+  type Skill,
+  type AnswerKind,
+  type AnswerRecord,
+  type AnswerDetails,
+  type ReplayResult,
+  type SkillScore,
+} from './answer-history';
 export {
   HolarkyAccount,
   HolarkyAccountError,

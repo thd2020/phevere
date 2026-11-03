@@ -55,6 +55,7 @@ import {
   fetchSenseImages,
   recordedPronunciationUrls,
   cacheBookWordMeaning,
+  listAnswerHistory,
   listBookProgress,
   listWordbookSubs,
   reviewBookWord,
@@ -64,6 +65,7 @@ import {
   subscribeWordbook,
   unsubscribeWordbook,
   vocabPayloadFromResult,
+  type AnswerDetails,
 } from '@phevere/core';
 import { readClipboardImage, loadImageFileAsPng, pngFromBase64 } from './services/clipboard-image';
 import {
@@ -2864,9 +2866,22 @@ ipcMain.handle('vocab-remove', async (_e, id: string) => {
 ipcMain.handle('vocab-update-note', async (_e, id: string, note: string) => {
   return vocabStore.updateVocabNote(id, note);
 });
-ipcMain.handle('vocab-review', async (_e, id: string, grade: 1 | 2 | 3 | 4) => {
-  return vocabStore.reviewVocab(id, grade);
+/** The question facts the renderer sends with a grade, for the answer history; anything else is dropped. */
+function answerDetailsFrom(raw: unknown): AnswerDetails {
+  const d = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const kinds = ['meaning-choice', 'word-choice', 'listen-choice', 'recall', 'listen-type', 'cloze', 'flash'];
+  return {
+    kind: kinds.includes(String(d.kind)) ? (String(d.kind) as AnswerDetails['kind']) : undefined,
+    correct: typeof d.correct === 'boolean' ? d.correct : undefined,
+    ms: Number.isFinite(Number(d.ms)) ? Number(d.ms) : undefined,
+    bookId: typeof d.bookId === 'string' ? d.bookId : null,
+  };
+}
+
+ipcMain.handle('vocab-review', async (_e, id: string, grade: 1 | 2 | 3 | 4, details?: unknown) => {
+  return vocabStore.reviewVocab(id, grade, Date.now(), answerDetailsFrom(details));
 });
+ipcMain.handle('vocab-history', async () => listAnswerHistory());
 
 // Word books (packages/core/src/wordbook-store.ts): subscriptions and progress live in the same
 // database as the notebook; the word lists themselves ship with the renderer.
@@ -2876,8 +2891,12 @@ ipcMain.handle('wordbook-state', async () => {
 ipcMain.handle('wordbook-subscribe', async (_e, bookId: string, dailyNew?: number) => subscribeWordbook(String(bookId), dailyNew));
 ipcMain.handle('wordbook-unsubscribe', async (_e, bookId: string) => unsubscribeWordbook(String(bookId)));
 ipcMain.handle('wordbook-goal', async (_e, bookId: string, dailyNew: number) => setWordbookGoal(String(bookId), Number(dailyNew) || 10));
-ipcMain.handle('wordbook-review', async (_e, lemma: string, grade: 1 | 2 | 3 | 4) => reviewBookWord(String(lemma), grade));
-ipcMain.handle('wordbook-known', async (_e, lemma: string, known: boolean) => setBookWordKnown(String(lemma), !!known));
+ipcMain.handle('wordbook-review', async (_e, lemma: string, grade: 1 | 2 | 3 | 4, details?: unknown) =>
+  reviewBookWord(String(lemma), grade, Date.now(), answerDetailsFrom(details)),
+);
+ipcMain.handle('wordbook-known', async (_e, lemma: string, known: boolean, bookId?: unknown) =>
+  setBookWordKnown(String(lemma), !!known, Date.now(), typeof bookId === 'string' ? bookId : null),
+);
 
 /** Looks a book word up for its quiz and caches the meaning; null when offline. */
 async function lookupBookWord(lemma: string): Promise<vocabStore.VocabAddInput | null> {

@@ -64,6 +64,8 @@ import {
   type MorphKind,
   type NotebookView,
   readNotebookView,
+  reviewAnswerDetails,
+  scopeBookFor,
   type RecentLookup,
   type ReviewState,
   API_PROVIDERS,
@@ -645,15 +647,16 @@ async function commitReview(): Promise<void> {
     writeStore(startedTodayKey(), JSON.stringify([...new Set([...startedToday(), q.id])]));
   }
   let updated: VocabEntry | ReturnType<typeof bookEntry> | null = null;
+  const details = reviewAnswerDetails(r, wordsState.scope, wordsState.ctx);
   try {
     if (isBookOnlyId(q.id)) {
       // A book word that is not in My words: progress goes to the book_words table.
-      const p = await reviewBookWord(q.lemma, a.grade);
+      const p = await reviewBookWord(q.lemma, a.grade, Date.now(), details);
       wbProgress.set(p.lemma, p);
       rebuildWordsContext();
       updated = wordsState.ctx ? bookEntry(q.lemma, wordsState.ctx) : null;
     } else {
-      const saved = await reviewVocab(q.id, a.grade);
+      const saved = await reviewVocab(q.id, a.grade, Date.now(), details);
       updated = saved;
       if (saved) {
         notebook = notebook.map((e) => (e.id === q.id ? saved : e));
@@ -1991,14 +1994,14 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'wb-known': {
-      const p = await setBookWordKnown(t.dataset.q || '', t.dataset.known === '1');
+      const p = await setBookWordKnown(t.dataset.q || '', t.dataset.known === '1', Date.now(), scopeBookFor(wordsState.scope, wordsState.ctx, t.dataset.q || ''));
       wbProgress.set(p.lemma, p);
       rebuildWordsContext();
       paint();
       return;
     }
     case 'wb-known-review': {
-      const p = await setBookWordKnown(t.dataset.q || '', true);
+      const p = await setBookWordKnown(t.dataset.q || '', true, Date.now(), scopeBookFor(wordsState.scope, wordsState.ctx, t.dataset.q || ''));
       wbProgress.set(p.lemma, p);
       rebuildWordsContext();
       if (nbState.review) dropCurrentReview(nbState.review);
