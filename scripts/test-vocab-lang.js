@@ -43,4 +43,8 @@ assert.strictEqual(
   }),
   'en → zh',
 );
+// Glosses from the Japanese and Russian Wiktionaries are tagged by their script.
+assert.strictEqual(inferVocabGlossLang({ sourceLang: 'ja', targetLang: 'en', definition: '大学などで教育を受ける者。', sources: ['Japanese Wiktionary'] }), 'ja');
+assert.strictEqual(inferVocabGlossLang({ sourceLang: 'ru', targetLang: 'en', definition: 'жилое здание', sources: ['Russian Wiktionary'] }), 'ru');
+assert.strictEqual(inferVocabGlossLang({ sourceLang: 'zh', targetLang: 'en', definition: '在學校讀書的人', sources: ['Chinese Wiktionary'] }), 'zh');
 console.log('vocab-lang ok');

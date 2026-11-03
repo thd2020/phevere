@@ -3743,6 +3743,10 @@ function startAutoCloseTimeout() {
          var srcs = ((entry && entry.sources) || []).join(' ');
          var cjkHits = def.match(/[\u3400-\u9FFF\uF900-\uFAFF]/g);
          var mostlyCjk = cjkHits && cjkHits.length >= Math.max(2, Math.floor(def.length * 0.12));
+         // Same order as packages/core/src/vocab-lang.ts: Japanese and Russian glosses by script.
+         if ((def.match(/[\u3040-\u30FF]/g) || []).length >= 2) return 'ja';
+         var letters = (def.match(/\p{L}/gu) || []).length;
+         if (letters && (def.match(/[\u0400-\u04FF]/g) || []).length >= letters * 0.5) return 'ru';
          if (mostlyCjk) return 'zh';
          if (/wiktionary|wordnet|webster|gcide|free dictionary|oxford|datamuse|wordsapi|collins/i.test(srcs)) return 'en';
          if (/cedict|cc-cedict|youdao|freedict/i.test(srcs) && def && !mostlyCjk) return 'en';

@@ -7,6 +7,9 @@ const LATIN_DICT =
   /wiktionary|wordnet|webster|gcide|free dictionary|oxford|datamuse|wordsapi|collins/i;
 const CJK_EN_DICT = /cedict|cc-cedict|youdao|freedict/i;
 const CJK_CHAR = /[\u3400-\u9FFF\uF900-\uFAFF]/;
+const KANA = /[\u3040-\u30FF]/g;
+const CYRILLIC = /[\u0400-\u04FF]/g;
+const LETTER = /\p{L}/gu;
 
 function iso(code?: string): string {
   return String(code || '')
@@ -30,6 +33,10 @@ export function inferVocabGlossLang(entry: {
 }): string | undefined {
   const def = String(entry.definition || '').trim();
   const srcs = (entry.sources || []).join(' ');
+  // Glosses written in Japanese or Russian (the Japanese and Russian Wiktionaries), by script.
+  if ((def.match(KANA) || []).length >= 2) return 'ja';
+  const letters = (def.match(LETTER) || []).length;
+  if (letters && (def.match(CYRILLIC) || []).length >= letters * 0.5) return 'ru';
   if (mostlyCjk(def)) return 'zh';
   if (LATIN_DICT.test(srcs)) return 'en';
   if (CJK_EN_DICT.test(srcs) && def && !mostlyCjk(def)) return 'en';
