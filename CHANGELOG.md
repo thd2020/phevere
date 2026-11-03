@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Quick translation (2026-11-03): on the desktop, Settings → Shortcuts → Quick translation turns on two shortcuts. Translate and replace (Ctrl+Alt+T) swaps the selected text in any application for its translation, using the From and To set there and the Translation engine from Sources. Choose a translation (Ctrl+Alt+Shift+T) opens a panel beside the pointer with each engine's translation; change the languages there, move between engines with the arrow keys, and press Enter to paste, or Esc to leave the text alone. Text already in the target language goes the other way, so Chinese with a Chinese target becomes English. The clipboard is put back afterwards and the borrowed text stays out of clipboard history. If another app holds a shortcut, Settings says which one. Linux needs `xdotool`; without it the section is not shown.
+- Definitions in other languages (2026-11-03): Settings → Sources has a new group with Chinese Wiktionary, Russian Wiktionary and Japanese Wiktionary, all off until you switch them on. Chinese Wiktionary defines Chinese words and words of other languages in Chinese, and marks literary and Classical senses 〈书〉; the Russian and Japanese editions define Russian and Japanese words in their own language. See [`docs/MULTILINGUAL.md`](docs/MULTILINGUAL.md).
 
 ### Fixed
 
@@ -18,10 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Words header (2026-11-03): Export, Import and Refresh moved into a More menu at the end of the header row, so the header fits on one line.
 - Date rail (2026-11-03): the date and A to Z rails sit just inside the scrollbar instead of under it, the list uses the space the rail left empty, and the label shown while dragging fits a whole date.
 - Pop-up (2026-11-03): the selection toolbar and lookup window no longer have a grey band under them on Windows 11.
+- Japanese speech (2026-11-03): Japanese is no longer read by the Chinese voice. An installed Japanese voice reads it, or Google Translate's voice when there is none, and the system's default voice is never used for a language it does not speak.
+- Examples (2026-11-03): a Chinese example from Wiktionary shows once, in simplified characters, instead of once in each script.
+- Sources (2026-11-03): on the desktop, switches in Settings → Sources are kept across restarts.
+- Lexicon (2026-11-03): senses with no part of speech are headed "other" instead of "unknown", or have no heading when they are the only group.
 
 ### Changed
 
 - Plus (2026-11-03): the Get Plus button is now a quiet text link in the account panel. Learn shows it only when progress synced earlier is about to be dropped.
+- Sources under senses (2026-11-03): the source of a run of senses is one quiet line after the run, in sentence case, instead of spaced capitals under every sense.
 
 ## [4.0.0] - 2026-11-03
 

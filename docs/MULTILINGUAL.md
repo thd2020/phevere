@@ -1,5 +1,7 @@
 # Multilingual dictionary and pronunciation
 
+Updated 2026-11-03: Settings → Sources has a group, Definitions in other languages, with Chinese, Russian and Japanese Wiktionary, all off until switched on. Japanese is no longer read aloud by the Chinese voice; without an installed Japanese voice, Google Translate's voice reads it.
+
 Updated 2026-11-02: a Japanese, Russian, Korean, German or other non-English word now gets English definitions from a dictionary made for its language, both online and from offline packs, and Settings → Offline lists packs under their language.
 
 ## Dictionary: any language to English
@@ -23,6 +25,26 @@ A single Latin-script word is detected as English unless you choose another lang
 An all-Han word is treated as Chinese unless it contains a kanji that only Japanese uses, such as 対 or 応 in 要対応. Kana still means Japanese and Hangul means Korean.
 
 Two choices were left out on purpose. Naver and Daum have no public API and forbid scraping, and the Korean National Institute's dictionary API needs a key, so Korean relies on Wiktionary, kaikki and the Kengdic pack. Commercial dictionaries (Oxford, Collins, WordsAPI) stay optional and keyed.
+
+## Definitions in other languages
+
+Three opt-in sources define words in a language other than English. They are kaikki.org's extracts of other Wiktionary editions, in the same one-file-per-word JSONL format as the English edition, so they share its parser.
+
+| Source | Used for | Definitions in |
+|---|---|---|
+| Chinese Wiktionary (`kaikki.org/zhwiktionary`) | Words of every language | Chinese |
+| Russian Wiktionary (`kaikki.org/ruwiktionary`) | Russian words | Russian |
+| Japanese Wiktionary (`kaikki.org/jawiktionary`) | Japanese words | Japanese |
+
+The Chinese edition stores most entries under traditional characters; a simplified form such as 学生 is only a pointer to 學生, and the fetcher follows that pointer once. Senses tagged literary (书面语 and Classical usage) are shown with 〈书〉 in front, the label 现代汉语词典 uses. Its examples come in a traditional and a simplified copy with the same translation; only the simplified one is shown.
+
+现代汉语词典 and 古代汉语词典 themselves are not offered. They are published by the Commercial Press with no licence for redistribution or an API, so the Chinese Wiktionary is the open substitute: it covers modern Chinese and marks literary and Classical senses.
+
+The senses sort after the dedicated dictionaries and before English Wiktionary. For a word in another language they count toward the first paint; for an English word they join in the update that follows. Saved words record the gloss language by script (kana is Japanese, mostly Cyrillic is Russian, mostly Han is Chinese), so a Japanese gloss is not filed as Chinese.
+
+## Reading aloud in the right language
+
+The bundled voices read English and Chinese (neural or eSpeak) and many other languages (eSpeak). eSpeak's Japanese reads only kana, so Japanese text goes to the pop-up instead: an installed Japanese system voice reads it when there is one, otherwise Google Translate's voice does, in pieces of up to 180 characters. A voice for a different language is never used as a stand-in, so a PC whose default voice is Chinese no longer reads Japanese in Chinese. Kana or hangul in the text wins over a Chinese language hint.
 
 ## Offline packs
 
