@@ -1,5 +1,11 @@
 # Android build and selection-toolbar setup
 
+**2026-11-03:** The custom slot and the instant press only work in apps whose bar the module
+hooks, and some apps draw their screens, and so their selection bar, inside another app that
+you did not select in LSPosed. When you press Phevere on a bar the module did not reach while
+a custom slot or the instant press is set, Phevere asks LSPosed once to add the app that drew
+that bar. Approve LSPosed's notification, then force-stop that app.
+
 **2026-09-29:**
 - **X and apps like it:** X's selection bar (Copy, Ask Grok, Mute, Select all) drops every app's text action. When a bar with Copy has no Phevere, the LSPosed module now adds it. To get the selected text, it reads the selected text view first. If that fails, it copies the selection and restores your previous clipboard. The custom slot and the instant press work on the added item.
 - **Phevere's own screens:** the system text bar there carries Phevere. The page decides what the press does: Scan and the pop-up look up in place, and anywhere else the pop-up opens beside the word.
@@ -117,6 +123,10 @@ while the switch is on and reads only the selection bar and the selected word's 
 2. Select the apps where you select text (browser, reader, etc.). System Framework is
    not needed; the hook runs inside the selected apps.
 3. Force-stop and reopen those apps, or reboot.
+
+If Phevere keeps the system's place in an app you selected, that app's screens probably
+belong to another package. Press Phevere there once: Phevere asks LSPosed to add the package
+that launched it, and LSPosed shows a notification to approve.
 
 Phevere → Settings → Capture then shows **Selection bar · LSPosed** with two switches:
 

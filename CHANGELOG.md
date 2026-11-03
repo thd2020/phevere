@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Android LSPosed (2026-11-03): in apps whose screens are drawn by another app, Phevere stayed at the end of the selection bar's overflow because the module never ran where the bar was drawn. Pressing Phevere on such a bar while a custom slot or the instant press is set now asks LSPosed, once per app, to add the app that drew it; after you approve and force-stop that app, the slot applies there too.
+
 ## [3.0.0] - 2026-11-02
 
 ### Added
