@@ -20,6 +20,7 @@ const bundle = esbuild.buildSync({
       export * from './src/wordbook-store';
       export * from './src/wordbook-sync';
       export { syncProgress } from './src/progress-sync';
+      export { wordbookLibraryHtml } from './src/wordbook-views';
       export { configureCore } from './src/runtime';
       export { addVocab, listVocab, reviewVocab, findByLemma } from './src/vocab-store';
       export { syncVocab } from './src/vocab-sync';
@@ -198,6 +199,20 @@ async function main() {
   ctx = await ctxOf();
   assert.ok(ctx.saved.has('gamma'));
   assert.equal(core.bookProgress('zhongkao', ctx, now).learning, 1, 'still learning in the book');
+
+  // ---- Library: every card keeps its source and licence, folded into a Source disclosure ----
+  {
+    const lib = core.wordbookLibraryHtml(ctx);
+    const cards = lib.split('<li class="wb-path__item').slice(1);
+    assert.equal(cards.length, core.WORDBOOKS.length);
+    for (const [i, card] of cards.entries()) {
+      const meta = core.WORDBOOKS[i];
+      const src = card.slice(card.indexOf('<details class="wb-path__src">'), card.indexOf('</details>'));
+      assert.ok(src.includes('<summary>Source</summary>'), `${meta.id} has a Source disclosure`);
+      assert.ok(src.includes(`href="${meta.sourceUrl}"`) && src.includes(`href="${meta.licenceUrl}"`) && src.includes(meta.licence), `${meta.id} attribution inside it`);
+      assert.ok(!card.slice(0, card.indexOf('<details')).includes(meta.licenceUrl), `${meta.id} licence not on the card face`);
+    }
+  }
 
   // ---- Sync: subscriptions and progress reach the second device ----
   const server = fakeServer();
