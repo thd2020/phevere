@@ -19,11 +19,42 @@ public class ProcessTextActivity extends Activity {
       LsposedPrefs.offerScope(this, launchingPackage());
     }
     if (!text.isEmpty()) {
+      SourceHint.set(text, source());
       // The LSPosed module passes where the selection is; otherwise use what is known.
       openPopup(this, text, SelectionAnchor.from(getIntent()));
       overridePendingTransition(0, 0);
     }
     finish();
+  }
+
+  /**
+   * Where the selection was: the launching app's name always, and the page title or URL the
+   * LSPosed module read in that app. Null for a lookup from inside Phevere.
+   */
+  private org.json.JSONObject source() {
+    android.content.Intent in = getIntent();
+    String pkg = launchingPackage();
+    if (pkg == null || getPackageName().equals(pkg)) return null;
+    String app = in != null ? in.getStringExtra(SelectionBar.EXTRA_SOURCE_APP) : null;
+    if (app == null || app.trim().isEmpty()) {
+      try {
+        // An app that starts one of our activities is visible to us without a <queries> entry.
+        android.content.pm.PackageManager pm = getPackageManager();
+        app = pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
+      } catch (Exception e) {
+        app = pkg;
+      }
+    }
+    try {
+      org.json.JSONObject out = new org.json.JSONObject().put("app", app.trim());
+      String title = in != null ? in.getStringExtra(SelectionBar.EXTRA_SOURCE_TITLE) : null;
+      String url = in != null ? in.getStringExtra(SelectionBar.EXTRA_SOURCE_URL) : null;
+      if (title != null && !title.trim().isEmpty() && !title.trim().equals(app.trim())) out.put("title", title.trim());
+      if (url != null && (url.startsWith("https://") || url.startsWith("http://"))) out.put("url", url);
+      return out;
+    } catch (Exception e) {
+      return null;
+    }
   }
 
   /** The app that started this lookup, from the referrer Android records for the launch. */

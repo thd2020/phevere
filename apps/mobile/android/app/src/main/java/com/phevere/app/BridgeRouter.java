@@ -84,6 +84,12 @@ final class BridgeRouter {
             });
             break;
           }
+          case "takeSourceHint": {
+            // Where the latest selection lookup came from (SourceHint); null when unknown.
+            JSONObject hint = SourceHint.take();
+            resolve(id, hint == null ? new JSONObject().put("text", JSONObject.NULL) : hint);
+            break;
+          }
           case "openUrl":
             host.runUi(() -> openUrl(p.optString("url")));
             resolve(id, new JSONObject().put("ok", true));

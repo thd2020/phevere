@@ -35,6 +35,10 @@ final class SelectionBar {
   static final String APP_LABEL = "Phevere";
   /** Marks lookups that came through the module, so Phevere can show it is active. */
   static final String EXTRA_VIA_HOOK = "com.phevere.app.VIA_HOOK";
+  /** Where the selection is, read cheaply in the hooked app (see putSource). */
+  static final String EXTRA_SOURCE_APP = "com.phevere.app.SOURCE_APP";
+  static final String EXTRA_SOURCE_TITLE = "com.phevere.app.SOURCE_TITLE";
+  static final String EXTRA_SOURCE_URL = "com.phevere.app.SOURCE_URL";
   /** Set once per process: whichever entry (modern or legacy) hooks first wins. */
   static final String INSTALLED_PROPERTY = "phevere.selectionbar.installed";
 
@@ -86,6 +90,10 @@ final class SelectionBar {
     Intent intent = ours.getIntent();
     if (intent != null) {
       intent.putExtra(EXTRA_VIA_HOOK, true);
+      try {
+        putSource(intent, (Window) field(type, "mWindow").get(toolbar));
+      } catch (ReflectiveOperationException | RuntimeException ignored) {
+      }
       // The pop-up opens beside the selection whether the bar is pressed now or by the user.
       Rect content = (Rect) field(type, "mContentRect").get(toolbar);
       if (content != null && !content.isEmpty()) {
@@ -167,7 +175,7 @@ final class SelectionBar {
     Context ctx = window.getContext();
     String text = selectedText(window.getDecorView());
     if (text != null) {
-      openPhevere(ctx, text, anchor);
+      openPhevere(ctx, text, anchor, window);
       return;
     }
     ClipboardManager clipboard = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
@@ -183,7 +191,7 @@ final class SelectionBar {
       } catch (RuntimeException ignored) {
       }
       String picked = copied == null ? "" : copied.toString().trim();
-      if (!picked.isEmpty()) openPhevere(ctx, picked, anchor);
+      if (!picked.isEmpty()) openPhevere(ctx, picked, anchor, window);
     }, 150);
   }
 
@@ -207,7 +215,33 @@ final class SelectionBar {
     return null;
   }
 
-  private static void openPhevere(Context ctx, String text, Rect anchor) {
+  /**
+   * The app's name, the Activity's title, and the URL when the selection is in a focused WebView.
+   * Each is one call on objects the bar already holds; nothing is searched or copied.
+   */
+  static void putSource(Intent intent, Window window) {
+    if (intent == null || window == null) return;
+    try {
+      Context c = window.getContext();
+      CharSequence app = c.getApplicationInfo().loadLabel(c.getPackageManager());
+      if (app != null) intent.putExtra(EXTRA_SOURCE_APP, app.toString());
+      while (c instanceof android.content.ContextWrapper && !(c instanceof android.app.Activity)) {
+        c = ((android.content.ContextWrapper) c).getBaseContext();
+      }
+      if (c instanceof android.app.Activity) {
+        CharSequence title = ((android.app.Activity) c).getTitle();
+        if (title != null && title.length() > 0) intent.putExtra(EXTRA_SOURCE_TITLE, title.toString());
+      }
+      View focus = window.getCurrentFocus();
+      if (focus instanceof android.webkit.WebView) {
+        String url = ((android.webkit.WebView) focus).getUrl();
+        if (url != null && (url.startsWith("https://") || url.startsWith("http://"))) intent.putExtra(EXTRA_SOURCE_URL, url);
+      }
+    } catch (RuntimeException ignored) {
+    }
+  }
+
+  private static void openPhevere(Context ctx, String text, Rect anchor, Window window) {
     Intent intent = new Intent(Intent.ACTION_PROCESS_TEXT)
         .setClassName(OUR_PACKAGE, OUR_PACKAGE + ".ProcessTextActivity")
         .setType("text/plain")
@@ -218,6 +252,7 @@ final class SelectionBar {
     if (anchor != null && !anchor.isEmpty()) {
       intent.putExtra(SelectionAnchor.EXTRA, new int[] {anchor.left, anchor.top, anchor.right, anchor.bottom});
     }
+    putSource(intent, window);
     try {
       ctx.startActivity(intent);
     } catch (RuntimeException ignored) {

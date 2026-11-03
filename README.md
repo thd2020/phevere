@@ -48,6 +48,7 @@ The current release is **3.0.0** on desktop and phone (2026-11-02). It adds Engl
 
 - **Phevere** on the system text-selection bar opens a compact lookup beside the selected word. The lookup is a floating window over the current app when *Display over other apps* is granted, and a bottom sheet otherwise.
 - *Pop up on selection* opens the lookup as soon as text is selected, without a tap. Without root this uses an accessibility service; on rooted devices it uses the LSPosed module described below.
+- A word saved from the selection-bar lookup keeps the name of the app it came from, and with the LSPosed module also the screen's title and, in an app showing a web page, its address.
 - Scan: take or choose a photo and select words directly on the picture. Recognition runs on the device with ML Kit, for Latin and Chinese script.
 - Pronunciation works offline with a bundled eSpeak NG voice. Two optional neural voices (Kokoro, 132 MB and 350 MB) can be downloaded in Settings.
 

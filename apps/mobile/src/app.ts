@@ -64,6 +64,9 @@ import {
   isUserBookId,
   sourceGroups,
   sourceBookTitle,
+  normalizeSourceContext,
+  lookupTextMatches,
+  type SourceContext,
   type UserBook,
   type BookWordProgress,
   type WordbookSub,
@@ -923,6 +926,30 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
   }
 }
 
+/**
+ * Where the latest selection lookup came from, as the Android shell reported it: the launching
+ * app's name, and a page title or URL when the LSPosed module read one. A save of that word keeps it.
+ */
+let incomingSource: { text: string; context: SourceContext; at: number } | null = null;
+const INCOMING_SOURCE_MS = 30 * 60 * 1000;
+
+async function takeIncomingSource(): Promise<void> {
+  if (capture.platform !== 'android' || !hasNativeBridge()) return;
+  try {
+    const hint = await nativeCall<{ text?: string | null; source?: unknown }>('takeSourceHint', {}, 3000);
+    const context = normalizeSourceContext(hint?.source);
+    if (hint?.text && context) incomingSource = { text: hint.text, context, at: Date.now() };
+  } catch {
+    /* an older shell has no hint */
+  }
+}
+
+function sourceForSave(lemma: string): SourceContext | undefined {
+  const src = incomingSource;
+  if (!src || Date.now() - src.at > INCOMING_SOURCE_MS || !lookupTextMatches(src.text, lemma)) return undefined;
+  return src.context;
+}
+
 async function saveCurrent(): Promise<void> {
   if (!result) return;
   const lemma = saveLemma(result);
@@ -932,7 +959,7 @@ async function saveCurrent(): Promise<void> {
       saved = null;
       toast('Removed from My words');
     } else {
-      const payload = vocabPayloadFromResult(result, lemma);
+      const payload = { ...vocabPayloadFromResult(result, lemma), context: sourceForSave(lemma) };
       saved = await addVocab(payload);
       toast('Saved to My words');
       postOsNotify('saved', 'Saved to My words', lemma);
@@ -2462,6 +2489,7 @@ export async function startApp(): Promise<void> {
   startIncomingText((text, origin) => {
     stripExpanding = false;
     if (origin === 'process-text' || origin === 'share') postOsNotify('incoming', 'Incoming lookup', text);
+    if (origin === 'process-text') void takeIncomingSource();
     resetTrail();
     void lookup(text);
   });
@@ -2495,7 +2523,10 @@ export async function startApp(): Promise<void> {
   if (hasNativeBridge()) {
     try {
       const pending = await nativeCall<{ text?: string; origin?: string }>('getPendingText', {});
-      if (pending.text) void lookup(pending.text);
+      if (pending.text) {
+        void takeIncomingSource();
+        void lookup(pending.text);
+      }
     } catch {
       /* none */
     }
