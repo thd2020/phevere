@@ -27,6 +27,8 @@ jobs:
         env:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
         run: npm ci
+      - name: Test OCR pack build and install
+        run: node scripts/test-ocr-pack.js
       - name: Package win32 x64 and verify OCR natives
         env:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/

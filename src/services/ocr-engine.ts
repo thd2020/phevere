@@ -23,6 +23,7 @@ import {
 } from './ocr-settings-store';
 import { finalizeOcrLines, glueSpacedLetters } from './ocr-text';
 import { createElectronImageRaw } from './ocr-image-electron';
+import { findOcrPackRoot, installedPackRoot } from './ocr-pack';
 
 export { glueSpacedLetters } from './ocr-text';
 
@@ -57,6 +58,10 @@ export type OcrStatus = {
   lastError: string | null;
   activeProfileId?: string;
   profiles?: { id: string; label: string; kind: string; installed: boolean }[];
+  /** PP-OCRv4 models are on disk (downloaded pack or an older install's copy). */
+  packInstalled?: boolean;
+  /** The active model is PP-OCRv4 and its pack is missing: OCR cannot run. */
+  needsPack?: boolean;
   /** Dev-only Python fallback metadata (omit from Settings copy). */
   python?: string;
   script?: string;
@@ -69,24 +74,9 @@ type Pending = {
   timer: NodeJS.Timeout;
 };
 
+/** PP-OCRv4 folder: the downloaded OCR pack, else an older install's copy. */
 function resolveBundledModelsRoot(): string {
-  const candidates = [
-    path.join(process.resourcesPath || '', 'ocr-models'),
-    path.join(app.getAppPath(), 'resources', 'ocr-models'),
-    path.join(process.cwd(), 'resources', 'ocr-models'),
-    path.join(__dirname, '..', '..', 'resources', 'ocr-models'),
-  ];
-  for (const c of candidates) {
-    if (
-      c &&
-      fs.existsSync(path.join(c, 'ch_PP-OCRv4_det_infer.onnx')) &&
-      fs.existsSync(path.join(c, 'ch_PP-OCRv4_rec_infer.onnx')) &&
-      fs.existsSync(path.join(c, 'ppocr_keys_v1.txt'))
-    ) {
-      return c;
-    }
-  }
-  return candidates[0] || path.join(process.cwd(), 'resources', 'ocr-models');
+  return findOcrPackRoot() || installedPackRoot();
 }
 
 function resolveWorkerScript(): string {
@@ -474,7 +464,7 @@ class OnnxNativeOcrEngine implements OcrEngine {
   }
 
   private isProfileInstalled(p: OcrProfileMeta): boolean {
-    if (p.kind === 'bundled') return !!listOnnxTriplet(resolveBundledModelsRoot());
+    if (p.kind === 'bundled') return !!findOcrPackRoot();
     if (p.kind === 'custom') {
       return !!(this.settings.customModelsPath && listOnnxTriplet(this.settings.customModelsPath));
     }
@@ -584,7 +574,8 @@ class OnnxNativeOcrEngine implements OcrEngine {
       return { det, rec, dict, root };
     }
 
-    const root = resolveBundledModelsRoot();
+    const root = findOcrPackRoot();
+    if (!root) throw new Error('OCR pack not installed');
     const det = path.join(root, 'ch_PP-OCRv4_det_infer.onnx');
     const rec = path.join(root, 'ch_PP-OCRv4_rec_infer.onnx');
     const dict = path.join(root, 'ppocr_keys_v1.txt');
@@ -710,6 +701,14 @@ class OnnxNativeOcrEngine implements OcrEngine {
   dispose(): void {
     this.ocr = null;
     this.initPromise = null;
+  }
+
+  /** Forget a cached failure, e.g. after the OCR pack was installed. */
+  reset(): void {
+    this.dispose();
+    this.available = null;
+    this.lastError = null;
+    this.modelsPath = resolveBundledModelsRoot();
   }
 }
 
@@ -1072,8 +1071,12 @@ class CompositeOcrEngine implements OcrEngine {
           : r.available
             ? 'python-fallback'
             : 'none';
+    const packInstalled = !!findOcrPackRoot();
+    const active = findProfile(n.activeProfileId || this.native.getActiveProfileId());
     return {
       engine,
+      packInstalled,
+      needsPack: !packInstalled && (!active || active.kind === 'bundled'),
       modelsPath: n.modelsPath,
       available: engine === 'none' ? (n.available === null && r.available === null ? null : false) : true,
       lastError: n.lastError || r.lastError,
@@ -1093,6 +1096,11 @@ class CompositeOcrEngine implements OcrEngine {
 
   listProfiles() {
     return this.native.listProfiles();
+  }
+
+  reset(): void {
+    this.native.reset();
+    this.preferred = 'none';
   }
 
   async recognize(png: Buffer): Promise<OcrResult> {
@@ -1133,6 +1141,11 @@ export async function setOcrProfile(
   customPath?: string | null,
 ): Promise<{ ok: boolean; detail: string }> {
   return (ocrEngine as CompositeOcrEngine).setProfile(profileId, customPath);
+}
+
+/** Re-check models after the OCR pack was installed or removed. */
+export function resetOcrEngine(): void {
+  (ocrEngine as CompositeOcrEngine).reset();
 }
 
 export function listOcrProfiles() {

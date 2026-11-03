@@ -70,6 +70,17 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value "exe=$($exe.FullName)"
           Add-Content -Path $env:GITHUB_OUTPUT -Value "name=$($exe.Name)"
           Write-Host "Found $($exe.FullName)"
+      # Installers ship without OCR models. The app downloads this one
+      # platform-independent pack from the release (src/services/ocr-pack.ts).
+      - name: Build OCR pack
+        id: ocr
+        shell: pwsh
+        run: |
+          node scripts/make-ocr-pack.js --out out/make
+          if ($LASTEXITCODE -ne 0) { throw 'make-ocr-pack failed' }
+          $name = (node -p "require('./src/services/ocr-pack-manifest.json').asset")
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "file=$((Resolve-Path "out/make/$name").Path)"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "name=$name"
       - name: Verify in-place Windows upgrade
         env:
           GH_TOKEN: ${{ github.token }}
@@ -102,18 +113,29 @@ jobs:
           ASSET: ${{ steps.pkg.outputs.name }}
         shell: pwsh
         run: ./scripts/gh-delete-release-asset.ps1
+      - name: Remove existing OCR pack asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
+          ASSET: ${{ steps.ocr.outputs.name }}
+        shell: pwsh
+        run: ./scripts/gh-delete-release-asset.ps1
       - name: Upload GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
-          files: ${{ steps.pkg.outputs.exe }}
+          files: |
+            ${{ steps.pkg.outputs.exe }}
+            ${{ steps.ocr.outputs.file }}
           fail_on_unmatched_files: true
           generate_release_notes: ${{ github.ref_type == 'tag' }}
           make_latest: ${{ github.ref_type == 'tag' }}
-      - name: Attest Setup.exe
+      - name: Attest Setup.exe and OCR pack
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
-          subject-path: ${{ steps.pkg.outputs.exe }}
+          subject-path: |
+            ${{ steps.pkg.outputs.exe }}
+            ${{ steps.ocr.outputs.file }}
 
   release-win-arm64:
     if: (github.event_name == 'push' && github.ref_type == 'tag') || (github.event_name == 'workflow_dispatch' && (github.event.inputs.targets == 'all' || github.event.inputs.targets == 'desktop' || github.event.inputs.targets == 'windows-arm64'))

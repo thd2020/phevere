@@ -7,6 +7,8 @@ import { log } from './logger';
 import { installDesktopDiagnostics } from './services/desktop-diagnostics';
 import { provisionInstallerAudio } from './services/installer-provisioning';
 import { installerAudioModelArgument, runInstallerAudioCommand } from './services/installer-audio-cli';
+import { INSTALL_OCR_PACK_FLAG, runInstallerOcrCommand } from './services/installer-ocr-cli';
+import { getOcrPackState, installOcrPack, onOcrPackChange } from './services/ocr-pack';
 import { clipboardService } from './services/clipboard';
 import { dictionaryService } from './services/dictionary';
 import { wikipediaService } from './services/wikipedia';
@@ -21,7 +23,7 @@ import {
 } from './services/mac-screen-recording';
 import { contextCaptureHub, ContextEvent, selectionToContext } from './services/context-capture';
 import { captureScreenRegion, captureAroundPoint, canCaptureWithoutPrompt } from './services/screen-capture';
-import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile } from './services/ocr-engine';
+import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile, resetOcrEngine } from './services/ocr-engine';
 import { isLookupWorthy } from './services/text-normalize';
 import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
 import { placePopupNearPoint, eventCoordSpace, type ScreenCoordSpace } from './services/popup-placement';
@@ -87,7 +89,10 @@ declare const OCR_OVERLAY_WEBPACK_ENTRY: string;
 declare const OCR_OVERLAY_PRELOAD_WEBPACK_ENTRY: string;
 
 const installerAudioModel = installerAudioModelArgument(process.argv);
-if (installerAudioModel === undefined) {
+const installerOcrPack = process.argv.includes(INSTALL_OCR_PACK_FLAG);
+/** Setup frontend subprocess: run one download command, no windows or tray. */
+const installerCommand = installerAudioModel !== undefined || installerOcrPack;
+if (!installerCommand) {
   // Designed as light ink/paper. Win11 "dark" app mode otherwise tints Mica/Acrylic
   // near-black while CSS keeps dark text.
   nativeTheme.themeSource = 'light';
@@ -126,7 +131,7 @@ try {
 
 /** Only one packaged Phevere process. Dev/Forge must allow relaunch or the
  *  webpack restart exits immediately and leaves a wedged first instance. */
-const gotSingleInstanceLock = app.isPackaged && installerAudioModel === undefined ? app.requestSingleInstanceLock() : true;
+const gotSingleInstanceLock = app.isPackaged && !installerCommand ? app.requestSingleInstanceLock() : true;
 if (app.isPackaged && !gotSingleInstanceLock) {
   app.exit(0);
 }
@@ -277,7 +282,7 @@ let contextHubWired = false;
 let hoverLookup: HoverLookupService | null = null;
 
 // Native selection service
-const nativeSelectionService: NativeSelectionService = installerAudioModel === undefined ? createNativeSelectionService() : {
+const nativeSelectionService: NativeSelectionService = !installerCommand ? createNativeSelectionService() : {
   start: async () => {},
   stop: async () => {},
   onSelection: () => {},
@@ -1767,7 +1772,9 @@ async function handleOcrRegionSelected(region: {
     const status = getOcrStatus();
     const hint = available
       ? '(No text found)'
-      : `(Text recognition unavailable: ${status.lastError || 'embedded engine failed to load'})`;
+      : status.needsPack
+        ? '(Needs the OCR pack)'
+        : `(Text recognition unavailable: ${status.lastError || 'embedded engine failed to load'})`;
     contextCaptureHub.emit({
       text: hint,
       x: progressX,
@@ -1859,7 +1866,9 @@ async function emitOcrFromPng(opts: {
         opts.emptyMessage ||
         (available
           ? '(No text found)'
-          : `(Text recognition unavailable: ${getOcrStatus().lastError || 'embedded engine failed'})`),
+          : getOcrStatus().needsPack
+            ? '(Needs the OCR pack)'
+            : `(Text recognition unavailable: ${getOcrStatus().lastError || 'embedded engine failed'})`),
       x: opts.x,
       y: opts.y,
       timestamp: Date.now(),
@@ -2080,6 +2089,7 @@ function ensureHoverLookup(): HoverLookupService {
         isPrimaryMouseDown() ||
         phevereWindowFocused(mainWindow, popupWindows, settingsWindow, ocrOverlayWindow, externalWindows),
       skipOcr: () => {
+        if (getOcrStatus().needsPack) return true;
         // Wayland without KWin capture: each OCR would open the screencast picker.
         if (!canCaptureWithoutPrompt()) return true;
         const ev = lastSelectionEvent;
@@ -2931,6 +2941,31 @@ ipcMain.handle('ocr-get-status', async () => {
     return { ...getOcrStatus(), available: false, lastError: String(error) };
   }
 });
+ipcMain.handle('ocr-pack-state', () => getOcrPackState());
+ipcMain.handle('ocr-pack-install', async () => {
+  try {
+    await installOcrPack();
+    return { ok: true, ...getOcrPackState() };
+  } catch (error) {
+    return { ok: false, ...getOcrPackState(), error: error instanceof Error ? error.message : String(error) };
+  }
+});
+onOcrPackChange((state) => {
+  if (installerCommand) return;
+  if (!state.installing) {
+    // Drop the cached "models missing" result so hover and Scan pick the pack up.
+    resetOcrEngine();
+    if (state.installed) {
+      void ocrEngine
+        .isAvailable()
+        .then((ok) => (ok && ocrEngine.warmUp ? ocrEngine.warmUp() : undefined))
+        .catch((err) => log.warn('main', 'OCR warm-up after pack install failed', { err: String(err) }));
+    }
+  }
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('ocr-pack-changed', state);
+  }
+});
 ipcMain.handle('ocr-ensure-deps', async () => {
   log.info('main', 'OCR ensureDeps requested');
   return ensureOcrDeps();
@@ -3102,6 +3137,10 @@ app.on('ready', () => {
     void runInstallerAudioCommand(installerAudioModel).then((exitCode) => app.exit(exitCode), () => app.exit(1));
     return;
   }
+  if (installerOcrPack) {
+    void runInstallerOcrCommand().then((exitCode) => app.exit(exitCode), () => app.exit(1));
+    return;
+  }
   if (!gotSingleInstanceLock) return;
   if (process.platform === 'win32') {
     // Must match electron-builder appId for correct taskbar icon grouping.
@@ -3179,7 +3218,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (installerAudioModel !== undefined) return;
+  if (installerCommand) return;
   if (BrowserWindow.getAllWindows().length === 0) {
     createMainWindow();
   } else {
