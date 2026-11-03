@@ -102,6 +102,7 @@ export const LANGUAGE_NAMES: Record<string, string> = {
 const RELATION_BY_TEMPLATE: Record<string, EtymologyRelation> = {
   inh: 'inherited', 'inh+': 'inherited', inherited: 'inherited',
   bor: 'borrowed', 'bor+': 'borrowed', borrowed: 'borrowed',
+  ubor: 'borrowed', 'ubor+': 'borrowed', obor: 'borrowed', 'obor+': 'borrowed',
   lbor: 'learned borrowing', 'lbor+': 'learned borrowing',
   slbor: 'semi-learned borrowing',
   der: 'derived', 'der+': 'derived', derived: 'derived', uder: 'derived',
@@ -266,6 +267,49 @@ export function templateToLink(t: RawTemplate): EtymologyLink | null {
   };
 }
 
+/** Relation keywords inside {{etymon}} and {{ety}} (":bor", ":inh", ":af"). */
+const ETYMON_KEYWORD: Record<string, EtymologyRelation> = {
+  inh: 'inherited', bor: 'borrowed', ubor: 'borrowed', obor: 'borrowed', lbor: 'learned borrowing',
+  slbor: 'semi-learned borrowing', der: 'derived', uder: 'derived', calque: 'calque', cal: 'calque',
+  af: 'affix', affix: 'affix', com: 'affix', root: 'root', clip: 'clipping', bf: 'back-formation', blend: 'blend',
+};
+
+/**
+ * Links from Wiktionary's newer {{etymon|en|:bor|fr:bouquet<t:bundle>}} and {{ety|en|...}}
+ * templates: a ":keyword" sets the relation for the "lang:term" items that follow it.
+ */
+export function etymonTemplateLinks(t: RawTemplate): EtymologyLink[] {
+  if (t.name !== 'etymon' && t.name !== 'ety') return [];
+  const out: EtymologyLink[] = [];
+  let relation: EtymologyRelation = 'derived';
+  let affix: EtymologyLink | null = null;
+  for (const raw of t.positional.slice(1)) {
+    const item = raw.trim();
+    if (!item) continue;
+    if (item.startsWith(':')) {
+      relation = ETYMON_KEYWORD[item.slice(1).replace(/\+$/, '')] || relation;
+      affix = null;
+      continue;
+    }
+    // "fr:bouquet<t:bundle>" names its language; a bare "capacity" is in the entry's own.
+    const m = item.match(/^(?:([a-z][a-z0-9-]*(?:\.[a-z0-9-]+)?):)?([^<]+)(?:<(.*)>)?$/i);
+    if (!m || /=/.test(item)) continue;
+    const [, code = t.positional[0], termRaw, mods = ''] = m;
+    const term = termRaw.trim();
+    const gloss = (mods.match(/(?:^|<)t:([^<>]*)/) || [])[1];
+    if (relation === 'affix' || relation === 'blend') {
+      if (!affix) {
+        affix = { relation, languageCode: code, language: languageName(code), parts: [] };
+        out.push(affix);
+      }
+      affix.parts!.push(term);
+      continue;
+    }
+    out.push({ relation, languageCode: code, language: languageName(code), term, gloss: gloss || undefined });
+  }
+  return out;
+}
+
 function renderLink(link: EtymologyLink, withPrefix: boolean): string {
   if (link.relation === 'affix' || link.relation === 'blend') {
     const joined = (link.parts || []).join(link.relation === 'blend' ? ' + ' : ' + ');
@@ -354,6 +398,9 @@ function renderSectionText(section: string): string {
     let replacement = '';
     if (link && !INVISIBLE_TEMPLATES.has(t.name)) {
       replacement = renderLink(link, SELF_PREFIXED_TEMPLATES.has(t.name));
+    } else if (t.name === 'etymon' || t.name === 'ety') {
+      const links = etymonTemplateLinks(t).filter((l) => l.relation !== 'root');
+      replacement = links.map((l, i) => (i ? 'from ' : 'From ') + renderLink(l, false)).join(', ');
     }
     out = out.split(t.source).join(replacement);
   }
@@ -397,9 +444,9 @@ export function buildEtymology(wikitext: string): ParsedEtymology | undefined {
     // splicing them into one ancestry line would invent a false derivation.
     if (index === 0) {
       for (const t of scanTemplates(section)) {
-        const link = templateToLink(t);
-        if (link && CHAIN_RELATIONS.has(link.relation) && (link.term || link.language)) {
-          chain.push(link);
+        const links = t.name === 'etymon' || t.name === 'ety' ? etymonTemplateLinks(t) : [templateToLink(t)];
+        for (const link of links) {
+          if (link && CHAIN_RELATIONS.has(link.relation) && (link.term || link.language)) chain.push(link);
         }
       }
     }
