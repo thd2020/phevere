@@ -121,7 +121,7 @@ import {
   type WordsScope,
 } from '@phevere/core';
 import { choiceRowHtml, keycapsHtml, rangeRowHtml, switchRowHtml } from '@phevere/core';
-import { filterVocabByLang, languageName, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
+import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
 
 const rlog = (...args: unknown[]) => {
   if (!__PHEVERE_DEV__) return;
@@ -3090,6 +3090,16 @@ function wireNotebookActions(root: HTMLElement): void {
     const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-act]');
     if (!el || !root.contains(el)) return;
     void run(el, ev);
+  });
+  // The goal field: a typed number goes through the same action as the preset chips.
+  root.addEventListener('change', (ev) => {
+    const field = ev.target as HTMLElement;
+    if (!(field instanceof HTMLInputElement) || !field.hasAttribute('data-goal-input')) return;
+    const goal = parseGoal(field.value);
+    if (goal == null || !field.dataset.goalAct) return;
+    field.dataset.goal = String(goal);
+    field.dataset.act = field.dataset.goalAct;
+    void run(field, ev);
   });
   // A made book: rename on change of its title, add a word from its form.
   root.addEventListener('change', (ev) => {

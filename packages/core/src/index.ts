@@ -77,6 +77,7 @@ export {
   readNotebookView,
   familyGroupings,
   familiesHtml,
+  parseGoal,
   familiesTraceProgress,
   traceNotebookFamilies,
   layoutNotebookMap,

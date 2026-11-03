@@ -277,6 +277,14 @@ assert.equal(strata[0].origin, 'Latin');
 assert.match(views.familiesHtml(a, 'origin', { etymon: lookupEty }), /via French/);
 assert.match(views.familiesHtml(a, 'root'), /Not in a family yet/);
 
+// A typed daily goal: whole numbers from 1 to 999; empty or not a number is ignored.
+assert.strictEqual(views.parseGoal('15'), 15);
+assert.strictEqual(views.parseGoal(' 7.6 '), 8);
+assert.strictEqual(views.parseGoal('0'), 1);
+assert.strictEqual(views.parseGoal('5000'), 999);
+assert.strictEqual(views.parseGoal(''), null);
+assert.strictEqual(views.parseGoal('abc'), null);
+
 // A repaint after tracing calls the trace again. With nothing new to fetch it must not call
 // back, or the two loop forever without yielding (4.0.0 froze on a root with an empty gloss).
 (async () => {

@@ -126,16 +126,29 @@ function bookRowsHtml(rows: BookPlanRow[]): string {
     .join('')}</div>`;
 }
 
+const GOAL_PRESETS = [5, 10, 20, 40];
+
+/** A daily goal typed into the goal field: a whole number from 1 to 999, or null when empty or not a number. */
+export function parseGoal(raw: unknown): number | null {
+  const n = Math.round(Number(String(raw ?? '').trim()));
+  if (!String(raw ?? '').trim() || !Number.isFinite(n)) return null;
+  return Math.max(1, Math.min(999, n));
+}
+
 function goalHtml(goal: number, opts: ReviewRenderOptions): string {
   const book = opts.goalBook;
   const current = book ? book.goal : goal;
   const label = !book && opts.books?.length ? 'My words, new a day' : 'New words a day';
   const hook = book ? `data-act="wb-goal" data-book="${esc(book.id)}"` : 'data-act="nb-goal"';
+  // The field fires the same action on change (Enter or leaving it); data-goal-act, not
+  // data-act, so a tap into it does not count as picking a preset.
+  const fieldHook = book ? `data-goal-act="wb-goal" data-book="${esc(book.id)}"` : 'data-goal-act="nb-goal"';
+  const custom = !GOAL_PRESETS.includes(current);
   return `<div class="nbv-goal" role="group" aria-label="New words a day">
       <span>${label}</span>
-      <div class="nbv-goal__chips">${[5, 10, 20, 40]
+      <div class="nbv-goal__chips">${GOAL_PRESETS
         .map((g) => `<button type="button" class="nbv-chip${g === current ? ' is-active' : ''}" ${hook} data-goal="${g}" aria-pressed="${g === current}">${g}</button>`)
-        .join('')}</div>
+        .join('')}<input type="number" class="nbv-chip nbv-goal__input${custom ? ' is-active' : ''}" inputmode="numeric" min="1" max="999" step="1" value="${custom ? current : ''}" placeholder="Other" aria-label="Other number of new words a day" enterkeyhint="done" ${fieldHook} data-goal-input /></div>
     </div>`;
 }
 

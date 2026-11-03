@@ -89,6 +89,7 @@ import {
   API_PROVIDERS,
   patchApiKeyCard,
   type ApiProviderId,
+  parseGoal,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
 import { playRecorded, prefetchRecorded, recordedUrls, speakIpa, speakText } from './platform/audio';
@@ -2453,6 +2454,15 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
 function onChange(e: Event): void {
   const el = e.target as HTMLElement | null;
   if (!el) return;
+  // The goal field: a typed number goes through the same action as the preset chips.
+  if (el instanceof HTMLInputElement && el.hasAttribute('data-goal-input')) {
+    const goal = parseGoal(el.value);
+    if (goal != null && el.dataset.goalAct) {
+      el.dataset.goal = String(goal);
+      void handleAct(el.dataset.goalAct, el, e);
+    }
+    return;
+  }
   if (el.id === 'account-delete-email') {
     const confirm = document.querySelector<HTMLButtonElement>('[data-act="account-delete-confirm"]');
     if (confirm) confirm.disabled = accountDeleteBusy || !deleteEmailMatches(accountState, (el as HTMLInputElement).value);
