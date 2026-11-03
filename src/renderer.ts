@@ -62,6 +62,8 @@ import {
   readNotebookView,
   reviewAnswerDetails,
   scopeBookFor,
+  type AnswerRecord,
+  type LearnPage,
   startReview,
   answerReview,
   overrideReview,
@@ -2575,7 +2577,26 @@ function rerenderNotebook(): void {
   renderVocabNotebook(filterVocabEntries(vocabNotebookCache));
 }
 
-/** The Learn tab: today's review of the list chosen in Words (My words, a book or All books). */
+/* Learn: Today or Progress, and the answer history Progress draws from (null until loaded). */
+const LEARN_PAGE_KEY = 'phevere-learn-page';
+let learnPage: LearnPage = readPref(LEARN_PAGE_KEY, 'today') === 'progress' ? 'progress' : 'today';
+let answerHistory: AnswerRecord[] | null = null;
+let answerHistoryLoading = false;
+
+function loadAnswerHistory(): void {
+  const api = (window as any).vocabAPI;
+  if (answerHistoryLoading) return;
+  answerHistoryLoading = true;
+  Promise.resolve(api?.history ? api.history() : [])
+    .catch((): AnswerRecord[] => [])
+    .then((rows: AnswerRecord[]) => {
+      answerHistory = rows || [];
+      answerHistoryLoading = false;
+      if (mainTab === 'learn' && learnPage === 'progress') renderLearn();
+    });
+}
+
+/** The Learn tab: today's review of the list chosen in Words (My words, a book or All books), or Progress. */
 function renderLearn(): void {
   const pane = document.getElementById('paneLearn');
   if (!pane || pane.hidden) return;
@@ -2592,10 +2613,16 @@ function renderLearn(): void {
     review: nbReview || startReview([], nbGoal),
     goal: nbGoal,
     options: { audio: true, preview: (e, g) => previewReview(e, g), formatGap: formatReviewGap },
+    page: learnPage,
+    history: answerHistory,
   });
   pane.querySelector<HTMLElement>('.wb-scope.is-active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   const body = pane.querySelector<HTMLElement>('.lrn-body');
   if (!body) return;
+  if (learnPage === 'progress') {
+    if (!answerHistory) loadAnswerHistory();
+    return;
+  }
   const fetchImage = wordImageFetcher();
   if (fetchImage) fillWordImages(body, fetchImage);
   focusReview(body);
@@ -2658,6 +2685,7 @@ async function commitReview(): Promise<void> {
     console.error('review failed', error);
   }
   advanceReview(nbReview, updated);
+  answerHistory = null;
   nbGrading = false;
   renderLearn();
 }
@@ -2784,6 +2812,13 @@ function wireNotebookActions(root: HTMLElement): void {
         rerenderActive();
         document.querySelector('.main-shell')?.scrollTo({ top: 0 });
         return;
+      case 'learn-page':
+        learnPage = el.dataset.page === 'progress' ? 'progress' : 'today';
+        writePref(LEARN_PAGE_KEY, learnPage);
+        if (learnPage === 'progress') answerHistory = null;
+        renderLearn();
+        document.querySelector('.main-shell')?.scrollTo({ top: 0 });
+        return;
       case 'wb-library':
         wbLibrary = !wbLibrary;
         rerenderNotebook();
@@ -2822,6 +2857,7 @@ function wireNotebookActions(root: HTMLElement): void {
         const lemma = el.dataset.q || '';
         const p = await wordbookApi()?.known(lemma, el.dataset.act === 'wb-known-review' || el.dataset.known === '1', scopeBookFor(wbScope, wbCtx, lemma));
         if (p) wbProgress.set(p.lemma, p);
+        answerHistory = null;
         rebuildWordsContext();
         if (el.dataset.act === 'wb-known-review' && nbReview) dropCurrentReview(nbReview);
         rerenderActive();

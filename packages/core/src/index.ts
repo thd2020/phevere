@@ -272,7 +272,18 @@ export {
   reviewBookRows,
   BOOK_LIST_PAGE,
 } from './wordbook-views';
-export { learnHtml, learnTodayHtml, learnScopeSwitchHtml, learnEntries, scopeBookFor, reviewAnswerDetails, type LearnViewInput } from './learn-view';
+export {
+  learnHtml,
+  learnTodayHtml,
+  learnScopeSwitchHtml,
+  learnPageSwitchHtml,
+  learnEntries,
+  scopeBookFor,
+  reviewAnswerDetails,
+  type LearnViewInput,
+  type LearnPage,
+} from './learn-view';
+export { progressHtml, progressSummary, type ProgressInput, type ProgressSummary } from './learn-progress';
 export {
   SKILLS,
   MASTERY_THRESHOLD,

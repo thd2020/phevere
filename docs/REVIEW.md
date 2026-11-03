@@ -73,6 +73,16 @@ The skill comes from the question type. Picking a meaning or a word, and the pla
 
 The FSRS schedule can be rebuilt from the history. `replaySchedule` runs the graded answers in time order through the same `scheduleReview` call the live review uses, starting from a new card. ts-fsrs seeds its interval fuzz from the review time, the repetition count and the memory state, so the replay lands on exactly the state the live updates wrote; `scripts/test-review.js` checks this for a saved word, a book word and a word reviewed before the history existed. That last case is why a word's first graded row can carry a `prior`: the schedule as it stood just before, which replay starts from. `rebuildWordSchedule` writes the replayed state back to the word's `vocab` row, or to its `book_words` row when it is not in My words.
 
+## The Progress page
+
+Learn has a second page, Progress, built from the answer history and the words' FSRS state in `packages/core/src/learn-progress.ts`. It follows the list chosen in the Learn switcher, except the Words card, which always lists My words and every book.
+
+![Screenshot of the Progress page on a phone: today's new words and reviews against the goal, a one-day streak, words per state, skill bars, root families, answers per day and the forgetting curve](REVIEW.assets/learn-progress.png)
+
+*The Progress page after a session: the rings fill towards the day's goals, and the curve shows how recall would fall over a month without review.*
+
+New words today counts words whose first graded answer fell today, against the sum of the daily goals in the list. Reviews counts today's graded answers against those plus the reviews still due. The streak counts days in a row with at least one answer, ending today or, before today's first answer, yesterday. Root families are the root families of Families plus the deep roots, among the words already started or saved, so a book of thousands of new words does not bury them. The forgetting curve averages FSRS's predicted recall, from each word's stability and last review, over the words in rotation for the next 30 days, with the 90% target as a dashed line.
+
 ## What is left open
 
 Automatic grading by time is a judgement call. If the thresholds feel wrong in use, they live in `autoGrade` in `review-quiz.ts`. FSRS can fit its parameters to a learner's own history once there are a few hundred reviews. The answer history now holds what that fitting needs, but Phevere still runs on the default parameters.

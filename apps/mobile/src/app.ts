@@ -66,6 +66,9 @@ import {
   readNotebookView,
   reviewAnswerDetails,
   scopeBookFor,
+  listAnswerHistory,
+  type AnswerRecord,
+  type LearnPage,
   type RecentLookup,
   type ReviewState,
   API_PROVIDERS,
@@ -217,6 +220,18 @@ const nbState = {
 /** Every word, for Review; the list keeps its 400 most recent. */
 let reviewPool: VocabEntry[] = [];
 let grading = false;
+/* Learn: Today or Progress, and the answer history Progress draws from (null until loaded). */
+const LEARN_PAGE_KEY = 'phevere.learnPage';
+let learnPage: LearnPage = readStore(LEARN_PAGE_KEY) === 'progress' ? 'progress' : 'today';
+let answerHistory: AnswerRecord[] | null = null;
+
+async function loadAnswerHistory(): Promise<void> {
+  try {
+    answerHistory = await listAnswerHistory();
+  } catch {
+    answerHistory = [];
+  }
+}
 
 /* Word books: the list the Words tab shows (My words, a book or All books) and its data. */
 const WORDS_SCOPE_KEY = 'phevere.wordsScope';
@@ -562,6 +577,8 @@ function learnViewState(): LearnState {
     goal: nbState.goal,
     pool: reviewPool,
     reviewOptions: { audio: prefs.audioEnabled !== false, preview: previewReview, formatGap: formatReviewGap },
+    page: learnPage,
+    history: answerHistory,
   };
 }
 
@@ -600,6 +617,10 @@ function bindNotebookViews(): void {
 function bindLearn(): void {
   const page = document.querySelector<HTMLElement>('.lrn-body');
   if (!page) return;
+  if (learnPage === 'progress') {
+    if (!answerHistory) void loadAnswerHistory().then(() => tab === 'learn' && learnPage === 'progress' && paint());
+    return;
+  }
   if (prefs.senseImages !== false) {
     fillWordImages(page, (lemma, lang, gloss) => fetchWordImage(lemma, { lang, gloss }));
   }
@@ -668,6 +689,7 @@ async function commitReview(): Promise<void> {
     toast(err instanceof Error ? err.message : String(err));
   }
   advanceReview(r, updated);
+  answerHistory = null;
   grading = false;
   paint();
 }
@@ -1958,6 +1980,13 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       window.scrollTo({ top: 0 });
       return;
+    case 'learn-page':
+      learnPage = t.dataset.page === 'progress' ? 'progress' : 'today';
+      writeStore(LEARN_PAGE_KEY, learnPage);
+      if (learnPage === 'progress') await loadAnswerHistory();
+      paint();
+      window.scrollTo({ top: 0 });
+      return;
     case 'wb-library':
       wordsState.library = !wordsState.library;
       paint();
@@ -1995,6 +2024,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'wb-known': {
       const p = await setBookWordKnown(t.dataset.q || '', t.dataset.known === '1', Date.now(), scopeBookFor(wordsState.scope, wordsState.ctx, t.dataset.q || ''));
+      answerHistory = null;
       wbProgress.set(p.lemma, p);
       rebuildWordsContext();
       paint();
@@ -2002,6 +2032,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     }
     case 'wb-known-review': {
       const p = await setBookWordKnown(t.dataset.q || '', true, Date.now(), scopeBookFor(wordsState.scope, wordsState.ctx, t.dataset.q || ''));
+      answerHistory = null;
       wbProgress.set(p.lemma, p);
       rebuildWordsContext();
       if (nbState.review) dropCurrentReview(nbState.review);

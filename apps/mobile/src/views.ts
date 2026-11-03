@@ -23,6 +23,8 @@ import {
   notebookViewSwitchHtml,
   recentListHtml,
   learnHtml,
+  type LearnPage,
+  type AnswerRecord,
   type CardLayout,
   type FamilyGrouping,
   type MorphKind,
@@ -831,6 +833,10 @@ export interface LearnState {
   /** Every saved word. */
   pool: VocabEntry[];
   reviewOptions?: ReviewRenderOptions;
+  page: LearnPage;
+  /** The answer history for Progress; null until loaded. */
+  history: AnswerRecord[] | null;
+  notice?: string;
 }
 
 export function learnBody(learn: LearnState, words: WordsState): string {
@@ -841,6 +847,9 @@ export function learnBody(learn: LearnState, words: WordsState): string {
     review: learn.review,
     goal: learn.goal,
     options: learn.reviewOptions,
+    page: learn.page,
+    history: learn.history,
+    notice: learn.notice,
   })}</div>`;
 }
 

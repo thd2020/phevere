@@ -4,12 +4,14 @@
  * and the daily plan (`notebook-review.ts`).
  *
  * The list in Learn is the same scope the Words tab shows, so choosing a book in either tab
- * chooses it in both. Hooks: wb-scope (data-scope) plus the review hooks of `notebook-review.ts`.
+ * chooses it in both. The Progress page (`learn-progress.ts`) sits beside Today. Hooks: wb-scope
+ * (data-scope), learn-page (data-page) and the review hooks of `notebook-review.ts`.
  */
 import { esc, type NotebookEntry } from './notebook-shared';
 import { reviewHtml, type ReviewRenderOptions } from './notebook-review';
 import type { ReviewState } from './review-quiz';
-import type { AnswerDetails } from './answer-history';
+import type { AnswerDetails, AnswerRecord } from './answer-history';
+import { progressHtml } from './learn-progress';
 import { bookProgress, scopeEntries, wordbookMeta, type WordsContext, type WordsScope } from './wordbooks';
 import { progressRingSvg, reviewBookRows } from './wordbook-views';
 
@@ -23,7 +25,15 @@ export interface LearnViewInput {
   goal: number;
   options?: ReviewRenderOptions;
   now?: number;
+  /** Today (the quiz) or Progress. */
+  page?: LearnPage;
+  /** The answer history, for Progress; null while it loads. */
+  history?: AnswerRecord[] | null;
+  /** A line shown above the page (the Plus state of progress sync). */
+  notice?: string;
 }
+
+export type LearnPage = 'today' | 'progress';
 
 const STACK =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7l8-4 8 4-8 4zM4 12l8 4 8-4M4 17l8 4 8-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
@@ -82,6 +92,26 @@ export function learnTodayHtml(input: LearnViewInput): string {
   });
 }
 
+const PAGE_ICON: Record<LearnPage, string> = {
+  today:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 10h16M9 3v4M15 3v4M9 15l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  progress:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16M7 16v-4M12 16V7M17 16v-6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
+};
+
+export function learnPageSwitchHtml(page: LearnPage): string {
+  const btn = (p: LearnPage, label: string) =>
+    `<button type="button" role="tab" class="nbv-switch__btn${p === page ? ' is-active' : ''}" data-act="learn-page" data-page="${p}" aria-selected="${p === page}">${PAGE_ICON[p]}<span>${label}</span></button>`;
+  return `<div class="nbv-switch lrn-pages" role="tablist" aria-label="Learn">${btn('today', 'Today')}${btn('progress', 'Progress')}</div>`;
+}
+
 export function learnHtml(input: LearnViewInput): string {
-  return `${learnScopeSwitchHtml(input.scope, input.ctx, input.now)}<div class="nbv-body lrn-body">${learnTodayHtml(input)}</div>`;
+  const page = input.page || 'today';
+  const body =
+    page === 'progress'
+      ? input.history
+        ? progressHtml({ history: input.history, scope: input.scope, ctx: input.ctx, mine: input.mine, goal: input.goal, now: input.now })
+        : '<p class="nbv-empty">Loading…</p>'
+      : learnTodayHtml(input);
+  return `<div class="lrn-bar">${learnScopeSwitchHtml(input.scope, input.ctx, input.now)}${learnPageSwitchHtml(page)}</div>${input.notice || ''}<div class="nbv-body lrn-body">${body}</div>`;
 }
