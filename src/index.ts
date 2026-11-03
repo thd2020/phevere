@@ -2922,8 +2922,13 @@ ipcMain.handle('offline-import-cedict-file', async () => {
   dictionaryService.markOfflinePackAvailable('CC-CEDICT', true);
   return { success: true, ...imported };
 });
-ipcMain.handle('offline-download-pack', async (_e, packId: string) => {
-  const imported = await offlineDict.downloadCatalogPack(String(packId || ''));
+ipcMain.handle('offline-pack-details', async (_e, packId: string) => offlineDict.packDetails(String(packId || '')));
+ipcMain.handle('offline-download-pack', async (e, packId: string) => {
+  const id = String(packId || '');
+  const sender = e.sender;
+  const imported = await offlineDict.downloadCatalogPack(id, (p) => {
+    if (!sender.isDestroyed()) sender.send('offline-pack-progress', { id, ...p });
+  });
   if (imported.packId === 'cc-cedict') {
     dictionaryService.markOfflinePackAvailable('CC-CEDICT', true);
   }

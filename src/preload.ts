@@ -477,6 +477,11 @@ contextBridge.exposeInMainWorld('offlineDictAPI', {
   importCedictFile: () => ipcRenderer.invoke('offline-import-cedict-file'),
   downloadPack: (packId: string) => ipcRenderer.invoke('offline-download-pack', packId),
   downloadCedict: () => ipcRenderer.invoke('offline-download-cedict'),
+  packDetails: (packId: string) => ipcRenderer.invoke('offline-pack-details', packId),
+  onPackProgress: (callback: (p: { id: string; fraction: number | null; label: string }) => void) => {
+    ipcRenderer.removeAllListeners('offline-pack-progress');
+    ipcRenderer.on('offline-pack-progress', (_event, p) => callback(p));
+  },
 });
 
 contextBridge.exposeInMainWorld('ocrAPI', {
@@ -677,6 +682,8 @@ declare global {
       importCedictFile: () => Promise<any>;
       downloadPack: (packId: string) => Promise<any>;
       downloadCedict: () => Promise<any>;
+      packDetails?: (packId: string) => Promise<{ installedBytes: number; storedAt: string } | null>;
+      onPackProgress?: (callback: (p: { id: string; fraction: number | null; label: string }) => void) => void;
     };
     ocrAPI: {
       getStatus: () => Promise<{

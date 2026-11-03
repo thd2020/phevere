@@ -32,6 +32,7 @@ import { captureNextShortcut, isLinux, isMac } from './shortcut-capture';
 import '@phevere/core/notebook-views.css';
 import '@phevere/core/settings-kit.css';
 import '@phevere/core/settings-sources.css';
+import '@phevere/core/settings-offline.css';
 import '@phevere/core/settings-keys.css';
 import {
   accountButtonHtml,
@@ -57,9 +58,15 @@ import {
   TRANSLATION_ENGINES,
   apiKeysPanelHtml,
   patchApiKeyCard,
+  offlineShelvesHtml,
+  packCardHtml,
+  packInspectorHtml,
   sourcesPanelHtml,
   type KeyCardState,
   type KeyStatus,
+  type PackDetails,
+  type PackProgress,
+  type PackView,
   type SourceRowInput,
   type AccountState,
   type FamilyGrouping,
@@ -290,8 +297,6 @@ function initializeSettingsWindow() {
               <span class="nav-row__label">Import CEDICT file<span class="nav-row__sub">cedict_ts.u8</span></span>
               <span class="nav-row__chevron"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             </button>
-            <h3 id="offline-imported-heading" class="settings-subhead" hidden>Imported</h3>
-            <div id="offline-packs-list" class="pack-list" hidden></div>
           </section>
 
           <section class="settings-panel" data-panel="api" aria-labelledby="settings-api-heading">
@@ -339,6 +344,7 @@ function initializeSettingsWindow() {
           </section>
         </main>
       </div>
+      <div id="pack-inspector-host"></div>
     </div>
   `;
   document.body.innerHTML = settingsHTML;
@@ -563,129 +569,165 @@ function wireAccountMenu(): void {
   }).catch((): void => undefined);
 }
 
+/** Settings → Offline: one shelf per headword language, catalogue cards, an inspector drawer and live progress. */
 async function wireOfflineSettingsPanel(): Promise<void> {
   const api = (window as any).offlineDictAPI;
   const statusEl = document.getElementById('offline-status');
-  const listEl = document.getElementById('offline-packs-list');
   const catalogEl = document.getElementById('offline-catalog');
+  const inspectorEl = document.getElementById('pack-inspector-host');
   const setStatus = (msg: string) => {
     if (statusEl) statusEl.textContent = msg;
   };
+  let packs: PackView[] = [];
+  let progress: PackProgress | null = null;
+  let inspecting: string | null = null;
+  const details = new Map<string, PackDetails>();
+  const entriesText = (n: unknown) => `${(Number(n) || 0).toLocaleString('en-US')} entries`;
 
-  const TRASH_SVG =
-    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  const DOWNLOAD_SVG =
-    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  const catalogIds = new Set<string>();
-  const consentById = new Map<string, string>();
-  const nameById = new Map<string, string>();
-
-  /** One pack: name, size or entry count, and Download or Remove. */
-  const packRow = (p: { id: string; name: string }, meta: string, installed: boolean) => {
-    const id = escapeHtmlSelection(p.id);
-    const name = escapeHtmlSelection(p.name);
-    nameById.set(String(p.id), String(p.name));
-    return `<article class="pack${installed ? ' is-installed' : ''}" data-id="${id}">
-            <div class="pack__text">
-              <strong>${name}</strong>
-              <p class="pack__meta">${escapeHtmlSelection(meta)}</p>
-            </div>
-            ${installed
-              ? `<button type="button" class="icon-btn pack__action offline-remove" data-id="${id}" title="Remove" aria-label="Remove ${name}">${TRASH_SVG}</button>`
-              : `<button type="button" class="icon-btn pack__action offline-download" data-id="${id}" title="Download" aria-label="Download ${name}">${DOWNLOAD_SVG}</button>`}
-          </article>`;
+  /** Repaints the drawer's contents in place, so its slide-in plays only when it opens. */
+  const renderInspector = () => {
+    if (!inspectorEl) return;
+    const p = inspecting ? packs.find((x) => x.id === inspecting) : undefined;
+    if (!p) {
+      inspectorEl.innerHTML = '';
+      return;
+    }
+    const open = inspectorEl.querySelector('.sv-inspector') as HTMLElement | null;
+    const fresh = !open || open.dataset.id !== p.id;
+    const progressFor = progress && progress.id === p.id ? progress : null;
+    const html = packInspectorHtml(p, details.get(p.id), progressFor, !!progress, fresh);
+    if (fresh) {
+      inspectorEl.innerHTML = html;
+      return;
+    }
+    const next = document.createElement('div');
+    next.innerHTML = html;
+    open!.innerHTML = (next.querySelector('.sv-inspector') as HTMLElement).innerHTML;
   };
-  const entriesText = (n: unknown) => `${(Number(n) || 0).toLocaleString()} entries`;
-
-  const wireRemoveButtons = (root: Element) => {
-    root.querySelectorAll('.offline-remove').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const id = (btn as HTMLElement).dataset.id;
-        if (!id || !api?.removePack) return;
-        const name = nameById.get(id) || id;
-        if (!confirm(`Remove ${name}?`)) return;
-        (btn as HTMLButtonElement).disabled = true;
-        await api.removePack(id);
-        setStatus(`Removed ${name}.`);
-        await refreshAll();
-      });
-    });
+  const render = () => {
+    if (!catalogEl) return;
+    catalogEl.innerHTML = offlineShelvesHtml({ groups: groupCatalogByLanguage(packs), progress });
+    renderInspector();
+  };
+  /** Progress ticks repaint only the card being downloaded and the open inspector. */
+  const renderProgress = () => {
+    if (!progress || !catalogEl) return;
+    const p = packs.find((x) => x.id === progress!.id);
+    const card = catalogEl.querySelector(`.sv-pack[data-id="${CSS.escape(progress.id)}"]`);
+    if (p && card) card.outerHTML = packCardHtml(p, progress, true);
+    if (inspecting === progress.id) renderInspector();
   };
 
-  /** Packs imported from files (JSON, CEDICT, seeds); catalog packs are listed under their language. */
-  const refreshPacks = async () => {
-    const heading = document.getElementById('offline-imported-heading');
-    if (!listEl || !api?.listPacks) return;
+  const loadDetails = async (id: string) => {
+    const p = packs.find((x) => x.id === id);
+    if (!p?.installed || !api?.packDetails) return;
     try {
-      const packs = ((await api.listPacks()) || []).filter((p: any) => !catalogIds.has(String(p.id)));
-      listEl.hidden = !packs.length;
-      if (heading) heading.hidden = !packs.length;
-      listEl.innerHTML = packs.map((p: any) => packRow(p, entriesText(p.entryCount), true)).join('');
-      wireRemoveButtons(listEl);
+      const d = await api.packDetails(id);
+      if (d) details.set(id, d);
+      if (inspecting === id) renderInspector();
     } catch (error) {
       console.error(error);
-      listEl.hidden = true;
-      if (heading) heading.hidden = true;
     }
   };
 
-  const refreshCatalog = async () => {
+  const refresh = async () => {
     if (!catalogEl) return;
     if (!api?.listCatalog) {
       catalogEl.innerHTML = `<p class="settings-hint">Offline dictionaries unavailable.</p>`;
       return;
     }
     try {
-      const items: any[] = (await api.listCatalog()) || [];
-      consentById.clear();
-      catalogIds.clear();
-      for (const c of items) {
-        catalogIds.add(String(c.id));
-        consentById.set(String(c.id), String(c.consent || ''));
-      }
-      catalogEl.innerHTML = groupCatalogByLanguage(items)
-        .map(
-          (g) => `<h3 class="settings-subhead">${escapeHtmlSelection(g.title)}</h3>
-          <div class="pack-list" data-lang="${escapeHtmlSelection(g.language)}">${g.items
-            .map((c: any) => packRow(c, c.installed ? entriesText(c.entryCount) : String(c.sizeHint || ''), !!c.installed))
-            .join('')}</div>`,
-        )
-        .join('');
-      wireRemoveButtons(catalogEl);
-      catalogEl.querySelectorAll('.offline-download').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const id = (btn as HTMLElement).dataset.id;
-          const consent = consentById.get(id || '') || 'Download this dictionary pack?';
-          if (!id || !api?.downloadPack) return;
-          if (!confirm(consent)) return;
-          const name = nameById.get(id) || id;
-          (btn as HTMLButtonElement).disabled = true;
-          setStatus(`Downloading ${name}…`);
-          try {
-            const r = await api.downloadPack(id);
-            setStatus(r?.success ? `Installed ${name}, ${entriesText(r.count)}.` : 'Download failed.');
-            await refreshAll();
-          } catch (e: any) {
-            setStatus(`Download failed: ${e?.message || e}`);
-          } finally {
-            (btn as HTMLButtonElement).disabled = false;
-          }
-        });
-      });
+      const [catalog, installed] = await Promise.all([api.listCatalog(), api.listPacks ? api.listPacks() : []]);
+      const catalogIds = new Set<string>((catalog || []).map((c: any) => String(c.id)));
+      const installedById = new Map<string, any>((installed || []).map((p: any) => [String(p.id), p]));
+      packs = [
+        ...(catalog || []).map((c: any) => ({ ...c, createdAt: installedById.get(String(c.id))?.createdAt })),
+        ...(installed || [])
+          .filter((p: any) => !catalogIds.has(String(p.id)))
+          .map((p: any) => ({
+            id: String(p.id),
+            name: String(p.name),
+            language: String(p.language || 'en'),
+            installed: true,
+            entryCount: Number(p.entryCount) || 0,
+            createdAt: p.createdAt,
+            source: p.source,
+            imported: true,
+          })),
+      ];
+      details.clear();
+      render();
     } catch (error) {
       console.error(error);
       catalogEl.innerHTML = `<p class="settings-hint">Could not load catalog.</p>`;
     }
   };
 
-  const refreshAll = async () => {
-    await refreshCatalog();
-    await refreshPacks();
+  const download = async (id: string) => {
+    const p = packs.find((x) => x.id === id);
+    if (!p || !api?.downloadPack || progress) return;
+    if (!confirm(p.consent || 'Download this dictionary pack?')) return;
+    progress = { id, fraction: null, label: 'Starting…' };
+    setStatus('');
+    render();
+    try {
+      const r = await api.downloadPack(id);
+      setStatus(r?.success ? `Installed ${p.name}, ${entriesText(r.count)}.` : 'Download failed.');
+    } catch (e: any) {
+      setStatus(`Download failed: ${String(e?.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`);
+    } finally {
+      progress = null;
+      await refresh();
+      if (inspecting === id) void loadDetails(id);
+    }
   };
 
-  document.getElementById('offline-refresh-packs')?.addEventListener('click', () => {
-    void refreshAll();
+  const remove = async (id: string) => {
+    const p = packs.find((x) => x.id === id);
+    if (!p || !api?.removePack) return;
+    if (!confirm(`Remove ${p.name}?`)) return;
+    await api.removePack(id);
+    setStatus(`Removed ${p.name}.`);
+    await refresh();
+  };
+
+  api?.onPackProgress?.((p: PackProgress) => {
+    if (!progress || progress.id !== p.id) return;
+    progress = p;
+    renderProgress();
   });
+
+  const onClick = (e: Event) => {
+    const t = (e.target as HTMLElement | null)?.closest?.('[data-act]') as HTMLElement | null;
+    if (!t) return;
+    const id = t.dataset.id || '';
+    switch (t.dataset.act) {
+      case 'pack-open':
+        inspecting = id;
+        renderInspector();
+        void loadDetails(id);
+        (inspectorEl?.querySelector('[data-act="pack-close"].sv-icon') as HTMLElement | null)?.focus();
+        break;
+      case 'pack-close': {
+        const was = inspecting || '';
+        inspecting = null;
+        renderInspector();
+        (catalogEl?.querySelector(`.sv-pack__open[data-id="${CSS.escape(was)}"]`) as HTMLElement | null)?.focus();
+        break;
+      }
+      case 'pack-dl':
+        void download(id);
+        break;
+      case 'pack-rm':
+        void remove(id);
+        break;
+      default:
+        break;
+    }
+  };
+  catalogEl?.addEventListener('click', onClick);
+  inspectorEl?.addEventListener('click', onClick);
+
   document.getElementById('offline-import-json')?.addEventListener('click', async () => {
     if (!api?.importJson) return;
     setStatus('Choose a JSON or JSONL file…');
@@ -696,7 +738,7 @@ async function wireOfflineSettingsPanel(): Promise<void> {
         return;
       }
       setStatus(r?.success ? `Imported ${r.count} entries.` : 'Import failed.');
-      await refreshAll();
+      await refresh();
     } catch (e: any) {
       setStatus(`Import failed: ${e?.message || e}`);
     }
@@ -711,13 +753,13 @@ async function wireOfflineSettingsPanel(): Promise<void> {
         return;
       }
       setStatus(r?.success ? `Imported ${r.count} CEDICT entries.` : 'Import failed.');
-      await refreshAll();
+      await refresh();
     } catch (e: any) {
       setStatus(`Import failed: ${e?.message || e}`);
     }
   });
 
-  await refreshAll();
+  await refresh();
 }
 
 function wireSettingsImageDrop(): void {

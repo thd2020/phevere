@@ -1,0 +1,413 @@
+/* Settings → Offline (settings-offline.ts). Tokens and shared controls: settings-kit.css. */
+
+.sv-offline { display: grid; gap: 16px; }
+
+.sv .sv-shelf {
+  background: var(--sv-card);
+  border: 1px solid var(--sv-line-soft);
+  border-radius: 16px;
+  box-shadow: var(--sv-shadow);
+  overflow: hidden;
+}
+.sv .sv-shelf__band {
+  position: relative;
+  overflow: hidden;
+  padding: 16px 18px 14px;
+  min-height: 96px;
+  background:
+    linear-gradient(100deg, color-mix(in srgb, var(--sv-tint) 78%, var(--sv-card)) 0%, color-mix(in srgb, var(--sv-tint) 30%, var(--sv-card)) 72%);
+  border-bottom: 2px solid color-mix(in srgb, var(--sv-hue) 30%, transparent);
+}
+.sv .sv-shelf__sample {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--sv-serif), var(--sv-cjk);
+  font-size: 104px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+  color: var(--sv-hue);
+  opacity: 0.16;
+  pointer-events: none;
+  user-select: none;
+}
+.sv .sv-shelf__sample:lang(zh),
+.sv .sv-shelf__name:lang(zh) { font-family: 'Source Han Serif SC', 'Noto Serif CJK SC', 'Songti SC', 'SimSun', serif; }
+.sv .sv-shelf__sample:lang(ja),
+.sv .sv-shelf__name:lang(ja) { font-family: 'Source Han Serif JP', 'Noto Serif CJK JP', 'Yu Mincho', 'Hiragino Mincho ProN', serif; }
+.sv .sv-shelf__sample:lang(ko),
+.sv .sv-shelf__name:lang(ko) { font-family: 'Source Han Serif KR', 'Noto Serif CJK KR', 'Batang', 'AppleMyungjo', serif; }
+.sv .sv-shelf__name {
+  position: relative;
+  margin: 0;
+  max-width: 72%;
+  font-family: var(--sv-serif);
+  font-size: clamp(1.4rem, 1.1rem + 1vw, 1.8rem);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  color: var(--sv-ink);
+  text-transform: none;
+}
+.sv .sv-shelf__traits {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 8px 0 0;
+  max-width: 78%;
+}
+.sv .sv-shelf__traits span {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-family: var(--sv-mono);
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--sv-hue-deep);
+  background: rgb(255 253 249 / 0.72);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sv-hue) 22%, transparent);
+}
+.sv .sv-shelf__count {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  font-family: var(--sv-mono);
+  font-size: 11px;
+  color: var(--sv-hue-deep);
+}
+.sv .sv-shelf__packs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+/* Catalogue card: a coloured top rule and a faint ruled line, the spine on the left. */
+.sv .sv-pack {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 72px;
+  border-radius: 10px;
+  overflow: hidden;
+  background-color: var(--sv-card);
+  background-image:
+    linear-gradient(to bottom, color-mix(in srgb, var(--sv-hue) 45%, transparent) 0, color-mix(in srgb, var(--sv-hue) 45%, transparent) 2px, transparent 2px),
+    linear-gradient(to top, transparent 9px, rgb(15 110 113 / 0.12) 9px, rgb(15 110 113 / 0.12) 10px, transparent 10px);
+  box-shadow: inset 0 0 0 1px var(--sv-line-soft), 0 1px 2px rgb(28 25 23 / 0.05);
+  transition: box-shadow 0.22s var(--sv-ease), transform 0.22s var(--sv-ease);
+}
+.sv .sv-pack:hover {
+  transform: translateY(-1px);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sv-hue) 35%, var(--sv-line)), 0 8px 18px -12px rgb(28 25 23 / 0.5);
+}
+.sv .sv-pack__open {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+  min-height: 72px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sv .sv-pack__open:focus-visible { outline: 2px solid var(--sv-rust); outline-offset: -2px; border-radius: 10px; }
+.sv .sv-pack__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 0;
+}
+.sv .sv-pack__name {
+  font-family: var(--sv-serif);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--sv-ink);
+}
+.sv .sv-pack__meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--sv-mono);
+  font-size: 11.5px;
+  color: var(--sv-ink-soft);
+}
+.sv .sv-pack__tick { display: inline-grid; color: var(--sv-teal); }
+.sv .sv-pack__tick svg { width: 14px; height: 14px; }
+.sv .sv-pack.is-installed .sv-pack__meta { color: var(--sv-teal-deep); }
+.sv .sv-pack__act { display: grid; place-items: center; padding: 0 8px 0 4px; }
+.sv .sv-pack__busy {
+  width: 20px;
+  height: 20px;
+  margin: 8px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--sv-hue) 25%, transparent);
+  border-top-color: var(--sv-hue);
+  animation: sv-spin 0.9s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+
+.sv .sv-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--sv-hue) 16%, transparent);
+}
+.sv .sv-progress > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--sv-hue);
+  transition: width 0.3s var(--sv-ease);
+}
+.sv .sv-progress.is-indeterminate > span {
+  width: 36%;
+  animation: sv-sweep 1.3s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+/* Spines */
+.sv .sv-spine {
+  position: relative;
+  flex: 0 0 44px;
+  width: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 0 8px;
+  color: #fff7f0;
+  background-color: var(--sv-hue);
+  font-family: var(--sv-serif);
+  overflow: hidden;
+}
+.sv .sv-pack:not(.is-installed) .sv-spine { background-color: color-mix(in srgb, var(--sv-hue) 72%, var(--sv-card)); }
+.sv .sv-spine__mark {
+  position: relative;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 0 rgb(28 25 23 / 0.25);
+}
+.sv .sv-spine__call {
+  position: relative;
+  font-family: var(--sv-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.12em;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  opacity: 0.88;
+}
+/* WordNet: a lattice of linked synsets */
+.sv .sv-spine--net {
+  background-image:
+    radial-gradient(circle, rgb(255 255 255 / 0.55) 0 1.6px, transparent 2.2px),
+    linear-gradient(var(--sv-angle), transparent 47%, rgb(255 255 255 / 0.2) 48%, rgb(255 255 255 / 0.2) 52%, transparent 53%);
+  background-size: 14px 14px, 14px 14px;
+  background-position: 3px 3px, 0 0;
+}
+/* Webster 1913: dark leather with gilt bands */
+.sv .sv-spine--gilt,
+.sv .sv-pack:not(.is-installed) .sv-spine--gilt {
+  background-color: color-mix(in srgb, var(--sv-hue) 55%, #2a1608);
+  background-image:
+    linear-gradient(to bottom, transparent calc(var(--sv-band) - 1px), #d8b25c calc(var(--sv-band) - 1px), #d8b25c calc(var(--sv-band) + 1px), transparent calc(var(--sv-band) + 1px)),
+    linear-gradient(to top, transparent calc(var(--sv-band) - 1px), #d8b25c calc(var(--sv-band) - 1px), #d8b25c calc(var(--sv-band) + 1px), transparent calc(var(--sv-band) + 1px)),
+    linear-gradient(90deg, rgb(0 0 0 / 0.18), transparent 30%, transparent 70%, rgb(0 0 0 / 0.18));
+}
+.sv .sv-spine--gilt .sv-spine__mark { margin-top: 18%; font-style: italic; color: #f1d58d; font-size: 12px; }
+/* FreeDict: two-colour stripes, angle varies per pack */
+.sv .sv-spine--stripe {
+  background-image: repeating-linear-gradient(var(--sv-angle), transparent 0, transparent 7px, rgb(255 255 255 / 0.16) 7px, rgb(255 255 255 / 0.16) 10px);
+}
+.sv .sv-spine--stripe .sv-spine__mark { font-family: var(--sv-mono); font-size: 10.5px; letter-spacing: 0.08em; }
+/* CC-CEDICT: a red seal on paper */
+.sv .sv-spine--seal,
+.sv .sv-pack:not(.is-installed) .sv-spine--seal {
+  background-color: color-mix(in srgb, var(--sv-tint) 60%, var(--sv-card));
+  color: var(--sv-rust);
+  box-shadow: inset -1px 0 0 var(--sv-line-soft);
+}
+.sv .sv-spine--seal .sv-spine__mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--sv-rust);
+  border-radius: 4px;
+  transform: rotate(-4deg);
+  font-family: var(--sv-cjk);
+  font-size: 17px;
+  color: var(--sv-rust);
+  text-shadow: none;
+}
+.sv .sv-spine--seal .sv-spine__call { color: var(--sv-rust); }
+/* JMdict: title set vertically between double rules */
+.sv .sv-spine--vertical { box-shadow: inset 3px 0 0 rgb(255 255 255 / 0.22), inset -3px 0 0 rgb(255 255 255 / 0.22); }
+.sv .sv-spine--vertical .sv-spine__mark {
+  writing-mode: vertical-rl;
+  font-family: 'Yu Mincho', 'Hiragino Mincho ProN', var(--sv-cjk);
+  font-size: 14px;
+  letter-spacing: 0.18em;
+}
+/* Kengdic: Hangul over a block grid */
+.sv .sv-spine--hangul {
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.13) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.13) 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+.sv .sv-spine--hangul .sv-spine__mark { font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', var(--sv-cjk); font-size: 13px; }
+/* Imported packs: plain cloth */
+.sv .sv-spine--plain { background-color: color-mix(in srgb, var(--sv-hue) 50%, #3b302a); }
+.sv .sv-spine--plain .sv-spine__mark { font-size: 18px; }
+.sv .sv-spine--small { flex: none; width: 38px; height: 70px; border-radius: 4px; box-shadow: 0 4px 10px -6px rgb(28 25 23 / 0.6); }
+
+@keyframes sv-spin { to { transform: rotate(360deg); } }
+@keyframes sv-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(290%); }
+}
+
+/* Inspector: a drawer on desktop, a bottom sheet on the phone. */
+.sv-scrim {
+  position: fixed;
+  inset: var(--sv-inspector-top, 0) 0 0 0;
+  z-index: 900;
+  background: rgb(28 25 23 / 0.3);
+}
+.sv-scrim.is-entering { animation: sv-fade 0.2s var(--sv-ease); }
+.sv.sv-inspector {
+  position: fixed;
+  top: var(--sv-inspector-top, 0);
+  right: 0;
+  bottom: 0;
+  z-index: 901;
+  width: min(380px, 92vw);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--sv-card);
+  border-left: 4px solid var(--sv-hue);
+  box-shadow: -24px 0 48px -28px rgb(28 25 23 / 0.6);
+  user-select: text;
+}
+.sv.sv-inspector.is-entering { animation: sv-drawer 0.28s var(--sv-ease-out); }
+.sv .sv-inspector__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px;
+  padding: 18px 12px 14px 18px;
+  background:
+    linear-gradient(to bottom, transparent calc(100% - 2px), color-mix(in srgb, var(--sv-hue) 30%, transparent) calc(100% - 2px)),
+    linear-gradient(100deg, color-mix(in srgb, var(--sv-tint) 70%, var(--sv-card)), color-mix(in srgb, var(--sv-tint) 20%, var(--sv-card)));
+}
+.sv .sv-inspector__title h3 {
+  margin: 2px 0 8px;
+  font-family: var(--sv-serif);
+  font-size: 1.3rem;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--sv-ink);
+}
+.sv .sv-inspector__state {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-family: var(--sv-mono);
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--sv-ink-soft);
+  background: rgb(255 253 249 / 0.75);
+  box-shadow: inset 0 0 0 1px var(--sv-line);
+}
+.sv .sv-inspector__state.is-installed { color: var(--sv-teal-deep); background: var(--sv-teal-tint); box-shadow: none; }
+.sv .sv-inspector__desc {
+  margin: 14px 18px 2px;
+  font-family: var(--sv-serif);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--sv-ink);
+}
+.sv .sv-meta { margin: 8px 18px 12px; }
+.sv .sv-meta__row {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px dotted var(--sv-line);
+}
+.sv .sv-meta__row:last-child { border-bottom: 0; }
+.sv .sv-meta dt {
+  padding-top: 2px;
+  font-family: var(--sv-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sv-ink-soft);
+}
+.sv .sv-meta dd { margin: 0; font-size: 13.5px; line-height: 1.4; color: var(--sv-ink); overflow-wrap: anywhere; }
+.sv .sv-meta dd small { display: block; font-size: 12px; color: var(--sv-ink-soft); }
+.sv .sv-meta code {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--sv-mono);
+  font-size: 11.5px;
+  background: var(--sv-paper);
+  word-break: break-all;
+}
+.sv .sv-inspector__foot {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  padding: 12px 18px 18px;
+  background: var(--sv-card);
+  border-top: 1px solid var(--sv-line-soft);
+  display: flex;
+  justify-content: flex-end;
+}
+.sv .sv-inspector__progress { position: relative; flex: 1; padding-bottom: 10px; font-family: var(--sv-mono); font-size: 12px; color: var(--sv-ink-soft); }
+.sv .sv-inspector__progress .sv-progress { border-radius: 999px; height: 4px; }
+
+@keyframes sv-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sv-drawer { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes sv-sheet { from { transform: translateY(48px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+
+@media (max-width: 600px) {
+  .sv .sv-shelf__packs { grid-template-columns: 1fr; padding: 10px; }
+  .sv .sv-shelf__sample { font-size: 88px; }
+  .sv.sv-inspector {
+    top: auto;
+    left: 0;
+    width: auto;
+    max-height: 86vh;
+    border-left: 0;
+    border-top: 4px solid var(--sv-hue);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -20px 40px -24px rgb(28 25 23 / 0.6);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .sv-scrim { inset: 0; }
+  .sv.sv-inspector.is-entering { animation-name: sv-sheet; }
+}

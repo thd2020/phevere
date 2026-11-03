@@ -233,6 +233,17 @@ export {
   type SourceRowInput,
 } from './settings-sources';
 export {
+  LANGUAGE_TRAITS,
+  formatBytes,
+  languageTraits,
+  offlineShelvesHtml,
+  packCardHtml,
+  packInspectorHtml,
+  type PackDetails,
+  type PackProgress,
+  type PackView,
+} from './settings-offline';
+export {
   API_PROVIDERS,
   apiKeyCardHtml,
   apiKeysPanelHtml,
