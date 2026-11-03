@@ -2586,6 +2586,16 @@ function wordImageFetcher(): ((lemma: string, lang?: string, gloss?: string) => 
   } catch {
     /* unreadable settings: images stay on, the default */
   }
+  // Through the main process: it identifies itself to Wikimedia (anonymous clients get about
+  // ten requests a minute, a deck of cards needs several per card) and caches on disk.
+  const api = (window as any).dictionaryAPI;
+  if (api?.senseImages) {
+    return (lemma, lang, gloss) => {
+      const g = String(gloss || '').trim();
+      const sense = g ? { meaning: g, partOfSpeech: 'noun' } : { meaning: '' };
+      return api.senseImages(lemma, [sense], { max: 1, lang }).then((r: any[]) => (Array.isArray(r) && r[0]) || null);
+    };
+  }
   return (lemma, lang, gloss) => fetchWordImage(lemma, { lang, gloss });
 }
 

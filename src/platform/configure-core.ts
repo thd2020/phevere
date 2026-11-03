@@ -9,11 +9,13 @@ import { createNodeHttpClient } from './node-http';
 import { nodeSha256Hex } from './node-sha256';
 import { electronVocabDb } from './electron-vocab-db';
 import { lookupOffline } from '../services/offline-dict-store';
+import { fileLookupCache, pruneLookupCache } from '../services/lookup-cache-store';
 
 configureCore({
   http: createNodeHttpClient(),
   sha256Hex: nodeSha256Hex,
   lookupOffline,
+  lookupCache: fileLookupCache,
   vocabDb: electronVocabDb,
   deviceName: () => hostname(),
   newId: () => {
@@ -24,3 +26,5 @@ configureCore({
     }
   },
 });
+
+pruneLookupCache();
