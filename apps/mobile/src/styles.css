@@ -1997,6 +1997,20 @@ html[data-notify="ios"] .toast {
 .vocab-list .vocab-facts div { display: flex; align-items: baseline; gap: 5px; }
 .vocab-list .vocab-facts dt { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--md-sys-color-on-surface-variant); }
 .vocab-list .vocab-facts dd { margin: 0; font-size: 0.78rem; }
+.vocab-list .vocab-facts dd a { color: inherit; text-decoration: underline; text-decoration-color: var(--md-sys-color-outline-variant); text-underline-offset: 2px; }
+.vocab-list .vocab-source { min-width: 0; max-width: 100%; }
+.vocab-list .vocab-source dd { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vocab-list .vocab-source__more { margin-left: 6px; color: var(--md-sys-color-on-surface-variant); }
+.vocab-list .vocab-context {
+  margin: 0;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--md-sys-color-tertiary);
+  font-family: var(--md-font-display);
+  font-style: italic;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.vocab-list .vocab-context mark { padding: 0 2px; border-radius: 3px; background: var(--md-sys-color-tertiary-container); color: var(--md-sys-color-on-tertiary-container); font-style: normal; font-weight: 600; }
 .vocab-list .vocab-actions { display: flex; flex-direction: row; gap: 8px; margin: 0; }
 .vocab-list .vocab-action {
   display: inline-flex;

@@ -2421,7 +2421,7 @@ function filterVocabEntries(entries: any[]): any[] {
     .toLowerCase();
   if (!q) return entries;
   return entries.filter((e) => {
-    const blob = [e.lemma, e.reading, e.definition, e.partOfSpeech, e.note, ...(e.sources || [])]
+    const blob = [e.lemma, e.reading, e.definition, e.partOfSpeech, e.note, ...(e.sources || []), e.context?.doc, e.context?.title, e.context?.sentence]
       .filter(Boolean)
       .join(' ')
       .toLowerCase();

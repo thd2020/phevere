@@ -7,6 +7,7 @@
  */
 import { stripGlossText } from './lookup-policy';
 import { formatVocabLangPair } from './vocab-lang';
+import { findWordInSentence, siteOf, type SourceContext } from './source-context';
 import { WORDBOOK_CATALOG } from './wordbook-catalog';
 
 const BOOK_NAMES = new Map(WORDBOOK_CATALOG.map((b) => [b.id, b]));
@@ -25,6 +26,8 @@ export interface VocabViewEntry {
   updatedAt?: number | string | null;
   /** The device the word was first saved on. */
   device?: string | null;
+  /** Where the word was first saved (source-context.ts). */
+  context?: SourceContext | null;
   reviewDue?: number | null;
   reps?: number | null;
   /** Subscribed word books that list the word, shown as small badges. */
@@ -164,17 +167,46 @@ function dueIn(due: number, now: number): string {
 }
 
 /** Saved when and on which device, where the senses came from, and where review stands. */
+/**
+ * Where the word was saved, as Kindle's Vocabulary Builder and Readlang show it: the book or page
+ * title, the page number, and the site, linked to the page when there is an address. The app is
+ * named only when there is nothing better.
+ */
+export function sourceFactHtml(ctx: SourceContext | null | undefined): string {
+  if (!ctx) return '';
+  const site = siteOf(ctx.url);
+  const name = clean(ctx.doc) || clean(ctx.title) || site || clean(ctx.app);
+  if (!name) return '';
+  const label = ctx.url ? `<a href="${esc(ctx.url)}" target="_blank" rel="noopener noreferrer">${esc(name)}</a>` : esc(name);
+  const extra: string[] = [];
+  if (ctx.page) extra.push(`p. ${ctx.page}`);
+  if (site && name !== site && !ctx.doc) extra.push(site);
+  else if (!ctx.url && !ctx.doc && ctx.app && name !== clean(ctx.app)) extra.push(clean(ctx.app));
+  return `${label}${extra.map((x) => `<span class="vocab-source__more">${esc(x)}</span>`).join('')}`;
+}
+
+/** The captured sentence as a quote, with the saved word (or the form used there) marked. */
+export function sourceSentenceHtml(ctx: SourceContext | null | undefined, lemma: string): string {
+  const s = clean(ctx?.sentence);
+  if (!s) return '';
+  const at = findWordInSentence(s, lemma);
+  const body = at ? `${esc(s.slice(0, at.index))}<mark>${esc(s.slice(at.index, at.index + at.length))}</mark>${esc(s.slice(at.index + at.length))}` : esc(s);
+  return `<blockquote class="vocab-context">${body}</blockquote>`;
+}
+
 function factsHtml(e: VocabViewEntry, t: number, now: number): string {
   const facts: Array<[string, string]> = [];
-  if (t) facts.push(['Saved', new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })]);
+  if (t) facts.push(['Saved', esc(new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }))]);
+  const source = sourceFactHtml(e.context);
+  if (source) facts.push(['Source', source]);
   const device = clean(e.device);
-  if (device) facts.push(['On', device]);
+  if (device) facts.push(['On', esc(device)]);
   const sources = (e.sources || []).map(clean).filter(Boolean).slice(0, 3);
-  if (sources.length) facts.push(['From', sources.join(', ')]);
+  if (sources.length) facts.push(['Dictionary', esc(sources.join(', '))]);
   const reps = Number(e.reps || 0);
-  if (e.reviewDue != null && reps > 0) facts.push(['Review', `${dueIn(Number(e.reviewDue), now)}, ${reps} ${reps === 1 ? 'review' : 'reviews'} so far`]);
+  if (e.reviewDue != null && reps > 0) facts.push(['Review', esc(`${dueIn(Number(e.reviewDue), now)}, ${reps} ${reps === 1 ? 'review' : 'reviews'} so far`)]);
   else facts.push(['Review', 'New']);
-  return `<dl class="vocab-facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`;
+  return `<dl class="vocab-facts">${facts.map(([k, v]) => `<div${k === 'Source' ? ' class="vocab-source"' : ''}><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
 }
 
 export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now()): string {
@@ -213,6 +245,7 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
         ? `<ol class="vocab-def vocab-senses${more ? ' is-clamped' : ''}">${senses.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>${more
           ? `<button type="button" class="vocab-more btn-link" data-act="nb-more">Show more</button>` : ''}`
         : '<p class="vocab-empty-def">No definition saved.</p>'}
+      ${sourceSentenceHtml(e.context, lemma)}
       ${note ? `<p class="vocab-note">${esc(note)}</p>` : ''}
       <div class="vocab-foot">
         ${factsHtml(e, t, now)}

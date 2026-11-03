@@ -854,7 +854,7 @@ export function notebookBody(
   // Saved order: reviews and sync bump updatedAt, which must not move words.
   else list.sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));
   const matches = (e: VocabEntry) =>
-    [e.lemma, e.reading, e.definition, e.partOfSpeech, e.note, ...(e.sources || [])]
+    [e.lemma, e.reading, e.definition, e.partOfSpeech, e.note, ...(e.sources || []), e.context?.doc, e.context?.title, e.context?.sentence]
       .filter(Boolean)
       .join(' ')
       .toLowerCase()

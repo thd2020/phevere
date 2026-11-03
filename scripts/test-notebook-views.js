@@ -163,6 +163,25 @@ const facts = vocabEntryHtml({ id: 'f', lemma: 'holon', device: 'DESKTOP-4K2', s
 assert.match(facts, /<dt>On<\/dt><dd>DESKTOP-4K2<\/dd>/);
 assert.match(facts, /In 3 days, 2 reviews so far/);
 assert.match(vocabEntryHtml({ id: 'g', lemma: 'new' }, true, now), /<dd>New<\/dd>/);
+assert.match(facts, /<dt>Dictionary<\/dt><dd>Wiktionary<\/dd>/);
+assert.doesNotMatch(facts, /<dt>Source<\/dt>/, 'no Source without a context');
+
+// Source: the book with its page, or the page title linked to its address, and the sentence
+// with the saved word marked.
+const geb = vocabEntryHtml(
+  { id: 's1', lemma: 'braid', context: { app: 'Acrobat', doc: 'GEB.pdf', page: 12, sentence: 'An Eternal Golden Braid, a metaphorical fugue.' } },
+  true,
+  now,
+);
+assert.match(geb, /<dt>Source<\/dt><dd>GEB\.pdf<span class="vocab-source__more">p\. 12<\/span><\/dd>/);
+assert.match(geb, /<blockquote class="vocab-context">An Eternal Golden <mark>Braid<\/mark>, a metaphorical fugue\.<\/blockquote>/);
+const web = vocabEntryHtml(
+  { id: 's2', lemma: 'strand', context: { app: 'Chrome', title: 'Strand <b>', url: 'https://en.wikipedia.org/wiki/Strand?a=1&b=2' } },
+  true,
+  now,
+);
+assert.match(web, /<a href="https:\/\/en\.wikipedia\.org\/wiki\/Strand\?a=1&amp;b=2" target="_blank" rel="noopener noreferrer">Strand &lt;b&gt;<\/a><span class="vocab-source__more">en\.wikipedia\.org<\/span>/);
+assert.doesNotMatch(web, /vocab-context/, 'no quote without a sentence');
 
 // Recent lookups use the notebook row and show what the notebook knows.
 const rec = recentListHtml(

@@ -228,10 +228,10 @@ function normPos(pos: unknown): string {
   return map[p.replace(/\.$/, '')] || p;
 }
 
-/** A sentence from the note that uses the word, with the form that appears there. */
+/** A sentence from the note, or the one the word was saved from, that uses the word, with its form there. */
 export function clozeFrom(e: NotebookEntry): { sentence: string; form: string } | null {
   const lemma = clean(e.lemma);
-  const note = clean(e.note);
+  const note = [clean(e.note), clean(e.context?.sentence).replace(/^…|…$/g, '')].filter(Boolean).join('\n');
   if (!lemma || !note) return null;
   for (const raw of note.split(/(?<=[.!?。！？])\s*|\n+/)) {
     const sentence = raw.trim();

@@ -19,6 +19,7 @@ const bundle = esbuild.buildSync({
       export { configureCore } from './src/runtime';
       export { addVocab, findByLemma, setVocabContextIfEmpty } from './src/vocab-store';
       export { VOCAB_SCHEMA_SQL } from './src/schema';
+      export { clozeFrom } from './src/review-quiz';
     `,
     resolveDir: path.join(root, 'packages', 'core'),
     loader: 'ts',
@@ -189,8 +190,16 @@ async function storage() {
   return 5;
 }
 
+function cloze() {
+  // The Review quiz's gap-fill uses the sentence the word was saved from when the note has none.
+  const e = { lemma: 'braid', context: { sentence: '…the three strands of this golden braid are Gödel, Escher and Bach.' } };
+  assert.deepEqual(core.clozeFrom(e), { sentence: 'the three strands of this golden _____ are Gödel, Escher and Bach.', form: 'braid' });
+  assert.equal(core.clozeFrom({ lemma: 'braid', note: 'She wore a braid to the dance last night.', context: e.context }).sentence, 'She wore a _____ to the dance last night.', 'the note comes first');
+  return 2;
+}
+
 (async () => {
-  let n = titles() + privateWindows() + sentences() + normalizing();
+  let n = titles() + privateWindows() + sentences() + normalizing() + cloze();
   n += await storage();
   console.log(`test-word-sources: ok (${n} checks)`);
 })().catch((err) => {
