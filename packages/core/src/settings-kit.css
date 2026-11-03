@@ -1,6 +1,7 @@
 /*
- * Shared tokens and controls for Settings → Sources, Offline and API keys
- * (settings-kit.ts and the three page modules), desktop and phone.
+ * Shared tokens and controls for every Settings page (settings-kit.ts, the
+ * Sources, Offline and API keys modules, and the Shortcuts, Capture,
+ * Notifications and Audio markup in each app), desktop and phone.
  *
  * A reading room: warm paper, catalogue cards with ruled lines, spines and seals.
  * Three hues only: rust for state and actions, teal for links and "installed",
@@ -173,6 +174,545 @@
 
 .sv .sv-empty { margin: 0; padding: 14px 16px; font-size: 13.5px; color: var(--sv-ink-soft); }
 
+/* ---------------------------------------------------------------- groups and rows */
+
+/* A card of rows. Rows are separated by an inset rule, never a full-width hairline. */
+.sv .sv-ledger {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--sv-card);
+  border: 1px solid var(--sv-line-soft);
+  border-radius: 14px;
+  box-shadow: var(--sv-shadow);
+  overflow: hidden;
+}
+.sv .sv-ledger + .sv-ledger,
+.sv .sv-ledger + .sv-drop,
+.sv .sv-drop + .sv-ledger { margin-top: 12px; }
+.sv .sv-section > .sv-head:first-child { margin-top: 22px; }
+
+.sv .sv-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 54px;
+  margin: 0;
+  padding: 9px 12px 9px 16px;
+  color: var(--sv-ink);
+}
+label.sv-row { cursor: pointer; }
+.sv .sv-ledger > :where(.sv-row, .sv-choice, .sv-nav) + :where(.sv-row, .sv-choice, .sv-nav)::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 12px;
+  height: 1px;
+  background: var(--sv-line-soft);
+}
+.sv .sv-row__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sv .sv-row__label {
+  font-family: var(--sv-ui);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--sv-ink);
+}
+.sv .sv-row__sub {
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--sv-ink-soft);
+}
+/* One status line under a label, only when it changes what to do next. */
+.sv .sv-row__status {
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--sv-rust);
+}
+.sv .sv-row__status.is-error { color: var(--sv-error); }
+.sv .sv-row__end {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.sv .sv-row > .sv-progress { left: 16px; right: 12px; bottom: 8px; height: 3px; border-radius: 999px; }
+.sv .sv-row:has(> .sv-progress:not([hidden])) { padding-bottom: 20px; }
+
+/* A footer of buttons inside a ledger, and a row of actions under one. */
+.sv .sv-ledger__foot {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 12px 12px 16px;
+}
+.sv .sv-ledger__foot::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 12px;
+  height: 1px;
+  background: var(--sv-line-soft);
+}
+.sv .sv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+.sv .sv-actions__status { font-size: 13px; color: var(--sv-teal); }
+.sv .sv-actions__status.is-error { color: var(--sv-error); }
+.sv .sv-note { margin: 8px 4px 0; font-size: 12.5px; line-height: 1.4; color: var(--sv-ink-soft); }
+
+/* ---------------------------------------------------------------- switch and radio */
+
+/* The cell that holds a switch or a radio at the end of a row: a label, or a span inside a label row. */
+.sv .sv-ctl {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 34px;
+  margin: 0;
+  cursor: pointer;
+}
+.sv .sv-ctl input.sv-switch[type],
+.sv .sv-ctl input.sv-radio[type] {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  flex-shrink: 0;
+  position: relative;
+  cursor: pointer;
+  border: 0;
+  box-shadow: none;
+  min-height: 0;
+  padding: 0;
+  accent-color: auto;
+}
+.sv .sv-ctl input.sv-switch[type] {
+  width: 40px;
+  height: 24px;
+  border-radius: 999px;
+  background: #d6cdc2;
+  transition: background-color 0.2s var(--sv-ease);
+}
+.sv .sv-ctl input.sv-switch[type]::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fffdf9;
+  box-shadow: 0 1px 2px rgb(28 25 23 / 0.28);
+  transition: transform 0.24s var(--sv-ease-out);
+}
+.sv .sv-ctl input.sv-switch[type]:checked { background: var(--sv-rust); }
+.sv .sv-ctl input.sv-switch[type]:checked::before { transform: translateX(16px); }
+.sv .sv-ctl input.sv-radio[type] {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--sv-card);
+  box-shadow: inset 0 0 0 2px #b9ada4;
+  transition: box-shadow 0.2s var(--sv-ease);
+}
+.sv .sv-ctl input.sv-radio[type]::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--sv-rust);
+  transform: scale(0);
+  transition: transform 0.24s var(--sv-ease-out);
+}
+.sv .sv-ctl input.sv-radio[type]:checked { box-shadow: inset 0 0 0 2px var(--sv-rust); }
+.sv .sv-ctl input.sv-switch[type]::after,
+.sv .sv-ctl input.sv-radio[type]::after { content: none; display: none; }
+.sv .sv-ctl input.sv-radio[type]:checked::before { transform: scale(1); }
+.sv .sv-ctl input.sv-switch[type]:focus-visible,
+.sv .sv-ctl input.sv-radio[type]:focus-visible { outline: 2px solid var(--sv-rust); outline-offset: 3px; }
+
+/* Segmented choice between two or three options, on a paper track. */
+.sv .sv-seg {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 999px;
+  background: var(--sv-paper-2);
+  box-shadow: inset 0 0 0 1px var(--sv-line-soft);
+}
+.sv .sv-seg__item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sv-ink-soft);
+  cursor: pointer;
+  transition: background-color 0.2s var(--sv-ease), color 0.2s var(--sv-ease), box-shadow 0.2s var(--sv-ease);
+}
+.sv .sv-seg__item input { position: absolute; opacity: 0; pointer-events: none; }
+.sv .sv-seg__item:has(input:checked) {
+  background: var(--sv-card);
+  color: var(--sv-rust);
+  box-shadow: 0 1px 2px rgb(28 25 23 / 0.12), 0 0 0 1px rgb(156 61 0 / 0.18);
+}
+.sv .sv-seg__item:has(input:focus-visible) { outline: 2px solid var(--sv-rust); outline-offset: 1px; }
+
+/* ---------------------------------------------------------------- choices with downloads */
+
+/* A radio row for an option that may need a download: seal, name, size or state, trailing mark. */
+.sv .sv-choice {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+}
+.sv .sv-choice::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--sv-rust);
+  transform: scaleY(0);
+  transition: transform 0.24s var(--sv-ease-out);
+}
+.sv .sv-choice.is-on::before { transform: scaleY(1); }
+.sv .sv-choice__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  margin: 0;
+  padding: 10px 6px 10px 14px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sv .sv-choice__main:disabled { cursor: default; }
+.sv .sv-choice:not(:has(> .sv-progress)) .sv-choice__main:disabled { opacity: 0.55; }
+.sv .sv-choice__main:focus-visible { outline: 2px solid var(--sv-rust); outline-offset: -3px; border-radius: 12px; }
+.sv .sv-choice .sv-seal svg { width: 18px; height: 18px; }
+.sv .sv-choice.is-on .sv-seal {
+  color: var(--sv-rust);
+  background: var(--sv-rust-tint);
+  box-shadow: inset 0 0 0 1px rgb(156 61 0 / 0.35), 0 0 0 2px var(--sv-card), 0 0 0 3px rgb(156 61 0 / 0.22);
+}
+.sv .sv-choice__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sv .sv-choice__name {
+  font-family: var(--sv-serif);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--sv-ink);
+}
+.sv .sv-choice__meta {
+  font-family: var(--sv-mono);
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--sv-ink-soft);
+}
+.sv .sv-choice__meta.is-installed { color: var(--sv-teal); }
+.sv .sv-choice__meta.is-busy { color: var(--sv-rust); }
+.sv .sv-choice__meta.is-error { color: var(--sv-error); }
+.sv .sv-choice__mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+.sv .sv-choice__mark svg { width: 20px; height: 20px; }
+.sv .sv-choice__mark--check { color: var(--sv-rust); }
+.sv .sv-choice__mark--download { color: var(--sv-ink-soft); }
+.sv .sv-choice > .sv-progress { left: 62px; right: 16px; bottom: 8px; height: 3px; border-radius: 999px; }
+.sv .sv-choice:has(> .sv-progress) .sv-choice__main { padding-bottom: 20px; }
+
+/* ---------------------------------------------------------------- list rows that open something */
+
+.sv .sv-nav {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 56px;
+  margin: 0;
+  padding: 9px 10px 9px 16px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--sv-ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.18s var(--sv-ease);
+}
+.sv .sv-nav:hover { background: rgb(235 229 220 / 0.55); }
+.sv .sv-nav:focus-visible { outline: 2px solid var(--sv-rust); outline-offset: -3px; border-radius: 12px; }
+.sv .sv-nav__icon { display: grid; flex-shrink: 0; color: var(--sv-ink-soft); }
+.sv .sv-nav__icon svg { width: 22px; height: 22px; fill: currentColor; }
+.sv .sv-nav__value { flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--sv-rust); }
+.sv .sv-nav__chev { display: grid; flex-shrink: 0; color: var(--sv-ink-soft); }
+.sv .sv-nav__chev svg { width: 18px; height: 18px; }
+
+/* Small status pill beside a heading or a name. */
+.sv .sv-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-family: var(--sv-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--sv-ink-soft);
+  background: var(--sv-paper-2);
+}
+.sv .sv-pill svg { width: 12px; height: 12px; fill: currentColor; }
+.sv .sv-pill--ok { color: var(--sv-teal-deep); background: var(--sv-teal-tint); }
+
+/* ---------------------------------------------------------------- progress */
+
+/* Thin bar along the bottom edge of the card or row that holds it. */
+.sv .sv-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--sv-hue) 16%, transparent);
+}
+.sv .sv-progress > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--sv-hue);
+  transition: width 0.3s var(--sv-ease);
+}
+.sv .sv-progress.is-indeterminate > span {
+  width: 36%;
+  animation: sv-sweep 1.3s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+@keyframes sv-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(290%); }
+}
+
+/* ---------------------------------------------------------------- fields */
+
+.sv select.sv-select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  height: 34px;
+  min-height: 34px;
+  margin: 0;
+  padding: 0 34px 0 12px;
+  border: 1px solid var(--sv-line);
+  border-radius: 8px;
+  background: #faf6f0 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 10l5 5 5-5' fill='none' stroke='%235c534e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center / 16px;
+  box-shadow: none;
+  font-family: var(--sv-ui);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--sv-ink);
+  cursor: pointer;
+  transition: border-color 0.18s var(--sv-ease), box-shadow 0.18s var(--sv-ease);
+}
+.sv select.sv-select:hover { border-color: var(--sv-outline); }
+.sv select.sv-select:focus { outline: none; border-color: var(--sv-rust); box-shadow: 0 0 0 3px rgb(156 61 0 / 0.14); }
+
+/* Slider with its value in mono beside it. */
+.sv .sv-range-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 340px;
+}
+.sv input.sv-range[type] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+}
+.sv input.sv-range[type]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: #d6cdc2;
+}
+.sv input.sv-range[type]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border-radius: 50%;
+  background: var(--sv-rust);
+  box-shadow: 0 0 0 3px var(--sv-card), 0 1px 3px 3px rgb(28 25 23 / 0.18);
+  transition: transform 0.18s var(--sv-ease-out);
+}
+.sv input.sv-range[type]:active::-webkit-slider-thumb { transform: scale(1.12); }
+.sv input.sv-range[type]::-moz-range-track { height: 4px; border-radius: 999px; background: #d6cdc2; }
+.sv input.sv-range[type]::-moz-range-thumb { width: 18px; height: 18px; border: 0; border-radius: 50%; background: var(--sv-rust); }
+.sv input.sv-range[type]:focus { outline: none; box-shadow: none; }
+.sv input.sv-range[type]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--sv-card), 0 0 0 5px var(--sv-rust); }
+.sv .sv-range__value {
+  min-width: 4.5ch;
+  font-family: var(--sv-mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--sv-ink-soft);
+}
+
+/* Dashed well for dropping or pasting a file. */
+.sv .sv-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 80px;
+  padding: 16px;
+  border: 1.5px dashed var(--sv-line);
+  border-radius: 14px;
+  background: rgb(255 253 249 / 0.45);
+  text-align: center;
+  cursor: default;
+  transition: border-color 0.2s var(--sv-ease), background-color 0.2s var(--sv-ease);
+}
+.sv .sv-drop strong { font-size: 14px; font-weight: 600; color: var(--sv-ink); }
+.sv .sv-drop span { font-family: var(--sv-mono); font-size: 11.5px; color: var(--sv-ink-soft); }
+.sv .sv-drop.is-dragover,
+.sv .sv-drop:focus-visible { outline: none; border-color: var(--sv-rust); background: rgb(255 219 204 / 0.35); }
+.sv .sv-drop.is-busy { opacity: 0.6; }
+
+/* ---------------------------------------------------------------- key caps */
+
+.sv .sv-keycaps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.sv kbd.sv-kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--sv-line);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--sv-card);
+  box-shadow: none;
+  font-family: var(--sv-mono);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--sv-ink);
+}
+.sv .sv-kbd-join { font-family: var(--sv-mono); font-size: 11px; color: var(--sv-ink-soft); }
+.sv .sv-kbd-empty { font-size: 13px; color: var(--sv-ink-soft); }
+
+/* An editable shortcut: label, a well of key caps that starts recording on click, and Set…. */
+.sv .sv-row--keys {
+  display: grid;
+  grid-template-columns: var(--sv-label-col, 172px) minmax(0, 1fr) auto;
+  column-gap: 12px;
+}
+.sv .sv-row--keys.is-fixed { grid-template-columns: var(--sv-label-col, 172px) minmax(0, 1fr); }
+.sv .sv-row--keys.is-fixed .sv-keycaps { padding: 0 11px; }
+.sv .sv-keyfield {
+  min-height: 36px;
+  padding: 4px 10px;
+  border: 1px solid var(--sv-line);
+  border-radius: 8px;
+  background: #faf6f0;
+  cursor: pointer;
+  transition: border-color 0.18s var(--sv-ease), box-shadow 0.18s var(--sv-ease);
+}
+.sv .sv-keyfield:hover { border-color: var(--sv-outline); }
+.sv .sv-row--keys:has(.is-recording) .sv-keyfield {
+  border-color: var(--sv-rust);
+  box-shadow: 0 0 0 3px rgb(156 61 0 / 0.14);
+  animation: sv-listen 1.1s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
+}
+.sv .sv-btn.is-recording { border-color: var(--sv-rust); background: var(--sv-rust-tint); color: var(--sv-rust-deep); }
+@keyframes sv-listen { from { box-shadow: 0 0 0 3px rgb(156 61 0 / 0.16); } to { box-shadow: 0 0 0 3px rgb(156 61 0 / 0.04); } }
+
+/* Visually hidden, still read by screen readers and still focusable from script. */
+.sv .sv-vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Elements switched off with the hidden attribute stay hidden whatever display a kit class gives them. */
+.sv [hidden] { display: none !important; }
+
+@media (max-width: 600px) {
+  .sv .sv-row { padding: 9px 10px 9px 14px; }
+  .sv .sv-ledger > :where(.sv-row, .sv-choice, .sv-nav) + :where(.sv-row, .sv-choice, .sv-nav)::after { left: 14px; right: 10px; }
+  .sv .sv-nav { padding-left: 14px; }
+  .sv .sv-range-wrap { max-width: none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .sv *,

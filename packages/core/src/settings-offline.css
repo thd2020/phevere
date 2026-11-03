@@ -160,27 +160,6 @@
   animation: sv-spin 0.9s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
 }
 
-.sv .sv-progress {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 3px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--sv-hue) 16%, transparent);
-}
-.sv .sv-progress > span {
-  display: block;
-  height: 100%;
-  width: 0;
-  background: var(--sv-hue);
-  transition: width 0.3s var(--sv-ease);
-}
-.sv .sv-progress.is-indeterminate > span {
-  width: 36%;
-  animation: sv-sweep 1.3s cubic-bezier(0.65, 0, 0.35, 1) infinite;
-}
-
 /* Spines */
 .sv .sv-spine {
   position: relative;
@@ -280,10 +259,6 @@
 .sv .sv-spine--small { flex: none; width: 38px; height: 70px; border-radius: 4px; box-shadow: 0 4px 10px -6px rgb(28 25 23 / 0.6); }
 
 @keyframes sv-spin { to { transform: rotate(360deg); } }
-@keyframes sv-sweep {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(290%); }
-}
 
 /* Inspector: a drawer on desktop, a bottom sheet on the phone. */
 .sv-scrim {

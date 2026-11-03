@@ -257,6 +257,18 @@ export { normalizeVocabLemma, closestSpelling, typoDistance } from './vocab-lemm
 export { normalizeStoredLemmas } from './vocab-sync';
 export { checkApiKey, type ApiProviderId, type ApiCredentials, type ApiKeyCheck } from './api-key-check';
 export {
+  SVG as SETTINGS_ICONS,
+  choiceRowHtml,
+  keycapsHtml,
+  navRowHtml,
+  rangeRowHtml,
+  switchRowHtml,
+  type ChoiceRowInput,
+  type NavRowInput,
+  type RangeRowInput,
+  type SwitchRowInput,
+} from './settings-kit';
+export {
   SOURCE_INFO,
   TRANSLATION_ENGINES,
   sourceRowHtml,
