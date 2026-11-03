@@ -120,7 +120,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export async function copySelection(): Promise<{ text: string; backup: ClipboardBackup }> {
   const backup = backupClipboard();
   // A marker shows whether the copy landed: apps with no selection leave the clipboard alone.
-  const marker = `⁣phevere-${Date.now()}`;
+  const marker = `\u2063phevere-${Date.now()}`;
   clipboard.writeText(marker);
   await sendCopy();
   let text = '';
