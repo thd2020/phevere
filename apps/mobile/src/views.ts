@@ -828,15 +828,13 @@ export function notebookBody(
   if (sort === 'az') list.sort((a, b) => a.lemma.localeCompare(b.lemma, undefined, { sensitivity: 'base', numeric: true }));
   // Saved order: reviews and sync bump updatedAt, which must not move words.
   else list.sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));
-  if (q) {
-    list = list.filter((e) =>
-      [e.lemma, e.reading, e.definition, e.partOfSpeech, e.note, ...(e.sources || [])]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(q),
-    );
-  }
+  const matches = (e: VocabEntry) =>
+    [e.lemma, e.reading, e.definition, e.partOfSpeech, e.note, ...(e.sources || [])]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+  if (q) list = list.filter(matches);
   const head = `
     <div class="nb-head">
       <input id="nbq" type="search" class="vocab-search" placeholder="Search notebook…" value="${esc(filter)}" autocomplete="off" aria-label="Search notebook" />
@@ -847,6 +845,11 @@ export function notebookBody(
     </div>
     <div class="nbv nb-views">${notebookViewSwitchHtml(nb.view)}</div>`;
   if (nb.view !== 'list') {
+    // The list pages through the notebook; the other views need all of it.
+    if (nb.pool.length > entries.length) {
+      const all = [...nb.pool].sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));
+      list = q ? all.filter(matches) : all;
+    }
     const analysis = analyzeNotebook(list);
     const body =
       nb.view === 'families'

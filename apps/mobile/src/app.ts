@@ -1454,7 +1454,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'tab':
       tab = t.dataset.tab === 'notebook' ? 'notebook' : t.dataset.tab === 'settings' ? 'settings' : 'lookup';
       if (tab === 'notebook') await refreshNotebook();
-      if (tab === 'notebook' && nbState.view === 'review') await loadReviewPool();
+      // Every view but the list works on the whole notebook, not the first page of it.
+      if (tab === 'notebook' && nbState.view !== 'list') await loadReviewPool();
       if (tab === 'settings') await refreshPacks();
       paint();
       return;
@@ -1698,10 +1699,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'nb-view':
       nbState.view = (t.dataset.view as NotebookView) || 'list';
       writeStore(NB_VIEW_KEY, nbState.view);
-      if (nbState.view === 'review') {
-        nbState.review = null;
-        await loadReviewPool();
-      }
+      if (nbState.view === 'review') nbState.review = null;
+      if (nbState.view !== 'list') await loadReviewPool();
       paint();
       window.scrollTo({ top: 0 });
       return;
