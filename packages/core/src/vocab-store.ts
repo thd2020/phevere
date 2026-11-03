@@ -3,7 +3,7 @@
  * AI card enrichment is optional later (note field reserved).
  */
 
-import { getNewId, getVocabDb } from './runtime';
+import { getDeviceName, getNewId, getVocabDb } from './runtime';
 import { normalizeVocabLemma } from './vocab-lemma';
 import { scheduleReview, type ReviewGrade } from './review-schedule';
 
@@ -50,6 +50,8 @@ export interface VocabEntry {
   lapses?: number;
   lastReview?: number;
   learningSteps?: number;
+  /** The device the word was first saved on. */
+  device?: string;
 }
 
 export interface VocabAddInput {
@@ -88,6 +90,7 @@ export function rowToEntry(row: Record<string, unknown>): VocabEntry {
     lapses: row.lapses != null ? Number(row.lapses) : undefined,
     lastReview: row.last_review != null ? Number(row.last_review) : undefined,
     learningSteps: row.learning_steps != null ? Number(row.learning_steps) : undefined,
+    device: row.device ? String(row.device) : undefined,
   };
 }
 
@@ -145,8 +148,8 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
 
   const id = getNewId();
   await db.runWrite(
-    `INSERT INTO vocab (id, lemma, reading, definition, part_of_speech, source_lang, target_lang, sources, note, tags, created_at, updated_at, review_due, review_interval, ease, reps)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 2.5, 0)`,
+    `INSERT INTO vocab (id, lemma, reading, definition, part_of_speech, source_lang, target_lang, sources, note, tags, created_at, updated_at, review_due, review_interval, ease, reps, device)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 2.5, 0, ?)`,
     [
       id,
       lemma,
@@ -161,6 +164,7 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
       now,
       now,
       now,
+      getDeviceName() || null,
     ],
   );
   const created = await getVocab(id);

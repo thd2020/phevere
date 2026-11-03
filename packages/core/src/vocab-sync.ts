@@ -130,7 +130,9 @@ async function applyRemote(change: { id: string; updatedAt: number; deleted: boo
   if (tomb && Number(tomb.deleted_at) > change.updatedAt) return false;
   const e = change.data;
   if (!e || typeof e.lemma !== 'string' || !e.lemma.trim()) return false;
-  await writeRow({ ...keepMemoryState(local, e), ...(e as VocabEntry), id: change.id, updatedAt: change.updatedAt });
+  // An older app sends no device; keep the one this device already knows.
+  const device = (e as VocabEntry).device || (local?.device ? String(local.device) : undefined);
+  await writeRow({ ...keepMemoryState(local, e), ...(e as VocabEntry), device, id: change.id, updatedAt: change.updatedAt });
   if (tomb) await db.runWrite(`DELETE FROM vocab_deleted WHERE id = ?`, [change.id]);
   return true;
 }
@@ -160,8 +162,8 @@ async function writeRow(e: VocabEntry): Promise<void> {
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
   await getVocabDb().runWrite(
     `INSERT OR REPLACE INTO vocab (id, lemma, reading, definition, part_of_speech, source_lang, target_lang, sources, note, tags, created_at, updated_at, review_due, review_interval, ease, reps,
-       stability, difficulty, state, lapses, last_review, learning_steps)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       stability, difficulty, state, lapses, last_review, learning_steps, device)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       e.id,
       e.lemma.trim(),
@@ -187,6 +189,7 @@ async function writeRow(e: VocabEntry): Promise<void> {
       num(e.lapses) ?? 0,
       num(e.lastReview),
       num(e.learningSteps) ?? 0,
+      text(e.device),
     ],
   );
 }
@@ -236,6 +239,7 @@ export async function mergeDuplicateLemmas(at: number): Promise<number> {
       lapses: studied.lapses,
       lastReview: studied.lastReview,
       learningSteps: studied.learningSteps,
+      device: [...entries].sort((a, b) => a.createdAt - b.createdAt).find((x) => x.device)?.device,
     });
     for (const e of entries.slice(1)) {
       await db.runWrite(`DELETE FROM vocab WHERE id = ?`, [e.id]);

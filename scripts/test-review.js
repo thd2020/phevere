@@ -318,16 +318,16 @@ async function main() {
     VALUES ('w1', 'abandon', 'to leave behind', 1, 2, ?, 10, 2.5, 4)`, [now]);
   for (const stmt of core.VOCAB_SCHEMA_SQL.split(';')) if (stmt.trim()) old.run(stmt);
   const alters = core.vocabColumnMigrations(columns(old));
-  assert.equal(alters.length, 6);
+  assert.equal(alters.length, 7);
   for (const sql of alters) old.run(sql);
   assert.deepEqual(core.vocabColumnMigrations(columns(old)), [], 'second run adds nothing');
-  for (const c of ['stability', 'difficulty', 'state', 'lapses', 'last_review', 'learning_steps']) assert.ok(columns(old).includes(c), c);
+  for (const c of ['stability', 'difficulty', 'state', 'lapses', 'last_review', 'learning_steps', 'device']) assert.ok(columns(old).includes(c), c);
   const kept = old.exec(`SELECT lemma, review_interval, reps FROM vocab WHERE id = 'w1'`)[0].values[0];
   assert.deepEqual(kept, ['abandon', 10, 4], 'existing row untouched');
 
   // Desktop worker migration: same columns, same idempotence (src/services/local-db-worker.cjs).
   const workerSrc = require('fs').readFileSync(path.join(root, 'src', 'services', 'local-db-worker.cjs'), 'utf8');
-  for (const c of ['stability', 'difficulty', 'state', 'lapses', 'last_review', 'learning_steps']) {
+  for (const c of ['stability', 'difficulty', 'state', 'lapses', 'last_review', 'learning_steps', 'device']) {
     assert.ok(workerSrc.includes(`['${c}',`), `worker adds ${c}`);
   }
 

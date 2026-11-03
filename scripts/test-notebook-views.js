@@ -158,6 +158,12 @@ const head = row.slice(0, row.indexOf('vocab-entry__details'));
 assert.match(head, /data-act="lookup"/);
 assert.match(head, /data-act="nb-play"/);
 
+// Expanded rows say when and where a word was saved, and where review stands.
+const facts = vocabEntryHtml({ id: 'f', lemma: 'holon', device: 'DESKTOP-4K2', sources: ['Wiktionary'], createdAt: now - DAY, reps: 2, reviewDue: now + 3 * DAY }, true, now);
+assert.match(facts, /<dt>On<\/dt><dd>DESKTOP-4K2<\/dd>/);
+assert.match(facts, /In 3 days, 2 reviews so far/);
+assert.match(vocabEntryHtml({ id: 'g', lemma: 'new' }, true, now), /<dd>New<\/dd>/);
+
 // Recent lookups use the notebook row and show what the notebook knows.
 const rec = recentListHtml(
   [{ q: 'inspect', at: now - 1000 }, { q: 'gargantuan', at: now - 2000 }, { q: 'old', at: 0 }],

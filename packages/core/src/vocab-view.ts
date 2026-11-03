@@ -20,6 +20,10 @@ export interface VocabViewEntry {
   note?: string | null;
   createdAt?: number | string | null;
   updatedAt?: number | string | null;
+  /** The device the word was first saved on. */
+  device?: string | null;
+  reviewDue?: number | null;
+  reps?: number | null;
 }
 
 export interface VocabListOptions {
@@ -141,6 +145,33 @@ function lookupButton(lemma: string): string {
   return `<button type="button" class="vocab-open" data-act="lookup" data-q="${esc(lemma)}" data-lemma="${esc(lemma)}" title="Look up" aria-label="Look up ${esc(lemma)}">${ICON.lookup}</button>`;
 }
 
+/** When the next review is, in words: "Due now", "Tomorrow", "In 5 days". */
+function dueIn(due: number, now: number): string {
+  const day = (x: number) => {
+    const d = new Date(x);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  };
+  const days = Math.round((day(due) - day(now)) / 86_400_000);
+  if (days <= 0) return 'Due now';
+  if (days === 1) return 'Tomorrow';
+  return days < 60 ? `In ${days} days` : `In ${Math.round(days / 30)} months`;
+}
+
+/** Saved when and on which device, where the senses came from, and where review stands. */
+function factsHtml(e: VocabViewEntry, t: number, now: number): string {
+  const facts: Array<[string, string]> = [];
+  if (t) facts.push(['Saved', new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })]);
+  const device = clean(e.device);
+  if (device) facts.push(['On', device]);
+  const sources = (e.sources || []).map(clean).filter(Boolean).slice(0, 3);
+  if (sources.length) facts.push(['From', sources.join(', ')]);
+  const reps = Number(e.reps || 0);
+  if (e.reviewDue != null && reps > 0) facts.push(['Review', `${dueIn(Number(e.reviewDue), now)}, ${reps} ${reps === 1 ? 'review' : 'reviews'} so far`]);
+  else facts.push(['Review', 'New']);
+  return `<dl class="vocab-facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`;
+}
+
 export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now()): string {
   const lemma = clean(e.lemma);
   const readings = vocabReadings(e.reading);
@@ -176,7 +207,7 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
         : '<p class="vocab-empty-def">No definition saved.</p>'}
       ${note ? `<p class="vocab-note">${esc(note)}</p>` : ''}
       <div class="vocab-foot">
-        <span class="vocab-provenance">${esc([...(e.sources || []).map(clean).filter(Boolean).slice(0, 3), t ? new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : ''].filter(Boolean).join(' · '))}</span>
+        ${factsHtml(e, t, now)}
         <span class="vocab-actions">
           <button type="button" class="vocab-action vocab-remove" data-act="nb-del" data-id="${id}">${ICON.remove}<span>Remove</span></button>
         </span>

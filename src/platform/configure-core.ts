@@ -3,6 +3,7 @@
  * Import this before any lookup/vocab call.
  */
 import { randomUUID } from 'crypto';
+import { hostname } from 'os';
 import { configureCore } from '@phevere/core';
 import { createNodeHttpClient } from './node-http';
 import { nodeSha256Hex } from './node-sha256';
@@ -14,6 +15,7 @@ configureCore({
   sha256Hex: nodeSha256Hex,
   lookupOffline,
   vocabDb: electronVocabDb,
+  deviceName: () => hostname(),
   newId: () => {
     try {
       return randomUUID();

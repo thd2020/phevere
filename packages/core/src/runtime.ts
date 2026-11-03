@@ -42,6 +42,8 @@ export interface CoreRuntime {
   vocabDb?: VocabDb;
   newId?: () => string;
   lookupCache?: LookupCacheStore;
+  /** A short name for this device ("DESKTOP-4K2", "Android phone"), stored with each new save. */
+  deviceName?: () => string;
 }
 
 let http: HttpClient | null = null;
@@ -50,6 +52,7 @@ let lookupOffline: LookupOffline = async () => [];
 let vocabDb: VocabDb | null = null;
 let newId: () => string = () => `v-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 let lookupCache: LookupCacheStore | null = null;
+let deviceName: () => string = () => '';
 
 export function configureCore(opts: CoreRuntime): void {
   http = opts.http;
@@ -58,6 +61,7 @@ export function configureCore(opts: CoreRuntime): void {
   if (opts.vocabDb) vocabDb = opts.vocabDb;
   if (opts.newId) newId = opts.newId;
   if (opts.lookupCache) lookupCache = opts.lookupCache;
+  if (opts.deviceName) deviceName = opts.deviceName;
 }
 
 export function getLookupCache(): LookupCacheStore | null {
@@ -89,4 +93,13 @@ export function getNewId(): string {
 
 export function isCoreConfigured(): boolean {
   return http != null && sha256Hex != null;
+}
+
+/** This device's name for new notebook saves, or '' when the shell gives none. */
+export function getDeviceName(): string {
+  try {
+    return String(deviceName() || '').slice(0, 64);
+  } catch {
+    return '';
+  }
 }

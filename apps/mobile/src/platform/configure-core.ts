@@ -14,6 +14,13 @@ configureCore({
   vocabDb: sqlJsVocabDb,
   lookupOffline,
   lookupCache: localLookupCache,
+  deviceName: () => {
+    const ua = navigator.userAgent || '';
+    if (/iPad/.test(ua)) return 'iPad';
+    if (/iPhone/.test(ua)) return 'iPhone';
+    if (/Android/.test(ua)) return /Mobile/.test(ua) ? 'Android phone' : 'Android tablet';
+    return 'Browser';
+  },
   newId: () => {
     const c = globalThis.crypto;
     if (c && typeof c.randomUUID === 'function') return c.randomUUID();

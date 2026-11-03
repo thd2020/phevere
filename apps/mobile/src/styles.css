@@ -2262,7 +2262,10 @@ html[data-notify="ios"] .toast {
   background: color-mix(in srgb, var(--md-sys-color-primary-container) 50%, transparent);
 }
 .vocab-list .vocab-foot { display: grid; gap: 10px; }
-.vocab-list .vocab-provenance { font-size: 0.78rem; color: var(--md-sys-color-on-surface-variant); }
+.vocab-list .vocab-facts { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; }
+.vocab-list .vocab-facts div { display: flex; align-items: baseline; gap: 5px; }
+.vocab-list .vocab-facts dt { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--md-sys-color-on-surface-variant); }
+.vocab-list .vocab-facts dd { margin: 0; font-size: 0.78rem; }
 .vocab-list .vocab-actions { display: flex; flex-direction: row; gap: 8px; margin: 0; }
 .vocab-list .vocab-action {
   display: inline-flex;
