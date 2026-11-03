@@ -204,7 +204,7 @@ export function sourceRowHtml(r: SourceRowInput): string {
       ${more}
     </details>
     <span class="sv-src__state">${r.blocked ? requirementHtml(info) : ''}</span>
-    <label class="sv-src__ctl">${control}</label>
+    <label class="sv-src__ctl sv-ctl">${control}</label>
   </div>`;
 }
 

@@ -155,7 +155,7 @@ internal sealed class SetupWindow : Window
         ocr = Option("OCR pack", "For hover lookup and Scan", ocrInstalled);
         if (ocrInstalled) ocr.IsEnabled = false;
         voice = new ComboBox { MinHeight = 36, Width = 196, VerticalAlignment = VerticalAlignment.Center };
-        voice.Items.Add("None"); voice.Items.Add("Compact (132 MB)"); voice.Items.Add("Full (350 MB)"); voice.SelectedIndex = fresh ? 0 : ExistingVoice();
+        voice.Items.Add("None"); voice.Items.Add("Standard (132 MB)"); voice.Items.Add("High quality, recommended (350 MB)"); voice.SelectedIndex = fresh ? 0 : ExistingVoice();
         System.Windows.Automation.AutomationProperties.SetName(voice, "Pronunciation voice");
         BuildOptions();
         foreach (var box in new[] { ocr, desktop, startMenu, startup, launch }) { box.Checked += delegate { UpdateSpace(); }; box.Unchecked += delegate { UpdateSpace(); }; }

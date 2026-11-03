@@ -116,6 +116,7 @@ import {
   type WordsContext,
   type WordsScope,
 } from '@phevere/core';
+import { choiceRowHtml, keycapsHtml, rangeRowHtml, switchRowHtml } from '@phevere/core';
 
 const rlog = (...args: unknown[]) => {
   if (!__PHEVERE_DEV__) return;
@@ -208,87 +209,84 @@ function initializeSettingsWindow() {
             <div class="settings-panel__intro">
               <h2 id="settings-monitor-heading" class="settings-panel__title">Shortcuts</h2>
             </div>
-            <div class="settings-group">
-            <div class="settings-field">
-              <span id="label-monitor-cycle" class="settings-field-label">Selection mode</span>
-              <div class="settings-shortcut-row">
-                <div class="settings-keycaps" id="monitor-cycle-shortcut-keys"></div>
-                <input type="text" id="monitor-cycle-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-monitor-cycle" />
-                <button type="button" class="btn btn-secondary settings-shortcut-set" id="monitor-cycle-set">Set…</button>
+            <div class="sv sv-page">
+              <div class="sv-ledger">
+                <div class="sv-row sv-row--keys">
+                  <span class="sv-row__text"><span id="label-monitor-cycle" class="sv-row__label">Selection mode</span></span>
+                  <div class="sv-keycaps sv-keyfield" id="monitor-cycle-shortcut-keys"></div>
+                  <input type="text" id="monitor-cycle-shortcut" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-monitor-cycle" />
+                  <button type="button" class="sv-btn" id="monitor-cycle-set">Set…</button>
+                </div>
+                <div class="sv-row sv-row--keys">
+                  <span class="sv-row__text"><span id="label-monitor-trigger" class="sv-row__label">Pop-up trigger</span><span class="sv-row__sub">Hold while selecting</span></span>
+                  <div class="sv-keycaps sv-keyfield" id="monitor-trigger-shortcut-keys"></div>
+                  <input type="text" id="monitor-trigger-shortcut" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-monitor-trigger" />
+                  <button type="button" class="sv-btn" id="monitor-trigger-set">Set…</button>
+                </div>
+                <div class="sv-row sv-row--keys">
+                  <span class="sv-row__text"><span id="label-ocr-shortcut" class="sv-row__label">Scan region</span></span>
+                  <div class="sv-keycaps sv-keyfield" id="ocr-shortcut-keys"></div>
+                  <input type="text" id="ocr-shortcut" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-ocr-shortcut" />
+                  <button type="button" class="sv-btn" id="ocr-shortcut-set">Set…</button>
+                </div>
+                <div class="sv-row sv-row--keys">
+                  <span class="sv-row__text"><span id="label-hover-shortcut" class="sv-row__label">Hover lookup</span></span>
+                  <div class="sv-keycaps sv-keyfield" id="hover-shortcut-keys"></div>
+                  <input type="text" id="hover-shortcut" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-hover-shortcut" />
+                  <button type="button" class="sv-btn" id="hover-shortcut-set">Set…</button>
+                </div>
               </div>
-            </div>
-            <div class="settings-field">
-              <span id="label-monitor-trigger" class="settings-field-label">Pop-up trigger<small class="settings-field-sub">Hold while selecting</small></span>
-              <div class="settings-shortcut-row">
-                <div class="settings-keycaps" id="monitor-trigger-shortcut-keys"></div>
-                <input type="text" id="monitor-trigger-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-monitor-trigger" />
-                <button type="button" class="btn btn-secondary settings-shortcut-set" id="monitor-trigger-set">Set…</button>
+              <div class="sv-actions">
+                <span id="monitor-shortcuts-status" class="sv-actions__status" role="status" aria-live="polite"></span>
+                <button type="button" id="monitor-save-shortcuts" class="sv-btn sv-btn--accent">Save</button>
               </div>
+              <header class="sv-head"><h3 class="sv-head__title">Built-in</h3></header>
+              <ul class="sv-ledger" id="builtin-shortcuts">
+                <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">Scan under pointer</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+G"></span></li>
+                <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">Scan active window</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+W"></span></li>
+                <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">Scan clipboard image</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+I"></span></li>
+                <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">Look up now playing</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+P"></span></li>
+              </ul>
             </div>
-            <div class="settings-field">
-              <span id="label-ocr-shortcut" class="settings-field-label">Scan region</span>
-              <div class="settings-shortcut-row">
-                <div class="settings-keycaps" id="ocr-shortcut-keys"></div>
-                <input type="text" id="ocr-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-ocr-shortcut" />
-                <button type="button" class="btn btn-secondary settings-shortcut-set" id="ocr-shortcut-set">Set…</button>
-              </div>
-            </div>
-            <div class="settings-field">
-              <span id="label-hover-shortcut" class="settings-field-label">Hover lookup</span>
-              <div class="settings-shortcut-row">
-                <div class="settings-keycaps" id="hover-shortcut-keys"></div>
-                <input type="text" id="hover-shortcut" readonly class="setting-input settings-shortcut-input" spellcheck="false" autocomplete="off" placeholder="Set… or double-click" aria-labelledby="label-hover-shortcut" />
-                <button type="button" class="btn btn-secondary settings-shortcut-set" id="hover-shortcut-set">Set…</button>
-              </div>
-            </div>
-            </div>
-            <div class="settings-actions settings-actions--wrap">
-              <button type="button" id="monitor-save-shortcuts" class="btn btn-primary">Save</button>
-              <span id="monitor-shortcuts-status" class="settings-inline-status" role="status" aria-live="polite"></span>
-            </div>
-            <h3 class="settings-subhead">Built-in</h3>
-            <ul class="settings-cheat">
-              <li><span class="settings-cheat__label">Scan under pointer</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+G"></span></li>
-              <li><span class="settings-cheat__label">Scan active window</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+W"></span></li>
-              <li><span class="settings-cheat__label">Scan clipboard image</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+I"></span></li>
-              <li><span class="settings-cheat__label">Look up now playing</span><span class="settings-keycaps" data-accel="CommandOrControl+Shift+P"></span></li>
-            </ul>
           </section>
 
           <section class="settings-panel" data-panel="capture" aria-labelledby="settings-capture-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-capture-heading" class="settings-panel__title">Capture</h2>
             </div>
-            <div class="settings-group">
-            <div class="settings-row settings-row--pack" role="group" aria-labelledby="enable-hover-label">
-              <span class="settings-row__text">
-                <span id="enable-hover-label" class="settings-row__label">Hover lookup</span>
-                <span id="hover-ocr-status" class="settings-row__status" role="status" aria-live="polite" hidden></span>
-              </span>
-              <span class="settings-row__controls">
-                <button type="button" id="hover-ocr-install" class="btn btn-secondary btn-small" hidden>Install</button>
-                <label class="settings-toggle-label">
-                  <input class="toggle-input" type="checkbox" id="enable-hover" checked aria-describedby="hover-ocr-status" />
-                  <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
-                </label>
-              </span>
-              <div id="hover-ocr-progress" class="settings-row__progress" hidden><span></span></div>
-            </div>
-            </div>
-            <div class="settings-dropzone" id="settings-dropzone" tabindex="0">
-              <strong>Drop or paste an image</strong>
-              <span>PNG, JPEG or WebP</span>
-            </div>
-            <h3 class="settings-subhead">Text recognition</h3>
-            <div class="settings-field">
-              <label for="ocr-profile-select">Model</label>
-              <select id="ocr-profile-select" class="setting-input"></select>
-            </div>
-            <p id="ocr-status" class="settings-inline-status" role="status" aria-live="polite">Checking…</p>
-            <div class="settings-actions settings-actions--wrap">
-              <button type="button" id="ocr-apply-profile" class="btn btn-primary">Apply</button>
-              <button type="button" id="ocr-upload-models" class="btn btn-secondary">Choose folder…</button>
-              <button type="button" id="ocr-refresh-status" class="btn btn-outlined">Refresh</button>
+            <div class="sv sv-page">
+              <div class="sv-ledger">
+                <div class="sv-row" role="group" aria-labelledby="enable-hover-label">
+                  <span class="sv-row__text">
+                    <span id="enable-hover-label" class="sv-row__label">Hover lookup</span>
+                    <span id="hover-ocr-status" class="sv-row__status" role="status" aria-live="polite" hidden></span>
+                  </span>
+                  <span class="sv-row__end">
+                    <button type="button" id="hover-ocr-install" class="sv-btn" hidden>Install</button>
+                    <label class="sv-ctl"><input type="checkbox" role="switch" class="sv-switch" id="enable-hover" checked aria-labelledby="enable-hover-label" aria-describedby="hover-ocr-status" /></label>
+                  </span>
+                  <div id="hover-ocr-progress" class="sv-progress" hidden><span></span></div>
+                </div>
+              </div>
+              <div class="sv-drop" id="settings-dropzone" tabindex="0">
+                <strong>Drop or paste an image</strong>
+                <span>PNG, JPEG or WebP</span>
+              </div>
+              <header class="sv-head"><h3 class="sv-head__title">Text recognition</h3></header>
+              <div class="sv-ledger">
+                <div class="sv-row">
+                  <span class="sv-row__text">
+                    <label for="ocr-profile-select" class="sv-row__label">Model</label>
+                    <span id="ocr-status" class="sv-row__sub" role="status" aria-live="polite">Checking…</span>
+                  </span>
+                  <select id="ocr-profile-select" class="sv-select"></select>
+                </div>
+                <div class="sv-ledger__foot">
+                  <button type="button" id="ocr-refresh-status" class="sv-btn">Refresh</button>
+                  <button type="button" id="ocr-upload-models" class="sv-btn">Choose folder…</button>
+                  <button type="button" id="ocr-apply-profile" class="sv-btn sv-btn--accent">Apply</button>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -296,28 +294,12 @@ function initializeSettingsWindow() {
             <div class="settings-panel__intro">
               <h2 id="settings-notifications-heading" class="settings-panel__title">Notifications</h2>
             </div>
-            <div class="settings-group">
-            <div class="settings-row" role="group" aria-labelledby="notify-clipboard-image-label">
-              <span id="notify-clipboard-image-label" class="settings-row__label">Image copied</span>
-              <label class="settings-toggle-label">
-                <input class="toggle-input" type="checkbox" id="notify-clipboard-image" checked />
-                <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
-              </label>
-            </div>
-            <div class="settings-row" role="group" aria-labelledby="notify-clipboard-empty-label">
-              <span id="notify-clipboard-empty-label" class="settings-row__label">No image on clipboard</span>
-              <label class="settings-toggle-label">
-                <input class="toggle-input" type="checkbox" id="notify-clipboard-empty" checked />
-                <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
-              </label>
-            </div>
-            <div class="settings-row" role="group" aria-labelledby="notify-hover-toggle-label">
-              <span id="notify-hover-toggle-label" class="settings-row__label">Hover lookup switched on or off</span>
-              <label class="settings-toggle-label">
-                <input class="toggle-input" type="checkbox" id="notify-hover-toggle" checked />
-                <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
-              </label>
-            </div>
+            <div class="sv sv-page">
+              <div class="sv-ledger">
+                ${switchRowHtml({ label: 'Image copied', on: true, attrs: 'id="notify-clipboard-image"' })}
+                ${switchRowHtml({ label: 'No image on clipboard', on: true, attrs: 'id="notify-clipboard-empty"' })}
+                ${switchRowHtml({ label: 'Hover lookup switched on or off', on: true, attrs: 'id="notify-hover-toggle"' })}
+              </div>
             </div>
           </section>
 
@@ -359,35 +341,19 @@ function initializeSettingsWindow() {
             <div class="settings-panel__intro">
               <h2 id="settings-audio-heading" class="settings-panel__title">Audio</h2>
             </div>
-            <div class="settings-group">
-            <div class="settings-row" role="group" aria-labelledby="enable-audio-label">
-              <span id="enable-audio-label" class="settings-row__label">Pronunciation</span>
-              <label class="settings-toggle-label">
-                <input class="toggle-input" type="checkbox" id="enable-audio" checked />
-                <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
-              </label>
-            </div>
-            </div>
-            <div id="voice-section" hidden>
-              <h3 class="settings-subhead">Pronunciation voice</h3>
-              <div class="voice-list" id="voice-list" role="radiogroup" aria-label="Pronunciation voice"></div>
-            </div>
-            <h3 class="settings-subhead">Playback</h3>
-            <div class="settings-group">
-            <div class="settings-field">
-              <label for="audio-speed">Speed</label>
-              <div class="settings-audio-range">
-                <input type="range" id="audio-speed" min="0.5" max="2" step="0.1" value="1" />
-                <span id="speed-value">1×</span>
+            <div class="sv sv-page">
+              <div class="sv-ledger">
+                ${switchRowHtml({ label: 'Pronunciation', on: true, attrs: 'id="enable-audio"' })}
               </div>
-            </div>
-            <div class="settings-field">
-              <label for="audio-volume">Volume</label>
-              <div class="settings-audio-range">
-                <input type="range" id="audio-volume" min="0" max="100" step="5" value="100" />
-                <span id="volume-value">100%</span>
+              <div class="sv-section" id="voice-section" hidden>
+                <header class="sv-head"><h3 class="sv-head__title">Pronunciation voice</h3></header>
+                <div class="sv-ledger" id="voice-list" role="radiogroup" aria-label="Pronunciation voice"></div>
               </div>
-            </div>
+              <header class="sv-head"><h3 class="sv-head__title">Playback</h3></header>
+              <div class="sv-ledger">
+                ${rangeRowHtml({ label: 'Speed', id: 'audio-speed', min: 0.5, max: 2, step: 0.1, value: 1, valueId: 'speed-value', valueText: '1.0×' })}
+                ${rangeRowHtml({ label: 'Volume', id: 'audio-volume', min: 0, max: 100, step: 5, value: 100, valueId: 'volume-value', valueText: '100%' })}
+              </div>
             </div>
           </section>
         </main>
@@ -952,11 +918,7 @@ function acceleratorParts(acc: string): string[] {
 }
 
 function keycapsInnerHtml(acc: string): string {
-  const parts = acceleratorParts(acc);
-  if (!parts.length) return '<span class="keycaps-empty">Not set</span>';
-  return parts
-    .map((k) => `<kbd class="keycap">${escapeHtmlSelection(k)}</kbd>`)
-    .join('<span class="keycap-join">+</span>');
+  return keycapsHtml(acceleratorParts(acc));
 }
 
 function paintShortcutKeycaps(input: HTMLInputElement): void {
@@ -965,7 +927,7 @@ function paintShortcutKeycaps(input: HTMLInputElement): void {
 }
 
 function paintStaticCheatKeycaps(): void {
-  document.querySelectorAll<HTMLElement>('.settings-cheat [data-accel]').forEach((el) => {
+  document.querySelectorAll<HTMLElement>('#builtin-shortcuts [data-accel]').forEach((el) => {
     el.innerHTML = keycapsInnerHtml(el.dataset.accel || '');
   });
 }
@@ -4022,13 +3984,6 @@ async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise
 }
 
 // Setup audio settings (stored in the main process; the pop-up and notebook read the same prefs)
-const VOICE_ICON: Record<string, string> = {
-  wave: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18V6M11 22V2M3 14v-4M15 18V6M19 14v-4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  download: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  cancel: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-};
-
 function setupAudioSettings() {
   const api = window.electronAPI as any;
   const speed = document.getElementById('audio-speed') as HTMLInputElement | null;
@@ -4066,24 +4021,20 @@ function setupAudioSettings() {
     voiceSection.hidden = (state.voices || []).length < 2;
     voiceList.innerHTML = (state.voices || [])
       .map((v: any) => {
-        const on = v.id === state.selected;
         const pct = Math.round((v.progress || 0) * 100);
+        const id = escapeHtmlSelection(v.id);
         const detail = v.downloading ? `Downloading ${pct}%` : v.error ? v.error : v.installed ? (v.id === 'mechanical' ? v.detail : 'Downloaded') : v.detail;
-        const trailing = v.downloading
-          ? `<button type="button" class="icon-btn voice-row__action" data-cancel="${v.id}" title="Cancel" aria-label="Cancel download">${VOICE_ICON.cancel}</button>`
-          : on
-            ? `<span class="voice-row__check">${VOICE_ICON.check}</span>`
-            : !v.installed
-              ? `<span class="voice-row__dl">${VOICE_ICON.download}</span>`
-              : '';
-        return `<div class="voice-row${on ? ' is-on' : ''}">
-          <button type="button" class="voice-row__main" role="radio" aria-checked="${on}" data-voice="${v.id}" ${v.downloading ? 'disabled' : ''}>
-            <span class="voice-row__icon">${VOICE_ICON.wave}</span>
-            <span class="voice-row__text"><span>${escapeHtmlSelection(v.name)}</span><small>${escapeHtmlSelection(detail)}</small></span>
-          </button>
-          ${trailing}
-          ${v.downloading ? `<div class="voice-row__progress"><span style="width:${pct}%"></span></div>` : ''}
-        </div>`;
+        return choiceRowHtml({
+          name: v.name,
+          meta: detail,
+          badge: v.recommended ? 'Recommended' : undefined,
+          metaTone: v.downloading ? 'busy' : v.error ? 'error' : v.installed && v.id !== 'mechanical' ? 'installed' : undefined,
+          on: v.id === state.selected,
+          needsDownload: !v.installed,
+          disabled: !!v.downloading,
+          attrs: `data-voice="${id}"`,
+          busy: v.downloading ? { pct, cancelAttrs: `data-cancel="${id}"` } : undefined,
+        });
       })
       .join('');
     const busy = (state.voices || []).some((v: any) => v.downloading);
