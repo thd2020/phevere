@@ -75,6 +75,9 @@ export interface VocabAddInput {
   tags?: string[];
   /** Kept only when the word has no context yet; a later save never replaces it. */
   context?: SourceContext | null;
+  /** When the word was first saved, and on which device; set by an import, used only for a new row. */
+  createdAt?: number;
+  device?: string;
 }
 
 export function rowToEntry(row: Record<string, unknown>): VocabEntry {
@@ -175,10 +178,10 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
       input.sources ? JSON.stringify(input.sources) : null,
       input.note || null,
       input.tags ? JSON.stringify(input.tags) : null,
+      input.createdAt && Number.isFinite(input.createdAt) ? input.createdAt : now,
       now,
       now,
-      now,
-      getDeviceName() || null,
+      input.device || getDeviceName() || null,
       sourceContextToJson(input.context),
     ],
   );
