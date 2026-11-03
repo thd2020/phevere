@@ -113,6 +113,7 @@ async function audioFallback() {
     '@phevere/core': {
       accentToBcp47: () => 'en-GB',
       ipaToEspeakPhonemes: (ipa) => (ipa ? "h@l'oU" : ''),
+      ipaToKokoroPhonemes: (ipa, accent) => (ipa ? `k:${accent}` : ''),
       recordedPronunciationUrls: () => ['bad-clip'],
     },
     './native': { hasNativeBridge: () => true, nativeCall: async (method, params) => {
@@ -131,6 +132,9 @@ async function audioFallback() {
   assert.equal(calls[0].params.text, "h@l'oU");
   assert.equal(calls[0].params.phonemes, true);
   assert.equal(calls[0].params.lang, 'en-GB');
+  // A neural voice reads the same chip from its Kokoro phonemes with the UK speaker.
+  assert.equal(calls[0].params.kokoro, 'k:uk');
+  assert.equal(calls[0].params.speaker, 20);
   failSpeech = true;
   await assert.rejects(audio.speakText('hello', prefs), /unavailable/);
 }

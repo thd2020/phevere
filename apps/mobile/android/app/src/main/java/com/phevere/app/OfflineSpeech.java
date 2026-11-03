@@ -18,11 +18,20 @@ final class OfflineSpeech {
   private OfflineTts engine;
   private File engineModel;
   private SpeechSynthesis mechanical;
+  private final KokoroIpa kokoroIpa = new KokoroIpa();
 
   OfflineSpeech(Context context) { this.context = context; }
 
   File synthesize(String text, String lang, float rate, int token) throws Exception {
     return synthesize(text, lang, rate, token, false);
+  }
+
+  /** An IPA chip with a neural voice: Kokoro reads the chip's phonemes, as on the desktop. */
+  File synthesizeKokoroIpa(String phonemes, int speaker, float rate, int token) throws Exception {
+    if (!SpeechModels.useNeural(context)) throw new Exception("No neural voice");
+    File wave = new File(context.getCacheDir(), "speech-" + token + ".wav");
+    kokoroIpa.synthesize(SpeechModels.root(context), SpeechModels.modelFile(context), phonemes, speaker, rate, wave);
+    return wave;
   }
 
   /** phonemes: text is eSpeak phoneme mnemonics from an IPA chip; only eSpeak can voice those. */

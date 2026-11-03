@@ -91,7 +91,7 @@ import {
   type ApiProviderId,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
-import { playRecorded, recordedUrls, speakIpa, speakText } from './platform/audio';
+import { playRecorded, prefetchRecorded, recordedUrls, speakIpa, speakText } from './platform/audio';
 import {
   applyInsets,
   hasNativeBridge,
@@ -951,6 +951,7 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
     if (generation !== lookupGeneration) return;
     result = next;
     settled = true;
+    prefetchRecorded(next);
     const nextSaved = await findByLemma(saveLemma(next)).catch(() => null);
     if (generation !== lookupGeneration) return;
     saved = nextSaved;

@@ -1,6 +1,7 @@
 import {
   accentToBcp47,
   ipaToEspeakPhonemes,
+  ipaToKokoroPhonemes,
   recordedPronunciationUrls,
   type DictionaryResult,
   type Pronunciation,
@@ -12,6 +13,13 @@ let clip: HTMLAudioElement | null = null;
 
 export function recordedUrls(result: DictionaryResult | null): string[] {
   return recordedPronunciationUrls(result?.pronunciations);
+}
+
+/** Download a result's recorded clips ahead of a press; the phone keeps them in its cache. */
+export function prefetchRecorded(result: DictionaryResult | null): void {
+  const urls = recordedUrls(result).slice(0, 4);
+  if (!urls.length || !hasNativeBridge()) return;
+  void nativeCall('prefetchAudio', { urls }).catch(() => undefined);
 }
 
 function waitClipEnd(el: HTMLAudioElement): Promise<void> {
@@ -99,8 +107,9 @@ export async function speakText(text: string, prefs: MobilePrefs, lang?: string)
 }
 
 /**
- * Chip speaker: the mechanical voice reads the chip's own IPA (eSpeak [[phonemes]]),
- * as on desktop. The headword button is the one that plays the recorded human clip.
+ * Chip speaker: the chip's own IPA, as on desktop. With a neural voice Kokoro reads it (its
+ * phonemes and the US or UK speaker), otherwise eSpeak reads [[phonemes]]. The headword button
+ * is the one that plays the recorded human clip.
  */
 export async function speakIpa(p: Pronunciation, prefs: MobilePrefs, word?: string): Promise<void> {
   if (!prefs.audioEnabled) return;
@@ -109,7 +118,15 @@ export async function speakIpa(p: Pronunciation, prefs: MobilePrefs, word?: stri
   if (hasNativeBridge() && phonemes) {
     // Android's eSpeak reads the [[phonemes]]; iOS speaks the word with the raw IPA attached.
     await nativeCall('speak', {
-      text: phonemes, lang, rate: rate(prefs), volume: volume(prefs), phonemes: true, ipa: p.ipa, word: word || '',
+      text: phonemes,
+      lang,
+      rate: rate(prefs),
+      volume: volume(prefs),
+      phonemes: true,
+      ipa: p.ipa,
+      word: word || '',
+      kokoro: ipaToKokoroPhonemes(p.ipa, p.accent),
+      speaker: p.accent === 'uk' ? 20 : 0,
     });
     return;
   }

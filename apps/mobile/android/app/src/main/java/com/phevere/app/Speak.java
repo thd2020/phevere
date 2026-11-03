@@ -9,6 +9,11 @@ import android.os.Handler;
 import android.os.Looper;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.security.MessageDigest;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -17,6 +22,8 @@ final class Speak {
   private static Speak inst;
   private final OfflineSpeech offline;
   private final ExecutorService synthesis = Executors.newSingleThreadExecutor();
+  private final ExecutorService prefetcher = Executors.newSingleThreadExecutor();
+  private final Context context;
   private final Handler main = new Handler(Looper.getMainLooper());
   private File speechFile;
   interface Completion { void finish(String error); }
@@ -38,6 +45,7 @@ final class Speak {
   }
 
   private Speak(Context ctx) {
+    context = ctx;
     offline = new OfflineSpeech(ctx);
   }
 
@@ -67,15 +75,112 @@ final class Speak {
     });
   }
 
+  /**
+   * An IPA chip with a neural voice: Kokoro reads `kokoro` (its phonemes) with `speaker`. When
+   * that fails, eSpeak reads `espeak` (the same IPA as eSpeak mnemonics), so each chip still
+   * sounds like its own pronunciation.
+   */
+  void speakIpa(String kokoro, int speaker, String espeak, String lang, float rate, Completion done) {
+    interrupt();
+    pendingDone = done;
+    final int token = ++gen;
+    synthesis.execute(() -> {
+      if (token != gen) return;
+      File wave;
+      try {
+        wave = offline.synthesizeKokoroIpa(kokoro, speaker, clampRate(rate), token);
+      } catch (Exception | LinkageError neuralError) {
+        try {
+          wave = offline.synthesize(espeak, lang, clampRate(rate), token, true);
+        } catch (Exception | LinkageError error) {
+          main.post(() -> {
+            if (token == gen) finish("Could not play pronunciation.");
+          });
+          return;
+        }
+      }
+      final File ready = wave;
+      main.post(() -> {
+        if (token != gen) { ready.delete(); return; }
+        speechFile = ready;
+        startPlayer(ready.getAbsolutePath(), 1f, token);
+      });
+    });
+  }
+
+  /** Recorded clips are kept in the cache folder by URL, so a word plays at once the second time. */
+  private File clipFile(String url) {
+    try {
+      byte[] h = MessageDigest.getInstance("SHA-1").digest(url.getBytes("UTF-8"));
+      StringBuilder sb = new StringBuilder();
+      for (byte b : h) sb.append(String.format("%02x", b));
+      String ext = url.replaceAll("[?#].*$", "").replaceAll("^.*\\.", "");
+      if (!ext.matches("[A-Za-z0-9]{2,4}")) ext = "mp3";
+      File dir = new File(context.getCacheDir(), "pronunciations");
+      dir.mkdirs();
+      return new File(dir, sb + "." + ext);
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  /** Download a clip into the cache; returns the file, or null when it could not be fetched. */
+  private File fetchClip(String url) {
+    File dest = clipFile(url);
+    if (dest == null) return null;
+    if (dest.isFile() && dest.length() > 0) return dest;
+    File tmp = new File(dest.getPath() + ".part");
+    HttpURLConnection conn = null;
+    try {
+      conn = (HttpURLConnection) new URL(url).openConnection();
+      conn.setConnectTimeout(8000);
+      conn.setReadTimeout(12000);
+      conn.setRequestProperty("User-Agent", "Phevere/4 (https://github.com/thd2020/phevere)");
+      if (conn.getResponseCode() != 200) return null;
+      try (InputStream in = conn.getInputStream(); FileOutputStream out = new FileOutputStream(tmp)) {
+        byte[] buf = new byte[32768];
+        int n;
+        while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+      }
+      if (tmp.length() == 0 || !tmp.renameTo(dest)) { tmp.delete(); return null; }
+      return dest;
+    } catch (Exception e) {
+      tmp.delete();
+      return null;
+    } finally {
+      if (conn != null) conn.disconnect();
+    }
+  }
+
+  /** Fetch clips ahead of a press (after a lookup), one at a time, off the main thread. */
+  void prefetch(java.util.List<String> urls) {
+    for (String url : urls) {
+      if (url == null || !url.startsWith("http")) continue;
+      prefetcher.execute(() -> fetchClip(url));
+    }
+  }
+
   void playUrl(String url, float rate, Completion done) {
     interrupt();
     pendingDone = done;
-    gen++;
+    final int token = ++gen;
     if (url == null || url.isEmpty()) {
       finish("No recording available.");
       return;
     }
-    startPlayer(url, rate, gen);
+    File cached = clipFile(url);
+    if (cached != null && cached.isFile() && cached.length() > 0) {
+      startPlayer(cached.getAbsolutePath(), rate, token);
+      return;
+    }
+    // Not cached yet: download first (it is played from the file and kept), or stream if that fails.
+    prefetcher.execute(() -> {
+      File file = fetchClip(url);
+      main.post(() -> {
+        if (token != gen) return;
+        startPlayer(file != null ? file.getAbsolutePath() : url, rate, token);
+      });
+    });
   }
 
   private void startPlayer(String url, float rate, int token) {

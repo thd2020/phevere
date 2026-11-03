@@ -64,6 +64,11 @@ android {
             keyPassword releaseSigning.ANDROID_KEY_PASSWORD
         }
     }
+    packaging {
+        jniLibs {
+            pickFirsts += ['**/libonnxruntime.so']
+        }
+    }
     buildTypes {
         debug {
             versionNameSuffix "-dev.${commitCount ?: 0}" + (commitSha ? "+${commitSha}" : '')
@@ -97,6 +102,9 @@ tasks.configureEach {
 
 dependencies {
     implementation files("${buildDir}/generated/speech-v2/sherpa-onnx-1.13.3.aar")
+    // Kokoro from IPA (KokoroIpa.java). The same onnxruntime version sherpa-onnx 1.13.3 bundles,
+    // so the two share one libonnxruntime.so (picked once in packaging below).
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.24.3'
     implementation 'org.apache.commons:commons-compress:1.27.1'
     implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.2.0'
     compileOnly 'de.robv.android.xposed:api:82'

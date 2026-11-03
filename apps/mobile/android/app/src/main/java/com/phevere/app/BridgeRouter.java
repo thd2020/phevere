@@ -200,12 +200,21 @@ final class BridgeRouter {
             String lang = p.optString("lang", "en-US");
             float rate = (float) p.optDouble("rate", 1);
             boolean phonemes = p.optBoolean("phonemes", false);
-            String word = p.optString("word", "").trim();
-            // Kokoro on Android reads text only. With a neural voice chosen, an IPA chip
-            // says its headword in the chip's accent rather than the mechanical eSpeak voice.
-            if (phonemes && !word.isEmpty() && SpeechModels.useNeural(host.context())) {
-              text = word;
-              phonemes = false;
+            String kokoro = p.optString("kokoro", "").trim();
+            Speak.get(host.context()).setVolume((float) p.optDouble("volume", 1));
+            // An IPA chip with a neural voice: Kokoro reads the chip's own phonemes, as on the
+            // desktop, so a US and a UK chip sound different (eSpeak reads them if it fails).
+            if (phonemes && !kokoro.isEmpty() && SpeechModels.useNeural(host.context())) {
+              final String espeak = text;
+              final int speaker = p.optInt("speaker", 0);
+              host.runUi(() -> Speak.get(host.context()).speakIpa(kokoro, speaker, espeak, lang, rate, error -> {
+                if (error != null) { fail(sid, error); return; }
+                try {
+                  resolve(sid, new JSONObject().put("ok", true));
+                } catch (Exception ignored) {
+                }
+              }));
+              break;
             }
             final String spokenText = text;
             final boolean spokenPhonemes = phonemes;
@@ -217,6 +226,14 @@ final class BridgeRouter {
               } catch (Exception ignored) {
               }
             }));
+            break;
+          }
+          case "prefetchAudio": {
+            org.json.JSONArray list = p.optJSONArray("urls");
+            java.util.List<String> urls = new java.util.ArrayList<>();
+            for (int i = 0; list != null && i < list.length(); i++) urls.add(list.optString(i));
+            Speak.get(host.context()).prefetch(urls);
+            resolve(id, new JSONObject().put("ok", true));
             break;
           }
           case "playUrl": {
