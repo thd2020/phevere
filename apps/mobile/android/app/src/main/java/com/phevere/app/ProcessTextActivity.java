@@ -14,6 +14,9 @@ public class ProcessTextActivity extends Activity {
     String text = extra == null ? "" : extra.toString().trim();
     if (getIntent() != null && getIntent().getBooleanExtra(SelectionBar.EXTRA_VIA_HOOK, false)) {
       CapturePrefs.markModuleSeen(this);
+    } else if (getIntent() != null && Intent.ACTION_PROCESS_TEXT.equals(getIntent().getAction())) {
+      // A selection bar the module did not reach: offer to add the app that drew it.
+      LsposedPrefs.offerScope(this, launchingPackage());
     }
     if (!text.isEmpty()) {
       // The LSPosed module passes where the selection is; otherwise use what is known.
@@ -21,6 +24,13 @@ public class ProcessTextActivity extends Activity {
       overridePendingTransition(0, 0);
     }
     finish();
+  }
+
+  /** The app that started this lookup, from the referrer Android records for the launch. */
+  private String launchingPackage() {
+    android.net.Uri referrer = getReferrer();
+    if (referrer == null || !"android-app".equals(referrer.getScheme())) return null;
+    return referrer.getHost();
   }
 
   /** The one pop-up path: selection tray in other apps and selections inside Phevere. */
