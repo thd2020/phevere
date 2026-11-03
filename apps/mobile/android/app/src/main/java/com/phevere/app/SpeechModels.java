@@ -17,9 +17,9 @@ final class SpeechModels {
   /** Same Kokoro v1.0 voices; the compact one stores weights as int8 (about a third of the size). */
   enum Variant {
     COMPACT("compact", "kokoro-int8-v1-sherpa-1.13.3", "kokoro-int8-multi-lang-v1_0", "model.int8.onnx",
-        "4c3052abaa60943a341f193888cf6abd68787dae6ab8ae5c925a706caa247e4e", 132, 500),
+        "72c347230107ef8a31098ec4d468a605244beef5f1ed00db97efa13518800653", 132, 500),
     FULL("full", "kokoro-v1-sherpa-1.13.3", "kokoro-multi-lang-v1_0", "model.onnx",
-        "c5f7e2d2caf082bc1d20fb70334a61d99d20b484500aad32e7cf84c128ea3298", 350, 1000);
+        "60703707bc05ccd48d60e1eb723f38b07d6e474795a0b6a588d7220400e0f7a4", 350, 1000);
 
     final String id, dir, archiveDir, model, sha;
     final int downloadMb, freeMb;

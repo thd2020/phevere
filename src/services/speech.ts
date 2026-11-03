@@ -52,7 +52,7 @@ const VARIANTS: Variant[] = [
     dir: 'kokoro-int8-v1',
     archiveDir: 'kokoro-int8-multi-lang-v1_0',
     model: 'model.int8.onnx',
-    sha: '4c3052abaa60943a341f193888cf6abd68787dae6ab8ae5c925a706caa247e4e',
+    sha: '72c347230107ef8a31098ec4d468a605244beef5f1ed00db97efa13518800653',
     downloadMb: 132,
   },
   {
@@ -61,7 +61,7 @@ const VARIANTS: Variant[] = [
     dir: 'kokoro-v1',
     archiveDir: 'kokoro-multi-lang-v1_0',
     model: 'model.onnx',
-    sha: 'c5f7e2d2caf082bc1d20fb70334a61d99d20b484500aad32e7cf84c128ea3298',
+    sha: '60703707bc05ccd48d60e1eb723f38b07d6e474795a0b6a588d7220400e0f7a4',
     downloadMb: 350,
   },
 ];
