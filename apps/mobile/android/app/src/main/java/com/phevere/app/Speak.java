@@ -109,6 +109,12 @@ final class Speak {
   }
 
   /** Recorded clips are kept in the cache folder by URL, so a word plays at once the second time. */
+  /** True when the recording at `url` is already kept on the phone. */
+  boolean hasClip(String url) {
+    File f = clipFile(url);
+    return f != null && f.isFile() && f.length() > 0;
+  }
+
   private File clipFile(String url) {
     try {
       byte[] h = MessageDigest.getInstance("SHA-1").digest(url.getBytes("UTF-8"));

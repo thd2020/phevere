@@ -22,6 +22,17 @@ export function prefetchRecorded(result: DictionaryResult | null): void {
   void nativeCall('prefetchAudio', { urls }).catch(() => undefined);
 }
 
+/** True when the word's first recording plays without a download (kept on the phone, or none). */
+export async function recordedReady(result: DictionaryResult | null): Promise<boolean> {
+  const url = recordedUrls(result)[0];
+  if (!url || !hasNativeBridge()) return true;
+  try {
+    return !!(await nativeCall<{ cached?: boolean }>('clipCached', { url })).cached;
+  } catch {
+    return false;
+  }
+}
+
 function waitClipEnd(el: HTMLAudioElement): Promise<void> {
   return new Promise((resolve) => {
     const done = () => {

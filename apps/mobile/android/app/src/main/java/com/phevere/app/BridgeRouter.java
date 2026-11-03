@@ -239,6 +239,10 @@ final class BridgeRouter {
             resolve(id, new JSONObject().put("ok", true));
             break;
           }
+          case "clipCached": {
+            resolve(id, new JSONObject().put("cached", Speak.get(host.context()).hasClip(p.optString("url"))));
+            break;
+          }
           case "playUrl": {
             String sid = id;
             String url = p.optString("url");

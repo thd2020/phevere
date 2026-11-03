@@ -95,7 +95,7 @@ import {
   type BookScope,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
-import { playRecorded, prefetchRecorded, recordedUrls, speakIpa, speakText } from './platform/audio';
+import { playRecorded, prefetchRecorded, recordedReady, speakIpa, speakText } from './platform/audio';
 import {
   applyInsets,
   hasNativeBridge,
@@ -1996,10 +1996,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     }
     case 'speak': {
       if (soundOff()) return;
-      // Recorded clips come over the network: say so if one is slow to start.
-      const hint = recordedUrls(result).length
-        ? window.setTimeout(() => toast('Loading pronunciation…'), 800)
-        : 0;
+      // A recording not kept on the phone yet comes over the network: say so only if it is slow.
+      const hint = (await recordedReady(result)) ? 0 : window.setTimeout(() => toast('Loading pronunciation…'), 2500);
       const started = () => window.clearTimeout(hint);
       await pulseSpeak(t, playRecorded(result, prefs, started).finally(started));
       return;
