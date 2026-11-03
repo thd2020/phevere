@@ -3,8 +3,8 @@
  *
  * The first chunk is one short sentence, so audio starts quickly. Later chunks join
  * sentences up to a size the neural voice handles in one pass (Kokoro reads at most
- * about 500 phonemes). A sentence longer than the limit is cut at a clause mark,
- * then at a space.
+ * about 500 phonemes), growing gradually when `growth` is set. A sentence longer than
+ * the limit is cut at a clause mark, then at a space.
  */
 
 export interface SpeechChunkOptions {
@@ -12,6 +12,13 @@ export interface SpeechChunkOptions {
   firstMax?: number;
   /** Longest later chunk, in characters. */
   max?: number;
+  /**
+   * When set, each later chunk is at most this many times longer than the one before
+   * (never under 40 characters), up to `max`. A chunk then synthesizes in about the time
+   * the previous one plays, instead of a short first sentence being followed by a long
+   * wait for a full-size second chunk.
+   */
+  growth?: number;
 }
 
 const CLAUSE = /[,;:，；：、—–]\s*/g;
@@ -63,22 +70,46 @@ export function splitSpeechText(text: string, opts: SpeechChunkOptions = {}): st
   const chunks: string[] = [];
   const first = parts.shift() as string;
   if (first.length > firstMax) {
-    const [head, ...tail] = cut(first, firstMax);
+    const [head] = cut(first, firstMax);
     chunks.push(head);
-    parts.unshift(tail.join(' '));
+    parts.unshift(first.slice(head.length).trim());
   } else {
     chunks.push(first);
   }
+  const growth = opts.growth;
+  const limitAfter = (prev: string) => (growth ? Math.min(max, Math.max(40, Math.round(prev.length * growth))) : max);
   // Chinese and Japanese sentences join without a space.
   const join = (a: string, b: string) => (/[　-ヿ㐀-鿿＀-￯]$/.test(a) ? a + b : `${a} ${b}`);
+  let lim = limitAfter(chunks[0]);
   let cur = '';
-  for (const p of parts) {
+  const push = (chunk: string) => {
+    chunks.push(chunk);
+    lim = limitAfter(chunk);
+    cur = '';
+  };
+  while (parts.length) {
+    const p = parts.shift() as string;
     if (!p) continue;
-    if (cur && cur.length + 1 + p.length > max) {
-      chunks.push(cur);
-      cur = p;
+    if (!cur || cur.length + 1 + p.length <= lim) {
+      if (cur || p.length <= lim) {
+        cur = cur ? join(cur, p) : p;
+        continue;
+      }
+      const [head] = cut(p, lim);
+      push(head);
+      parts.unshift(p.slice(head.length).trim());
+      continue;
+    }
+    // With a growing limit, a short leftover is topped up from the next sentence rather
+    // than spoken alone, which would leave too little time to synthesize the chunk after it.
+    const room = lim - cur.length - 1;
+    if (growth && room >= 40) {
+      const [head] = cut(p, room);
+      push(join(cur, head));
+      parts.unshift(p.slice(head.length).trim());
     } else {
-      cur = cur ? join(cur, p) : p;
+      push(cur);
+      parts.unshift(p);
     }
   }
   if (cur) chunks.push(cur);

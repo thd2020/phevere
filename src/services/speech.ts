@@ -419,10 +419,13 @@ export function startSpeechStream(owner: number, req: { text?: string; lang?: st
   stopSpeech(owner);
   // Each eSpeak call starts a fresh WebAssembly instance (about 0.2 s of CPU), and eSpeak
   // runs far faster than real time, so after the first sentence it gets one large chunk.
-  // Kokoro is slow on a CPU and reads at most about 500 phonemes, so it gets small ones.
+  // Kokoro is slow on a CPU and reads at most about 500 phonemes, so it gets small ones
+  // that grow by at most half each time: each chunk synthesizes while the previous one
+  // plays. Measured with the full model on an i5-10500, this took a 23-character sentence
+  // followed by a 97-character one from a 10.6 s silence to none.
   const variant = VARIANTS.find((v) => v.id === getAudioPrefs().voice);
   const neural = !!variant && isInstalled(variant.id) && neuralSupported();
-  const chunks = splitSpeechText(String(req.text || '').slice(0, MAX_STREAM_CHARS), { max: neural ? 300 : 1500 });
+  const chunks = splitSpeechText(String(req.text || '').slice(0, MAX_STREAM_CHARS), neural ? { max: 300, growth: 1.5 } : { max: 1500 });
   if (!chunks.length) throw new Error('Nothing to speak');
   const id = ++streamSeq;
   streams.set(id, { owner, chunks, lang: req.lang, abort: new AbortController(), results: [], neural: true });
@@ -493,6 +496,8 @@ export interface VoiceRow {
   id: VoiceId;
   name: string;
   detail: string;
+  /** The voice to suggest on desktop: full precision keeps up on CPUs where int8 does not. */
+  recommended?: boolean;
   installed: boolean;
   downloading: boolean;
   progress: number;
@@ -510,6 +515,7 @@ export function listVoices(): VoiceRow[] {
       id: v.id,
       name: v.name,
       detail: `${v.downloadMb} MB`,
+      recommended: v.id === 'full',
       installed: isInstalled(v.id),
       downloading: !!d && !d.error,
       progress: d ? d.progress : 0,
