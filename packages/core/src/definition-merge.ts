@@ -332,14 +332,17 @@ function sourceRank(def: MergeableDefinition): number {
 
 /**
  * Drop lemma senses that leaked onto an inflected query (verb “tantalize”
- * under “tantalizing”). Keep this form’s own POS and grammatical form-of
- * glosses (“present participle of …”).
+ * under “tantalizing”). Keep this form’s own POS, grammatical form-of
+ * glosses (“present participle of …”), and every sense from Wiktionary,
+ * whose page for the form holds only that form's senses.
  */
 export function stripCrossLemmaSenses<T extends MergeableDefinition>(surface: string, defs: T[]): T[] {
   const lemmas = latinLemmasByPos(surface);
   if (!lemmas.noun && !lemmas.verb && !lemmas.adjective) return defs;
   return (defs || []).filter((d) => {
     if (isGrammaticalFormOfGloss(d.meaning)) return true;
+    // Wiktionary's page for the form lists the form's own senses ("glasses": spectacles).
+    if (/wiktionary/i.test(String((d as { source?: unknown }).source || ''))) return true;
     const pos = canonicalPos(d.partOfSpeech);
     const raw = String(d.partOfSpeech || '');
     const bucket =

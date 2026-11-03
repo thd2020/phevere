@@ -76,7 +76,7 @@ import { closestSpelling } from './vocab-lemma';
 import { wrapConsole } from './log';
 import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigured, type OfflineHit } from './runtime';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
-import { splitSurfaceAndLemma, sameLookupFold } from './lookup-policy';
+import { splitSurfaceAndLemma, sameLookupFold, stripGlossText } from './lookup-policy';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { groupYoudaoEtymologies, serializeEtymologySources } from './etymology-sources';
 import { mergeSimilarDefinitions, dedupeExamples, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses } from './definition-merge';
@@ -141,7 +141,38 @@ type LookupOpts = {
   sourceLanguage?: string;
   /** Set on the second lookup after a spelling correction, so it cannot correct again. */
   noCorrection?: boolean;
+  /** Set on the lookup of a plain plural's singular, so it cannot redirect again. */
+  noPluralRedirect?: boolean;
 };
+
+const SIMPLE_FORM_OF = /^(?:the\s+)?(plural|third-person\s+singular(?:\s+simple\s+present)?(?:\s+indicative)?)(?:\s+form)?\s+of\s+["“]?([\p{L}'’-]+)/iu;
+
+/**
+ * A plain plural ("acronyms"): every sense Wiktionary gives says "plural of acronym", or, for an
+ * -s form that is also a verb, "third-person singular of acronym". Datamuse and the Free
+ * Dictionary do not count, since for a form they return the base word's own senses. A plural with senses of
+ * its own ("bacteria" is also a type or strain of bacterium, "glasses" are spectacles) is a word
+ * in its own right and gets null.
+ */
+export function simplePluralTarget(result: DictionaryResult | null | undefined): string | null {
+  const defs = (result?.definitions || []).filter((d) => {
+    // Only Wiktionary's page for the form counts: other sources answer with the base word's senses.
+    if (!d || !/wiktionary/i.test(String(d.source || ''))) return false;
+    const m = (d.meaning || '').trim();
+    return !!m && m !== 'No definition available.' && !isTimeoutMeaning(m);
+  });
+  if (!defs.length) return null;
+  let target = '';
+  let plural = false;
+  for (const d of defs) {
+    const m = SIMPLE_FORM_OF.exec(stripGlossText(d.meaning));
+    if (!m) return null;
+    if (target && foldLookupKey(m[2]) !== foldLookupKey(target)) return null;
+    target = m[2];
+    if (/^plural$/i.test(m[1])) plural = true;
+  }
+  return plural ? target : null;
+}
 
 /**
  * "Misspelling of receive." as the first sense and at least half of all senses → "receive".
@@ -636,7 +667,9 @@ export class DictionaryService extends BaseService {
           // longer left was saved before that rule and is looked up again.
           const left = saved ? PERSISTED_CACHE_TTL_MS - (Date.now() - saved.savedAt) : 0;
           const staleNoIpa = this.lacksIpa(value) && left > PARTIAL_PERSIST_TTL_MS;
-          if (saved && value && left > 0 && !staleNoIpa && !this.isUncacheableResult(value)) {
+          // Saved before plain plurals were shown as their singular.
+          const stalePlural = !!simplePluralTarget(value);
+          if (saved && value && left > 0 && !staleNoIpa && !stalePlural && !this.isUncacheableResult(value)) {
             const remaining = PERSISTED_CACHE_TTL_MS - (Date.now() - saved.savedAt);
             const ttl = this.isIncompleteSourceCache(value) ? Math.min(PARTIAL_CACHE_TTL_MS, remaining) : this.cacheTimeout;
             this.cache.set(cacheKey, { result: value, timestamp: Date.now(), ttl });
@@ -833,23 +866,58 @@ export class DictionaryService extends BaseService {
     holder?: LookupHolder,
     opts?: LookupOpts,
   ): Promise<DictionaryResult> {
-    const result = await this.lookupWithCandidatesOnce(query, targetLanguage, detectedLanguage, enabledSources, holder, opts);
+    // Once the lookup moves to another word, updates still coming for this one are dropped.
+    let movedOn = false;
+    /** The lookup of `word` instead, its updates labelled as `word` and marked by `mark`. */
+    const instead = async (word: string, extra: LookupOpts, mark: Record<string, unknown>): Promise<DictionaryResult | null> => {
+      movedOn = true;
+      const label = (r: DictionaryResult) => {
+        r.metadata = { ...(r.metadata || {}), ...mark, originalSelection: query.raw };
+        return r;
+      };
+      const next = await this.lookupWithCandidates(normalizeQuery(word), targetLanguage, detectedLanguage, enabledSources, holder, {
+        ...(opts || {}),
+        ...extra,
+        originalSelection: word,
+        onUpdate: opts?.onUpdate ? (r) => opts.onUpdate!(label(r)) : undefined,
+      }).catch((): null => null);
+      if (next && this.hasRealDefinitions(next)) return label(next);
+      movedOn = false;
+      return null;
+    };
+    // Wiktionary can land after the first paint; when its senses show a plain plural then, the
+    // update that follows is the singular's.
+    let latePlural: Promise<DictionaryResult | null> | null = null;
+    const own = opts?.onUpdate
+      ? {
+          ...opts,
+          onUpdate: (r: DictionaryResult) => {
+            if (movedOn) return;
+            const one = opts.noPluralRedirect || latePlural ? null : simplePluralTarget(r);
+            if (one && foldLookupKey(one) !== foldLookupKey(query.trimmed)) {
+              latePlural = instead(one, { noPluralRedirect: true }, { pluralFrom: query.trimmed });
+              void latePlural.then((next) => opts.onUpdate!(next || r));
+              return;
+            }
+            opts.onUpdate!(r);
+          },
+        }
+      : opts;
+    const result = await this.lookupWithCandidatesOnce(query, targetLanguage, detectedLanguage, enabledSources, holder, own);
+    if (latePlural) {
+      const one = await latePlural;
+      if (one) return one;
+    }
+    // A plain plural is shown and saved as its singular; the singular's forms list the plural.
+    const singular = opts?.noPluralRedirect || latePlural ? null : simplePluralTarget(result);
+    if (singular && foldLookupKey(singular) !== foldLookupKey(query.trimmed)) {
+      const one = await instead(singular, { noPluralRedirect: true }, { pluralFrom: query.trimmed });
+      if (one) return one;
+    }
     const target = opts?.noCorrection ? null : misspellingTarget(result);
     if (!target || foldLookupKey(target) === foldLookupKey(query.trimmed)) return result;
-    const fixed = await this.lookupWithCandidatesOnce(
-      normalizeQuery(target),
-      targetLanguage,
-      detectedLanguage,
-      enabledSources,
-      holder,
-      { ...(opts || {}), noCorrection: true },
-    ).catch((): null => null);
-    if (!fixed || !this.hasRealDefinitions(fixed) || misspellingTarget(fixed)) return result;
-    fixed.metadata = {
-      ...(fixed.metadata || {}),
-      correctedFrom: result.metadata?.correctedFrom || query.trimmed,
-      originalSelection: query.raw,
-    };
+    const fixed = await instead(target, { noCorrection: true }, { correctedFrom: result.metadata?.correctedFrom || query.trimmed });
+    if (!fixed || misspellingTarget(fixed)) return result;
     return fixed;
   }
 
