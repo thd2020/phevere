@@ -99,7 +99,7 @@ async function main() {
 
   // ---- Data files ----
   const dir = path.join(root, 'packages', 'core', 'wordbooks');
-  const catalog = JSON.parse(fs.readFileSync(path.join(dir, 'catalog.json'), 'utf8'));
+  const catalog = loadCore().WORDBOOKS;
   assert.ok(catalog.length >= 10, 'ten books');
   for (const meta of catalog) {
     const book = JSON.parse(fs.readFileSync(path.join(dir, `${meta.id}.json`), 'utf8'));

@@ -8,32 +8,18 @@
  * Families, Map, Cards and Review work unchanged. A saved word appears as its `vocab` row; a book
  * word that is not saved appears with the id `wb:<headword>` and the progress from `book_words`.
  */
-import catalogJson from '../wordbooks/catalog.json';
+import { WORDBOOK_CATALOG, type WordbookMeta } from './wordbook-catalog';
 import { clean, dayStart, DAY, type NotebookEntry } from './notebook-shared';
 import { isNewWord, memoryLevel, startReview, type ReviewState } from './review-quiz';
 import { bookWordKey, DEFAULT_DAILY_NEW, type BookWordProgress, type WordbookSub } from './wordbook-store';
 
-export interface WordbookMeta {
-  id: string;
-  title: string;
-  short: string;
-  level: string;
-  source: string;
-  sourceUrl: string;
-  order: 'frequency' | 'alphabetical';
-  licence: string;
-  licenceUrl: string;
-  /** Place on the learning path, 1 for the first book. */
-  rank: number;
-  count: number;
-  retrieved: string;
-}
+export type { WordbookMeta };
 
 export type WordsScope = 'mine' | 'all' | string;
 export type WordStatus = 'new' | 'learning' | 'known';
 
 /** Every book, in learning-path order. */
-export const WORDBOOKS: WordbookMeta[] = (catalogJson as WordbookMeta[]).slice().sort((a, b) => a.rank - b.rank);
+export const WORDBOOKS: WordbookMeta[] = WORDBOOK_CATALOG.slice().sort((a, b) => a.rank - b.rank);
 
 export function wordbookMeta(id: string): WordbookMeta | undefined {
   return WORDBOOKS.find((b) => b.id === id);
@@ -91,7 +77,7 @@ export interface WordsContext {
 
 export interface WordsEntry extends NotebookEntry {
   /** Subscribed books that list the word. */
-  books?: string[];
+  books?: string[] | null;
   /** Marked "already know it". */
   known?: boolean;
   saved?: boolean;
