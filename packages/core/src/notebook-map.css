@@ -1,0 +1,237 @@
+/*
+ * Map view. The 3D scene sits on the same warm paper as the rest of the notebook; morpheme
+ * labels are pills in their family colours (teal roots, salmon prefixes, stone suffixes)
+ * and word labels are plain serif text with a paper halo so they stay legible over lines.
+ */
+.nbv-maptools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 2px 0 12px; }
+.nbv-maptools .nbv-chips { margin: 0; }
+.nbv-map-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 220px;
+  min-width: 140px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--nbv-line);
+  border-radius: 999px;
+  background: var(--nbv-panel);
+  color: var(--nbv-soft);
+}
+.nbv-map-search:focus-within { border-color: var(--nbv-teal); }
+.nbv-map-search svg { flex: none; width: 15px; height: 15px; }
+.nbv-map-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--nbv-ink);
+  font: 14px/1 var(--nbv-ui);
+}
+.nbv-map-search input.is-miss { color: var(--nbv-ember); }
+.nbv-map-hint { margin-left: auto; font: 500 12px/1 var(--nbv-ui); color: var(--nbv-soft); }
+
+.nbv-map {
+  position: relative;
+  height: min(70vh, 640px);
+  min-height: 340px;
+  border: 1px solid var(--nbv-line);
+  border-radius: 16px;
+  background: #f4f0ea;
+  overflow: hidden;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* Its own stacking context, so the labels' z-index never climbs over the panel. */
+.nbv-map__stage { position: absolute; inset: 0; z-index: 0; isolation: isolate; }
+.nbv-map__stage canvas { display: block; outline: none; }
+
+/* 3D labels */
+.nbv-m3-label {
+  margin-left: 2px;
+  padding: 1px 4px;
+  border-radius: 6px;
+  color: var(--nbv-ink);
+  font: 13px/1.2 var(--nbv-serif);
+  white-space: nowrap;
+  text-shadow: 0 0 2px #f4f0ea, 0 0 4px #f4f0ea, 0 0 7px #f4f0ea;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.nbv-m3-label--word:hover { color: var(--nbv-ember); }
+.nbv-m3-label--word.is-lit { font-weight: 600; }
+.nbv-m3-label--root,
+.nbv-m3-label--prefix,
+.nbv-m3-label--suffix,
+.nbv-m3-label--char {
+  margin: 0;
+  padding: 3px 9px;
+  border: 1px solid #0f6e71;
+  border-radius: 999px;
+  background: var(--nbv-teal-soft);
+  color: #002021;
+  font: 600 12.5px/1.15 var(--nbv-serif);
+  text-shadow: none;
+  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.14);
+}
+.nbv-m3-label--prefix { border-color: #d9735a; background: var(--nbv-ember-soft); color: #351000; }
+.nbv-m3-label--suffix { border-color: var(--nbv-stone); background: var(--nbv-paper-2); color: var(--nbv-ink); }
+.nbv-m3-label--char { border-color: #7a5a3a; background: #f1e4d3; color: #2b1d10; font-size: 15px; }
+.nbv-m3-label.is-focus {
+  padding: 2px 8px;
+  border: 0;
+  background: var(--nbv-ember);
+  color: #fff;
+  font-weight: 600;
+  text-shadow: none;
+}
+
+.nbv-map__ctrl {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  display: grid;
+  gap: 4px;
+}
+.nbv-map__ctrl button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--nbv-line);
+  border-radius: 10px;
+  background: var(--nbv-panel);
+  color: var(--nbv-ink);
+  font: 600 17px/1 var(--nbv-ui);
+  cursor: pointer;
+}
+.nbv-map__ctrl button:hover { background: var(--nbv-paper-2); }
+.nbv-map__ctrl svg { width: 17px; height: 17px; }
+
+/* The panel for the focused word or morpheme */
+.nbv-map__panel {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  z-index: 3;
+  width: min(300px, calc(100% - 64px));
+  max-height: calc(100% - 20px);
+  overflow: auto;
+  padding: 10px 12px 12px 14px;
+  border: 1px solid var(--nbv-line);
+  border-radius: 14px;
+  background: var(--nbv-panel);
+  box-shadow: 0 6px 22px rgba(28, 25, 23, 0.12);
+  -webkit-user-select: text;
+  user-select: text;
+  animation: nbv-map-in 0.22s cubic-bezier(0.2, 0, 0, 1);
+}
+.nbv-map__panel[hidden] { display: none; }
+@keyframes nbv-map-in {
+  from { opacity: 0; transform: translateY(-4px); }
+}
+.nbv-map__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.nbv-map__title { margin: 0; color: var(--nbv-ink); font: 600 21px/1.2 var(--nbv-serif); overflow-wrap: anywhere; }
+.nbv-map__close {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--nbv-soft);
+  font: 400 22px/1 var(--nbv-ui);
+  cursor: pointer;
+}
+.nbv-map__close:hover { background: var(--nbv-paper-2); color: var(--nbv-ink); }
+.nbv-map__hubs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.nbv-map__panel button.nbv-morph { border: 0; cursor: pointer; }
+.nbv-map__gloss { margin: 8px 0 0; color: var(--nbv-ink); font: italic 15px/1.35 var(--nbv-serif); }
+.nbv-map__sub {
+  margin: 12px 0 6px;
+  color: var(--nbv-soft);
+  font: 600 10.5px/1 var(--nbv-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.nbv-map__words { display: flex; flex-wrap: wrap; gap: 4px; }
+.nbv-map__word {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--nbv-paper);
+  color: var(--nbv-ink);
+  font: 14px/1.2 var(--nbv-serif);
+  cursor: pointer;
+}
+.nbv-map__word:hover { background: var(--nbv-paper-2); }
+.nbv-map__more { align-self: center; padding: 0 4px; color: var(--nbv-soft); font: 12px/1 var(--nbv-ui); }
+.nbv-map__lookup {
+  width: 100%;
+  height: 36px;
+  margin-top: 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--nbv-ember);
+  color: #fff;
+  font: 600 14px/1 var(--nbv-ui);
+  cursor: pointer;
+}
+.nbv-map__lookup:hover { background: #7f3200; }
+
+/* Phone: the panel becomes a sheet along the bottom, the buttons move to the top corner. */
+@media (max-width: 600px) {
+  .nbv-map__panel {
+    top: auto;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+    max-height: 52%;
+  }
+  .nbv-map__ctrl { top: 8px; right: 8px; bottom: auto; }
+  .nbv-map-search { flex: 1 1 160px; }
+}
+
+/* Flat map, drawn where WebGL is missing */
+.nbv-map.is-flat {
+  background:
+    radial-gradient(circle at 1px 1px, rgba(92, 83, 78, 0.16) 1px, transparent 0) 0 0 / 22px 22px,
+    var(--nbv-panel);
+}
+.nbv-map__svg { width: 100%; height: 100%; cursor: grab; }
+.nbv-map__svg:active { cursor: grabbing; }
+.nbv-edge { stroke: rgba(15, 110, 113, 0.32); stroke-width: 1.2; }
+.nbv-edge--prefix { stroke: rgba(196, 98, 66, 0.32); }
+.nbv-edge--suffix { stroke: rgba(92, 83, 78, 0.28); }
+.nbv-edge--derived { stroke: var(--nbv-ember); stroke-width: 1.6; stroke-dasharray: 4 3; }
+.nbv-node { cursor: pointer; }
+.nbv-node--word circle { fill: var(--nbv-ink); }
+.nbv-node--word text {
+  opacity: 0;
+  fill: var(--nbv-ink);
+  font: 13px var(--nbv-serif);
+  paint-order: stroke;
+  stroke: var(--nbv-panel);
+  stroke-width: 3px;
+}
+.nbv-node--word:hover text,
+.nbv-node--word.is-lit text { opacity: 1; }
+.nbv-node--word.is-focus circle { fill: var(--nbv-ember); }
+.nbv-node--word.is-focus text { font-weight: 700; }
+.nbv-node--hub rect { fill: var(--nbv-teal-soft); stroke: #0f6e71; stroke-width: 1; }
+.nbv-node--hub text { fill: #002021; font: 600 12.5px var(--nbv-serif); }
+.nbv-node--prefix rect { fill: var(--nbv-ember-soft); stroke: #d9735a; }
+.nbv-node--prefix text { fill: #351000; }
+.nbv-node--suffix rect { fill: var(--nbv-paper-2); stroke: var(--nbv-stone); }
+.nbv-node--suffix text { fill: var(--nbv-ink); }
+.nbv-map.is-focus .nbv-edge:not(.is-lit),
+.nbv-map.is-focus .nbv-node:not(.is-lit) { opacity: 0.16; }
+.nbv-map.is-focus .nbv-edge.is-lit { stroke-width: 2; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nbv-map__panel { animation: none; }
+}

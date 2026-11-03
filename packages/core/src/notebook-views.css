@@ -159,58 +159,6 @@
   border-top: 1.5px solid var(--nbv-line);
 }
 
-/* Map */
-.nbv-map-hint { margin-left: auto; font: 500 12px/1 var(--nbv-ui); color: var(--nbv-soft); }
-.nbv-map {
-  position: relative;
-  height: min(68vh, 620px);
-  min-height: 320px;
-  border: 1px solid var(--nbv-line);
-  border-radius: 16px;
-  background:
-    radial-gradient(circle at 1px 1px, rgba(92, 83, 78, 0.16) 1px, transparent 0) 0 0 / 22px 22px,
-    var(--nbv-panel);
-  overflow: hidden;
-  touch-action: none;
-}
-.nbv-map__svg { width: 100%; height: 100%; cursor: grab; user-select: none; }
-.nbv-map__svg:active { cursor: grabbing; }
-.nbv-edge { stroke: rgba(15, 110, 113, 0.32); stroke-width: 1.2; transition: opacity 0.18s var(--nbv-motion); }
-.nbv-edge--prefix { stroke: rgba(156, 61, 0, 0.3); }
-.nbv-edge--suffix { stroke: rgba(92, 83, 78, 0.28); }
-.nbv-edge--derived { stroke: var(--nbv-ember); stroke-width: 1.6; stroke-dasharray: 4 3; }
-.nbv-node { cursor: pointer; transition: opacity 0.18s var(--nbv-motion); }
-.nbv-node--word circle { fill: var(--nbv-ink); }
-.nbv-node--word text { font: 13px var(--nbv-serif); fill: var(--nbv-ink); paint-order: stroke; stroke: var(--nbv-panel); stroke-width: 3px; }
-.nbv-node--hub { cursor: default; }
-.nbv-node--hub rect { fill: var(--nbv-teal-soft); stroke: var(--nbv-teal); stroke-width: 1; }
-.nbv-node--hub text { font: 600 12.5px var(--nbv-serif); fill: #002021; }
-.nbv-node--prefix rect { fill: var(--nbv-ember-soft); stroke: var(--nbv-ember); }
-.nbv-node--prefix text { fill: #351000; }
-.nbv-node--suffix rect { fill: var(--nbv-paper-2); stroke: var(--nbv-stone); }
-.nbv-node--suffix text { fill: var(--nbv-ink); }
-.nbv-map.is-focus .nbv-edge:not(.is-lit),
-.nbv-map.is-focus .nbv-node:not(.is-lit) { opacity: 0.18; }
-.nbv-map.is-focus .nbv-edge.is-lit { stroke-width: 2; }
-.nbv-map__zoom {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
-  display: grid;
-  gap: 4px;
-}
-.nbv-map__zoom button {
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--nbv-line);
-  border-radius: 10px;
-  background: var(--nbv-panel);
-  color: var(--nbv-ink);
-  font: 600 16px/1 var(--nbv-ui);
-  cursor: pointer;
-}
-.nbv-map__zoom button:hover { background: var(--nbv-paper-2); }
-
 /* Cards */
 .nbv-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
 .nbv-card {
