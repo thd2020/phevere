@@ -36,7 +36,7 @@ function resolveDbPath(): string {
   }
 }
 
-function resolveSqlAsmPath(): string | null {
+export function resolveSqlAsmPath(): string | null {
   const candidates = [
     path.join(process.resourcesPath || '', 'sql-asm.js'),
     path.join(process.resourcesPath || '', 'sql.js', 'sql-asm.js'),

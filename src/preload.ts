@@ -458,7 +458,8 @@ contextBridge.exposeInMainWorld('wikipediaAPI', {
 
 contextBridge.exposeInMainWorld('vocabAPI', {
   list: (limit?: number) => ipcRenderer.invoke('vocab-list', limit),
-  exportNotebook: (format?: 'json' | 'csv') => ipcRenderer.invoke('vocab-export', format),
+  /** Export the book being viewed as .pvbook, or for Anki. */
+  exportNotebook: (req?: { scope?: { kind: 'mine' } | { kind: 'user' | 'catalog'; id: string }; anki?: boolean }) => ipcRenderer.invoke('vocab-export', req),
   importNotebook: () => ipcRenderer.invoke('vocab-import'),
   find: (lemma: string) => ipcRenderer.invoke('vocab-find', lemma),
   add: async (payload: Record<string, unknown>) => {
@@ -715,8 +716,8 @@ declare global {
     };
     vocabAPI: {
       list: (limit?: number) => Promise<any[]>;
-      exportNotebook: (format?: 'json' | 'csv') => Promise<{ cancelled?: boolean; path?: string; count?: number }>;
-      importNotebook: () => Promise<{ cancelled?: boolean; imported?: number; skipped?: number; path?: string }>;
+      exportNotebook: (req?: { scope?: { kind: 'mine' } | { kind: 'user' | 'catalog'; id: string }; anki?: boolean }) => Promise<{ cancelled?: boolean; path?: string; count?: number }>;
+      importNotebook: () => Promise<{ cancelled?: boolean; kind?: string; bookId?: string; title?: string; words?: number }>;
       find: (lemma: string) => Promise<any | null>;
       add: (payload: Record<string, unknown>) => Promise<any>;
       remove: (id: string) => Promise<boolean>;

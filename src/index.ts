@@ -73,6 +73,21 @@ import {
   vocabPayloadFromResult,
   type AnswerDetails,
 } from '@phevere/core';
+import {
+  ankiTextFromBook,
+  BOOK_FILE_EXTENSION,
+  BookLockedError,
+  decodeBookFile,
+  exportBookFile,
+  findBookConflict,
+  importBookPayload,
+  isBookFile,
+  isZip,
+  parseAnkiPackage,
+  parseAnkiText,
+  type BookPayload,
+  type BookScope,
+} from '@phevere/core';
 import { readClipboardImage, loadImageFileAsPng, pngFromBase64 } from './services/clipboard-image';
 import {
   loadMonitorSettings,
@@ -96,7 +111,7 @@ import {
   NotificationKind,
   NotificationPrefs,
 } from './services/notification-prefs-store';
-import { getLocalDb, flushPersist as persistLocalDb, closeLocalDb } from './services/local-db';
+import { getLocalDb, flushPersist as persistLocalDb, closeLocalDb, resolveSqlAsmPath } from './services/local-db';
 import * as vocabStore from './services/vocab-store';
 import { clearLookupSources, disposeSourceCapture, noteLookupSource, sourceForSavedWord } from './services/source-capture';
 import { canSynthesizeKeys, focusWindowHandle, foregroundWindowHandle } from './services/key-synth';
@@ -2992,76 +3007,141 @@ ipcMain.handle('vocab-list', async (_e, limit?: number) => {
     throw error;
   }
 });
-ipcMain.handle('vocab-export', async (e, format?: string) => {
+/* ------------------------------------------------- word book files (.pvbook, Anki) */
+
+/** Anki packages hold SQLite; open it with the same sql.js build the local database uses. */
+let sqlJsForImport: Promise<any> | null = null;
+const openSqliteForImport = async (bytes: Uint8Array) => {
+  if (!sqlJsForImport) {
+    const asm = resolveSqlAsmPath();
+    if (!asm) throw new Error('SQLite is not available to read this Anki file.');
+    // eslint-disable-next-line no-eval
+    const req = eval('require') as NodeRequire;
+    sqlJsForImport = Promise.resolve(req(asm)()).catch((err: unknown) => {
+      sqlJsForImport = null;
+      throw err;
+    });
+  }
+  const SQL = await sqlJsForImport;
+  const db = new SQL.Database(bytes);
+  return {
+    all(sql: string) {
+      const res = db.exec(sql)[0];
+      return res ? res.values.map((v: unknown[]) => Object.fromEntries(res.columns.map((c: string, i: number) => [c, v[i]]))) : [];
+    },
+    close: () => db.close(),
+  };
+};
+
+function notifyWordsChanged(): void {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (w.isDestroyed()) continue;
+    try {
+      w.webContents.send('vocab-updated', { id: '', lemma: '' });
+    } catch {
+      /* closed */
+    }
+  }
+}
+
+/** Export the book being viewed as .pvbook, or as Anki's text format. */
+ipcMain.handle('vocab-export', async (e, req?: { scope?: BookScope; anki?: boolean } | string) => {
   try {
     const win = BrowserWindow.fromWebContents(e.sender) || mainWindow;
-    const entries = await vocabStore.listVocab(10000);
-    const wantCsv = String(format || '').toLowerCase() === 'csv';
+    const scope: BookScope = (typeof req === 'object' && req?.scope) || { kind: 'mine' };
+    const anki = typeof req === 'object' && !!req?.anki;
+    const file = await exportBookFile(scope, `Phevere ${app.getVersion()}`);
+    const payload = anki ? await decodeBookFile(file.bytes) : null;
+    const defaultPath = anki ? file.fileName.replace(/\.pvbook$/, ' (Anki).txt') : file.fileName;
     const result = await dialog.showSaveDialog(win || undefined, {
-      title: 'Export My words',
-      defaultPath: wantCsv ? 'phevere-notebook.csv' : 'phevere-notebook.json',
-      filters: [
-        { name: 'JSON', extensions: ['json'] },
-        { name: 'CSV', extensions: ['csv'] },
-        { name: 'All files', extensions: ['*'] },
-      ],
+      title: anki ? 'Export for Anki' : 'Export book',
+      defaultPath,
+      filters: anki ? [{ name: 'Anki text', extensions: ['txt'] }] : [{ name: 'Phevere book', extensions: [BOOK_FILE_EXTENSION] }],
     });
-    if (result.canceled || !result.filePath) {
-      return { cancelled: true };
-    }
-    const asCsv = result.filePath.toLowerCase().endsWith('.csv') || wantCsv;
-    const body = asCsv ? vocabEntriesToCsv(entries) : JSON.stringify(entries, null, 2);
-    fs.writeFileSync(result.filePath, body, 'utf8');
-    return { cancelled: false, path: result.filePath, count: entries.length };
+    if (result.canceled || !result.filePath) return { cancelled: true };
+    if (payload) fs.writeFileSync(result.filePath, ankiTextFromBook(payload), 'utf8');
+    else fs.writeFileSync(result.filePath, file.bytes);
+    return { cancelled: false, path: result.filePath, count: file.count };
   } catch (error) {
     log.error('main', 'vocab-export failed', { err: String(error) });
     throw error;
   }
 });
+
+/** A .pvbook, an Anki .apkg or .txt, or an older .json or .csv notebook export. */
+async function bookPayloadFromFile(filePath: string): Promise<BookPayload | null> {
+  const bytes = new Uint8Array(fs.readFileSync(filePath));
+  const name = path.basename(filePath);
+  if (isBookFile(bytes)) return decodeBookFile(bytes);
+  if (isZip(bytes)) return parseAnkiPackage(bytes, openSqliteForImport, name);
+  if (/\.txt$/i.test(name)) return parseAnkiText(Buffer.from(bytes).toString('utf8'), name);
+  return null;
+}
+
 ipcMain.handle('vocab-import', async (e) => {
   try {
     const win = BrowserWindow.fromWebContents(e.sender) || mainWindow;
     const picked = await dialog.showOpenDialog(win || undefined, {
-      title: 'Import notebook',
+      title: 'Import a book',
       filters: [
-        { name: 'Notebook', extensions: ['json', 'csv'] },
-        { name: 'JSON', extensions: ['json'] },
-        { name: 'CSV', extensions: ['csv'] },
-        { name: 'All files', extensions: ['*'] },
+        { name: 'Books', extensions: [BOOK_FILE_EXTENSION, 'apkg', 'txt', 'json', 'csv'] },
+        { name: 'Phevere book', extensions: [BOOK_FILE_EXTENSION] },
+        { name: 'Anki', extensions: ['apkg', 'txt'] },
+        { name: 'Older Phevere export', extensions: ['json', 'csv'] },
       ],
       properties: ['openFile'],
     });
-    if (picked.canceled || !picked.filePaths[0]) {
-      return { cancelled: true };
-    }
+    if (picked.canceled || !picked.filePaths[0]) return { cancelled: true };
     const filePath = picked.filePaths[0];
-    const raw = fs.readFileSync(filePath, 'utf8');
-    const rows = filePath.toLowerCase().endsWith('.csv')
-      ? vocabEntriesFromCsv(raw)
-      : vocabEntriesFromJson(raw);
-    let imported = 0;
-    let skipped = 0;
-    for (const row of rows) {
-      try {
-        if (!row.lemma?.trim()) {
-          skipped += 1;
-          continue;
-        }
-        await vocabStore.addVocab(row);
-        imported += 1;
-      } catch {
-        skipped += 1;
+    let payload: BookPayload | null;
+    try {
+      payload = await bookPayloadFromFile(filePath);
+    } catch (error) {
+      if (error instanceof BookLockedError || error instanceof Error) {
+        await dialog.showMessageBox(win || undefined, { type: 'warning', message: 'This book could not be opened.', detail: error.message });
+        return { cancelled: true };
       }
+      throw error;
     }
-    for (const w of BrowserWindow.getAllWindows()) {
-      if (w.isDestroyed()) continue;
-      try {
-        w.webContents.send('vocab-updated', { id: '', lemma: '' });
-      } catch {
-        /* ignore */
+    if (!payload) {
+      // An export from before word book files: rows of My words.
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const rows = filePath.toLowerCase().endsWith('.csv') ? vocabEntriesFromCsv(raw) : vocabEntriesFromJson(raw);
+      let imported = 0;
+      for (const row of rows) {
+        if (!row.lemma?.trim()) continue;
+        await vocabStore.addVocab(row).then((): void => { imported += 1; }, (): void => undefined);
       }
+      notifyWordsChanged();
+      return { cancelled: false, kind: 'mine', title: 'My words', words: imported };
     }
-    return { cancelled: false, imported, skipped, path: filePath };
+    let mode: 'replace' | 'keep-both' = 'keep-both';
+    const conflict = await findBookConflict(payload);
+    if (conflict && payload.book.kind === 'user') {
+      const r = await dialog.showMessageBox(win || undefined, {
+        type: 'question',
+        buttons: ['Replace', 'Keep both', 'Cancel'],
+        defaultId: 1,
+        cancelId: 2,
+        message: `You already have a book named “${conflict.title}”.`,
+        detail: `Replace overwrites its word list with this file's. Keep both adds this one as “${conflict.title} (2)”. Progress is merged either way.`,
+      });
+      if (r.response === 2) return { cancelled: true };
+      mode = r.response === 0 ? 'replace' : 'keep-both';
+    } else if (conflict) {
+      const r = await dialog.showMessageBox(win || undefined, {
+        type: 'question',
+        buttons: ['Merge progress', 'Cancel'],
+        defaultId: 0,
+        cancelId: 1,
+        message: `You already added “${conflict.title}”.`,
+        detail: "This file's progress is merged into it.",
+      });
+      if (r.response === 1) return { cancelled: true };
+    }
+    const result = await importBookPayload(payload, mode);
+    notifyWordsChanged();
+    return { cancelled: false, ...result };
   } catch (error) {
     log.error('main', 'vocab-import failed', { err: String(error) });
     throw error;
@@ -3167,35 +3247,6 @@ ipcMain.handle('wordbook-save', async (_e, lemma: string, hasMeaning?: boolean) 
   if (!entry.definition || !String(entry.definition).trim()) enqueueVocabEnrich(entry.lemma);
   return entry;
 });
-
-function vocabEntriesToCsv(entries: vocabStore.VocabEntry[]): string {
-  const cols = [
-    'lemma',
-    'reading',
-    'partOfSpeech',
-    'sourceLang',
-    'targetLang',
-    'definition',
-    'note',
-    'sources',
-    'createdAt',
-    'updatedAt',
-  ] as const;
-  const esc = (value: unknown): string => {
-    const s = value == null ? '' : String(value);
-    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-    return s;
-  };
-  const rows = entries.map((entry) =>
-    cols
-      .map((col) => {
-        if (col === 'sources') return esc((entry.sources || []).join('|'));
-        return esc(entry[col]);
-      })
-      .join(','),
-  );
-  return [cols.join(','), ...rows].join('\r\n');
-}
 
 function vocabEntriesFromJson(raw: string): vocabStore.VocabAddInput[] {
   const parsed = JSON.parse(raw);

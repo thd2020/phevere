@@ -3257,15 +3257,24 @@ document.getElementById('vocabSortAlpha')?.addEventListener('click', () => {
   rerenderNotebook();
 });
 
-document.getElementById('exportVocabBtn')?.addEventListener('click', async () => {
+/** The book Words is showing, as an export scope: My words, a made book or a catalog book. */
+function exportScope(): { kind: 'mine' } | { kind: 'user' | 'catalog'; id: string } {
+  if (wbScope === 'mine' || wbScope === 'all' || wbScope === 'sources' || wbLibrary) return { kind: 'mine' };
+  return isUserBookId(wbScope) ? { kind: 'user', id: wbScope } : { kind: 'catalog', id: wbScope };
+}
+
+async function exportWords(anki: boolean): Promise<void> {
   const api = (window as any).vocabAPI;
   if (!api?.exportNotebook) return;
   try {
-    await api.exportNotebook('json');
+    await api.exportNotebook({ scope: exportScope(), anki });
   } catch (error) {
     console.error('vocab export failed', error);
   }
-});
+}
+
+document.getElementById('exportVocabBtn')?.addEventListener('click', () => void exportWords(false));
+document.getElementById('exportAnkiBtn')?.addEventListener('click', () => void exportWords(true));
 
 document.getElementById('importVocabBtn')?.addEventListener('click', async () => {
   const api = (window as any).vocabAPI;
@@ -3273,7 +3282,12 @@ document.getElementById('importVocabBtn')?.addEventListener('click', async () =>
   try {
     const result = await api.importNotebook();
     if (result?.cancelled) return;
-    void loadVocabNotebook();
+    await loadVocabNotebook();
+    await refreshWords();
+    // Open what came in: the imported book, or My words.
+    if (result?.bookId && result.kind !== 'mine') setWordsScope(result.bookId);
+    else setWordsScope('mine');
+    rerenderActive();
   } catch (error) {
     console.error('vocab import failed', error);
   }
