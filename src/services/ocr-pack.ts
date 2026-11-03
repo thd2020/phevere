@@ -9,8 +9,9 @@
  * the @gutenye/ocr-models npm tarball on npmmirror and npmjs for networks where
  * github.com is slow. The hashes, not the source, decide whether a file is good.
  *
- * Older installers put the same files in resources/ocr-models; the OCR engine
- * still reads that folder (legacyPackRoots).
+ * Older installers put the same files in resources/ocr-models. The Windows
+ * installer carries that folder across upgrades (packaging/installer.nsh,
+ * PV_KEEP_OCR_MODELS) and the OCR engine still reads it (legacyPackRoots).
  */
 
 import { app, net } from 'electron';
