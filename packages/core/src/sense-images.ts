@@ -23,13 +23,23 @@
  * c. the article titled with a derived noun ("inspect" gives "Inspection", "run" "Running",
  *    "beautiful" "Beauty", "ephemeral" "Ephemerality");
  * d. any other caption-only Wiktionary picture on the page;
- * e. a Commons file search for the word (a foreign word: its English gloss), bitmaps only,
- *    ranked by how many gloss words its title, description and categories share, with logos,
- *    maps, flags, diagrams and portraits of named people pushed down.
+ * e. a picture used in the word's article that names the word or a gloss word, such as the
+ *    diagram "Lac Operon.svg" on "Operon", whose lead has no free image. When the title is a
+ *    disambiguation page or names something else ("Holon" is a city), the article is the search
+ *    hit titled with a qualifier whose description fits the gloss ("Holon (philosophy)");
+ * f. a Commons file search for the word in file names (a foreign word: its English gloss),
+ *    photos and drawings, ranked by how many gloss words its title, description and categories
+ *    share, with logos, maps, flags, diagrams and portraits of named people pushed down. When
+ *    the word's title names something else, a hit must share a gloss word.
  *
- * Steps a to d cost one batched Wikipedia `titles=` request; step e one Commons search, made
- * only when a to d find nothing. File metadata (thumb URL, size, author, licence) comes from
- * one batched Commons `imageinfo` call, or with the Commons search itself.
+ * Steps a to d cost one batched Wikipedia `titles=` request; step e one `prop=images` request
+ * (and a search when the title is not the word's article); step f one Commons search. Each runs
+ * only when the steps before it find nothing. File metadata (thumb URL, size, author, licence)
+ * comes from one batched Commons `imageinfo` call, or with the Commons search itself.
+ *
+ * Requests go out at most three at a time with an identifying User-Agent, as Wikimedia's rate
+ * limits ask. A result computed while a request failed is not cached, and a result with no
+ * picture is kept for six hours only, so a word that got nothing is tried again.
  */
 import { getHttp, getLookupCache, isCoreConfigured } from './runtime';
 import type { HttpClient, HttpRequestInit, HttpTextResponse, HttpBytesResponse } from './http';
@@ -58,8 +68,11 @@ export interface SenseInput {
 const THUMB_WIDTH = 330;
 const LARGE_WIDTH = 960;
 const TIMEOUT_MS = 8000;
-const CACHE_VERSION = 'v2';
+// v3: results with no picture saved under v2 (before article diagrams and SVG) are retried.
+const CACHE_VERSION = 'v3';
 const PERSIST_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+/** A result with no picture at all is kept this long, so a word saved earlier is tried again. */
+const EMPTY_TTL_MS = 6 * 60 * 60 * 1000;
 const API_UA = 'Phevere/2 (https://github.com/thd2020/phevere)';
 
 const STOP = new Set(
@@ -520,6 +533,18 @@ export function acceptWikipediaPage(
   opts: { exactGloss?: boolean; strict?: boolean } = {},
 ): boolean {
   if (!page || page.missing || !page.pageimage || !page.thumbnail?.source) return false;
+  return pageFitsGloss(page, word, gloss, lemma, opts);
+}
+
+/** `acceptWikipediaPage` without the lead-image requirement: the article is about this sense. */
+export function pageFitsGloss(
+  page: WikipediaPage,
+  word: string,
+  gloss: string,
+  lemma: string,
+  opts: { exactGloss?: boolean; strict?: boolean } = {},
+): boolean {
+  if (!page || page.missing) return false;
   if (page.pageprops && page.pageprops.disambiguation !== undefined) return false;
   const { base, qualifier } = titleParts(page.title);
   if (!sameWord(base, word)) return false;
@@ -644,6 +669,86 @@ export interface FallbackTitles {
   exact: number;
 }
 
+/** The Wikipedia language a fallback title query asks. */
+function titleQueryLang(req: FallbackTitles): string {
+  const m = req.url.match(/^https:\/\/([a-z-]+)\.wikipedia\.org\//);
+  return m ? m[1] : 'en';
+}
+
+/** Interface pictures that sit on many articles: edit pencils, sister-project marks, maintenance boxes. */
+const CHROME_FILE = /^(OOjs UI|Question book|Symbol .* class|Edit-clear|Ambox|Wiki letter|Disambig|Portal-puzzle|Padlock|Lock-|Nuvola|Crystal Clear|Gnome-|Emblem-|Sound-|Speaker)/i;
+
+/** An article's own pictures (one `prop=images` request), for an article without a free lead image. */
+export function buildArticleImagesUrl(title: string, lang = 'en'): string {
+  return (
+    `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&redirects=1` +
+    `&prop=images&imlimit=50&titles=${encodeURIComponent(title)}&origin=*`
+  );
+}
+
+/**
+ * Pictures used in an article, best first, for a word whose article has no lead image: a
+ * diagram such as "Lac Operon.svg" on "Operon". A file counts only when its name contains the
+ * word or a gloss word, so navigation-box pictures and interface icons drop out. SVG is fine:
+ * Commons serves it as a PNG thumbnail.
+ */
+export function rankArticleImages(files: string[], lemma: string, gloss: string[]): string[] {
+  return files
+    .map((raw, i) => {
+      const file = String(raw || '').replace(/^(File|Image):/i, '').replace(/_/g, ' ').trim();
+      if (!file || NON_IMAGE_EXT.test(file) || !/\.(jpe?g|png|gif|svg|webp|tiff?)$/i.test(file)) return null;
+      const name = commonsFileTitle(file);
+      if (CHROME_FILE.test(name) || badMatch(BAD_FILE, name, lemma)) return null;
+      const named = sharesWord(name, lemma);
+      const shared = overlap(contentTokens(name, lemma), gloss);
+      if (!named && !shared) return null;
+      return { file, score: (named ? 2 : 0) + shared - i / 1000 };
+    })
+    .filter((x): x is { file: string; score: number } => !!x)
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.file);
+}
+
+export interface WordArticle {
+  page: WikipediaPage | null;
+  /**
+   * The word's own title names something else (a city, a film, a person) or is a disambiguation
+   * page, so a file named after the word is no evidence; Commons hits must share a gloss word.
+   */
+  ambiguous: boolean;
+}
+
+/**
+ * The article about the word: the page titled with it when that page is about a concept, or,
+ * when the title is missing, a disambiguation page or a place, person or work ("Holon" is a city),
+ * the search hit titled with the word plus a qualifier whose description fits the first gloss
+ * ("Holon (philosophy)").
+ */
+export function pickWordArticle(
+  q: TitleQuery | null,
+  req: FallbackTitles,
+  search: WikipediaPage[] | null,
+  lemma: string,
+  senses: SenseInput[],
+): WordArticle {
+  const state = wordTitleState(q, req);
+  if (state.usable) return { page: state.exact as WikipediaPage, ambiguous: false };
+  const first = senses.find((s) => stripHtml(s.meaning));
+  const ordered = [...(search || [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  const page = first ? ordered.find((p) => pageFitsGloss(p, lemma, first.meaning, lemma)) || null : null;
+  return { page, ambiguous: state.ambiguous };
+}
+
+/** The page titled with the word: usable as its article, or missing, or about something else. */
+function wordTitleState(q: TitleQuery | null, req: FallbackTitles): { exact?: WikipediaPage; usable: boolean; ambiguous: boolean } {
+  const exact = q ? resolveTitle(q, req.titles[0]) : undefined;
+  if (!exact || exact.missing) return { exact, usable: false, ambiguous: false };
+  const disambiguation = exact.pageprops?.disambiguation !== undefined || /disambiguation/i.test(exact.title);
+  const elsewhere =
+    BAD_DESCRIPTION.test(String(exact.description || '')) || BAD_DESCRIPTION.test(titleParts(exact.title).qualifier);
+  return { exact, usable: !disambiguation && !elsewhere, ambiguous: disambiguation || elsewhere };
+}
+
 /**
  * The one `titles=` query of the fallback. English: the word and its derived nouns on English
  * Wikipedia. Another language: the short English glosses of its first senses ("猫" gives "Cat"),
@@ -732,10 +837,16 @@ export function rankWiktionaryFallback(
     .map(({ image, score }) => ({ image, strong: score > 0 }));
 }
 
+/**
+ * A Commons file search, photos and drawings (SVG diagrams) alike. A one-word query must be in
+ * the file name: a full-text search for "arbitrage" returns US Navy repair ships coded "ARB".
+ */
 export function buildCommonsSearchUrl(query: string): string {
+  const q = String(query || '').trim();
+  const text = /^[\p{L}'-]+$/u.test(q) ? `intitle:${q}` : q;
   return (
     'https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2' +
-    `&generator=search&gsrnamespace=6&gsrlimit=12&gsrsearch=${encodeURIComponent(`${query} filetype:bitmap`)}` +
+    `&generator=search&gsrnamespace=6&gsrlimit=12&gsrsearch=${encodeURIComponent(`${text} filetype:bitmap|drawing`)}` +
     `&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=${THUMB_WIDTH}` +
     '&iiextmetadatafilter=Artist|LicenseShortName|ImageDescription|Categories&iiextmetadatalanguage=en&origin=*'
   );
@@ -778,12 +889,14 @@ export interface CommonsPage {
  * search rank; five off for a logo, map, chart or scan, four off for a portrait of a named
  * person. Files that are not images, and hits that name neither the search word nor a gloss
  * word, are dropped; every other hit stays, so a search with any fitting hit yields a picture.
+ * `needGloss` (the word also names a city, a film or a person) drops hits sharing no gloss word.
  */
 export function rankCommonsFiles(
   pages: CommonsPage[],
   query: string,
   lemma: string,
   gloss: string[],
+  opts: { needGloss?: boolean } = {},
 ): Array<{ file: string; title: string; info: ImageInfo; score: number }> {
   const list = [...(pages || [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
   const n = list.length || 1;
@@ -791,7 +904,7 @@ export function rankCommonsFiles(
   return list
     .map((p, i) => {
       const info = p.imageinfo?.[0];
-      if (!info || !info.thumburl || (info.mime && !/^image\/(jpeg|png|gif|webp|tiff)/.test(info.mime))) return null;
+      if (!info || !info.thumburl || (info.mime && !/^image\/(jpeg|png|gif|webp|tiff|svg)/.test(info.mime))) return null;
       const file = p.title.replace(/^File:/i, '');
       const name = commonsFileTitle(file);
       const meta = info.extmetadata || {};
@@ -802,6 +915,7 @@ export function rankCommonsFiles(
       const inName = words.some((w) => sharesWord(name, w));
       // A hit that names neither the search word nor a gloss word matched on something else.
       if (!shared && !inName && !words.some((w) => sharesWord(`${description} ${categories}`, w))) return null;
+      if (opts.needGloss && !shared) return null;
       let score = shared * 2 + (1 - i / n);
       if (inName) score += 2;
       if (badMatch(BAD_FILE, name, lemma) || badMatch(BAD_CATEGORY, categories, lemma)) score -= 5;
@@ -862,14 +976,17 @@ function bareUrl(url: string): string {
   return String(url || '').replace(/\?utm_[^#]*$/, '');
 }
 
-function imageFromInfo(file: string, title: string, info: ImageInfo | undefined): SenseImage | null {
+export function imageFromInfo(file: string, title: string, info: ImageInfo | undefined): SenseImage | null {
   if (!info || !info.thumburl || !info.url) return null;
   if (info.mime && !/^image\//.test(info.mime)) return null;
-  const isSvg = /svg/.test(info.mime || '') || /\.svg$/i.test(file);
+  // The large view of an SVG or a TIFF uses Commons' PNG rendering: browsers do not display
+  // TIFF at all. A TIFF thumbnail is named "…/lossless-page1-330px-x.tif.png".
+  const rendered = /svg|tiff/.test(info.mime || '') || /\.(svg|tiff?)$/i.test(file);
   const thumb = bareUrl(info.thumburl);
   let url = bareUrl(info.url);
-  if (((info.width || 0) > LARGE_WIDTH || isSvg) && thumb.includes(`/${THUMB_WIDTH}px-`)) {
-    url = thumb.replace(`/${THUMB_WIDTH}px-`, `/${LARGE_WIDTH}px-`);
+  const step = new RegExp(`/((?:lossless-)?(?:page\\d+-)?)${THUMB_WIDTH}px-`);
+  if (((info.width || 0) > LARGE_WIDTH || rendered) && step.test(thumb)) {
+    url = thumb.replace(step, `/$1${LARGE_WIDTH}px-`);
   }
   return {
     url,
@@ -911,10 +1028,37 @@ const fetchClient: HttpClient = {
   },
 };
 
+/**
+ * Wikimedia's 2026 rate limits allow 10 requests a minute to a client identified only by IP and
+ * 200 to one whose User-Agent names the tool and a contact URL. The desktop HTTP client sends a
+ * generic browser User-Agent by default, which Wikimedia answers with 429 after a few requests,
+ * so the configured client sends ours. A browser (no configured client) cannot set User-Agent.
+ * https://www.mediawiki.org/wiki/Wikimedia_APIs/Rate_limits
+ */
 function client(): { http: HttpClient; headers?: Record<string, string> } {
-  if (isCoreConfigured()) return { http: getHttp(), headers: { 'Api-User-Agent': API_UA } };
+  if (isCoreConfigured()) return { http: getHttp(), headers: { 'User-Agent': API_UA, 'Api-User-Agent': API_UA } };
   return { http: fetchClient };
 }
+
+/** The same page asks for "at most 3 concurrent requests"; a notebook of cards asks for dozens at once. */
+const MAX_IN_FLIGHT = 3;
+const RETRY_MS = 1500;
+let inFlight = 0;
+const waiting: Array<() => void> = [];
+
+async function throttled<T>(run: () => Promise<T>): Promise<T> {
+  if (inFlight >= MAX_IN_FLIGHT) await new Promise<void>((resolve) => waiting.push(resolve));
+  inFlight += 1;
+  try {
+    return await run();
+  } finally {
+    inFlight -= 1;
+    waiting.shift()?.();
+  }
+}
+
+/** Failed requests so far; a result computed while one failed is not cached (see `fetchSenseImages`). */
+let failures = 0;
 
 const jsonCache = new Map<string, Promise<unknown>>();
 
@@ -922,9 +1066,16 @@ function getJson<T>(url: string): Promise<T | null> {
   const hit = jsonCache.get(url);
   if (hit) return hit as Promise<T | null>;
   const { http, headers } = client();
-  const p = http
-    .requestJson<T>(url, { headers, timeoutMs: TIMEOUT_MS })
+  const once = () => throttled(() => http.requestJson<T>(url, { headers, timeoutMs: TIMEOUT_MS }));
+  const p = once()
+    .catch(async (err: unknown) => {
+      // Rate limited or overloaded: one more try after a pause.
+      if (!/\b(429|503)\b/.test(String((err as Error)?.message || err))) throw err;
+      await new Promise((r) => setTimeout(r, RETRY_MS));
+      return once();
+    })
     .catch((): null => {
+      failures += 1;
       jsonCache.delete(url);
       return null;
     });
@@ -950,6 +1101,13 @@ async function wikipediaPages(url: string): Promise<WikipediaPage[]> {
 async function titleQuery(url: string): Promise<TitleQuery | null> {
   const res = await getJson<{ query?: TitleQuery }>(url);
   return res?.query || null;
+}
+
+async function articleImageFiles(title: string, lang: string): Promise<string[]> {
+  const res = await getJson<{ query?: { pages?: Array<{ images?: Array<{ title: string }> }> } }>(
+    buildArticleImagesUrl(title, lang),
+  );
+  return (res?.query?.pages?.[0]?.images || []).map((i) => i.title);
 }
 
 async function commonsSearch(query: string): Promise<CommonsPage[]> {
@@ -981,14 +1139,17 @@ function hashText(s: string): string {
   return (h >>> 0).toString(36);
 }
 
-const resultCache = new Map<string, Promise<Array<SenseImage | null>>>();
+/** In-memory results; `until` is set once a result with no picture lands. */
+const resultCache = new Map<string, { p: Promise<Array<SenseImage | null>>; until: number }>();
 
 async function readPersisted(key: string): Promise<Array<SenseImage | null> | null> {
   const store = getLookupCache();
   if (!store) return null;
   try {
     const hit = await store.get(key);
-    if (!hit || Date.now() - hit.savedAt > PERSIST_TTL_MS || !Array.isArray(hit.value)) return null;
+    if (!hit || !Array.isArray(hit.value)) return null;
+    const ttl = hit.value.some(Boolean) ? PERSIST_TTL_MS : EMPTY_TTL_MS;
+    if (Date.now() - hit.savedAt > ttl) return null;
     return hit.value as Array<SenseImage | null>;
   } catch {
     return null;
@@ -1130,16 +1291,54 @@ async function resolveWordFallback(
   for (const w of wk.filter((x) => x.strong)) push(w.image.file, w.image.caption);
   for (const c of concept.filter((x) => !x.exact)) push(c.page.pageimage as string, c.page.title);
   for (const w of wk.filter((x) => !x.strong)) push(w.image.file, w.image.caption);
-  const tryFiles = ordered.slice(0, 4);
-  if (tryFiles.length) {
-    const infos = await imageInfos(tryFiles.map((p) => p.file));
-    for (const p of tryFiles) {
+  const tried = new Set<string>();
+  const firstUsable = async (picks: Pick[]): Promise<SenseImage | null> => {
+    const fresh = picks.filter((p) => !tried.has(p.file.toLowerCase())).slice(0, 4);
+    if (!fresh.length) return null;
+    for (const p of fresh) tried.add(p.file.toLowerCase());
+    const infos = await imageInfos(fresh.map((p) => p.file));
+    for (const p of fresh) {
       const img = imageFromInfo(p.file, p.title, infos.get(p.file.toLowerCase()));
       if (img) return img;
     }
+    return null;
+  };
+  const early = await firstUsable(ordered);
+  if (early) return early;
+
+  // The word's article has no free lead image ("Operon", "Arbitrage"): a picture used in the
+  // article that names the word, such as its diagram. When the title is a city or a
+  // disambiguation page, the search hit titled with a qualifier ("Holon (philosophy)").
+  let gloss = glossUnion(senses, lemma);
+  let ambiguous = false;
+  if (req) {
+    const wikiLang = titleQueryLang(req);
+    const firstGloss = senses.find((s) => stripHtml(s.meaning));
+    const search =
+      !wordTitleState(q, req).usable && wikiLang === 'en' && lang === 'en' && firstGloss
+        ? await wikipediaPages(buildWikipediaSearchUrl(buildSenseSearchQuery(lemma, firstGloss.meaning)))
+        : null;
+    const article = pickWordArticle(q, req, search, lemma, senses);
+    // A failed title query leaves the word's other meanings unknown: ask for a gloss word too.
+    ambiguous = article.ambiguous || !q;
+    if (article.page && !article.page.missing) {
+      // No gloss (a notebook card for a word saved without a definition): the article's
+      // description and first sentences say which sense to look for.
+      if (!gloss.length) gloss = contentTokens(`${article.page.description || ''} ${article.page.extract || ''}`, lemma);
+      const picks: Pick[] = [];
+      if (article.page.pageimage && acceptConceptPage(article.page)) {
+        picks.push({ file: article.page.pageimage.replace(/_/g, ' '), title: article.page.title });
+      }
+      for (const f of rankArticleImages(await articleImageFiles(article.page.title, wikiLang), lemma, gloss)) {
+        picks.push({ file: f, title: commonsFileTitle(f) });
+      }
+      const fromArticle = await firstUsable(picks);
+      if (fromArticle) return fromArticle;
+    }
   }
+
   const query = commonsSearchQuery(lemma, senses, lang);
-  const ranked = rankCommonsFiles(await commonsSearch(query), query, lemma, glossUnion(senses, lemma));
+  const ranked = rankCommonsFiles(await commonsSearch(query), query, lemma, gloss, { needGloss: ambiguous });
   for (const r of ranked) {
     const img = imageFromInfo(r.file, r.title, r.info);
     if (img) return img;
@@ -1169,22 +1368,37 @@ export async function fetchSenseImages(
     list.map((s) => `${canonicalSensePos(s.partOfSpeech)}|${stripHtml(s.meaning)}`).join('\n'),
   )}`;
   const hit = resultCache.get(key);
-  if (hit) return hit;
-  const p = (async () => {
+  if (hit && Date.now() < hit.until) return hit.p;
+  const entry = { p: Promise.resolve([] as Array<SenseImage | null>), until: Infinity };
+  // A request that failed (offline, rate limited) leaves the result uncached, so the next call
+  // asks again; a result with no picture is kept for EMPTY_TTL_MS only.
+  const forget = () => {
+    if (resultCache.get(key) === entry) resultCache.delete(key);
+  };
+  entry.p = (async () => {
     const saved = await readPersisted(key);
-    if (saved && saved.length === list.length) return saved;
+    if (saved && saved.length === list.length) {
+      if (!saved.some(Boolean)) entry.until = Date.now() + EMPTY_TTL_MS;
+      return saved;
+    }
+    const before = failures;
     try {
       const out = await resolveSenseImages(word, list, max, lang);
+      if (failures !== before) {
+        forget();
+        return out;
+      }
+      if (!out.some(Boolean)) entry.until = Date.now() + EMPTY_TTL_MS;
       writePersisted(key, out);
       return out;
     } catch {
-      resultCache.delete(key);
+      forget();
       return list.map((): null => null);
     }
   })();
   if (resultCache.size > 200) resultCache.clear();
-  resultCache.set(key, p);
-  return p;
+  resultCache.set(key, entry);
+  return entry.p;
 }
 
 /**

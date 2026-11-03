@@ -88,7 +88,7 @@ import {
   formatPronunciationLine,
   cleanIpa,
 } from './pronunciation';
-import { cmuIpaFor } from './cmu-ipa';
+import { arpabetToIpa, cmuIpaFor } from './cmu-ipa';
 import { buildWordFamily, mergeWordFamilyGroups, mergeWordFamilyGroupsFor, familyFromEtymologyChain, type WordFamilyGroup } from './word-family';
 import {
   fetchJisho,
@@ -556,7 +556,11 @@ export class DictionaryService extends BaseService {
         try {
           const saved = await store.get(cacheKey);
           const value = saved?.value as DictionaryResult | undefined;
-          if (saved && value && Date.now() - saved.savedAt < PERSISTED_CACHE_TTL_MS && !this.isUncacheableResult(value)) {
+          // A result without IPA is saved to expire within a day (see remember). One that has
+          // longer left was saved before that rule and is looked up again.
+          const left = saved ? PERSISTED_CACHE_TTL_MS - (Date.now() - saved.savedAt) : 0;
+          const staleNoIpa = this.lacksIpa(value) && left > PARTIAL_PERSIST_TTL_MS;
+          if (saved && value && left > 0 && !staleNoIpa && !this.isUncacheableResult(value)) {
             const remaining = PERSISTED_CACHE_TTL_MS - (Date.now() - saved.savedAt);
             const ttl = this.isIncompleteSourceCache(value) ? Math.min(PARTIAL_CACHE_TTL_MS, remaining) : this.cacheTimeout;
             this.cache.set(cacheKey, { result: value, timestamp: Date.now(), ttl });
@@ -887,8 +891,19 @@ export class DictionaryService extends BaseService {
     return !!(result?.metadata?.pendingEtymology || result?.metadata?.pendingTranslation);
   }
 
+  /**
+   * An English word with senses but no IPA: a source that transcribes it was down, or the
+   * result predates the Datamuse pronunciation. Kept a day at most, so it gets its IPA later.
+   */
+  private lacksIpa(result?: DictionaryResult): boolean {
+    if (!result || result.detectedLanguage !== 'en' || /\s/.test(String(result.word || '').trim())) return false;
+    if (!(result.definitions || []).some((d) => d.source !== 'Fallback')) return false;
+    return !(result.pronunciations || []).some((p) => p.ipa) && !String(result.pronunciation || '').trim();
+  }
+
   private isIncompleteSourceCache(result?: DictionaryResult): boolean {
     if (result?.metadata?.pendingEtymology || result?.metadata?.pendingTranslation) return true;
+    if (this.lacksIpa(result)) return true;
     if (result?.metadata?.etymologyUnavailable?.length) return true;
     if (!(result?.translations || []).some((t) => (t.text || '').trim())) return true;
     const st = result?.metadata?.sourceStatus;
@@ -1402,8 +1417,10 @@ export class DictionaryService extends BaseService {
 
     const lookupWord = preferLatinSources ? foldLatinHeadword(text) : text;
 
-    // Local US IPA from CMUdict, used only when no online source has a transcription.
+    // Local US IPA from CMUdict, used only when no online source has a transcription, and
+    // Datamuse's pronunciation of a word CMUdict lacks, used only when CMUdict has nothing.
     let cmuIpa = '';
+    let datamuseIpa = '';
     if (preferLatinSources && !hasCJK) {
       pushCore(cmuIpaFor(lookupWord).then((ipa) => ({ type: 'cmu', data: ipa })));
     }
@@ -1474,7 +1491,7 @@ export class DictionaryService extends BaseService {
           'datamuse',
           lookupWord,
           () => this.getDatamuseData(lookupWord),
-          (data) => (data.definitions?.length || 0) > 0 || (data.synonyms?.length || 0) > 0,
+          (data) => (data.definitions?.length || 0) > 0 || (data.synonyms?.length || 0) > 0 || !!data.ipa,
         ).then((r) => ({ ...r, type: 'datamuse' })),
       );
     }
@@ -1582,6 +1599,7 @@ export class DictionaryService extends BaseService {
           pronunciation = formatPronunciationLine(pronunciations) || pronunciation || data?.pronunciation;
           break;
         case 'datamuse':
+          if (typeof data?.ipa === 'string') datamuseIpa = data.ipa;
           if (data && (data.definitions.length > 0 || data.synonyms.length > 0)) {
             const existing = new Set(definitions.map((d: Definition) => (d.meaning || '').toLowerCase()));
             const fresh = data.definitions.filter((d: Definition) => !existing.has(d.meaning.toLowerCase()));
@@ -1708,10 +1726,14 @@ export class DictionaryService extends BaseService {
       const uniqueSources = Array.from(new Set(sources.map((s) => (s || '').trim())));
       const surfaceForm = foldLatinHeadword(trimEdges(sanitize(opts?.originalSelection || text))) || text;
       const headword = surfaceForm;
-      const ipaList = mergePronunciations(
-        pronunciations,
-        cmuIpa && !pronunciations.some((p) => p.ipa) ? [{ ipa: cmuIpa, accent: 'us', source: 'CMUdict' }] : undefined,
-      );
+      const fallbackIpa = pronunciations.some((p) => p.ipa)
+        ? undefined
+        : cmuIpa
+          ? [{ ipa: cmuIpa, accent: 'us' as const, source: 'CMUdict' }]
+          : datamuseIpa
+            ? [{ ipa: datamuseIpa, accent: 'us' as const, source: 'Datamuse' }]
+            : undefined;
+      const ipaList = mergePronunciations(pronunciations, fallbackIpa);
       const ipaLine = formatPronunciationLine(ipaList) || pronunciation;
       const wordFamily = mergeWordFamilyGroupsFor(
         headword,
@@ -2438,10 +2460,12 @@ export class DictionaryService extends BaseService {
 
   /**
    * Datamuse: keyless English lexical API. Supplies WordNet-derived glosses and
-   * synonyms. Free for non-commercial use; an API key becomes mandatory in 2027.
+   * synonyms, and (`md=r`) an ARPAbet pronunciation for words CMUdict lacks, such as
+   * "holon" and "operon", which becomes the US IPA when no other source transcribes the word.
+   * Free for non-commercial use; an API key becomes mandatory in 2027.
    * https://www.datamuse.com/api/
    */
-  private async getDatamuseData(text: string): Promise<{ definitions: Definition[]; synonyms: string[] }> {
+  private async getDatamuseData(text: string): Promise<{ definitions: Definition[]; synonyms: string[]; ipa?: string }> {
     const empty = { definitions: [] as Definition[], synonyms: [] as string[] };
     const word = text.toLocaleLowerCase();
     if (!/^[\p{L}][\p{L}'\- ]{0,40}$/u.test(word)) return empty;
@@ -2449,7 +2473,7 @@ export class DictionaryService extends BaseService {
     const encoded = encodeURIComponent(word);
     const [entries, related] = await Promise.all([
       withTimeout(
-        this.request<any[]>(`https://api.datamuse.com/words?sp=${encoded}&md=d&max=1`),
+        this.request<any[]>(`https://api.datamuse.com/words?sp=${encoded}&md=dr&max=1`),
         2500,
         'datamuse.sp',
       ),
@@ -2463,7 +2487,14 @@ export class DictionaryService extends BaseService {
     const definitions: Definition[] = [];
     const top = Array.isArray(entries) ? entries[0] : null;
     // `sp=` is a wildcard match, so confirm we got the word we asked for.
-    if (top && typeof top.word === 'string' && top.word.toLocaleLowerCase() === word && Array.isArray(top.defs)) {
+    const exact = !!top && typeof top.word === 'string' && top.word.toLocaleLowerCase() === word;
+    // "pron:HH AA1 L AH0 N " (ARPAbet, as in CMUdict). One word only: a phrase's tag
+    // runs its words together with no break.
+    const pronTag = exact && !/\s/.test(word) && Array.isArray(top.tags)
+      ? top.tags.find((t: unknown) => typeof t === 'string' && t.startsWith('pron:'))
+      : undefined;
+    const ipa = pronTag ? arpabetToIpa(String(pronTag).slice(5)) : '';
+    if (exact && Array.isArray(top.defs)) {
       for (const raw of top.defs.slice(0, 12)) {
         const [pos, ...rest] = String(raw).split('\t');
         const meaning = rest.join('\t').trim();
@@ -2480,7 +2511,7 @@ export class DictionaryService extends BaseService {
       ? related.map((r: any) => r?.word).filter((w: any): w is string => typeof w === 'string' && w.length > 0)
       : [];
 
-    return { definitions, synonyms };
+    return { definitions, synonyms, ...(ipa ? { ipa } : {}) };
   }
 
   /**
