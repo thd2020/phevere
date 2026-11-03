@@ -107,6 +107,8 @@
         transition: background-color 0.24s var(--motion);
       }
       .toolbar.collapsed {
+        /* Fill the strip window, so no page background shows under the icons. */
+        flex: 1 1 auto;
         min-height: 0;
         padding: 4px;
         background: var(--surface-lowest);
@@ -2203,11 +2205,13 @@ function startAutoCloseTimeout() {
          const toolbar = document.getElementById('toolbar');
          const icons = document.getElementById('toolbar-icons');
          if (!toolbar || !icons) return;
-         var iw = icons.getBoundingClientRect().width;
-         var th = toolbar.getBoundingClientRect().height;
-         if (!(iw > 0) || !(th > 0)) return;
+         var ir = icons.getBoundingClientRect();
+         var iw = ir.width;
          var tcs = window.getComputedStyle(toolbar);
          var padX = (parseFloat(tcs.paddingLeft) || 0) + (parseFloat(tcs.paddingRight) || 0);
+         // The collapsed toolbar stretches to the window, so measure the icons, not the bar.
+         var th = ir.height + (parseFloat(tcs.paddingTop) || 0) + (parseFloat(tcs.paddingBottom) || 0);
+         if (!(iw > 0) || !(th > 0)) return;
          var w = Math.max(160, Math.ceil(iw + padX));
          var h = Math.max(32, Math.ceil(th));
          pvLog('[POPUP] resizeToCollapsedStrip', w, h, screenX, screenY);

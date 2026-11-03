@@ -1135,12 +1135,15 @@ function supportsWin11Material(): boolean {
   return parts[0] === 10 && (parts[2] || 0) >= 22000;
 }
 
-/** Win11 Fluent: opaque durable windows (native caption overlay); Acrylic on flyouts.
+/** Win11 Fluent: opaque durable windows (native caption overlay); pop-ups are solid paper.
  *  macOS durable windows: hiddenInset traffic lights (same 40px caption as Windows WCO). */
 function withWin11Chrome(
   opts: Electron.BrowserWindowConstructorOptions,
-  material: 'mica' | 'acrylic' | 'none' = 'mica',
+  material: 'mica' | 'acrylic' | 'none' | 'solid' = 'mica',
 ): Electron.BrowserWindowConstructorOptions {
+  // Pop-ups paint their own paper background. A backgrounded material on a frameless window
+  // adds a strip of non-client frame below the page (14 px at 125 %), seen as a grey margin.
+  if (material === 'solid') return { backgroundColor: '#F4F0EA', ...opts };
   if (process.platform === 'darwin' && material === 'none') {
     const { frame: _frame, titleBarOverlay: _overlay, ...rest } = opts;
     return {
@@ -1455,7 +1458,7 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
                   sandbox: false,
                   backgroundThrottling: false,
                 },
-              }, 'acrylic'));
+              }, 'solid'));
   inFlightPopup = newPopupWindow;
   interceptPopupHistoryKeys(newPopupWindow);
   trackPopupFocus(newPopupWindow);
@@ -3728,7 +3731,7 @@ function createDictionaryWindow(term: string): void {
       backgroundThrottling: false,
       webviewTag: true,
     },
-  }, 'acrylic'));
+  }, 'solid'));
 
   interceptPopupHistoryKeys(dictWindow);
   trackPopupFocus(dictWindow);
