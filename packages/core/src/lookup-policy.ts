@@ -22,6 +22,8 @@ export const GRAMMATICAL_FORM_OF_LINK =
 
 export function stripGlossText(meaning: string): string {
   return String(meaning || '')
+    // Wiktionary inlines <style> blocks (.mw-parser-output .defdate{…}); their text is not a gloss.
+    .replace(/<(style|script)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
     .replace(/\s+/g, ' ')
