@@ -109,6 +109,8 @@ export interface ChoiceRowInput {
   ariaLabel?: string;
   /** While downloading: percent done and the cancel button's attributes. */
   busy?: { pct: number; cancelAttrs: string };
+  /** A short tag beside the name, such as "Recommended". */
+  badge?: string;
 }
 
 export function choiceRowHtml(c: ChoiceRowInput): string {
@@ -123,7 +125,7 @@ export function choiceRowHtml(c: ChoiceRowInput): string {
   return `<div class="sv-choice${c.on ? ' is-on' : ''}">
     <button type="button" class="sv-choice__main" role="radio" aria-checked="${c.on}" ${c.attrs}${c.disabled ? ' disabled' : ''}${c.ariaLabel ? ` aria-label="${esc(c.ariaLabel)}"` : ''}>
       <span class="sv-seal" aria-hidden="true">${SVG.wave}</span>
-      <span class="sv-choice__text"><span class="sv-choice__name">${esc(c.name)}</span><span class="sv-choice__meta${c.metaTone ? ` is-${c.metaTone}` : ''}">${esc(c.meta)}</span></span>
+      <span class="sv-choice__text"><span class="sv-choice__name">${esc(c.name)}${c.badge ? ` <span class="sv-choice__badge">${esc(c.badge)}</span>` : ''}</span><span class="sv-choice__meta${c.metaTone ? ` is-${c.metaTone}` : ''}">${esc(c.meta)}</span></span>
     </button>
     ${end}
     ${c.busy ? `<span class="sv-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="${esc(c.name)}"><span style="width:${pct}%"></span></span>` : ''}

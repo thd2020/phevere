@@ -496,6 +496,8 @@ export interface VoiceRow {
   id: VoiceId;
   name: string;
   detail: string;
+  /** The voice to suggest on desktop: full precision keeps up on CPUs where int8 does not. */
+  recommended?: boolean;
   installed: boolean;
   downloading: boolean;
   progress: number;
@@ -513,6 +515,7 @@ export function listVoices(): VoiceRow[] {
       id: v.id,
       name: v.name,
       detail: `${v.downloadMb} MB`,
+      recommended: v.id === 'full',
       installed: isInstalled(v.id),
       downloading: !!d && !d.error,
       progress: d ? d.progress : 0,

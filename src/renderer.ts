@@ -3939,6 +3939,7 @@ function setupAudioSettings() {
         return choiceRowHtml({
           name: v.name,
           meta: detail,
+          badge: v.recommended ? 'Recommended' : undefined,
           metaTone: v.downloading ? 'busy' : v.error ? 'error' : v.installed && v.id !== 'mechanical' ? 'installed' : undefined,
           on: v.id === state.selected,
           needsDownload: !v.installed,
