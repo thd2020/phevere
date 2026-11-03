@@ -400,6 +400,8 @@ if (stripMode) document.documentElement.dataset.mode = 'strip';
 const history: string[] = [];
 const HISTORY_CAP = 40;
 let histIndex = -1;
+/** A lookup opened from Words or Learn: Back returns there once the trail is back at that word. */
+let lookupFrom: { tab: Tab; at: number } | null = null;
 
 function toast(msg: string): void {
   toastMsg = msg;
@@ -1870,6 +1872,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'tab':
+      lookupFrom = null;
       tab = (['notebook', 'learn', 'settings'] as const).find((id) => id === t.dataset.tab) || 'lookup';
       if (tab === 'notebook' || tab === 'learn') await refreshNotebook();
       // Learn and every Words view but the list work on the whole notebook, not the first page of it.
@@ -1968,9 +1971,12 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
         await lookup(history[histIndex], true, trailTab());
       }
       return;
-    case 'lookup':
+    case 'lookup': {
+      const from = tab;
       if (t.dataset.q) await lookup(t.dataset.q);
+      if (from !== 'lookup' && tab === 'lookup') lookupFrom = { tab: from, at: histIndex };
       return;
+    }
     case 'lex-pos': {
       const pos = t.dataset.pos || '';
       if (!pos) return;
@@ -2659,7 +2665,14 @@ export async function startApp(): Promise<void> {
     if (tab === 'notebook' && wordsState.library) { wordsState.library = false; paint(); return true; }
     if (tab !== 'lookup') { tab = 'lookup'; paint(); return true; }
     // Lookup: the same as its back arrow, the Wikipedia reader first, then the word before.
-    if ((wikiArticle && wikiCanBack()) || histIndex > 0) { void handleAct('back', root, new Event('back')); return true; }
+    if (wikiArticle && wikiCanBack()) { void handleAct('back', root, new Event('back')); return true; }
+    if (lookupFrom && histIndex <= lookupFrom.at) {
+      tab = lookupFrom.tab;
+      lookupFrom = null;
+      paint();
+      return true;
+    }
+    if (histIndex > 0) { void handleAct('back', root, new Event('back')); return true; }
     return false;
   };
   const hooks = window as unknown as {
