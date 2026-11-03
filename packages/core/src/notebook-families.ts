@@ -377,6 +377,10 @@ function showTrace(root: any, p: { done: number; total: number }): void {
 }
 
 let tracing: { done: number; total: number } | null = null;
+let inFlight = false;
+/** A run that brought nothing back (offline or throttled) is not retried before this time. */
+let quietUntil = 0;
+const QUIET_MS = 120_000;
 
 /** Progress of the trace in flight, for `familiesHtml`'s `tracing` option. */
 export function familiesTraceProgress(): { done: number; total: number } | null {
@@ -385,27 +389,33 @@ export function familiesTraceProgress(): { done: number; total: number } | null 
 
 /**
  * Trace origins and deep roots for the notebook's words, updating the progress bar inside
- * `getRoot()` as it goes and calling `onDone` once when new results are in. Both shells call
+ * `getRoot()` as it goes and calling `onDone` once if new results came in. Both shells call
  * this whenever the Families view is shown; words already traced cost nothing.
+ *
+ * `onDone` repaints the view, which calls this again, so it must only fire when a request
+ * brought something new. Otherwise the repaint and the trace call each other forever without
+ * yielding, and the window freezes.
  */
 export function traceNotebookFamilies(lemmas: string[], getRoot: () => any, onDone: () => void): void {
-  if (tracing) return;
-  let changed = false;
+  if (inFlight || Date.now() < quietUntil) return;
+  inFlight = true;
+  let found = 0;
   void traceEtymons(lemmas, (p) => {
     tracing = p;
-    changed = true;
     showTrace(getRoot(), p);
   })
-    .then(async () => {
+    .then(async (n) => {
+      found += n;
       const roots = new Set<string>();
       for (const l of lemmas) cachedEtymon(l)?.roots.forEach((r) => roots.add(r));
-      const before = [...roots].filter((r) => !cachedRootGloss(r)).length;
-      await traceRootGlosses([...roots]);
-      if (before) changed = true;
+      found += await traceRootGlosses([...roots]);
     })
     .catch((): void => undefined)
     .finally(() => {
+      inFlight = false;
+      const wasTracing = !!tracing;
       tracing = null;
-      if (changed) onDone();
+      if (!found && wasTracing) quietUntil = Date.now() + QUIET_MS;
+      if (found || wasTracing) onDone();
     });
 }

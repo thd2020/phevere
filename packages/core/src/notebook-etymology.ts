@@ -161,10 +161,14 @@ function cacheMap(): Record<string, Cached> {
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleSave(): void {
   if (saveTimer) return;
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    store?.set(STORE_KEY, JSON.stringify(memo || {}));
-  }, 1500);
+  saveTimer = setTimeout(saveNow, 1500);
+}
+
+/** Write the cache at the end of a run, so a run that finishes is never lost to a pending timer. */
+function saveNow(): void {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = null;
+  store?.set(STORE_KEY, JSON.stringify(memo || {}));
 }
 
 /** Use a different store than localStorage (tests, or a shell with its own storage). */
@@ -189,21 +193,6 @@ async function getText(url: string): Promise<string | null> {
     const res = await fetch(url, { headers: { 'Api-User-Agent': UA } });
     return res.ok ? await res.text() : null;
   } catch {
-    return null;
-  }
-}
-
-async function wikitext(page: string): Promise<string | null> {
-  const url = `https://en.wiktionary.org/w/api.php?action=parse&page=${encodeURIComponent(page)}&prop=wikitext&format=json&redirects=1&maxlag=5&origin=*`;
-  const text = await getText(url);
-  if (text == null) return null;
-  try {
-    const json = JSON.parse(text);
-    if (json?.error?.code === 'missingtitle') return '';
-    if (json?.error) return null;
-    return json?.parse?.wikitext?.['*'] || '';
-  } catch {
-    // "You are making too many requests" comes back as plain text.
     return null;
   }
 }
@@ -245,7 +234,7 @@ export interface TraceProgress {
   total: number;
 }
 
-let running: Promise<void> | null = null;
+let running: Promise<number> | null = null;
 
 /**
  * Trace the words not traced yet, twenty pages per request and one request at a time
@@ -253,7 +242,7 @@ let running: Promise<void> | null = null;
  * in. A failed or throttled request stops the run without recording anything, so those words
  * are tried again next time. A second call while one is running waits for the first.
  */
-export function traceEtymons(lemmas: string[], onProgress?: (p: TraceProgress) => void): Promise<void> {
+export function traceEtymons(lemmas: string[], onProgress?: (p: TraceProgress) => void): Promise<number> {
   if (running) return running;
   const map = cacheMap();
   const now = Date.now();
@@ -262,9 +251,10 @@ export function traceEtymons(lemmas: string[], onProgress?: (p: TraceProgress) =
     const hit = map[l];
     return !hit || (hit.miss && now - hit.at > MISS_RETRY_MS);
   });
-  if (!todo.length) return Promise.resolve();
+  if (!todo.length) return Promise.resolve(0);
   running = (async () => {
     let done = 0;
+    let recorded = 0;
     let failures = 0;
     const total = todo.length;
     const followed = new Set<string>();
@@ -284,6 +274,7 @@ export function traceEtymons(lemmas: string[], onProgress?: (p: TraceProgress) =
         const found = !!(e.origin || e.roots.length);
         const base = found ? '' : baseWord(text).toLowerCase();
         map[lemma] = { ...e, at: Date.now(), ...(found ? {} : { miss: true }), ...(base && base !== lemma ? { base } : {}) };
+        recorded += 1;
         // Trace the base too (once), unless it is already known.
         if (base && base !== lemma && !followed.has(base) && (!map[base] || map[base].miss)) {
           followed.add(base);
@@ -306,7 +297,8 @@ export function traceEtymons(lemmas: string[], onProgress?: (p: TraceProgress) =
         delete hit.miss;
       }
     }
-    scheduleSave();
+    saveNow();
+    return recorded;
   })().finally(() => {
     running = null;
   });
@@ -342,15 +334,21 @@ export function rootGlossFromWikitext(text: string): string {
     .slice(0, 60);
 }
 
-export async function traceRootGlosses(roots: string[]): Promise<void> {
+/** Fetch the glosses not asked for yet; returns how many were recorded (some may be ''). */
+export async function traceRootGlosses(roots: string[]): Promise<number> {
   cachedRootGloss('');
   const todo = [...new Set(roots)].filter((r) => r && !(r in glossMemo!));
-  for (const root of todo) {
-    const page = `Reconstruction:Proto-Indo-European/${root.replace(/^\*/, '')}`;
-    const text = await wikitext(page);
-    if (text == null) break;
-    glossMemo![root] = rootGlossFromWikitext(text);
-    await sleep(120);
+  let recorded = 0;
+  const page = (root: string) => `Reconstruction:Proto-Indo-European/${root.replace(/^\*/, '')}`;
+  // Twenty pages per request, like the words themselves.
+  for (let i = 0; i < todo.length; i += 20) {
+    const batch = todo.slice(i, i + 20);
+    const pages = await wikitexts(batch.map(page));
+    if (!pages) break;
+    for (const root of batch) glossMemo![root] = rootGlossFromWikitext(pages.get(page(root)) || '');
+    recorded += batch.length;
+    if (i + 20 < todo.length) await sleep(700);
   }
-  if (todo.length) (store || localStore())?.set(ROOT_GLOSS_KEY, JSON.stringify(glossMemo));
+  if (recorded) (store || localStore())?.set(ROOT_GLOSS_KEY, JSON.stringify(glossMemo));
+  return recorded;
 }

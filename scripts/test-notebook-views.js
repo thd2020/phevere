@@ -277,4 +277,31 @@ assert.equal(strata[0].origin, 'Latin');
 assert.match(views.familiesHtml(a, 'origin', { etymon: lookupEty }), /via French/);
 assert.match(views.familiesHtml(a, 'root'), /Not in a family yet/);
 
-console.log('notebook-views: ok');
+// A repaint after tracing calls the trace again. With nothing new to fetch it must not call
+// back, or the two loop forever without yielding (4.0.0 froze on a root with an empty gloss).
+(async () => {
+  const now = Date.now();
+  const saved = new Map([['phevere.etymons.v1', JSON.stringify({
+    inspect: { origin: 'Latin', via: [], roots: ['*spek-'], at: now },
+    spectator: { origin: 'Latin', via: [], roots: ['*spek-'], at: now },
+  })]]);
+  ne.setEtymonStore({ get: (k) => saved.get(k) ?? null, set: (k, v) => saved.set(k, v) });
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    return { ok: true, text: async () => JSON.stringify({ query: { pages: [{ title: 'Reconstruction:Proto-Indo-European/spek-', revisions: [{ slots: { main: { content: '' } } }] }] } }) };
+  };
+  let paints = 0;
+  const trace = () => views.traceNotebookFamilies(['inspect', 'spectator'], () => null, () => {
+    paints += 1;
+    if (paints < 50) trace();
+  });
+  trace();
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal(requests, 1, 'the empty gloss is fetched once');
+  assert.equal(paints, 1, 'one repaint for the new gloss, then the trace stops');
+  console.log('notebook-views: ok');
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
