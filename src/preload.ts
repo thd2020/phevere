@@ -238,8 +238,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     hoverEnabled?: boolean;
     ocrShortcut?: string;
     hoverShortcut?: string;
+    rememberSources?: boolean;
   }> => {
     return ipcRenderer.invoke('monitor-get-state');
+  },
+  setRememberSources: (enabled: boolean): Promise<{ success: boolean; rememberSources?: boolean }> => {
+    return ipcRenderer.invoke('monitor-set-remember-sources', enabled);
   },
   setMonitorMode: (mode: string): Promise<{ success: boolean; error?: string }> => {
     return ipcRenderer.invoke('monitor-set-mode', mode);
@@ -597,7 +601,9 @@ declare global {
         hoverEnabled?: boolean;
         ocrShortcut?: string;
         hoverShortcut?: string;
+        rememberSources?: boolean;
       }>;
+      setRememberSources?: (enabled: boolean) => Promise<{ success: boolean; rememberSources?: boolean }>;
       setMonitorMode: (mode: string) => Promise<{ success: boolean; error?: string }>;
       cycleMonitorMode: () => Promise<{ success: boolean; mode?: string }>;
       setMonitorShortcuts: (payload: {

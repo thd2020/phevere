@@ -50,6 +50,15 @@ export {
   type SourceGroupKey,
 } from './source-context';
 export {
+  parseWindowTitle,
+  isPrivateWindow,
+  sourceFromWindow,
+  docFromUrl,
+  type ParsedWindow,
+  type WindowKind,
+  type WindowReading,
+} from './window-title';
+export {
   vocabReadings,
   vocabSenses,
   vocabDayGroup,

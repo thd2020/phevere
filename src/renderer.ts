@@ -260,6 +260,10 @@ function initializeSettingsWindow() {
                   </span>
                   <div id="hover-ocr-progress" class="sv-progress" hidden><span></span></div>
                 </div>
+                <div class="sv-row">
+                  <span class="sv-row__text"><span id="remember-sources-label" class="sv-row__label">Remember where words were saved</span></span>
+                  <label class="sv-ctl"><input type="checkbox" role="switch" class="sv-switch" id="remember-sources" checked aria-labelledby="remember-sources-label" /></label>
+                </div>
               </div>
               <div class="sv-drop" id="settings-dropzone" tabindex="0">
                 <strong>Drop or paste an image</strong>
@@ -949,6 +953,10 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
   const ocrEl = document.getElementById('ocr-shortcut') as HTMLInputElement | null;
   const hoverEl = document.getElementById('hover-shortcut') as HTMLInputElement | null;
   const hoverToggle = document.getElementById('enable-hover') as HTMLInputElement | null;
+  const rememberToggle = document.getElementById('remember-sources') as HTMLInputElement | null;
+  rememberToggle?.addEventListener('change', () => {
+    void (window.electronAPI as { setRememberSources?: (on: boolean) => Promise<unknown> }).setRememberSources?.(rememberToggle.checked);
+  });
   const cycleSetBtn = document.getElementById('monitor-cycle-set') as HTMLButtonElement | null;
   const triggerSetBtn = document.getElementById('monitor-trigger-set') as HTMLButtonElement | null;
   const ocrSetBtn = document.getElementById('ocr-shortcut-set') as HTMLButtonElement | null;
@@ -1007,6 +1015,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
     if (ocrEl) ocrEl.value = st.ocrShortcut || 'CommandOrControl+Shift+O';
     if (hoverEl) hoverEl.value = st.hoverShortcut || 'CommandOrControl+Shift+H';
     if (hoverToggle) hoverToggle.checked = st.hoverEnabled !== false;
+    if (rememberToggle) rememberToggle.checked = (st as { rememberSources?: boolean }).rememberSources !== false;
     if (cycleEl) paintShortcutKeycaps(cycleEl);
     if (triggerEl) paintShortcutKeycaps(triggerEl);
     if (ocrEl) paintShortcutKeycaps(ocrEl);

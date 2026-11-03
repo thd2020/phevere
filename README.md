@@ -39,6 +39,7 @@ The current release is **3.0.0** on desktop and phone (2026-11-02). It adds Engl
 
 - Select-to-lookup in other applications. On Windows, Phevere reads the selection through UI Automation, then a Chromium accessibility request, then a silent copy that restores the clipboard. On macOS it uses the Accessibility API, then AppleScript for Safari and Chrome, then a silent copy. On Linux it watches the primary selection that every toolkit sets on select (Wayland data-control on KDE Plasma and wlroots desktops, XFixes on X11), so nothing is copied. Password fields are skipped.
 - OCR for text that cannot be selected: hover, region, clipboard image, and whole window, using PP-OCRv4 models from the OCR pack, a 14 MB download from Settings → Capture (PP-OCRv5 is available as a download).
+- When you save a word from the pop-up, Phevere keeps where you met it: the app, the web page title and address in Chrome, Edge and Firefox (Safari and Chrome on macOS), the document name in a PDF reader (Acrobat, Foxit, SumatraPDF, WPS, or a PDF tab in a browser) with the page number when the reader shows it, and on Windows the sentence around the word. Private and incognito windows are never recorded. Settings → Capture → Remember where words were saved turns it off.
 - Back and forward through recent lookups, including the mouse's extra buttons.
 - A slim toolbar opens beside the selection. Its first four icons open the Lexicon, Translation, Wikipedia, and Etymology views, and the open view shows as a tab joined to the page.
 
@@ -98,6 +99,7 @@ iOS 15.1 or later. Download `Phevere-<version>-ios-unsigned.ipa` from [GitHub Re
 - The Holarky account is optional. Sign-in runs on Auth0; while you are signed in, your profile and notebook are stored by the Holarky service on Cloudflare so that your devices match. Delete account in the account panel removes the account everywhere; the notebook on the device stays. See the [privacy page](https://holarky-api.thdfreelancer.workers.dev/privacy).
 - Lookups and translations are sent only to the services enabled in Settings.
 - Selection capture skips password fields, and a silent copy restores the previous clipboard contents.
+- Where a word was saved (page title, address, document name and sentence) is stored only in your notebook and, when you are signed in, synced only inside your own account. Private and incognito browser windows are skipped, and only web addresses are kept, never local file paths.
 - On macOS, Screen Recording permission is used only for OCR.
 - On Android, the LSPosed module adds only the Phevere item to a selection bar. When an app gives no other way to read the selection, the module copies the selected text and then restores the clipboard.
 
