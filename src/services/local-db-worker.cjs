@@ -52,7 +52,8 @@ function migrate(database) {
       lapses INTEGER DEFAULT 0,
       last_review INTEGER,
       learning_steps INTEGER DEFAULT 0,
-      device TEXT
+      device TEXT,
+      context TEXT
     );
   `);
   // FSRS memory columns, added in place to notebooks created before them (VOCAB_ADDED_COLUMNS).
@@ -65,6 +66,7 @@ function migrate(database) {
     ['last_review', 'INTEGER'],
     ['learning_steps', 'INTEGER DEFAULT 0'],
     ['device', 'TEXT'],
+    ['context', 'TEXT'],
   ]) {
     if (!have.has(name)) database.run(`ALTER TABLE vocab ADD COLUMN ${name} ${type}`);
   }

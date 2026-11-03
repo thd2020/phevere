@@ -6,6 +6,7 @@
 import { getDeviceName, getNewId, getVocabDb } from './runtime';
 import { normalizeVocabLemma } from './vocab-lemma';
 import { scheduleReview, type ReviewGrade } from './review-schedule';
+import { sourceContextFromJson, sourceContextToJson, type SourceContext } from './source-context';
 
 type VocabChangeListener = () => void;
 const changeListeners = new Set<VocabChangeListener>();
@@ -57,6 +58,8 @@ export interface VocabEntry {
   learningSteps?: number;
   /** The device the word was first saved on. */
   device?: string;
+  /** Where the word was first saved: app, page or document, page number, sentence. */
+  context?: SourceContext;
 }
 
 export interface VocabAddInput {
@@ -69,6 +72,8 @@ export interface VocabAddInput {
   sources?: string[];
   note?: string;
   tags?: string[];
+  /** Kept only when the word has no context yet; a later save never replaces it. */
+  context?: SourceContext | null;
 }
 
 export function rowToEntry(row: Record<string, unknown>): VocabEntry {
@@ -96,6 +101,7 @@ export function rowToEntry(row: Record<string, unknown>): VocabEntry {
     lastReview: row.last_review != null ? Number(row.last_review) : undefined,
     learningSteps: row.learning_steps != null ? Number(row.learning_steps) : undefined,
     device: row.device ? String(row.device) : undefined,
+    context: sourceContextFromJson(row.context),
   };
 }
 
@@ -131,6 +137,7 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
        reading = COALESCE(NULLIF(reading, ''), NULLIF(?, ''), reading),
        source_lang = COALESCE(NULLIF(?, ''), source_lang),
        target_lang = COALESCE(NULLIF(?, ''), target_lang),
+       context = COALESCE(NULLIF(context, ''), ?),
        updated_at = ? WHERE id = ?`,
       [
         lemma,
@@ -141,6 +148,7 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
         input.reading || null,
         input.sourceLang || null,
         input.targetLang || null,
+        sourceContextToJson(input.context),
         now,
         id,
       ],
@@ -153,8 +161,8 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
 
   const id = getNewId();
   await db.runWrite(
-    `INSERT INTO vocab (id, lemma, reading, definition, part_of_speech, source_lang, target_lang, sources, note, tags, created_at, updated_at, review_due, review_interval, ease, reps, device)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 2.5, 0, ?)`,
+    `INSERT INTO vocab (id, lemma, reading, definition, part_of_speech, source_lang, target_lang, sources, note, tags, created_at, updated_at, review_due, review_interval, ease, reps, device, context)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 2.5, 0, ?, ?)`,
     [
       id,
       lemma,
@@ -170,6 +178,7 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
       now,
       now,
       getDeviceName() || null,
+      sourceContextToJson(input.context),
     ],
   );
   const created = await getVocab(id);
@@ -273,6 +282,22 @@ export async function removeVocab(id: string): Promise<boolean> {
   await db.runWrite(`INSERT OR REPLACE INTO vocab_deleted (id, deleted_at) VALUES (?, ?)`, [id, Date.now()]);
   notifyChanged();
   return true;
+}
+
+/**
+ * Records where a saved word was met, when the row has no context yet. Desktop capture finishes
+ * after the save (it never holds up the pop-up), so it lands here. Returns the row when it changed.
+ */
+export async function setVocabContextIfEmpty(id: string, context: SourceContext | null | undefined, now = Date.now()): Promise<VocabEntry | null> {
+  const json = sourceContextToJson(context);
+  if (!json) return null;
+  await ensureVocabReady();
+  const db = getVocabDb();
+  const row = await db.queryOne(`SELECT context FROM vocab WHERE id = ?`, [id]);
+  if (!row || (row.context != null && String(row.context) !== '')) return null;
+  await db.runWrite(`UPDATE vocab SET context = ?, updated_at = ? WHERE id = ?`, [json, now, id]);
+  notifyChanged();
+  return getVocab(id);
 }
 
 export async function updateVocabNote(id: string, note: string): Promise<VocabEntry | null> {

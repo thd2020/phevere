@@ -30,10 +30,25 @@ export {
   updateVocabNote,
   reviewVocab,
   ensureVocabReady,
+  setVocabContextIfEmpty,
   type VocabEntry,
   type VocabAddInput,
 } from './vocab-store';
 export { inferVocabGlossLang, formatVocabLangPair } from './vocab-lang';
+export {
+  normalizeSourceContext,
+  sourceContextFromJson,
+  sourceContextToJson,
+  cleanSourceUrl,
+  extractSentence,
+  findWordInSentence,
+  sourceGroupOf,
+  sourceBookTitle,
+  siteOf,
+  lookupTextMatches,
+  type SourceContext,
+  type SourceGroupKey,
+} from './source-context';
 export {
   vocabReadings,
   vocabSenses,

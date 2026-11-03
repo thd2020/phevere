@@ -6,12 +6,16 @@
  * keep the newest updatedAt per id; on a tie the server's copy wins, so devices converge.
  * The same word saved on two devices gets two ids; after each pull, rows sharing a lemma are
  * merged into the smallest id and the others become tombstones, the same way on every device.
+ *
+ * A record carries `context` (where the word was saved: page title, URL, sentence) only inside
+ * this account's own namespace; nothing else ever sees it.
  */
 
 import type { SyncChange, SyncResult } from './holarky-account';
 import { getVocabDb } from './runtime';
 import { ensureVocabReady, registerLemmaMigration, rowToEntry, type VocabEntry } from './vocab-store';
 import { normalizeVocabLemma } from './vocab-lemma';
+import { normalizeSourceContext, sourceContextFromJson, sourceContextToJson } from './source-context';
 
 export const VOCAB_SYNC_NAMESPACE = 'phevere/vocab';
 const PAGE = 500;
@@ -132,7 +136,9 @@ async function applyRemote(change: { id: string; updatedAt: number; deleted: boo
   if (!e || typeof e.lemma !== 'string' || !e.lemma.trim()) return false;
   // An older app sends no device; keep the one this device already knows.
   const device = (e as VocabEntry).device || (local?.device ? String(local.device) : undefined);
-  await writeRow({ ...keepMemoryState(local, e), ...(e as VocabEntry), device, id: change.id, updatedAt: change.updatedAt });
+  // The same for where the word was saved, which older apps neither know nor send.
+  const context = normalizeSourceContext((e as VocabEntry).context) || sourceContextFromJson(local?.context) || undefined;
+  await writeRow({ ...keepMemoryState(local, e), ...(e as VocabEntry), device, context, id: change.id, updatedAt: change.updatedAt });
   if (tomb) await db.runWrite(`DELETE FROM vocab_deleted WHERE id = ?`, [change.id]);
   return true;
 }
@@ -162,8 +168,8 @@ async function writeRow(e: VocabEntry): Promise<void> {
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
   await getVocabDb().runWrite(
     `INSERT OR REPLACE INTO vocab (id, lemma, reading, definition, part_of_speech, source_lang, target_lang, sources, note, tags, created_at, updated_at, review_due, review_interval, ease, reps,
-       stability, difficulty, state, lapses, last_review, learning_steps, device)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       stability, difficulty, state, lapses, last_review, learning_steps, device, context)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       e.id,
       e.lemma.trim(),
@@ -190,6 +196,7 @@ async function writeRow(e: VocabEntry): Promise<void> {
       num(e.lastReview),
       num(e.learningSteps) ?? 0,
       text(e.device),
+      sourceContextToJson(e.context),
     ],
   );
 }
@@ -240,6 +247,8 @@ export async function mergeDuplicateLemmas(at: number): Promise<number> {
       lastReview: studied.lastReview,
       learningSteps: studied.learningSteps,
       device: [...entries].sort((a, b) => a.createdAt - b.createdAt).find((x) => x.device)?.device,
+      // Where the word was first met: the earliest save that recorded one.
+      context: [...entries].sort((a, b) => a.createdAt - b.createdAt).find((x) => x.context)?.context,
     });
     for (const e of entries.slice(1)) {
       await db.runWrite(`DELETE FROM vocab WHERE id = ?`, [e.id]);

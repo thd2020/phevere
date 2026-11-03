@@ -215,6 +215,26 @@ async function main() {
   assert.strictEqual(quiet.received, 0);
   assert.strictEqual(quiet.merged, 0);
 
+  // 8. Where a word was saved travels with it; a later save does not replace it; a record from an
+  //    older app, which knows nothing of it, leaves it in place.
+  const ctx = { app: 'Acrobat', doc: 'GEB.pdf', page: 12, sentence: 'An Eternal Golden Braid.' };
+  await A.core.addVocab({ lemma: 'braid', context: ctx });
+  await both();
+  assert.deepStrictEqual((await B.core.findByLemma('braid'))?.context, ctx, 'context reaches the other device');
+  await tick();
+  await B.core.addVocab({ lemma: 'braid', context: { app: 'Chrome', url: 'https://example.com/' } });
+  assert.deepStrictEqual((await B.core.findByLemma('braid'))?.context, ctx, 'a later save keeps the first context');
+  await both();
+  await tick();
+  const { context: _dropped, ...legacy } = await A.core.findByLemma('braid');
+  await accountA.sync('phevere/vocab', 0, [{ id: legacy.id, updatedAt: Date.now(), deleted: false, data: { ...legacy, note: 'edited on an old phone' } }]);
+  await both();
+  for (const d of [A, B]) {
+    const row = await d.core.findByLemma('braid');
+    assert.strictEqual(row.note, 'edited on an old phone', `${d.name} takes the older app's edit`);
+    assert.deepStrictEqual(row.context, ctx, `${d.name} keeps the context an older app did not send`);
+  }
+
   console.log(`test-vocab-sync: ok (${API && TOKEN ? 'live server' : 'in-memory server'})`);
 }
 

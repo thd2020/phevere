@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS vocab (
   lapses INTEGER DEFAULT 0,
   last_review INTEGER,
   learning_steps INTEGER DEFAULT 0,
-  device TEXT
+  device TEXT,
+  context TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_vocab_lemma ON vocab(lemma);
 CREATE INDEX IF NOT EXISTS idx_vocab_updated ON vocab(updated_at DESC);
@@ -92,7 +93,7 @@ CREATE TABLE IF NOT EXISTS offline_packs (
 `;
 
 /**
- * Columns added after the first release (FSRS memory, the saving device). A notebook created before them gets each
+ * Columns added after the first release (FSRS memory, the saving device, where it was saved). A notebook created before them gets each
  * missing one with ALTER TABLE ADD COLUMN, so no row is rewritten or lost. Older apps ignore them.
  */
 export const VOCAB_ADDED_COLUMNS: ReadonlyArray<readonly [name: string, type: string]> = [
@@ -104,6 +105,8 @@ export const VOCAB_ADDED_COLUMNS: ReadonlyArray<readonly [name: string, type: st
   ['learning_steps', 'INTEGER DEFAULT 0'],
   /** Name of the device the word was first saved on. */
   ['device', 'TEXT'],
+  /** Where the word was first saved: JSON {app, title, url, doc, page, sentence} (source-context.ts). */
+  ['context', 'TEXT'],
 ];
 
 /** ALTER TABLE statements for the columns `existing` (from PRAGMA table_info) lacks. */
