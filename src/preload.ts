@@ -198,6 +198,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cancelSpeechDownload: (id: string) => ipcRenderer.invoke('speech-cancel-download', id),
   synthesizeSpeech: (req: { text?: string; ipa?: string; accent?: string; lang?: string }) =>
     ipcRenderer.invoke('speech-synthesize', req),
+  speechStreamStart: (req: { text: string; lang?: string }) => ipcRenderer.invoke('speech-stream-start', req),
+  speechStreamChunk: (req: { id: number; index: number }) => ipcRenderer.invoke('speech-stream-chunk', req),
+  stopSpeech: () => ipcRenderer.invoke('speech-stop'),
   fetchPronunciationAudio: (
     url: string,
   ): Promise<{ ok: true; playUrl: string; cached?: boolean } | { ok: false; error: string }> => {
@@ -527,6 +530,9 @@ declare global {
       selectSpeechVoice?: (id: string) => Promise<unknown>;
       cancelSpeechDownload?: (id: string) => Promise<unknown>;
       synthesizeSpeech?: (req: { text?: string; ipa?: string; accent?: string; lang?: string }) => Promise<{ ok: boolean; dataUrl?: string; error?: string }>;
+      speechStreamStart?: (req: { text: string; lang?: string }) => Promise<{ ok: boolean; id?: number; count?: number; error?: string }>;
+      speechStreamChunk?: (req: { id: number; index: number }) => Promise<{ ok: boolean; dataUrl?: string; cancelled?: boolean; error?: string }>;
+      stopSpeech?: () => Promise<{ ok: boolean }>;
       fetchPronunciationAudio?: (
         url: string,
       ) => Promise<{ ok: true; playUrl: string; cached?: boolean } | { ok: false; error: string }>;

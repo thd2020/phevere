@@ -6,6 +6,9 @@
  *   Text (translation) → the voice picked in Settings → Audio:
  *                        Mechanical = eSpeak NG (built in), Neural = Kokoro v1.0 (download).
  *
+ * Long text (the Translation tab) is spoken as a stream of sentence chunks, so the
+ * first sentence plays while the next one synthesizes; see startSpeechStream.
+ *
  * Engines run in scripts/speech-worker.js (utility process). Kokoro models are the same
  * archives, hashes and folders as apps/mobile/.../SpeechModels.java.
  */
@@ -16,7 +19,7 @@ import fs from 'fs';
 import path from 'path';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
-import { ipaToEspeakPhonemes, ipaToKokoroPhonemes } from '@phevere/core';
+import { ipaToEspeakPhonemes, ipaToKokoroPhonemes, splitSpeechText } from '@phevere/core';
 import { log } from '../logger';
 
 export type VoiceId = 'mechanical' | 'compact' | 'full';
@@ -190,7 +193,7 @@ function ensureWorker(kind: WorkerKind): UtilityProcess {
 }
 
 
-function runWorker(job: Record<string, unknown>, timeoutMs: number, kind: WorkerKind = 'main'): Promise<Uint8Array> {
+function sendToWorker(job: Record<string, unknown>, timeoutMs: number, kind: WorkerKind): Promise<Uint8Array> {
   const w = ensureWorker(kind);
   const id = ++seq;
   const owned = ownedJobs.get(w);
@@ -205,8 +208,75 @@ function runWorker(job: Record<string, unknown>, timeoutMs: number, kind: Worker
   }).finally(() => owned?.delete(id));
 }
 
+/**
+ * Synthesis jobs go to each worker one at a time. A job waiting here can still be
+ * cancelled, and its timeout only starts once the worker takes it, so a long queue
+ * no longer turns into timeouts and an eSpeak fallback stuck behind a neural job.
+ */
+interface QueuedJob {
+  job: Record<string, unknown>;
+  timeoutMs: number;
+  signal?: AbortSignal;
+  resolve: (b: Uint8Array) => void;
+  reject: (e: Error) => void;
+}
+const queues: Record<WorkerKind, QueuedJob[]> = { main: [], ipa: [] };
+const busy: Record<WorkerKind, boolean> = { main: false, ipa: false };
+
+const cancelledError = () => Object.assign(new Error('Speech cancelled'), { cancelled: true });
+export const isCancelled = (err: unknown): boolean => !!(err && (err as { cancelled?: boolean }).cancelled);
+
+function pump(kind: WorkerKind): void {
+  if (busy[kind]) return;
+  let next = queues[kind].shift();
+  while (next && next.signal?.aborted) {
+    next.reject(cancelledError());
+    next = queues[kind].shift();
+  }
+  if (!next) return;
+  const item = next;
+  busy[kind] = true;
+  let run: Promise<Uint8Array>;
+  try {
+    run = sendToWorker(item.job, item.timeoutMs, kind);
+  } catch (err) {
+    run = Promise.reject(err);
+  }
+  run
+    .then(
+      (wav) => (item.signal?.aborted ? item.reject(cancelledError()) : item.resolve(wav)),
+      (err) => item.reject(item.signal?.aborted ? cancelledError() : err),
+    )
+    .finally(() => {
+      busy[kind] = false;
+      pump(kind);
+    });
+}
+
+function runWorker(job: Record<string, unknown>, timeoutMs: number, kind: WorkerKind = 'main', signal?: AbortSignal): Promise<Uint8Array> {
+  if (signal?.aborted) return Promise.reject(cancelledError());
+  return new Promise<Uint8Array>((resolve, reject) => {
+    const item: QueuedJob = { job, timeoutMs, signal, resolve, reject };
+    queues[kind].push(item);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        const i = queues[kind].indexOf(item);
+        if (i >= 0) {
+          queues[kind].splice(i, 1);
+          reject(cancelledError());
+        }
+      },
+      { once: true },
+    );
+    pump(kind);
+  });
+}
+
 export function stopSpeechWorker(): void {
   for (const kind of ['main', 'ipa'] as const) {
+    // Drop queued jobs first, or the exit of the running one would start a new worker.
+    for (const item of queues[kind].splice(0)) item.reject(cancelledError());
     try {
       workers[kind]?.kill();
     } catch {
@@ -268,21 +338,115 @@ export async function synthesize(req: SpeakRequest): Promise<Uint8Array> {
   }
   const text = String(req.text || '').trim().slice(0, 500);
   if (!text) throw new Error('Nothing to speak');
-  const voice = espeakVoice(text, req.lang);
+  return synthesizeText(text, req.lang);
+}
+
+/**
+ * One piece of text with the chosen voice. When the neural voice fails, eSpeak speaks
+ * instead and `onNeuralFailed` runs, so a stream can stay on eSpeak for later chunks.
+ */
+function synthesizeText(
+  text: string,
+  lang: string | undefined,
+  signal?: AbortSignal,
+  allowNeural = true,
+  onNeuralFailed?: () => void,
+): Promise<Uint8Array> {
+  const prefs = getAudioPrefs();
+  const speed = prefs.speed;
+  const voice = espeakVoice(text, lang);
   const variant = VARIANTS.find((v) => v.id === prefs.voice);
   const kokoroLang = voice === 'cmn' || voice.startsWith('en');
-  if (variant && kokoroLang && isInstalled(variant.id) && neuralSupported()) {
-    const speaker = voice === 'cmn' ? 45 : voice === 'en-gb' ? 20 : 0;
-    try {
-      return await runWorker(
-        { engine: 'kokoro', text, speaker, speed, model: { dir: installDir(variant), file: variant.model } },
-        60000,
-      );
-    } catch (err) {
-      log.warn('speech', 'neural voice failed; using eSpeak', { err: String(err) });
-    }
+  const espeak = () => runWorker({ engine: 'espeak', text, voice, speed }, 15000, 'main', signal);
+  if (!(allowNeural && variant && kokoroLang && isInstalled(variant.id) && neuralSupported())) return espeak();
+  const speaker = voice === 'cmn' ? 45 : voice === 'en-gb' ? 20 : 0;
+  return runWorker(
+    { engine: 'kokoro', text, speaker, speed, model: { dir: installDir(variant), file: variant.model } },
+    60000,
+    'main',
+    signal,
+  ).catch((err) => {
+    if (isCancelled(err)) throw err;
+    log.warn('speech', 'neural voice failed; using eSpeak', { err: String(err) });
+    onNeuralFailed?.();
+    return espeak();
+  });
+}
+
+// ---------- long text: sentence streaming ----------
+
+/**
+ * A paragraph is spoken chunk by chunk (see splitSpeechText). The renderer asks for
+ * chunk i when it needs it; that also starts chunk i + 1, so one chunk synthesizes
+ * while the previous one plays and nothing further ahead is computed. Stopping,
+ * starting another stream or closing the window cancels whatever is still queued.
+ */
+interface SpeechStream {
+  owner: number;
+  chunks: string[];
+  lang?: string;
+  abort: AbortController;
+  results: Array<Promise<Uint8Array> | undefined>;
+  neural: boolean;
+}
+const streams = new Map<number, SpeechStream>();
+let streamSeq = 0;
+const MAX_STREAM_CHARS = 5000;
+
+export function startSpeechStream(owner: number, req: { text?: string; lang?: string }): { id: number; count: number } {
+  stopSpeech(owner);
+  // Each eSpeak call starts a fresh WebAssembly instance (about 0.2 s of CPU), and eSpeak
+  // runs far faster than real time, so after the first sentence it gets one large chunk.
+  // Kokoro is slow on a CPU and reads at most about 500 phonemes, so it gets small ones.
+  const variant = VARIANTS.find((v) => v.id === getAudioPrefs().voice);
+  const neural = !!variant && isInstalled(variant.id) && neuralSupported();
+  const chunks = splitSpeechText(String(req.text || '').slice(0, MAX_STREAM_CHARS), { max: neural ? 300 : 1500 });
+  if (!chunks.length) throw new Error('Nothing to speak');
+  const id = ++streamSeq;
+  streams.set(id, { owner, chunks, lang: req.lang, abort: new AbortController(), results: [], neural: true });
+  scheduleChunk(id, 0);
+  return { id, count: chunks.length };
+}
+
+function scheduleChunk(id: number, index: number): Promise<Uint8Array> | undefined {
+  const s = streams.get(id);
+  if (!s || index < 0 || index >= s.chunks.length) return undefined;
+  const have = s.results[index];
+  if (have) return have;
+  const prev = index > 0 ? s.results[index - 1] : undefined;
+  // Wait for the previous chunk so a neural failure there switches this one to eSpeak.
+  const start: Promise<void> = prev ? prev.then((): void => undefined, (): void => undefined) : Promise.resolve();
+  const run = start.then(() => {
+    if (s.abort.signal.aborted) throw cancelledError();
+    return synthesizeText(s.chunks[index], s.lang, s.abort.signal, s.neural, () => {
+      s.neural = false;
+    });
+  });
+  run.catch(() => { /* surfaced through speechStreamChunk */ });
+  s.results[index] = run;
+  return run;
+}
+
+export async function speechStreamChunk(id: number, index: number): Promise<Uint8Array> {
+  const s = streams.get(id);
+  if (!s || s.abort.signal.aborted) throw cancelledError();
+  const run = scheduleChunk(id, index);
+  if (!run) throw new Error('No such speech chunk');
+  scheduleChunk(id, index + 1);
+  // Played chunks are not needed again.
+  if (index > 0) s.results[index - 1] = Promise.resolve(new Uint8Array(0));
+  const wav = await run;
+  if (index === s.chunks.length - 1) streams.delete(id);
+  return wav;
+}
+
+/** Cancels every stream the window started, including chunks waiting for the worker. */
+export function stopSpeech(owner: number): void {
+  for (const [id, s] of streams) {
+    if (s.owner !== owner) continue;
+    s.abort.abort();
+    streams.delete(id);
   }
-  return runWorker({ engine: 'espeak', text, voice, speed }, 15000);
 }
 
 // ---------- neural voice downloads ----------
@@ -402,7 +566,8 @@ async function downloadVariant(v: Variant): Promise<void> {
     if (hash.digest('hex') !== v.sha) throw new Error('Download verification failed. Please retry.');
     fs.rmSync(staging, { recursive: true, force: true });
     fs.mkdirSync(staging, { recursive: true });
-    await runWorker({ engine: 'unpack', archive, dest: staging }, 10 * 60 * 1000);
+    // Straight to the worker: unpacking must not hold up speech queued behind it.
+    await sendToWorker({ engine: 'unpack', archive, dest: staging }, 10 * 60 * 1000, 'main');
     const unpacked = path.join(staging, v.archiveDir);
     const dest = installDir(v);
     fs.rmSync(dest, { recursive: true, force: true });
