@@ -52,6 +52,8 @@ export {
   notebookViewSwitchHtml,
   familyGroupings,
   familiesHtml,
+  familiesTraceProgress,
+  traceNotebookFamilies,
   layoutNotebookMap,
   mapHtml,
   cardsHtml,

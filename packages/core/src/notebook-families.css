@@ -1,0 +1,279 @@
+/*
+ * Families view. A family is a folded card with its words stacked behind it like paper; opening
+ * it deals them out. Origins are drawn as rock strata, word trees as small drawn trees. Uses the
+ * tokens on `.nbv` from notebook-views.css.
+ */
+.nbv {
+  --nbv-bark: #7a5238;
+  --nbv-leaf: #2c8577;
+  --nbv-deal: cubic-bezier(0.18, 0.9, 0.3, 1.18);
+}
+
+/* Coverage line */
+.nbv-coverage {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: -4px 0 16px;
+  font: 500 13px/1.2 var(--nbv-ui);
+  color: var(--nbv-soft);
+}
+.nbv-coverage svg { width: 26px; height: 26px; transform: rotate(-90deg); }
+.nbv-coverage b { color: var(--nbv-ink); font-variant-numeric: tabular-nums; }
+.nbv-coverage__track { fill: none; stroke: var(--nbv-paper-2); stroke-width: 5; }
+.nbv-coverage__fill { fill: none; stroke: var(--nbv-teal); stroke-width: 5; stroke-linecap: round; transition: stroke-dasharray 0.5s var(--nbv-motion); }
+.nbv-trace { position: relative; width: 84px; height: 4px; border-radius: 999px; background: var(--nbv-paper-2); overflow: hidden; }
+.nbv-trace span { position: absolute; inset: 0 auto 0 0; background: var(--nbv-ember); border-radius: inherit; transition: width 0.4s var(--nbv-motion); }
+.nbv-trace__n { font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* Family cards */
+.nbv-fams {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-auto-flow: row dense;
+  gap: 18px 16px;
+  padding: 0 8px 8px 0;
+}
+.nbv-fam {
+  --accent: var(--nbv-teal);
+  --accent-soft: var(--nbv-teal-soft);
+  position: relative;
+  isolation: isolate;
+  align-self: start;
+  border: 1px solid var(--nbv-line);
+  border-radius: 16px;
+  background: var(--nbv-panel);
+  box-shadow:
+    4px 4px 0 -1px var(--nbv-panel),
+    4px 4px 0 0 var(--nbv-line);
+  transition: box-shadow 0.32s var(--nbv-motion), transform 0.22s var(--nbv-motion);
+  animation: nbv-rise 0.42s var(--nbv-motion) both;
+}
+.nbv-fam.is-mid {
+  box-shadow:
+    4px 4px 0 -1px var(--nbv-panel), 4px 4px 0 0 var(--nbv-line),
+    8px 8px 0 -1px var(--nbv-panel), 8px 8px 0 0 var(--nbv-line);
+}
+.nbv-fam.is-large {
+  grid-column: span 2;
+  box-shadow:
+    4px 4px 0 -1px var(--nbv-panel), 4px 4px 0 0 var(--nbv-line),
+    8px 8px 0 -1px var(--nbv-panel), 8px 8px 0 0 var(--nbv-line),
+    12px 12px 0 -1px var(--nbv-panel), 12px 12px 0 0 var(--nbv-line);
+}
+@media (max-width: 560px) { .nbv-fam.is-large { grid-column: auto; } }
+.nbv-fam:not([open]):hover { transform: translate(-1px, -2px); }
+.nbv-fam[open] { grid-column: 1 / -1; box-shadow: 0 10px 30px -18px rgba(28, 25, 23, 0.45); }
+.nbv-fam--prefix { --accent: var(--nbv-ember); --accent-soft: var(--nbv-ember-soft); }
+.nbv-fam--suffix { --accent: var(--nbv-stone); --accent-soft: var(--nbv-paper-2); }
+.nbv-fam--deep { --accent: var(--nbv-ink); --accent-soft: var(--nbv-paper-2); }
+
+.nbv-fam__head {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 10px;
+  padding: 14px 16px 14px;
+  overflow: hidden;
+  border-radius: 15px;
+  list-style: none;
+  cursor: pointer;
+}
+.nbv-fam__head::-webkit-details-marker { display: none; }
+.nbv-fam__head:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nbv-fam__glyph {
+  position: absolute;
+  right: -6px;
+  bottom: -26px;
+  z-index: -1;
+  font: 600 96px/1 var(--nbv-serif);
+  color: var(--accent);
+  opacity: 0.09;
+  transform: rotate(-9deg);
+  pointer-events: none;
+  transition: opacity 0.3s var(--nbv-motion), transform 0.5s var(--nbv-motion);
+}
+.nbv-fam:hover .nbv-fam__glyph { opacity: 0.14; transform: rotate(-4deg) scale(1.04); }
+.nbv-fam__title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
+.nbv-fam__pos { width: 20px; height: 10px; align-self: center; flex: none; }
+.nbv-fam__pos rect { fill: var(--nbv-paper-2); }
+.nbv-fam__pos rect.is-on { fill: var(--accent); }
+.nbv-fam__label {
+  font: 600 clamp(22px, 2.6vw, 28px)/1 var(--nbv-serif);
+  letter-spacing: -0.02em;
+  color: var(--accent);
+}
+.nbv-fam--suffix .nbv-fam__label,
+.nbv-fam--deep .nbv-fam__label { color: var(--nbv-ink); }
+.nbv-fam__gloss { font: italic 15px/1.25 var(--nbv-serif); color: var(--nbv-ink); }
+.nbv-fam__meta { display: flex; align-items: center; gap: 8px; align-self: start; }
+.nbv-fam__n {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--nbv-ink);
+  font: 700 12.5px/1 var(--nbv-ui);
+  font-variant-numeric: tabular-nums;
+}
+.nbv-fam__peek {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: var(--nbv-soft);
+  font: 14px/1.3 var(--nbv-serif);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nbv-fam__peek i { font-style: normal; font: 600 12px/1 var(--nbv-ui); color: var(--accent); }
+.nbv-fam[open] .nbv-fam__peek { display: none; }
+.nbv-fam__words { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 16px 16px; }
+.nbv-fam .nbv-word b { color: var(--accent); }
+.nbv-fam--suffix .nbv-word b { color: var(--nbv-ember); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .nbv-fam[open] .nbv-word,
+  .nbv-unsorted[open] .nbv-word,
+  .nbv-stratum[open] .nbv-word {
+    animation: nbv-deal 0.46s var(--nbv-deal) both;
+    animation-delay: calc(var(--i, 0) * 22ms);
+  }
+}
+@keyframes nbv-deal {
+  from { opacity: 0; transform: translate(-18px, -22px) rotate(-8deg) scale(0.86); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes nbv-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nbv-fam { animation: none; transition: none; }
+}
+
+/* Words the grouping could not place */
+.nbv-unsorted {
+  margin: 22px 0 8px;
+  border: 1.5px dashed var(--nbv-line);
+  border-radius: 16px;
+}
+.nbv-unsorted > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  list-style: none;
+  cursor: pointer;
+  font: 600 13px/1 var(--nbv-ui);
+  color: var(--nbv-soft);
+}
+.nbv-unsorted > summary::-webkit-details-marker { display: none; }
+.nbv-unsorted .nbv-fam__n { --accent-soft: var(--nbv-paper-2); }
+
+/* Origins as strata */
+.nbv-origin-bar { height: 10px; }
+.nbv-tone-4 { background: #e7b9a0; color: #351000; }
+.nbv-tone-5 { background: #d8cfc6; color: var(--nbv-ink); }
+.nbv-strata {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--nbv-line);
+  border-radius: 18px;
+  overflow: hidden;
+}
+.nbv-stratum { --tone: var(--nbv-teal); --on-tone: #fff; }
+.nbv-stratum--1 { --tone: var(--nbv-ember); }
+.nbv-stratum--2 { --tone: #c9a184; --on-tone: #2b1404; }
+.nbv-stratum--3 { --tone: #7fb3b4; --on-tone: #002021; }
+.nbv-stratum--4 { --tone: #e7b9a0; --on-tone: #351000; }
+.nbv-stratum--5 { --tone: #d8cfc6; --on-tone: var(--nbv-ink); }
+.nbv-stratum > summary {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: calc(46px + min(var(--share), 40) * 1.5px);
+  padding: 10px 18px;
+  overflow: hidden;
+  list-style: none;
+  cursor: pointer;
+  color: var(--on-tone);
+  background:
+    repeating-linear-gradient(172deg, transparent 0 11px, rgba(28, 25, 23, 0.05) 11px 12px),
+    radial-gradient(circle at 18% 40%, rgba(255, 255, 255, 0.12) 0 2px, transparent 3px) 0 0 / 26px 18px,
+    var(--tone);
+  transition: filter 0.2s var(--nbv-motion);
+}
+.nbv-stratum > summary::-webkit-details-marker { display: none; }
+.nbv-stratum > summary:hover { filter: brightness(1.04) saturate(1.05); }
+.nbv-stratum + .nbv-stratum > summary { box-shadow: inset 0 1px 0 rgba(28, 25, 23, 0.18); }
+.nbv-stratum__glyph {
+  position: absolute;
+  right: 92px;
+  top: 50%;
+  font: 600 74px/1 var(--nbv-serif);
+  opacity: 0.2;
+  transform: translateY(-50%) rotate(-6deg);
+  pointer-events: none;
+}
+.nbv-stratum__name { font: 600 clamp(19px, 2.2vw, 24px)/1 var(--nbv-serif); letter-spacing: -0.015em; }
+.nbv-stratum__n { margin-left: auto; font: 500 12.5px/1 var(--nbv-ui); font-variant-numeric: tabular-nums; opacity: 0.85; }
+.nbv-stratum__n b { margin-right: 6px; font-size: 16px; }
+.nbv-stratum__body { padding: 14px 16px 6px; background: var(--nbv-panel); }
+.nbv-stratum__body .nbv-fam__words { padding: 0 0 12px; }
+.nbv-route__label {
+  margin: 2px 0 8px;
+  font: 600 10.5px/1 var(--nbv-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--nbv-soft);
+}
+
+/* Word trees */
+.nbv-forest {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-auto-flow: row dense;
+  gap: 14px;
+}
+.nbv-grove {
+  display: grid;
+  place-items: end center;
+  margin: 0;
+  padding: 10px 8px 4px;
+  overflow-x: auto;
+  border: 1px solid var(--nbv-line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fbf8f2 0%, var(--nbv-panel) 62%, #f3ede3 100%);
+  animation: nbv-rise 0.42s var(--nbv-motion) both;
+}
+.nbv-grove.is-wide { grid-column: span 2; }
+@media (max-width: 560px) { .nbv-grove.is-wide { grid-column: auto; } }
+.nbv-tree-svg { max-width: 100%; height: auto; overflow: visible; }
+.nbv-ground { fill: rgba(92, 83, 78, 0.14); }
+.nbv-trunk { fill: var(--nbv-bark); }
+.nbv-branch { fill: none; stroke: var(--nbv-bark); stroke-linecap: round; }
+.nbv-leaf ellipse { fill: var(--nbv-leaf); opacity: 0.88; }
+.nbv-leaf circle { fill: var(--nbv-panel); stroke: var(--nbv-leaf); stroke-width: 1.6; }
+.nbv-tree__word { cursor: pointer; }
+.nbv-tree__word text {
+  font: 14px var(--nbv-serif);
+  fill: var(--nbv-ink);
+  paint-order: stroke;
+  stroke: #fbf8f2;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  transition: fill 0.15s var(--nbv-motion);
+}
+.nbv-tree__base text { font-weight: 700; font-size: 15px; stroke: var(--nbv-panel); }
+.nbv-tree__word:hover text { fill: var(--nbv-ember); }
+@media (prefers-reduced-motion: no-preference) {
+  .nbv-branch { stroke-dasharray: 1; stroke-dashoffset: 1; animation: nbv-grow 0.6s var(--nbv-motion) forwards; animation-delay: calc(var(--d) * 170ms); }
+  .nbv-leaf,
+  .nbv-tree__word:not(.nbv-tree__base) { opacity: 0; animation: nbv-fade 0.4s var(--nbv-motion) forwards; animation-delay: calc(var(--d) * 170ms + 280ms); }
+}
+@keyframes nbv-grow { to { stroke-dashoffset: 0; } }
+@keyframes nbv-fade { to { opacity: 1; } }

@@ -23,6 +23,7 @@ import {
   accountPanelHtml,
   deleteEmailMatches,
   attachNotebookMap,
+  traceNotebookFamilies,
   fetchWordImage,
   fillWordImages,
   reviewQueue,
@@ -426,6 +427,15 @@ function bindNotebookViews(): void {
   const page = document.querySelector('.nbv-body');
   if (!page) return;
   attachNotebookMap(page);
+  if (nbState.view === 'families') {
+    traceNotebookFamilies(
+      notebook.map((e) => String(e.lemma || '')),
+      () => document.querySelector('.nbv-body'),
+      () => {
+        if (tab === 'notebook' && nbState.view === 'families' && !document.querySelector('.nbv-body details[open]')) paint();
+      },
+    );
+  }
   if (prefs.senseImages !== false) {
     fillWordImages(page, (lemma, lang, gloss) => fetchWordImage(lemma, { lang, gloss }));
   }

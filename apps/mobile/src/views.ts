@@ -18,6 +18,7 @@ import {
   analyzeNotebook,
   cardsHtml,
   familiesHtml,
+  familiesTraceProgress,
   mapHtml,
   notebookViewSwitchHtml,
   recentListHtml,
@@ -847,7 +848,7 @@ export function notebookBody(
     const analysis = analyzeNotebook(list);
     const body =
       nb.view === 'families'
-        ? familiesHtml(analysis, nb.group)
+        ? familiesHtml(analysis, nb.group, { tracing: familiesTraceProgress() })
         : nb.view === 'map'
           ? mapHtml(analysis, nb.mapKinds)
           : nb.view === 'cards'

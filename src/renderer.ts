@@ -30,6 +30,7 @@ import './fonts';
 import './index.css';
 import { captureNextShortcut, isLinux, isMac } from './shortcut-capture';
 import '@phevere/core/notebook-views.css';
+import '@phevere/core/notebook-families.css';
 import {
   accountButtonHtml,
   accountPanelHtml,
@@ -38,6 +39,8 @@ import {
   cardsHtml,
   deleteEmailMatches,
   familiesHtml,
+  familiesTraceProgress,
+  traceNotebookFamilies,
   fetchWordImage,
   fillWordImages,
   formatVocabLangPair,
@@ -2162,7 +2165,17 @@ function renderVocabNotebook(entries: any[]): void {
         nbAnalysis = { key: vocabNotebookCache, q, value: analyzeNotebook(sorted) };
       }
       const analysis = nbAnalysis.value;
-      if (nbView === 'families') body.innerHTML = familiesHtml(analysis, nbGroup);
+      if (nbView === 'families') {
+        body.innerHTML = familiesHtml(analysis, nbGroup, { tracing: familiesTraceProgress() });
+        traceNotebookFamilies(
+          vocabNotebookCache.map((e) => String(e.lemma || '')),
+          () => document.getElementById('nbViewBody'),
+          () => {
+            // New origins and roots: repaint unless the reader has a family open.
+            if (nbView === 'families' && !document.querySelector('#nbViewBody details[open]')) rerenderNotebook();
+          },
+        );
+      }
       else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
       else body.innerHTML = cardsHtml(sorted, analysis, nbFlipped);
     }

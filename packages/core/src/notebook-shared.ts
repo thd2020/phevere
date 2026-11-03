@@ -8,7 +8,7 @@ import type { Morph, MorphKind } from './morphology';
 import type { VocabViewEntry } from './vocab-view';
 
 export type NotebookView = 'list' | 'families' | 'map' | 'cards' | 'review';
-export type FamilyGrouping = 'root' | 'prefix' | 'suffix' | 'origin' | 'tree' | 'char';
+export type FamilyGrouping = 'root' | 'deep' | 'prefix' | 'suffix' | 'origin' | 'tree' | 'char';
 
 export interface NotebookEntry extends VocabViewEntry {
   reviewDue?: number | null;
