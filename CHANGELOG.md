@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Plurals (2026-11-04): a plain plural such as "acronyms", whose only senses are "plural of acronym", opens as "acronym" and is saved as "acronym". Words already saved that way ("scraps") become their singular once, joining it if it is saved too; irregular plurals are left alone. A plural with senses of its own, such as "bacteria" or "glasses" (spectacles), keeps its own entry, and those senses are no longer dropped.
+- Phone Words (2026-11-04): the List view shows every saved word instead of the 400 changed most recently, so search finds older words, the My words count is the whole notebook, and book lists mark every saved word.
 - Pictures (2026-11-04): clicking a picture beside a sense shows it larger, over the lookup, with its title and a link to its page on Wikimedia Commons. A click outside the link, Esc, or Back on the phone closes it.
 - Etymology (2026-11-04): "From", "Borrowed from" and the like are no longer bold in any source tab.
 - Phone Cards (2026-11-04): tapping a card's picture turns it over and tapping its text opens the lookup. The meaning side scrolls when it is longer than the card, and shows up to eight senses.
