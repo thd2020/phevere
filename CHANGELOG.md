@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - API keys (2026-11-03): Settings → API keys has one card per provider: Google Translate, DeepL, Youdao, Oxford Dictionaries, WordsAPI and Collins. Each card says what the key turns on and whether a key is not set, saved, verified or rejected, and its Test button sends one small request to the provider. Fields are masked, with Show and Clear buttons and a Get a key link to the provider. The desktop app now has fields for Youdao, Oxford, WordsAPI and Collins, which it could already use but had nowhere to enter.
 
+### Changed
+
+- Sources (2026-11-03): dictionary sources and translation engines share one row design in Settings → Sources: a seal, the name, the languages it covers, and its switch or choice. Each row opens to a short description of what it provides and a link to its site. A source that needs a key says API key required, and that label opens the provider's card on the API keys page.
+
 ## [3.0.0] - 2026-11-02
 
 ### Added

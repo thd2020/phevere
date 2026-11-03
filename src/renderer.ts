@@ -31,6 +31,7 @@ import './index.css';
 import { captureNextShortcut, isLinux, isMac } from './shortcut-capture';
 import '@phevere/core/notebook-views.css';
 import '@phevere/core/settings-kit.css';
+import '@phevere/core/settings-sources.css';
 import '@phevere/core/settings-keys.css';
 import {
   accountButtonHtml,
@@ -52,10 +53,14 @@ import {
   groupCatalogByLanguage,
   vocabListHtml,
   API_PROVIDERS,
+  SOURCE_INFO,
+  TRANSLATION_ENGINES,
   apiKeysPanelHtml,
   patchApiKeyCard,
+  sourcesPanelHtml,
   type KeyCardState,
   type KeyStatus,
+  type SourceRowInput,
   type AccountState,
   type FamilyGrouping,
   type MorphKind,
@@ -265,10 +270,7 @@ function initializeSettingsWindow() {
             <div class="settings-panel__intro">
               <h2 id="settings-sources-heading" class="settings-panel__title">Sources</h2>
             </div>
-            <h3 class="settings-subhead">Dictionary</h3>
-            <div id="main-source-toggles"></div>
-            <h3 class="settings-subhead">Translation</h3>
-            <div id="translation-engine-toggles" role="radiogroup" aria-label="Translation engine"></div>
+            <div id="sources-host"></div>
           </section>
 
           <section class="settings-panel" data-panel="offline" aria-labelledby="settings-offline-heading">
@@ -346,8 +348,7 @@ function initializeSettingsWindow() {
   });
 
   wireSettingsLibraryLinks();
-  loadMainSourceToggles();
-  void loadTranslationEngineToggles();
+  void wireSourcesPanel();
   void wireApiKeysPanel();
   wireInAppTextSelectionLookup();
   setupAudioSettings();
@@ -3050,6 +3051,7 @@ function showSettingsSection(section: string, provider?: string): void {
     p.classList.toggle('is-active', (p as HTMLElement).dataset.panel === section);
   });
   if (section === 'api') void renderApiKeysPanel(provider);
+  if (section === 'sources') void renderSourcesPanel();
 }
 
 /** Settings links open in the browser; "API key required" and similar jump to their tab. */
@@ -3081,6 +3083,82 @@ function wireSettingsLibraryLinks(): void {
 }
 
 const settingsOpenDetails = new Set<string>();
+/** Shown with the translation engines only; the dictionary list leaves them out. */
+const TRANSLATION_ONLY_SOURCES = new Set(['DeepL API', 'Google Translate API']);
+
+async function renderSourcesPanel(): Promise<void> {
+  const host = document.getElementById('sources-host');
+  const api = window.dictionaryAPI;
+  if (!host || !api) return;
+  try {
+    const [stats, enabled, prefs, presence] = await Promise.all([
+      api.getSourceStats(),
+      api.getEnabledSources(),
+      api.getTranslationPrefs ? api.getTranslationPrefs() : Promise.resolve({ provider: 'auto' }),
+      api.getApiKeyPresence ? api.getApiKeyPresence() : Promise.resolve({} as Record<string, boolean>),
+    ]);
+    const current = (prefs && prefs.provider) || 'auto';
+    const dictionary: SourceRowInput[] = (stats.sources || [])
+      .filter((s) => !TRANSLATION_ONLY_SOURCES.has(s.name))
+      .map((s) => ({
+        control: 'switch',
+        name: s.name,
+        label: s.name,
+        info: SOURCE_INFO[s.name],
+        on: enabled.includes(s.name),
+        blocked: (s as { isAvailable?: boolean }).isAvailable === false,
+        open: settingsOpenDetails.has(`src:switch:${s.name}`),
+      }));
+    const engines: SourceRowInput[] = TRANSLATION_ENGINES.map((e) => ({
+      control: 'radio',
+      name: e.id,
+      label: e.label,
+      info: e,
+      on: e.id === current,
+      blocked: !!e.key && !presence[e.key],
+      open: settingsOpenDetails.has(`src:radio:${e.id}`),
+    }));
+    host.innerHTML = sourcesPanelHtml({ dictionary, engines });
+  } catch (error) {
+    console.error('Failed to load sources:', error);
+  }
+}
+
+async function wireSourcesPanel(): Promise<void> {
+  const host = document.getElementById('sources-host');
+  const api = window.dictionaryAPI;
+  if (!host || !api) return;
+  host.addEventListener('change', async (e) => {
+    const input = e.target as HTMLInputElement | null;
+    if (!input) return;
+    // Update rows in place so open disclosures and the scroll position stay put.
+    if (input.dataset.act === 'src') {
+      const name = input.dataset.name || '';
+      const enabled = input.checked;
+      try {
+        await api.setSourceEnabled(name, enabled);
+        input.checked = (await api.getEnabledSources()).includes(name);
+      } catch (err) {
+        console.error('Toggle update failed:', err);
+        input.checked = !enabled;
+      }
+      input.closest('.sv-src')?.classList.toggle('is-on', input.checked);
+      const ledger = input.closest('.sv-ledger');
+      const count = host.querySelector('.sv-head__count');
+      if (ledger && count) {
+        const all = ledger.querySelectorAll('input[data-act="src"]');
+        const on = ledger.querySelectorAll('input[data-act="src"]:checked');
+        count.textContent = `${on.length} of ${all.length} on`;
+      }
+    } else if (input.dataset.act === 'engine' && input.checked) {
+      await api.setTranslationPrefs?.({ provider: input.value });
+      host.querySelectorAll('input[data-act="engine"]').forEach((r) => {
+        (r as HTMLInputElement).closest('.sv-src')?.classList.toggle('is-on', (r as HTMLInputElement).checked);
+      });
+    }
+  });
+  await renderSourcesPanel();
+}
 
 /** Settings → API keys: per-session test results, typed values and revealed fields. */
 const apiKeyResults = new Map<string, { status: KeyStatus; message?: string }>();
@@ -3202,92 +3280,6 @@ async function wireApiKeysPanel(): Promise<void> {
     }
   });
   await renderApiKeysPanel();
-}
-
-// Load main source toggles
-async function loadMainSourceToggles() {
-  try {
-    if (window.dictionaryAPI) {
-      const sourceStats = await window.dictionaryAPI.getSourceStats();
-      const enabledSources = await window.dictionaryAPI.getEnabledSources();
-      rlog('[DBG][Settings] sourceStats:', sourceStats);
-      rlog('[DBG][Settings] enabledSources:', enabledSources);
-      
-      const sourceToggles = document.getElementById('main-source-toggles');
-      const TRANSLATION_ONLY = new Set(['DeepL API', 'Google Translate API']);
-      const dictSources = (sourceStats.sources || []).filter((source: { name: string }) => !TRANSLATION_ONLY.has(source.name));
-      if (sourceToggles && dictSources.length) {
-        sourceToggles.innerHTML = dictSources.map(source => `
-          <div class="source-toggle-main">
-            <div class="source-info">
-              <span class="source-name">${source.name}</span>
-              ${(source as any).isAvailable === false ? '<span class="source-priority">Requires an API key or offline pack</span>' : ''}
-            </div>
-            <label>
-              <input class="toggle-input" type="checkbox" data-source="${source.name}" ${enabledSources.includes(source.name) ? 'checked' : ''} />
-              <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
-            </label>
-          </div>
-        `).join('');
-
-        // Bind change handlers to checkboxes (more reliable than div clicks)
-        sourceToggles.querySelectorAll('.toggle-input').forEach((el) => {
-          const input = el as HTMLInputElement;
-          input.addEventListener('change', async () => {
-            const sourceName = input.dataset?.source || '';
-            const enabled = input.checked;
-            try {
-              await window.dictionaryAPI.setSourceEnabled(sourceName, enabled);
-              // Sync from backend
-              const updatedEnabled = await window.dictionaryAPI.getEnabledSources();
-              input.checked = updatedEnabled.includes(sourceName);
-            } catch (e) {
-              console.error('Toggle update failed:', e);
-              input.checked = !enabled; // revert local state on error
-            }
-          });
-        });
-      }
-    }
-  } catch (error) {
-    console.error('Failed to load main source toggles:', error);
-  }
-}
-
-const TRANSLATION_ENGINE_OPTIONS: Array<{ id: string; label: string; detail: string }> = [
-  { id: 'auto', label: 'Automatic', detail: 'Google Translate, then MyMemory' },
-  { id: 'google', label: 'Google Translate', detail: 'No API key' },
-  { id: 'mymemory', label: 'MyMemory', detail: 'No API key' },
-  { id: 'youdao', label: 'Youdao', detail: 'API key required' },
-  { id: 'deepl', label: 'DeepL', detail: 'API key required' },
-];
-
-async function loadTranslationEngineToggles(): Promise<void> {
-  const host = document.getElementById('translation-engine-toggles');
-  const api = window.dictionaryAPI;
-  if (!host || !api?.getTranslationPrefs || !api?.setTranslationPrefs) return;
-  try {
-    const prefs = await api.getTranslationPrefs();
-    const current = (prefs && prefs.provider) || 'auto';
-    host.innerHTML = TRANSLATION_ENGINE_OPTIONS.map((opt) => `
-      <label class="source-toggle-main">
-        <div class="source-info">
-          <span class="source-name">${opt.label}</span>
-          <span class="source-priority">${opt.detail}</span>
-        </div>
-        <input class="source-choice" type="radio" name="translation-engine" value="${opt.id}" ${opt.id === current ? 'checked' : ''} />
-      </label>
-    `).join('');
-    host.querySelectorAll('input[name="translation-engine"]').forEach((el) => {
-      el.addEventListener('change', () => {
-        const input = el as HTMLInputElement;
-        if (!input.checked) return;
-        void api.setTranslationPrefs({ provider: input.value });
-      });
-    });
-  } catch (error) {
-    console.error('Failed to load translation engines:', error);
-  }
 }
 
 async function wireNotificationSettings(): Promise<void> {
