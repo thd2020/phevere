@@ -2616,16 +2616,27 @@ export async function startApp(): Promise<void> {
   // The floating pop-up's own selection bar sends its Phevere item here.
   // Android Back (button or gesture): the page steps back first; native leaves the app only
   // when this returns false.
+  // It does what the page's own back or close control would, innermost first.
   (window as unknown as { __pvBack?: () => boolean }).__pvBack = () => {
+    const sheet = document.querySelector<HTMLDialogElement>('dialog[open]');
+    if (sheet) {
+      sheet.dispatchEvent(new Event('cancel'));
+      if (sheet.open) sheet.close();
+      return true;
+    }
     if (accountOpen) { accountOpen = false; accountDeleting = false; paint(); return true; }
     if (langMenu) { langMenu = ''; paint(); return true; }
+    if (lib.inspecting) { lib.inspecting = null; paint(); return true; }
     if (scan) {
       if (scanSheet !== 'closed') setScanSheet('closed');
       else { scan = null; clearScanPick(); paint(); }
       return true;
     }
-    if (wikiArticle && wikiCanBack()) { void handleAct('wiki-back', root, new Event('back')); return true; }
+    if (tab === 'learn' && nbState.review) { nbState.review = null; paint(); return true; }
+    if (tab === 'notebook' && wordsState.library) { wordsState.library = false; paint(); return true; }
     if (tab !== 'lookup') { tab = 'lookup'; paint(); return true; }
+    // Lookup: the same as its back arrow, the Wikipedia reader first, then the word before.
+    if ((wikiArticle && wikiCanBack()) || histIndex > 0) { void handleAct('back', root, new Event('back')); return true; }
     return false;
   };
   const hooks = window as unknown as {
