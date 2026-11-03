@@ -15,9 +15,29 @@ Phevere is a dictionary for text you are already reading. Select a word in any a
 
 The current release is **3.0.0** on desktop and phone (2026-11-02). It adds English definitions for Japanese, Russian, Korean, German and other languages, a picture for every word, senses ordered by how common they are, a Forms section with tenses, plurals and cases, and a notebook you can browse by word family, as a map of related words, as picture cards, or as a daily spaced-repetition review. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
 
-2026-11-03: review has its own tab, **Learn**, next to Words. It runs today's quiz for My words, one word book or all of them.
+2026-11-03: Phevere now helps you learn the words you look up. The Notebook became **Words**, with graded word books from primary school to CET-6 and 考研 beside your own list, and review became its own tab, **Learn**, a quiz with a progress page. Words you save remember the page, PDF or site you met them in. See [Learning](#learning) below.
 
-2026-11-03: the Notebook tab is now called **Words**. Your own list is My words, and next to it you can add word books, the graded lists Chinese learners study from: Starter 1000 for primary school, 中考, 高考, CET-4, CET-6, 考研, General English, Academic English, TOEIC and Business English. Each book has its own progress ring and daily goal, and Review can run one session across all of them. Sources and licences are in [`docs/WORDBOOKS.md`](docs/WORDBOOKS.md).
+## Learning
+
+A lookup usually ends when you close it. Phevere keeps the word, shows how it relates to the words you already know, and brings it back until you remember it. It does this in two tabs beside Lookup: Words, for what you are learning, and Learn, for practising it.
+
+<p align="center">
+  <img src="README.assets/learning-overview.png" width="860" alt="Screenshots of the phone app: a Learn question, the Progress page, the word-book library and Families grouped by origin">
+</p>
+<p align="center"><sub>A Learn question, the Progress page, the word-book library ordered by school level, and Families grouping 153 saved words by the language they came from.</sub></p>
+
+**Words** starts with My words, everything you save from a lookup. Next to it sit word books, the graded lists Chinese learners study from: Starter 1000 for primary school, 中考, 高考, CET-4, CET-6, 考研, General English, Academic English, TOEIC and Business English, each with a progress ring and a daily goal. Their sources and licences are in [`docs/WORDBOOKS.md`](docs/WORDBOOKS.md). Progress belongs to the word, so a word you learn once counts in every book that lists it. Sources groups the words you saved by the book or site you met them in, so the words you looked up while reading *Gödel, Escher, Bach* can become a word book of their own.
+
+Any list can be seen four ways. List shows the words in order, each with when and where you saved it and the sentence it came from. Families groups words by the parts they share, from Latin and Greek roots to the Proto-Indo-European roots Wiktionary records, by the language they came from, and as small drawn trees of one word built from another. Map shows the same relations as a 3D graph you can turn and search, and Cards lays the words out as a pile you can scatter, drag and sort.
+
+**Learn** runs a short quiz each day over My words, one book or all of them. A new word starts with picking its meaning; as it sticks, the questions get harder: picking it from its sound, typing it from its meaning, filling it into your own sentence. Phevere grades each answer from whether it was right and how long it took, and schedules the next review with FSRS, the scheduler Anki adopted in 2023; [`docs/REVIEW.md`](docs/REVIEW.md) explains the research behind this. The Progress page shows today against your goal, your streak, how far each book has come, how well you know each word's meaning, spelling and sound, which root families you have mastered, and how much you are likely to remember over the next month.
+
+<p align="center">
+  <img src="README.assets/learning-detail.png" width="660" alt="Screenshots of the phone app: a word book's list, the answer screen after a question, and the map of shared roots">
+</p>
+<p align="center"><sub>CET-4 opened as a list, the answer screen with when the word comes back, and the map of roots and prefixes the saved words share.</sub></p>
+
+Saved words and word books sync free with a Holarky account. Syncing learning progress between devices will be part of a paid Plus membership; without it, progress stays on each device.
 
 ## Features
 
@@ -32,12 +52,15 @@ The current release is **3.0.0** on desktop and phone (2026-11-02). It adds Engl
 - Translation through Google Translate and MyMemory without a key, or through Youdao or DeepL with your own keys. The speaker beside either side reads it aloud with the chosen voice; a long paragraph starts playing after its first sentence is ready, and pressing the speaker again stops it. Settings → API keys checks a key with one request to its provider.
 - Etymology from Wiktionary, Etymonline, and Youdao, and a Wikipedia reader in the same pane.
 - Offline packs, listed in Settings → Offline under the language of their headwords: WordNet, Webster 1913 (GCIDE) and FreeDict English–Chinese for English; CC-CEDICT for Chinese; JMdict for Japanese; Kengdic for Korean; and FreeDict packs from German, French, Italian, Portuguese, Dutch, Polish, Russian, Greek, Finnish, Hungarian, Catalan and Croatian into English. The German pack and the full JMdict are desktop only; the phone gets JMdict's common words. Selecting a pack shows its edition, licence, source, entry count and size.
-- Words: My words, your own list stored locally in SQLite, with search, sorting, and JSON or CSV import and export, plus word books you add from a library ordered from primary school up. A book word opens its lookup and can be added to My words, and every word shows which of your books list it. Progress belongs to the word, so learning it once counts in every book that has it. Besides the list, My words, each book and All books have Families (words grouped by shared root, prefix, suffix, origin or character, and word trees), Map (the same relations as a graph) and Cards (each word split into its parts, with your note as a mnemonic).
-- Sources, in the Words tab's book switcher, groups the words you saved by the document or web site they came from (GEB.pdf, en.wikipedia.org), each with its count. Make a word book turns a source into your own book, which then appears beside the shipped books with its own progress; you can rename it, add words by name and remove words, and it syncs with the rest of your word books.
-- Learn: a daily quiz over My words, one book or All books, scheduled with FSRS. It asks each due word in a harder form as you learn it, from picking its meaning to typing it into a sentence, with a daily goal and a two-week forecast; see [`docs/REVIEW.md`](docs/REVIEW.md).
 - Words are saved in dictionary form (lower case, except German nouns, proper nouns and abbreviations), and words saved earlier in another form are fixed once.
 - Recent lookups, shown as the same rows as the notebook. The source language is detected by default, including Japanese text written only in kanji.
 - An optional Holarky account, from the button at the right of the title bar on desktop or the app bar on the phone. Sign in with email and password, a passkey, or Google; while signed in, My words and your word books sync between your desktops and phones, including notes and deletions. Learning progress syncs with a Plus membership; without it, progress stays on each device. Without an account Phevere works as before, and lookups never wait for it.
+
+**Words and Learn**
+
+- Words: My words, your own list stored locally in SQLite, with search, sorting, and JSON or CSV import and export, plus word books you add from a library ordered from primary school up. A book word opens its lookup and can be added to My words, and every word shows which of your books list it. Progress belongs to the word, so learning it once counts in every book that has it. Besides the list, My words, each book and All books have Families (words grouped by shared root, prefix, suffix, origin or character, and word trees), Map (the same relations as a graph) and Cards (each word split into its parts, with your note as a mnemonic).
+- Sources, in the Words tab's book switcher, groups the words you saved by the document or web site they came from (GEB.pdf, en.wikipedia.org), each with its count. Make a word book turns a source into your own book, which then appears beside the shipped books with its own progress; you can rename it, add words by name and remove words, and it syncs with the rest of your word books.
+- Learn: a daily quiz over My words, one book or All books, scheduled with FSRS. It asks each due word in a harder form as you learn it, from picking its meaning to typing it into a sentence, with a daily goal and a two-week forecast; see [`docs/REVIEW.md`](docs/REVIEW.md).
 
 **Desktop (Windows, macOS, Linux)**
 
@@ -178,6 +201,7 @@ Every pull request and every push to `main` builds the desktop applications for 
 
 - [`docs/ACCOUNT.md`](docs/ACCOUNT.md): the Holarky account and notebook sync
 - [`docs/WORDBOOKS.md`](docs/WORDBOOKS.md): the word books, where each list comes from and its licence
+- [`docs/REVIEW.md`](docs/REVIEW.md): how Learn quizzes and schedules words, and the research behind it
 - [`docs/MOBILE.md`](docs/MOBILE.md): phone apps, architecture, and limitations
 - [`apps/mobile/ANDROID.md`](apps/mobile/ANDROID.md): Android build, speech, versioning, and the LSPosed module
 - [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md): macOS permissions and selection capture
