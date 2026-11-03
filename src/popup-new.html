@@ -2772,6 +2772,7 @@ function startAutoCloseTimeout() {
         }
 
         function stopPopupSpeech() {
+          stopLongSpeech();
           try { speechSynthesis.cancel(); } catch (e) {}
           try { if (ipaAudioEl) ipaAudioEl.pause(); } catch (e) {}
         }
@@ -2801,6 +2802,7 @@ function startAutoCloseTimeout() {
         async function speakSynthetic(req) {
           var api = window.electronAPI;
           if (!api || typeof api.synthesizeSpeech !== 'function') return false;
+          stopLongSpeech();
           try {
             var res = await api.synthesizeSpeech(req);
             if (!res || !res.ok || !res.dataUrl) return false;
@@ -2815,7 +2817,112 @@ function startAutoCloseTimeout() {
           }
         }
 
+        /*
+         * Long text (Translation tab). The main process splits it into sentence chunks and
+         * synthesizes one chunk ahead; this loop plays each chunk as it arrives. Any new
+         * speech, the stop button, or hiding the popup ends the loop and cancels the rest.
+         */
+        var longSpeechRun = 0;
+        var longSpeechBtn = null;
+        var longAudioEl = null;
+
+        function stopLongSpeech() {
+          longSpeechRun++;
+          try { if (longAudioEl) longAudioEl.pause(); } catch (e) {}
+          longAudioEl = null;
+          if (longSpeechBtn) longSpeechBtn.classList.remove('is-speaking');
+          longSpeechBtn = null;
+          var api = window.electronAPI;
+          try { if (api && typeof api.stopSpeech === 'function') void api.stopSpeech(); } catch (e) {}
+        }
+
+        /** Plays one chunk. `onNearEnd` runs once, about a second before the chunk ends. */
+        function playLongChunk(el, run, onNearEnd) {
+          return new Promise(function (resolve) {
+            if (run !== longSpeechRun) { resolve(false); return; }
+            longAudioEl = el;
+            applyPlayback(el, false);
+            var near = false;
+            var nearEnd = function () { if (!near) { near = true; onNearEnd(); } };
+            var done = function (ok) {
+              el.onended = el.onerror = el.onpause = el.ontimeupdate = null;
+              nearEnd();
+              resolve(ok);
+            };
+            el.ontimeupdate = function () {
+              if (el.duration && el.duration - el.currentTime < 1.2) nearEnd();
+            };
+            el.onended = function () { done(true); };
+            el.onerror = function () { done(false); };
+            el.onpause = function () { if (!el.ended) done(false); };
+            var p = el.play();
+            if (p && typeof p.catch === 'function') p.catch(function () { done(false); });
+          });
+        }
+
+        /** Fetches chunk i and loads it into an audio element, so it can start without a gap. */
+        function loadLongChunk(api, id, index) {
+          return api.speechStreamChunk({ id: id, index: index }).then(function (res) {
+            if (!res || !res.ok || !res.dataUrl) return { res: res, el: null };
+            var el = new Audio();
+            el.preload = 'auto';
+            el.src = res.dataUrl;
+            return { res: res, el: el };
+          });
+        }
+
+        /** Resolves false only when nothing could be played, so the caller can fall back. */
+        async function speakLong(text, lang, btn) {
+          var api = window.electronAPI;
+          if (!api || typeof api.speechStreamStart !== 'function') return speakSynthetic({ text: text, lang: lang });
+          stopPopupSpeech();
+          try { if (synthAudioEl) synthAudioEl.pause(); } catch (e) {}
+          var run = longSpeechRun;
+          if (btn) { longSpeechBtn = btn; btn.classList.add('is-speaking'); }
+          var finish = function () {
+            if (run !== longSpeechRun) return;
+            if (longSpeechBtn) longSpeechBtn.classList.remove('is-speaking');
+            longSpeechBtn = null;
+            longAudioEl = null;
+          };
+          try {
+            var start = await api.speechStreamStart({ text: text, lang: lang });
+            if (run !== longSpeechRun) return true;
+            if (!start || !start.ok) { finish(); return false; }
+            // Asking for chunk i + 1 near the end of chunk i also starts chunk i + 2 in the
+            // main process, so synthesis stays about one chunk ahead of what is heard.
+            var next = loadLongChunk(api, start.id, 0);
+            for (var i = 0; i < start.count; i++) {
+              var got = await next;
+              next = null;
+              if (run !== longSpeechRun) return true;
+              if (!got.el) {
+                finish();
+                if (got.res && got.res.cancelled) return true;
+                return i > 0;
+              }
+              var index = i;
+              var played = await playLongChunk(got.el, run, function () {
+                if (index + 1 < start.count && run === longSpeechRun) next = loadLongChunk(api, start.id, index + 1);
+              });
+              if (run !== longSpeechRun) return true;
+              if (!played && i === 0) { finish(); return false; }
+              if (!next) break;
+            }
+            finish();
+            return true;
+          } catch (e) {
+            finish();
+            return false;
+          }
+        }
+
+        document.addEventListener('visibilitychange', function () {
+          if (document.hidden) stopLongSpeech();
+        });
+
         function playRecordedDataUrl(url, onFail) {
+          stopLongSpeech();
           try { speechSynthesis.cancel(); } catch (e) {}
           try {
             if (window.electronAPI && typeof window.electronAPI.cancelIpaSpeak === 'function') {
@@ -3107,7 +3214,7 @@ function startAutoCloseTimeout() {
                    <div class="translation-card__label">${escapeHtml(srcLangLabel)}</div>
                    <div class="translation-card__original">${escapeHtml(word)}</div>
                  </div>
-                 <button type="button" class="tx-speak" title="Play source" aria-label="Play source" onclick='playAudio(${JSON.stringify(word)}, ${JSON.stringify(origLang)})'>${speakIcon()}</button>
+                 <button type="button" class="tx-speak tx-play" title="Play source" aria-label="Play source" data-text="${escapeHtml(word)}" data-lang="${escapeHtml(origLang)}">${speakIcon()}</button>
                </div>
                <div class="translation-card__line">
                  <div>
@@ -3115,7 +3222,7 @@ function startAutoCloseTimeout() {
                    <div class="translation-card__text">${escapeHtml(trans.text)}</div>
                    ${trans.pronunciation ? `<div class="translation-card__pron">${escapeHtml(trans.pronunciation)}</div>` : ''}
                  </div>
-                 <button type="button" class="tx-speak" title="Play translation" aria-label="Play translation" onclick='playAudio(${JSON.stringify(trans.text)}, ${JSON.stringify(trans.language || "en")})'>${speakIcon()}</button>
+                 <button type="button" class="tx-speak tx-play" title="Play translation" aria-label="Play translation" data-text="${escapeHtml(trans.text)}" data-lang="${escapeHtml(trans.language || 'en')}">${speakIcon()}</button>
                </div>
              </div>
            </div>
@@ -3780,9 +3887,11 @@ function startAutoCloseTimeout() {
          }
        }
 
-       window.playAudio = (text, language) => {
+       window.playAudio = (text, language, btn) => {
          if (audioPrefs.enabled === false) { pvLog('[POPUP] Audio disabled'); return; }
-         void speakSynthetic({ text: String(text || ''), lang: String(language || '') }).then(function (ok) {
+         // Pressing the button that is speaking stops it.
+         if (btn && btn === longSpeechBtn) { stopLongSpeech(); return; }
+         void speakLong(String(text || ''), String(language || ''), btn || null).then(function (ok) {
            if (!ok) playAudioWebSpeech(text, language);
          });
        };
@@ -4098,6 +4207,13 @@ function startAutoCloseTimeout() {
                  e.preventDefault();
                  e.stopPropagation();
                  playIpaChip(ipaBtn);
+                 return;
+               }
+               var playBtn = t.closest('.tx-play');
+               if (playBtn) {
+                 e.preventDefault();
+                 e.stopPropagation();
+                 window.playAudio(playBtn.getAttribute('data-text') || '', playBtn.getAttribute('data-lang') || '', playBtn);
                  return;
                }
                var posTab = t.closest('.lexicon-pos-tab');

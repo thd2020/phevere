@@ -39,6 +39,10 @@ import {
   selectVoice,
   cancelVoiceDownload,
   synthesize,
+  startSpeechStream,
+  speechStreamChunk,
+  stopSpeech,
+  isCancelled,
   stopSpeechWorker,
   type AudioPrefs,
   type SpeakRequest,
@@ -2467,6 +2471,37 @@ ipcMain.handle('speech-synthesize', async (_event, req: SpeakRequest) => {
     log.warn('main', 'speech-synthesize failed', { err: String(error) });
     return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
   }
+});
+// Long text: the renderer pulls sentence chunks one at a time (see startSpeechStream).
+const speechOwners = new WeakSet<Electron.WebContents>();
+function trackSpeechOwner(sender: Electron.WebContents): number {
+  const id = sender.id;
+  if (!speechOwners.has(sender)) {
+    speechOwners.add(sender);
+    sender.once('destroyed', () => stopSpeech(id));
+  }
+  return id;
+}
+ipcMain.handle('speech-stream-start', (event, req: { text?: string; lang?: string }) => {
+  try {
+    return { ok: true as const, ...startSpeechStream(trackSpeechOwner(event.sender), req || {}) };
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+ipcMain.handle('speech-stream-chunk', async (_event, req: { id: number; index: number }) => {
+  try {
+    const wav = await speechStreamChunk(Number(req?.id), Number(req?.index));
+    return { ok: true as const, dataUrl: `data:audio/wav;base64,${Buffer.from(wav).toString('base64')}` };
+  } catch (error) {
+    if (isCancelled(error)) return { ok: false as const, cancelled: true, error: 'cancelled' };
+    log.warn('main', 'speech-stream-chunk failed', { err: String(error) });
+    return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+ipcMain.handle('speech-stop', (event) => {
+  stopSpeech(event.sender.id);
+  return { ok: true as const };
 });
 app.on('will-quit', () => stopSpeechWorker());
 

@@ -16,7 +16,12 @@
  * Response: { id, ok, wav?: Uint8Array, error? }
  */
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+
+// Neural synthesis uses about half the logical cores (at least 1, at most 4), so a long
+// paragraph never takes the whole machine. onnxruntime's own default is every core.
+const NEURAL_THREADS = Math.max(1, Math.min(4, Math.floor(((os.cpus() || []).length || 2) / 2)));
 const { pathToFileURL } = require('url');
 
 function arg(name) {
@@ -62,7 +67,7 @@ function kokoroEngine(dir, modelFile) {
         dataDir: f('espeak-ng-data'),
         lexicon: `${f('lexicon-us-en.txt')},${f('lexicon-zh.txt')}`,
       },
-      numThreads: 2,
+      numThreads: NEURAL_THREADS,
       debug: false,
     },
   });
@@ -81,7 +86,10 @@ async function kokoroFromPhonemes(model, phonemes, speaker, speed) {
   if (!ort) ort = require(ortDir);
   const modelPath = path.join(model.dir, model.file);
   if (!ipaSession || ipaModel !== modelPath) {
-    ipaSession = await ort.InferenceSession.create(modelPath);
+    ipaSession = await ort.InferenceSession.create(modelPath, {
+      intraOpNumThreads: NEURAL_THREADS,
+      interOpNumThreads: 1,
+    });
     ipaModel = modelPath;
     ipaVocab = new Map();
     for (const line of fs.readFileSync(path.join(model.dir, 'tokens.txt'), 'utf8').split(/\r?\n/)) {

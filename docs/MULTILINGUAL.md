@@ -54,6 +54,8 @@ The catalog lives in `packages/core/src/offline-catalog.ts` and the parsers in `
 
 **Popup toolbar 🔊** plays a recorded clip: Free Dictionary MP3 when that API answered, otherwise the Wiktionary Commons file from `{{audio}}`. Fetched in the main process (ogg/mp3). It does not use `speechSynthesis` on the spelling.
 
+**Translation speakers** (2026-11-03) read the source or the translated text with the voice chosen in Settings → Audio. `src/services/speech.ts` splits the text into sentence chunks with `splitSpeechText` (`packages/core/src/speech-chunks.ts`): the first chunk is one short sentence, so audio starts within a fraction of a second, and the popup asks for the next chunk only when the current one finishes, so the worker synthesizes at most one chunk ahead. Jobs reach the worker one at a time from a queue in the main process; pressing the speaker again, starting other speech, hiding or closing the popup drops whatever is still queued. Before this change the whole text, cut at 500 characters, went to the worker as one job, and nothing played until all of it was synthesized. With a neural voice on a slow CPU that could take longer than the 60-second timeout, after which the eSpeak fallback queued behind the job that was still running. `scripts/test-speech-stream.js` covers the splitting, the one-ahead rule and cancellation.
+
 **IPA chip speakers** send that chip’s IPA to a long-lived System.Speech host in the main process (Windows) or `say` `[[inpt PHON]]` (macOS). Chromium `speechSynthesis` strips SSML, so the renderer cannot speak IPA itself.
 
 **Root causes addressed**

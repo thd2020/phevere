@@ -159,6 +159,7 @@ export {
   buildSapiPhonemeSsml,
   buildIpaPhonemeSsml,
 } from './ipa-phonemes';
+export { splitSpeechText, type SpeechChunkOptions } from './speech-chunks';
 export { buildWordFamily, mergeWordFamilyGroups, familyFromEtymologyChain, type WordFamilyGroup } from './word-family';
 export {
   parseFreedictTei,
