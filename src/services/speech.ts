@@ -292,9 +292,20 @@ function isChinese(text: string, lang?: string): boolean {
   return /^zh|^cmn/i.test(lang || '') || /[\u3400-\u9fff]/.test(text);
 }
 
+/**
+ * Languages the bundled voices cannot read. eSpeak's Japanese reads kana but not kanji, and
+ * the neural voice has only English and Chinese, so Japanese goes to a system or online voice
+ * in the window instead of being read with the Chinese voice.
+ */
+const NO_LOCAL_VOICE = new Set(['ja']);
+
 /** eSpeak voice for a BCP-47-ish tag. Chinese → cmn, en-GB → en-gb, other English → en-us. */
 function espeakVoice(text: string, lang?: string): string {
   const l = String(lang || '').toLowerCase();
+  const base = l.split(/[-_]/)[0];
+  // Kana or a Japanese tag is Japanese even when the text is mostly kanji; hangul is Korean.
+  if (base === 'ja' || /[\u3040-\u30ff]/.test(text)) return 'ja';
+  if (base === 'ko' || /[\uac00-\ud7af]/.test(text)) return 'ko';
   if (isChinese(text, l)) return 'cmn';
   if (/^en[-_](gb|uk)/.test(l) || l === 'uk') return 'en-gb';
   if (!l || l.startsWith('en') || l === 'us' || l === 'other') return 'en-us';
@@ -355,6 +366,7 @@ function synthesizeText(
   const prefs = getAudioPrefs();
   const speed = prefs.speed;
   const voice = espeakVoice(text, lang);
+  if (NO_LOCAL_VOICE.has(voice)) return Promise.reject(new Error(`No local voice for ${voice}`));
   const variant = VARIANTS.find((v) => v.id === prefs.voice);
   const kokoroLang = voice === 'cmn' || voice.startsWith('en');
   const espeak = () => runWorker({ engine: 'espeak', text, voice, speed }, 15000, 'main', signal);
@@ -417,6 +429,8 @@ const MAX_STREAM_CHARS = 5000;
 
 export function startSpeechStream(owner: number, req: { text?: string; lang?: string }): { id: number; count: number } {
   stopSpeech(owner);
+  const voice = espeakVoice(String(req.text || ''), req.lang);
+  if (NO_LOCAL_VOICE.has(voice)) throw new Error(`No local voice for ${voice}`);
   // Each eSpeak call starts a fresh WebAssembly instance (about 0.2 s of CPU), and eSpeak
   // runs far faster than real time, so after the first sentence it gets one large chunk.
   // Kokoro is slow on a CPU and reads at most about 500 phonemes, so it gets small ones

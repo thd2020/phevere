@@ -2779,6 +2779,8 @@ function startAutoCloseTimeout() {
           stopLongSpeech();
           try { speechSynthesis.cancel(); } catch (e) {}
           try { if (ipaAudioEl) ipaAudioEl.pause(); } catch (e) {}
+          onlineVoiceRun++;
+          try { if (onlineVoiceEl) onlineVoiceEl.pause(); } catch (e) {}
         }
 
         /* Audio settings live in the main process (Settings → Audio), shared with the notebook. */
@@ -4002,6 +4004,8 @@ function startAutoCloseTimeout() {
              } else {
                lang = rawHint ? normalizeBcp47(rawHint) : 'en-US';
              }
+             // Kana or hangul in the text outweighs a Chinese hint (a Japanese gloss under a Chinese headword).
+             if ((detectedLang === 'ja-JP' || detectedLang === 'ko-KR') && /^zh/i.test(lang)) lang = detectedLang;
              pvLog(`[AUDIO-DEBUG] Resolved speech lang: ${lang} (hint=${rawHint || 'none'})`);
 
              const utterance = new SpeechSynthesisUtterance(truncatedText);
@@ -4033,9 +4037,7 @@ function startAutoCloseTimeout() {
                   voice.default)
                ),
                () => voices.find(voice => voice.lang === lang),
-               () => voices.find(voice => voice.lang.startsWith(langBase)),
-               () => voices.find(voice => voice.default),
-               () => voices[0]
+               () => voices.find(voice => voice.lang.startsWith(langBase))
              ];
 
              let selectedVoice = null;
@@ -4065,14 +4067,12 @@ function startAutoCloseTimeout() {
              pvLog(`[AUDIO-DEBUG] Utterance setup complete - lang: ${utterance.lang}, voice: ${utterance.voice?.name || 'none'}, rate: ${utterance.rate}`);
 
              const hasVoicesForLang = voices.some(voice => voice.lang.startsWith(langBase));
-             const isCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(truncatedText);
              if (!hasVoicesForLang) {
-               console.warn(`[AUDIO-DEBUG] No installed voice for ${lang} — leave lang as-is (Chromium may still speak). Install language pack in OS speech settings for best results.`);
-               utterance.voice = null;
-               if (!isCJK) {
-                 utterance.lang = 'en-US';
-                 utterance.voice = voices.find(voice => voice.lang.startsWith('en') && voice.default) || voices.find(voice => voice.default) || null;
-               }
+               // No installed voice speaks this language. The system default would read it in its own
+               // language (a Chinese voice reading Japanese), so an online voice reads it instead.
+               pvLog(`[AUDIO-DEBUG] No installed voice for ${lang}; using the online voice`);
+               playOnlineVoice(truncatedText, lang);
+               return;
              }
 
              // Add comprehensive event handlers
