@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-11-03
+
 ### Added
 
 - Word sources (2026-11-03): a word saved from the pop-up remembers where you met it: the app, the web page title and address in Chrome, Edge and Firefox, the document and page in a PDF reader, and the sentence around the word. The expanded word shows the source and the sentence with the word marked, Learn's gap-fill question uses that sentence, and Words → Sources groups saved words by book or site, with Make a word book to turn one into your own book. Private and incognito windows are never read, and Settings → Capture has a switch to turn it off.
@@ -464,7 +466,8 @@ All six downloads were replaced on the existing 2.1.0 release; the git tag is un
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v4.0.0...HEAD
+[4.0.0]: https://github.com/thd2020/phevere/compare/v3.0.0...v4.0.0
 [3.0.0]: https://github.com/thd2020/phevere/compare/v2.3.0...v3.0.0
 [2.3.0]: https://github.com/thd2020/phevere/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/thd2020/phevere/compare/v2.1.0...v2.2.0

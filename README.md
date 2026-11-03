@@ -13,9 +13,7 @@ Phevere is a dictionary for text you are already reading. Select a word in any a
 </p>
 <p align="center"><sub>Android app: a lookup, a word selected on a scanned page, and the selection-bar settings.</sub></p>
 
-The current release is **3.0.0** on desktop and phone (2026-11-02). It adds English definitions for Japanese, Russian, Korean, German and other languages, a picture for every word, senses ordered by how common they are, a Forms section with tenses, plurals and cases, and a notebook you can browse by word family, as a map of related words, as picture cards, or as a daily spaced-repetition review. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
-
-2026-11-03: Phevere now helps you learn the words you look up. The Notebook became **Words**, with graded word books from primary school to CET-6 and 考研 beside your own list, and review became its own tab, **Learn**, a quiz with a progress page. Words you save remember the page, PDF or site you met them in. See [Learning](#learning) below.
+The current release is **4.0.0** on desktop and phone (2026-11-03). It turns the notebook into a place to learn: Words with graded word books from primary school to CET-6 and 考研, a Learn tab with a quiz and a progress page, words that remember the page or PDF you met them in, and Families, Map and Cards redrawn. Desktop installers no longer bundle the OCR models, which the app downloads when you need them. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Learning
 
