@@ -1536,8 +1536,11 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
   popupWindows.push(newPopupWindow);
 };
 
-const createSettingsWindow = (): void => {
+/** Open Settings, or bring it forward; `section` ("offline", "api") picks the page shown. */
+const createSettingsWindow = (section?: string): void => {
+  const target = section && /^[a-z]+$/.test(section) ? section : '';
   if (settingsWindow && !settingsWindow.isDestroyed()) {
+    if (target) void settingsWindow.webContents.executeJavaScript(`location.hash = '#settings/${target}'`).catch((): void => undefined);
     // A window that never painted stays hidden; focus() alone would leave the
     // gear doing nothing until restart.
     if (settingsWindow.isMinimized()) settingsWindow.restore();
@@ -1562,7 +1565,7 @@ const createSettingsWindow = (): void => {
     ...(windowIcon ? { icon: windowIcon } : {}),
   }, 'none'));
 
-  const settingsUrl = MAIN_WINDOW_WEBPACK_ENTRY + '#settings';
+  const settingsUrl = MAIN_WINDOW_WEBPACK_ENTRY + '#settings' + (target ? `/${target}` : '');
   settingsWindow.loadURL(settingsUrl);
 
   showWhenLoaded(settingsWindow);
@@ -2397,8 +2400,8 @@ ipcMain.on('hide-popup', () => {
   popupWindows = [];
 });
 
-ipcMain.handle('show-settings-window', () => {
-  createSettingsWindow();
+ipcMain.handle('show-settings-window', (_event, section?: unknown) => {
+  createSettingsWindow(typeof section === 'string' ? section : undefined);
 });
 
 // Clipboard service IPC handlers

@@ -3823,3 +3823,108 @@ body.settings-page .settings-row__progress span {
   transition: width 0.3s var(--pv-motion);
 }
 body.main-window .status-value.needs { color: var(--pv-ember); font-weight: 600; }
+
+/* Global search: the field sits between the tabs and the tools on both tabs. */
+body.main-window .ws-search { position: relative; flex: 1 1 14rem; max-width: 22rem; margin-left: auto; }
+body.main-window .ws-search .vocab-search {
+  width: 100%;
+  max-width: none;
+  height: 34px;
+  padding: 0 14px 0 34px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8' fill='none' stroke='%235c534e' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") 12px 50% / 15px no-repeat,
+    var(--pv-panel-solid);
+}
+body.main-window .gsearch {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  min-width: 300px;
+  max-height: min(60vh, 440px);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--pv-line);
+  border-radius: 14px;
+  background: var(--pv-panel-solid);
+  box-shadow: 0 18px 40px -22px rgba(28, 25, 23, 0.45), 0 2px 6px rgba(28, 25, 23, 0.06);
+  animation: gsearch-in 0.16s cubic-bezier(0.2, 0, 0, 1);
+}
+@keyframes gsearch-in { from { opacity: 0; transform: translateY(-4px); } }
+body.main-window .gsearch__head {
+  margin: 8px 10px 4px;
+  font: 600 10.5px/1 Outfit, 'Segoe UI', sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pv-ink-soft);
+}
+body.main-window .gsearch__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  color: var(--pv-ink);
+}
+body.main-window .gsearch__row svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: var(--pv-ink-soft);
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+body.main-window .gsearch__row.is-active { background: var(--pv-paper-2); }
+body.main-window .gsearch__row--lookup svg { stroke: var(--pv-ember); }
+body.main-window .gsearch__row--word svg { stroke: var(--pv-teal); }
+body.main-window .gsearch__label { flex: none; font: 15px/1.2 'Source Serif 4 Variable', Georgia, serif; }
+body.main-window .gsearch__row--lookup .gsearch__label,
+body.main-window .gsearch__row--setting .gsearch__label,
+body.main-window .gsearch__row--all .gsearch__label { font: 500 13.5px/1.2 Outfit, 'Segoe UI', sans-serif; }
+body.main-window .gsearch__label b { font: 600 15px/1 'Source Serif 4 Variable', Georgia, serif; color: var(--pv-ember); }
+body.main-window .gsearch__hint {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--pv-ink-soft);
+  font-size: 12.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+body.main-window .gsearch__row kbd {
+  margin-left: auto;
+  padding: 2px 6px;
+  border: 1px solid var(--pv-line);
+  border-radius: 5px;
+  background: var(--pv-paper);
+  color: var(--pv-ink-soft);
+  font: 500 10.5px/1.2 Outfit, 'Segoe UI', sans-serif;
+}
+
+/* Timeline rail: dates are wider than letters, and a new year gets a small marker. */
+body.main-window .vocab-az--time { width: 44px; right: 0; align-items: flex-end; }
+body.main-window .vocab-az__time {
+  position: relative;
+  width: auto;
+  padding: 1px 4px;
+  border-radius: 6px;
+  font-size: 9.5px;
+  white-space: nowrap;
+  color: var(--pv-ink-soft);
+  transition: color 0.12s cubic-bezier(0.2, 0, 0, 1), background-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+body.main-window .vocab-az__time:hover { color: var(--pv-teal); background: var(--pv-paper-2); }
+body.main-window .vocab-az__time[data-year]::before {
+  content: attr(data-year);
+  position: absolute;
+  right: 4px;
+  bottom: calc(100% + 1px);
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--pv-ember);
+}
+body.main-window .vocab-list-wrap.is-timeline :is(#vocabList) { margin-right: 50px; }

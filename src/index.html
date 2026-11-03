@@ -66,8 +66,10 @@
           <button type="button" role="tab" class="ws-tab is-active" data-ws="notebook" aria-selected="true" aria-controls="paneNotebook">Notebook<span id="vocabCount" class="ws-count"></span></button>
           <button type="button" role="tab" class="ws-tab" data-ws="recent" aria-selected="false" aria-controls="paneRecent">Recent</button>
         </div>
+        <div class="ws-search">
+          <input type="search" id="vocabSearch" class="vocab-search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Search" />
+        </div>
         <div class="ws-tools" id="notebookTools">
-          <input type="search" id="vocabSearch" class="vocab-search" placeholder="Search notebook…" autocomplete="off" aria-label="Search notebook" />
           <button type="button" id="exportVocabBtn" class="btn btn-outlined btn-small">Export</button>
           <button type="button" id="importVocabBtn" class="btn btn-outlined btn-small">Import</button>
           <button type="button" id="refreshVocabBtn" class="btn btn-outlined btn-small">Refresh</button>
@@ -90,6 +92,7 @@
             <p class="empty-message">No saved words.</p>
           </div>
           <nav class="vocab-az" id="vocabAz" hidden aria-label="Jump to letter"></nav>
+          <nav class="vocab-az vocab-az--time" id="vocabTimeline" hidden aria-label="Jump to date"></nav>
           <div class="vocab-az-hud" id="vocabAzHud" hidden aria-hidden="true"></div>
         </div>
         <div id="nbViewBody" class="nbv-body" hidden></div>

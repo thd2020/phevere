@@ -216,8 +216,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   testTextSelection: () => {
     return ipcRenderer.invoke('test-text-selection');
   },
-  showSettingsWindow: () => {
-    return ipcRenderer.invoke('show-settings-window');
+  showSettingsWindow: (section?: string) => {
+    return ipcRenderer.invoke('show-settings-window', section);
   },
   getLastSelection: (): Promise<SelectionEvent> => {
     return ipcRenderer.invoke('get-last-selection');
@@ -556,7 +556,7 @@ declare global {
       onShowClipboardHistory: (callback: () => void) => void;
       onMainWindowResizing?: (callback: (resizing: boolean) => void) => void;
       testTextSelection: () => Promise<{ success: boolean; text: string }>;
-      showSettingsWindow: () => Promise<void>;
+      showSettingsWindow: (section?: string) => Promise<void>;
       getLastSelection: () => Promise<SelectionEvent>;
       resetSelectionState: () => Promise<{ success: boolean }>;
       openExternal: (url: string) => void;

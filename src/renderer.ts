@@ -29,6 +29,7 @@
 import './fonts';
 import './index.css';
 import { captureNextShortcut, isLinux, isMac } from './shortcut-capture';
+import { wireGlobalSearch } from './global-search';
 import '@phevere/core/notebook-views.css';
 import '@phevere/core/notebook-families.css';
 import '@phevere/core/notebook-cards.css';
@@ -89,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
   } else if (hash === '#popup') {
     // Legacy hash-based popup route (main bundle)
     initializePopup();
-  } else if (hash === '#settings') {
+  } else if (hash === '#settings' || hash.startsWith('#settings/')) {
     // Settings window functionality
     initializeSettingsWindow();
   } else if (hash === '#clipboard') {
@@ -367,6 +368,13 @@ function initializeSettingsWindow() {
       document.querySelector(`.settings-panel[data-panel="${section}"]`)?.classList.add('is-active');
     });
   });
+  // "#settings/offline" opens on that page, from the main window's search.
+  const showSectionFromHash = () => {
+    const section = location.hash.split('/')[1];
+    if (section) document.querySelector<HTMLElement>(`.settings-nav__item[data-section="${section}"]`)?.click();
+  };
+  showSectionFromHash();
+  window.addEventListener('hashchange', showSectionFromHash);
 
   // API keys save when the field changes, as on the phone.
   document.getElementById('google-api-key')?.addEventListener('change', () => void (window as any).saveGoogleApiKey());
@@ -2105,13 +2113,17 @@ function letterFromAzPointer(nav: HTMLElement, clientY: number): string | null {
   return buttons[idx].dataset.letter || null;
 }
 
-function wireVocabAzScrub(nav: HTMLElement): void {
+function wireVocabAzScrub(
+  nav: HTMLElement,
+  jump: (key: string) => void = scrollVocabToLetter,
+  hud: (key: string) => string = (key) => key,
+): void {
   let scrubbing = false;
   const onMove = (ev: PointerEvent) => {
     const letter = letterFromAzPointer(nav, ev.clientY);
     if (!letter) return;
-    showVocabAzHud(letter);
-    scrollVocabToLetter(letter);
+    showVocabAzHud(hud(letter));
+    jump(letter);
   };
   nav.addEventListener('pointerdown', (ev) => {
     const t = ev.target as HTMLElement;
@@ -2119,8 +2131,8 @@ function wireVocabAzScrub(nav: HTMLElement): void {
     if (!letter) return;
     scrubbing = true;
     nav.setPointerCapture(ev.pointerId);
-    showVocabAzHud(letter);
-    scrollVocabToLetter(letter);
+    showVocabAzHud(hud(letter));
+    jump(letter);
     ev.preventDefault();
   });
   nav.addEventListener('pointermove', (ev) => {
@@ -2133,6 +2145,81 @@ function wireVocabAzScrub(nav: HTMLElement): void {
   };
   nav.addEventListener('pointerup', endScrub);
   nav.addEventListener('pointercancel', endScrub);
+}
+
+/* Timeline rail: the Recent list's counterpart to A to Z, by week or by month. */
+let vocabTimeIndex = new Map<string, { id: string; label: string }>();
+
+function vocabSavedAt(e: any): number {
+  return Number(e.createdAt || e.updatedAt || 0);
+}
+
+/** Weeks when the notebook spans under four months, months beyond that. */
+function vocabTimeBuckets(entries: any[]): Array<{ key: string; short: string; label: string; year: number; id: string }> {
+  const times = entries.map(vocabSavedAt).filter((t) => t > 0);
+  if (!times.length) return [];
+  const span = (Math.max(...times) - Math.min(...times)) / 86_400_000;
+  const byWeek = span <= 120;
+  const out: Array<{ key: string; short: string; label: string; year: number; id: string }> = [];
+  const seen = new Set<string>();
+  for (const e of entries) {
+    const t = vocabSavedAt(e);
+    if (!t) continue;
+    const d = new Date(t);
+    if (byWeek) {
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    } else d.setDate(1);
+    const key = `${d.getFullYear()}-${d.getMonth()}-${byWeek ? d.getDate() : 0}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      key,
+      short: byWeek
+        ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+        : d.toLocaleDateString(undefined, { month: 'short' }),
+      label: byWeek
+        ? `Week of ${d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`
+        : d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+      year: d.getFullYear(),
+      id: String(e.id),
+    });
+  }
+  return out;
+}
+
+function scrollVocabToTime(key: string): void {
+  const hit = vocabTimeIndex.get(key);
+  const list = document.getElementById('vocabList');
+  if (!hit || !list) return;
+  flushVocabChunks?.();
+  const row = list.querySelector<HTMLElement>(`.vocab-item[data-id="${CSS.escape(hit.id)}"]`);
+  const head = row?.previousElementSibling?.classList.contains('vocab-group') ? (row.previousElementSibling as HTMLElement) : row;
+  head?.scrollIntoView({ block: 'start' });
+}
+
+function syncVocabTimeline(entries: any[]): void {
+  const nav = document.getElementById('vocabTimeline');
+  const wrap = document.getElementById('vocabListWrap');
+  if (!nav) return;
+  const buckets = nbView === 'list' && getVocabSortMode() !== 'alpha' ? vocabTimeBuckets(entries) : [];
+  const on = buckets.length > 1;
+  nav.hidden = !on;
+  wrap?.classList.toggle('is-timeline', on);
+  if (!on) return;
+  vocabTimeIndex = new Map(buckets.map((b) => [b.key, { id: b.id, label: b.label }]));
+  let year = buckets[0].year;
+  nav.innerHTML = buckets
+    .map((b, i) => {
+      const mark = i > 0 && b.year !== year ? ` data-year="${b.year}"` : '';
+      year = b.year;
+      return `<button type="button" class="vocab-az__letter vocab-az__time"${mark} data-letter="${b.key}" title="${b.label}">${b.short}</button>`;
+    })
+    .join('');
+  if (!nav.dataset.ready) {
+    nav.dataset.ready = '1';
+    wireVocabAzScrub(nav, scrollVocabToTime, (key) => vocabTimeIndex.get(key)?.label || '');
+  }
 }
 
 function syncVocabAzAvailability(entries: any[]): void {
@@ -2208,6 +2295,7 @@ function renderVocabNotebook(entries: any[]): void {
   if (count) count.textContent = vocabNotebookCache.length ? String(vocabNotebookCache.length) : '';
   const sorted = sortVocabEntries(entries);
   syncVocabAzAvailability(sorted);
+  syncVocabTimeline(sorted);
   const isList = nbView === 'list';
   wrap.hidden = !isList;
   body.hidden = isList;
@@ -2454,6 +2542,26 @@ function wireMainWorkspace(): void {
   setMainTab(readPref(WS_TAB_KEY, 'notebook') === 'recent' ? 'recent' : 'notebook');
   const shell = document.querySelector<HTMLElement>('.main-shell');
   if (shell) wireNotebookActions(shell);
+  const search = document.getElementById('vocabSearch') as HTMLInputElement | null;
+  if (search) {
+    wireGlobalSearch(search, {
+      notebook: () => vocabNotebookCache,
+      recent: () => loadRecentLookups(),
+      lookup: (q) => {
+        addToRecentSelections(q);
+        void openFullLookup(q);
+      },
+      showNotebook: () => {
+        setMainTab('notebook');
+        if (nbView !== 'list') {
+          nbView = 'list';
+          writePref(NB_VIEW_KEY, nbView);
+        }
+        rerenderNotebook();
+      },
+      openSettings: (section) => void window.electronAPI?.showSettingsWindow?.(section),
+    });
+  }
 }
 
 document.getElementById('refreshVocabBtn')?.addEventListener('click', () => {
