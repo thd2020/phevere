@@ -34,6 +34,10 @@ import '@phevere/core/notebook-views.css';
 import '@phevere/core/notebook-families.css';
 import '@phevere/core/notebook-cards.css';
 import '@phevere/core/notebook-map.css';
+import '@phevere/core/settings-kit.css';
+import '@phevere/core/settings-sources.css';
+import '@phevere/core/settings-offline.css';
+import '@phevere/core/settings-keys.css';
 import {
   accountButtonHtml,
   accountPanelHtml,
@@ -63,6 +67,21 @@ import {
   vocabEntryGroup,
   groupCatalogByLanguage,
   vocabListHtml,
+  API_PROVIDERS,
+  SOURCE_INFO,
+  TRANSLATION_ENGINES,
+  apiKeysPanelHtml,
+  patchApiKeyCard,
+  offlineShelvesHtml,
+  packCardHtml,
+  packInspectorHtml,
+  sourcesPanelHtml,
+  type KeyCardState,
+  type KeyStatus,
+  type PackDetails,
+  type PackProgress,
+  type PackView,
+  type SourceRowInput,
   type AccountState,
   type CardLayout,
   type FamilyGrouping,
@@ -280,10 +299,7 @@ function initializeSettingsWindow() {
             <div class="settings-panel__intro">
               <h2 id="settings-sources-heading" class="settings-panel__title">Sources</h2>
             </div>
-            <h3 class="settings-subhead">Dictionary</h3>
-            <div id="main-source-toggles"></div>
-            <h3 class="settings-subhead">Translation</h3>
-            <div id="translation-engine-toggles" role="radiogroup" aria-label="Translation engine"></div>
+            <div id="sources-host"></div>
           </section>
 
           <section class="settings-panel" data-panel="offline" aria-labelledby="settings-offline-heading">
@@ -303,24 +319,13 @@ function initializeSettingsWindow() {
               <span class="nav-row__label">Import CEDICT file<span class="nav-row__sub">cedict_ts.u8</span></span>
               <span class="nav-row__chevron"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             </button>
-            <h3 id="offline-imported-heading" class="settings-subhead" hidden>Imported</h3>
-            <div id="offline-packs-list" class="pack-list" hidden></div>
           </section>
 
           <section class="settings-panel" data-panel="api" aria-labelledby="settings-api-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-api-heading" class="settings-panel__title">API keys</h2>
             </div>
-            <div class="settings-group">
-            <div class="settings-field">
-              <label for="google-api-key">Google Translate API key</label>
-              <input type="password" id="google-api-key" placeholder="Google Cloud API key" class="setting-input" autocomplete="off" />
-            </div>
-            <div class="settings-field">
-              <label for="deepl-api-key">DeepL API key</label>
-              <input type="password" id="deepl-api-key" placeholder="DeepL API key" class="setting-input" autocomplete="off" />
-            </div>
-            </div>
+            <div id="api-keys-host"></div>
           </section>
 
 
@@ -361,18 +366,13 @@ function initializeSettingsWindow() {
           </section>
         </main>
       </div>
+      <div id="pack-inspector-host"></div>
     </div>
   `;
   document.body.innerHTML = settingsHTML;
 
   document.querySelectorAll('.settings-nav__item').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const section = (btn as HTMLElement).dataset.section;
-      document.querySelectorAll('.settings-nav__item').forEach((b) => b.classList.remove('is-active'));
-      document.querySelectorAll('.settings-panel').forEach((p) => p.classList.remove('is-active'));
-      btn.classList.add('is-active');
-      document.querySelector(`.settings-panel[data-panel="${section}"]`)?.classList.add('is-active');
-    });
+    btn.addEventListener('click', () => showSettingsSection((btn as HTMLElement).dataset.section || ''));
   });
   // "#settings/offline" opens on that page, from the main window's search.
   const showSectionFromHash = () => {
@@ -382,12 +382,9 @@ function initializeSettingsWindow() {
   showSectionFromHash();
   window.addEventListener('hashchange', showSectionFromHash);
 
-  // API keys save when the field changes, as on the phone.
-  document.getElementById('google-api-key')?.addEventListener('change', () => void (window as any).saveGoogleApiKey());
-  document.getElementById('deepl-api-key')?.addEventListener('change', () => void (window as any).saveDeepLApiKey());
-
-  loadMainSourceToggles();
-  void loadTranslationEngineToggles();
+  wireSettingsLibraryLinks();
+  void wireSourcesPanel();
+  void wireApiKeysPanel();
   wireInAppTextSelectionLookup();
   setupAudioSettings();
   void wireNotificationSettings();
@@ -649,129 +646,165 @@ function wireAccountMenu(): void {
   }).catch((): void => undefined);
 }
 
+/** Settings → Offline: one shelf per headword language, catalogue cards, an inspector drawer and live progress. */
 async function wireOfflineSettingsPanel(): Promise<void> {
   const api = (window as any).offlineDictAPI;
   const statusEl = document.getElementById('offline-status');
-  const listEl = document.getElementById('offline-packs-list');
   const catalogEl = document.getElementById('offline-catalog');
+  const inspectorEl = document.getElementById('pack-inspector-host');
   const setStatus = (msg: string) => {
     if (statusEl) statusEl.textContent = msg;
   };
+  let packs: PackView[] = [];
+  let progress: PackProgress | null = null;
+  let inspecting: string | null = null;
+  const details = new Map<string, PackDetails>();
+  const entriesText = (n: unknown) => `${(Number(n) || 0).toLocaleString('en-US')} entries`;
 
-  const TRASH_SVG =
-    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  const DOWNLOAD_SVG =
-    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  const catalogIds = new Set<string>();
-  const consentById = new Map<string, string>();
-  const nameById = new Map<string, string>();
-
-  /** One pack: name, size or entry count, and Download or Remove. */
-  const packRow = (p: { id: string; name: string }, meta: string, installed: boolean) => {
-    const id = escapeHtmlSelection(p.id);
-    const name = escapeHtmlSelection(p.name);
-    nameById.set(String(p.id), String(p.name));
-    return `<article class="pack${installed ? ' is-installed' : ''}" data-id="${id}">
-            <div class="pack__text">
-              <strong>${name}</strong>
-              <p class="pack__meta">${escapeHtmlSelection(meta)}</p>
-            </div>
-            ${installed
-              ? `<button type="button" class="icon-btn pack__action offline-remove" data-id="${id}" title="Remove" aria-label="Remove ${name}">${TRASH_SVG}</button>`
-              : `<button type="button" class="icon-btn pack__action offline-download" data-id="${id}" title="Download" aria-label="Download ${name}">${DOWNLOAD_SVG}</button>`}
-          </article>`;
+  /** Repaints the drawer's contents in place, so its slide-in plays only when it opens. */
+  const renderInspector = () => {
+    if (!inspectorEl) return;
+    const p = inspecting ? packs.find((x) => x.id === inspecting) : undefined;
+    if (!p) {
+      inspectorEl.innerHTML = '';
+      return;
+    }
+    const open = inspectorEl.querySelector('.sv-inspector') as HTMLElement | null;
+    const fresh = !open || open.dataset.id !== p.id;
+    const progressFor = progress && progress.id === p.id ? progress : null;
+    const html = packInspectorHtml(p, details.get(p.id), progressFor, !!progress, fresh);
+    if (fresh) {
+      inspectorEl.innerHTML = html;
+      return;
+    }
+    const next = document.createElement('div');
+    next.innerHTML = html;
+    open!.innerHTML = (next.querySelector('.sv-inspector') as HTMLElement).innerHTML;
   };
-  const entriesText = (n: unknown) => `${(Number(n) || 0).toLocaleString()} entries`;
-
-  const wireRemoveButtons = (root: Element) => {
-    root.querySelectorAll('.offline-remove').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const id = (btn as HTMLElement).dataset.id;
-        if (!id || !api?.removePack) return;
-        const name = nameById.get(id) || id;
-        if (!confirm(`Remove ${name}?`)) return;
-        (btn as HTMLButtonElement).disabled = true;
-        await api.removePack(id);
-        setStatus(`Removed ${name}.`);
-        await refreshAll();
-      });
-    });
+  const render = () => {
+    if (!catalogEl) return;
+    catalogEl.innerHTML = offlineShelvesHtml({ groups: groupCatalogByLanguage(packs), progress });
+    renderInspector();
+  };
+  /** Progress ticks repaint only the card being downloaded and the open inspector. */
+  const renderProgress = () => {
+    if (!progress || !catalogEl) return;
+    const p = packs.find((x) => x.id === progress!.id);
+    const card = catalogEl.querySelector(`.sv-pack[data-id="${CSS.escape(progress.id)}"]`);
+    if (p && card) card.outerHTML = packCardHtml(p, progress, true);
+    if (inspecting === progress.id) renderInspector();
   };
 
-  /** Packs imported from files (JSON, CEDICT, seeds); catalog packs are listed under their language. */
-  const refreshPacks = async () => {
-    const heading = document.getElementById('offline-imported-heading');
-    if (!listEl || !api?.listPacks) return;
+  const loadDetails = async (id: string) => {
+    const p = packs.find((x) => x.id === id);
+    if (!p?.installed || !api?.packDetails) return;
     try {
-      const packs = ((await api.listPacks()) || []).filter((p: any) => !catalogIds.has(String(p.id)));
-      listEl.hidden = !packs.length;
-      if (heading) heading.hidden = !packs.length;
-      listEl.innerHTML = packs.map((p: any) => packRow(p, entriesText(p.entryCount), true)).join('');
-      wireRemoveButtons(listEl);
+      const d = await api.packDetails(id);
+      if (d) details.set(id, d);
+      if (inspecting === id) renderInspector();
     } catch (error) {
       console.error(error);
-      listEl.hidden = true;
-      if (heading) heading.hidden = true;
     }
   };
 
-  const refreshCatalog = async () => {
+  const refresh = async () => {
     if (!catalogEl) return;
     if (!api?.listCatalog) {
       catalogEl.innerHTML = `<p class="settings-hint">Offline dictionaries unavailable.</p>`;
       return;
     }
     try {
-      const items: any[] = (await api.listCatalog()) || [];
-      consentById.clear();
-      catalogIds.clear();
-      for (const c of items) {
-        catalogIds.add(String(c.id));
-        consentById.set(String(c.id), String(c.consent || ''));
-      }
-      catalogEl.innerHTML = groupCatalogByLanguage(items)
-        .map(
-          (g) => `<h3 class="settings-subhead">${escapeHtmlSelection(g.title)}</h3>
-          <div class="pack-list" data-lang="${escapeHtmlSelection(g.language)}">${g.items
-            .map((c: any) => packRow(c, c.installed ? entriesText(c.entryCount) : String(c.sizeHint || ''), !!c.installed))
-            .join('')}</div>`,
-        )
-        .join('');
-      wireRemoveButtons(catalogEl);
-      catalogEl.querySelectorAll('.offline-download').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const id = (btn as HTMLElement).dataset.id;
-          const consent = consentById.get(id || '') || 'Download this dictionary pack?';
-          if (!id || !api?.downloadPack) return;
-          if (!confirm(consent)) return;
-          const name = nameById.get(id) || id;
-          (btn as HTMLButtonElement).disabled = true;
-          setStatus(`Downloading ${name}…`);
-          try {
-            const r = await api.downloadPack(id);
-            setStatus(r?.success ? `Installed ${name}, ${entriesText(r.count)}.` : 'Download failed.');
-            await refreshAll();
-          } catch (e: any) {
-            setStatus(`Download failed: ${e?.message || e}`);
-          } finally {
-            (btn as HTMLButtonElement).disabled = false;
-          }
-        });
-      });
+      const [catalog, installed] = await Promise.all([api.listCatalog(), api.listPacks ? api.listPacks() : []]);
+      const catalogIds = new Set<string>((catalog || []).map((c: any) => String(c.id)));
+      const installedById = new Map<string, any>((installed || []).map((p: any) => [String(p.id), p]));
+      packs = [
+        ...(catalog || []).map((c: any) => ({ ...c, createdAt: installedById.get(String(c.id))?.createdAt })),
+        ...(installed || [])
+          .filter((p: any) => !catalogIds.has(String(p.id)))
+          .map((p: any) => ({
+            id: String(p.id),
+            name: String(p.name),
+            language: String(p.language || 'en'),
+            installed: true,
+            entryCount: Number(p.entryCount) || 0,
+            createdAt: p.createdAt,
+            source: p.source,
+            imported: true,
+          })),
+      ];
+      details.clear();
+      render();
     } catch (error) {
       console.error(error);
       catalogEl.innerHTML = `<p class="settings-hint">Could not load catalog.</p>`;
     }
   };
 
-  const refreshAll = async () => {
-    await refreshCatalog();
-    await refreshPacks();
+  const download = async (id: string) => {
+    const p = packs.find((x) => x.id === id);
+    if (!p || !api?.downloadPack || progress) return;
+    if (!confirm(p.consent || 'Download this dictionary pack?')) return;
+    progress = { id, fraction: null, label: 'Starting…' };
+    setStatus('');
+    render();
+    try {
+      const r = await api.downloadPack(id);
+      setStatus(r?.success ? `Installed ${p.name}, ${entriesText(r.count)}.` : 'Download failed.');
+    } catch (e: any) {
+      setStatus(`Download failed: ${String(e?.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`);
+    } finally {
+      progress = null;
+      await refresh();
+      if (inspecting === id) void loadDetails(id);
+    }
   };
 
-  document.getElementById('offline-refresh-packs')?.addEventListener('click', () => {
-    void refreshAll();
+  const remove = async (id: string) => {
+    const p = packs.find((x) => x.id === id);
+    if (!p || !api?.removePack) return;
+    if (!confirm(`Remove ${p.name}?`)) return;
+    await api.removePack(id);
+    setStatus(`Removed ${p.name}.`);
+    await refresh();
+  };
+
+  api?.onPackProgress?.((p: PackProgress) => {
+    if (!progress || progress.id !== p.id) return;
+    progress = p;
+    renderProgress();
   });
+
+  const onClick = (e: Event) => {
+    const t = (e.target as HTMLElement | null)?.closest?.('[data-act]') as HTMLElement | null;
+    if (!t) return;
+    const id = t.dataset.id || '';
+    switch (t.dataset.act) {
+      case 'pack-open':
+        inspecting = id;
+        renderInspector();
+        void loadDetails(id);
+        (inspectorEl?.querySelector('[data-act="pack-close"].sv-icon') as HTMLElement | null)?.focus();
+        break;
+      case 'pack-close': {
+        const was = inspecting || '';
+        inspecting = null;
+        renderInspector();
+        (catalogEl?.querySelector(`.sv-pack__open[data-id="${CSS.escape(was)}"]`) as HTMLElement | null)?.focus();
+        break;
+      }
+      case 'pack-dl':
+        void download(id);
+        break;
+      case 'pack-rm':
+        void remove(id);
+        break;
+      default:
+        break;
+    }
+  };
+  catalogEl?.addEventListener('click', onClick);
+  inspectorEl?.addEventListener('click', onClick);
+
   document.getElementById('offline-import-json')?.addEventListener('click', async () => {
     if (!api?.importJson) return;
     setStatus('Choose a JSON or JSONL file…');
@@ -782,7 +815,7 @@ async function wireOfflineSettingsPanel(): Promise<void> {
         return;
       }
       setStatus(r?.success ? `Imported ${r.count} entries.` : 'Import failed.');
-      await refreshAll();
+      await refresh();
     } catch (e: any) {
       setStatus(`Import failed: ${e?.message || e}`);
     }
@@ -797,13 +830,13 @@ async function wireOfflineSettingsPanel(): Promise<void> {
         return;
       }
       setStatus(r?.success ? `Imported ${r.count} CEDICT entries.` : 'Import failed.');
-      await refreshAll();
+      await refresh();
     } catch (e: any) {
       setStatus(`Import failed: ${e?.message || e}`);
     }
   });
 
-  await refreshAll();
+  await refresh();
 }
 
 function wireSettingsImageDrop(): void {
@@ -3339,90 +3372,245 @@ function makePopupDraggable(popup: HTMLElement) {
   }
 }
 
-// Load main source toggles
-async function loadMainSourceToggles() {
-  try {
-    if (window.dictionaryAPI) {
-      const sourceStats = await window.dictionaryAPI.getSourceStats();
-      const enabledSources = await window.dictionaryAPI.getEnabledSources();
-      rlog('[DBG][Settings] sourceStats:', sourceStats);
-      rlog('[DBG][Settings] enabledSources:', enabledSources);
-      
-      const sourceToggles = document.getElementById('main-source-toggles');
-      const TRANSLATION_ONLY = new Set(['DeepL API', 'Google Translate API']);
-      const dictSources = (sourceStats.sources || []).filter((source: { name: string }) => !TRANSLATION_ONLY.has(source.name));
-      if (sourceToggles && dictSources.length) {
-        sourceToggles.innerHTML = dictSources.map(source => `
-          <div class="source-toggle-main">
-            <div class="source-info">
-              <span class="source-name">${source.name}</span>
-              ${(source as any).isAvailable === false ? '<span class="source-priority">Requires an API key or offline pack</span>' : ''}
-            </div>
-            <label>
-              <input class="toggle-input" type="checkbox" data-source="${source.name}" ${enabledSources.includes(source.name) ? 'checked' : ''} />
-              <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
-            </label>
-          </div>
-        `).join('');
+/** Switch the Settings window to a section; an API keys jump can name the provider card to bring forward. */
+function showSettingsSection(section: string, provider?: string): void {
+  if (!section) return;
+  document.querySelectorAll('.settings-nav__item').forEach((b) => {
+    b.classList.toggle('is-active', (b as HTMLElement).dataset.section === section);
+  });
+  document.querySelectorAll('.settings-panel').forEach((p) => {
+    p.classList.toggle('is-active', (p as HTMLElement).dataset.panel === section);
+  });
+  if (section === 'api') void renderApiKeysPanel(provider);
+  if (section === 'sources') void renderSourcesPanel();
+}
 
-        // Bind change handlers to checkboxes (more reliable than div clicks)
-        sourceToggles.querySelectorAll('.toggle-input').forEach((el) => {
-          const input = el as HTMLInputElement;
-          input.addEventListener('change', async () => {
-            const sourceName = input.dataset?.source || '';
-            const enabled = input.checked;
-            try {
-              await window.dictionaryAPI.setSourceEnabled(sourceName, enabled);
-              // Sync from backend
-              const updatedEnabled = await window.dictionaryAPI.getEnabledSources();
-              input.checked = updatedEnabled.includes(sourceName);
-            } catch (e) {
-              console.error('Toggle update failed:', e);
-              input.checked = !enabled; // revert local state on error
-            }
-          });
-        });
-      }
+/** Settings links open in the browser; "API key required" and similar jump to their tab. */
+function wireSettingsLibraryLinks(): void {
+  const root = document.querySelector('.settings-app');
+  root?.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement | null;
+    const link = target?.closest?.('a[target="_blank"]') as HTMLAnchorElement | null;
+    if (link?.href) {
+      e.preventDefault();
+      window.electronAPI?.openExternal?.(link.href);
+      return;
     }
+    const jump = target?.closest?.('[data-act="goto-section"]') as HTMLElement | null;
+    if (jump) showSettingsSection(jump.dataset.section || '', jump.dataset.provider);
+  });
+  // Keep disclosures open across repaints.
+  root?.addEventListener(
+    'toggle',
+    (e) => {
+      const d = e.target as HTMLDetailsElement | null;
+      const key = d?.dataset?.key;
+      if (!key) return;
+      if (d!.open) settingsOpenDetails.add(key);
+      else settingsOpenDetails.delete(key);
+    },
+    true,
+  );
+}
+
+const settingsOpenDetails = new Set<string>();
+/** Shown with the translation engines only; the dictionary list leaves them out. */
+const TRANSLATION_ONLY_SOURCES = new Set(['DeepL API', 'Google Translate API']);
+
+async function renderSourcesPanel(): Promise<void> {
+  const host = document.getElementById('sources-host');
+  const api = window.dictionaryAPI;
+  if (!host || !api) return;
+  try {
+    const [stats, enabled, prefs, presence] = await Promise.all([
+      api.getSourceStats(),
+      api.getEnabledSources(),
+      api.getTranslationPrefs ? api.getTranslationPrefs() : Promise.resolve({ provider: 'auto' }),
+      api.getApiKeyPresence ? api.getApiKeyPresence() : Promise.resolve({} as Record<string, boolean>),
+    ]);
+    const current = (prefs && prefs.provider) || 'auto';
+    const dictionary: SourceRowInput[] = (stats.sources || [])
+      .filter((s) => !TRANSLATION_ONLY_SOURCES.has(s.name))
+      .map((s) => ({
+        control: 'switch',
+        name: s.name,
+        label: s.name,
+        info: SOURCE_INFO[s.name],
+        on: enabled.includes(s.name),
+        blocked: (s as { isAvailable?: boolean }).isAvailable === false,
+        open: settingsOpenDetails.has(`src:switch:${s.name}`),
+      }));
+    const engines: SourceRowInput[] = TRANSLATION_ENGINES.map((e) => ({
+      control: 'radio',
+      name: e.id,
+      label: e.label,
+      info: e,
+      on: e.id === current,
+      blocked: !!e.key && !presence[e.key],
+      open: settingsOpenDetails.has(`src:radio:${e.id}`),
+    }));
+    host.innerHTML = sourcesPanelHtml({ dictionary, engines });
   } catch (error) {
-    console.error('Failed to load main source toggles:', error);
+    console.error('Failed to load sources:', error);
   }
 }
 
-const TRANSLATION_ENGINE_OPTIONS: Array<{ id: string; label: string; detail: string }> = [
-  { id: 'auto', label: 'Automatic', detail: 'Google Translate, then MyMemory' },
-  { id: 'google', label: 'Google Translate', detail: 'No API key' },
-  { id: 'mymemory', label: 'MyMemory', detail: 'No API key' },
-  { id: 'youdao', label: 'Youdao', detail: 'API key required' },
-  { id: 'deepl', label: 'DeepL', detail: 'API key required' },
-];
-
-async function loadTranslationEngineToggles(): Promise<void> {
-  const host = document.getElementById('translation-engine-toggles');
+async function wireSourcesPanel(): Promise<void> {
+  const host = document.getElementById('sources-host');
   const api = window.dictionaryAPI;
-  if (!host || !api?.getTranslationPrefs || !api?.setTranslationPrefs) return;
-  try {
-    const prefs = await api.getTranslationPrefs();
-    const current = (prefs && prefs.provider) || 'auto';
-    host.innerHTML = TRANSLATION_ENGINE_OPTIONS.map((opt) => `
-      <label class="source-toggle-main">
-        <div class="source-info">
-          <span class="source-name">${opt.label}</span>
-          <span class="source-priority">${opt.detail}</span>
-        </div>
-        <input class="source-choice" type="radio" name="translation-engine" value="${opt.id}" ${opt.id === current ? 'checked' : ''} />
-      </label>
-    `).join('');
-    host.querySelectorAll('input[name="translation-engine"]').forEach((el) => {
-      el.addEventListener('change', () => {
-        const input = el as HTMLInputElement;
-        if (!input.checked) return;
-        void api.setTranslationPrefs({ provider: input.value });
+  if (!host || !api) return;
+  host.addEventListener('change', async (e) => {
+    const input = e.target as HTMLInputElement | null;
+    if (!input) return;
+    // Update rows in place so open disclosures and the scroll position stay put.
+    if (input.dataset.act === 'src') {
+      const name = input.dataset.name || '';
+      const enabled = input.checked;
+      try {
+        await api.setSourceEnabled(name, enabled);
+        input.checked = (await api.getEnabledSources()).includes(name);
+      } catch (err) {
+        console.error('Toggle update failed:', err);
+        input.checked = !enabled;
+      }
+      input.closest('.sv-src')?.classList.toggle('is-on', input.checked);
+      const ledger = input.closest('.sv-ledger');
+      const count = host.querySelector('.sv-head__count');
+      if (ledger && count) {
+        const all = ledger.querySelectorAll('input[data-act="src"]');
+        const on = ledger.querySelectorAll('input[data-act="src"]:checked');
+        count.textContent = `${on.length} of ${all.length} on`;
+      }
+    } else if (input.dataset.act === 'engine' && input.checked) {
+      await api.setTranslationPrefs?.({ provider: input.value });
+      host.querySelectorAll('input[data-act="engine"]').forEach((r) => {
+        (r as HTMLInputElement).closest('.sv-src')?.classList.toggle('is-on', (r as HTMLInputElement).checked);
       });
-    });
-  } catch (error) {
-    console.error('Failed to load translation engines:', error);
+    }
+  });
+  await renderSourcesPanel();
+}
+
+/** Settings → API keys: per-session test results, typed values and revealed fields. */
+const apiKeyResults = new Map<string, { status: KeyStatus; message?: string }>();
+const apiKeyTyped = new Map<string, string>();
+const apiKeyRevealed = new Set<string>();
+const apiKeySaving = new Map<string, Promise<unknown>>();
+
+async function renderApiKeysPanel(highlight?: string): Promise<void> {
+  const host = document.getElementById('api-keys-host');
+  const api = window.dictionaryAPI;
+  if (!host || !api) return;
+  const presence: Record<string, boolean> = api.getApiKeyPresence ? await api.getApiKeyPresence() : {};
+  const focusId = (document.activeElement as HTMLElement | null)?.id || '';
+  const states: Record<string, KeyCardState> = {};
+  for (const p of API_PROVIDERS) {
+    const result = apiKeyResults.get(p.id);
+    const values: Record<string, string> = {};
+    for (const f of p.fields) values[f.pref] = apiKeyTyped.get(f.pref) || '';
+    states[p.id] = {
+      status: result?.status || (presence[p.id] ? 'saved' : 'unset'),
+      message: result?.message,
+      values,
+      revealed: apiKeyRevealed,
+      savedHidden: !!presence[p.id],
+      highlight: highlight === p.id,
+    };
   }
+  host.innerHTML = apiKeysPanelHtml(states);
+  if (focusId) (document.getElementById(focusId) as HTMLElement | null)?.focus();
+  if (highlight) {
+    const card = host.querySelector(`.sv-key[data-provider="${CSS.escape(highlight)}"]`);
+    card?.scrollIntoView({ block: 'center' });
+    (card?.querySelector('input') as HTMLInputElement | null)?.focus();
+  }
+}
+
+/** Refresh one card's status after a field change, leaving its fields and buttons in place. */
+async function patchApiKeyStatus(provider: string): Promise<void> {
+  const host = document.getElementById('api-keys-host');
+  const card = host?.querySelector(`.sv-key[data-provider="${CSS.escape(provider)}"]`);
+  const info = API_PROVIDERS.find((p) => p.id === provider);
+  const api = window.dictionaryAPI;
+  if (!card || !info || !api) return;
+  const presence: Record<string, boolean> = api.getApiKeyPresence ? await api.getApiKeyPresence() : {};
+  const result = apiKeyResults.get(provider);
+  patchApiKeyCard(card, info, {
+    status: result?.status || (presence[provider] ? 'saved' : 'unset'),
+    message: result?.message,
+    savedHidden: !!presence[provider],
+  });
+}
+
+async function wireApiKeysPanel(): Promise<void> {
+  const host = document.getElementById('api-keys-host');
+  const api = window.dictionaryAPI;
+  if (!host || !api?.setApiCredential) return;
+  const save = (pref: string, value: string, provider: string) => {
+    const v = value.trim();
+    if (v) apiKeyTyped.set(pref, v);
+    else apiKeyTyped.delete(pref);
+    apiKeyResults.delete(provider);
+    const p = api.setApiCredential!(pref, v);
+    apiKeySaving.set(provider, p);
+    return p;
+  };
+  host.addEventListener('change', async (e) => {
+    const input = e.target as HTMLInputElement | null;
+    const pref = input?.dataset.pref;
+    const provider = input?.dataset.provider;
+    if (!input || !pref || !provider) return;
+    // An empty field over a saved key leaves the key alone; Clear removes it.
+    if (!input.value.trim() && !apiKeyTyped.has(pref)) return;
+    await save(pref, input.value, provider);
+    // Leaving a field fires this just before a click on Test or Show lands, so only
+    // the status is patched here; replacing the buttons would swallow that click.
+    await patchApiKeyStatus(provider);
+  });
+  host.addEventListener('click', async (e) => {
+    const t = (e.target as HTMLElement | null)?.closest?.('[data-act]') as HTMLElement | null;
+    const provider = t?.dataset.provider || '';
+    const pref = t?.dataset.pref || '';
+    switch (t?.dataset.act) {
+      case 'key-reveal':
+        if (apiKeyRevealed.has(pref)) apiKeyRevealed.delete(pref);
+        else apiKeyRevealed.add(pref);
+        await renderApiKeysPanel();
+        (host.querySelector(`input[data-pref="${CSS.escape(pref)}"]`) as HTMLInputElement | null)?.focus();
+        break;
+      case 'key-clear':
+        await save(pref, '', provider);
+        await renderApiKeysPanel();
+        break;
+      case 'key-test': {
+        // Save whatever is typed but not yet saved, then test what the service holds.
+        const card = t!.closest('.sv-key');
+        for (const input of Array.from(card?.querySelectorAll<HTMLInputElement>('input[data-pref]') || [])) {
+          const v = input.value.trim();
+          if (v && v !== apiKeyTyped.get(input.dataset.pref || '')) await save(input.dataset.pref || '', v, provider);
+        }
+        await apiKeySaving.get(provider);
+        const presence: Record<string, boolean> = api.getApiKeyPresence ? await api.getApiKeyPresence() : {};
+        if (!presence[provider]) {
+          (card?.querySelector('input[data-pref]') as HTMLInputElement | null)?.focus();
+          break;
+        }
+        apiKeyResults.set(provider, { status: 'testing' });
+        await renderApiKeysPanel();
+        try {
+          const r = await api.verifyApiKey!(provider);
+          apiKeyResults.set(provider, { status: r.ok ? 'verified' : 'failed', message: r.message });
+        } catch (err: any) {
+          apiKeyResults.set(provider, { status: 'failed', message: String(err?.message || err) });
+        }
+        await renderApiKeysPanel();
+        break;
+      }
+      default:
+        break;
+    }
+  });
+  await renderApiKeysPanel();
 }
 
 async function wireNotificationSettings(): Promise<void> {
@@ -4632,45 +4820,6 @@ async function clearAllCaches() {
     }
   }
 }
-
-// Global functions for settings
-(window as any).saveGoogleApiKey = async function() {
-  const apiKeyInput = document.getElementById('google-api-key') as HTMLInputElement;
-  const apiKey = apiKeyInput?.value.trim();
-  
-  if (!apiKey) {
-    showNotification('Please enter an API key');
-    return;
-  }
-  
-  try {
-    if (window.dictionaryAPI) {
-      await window.dictionaryAPI.setApiKey(apiKey);
-      showNotification('Google API key saved');
-    }
-  } catch (error) {
-    showNotification('Failed to save Google API key');
-  }
-};
-
-(window as any).saveDeepLApiKey = async function() {
-  const apiKeyInput = document.getElementById('deepl-api-key') as HTMLInputElement;
-  const apiKey = apiKeyInput?.value.trim();
-
-  if (!apiKey) {
-    showNotification('Please enter an API key');
-    return;
-  }
-
-  try {
-    if (window.dictionaryAPI) {
-      await window.dictionaryAPI.setDeepLApiKey(apiKey);
-      showNotification('DeepL API key saved');
-    }
-  } catch (error) {
-    showNotification('Failed to save DeepL API key');
-  }
-};
 
 // Test function for multi-source dictionary
 (window as any).testMultiSourceDictionary = async function() {

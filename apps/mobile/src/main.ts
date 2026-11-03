@@ -17,6 +17,10 @@ import '@phevere/core/notebook-families.css';
 import '@phevere/core/notebook-cards.css';
 import '@phevere/core/notebook-map.css';
 import '@phevere/core/lexicon-parts.css';
+import '@phevere/core/settings-kit.css';
+import '@phevere/core/settings-sources.css';
+import '@phevere/core/settings-offline.css';
+import '@phevere/core/settings-keys.css';
 import './styles.css';
 import { startApp } from './app';
 

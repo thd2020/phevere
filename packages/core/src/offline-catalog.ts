@@ -5,6 +5,12 @@
  *
  * Every pack is a published open dump. Current Oxford, Collegiate Webster and
  * Collins editions are not redistributable, so they are not offered.
+ *
+ * Inspector metadata (edition, date, entry count, licence) comes from the
+ * publishers: freedict.org/freedict-database.json and each TEI header for
+ * FreeDict, the CC-CEDICT file header, the jmdict-simplified release files,
+ * kengdic.tsv, and the download servers' file dates for WordNet and GCIDE.
+ * Leave a field out rather than guess it.
  */
 
 import { compareLanguageHeadings, languageName } from './source-languages';
@@ -21,47 +27,117 @@ export interface OfflineCatalogItem {
   license: string;
   /** Download size as shown next to the pack. */
   sizeHint: string;
-  /** Confirmation shown before downloading; the only place the licence is spelled out. */
+  /** Confirmation shown before downloading. */
   consent: string;
   urls: string[];
   format: OfflinePackFormat;
   archive: OfflinePackArchive;
   platforms: OfflinePlatform[];
+  /** What the pack holds, in one or two sentences. */
+  description: string;
+  /** The dictionary's own project page. */
+  homepage: string;
+  /** Licence deed or text. */
+  licenseUrl?: string;
+  /** Edition as its publisher numbers it. */
+  edition?: string;
+  /** Date of that edition, YYYY-MM-DD, as the publisher or the download server gives it. */
+  date?: string;
+  /** Headword or entry count of this edition. */
+  entries?: number;
+  /** True when `entries` is rounded because the source changes daily. */
+  entriesApprox?: boolean;
+  /** Who compiles or maintains it. */
+  publisher?: string;
 }
 
 const BOTH: OfflinePlatform[] = ['desktop', 'phone'];
 const FREEDICT = 'https://download.freedict.org/dictionaries';
 
-function freedict(
-  code: string,
-  language: string,
-  version: string,
-  sizeHint: string,
-  license: string,
-  platforms: OfflinePlatform[] = BOTH,
-): OfflineCatalogItem {
+const CC_BY_SA_3 = 'Creative Commons Attribution-ShareAlike 3.0';
+const CC_BY_SA_3_URL = 'https://creativecommons.org/licenses/by-sa/3.0/';
+const GPL_2 = 'GNU GPL 2.0 or later';
+const GPL_2_URL = 'https://www.gnu.org/licenses/old-licenses/gpl-2.0.html';
+const EDRDG = 'EDRDG Licence, Creative Commons Attribution-ShareAlike 4.0';
+const EDRDG_URL = 'https://www.edrdg.org/edrdg/licence.html';
+const WIKDICT = 'WikDict (Karl Bartel)';
+
+interface FreedictMeta {
+  edition: string;
+  sizeHint: string;
+  license: string;
+  licenseUrl: string;
+  /** Edition date and headword count from freedict.org/freedict-database.json. */
+  date: string;
+  entries: number;
+  description: string;
+  publisher: string;
+  platforms?: OfflinePlatform[];
+}
+
+function freedict(code: string, language: string, m: FreedictMeta): OfflineCatalogItem {
   const pair = `${code}-eng`;
   const name = `FreeDict ${languageName(language)}–English`;
   return {
     id: `freedict-${pair}`,
     name,
     language,
-    license,
-    sizeHint,
-    consent: `Download ${name} from download.freedict.org?\n\n${license}.`,
-    urls: [`${FREEDICT}/${pair}/${version}/freedict-${pair}-${version.replace(/\+/g, '%2B')}.src.tar.xz`],
+    license: m.license,
+    sizeHint: m.sizeHint,
+    consent: `Download ${name} from download.freedict.org?\n\n${m.license}.`,
+    urls: [`${FREEDICT}/${pair}/${m.edition}/freedict-${pair}-${m.edition.replace(/\+/g, '%2B')}.src.tar.xz`],
     format: 'freedict-tei',
     archive: 'tar.xz',
-    platforms,
+    platforms: m.platforms || BOTH,
+    description: m.description,
+    homepage: 'https://freedict.org/',
+    licenseUrl: m.licenseUrl,
+    edition: m.edition,
+    date: m.date,
+    entries: m.entries,
+    publisher: m.publisher,
   };
+}
+
+/** X–English dictionaries that WikDict generates from Wiktionary (CC BY-SA 3.0 in every TEI header). */
+function wikdict(code: string, language: string, sizeHint: string, entries: number): OfflineCatalogItem {
+  return freedict(code, language, {
+    edition: '2025.11.23',
+    sizeHint,
+    license: CC_BY_SA_3,
+    licenseUrl: CC_BY_SA_3_URL,
+    date: '2025-11-23',
+    entries,
+    description: `${languageName(language)} headwords with English translations, generated from Wiktionary by WikDict.`,
+    publisher: WIKDICT,
+  });
+}
+
+/** Older FreeDict word lists under the GPL. */
+function freedictGpl(
+  code: string,
+  language: string,
+  edition: string,
+  sizeHint: string,
+  date: string,
+  entries: number,
+  license = GPL_2,
+): OfflineCatalogItem {
+  return freedict(code, language, {
+    edition,
+    sizeHint,
+    license,
+    licenseUrl: GPL_2_URL,
+    date,
+    entries,
+    description: `${languageName(language)} headwords with English translations from the FreeDict project.`,
+    publisher: 'FreeDict',
+  });
 }
 
 const JMDICT_RELEASE =
   'https://github.com/scriptin/jmdict-simplified/releases/download/3.6.2%2B20261026175559';
 const KENGDIC_COMMIT = '793de2369c9a98b944154eb4695d26854d2de59b';
-
-const CC_BY_SA_3 = 'Creative Commons Attribution-ShareAlike 3.0';
-const GPL_2 = 'GNU GPL 2.0 or later';
 
 export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
   {
@@ -77,6 +153,13 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
     format: 'wordnet',
     archive: 'tar.gz',
     platforms: BOTH,
+    description:
+      'A lexical database of English. Nouns, verbs, adjectives and adverbs are grouped into sets of synonyms, each with a short definition.',
+    homepage: 'https://wordnet.princeton.edu/',
+    licenseUrl: 'https://wordnet.princeton.edu/license-and-commercial-use',
+    edition: '3.1',
+    date: '2012-02-27',
+    publisher: 'Princeton University',
   },
   {
     id: 'webster-1913',
@@ -94,18 +177,32 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
     format: 'gcide',
     archive: 'tar.gz',
     platforms: BOTH,
+    description:
+      "GNU's Collaborative International Dictionary of English: Webster's Revised Unabridged Dictionary of 1913, supplemented with WordNet and proofread by volunteers.",
+    homepage: 'https://www.gnu.org/software/gcide/',
+    licenseUrl: 'https://www.gnu.org/licenses/gpl-3.0.html',
+    edition: '0.53',
+    date: '2021-04-27',
+    publisher: 'GNU Project',
   },
   {
     id: 'freedict-eng-zho',
     name: 'FreeDict English–Chinese',
     language: 'en',
-    license: 'GNU GPL',
+    license: CC_BY_SA_3,
     sizeHint: '1.6 MB',
-    consent: 'Download FreeDict English–Chinese from download.freedict.org?\n\nGNU GPL. About 26k headwords.',
+    consent: `Download FreeDict English–Chinese from download.freedict.org?\n\n${CC_BY_SA_3}. About 27k headwords.`,
     urls: [`${FREEDICT}/eng-zho/2025.11.23/freedict-eng-zho-2025.11.23.src.tar.xz`],
     format: 'freedict-tei',
     archive: 'tar.xz',
     platforms: BOTH,
+    description: 'English headwords with Chinese translations, generated from Wiktionary by WikDict.',
+    homepage: 'https://freedict.org/',
+    licenseUrl: CC_BY_SA_3_URL,
+    edition: '2025.11.23',
+    date: '2025-11-23',
+    entries: 26660,
+    publisher: WIKDICT,
   },
   {
     id: 'cc-cedict',
@@ -119,12 +216,20 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
     format: 'cedict',
     archive: 'gz',
     platforms: BOTH,
+    description:
+      'Community-maintained Chinese–English dictionary with traditional and simplified characters, pinyin and English glosses.',
+    homepage: 'https://cc-cedict.org/wiki/',
+    licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0/',
+    edition: 'Daily export',
+    entries: 125000,
+    entriesApprox: true,
+    publisher: 'MDBG',
   },
   {
     id: 'jmdict-eng',
     name: 'JMdict',
     language: 'ja',
-    license: 'EDRDG Licence, Creative Commons Attribution-ShareAlike 4.0',
+    license: EDRDG,
     sizeHint: '12 MB',
     consent:
       'Download JMdict (English) from github.com/scriptin/jmdict-simplified?\n\n' +
@@ -133,12 +238,20 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
     format: 'jmdict',
     archive: 'tar.gz',
     platforms: ['desktop'],
+    description:
+      'Japanese–English dictionary with kanji spellings, kana readings and English glosses, in the JSON edition by jmdict-simplified.',
+    homepage: 'https://www.edrdg.org/jmdict/j_jmdict.html',
+    licenseUrl: EDRDG_URL,
+    edition: '3.6.2',
+    date: '2026-10-26',
+    entries: 218963,
+    publisher: 'Electronic Dictionary Research and Development Group',
   },
   {
     id: 'jmdict-eng-common',
     name: 'JMdict (common words)',
     language: 'ja',
-    license: 'EDRDG Licence, Creative Commons Attribution-ShareAlike 4.0',
+    license: EDRDG,
     sizeHint: '1.4 MB',
     consent:
       'Download JMdict common words (English) from github.com/scriptin/jmdict-simplified?\n\n' +
@@ -147,6 +260,13 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
     format: 'jmdict',
     archive: 'tar.gz',
     platforms: ['phone'],
+    description: 'The JMdict entries marked as common words, with kanji spellings, kana readings and English glosses.',
+    homepage: 'https://www.edrdg.org/jmdict/j_jmdict.html',
+    licenseUrl: EDRDG_URL,
+    edition: '3.6.2',
+    date: '2026-10-26',
+    entries: 22649,
+    publisher: 'Electronic Dictionary Research and Development Group',
   },
   {
     id: 'kengdic',
@@ -161,20 +281,35 @@ export const OFFLINE_CATALOG: OfflineCatalogItem[] = [
     format: 'kengdic',
     archive: 'plain',
     platforms: BOTH,
+    description: "Joe Speigle's Korean–English word list, with hanja where known.",
+    homepage: 'https://github.com/garfieldnate/kengdic',
+    licenseUrl: 'https://www.mozilla.org/MPL/2.0/',
+    edition: KENGDIC_COMMIT.slice(0, 7),
+    publisher: 'Joe Speigle',
   },
   // German is 450 MB once unpacked: desktop only.
-  freedict('deu', 'de', '1.9-fd1', '18 MB', 'GNU GPL 3.0 and GNU AGPL 3.0 (Ding by Frank Richter)', ['desktop']),
-  freedict('fra', 'fr', '0.4.1', '210 KB', GPL_2),
-  freedict('ita', 'it', '2025.11.23', '1.2 MB', CC_BY_SA_3),
-  freedict('por', 'pt', '0.2', '195 KB', GPL_2),
-  freedict('nld', 'nl', '0.2', '430 KB', GPL_2),
-  freedict('pol', 'pl', '2025.11.23', '1.9 MB', CC_BY_SA_3),
-  freedict('rus', 'ru', '2025.11.23', '1.2 MB', CC_BY_SA_3),
-  freedict('ell', 'el', '2025.11.23', '850 KB', CC_BY_SA_3),
-  freedict('fin', 'fi', '2025.11.23', '1.7 MB', CC_BY_SA_3),
-  freedict('hun', 'hu', '0.4.1', '2 MB', 'GNU GPL 2.0'),
-  freedict('cat', 'ca', '2025.11.23', '775 KB', CC_BY_SA_3),
-  freedict('hrv', 'hr', '0.1.2', '1 MB', GPL_2),
+  freedict('deu', 'de', {
+    edition: '1.9-fd1',
+    sizeHint: '18 MB',
+    license: 'GNU GPL 3.0 and GNU AGPL 3.0 (Ding by Frank Richter)',
+    licenseUrl: 'https://www.gnu.org/licenses/gpl-3.0.html',
+    date: '2022-04-15',
+    entries: 517534,
+    description: 'German–English dictionary from Ding by Frank Richter, TU Chemnitz.',
+    publisher: 'Frank Richter (Ding)',
+    platforms: ['desktop'],
+  }),
+  freedictGpl('fra', 'fr', '0.4.1', '210 KB', '2018-08-11', 8505),
+  wikdict('ita', 'it', '1.2 MB', 29660),
+  freedictGpl('por', 'pt', '0.2', '195 KB', '2017-12-09', 10661),
+  freedictGpl('nld', 'nl', '0.2', '430 KB', '2017-12-06', 22747),
+  wikdict('pol', 'pl', '1.9 MB', 42088),
+  wikdict('rus', 'ru', '1.2 MB', 42600),
+  wikdict('ell', 'el', '850 KB', 41714),
+  wikdict('fin', 'fi', '1.7 MB', 42060),
+  freedictGpl('hun', 'hu', '0.4.1', '2 MB', '2017-12-06', 139935, 'GNU GPL 2.0'),
+  wikdict('cat', 'ca', '775 KB', 23590),
+  freedictGpl('hrv', 'hr', '0.1.2', '1 MB', '2017-12-05', 79808),
 ];
 
 export function catalogFor(platform: OfflinePlatform): OfflineCatalogItem[] {

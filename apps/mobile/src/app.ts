@@ -42,6 +42,9 @@ import {
   type NotebookView,
   type RecentLookup,
   type ReviewState,
+  API_PROVIDERS,
+  patchApiKeyCard,
+  type ApiProviderId,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
 import { playRecorded, recordedUrls, speakIpa, speakText } from './platform/audio';
@@ -57,6 +60,7 @@ import {
   importUserFile,
   listCatalogStatus,
   markInstalledPacksOnCore,
+  packStorageBytes,
   removePack,
   type CatalogStatus,
 } from './platform/offline';
@@ -73,6 +77,8 @@ import {
   appBarHtml,
   popupBarHtml,
   settingsBody,
+  emptyLibraryState,
+  keyPresent,
   type CaptureInfo,
   type LangSide,
   type PickerId,
@@ -198,6 +204,8 @@ let expandedVocab = new Set<string>();
 let prefs: MobilePrefs = loadPrefs();
 let packs: CatalogStatus[] = [];
 let packMsg = '';
+/** Sources, Offline and API keys state that outlives a repaint. */
+const lib = emptyLibraryState();
 let toastMsg = '';
 let toastTimer: number | null = null;
 let capture: CaptureInfo = { platform: 'web', canDrawOverlays: false };
@@ -377,6 +385,7 @@ function paint(): void {
             capture,
             settingsSection,
             voice,
+            lib,
           )
         : hit;
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
@@ -419,6 +428,12 @@ function paint(): void {
   // A repaint replaces the map's element; release the old 3D renderer straight away.
   disposeNotebookMaps(true);
   if (tab === 'notebook') bindNotebookViews();
+  lib.inspectorEntering = false;
+  if (lib.highlightKey && tab === 'settings' && settingsSection === 'api') {
+    const card = document.querySelector(`.sv-key[data-provider="${CSS.escape(lib.highlightKey)}"]`);
+    card?.scrollIntoView({ block: 'center' });
+    lib.highlightKey = '';
+  }
 }
 
 function notebookViewState() {
@@ -1058,20 +1073,63 @@ function pickLocalFile(): Promise<string> {
 
 async function downloadPack(id: string): Promise<void> {
   const item = packs.find((p) => p.id === id);
-  if (item && !window.confirm(item.consent)) return;
-  packMsg = 'Downloading…';
+  if (!item || lib.packProgress) return;
+  if (!window.confirm(item.consent)) return;
+  packMsg = '';
+  lib.packProgress = { id, fraction: null, label: 'Downloading…' };
   paint();
+  let lastPaint = 0;
   try {
     const out = await downloadCatalogPack(id, (msg) => {
-      packMsg = msg;
+      // "Importing 1200 of 23000…" carries a fraction; the other steps have no size.
+      const m = msg.match(/^Importing (\d+) of (\d+)/);
+      const now = Date.now();
+      if (m && now - lastPaint < 120) return;
+      lastPaint = now;
+      lib.packProgress = {
+        id,
+        fraction: m ? Number(m[1]) / Math.max(1, Number(m[2])) : null,
+        label: m ? `Importing ${Number(m[1]).toLocaleString('en-US')} of ${Number(m[2]).toLocaleString('en-US')}` : msg,
+      };
       paint();
     });
-    packMsg = `Imported ${out.count} entries`;
+    packMsg = `Installed ${item.name}, ${out.count.toLocaleString('en-US')} entries`;
     await refreshPacks();
+    if (lib.inspecting === id) await loadPackDetails(id);
   } catch (err) {
     packMsg = err instanceof Error ? err.message : String(err);
   }
+  lib.packProgress = null;
   paint();
+}
+
+async function loadPackDetails(id: string): Promise<void> {
+  const p = packs.find((x) => x.id === id);
+  if (!p?.installed) return;
+  try {
+    lib.packDetails.set(id, { installedBytes: await packStorageBytes(id) });
+  } catch {
+    /* the sheet shows what the catalog knows */
+  }
+}
+
+/** Store one key field and hand it to the dictionary service, so clearing a field takes effect too. */
+function saveKeyField(pref: string, value: string, provider: string): void {
+  (prefs as unknown as Record<string, unknown>)[pref] = value.trim();
+  savePrefs(prefs);
+  dictionaryService.setApiCredential(pref, value.trim());
+  lib.keyResults.delete(provider);
+}
+
+function patchKeyCard(provider: string): void {
+  const card = document.querySelector(`.sv-key[data-provider="${CSS.escape(provider)}"]`);
+  const info = API_PROVIDERS.find((p) => p.id === provider);
+  if (!card || !info) return;
+  const result = lib.keyResults.get(provider);
+  patchApiKeyCard(card, info, {
+    status: result?.status || (keyPresent(prefs, info.id) ? 'saved' : 'unset'),
+    message: result?.message,
+  });
 }
 
 function persistPrefs(): void {
@@ -1824,11 +1882,80 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       const on = (t as HTMLInputElement).checked;
       prefs.sources[name] = on;
       persistPrefs();
+      // In place: a repaint would close open disclosures and lose the scroll position.
+      t.closest('.sv-src')?.classList.toggle('is-on', on);
+      const ledger = t.closest('.sv-ledger');
+      const count = document.querySelector('.sv-sources .sv-head__count');
+      if (ledger && count) {
+        const all = ledger.querySelectorAll('input[data-act="src"]').length;
+        const onCount = ledger.querySelectorAll('input[data-act="src"]:checked').length;
+        count.textContent = `${onCount} of ${all} on`;
+      }
       return;
     }
     case 'engine':
       prefs.translationProvider = (t as HTMLInputElement).value as MobilePrefs['translationProvider'];
       persistPrefs();
+      document.querySelectorAll<HTMLInputElement>('input[data-act="engine"]').forEach((r) => {
+        r.closest('.sv-src')?.classList.toggle('is-on', r.checked);
+      });
+      return;
+    case 'goto-section': {
+      const next = t.dataset.section;
+      if (next === 'api' || next === 'offline') {
+        settingsSection = next;
+        lib.highlightKey = next === 'api' ? t.dataset.provider || '' : '';
+        if (next === 'offline') await refreshPacks();
+        paint();
+      }
+      return;
+    }
+    case 'key-reveal': {
+      const pref = t.dataset.pref || '';
+      if (lib.revealedKeys.has(pref)) lib.revealedKeys.delete(pref);
+      else lib.revealedKeys.add(pref);
+      paint();
+      return;
+    }
+    case 'key-clear': {
+      saveKeyField(t.dataset.pref || '', '', t.dataset.provider || '');
+      paint();
+      return;
+    }
+    case 'key-test': {
+      const provider = (t.dataset.provider || '') as ApiProviderId;
+      const card = t.closest('.sv-key');
+      card?.querySelectorAll<HTMLInputElement>('input[data-pref]').forEach((input) => {
+        const pref = input.dataset.pref || '';
+        if (input.value.trim() !== ((prefs as unknown as Record<string, string>)[pref] || '')) saveKeyField(pref, input.value, provider);
+      });
+      if (!keyPresent(prefs, provider)) {
+        (card?.querySelector('input[data-pref]') as HTMLInputElement | null)?.focus();
+        return;
+      }
+      lib.keyResults.set(provider, { status: 'testing' });
+      paint();
+      try {
+        const r = await dictionaryService.verifyApiKey(provider);
+        lib.keyResults.set(provider, { status: r.ok ? 'verified' : 'failed', message: r.message });
+      } catch (err) {
+        lib.keyResults.set(provider, { status: 'failed', message: err instanceof Error ? err.message : String(err) });
+      }
+      paint();
+      return;
+    }
+    case 'pack-open': {
+      const id = t.dataset.id || '';
+      lib.inspecting = id;
+      lib.inspectorEntering = true;
+      paint();
+      await loadPackDetails(id);
+      if (lib.inspecting === id) paint();
+      return;
+    }
+    case 'pack-close':
+      lib.inspecting = null;
+      paint();
       return;
     case 'notify-allow':
       if (hasNativeBridge()) {
@@ -1983,10 +2110,10 @@ function onChange(e: Event): void {
     notebookFilter = (el as HTMLInputElement).value;
     paint();
   } else if (e.type === 'change' && el.dataset.pref && el instanceof HTMLInputElement) {
-    // API keys save as you leave the field.
-    (prefs as unknown as Record<string, unknown>)[el.dataset.pref] = el.value.trim();
-    persistPrefs();
-    toast('Key saved');
+    // API keys save as you leave the field. Only the card's status changes here: a
+    // repaint would swallow the tap on Test or Show that caused the field to blur.
+    saveKeyField(el.dataset.pref, el.value, el.dataset.provider || '');
+    if (el.dataset.provider) patchKeyCard(el.dataset.provider);
   } else if (el.id === 'audio-volume') {
     prefs.audioVolume = (Number((el as HTMLInputElement).value) || 0) / 100;
     persistPrefs();
@@ -2061,6 +2188,14 @@ export async function startApp(): Promise<void> {
   root.addEventListener('submit', onSubmit);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onChange);
+  // Settings disclosures stay open across repaints.
+  root.addEventListener('toggle', (e) => {
+    const d = e.target as HTMLDetailsElement | null;
+    const key = d?.dataset?.key;
+    if (!key) return;
+    if (d!.open) lib.openDetails.add(key);
+    else lib.openDetails.delete(key);
+  }, true);
   // A Wikipedia thumbnail that fails to load is dropped rather than shown broken.
   root.addEventListener('error', (e) => {
     const img = e.target;

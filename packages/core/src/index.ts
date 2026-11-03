@@ -255,3 +255,32 @@ export {
 export { inflectionsHtml, wordFamilyHtml, type LexiconLinks } from './lexicon-parts';
 export { normalizeVocabLemma, closestSpelling, typoDistance } from './vocab-lemma';
 export { normalizeStoredLemmas } from './vocab-sync';
+export { checkApiKey, type ApiProviderId, type ApiCredentials, type ApiKeyCheck } from './api-key-check';
+export {
+  SOURCE_INFO,
+  TRANSLATION_ENGINES,
+  sourceRowHtml,
+  sourcesPanelHtml,
+  type SourceInfo,
+  type SourceRowInput,
+} from './settings-sources';
+export {
+  LANGUAGE_TRAITS,
+  formatBytes,
+  languageTraits,
+  offlineShelvesHtml,
+  packCardHtml,
+  packInspectorHtml,
+  type PackDetails,
+  type PackProgress,
+  type PackView,
+} from './settings-offline';
+export {
+  API_PROVIDERS,
+  apiKeyCardHtml,
+  apiKeysPanelHtml,
+  patchApiKeyCard,
+  type ApiProviderInfo,
+  type KeyCardState,
+  type KeyStatus,
+} from './settings-keys';
