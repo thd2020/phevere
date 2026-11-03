@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Words froze (2026-11-03): opening Families, or switching to it a few times, could hang the whole main window, and because Families is remembered it hung again on every launch. On the phone it hung after opening a family card. Tracing origins no longer repaints the view when nothing new came back, and the trace is saved when it ends.
+- Deep roots (2026-11-03): the count no longer climbs from a few cards to dozens each time you come back. Traced roots are kept, root glosses load twenty at a time, and the phone traces every saved word instead of the first 400.
+- Words header (2026-11-03): Export, Import and Refresh moved into a More menu at the end of the header row, so the header fits on one line.
+- Date rail (2026-11-03): the date and A to Z rails sit just inside the scrollbar instead of under it, the list uses the space the rail left empty, and the label shown while dragging fits a whole date.
+- Pop-up (2026-11-03): the selection toolbar and lookup window no longer have a grey band under them on Windows 11.
+
+### Changed
+
+- Plus (2026-11-03): the Get Plus button is now a quiet text link in the account panel. Learn shows it only when progress synced earlier is about to be dropped.
+
 ## [4.0.0] - 2026-11-03
 
 ### Added
