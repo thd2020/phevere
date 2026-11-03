@@ -21,7 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Plurals (2026-11-04): a plain plural such as "acronyms", whose only senses are "plural of acronym", opens as "acronym" and is saved as "acronym". A plural with senses of its own, such as "bacteria" or "glasses" (spectacles), keeps its own entry, and those senses are no longer dropped.
+- Plurals (2026-11-04): a plain plural such as "acronyms", whose only senses are "plural of acronym", opens as "acronym" and is saved as "acronym". Words already saved that way ("scraps") become their singular once, joining it if it is saved too; irregular plurals are left alone. A plural with senses of its own, such as "bacteria" or "glasses" (spectacles), keeps its own entry, and those senses are no longer dropped.
+- Etymology (2026-11-04): "From", "Borrowed from" and the like are no longer bold in any source tab.
 - Phone Cards (2026-11-04): tapping a card's picture turns it over and tapping its text opens the lookup. The meaning side scrolls when it is longer than the card, and shows up to eight senses.
 - Phone Back (2026-11-04): the back gesture now closes an open sheet or picker, leaves a Learn session for the Learn page, steps back through looked-up words, and returns to Lookup from the other tabs, before it leaves the app.
 - Phone pronunciation (2026-11-04): "Loading pronunciation…" appears only when a recording is not on the phone yet and takes more than two and a half seconds.
