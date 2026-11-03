@@ -1,4 +1,21 @@
-import { groupCatalogByLanguage, type DictionarySource } from '@phevere/core';
+import {
+  API_PROVIDERS,
+  SOURCE_INFO,
+  TRANSLATION_ENGINES,
+  apiKeysPanelHtml,
+  groupCatalogByLanguage,
+  offlineShelvesHtml,
+  packInspectorHtml,
+  sourcesPanelHtml,
+  type ApiProviderId,
+  type DictionarySource,
+  type KeyCardState,
+  type KeyStatus,
+  type PackDetails,
+  type PackProgress,
+  type PackView,
+  type SourceRowInput,
+} from '@phevere/core';
 import type { CatalogStatus } from './platform/offline';
 import type { MobilePrefs } from './platform/prefs';
 
@@ -158,19 +175,41 @@ function panelIntro(_title: string): string {
   return '';
 }
 
-/** Catalogue row, as on desktop: name, size or entry count, and Download or Remove. */
-function catalogPack(p: CatalogStatus): string {
-  const state = p.installed ? `${p.entryCount.toLocaleString()} entries` : p.sizeHint;
-  const trailing = p.installed
-    ? `<button type="button" class="icon-btn pack__action" data-act="pack-rm" data-id="${esc(p.id)}" aria-label="Remove ${esc(p.name)}" title="Remove">${ICON.trash}</button>`
-    : `<button type="button" class="icon-btn pack__action" data-act="pack-dl" data-id="${esc(p.id)}" aria-label="Download ${esc(p.name)}" title="Download">${ICON.download}</button>`;
-  return `<article class="pack${p.installed ? ' is-installed' : ''}">
-    <div class="pack__text">
-      <strong>${esc(p.name)}</strong>
-      <p class="pack__meta">${esc(state)}</p>
-    </div>
-    ${trailing}
-  </article>`;
+/** State the Sources, Offline and API keys panels keep between repaints. */
+export interface LibraryState {
+  /** Open disclosures by their data-key. */
+  openDetails: Set<string>;
+  packProgress: PackProgress | null;
+  /** Pack whose inspector sheet is open. */
+  inspecting: string | null;
+  /** The sheet was just opened, so this paint slides it in. */
+  inspectorEntering: boolean;
+  packDetails: Map<string, PackDetails>;
+  keyResults: Map<string, { status: KeyStatus; message?: string }>;
+  revealedKeys: Set<string>;
+  /** Provider card a Sources "API key required" link jumped to. */
+  highlightKey: string;
+}
+
+export function emptyLibraryState(): LibraryState {
+  return {
+    openDetails: new Set(),
+    packProgress: null,
+    inspecting: null,
+    inspectorEntering: false,
+    packDetails: new Map(),
+    keyResults: new Map(),
+    revealedKeys: new Set(),
+    highlightKey: '',
+  };
+}
+
+/** True when every field the provider needs is filled in. */
+export function keyPresent(prefs: MobilePrefs, id: ApiProviderId): boolean {
+  const p = API_PROVIDERS.find((x) => x.id === id);
+  if (!p) return false;
+  const values = prefs as unknown as Record<string, string>;
+  return p.fields.every((f) => !!(values[f.pref] || '').trim());
 }
 
 function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
@@ -231,75 +270,69 @@ function notificationsPanel(prefs: MobilePrefs, capture: CaptureInfo): string {
     ${navRow('notify-settings', ICON.bell, 'System notification settings')}`;
 }
 
-function sourcesPanel(prefs: MobilePrefs, sources: DictionarySource[]): string {
-  const dictSources = sources.filter((s) => !TRANSLATION_ONLY.has(s.name));
-  const src =
-    dictSources
-      .map((s) => {
-        const avail = s.isAvailable ? '' : '<span class="src-meta">Requires an API key or offline pack</span>';
-        return `<label class="toggle">
-        <span><span class="src-name">${esc(s.name)}</span>${avail}</span>
-        <input type="checkbox" role="switch" data-act="src" data-name="${esc(s.name)}" ${s.enabled ? 'checked' : ''} />
-      </label>`;
-      })
-      .join('') || '<p class="hint">No dictionary sources loaded.</p>';
-  const engines: Array<{ id: MobilePrefs['translationProvider']; label: string; detail: string }> = [
-    { id: 'auto', label: 'Automatic', detail: 'Google Translate, then MyMemory' },
-    { id: 'google', label: 'Google Translate', detail: 'No API key' },
-    { id: 'mymemory', label: 'MyMemory', detail: 'No API key' },
-    { id: 'youdao', label: 'Youdao', detail: 'API key required' },
-    { id: 'deepl', label: 'DeepL', detail: 'API key required' },
-  ];
-  const engine = engines
-    .map(
-      (e) => `<label class="radio"><span><span class="src-name">${e.label}</span><span class="src-meta">${e.detail}</span></span>
-        <input type="radio" name="engine" data-act="engine" value="${e.id}" ${prefs.translationProvider === e.id ? 'checked' : ''} /></label>`,
-    )
-    .join('');
+function sourcesPanel(prefs: MobilePrefs, sources: DictionarySource[], lib: LibraryState): string {
+  const dictionary: SourceRowInput[] = sources
+    .filter((s) => !TRANSLATION_ONLY.has(s.name))
+    .map((s) => ({
+      control: 'switch',
+      name: s.name,
+      label: s.name,
+      info: SOURCE_INFO[s.name],
+      on: s.enabled,
+      blocked: !s.isAvailable,
+      open: lib.openDetails.has(`src:switch:${s.name}`),
+    }));
+  const engines: SourceRowInput[] = TRANSLATION_ENGINES.map((e) => ({
+    control: 'radio',
+    name: e.id,
+    label: e.label,
+    info: e,
+    on: prefs.translationProvider === e.id,
+    blocked: !!e.key && !keyPresent(prefs, e.key),
+    open: lib.openDetails.has(`src:radio:${e.id}`),
+  }));
   return `
     ${panelIntro('Sources')}
-    <h3 class="settings-subhead">Dictionary</h3>
-    ${src}
-    <h3 class="settings-subhead">Translation</h3>
-    ${engine}`;
+    ${sourcesPanelHtml({ dictionary, engines })}`;
 }
 
-/** Packs under the language of their headwords: English, Chinese, Japanese, Korean, then A–Z. */
-function offlinePanel(packs: CatalogStatus[], packMsg: string): string {
-  const groups = groupCatalogByLanguage(packs)
-    .map(
-      (g) => `<h3 class="settings-subhead">${esc(g.title)}</h3>
-    <div class="pack-list" data-lang="${esc(g.language)}">${g.items.map(catalogPack).join('')}</div>`,
-    )
-    .join('');
+/** Packs under the language of their headwords, each a catalogue card; tapping one opens its sheet. */
+function offlinePanel(packs: CatalogStatus[], packMsg: string, lib: LibraryState, platform: CaptureInfo['platform']): string {
+  const views: PackView[] = packs;
+  const open = lib.inspecting ? views.find((p) => p.id === lib.inspecting) : undefined;
+  const details: PackDetails = {
+    ...(open ? lib.packDetails.get(open.id) : {}),
+    storedAt: platform === 'web' ? 'Browser storage for this site' : 'phevere.sqlite in app storage',
+  };
+  const progress = lib.packProgress;
   return `
     ${panelIntro('Offline dictionary')}
     ${packMsg ? `<p class="status" role="status">${esc(packMsg)}</p>` : ''}
-    ${groups}
+    ${offlineShelvesHtml({ groups: groupCatalogByLanguage(views), progress })}
     <h3 class="settings-subhead">Import</h3>
     ${navRow('pack-file', ICON.import, 'Import pack', '', 'FreeDict TEI, JMdict JSON, Kengdic TSV, WordNet or GCIDE')}
-    ${navRow('pack-file', ICON.import, 'Import CEDICT file', '', 'cedict_ts.u8', 'cedict')}`;
+    ${navRow('pack-file', ICON.import, 'Import CEDICT file', '', 'cedict_ts.u8', 'cedict')}
+    ${open ? packInspectorHtml(open, details, progress && progress.id === open.id ? progress : null, !!progress, lib.inspectorEntering) : ''}`;
 }
 
-function apiPanel(prefs: MobilePrefs): string {
+function apiPanel(prefs: MobilePrefs, lib: LibraryState): string {
+  const values = prefs as unknown as Record<string, string>;
+  const states: Record<string, KeyCardState> = {};
+  for (const p of API_PROVIDERS) {
+    const result = lib.keyResults.get(p.id);
+    const fieldValues: Record<string, string> = {};
+    for (const f of p.fields) fieldValues[f.pref] = values[f.pref] || '';
+    states[p.id] = {
+      status: result?.status || (keyPresent(prefs, p.id) ? 'saved' : 'unset'),
+      message: result?.message,
+      values: fieldValues,
+      revealed: lib.revealedKeys,
+      highlight: lib.highlightKey === p.id,
+    };
+  }
   return `
     ${panelIntro('API keys')}
-    <div class="keys">
-      <label for="google-api-key">Google Translate API key</label>
-      <input id="google-api-key" data-pref="googleKey" type="password" value="${esc(prefs.googleKey)}" placeholder="Google Cloud API key" autocomplete="off" />
-      <label for="deepl-api-key">DeepL API key</label>
-      <input id="deepl-api-key" data-pref="deeplKey" type="password" value="${esc(prefs.deeplKey)}" placeholder="DeepL API key" autocomplete="off" />
-    </div>
-    <h3 class="settings-subhead">Oxford, Collins, Youdao, WordsAPI</h3>
-    <div class="keys">
-      <label>Youdao app key</label><input data-pref="youdaoKey" type="password" value="${esc(prefs.youdaoKey)}" autocomplete="off" />
-      <label>Youdao secret</label><input data-pref="youdaoSecret" type="password" value="${esc(prefs.youdaoSecret)}" autocomplete="off" />
-      <label>Oxford app ID</label><input data-pref="oxfordId" type="password" value="${esc(prefs.oxfordId)}" autocomplete="off" />
-      <label>Oxford app key</label><input data-pref="oxfordKey" type="password" value="${esc(prefs.oxfordKey)}" autocomplete="off" />
-      <label>WordsAPI key</label><input data-pref="wordsKey" type="password" value="${esc(prefs.wordsKey)}" autocomplete="off" />
-      <label>Collins API key</label><input data-pref="collinsKey" type="password" value="${esc(prefs.collinsKey)}" autocomplete="off" />
-      <label>Collins API host</label><input data-pref="collinsHost" value="${esc(prefs.collinsHost)}" autocomplete="off" />
-    </div>`;
+    ${apiKeysPanelHtml(states)}`;
 }
 
 const VOICE_ICON = {
@@ -406,6 +439,7 @@ export function settingsBody(
   capture: CaptureInfo,
   section: SettingsSection,
   voice: VoiceStatus | null = null,
+  lib: LibraryState = emptyLibraryState(),
 ): string {
   const tabs = settingsSections(capture)
     .map(
@@ -421,11 +455,11 @@ export function settingsBody(
       : section === 'notifications'
         ? notificationsPanel(prefs, capture)
         : section === 'sources'
-          ? sourcesPanel(prefs, sources)
+          ? sourcesPanel(prefs, sources, lib)
           : section === 'offline'
-            ? offlinePanel(packs, packMsg)
+            ? offlinePanel(packs, packMsg, lib, capture.platform)
             : section === 'api'
-              ? apiPanel(prefs)
+              ? apiPanel(prefs, lib)
               : audioPanel(prefs, capture, voice);
   return `
     <div class="settings">

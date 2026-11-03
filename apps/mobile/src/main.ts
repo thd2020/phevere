@@ -14,6 +14,10 @@ import '@fontsource/charis-sil/latin-400.css';
 import '@fontsource/charis-sil/latin-ext-400.css';
 import '@phevere/core/notebook-views.css';
 import '@phevere/core/lexicon-parts.css';
+import '@phevere/core/settings-kit.css';
+import '@phevere/core/settings-sources.css';
+import '@phevere/core/settings-offline.css';
+import '@phevere/core/settings-keys.css';
 import './styles.css';
 import { startApp } from './app';
 

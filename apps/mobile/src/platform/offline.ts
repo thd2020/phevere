@@ -23,7 +23,7 @@ export type { OfflineCatalogItem };
 /** Packs the phone can unpack and hold; the 450 MB German TEI and full JMdict stay on desktop. */
 export const OFFLINE_CATALOG: OfflineCatalogItem[] = catalogFor('phone');
 
-export type CatalogStatus = OfflineCatalogItem & { installed: boolean; entryCount: number };
+export type CatalogStatus = OfflineCatalogItem & { installed: boolean; entryCount: number; createdAt?: number };
 
 const INSERT_SQL =
   'INSERT INTO offline_entries (headword, language, pos, definition, pack_id, extra) VALUES (?, ?, ?, ?, ?, ?)';
@@ -74,8 +74,21 @@ export async function listCatalogStatus(): Promise<CatalogStatus[]> {
       ...c,
       installed: Boolean(hit),
       entryCount: hit ? Number(hit.entry_count) || 0 : 0,
+      createdAt: hit ? Number(hit.created_at) || undefined : undefined,
     };
   });
+}
+
+/** Settings → Offline inspector: bytes the pack's rows hold in the local database. */
+export async function packStorageBytes(packId: string): Promise<number> {
+  await sqlJsVocabDb.ready();
+  const row = await sqlJsVocabDb.queryOne(
+    `SELECT SUM(LENGTH(CAST(headword AS BLOB)) + LENGTH(CAST(definition AS BLOB)) +
+            IFNULL(LENGTH(CAST(pos AS BLOB)), 0) + IFNULL(LENGTH(CAST(extra AS BLOB)), 0)) AS bytes
+     FROM offline_entries WHERE pack_id = ?`,
+    [packId],
+  );
+  return Number(row?.bytes) || 0;
 }
 
 export async function removePack(packId: string): Promise<void> {
@@ -119,8 +132,10 @@ async function writePack(
       stmt.reset();
       if (i > 0 && i % chunk === 0) {
         database.run('COMMIT');
-        database.run('BEGIN');
         onProgress?.(i, entries.length);
+        // Let the page repaint so Settings can show the import moving.
+        if (i % (chunk * 8) === 0) await new Promise((r) => setTimeout(r, 0));
+        database.run('BEGIN');
       }
     }
     database.run('COMMIT');

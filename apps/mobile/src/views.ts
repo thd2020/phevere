@@ -916,5 +916,5 @@ export function scanHtml(scan: ScanPage, id: number): string {
 
 export type { CaptureInfo, SettingsSection, VoiceStatus } from './settings-panels';
 export { MOCK_BAR } from './settings-panels';
-export { SETTINGS_SECTIONS, settingsBody } from './settings-panels';
+export { SETTINGS_SECTIONS, emptyLibraryState, keyPresent, settingsBody } from './settings-panels';
 
