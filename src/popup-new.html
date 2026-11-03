@@ -2107,7 +2107,7 @@
               const trimmedSentence = sentence.trim();
               if (!trimmedSentence) return;
               const highlightedSentence = escapeHtml(trimmedSentence)
-                .replace(/\b(From|Derived from|Borrowed from|Inherited from|Root|Origin|Etymology|Cognate with|Doublet of|来自|引申|词源)\b/gi, '<span class="etymology-keyword">$1</span>')
+                .replace(/\b(Root|Origin|Etymology|Cognate with|Doublet of|来自|引申|词源)\b/gi, '<span class="etymology-keyword">$1</span>')
                 .replace(/\b(Proto-Indo-European|Proto-Germanic|Proto-Italic|Proto-Hellenic|Proto-Celtic|Ancient Greek|Late Latin|Medieval Latin|Old English|Middle English|Old French|Middle French|Anglo-Norman|Old Norse|Old High German|Middle Dutch|Old Occitan|Old Provençal|Anglo-Saxon|Latin|Greek|French|German|Italian|Spanish|Portuguese|Dutch|Arabic|Persian|Sanskrit|Gothic)\b/gi, '<span class="etymology-language">$1</span>')
                 .replace(/\*[\w\u0300-\u036f\-]+/g, '<span class="etymology-reconstructed">$&</span>')
                 .replace(/(\d+)(st|nd|rd|th)\s+century/gi, '<span class="etymology-century">$&</span>')

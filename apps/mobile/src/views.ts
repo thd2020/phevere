@@ -638,7 +638,7 @@ function formatEtymologyBody(body: string): string {
   const paint = (sentence: string): string =>
     esc(sentence)
       .replace(
-        /\b(From|Derived from|Borrowed from|Inherited from|Root|Origin|Etymology|Cognate with|Doublet of|来自|引申|词源)\b/gi,
+        /\b(Root|Origin|Etymology|Cognate with|Doublet of|来自|引申|词源)\b/gi,
         '<span class="etymology-keyword">$1</span>',
       )
       .replace(
