@@ -231,6 +231,11 @@ module.exports = {
     }),
     new WebpackPlugin({
       mainConfig,
+      // Forge's default dev policy allows only same-origin requests. Packaged builds load from
+      // files with no policy, so let dev reach the same HTTPS services (Wiktionary, pictures).
+      devContentSecurityPolicy:
+        "default-src 'self' 'unsafe-inline' data:; script-src 'self' 'unsafe-eval' 'unsafe-inline' data:; " +
+        "connect-src 'self' ws: https:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:",
       renderer: {
         config: rendererConfig,
         entryPoints: [
