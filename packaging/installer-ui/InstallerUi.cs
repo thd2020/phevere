@@ -37,24 +37,37 @@ internal static class InstallerUi
 internal sealed class SetupWindow : Window
 {
     const string AppGuid = "45fdcc76-b0c6-5190-9341-af94f7ccbc13";
-    readonly bool preview;
+    /// <summary>PP-OCRv4 pack size on disk; keep in step with src/services/ocr-pack-manifest.json.</summary>
+    const long OcrPackBytes = 15594089;
+    readonly bool preview, fresh, ocrInstalled;
     readonly string backend, version, arch;
+    /// <summary>Installed application size in bytes, passed by the setup shell (--app-size).</summary>
+    readonly long appBytes;
     readonly TextBox folder;
-    readonly CheckBox desktop, startMenu, startup, launch, agreement;
+    readonly CheckBox ocr, desktop, startMenu, startup, launch, agreement;
     readonly ComboBox voice;
     readonly Grid stage;
     readonly ScrollViewer optionsPanel;
     readonly System.Windows.Controls.Image hero;
     readonly TextBlock heading, status;
+    TextBlock space;
+    FontFamily display;
     readonly Button next, custom, cancel, skip;
     readonly ProgressBar progress;
-    bool installing, complete, audioFailed, optionsOpen;
+    bool installing, complete, downloadFailed, optionsOpen;
     InstallChoices installedChoices;
+    readonly Queue<Download> downloads = new Queue<Download>();
     public int Result = 2;
 
     sealed class InstallChoices {
         public string Folder, Model;
-        public bool Desktop, StartMenu, Startup, Launch;
+        public bool Ocr, Desktop, StartMenu, Startup, Launch;
+    }
+
+    /// <summary>An optional download that runs through phevere.exe after the app is installed.</summary>
+    sealed class Download {
+        public string Name, Argument, Event;
+        public Action Done, Skipped;
     }
 
     const string Layout = @"
@@ -62,7 +75,7 @@ internal sealed class SetupWindow : Window
  <Grid.Resources>
   <Style TargetType='TextBlock'><Setter Property='Foreground' Value='#1C1917'/><Setter Property='FontFamily' Value='Segoe UI'/><Setter Property='FontSize' Value='14'/><Setter Property='TextWrapping' Value='Wrap'/></Style>
   <Style TargetType='Button'><Setter Property='Foreground' Value='#1C1917'/><Setter Property='Background' Value='#FFFDF9'/><Setter Property='BorderBrush' Value='#D7C3BB'/><Setter Property='BorderThickness' Value='1'/><Setter Property='FontFamily' Value='Segoe UI'/><Setter Property='FontSize' Value='14'/><Setter Property='FontWeight' Value='SemiBold'/><Setter Property='Padding' Value='20,10'/><Setter Property='MinHeight' Value='42'/><Setter Property='Cursor' Value='Hand'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='Button'><Border x:Name='Plate' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='7' Padding='{TemplateBinding Padding}'><ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center' RecognizesAccessKey='True'/></Border><ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Plate' Property='Opacity' Value='0.86'/></Trigger><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Plate' Property='BorderBrush' Value='#9C3D00'/><Setter TargetName='Plate' Property='BorderThickness' Value='2'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter TargetName='Plate' Property='Opacity' Value='0.45'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
-  <Style TargetType='CheckBox'><Setter Property='FontFamily' Value='Segoe UI'/><Setter Property='FontSize' Value='14'/><Setter Property='Foreground' Value='#1C1917'/><Setter Property='Margin' Value='0,8'/><Setter Property='Cursor' Value='Hand'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='CheckBox'><Grid><Grid.ColumnDefinitions><ColumnDefinition Width='28'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions><Border x:Name='Box' Width='19' Height='19' CornerRadius='5' BorderBrush='#85736C' BorderThickness='1' Background='#FFFDF9' VerticalAlignment='Center' HorizontalAlignment='Left'><Path x:Name='Tick' Data='M 3,8 L 7,12 L 14,4' Stroke='#FFF7F3' StrokeThickness='2' Visibility='Collapsed' VerticalAlignment='Center' HorizontalAlignment='Center'/></Border><ContentPresenter Grid.Column='1' VerticalAlignment='Center' RecognizesAccessKey='True'/></Grid><ControlTemplate.Triggers><Trigger Property='IsChecked' Value='True'><Setter TargetName='Box' Property='Background' Value='#9C3D00'/><Setter TargetName='Box' Property='BorderBrush' Value='#9C3D00'/><Setter TargetName='Tick' Property='Visibility' Value='Visible'/></Trigger><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Box' Property='BorderThickness' Value='2'/></Trigger><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Box' Property='BorderBrush' Value='#9C3D00'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter><Style.Triggers><Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='0.45'/></Trigger></Style.Triggers></Style>
+  <Style TargetType='CheckBox'><Setter Property='FontFamily' Value='Segoe UI'/><Setter Property='FontSize' Value='14'/><Setter Property='Foreground' Value='#1C1917'/><Setter Property='Padding' Value='0'/><Setter Property='Margin' Value='0'/><Setter Property='Cursor' Value='Hand'/><Setter Property='FocusVisualStyle' Value='{x:Null}'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='CheckBox'><Grid Background='Transparent'><Border x:Name='Plate' Margin='4,1' CornerRadius='7' Background='Transparent'/><Border x:Name='Ring' Margin='4,1' CornerRadius='7' BorderThickness='2' BorderBrush='Transparent'/><Grid Margin='{TemplateBinding Padding}'><Grid.ColumnDefinitions><ColumnDefinition Width='30'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions><Border x:Name='Box' Width='18' Height='18' CornerRadius='4' BorderBrush='#85736C' BorderThickness='1.5' Background='#FFFDF9' VerticalAlignment='Center' HorizontalAlignment='Left'><Path x:Name='Tick' Data='M 3.5,8.5 L 7,12 L 14,4.5' Stroke='#FFF7F3' StrokeThickness='2' StrokeStartLineCap='Round' StrokeEndLineCap='Round' StrokeLineJoin='Round' Visibility='Collapsed' VerticalAlignment='Center' HorizontalAlignment='Center'/></Border><ContentPresenter Grid.Column='1' VerticalAlignment='Center' HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' RecognizesAccessKey='True'/></Grid></Grid><ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Plate' Property='Background' Value='#F6EFE8'/><Setter TargetName='Box' Property='BorderBrush' Value='#9C3D00'/></Trigger><Trigger Property='IsChecked' Value='True'><Setter TargetName='Box' Property='Background' Value='#9C3D00'/><Setter TargetName='Box' Property='BorderBrush' Value='#9C3D00'/><Setter TargetName='Tick' Property='Visibility' Value='Visible'/></Trigger><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Ring' Property='BorderBrush' Value='#9C3D00'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter TargetName='Box' Property='Opacity' Value='0.55'/><Setter Property='Cursor' Value='Arrow'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
   <Style TargetType='TextBox'><Setter Property='FontFamily' Value='Segoe UI'/><Setter Property='FontSize' Value='14'/><Setter Property='Padding' Value='12,10'/><Setter Property='Background' Value='#F6F2EC'/><Setter Property='BorderBrush' Value='#D7C3BB'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='TextBox'><Border x:Name='Plate' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='1' CornerRadius='7'><ScrollViewer x:Name='PART_ContentHost'/></Border><ControlTemplate.Triggers><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Plate' Property='BorderBrush' Value='#9C3D00'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
   <Style TargetType='ComboBox'>
    <Setter Property='FontFamily' Value='Segoe UI'/><Setter Property='FontSize' Value='14'/><Setter Property='MinHeight' Value='42'/><Setter Property='Foreground' Value='#1C1917'/>
@@ -107,11 +120,14 @@ internal sealed class SetupWindow : Window
     public SetupWindow(Dictionary<string, string> options)
     {
         preview = options.ContainsKey("preview");
+        // Preview only: show what a computer without Phevere sees.
+        fresh = preview && options.ContainsKey("fresh");
         backend = Get(options, "backend", ""); version = Get(options, "version", "2.1.0"); arch = Get(options, "arch", "x64");
+        long.TryParse(Get(options, "app-size", "0"), out appBytes);
         Title = "Phevere Setup";
         MaxWidth = SystemParameters.WorkArea.Width - 24; MaxHeight = SystemParameters.WorkArea.Height - 24;
-        MinWidth = Math.Min(680, MaxWidth); MinHeight = Math.Min(520, MaxHeight);
-        Width = Math.Min(820, MaxWidth); Height = Math.Min(600, MaxHeight);
+        MinWidth = Math.Min(680, MaxWidth); MinHeight = Math.Min(560, MaxHeight);
+        Width = Math.Min(840, MaxWidth); Height = Math.Min(640, MaxHeight);
         WindowStartupLocation = WindowStartupLocation.CenterScreen; ResizeMode = ResizeMode.CanMinimize;
         UseLayoutRounding = true; SnapsToDevicePixels = true;
         var root = (Grid)XamlReader.Parse(Layout); Content = root;
@@ -120,65 +136,143 @@ internal sealed class SetupWindow : Window
         next = Find<Button>(root, "InstallButton"); custom = Find<Button>(root, "CustomOptions"); cancel = Find<Button>(root, "CloseButton"); skip = Find<Button>(root, "SkipModel"); progress = Find<ProgressBar>(root, "Progress");
         agreement = Find<CheckBox>(root, "Agreement");
         var fontDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "fonts") + Path.DirectorySeparatorChar;
-        if (Directory.Exists(fontDirectory)) heading.FontFamily = new FontFamily(new Uri(fontDirectory, UriKind.Absolute), "#Outfit");
+        if (Directory.Exists(fontDirectory)) display = new FontFamily(new Uri(fontDirectory, UriKind.Absolute), "#Outfit");
+        if (display != null) heading.FontFamily = display;
         Find<TextBlock>(root, "BuildLabel").Text = version;
         string art = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "hero.bmp");
         if (File.Exists(art)) {
             var bitmap = new System.Windows.Media.Imaging.BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad; bitmap.UriSource = new Uri(art); bitmap.EndInit(); bitmap.Freeze(); hero.Source = bitmap;
         }
         try { Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.ico"))); } catch { }
-        folder = new TextBox { Text = ExistingFolder(), MinHeight = 42 };
-        System.Windows.Automation.AutomationProperties.SetName(folder, "Installation folder");
-        desktop = Choice("Desktop shortcut", ExistingChoice("DesktopShortcut", File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), "Phevere.lnk"))));
-        startMenu = Choice("Start menu shortcuts", ExistingChoice("StartMenuShortcut", File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "Phevere.lnk"))));
-        using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")) startup = Choice("Start with Windows", key != null && key.GetValue("Phevere") != null);
-        launch = Choice("Open after installation", true);
-        voice = new ComboBox { MinHeight = 42 };
-        voice.Items.Add("None"); voice.Items.Add("Kokoro Compact (132 MB)"); voice.Items.Add("Kokoro Full (350 MB)"); voice.SelectedIndex = ExistingVoice();
-        System.Windows.Automation.AutomationProperties.SetName(voice, "Audio model");
+        folder = new TextBox { Text = fresh ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Phevere") : ExistingFolder(), MinHeight = 40, VerticalContentAlignment = VerticalAlignment.Center };
+        System.Windows.Automation.AutomationProperties.SetName(folder, "Install location");
+        // Start menu on, desktop off for a new install (the Windows default); an upgrade keeps the last choice.
+        startMenu = Option("Start menu", null, ExistingChoice("StartMenuShortcut", File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "Phevere.lnk")), true));
+        desktop = Option("Desktop", null, ExistingChoice("DesktopShortcut", File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), "Phevere.lnk")), false));
+        using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")) startup = Option("Start with Windows", null, !fresh && key != null && key.GetValue("Phevere") != null);
+        launch = Option("Open Phevere after setup", null, true);
+        ocrInstalled = !fresh && OcrPackPresent(folder.Text);
+        ocr = Option("OCR pack", "For hover lookup and Scan", ocrInstalled);
+        if (ocrInstalled) ocr.IsEnabled = false;
+        voice = new ComboBox { MinHeight = 36, Width = 196, VerticalAlignment = VerticalAlignment.Center };
+        voice.Items.Add("None"); voice.Items.Add("Compact (132 MB)"); voice.Items.Add("Full (350 MB)"); voice.SelectedIndex = fresh ? 0 : ExistingVoice();
+        System.Windows.Automation.AutomationProperties.SetName(voice, "Pronunciation voice");
         BuildOptions();
-        custom.Click += delegate { optionsOpen = !optionsOpen; ShowStage(); };
+        foreach (var box in new[] { ocr, desktop, startMenu, startup, launch }) { box.Checked += delegate { UpdateSpace(); }; box.Unchecked += delegate { UpdateSpace(); }; }
+        voice.SelectionChanged += delegate { UpdateSpace(); };
+        UpdateSpace();
+        custom.Click += delegate { optionsOpen = !optionsOpen; ShowStage(); if (optionsOpen) folder.Focus(); };
         Find<Button>(root, "License").Click += delegate { try { Process.Start(new ProcessStartInfo("https://github.com/thd2020/phevere/blob/main/LICENSE") { UseShellExecute = true }); } catch (Exception error) { ShowStatus(error.Message, true); } };
         next.Click += Install;
-        skip.Click += delegate {
-            try {
-                if (!preview) SaveAudioOptions("none", false);
-                installedChoices.Model = "none";
-                FinishInstall();
-            } catch (Exception error) { ShowStatus(error.Message, true); }
-        };
+        skip.Click += SkipDownload;
         cancel.Click += delegate { Close(); };
         Closing += delegate(object sender, System.ComponentModel.CancelEventArgs e) { if (installing) e.Cancel = true; };
+        if (options.ContainsKey("options")) optionsOpen = true;
         ShowStage();
     }
 
     static T Find<T>(FrameworkElement root, string name) where T : class { return (T)root.FindName(name); }
     static string Get(Dictionary<string, string> options, string key, string fallback) { string value; return options.TryGetValue(key, out value) ? value : fallback; }
-    static CheckBox Choice(string label, bool selected) { return new CheckBox { Content = label, IsChecked = selected, Margin = new Thickness(0, 8, 0, 8) }; }
     static bool On(CheckBox box) { return box.IsChecked == true; }
+    static Brush Hex(string value) { var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(value)); brush.Freeze(); return brush; }
+    static readonly Brush Ink = Hex("#1C1917"), Muted = Hex("#5C534E"), Rule = Hex("#E6DCD3"), Card = Hex("#FFFDF9");
 
+    /// <summary>One option row: the whole row is the checkbox, so a click anywhere on it toggles.</summary>
+    CheckBox Option(string title, string detail, bool selected) {
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(new TextBlock { Text = title, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap });
+        if (detail != null) text.Children.Add(new TextBlock { Text = detail, FontSize = 12.5, Foreground = Muted, Margin = new Thickness(0, 1, 0, 0), TextWrapping = TextWrapping.Wrap });
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.Children.Add(text);
+        var size = new TextBlock { FontSize = 12.5, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+        Grid.SetColumn(size, 1); row.Children.Add(size);
+        var box = new CheckBox { Content = row, IsChecked = selected, Padding = new Thickness(14, 10, 14, 10), HorizontalContentAlignment = HorizontalAlignment.Stretch, Tag = size };
+        System.Windows.Automation.AutomationProperties.SetName(box, detail == null ? title : title + ", " + detail);
+        return box;
+    }
+
+    static void SetSize(CheckBox box, string text) { ((TextBlock)box.Tag).Text = text; }
+
+    TextBlock SectionTitle(string text) {
+        var title = new TextBlock { Text = text, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Muted, Margin = new Thickness(2, 0, 0, 8) };
+        if (display != null) title.FontFamily = display;
+        return title;
+    }
+
+    static Border Group(params FrameworkElement[] rows) {
+        var stack = new StackPanel();
+        for (int i = 0; i < rows.Length; i++) {
+            if (i > 0) stack.Children.Add(new Border { Height = 1, Background = Rule, Margin = new Thickness(14, 0, 14, 0) });
+            stack.Children.Add(rows[i]);
+        }
+        return new Border { Background = Card, BorderBrush = Rule, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(0, 3, 0, 3), Child = stack };
+    }
+
+    static StackPanel Section(TextBlock title, Border group, double bottom) {
+        var section = new StackPanel { Margin = new Thickness(0, 0, 0, bottom) };
+        section.Children.Add(title); section.Children.Add(group);
+        return section;
+    }
+
+    /// <summary>
+    /// Custom options: install location across the top, then two columns. Shortcuts and
+    /// Startup on the left; downloads (each with its size) on the right. Rows are whole-row
+    /// checkboxes in cards, reachable with Tab and toggled with Space.
+    /// </summary>
     void BuildOptions() {
-        var panel = new StackPanel(); optionsPanel.Content = panel;
-        panel.Children.Add(new TextBlock { Text = "Install location", FontSize = 13, Margin = new Thickness(0, 0, 0, 7) });
-        var directoryRow = new Grid { Margin = new Thickness(0, 0, 0, 16) };
+        var page = new Grid { Margin = new Thickness(0, 2, 6, 4) };
+        page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        page.ColumnDefinitions.Add(new ColumnDefinition()); page.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) }); page.ColumnDefinitions.Add(new ColumnDefinition());
+        optionsPanel.Content = page;
+
+        var locationHeader = new Grid();
+        locationHeader.ColumnDefinitions.Add(new ColumnDefinition()); locationHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        locationHeader.Children.Add(SectionTitle("Install location"));
+        space = new TextBlock { FontSize = 12.5, Foreground = Muted, Margin = new Thickness(0, 0, 2, 8), VerticalAlignment = VerticalAlignment.Bottom };
+        Grid.SetColumn(space, 1); locationHeader.Children.Add(space);
+        var directoryRow = new Grid { Margin = new Thickness(12, 9, 12, 9) };
         directoryRow.ColumnDefinitions.Add(new ColumnDefinition()); directoryRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         directoryRow.Children.Add(folder);
-        var browse = new Button { Content = "Browse…", Margin = new Thickness(10, 0, 0, 0), Padding = new Thickness(16, 8, 16, 8) }; Grid.SetColumn(browse, 1); directoryRow.Children.Add(browse);
+        var browse = new Button { Content = "_Browse…", Margin = new Thickness(10, 0, 0, 0), Padding = new Thickness(16, 6, 16, 6), MinHeight = 40 }; Grid.SetColumn(browse, 1); directoryRow.Children.Add(browse);
         browse.Click += delegate { using (var dialog = new System.Windows.Forms.FolderBrowserDialog { Description = "Install Phevere in", SelectedPath = folder.Text, ShowNewFolderButton = true }) if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK) folder.Text = dialog.SelectedPath; };
-        panel.Children.Add(directoryRow);
+        var locationCard = Group(directoryRow); locationCard.Padding = new Thickness(0);
+        var location = new StackPanel { Margin = new Thickness(0, 0, 0, 18) };
+        location.Children.Add(locationHeader); location.Children.Add(locationCard);
+        Grid.SetColumnSpan(location, 3); page.Children.Add(location);
+
+        var left = new StackPanel();
+        left.Children.Add(Section(SectionTitle("Shortcuts"), Group(startMenu, desktop), 18));
+        left.Children.Add(Section(SectionTitle("Startup"), Group(startup, launch), 0));
+        Grid.SetRow(left, 1); page.Children.Add(left);
+
+        var downloadRows = new List<FrameworkElement> { ocr };
         if (arch != "arm64") {
-            var voiceRow = new Grid { Margin = new Thickness(0, 7, 0, 16) };
-            voiceRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(112) }); voiceRow.ColumnDefinitions.Add(new ColumnDefinition());
-            voiceRow.Children.Add(new TextBlock { Text = "Audio model", FontSize = 13, VerticalAlignment = VerticalAlignment.Center });
-            Grid.SetColumn(voice, 1); voiceRow.Children.Add(voice); panel.Children.Add(voiceRow);
+            // Text lines up with the checkbox labels above; the picker sits under its title.
+            var voiceRow = new StackPanel { Margin = new Thickness(44, 10, 14, 12) };
+            var voiceTitle = new Label { Content = "_Pronunciation voice", Target = voice, Padding = new Thickness(0), FontFamily = new FontFamily("Segoe UI"), FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink };
+            voiceRow.Children.Add(voiceTitle);
+            voiceRow.Children.Add(new TextBlock { Text = "Kokoro neural voice", FontSize = 12.5, Foreground = Muted, Margin = new Thickness(0, 1, 0, 8) });
+            voice.Width = Double.NaN; voice.HorizontalAlignment = HorizontalAlignment.Stretch;
+            voiceRow.Children.Add(voice);
+            downloadRows.Add(voiceRow);
         }
-        var checks = new Grid(); checks.ColumnDefinitions.Add(new ColumnDefinition()); checks.ColumnDefinitions.Add(new ColumnDefinition()); checks.RowDefinitions.Add(new RowDefinition()); checks.RowDefinitions.Add(new RowDefinition());
-        checks.Children.Add(desktop); Grid.SetColumn(startMenu, 1); checks.Children.Add(startMenu);
-        Grid.SetRow(startup, 1); checks.Children.Add(startup); Grid.SetRow(launch, 1); Grid.SetColumn(launch, 1); checks.Children.Add(launch); panel.Children.Add(checks);
+        var right = Section(SectionTitle("Downloads"), Group(downloadRows.ToArray()), 0);
+        Grid.SetRow(right, 1); Grid.SetColumn(right, 2); page.Children.Add(right);
+    }
+
+    static long Megabytes(long bytes) { return (bytes + 524288) / 1048576; }
+
+    void UpdateSpace() {
+        SetSize(ocr, ocrInstalled ? "Installed" : "14 MB");
+        long total = appBytes;
+        if (On(ocr) && !ocrInstalled) total += OcrPackBytes;
+        if (arch != "arm64") total += voice.SelectedIndex == 2 ? 350L * 1048576 : voice.SelectedIndex == 1 ? 132L * 1048576 : 0;
+        space.Text = total > 0 ? "Space required: " + Megabytes(total).ToString("N0") + " MB" : "";
     }
 
     void ShowStage() {
-        bool showOptions = optionsOpen && !installing && !complete && !audioFailed;
+        bool showOptions = optionsOpen && !installing && !complete && !downloadFailed;
         hero.Visibility = showOptions ? Visibility.Collapsed : Visibility.Visible;
         optionsPanel.Visibility = showOptions ? Visibility.Visible : Visibility.Collapsed;
         custom.Content = showOptions ? "Hide options" : "Custom options";
@@ -190,7 +284,7 @@ internal sealed class SetupWindow : Window
     }
 
     InstallChoices Snapshot() {
-        return new InstallChoices { Folder = folder.Text, Desktop = On(desktop), StartMenu = On(startMenu), Startup = On(startup), Launch = On(launch), Model = arch == "arm64" ? "none" : voice.SelectedIndex == 2 ? "kokoro-full" : voice.SelectedIndex == 1 ? "kokoro-compact" : "none" };
+        return new InstallChoices { Folder = folder.Text, Ocr = On(ocr) && !ocrInstalled, Desktop = On(desktop), StartMenu = On(startMenu), Startup = On(startup), Launch = On(launch), Model = arch == "arm64" ? "none" : voice.SelectedIndex == 2 ? "kokoro-full" : voice.SelectedIndex == 1 ? "kokoro-compact" : "none" };
     }
 
     void ValidateFolder() {
@@ -202,6 +296,13 @@ internal sealed class SetupWindow : Window
         folder.Text = value;
     }
 
+    void BeginWork(string message) {
+        installing = true; optionsOpen = false; downloadFailed = false; next.Visibility = Visibility.Collapsed;
+        custom.Visibility = Visibility.Collapsed; skip.Visibility = Visibility.Collapsed; cancel.IsEnabled = false; agreement.IsEnabled = false;
+        progress.Visibility = Visibility.Visible; progress.IsIndeterminate = true; ShowStage();
+        ShowStatus(message, false);
+    }
+
     async void Install(object sender, RoutedEventArgs args) {
         if (complete) {
             if (installedChoices.Launch && !preview) {
@@ -211,48 +312,73 @@ internal sealed class SetupWindow : Window
             Result = 0; Close(); return;
         }
         if (installing) return;
-        if (!audioFailed) {
-            try { ValidateFolder(); } catch (Exception error) { optionsOpen = true; ShowStage(); ShowStatus(error.Message, true); folder.Focus(); return; }
-            if (!On(agreement)) { ShowStatus("Accept the MIT license to continue.", true); agreement.Focus(); return; }
-            installedChoices = Snapshot();
-        }
-        bool retryAudio = audioFailed;
-        installing = true; optionsOpen = false; audioFailed = false; next.Visibility = Visibility.Collapsed;
-        custom.Visibility = Visibility.Collapsed; skip.Visibility = Visibility.Collapsed; cancel.IsEnabled = false; agreement.IsEnabled = false;
-        progress.Visibility = Visibility.Visible; progress.IsIndeterminate = true; ShowStage();
-        ShowStatus(retryAudio ? "Downloading audio model…" : "Installing Phevere…", false);
+        if (downloadFailed) { await ContinueDownloads(); return; }
+        try { ValidateFolder(); } catch (Exception error) { optionsOpen = true; ShowStage(); ShowStatus(error.Message, true); folder.Focus(); return; }
+        if (!On(agreement)) { ShowStatus("Accept the MIT license to continue.", true); agreement.Focus(); return; }
+        installedChoices = Snapshot();
+        BeginWork("Installing Phevere…");
         try {
-            if (!retryAudio) {
-                string parameters = "/S --desktop-shortcut=" + (installedChoices.Desktop ? "1" : "0") + " --start-menu-shortcut=" + (installedChoices.StartMenu ? "1" : "0") + " /D=" + installedChoices.Folder;
-                int exit = preview ? await Task.Run(delegate { System.Threading.Thread.Sleep(750); return 0; }) : await Task.Run(delegate { return RunBackend(parameters); });
-                if (exit != 0) throw new Exception("Installation returned error " + exit + ". Select Install to retry.");
-                if (!preview) ApplyUserOptions(installedChoices);
-            }
-            if (installedChoices.Model != "none") {
-                progress.IsIndeterminate = false; progress.Value = 0; ShowStatus("Downloading audio model…", false);
+            string parameters = "/S --desktop-shortcut=" + (installedChoices.Desktop ? "1" : "0") + " --start-menu-shortcut=" + (installedChoices.StartMenu ? "1" : "0") + " /D=" + installedChoices.Folder;
+            int exit = preview ? await Task.Run(delegate { System.Threading.Thread.Sleep(750); return 0; }) : await Task.Run(delegate { return RunBackend(parameters); });
+            if (exit != 0) throw new Exception("Installation returned error " + exit + ". Select Install to retry.");
+            if (!preview) ApplyUserOptions(installedChoices);
+        } catch (Exception error) {
+            installing = false; cancel.IsEnabled = true;
+            ShowStatus(error.Message, true); next.Content = "_Install"; next.Visibility = Visibility.Visible;
+            custom.Visibility = Visibility.Visible; agreement.IsEnabled = true; progress.Visibility = Visibility.Collapsed;
+            ShowStage(); return;
+        }
+        downloads.Clear();
+        if (installedChoices.Ocr) downloads.Enqueue(new Download { Name = "OCR pack", Argument = "--install-ocr-pack", Event = "ocr-pack" });
+        if (installedChoices.Model != "none") {
+            string model = installedChoices.Model;
+            downloads.Enqueue(new Download {
+                Name = "pronunciation voice", Argument = "--install-audio-model=" + model, Event = "audio-model",
+                Done = delegate { if (!preview) SaveAudioOptions(model, true); },
+                Skipped = delegate { if (!preview) SaveAudioOptions("none", false); installedChoices.Model = "none"; },
+            });
+        }
+        await ContinueDownloads();
+    }
+
+    /// <summary>Optional downloads run after the app is installed; a failure offers Retry or skipping that item.</summary>
+    async Task ContinueDownloads() {
+        BeginWork("Installing Phevere…");
+        try {
+            while (downloads.Count > 0) {
+                var item = downloads.Peek();
+                progress.IsIndeterminate = false; progress.Value = 0; ShowStatus("Downloading the " + item.Name + "…", false);
                 try {
                     if (preview) {
                         for (int i = 1; i <= 5; i++) { await Task.Delay(200); progress.Value = i / 5.0; }
                     } else {
-                        await Task.Run(delegate { DownloadAudio(installedChoices); });
-                        SaveAudioOptions(installedChoices.Model, true);
+                        await Task.Run(delegate { RunDownload(item); });
                     }
+                    if (item.Done != null) item.Done();
+                    downloads.Dequeue();
                 } catch (Exception error) {
-                    audioFailed = true; Result = 0;
-                    ShowStatus("Audio model download failed. " + error.Message, true);
-                    next.Content = "Retry download"; next.Visibility = Visibility.Visible; skip.Visibility = Visibility.Visible;
+                    downloadFailed = true; Result = 0;
+                    ShowStatus("The " + item.Name + " did not download. " + error.Message, true);
+                    next.Content = "Retry download"; next.Visibility = Visibility.Visible;
+                    skip.Content = "Continue without it"; skip.Visibility = Visibility.Visible;
                     progress.Visibility = Visibility.Collapsed; return;
                 }
             }
             FinishInstall();
-        } catch (Exception error) {
-            ShowStatus(error.Message, true); next.Content = "_Install"; next.Visibility = Visibility.Visible;
-            custom.Visibility = Visibility.Visible; agreement.IsEnabled = true; progress.Visibility = Visibility.Collapsed;
         } finally { installing = false; cancel.IsEnabled = true; ShowStage(); }
     }
 
+    async void SkipDownload(object sender, RoutedEventArgs args) {
+        if (installing || downloads.Count == 0) return;
+        try {
+            var item = downloads.Dequeue();
+            if (item.Skipped != null) item.Skipped();
+            await ContinueDownloads();
+        } catch (Exception error) { ShowStatus(error.Message, true); }
+    }
+
     void FinishInstall() {
-        complete = true; audioFailed = false; Result = 0; optionsOpen = false;
+        complete = true; downloadFailed = false; Result = 0; optionsOpen = false;
         progress.Visibility = Visibility.Collapsed; custom.Visibility = Visibility.Collapsed; skip.Visibility = Visibility.Collapsed;
         next.Visibility = Visibility.Visible; next.Content = installedChoices.Launch ? "Open Phevere" : "Finish";
         ShowStatus("Phevere is installed.", false);
@@ -266,11 +392,12 @@ internal sealed class SetupWindow : Window
         using (var process = Process.Start(info)) { process.WaitForExit(); return process.ExitCode; }
     }
 
-    void DownloadAudio(InstallChoices choices) {
+    /// <summary>Run phevere.exe with a download switch; it prints JSON lines named &lt;event&gt;-progress, -complete and -error.</summary>
+    void RunDownload(Download item) {
         string failure = null; bool finished = false;
-        var info = new ProcessStartInfo(Path.Combine(choices.Folder, "phevere.exe"), "--install-audio-model=" + choices.Model) {
+        var info = new ProcessStartInfo(Path.Combine(installedChoices.Folder, "phevere.exe"), item.Argument) {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
-            WorkingDirectory = choices.Folder
+            WorkingDirectory = installedChoices.Folder
         };
         using (var process = new Process { StartInfo = info }) {
             process.ErrorDataReceived += delegate { }; // Drain diagnostics so redirected stderr cannot block the subprocess.
@@ -280,18 +407,25 @@ internal sealed class SetupWindow : Window
                 try {
                     var data = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(line);
                     object kind; if (!data.TryGetValue("event", out kind)) continue;
-                    if ((string)kind == "audio-model-error") { object error; failure = data.TryGetValue("error", out error) ? Convert.ToString(error) : "Download failed."; }
-                    if ((string)kind == "audio-model-complete") finished = true;
-                    if ((string)kind == "audio-model-progress" || (string)kind == "audio-model-complete") {
+                    string name = (string)kind;
+                    if (name == item.Event + "-error") { object error; failure = data.TryGetValue("error", out error) ? Convert.ToString(error) : "Download failed."; }
+                    if (name == item.Event + "-complete") finished = true;
+                    if (name == item.Event + "-progress" || name == item.Event + "-complete") {
                         object value; double amount = data.TryGetValue("progress", out value) ? Convert.ToDouble(value) : 0;
                         amount = Math.Max(0, Math.Min(1, amount));
-                        Dispatcher.BeginInvoke(new Action(delegate { progress.Value = amount; ShowStatus("Downloading audio model… " + Math.Round(amount * 100) + "%", false); }));
+                        Dispatcher.BeginInvoke(new Action(delegate { progress.Value = amount; ShowStatus("Downloading the " + item.Name + "… " + Math.Round(amount * 100) + "%", false); }));
                     }
                 } catch { /* Ordinary application log lines are not installer protocol events. */ }
             }
             process.WaitForExit();
             if (process.ExitCode != 0 || !finished || failure != null) throw new Exception(failure ?? "Select Retry download to try again.");
         }
+    }
+
+    static bool OcrPackPresent(string installFolder) {
+        string pack = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "phevere", "ocr-packs", "pp-ocrv4", "ch_PP-OCRv4_rec_infer.onnx");
+        string legacy = Path.Combine(installFolder, "resources", "ocr-models", "ch_PP-OCRv4_rec_infer.onnx");
+        return File.Exists(pack) || File.Exists(legacy);
     }
 
     void ApplyUserOptions(InstallChoices choices) {
@@ -321,12 +455,14 @@ internal sealed class SetupWindow : Window
         }
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Phevere");
     }
-    bool ExistingChoice(string name, bool inferred) {
+    /// <summary>The saved choice, else what an older install left on disk, else the new-install default.</summary>
+    bool ExistingChoice(string name, bool inferred, bool freshDefault) {
+        if (fresh) return freshDefault;
         foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 }) using (var root = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view)) using (var key = root.OpenSubKey(@"Software\" + AppGuid)) {
             var value = key == null ? null : key.GetValue(name) as string;
             if (value == "1" || value == "0") return value == "1";
         }
-        return File.Exists(Path.Combine(folder.Text, "phevere.exe")) ? inferred : true;
+        return File.Exists(Path.Combine(folder.Text, "phevere.exe")) ? inferred : freshDefault;
     }
     int ExistingVoice() {
         if (arch == "arm64") return 0;

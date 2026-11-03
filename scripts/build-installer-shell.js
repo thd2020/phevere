@@ -46,6 +46,17 @@ async function updateInstallerMetadata(installer) {
   }
 }
 
+/** Bytes the unpacked application takes on disk (Custom options shows it as space required). */
+function folderBytes(directory) {
+  if (!fs.existsSync(directory)) return 0;
+  let total = 0;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const full = path.join(directory, entry.name);
+    total += entry.isDirectory() ? folderBytes(full) : fs.statSync(full).size;
+  }
+  return total;
+}
+
 function run(executable, args) {
   const result = spawnSync(executable, args, { cwd: root, stdio: 'inherit', windowsHide: true });
   if (result.error) throw result.error;
@@ -141,6 +152,7 @@ async function wrapInstaller(arch) {
       `/DUI_ART=${path.join(directory, 'hero.bmp')}`,
       `/DINSTALLER_ICON=${path.join(root, 'packaging', 'icon.ico')}`,
       `/DAPP_VERSION=${version}`, `/DVERSION_QUAD=${version.split('-')[0]}.0`, `/DAPP_ARCH=${arch}`,
+      `/DAPP_SIZE=${folderBytes(path.join(root, 'out', `phevere-win32-${arch}`))}`,
       path.join(root, 'packaging', 'installer-shell.nsi'),
     ]);
     await signer.sign(output);

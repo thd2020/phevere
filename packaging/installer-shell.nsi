@@ -1,6 +1,10 @@
 ; The WPF frontend owns interactive setup. electron-builder's NSIS installer
 ; remains the elevated installation and upgrade backend.
 Unicode true
+; Installed application size in bytes, shown as "Space required" under Custom options.
+!ifndef APP_SIZE
+  !define APP_SIZE 0
+!endif
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
 Name "Phevere Setup"
@@ -119,7 +123,7 @@ Section
     Call runBackendAndWait
   ${Else}
     ClearErrors
-    ExecWait '"$PLUGINSDIR\InstallerUi.exe" --backend "$PLUGINSDIR\Backend.exe" --version "${APP_VERSION}" --arch "${APP_ARCH}"' $exitCode
+    ExecWait '"$PLUGINSDIR\InstallerUi.exe" --backend "$PLUGINSDIR\Backend.exe" --version "${APP_VERSION}" --arch "${APP_ARCH}" --app-size "${APP_SIZE}"' $exitCode
   ${EndIf}
   ${If} ${Errors}
     SetErrorLevel 1
