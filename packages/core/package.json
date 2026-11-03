@@ -9,7 +9,12 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "3d-force-graph": "^1.80.1",
     "cmu-pronouncing-dictionary": "^3.0.0",
+    "three": "^0.187.0",
     "wink-lemmatizer": "^3.0.4"
+  },
+  "devDependencies": {
+    "@types/three": "^0.187.0"
   }
 }

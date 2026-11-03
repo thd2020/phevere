@@ -63,6 +63,7 @@ export {
   reviewHtml,
   fillWordImages,
   attachNotebookMap,
+  disposeNotebookMaps,
   type NotebookView,
   type FamilyGrouping,
   type NotebookEntry,

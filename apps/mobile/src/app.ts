@@ -25,6 +25,7 @@ import {
   attachNotebookMap,
   traceNotebookFamilies,
   attachCardTable,
+  disposeNotebookMaps,
   fetchWordImage,
   fillWordImages,
   reviewQueue,
@@ -409,6 +410,8 @@ function paint(): void {
   bindWikiReader();
   bindMockBar();
   bindAzRail();
+  // A repaint replaces the map's element; release the old 3D renderer straight away.
+  disposeNotebookMaps(true);
   if (tab === 'notebook') bindNotebookViews();
 }
 
@@ -1742,8 +1745,6 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'nb-grade':
       await gradeReview((Number(t.dataset.grade) || 3) as 1 | 2 | 3 | 4);
-      return;
-    case 'nb-map-zoom':
       return;
     case 'nb-play':
       if (soundOff()) return;

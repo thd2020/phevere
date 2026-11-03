@@ -32,6 +32,7 @@ import { captureNextShortcut, isLinux, isMac } from './shortcut-capture';
 import '@phevere/core/notebook-views.css';
 import '@phevere/core/notebook-families.css';
 import '@phevere/core/notebook-cards.css';
+import '@phevere/core/notebook-map.css';
 import {
   accountButtonHtml,
   accountPanelHtml,
@@ -39,6 +40,7 @@ import {
   attachNotebookMap,
   attachCardTable,
   cardsHtml,
+  disposeNotebookMaps,
   deleteEmailMatches,
   familiesHtml,
   familiesTraceProgress,
@@ -2251,6 +2253,7 @@ function renderVocabNotebook(entries: any[]): void {
     return;
   }
   body.innerHTML = '';
+  disposeNotebookMaps(true);
   if (!sorted.length) {
     const q = ((document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '').trim();
     list.innerHTML = `<p class="empty-message">${q ? 'No matching words.' : 'No saved words.'}</p>`;
@@ -2413,7 +2416,7 @@ function wireNotebookActions(root: HTMLElement): void {
   };
   root.addEventListener('click', (ev) => {
     const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-act]');
-    if (!el || !root.contains(el) || el.dataset.act === 'nb-map-zoom') return;
+    if (!el || !root.contains(el)) return;
     void run(el, ev);
   });
   root.addEventListener('keydown', (ev) => {

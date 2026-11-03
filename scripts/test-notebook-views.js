@@ -9,7 +9,9 @@ const cache = new Map();
 
 /** Load a core TS module and the core modules it imports, transpiled to CommonJS. */
 function load(name) {
-  const file = path.join(coreDir, name.replace(/^\.\//, '') + '.ts');
+  const base = path.join(coreDir, name.replace(/^\.\//, ''));
+  // Core is TypeScript, except a few small JavaScript shims such as notebook-map-load.js.
+  const file = fs.existsSync(base + '.ts') ? base + '.ts' : base + '.js';
   if (cache.has(file)) return cache.get(file).exports;
   const js = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -70,7 +72,29 @@ const m2 = views.layoutNotebookMap(a, { kinds: ['root', 'char'] });
 assert.deepEqual(m1.nodes.map((n) => [n.x, n.y]), m2.nodes.map((n) => [n.x, n.y]));
 assert.ok(m1.edges.every((e) => m1.nodes[e.a] && m1.nodes[e.b]));
 assert.ok(m1.nodes.every((n) => Number.isFinite(n.x) && Number.isFinite(n.y)));
-assert.match(views.mapHtml(a, ['root']), /<svg class="nbv-map__svg"/);
+// The 3D layout is deterministic too, centred on the origin, with z in use.
+const m3a = views.layoutNotebookMap(a, { kinds: ['root', 'char'], dimensions: 3 });
+const m3b = views.layoutNotebookMap(a, { kinds: ['root', 'char'], dimensions: 3 });
+assert.deepEqual(m3a.nodes.map((n) => [n.x, n.y, n.z]), m3b.nodes.map((n) => [n.x, n.y, n.z]));
+assert.ok(m3a.nodes.some((n) => n.z !== 0), 'uses depth');
+assert.ok(m3a.radius > 0 && m3a.nodes.every((n) => Math.hypot(n.x, n.y, n.z) <= m3a.radius + 1));
+// Words sit nearer their own morpheme than the morphemes are to each other.
+const hubOf = (label) => m3a.nodes.find((n) => n.kind !== 'word' && n.label === label);
+const wordOf = (label) => m3a.nodes.find((n) => n.kind === 'word' && n.label === label);
+const dist = (p, q) => Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z);
+assert.ok(dist(wordOf('spectator'), hubOf('spect')) < dist(hubOf('spect'), hubOf('対')));
+// mapHtml hands the renderers the graph as JSON, with search, filters and the controls.
+const mh = views.mapHtml(a, ['root', 'char']);
+const json = mh.match(/<script type="application\/json" data-map-data>([\s\S]*?)<\/script>/);
+assert.ok(json, 'graph data embedded');
+const md = JSON.parse(json[1]);
+assert.equal(md.nodes.length, m3a.nodes.length);
+assert.ok(md.edges.every(([x, y]) => md.nodes[x] && md.nodes[y]));
+assert.match(mh, /data-map-search/);
+assert.match(mh, /<option value="inspector">/);
+assert.match(mh, /data-act="nb-map-kind" data-kind="root"/);
+assert.match(mh, /data-map-act="reset"/);
+assert.equal(views.notebookMapData(a, ['root', 'char']), views.notebookMapData(a, ['root', 'char']), 'layout cached');
 
 // Cards: piles by when the words were saved, newest pile and newest card first.
 const piles = views.cardPiles(entries, now);
