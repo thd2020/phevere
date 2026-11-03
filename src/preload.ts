@@ -472,7 +472,15 @@ contextBridge.exposeInMainWorld('offlineDictAPI', {
   downloadCedict: () => ipcRenderer.invoke('offline-download-cedict'),
 });
 
-type OcrPackState = { installed: boolean; installing: boolean; progress: number; error: string | null; root: string | null };
+type OcrPackState = {
+  installed: boolean;
+  installing: boolean;
+  progress: number;
+  error: string | null;
+  root: string | null;
+  /** The active OCR model is PP-OCRv4 and the pack is missing. */
+  needsPack: boolean;
+};
 
 contextBridge.exposeInMainWorld('ocrAPI', {
   getStatus: () => ipcRenderer.invoke('ocr-get-status'),

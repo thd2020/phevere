@@ -200,12 +200,19 @@ function initializeSettingsWindow() {
               <h2 id="settings-capture-heading" class="settings-panel__title">Capture</h2>
             </div>
             <div class="settings-group">
-            <div class="settings-row" role="group" aria-labelledby="enable-hover-label">
-              <span id="enable-hover-label" class="settings-row__label">Hover lookup</span>
-              <label class="settings-toggle-label">
-                <input class="toggle-input" type="checkbox" id="enable-hover" checked />
-                <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
-              </label>
+            <div class="settings-row settings-row--pack" role="group" aria-labelledby="enable-hover-label">
+              <span class="settings-row__text">
+                <span id="enable-hover-label" class="settings-row__label">Hover lookup</span>
+                <span id="hover-ocr-status" class="settings-row__status" role="status" aria-live="polite" hidden></span>
+              </span>
+              <span class="settings-row__controls">
+                <button type="button" id="hover-ocr-install" class="btn btn-secondary btn-small" hidden>Install</button>
+                <label class="settings-toggle-label">
+                  <input class="toggle-input" type="checkbox" id="enable-hover" checked aria-describedby="hover-ocr-status" />
+                  <span class="toggle-switch" aria-hidden="true"><span class="toggle-slider"></span></span>
+                </label>
+              </span>
+              <div id="hover-ocr-progress" class="settings-row__progress" hidden><span></span></div>
             </div>
             </div>
             <div class="settings-dropzone" id="settings-dropzone" tabindex="0">
@@ -365,6 +372,7 @@ function initializeSettingsWindow() {
   wireSettingsImageDrop();
   void wireOfflineSettingsPanel();
   void wireOcrSettingsPanel();
+  void wireHoverOcrPack();
   void wireMonitorSettingsFields().then(({ stopCapture }) => {
     document.getElementById('settings-close')?.addEventListener('click', () => {
       stopCapture();
@@ -373,6 +381,48 @@ function initializeSettingsWindow() {
     window.addEventListener('pagehide', () => stopCapture());
   });
   wireLiveResizeClass();
+}
+
+type OcrPackView = { installed: boolean; installing: boolean; progress: number; error: string | null; needsPack: boolean };
+
+/** Hover lookup row in Capture: one status line and an Install button while the OCR pack is missing. */
+async function wireHoverOcrPack(): Promise<void> {
+  const api = (window as any).ocrAPI;
+  const status = document.getElementById('hover-ocr-status');
+  const install = document.getElementById('hover-ocr-install') as HTMLButtonElement | null;
+  const bar = document.getElementById('hover-ocr-progress');
+  if (!api?.getPackState || !status || !install || !bar) return;
+  const fill = bar.firstElementChild as HTMLElement | null;
+  let failed = false;
+  const paint = (s: OcrPackView) => {
+    const show = s.installing || s.needsPack;
+    status.hidden = !show;
+    status.classList.toggle('is-error', failed && !s.installing);
+    if (s.installing) {
+      status.textContent = `Installing the OCR pack… ${Math.round(s.progress * 100)}%`;
+    } else if (failed && s.needsPack) {
+      status.textContent = 'Download failed';
+    } else {
+      status.textContent = 'Needs the OCR pack (14 MB)';
+    }
+    install.hidden = !s.needsPack || s.installing;
+    install.textContent = failed ? 'Retry' : 'Install';
+    bar.hidden = !s.installing;
+    if (fill) fill.style.width = `${Math.round(s.progress * 100)}%`;
+  };
+  install.addEventListener('click', async () => {
+    failed = false;
+    install.disabled = true;
+    try {
+      const r = await api.installPack();
+      failed = !r?.ok;
+      paint(r);
+    } finally {
+      install.disabled = false;
+    }
+  });
+  api.onPackChanged?.((s: OcrPackView) => paint(s));
+  paint(await api.getPackState());
 }
 
 async function wireOcrSettingsPanel(): Promise<void> {
@@ -394,7 +444,7 @@ async function wireOcrSettingsPanel(): Promise<void> {
       })
       .join('');
     if (!profiles.length) {
-      selectEl.innerHTML = `<option value="bundled-pp-ocrv4">PP-OCRv4 mobile (bundled)</option>`;
+      selectEl.innerHTML = `<option value="bundled-pp-ocrv4">PP-OCRv4 mobile</option>`;
     }
   };
 
@@ -410,6 +460,8 @@ async function wireOcrSettingsPanel(): Promise<void> {
         (s.profiles || []).find((p: any) => p.id === s.activeProfileId)?.label || s.activeProfileId || 'OCR';
       if (s.available === true) {
         setStatus(`${label}: ready`);
+      } else if (s.needsPack) {
+        setStatus('Needs the OCR pack');
       } else if (s.available === false) {
         setStatus(`${label}: ${s.lastError || 'unavailable'}`);
       } else {
@@ -422,6 +474,9 @@ async function wireOcrSettingsPanel(): Promise<void> {
 
   document.getElementById('ocr-refresh-status')?.addEventListener('click', () => {
     void refresh();
+  });
+  api?.onPackChanged?.((s: OcrPackView) => {
+    if (!s.installing) void refresh();
   });
 
   document.getElementById('ocr-apply-profile')?.addEventListener('click', async () => {
@@ -2522,12 +2577,29 @@ function initializeMainWindowControls() {
     clipboardToggle.setAttribute('aria-pressed', running ? 'true' : 'false');
   }
 
-  function syncHoverUi(enabled: boolean): void {
+  let hoverEnabled = true;
+  let hoverNeedsPack = false;
+  function syncHoverUi(enabled: boolean = hoverEnabled): void {
+    hoverEnabled = enabled;
     if (!hoverStatus || !hoverToggle) return;
-    hoverStatus.textContent = enabled ? 'On' : 'Off';
-    hoverStatus.className = enabled ? 'status-value running' : 'status-value stopped';
+    // Without the OCR pack hover cannot read text on screen; do not show it as On.
+    const label = !enabled ? 'Off' : hoverNeedsPack ? 'No OCR' : 'On';
+    hoverStatus.textContent = label;
+    hoverStatus.className = !enabled ? 'status-value stopped' : hoverNeedsPack ? 'status-value needs' : 'status-value running';
     hoverToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
-    hoverToggle.setAttribute('aria-label', `Hover lookup: ${enabled ? 'On' : 'Off'}`);
+    hoverToggle.setAttribute('aria-label', `Hover lookup: ${label}`);
+    if (hoverNeedsPack && enabled) hoverToggle.title = 'Needs the OCR pack';
+    else hoverToggle.removeAttribute('title');
+  }
+  {
+    const ocr = (window as any).ocrAPI;
+    const applyPack = (s: { needsPack?: boolean } | null | undefined) => {
+      hoverNeedsPack = !!s?.needsPack;
+      syncHoverUi();
+    };
+    void ocr?.getPackState?.().then(applyPack).catch((): undefined => undefined);
+    ocr?.onPackChanged?.(applyPack);
+    window.addEventListener('focus', () => void ocr?.getPackState?.().then(applyPack).catch((): undefined => undefined));
   }
 
   function syncAudioUi(enabled: boolean): void {

@@ -2941,13 +2941,17 @@ ipcMain.handle('ocr-get-status', async () => {
     return { ...getOcrStatus(), available: false, lastError: String(error) };
   }
 });
-ipcMain.handle('ocr-pack-state', () => getOcrPackState());
+/** Pack state plus whether the active OCR model is waiting on it (hover chip, Capture tab). */
+function ocrPackView() {
+  return { ...getOcrPackState(), needsPack: !!getOcrStatus().needsPack };
+}
+ipcMain.handle('ocr-pack-state', () => ocrPackView());
 ipcMain.handle('ocr-pack-install', async () => {
   try {
     await installOcrPack();
-    return { ok: true, ...getOcrPackState() };
+    return { ok: true, ...ocrPackView() };
   } catch (error) {
-    return { ok: false, ...getOcrPackState(), error: error instanceof Error ? error.message : String(error) };
+    return { ok: false, ...ocrPackView(), error: error instanceof Error ? error.message : String(error) };
   }
 });
 onOcrPackChange((state) => {
@@ -2962,8 +2966,9 @@ onOcrPackChange((state) => {
         .catch((err) => log.warn('main', 'OCR warm-up after pack install failed', { err: String(err) }));
     }
   }
+  const view = { ...state, needsPack: !!getOcrStatus().needsPack };
   for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) win.webContents.send('ocr-pack-changed', state);
+    if (!win.isDestroyed()) win.webContents.send('ocr-pack-changed', view);
   }
 });
 ipcMain.handle('ocr-ensure-deps', async () => {
