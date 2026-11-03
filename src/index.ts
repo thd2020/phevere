@@ -46,6 +46,7 @@ import {
   stopSpeech,
   isCancelled,
   stopSpeechWorker,
+  warmSpeech,
   type AudioPrefs,
   type SpeakRequest,
   type VoiceId,
@@ -2545,6 +2546,8 @@ ipcMain.handle('fetch-pronunciation-audio', async (_event, url: string) => {
 
 ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: string = 'auto', enabledSources?: string[], lookupOpts?: { translationProvider?: string; sourceLanguage?: string }) => {
   const t0 = Date.now();
+  // A phrase opens the Translation tab, whose speakers use the neural voice when one is chosen.
+  if (/\S\s+\S|[㐀-鿿]{2}/.test(String(text || ''))) warmSpeech();
   const translationProvider = parseTranslationProvider(
     lookupOpts?.translationProvider ?? loadTranslationPrefs().provider,
   );
