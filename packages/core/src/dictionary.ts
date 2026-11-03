@@ -68,6 +68,7 @@ export interface Definition {
 }
 
 import { BaseService, DictionaryError, withTimeout } from './base';
+import { checkApiKey, type ApiKeyCheck, type ApiProviderId } from './api-key-check';
 import { detectLanguageLocal, englishCandidateWords, isAmbiguousHan, remoteFitsScript } from './lang-detect';
 import { isCmuWord, warmCmuIpa } from './cmu-ipa';
 import { fetchInflections, hasInflections, selectInflections, type WordInflections } from './inflections';
@@ -295,6 +296,66 @@ export class DictionaryService extends BaseService {
     this.collinsApiKey = rapidApiKey || null;
     this.collinsApiHost = rapidApiHost || null;
     this.updateSourceAvailability();
+  }
+
+  /**
+   * Set or clear one credential field by its Settings name (googleKey, youdaoSecret, …),
+   * leaving the provider's other fields as they are.
+   */
+  setApiCredential(field: string, value: string): void {
+    const v = String(value ?? '').trim() || null;
+    switch (field) {
+      case 'googleKey': this.apiKey = v; break;
+      case 'deeplKey': this.deeplApiKey = v; break;
+      case 'youdaoKey': this.youdaoAppKey = v; break;
+      case 'youdaoSecret': this.youdaoAppSecret = v; break;
+      case 'oxfordId': this.oxfordAppId = v; break;
+      case 'oxfordKey': this.oxfordAppKey = v; break;
+      case 'wordsKey': this.wordsApiKey = v; break;
+      case 'collinsKey': this.collinsApiKey = v; break;
+      case 'collinsHost': this.collinsApiHost = v; break;
+      default: return;
+    }
+    this.updateSourceAvailability();
+  }
+
+  /** Which providers have credentials saved, without exposing them (Settings → API keys). */
+  getApiKeyPresence(): Record<ApiProviderId, boolean> {
+    return {
+      google: !!this.apiKey,
+      deepl: !!this.deeplApiKey,
+      youdao: !!this.youdaoAppKey && !!this.youdaoAppSecret,
+      oxford: !!this.oxfordAppId && !!this.oxfordAppKey,
+      wordsapi: !!this.wordsApiKey,
+      collins: !!this.collinsApiKey && !!this.collinsApiHost,
+    };
+  }
+
+  /** Test the saved credentials for one provider with a minimal real request. */
+  async verifyApiKey(provider: ApiProviderId): Promise<ApiKeyCheck> {
+    let sha: ((s: string) => string | Promise<string>) | undefined;
+    try {
+      sha = getSha256Hex();
+    } catch {
+      sha = undefined;
+    }
+    return checkApiKey(
+      getHttp(),
+      provider,
+      {
+        googleKey: this.apiKey,
+        deeplKey: this.deeplApiKey,
+        youdaoKey: this.youdaoAppKey,
+        youdaoSecret: this.youdaoAppSecret,
+        oxfordId: this.oxfordAppId,
+        oxfordKey: this.oxfordAppKey,
+        wordsKey: this.wordsApiKey,
+        wordsHost: this.wordsApiHost,
+        collinsKey: this.collinsApiKey,
+        collinsHost: this.collinsApiHost,
+      },
+      sha,
+    );
   }
 
   /** Load CC-CEDICT data from URL (optional) */

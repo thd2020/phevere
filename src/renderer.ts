@@ -30,6 +30,8 @@ import './fonts';
 import './index.css';
 import { captureNextShortcut, isLinux, isMac } from './shortcut-capture';
 import '@phevere/core/notebook-views.css';
+import '@phevere/core/settings-kit.css';
+import '@phevere/core/settings-keys.css';
 import {
   accountButtonHtml,
   accountPanelHtml,
@@ -49,6 +51,11 @@ import {
   vocabEntryGroup,
   groupCatalogByLanguage,
   vocabListHtml,
+  API_PROVIDERS,
+  apiKeysPanelHtml,
+  patchApiKeyCard,
+  type KeyCardState,
+  type KeyStatus,
   type AccountState,
   type FamilyGrouping,
   type MorphKind,
@@ -289,16 +296,7 @@ function initializeSettingsWindow() {
             <div class="settings-panel__intro">
               <h2 id="settings-api-heading" class="settings-panel__title">API keys</h2>
             </div>
-            <div class="settings-group">
-            <div class="settings-field">
-              <label for="google-api-key">Google Translate API key</label>
-              <input type="password" id="google-api-key" placeholder="Google Cloud API key" class="setting-input" autocomplete="off" />
-            </div>
-            <div class="settings-field">
-              <label for="deepl-api-key">DeepL API key</label>
-              <input type="password" id="deepl-api-key" placeholder="DeepL API key" class="setting-input" autocomplete="off" />
-            </div>
-            </div>
+            <div id="api-keys-host"></div>
           </section>
 
 
@@ -344,21 +342,13 @@ function initializeSettingsWindow() {
   document.body.innerHTML = settingsHTML;
 
   document.querySelectorAll('.settings-nav__item').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const section = (btn as HTMLElement).dataset.section;
-      document.querySelectorAll('.settings-nav__item').forEach((b) => b.classList.remove('is-active'));
-      document.querySelectorAll('.settings-panel').forEach((p) => p.classList.remove('is-active'));
-      btn.classList.add('is-active');
-      document.querySelector(`.settings-panel[data-panel="${section}"]`)?.classList.add('is-active');
-    });
+    btn.addEventListener('click', () => showSettingsSection((btn as HTMLElement).dataset.section || ''));
   });
 
-  // API keys save when the field changes, as on the phone.
-  document.getElementById('google-api-key')?.addEventListener('change', () => void (window as any).saveGoogleApiKey());
-  document.getElementById('deepl-api-key')?.addEventListener('change', () => void (window as any).saveDeepLApiKey());
-
+  wireSettingsLibraryLinks();
   loadMainSourceToggles();
   void loadTranslationEngineToggles();
+  void wireApiKeysPanel();
   wireInAppTextSelectionLookup();
   setupAudioSettings();
   void wireNotificationSettings();
@@ -3050,6 +3040,170 @@ function makePopupDraggable(popup: HTMLElement) {
   }
 }
 
+/** Switch the Settings window to a section; an API keys jump can name the provider card to bring forward. */
+function showSettingsSection(section: string, provider?: string): void {
+  if (!section) return;
+  document.querySelectorAll('.settings-nav__item').forEach((b) => {
+    b.classList.toggle('is-active', (b as HTMLElement).dataset.section === section);
+  });
+  document.querySelectorAll('.settings-panel').forEach((p) => {
+    p.classList.toggle('is-active', (p as HTMLElement).dataset.panel === section);
+  });
+  if (section === 'api') void renderApiKeysPanel(provider);
+}
+
+/** Settings links open in the browser; "API key required" and similar jump to their tab. */
+function wireSettingsLibraryLinks(): void {
+  const root = document.querySelector('.settings-app');
+  root?.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement | null;
+    const link = target?.closest?.('a[target="_blank"]') as HTMLAnchorElement | null;
+    if (link?.href) {
+      e.preventDefault();
+      window.electronAPI?.openExternal?.(link.href);
+      return;
+    }
+    const jump = target?.closest?.('[data-act="goto-section"]') as HTMLElement | null;
+    if (jump) showSettingsSection(jump.dataset.section || '', jump.dataset.provider);
+  });
+  // Keep disclosures open across repaints.
+  root?.addEventListener(
+    'toggle',
+    (e) => {
+      const d = e.target as HTMLDetailsElement | null;
+      const key = d?.dataset?.key;
+      if (!key) return;
+      if (d!.open) settingsOpenDetails.add(key);
+      else settingsOpenDetails.delete(key);
+    },
+    true,
+  );
+}
+
+const settingsOpenDetails = new Set<string>();
+
+/** Settings → API keys: per-session test results, typed values and revealed fields. */
+const apiKeyResults = new Map<string, { status: KeyStatus; message?: string }>();
+const apiKeyTyped = new Map<string, string>();
+const apiKeyRevealed = new Set<string>();
+const apiKeySaving = new Map<string, Promise<unknown>>();
+
+async function renderApiKeysPanel(highlight?: string): Promise<void> {
+  const host = document.getElementById('api-keys-host');
+  const api = window.dictionaryAPI;
+  if (!host || !api) return;
+  const presence: Record<string, boolean> = api.getApiKeyPresence ? await api.getApiKeyPresence() : {};
+  const focusId = (document.activeElement as HTMLElement | null)?.id || '';
+  const states: Record<string, KeyCardState> = {};
+  for (const p of API_PROVIDERS) {
+    const result = apiKeyResults.get(p.id);
+    const values: Record<string, string> = {};
+    for (const f of p.fields) values[f.pref] = apiKeyTyped.get(f.pref) || '';
+    states[p.id] = {
+      status: result?.status || (presence[p.id] ? 'saved' : 'unset'),
+      message: result?.message,
+      values,
+      revealed: apiKeyRevealed,
+      savedHidden: !!presence[p.id],
+      highlight: highlight === p.id,
+    };
+  }
+  host.innerHTML = apiKeysPanelHtml(states);
+  if (focusId) (document.getElementById(focusId) as HTMLElement | null)?.focus();
+  if (highlight) {
+    const card = host.querySelector(`.sv-key[data-provider="${CSS.escape(highlight)}"]`);
+    card?.scrollIntoView({ block: 'center' });
+    (card?.querySelector('input') as HTMLInputElement | null)?.focus();
+  }
+}
+
+/** Refresh one card's status after a field change, leaving its fields and buttons in place. */
+async function patchApiKeyStatus(provider: string): Promise<void> {
+  const host = document.getElementById('api-keys-host');
+  const card = host?.querySelector(`.sv-key[data-provider="${CSS.escape(provider)}"]`);
+  const info = API_PROVIDERS.find((p) => p.id === provider);
+  const api = window.dictionaryAPI;
+  if (!card || !info || !api) return;
+  const presence: Record<string, boolean> = api.getApiKeyPresence ? await api.getApiKeyPresence() : {};
+  const result = apiKeyResults.get(provider);
+  patchApiKeyCard(card, info, {
+    status: result?.status || (presence[provider] ? 'saved' : 'unset'),
+    message: result?.message,
+    savedHidden: !!presence[provider],
+  });
+}
+
+async function wireApiKeysPanel(): Promise<void> {
+  const host = document.getElementById('api-keys-host');
+  const api = window.dictionaryAPI;
+  if (!host || !api?.setApiCredential) return;
+  const save = (pref: string, value: string, provider: string) => {
+    const v = value.trim();
+    if (v) apiKeyTyped.set(pref, v);
+    else apiKeyTyped.delete(pref);
+    apiKeyResults.delete(provider);
+    const p = api.setApiCredential!(pref, v);
+    apiKeySaving.set(provider, p);
+    return p;
+  };
+  host.addEventListener('change', async (e) => {
+    const input = e.target as HTMLInputElement | null;
+    const pref = input?.dataset.pref;
+    const provider = input?.dataset.provider;
+    if (!input || !pref || !provider) return;
+    // An empty field over a saved key leaves the key alone; Clear removes it.
+    if (!input.value.trim() && !apiKeyTyped.has(pref)) return;
+    await save(pref, input.value, provider);
+    // Leaving a field fires this just before a click on Test or Show lands, so only
+    // the status is patched here; replacing the buttons would swallow that click.
+    await patchApiKeyStatus(provider);
+  });
+  host.addEventListener('click', async (e) => {
+    const t = (e.target as HTMLElement | null)?.closest?.('[data-act]') as HTMLElement | null;
+    const provider = t?.dataset.provider || '';
+    const pref = t?.dataset.pref || '';
+    switch (t?.dataset.act) {
+      case 'key-reveal':
+        if (apiKeyRevealed.has(pref)) apiKeyRevealed.delete(pref);
+        else apiKeyRevealed.add(pref);
+        await renderApiKeysPanel();
+        (host.querySelector(`input[data-pref="${CSS.escape(pref)}"]`) as HTMLInputElement | null)?.focus();
+        break;
+      case 'key-clear':
+        await save(pref, '', provider);
+        await renderApiKeysPanel();
+        break;
+      case 'key-test': {
+        // Save whatever is typed but not yet saved, then test what the service holds.
+        const card = t!.closest('.sv-key');
+        for (const input of Array.from(card?.querySelectorAll<HTMLInputElement>('input[data-pref]') || [])) {
+          const v = input.value.trim();
+          if (v && v !== apiKeyTyped.get(input.dataset.pref || '')) await save(input.dataset.pref || '', v, provider);
+        }
+        await apiKeySaving.get(provider);
+        const presence: Record<string, boolean> = api.getApiKeyPresence ? await api.getApiKeyPresence() : {};
+        if (!presence[provider]) {
+          (card?.querySelector('input[data-pref]') as HTMLInputElement | null)?.focus();
+          break;
+        }
+        apiKeyResults.set(provider, { status: 'testing' });
+        await renderApiKeysPanel();
+        try {
+          const r = await api.verifyApiKey!(provider);
+          apiKeyResults.set(provider, { status: r.ok ? 'verified' : 'failed', message: r.message });
+        } catch (err: any) {
+          apiKeyResults.set(provider, { status: 'failed', message: String(err?.message || err) });
+        }
+        await renderApiKeysPanel();
+        break;
+      }
+      default:
+        break;
+    }
+  });
+  await renderApiKeysPanel();
+}
+
 // Load main source toggles
 async function loadMainSourceToggles() {
   try {
@@ -4343,45 +4497,6 @@ async function clearAllCaches() {
     }
   }
 }
-
-// Global functions for settings
-(window as any).saveGoogleApiKey = async function() {
-  const apiKeyInput = document.getElementById('google-api-key') as HTMLInputElement;
-  const apiKey = apiKeyInput?.value.trim();
-  
-  if (!apiKey) {
-    showNotification('Please enter an API key');
-    return;
-  }
-  
-  try {
-    if (window.dictionaryAPI) {
-      await window.dictionaryAPI.setApiKey(apiKey);
-      showNotification('Google API key saved');
-    }
-  } catch (error) {
-    showNotification('Failed to save Google API key');
-  }
-};
-
-(window as any).saveDeepLApiKey = async function() {
-  const apiKeyInput = document.getElementById('deepl-api-key') as HTMLInputElement;
-  const apiKey = apiKeyInput?.value.trim();
-
-  if (!apiKey) {
-    showNotification('Please enter an API key');
-    return;
-  }
-
-  try {
-    if (window.dictionaryAPI) {
-      await window.dictionaryAPI.setDeepLApiKey(apiKey);
-      showNotification('DeepL API key saved');
-    }
-  } catch (error) {
-    showNotification('Failed to save DeepL API key');
-  }
-};
 
 // Test function for multi-source dictionary
 (window as any).testMultiSourceDictionary = async function() {

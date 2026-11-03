@@ -223,3 +223,13 @@ export {
 export { inflectionsHtml, wordFamilyHtml, type LexiconLinks } from './lexicon-parts';
 export { normalizeVocabLemma, closestSpelling, typoDistance } from './vocab-lemma';
 export { normalizeStoredLemmas } from './vocab-sync';
+export { checkApiKey, type ApiProviderId, type ApiCredentials, type ApiKeyCheck } from './api-key-check';
+export {
+  API_PROVIDERS,
+  apiKeyCardHtml,
+  apiKeysPanelHtml,
+  patchApiKeyCard,
+  type ApiProviderInfo,
+  type KeyCardState,
+  type KeyStatus,
+} from './settings-keys';

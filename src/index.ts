@@ -2549,6 +2549,18 @@ ipcMain.handle('dictionary-set-collins-credentials', (_event, rapidApiKey: strin
   return { success: true };
 });
 
+// Settings → API keys. Values go straight to the service and are never logged.
+ipcMain.handle('dictionary-set-api-credential', (_event, field: string, value: string) => {
+  dictionaryService.setApiCredential(String(field || ''), String(value ?? ''));
+  return { success: true };
+});
+ipcMain.handle('dictionary-get-api-key-presence', () => dictionaryService.getApiKeyPresence());
+ipcMain.handle('dictionary-verify-api-key', async (_event, provider: string) => {
+  const result = await dictionaryService.verifyApiKey(provider as Parameters<typeof dictionaryService.verifyApiKey>[0]);
+  log.info('main', 'API key test', { provider, ok: result.ok });
+  return result;
+});
+
 ipcMain.handle('dictionary-load-cc-cedict', async (_event, url: string) => {
   const ok = await dictionaryService.loadCcCedictFromUrl(url);
   return { success: ok };
