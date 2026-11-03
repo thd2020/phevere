@@ -1614,7 +1614,12 @@
           void lookupText(currentText, { fromHistory: true });
           return;
         }
-        if (isExpanded) return;
+        // Main still saw a strip when this was sent (the resize lags expandToolbar).
+        // The trail already says the new word, so the panel must show it too.
+        if (isExpanded) {
+          void lookupText(currentText, { fromHistory: true });
+          return;
+        }
         const folded = foldLookupKey(next);
         if (folded && folded !== lookupFold) invalidateLookupState(folded);
         activateTab('lexicon');
@@ -2582,8 +2587,11 @@ function startAutoCloseTimeout() {
               displayErrorResult(text, error);
             }
           } finally {
-            lookupInFlight = null;
-            if (pendingHumanPlay) void playToolbarHuman();
+            // A superseded lookup must not clear the marker or the queued play of the newer one.
+            if (mySeq === lookupSeq) {
+              lookupInFlight = null;
+              if (pendingHumanPlay) void playToolbarHuman();
+            }
           }
         }
 
