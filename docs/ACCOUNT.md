@@ -43,6 +43,8 @@ The mobile session is kept in the WebView's local storage under `holarky-account
 
 ## How the notebook syncs
 
+Word book subscriptions and progress on book words that are not in My words sync in a second namespace, `phevere/wordbooks`, with records `sub:<book>` and `word:<headword>` and the same newest-wins rule. Older apps never see them, and a failure there does not stop the notebook from syncing.
+
 Each notebook row is sent as a record `{ id, updatedAt, deleted, data }` to the `phevere/vocab` collection.
 
 - **Push:** rows and deletions changed since the last push. Deleting a word now leaves a tombstone in the `vocab_deleted` table so the deletion reaches other devices.

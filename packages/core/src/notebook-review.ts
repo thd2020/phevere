@@ -5,6 +5,9 @@
 import { vocabReadings, vocabSenses } from './vocab-view';
 import { DAY, clean, dayStart, esc, type NotebookEntry } from './notebook-shared';
 import { ensureReviewQuestion, memoryLevel, type ReviewGrade, type ReviewQuestion, type ReviewState } from './review-quiz';
+import { WORDBOOK_CATALOG } from './wordbook-catalog';
+
+const BOOK_SHORT = new Map(WORDBOOK_CATALOG.map((b) => [b.id, b.short]));
 
 export * from './review-quiz';
 
@@ -16,6 +19,21 @@ export interface ReviewRenderOptions {
   preview?: (entry: NotebookEntry, grade: ReviewGrade) => number;
   /** Turns `preview` into words ("3 days"); `formatReviewGap` from the scheduler. */
   formatGap?: (ms: number) => string;
+  /** Word books in this session: today's new and due words and progress for each (`reviewBookRows`). */
+  books?: BookPlanRow[];
+  /** Show My words' daily goal chips (off when the scope is one word book, whose goal sits in its header). */
+  showGoal?: boolean;
+  /** Book scopes count words started rather than saved. */
+  started?: boolean;
+}
+
+export interface BookPlanRow {
+  bookId: string;
+  total: number;
+  known: number;
+  learning: number;
+  newToday: number;
+  due: number;
 }
 
 const GRADE_LABEL: Record<ReviewGrade, string> = { 1: 'Again', 2: 'Hard', 3: 'Good', 4: 'Easy' };
@@ -91,10 +109,29 @@ function activitySvg(entries: NotebookEntry[], now: number): string {
   return `<svg class="nbv-activity" viewBox="0 0 ${cols * (cell + gap)} ${7 * (cell + gap)}" role="img" aria-label="Words saved per day over twelve weeks">${cells}</svg>`;
 }
 
-function planHtml(entries: NotebookEntry[], goal: number, now: number): string {
-  const reviewed = entries.filter((e) => !isNew(e));
-  const known = reviewed.filter((e) => memoryLevel(e) === 3).length;
+function bookRowsHtml(rows: BookPlanRow[]): string {
+  if (!rows.length) return '';
+  return `<div class="nbv-books" role="list" aria-label="Word books today">${rows
+    .map((r) => {
+      const k = r.total ? (r.known / r.total) * 100 : 0;
+      const l = r.total ? (r.learning / r.total) * 100 : 0;
+      return `<div class="nbv-books__row" role="listitem">
+        <span class="nbv-books__name">${esc(BOOK_SHORT.get(r.bookId) || r.bookId)}</span>
+        <span class="nbv-books__today">${r.newToday} new · ${r.due} due</span>
+        <span class="wb-bar"><i class="wb-bar__known" style="width:${k.toFixed(2)}%"></i><i class="wb-bar__learning" style="width:${l.toFixed(2)}%"></i></span>
+        <span class="nbv-books__n">${r.known.toLocaleString('en-US')} / ${r.total.toLocaleString('en-US')} known</span>
+      </div>`;
+    })
+    .join('')}</div>`;
+}
+
+function planHtml(entries: NotebookEntry[], goal: number, now: number, opts: ReviewRenderOptions = {}): string {
+  // A word book word marked "already know it" counts as known without a review.
+  const marked = (e: NotebookEntry) => !!(e as { known?: boolean }).known;
+  const reviewed = entries.filter((e) => !isNew(e) || marked(e));
+  const known = reviewed.filter((e) => marked(e) || memoryLevel(e) === 3).length;
   const week = entries.filter((e) => Number(e.createdAt || 0) >= dayStart(now) - 6 * DAY).length;
+  const verb = opts.started ? 'Started' : 'Saved';
   const goals = [5, 10, 20, 40];
   const legend = [0, 1, 2, 3, 4].map((l) => `<i class="nbv-heat-key nbv-heat--${l}"></i>`).join('');
   return `<aside class="nbv-plan">
@@ -102,14 +139,15 @@ function planHtml(entries: NotebookEntry[], goal: number, now: number): string {
       <div><b>${reviewed.length - known}</b><span>Learning</span></div>
       <div><b>${known}</b><span>Known</span></div>
       <div><b>${entries.length - reviewed.length}</b><span>Not started</span></div>
-      <div><b>${week}</b><span>Saved this week</span></div>
+      <div><b>${week}</b><span>${verb} this week</span></div>
     </div>
-    <div class="nbv-goal" role="group" aria-label="New words a day">
-      <span>New words a day</span>
+    ${bookRowsHtml(opts.books || [])}
+    ${opts.showGoal === false ? '' : `<div class="nbv-goal" role="group" aria-label="New words a day">
+      <span>${opts.books?.length ? 'My words, new a day' : 'New words a day'}</span>
       <div class="nbv-goal__chips">${goals.map((g) => `<button type="button" class="nbv-chip${g === goal ? ' is-active' : ''}" data-act="nb-goal" data-goal="${g}" aria-pressed="${g === goal}">${g}</button>`).join('')}</div>
-    </div>
+    </div>`}
     <figure><figcaption>Due, next 14 days</figcaption>${forecastSvg(entries, now)}</figure>
-    <figure><figcaption>Saved, last 12 weeks</figcaption>${activitySvg(entries, now)}<div class="nbv-heat-legend"><span>Fewer</span>${legend}<span>More</span></div></figure>
+    <figure><figcaption>${verb}, last 12 weeks</figcaption>${activitySvg(entries, now)}<div class="nbv-heat-legend"><span>Fewer</span>${legend}<span>More</span></div></figure>
   </aside>`;
 }
 
@@ -219,6 +257,10 @@ function questionHtml(q: ReviewQuestion, e: NotebookEntry, state: ReviewState, o
     body = choice ? optionsHtml(q, state) : typedHtml(q, state);
     if (!a) body += `<button type="button" class="nbv-link nbv-skip" data-act="nb-skip">I don't know</button>`;
   }
+  // A new word from a word book can be set aside for good, like 斩 in 百词斩.
+  if (!a && q.level === 0 && String(e.id).startsWith('wb:')) {
+    body += `<button type="button" class="nbv-link nbv-skip" data-act="wb-known-review" data-q="${esc(q.lemma)}">Already know it</button>`;
+  }
   let feedback = '';
   if (a) {
     const next = opts.preview && opts.formatGap ? opts.formatGap(opts.preview(e, a.grade)) : '';
@@ -314,5 +356,5 @@ export function reviewHtml(entries: NotebookEntry[], state: ReviewState, goal: n
     const e = q ? entries.find((x) => x.id === q.id) : undefined;
     quiz = q && e ? questionHtml(q, e, state, opts) : summaryHtml(entries, state, now);
   }
-  return `<div class="nbv-review-wrap">${quiz}${planHtml(entries, goal, now)}</div>`;
+  return `<div class="nbv-review-wrap">${quiz}${planHtml(entries, goal, now, opts)}</div>`;
 }

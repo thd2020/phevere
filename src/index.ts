@@ -50,7 +50,20 @@ import {
   type SpeakRequest,
   type VoiceId,
 } from './services/speech';
-import { fetchSenseImages, recordedPronunciationUrls } from '@phevere/core';
+import {
+  fetchSenseImages,
+  recordedPronunciationUrls,
+  cacheBookWordMeaning,
+  listBookProgress,
+  listWordbookSubs,
+  reviewBookWord,
+  saveBookWord,
+  setBookWordKnown,
+  setWordbookGoal,
+  subscribeWordbook,
+  unsubscribeWordbook,
+  vocabPayloadFromResult,
+} from '@phevere/core';
 import { readClipboardImage, loadImageFileAsPng, pngFromBase64 } from './services/clipboard-image';
 import {
   loadMonitorSettings,
@@ -2728,7 +2741,7 @@ ipcMain.handle('vocab-export', async (e, format?: string) => {
     const entries = await vocabStore.listVocab(10000);
     const wantCsv = String(format || '').toLowerCase() === 'csv';
     const result = await dialog.showSaveDialog(win || undefined, {
-      title: 'Export notebook',
+      title: 'Export My words',
       defaultPath: wantCsv ? 'phevere-notebook.csv' : 'phevere-notebook.json',
       filters: [
         { name: 'JSON', extensions: ['json'] },
@@ -2834,6 +2847,40 @@ ipcMain.handle('vocab-update-note', async (_e, id: string, note: string) => {
 });
 ipcMain.handle('vocab-review', async (_e, id: string, grade: 1 | 2 | 3 | 4) => {
   return vocabStore.reviewVocab(id, grade);
+});
+
+// Word books (packages/core/src/wordbook-store.ts): subscriptions and progress live in the same
+// database as the notebook; the word lists themselves ship with the renderer.
+ipcMain.handle('wordbook-state', async () => {
+  return { subs: await listWordbookSubs(), progress: await listBookProgress() };
+});
+ipcMain.handle('wordbook-subscribe', async (_e, bookId: string, dailyNew?: number) => subscribeWordbook(String(bookId), dailyNew));
+ipcMain.handle('wordbook-unsubscribe', async (_e, bookId: string) => unsubscribeWordbook(String(bookId)));
+ipcMain.handle('wordbook-goal', async (_e, bookId: string, dailyNew: number) => setWordbookGoal(String(bookId), Number(dailyNew) || 10));
+ipcMain.handle('wordbook-review', async (_e, lemma: string, grade: 1 | 2 | 3 | 4) => reviewBookWord(String(lemma), grade));
+ipcMain.handle('wordbook-known', async (_e, lemma: string, known: boolean) => setBookWordKnown(String(lemma), !!known));
+
+/** Looks a book word up for its quiz and caches the meaning; null when offline. */
+async function lookupBookWord(lemma: string): Promise<vocabStore.VocabAddInput | null> {
+  try {
+    const result = await dictionaryService.lookup(lemma, 'auto');
+    const payload = vocabPayloadFromResult(result, lemma);
+    await cacheBookWordMeaning(lemma, { definition: payload.definition, reading: payload.reading, partOfSpeech: payload.partOfSpeech });
+    return payload;
+  } catch (error) {
+    log.warn('main', 'wordbook lookup failed', { lemma, err: String(error) });
+    return null;
+  }
+}
+ipcMain.handle('wordbook-meaning', async (_e, lemma: string) => {
+  const payload = await lookupBookWord(String(lemma));
+  return payload ? { definition: payload.definition, reading: payload.reading, partOfSpeech: payload.partOfSpeech } : null;
+});
+ipcMain.handle('wordbook-save', async (_e, lemma: string, hasMeaning?: boolean) => {
+  const payload = hasMeaning ? {} : (await lookupBookWord(String(lemma))) || {};
+  const entry = await saveBookWord(String(lemma), payload);
+  if (!entry.definition || !String(entry.definition).trim()) enqueueVocabEnrich(entry.lemma);
+  return entry;
 });
 
 function vocabEntriesToCsv(entries: vocabStore.VocabEntry[]): string {

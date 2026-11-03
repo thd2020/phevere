@@ -452,6 +452,17 @@ contextBridge.exposeInMainWorld('vocabAPI', {
   },
 });
 
+contextBridge.exposeInMainWorld('wordbookAPI', {
+  state: () => ipcRenderer.invoke('wordbook-state'),
+  subscribe: (bookId: string, dailyNew?: number) => ipcRenderer.invoke('wordbook-subscribe', bookId, dailyNew),
+  unsubscribe: (bookId: string) => ipcRenderer.invoke('wordbook-unsubscribe', bookId),
+  setGoal: (bookId: string, dailyNew: number) => ipcRenderer.invoke('wordbook-goal', bookId, dailyNew),
+  review: (lemma: string, grade: 1 | 2 | 3 | 4) => ipcRenderer.invoke('wordbook-review', lemma, grade),
+  known: (lemma: string, known: boolean) => ipcRenderer.invoke('wordbook-known', lemma, known),
+  meaning: (lemma: string) => ipcRenderer.invoke('wordbook-meaning', lemma),
+  save: (lemma: string, hasMeaning?: boolean) => ipcRenderer.invoke('wordbook-save', lemma, hasMeaning),
+});
+
 contextBridge.exposeInMainWorld('accountAPI', {
   getState: () => ipcRenderer.invoke('account-get-state'),
   signIn: () => ipcRenderer.invoke('account-sign-in'),

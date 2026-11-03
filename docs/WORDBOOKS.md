@@ -15,7 +15,15 @@ All four apps follow the same pattern:
 
 I could not find public help pages for the plan screens themselves, so the details of "new words a day, days to finish" come from using the apps rather than from a cited page.
 
-Phevere follows that pattern. The Words tab has a switcher with My words first, then each book you subscribed to, then All books, then "Add a word book", which opens the library ordered from primary school up. Each book has its own daily goal for new words. Review draws that many new words from the book in its order and mixes in every word due that day. A word learned once counts in every book that contains it.
+Phevere follows that pattern. The Words tab has a switcher with My words first, then each book you subscribed to, then All books, then "Add a word book", which opens the library ordered from primary school up.
+
+<p align="center"><img src="WORDBOOKS.assets/phone-library.png" width="300" alt="Screenshot of the phone library: word books on a path from primary school up, Starter 1000 added with its progress bar"></p>
+<p align="center"><sub>The library on the phone. An added book shows its progress and an Open button; the others show Add.</sub></p>
+
+Each book has its own daily goal for new words. Review draws that many new words from the book in its order and mixes in every word due that day. A word learned once counts in every book that contains it, so in All books the plan panel lists each book's new and due words for today and how many of its words are known.
+
+<p align="center"><img src="WORDBOOKS.assets/phone-all-books-plan.png" width="300" alt="Screenshot of the All books review plan with a row per book showing new and due words and known out of total"></p>
+<p align="center"><sub>All books on the phone: one session across My words and two books, with a row per book.</sub></p>
 
 ## Which official lists exist
 
@@ -83,4 +91,4 @@ Each book file holds its id, title, level, word count, source, source URL, licen
 node scripts/build-wordbooks.js --cache <folder>
 ```
 
-The script downloads the NGSL-family CSVs from `https://www.newgeneralservicelist.com/s/` and ECDICT's `ecdict.csv` (66 MB) from `https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv` into the cache folder, which stays outside the repository, and rewrites every book and `catalog.json`. The sources were retrieved on 2026-11-03.
+The script downloads the NGSL-family CSVs from `https://www.newgeneralservicelist.com/s/` and ECDICT's `ecdict.csv` (66 MB) from `https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv` into the cache folder, which stays outside the repository, and rewrites every book and the generated catalog `packages/core/src/wordbook-catalog.ts`. The sources were retrieved on 2026-11-03.

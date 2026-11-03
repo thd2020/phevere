@@ -260,6 +260,17 @@ export {
   type BookProgress,
 } from './wordbooks';
 export {
+  wordsScopeSwitchHtml,
+  wordbookHeaderHtml,
+  wordbookListHtml,
+  wordbookLibraryHtml,
+  wordBookBadgesHtml,
+  progressRingSvg,
+  scopeStudySet,
+  reviewBookRows,
+  BOOK_LIST_PAGE,
+} from './wordbook-views';
+export {
   HolarkyAccount,
   HolarkyAccountError,
   browserStorage,

@@ -8,7 +8,7 @@
 - **Scan:** now opens full screen. Pinch or double-tap to zoom, and drag to pan. The recognised text is an invisible, selectable layer over the photo. A long press selects a word, the selection stays highlighted, and a single tap does nothing. Phevere on the text bar (Android) or edit menu (iOS) opens the result in a bottom sheet over the photo; swipe it up to full height or down to close. With **Pop up on selection** on, there is no bar and the sheet opens straight away.
 - **Settings:** the sections are icons.
 - **Title bars:** they line up on every tab.
-- **Notebook:** it refreshes when you pull down, and Import and Export are icons in its title bar.
+- **Words:** My words refreshes when you pull down, and Import and Export are icons in its title bar. Word books sit next to My words in the switcher (see [`WORDBOOKS.md`](WORDBOOKS.md)).
 - **Volume:** Playback volume starts at 50%, which is the old maximum. The upper half is extra gain on Android.
 - **Other apps:** the LSPosed module adds Phevere to selection bars that hide other apps' actions, such as X's.
 

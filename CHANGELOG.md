@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Word books (2026-11-03): the Notebook tab is now Words, on desktop and phone. My words is your own list as before, and "Add a word book" opens a library of ten graded lists ordered from primary school up: Starter 1000, Junior high 中考, Senior high 高考, CET-4, CET-6, Postgraduate 考研, General English 2800, Academic English 960, TOEIC 1250 and Business English 1700. A book you add sits in the switcher above the views with a progress ring of known words. Its List shows the words in the book's order with New, Learning or Known, a heart to add the word to My words and a tick to mark it known; Families, Map, Cards and Review work on its words. Review draws each book's daily goal of new words in order, looks up their meaning, mixes in every word due that day, and offers "Already know it" for a new word. All books runs one session across My words and every book, and the plan panel shows each book's new and due words and known count. A word learned once counts in every book that lists it. Subscriptions and progress sync with the account. Sources and licences are in [`docs/WORDBOOKS.md`](docs/WORDBOOKS.md).
+
 ### Changed
 
 - Review (2026-11-03): the notebook's Review view is a quiz on desktop and phone instead of a card with Again, Hard, Good and Easy buttons. A new word asks you to pick its meaning from four; as you learn it, you pick the word for a meaning or the word you hear, then type it from its meaning or from the audio, and finally fill the gap in a sentence from your note. Answers are graded from whether they were right and how long they took, and "I knew it" or "I didn't know it" overturns the grade. Each answer shows the picture, pronunciation and senses with an Open in lookup button, and a session ends with a summary of missed words. On the desktop, 1 to 4 choose and Enter continues. Scheduling moved to FSRS, the model Anki uses; words reviewed before keep their progress, converted from their old interval and ease, and older app versions keep syncing. The reasons are in [`docs/REVIEW.md`](docs/REVIEW.md).
