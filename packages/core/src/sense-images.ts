@@ -1319,7 +1319,8 @@ async function resolveWordFallback(
         ? await wikipediaPages(buildWikipediaSearchUrl(buildSenseSearchQuery(lemma, firstGloss.meaning)))
         : null;
     const article = pickWordArticle(q, req, search, lemma, senses);
-    ambiguous = article.ambiguous;
+    // A failed title query leaves the word's other meanings unknown: ask for a gloss word too.
+    ambiguous = article.ambiguous || !q;
     if (article.page && !article.page.missing) {
       // No gloss (a notebook card for a word saved without a definition): the article's
       // description and first sentences say which sense to look for.

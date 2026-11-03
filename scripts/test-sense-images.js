@@ -498,6 +498,21 @@ async function fallbackEndToEnd() {
   assert.strictEqual((await wordImage('operon', 'en')).title, 'Lac Operon');
   assert.strictEqual(await wordImage('holon', 'en'), null, 'holon: no photo of the city');
 
+  // When the title query fails, the word may name a city too, so Commons hits need a gloss word.
+  {
+    const mod = load({
+      isCoreConfigured: () => true,
+      getHttp: () => ({
+        requestJson: async (url) => {
+          if (url.includes('titles=holon%7C')) throw new Error('HTTP 500');
+          return JSON.parse(JSON.stringify(fb.responses[url]));
+        },
+      }),
+      getLookupCache: () => null,
+    });
+    same(await mod.fetchSenseImages('holon', fb.senses.holon.list, { lang: 'en' }), [null, null], 'holon: no city photo without the title check');
+  }
+
   // Wikimedia identifies the client by User-Agent; the configured client sends ours.
   {
     const seen = [];
