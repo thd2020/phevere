@@ -930,7 +930,7 @@ export function notebookBody(
         ? familiesHtml(analysis, nb.group, { tracing: familiesTraceProgress() })
         : nb.view === 'map'
           ? mapHtml(analysis, nb.mapKinds)
-          : cardsHtml(list, analysis, nb.flipped, nb.cardLayout);
+          : cardsHtml(list, analysis, nb.flipped, nb.cardLayout, undefined, { picFlips: true });
     return `${head}<div class="nbv nbv-body">${body}</div>`;
   }
   const rows = vocabListHtml(list, { sort, expanded });
@@ -960,7 +960,7 @@ function bookScopeBody(words: WordsState, ctx: WordsContext, filter: string, nb:
         ? familiesHtml(analysis, nb.group, { tracing: familiesTraceProgress() })
         : nb.view === 'map'
           ? mapHtml(analysis, nb.mapKinds)
-          : cardsHtml(study, analysis, nb.flipped, nb.cardLayout);
+          : cardsHtml(study, analysis, nb.flipped, nb.cardLayout, undefined, { picFlips: true });
   }
   return `<div class="nbv">${head}</div><div class="nbv nbv-body">${body}</div>`;
 }

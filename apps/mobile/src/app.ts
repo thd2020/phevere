@@ -2247,10 +2247,14 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       else nbState.flipped.add(id);
       // Turned in place: a repaint would rebuild the whole table under the reader.
       const open = nbState.flipped.has(id);
-      t.closest('.nbv-card')?.classList.toggle('is-flipped', open);
-      t.setAttribute('aria-pressed', String(open));
-      t.setAttribute('aria-label', open ? 'Show word' : 'Show meaning');
-      t.title = open ? 'Show word' : 'Show meaning';
+      const card = t.closest('.nbv-card');
+      card?.classList.toggle('is-flipped', open);
+      const btn = card?.querySelector<HTMLElement>('.nbv-card__flip');
+      if (btn) {
+        btn.setAttribute('aria-pressed', String(open));
+        btn.setAttribute('aria-label', open ? 'Show word' : 'Show meaning');
+        btn.title = open ? 'Show word' : 'Show meaning';
+      }
       return;
     }
     case 'nb-goal':

@@ -177,7 +177,20 @@
   overflow: hidden;
 }
 .nbv-card__back { transform: rotateY(180deg); gap: 10px; padding: 16px 14px 44px; background: #fbf6ee; }
-.nbv-card__back ol { margin: 0; padding-left: 18px; display: grid; gap: 6px; font: 14px/1.4 var(--nbv-serif); overflow: hidden; }
+.nbv-card__back ol {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  font: 14px/1.4 var(--nbv-serif);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+}
 .nbv-card__back p { margin: 0; font: 14px/1.4 var(--nbv-serif); color: var(--nbv-soft); }
 
 /* The meaning flip: a small round button so a tap on the card stays a lookup. */

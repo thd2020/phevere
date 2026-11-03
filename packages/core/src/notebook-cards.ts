@@ -84,7 +84,18 @@ const LAYOUT_ICON: Record<CardLayout, string> = {
 };
 const FLIP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6M17.5 3v3.6h-3.6M6.5 21v-3.6h3.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-export function cardsHtml(entries: NotebookEntry[], a: NotebookAnalysis, flipped: Set<string>, layout: CardLayout = 'piles', now = Date.now()): string {
+/**
+ * `picFlips` (the phone): a tap on the card's picture turns it over, as the turn button does,
+ * and a tap on its text opens the lookup. Without it a click anywhere but the button looks up.
+ */
+export function cardsHtml(
+  entries: NotebookEntry[],
+  a: NotebookAnalysis,
+  flipped: Set<string>,
+  layout: CardLayout = 'piles',
+  now = Date.now(),
+  opts: { picFlips?: boolean } = {},
+): string {
   if (!entries.length) return `<p class="nbv-empty">No saved words.</p>`;
   const piles = cardPiles(entries, now);
   const byId = new Map(entries.map((e) => [e.id, e]));
@@ -100,23 +111,24 @@ export function cardsHtml(entries: NotebookEntry[], a: NotebookAnalysis, flipped
     )
     .join('');
   const cards = piles
-    .flatMap((p) => p.ids.map((id, rank) => cardHtml(byId.get(id)!, a, flipped.has(id), p.key, rank)))
+    .flatMap((p) => p.ids.map((id, rank) => cardHtml(byId.get(id)!, a, flipped.has(id), p.key, rank, !!opts.picFlips)))
     .join('');
   return `<div class="nbv-table" data-layout="${layout}">${bar}<div class="nbv-table__felt">${pileHtml}${cards}</div></div>`;
 }
 
-function cardHtml(e: NotebookEntry, a: NotebookAnalysis, open: boolean, pile: string, rank: number): string {
+function cardHtml(e: NotebookEntry, a: NotebookAnalysis, open: boolean, pile: string, rank: number, picFlips: boolean): string {
   const w = a.words.get(e.id);
   const lemma = clean(e.lemma);
   const reading = vocabReadings(e.reading)[0];
-  const senses = vocabSenses(e.definition).slice(0, 3);
+  const senses = vocabSenses(e.definition).slice(0, 8);
+  const flip = picFlips ? ` data-act="nb-flip" data-id="${esc(e.id)}"` : '';
   const morphs = (w?.morphs || []).filter((m) => m.kind !== 'char' || m.gloss).slice(0, 3);
   const parts = w && w.parts.length > 1 ? w.parts : [];
   const note = clean(e.note);
   return `<article class="nbv-card${open ? ' is-flipped' : ''}" data-act="lookup" data-q="${esc(lemma)}" data-id="${esc(e.id)}" data-pile="${esc(pile)}" data-rank="${rank}"${rank >= PILE_FACE_CARDS ? ' data-deep' : ''} tabindex="0" aria-label="${esc(lemma)}: open lookup">
     <div class="nbv-card__inner">
       <div class="nbv-card__face nbv-card__front">
-        <div class="nbv-card__pic" data-img-lemma="${esc(lemma)}" data-img-lang="${esc(clean(e.sourceLang))}" data-img-gloss="${esc(senses[0] || '')}" aria-hidden="true"><span>${esc(lemma.charAt(0))}</span></div>
+        <div class="nbv-card__pic"${flip} data-img-lemma="${esc(lemma)}" data-img-lang="${esc(clean(e.sourceLang))}" data-img-gloss="${esc(senses[0] || '')}" aria-hidden="true"><span>${esc(lemma.charAt(0))}</span></div>
         <div class="nbv-card__body">
           <h3 class="nbv-card__word">${parts.length ? parts.map((p, i) => `<span>${esc(p)}</span>${i < parts.length - 1 ? '<i>·</i>' : ''}`).join('') : esc(lemma)}</h3>
           ${reading ? `<p class="nbv-card__ipa">${esc(reading.ipa)}</p>` : ''}
@@ -456,6 +468,9 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     if (layout !== 'scatter' || drag || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
     const el = (ev.target as HTMLElement).closest?.('.nbv-card') as HTMLElement | null;
     if (!el) return;
+    // A finger on a meaning list that scrolls scrolls it instead of picking the card up.
+    const list = (ev.target as HTMLElement).closest?.('.nbv-card__back ol') as HTMLElement | null;
+    if (list && ev.pointerType !== 'mouse' && list.scrollHeight > list.clientHeight + 1) return;
     drag = { el, id: ev.pointerId, sx: ev.clientX, sy: ev.clientY, base: cur.get(el)!, live: false, samples: [], raf: 0, px: ev.clientX, py: ev.clientY };
   });
   on(felt, 'pointermove', (ev: any) => {
