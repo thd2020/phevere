@@ -1252,6 +1252,31 @@ async function runOcr(): Promise<void> {
   }
 }
 
+/** A sense picture at its larger size over the page; a tap outside the credit, or Back, closes it. */
+function openSensePicture(frame: HTMLElement): void {
+  const d = frame.dataset;
+  const dlg = document.createElement('dialog');
+  dlg.className = 'pic-view';
+  dlg.innerHTML = `<img class="pic-view__img" src="${esc(d.thumb || '')}" alt="${esc(d.title || '')}" referrerpolicy="no-referrer" tabindex="-1" autofocus />
+    <p class="pic-view__cap"><span>${esc(d.title || '')}</span>${d.page ? `<button type="button" class="pic-view__credit" data-pic-credit="${esc(d.page)}">${esc(d.credit || 'Wikimedia Commons')}</button>` : ''}</p>`;
+  // The thumbnail shows at once; the larger rendering replaces it when it has arrived.
+  const img = dlg.querySelector('img') as HTMLImageElement;
+  const full = new Image();
+  full.referrerPolicy = 'no-referrer';
+  full.onload = () => (img.src = full.src);
+  full.src = d.full || '';
+  dlg.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const link = (e.target as HTMLElement).closest<HTMLElement>('[data-pic-credit]');
+    if (link) openExternal(link.dataset.picCredit || '');
+    else dlg.close();
+  });
+  dlg.addEventListener('cancel', () => dlg.close());
+  dlg.addEventListener('close', () => dlg.remove());
+  document.body.appendChild(dlg);
+  dlg.showModal();
+}
+
 /**
  * A small choice sheet over the app: a message, a line of detail and one button per answer.
  * Resolves with the chosen button's index, or -1 when dismissed.
@@ -2440,7 +2465,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       if (prefs.senseImages && result) void loadSenseImages(lookupGeneration);
       return;
     case 'sense-figure':
-      t.closest('.sense-figure')?.classList.toggle('is-open');
+      openSensePicture(t);
       return;
     case 'sense-credit':
       if (t.dataset.url) openExternal(t.dataset.url);

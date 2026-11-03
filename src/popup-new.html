@@ -603,6 +603,52 @@
       }
       .sense-figure:hover .sense-figure__credit,
       .sense-figure:focus-within .sense-figure__credit { opacity: 1; }
+      .pic-view {
+        max-width: calc(100vw - 24px);
+        max-height: calc(100vh - 24px);
+        margin: auto;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        overflow: visible;
+        cursor: zoom-out;
+      }
+      .pic-view::backdrop { background: rgb(20 16 14 / 0.82); }
+      .pic-view[open] { animation: pic-view-in 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
+      @keyframes pic-view-in { from { opacity: 0; transform: scale(0.94); } }
+      .pic-view__img {
+        display: block;
+        max-width: calc(100vw - 24px);
+        max-height: calc(100vh - 84px);
+        margin: 0 auto;
+        border-radius: 8px;
+        object-fit: contain;
+        background: var(--surface-low);
+        outline: none;
+      }
+      .pic-view__cap {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2px 10px;
+        justify-content: center;
+        margin: 10px 0 0;
+        color: #f4f0ea;
+        font-family: var(--font-ui);
+        font-size: 12px;
+        line-height: 1.35;
+        text-align: center;
+      }
+      .pic-view__credit {
+        padding: 0;
+        border: 0;
+        background: none;
+        color: rgb(244 240 234 / 0.72);
+        font: inherit;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        cursor: pointer;
+      }
+      @media (prefers-reduced-motion: reduce) { .pic-view[open] { animation: none; } }
       .definition-pos {
         color: var(--primary);
         font-size: 11px;
@@ -3376,7 +3422,7 @@ function startAutoCloseTimeout() {
           const ratio = img.width && img.height ? Math.min(1.6, Math.max(0.75, img.width / img.height)) : 1;
           const label = (img.title || '') + ' — ' + (img.credit || '');
           return `<figure class="sense-figure" data-sense-figure="${index}" style="--ar:${ratio.toFixed(3)}">` +
-            `<button type="button" class="sense-figure__frame" data-sense-open="${escapeHtml(img.pageUrl)}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">` +
+            `<button type="button" class="sense-figure__frame" data-sense-view="${escapeHtml(img.url || img.thumb)}" data-thumb="${escapeHtml(img.thumb)}" data-title="${escapeHtml(img.title || '')}" data-credit="${escapeHtml(img.credit || '')}" data-page="${escapeHtml(img.pageUrl || '')}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">` +
             `<img src="${escapeHtml(img.thumb)}" alt="${escapeHtml(img.title || '')}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('is-loaded')" onerror="this.closest('figure').remove()">` +
             `</button>` +
             `<figcaption class="sense-figure__credit">${escapeHtml(img.credit || '')}</figcaption>` +
@@ -3422,14 +3468,44 @@ function startAutoCloseTimeout() {
           }
         }
 
+        /** A sense picture at its larger size over the pop-up; a click outside the credit closes it. */
+        function openSensePicture(btn) {
+          const dlg = document.createElement('dialog');
+          dlg.className = 'pic-view';
+          const title = btn.getAttribute('data-title') || '';
+          const credit = btn.getAttribute('data-credit') || '';
+          const page = btn.getAttribute('data-page') || '';
+          dlg.innerHTML =
+            `<img class="pic-view__img" src="${escapeHtml(btn.getAttribute('data-thumb') || '')}" alt="${escapeHtml(title)}" referrerpolicy="no-referrer" tabindex="-1" autofocus>` +
+            `<p class="pic-view__cap"><span>${escapeHtml(title)}</span>` +
+            (page ? `<button type="button" class="pic-view__credit" data-pic-credit="${escapeHtml(page)}">${escapeHtml(credit || 'Wikimedia Commons')}</button>` : '') +
+            `</p>`;
+          // The thumbnail shows at once; the larger rendering replaces it when it has arrived.
+          const img = dlg.querySelector('img');
+          const full = new Image();
+          full.referrerPolicy = 'no-referrer';
+          full.onload = function () { img.src = full.src; };
+          full.src = btn.getAttribute('data-sense-view') || '';
+          dlg.addEventListener('click', function (e) {
+            const link = e.target.closest && e.target.closest('[data-pic-credit]');
+            if (link) {
+              const url = link.getAttribute('data-pic-credit');
+              if (window.electronAPI && window.electronAPI.openExternal) window.electronAPI.openExternal(url);
+              else window.open(url, '_blank', 'noopener');
+              return;
+            }
+            dlg.close();
+          });
+          dlg.addEventListener('close', function () { dlg.remove(); });
+          document.body.appendChild(dlg);
+          dlg.showModal();
+        }
+
         document.addEventListener('click', function (e) {
-          const btn = e.target && e.target.closest && e.target.closest('[data-sense-open]');
+          const btn = e.target && e.target.closest && e.target.closest('[data-sense-view]');
           if (!btn) return;
           e.preventDefault();
-          const url = btn.getAttribute('data-sense-open');
-          if (!url) return;
-          if (window.electronAPI && window.electronAPI.openExternal) window.electronAPI.openExternal(url);
-          else window.open(url, '_blank', 'noopener');
+          openSensePicture(btn);
         });
 
         /** "(countable, chiefly in combination) An institution…": the labels set small, as printed. */

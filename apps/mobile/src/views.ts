@@ -312,14 +312,14 @@ export function lexiconSenses(result: DictionaryResult | null): Definition[] {
 
 /**
  * A sense picture: a fixed aspect box (from the thumbnail's size, clamped between 3:4 and
- * 16:10) so text never moves when the bytes arrive. Tapping it shows the credit line, whose
- * link opens the file page on Wikimedia Commons.
+ * 16:10) so text never moves when the bytes arrive. Tapping it shows it larger, with its title
+ * and a credit line whose link opens the file page on Wikimedia Commons.
  */
 export function senseFigureHtml(img: SenseImage, index: number): string {
   const ratio = img.width && img.height ? Math.min(1.6, Math.max(0.75, img.width / img.height)) : 1;
   const label = `${img.title} — ${img.credit}`;
   return `<figure class="sense-figure" data-sense-figure="${index}" style="--ar:${ratio.toFixed(3)}">
-    <button type="button" class="sense-figure__frame" data-act="sense-figure" aria-label="${esc(label)}" title="${esc(label)}">
+    <button type="button" class="sense-figure__frame" data-act="sense-figure" data-full="${esc(img.url || img.thumb)}" data-thumb="${esc(img.thumb)}" data-title="${esc(img.title)}" data-credit="${esc(img.credit)}" data-page="${esc(img.pageUrl)}" aria-label="${esc(label)}" title="${esc(label)}">
       <img src="${esc(img.thumb)}" alt="${esc(img.title)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('is-loaded')" onerror="this.closest('figure').remove()" />
     </button>
     <figcaption class="sense-figure__credit"><button type="button" class="sense-figure__link" data-act="sense-credit" data-url="${esc(img.pageUrl)}">${esc(img.credit)}</button></figcaption>
