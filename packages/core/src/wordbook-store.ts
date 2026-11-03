@@ -196,7 +196,8 @@ export async function setBookWordKnown(lemma: string, known: boolean, now = Date
   await ensureVocabReady();
   const key = bookWordKey(lemma);
   const prev = (await getBookWord(key)) || { lemma: key, known: false, updatedAt: 0 };
-  await writeBookWord({ ...prev, lemma: key, known, createdAt: prev.createdAt ?? now, updatedAt: now });
+  // Marking a word known does not start it, so it does not count against today's new words.
+  await writeBookWord({ ...prev, lemma: key, known, updatedAt: now });
   notifyVocabChanged();
   return (await getBookWord(key))!;
 }
