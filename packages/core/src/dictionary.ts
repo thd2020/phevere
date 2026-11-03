@@ -95,11 +95,15 @@ import {
   fetchJisho,
   fetchKaikki,
   fetchOpenRussian,
+  fetchWiktionaryEdition,
+  editionServes,
   isNameOnlyGloss,
   kaikkiLanguage,
   KAIKKI_ALL_LANGUAGES,
   KAIKKI_FALLBACK_LANGUAGES,
+  WIKTIONARY_EDITIONS,
   type SourceSenses,
+  type WiktionaryEdition,
 } from './multilingual-sources';
 
 const console = wrapConsole('dictionary');
@@ -165,7 +169,12 @@ const LANGUAGE_SOURCE_LABELS: Record<string, string> = {
   jisho: 'Jisho',
   openRussian: 'OpenRussian',
   kaikki: 'Kaikki',
+  'wikt-zh': WIKTIONARY_EDITIONS.zh.source,
+  'wikt-ru': WIKTIONARY_EDITIONS.ru.source,
+  'wikt-ja': WIKTIONARY_EDITIONS.ja.source,
 };
+
+const EDITIONS = Object.keys(WIKTIONARY_EDITIONS) as WiktionaryEdition[];
 
 function isLocalPackSource(source?: string): boolean {
   const k = (source || '').toLowerCase();
@@ -244,7 +253,11 @@ export class DictionaryService extends BaseService {
     // Non-English headwords with English glosses; each runs only for its language.
     { name: 'Jisho',               priority: 3, isAvailable: true,  enabled: true },
     { name: 'OpenRussian',         priority: 3, isAvailable: true,  enabled: true },
-    { name: 'Kaikki',              priority: 5, isAvailable: true,  enabled: true }
+    { name: 'Kaikki',              priority: 5, isAvailable: true,  enabled: true },
+    // Definitions written in Chinese, Russian or Japanese; off until switched on in Sources.
+    { name: 'Chinese Wiktionary',  priority: 5, isAvailable: true,  enabled: false },
+    { name: 'Russian Wiktionary',  priority: 5, isAvailable: true,  enabled: false },
+    { name: 'Japanese Wiktionary', priority: 5, isAvailable: true,  enabled: false }
   ];
 
   constructor(apiKey?: string, deeplApiKey?: string) {
@@ -584,7 +597,9 @@ export class DictionaryService extends BaseService {
       // Auto pairing is zh↔en (and ja/ko→en). An explicit Translation-tab target is honoured.
       const resolvedTarget = this.resolveTargetLanguage(detectedLanguage, targetLanguage);
       const txProvider = opts?.translationProvider || 'auto';
-      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}`);
+      // Switching on a Wiktionary edition must not be hidden by a result cached before it.
+      const editionsOn = EDITIONS.filter((ed) => this.isNamedSourceOn(WIKTIONARY_EDITIONS[ed].source, enabledSources)).join(',');
+      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}${editionsOn ? `|wikt:${editionsOn}` : ''}`);
 
       const remember = (r: DictionaryResult) => {
         if (this.isUncacheableResult(r) || this.isStillFilling(r)) return;
@@ -1197,6 +1212,11 @@ export class DictionaryService extends BaseService {
       if (primary) ctx.primaryPromises.push(p);
     };
 
+    for (const ed of EDITIONS) {
+      if (!editionServes(ed, lang) || !ctx.isSourceEnabled(WIKTIONARY_EDITIONS[ed].source)) continue;
+      // An English lookup has its own dictionaries; the Chinese senses join without holding them up.
+      queue(`wikt-${ed}`, `${caseKey}@${lang}`, () => fetchWiktionaryEdition(http, word, ed, lang), lang !== 'en');
+    }
     if (lang === 'ja' && ctx.isSourceEnabled('Jisho')) {
       queue('jisho', word, () => fetchJisho(http, word), true);
     }
@@ -1674,7 +1694,10 @@ export class DictionaryService extends BaseService {
           break;
         case 'jisho':
         case 'openRussian':
-        case 'kaikki': {
+        case 'kaikki':
+        case 'wikt-zh':
+        case 'wikt-ru':
+        case 'wikt-ja': {
           const senses = data as SourceSenses | undefined;
           if (senses?.pronunciations?.length) {
             pronunciations = mergePronunciations(pronunciations, senses.pronunciations);
@@ -3364,6 +3387,13 @@ export class DictionaryService extends BaseService {
       console.warn('MyMemory translation failed:', error);
       return null;
     }
+  }
+
+  /** Whether a source is on for this lookup: the lookup's own list when it passes one. */
+  private isNamedSourceOn(name: string, enabledSources?: string[]): boolean {
+    if (enabledSources) return enabledSources.includes(name);
+    const src = this.sources.find((x) => x.name === name);
+    return !!src && src.enabled && src.isAvailable;
   }
 
   /** Engines that can translate now: Google and MyMemory always, DeepL and Youdao with a key. */

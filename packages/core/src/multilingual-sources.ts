@@ -33,6 +33,8 @@ const MAX_SENSES = 24;
 /** Dedicated dictionaries sort ahead of Wiktionary (40+); kaikki repeats Wiktionary, so after it. */
 const ORDER_DEDICATED = 20;
 const ORDER_KAIKKI = 60;
+/** Senses written in the reader's own choice of language sit after the dedicated dictionaries. */
+const ORDER_EDITION = 30;
 
 const HIRAGANA_ONLY = /^[぀-ゟー]+$/;
 const ENDS_IN_KANA = /[぀-ゟ]$/;
@@ -200,13 +202,13 @@ export function kaikkiLanguage(code: string): string | null {
   return LANGUAGE_NAMES[c] || null;
 }
 
-/** kaikki.org/dictionary/<Language>/meaning/<1st char>/<first two chars>/<word>.jsonl */
-export function kaikkiUrl(word: string, language: string): string {
+/** kaikki.org/<edition>/<Language>/meaning/<1st char>/<first two chars>/<word>.jsonl */
+export function kaikkiUrl(word: string, language: string, edition = 'dictionary'): string {
   const w = word.trim();
   const chars = Array.from(w);
   const seg = (s: string) => encodeURIComponent(s);
   return (
-    `https://kaikki.org/dictionary/${seg(language)}/meaning/` +
+    `https://kaikki.org/${edition}/${seg(language)}/meaning/` +
     `${seg(chars[0] || '')}/${seg(chars.slice(0, 2).join(''))}/${seg(w)}.jsonl`
   );
 }
@@ -240,6 +242,12 @@ export interface KaikkiOptions {
   languages?: Set<string>;
   /** Drop these language codes (English, when filling in for an English lookup). */
   exclude?: Set<string>;
+  /** The name on each sense; 'Kaikki' by default. */
+  source?: string;
+  /** Where the senses sort among other sources' senses. */
+  order?: number;
+  /** A label put in front of a sense that carries this tag ('literary' → '〈书〉'). */
+  tagLabels?: Record<string, string>;
 }
 
 /** One JSON object per line; a 404 page or blank body yields nothing. */
@@ -263,8 +271,10 @@ export function parseKaikki(jsonl: string, opts: KaikkiOptions = {}): SourceSens
       const tags: string[] = Array.isArray(sense?.tags) ? sense.tags : [];
       if (tags.includes('no-gloss')) continue;
       const glosses: string[] = Array.isArray(sense?.glosses) ? sense.glosses : [];
-      const meaning = clean(glosses[glosses.length - 1]);
-      if (!meaning) continue;
+      const gloss = clean(glosses[glosses.length - 1]);
+      if (!gloss) continue;
+      const label = opts.tagLabels ? tags.map((t) => opts.tagLabels![t]).find(Boolean) : '';
+      const meaning = label ? `${label}${gloss}` : gloss;
       const examples = (Array.isArray(sense?.examples) ? sense.examples : [])
         .map((e: any) => {
           const text = clean(e?.text);
@@ -278,8 +288,8 @@ export function parseKaikki(jsonl: string, opts: KaikkiOptions = {}): SourceSens
         partOfSpeech: pos,
         meaning,
         examples: examples.length ? examples : undefined,
-        source: 'Kaikki',
-        senseOrder: ORDER_KAIKKI + out.definitions.length,
+        source: opts.source || 'Kaikki',
+        senseOrder: (opts.order ?? ORDER_KAIKKI) + out.definitions.length,
       });
       out.examples.push(...examples);
       if (out.definitions.length >= MAX_SENSES) break;
@@ -291,7 +301,7 @@ export function parseKaikki(jsonl: string, opts: KaikkiOptions = {}): SourceSens
     if (out.definitions.length >= MAX_SENSES) break;
   }
   if (ipas.size) {
-    out.pronunciations = Array.from(ipas).map((ipa) => ({ ipa, accent: 'other', source: 'Kaikki' }));
+    out.pronunciations = Array.from(ipas).map((ipa) => ({ ipa, accent: 'other', source: opts.source || 'Kaikki' }));
   }
   return out;
 }
@@ -338,8 +348,8 @@ const kaikkiPages = new Map<string, Promise<string>>();
  * One kaikki.org page, shared for a minute by everything that reads it (senses and forms
  * both parse the same page). A missing page is an empty string.
  */
-export function fetchKaikkiPage(http: HttpClient, word: string, language: string, timeoutMs = 5000): Promise<string> {
-  const url = kaikkiUrl(word, language);
+export function fetchKaikkiPage(http: HttpClient, word: string, language: string, timeoutMs = 5000, edition = 'dictionary'): Promise<string> {
+  const url = kaikkiUrl(word, language, edition);
   const hit = kaikkiPages.get(url);
   if (hit) return hit;
   const p = http.requestText(url, { timeoutMs }).then((res) => {
@@ -370,4 +380,77 @@ export async function fetchKaikki(
 export function kaikkiDirectory(code: string): string | null {
   const c = (code || '').toLowerCase().split('-')[0];
   return c === 'en' ? 'English' : kaikkiLanguage(c);
+}
+
+/* ---------------------------------------- Wiktionary editions in other languages */
+
+/**
+ * Wiktionary editions written in a language other than English, as kaikki.org extracts them.
+ * The Chinese edition defines words of every language in Chinese, so it covers Chinese to
+ * Chinese and other languages to Chinese; the Russian and Japanese editions are used for their
+ * own language only (Russian to Russian, Japanese to Japanese). Each is off until switched on.
+ */
+export type WiktionaryEdition = 'zh' | 'ru' | 'ja';
+
+export interface WiktionaryEditionInfo {
+  /** kaikki.org directory of the edition. */
+  dir: string;
+  /** Name in Sources and on each sense. */
+  source: string;
+  /** Headword languages it is used for; null for any. */
+  languages: string[] | null;
+  /** The language its definitions are written in. */
+  definitionLanguage: string;
+  tagLabels?: Record<string, string>;
+}
+
+export const WIKTIONARY_EDITIONS: Record<WiktionaryEdition, WiktionaryEditionInfo> = {
+  // 书面语 and Classical senses carry 'literary'; 〈书〉 is the label 现代汉语词典 uses for them.
+  zh: { dir: 'zhwiktionary', source: 'Chinese Wiktionary', languages: null, definitionLanguage: 'zh', tagLabels: { literary: '〈书〉' } },
+  ru: { dir: 'ruwiktionary', source: 'Russian Wiktionary', languages: ['ru'], definitionLanguage: 'ru' },
+  ja: { dir: 'jawiktionary', source: 'Japanese Wiktionary', languages: ['ja'], definitionLanguage: 'ja' },
+};
+
+/** Whether an edition is used for a word in `lang`. */
+export function editionServes(edition: WiktionaryEdition, lang: string): boolean {
+  const langs = WIKTIONARY_EDITIONS[edition].languages;
+  return !langs || langs.includes((lang || '').toLowerCase().split('-')[0]);
+}
+
+/** The page a simplified form points to ("学生" → "學生"), when the page is only that pointer. */
+export function kaikkiRedirect(jsonl: string, languages: Set<string>): string {
+  for (const line of (jsonl || '').split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t.startsWith('{')) continue;
+    try {
+      const entry = JSON.parse(t);
+      if (!languages.has(String(entry?.lang_code || ''))) continue;
+      const to = Array.isArray(entry?.redirects) ? clean(entry.redirects[0]) : '';
+      if (to) return to;
+    } catch {
+      /* skip the line */
+    }
+  }
+  return '';
+}
+
+/** Senses for `word` (a word in `lang`) from one edition, following one soft redirect. */
+export async function fetchWiktionaryEdition(
+  http: HttpClient,
+  word: string,
+  edition: WiktionaryEdition,
+  lang: string,
+  timeoutMs = 5000,
+): Promise<SourceSenses> {
+  const info = WIKTIONARY_EDITIONS[edition];
+  const code = (lang || '').toLowerCase().split('-')[0];
+  // Chinese entries may sit under Classical Chinese as well as Chinese.
+  const languages = new Set(code === 'zh' ? ['zh', 'lzh'] : [code]);
+  const opts: KaikkiOptions = { languages, source: info.source, order: ORDER_EDITION, tagLabels: info.tagLabels };
+  const page = await fetchKaikkiPage(http, word, KAIKKI_ALL_LANGUAGES, timeoutMs, info.dir);
+  const senses = parseKaikki(page, opts);
+  if (senses.definitions.length) return senses;
+  const to = kaikkiRedirect(page, languages);
+  if (!to || to === word) return senses;
+  return parseKaikki(await fetchKaikkiPage(http, to, KAIKKI_ALL_LANGUAGES, timeoutMs, info.dir), opts);
 }

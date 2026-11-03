@@ -92,6 +92,26 @@ const { extractTar } = core('tar-extract.ts');
   assert.ok(sarang.definitions.some((d) => /love/i.test(d.meaning)));
   assert.strictEqual(src.parseKaikki('<html>404</html>').definitions.length, 0);
 
+  // Wiktionary editions in other languages, read through kaikki.org's extracts.
+  assert.strictEqual(
+    src.kaikkiUrl('dom', src.KAIKKI_ALL_LANGUAGES, 'ruwiktionary'),
+    'https://kaikki.org/ruwiktionary/All%20languages%20combined/meaning/d/do/dom.jsonl',
+  );
+  assert.ok(src.editionServes('zh', 'en') && src.editionServes('zh', 'zh') && src.editionServes('zh', 'ja'), 'Chinese defines every language');
+  assert.ok(src.editionServes('ru', 'ru') && !src.editionServes('ru', 'en'), 'Russian only for Russian');
+  assert.ok(src.editionServes('ja', 'ja') && !src.editionServes('ja', 'zh'), 'Japanese only for Japanese');
+  const zhOpts = { languages: new Set(['zh', 'lzh']), source: 'Chinese Wiktionary', order: 30, tagLabels: src.WIKTIONARY_EDITIONS.zh.tagLabels };
+  const yue = src.parseKaikki(fixture('kaikki-zh-yue.jsonl'), zhOpts);
+  assert.ok(yue.definitions.length > 0, '曰 has Chinese senses');
+  assert.ok(yue.definitions.every((d) => d.source === 'Chinese Wiktionary'), 'senses carry the edition name');
+  assert.ok(yue.definitions.some((d) => d.meaning.startsWith('〈书〉')), 'literary senses are marked 〈书〉');
+  assert.ok(/[一-鿿]/.test(yue.definitions[0].meaning), 'definitions are in Chinese');
+  const dom = src.parseKaikki(fixture('kaikki-ru-dom.jsonl'), { languages: new Set(['ru']), source: 'Russian Wiktionary' });
+  assert.ok(dom.definitions.length > 0 && /[Ѐ-ӿ]/.test(dom.definitions[0].meaning), 'дом is defined in Russian');
+  // 学生 on the Chinese edition only points to 學生; the fetcher follows that once.
+  assert.strictEqual(src.parseKaikki(fixture('kaikki-zh-xuesheng.jsonl'), zhOpts).definitions.length, 0);
+  assert.strictEqual(src.kaikkiRedirect(fixture('kaikki-zh-xuesheng.jsonl'), new Set(['zh'])), '學生');
+
   assert.ok(src.isNameOnlyGloss(json('wiktionary-haus.json').en[0].definitions[0].definition), 'HTML surname gloss');
   assert.ok(!src.isNameOnlyGloss('house, building'));
 }
@@ -250,6 +270,17 @@ assert.ok(!langs.looksJapaneseKanji('食べる'), 'kana is detected elsewhere');
 
   Object.assign(console, quiet);
   console.log('multilingual sources ok');
+  // The Chinese edition follows 学生 to 學生 through the soft redirect.
+  {
+    const pages = {
+      [src.kaikkiUrl('学生', src.KAIKKI_ALL_LANGUAGES, 'zhwiktionary')]: fixture('kaikki-zh-xuesheng.jsonl'),
+      [src.kaikkiUrl('學生', src.KAIKKI_ALL_LANGUAGES, 'zhwiktionary')]: fixture('kaikki-zh-xuesheng-trad.jsonl'),
+    };
+    const http = { requestText: async (url) => (pages[url] ? { ok: true, status: 200, text: pages[url] } : { ok: false, status: 404, text: '' }) };
+    const senses = await src.fetchWiktionaryEdition(http, '学生', 'zh', 'zh');
+    assert.ok(senses.definitions.some((d) => /讀書|學/.test(d.meaning)), '学生 gets the senses of 學生');
+  }
+
   process.exit(0);
 })().catch((err) => {
   process.stderr.write(`${err && err.stack ? err.stack : err}\n`);

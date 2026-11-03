@@ -20,6 +20,8 @@ export interface SourceInfo {
   key?: ApiProviderId;
   /** Needs an offline pack (CC-CEDICT). */
   pack?: boolean;
+  /** Defines words in a language other than English; listed in its own group, off until switched on. */
+  native?: boolean;
 }
 
 /** Keyed by the dictionary service's source names. */
@@ -100,6 +102,27 @@ export const SOURCE_INFO: Record<string, SourceInfo> = {
     languages: 'many',
     about: 'Wiktionary entries extracted by wiktextract, for words that are not English.',
     url: 'https://kaikki.org/',
+  },
+  'Chinese Wiktionary': {
+    mark: '中',
+    languages: 'many',
+    about: 'Definitions written in Chinese, for Chinese words and words of other languages. Literary and Classical senses are marked 〈书〉.',
+    url: 'https://zh.wiktionary.org/',
+    native: true,
+  },
+  'Russian Wiktionary': {
+    mark: 'Рв',
+    languages: ['ru'],
+    about: 'Russian words defined in Russian.',
+    url: 'https://ru.wiktionary.org/',
+    native: true,
+  },
+  'Japanese Wiktionary': {
+    mark: '国',
+    languages: ['ja'],
+    about: 'Japanese words defined in Japanese.',
+    url: 'https://ja.wiktionary.org/',
+    native: true,
   },
 };
 
@@ -214,10 +237,17 @@ export interface SourcesPanelInput {
 }
 
 export function sourcesPanelHtml(p: SourcesPanelInput): string {
-  const on = p.dictionary.filter((r) => r.on).length;
+  const main = p.dictionary.filter((r) => !r.info?.native);
+  const native = p.dictionary.filter((r) => r.info?.native);
+  const on = main.filter((r) => r.on).length;
+  const nativeHtml = native.length
+    ? `<header class="sv-head"><h3 class="sv-head__title">Definitions in other languages</h3></header>
+    <div class="sv-ledger">${native.map(sourceRowHtml).join('')}</div>`
+    : '';
   return `<div class="sv sv-sources">
-    <header class="sv-head"><h3 class="sv-head__title">Dictionaries</h3><span class="sv-head__count">${on} of ${p.dictionary.length} on</span></header>
-    <div class="sv-ledger">${p.dictionary.map(sourceRowHtml).join('') || '<p class="sv-empty">No dictionary sources loaded.</p>'}</div>
+    <header class="sv-head"><h3 class="sv-head__title">Dictionaries</h3><span class="sv-head__count">${on} of ${main.length} on</span></header>
+    <div class="sv-ledger">${main.map(sourceRowHtml).join('') || '<p class="sv-empty">No dictionary sources loaded.</p>'}</div>
+    ${nativeHtml}
     <header class="sv-head"><h3 class="sv-head__title">Translation engine</h3></header>
     <div class="sv-ledger" role="radiogroup" aria-label="Translation engine">${p.engines.map(sourceRowHtml).join('')}</div>
   </div>`;
