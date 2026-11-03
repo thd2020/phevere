@@ -51,6 +51,8 @@ const context = vm.createContext({
   MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: undefined,
   POPUP_WINDOW_WEBPACK_ENTRY: 'data:text/html,<html><body>Lookup fixture</body></html>',
   interceptPopupHistoryKeys: () => {},
+  trackPopupFocus: () => {},
+  closePopupForOutsideClick: (window) => window.close(),
   sendPopupText: (window, text) => { window.lookupText = text; },
   log: { debug() {}, warn() {}, error() {} }, setTimeout,
 });
@@ -85,6 +87,11 @@ app.whenReady().then(async () => {
     assert.equal(reopened.lookupText, 'repeat');
     context.createPopupWindow(100, 100);
     assert.equal(created, 2, 'Automatic duplicate events must remain suppressed');
+    now += 10;
+    context.lastSelectionEvent = { text: 'next', x: 120, y: 100, timestamp: now, coordSpace: 'dip' };
+    context.createPopupWindow(120, 100);
+    assert.equal(created, 2, 'A new selection must retarget the open strip');
+    assert.equal(reopened.lookupText, 'next', 'The retargeted strip must receive the new word, not the last one');
     reopened.setSize(600, 400);
     context.onTriggerShortcutAfterSelection();
     assert.equal(created, 3, 'Explicit lookup may open a strip beside a retained expanded panel');
@@ -99,7 +106,7 @@ app.whenReady().then(async () => {
     context.lastSelectionEvent.timestamp = now;
     context.onTriggerShortcutAfterSelection();
     assert.equal(created, 3, 'Disabled monitoring mode must not open a shortcut lookup');
-    console.log('Popup retrigger passed immediate same-word reopen, loading-strip coalescing, automatic debounce, expanded-panel preservation, expiry, and disabled mode.');
+    console.log('Popup retrigger passed immediate same-word reopen, loading-strip coalescing, automatic debounce, new-word retarget, expanded-panel preservation, expiry, and disabled mode.');
   } finally {
     for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) await close(window);
   }
