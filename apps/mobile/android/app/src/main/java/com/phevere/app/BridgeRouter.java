@@ -16,6 +16,9 @@ import org.json.JSONObject;
 import java.util.concurrent.ExecutorService;
 
 final class BridgeRouter {
+  /** Marks a saveFile body as base64 bytes rather than text. */
+  static final String SAVE_B64 = "\u0000b64:";
+
   interface Host {
     Context context();
     @Nullable Activity activity();
@@ -150,7 +153,7 @@ final class BridgeRouter {
             break;
           case "saveFile":
             host.setPendingJsId(id);
-            host.setPendingSaveText(p.optString("text"));
+            host.setPendingSaveText(p.has("b64") ? SAVE_B64 + p.optString("b64") : p.optString("text"));
             host.runUi(() -> host.launchSaveFile(p.optString("name", "phevere.txt")));
             break;
           case "setFloatingStrip":

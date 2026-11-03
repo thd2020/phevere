@@ -99,6 +99,8 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
             JSONObject out = new JSONObject();
             out.put("name", nameFromUri(uri));
             out.put("text", new String(bytes, StandardCharsets.UTF_8));
+            // Binary files (word books, Anki packages) come through as base64 as well.
+            out.put("b64", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP));
             router.resolve(pendingJsId, out);
           } catch (Exception e) {
             failPending(e.getMessage());
@@ -117,7 +119,11 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
             String text = pendingSaveText == null ? "" : pendingSaveText;
             java.io.OutputStream os = getContentResolver().openOutputStream(uri);
             if (os == null) throw new Exception("Could not write file");
-            os.write(text.getBytes(StandardCharsets.UTF_8));
+            // A binary file (a word book) arrives as base64 behind the BridgeRouter.SAVE_B64 marker.
+            byte[] body = text.startsWith(BridgeRouter.SAVE_B64)
+                ? android.util.Base64.decode(text.substring(BridgeRouter.SAVE_B64.length()), android.util.Base64.DEFAULT)
+                : text.getBytes(StandardCharsets.UTF_8);
+            os.write(body);
             os.close();
             router.resolve(pendingJsId, new JSONObject().put("ok", true));
           } catch (Exception e) {
