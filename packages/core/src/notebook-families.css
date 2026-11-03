@@ -106,6 +106,8 @@
 }
 .nbv-fam--suffix .nbv-fam__label,
 .nbv-fam--deep .nbv-fam__label { color: var(--nbv-ink); }
+/* Reconstructed roots use ʰ, ʷ and subscript digits, which Charis SIL draws. */
+.nbv-fam--deep .nbv-fam__label { font-family: var(--nbv-ipa); letter-spacing: 0; }
 .nbv-fam__gloss { font: italic 15px/1.25 var(--nbv-serif); color: var(--nbv-ink); }
 .nbv-fam__meta { display: flex; align-items: center; gap: 8px; align-self: start; }
 .nbv-fam__n {
@@ -256,6 +258,7 @@
 .nbv-ground { fill: rgba(92, 83, 78, 0.14); }
 .nbv-trunk { fill: var(--nbv-bark); }
 .nbv-branch { fill: none; stroke: var(--nbv-bark); stroke-linecap: round; }
+.nbv-crown { fill: var(--nbv-leaf); opacity: 0.13; }
 .nbv-leaf ellipse { fill: var(--nbv-leaf); opacity: 0.88; }
 .nbv-leaf circle { fill: var(--nbv-panel); stroke: var(--nbv-leaf); stroke-width: 1.6; }
 .nbv-tree__word { cursor: pointer; }
@@ -274,6 +277,8 @@
   .nbv-branch { stroke-dasharray: 1; stroke-dashoffset: 1; animation: nbv-grow 0.6s var(--nbv-motion) forwards; animation-delay: calc(var(--d) * 170ms); }
   .nbv-leaf,
   .nbv-tree__word:not(.nbv-tree__base) { opacity: 0; animation: nbv-fade 0.4s var(--nbv-motion) forwards; animation-delay: calc(var(--d) * 170ms + 280ms); }
+  .nbv-crown { opacity: 0; animation: nbv-crown 0.5s var(--nbv-motion) forwards; animation-delay: calc(var(--d) * 170ms + 200ms); }
 }
 @keyframes nbv-grow { to { stroke-dashoffset: 0; } }
 @keyframes nbv-fade { to { opacity: 1; } }
+@keyframes nbv-crown { to { opacity: 0.13; } }

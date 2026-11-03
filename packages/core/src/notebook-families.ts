@@ -260,6 +260,7 @@ export function treeSvg(node: TreeNode, a: NotebookAnalysis): string {
   const y = (d: number) => height - GROUND - TRUNK - d * LEVEL;
   const stroke = [6.5, 4.2, 2.8, 2, 1.6];
   let branches = '';
+  let crowns = '';
   let leaves = '';
   let labels = '';
   let order = 0;
@@ -272,6 +273,8 @@ export function treeSvg(node: TreeNode, a: NotebookAnalysis): string {
       const d = `M${px.toFixed(1)} ${py} C${px.toFixed(1)} ${(py - LEVEL * 0.55).toFixed(1)} ${cx.toFixed(1)} ${(cy + LEVEL * 0.5).toFixed(1)} ${cx.toFixed(1)} ${cy}`;
       branches += `<path class="nbv-branch" d="${d}" pathLength="1" style="--d:${c.depth};stroke-width:${stroke[Math.min(c.depth, 4)]}"/>`;
       const k = order++;
+      // A soft crown behind each tip, so even a one-branch tree reads as a tree.
+      crowns += `<circle class="nbv-crown" style="--d:${c.depth}" cx="${(cx + (k % 2 ? -5 : 5)).toFixed(1)}" cy="${cy - 4}" r="${c.children.length ? 15 : 21}"/>`;
       leaves += `<g class="nbv-leaf" style="--d:${c.depth}" transform="translate(${cx.toFixed(1)} ${cy})"><ellipse rx="7" ry="3.6" transform="rotate(${k % 2 ? -32 : 32}) translate(${k % 2 ? -7 : 7} 0)"/><circle r="3.2"/></g>`;
       labels += `<g class="nbv-tree__word" data-act="lookup" data-q="${esc(c.label)}" style="--d:${c.depth}" transform="translate(${cx.toFixed(1)} ${cy - 12})"><text text-anchor="middle">${esc(c.label)}</text></g>`;
       walk(c);
@@ -282,7 +285,7 @@ export function treeSvg(node: TreeNode, a: NotebookAnalysis): string {
   const trunk = `<path class="nbv-trunk" d="M${(root.x - 7).toFixed(1)} ${baseY} C${(root.x - 4).toFixed(1)} ${baseY - TRUNK * 0.6} ${(root.x - 3).toFixed(1)} ${y(0) + 6} ${root.x.toFixed(1)} ${y(0)} C${(root.x + 3).toFixed(1)} ${y(0) + 6} ${(root.x + 4).toFixed(1)} ${baseY - TRUNK * 0.6} ${(root.x + 7).toFixed(1)} ${baseY} Z"/>`;
   const ground = `<ellipse class="nbv-ground" cx="${root.x.toFixed(1)}" cy="${baseY + 1}" rx="${Math.min(width / 2 - 6, 70)}" ry="5"/>`;
   const plate = `<g class="nbv-tree__word nbv-tree__base" data-act="lookup" data-q="${esc(root.label)}" transform="translate(${root.x.toFixed(1)} ${baseY + 22})"><text text-anchor="middle">${esc(root.label)}</text></g>`;
-  return `<svg class="nbv-tree-svg" viewBox="0 0 ${width.toFixed(0)} ${height}" width="${width.toFixed(0)}" height="${height}" role="img" aria-label="${esc(root.label)} and the words built from it">${ground}${trunk}${branches}${leaves}${labels}${plate}</svg>`;
+  return `<svg class="nbv-tree-svg" viewBox="0 0 ${width.toFixed(0)} ${height}" width="${width.toFixed(0)}" height="${height}" role="img" aria-label="${esc(root.label)} and the words built from it">${ground}${crowns}${trunk}${branches}${leaves}${labels}${plate}</svg>`;
 }
 
 function leafCount(n: TreeNode): number {

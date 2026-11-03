@@ -7,7 +7,15 @@
  * Greek words, the Proto-Indo-European root ({{root|en|ine-pro|*bʰer-}}). One request per word
  * gives both; results are kept in a small persistent cache so each word is traced once.
  */
-import { buildEtymology, languageName, type EtymologyLink } from './etymology';
+import {
+  buildEtymology,
+  etymonTemplateLinks,
+  extractEnglishEtymologySections,
+  languageName,
+  scanTemplates,
+  templateToLink,
+  type EtymologyLink,
+} from './etymology';
 import { getHttp, isCoreConfigured } from './runtime';
 
 export interface WordEtymon {
@@ -25,7 +33,7 @@ export interface EtymonStore {
 }
 
 const STORE_KEY = 'phevere.etymons.v1';
-const ROOT_GLOSS_KEY = 'phevere.pie-glosses.v1';
+const ROOT_GLOSS_KEY = 'phevere.pie-glosses.v2';
 const UA = 'Phevere/3.0 (https://github.com/thd2020/phevere)';
 /** Words with no etymology on Wiktionary are retried after this long. */
 const MISS_RETRY_MS = 14 * 86_400_000;
@@ -70,15 +78,20 @@ const FORM_OF = /\{\{\s*(?:en-)?[a-z -]*?(?:of|form)\s*\|\s*(?:en\s*\|\s*)?([^|}
  * inflected form ("berries" → "berry"), or the base of an English derivation
  * ("aggregator" → "aggregate").
  */
-export function baseWord(wikitext: string, chain: EtymologyLink[] | undefined): string {
+export function baseWord(wikitext: string): string {
   const at = wikitext.indexOf('==English==');
   const english = at >= 0 ? wikitext.slice(at).split(/\n==[^=]/)[0] : wikitext;
   const form = english.match(FORM_OF);
   if (form) return form[1].trim();
-  for (const link of chain || []) {
-    if (link.relation !== 'affix' || (link.languageCode && link.languageCode !== 'en')) continue;
-    const stems = (link.parts || []).filter((p) => !p.startsWith('-') && !p.endsWith('-') && !/[=:]/.test(p));
-    if (stems.length) return stems.sort((x, y) => y.length - x.length)[0];
+  // Affix templates are not part of the ancestry chain, so read them from the section itself.
+  const section = extractEnglishEtymologySections(wikitext)[0] || '';
+  for (const t of scanTemplates(section)) {
+    const links = t.name === 'etymon' || t.name === 'ety' ? etymonTemplateLinks(t) : [templateToLink(t)];
+    for (const link of links) {
+      if (!link || link.relation !== 'affix' || (link.languageCode && link.languageCode !== 'en')) continue;
+      const stems = (link.parts || []).filter((p) => !p.startsWith('-') && !p.endsWith('-') && !/[=:<]/.test(p));
+      if (stems.length) return stems.sort((x, y) => y.length - x.length)[0];
+    }
   }
   return '';
 }
@@ -269,7 +282,7 @@ export function traceEtymons(lemmas: string[], onProgress?: (p: TraceProgress) =
         const chain = text ? buildEtymology(text)?.chain : undefined;
         const e = etymonFromChain(chain);
         const found = !!(e.origin || e.roots.length);
-        const base = found ? '' : baseWord(text, chain).toLowerCase();
+        const base = found ? '' : baseWord(text).toLowerCase();
         map[lemma] = { ...e, at: Date.now(), ...(found ? {} : { miss: true }), ...(base && base !== lemma ? { base } : {}) };
         // Trace the base too (once), unless it is already known.
         if (base && base !== lemma && !followed.has(base) && (!map[base] || map[base].miss)) {
@@ -318,6 +331,8 @@ export function rootGlossFromWikitext(text: string): string {
   const line = text.split('\n').find((l) => /^#\s*[^:*#]/.test(l));
   if (!line) return '';
   return line
+    .replace(/<ref[^>]*\/>|<ref[^>]*>[\s\S]*?(<\/ref>|$)/gi, '')
+    .replace(/\[https?:[^\]]*\]?/g, '')
     .replace(/^#\s*/, '')
     .replace(/\{\{[^{}]*\}\}/g, '')
     .replace(/\[\[(?:[^|\]]*\|)?([^\]]+)\]\]/g, '$1')

@@ -142,4 +142,32 @@ assert.match(rec, /\/ɪnˈspɛkt\//);
 assert.equal((rec.match(/class="vocab-group"/g) || []).length, 2, 'Today and Earlier');
 assert.equal((rec.match(/data-act="lookup"/g) || []).length, 6, 'row and button per item');
 
+// Origins and deep roots from Wiktionary templates.
+const ety = load('etymology');
+const ne = load('notebook-etymology');
+const chainOf = (wt) => ety.buildEtymology(`==English==\n===Etymology===\n${wt}\n`)?.chain;
+assert.deepEqual(
+  ne.etymonFromChain(chainOf('From {{inh|en|enm|edifice}}, from {{der|en|fro|edifice}}, from {{der|en|la|aedificium}}. {{root|en|ine-pro|*dʰeh₁-}}')),
+  { origin: 'Latin', via: ['French'], roots: ['*dʰeh₁-'] },
+);
+assert.equal(ne.etymonFromChain(chainOf('{{inh|en|enm|chyrne}}, from {{inh|en|ang|ċyrn}}')).origin, 'Old English');
+// The newer {{ety}} and {{etymon}} templates, and {{ubor}}.
+assert.equal(ne.etymonFromChain(chainOf('{{ety|en|:bor|la:cortex<t:bark>|tree=1}}')).origin, 'Latin');
+assert.equal(ne.etymonFromChain(chainOf('{{etymon|en|id=x|:ubor|fr:bouquet<id:bundle>}}')).origin, 'French');
+assert.equal(ne.etymonFromChain(chainOf('An {{ubor|en|fr|arbitrage}}')).origin, 'French');
+// Inflected and derived words are traced through their base word.
+assert.equal(ne.baseWord('==English==\n# {{infl of|en|attenuate||ed-form}}'), 'attenuate');
+assert.equal(ne.baseWord('==English==\n# {{plural of|en|berry}}'), 'berry');
+assert.equal(ne.baseWord('==English==\n===Etymology===\n{{ety|en|:af|capacity|-or<id:-ator>}}\n'), 'capacity');
+assert.equal(ne.rootGlossFromWikitext('# to [[grow]] [[old]]<ref>Starostin (1998). [http://x y]</ref>\n'), 'to grow old');
+// Deep-root families and strata come from the traced data.
+const etyFor = { inspect: { origin: 'Latin', via: [], roots: ['*spek-'] }, spectator: { origin: 'Latin', via: ['French'], roots: ['*spek-'] } };
+const lookupEty = (l) => etyFor[l] || null;
+assert.deepEqual(views.deepRootFamilies(a, lookupEty).map((f) => [f.label, f.ids.length]), [['*spek-', 2]]);
+assert.ok(views.familyGroupings(a, lookupEty).includes('deep'));
+const strata = views.originGroups(a, lookupEty);
+assert.equal(strata[0].origin, 'Latin');
+assert.match(views.familiesHtml(a, 'origin', { etymon: lookupEty }), /via French/);
+assert.match(views.familiesHtml(a, 'root'), /Not in a family yet/);
+
 console.log('notebook-views: ok');
