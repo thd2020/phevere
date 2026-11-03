@@ -3031,6 +3031,37 @@ function wireMainWorkspace(): void {
   });
 }
 
+/** Export, Import and Refresh sit in a menu at the end of the Words header. */
+function wireWordsMoreMenu(): void {
+  const btn = document.getElementById('wordsMoreBtn');
+  const menu = document.getElementById('wordsMoreMenu');
+  if (!btn || !menu) return;
+  const setOpen = (open: boolean) => {
+    menu.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) menu.querySelector<HTMLElement>('.ws-menu__item')?.focus();
+  };
+  btn.addEventListener('click', () => setOpen(menu.hidden));
+  menu.addEventListener('click', (ev) => {
+    if ((ev.target as HTMLElement).closest('.ws-menu__item')) setOpen(false);
+  });
+  menu.addEventListener('keydown', (ev) => {
+    const items = [...menu.querySelectorAll<HTMLElement>('.ws-menu__item')];
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    if (ev.key === 'Escape') {
+      setOpen(false);
+      btn.focus();
+    } else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      items[(at + (ev.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
+    }
+  });
+  document.addEventListener('pointerdown', (ev) => {
+    if (!menu.hidden && !(ev.target as HTMLElement).closest('#notebookTools')) setOpen(false);
+  });
+}
+wireWordsMoreMenu();
+
 document.getElementById('refreshVocabBtn')?.addEventListener('click', () => {
   void loadVocabNotebook();
 });
