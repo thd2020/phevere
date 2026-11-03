@@ -55,6 +55,16 @@ import {
   subscribeWordbook,
   unsubscribeWordbook,
   wordbookMeta,
+  listUserBooks,
+  createUserBook,
+  renameUserBook,
+  addUserBookWords,
+  removeUserBookWord,
+  deleteUserBook,
+  isUserBookId,
+  sourceGroups,
+  sourceBookTitle,
+  type UserBook,
   type BookWordProgress,
   type WordbookSub,
   type WordsContext,
@@ -219,14 +229,16 @@ const wordsState = {
   limit: BOOK_LIST_PAGE,
 };
 let wbSubs: WordbookSub[] = [];
+let wbUserBooks: UserBook[] = [];
 let wbProgress = new Map<string, BookWordProgress>();
 const wbBooks = new Map<string, string[]>();
 const wbMeaningInFlight = new Set<string>();
 
 function rebuildWordsContext(): void {
   const mine = reviewPool.length >= notebook.length ? reviewPool : notebook;
-  wordsState.ctx = buildWordsContext(mine, wbProgress, wbSubs, wbBooks);
-  if (wordsState.scope !== 'mine' && wordsState.scope !== 'all' && !wbSubs.some((s) => s.bookId === wordsState.scope)) {
+  wordsState.ctx = buildWordsContext(mine, wbProgress, wbSubs, wbBooks, wbUserBooks);
+  const known = ['mine', 'all', 'sources'];
+  if (!known.includes(wordsState.scope) && !wbSubs.some((s) => s.bookId === wordsState.scope)) {
     setWordsScope('mine');
   }
   if (wordsState.scope === 'all' && !wbSubs.length) setWordsScope('mine');
@@ -244,8 +256,9 @@ function setWordsScope(scope: WordsScope): void {
 async function refreshWords(): Promise<void> {
   try {
     wbSubs = await listWordbookSubs();
+    wbUserBooks = await listUserBooks();
     wbProgress = new Map((await listBookProgress()).map((p) => [p.lemma, p]));
-    for (const s of wbSubs) if (!wbBooks.has(s.bookId)) wbBooks.set(s.bookId, await loadWordbook(s.bookId));
+    for (const s of wbSubs) if (!isUserBookId(s.bookId) && !wbBooks.has(s.bookId)) wbBooks.set(s.bookId, await loadWordbook(s.bookId));
     if (wordsState.scope !== 'mine' && !reviewPool.length) await loadReviewPool();
     rebuildWordsContext();
   } catch (err) {
@@ -1961,10 +1974,39 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     }
     case 'wb-unsub': {
       const id = t.dataset.book || '';
-      await unsubscribeWordbook(id);
-      if (wordsState.scope === id) setWordsScope('mine');
+      const title = wordbookMeta(id)?.title || id;
+      if (isUserBookId(id)) await deleteUserBook(id);
+      else await unsubscribeWordbook(id);
+      if (wordsState.scope === id) setWordsScope(isUserBookId(id) ? 'sources' : 'mine');
       await refreshWords();
-      toast(`Removed ${wordbookMeta(id)?.title || id}`);
+      toast(isUserBookId(id) ? `Deleted ${title}` : `Removed ${title}`);
+      paint();
+      return;
+    }
+    case 'src-book': {
+      // A source becomes a word book: its words in the order they were saved.
+      const g = wordsState.ctx ? sourceGroups(wordsState.ctx).find((x) => x.key === t.dataset.source) : null;
+      if (!g) return;
+      const book = await createUserBook(sourceBookTitle(g.label), g.entries.map((e) => e.lemma), g.key);
+      await refreshWords();
+      setWordsScope(book.bookId);
+      toast(`Made ${book.title}`);
+      paint();
+      window.scrollTo({ top: 0 });
+      return;
+    }
+    case 'src-add': {
+      const g = wordsState.ctx ? sourceGroups(wordsState.ctx).find((x) => x.key === t.dataset.source) : null;
+      if (!g || !t.dataset.book) return;
+      await addUserBookWords(t.dataset.book, g.entries.map((e) => e.lemma));
+      await refreshWords();
+      paint();
+      return;
+    }
+    case 'ub-drop': {
+      if (!t.dataset.book || !t.dataset.q) return;
+      await removeUserBookWord(t.dataset.book, t.dataset.q);
+      await refreshWords();
       paint();
       return;
     }
@@ -2327,6 +2369,13 @@ function onChange(e: Event): void {
     document.querySelectorAll<HTMLElement>('.lang-sheet__section').forEach((h) => { h.hidden = !!needle; });
     return;
   }
+  if (e.type === 'change' && el instanceof HTMLInputElement && el.name === 'book-title' && el.dataset.book) {
+    void renameUserBook(el.dataset.book || '', el.value).then(async () => {
+      await refreshWords();
+      paint();
+    });
+    return;
+  }
   if (el.id === 'q') {
     draft = (el as HTMLInputElement).value;
   } else if (el.id === 'nbq') {
@@ -2355,6 +2404,18 @@ function onSubmit(e: Event): void {
   if (form instanceof HTMLFormElement && form.dataset.actForm === 'nb-submit') {
     e.preventDefault();
     answerCurrentReview({ typed: (form.querySelector('#nbv-answer') as HTMLInputElement | null)?.value || '' });
+    return;
+  }
+  if (form instanceof HTMLFormElement && form.dataset.actForm === 'ub-add') {
+    e.preventDefault();
+    const input = form.querySelector<HTMLInputElement>('input[name="word"]');
+    const word = (input?.value || '').trim();
+    if (!word) return;
+    void addUserBookWords(form.dataset.book || '', [word]).then(async () => {
+      await refreshWords();
+      paint();
+      document.querySelector<HTMLInputElement>('form[data-act-form="ub-add"] input')?.focus();
+    });
     return;
   }
   if (!(form instanceof HTMLFormElement) || !form.classList.contains('search')) return;

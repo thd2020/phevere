@@ -8,9 +8,7 @@
 import { stripGlossText } from './lookup-policy';
 import { formatVocabLangPair } from './vocab-lang';
 import { findWordInSentence, siteOf, type SourceContext } from './source-context';
-import { WORDBOOK_CATALOG } from './wordbook-catalog';
-
-const BOOK_NAMES = new Map(WORDBOOK_CATALOG.map((b) => [b.id, b]));
+import { bookName } from './book-names';
 
 export interface VocabViewEntry {
   id: string;
@@ -233,7 +231,7 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
         ${posTag(pos)}
         ${langs ? `<span class="vocab-langs">${esc(langs)}</span>` : ''}
         ${e.books?.length ? `<span class="wb-badges">${e.books
-          .map((b) => `<span class="wb-badge" title="${esc(BOOK_NAMES.get(b)?.title || b)}">${esc(BOOK_NAMES.get(b)?.short || b)}</span>`)
+          .map((b) => `<span class="wb-badge" title="${esc(bookName(b)?.title || b)}">${esc(bookName(b)?.short || b)}</span>`)
           .join('')}</span>` : ''}
       </div>`;
   const more = senses.length > SENSES_SHOWN;

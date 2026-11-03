@@ -6,9 +6,28 @@
  *
  * Hooks: wb-scope (data-scope), wb-library, wb-sub and wb-unsub (data-book), wb-goal (data-book,
  * data-goal), wb-save and wb-known (data-q, data-known), wb-more, and lookup (data-q).
+ *
+ * Sources (scope 'sources') lists My words grouped by the document or site they were saved
+ * from. Its hooks: src-book (data-source) makes a word book from a source, src-add (data-source,
+ * data-book) adds the source's newer words to that book. In a made book, a change on the title
+ * input (name "book-title", data-book) renames it, the form with data-act-form="ub-add" (data-book,
+ * input name "word") adds a word, ub-drop (data-book, data-q) removes one, and wb-unsub deletes
+ * the book. The title input and the form carry no data-act, so typing in them is never a click.
  */
 import { esc, type NotebookEntry } from './notebook-shared';
-import { bookProgress, wordbookMeta, wordStatus, WORDBOOKS, type BookProgress, type WordsContext, type WordsEntry, type WordsScope } from './wordbooks';
+import {
+  bookProgress,
+  sourceGroups,
+  wordbookMeta,
+  wordStatus,
+  WORDBOOKS,
+  type BookProgress,
+  type SourceGroup,
+  type WordsContext,
+  type WordsEntry,
+  type WordsScope,
+} from './wordbooks';
+import { bookWordKey } from './wordbook-store';
 
 const ICON = {
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
@@ -16,6 +35,10 @@ const ICON = {
   heartOn: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" fill="currentColor" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   stack: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7l8-4 8 4-8 4zM4 12l8 4 8-4M4 17l8 4 8-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+  book: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h9.5A2.5 2.5 0 0 1 17 7v12.5H7.5A2.5 2.5 0 0 1 5 17zM5 17a2.5 2.5 0 0 1 2.5-2.5H17M9 8h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  globe: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM4 12h16M12 4c2.2 2.3 3.2 5 3.2 8s-1 5.7-3.2 8c-2.2-2.3-3.2-5-3.2-8s1-5.7 3.2-8z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>',
+  sources: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h6l2 2h8v11H4zM8 12h8M8 15.5h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
 };
 
 const STATUS_LABEL = { new: 'New', learning: 'Learning', known: 'Known' } as const;
@@ -64,6 +87,7 @@ export function wordsScopeSwitchHtml(scope: WordsScope, ctx: WordsContext, libra
     ${btn('mine', 'My words', '').replace('</span></button>', `</span>${count}</button>`)}
     ${books}
     ${ctx.subs.length ? btn('all', 'All books', ICON.stack) : ''}
+    ${scope === 'sources' || sourceGroups(ctx).length ? btn('sources', 'Sources', ICON.sources) : ''}
     <button type="button" class="wb-scope wb-scope--add${library ? ' is-active' : ''}" data-act="wb-library" aria-pressed="${library}">${ICON.plus}<span>Add a word book</span></button>
   </div>`;
 }
@@ -88,9 +112,11 @@ export function wordbookHeaderHtml(scope: WordsScope, ctx: WordsContext, now = D
       })
       .join('')}</section>`;
   }
+  if (scope === 'sources') return '';
   const meta = wordbookMeta(scope);
   if (!meta) return '';
   const p = bookProgress(scope, ctx, now);
+  if (meta.user) return madeBookHeaderHtml(scope, meta.title, meta.sourceKey, p);
   return `<section class="wb-head">
     ${progressRingSvg(p.known, p.learning, p.total, 64)}
     <div class="wb-head__text">
@@ -101,6 +127,28 @@ export function wordbookHeaderHtml(scope: WordsScope, ctx: WordsContext, now = D
     <div class="wb-head__side">
       ${goalChips(scope, p.dailyNew)}
       <button type="button" class="nbv-link wb-unsub" data-act="wb-unsub" data-book="${esc(scope)}">Remove book</button>
+    </div>
+  </section>`;
+}
+
+/** A made book: its title can be edited in place, words added by name, the book deleted. */
+function madeBookHeaderHtml(bookId: string, title: string, sourceKey: string | undefined, p: BookProgress): string {
+  const from = sourceKey ? sourceKey.replace(/^(doc|site):/, '') : '';
+  const id = esc(bookId);
+  return `<section class="wb-head wb-head--made">
+    ${progressRingSvg(p.known, p.learning, p.total, 64)}
+    <div class="wb-head__text">
+      <p class="wb-level">${from ? `From ${esc(from)}` : 'My word book'}</p>
+      <input class="wb-title wb-title-input" name="book-title" data-book="${id}" value="${esc(title)}" maxlength="80" aria-label="Book name" spellcheck="false" />
+      <p class="wb-counts"><span><b>${fmt(p.known)}</b> known</span><span><b>${fmt(p.learning)}</b> learning</span><span><b>${fmt(p.total - p.known - p.learning)}</b> new</span></p>
+    </div>
+    <div class="wb-head__side">
+      ${goalChips(bookId, p.dailyNew)}
+      <form class="wb-add" data-act-form="ub-add" data-book="${id}">
+        <input name="word" type="text" placeholder="Add a word" aria-label="Add a word" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <button type="submit" class="nbv-secondary">Add</button>
+      </form>
+      <button type="button" class="nbv-link wb-unsub" data-act="wb-unsub" data-book="${id}">Delete book</button>
     </div>
   </section>`;
 }
@@ -123,6 +171,7 @@ export function wordbookListHtml(entries: WordsEntry[], opts: { scope: WordsScop
   if (!entries.length) return `<p class="nbv-empty">${opts.filtered ? 'No matching words.' : 'No words.'}</p>`;
   const shown = entries.slice(0, opts.limit);
   const except = opts.scope === 'all' ? '' : String(opts.scope);
+  const made = !!wordbookMeta(String(opts.scope))?.user;
   const rows = shown
     .map((e, i) => {
       const st = wordStatus(e);
@@ -138,7 +187,11 @@ export function wordbookListHtml(entries: WordsEntry[], opts: { scope: WordsScop
         <button type="button" class="wb-row__word" data-act="lookup" data-q="${q}">${q}</button>
         ${badgesHtml(e.books, except)}
         <span class="wb-state wb-state--${st}">${STATUS_LABEL[st]}</span>
-        <span class="wb-row__acts">${known}${save}</span>
+        <span class="wb-row__acts">${known}${save}${
+          made
+            ? `<button type="button" class="wb-act wb-act--drop" data-act="ub-drop" data-book="${esc(String(opts.scope))}" data-q="${q}" title="Remove from this book" aria-label="Remove ${q} from this book">${ICON.close}</button>`
+            : ''
+        }</span>
       </li>`;
     })
     .join('');
@@ -158,6 +211,45 @@ export function scopeStudySet(entries: WordsEntry[], nextNew = 40): WordsEntry[]
     fresh += 1;
     return fresh <= nextNew;
   });
+}
+
+/* ------------------------------------------------------------------ sources */
+
+/** Words a source row shows before "and N more". */
+const SOURCE_WORDS_SHOWN = 14;
+
+function sourceRowHtml(g: SourceGroup, ctx: WordsContext, now: number): string {
+  const words = g.entries.map((e) => e.lemma);
+  const shown = words.slice(-SOURCE_WORDS_SHOWN).reverse();
+  const chips = shown.map((w) => `<button type="button" class="wb-src__word" data-act="lookup" data-q="${esc(w)}">${esc(w)}</button>`).join('');
+  const more = words.length > shown.length ? `<span class="wb-src__more">and ${fmt(words.length - shown.length)} more</span>` : '';
+  const key = esc(g.key);
+  let action: string;
+  if (g.bookId) {
+    const inBook = new Set((ctx.books.get(g.bookId) || []).map(bookWordKey));
+    const fresh = words.filter((w) => !inBook.has(bookWordKey(w))).length;
+    const p = bookProgress(g.bookId, ctx, now);
+    action = `<span class="wb-src__book">${progressRingSvg(p.known, p.learning, p.total, 18)}<button type="button" class="nbv-secondary" data-act="wb-scope" data-scope="${esc(g.bookId)}">Open word book</button></span>${
+      fresh ? `<button type="button" class="nbv-link" data-act="src-add" data-source="${key}" data-book="${esc(g.bookId)}">Add ${fmt(fresh)} new</button>` : ''
+    }`;
+  } else action = `<button type="button" class="nbv-primary" data-act="src-book" data-source="${key}">Make a word book</button>`;
+  const last = g.latest ? new Date(g.latest).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
+  return `<li class="wb-src">
+    <span class="wb-src__icon" aria-hidden="true">${g.kind === 'doc' ? ICON.book : ICON.globe}</span>
+    <div class="wb-src__main">
+      <h3 class="wb-src__name" title="${esc(g.label)}">${esc(g.label)}</h3>
+      <p class="wb-src__meta"><span>${fmt(words.length)} ${words.length === 1 ? 'word' : 'words'}</span>${last ? `<span>${esc(last)}</span>` : ''}</p>
+      <div class="wb-src__words">${chips}${more}</div>
+    </div>
+    <div class="wb-src__acts">${action}</div>
+  </li>`;
+}
+
+/** My words grouped by the document or site they were saved from. */
+export function sourcesHtml(ctx: WordsContext, now = Date.now()): string {
+  const groups = sourceGroups(ctx);
+  if (!groups.length) return '<p class="nbv-empty">Words saved from a PDF or a web page are grouped here.</p>';
+  return `<section class="wb-sources"><ol class="wb-src-list">${groups.map((g) => sourceRowHtml(g, ctx, now)).join('')}</ol></section>`;
 }
 
 /* ------------------------------------------------------------------ library */

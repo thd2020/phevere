@@ -11,9 +11,44 @@
 import { WORDBOOK_CATALOG, type WordbookMeta } from './wordbook-catalog';
 import { clean, dayStart, DAY, type NotebookEntry } from './notebook-shared';
 import { isNewWord, memoryLevel, startReview, type ReviewState } from './review-quiz';
-import { bookWordKey, DEFAULT_DAILY_NEW, type BookWordProgress, type WordbookSub } from './wordbook-store';
+import { bookWordKey, DEFAULT_DAILY_NEW, isUserBookId, type BookWordProgress, type UserBook, type WordbookSub } from './wordbook-store';
+import { setMadeBookNames, shortBookTitle } from './book-names';
+import { sourceGroupOf, type SourceGroupKey } from './source-context';
 
 export type { WordbookMeta };
+
+/** A book's catalog entry, or one the learner made (`user`), with the source it came from. */
+export type BookMeta = WordbookMeta & { user?: boolean; sourceKey?: string };
+
+const madeMeta = new Map<string, BookMeta>();
+
+function metaForMade(b: UserBook, rank: number): BookMeta {
+  return {
+    id: b.bookId,
+    title: b.title,
+    short: shortBookTitle(b.title),
+    level: 'My word book',
+    source: '',
+    sourceUrl: '',
+    order: 'frequency',
+    licence: '',
+    licenceUrl: '',
+    rank,
+    count: b.words.length,
+    retrieved: '',
+    user: true,
+    sourceKey: b.source,
+  };
+}
+
+/** Registers the books the learner made, so they are named and ordered like shipped books. */
+export function registerUserBooks(books: UserBook[]): void {
+  madeMeta.clear();
+  books
+    .filter((b) => !b.deleted)
+    .forEach((b, i) => madeMeta.set(b.bookId, metaForMade(b, 1000 + i)));
+  setMadeBookNames(books);
+}
 
 export type WordsScope = 'mine' | 'all' | string;
 export type WordStatus = 'new' | 'learning' | 'known';
@@ -21,8 +56,8 @@ export type WordStatus = 'new' | 'learning' | 'known';
 /** Every book, in learning-path order. */
 export const WORDBOOKS: WordbookMeta[] = WORDBOOK_CATALOG.slice().sort((a, b) => a.rank - b.rank);
 
-export function wordbookMeta(id: string): WordbookMeta | undefined {
-  return WORDBOOKS.find((b) => b.id === id);
+export function wordbookMeta(id: string): BookMeta | undefined {
+  return WORDBOOKS.find((b) => b.id === id) || madeMeta.get(id);
 }
 
 type BookFile = { words: string[] };
@@ -87,8 +122,19 @@ export function buildWordsContext(
   mine: NotebookEntry[],
   progress: BookWordProgress[] | Map<string, BookWordProgress>,
   subs: WordbookSub[],
-  books: Map<string, string[]>,
+  shipped: Map<string, string[]>,
+  userBooks?: UserBook[],
 ): WordsContext {
+  // Books the learner made carry their own words.
+  let books = shipped;
+  if (userBooks) {
+    registerUserBooks(userBooks);
+    books = new Map(shipped);
+    for (const b of userBooks) {
+      if (b.deleted) books.delete(b.bookId);
+      else books.set(b.bookId, b.words);
+    }
+  }
   const rank = (id: string) => wordbookMeta(id)?.rank ?? 99;
   const active = subs.filter((s) => s.active && books.has(s.bookId)).sort((a, b) => rank(a.bookId) - rank(b.bookId));
   const index = new Map<string, string[]>();
@@ -320,3 +366,44 @@ export function dropCurrentReview(state: ReviewState): void {
   state.answer = null;
   state.revealed = false;
 }
+
+/* ------------------------------------------------------------------ sources */
+
+export interface SourceGroup extends SourceGroupKey {
+  /** Saved words from this source, in the order they were saved. */
+  entries: NotebookEntry[];
+  /** When the last of them was saved. */
+  latest: number;
+  /** The book made from this source, if any. */
+  bookId?: string;
+}
+
+/**
+ * My words grouped by where they were saved: one group per document, otherwise per web site,
+ * most recently used first. Words saved with no page or document (the phone's app name alone)
+ * are left out.
+ */
+export function sourceGroups(ctx: Pick<WordsContext, 'mine'> & Partial<WordsContext>): SourceGroup[] {
+  const groups = new Map<string, SourceGroup>();
+  for (const e of ctx.mine) {
+    const key = sourceGroupOf(e.context);
+    if (!key) continue;
+    const at = Number(e.createdAt || e.updatedAt || 0);
+    const g = groups.get(key.key);
+    if (g) {
+      g.entries.push(e);
+      g.latest = Math.max(g.latest, at);
+    } else groups.set(key.key, { ...key, entries: [e], latest: at });
+  }
+  const made = new Map<string, string>();
+  for (const m of madeMeta.values()) if (m.sourceKey && (!ctx.subs || ctx.subs.some((s) => s.bookId === m.id))) made.set(m.sourceKey, m.id);
+  return [...groups.values()]
+    .map((g) => ({
+      ...g,
+      entries: g.entries.sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0)),
+      bookId: made.get(g.key),
+    }))
+    .sort((a, b) => b.latest - a.latest || b.entries.length - a.entries.length);
+}
+
+export { isUserBookId };

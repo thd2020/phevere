@@ -20,6 +20,11 @@ const bundle = esbuild.buildSync({
       export { addVocab, findByLemma, setVocabContextIfEmpty } from './src/vocab-store';
       export { VOCAB_SCHEMA_SQL } from './src/schema';
       export { clozeFrom } from './src/review-quiz';
+      export * from './src/wordbook-store';
+      export * from './src/wordbook-sync';
+      export { buildWordsContext, sourceGroups, scopeEntries, bookProgress, wordbookMeta } from './src/wordbooks';
+      export { sourcesHtml, wordsScopeSwitchHtml, wordbookHeaderHtml, wordbookListHtml } from './src/wordbook-views';
+      export { listVocab, reviewVocab } from './src/vocab-store';
     `,
     resolveDir: path.join(root, 'packages', 'core'),
     loader: 'ts',
@@ -29,9 +34,12 @@ const bundle = esbuild.buildSync({
   format: 'cjs',
   write: false,
 }).outputFiles[0].text;
-const mod = { exports: {} };
-new Function('module', 'exports', 'require', bundle)(mod, mod.exports, require);
-const core = mod.exports;
+function loadCore() {
+  const mod = { exports: {} };
+  new Function('module', 'exports', 'require', bundle)(mod, mod.exports, require);
+  return mod.exports;
+}
+const core = loadCore();
 
 const ZWSP = '\u200b';
 
@@ -150,10 +158,7 @@ function normalizing() {
   return 14;
 }
 
-async function storage() {
-  const SQL = await initSqlJs();
-  const db = new SQL.Database();
-  for (const stmt of core.VOCAB_SCHEMA_SQL.split(';')) if (stmt.trim()) db.run(stmt);
+function sqlDb(db) {
   const vocabDb = {
     ready: async () => {},
     initError: () => null,
@@ -175,8 +180,21 @@ async function storage() {
       db.run(sql, params);
     },
   };
+  return vocabDb;
+}
+
+/** One install: its own core state and its own notebook. */
+function device(SQL, name) {
+  const c = name === 'main' ? core : loadCore();
+  const db = new SQL.Database();
+  for (const stmt of c.VOCAB_SCHEMA_SQL.split(';')) if (stmt.trim()) db.run(stmt);
   let n = 0;
-  core.configureCore({ http: {}, sha256Hex: () => '', vocabDb, newId: () => `id-${++n}` });
+  c.configureCore({ http: {}, sha256Hex: () => '', vocabDb: sqlDb(db), newId: () => `${name}-${++n}` });
+  return c;
+}
+
+async function storage(SQL) {
+  device(SQL, 'main');
   const first = { app: 'Acrobat', doc: 'GEB.pdf', page: 12 };
   const saved = await core.addVocab({ lemma: 'braid' });
   assert.equal(saved.context, undefined);
@@ -198,9 +216,112 @@ function cloze() {
   return 2;
 }
 
+async function sets(SQL) {
+  const a = device(SQL, 'a');
+  const t0 = Date.UTC(2026, 10, 1);
+  const save = (lemma, context, i) => a.addVocab({ lemma, context }).then((e) => e);
+  const geb = { app: 'Acrobat', doc: 'GEB.pdf', page: 40 };
+  const wiki = { app: 'Chrome', title: 'Strange loop - Wikipedia', url: 'https://en.wikipedia.org/wiki/Strange_loop' };
+  for (const w of ['fugue', 'canon', 'isomorphism', 'recursion']) await save(w, geb);
+  await save('tangled', wiki);
+  await save('hierarchy', { ...wiki, url: 'https://www.en.wikipedia.org/wiki/Hierarchy' });
+  await save('kettle', { app: 'Phone' });
+  await save('plain');
+  const ctxOf = async () =>
+    a.buildWordsContext(await a.listVocab(1000), await a.listBookProgress(), await a.listWordbookSubs(), new Map(), await a.listUserBooks(true));
+
+  // Sources: one group per document, otherwise per site; app-only and unsourced words are left out.
+  let ctx = await ctxOf();
+  const groups = a.sourceGroups(ctx);
+  assert.deepEqual(groups.map((g) => [g.label, g.entries.length]).sort(), [['GEB.pdf', 4], ['en.wikipedia.org', 2]]);
+  assert.deepEqual(groups.find((g) => g.kind === 'doc').entries.map((e) => e.lemma), ['fugue', 'canon', 'isomorphism', 'recursion'], 'in saved order');
+  assert.match(a.wordsScopeSwitchHtml('mine', ctx, false), /data-scope="sources"/, 'the switcher offers Sources');
+  let html = a.sourcesHtml(ctx);
+  assert.match(html, /GEB\.pdf/);
+  assert.match(html, /data-act="src-book" data-source="doc:geb\.pdf"/);
+  assert.match(html, /4 words/);
+
+  // Make a word book from a source; it is subscribed and shows in the switcher with its progress.
+  const g = groups.find((x) => x.key === 'doc:geb.pdf');
+  const book = await a.createUserBook(a.sourceBookTitle(g.label), g.entries.map((e) => e.lemma), g.key);
+  assert.ok(a.isUserBookId(book.bookId));
+  assert.equal(book.title, 'GEB');
+  ctx = await ctxOf();
+  assert.ok(ctx.subs.some((s) => s.bookId === book.bookId), 'subscribed');
+  assert.match(a.wordsScopeSwitchHtml('mine', ctx, false), new RegExp(`data-scope="${book.bookId}"[^>]*title="GEB: 0 of 4 known"`));
+  html = a.sourcesHtml(ctx);
+  assert.match(html, /Open word book/);
+  assert.doesNotMatch(html, /data-source="doc:geb\.pdf">Make a word book/);
+  assert.match(a.wordbookHeaderHtml(book.bookId, ctx), /value="GEB"/);
+  assert.match(a.wordbookHeaderHtml(book.bookId, ctx), /From geb\.pdf/);
+  // Progress belongs to the word: reviewing a saved word counts in the book.
+  const fugue = (await a.listVocab(1000)).find((e) => e.lemma === 'fugue');
+  await a.reviewVocab(fugue.id, 3);
+  ctx = await ctxOf();
+  assert.equal(a.bookProgress(book.bookId, ctx).learning, 1);
+  assert.match(a.wordbookListHtml(a.scopeEntries(book.bookId, ctx), { scope: book.bookId, limit: 50 }), /data-act="ub-drop"/);
+
+  // Rename, add and remove words; a later save from the source can be added in one go.
+  await a.renameUserBook(book.bookId, 'Gödel, Escher, Bach');
+  await a.addUserBookWords(book.bookId, ['strange loop', 'Fugue']);
+  await a.removeUserBookWord(book.bookId, 'canon');
+  await save('counterpoint', geb);
+  ctx = await ctxOf();
+  assert.deepEqual(ctx.books.get(book.bookId), ['fugue', 'isomorphism', 'recursion', 'strange loop']);
+  assert.equal(a.wordbookMeta(book.bookId).title, 'Gödel, Escher, Bach');
+  assert.match(a.sourcesHtml(ctx), /Add 2 new/, 'canon and counterpoint are not in the book');
+
+  // Sync: the book reaches another device as records without progress, split when long.
+  const server = (() => {
+    const records = new Map();
+    let seq = 0;
+    return {
+      records,
+      sync(ns, cursor, changes) {
+        assert.equal(ns, 'phevere/wordbooks');
+        for (const c of changes) {
+          assert.ok(JSON.stringify(c).length < 64 * 1024, `${c.id} fits in 64 KB`);
+          const prev = records.get(c.id);
+          if (prev && c.updatedAt <= prev.updatedAt) continue;
+          records.set(c.id, { ...c, seq: ++seq });
+        }
+        const out = [...records.values()].filter((r) => r.seq > cursor).sort((x, y) => x.seq - y.seq);
+        return { changes: out.map(({ seq: _s, ...r }) => r), cursor: out.length ? out[out.length - 1].seq : cursor, more: false };
+      },
+    };
+  })();
+  const account = { getUser: async () => ({ id: 'u1' }), sync: async (ns, c, ch) => server.sync(ns, c, JSON.parse(JSON.stringify(ch))) };
+  const long = Array.from({ length: 9000 }, (_, i) => `word${i}-${'x'.repeat(i % 30)}`);
+  const big = await a.createUserBook('Long list', long, 'site:example.com');
+  await a.syncWordbooks(account);
+  const head = server.records.get(`book:${book.bookId}`);
+  assert.deepEqual(Object.keys(head.data).sort(), ['createdAt', 'deleted', 'name', 'parts', 'source', 'words']);
+  assert.ok(server.records.has(`book:${big.bookId}:1`), 'a long list continues in a second record');
+  const b = device(SQL, 'b');
+  await b.syncWordbooks(account);
+  const bBooks = await b.listUserBooks();
+  assert.deepEqual(bBooks.find((x) => x.bookId === book.bookId).words, ['fugue', 'isomorphism', 'recursion', 'strange loop']);
+  assert.equal(bBooks.find((x) => x.bookId === book.bookId).title, 'Gödel, Escher, Bach');
+  assert.deepEqual(bBooks.find((x) => x.bookId === big.bookId).words, long, 'every piece assembled in order');
+  assert.ok((await b.listWordbookSubs()).some((s) => s.bookId === book.bookId), 'subscription synced');
+
+  // Deleting on one device deletes everywhere; the words keep their progress.
+  await b.deleteUserBook(book.bookId, Date.now() + 5000);
+  await b.syncWordbooks(account);
+  await a.syncWordbooks(account);
+  assert.equal((await a.listUserBooks()).some((x) => x.bookId === book.bookId), false);
+  ctx = await ctxOf();
+  assert.ok(!ctx.subs.some((s) => s.bookId === book.bookId));
+  assert.match(a.sourcesHtml(ctx), /data-source="doc:geb\.pdf">Make a word book/, 'the source can be made into a book again');
+  assert.equal(a.splitWords(['a', 'b', 'c'], 10).length, 2);
+  return 30;
+}
+
 (async () => {
+  const SQL = await initSqlJs();
   let n = titles() + privateWindows() + sentences() + normalizing() + cloze();
-  n += await storage();
+  n += await storage(SQL);
+  n += await sets(SQL);
   console.log(`test-word-sources: ok (${n} checks)`);
 })().catch((err) => {
   console.error(err);

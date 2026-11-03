@@ -472,6 +472,11 @@ contextBridge.exposeInMainWorld('wordbookAPI', {
   known: (lemma: string, known: boolean) => ipcRenderer.invoke('wordbook-known', lemma, known),
   meaning: (lemma: string) => ipcRenderer.invoke('wordbook-meaning', lemma),
   save: (lemma: string, hasMeaning?: boolean) => ipcRenderer.invoke('wordbook-save', lemma, hasMeaning),
+  createBook: (title: string, words: string[], source?: string) => ipcRenderer.invoke('wordbook-user-create', title, words, source),
+  renameBook: (bookId: string, title: string) => ipcRenderer.invoke('wordbook-user-rename', bookId, title),
+  addBookWords: (bookId: string, words: string[]) => ipcRenderer.invoke('wordbook-user-add', bookId, words),
+  removeBookWord: (bookId: string, word: string) => ipcRenderer.invoke('wordbook-user-remove', bookId, word),
+  deleteBook: (bookId: string) => ipcRenderer.invoke('wordbook-user-delete', bookId),
 });
 
 contextBridge.exposeInMainWorld('accountAPI', {

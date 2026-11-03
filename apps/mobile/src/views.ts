@@ -39,6 +39,7 @@ import {
   wordbookLibraryHtml,
   wordbookListHtml,
   wordsScopeSwitchHtml,
+  sourcesHtml,
   type WordsContext,
   type WordsScope,
 } from '@phevere/core';
@@ -848,6 +849,7 @@ export function notebookBody(
   const ctx = words?.ctx || null;
   const switcher = ctx ? `<div class="nbv nb-books">${wordsScopeSwitchHtml(words!.scope, ctx, words!.library)}</div>` : '';
   if (ctx && words!.library) return `${switcher}<div class="nbv nbv-body">${wordbookLibraryHtml(ctx)}</div>`;
+  if (ctx && words!.scope === 'sources') return `${switcher}<div class="nbv nbv-body">${sourcesHtml(ctx)}</div>`;
   if (ctx && words!.scope !== 'mine') return switcher + bookScopeBody(words!, ctx, filter, nb);
   let list = ctx ? entries.map((e) => ({ ...e, books: ctx.index.get(e.lemma.trim().toLowerCase()) })) : [...entries];
   if (sort === 'az') list.sort((a, b) => a.lemma.localeCompare(b.lemma, undefined, { sensitivity: 'base', numeric: true }));

@@ -57,6 +57,12 @@ import {
   cacheBookWordMeaning,
   listBookProgress,
   listWordbookSubs,
+  listUserBooks,
+  createUserBook,
+  renameUserBook,
+  addUserBookWords,
+  removeUserBookWord,
+  deleteUserBook,
   reviewBookWord,
   saveBookWord,
   setBookWordKnown,
@@ -2907,8 +2913,18 @@ ipcMain.handle('vocab-review', async (_e, id: string, grade: 1 | 2 | 3 | 4) => {
 // Word books (packages/core/src/wordbook-store.ts): subscriptions and progress live in the same
 // database as the notebook; the word lists themselves ship with the renderer.
 ipcMain.handle('wordbook-state', async () => {
-  return { subs: await listWordbookSubs(), progress: await listBookProgress() };
+  return { subs: await listWordbookSubs(), progress: await listBookProgress(), userBooks: await listUserBooks() };
 });
+// Books the learner made, usually from a source in the Words tab.
+ipcMain.handle('wordbook-user-create', async (_e, title: string, words: string[], source?: string) =>
+  createUserBook(String(title || ''), Array.isArray(words) ? words.map(String) : [], source ? String(source) : undefined),
+);
+ipcMain.handle('wordbook-user-rename', async (_e, bookId: string, title: string) => renameUserBook(String(bookId), String(title || '')));
+ipcMain.handle('wordbook-user-add', async (_e, bookId: string, words: string[]) =>
+  addUserBookWords(String(bookId), Array.isArray(words) ? words.map(String) : []),
+);
+ipcMain.handle('wordbook-user-remove', async (_e, bookId: string, word: string) => removeUserBookWord(String(bookId), String(word || '')));
+ipcMain.handle('wordbook-user-delete', async (_e, bookId: string) => deleteUserBook(String(bookId)));
 ipcMain.handle('wordbook-subscribe', async (_e, bookId: string, dailyNew?: number) => subscribeWordbook(String(bookId), dailyNew));
 ipcMain.handle('wordbook-unsubscribe', async (_e, bookId: string) => unsubscribeWordbook(String(bookId)));
 ipcMain.handle('wordbook-goal', async (_e, bookId: string, dailyNew: number) => setWordbookGoal(String(bookId), Number(dailyNew) || 10));

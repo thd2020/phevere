@@ -5,6 +5,11 @@
  * learner subscribed to with a daily goal each, and `book_words`, review progress for book words
  * that are not in My words, keyed by the lowercase headword. A word saved to My words keeps its
  * progress on its `vocab` row; nothing in `vocab` changes.
+ *
+ * `user_books` holds the word books a learner made, usually from a source (the words saved from
+ * one PDF or one site): a title and the headwords in order, as JSON. Their subscription and
+ * daily goal live in `wordbook_subs` like any other book's. Deleting one sets `deleted`, so the
+ * deletion syncs. CREATE TABLE IF NOT EXISTS adds it to an existing notebook.
  */
 
 export const VOCAB_SCHEMA_SQL = `
@@ -48,6 +53,15 @@ CREATE TABLE IF NOT EXISTS wordbook_subs (
   book_id TEXT PRIMARY KEY,
   daily_new INTEGER DEFAULT 10,
   active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_books (
+  book_id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  words TEXT,
+  source TEXT,
+  deleted INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
