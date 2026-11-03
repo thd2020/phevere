@@ -2241,7 +2241,7 @@ body.settings-page .settings-close-btn {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition: background-color 0.12s var(--pv-motion), color 0.12s var(--pv-motion);
 }
 
 body.settings-page .settings-close-btn:hover {
@@ -2285,7 +2285,7 @@ body.settings-page .settings-nav__item {
   font-weight: 600;
   color: var(--set-ink-soft);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
+  transition: background-color 0.15s var(--pv-motion), color 0.15s var(--pv-motion);
 }
 
 body.settings-page .settings-nav__item:hover {
@@ -2308,7 +2308,7 @@ body.settings-page .settings-main {
 
 body.settings-page .settings-panel {
   display: none;
-  animation: settingsPanelIn 0.28s ease;
+  animation: settingsPanelIn 0.28s var(--pv-motion);
 }
 
 body.settings-page .settings-panel.is-active {
@@ -2345,188 +2345,6 @@ body.settings-page .settings-hint {
   line-height: 1.45;
 }
 
-body.settings-page .settings-hint + .settings-field,
-body.settings-page .settings-hint + .settings-row,
-body.settings-page .settings-hint + .settings-group {
-  margin-top: 10px;
-}
-
-body.settings-page .settings-group {
-  background: var(--set-panel);
-  border: 1px solid var(--set-line);
-  border-radius: 10px;
-  overflow: hidden;
-  margin-bottom: 12px;
-}
-
-body.settings-page .settings-group .settings-field,
-body.settings-page .settings-group .settings-row {
-  margin: 0;
-  border: none;
-  border-radius: 0;
-  border-bottom: 1px solid var(--set-line);
-  padding: 8px 12px;
-  background: transparent;
-}
-
-body.settings-page .settings-group .settings-field:last-child,
-body.settings-page .settings-group .settings-row:last-child {
-  border-bottom: none;
-  margin-bottom: 0;
-}
-
-body.settings-page .settings-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 10px;
-}
-
-body.settings-page .settings-field:last-child {
-  margin-bottom: 0;
-}
-
-body.settings-page .settings-field label,
-body.settings-page .settings-field-label {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--set-ink);
-  display: block;
-}
-
-body.settings-page .settings-shortcut-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: stretch;
-  width: 100%;
-  position: relative;
-}
-
-body.settings-page .settings-shortcut-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-
-body.settings-page .settings-keycaps {
-  flex: 1 1 220px;
-  min-width: min(100%, 180px);
-  min-height: 32px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  box-sizing: border-box;
-  border: 1px solid var(--set-line);
-  border-radius: 8px;
-  background: var(--set-panel);
-  cursor: pointer;
-}
-
-body.settings-page .settings-cheat .settings-keycaps {
-  flex: 0 0 auto;
-  min-width: 0;
-  min-height: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  cursor: default;
-}
-
-body.settings-page .keycap {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.5rem;
-  padding: 3px 7px;
-  border-radius: 6px;
-  border: 1px solid rgba(15, 23, 42, 0.14);
-  border-bottom-width: 2px;
-  background: linear-gradient(180deg, #fff 0%, #f4f4f5 100%);
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
-  color: var(--set-ink);
-  font-family: var(--pv-font-mono);
-  font-size: 0.72rem;
-  font-weight: 650;
-  line-height: 1.1;
-  letter-spacing: 0.02em;
-}
-
-body.settings-page .keycap-join {
-  color: var(--set-ink-soft);
-  font-size: 0.65rem;
-  padding: 0 1px;
-}
-
-body.settings-page .keycaps-empty {
-  font-size: 0.75rem;
-  color: var(--set-ink-soft);
-}
-
-body.settings-page .settings-cheat kbd,
-body.settings-page .settings-cheat .keycap {
-  min-width: 1.5rem;
-}
-
-body.settings-page .settings-shortcut-set {
-  flex: 0 0 auto;
-  white-space: nowrap;
-  align-self: center;
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--set-line);
-  border-radius: 8px;
-  background: var(--set-panel);
-  color: var(--set-ink);
-  font: inherit;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-body.settings-page .settings-shortcut-set:hover {
-  border-color: rgba(232, 93, 4, 0.45);
-  background: #fff;
-}
-
-body.settings-page .settings-shortcut-set.is-recording {
-  outline: 2px solid var(--set-ember);
-  outline-offset: 1px;
-  color: var(--set-ember-deep);
-}
-
-body.settings-page .settings-field .setting-input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px 10px;
-  border: 1px solid var(--set-line);
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-family: inherit;
-  background: var(--set-panel);
-  color: var(--set-ink);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-body.settings-page .settings-field .setting-input:focus {
-  outline: none;
-  border-color: var(--set-ember);
-  box-shadow: 0 0 0 3px rgba(232, 93, 4, 0.18);
-}
-
-body.settings-page .settings-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 4px;
-  align-items: center;
-}
-
 body.settings-page .settings-inline-status {
   font-size: 0.8125rem;
   color: var(--set-ink-soft);
@@ -2551,7 +2369,7 @@ body.settings-page .btn.btn-primary {
   background: linear-gradient(145deg, var(--set-ember) 0%, #f48c06 100%);
   color: #fff;
   box-shadow: 0 2px 10px rgba(232, 93, 4, 0.28);
-  transition: transform 0.1s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  transition: transform 0.1s var(--pv-motion), box-shadow 0.15s var(--pv-motion), filter 0.15s var(--pv-motion);
 }
 
 body.settings-page .btn.btn-primary:hover {
@@ -2561,263 +2379,6 @@ body.settings-page .btn.btn-primary:hover {
 
 body.settings-page .btn.btn-primary:active {
   transform: translateY(1px);
-}
-
-body.settings-page .btn.btn-secondary {
-  /* alias for shortcut set already styled */
-}
-
-body.settings-page .settings-cheat {
-  list-style: none;
-  margin: 14px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--set-radius);
-  border: 1px dashed rgba(13, 115, 119, 0.35);
-  background: rgba(13, 115, 119, 0.06);
-  display: grid;
-  gap: 8px;
-}
-
-body.settings-page .settings-offline-catalog {
-  display: grid;
-  gap: 10px;
-  margin: 12px 0 16px;
-}
-
-body.settings-page .settings-offline-offer {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  border-radius: var(--set-radius);
-  background: var(--set-panel);
-}
-
-body.settings-page .settings-offline-offer__kicker {
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--set-ink-soft);
-}
-
-body.settings-page .settings-offline-offer__title {
-  margin: 4px 0 6px;
-  font-size: 0.95rem;
-  font-weight: 650;
-}
-
-body.settings-page .settings-offline-installed-title {
-  margin: 18px 0 8px;
-  font-size: 0.85rem;
-  font-weight: 650;
-}
-
-body.settings-page .settings-offline-packs {
-  margin-top: 16px;
-  display: grid;
-  gap: 10px;
-}
-
-body.settings-page .settings-offline-pack {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  border-radius: var(--set-radius);
-  background: var(--set-panel);
-}
-
-body.settings-page .settings-offline-pack .settings-hint {
-  display: block;
-  margin: 4px 0 0;
-}
-
-body.settings-page .settings-cheat li {
-  font-size: 0.8125rem;
-  color: var(--set-ink-soft);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-body.settings-page .settings-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 12px 14px;
-  border-radius: var(--set-radius);
-  background: var(--set-panel);
-  border: 1px solid var(--set-line);
-}
-
-body.settings-page .settings-row__label {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--set-ink);
-}
-
-body.settings-page .settings-toggle-label {
-  display: inline-flex;
-  align-items: center;
-  cursor: pointer;
-}
-
-body.settings-page .settings-dropzone {
-  margin-top: 12px;
-  padding: 16px 14px;
-  border-radius: var(--set-radius);
-  border: 1.5px dashed rgba(232, 93, 4, 0.45);
-  background: rgba(255, 252, 247, 0.8);
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
-}
-
-body.settings-page .settings-dropzone strong {
-  font-size: 0.95rem;
-  color: var(--set-ink);
-}
-
-body.settings-page .settings-dropzone span {
-  font-size: 0.8rem;
-  color: var(--set-ink-soft);
-}
-
-body.settings-page .settings-dropzone.is-dragover,
-body.settings-page .settings-dropzone:focus-visible {
-  border-color: var(--set-ember);
-  background: rgba(232, 93, 4, 0.08);
-  outline: none;
-  transform: scale(1.01);
-}
-
-body.settings-page .settings-dropzone.is-busy {
-  opacity: 0.7;
-  pointer-events: none;
-}
-
-body.settings-page #main-source-toggles,
-body.settings-page #translation-engine-toggles {
-  background: var(--set-panel);
-  border: 1px solid var(--set-line);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-body.settings-page #main-source-toggles .source-toggle-main,
-body.settings-page #translation-engine-toggles .source-toggle-main {
-  padding: 8px 12px;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--set-line);
-  border-radius: 0;
-  margin-bottom: 0;
-}
-
-body.settings-page #main-source-toggles .source-toggle-main:last-child,
-body.settings-page #translation-engine-toggles .source-toggle-main:last-child {
-  margin-bottom: 0;
-  border-bottom: none;
-}
-
-body.settings-page #main-source-toggles .source-name,
-body.settings-page #translation-engine-toggles .source-name {
-  color: var(--set-ink);
-}
-
-body.settings-page #main-source-toggles .source-priority,
-body.settings-page #translation-engine-toggles .source-priority {
-  font-size: 0.75rem;
-  color: var(--set-ink-soft);
-}
-
-body.settings-page #translation-engine-toggles .source-toggle-main {
-  cursor: pointer;
-}
-
-body.settings-page #translation-engine-toggles .source-choice {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  flex-shrink: 0;
-  accent-color: var(--set-teal);
-}
-
-body.settings-page .toggle-input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-  pointer-events: none;
-}
-
-body.settings-page .toggle-input:focus-visible + .toggle-switch {
-  outline: 2px solid var(--set-ember);
-  outline-offset: 2px;
-}
-
-body.settings-page .toggle-switch {
-  position: relative;
-  box-sizing: border-box;
-  width: 40px;
-  height: 22px;
-  background: #c5c0b6;
-  border: none;
-  border-radius: 11px;
-  cursor: pointer;
-  display: inline-block;
-  flex-shrink: 0;
-  transition: background 0.2s ease;
-}
-
-body.settings-page .toggle-input:checked + .toggle-switch {
-  background: var(--set-teal);
-}
-
-body.settings-page .toggle-slider {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 18px;
-  height: 18px;
-  background: #fff;
-  border-radius: 50%;
-  transition: transform 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
-}
-
-body.settings-page .toggle-input:checked + .toggle-switch .toggle-slider {
-  transform: translateX(18px);
-}
-
-body.settings-page .settings-audio-range {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-body.settings-page .settings-audio-range input[type='range'] {
-  flex: 1 1 160px;
-  min-width: 120px;
-  accent-color: var(--set-ember);
-}
-
-body.settings-page #speed-value {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  color: var(--set-ember-deep);
-  min-width: 2.5rem;
 }
 
 @media (max-width: 640px) {
@@ -2832,7 +2393,6 @@ body.settings-page #speed-value {
     border-bottom: 1px solid var(--set-line);
   }
 }
-
 
 /* ------------------------------------------------------------------
  * Phone design layer (2026-09-29). Re-skins the main and settings
@@ -2914,10 +2474,7 @@ body.settings-page input[type='text'],
 body.settings-page input[type='password'],
 body.settings-page input[type='search'],
 body.settings-page input[type='number'],
-body.settings-page .setting-input,
-body.settings-page .settings-shortcut-input,
-body.settings-page select,
-body.settings-page .voice-select {
+body.settings-page select {
   font-family: inherit;
   font-size: 14px;
   color: var(--pv-ink);
@@ -2933,13 +2490,11 @@ body.settings-page .voice-select {
 body.main-window .vocab-search { border-radius: 999px; padding: 0 16px; }
 body.main-window input:focus,
 body.settings-page input:focus,
-body.settings-page select:focus,
-body.settings-page .setting-input:focus {
+body.settings-page select:focus {
   border-color: var(--pv-ember);
   box-shadow: 0 0 0 1px var(--pv-ember);
 }
-body.settings-page select,
-body.settings-page .voice-select {
+body.settings-page select {
   appearance: none;
   padding-right: 34px;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 10l5 5 5-5' fill='none' stroke='%235c534e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
@@ -2951,34 +2506,6 @@ body.settings-page .voice-select {
 body.settings-page input[type='range'] { accent-color: var(--pv-ember); }
 body.settings-page input[type='checkbox']:not(.toggle-input),
 body.settings-page input[type='radio'] { accent-color: var(--pv-ember); width: 18px; height: 18px; }
-
-/* Material 3 switch: 52 x 32 track; the handle grows when on. */
-body.settings-page .toggle-switch {
-  width: 52px;
-  height: 32px;
-  border: 2px solid var(--pv-outline);
-  border-radius: 999px;
-  background: var(--pv-surface-high);
-  transition: background-color 0.2s var(--pv-motion), border-color 0.2s var(--pv-motion);
-}
-body.settings-page .toggle-slider {
-  top: 50%;
-  left: 6px;
-  width: 16px;
-  height: 16px;
-  background: var(--pv-outline);
-  box-shadow: none;
-  transform: translateY(-50%);
-  transition: left 0.2s var(--pv-motion), width 0.2s var(--pv-motion), height 0.2s var(--pv-motion), background-color 0.2s var(--pv-motion);
-}
-body.settings-page .toggle-input:checked + .toggle-switch { background: var(--pv-ember); border-color: var(--pv-ember); }
-body.settings-page .toggle-input:checked + .toggle-switch .toggle-slider {
-  left: 22px;
-  width: 24px;
-  height: 24px;
-  background: #fff7f3;
-  transform: translateY(-50%);
-}
 
 /* Settings navigation: tonal pill for the open section */
 body.settings-page .settings-nav__item {
@@ -3002,14 +2529,6 @@ body.settings-page .settings-panel__title {
   font-weight: 650;
   letter-spacing: -0.02em;
 }
-body.settings-page .settings-group {
-  background: var(--pv-panel);
-  border: 1px solid var(--pv-line);
-  border-radius: 12px;
-  box-shadow: none;
-}
-body.settings-page .settings-group .settings-row { border-color: var(--pv-line); }
-body.settings-page .keycap,
 body.main-window kbd,
 body.settings-page kbd {
   font-family: var(--pv-font-mono);
@@ -3167,8 +2686,7 @@ body.settings-page .settings-panel > .settings-panel__intro:first-child {
   clip: rect(0 0 0 0);
 }
 body.settings-page .settings-main { padding-top: 12px; }
-body.settings-page .settings-subhead,
-body.settings-page .settings-offline-installed-title {
+body.settings-page .settings-subhead {
   margin: 22px 0 6px;
   font-family: var(--pv-font-ui);
   font-size: 12px;
@@ -3178,108 +2696,13 @@ body.settings-page .settings-offline-installed-title {
   color: var(--pv-ink-soft);
 }
 body.settings-page .settings-panel > .settings-subhead:first-of-type { margin-top: 4px; }
-body.settings-page .settings-group,
-body.settings-page #main-source-toggles,
-body.settings-page #translation-engine-toggles {
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  overflow: visible;
-  margin: 0;
-}
-body.settings-page .settings-row,
-body.settings-page .settings-field,
-body.settings-page .source-toggle-main,
-body.settings-page #translation-engine-toggles .source-toggle-main {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 56px;
-  padding: 10px 0;
-  margin: 0;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--pv-line);
-  border-radius: 0;
-  box-shadow: none;
-}
-body.settings-page .settings-field { flex-direction: column; align-items: stretch; gap: 8px; }
-body.settings-page .settings-field:has(.settings-shortcut-row) { flex-direction: row; align-items: center; }
-body.settings-page .settings-row__label,
-body.settings-page .settings-field-label,
-body.settings-page .settings-field > label,
-body.settings-page .source-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--pv-ink);
-  text-transform: none;
-  letter-spacing: 0;
-}
-body.settings-page .source-priority {
-  display: block;
-  margin-top: 2px;
-  font-size: 13px;
-  color: var(--pv-ink-soft);
-}
-body.settings-page .source-toggle-main:hover { background: transparent; }
-body.settings-page .settings-shortcut-row { display: flex; align-items: center; gap: 8px; }
-body.settings-page .settings-shortcut-input { width: 170px; min-height: 34px; }
-body.settings-page .settings-shortcut-set { min-height: 34px; }
-body.settings-page .settings-cheat {
-  margin: 18px 0 0;
-  padding: 6px 0 0;
-  list-style: none;
-  background: transparent;
-  border: 0;
-  border-top: 1px solid var(--pv-line);
-  border-radius: 0;
-}
-body.settings-page .settings-cheat li { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 14px; }
-body.settings-page .settings-dropzone {
-  margin: 14px 0 0;
-  border: 1.5px dashed var(--pv-line);
-  border-radius: 12px;
-  background: transparent;
-}
+
 body.settings-page .settings-inline-status { font-size: 13px; color: var(--pv-ink-soft); }
 
 /* Settings buttons: the phone's 8px shape. */
 body.settings-page .btn { border-radius: 8px; }
 
-/* Icon buttons, packs and list rows */
-body.settings-page .icon-btn {
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--pv-ember);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  transition: background-color 0.18s var(--pv-motion);
-}
-body.settings-page .icon-btn:hover { background: var(--pv-surface-container); }
-body.settings-page .icon-btn:disabled { opacity: 0.4; cursor: default; }
-body.settings-page .icon-btn svg,
-body.settings-page .pack__done svg { width: 22px; height: 22px; }
-body.settings-page .pack-list { display: flex; flex-direction: column; }
-body.settings-page .pack {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 64px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--pv-line);
-}
-body.settings-page .pack__text { flex: 1; min-width: 0; }
-body.settings-page .pack strong { display: block; font-size: 15px; font-weight: 600; }
-body.settings-page .pack__meta { margin: 3px 0 0; font-size: 13px; line-height: 1.35; color: var(--pv-ink-soft); }
-body.settings-page .pack__done { width: 40px; display: grid; place-items: center; color: var(--pv-teal); }
-body.settings-page .pack-list .settings-hint { padding: 12px 0; margin: 0; }
+/* List rows (Offline → Import) */
 body.settings-page .nav-row {
   display: flex;
   align-items: center;
@@ -3301,145 +2724,7 @@ body.settings-page .nav-row__chevron svg { display: block; width: 22px; height: 
 body.settings-page .nav-row__label { flex: 1; font-size: 15px; font-weight: 600; }
 body.settings-page .nav-row__sub { display: block; margin-top: 2px; font-size: 13px; font-weight: 400; color: var(--pv-ink-soft); }
 
-/* Pronunciation voice list, as on the phone: rows with an icon tile, trailing check or download. */
-body.settings-page .voice-list {
-  border: 1px solid var(--pv-line);
-  border-radius: 12px;
-  background: var(--pv-panel);
-  overflow: hidden;
-}
-body.settings-page .voice-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  border-top: 1px solid var(--pv-line);
-}
-body.settings-page .voice-row:first-child { border-top: 0; }
-body.settings-page .voice-row__main {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-height: 64px;
-  padding: 8px 8px 8px 16px;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-body.settings-page .voice-row__main:disabled { cursor: default; }
-body.settings-page .voice-row__icon {
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: var(--pv-surface-container);
-  color: var(--pv-ink-soft);
-}
-body.settings-page .voice-row__icon svg,
-body.settings-page .voice-row__check svg,
-body.settings-page .voice-row__dl svg,
-body.settings-page .voice-row__action svg { width: 22px; height: 22px; }
-body.settings-page .voice-row__text { display: flex; flex-direction: column; min-width: 0; }
-body.settings-page .voice-row__text span { font-size: 15px; font-weight: 600; }
-body.settings-page .voice-row__text small { font-size: 13px; line-height: 1.3; color: var(--pv-ink-soft); }
-body.settings-page .voice-row.is-on .voice-row__icon { background: var(--pv-primary-container); color: var(--pv-on-primary-container); }
-body.settings-page .voice-row__check,
-body.settings-page .voice-row__dl { display: grid; padding: 0 16px; color: var(--pv-ember); pointer-events: none; }
-body.settings-page .voice-row__action.icon-btn { margin-right: 8px; }
-body.settings-page .voice-row__progress {
-  grid-column: 1 / -1;
-  height: 4px;
-  margin: 0 16px 12px;
-  border-radius: 999px;
-  background: var(--pv-surface-high);
-  overflow: hidden;
-}
-body.settings-page .voice-row__progress span {
-  display: block;
-  height: 100%;
-  background: var(--pv-ember);
-  transition: width 0.3s var(--pv-motion);
-}
-body.settings-page .settings-audio-range span { min-width: 3.5em; font-variant-numeric: tabular-nums; color: var(--pv-ink-soft); }
 body.main-window .vocab-play.is-speaking { color: var(--pv-teal); }
-
-/* ------------------------------------------------------------------
- * Settings alignment (2026-10-20). Shortcut rows, the fixed list and
- * the save action share one label column, so key boxes and Set buttons
- * start at the same x whatever the label length.
- * ------------------------------------------------------------------ */
-body.settings-page { --set-label-col: 184px; }
-body.settings-page .settings-field:has(.settings-shortcut-row) {
-  display: grid;
-  grid-template-columns: var(--set-label-col) minmax(0, 1fr);
-  align-items: center;
-  column-gap: 16px;
-  padding: 10px 0;
-}
-body.settings-page .settings-field-label { line-height: 1.3; }
-/* Rows inside a group start flush with the subheads and lists around them. */
-body.settings-page .settings-group .settings-field,
-body.settings-page .settings-group .settings-row { padding: 10px 0; }
-body.settings-page .settings-cheat__label { font-weight: 600; }
-body.settings-page .settings-field-sub {
-  display: block;
-  margin-top: 2px;
-  font-size: 13px;
-  font-weight: 400;
-  color: var(--pv-ink-soft);
-}
-body.settings-page .settings-shortcut-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-body.settings-page .settings-field .settings-keycaps {
-  min-width: 0;
-  min-height: 36px;
-  padding: 0 10px;
-  border-color: var(--pv-line);
-  background: var(--pv-panel);
-}
-body.settings-page .settings-shortcut-set {
-  min-width: 72px;
-  min-height: 36px;
-  justify-content: center;
-  border-color: var(--pv-line);
-  font-size: 13.5px;
-}
-body.settings-page .settings-panel[data-panel="shortcuts"] > .settings-actions {
-  justify-content: flex-end;
-  margin-top: 14px;
-}
-body.settings-page .settings-panel[data-panel="shortcuts"] > .settings-subhead { margin-top: 26px; }
-body.settings-page .settings-cheat {
-  margin: 0;
-  padding: 0;
-  border-top: 0;
-}
-body.settings-page .settings-cheat li {
-  display: grid;
-  grid-template-columns: var(--set-label-col) minmax(0, 1fr);
-  column-gap: 16px;
-  align-items: center;
-  min-height: 44px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--pv-line);
-  font-size: 15px;
-  color: var(--pv-ink);
-}
-/* Line the fixed keycaps up with the keycaps inside the editable boxes. */
-body.settings-page .settings-cheat .settings-keycaps { padding: 0 11px; }
-body.settings-page .keycap { font-size: 12px; }
-@media (max-width: 560px) {
-  body.settings-page { --set-label-col: 128px; }
-}
 
 /* Account: avatar button in the title bar, popover under it */
 body.main-window .titlebar-account { display: flex; align-items: center; margin-right: 2px; }
@@ -3798,33 +3083,6 @@ body.main-window :is(#vocabList, #selectionsList) .vocab-when { min-width: 64px;
 body.main-window :is(#vocabList, #selectionsList) .vocab-item,
 body.main-window #vocabList .vocab-group { scroll-margin-top: 84px; }
 
-/* ------------------------------------------------------------------
- * Capture: Hover lookup row while the OCR pack is missing (2026-11-03).
- * One status line under the label, Install beside the switch, and a
- * thin progress bar across the row while the pack downloads.
- * ------------------------------------------------------------------ */
-body.settings-page .settings-row--pack { flex-wrap: wrap; row-gap: 8px; }
-body.settings-page .settings-row__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-body.settings-page .settings-row__status { font-size: 13px; line-height: 1.35; color: var(--pv-ember); }
-body.settings-page .settings-row__status.is-error { color: var(--pv-error); }
-body.settings-page .settings-row__status[hidden] { display: none; }
-body.settings-page .settings-row__controls { display: inline-flex; align-items: center; gap: 12px; }
-body.settings-page .settings-row__controls .btn[hidden] { display: none; }
-body.settings-page .settings-row__progress {
-  flex-basis: 100%;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--pv-surface-high);
-  overflow: hidden;
-}
-body.settings-page .settings-row__progress[hidden] { display: none; }
-body.settings-page .settings-row__progress span {
-  display: block;
-  width: 0;
-  height: 100%;
-  background: var(--pv-ember);
-  transition: width 0.3s var(--pv-motion);
-}
 body.main-window .status-value.needs { color: var(--pv-ember); font-weight: 600; }
 
 /* Global search: the field sits between the tabs and the tools on both tabs. */

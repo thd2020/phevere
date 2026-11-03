@@ -1,13 +1,5 @@
 /* Settings → Sources (settings-sources.ts). Tokens and shared controls: settings-kit.css. */
 
-.sv .sv-ledger {
-  background: var(--sv-card);
-  border: 1px solid var(--sv-line-soft);
-  border-radius: 14px;
-  box-shadow: var(--sv-shadow);
-  overflow: hidden;
-}
-
 .sv .sv-src {
   position: relative;
   display: grid;
@@ -97,71 +89,6 @@
 }
 .sv .sv-need:hover { background: rgb(156 61 0 / 0.18); }
 .sv .sv-need:focus-visible { outline: 2px solid var(--sv-rust); outline-offset: 2px; }
-
-.sv .sv-src__ctl {
-  display: grid;
-  place-items: center;
-  height: 34px;
-  cursor: pointer;
-}
-
-.sv .sv-src__ctl input.sv-switch[type],
-.sv .sv-src__ctl input.sv-radio[type] {
-  appearance: none;
-  -webkit-appearance: none;
-  margin: 0;
-  flex-shrink: 0;
-  position: relative;
-  cursor: pointer;
-  border: 0;
-  box-shadow: none;
-  min-height: 0;
-  padding: 0;
-}
-.sv .sv-src__ctl input.sv-switch[type] {
-  width: 40px;
-  height: 24px;
-  border-radius: 999px;
-  background: #d6cdc2;
-  transition: background-color 0.2s var(--sv-ease);
-}
-.sv .sv-src__ctl input.sv-switch[type]::before {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #fffdf9;
-  box-shadow: 0 1px 2px rgb(28 25 23 / 0.28);
-  transition: transform 0.24s var(--sv-ease-out);
-}
-.sv .sv-src__ctl input.sv-switch[type]:checked { background: var(--sv-rust); }
-.sv .sv-src__ctl input.sv-switch[type]:checked::before { transform: translateX(16px); }
-.sv .sv-src__ctl input.sv-radio[type] {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--sv-card);
-  box-shadow: inset 0 0 0 2px #b9ada4;
-  transition: box-shadow 0.2s var(--sv-ease);
-}
-.sv .sv-src__ctl input.sv-radio[type]::before {
-  content: '';
-  position: absolute;
-  inset: 5px;
-  border-radius: 50%;
-  background: var(--sv-rust);
-  transform: scale(0);
-  transition: transform 0.24s var(--sv-ease-out);
-}
-.sv .sv-src__ctl input.sv-radio[type]:checked { box-shadow: inset 0 0 0 2px var(--sv-rust); }
-.sv .sv-src__ctl input.sv-switch[type]::after,
-.sv .sv-src__ctl input.sv-radio[type]::after { content: none; display: none; }
-.sv .sv-src__ctl input.sv-radio[type]:checked::before { transform: scale(1); }
-.sv .sv-src__ctl input.sv-switch[type]:focus-visible,
-.sv .sv-src__ctl input.sv-radio[type]:focus-visible { outline: 2px solid var(--sv-rust); outline-offset: 3px; }
 
 @keyframes sv-unfold {
   from { opacity: 0; transform: translateY(-4px); }
