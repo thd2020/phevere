@@ -8,6 +8,7 @@ import { HolarkyAccount, HolarkyAccountError, type HolarkyUser, type KeyValueSto
 import type { HttpClient } from './http';
 import { onVocabChanged } from './vocab-store';
 import { syncVocab, type VocabSyncResult } from './vocab-sync';
+import { syncWordbooks } from './wordbook-sync';
 
 /**
  * The Holarky account. Identity is the Holarky Auth0 tenant; profile and sync are the Holarky API.
@@ -203,9 +204,15 @@ export class AccountController {
     this.set({ syncing: true });
     try {
       const result = await syncVocab(account);
+      // Word book subscriptions and progress travel in their own namespace. A server that does
+      // not know it yet must not stop the notebook from syncing.
+      const books = await syncWordbooks(account).catch((err) => {
+        this.opts.log?.('word book sync failed', String(err));
+        return { pushed: 0, received: 0 };
+      });
       await this.opts.meta.set(META_LAST_SYNC, String(result.at));
       this.set({ lastSyncAt: result.at, lastError: null });
-      if (result.received || result.merged) this.opts.onNotebookChanged?.(result);
+      if (result.received || result.merged || books.received) this.opts.onNotebookChanged?.(result);
     } catch (err) {
       this.opts.log?.('notebook sync failed', String(err));
       const signedOut = err instanceof HolarkyAccountError && err.code === 'signed_out';

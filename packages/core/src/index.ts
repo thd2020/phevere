@@ -221,6 +221,45 @@ export { type ReviewRenderOptions } from './notebook-review';
 export { onVocabChanged } from './vocab-store';
 export { syncVocab, mergeDuplicateLemmas, VOCAB_SYNC_NAMESPACE, type VocabSyncAccount, type VocabSyncResult } from './vocab-sync';
 export {
+  listWordbookSubs,
+  subscribeWordbook,
+  unsubscribeWordbook,
+  setWordbookGoal,
+  listBookProgress,
+  reviewBookWord,
+  setBookWordKnown,
+  cacheBookWordMeaning,
+  saveBookWord,
+  bookWordKey,
+  DEFAULT_DAILY_NEW,
+  type WordbookSub,
+  type BookWordProgress,
+  type BookWordMeaning,
+} from './wordbook-store';
+export { syncWordbooks, WORDBOOK_SYNC_NAMESPACE, type WordbookSyncResult } from './wordbook-sync';
+export {
+  WORDBOOKS,
+  wordbookMeta,
+  loadWordbook,
+  registerWordbookWords,
+  buildWordsContext,
+  bookEntry,
+  isBookOnlyId,
+  wordStatus,
+  scopeEntries,
+  bookProgress,
+  scopeReviewQueue,
+  startScopeReview,
+  reviewNeedsMeaning,
+  dropCurrentReview,
+  type WordbookMeta,
+  type WordsScope,
+  type WordStatus,
+  type WordsContext,
+  type WordsEntry,
+  type BookProgress,
+} from './wordbooks';
+export {
   HolarkyAccount,
   HolarkyAccountError,
   browserStorage,

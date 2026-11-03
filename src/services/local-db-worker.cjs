@@ -83,6 +83,37 @@ function migrate(database) {
       value TEXT
     );
   `);
+  // Word books (packages/core/src/wordbook-store.ts): subscriptions and progress on book words.
+  database.run(`
+    CREATE TABLE IF NOT EXISTS wordbook_subs (
+      book_id TEXT PRIMARY KEY,
+      daily_new INTEGER DEFAULT 10,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+  database.run(`
+    CREATE TABLE IF NOT EXISTS book_words (
+      lemma TEXT PRIMARY KEY,
+      known INTEGER DEFAULT 0,
+      review_due INTEGER,
+      review_interval INTEGER DEFAULT 0,
+      ease REAL DEFAULT 2.5,
+      reps INTEGER DEFAULT 0,
+      stability REAL,
+      difficulty REAL,
+      state INTEGER,
+      lapses INTEGER DEFAULT 0,
+      last_review INTEGER,
+      learning_steps INTEGER DEFAULT 0,
+      definition TEXT,
+      reading TEXT,
+      part_of_speech TEXT,
+      created_at INTEGER,
+      updated_at INTEGER NOT NULL
+    );
+  `);
   database.run(`
     CREATE TABLE IF NOT EXISTS offline_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
