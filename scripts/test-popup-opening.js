@@ -58,7 +58,11 @@ app.whenReady().then(async () => {
       onPopupText:cb=>ipcRenderer.on('fixture-selection',(_,text,ts)=>cb(text,ts))
     });
     contextBridge.exposeInMainWorld('dictionaryAPI',{
-      lookup:async word=>({word,definitions:[{partOfSpeech:'noun',meaning:'An opening fixture.',source:'Wiktionary'}],translations:[],examples:[],sources:['Wiktionary']}),
+      lookup:async word=>{
+        const hit={word,definitions:[{partOfSpeech:'noun',meaning:'An opening fixture.',source:'Wiktionary'}],translations:[],examples:[],sources:['Wiktionary']};
+        // 'slow' answers after the next selection's lookup, to exercise out-of-order replies.
+        return word==='slow'?new Promise(resolve=>setTimeout(()=>resolve(hit),700)):hit;
+      },
       getSupportedLanguages:async()=>[]
     });`);
   ipcMain.on('fixture-resize', (event, request) => resize(event, request));
@@ -96,12 +100,24 @@ app.whenReady().then(async () => {
   win.webContents.send('fixture-selection','shortcut',4);
   await assertPanel('shortcut');
   assert.equal(await js(`currentTab`), 'lexicon', 'a fresh same-word selection still opens the full lookup');
+  win.webContents.send('fixture-selection','slow',5);
+  win.webContents.send('fixture-selection','quick',6);
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  await assertPanel('quick');
   await js(`const option=document.getElementById('expandableMode');option.checked=false;
     option.dispatchEvent(new Event('change',{bubbles:true}));`);
   await win.reload();
   await tick();
   assert.equal(await js(`document.getElementById('toolbar').classList.contains('collapsed')`), true);
+  win.webContents.send('fixture-selection','alpha',10);
+  await tick();
+  // The user opens the strip; main may still see it as a strip and send the next selection.
+  await js(`expandToolbar(); void lookupText(currentText);`);
+  win.webContents.send('fixture-selection','beta',11);
+  await tick();
+  assert.equal(await js(`document.querySelector('.result-word')?.textContent`), 'beta',
+    'a selection that reaches a just-expanded strip must replace the previous word');
   win.close();
-  console.log('Popup opening passed: default strip, positive setting, persistence, successive selection payloads and restored strip.');
+  console.log('Popup opening passed: default strip, positive setting, persistence, successive and out-of-order selection payloads, restored strip, and a selection reaching a just-expanded strip.');
   app.exit(0);
 }).catch((error) => { console.error(error); app.exit(1); });
