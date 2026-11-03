@@ -15,6 +15,7 @@ async function testNotebookCsv() {
   const imports = {
     '@phevere/core': { addVocab: async (row) => writes.push(row) },
     './native': {},
+    './sqljs-vocab-db': {},
   };
   vm.runInNewContext(js, { module, exports: module.exports, require: (name) => {
     assert.ok(name in imports, `Unexpected import ${name}`);

@@ -1,3 +1,15 @@
+import {
+  ankiTextFromBook,
+  decodeBookFile,
+  exportBookFile,
+  isBookFile,
+  isZip,
+  parseAnkiPackage,
+  parseAnkiText,
+  type BookPayload,
+  type BookScope,
+} from '@phevere/core';
+import { openSqliteBytes } from './sqljs-vocab-db';
 import type { VocabAddInput, VocabEntry } from '@phevere/core';
 import { addVocab, listVocab } from '@phevere/core';
 import { hasNativeBridge, nativeCall } from './native';
@@ -131,25 +143,6 @@ export function vocabEntriesFromCsv(raw: string): VocabAddInput[] {
   return out;
 }
 
-export async function exportNotebook(format: 'json' | 'csv'): Promise<string> {
-  const entries = await listVocab(10_000);
-  const body = format === 'csv' ? vocabEntriesToCsv(entries) : JSON.stringify(entries, null, 2);
-  const name = format === 'csv' ? 'phevere-notebook.csv' : 'phevere-notebook.json';
-  const mime = format === 'csv' ? 'text/csv' : 'application/json';
-  if (hasNativeBridge()) {
-    await nativeCall('saveFile', { name, mime, text: body });
-    return name;
-  }
-  const blob = new Blob([body], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
-  return name;
-}
-
 export async function importNotebookText(name: string, raw: string): Promise<{ imported: number; skipped: number }> {
   const rows = name.toLowerCase().endsWith('.csv') ? vocabEntriesFromCsv(raw) : vocabEntriesFromJson(raw);
   let imported = 0;
@@ -167,4 +160,54 @@ export async function importNotebookText(name: string, raw: string): Promise<{ i
     }
   }
   return { imported, skipped };
+}
+
+/* ------------------------------------------------------ word book files */
+
+function bytesToB64(bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function saveBytes(name: string, bytes: Uint8Array | null, text: string | null, mime: string): Promise<void> {
+  if (hasNativeBridge()) {
+    await nativeCall('saveFile', bytes ? { name, mime, b64: bytesToB64(bytes) } : { name, mime, text: text || '' });
+    return;
+  }
+  const blob = new Blob([bytes ? (bytes as BlobPart) : text || ''], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** The book being viewed as one .pvbook, or as Anki's text format. Returns the file name. */
+export async function exportBook(scope: BookScope, anki: boolean): Promise<string> {
+  const file = await exportBookFile(scope, 'Phevere');
+  if (anki) {
+    const name = file.fileName.replace(/\.pvbook$/, ' (Anki).txt');
+    await saveBytes(name, null, ankiTextFromBook(await decodeBookFile(file.bytes)), 'text/plain');
+    return name;
+  }
+  await saveBytes(file.fileName, file.bytes, null, 'application/octet-stream');
+  return file.fileName;
+}
+
+/** A picked file as a book: .pvbook, Anki .apkg or .txt. Null for an older .json or .csv export. */
+export async function bookPayloadFromPicked(name: string, b64: string, text: string): Promise<BookPayload | null> {
+  const bytes = b64 ? b64ToBytes(b64) : new TextEncoder().encode(text);
+  if (isBookFile(bytes)) return decodeBookFile(bytes);
+  if (isZip(bytes)) return parseAnkiPackage(bytes, openSqliteBytes, name);
+  if (/\.txt$/i.test(name)) return parseAnkiText(text || new TextDecoder().decode(bytes), name);
+  return null;
 }

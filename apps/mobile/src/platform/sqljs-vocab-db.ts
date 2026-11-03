@@ -83,6 +83,19 @@ async function open(): Promise<void> {
   migrate(db);
 }
 
+/** A throwaway database over a file's bytes (an Anki package's collection), read-only use. */
+export async function openSqliteBytes(bytes: Uint8Array): Promise<{ all(sql: string): Array<Record<string, unknown>>; close(): void }> {
+  if (!SQL) SQL = await initSqlJs({ locateFile: () => wasmUrl });
+  const temp = new SQL.Database(bytes);
+  return {
+    all(sql: string) {
+      const res = temp.exec(sql)[0];
+      return res ? res.values.map((v) => Object.fromEntries(res.columns.map((c, i) => [c, v[i]]))) : [];
+    },
+    close: () => temp.close(),
+  };
+}
+
 export function getSqlDatabase(): Database | null {
   return db;
 }

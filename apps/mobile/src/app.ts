@@ -90,6 +90,9 @@ import {
   patchApiKeyCard,
   type ApiProviderId,
   parseGoal,
+  findBookConflict,
+  importBookPayload,
+  type BookScope,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
 import { playRecorded, prefetchRecorded, recordedUrls, speakIpa, speakText } from './platform/audio';
@@ -99,7 +102,7 @@ import {
   installNativeCallbacks,
   nativeCall,
 } from './platform/native';
-import { exportNotebook, importNotebookText } from './platform/notebook-io';
+import { bookPayloadFromPicked, exportBook, importNotebookText } from './platform/notebook-io';
 import {
   downloadCatalogPack,
   importUserFile,
@@ -1249,22 +1252,95 @@ async function runOcr(): Promise<void> {
   }
 }
 
+/**
+ * A small choice sheet over the app: a message, a line of detail and one button per answer.
+ * Resolves with the chosen button's index, or -1 when dismissed.
+ */
+function askChoice(message: string, detail: string, buttons: string[]): Promise<number> {
+  return new Promise((resolve) => {
+    const dlg = document.createElement('dialog');
+    dlg.className = 'pv-choice nbv';
+    dlg.innerHTML = `<p class="pv-choice__msg">${esc(message)}</p>${detail ? `<p class="pv-choice__detail">${esc(detail)}</p>` : ''}<div class="pv-choice__btns">${buttons
+      .map((b, i) => `<button type="button" class="${i === 0 ? 'nbv-primary' : 'nbv-secondary'}" data-i="${i}">${esc(b)}</button>`)
+      .join('')}</div>`;
+    const done = (i: number) => {
+      dlg.close();
+      dlg.remove();
+      resolve(i);
+    };
+    dlg.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-i]');
+      if (b) done(Number(b.dataset.i));
+      else if (e.target === dlg) done(-1);
+    });
+    dlg.addEventListener('cancel', () => done(-1));
+    document.body.appendChild(dlg);
+    dlg.showModal();
+  });
+}
+
+/** The book Words is showing, as an export scope. */
+function exportScope(): BookScope {
+  const s = wordsState.scope;
+  if (s === 'mine' || s === 'all' || s === 'sources' || wordsState.library) return { kind: 'mine' };
+  return isUserBookId(s) ? { kind: 'user', id: s } : { kind: 'catalog', id: s };
+}
+
+async function exportWords(): Promise<void> {
+  const pick = await askChoice('Export this book', '', ['Phevere book', 'For Anki', 'Cancel']);
+  if (pick !== 0 && pick !== 1) return;
+  try {
+    const name = await exportBook(exportScope(), pick === 1);
+    toast(`Saved ${name}`);
+  } catch (err) {
+    toast(err instanceof Error ? err.message : 'Could not export');
+  }
+}
+
 async function pickAndImportNotebook(): Promise<void> {
   try {
     let name = 'notebook.json';
     let text = '';
+    let b64 = '';
     if (hasNativeBridge()) {
-      const res = await nativeCall<{ name?: string; text?: string }>('pickFile', { mime: 'text/*' });
+      const res = await nativeCall<{ name?: string; text?: string; b64?: string }>('pickFile', { mime: '*/*' });
       name = res.name || name;
       text = res.text || '';
+      b64 = res.b64 || '';
     } else {
       text = await pickLocalFile();
       name = lastPickedName || name;
     }
-    if (!text) return;
-    const out = await importNotebookText(name, text);
+    if (!text && !b64) return;
+    const payload = await bookPayloadFromPicked(name, b64, text);
+    if (!payload) {
+      // An export from before word book files: rows of My words.
+      const out = await importNotebookText(name, text);
+      await refreshNotebook();
+      toast(`Imported ${out.imported}. Skipped ${out.skipped}.`);
+      paint();
+      return;
+    }
+    let mode: 'replace' | 'keep-both' = 'keep-both';
+    const conflict = await findBookConflict(payload);
+    if (conflict && payload.book.kind === 'user') {
+      const pick = await askChoice(
+        `You already have a book named “${conflict.title}”.`,
+        `Replace overwrites its word list with this file's. Keep both adds this one as “${conflict.title} (2)”. Progress is merged either way.`,
+        ['Keep both', 'Replace', 'Cancel'],
+      );
+      if (pick !== 0 && pick !== 1) return;
+      mode = pick === 1 ? 'replace' : 'keep-both';
+    } else if (conflict) {
+      const pick = await askChoice(`You already added “${conflict.title}”.`, "This file's progress is merged into it.", ['Merge progress', 'Cancel']);
+      if (pick !== 0) return;
+    }
+    const result = await importBookPayload(payload, mode);
     await refreshNotebook();
-    toast(`Imported ${out.imported}. Skipped ${out.skipped}.`);
+    await refreshWords();
+    wordsState.scope = result.kind === 'mine' ? 'mine' : result.bookId;
+    wordsState.library = false;
+    toast(result.kind === 'mine' ? `${result.added} new in My words` : `Imported ${result.title}: ${result.words} words`);
     paint();
   } catch (err) {
     toast(err instanceof Error ? err.message : 'Could not import');
@@ -1276,7 +1352,7 @@ function pickLocalFile(): Promise<string> {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json,.csv,.tei,.txt,.u8';
+    input.accept = '.pvbook,.apkg,.json,.csv,.tei,.txt,.u8';
     input.onchange = () => {
       const file = input.files?.[0];
       if (!file) {
@@ -2235,8 +2311,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       }
       return;
     case 'nb-export':
-      await exportNotebook('json');
-      toast('My words exported');
+      await exportWords();
       return;
     case 'nb-import':
       await pickAndImportNotebook();
