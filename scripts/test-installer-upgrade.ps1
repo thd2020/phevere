@@ -243,7 +243,7 @@ function Set-Choices([object]$Entry, [string]$Value) {
         Assert-True ($null -ne $key) 'The installation preferences registry key is missing.'
         try {
             Assert-True ([string]$key.GetValue('InstallLocation', '') -eq $installRoot) 'Refusing to mutate registry choices outside the fixture.'
-            foreach ($name in @('DesktopShortcut', 'StartMenuShortcut', 'OcrModels')) {
+            foreach ($name in @('DesktopShortcut', 'StartMenuShortcut')) {
                 if ($Value -eq 'legacy') { $key.DeleteValue($name, $false) }
                 else { $key.SetValue($name, $Value, [Microsoft.Win32.RegistryValueKind]::String) }
             }
@@ -353,8 +353,6 @@ function Remove-OwnedTree([string]$Target) {
 }
 function Assert-Components([bool]$Selected) {
     foreach ($link in $links) { Assert-True ((Test-Path -LiteralPath $link) -eq $Selected) "Unexpected shortcut state: $link" }
-    $models = Join-Path $installRoot 'resources\ocr-models'
-    Assert-True ((Test-Path -LiteralPath $models) -eq $Selected) 'The OCR model choice was not preserved.'
     $entry = Get-OwnedEntry
     $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey($entry.Hive, $entry.View)
     try {
@@ -362,19 +360,23 @@ function Assert-Components([bool]$Selected) {
         Assert-True ($null -ne $key) 'The installer did not save component choices.'
         try {
             $expected = if ($Selected) { '1' } else { '0' }
-            foreach ($name in @('DesktopShortcut', 'StartMenuShortcut', 'OcrModels')) {
+            foreach ($name in @('DesktopShortcut', 'StartMenuShortcut')) {
                 Assert-True ([string]$key.GetValue($name, '') -eq $expected) "The installer did not persist $name=$expected."
             }
         } finally { $key.Dispose() }
     } finally { $base.Dispose() }
     if ($Selected) {
-        Assert-True (@(Get-ChildItem -LiteralPath $models -Recurse -Filter '*.onnx').Count -gt 0) 'The OCR directory has no ONNX models.'
         $shell = New-Object -ComObject WScript.Shell
         foreach ($link in $links) {
             $target = $shell.CreateShortcut($link).TargetPath
             Assert-True ([IO.Path]::GetFullPath($target).StartsWith($installRoot + '\', [StringComparison]::OrdinalIgnoreCase)) 'A shortcut points outside the fixture installation.'
         }
     }
+}
+function Get-OcrModelHashes {
+    $models = Join-Path $installRoot 'resources\ocr-models'
+    if (-not (Test-Path -LiteralPath $models)) { return '' }
+    return (@(Get-ChildItem -LiteralPath $models -File | Sort-Object Name | ForEach-Object { $_.Name + '=' + (Get-FileHash -LiteralPath $_.FullName).Hash }) -join ';')
 }
 function Assert-State {
     & node $stateHelper check $userData $fixtureHtml
@@ -493,7 +495,16 @@ public static class InstallerTestWindows {
     Invoke-BaselineStartupDiagnostic
     Set-Choices $entry 'legacy'
     foreach ($link in $links) { if (Test-Path -LiteralPath $link) { Remove-Item -LiteralPath $link -Force } }
-    Remove-OwnedTree (Join-Path $installRoot 'resources\ocr-models')
+    # Installers up to 3.0 bundled OCR models in resources\ocr-models. An upgrade
+    # must keep them. Plant fixture files when the baseline has none.
+    $legacyModels = Join-Path $installRoot 'resources\ocr-models'
+    if (-not (Test-Path -LiteralPath (Join-Path $legacyModels 'ch_PP-OCRv4_rec_infer.onnx'))) {
+        New-Item -ItemType Directory -Path $legacyModels -Force | Out-Null
+        foreach ($name in @('ch_PP-OCRv4_det_infer.onnx', 'ch_PP-OCRv4_rec_infer.onnx', 'ppocr_keys_v1.txt')) {
+            Set-Content -LiteralPath (Join-Path $legacyModels $name) -Value "legacy fixture $name" -Encoding ascii
+        }
+    }
+    $legacyModelHashes = Get-OcrModelHashes
     # Corrupt only the fixture asar so the same-version test proves replacement.
     Add-Content -LiteralPath (Join-Path $installRoot 'resources\app.asar') -Value 'fixture: must be replaced'
     Add-Content -LiteralPath $appExe -Value 'fixture executable: must be replaced'
@@ -501,6 +512,7 @@ public static class InstallerTestWindows {
     Invoke-Hidden $Installer '/S'
     Assert-Payload
     Assert-Components $false
+    Assert-True ((Get-OcrModelHashes) -ceq $legacyModelHashes) 'The upgrade did not keep the OCR models the previous version installed.'
     Assert-True ((Get-FileHash -LiteralPath (Join-Path $userData 'phevere.sqlite')).Hash -eq $databaseHash) 'Installation modified the SQLite file.'
     Assert-State
     Write-Host 'Checking packaged headless audio commands and wrapper error propagation.'
@@ -511,14 +523,19 @@ public static class InstallerTestWindows {
     Assert-Payload
     Assert-Components $false
     Assert-State
+    Write-Host 'Reinstalling the same version; the kept OCR models must survive again.'
+    Invoke-Hidden $Installer '/S'
+    Assert-Payload
+    Assert-True ((Get-OcrModelHashes) -ceq $legacyModelHashes) 'A same-version reinstall dropped the kept OCR models.'
     if ($installRoot -ne $customInstallRoot) {
         Write-Host 'Uninstalling the upgraded historical path, then installing the current wrapper at a custom path without deleting historical registry leftovers.'
         Invoke-OwnedUninstall
         $installRoot = $customInstallRoot
         $appExe = Join-Path $installRoot 'Phevere.exe'
-        Invoke-Hidden $Installer "/S --desktop-shortcut=0 --start-menu-shortcut=0 --ocr-models=0 /D=$installRoot"
+        Invoke-Hidden $Installer "/S --desktop-shortcut=0 --start-menu-shortcut=0 /D=$installRoot"
         Assert-Payload
         Assert-Components $false
+        Assert-True ((Get-OcrModelHashes) -eq '') 'A fresh installation must not contain OCR models.'
         Assert-State
     }
     # Seed the exact current-user startup command written by the setup frontend.
@@ -558,9 +575,9 @@ public static class InstallerTestWindows {
     foreach ($choice in @('0', '1')) {
         $opposite = if ($choice -eq '0') { '1' } else { '0' }
         Set-Choices (Get-OwnedEntry) $opposite
-        # Match the frontend exactly: the final --ocr-models option is followed
-        # by an unquoted, space-containing NSIS /D path.
-        Invoke-Hidden $Installer "/S --desktop-shortcut=$choice --start-menu-shortcut=$choice --ocr-models=$choice /D=$installRoot"
+        # Match the frontend exactly: the final option is followed by an
+        # unquoted, space-containing NSIS /D path.
+        Invoke-Hidden $Installer "/S --desktop-shortcut=$choice --start-menu-shortcut=$choice /D=$installRoot"
         Assert-Payload
         Assert-Components ($choice -eq '1')
         Assert-True ((Get-StartupCommand) -ceq $startupFixtureCommand) 'Explicit component replacement removed or changed the startup command.'
@@ -572,7 +589,7 @@ public static class InstallerTestWindows {
     Assert-True (-not (Test-Path -LiteralPath $appExe)) 'Uninstall left the application executable.'
     foreach ($link in $links) { Assert-True (-not (Test-Path -LiteralPath $link)) 'Uninstall left a shortcut.' }
     Assert-State
-    Write-Host 'PASS: upgrade, same-version replacement, running-app shutdown, component switches, startup lifecycle, wrapper exit propagation, headless audio, notebook, localStorage and uninstall preservation.'
+    Write-Host 'PASS: upgrade (OCR models kept), same-version replacement, running-app shutdown, component switches, startup lifecycle, wrapper exit propagation, headless audio, notebook, localStorage and uninstall preservation.'
 } catch {
     $fixtureFailure = $_
     Write-Host "Original release gate failure: $($fixtureFailure.Exception.Message)"

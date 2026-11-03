@@ -36,7 +36,7 @@ The current release is **3.0.0** on desktop and phone (2026-11-02). It adds Engl
 **Desktop (Windows, macOS, Linux)**
 
 - Select-to-lookup in other applications. On Windows, Phevere reads the selection through UI Automation, then a Chromium accessibility request, then a silent copy that restores the clipboard. On macOS it uses the Accessibility API, then AppleScript for Safari and Chrome, then a silent copy. On Linux it watches the primary selection that every toolkit sets on select (Wayland data-control on KDE Plasma and wlroots desktops, XFixes on X11), so nothing is copied. Password fields are skipped.
-- OCR for text that cannot be selected: hover, region, clipboard image, and whole window, using bundled PP-OCRv4 models (PP-OCRv5 is available as a download).
+- OCR for text that cannot be selected: hover, region, clipboard image, and whole window, using PP-OCRv4 models from the OCR pack, a 14 MB download from Settings → Capture (PP-OCRv5 is available as a download).
 - Back and forward through recent lookups, including the mouse's extra buttons.
 - A slim toolbar opens beside the selection. Its first four icons open the Lexicon, Translation, Wikipedia, and Etymology views, and the open view shows as a tab joined to the page.
 
@@ -68,9 +68,13 @@ Download the installer for your platform from [GitHub Releases](https://github.c
 | Fedora, openSUSE, x64 / arm64 | `phevere-<version>-1.x86_64.rpm` / `phevere-<version>-1.arm64.rpm` |
 | Any glibc 2.35+ distribution, x64 / arm64 | `Phevere-<version>-x64.AppImage` / `Phevere-<version>-arm64.AppImage` |
 
+Since 2026-11-03 the installers do not include the OCR models. Hover lookup over text that cannot be selected, and Scan, need the OCR pack: open **Settings → Capture** and select **Install** next to Hover lookup (14 MB). Until then that row says "Needs the OCR pack" and the Hover chip at the bottom of the notebook reads No OCR. On Windows you can also tick the OCR pack under Custom options, and upgrading an installation of 3.0 or earlier keeps the models it already has. On macOS and Linux an upgrade replaces the whole app, so install the pack again.
+
+<p align="center"><img src="README.assets/desktop-settings-capture-ocr.png" width="560" alt="Screenshot of Settings, Capture tab, with Needs the OCR pack and an Install button beside Hover lookup"></p>
+
 Release builds are not code-signed, so Windows SmartScreen and macOS Gatekeeper will ask for confirmation on first launch. [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md) describes how to sign your own builds.
 
-**Windows.** Select Install, or open Custom options to choose the folder, OCR models (about 15 MB), pronunciation model, shortcuts, and startup preference. Compact (132 MB) and Full (350 MB) pronunciation models download during setup on x64. The default folder is `C:\Program Files\Phevere`; replacement installs reuse the existing folder and preserve your notebook and settings. Running Phevere as administrator lets UI Automation read selections in elevated applications. To uninstall, use **Settings → Apps → Phevere**. Normal uninstall retains your notebook and settings. If an earlier installation left files behind that the Apps list no longer shows, run `scripts\remove-ghost-phevere.ps1` from an elevated PowerShell prompt.
+**Windows.** Select Install, or open Custom options to choose the folder, Start menu and desktop shortcuts, starting with Windows, and two downloads: the OCR pack (14 MB) and, on x64, a pronunciation voice, Compact (132 MB) or Full (350 MB). Downloads run before setup finishes, and the page shows the space required. The default folder is `C:\Program Files\Phevere`; replacement installs reuse the existing folder and preserve your notebook and settings. Running Phevere as administrator lets UI Automation read selections in elevated applications. To uninstall, use **Settings → Apps → Phevere**. Normal uninstall retains your notebook and settings. If an earlier installation left files behind that the Apps list no longer shows, run `scripts\remove-ghost-phevere.ps1` from an elevated PowerShell prompt.
 
 **macOS.** Drag Phevere to Applications and open it with right-click → **Open** the first time. Grant **Accessibility** for select-to-lookup and **Screen Recording** for OCR; the menu-bar icon links to both settings. See [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md).
 

@@ -475,12 +475,29 @@ contextBridge.exposeInMainWorld('offlineDictAPI', {
   downloadCedict: () => ipcRenderer.invoke('offline-download-cedict'),
 });
 
+type OcrPackState = {
+  installed: boolean;
+  installing: boolean;
+  progress: number;
+  error: string | null;
+  root: string | null;
+  /** The active OCR model is PP-OCRv4 and the pack is missing. */
+  needsPack: boolean;
+};
+
 contextBridge.exposeInMainWorld('ocrAPI', {
   getStatus: () => ipcRenderer.invoke('ocr-get-status'),
   ensureDeps: () => ipcRenderer.invoke('ocr-ensure-deps'),
   setProfile: (profileId: string, customPath?: string | null) =>
     ipcRenderer.invoke('ocr-set-profile', profileId, customPath),
   pickCustomFolder: () => ipcRenderer.invoke('ocr-pick-custom-folder'),
+  getPackState: () => ipcRenderer.invoke('ocr-pack-state'),
+  installPack: () => ipcRenderer.invoke('ocr-pack-install'),
+  onPackChanged: (callback: (state: OcrPackState) => void) => {
+    const listener = (_event: unknown, state: OcrPackState) => callback(state);
+    ipcRenderer.on('ocr-pack-changed', listener);
+    return () => ipcRenderer.removeListener('ocr-pack-changed', listener);
+  },
 });
 
 // Expose search API
@@ -685,7 +702,12 @@ declare global {
         python?: string;
         script?: string;
         modelRoot?: string;
+        packInstalled?: boolean;
+        needsPack?: boolean;
       }>;
+      getPackState: () => Promise<OcrPackState>;
+      installPack: () => Promise<OcrPackState & { ok: boolean; error?: string | null }>;
+      onPackChanged: (callback: (state: OcrPackState) => void) => () => void;
       ensureDeps: () => Promise<{ ok: boolean; detail: string }>;
       setProfile: (profileId: string, customPath?: string | null) => Promise<{ ok: boolean; detail: string }>;
       pickCustomFolder: () => Promise<{ cancelled: boolean; path?: string }>;

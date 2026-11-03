@@ -2,8 +2,10 @@
 ; - One-page installer UI (installer-pages.nsh): Install page with Custom options,
 ;   progress, finish. Replaces the welcome, licence, folder and components pages.
 ; - Default path: Program Files\Phevere (menuCategory false — no author parent folder)
-; - Single Setup.exe bundles everything (incl. OCR models via extraResources)
-; - Custom options: shortcuts + optional OCR (unchecked = remove models after copy)
+; - Setup.exe carries the app without OCR models; the app downloads the OCR pack.
+;   Models an older installer left in resources\ocr-models survive the upgrade
+;   (PV_KEEP_OCR_MODELS / PV_RESTORE_OCR_MODELS).
+; - Custom options: shortcuts (the WPF frontend passes them as switches)
 ; - Explicit Uninstall Start Menu link + reinforced Apps & Features registry
 ; - Publisher: thd2020
 ; - InstFiles page lists what is copying (compiler ShowInstDetails show here;
@@ -15,6 +17,7 @@
 !include "LogicLib.nsh"
 
 Var pvNativeInstallDirectory
+Var pvKeptOcrModels
 
 !macro preInit
   ; NSIS reads its final, unquoted /D argument as one complete directory.
@@ -36,10 +39,6 @@ Section "Desktop shortcut" SecDesktop
 SectionEnd
 
 Section "Start menu shortcut" SecStartMenu
-SectionEnd
-
-; OCR on by default (no /o). Models ship inside Setup; uncheck to omit from disk.
-Section "OCR models (PP-OCRv4, ~15 MB)" SecOcr
 SectionEnd
 
 !include "${BUILD_RESOURCES_DIR}\installer-pages.nsh"
@@ -96,6 +95,38 @@ FunctionEnd
   ${EndIf}
 !macroend
 
+; Installers up to 3.0 put the PP-OCRv4 models in resources\ocr-models, and the
+; app still loads them from there. During an upgrade electron-builder runs the old
+; uninstaller, which deletes the whole install folder, and this package carries no
+; models. Copy them aside before that and put them back after the new files.
+!macro PV_KEEP_OCR_MODELS
+  StrCpy $pvKeptOcrModels ""
+  StrCpy $R2 "$INSTDIR"
+  ${IfNot} ${FileExists} "$R2\resources\ocr-models\ch_PP-OCRv4_rec_infer.onnx"
+    ; The new folder may differ from the old one; the old one is in the registry.
+    ReadRegStr $R2 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation
+  ${EndIf}
+  ${If} $R2 != ""
+  ${AndIf} ${FileExists} "$R2\resources\ocr-models\ch_PP-OCRv4_rec_infer.onnx"
+    InitPluginsDir
+    CreateDirectory "$PLUGINSDIR\kept-ocr-models"
+    ClearErrors
+    CopyFiles /SILENT "$R2\resources\ocr-models\*.*" "$PLUGINSDIR\kept-ocr-models"
+    ${IfNot} ${Errors}
+      StrCpy $pvKeptOcrModels "$PLUGINSDIR\kept-ocr-models"
+    ${EndIf}
+  ${EndIf}
+!macroend
+
+!macro PV_RESTORE_OCR_MODELS
+  ${If} $pvKeptOcrModels != ""
+  ${AndIfNot} ${FileExists} "$INSTDIR\resources\ocr-models\ch_PP-OCRv4_rec_infer.onnx"
+    DetailPrint "Keeping the OCR models from the previous version..."
+    CreateDirectory "$INSTDIR\resources\ocr-models"
+    CopyFiles /SILENT "$pvKeptOcrModels\*.*" "$INSTDIR\resources\ocr-models"
+  ${EndIf}
+!macroend
+
 !macro PV_STORE_COMPONENT SECTION VALUE
   ${If} ${SectionIsSelected} ${SECTION}
     WriteRegStr SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" "${VALUE}" "1"
@@ -128,14 +159,13 @@ FunctionEnd
   ${If} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
     !insertmacro PV_RESTORE_COMPONENT ${SecDesktop} DesktopShortcut "$DESKTOP\Phevere.lnk"
     !insertmacro PV_RESTORE_COMPONENT ${SecStartMenu} StartMenuShortcut "$SMPROGRAMS\Phevere.lnk"
-    !insertmacro PV_RESTORE_COMPONENT ${SecOcr} OcrModels "$INSTDIR\resources\ocr-models\*.*"
   ${EndIf}
+  !insertmacro PV_KEEP_OCR_MODELS
   ; The WPF frontend sends explicit choices to the silent backend. A plain /S
   ; upgrade omits these switches and retains the saved or inferred choices.
   ${GetParameters} $R1
   !insertmacro PV_COMPONENT_ARGUMENT ${SecDesktop} --desktop-shortcut
   !insertmacro PV_COMPONENT_ARGUMENT ${SecStartMenu} --start-menu-shortcut
-  !insertmacro PV_COMPONENT_ARGUMENT ${SecOcr} --ocr-models
 !macroend
 
 !macro customInstall
@@ -164,15 +194,7 @@ FunctionEnd
 
   !insertmacro PV_STORE_COMPONENT ${SecDesktop} DesktopShortcut
   !insertmacro PV_STORE_COMPONENT ${SecStartMenu} StartMenuShortcut
-  !insertmacro PV_STORE_COMPONENT ${SecOcr} OcrModels
-
-  ; OCR models are always packed in Setup (extraResources). If user opts out, remove after extract.
-  ${IfNot} ${SectionIsSelected} ${SecOcr}
-    DetailPrint "Removing OCR models (you unchecked that component)..."
-    RMDir /r "$INSTDIR\resources\ocr-models"
-  ${Else}
-    DetailPrint "Keeping bundled PP-OCRv4 models in resources\ocr-models"
-  ${EndIf}
+  !insertmacro PV_RESTORE_OCR_MODELS
 
   ; Belt-and-suspenders: ensure Apps & Features can see Phevere even if SHELL_CONTEXT was odd.
   ; electron-builder already wrote SHELL_CONTEXT; mirror Publisher/DisplayName for the active install.

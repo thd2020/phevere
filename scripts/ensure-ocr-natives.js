@@ -12,7 +12,6 @@ const fs = require('fs');
 const path = require('path');
 const {
   ROOT,
-  OCR_MODEL_FILES,
   targetPlatformArch,
   onnxBindingRel,
   sharpSpec,
@@ -26,12 +25,6 @@ function fail(msg) {
     process.exit(1);
   }
   throw new Error(text);
-}
-
-function modelsOk() {
-  const dir = path.join(ROOT, 'resources', 'ocr-models');
-  const missing = OCR_MODEL_FILES.filter((f) => !fs.existsSync(path.join(dir, f)));
-  if (missing.length) fail(`Missing OCR models in resources/ocr-models: ${missing.join(', ')} (run node scripts/sync-ocr-models.js)`);
 }
 
 function onnxOk(platform, arch) {
@@ -113,7 +106,6 @@ function ensure(opts) {
   const platform = (opts && opts.platform) || targetPlatformArch().platform;
   const arch = (opts && opts.arch) || targetPlatformArch().arch;
   console.log(`[ensure-ocr-natives] target ${platform}/${arch}`);
-  modelsOk();
   gutenyeOk();
   onnxOk(platform, arch);
   if (usesSharp(platform)) sharpOk(platform, arch);

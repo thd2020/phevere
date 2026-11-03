@@ -1,6 +1,7 @@
 /**
  * OCR profile preferences (userData/ocr-settings.json).
- * Profiles: bundled PP-OCRv4, downloadable packs, or a custom model folder.
+ * Profiles: PP-OCRv4 (the OCR pack, id kept as 'bundled-pp-ocrv4' for saved
+ * settings), downloadable packs, or a custom model folder.
  */
 
 import { app } from 'electron';
@@ -36,7 +37,7 @@ const FILE_NAME = 'ocr-settings.json';
 export const OCR_PROFILES: OcrProfileMeta[] = [
   {
     id: 'bundled-pp-ocrv4',
-    label: 'PP-OCRv4 mobile (bundled)',
+    label: 'PP-OCRv4 mobile',
     kind: 'bundled',
   },
   {
