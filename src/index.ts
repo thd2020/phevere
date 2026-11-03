@@ -89,6 +89,7 @@ import {
   TranslationPrefs,
 } from './services/translation-prefs-store';
 import { loadApiKeys, saveApiKey } from './services/api-key-store';
+import { loadSourcePrefs, saveSourcePref } from './services/source-prefs-store';
 import {
   loadNotificationPrefs,
   mergeNotificationPrefs,
@@ -2926,6 +2927,11 @@ ipcMain.handle('dictionary-get-enabled-sources', () => {
 ipcMain.handle('dictionary-set-source-enabled', (event, sourceName: string, enabled: boolean) => {
   log.debug('main', 'setSourceEnabled', { sourceName, enabled });
   dictionaryService.setSourceEnabled(sourceName, enabled);
+  try {
+    saveSourcePref(sourceName, enabled);
+  } catch (error) {
+    log.warn('main', 'Could not save source switch', { err: String(error) });
+  }
   return { success: true };
 });
 
@@ -3534,6 +3540,7 @@ app.on('ready', () => {
   if (!gotSingleInstanceLock) return;
   // Settings → API keys saved in an earlier session (safeStorage needs the app ready).
   for (const [field, value] of loadApiKeys()) dictionaryService.setApiCredential(field, value);
+  for (const [name, on] of Object.entries(loadSourcePrefs())) dictionaryService.setSourceEnabled(name, on);
   if (process.platform === 'win32') {
     // Must match electron-builder appId for correct taskbar icon grouping.
     app.setAppUserModelId('com.phevere.app');
