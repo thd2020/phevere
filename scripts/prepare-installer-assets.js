@@ -2,13 +2,11 @@
  * Prepare packaging assets for NSIS:
  * - Multi-size icon.ico + PNG from SVG mark
  * - installerSidebar.bmp / installerHeader.bmp (2× MUI size so Win11 DPI stretch stays sharp)
- * - Optional OCR zip (sidecar) for selective install without bloating Setup.exe
  *
  * Usage: node scripts/prepare-installer-assets.js
  */
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
 
 const root = path.join(__dirname, '..');
 const packaging = path.join(root, 'packaging');
@@ -48,7 +46,6 @@ async function main() {
     return;
   }
   fs.mkdirSync(outDir, { recursive: true });
-  fs.mkdirSync(path.join(outDir, 'optional'), { recursive: true });
 
   const svgBuf = Buffer.from(ICON_SVG);
 
@@ -139,16 +136,6 @@ async function main() {
     await writeTrueBmp(sharp, Buffer.from(svg), path.join(outDir, name), w, h, 'fill', ART_PAPER);
   }
   console.log('Wrote installerHero.bmp and installer button bitmaps');
-
-  // Optional: also emit sidecar zip for advanced redistribution (not required — models are in Setup).
-  const ocrSrc = path.join(root, 'resources', 'ocr-models');
-  const ocrZip = path.join(outDir, 'optional', 'Phevere-OCR-Models.zip');
-  if (process.env.PHEVERE_BUILD_OCR_SIDECAR === '1' && fs.existsSync(path.join(ocrSrc, 'ch_PP-OCRv4_det_infer.onnx'))) {
-    zipDirectory(ocrSrc, ocrZip, 'ocr-models');
-    console.log('Wrote', ocrZip);
-  } else {
-    console.log('OCR models ship inside Setup.exe (extraResources); sidecar zip skipped');
-  }
 }
 
 function markGroup(x, y, sizePx) {
@@ -286,39 +273,6 @@ async function writeMacIcns(sharp, png1024, destIcns) {
   header.writeUInt32BE(body.length + 8, 4);
   fs.writeFileSync(destIcns, Buffer.concat([header, body]));
   console.log('Wrote', destIcns);
-}
-
-function zipDirectory(srcDir, destZip, rootFolderName) {
-  fs.mkdirSync(path.dirname(destZip), { recursive: true });
-  if (fs.existsSync(destZip)) fs.unlinkSync(destZip);
-  const staging = path.join(path.dirname(destZip), '_ocr_stage');
-  try {
-    fs.rmSync(staging, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
-  const nested = path.join(staging, rootFolderName);
-  fs.mkdirSync(nested, { recursive: true });
-  for (const name of fs.readdirSync(srcDir)) {
-    const from = path.join(srcDir, name);
-    if (fs.statSync(from).isFile()) fs.copyFileSync(from, path.join(nested, name));
-  }
-
-  // Prefer Windows tar (bsdtar) — creates zip with -a; avoids fragile powershell PATH in sandboxes.
-  try {
-    execFileSync('tar', ['-a', '-c', '-f', destZip, '-C', staging, rootFolderName], {
-      stdio: 'inherit',
-      windowsHide: true,
-    });
-  } catch (e1) {
-    const ps =
-      process.env.SystemRoot
-        ? path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
-        : 'powershell.exe';
-    const cmd = `Compress-Archive -Path '${staging.replace(/'/g, "''")}\\*' -DestinationPath '${destZip.replace(/'/g, "''")}' -Force`;
-    execFileSync(ps, ['-NoProfile', '-Command', cmd], { stdio: 'inherit', windowsHide: true });
-  }
-  fs.rmSync(staging, { recursive: true, force: true });
 }
 
 main().catch((e) => {

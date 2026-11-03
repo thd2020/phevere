@@ -2,8 +2,8 @@
 ; - One-page installer UI (installer-pages.nsh): Install page with Custom options,
 ;   progress, finish. Replaces the welcome, licence, folder and components pages.
 ; - Default path: Program Files\Phevere (menuCategory false — no author parent folder)
-; - Single Setup.exe bundles everything (incl. OCR models via extraResources)
-; - Custom options: shortcuts + optional OCR (unchecked = remove models after copy)
+; - Setup.exe carries the app without OCR models; the app downloads the OCR pack
+; - Custom options: shortcuts (the WPF frontend passes them as switches)
 ; - Explicit Uninstall Start Menu link + reinforced Apps & Features registry
 ; - Publisher: thd2020
 ; - InstFiles page lists what is copying (compiler ShowInstDetails show here;
@@ -36,10 +36,6 @@ Section "Desktop shortcut" SecDesktop
 SectionEnd
 
 Section "Start menu shortcut" SecStartMenu
-SectionEnd
-
-; OCR on by default (no /o). Models ship inside Setup; uncheck to omit from disk.
-Section "OCR models (PP-OCRv4, ~15 MB)" SecOcr
 SectionEnd
 
 !include "${BUILD_RESOURCES_DIR}\installer-pages.nsh"
@@ -128,14 +124,12 @@ FunctionEnd
   ${If} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
     !insertmacro PV_RESTORE_COMPONENT ${SecDesktop} DesktopShortcut "$DESKTOP\Phevere.lnk"
     !insertmacro PV_RESTORE_COMPONENT ${SecStartMenu} StartMenuShortcut "$SMPROGRAMS\Phevere.lnk"
-    !insertmacro PV_RESTORE_COMPONENT ${SecOcr} OcrModels "$INSTDIR\resources\ocr-models\*.*"
   ${EndIf}
   ; The WPF frontend sends explicit choices to the silent backend. A plain /S
   ; upgrade omits these switches and retains the saved or inferred choices.
   ${GetParameters} $R1
   !insertmacro PV_COMPONENT_ARGUMENT ${SecDesktop} --desktop-shortcut
   !insertmacro PV_COMPONENT_ARGUMENT ${SecStartMenu} --start-menu-shortcut
-  !insertmacro PV_COMPONENT_ARGUMENT ${SecOcr} --ocr-models
 !macroend
 
 !macro customInstall
@@ -164,15 +158,6 @@ FunctionEnd
 
   !insertmacro PV_STORE_COMPONENT ${SecDesktop} DesktopShortcut
   !insertmacro PV_STORE_COMPONENT ${SecStartMenu} StartMenuShortcut
-  !insertmacro PV_STORE_COMPONENT ${SecOcr} OcrModels
-
-  ; OCR models are always packed in Setup (extraResources). If user opts out, remove after extract.
-  ${IfNot} ${SectionIsSelected} ${SecOcr}
-    DetailPrint "Removing OCR models (you unchecked that component)..."
-    RMDir /r "$INSTDIR\resources\ocr-models"
-  ${Else}
-    DetailPrint "Keeping bundled PP-OCRv4 models in resources\ocr-models"
-  ${EndIf}
 
   ; Belt-and-suspenders: ensure Apps & Features can see Phevere even if SHELL_CONTEXT was odd.
   ; electron-builder already wrote SHELL_CONTEXT; mirror Publisher/DisplayName for the active install.

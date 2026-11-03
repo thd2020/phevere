@@ -243,7 +243,7 @@ function Set-Choices([object]$Entry, [string]$Value) {
         Assert-True ($null -ne $key) 'The installation preferences registry key is missing.'
         try {
             Assert-True ([string]$key.GetValue('InstallLocation', '') -eq $installRoot) 'Refusing to mutate registry choices outside the fixture.'
-            foreach ($name in @('DesktopShortcut', 'StartMenuShortcut', 'OcrModels')) {
+            foreach ($name in @('DesktopShortcut', 'StartMenuShortcut')) {
                 if ($Value -eq 'legacy') { $key.DeleteValue($name, $false) }
                 else { $key.SetValue($name, $Value, [Microsoft.Win32.RegistryValueKind]::String) }
             }
@@ -353,8 +353,6 @@ function Remove-OwnedTree([string]$Target) {
 }
 function Assert-Components([bool]$Selected) {
     foreach ($link in $links) { Assert-True ((Test-Path -LiteralPath $link) -eq $Selected) "Unexpected shortcut state: $link" }
-    $models = Join-Path $installRoot 'resources\ocr-models'
-    Assert-True ((Test-Path -LiteralPath $models) -eq $Selected) 'The OCR model choice was not preserved.'
     $entry = Get-OwnedEntry
     $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey($entry.Hive, $entry.View)
     try {
@@ -362,13 +360,12 @@ function Assert-Components([bool]$Selected) {
         Assert-True ($null -ne $key) 'The installer did not save component choices.'
         try {
             $expected = if ($Selected) { '1' } else { '0' }
-            foreach ($name in @('DesktopShortcut', 'StartMenuShortcut', 'OcrModels')) {
+            foreach ($name in @('DesktopShortcut', 'StartMenuShortcut')) {
                 Assert-True ([string]$key.GetValue($name, '') -eq $expected) "The installer did not persist $name=$expected."
             }
         } finally { $key.Dispose() }
     } finally { $base.Dispose() }
     if ($Selected) {
-        Assert-True (@(Get-ChildItem -LiteralPath $models -Recurse -Filter '*.onnx').Count -gt 0) 'The OCR directory has no ONNX models.'
         $shell = New-Object -ComObject WScript.Shell
         foreach ($link in $links) {
             $target = $shell.CreateShortcut($link).TargetPath
@@ -516,7 +513,7 @@ public static class InstallerTestWindows {
         Invoke-OwnedUninstall
         $installRoot = $customInstallRoot
         $appExe = Join-Path $installRoot 'Phevere.exe'
-        Invoke-Hidden $Installer "/S --desktop-shortcut=0 --start-menu-shortcut=0 --ocr-models=0 /D=$installRoot"
+        Invoke-Hidden $Installer "/S --desktop-shortcut=0 --start-menu-shortcut=0 /D=$installRoot"
         Assert-Payload
         Assert-Components $false
         Assert-State
@@ -558,9 +555,9 @@ public static class InstallerTestWindows {
     foreach ($choice in @('0', '1')) {
         $opposite = if ($choice -eq '0') { '1' } else { '0' }
         Set-Choices (Get-OwnedEntry) $opposite
-        # Match the frontend exactly: the final --ocr-models option is followed
-        # by an unquoted, space-containing NSIS /D path.
-        Invoke-Hidden $Installer "/S --desktop-shortcut=$choice --start-menu-shortcut=$choice --ocr-models=$choice /D=$installRoot"
+        # Match the frontend exactly: the final option is followed by an
+        # unquoted, space-containing NSIS /D path.
+        Invoke-Hidden $Installer "/S --desktop-shortcut=$choice --start-menu-shortcut=$choice /D=$installRoot"
         Assert-Payload
         Assert-Components ($choice -eq '1')
         Assert-True ((Get-StartupCommand) -ceq $startupFixtureCommand) 'Explicit component replacement removed or changed the startup command.'

@@ -40,7 +40,7 @@ internal sealed class SetupWindow : Window
     readonly bool preview;
     readonly string backend, version, arch;
     readonly TextBox folder;
-    readonly CheckBox ocr, desktop, startMenu, startup, launch, agreement;
+    readonly CheckBox desktop, startMenu, startup, launch, agreement;
     readonly ComboBox voice;
     readonly Grid stage;
     readonly ScrollViewer optionsPanel;
@@ -54,7 +54,7 @@ internal sealed class SetupWindow : Window
 
     sealed class InstallChoices {
         public string Folder, Model;
-        public bool Ocr, Desktop, StartMenu, Startup, Launch;
+        public bool Desktop, StartMenu, Startup, Launch;
     }
 
     const string Layout = @"
@@ -129,7 +129,6 @@ internal sealed class SetupWindow : Window
         try { Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.ico"))); } catch { }
         folder = new TextBox { Text = ExistingFolder(), MinHeight = 42 };
         System.Windows.Automation.AutomationProperties.SetName(folder, "Installation folder");
-        ocr = Choice("OCR models (15 MB)", ExistingChoice("OcrModels", Directory.Exists(Path.Combine(folder.Text, "resources", "ocr-models"))));
         desktop = Choice("Desktop shortcut", ExistingChoice("DesktopShortcut", File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory), "Phevere.lnk"))));
         startMenu = Choice("Start menu shortcuts", ExistingChoice("StartMenuShortcut", File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "Phevere.lnk"))));
         using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")) startup = Choice("Start with Windows", key != null && key.GetValue("Phevere") != null);
@@ -166,7 +165,7 @@ internal sealed class SetupWindow : Window
         directoryRow.Children.Add(folder);
         var browse = new Button { Content = "Browse…", Margin = new Thickness(10, 0, 0, 0), Padding = new Thickness(16, 8, 16, 8) }; Grid.SetColumn(browse, 1); directoryRow.Children.Add(browse);
         browse.Click += delegate { using (var dialog = new System.Windows.Forms.FolderBrowserDialog { Description = "Install Phevere in", SelectedPath = folder.Text, ShowNewFolderButton = true }) if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK) folder.Text = dialog.SelectedPath; };
-        panel.Children.Add(directoryRow); panel.Children.Add(ocr);
+        panel.Children.Add(directoryRow);
         if (arch != "arm64") {
             var voiceRow = new Grid { Margin = new Thickness(0, 7, 0, 16) };
             voiceRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(112) }); voiceRow.ColumnDefinitions.Add(new ColumnDefinition());
@@ -191,7 +190,7 @@ internal sealed class SetupWindow : Window
     }
 
     InstallChoices Snapshot() {
-        return new InstallChoices { Folder = folder.Text, Ocr = On(ocr), Desktop = On(desktop), StartMenu = On(startMenu), Startup = On(startup), Launch = On(launch), Model = arch == "arm64" ? "none" : voice.SelectedIndex == 2 ? "kokoro-full" : voice.SelectedIndex == 1 ? "kokoro-compact" : "none" };
+        return new InstallChoices { Folder = folder.Text, Desktop = On(desktop), StartMenu = On(startMenu), Startup = On(startup), Launch = On(launch), Model = arch == "arm64" ? "none" : voice.SelectedIndex == 2 ? "kokoro-full" : voice.SelectedIndex == 1 ? "kokoro-compact" : "none" };
     }
 
     void ValidateFolder() {
@@ -224,7 +223,7 @@ internal sealed class SetupWindow : Window
         ShowStatus(retryAudio ? "Downloading audio model…" : "Installing Phevere…", false);
         try {
             if (!retryAudio) {
-                string parameters = "/S --desktop-shortcut=" + (installedChoices.Desktop ? "1" : "0") + " --start-menu-shortcut=" + (installedChoices.StartMenu ? "1" : "0") + " --ocr-models=" + (installedChoices.Ocr ? "1" : "0") + " /D=" + installedChoices.Folder;
+                string parameters = "/S --desktop-shortcut=" + (installedChoices.Desktop ? "1" : "0") + " --start-menu-shortcut=" + (installedChoices.StartMenu ? "1" : "0") + " /D=" + installedChoices.Folder;
                 int exit = preview ? await Task.Run(delegate { System.Threading.Thread.Sleep(750); return 0; }) : await Task.Run(delegate { return RunBackend(parameters); });
                 if (exit != 0) throw new Exception("Installation returned error " + exit + ". Select Install to retry.");
                 if (!preview) ApplyUserOptions(installedChoices);

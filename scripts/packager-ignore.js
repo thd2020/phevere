@@ -109,6 +109,10 @@ function packagerIgnore(file) {
     if (isScopeOnly(pkg)) return !keepHasScope(pkg);
     if (!getKeep().has(pkg)) return true;
 
+    // The npm package carries its own copy of the PP-OCR models (~16 MB). The app
+    // passes explicit model paths from the OCR pack, so packages ship without them.
+    if (/^\/node_modules\/@gutenye\/ocr-models\/assets(\/|$)/.test(normalized)) return true;
+
     const bin = normalized.match(
       /^\/node_modules\/onnxruntime-node\/bin\/napi-v6\/([^/]+)\/([^/]+)/
     );

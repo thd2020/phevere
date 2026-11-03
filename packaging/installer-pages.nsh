@@ -42,7 +42,6 @@ Var pvDir
 Var pvBrowse
 Var pvChkDesktop
 Var pvChkStart
-Var pvChkOcr
 Var pvFontName
 Var pvFontBody
 Var pvFontLink
@@ -153,7 +152,6 @@ Function pvShowOptions
   ShowWindow $pvBrowse $0
   ShowWindow $pvChkDesktop $0
   ShowWindow $pvChkStart $0
-  ShowWindow $pvChkOcr $0
 FunctionEnd
 
 Function pvOnOptions
@@ -210,7 +208,6 @@ Function pvOnInstall
   ${EndIf}
   !insertmacro PV_SECTION $pvChkDesktop ${SecDesktop}
   !insertmacro PV_SECTION $pvChkStart ${SecStartMenu}
-  !insertmacro PV_SECTION $pvChkOcr ${SecOcr}
   Call pvPressNext
 FunctionEnd
 
@@ -241,7 +238,6 @@ Function pvInstallPage
   ${NSD_OnClick} $pvBrowse pvOnBrowse
   !insertmacro PV_CHECK $pvChkDesktop 31% "Create a desktop shortcut" ${SecDesktop}
   !insertmacro PV_CHECK $pvChkStart 40% "Add Phevere to the Start menu" ${SecStartMenu}
-  !insertmacro PV_CHECK $pvChkOcr 49% "Include OCR models (15 MB), to look up words in images" ${SecOcr}
 
   !insertmacro PV_LABEL $pvName 7% 66% 50% 11% "Phevere" $pvFontName ${PV_INK}
   !insertmacro PV_LABEL $pvVersion 7% 77% 50% 6% "Version ${VERSION}" $pvFontBody ${PV_MUTED}

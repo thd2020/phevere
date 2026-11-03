@@ -164,8 +164,8 @@ module.exports = {
       'node_modules/sql.js/dist/sql-asm.js',
       // Optional offline seed packs (JSON/JSONL/CEDICT). Copied into userData on first run.
       'resources/seed',
-      // PP-OCR ONNX models — bundled in the single Setup.exe; NSIS can skip installing to disk.
-      'resources/ocr-models',
+      // PP-OCR models are not bundled: the app downloads the OCR pack on request
+      // (src/services/ocr-pack.ts, release asset built by scripts/make-ocr-pack.js).
       'packaging/icon.ico',
       // Darwin only: Dock / extraResource PNG+icns. Skip on Windows so NSIS payload stays unchanged.
       ...(process.platform === 'darwin' ? ['packaging/icon.png', 'packaging/icon.icns'] : []),

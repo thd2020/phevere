@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Assert a packaged app dir (Phevere.app / win unpacked) contains OCR models
- * and the native ONNX/sharp/gutenye files for its platform/arch.
+ * Assert a packaged app dir (Phevere.app / win unpacked) contains the native
+ * ONNX/sharp/gutenye files for its platform/arch, and no OCR models: those
+ * come from the separate OCR pack (scripts/make-ocr-pack.js).
  *
  * Usage:
  *   node scripts/verify-ocr-pack.js
@@ -12,7 +13,7 @@
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { ROOT, OCR_MODEL_FILES, argvFlag, onnxBindingRel, usesSharp } = require('./ocr-pack-layout');
+const { ROOT, argvFlag, onnxBindingRel, usesSharp } = require('./ocr-pack-layout');
 
 function fail(msg) {
   const text = `[verify-ocr-pack] ${msg}`;
@@ -97,14 +98,15 @@ function verifyDir(appRoot, platform, arch) {
   const res = resourcesDir(appRoot, platform);
   if (!exists(res)) fail(`No Resources dir under ${appRoot} (looked at ${res})`);
 
-  const models = path.join(res, 'ocr-models');
-  const missingModels = OCR_MODEL_FILES.filter((f) => !exists(path.join(models, f)));
-  if (missingModels.length) {
-    fail(`Packaged OCR models missing (${models}): ${missingModels.join(', ')}`);
-  }
-
   const unpackedRoot = path.join(res, 'app.asar.unpacked');
   const unpacked = path.join(unpackedRoot, 'node_modules');
+  const bundledModels = [path.join(res, 'ocr-models'), path.join(unpacked, '@gutenye', 'ocr-models', 'assets')]
+    .flatMap((dir) => walkFiles(dir))
+    .filter((p) => /\.onnx$/i.test(p));
+  if (bundledModels.length) {
+    fail(`OCR models must not ship in the package (they come from the OCR pack):\n  ${bundledModels.join('\n  ')}`);
+  }
+
   const binding = path.join(unpacked, onnxBindingRel(platform, arch));
   if (!exists(binding)) {
     fail(
