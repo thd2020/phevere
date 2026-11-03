@@ -2263,6 +2263,7 @@ function showVocabAzHud(letter: string): void {
   const hud = document.getElementById('vocabAzHud');
   if (!hud) return;
   hud.textContent = letter;
+  hud.classList.toggle('is-wide', [...letter].length > 2);
   hud.hidden = false;
 }
 
@@ -2365,6 +2366,33 @@ function scrollVocabToTime(key: string): void {
   head?.scrollIntoView({ block: 'start' });
 }
 
+/**
+ * The rails are fixed to the window so they stay put while the list scrolls. Their top follows
+ * the list's first row until the sticky header reaches it, so a rail never sits beside the
+ * view switcher or the sort buttons.
+ */
+function placeVocabRails(): void {
+  const list = document.getElementById('vocabList');
+  const head = document.querySelector<HTMLElement>('.ws-head');
+  if (!list || !head) return;
+  const top = Math.round(Math.max(list.getBoundingClientRect().top, head.getBoundingClientRect().bottom) + 8);
+  for (const id of ['vocabAz', 'vocabTimeline']) {
+    const nav = document.getElementById(id);
+    if (nav && !nav.hidden) nav.style.top = `${top}px`;
+  }
+}
+
+let railFrame = 0;
+function schedulePlaceVocabRails(): void {
+  if (railFrame) return;
+  railFrame = requestAnimationFrame(() => {
+    railFrame = 0;
+    placeVocabRails();
+  });
+}
+document.querySelector('.main-shell')?.addEventListener('scroll', schedulePlaceVocabRails, { passive: true });
+window.addEventListener('resize', schedulePlaceVocabRails);
+
 function syncVocabTimeline(entries: any[]): void {
   const nav = document.getElementById('vocabTimeline');
   const wrap = document.getElementById('vocabListWrap');
@@ -2374,6 +2402,7 @@ function syncVocabTimeline(entries: any[]): void {
   nav.hidden = !on;
   wrap?.classList.toggle('is-timeline', on);
   if (!on) return;
+  schedulePlaceVocabRails();
   vocabTimeIndex = new Map(buckets.map((b) => [b.key, { id: b.id, label: b.label }]));
   let year = buckets[0].year;
   nav.innerHTML = buckets
@@ -2400,6 +2429,7 @@ function syncVocabAzAvailability(entries: any[]): void {
     hideVocabAzHud();
     return;
   }
+  schedulePlaceVocabRails();
   const present = new Set(entries.map((e) => vocabAzLetter(String(e.lemma || ''))));
   nav.querySelectorAll<HTMLElement>('.vocab-az__letter').forEach((btn) => {
     const letter = btn.dataset.letter || '';

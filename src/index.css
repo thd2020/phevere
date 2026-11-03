@@ -3242,6 +3242,29 @@ body.main-window .vocab-az__time[data-year]::before {
   font-weight: 700;
   color: var(--pv-ember);
 }
-body.main-window .vocab-list-wrap.is-timeline :is(#vocabList) { margin-right: 50px; }
+/*
+ * Rails sit just inside the shell's scrollbar, in the shell's right padding, and the list
+ * keeps only the margin the rail needs (2026-11-03). The gutter is reserved so the rail
+ * does not shift when a short list has no scrollbar.
+ */
+body.main-window .main-shell { scrollbar-gutter: stable; }
+body.main-window .vocab-az { right: 16px; }
+body.main-window .vocab-az--time { right: 16px; }
+body.main-window .vocab-list-wrap.is-alpha .selections-list { padding-right: 0; }
+body.main-window .vocab-list-wrap.is-alpha :is(#vocabList) { margin-right: 0; }
+body.main-window .vocab-list-wrap.is-timeline :is(#vocabList) { margin-right: 28px; }
+
+/* The scrub indicator grows to fit a date ("Week of November 2"); a letter keeps the square. */
+body.main-window .vocab-az-hud.is-wide {
+  width: auto;
+  min-width: 88px;
+  height: auto;
+  min-height: 56px;
+  padding: 12px 20px;
+  font-size: 1.25rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
 /* Settings → Offline inspector opens under the title bar. */
 body.settings-page { --sv-inspector-top: var(--settings-titlebar-h); }
