@@ -15,7 +15,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as readline from 'readline';
 import { createReadStream } from 'fs';
-import { getLocalDb, isLocalDbReady, markDirty, queryAll, queryOne, runBatch, runWrite } from './local-db';
+import { getLocalDb, isLocalDbReady, localDbPath, markDirty, queryAll, queryOne, runBatch, runWrite } from './local-db';
 import { wrapConsole } from '../logger';
 import { getCatalogItem, OFFLINE_CATALOG, type OfflineCatalogItem } from './offline-catalog';
 import {
@@ -86,6 +86,18 @@ export async function listCatalogStatus(): Promise<CatalogStatusItem[]> {
   }));
 }
 
+/** Settings → Offline inspector: bytes the pack's rows hold, and the database file they live in. */
+export async function packDetails(packId: string): Promise<{ installedBytes: number; storedAt: string } | null> {
+  await ensureOfflineReady();
+  const row = await queryOne(
+    `SELECT SUM(LENGTH(CAST(headword AS BLOB)) + LENGTH(CAST(definition AS BLOB)) +
+            IFNULL(LENGTH(CAST(pos AS BLOB)), 0) + IFNULL(LENGTH(CAST(extra AS BLOB)), 0)) AS bytes
+     FROM offline_entries WHERE pack_id = ?`,
+    [packId],
+  );
+  return { installedBytes: Number(row?.bytes) || 0, storedAt: localDbPath() };
+}
+
 export async function removePack(packId: string): Promise<void> {
   await ensureOfflineReady();
   await runWrite(`DELETE FROM offline_entries WHERE pack_id = ?`, [packId]);
@@ -134,14 +146,20 @@ export async function lookupOffline(
 
 type PackMeta = { id: string; name: string; language: string; source?: string };
 
+/** Download and import progress for Settings → Offline; fraction is null while a step has no known size. */
+export type PackProgressFn = (p: { fraction: number | null; label: string }) => void;
+
 /** Replaces a pack's rows in batches; a failed import removes what it wrote. */
 class PackWriter {
   private pending: ParsedOfflineEntry[] = [];
   private count = 0;
 
-  private constructor(private meta: PackMeta) {}
+  private constructor(
+    private meta: PackMeta,
+    private onFlush?: (count: number) => void,
+  ) {}
 
-  static async begin(meta: PackMeta): Promise<PackWriter> {
+  static async begin(meta: PackMeta, onFlush?: (count: number) => void): Promise<PackWriter> {
     await ensureOfflineReady();
     const existing = await queryOne(`SELECT id FROM offline_packs WHERE id = ?`, [meta.id]);
     if (existing) {
@@ -152,7 +170,7 @@ class PackWriter {
       `INSERT INTO offline_packs (id, name, language, source, entry_count, created_at) VALUES (?, ?, ?, ?, 0, ?)`,
       [meta.id, meta.name, meta.language, meta.source || null, Date.now()],
     );
-    return new PackWriter(meta);
+    return new PackWriter(meta, onFlush);
   }
 
   add(rows: ParsedOfflineEntry[]): void {
@@ -178,6 +196,7 @@ class PackWriter {
         ]),
       );
       this.count += slice.length;
+      this.onFlush?.(this.count);
     }
   }
 
@@ -227,7 +246,11 @@ async function eachLine(file: string, writer: PackWriter, onLine: (line: string)
   }
 }
 
-async function downloadBuffer(urls: string[]): Promise<Buffer> {
+function mb(n: number): string {
+  return (n / (1024 * 1024)).toFixed(1);
+}
+
+async function downloadBuffer(urls: string[], onProgress?: PackProgressFn): Promise<Buffer> {
   let last = 'no URLs';
   for (const url of urls) {
     try {
@@ -237,7 +260,30 @@ async function downloadBuffer(urls: string[]): Promise<Buffer> {
         last = `HTTP ${response.status} (${url})`;
         continue;
       }
-      return Buffer.from(await response.arrayBuffer());
+      const total = Number(response.headers.get('content-length')) || 0;
+      if (!onProgress || !response.body) return Buffer.from(await response.arrayBuffer());
+      // Read the body in chunks so Settings can show how far the download has got.
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let done = 0;
+      let lastSent = 0;
+      onProgress({ fraction: total ? 0 : null, label: 'Downloading…' });
+      for (;;) {
+        const { done: end, value } = await reader.read();
+        if (end) break;
+        if (!value) continue;
+        chunks.push(value);
+        done += value.length;
+        const now = Date.now();
+        if (now - lastSent > 120) {
+          lastSent = now;
+          onProgress({
+            fraction: total ? Math.min(1, done / total) : null,
+            label: total ? `Downloading ${mb(done)} of ${mb(total)} MB` : `Downloading ${mb(done)} MB`,
+          });
+        }
+      }
+      return Buffer.concat(chunks.map((c) => Buffer.from(c.buffer, c.byteOffset, c.byteLength)));
     } catch (e) {
       last = `${url}: ${e instanceof Error ? e.message : String(e)}`;
     }
@@ -347,8 +393,13 @@ async function importFiles(
   meta: PackMeta,
   format: OfflineCatalogItem['format'],
   files: string[],
+  onProgress?: PackProgressFn,
 ): Promise<{ packId: string; count: number }> {
-  const writer = await PackWriter.begin(meta);
+  onProgress?.({ fraction: null, label: 'Importing…' });
+  const writer = await PackWriter.begin(
+    meta,
+    onProgress ? (n) => onProgress({ fraction: null, label: `Importing ${n.toLocaleString('en-US')} entries` }) : undefined,
+  );
   try {
     for (const file of files) {
       switch (format) {
@@ -388,12 +439,16 @@ async function importFiles(
 }
 
 /** Download a catalog pack, unpack it to a temp folder and import it. Call only after the user agreed. */
-export async function downloadCatalogPack(packId: string): Promise<{ packId: string; count: number }> {
+export async function downloadCatalogPack(
+  packId: string,
+  onProgress?: PackProgressFn,
+): Promise<{ packId: string; count: number }> {
   const item = getCatalogItem(packId);
   if (!item) throw new Error(`Unknown catalog pack: ${packId}`);
   const work = mkWork(item.id);
   try {
-    const buf = await downloadBuffer(item.urls);
+    const buf = await downloadBuffer(item.urls, onProgress);
+    onProgress?.({ fraction: null, label: 'Unpacking…' });
     let files: string[];
     if (item.archive === 'plain' || item.archive === 'gz') {
       const file = path.join(work, 'pack.txt');
@@ -416,6 +471,7 @@ export async function downloadCatalogPack(packId: string): Promise<{ packId: str
       { id: item.id, name: item.name, language: item.language, source: item.urls[0] },
       item.format,
       files,
+      onProgress,
     );
   } finally {
     rmWork(work);

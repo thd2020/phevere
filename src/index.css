@@ -3931,3 +3931,5 @@ body.main-window .vocab-az__time[data-year]::before {
   color: var(--pv-ember);
 }
 body.main-window .vocab-list-wrap.is-timeline :is(#vocabList) { margin-right: 50px; }
+/* Settings → Offline inspector opens under the title bar. */
+body.settings-page { --sv-inspector-top: var(--settings-titlebar-h); }

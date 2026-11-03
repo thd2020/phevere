@@ -46,6 +46,7 @@ import {
   stopSpeech,
   isCancelled,
   stopSpeechWorker,
+  warmSpeech,
   type AudioPrefs,
   type SpeakRequest,
   type VoiceId,
@@ -79,6 +80,7 @@ import {
   parseTranslationProvider,
   TranslationPrefs,
 } from './services/translation-prefs-store';
+import { loadApiKeys, saveApiKey } from './services/api-key-store';
 import {
   loadNotificationPrefs,
   mergeNotificationPrefs,
@@ -2557,6 +2559,8 @@ ipcMain.handle('fetch-pronunciation-audio', async (_event, url: string) => {
 
 ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: string = 'auto', enabledSources?: string[], lookupOpts?: { translationProvider?: string; sourceLanguage?: string }) => {
   const t0 = Date.now();
+  // A phrase opens the Translation tab, whose speakers use the neural voice when one is chosen.
+  if (/\S\s+\S|[㐀-鿿]{2}/.test(String(text || ''))) warmSpeech();
   const translationProvider = parseTranslationProvider(
     lookupOpts?.translationProvider ?? loadTranslationPrefs().provider,
   );
@@ -2597,11 +2601,13 @@ ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: 
 
 ipcMain.handle('dictionary-set-api-key', (event, apiKey: string) => {
   dictionaryService.setApiKey(apiKey);
+  saveApiKey('googleKey', apiKey);
   return { success: true };
 });
 
 ipcMain.handle('dictionary-set-deepl-api-key', (event, deeplApiKey: string) => {
   dictionaryService.setDeepLApiKey(deeplApiKey);
+  saveApiKey('deeplKey', deeplApiKey);
   return { success: true };
 });
 
@@ -2624,6 +2630,19 @@ ipcMain.handle('dictionary-set-wordsapi-credentials', (_event, rapidApiKey: stri
 ipcMain.handle('dictionary-set-collins-credentials', (_event, rapidApiKey: string, rapidApiHost: string) => {
   dictionaryService.setCollinsApiCredentials(rapidApiKey, rapidApiHost);
   return { success: true };
+});
+
+// Settings → API keys. Values go straight to the service and are never logged.
+ipcMain.handle('dictionary-set-api-credential', (_event, field: string, value: string) => {
+  dictionaryService.setApiCredential(String(field || ''), String(value ?? ''));
+  saveApiKey(String(field || ''), String(value ?? ''));
+  return { success: true };
+});
+ipcMain.handle('dictionary-get-api-key-presence', () => dictionaryService.getApiKeyPresence());
+ipcMain.handle('dictionary-verify-api-key', async (_event, provider: string) => {
+  const result = await dictionaryService.verifyApiKey(provider as Parameters<typeof dictionaryService.verifyApiKey>[0]);
+  log.info('main', 'API key test', { provider, ok: result.ok });
+  return result;
 });
 
 ipcMain.handle('dictionary-load-cc-cedict', async (_event, url: string) => {
@@ -3021,8 +3040,13 @@ ipcMain.handle('offline-import-cedict-file', async () => {
   dictionaryService.markOfflinePackAvailable('CC-CEDICT', true);
   return { success: true, ...imported };
 });
-ipcMain.handle('offline-download-pack', async (_e, packId: string) => {
-  const imported = await offlineDict.downloadCatalogPack(String(packId || ''));
+ipcMain.handle('offline-pack-details', async (_e, packId: string) => offlineDict.packDetails(String(packId || '')));
+ipcMain.handle('offline-download-pack', async (e, packId: string) => {
+  const id = String(packId || '');
+  const sender = e.sender;
+  const imported = await offlineDict.downloadCatalogPack(id, (p) => {
+    if (!sender.isDestroyed()) sender.send('offline-pack-progress', { id, ...p });
+  });
   if (imported.packId === 'cc-cedict') {
     dictionaryService.markOfflinePackAvailable('CC-CEDICT', true);
   }
@@ -3248,6 +3272,8 @@ app.on('ready', () => {
     return;
   }
   if (!gotSingleInstanceLock) return;
+  // Settings → API keys saved in an earlier session (safeStorage needs the app ready).
+  for (const [field, value] of loadApiKeys()) dictionaryService.setApiCredential(field, value);
   if (process.platform === 'win32') {
     // Must match electron-builder appId for correct taskbar icon grouping.
     app.setAppUserModelId('com.phevere.app');

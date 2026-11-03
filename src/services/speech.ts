@@ -52,7 +52,7 @@ const VARIANTS: Variant[] = [
     dir: 'kokoro-int8-v1',
     archiveDir: 'kokoro-int8-multi-lang-v1_0',
     model: 'model.int8.onnx',
-    sha: '4c3052abaa60943a341f193888cf6abd68787dae6ab8ae5c925a706caa247e4e',
+    sha: '72c347230107ef8a31098ec4d468a605244beef5f1ed00db97efa13518800653',
     downloadMb: 132,
   },
   {
@@ -61,7 +61,7 @@ const VARIANTS: Variant[] = [
     dir: 'kokoro-v1',
     archiveDir: 'kokoro-multi-lang-v1_0',
     model: 'model.onnx',
-    sha: 'c5f7e2d2caf082bc1d20fb70334a61d99d20b484500aad32e7cf84c128ea3298',
+    sha: '60703707bc05ccd48d60e1eb723f38b07d6e474795a0b6a588d7220400e0f7a4',
     downloadMb: 350,
   },
 ];
@@ -370,6 +370,28 @@ function synthesizeText(
     log.warn('speech', 'neural voice failed; using eSpeak', { err: String(err) });
     onNeuralFailed?.();
     return espeak();
+  });
+}
+
+/**
+ * Loads the neural voice in the worker before anyone presses a speaker. The first load
+ * and run take about 4 s on a desktop CPU, which otherwise lands on top of the first
+ * sentence. Called when a translation is shown; it runs once per worker and voice.
+ */
+const warmedWorkers = new WeakMap<UtilityProcess, string>();
+export function warmSpeech(): void {
+  const variant = VARIANTS.find((v) => v.id === getAudioPrefs().voice);
+  if (!variant || !isInstalled(variant.id) || !neuralSupported()) return;
+  let w: UtilityProcess;
+  try {
+    w = ensureWorker('main');
+  } catch {
+    return;
+  }
+  if (warmedWorkers.get(w) === variant.id) return;
+  warmedWorkers.set(w, variant.id);
+  runWorker({ engine: 'kokoro-warm', model: { dir: installDir(variant), file: variant.model } }, 60000).catch((err) => {
+    log.warn('speech', 'neural voice warm-up failed', { err: String(err) });
   });
 }
 

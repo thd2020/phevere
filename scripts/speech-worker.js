@@ -12,6 +12,7 @@
  *
  * argv: --espeak <dir with espeak-ng.js> [--sherpa <dir with sherpa-onnx-node>] [--ort <dir with onnxruntime-node>]
  * Request:  { id, engine: 'espeak' | 'kokoro' | 'kokoro-ipa', text, voice?, speed?, model? }
+ *           { id, engine: 'kokoro-warm', model }       (loads Kokoro ahead of the first press)
  *           { id, engine: 'unpack', archive, dest }   (Kokoro .tar.bz2 downloads)
  * Response: { id, ok, wav?: Uint8Array, error? }
  */
@@ -19,9 +20,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-// Neural synthesis uses about half the logical cores (at least 1, at most 4), so a long
-// paragraph never takes the whole machine. onnxruntime's own default is every core.
-const NEURAL_THREADS = Math.max(1, Math.min(4, Math.floor(((os.cpus() || []).length || 2) / 2)));
+// Neural synthesis uses at most two threads. Measured with the int8 Kokoro model on a
+// 6-core i5-10500, three, four or six threads were no faster than two but used about
+// 40 to 160 percent more CPU time; onnxruntime's own default is every core.
+const NEURAL_THREADS = Math.max(1, Math.min(2, (os.cpus() || []).length || 1));
 const { pathToFileURL } = require('url');
 
 function arg(name) {
@@ -193,6 +195,12 @@ async function handle(msg) {
   }
   if (msg.engine === 'kokoro-ipa') {
     return kokoroFromPhonemes(msg.model, msg.text, msg.speaker, msg.speed);
+  }
+  if (msg.engine === 'kokoro-warm') {
+    // Loading the model and the first run take about 4 s; doing it before the first
+    // press keeps that out of the wait for the first sentence.
+    kokoroEngine(msg.model.dir, msg.model.file).generate({ text: 'Hi.', sid: 0, speed: 1, enableExternalBuffer: false });
+    return new Uint8Array(0);
   }
   if (msg.engine === 'kokoro') {
     const engine = kokoroEngine(msg.model.dir, msg.model.file);

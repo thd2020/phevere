@@ -174,6 +174,11 @@ async function doInit(): Promise<void> {
   void importPackagedSeeds().catch((e) => console.warn('seed import skipped', e));
 }
 
+/** The SQLite file that holds the notebook and offline packs. */
+export function localDbPath(): string {
+  return dbPath || resolveDbPath();
+}
+
 export function isLocalDbReady(): boolean {
   return ready;
 }

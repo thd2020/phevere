@@ -366,6 +366,13 @@ contextBridge.exposeInMainWorld('dictionaryAPI', {
   setCollinsCredentials: (rapidApiKey: string, rapidApiHost: string): Promise<{ success: boolean }> => {
     return ipcRenderer.invoke('dictionary-set-collins-credentials', rapidApiKey, rapidApiHost);
   },
+  /** Settings → API keys: set or clear one field (googleKey, youdaoSecret, …). */
+  setApiCredential: (field: string, value: string): Promise<{ success: boolean }> => {
+    return ipcRenderer.invoke('dictionary-set-api-credential', field, value);
+  },
+  getApiKeyPresence: (): Promise<Record<string, boolean>> => ipcRenderer.invoke('dictionary-get-api-key-presence'),
+  verifyApiKey: (provider: string): Promise<{ ok: boolean; message: string }> =>
+    ipcRenderer.invoke('dictionary-verify-api-key', provider),
   loadCcCedict: (url: string): Promise<{ success: boolean }> => {
     return ipcRenderer.invoke('dictionary-load-cc-cedict', url);
   },
@@ -484,6 +491,11 @@ contextBridge.exposeInMainWorld('offlineDictAPI', {
   importCedictFile: () => ipcRenderer.invoke('offline-import-cedict-file'),
   downloadPack: (packId: string) => ipcRenderer.invoke('offline-download-pack', packId),
   downloadCedict: () => ipcRenderer.invoke('offline-download-cedict'),
+  packDetails: (packId: string) => ipcRenderer.invoke('offline-pack-details', packId),
+  onPackProgress: (callback: (p: { id: string; fraction: number | null; label: string }) => void) => {
+    ipcRenderer.removeAllListeners('offline-pack-progress');
+    ipcRenderer.on('offline-pack-progress', (_event, p) => callback(p));
+  },
 });
 
 type OcrPackState = {
@@ -647,6 +659,9 @@ declare global {
       setYoudaoCredentials?: (appKey: string, appSecret: string) => Promise<{ success: boolean }>;
       setWordsApiCredentials?: (rapidApiKey: string, rapidApiHost?: string) => Promise<{ success: boolean }>;
       setCollinsCredentials?: (rapidApiKey: string, rapidApiHost: string) => Promise<{ success: boolean }>;
+      setApiCredential?: (field: string, value: string) => Promise<{ success: boolean }>;
+      getApiKeyPresence?: () => Promise<Record<string, boolean>>;
+      verifyApiKey?: (provider: string) => Promise<{ ok: boolean; message: string }>;
       loadCcCedict?: (url: string) => Promise<{ success: boolean }>;
       recall?: (text: string, targetLanguage?: string) => Promise<DictionaryResult>;
     };
@@ -701,6 +716,8 @@ declare global {
       importCedictFile: () => Promise<any>;
       downloadPack: (packId: string) => Promise<any>;
       downloadCedict: () => Promise<any>;
+      packDetails?: (packId: string) => Promise<{ installedBytes: number; storedAt: string } | null>;
+      onPackProgress?: (callback: (p: { id: string; fraction: number | null; label: string }) => void) => void;
     };
     ocrAPI: {
       getStatus: () => Promise<{

@@ -15,8 +15,8 @@ enum NeuralVariant: String, CaseIterable {
   var model: String { self == .compact ? "model.int8.onnx" : "model.onnx" }
   var sha: String {
     self == .compact
-      ? "4c3052abaa60943a341f193888cf6abd68787dae6ab8ae5c925a706caa247e4e"
-      : "c5f7e2d2caf082bc1d20fb70334a61d99d20b484500aad32e7cf84c128ea3298"
+      ? "72c347230107ef8a31098ec4d468a605244beef5f1ed00db97efa13518800653"
+      : "60703707bc05ccd48d60e1eb723f38b07d6e474795a0b6a588d7220400e0f7a4"
   }
   var downloadMb: Int64 { self == .compact ? 132 : 350 }
   var freeMb: Int64 { self == .compact ? 500 : 1000 }

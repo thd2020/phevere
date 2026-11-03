@@ -1,0 +1,181 @@
+/*
+ * Shared tokens and controls for Settings → Sources, Offline and API keys
+ * (settings-kit.ts and the three page modules), desktop and phone.
+ *
+ * A reading room: warm paper, catalogue cards with ruled lines, spines and seals.
+ * Three hues only: rust for state and actions, teal for links and "installed",
+ * ochre as the third shelf colour. Source Serif 4 for names, Outfit for controls,
+ * IBM Plex Mono for sizes, dates and other catalogue data.
+ */
+
+.sv,
+.sv-scrim {
+  --sv-ink: #1c1917;
+  --sv-ink-soft: #5c534e;
+  --sv-paper: #f4f0ea;
+  --sv-paper-2: #ebe5dc;
+  --sv-card: #fffdf9;
+  --sv-line: #d7c3bb;
+  --sv-line-soft: rgb(215 195 187 / 0.62);
+  --sv-outline: #85736c;
+  --sv-rust: #9c3d00;
+  --sv-rust-deep: #7f3100;
+  --sv-rust-tint: #ffdbcc;
+  --sv-teal: #0f6e71;
+  --sv-teal-deep: #0a5154;
+  --sv-teal-tint: #c5f0f1;
+  --sv-ochre: #94650f;
+  --sv-ochre-deep: #6e4a08;
+  --sv-ochre-tint: #f5e2b8;
+  --sv-error: #ba1a1a;
+  --sv-error-tint: #ffdad6;
+  --sv-serif: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif;
+  --sv-ui: Outfit, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --sv-mono: 'IBM Plex Mono', 'Cascadia Mono', ui-monospace, Consolas, monospace;
+  --sv-cjk: 'Source Han Serif SC', 'Noto Serif CJK SC', 'Songti SC', 'SimSun', 'Yu Mincho', 'Batang', serif;
+  --sv-ease: cubic-bezier(0.2, 0, 0, 1);
+  --sv-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --sv-shadow: 0 1px 0 rgb(28 25 23 / 0.04), 0 10px 24px -18px rgb(28 25 23 / 0.45);
+  --sv-hue: var(--sv-rust);
+  --sv-hue-deep: var(--sv-rust-deep);
+  --sv-tint: var(--sv-rust-tint);
+  font-family: var(--sv-ui);
+  color: var(--sv-ink);
+}
+
+.sv-hue-rust { --sv-hue: var(--sv-rust); --sv-hue-deep: var(--sv-rust-deep); --sv-tint: var(--sv-rust-tint); }
+.sv-hue-teal { --sv-hue: var(--sv-teal); --sv-hue-deep: var(--sv-teal-deep); --sv-tint: var(--sv-teal-tint); }
+.sv-hue-ochre { --sv-hue: var(--sv-ochre); --sv-hue-deep: var(--sv-ochre-deep); --sv-tint: var(--sv-ochre-tint); }
+
+.sv *,
+.sv *::before,
+.sv *::after { box-sizing: border-box; }
+
+/* ---------------------------------------------------------------- shared */
+
+.sv .sv-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 22px 2px 10px;
+}
+.sv .sv-head:first-child { margin-top: 2px; }
+.sv .sv-head__title {
+  margin: 0;
+  font-family: var(--sv-serif);
+  font-size: clamp(1.15rem, 1rem + 0.6vw, 1.35rem);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--sv-ink);
+  text-transform: none;
+}
+.sv .sv-head__count {
+  font-family: var(--sv-mono);
+  font-size: 11.5px;
+  color: var(--sv-ink-soft);
+}
+
+.sv .sv-seal {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-family: var(--sv-serif), var(--sv-cjk);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--sv-ink-soft);
+  background: var(--sv-paper-2);
+  box-shadow: inset 0 0 0 1px var(--sv-line);
+  transition: background-color 0.22s var(--sv-ease), color 0.22s var(--sv-ease), box-shadow 0.22s var(--sv-ease);
+}
+
+.sv .sv-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.sv .sv-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--sv-teal-deep);
+  background: rgb(15 110 113 / 0.09);
+  white-space: nowrap;
+}
+
+.sv .sv-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--sv-teal);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.sv .sv-link svg { width: 13px; height: 13px; flex-shrink: 0; }
+.sv .sv-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.sv .sv-link:focus-visible { outline: 2px solid var(--sv-rust); outline-offset: 2px; border-radius: 3px; }
+
+.sv .sv-icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: transparent;
+  color: var(--sv-ink-soft);
+  cursor: pointer;
+  transition: background-color 0.18s var(--sv-ease), color 0.18s var(--sv-ease);
+}
+.sv .sv-icon svg { width: 20px; height: 20px; }
+.sv .sv-icon:hover { background: var(--sv-paper-2); color: var(--sv-ink); }
+.sv .sv-icon:focus-visible { outline: 2px solid var(--sv-rust); outline-offset: 1px; }
+.sv .sv-icon:disabled { opacity: 0.4; cursor: default; background: transparent; }
+.sv .sv-icon--accent { color: var(--sv-rust); }
+.sv .sv-icon--small { width: 30px; height: 30px; }
+.sv .sv-icon--small svg { width: 17px; height: 17px; }
+
+.sv .sv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--sv-outline);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sv-ink);
+  font-family: var(--sv-ui);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.18s var(--sv-ease), border-color 0.18s var(--sv-ease), color 0.18s var(--sv-ease);
+}
+.sv .sv-btn svg { width: 18px; height: 18px; }
+.sv .sv-btn small { font-family: var(--sv-mono); font-size: 11.5px; font-weight: 500; opacity: 0.85; }
+.sv .sv-btn:hover { background: var(--sv-paper-2); }
+.sv .sv-btn:focus-visible { outline: 2px solid var(--sv-rust); outline-offset: 2px; }
+.sv .sv-btn:disabled { opacity: 0.5; cursor: default; background: transparent; }
+.sv .sv-btn--accent { background: var(--sv-rust); border-color: var(--sv-rust); color: #fff7f3; }
+.sv .sv-btn--accent:hover { background: var(--sv-rust-deep); border-color: var(--sv-rust-deep); }
+.sv .sv-btn--accent:disabled { background: var(--sv-rust); }
+
+.sv .sv-empty { margin: 0; padding: 14px 16px; font-size: 13.5px; color: var(--sv-ink-soft); }
+
+
+@media (prefers-reduced-motion: reduce) {
+  .sv *,
+  .sv.sv-inspector,
+  .sv-scrim { animation: none !important; transition: none !important; }
+}
