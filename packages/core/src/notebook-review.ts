@@ -5,9 +5,7 @@
 import { vocabReadings, vocabSenses } from './vocab-view';
 import { DAY, clean, dayStart, esc, type NotebookEntry } from './notebook-shared';
 import { ensureReviewQuestion, memoryLevel, type ReviewGrade, type ReviewQuestion, type ReviewState } from './review-quiz';
-import { WORDBOOK_CATALOG } from './wordbook-catalog';
-
-const BOOK_SHORT = new Map(WORDBOOK_CATALOG.map((b) => [b.id, b.short]));
+import { bookName } from './book-names';
 
 export * from './review-quiz';
 
@@ -116,7 +114,7 @@ function bookRowsHtml(rows: BookPlanRow[]): string {
       const k = r.total ? (r.known / r.total) * 100 : 0;
       const l = r.total ? (r.learning / r.total) * 100 : 0;
       return `<div class="nbv-books__row" role="listitem">
-        <span class="nbv-books__name">${esc(BOOK_SHORT.get(r.bookId) || r.bookId)}</span>
+        <span class="nbv-books__name">${esc(bookName(r.bookId)?.short || r.bookId)}</span>
         <span class="nbv-books__today">${r.newToday} new · ${r.due} due</span>
         <span class="wb-bar"><i class="wb-bar__known" style="width:${k.toFixed(2)}%"></i><i class="wb-bar__learning" style="width:${l.toFixed(2)}%"></i></span>
         <span class="nbv-books__n">${r.known.toLocaleString('en-US')} / ${r.total.toLocaleString('en-US')} known</span>

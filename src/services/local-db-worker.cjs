@@ -52,7 +52,8 @@ function migrate(database) {
       lapses INTEGER DEFAULT 0,
       last_review INTEGER,
       learning_steps INTEGER DEFAULT 0,
-      device TEXT
+      device TEXT,
+      context TEXT
     );
   `);
   // FSRS memory columns, added in place to notebooks created before them (VOCAB_ADDED_COLUMNS).
@@ -65,6 +66,7 @@ function migrate(database) {
     ['last_review', 'INTEGER'],
     ['learning_steps', 'INTEGER DEFAULT 0'],
     ['device', 'TEXT'],
+    ['context', 'TEXT'],
   ]) {
     if (!have.has(name)) database.run(`ALTER TABLE vocab ADD COLUMN ${name} ${type}`);
   }
@@ -89,6 +91,18 @@ function migrate(database) {
       book_id TEXT PRIMARY KEY,
       daily_new INTEGER DEFAULT 10,
       active INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+  // Word books the learner made (from a source, usually): title and headwords in order.
+  database.run(`
+    CREATE TABLE IF NOT EXISTS user_books (
+      book_id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      words TEXT,
+      source TEXT,
+      deleted INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );

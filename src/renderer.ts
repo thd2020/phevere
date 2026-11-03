@@ -106,6 +106,10 @@ import {
   wordbookListHtml,
   wordbookMeta,
   wordsScopeSwitchHtml,
+  sourcesHtml,
+  sourceGroups,
+  sourceBookTitle,
+  isUserBookId,
   type WordsContext,
   type WordsScope,
 } from '@phevere/core';
@@ -259,6 +263,10 @@ function initializeSettingsWindow() {
                     <label class="sv-ctl"><input type="checkbox" role="switch" class="sv-switch" id="enable-hover" checked aria-labelledby="enable-hover-label" aria-describedby="hover-ocr-status" /></label>
                   </span>
                   <div id="hover-ocr-progress" class="sv-progress" hidden><span></span></div>
+                </div>
+                <div class="sv-row">
+                  <span class="sv-row__text"><span id="remember-sources-label" class="sv-row__label">Remember where words were saved</span></span>
+                  <label class="sv-ctl"><input type="checkbox" role="switch" class="sv-switch" id="remember-sources" checked aria-labelledby="remember-sources-label" /></label>
                 </div>
               </div>
               <div class="sv-drop" id="settings-dropzone" tabindex="0">
@@ -949,6 +957,10 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
   const ocrEl = document.getElementById('ocr-shortcut') as HTMLInputElement | null;
   const hoverEl = document.getElementById('hover-shortcut') as HTMLInputElement | null;
   const hoverToggle = document.getElementById('enable-hover') as HTMLInputElement | null;
+  const rememberToggle = document.getElementById('remember-sources') as HTMLInputElement | null;
+  rememberToggle?.addEventListener('change', () => {
+    void (window.electronAPI as { setRememberSources?: (on: boolean) => Promise<unknown> }).setRememberSources?.(rememberToggle.checked);
+  });
   const cycleSetBtn = document.getElementById('monitor-cycle-set') as HTMLButtonElement | null;
   const triggerSetBtn = document.getElementById('monitor-trigger-set') as HTMLButtonElement | null;
   const ocrSetBtn = document.getElementById('ocr-shortcut-set') as HTMLButtonElement | null;
@@ -1007,6 +1019,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
     if (ocrEl) ocrEl.value = st.ocrShortcut || 'CommandOrControl+Shift+O';
     if (hoverEl) hoverEl.value = st.hoverShortcut || 'CommandOrControl+Shift+H';
     if (hoverToggle) hoverToggle.checked = st.hoverEnabled !== false;
+    if (rememberToggle) rememberToggle.checked = (st as { rememberSources?: boolean }).rememberSources !== false;
     if (cycleEl) paintShortcutKeycaps(cycleEl);
     if (triggerEl) paintShortcutKeycaps(triggerEl);
     if (ocrEl) paintShortcutKeycaps(ocrEl);
@@ -2046,6 +2059,7 @@ let wbScope = readPref(WORDS_SCOPE_KEY, 'mine') as WordsScope;
 let wbLibrary = false;
 let wbLimit = BOOK_LIST_PAGE;
 let wbSubs: any[] = [];
+let wbUserBooks: any[] = [];
 let wbProgress = new Map<string, any>();
 const wbBooks = new Map<string, string[]>();
 let wbCtx: WordsContext | null = null;
@@ -2065,8 +2079,8 @@ function setWordsScope(scope: WordsScope): void {
 }
 
 function rebuildWordsContext(): void {
-  wbCtx = buildWordsContext(vocabNotebookCache, wbProgress, wbSubs, wbBooks);
-  if (wbScope !== 'mine' && wbScope !== 'all' && !wbSubs.some((s) => s.bookId === wbScope)) setWordsScope('mine');
+  wbCtx = buildWordsContext(vocabNotebookCache, wbProgress, wbSubs, wbBooks, wbUserBooks);
+  if (!['mine', 'all', 'sources'].includes(wbScope) && !wbSubs.some((s) => s.bookId === wbScope)) setWordsScope('mine');
   if (wbScope === 'all' && !wbSubs.length) setWordsScope('mine');
 }
 
@@ -2077,8 +2091,9 @@ async function refreshWords(): Promise<void> {
   try {
     const state = await api.state();
     wbSubs = state?.subs || [];
+    wbUserBooks = state?.userBooks || [];
     wbProgress = new Map((state?.progress || []).map((p: any) => [p.lemma, p]));
-    for (const s of wbSubs) if (!wbBooks.has(s.bookId)) wbBooks.set(s.bookId, await loadWordbook(s.bookId));
+    for (const s of wbSubs) if (!isUserBookId(s.bookId) && !wbBooks.has(s.bookId)) wbBooks.set(s.bookId, await loadWordbook(s.bookId));
   } catch (error) {
     console.warn('word books unavailable', error);
   }
@@ -2118,10 +2133,15 @@ function renderBookScope(body: HTMLElement, wrap: HTMLElement, list: HTMLElement
   wrap.hidden = true;
   body.hidden = false;
   document.getElementById('vocabSortGroup')?.setAttribute('hidden', '');
-  document.querySelector<HTMLElement>('#paneNotebook .nb-bar')?.toggleAttribute('hidden', wbLibrary);
+  document.querySelector<HTMLElement>('#paneNotebook .nb-bar')?.toggleAttribute('hidden', wbLibrary || wbScope === 'sources');
   if (wbLibrary) {
     disposeNotebookMaps(true);
     body.innerHTML = wordbookLibraryHtml(wbCtx);
+    return true;
+  }
+  if (wbScope === 'sources') {
+    disposeNotebookMaps(true);
+    body.innerHTML = sourcesHtml(wbCtx);
     return true;
   }
   const q = ((document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '').trim().toLowerCase();
@@ -2412,7 +2432,7 @@ function filterVocabEntries(entries: any[]): any[] {
     .toLowerCase();
   if (!q) return entries;
   return entries.filter((e) => {
-    const blob = [e.lemma, e.reading, e.definition, e.partOfSpeech, e.note, ...(e.sources || [])]
+    const blob = [e.lemma, e.reading, e.definition, e.partOfSpeech, e.note, ...(e.sources || []), e.context?.doc, e.context?.title, e.context?.sentence]
       .filter(Boolean)
       .join(' ')
       .toLowerCase();
@@ -2744,12 +2764,38 @@ function wireNotebookActions(root: HTMLElement): void {
       }
       case 'wb-unsub': {
         const id = el.dataset.book || '';
-        await wordbookApi()?.unsubscribe(id);
-        if (wbScope === id) setWordsScope('mine');
+        if (isUserBookId(id)) await wordbookApi()?.deleteBook(id);
+        else await wordbookApi()?.unsubscribe(id);
+        if (wbScope === id) setWordsScope(isUserBookId(id) ? 'sources' : 'mine');
         await refreshWords();
         rerenderNotebook();
         return;
       }
+      case 'src-book': {
+        // A source becomes a word book: its words in the order they were saved.
+        const g = wbCtx ? sourceGroups(wbCtx).find((x) => x.key === el.dataset.source) : null;
+        if (!g) return;
+        const book = await wordbookApi()?.createBook(sourceBookTitle(g.label), g.entries.map((e) => e.lemma), g.key);
+        await refreshWords();
+        if (book?.bookId) setWordsScope(book.bookId);
+        rerenderNotebook();
+        document.querySelector('.main-shell')?.scrollTo({ top: 0 });
+        return;
+      }
+      case 'src-add': {
+        const g = wbCtx ? sourceGroups(wbCtx).find((x) => x.key === el.dataset.source) : null;
+        if (!g || !el.dataset.book) return;
+        await wordbookApi()?.addBookWords(el.dataset.book, g.entries.map((e) => e.lemma));
+        await refreshWords();
+        rerenderNotebook();
+        return;
+      }
+      case 'ub-drop':
+        if (!el.dataset.book || !el.dataset.q) return;
+        await wordbookApi()?.removeBookWord(el.dataset.book, el.dataset.q);
+        await refreshWords();
+        rerenderNotebook();
+        return;
       case 'wb-goal':
         await wordbookApi()?.setGoal(el.dataset.book || '', Number(el.dataset.goal) || 10);
         nbReview = null;
@@ -2810,8 +2856,30 @@ function wireNotebookActions(root: HTMLElement): void {
     if (!el || !root.contains(el)) return;
     void run(el, ev);
   });
+  // A made book: rename on change of its title, add a word from its form.
+  root.addEventListener('change', (ev) => {
+    const input = ev.target as HTMLElement;
+    if (!(input instanceof HTMLInputElement) || input.name !== 'book-title' || !input.dataset.book) return;
+    void (async () => {
+      await wordbookApi()?.renameBook(input.dataset.book, input.value);
+      await refreshWords();
+      rerenderNotebook();
+    })();
+  });
   root.addEventListener('submit', (ev) => {
     const form = ev.target as HTMLElement;
+    if (form instanceof HTMLFormElement && form.dataset.actForm === 'ub-add') {
+      ev.preventDefault();
+      const word = (form.querySelector<HTMLInputElement>('input[name="word"]')?.value || '').trim();
+      if (!word) return;
+      void (async () => {
+        await wordbookApi()?.addBookWords(form.dataset.book || '', [word]);
+        await refreshWords();
+        rerenderNotebook();
+        document.querySelector<HTMLInputElement>('form[data-act-form="ub-add"] input')?.focus();
+      })();
+      return;
+    }
     if (!(form instanceof HTMLFormElement) || form.dataset.actForm !== 'nb-submit') return;
     ev.preventDefault();
     const typed = (form.querySelector('#nbv-answer') as HTMLInputElement | null)?.value || '';

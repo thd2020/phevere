@@ -238,8 +238,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     hoverEnabled?: boolean;
     ocrShortcut?: string;
     hoverShortcut?: string;
+    rememberSources?: boolean;
   }> => {
     return ipcRenderer.invoke('monitor-get-state');
+  },
+  setRememberSources: (enabled: boolean): Promise<{ success: boolean; rememberSources?: boolean }> => {
+    return ipcRenderer.invoke('monitor-set-remember-sources', enabled);
   },
   setMonitorMode: (mode: string): Promise<{ success: boolean; error?: string }> => {
     return ipcRenderer.invoke('monitor-set-mode', mode);
@@ -468,6 +472,11 @@ contextBridge.exposeInMainWorld('wordbookAPI', {
   known: (lemma: string, known: boolean) => ipcRenderer.invoke('wordbook-known', lemma, known),
   meaning: (lemma: string) => ipcRenderer.invoke('wordbook-meaning', lemma),
   save: (lemma: string, hasMeaning?: boolean) => ipcRenderer.invoke('wordbook-save', lemma, hasMeaning),
+  createBook: (title: string, words: string[], source?: string) => ipcRenderer.invoke('wordbook-user-create', title, words, source),
+  renameBook: (bookId: string, title: string) => ipcRenderer.invoke('wordbook-user-rename', bookId, title),
+  addBookWords: (bookId: string, words: string[]) => ipcRenderer.invoke('wordbook-user-add', bookId, words),
+  removeBookWord: (bookId: string, word: string) => ipcRenderer.invoke('wordbook-user-remove', bookId, word),
+  deleteBook: (bookId: string) => ipcRenderer.invoke('wordbook-user-delete', bookId),
 });
 
 contextBridge.exposeInMainWorld('accountAPI', {
@@ -597,7 +606,9 @@ declare global {
         hoverEnabled?: boolean;
         ocrShortcut?: string;
         hoverShortcut?: string;
+        rememberSources?: boolean;
       }>;
+      setRememberSources?: (enabled: boolean) => Promise<{ success: boolean; rememberSources?: boolean }>;
       setMonitorMode: (mode: string) => Promise<{ success: boolean; error?: string }>;
       cycleMonitorMode: () => Promise<{ success: boolean; mode?: string }>;
       setMonitorShortcuts: (payload: {

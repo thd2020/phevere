@@ -233,6 +233,79 @@ button.wb-act:hover { background: var(--nbv-paper-2, #eeeae4); color: var(--nbv-
 .wb-path__acts .nbv-secondary { height: 34px; padding: 0 14px; border-radius: 10px; font-size: 13.5px; }
 .wb-more.nbv-secondary { height: 38px; font-size: 13.5px; }
 
+/* A made book: the title is an input, a word can be added by name, rows can be removed */
+.wb-title-input {
+  width: 100%;
+  min-width: 0;
+  padding: 2px 6px;
+  margin-left: -6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--nbv-ink, #1c1917);
+}
+.wb-title-input:hover { border-color: var(--nbv-line, #d7c3bb); }
+.wb-title-input:focus { outline: none; border-color: var(--nbv-ink, #1c1917); background: var(--nbv-paper, #f4f0ea); }
+.wb-add { display: flex; gap: 6px; }
+.wb-add input {
+  width: 150px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--nbv-line, #d7c3bb);
+  border-radius: 8px;
+  background: var(--nbv-paper, #f4f0ea);
+  color: var(--nbv-ink, #1c1917);
+  font: 500 13px/1 var(--nbv-ui, Outfit, system-ui, sans-serif);
+}
+.wb-add input:focus { outline: none; border-color: var(--nbv-ink, #1c1917); }
+.wb-add .nbv-secondary { height: 30px; padding: 0 12px; border-radius: 8px; font-size: 13px; }
+.wb-act--drop svg { width: 15px; height: 15px; }
+.wb-act--drop:hover { color: var(--nbv-ember, #9c3d00); }
+
+/* Sources: My words grouped by the document or site they were saved from */
+.wb-src-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.wb-src {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4px 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--nbv-line, #d7c3bb);
+  border-radius: 16px;
+  background: var(--nbv-panel, #fffdf9);
+}
+.wb-src__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--nbv-paper-2, #eeeae4);
+  color: var(--nbv-ink, #1c1917);
+}
+.wb-src__icon svg { width: 20px; height: 20px; }
+.wb-src__main { min-width: 0; display: grid; gap: 6px; }
+.wb-src__name { margin: 0; font: 600 17px/1.2 var(--nbv-serif, Georgia, serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-src__meta { display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 0; font: 500 12px/1.3 var(--nbv-ui, Outfit, system-ui, sans-serif); color: var(--nbv-soft, #5c534e); font-variant-numeric: tabular-nums; }
+.wb-src__words { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; }
+.wb-src__word {
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--nbv-paper-2, #eeeae4);
+  color: var(--nbv-ink, #1c1917);
+  font: 500 13.5px/1.2 var(--nbv-serif, Georgia, serif);
+  cursor: pointer;
+}
+.wb-src__word:hover { background: var(--nbv-teal-soft, #c5f0f1); color: #00393b; }
+.wb-src__more { font: 500 12px/1 var(--nbv-ui, Outfit, system-ui, sans-serif); color: var(--nbv-soft, #5c534e); }
+.wb-src__acts { display: grid; justify-items: end; gap: 6px; }
+.wb-src__book { display: inline-flex; align-items: center; gap: 8px; }
+.wb-src__acts .nbv-primary,
+.wb-src__acts .nbv-secondary { height: 34px; padding: 0 14px; border-radius: 10px; font-size: 13.5px; white-space: nowrap; }
+.wb-src__acts .nbv-link { font-size: 12.5px; }
+
 /* Review plan: one row per book */
 .nbv-books { display: grid; gap: 10px; }
 .nbv-books__row { display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; align-items: center; }
@@ -242,6 +315,10 @@ button.wb-act:hover { background: var(--nbv-paper-2, #eeeae4); color: var(--nbv-
 .nbv-books__n { grid-column: 1 / -1; font: 500 11px/1 var(--nbv-ui, Outfit, system-ui, sans-serif); color: var(--nbv-soft, #5c534e); font-variant-numeric: tabular-nums; }
 
 @media (max-width: 560px) {
+  .wb-src { grid-template-columns: auto minmax(0, 1fr); padding: 12px; }
+  .wb-src__acts { grid-column: 1 / -1; justify-items: start; justify-content: start; grid-auto-flow: column; align-items: center; gap: 12px; }
+  .wb-add input { width: 100%; flex: 1; }
+  .wb-add { width: 100%; }
   .wb-head { padding: 12px; gap: 10px 14px; }
   .wb-head__side { justify-items: start; width: 100%; }
   .wb-row { gap: 6px; }

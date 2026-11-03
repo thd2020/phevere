@@ -14,6 +14,8 @@ export interface MonitorSettings {
   ocrShortcut: string;
   /** Toggle hover lookup. */
   hoverShortcut: string;
+  /** Keep the app, page or document and sentence with each saved word (source-capture.ts). */
+  rememberSources: boolean;
 }
 
 const FILE_NAME = 'monitor-settings.json';
@@ -26,6 +28,7 @@ export const monitorDefaults: MonitorSettings = {
   hoverEnabled: true,
   ocrShortcut: 'CommandOrControl+Shift+O',
   hoverShortcut: 'CommandOrControl+Shift+H',
+  rememberSources: true,
 };
 
 function resolvePath(): string {
@@ -55,6 +58,7 @@ export function loadMonitorSettings(): MonitorSettings {
       hoverEnabled: typeof data.hoverEnabled === 'boolean' ? data.hoverEnabled : monitorDefaults.hoverEnabled,
       ocrShortcut: pickShortcut(data.ocrShortcut, monitorDefaults.ocrShortcut),
       hoverShortcut: pickShortcut(data.hoverShortcut, monitorDefaults.hoverShortcut),
+      rememberSources: typeof data.rememberSources === 'boolean' ? data.rememberSources : monitorDefaults.rememberSources,
     };
   } catch {
     return { ...monitorDefaults };
@@ -78,6 +82,7 @@ export function mergeMonitorSettings(partial: Partial<MonitorSettings>, current:
     hoverEnabled: partial.hoverEnabled !== undefined ? partial.hoverEnabled : current.hoverEnabled,
     ocrShortcut: partial.ocrShortcut !== undefined ? partial.ocrShortcut : current.ocrShortcut,
     hoverShortcut: partial.hoverShortcut !== undefined ? partial.hoverShortcut : current.hoverShortcut,
+    rememberSources: partial.rememberSources !== undefined ? partial.rememberSources : current.rememberSources,
   };
   if (merged.mode !== 'off' && merged.mode !== 'on' && merged.mode !== 'shortcut') {
     merged.mode = current.mode;

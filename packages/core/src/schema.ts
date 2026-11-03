@@ -5,6 +5,11 @@
  * learner subscribed to with a daily goal each, and `book_words`, review progress for book words
  * that are not in My words, keyed by the lowercase headword. A word saved to My words keeps its
  * progress on its `vocab` row; nothing in `vocab` changes.
+ *
+ * `user_books` holds the word books a learner made, usually from a source (the words saved from
+ * one PDF or one site): a title and the headwords in order, as JSON. Their subscription and
+ * daily goal live in `wordbook_subs` like any other book's. Deleting one sets `deleted`, so the
+ * deletion syncs. CREATE TABLE IF NOT EXISTS adds it to an existing notebook.
  */
 
 export const VOCAB_SCHEMA_SQL = `
@@ -31,7 +36,8 @@ CREATE TABLE IF NOT EXISTS vocab (
   lapses INTEGER DEFAULT 0,
   last_review INTEGER,
   learning_steps INTEGER DEFAULT 0,
-  device TEXT
+  device TEXT,
+  context TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_vocab_lemma ON vocab(lemma);
 CREATE INDEX IF NOT EXISTS idx_vocab_updated ON vocab(updated_at DESC);
@@ -47,6 +53,15 @@ CREATE TABLE IF NOT EXISTS wordbook_subs (
   book_id TEXT PRIMARY KEY,
   daily_new INTEGER DEFAULT 10,
   active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_books (
+  book_id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  words TEXT,
+  source TEXT,
+  deleted INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -92,7 +107,7 @@ CREATE TABLE IF NOT EXISTS offline_packs (
 `;
 
 /**
- * Columns added after the first release (FSRS memory, the saving device). A notebook created before them gets each
+ * Columns added after the first release (FSRS memory, the saving device, where it was saved). A notebook created before them gets each
  * missing one with ALTER TABLE ADD COLUMN, so no row is rewritten or lost. Older apps ignore them.
  */
 export const VOCAB_ADDED_COLUMNS: ReadonlyArray<readonly [name: string, type: string]> = [
@@ -104,6 +119,8 @@ export const VOCAB_ADDED_COLUMNS: ReadonlyArray<readonly [name: string, type: st
   ['learning_steps', 'INTEGER DEFAULT 0'],
   /** Name of the device the word was first saved on. */
   ['device', 'TEXT'],
+  /** Where the word was first saved: JSON {app, title, url, doc, page, sentence} (source-context.ts). */
+  ['context', 'TEXT'],
 ];
 
 /** ALTER TABLE statements for the columns `existing` (from PRAGMA table_info) lacks. */

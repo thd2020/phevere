@@ -156,6 +156,7 @@ module.exports = {
       'scripts/media_now_playing.ps1',
       'scripts/speak_ipa.ps1',
       'scripts/speak_ipa_host.ps1',
+      'scripts/source_context_host.ps1',
       // Speech engines (eSpeak NG, sherpa-onnx for Kokoro) staged by prePackage.
       'build/speech',
       'scripts/media_now_playing.applescript',

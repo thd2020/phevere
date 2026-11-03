@@ -14,8 +14,12 @@
  *
  * The `definition`, `reading` and `part_of_speech` columns cache what a lookup returned, so a
  * quiz can show the meaning; they stay on this device and do not change `updated_at`.
+ *
+ * A learner can also make a book (`user_books`), usually from a source in the Words tab: a title,
+ * the source it came from, and its headwords in order. It is subscribed like a shipped book and
+ * its words keep their progress where every word does, so a made book holds no progress itself.
  */
-import { getVocabDb } from './runtime';
+import { getNewId, getVocabDb } from './runtime';
 import { scheduleReview, type ReviewGrade, type ScheduleFields } from './review-schedule';
 import { addVocab, ensureVocabReady, findByLemma, notifyVocabChanged, type VocabAddInput, type VocabEntry } from './vocab-store';
 
@@ -254,4 +258,126 @@ export async function saveBookWord(lemma: string, payload: Partial<VocabAddInput
     return (await findByLemma(entry.lemma)) || entry;
   }
   return entry;
+}
+
+/* ------------------------------------------------------------ made books */
+
+/** Ids of books the learner made start with this, so they never clash with shipped ones. */
+export const USER_BOOK_PREFIX = 'mine-';
+
+export interface UserBook {
+  bookId: string;
+  title: string;
+  /** Headwords in order, each once. */
+  words: string[];
+  /** The source it was made from ("doc:geb.pdf", "site:en.wikipedia.org"). */
+  source?: string;
+  deleted: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export function isUserBookId(id: string): boolean {
+  return String(id || '').startsWith(USER_BOOK_PREFIX);
+}
+
+/** Headwords once each, in order, trimmed. */
+export function uniqueWords(words: Iterable<string>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const w of words) {
+    const t = String(w || '').trim().replace(/\s+/g, ' ');
+    const k = bookWordKey(t);
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+  }
+  return out;
+}
+
+export function rowToUserBook(row: Record<string, unknown>): UserBook {
+  let words: string[] = [];
+  try {
+    const parsed = JSON.parse(String(row.words || '[]'));
+    if (Array.isArray(parsed)) words = uniqueWords(parsed.map(String));
+  } catch {
+    /* an unreadable list is an empty book */
+  }
+  return {
+    bookId: String(row.book_id),
+    title: String(row.title || ''),
+    words,
+    source: text(row.source),
+    deleted: Number(row.deleted) === 1,
+    createdAt: num(row.created_at) ?? 0,
+    updatedAt: num(row.updated_at) ?? 0,
+  };
+}
+
+export async function writeUserBook(b: UserBook): Promise<void> {
+  await getVocabDb().runWrite(
+    `INSERT OR REPLACE INTO user_books (book_id, title, words, source, deleted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [b.bookId, b.title, JSON.stringify(uniqueWords(b.words)), b.source || null, b.deleted ? 1 : 0, b.createdAt, b.updatedAt],
+  );
+}
+
+export async function listUserBooks(includeDeleted = false): Promise<UserBook[]> {
+  await ensureVocabReady();
+  const rows = await getVocabDb().queryAll(`SELECT * FROM user_books ${includeDeleted ? '' : 'WHERE deleted = 0'} ORDER BY created_at ASC`);
+  return rows.map(rowToUserBook);
+}
+
+async function getUserBook(bookId: string): Promise<UserBook | null> {
+  const row = await getVocabDb().queryOne(`SELECT * FROM user_books WHERE book_id = ?`, [bookId]);
+  return row ? rowToUserBook(row) : null;
+}
+
+/** Makes a book and subscribes to it, so it shows in the Words tab with its progress. */
+export async function createUserBook(title: string, words: string[], source?: string, now = Date.now()): Promise<UserBook> {
+  await ensureVocabReady();
+  const book: UserBook = {
+    bookId: `${USER_BOOK_PREFIX}${getNewId()}`,
+    title: String(title || '').trim().slice(0, 80) || 'My word book',
+    words: uniqueWords(words),
+    source,
+    deleted: false,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await writeUserBook(book);
+  await upsertSub(book.bookId, { active: true }, now);
+  return book;
+}
+
+async function editUserBook(bookId: string, edit: (b: UserBook) => Partial<UserBook>, now: number): Promise<UserBook | null> {
+  await ensureVocabReady();
+  const prev = await getUserBook(bookId);
+  if (!prev || prev.deleted) return null;
+  const next = { ...prev, ...edit(prev), updatedAt: now };
+  await writeUserBook(next);
+  notifyVocabChanged();
+  return next;
+}
+
+export function renameUserBook(bookId: string, title: string, now = Date.now()): Promise<UserBook | null> {
+  const t = String(title || '').trim().slice(0, 80);
+  return editUserBook(bookId, (b) => ({ title: t || b.title }), now);
+}
+
+/** Adds words at the end; words already in the book stay where they are. */
+export function addUserBookWords(bookId: string, words: string[], now = Date.now()): Promise<UserBook | null> {
+  return editUserBook(bookId, (b) => ({ words: uniqueWords([...b.words, ...words]) }), now);
+}
+
+export function removeUserBookWord(bookId: string, word: string, now = Date.now()): Promise<UserBook | null> {
+  const k = bookWordKey(word);
+  return editUserBook(bookId, (b) => ({ words: b.words.filter((w) => bookWordKey(w) !== k) }), now);
+}
+
+/** Deletes a made book: marked deleted (so the deletion syncs) and unsubscribed. Its words keep their progress. */
+export async function deleteUserBook(bookId: string, now = Date.now()): Promise<void> {
+  await ensureVocabReady();
+  const prev = await getUserBook(bookId);
+  if (prev) await writeUserBook({ ...prev, deleted: true, updatedAt: now });
+  await upsertSub(bookId, { active: false }, now);
 }

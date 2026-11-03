@@ -2956,6 +2956,18 @@ body.main-window :is(#vocabList, #selectionsList) .vocab-facts { display: flex; 
 body.main-window :is(#vocabList, #selectionsList) .vocab-facts div { display: flex; align-items: baseline; gap: 6px; }
 body.main-window :is(#vocabList, #selectionsList) .vocab-facts dt { font: 600 10px/1 Outfit, 'Segoe UI', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pv-ink-soft); }
 body.main-window :is(#vocabList, #selectionsList) .vocab-facts dd { margin: 0; font-size: 12.5px; color: var(--pv-ink); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-facts dd a { color: inherit; text-decoration: underline; text-decoration-color: var(--pv-line); text-underline-offset: 2px; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-facts dd a:hover { text-decoration-color: currentColor; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-source dd { max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-source__more { margin-left: 8px; color: var(--pv-ink-soft); }
+body.main-window :is(#vocabList, #selectionsList) .vocab-context {
+  margin: 0;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--pv-teal);
+  font: italic 14px/1.5 var(--pv-font-serif);
+  color: var(--pv-ink);
+}
+body.main-window :is(#vocabList, #selectionsList) .vocab-context mark { padding: 0 2px; border-radius: 3px; background: var(--pv-tertiary-container); color: var(--pv-on-tertiary-container); font-style: normal; font-weight: 600; }
 body.main-window :is(#vocabList, #selectionsList) .vocab-actions { display: inline-flex; gap: 4px; padding: 0; }
 body.main-window :is(#vocabList, #selectionsList) .vocab-action {
   display: inline-flex;
