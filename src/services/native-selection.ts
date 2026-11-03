@@ -54,6 +54,8 @@ export interface NativeSelectionService {
 class AddonBackedNativeSelectionService implements NativeSelectionService {
   private static readonly MAX_SELECTION_LENGTH = 2000;
   private static readonly TYPING_PATTERN_WINDOW_MS = 2500;
+  /** UIA and the Ctrl+C fallback can report "word" and "word," for one gesture. */
+  private static readonly SAME_LEMMA_WINDOW_MS = 2000;
 
   private isRunning = false;
   private selectionCallbacks: ((event: SelectionEvent) => void)[] = [];
@@ -224,9 +226,12 @@ class AddonBackedNativeSelectionService implements NativeSelectionService {
         return;
       }
 
+      // Only a near-simultaneous variant is a duplicate. A later selection of the same
+      // lemma is a new selection; swallowing it left the trigger on an older word.
       if (
         this.lastSelection &&
         text !== this.lastSelection &&
+        timeSinceLastSelection < AddonBackedNativeSelectionService.SAME_LEMMA_WINDOW_MS &&
         foldLookupKey(text) === foldLookupKey(this.lastSelection)
       ) {
         this.lastSelection = text;
