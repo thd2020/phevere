@@ -238,7 +238,7 @@ const nbState = {
   goal: Number(readStore(NB_GOAL_KEY)) || 10,
   lang: readStore(NB_LANG_KEY) || 'all',
 };
-/** Every word, for Review; the list keeps its 400 most recent. */
+/** Every word, for Review and the Words views; refreshNotebook keeps it equal to the list. */
 let reviewPool: VocabEntry[] = [];
 let grading = false;
 /* Learn: Today or Progress, and the answer history Progress draws from (null until loaded). */
@@ -895,7 +895,9 @@ function bindWikiReader(): void {
 
 async function refreshNotebook(): Promise<void> {
   try {
-    notebook = await listVocab(400);
+    // Every word: the list, its search and count, and the saved marks in books all need them.
+    notebook = await listVocab(100_000);
+    reviewPool = notebook;
   } catch (err) {
     status = err instanceof Error ? err.message : String(err);
   }
