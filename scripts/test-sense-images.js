@@ -246,6 +246,8 @@ assert.strictEqual(
   'bass: an instrument is not a section of the ensemble',
 );
 assert.strictEqual(fit(lex('water source'), 'The source from which an action or supply of something springs.', 'noun', 'spring'), 0, 'spring: a water source is not the source of an action');
+assert.strictEqual(fit(lex('stream of fluid projected into the surrounding medium', 'jet'), 'An engine that propels a vehicle using a stream of fluid as propulsion.', 'noun', 'jet'), 0, 'jet: an engine is not a stream');
+assert.ok(fit(lex('the wood of a tree of the genus Malus', 'apple wood'), 'Synonym of applewood (the wood of the apple tree).', 'noun', 'apple') > 0, 'applewood is wood');
 
 // Titles from definition lines: the first clause, whole words only.
 assert.strictEqual(si.titleFromGloss('Panthera tigris, a large predatory mammal of the cat family, native to Asia.'), 'Panthera tigris');

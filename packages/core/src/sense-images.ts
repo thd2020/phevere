@@ -1299,7 +1299,7 @@ function lexemeTokens(l: LexemeSense, lemma: string): { gloss: string[]; all: st
 
 /** Words that head a gloss without naming the thing: "type of machine", "family of birds". */
 const GENERIC_HEADS = new Set(
-  'type kind sort form piece part family group collection member set number any instance variety class order item thing one name term general'
+  'type kind sort form piece part family group collection member set number any instance variety class order item thing one name term general pair synonym'
     .split(' ')
     .map((w) => stem(w)),
 );
@@ -1446,7 +1446,13 @@ export function lexemeFit(l: LexemeSense, sense: SenseInput, lemma: string): num
   const own = nearOverlap(t.gloss, ours);
   const head = glossHead(l.gloss, lemma);
   const headShared = !!head && ours.some((w) => sameHead(w, head));
-  if (all >= 2 && headShared) return all + own / 2 + 1;
+  // Our gloss names another thing when its own head differs: "an engine that propels a vehicle
+  // using a stream of fluid" is an engine, not the stream of fluid.
+  const ourHeads = glossHeads(glossBody(sense.meaning), lemma);
+  // A compound on the same head counts as the same thing ("applewood" is wood).
+  const sameThing = (h: string) => sameHead(h, head) || (head.length >= 4 && h.endsWith(head)) || t.all.some((x) => sameHead(h, x));
+  const otherThing = !!head && ourHeads.length > 0 && !ourHeads.some(sameThing);
+  if (all >= 2 && headShared && (!otherThing || all >= 3)) return all + own / 2 + 1;
   // A gloss of two or three words fits when ours contains every one of them (generic heads
   // aside) and opens with its head: "elastic device", "family of birds"; "water source" does not
   // fit "the source from which an action springs".
