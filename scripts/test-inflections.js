@@ -90,7 +90,7 @@ const fam = wordFamilyHtml(
   ],
   'lookup',
 );
-assert.match(fam, /Built from<\/span> <a[^>]*data-lookup="-y"/);
+assert.match(fam, /Built from<\/span> <span[^>]*role="link"[^>]*data-lookup="-y"/);
 assert.match(fam, /Derived words <span class="lx-count">15<\/span>/);
 assert.match(fam, /<summary>All 15<\/summary>/);
 assert.equal((fam.match(/data-lookup="run\d+"/g) || []).length, 15);

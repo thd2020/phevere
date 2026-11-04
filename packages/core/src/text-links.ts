@@ -3,9 +3,14 @@
  * etymology prose, synonyms. As in Apple's Dictionary and in Wiktionary's running text the
  * words stay plain until pointed at, so a sense does not read as a row of underlines.
  *
+ * The links are spans with role="link", not anchors: dragging across an anchor drags the
+ * link in Chromium instead of selecting text, and selecting a phrase in a definition to look
+ * it up has to keep working. Each shell turns a click, Enter or Space on one into a lookup.
+ *
  * Word parts keep their marks: "ob-" and "-ant" in an etymology, and "*bʰeh₂-", link to
- * the part's page, not to "ob" or "ant".
+ * the part's page, not to "ob" or "ant". Language names ("Middle English") link as one name.
  */
+import { LANGUAGE_NAMES } from './etymology';
 import type { LexiconLinks } from './lexicon-parts';
 
 function esc(s: string): string {
@@ -24,12 +29,14 @@ function decode(s: string): string {
     .replace(/&amp;/g, '&');
 }
 
-/** A link to a lookup, in the shell's own form: a pop-up anchor or a phone tap target. */
+/**
+ * A link to a lookup: `data-act="lookup"` for the phone's tap handler, `data-lookup` for the
+ * pop-up's. Both are focusable spans that read as links to a screen reader.
+ */
 export function wordLinkHtml(query: string, innerHtml: string, links: LexiconLinks, cls = 'lx-w'): string {
   const q = esc(query);
-  return links === 'act'
-    ? `<span class="${cls}" data-act="lookup" data-q="${q}">${innerHtml}</span>`
-    : `<a href="#" class="${cls}" data-lookup="${q}">${innerHtml}</a>`;
+  const target = links === 'act' ? `data-act="lookup" data-q="${q}"` : `data-lookup="${q}"`;
+  return `<span class="${cls}" role="link" tabindex="0" ${target}>${innerHtml}</span>`;
 }
 
 /**
@@ -38,6 +45,18 @@ export function wordLinkHtml(query: string, innerHtml: string, links: LexiconLin
  */
 const RUN = /\*?(?:(?![\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])[\p{L}\p{M}ʰ-˿₀-₉'’-])+/gu;
 const OPENS = /[\s(\[“"‘'/—–]/;
+const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
+/** Language names of more than one word, longest first, as one alternation. */
+const NAMES = (() => {
+  const extra = ['Middle English', 'Old English', 'Old French', 'Middle French', 'Anglo-Norman', 'Ancient Greek', 'Late Latin', 'Medieval Latin', 'New Latin', 'Vulgar Latin', 'Old Norse', 'Old High German', 'Middle Dutch', 'Old Irish', 'Old Church Slavonic', 'Classical Latin', 'Ecclesiastical Latin'];
+  const names = [...new Set([...Object.values(LANGUAGE_NAMES), ...extra])].filter((n) => / /.test(n) && /^[A-Z][\p{L} -]+$/u.test(n));
+  names.sort((a, b) => b.length - a.length);
+  return names.length ? new RegExp(`\\b(?:${names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'g') : null;
+})();
+
+/** Contractions whose base is not worth a lookup on its own: "he's" is looked up whole. */
+const SHORT_BASE = /^(?:he|she|it|that|what|there|here|who|where|let|how|when)$/i;
 
 interface Token {
   start: number;
@@ -48,8 +67,17 @@ interface Token {
 /** The links in one stretch of plain text, as character ranges. */
 export function wordTokens(text: string): Token[] {
   const out: Token[] = [];
+  const names: Array<{ start: number; end: number }> = [];
+  if (NAMES) {
+    for (const m of text.matchAll(NAMES)) {
+      names.push({ start: m.index!, end: m.index! + m[0].length });
+      out.push({ start: m.index!, end: m.index! + m[0].length, query: m[0] });
+    }
+  }
+  const inName = (i: number) => names.some((n) => i >= n.start && i < n.end);
   for (const m of text.matchAll(RUN)) {
     let start = m.index!;
+    if (inName(start)) continue;
     let word = m[0];
     const before = start > 0 ? text[start - 1] : ' ';
     if (!word.startsWith('*')) {
@@ -60,18 +88,23 @@ export function wordTokens(text: string): Token[] {
       start += drop;
       word = word.slice(drop);
     }
-    // Closing quotes and apostrophes belong to the sentence; a trailing hyphen stays on a prefix.
+    // Closing quotes and apostrophes belong to the sentence.
     word = word.replace(/['’]+$/, '').replace(/--+$/, '');
-    if (word.endsWith('-') && !/\p{L}[\p{M}ʰ-˿₀-₉]*-$/u.test(word) && !word.startsWith('*')) {
+    // A trailing hyphen marks a prefix only before a space or punctuation: "pre- and post-war",
+    // not "mid-15c.", where the hyphen joins a number.
+    const after = text[start + word.length] || ' ';
+    const joined = /\p{N}/u.test(after) || (/\p{L}/u.test(after) && !CJK.test(after));
+    if (word.endsWith('-') && !word.startsWith('*') && (joined ||!/\p{L}[\p{M}ʰ-˿₀-₉]*-$/u.test(word))) {
       word = word.replace(/-+$/, '');
     }
+    // One letter is never a link, with or without its marks ("a", "I", the "-i-" of a Youdao note).
     const letters = (word.match(/\p{L}/gu) || []).length;
-    if (letters < 2 && !/^[*-]|-$/.test(word)) continue;
-    if (letters < 1) continue;
-    const query = word.replace(/['’]s$/, '');
+    if (letters < 2) continue;
+    const base = word.replace(/['’]s$/, '');
+    const query = base !== word && SHORT_BASE.test(base) ? word.replace(/’/g, "'") : base;
     out.push({ start, end: start + word.length, query });
   }
-  return out;
+  return out.sort((a, b) => a.start - b.start);
 }
 
 /** Plain text as HTML, each word a link. */
@@ -90,8 +123,8 @@ export function linkText(text: string, links: LexiconLinks): string {
 const SKIP_TAGS = new Set(['a', 'button', 'script', 'style', 'code', 'svg', 'textarea', 'select', 'option']);
 
 /**
- * Escaped HTML with the words of its text made links. Text already inside a link or a
- * button keeps that link; attributes are never touched.
+ * Escaped HTML with the words of its text made links. Text already inside a link, a button
+ * or a lookup span keeps that link; attributes are never touched.
  */
 export function linkHtml(html: string, links: LexiconLinks): string {
   const parts = String(html || '').split(/(<[^>]*>)/);
@@ -106,8 +139,8 @@ export function linkHtml(html: string, links: LexiconLinks): string {
         const name = m[2].toLowerCase();
         const closing = !!m[1];
         const selfClosing = /\/\s*>$/.test(part) || /^(br|img|hr|input|wbr|source|meta|link)$/.test(name);
-        // A word in a class marked lx-nolink (headwords, codes) stays text.
-        const nolink = /class\s*=\s*["'][^"']*\blx-nolink\b/.test(part);
+        // A word in a class marked lx-nolink (sense labels), or already a lookup, stays as it is.
+        const nolink = /class\s*=\s*["'][^"']*\blx-nolink\b/.test(part) || /\b(?:data-lookup|data-act|role\s*=\s*["']link)/.test(part);
         if (closing) {
           let at = stack.length - 1;
           while (at >= 0 && stack[at].name !== name) at -= 1;

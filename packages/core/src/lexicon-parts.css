@@ -39,6 +39,11 @@
   cursor: pointer;
 }
 .lx-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+/* A part such as "-fic-" or a name such as "Middle English" never breaks inside the link. */
+.lx-link,
+.lx-w { white-space: nowrap; }
+.lx-link:focus-visible { outline: 2px solid rgba(15, 110, 113, 0.5); outline-offset: 1px; border-radius: 2px; }
+.lx-self { font-weight: 600; color: #9c3d00; }
 .lx-sep { color: var(--lx-line); }
 .lx-comma { color: var(--lx-soft); }
 .lx-stress { font-weight: 700; color: var(--lx-teal); }

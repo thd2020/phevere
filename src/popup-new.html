@@ -672,7 +672,7 @@
       .definition-text p, .definition-text li, .definition-text dd { margin: 0; padding: 0; }
       .definition-text ol, .definition-text ul, .definition-text dl { margin: 0; padding: 0; list-style: none; }
       .definition-text a,
-      a.lemma-link {
+      .lemma-link {
         color: var(--tertiary);
         text-decoration: underline;
         text-decoration-thickness: 1px;
@@ -681,17 +681,20 @@
         cursor: pointer;
         font-weight: 600;
       }
-      .definition-text a:hover, a.lemma-link:hover { text-decoration-color: var(--tertiary); }
+      .definition-text a:hover, .lemma-link:hover { text-decoration-color: var(--tertiary); }
+      /* A word part has no translation, article, recorded voice or notebook entry. */
+      body.is-part [data-tab="translation"],
+      body.is-part [data-tab="wikipedia"],
+      body.is-part #audioIcon,
+      body.is-part #vocabHeartIcon { display: none; }
       /* Every other word: text until pointed at (lexicon-parts.css styles the hover). */
-      .definition-text a.lx-w,
-      a.lx-w {
+      .lx-w {
         color: inherit;
         font-weight: inherit;
         text-decoration: none;
         cursor: pointer;
       }
-      .definition-text a.lx-w:hover,
-      a.lx-w:hover {
+      .lx-w:hover {
         color: var(--tertiary);
         text-decoration: underline;
         text-decoration-thickness: 1px;
@@ -2223,7 +2226,7 @@
               (term
                 ? isHead
                   ? '<span class="etymology-chain__term">' + escapeHtml(term) + '</span>'
-                  : '<a href="#" class="etymology-chain__term lx-w" data-lookup="' + escapeHtml(term) + '">' + escapeHtml(term) + '</a>'
+                  : '<span class="etymology-chain__term lx-w" role="link" tabindex="0" data-lookup="' + escapeHtml(term) + '">' + escapeHtml(term) + '</span>'
                 : '') +
               (gloss ? '<span class="etymology-chain__gloss">“' + escapeHtml(gloss) + '”</span>' : '') +
               '</span>';
@@ -2758,6 +2761,13 @@ function startAutoCloseTimeout() {
              function displayDictionaryResult(result) {
          pvLog('[POPUP] displayDictionaryResult called with:', result);
          pvLog('[POPUP] Current tab:', currentTab);
+         // A word part ("ob-", "*bʰeh₂-") has no translation, article, voice or notebook entry.
+         var isPart = !!(result && result.metadata && result.metadata.morpheme);
+         document.body.classList.toggle('is-part', isPart);
+         if (isPart && (currentTab === 'translation' || currentTab === 'wikipedia')) {
+           activateTab('lexicon');
+           return;
+         }
          if (currentTab === 'etymology') {
            displayEtymologyResult(result);
            return;
@@ -4428,6 +4438,16 @@ function startAutoCloseTimeout() {
            });
          })();
 
+           // Enter or Space on a focused word link opens it, as a click does.
+           var wordClickTimer = null;
+           document.addEventListener('keydown', function (e) {
+             if (e.key !== 'Enter' && e.key !== ' ') return;
+             var el = e.target;
+             if (!el || !el.matches || !el.matches('[role="link"][data-lookup]')) return;
+             e.preventDefault();
+             el.click();
+           });
+
                    // Handle hyperlinks in content — wiki lemma links look up in-popup
            document.addEventListener('click', function(e) {
              var t = e.target || null;
@@ -4456,13 +4476,32 @@ function startAutoCloseTimeout() {
              }
              var anchor = null;
              if (t && typeof t.closest === 'function') {
-               anchor = t.closest('a');
+               anchor = t.closest('a, [data-lookup]');
              }
              if (!anchor) return;
              e.preventDefault();
              e.stopPropagation();
-             // A word in running text that was selected, not clicked, stays selected.
-             if (anchor.classList.contains('lx-w') && String(window.getSelection ? window.getSelection() : '').trim()) return;
+             // A word of running text is a span: a drag across it selects text (the selection
+             // lookup above takes it from there), and a double-click selects the word instead of
+             // opening it, so a single click waits a moment before it looks the word up.
+             if (anchor.tagName !== 'A') {
+               if (String(window.getSelection ? window.getSelection() : '').trim()) return;
+               if (wordClickTimer) clearTimeout(wordClickTimer);
+               wordClickTimer = null;
+               if (e.detail > 1) return;
+               var term = anchor.getAttribute('data-lookup') || '';
+               var openWord = function () {
+                 wordClickTimer = null;
+                 if (String(window.getSelection ? window.getSelection() : '').trim() || !term) return;
+                 if (!isExpanded) expandToolbar();
+                 currentText = term;
+                 activateTab('lexicon');
+                 lookupText(term);
+               };
+               if (e.detail === 0) openWord();
+               else wordClickTimer = setTimeout(openWord, 260);
+               return;
+             }
              const lookupTerm = anchor.getAttribute('data-lookup') || '';
              let href = anchor.getAttribute('href') || '';
              let wikiTitle = '';

@@ -8,8 +8,9 @@
  */
 import type { InflectionTable, WordInflections } from './inflections';
 import type { WordFamilyGroup } from './word-family';
+import { wordLinkHtml } from './text-links';
 
-/** How a word links: the phone's `data-act` buttons, or the pop-up's `data-lookup` anchors. */
+/** How a word links: the phone's `data-act` targets, or the pop-up's `data-lookup` spans. */
 export type LexiconLinks = 'act' | 'lookup';
 
 function esc(s: unknown): string {
@@ -20,17 +21,14 @@ function link(word: string, links: LexiconLinks, inner = esc(word)): string {
   const w = esc(word);
   return links === 'act'
     ? `<button type="button" class="lx-link" data-act="lookup" data-q="${w}">${inner}</button>`
-    : `<a href="#" class="lx-link lemma-link" data-lookup="${w}">${inner}</a>`;
+    : wordLinkHtml(word, inner, links, 'lx-link lemma-link');
 }
 
 /** A form in a table or row, linked to its own lookup; the stress mark is not part of the query. */
 function formLink(f: string, links: LexiconLinks): string {
   const query = f.normalize('NFD').replace(/́/g, '').normalize('NFC');
   if (!/\p{L}/u.test(query)) return formText(f);
-  const w = esc(query);
-  return links === 'act'
-    ? `<span class="lx-w" data-act="lookup" data-q="${w}">${formText(f)}</span>`
-    : `<a href="#" class="lx-w" data-lookup="${w}">${formText(f)}</a>`;
+  return wordLinkHtml(query, formText(f), links);
 }
 
 /**
