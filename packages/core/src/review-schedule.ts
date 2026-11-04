@@ -139,6 +139,12 @@ export function predictedRecall(e: ScheduleFields, at: number): number | null {
   return forgetting_curve(default_w, Math.max(0, (at - last) / DAY), s);
 }
 
+/** FSRS's predicted recall at `at` for a stability (days) and last review time. */
+export function recallAt(stability: number, lastReview: number, at: number): number {
+  if (!(stability > 0)) return 0;
+  return forgetting_curve(default_w, Math.max(0, (at - lastReview) / DAY), stability);
+}
+
 /** Milliseconds until the word would be due again after this grade, without saving anything. */
 export function previewReview(e: ScheduleFields, grade: ReviewGrade, now = Date.now()): number {
   return Math.max(0, scheduleReview(e, grade, now).reviewDue - now);
