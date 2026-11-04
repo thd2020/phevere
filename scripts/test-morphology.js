@@ -88,6 +88,24 @@ for (const [w, part] of [['alum', 'luc'], ['metamorphosis', 'am'], ['attenuated'
   assert.ok(!has(w, part), `${w} is not ${part}: ${labels(w)}`);
 }
 
+// Found in blind samples of 考研 checked against Wiktionary.
+const wrong = [
+  ['massacre', 'sacr'], ['distinguish', 'tact'], ['extinguish', 'tact'], ['reluctant', 'luc'], ['aluminum', 'luc'],
+  ['illuminate', 'nat'], ['senate', 'nat'], ['senator', 'nat'], ['stitch', 'sta'], ['juvenile', 'ven'], ['unless', 'un-'],
+  ['undergo', 'un-'], ['contrast', 'con-'], ['contrary', 'con-'], ['contract', 'contra-'], ['contribute', 'contra-'],
+  ['enlighten', 'lect'], ['astronomy', 'nom'], ['economy', 'nom'], ['latent', 'tend'], ['cruel', 'cresc'],
+  ['foremost', 'fore-'], ['periodical', 'dict'], ['adjust', 'jur'], ['allege', 'ad-'],
+];
+for (const [w, part] of wrong) assert.ok(!has(w, part), `${w} is not ${part}: ${labels(w)}`);
+const right = [
+  ['contrast', 'contra-'], ['contrary', 'contra-'], ['contradict', 'contra-'], ['contract', 'con-'], ['contract', 'tract'],
+  ['undergo', 'under-'], ['receipt', 'cap'], ['intelligent', 'inter-'], ['intelligent', 'lect'], ['intellect', 'lect'],
+  ['denote', 'not'], ['annotate', 'not'], ['revelation', 'vel'], ['reveal', 'vel'], ['purpose', 'pro-'], ['purpose', 'pon'],
+  ['international', 'nat'], ['illuminate', 'luc'], ['recruit', 'cresc'], ['synonym', 'nom'],
+];
+for (const [w, part] of right) assert.ok(has(w, part), `${w} has ${part}: ${labels(w)}`);
+assert.equal(split('contrary'), 'contra·ry', 'a suffix does not start inside the prefix');
+
 // A word part by its label or any spelling, for pages about one part.
 const { morphEntry } = load('morphology');
 assert.deepEqual(morphEntry('oc-'), { kind: 'prefix', key: 'ob-', gloss: 'against, toward', origin: 'Latin', forms: ['ob-', 'oc-', 'of-', 'op-'] });

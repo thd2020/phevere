@@ -74,7 +74,7 @@ const PREFIXES: Record<string, Entry> = {
     gloss: 'to, toward',
     origin: L,
     show: ['ad-', 'ac-', 'af-', 'ag-', 'al-', 'ap-', 'as-', 'at-'],
-    not: ['allopar', 'advan', 'adam', 'adder', 'addl', 'attitud', 'annu', 'anniv', 'afford', 'arrow', 'assassin', 'apple', 'allerg', 'alley', 'attic', 'annoy', 'allig', 'ally$x'],
+    not: ['alleg', 'allopar', 'advan', 'adam', 'adder', 'addl', 'attitud', 'annu', 'anniv', 'afford', 'arrow', 'assassin', 'apple', 'allerg', 'alley', 'attic', 'annoy', 'allig', 'ally$x'],
   },
   'ante-': { forms: ['ante'], gloss: 'before', origin: L, not: ['antenn', 'antelop'] },
   'anti-': { forms: ['anti'], gloss: 'against', origin: G, not: ['anticip', 'antiq', 'antic$', 'antics'] },
@@ -108,7 +108,7 @@ const PREFIXES: Record<string, Entry> = {
     not: ['electr', 'eager', 'eagle', 'east', 'estate', 'establ', 'estim', 'every', 'elephant', 'eleven', 'even$', 'evening', 'evenly', 'exotic', 'ever$', 'evil', 'enemy', 'energ', 'emerald', 'envy', 'envious', 'era$', 'error', 'erron', 'errand', 'elbow', 'elder', 'eldest', 'elm$'],
   },
   'extra-': { forms: ['extra'], gloss: 'beyond', origin: L },
-  'fore-': { forms: ['fore'], gloss: 'before, front', origin: E, not: ['forens', 'forest', 'foreign'] },
+  'fore-': { forms: ['fore'], gloss: 'before, front', origin: E, not: ['foremost', 'forens', 'forest', 'foreign'] },
   'hyper-': { forms: ['hyper'], gloss: 'over, excessive', origin: G },
   'hypo-': { forms: ['hypo'], gloss: 'under', origin: G },
   'in-': {
@@ -118,7 +118,7 @@ const PREFIXES: Record<string, Entry> = {
     show: ['in-', 'im-', 'il-', 'ir-'],
     not: ['inferior', 'inside', 'ill$', 'illness', 'irritat', 'imag', 'inch', 'inherit', 'income', 'inn$', 'inning', 'innings', 'instinct', 'imitat'],
   },
-  'inter-': { forms: ['inter'], gloss: 'between', origin: L, not: ['interior', 'intern$', 'internal', 'interest'] },
+  'inter-': { forms: ['inter', 'intel:l'], gloss: 'between', origin: L, not: ['interior', 'intern$', 'internal', 'interest'] },
   'intra-': { forms: ['intra', 'intro'], gloss: 'within', origin: L },
   'macro-': { forms: ['macro'], gloss: 'large', origin: G },
   'mal-': { forms: ['male', 'mal'], gloss: 'bad', origin: L, not: ['male$', 'males$', 'mall', 'malt', 'malay'] },
@@ -145,7 +145,7 @@ const PREFIXES: Record<string, Entry> = {
   'poly-': { forms: ['poly'], gloss: 'many', origin: G },
   'post-': { forms: ['post'], gloss: 'after', origin: L, not: ['poster', 'postur', 'postal', 'postag', 'post$', 'posts$', 'postman'] },
   'pre-': { forms: ['pre'], gloss: 'before', origin: L, not: ['precious', 'premier', 'press', 'pretty', 'prey', 'prest'] },
-  'pro-': { forms: ['pro'], gloss: 'forward, for', origin: L, not: ['proper', 'probab', 'prove', 'proud', 'provinc'] },
+  'pro-': { forms: ['pro', 'pur'], gloss: 'forward, for', origin: L, show: ['pro-', 'pur-'], not: ['proper', 'probab', 'prove', 'proud', 'provinc'] },
   're-': { forms: ['re'], gloss: 'again, back', origin: L, not: ['regist', 'reason', 'ready', 'real'] },
   'retro-': { forms: ['retro'], gloss: 'backward', origin: L },
   'se-': { forms: ['se'], gloss: 'apart', origin: L, not: ['second', 'secret', 'sense', 'sent', 'session', 'sequ', 'serv', 'sect'] },
@@ -166,7 +166,7 @@ const PREFIXES: Record<string, Entry> = {
     forms: ['un'],
     gloss: 'not, undo',
     origin: E,
-    not: ['union', 'uniq', 'unit', 'univers', 'uniform', 'unif', 'unilat', 'unison', 'unicorn', 'unanim', 'uncle', 'until', 'unto$'],
+    not: ['unless', 'union', 'uniq', 'unit', 'univers', 'uniform', 'unif', 'unilat', 'unison', 'unicorn', 'unanim', 'uncle', 'until', 'unto$'],
   },
   'under-': { forms: ['under'], gloss: 'below, too little', origin: E },
   'uni-': { forms: ['uni'], gloss: 'one', origin: L },
@@ -222,7 +222,7 @@ const ROOTS: Record<string, Entry> = {
   bio: { forms: ['bio'], gloss: 'life', origin: G },
   cad: { forms: ['^cad', '^cas', 'ac|cid', 'in|cid', 'oc|cas', 'de|cay'], gloss: 'fall', origin: L, show: ['cad', 'cas', 'cid'], not: ['cadet', 'decade', 'academ', 'cast', 'cash', 'casin', 'cassett', 'cashier', 'casket', 'castle'] },
   cap: {
-    forms: ['capt', 'cept', 'ceiv', 'ceit', 'cip', 'cap', 'prin|cip', 'parti|cip', 'muni|cip', 'anti|cip', 'eman|cip', '+cup'],
+    forms: ['capt', 'cept', 'ceiv', 'ceit', 'ceipt', 'cip', 'cap', 'prin|cip', 'parti|cip', 'muni|cip', 'anti|cip', 'eman|cip', '+cup'],
     gloss: 'take, seize',
     origin: L,
     show: ['cap', 'cip', 'cept', 'ceive'],
@@ -240,7 +240,7 @@ const ROOTS: Record<string, Entry> = {
   corp: { forms: ['corpor', 'corp'], gloss: 'body', origin: L },
   cosm: { forms: ['cosm'], gloss: 'world, order', origin: G },
   cred: { forms: ['cred'], gloss: 'believe', origin: L },
-  cresc: { forms: ['creas', 'cresc', 'crement', 'crue'], gloss: 'grow', origin: L },
+  cresc: { forms: ['creas', 'cresc', 'crement', 'cruit'], gloss: 'grow', origin: L },
   cult: { forms: ['cult', 'colon'], gloss: 'till, tend', origin: L, not: ['difficult', 'occult', 'colonel'] },
   cur: { forms: ['curr', 'curs', 'cour', '+cur'], gloss: 'run', origin: L, show: ['cur', 'curs', 'cours'], not: ['secur', 'procur', 'accura', 'courag', 'court', 'curse', 'cursed', 'obscur'] },
   cura: { forms: ['^cura', 'curio', 'secur', 'accura', 'procur', '^cure'], gloss: 'care', origin: L, show: ['cur', 'cura'] },
@@ -248,7 +248,7 @@ const ROOTS: Record<string, Entry> = {
   dem: { forms: ['demo', 'dem'], gloss: 'people', origin: G, not: ['demon', 'demol', 'dement', 'demur', 'demean', 'demand'] },
   dent: { forms: ['^dent', 'dont'], gloss: 'tooth', origin: L },
   derm: { forms: ['derm'], gloss: 'skin', origin: G },
-  dict: { forms: ['dict', 'dic'], gloss: 'say', origin: L, show: ['dic', 'dict'], not: ['dice', 'dick'], pie: '*deyḱ-' },
+  dict: { forms: ['dict', 'dic'], gloss: 'say', origin: L, show: ['dic', 'dict'], not: ['period', 'dice', 'dick'], pie: '*deyḱ-' },
   doc: { forms: ['doct', 'doc'], gloss: 'teach', origin: L, not: ['dock'] },
   dom: { forms: ['domin', 'domes', 'domai'], gloss: 'master, house', origin: L },
   duc: { forms: ['duct', 'duce', 'duc'], gloss: 'lead', origin: L, show: ['duc', 'duct'], not: ['duck'], pie: '*dewk-' },
@@ -283,15 +283,15 @@ const ROOTS: Record<string, Entry> = {
   ject: { forms: ['ject'], gloss: 'throw', origin: L },
   jud: { forms: ['judic', 'jud'], gloss: 'judge', origin: L },
   junct: { forms: ['junct', 'join'], gloss: 'join', origin: L },
-  jur: { forms: ['jur', 'jus'], gloss: 'law, swear', origin: L },
+  jur: { forms: ['jur', 'jus'], gloss: 'law, swear', origin: L, not: ['adjust'] },
   labor: { forms: ['labor', 'labour'], gloss: 'work', origin: L },
-  lect: { forms: ['lect', '^leg'], gloss: 'choose, read', origin: L, show: ['lect', 'leg'], not: ['electr', 'legal', 'legis', 'legit', 'legac', 'leg$', 'legs$', 'legg', 'alleg', 'colleag', 'colleg'] },
+  lect: { forms: ['lect', '^leg', '+lig'], gloss: 'choose, read', origin: L, show: ['lect', 'leg'], not: ['light', 'electr', 'legal', 'legis', 'legit', 'legac', 'leg$', 'legs$', 'legg', 'alleg', 'colleag', 'colleg'] },
   lev: { forms: ['lev'], gloss: 'lift, light', origin: L, not: ['level', 'eleven'] },
   liber: { forms: ['liber'], gloss: 'free', origin: L, not: ['deliber'] },
   loc: { forms: ['loc'], gloss: 'place', origin: L, not: ['lock', 'block', 'clock', 'flock'] },
   log: { forms: ['logue', 'log'], gloss: 'word, reason', origin: G, not: ['logist'] },
   loqu: { forms: ['loqu', 'locut'], gloss: 'speak', origin: L },
-  luc: { forms: ['luc', 'lum'], gloss: 'light', origin: L, not: ['alum$', 'alumni', 'lumber', 'lump', 'luck', 'lucrat'] },
+  luc: { forms: ['luc', 'lum'], gloss: 'light', origin: L, not: ['reluct', 'alumin', 'alum$', 'alumni', 'lumber', 'lump', 'luck', 'lucrat'] },
   magn: { forms: ['magn'], gloss: 'great', origin: L, not: ['magnet'] },
   man: { forms: ['manu', 'man'], gloss: 'hand', origin: L, not: ['mantl', 'emanat', 'perman', 'mankind', 'manly', 'many', 'mania', 'maniac', 'mansion', 'manor', 'mango', 'mane$', 'manner$x', 'manifold'] },
   mand: { forms: ['mand'], gloss: 'order, entrust', origin: L, not: ['mandibl', 'summand', 'mandarin'] },
@@ -309,12 +309,13 @@ const ROOTS: Record<string, Entry> = {
   mort: { forms: ['mort'], gloss: 'death', origin: L, not: ['mortar'] },
   morph: { forms: ['morph'], gloss: 'shape', origin: G },
   mut: { forms: ['mut'], gloss: 'change', origin: L, not: ['mute$', 'mutter', 'mutton', 'mutin'] },
-  nat: { forms: ['nat', 'nasc'], gloss: 'born', origin: L },
+  nat: { forms: ['nat', 'nasc'], gloss: 'born', origin: L, not: ['senat'] },
   nav: { forms: ['naut', 'nav'], gloss: 'ship, sail', origin: L, not: ['navel'] },
   nect: { forms: ['nect', 'nex'], gloss: 'tie, bind', origin: L, not: ['next'] },
   neg: { forms: ['neg'], gloss: 'deny', origin: L, not: ['negro'] },
   neo: { forms: ['neo'], gloss: 'new', origin: G },
-  nom: { forms: ['nomin', 'nym', 'onym', 'nom'], gloss: 'name', origin: L, not: ['anomal', 'nomad'] },
+  nom: { forms: ['nomin', 'nym', 'onym', 'nom'], gloss: 'name', origin: L, not: ['onom', 'anomal', 'nomad'] },
+  not: { forms: ['^not', 'notion', 'notic', 'notif'], gloss: 'mark, know', origin: L, show: ['not', 'noti'], not: ['nothing', 'notwith', 'notch', 'notabl'] },
   nov: { forms: ['nov'], gloss: 'new', origin: L, not: ['novemb'] },
   nunc: { forms: ['nounce', 'nunci'], gloss: 'report', origin: L },
   oper: { forms: ['oper'], gloss: 'work', origin: L },
@@ -340,7 +341,7 @@ const ROOTS: Record<string, Entry> = {
     not: ['suppl', 'comply', 'complian', 'complim', 'complem', 'complet'],
   },
   plor: { forms: ['plor'], gloss: 'cry out', origin: L },
-  pon: { forms: ['pone', 'posit', 'pos', 'pound'], gloss: 'put, place', origin: L, show: ['pon', 'pos'], not: ['possib', 'possess', 'post', 'posh', 'pound$', 'pounds$', 'purpos'] },
+  pon: { forms: ['pone', 'posit', 'pos', 'pound'], gloss: 'put, place', origin: L, show: ['pon', 'pos'], not: ['possib', 'possess', 'post', 'posh', 'pound$', 'pounds$'] },
   popul: { forms: ['popul', 'publ'], gloss: 'people', origin: L },
   port: { forms: ['port'], gloss: 'carry', origin: L, not: ['opportun', 'portion', 'proport', 'passport', 'airport', 'seaport', 'portrait', 'portray', 'portal', 'porch', 'port$', 'ports$'], pie: '*per-' },
   prehend: { forms: ['prehen', 'pris'], gloss: 'seize', origin: L, show: ['prehend', 'pris'], not: ['prism'] },
@@ -350,7 +351,7 @@ const ROOTS: Record<string, Entry> = {
   rect: { forms: ['rect', 'regul', 'regim', '^region'], gloss: 'straight, rule', origin: L, show: ['rect', 'reg'] },
   rog: { forms: ['+rog'], gloss: 'ask', origin: L },
   rupt: { forms: ['rupt'], gloss: 'break', origin: L },
-  sacr: { forms: ['sacr', 'sanct'], gloss: 'holy', origin: L },
+  sacr: { forms: ['sacr', 'sanct'], gloss: 'holy', origin: L, not: ['massacr'] },
   scend: { forms: ['scend', 'scens'], gloss: 'climb', origin: L },
   sci: { forms: ['sci'], gloss: 'know', origin: L, not: ['scissor'] },
   scope: { forms: ['scope'], gloss: 'look at', origin: G },
@@ -375,14 +376,14 @@ const ROOTS: Record<string, Entry> = {
     gloss: 'stand',
     origin: L,
     show: ['sta', 'stat', 'stit', 'sist'],
-    not: ['sister', 'instinct'],
+    not: ['stitch', 'sister', 'instinct'],
     pie: '*steh₂-',
   },
   string: { forms: ['strict', 'string'], gloss: 'draw tight', origin: L },
   struct: { forms: ['struct', 'stru'], gloss: 'build', origin: L, not: ['estrus', 'oestr', 'struck'] },
   sult: { forms: ['+sult', '+sault'], gloss: 'leap', origin: L, not: ['consult'] },
   sum: { forms: ['sume', 'sump'], gloss: 'take', origin: L },
-  tact: { forms: ['tact', 'tang', 'at|tain', '+ting'], gloss: 'touch', origin: L, show: ['tact', 'tang', 'ting'], not: ['tactic', 'tango', 'tangl', 'rectang'] },
+  tact: { forms: ['tact', 'tang', 'at|tain', '+ting'], gloss: 'touch', origin: L, show: ['tact', 'tang', 'ting'], not: ['distin', 'extin', 'instin', 'tactic', 'tango', 'tangl', 'rectang'] },
   ten: {
     forms: ['+tain', '+tin', '+ten', '+tent', 'main|tain', 'main|ten', 'enter|tain', '^tenan', '^tenur', '^tenac', '^tenet', '^tenabl'],
     gloss: 'hold',
@@ -393,7 +394,7 @@ const ROOTS: Record<string, Entry> = {
   },
   techn: { forms: ['techn'], gloss: 'skill, art', origin: G },
   temp: { forms: ['tempor', 'temp'], gloss: 'time', origin: L, not: ['templ', 'tempt'] },
-  tend: { forms: ['tend', 'tens', 'tent'], gloss: 'stretch', origin: L, show: ['tend', 'tens', 'tent'], not: ['utens', 'content', 'retent', 'detent', 'abstent', 'tentativ', 'potent', 'competent', 'mittent'], pie: '*ten-' },
+  tend: { forms: ['tend', 'tens', 'tent'], gloss: 'stretch', origin: L, show: ['tend', 'tens', 'tent'], not: ['latent', 'utens', 'content', 'retent', 'detent', 'abstent', 'tentativ', 'potent', 'competent', 'mittent'], pie: '*ten-' },
   terr: { forms: ['terr'], gloss: 'earth', origin: L, not: ['terrib', 'terrif', 'terror'] },
   text: { forms: ['text'], gloss: 'weave', origin: L },
   the: { forms: ['theolog', 'theis', 'theocr'], gloss: 'god', origin: G },
@@ -406,10 +407,11 @@ const ROOTS: Record<string, Entry> = {
   vac: { forms: ['vac', 'void'], gloss: 'empty', origin: L, not: ['vacc'] },
   vad: { forms: ['+vad', '+vas'], gloss: 'go', origin: L },
   val: { forms: ['val', 'vail'], gloss: 'strong, worth', origin: L, show: ['val', 'vail'], not: ['valley', 'valv', 'interval', 'oval'] },
-  ven: { forms: ['vene', 'vent', 'veni', 'ven'], gloss: 'come', origin: L, show: ['ven', 'vent'], not: ['juvent', 'seven', 'ventil', 'venge', 'vend', 'vener', 'veneer', 'oven', 'even$', 'evening', 'evenly', 'venom', 'venus'], pie: '*gʷem-' },
+  ven: { forms: ['vene', 'vent', 'veni', 'ven'], gloss: 'come', origin: L, show: ['ven', 'vent'], not: ['juven', 'juvent', 'seven', 'ventil', 'venge', 'vend', 'vener', 'veneer', 'oven', 'even$', 'evening', 'evenly', 'venom', 'venus'], pie: '*gʷem-' },
   ver: { forms: ['veri', 'ver'], gloss: 'true', origin: L, not: ['verb', 'over$', 'every', 'averag', 'verge', 'vermi', 'veranda', 'vernac', 'verdant'] },
   vert: { forms: ['vert', 'vers'], gloss: 'turn', origin: L, show: ['vert', 'vers'], not: ['neverthe'] },
   via: { forms: ['via', 'vious', 'voy', '+vey'], gloss: 'way', origin: L, show: ['via', 'vi', 'voy', 'vey'], not: ['envious', 'aviat', 'survey', 'purvey'] },
+  vel: { forms: ['+vel', '+veal'], gloss: 'veil', origin: L, not: ['develop', 'level', 'travel', 'novel', 'marvel', 'shovel', 'swivel', 'gravel'] },
   vid: { forms: ['vid', 'vis'], gloss: 'see', origin: L, show: ['vid', 'vis'], not: ['divid', 'divis', 'devis', 'individ'], pie: '*weyd-' },
   vinc: { forms: ['vinc', 'vict'], gloss: 'conquer', origin: L, not: ['provinc', 'victim'] },
   viv: { forms: ['viv', 'vita', 'vit'], gloss: 'live', origin: L, not: ['invit', 'evitabl'] },
@@ -514,6 +516,10 @@ function findRoot(w: string, lo: number, hi: number, afterPrefix: boolean, ety: 
       at = w.indexOf(f.form, at + 1);
     }
     if (at < 0 || at >= hi) continue;
+    // A short root that runs on into the suffix must leave a suffix behind it:
+    // "inter·nat·ion·al" does, "se·nat·e" does not.
+    const end = at + f.form.length;
+    if (f.form.length <= 3 && !f.lead && f.at !== 'bound' && end > hi && !SUFFIX_FORMS.some((x) => x.form.length >= 2 && w.startsWith(x.form, end))) continue;
     if (listed(f.e.not, w, 'root')) continue;
     if (!rootAgrees(f.e, ety)) continue;
     if (!best || at < best.at || (at === best.at && f.form.length > best.f.form.length)) best = { f, at };
@@ -567,8 +573,15 @@ function analyzeLatin(word: string, ety: MorphEtymon | null): Morph[] {
   const germanic = !!ety && GERMANIC.has(ety.origin);
   let prefix: Morph | null = null;
   let root: Morph | null = null;
+  // A longer prefix that starts the word but is turned down ("under" in "underg·o" is not)
+  // also rules out the shorter ones inside it: "undergo" is not un·dergo.
+  let refused = '';
+  let held: { p: Morph; r: Morph | null } | null = null;
   for (const p of PREFIX_FORMS) {
     if (!w.startsWith(p.form)) continue;
+    // Once a prefix is held, only the shorter prefixes inside it are worth trying.
+    if (held && !w.slice(0, held.p.end).startsWith(p.form)) continue;
+    if (refused && refused.startsWith(p.form)) continue;
     const n = p.form.length;
     if (p.next && !p.next.includes(w[n] || '')) continue;
     if (listed(p.e.not, w, 'prefix')) continue;
@@ -578,14 +591,30 @@ function analyzeLatin(word: string, ety: MorphEtymon | null): Morph[] {
     const doubled = !!p.next && w[n] === p.form[n - 1];
     const reliable = doubled || RELIABLE_PREFIX.has(p.form);
     // The rest must be long enough to be a word part ("ad·opt" is, "ex·it" is not), or be a
-    // known root on its own ("com·pel").
+    // known root on its own ("com·pel"). A long, reliable prefix may leave two letters
+    // ("contra·st", "under·go").
     const rest = w.length - n;
-    if (rest < 4 && !(rootNext && r!.end - r!.start >= 3) && !(reliable && rest >= 3 && w.length >= 5)) continue;
+    const longOk = reliable && n >= 4 && rest >= 2 && w.length >= 6;
+    if (rest < 4 && !(rootNext && r!.end - r!.start >= 3) && !(reliable && rest >= 3 && w.length >= 5) && !longOk) {
+      if (n >= 4 && !refused) refused = p.form;
+      continue;
+    }
     // An ambiguous prefix ("re", "de", "in", "se") counts only with a known root right after it.
     if (!reliable && !rootNext) continue;
+    // A prefix with no known root after it is held back while a shorter one inside it is
+    // tried: "con·tract" and "con·tribute" have a root after con-, "contra·st" has none.
+    if (!rootNext && !held) {
+      held = { p: morphOf('prefix', p.key, p.e, 0, n), r };
+      continue;
+    }
+    if (held && !rootNext) break;
     prefix = morphOf('prefix', p.key, p.e, 0, n);
     root = r;
     break;
+  }
+  if (!prefix && held) {
+    prefix = held.p;
+    root = held.r;
   }
   if (!prefix) root = findRoot(w, 0, hi, false, ety);
 
@@ -602,6 +631,7 @@ function analyzeLatin(word: string, ety: MorphEtymon | null): Morph[] {
     if (last.end >= suffixes[0].end) suffixes.shift();
     else suffixes[0] = { ...suffixes[0], start: last.end };
   }
+  while (prefix && suffixes.length && suffixes[0].start < prefix.end) suffixes.shift();
   const out: Morph[] = [];
   if (prefix) out.push(prefix);
   if (root) out.push(root);
