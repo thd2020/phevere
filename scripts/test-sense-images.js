@@ -213,6 +213,9 @@ for (const [word, want] of [
   assert.ok(titles.length <= 10);
 }
 same(si.derivedTitles('猫'), ['猫']);
+assert.ok(!si.derivedTitles('chore').includes('chorion') && si.derivedTitles('adopt').includes('adoption'), 'no "Chorion" for chore');
+assert.ok(si.properName('Debunking the Genocide Myth', 'debunked') || si.properName('Debunking the Genocide Myth', 'debunking'), 'a book title');
+assert.ok(si.properName('Caboodle cards & gifts', 'caboodle'), 'a shop');
 
 const enReq = si.fallbackTitleQuery('inspect', [{ meaning: 'To examine critically.', partOfSpeech: 'verb' }], 'en');
 assert.ok(enReq.url.startsWith('https://en.wikipedia.org/') && enReq.url.includes('pilicense=free'));

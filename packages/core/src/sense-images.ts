@@ -670,7 +670,11 @@ export function derivedTitles(lemma: string): string[] {
   else if (/(al|ar|ic|id|ile|ive|ure|ine)$/.test(w)) out.push(`${noE}ity`);
   if (/ent$/.test(w)) out.push(w.replace(/ent$/, 'ence'));
   if (/ant$/.test(w)) out.push(w.replace(/ant$/, 'ance'));
-  out.push(ingForm(w), `${noE}ion`, `${noE}ation`, `${w}ment`, `${w}ness`);
+  // "-ion" follows the verb endings that take it (inspect, adopt, create, confuse); "chore"
+  // would give "Chorion", a membrane round an embryo.
+  out.push(ingForm(w));
+  if (/(ct|pt|ss|[^r]t|te|se|de|ze)$/.test(w)) out.push(`${noE}ion`);
+  out.push(`${noE}ation`, `${w}ment`, `${w}ness`);
   return Array.from(new Set(out)).slice(0, 10);
 }
 
@@ -952,10 +956,15 @@ export function properName(title: string, word: string): boolean {
   const isCap = (t: string | undefined) => !!t && /^\p{Lu}/u.test(t) && !STOP.has(t.toLowerCase());
   // "… school in Holon": a capitalised word after "in", "at" or "near" is a place.
   const place = (i: number) => i > 0 && /^\p{Lu}/u.test(tokens[i]) && /^(in|at|near|from)$/.test(tokens[i - 1]);
+  // "Caboodle cards & gifts", "Serendipity café": a shop or business called by the word.
+  const business = (i: number) => /^(shop|store|caf[eé]|restaurant|pub|bar|inn|hotel|cards|gifts|ltd|limited|inc|studio|salon|boutique|bakery|beach)$/i.test(tokens[i + 1] || '');
+  // A title with three capitalised words or more is the name of a work ("Debunking the Genocide
+  // Myth", "Wetherspoon's The Dictum of …"), not a description of what the file shows.
+  if (tokens.filter((t) => isCap(t)).length >= 3) return true;
   // A capitalised word before it counts too ("EAH Blunt" is a man), unless the word itself is in
   // lower case after a title's first word ("Static equilibrium").
   const capAfterCap = (i: number) => i > 0 && isCap(tokens[i - 1]) && /^\p{Lu}/u.test(tokens[i]);
-  return tokens.some((t, i) => t.toLowerCase() === w && (isCap(tokens[i + 1]) || capAfterCap(i) || place(i)));
+  return tokens.some((t, i) => t.toLowerCase() === w && (isCap(tokens[i + 1]) || capAfterCap(i) || place(i) || business(i)));
 }
 
 export interface CommonsPage {
