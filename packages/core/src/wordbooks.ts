@@ -298,11 +298,49 @@ export interface NewWordReason {
 }
 
 /**
+ * The shipped books below each book's level. A word of 考研 that 中考 or 高考 already teaches is
+ * one the learner most likely knows, so it waits until the book's own words run out.
+ */
+const LEVEL_BELOW: Record<string, string[]> = {
+  zhongkao: ['starter'],
+  gaokao: ['starter', 'zhongkao'],
+  cet4: ['starter', 'zhongkao', 'gaokao'],
+  cet6: ['starter', 'zhongkao', 'gaokao', 'cet4'],
+  kaoyan: ['starter', 'zhongkao', 'gaokao'],
+  ngsl: ['starter'],
+};
+
+export function levelBelow(bookId: string): string[] {
+  return LEVEL_BELOW[bookId] || [];
+}
+
+/** Loads the books below each book's level, so new words can be picked at the book's own level. */
+export async function primeBookLevels(bookIds: string[]): Promise<void> {
+  const ids = new Set(bookIds.flatMap(levelBelow));
+  for (const id of ids) await loadWordbook(id);
+}
+
+const belowCache = new Map<string, Set<string>>();
+
+/** Words of the books below a book's level that are loaded; empty until `primeBookLevels`. */
+function wordsBelow(bookId: string): Set<string> {
+  const ids = levelBelow(bookId).filter((id) => loaded.has(id));
+  const key = `${bookId}:${ids.join(',')}`;
+  const hit = belowCache.get(key);
+  if (hit) return hit;
+  const set = new Set<string>();
+  for (const id of ids) for (const w of loaded.get(id) || []) set.add(bookWordKey(w));
+  belowCache.set(key, set);
+  return set;
+}
+
+/**
  * New book words for today, picked across the scope's books as one pool. Each book offers the
- * next words in its own order (frequency order for every shipped book), several times its
- * allowance, and the pool is ranked by position in that order, with words that more of your books
- * list and words of a family you have started moved forward. Each book's daily goal sets how many
- * words the pool gives.
+ * next words at its own level first, in its own order (frequency order for every shipped book):
+ * a word that a lower-level book such as 中考 or 高考 also lists comes only after those, since
+ * the learner most likely knows it, and "Already know it" sets aside any that slip through. Within
+ * that, words of a family you have started, and words more of your books list, move a little
+ * forward. Each book's daily goal sets how many words the pool gives.
  */
 export function pickNewBookWords(bookIds: string[], ctx: WordsContext, now = Date.now(), dueCount = 0, reasons?: Map<string, NewWordReason>): WordsEntry[] {
   let quota = 0;
@@ -314,19 +352,26 @@ export function pickNewBookWords(bookIds: string[], ctx: WordsContext, now = Dat
     goals += p.dailyNew;
     if (!p.newToday) continue;
     const window = p.newToday * 4 + 20;
-    const words = ctx.books.get(id) || [];
-    let n = 0;
-    for (const w of words) {
-      if (n >= window) break;
+    const below = wordsBelow(id);
+    const level: string[] = [];
+    const common: string[] = [];
+    for (const w of ctx.books.get(id) || []) {
+      if (level.length >= window) break;
       const k = bookWordKey(w);
-      if (ctx.saved.has(k) || ctx.progress.get(k)?.known) continue;
-      const e = bookEntry(w, ctx);
-      if (!isNewWord(e)) continue;
-      const rank = n / window;
-      n += 1;
-      const prev = cands.get(k);
-      if (!prev || rank < prev.rank) cands.set(k, { e, rank });
+      if (ctx.saved.has(k)) continue;
+      const prog = ctx.progress.get(k);
+      if (prog && (prog.known || Number(prog.reps) > 0 || prog.lastReview != null || Number(prog.state) > 0)) continue;
+      if (below.has(k)) {
+        if (common.length < window) common.push(w);
+      } else level.push(w);
     }
+    const ordered = [...level, ...common].slice(0, window);
+    ordered.forEach((w, n) => {
+      const k = bookWordKey(w);
+      const rank = n / window;
+      const prev = cands.get(k);
+      if (!prev || rank < prev.rank) cands.set(k, { e: bookEntry(w, ctx), rank });
+    });
   }
   quota = Math.min(quota, newWordAllowance(goals, dueCount));
   if (!quota || !cands.size) return [];
@@ -338,10 +383,10 @@ export function pickNewBookWords(bookIds: string[], ctx: WordsContext, now = Dat
     const books = c.e.books?.length || 1;
     const kin = familyKeys(k).map((key) => fam.get(key)).find((w) => w && w.toLowerCase() !== k) || null;
     reasons?.set(c.e.id, { books, family: kin });
-    return { e: c.e, score: c.rank - 0.25 * (books - 1) - (kin ? 0.3 : 0) };
+    return { e: c.e, score: c.rank - 0.08 * (books - 1) - (kin ? 0.15 : 0) };
   });
   scored.sort((a, b) => a.score - b.score);
-  return dedupeLemmas(scored.map((s) => s.e)).slice(0, quota);
+  return scored.slice(0, quota).map((s) => s.e);
 }
 
 /**
@@ -411,6 +456,13 @@ export function dropCurrentReview(state: ReviewState): void {
   state.question = null;
   state.answer = null;
   state.revealed = false;
+}
+
+/** "Already know it" on the current question: drops it and remembers it, so the round's summary can undo it. */
+export function markKnownInReview(state: ReviewState, lemma: string): void {
+  const l = clean(lemma);
+  if (l && !(state.knownMarked || []).includes(l)) state.knownMarked = [...(state.knownMarked || []), l];
+  dropCurrentReview(state);
 }
 
 /* ------------------------------------------------------------------ sources */

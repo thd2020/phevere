@@ -15,7 +15,7 @@ const bundle = esbuild.buildSync({
   stdin: {
     contents: `
       export * from './src/review-quiz';
-      export { buildWordsContext, scopeEntries, bookProgress, scopeReviewPlan, scopeReviewQueue, startScopeReview, pickNewBookWords, wordStatus } from './src/wordbooks';
+      export { buildWordsContext, scopeEntries, bookProgress, scopeReviewPlan, scopeReviewQueue, startScopeReview, pickNewBookWords, wordStatus, registerWordbookWords, markKnownInReview } from './src/wordbooks';
     `,
     resolveDir: path.join(root, 'packages', 'core'),
     loader: 'ts',
@@ -70,14 +70,29 @@ const started = (lemma, extra = {}) => ({ lemma, known: false, reps: 2, state: 2
   const why = new Map();
   const picked = core.pickNewBookWords(['ngsl'], ctx, now, 0, why).map((e) => e.lemma);
   assert.equal(picked.length, 3, 'the book goal sets how many');
-  // Book order would give apple, banana, cherry.
-  assert.deepEqual(picked, ['nationality', 'grape', 'apple'], 'a family you started, then a word two of your books list, move forward');
+  // Book order would give apple, banana, cherry: a family you started moves a word a little forward.
+  assert.deepEqual(picked, ['apple', 'banana', 'nationality']);
   assert.equal(why.get('wb:nationality').family, 'nation');
   // All books: one pool, the goals added up, no word twice.
   const plan = core.scopeReviewPlan('all', ctx, { now, mineGoal: 0 });
   assert.equal(plan.fresh, 4);
   assert.equal(new Set(plan.ids).size, plan.ids.length);
   assert.ok(plan.ids.includes('wb:hazel') || plan.ids.includes('wb:grape'));
+}
+
+/* A book's own level first: words a lower-level book already teaches wait until the level words run out. */
+{
+  core.registerWordbookWords('starter', ['state', 'might', 'part', 'system']);
+  core.registerWordbookWords('zhongkao', ['fact', 'against']);
+  core.registerWordbookWords('gaokao', []);
+  const kaoyan = ['state', 'might', 'part', 'against', 'abandon', 'system', 'fact', 'abrupt', 'abstract', 'absurd'];
+  const ctx = core.buildWordsContext([], [], [sub('kaoyan', 3)], new Map([['kaoyan', kaoyan]]));
+  const picked = core.pickNewBookWords(['kaoyan'], ctx, now).map((e) => e.lemma);
+  assert.deepEqual(picked, ['abandon', 'abrupt', 'abstract'], `level words first: ${picked}`);
+  // Once the level words are started, the lower-level ones follow in book order.
+  const done = ['abandon', 'abrupt', 'abstract', 'absurd'].map((w) => started(w));
+  const ctx2 = core.buildWordsContext([], done, [sub('kaoyan', 3)], new Map([['kaoyan', kaoyan]]));
+  assert.deepEqual(core.pickNewBookWords(['kaoyan'], ctx2, now).map((e) => e.lemma), ['state', 'might', 'part']);
 }
 
 /* Many reviews due hold new words back, in books as in My words; a round takes twenty words. */
@@ -103,6 +118,14 @@ const started = (lemma, extra = {}) => ({ lemma, known: false, reps: 2, state: 2
   ];
   const ctx = core.buildWordsContext(mine, [{ lemma: 'placid', known: true, updatedAt: 1 }], [], new Map());
   assert.deepEqual(core.scopeReviewQueue('mine', ctx, { now, mineGoal: 10 }), ['v1']);
+}
+
+/* "Already know it" in a round is remembered for the summary's Undo. */
+{
+  const state = { queue: ['wb:a', 'wb:b'], index: 0, started: true, question: null, answer: null, revealed: false, results: [], seen: {}, seed: 1 };
+  core.markKnownInReview(state, 'alpha');
+  assert.deepEqual(state.knownMarked, ['alpha']);
+  assert.deepEqual(state.queue, ['wb:b']);
 }
 
 console.log('test-learn-session: ok');
