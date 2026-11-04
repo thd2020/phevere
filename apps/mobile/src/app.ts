@@ -25,6 +25,8 @@ import {
   HOLARKY_ACCOUNT,
   deleteEmailMatches,
   attachNotebookMap,
+  attachFamilies,
+  closeTreeInspector,
   traceNotebookFamilies,
   attachCardTable,
   disposeNotebookMaps,
@@ -630,6 +632,7 @@ function bindNotebookViews(): void {
   const page = document.querySelector('.nbv-body');
   if (!page) return;
   attachNotebookMap(page);
+  attachFamilies(page);
   if (nbState.view === 'families') {
     // Families groups the whole notebook (the review pool), not just the list's first page.
     const words = reviewPool.length > notebook.length ? reviewPool : notebook;
@@ -2726,6 +2729,7 @@ export async function startApp(): Promise<void> {
   // when this returns false.
   // It does what the page's own back or close control would, innermost first.
   (window as unknown as { __pvBack?: () => boolean }).__pvBack = () => {
+    if (closeTreeInspector()) return true;
     const sheet = document.querySelector<HTMLDialogElement>('dialog[open]');
     if (sheet) {
       sheet.dispatchEvent(new Event('cancel'));

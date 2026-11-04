@@ -12,7 +12,7 @@
  */
 import type { Morph, MorphKind } from './morphology';
 import { cachedEtymon, cachedRootGloss, traceEtymons, traceRootGlosses, type WordEtymon } from './notebook-etymology';
-import { clean, esc, type Family, type FamilyGrouping, type NotebookAnalysis, type TreeNode, type WordInfo } from './notebook-shared';
+import { clean, esc, revealBelow, scrollerOf, type Family, type FamilyGrouping, type NotebookAnalysis, type TreeNode, type WordInfo } from './notebook-shared';
 
 const GROUP_LABEL: Record<FamilyGrouping, string> = {
   root: 'Roots',
@@ -33,6 +33,8 @@ const ORIGIN_GLYPH: Record<string, string> = {
   Japanese: 'あ', Chinese: '字', Korean: '한', Russian: 'Ж', Hindi: 'अ', Sanskrit: 'अ', Turkish: 'Ş',
   Yiddish: 'ײ', Malay: 'M', Nahuatl: 'tl', 'Proto-Indo-European': '*',
 };
+
+const EXPAND_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 export type EtymonLookup = (lemma: string) => WordEtymon | null;
 
@@ -56,12 +58,33 @@ function positionMark(kind: MorphKind | 'deep'): string {
   return `<svg class="nbv-fam__pos" viewBox="0 0 20 10" aria-hidden="true">${cells}</svg>`;
 }
 
-function wordChip(info: WordInfo, highlight?: Morph, i = 0): string {
+/**
+ * The spellings a family goes by (fac, fic, fec, fect), main one first. `Family.forms` comes from
+ * the morphology analysis when it knows them; without it a family has its label alone.
+ */
+function formsOf(f: { label: string; forms?: unknown }): string[] {
+  const extra = Array.isArray(f.forms) ? f.forms.filter((x): x is string => typeof x === 'string' && !!x.trim()) : [];
+  return [f.label, ...extra.filter((x) => x !== f.label)];
+}
+
+function wordChip(info: WordInfo, highlight?: Morph, i = 0, forms: string[] = []): string {
   const lemma = clean(info.entry.lemma);
   let shown = esc(lemma);
+  const mark = (start: number, end: number) => `${esc(lemma.slice(0, start))}<b>${esc(lemma.slice(start, end))}</b>${esc(lemma.slice(end))}`;
   if (highlight && highlight.kind !== 'char') {
-    const m = info.morphs.find((x) => x.kind === highlight.kind && x.label === highlight.label);
-    if (m) shown = `${esc(lemma.slice(0, m.start))}<b>${esc(lemma.slice(m.start, m.end))}</b>${esc(lemma.slice(m.end))}`;
+    const m =
+      info.morphs.find((x) => x.kind === highlight.kind && x.label === highlight.label) ||
+      info.morphs.find((x) => x.kind === highlight.kind && forms.includes(x.label));
+    if (m) shown = mark(m.start, m.end);
+    else {
+      // The word spells the part another way (infect for fac): mark the longest form it contains.
+      const low = lemma.toLowerCase();
+      const hit = [...forms].sort((x, y) => y.length - x.length).find((f) => f.length > 1 && low.includes(f.toLowerCase()));
+      if (hit) {
+        const at = low.indexOf(hit.toLowerCase());
+        shown = mark(at, at + hit.length);
+      }
+    }
   } else if (highlight) {
     shown = [...lemma].map((ch) => (ch === highlight.label ? `<b>${esc(ch)}</b>` : esc(ch))).join('');
   }
@@ -82,29 +105,85 @@ interface CardSpec {
   origin: string;
   words: WordInfo[];
   highlight?: Morph;
+  /** Every spelling of the part, main one first. */
+  forms?: string[];
 }
 
-function familyCard(c: CardSpec): string {
+/** Tile size by family size: a family of two is a small tile, one of sixteen or more a wide one. */
+function sizeOf(n: number): 's' | 'm' | 'l' | 'xl' {
+  return n >= 16 ? 'xl' : n >= 8 ? 'l' : n >= 4 ? 'm' : 's';
+}
+const PEEK: Record<ReturnType<typeof sizeOf>, number> = { s: 2, m: 3, l: 5, xl: 7 };
+
+function familyCard(c: CardSpec, i = 0): string {
   const n = c.words.length;
+  const size = sizeOf(n);
+  const shown = Math.min(PEEK[size], n);
   const peek = c.words
-    .slice(0, 3)
+    .slice(0, shown)
     .map((w) => esc(clean(w.entry.lemma)))
     .join(', ');
-  const size = n >= 8 ? ' is-large' : n >= 4 ? ' is-mid' : '';
   const glyph = c.kind === 'deep' ? '*' : c.origin ? glyphFor(c.origin) : '';
-  return `<details class="nbv-fam nbv-fam--${c.kind}${size}" style="--n:${Math.min(n, 3)}">
+  const forms = c.forms?.length ? c.forms : [c.label];
+  const others = forms.filter((f) => f !== c.label);
+  return `<details class="nbv-fam nbv-fam--${c.kind} nbv-fam--${size}" style="--i:${Math.min(i, 30)}">
     <summary class="nbv-fam__head">
       ${glyph ? `<span class="nbv-fam__glyph" aria-hidden="true">${esc(glyph)}</span>` : ''}
       <span class="nbv-fam__title">
         ${positionMark(c.kind)}
         <span class="nbv-fam__label">${esc(c.label)}</span>
+        ${others.length ? `<span class="nbv-fam__forms">${others.map((f) => `<span>${esc(f)}</span>`).join('')}</span>` : ''}
         ${c.gloss ? `<span class="nbv-fam__gloss">${esc(c.gloss)}</span>` : ''}
       </span>
       <span class="nbv-fam__meta">${c.origin ? `<span class="nbv-origin">${esc(c.origin)}</span>` : ''}<span class="nbv-fam__n">${n}</span></span>
-      <span class="nbv-fam__peek">${peek}${n > 3 ? ` <i>+${n - 3}</i>` : ''}</span>
+      <span class="nbv-fam__peek">${peek}${n > shown ? ` <i>+${n - shown}</i>` : ''}</span>
     </summary>
-    <div class="nbv-fam__words">${c.words.map((w, i) => wordChip(w, c.highlight, i)).join('')}</div>
+    <div class="nbv-fam__words">${c.words.map((w, i) => wordChip(w, c.highlight, i, forms)).join('')}</div>
   </details>`;
+}
+
+/** The letter a family files under: "-tion" under T, "*bʰer-" under B, a Han character under #. */
+export function familyLetter(label: string): string {
+  const key = sortKey(label);
+  const ch = key.charAt(0).toUpperCase();
+  return /^[A-Z]$/.test(ch) ? ch : '#';
+}
+
+function sortKey(label: string): string {
+  return label
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^\p{L}\p{N}]/gu, '')
+    .toLowerCase();
+}
+
+/**
+ * Families A to Z under letter headings, each tile sized by how many words it holds. Opening a
+ * tile shows its words in a drawer under its row (see `attachFamilies`), so the tile itself
+ * never moves. Han characters have no alphabet and keep their size order in one section.
+ */
+function alphabetHtml(cards: CardSpec[], byLetter: boolean): string {
+  const sorted = byLetter
+    ? [...cards].sort((x, y) => sortKey(x.label).localeCompare(sortKey(y.label)) || x.label.localeCompare(y.label))
+    : cards;
+  const sections = new Map<string, CardSpec[]>();
+  for (const c of sorted) {
+    const k = byLetter ? familyLetter(c.label) : '';
+    sections.set(k, [...(sections.get(k) || []), c]);
+  }
+  const letters = [...sections.keys()];
+  const index =
+    byLetter && letters.length > 6
+      ? `<nav class="nbv-abc" aria-label="Letters">${letters.map((l) => `<button type="button" data-fam-jump="${esc(l)}">${esc(l)}</button>`).join('')}</nav>`
+      : '';
+  let i = 0;
+  const body = letters
+    .map((l) => {
+      const tiles = sections.get(l)!.map((c) => familyCard(c, i++)).join('');
+      return `<section class="nbv-letter" data-letter="${esc(l)}">${l ? `<h3 class="nbv-letter__head">${esc(l)}</h3>` : ''}<div class="nbv-letter__tiles">${tiles}</div></section>`;
+    })
+    .join('');
+  return `${index}<div class="nbv-fams">${body}</div>`;
 }
 
 function unsortedHtml(a: NotebookAnalysis, placed: Set<string>, label: string): string {
@@ -331,7 +410,8 @@ export function familiesHtml(a: NotebookAnalysis, grouping: FamilyGrouping, opts
       .map((t) => {
         collectIds(t, placed);
         const wide = leafCount(t) >= 4 ? ' is-wide' : '';
-        return `<figure class="nbv-grove${wide}">${treeSvg(t, a)}</figure>`;
+        const base = clean(a.words.get(t.id)?.entry.lemma);
+        return `<figure class="nbv-grove${wide}">${treeSvg(t, a)}<button type="button" class="nbv-grove__open" data-tree-open aria-label="Open the ${esc(base)} tree" title="Open">${EXPAND_ICON}</button></figure>`;
       })
       .join('')}</div>`;
     rest = 'Not part of a tree';
@@ -342,19 +422,19 @@ export function familiesHtml(a: NotebookAnalysis, grouping: FamilyGrouping, opts
     rest = 'Origin not known yet';
   } else {
     const fams = g === 'deep' ? deepRootFamilies(a, etymon) : a.families.filter((f) => f.kind === g);
-    body = `<div class="nbv-fams">${fams
-      .map((f) => {
-        f.ids.forEach((id) => placed.add(id));
-        return familyCard({
-          kind: g === 'deep' ? 'deep' : f.kind,
-          label: f.label,
-          gloss: g === 'deep' ? cachedRootGloss(f.label) : f.gloss,
-          origin: g === 'deep' ? '' : f.origin,
-          words: byLemma(a, f.ids),
-          highlight: g === 'deep' ? undefined : ({ kind: f.kind, label: f.label } as Morph),
-        });
-      })
-      .join('')}</div>`;
+    const specs = fams.map((f): CardSpec => {
+      f.ids.forEach((id) => placed.add(id));
+      return {
+        kind: g === 'deep' ? 'deep' : f.kind,
+        label: f.label,
+        gloss: g === 'deep' ? cachedRootGloss(f.label) : f.gloss,
+        origin: g === 'deep' ? '' : f.origin,
+        words: byLemma(a, f.ids),
+        highlight: g === 'deep' ? undefined : ({ kind: f.kind, label: f.label } as Morph),
+        forms: g === 'deep' ? undefined : formsOf(f as Family & { forms?: unknown }),
+      };
+    });
+    body = alphabetHtml(specs, g !== 'char');
   }
   return chips + coverageHtml(placed.size, a.words.size, opts.tracing) + body + unsortedHtml(a, placed, rest);
 }
@@ -418,4 +498,446 @@ export function traceNotebookFamilies(lemmas: string[], getRoot: () => any, onDo
       if (!found && wasTracing) quietUntil = Date.now() + QUIET_MS;
       if (found || wasTracing) onDone();
     });
+}
+
+/* ------------------------------------------------------------ interaction */
+
+const EASE_OUT = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
+const SHEET_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
+const ZOOM_ICON = {
+  out: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  in: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12M12 6v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  fit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+};
+
+let detachFamilies: (() => void) | null = null;
+let closeInspector: (() => void) | null = null;
+/** The open inspector's tree, and how to point it at the same tree after a repaint. */
+let inspectorWord = '';
+let rebindInspector: ((grove: HTMLElement) => void) | null = null;
+/** The open family (grouping and label), reopened when a repaint brings the same tile back. */
+let openFamilyKey = '';
+
+/** Close the word-tree inspector if it is open; true when it was. The phone's Back uses this. */
+export function closeTreeInspector(): boolean {
+  if (!closeInspector) return false;
+  closeInspector();
+  return true;
+}
+
+/** True while a word tree is open large; the shells hold back their repaints then too. */
+export function treeInspectorOpen(): boolean {
+  return !!closeInspector;
+}
+
+/**
+ * Wire the Families view rendered by `familiesHtml` inside `root`: a family opens into a drawer
+ * under its row while the tile stays where it was, the letter index jumps to a letter, and a
+ * word tree opens large in an inspector with pan and zoom. Safe to call after every render: an
+ * open inspector stays open when the repaint still shows its tree, and closes otherwise.
+ */
+export function attachFamilies(root: any): void {
+  detachFamilies?.();
+  detachFamilies = null;
+  const fams = root?.querySelector?.('.nbv-fams') as HTMLElement | null;
+  const forest = root?.querySelector?.('.nbv-forest') as HTMLElement | null;
+  const abc = root?.querySelector?.('.nbv-abc') as HTMLElement | null;
+  if (closeInspector) {
+    const same = forest
+      ? ([...forest.querySelectorAll('.nbv-grove')] as HTMLElement[]).find((g) => g.querySelector('.nbv-tree__base')?.getAttribute('data-q') === inspectorWord)
+      : undefined;
+    if (same && rebindInspector) rebindInspector(same);
+    else closeInspector();
+  }
+  if (!fams && !forest) return;
+  const doc = (fams || forest)!.ownerDocument;
+  const win: any = doc.defaultView || globalThis;
+  const ac = new AbortController();
+  const on = (el: any, type: string, fn: (e: any) => void, opts: AddEventListenerOptions = {}) =>
+    el.addEventListener(type, fn, { ...opts, signal: ac.signal });
+  const reduced = () => !!win.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  let ro: any = null;
+
+  /* Family drawers */
+  let drawer: HTMLElement | null = null;
+  let openTile: HTMLDetailsElement | null = null;
+  /** The last tile on the open tile's line, or the tiles block itself when that is the last line. */
+  const rowEnd = (tile: HTMLElement): HTMLElement => {
+    let last = tile;
+    for (let n = tile.nextElementSibling as HTMLElement | null; n; n = n.nextElementSibling as HTMLElement | null) {
+      if (!n.classList.contains('nbv-fam')) continue;
+      if (n.offsetTop !== tile.offsetTop) return last;
+      last = n;
+    }
+    // After the block, so the last line keeps its spacer and its tiles keep their widths.
+    return tile.parentElement as HTMLElement;
+  };
+  const place = (tile: HTMLElement) => {
+    if (!drawer) return;
+    drawer.remove();
+    rowEnd(tile).after(drawer);
+    const box = tile.parentElement!.getBoundingClientRect();
+    const r = tile.getBoundingClientRect();
+    drawer.style.setProperty('--notch', `${(r.left - box.left + r.width / 2).toFixed(1)}px`);
+  };
+  const grow = (el: HTMLElement, from: number) => {
+    const to = el.offsetHeight;
+    if (Math.abs(to - from) < 1) return;
+    el.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: reduced() ? 140 : 380, easing: SHEET_EASE });
+  };
+  const group = (root.querySelector('.nbv-chip.is-active') as HTMLElement | null)?.dataset.group || '';
+  const keyOf = (tile: HTMLElement) => `${group}|${tile.querySelector('.nbv-fam__label')?.textContent || ''}`;
+  /** `quiet`: reopen after a repaint, in place, with no motion, scrolling or focus change. */
+  const openFamily = (tile: HTMLDetailsElement, quiet = false) => {
+    const scroller = scrollerOf(tile);
+    const before = tile.getBoundingClientRect().top;
+    const prev = openTile;
+    const sameRow = !!(drawer && prev && prev.parentElement === tile.parentElement && rowEnd(prev) === rowEnd(tile));
+    const fromH = sameRow && drawer ? drawer.offsetHeight : 0;
+    if (prev) prev.open = false;
+    if (drawer && !sameRow) drawer.remove();
+    if (!drawer || !sameRow) {
+      drawer = doc.createElement('div');
+      drawer.setAttribute('role', 'region');
+      drawer.tabIndex = -1;
+    }
+    const d = drawer!;
+    tile.open = true;
+    openTile = tile;
+    openFamilyKey = keyOf(tile);
+    d.setAttribute('aria-label', tile.querySelector('.nbv-fam__label')?.textContent || '');
+    const kind = [...tile.classList].find((c) => /^nbv-fam--(root|prefix|suffix|deep|char)$/.test(c)) || '';
+    d.className = `nbv-drawer${kind ? ` ${kind.replace('nbv-fam', 'nbv-drawer')}` : ''}`;
+    const words = tile.querySelector('.nbv-fam__words')?.cloneNode(true) as HTMLElement | undefined;
+    d.innerHTML = `<button type="button" class="nbv-drawer__close" data-fam-close aria-label="Close">${ZOOM_ICON.close}</button>`;
+    if (words) d.prepend(words);
+    place(tile);
+    if (quiet) return;
+    // Whatever closed above it, the tile stays under the pointer.
+    const shift = tile.getBoundingClientRect().top - before;
+    if (Math.abs(shift) > 0.5) scroller.scrollTop += shift;
+    // Keyboard and screen-reader users land in the words; the page itself does not jump.
+    d.focus({ preventScroll: true });
+    // A drawer that would open below the fold or under the phone's bar is brought into view,
+    // never pushing the tile off the top.
+    const full = d.offsetHeight;
+    const dTop = d.getBoundingClientRect().top;
+    grow(d, fromH);
+    revealBelow(tile, dTop, Math.min(full, 160), tile.getBoundingClientRect().top);
+  };
+  const closeFamily = () => {
+    if (!openTile) return;
+    openTile.open = false;
+    openTile = null;
+    openFamilyKey = '';
+    const d = drawer;
+    drawer = null;
+    if (!d) return;
+    const ms = reduced() ? 120 : 260;
+    d.style.overflow = 'hidden';
+    d.animate([{ height: `${d.offsetHeight}px`, opacity: 1 }, { height: '0px', opacity: 0 }], { duration: ms, easing: EASE_OUT, fill: 'forwards' });
+    // A timer, not onfinish: a hidden page holds animations, and the drawer must still go.
+    win.setTimeout(() => d.remove(), ms + 20);
+  };
+  if (fams) {
+    fams.classList.add('is-live');
+    on(fams, 'click', (ev: any) => {
+      const t = ev.target as HTMLElement;
+      if (t.closest?.('[data-fam-close]')) {
+        closeFamily();
+        return;
+      }
+      const head = t.closest?.('summary.nbv-fam__head') as HTMLElement | null;
+      if (!head || !fams.contains(head)) return;
+      ev.preventDefault();
+      const tile = head.parentElement as HTMLDetailsElement;
+      if (tile === openTile) closeFamily();
+      else openFamily(tile);
+    });
+    on(fams, 'keydown', (ev: any) => {
+      if (ev.key !== 'Escape' || !openTile) return;
+      const tile = openTile;
+      closeFamily();
+      (tile.querySelector('summary') as HTMLElement | null)?.focus();
+      ev.stopPropagation();
+    });
+    const RO = win.ResizeObserver;
+    if (RO) {
+      let lastW = fams.clientWidth;
+      ro = new RO(() => {
+        const w = fams.clientWidth;
+        if (Math.abs(w - lastW) < 1) return;
+        lastW = w;
+        if (openTile) place(openTile);
+      });
+      ro.observe(fams);
+    }
+    // A repaint (the phone repaints on resume, the desktop when origins finish tracing) brings
+    // back the same family open.
+    if (openFamilyKey) {
+      const again = ([...fams.querySelectorAll('.nbv-fam')] as HTMLDetailsElement[]).find((x) => keyOf(x) === openFamilyKey);
+      if (again) openFamily(again, true);
+      else openFamilyKey = '';
+    }
+  }
+  if (abc) {
+    on(abc, 'click', (ev: any) => {
+      const b = (ev.target as HTMLElement).closest?.('[data-fam-jump]') as HTMLElement | null;
+      if (!b) return;
+      const sec = [...root.querySelectorAll('.nbv-letter')].find((s: any) => s.dataset.letter === b.dataset.famJump) as HTMLElement | undefined;
+      sec?.scrollIntoView({ block: 'start', behavior: reduced() ? 'auto' : 'smooth' });
+    });
+  }
+
+  /* Word trees open large */
+  if (forest) {
+    on(forest, 'click', (ev: any) => {
+      const t = ev.target as Element;
+      if (t.closest?.('[data-act]')) return;
+      const grove = t.closest?.('.nbv-grove') as HTMLElement | null;
+      if (grove) openInspector(grove);
+    });
+  }
+
+  function openInspector(grove: HTMLElement): void {
+    closeInspector?.();
+    const svg0 = grove.querySelector('svg.nbv-tree-svg') as SVGSVGElement | null;
+    if (!svg0) return;
+    const [, , W, H] = (svg0.getAttribute('viewBox') || '0 0 300 200').split(/\s+/).map(Number);
+    const base = grove.querySelector('.nbv-tree__base') as SVGGElement | null;
+    const label = base?.getAttribute('data-q') || '';
+    const bx = Number((base?.getAttribute('transform') || '').match(/translate\(([\d.]+)/)?.[1]) || W / 2;
+    const n = grove.querySelectorAll('.nbv-tree__word').length;
+    const overlay = doc.createElement('div');
+    overlay.className = 'nbv nbv-inspect';
+    overlay.innerHTML = `<div class="nbv-inspect__sheet" role="dialog" aria-modal="true" aria-label="${esc(label)}">
+      <header class="nbv-inspect__bar">
+        <h2 class="nbv-inspect__title">${esc(label)}</h2><span class="nbv-inspect__n">${n} words</span>
+        <div class="nbv-inspect__tools">
+          <button type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out">${ZOOM_ICON.out}</button>
+          <button type="button" data-zoom="fit" aria-label="Fit" title="Fit">${ZOOM_ICON.fit}</button>
+          <button type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in">${ZOOM_ICON.in}</button>
+          <button type="button" class="nbv-inspect__close" data-inspect-close aria-label="Close" title="Close">${ZOOM_ICON.close}</button>
+        </div>
+      </header>
+      <div class="nbv-inspect__view">${svg0.outerHTML}</div>
+    </div>`;
+    doc.body.appendChild(overlay);
+    const sheet = overlay.querySelector('.nbv-inspect__sheet') as HTMLElement;
+    const view = overlay.querySelector('.nbv-inspect__view') as HTMLElement;
+    const svg = view.querySelector('svg') as SVGSVGElement;
+    svg.removeAttribute('width');
+    svg.removeAttribute('height');
+    svg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
+    const io = new AbortController();
+    const onI = (el: any, type: string, fn: (e: any) => void, opts: AddEventListenerOptions = {}) =>
+      el.addEventListener(type, fn, { ...opts, signal: io.signal });
+
+    // The view: `s` screen pixels per tree unit, and the tree point (x, y) at the top-left corner.
+    let s = 1;
+    let x = 0;
+    let y = 0;
+    let tween = 0;
+    const size = () => ({ w: view.clientWidth || 320, h: view.clientHeight || 320 });
+    const fitScale = () => {
+      const { w, h } = size();
+      return Math.min(w / W, h / H) * 0.92;
+    };
+    const minS = () => Math.min(fitScale(), 1) * 0.75;
+    const MAX_S = 5;
+    const clampS = (v: number) => Math.min(MAX_S, Math.max(minS(), v));
+    const draw = () => {
+      const { w, h } = size();
+      svg.setAttribute('viewBox', `${x.toFixed(2)} ${y.toFixed(2)} ${(w / s).toFixed(2)} ${(h / s).toFixed(2)}`);
+    };
+    /** Keep some of the tree on screen however far it is dragged. */
+    const bound = () => {
+      const { w, h } = size();
+      const vw = w / s;
+      const vh = h / s;
+      x = Math.min(Math.max(x, -vw * 0.8), W - vw * 0.2);
+      y = Math.min(Math.max(y, -vh * 0.8), H - vh * 0.2);
+    };
+    const home = (): { s: number; x: number; y: number } => {
+      const { w, h } = size();
+      // Fit when the labels stay readable; otherwise start at full size on the trunk.
+      const ns = Math.min(2.4, Math.max(fitScale(), 0.9));
+      const vw = w / ns;
+      const vh = h / ns;
+      const nx = W <= vw ? W / 2 - vw / 2 : Math.min(Math.max(bx - vw / 2, 0), W - vw);
+      const ny = H <= vh ? H / 2 - vh / 2 : H - vh;
+      return { s: ns, x: nx, y: ny };
+    };
+    const go = (to: { s: number; x: number; y: number }, animate: boolean) => {
+      win.cancelAnimationFrame(tween);
+      if (!animate) {
+        ({ s, x, y } = to);
+        bound();
+        draw();
+        return;
+      }
+      const from = { s, x, y };
+      const ms = reduced() ? 120 : 260;
+      const t0 = win.performance.now();
+      const step = (now: number) => {
+        const k = Math.min(1, Math.max(0, (now - t0) / ms));
+        const e = 1 - Math.pow(1 - k, 3);
+        s = from.s + (to.s - from.s) * e;
+        x = from.x + (to.x - from.x) * e;
+        y = from.y + (to.y - from.y) * e;
+        draw();
+        if (k < 1) tween = win.requestAnimationFrame(step);
+        else bound();
+      };
+      tween = win.requestAnimationFrame(step);
+    };
+    /** Zoom to `ns` keeping the tree point under (px, py) in place. */
+    const zoomAt = (ns: number, px: number, py: number, animate: boolean) => {
+      ns = clampS(ns);
+      const tx = x + px / s;
+      const ty = y + py / s;
+      go({ s: ns, x: tx - px / ns, y: ty - py / ns }, animate);
+    };
+    const local = (ev: any) => {
+      const r = view.getBoundingClientRect();
+      return { px: ev.clientX - r.left, py: ev.clientY - r.top };
+    };
+    go(home(), false);
+
+    onI(view, 'wheel', (ev: any) => {
+      ev.preventDefault();
+      const { px, py } = local(ev);
+      zoomAt(s * Math.exp(-ev.deltaY * (ev.ctrlKey ? 0.01 : 0.0018)), px, py, false);
+    }, { passive: false });
+    const pts = new Map<number, { x: number; y: number }>();
+    let moved = 0;
+    let pinch = 0;
+    onI(view, 'pointerdown', (ev: any) => {
+      if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+      pts.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (pts.size === 1) moved = 0;
+      if (pts.size === 2) {
+        const [a, b] = [...pts.values()];
+        pinch = Math.hypot(a.x - b.x, a.y - b.y);
+      }
+      win.cancelAnimationFrame(tween);
+    });
+    onI(view, 'pointermove', (ev: any) => {
+      const p = pts.get(ev.pointerId);
+      if (!p) return;
+      const dx = ev.clientX - p.x;
+      const dy = ev.clientY - p.y;
+      p.x = ev.clientX;
+      p.y = ev.clientY;
+      if (pts.size === 1) {
+        moved += Math.abs(dx) + Math.abs(dy);
+        if (moved > 4) {
+          view.setPointerCapture?.(ev.pointerId);
+          view.classList.add('is-panning');
+        }
+        x -= dx / s;
+        y -= dy / s;
+        bound();
+        draw();
+      } else if (pts.size === 2) {
+        moved = 99;
+        const [a, b] = [...pts.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        const r = view.getBoundingClientRect();
+        if (pinch) zoomAt(s * (d / pinch), (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top, false);
+        pinch = d;
+      }
+    });
+    const lift = (ev: any) => {
+      pts.delete(ev.pointerId);
+      if (pts.size < 2) pinch = 0;
+      if (!pts.size) view.classList.remove('is-panning');
+    };
+    onI(view, 'pointerup', lift);
+    onI(view, 'pointercancel', lift);
+    onI(view, 'dblclick', (ev: any) => {
+      const { px, py } = local(ev);
+      zoomAt(s * 1.8, px, py, true);
+    });
+    onI(overlay, 'click', (ev: any) => {
+      const t = ev.target as Element;
+      if (t === overlay || t.closest?.('[data-inspect-close]')) {
+        close();
+        return;
+      }
+      const z = (t.closest?.('[data-zoom]') as HTMLElement | null)?.dataset.zoom;
+      if (z) {
+        const { w, h } = size();
+        if (z === 'fit') go(home(), true);
+        else zoomAt(s * (z === 'in' ? 1.5 : 1 / 1.5), w / 2, h / 2, true);
+        return;
+      }
+      // A word: look it up through the tree on the page, which the app is listening on.
+      const word = t.closest?.('.nbv-tree__word[data-q]') as Element | null;
+      if (!word || moved > 4) return;
+      const q = word.getAttribute('data-q') || '';
+      const orig = [...grove.querySelectorAll('.nbv-tree__word')].find((g) => g.getAttribute('data-q') === q);
+      close();
+      orig?.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    onI(doc, 'keydown', (ev: any) => {
+      // Ctrl and Cmd shortcuts (the window's own zoom among them) are left to the app.
+      if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      const { w, h } = size();
+      const pan = 60 / s;
+      if (ev.key === 'Escape') close();
+      else if (ev.key === '+' || ev.key === '=') zoomAt(s * 1.5, w / 2, h / 2, true);
+      else if (ev.key === '-' || ev.key === '_') zoomAt(s / 1.5, w / 2, h / 2, true);
+      else if (ev.key === '0') go(home(), true);
+      else if (ev.key === 'ArrowLeft') go({ s, x: x - pan, y }, true);
+      else if (ev.key === 'ArrowRight') go({ s, x: x + pan, y }, true);
+      else if (ev.key === 'ArrowUp') go({ s, x, y: y - pan }, true);
+      else if (ev.key === 'ArrowDown') go({ s, x, y: y + pan }, true);
+      else if (ev.key === 'Tab') {
+        // Focus stays inside the sheet while it is open.
+        const f = [...sheet.querySelectorAll('button')] as HTMLElement[];
+        const i = f.indexOf(doc.activeElement as HTMLElement);
+        f[(i + (ev.shiftKey ? -1 : 1) + f.length) % f.length]?.focus();
+      } else return;
+      ev.preventDefault();
+      ev.stopPropagation();
+    }, { capture: true });
+    const RO = win.ResizeObserver;
+    let vro: any = null;
+    if (RO) {
+      vro = new RO(() => draw());
+      vro.observe(view);
+    }
+    const ms = reduced() ? 120 : 280;
+    overlay.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms, easing: EASE_OUT });
+    sheet.animate([{ opacity: 0, transform: 'translateY(14px) scale(0.97)' }, { opacity: 1, transform: 'none' }], { duration: ms + 60, easing: SHEET_EASE });
+    (overlay.querySelector('[data-inspect-close]') as HTMLElement | null)?.focus({ preventScroll: true });
+
+    function close(): void {
+      if (closeInspector !== close) return;
+      closeInspector = null;
+      rebindInspector = null;
+      inspectorWord = '';
+      io.abort();
+      vro?.disconnect();
+      win.cancelAnimationFrame(tween);
+      const out = reduced() ? 100 : 180;
+      overlay.style.pointerEvents = 'none';
+      overlay.animate([{ opacity: 1 }, { opacity: 0 }], { duration: out, easing: EASE_OUT, fill: 'forwards' });
+      win.setTimeout(() => overlay.remove(), out + 20);
+      (grove.querySelector('[data-tree-open]') as HTMLElement | null)?.focus({ preventScroll: true });
+    }
+    closeInspector = close;
+    inspectorWord = label;
+    // A repaint replaced the tree on the page: lookups and focus go to the new one.
+    rebindInspector = (g) => {
+      grove = g;
+    };
+  }
+
+  detachFamilies = () => {
+    ac.abort();
+    ro?.disconnect();
+  };
 }

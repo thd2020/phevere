@@ -68,3 +68,56 @@ export function dayStart(t: number): number {
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 }
+
+/* ------------------------------------------------------------ scrolling */
+
+/** The element that scrolls a view: its nearest scrolling ancestor, or the page. */
+export function scrollerOf(el: any): any {
+  const doc = el.ownerDocument;
+  const win = doc.defaultView;
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const oy = win.getComputedStyle(p).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+  }
+  return doc.scrollingElement || doc.documentElement;
+}
+
+/**
+ * The part of the screen a view can be seen in, between the bars fixed over it: the phone's
+ * bottom navigation and a sticky header. Found by looking at what sits on the screen's top and
+ * bottom edges, so neither shell has to say.
+ */
+export function visibleBand(el: any): { top: number; bottom: number } {
+  const doc = el.ownerDocument;
+  const win = doc.defaultView;
+  const scroller = scrollerOf(el);
+  const page = scroller === doc.scrollingElement || scroller === doc.documentElement;
+  const box = page ? { top: 0, bottom: win.innerHeight } : scroller.getBoundingClientRect();
+  let top = box.top;
+  let bottom = box.bottom;
+  const x = win.innerWidth / 2;
+  const fixedAt = (y: number): any[] =>
+    (doc.elementsFromPoint?.(x, y) || []).filter((n: any) => {
+      if (el.contains(n) || n.contains(el)) return false;
+      const pos = win.getComputedStyle(n).position;
+      return pos === 'fixed' || pos === 'sticky';
+    });
+  for (const n of fixedAt(bottom - 2)) bottom = Math.min(bottom, n.getBoundingClientRect().top);
+  for (const n of fixedAt(top + 2)) top = Math.max(top, n.getBoundingClientRect().bottom);
+  return { top, bottom };
+}
+
+/**
+ * Scroll just enough that `want` px from `y` (a screen y) are on screen, without pushing `keep`
+ * (another screen y, the thing the reader clicked) above the visible top. Smooth unless reduced.
+ */
+export function revealBelow(el: any, y: number, want: number, keep: number): void {
+  const win = el.ownerDocument.defaultView;
+  const { top, bottom } = visibleBand(el);
+  const need = y + want - (bottom - 12);
+  const room = keep - (top + 12);
+  const by = Math.min(need, room);
+  if (by <= 1) return;
+  const reduced = !!win.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  scrollerOf(el).scrollBy({ top: by, behavior: reduced ? 'auto' : 'smooth' });
+}

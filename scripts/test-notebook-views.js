@@ -65,6 +65,21 @@ assert.deepEqual(views.familyGroupings(a), ['root', 'prefix', 'suffix', 'origin'
 const fhtml = views.familiesHtml(a, 'root');
 assert.match(fhtml, /in<b>spect<\/b>or/);
 assert.match(views.familiesHtml(a, 'tree'), /nationality/);
+// Families file A to Z under letter headings; tiles are sized by family size; trees open large.
+assert.match(fhtml, /<section class="nbv-letter" data-letter="S"><h3 class="nbv-letter__head">S<\/h3>/);
+assert.match(fhtml, /class="nbv-fam nbv-fam--root nbv-fam--s"/);
+assert.equal(views.familyLetter('-tion'), 'T');
+assert.equal(views.familyLetter('*bʰer-'), 'B');
+assert.equal(views.familyLetter('éco'), 'E');
+assert.equal(views.familyLetter('対'), '#');
+const letters = [...views.familiesHtml(a, 'prefix').matchAll(/data-letter="([^"]*)"/g)].map((m) => m[1]);
+assert.deepEqual(letters, [...letters].sort(), 'letter sections in alphabetical order');
+assert.doesNotMatch(views.familiesHtml(a, 'char'), /nbv-letter__head/);
+// A family that knows its other spellings shows them after the main one; without them, none.
+const withForms = { ...a, families: a.families.map((f) => (f.key === 'root:spect' ? { ...f, forms: ['spect', 'spic', 'spec'] } : f)) };
+assert.match(views.familiesHtml(withForms, 'root'), /<span class="nbv-fam__forms"><span>spic<\/span><span>spec<\/span><\/span>/);
+assert.doesNotMatch(fhtml, /nbv-fam__forms/);
+assert.match(views.familiesHtml(a, 'tree'), /data-tree-open aria-label="Open the nation tree"/);
 
 // Map: deterministic layout, every edge points at real nodes.
 const m1 = views.layoutNotebookMap(a, { kinds: ['root', 'char'] });
@@ -122,7 +137,9 @@ assert.equal(folded[0].label, 'December 2025');
 assert.equal(folded.reduce((n, p) => n + p.ids.length, 0), 12);
 
 const chtml = views.cardsHtml(entries, a, new Set(['id1']), 'scatter', now);
-assert.match(chtml, /<div class="nbv-table" data-layout="scatter">/);
+assert.match(chtml, /<div class="nbv-table" data-layout="scatter" data-scope="[^"]+">/);
+// Each list has its own scope, so an open pile in My words is not open in a book.
+assert.notEqual(chtml.match(/data-scope="([^"]+)"/)[1], views.cardsHtml(entries.slice(1), a, new Set(), 'scatter', now).match(/data-scope="([^"]+)"/)[1]);
 assert.match(chtml, /data-cards-layout="piles"[^>]*aria-pressed="false"/);
 assert.match(chtml, /data-cards-layout="scatter"[^>]*aria-pressed="true"/);
 assert.match(chtml, /data-cards-layout="grid"/);
@@ -131,6 +148,12 @@ assert.equal((chtml.match(/<article class="nbv-card[^"]*" data-act="lookup" data
 assert.match(chtml, /<article class="nbv-card" data-act="lookup" data-q="inspect"[^>]*tabindex="0"/);
 assert.equal((chtml.match(/<button type="button" class="nbv-card__flip" data-act="nb-flip"/g) || []).length, entries.length);
 assert.match(chtml, /class="nbv-card is-flipped" data-act="lookup" data-q="inspector"/);
+// The picture and the back turn the card over; Look up on the back opens the lookup.
+assert.equal((chtml.match(/class="nbv-card__pic" data-act="nb-flip"/g) || []).length, entries.length);
+assert.equal((chtml.match(/class="nbv-card__face nbv-card__back" data-act="nb-flip"/g) || []).length, entries.length);
+assert.match(chtml, /class="nbv-card__look" data-act="lookup" data-q="inspector" tabindex="0"/);
+assert.match(chtml, /class="nbv-card__look" data-act="lookup" data-q="inspect" tabindex="-1"/);
+assert.match(chtml, /class="nbv-pile[^"]*" data-pile="week" aria-expanded="false"/);
 assert.match(chtml, /class="nbv-pile[^"]*" data-pile="week"/);
 assert.match(chtml, /This week<b>\d+<\/b>/);
 assert.match(chtml, /data-img-lemma="spectator"/);
