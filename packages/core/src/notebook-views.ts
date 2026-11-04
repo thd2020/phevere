@@ -178,7 +178,9 @@ export function fillWordImages(root: any, fetchImage: (lemma: string, lang?: str
         load(it.target);
       }
     },
-    { rootMargin: '200px' },
+    // About two screens ahead, so the next cards' pictures are chosen before they scroll in;
+    // core batches the requests of boxes that arrive together.
+    { rootMargin: '800px 0px' },
   );
   boxes.forEach((b) => io.observe(b));
 }
