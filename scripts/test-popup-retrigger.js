@@ -22,6 +22,7 @@ app.on('window-all-closed', () => {});
 const directory = process.env.PHEVERE_RETRIGGER_TEST_DIR;
 assert.ok(directory, 'Run this test through Node so cleanup follows Electron exit');
 app.setPath('userData', directory);
+require('./electron-test-env')(app);
 const source = fs.readFileSync(path.join(__dirname, '../src/index.ts'), 'utf8');
 const ast = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true);
 function declaration(name) {
