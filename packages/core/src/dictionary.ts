@@ -78,7 +78,7 @@ import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigur
 import { registerHeadwordResolver } from './vocab-store';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
 import { isGrammaticalFormOfGloss, splitSurfaceAndLemma, sameLookupFold, stripGlossText } from './lookup-policy';
-import { formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, resolveFormOf } from './form-of';
+import { formLine, formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, resolveFormOf } from './form-of';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { lookupMorpheme, morphemeOffers, parseMorphemeQuery } from './morpheme';
 import { groupYoudaoEtymologies, serializeEtymologySources } from './etymology-sources';
@@ -714,7 +714,9 @@ export class DictionaryService extends BaseService {
           // tagged page: looked up again ("paparazzi" kept as "A paparazzo." from the Free Dictionary).
           const meta = value?.metadata || {};
           const stalePlural =
-            !!value && !meta.formChecked && !meta.formFrom && (mayBeFormOf(value) || pointsElsewhere(value) || (saved?.savedAt || 0) < FORM_RULES_SINCE);
+            (!!value && !meta.formChecked && !meta.formFrom && (mayBeFormOf(value) || pointsElsewhere(value) || (saved?.savedAt || 0) < FORM_RULES_SINCE)) ||
+            // A form opened as its lemma before forms said what they are ("ran · past tense of run").
+            (!!meta.formFrom && !meta.formLineChecked);
           if (saved && value && left > 0 && !staleNoIpa && !stalePlural && !this.isUncacheableResult(value)) {
             const remaining = PERSISTED_CACHE_TTL_MS - (Date.now() - saved.savedAt);
             const ttl = this.isIncompleteSourceCache(value) ? Math.min(PARTIAL_CACHE_TTL_MS, remaining) : this.cacheTimeout;
@@ -967,7 +969,10 @@ export class DictionaryService extends BaseService {
       if (!early) this.noteFormDecision(decisionKey, decision.then((d) => d.lemma));
       formCheck = decision.then(({ lemma, sure }) => {
         if (lemma && foldLookupKey(lemma) !== foldLookupKey(query.trimmed)) {
-          return instead(lemma, { noFormRedirect: true }, { formFrom: query.trimmed });
+          // An irregular form spelled unlike its lemma ("ran", "was", "mice") says what it is above
+          // the entry, as learner dictionaries give it a short entry of its own.
+          const line = formLine(headword, 'en');
+          return instead(lemma, { noFormRedirect: true }, { formFrom: query.trimmed, formLineChecked: true, ...(line ? { formLine: line } : {}) });
         }
         if (sure) notAForm = true;
         return null;

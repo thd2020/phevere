@@ -121,3 +121,15 @@ export function wordFamilyHtml(groups: WordFamilyGroup[] | null | undefined, lin
   }
   return parts.length ? `<div class="lx-family">${parts.join('')}</div>` : '';
 }
+
+/**
+ * "ran /ræn/ · past tense of run", above the entry an irregular form opens. Learner dictionaries
+ * give such forms a short entry of their own; here the line says the same and the entry follows.
+ */
+export function formLineHtml(result: { metadata?: Record<string, unknown> } | null | undefined): string {
+  const line = result?.metadata?.formLine as { form?: string; ipa?: string; label?: string } | undefined;
+  if (!line?.form || !line.label) return '';
+  return `<p class="lx-formline"><span class="lx-formline__form">${esc(line.form)}</span>${
+    line.ipa ? `<span class="lx-formline__ipa">${esc(line.ipa)}</span>` : ''
+  }<span class="lx-formline__label">${esc(line.label)}</span></p>`;
+}

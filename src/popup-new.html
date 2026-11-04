@@ -3798,6 +3798,7 @@ function startAutoCloseTimeout() {
           return `
             <div class="lexicon-stack">
                 <div class="result-card lexicon-block lexicon-block--headword">
+                  ${lexiconParts && lexiconParts.formLineHtml ? lexiconParts.formLineHtml(result) : ''}
                   <div class="result-word">${escapeHtml(result.word)}</div>
                   ${lexiconParts && lexiconParts.morphemeOfferHtml ? lexiconParts.morphemeOfferHtml(result, 'lookup') : ''}
                   ${formatPronunciationHtml(result)}
