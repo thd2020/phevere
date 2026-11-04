@@ -1375,7 +1375,7 @@ export function glossHeads(gloss: string, lemma = ''): string[] {
   const phrase = m ? m[1] : plain;
   if (!/,|\s(?:or|and)\s/.test(phrase)) {
     const h = glossHead(gloss, lemma);
-    return h ? [h] : [];
+    return h && !GENERIC_HEADS.has(h) ? [h] : [];
   }
   const parts = phrase.split(/,|\s+(?:or|and)\s+/);
   const heads: string[] = [];
