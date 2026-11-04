@@ -1146,24 +1146,12 @@ export class DictionaryService extends BaseService {
       sources: []
     };
 
-    const suggestions = await this.fetchSpellingSuggestions(query.trimmed).catch((): string[] => []);
-    // A misspelling one or two letters off ("recieve") is looked up as the word it meant,
-    // as search engines do, so the page and the saved word show the right spelling.
-    const corrected = detectedLanguage === 'en' && !opts?.noCorrection ? closestSpelling(query.trimmed, suggestions) : null;
-    if (corrected) {
-      const fixed = await this.lookupWithCandidatesOnce(
-        normalizeQuery(corrected),
-        targetLanguage,
-        detectedLanguage,
-        enabledSources,
-        holder,
-        { ...(opts || {}), noCorrection: true },
-      ).catch((): null => null);
-      if (fixed && this.hasRealDefinitions(fixed)) {
-        fixed.metadata = { ...(fixed.metadata || {}), correctedFrom: query.trimmed, originalSelection: query.raw };
-        return fixed;
-      }
-    }
+    const found = await this.fetchSpellingSuggestions(query.trimmed).catch((): string[] => []);
+    // A word with no entry is not swapped for a guess ("coverness" for governess): the page
+    // says "Did you mean …?" with the closest spelling first, as Oxford and Merriam-Webster do.
+    // Misspellings Wiktionary records ("idiosyncracy") still open their word (misspellingTarget).
+    const closest = detectedLanguage === 'en' ? closestSpelling(query.trimmed, found) : null;
+    const suggestions = closest ? [closest, ...found.filter((w) => w !== closest)] : found;
     fallback.metadata = {
       ...(fallback.metadata || {}),
       isSentence: false,
@@ -3145,8 +3133,9 @@ export class DictionaryService extends BaseService {
       }
     }
     if (entries.length) return { text: entries.join('\n\n') };
-    // "café" comes back as { replaced: "cafe" } with no entries.
-    if (replaced && !redirected && replaced !== word) return this.fetchEtymonlineApi(replaced, true);
+    // "café" comes back as { replaced: "cafe" } with no entries. Etymonline also "replaces" a word
+    // it lacks with a different one ("coverness" with "cover"); that is a miss, not the word.
+    if (replaced && !redirected && replaced !== word && sameLetters(replaced, word)) return this.fetchEtymonlineApi(replaced, true);
     return {};
   }
 
@@ -4096,3 +4085,9 @@ export const dictionaryService = new DictionaryService();
 
 // A word saved from a lookup is saved as the word the lookup opens ("geese" as goose).
 registerHeadwordResolver((word, lang) => dictionaryService.settledHeadword(word, lang)); 
+
+/** The same word up to accents and case: "café" and "cafe", not "coverness" and "cover". */
+function sameLetters(a: string, b: string): boolean {
+  const fold = (x: string) => foldLookupKey(x.normalize('NFD').replace(/\p{M}/gu, ''));
+  return fold(a) === fold(b);
+}

@@ -11,7 +11,7 @@
  */
 import './fonts';
 import '@phevere/core/lexicon-parts.css';
-import { formLineHtml, inflectionsHtml, wordFamilyHtml } from '@phevere/core/lexicon-parts';
+import { didYouMeanHtml, formLineHtml, inflectionsHtml, wordFamilyHtml } from '@phevere/core/lexicon-parts';
 import { linkHtml, linkText, wikiLinkLookup } from '@phevere/core/text-links';
 import { morphemeOfferHtml, morphemeSections } from '@phevere/core/morpheme-view';
 import { loadWordbook } from '@phevere/core/wordbooks';
@@ -22,6 +22,7 @@ import { loadWordbook } from '@phevere/core/wordbooks';
   inflectionsHtml,
   wordFamilyHtml,
   formLineHtml,
+  didYouMeanHtml,
   linkHtml,
   linkText,
   wikiLinkLookup,

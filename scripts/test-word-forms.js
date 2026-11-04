@@ -31,7 +31,7 @@ function load(name) {
 
 const fo = load('form-of');
 const { inflectionsFromKaikki, selectInflections, weighForms } = load('inflections');
-const { inflectionsHtml } = load('lexicon-parts');
+const { inflectionsHtml, didYouMeanHtml } = load('lexicon-parts');
 
 /** A notebook in sql.js with the reported rows, run through the v2 forms migration (vocab-sync.ts). */
 async function savedNotebook(http) {
@@ -220,6 +220,13 @@ assert.equal(fo.dominantLemma(['ax', 'axe', 'axis'], freq, [['ax', 'axe'], ['axi
   assert.deepEqual([...read.labels.get('teach')], ['past tense', 'past participle']);
   assert.equal(read.ipa, '/tɔːt/');
 }
+
+// A word with no entry offers spellings instead of opening a guess.
+assert.equal(didYouMeanHtml({ metadata: {} }, 'act'), '');
+const offer = didYouMeanHtml({ metadata: { suggestions: ['governess', 'coverless', 'cleverness', 'covers'] } }, 'act');
+assert.match(offer, /^<p class="lx-didyoumean">Did you mean <span class="lx-link"[^>]*data-q="governess">governess<\/span>, .*coverless.* or .*cleverness.*\?<\/p>$/);
+assert.doesNotMatch(offer, /covers"/, 'three at most');
+assert.match(didYouMeanHtml({ metadata: { suggestions: ['governess', 'governesses', 'governessy', 'governess cart', 'covertness'] } }, 'act'), /governess<\/span> or .*covertness/, 'no extensions of a suggestion, no phrases');
 
 // Through a fake HTTP client: kaikki pages, then Datamuse for frequencies and for definitions.
 (async () => {

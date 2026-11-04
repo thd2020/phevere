@@ -123,6 +123,26 @@ export function wordFamilyHtml(groups: WordFamilyGroup[] | null | undefined, lin
 }
 
 /**
+ * "Did you mean governess?" under a lookup that found nothing, with up to three spellings to
+ * try, the closest first, as Oxford and Merriam-Webster offer them instead of guessing.
+ */
+export function didYouMeanHtml(result: { metadata?: Record<string, unknown> } | null | undefined, links: LexiconLinks): string {
+  const raw = result?.metadata?.suggestions;
+  // A spelling that only extends an earlier one (governesses, governessy after governess) and a
+  // phrase add nothing to the choice.
+  const words: string[] = [];
+  for (const w of (Array.isArray(raw) ? raw : []).map((x) => String(x || '').trim())) {
+    if (!w || /\s/.test(w) || words.some((x) => w.toLowerCase().startsWith(x.toLowerCase()))) continue;
+    words.push(w);
+    if (words.length === 3) break;
+  }
+  if (!words.length) return '';
+  const linksHtml = words.map((w) => wordLinkHtml(w, esc(w), links, 'lx-link'));
+  const list = linksHtml.length > 1 ? `${linksHtml.slice(0, -1).join(', ')} or ${linksHtml[linksHtml.length - 1]}` : linksHtml[0];
+  return `<p class="lx-didyoumean">Did you mean ${list}?</p>`;
+}
+
+/**
  * "ran /ræn/ · past tense of run", above the entry an irregular form opens. Learner dictionaries
  * give such forms a short entry of their own; here the line says the same and the entry follows.
  */

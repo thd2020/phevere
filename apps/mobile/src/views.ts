@@ -15,6 +15,7 @@ import {
   vocabListHtml,
   inflectionsHtml,
   formLineHtml,
+  didYouMeanHtml,
   wordFamilyHtml,
   linkHtml,
   linkText,
@@ -388,7 +389,7 @@ function lexiconPane(
   own: OwnWords = { mine: [], books: [] },
 ): string {
   const defs = lexiconSenses(result);
-  if (!defs.length) return `<div class="card empty">No definitions found.</div>`;
+  if (!defs.length) return `<div class="card empty">No definitions found.${didYouMeanHtml(result, 'act')}</div>`;
   const indexOf = new Map<Definition, number>(defs.map((d, i) => [d, i]));
 
   const groups = new Map<string, Definition[]>();
