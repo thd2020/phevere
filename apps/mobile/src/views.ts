@@ -905,6 +905,7 @@ export function notebookBody(
       .join(' ')
       .toLowerCase()
       .includes(q);
+  let unfiltered = list;
   if (q) list = list.filter(matches);
   const head = `${switcher}
     <div class="nb-head">
@@ -923,13 +924,15 @@ export function notebookBody(
         .map((e) => (ctx ? { ...e, books: ctx.index.get(e.lemma.trim().toLowerCase()) } : e))
         .sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));
       list = q ? all.filter(matches) : all;
+      if (nb.view === 'map') unfiltered = all;
     }
-    const analysis = analyzeNotebook(list);
+    // The map always holds every word; the search flies to a word on it instead.
+    const analysis = analyzeNotebook(nb.view === 'map' ? unfiltered : list);
     const body =
       nb.view === 'families'
         ? familiesHtml(analysis, nb.group, { tracing: familiesTraceProgress() })
         : nb.view === 'map'
-          ? mapHtml(analysis, nb.mapKinds)
+          ? mapHtml(analysis, nb.mapKinds, { query: filter.trim() })
           : cardsHtml(list, analysis, nb.flipped, nb.cardLayout, undefined, { picFlips: true });
     return `${head}<div class="nbv nbv-body">${body}</div>`;
   }
@@ -953,13 +956,13 @@ function bookScopeBody(words: WordsState, ctx: WordsContext, filter: string, nb:
   let body: string;
   if (nb.view === 'list') body = wordbookListHtml(list, { scope: words.scope, limit: words.limit, filtered: !!q });
   else {
-    const study = nb.view === 'cards' ? scopeStudySet(list) : list;
+    const study = nb.view === 'cards' ? scopeStudySet(list) : nb.view === 'map' ? all : list;
     const analysis = analyzeNotebook(study);
     body =
       nb.view === 'families'
         ? familiesHtml(analysis, nb.group, { tracing: familiesTraceProgress() })
         : nb.view === 'map'
-          ? mapHtml(analysis, nb.mapKinds)
+          ? mapHtml(analysis, nb.mapKinds, { query: filter.trim() })
           : cardsHtml(study, analysis, nb.flipped, nb.cardLayout, undefined, { picFlips: true });
   }
   return `<div class="nbv">${head}</div><div class="nbv nbv-body">${body}</div>`;
