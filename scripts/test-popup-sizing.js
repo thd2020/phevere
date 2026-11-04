@@ -16,6 +16,7 @@ if (!process.versions.electron) {
 
 const { app, BrowserWindow, ipcMain } = require('electron');
 app.on('window-all-closed', () => {}); // The test verifies Close before exiting.
+require('./electron-test-env')(app);
 const ts = require('typescript');
 const moduleUnderTest = { exports: {} };
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(root, 'src/services/popup-size.ts'), 'utf8'), {
