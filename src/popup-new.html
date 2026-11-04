@@ -3812,10 +3812,18 @@ function startAutoCloseTimeout() {
        let savedVocabId = null;
        let savedVocabLemma = null;
 
+       /** The word the lookup opened instead of `text`: glean for "gleaned", receive for "recieve". */
+       function openedAs(text) {
+         var r = currentResult;
+         var m = r && r.metadata;
+         var from = m && (m.formFrom || m.correctedFrom);
+         if (r && r.word && from && foldLookupKey(String(from)) === foldLookupKey(String(text || ''))) return String(r.word);
+         return text;
+       }
+
        function lemmaForSave() {
          return String(
-           currentText ||
-           window['__popupCurrentText'] ||
+           openedAs(currentText || window['__popupCurrentText']) ||
            (currentResult && currentResult.metadata && currentResult.metadata.queriedAs) ||
            (currentResult && currentResult.word) ||
            ''
@@ -3924,7 +3932,7 @@ function startAutoCloseTimeout() {
 
        async function syncVocabHeart(lemma) {
          const word = String(
-           currentText ||
+           openedAs(currentText) ||
            lemma ||
            (currentResult && currentResult.metadata && currentResult.metadata.queriedAs) ||
            (currentResult && currentResult.word) ||
