@@ -29,6 +29,8 @@ import {
   traceNotebookFamilies,
   attachCardTable,
   disposeNotebookMaps,
+  peekSuggestions,
+  suggestWords,
   fetchWordImage,
   fillWordImages,
   startReview,
@@ -75,6 +77,7 @@ import {
   type WordbookSub,
   type WordsContext,
   type WordsScope,
+  type BookSort,
   type CardLayout,
   type FamilyGrouping,
   type MorphKind,
@@ -257,11 +260,16 @@ async function loadAnswerHistory(): Promise<void> {
 
 /* Word books: the list the Words tab shows (My words, a book or All books) and its data. */
 const WORDS_SCOPE_KEY = 'phevere.wordsScope';
+const BOOK_SORT_KEY = 'phevere.bookSort';
+function readBookSort(v: string | null): BookSort {
+  return v === 'recent' || v === 'az' ? v : 'book';
+}
 const wordsState = {
   scope: (readStore(WORDS_SCOPE_KEY) || 'mine') as WordsScope,
   library: false,
   ctx: null as WordsContext | null,
   limit: BOOK_LIST_PAGE,
+  sort: readBookSort(readStore(BOOK_SORT_KEY)),
 };
 let wbSubs: WordbookSub[] = [];
 let wbUserBooks: UserBook[] = [];
@@ -567,6 +575,7 @@ function paint(): void {
   if (keepFocus && q) {
     q.focus();
     if (typeof caret === 'number') q.setSelectionRange(caret, caret);
+    paintSuggest();
   }
   const nbq = document.getElementById('nbq') as HTMLInputElement | null;
   if (keepNbq && nbq) {
@@ -1850,6 +1859,11 @@ function onLexiconPosScroll(): void {
 function sizeLexiconPane(): void {
   const layout = document.querySelector('.lexicon-pos-layout') as HTMLElement | null;
   if (!layout) return;
+  // In the app's own lookup the frame is laid out by CSS (styles.css, .shell-lexicon).
+  if (!stripMode && !layout.closest('.scan-sheet') && layout.closest('.shell-lexicon')) {
+    layout.style.height = '';
+    return;
+  }
   const viewport = window.visualViewport?.height || window.innerHeight;
   const nav = document.querySelector('.nav');
   const bottom = layout.closest('.scan-sheet') ? viewport : nav ? nav.getBoundingClientRect().top : viewport;
@@ -1876,6 +1890,46 @@ function onClick(e: Event): void {
   }
   if (!t) return;
   void handleAct(act || '', t, e);
+}
+
+let suggestSeq = 0;
+
+/** Common words that begin with what is typed, listed under the lookup field. */
+function paintSuggest(): void {
+  const input = document.getElementById('q') as HTMLInputElement | null;
+  const form = input?.closest('form.search');
+  if (!input || !form) return;
+  let list = form.querySelector<HTMLElement>('.suggest');
+  const typed = input.value.trim();
+  const words = document.activeElement === input ? peekSuggestions(typed, 6) : [];
+  if (!words.length) {
+    list?.remove();
+    return;
+  }
+  if (!list) {
+    list = document.createElement('div');
+    list.className = 'suggest';
+    list.setAttribute('role', 'listbox');
+    // Keep the field focused while a row is pressed, so the tap lands.
+    list.addEventListener('pointerdown', (ev) => ev.preventDefault());
+    form.append(list);
+  }
+  list.innerHTML = words
+    .map((w) => {
+      const head = w.toLowerCase().startsWith(typed.toLowerCase()) ? typed.length : 0;
+      return `<button type="button" class="suggest__row" role="option" data-act="suggest" data-word="${esc(w)}">${esc(w.slice(0, head))}<b>${esc(w.slice(head))}</b></button>`;
+    })
+    .join('');
+}
+
+function onQueryInput(): void {
+  paintSuggest();
+  const input = document.getElementById('q') as HTMLInputElement | null;
+  const asked = input?.value || '';
+  const seq = ++suggestSeq;
+  void suggestWords(asked).then(() => {
+    if (seq === suggestSeq) paintSuggest();
+  });
 }
 
 async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
@@ -1964,6 +2018,14 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'ocr':
       await runOcr();
       return;
+    case 'suggest': {
+      const word = t.dataset.word || '';
+      if (!word) return;
+      draft = word;
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      await lookup(word);
+      return;
+    }
     case 'scan-close':
       scan = null;
       scanSheet = 'closed';
@@ -2224,6 +2286,12 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       await setWordbookGoal(t.dataset.book || '', Number(t.dataset.goal) || 10);
       nbState.review = null;
       await refreshWords();
+      paint();
+      return;
+    case 'wb-sort':
+      wordsState.sort = readBookSort(t.dataset.sort || '');
+      writeStore(BOOK_SORT_KEY, wordsState.sort);
+      wordsState.limit = BOOK_LIST_PAGE;
       paint();
       return;
     case 'wb-more':
@@ -2612,6 +2680,7 @@ function onChange(e: Event): void {
   }
   if (el.id === 'q') {
     draft = (el as HTMLInputElement).value;
+    if (e.type === 'input') onQueryInput();
   } else if (el.id === 'nbq') {
     notebookFilter = (el as HTMLInputElement).value;
     paint();
@@ -2725,6 +2794,12 @@ export async function startApp(): Promise<void> {
   root.addEventListener('submit', onSubmit);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onChange);
+  root.addEventListener('focusin', (e) => {
+    if ((e.target as HTMLElement).id === 'q' && (e.target as HTMLInputElement).value.trim()) onQueryInput();
+  });
+  root.addEventListener('focusout', (e) => {
+    if ((e.target as HTMLElement).id === 'q') setTimeout(paintSuggest, 0);
+  });
   // Settings disclosures stay open across repaints.
   root.addEventListener('toggle', (e) => {
     const d = e.target as HTMLDetailsElement | null;

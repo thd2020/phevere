@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Phone lookup (2026-11-04): the word, its pronunciations and the source tabs stay fixed and only the definitions scroll, so scrolling to the end of a long entry no longer pushes the word off the top. Pronunciations sit on one row that scrolls sideways, which leaves more room for the definitions.
+- Word book lists (2026-11-04): a book's List can be ordered by the book's own order, by the words you met most recently, or A to Z, and each word keeps its place number in the book. The book's header no longer carries the New a day chips (the daily goal lives in Learn), and Remove book is now a red close button on the book's chip in the switcher: it shows when you point at the chip on the desktop, and on the open book's chip on a phone.
+
 ### Added
 
+- Search suggestions (2026-11-04): typing in the desktop search field or the phone's lookup field lists the commonest words that begin with what you typed, ranked by how often they are used in English rather than alphabetically. Plurals and past tenses of a listed word are left out, and a misspelling such as "recieve" or "accomodate" suggests the right spelling. The list works offline from the word books and widens online.
 - Linked words (2026-11-04): every word in a lookup opens its own lookup, on the desktop pop-up, the desktop lookup window and the phone. That covers definitions, examples, synonyms and antonyms, the etymology text and the older forms in the word history, and the forms in Forms. The words look like plain text until you point at or tap one, as in Apple's Dictionary. Back and Forward step through them like any other lookup, and selecting text in a definition still selects it instead of opening a word. Chinese and Japanese text, which has no spaces between words, stays plain.
 - Word part pages (2026-11-04): prefixes, suffixes, Latin and Greek roots and Proto-Indo-European roots have their own pages. Look up "ob-", "-ant", "-fac-" or "*bʰeh₂-", or tap a part under Built from, in an etymology or in a word history. A prefix or suffix page shows its senses and pronunciation from Wiktionary, its other spellings (oc-, op- for ob-), its origin and usage notes, the words in My words and in your word books that are built on it, the English words Wiktionary lists with it, and related parts. A Proto-Indo-European root shows each of its meanings, the English words Etymonline traces to it, and its descendants in Latin, Greek, Sanskrit and the other languages Wiktionary lists. A word that is also a part, such as "con" or "form", opens as a word and links to the part's page under the headword.
 
