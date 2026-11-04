@@ -131,8 +131,12 @@ const PARTIAL_PERSIST_TTL_MS = 24 * 60 * 60 * 1000;
 const FORM_CHECK_MS = 3500;
 /** Longest a result that may be a form is held back while that page is on its way. */
 const FORM_HOLD_MS = 1200;
-/** Results saved before forms opened as their word are looked up again once (2026-11-04). */
-const FORM_RULES_SINCE = Date.UTC(2026, 10, 4, 12);
+/**
+ * Stored on every result saved since forms opened as their word (2026-11-04); a saved result
+ * without it is looked up again once. A mark, not a date: partial results are saved with an
+ * earlier time so they expire sooner.
+ */
+const FORM_RULES = 2;
 
 /** A sense of any source that points at another headword: "plural of paparazzo", "A paparazzo." */
 function pointsElsewhere(result: DictionaryResult | null | undefined): boolean {
@@ -682,6 +686,7 @@ export class DictionaryService extends BaseService {
         const partial = this.isIncompleteSourceCache(r);
         const ttl = partial ? PARTIAL_CACHE_TTL_MS : this.cacheTimeout;
         const now = Date.now();
+        r.metadata = { ...(r.metadata || {}), formRules: FORM_RULES };
         this.cache.set(cacheKey, { result: r, timestamp: now, ttl });
         try {
           // Failed etymology hosts get another chance after ten minutes, even
@@ -714,7 +719,7 @@ export class DictionaryService extends BaseService {
           // tagged page: looked up again ("paparazzi" kept as "A paparazzo." from the Free Dictionary).
           const meta = value?.metadata || {};
           const stalePlural =
-            (!!value && !meta.formChecked && !meta.formFrom && (mayBeFormOf(value) || pointsElsewhere(value) || (saved?.savedAt || 0) < FORM_RULES_SINCE)) ||
+            (!!value && !meta.formChecked && !meta.formFrom && (mayBeFormOf(value) || pointsElsewhere(value) || meta.formRules !== FORM_RULES)) ||
             // A form opened as its lemma before forms said what they are ("ran · past tense of run").
             (!!meta.formFrom && !meta.formLineChecked);
           if (saved && value && left > 0 && !staleNoIpa && !stalePlural && !this.isUncacheableResult(value)) {
