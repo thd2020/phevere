@@ -89,6 +89,7 @@ export {
   reviewHtml,
   fillWordImages,
   attachNotebookMap,
+  attachFamilies,
   disposeNotebookMaps,
   type NotebookView,
   type FamilyGrouping,

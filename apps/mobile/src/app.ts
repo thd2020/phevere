@@ -25,6 +25,7 @@ import {
   HOLARKY_ACCOUNT,
   deleteEmailMatches,
   attachNotebookMap,
+  attachFamilies,
   traceNotebookFamilies,
   attachCardTable,
   disposeNotebookMaps,
@@ -621,6 +622,7 @@ function bindNotebookViews(): void {
   const page = document.querySelector('.nbv-body');
   if (!page) return;
   attachNotebookMap(page);
+  attachFamilies(page);
   if (nbState.view === 'families') {
     // Families groups the whole notebook (the review pool), not just the list's first page.
     const words = reviewPool.length > notebook.length ? reviewPool : notebook;

@@ -84,15 +84,22 @@ interface CardSpec {
   highlight?: Morph;
 }
 
-function familyCard(c: CardSpec): string {
+/** Tile size by family size: a family of two is a small tile, one of sixteen or more a wide one. */
+function sizeOf(n: number): 's' | 'm' | 'l' | 'xl' {
+  return n >= 16 ? 'xl' : n >= 8 ? 'l' : n >= 4 ? 'm' : 's';
+}
+const PEEK: Record<ReturnType<typeof sizeOf>, number> = { s: 2, m: 3, l: 5, xl: 7 };
+
+function familyCard(c: CardSpec, i = 0): string {
   const n = c.words.length;
+  const size = sizeOf(n);
+  const shown = Math.min(PEEK[size], n);
   const peek = c.words
-    .slice(0, 3)
+    .slice(0, shown)
     .map((w) => esc(clean(w.entry.lemma)))
     .join(', ');
-  const size = n >= 8 ? ' is-large' : n >= 4 ? ' is-mid' : '';
   const glyph = c.kind === 'deep' ? '*' : c.origin ? glyphFor(c.origin) : '';
-  return `<details class="nbv-fam nbv-fam--${c.kind}${size}" style="--n:${Math.min(n, 3)}">
+  return `<details class="nbv-fam nbv-fam--${c.kind} nbv-fam--${size}" style="--i:${Math.min(i, 30)}">
     <summary class="nbv-fam__head">
       ${glyph ? `<span class="nbv-fam__glyph" aria-hidden="true">${esc(glyph)}</span>` : ''}
       <span class="nbv-fam__title">
@@ -101,10 +108,54 @@ function familyCard(c: CardSpec): string {
         ${c.gloss ? `<span class="nbv-fam__gloss">${esc(c.gloss)}</span>` : ''}
       </span>
       <span class="nbv-fam__meta">${c.origin ? `<span class="nbv-origin">${esc(c.origin)}</span>` : ''}<span class="nbv-fam__n">${n}</span></span>
-      <span class="nbv-fam__peek">${peek}${n > 3 ? ` <i>+${n - 3}</i>` : ''}</span>
+      <span class="nbv-fam__peek">${peek}${n > shown ? ` <i>+${n - shown}</i>` : ''}</span>
     </summary>
     <div class="nbv-fam__words">${c.words.map((w, i) => wordChip(w, c.highlight, i)).join('')}</div>
   </details>`;
+}
+
+/** The letter a family files under: "-tion" under T, "*bʰer-" under B, a Han character under #. */
+export function familyLetter(label: string): string {
+  const key = sortKey(label);
+  const ch = key.charAt(0).toUpperCase();
+  return /^[A-Z]$/.test(ch) ? ch : '#';
+}
+
+function sortKey(label: string): string {
+  return label
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^\p{L}\p{N}]/gu, '')
+    .toLowerCase();
+}
+
+/**
+ * Families A to Z under letter headings, each tile sized by how many words it holds. Opening a
+ * tile shows its words in a drawer under its row (see `attachFamilies`), so the tile itself
+ * never moves. Han characters have no alphabet and keep their size order in one section.
+ */
+function alphabetHtml(cards: CardSpec[], byLetter: boolean): string {
+  const sorted = byLetter
+    ? [...cards].sort((x, y) => sortKey(x.label).localeCompare(sortKey(y.label)) || x.label.localeCompare(y.label))
+    : cards;
+  const sections = new Map<string, CardSpec[]>();
+  for (const c of sorted) {
+    const k = byLetter ? familyLetter(c.label) : '';
+    sections.set(k, [...(sections.get(k) || []), c]);
+  }
+  const letters = [...sections.keys()];
+  const index =
+    byLetter && letters.length > 6
+      ? `<nav class="nbv-abc" aria-label="Letters">${letters.map((l) => `<button type="button" data-fam-jump="${esc(l)}">${esc(l)}</button>`).join('')}</nav>`
+      : '';
+  let i = 0;
+  const body = letters
+    .map((l) => {
+      const tiles = sections.get(l)!.map((c) => familyCard(c, i++)).join('');
+      return `<section class="nbv-letter" data-letter="${esc(l)}">${l ? `<h3 class="nbv-letter__head">${esc(l)}</h3>` : ''}<div class="nbv-letter__tiles">${tiles}</div></section>`;
+    })
+    .join('');
+  return `${index}<div class="nbv-fams">${body}</div>`;
 }
 
 function unsortedHtml(a: NotebookAnalysis, placed: Set<string>, label: string): string {
@@ -342,19 +393,18 @@ export function familiesHtml(a: NotebookAnalysis, grouping: FamilyGrouping, opts
     rest = 'Origin not known yet';
   } else {
     const fams = g === 'deep' ? deepRootFamilies(a, etymon) : a.families.filter((f) => f.kind === g);
-    body = `<div class="nbv-fams">${fams
-      .map((f) => {
-        f.ids.forEach((id) => placed.add(id));
-        return familyCard({
-          kind: g === 'deep' ? 'deep' : f.kind,
-          label: f.label,
-          gloss: g === 'deep' ? cachedRootGloss(f.label) : f.gloss,
-          origin: g === 'deep' ? '' : f.origin,
-          words: byLemma(a, f.ids),
-          highlight: g === 'deep' ? undefined : ({ kind: f.kind, label: f.label } as Morph),
-        });
-      })
-      .join('')}</div>`;
+    const specs = fams.map((f): CardSpec => {
+      f.ids.forEach((id) => placed.add(id));
+      return {
+        kind: g === 'deep' ? 'deep' : f.kind,
+        label: f.label,
+        gloss: g === 'deep' ? cachedRootGloss(f.label) : f.gloss,
+        origin: g === 'deep' ? '' : f.origin,
+        words: byLemma(a, f.ids),
+        highlight: g === 'deep' ? undefined : ({ kind: f.kind, label: f.label } as Morph),
+      };
+    });
+    body = alphabetHtml(specs, g !== 'char');
   }
   return chips + coverageHtml(placed.size, a.words.size, opts.tracing) + body + unsortedHtml(a, placed, rest);
 }
@@ -418,4 +468,169 @@ export function traceNotebookFamilies(lemmas: string[], getRoot: () => any, onDo
       if (!found && wasTracing) quietUntil = Date.now() + QUIET_MS;
       if (found || wasTracing) onDone();
     });
+}
+
+/* ------------------------------------------------------------ interaction */
+
+const EASE_OUT = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
+const SHEET_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
+const ZOOM_ICON = {
+  close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+};
+
+let detachFamilies: (() => void) | null = null;
+
+/** The element that scrolls the view: the nearest scrolling ancestor, or the page. */
+function scrollerOf(el: any): any {
+  const win = el.ownerDocument.defaultView;
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const oy = win.getComputedStyle(p).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+  }
+  return el.ownerDocument.scrollingElement || el.ownerDocument.documentElement;
+}
+
+/**
+ * Wire the Families view rendered by `familiesHtml` inside `root`: a family opens into a drawer
+ * under its row while the tile stays where it was, the letter index jumps to a letter, and a
+ * word tree opens large in an inspector with pan and zoom. Safe to call after every render.
+ */
+export function attachFamilies(root: any): void {
+  detachFamilies?.();
+  detachFamilies = null;
+  const fams = root?.querySelector?.('.nbv-fams') as HTMLElement | null;
+  const forest = root?.querySelector?.('.nbv-forest') as HTMLElement | null;
+  const abc = root?.querySelector?.('.nbv-abc') as HTMLElement | null;
+  if (!fams && !forest) return;
+  const doc = (fams || forest)!.ownerDocument;
+  const win: any = doc.defaultView || globalThis;
+  const ac = new AbortController();
+  const on = (el: any, type: string, fn: (e: any) => void, opts: AddEventListenerOptions = {}) =>
+    el.addEventListener(type, fn, { ...opts, signal: ac.signal });
+  const reduced = () => !!win.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  let ro: any = null;
+
+  /* Family drawers */
+  let drawer: HTMLElement | null = null;
+  let openTile: HTMLDetailsElement | null = null;
+  /** The last tile on the open tile's line, or the tiles block itself when that is the last line. */
+  const rowEnd = (tile: HTMLElement): HTMLElement => {
+    let last = tile;
+    for (let n = tile.nextElementSibling as HTMLElement | null; n; n = n.nextElementSibling as HTMLElement | null) {
+      if (!n.classList.contains('nbv-fam')) continue;
+      if (n.offsetTop !== tile.offsetTop) return last;
+      last = n;
+    }
+    // After the block, so the last line keeps its spacer and its tiles keep their widths.
+    return tile.parentElement as HTMLElement;
+  };
+  const place = (tile: HTMLElement) => {
+    if (!drawer) return;
+    drawer.remove();
+    rowEnd(tile).after(drawer);
+    const box = tile.parentElement!.getBoundingClientRect();
+    const r = tile.getBoundingClientRect();
+    drawer.style.setProperty('--notch', `${(r.left - box.left + r.width / 2).toFixed(1)}px`);
+  };
+  const grow = (el: HTMLElement, from: number) => {
+    const to = el.offsetHeight;
+    if (Math.abs(to - from) < 1) return;
+    el.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: reduced() ? 140 : 380, easing: SHEET_EASE });
+  };
+  const openFamily = (tile: HTMLDetailsElement) => {
+    const scroller = scrollerOf(tile);
+    const before = tile.getBoundingClientRect().top;
+    const prev = openTile;
+    const sameRow = !!(drawer && prev && prev.parentElement === tile.parentElement && rowEnd(prev) === rowEnd(tile));
+    const fromH = sameRow && drawer ? drawer.offsetHeight : 0;
+    if (prev) prev.open = false;
+    if (drawer && !sameRow) drawer.remove();
+    if (!drawer || !sameRow) {
+      drawer = doc.createElement('div');
+      drawer.setAttribute('role', 'region');
+    }
+    const d = drawer!;
+    tile.open = true;
+    openTile = tile;
+    d.setAttribute('aria-label', tile.querySelector('.nbv-fam__label')?.textContent || '');
+    const kind = [...tile.classList].find((c) => /^nbv-fam--(root|prefix|suffix|deep|char)$/.test(c)) || '';
+    d.className = `nbv-drawer${kind ? ` ${kind.replace('nbv-fam', 'nbv-drawer')}` : ''}`;
+    const words = tile.querySelector('.nbv-fam__words')?.cloneNode(true) as HTMLElement | undefined;
+    d.innerHTML = `<button type="button" class="nbv-drawer__close" data-fam-close aria-label="Close">${ZOOM_ICON.close}</button>`;
+    if (words) d.prepend(words);
+    place(tile);
+    // Whatever closed above it, the tile stays under the pointer.
+    const shift = tile.getBoundingClientRect().top - before;
+    if (Math.abs(shift) > 0.5) scroller.scrollTop += shift;
+    // A drawer that would open below the fold is brought into view, never pushing the tile off.
+    const page = scroller === doc.scrollingElement || scroller === doc.documentElement;
+    const top0 = page ? 0 : scroller.getBoundingClientRect().top;
+    const vh = page ? win.innerHeight : scroller.clientHeight;
+    const full = d.offsetHeight;
+    const need = d.getBoundingClientRect().top - top0 + Math.min(full, 160) - (vh - 16);
+    const room = tile.getBoundingClientRect().top - top0 - 72;
+    grow(d, fromH);
+    const by = Math.min(need, room);
+    if (by > 1) scroller.scrollBy({ top: by, behavior: reduced() ? 'auto' : 'smooth' });
+  };
+  const closeFamily = () => {
+    if (!openTile) return;
+    openTile.open = false;
+    openTile = null;
+    const d = drawer;
+    drawer = null;
+    if (!d) return;
+    const ms = reduced() ? 120 : 260;
+    d.style.overflow = 'hidden';
+    d.animate([{ height: `${d.offsetHeight}px`, opacity: 1 }, { height: '0px', opacity: 0 }], { duration: ms, easing: EASE_OUT, fill: 'forwards' });
+    // A timer, not onfinish: a hidden page holds animations, and the drawer must still go.
+    win.setTimeout(() => d.remove(), ms + 20);
+  };
+  if (fams) {
+    fams.classList.add('is-live');
+    on(fams, 'click', (ev: any) => {
+      const t = ev.target as HTMLElement;
+      if (t.closest?.('[data-fam-close]')) {
+        closeFamily();
+        return;
+      }
+      const head = t.closest?.('summary.nbv-fam__head') as HTMLElement | null;
+      if (!head || !fams.contains(head)) return;
+      ev.preventDefault();
+      const tile = head.parentElement as HTMLDetailsElement;
+      if (tile === openTile) closeFamily();
+      else openFamily(tile);
+    });
+    on(fams, 'keydown', (ev: any) => {
+      if (ev.key !== 'Escape' || !openTile) return;
+      const tile = openTile;
+      closeFamily();
+      (tile.querySelector('summary') as HTMLElement | null)?.focus();
+      ev.stopPropagation();
+    });
+    const RO = win.ResizeObserver;
+    if (RO) {
+      let lastW = fams.clientWidth;
+      ro = new RO(() => {
+        const w = fams.clientWidth;
+        if (Math.abs(w - lastW) < 1) return;
+        lastW = w;
+        if (openTile) place(openTile);
+      });
+      ro.observe(fams);
+    }
+  }
+  if (abc) {
+    on(abc, 'click', (ev: any) => {
+      const b = (ev.target as HTMLElement).closest?.('[data-fam-jump]') as HTMLElement | null;
+      if (!b) return;
+      const sec = [...root.querySelectorAll('.nbv-letter')].find((s: any) => s.dataset.letter === b.dataset.famJump) as HTMLElement | undefined;
+      sec?.scrollIntoView({ block: 'start', behavior: reduced() ? 'auto' : 'smooth' });
+    });
+  }
+
+  detachFamilies = () => {
+    ac.abort();
+    ro?.disconnect();
+  };
 }

@@ -47,6 +47,7 @@ import {
   HOLARKY_ACCOUNT,
   analyzeNotebook,
   attachNotebookMap,
+  attachFamilies,
   attachCardTable,
   cardsHtml,
   disposeNotebookMaps,
@@ -2283,6 +2284,7 @@ function renderBookScope(body: HTMLElement, wrap: HTMLElement, list: HTMLElement
   else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
   else body.innerHTML = cardsHtml(study, analysis, nbFlipped, nbCardsLayout);
   attachNotebookMap(body);
+  attachFamilies(body);
   attachCardTable(body, {
     onLayout: (layout) => {
       nbCardsLayout = layout;
@@ -2660,6 +2662,7 @@ function renderVocabNotebook(entries: any[]): void {
     else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
     else body.innerHTML = cardsHtml(sorted, analysis, nbFlipped, nbCardsLayout);
     attachNotebookMap(body);
+    attachFamilies(body);
     attachCardTable(body, {
       onLayout: (layout) => {
         nbCardsLayout = layout;

@@ -27,47 +27,151 @@
 .nbv-trace span { position: absolute; inset: 0 auto 0 0; background: var(--nbv-ember); border-radius: inherit; transition: width 0.4s var(--nbv-motion); }
 .nbv-trace__n { font-size: 12px; font-variant-numeric: tabular-nums; }
 
-/* Family cards */
-.nbv-fams {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  grid-auto-flow: row dense;
-  gap: 18px 16px;
-  padding: 0 8px 8px 0;
+/* Letter index: one button per letter that has families. */
+.nbv-abc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: -6px 0 14px;
 }
+.nbv-abc button {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--nbv-soft);
+  font: 600 14px/1 var(--nbv-serif);
+  cursor: pointer;
+  transition: background-color 0.16s var(--nbv-motion), color 0.16s var(--nbv-motion);
+}
+.nbv-abc button:hover { background: var(--nbv-paper-2); color: var(--nbv-ember); }
+.nbv-abc button:focus-visible { outline: 2px solid var(--nbv-ember); outline-offset: 1px; }
+
+/* Families A to Z: a big letter beside each run of tiles. The drawer code keeps the clicked
+   tile in place itself, so the browser's own scroll anchoring stays out of it. */
+.nbv-fams { display: grid; gap: 22px; padding: 0 8px 8px 0; overflow-anchor: none; }
+.nbv-letter {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 0 14px;
+  align-items: start;
+  scroll-margin-top: 96px;
+}
+.nbv-letter__head {
+  position: sticky;
+  top: 8px;
+  margin: 2px 0 0;
+  font: 600 40px/1 var(--nbv-serif);
+  letter-spacing: -0.03em;
+  color: var(--nbv-ember);
+  text-align: center;
+}
+.nbv-letter:not(:has(.nbv-letter__head)) { grid-template-columns: 1fr; }
+@media (max-width: 560px) {
+  .nbv-letter { grid-template-columns: 1fr; gap: 6px; }
+  .nbv-letter__head { position: static; text-align: left; font-size: 30px; }
+}
+
+/* Tiles sized by family size; each line fills the width, the last line keeps natural sizes. */
+.nbv-letter__tiles { display: flex; flex-wrap: wrap; align-items: stretch; gap: 14px 12px; min-width: 0; }
+.nbv-letter__tiles::after { content: ''; flex: 3 1 0; }
 .nbv-fam {
   --accent: var(--nbv-teal);
   --accent-soft: var(--nbv-teal-soft);
+  --label: 22px;
   position: relative;
   isolation: isolate;
-  align-self: start;
+  flex: 1 1 150px;
+  max-width: 100%;
+  min-width: 0;
   border: 1px solid var(--nbv-line);
   border-radius: 16px;
   background: var(--nbv-panel);
   box-shadow:
     4px 4px 0 -1px var(--nbv-panel),
     4px 4px 0 0 var(--nbv-line);
-  transition: box-shadow 0.32s var(--nbv-motion), transform 0.22s var(--nbv-motion);
+  transition: box-shadow 0.32s var(--nbv-motion), transform 0.22s var(--nbv-motion), border-color 0.2s var(--nbv-motion);
   animation: nbv-rise 0.42s var(--nbv-motion) both;
+  animation-delay: calc(min(var(--i, 0), 30) * 12ms);
 }
-.nbv-fam.is-mid {
+.nbv-fam--m {
+  --label: 26px;
+  flex: 1.4 1 200px;
   box-shadow:
     4px 4px 0 -1px var(--nbv-panel), 4px 4px 0 0 var(--nbv-line),
     8px 8px 0 -1px var(--nbv-panel), 8px 8px 0 0 var(--nbv-line);
 }
-.nbv-fam.is-large {
-  grid-column: span 2;
+.nbv-fam--l,
+.nbv-fam--xl {
+  --label: 32px;
+  flex: 2 1 270px;
   box-shadow:
     4px 4px 0 -1px var(--nbv-panel), 4px 4px 0 0 var(--nbv-line),
     8px 8px 0 -1px var(--nbv-panel), 8px 8px 0 0 var(--nbv-line),
     12px 12px 0 -1px var(--nbv-panel), 12px 12px 0 0 var(--nbv-line);
 }
-@media (max-width: 560px) { .nbv-fam.is-large { grid-column: auto; } }
+.nbv-fam--xl { --label: 40px; flex: 2.8 1 340px; }
 .nbv-fam:not([open]):hover { transform: translate(-1px, -2px); }
-.nbv-fam[open] { grid-column: 1 / -1; box-shadow: 0 10px 30px -18px rgba(28, 25, 23, 0.45); }
+.nbv-fam[open] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 10px 30px -18px rgba(28, 25, 23, 0.45); }
 .nbv-fam--prefix { --accent: var(--nbv-ember); --accent-soft: var(--nbv-ember-soft); }
 .nbv-fam--suffix { --accent: var(--nbv-stone); --accent-soft: var(--nbv-paper-2); }
 .nbv-fam--deep { --accent: var(--nbv-ink); --accent-soft: var(--nbv-paper-2); }
+/* With the drawer wired up, an open tile keeps its size and its words show below the row. */
+.nbv-fams.is-live .nbv-fam > .nbv-fam__words { display: none; }
+.nbv-fams:not(.is-live) .nbv-fam[open] { flex-basis: 100%; }
+
+/* The drawer under an open tile's row, with a notch pointing up at the tile. */
+.nbv-drawer {
+  --accent: var(--nbv-teal);
+  position: relative;
+  flex: 0 0 100%;
+  margin-top: 2px;
+  border: 1px solid var(--accent);
+  border-radius: 16px;
+  background: var(--nbv-panel);
+  box-shadow: 0 12px 28px -20px rgba(28, 25, 23, 0.5);
+}
+.nbv-drawer::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  left: calc(var(--notch, 40px) - 6px);
+  width: 12px;
+  height: 12px;
+  border: solid var(--accent);
+  border-width: 1px 0 0 1px;
+  border-radius: 2px 0 0 0;
+  background: var(--nbv-panel);
+  transform: rotate(45deg);
+}
+.nbv-letter > .nbv-drawer { grid-column: -2 / -1; margin-top: 14px; }
+.nbv-drawer--prefix { --accent: var(--nbv-ember); }
+.nbv-drawer--suffix { --accent: var(--nbv-stone); }
+.nbv-drawer--deep { --accent: var(--nbv-ink); }
+.nbv-drawer .nbv-fam__words { padding: 14px 52px 14px 16px; }
+.nbv-drawer .nbv-word b { color: var(--accent); }
+.nbv-drawer--suffix .nbv-word b { color: var(--nbv-ember); }
+.nbv-drawer__close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--nbv-soft);
+  cursor: pointer;
+  transition: background-color 0.16s var(--nbv-motion);
+}
+.nbv-drawer__close svg { width: 16px; height: 16px; }
+.nbv-drawer__close:hover { background: var(--nbv-paper-2); color: var(--nbv-ink); }
+.nbv-drawer__close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .nbv-fam__head {
   position: relative;
@@ -100,7 +204,7 @@
 .nbv-fam__pos rect { fill: var(--nbv-paper-2); }
 .nbv-fam__pos rect.is-on { fill: var(--accent); }
 .nbv-fam__label {
-  font: 600 clamp(22px, 2.6vw, 28px)/1 var(--nbv-serif);
+  font: 600 clamp(20px, calc(var(--label) * 0.6 + 1vw), var(--label))/1 var(--nbv-serif);
   letter-spacing: -0.02em;
   color: var(--accent);
 }
@@ -130,13 +234,21 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.nbv-fam--l .nbv-fam__peek,
+.nbv-fam--xl .nbv-fam__peek {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
 .nbv-fam__peek i { font-style: normal; font: 600 12px/1 var(--nbv-ui); color: var(--accent); }
-.nbv-fam[open] .nbv-fam__peek { display: none; }
+.nbv-fams:not(.is-live) .nbv-fam[open] .nbv-fam__peek { display: none; }
 .nbv-fam__words { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 16px 16px; }
 .nbv-fam .nbv-word b { color: var(--accent); }
 .nbv-fam--suffix .nbv-word b { color: var(--nbv-ember); }
 
 @media (prefers-reduced-motion: no-preference) {
+  .nbv-drawer .nbv-word,
   .nbv-fam[open] .nbv-word,
   .nbv-unsorted[open] .nbv-word,
   .nbv-stratum[open] .nbv-word {
@@ -152,9 +264,13 @@
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
+/* Reduced motion: tiles fade in quickly instead of rising, and words appear without the deal. */
 @media (prefers-reduced-motion: reduce) {
-  .nbv-fam { animation: none; transition: none; }
+  .nbv-fam { animation: nbv-fade-in 0.14s var(--nbv-motion) both; transition-duration: 0.12s; }
+  .nbv-drawer .nbv-word,
+  .nbv-fam[open] .nbv-word { animation: nbv-fade-in 0.14s var(--nbv-motion) both; }
 }
+@keyframes nbv-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
 /* Words the grouping could not place */
 .nbv-unsorted {
@@ -242,6 +358,7 @@
   gap: 14px;
 }
 .nbv-grove {
+  position: relative;
   display: grid;
   place-items: end center;
   margin: 0;

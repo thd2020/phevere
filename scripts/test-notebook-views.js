@@ -65,7 +65,16 @@ assert.deepEqual(views.familyGroupings(a), ['root', 'prefix', 'suffix', 'origin'
 const fhtml = views.familiesHtml(a, 'root');
 assert.match(fhtml, /in<b>spect<\/b>or/);
 assert.match(views.familiesHtml(a, 'tree'), /nationality/);
-
+// Families file A to Z under letter headings; tiles are sized by family size; trees open large.
+assert.match(fhtml, /<section class="nbv-letter" data-letter="S"><h3 class="nbv-letter__head">S<\/h3>/);
+assert.match(fhtml, /class="nbv-fam nbv-fam--root nbv-fam--s"/);
+assert.equal(views.familyLetter('-tion'), 'T');
+assert.equal(views.familyLetter('*bʰer-'), 'B');
+assert.equal(views.familyLetter('éco'), 'E');
+assert.equal(views.familyLetter('対'), '#');
+const letters = [...views.familiesHtml(a, 'prefix').matchAll(/data-letter="([^"]*)"/g)].map((m) => m[1]);
+assert.deepEqual(letters, [...letters].sort(), 'letter sections in alphabetical order');
+assert.doesNotMatch(views.familiesHtml(a, 'char'), /nbv-letter__head/);
 // Map: deterministic layout, every edge points at real nodes.
 const m1 = views.layoutNotebookMap(a, { kinds: ['root', 'char'] });
 const m2 = views.layoutNotebookMap(a, { kinds: ['root', 'char'] });
