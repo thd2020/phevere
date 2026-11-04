@@ -1016,7 +1016,7 @@ export function rankCommonsFiles(
  * run ("equilibrium" of a reaction after "equilibrium" of competing influences).
  */
 /** Glosses that are codes or pointers, not meanings: "ISO 639-3 language code for Cowlitz". */
-const CODE_GLOSS = /\b(ISO \d|language code|abbreviation of|initialism of|acronym of|symbol for|alternative (?:form|spelling) of|plural of|misspelling of)\b/i;
+const CODE_GLOSS = /\b(ISO \d|language code|abbreviation of|initialism of|acronym of|symbol for|alternative (?:form|spelling) of|plural of|misspelling of|listed in the|Oxford English Dictionary)\b/i;
 
 export interface MajorSenses {
   /** Senses that get a picture of their own, best first. */
@@ -1765,7 +1765,7 @@ async function resolveSenseImages(
     const results = await Promise.all(order.map((i) => search(i)));
     // An article about the sense without a free lead image ("Mechanical equilibrium") still has
     // pictures in its body that name the word: "Diagram of a ball placed in a stable equilibrium".
-    const noLead = new Map<number, string>();
+    const noLead = new Map<number, string[]>();
     order.forEach((i, k) => {
       const pages = [...results[k]].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
       const gloss = senses[i].meaning;
@@ -1773,15 +1773,21 @@ async function resolveSenseImages(
       const page = concrete[i] ? pickWikipediaPage(pages, lemma, gloss, lemma, { strict }) : null;
       if (tryPage(i, page)) return;
       if (tryPage(i, pages.find((p) => acceptSenseArticle(p, lemma, gloss, { strict })) || null)) return;
-      const bodyOnly = major.includes(i) && pages.find((p) => !p.pageimage && acceptSenseArticle(p, lemma, gloss, { strict, anyImage: true }));
-      if (bodyOnly) noLead.set(i, bodyOnly.title);
+      // Up to two such articles: "Chemical equilibrium" has no picture naming the word, while
+      // "Dynamic equilibrium" has one.
+      const bodyOnly = major.includes(i)
+        ? pages.filter((p) => !p.pageimage && acceptSenseArticle(p, lemma, gloss, { strict, anyImage: true })).slice(0, 2)
+        : [];
+      if (bodyOnly.length) noLead.set(i, bodyOnly.map((p) => p.title));
     });
     if (noLead.size && count < max) {
-      const files = await articleImageFilesMany(Array.from(new Set(noLead.values())), 'en');
-      for (const [i, title] of noLead) {
+      const files = await articleImageFilesMany(Array.from(new Set(Array.from(noLead.values()).flat())), 'en');
+      for (const [i, titles] of noLead) {
         if (picks[i] || count >= max) continue;
-        const ranked = rankArticleImages(files.get(title) || [], lemma, contentTokens(glossBody(senses[i].meaning), lemma));
-        const file = ranked.find((f) => !usedFiles.has(f.toLowerCase()));
+        const gloss = contentTokens(glossBody(senses[i].meaning), lemma);
+        const file = titles
+          .flatMap((t) => rankArticleImages(files.get(t) || [], lemma, gloss))
+          .find((f) => !usedFiles.has(f.toLowerCase()));
         if (!file) continue;
         usedFiles.add(file.toLowerCase());
         picks[i] = { file, title: commonsFileTitle(file), check: { level: 'portrait' } };
