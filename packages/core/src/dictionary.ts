@@ -75,6 +75,7 @@ import { fetchInflections, hasInflections, selectInflections, type WordInflectio
 import { closestSpelling } from './vocab-lemma';
 import { wrapConsole } from './log';
 import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigured, type OfflineHit } from './runtime';
+import { registerHeadwordResolver } from './vocab-store';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
 import { isGrammaticalFormOfGloss, splitSurfaceAndLemma, sameLookupFold, stripGlossText } from './lookup-policy';
 import { formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, resolveFormOf } from './form-of';
@@ -125,6 +126,22 @@ const PARTIAL_CACHE_TTL_MS = 10 * 60 * 1000;
 /** Persistent entries are kept this long. */
 const PERSISTED_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const PARTIAL_PERSIST_TTL_MS = 24 * 60 * 60 * 1000;
+/** Longest wait for the tagged page that says whether a word is a form of another. */
+const FORM_CHECK_MS = 3500;
+/** Longest a result that may be a form is held back while that page is on its way. */
+const FORM_HOLD_MS = 1500;
+/** Results saved before forms opened as their word are looked up again once (2026-11-04). */
+const FORM_RULES_SINCE = Date.UTC(2026, 10, 4, 12);
+
+/** A sense of any source that points at another headword: "plural of paparazzo", "A paparazzo." */
+function pointsElsewhere(result: DictionaryResult | null | undefined): boolean {
+  const word = foldLookupKey(String(result?.word || ''));
+  return (result?.definitions || []).some((d) => {
+    const text = stripGlossText(String(d?.meaning || ''));
+    const target = formOfGlossLemma(text) || /^(?:an?|the)\s+([\p{L}'’-]+)\.?$/iu.exec(text)?.[1] || '';
+    return !!target && foldLookupKey(target) !== word;
+  });
+}
 /** A source whose host keeps failing is skipped for this long, doubling per further failure. */
 const SOURCE_DOWN_BASE_MS = 3 * 60 * 1000;
 const SOURCE_DOWN_MAX_MS = 30 * 60 * 1000;
@@ -668,8 +685,11 @@ export class DictionaryService extends BaseService {
           // longer left was saved before that rule and is looked up again.
           const left = saved ? PERSISTED_CACHE_TTL_MS - (Date.now() - saved.savedAt) : 0;
           const staleNoIpa = this.lacksIpa(value) && left > PARTIAL_PERSIST_TTL_MS;
-          // Saved before forms were shown as the word they are a form of.
-          const stalePlural = mayBeFormOf(value) && !value?.metadata?.formChecked;
+          // Saved before forms were shown as the word they are a form of, or never checked by the
+          // tagged page: looked up again ("paparazzi" kept as "A paparazzo." from the Free Dictionary).
+          const meta = value?.metadata || {};
+          const stalePlural =
+            !!value && !meta.formChecked && !meta.formFrom && (mayBeFormOf(value) || pointsElsewhere(value) || (saved?.savedAt || 0) < FORM_RULES_SINCE);
           if (saved && value && left > 0 && !staleNoIpa && !stalePlural && !this.isUncacheableResult(value)) {
             const remaining = PERSISTED_CACHE_TTL_MS - (Date.now() - saved.savedAt);
             const ttl = this.isIncompleteSourceCache(value) ? Math.min(PARTIAL_CACHE_TTL_MS, remaining) : this.cacheTimeout;
@@ -888,19 +908,41 @@ export class DictionaryService extends BaseService {
       return null;
     };
     // A form ("gleaned", "paparazzi", "idiosyncracy") is shown and saved as the word it is a form
-    // of; that word's Forms list it. Wiktionary can land after the first paint, so the check also
-    // runs on updates, and the update that follows a redirect is the other word's.
+    // of; that word's Forms list it. The tagged page is asked for at once, beside the other
+    // sources, so the answer is usually in before the first paint; a result that may be a form is
+    // held back meanwhile (at most FORM_HOLD_MS), so the form does not flash before its lemma.
+    const started = Date.now();
+    const lang = (detectedLanguage || 'en').toLowerCase().split('-')[0];
+    const headword = foldLatinHeadword(query.trimmed) || query.trimmed;
+    const decisionKey = foldLookupKey(query.trimmed);
+    const kaikkiOn =
+      lang === 'en' && isCoreConfigured() && query.kind === 'word' && !/\s/.test(headword) && this.isNamedSourceOn('Kaikki', enabledSources);
+    const early: Promise<string | null> | null =
+      !opts?.noFormRedirect && kaikkiOn ? withTimeout(resolveFormOf(getHttp(), headword, 'en'), FORM_CHECK_MS, 'form-of') : null;
+    let earlyAnswer: { lemma: string | null } | undefined;
+    if (early) {
+      early.then((lemma) => (earlyAnswer = { lemma }), (): undefined => undefined);
+      this.noteFormDecision(decisionKey, early);
+    }
     let formCheck: Promise<DictionaryResult | null> | null = null;
-    /** Set once the word turned out to be a word in its own right, so its cached result is not checked again. */
+    /** Set once the tagged page said the word is a word in its own right, so its cached result is not checked again. */
     let notAForm = false;
     let emitted = 0;
-    const checkForm = (r: DictionaryResult): Promise<DictionaryResult | null> | null => {
-      if (formCheck || opts?.noFormRedirect || !mayBeFormOf(r)) return formCheck;
-      formCheck = this.formOfTarget(r, query.trimmed, detectedLanguage).then((lemma) => {
+    /** `final`: the lookup's last result, which waits for the page's answer when one was asked for. */
+    const checkForm = (r: DictionaryResult, final = false): Promise<DictionaryResult | null> | null => {
+      if (formCheck || opts?.noFormRedirect) return formCheck;
+      if (earlyAnswer && !earlyAnswer.lemma) {
+        notAForm = true;
+        return null;
+      }
+      if (!mayBeFormOf(r) && !earlyAnswer?.lemma && !(final && early)) return null;
+      const decision = this.decideForm(r, early);
+      if (!early) this.noteFormDecision(decisionKey, decision.then((d) => d.lemma));
+      formCheck = decision.then(({ lemma, sure }) => {
         if (lemma && foldLookupKey(lemma) !== foldLookupKey(query.trimmed)) {
           return instead(lemma, { noFormRedirect: true }, { formFrom: query.trimmed });
         }
-        notAForm = true;
+        if (sure) notAForm = true;
         return null;
       });
       return formCheck;
@@ -909,30 +951,43 @@ export class DictionaryService extends BaseService {
       if (notAForm) r.metadata = { ...(r.metadata || {}), formChecked: true };
       return r;
     };
-    const own = opts?.onUpdate
-      ? {
-          ...opts,
-          onUpdate: (r: DictionaryResult) => {
-            if (movedOn) return;
-            const pending = !formCheck ? checkForm(r) : null;
-            if (pending) {
-              const seen = emitted;
-              void pending.then((next) => {
-                if (next) opts.onUpdate!(next);
-                else if (emitted === seen && !movedOn) {
-                  emitted += 1;
-                  opts.onUpdate!(stamp(r));
-                }
-              });
-              return;
-            }
+    const mayBeInflected = /(?:s|ed|ing|er|est|i|en|ae|a)$/i.test(headword);
+    let held: DictionaryResult | null = null;
+    let releasing = false;
+    const handle = (r: DictionaryResult): void => {
+      if (movedOn || !opts?.onUpdate) return;
+      if (!formCheck && early && !earlyAnswer && Date.now() - started < FORM_HOLD_MS && (mayBeInflected || mayBeFormOf(r))) {
+        held = r;
+        if (!releasing) {
+          releasing = true;
+          const release = () => {
+            const h = held;
+            held = null;
+            releasing = false;
+            if (h && !movedOn) handle(h);
+          };
+          void Promise.race([early.catch((): null => null), new Promise((res) => setTimeout(res, FORM_HOLD_MS - (Date.now() - started)))]).then(release);
+        }
+        return;
+      }
+      const pending = !formCheck ? checkForm(r) : null;
+      if (pending) {
+        const seen = emitted;
+        void pending.then((next) => {
+          if (next) opts.onUpdate!(next);
+          else if (emitted === seen && !movedOn) {
             emitted += 1;
             opts.onUpdate!(stamp(r));
-          },
-        }
-      : opts;
+          }
+        });
+        return;
+      }
+      emitted += 1;
+      opts.onUpdate!(stamp(r));
+    };
+    const own = opts?.onUpdate ? { ...opts, onUpdate: handle } : opts;
     const result = await this.lookupWithCandidatesOnce(query, targetLanguage, detectedLanguage, enabledSources, holder, own);
-    const formOf = await checkForm(result);
+    const formOf = await checkForm(result, true);
     if (formOf) return formOf;
     stamp(result);
     const target = opts?.noCorrection ? null : misspellingTarget(result);
@@ -943,19 +998,50 @@ export class DictionaryService extends BaseService {
   }
 
   /**
-   * The word `word` is a form of, or null. English reads the word's tagged Wiktionary page
-   * (form-of.ts); other languages, or a page that cannot be had, fall back to the senses' text.
+   * The word a result is a form of, or null. `sure` is set only when the tagged page answered
+   * (form-of.ts); the senses' text, used when the page cannot be had or the Kaikki source is off,
+   * decides this lookup but is not remembered with the cached result.
    */
-  private async formOfTarget(result: DictionaryResult, word: string, language: string): Promise<string | null> {
-    const lang = (language || 'en').toLowerCase().split('-')[0];
-    if (lang === 'en' && isCoreConfigured()) {
+  private async decideForm(result: DictionaryResult, early: Promise<string | null> | null): Promise<{ lemma: string | null; sure: boolean }> {
+    if (early) {
       try {
-        return await withTimeout(resolveFormOf(getHttp(), foldLatinHeadword(word) || word, 'en'), 3500, 'form-of');
+        return { lemma: await early, sure: true };
       } catch {
         /* fall back to the text of the senses */
       }
     }
-    return formOfTextTarget(result);
+    return { lemma: formOfTextTarget(result), sure: false };
+  }
+
+  /** Form decisions of recent lookups, by folded word, for a save that comes before the page turns. */
+  private formDecisions = new Map<string, Promise<string | null>>();
+
+  private noteFormDecision(key: string, decision: Promise<string | null>): void {
+    if (!key) return;
+    const safe = decision.catch((): null => null);
+    this.formDecisions.set(key, safe);
+    setTimeout(() => {
+      if (this.formDecisions.get(key) === safe) this.formDecisions.delete(key);
+    }, 5 * 60_000);
+  }
+
+  /**
+   * The word a save of `word` should store: the lemma its lookup opens ("goose" for "geese"). It
+   * waits for that lookup's pending decision, or asks the tagged page itself when there was none.
+   */
+  async settledHeadword(word: string, language = 'en'): Promise<string> {
+    const w = String(word || '').trim();
+    const pending = this.formDecisions.get(foldLookupKey(w));
+    try {
+      if (pending) return (await withTimeout(pending, FORM_CHECK_MS + 1000, 'form-of')) || w;
+      const lang = (language || 'en').toLowerCase().split('-')[0];
+      if (lang === 'en' && isCoreConfigured() && !/\s/.test(w) && this.isNamedSourceOn('Kaikki')) {
+        return (await withTimeout(resolveFormOf(getHttp(), foldLatinHeadword(w) || w, 'en'), FORM_CHECK_MS, 'form-of')) || w;
+      }
+    } catch {
+      /* saved as it is; the fold after the save and the background check catch it later */
+    }
+    return w;
   }
 
   private async lookupWithCandidatesOnce(
@@ -3954,4 +4040,7 @@ export class DictionaryService extends BaseService {
 }
 
 // Export singleton instance
-export const dictionaryService = new DictionaryService(); 
+export const dictionaryService = new DictionaryService();
+
+// A word saved from a lookup is saved as the word the lookup opens ("geese" as goose).
+registerHeadwordResolver((word, lang) => dictionaryService.settledHeadword(word, lang)); 
