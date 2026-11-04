@@ -120,7 +120,7 @@ const ABSTRACT_HEADS = new Set(
     'rank role duty right trait nature aspect affection happiness sadness fear anger desire luck chance ' +
     'fortune opportunity success failure movement motion lack absence presence existence knowledge skill ' +
     'phenomenon view understanding perception change statement saying peculiarity characteristic meaning ' +
-    'reaction discovery difference sight thought mind'
+    'reaction discovery difference sight thought mind algebraic operation ratio proportion size'
   )
     .split(/\s+/)
     .map((w) => stem(w)),
@@ -644,9 +644,12 @@ export function shortGlossTitle(gloss: string): string {
 /** File names that are rarely a picture of the thing: maps, flags, logos, seals, signatures. */
 const BAD_FILE = /\b(map|maps|locator|location map|flag|flags|coat of arms|logo|logos|wordmark|seal|signature|emblem|icon|blank)\b/i;
 
-/** Commons categories that mark a logo, map, chart or scan rather than a photo or illustration. */
-const BAD_CATEGORY =
-  /\b(logos?|text logos|maps?|flags?|coats? of arms|diagrams?|charts?|graphs?|plots?|screenshots?|signatures?|seals?|icons?|album covers?|book covers?|scans?|documents?)\b/i;
+/**
+ * Commons categories that mark a map, flag, logo, cover or screenshot rather than a picture of a
+ * thing. An article's picture in one of them is not used ("Ocean bank" is illustrated with a map
+ * of the Gulf of Maine).
+ */
+const BAD_CATEGORY = /\b(maps?|flags?|logos?|coats? of arms|screenshots?|signatures?|album covers?|book covers?)\b/i;
 
 /** "Sean Combs in 2023" or "Portraits of …": a picture of a named person. */
 const PERSON_CATEGORY = /(^|\|)[^|]*\bportraits?\b|(^|\|)\p{Lu}[\p{L}.'-]+(?: \p{Lu}[\p{L}.'-]+)+ in \d{4}(?=\||$)/u;
@@ -1348,6 +1351,16 @@ export function glossHead(gloss: string, lemma = ''): string {
   return words[words.length - 1] || last;
 }
 
+/** "keystone" and "capstone": two one-word compounds on the same head that are different words. */
+export function siblingCompound(label: string, lemma: string): boolean {
+  const a = String(label || '').trim().toLowerCase();
+  const b = String(lemma || '').trim().toLowerCase();
+  if (!a || !b || a === b || /\s/.test(a) || /\s/.test(b) || a.endsWith(b) || b.endsWith(a)) return false;
+  let n = 0;
+  while (n < Math.min(a.length, b.length) && a[a.length - 1 - n] === b[b.length - 1 - n]) n += 1;
+  return n >= 4 && n < a.length && n < b.length;
+}
+
 /**
  * Every head the leading noun phrase of a gloss may have, for a gloss that lists adjectives or
  * alternatives: "a royal, imperial or princely headdress" gives headdress, "hard, protective outer
@@ -1397,10 +1410,17 @@ export function relatedPageFit(page: WikipediaPage, sense: SenseInput, lemma: st
   const heads = glossHeads(glossBody(sense.meaning), lemma);
   const label = contentTokens(`${modifier} ${qualifier}`, lemma);
   const named = label.some((t) => g.some((x) => nearWord(x, t)) || heads.some((h) => sameHead(h, t)));
+  // A gloss with no head of its own ("a curved circular form") needs the title's word in it.
+  if (!heads.length && !named) return 0;
   // The description's head with the word kept: "Cap which fills the inner space of a crown" is a cap.
-  const headed = headsMeet(heads, glossHeads(String(page.description || '')));
+  const pageHeads = glossHeads(String(page.description || ''));
+  const headed = headsMeet(heads, pageHeads);
   const d = contentTokens(`${page.description || ''} ${page.extract || ''}`, lemma).filter((t) => !label.includes(t));
-  const score = (named ? 2 : 0) + (headed ? 2 : 0) + Math.min(3, overlap(g, d));
+  const shared = overlap(g, d);
+  // Two different things by head ("Jet (fluid)" is a stream, the sense a nozzle): the title's word
+  // in the gloss is not enough without two more shared words.
+  if (heads.length && pageHeads.length && !headed && !(named && shared >= 2)) return 0;
+  const score = (named ? 2 : 0) + (headed ? 2 : 0) + Math.min(3, shared);
   // A one-word compound is usually another thing ("whiteboard", "eggshell"): it needs its
   // modifier in the gloss, or the head and three shared words.
   const need = named ? 3 : /[\s(-]/.test(page.title) ? 4 : 5;
@@ -1454,6 +1474,8 @@ export interface PoolPicture {
   image?: SenseImage;
   /** The file's Commons record files it as a portrait of a named person. */
   portrait?: boolean;
+  /** The file's Commons record files it as a map, flag, logo, cover or screenshot. */
+  chart?: boolean;
 }
 
 export interface PicturePool {
@@ -1627,7 +1649,12 @@ export function assignPictures(
   const hidden = opts.hidden || new Set<string>();
   const byKey = new Map(pool.pictures.map((p) => [`${p.source}:${p.ref}`, p]));
   const usable = (p: PoolPicture | undefined, sense: SenseInput): p is PoolPicture & { image: SenseImage } =>
-    !!p && !!p.image && !isHidden(hidden, p.file, sense.meaning) && (!p.portrait || !SENSE_PICTURE_RULES.noNamedPortraits);
+    !!p &&
+    !!p.image &&
+    !isHidden(hidden, p.file, sense.meaning) &&
+    (!p.portrait || !SENSE_PICTURE_RULES.noNamedPortraits) &&
+    // An article's map or logo is never the thing; a link an editor made may be ("Gulf").
+    !(p.chart && p.source === 'article');
 
   // Candidates per sense, best first.
   const cands = senses.map((): Array<{ key: string; rank: number }> => []);
@@ -1647,6 +1674,8 @@ export function assignPictures(
   const bestForLexeme = fit.map((row) => Math.max(0, ...row));
   const bestForSense = senses.map((_s, i) => Math.max(0, ...fit.map((row) => row[i])));
   fit.forEach((row, k) => {
+    // An item named with a sibling compound is another thing: "capstone" linked to the keystone.
+    if (siblingCompound(pool.lexemes[k].itemLabel, lemma)) return;
     row.forEach((f, i) => {
       if (R.lexeme > 0 && f > 0 && f === bestForLexeme[k] && f === bestForSense[i]) cands[i].push({ key: `lexeme:${k}`, rank: R.lexeme + Math.min(f, 9) });
     });
@@ -1822,7 +1851,9 @@ async function fillImages(pool: PicturePool, titleOf: (p: PoolPicture) => string
       continue;
     }
     p.image = imageFromInfo(p.file, titleOf(p), info) || undefined;
-    p.portrait = PERSON_CATEGORY.test(stripHtml(info.extmetadata?.Categories?.value || ''));
+    const categories = stripHtml(info.extmetadata?.Categories?.value || '');
+    p.portrait = PERSON_CATEGORY.test(categories);
+    p.chart = badMatch(BAD_CATEGORY, categories, pool.lemma);
   }
   return ok;
 }

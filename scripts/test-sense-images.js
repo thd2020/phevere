@@ -252,6 +252,10 @@ assert.strictEqual(si.titleFromGloss('Panthera tigris, a large predatory mammal 
 assert.strictEqual(si.titleFromGloss('(zoology) A large bird of the family Gruidae with long legs and neck, found on every continent but South America and Antarctica'), 'A large bird of the family Gruidae with long legs and neck…');
 assert.ok(!/\s\S{1,2}…$/.test(si.titleFromGloss('An elastic device, usually a coil of metal wire, that regains its original shape after being compressed or extended')), 'no cut words');
 
+// A lexeme item named with a sibling compound is another thing.
+assert.ok(si.siblingCompound('keystone', 'capstone'));
+assert.ok(!si.siblingCompound('Gruidae', 'crane') && !si.siblingCompound('crane', 'crane') && !si.siblingCompound('tower crane', 'crane') && !si.siblingCompound('seashell', 'shell'));
+
 // Heads behind adjective lists, and articles from a disambiguation page.
 same(si.glossHeads('A royal, imperial or princely headdress; a diadem.', 'crown'), ['headdress']);
 same(si.glossHeads('Hard, protective outer layers created by an animal that lives in the sea'), ['layer']);
