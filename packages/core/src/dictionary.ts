@@ -960,7 +960,9 @@ export class DictionaryService extends BaseService {
         notAForm = true;
         return null;
       }
-      if (!mayBeFormOf(r) && !earlyAnswer?.lemma && !(final && early)) return null;
+      // The last result waits for the page only when Wiktionary has not ruled the word out.
+      const unruled = !wiktionarySenses(r).length;
+      if (!mayBeFormOf(r) && !earlyAnswer?.lemma && !(final && early && unruled)) return null;
       const decision = this.decideForm(r, early);
       if (!early) this.noteFormDecision(decisionKey, decision.then((d) => d.lemma));
       formCheck = decision.then(({ lemma, sure }) => {
@@ -976,9 +978,12 @@ export class DictionaryService extends BaseService {
       if (notAForm) r.metadata = { ...(r.metadata || {}), formChecked: true };
       return r;
     };
-    const mayBeInflected = /(?:s|ed|ing|er|est|i|en|ae|a)$/i.test(headword);
+    // Endings a form usually has; -er, -en and -a are left out, as most such words are lemmas (kitchen).
+    const mayBeInflected = /(?:s|ed|ing|est|i|ae)$/i.test(headword);
     let held: DictionaryResult | null = null;
     let releasing = false;
+    let waitingCheck = false;
+    let checkDone = false;
     const handle = (r: DictionaryResult): void => {
       if (movedOn || !opts?.onUpdate) return;
       // Wiktionary calling the word a form keeps it back until the page answers; a word that may be
@@ -1000,16 +1005,23 @@ export class DictionaryService extends BaseService {
         }
         return;
       }
-      const pending = !formCheck ? checkForm(r) : null;
-      if (pending) {
-        const seen = emitted;
-        void pending.then((next) => {
-          if (next) opts.onUpdate!(next);
-          else if (emitted === seen && !movedOn) {
-            emitted += 1;
-            opts.onUpdate!(stamp(r));
-          }
-        });
+      const pending = formCheck || checkForm(r);
+      if (pending && !checkDone) {
+        // The decision is on its way: keep the newest result until it says this word stays.
+        held = r;
+        if (!waitingCheck) {
+          waitingCheck = true;
+          void pending.then((next) => {
+            checkDone = true;
+            const h = held;
+            held = null;
+            if (next) opts.onUpdate!(next);
+            else if (h && !movedOn) {
+              emitted += 1;
+              opts.onUpdate!(stamp(h));
+            }
+          });
+        }
         return;
       }
       emitted += 1;
