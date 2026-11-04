@@ -86,11 +86,11 @@ const THUMB_WIDTH = 330;
 const LARGE_WIDTH = 960;
 const TIMEOUT_MS = 8000;
 /**
- * Every later step waits for the Wiktionary page, and Wiktionary is the first host to slow down
- * when a notebook of cards asks at once, so it gets less time; a timed-out page is asked again
- * on the next call because the result is not cached.
+ * The Wiktionary page carries the curated pictures and the etymologies that tell "bank" of money
+ * from "bank" of a river, and under load it takes four seconds or more, so it keeps the full
+ * timeout; a timed-out page is asked again on the next call because the result is not cached.
  */
-const WIKTIONARY_TIMEOUT_MS = 4000;
+const WIKTIONARY_TIMEOUT_MS = TIMEOUT_MS;
 // v4: a picture for each major sense (v3 gave one picture to most words), so v3 results are redone.
 const CACHE_VERSION = 'v4';
 const PERSIST_TTL_MS = 14 * 24 * 60 * 60 * 1000;
@@ -1429,8 +1429,8 @@ function getJson<T>(url: string, timeoutMs = TIMEOUT_MS): Promise<T | null> {
   return p;
 }
 
-/** Wiktionary pages asked for together (a screen of cards) come in one request, eight at most. */
-const WIKTIONARY_BATCH = 8;
+/** Wiktionary pages asked for together (a screen of cards) come in one request, four at most. */
+const WIKTIONARY_BATCH = 4;
 
 async function wiktionaryPage(lemma: string): Promise<string> {
   const q = await batchedTitleQuery(
