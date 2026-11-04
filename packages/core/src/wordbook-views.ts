@@ -46,7 +46,7 @@ const ICON = {
 };
 
 const STATUS_LABEL = { new: 'New', learning: 'Learning', known: 'Known' } as const;
-/** How a book's list is ordered: the book's own order, last met first, or alphabetical. */
+/** How a book's list is ordered: the book's own order, newest first as in My words, or alphabetical. */
 export type BookSort = 'book' | 'recent' | 'az';
 const SORT_LABEL: Record<BookSort, string> = { book: 'Book order', recent: 'Recent', az: 'A–Z' };
 /** Senses an opened row shows. */
@@ -179,20 +179,23 @@ function briefHtml(e: WordsEntry, loading: boolean): string {
   return `<div class="wb-brief">${ipa || pos ? `<p class="wb-brief__head">${ipa ? `<span class="wb-brief__ipa">${esc(ipa)}</span>` : ''}${pos ? `<span class="wb-brief__pos">${esc(pos)}</span>` : ''}</p>` : ''}${body}</div>`;
 }
 
-/** When a word was last met: saved, studied, or reviewed. 0 when never. */
-function lastMet(e: WordsEntry): number {
-  const saved = typeof e.createdAt === 'string' ? Date.parse(e.createdAt) : Number(e.createdAt || 0);
-  return Math.max(saved || 0, e.lastReview || 0);
+/**
+ * When a word came into your words: saved to My words, or for a book word not saved, started
+ * in Learn. 0 when neither. A review does not move it, as in My words' Recent order.
+ */
+function addedAt(e: WordsEntry): number {
+  const at = typeof e.createdAt === 'string' ? Date.parse(e.createdAt) : Number(e.createdAt || 0);
+  return at || 0;
 }
 
 /**
- * The entries in the chosen order, each with its place in the book. Recent puts words you have
- * met, newest first, before the ones you have not, which keep the book's order.
+ * The entries in the chosen order, each with its place in the book. Recent puts the words you
+ * saved or started, newest first, before the ones you have not, which keep the book's order.
  */
 export function sortBookEntries(entries: WordsEntry[], sort: BookSort): Array<{ e: WordsEntry; n: number }> {
   const rows = entries.map((e, i) => ({ e, n: i + 1 }));
   if (sort === 'az') rows.sort((a, b) => a.e.lemma.localeCompare(b.e.lemma, 'en', { sensitivity: 'base' }) || a.n - b.n);
-  else if (sort === 'recent') rows.sort((a, b) => lastMet(b.e) - lastMet(a.e) || a.n - b.n);
+  else if (sort === 'recent') rows.sort((a, b) => addedAt(b.e) - addedAt(a.e) || a.n - b.n);
   return rows;
 }
 

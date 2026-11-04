@@ -245,16 +245,19 @@ async function main() {
   await core.syncWordbooks(account);
   assert.deepEqual((await core.listWordbookSubs()).map((s) => s.bookId), ['starter']);
 
-  // A book's list orders by book place, last met, or A to Z, and keeps each word's place number.
+  // A book's list orders by book place, newest added, or A to Z, and keeps each word's place number.
+  // Recent means what it means in My words: when a word was saved, or for a book word started,
+  // newest first. A later review does not move a word, and untouched words follow in book order.
   const met = [
     { id: 'a', lemma: 'state', createdAt: 0, lastReview: null },
     { id: 'b', lemma: 'Abate', createdAt: 5000, lastReview: null },
     { id: 'c', lemma: 'might', createdAt: 1000, lastReview: 9000 },
     { id: 'd', lemma: 'part', createdAt: 0, lastReview: null },
+    { id: 'e', lemma: 'zeal', createdAt: '1970-01-01T00:00:07.000Z', lastReview: null },
   ];
-  assert.deepEqual(core.sortBookEntries(met, 'book').map((r) => r.e.lemma), ['state', 'Abate', 'might', 'part']);
-  assert.deepEqual(core.sortBookEntries(met, 'recent').map((r) => r.e.lemma), ['might', 'Abate', 'state', 'part']);
-  assert.deepEqual(core.sortBookEntries(met, 'az').map((r) => `${r.n}:${r.e.lemma}`), ['2:Abate', '3:might', '4:part', '1:state']);
+  assert.deepEqual(core.sortBookEntries(met, 'book').map((r) => r.e.lemma), ['state', 'Abate', 'might', 'part', 'zeal']);
+  assert.deepEqual(core.sortBookEntries(met, 'recent').map((r) => `${r.n}:${r.e.lemma}`), ['5:zeal', '2:Abate', '3:might', '1:state', '4:part']);
+  assert.deepEqual(core.sortBookEntries(met, 'az').map((r) => `${r.n}:${r.e.lemma}`), ['2:Abate', '3:might', '4:part', '1:state', '5:zeal']);
   const listHtml = core.wordbookListHtml(met, { scope: 'kaoyan', limit: 10, sort: 'az' });
   assert.match(listHtml, /data-act="wb-sort" data-sort="az" aria-pressed="true"/);
   assert.doesNotMatch(core.wordbookHeaderHtml('starter', ctx), /wb-goal|wb-unsub/, 'no goal chips or Remove link in a book header');
