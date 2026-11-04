@@ -106,6 +106,53 @@ const right = [
 for (const [w, part] of right) assert.ok(has(w, part), `${w} has ${part}: ${labels(w)}`);
 assert.equal(split('contrary'), 'contra·ry', 'a suffix does not start inside the prefix');
 
+// Words of 考研 the map once left off: their parts are in the tables now, as Wiktionary's
+// etymology splits them (protect is pro- + tegere, despair dē- + spērāre, revive re- + vīvere).
+const missed = [
+  ['protect', 'pro-', 'tect'], ['detect', 'de-', 'tect'], ['destroy', 'de-', 'struct'], ['review', 're-', 'vid'], ['interview', 'inter-', 'vid'],
+  ['revise', 're-', 'vid'], ['advise', 'ad-', 'vid'], ['degree', 'de-', 'grad'], ['despair', 'de-', 'sper'], ['desperate', 'de-', 'sper'],
+  ['prosper', 'pro-', 'sper'], ['relieve', 're-', 'lev'], ['relief', 're-', 'lev'], ['persuade', 'per-', 'suad'], ['profess', 'pro-', 'fess'],
+  ['confess', 'con-', 'fess'], ['defend', 'de-', 'fend'], ['offend', 'ob-', 'fend'], ['dispute', 'dis-', 'put'], ['compute', 'con-', 'put'],
+  ['deputy', 'de-', 'put'], ['deprive', 'de-', 'priv'], ['exhibit', 'ex-', 'hab'], ['prohibit', 'pro-', 'hab'], ['inhibit', 'in-', 'hab'],
+  ['decline', 'de-', 'clin'], ['declare', 'de-', 'clar'], ['eliminate', 'ex-', 'limin'], ['illegal', 'in-', 'lex'], ['diminish', 'dis-', 'min'],
+  ['administer', 'ad-', 'min'], ['approach', 'ad-', 'proach'], ['reproach', 're-', 'proach'], ['appoint', 'ad-', 'punct'], ['malfunction', 'mal-', 'funct'],
+  ['revive', 're-', 'viv'], ['survive', 'super-', 'viv'], ['deviate', 'de-', 'via'], ['revenge', 're-', 'vind'], ['devote', 'de-', 'vot'],
+  ['detail', 'de-', 'tail'], ['retail', 're-', 'tail'], ['refund', 're-', 'fus'], ['confuse', 'con-', 'fus'], ['abuse', 'ab-', 'ut'],
+  ['injure', 'in-', 'jur'], ['divorce', 'dis-', 'vert'], ['despise', 'de-', 'spect'], ['revolt', 're-', 'vol'], ['endure', 'en-', 'dur'],
+  ['epidemic', 'epi-', 'dem'], ['prototype', 'proto-', 'typ'], ['absent', 'ab-', 'ess'], ['present', 'pre-', 'ess'], ['innocent', 'in-', 'noc'],
+];
+for (const [w, ...parts] of missed) for (const p of parts) assert.ok(has(w, p), `${w} has ${p}: ${labels(w)}`);
+const roots = [
+  ['society', 'soci'], ['associate', 'soci'], ['political', 'polit'], ['police', 'polit'], ['policy', 'polit'], ['private', 'priv'], ['privilege', 'priv'],
+  ['physical', 'phys'], ['physician', 'phys'], ['various', 'vari'], ['variety', 'vari'], ['vary', 'vari'], ['violence', 'viol'], ['violate', 'viol'],
+  ['legal', 'lex'], ['legislation', 'lex'], ['legitimate', 'lex'], ['numerous', 'numer'], ['clinic', 'clin'], ['military', 'milit'], ['medical', 'medic'],
+  ['remedy', 'medic'], ['monitor', 'mon'], ['monument', 'mon'], ['demonstrate', 'mon'], ['habit', 'hab'], ['inhabit', 'hab'], ['frequent', 'frequ'],
+  ['celebrate', 'celebr'], ['integrate', 'integr'], ['tolerate', 'toler'], ['identical', 'ident'], ['minimum', 'min'], ['minister', 'min'],
+  ['usual', 'ut'], ['utilize', 'ut'], ['model', 'mod'], ['modest', 'mod'], ['moderate', 'mod'], ['accommodate', 'mod'], ['liquid', 'liqu'],
+  ['literature', 'liter'], ['mechanism', 'mechan'], ['chemical', 'chem'], ['caution', 'caut'], ['article', 'articul'], ['author', 'aug'],
+  ['auction', 'aug'], ['volunteer', 'volunt'], ['voluntary', 'volunt'], ['vote', 'vot'], ['mirror', 'mir'], ['miracle', 'mir'], ['marvelous', 'mir'],
+  ['doubt', 'dub'], ['dubious', 'dub'], ['essence', 'ess'], ['essential', 'ess'], ['fate', 'fat'], ['fatal', 'fat'], ['urgent', 'urg'],
+  ['circle', 'circ'], ['circulate', 'circ'], ['function', 'funct'], ['point', 'punct'], ['punctual', 'punct'], ['abundant', 'und'],
+  ['redundant', 'und'], ['abound', 'und'], ['isolate', 'insul'], ['insulate', 'insul'], ['nutrition', 'nutri'], ['nourish', 'nutri'],
+  ['nurture', 'nutri'], ['optimum', 'optim'], ['chief', 'chief'], ['achieve', 'chief'], ['mischief', 'chief'], ['type', 'typ'], ['typical', 'typ'],
+  ['error', 'err'], ['satisfy', 'sat'], ['saturate', 'sat'], ['humble', 'humil'], ['female', 'fem'], ['feminine', 'fem'], ['nuisance', 'noc'],
+  ['ambition', 'ambi-'], ['ambiguous', 'ambi-'], ['episode', 'epi-'], ['enable', 'en-'], ['ensure', 'en-'], ['enlarge', 'en-'], ['embody', 'en-'],
+];
+for (const [w, part] of roots) assert.ok(has(w, part), `${w} has ${part}: ${labels(w)}`);
+const lookalikes = [
+  ['scheme', 'chem'], ['messenger', 'ess'], ['polite', 'polit'], ['whisper', 'sper'], ['disperse', 'sper'], ['cling', 'clin'], ['futile', 'ut'],
+  ['feminist', 'min'], ['biggest', 'gest'], ['input', 'put'], ['output', 'put'], ['architect', 'tect'], ['arrival', 'riv'], ['envelope', 'vel'],
+  ['violin', 'viol'], ['cocktail', 'tail'], ['typhoon', 'typ'], ['devise', 'vid'], ['entire', 'en-'], ['enter', 'en-'], ['entertain', 'en-'],
+  ['energy', 'en-'], ['english', 'en-'], ['enough', 'en-'], ['empty', 'en-'], ['emperor', 'en-'], ['embassy', 'en-'],
+];
+for (const [w, part] of lookalikes) assert.ok(!has(w, part), `${w} is not ${part}: ${labels(w)}`);
+for (const w of ['cruise', 'sunrise', 'noise', 'praise', 'exercise', 'promise']) assert.ok(!has(w, '-ize'), `${w} has no -ize: ${labels(w)}`);
+assert.ok(has('realise', '-ize') && has('organise', '-ize'), 'the British spelling of -ize still counts');
+for (const [w, s] of [['protect', 'pro·tect'], ['despair', 'de·spair'], ['enlist', 'en·list'], ['ensure', 'en·sure'], ['engage', 'en·gage'], ['deputy', 'de·put·y'], ['despise', 'de·spis·e']]) {
+  assert.equal(split(w), s);
+}
+assert.ok(!has('deputy', '-ity') && !has('enlist', '-ist'), 'one letter left over is not a suffix');
+
 // A word part by its label or any spelling, for pages about one part.
 const { morphEntry } = load('morphology');
 assert.deepEqual(morphEntry('oc-'), { kind: 'prefix', key: 'ob-', gloss: 'against, toward', origin: 'Latin', forms: ['ob-', 'oc-', 'of-', 'op-'] });
@@ -133,7 +180,7 @@ const fam = (key) => a.families.find((f) => f.key === key);
 const members = (key) => new Set((fam(key)?.ids || []).map((id) => a.words.get(id).entry.lemma));
 const placed = new Set();
 for (const f of a.families) if (f.kind === 'root' || f.kind === 'prefix') f.ids.forEach((id) => placed.add(id));
-assert.ok(placed.size >= 1550, `words in a root or prefix family: ${placed.size}`);
+assert.ok(placed.size >= 1850, `words in a root or prefix family: ${placed.size}`);
 assert.ok(members('prefix:ob-').size >= 34, `ob-: ${members('prefix:ob-').size}`);
 for (const w of ['obtain', 'observe', 'obstacle', 'obvious', 'occasion', 'offer', 'oppose']) assert.ok(members('prefix:ob-').has(w), `ob- lists ${w}`);
 assert.ok(!members('prefix:ob-').has('official'));
@@ -151,7 +198,7 @@ const md = views.notebookMapData(a, ['root', 'prefix', 'char']);
 const layoutMs = Date.now() - t1;
 const mapWords = md.nodes.filter((p) => p.k === 'word');
 assert.equal(md.total, 4801);
-assert.ok(mapWords.length >= 2500, `words on the map: ${mapWords.length}`);
+assert.ok(mapWords.length >= 2800, `words on the map: ${mapWords.length}`);
 const ob = md.nodes.findIndex((p) => p.id === 'prefix:ob-');
 assert.ok(ob >= 0, 'ob- is on the map');
 assert.equal(md.edges.filter(([x]) => x === ob).length, members('prefix:ob-').size, 'every ob- word is joined to ob-');
