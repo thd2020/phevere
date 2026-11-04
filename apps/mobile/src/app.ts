@@ -2792,6 +2792,12 @@ export async function startApp(): Promise<void> {
   root.addEventListener('focusout', (e) => {
     if ((e.target as HTMLElement).id === 'q') setTimeout(paintSuggest, 0);
   });
+  root.addEventListener('keydown', (e) => {
+    if ((e.target as HTMLElement).id !== 'q' || (e as KeyboardEvent).key !== 'Escape') return;
+    suggestHeld = true;
+    suggestSeq++;
+    paintSuggest();
+  });
   // Settings disclosures stay open across repaints.
   root.addEventListener('toggle', (e) => {
     const d = e.target as HTMLDetailsElement | null;
