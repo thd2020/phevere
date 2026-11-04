@@ -1879,6 +1879,8 @@ function onClick(e: Event): void {
 }
 
 let suggestSeq = 0;
+/** After a lookup is submitted, the list stays shut until the next keystroke. */
+let suggestHeld = false;
 
 /** Common words that begin with what is typed, listed under the lookup field. */
 function paintSuggest(): void {
@@ -1887,7 +1889,7 @@ function paintSuggest(): void {
   if (!input || !form) return;
   let list = form.querySelector<HTMLElement>('.suggest');
   const typed = input.value.trim();
-  const words = document.activeElement === input ? peekSuggestions(typed, 6) : [];
+  const words = document.activeElement === input && !suggestHeld ? peekSuggestions(typed, 6) : [];
   if (!words.length) {
     list?.remove();
     return;
@@ -1909,6 +1911,7 @@ function paintSuggest(): void {
 }
 
 function onQueryInput(): void {
+  suggestHeld = false;
   paintSuggest();
   const input = document.getElementById('q') as HTMLInputElement | null;
   const asked = input?.value || '';
@@ -2008,6 +2011,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       const word = t.dataset.word || '';
       if (!word) return;
       draft = word;
+      suggestHeld = true;
+      suggestSeq++;
       (document.activeElement as HTMLElement | null)?.blur?.();
       await lookup(word);
       return;
@@ -2708,6 +2713,9 @@ function onSubmit(e: Event): void {
   if (!(form instanceof HTMLFormElement) || !form.classList.contains('search')) return;
   e.preventDefault();
   const input = document.getElementById('q') as HTMLInputElement | null;
+  suggestHeld = true;
+  suggestSeq++;
+  paintSuggest();
   if (input?.value) void lookup(input.value);
 }
 
@@ -2779,7 +2787,7 @@ export async function startApp(): Promise<void> {
   root.addEventListener('change', onChange);
   root.addEventListener('input', onChange);
   root.addEventListener('focusin', (e) => {
-    if ((e.target as HTMLElement).id === 'q' && (e.target as HTMLInputElement).value.trim()) onQueryInput();
+    if ((e.target as HTMLElement).id === 'q' && (e.target as HTMLInputElement).value.trim() && !suggestHeld) onQueryInput();
   });
   root.addEventListener('focusout', (e) => {
     if ((e.target as HTMLElement).id === 'q') setTimeout(paintSuggest, 0);
