@@ -138,8 +138,11 @@ export function wireGlobalSearch(input: HTMLInputElement, src: GlobalSearchSourc
 
   let rows: Row[] = [];
   let active = 0;
+  // Bumped when the panel closes, so suggestions that arrive later do not reopen it.
+  let epoch = 0;
 
   const close = () => {
+    epoch += 1;
     panel.hidden = true;
     input.setAttribute('aria-expanded', 'false');
     input.removeAttribute('aria-activedescendant');
@@ -188,8 +191,9 @@ export function wireGlobalSearch(input: HTMLInputElement, src: GlobalSearchSourc
     active = 0;
     paint();
     const asked = input.value;
+    const at = epoch;
     void src.loadSuggestions?.(asked).then(() => {
-      if (input.value === asked && document.activeElement === input) paint();
+      if (input.value === asked && document.activeElement === input && epoch === at) paint();
     });
   });
   input.addEventListener('focus', () => {
