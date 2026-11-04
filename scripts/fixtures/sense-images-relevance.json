@@ -217,7 +217,7 @@
   },
   {
    "word": "palm",
-   "sense": "Synonym of hand , any of various units of length",
+   "sense": "Any of various units of length notionally derived",
    "pos": "noun",
    "right": [],
    "wrong": [
@@ -334,7 +334,8 @@
    "sense": "An instrument that plays in the bass range, in p",
    "pos": "noun",
    "right": [
-    "MusicmanStingray.jpg"
+    "MusicmanStingray.jpg",
+    "AGK bass1 full.jpg"
    ],
    "wrong": []
   },
@@ -652,7 +653,9 @@
    "word": "pitcher",
    "sense": "A wide-mouthed, deep vessel for holding liquids",
    "pos": "noun",
-   "right": [],
+   "right": [
+    "KrugSteinzeug.jpg"
+   ],
    "wrong": [],
    "must": true
   },
@@ -665,6 +668,88 @@
    ],
    "wrong": [],
    "must": true
+  },
+  {
+   "word": "bank",
+   "sense": "An elevation under the sea; a shallow area of shif",
+   "pos": "noun",
+   "right": [],
+   "wrong": [
+    "GulfofMaine.jpg"
+   ]
+  },
+  {
+   "word": "compass",
+   "sense": "A curved circular form.",
+   "pos": "noun",
+   "right": [],
+   "wrong": [
+    "Fantasy of Flight Front Entrance - Compass Rose Window.JPG"
+   ]
+  },
+  {
+   "word": "mouse",
+   "sense": "Such a rodent that is of the genus Mus",
+   "pos": "noun",
+   "right": [
+    "Мышь 2.jpg",
+    "House mouse.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "bow",
+   "sense": "The front of a boat or ship",
+   "pos": "noun",
+   "right": [
+    "Baizo p1 approaching Port of Rotterdam, Holland 06-Aug-2005.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "mole",
+   "sense": "A naevus , a pigmented , slightly raised, and some",
+   "pos": "noun",
+   "right": [
+    "Normal mole with border.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "bass",
+   "sense": "The perch ; any of various marine and freshwater f",
+   "pos": "noun",
+   "right": [
+    "Micropterus dolomieu.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "nail",
+   "sense": "The horny plate or appendage at the ends of the di",
+   "pos": "noun",
+   "right": [
+    "Toes.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "plant",
+   "sense": "To place (a seed or plant) in soil or other substr",
+   "pos": "verb",
+   "right": [
+    "Dat 1 Planting 7.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "apple",
+   "sense": "Synonym of applewood",
+   "pos": "noun",
+   "right": [
+    "Apfelbaum Holz.JPG"
+   ],
+   "wrong": []
   }
  ]
 }
