@@ -96,6 +96,8 @@ const CACHE_VERSION = 'v4';
 const PERSIST_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 /** A result with no picture at all is kept this long, so a word saved earlier is tried again. */
 const EMPTY_TTL_MS = 6 * 60 * 60 * 1000;
+/** A result found while a request failed, with at least one picture, is kept this long. */
+const PARTIAL_TTL_MS = 24 * 60 * 60 * 1000;
 const API_UA = 'Phevere/2 (https://github.com/thd2020/phevere)';
 
 const STOP = new Set(
@@ -1583,11 +1585,12 @@ async function readPersisted(key: string): Promise<Array<SenseImage | null> | nu
   }
 }
 
-function writePersisted(key: string, value: Array<SenseImage | null>): void {
+/** `savedAt` earlier than now makes an entry expire sooner (a partial result keeps a day). */
+function writePersisted(key: string, value: Array<SenseImage | null>, savedAt = Date.now()): void {
   const store = getLookupCache();
   if (!store) return;
   void Promise.resolve()
-    .then(() => store.set(key, value, Date.now()))
+    .then(() => store.set(key, value, savedAt))
     .catch((): undefined => undefined);
 }
 
@@ -2059,7 +2062,15 @@ export async function fetchSenseImages(
         }
       });
       if (failures !== before) {
-        forget();
+        // A request failed somewhere (a screen of cards shares them, and Wikimedia answers 429
+        // under load). Pictures already found are kept for a day, so the cards do not start
+        // over on every visit; a result with none is asked for again next time.
+        if (out.some(Boolean)) {
+          entry.until = Date.now() + PARTIAL_TTL_MS;
+          writePersisted(key, out, Date.now() - (PERSIST_TTL_MS - PARTIAL_TTL_MS));
+        } else {
+          forget();
+        }
         return out;
       }
       if (!out.some(Boolean)) entry.until = Date.now() + EMPTY_TTL_MS;

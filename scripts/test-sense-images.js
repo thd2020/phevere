@@ -764,6 +764,32 @@ async function fallbackEndToEnd() {
     assert.strictEqual((await mod.fetchWordImage('operon', { lang: 'en' })).title, 'Lac Operon', 'online again: retried');
   }
 
+  // Pictures found while another request failed are kept for a day, not thrown away.
+  {
+    const persisted = new Map();
+    const mod = load({
+      isCoreConfigured: () => true,
+      getHttp: () => ({
+        requestJson: async (url) => {
+          if (url.includes('generator=search')) throw new Error('HTTP 503');
+          const hit = fb.responses[url];
+          if (!hit) throw new Error('unrecorded');
+          return JSON.parse(JSON.stringify(hit));
+        },
+      }),
+      getLookupCache: () => ({
+        get: (k) => persisted.get(k) || null,
+        set: (k, value, savedAt) => persisted.set(k, { value, savedAt }),
+      }),
+    });
+    const imgs = await mod.fetchSenseImages('wind', fb.senses.wind.list, { lang: 'en' });
+    assert.ok(imgs.some(Boolean), 'wind: pictures despite a failed search');
+    const [saved] = [...persisted.values()];
+    assert.ok(saved && saved.value.some(Boolean), 'the partial result is saved');
+    const left = 14 * 86400000 - (Date.now() - saved.savedAt);
+    assert.ok(left > 23 * 3600000 && left <= 24 * 3600000, `it expires in a day, not ${Math.round(left / 3600000)} hours`);
+  }
+
   // A saved result with no picture expires after six hours (a picture keeps for two weeks), and
   // results saved under the previous cache version are not read at all.
   {
