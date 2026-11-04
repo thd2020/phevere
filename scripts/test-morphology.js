@@ -159,5 +159,27 @@ assert.equal(md.nodes[md.nodes.findIndex((p) => p.id === 'root:fac')].f, 'fac ·
 assert.ok(md.nodes.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z)));
 assert.ok(layoutMs < 3000, `layout of the book took ${layoutMs} ms`);
 assert.deepEqual(views.findMapWords(md, 'obtains', 1).map((p) => p.l), ['obtain']);
+// Without WebGL the flat map draws a readable subset: the largest parts and up to 220 words.
+const flat = views.flatMapData(md);
+assert.ok(flat.nodes.filter((p) => p.k === 'word').length <= 220 && flat.nodes.filter((p) => p.k !== 'word').length <= 48);
+assert.ok(flat.edges.every(([x, y], k) => {
+  const e = md.edges[flat.edgeIds[k]];
+  return e && md.nodes[e[0]].id === flat.nodes[x].id && md.nodes[e[1]].id === flat.nodes[y].id;
+}), 'each flat edge names its edge on the full map');
+assert.ok(flat.nodes.every((p) => p.z === 0 && Number.isFinite(p.x) && Number.isFinite(p.y)));
+
+// When a Families trace refines a few words, the map keeps every earlier node where it was.
+const traced = views.analyzeNotebook(book.words.map((w, i) => ({ id: `k${i}`, lemma: w })), (l) => (l === 'offend' || l === 'oppose' ? { origin: 'Old English', roots: [] } : null));
+const md2 = views.notebookMapData(traced, ['root', 'prefix', 'char']);
+assert.notEqual(md2.sig, md.sig, 'the graph changed');
+assert.equal(md2.from, md.sig, 'laid out from the earlier map');
+const before = new Map(md.nodes.map((p) => [p.id, p]));
+const moved = md2.nodes.filter((p) => before.has(p.id) && (before.get(p.id).x !== p.x || before.get(p.id).y !== p.y || before.get(p.id).z !== p.z));
+assert.equal(moved.length, 0, `nodes moved: ${moved.slice(0, 5).map((p) => p.l)}`);
+
+// Word parts are found by any spelling, with or without the hyphen, and listed first.
+for (const q of ['ob-', 'ob', 'oc-', 'op']) assert.equal(views.findMapWords(md, q, 1)[0]?.id, 'prefix:ob-', `"${q}" finds ob-`);
+for (const q of ['fac', 'fect', 'fic']) assert.equal(views.findMapWords(md, q, 1)[0]?.id, 'root:fac', `"${q}" finds fac`);
+assert.equal(views.findMapWords(md, 'fac')[1].k, 'word', 'words follow the part');
 
 console.log(`morphology: ok (考研: ${placed.size} of 4801 words in a root or prefix family, ${ms} ms; ${mapWords.length} words on the map, laid out in ${layoutMs} ms)`);

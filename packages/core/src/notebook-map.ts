@@ -8,7 +8,7 @@
  * The map holds every connected word of the notebook or book, thousands for a large book.
  */
 import type { MorphKind } from './morphology';
-import { esc, clean, type NotebookAnalysis } from './notebook-shared';
+import { esc, clean, type Family, type NotebookAnalysis, type NotebookEntry, type WordInfo } from './notebook-shared';
 import { loadMapScene } from './notebook-map-load';
 
 export interface MapNode {
@@ -39,6 +39,8 @@ export interface MapOptions {
   kinds?: MorphKind[];
   maxWords?: number;
   maxHubs?: number;
+  /** Positions from an earlier layout of the same words: nodes found here keep their place. */
+  seed?: Map<string, [number, number, number]>;
   /** 2 (default) lays the graph out on a plane; 3 in space, centred on the origin. */
   dimensions?: 2 | 3;
 }
@@ -62,7 +64,7 @@ export interface MapLayout {
 export function layoutNotebookMap(a: NotebookAnalysis, opts: MapOptions = {}): MapLayout {
   const dims = opts.dimensions === 3 ? 3 : 2;
   const kinds = new Set<MorphKind>(opts.kinds || ['root', 'prefix', 'char']);
-  if (dims === 3) return layoutSpace(a, kinds, opts.maxWords ?? Infinity, opts.maxHubs ?? Infinity);
+  if (dims === 3) return layoutSpace(a, kinds, opts.maxWords ?? Infinity, opts.maxHubs ?? Infinity, opts.seed);
   const hubs = a.families.filter((f) => kinds.has(f.kind)).slice(0, opts.maxHubs ?? 48);
   const wordIndex = new Map<string, number>();
   const nodes: MapNode[] = [];
@@ -210,7 +212,7 @@ function spiral(i: number, n: number): [number, number, number] {
  * landed on top of each other. Every step is linear in the number of words except the
  * morpheme simulation, which only sees the few hundred morphemes.
  */
-function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: number, maxHubs: number): MapLayout {
+function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: number, maxHubs: number, seed?: Map<string, [number, number, number]>): MapLayout {
   const hubs = a.families.filter((f) => kinds.has(f.kind)).slice(0, maxHubs);
   const nodes: MapNode[] = [];
   const edges: MapEdge[] = [];
@@ -268,14 +270,24 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
   }
   // The radius that packs every ball with some air between them.
   const R0 = 1.4 * Math.cbrt(ball.reduce((s, b) => s + b * b * b, 0)) + 20;
+  // Nodes from an earlier layout keep their place, so the map does not reshuffle when a
+  // Families trace adds a few words or parts; only the new ones are laid out.
+  const fixed = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const at = seed?.get(nodes[i].id);
+    if (!at) continue;
+    [nodes[i].x, nodes[i].y, nodes[i].z] = at;
+    fixed[i] = 1;
+  }
   for (let h = 0; h < H; h++) {
+    if (fixed[h]) continue;
     const [x, y, z] = spiral(h, H);
     nodes[h].x = x * R0;
     nodes[h].y = y * R0;
     nodes[h].z = z * R0;
   }
   const springs = [...shared].map(([k, count]) => ({ p: Math.floor(k / 65536), q: k % 65536, w: Math.min(1, count / 3) }));
-  const iterations = 260;
+  const iterations = fixed.some((f, i) => i < H && !f) ? 260 : 0;
   for (let it = 0; it < iterations; it++) {
     const cool = 1 - it / iterations;
     for (let i = 0; i < H; i++) {
@@ -323,6 +335,10 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
     }
     for (let i = 0; i < H; i++) {
       const p = nodes[i];
+      if (fixed[i]) {
+        p.vx = p.vy = p.vz = 0;
+        continue;
+      }
       p.vx -= p.x * 0.02;
       p.vy -= p.y * 0.02;
       p.vz -= p.z * 0.02;
@@ -341,7 +357,9 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
   const seat = new Map<number, number>();
   const placed = new Uint8Array(n);
   for (let h = 0; h < H; h++) placed[h] = 1;
+  for (let i = H; i < n; i++) if (fixed[i]) placed[i] = 1;
   for (const [i, list] of wordHubs) {
+    if (fixed[i]) continue;
     let main = list[0];
     for (const h of list) if (hubs[h].ids.length < hubs[main].ids.length) main = h;
     const k = seat.get(main) || 0;
@@ -466,13 +484,16 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
                 [dx, dy, dz] = spiral((i * 31 + j) % 50, 50);
                 d = 1;
               }
-              const push = (MIN - d) / 2;
-              p.x += (dx / d) * push;
-              p.y += (dy / d) * push;
-              p.z += (dz / d) * push;
-              q.x -= (dx / d) * push;
-              q.y -= (dy / d) * push;
-              q.z -= (dz / d) * push;
+              // A word kept from the earlier layout stays put; the other one moves the whole way.
+              if (fixed[i] && fixed[j]) continue;
+              const pp = fixed[i] ? 0 : fixed[j] ? MIN - d : (MIN - d) / 2;
+              const qq = fixed[j] ? 0 : fixed[i] ? MIN - d : (MIN - d) / 2;
+              p.x += (dx / d) * pp;
+              p.y += (dy / d) * pp;
+              p.z += (dz / d) * pp;
+              q.x -= (dx / d) * qq;
+              q.y -= (dy / d) * qq;
+              q.z -= (dz / d) * qq;
               moved += 1;
             }
           }
@@ -482,13 +503,17 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
     if (!moved) break;
   }
 
+  // Centre the map on the origin, unless it was seeded: then the old nodes stay exactly where
+  // the camera last saw them.
   let cx = 0;
   let cy = 0;
   let cz = 0;
-  for (const p of nodes) {
-    cx += p.x / n;
-    cy += p.y / n;
-    cz += p.z / n;
+  if (!fixed.some((f) => f)) {
+    for (const p of nodes) {
+      cx += p.x / n;
+      cy += p.y / n;
+      cz += p.z / n;
+    }
   }
   const dist: number[] = [];
   for (const p of nodes) {
@@ -512,6 +537,8 @@ export interface MapData {
   radius: number;
   /** Words in the notebook or book the map was drawn from, connected or not. */
   total: number;
+  /** The signature of the earlier layout this one kept its positions from, if any. */
+  from?: string;
   nodes: { id: string; k: 'word' | MorphKind; l: string; x: number; y: number; z: number; n: number; g?: string; f?: string }[];
   /** [from, to, 1 when the second word is built from the first]. */
   edges: [number, number, 0 | 1][];
@@ -546,11 +573,15 @@ export function notebookMapData(a: NotebookAnalysis, kinds: MorphKind[]): MapDat
     layoutCache.set(sig, hit);
     return hit;
   }
-  const { nodes, edges, radius } = layoutNotebookMap(a, { kinds, dimensions: 3 });
+  // The same words drawn a moment ago under another signature (a Families trace refined a few
+  // parts): keep their positions, so the map does not reshuffle under the reader.
+  const prev = seedFor(a, kinds);
+  const { nodes, edges, radius } = layoutNotebookMap(a, { kinds, dimensions: 3, ...(prev ? { seed: prev.seed } : {}) });
   const data: MapData = {
     sig,
     radius,
     total: a.words.size,
+    ...(prev ? { from: prev.sig } : {}),
     nodes: nodes.map((p) => ({
       id: p.id,
       k: p.kind,
@@ -567,6 +598,20 @@ export function notebookMapData(a: NotebookAnalysis, kinds: MorphKind[]): MapDat
   layoutCache.set(sig, data);
   if (layoutCache.size > 6) layoutCache.delete(layoutCache.keys().next().value as string);
   return data;
+}
+
+/** The most recent cached layout of the same morpheme kinds that shares nearly all its words with `a`. */
+function seedFor(a: NotebookAnalysis, kinds: MorphKind[]): { sig: string; seed: Map<string, [number, number, number]> } | null {
+  const head = `${kinds.slice().sort().join('+')}:`;
+  for (const data of [...layoutCache.values()].reverse()) {
+    if (!data.sig.startsWith(head)) continue;
+    const words = data.nodes.filter((p) => p.k === 'word');
+    if (!words.length) continue;
+    const shared = words.reduce((s, p) => s + (a.words.has(p.id) ? 1 : 0), 0);
+    if (shared / words.length < 0.9 || Math.abs(a.words.size - data.total) > Math.max(5, data.total * 0.05)) continue;
+    return { sig: data.sig, seed: new Map(data.nodes.map((p) => [p.id, [p.x, p.y, p.z] as [number, number, number]])) };
+  }
+  return null;
 }
 
 /** What a typed word could be the inflection of: "changes" also tries "change", "studied" "study". */
@@ -594,16 +639,26 @@ export function queryForms(q: string): string[] {
 }
 
 /**
- * Words on the map that match what was typed, best first: the word itself, the word it is an
- * inflection of ("changes" finds "change"), words starting with it, then words containing it.
+ * Nodes on the map that match what was typed, best first. Word parts come first: one spelled
+ * as typed, with or without its hyphen and in any of its spellings ("ob-", "oc", "fect"), then
+ * parts that start with it. Then words: the word itself, the word it is an inflection of
+ * ("changes" finds "change"), words starting with it, then words containing it.
  */
 export function findMapWords(data: MapData, q: string, limit = 8): MapData['nodes'] {
   const forms = queryForms(q);
   if (!forms.length) return [];
   const s = forms[0];
+  const bare = (x: string) => x.toLocaleLowerCase().replace(/^-+|-+$/g, '');
+  const part = bare(s);
   const scored: { p: MapData['nodes'][number]; r: number }[] = [];
   for (const p of data.nodes) {
-    if (p.k !== 'word') continue;
+    if (p.k !== 'word') {
+      if (!part) continue;
+      const spellings = (p.f ? p.f.split(' · ') : [p.l]).map(bare);
+      if (spellings.includes(part)) scored.push({ p, r: -2 });
+      else if (part.length >= 2 && spellings.some((x) => x.startsWith(part))) scored.push({ p, r: -1 });
+      continue;
+    }
     const l = p.l.toLocaleLowerCase();
     const fi = forms.indexOf(l);
     let r = -1;
@@ -711,6 +766,7 @@ class MapController {
   constructor(map: HTMLElement, data: MapData) {
     this.map = map;
     this.data = data;
+    this.adopt();
     data.nodes.forEach((p, i) => this.index.set(p.id, i));
     this.adj = data.nodes.map((): number[] => []);
     data.edges.forEach((e, k) => {
@@ -737,6 +793,9 @@ class MapController {
     };
     map.addEventListener('click', onClick);
     map.addEventListener('keydown', onKey);
+    const onResize = () => fitMap(map);
+    window.addEventListener('resize', onResize);
+    this.offs.push(() => window.removeEventListener('resize', onResize));
     this.offs.push(() => map.removeEventListener('click', onClick), () => map.removeEventListener('keydown', onKey));
     const input = map.parentElement?.querySelector<HTMLInputElement>('[data-map-search]');
     if (input) this.wireSearch(input);
@@ -760,7 +819,10 @@ class MapController {
     const paint = () => {
       if (!list || !items.length) return close();
       list.innerHTML = items
-        .map((p, i) => `<li role="option" id="${list.id}-${i}" class="nbv-map-suggest__item${i === active ? ' is-active' : ''}" data-i="${i}" aria-selected="${i === active}">${esc(p.l)}</li>`)
+        .map((p, i) => {
+          const text = p.k === 'word' ? esc(p.l) : `<span class="nbv-morph nbv-morph--${p.k}">${esc(p.f || p.l)}</span>${p.g ? `<span class="nbv-map-suggest__gloss">${esc(p.g)}</span>` : ''}`;
+          return `<li role="option" id="${list.id}-${i}" class="nbv-map-suggest__item${i === active ? ' is-active' : ''}" data-i="${i}" aria-selected="${i === active}">${text}</li>`;
+        })
         .join('');
       list.hidden = false;
       input.setAttribute('aria-expanded', 'true');
@@ -837,6 +899,7 @@ class MapController {
     // A new search from the Words field flies to the word it found instead.
     const query = this.map.dataset.mapQuery || '';
     const goto = this.map.dataset.mapGoto || '';
+    this.adopt();
     const same = !!memory && memory.sig === this.data.sig;
     if (goto && (!same || memory!.query !== query) && this.index.has(goto)) {
       this.focus(goto, true);
@@ -931,6 +994,12 @@ class MapController {
     const p = panel.getBoundingClientRect();
     const side = p.width < m.width * 0.6;
     this.renderer?.inset?.(side ? p.right - m.left : 0, side ? 0 : m.bottom - p.top);
+    // A sheet along the bottom must clear the app's tab bar, so its Look up button can be reached.
+    if (!side) {
+      const band = visibleBand();
+      const below = m.bottom - band.bottom + 8;
+      if (below > 0) scrollParent(this.map).scrollBy({ top: below, behavior: reducedMotion() ? 'auto' : 'smooth' });
+    }
   }
 
   pick = (id: string | null): void => {
@@ -954,11 +1023,62 @@ class MapController {
   }
 
   savedView(): MapView | null {
+    this.adopt();
     return memory && memory.sig === this.data.sig ? memory.view : null;
+  }
+
+  /** The remembered focus and camera belong to the layout this one grew from: take them over. */
+  private adopt(): void {
+    if (memory && this.data.from && memory.sig === this.data.from) memory.sig = this.data.sig;
   }
 }
 
 const live = new Set<MapController>();
+
+const reducedMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+/** The fixed or sticky bar an element at this point sits in, if any. */
+function barAt(x: number, y: number): DOMRect | null {
+  for (const hit of document.elementsFromPoint?.(x, y) || []) {
+    for (let el: Element | null = hit; el && el !== document.body; el = el.parentElement) {
+      const pos = getComputedStyle(el).position;
+      if (pos === 'fixed' || pos === 'sticky') return el.getBoundingClientRect();
+    }
+  }
+  return null;
+}
+
+/**
+ * The part of the window not covered by the shell's fixed bars: a tab bar along the bottom (the
+ * phone's Lookup, Words, Learn and Settings) and a sticky header along the top.
+ */
+function visibleBand(): { top: number; bottom: number } {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const low = barAt(w / 2, h - 2);
+  const high = barAt(w / 2, 2);
+  return { top: high && high.bottom < h / 2 ? high.bottom : 0, bottom: low && low.top > h / 2 ? low.top : h };
+}
+
+function scrollParent(el: HTMLElement): Element {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const o = getComputedStyle(p).overflowY;
+    if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+  }
+  return document.scrollingElement || document.documentElement;
+}
+
+/**
+ * Keep the map no taller than the room between the shell's bars, so the whole stage, and the
+ * sheet along its bottom, can be on screen at once.
+ */
+function fitMap(map: HTMLElement): void {
+  map.style.height = '';
+  const natural = map.getBoundingClientRect().height;
+  const band = visibleBand();
+  const room = Math.floor(band.bottom - band.top - 16);
+  if (room >= 260 && natural > room) map.style.height = `${room}px`;
+}
 let memory: { sig: string; focus: string | null; view: MapView | null; query: string; find?: string } | null = null;
 let webgl: boolean | null = null;
 
@@ -997,14 +1117,14 @@ export function attachNotebookMap(root: any): void {
   const stage = map.querySelector<HTMLElement>('[data-map-stage]');
   if (!data || !stage) return;
   map.dataset.wired = '1';
+  fitMap(map);
   const ctl = new MapController(map, data);
   live.add(ctl);
-  const reducedMotion = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const opts: MapRendererOptions = { reducedMotion, restore: ctl.savedView(), onPick: ctl.pick };
+  const opts: MapRendererOptions = { reducedMotion: reducedMotion(), restore: ctl.savedView(), onPick: ctl.pick };
   const flat = () => {
     if (!ctl.alive || !map.isConnected) return;
     map.classList.add('is-flat');
-    ctl.use(createFlatMap(stage, data, opts));
+    ctl.use(createFlatMap(stage, flatMapData(data), opts));
   };
   if (!webglAvailable()) {
     flat();
@@ -1031,13 +1151,51 @@ export function attachNotebookMap(root: any): void {
 }
 
 /** The flat SVG map for devices without WebGL: drag to pan, wheel or pinch to zoom. */
-function createFlatMap(stage: HTMLElement, data: MapData, opts: MapRendererOptions): MapRenderer {
+/** The flat map's graph: a subset of the map, with each edge's index in the full map. */
+interface FlatData extends MapData {
+  edgeIds: number[];
+}
+
+/**
+ * Without WebGL thousands of nodes on a plane are a tangle, so the flat map draws what the old
+ * map drew: the 48 largest morphemes and up to 220 of their words, laid out flat by the force
+ * simulation. Search and focus still work on the whole map; a word outside the subset is
+ * found and listed but not drawn.
+ */
+export function flatMapData(data: MapData, maxHubs = 48, maxWords = 220): FlatData {
+  const hubs = data.nodes
+    .map((p, i) => ({ p, i }))
+    .filter((x) => x.p.k !== 'word')
+    .sort((a, b) => b.p.n - a.p.n || a.p.l.localeCompare(b.p.l))
+    .slice(0, maxHubs);
+  const byHub = new Map<number, string[]>();
+  const parent = new Map<string, string>();
+  data.edges.forEach(([a, b, derived]) => {
+    if (derived) parent.set(data.nodes[b].id, data.nodes[a].id);
+    else byHub.set(a, [...(byHub.get(a) || []), data.nodes[b].id]);
+  });
+  const words = new Map(
+    data.nodes.filter((p) => p.k === 'word').map((p) => [p.id, { entry: { id: p.id, lemma: p.l } as NotebookEntry, morphs: [], parts: [], origin: '' } as WordInfo]),
+  );
+  const families: Family[] = hubs.map(({ p, i }) => ({ key: p.id, kind: p.k as MorphKind, label: p.l, gloss: p.g || '', origin: '', ids: byHub.get(i) || [], ...(p.f ? { forms: p.f } : {}) }));
+  const kinds = [...new Set(families.map((f) => f.kind))];
+  const flat = layoutNotebookMap({ words, families, trees: [], parent }, { kinds, dimensions: 2, maxHubs, maxWords });
+  const index = new Map(data.nodes.map((p, i) => [p.id, i]));
+  const edgeIndex = new Map(data.edges.map(([a, b], k) => [`${data.nodes[a].id}>${data.nodes[b].id}`, k]));
+  const nodes = flat.nodes.map((p) => ({ ...data.nodes[index.get(p.id)!], x: p.x, y: -p.y, z: 0 }));
+  const edges: MapData['edges'] = flat.edges.map((e) => [e.a, e.b, e.kind === 'derived' ? 1 : 0]);
+  const edgeIds = flat.edges.map((e) => edgeIndex.get(`${flat.nodes[e.a].id}>${flat.nodes[e.b].id}`) ?? -1);
+  return { ...data, nodes, edges, edgeIds };
+}
+
+function createFlatMap(stage: HTMLElement, data: FlatData, opts: MapRendererOptions): MapRenderer {
   const pad = 60;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  const scale = 2.2;
+  // The flat layout is already in pixels.
+  const scale = 1;
   const pts = data.nodes.map((p) => ({ x: p.x * scale, y: -p.y * scale }));
   for (const p of pts) {
     minX = Math.min(minX, p.x);
@@ -1054,7 +1212,7 @@ function createFlatMap(stage: HTMLElement, data: MapData, opts: MapRendererOptio
   const edgeSvg = data.edges
     .map(([a, b, derived], k) => {
       const kind = derived ? 'derived' : data.nodes[a].k;
-      return `<line class="nbv-edge nbv-edge--${kind}" data-e="${k}" x1="${pts[a].x}" y1="${pts[a].y}" x2="${pts[b].x}" y2="${pts[b].y}"/>`;
+      return `<line class="nbv-edge nbv-edge--${kind}" data-e="${data.edgeIds[k]}" x1="${pts[a].x}" y1="${pts[a].y}" x2="${pts[b].x}" y2="${pts[b].y}"/>`;
     })
     .join('');
   const nodeSvg = data.nodes
@@ -1162,6 +1320,10 @@ function createFlatMap(stage: HTMLElement, data: MapData, opts: MapRendererOptio
   return {
     highlight(h, fly) {
       svg.querySelectorAll('.is-lit, .is-focus').forEach((el) => el.classList.remove('is-lit', 'is-focus'));
+      // A word the flat map does not draw is shown in the panel only; the map stays undimmed.
+      const focus = h?.focus;
+      if (focus && !data.nodes.some((p) => p.id === focus)) h = null;
+      stage.closest('[data-map]')?.classList.toggle('is-focus', !!h);
       if (!h) return;
       svg.querySelectorAll<SVGElement>('.nbv-node').forEach((el) => {
         const id = el.getAttribute('data-id') || '';

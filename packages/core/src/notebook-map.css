@@ -67,6 +67,8 @@
   font: 15px/1.2 var(--nbv-serif);
   cursor: pointer;
 }
+.nbv-map-suggest__item .nbv-morph { vertical-align: 1px; }
+.nbv-map-suggest__gloss { margin-left: 8px; color: var(--nbv-soft); font: italic 13px/1.2 var(--nbv-serif); }
 .nbv-map-suggest__item:hover,
 .nbv-map-suggest__item.is-active { background: var(--nbv-paper-2); }
 .nbv-map-hint { margin-left: auto; font: 500 12px/1 var(--nbv-ui); color: var(--nbv-soft); }

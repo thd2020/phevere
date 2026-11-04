@@ -99,7 +99,7 @@ assert.equal(views.notebookMapData(a, ['root', 'char']), md, 'layout cached');
 // Finding a word: itself first, then the word it inflects, then words starting with it.
 assert.deepEqual(views.findMapWords(md, 'inspect').map((p) => p.l), ['inspect', 'inspector']);
 assert.deepEqual(views.findMapWords(md, 'inspects').map((p) => p.l), ['inspect', 'inspector']);
-assert.deepEqual(views.findMapWords(md, 'spect').map((p) => p.l), ['spectator', 'inspect', 'inspector']);
+assert.deepEqual(views.findMapWords(md, 'spect').map((p) => p.l), ['spect', 'spectator', 'inspect', 'inspector'], 'the part first');
 assert.ok(views.queryForms('changes').includes('change'));
 assert.ok(views.queryForms('studied').includes('study'));
 // The Words search goes to the map: a match opens on it, a miss says so and keeps the map.
