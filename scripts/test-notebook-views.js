@@ -65,6 +65,23 @@ assert.deepEqual(views.familyGroupings(a), ['root', 'prefix', 'suffix', 'origin'
 const fhtml = views.familiesHtml(a, 'root');
 assert.match(fhtml, /in<b>spect<\/b>or/);
 assert.match(views.familiesHtml(a, 'tree'), /nationality/);
+// Families file A to Z under letter headings; tiles are sized by family size; trees open large.
+assert.match(fhtml, /<section class="nbv-letter" data-letter="S"><h3 class="nbv-letter__head">S<\/h3>/);
+assert.match(fhtml, /class="nbv-fam nbv-fam--root nbv-fam--s"/);
+assert.equal(views.familyLetter('-tion'), 'T');
+assert.equal(views.familyLetter('*bʰer-'), 'B');
+assert.equal(views.familyLetter('éco'), 'E');
+assert.equal(views.familyLetter('対'), '#');
+const letters = [...views.familiesHtml(a, 'prefix').matchAll(/data-letter="([^"]*)"/g)].map((m) => m[1]);
+assert.deepEqual(letters, [...letters].sort(), 'letter sections in alphabetical order');
+assert.doesNotMatch(views.familiesHtml(a, 'char'), /nbv-letter__head/);
+// A family that knows its other spellings shows them after the main one; without them, none.
+const withForms = { ...a, families: a.families.map((f) => (f.key === 'root:spect' ? { ...f, forms: ['spect', 'spic', 'spec'] } : f)) };
+assert.match(views.familiesHtml(withForms, 'root'), /<span class="nbv-fam__forms"><span>spic<\/span><span>spec<\/span><\/span>/);
+// The analysis gives the spellings as one string; a family it has none for shows none.
+assert.match(fhtml, /<span class="nbv-fam__label">spect<\/span>\s*<span class="nbv-fam__forms"><span>spec<\/span><span>spic<\/span><\/span>/);
+assert.match(fhtml, /<span class="nbv-fam__label">nat<\/span>\s*<span class="nbv-fam__gloss">/);
+assert.match(views.familiesHtml(a, 'tree'), /data-tree-open aria-label="Open the nation tree"/);
 
 // Map: deterministic layout, every edge points at real nodes.
 const m1 = views.layoutNotebookMap(a, { kinds: ['root', 'char'] });
@@ -83,18 +100,30 @@ const hubOf = (label) => m3a.nodes.find((n) => n.kind !== 'word' && n.label === 
 const wordOf = (label) => m3a.nodes.find((n) => n.kind === 'word' && n.label === label);
 const dist = (p, q) => Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z);
 assert.ok(dist(wordOf('spectator'), hubOf('spect')) < dist(hubOf('spect'), hubOf('対')));
-// mapHtml hands the renderers the graph as JSON, with search, filters and the controls.
+// mapHtml names the cached graph by its signature, with search, filters and the controls.
 const mh = views.mapHtml(a, ['root', 'char']);
-const json = mh.match(/<script type="application\/json" data-map-data>([\s\S]*?)<\/script>/);
-assert.ok(json, 'graph data embedded');
-const md = JSON.parse(json[1]);
+const md = views.notebookMapData(a, ['root', 'char']);
+assert.match(mh, new RegExp(`data-map-sig="${md.sig.replace(/[+]/g, '\\+')}"`));
+assert.ok(!/data-map-data/.test(mh), 'the graph is not written into the page');
 assert.equal(md.nodes.length, m3a.nodes.length);
+assert.equal(md.total, a.words.size);
 assert.ok(md.edges.every(([x, y]) => md.nodes[x] && md.nodes[y]));
 assert.match(mh, /data-map-search/);
-assert.match(mh, /<option value="inspector">/);
 assert.match(mh, /data-act="nb-map-kind" data-kind="root"/);
 assert.match(mh, /data-map-act="reset"/);
-assert.equal(views.notebookMapData(a, ['root', 'char']), views.notebookMapData(a, ['root', 'char']), 'layout cached');
+assert.match(mh, /8 of 9 words/, 'apple is the one word with no connection');
+assert.equal(views.notebookMapData(a, ['root', 'char']), md, 'layout cached');
+// Finding a word: itself first, then the word it inflects, then words starting with it.
+assert.deepEqual(views.findMapWords(md, 'inspect').map((p) => p.l), ['inspect', 'inspector']);
+assert.deepEqual(views.findMapWords(md, 'inspects').map((p) => p.l), ['inspect', 'inspector']);
+assert.deepEqual(views.findMapWords(md, 'spect').map((p) => p.l), ['spect', 'spectator', 'inspect', 'inspector'], 'the part first');
+assert.ok(views.queryForms('changes').includes('change'));
+assert.ok(views.queryForms('studied').includes('study'));
+// The Words search goes to the map: a match opens on it, a miss says so and keeps the map.
+assert.match(views.mapHtml(a, ['root', 'char'], { query: 'inspects' }), /data-map-goto="id0"/);
+const missed = views.mapHtml(a, ['root', 'char'], { query: 'changes' });
+assert.match(missed, /No word matches “changes”/);
+assert.match(missed, /data-map-sig=/);
 
 // Cards: piles by when the words were saved, newest pile and newest card first.
 const piles = views.cardPiles(entries, now);
@@ -110,7 +139,9 @@ assert.equal(folded[0].label, 'December 2025');
 assert.equal(folded.reduce((n, p) => n + p.ids.length, 0), 12);
 
 const chtml = views.cardsHtml(entries, a, new Set(['id1']), 'scatter', now);
-assert.match(chtml, /<div class="nbv-table" data-layout="scatter">/);
+assert.match(chtml, /<div class="nbv-table" data-layout="scatter" data-scope="[^"]+">/);
+// Each list has its own scope, so an open pile in My words is not open in a book.
+assert.notEqual(chtml.match(/data-scope="([^"]+)"/)[1], views.cardsHtml(entries.slice(1), a, new Set(), 'scatter', now).match(/data-scope="([^"]+)"/)[1]);
 assert.match(chtml, /data-cards-layout="piles"[^>]*aria-pressed="false"/);
 assert.match(chtml, /data-cards-layout="scatter"[^>]*aria-pressed="true"/);
 assert.match(chtml, /data-cards-layout="grid"/);
@@ -119,6 +150,12 @@ assert.equal((chtml.match(/<article class="nbv-card[^"]*" data-act="lookup" data
 assert.match(chtml, /<article class="nbv-card" data-act="lookup" data-q="inspect"[^>]*tabindex="0"/);
 assert.equal((chtml.match(/<button type="button" class="nbv-card__flip" data-act="nb-flip"/g) || []).length, entries.length);
 assert.match(chtml, /class="nbv-card is-flipped" data-act="lookup" data-q="inspector"/);
+// The picture and the back turn the card over; Look up on the back opens the lookup.
+assert.equal((chtml.match(/class="nbv-card__pic" data-act="nb-flip"/g) || []).length, entries.length);
+assert.equal((chtml.match(/class="nbv-card__face nbv-card__back" data-act="nb-flip"/g) || []).length, entries.length);
+assert.match(chtml, /class="nbv-card__look" data-act="lookup" data-q="inspector" tabindex="0"/);
+assert.match(chtml, /class="nbv-card__look" data-act="lookup" data-q="inspect" tabindex="-1"/);
+assert.match(chtml, /class="nbv-pile[^"]*" data-pile="week" aria-expanded="false"/);
 assert.match(chtml, /class="nbv-pile[^"]*" data-pile="week"/);
 assert.match(chtml, /This week<b>\d+<\/b>/);
 assert.match(chtml, /data-img-lemma="spectator"/);
@@ -203,7 +240,20 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.equal(s.inRotation, 2);
   assert.ok(s.curve[0] > s.curve[30], 'recall falls without review');
   const page = progressHtml({ history, scope: 'mine', ctx: null, mine: words, goal: 10, now: t0 });
-  for (const label of ['New words', 'Reviews', 'Streak', 'Skills', 'Root families', 'Answers per day', 'Forgetting curve']) assert.match(page, new RegExp(label));
+  for (const label of ['New words', 'Reviews', 'Streak', 'Skills', 'Root families', 'Answers per day', 'If you stop reviewing', 'Reviews ahead, 30 days', 'How long words are held', 'Trouble words']) assert.match(page, new RegExp(label));
+  // Every chart has a y axis label, ticks and a readout, and each bar its own readout.
+  assert.match(page, /data-lrc="retention"[\s\S]*data-lrc-range/);
+  assert.match(page, /data-lrc="due30"[\s\S]*class="lrc-ylabel"[^>]*>Words due/);
+  assert.equal((page.match(/data-lrc="due30"[\s\S]*?<\/svg>/)[0].match(/class="lrc-hit"/g) || []).length, 30, 'one bar a day');
+  assert.match(page, /data-lrc="answers"[\s\S]*<template data-for="29"><p class="lrc-read__head"><b>[^<]+<\/b> · 2 answers, 50% right/);
+  assert.match(page, />Due at 90% recall</);
+  assert.ok(page.includes('<b>2<small> of 3</small></b><span>Reviews, of those due today'), 'the review ring says what it counts');
+  assert.doesNotMatch(page, /at most 20%/);
+  assert.equal(s.strength.reduce((n, b) => n + b.words.length, 0), 2, 'two started words');
+  assert.deepEqual(s.strength[0].words, ['transport'], 'transport is still learning');
+  assert.equal(s.mix.listening, 1);
+  const r14 = load('learn-charts').retentionAt(s.rotation, t0, 14);
+  assert.ok(r14.average < 1 && r14.weakest[0].lemma === 'transport', 'the learning word is weakest after two weeks');
   assert.match(progressHtml({ history: [], scope: 'mine', ctx: null, mine: [], goal: 10, now: t0 }), /No answers yet/);
 }
 

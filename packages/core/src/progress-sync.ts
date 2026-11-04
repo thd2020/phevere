@@ -15,7 +15,7 @@
 import { isPlusRequired, PROGRESS_NAMESPACE, type ProgressRecord, type SyncChange, type SyncResult } from './holarky-account';
 import { getVocabDb } from './runtime';
 import { ensureVocabReady } from './vocab-store';
-import { answerKey, insertAnswer, rowToAnswer, skillFor, type AnswerKind, type AnswerRecord } from './answer-history';
+import { answerKey, insertAnswer, localLemma, rowToAnswer, skillFor, type AnswerKind, type AnswerRecord } from './answer-history';
 import { rebuildWordSchedule } from './wordbook-store';
 import type { ScheduleFields } from './review-schedule';
 
@@ -132,6 +132,8 @@ async function runSync(account: ProgressSyncAccount): Promise<ProgressSyncResult
             continue;
           }
           const answer = eventToAnswer(change);
+          // A device that has not folded "gleaned" into "glean" still sends the old headword.
+          if (answer) answer.lemma = await localLemma(answer.lemma);
           if (answer && (await insertAnswer(answer, true))) {
             received += 1;
             touched.add(answer.lemma);

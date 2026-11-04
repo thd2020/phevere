@@ -8,19 +8,27 @@
  */
 import type { InflectionTable, WordInflections } from './inflections';
 import type { WordFamilyGroup } from './word-family';
+import { wordLinkHtml } from './text-links';
 
-/** How a word links: the phone's `data-act` buttons, or the pop-up's `data-lookup` anchors. */
+/** How a word links: the phone's `data-act` targets, or the pop-up's `data-lookup` spans. */
 export type LexiconLinks = 'act' | 'lookup';
 
 function esc(s: unknown): string {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
-function link(word: string, links: LexiconLinks): string {
+function link(word: string, links: LexiconLinks, inner = esc(word)): string {
   const w = esc(word);
   return links === 'act'
-    ? `<button type="button" class="lx-link" data-act="lookup" data-q="${w}">${w}</button>`
-    : `<a href="#" class="lx-link lemma-link" data-lookup="${w}">${w}</a>`;
+    ? `<button type="button" class="lx-link" data-act="lookup" data-q="${w}">${inner}</button>`
+    : wordLinkHtml(word, inner, links, 'lx-link lemma-link');
+}
+
+/** A form in a table or row, linked to its own lookup; the stress mark is not part of the query. */
+function formLink(f: string, links: LexiconLinks): string {
+  const query = f.normalize('NFD').replace(/́/g, '').normalize('NFC');
+  if (!/\p{L}/u.test(query)) return formText(f);
+  return wordLinkHtml(query, formText(f), links);
 }
 
 /**
@@ -45,7 +53,7 @@ function tableHtml(t: InflectionTable, links: LexiconLinks): string {
   const rows = t.rows.length
     ? `<dl class="lx-infl__rows">${t.rows
         .map((r) => {
-          const forms = r.forms.map((f, i) => (r.notes?.[i] ? `${formText(f)} <span class="lx-note">${esc(r.notes[i])}</span>` : formText(f)));
+          const forms = r.forms.map((f, i) => (r.notes?.[i] ? `${formLink(f, links)} <span class="lx-note">${esc(r.notes[i])}</span>` : formLink(f, links)));
           return `<div><dt>${esc(r.label)}</dt><dd>${forms.join('<span class="lx-comma">, </span>')}</dd></div>`;
         })
         .join('')}</dl>`
@@ -56,7 +64,7 @@ function tableHtml(t: InflectionTable, links: LexiconLinks): string {
         <caption>${esc(g.caption)}</caption>
         <thead><tr><th scope="col"></th>${g.columns.map((c) => `<th scope="col">${esc(c)}</th>`).join('')}</tr></thead>
         <tbody>${g.rows
-          .map((r) => `<tr><th scope="row">${esc(r.label)}</th>${r.cells.map((c) => `<td>${c.map(formText).join(', ') || '—'}</td>`).join('')}</tr>`)
+          .map((r) => `<tr><th scope="row">${esc(r.label)}</th>${r.cells.map((c) => `<td>${c.map((f) => formLink(f, links)).join(', ') || '—'}</td>`).join('')}</tr>`)
           .join('')}</tbody>
       </table>`,
     )

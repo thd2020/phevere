@@ -16,11 +16,11 @@ const bundle = esbuild.buildSync({
     contents: `
       export * from './src/review-quiz';
       export * from './src/review-schedule';
-      export { reviewHtml } from './src/notebook-review';
+      export { reviewHtml, MARK_MS } from './src/notebook-review';
       export { configureCore } from './src/runtime';
       export { addVocab, listVocab, getVocab, reviewVocab, updateVocabNote } from './src/vocab-store';
       export { syncVocab } from './src/vocab-sync';
-      export { listAnswerHistory, replaySchedule, historyByWord, skillMastery, skillFor } from './src/answer-history';
+      export { listAnswerHistory, replaySchedule, historyByWord, skillMastery, skillFor, localLemma, recordLemmaAliases } from './src/answer-history';
       export { reviewBookWord, setBookWordKnown, listBookProgress, rebuildWordSchedule, subscribeWordbook, listWordbookSubs } from './src/wordbook-store';
       export { syncProgress } from './src/progress-sync';
       export { syncWordbooks } from './src/wordbook-sync';
@@ -144,15 +144,24 @@ const pool = [
   const learning = { ...pool[0], reps: 2, state: 1, stability: 2, lastReview: now - DAY };
   const kinds1 = new Set();
   for (let s = 0; s < 30; s++) kinds1.add(core.buildQuestion(learning, pool, { audio: true, now }, core.seededRandom(s)).kind);
-  assert.deepEqual([...kinds1].sort(), ['listen-choice', 'word-choice']);
+  assert.deepEqual([...kinds1], ['word-choice'], 'a learning word recalls the word from four; no listening first thing in a session');
+  const heavy = new Array(8).fill('word-choice');
+  const kindsHeavy = new Set();
+  for (let s = 0; s < 30; s++) kindsHeavy.add(core.buildQuestion(learning, pool, { audio: true, now, asked: heavy }, core.seededRandom(s)).kind);
+  assert.deepEqual([...kindsHeavy], ['listen-choice'], 'a session full of meaning questions turns to listening');
   const noAudio = new Set();
-  for (let s = 0; s < 30; s++) noAudio.add(core.buildQuestion(learning, pool, { audio: false, now }, core.seededRandom(s)).kind);
-  assert.deepEqual([...noAudio], ['word-choice'], 'no listening question with sound off');
+  for (let s = 0; s < 30; s++) noAudio.add(core.buildQuestion(learning, pool, { audio: false, now, asked: heavy }, core.seededRandom(s)).kind);
+  assert.ok(!noAudio.has('listen-choice'), 'no listening question with sound off');
 
   const firm = { ...pool[0], reps: 4, state: 2, stability: 10, lastReview: now - 10 * DAY };
   const kinds2 = new Set();
   for (let s = 0; s < 40; s++) kinds2.add(core.buildQuestion(firm, pool, { audio: true, now }, core.seededRandom(s)).kind);
-  assert.deepEqual([...kinds2].sort(), ['listen-type', 'recall'], 'no cloze without a sentence');
+  assert.deepEqual([...kinds2], ['recall'], 'a word held for days is typed; no cloze without a sentence');
+  const spelled = new Array(8).fill('recall');
+  assert.equal(core.buildQuestion(firm, pool, { audio: true, now, asked: spelled }, core.seededRandom(1)).kind, 'listen-type', 'listening balances a spelling-heavy session');
+  // A new word moves up the ladder each time it comes back in a session.
+  assert.equal(core.buildQuestion(pool[0], pool, { now, repeat: 1 }, core.seededRandom(1)).kind, 'word-choice');
+  assert.equal(core.buildQuestion(pool[0], pool, { now, repeat: 2 }, core.seededRandom(1)).kind, 'recall');
   const recall = core.buildQuestion(firm, pool, { audio: false, now }, core.seededRandom(2));
   assert.equal(recall.kind, 'recall');
   assert.equal(recall.hint, 'a');
@@ -165,7 +174,183 @@ const pool = [
 
   const bare = { id: 'b', lemma: 'zephyr', reps: 0, createdAt: now };
   assert.equal(core.buildQuestion(bare, [bare], { audio: false, now }).kind, 'flash', 'nothing else can be asked');
-  assert.equal(core.buildQuestion(bare, [bare, ...pool], { audio: true, now }, core.seededRandom(1)).kind, 'listen-choice');
+  assert.equal(core.buildQuestion(bare, [bare, ...pool], { audio: true, now }, core.seededRandom(1)).kind, 'flash', 'a word without senses shows itself first, never forced into listening');
+}
+
+/* ------------------------------------------ forms, unusable senses, mix */
+{
+  // Two forms or spellings of one word are never offered together, and the lemma is the answer.
+  assert.ok(core.sameLemma('vicissitude', 'vicissitudes'));
+  assert.ok(core.sameLemma('glean', 'gleaned'));
+  assert.ok(core.sameLemma('colour', 'color'));
+  assert.ok(core.sameLemma('travelled', 'traveled'));
+  assert.ok(core.sameLemma('rat', 'ratted') && !core.sameLemma('rat', 'rated'), 'a one-syllable word doubles its consonant');
+  // Different words that only look like forms of each other stay apart.
+  for (const [a, b] of [
+    ['rate', 'rat'], ['huge', 'hug'], ['band', 'ban'], ['forest', 'fore'], ['tower', 'tow'], ['add', 'ad'], ['leader', 'lead'],
+    ['recent', 'resent'], ['ascent', 'assent'], ['advice', 'advise'], ['device', 'devise'], ['care', 'car'], ['early', 'ear'],
+    ['letter', 'let'], ['corner', 'corn'], ['number', 'numb'], ['award', 'aware'], ['filling', 'filing'],
+  ]) assert.ok(!core.sameLemma(a, b), `${a} and ${b} are different words`);
+  assert.ok(!core.sameLemma('principal', 'principle'), 'confusable words stay apart');
+  assert.ok(!core.sameLemma('ingenious', 'ingenuous'));
+  assert.ok(!core.sameLemma('desert', 'dessert'));
+  const forms = [
+    { id: 'vs', lemma: 'vicissitudes', partOfSpeech: 'noun', sourceLang: 'en', definition: 'regular change or succession from one thing to another; a change in fortunes' },
+    { id: 'v', lemma: 'vicissitude', partOfSpeech: 'noun', sourceLang: 'en', definition: 'regular change or succession from one thing to another' },
+    { id: 'gd', lemma: 'gleaned', partOfSpeech: 'verb', sourceLang: 'en', definition: 'simple past of glean' },
+    { id: 'g', lemma: 'glean', partOfSpeech: 'verb', sourceLang: 'en', definition: 'to collect what is left after a harvest' },
+    { id: 'c1', lemma: 'vagary', partOfSpeech: 'noun', sourceLang: 'en', definition: 'an unexpected and inexplicable change' },
+    { id: 'c2', lemma: 'citadel', partOfSpeech: 'noun', sourceLang: 'en', definition: 'a fortress on high ground above a city' },
+    { id: 'c3', lemma: 'dossier', partOfSpeech: 'noun', sourceLang: 'en', definition: 'a collection of papers about a person' },
+    { id: 'c4', lemma: 'prelude', partOfSpeech: 'noun', sourceLang: 'en', definition: 'an action that comes before something more important' },
+    { id: 'c5', lemma: 'foliage', partOfSpeech: 'noun', sourceLang: 'en', definition: 'the leaves of a plant' },
+  ];
+  for (let s = 0; s < 60; s++) {
+    for (const target of forms) {
+      for (const kind of [{ repeat: 0 }, { repeat: 1 }, { repeat: 1, audio: true, asked: new Array(8).fill('word-choice') }]) {
+        const q = core.buildQuestion({ ...target, reps: 0, createdAt: now }, forms, { now, ...kind }, core.seededRandom(s));
+        if (!q.optionWords.length) continue;
+        for (let i = 0; i < q.optionWords.length; i++) {
+          for (let j = i + 1; j < q.optionWords.length; j++) {
+            assert.ok(!core.sameLemma(q.optionWords[i], q.optionWords[j]), `${q.kind} for ${target.lemma} offers ${q.optionWords[i]} and ${q.optionWords[j]}`);
+          }
+        }
+      }
+    }
+  }
+  // The word asked is always the word answered and recorded, never another headword.
+  const rate = { id: 'wb:rate', lemma: 'rate', partOfSpeech: 'noun', sourceLang: 'en', definition: 'the speed at which something happens', reps: 0, createdAt: now };
+  const rat = { id: 'wb:rat', lemma: 'rat', partOfSpeech: 'noun', sourceLang: 'en', definition: 'a rodent larger than a mouse' };
+  const rq = core.buildQuestion(rate, [rate, rat, ...forms], { now, repeat: 1 }, core.seededRandom(2));
+  assert.equal(rq.lemma, 'rate');
+  assert.deepEqual(rq.answers, ['rate']);
+  const gq = core.buildQuestion({ ...forms[3], reps: 2, state: 2, stability: 6, createdAt: now }, forms, { now }, core.seededRandom(4));
+  assert.equal(gq.lemma, 'glean', 'answered under the word that was asked');
+  // Both forms due: one question, when the entries say they are one word (form-of gloss or the same meaning).
+  const dueForms = forms.slice(0, 4).map((e, i) => ({ ...e, reps: 2, state: 2, stability: 3, reviewDue: now - (4 - i) * 1000, createdAt: now - 9 * DAY }));
+  assert.deepEqual(core.reviewQueue(dueForms, 10, now), ['vs', 'g'], 'one form of each word; the entry with a usable sense is kept');
+  // Look-alikes with different meanings both stay.
+  const alike = [
+    { id: 'a1', lemma: 'lead', definition: 'to guide or conduct', reps: 2, state: 2, stability: 3, reviewDue: now - 2000, createdAt: now - 9 * DAY },
+    { id: 'a2', lemma: 'leader', definition: 'one who leads a group', reps: 2, state: 2, stability: 3, reviewDue: now - 1000, createdAt: now - 9 * DAY },
+    { id: 'a3', lemma: 'advise', definition: 'to give advice to', reps: 2, state: 2, stability: 3, reviewDue: now - 900, createdAt: now - 9 * DAY },
+    { id: 'a4', lemma: 'advice', definition: 'an opinion about what to do', reps: 2, state: 2, stability: 3, reviewDue: now - 800, createdAt: now - 9 * DAY },
+  ];
+  assert.deepEqual(core.reviewQueue(alike, 10, now), ['a1', 'a2', 'a3', 'a4']);
+  // Book words are never folded together, and a pass over a whole book is fast.
+  const book = require(path.join(root, 'packages', 'core', 'wordbooks', 'kaoyan.json')).words.map((w) => ({ id: `wb:${w}`, lemma: w, reps: 0 }));
+  const t0 = Date.now();
+  assert.equal(core.dedupeLemmas(book).length, book.length, 'every kaoyan headword kept');
+  assert.ok(Date.now() - t0 < 600, `one pass over kaoyan took ${Date.now() - t0} ms`);
+
+  // Citations instead of a sense: no meaning to ask, so the word is skipped (or only heard).
+  const idio = {
+    id: 'idio',
+    lemma: 'idiosyncracy',
+    sourceLang: 'en',
+    reps: 0,
+    createdAt: now,
+    definition:
+      '↑ “ idiosyncracy ”, in Dictionary.com Unabridged , Dictionary.com, LLC , 1995–present.\n↑ “idiosyncracy”, in The American Heritage Dictionary of the English Language , 4th edition, Boston, Mass. : Houghton Mifflin , 2000 , →ISBN .',
+  };
+  assert.equal(core.questionMeaning(idio), '');
+  assert.equal(core.canAsk(idio, { audio: false }), false);
+  assert.equal(core.canAsk(idio, { audio: true }), false, 'not pushed into listening for want of a meaning');
+  const real = { id: 'idio2', lemma: 'idiosyncrasy', sourceLang: 'en', reps: 0, createdAt: now - 1, definition: 'a behaviour or way of thinking peculiar to a person' };
+  const both = core.startReview([idio, real], 10, now);
+  both.started = true;
+  assert.equal(core.ensureReviewQuestion(both, [idio, real, ...forms], { audio: true, now }).id, 'idio2', 'the entry with nothing usable is skipped');
+  const skip = core.startReview([idio, forms[4]], 10, now);
+  skip.started = true;
+  assert.equal(core.ensureReviewQuestion(skip, [idio, ...forms], { audio: false, now }).id, 'c1', 'a word with nothing usable to ask is skipped');
+  assert.equal(core.usableSense('plural of vicissitude', 'vicissitudes'), false);
+  assert.equal(core.usableSense('An earthenware container, used for burial. .mw-parser-output .deflabel{font-variant:small-caps}', 'urn'), false, 'Wiktionary style text');
+  assert.equal(core.usableSense('A change, especially in one’s life or fortunes.', 'vicissitude'), true);
+  // An everyday sense before a dialect one.
+  const shed = { lemma: 'shed', definition: '(transitive, UK, dialectal) To part, separate or divide.\n(ambitransitive) To part with, cast off, let fall.\nTo pour; to make flow.' };
+  assert.match(core.bestSense(shed), /^\(ambitransitive\)/);
+
+  // The mix of a whole session: listening stays under its cap, the other skills both appear.
+  const mixPool = [];
+  const lemmas = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thicket', 'umbrella', 'valley', 'willow', 'anchor', 'beacon', 'canyon', 'dune', 'estuary', 'fjord', 'glacier', 'hamlet', 'isthmus', 'jetty'];
+  lemmas.forEach((l, i) =>
+    mixPool.push({ id: l, lemma: l, partOfSpeech: 'noun', sourceLang: 'en', definition: `a kind of place number ${i} described here`, reps: 3, state: 2, stability: [1, 2, 6, 12, 30][i % 5], lastReview: now - DAY, reviewDue: now - 1000 * (i + 1), createdAt: now - 30 * DAY }),
+  );
+  const asked = [];
+  for (let i = 0; i < 60; i++) {
+    const target = mixPool[i % mixPool.length];
+    const q = core.buildQuestion(target, mixPool, { audio: true, now, asked }, core.seededRandom(i));
+    asked.push(q.kind);
+  }
+  const share = (skill) => asked.filter((k) => core.kindSkill(k) === skill).length / asked.length;
+  assert.ok(share('listening') <= core.LISTEN_CAP + 1e-9, `listening share ${share('listening')}`);
+  assert.ok(share('listening') > 0.05, 'listening still appears');
+  assert.ok(share('meaning') > 0.2 && share('spelling') > 0.2, `meaning ${share('meaning')}, spelling ${share('spelling')}`);
+  // The user's own run had 21 listening questions out of 44; the same words now get at most a fifth.
+  assert.ok(asked.slice(0, 44).filter((k) => core.kindSkill(k) === 'listening').length <= 8);
+  assert.ok(asked.slice(0, 4).every((k) => core.kindSkill(k) !== 'listening'), 'no listening in the first four');
+  // Words without senses (book words whose lookup failed): plain cards, not listening.
+  const bare10 = Array.from({ length: 10 }, (_, i) => ({ id: `wb:b${i}`, lemma: `bareword${String.fromCharCode(97 + i)}`, reps: 0, createdAt: now }));
+  const bs = core.startReview(bare10, 10, now);
+  bs.started = true;
+  const bareKinds = [];
+  for (let i = 0; i < 10; i++) {
+    const q = core.ensureReviewQuestion(bs, bare10, { audio: true, now });
+    if (!q) break;
+    bareKinds.push(q.kind);
+    core.answerReview(bs, { knew: true }, now + 1000);
+    core.advanceReview(bs, { ...bare10[i], reviewDue: now + 3 * DAY }, now + 1000);
+  }
+  assert.equal(bareKinds.length, 10);
+  assert.ok(bareKinds.every((k) => k === 'flash'), `kinds ${bareKinds}`);
+}
+
+/* ----------------------------------------------- leeches, rounds, allowance */
+{
+  const leech = { ...pool[0], reps: 9, state: 2, stability: 30, lapses: 5, lastReview: now - DAY, reviewDue: now - 1000 };
+  assert.ok(core.isLeech(leech));
+  assert.equal(core.questionStage(leech), 1, 'a leech is asked at the learning stage');
+  const lq = core.buildQuestion(leech, pool, { now }, core.seededRandom(1));
+  assert.equal(lq.leech, true);
+  assert.ok(['word-choice', 'meaning-choice'].includes(lq.kind));
+  const lpool = [leech, ...pool.slice(1)];
+  const ls = core.startReview([leech], 10, now);
+  ls.started = true;
+  for (let i = 0; i < 5; i++) {
+    if (!core.ensureReviewQuestion(ls, lpool, { now })) break;
+    core.answerReview(ls, {}, now);
+    core.advanceReview(ls, { ...leech, reviewDue: now + MIN }, now);
+  }
+  assert.equal(ls.results.length, core.MAX_LEECH_ASKS, 'a leech comes back at most once more in a session');
+
+  assert.equal(core.newWordAllowance(10, 30), 10);
+  assert.equal(core.newWordAllowance(10, 50), 10);
+  assert.equal(core.newWordAllowance(10, 60), 8);
+  assert.equal(core.newWordAllowance(10, 100), 0);
+  const many = Array.from({ length: 70 }, (_, i) => ({ id: `d${i}`, lemma: `word${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + Math.floor(i / 26))}x`, reps: 2, state: 2, stability: 3, reviewDue: now - (i + 1) * 1000, createdAt: now - 9 * DAY }));
+  const fresh = Array.from({ length: 10 }, (_, i) => ({ id: `n${i}`, lemma: `fresh${String.fromCharCode(97 + i)}q`, reps: 0, createdAt: now - (i + 1) * DAY }));
+  const plan = core.reviewPlan([...many, ...fresh], 10, now);
+  assert.equal(plan.due, 70);
+  assert.equal(plan.fresh, 6, 'seventy reviews due hold back four of ten new words');
+  assert.equal(plan.heldBack, 4);
+  const round = core.startReview([...many, ...fresh], 10, now);
+  assert.equal(round.queue.length, core.ROUND_WORDS, 'a round has twenty words');
+  assert.equal(round.rest, 76 - core.ROUND_WORDS);
+
+  // Too easy: a right answer saved as Easy; tapping again undoes it.
+  const easy = core.startReview([pool[0]], 10, now);
+  easy.started = true;
+  const eq = core.ensureReviewQuestion(easy, pool, { now });
+  core.answerReview(easy, { choice: eq.correct }, now + 2000);
+  assert.equal(easy.answer.grade, 3);
+  core.overrideReview(easy, 'easy');
+  assert.equal(easy.answer.grade, 4, 'Too easy');
+  core.overrideReview(easy, 'easy');
+  assert.equal(easy.answer.grade, 3, 'undo');
+  core.overrideReview(easy);
+  assert.equal(easy.answer.grade, 1, "I didn't know it");
+  core.overrideReview(easy, 'easy');
+  assert.equal(easy.answer.grade, 4, 'switching straight to Too easy');
 }
 
 /* ---------------------------------------------------------- session flow */
@@ -215,7 +400,7 @@ const pool = [
   }
   assert.equal(loop.results.length, core.MAX_ASKS_PER_SESSION);
   const html = core.reviewHtml(pool, loop, 10, { now });
-  assert.match(html, /Session done/);
+  assert.match(html, /Done for today/);
   assert.match(html, /data-act="lookup" data-q="abandon"/, 'missed words open in lookup');
 }
 
@@ -239,6 +424,27 @@ const pool = [
   assert.match(html, /data-act="nb-override"[^>]*>I knew it/);
   assert.match(html, /data-act="nb-next"/);
   assert.match(html, /<b class="is-g1">Again<\/b> · back in 1 min/);
+  // The mark is drawn over the whole question: the stage holds the prompt, the options and the ink.
+  const stage = html.slice(html.indexOf('nbv-quiz__stage'), html.indexOf('nbv-quiz__actions'));
+  assert.match(stage, /class="nbv-options/);
+  assert.match(stage, /class="nbv-ink is-wrong"/);
+  assert.match(stage, /class="nbv-wash is-wrong"/);
+  assert.equal((stage.match(/nbv-ink__reveal--/g) || []).length, 2, 'a cross is two strokes');
+  // A repaint a second later resumes the mark from where it is; after it has played it is gone.
+  const later = core.reviewHtml(pool, state, 10, { now: now + 2000, audio: true });
+  assert.match(later, /nbv-quiz__stage is-wrong" style="--t:-1000ms"/);
+  assert.match(later, /nbv-ink is-wrong/);
+  const done = core.reviewHtml(pool, state, 10, { now: now + 1000 + core.MARK_MS, audio: true });
+  assert.doesNotMatch(done, /nbv-ink/);
+  // A right answer offers "Too easy".
+  const right = core.startReview(pool, 10, now);
+  right.started = true;
+  const rq = core.ensureReviewQuestion(right, pool, { now });
+  core.answerReview(right, { choice: rq.correct }, now + 1500);
+  const rhtml = core.reviewHtml(pool, right, 10, { now: now + 1600 });
+  assert.match(rhtml, /data-mode="easy"[^>]*>Too easy/);
+  assert.match(rhtml, /class="nbv-ink is-right"/);
+  assert.equal((rhtml.match(/nbv-ink__reveal--/g) || []).length, 1, 'a tick is one stroke');
 }
 
 /* ------------------------------------------------------------------- FSRS */
@@ -527,6 +733,26 @@ async function main() {
   await B.c.syncProgress(account);
   await A.c.syncProgress(account);
   assert.deepEqual(sched(await A.c.getVocab(saved.id)), sched(afterB));
+
+  // A device that still files answers under an old headword ("gleaned", "paparazzi"): the answers
+  // land on this device's card for the word, by form or by an alias the fold recorded.
+  {
+    const D = device('d');
+    const C = device('c');
+    await D.c.reviewBookWord('gleaned', 3, t1 + 4 * DAY, { kind: 'meaning-choice', correct: true, ms: 3000 });
+    await D.c.reviewBookWord('paparazzi', 3, t1 + 4 * DAY, { kind: 'meaning-choice', correct: true, ms: 3000 });
+    await D.c.syncProgress(account);
+    const glean = await C.c.addVocab({ lemma: 'glean', definition: 'to gather bit by bit' });
+    await C.c.recordLemmaAliases([['paparazzi', 'paparazzo']]);
+    assert.equal(await C.c.localLemma('Gleaned'), 'glean');
+    assert.equal(await C.c.localLemma('paparazzi'), 'paparazzo');
+    assert.equal(await C.c.localLemma('lantern'), 'lantern', 'a word not saved here keeps its headword');
+    await C.c.syncProgress(account);
+    const onC = await C.c.listAnswerHistory();
+    assert.ok(onC.some((r) => r.lemma === 'glean') && !onC.some((r) => r.lemma === 'gleaned'), 'filed under glean');
+    assert.ok(onC.some((r) => r.lemma === 'paparazzo') && !onC.some((r) => r.lemma === 'paparazzi'), 'filed under paparazzo');
+    assert.ok((await C.c.getVocab(glean.id)).reps > 0, 'and replayed onto the glean card');
+  }
 
   // Book words that are not in My words: progress and "Already know it" travel only in the history.
   await B.c.reviewBookWord('ember', 3, t1 + 3 * DAY, { kind: 'meaning-choice', correct: true, ms: 3000, bookId: 'starter' });

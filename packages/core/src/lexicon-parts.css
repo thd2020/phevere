@@ -39,6 +39,11 @@
   cursor: pointer;
 }
 .lx-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+/* A part such as "-fic-" or a name such as "Middle English" never breaks inside the link. */
+.lx-link,
+.lx-w { white-space: nowrap; }
+.lx-link:focus-visible { outline: 2px solid rgba(15, 110, 113, 0.5); outline-offset: 1px; border-radius: 2px; }
+.lx-self { font-weight: 600; color: #9c3d00; }
 .lx-sep { color: var(--lx-line); }
 .lx-comma { color: var(--lx-soft); }
 .lx-stress { font-weight: 700; color: var(--lx-teal); }
@@ -93,3 +98,67 @@
 .lx-more summary::after { content: ' ▾'; }
 .lx-more[open] summary::after { content: ' ▴'; }
 .lx-more[open] summary { margin-bottom: 4px; }
+
+/*
+ * Words in running text (senses, examples, etymology, forms) are links that look like text
+ * until pointed at or tapped, as in Apple's Dictionary.
+ */
+.lx-w {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: color 120ms cubic-bezier(0.2, 0, 0, 1), background-color 120ms cubic-bezier(0.2, 0, 0, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+.lx-w:hover {
+  color: var(--lx-teal, #0f6e71);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(15, 110, 113, 0.45);
+  text-underline-offset: 2px;
+}
+.lx-w:active { background-color: rgba(15, 110, 113, 0.12); }
+.lx-w:focus-visible { outline: 2px solid rgba(15, 110, 113, 0.5); outline-offset: 1px; }
+
+/* Morpheme pages */
+.lx-morph {
+  --lx-soft: #5c534e;
+  --lx-ui: Outfit, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --lx-serif: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif;
+  display: grid;
+  grid-template-columns: minmax(5.5em, 8.5em) 1fr;
+  gap: 6px 16px;
+  margin: 0;
+}
+.lx-morph > div { display: contents; }
+.lx-morph dt {
+  padding-top: 3px;
+  font: 600 10.5px/1.2 var(--lx-ui);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--lx-soft);
+}
+.lx-morph dd { margin: 0; font: 15px/1.5 var(--lx-serif); }
+.lx-morph-note { margin: 4px 0 0; font: 14px/1.55 var(--lx-serif); color: #5c534e; }
+.lx-recon { font-style: italic; color: #5c534e; }
+.lx-dot { color: #c9b8ae; padding: 0 1px; }
+.lx-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+  margin: 6px 0 0;
+  font: 15px/1.4 'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif;
+}
+.lx-offer .lx-link { color: #9c3d00; text-decoration: none; cursor: pointer; background: none; border: 0; padding: 0; font: inherit; }
+.lx-offer .lx-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+.lx-offer .lx-label {
+  font: 600 10px/1.2 Outfit, 'Segoe UI', system-ui, sans-serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #5c534e;
+}
+.lx-family .lx-link,
+.lx-morph .lx-link,
+.lx-words .lx-link { color: var(--lx-teal, #0f6e71); }

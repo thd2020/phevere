@@ -1,16 +1,27 @@
 /**
- * The 3D map scene: three.js through 3d-force-graph, loaded on demand by
- * `notebook-map-load.js`. Positions come precomputed from `layoutNotebookMap`, so nothing
- * moves on its own; the reader turns the camera.
+ * The 3D map scene, drawn with three.js and loaded on demand by `notebook-map-load.js`.
+ * Positions come precomputed from `layoutNotebookMap`, so nothing moves on its own; the
+ * reader turns the camera.
  *
- * Labels are DOM elements (CSS2DRenderer) so they use the app's fonts. A culling pass
- * decides which ones show, in the spirit of sigma.js's label grid: the focused word and
- * the hovered node first, then every morpheme, then the focused neighbourhood, then words
- * near the camera, each placed only where it does not overlap a label already placed.
+ * A whole word book can be on the map (thousands of words), so the scene is built for that:
+ * every node is one instance of a single mesh and every edge one segment of a single line
+ * object, which is two draw calls however large the book. Frames are drawn only while
+ * something moves.
+ *
+ * Labels are DOM elements so they use the app's fonts. Each morpheme has one; words share a
+ * small pool. A culling pass in the spirit of sigma.js's label grid decides what shows: the
+ * focused word and the hovered node first, then every morpheme, then the focused
+ * neighbourhood, then words near the camera, each only where it does not overlap a label
+ * already placed.
+ *
+ * The camera follows three.js OrbitControls and graph tools such as 3d-force-graph and
+ * Obsidian's graph view. With a mouse, drag turns the map (left and right) and tilts it (up
+ * and down), right-drag or Shift-drag pans, and the wheel or a trackpad pinch zooms. On a
+ * touch screen one finger turns and tilts, and two fingers pinch to zoom, twist to turn and
+ * move up or down together to tilt. A gesture may start on a word or a label; a press that
+ * barely moves and lifts quickly is a tap and picks what is under it.
  */
-import ForceGraph3D from '3d-force-graph';
 import * as THREE from 'three';
-import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { MapData, MapHighlight, MapRenderer, MapRendererOptions, MapView } from './notebook-map';
 
 const BG = '#f4f0ea';
@@ -22,164 +33,196 @@ const NODE_COLOR: Record<string, string> = {
   char: '#7a5a3a',
 };
 const FOCUS_COLOR = '#9c3d00';
-const EDGE_RGB: Record<string, string> = {
-  root: '15,110,113',
-  prefix: '196,98,66',
-  suffix: '120,108,100',
-  char: '122,90,58',
-  derived: '156,61,0',
+const EDGE_COLOR: Record<string, string> = {
+  root: '#0f6e71',
+  prefix: '#c46242',
+  suffix: '#786c64',
+  char: '#7a5a3a',
+  derived: '#9c3d00',
 };
+/** How strongly an edge shows, as a blend between the background and its colour. */
+const EDGE_BASE = 0.3;
+const EDGE_DERIVED = 0.6;
+const EDGE_LIT = 0.9;
+const EDGE_DIM = 0.05;
+/** Dimmed nodes blend this far toward the background. */
+const NODE_DIM = 0.86;
 
-interface GNode {
-  id: string;
-  k: string;
-  l: string;
-  n: number;
-  x: number;
-  y: number;
-  z: number;
-  fx: number;
-  fy: number;
-  fz: number;
-}
-
-interface GLink {
-  source: string;
-  target: string;
-  e: number;
-  kind: string;
-}
+/** Pixels a press may move and still count as a tap. */
+const TAP_SLOP = { mouse: 5, touch: 10 };
+const TAP_MS = 500;
+/** Word labels drawn at once; the pool is reused as the camera moves. */
+const WORD_LABELS = 90;
 
 interface Label {
-  node: GNode;
-  obj: CSS2DObject;
+  i: number;
   el: HTMLElement;
-  mesh: THREE.Mesh;
-  hub: boolean;
   w: number;
   h: number;
   shown: boolean;
   opacity: number;
 }
 
+/** Ease in and out (cubic), for camera flights. */
+const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
 export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRendererOptions, onDetached: () => void): MapRenderer {
   const reduced = opts.reducedMotion;
   const R = Math.max(40, data.radius);
-  const nodes: GNode[] = data.nodes.map((p) => ({ id: p.id, k: p.k, l: p.l, n: p.n, x: p.x, y: p.y, z: p.z, fx: p.x, fy: p.y, fz: p.z }));
-  const links: GLink[] = data.edges.map(([a, b, d], e) => ({
-    source: data.nodes[a].id,
-    target: data.nodes[b].id,
-    e,
-    kind: d ? 'derived' : data.nodes[a].k,
-  }));
-  const byId = new Map(nodes.map((p) => [p.id, p]));
+  const N = data.nodes.length;
+  const hub = (i: number) => data.nodes[i].k !== 'word';
+  const radiusOf = (i: number) => (hub(i) ? Math.min(7, 2.6 + Math.sqrt(data.nodes[i].n) * 0.8) : 1.7);
+  const byId = new Map<string, number>(data.nodes.map((p, i) => [p.id, i]));
 
-  const sphere = new THREE.SphereGeometry(1, 18, 14);
-  const hitMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
-  const baseMat: Record<string, THREE.MeshLambertMaterial> = {};
-  const dimMat: Record<string, THREE.MeshLambertMaterial> = {};
-  for (const [k, c] of Object.entries(NODE_COLOR)) {
-    baseMat[k] = new THREE.MeshLambertMaterial({ color: c });
-    dimMat[k] = new THREE.MeshLambertMaterial({ color: c, transparent: true, opacity: 0.12, depthWrite: false });
-  }
-  const focusMat = new THREE.MeshLambertMaterial({ color: FOCUS_COLOR, emissive: FOCUS_COLOR, emissiveIntensity: 0.25 });
-
-  const labels: Label[] = [];
-  const makeNode = (raw: object): THREE.Object3D => {
-    const node = raw as GNode;
-    const hub = node.k !== 'word';
-    const group = new THREE.Group();
-    const r = hub ? Math.min(7, 2.6 + Math.sqrt(node.n) * 0.8) : 1.7;
-    const mesh = new THREE.Mesh(sphere, baseMat[node.k] || baseMat.word);
-    mesh.scale.setScalar(r);
-    group.add(mesh);
-    // A larger invisible sphere makes small words easy to hit with a finger.
-    const hit = new THREE.Mesh(sphere, hitMat);
-    hit.scale.setScalar(hub ? r + 2 : 5);
-    group.add(hit);
-    const el = document.createElement('div');
-    el.className = `nbv-m3-label nbv-m3-label--${node.k}`;
-    el.textContent = node.l;
-    el.dataset.id = node.id;
-    const obj = new CSS2DObject(el);
-    if (!hub) obj.center.set(-0.08, 0.5);
-    obj.visible = false;
-    group.add(obj);
-    const label: Label = {
-      node,
-      obj,
-      el,
-      mesh,
-      hub,
-      w: hub ? node.l.length * 8 + 18 : node.l.length * 7.2 + 8,
-      h: hub ? 22 : 18,
-      shown: false,
-      opacity: 1,
-    };
-    labels.push(label);
-    return group;
-  };
-
-  let hl: MapHighlight | null = null;
-  let hover: string | null = null;
-  const linkColor = (raw: object): string => {
-    const l = raw as GLink;
-    const rgb = EDGE_RGB[l.kind] || EDGE_RGB.root;
-    const base = l.kind === 'derived' ? 0.6 : 0.3;
-    const a = !hl ? base : hl.edges.has(l.e) ? 0.9 : 0.05;
-    return `rgba(${rgb},${a})`;
-  };
-
-  const labelRenderer = new CSS2DRenderer();
-  labelRenderer.domElement.className = 'nbv-m3-labels';
-  const graph = new ForceGraph3D(stage, {
-    controlType: 'orbit',
-    // The typings name a Renderer interface that @types/three no longer exports.
-    extraRenderers: [labelRenderer as any],
-    rendererConfig: { antialias: true, powerPreference: 'low-power' },
-  });
   let W = Math.max(1, stage.clientWidth);
   let H = Math.max(1, stage.clientHeight);
-  graph
-    .width(W)
-    .height(H)
-    .backgroundColor(BG)
-    .showNavInfo(false)
-    .enableNodeDrag(false)
-    .nodeLabel(() => '')
-    .nodeThreeObject(makeNode)
-    .nodeThreeObjectExtend(false)
-    .linkColor(linkColor)
-    .linkOpacity(1)
-    .linkWidth(0)
-    .warmupTicks(0)
-    .cooldownTicks(0)
-    .onNodeHover((n) => setHover(n ? String((n as GNode).id) : null))
-    .onNodeClick((n) => opts.onPick(String((n as GNode).id)))
-    .onBackgroundClick(() => opts.onPick(null))
-    .graphData({ nodes, links });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
+  const ratio = () => Math.min(2, window.devicePixelRatio || 1);
+  renderer.setPixelRatio(ratio());
+  renderer.setSize(W, H);
+  // A window moved to a screen with another pixel density, or a browser zoom, changes the ratio.
+  let dprQuery: MediaQueryList | null = null;
+  const onDpr = () => {
+    renderer.setPixelRatio(ratio());
+    renderer.setSize(W, H);
+    watchDpr();
+    wake();
+  };
+  const watchDpr = () => {
+    dprQuery?.removeEventListener('change', onDpr);
+    dprQuery = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`) || null;
+    dprQuery?.addEventListener('change', onDpr);
+  };
+  watchDpr();
+  renderer.setClearColor(BG);
+  renderer.domElement.style.display = 'block';
+  stage.appendChild(renderer.domElement);
+  const layer = document.createElement('div');
+  layer.className = 'nbv-m3-labels';
+  stage.appendChild(layer);
 
-  const scene = graph.scene();
-  const camera = graph.camera() as THREE.PerspectiveCamera;
-  const renderer = graph.renderer();
-  const controls = graph.controls() as any;
+  const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(BG, 1, 10000);
-  controls.enableDamping = !reduced;
-  controls.dampingFactor = 0.12;
-  controls.rotateSpeed = 0.6;
-  controls.zoomSpeed = 0.9;
-  controls.screenSpacePanning = true;
-  controls.minDistance = 12;
-  controls.maxDistance = R * 6;
+  scene.add(new THREE.AmbientLight(0xcccccc, Math.PI));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.6 * Math.PI);
+  sun.position.set(0.4, 1, 0.8);
+  scene.add(sun);
+  const camera = new THREE.PerspectiveCamera(50, W / H, 1, R * 40);
 
+  // Nodes: one instanced sphere, 80 triangles each, which is round enough at the size nodes draw.
+  const sphere = new THREE.IcosahedronGeometry(1, 1);
+  const nodeMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const mesh = new THREE.InstancedMesh(sphere, nodeMat, Math.max(1, N));
+  mesh.count = N;
+  const m4 = new THREE.Matrix4();
+  for (let i = 0; i < N; i++) {
+    const p = data.nodes[i];
+    const r = radiusOf(i);
+    m4.makeScale(r, r, r).setPosition(p.x, p.y, p.z);
+    mesh.setMatrixAt(i, m4);
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.frustumCulled = false;
+  scene.add(mesh);
+
+  // Edges: one line object, coloured per vertex.
+  const E = data.edges.length;
+  const pos = new Float32Array(E * 6);
+  const col = new Float32Array(E * 6);
+  data.edges.forEach(([a, b], k) => {
+    const p = data.nodes[a];
+    const q = data.nodes[b];
+    pos.set([p.x, p.y, p.z, q.x, q.y, q.z], k * 6);
+  });
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const colAttr = new THREE.BufferAttribute(col, 3);
+  lineGeo.setAttribute('color', colAttr);
+  const lineMat = new THREE.LineBasicMaterial({ vertexColors: true });
+  const lines = new THREE.LineSegments(lineGeo, lineMat);
+  lines.frustumCulled = false;
+  scene.add(lines);
+
+  const bg = new THREE.Color(BG);
+  const tmp = new THREE.Color();
+  const edgeKind = data.edges.map(([a, , d]) => (d ? 'derived' : data.nodes[a].k));
+  const edgeBase = edgeKind.map((k) => new THREE.Color(EDGE_COLOR[k] || EDGE_COLOR.root));
+  const nodeBase = data.nodes.map((p) => new THREE.Color(NODE_COLOR[p.k] || NODE_COLOR.word));
+  const focusColor = new THREE.Color(FOCUS_COLOR);
+
+  let hl: MapHighlight | null = null;
+  let hover: number | null = null;
+  const paintColors = () => {
+    for (let i = 0; i < N; i++) {
+      const id = data.nodes[i].id;
+      if (hl && id === hl.focus) tmp.copy(focusColor);
+      else if (!hl || hl.nodes.has(id)) tmp.copy(nodeBase[i]);
+      else tmp.copy(nodeBase[i]).lerp(bg, NODE_DIM);
+      mesh.setColorAt(i, tmp);
+    }
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    for (let k = 0; k < E; k++) {
+      const a = !hl ? (edgeKind[k] === 'derived' ? EDGE_DERIVED : EDGE_BASE) : hl.edges.has(k) ? EDGE_LIT : EDGE_DIM;
+      tmp.copy(bg).lerp(edgeBase[k], a);
+      col[k * 6] = col[k * 6 + 3] = tmp.r;
+      col[k * 6 + 1] = col[k * 6 + 4] = tmp.g;
+      col[k * 6 + 2] = col[k * 6 + 5] = tmp.b;
+    }
+    colAttr.needsUpdate = true;
+  };
+  paintColors();
+
+  // Labels: one per morpheme, a pool for words.
+  const hubLabels: Label[] = [];
+  const hubLabelOf = new Map<number, Label>();
+  const makeEl = (cls: string) => {
+    const el = document.createElement('div');
+    el.className = cls;
+    el.style.display = 'none';
+    layer.appendChild(el);
+    return el;
+  };
+  for (let i = 0; i < N; i++) {
+    if (!hub(i)) continue;
+    const p = data.nodes[i];
+    const el = makeEl(`nbv-m3-label nbv-m3-label--${p.k}`);
+    el.textContent = p.l;
+    el.dataset.id = p.id;
+    const l: Label = { i, el, w: p.l.length * 8 + 18, h: 22, shown: false, opacity: 1 };
+    hubLabels.push(l);
+    hubLabelOf.set(i, l);
+  }
+  const pool: Label[] = [];
+  for (let k = 0; k < Math.min(WORD_LABELS, N); k++) pool.push({ i: -1, el: makeEl('nbv-m3-label nbv-m3-label--word'), w: 0, h: 18, shown: false, opacity: 1 });
+  const wordLabelOf = new Map<number, Label>();
+
+  // Camera: an orbit around `target`.
+  const target = new THREE.Vector3();
+  const sph = new THREE.Spherical();
+  const fitDistance = () => (R / Math.sin(minFov() / 2)) * 0.92;
   /** The narrower of the vertical and horizontal fields of view, in radians. */
-  const minFov = (visible = false) => {
+  function minFov(visible = false): number {
     const w = visible ? Math.max(80, W - insetL) : W;
     const h = visible ? Math.max(80, H - insetB) : H;
     const v = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * (h / H));
     return Math.min(v, 2 * Math.atan(Math.tan(v / 2) * (w / h)));
+  }
+  const minDist = 12;
+  const maxDist = () => R * 6;
+  const place = () => {
+    sph.phi = THREE.MathUtils.clamp(sph.phi, 0.05, Math.PI - 0.05);
+    sph.radius = THREE.MathUtils.clamp(sph.radius, minDist, maxDist());
+    camera.position.setFromSpherical(sph).add(target);
+    camera.lookAt(target);
+    camera.updateMatrixWorld();
   };
-  const fitDistance = () => (R / Math.sin(minFov() / 2)) * 0.92;
+  const setView = (v: MapView) => {
+    target.set(v.target.x, v.target.y, v.target.z);
+    sph.setFromVector3(new THREE.Vector3(v.pos.x - v.target.x, v.pos.y - v.target.y, v.pos.z - v.target.z));
+    place();
+  };
+  const home = (): MapView => ({ pos: { x: 0, y: 0, z: fitDistance() }, target: { x: 0, y: 0, z: 0 } });
+  setView(opts.restore || home());
 
   // The panel covers part of the canvas. Shifting the projection window keeps the camera's
   // target in the middle of what is still visible; the shift eases in and out with the panel.
@@ -188,112 +231,317 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
   let offX = 0;
   let offY = 0;
   const applyOffset = () => {
+    camera.aspect = W / H;
     if (Math.abs(offX) < 0.5 && Math.abs(offY) < 0.5) camera.clearViewOffset();
     else camera.setViewOffset(W, H, offX, offY, W, H);
+    camera.updateProjectionMatrix();
   };
-  const stepOffset = () => {
+  applyOffset();
+  const stepOffset = (): boolean => {
     const tx = -insetL / 2;
     const ty = insetB / 2;
-    if (offX === tx && offY === ty) return;
+    if (offX === tx && offY === ty) return false;
     const k = reduced ? 1 : 0.22;
     offX = Math.abs(tx - offX) < 0.5 ? tx : offX + (tx - offX) * k;
     offY = Math.abs(ty - offY) < 0.5 ? ty : offY + (ty - offY) * k;
     applyOffset();
+    return true;
   };
-  const home = () => ({ pos: { x: 0, y: 0, z: fitDistance() }, target: { x: 0, y: 0, z: 0 } });
-  const ms = (t: number) => (reduced ? 0 : t);
-  const start = opts.restore || home();
-  graph.cameraPosition(start.pos, start.target, 0);
 
-  // Labels take clicks too; a press on one must not reach the canvas as a background click.
-  const layer = labelRenderer.domElement;
-  const labelId = (ev: Event) => ((ev.target as HTMLElement | null)?.closest?.('[data-id]') as HTMLElement | null)?.dataset.id || null;
-  const onLabelDown = (ev: PointerEvent) => {
-    if (labelId(ev)) ev.stopPropagation();
+  // Flights: the target and the camera offset move together with an ease.
+  let flight: { t0: number; ms: number; fromT: THREE.Vector3; toT: THREE.Vector3; fromS: THREE.Spherical; toS: THREE.Spherical } | null = null;
+  const flyView = (v: MapView, ms: number) => {
+    const toT = new THREE.Vector3(v.target.x, v.target.y, v.target.z);
+    const toS = new THREE.Spherical().setFromVector3(new THREE.Vector3(v.pos.x, v.pos.y, v.pos.z).sub(toT));
+    // Turn the short way round.
+    let dTheta = toS.theta - sph.theta;
+    dTheta = Math.atan2(Math.sin(dTheta), Math.cos(dTheta));
+    toS.theta = sph.theta + dTheta;
+    spin.theta = 0;
+    spin.phi = 0;
+    if (reduced || ms <= 0) {
+      target.copy(toT);
+      sph.copy(toS);
+      place();
+      flight = null;
+    } else flight = { t0: performance.now(), ms, fromT: target.clone(), toT, fromS: sph.clone(), toS };
+    wake();
   };
-  const onLabelClick = (ev: MouseEvent) => {
-    const id = labelId(ev);
-    if (id) opts.onPick(id);
+  const stepFlight = (now: number): boolean => {
+    if (!flight) return false;
+    const t = Math.min(1, (now - flight.t0) / flight.ms);
+    const e = ease(t);
+    target.lerpVectors(flight.fromT, flight.toT, e);
+    sph.radius = flight.fromS.radius + (flight.toS.radius - flight.fromS.radius) * e;
+    sph.theta = flight.fromS.theta + (flight.toS.theta - flight.fromS.theta) * e;
+    sph.phi = flight.fromS.phi + (flight.toS.phi - flight.fromS.phi) * e;
+    place();
+    if (t >= 1) flight = null;
+    return true;
   };
-  const onLabelOver = (ev: MouseEvent) => setHover(labelId(ev));
-  layer.addEventListener('pointerdown', onLabelDown);
-  layer.addEventListener('click', onLabelClick);
-  layer.addEventListener('mouseover', onLabelOver);
-  layer.addEventListener('mouseleave', () => setHover(null));
 
-  // Rendering stops while nothing moves, so an idle map costs no GPU time; any input wakes it.
-  let idle = 0;
-  let sleeping = false;
-  const wake = () => {
-    idle = 0;
-    if (sleeping && !hidden) {
-      sleeping = false;
-      graph.resumeAnimation();
+  // A drag that ends with the pointer still moving keeps turning for a moment, at the speed of
+  // its last 80 ms. A pointer held still before it lifts leaves the map where it is.
+  const spin = { theta: 0, phi: 0 };
+  const turns: { t: number; theta: number; phi: number }[] = [];
+  const RELEASE_MS = 80;
+  const releaseSpin = () => {
+    const now = performance.now();
+    const recent = turns.filter((x) => now - x.t <= RELEASE_MS);
+    turns.length = 0;
+    spin.theta = 0;
+    spin.phi = 0;
+    if (recent.length < 2) return;
+    const span = Math.max(16, now - recent[0].t);
+    // Per frame of about 16 ms.
+    spin.theta = (recent.reduce((s, x) => s + x.theta, 0) / span) * 16;
+    spin.phi = (recent.reduce((s, x) => s + x.phi, 0) / span) * 16;
+  };
+  const stepSpin = (): boolean => {
+    if (reduced || (Math.abs(spin.theta) < 1e-4 && Math.abs(spin.phi) < 1e-4) || pointers.size) return false;
+    sph.theta += spin.theta;
+    sph.phi += spin.phi;
+    spin.theta *= 0.88;
+    spin.phi *= 0.88;
+    place();
+    return true;
+  };
+
+  /* ---------------------------------------------------------------- input */
+
+  interface Ptr {
+    x: number;
+    y: number;
+    x0: number;
+    y0: number;
+    t0: number;
+    type: string;
+    button: number;
+    target: EventTarget | null;
+  }
+  const pointers = new Map<number, Ptr>();
+  let dragging = false;
+  let mode: 'rotate' | 'pan' | 'dolly' = 'rotate';
+  let pair: { d: number; a: number; mx: number; my: number } | null = null;
+
+  const rect = () => stage.getBoundingClientRect();
+  // As in OrbitControls with rotateSpeed 1: a drag across the height of the map is a full turn.
+  const turnPerPx = () => (2 * Math.PI) / Math.max(200, H);
+  const rotateBy = (dx: number, dy: number) => {
+    const k = turnPerPx();
+    sph.theta -= dx * k;
+    sph.phi -= dy * k;
+    turns.push({ t: performance.now(), theta: -dx * k, phi: -dy * k });
+    if (turns.length > 30) turns.shift();
+    place();
+  };
+  const panBy = (dx: number, dy: number) => {
+    const scale = (2 * sph.radius * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / H;
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+    target.addScaledVector(right, -dx * scale).addScaledVector(up, dy * scale);
+    place();
+  };
+  const dollyBy = (factor: number) => {
+    sph.radius *= factor;
+    place();
+  };
+  const pairOf = () => {
+    const [a, b] = [...pointers.values()];
+    return { d: Math.hypot(a.x - b.x, a.y - b.y), a: Math.atan2(b.y - a.y, b.x - a.x), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+  };
+
+  const onDown = (ev: PointerEvent) => {
+    if (ev.button > 2) return;
+    // The buttons and the panel above the canvas handle their own presses.
+    if ((ev.target as HTMLElement | null)?.closest?.('.nbv-map__ctrl, .nbv-map__panel')) return;
+    flight = null;
+    spin.theta = 0;
+    spin.phi = 0;
+    turns.length = 0;
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY, x0: ev.clientX, y0: ev.clientY, t0: performance.now(), type: ev.pointerType, button: ev.button, target: ev.target });
+    try {
+      stage.setPointerCapture(ev.pointerId);
+    } catch {
+      /* the pointer is already gone */
     }
-    if (!raf && !timer && !disposed) raf = requestAnimationFrame(loop);
-  };
-  const wakeEvents = ['pointerdown', 'pointermove', 'wheel', 'touchstart'] as const;
-  wakeEvents.forEach((t) => stage.addEventListener(t, wake, { passive: true }));
-
-  let hidden = false;
-  const ro = new ResizeObserver(() => {
-    const w = stage.clientWidth;
-    const h = stage.clientHeight;
-    hidden = !w || !h;
-    if (hidden) return;
-    if (w !== W || h !== H) {
-      W = w;
-      H = h;
-      graph.width(W).height(H);
-      applyOffset();
-      lastKey = '';
+    if (pointers.size === 1) {
+      dragging = false;
+      mode = ev.button === 2 || ev.shiftKey || ev.ctrlKey || ev.metaKey ? 'pan' : ev.button === 1 ? 'dolly' : 'rotate';
+    } else if (pointers.size === 2) {
+      dragging = true;
+      pair = pairOf();
     }
     wake();
-  });
-  ro.observe(stage);
+  };
+  const onMove = (ev: PointerEvent) => {
+    const p = pointers.get(ev.pointerId);
+    if (!p) {
+      if (ev.pointerType === 'mouse' && !ev.buttons) hoverAt(ev.clientX, ev.clientY, ev.target);
+      return;
+    }
+    const dx = ev.clientX - p.x;
+    const dy = ev.clientY - p.y;
+    p.x = ev.clientX;
+    p.y = ev.clientY;
+    if (pointers.size === 1) {
+      const slop = p.type === 'mouse' ? TAP_SLOP.mouse : TAP_SLOP.touch;
+      if (!dragging && Math.hypot(p.x - p.x0, p.y - p.y0) < slop) return;
+      if (!dragging) {
+        dragging = true;
+        setHover(null);
+      }
+      if (mode === 'pan') panBy(dx, dy);
+      else if (mode === 'dolly') dollyBy(Math.exp(dy * 0.01));
+      else rotateBy(dx, dy);
+    } else if (pointers.size === 2 && pair) {
+      const now = pairOf();
+      if (now.d > 0 && pair.d > 0) dollyBy(pair.d / now.d);
+      let da = now.a - pair.a;
+      da = Math.atan2(Math.sin(da), Math.cos(da));
+      sph.theta -= da;
+      // Both fingers up or down together tilt the map.
+      sph.phi -= (now.my - pair.my) * turnPerPx();
+      place();
+      pair = now;
+    }
+    wake();
+  };
+  const onUp = (ev: PointerEvent) => {
+    const p = pointers.get(ev.pointerId);
+    if (!p) return;
+    pointers.delete(ev.pointerId);
+    try {
+      stage.releasePointerCapture(ev.pointerId);
+    } catch {
+      /* already released */
+    }
+    if (pointers.size === 1) {
+      // From two fingers back to one: carry on turning from where the remaining finger is.
+      const rest = [...pointers.values()][0];
+      rest.x0 = rest.x;
+      rest.y0 = rest.y;
+      pair = null;
+      mode = 'rotate';
+      turns.length = 0;
+      return;
+    }
+    if (pointers.size) return;
+    pair = null;
+    const tap = !dragging && ev.type === 'pointerup' && performance.now() - p.t0 < TAP_MS && p.button === 0;
+    if (dragging && mode === 'rotate') releaseSpin();
+    else {
+      turns.length = 0;
+      spin.theta = 0;
+      spin.phi = 0;
+    }
+    dragging = false;
+    if (tap) opts.onPick(pickAt(p.x, p.y, p.target, p.type !== 'mouse'));
+    wake();
+  };
+  const onWheel = (ev: WheelEvent) => {
+    ev.preventDefault();
+    flight = null;
+    // Lines and pages from a mouse wheel, pixels from a trackpad; a pinch arrives with ctrlKey.
+    const px = ev.deltaMode === 1 ? ev.deltaY * 16 : ev.deltaMode === 2 ? ev.deltaY * H : ev.deltaY;
+    dollyBy(Math.exp(THREE.MathUtils.clamp(px, -200, 200) * (ev.ctrlKey ? 0.01 : 0.0015)));
+    wake();
+  };
+  const onContext = (ev: Event) => ev.preventDefault();
+  const onLeave = () => setHover(null);
+  stage.addEventListener('pointerdown', onDown);
+  stage.addEventListener('pointermove', onMove);
+  stage.addEventListener('pointerup', onUp);
+  stage.addEventListener('pointercancel', onUp);
+  stage.addEventListener('pointerleave', onLeave);
+  stage.addEventListener('wheel', onWheel, { passive: false });
+  stage.addEventListener('contextmenu', onContext);
 
-  function setHover(id: string | null) {
-    if (id === hover) return;
-    hover = id;
-    stage.style.cursor = id ? 'pointer' : '';
-    lastKey = '';
+  /** The node under a point: a label if the press landed on one, else the nearest drawn node. */
+  const v = new THREE.Vector3();
+  function pickAt(clientX: number, clientY: number, el: EventTarget | null, touch: boolean): string | null {
+    const id = ((el as HTMLElement | null)?.closest?.('[data-id]') as HTMLElement | null)?.dataset.id;
+    if (id && byId.has(id)) return id;
+    const r = rect();
+    const x = clientX - r.left;
+    const y = clientY - r.top;
+    const reach = touch ? 22 : 12;
+    let best = -1;
+    let bestD = Infinity;
+    const perPx = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / H;
+    for (let i = 0; i < N; i++) {
+      const p = data.nodes[i];
+      v.set(p.x, p.y, p.z);
+      const dist = v.distanceTo(camera.position);
+      v.project(camera);
+      if (v.z > 1 || v.z < -1) continue;
+      const sx = ((v.x + 1) / 2) * W;
+      const sy = ((1 - v.y) / 2) * H;
+      const d = Math.hypot(sx - x, sy - y);
+      const size = radiusOf(i) / (dist * perPx);
+      if (d > Math.max(reach, size + 4)) continue;
+      // Nearer to the pointer wins; between two equally near, the one nearer the camera.
+      const score = d + dist * 0.001;
+      if (score < bestD) {
+        bestD = score;
+        best = i;
+      }
+    }
+    return best >= 0 ? data.nodes[best].id : null;
+  }
+  let hoverRaf = 0;
+  function hoverAt(clientX: number, clientY: number, el: EventTarget | null) {
+    if (hoverRaf) return;
+    hoverRaf = requestAnimationFrame(() => {
+      hoverRaf = 0;
+      if (disposed) return;
+      const id = pickAt(clientX, clientY, el, false);
+      setHover(id ? byId.get(id)! : null);
+    });
+  }
+  function setHover(i: number | null) {
+    if (i === hover) return;
+    hover = i;
+    stage.style.cursor = i !== null ? 'pointer' : '';
+    dirty = true;
     wake();
   }
 
-  const v = new THREE.Vector3();
-  let lastKey = '';
-  const cull = (): boolean => {
-    const target = controls.target as THREE.Vector3;
-    // Labels appear only after the graph digests its data, so their count is part of the key.
-    const key = `${camera.matrixWorld.elements.map((x) => x.toFixed(2)).join(',')}|${W}x${H}|${labels.length}|${offX.toFixed(1)},${offY.toFixed(1)}`;
-    if (key === lastKey) return false;
-    lastKey = key;
+  /* ------------------------------------------------------------- labels */
+
+  const cands: { i: number; pri: number; d: number; sx: number; sy: number }[] = [];
+  const cull = () => {
     const camDist = camera.position.distanceTo(target);
     const fog = scene.fog as THREE.Fog;
     fog.near = Math.max(1, camDist - R * 0.2);
     fog.far = camDist + R * 1.7;
     const near = Math.max(55, camDist * 0.7);
-    const focus = hl?.focus || null;
-    const cands: { l: Label; pri: number; d: number; sx: number; sy: number }[] = [];
-    for (const l of labels) {
-      const n = l.node;
-      v.set(n.x, n.y, n.z);
+    const focus = hl?.focus ?? null;
+    cands.length = 0;
+    for (let i = 0; i < N; i++) {
+      const p = data.nodes[i];
+      const isHub = hub(i);
+      // Words far from the camera and outside the focus never get a label: skip the projection.
+      if (!isHub && i !== hover && p.id !== focus && !(hl && hl.nodes.has(p.id))) {
+        const dx = p.x - camera.position.x;
+        const dy = p.y - camera.position.y;
+        const dz = p.z - camera.position.z;
+        if (dx * dx + dy * dy + dz * dz > near * near) continue;
+      }
+      v.set(p.x, p.y, p.z);
       const d = v.distanceTo(camera.position);
       v.project(camera);
+      if (!(v.z < 1 && Math.abs(v.x) < 1.15 && Math.abs(v.y) < 1.15)) continue;
       let pri = 9;
-      if (v.z < 1 && Math.abs(v.x) < 1.15 && Math.abs(v.y) < 1.15) {
-        if (n.id === focus || n.id === hover) pri = 0;
-        else if (l.hub) pri = hl && !hl.nodes.has(n.id) ? 3 : 1;
-        else if (hl) pri = hl.nodes.has(n.id) ? 2 : 9;
-        else if (d < near) pri = 4;
-      }
-      if (pri === 9) {
-        show(l, false);
-        continue;
-      }
-      cands.push({ l, pri, d, sx: ((v.x + 1) / 2) * W, sy: ((1 - v.y) / 2) * H });
+      if (p.id === focus || i === hover) pri = 0;
+      else if (isHub) pri = hl ? (hl.nodes.has(p.id) ? 2 : 3) : 1;
+      else if (hl) pri = hl.nodes.has(p.id) ? 2 : 9;
+      else if (d < near) pri = 4;
+      if (pri === 9) continue;
+      cands.push({ i, pri, d, sx: ((v.x + 1) / 2) * W, sy: ((1 - v.y) / 2) * H });
     }
-    cands.sort((a, b) => a.pri - b.pri || a.d - b.d);
+    // Within a rank, larger morphemes first, then nearer nodes.
+    cands.sort((a, b) => a.pri - b.pri || data.nodes[b.i].n - data.nodes[a.i].n || a.d - b.d);
     const CELL = 64;
     const grid = new Map<number, number[][]>();
     const cells = (x0: number, y0: number, x1: number, y1: number, f: (k: number) => boolean | void): boolean => {
@@ -304,87 +552,141 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
       }
       return false;
     };
+    const hubShown = new Set<number>();
+    const words: { c: (typeof cands)[number]; faint: boolean }[] = [];
     for (const c of cands) {
-      const { l } = c;
-      const x0 = l.hub ? c.sx - l.w / 2 : c.sx + 4;
-      const y0 = c.sy - l.h / 2;
-      const x1 = x0 + l.w;
-      const y1 = y0 + l.h;
+      const isHub = hub(c.i);
+      if (!isHub && words.length >= pool.length) continue;
+      const p = data.nodes[c.i];
+      const w = isHub ? p.l.length * 8 + 18 : p.l.length * 7.2 + 8;
+      const h = isHub ? 22 : 18;
+      const x0 = isHub ? c.sx - w / 2 : c.sx + 4;
+      const y0 = c.sy - h / 2;
+      const x1 = x0 + w;
+      const y1 = y0 + h;
       const hit = cells(x0, y0, x1, y1, (k) => (grid.get(k) || []).some((r) => x0 < r[2] && x1 > r[0] && y0 < r[3] && y1 > r[1]));
-      // Morpheme labels always show; one that lands on a nearer label turns faint instead of
-      // hiding, and words give way. The focused word and the hovered node always win.
-      if (hit && !l.hub && c.pri > 0) {
-        show(l, false);
-        continue;
-      }
+      // A label that lands on one already placed gives way, except the focused word and the
+      // hovered node. A morpheme in the focus turns faint instead, so its name stays readable.
+      if (hit && c.pri > 0 && !(isHub && c.pri === 2)) continue;
       cells(x0, y0, x1, y1, (k) => {
         const list = grid.get(k);
         if (list) list.push([x0, y0, x1, y1]);
         else grid.set(k, [[x0, y0, x1, y1]]);
       });
-      show(l, true);
-      // Morphemes behind the centre of view fade, which reads as depth.
-      const depth = Math.min(1, Math.max(0.45, 1.15 - Math.max(0, c.d - camDist) / (R * 1.4)));
-      const faint = (hl && !hl.nodes.has(l.node.id)) || (hit && c.pri > 0);
-      const op = l.hub ? depth * (faint ? 0.3 : 1) : 1;
-      if (Math.abs(op - l.opacity) > 0.04) {
-        l.opacity = op;
-        l.el.style.opacity = op.toFixed(2);
+      const faint = (!!hl && !hl.nodes.has(p.id)) || (hit && c.pri > 0);
+      if (isHub) {
+        hubShown.add(c.i);
+        const l = hubLabelOf.get(c.i)!;
+        // Morphemes behind the centre of view fade, which reads as depth.
+        const depth = Math.min(1, Math.max(0.45, 1.15 - Math.max(0, c.d - camDist) / (R * 1.4)));
+        showLabel(l, c.sx, c.sy, true, depth * (faint ? 0.3 : 1));
+      } else words.push({ c, faint });
+    }
+    for (const l of hubLabels) if (!hubShown.has(l.i)) hideLabel(l);
+    // Words: keep a pooled element on the word it already shows, so labels do not flicker.
+    const want = new Set(words.map((x) => x.c.i));
+    for (const [i, l] of wordLabelOf) {
+      if (!want.has(i)) {
+        wordLabelOf.delete(i);
+        hideLabel(l);
+        l.i = -1;
       }
     }
-    return true;
+    const free = pool.filter((l) => l.i < 0);
+    for (const { c } of words) {
+      let l = wordLabelOf.get(c.i);
+      if (!l) {
+        l = free.pop();
+        if (!l) break;
+        const p = data.nodes[c.i];
+        l.i = c.i;
+        l.el.textContent = p.l;
+        l.el.dataset.id = p.id;
+        wordLabelOf.set(c.i, l);
+      }
+      const id = data.nodes[c.i].id;
+      l.el.classList.toggle('is-focus', !!hl && id === hl.focus);
+      l.el.classList.toggle('is-lit', !!hl && hl.nodes.has(id));
+      showLabel(l, c.sx, c.sy, false, 1);
+    }
   };
-  let changed = false;
-  function show(l: Label, on: boolean) {
-    if (l.shown === on) return;
-    l.shown = on;
-    l.obj.visible = on;
-    changed = true;
+  function showLabel(l: Label, x: number, y: number, centred: boolean, opacity: number) {
+    if (!l.shown) {
+      l.shown = true;
+      l.el.style.display = '';
+    }
+    l.el.style.transform = centred
+      ? `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%)`
+      : `translate(${(x + 4).toFixed(1)}px, ${y.toFixed(1)}px) translateY(-50%)`;
+    if (Math.abs(opacity - l.opacity) > 0.04) {
+      l.opacity = opacity;
+      l.el.style.opacity = opacity.toFixed(2);
+    }
+  }
+  function hideLabel(l: Label) {
+    if (!l.shown) return;
+    l.shown = false;
+    l.el.style.display = 'none';
   }
 
+  /* --------------------------------------------------------------- frames */
+
   let raf = 0;
-  let timer = 0;
+  let dirty = true;
   let disposed = false;
-  function loop() {
+  let hidden = false;
+  let lastKey = '';
+  function wake() {
+    dirty = true;
+    if (!raf && !disposed && !hidden) raf = requestAnimationFrame(frame);
+  }
+  function frame(now: number) {
     raf = 0;
-    timer = 0;
     if (disposed) return;
     if (!stage.isConnected) {
       onDetached();
       return;
     }
-    if (hidden) {
-      if (!sleeping) {
-        sleeping = true;
-        graph.pauseAnimation();
-      }
-      timer = window.setTimeout(loop, 500);
-      return;
+    let moving = stepFlight(now);
+    moving = stepSpin() || moving;
+    moving = stepOffset() || moving;
+    const key = `${camera.matrixWorld.elements.map((x) => x.toFixed(2)).join(',')}|${W}x${H}|${offX.toFixed(1)},${offY.toFixed(1)}`;
+    if (dirty || key !== lastKey) {
+      lastKey = key;
+      dirty = false;
+      renderer.render(scene, camera);
+      cull();
     }
-    changed = false;
-    stepOffset();
-    const moved = cull();
-    // A label shown or hidden while rendering sleeps needs one more frame to reach the screen.
-    if (changed && sleeping) {
-      sleeping = false;
-      graph.resumeAnimation();
-    }
-    idle = moved || changed || hover ? 0 : idle + 1;
-    if (idle > 45 && !sleeping) {
-      sleeping = true;
-      graph.pauseAnimation();
-    }
-    if (sleeping) timer = window.setTimeout(loop, 500);
-    else raf = requestAnimationFrame(loop);
+    if (moving) raf = requestAnimationFrame(frame);
   }
-  raf = requestAnimationFrame(loop);
+  wake();
+
+  const ro = new ResizeObserver(() => {
+    const w = stage.clientWidth;
+    const h = stage.clientHeight;
+    hidden = !w || !h;
+    if (hidden) return;
+    if (w !== W || h !== H || renderer.getPixelRatio() !== ratio()) {
+      W = w;
+      H = h;
+      renderer.setPixelRatio(ratio());
+      renderer.setSize(W, H);
+      applyOffset();
+    }
+    wake();
+  });
+  ro.observe(stage);
+  // Shells that replace the map without telling it: notice within a second and let go.
+  const watch = window.setInterval(() => {
+    if (!stage.isConnected) onDetached();
+  }, 1000);
 
   const flyTo = (id: string) => {
-    const n = byId.get(id);
-    if (!n) return;
+    const i = byId.get(id);
+    if (i === undefined) return;
     // Frame the node with its direct neighbours: a word with its morphemes, a morpheme with
     // its words. The camera aims between the node and them, the node counting double.
-    const i = data.nodes.findIndex((p) => p.id === id);
+    const n = data.nodes[i];
     const near = data.edges.filter(([a, b]) => a === i || b === i).map(([a, b]) => data.nodes[a === i ? b : a]);
     const c = new THREE.Vector3(n.x * 2, n.y * 2, n.z * 2);
     for (const q of near) c.add(new THREE.Vector3(q.x, q.y, q.z));
@@ -395,22 +697,19 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
     const from = new THREE.Vector3().subVectors(camera.position, c);
     if (from.lengthSq() < 1) from.set(0, 0, 1);
     from.setLength(dist);
-    graph.cameraPosition({ x: c.x + from.x, y: c.y + from.y, z: c.z + from.z }, { x: c.x, y: c.y, z: c.z }, ms(900));
+    flyView({ pos: { x: c.x + from.x, y: c.y + from.y, z: c.z + from.z }, target: { x: c.x, y: c.y, z: c.z } }, 900);
   };
 
   return {
     highlight(h, fly) {
       hl = h;
-      for (const l of labels) {
-        const id = l.node.id;
-        const lit = !h || h.nodes.has(id);
-        l.mesh.material = h && id === h.focus ? focusMat : lit ? baseMat[l.node.k] || baseMat.word : dimMat[l.node.k] || dimMat.word;
+      paintColors();
+      for (const l of hubLabels) {
+        const id = data.nodes[l.i].id;
         l.el.classList.toggle('is-focus', !!h && id === h.focus);
-        l.el.classList.toggle('is-lit', !!h && lit);
+        l.el.classList.toggle('is-lit', !!h && h.nodes.has(id));
       }
-      graph.linkColor((raw: object) => linkColor(raw));
       if (fly && h?.focus) flyTo(h.focus);
-      lastKey = '';
       wake();
     },
     inset(left, bottom) {
@@ -419,50 +718,40 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
       wake();
     },
     zoom(dir) {
-      const target = controls.target as THREE.Vector3;
       const off = new THREE.Vector3().subVectors(camera.position, target);
-      const len = THREE.MathUtils.clamp(off.length() * (dir === 'in' ? 0.7 : 1.4), controls.minDistance, controls.maxDistance);
-      off.setLength(len);
-      graph.cameraPosition({ x: target.x + off.x, y: target.y + off.y, z: target.z + off.z }, { x: target.x, y: target.y, z: target.z }, ms(300));
-      wake();
+      off.setLength(THREE.MathUtils.clamp(off.length() * (dir === 'in' ? 0.7 : 1.4), minDist, maxDist()));
+      flyView({ pos: { x: target.x + off.x, y: target.y + off.y, z: target.z + off.z }, target: { x: target.x, y: target.y, z: target.z } }, 300);
     },
     reset() {
-      const h = home();
-      graph.cameraPosition(h.pos, h.target, ms(700));
-      wake();
+      flyView(home(), 700);
     },
     view(): MapView | null {
-      const t = controls.target as THREE.Vector3;
-      return { pos: { x: camera.position.x, y: camera.position.y, z: camera.position.z }, target: { x: t.x, y: t.y, z: t.z } };
+      return { pos: { x: camera.position.x, y: camera.position.y, z: camera.position.z }, target: { x: target.x, y: target.y, z: target.z } };
     },
     dispose() {
       if (disposed) return;
       disposed = true;
       cancelAnimationFrame(raf);
-      clearTimeout(timer);
+      cancelAnimationFrame(hoverRaf);
+      clearInterval(watch);
+      dprQuery?.removeEventListener('change', onDpr);
       ro.disconnect();
-      wakeEvents.forEach((t) => stage.removeEventListener(t, wake));
-      layer.removeEventListener('pointerdown', onLabelDown);
-      layer.removeEventListener('click', onLabelClick);
-      layer.removeEventListener('mouseover', onLabelOver);
-      try {
-        graph._destructor();
-      } catch {
-        /* already torn down */
-      }
-      renderer.forceContextLoss();
-      renderer.domElement.remove();
-      layer.remove();
+      stage.removeEventListener('pointerdown', onDown);
+      stage.removeEventListener('pointermove', onMove);
+      stage.removeEventListener('pointerup', onUp);
+      stage.removeEventListener('pointercancel', onUp);
+      stage.removeEventListener('pointerleave', onLeave);
+      stage.removeEventListener('wheel', onWheel);
+      stage.removeEventListener('contextmenu', onContext);
       sphere.dispose();
-      hitMat.dispose();
-      focusMat.dispose();
-      Object.values(baseMat).forEach((m) => m.dispose());
-      Object.values(dimMat).forEach((m) => m.dispose());
-      labels.length = 0;
-      // three-render-objects publishes its scene on window for debugging; drop ours.
-      const w = window as unknown as { scene?: unknown };
-      if (w.scene === scene) delete w.scene;
+      nodeMat.dispose();
+      mesh.dispose();
+      lineGeo.dispose();
+      lineMat.dispose();
+      renderer.dispose();
+      renderer.forceContextLoss();
       stage.innerHTML = '';
+      stage.style.cursor = '';
     },
   };
 }

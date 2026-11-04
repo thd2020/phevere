@@ -23,7 +23,7 @@ import { plainPluralOf, stripGlossText } from './lookup-policy';
 import { normalizeVocabLemma, typoDistance } from './vocab-lemma';
 import { formOfGlossLemma, formOfLemmaFromGlosses, isRegularInflection, resolveFormOf, stripCitationLines } from './form-of';
 import { foldLookupKey, latinLemmasByPos } from './text-normalize';
-import * as answerHistory from './answer-history';
+import { recordLemmaAliases } from './answer-history';
 import { normalizeSourceContext, sourceContextFromJson, sourceContextToJson } from './source-context';
 
 export const VOCAB_SYNC_NAMESPACE = 'phevere/vocab';
@@ -454,12 +454,11 @@ export function offlineFormTarget(row: StoredRow, saved: Map<string, StoredRow>)
 /**
  * Points the answer history, word-book progress and books you made at the new headword, and
  * records the pair so answers another device still files under the old headword land here too
- * (answer-history.ts recordLemmaAliases, where that exists).
+ * (answer-history.ts recordLemmaAliases).
  */
 async function moveLemmaRefs(pairs: Array<[string, string]>, now: number): Promise<void> {
   const db = getVocabDb();
-  const record = (answerHistory as unknown as { recordLemmaAliases?: (p: Array<[string, string]>) => Promise<void> }).recordLemmaAliases;
-  if (typeof record === 'function') await record(pairs).catch((): undefined => undefined);
+  await recordLemmaAliases(pairs);
   for (const [from, to] of pairs) {
     const a = from.trim().toLowerCase();
     const b = to.trim().toLowerCase();

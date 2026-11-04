@@ -82,7 +82,9 @@ export function learnTodayHtml(input: LearnViewInput): string {
   const { scope, ctx, review, goal } = input;
   const now = input.now ?? Date.now();
   const options = { ...input.options, now };
-  if (scope === 'mine' || !ctx) return reviewHtml(input.mine, review, goal, options);
+  if (!ctx) return reviewHtml(input.mine, review, goal, options);
+  // My words through the word-book context, so a word marked "Already know it" counts as known here as on Progress.
+  if (scope === 'mine') return reviewHtml(scopeEntries('mine', ctx), review, goal, options);
   const sub = ctx.subs.find((s) => s.bookId === scope);
   return reviewHtml(scopeEntries(scope, ctx), review, goal, {
     ...options,

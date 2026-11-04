@@ -303,7 +303,7 @@ assert.equal(fo.dominantLemma(['ax', 'axe', 'axis'], freq, [['ax', 'axe'], ['axi
   assert.ok(dieRows.some((r) => r.forms.includes('dies') && r.label !== 'Plural'), 'dies for the tool, named');
   assert.ok(!octopus.forms.includes('octopusses'), 'a nonstandard form is left out');
   const octHtml = inflectionsHtml({ formOf: [], tables: [{ pos: 'noun', rows: [octopus], grids: [], weight: 6 }] }, 'octopus', 'act');
-  assert.match(octHtml, /octopi <span class="lx-note">hypercorrect<\/span>/);
+  assert.match(octHtml, />octopi<\/span> <span class="lx-note">hypercorrect<\/span>/);
 
   // A plural gets no plural of its own: paparazzi shows paparazzo's forms, never "paparazzis".
   const paps = inflectionsFromKaikki(page('paparazzi'), 'en', 'paparazzi');
