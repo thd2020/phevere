@@ -3,7 +3,8 @@
  * (scripts/fixtures/sense-images.json, trimmed to the parts the module reads, and
  * scripts/fixtures/sense-images-fallback.json, keyed by request URL and recorded on 2026-11-02
  * for the whole-word fallback; operon, arbitrage and holon and the file-name Commons searches
- * were added on 2026-11-03).
+ * were added on 2026-11-03; on 2026-11-04 every word was recorded again for pictures per major
+ * sense, and equilibrium, afloat, adept, wind and bank were added with Wiktionary's REST senses).
  * Run: node scripts/test-sense-images.js
  */
 const assert = require('assert');
@@ -260,7 +261,10 @@ assert.ok(arbRanked.length && arbRanked.every((r) => /arbitrage/i.test(r.title))
 assert.strictEqual(arbRanked[0].title, 'Statistical Arbitrage with two stocks', 'arbitrage: the finance picture first');
 // "Holon" is also a city: with needGloss, city photos that share no gloss word drop out.
 const holonPages = commonsPages('holon');
-assert.ok(si.rankCommonsFiles(holonPages, 'holon', 'holon', ['part', 'whole']).length > 0, 'holon: city photos name the word');
+// Without a gloss word, a hit naming the word as part of a name ("… school in Holon") drops out.
+assert.ok(holonPages.length > 0, 'holon: the search found city photos');
+same(si.rankCommonsFiles(holonPages, 'holon', 'holon', ['part', 'whole']).map((r) => r.title), [], 'holon: a place name is no picture of the word');
+assert.ok(si.properName('Serendipity Beach, Sihanoukville', 'serendipity') && !si.properName('Static equilibrium same force', 'equilibrium'), 'proper names');
 same(si.rankCommonsFiles(holonPages, 'holon', 'holon', ['part', 'whole'], { needGloss: true }).map((r) => r.title), [], 'holon: no city photo');
 
 // Pictures used in an article without a free lead image: the ones naming the word first, then
@@ -305,6 +309,94 @@ assert.ok(
   !si.rankWiktionaryFallback(runImgs, [{ meaning: 'To move swiftly.', partOfSpeech: 'verb' }], 'run').some((x) => /runner|Stocking/.test(x.image.file)),
   'run: a picture tied to another sense by {{senseno}} is never the fallback',
 );
+
+// ---------------------------------------------------------------- major senses and stand-ins
+
+// A part of speech that comes back after another starts a new entry ("bank" of money, then of a river).
+{
+  const bank = [
+    { meaning: 'An institution where one can place and borrow money.', partOfSpeech: 'noun' },
+    { meaning: 'A branch office of such an institution.', partOfSpeech: 'noun' },
+    { meaning: 'To deposit in a bank.', partOfSpeech: 'verb' },
+    { meaning: 'An edge of river, lake, or other watercourse.', partOfSpeech: 'noun' },
+    { meaning: 'ISO 639-3 language code for Bankal.', partOfSpeech: 'symbol' },
+  ];
+  const m = si.majorSenses(bank, 'bank', 4);
+  same(Array.from(m.order), [0, 3, 2], 'bank: both entries, then the verb');
+  assert.ok(m.heads.has(3) && !m.heads.has(1), 'bank: the river sense heads an entry');
+  const eq = [
+    { meaning: 'The condition of a system in which competing influences are balanced.', partOfSpeech: 'noun' },
+    { meaning: 'Mental balance.', partOfSpeech: 'noun' },
+    { meaning: 'The state of a reaction in which the rates of the forward and reverse reactions are the same.', partOfSpeech: 'noun' },
+  ];
+  same(Array.from(si.majorSenseIndexes(eq, 'equilibrium', 4)), [0, 2], 'equilibrium: "Mental balance" is close to "balanced"; the reaction is not');
+  same(Array.from(si.majorSenseIndexes(eq, 'equilibrium', 1)), [0], 'max caps the list');
+
+  // A lookup lists "wind" by part of speech; Wiktionary's etymologies say the coil is another word.
+  const windText = [
+    '==English==',
+    '===Etymology 1===',
+    '====Noun====',
+    '# Real or perceived movement of [[atmospheric]] [[air]].',
+    '# The ability to breathe easily.',
+    '====Verb====',
+    '# To blow air through a wind instrument.',
+    '===Etymology 2===',
+    '====Verb====',
+    '# To turn [[coil]]s (of a cord) around something.',
+    '====Noun====',
+    '# The act of winding or turning; a turn; a bend.',
+  ].join('\n');
+  const wind = [
+    { meaning: 'Real or perceived movement of atmospheric air.', partOfSpeech: 'noun' },
+    { meaning: 'The ability to breathe easily.', partOfSpeech: 'noun' },
+    { meaning: 'The act of winding or turning; a turn; a bend.', partOfSpeech: 'noun' },
+    { meaning: 'To blow air through a wind instrument.', partOfSpeech: 'verb' },
+    { meaning: 'To turn coils (of a cord) around something.', partOfSpeech: 'verb' },
+  ];
+  const ety = Array.from(si.sensesEtymology(windText, 'en', wind, 'wind'));
+  same(ety, [1, 1, 2, 1, 2], 'wind: each sense under its etymology');
+  same(Array.from(si.majorSenseIndexes(wind, 'wind', 3)), [0, 3, 1], 'wind without etymologies: by part of speech');
+  same(Array.from(si.majorSenses(wind, 'wind', 3, ety).order), [0, 2, 3], 'wind: the coil word is an entry of its own');
+}
+
+{
+  const link = (w, t = w) => `<a rel="mw:WikiLink" href="/wiki/${t}" title="${t}">${w}</a>`;
+  const balance = si.standInWords(`${link('Mental', 'mental')} ${link('balance')}.`, 'equilibrium');
+  assert.ok(balance.words.includes('balance') && balance.whole, 'Mental balance: the gloss is the word');
+  const system = si.standInWords(`The ${link('condition')} of a ${link('system')} in which competing influences are ${link('balanced', 'balance')}.`, 'equilibrium');
+  same(system.words, [], 'a description names arguments, not the meaning');
+  const sea = si.standInWords(`In a ${link('vessel')} at ${link('sea')} or on another body of water; ${link('at sea', 'sea')}.`, 'afloat');
+  assert.ok(sea.words[0] === 'sea' && !sea.whole, 'afloat: the short clause "at sea"');
+  same(si.standInWords('The act of winding or turning; a turn.', 'wind').words, ['turn'], 'no -ing forms');
+}
+
+{
+  const page = (title, description, extract = '', pageimage = 'X.jpg') => ({
+    title, description, extract, pageimage, thumbnail: { source: 'https://x/330px-X.jpg', width: 330, height: 200 },
+  });
+  const gloss = 'The state of a reaction in which the rates of the forward and reverse reactions are the same.';
+  const chem = page('Chemical equilibrium', 'When the ratio of reactants to products of a chemical reaction is constant with time', 'This state results when the forward reaction proceeds at the same rate as the reverse reaction.');
+  assert.ok(si.acceptSenseArticle(chem, 'equilibrium', gloss, { strict: true }), 'Chemical equilibrium fits');
+  assert.ok(!si.acceptSenseArticle(page('Cow–calf operation', 'Method of raising cattle for beef'), 'cow', 'Beef: the meat of cattle as food.'), 'two more words: something else');
+  assert.ok(!si.acceptSenseArticle(page('Equilibrium (film)', 'American film'), 'equilibrium', gloss), 'a film is never the sense');
+  assert.ok(si.acceptSenseArticle({ ...chem, pageimage: undefined, thumbnail: undefined }, 'equilibrium', gloss, { strict: true, anyImage: true }), 'no lead image: still the article');
+}
+
+{
+  const rec = (categories, description = '') => ({
+    url: 'u', thumburl: 't', extmetadata: { Categories: { value: categories }, ImageDescription: { value: description } },
+  });
+  const opts = (word, level, meaning = 'Mental balance.') => ({ word, gloss: si.contentTokens(meaning, 'equilibrium'), lemma: 'equilibrium', level });
+  assert.ok(si.verifyPictureRecord('Eo-scale of justice.gif', rec('Scale icons|Balanced scales of justice', 'scale of justice'), opts('balance', 'named')), 'the record names the word');
+  assert.ok(!si.verifyPictureRecord('InternationalCoins.JPG', rec('Mixed coins', 'coins, shilling, penny'), opts('change', 'named')), 'coins are not "change" here');
+  const walpole = rec('18th-century portrait paintings|Portraits of Horace Walpole');
+  assert.ok(!si.verifyPictureRecord('Horace Walpole.jpg', walpole, { gloss: [], lemma: 'serendipity', level: 'portrait' }), 'no portrait for a non-person word');
+  assert.ok(si.verifyPictureRecord('Horace Walpole.jpg', walpole, { gloss: [], lemma: 'adept', personGloss: true, level: 'portrait' }), 'a portrait for a word about people');
+  assert.ok(!si.verifyPictureRecord('Sea.jpg', rec('Locator maps of seas'), opts('sea', 'clean')), 'no map');
+}
+assert.ok(!si.buildCommonsSearchUrl('serendipity', { fullText: true }).includes('intitle'), 'full-text Commons search');
+assert.ok(si.buildCommonsSearchUrl('serendipity').includes('intitle%3Aserendipity'), 'file-name Commons search');
 
 // ---------------------------------------------------------------- end to end with recorded responses
 
@@ -420,28 +512,53 @@ async function fallbackEndToEnd() {
     }
   }
 
-  // Words with no sense-specific picture get one on the first sense. For a word with no
-  // concrete noun sense that costs three requests: Wiktionary and the title query side by side,
-  // then one imageinfo call (or the Commons search, which carries its own file info).
+  // Words with no sense-specific picture get one on the first sense: their own article, a
+  // Wiktionary caption naming them, a derived noun's article or a Commons file named after them.
+  // For a word with no concrete noun sense the requests that do not depend on each other go out
+  // together (Wiktionary, the title query, the sense searches and the stand-in queries), and
+  // file details for every candidate come in one imageinfo call.
   const want = {
     serendipity: 'Serendipity',
     love: 'Romeo and Juliet in love',
     freedom: 'Freedom',
     inspect: 'Inspection',
-    ephemeral: 'Ephemerality',
     beautiful: 'Beauty',
     justice: 'Justice',
     happiness: 'Happiness',
     要対応: 'An action is required',
+    equilibrium: 'Static equilibrium same force',
   };
   for (const [word, title] of Object.entries(want)) {
     const log = [];
     const { lang, list } = fb.senses[word];
     const imgs = await recordedModule(log).fetchSenseImages(word, list, { lang });
-    assert.strictEqual(imgs[0] && imgs[0].title, title, `${word}: fallback picture on the first sense`);
-    assert.ok(imgs.slice(1).every((x) => !x), `${word}: one fallback picture only`);
-    // "justice" has noun senses the strict rule tries first (two searches), so it makes more.
-    if (word !== 'justice') assert.strictEqual(log.length, 3, `${word}: three requests, not ${log.length}`);
+    assert.strictEqual(imgs[0] && imgs[0].title, title, `${word}: picture on the first sense`);
+    assert.ok(log.length <= 12, `${word}: ${log.length} requests`);
+    assert.strictEqual(log.filter((u) => u.includes('prop=imageinfo&')).length <= 2, true, `${word}: file details asked at most twice`);
+  }
+  // Serendipity's article shows a portrait of Horace Walpole, who coined the word; a portrait
+  // of a named person is no picture of a word that is not about people.
+  {
+    const imgs = await recordedModule([]).fetchSenseImages('serendipity', fb.senses.serendipity.list, { lang: 'en' });
+    assert.ok(!imgs.some((x) => x && /Walpole/.test(x.pageUrl)), 'serendipity: no portrait');
+  }
+
+  // Unrelated meanings each get a picture: money and river for "bank", air, coil and instrument
+  // for "wind" (the coil is another etymology on Wiktionary).
+  {
+    const bank = await recordedModule([]).fetchSenseImages('bank', fb.senses.bank.list, { lang: 'en' });
+    const shown = bank.map((x, i) => (x ? [i, x.title] : null)).filter(Boolean);
+    assert.ok(shown.some(([, t]) => /Bank of England/.test(t)) && shown.some(([, t]) => /river bank/i.test(t)), JSON.stringify(shown));
+    const wind = await recordedModule([]).fetchSenseImages('wind', fb.senses.wind.list, { lang: 'en' });
+    assert.ok(wind.filter(Boolean).length >= 3, 'wind: three meanings pictured');
+    assert.ok(/Turn-roundturn/.test(wind.filter(Boolean).map((x) => x.pageUrl).join(' ')), 'wind: a rope wound in turns');
+  }
+
+  // The first pictures arrive through onUpdate before the slower steps finish.
+  {
+    const updates = [];
+    const imgs = await recordedModule([]).fetchSenseImages('wind', fb.senses.wind.list, { lang: 'en', onUpdate: (l) => updates.push(l.filter(Boolean).length) });
+    assert.ok(updates.length >= 1 && updates[0] >= 1 && updates[0] <= imgs.filter(Boolean).length, `updates ${updates}`);
   }
 
   // The title query starts before the Wiktionary answer arrives.
@@ -464,7 +581,8 @@ async function fallbackEndToEnd() {
     });
     const p = mod.fetchSenseImages('happiness', fb.senses.happiness.list, { lang: 'en' });
     await new Promise((r) => setTimeout(r, 20));
-    assert.strictEqual(started.length, 2, 'happiness: Wiktionary and the title query in parallel');
+    assert.ok(started.length >= 2 && started.length <= 6, `happiness: ${started.length} requests start together`);
+    assert.ok(started.some((u) => u.includes('titles=happiness%7C')), 'happiness: the title query does not wait for Wiktionary');
     assert.ok(started.some((u) => u.includes('wiktionary.org')) && started.some((u) => u.includes('wikipedia.org')));
     release();
     assert.strictEqual((await p)[0].title, 'Happiness');
@@ -490,11 +608,11 @@ async function fallbackEndToEnd() {
     const imgs = await recordedModule(log).fetchSenseImages('operon', fb.senses.operon.list, { lang: 'en' });
     assert.strictEqual(imgs[0].title, 'Lac Operon');
     assert.ok(/\/330px-Lac_Operon\.svg\.png$/.test(imgs[0].thumb), imgs[0].thumb);
-    assert.ok(log.includes(si.buildArticleImagesUrl('Operon')), 'operon: asks for the article pictures');
+    assert.ok(log.some((u) => u.includes('prop=images&') && u.includes('titles=Operon')), 'operon: asks for the article pictures');
     assert.ok(!log.some((u) => u.includes('generator=search&gsrnamespace=6')), 'operon: no Commons search needed');
   }
   // "Arbitrage": the article has no pictures at all, so Commons, finance first, also with no gloss.
-  assert.strictEqual((await wordImage('arbitrage', 'en')).title, 'Statistical Arbitrage with two stocks');
+  assert.ok(/Arbitrage/.test((await wordImage('arbitrage', 'en')).title), 'arbitrage: a finance picture named after the word');
   assert.strictEqual((await wordImage('operon', 'en')).title, 'Lac Operon');
   assert.strictEqual(await wordImage('holon', 'en'), null, 'holon: no photo of the city');
 
@@ -528,6 +646,44 @@ async function fallbackEndToEnd() {
     });
     await mod.fetchWordImage('operon', { lang: 'en' });
     assert.ok(seen.length && seen.every((h) => /^Phevere\/\d.*github\.com\/thd2020\/phevere/.test(h['User-Agent'])), 'User-Agent names the app');
+  }
+
+  // Cards that load together share one file-details request.
+  {
+    const asked = [];
+    const mod = load({
+      isCoreConfigured: () => true,
+      getHttp: () => ({
+        requestJson: async (url) => {
+          asked.push(url);
+          const q = new URL(url).searchParams;
+          const titles = (q.get('titles') || '').split('|').filter(Boolean);
+          if (url.includes('prop=imageinfo')) {
+            return {
+              query: {
+                pages: titles.map((t) => {
+                  const f = t.replace(/^File:/, '').replace(/ /g, '_');
+                  return {
+                    title: t,
+                    imageinfo: [{ url: `https://upload.wikimedia.org/x/${f}`, thumburl: `https://upload.wikimedia.org/x/thumb/${f}/330px-${f}`, thumbwidth: 330, thumbheight: 220, width: 800, mime: 'image/jpeg', descriptionurl: `https://commons.wikimedia.org/wiki/${t.replace(/ /g, '_')}` }],
+                  };
+                }),
+              },
+            };
+          }
+          if (url.includes('en.wikipedia.org') && titles.length) {
+            const word = titles[0];
+            const name = word.charAt(0).toUpperCase() + word.slice(1);
+            return { query: { normalized: [{ from: word, to: name }], pages: [{ title: name, description: 'Small round object', pageimage: `${name}.jpg`, thumbnail: { source: 'https://x/330px-a.jpg', width: 330, height: 220 } }] } };
+          }
+          return { query: { pages: [] } };
+        },
+      }),
+      getLookupCache: () => null,
+    });
+    const [a, b] = await Promise.all([mod.fetchWordImage('pebble', { lang: 'en' }), mod.fetchWordImage('marble', { lang: 'en' })]);
+    assert.ok(a && b && a.title === 'Pebble' && b.title === 'Marble', 'both cards have a picture');
+    assert.strictEqual(asked.filter((u) => u.includes('prop=imageinfo')).length, 1, 'one imageinfo request for both cards');
   }
 
   // At most three requests in flight, however many cards ask at once.
@@ -604,7 +760,7 @@ async function fallbackEndToEnd() {
     const mod = load({ isCoreConfigured: () => true, getHttp: () => ({ requestJson: async (url) => JSON.parse(JSON.stringify(fb.responses[url])) }), getLookupCache: () => store });
     assert.strictEqual(await mod.fetchWordImage('holon', { lang: 'en' }), null);
     const [key] = [...persisted.keys()];
-    assert.ok(key.startsWith('sense-images:v3:'), key);
+    assert.ok(key.startsWith('sense-images:v4:'), key);
     // Seven hours later a new session asks the network again.
     persisted.get(key).savedAt -= 7 * 60 * 60 * 1000;
     let asked = 0;

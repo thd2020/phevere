@@ -1,45 +1,62 @@
 /**
  * Pictures for dictionary senses.
  *
- * Two keyless sources, both licence-clean because every file comes from Wikimedia Commons:
+ * Every file comes from Wikimedia Commons, which hosts only freely licensed or public-domain
+ * files; `pilicense=free` keeps Wikipedia's non-free lead images out. Each picture carries its
+ * author, licence and file page for the credit line. No source needs a key.
+ *
+ * Which senses get a picture: the major ones, at most four (`majorSenses`). A word's entries
+ * come first ("bank" of money, "bank" of a river; the Wiktionary page tells them apart by
+ * etymology even when a lookup lists senses by part of speech), then each further part of
+ * speech, then senses unlike the ones before them ("equilibrium" of a chemical reaction).
+ *
+ * Where pictures come from, in order:
  *
  * 1. Wiktionary's own sense images. Editors place `[[File:...|thumb|caption]]` in an entry and
  *    often tie the caption to a sense with `{{senseno|en|ID}}`, where the definition line carries
  *    `{{senseid|en|ID}}`. We match the caption (or the linked definition line) against our
  *    glosses by shared content words. Curated by lexicographers, so a match may illustrate any
- *    part of speech.
- * 2. Wikipedia's lead image, only for concrete noun senses: the article titled with the lemma
- *    (or, for a foreign word, with its one-word English gloss), then a search for `lemma + gloss
+ *    part of speech. Book covers and title pages from quotations are skipped.
+ * 2. Wikipedia's lead image for concrete noun senses: the article titled with the lemma (or, for
+ *    a foreign word, with its one-word English gloss), then a search for `lemma + gloss
  *    keywords`. A page counts only when its title is the lemma (optionally with a qualifier such
  *    as "Crane (bird)") and its short description or first sentences share words with the gloss.
- *    `pilicense=free` keeps non-free lead images out.
+ * 3. For a major sense still bare, the same search accepts an article whose title is the word
+ *    and one more word ("Chemical equilibrium") when it fits the gloss closely; when that article
+ *    has no free lead image, a picture used in it that names the word ("Diagram of a ball placed
+ *    in a stable equilibrium").
+ * 4. When the first sense is still bare, the best picture for the word as a whole:
+ *    a. the Wikipedia article titled with the word, even an abstract one ("Justice", "Happiness");
+ *    b. a Wiktionary picture on the word's own page whose caption names the word or a gloss word;
+ *    c. the article titled with a derived noun ("inspect" gives "Inspection", "run" "Running",
+ *       "beautiful" "Beauty", "ephemeral" "Ephemerality");
+ *    d. any other caption-only Wiktionary picture on the page;
+ *    e. a picture used in the word's article that names the word or a gloss word, such as the
+ *       diagram "Lac Operon.svg" on "Operon", whose lead has no free image. When the title is a
+ *       disambiguation page or names something else ("Holon" is a city), the article is the
+ *       search hit titled with a qualifier whose description fits the gloss ("Holon (philosophy)").
+ * 5. A stand-in for an abstract major sense: a picture of a word its gloss is made of, the way
+ *    picture dictionaries show a related concrete thing. Only a short clause counts ("Mental
+ *    balance." gives "balance", "…; at sea" gives "sea"); the article titled exactly with that
+ *    word gives its lead picture, and Wiktionary's picture for the word is used when the whole
+ *    gloss is that word and the file's own Commons record names it ("Balanced scales of justice").
+ * 6. When the word still has no picture, a Commons search for it in file names, then anywhere in
+ *    a file's record, ranked by shared gloss words. A hit must share a gloss word, and logos,
+ *    maps, scans, book pages and portraits are refused.
  *
- * These strict matches reject on doubt and may place up to three pictures. When none of them
- * finds anything, a whole-word fallback still gives the word one picture (on its first sense),
- * the best-ranked candidate from, in order:
+ * Relevance checks: a portrait of a named person (Commons categories such as "Portraits of …")
+ * is never used for a word whose gloss is not about people; works, places, companies and
+ * disambiguation pages are never the article for a sense; logos, maps, flags and scans are
+ * refused wherever a picture is borrowed rather than matched.
  *
- * a. the Wikipedia article titled with the word, even an abstract one ("Justice", "Happiness");
- * b. a Wiktionary picture on the word's own page whose caption names the word or a gloss word;
- * c. the article titled with a derived noun ("inspect" gives "Inspection", "run" "Running",
- *    "beautiful" "Beauty", "ephemeral" "Ephemerality");
- * d. any other caption-only Wiktionary picture on the page;
- * e. a picture used in the word's article that names the word or a gloss word, such as the
- *    diagram "Lac Operon.svg" on "Operon", whose lead has no free image. When the title is a
- *    disambiguation page or names something else ("Holon" is a city), the article is the search
- *    hit titled with a qualifier whose description fits the gloss ("Holon (philosophy)");
- * f. a Commons file search for the word in file names (a foreign word: its English gloss),
- *    photos and drawings, ranked by how many gloss words its title, description and categories
- *    share, with logos, maps, flags, diagrams and portraits of named people pushed down. When
- *    the word's title names something else, a hit must share a gloss word.
- *
- * Steps a to d cost one batched Wikipedia `titles=` request; step e one `prop=images` request
- * (and a search when the title is not the word's article); step f one Commons search. Each runs
- * only when the steps before it find nothing. File metadata (thumb URL, size, author, licence)
- * comes from one batched Commons `imageinfo` call, or with the Commons search itself.
- *
- * Requests go out at most three at a time with an identifying User-Agent, as Wikimedia's rate
- * limits ask. A result computed while a request failed is not cached, and a result with no
- * picture is kept for six hours only, so a word that got nothing is tried again.
+ * Speed: requests go out at most three at a time with an identifying User-Agent, as Wikimedia's
+ * rate limits ask. Title and file-info queries asked within a few milliseconds of each other (a
+ * screen of cards, the senses of one lookup) share one request of up to 50 titles. Steps that do
+ * not depend on each other start together, and `onUpdate` hands a lookup its first pictures
+ * while later steps run. Thumbnails are Commons' 330 px standard step, which its servers keep
+ * ready. Results are kept in memory and in the platform's persistent lookup cache; a result
+ * computed while a request failed is not cached, and a result with no picture is kept for six
+ * hours only, so a word that got nothing is tried again.
  */
 import { getHttp, getLookupCache, isCoreConfigured } from './runtime';
 import type { HttpClient, HttpRequestInit, HttpTextResponse, HttpBytesResponse } from './http';
@@ -68,8 +85,8 @@ export interface SenseInput {
 const THUMB_WIDTH = 330;
 const LARGE_WIDTH = 960;
 const TIMEOUT_MS = 8000;
-// v3: results with no picture saved under v2 (before article diagrams and SVG) are retried.
-const CACHE_VERSION = 'v3';
+// v4: a picture for each major sense (v3 gave one picture to most words), so v3 results are redone.
+const CACHE_VERSION = 'v4';
 const PERSIST_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 /** A result with no picture at all is kept this long, so a word saved earlier is tried again. */
 const EMPTY_TTL_MS = 6 * 60 * 60 * 1000;
@@ -110,7 +127,7 @@ const BAD_LABELS =
 
 /** Article descriptions that mean "not the thing itself": works, people, places, companies. */
 const BAD_DESCRIPTION =
-  /\b(film|movie|album|song|band|novel|book|magazine|newspaper|company|corporation|brand|manufacturer|rapper|singer|musician|actor|actress|politician|footballer|television|tv series|episode|video game|software|programming language|surname|given name|disambiguation|village|town|city|municipality|commune|county|district|province|state of|river in|mountain in|record label|organi[sz]ation|sports team|football club|ethnic group|born|died|fictional|website|operating system|census|neighbourhood|neighborhood)\b/i;
+  /\b(film|movie|album|song|band|novel|book|magazine|newspaper|company|corporation|brand|manufacturer|rapper|singer|musician|actor|actress|politician|footballer|television|tv series|episode|video game|software|programming language|surname|given name|disambiguation|village|town|city|municipality|commune|county|district|province|state of|river in|mountain in|record label|organi[sz]ation|sports team|musical group|folk group|vocal group|duo|trio|quartet|football club|ethnic group|born|died|fictional|website|operating system|census|neighbourhood|neighborhood)\b/i;
 
 const POS_HEADINGS: Record<string, string> = {
   noun: 'noun',
@@ -132,6 +149,9 @@ const POS_HEADINGS: Record<string, string> = {
   idiom: 'phrase',
   proverb: 'phrase',
 };
+
+/** Pictures of a book that a quotation comes from: its cover, title page or frontispiece. */
+const BOOK_PICTURE = /\b(cover|title ?page|frontispiece)\b/i;
 
 const NON_IMAGE_EXT = /\.(ogg|oga|ogv|opus|webm|mp3|mp4|wav|flac|mid|midi|pdf|djvu|stl)$/i;
 
@@ -158,6 +178,8 @@ function stem(w: string): string {
   if (s.length > 6 && s.endsWith('ing')) s = s.slice(0, -3);
   else if (s.length > 5 && s.endsWith('ed')) s = s.slice(0, -2);
   else if (s.length > 5 && s.endsWith('ly')) s = s.slice(0, -2);
+  // "balance" and "balanced", "change" and "changing" share a stem.
+  if (s.length > 5 && s.endsWith('e') && !s.endsWith('ee')) s = s.slice(0, -1);
   return s;
 }
 
@@ -385,6 +407,8 @@ export function extractWiktionaryImages(wikitext: string, lang: string): Wiktion
       const altRaw = (opts.find((p) => /^alt=/i.test(p)) || '').replace(/^alt=/i, '');
       const senseNo = captionRaw.match(/\{\{\s*senseno\s*\|[^|}]*\|\s*([^}|]+?)\s*\}\}/i);
       const caption = wikiToText(captionRaw) || wikiToText(altRaw);
+      // A quotation's book cover or title page ("Afloat and Ashore, cover") shows a book, not the word.
+      if (BOOK_PICTURE.test(caption) || BOOK_PICTURE.test(file)) continue;
       images.push({ file, caption, senseText: '', pos, etymology, senseId: senseNo ? senseNo[1].toLowerCase() : '' });
     }
   }
@@ -482,9 +506,13 @@ export function buildWikipediaTitleUrl(title: string, lang = 'en'): string {
 /**
  * The search text for a sense: the lemma, the gloss's first content word (usually its head,
  * "bird" in "Any bird of the family Gruidae") and the longest of its next five content words.
+ * Abstract heads are skipped: "the state of a body at rest" searches "body" and "resultant".
  */
 export function buildSenseSearchQuery(lemma: string, gloss: string): string {
-  const words = contentTokens(glossBody(gloss), lemma);
+  // Abstract heads ("the state of a body at rest") name no topic, so the search skips them.
+  const all = contentTokens(glossBody(gloss), lemma);
+  const concrete = all.filter((t) => !ABSTRACT_HEADS.has(t));
+  const words = concrete.length ? concrete : all;
   const raw = stripHtml(glossBody(gloss)).toLowerCase().match(/\p{L}[\p{L}-]*/gu) || [];
   const byStem = new Map<string, string>();
   for (const w of raw) {
@@ -686,6 +714,14 @@ export function buildArticleImagesUrl(title: string, lang = 'en'): string {
   );
 }
 
+/** Pictures used in several articles at once. */
+export function buildArticleImagesManyUrl(titles: string[], lang = 'en'): string {
+  return (
+    `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&redirects=1` +
+    `&prop=images&imlimit=max&titles=${encodeURIComponent(titles.join('|'))}&origin=*`
+  );
+}
+
 /**
  * Pictures used in an article, best first, for a word whose article has no lead image: a
  * diagram such as "Lac Operon.svg" on "Operon". A file counts only when its name contains the
@@ -841,9 +877,9 @@ export function rankWiktionaryFallback(
  * A Commons file search, photos and drawings (SVG diagrams) alike. A one-word query must be in
  * the file name: a full-text search for "arbitrage" returns US Navy repair ships coded "ARB".
  */
-export function buildCommonsSearchUrl(query: string): string {
+export function buildCommonsSearchUrl(query: string, opts: { fullText?: boolean } = {}): string {
   const q = String(query || '').trim();
-  const text = /^[\p{L}'-]+$/u.test(q) ? `intitle:${q}` : q;
+  const text = !opts.fullText && /^[\p{L}'-]+$/u.test(q) ? `intitle:${q}` : q;
   return (
     'https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2' +
     `&generator=search&gsrnamespace=6&gsrlimit=12&gsrsearch=${encodeURIComponent(`${text} filetype:bitmap|drawing`)}` +
@@ -875,6 +911,17 @@ export function commonsFileTitle(file: string): string {
     .replace(/\s*\(\d{6,}\)$/, '')
     .replace(/_/g, ' ')
     .trim();
+}
+
+/** Whether `word` sits in `title` as part of a capitalised name ("Serendipity Beach"). */
+export function properName(title: string, word: string): boolean {
+  const w = String(word || '').toLowerCase();
+  const tokens = String(title || '').split(/[\s,.;:()]+/).filter(Boolean);
+  const isCap = (t: string | undefined) => !!t && /^\p{Lu}/u.test(t) && !STOP.has(t.toLowerCase());
+  // "… school in Holon": a capitalised word after "in", "at" or "near" is a place.
+  const place = (i: number) => i > 0 && /^\p{Lu}/u.test(tokens[i]) && /^(in|at|near|from)$/.test(tokens[i - 1]);
+  // The first word of a title is capitalised anyway ("Static equilibrium", "Mallard Afloat").
+  return tokens.some((t, i) => t.toLowerCase() === w && (isCap(tokens[i + 1]) || (i > 1 && isCap(tokens[i - 1])) || place(i)));
 }
 
 export interface CommonsPage {
@@ -911,11 +958,14 @@ export function rankCommonsFiles(
       const description = stripHtml(meta.ImageDescription?.value || '').slice(0, 400);
       const categories = stripHtml(meta.Categories?.value || '');
       const tokens = contentTokens(`${name} ${description} ${categories.replace(/\|/g, ' ')}`, lemma);
-      const shared = overlap(gloss, tokens);
+      const shared = nearOverlap(gloss, tokens);
       const inName = words.some((w) => sharesWord(name, w));
       // A hit that names neither the search word nor a gloss word matched on something else.
       if (!shared && !inName && !words.some((w) => sharesWord(`${description} ${categories}`, w))) return null;
       if (opts.needGloss && !shared) return null;
+      // Without a gloss word, the word must name what the file shows, not a place, band or boat
+      // called by it: "Serendipity Beach", "Serendipity Singers".
+      if (!shared && properName(name, lemma)) return null;
       let score = shared * 2 + (1 - i / n);
       if (inName) score += 2;
       if (badMatch(BAD_FILE, name, lemma) || badMatch(BAD_CATEGORY, categories, lemma)) score -= 5;
@@ -924,6 +974,273 @@ export function rankCommonsFiles(
     })
     .filter((x): x is { file: string; title: string; info: ImageInfo; score: number } => !!x)
     .sort((a, b) => b.score - a.score);
+}
+
+// ---------------------------------------------------------------- major senses
+
+/**
+ * The senses that deserve a picture of their own, best first, at most `max`. A dictionary lists
+ * a word's entries one after another (Wiktionary gives noun and verb for one etymology, then
+ * noun and verb for the next), so a part of speech that comes back after another one starts a
+ * new entry: "bank" the institution, then "bank" the edge of a river. Each entry's first sense
+ * comes first, then the first sense of each further part of speech in an entry, then a sense
+ * among the first six of a run that shares no content word with the senses before it in that
+ * run ("equilibrium" of a reaction after "equilibrium" of competing influences).
+ */
+/** Glosses that are codes or pointers, not meanings: "ISO 639-3 language code for Cowlitz". */
+const CODE_GLOSS = /\b(ISO \d|language code|abbreviation of|initialism of|acronym of|symbol for|alternative (?:form|spelling) of|plural of|misspelling of)\b/i;
+
+export interface MajorSenses {
+  /** Senses that get a picture of their own, best first. */
+  order: number[];
+  /** Entry and part-of-speech heads, which may also borrow a picture of a word their gloss names. */
+  heads: Set<number>;
+}
+
+export function majorSenses(senses: SenseInput[], lemma: string, max = 4, etymology?: number[]): MajorSenses {
+  const entryHeads: number[] = [];
+  const posHeads: number[] = [];
+  // Distinct senses per run of one part of speech, taken in turns so the verbs' second meaning
+  // is not crowded out by a long list of nouns.
+  const distinctRuns: number[][] = [];
+  const seenEtymology = new Set<number>();
+  let entryPos = new Set<string>();
+  let prevPos: string | null = null;
+  let run: string[][] = [];
+  let runDistinct: number[] = [];
+  senses.forEach((s, i) => {
+    if (!stripHtml(s.meaning)) return;
+    const pos = canonicalSensePos(s.partOfSpeech);
+    if (pos === 'symbol' || CODE_GLOSS.test(stripHtml(s.meaning))) return;
+    const tokens = contentTokens(glossBody(s.meaning), lemma).filter((t) => !ABSTRACT_HEADS.has(t));
+    // A sense from an etymology not seen before is a different word spelled the same.
+    const ety = etymology?.[i] || 0;
+    const newEtymology = ety > 0 && !seenEtymology.has(ety) && seenEtymology.size > 0;
+    if (ety > 0) seenEtymology.add(ety);
+    if (prevPos === null || (pos !== prevPos && entryPos.has(pos)) || newEtymology) {
+      entryHeads.push(i);
+      entryPos = new Set([pos]);
+      run = [tokens];
+      runDistinct = [];
+      distinctRuns.push(runDistinct);
+    } else if (pos !== prevPos) {
+      posHeads.push(i);
+      entryPos.add(pos);
+      run = [tokens];
+      runDistinct = [];
+      distinctRuns.push(runDistinct);
+    } else {
+      const fresh = tokens.length >= 2 && run.length < 6 && run.every((r) => !r.some((t) => tokens.includes(t)));
+      if (fresh) runDistinct.push(i);
+      run.push(tokens);
+    }
+    prevPos = pos;
+  });
+  const distinct: number[] = [];
+  for (let k = 0; distinctRuns.some((r) => r.length > k); k += 1) {
+    for (const r of distinctRuns) if (r[k] !== undefined) distinct.push(r[k]);
+  }
+  const order = [...entryHeads, ...posHeads, ...distinct].slice(0, Math.max(1, max));
+  return { order, heads: new Set([...entryHeads, ...posHeads].filter((i) => order.includes(i))) };
+}
+
+/**
+ * Which Wiktionary etymology each sense belongs to (1, 2 and so on; 0 when no definition line
+ * fits). A lookup merges its sources and lists senses by part of speech, which hides that "wind"
+ * the moving air and "wind" a coil are two words; the Wiktionary page, fetched for its pictures
+ * anyway, still has them under Etymology 1 and Etymology 2. A sense belongs to the etymology of
+ * the definition line that shares the most content words with it, two at least (or all of a
+ * gloss of one or two words).
+ */
+export function sensesEtymology(wikitext: string, lang: string, senses: SenseInput[], lemma: string): number[] {
+  const section = wiktionaryLanguageSection(wikitext, lang);
+  if (!section || !/^={3,}\s*Etymology\s+2\s*=+/im.test(section)) return senses.map(() => 0);
+  const lines: Array<{ ety: number; tokens: string[] }> = [];
+  let ety = 0;
+  for (const line of section.split('\n')) {
+    const h = line.match(/^={3,}\s*Etymology(?:\s+(\d+))?\s*=+\s*$/i);
+    if (h) {
+      ety = Number(h[1] || 1);
+      continue;
+    }
+    if (ety && /^#\s*[^:*#\s]/.test(line)) lines.push({ ety, tokens: contentTokens(wikiToText(line.replace(/^#+\s*/, '')), lemma) });
+  }
+  return senses.map((s) => {
+    const t = contentTokens(glossBody(s.meaning), lemma);
+    if (!t.length) return 0;
+    let best = 0;
+    let bestN = 0;
+    for (const l of lines) {
+      const n = overlap(t, l.tokens);
+      const enough = n >= 2 || (n >= 1 && n === Math.min(t.length, l.tokens.length) && t.length <= 2);
+      if (enough && n > bestN) {
+        bestN = n;
+        best = l.ety;
+      }
+    }
+    return best;
+  });
+}
+
+/** `majorSenses(...).order`. */
+export function majorSenseIndexes(senses: SenseInput[], lemma: string, max = 4): number[] {
+  return majorSenses(senses, lemma, max).order;
+}
+
+/**
+ * Whether a Wikipedia article titled with the word, or naming it ("Chemical equilibrium",
+ * "Bank (geography)"), is about this sense: a usable lead image, no disambiguation page, person,
+ * work or place, and enough words shared with the gloss in its description, qualifier and first
+ * sentences. A title that only contains the word, or a later sense, needs more shared words.
+ */
+export function acceptSenseArticle(
+  page: WikipediaPage,
+  lemma: string,
+  gloss: string,
+  opts: { strict?: boolean; anyImage?: boolean } = {},
+): boolean {
+  if (!page || page.missing) return false;
+  if (!opts.anyImage && !acceptConceptPage(page)) return false;
+  if (page.pageprops?.disambiguation !== undefined || /disambiguation/i.test(page.title)) return false;
+  if (BAD_DESCRIPTION.test(String(page.description || '')) || BAD_DESCRIPTION.test(titleParts(page.title).qualifier)) return false;
+  const { base, qualifier } = titleParts(page.title);
+  const exact = sameWord(base, lemma);
+  // "Chemical equilibrium" names the sense; "Cow–calf operation" names something else.
+  const extra = base.split(/[\s–-]+/).filter((w) => w && !sameWord(w, lemma)).length;
+  if (!exact && (!sharesWord(base, lemma) || extra > 1)) return false;
+  const g = contentTokens(glossBody(gloss), lemma);
+  const d = contentTokens(`${page.description || ''} ${qualifier} ${exact ? '' : base}`, lemma);
+  const e = contentTokens(String(page.extract || ''), lemma);
+  const od = overlap(g, d);
+  const oe = overlap(g, e);
+  if (exact && !opts.strict) return od >= 1 || oe >= 2;
+  return od >= 2 || (od >= 1 && oe >= 2) || oe >= 3;
+}
+
+// ---------------------------------------------------------------- stand-in words
+
+/** Two stems are the same word when one starts the other ("balanc" and "balance"). */
+function nearWord(a: string, b: string): boolean {
+  if (a === b) return true;
+  const [s, l] = a.length <= b.length ? [a, b] : [b, a];
+  // Five letters at least: "part" must not match "particle".
+  return s.length >= 5 && l.startsWith(s) && l.length - s.length <= 3;
+}
+
+function nearOverlap(a: string[], b: string[]): number {
+  return a.filter((x) => b.some((y) => nearWord(x, y))).length;
+}
+
+export interface StandIns {
+  /** Words whose picture may stand in for the sense, best first. */
+  words: string[];
+  /** The whole gloss is such words ("Mental balance.", "Floating."), not a description. */
+  whole: boolean;
+}
+
+/**
+ * Words of a gloss whose picture can stand in for an abstract sense. Only short clauses count,
+ * the ones that name the meaning with a word or two: "Mental balance." gives "balance", the
+ * clause "at sea" in "In a vessel at sea or on another body of water; at sea" gives "sea". A
+ * longer clause describes the sense, and its words are arguments, not the meaning ("system" in
+ * "the condition of a system in which competing influences are balanced"). Inside a clause the
+ * words Wiktionary links come first, then its other content words; abstract heads ("state",
+ * "act", "quality") and the word itself are left out.
+ */
+export function standInWords(meaning: string, lemma: string, limit = 4): StandIns {
+  const out: string[] = [];
+  const add = (raw: string, linked: boolean) => {
+    const w = String(raw || '').replace(/_/g, ' ').replace(/#.*$/, '').trim();
+    // An unlinked verb form ("turning", "balanced") is skipped: "Turning" on Wikipedia is
+    // machining. A link names its base word ("floating" links to "float").
+    if (!linked && /^[a-z]+(ing|ed)$/i.test(w)) return;
+    if (!w || w.length < 3 || /[:/]/.test(w) || out.some((x) => x.toLowerCase() === w.toLowerCase())) return;
+    const words = w.toLowerCase().split(/\s+/);
+    if (words.length > 3 || words.every((x) => STOP.has(x))) return;
+    if (words.length === 1 && (STOP.has(words[0]) || ABSTRACT_HEADS.has(stem(words[0])))) return;
+    if (sameWord(w, lemma)) return;
+    out.push(w);
+  };
+  // The first sentence only: "Someone who is beautiful. Can be used as a term of address." is a
+  // usage note after the meaning.
+  const html = String(meaning || '').replace(/&[a-z0-9#]+;/gi, ' ').split(/\.\s+(?=[A-Z<])/)[0];
+  const clauses = html.split(';').filter((c) => stripHtml(c));
+  let short = 0;
+  for (const clause of clauses) {
+    const words = contentTokens(glossBody(clause), lemma).filter((t) => !ABSTRACT_HEADS.has(t));
+    if (!words.length || words.length > 2) continue;
+    short += 1;
+    for (const m of clause.matchAll(/<a\b([^>]*)>/gi)) {
+      const title = m[1].match(/\btitle="([^"]*)"/i);
+      const href = m[1].match(/\bhref="\/wiki\/([^"]*)"/i);
+      let target = title ? title[1] : href ? href[1] : '';
+      try {
+        target = decodeURIComponent(target);
+      } catch {
+        /* keep as is */
+      }
+      add(stripHtml(target), true);
+    }
+    for (const w of stripHtml(glossBody(stripHtml(clause))).toLowerCase().match(/\p{L}[\p{L}-]*/gu) || []) {
+      if (w.length >= 4 && !/ly$/.test(w)) add(w, false);
+    }
+  }
+  return { words: out.slice(0, limit), whole: short > 0 && short === clauses.length };
+}
+
+/** Lead pictures of Wiktionary entries, many titles in one request (Wiktionary runs PageImages too). */
+export function buildWiktionaryPageImagesUrl(titles: string[]): string {
+  return (
+    'https://en.wiktionary.org/w/api.php?action=query&format=json&formatversion=2&redirects=1' +
+    `&prop=pageimages&piprop=name&pilicense=free&pilimit=50&titles=${encodeURIComponent(titles.join('|'))}&origin=*`
+  );
+}
+
+/** Wikipedia articles for many titles at once, without extracts (TextExtracts serves 20 at most). */
+export function buildWikipediaBriefTitlesUrl(titles: string[], lang = 'en'): string {
+  return (
+    `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&redirects=1` +
+    `&prop=pageimages|pageprops|description&piprop=name|thumbnail&pithumbsize=${THUMB_WIDTH}&pilicense=free&pilimit=50` +
+    `&ppprop=disambiguation&titles=${encodeURIComponent(titles.join('|'))}&origin=*`
+  );
+}
+
+/** Categories that make a file no picture of a thing; icons and diagrams are fine here ("Scale icons"). */
+const RECORD_BAD_CATEGORY =
+  /\b(logos?|text logos|maps?|locator maps|flags?|coats? of arms|screenshots?|signatures?|seals?|album covers?|book covers?|scans?|documents?|texts?|manuscripts?|title pages?)\b/i;
+
+/** Printed matter and insignia: magazine pages, postcards' address sides, emblems and badges. */
+const PRINT_CATEGORY = /\b(billboard|magazines?|newspapers?|emblems?|badges?|insignia|postmarks?|address sides?|stamps of|banknotes?|coins of|posters?)\b/i;
+
+/** "One who …", "a person …": a gloss about people, where a portrait is the right picture. */
+const PERSON_GLOSS = /\b(one who|someone|somebody|person|people|man|woman|men|women|child|children|boy|girl|individual|expert|master|player|worker|follower|member)\b/i;
+
+/**
+ * How much a file's Commons record must show before its picture is used. `portrait`: it is not
+ * a portrait of a named person, unless the gloss is about people (Wikipedia and Commons matches
+ * of the word itself). `clean`: also no logo, map, flag, scan or document (the lead picture of
+ * the article on a stand-in word). `named`: also its name, description or categories name the
+ * stand-in word, a gloss word or the word itself (Wiktionary's picture for a stand-in word).
+ */
+export type RecordCheck = 'portrait' | 'clean' | 'named';
+
+export function verifyPictureRecord(
+  file: string,
+  info: ImageInfo | undefined,
+  opts: { word?: string; gloss: string[]; lemma: string; personGloss?: boolean; level: RecordCheck },
+): boolean {
+  if (!info) return false;
+  const meta = info.extmetadata || {};
+  const name = commonsFileTitle(file);
+  const categories = stripHtml(meta.Categories?.value || '');
+  const description = stripHtml(meta.ImageDescription?.value || '').slice(0, 400);
+  if (!opts.personGloss && PERSON_CATEGORY.test(categories)) return false;
+  if (opts.level === 'portrait') return true;
+  if (badMatch(BAD_FILE, name, opts.lemma) || badMatch(RECORD_BAD_CATEGORY, categories, opts.word || opts.lemma)) return false;
+  if (opts.level === 'clean') return true;
+  const tokens = contentTokens(`${name} ${description} ${categories.replace(/\|/g, ' ')}`);
+  const wanted = [...contentTokens(opts.word || ''), ...opts.gloss, ...contentTokens(opts.lemma)];
+  return nearOverlap(wanted, tokens) > 0;
 }
 
 // ---------------------------------------------------------------- Commons file info
@@ -944,7 +1261,7 @@ export function buildImageInfoUrl(files: string[]): string {
   return (
     'https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&prop=imageinfo' +
     `&iiprop=url|size|mime|extmetadata&iiurlwidth=${THUMB_WIDTH}` +
-    '&iiextmetadatafilter=Artist|LicenseShortName' +
+    '&iiextmetadatafilter=Artist|LicenseShortName|ImageDescription|Categories&iiextmetadatalanguage=en' +
     `&titles=${encodeURIComponent(titles)}&origin=*`
   );
 }
@@ -1084,13 +1401,12 @@ function getJson<T>(url: string): Promise<T | null> {
   return p;
 }
 
-async function wiktionaryImages(lemma: string, lang: string): Promise<WiktionaryImage[]> {
+async function wiktionaryPage(lemma: string): Promise<string> {
   const res = await getJson<{
     query?: { pages?: Array<{ missing?: boolean; revisions?: Array<{ slots?: { main?: { content?: string } } }> }> };
   }>(buildWiktionaryUrl(lemma));
   const page = res?.query?.pages?.[0];
-  const text = page?.revisions?.[0]?.slots?.main?.content || '';
-  return text ? extractWiktionaryImages(text, lang) : [];
+  return page?.revisions?.[0]?.slots?.main?.content || '';
 }
 
 async function wikipediaPages(url: string): Promise<WikipediaPage[]> {
@@ -1110,25 +1426,91 @@ async function articleImageFiles(title: string, lang: string): Promise<string[]>
   return (res?.query?.pages?.[0]?.images || []).map((i) => i.title);
 }
 
-async function commonsSearch(query: string): Promise<CommonsPage[]> {
+/** Pictures used in several articles, one request, by article title (redirects followed). */
+async function articleImageFilesMany(titles: string[], lang: string): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (!titles.length) return out;
+  const res = await getJson<{ query?: TitleQuery & { pages?: Array<WikipediaPage & { images?: Array<{ title: string }> }> } }>(
+    buildArticleImagesManyUrl(titles, lang),
+  );
+  const q = res?.query;
+  if (!q) return out;
+  for (const t of titles) {
+    const page = resolveTitle(q, t) as (WikipediaPage & { images?: Array<{ title: string }> }) | undefined;
+    if (page?.images) out.set(t, page.images.map((i) => i.title));
+  }
+  return out;
+}
+
+async function commonsSearch(query: string, opts: { fullText?: boolean } = {}): Promise<CommonsPage[]> {
   if (!query.trim()) return [];
-  const res = await getJson<{ query?: { pages?: CommonsPage[] } }>(buildCommonsSearchUrl(query));
+  const res = await getJson<{ query?: { pages?: CommonsPage[] } }>(buildCommonsSearchUrl(query, opts));
   return res?.query?.pages || [];
 }
 
+/**
+ * Title queries asked within a few milliseconds of each other (the cards on screen, the senses
+ * of one lookup) go out as one request of up to 50 titles. Each caller gets the whole answer and
+ * reads its own titles from it with `resolveTitle`.
+ */
+const BATCH_WINDOW_MS = 12;
+const BATCH_MAX = 50;
+interface TitleBatch {
+  titles: string[];
+  waiters: Array<(q: TitleQuery | null) => void>;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+const titleBatches = new Map<string, TitleBatch>();
+
+function flushBatch(kind: string, build: (titles: string[]) => string): void {
+  const batch = titleBatches.get(kind);
+  if (!batch) return;
+  titleBatches.delete(kind);
+  if (batch.timer) clearTimeout(batch.timer);
+  void getJson<{ query?: TitleQuery }>(build(batch.titles)).then((res) => {
+    for (const w of batch.waiters) w(res?.query || null);
+  });
+}
+
+function batchedTitleQuery(kind: string, build: (titles: string[]) => string, titles: string[]): Promise<TitleQuery | null> {
+  const wanted = Array.from(new Set(titles.filter(Boolean)));
+  if (!wanted.length) return Promise.resolve(null);
+  if (wanted.length > BATCH_MAX) return titleQuery(build(wanted.slice(0, BATCH_MAX)));
+  const open = titleBatches.get(kind);
+  if (open && new Set([...open.titles, ...wanted]).size > BATCH_MAX) flushBatch(kind, build);
+  let batch = titleBatches.get(kind);
+  if (!batch) {
+    batch = { titles: [], waiters: [], timer: null };
+    titleBatches.set(kind, batch);
+    batch.timer = setTimeout(() => flushBatch(kind, build), BATCH_WINDOW_MS);
+  }
+  for (const t of wanted) if (!batch.titles.includes(t)) batch.titles.push(t);
+  const b = batch;
+  return new Promise((resolve) => b.waiters.push(resolve));
+}
+
+/** File details already fetched, by lower-case file name, so a file is asked for once. */
+const infoCache = new Map<string, ImageInfo>();
+
 async function imageInfos(files: string[]): Promise<Map<string, ImageInfo>> {
   const out = new Map<string, ImageInfo>();
-  const unique = Array.from(new Set(files.map((f) => f.replace(/_/g, ' '))));
+  const all = Array.from(new Set(files.map((f) => f.replace(/_/g, ' '))));
+  for (const f of all) {
+    const hit = infoCache.get(f.toLowerCase());
+    if (hit) out.set(f.toLowerCase(), hit);
+  }
+  const unique = all.filter((f) => !out.has(f.toLowerCase()));
   if (!unique.length) return out;
-  const res = await getJson<{
-    query?: {
-      normalized?: Array<{ from: string; to: string }>;
-      pages?: Array<{ title: string; missing?: boolean; imageinfo?: ImageInfo[] }>;
-    };
-  }>(buildImageInfoUrl(unique));
+  const q = (await batchedTitleQuery('commons-info', buildImageInfoUrl, unique)) as {
+    pages?: Array<{ title: string; missing?: boolean; imageinfo?: ImageInfo[] }>;
+  } | null;
+  const res = { query: q || undefined };
   for (const p of res?.query?.pages || []) {
     if (p.missing || !p.imageinfo?.[0]) continue;
-    out.set(p.title.replace(/^File:/, '').toLowerCase(), p.imageinfo[0]);
+    const key = p.title.replace(/^File:/, '').toLowerCase();
+    out.set(key, p.imageinfo[0]);
+    if (infoCache.size > 600) infoCache.clear();
+    infoCache.set(key, p.imageinfo[0]);
   }
   return out;
 }
@@ -1169,6 +1551,35 @@ function writePersisted(key: string, value: Array<SenseImage | null>): void {
 interface Pick {
   file: string;
   title: string;
+  /** Check the file's Commons record before showing it (anything not curated by Wiktionary). */
+  check?: { word?: string; level: RecordCheck };
+}
+
+/** File info for picks, in one call; a pick whose record fails `verifyPictureRecord` is dropped. */
+async function pickImages(
+  picks: Array<Pick | null>,
+  senses: SenseInput[],
+  lemma: string,
+): Promise<Array<SenseImage | null>> {
+  const files = picks.filter(Boolean).map((p) => (p as Pick).file);
+  if (!files.length) return picks.map((): null => null);
+  const infos = await imageInfos(files);
+  return picks.map((p, i) => {
+    if (!p) return null;
+    const info = infos.get(p.file.toLowerCase());
+    if (p.check) {
+      const meaning = senses[i]?.meaning || '';
+      const ok = verifyPictureRecord(p.file, info, {
+        word: p.check.word,
+        gloss: contentTokens(glossBody(meaning), lemma),
+        lemma,
+        personGloss: PERSON_GLOSS.test(stripHtml(meaning)),
+        level: p.check.level,
+      });
+      if (!ok) return null;
+    }
+    return imageFromInfo(p.file, p.title, info);
+  });
 }
 
 async function resolveSenseImages(
@@ -1176,10 +1587,14 @@ async function resolveSenseImages(
   senses: SenseInput[],
   max: number,
   lang: string,
+  emit: (list: Array<SenseImage | null>) => void = () => undefined,
 ): Promise<Array<SenseImage | null>> {
   const picks: Array<Pick | null> = senses.map((): null => null);
   const code = String(lang || 'en').toLowerCase().split(/[-_]/)[0] || 'en';
   const isEnglish = code === 'en';
+
+  // Wiktionary's own pictures come first; ask for the page before anything else.
+  const wiktTextP = wiktionaryPage(lemma);
 
   // The noun senses Wikipedia may illustrate: concrete ones among the first three nouns.
   const concrete = senses.map((s) => isConcreteNounSense(s, lemma));
@@ -1194,16 +1609,75 @@ async function resolveSenseImages(
   const titleFor = (i: number): string => (isEnglish ? lemma : shortGlossTitle(senses[i].meaning));
   const titleWord = candidates.length ? titleFor(candidates[0]) : '';
   const titlePagesP = titleWord ? wikipediaPages(buildWikipediaTitleUrl(titleWord)) : Promise.resolve([]);
-  // A word with no concrete noun sense rarely gets a strict match, so its fallback query
-  // starts now, beside the Wiktionary request, instead of after it.
+  // A word with no concrete noun sense rarely gets a strict match, so its fallback query, its
+  // sense searches and its stand-in queries start now, beside the Wiktionary request.
   const fallbackReq = fallbackTitleQuery(lemma, senses, code);
-  const earlyFallback = !candidates.length && fallbackReq ? titleQuery(fallbackReq.url) : null;
+  const early = !candidates.length;
+  const earlyFallback = early && fallbackReq ? titleQuery(fallbackReq.url) : null;
 
-  const wikt = await wiktionaryImages(lemma, code);
+  // The senses that each deserve a picture: entry heads ("bank" of money, "bank" of a river),
+  // other parts of speech, and senses unlike the ones before them.
+  // Until the Wiktionary page says which senses are separate words, the order of parts of speech
+  // decides; the early searches use this first guess.
+  let majors = majorSenses(senses, lemma, max);
+  let major = majors.order;
+  const searches = new Map<number, Promise<WikipediaPage[]>>();
+  const search = (i: number): Promise<WikipediaPage[]> => {
+    let p = searches.get(i);
+    if (!p) {
+      p = wikipediaPages(buildWikipediaSearchUrl(buildSenseSearchQuery(lemma, senses[i].meaning)));
+      searches.set(i, p);
+    }
+    return p;
+  };
+  // Entry and part-of-speech heads may borrow a picture of a word their gloss names; a finer
+  // sense only when its whole gloss is that word ("Mental balance."), so "a male horse" does not.
+  const standInsFor = (m: MajorSenses): Map<number, StandIns> => {
+    const map = new Map<number, StandIns>();
+    if (!isEnglish) return map;
+    for (const i of m.order) {
+      const si = standInWords(senses[i].meaning, lemma);
+      if (si.words.length && (m.heads.has(i) || si.whole)) map.set(i, si);
+    }
+    return map;
+  };
+  let standIns = standInsFor(majors);
+  const standInAsked = new Map<string, Promise<[TitleQuery | null, TitleQuery | null]>>();
+  const standInQuery = (map: Map<number, StandIns>): Promise<[TitleQuery | null, TitleQuery | null]> => {
+    const titles = Array.from(new Set(Array.from(map.values()).flatMap((x) => x.words))).slice(0, 50);
+    const key = titles.join('|');
+    let p = standInAsked.get(key);
+    if (!p) {
+      p = titles.length
+        ? Promise.all([
+            batchedTitleQuery('wiktionary-lead', buildWiktionaryPageImagesUrl, titles),
+            batchedTitleQuery('wikipedia-brief', (t) => buildWikipediaBriefTitlesUrl(t), titles),
+          ])
+        : Promise.resolve([null, null]);
+      standInAsked.set(key, p);
+    }
+    return p;
+  };
+  if (early && isEnglish) {
+    major.slice(0, 2).forEach((i) => void search(i));
+    void standInQuery(standIns);
+  }
+
+  const wiktText = await wiktTextP;
+  const wikt = wiktText ? extractWiktionaryImages(wiktText, code) : [];
+  if (wiktText) {
+    majors = majorSenses(senses, lemma, max, sensesEtymology(wiktText, code, senses, lemma));
+    major = majors.order;
+    standIns = standInsFor(majors);
+  }
   const matches = matchWiktionaryImages(wikt, senses, lemma);
   let count = 0;
-  for (const m of matches) {
-    if (count >= max) break;
+  // A minor sense gets a picture only while every major sense still bare keeps a place.
+  const room = (i: number): boolean =>
+    major.includes(i) ? count < max : count < max - major.filter((j) => !picks[j]).length;
+  const isMajor = (i: number) => (major.includes(i) ? 0 : 1);
+  for (const m of [...matches].sort((a, b) => isMajor(a.senseIndex) - isMajor(b.senseIndex))) {
+    if (!room(m.senseIndex)) continue;
     const img = wikt[m.imageIndex];
     picks[m.senseIndex] = { file: img.file, title: img.caption || img.senseText };
     count += 1;
@@ -1211,11 +1685,11 @@ async function resolveSenseImages(
 
   const usedFiles = new Set(picks.filter(Boolean).map((p) => (p as Pick).file.toLowerCase()));
   const tryPage = (i: number, page: WikipediaPage | null): boolean => {
-    if (!page?.pageimage) return false;
+    if (!page?.pageimage || picks[i] || !room(i)) return false;
     const file = page.pageimage.replace(/_/g, ' ');
     if (usedFiles.has(file.toLowerCase())) return false;
     usedFiles.add(file.toLowerCase());
-    picks[i] = { file, title: page.title };
+    picks[i] = { file, title: page.title, check: { level: 'portrait' } };
     count += 1;
     return true;
   };
@@ -1233,30 +1707,110 @@ async function resolveSenseImages(
     }
   }
 
-  // Searches ("crane bird gruidae" finds "Crane (bird)") for up to two candidates still bare,
-  // run in parallel, English only.
-  const bare = isEnglish ? candidates.filter((i) => !picks[i]).slice(0, Math.min(2, max - count)) : [];
-  if (bare.length) {
-    const results = await Promise.all(
-      bare.map((i) => wikipediaPages(buildWikipediaSearchUrl(buildSenseSearchQuery(lemma, senses[i].meaning)))),
-    );
-    bare.forEach((i, k) => {
-      if (count >= max) return;
-      tryPage(i, pickWikipediaPage(results[k], lemma, senses[i].meaning, lemma, { strict: i !== firstNoun }));
+  // What Wiktionary and the titled article found goes on screen now, while the searches run.
+  if (picks.some(Boolean)) {
+    void pickImages(picks.slice(), senses, lemma).then((list) => {
+      if (list.some(Boolean)) emit(list);
     });
   }
 
-  const files = picks.filter(Boolean).map((p) => (p as Pick).file);
-  let out: Array<SenseImage | null> = senses.map((): null => null);
-  if (files.length) {
-    const infos = await imageInfos(files);
-    out = picks.map((p) => (p ? imageFromInfo(p.file, p.title, infos.get(p.file.toLowerCase())) : null));
+  // Searches, English only, run in parallel: "crane bird gruidae" finds "Crane (bird)" for a
+  // concrete noun, and "equilibrium state reaction" finds "Chemical equilibrium" for a major
+  // sense, whose article may name the word inside a longer title.
+  if (isEnglish && count < max) {
+    const concreteBare = candidates.filter((i) => !picks[i]).slice(0, 2);
+    const majorBare = major.filter((i) => !picks[i] && !concreteBare.includes(i)).slice(0, 3);
+    const order = [...concreteBare, ...majorBare];
+    const results = await Promise.all(order.map((i) => search(i)));
+    // An article about the sense without a free lead image ("Mechanical equilibrium") still has
+    // pictures in its body that name the word: "Diagram of a ball placed in a stable equilibrium".
+    const noLead = new Map<number, string>();
+    order.forEach((i, k) => {
+      const pages = [...results[k]].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+      const gloss = senses[i].meaning;
+      const strict = concrete[i] ? i !== firstNoun : i !== major[0];
+      const page = concrete[i] ? pickWikipediaPage(pages, lemma, gloss, lemma, { strict }) : null;
+      if (tryPage(i, page)) return;
+      if (tryPage(i, pages.find((p) => acceptSenseArticle(p, lemma, gloss, { strict })) || null)) return;
+      const bodyOnly = major.includes(i) && pages.find((p) => !p.pageimage && acceptSenseArticle(p, lemma, gloss, { strict, anyImage: true }));
+      if (bodyOnly) noLead.set(i, bodyOnly.title);
+    });
+    if (noLead.size && count < max) {
+      const files = await articleImageFilesMany(Array.from(new Set(noLead.values())), 'en');
+      for (const [i, title] of noLead) {
+        if (picks[i] || count >= max) continue;
+        const ranked = rankArticleImages(files.get(title) || [], lemma, contentTokens(glossBody(senses[i].meaning), lemma));
+        const file = ranked.find((f) => !usedFiles.has(f.toLowerCase()));
+        if (!file) continue;
+        usedFiles.add(file.toLowerCase());
+        picks[i] = { file, title: commonsFileTitle(file), check: { level: 'portrait' } };
+        count += 1;
+      }
+    }
   }
-  if (out.some(Boolean)) return out;
 
-  // No sense-specific picture: the best picture for the word as a whole goes on the first sense.
-  const fallback = await resolveWordFallback(lemma, senses, code, wikt, fallbackReq, earlyFallback);
-  if (fallback) out[firstSenseIndex(senses)] = fallback;
+  const out = await pickImages(picks, senses, lemma);
+  out.forEach((img, i) => {
+    if (!img && picks[i]) picks[i] = null;
+  });
+  if (out.some(Boolean)) emit(out.slice());
+
+  // The first sense has no picture yet: the best picture for the word as a whole goes there
+  // ("Wind" for the moving air, even when the verb already found "Wind instrument").
+  let fallbackState: WordFallbackState | null = null;
+  const head = major.length ? major[0] : firstSenseIndex(senses);
+  if (!out[head]) {
+    fallbackState = await resolveWordFallback(lemma, senses, code, wikt, fallbackReq, earlyFallback);
+    const img = fallbackState.image;
+    const taken = new Set(out.filter(Boolean).map((x) => (x as SenseImage).pageUrl));
+    if (img && !taken.has(img.pageUrl)) {
+      out[head] = img;
+      emit(out.slice());
+    }
+  }
+
+  // Major senses still bare get a picture of a word their gloss links to: a balance for the
+  // "equilibrium" of competing influences, the sea for "afloat" on a vessel at sea.
+  const bareMajor = major.filter((i) => !out[i] && (standIns.get(i)?.words || []).length);
+  if (isEnglish && bareMajor.length && out.filter(Boolean).length < max) {
+    const [wkq, wpq] = await standInQuery(standIns);
+    const stand: Array<Pick | null> = senses.map((): null => null);
+    const used = new Set(out.filter(Boolean).map((x) => fileOfPage((x as SenseImage).pageUrl)));
+    const usedHere = new Set<string>();
+    for (const i of bareMajor) {
+      const si = standIns.get(i) as StandIns;
+      for (const w of si.words) {
+        // The article titled with the word is about its main meaning, so its lead picture fits.
+        // Wiktionary's picture for the word may show another of its senses ("change" shows coins),
+        // so it is used only when the whole gloss is that word ("Mental balance.") and the file's
+        // own record names it ("Balanced scales of justice").
+        const wp = wpq ? resolveTitle(wpq, w.charAt(0).toUpperCase() + w.slice(1)) : undefined;
+        const wk = wkq ? resolveTitle(wkq, w) : undefined;
+        const options: Pick[] = [];
+        // A redirect to another word is another meaning: "poor" leads to "Poverty".
+        if (wp && acceptConceptPage(wp) && sameWord(titleParts(wp.title).base, w)) options.push({ file: (wp.pageimage as string).replace(/_/g, ' '), title: wp.title, check: { word: w, level: 'clean' } });
+        if (si.whole && wk?.pageimage) options.push({ file: wk.pageimage.replace(/_/g, ' '), title: w, check: { word: w, level: 'named' } });
+        const pick = options.find((o) => !usedHere.has(o.file.toLowerCase()) && !used.has(o.file.toLowerCase()));
+        if (pick) {
+          usedHere.add(pick.file.toLowerCase());
+          stand[i] = pick;
+          break;
+        }
+      }
+    }
+    const shown = await pickImages(stand, senses, lemma);
+    shown.forEach((img, i) => {
+      if (img && !out[i] && out.filter(Boolean).length < max) out[i] = img;
+    });
+    if (shown.some(Boolean)) emit(out.slice());
+  }
+
+  // Still nothing: a Commons search for the word, by file name and then anywhere in the record.
+  if (!out.some(Boolean)) {
+    const state = fallbackState || (await resolveWordFallback(lemma, senses, code, wikt, fallbackReq, earlyFallback));
+    const img = state.image || (await commonsFallback(lemma, senses, code, state));
+    if (img) out[head] = img;
+  }
   return out;
 }
 
@@ -1265,11 +1819,29 @@ function firstSenseIndex(senses: SenseInput[]): number {
   return i >= 0 ? i : 0;
 }
 
+/** "nordsee wellen.jpg" from a Commons file page URL, to compare with picked file names. */
+function fileOfPage(url: string): string {
+  const tail = String(url || '').split('/File:')[1] || '';
+  try {
+    return decodeURIComponent(tail).replace(/_/g, ' ').toLowerCase();
+  } catch {
+    return tail.replace(/_/g, ' ').toLowerCase();
+  }
+}
+
+interface WordFallbackState {
+  image: SenseImage | null;
+  /** Gloss words to rank Commons hits by (from the article when the word has no gloss). */
+  gloss: string[];
+  /** The word's title names something else, so Commons hits must share a gloss word. */
+  ambiguous: boolean;
+}
+
 /**
  * One picture for the word, used when no sense has its own: the article titled with the word,
  * a Wiktionary picture whose caption names it, a derived noun's article, any other caption-only
- * Wiktionary picture, then the best Commons search hit. The first four share one `imageinfo`
- * call; the Commons search carries its own file metadata and runs only when they all fail.
+ * Wiktionary picture, then a picture used in the word's article. The first four share one
+ * `imageinfo` call. Portraits of named people are refused unless the gloss is about people.
  */
 async function resolveWordFallback(
   lemma: string,
@@ -1278,38 +1850,44 @@ async function resolveWordFallback(
   wikt: WiktionaryImage[],
   req: FallbackTitles | null,
   pending: Promise<TitleQuery | null> | null,
-): Promise<SenseImage | null> {
+): Promise<WordFallbackState> {
   const q = req ? await (pending || titleQuery(req.url)) : null;
   const concept = req ? rankConceptPages(q, req) : [];
   const wk = rankWiktionaryFallback(wikt, senses, lemma);
   const ordered: Pick[] = [];
-  const push = (file: string, title: string) => {
+  const push = (file: string, title: string, level: RecordCheck) => {
     const f = file.replace(/_/g, ' ');
-    if (!ordered.some((p) => p.file.toLowerCase() === f.toLowerCase())) ordered.push({ file: f, title });
+    if (!ordered.some((p) => p.file.toLowerCase() === f.toLowerCase())) ordered.push({ file: f, title, check: { level } });
   };
-  for (const c of concept.filter((x) => x.exact)) push(c.page.pageimage as string, c.page.title);
-  for (const w of wk.filter((x) => x.strong)) push(w.image.file, w.image.caption);
-  for (const c of concept.filter((x) => !x.exact)) push(c.page.pageimage as string, c.page.title);
-  for (const w of wk.filter((x) => !x.strong)) push(w.image.file, w.image.caption);
+  // A caption-only Wiktionary picture must have a clean record: no scan, document or map.
+  for (const c of concept.filter((x) => x.exact)) push(c.page.pageimage as string, c.page.title, 'portrait');
+  for (const w of wk.filter((x) => x.strong)) push(w.image.file, w.image.caption, 'clean');
+  for (const c of concept.filter((x) => !x.exact)) push(c.page.pageimage as string, c.page.title, 'portrait');
+  for (const w of wk.filter((x) => !x.strong)) push(w.image.file, w.image.caption, 'clean');
+  const first = firstSenseIndex(senses);
+  const meaning = senses[first]?.meaning || '';
+  const personGloss = PERSON_GLOSS.test(stripHtml(meaning));
   const tried = new Set<string>();
+  let gloss = glossUnion(senses, lemma);
   const firstUsable = async (picks: Pick[]): Promise<SenseImage | null> => {
     const fresh = picks.filter((p) => !tried.has(p.file.toLowerCase())).slice(0, 4);
     if (!fresh.length) return null;
     for (const p of fresh) tried.add(p.file.toLowerCase());
     const infos = await imageInfos(fresh.map((p) => p.file));
     for (const p of fresh) {
-      const img = imageFromInfo(p.file, p.title, infos.get(p.file.toLowerCase()));
+      const info = infos.get(p.file.toLowerCase());
+      if (p.check && !verifyPictureRecord(p.file, info, { gloss, lemma, personGloss, level: p.check.level })) continue;
+      const img = imageFromInfo(p.file, p.title, info);
       if (img) return img;
     }
     return null;
   };
   const early = await firstUsable(ordered);
-  if (early) return early;
+  if (early) return { image: early, gloss, ambiguous: false };
 
   // The word's article has no free lead image ("Operon", "Arbitrage"): a picture used in the
   // article that names the word, such as its diagram. When the title is a city or a
   // disambiguation page, the search hit titled with a qualifier ("Holon (philosophy)").
-  let gloss = glossUnion(senses, lemma);
   let ambiguous = false;
   if (req) {
     const wikiLang = titleQueryLang(req);
@@ -1327,19 +1905,46 @@ async function resolveWordFallback(
       if (!gloss.length) gloss = contentTokens(`${article.page.description || ''} ${article.page.extract || ''}`, lemma);
       const picks: Pick[] = [];
       if (article.page.pageimage && acceptConceptPage(article.page)) {
-        picks.push({ file: article.page.pageimage.replace(/_/g, ' '), title: article.page.title });
+        picks.push({ file: article.page.pageimage.replace(/_/g, ' '), title: article.page.title, check: { level: 'portrait' } });
       }
       for (const f of rankArticleImages(await articleImageFiles(article.page.title, wikiLang), lemma, gloss)) {
-        picks.push({ file: f, title: commonsFileTitle(f) });
+        picks.push({ file: f, title: commonsFileTitle(f), check: { level: 'portrait' } });
       }
       const fromArticle = await firstUsable(picks);
-      if (fromArticle) return fromArticle;
+      if (fromArticle) return { image: fromArticle, gloss, ambiguous };
     }
   }
+  return { image: null, gloss, ambiguous };
+}
 
+/**
+ * The last resort for a word with no picture: Commons files named after the word (a foreign
+ * word: its English gloss), then, when none fits, files whose description or categories name
+ * it. Both rank hits by shared gloss words and push down logos, maps and portraits.
+ */
+async function commonsFallback(lemma: string, senses: SenseInput[], lang: string, state: WordFallbackState): Promise<SenseImage | null> {
   const query = commonsSearchQuery(lemma, senses, lang);
-  const ranked = rankCommonsFiles(await commonsSearch(query), query, lemma, gloss, { needGloss: ambiguous });
-  for (const r of ranked) {
+  const personGloss = PERSON_GLOSS.test(stripHtml(senses[firstSenseIndex(senses)]?.meaning || ''));
+  // A hit is a picture of something: no portrait for a word not about people, and no book page,
+  // printer's ornament, scan or document ("…vicissitudes of fortune… Fleuron T063239-1.png").
+  const usable = (r: { score: number; info: ImageInfo; file: string; title: string }) => {
+    const categories = stripHtml(r.info.extmetadata?.Categories?.value || '');
+    if (r.score <= 0 || BOOK_PICTURE.test(r.title) || /\bfleurons?\b/i.test(r.title)) return false;
+    if (badMatch(RECORD_BAD_CATEGORY, categories, lemma) || badMatch(PRINT_CATEGORY, categories, lemma)) return false;
+    return personGloss || !PERSON_CATEGORY.test(categories);
+  };
+  // Hits sharing a gloss word rank first. A photographer's title often names the idea the photo
+  // shows ("Mallard Afloat", "Static equilibrium same force"), so a hit named after the word
+  // stays a candidate without one, unless the word's title also names a place, work or person.
+  const named = rankCommonsFiles(await commonsSearch(query), query, lemma, state.gloss, { needGloss: state.ambiguous });
+  for (const r of named.filter(usable)) {
+    const img = imageFromInfo(r.file, r.title, r.info);
+    if (img) return img;
+  }
+  // Anywhere in a record is looser, so not for a word whose title names a place, work or person.
+  if (!/^[\p{L}'-]+$/u.test(query) || !state.gloss.length || state.ambiguous) return null;
+  const anywhere = rankCommonsFiles(await commonsSearch(query, { fullText: true }), query, lemma, state.gloss, { needGloss: true });
+  for (const r of anywhere.filter(usable)) {
     const img = imageFromInfo(r.file, r.title, r.info);
     if (img) return img;
   }
@@ -1348,7 +1953,7 @@ async function resolveWordFallback(
 
 /**
  * One picture per sense where a faithful one exists, aligned with `senses`. At most `max`
- * (default 3) pictures per call. When no sense has its own picture, the best picture for the
+ * (default 4) pictures per call. When no sense has its own picture, the best picture for the
  * word as a whole sits on the first sense with a gloss, so a word with any candidate anywhere
  * always shows one. Results are cached in memory and, when the core has a
  * persistent lookup cache, there for two weeks. Never rejects; a failed request means no picture.
@@ -1356,12 +1961,21 @@ async function resolveWordFallback(
 export async function fetchSenseImages(
   lemma: string,
   senses: Array<{ meaning: string; partOfSpeech?: string }>,
-  opts?: { max?: number; lang?: string },
+  opts?: {
+    max?: number;
+    lang?: string;
+    /**
+     * Called with the pictures found so far while later steps still run, so a lookup can show
+     * its first pictures before the slower stand-in and Commons steps finish. Not called when
+     * the result comes from a cache.
+     */
+    onUpdate?: (list: Array<SenseImage | null>) => void;
+  },
 ): Promise<Array<SenseImage | null>> {
   const word = String(lemma || '').trim();
   const list = (senses || []).map((s) => ({ meaning: String(s?.meaning || ''), partOfSpeech: s?.partOfSpeech }));
   if (!word || !list.length) return list.map((): null => null);
-  const max = Math.max(0, Math.min(10, opts?.max ?? 3));
+  const max = Math.max(0, Math.min(10, opts?.max ?? 4));
   if (!max) return list.map((): null => null);
   const lang = String(opts?.lang || 'en');
   const key = `sense-images:${CACHE_VERSION}:${lang}:${word.toLowerCase()}:${max}:${hashText(
@@ -1383,7 +1997,14 @@ export async function fetchSenseImages(
     }
     const before = failures;
     try {
-      const out = await resolveSenseImages(word, list, max, lang);
+      const update = opts?.onUpdate;
+      const out = await resolveSenseImages(word, list, max, lang, (partial) => {
+        try {
+          update?.(partial);
+        } catch {
+          /* a caller's error never stops the search */
+        }
+      });
       if (failures !== before) {
         forget();
         return out;
@@ -1415,5 +2036,6 @@ export async function fetchWordImage(lemma: string, opts?: { lang?: string; glos
 /** For tests: forget every cached request and result. */
 export function clearSenseImageCache(): void {
   jsonCache.clear();
+  infoCache.clear();
   resultCache.clear();
 }
