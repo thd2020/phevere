@@ -1456,7 +1456,7 @@ export interface SensePictureRules {
   picturableOnly: boolean;
   /** Major senses are pictured in order of how often they are used (SemCor), when known. */
   byFrequency: boolean;
-  /** Minor senses get a picture only once every major sense you can see has one. */
+  /** Minor senses get a picture only once every major sense you can see has one, or every source has answered. */
   minorsAfterMajors: boolean;
   /** A portrait of a named person never shows: it pictures that person, not the word ("pitcher"
    *  the player is not one baseball player). */
@@ -1481,9 +1481,9 @@ export function configureSensePictures(rules: Partial<SensePictureRules>): void 
 /**
  * The order in which senses get a picture. Major senses come first: the first sense of each
  * entry and part of speech, ordered by how often each is used in running text (`frequency`, from
- * SemCor) when the lookup knows it. Minor senses follow in dictionary order, and only once every
- * major sense you can see has its picture, so a curated picture of a minor sense ("bell" the
- * flower) never stands in for the main one.
+ * SemCor) when the lookup knows it. Minor senses follow in dictionary order, once every major
+ * sense you can see has its picture or every source has answered, so a curated picture of a
+ * minor sense ("bell" the flower) never takes the place of the main one.
  */
 function senseOrder(senses: SenseInput[], lemma: string, etymology: number[]): { major: number[]; minor: number[] } {
   const heads = majorSenses(senses, lemma, 12, etymology).heads;
@@ -1612,14 +1612,16 @@ export function assignPictures(
     }
     return false;
   };
-  // A major sense you cannot see does not hold the minor ones back; one you can see that found
-  // no picture does, since its picture may simply not be known yet.
+  // A major sense you cannot see does not hold the minor ones back. One you can see that has no
+  // picture yet holds them back while sources are still answering, since its picture may still
+  // come; once every source has answered it has none to find ("crane" the cranium) and the
+  // minor senses take the free places.
   let allMajor = true;
   for (const i of major) {
     if (count >= max) break;
     if (!give(i) && picturable[i]) allMajor = false;
   }
-  if (allMajor || !SENSE_PICTURE_RULES.minorsAfterMajors) for (const i of minor) if (count < max) give(i);
+  if (allMajor || pool.complete || !SENSE_PICTURE_RULES.minorsAfterMajors) for (const i of minor) if (count < max) give(i);
   return out;
 }
 

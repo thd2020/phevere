@@ -294,7 +294,8 @@ same(
   );
 }
 {
-  // A curated picture of a minor sense waits until the first sense you can see has its own.
+  // A curated picture of a minor sense waits until the first sense you can see has its own, or
+  // until every source has answered without one.
   const bellSenses = [
     { meaning: 'A hollow metallic percussion instrument that rings when struck.', partOfSpeech: 'noun' },
     { meaning: 'The sound of a bell being struck.', partOfSpeech: 'noun' },
@@ -302,8 +303,10 @@ same(
   ];
   const flower = { file: 'Campanula.jpg', caption: 'A bell flower', senseText: 'A bell-shaped flower of the genus Campanula.', pos: 'noun', etymology: 0 };
   const img = (file) => ({ url: `u/${file}`, thumb: `t/${file}`, title: file, pageUrl: `p/${file}`, credit: 'c' });
-  const only = poolOf({ lemma: 'bell', lexemes: [], wiktionary: [flower], pictures: [{ file: flower.file, source: 'wiktionary', ref: 0, image: img(flower.file) }] });
-  same(si.assignPictures(only, bellSenses), [null, null, null], 'bell: no flower before the instrument');
+  const only = poolOf({ lemma: 'bell', lexemes: [], wiktionary: [flower], complete: false, pictures: [{ file: flower.file, source: 'wiktionary', ref: 0, image: img(flower.file) }] });
+  same(si.assignPictures(only, bellSenses), [null, null, null], 'bell: no flower while the instrument may still get one');
+  only.complete = true;
+  same(si.assignPictures(only, bellSenses).map((x) => x && x.title), [null, null, 'Campanula.jpg'], 'bell: the flower once no source has the instrument');
   const instrument = { file: 'Church bell.jpg', caption: 'A church bell', senseText: 'A hollow metallic percussion instrument that rings when struck.', pos: 'noun', etymology: 0 };
   const both = poolOf({
     lemma: 'bell',
