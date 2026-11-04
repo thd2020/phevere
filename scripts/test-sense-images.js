@@ -3,7 +3,10 @@
  * (scripts/fixtures/sense-images.json, trimmed to the parts the module reads, and
  * scripts/fixtures/sense-images-fallback.json, keyed by request URL and recorded on 2026-11-02
  * for the whole-word fallback; operon, arbitrage and holon and the file-name Commons searches
- * were added on 2026-11-03).
+ * were added on 2026-11-03, and the disambiguation-link, Wikidata and imageinfo-with-categories
+ * requests on 2026-11-04). scripts/fixtures/sense-images-structured.json, keyed by URL and
+ * recorded on 2026-11-04, holds crane, equilibrium, however and notion with the senses the
+ * Wiktionary REST API gave that day. The rules these checks pin are in docs/SENSE_IMAGES.md.
  * Run: node scripts/test-sense-images.js
  */
 const assert = require('assert');
@@ -15,6 +18,7 @@ const ts = require('typescript');
 const root = path.join(__dirname, '..');
 const fx = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'sense-images.json'), 'utf8'));
 const fb = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'sense-images-fallback.json'), 'utf8'));
+const st = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'sense-images-structured.json'), 'utf8'));
 
 function load(runtimeStub) {
   const src = fs.readFileSync(path.join(root, 'packages', 'core', 'src', 'sense-images.ts'), 'utf8');
@@ -306,69 +310,148 @@ assert.ok(
   'run: a picture tied to another sense by {{senseno}} is never the fallback',
 );
 
-// ---------------------------------------------------------------- end to end with recorded responses
+// ---------------------------------------------------------------- senses to articles
 
-function serve(url) {
-  const u = new URL(url);
-  const q = u.searchParams;
-  if (u.hostname === 'en.wiktionary.org') {
-    const w = q.get('titles');
-    return fx.wiktionary[w] || { query: { pages: [{ title: w, missing: true }] } };
-  }
-  if (u.hostname === 'en.wikipedia.org' && q.get('generator') === 'search') {
-    return fx.wikipediaSearch[q.get('gsrsearch')] || { query: { pages: [] } };
-  }
-  if (u.hostname === 'en.wikipedia.org') {
-    return fx.wikipediaTitle[q.get('titles')] || { query: { pages: [{ title: q.get('titles'), missing: true }] } };
-  }
-  if (u.hostname === 'commons.wikimedia.org') {
-    const want = q.get('titles').split('|').map((t) => t.toLowerCase());
-    return { query: { pages: infoPages.filter((p) => want.includes(p.title.toLowerCase())) } };
-  }
-  throw new Error('unexpected URL ' + url);
+// Titles that name the word: itself, with a qualifier, or as the lower-case head of a compound.
+same(
+  ['Crane (machine)', 'Crane (bird)', 'Chemical equilibrium', 'Baseball bat', 'Crane fly', 'HMS Bat', 'Johnnie Notions', 'List of types of equilibrium', 'Equilibrium'].map(
+    (t) => si.articleKind(t, /equilibrium/i.test(t) ? 'equilibrium' : /bat/i.test(t) ? 'bat' : /notion/i.test(t) ? 'notion' : 'crane'),
+  ),
+  ['qualifier', 'qualifier', 'compound', 'compound', null, null, null, null, 'exact'],
+);
+assert.ok(si.glossOverlap(['chemistry'], ['chemical']) === 1, 'chemistry and chemical are one word');
+assert.ok(si.glossOverlap(['water'], ['watercourse']) === 1);
+assert.strictEqual(si.glossOverlap(['constant'], ['construction']), 0);
+assert.strictEqual(si.glossOverlap(['small'], ['small']), 0.5, 'a general word counts half');
+
+const linksPages = (word) => st.responses[si.buildDisambiguationLinksUrl(word)].query.pages;
+const plainList = (word) => st.senses[word].map((s) => ({ ...s, meaning: s.meaning }));
+const concreteOf = (word) => plainList(word).map((s) => si.isConcreteNounSense(s, word));
+{
+  const m = si.matchSenseArticles(plainList('crane'), linksPages('crane'), 'crane', { concrete: concreteOf('crane') });
+  const bySense = Object.fromEntries(m.map((x) => [x.senseIndex, x.page.title]));
+  assert.strictEqual(bySense[1], 'Crane (bird)', 'crane: the bird sense gets the bird article');
+  assert.strictEqual(bySense[3], 'Crane (machine)', 'crane: the lifting-machine sense gets the machine article');
+  assert.ok(!Object.values(bySense).some((t) => /fly|shot|Texas|Co\./.test(t)), 'crane: no crane fly, crane shot, town or company');
+}
+{
+  const m = si.matchSenseArticles(plainList('equilibrium'), linksPages('equilibrium'), 'equilibrium', { concrete: concreteOf('equilibrium') });
+  same(m.map((x) => [x.senseIndex, x.page.title]), [[2, 'Chemical equilibrium'], [3, 'Mechanical equilibrium']]);
+}
+// A sense that already has a picture keeps its article: the next sense does not inherit it.
+{
+  const senses = [
+    { meaning: 'An institution where one can place and borrow money and take care of financial affairs.', partOfSpeech: 'noun' },
+    { meaning: 'A branch office of such an institution.', partOfSpeech: 'noun' },
+  ];
+  const bank = { title: 'Bank', description: 'Financial institution that accepts deposits', pageimage: 'x.jpg' };
+  same(si.matchSenseArticles(senses, [bank], 'bank').map((x) => x.senseIndex), [0]);
+  same(si.matchSenseArticles(senses, [bank], 'bank', { skip: new Set([0]) }), [], 'bank: the branch office gets no second bank building');
+  // A compound names a kind of the thing: one shared word is not enough for a concrete sense.
+  const coin = [{ meaning: 'A device used to store coins or currency.', partOfSpeech: 'noun' }];
+  const central = { title: 'Central bank', description: 'Government body that manages currency and monetary policy', pageimage: 'y.jpg' };
+  same(si.matchSenseArticles(coin, [central], 'bank', { concrete: [true] }), [], 'bank: a central bank is not a coin box');
+  same(si.matchSenseArticles(coin, [{ ...central, description: undefined }], 'bank', { concrete: [false] }), [], 'no description, no match');
 }
 
-(async () => {
-  const requested = [];
-  const persisted = new Map();
-  const online = load({
+// A portrait of a named person, and Commons bookkeeping categories.
+assert.ok(si.isNamedPersonPicture({ extmetadata: { Categories: { value: '1756 portrait paintings of men|Portraits of Horace Walpole' } } }));
+assert.ok(!si.isNamedPersonPicture({ extmetadata: { Categories: { value: 'Portraits of people thinking|Smiling girls' } } }));
+assert.strictEqual(
+  si.topicCategories('CC-Zero|Artworks with known accession number|Images from Metropolitan Museum of Art|1808 caricatures of the United Kingdom|Horse riding cartoons'),
+  '1808 caricatures of the United Kingdom|Horse riding cartoons',
+);
+// "The Mistaken Notion" is a caricature's title: no gloss word of "notion" in its name or topic.
+{
+  const url = Object.keys(st.responses).find((u) => u.includes('gsrsearch=intitle%3Anotion'));
+  const gloss = si.contentTokens(st.cards.notion, 'notion');
+  const ranked = si.rankCommonsFiles(st.responses[url].query.pages, 'notion', 'notion', gloss, { needGloss: true });
+  assert.ok(!ranked.some((r) => /Mistaken Notion/.test(r.title)), `notion: rejected ${ranked.map((r) => r.title).join(', ')}`);
+  assert.ok(si.rankCommonsFiles(st.responses[url].query.pages, 'notion', 'notion', gloss).some((r) => /Mistaken Notion/.test(r.title)), 'it would rank without the gloss check');
+}
+
+// ---------------------------------------------------------------- end to end with recorded responses
+
+/** Module instance answering from a URL-keyed fixture; an unrecorded URL fails the request. */
+function replay(responses, log, store = null) {
+  return load({
     isCoreConfigured: () => true,
     getHttp: () => ({
       requestJson: async (url) => {
-        requested.push(url);
-        return JSON.parse(JSON.stringify(serve(url)));
+        log.push(url);
+        const hit = responses[url];
+        if (!hit) throw new Error('unrecorded URL ' + url);
+        return JSON.parse(JSON.stringify(hit));
       },
     }),
-    getLookupCache: () => ({
-      get: (k) => persisted.get(k) || null,
-      set: (k, value, savedAt) => persisted.set(k, { value, savedAt }),
-    }),
+    getLookupCache: () => store,
   });
+}
 
-  const senses = fx.senses.crane;
-  const imgs = await online.fetchSenseImages('crane', senses, { lang: 'en' });
-  assert.strictEqual(imgs.length, senses.length, 'one slot per sense');
-  assert.ok(imgs[1], 'crane: the bird sense has a picture');
-  assert.strictEqual(imgs[1].title, 'Crane (bird)');
-  assert.ok(imgs[1].thumb.includes('/330px-') && !imgs[1].thumb.includes('utm_'), 'thumb is the 330 px step without tracking');
-  assert.ok(imgs[1].width > 0 && imgs[1].height > 0, 'thumb size for the aspect box');
-  assert.ok(/Wikimedia Commons$/.test(imgs[1].credit));
-  assert.ok(/^https:\/\/commons\.wikimedia\.org\/wiki\/File:/.test(imgs[1].pageUrl));
-  assert.ok(!imgs[0] && !imgs[5], 'no picture for the empty gloss or the verb');
-  assert.ok(imgs.filter(Boolean).length <= 3, 'at most three pictures');
+(async () => {
+  // crane: the bird and the lifting machine, from the disambiguation page's own articles, in
+  // two rounds: Wiktionary, the title query and the disambiguation links side by side, then
+  // one imageinfo call.
+  {
+    const log = [];
+    const persisted = new Map();
+    const store = { get: (k) => persisted.get(k) || null, set: (k, value, savedAt) => persisted.set(k, { value, savedAt }) };
+    const mod = replay(st.responses, log, store);
+    const senses = st.senses.crane;
+    const imgs = await mod.fetchSenseImages('crane', senses, { lang: 'en' });
+    assert.strictEqual(imgs.length, senses.length, 'one slot per sense');
+    same(imgs.map((x, i) => x && [i, x.title]).filter(Boolean), [[1, 'Crane (bird)'], [3, 'Crane (machine)']]);
+    assert.ok(imgs[1].thumb.includes('/330px-') && !imgs[1].thumb.includes('utm_'), 'thumb is the 330 px step without tracking');
+    assert.ok(imgs[1].width > 0 && imgs[1].height > 0, 'thumb size for the aspect box');
+    assert.ok(/Wikimedia Commons$/.test(imgs[3].credit));
+    assert.ok(/^https:\/\/commons\.wikimedia\.org\/wiki\/File:/.test(imgs[3].pageUrl));
+    assert.strictEqual(log.length, 4, `crane: four requests, not ${log.length}`);
+    assert.ok(!log.some((u) => u.includes('generator=search')), 'crane: no free-text search');
 
-  // Cached: the same call makes no request; a new module instance reads the persistent cache.
-  const before = requested.length;
-  await online.fetchSenseImages('crane', senses, { lang: 'en' });
-  assert.strictEqual(requested.length, before, 'memory cache');
-  assert.strictEqual(persisted.size, 1, 'written to the lookup cache');
-  const again = load({
-    isCoreConfigured: () => true,
-    getHttp: () => ({ requestJson: async () => { throw new Error('should not fetch'); } }),
-    getLookupCache: () => ({ get: (k) => persisted.get(k) || null, set: () => {} }),
-  });
-  const cached = await again.fetchSenseImages('crane', senses, { lang: 'en' });
-  assert.strictEqual(cached[1].title, 'Crane (bird)', 'persistent cache');
+    // Cached: the same call makes no request; a new module instance reads the persistent cache.
+    await mod.fetchSenseImages('crane', senses, { lang: 'en' });
+    assert.strictEqual(log.length, 4, 'memory cache');
+    assert.strictEqual(persisted.size, 1, 'written to the lookup cache');
+    assert.ok([...persisted.keys()][0].startsWith('sense-images:v4:'));
+    const again = load({
+      isCoreConfigured: () => true,
+      getHttp: () => ({ requestJson: async () => { throw new Error('should not fetch'); } }),
+      getLookupCache: () => store,
+    });
+    assert.strictEqual((await again.fetchSenseImages('crane', senses, { lang: 'en' }))[3].title, 'Crane (machine)', 'persistent cache');
+
+    // A card saved with the machine gloss shows the machine.
+    assert.strictEqual((await replay(st.responses, []).fetchWordImage('crane', { lang: 'en', gloss: st.cards.crane })).title, 'Crane (machine)');
+  }
+
+  // equilibrium: the chemistry sense gets its article's Wikidata image (the article has no free
+  // lead image), the mechanics sense its article's diagram; the general and mental senses none.
+  {
+    const log = [];
+    const imgs = await replay(st.responses, log).fetchSenseImages('equilibrium', st.senses.equilibrium, { lang: 'en' });
+    same(imgs.map((x, i) => x && [i, x.title]).filter(Boolean), [[2, 'Chemical equilibrium'], [3, 'Mechanical equilibrium']]);
+    assert.ok(/Diag_eq\.svg/.test(imgs[2].pageUrl) && /WeightNormal\.svg/.test(imgs[3].pageUrl));
+    assert.ok(!imgs[0] && !imgs[1], 'equilibrium: no picture for "condition of a system" or "mental balance"');
+    assert.ok(log.some((u) => u.startsWith('https://www.wikidata.org/')), 'equilibrium: asks Wikidata');
+    assert.strictEqual(log.length, 5);
+  }
+
+  // however: an adverb and conjunction gets no picture, and no search is spent finding none.
+  {
+    const log = [];
+    same(await replay(st.responses, log).fetchSenseImages('however', st.senses.however, { lang: 'en' }), st.senses.however.map(() => null));
+    assert.strictEqual(log.length, 2, 'however: Wiktionary and the title query only');
+  }
+
+  // notion: the sewing sense has an article of its own; the abstract senses stay bare. As a
+  // card with the "idea" gloss, the only Commons hits are a caricature's title and places.
+  {
+    const imgs = await replay(st.responses, []).fetchSenseImages('notion', st.senses.notion, { lang: 'en' });
+    same(imgs.map((x, i) => x && [i, x.title]).filter(Boolean), [[4, 'Notions (sewing)']]);
+    const log = [];
+    assert.strictEqual(await replay(st.responses, log).fetchWordImage('notion', { lang: 'en', gloss: st.cards.notion }), null, 'notion: no picture beats a wrong one');
+    assert.ok(log.some((u) => u.includes('gsrsearch=intitle%3Anotion')), 'notion: the Commons search ran and was rejected');
+  }
 
   // Failures resolve to no pictures.
   const failing = load({
@@ -410,9 +493,12 @@ async function fallbackEndToEnd() {
     assert.strictEqual(imgs.length, list.length, `${word}: one slot per sense`);
     const shown = imgs.map((x, i) => (x ? { i, title: x.title } : null)).filter(Boolean);
     same(shown, fb.expected[word].map(({ i, title }) => ({ i, title })), `${word}: recorded pictures`);
-    // "holon": its title is a city in Israel and its concept article has no picture, so none.
-    if (word === 'holon') assert.strictEqual(shown.length, 0, 'holon: no photo of the city');
+    // "serendipity": the article's lead image is a portrait of Horace Walpole, who coined the
+    // word, and nothing else fits, so none.
+    if (word === 'serendipity') assert.strictEqual(shown.length, 0, 'serendipity: no portrait of the coiner');
     else assert.ok(shown.length >= 1 && shown.length <= 3, `${word}: one to three pictures`);
+    // "holon" is also a city in Israel; the picture is the philosophy article's.
+    if (word === 'holon') same(shown.map((x) => x.title), ['Holon (philosophy)'], 'holon: no photo of the city');
     for (const x of imgs.filter(Boolean)) {
       assert.ok(/Wikimedia Commons$/.test(x.credit), `${word}: credit line`);
       assert.ok(/^https:\/\/commons\.wikimedia\.org\/wiki\/File:/.test(x.pageUrl), `${word}: file page`);
@@ -420,29 +506,32 @@ async function fallbackEndToEnd() {
     }
   }
 
-  // Words with no sense-specific picture get one on the first sense. For a word with no
-  // concrete noun sense that costs three requests: Wiktionary and the title query side by side,
+  // Words with no sense-specific picture get one on the first sense, in two rounds: Wiktionary,
+  // the title query and (for a word with a noun sense) the disambiguation links side by side,
   // then one imageinfo call (or the Commons search, which carries its own file info).
   const want = {
-    serendipity: 'Serendipity',
-    love: 'Romeo and Juliet in love',
-    freedom: 'Freedom',
-    inspect: 'Inspection',
-    ephemeral: 'Ephemerality',
-    beautiful: 'Beauty',
-    justice: 'Justice',
-    happiness: 'Happiness',
-    要対応: 'An action is required',
+    love: ['Romeo and Juliet in love', 4],
+    inspect: ['Inspection', 3],
+    ephemeral: ['Ephemerality', 4],
+    beautiful: ['Beauty', 4],
+    happiness: ['Happiness', 4],
+    要対応: ['An action is required', 3],
   };
-  for (const [word, title] of Object.entries(want)) {
+  for (const [word, [title, requests]] of Object.entries(want)) {
     const log = [];
     const { lang, list } = fb.senses[word];
     const imgs = await recordedModule(log).fetchSenseImages(word, list, { lang });
     assert.strictEqual(imgs[0] && imgs[0].title, title, `${word}: fallback picture on the first sense`);
     assert.ok(imgs.slice(1).every((x) => !x), `${word}: one fallback picture only`);
-    // "justice" has noun senses the strict rule tries first (two searches), so it makes more.
-    if (word !== 'justice') assert.strictEqual(log.length, 3, `${word}: three requests, not ${log.length}`);
+    assert.strictEqual(log.length, requests, `${word}: ${requests} requests, not ${log.length}`);
   }
+  // "justice": the ideal-of-fairness sense matches the article itself, so the statue sits there.
+  same(
+    (await recordedModule([]).fetchSenseImages('justice', fb.senses.justice.list)).map((x, i) => x && [i, x.title]).filter(Boolean),
+    [[1, 'Justice']],
+  );
+  // "serendipity": Horace Walpole's portrait leads the article; the word gets no picture.
+  same(await recordedModule([]).fetchSenseImages('serendipity', fb.senses.serendipity.list), fb.senses.serendipity.list.map(() => null));
 
   // The title query starts before the Wiktionary answer arrives.
   {
@@ -464,8 +553,8 @@ async function fallbackEndToEnd() {
     });
     const p = mod.fetchSenseImages('happiness', fb.senses.happiness.list, { lang: 'en' });
     await new Promise((r) => setTimeout(r, 20));
-    assert.strictEqual(started.length, 2, 'happiness: Wiktionary and the title query in parallel');
-    assert.ok(started.some((u) => u.includes('wiktionary.org')) && started.some((u) => u.includes('wikipedia.org')));
+    assert.strictEqual(started.length, 3, 'happiness: Wiktionary, the title query and the disambiguation links in parallel');
+    assert.ok(started.some((u) => u.includes('wiktionary.org')) && started.some((u) => u.includes('generator=links')));
     release();
     assert.strictEqual((await p)[0].title, 'Happiness');
   }
@@ -474,7 +563,8 @@ async function fallbackEndToEnd() {
   {
     const log = [];
     await recordedModule(log).fetchSenseImages('apple', fb.senses.apple.list, { lang: 'en' });
-    assert.ok(!log.some((u) => u.includes('apple%7C')), 'apple: no fallback title query');
+    assert.ok(!log.some((u) => u.includes('prop=images') || u.includes('gsrnamespace=6')), 'apple: no fallback request');
+    assert.strictEqual(log.length, 4, 'apple: two rounds');
   }
 
   // fetchWordImage works without a gloss and returns the best picture for the word.
@@ -510,7 +600,8 @@ async function fallbackEndToEnd() {
       }),
       getLookupCache: () => null,
     });
-    same(await mod.fetchSenseImages('holon', fb.senses.holon.list, { lang: 'en' }), [null, null], 'holon: no city photo without the title check');
+    const imgs = await mod.fetchSenseImages('holon', fb.senses.holon.list, { lang: 'en' });
+    same(imgs.map((x) => x && x.title), ['Holon (philosophy)', null], 'holon: no city photo without the title check');
   }
 
   // Wikimedia identifies the client by User-Agent; the configured client sends ours.
@@ -604,7 +695,7 @@ async function fallbackEndToEnd() {
     const mod = load({ isCoreConfigured: () => true, getHttp: () => ({ requestJson: async (url) => JSON.parse(JSON.stringify(fb.responses[url])) }), getLookupCache: () => store });
     assert.strictEqual(await mod.fetchWordImage('holon', { lang: 'en' }), null);
     const [key] = [...persisted.keys()];
-    assert.ok(key.startsWith('sense-images:v3:'), key);
+    assert.ok(key.startsWith('sense-images:v4:'), key);
     // Seven hours later a new session asks the network again.
     persisted.get(key).savedAt -= 7 * 60 * 60 * 1000;
     let asked = 0;
