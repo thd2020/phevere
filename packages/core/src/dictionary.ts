@@ -2383,9 +2383,23 @@ export class DictionaryService extends BaseService {
         ? wikiTextPromise.then((wt) => extractIpaFromWikitext(wt)).catch((): Pronunciation[] => [])
         : Promise.resolve([] as Pronunciation[]);
     try {
-      const restUrl = `https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(term)}`;
-      const response = await this.request<any>(restUrl, {
-        headers: { 'User-Agent': DictionaryService.WIKIMEDIA_USER_AGENT }
+      const rest = (t: string) =>
+        this.request<any>(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(t)}`, {
+          headers: { 'User-Agent': DictionaryService.WIKIMEDIA_USER_AGENT },
+        });
+      // Lower case finds "marionette" for "Marionette". A page Wiktionary keeps capitalised (the
+      // taxon "Whippomorpha", typed "whippomorpha"; a name) is asked for capitalised, or as typed,
+      // when the lower-case page does not exist.
+      const typed = text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+      const capitalised = term.charAt(0).toLocaleUpperCase() + term.slice(1);
+      const retries = [...new Set([typed, capitalised])].filter((t) => t && t !== term);
+      const response = await rest(term).catch(async (error: unknown) => {
+        if (language !== 'en' || !retries.length) throw error;
+        for (const t of retries) {
+          const found = await rest(t).catch((): null => null);
+          if (found) return found;
+        }
+        throw error;
       });
       // Removed verbose API response logging to prevent HTML floods
 
