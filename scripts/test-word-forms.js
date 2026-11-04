@@ -41,7 +41,8 @@ async function savedNotebook(http) {
     stdin: {
       contents: `
         export { configureCore } from './src/runtime';
-        export { addVocab, reviewVocab, findByLemma, updateVocabNote } from './src/vocab-store';
+        export { addVocab, reviewVocab, findByLemma, updateVocabNote, registerHeadwordResolver } from './src/vocab-store';
+        export { resolveFormOf } from './src/form-of';
         export { foldStoredForms, resolveStoredForms } from './src/vocab-sync';
         export { VOCAB_SCHEMA_SQL } from './src/schema';
       `,
@@ -102,6 +103,13 @@ async function savedNotebook(http) {
   await add('idiosyncrasy', 'A behavior or way of thinking that is characteristic of a person or a group.', { createdAt: 9000 });
   await add('glasses', 'Spectacles, frames bearing two lenses worn in front of the eyes.');
   await add('lobotomized', 'simple past and past participle of lobotomize');
+  // grenade, studied and due, beside "grenades" saved as a verb with a sense of its own and more reviews.
+  const grenade = await add('grenade', 'A small explosive device, often designed to be thrown by hand.', { partOfSpeech: 'noun', reading: '/ɡɹəˈneɪd/' });
+  await core.reviewVocab(grenade.id, 3, 40_000);
+  const grenades = await add('grenades', '(motor racing, slang, intransitive) Of an engine: to be violently wrecked.', { partOfSpeech: 'verb', note: 'heard at the race' });
+  for (let i = 0; i < 3; i++) await core.reviewVocab(grenades.id, 3, 41_000 + i);
+  db.run(`UPDATE vocab SET review_due = NULL WHERE id = ?`, [grenades.id]);
+  const grenadeDue = (await core.findByLemma('grenade')).reviewDue;
   db.run(`INSERT INTO book_words (lemma, reps, updated_at) VALUES ('gleaned', 2, 1)`);
   db.run(`INSERT INTO user_books (book_id, title, words, created_at, updated_at) VALUES ('u1', 'Reading', '["gleaned","glean","paparazzi"]', 1, 1)`);
 
@@ -130,6 +138,19 @@ async function savedNotebook(http) {
   assert.equal(idioOne.definition, 'A behavior or way of thinking that is characteristic of a person or a group.');
   assert.ok(idioOne.reps >= 1, "the misspelling's review comes along");
   assert.ok(await core.findByLemma('glasses'), 'glasses are spectacles');
+  // The saved lemma's row keeps its part of speech and IPA, takes the form's own sense and note,
+  // the more studied schedule, and a due date even though that row had none.
+  const grenadeOne = await core.findByLemma('grenade');
+  assert.ok(grenadeOne && !(await core.findByLemma('grenades')));
+  assert.equal(grenadeOne.partOfSpeech, 'noun');
+  assert.equal(grenadeOne.reading, '/ɡɹəˈneɪd/');
+  assert.equal(
+    grenadeOne.definition,
+    'A small explosive device, often designed to be thrown by hand.\n(motor racing, slang, intransitive) Of an engine: to be violently wrecked.',
+  );
+  assert.equal(grenadeOne.note, 'heard at the race');
+  assert.ok(grenadeOne.reps >= 3, "grenades' schedule, the more studied");
+  assert.equal(grenadeOne.reviewDue, grenadeDue, 'no due date is lost');
 
   const history = await queryAll(`SELECT lemma FROM answer_history ORDER BY answered_at`);
   assert.ok(!history.some((h) => ['gleaned', 'idiosyncracy', 'vicissitudes'].includes(h.lemma)), 'answers point at the new word');
@@ -138,12 +159,27 @@ async function savedNotebook(http) {
   assert.deepEqual(JSON.parse((await queryAll(`SELECT words FROM user_books`))[0].words), ['glean', 'paparazzo']);
   const ids = new Set((await queryAll(`SELECT id FROM vocab`)).map((r) => r.id));
   const tombs = (await queryAll(`SELECT id FROM vocab_deleted`)).map((r) => r.id);
-  assert.equal(tombs.length, 3, 'vicissitudes, paparazzi and idiosyncracy leave tombstones for sync');
+  assert.equal(tombs.length, 4, 'vicissitudes, paparazzi, idiosyncracy and grenades leave tombstones for sync');
   assert.ok(tombs.every((id) => !ids.has(id)));
 
-  // Once per notebook.
+  // The passes ask only about words not asked before.
   assert.equal(await core.foldStoredForms(60_000), 0);
   assert.equal(await core.resolveStoredForms(http, { pauseMs: 0 }), 0);
+
+  // A save from a lookup stores the word the lookup opens, even before the page turned to it.
+  core.registerHeadwordResolver((w) => core.resolveFormOf(http, w).then((l) => l || w));
+  const goose = await core.addVocab({ lemma: 'geese', definition: 'plural of goose', reading: '/ɡiːs/', sourceLang: 'en', resolveForm: true });
+  assert.equal(goose.lemma, 'goose');
+  assert.ok(!goose.reading, "geese's IPA is not goose's");
+  assert.ok(!goose.definition, '"plural of goose" is not a meaning; the lookup fills goose in');
+  // When the check cannot answer, a form saved beside its saved lemma still folds at once.
+  core.registerHeadwordResolver(() => Promise.reject(new Error('offline')));
+  await add('berry', 'A small succulent fruit.');
+  const berries = await core.addVocab({ lemma: 'berries', definition: 'plural of berry', sourceLang: 'en', resolveForm: true });
+  assert.equal(berries.lemma, 'berry', 'the fold after the save');
+  assert.equal(await core.findByLemma('berries'), null);
+  // An import is saved as it comes.
+  assert.equal((await core.addVocab({ lemma: 'mice', definition: 'plural of mouse', sourceLang: 'en' })).lemma, 'mice');
 }
 
 const page = (w) => fs.readFileSync(path.join(__dirname, 'fixtures', 'inflections', `en-${w}.jsonl`), 'utf8');
@@ -171,6 +207,14 @@ assert.equal(fo.dominantLemma(['ax', 'axe', 'axis'], freq, [['ax', 'axe'], ['axi
     requestText: async (url) => {
       requests.push(url);
       const w = decodeURIComponent(url.split('/').pop().replace(/\.jsonl$/, ''));
+      // Pages small enough to write here: "grenades" is only the plural and -s form of grenade.
+      const inline = {
+        grenades: [
+          { lang_code: 'en', word: 'grenades', pos: 'noun', senses: [{ tags: ['form-of', 'plural'], form_of: [{ word: 'grenade' }], glosses: ['plural of grenade'] }] },
+          { lang_code: 'en', word: 'grenades', pos: 'verb', senses: [{ tags: ['form-of', 'present', 'singular', 'third-person'], form_of: [{ word: 'grenade' }], glosses: ['third-person singular simple present indicative of grenade'] }] },
+        ],
+      };
+      if (inline[w]) return { ok: true, status: 200, text: inline[w].map((e) => JSON.stringify(e)).join('\n') };
       try {
         return { ok: true, status: 200, text: page(w) };
       } catch {

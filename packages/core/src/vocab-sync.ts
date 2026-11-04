@@ -18,11 +18,12 @@
 import type { SyncChange, SyncResult } from './holarky-account';
 import type { HttpClient } from './http';
 import { getHttp, getVocabDb, isCoreConfigured } from './runtime';
-import { ensureVocabReady, notifyVocabChanged, registerLemmaMigration, rowToEntry, type VocabEntry } from './vocab-store';
+import { ensureVocabReady, notifyVocabChanged, registerLemmaMigration, registerSaveHook, rowToEntry, type VocabEntry } from './vocab-store';
 import { plainPluralOf, stripGlossText } from './lookup-policy';
 import { normalizeVocabLemma, typoDistance } from './vocab-lemma';
 import { formOfGlossLemma, formOfLemmaFromGlosses, isRegularInflection, resolveFormOf, stripCitationLines } from './form-of';
 import { foldLookupKey, latinLemmasByPos } from './text-normalize';
+import * as answerHistory from './answer-history';
 import { normalizeSourceContext, sourceContextFromJson, sourceContextToJson } from './source-context';
 
 export const VOCAB_SYNC_NAMESPACE = 'phevere/vocab';
@@ -71,7 +72,8 @@ let running: Promise<VocabSyncResult> | null = null;
 /** Runs one sync; concurrent calls share it. */
 export function syncVocab(account: VocabSyncAccount, now: () => number = Date.now): Promise<VocabSyncResult> {
   if (!running) {
-    running = runSync(account, now).finally(() => {
+    // Sync and the forms migration take turns (withVocabLock), so their merges never interleave.
+    running = withVocabLock(() => runSync(account, now)).finally(() => {
       running = null;
     });
   }
@@ -294,7 +296,8 @@ export async function mergeDuplicateLemmas(at: number): Promise<number> {
       tags: union('tags'),
       createdAt: Math.min(...entries.map((e) => e.createdAt || at)),
       updatedAt: at,
-      reviewDue: studied.reviewDue,
+      // A due date is never lost: the studied row's, else the earliest any copy has.
+      reviewDue: studied.reviewDue ?? entries.map((e) => e.reviewDue).filter((d): d is number => d != null).sort((a, b) => a - b)[0],
       reviewInterval: studied.reviewInterval,
       ease: studied.ease,
       reps: studied.reps,
@@ -393,7 +396,6 @@ function joinNotes(entries: VocabEntry[]): string | undefined {
 
 const FORMS_FOLDED_KEY = 'lemma-normalized-v2';
 const FORMS_CHECKED_KEY = 'lemma-forms-checked-v2';
-const FORMS_ONLINE_DONE_KEY = 'lemma-forms-online-v2';
 
 type StoredRow = { id: string; lemma: string; definition: string; pos: string; lang: string };
 
@@ -449,9 +451,15 @@ export function offlineFormTarget(row: StoredRow, saved: Map<string, StoredRow>)
   return null;
 }
 
-/** Points the answer history, word-book progress and books you made at the new headword. */
+/**
+ * Points the answer history, word-book progress and books you made at the new headword, and
+ * records the pair so answers another device still files under the old headword land here too
+ * (answer-history.ts recordLemmaAliases, where that exists).
+ */
 async function moveLemmaRefs(pairs: Array<[string, string]>, now: number): Promise<void> {
   const db = getVocabDb();
+  const record = (answerHistory as unknown as { recordLemmaAliases?: (p: Array<[string, string]>) => Promise<void> }).recordLemmaAliases;
+  if (typeof record === 'function') await record(pairs).catch((): undefined => undefined);
   for (const [from, to] of pairs) {
     const a = from.trim().toLowerCase();
     const b = to.trim().toLowerCase();
@@ -484,20 +492,100 @@ async function moveLemmaRefs(pairs: Array<[string, string]>, now: number): Promi
   }
 }
 
+let lockTail: Promise<unknown> = Promise.resolve();
+
 /**
- * Saves a row under `target`. Its meaning stays only when it is not just "form of" lines and the
- * target is not saved already (whose own meaning then wins); its IPA, which is the form's, goes.
- * The rows then merge like any duplicate, keeping the earlier save date, the more studied
- * schedule, every note and tag, and a tombstone for the row folded away.
+ * Runs `fn` after every notebook write queued before it: sync and the forms migration take turns,
+ * so a merge never interleaves with sync's and a row is never written from a stale read.
  */
-async function renameStored(row: StoredRow, target: string, saved: Map<string, StoredRow>, now: number): Promise<[string, string]> {
-  const lemma = normalizeVocabLemma(target, { pos: row.pos, lang: row.lang });
-  const onlyForms = row.definition.split('\n').filter(Boolean).every((l) => !!formOfGlossLemma(l));
-  const keep = !saved.has(lemma.toLowerCase()) && !onlyForms ? row.definition : '';
-  await getVocabDb().runWrite(`UPDATE vocab SET lemma = ?, definition = ?, reading = '', updated_at = ? WHERE id = ?`, [lemma, keep, now, row.id]);
-  saved.delete(row.lemma.toLowerCase());
-  if (!saved.has(lemma.toLowerCase())) saved.set(lemma.toLowerCase(), { ...row, lemma, definition: keep });
-  return [row.lemma, lemma];
+export function withVocabLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = lockTail.then(fn, fn);
+  lockTail = run.catch((): undefined => undefined);
+  return run;
+}
+
+/** The meaning's lines that are not "plural of", "simple past of" or a reference. */
+function ownLines(definition: string): string[] {
+  return stripCitationLines(definition)
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && !formOfGlossLemma(l));
+}
+
+/** `base` with the lines of `extra` it does not already have, compared loosely. */
+function appendDistinct(base: string, extra: string[]): string {
+  const lines = base.split('\n').map((l) => l.trim()).filter(Boolean);
+  for (const line of extra) {
+    if (lines.some((l) => foldLookupKey(l) === foldLookupKey(line) || overlap(l, line) >= 0.6)) continue;
+    lines.push(line);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Folds the saved form `formId` (expected to read `expected`) into `target`. The row is read again
+ * here, under the lock, and nothing is written when it changed or went since it was picked.
+ * With no saved `target`, the row is renamed and keeps its meaning unless that is only "form of"
+ * lines; its IPA, which is the form's, goes. With `target` saved, that row stays and keeps its part
+ * of speech, IPA and meaning, with the form's own senses added ("commits": the programming sense);
+ * it takes the earlier save date, every note, tag and source, the earliest context, and the more
+ * studied schedule, never losing a due date. The form's row leaves a tombstone for sync.
+ */
+async function foldStoredForm(formId: string, expected: string, target: string, now: number): Promise<[string, string] | null> {
+  return withVocabLock(async () => {
+    const db = getVocabDb();
+    const row = await db.queryOne(`SELECT * FROM vocab WHERE id = ?`, [formId]);
+    if (!row || String(row.lemma) !== expected) return null;
+    const form = rowToEntry(row);
+    const lemma = normalizeVocabLemma(target, { pos: form.partOfSpeech, lang: form.sourceLang });
+    if (!lemma || lemma.toLowerCase() === form.lemma.toLowerCase()) return null;
+    const hostRow = await db.queryOne(`SELECT * FROM vocab WHERE lower(lemma) = lower(?) AND id != ? ORDER BY id ASC LIMIT 1`, [lemma, formId]);
+    if (!hostRow) {
+      const own = ownLines(form.definition || '');
+      await db.runWrite(`UPDATE vocab SET lemma = ?, definition = ?, reading = '', updated_at = ? WHERE id = ?`, [lemma, own.join('\n'), now, formId]);
+    } else {
+      const host = rowToEntry(hostRow);
+      const hostStarted = hasProgress(host);
+      const formStarted = hasProgress(form);
+      const studied = !hostStarted || (formStarted && Number(form.reps || 0) > Number(host.reps || 0)) ? (formStarted ? form : host) : host;
+      const other = studied === host ? form : host;
+      const both = [host, form];
+      const union = (key: 'sources' | 'tags') => {
+        const all = both.flatMap((e) => e[key] || []);
+        return all.length ? [...new Set(all)] : undefined;
+      };
+      const byAge = [...both].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      await writeRow({
+        ...host,
+        definition: appendDistinct(host.definition || '', ownLines(form.definition || '')) || undefined,
+        partOfSpeech: host.partOfSpeech || form.partOfSpeech,
+        sourceLang: host.sourceLang || form.sourceLang,
+        targetLang: host.targetLang || form.targetLang,
+        note: joinNotes(both),
+        sources: union('sources'),
+        tags: union('tags'),
+        createdAt: Math.min(...both.map((e) => e.createdAt || now)),
+        updatedAt: now,
+        reviewDue: studied.reviewDue ?? other.reviewDue,
+        reviewInterval: studied.reviewInterval,
+        ease: studied.ease,
+        reps: studied.reps,
+        stability: studied.stability,
+        difficulty: studied.difficulty,
+        state: studied.state,
+        lapses: studied.lapses,
+        lastReview: studied.lastReview ?? other.lastReview,
+        learningSteps: studied.learningSteps,
+        device: byAge.find((e) => e.device)?.device,
+        context: byAge.find((e) => e.context)?.context,
+      });
+      await db.runWrite(`DELETE FROM vocab WHERE id = ?`, [formId]);
+      await db.runWrite(`INSERT OR REPLACE INTO vocab_deleted (id, deleted_at) VALUES (?, ?)`, [formId, now]);
+    }
+    const pair: [string, string] = [form.lemma, lemma];
+    await moveLemmaRefs([pair], now);
+    return pair;
+  });
 }
 
 async function readStoredRows(): Promise<StoredRow[]> {
@@ -520,32 +608,48 @@ export async function foldStoredForms(now = Date.now()): Promise<number> {
   await ensureVocabReady();
   const db = getVocabDb();
   if (await db.queryOne(`SELECT value FROM sync_state WHERE key = ?`, [FORMS_FOLDED_KEY])) return 0;
-  const rows = await readStoredRows();
   let changed = 0;
-  for (const row of rows) {
+  for (const row of await readStoredRows()) {
     const clean = stripCitationLines(row.definition);
-    if (clean !== row.definition) {
-      await db.runWrite(`UPDATE vocab SET definition = ?, updated_at = ? WHERE id = ?`, [clean, now, row.id]);
-      row.definition = clean;
-      changed += 1;
-    }
-  }
-  const saved = new Map(rows.map((r) => [r.lemma.toLowerCase(), r] as [string, StoredRow]));
-  const pairs: Array<[string, string]> = [];
-  for (const row of rows) {
-    if (saved.get(row.lemma.toLowerCase())?.id !== row.id) continue;
-    const target = offlineFormTarget(row, saved);
-    if (!target) continue;
-    pairs.push(await renameStored(row, target, saved, now));
+    if (clean === row.definition) continue;
+    await withVocabLock(() => db.runWrite(`UPDATE vocab SET definition = ?, updated_at = ? WHERE id = ? AND definition = ?`, [clean, now, row.id, row.definition]));
     changed += 1;
   }
-  if (pairs.length) {
-    await mergeDuplicateLemmas(now);
-    await moveLemmaRefs(pairs, now);
-  }
+  changed += await foldOffline(now);
   await db.runWrite(`INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)`, [FORMS_FOLDED_KEY, String(now)]);
   if (changed) notifyVocabChanged();
   return changed;
+}
+
+/** Every saved word whose form the saved data settles (offlineFormTarget), or only `onlyId`. */
+async function foldOffline(now: number, onlyId?: string, folded: string[] = []): Promise<number> {
+  const rows = await readStoredRows();
+  const saved = new Map(rows.map((r) => [r.lemma.toLowerCase(), r] as [string, StoredRow]));
+  let changed = 0;
+  for (const row of rows) {
+    if (onlyId && row.id !== onlyId) continue;
+    if (saved.get(row.lemma.toLowerCase())?.id !== row.id) continue;
+    const target = offlineFormTarget(row, saved);
+    if (!target) continue;
+    const pair = await foldStoredForm(row.id, row.lemma, target, now);
+    if (!pair) continue;
+    folded.push(pair[1]);
+    saved.delete(row.lemma.toLowerCase());
+    if (!saved.has(pair[1].toLowerCase())) saved.set(pair[1].toLowerCase(), { ...row, lemma: pair[1] });
+    changed += 1;
+  }
+  return changed;
+}
+
+/**
+ * After each save from a lookup: a word saved as a form of a saved word, or with senses that only
+ * say "plural of", folds at once, whatever the one-time passes already did.
+ */
+export async function foldSavedWord(entry: VocabEntry, now = Date.now()): Promise<string | null> {
+  const folded: string[] = [];
+  await foldOffline(now, entry.id, folded);
+  if (folded.length) notifyVocabChanged();
+  return folded[0] || null;
 }
 
 /** Saved words worth asking Wiktionary about: an ending a form could have, no meaning, or a near-twin of another saved word. */
@@ -580,7 +684,6 @@ export function resolveStoredForms(http: HttpClient = getHttp(), opts: { pauseMs
 async function runResolveStoredForms(http: HttpClient, opts: { pauseMs?: number; max?: number }): Promise<number> {
   await ensureVocabReady();
   const db = getVocabDb();
-  if (await db.queryOne(`SELECT value FROM sync_state WHERE key = ?`, [FORMS_ONLINE_DONE_KEY])) return 0;
   const checkedRow = await db.queryOne(`SELECT value FROM sync_state WHERE key = ?`, [FORMS_CHECKED_KEY]);
   let checked: string[] = [];
   try {
@@ -592,13 +695,14 @@ async function runResolveStoredForms(http: HttpClient, opts: { pauseMs?: number;
   const rows = await readStoredRows();
   const saved = new Map(rows.map((r) => [r.lemma.toLowerCase(), r] as [string, StoredRow]));
   const todo = rows.filter((r) => !done.has(r.lemma.toLowerCase()) && mayBeStoredForm(r, saved));
-  const max = opts.max ?? 200;
-  const pause = opts.pauseMs ?? 250;
+  const max = opts.max ?? 120;
+  const pause = opts.pauseMs ?? 600;
   const pairs: Array<[string, string]> = [];
   let failed = 0;
   let asked = 0;
+  const offline = () => (globalThis as { navigator?: { onLine?: boolean } }).navigator?.onLine === false;
   for (const row of todo) {
-    if (asked >= max) break;
+    if (asked >= max || offline()) break;
     if (saved.get(row.lemma.toLowerCase())?.id !== row.id) continue;
     asked += 1;
     let target: string | null = null;
@@ -619,26 +723,33 @@ async function runResolveStoredForms(http: HttpClient, opts: { pauseMs?: number;
     }
     done.add(row.lemma.toLowerCase());
     if (target && foldLookupKey(target) !== foldLookupKey(row.lemma)) {
-      const now = Date.now();
-      pairs.push(await renameStored(row, target, saved, now));
-      await mergeDuplicateLemmas(now);
-      await moveLemmaRefs(pairs.slice(-1), now);
-      notifyVocabChanged();
+      const pair = await foldStoredForm(row.id, row.lemma, target, Date.now());
+      if (pair) {
+        pairs.push(pair);
+        saved.delete(row.lemma.toLowerCase());
+        notifyVocabChanged();
+      }
     }
     if (pause) await new Promise((r) => setTimeout(r, pause));
   }
+  // Words asked are remembered, so each launch asks only about words saved or failed since.
   await db.runWrite(`INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)`, [FORMS_CHECKED_KEY, JSON.stringify([...done])]);
-  const left = todo.filter((r) => !done.has(r.lemma.toLowerCase())).length;
-  if (!left) await db.runWrite(`INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)`, [FORMS_ONLINE_DONE_KEY, String(Date.now())]);
   return pairs.length;
 }
+
+/** How long after launch the background check starts, so it does not compete with the first lookups. */
+const ONLINE_CHECK_DELAY_MS = 20_000;
 
 registerLemmaMigration(async () => {
   await normalizeStoredLemmas();
   await foldStoredPlurals();
   await foldStoredForms();
-  // The network part runs behind the list; rows it changes repaint through notifyVocabChanged.
+  // The network part runs behind the list, later and slowly; rows it changes repaint through notifyVocabChanged.
   if (isCoreConfigured()) {
-    void resolveStoredForms().catch((err) => console.warn('[vocab] forms check skipped', err));
+    setTimeout(() => {
+      void resolveStoredForms().catch((err) => console.warn('[vocab] forms check skipped', err));
+    }, ONLINE_CHECK_DELAY_MS);
   }
 });
+
+registerSaveHook((entry) => foldSavedWord(entry));
