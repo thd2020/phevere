@@ -1455,14 +1455,12 @@ export interface SensePictureRules {
   maxPictures: number;
   /** Source order: the higher rank wins when several sources fit a sense. 0 turns a source off. */
   rank: { lexeme: number; senseItem: number; wiktionaryLinked: number; wiktionaryCaption: number; glossArticle: number; article: number };
-  /** Pictures that rest on shared words rather than a curated link (Wiktionary captions, the
-   *  word's article) only go to senses that name something you can see. */
+  /** Pictures matched by shared words (Wiktionary captions, articles) only go to senses that name
+   *  something you can see; a picture an editor linked to the sense itself stays on any sense. */
   picturableOnly: boolean;
-  /** Senses a lexicographer tied to a picture count as major, beside entry and part-of-speech heads. */
-  curatedAreMajor: boolean;
   /** Major senses are pictured in order of how often they are used (SemCor), when known. */
   byFrequency: boolean;
-  /** Minor senses get a picture only once every major sense has one. */
+  /** Minor senses get a picture only once every major sense you can see has one. */
   minorsAfterMajors: boolean;
   /** A portrait of a named person goes only to a sense about people. */
   portraitsOnlyForPeople: boolean;
@@ -1473,33 +1471,26 @@ export const SENSE_PICTURE_RULES: SensePictureRules = {
   // Source order by how often each kind of link is right (Wikidata's item images first).
   rank: { lexeme: 40, senseItem: 38, wiktionaryLinked: 35, wiktionaryCaption: 20, glossArticle: 12, article: 10 },
   picturableOnly: true,
-  curatedAreMajor: true,
   byFrequency: true,
   minorsAfterMajors: true,
   portraitsOnlyForPeople: true,
 };
 
-/** Changes some of the rules for every later call (and drops pools built under the old ones' results). */
+/** Changes some of the rules for every later lookup. Saved pools stay valid: rules apply when a pool is matched to senses. */
 export function configureSensePictures(rules: Partial<SensePictureRules>): void {
   Object.assign(SENSE_PICTURE_RULES, rules, rules.rank ? { rank: { ...SENSE_PICTURE_RULES.rank, ...rules.rank } } : {});
 }
 
 /**
  * The order in which senses get a picture. Major senses come first: the first sense of each
- * entry and part of speech, and every sense a lexicographer tied to its own picture (a Wikidata
- * lexeme sense or a Wiktionary picture tied to it), since those are the senses dictionaries
- * single out ("crane" the machine, "spring" the coil and the water source). Among them the ones
- * used most often in running text (`frequency`, from SemCor) go first when the lookup knows it.
- * Minor senses follow, and get a picture only once every major sense has one.
+ * entry and part of speech, ordered by how often each is used in running text (`frequency`, from
+ * SemCor) when the lookup knows it. Minor senses follow in dictionary order, and only once every
+ * major sense you can see has its picture, so a curated picture of a minor sense ("bell" the
+ * flower) never stands in for the main one.
  */
-function senseOrder(
-  senses: SenseInput[],
-  lemma: string,
-  etymology: number[],
-  curated: Set<number>,
-): { major: number[]; minor: number[] } {
+function senseOrder(senses: SenseInput[], lemma: string, etymology: number[]): { major: number[]; minor: number[] } {
   const heads = majorSenses(senses, lemma, 12, etymology).heads;
-  const major = senses.map((_s, i) => i).filter((i) => heads.has(i) || (SENSE_PICTURE_RULES.curatedAreMajor && curated.has(i)));
+  const major = senses.map((_s, i) => i).filter((i) => heads.has(i));
   const freq = (i: number) => (typeof senses[i].frequency === 'number' ? (senses[i].frequency as number) : -1);
   major.sort((a, b) => (SENSE_PICTURE_RULES.byFrequency ? freq(b) - freq(a) : 0) || a - b);
   const minor = senses.map((_s, i) => i).filter((i) => stripHtml(senses[i].meaning) && !major.includes(i));
@@ -1564,16 +1555,16 @@ export function assignPictures(
     !!p && !!p.image && !hidden.has(p.file.toLowerCase()) && (!p.portrait || !SENSE_PICTURE_RULES.portraitsOnlyForPeople || PERSON_GLOSS.test(stripHtml(sense.meaning)));
 
   // Candidates per sense, best first.
-  const cands = senses.map((): Array<{ key: string; rank: number; curated?: boolean }> => []);
+  const cands = senses.map((): Array<{ key: string; rank: number }> => []);
   const picturable = senses.map((s) => !SENSE_PICTURE_RULES.picturableOnly || picturableSense(s, lemma));
   for (const m of matchWiktionaryImages(pool.wiktionary, senses, lemma)) {
+    // A picture an editor tied to this sense stays even on an abstract sense ("hope" has an
+    // allegory); one matched only by shared words needs a sense you can see.
     const linked = !!pool.wiktionary[m.imageIndex].senseText;
     if (!linked && !picturable[m.senseIndex]) continue;
     const base = linked ? R.wiktionaryLinked : R.wiktionaryCaption;
-    if (base > 0) cands[m.senseIndex].push({ key: `wiktionary:${m.imageIndex}`, rank: base + m.score / 100, curated: linked });
+    if (base > 0) cands[m.senseIndex].push({ key: `wiktionary:${m.imageIndex}`, rank: base + m.score / 100 });
   }
-  // A lexeme sense goes only to the sense it fits best: the violin bow belongs to "a rod with
-  // horsehair", not to "a stringed instrument consisting of a stick with a taut cord".
   // A lexeme sense goes only to the sense it fits best (the violin bow belongs to "a rod with
   // horsehair", not to "a stringed instrument consisting of a stick with a taut cord"), and a
   // sense takes only the lexeme senses that fit it best (the apple, not the apple tree's wood).
@@ -1582,7 +1573,7 @@ export function assignPictures(
   const bestForSense = senses.map((_s, i) => Math.max(0, ...fit.map((row) => row[i])));
   fit.forEach((row, k) => {
     row.forEach((f, i) => {
-      if (R.lexeme > 0 && f > 0 && f === bestForLexeme[k] && f === bestForSense[i]) cands[i].push({ key: `lexeme:${k}`, rank: R.lexeme + Math.min(f, 9), curated: true });
+      if (R.lexeme > 0 && f > 0 && f === bestForLexeme[k] && f === bestForSense[i]) cands[i].push({ key: `lexeme:${k}`, rank: R.lexeme + Math.min(f, 9) });
     });
   });
   // Wiktionary lines tied to an item: the sense whose gloss the line matches, best fit only.
@@ -1590,7 +1581,7 @@ export function assignPictures(
     if (R.senseItem <= 0) return;
     const fits = senses.map((s) => linkedLineFit(x.senseText, x.pos, s, lemma));
     const best = Math.max(0, ...fits);
-    if (best > 0) fits.forEach((f, i) => f === best && cands[i].push({ key: `senseitem:${k}`, rank: R.senseItem + Math.min(f, 1), curated: true }));
+    if (best > 0) fits.forEach((f, i) => f === best && cands[i].push({ key: `senseitem:${k}`, rank: R.senseItem + Math.min(f, 1) }));
   });
   const code = String(pool.lang || 'en').toLowerCase().split(/[-_]/)[0] || 'en';
   const nouns = senses.map((s, i) => (stripHtml(s.meaning) && ['noun', ''].includes(canonicalSensePos(s.partOfSpeech)) ? i : -1)).filter((i) => i >= 0);
@@ -1605,13 +1596,12 @@ export function assignPictures(
   }
   pool.glossArticles.forEach((page, k) => {
     for (const i of nouns) {
-      if (shortGlossTitle(senses[i].meaning).toLowerCase() === page.title.toLowerCase()) cands[i].push({ key: `article:${1000 + k}`, rank: R.glossArticle });
+      if (picturable[i] && shortGlossTitle(senses[i].meaning).toLowerCase() === page.title.toLowerCase()) cands[i].push({ key: `article:${1000 + k}`, rank: R.glossArticle });
     }
   });
 
   const etymology = etymologyOfSenses(pool.etymology, senses, lemma);
-  const curated = new Set(cands.map((c, i) => (c.some((x) => x.curated) ? i : -1)).filter((i) => i >= 0));
-  const { major, minor } = senseOrder(senses, lemma, etymology, curated);
+  const { major, minor } = senseOrder(senses, lemma, etymology);
   const used = new Set<string>();
   let count = 0;
   const give = (i: number): boolean => {
@@ -1625,10 +1615,12 @@ export function assignPictures(
     }
     return false;
   };
+  // A major sense you cannot see does not hold the minor ones back; one you can see that found
+  // no picture does, since its picture may simply not be known yet.
   let allMajor = true;
   for (const i of major) {
     if (count >= max) break;
-    if (!give(i)) allMajor = false;
+    if (!give(i) && picturable[i]) allMajor = false;
   }
   if (allMajor || !SENSE_PICTURE_RULES.minorsAfterMajors) for (const i of minor) if (count < max) give(i);
   return out;
@@ -2060,7 +2052,7 @@ export async function fetchSenseImages(
     frequency: typeof s?.frequency === 'number' ? s.frequency : undefined,
   }));
   if (!word || !list.length) return list.map((): null => null);
-  const max = Math.max(0, Math.min(10, opts?.max ?? 4));
+  const max = Math.max(0, Math.min(10, opts?.max ?? SENSE_PICTURE_RULES.maxPictures));
   if (!max) return list.map((): null => null);
   const lang = String(opts?.lang || 'en');
   const code = lang.toLowerCase().split(/[-_]/)[0] || 'en';

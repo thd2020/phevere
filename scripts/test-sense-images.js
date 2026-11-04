@@ -292,6 +292,39 @@ same(
     [null, 'Wind'],
   );
 }
+{
+  // A curated picture of a minor sense waits until the first sense you can see has its own.
+  const bellSenses = [
+    { meaning: 'A hollow metallic percussion instrument that rings when struck.', partOfSpeech: 'noun' },
+    { meaning: 'The sound of a bell being struck.', partOfSpeech: 'noun' },
+    { meaning: 'A bell-shaped flower of the genus Campanula.', partOfSpeech: 'noun' },
+  ];
+  const flower = { file: 'Campanula.jpg', caption: 'A bell flower', senseText: 'A bell-shaped flower of the genus Campanula.', pos: 'noun', etymology: 0 };
+  const img = (file) => ({ url: `u/${file}`, thumb: `t/${file}`, title: file, pageUrl: `p/${file}`, credit: 'c' });
+  const only = poolOf({ lemma: 'bell', lexemes: [], wiktionary: [flower], pictures: [{ file: flower.file, source: 'wiktionary', ref: 0, image: img(flower.file) }] });
+  same(si.assignPictures(only, bellSenses), [null, null, null], 'bell: no flower before the instrument');
+  const instrument = { file: 'Church bell.jpg', caption: 'A church bell', senseText: 'A hollow metallic percussion instrument that rings when struck.', pos: 'noun', etymology: 0 };
+  const both = poolOf({
+    lemma: 'bell',
+    lexemes: [],
+    wiktionary: [flower, instrument],
+    pictures: [
+      { file: flower.file, source: 'wiktionary', ref: 0, image: img(flower.file) },
+      { file: instrument.file, source: 'wiktionary', ref: 1, image: img(instrument.file) },
+    ],
+  });
+  same(si.assignPictures(both, bellSenses).map((x) => x && x.title), ['Church bell.jpg', null, 'Campanula.jpg'], 'bell: the instrument, then the flower');
+  // A curated picture stays on an abstract sense ("hope" has an allegory), but only on that sense.
+  const hope = { file: 'Hope allegory.jpg', caption: 'Hope', senseText: 'The belief that something wished for can happen.', pos: 'noun', etymology: 0 };
+  const hopePool = poolOf({ lemma: 'hope', lexemes: [], wiktionary: [hope], pictures: [{ file: hope.file, source: 'wiktionary', ref: 0, image: img(hope.file) }] });
+  same(
+    si.assignPictures(hopePool, [
+      { meaning: 'The belief that something wished for can happen.', partOfSpeech: 'noun' },
+      { meaning: 'To want something to happen.', partOfSpeech: 'verb' },
+    ]).map((x) => x && x.title),
+    ['Hope allegory.jpg', null],
+  );
+}
 
 // ---------------------------------------------------------------- the whole flow, stubbed network
 
