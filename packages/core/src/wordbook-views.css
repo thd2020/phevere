@@ -8,7 +8,9 @@
 .wb-switch {
   display: flex;
   gap: 6px;
-  padding: 2px 0 10px;
+  /* Room above and to the right for a chip's close button inside the scroller. */
+  margin-top: -6px;
+  padding: 8px 8px 10px 0;
   overflow-x: auto;
   scrollbar-width: none;
   font-family: var(--nbv-ui, Outfit, system-ui, sans-serif);
@@ -36,6 +38,39 @@
 .wb-scope > svg:not(.wb-ring) { width: 16px; height: 16px; flex: none; }
 .wb-scope--add { border-style: dashed; color: var(--nbv-ember, #9c3d00); }
 .wb-scope--add.is-active { border-style: solid; border-color: var(--nbv-ember, #9c3d00); background: var(--nbv-ember, #9c3d00); color: #fff; }
+.wb-scope-wrap { position: relative; display: inline-flex; flex: none; }
+.wb-scope__x {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #c0392b;
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(28, 25, 23, 0.3);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.5);
+  pointer-events: none;
+  transition: opacity 0.14s cubic-bezier(0.2, 0, 0, 1), transform 0.22s cubic-bezier(0.34, 1.5, 0.5, 1);
+}
+.wb-scope__x svg { width: 11px; height: 11px; }
+.wb-scope__x svg path { stroke-width: 3; }
+.wb-scope__x:hover { background: #a8281c; }
+.wb-scope-wrap:hover .wb-scope__x,
+.wb-scope-wrap:focus-within .wb-scope__x { opacity: 1; transform: none; pointer-events: auto; }
+/* No hover on touch: the open book's chip shows its close button. */
+@media (hover: none) {
+  .wb-scope-wrap:hover .wb-scope__x { opacity: 0; transform: scale(0.5); pointer-events: none; }
+  .wb-scope-wrap:has(.wb-scope.is-active) .wb-scope__x { opacity: 1; transform: none; pointer-events: auto; }
+}
+.wb-sort { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 10px; }
+.wb-sort .nbv-chip { height: 28px; padding: 0 12px; }
 .wb-scope__n { font: 600 11px/1 var(--nbv-ui, Outfit, system-ui, sans-serif); opacity: 0.6; font-variant-numeric: tabular-nums; }
 
 /* Progress ring and bar */

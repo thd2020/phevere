@@ -307,6 +307,8 @@ export {
   sourcesHtml,
   wordbookHeaderHtml,
   wordbookListHtml,
+  sortBookEntries,
+  type BookSort,
   wordbookLibraryHtml,
   wordBookBadgesHtml,
   progressRingSvg,
@@ -384,6 +386,7 @@ export {
   type InflectionRow,
 } from './inflections';
 export { inflectionsHtml, wordFamilyHtml, type LexiconLinks } from './lexicon-parts';
+export { suggestWords, peekSuggestions, warmSuggestions } from './word-suggest';
 export { normalizeVocabLemma, closestSpelling, typoDistance } from './vocab-lemma';
 export { normalizeStoredLemmas } from './vocab-sync';
 export { checkApiKey, type ApiProviderId, type ApiCredentials, type ApiKeyCheck } from './api-key-check';

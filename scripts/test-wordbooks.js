@@ -20,7 +20,7 @@ const bundle = esbuild.buildSync({
       export * from './src/wordbook-store';
       export * from './src/wordbook-sync';
       export { syncProgress } from './src/progress-sync';
-      export { wordbookLibraryHtml } from './src/wordbook-views';
+      export { wordbookLibraryHtml, wordbookListHtml, sortBookEntries, wordbookHeaderHtml } from './src/wordbook-views';
       export { configureCore } from './src/runtime';
       export { addVocab, listVocab, reviewVocab, findByLemma } from './src/vocab-store';
       export { syncVocab } from './src/vocab-sync';
@@ -244,6 +244,20 @@ async function main() {
   await b.core.syncWordbooks(account);
   await core.syncWordbooks(account);
   assert.deepEqual((await core.listWordbookSubs()).map((s) => s.bookId), ['starter']);
+
+  // A book's list orders by book place, last met, or A to Z, and keeps each word's place number.
+  const met = [
+    { id: 'a', lemma: 'state', createdAt: 0, lastReview: null },
+    { id: 'b', lemma: 'Abate', createdAt: 5000, lastReview: null },
+    { id: 'c', lemma: 'might', createdAt: 1000, lastReview: 9000 },
+    { id: 'd', lemma: 'part', createdAt: 0, lastReview: null },
+  ];
+  assert.deepEqual(core.sortBookEntries(met, 'book').map((r) => r.e.lemma), ['state', 'Abate', 'might', 'part']);
+  assert.deepEqual(core.sortBookEntries(met, 'recent').map((r) => r.e.lemma), ['might', 'Abate', 'state', 'part']);
+  assert.deepEqual(core.sortBookEntries(met, 'az').map((r) => `${r.n}:${r.e.lemma}`), ['2:Abate', '3:might', '4:part', '1:state']);
+  const listHtml = core.wordbookListHtml(met, { scope: 'kaoyan', limit: 10, sort: 'az' });
+  assert.match(listHtml, /data-act="wb-sort" data-sort="az" aria-pressed="true"/);
+  assert.doesNotMatch(core.wordbookHeaderHtml('starter', ctx), /wb-goal|wb-unsub/, 'no goal chips or Remove link in a book header');
 
   console.log('test-wordbooks: all passed');
 }
