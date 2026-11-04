@@ -3977,7 +3977,8 @@ function startAutoCloseTimeout() {
 
            const payload = vocabPayloadFromResult(currentResult, lemma);
            const entry = await window.vocabAPI.add(payload);
-           setVocabHeartSaved(true, entry && entry.id, lemma);
+           // The main process may have saved the word the lookup opens (goose for "geese").
+           setVocabHeartSaved(true, entry && entry.id, (entry && entry.lemma) || lemma);
            showToast('Saved to My words');
            if (!currentResult && lemma) maybePreloadLookup(lemma);
          } catch (e) {
