@@ -305,6 +305,8 @@ export {
   sourcesHtml,
   wordbookHeaderHtml,
   wordbookListHtml,
+  sortBookEntries,
+  type BookSort,
   wordbookLibraryHtml,
   wordBookBadgesHtml,
   progressRingSvg,

@@ -42,6 +42,7 @@ import {
   sourcesHtml,
   type WordsContext,
   type WordsScope,
+  type BookSort,
   filterVocabByLang,
   languageName,
   vocabLangChipsHtml,
@@ -872,6 +873,7 @@ export interface WordsState {
   library: boolean;
   ctx: WordsContext | null;
   limit: number;
+  sort: BookSort;
 }
 
 export function notebookBody(
@@ -951,7 +953,7 @@ function bookScopeBody(words: WordsState, ctx: WordsContext, filter: string, nb:
     </div>
     <div class="nbv nb-views">${notebookViewSwitchHtml(nb.view)}</div>`;
   let body: string;
-  if (nb.view === 'list') body = wordbookListHtml(list, { scope: words.scope, limit: words.limit, filtered: !!q });
+  if (nb.view === 'list') body = wordbookListHtml(list, { scope: words.scope, limit: words.limit, filtered: !!q, sort: words.sort });
   else {
     const study = nb.view === 'cards' ? scopeStudySet(list) : list;
     const analysis = analyzeNotebook(study);

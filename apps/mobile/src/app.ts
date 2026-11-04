@@ -76,6 +76,7 @@ import {
   type WordbookSub,
   type WordsContext,
   type WordsScope,
+  type BookSort,
   type CardLayout,
   type FamilyGrouping,
   type MorphKind,
@@ -258,11 +259,16 @@ async function loadAnswerHistory(): Promise<void> {
 
 /* Word books: the list the Words tab shows (My words, a book or All books) and its data. */
 const WORDS_SCOPE_KEY = 'phevere.wordsScope';
+const BOOK_SORT_KEY = 'phevere.bookSort';
+function readBookSort(v: string | null): BookSort {
+  return v === 'recent' || v === 'az' ? v : 'book';
+}
 const wordsState = {
   scope: (readStore(WORDS_SCOPE_KEY) || 'mine') as WordsScope,
   library: false,
   ctx: null as WordsContext | null,
   limit: BOOK_LIST_PAGE,
+  sort: readBookSort(readStore(BOOK_SORT_KEY)),
 };
 let wbSubs: WordbookSub[] = [];
 let wbUserBooks: UserBook[] = [];
@@ -2259,6 +2265,12 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       await setWordbookGoal(t.dataset.book || '', Number(t.dataset.goal) || 10);
       nbState.review = null;
       await refreshWords();
+      paint();
+      return;
+    case 'wb-sort':
+      wordsState.sort = readBookSort(t.dataset.sort || '');
+      writeStore(BOOK_SORT_KEY, wordsState.sort);
+      wordsState.limit = BOOK_LIST_PAGE;
       paint();
       return;
     case 'wb-more':

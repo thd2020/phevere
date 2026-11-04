@@ -119,6 +119,7 @@ import {
   isUserBookId,
   type WordsContext,
   type WordsScope,
+  type BookSort,
 } from '@phevere/core';
 import { choiceRowHtml, keycapsHtml, rangeRowHtml, switchRowHtml } from '@phevere/core';
 import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
@@ -2181,6 +2182,8 @@ let wordsLang = readPref(WORDS_LANG_KEY, 'all');
 let wbScope = readPref(WORDS_SCOPE_KEY, 'mine') as WordsScope;
 let wbLibrary = false;
 let wbLimit = BOOK_LIST_PAGE;
+const WB_SORT_KEY = 'phevere.bookSort';
+let wbSort = readBookSort(readPref(WB_SORT_KEY, 'book'));
 let wbSubs: any[] = [];
 let wbUserBooks: any[] = [];
 let wbProgress = new Map<string, any>();
@@ -2188,6 +2191,10 @@ const wbBooks = new Map<string, string[]>();
 let wbCtx: WordsContext | null = null;
 let wbAnalysis: { key: unknown; q: string; view: string; value: ReturnType<typeof analyzeNotebook> } | null = null;
 const wbMeaningInFlight = new Set<string>();
+
+function readBookSort(v: string): BookSort {
+  return v === 'recent' || v === 'az' ? v : 'book';
+}
 
 function wordbookApi(): any {
   return (window as any).wordbookAPI;
@@ -2272,7 +2279,7 @@ function renderBookScope(body: HTMLElement, wrap: HTMLElement, list: HTMLElement
   const shown = q ? all.filter((e) => e.lemma.toLowerCase().includes(q)) : all;
   if (nbView === 'list') {
     disposeNotebookMaps(true);
-    body.innerHTML = wordbookListHtml(shown, { scope: wbScope, limit: wbLimit, filtered: !!q });
+    body.innerHTML = wordbookListHtml(shown, { scope: wbScope, limit: wbLimit, filtered: !!q, sort: wbSort });
     return true;
   }
   const study = nbView === 'cards' ? scopeStudySet(shown) : shown;
@@ -3039,6 +3046,12 @@ function wireNotebookActions(root: HTMLElement): void {
         return;
       case 'wb-more':
         wbLimit += BOOK_LIST_PAGE;
+        rerenderNotebook();
+        return;
+      case 'wb-sort':
+        wbSort = readBookSort(el.dataset.sort || '');
+        writePref(WB_SORT_KEY, wbSort);
+        wbLimit = BOOK_LIST_PAGE;
         rerenderNotebook();
         return;
       case 'wb-known':
