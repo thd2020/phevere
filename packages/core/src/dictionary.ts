@@ -81,7 +81,7 @@ import { isGrammaticalFormOfGloss, splitSurfaceAndLemma, sameLookupFold, stripGl
 import { formLine, formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, resolveFormOf } from './form-of';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { lookupMorpheme, morphemeOffers, parseMorphemeQuery } from './morpheme';
-import { groupYoudaoEtymologies, serializeEtymologySources } from './etymology-sources';
+import { groupYoudaoEtymologies, sameHeadword, serializeEtymologySources } from './etymology-sources';
 import { mergeSimilarDefinitions, dedupeExamples, exampleKey, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses } from './definition-merge';
 import { orderSensesByFrequency, warmSenseFrequency } from './sense-frequency';
 import {
@@ -3115,6 +3115,12 @@ export class DictionaryService extends BaseService {
         await new Promise((r) => setTimeout(r, 450));
       }
       if (!html) return undefined;
+      // A page about another word (a redirect followed from "coverness" to "cover") is a miss.
+      // Its canonical address names the word it is about.
+      const pageWord =
+        /<link[^>]+rel=["']canonical["'][^>]+href=["'][^"']*\/word\/([^"'?#/]+)/i.exec(html)?.[1] ||
+        /property=["']og:url["'][^>]+content=["'][^"']*\/word\/([^"'?#/]+)/i.exec(html)?.[1];
+      if (pageWord && !sameHeadword(safeDecode(pageWord), cleanWord)) return undefined;
       let raw = '';
 
       const htmlToPlain = (s: string) =>
@@ -3223,7 +3229,7 @@ export class DictionaryService extends BaseService {
     if (entries.length) return { text: entries.join('\n\n') };
     // "café" comes back as { replaced: "cafe" } with no entries. Etymonline also "replaces" a word
     // it lacks with a different one ("coverness" with "cover"); that is a miss, not the word.
-    if (replaced && !redirected && replaced !== word && sameLetters(replaced, word)) return this.fetchEtymonlineApi(replaced, true);
+    if (replaced && !redirected && replaced !== word && sameHeadword(replaced, word)) return this.fetchEtymonlineApi(replaced, true);
     return {};
   }
 
@@ -3255,8 +3261,11 @@ export class DictionaryService extends BaseService {
           .catch(() => ({ ok: false, status: 0, text: '' }));
         if (!response.ok || !response.text) continue;
         try {
-          const data = JSON.parse(response.text) as { etym?: { etyms?: any } };
+          const data = JSON.parse(response.text) as { etym?: { etyms?: any; word?: string } };
           if (data?.etym?.etyms && typeof data.etym.etyms === 'object') {
+            // The block names its word; a block about another word is not this word's history.
+            const named = typeof data.etym.word === 'string' ? data.etym.word.trim() : '';
+            if (named && !sameHeadword(named, cleanWord)) return undefined;
             etyms = data.etym.etyms;
             break;
           }
@@ -3267,7 +3276,7 @@ export class DictionaryService extends BaseService {
 
       if (!etyms) return undefined;
 
-      return serializeEtymologySources(groupYoudaoEtymologies(etyms));
+      return serializeEtymologySources(groupYoudaoEtymologies(etyms, cleanWord));
     } catch (error) {
       console.warn(`Youdao etymology failed for "${cleanWord}":`, error);
       return undefined;
@@ -4174,12 +4183,6 @@ export const dictionaryService = new DictionaryService();
 // A word saved from a lookup is saved as the word the lookup opens ("geese" as goose).
 registerHeadwordResolver((word, lang) => dictionaryService.settledHeadword(word, lang)); 
 
-/** The same word up to accents and case: "café" and "cafe", not "coverness" and "cover". */
-function sameLetters(a: string, b: string): boolean {
-  const fold = (x: string) => foldLookupKey(x.normalize('NFD').replace(/\p{M}/gu, ''));
-  return fold(a) === fold(b);
-}
-
 /** Two Wiktionary definition pages as one, the first page's entries first in each language. */
 function mergeWiktionaryPages(first: any, second: any): any {
   if (!first) return second || null;
@@ -4234,4 +4237,13 @@ function withoutFormOf(page: any): any {
 function isCapitalised(word: string): boolean {
   const w = String(word || '').trim();
   return /^\p{Lu}\p{Ll}/u.test(w) && w !== w.toLocaleLowerCase();
+}
+
+/** A URL path segment as text; left as it is when it is not valid percent-encoding. */
+function safeDecode(segment: string): string {
+  try {
+    return decodeURIComponent(segment.replace(/\+/g, ' '));
+  } catch {
+    return segment;
+  }
 }
