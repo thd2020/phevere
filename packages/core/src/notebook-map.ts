@@ -274,7 +274,8 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
   // Families trace adds a few words or parts; only the new ones are laid out.
   const fixed = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
-    const at = seed?.get(nodes[i].id);
+    // A word saved from a book comes back under a new id; its headword keeps its place.
+    const at = seed?.get(nodes[i].id) ?? (nodes[i].kind === 'word' ? seed?.get(seedWordKey(nodes[i].label)) : undefined);
     if (!at) continue;
     [nodes[i].x, nodes[i].y, nodes[i].z] = at;
     fixed[i] = 1;
@@ -600,6 +601,11 @@ export function notebookMapData(a: NotebookAnalysis, kinds: MorphKind[]): MapDat
   return data;
 }
 
+/** A word's headword, lower case: how the map knows a word again when its id changes. */
+const headword = (l: string) => String(l || '').trim().toLocaleLowerCase();
+/** A seed key by headword, apart from node ids. */
+const seedWordKey = (l: string) => `headword ${headword(l)}`;
+
 /** The most recent cached layout of the same morpheme kinds that shares nearly all its words with `a`. */
 function seedFor(a: NotebookAnalysis, kinds: MorphKind[]): { sig: string; seed: Map<string, [number, number, number]> } | null {
   const head = `${kinds.slice().sort().join('+')}:`;
@@ -609,7 +615,12 @@ function seedFor(a: NotebookAnalysis, kinds: MorphKind[]): { sig: string; seed: 
     if (!words.length) continue;
     const shared = words.reduce((s, p) => s + (a.words.has(p.id) ? 1 : 0), 0);
     if (shared / words.length < 0.9 || Math.abs(a.words.size - data.total) > Math.max(5, data.total * 0.05)) continue;
-    return { sig: data.sig, seed: new Map(data.nodes.map((p) => [p.id, [p.x, p.y, p.z] as [number, number, number]])) };
+    const seed = new Map<string, [number, number, number]>();
+    for (const p of data.nodes) {
+      seed.set(p.id, [p.x, p.y, p.z]);
+      if (p.k === 'word' && !seed.has(seedWordKey(p.l))) seed.set(seedWordKey(p.l), [p.x, p.y, p.z]);
+    }
+    return { sig: data.sig, seed };
   }
   return null;
 }
@@ -904,7 +915,10 @@ class MapController {
     if (goto && (!same || memory!.query !== query) && this.index.has(goto)) {
       this.focus(goto, true);
       memory!.query = query;
-    } else if (same && memory!.focus && this.index.has(memory!.focus)) this.focus(memory!.focus, false);
+    } else if (same && memory!.focus && this.index.has(memory!.focus)) {
+      // Without a saved camera (a rebuilt graph moved the word, or the flat map) fly back to it.
+      this.focus(memory!.focus, !memory!.view);
+    }
   }
 
   get alive(): boolean {
@@ -940,9 +954,10 @@ class MapController {
     if (id && !this.index.has(id)) id = null;
     this.focusId = id;
     if (memory && memory.sig === this.data.sig) {
-      memory.focus = id;
-      memory.find = undefined;
-    } else memory = { sig: this.data.sig, focus: id, view: null, query: '' };
+      // Focusing the same word again (a repaint) keeps the word typed to find it.
+      if (memory.focus !== id) memory.find = undefined;
+      Object.assign(memory, this.spot(id));
+    } else memory = { sig: this.data.sig, ...this.spot(id), view: null, query: '' };
     const h = id ? this.neighbourhood(id) : null;
     this.map.classList.toggle('is-focus', !!h);
     this.paintPanel(h);
@@ -1015,11 +1030,17 @@ class MapController {
     this.disposed = true;
     const view = this.renderer?.view() || null;
     if (memory && memory.sig === this.data.sig) memory.view = view;
-    else memory = { sig: this.data.sig, focus: this.focusId, view, query: '' };
+    else memory = { sig: this.data.sig, ...this.spot(this.focusId), view, query: '' };
     this.renderer?.dispose();
     this.renderer = null;
     this.offs.splice(0).forEach((f) => f());
     live.delete(this);
+  }
+
+  /** The focused node as the memory keeps it: its id, its headword, and where it stands. */
+  private spot(id: string | null): Pick<MapMemory, 'focus' | 'word' | 'at'> {
+    const p = id ? this.data.nodes[this.index.get(id)!] : null;
+    return { focus: id, word: p && p.k === 'word' ? headword(p.l) : null, at: p ? [p.x, p.y, p.z] : null };
   }
 
   savedView(): MapView | null {
@@ -1027,9 +1048,9 @@ class MapController {
     return memory && memory.sig === this.data.sig ? memory.view : null;
   }
 
-  /** The remembered focus and camera belong to the layout this one grew from: take them over. */
+  /** Take over the focus and camera remembered on an earlier graph of the same words. */
   private adopt(): void {
-    if (memory && this.data.from && memory.sig === this.data.from) memory.sig = this.data.sig;
+    memory = carryMapMemory(memory, this.data);
   }
 }
 
@@ -1079,7 +1100,47 @@ function fitMap(map: HTMLElement): void {
   const room = Math.floor(band.bottom - band.top - 16);
   if (room >= 260 && natural > room) map.style.height = `${room}px`;
 }
-let memory: { sig: string; focus: string | null; view: MapView | null; query: string; find?: string } | null = null;
+/**
+ * What the map remembers between paints: the focused node, the camera, the Words search that
+ * last flew somewhere, and the word typed in the map's own field.
+ */
+export interface MapMemory {
+  sig: string;
+  focus: string | null;
+  /** The focused word's headword, lower case; null for a word part. */
+  word?: string | null;
+  /** Where the focused node stood when it was focused. */
+  at?: [number, number, number] | null;
+  view: MapView | null;
+  query: string;
+  find?: string;
+}
+
+/**
+ * Carry what the map remembered into a rebuilt graph. A lookup that saves a word, or a trace
+ * that refines its parts, draws a new graph, and saving a book word gives it a new id: the
+ * focused word is found again by its id, then by its headword. The camera stays only when the
+ * word still stands where the camera last saw it; otherwise `view` is dropped and the map flies
+ * to the word.
+ */
+export function carryMapMemory(m: MapMemory | null, data: MapData): MapMemory | null {
+  if (!m || m.sig === data.sig) return m;
+  let node = m.focus ? data.nodes.find((p) => p.id === m.focus) : undefined;
+  if (!node && m.word) node = data.nodes.find((p) => p.k === 'word' && headword(p.l) === m.word);
+  // A graph this one did not grow from, without the focused word: nothing to carry.
+  if (!node && data.from !== m.sig) return m;
+  const still = node ? !!m.at && Math.hypot(node.x - m.at[0], node.y - m.at[1], node.z - m.at[2]) < 0.5 : data.from === m.sig;
+  return {
+    ...m,
+    sig: data.sig,
+    focus: node ? node.id : null,
+    word: node && node.k === 'word' ? headword(node.l) : null,
+    at: node ? [node.x, node.y, node.z] : null,
+    view: still ? m.view : null,
+  };
+}
+
+let memory: MapMemory | null = null;
 let webgl: boolean | null = null;
 
 function webglAvailable(): boolean {
