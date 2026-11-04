@@ -1,0 +1,108 @@
+/**
+ * The Learn session builder across My words and word books (packages/core/src/wordbooks.ts,
+ * review-quiz.ts): one card per word whichever list it is studied from, new words picked from
+ * every book as one pool (shared words and family links first), the review load holding new words
+ * back, and the round size. The question mix and the lemma rules are in test-review.js.
+ *
+ * Run: node scripts/test-learn-session.js
+ */
+const assert = require('assert/strict');
+const path = require('path');
+const esbuild = require('esbuild');
+
+const root = path.join(__dirname, '..');
+const bundle = esbuild.buildSync({
+  stdin: {
+    contents: `
+      export * from './src/review-quiz';
+      export { buildWordsContext, scopeEntries, bookProgress, scopeReviewPlan, scopeReviewQueue, startScopeReview, pickNewBookWords, wordStatus } from './src/wordbooks';
+    `,
+    resolveDir: path.join(root, 'packages', 'core'),
+    loader: 'ts',
+  },
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  write: false,
+  loader: { '.json': 'json' },
+}).outputFiles[0].text;
+const mod = { exports: {} };
+new Function('module', 'exports', 'require', bundle)(mod, mod.exports, require);
+const core = mod.exports;
+
+const DAY = 86_400_000;
+const now = new Date(2026, 10, 4, 9).getTime();
+const sub = (bookId, dailyNew) => ({ bookId, dailyNew, active: true, createdAt: 1, updatedAt: 1 });
+const started = (lemma, extra = {}) => ({ lemma, known: false, reps: 2, state: 2, stability: 8, lastReview: now - 2 * DAY, reviewDue: now + 6 * DAY, createdAt: now - 9 * DAY, updatedAt: 1, ...extra });
+
+/* One card per word: a word known through My words counts in every book that lists it. */
+{
+  const mine = [{ id: 'v-ability', lemma: 'ability', definition: 'being able', reps: 5, state: 2, stability: 40, lastReview: now - DAY, reviewDue: now + 30 * DAY, createdAt: now - 60 * DAY }];
+  const books = new Map([
+    ['cet4', ['ability', 'able', 'abroad']],
+    ['kaoyan', ['abroad', 'ability', 'absence']],
+  ]);
+  const ctx = core.buildWordsContext(mine, [started('abroad')], [sub('cet4', 5), sub('kaoyan', 5)], books);
+  const a = core.bookProgress('cet4', ctx, now);
+  const b = core.bookProgress('kaoyan', ctx, now);
+  assert.equal(a.known, 1, 'ability known in CET-4 through My words');
+  assert.equal(b.known, 1, 'and in 考研');
+  assert.equal(a.learning, 1, 'abroad, started from one book, is learning in both');
+  assert.equal(b.learning, 1);
+  // The same word appears once in All books, as its My words row.
+  const all = core.scopeEntries('all', ctx);
+  assert.equal(all.filter((e) => e.lemma === 'ability').length, 1);
+  assert.equal(all.find((e) => e.lemma === 'ability').id, 'v-ability');
+  // A reviewed word due today is asked once, whichever books list it.
+  const due = core.buildWordsContext(mine, [started('abroad', { reviewDue: now - 1000 })], [sub('cet4', 5), sub('kaoyan', 5)], books);
+  const ids = core.scopeReviewQueue('all', due, { now, mineGoal: 0 });
+  assert.equal(ids.filter((id) => id === 'wb:abroad').length, 1);
+}
+
+/* New words from one pool: words more of your books list, and families you started, come first. */
+{
+  const books = new Map([
+    ['ngsl', ['apple', 'banana', 'cherry', 'damson', 'elder', 'fig', 'nationality', 'grape']],
+    ['cet6', ['grape', 'hazel']],
+  ]);
+  const mine = [{ id: 'v-nation', lemma: 'nation', definition: 'a country', reps: 2, state: 2, stability: 5, lastReview: now - DAY, reviewDue: now + 4 * DAY, createdAt: now - 20 * DAY }];
+  const ctx = core.buildWordsContext(mine, [], [sub('ngsl', 3), sub('cet6', 1)], books);
+  const why = new Map();
+  const picked = core.pickNewBookWords(['ngsl'], ctx, now, 0, why).map((e) => e.lemma);
+  assert.equal(picked.length, 3, 'the book goal sets how many');
+  // Book order would give apple, banana, cherry.
+  assert.deepEqual(picked, ['nationality', 'grape', 'apple'], 'a family you started, then a word two of your books list, move forward');
+  assert.equal(why.get('wb:nationality').family, 'nation');
+  // All books: one pool, the goals added up, no word twice.
+  const plan = core.scopeReviewPlan('all', ctx, { now, mineGoal: 0 });
+  assert.equal(plan.fresh, 4);
+  assert.equal(new Set(plan.ids).size, plan.ids.length);
+  assert.ok(plan.ids.includes('wb:hazel') || plan.ids.includes('wb:grape'));
+}
+
+/* Many reviews due hold new words back, in books as in My words; a round takes twenty words. */
+{
+  const words = Array.from({ length: 80 }, (_, i) => `w${String(i).padStart(2, '0')}word`);
+  const progress = words.slice(0, 60).map((w, i) => started(w, { reviewDue: now - (i + 1) * 1000 }));
+  const ctx = core.buildWordsContext([], progress, [sub('ngsl', 10)], new Map([['ngsl', words]]));
+  const plan = core.scopeReviewPlan('ngsl', ctx, { now });
+  assert.equal(plan.due, 60);
+  assert.equal(plan.fresh, 8, 'sixty due reviews leave eight of ten new words');
+  assert.equal(plan.heldBack, 2);
+  const state = core.startScopeReview('ngsl', ctx, { now });
+  assert.equal(state.queue.length, core.ROUND_WORDS);
+  assert.equal(state.rest, 68 - core.ROUND_WORDS);
+  assert.equal(state.heldBack, 2);
+}
+
+/* "Already know it" on a saved new word keeps it out of today's new words. */
+{
+  const mine = [
+    { id: 'v1', lemma: 'serene', definition: 'calm', reps: 0, createdAt: now - DAY },
+    { id: 'v2', lemma: 'placid', definition: 'calm too', reps: 0, createdAt: now - 2 * DAY },
+  ];
+  const ctx = core.buildWordsContext(mine, [{ lemma: 'placid', known: true, updatedAt: 1 }], [], new Map());
+  assert.deepEqual(core.scopeReviewQueue('mine', ctx, { now, mineGoal: 10 }), ['v1']);
+}
+
+console.log('test-learn-session: ok');

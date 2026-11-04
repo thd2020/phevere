@@ -10,7 +10,8 @@
  */
 import { WORDBOOK_CATALOG, type WordbookMeta } from './wordbook-catalog';
 import { clean, dayStart, DAY, type NotebookEntry } from './notebook-shared';
-import { isNewWord, memoryLevel, startReview, type ReviewState } from './review-quiz';
+import { dedupeLemmas, interleaveNew, isNewWord, memoryLevel, newWordAllowance, reviewStateFor, type QueuePlan, type ReviewState } from './review-quiz';
+import { analyzeMorphemes, derivationStem } from './morphology';
 import { bookWordKey, DEFAULT_DAILY_NEW, isUserBookId, type BookWordProgress, type UserBook, type WordbookSub } from './wordbook-store';
 import { setMadeBookNames, shortBookTitle } from './book-names';
 import { sourceGroupOf, type SourceGroupKey } from './source-context';
@@ -281,70 +282,115 @@ export interface ScopeReviewOptions {
   mineStartedToday?: number;
 }
 
+/** Roots and stems of a word, for spotting family links ("nation" in "nationality", spect in inspect). */
+function familyKeys(word: string): string[] {
+  const keys: string[] = [];
+  for (const m of analyzeMorphemes(word)) if (m.kind === 'root' && m.label.length >= 3) keys.push(`r:${m.label.toLowerCase()}`);
+  const stem = derivationStem(word);
+  if (stem.length >= 5) keys.push(`s:${stem.slice(0, 5)}`);
+  return keys;
+}
+
+/** Why a new word was picked: the other books that list it and a started word of its family. */
+export interface NewWordReason {
+  books: number;
+  family: string | null;
+}
+
 /**
- * Today's queue for a scope. Due words come from everywhere in the scope, most overdue first.
- * New words come from each book in its own order up to the book's daily goal (less what was
- * started today), and from My words oldest first up to its goal; in All books the sources take
- * turns. New words are spread evenly among the reviews.
+ * New book words for today, picked across the scope's books as one pool. Each book offers the
+ * next words in its own order (frequency order for every shipped book), several times its
+ * allowance, and the pool is ranked by position in that order, with words that more of your books
+ * list and words of a family you have started moved forward. Each book's daily goal sets how many
+ * words the pool gives.
  */
-export function scopeReviewQueue(scope: WordsScope, ctx: WordsContext, opts: ScopeReviewOptions = {}): string[] {
+export function pickNewBookWords(bookIds: string[], ctx: WordsContext, now = Date.now(), dueCount = 0, reasons?: Map<string, NewWordReason>): WordsEntry[] {
+  let quota = 0;
+  let goals = 0;
+  const cands = new Map<string, { e: WordsEntry; rank: number }>();
+  for (const id of bookIds) {
+    const p = bookProgress(id, ctx, now);
+    quota += p.newToday;
+    goals += p.dailyNew;
+    if (!p.newToday) continue;
+    const window = p.newToday * 4 + 20;
+    const words = ctx.books.get(id) || [];
+    let n = 0;
+    for (const w of words) {
+      if (n >= window) break;
+      const k = bookWordKey(w);
+      if (ctx.saved.has(k) || ctx.progress.get(k)?.known) continue;
+      const e = bookEntry(w, ctx);
+      if (!isNewWord(e)) continue;
+      const rank = n / window;
+      n += 1;
+      const prev = cands.get(k);
+      if (!prev || rank < prev.rank) cands.set(k, { e, rank });
+    }
+  }
+  quota = Math.min(quota, newWordAllowance(goals, dueCount));
+  if (!quota || !cands.size) return [];
+  // Families of the words already saved or started.
+  const fam = new Map<string, string>();
+  const studied = [...ctx.mine.map((e) => clean(e.lemma)), ...[...ctx.progress.values()].filter((p) => p.known || Number(p.reps) > 0 || p.lastReview != null).map((p) => p.lemma)];
+  for (const w of studied) for (const key of familyKeys(w)) if (!fam.has(key)) fam.set(key, w);
+  const scored = [...cands.entries()].map(([k, c]) => {
+    const books = c.e.books?.length || 1;
+    const kin = familyKeys(k).map((key) => fam.get(key)).find((w) => w && w.toLowerCase() !== k) || null;
+    reasons?.set(c.e.id, { books, family: kin });
+    return { e: c.e, score: c.rank - 0.25 * (books - 1) - (kin ? 0.3 : 0) };
+  });
+  scored.sort((a, b) => a.score - b.score);
+  return dedupeLemmas(scored.map((s) => s.e)).slice(0, quota);
+}
+
+/**
+ * Today's plan for a scope. Due words come from everywhere in the scope, most overdue first, one
+ * form of each word. New words: My words' own new words oldest first up to its goal, then book
+ * words picked across the scope's books (`pickNewBookWords`); fewer of both when many reviews are
+ * due. New words are spread evenly among the reviews.
+ */
+export function scopeReviewPlan(scope: WordsScope, ctx: WordsContext, opts: ScopeReviewOptions = {}): QueuePlan {
   const now = opts.now ?? Date.now();
   const end = dayStart(now) + DAY;
   const entries = scopeEntries(scope, ctx);
-  const due = entries
-    .filter((e) => !isNewWord(e) && !(e.known && !e.saved) && e.reviewDue != null && Number(e.reviewDue) < end)
-    .sort((x, y) => Number(x.reviewDue) - Number(y.reviewDue));
-  const sources: WordsEntry[][] = [];
+  const due = dedupeLemmas(
+    entries
+      .filter((e) => !isNewWord(e) && !(e.known && !e.saved) && e.reviewDue != null && Number(e.reviewDue) < end)
+      .sort((x, y) => Number(x.reviewDue) - Number(y.reviewDue)),
+  );
+  let mineFresh: WordsEntry[] = [];
+  let mineLeft = 0;
   if (scope === 'mine' || scope === 'all') {
     const goal = opts.mineGoal ?? DEFAULT_DAILY_NEW;
-    sources.push(
+    mineLeft = Math.max(0, goal - (opts.mineStartedToday ?? 0));
+    const allowed = Math.min(mineLeft, newWordAllowance(goal, due.length));
+    mineFresh = dedupeLemmas(
       ctx.mine
-        .filter((e) => isNewWord(e) && clean(e.lemma))
+        .filter((e) => isNewWord(e) && clean(e.lemma) && !ctx.progress.get(bookWordKey(e.lemma))?.known)
         .sort((x, y) => Number(x.createdAt || 0) - Number(y.createdAt || 0))
-        .slice(0, Math.max(0, goal - (opts.mineStartedToday ?? 0)))
-        .map((e) => ({ ...e, saved: true })),
-    );
+        .map((e) => ({ ...e, saved: true, books: ctx.index.get(bookWordKey(e.lemma)) })),
+    ).slice(0, allowed);
   }
   const bookIds = scope === 'mine' ? [] : scope === 'all' ? ctx.subs.map((s) => s.bookId) : [scope];
-  for (const id of bookIds) {
-    const left = bookProgress(id, ctx, now).newToday;
-    const list: WordsEntry[] = [];
-    for (const w of ctx.books.get(id) || []) {
-      if (list.length >= left) break;
-      const e = bookEntry(w, ctx);
-      if (!e.known && isNewWord(e) && !e.saved) list.push(e);
-    }
-    sources.push(list);
-  }
-  // Take turns, one word from each source, skipping a word another source already gave.
-  const fresh: WordsEntry[] = [];
-  const taken = new Set<string>();
-  for (let i = 0, more = true; more; i++) {
-    more = false;
-    for (const src of sources) {
-      if (i >= src.length) continue;
-      more = true;
-      const e = src[i];
-      if (taken.has(e.id)) continue;
-      taken.add(e.id);
-      fresh.push(e);
-    }
-  }
-  if (!due.length || !fresh.length) return [...due, ...fresh].map((e) => e.id);
-  const out: WordsEntry[] = [];
-  const step = Math.max(1, Math.floor(due.length / fresh.length));
-  let f = 0;
-  due.forEach((e, i) => {
-    out.push(e);
-    if ((i + 1) % step === 0 && f < fresh.length) out.push(fresh[f++]);
-  });
-  return [...out, ...fresh.slice(f)].map((e) => e.id);
+  const bookFresh = pickNewBookWords(bookIds, ctx, now, due.length);
+  const fresh = dedupeLemmas([...due, ...mineFresh, ...bookFresh]).slice(due.length);
+  const progress = bookIds.map((id) => bookProgress(id, ctx, now));
+  const bookQuota = progress.reduce((s, p) => s + p.newToday, 0);
+  const bookAllowed = Math.min(bookQuota, newWordAllowance(progress.reduce((s, p) => s + p.dailyNew, 0), due.length));
+  const mineAllowed = Math.min(mineLeft, newWordAllowance(opts.mineGoal ?? DEFAULT_DAILY_NEW, due.length));
+  const heldBack = mineLeft - mineAllowed + (bookQuota - bookAllowed);
+  return { ids: interleaveNew(due, fresh).map((e) => e.id), due: due.length, fresh: fresh.length, heldBack };
 }
 
-/** A review session for a scope, ready for `reviewHtml`. */
+/** Today's queue for a scope (`scopeReviewPlan` ids). */
+export function scopeReviewQueue(scope: WordsScope, ctx: WordsContext, opts: ScopeReviewOptions = {}): string[] {
+  return scopeReviewPlan(scope, ctx, opts).ids;
+}
+
+/** A review session for a scope, ready for `reviewHtml`: the first round of today's plan. */
 export function startScopeReview(scope: WordsScope, ctx: WordsContext, opts: ScopeReviewOptions = {}): ReviewState {
-  const now = opts.now ?? Date.now();
-  return { ...startReview([], 0, now), queue: scopeReviewQueue(scope, ctx, opts) };
+  return reviewStateFor(scopeReviewPlan(scope, ctx, opts), opts.now ?? Date.now());
 }
 
 /** Queued book words still without a meaning, next first; the shell looks them up ahead of time. */
