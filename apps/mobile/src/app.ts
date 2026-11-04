@@ -13,6 +13,14 @@ import {
   removeVocab,
   saveLemma,
   vocabPayloadFromResult,
+  examplesFromResult,
+  attachLearnCharts,
+  revealQuestion,
+  reviewArmed,
+  markKnownInReview,
+  primeBookLevels,
+  ROUND_WORDS,
+  memoryLevel,
   wikipediaService,
   type Pronunciation,
   type DictionaryResult,
@@ -278,6 +286,35 @@ let wbUserBooks: UserBook[] = [];
 let wbProgress = new Map<string, BookWordProgress>();
 const wbBooks = new Map<string, string[]>();
 const wbMeaningInFlight = new Set<string>();
+/* Example sentences for the quiz's gap-fill questions, looked up ahead for words held for days. */
+const reviewExamples = new Map<string, string[]>();
+const examplesInFlight = new Set<string>();
+
+async function prefetchExamples(wait = false): Promise<void> {
+  const r = nbState.review;
+  if (!r) return;
+  const byId = new Map(scopePool().map((e) => [e.id, e]));
+  const lemmas: string[] = [];
+  for (let i = r.index + (wait ? 0 : 1); i < r.queue.length && lemmas.length < 3; i++) {
+    const e = byId.get(r.queue[i]);
+    const key = String(e?.lemma || '').toLowerCase();
+    if (!e || !key || reviewExamples.has(key) || examplesInFlight.has(key) || memoryLevel(e) < 2) continue;
+    lemmas.push(String(e.lemma));
+  }
+  const jobs = lemmas.map(async (lemma) => {
+    const key = lemma.toLowerCase();
+    examplesInFlight.add(key);
+    try {
+      const res = await dictionaryService.lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), { translationProvider: prefs.translationProvider });
+      reviewExamples.set(key, examplesFromResult(res));
+    } catch {
+      /* offline: no gap-fill from examples */
+    } finally {
+      examplesInFlight.delete(key);
+    }
+  });
+  if (wait) await Promise.all(jobs);
+}
 
 function rebuildWordsContext(): void {
   const mine = reviewPool.length >= notebook.length ? reviewPool : notebook;
@@ -304,6 +341,7 @@ async function refreshWords(): Promise<void> {
     wbUserBooks = await listUserBooks();
     wbProgress = new Map((await listBookProgress()).map((p) => [p.lemma, p]));
     for (const s of wbSubs) if (!isUserBookId(s.bookId) && !wbBooks.has(s.bookId)) wbBooks.set(s.bookId, await loadWordbook(s.bookId));
+    await primeBookLevels(wbSubs.map((s) => s.bookId));
     if (wordsState.scope !== 'mine' && !reviewPool.length) await loadReviewPool();
     rebuildWordsContext();
   } catch (err) {
@@ -321,7 +359,7 @@ function scopePool(): Array<VocabEntry | ReturnType<typeof bookEntry>> {
 async function prefetchMeanings(wait = false): Promise<void> {
   const r = nbState.review;
   if (!r || wordsState.scope === 'mine') return;
-  const lemmas = reviewNeedsMeaning(r, scopePool(), 4).filter((l) => !wbMeaningInFlight.has(l.toLowerCase()));
+  const lemmas = reviewNeedsMeaning(r, scopePool(), wait ? ROUND_WORDS : 4).filter((l) => !wbMeaningInFlight.has(l.toLowerCase()));
   if (!lemmas.length) return;
   const jobs = lemmas.map(async (lemma) => {
     const key = lemma.toLowerCase();
@@ -625,7 +663,7 @@ function paint(): void {
 
 /** The Learn tab's state, starting today's session for the chosen list when there is none. */
 function learnViewState(): LearnState {
-  if (!nbState.review && wordsState.scope !== 'mine' && wordsState.ctx) {
+  if (!nbState.review && wordsState.ctx) {
     nbState.review = startScopeReview(wordsState.scope, wordsState.ctx, { mineGoal: nbState.goal, mineStartedToday: startedToday().length });
   }
   if (!nbState.review && reviewPool.length) nbState.review = startReview(reviewPool, nbState.goal, Date.now(), startedToday().length);
@@ -633,7 +671,7 @@ function learnViewState(): LearnState {
     review: nbState.review || startReview([], nbState.goal),
     goal: nbState.goal,
     pool: reviewPool,
-    reviewOptions: { audio: prefs.audioEnabled !== false, preview: previewReview, formatGap: formatReviewGap },
+    reviewOptions: { audio: prefs.audioEnabled !== false, preview: previewReview, formatGap: formatReviewGap, examples: (lemma) => reviewExamples.get(lemma.toLowerCase()) },
     page: learnPage,
     history: answerHistory,
     notice: plusNoticeHtml(accountState, HOLARKY_ACCOUNT.plusUrl, 'learn'),
@@ -678,6 +716,7 @@ function bindNotebookViews(): void {
 function bindLearn(): void {
   const page = document.querySelector<HTMLElement>('.lrn-body');
   if (!page) return;
+  attachLearnCharts(page);
   if (learnPage === 'progress') {
     if (!answerHistory) void loadAnswerHistory().then(() => tab === 'learn' && learnPage === 'progress' && paint());
     return;
@@ -687,6 +726,7 @@ function bindLearn(): void {
   }
   focusReview(page);
   void prefetchMeanings();
+  void prefetchExamples();
 }
 
 /** Keeps the chosen list (or Add a word book) visible in the scrolling switcher. */
@@ -702,6 +742,8 @@ function revealWordsScope(): void {
 let reviewAutoplayed = '';
 function focusReview(page: HTMLElement): void {
   page.querySelector<HTMLInputElement>('#nbv-answer')?.focus();
+  // A new question starts with its progress bar and instruction below the sticky app bar.
+  revealQuestion(page, document.querySelector('.top'));
   // After an answer, bring Continue into view with the verdict and the word above it.
   page.querySelector<HTMLElement>('.nbv-quiz__grade')?.scrollIntoView({ block: 'nearest' });
   const listen = page.querySelector<HTMLElement>('[data-autoplay]');
@@ -2332,11 +2374,12 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'wb-known-review': {
+      if (!reviewArmed(nbState.review)) return;
       const p = await setBookWordKnown(t.dataset.q || '', true, Date.now(), scopeBookFor(wordsState.scope, wordsState.ctx, t.dataset.q || ''));
       answerHistory = null;
       wbProgress.set(p.lemma, p);
       rebuildWordsContext();
-      if (nbState.review) dropCurrentReview(nbState.review);
+      if (nbState.review) markKnownInReview(nbState.review, t.dataset.q || '');
       paint();
       return;
     }
@@ -2405,13 +2448,20 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'nb-review-exit':
-      // Back to the Learn page; answers so far are already saved and rescheduled.
+      // Back to the Learn page. An answer on screen is saved first, as Continue would.
+      if (nbState.review?.answer) await commitReview();
       nbState.review = null;
       paint();
       return;
     case 'nb-start':
+    case 'nb-round':
+      // A new round plans again from what is due now.
+      if (t.dataset.act === 'nb-round') {
+        nbState.review = null;
+        learnViewState();
+      }
       // Book words get their meaning looked up before the first question is built.
-      await prefetchMeanings(true);
+      await Promise.all([prefetchMeanings(true), prefetchExamples(true)]);
       if (nbState.review) nbState.review.started = true;
       paint();
       return;
@@ -2420,16 +2470,16 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'nb-choose':
-      answerCurrentReview({ choice: Number(t.dataset.choice) });
+      if (reviewArmed(nbState.review)) answerCurrentReview({ choice: Number(t.dataset.choice) });
       return;
     case 'nb-knew':
-      answerCurrentReview({ knew: t.dataset.knew === '1' });
+      if (reviewArmed(nbState.review)) answerCurrentReview({ knew: t.dataset.knew === '1' });
       return;
     case 'nb-skip':
-      answerCurrentReview({});
+      if (reviewArmed(nbState.review)) answerCurrentReview({});
       return;
     case 'nb-override':
-      if (nbState.review) overrideReview(nbState.review);
+      if (nbState.review) overrideReview(nbState.review, t.dataset.mode === 'easy' ? 'easy' : 'flip');
       paint();
       return;
     case 'nb-next':
@@ -2777,7 +2827,14 @@ export async function startApp(): Promise<void> {
       else { scan = null; clearScanPick(); paint(); }
       return true;
     }
-    if (tab === 'learn' && nbState.review) { nbState.review = null; paint(); return true; }
+    if (tab === 'learn' && nbState.review) {
+      const r = nbState.review;
+      void (r.answer ? commitReview() : Promise.resolve()).then(() => {
+        nbState.review = null;
+        paint();
+      });
+      return true;
+    }
     if (tab === 'notebook' && wordsState.library) { wordsState.library = false; paint(); return true; }
     if (tab !== 'lookup') { tab = 'lookup'; paint(); return true; }
     // Lookup: the same as its back arrow, the Wikipedia reader first, then the word before.
@@ -2835,6 +2892,28 @@ export async function startApp(): Promise<void> {
   });
   root.addEventListener('focusout', (e) => {
     if ((e.target as HTMLElement).id === 'q') setTimeout(paintSuggest, 0);
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (tab !== 'learn' || !nbState.review || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    const page = document.querySelector<HTMLElement>('.lrn-body');
+    const target = ev.target as HTMLElement | null;
+    if (!page || (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+    if (ev.key === 'Enter') {
+      const next = page.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-reveal"], [data-act="nb-round"]');
+      if (!next) return;
+      ev.preventDefault();
+      next.click();
+      return;
+    }
+    if (/^[1-4]$/.test(ev.key)) {
+      const n = Number(ev.key);
+      const hit =
+        page.querySelector<HTMLElement>(`[data-act="nb-choose"][data-choice="${n - 1}"]:not([disabled])`) ||
+        (n <= 2 ? page.querySelector<HTMLElement>(`[data-act="nb-knew"][data-knew="${n === 2 ? 1 : 0}"]`) : null);
+      if (!hit) return;
+      ev.preventDefault();
+      hit.click();
+    }
   });
   root.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).id !== 'q' || (e as KeyboardEvent).key !== 'Escape') return;

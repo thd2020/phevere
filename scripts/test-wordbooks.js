@@ -165,11 +165,15 @@ async function main() {
   assert.equal(core.scopeEntries('all', ctx).length, 8, 'all books counts each word once');
 
   const q1 = core.scopeReviewQueue('starter', ctx, { now });
-  assert.deepEqual(q1, ['wb:alpha', 'wb:gamma', 'wb:delta'], 'three new words in book order, saved word left to My words');
+  assert.deepEqual(q1, ['wb:gamma', 'wb:alpha', 'wb:delta'], 'three new words, the one both books list first, then book order; the saved word is left to My words');
+  const why = new Map();
+  core.pickNewBookWords(['starter'], ctx, now, 0, why);
+  assert.deepEqual(why.get('wb:gamma'), { books: 2, family: null });
   const qAll = core.scopeReviewQueue('all', ctx, { now, mineGoal: 10 });
   assert.equal(qAll[0], ctx.saved.get('beta').id, 'My words first in the rotation');
   assert.ok(qAll.includes('wb:eta') && qAll.includes('wb:alpha'), 'every subscribed book contributes');
   assert.equal(new Set(qAll).size, qAll.length, 'no word twice');
+  assert.equal(qAll.length, 1 + 3 + 2, 'My words goal plus each book goal, from one pool');
 
   // Learning gamma once counts in both books.
   await core.reviewBookWord('gamma', 3, now);

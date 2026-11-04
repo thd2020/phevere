@@ -11,7 +11,7 @@ const ALL = [
   'etymology-sources', 'etymology-cache', 'etymology-availability', 'etymology-popup',
   'ocr-text', 'ocr-pack', 'speech-stream', 'hover-selection', 'native-selection-repeat',
   'popup-opening', 'popup-retrigger', 'popup-sizing', 'mobile-regressions', 'desktop-diagnostics', 'installer-audio-cli',
-  'word-sources', 'book-file', 'plural-forms', 'morpheme', 'word-suggest',
+  'word-sources', 'book-file', 'plural-forms', 'morpheme', 'word-suggest', 'learn-session',
 ];
 
 const names = process.argv.slice(2).length ? process.argv.slice(2) : ALL;

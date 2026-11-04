@@ -100,7 +100,7 @@ export {
   type CardLayout,
 } from './notebook-views';
 export { analyzeMorphemes, morphBreakdown, morphEntry, morphForms, wordOrigin, type Morph, type MorphEntry, type MorphEtymon, type MorphKind } from './morphology';
-export { vocabPayloadFromResult } from './vocab-payload';
+export { vocabPayloadFromResult, examplesFromResult } from './vocab-payload';
 
 export {
   type ContextOrigin,
@@ -239,6 +239,9 @@ export {
   isNewWord,
   memoryLevel,
   buildQuestion,
+  sameLemma,
+  reviewArmed,
+  ROUND_WORDS,
   type ReviewQuestion,
   type ReviewAnswer,
   type ReviewResult,
@@ -290,6 +293,8 @@ export {
   startScopeReview,
   reviewNeedsMeaning,
   dropCurrentReview,
+  markKnownInReview,
+  primeBookLevels,
   registerUserBooks,
   sourceGroups,
   isUserBookId,
@@ -328,6 +333,7 @@ export {
   type LearnPage,
 } from './learn-view';
 export { progressHtml, progressSummary, type ProgressInput, type ProgressSummary } from './learn-progress';
+export { attachLearnCharts, retentionAt, revealQuestion } from './learn-charts';
 export {
   SKILLS,
   MASTERY_THRESHOLD,
@@ -338,6 +344,8 @@ export {
   skillMastery,
   insertAnswer,
   answerKey,
+  localLemma,
+  recordLemmaAliases,
   type Skill,
   type AnswerKind,
   type AnswerRecord,
