@@ -1,13 +1,15 @@
 /**
  * The sections a morpheme page adds to the Lexicon, shared by the desktop pop-up and the
- * phone: variants and origin, the learner's own words built on the part (My words first,
- * then word books), the words Wiktionary or Etymonline list, related parts, and for a PIE
- * root its descendants. A plain word that also spells a part ("con", "form") gets a link to
- * that part's page under its headword.
+ * phone: what the part is and where it comes from (for a classical root, the Latin or Greek
+ * word and its principal parts, and the PIE root), the learner's own words built on it
+ * (My words first, then word books), the words built on it commonest first, related parts,
+ * and for a PIE root its descendants. A plain word that also spells a part ("con", "form")
+ * gets a link to that part's page under its headword.
  */
 import { analyzeMorphemes, morphBreakdown } from './morphology';
 import { cachedEtymon } from './notebook-etymology';
-import { morphemeOf, morphemeOffers, morphemeKindLabel, parseMorphemeQuery, type MorphemeEntry } from './morpheme';
+import { warmCmuIpa } from './cmu-ipa';
+import { morphemeOf, morphemeOffers, morphemeKindLabel, parseMorphemeQuery, partInWord, type MorphemeEntry } from './morpheme';
 import { linkText, wordLinkHtml } from './text-links';
 import type { LexiconLinks } from './lexicon-parts';
 
@@ -41,39 +43,21 @@ function wordLine(items: string[], links: LexiconLinks, shown: number, inner?: (
   }`;
 }
 
-/** Whether a word is built on the part, by the tables, by its traced PIE root, or by spelling. */
+/**
+ * Whether a word is built on the part: by Phevere's morpheme analysis with the word's traced
+ * origin, by its traced PIE root, or because the sources list it as built on the part.
+ */
 export function containsMorpheme(entry: MorphemeEntry, word: string): boolean {
   const w = String(word || '').trim().toLowerCase();
   if (!w || w === entry.bare.toLowerCase()) return false;
+  if (entry.groups.some((g) => g.derived.some((d) => d.toLowerCase() === w))) return true;
   if (entry.kind === 'reconstructed') return !!cachedEtymon(w)?.roots.includes(entry.form);
-  if (entry.tableKey) {
-    const hit = analyzeMorphemes(w).find((m) => m.kind === entry.kind && m.label === entry.tableKey);
-    if (hit && entry.kind !== 'suffix') return true;
-    // A suffix's table entry joins endings that are separate pages (-ant and -ent), and the
-    // analysis splits "moment" as mom·ent, so only the page's own spelling counts.
-    if (hit) {
-      const surface = w.slice(hit.start, hit.end);
-      return surface === entry.bare || entry.variants.some((v) => v.replace(/^-/, '') === surface);
-    }
-  }
-  if (!/^[a-z]+$/.test(w)) return false;
-  if (entry.kind === 'root') {
-    // The tables miss some spellings inside longer words ("ef·fic·ient"): a four-letter form
-    // anywhere counts, a three-letter one after the first letter ("fiction" is not built on fac).
-    return [entry.head, ...entry.variants].some((v) => {
-      const at = w.indexOf(v.toLowerCase());
-      return at >= 0 && w.length - v.length >= 3 && (v.length >= 4 || at >= 1);
-    });
-  }
-  // Parts the tables do not list are matched by spelling, with a stem long enough to be a word.
-  if (entry.kind === 'prefix') return w.startsWith(entry.bare) && w.length - entry.bare.length >= 4 && !entry.tableKey;
-  if (entry.kind === 'suffix') return w.endsWith(entry.bare) && w.length - entry.bare.length >= 4 && !entry.tableKey;
-  return false;
+  return partInWord(entry, w, cachedEtymon(w));
 }
 
 /** "ob·struct" when the tables can split the word, else the word. */
 function breakdown(word: string): string {
-  const parts = morphBreakdown(word);
+  const parts = morphBreakdown(word, analyzeMorphemes(word, cachedEtymon(word.toLowerCase())));
   return parts.length > 1 ? parts.map(esc).join('<span class="lx-dot">·</span>') : esc(word);
 }
 
@@ -87,24 +71,23 @@ function uniq(list: string[]): string[] {
   });
 }
 
-/** Spellings of the part seen in the learner's words ("oc" in "occur" for ob-), with marks. */
-function seenVariants(entry: MorphemeEntry, words: string[]): string[] {
-  if (!entry.tableKey || entry.kind === 'reconstructed' || entry.kind === 'suffix') return [];
-  const out: string[] = [];
-  for (const w of words) {
-    const m = analyzeMorphemes(w).find((x) => x.kind === entry.kind && x.label === entry.tableKey);
-    if (!m) continue;
-    const s = w.slice(m.start, m.end).toLowerCase();
-    out.push(entry.kind === 'prefix' ? `${s}-` : s);
-  }
-  return out;
-}
-
 /** The PIE roots most of the learner's words with this classical root trace back to. */
 function deepRoots(words: string[]): string[] {
   const count = new Map<string, number>();
   for (const w of words) for (const r of cachedEtymon(w)?.roots || []) count.set(r, (count.get(r) || 0) + 1);
   return [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([r]) => r);
+}
+
+/**
+ * Each page's sections, kept while the same words are passed in: matching 20,000 book words
+ * takes a noticeable fraction of a second, and a lookup repaints many times.
+ */
+const cache = new WeakMap<object, { sig: string; out: MorphemeSection[] }>();
+
+function signature(own: OwnWords, links: LexiconLinks): string {
+  const m = own.mine || [];
+  const b = own.books || [];
+  return `${links}|${m.length}|${m[0] || ''}|${m[m.length - 1] || ''}|${b.length}|${b[0] || ''}|${b[b.length - 1] || ''}`;
 }
 
 /** The Lexicon sections of a morpheme page; [] for an ordinary word. */
@@ -115,45 +98,50 @@ export function morphemeSections(
 ): MorphemeSection[] {
   const entry = morphemeOf(result);
   if (!entry) return [];
+  const sig = signature(own, links);
+  const hit = cache.get(entry);
+  if (hit && hit.sig === sig) return hit.out;
+  // A suffix needs a whole word in front of it, which the pronouncing dictionary knows.
+  warmCmuIpa();
+  const out = buildSections(entry, own, links);
+  cache.set(entry, { sig, out });
+  return out;
+}
+
+function buildSections(entry: MorphemeEntry, own: OwnWords, links: LexiconLinks): MorphemeSection[] {
   const sections: MorphemeSection[] = [];
-  // A word the sources list as built on the part counts too, traced or not.
-  const listed = new Set(entry.groups.flatMap((g) => g.derived.map((w) => w.toLowerCase())));
-  const has = (w: string) => listed.has(String(w || '').trim().toLowerCase()) || containsMorpheme(entry, w);
-  const mine = uniq((own.mine || []).filter(has));
+  const mine = uniq((own.mine || []).filter((w) => containsMorpheme(entry, w)));
   const mineKeys = new Set(mine.map((w) => w.toLowerCase()));
-  const books = uniq((own.books || []).filter((w) => !mineKeys.has(w.toLowerCase()) && has(w)));
+  const books = uniq((own.books || []).filter((w) => !mineKeys.has(w.toLowerCase()) && containsMorpheme(entry, w)));
 
   // About: what kind of part, from which language, its spellings and how it is used.
   const rows: string[] = [];
   const kind = entry.kind === 'reconstructed' ? 'Proto-Indo-European root' : `${entry.origin ? `${entry.origin} ` : ''}${morphemeKindLabel(entry.kind)}`;
   rows.push(`<div><dt>Type</dt><dd>${linkText(kind, links)}</dd></div>`);
+  if (entry.source) {
+    rows.push(`<div><dt>${esc(entry.source.language)}</dt><dd>${linkText(entry.source.parts, links)}</dd></div>`);
+  }
   if (entry.gloss) rows.push(`<div><dt>Meaning</dt><dd>${linkText(entry.gloss, links)}</dd></div>`);
-  const variants = uniq([...entry.variants, ...seenVariants(entry, [...mine, ...books])]).filter(
-    (v) => v.toLowerCase() !== entry.form.toLowerCase() && v.toLowerCase() !== entry.head.toLowerCase(),
-  );
+  const variants = uniq(entry.variants).filter((v) => v.toLowerCase() !== entry.form.toLowerCase() && v.toLowerCase() !== entry.head.toLowerCase());
   if (variants.length) {
     const asQuery = (v: string) => (entry.kind === 'root' ? `-${v}-` : v);
     rows.push(
-      `<div><dt>Variants</dt><dd>${variants
-        .map((v) => wordLinkHtml(asQuery(v), esc(v), links, 'lx-link'))
+      `<div><dt>Spellings</dt><dd>${[entry.head, ...variants]
+        .map((v) => (v === entry.head ? `<span class="lx-self">${esc(v)}</span>` : wordLinkHtml(asQuery(v), esc(v), links, 'lx-link')))
         .join('<span class="lx-comma">, </span>')}</dd></div>`,
     );
   }
   if (entry.kind === 'root') {
-    const roots = deepRoots([...mine, ...books]);
-    if (roots.length) rows.push(`<div><dt>Deep root</dt><dd>${roots.map((r) => link(r, links)).join('<span class="lx-comma">, </span>')}</dd></div>`);
+    const roots = entry.pie ? [entry.pie] : deepRoots([...mine, ...books]);
+    if (roots.length) rows.push(`<div><dt>PIE root</dt><dd>${roots.map((r) => link(r, links)).join('<span class="lx-comma">, </span>')}</dd></div>`);
   }
   if (entry.usage) rows.push(`<div><dt>Usage</dt><dd>${linkText(entry.usage, links)}</dd></div>`);
   sections.push({ id: 'morph-about', label: 'about', html: `<dl class="lx-morph">${rows.join('')}</dl>` });
 
-  if (mine.length) {
-    sections.push({ id: 'morph-mine', label: 'my words', html: wordLine(mine, links, 16, breakdown) });
-  }
-  if (books.length) {
-    sections.push({ id: 'morph-books', label: 'word books', html: wordLine(books, links, 16, breakdown) });
-  }
+  if (mine.length) sections.push({ id: 'morph-mine', label: 'my words', html: wordLine(mine, links, 16, breakdown) });
+  if (books.length) sections.push({ id: 'morph-books', label: 'word books', html: wordLine(books, links, 16, breakdown) });
 
-  const several = entry.groups.length > 1;
+  const several = entry.groups.filter((g) => g.derived.length).length > 1;
   const derivedHtml = entry.groups
     .filter((g) => g.derived.length)
     .map((g) => `${several && g.id ? `<h4 class="lx-label">${esc(g.id)}</h4>` : ''}${wordLine(g.derived, links, 24)}`)
@@ -161,8 +149,8 @@ export function morphemeSections(
   if (derivedHtml) sections.push({ id: 'morph-derived', label: 'derived words', html: `<div class="lx-fam">${derivedHtml}</div>` });
 
   if (entry.kind === 'reconstructed') {
-    const desc = entry.groups
-      .filter((g) => g.descendants.length || g.sourceOf || g.formations.length)
+    const withDesc = entry.groups.filter((g) => g.descendants.length || g.sourceOf || g.formations.length);
+    const desc = withDesc
       .map((g) => {
         const lines = g.descendants
           .slice(0, 14)
@@ -178,7 +166,7 @@ export function morphemeSections(
           ? `<div><dt>Formations</dt><dd>${g.formations.slice(0, 8).map((f) => `<span class="lx-recon">${esc(f)}</span>`).join('<span class="lx-comma">, </span>')}</dd></div>`
           : '';
         const sourceOf = g.sourceOf ? `<p class="lx-morph-note">${linkText(g.sourceOf, links)}</p>` : '';
-        return `${several && g.id ? `<h4 class="lx-label">${esc(g.id)}</h4>` : ''}${
+        return `${withDesc.length > 1 && g.id ? `<h4 class="lx-label">${esc(g.id)}</h4>` : ''}${
           lines || formations ? `<dl class="lx-morph">${lines}${formations}</dl>` : ''
         }${sourceOf}`;
       })

@@ -5,22 +5,25 @@
  * A query's shape says what it is, the way Wiktionary titles them: a trailing hyphen is a
  * prefix, a leading one a suffix, both a root inside a word, and a leading asterisk a
  * reconstructed form. The page carries what Wiktionary, Etymonline and Merriam-Webster show
- * for an affix or a root: its senses, variants (the assimilated ob-, oc-, of-, op-), where it
- * comes from, usage notes, and the words built on it. For an affix those are Wiktionary's
- * "English terms prefixed with ob-" category; for a PIE root, Etymonline's curated "It might
- * form all or part of" list, with the descendants from Wiktionary's reconstruction page.
+ * for an affix or a root: its senses, its spellings (ob-, oc-, of-, op-), where it comes from,
+ * usage notes, and the words built on it, commonest first. A classical root shows the Latin or
+ * Greek word behind it with its principal parts and the PIE root it continues; a PIE root
+ * shows Etymonline's English words and the descendants on Wiktionary's reconstruction page.
  *
  * The result is an ordinary DictionaryResult (senses, IPA, etymology tabs), with the
  * morpheme's own data under `metadata.morpheme` for the sections only a word part has.
  */
-import { analyzeMorphemes, type Morph } from './morphology';
+import { analyzeMorphemes, morphEntry, type Morph, type MorphEtymon } from './morphology';
 import { buildEtymology, extractLanguageSection, languageName, scanTemplates } from './etymology';
 import { extractIpaFromWikitext, type Pronunciation } from './pronunciation';
 import { cmuKnownSync } from './cmu-ipa';
 import { getHttp, isCoreConfigured } from './runtime';
+import { loadWordbook } from './wordbooks';
+import { sectionBody, sectionTerms, sensesUnder, wikiInline, type WikiSense } from './morpheme-wiki';
+import { ROOT_LEMMA, parseLemmaPage, principalParts } from './morpheme-roots';
 import type { Definition, DictionaryResult } from './dictionary';
 
-type RawTemplate = ReturnType<typeof scanTemplates>[number];
+export { wikiInline } from './morpheme-wiki';
 
 export type MorphemeKind = 'prefix' | 'suffix' | 'root' | 'reconstructed';
 
@@ -35,10 +38,13 @@ export interface MorphemeQuery {
 /** A prefix, suffix or root in Phevere's morpheme tables (morphology.ts). */
 export interface TableMorph {
   kind: 'prefix' | 'suffix' | 'root';
-  /** The table's canonical form: "ob-", "-sion", "fac". */
+  /** The label the analysis uses: "ob-", "-sion", "fac". */
   key: string;
   gloss: string;
   origin: string;
+  /** Its spellings with their hyphens, the label first: ["ob-", "oc-", "of-", "op-"]. */
+  forms: string[];
+  pie?: string;
 }
 
 export interface MorphemeDescendant {
@@ -52,8 +58,8 @@ export interface MorphemeDescendant {
 export interface MorphemeGroup {
   /** Wiktionary's sense id ("shine"), '' when the page has one entry. */
   id: string;
-  senses: Array<{ text: string; examples: string[] }>;
-  /** English words built on it, most common first. */
+  senses: WikiSense[];
+  /** English words built on it, commonest first. */
   derived: string[];
   descendants: MorphemeDescendant[];
   /** Reconstructed formations (*bʰéh₂-ti), which have no page of their own. */
@@ -73,23 +79,27 @@ export interface MorphemeEntry {
   /** Short meaning from the tables or Etymonline. */
   gloss: string;
   tableKey: string;
-  /** Other spellings with their hyphens: ["oc-", "op-"]. */
+  /** Other spellings, with hyphens for affixes: ["oc-", "op-"], ["fic", "fec", "fect"]. */
   variants: string[];
   usage: string;
   related: string[];
   groups: MorphemeGroup[];
   sources: string[];
+  /** A classical root's Latin or Greek word and its principal parts: "faciō, facere, fēcī, factum". */
+  source?: { language: string; lemma: string; parts: string; senses: string[] };
+  /** The Proto-Indo-European root a classical root continues. */
+  pie?: string;
 }
 
 const LETTER_RUN = /^[\p{L}\p{M}]+$/u;
-const RECONSTRUCTED = /^[\p{L}\p{M}ʰ-˿₀-₉()-]+$/u;
+const RECONSTRUCTED = /^[\p{L}\p{M}\u02b0-\u02ff\u2080-\u2089()-]+$/u;
 
 /** The word part a query names, or null for an ordinary word or phrase. */
 export function parseMorphemeQuery(text: string): MorphemeQuery | null {
   const s = String(text || '')
     .normalize('NFC')
     .trim()
-    .replace(/[‐‑‒–−]/g, '-');
+    .replace(/[\u2010\u2011\u2012\u2013\u2212]/g, '-');
   if (!s || s.length > 40 || /\s/.test(s)) return null;
   if (s.startsWith('*')) {
     const bare = s.slice(1).replace(/^-+|-+$/g, '');
@@ -116,61 +126,18 @@ export function morphemeLookupQuery(m: Pick<Morph, 'kind' | 'label' | 'start' | 
   return m.label;
 }
 
-/*
- * morphology.ts exports the analysis, not its tables, so the tables are read through it:
- * the part is placed in a carrier word where nothing else matches, and the analysis must
- * return exactly that span. Replace with a direct table export when one exists.
- */
-const PROBE_STEM = 'struct';
-
-function probe(word: string, kind: TableMorph['kind'], start: number, end: number): TableMorph | null {
-  const hit = analyzeMorphemes(word).find((x) => x.kind === kind && x.start === start && x.end === end);
-  return hit ? { kind, key: hit.label, gloss: hit.gloss, origin: hit.origin } : null;
-}
-
 /** The table's entry for a part, or null when Phevere's tables do not list it. */
 export function tableMorph(kind: TableMorph['kind'], bare: string): TableMorph | null {
   const b = String(bare || '').toLowerCase();
-  if (!/^[a-z]{1,12}$/.test(b)) return null;
-  if (kind === 'prefix') return probe(b + PROBE_STEM, 'prefix', 0, b.length);
-  if (kind === 'suffix') return probe(PROBE_STEM + b, 'suffix', PROBE_STEM.length, PROBE_STEM.length + b.length);
-  if (b.length < 2) return null;
-  return probe(`x${b}x`, 'root', 1, b.length + 1) || probe(`${b}xxx`, 'root', 0, b.length);
+  if (!/^[a-z]{1,14}$/.test(b)) return null;
+  const e = morphEntry(kind === 'prefix' ? `${b}-` : kind === 'suffix' ? `-${b}` : b);
+  if (!e || e.kind !== kind) return null;
+  return { kind, key: e.key, gloss: e.gloss, origin: e.origin, forms: e.forms, ...(e.pie ? { pie: e.pie } : {}) };
 }
 
 /**
- * Other spellings the tables give one prefix or root: the assimilated oc- and op- of ob-, the
- * fic and fact of fac. Found by trying every spelling one letter away; suffix entries are
- * left out because the tables join endings that are separate pages (-ant and -ent).
- */
-export function tableVariants(kind: TableMorph['kind'], bare: string): string[] {
-  const b = String(bare || '').toLowerCase();
-  if (kind === 'suffix' || !/^[a-z]{2,12}$/.test(b)) return [];
-  const key = tableMorph(kind, b)?.key;
-  if (!key) return [];
-  const seen = new Set<string>([b]);
-  const out: string[] = [];
-  const letters = 'abcdefghijklmnopqrstuvwxyz';
-  const tryForm = (c: string) => {
-    if (seen.has(c) || c.length < 2) return;
-    seen.add(c);
-    if (tableMorph(kind, c)?.key === key) out.push(c);
-  };
-  for (let i = 0; i <= b.length; i++) {
-    for (const ch of letters) {
-      if (i < b.length) tryForm(b.slice(0, i) + ch + b.slice(i + 1));
-      tryForm(b.slice(0, i) + ch + b.slice(i));
-    }
-    if (i < b.length) tryForm(b.slice(0, i) + b.slice(i + 1));
-  }
-  const keyBare = key.replace(/^-|-$/g, '');
-  if (keyBare !== b && !out.includes(keyBare)) out.unshift(keyBare);
-  return out;
-}
-
-/**
- * Word parts a plain word also spells, offered as a link on its page: "con" is a form of
- * co-, "form" a Latin root, "able" a suffix. Roots first, then prefixes, then suffixes.
+ * Word parts a plain word also spells, offered as a link on its page: "con" is a prefix,
+ * "form" a Latin root, "able" a suffix. Roots first, then prefixes, then suffixes.
  */
 export function morphemeOffers(word: string): MorphemeQuery[] {
   const w = String(word || '').trim();
@@ -187,147 +154,79 @@ export function morphemeKindLabel(kind: MorphemeKind): string {
   return kind === 'reconstructed' ? 'root' : kind;
 }
 
-/* ------------------------------------------------------------------ wikitext */
+/* ------------------------------------------------------------------ membership */
 
-function capitalize(s: string): string {
-  return s ? s[0].toUpperCase() + s.slice(1) : s;
+/** Whether a stem is an English word on its own ("assist" in assistant), when that is known. */
+function isWord(stem: string): boolean {
+  if (stem.length < 3) return false;
+  const known = (w: string) => cmuKnownSync(w) === true;
+  return known(stem) || known(`${stem}e`) || (/i$/.test(stem) && known(`${stem.slice(0, -1)}y`)) || (/(.)\1$/.test(stem) && known(stem.slice(0, -1)));
 }
 
-const LINK_TEMPLATES = new Set(['l', 'm', 'll', 'l-self', 'm-self', 'mention', 'link', 'alter', 'alt', 'll-lite']);
-
-function templateText(t: RawTemplate): string {
-  const p = t.positional;
-  switch (t.name) {
-    case 'lb':
-    case 'lbl':
-    case 'label': {
-      const labels = p.slice(1).filter((x) => x && x !== '_' && x !== 'and' && x !== 'or');
-      return labels.length ? `(${labels.join(', ')})` : '';
-    }
-    case 'n-g':
-    case 'ng':
-    case 'non-gloss':
-    case 'non-gloss definition':
-    case 'gloss':
-    case 'gl':
-      return wikiInline(p[0] || '');
-    case 'q':
-    case 'qual':
-    case 'qualifier':
-    case 'i':
-    case 'sense':
-    case 's':
-      return p.length ? `(${p.map(wikiInline).join(', ')})` : '';
-    case 'w':
-      return wikiInline(t.named.alt || p[1] || p[0] || '');
-    case 'ux':
-    case 'uxi':
-    case 'usex':
-    case 'eg':
-      return wikiInline(p[1] || '') + (t.named.t ? ` (${wikiInline(t.named.t)})` : '');
-    case 'suffixusex':
-    case 'prefixusex':
-    case 'affixusex':
-    case 'afex':
-      return p.slice(1).filter(Boolean).slice(-2).join(' → ');
-    default:
-      if (LINK_TEMPLATES.has(t.name)) return wikiInline(t.named.alt || p[2] || p[1] || '');
-      if (/ of$/.test(t.name) && p[1]) return `${capitalize(t.name)} ${p[1]}`;
-      return '';
-  }
-}
-
-/** One line of wikitext as reading text: templates rendered, links and markup dropped. */
-export function wikiInline(s: string): string {
-  let out = String(s || '');
-  for (const t of scanTemplates(out)) out = out.split(t.source).join(templateText(t));
-  return out
-    .replace(/<ref[^>]*\/>|<ref[^>]*>[\s\S]*?(?:<\/ref>|$)/gi, '')
-    .replace(/\[\[(?:[^|\]]*\|)?([^\]]+)\]\]/g, '$1')
-    .replace(/'{2,}/g, '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&#45;/g, '-')
-    .replace(/\s+/g, ' ')
-    .replace(/\s+([,.;:)])/g, '$1')
-    .replace(/\(\s*\)/g, '')
-    .trim();
-}
-
-/** The body under a heading (any level), up to the next heading of the same or higher level. */
-function sectionBody(text: string, name: string): string {
-  const re = new RegExp(`^(={3,6})\\s*${name}\\s*\\1\\s*$`, 'im');
-  const m = re.exec(text);
-  if (!m) return '';
-  const level = m[1].length;
-  const rest = text.slice(m.index + m[0].length);
-  const next = new RegExp(`^={2,${level}}[^=\\n][^\\n]*$`, 'm').exec(rest);
-  return (next ? rest.slice(0, next.index) : rest).trim();
-}
+/** The part a membership test needs: its kind, table key and the spellings the page stands for. */
+export type PartRef = Pick<MorphemeEntry, 'kind' | 'tableKey' | 'bare' | 'variants'>;
 
 /**
- * Terms linked in a section ({{l|en|-ion}}, {{alter|la|obs-|op-}}, [[-ize]]), in order. With
- * `firstPerLine`, only the bullet's own term counts, not the "(as in {{m|en|complexion}})" after it.
+ * Whether a word is built on the part, by Phevere's morpheme analysis (with the word's traced
+ * origin when known). A suffix also needs the word to end in the page's own spelling and to
+ * keep a root or a whole word in front of it, so "elephant" and "enchant" are not -ant, and
+ * "moment" is not -ant either. A part the tables do not list needs a whole word beside it.
  */
-function sectionTerms(body: string, lang: string, firstPerLine = false): string[] {
-  const out: string[] = [];
-  const add = (w: string) => {
-    const term = wikiInline(w).replace(/#.*$/, '').trim();
-    if (term && !out.includes(term) && !/[|=:]/.test(term)) out.push(term);
-  };
-  for (const line of firstPerLine ? body.split('\n') : [body]) {
-    for (const t of scanTemplates(line)) {
-      if (!LINK_TEMPLATES.has(t.name) || t.positional[0] !== lang) continue;
-      if (t.name === 'alter' || t.name === 'alt') {
-        for (const x of t.positional.slice(1)) {
-          if (!x) break;
-          add(x);
-        }
-      } else if (t.positional[1]) {
-        add(t.positional[1]);
-      }
-      if (firstPerLine) break;
-    }
+export function partInWord(part: PartRef, word: string, etymon?: MorphEtymon | null): boolean {
+  const w = String(word || '').trim().toLowerCase();
+  if (!/^[a-z]{3,}$/.test(w) || part.kind === 'reconstructed') return false;
+  const spellings = [part.bare, ...part.variants.map((v) => v.replace(/^-|-$/g, ''))].filter(Boolean);
+  if (w === part.bare) return false;
+  if (part.tableKey) {
+    const parts = analyzeMorphemes(w, etymon);
+    const hit = parts.find((m) => m.kind === part.kind && m.label === part.tableKey);
+    if (!hit) return false;
+    if (part.kind !== 'suffix') return true;
+    // A suffix page stands for its own spelling: "moment" ends in the -ent the tables join with -ant.
+    if (!w.endsWith(part.bare)) return false;
+    return parts.some((m) => m.kind === 'root') || isWord(w.slice(0, w.length - part.bare.length));
   }
-  for (const m of body.replace(/\{\{[\s\S]*?\}\}/g, '').matchAll(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g)) add(m[1]);
-  return out;
+  if (part.kind === 'prefix') return spellings.some((s) => w.startsWith(s) && isWord(w.slice(s.length)));
+  if (part.kind === 'suffix') return spellings.some((s) => w.endsWith(s) && isWord(w.slice(0, w.length - s.length)));
+  return false;
 }
 
-/** Whether a term is spelled as the same kind of part: "oc-" for a prefix, "-ion" for a suffix. */
-function sameShape(term: string, kind: MorphemeKind): boolean {
-  if (kind === 'prefix') return /^\p{L}[\p{L}\p{M}]*-$/u.test(term);
-  if (kind === 'suffix') return /^-\p{L}[\p{L}\p{M}]*$/u.test(term);
-  return true;
-}
-
-/** Senses ("# …") under the first heading named one of `pos`, with their "#:" examples. */
-function sensesUnder(text: string, pos: string[]): Array<{ text: string; examples: string[] }> {
-  const re = new RegExp(`^(={3,6})\\s*(?:${pos.join('|')})(?:\\s+\\d+)?\\s*\\1\\s*$`, 'gim');
-  const out: Array<{ text: string; examples: string[] }> = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) {
-    const rest = text.slice(m.index + m[0].length);
-    const next = /^=+[^=\n][^\n]*$/m.exec(rest);
-    const body = next ? rest.slice(0, next.index) : rest;
-    for (const line of body.split('\n')) {
-      if (/^#\s*[^:*#]/.test(line)) {
-        const sense = wikiInline(line.replace(/^#\s*/, ''));
-        if (sense) out.push({ text: sense, examples: [] });
-      } else if (/^#:\s*/.test(line) && out.length) {
-        const ex = wikiInline(line.replace(/^#:\s*/, ''));
-        if (ex && ex.length < 160) out[out.length - 1].examples.push(ex);
-      }
-    }
-  }
-  return out;
-}
+/* ------------------------------------------------------------------ affix pages */
 
 const AFFIX_POS = ['Prefix', 'Suffix', 'Infix', 'Interfix', 'Circumfix', 'Combining form', 'Affix', 'Root'];
 
+/** Wiktionary language codes for the origins the tables name. */
+const ORIGIN_CODES: Record<string, string[]> = {
+  Latin: ['la', 'la-lat', 'la-med', 'la-new', 'itc-pro'],
+  Greek: ['grc', 'el', 'grk-pro'],
+  'Old English': ['ang', 'enm', 'gem-pro', 'gmw-pro'],
+  French: ['fr', 'fro', 'frm', 'xno'],
+};
+
+const CLIPPED = /\{\{\s*(?:clipping|clip|abbreviation|abbrev|initialism|acronym|back-form|bf|blend|short for)\s*\|/;
+
+/**
+ * The parts of the English entry that are this word part, when the page holds homographs
+ * ("ob-" from Latin, and "ob-" clipped from "obligatory"): the etymology sections whose
+ * origin matches the tables, else every section that is not a clipping or an abbreviation.
+ */
+export function affixSections(english: string, origin: string): string[] {
+  const heads = [...english.matchAll(/^===\s*Etymology\s+\d+\s*===\s*$/gm)];
+  if (heads.length < 2) return [english];
+  const blocks = heads.map((h, i) => english.slice(h.index!, i + 1 < heads.length ? heads[i + 1].index! : undefined));
+  const codes = ORIGIN_CODES[origin] || [];
+  const ofOrigin = (b: string) => {
+    const ety = b.split(/\n={4,}/)[0];
+    return codes.some((c) => new RegExp(`\\|\\s*${c.replace('-', '\\-')}\\s*[|:}]`).test(ety) || ety.includes(`${c}:`));
+  };
+  const matching = codes.length ? blocks.filter(ofOrigin) : [];
+  if (matching.length) return matching;
+  const plain = blocks.filter((b) => !CLIPPED.test(b.split(/\n={4,}/)[0]));
+  return plain.length ? plain : [blocks[0]];
+}
+
 export interface AffixPage {
-  senses: Array<{ text: string; examples: string[] }>;
+  senses: WikiSense[];
   pronunciations: Pronunciation[];
   etymology: string;
   variants: string[];
@@ -337,48 +236,61 @@ export interface AffixPage {
   category: string;
 }
 
+/** Whether a term is spelled as the same kind of part: "oc-" for a prefix, "-ion" for a suffix. */
+function sameShape(term: string, kind: MorphemeKind): boolean {
+  if (kind === 'prefix') return /^\p{L}[\p{L}\p{M}]*-$/u.test(term);
+  if (kind === 'suffix') return /^-\p{L}[\p{L}\p{M}]*$/u.test(term);
+  return true;
+}
+
 /** The English entry of an affix page ("ob-", "-ant"); null when the page has none. */
-export function parseAffixPage(wikitext: string, q: MorphemeQuery): AffixPage | null {
+export function parseAffixPage(wikitext: string, q: MorphemeQuery, origin = ''): AffixPage | null {
   if (!/^==\s*English\s*==\s*$/m.test(wikitext || '')) return null;
   const en = extractLanguageSection(wikitext, 'English');
-  const senses = sensesUnder(en, AFFIX_POS);
+  const kept = affixSections(en, origin);
+  const scope = kept.join('\n');
+  const senses = sensesUnder(scope, AFFIX_POS);
   if (!senses.length) return null;
   const latin = extractLanguageSection(wikitext, 'Latin');
-  const fromLatin = /\{\{\s*(?:der|bor|lbor|inh)\+?\s*\|\s*en\s*\|\s*la\s*\|/.test(en) || /\{\{\s*etymon\|en\|[^}]*\bla:/.test(en);
+  const fromLatin = /\{\{\s*(?:der|bor|lbor|inh)\+?\s*\|\s*en\s*\|\s*la\s*\|/.test(scope) || /\{\{\s*etymon\|en\|[^}]*\bla:/.test(scope);
   const variants = sectionTerms(sectionBody(en, 'Alternative forms'), 'en', true);
   if (fromLatin && latin) {
     for (const v of sectionTerms(sectionBody(latin, 'Alternative forms'), 'la', true)) if (!variants.includes(v)) variants.push(v);
   }
-  const usageRaw = sectionBody(en, 'Usage notes') || (fromLatin ? sectionBody(latin, 'Usage notes') : '');
+  const usageRaw = sectionBody(scope, 'Usage notes') || (fromLatin ? sectionBody(latin, 'Usage notes') : '');
   const usage = usageRaw
     .split('\n')
     .map((l) => wikiInline(l.replace(/^[*#:]+\s*/, '')))
     .filter(Boolean)
     .join(' ')
     .slice(0, 480);
+  // Related parts only: a phrase such as "thread tax" belongs to another homograph's page.
   const related = [
-    ...sectionTerms(sectionBody(en, 'Related terms'), 'en'),
-    ...sectionTerms(sectionBody(en, 'Synonyms'), 'en'),
-    ...sectionTerms(sectionBody(en, 'See also'), 'en'),
-  ].filter((w, i, all) => all.indexOf(w) === i && w !== q.form);
+    ...sectionTerms(sectionBody(scope, 'Related terms'), 'en'),
+    ...sectionTerms(sectionBody(scope, 'Synonyms'), 'en'),
+    ...sectionTerms(sectionBody(scope, 'See also'), 'en'),
+  ].filter((w, i, all) => all.indexOf(w) === i && w !== q.form && !/\s/.test(w));
   let category = '';
-  for (const t of scanTemplates(en)) {
+  for (const t of scanTemplates(scope)) {
     if (t.name !== 'prefixsee' && t.name !== 'suffixsee' && t.name !== 'affixsee') continue;
     const id = t.named.id ? ` (${t.named.id})` : '';
     category = `English terms ${t.name === 'prefixsee' ? 'prefixed' : 'suffixed'} with ${q.form}${id}`;
     break;
   }
   if (!category) category = `English terms ${q.kind === 'prefix' ? 'prefixed' : 'suffixed'} with ${q.form}`;
+  const etyText = kept.length === 1 && kept[0] === en ? buildEtymology(wikitext)?.text || '' : buildEtymology(`==English==\n${scope}`)?.text || '';
   return {
     senses,
     pronunciations: extractIpaFromWikitext(en),
-    etymology: buildEtymology(wikitext)?.text || '',
+    etymology: etyText.replace(/^Etymology \d+:\s*/gm, ''),
     variants: variants.filter((v) => v !== q.form && sameShape(v, q.kind)),
     usage,
     related,
     category,
   };
 }
+
+/* ------------------------------------------------------------------ PIE roots */
 
 const RECON_POS = ['Root', 'Noun', 'Verb', 'Adjective', 'Suffix', 'Prefix', 'Adverb', 'Pronoun', 'Numeral', 'Particle', 'Preposition'];
 
@@ -463,19 +375,65 @@ export function parseCategoryMembers(json: string): string[] {
   }
 }
 
-/** Common words before rare ones (the pronouncing dictionary lists common words), then shorter. */
-export function rankDerived(words: string[], limit = 48): string[] {
+/* ------------------------------------------------------------------ word frequency */
+
+/** Words with Datamuse's frequency (uses per million words) from a `sp=…&md=f` response. */
+export function parseDatamuse(json: string): Array<{ word: string; freq: number }> {
+  try {
+    const rows = JSON.parse(json);
+    if (!Array.isArray(rows)) return [];
+    return rows
+      .map((r: { word?: string; tags?: string[] }) => {
+        const f = (r?.tags || []).find((t) => /^f:/.test(t));
+        return { word: String(r?.word || ''), freq: f ? Number(f.slice(2)) || 0 : 0 };
+      })
+      .filter((r) => /^[a-z]+$/.test(r.word));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Words built on the part, commonest first: the frequency-ranked candidates that pass
+ * `keep`, then the listed words (Wiktionary's category, Etymonline's list) that are not
+ * among them, in their own order.
+ */
+export function rankDerived(
+  candidates: Array<{ word: string; freq: number }>,
+  listed: string[],
+  keep: (w: string) => boolean,
+  limit = 48,
+): string[] {
   const seen = new Set<string>();
-  const scored = words
-    .filter((w) => {
-      const k = w.toLowerCase();
-      if (seen.has(k) || /^\p{Lu}/u.test(w) || /\d/.test(w)) return false;
-      seen.add(k);
-      return true;
-    })
-    .map((w, i) => ({ w, i, s: (cmuKnownSync(w.toLowerCase()) ? 0 : 100) + w.length }));
-  scored.sort((a, b) => a.s - b.s || a.i - b.i);
-  return scored.slice(0, limit).map((x) => x.w);
+  const out: string[] = [];
+  const freq = new Map<string, number>();
+  for (const c of candidates) freq.set(c.word.toLowerCase(), Math.max(freq.get(c.word.toLowerCase()) || 0, c.freq));
+  const all = new Set([...candidates.map((c) => c.word.toLowerCase()), ...listed.map((w) => w.toLowerCase())]);
+  // "effects", "obtained" and "significantly" stand under effect, obtain and significant.
+  const inflected = (w: string) =>
+    [w.replace(/s$/, ''), w.replace(/es$/, ''), w.replace(/ies$/, 'y'), w.replace(/ed$/, ''), w.replace(/d$/, ''), w.replace(/ing$/, ''), w.replace(/ing$/, 'e'), w.replace(/([a-z])\1(?:ed|ing)$/, '$1'), w.replace(/ly$/, '')].some(
+      (b) => b !== w && b.length >= 3 && all.has(b),
+    );
+  const ranked = [...freq]
+    .map(([word, f]) => ({ word, freq: f }))
+    .filter((c) => keep(c.word) && !inflected(c.word))
+    .sort((a, b) => b.freq - a.freq);
+  for (const c of ranked) {
+    const k = c.word.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(c.word);
+  }
+  const rest = listed
+    .filter((w) => !/^\p{Lu}/u.test(w) && !/\d/.test(w) && !seen.has(w.toLowerCase()) && !inflected(w.toLowerCase()))
+    .map((w, i) => ({ w, i, f: freq.get(w.toLowerCase()) ?? (cmuKnownSync(w.toLowerCase()) ? 0.5 : 0) }))
+    .sort((a, b) => b.f - a.f || a.i - b.i);
+  for (const r of rest) {
+    if (seen.has(r.w.toLowerCase())) continue;
+    seen.add(r.w.toLowerCase());
+    out.push(r.w);
+  }
+  return out.slice(0, limit);
 }
 
 /* ------------------------------------------------------------------ Etymonline */
@@ -495,7 +453,7 @@ export function etymonlineRootKey(form: string): string {
     .replace(/eh₁|h₁e/g, 'e')
     .replace(/h[₁₂₃]|H/g, '')
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z-]/g, '');
   return s ? `*${s}-` : '';
 }
@@ -523,7 +481,7 @@ export function parseEtymonlineJson(json: string): EtymonlineEntry[] {
     for (const v of item?.vocabularies || []) {
       const text = String(v?.etymology_plain || '').replace(/\s+/g, ' ').trim();
       if (text.length < 12) continue;
-      const gloss = ((text.match(/root meaning "([^"]+)"/) || text.match(/meaning "([^"]+)"/) || [])[1] || '').replace(/[.,;:]+$/, '');
+      const gloss = ((text.match(/root meaning "([^"]+)"/) || text.match(/meaning "([^"]+)"/) || [])[1] || '').replace(/[.,;:\s]+$/, '');
       const list = (text.match(/It might form all or part of:\s*([\s\S]*?)(?:\.\s*It might also be the source of:|\.?\s*$)/) || [])[1] || '';
       // A gloss in quotes holds the separator ('ban (n.1) "proclamation or edict;" ban (v.)').
       const formsPartOf = list
@@ -555,83 +513,41 @@ function matchEtymonline(group: MorphemeGroup, entries: EtymonlineEntry[], index
   return entries.length === total ? entries[index] : total === 1 ? entries[0] : undefined;
 }
 
-/* ------------------------------------------------------------------ fetching */
-
-const UA = 'Phevere/4.0 (https://github.com/thd2020/phevere)';
-
-async function getText(url: string, headers: Record<string, string> = {}): Promise<string | null> {
-  try {
-    if (isCoreConfigured()) {
-      const res = await getHttp().requestText(url, { headers, timeoutMs: 8000 });
-      return res.ok ? res.text : null;
-    }
-    const res = await fetch(url, { headers });
-    return res.ok ? await res.text() : null;
-  } catch {
-    return null;
-  }
-}
-
-const WIKI_API = 'https://en.wiktionary.org/w/api.php?format=json&formatversion=2&origin=*';
-
-async function wikitextOf(title: string): Promise<string | null> {
-  const text = await getText(
-    `${WIKI_API}&action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&titles=${encodeURIComponent(title)}`,
-    { 'Api-User-Agent': UA },
-  );
-  if (text == null) return null;
-  try {
-    const page = JSON.parse(text)?.query?.pages?.[0];
-    return typeof page?.revisions?.[0]?.slots?.main?.content === 'string' ? page.revisions[0].slots.main.content : '';
-  } catch {
-    return null;
-  }
-}
-
-async function categoryWords(category: string): Promise<string[]> {
-  const text = await getText(
-    `${WIKI_API}&action=query&list=categorymembers&cmnamespace=0&cmlimit=200&cmtitle=${encodeURIComponent(`Category:${category}`)}`,
-    { 'Api-User-Agent': UA },
-  );
-  return text ? parseCategoryMembers(text) : [];
-}
-
-async function etymonline(word: string): Promise<EtymonlineEntry[]> {
-  const text = await getText(`https://www.etymonline.com/api/etymology?word=${encodeURIComponent(word)}`, {
-    Accept: 'application/json',
-  });
-  return text ? parseEtymonlineJson(text) : [];
-}
-
-function reconstructionTitle(q: MorphemeQuery): string {
-  return `Reconstruction:Proto-Indo-European/${q.form.replace(/^\*/, '')}`;
-}
+/* ------------------------------------------------------------------ assembly */
 
 /** What the page needs, fetched in parallel. Pure assembly lives in buildMorphemeEntry. */
 export interface MorphemeSources {
   wikitext?: string | null;
   categories?: Record<string, string[]>;
   etymonline?: EtymonlineEntry[];
+  /** Candidate words with their frequency, from Datamuse spelling searches. */
+  frequent?: Array<{ word: string; freq: number }>;
+  /** A classical root's Latin or Greek entry, and its expanded headword line. */
+  lemma?: { title: string; wikitext: string | null; headline?: string | null };
 }
 
 function emptyEntry(q: MorphemeQuery): MorphemeEntry {
   const table = q.kind === 'reconstructed' ? null : tableMorph(q.kind, q.bare);
+  // A root's page is the same for each of its spellings: "-fic-" opens fac.
+  const head = q.kind === 'root' ? table?.key || q.bare : q.form;
   return {
     kind: q.kind,
     form: q.form,
-    head: q.kind === 'root' ? q.bare : q.form,
-    bare: q.bare,
+    head,
+    bare: q.kind === 'root' ? table?.key || q.bare : q.bare,
     origin: q.kind === 'reconstructed' ? 'Proto-Indo-European' : table?.origin || '',
     gloss: table?.gloss || '',
     tableKey: table?.key || '',
-    variants:
-      q.kind === 'prefix' ? tableVariants('prefix', q.bare).map((v) => `${v}-`) : q.kind === 'root' ? tableVariants('root', q.bare) : [],
+    variants: (table?.forms || []).filter((f) => f !== head && f !== q.form),
     usage: '',
     related: [],
     groups: [],
     sources: [],
+    ...(table?.pie ? { pie: table.pie } : {}),
   };
 }
+
+const emptyGroup = (): MorphemeGroup => ({ id: '', senses: [], derived: [], descendants: [], formations: [], sourceOf: '' });
 
 /** The page, from what the sources returned. */
 export function buildMorphemeEntry(
@@ -642,6 +558,7 @@ export function buildMorphemeEntry(
   let pronunciations: Pronunciation[] = [];
   const etymologyParts: string[] = [];
   const ety = src.etymonline || [];
+  const keep = (w: string) => partInWord(entry, w);
   if (q.kind === 'reconstructed') {
     const groups = src.wikitext ? parseReconstructionPage(src.wikitext) : [];
     if (groups.length) entry.sources.push('Wiktionary');
@@ -652,19 +569,12 @@ export function buildMorphemeEntry(
         g.sourceOf = e.sourceOf;
       }
       const cat = src.categories?.[g.id ? `${q.form} (${g.id})` : q.form];
-      if (!g.derived.length && cat) g.derived = rankDerived(cat);
+      if (!g.derived.length && cat) g.derived = rankDerived([], cat, () => true);
     });
     // Etymonline knows the root although Wiktionary's page could not be read.
     if (!groups.length) {
       for (const e of ety) {
-        groups.push({
-          id: e.property.replace(/[()]/g, ''),
-          senses: e.gloss ? [{ text: e.gloss, examples: [] }] : [],
-          derived: e.formsPartOf,
-          descendants: [],
-          formations: [],
-          sourceOf: e.sourceOf,
-        });
+        groups.push({ ...emptyGroup(), id: e.property.replace(/[()]/g, ''), senses: e.gloss ? [{ text: e.gloss, examples: [] }] : [], derived: e.formsPartOf, sourceOf: e.sourceOf });
       }
     }
     if (ety.length) entry.sources.push('Etymonline');
@@ -674,11 +584,32 @@ export function buildMorphemeEntry(
     entry.groups = groups;
     for (const e of ety) etymologyParts.push(`[Etymonline]\n${[e.word, e.property].filter(Boolean).join(' ')}: ${e.text}`);
   } else if (q.kind === 'root') {
-    // Classical roots have no Wiktionary entry of their own; the tables give the meaning.
-    if (entry.gloss) entry.groups.push({ id: '', senses: [{ text: entry.gloss, examples: [] }], derived: [], descendants: [], formations: [], sourceOf: '' });
+    const group = emptyGroup();
+    const lemma = src.lemma?.wikitext ? parseLemmaPage(src.lemma.wikitext, src.lemma.title) : null;
+    if (lemma) {
+      entry.sources.push('Wiktionary');
+      const parts = principalParts(src.lemma?.headline || '') || src.lemma!.title;
+      entry.source = { language: lemma.language === 'Ancient Greek' ? 'Greek' : 'Latin', lemma: src.lemma!.title, parts, senses: lemma.senses };
+      if (lemma.pie && !entry.pie) entry.pie = lemma.pie;
+      if (lemma.etymology) etymologyParts.push(`[Wiktionary]\n${parts.split(',')[0]}: ${lemma.etymology}`);
+    }
+    // The root's meaning first, then what the Latin or Greek word means.
+    group.senses = <WikiSense[]>[
+      ...(entry.gloss ? [{ text: entry.gloss, examples: [] as string[] }] : []),
+      ...(lemma ? lemma.senses.slice(0, 4).map((s) => ({ text: `${entry.source!.parts.split(',')[0]}: ${s}`, examples: [] as string[] })) : []),
+    ];
+    // English words: the frequency-ranked spellings, then Etymonline's list for the PIE root.
+    const listed = ety.flatMap((e) => e.formsPartOf).filter(keep);
+    group.derived = rankDerived(src.frequent || [], listed, keep);
+    if (ety.length) {
+      entry.sources.push('Etymonline');
+      for (const e of ety) etymologyParts.push(`[Etymonline]\n${[e.word, e.property].filter(Boolean).join(' ')}: ${e.text}`);
+    }
+    if (group.senses.length || group.derived.length) entry.groups.push(group);
   } else {
-    const page = src.wikitext ? parseAffixPage(src.wikitext, q) : null;
-    const group: MorphemeGroup = { id: '', senses: [], derived: [], descendants: [], formations: [], sourceOf: '' };
+    const page = src.wikitext ? parseAffixPage(src.wikitext, q, entry.origin) : null;
+    const group = emptyGroup();
+    let listed: string[] = [];
     if (page) {
       entry.sources.push('Wiktionary');
       group.senses = page.senses;
@@ -687,9 +618,10 @@ export function buildMorphemeEntry(
       entry.related = page.related;
       pronunciations = page.pronunciations;
       if (page.etymology) etymologyParts.push(`[Wiktionary]\n${page.etymology}`);
-      const cat = src.categories?.[page.category];
-      if (cat) group.derived = rankDerived(cat.filter((w) => w.toLowerCase() !== q.form));
+      listed = (src.categories?.[page.category] || []).filter((w) => w.toLowerCase() !== q.form);
     }
+    // Common words built on it first; Wiktionary's category, mostly rare formations, after them.
+    group.derived = rankDerived(src.frequent || [], listed.slice(0, 60), keep);
     const e = ety[0];
     if (e) {
       entry.sources.push('Etymonline');
@@ -735,12 +667,132 @@ export function morphemeOf(result: { metadata?: Record<string, any> } | null | u
   return m && typeof m === 'object' && typeof m.kind === 'string' ? (m as MorphemeEntry) : null;
 }
 
+/* ------------------------------------------------------------------ fetching */
+
+const UA = 'Phevere/4.0 (https://github.com/thd2020/phevere)';
+
+async function getText(url: string, headers: Record<string, string> = {}): Promise<string | null> {
+  try {
+    if (isCoreConfigured()) {
+      const res = await getHttp().requestText(url, { headers, timeoutMs: 8000 });
+      return res.ok ? res.text : null;
+    }
+    const res = await fetch(url, { headers });
+    return res.ok ? await res.text() : null;
+  } catch {
+    return null;
+  }
+}
+
+const WIKI_API = 'https://en.wiktionary.org/w/api.php?format=json&formatversion=2&origin=*';
+
+async function wikitextOf(title: string): Promise<string | null> {
+  const text = await getText(
+    `${WIKI_API}&action=query&prop=revisions&rvprop=content&rvslots=main&redirects=1&titles=${encodeURIComponent(title)}`,
+    { 'Api-User-Agent': UA },
+  );
+  if (text == null) return null;
+  try {
+    const page = JSON.parse(text)?.query?.pages?.[0];
+    return typeof page?.revisions?.[0]?.slots?.main?.content === 'string' ? page.revisions[0].slots.main.content : '';
+  } catch {
+    return null;
+  }
+}
+
+/** A headword template rendered by Wiktionary, for the principal parts it computes. */
+async function expandTemplate(title: string, template: string): Promise<string | null> {
+  if (!template) return null;
+  const text = await getText(
+    `${WIKI_API}&action=expandtemplates&prop=wikitext&title=${encodeURIComponent(title)}&text=${encodeURIComponent(template)}`,
+    { 'Api-User-Agent': UA },
+  );
+  try {
+    return text ? String(JSON.parse(text)?.expandtemplates?.wikitext || '') : null;
+  } catch {
+    return null;
+  }
+}
+
+async function categoryWords(category: string): Promise<string[]> {
+  const text = await getText(
+    `${WIKI_API}&action=query&list=categorymembers&cmnamespace=0&cmlimit=200&cmtitle=${encodeURIComponent(`Category:${category}`)}`,
+    { 'Api-User-Agent': UA },
+  );
+  return text ? parseCategoryMembers(text) : [];
+}
+
+async function etymonline(word: string): Promise<EtymonlineEntry[]> {
+  const text = await getText(`https://www.etymonline.com/api/etymology?word=${encodeURIComponent(word)}`, {
+    Accept: 'application/json',
+  });
+  return text ? parseEtymonlineJson(text) : [];
+}
+
+/** Words matching Datamuse spelling patterns ("ob*", "*tion", "*fic*"), with frequencies. */
+async function frequentWords(patterns: string[]): Promise<Array<{ word: string; freq: number }>> {
+  const lists = await Promise.all(
+    patterns.slice(0, 8).map(async (p) => {
+      const text = await getText(`https://api.datamuse.com/words?sp=${encodeURIComponent(p)}&md=f&max=1000`);
+      return text ? parseDatamuse(text) : [];
+    }),
+  );
+  return lists.flat();
+}
+
+let bookWords: Promise<Array<{ word: string; freq: number }>> | null = null;
+
+/**
+ * The shipped frequency-ordered word lists (NGSL, then the academic list) as candidates with
+ * an estimated frequency, so the commonest words built on a part come first offline too.
+ * A word in place r of the general list is used about 60000 / r times per million.
+ */
+function bookCandidates(): Promise<Array<{ word: string; freq: number }>> {
+  if (!bookWords) {
+    bookWords = Promise.all([loadWordbook('ngsl'), loadWordbook('nawl')])
+      .then(([general, academic]) => [
+        ...general.map((word, i) => ({ word: word.toLowerCase(), freq: 60000 / (i + 30) })),
+        ...academic.map((word, i) => ({ word: word.toLowerCase(), freq: 60000 / (3000 + i * 6) })),
+      ])
+      .catch(() => []);
+  }
+  return bookWords;
+}
+
+/** Candidates matching the Datamuse patterns, from the shipped lists. */
+async function bookMatches(patterns: string[]): Promise<Array<{ word: string; freq: number }>> {
+  const res = patterns.map((p) => new RegExp(`^${p.replace(/\*/g, '[a-z]*')}$`));
+  return (await bookCandidates()).filter((c) => /^[a-z]+$/.test(c.word) && res.some((r) => r.test(c.word)));
+}
+
+/** The Datamuse patterns for a part's spellings. */
+export function spellingPatterns(entry: Pick<MorphemeEntry, 'kind' | 'bare' | 'variants'>): string[] {
+  const bare = (v: string) => v.replace(/^-|-$/g, '');
+  if (entry.kind === 'prefix') return [entry.bare, ...entry.variants.map(bare)].filter((s, i, all) => s.length >= 2 && all.indexOf(s) === i).map((s) => `${s}*`);
+  // A suffix page stands for its own spelling: -tion, not every ending the tables join with it.
+  if (entry.kind === 'suffix') return [`*${entry.bare}`];
+  if (entry.kind === 'root') return [entry.bare, ...entry.variants.map(bare)].filter((s, i, all) => s.length >= 3 && all.indexOf(s) === i).map((s) => `*${s}*`);
+  return [];
+}
+
+/** Datamuse's frequencies, with the shipped lists for the words it does not return or when it is unreachable. */
+async function frequentAndListed(patterns: string[]): Promise<Array<{ word: string; freq: number }>> {
+  const [remote, local] = await Promise.all([frequentWords(patterns), bookMatches(patterns)]);
+  return [...remote, ...local];
+}
+
+function reconstructionTitle(q: MorphemeQuery): string {
+  return `Reconstruction:Proto-Indo-European/${q.form.replace(/^\*/, '')}`;
+}
+
 const pages = new Map<string, { at: number; result: DictionaryResult }>();
 const PAGE_TTL_MS = 30 * 60_000;
 
 /** Fetch and assemble the page. Results with something on them are kept for half an hour. */
 export async function lookupMorpheme(q: MorphemeQuery): Promise<DictionaryResult> {
-  const key = `${q.kind}:${q.form}`;
+  const base = emptyEntry(q);
+  // "-fic-" and "-fac-" are one page.
+  const key = q.kind === 'root' && base.tableKey ? `root:${base.tableKey}` : `${q.kind}:${q.form}`;
   const hit = pages.get(key);
   if (hit && Date.now() - hit.at < PAGE_TTL_MS) return hit.result;
   const src: MorphemeSources = { categories: {} };
@@ -758,14 +810,31 @@ export async function lookupMorpheme(q: MorphemeQuery): Promise<DictionaryResult
         src.categories![label] = await categoryWords(`English terms derived from the Proto-Indo-European root ${label}`);
       }),
     );
-  } else if (q.kind !== 'root') {
-    const [wikitext, ety] = await Promise.all([wikitextOf(q.form), etymonline(q.form)]);
+  } else if (q.kind === 'root') {
+    const title = ROOT_LEMMA[base.tableKey] || '';
+    const ekey = base.pie ? etymonlineRootKey(base.pie) : '';
+    const [wikitext, ety, frequent] = await Promise.all([
+      title ? wikitextOf(title) : Promise.resolve(null),
+      ekey ? etymonline(ekey) : Promise.resolve([]),
+      frequentAndListed(spellingPatterns(base)),
+    ]);
+    const lemma = wikitext ? parseLemmaPage(wikitext, title) : null;
+    const headline = lemma ? await expandTemplate(title, lemma.headTemplate) : null;
+    src.lemma = { title, wikitext, headline };
+    src.etymonline = ety;
+    src.frequent = frequent;
+    // The PIE root Wiktionary names, when the tables have none.
+    if (!ekey && lemma?.pie) src.etymonline = await etymonline(etymonlineRootKey(lemma.pie));
+  } else {
+    const [wikitext, ety, frequent] = await Promise.all([wikitextOf(q.form), etymonline(q.form), frequentAndListed(spellingPatterns(base))]);
     src.wikitext = wikitext;
     src.etymonline = ety;
-    const page = wikitext ? parseAffixPage(wikitext, q) : null;
+    src.frequent = frequent;
+    const page = wikitext ? parseAffixPage(wikitext, q, base.origin) : null;
     if (page) src.categories![page.category] = await categoryWords(page.category);
   }
   const result = morphemeResult(q, buildMorphemeEntry(q, src));
   if (result.definitions.length) pages.set(key, { at: Date.now(), result });
   return result;
 }
+
