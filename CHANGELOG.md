@@ -9,10 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Search suggestions (2026-11-04): typing in the desktop search field or the phone's lookup field lists the commonest words that begin with what you typed, ranked by how often they are used in English rather than alphabetically. Plurals and past tenses of a listed word are left out, and a misspelling such as "recieve" or "accomodate" suggests the right spelling. The list works offline from the word books and widens online.
 - Word trees (2026-11-04): clicking a tree in Families → Word trees, or its open button, shows that tree alone and large, so the words on a big tree can be read. The wheel or a pinch zooms around the pointer, dragging moves the tree, a double click zooms in, and the bar has zoom out, fit, zoom in and close. Escape closes it on the desktop and Back on the phone, and a word in it opens the lookup.
 
 ### Changed
 
+- Phone lookup (2026-11-04): the word, its pronunciations and the source tabs stay fixed and only the definitions scroll, so scrolling to the end of a long entry no longer pushes the word off the top. Pronunciations sit on one row that scrolls sideways, which leaves more room for the definitions.
+- Word book lists (2026-11-04): a book's List can be ordered by the book's own order, by the words you met most recently, or A to Z, and each word keeps its place number in the book. The book's header no longer carries the New a day chips (the daily goal lives in Learn), and Remove book is now a red close button on the book's chip in the switcher: it shows when you point at the chip on the desktop, and on the open book's chip on a phone.
 - Families (2026-11-04): Roots, Prefixes, Suffixes and Deep roots are in A to Z order under letter headings, with a row of letters at the top to jump to one. A family's tile is sized by how many words it holds: a family of two is a small tile, one of sixteen or more a wide tile with a larger name and more of its words shown. Opening a family shows its words in a drawer under its row and leaves the tile where it was.
 - Cards (2026-11-04): on the desktop as on the phone, clicking a card's picture turns it over and clicking its text opens the lookup. On the back, a click anywhere turns it back to the picture, and a Look up button sits in the bottom-left corner.
 - Cards (2026-11-04): clicking a pile, or its top card, opens only that pile. Its top card stays where it was and the rest of its cards spread on the table just below its row, while the other piles stay closed and the page does not scroll. Gather, the pile itself or Piles puts the cards back. Scatter still spreads every pile at once.
