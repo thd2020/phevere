@@ -37,6 +37,7 @@ function rewriteDevUrl(url: string): string {
     const host = u.hostname.replace(/^www\./, '');
     if (host === 'etymonline.com') return `/__pv/etymonline${u.pathname}${u.search}`;
     if (host === 'kaikki.org') return `/__pv/kaikki${u.pathname}${u.search}`;
+    if (host === 'api.datamuse.com') return `/__pv/datamuse${u.pathname}${u.search}`;
     if (host === 'dict.youdao.com') {
       return u.protocol === 'http:'
         ? `/__pv/youdao-http${u.pathname}${u.search}`
