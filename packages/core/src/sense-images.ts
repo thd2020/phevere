@@ -85,7 +85,8 @@ const WIKTIONARY_TIMEOUT_MS = TIMEOUT_MS;
 /** A query asked again on its own after its batch failed gets longer. */
 const RETRY_TIMEOUT_MS = 15000;
 // v6: pools also hold Wiktionary sense lines' Wikidata items and the article's Wikidata image.
-const CACHE_VERSION = 'v6';
+// v7: pools also hold the articles listed on the word's disambiguation page.
+const CACHE_VERSION = 'v7';
 const PERSIST_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 /** A result with no picture at all is kept this long, so a word saved earlier is tried again. */
 const EMPTY_TTL_MS = 6 * 60 * 60 * 1000;
@@ -551,6 +552,14 @@ const WIKI_PAGE_PROPS =
   `prop=pageimages|pageprops|description|extracts&piprop=name|thumbnail&pithumbsize=${THUMB_WIDTH}` +
   '&pilicense=free&ppprop=disambiguation|wikibase_item&exintro=1&explaintext=1&exsentences=2&exlimit=max';
 
+/** Articles with these titles (twenty at most, the limit for first sentences), redirects followed. */
+export function buildWikipediaTitlesUrl(titles: string[], lang = 'en'): string {
+  return (
+    `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&redirects=1` +
+    `&${WIKI_PAGE_PROPS}&pilimit=50&titles=${encodeURIComponent(titles.slice(0, 20).join('|'))}&origin=*`
+  );
+}
+
 /** Article whose title is exactly `title` (redirects followed). */
 export function buildWikipediaTitleUrl(title: string, lang = 'en'): string {
   return (
@@ -611,7 +620,10 @@ export function pageFitsGloss(
   const e = contentTokens(String(page.extract || ''), word);
   const minD = opts.strict ? 2 : 1;
   const minE = opts.strict ? 3 : 2;
-  return overlap(g, d) >= minD || overlap(g, e) >= minE;
+  if (overlap(g, d) >= minD || overlap(g, e) >= minE) return true;
+  // The same head in other words for the first noun sense: "headdress" and "headwear",
+  // "percussive instrument" and "percussion instrument".
+  return !opts.strict && headsMeet(glossHeads(glossBody(gloss), lemma), glossHeads(description));
 }
 
 /** "cat" from "cat; (dialect) ...": a foreign word's gloss when it is one or two plain words. */
@@ -1298,6 +1310,10 @@ const HEAD_CLASSES = [
   ['part', 'region', 'area', 'portion', 'zone', 'section'],
   ['container', 'receptacle', 'vessel', 'box'],
   ['structure', 'construction', 'building'],
+  ['headdress', 'headwear', 'headgear', 'headpiece', 'hat', 'cap', 'helmet', 'diadem'],
+  ['tube', 'pipe', 'cylinder', 'conduit', 'duct'],
+  ['cover', 'covering', 'layer', 'casing', 'coating', 'exterior'],
+  ['garment', 'clothing', 'outerwear', 'apparel'],
 ].map((c) => c.map((w) => stem(w)));
 
 function sameHead(a: string, b: string): boolean {
@@ -1329,6 +1345,65 @@ export function glossHead(gloss: string, lemma = ''): string {
   const phrase = after[1].match(PHRASE_END);
   const words = contentTokens(phrase ? phrase[1] : after[1], lemma).filter((t) => !GENERIC_HEADS.has(t));
   return words[words.length - 1] || last;
+}
+
+/**
+ * Every head the leading noun phrase of a gloss may have, for a gloss that lists adjectives or
+ * alternatives: "a royal, imperial or princely headdress" gives headdress, "hard, protective outer
+ * layers" gives layer. A lone word before a comma is taken for an adjective and skipped.
+ */
+export function glossHeads(gloss: string, lemma = ''): string[] {
+  const plain = stripHtml(gloss)
+    .toLowerCase()
+    .replace(/^(?:in|on|within|among)\b[^,]*,\s*/, '')
+    .replace(/^(?:is|are|was)\s+/, '');
+  const m = plain.match(/^(.*?)(?:\s+(?:of|which|that|who|used|with|for|in|to|from|between|occurring|by|created|made|consisting|comprising|formed|found|containing|on|at|as)\b|[;(]|$)/);
+  const phrase = m ? m[1] : plain;
+  if (!/,|\s(?:or|and)\s/.test(phrase)) {
+    const h = glossHead(gloss, lemma);
+    return h ? [h] : [];
+  }
+  const parts = phrase.split(/,|\s+(?:or|and)\s+/);
+  const heads: string[] = [];
+  parts.forEach((part, i) => {
+    const t = contentTokens(part, lemma);
+    if (!t.length || (t.length === 1 && i < parts.length - 1)) return;
+    const h = t[t.length - 1];
+    if (!GENERIC_HEADS.has(h) && !heads.includes(h)) heads.push(h);
+  });
+  return heads;
+}
+
+function headsMeet(a: string[], b: string[]): boolean {
+  return a.some((x) => b.some((y) => sameHead(x, y)));
+}
+
+/**
+ * How well an article from the word's disambiguation page fits a sense, 0 when it does not:
+ * "Tobacco pipe", "Pipe (fluid conveyance)", "Pitcher (container)", "Bed sheet". The title's
+ * qualifier or modifier naming a word of the gloss counts two, the article's description having
+ * the gloss's head counts two, and each further word the description and first sentences share
+ * with the gloss counts one, up to three; three in all are needed.
+ */
+export function relatedPageFit(page: WikipediaPage, sense: SenseInput, lemma: string): number {
+  const { base, qualifier } = titleParts(page.title);
+  const w = lemma.toLowerCase();
+  const b = base.toLowerCase();
+  // "tobacco" in "Tobacco pipe", "sea" in "Seashell".
+  const modifier = b !== w && b.endsWith(w) ? b.slice(0, -w.length).replace(/[\s-]+$/, '') : '';
+  const g = contentTokens(glossBody(sense.meaning), lemma);
+  if (!g.length) return 0;
+  const heads = glossHeads(glossBody(sense.meaning), lemma);
+  const label = contentTokens(`${modifier} ${qualifier}`, lemma);
+  const named = label.some((t) => g.some((x) => nearWord(x, t)) || heads.some((h) => sameHead(h, t)));
+  // The description's head with the word kept: "Cap which fills the inner space of a crown" is a cap.
+  const headed = headsMeet(heads, glossHeads(String(page.description || '')));
+  const d = contentTokens(`${page.description || ''} ${page.extract || ''}`, lemma).filter((t) => !label.includes(t));
+  const score = (named ? 2 : 0) + (headed ? 2 : 0) + Math.min(3, overlap(g, d));
+  // A one-word compound is usually another thing ("whiteboard", "eggshell"): it needs its
+  // modifier in the gloss, or the head and three shared words.
+  const need = named ? 3 : /[\s(-]/.test(page.title) ? 4 : 5;
+  return score >= need ? score : 0;
 }
 
 /**
@@ -1391,6 +1466,8 @@ export interface PicturePool {
   article: WikipediaPage | null;
   /** English articles titled with a foreign word's short gloss ("猫" gives "Cat"). */
   glossArticles: WikipediaPage[];
+  /** Articles on the word's disambiguation page titled with it ("Pitcher (container)", "Tobacco pipe"), with a picture. */
+  related?: WikipediaPage[];
   /** Definition lines of the Wiktionary page by etymology, to tell homographs apart. */
   etymology: Array<{ ety: number; tokens: string[] }>;
   pictures: PoolPicture[];
@@ -1450,7 +1527,7 @@ export interface SensePictureRules {
   /** Pictures per lookup at most. */
   maxPictures: number;
   /** Source order: the higher rank wins when several sources fit a sense. 0 turns a source off. */
-  rank: { lexeme: number; senseItem: number; wiktionaryLinked: number; wiktionaryCaption: number; glossArticle: number; article: number };
+  rank: { lexeme: number; senseItem: number; wiktionaryLinked: number; wiktionaryCaption: number; glossArticle: number; relatedArticle: number; article: number };
   /** Pictures matched by shared words (Wiktionary captions, articles) only go to senses that name
    *  something you can see; a picture an editor linked to the sense itself stays on any sense. */
   picturableOnly: boolean;
@@ -1466,7 +1543,7 @@ export interface SensePictureRules {
 export const SENSE_PICTURE_RULES: SensePictureRules = {
   maxPictures: 3,
   // Source order by how often each kind of link is right (Wikidata's item images first).
-  rank: { lexeme: 40, senseItem: 38, wiktionaryLinked: 35, wiktionaryCaption: 20, glossArticle: 12, article: 10 },
+  rank: { lexeme: 40, senseItem: 38, wiktionaryLinked: 35, wiktionaryCaption: 20, glossArticle: 12, relatedArticle: 11, article: 10 },
   picturableOnly: true,
   byFrequency: true,
   minorsAfterMajors: true,
@@ -1578,7 +1655,10 @@ export function assignPictures(
     if (R.senseItem <= 0) return;
     const fits = senses.map((s) => linkedLineFit(x.senseText, x.pos, s, lemma));
     const best = Math.max(0, ...fits);
-    if (best > 0) fits.forEach((f, i) => f === best && cands[i].push({ key: `senseitem:${k}`, rank: R.senseItem + Math.min(f, 1) }));
+    // The line that is our gloss word for word is the editor's own link for this sense, and
+    // beats a lexeme sense matched by shared words ("bell": the church bell, not a trumpet's bell).
+    const rank = (f: number) => (f >= 0.9 ? R.lexeme + 10 : R.senseItem + Math.min(f, 1));
+    if (best > 0) fits.forEach((f, i) => f === best && cands[i].push({ key: `senseitem:${k}`, rank: rank(f) }));
   });
   const code = String(pool.lang || 'en').toLowerCase().split(/[-_]/)[0] || 'en';
   const nouns = senses.map((s, i) => (stripHtml(s.meaning) && ['noun', ''].includes(canonicalSensePos(s.partOfSpeech)) ? i : -1)).filter((i) => i >= 0);
@@ -1591,6 +1671,13 @@ export function assignPictures(
       if (fits && R.article > 0 && picturable[i]) cands[i].push({ key: 'article:0', rank: R.article });
     });
   }
+  // Articles from the disambiguation page: each goes to the sense it fits best.
+  (pool.related || []).forEach((page, k) => {
+    if (R.relatedArticle <= 0) return;
+    const fits = senses.map((s, i) => (picturable[i] && nouns.includes(i) ? relatedPageFit(page, s, lemma) : 0));
+    const best = Math.max(0, ...fits);
+    if (best > 0) fits.forEach((f, i) => f === best && cands[i].push({ key: `article:${2000 + k}`, rank: R.relatedArticle + Math.min(f, 7) / 10 }));
+  });
   pool.glossArticles.forEach((page, k) => {
     for (const i of nouns) {
       if (picturable[i] && shortGlossTitle(senses[i].meaning).toLowerCase() === page.title.toLowerCase()) cands[i].push({ key: `article:${1000 + k}`, rank: R.glossArticle });
@@ -1748,6 +1835,7 @@ function poolTitle(pool: PicturePool, p: PoolPicture): string {
     return (x && x.senseText.replace(/^(\([^)]*\)\s*)+/, '').slice(0, 80)) || commonsFileTitle(p.file);
   }
   if (p.source === 'article' && p.ref < 0) return commonsFileTitle(p.file);
+  if (p.ref >= 2000) return titleParts(pool.related?.[p.ref - 2000]?.title || '').base || commonsFileTitle(p.file);
   const page = p.ref >= 1000 ? pool.glossArticles[p.ref - 1000] : pool.article;
   return page?.title || commonsFileTitle(p.file);
 }
@@ -1845,9 +1933,67 @@ async function buildPool(lemma: string, lang: string, hints: string[], progress:
     return true;
   });
   const glossTitles = code === 'en' ? Promise.resolve() : addGlossArticles(pool, hints, step);
-  await Promise.all([wiktionary, lexemes, article, glossTitles]);
+  const related = code === 'en' ? step(() => addRelatedArticles(pool)) : Promise.resolve();
+  await Promise.all([wiktionary, lexemes, article, glossTitles, related]);
   pool.complete = true;
   return pool;
+}
+
+/** Whether a title on a disambiguation page is the word itself or a compound ending in it. */
+export function relatedTitle(title: string, lemma: string): boolean {
+  const w = lemma.trim().toLowerCase();
+  const b = titleParts(title).base.toLowerCase();
+  if (!w || /disambiguation|^list of|^the\s|surname|given name/i.test(title)) return false;
+  if (b === w) return !!titleParts(title).qualifier;
+  if (b.endsWith(` ${w}`) || b.endsWith(`-${w}`)) return b.split(/[\s-]+/).length === 2;
+  return !/\s/.test(b) && b.endsWith(w) && b.length - w.length >= 3 && b.length - w.length <= 5;
+}
+
+/** The articles a word's English disambiguation page links to, with their descriptions. */
+export function buildDisambiguationLinksUrl(lemma: string): string {
+  const w = lemma.trim();
+  const title = `${w.charAt(0).toUpperCase()}${w.slice(1)} (disambiguation)`;
+  return (
+    'https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&redirects=1' +
+    '&generator=links&gplnamespace=0&gpllimit=max&prop=description|pageprops&ppprop=disambiguation|wikibase_item' +
+    `&titles=${encodeURIComponent(title)}&origin=*`
+  );
+}
+
+/** Twenty articles at most from the disambiguation page get their pictures looked up. */
+const RELATED_MAX = 20;
+
+/**
+ * Articles on the word's disambiguation page that are titled with the word ("Pitcher
+ * (container)", "Tobacco pipe", "Seashell"), each with its Wikidata image or its free lead
+ * image, for senses the article titled with the bare word does not cover.
+ */
+async function addRelatedArticles(pool: PicturePool): Promise<boolean> {
+  const res = await getJson<{ query?: { pages?: WikipediaPage[] } }>(buildDisambiguationLinksUrl(pool.lemma));
+  if (!res) return false;
+  const names = (res.query?.pages || [])
+    .filter((p) => !p.missing && p.pageprops?.disambiguation === undefined && relatedTitle(p.title, pool.lemma))
+    .filter((p) => !BAD_DESCRIPTION.test(String(p.description || '')) && !BAD_DESCRIPTION.test(titleParts(p.title).qualifier))
+    .map((p) => p.title)
+    .slice(0, RELATED_MAX);
+  if (!names.length) return true;
+  const q = await titleQuery(buildWikipediaTitlesUrl(names));
+  if (!q) return false;
+  const pages = names.map((t) => resolveTitle(q, t)).filter((p): p is WikipediaPage => !!p && !p.missing && p.title !== pool.article?.title);
+  const items = pages.map((p) => p.pageprops?.wikibase_item || '').filter(Boolean);
+  const { images, ok } = await itemImages(items);
+  pool.related = pool.related || [];
+  for (const page of pages) {
+    if (BAD_DESCRIPTION.test(String(page.description || ''))) continue;
+    const item = page.pageprops?.wikibase_item || '';
+    const pick = item ? bestImage(images.get(item) || [], `${pool.lemma} ${page.title}`) : '';
+    const file = pick ? commonsFileFromUrl(pick) : acceptConceptPage(page) ? String(page.pageimage) : '';
+    if (!file) continue;
+    const k = pool.related.length;
+    pool.related.push({ title: page.title, description: page.description, extract: String(page.extract || '').slice(0, 240) });
+    addPicture(pool, file, 'article', 2000 + k);
+  }
+  return ok;
 }
 
 /** English articles titled with a foreign word's short glosses ("猫" gives "Cat"). */

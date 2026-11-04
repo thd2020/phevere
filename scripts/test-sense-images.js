@@ -247,6 +247,24 @@ assert.strictEqual(
 );
 assert.strictEqual(fit(lex('water source'), 'The source from which an action or supply of something springs.', 'noun', 'spring'), 0, 'spring: a water source is not the source of an action');
 
+// Heads behind adjective lists, and articles from a disambiguation page.
+same(si.glossHeads('A royal, imperial or princely headdress; a diadem.', 'crown'), ['headdress']);
+same(si.glossHeads('Hard, protective outer layers created by an animal that lives in the sea'), ['layer']);
+assert.ok(si.pageFitsGloss({ title: 'Crown', description: 'Form of headwear, symbolizing the power of a ruler' }, 'crown', 'A royal, imperial or princely headdress; a diadem.', 'crown'), 'headdress and headwear');
+assert.ok(si.relatedTitle('Pitcher (container)', 'pitcher') && si.relatedTitle('Tobacco pipe', 'pipe') && si.relatedTitle('Seashell', 'shell'));
+assert.ok(!si.relatedTitle('Pitcher', 'pitcher') && !si.relatedTitle('The Crown', 'crown') && !si.relatedTitle('Pitcher (surname)', 'pitcher') && !si.relatedTitle('Jules Pipe Smith', 'pipe'));
+{
+  const jug = { meaning: 'A wide-mouthed, deep vessel for holding liquids, with a spout or lip for pouring.', partOfSpeech: 'noun' };
+  const player = { meaning: 'The player who delivers the ball to the batter.', partOfSpeech: 'noun' };
+  const container = { title: 'Pitcher (container)', description: 'Container with a spout used for storing and pouring liquids', extract: 'A pitcher is a container with a handle and a spout.' };
+  assert.ok(si.relatedPageFit(container, jug, 'pitcher') > 0, 'the container fits the jug');
+  assert.strictEqual(si.relatedPageFit(container, player, 'pitcher'), 0, 'not the player');
+  const cap = { title: 'Cap (crown)', description: 'Cap which fills the inner space of a modern crown', extract: 'The cap of a crown is the cap that fills the inner space of a modern crown.' };
+  assert.strictEqual(si.relatedPageFit(cap, { meaning: 'A crown for covering a tooth.', partOfSpeech: 'noun' }, 'cap'), 0, 'a crown cap is not a dental crown');
+  const white = { title: 'Whiteboard', description: 'Surface for nonpermanent markings', extract: 'A whiteboard is a glossy surface for nonpermanent markings.' };
+  assert.strictEqual(si.relatedPageFit(white, { meaning: 'A flat surface with markings for playing a board game.', partOfSpeech: 'noun' }, 'board'), 0, 'a whiteboard is not a game board');
+}
+
 // ---------------------------------------------------------------- assigning pictures from a pool
 
 function poolOf(over) {
