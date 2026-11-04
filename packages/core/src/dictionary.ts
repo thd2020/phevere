@@ -76,7 +76,8 @@ import { closestSpelling } from './vocab-lemma';
 import { wrapConsole } from './log';
 import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigured, type OfflineHit } from './runtime';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
-import { plainPluralOf, splitSurfaceAndLemma, sameLookupFold } from './lookup-policy';
+import { isGrammaticalFormOfGloss, splitSurfaceAndLemma, sameLookupFold } from './lookup-policy';
+import { formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, resolveFormOf } from './form-of';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { groupYoudaoEtymologies, serializeEtymologySources } from './etymology-sources';
 import { mergeSimilarDefinitions, dedupeExamples, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses } from './definition-merge';
@@ -141,25 +142,37 @@ type LookupOpts = {
   sourceLanguage?: string;
   /** Set on the second lookup after a spelling correction, so it cannot correct again. */
   noCorrection?: boolean;
-  /** Set on the lookup of a plain plural's singular, so it cannot redirect again. */
-  noPluralRedirect?: boolean;
+  /** Set on the lookup of the word a form stands for, so it cannot redirect again. */
+  noFormRedirect?: boolean;
 };
 
+/** Wiktionary's senses of the looked-up word; other sources answer a form with the base word's senses. */
+function wiktionarySenses(result: DictionaryResult | null | undefined): string[] {
+  return (result?.definitions || [])
+    .filter((d) => {
+      if (!d || !/wiktionary/i.test(String(d.source || ''))) return false;
+      const m = (d.meaning || '').trim();
+      return !!m && m !== 'No definition available.' && !isTimeoutMeaning(m) && !isCitationGloss(m);
+    })
+    .map((d) => d.meaning);
+}
+
 /**
- * A plain plural ("acronyms"): every sense Wiktionary gives says "plural of acronym", or, for an
- * -s form that is also a verb, "third-person singular of acronym". Datamuse and the Free
- * Dictionary do not count, since for a form they return the base word's own senses. A plural with senses of
- * its own ("bacteria" is also a type or strain of bacterium, "glasses" are spectacles) is a word
- * in its own right and gets null.
+ * Whether the result may be a form of another word: one of Wiktionary's senses reads "plural of",
+ * "simple past of", "alternative spelling of" and so on. Only then is the word's page read.
  */
-export function simplePluralTarget(result: DictionaryResult | null | undefined): string | null {
-  const defs = (result?.definitions || []).filter((d) => {
-    // Only Wiktionary's page for the form counts: other sources answer with the base word's senses.
-    if (!d || !/wiktionary/i.test(String(d.source || ''))) return false;
-    const m = (d.meaning || '').trim();
-    return !!m && m !== 'No definition available.' && !isTimeoutMeaning(m);
-  });
-  return plainPluralOf(defs.map((d) => d.meaning));
+export function mayBeFormOf(result: DictionaryResult | null | undefined): boolean {
+  return wiktionarySenses(result).some((m) => !!formOfGlossLemma(m) || isGrammaticalFormOfGloss(m));
+}
+
+/**
+ * The word to show and save instead, judged from Wiktionary's senses as text: every sense is a
+ * form of one word ("acronyms", "gleaned", "idiosyncracy"). Datamuse and the Free Dictionary do
+ * not count. A form with senses of its own ("bacteria" is also a type or strain of bacterium,
+ * "glasses" are spectacles) is a word in its own right and gets null.
+ */
+export function formOfTextTarget(result: DictionaryResult | null | undefined): string | null {
+  return formOfLemmaFromGlosses(wiktionarySenses(result), String(result?.word || ''));
 }
 
 /**
@@ -655,8 +668,8 @@ export class DictionaryService extends BaseService {
           // longer left was saved before that rule and is looked up again.
           const left = saved ? PERSISTED_CACHE_TTL_MS - (Date.now() - saved.savedAt) : 0;
           const staleNoIpa = this.lacksIpa(value) && left > PARTIAL_PERSIST_TTL_MS;
-          // Saved before plain plurals were shown as their singular.
-          const stalePlural = !!simplePluralTarget(value);
+          // Saved before forms were shown as the word they are a form of.
+          const stalePlural = mayBeFormOf(value) && !value?.metadata?.formChecked;
           if (saved && value && left > 0 && !staleNoIpa && !stalePlural && !this.isUncacheableResult(value)) {
             const remaining = PERSISTED_CACHE_TTL_MS - (Date.now() - saved.savedAt);
             const ttl = this.isIncompleteSourceCache(value) ? Math.min(PARTIAL_CACHE_TTL_MS, remaining) : this.cacheTimeout;
@@ -843,8 +856,9 @@ export class DictionaryService extends BaseService {
   }
 
   /**
-   * A word whose every sense is "Misspelling of X" ("recieve", "definately") is shown and
-   * saved as X, like a typo with no entry at all.
+   * A form of another word ("gleaned", "paparazzi", "idiosyncracy") and a word whose senses are
+   * mostly "Misspelling of X" ("recieve", "definately") are shown and saved as that other word,
+   * like a typo with no entry at all.
    */
   private async lookupWithCandidates(
     query: NormalizedQuery,
@@ -873,40 +887,75 @@ export class DictionaryService extends BaseService {
       movedOn = false;
       return null;
     };
-    // Wiktionary can land after the first paint; when its senses show a plain plural then, the
-    // update that follows is the singular's.
-    let latePlural: Promise<DictionaryResult | null> | null = null;
+    // A form ("gleaned", "paparazzi", "idiosyncracy") is shown and saved as the word it is a form
+    // of; that word's Forms list it. Wiktionary can land after the first paint, so the check also
+    // runs on updates, and the update that follows a redirect is the other word's.
+    let formCheck: Promise<DictionaryResult | null> | null = null;
+    /** Set once the word turned out to be a word in its own right, so its cached result is not checked again. */
+    let notAForm = false;
+    let emitted = 0;
+    const checkForm = (r: DictionaryResult): Promise<DictionaryResult | null> | null => {
+      if (formCheck || opts?.noFormRedirect || !mayBeFormOf(r)) return formCheck;
+      formCheck = this.formOfTarget(r, query.trimmed, detectedLanguage).then((lemma) => {
+        if (lemma && foldLookupKey(lemma) !== foldLookupKey(query.trimmed)) {
+          return instead(lemma, { noFormRedirect: true }, { formFrom: query.trimmed });
+        }
+        notAForm = true;
+        return null;
+      });
+      return formCheck;
+    };
+    const stamp = (r: DictionaryResult): DictionaryResult => {
+      if (notAForm) r.metadata = { ...(r.metadata || {}), formChecked: true };
+      return r;
+    };
     const own = opts?.onUpdate
       ? {
           ...opts,
           onUpdate: (r: DictionaryResult) => {
             if (movedOn) return;
-            const one = opts.noPluralRedirect || latePlural ? null : simplePluralTarget(r);
-            if (one && foldLookupKey(one) !== foldLookupKey(query.trimmed)) {
-              latePlural = instead(one, { noPluralRedirect: true }, { pluralFrom: query.trimmed });
-              void latePlural.then((next) => opts.onUpdate!(next || r));
+            const pending = !formCheck ? checkForm(r) : null;
+            if (pending) {
+              const seen = emitted;
+              void pending.then((next) => {
+                if (next) opts.onUpdate!(next);
+                else if (emitted === seen && !movedOn) {
+                  emitted += 1;
+                  opts.onUpdate!(stamp(r));
+                }
+              });
               return;
             }
-            opts.onUpdate!(r);
+            emitted += 1;
+            opts.onUpdate!(stamp(r));
           },
         }
       : opts;
     const result = await this.lookupWithCandidatesOnce(query, targetLanguage, detectedLanguage, enabledSources, holder, own);
-    if (latePlural) {
-      const one = await latePlural;
-      if (one) return one;
-    }
-    // A plain plural is shown and saved as its singular; the singular's forms list the plural.
-    const singular = opts?.noPluralRedirect || latePlural ? null : simplePluralTarget(result);
-    if (singular && foldLookupKey(singular) !== foldLookupKey(query.trimmed)) {
-      const one = await instead(singular, { noPluralRedirect: true }, { pluralFrom: query.trimmed });
-      if (one) return one;
-    }
+    const formOf = await checkForm(result);
+    if (formOf) return formOf;
+    stamp(result);
     const target = opts?.noCorrection ? null : misspellingTarget(result);
     if (!target || foldLookupKey(target) === foldLookupKey(query.trimmed)) return result;
     const fixed = await instead(target, { noCorrection: true }, { correctedFrom: result.metadata?.correctedFrom || query.trimmed });
     if (!fixed || misspellingTarget(fixed)) return result;
     return fixed;
+  }
+
+  /**
+   * The word `word` is a form of, or null. English reads the word's tagged Wiktionary page
+   * (form-of.ts); other languages, or a page that cannot be had, fall back to the senses' text.
+   */
+  private async formOfTarget(result: DictionaryResult, word: string, language: string): Promise<string | null> {
+    const lang = (language || 'en').toLowerCase().split('-')[0];
+    if (lang === 'en' && isCoreConfigured()) {
+      try {
+        return await withTimeout(resolveFormOf(getHttp(), foldLatinHeadword(word) || word, 'en'), 3500, 'form-of');
+      } catch {
+        /* fall back to the text of the senses */
+      }
+    }
+    return formOfTextTarget(result);
   }
 
   private async lookupWithCandidatesOnce(
@@ -2225,6 +2274,8 @@ export class DictionaryService extends BaseService {
         for (const entry of langData) {
           if (entry.definitions && Array.isArray(entry.definitions)) {
             entry.definitions.forEach((def: any) => {
+              // The page's References section comes back as more senses ("in Dictionary.com Unabridged").
+              if (!def?.definition || isCitationGloss(def.definition)) return;
               definitions.push({
                 partOfSpeech: this.normalizePartOfSpeech(entry.partOfSpeech),
                 meaning: def.definition,
