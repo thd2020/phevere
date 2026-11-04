@@ -12,6 +12,7 @@ const ALL = [
   'ocr-text', 'ocr-pack', 'speech-stream', 'hover-selection', 'native-selection-repeat',
   'popup-opening', 'popup-retrigger', 'popup-sizing', 'mobile-regressions', 'desktop-diagnostics', 'installer-audio-cli',
   'word-sources', 'book-file', 'plural-forms', 'morpheme', 'word-suggest', 'learn-session', 'word-forms',
+  'installer-audio', 'native-lifecycle', 'android-candidate-workflow',
 ];
 
 const names = process.argv.slice(2).length ? process.argv.slice(2) : ALL;

@@ -164,6 +164,11 @@ export function buildCandidates(sanitized: string, trimmed: string, kind: QueryK
   }
 
   const isCJK = CJK_CHAR.test(trimmed);
+  // A capitalised word goes first: Wiktionary has "Paris" (the city) and "May" (the month) apart
+  // from "paris" and "may", and asks for both pages itself; the other sources fold it anyway.
+  if (!isCJK && kind === 'word' && /^\p{Lu}\p{Ll}/u.test(trimmed)) {
+    pushCandidate(candidates, seen, trimmed);
+  }
   // Latin APIs are effectively lowercase; try that before the capitalized surface form
   // so Datamuse cannot "win" and skip Free Dictionary / Wiktionary.
   if (!isCJK) {
@@ -292,9 +297,12 @@ export function foldLookupKey(text: string): string {
   return (text || '').replace(/[^\p{L}\p{N}]+/gu, '').toLocaleLowerCase();
 }
 
-/** Stable cache key that collapses "word", "word.", "\"word\"" and "Word". */
+/**
+ * Stable cache key that collapses "word", "word." and "\"word\"". A capitalised word keeps its
+ * own key: "Paris" (the city) is not "paris" (the plural of pari).
+ */
 export function cacheKeyFor(query: NormalizedQuery, targetLanguage: string): string {
-  const key = query.isCJK ? query.trimmed : query.trimmed.toLocaleLowerCase();
+  const key = query.isCJK || /^\p{Lu}/u.test(query.trimmed) ? query.trimmed : query.trimmed.toLocaleLowerCase();
   return `${key}_${targetLanguage}`;
 }
 

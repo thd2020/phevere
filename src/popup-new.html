@@ -3609,7 +3609,9 @@ function startAutoCloseTimeout() {
         function createLexiconCard(result) {
           const defs = (result.definitions || []).filter(isUsablePopupDef);
           if (defs.length === 0) {
-            return `<div class="error-message">No definitions found.</div>`;
+            const lx = window.phevereLexicon;
+            const offer = lx && lx.didYouMeanHtml ? lx.didYouMeanHtml(result, 'lookup') : '';
+            return `<div class="error-message">No definitions found.${offer}</div>`;
           }
           const senseIndex = new Map(defs.map(function (d, i) { return [d, i]; }));
           const senseImages = currentPopupSenseImages(result);

@@ -163,6 +163,10 @@
 .lx-morph .lx-link,
 .lx-words .lx-link { color: var(--lx-teal, #0f6e71); }
 
+/* "Did you mean governess?" under a lookup that found nothing. */
+.lx-didyoumean { margin: 10px 0 0; font: 500 15px/1.4 var(--lx-ui, Outfit, system-ui, sans-serif); color: var(--lx-soft, #5c534e); }
+.lx-didyoumean .lx-link { font: 600 16px/1.2 var(--lx-serif, 'Source Serif 4 Variable', Georgia, serif); color: var(--lx-teal, #0f6e71); }
+
 /* "ran /ræn/ · past tense of run" above the entry an irregular form opens. */
 .lx-formline {
   display: flex;
