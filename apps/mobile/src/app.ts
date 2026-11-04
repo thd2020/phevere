@@ -724,7 +724,7 @@ function bindNotebookViews(): void {
     },
   });
   if (prefs.senseImages !== false) {
-    fillWordImages(page, (lemma, lang, gloss) => fetchWordImage(lemma, { lang, gloss }));
+    fillWordImages(page, (lemma, lang, gloss, pos, onPicture) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture }));
   }
 }
 
@@ -737,7 +737,7 @@ function bindLearn(): void {
     return;
   }
   if (prefs.senseImages !== false) {
-    fillWordImages(page, (lemma, lang, gloss) => fetchWordImage(lemma, { lang, gloss }));
+    fillWordImages(page, (lemma, lang, gloss, pos, onPicture) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture }));
   }
   focusReview(page);
   void prefetchMeanings();
