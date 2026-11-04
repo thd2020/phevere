@@ -13,7 +13,7 @@ import { deepRootFamilies } from './notebook-families';
 import { predictedRecall } from './review-schedule';
 import { SKILLS, historyByWord, skillMastery, type AnswerRecord, type Skill } from './answer-history';
 import { bookEntry, bookProgress, scopeEntries, wordStatus, wordbookMeta, type WordsContext, type WordsEntry, type WordsScope } from './wordbooks';
-import { LISTEN_CAP, LEECH_LAPSES, memoryLevel } from './review-quiz';
+import { LEECH_LAPSES, memoryLevel } from './review-quiz';
 import { barChartHtml, dayLabel, retentionHtml, wordChips, type BarDatum, type RetentionWord } from './learn-charts';
 import { forecastChartHtml } from './notebook-review';
 
@@ -299,7 +299,7 @@ export function progressSummary(input: ProgressInput): ProgressSummary {
 
 /* ------------------------------------------------------------------- pieces */
 
-function meter(label: string, value: number, target: number, unit = ''): string {
+function meter(label: string, value: number, target: number): string {
   const r = 26;
   const c = 2 * Math.PI * r;
   const share = target ? Math.min(1, value / target) : value ? 1 : 0;
@@ -308,7 +308,7 @@ function meter(label: string, value: number, target: number, unit = ''): string 
       <circle class="lrp-meter__track" cx="32" cy="32" r="${r}"/>
       ${share ? `<circle class="lrp-meter__fill${share >= 1 ? ' is-done' : ''}" cx="32" cy="32" r="${r}" stroke-dasharray="${(share * c).toFixed(2)} ${c.toFixed(2)}"/>` : ''}
     </svg>
-    <div><b>${fmt(value)}<small> / ${fmt(target)}${unit}</small></b><span>${esc(label)}</span></div>
+    <div><b>${fmt(value)}<small> of ${fmt(target)}</small></b><span>${esc(label)}</span></div>
   </div>`;
 }
 
@@ -326,8 +326,8 @@ function perDayChart(perDay: ProgressSummary['perDay']): string {
     const mins = d.ms / 60000;
     const mix = SKILLS.filter((k) => d.skills[k]).map((k) => `${d.skills[k]} ${SKILL_LABEL[k].toLowerCase()}`);
     return {
-      tick: last ? 'Today' : date.getDay() === 1 ? String(date.getDate()) : '',
-      sub: last ? '' : date.getDay() === 1 ? date.toLocaleDateString('en-US', { month: 'short' }) : '',
+      tick: last ? 'Today' : date.getDay() === 1 && i < perDay.length - 3 ? String(date.getDate()) : '',
+      sub: !last && date.getDay() === 1 && i < perDay.length - 3 ? date.toLocaleDateString('en-US', { month: 'short' }) : '',
       segments: [
         { cls: 'right', value: d.right },
         { cls: 'wrong', value: d.wrong },
@@ -367,8 +367,8 @@ function mixHtml(mix: Record<Skill, number>): string {
   const nums = SKILLS.map((k) => `<span><i class="lrp-mix--${k}"></i>${SKILL_LABEL[k]} <b>${pct(mix[k], total)}%</b></span>`).join('');
   return `<div class="lrp-mix">
     <p class="lrp-label">Last 7 days, ${fmt(total)} questions</p>
-    <div class="lrp-mix__bar" role="img" aria-label="${SKILLS.map((k) => `${SKILL_LABEL[k]} ${pct(mix[k], total)}%`).join(', ')}">${seg}<b class="lrp-mix__cap" style="left:${(100 - LISTEN_CAP * 100).toFixed(0)}%" title="Listening at most ${Math.round(LISTEN_CAP * 100)}%"></b></div>
-    <p class="lrp-mix__nums">${nums}<span class="lrp-mix__capkey"><i></i>Listening at most ${Math.round(LISTEN_CAP * 100)}%</span></p>
+    <div class="lrp-mix__bar" role="img" aria-label="${SKILLS.map((k) => `${SKILL_LABEL[k]} ${pct(mix[k], total)}%`).join(', ')}">${seg}</div>
+    <p class="lrp-mix__nums">${nums}</p>
   </div>`;
 }
 
@@ -398,7 +398,7 @@ export function progressHtml(input: ProgressInput): string {
     return `<li class="lrp-skill">
       <span class="lrp-skill__name">${SKILL_LABEL[k]}</span>
       <span class="wb-bar lrp-bar" role="img" aria-label="${v.mastered} of ${v.tested} mastered"><i class="wb-bar__known" style="width:${pct(v.mastered, v.tested)}%"></i></span>
-      <span class="lrp-skill__n">${fmt(v.mastered)} / ${fmt(v.tested)}</span>
+      <span class="lrp-skill__n">${fmt(v.mastered)} of ${fmt(v.tested)} words</span>
     </li>`;
   }).join('');
   const fams = s.families.length
@@ -423,8 +423,8 @@ export function progressHtml(input: ProgressInput): string {
   const accuracy = s.reviewsToday ? `${pct(s.correctToday, s.reviewsToday)}%` : '–';
   return `<div class="lrp">
     <section class="lrp-card lrp-today" aria-label="Today">
-      ${meter('New words', s.newToday, s.newGoal)}
-      ${meter('Reviews', s.reviewsToday, total)}
+      ${meter('New words, of the daily goal', s.newToday, s.newGoal)}
+      ${meter('Reviews, of those due today', s.reviewsToday, total)}
       <div class="lrp-stat"><b>${accuracy}</b><span>Right today</span></div>
       <div class="lrp-streak${s.streak ? ' is-on' : ''}">${flame}<div><b>${s.streak}<small> ${s.streak === 1 ? 'day' : 'days'}</small></b><span>Streak · best ${s.bestStreak}</span></div></div>
     </section>
@@ -434,7 +434,7 @@ export function progressHtml(input: ProgressInput): string {
     <section class="lrp-card"><h3>Reviews ahead, 30 days</h3>${forecastChartHtml(words, now, 30, 'due30')}</section>
     <section class="lrp-card"><h3>Answers per day</h3>${answered ? perDayChart(s.perDay) : '<p class="lrp-none">No answers yet</p>'}</section>
     <section class="lrp-card"><h3>How long words are held</h3>${s.strength.some((b) => b.words.length) ? strengthChart(s.strength) : '<p class="lrp-none">No words started yet</p>'}</section>
-    <section class="lrp-card"><h3>Skills</h3><ul class="lrp-skills">${skills}</ul>${mixHtml(s.mix)}</section>
+    <section class="lrp-card"><h3>Skills</h3><p class="lrp-label">Words mastered of words tested</p><ul class="lrp-skills">${skills}</ul>${mixHtml(s.mix)}</section>
     <section class="lrp-card"><h3>Words</h3><ul class="lrp-lists">${lists}</ul>
       <p class="lrp-key"><i class="lrp-key__known"></i>Known<i class="lrp-key__learning"></i>Learning<i class="lrp-key__new"></i>New</p></section>
     <section class="lrp-card"><h3>Trouble words</h3>${trouble}</section>

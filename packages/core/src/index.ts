@@ -238,6 +238,7 @@ export {
   memoryLevel,
   buildQuestion,
   sameLemma,
+  reviewArmed,
   ROUND_WORDS,
   type ReviewQuestion,
   type ReviewAnswer,
@@ -290,6 +291,8 @@ export {
   startScopeReview,
   reviewNeedsMeaning,
   dropCurrentReview,
+  markKnownInReview,
+  primeBookLevels,
   registerUserBooks,
   sourceGroups,
   isUserBookId,
@@ -328,7 +331,7 @@ export {
   type LearnPage,
 } from './learn-view';
 export { progressHtml, progressSummary, type ProgressInput, type ProgressSummary } from './learn-progress';
-export { attachLearnCharts, retentionAt } from './learn-charts';
+export { attachLearnCharts, retentionAt, revealQuestion } from './learn-charts';
 export {
   SKILLS,
   MASTERY_THRESHOLD,

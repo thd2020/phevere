@@ -6,7 +6,7 @@
  */
 import { vocabReadings, vocabSenses } from './vocab-view';
 import { DAY, clean, dayStart, esc, type NotebookEntry } from './notebook-shared';
-import { ensureReviewQuestion, memoryLevel, ROUND_WORDS, type ReviewGrade, type ReviewQuestion, type ReviewState } from './review-quiz';
+import { bestSense, ensureReviewQuestion, memoryLevel, ROUND_WORDS, usableSense, type ReviewGrade, type ReviewQuestion, type ReviewState } from './review-quiz';
 import { bookName } from './book-names';
 import { barChartHtml, dayLabel, heatmapHtml, wordChips, type BarDatum } from './learn-charts';
 
@@ -342,9 +342,17 @@ function markHtml(q: ReviewQuestion, state: ReviewState, now: number): string {
   return `<div class="nbv-wash is-${a.result}" aria-hidden="true"></div><div class="nbv-ink is-${a.result}" aria-hidden="true"><svg viewBox="0 0 240 200" preserveAspectRatio="xMidYMid meet">${strokes}</svg></div>`;
 }
 
+/** The senses an answer shows: the one the question used first, then other usable ones; never citations. */
+function shownSenses(e: NotebookEntry, max = 3): string[] {
+  const lemma = clean(e.lemma);
+  const best = bestSense(e);
+  const rest = vocabSenses(e.definition).filter((s) => s !== best && usableSense(s, lemma));
+  return [best, ...rest].filter(Boolean).slice(0, max);
+}
+
 function answerCardHtml(e: NotebookEntry): string {
   const lemma = clean(e.lemma);
-  const senses = vocabSenses(e.definition).slice(0, 3);
+  const senses = shownSenses(e);
   const readings = vocabReadings(e.reading).slice(0, 2);
   const note = clean(e.note);
   return `<div class="nbv-answer">
@@ -390,15 +398,16 @@ function questionHtml(q: ReviewQuestion, e: NotebookEntry, state: ReviewState, o
       body = `${answerCardHtml(e)}<div class="nbv-pair">
         <button type="button" class="nbv-secondary" data-act="nb-knew" data-knew="0"><kbd>1</kbd>I didn't know it</button>
         <button type="button" class="nbv-primary" data-act="nb-knew" data-knew="1"><kbd>2</kbd>I knew it</button>
-      </div>`;
+      </div>${shownSenses(e).length ? '' : `<button type="button" class="nbv-link" data-act="lookup" data-q="${esc(q.lemma)}">Open in lookup</button>`}`;
     }
   } else {
     body = choice ? optionsHtml(q, state) : typedHtml(q, state);
   }
   let below = '';
   if (!a && q.kind !== 'flash') below += `<button type="button" class="nbv-link nbv-skip" data-act="nb-skip">I don't know</button>`;
-  // A new word can be set aside for good, like 斩 in 百词斩.
-  if (!a && q.level === 0) below += `<button type="button" class="nbv-link nbv-skip" data-act="wb-known-review" data-q="${esc(clean(e.lemma))}">Already know it</button>`;
+  // A new word can be set aside for good, like 斩 in 百词斩. It sits in the instruction row, far
+  // from where Continue was, so a double tap on Continue cannot reach it; the summary can undo it.
+  const known = !a && q.level === 0 ? `<button type="button" class="nbv-known" data-act="wb-known-review" data-q="${esc(clean(e.lemma))}">Already know it</button>` : '';
   let feedback = '';
   if (a) {
     const next = opts.preview && opts.formatGap ? opts.formatGap(opts.preview(e, a.grade)) : '';
@@ -423,7 +432,7 @@ function questionHtml(q: ReviewQuestion, e: NotebookEntry, state: ReviewState, o
       <span class="nbv-quiz__count">${Math.min(state.index + 1, total)} / ${total}</span>
     </div>
     <div class="nbv-quiz__stage${stageCls}"${stageStyle}>
-      <p class="nbv-quiz__ask">${ASK[q.kind]}${tagsHtml(q, e)}</p>
+      <p class="nbv-quiz__ask">${ASK[q.kind]}${tagsHtml(q, e)}${known}</p>
       <div class="nbv-quiz__q">${promptHtml(q, e)}</div>
       ${body}
       ${markHtml(q, state, now)}
@@ -473,6 +482,22 @@ function startHtml(entries: NotebookEntry[], state: ReviewState, now: number): s
 
 const LEVEL_NAME = ['New', 'Learning', 'Under 3 weeks', '3 weeks or more'];
 
+/** Words set aside with "Already know it" this round, each with Undo while it is still set aside. */
+function knownHtml(entries: NotebookEntry[], state: ReviewState): string {
+  const marked = state.knownMarked || [];
+  if (!marked.length) return '';
+  const byLemma = new Map(entries.map((e) => [clean(e.lemma).toLowerCase(), e]));
+  const rows = marked
+    .map((l) => {
+      const still = !!(byLemma.get(l.toLowerCase()) as { known?: boolean } | undefined)?.known;
+      return `<li><span class="nbv-missed__word">${esc(l)}</span>${
+        still ? `<button type="button" class="nbv-link" data-act="wb-known" data-known="0" data-q="${esc(l)}">Undo</button>` : '<span>Back in your words</span>'
+      }</li>`;
+    })
+    .join('');
+  return `<div class="nbv-moved nbv-moved--known"><p class="nbv-quiz__ask">Already known <b>${marked.length}</b></p><ul>${rows}</ul></div>`;
+}
+
 function summaryHtml(entries: NotebookEntry[], state: ReviewState, now: number): string {
   const r = state.results;
   // The saved grade counts, so "I knew it" and "I didn't know it" are respected here too.
@@ -492,7 +517,7 @@ function summaryHtml(entries: NotebookEntry[], state: ReviewState, now: number):
   const down = list.filter(([, w]) => w.to < w.from);
   const missed = list.filter(([, w]) => w.missed);
   const secs = r.reduce((s, x) => s + x.ms, 0) / 1000;
-  const time = secs >= 60 ? `${Math.floor(secs / 60)}m ${String(Math.round(secs % 60)).padStart(2, '0')}s` : `${Math.round(secs)}s`;
+  const time = `${Math.floor(secs / 60)}:${String(Math.round(secs % 60)).padStart(2, '0')}`;
   const tomorrow = dayStart(now) + DAY;
   const dueTomorrow = entries.filter((e) => !isNew(e) && e.reviewDue != null && Number(e.reviewDue) >= tomorrow && Number(e.reviewDue) < tomorrow + DAY).length;
   const rest = state.rest || 0;
@@ -507,17 +532,18 @@ function summaryHtml(entries: NotebookEntry[], state: ReviewState, now: number):
     <div class="nbv-counts">
       <div><b>${r.length}</b><span>Answered</span></div>
       <div><b>${r.length ? Math.round((right / r.length) * 100) : 0}%</b><span>Correct</span></div>
-      <div><b>${time}</b><span>Time</span></div>
+      <div><b>${time}</b><span>Minutes</span></div>
       <div><b>${dueTomorrow}</b><span>Due tomorrow</span></div>
     </div>
     ${started.length ? `<div class="nbv-moved nbv-moved--new"><p class="nbv-quiz__ask">New words started <b>${started.length}</b></p>${wordChips(started, 40)}</div>` : ''}
+    ${knownHtml(entries, state)}
     ${moved(up, 'Stronger', 'up')}
     ${moved(down, 'Slipped back', 'down')}
     ${missed.length
       ? `<div class="nbv-missed"><p class="nbv-quiz__ask">Missed <b>${missed.length}</b></p><ul>${missed
           .map(([id, w]) => {
             const e = byId.get(id);
-            const sense = e ? vocabSenses(e.definition)[0] || '' : '';
+            const sense = e ? bestSense(e) : '';
             return `<li><button type="button" class="nbv-missed__word" data-act="lookup" data-q="${esc(w.lemma)}">${esc(w.lemma)}</button><span>${esc(sense)}</span></li>`;
           })
           .join('')}</ul></div>`

@@ -209,7 +209,9 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.match(page, /data-lrc="due30"[\s\S]*class="lrc-ylabel"[^>]*>Words due/);
   assert.equal((page.match(/data-lrc="due30"[\s\S]*?<\/svg>/)[0].match(/class="lrc-hit"/g) || []).length, 30, 'one bar a day');
   assert.match(page, /data-lrc="answers"[\s\S]*<template data-for="29"><p class="lrc-read__head"><b>[^<]+<\/b> · 2 answers, 50% right/);
-  assert.match(page, /Target: a word is due when it falls here/);
+  assert.match(page, />Due at 90% recall</);
+  assert.ok(page.includes('<b>2<small> of 3</small></b><span>Reviews, of those due today'), 'the review ring says what it counts');
+  assert.doesNotMatch(page, /at most 20%/);
   assert.equal(s.strength.reduce((n, b) => n + b.words.length, 0), 2, 'two started words');
   assert.deepEqual(s.strength[0].words, ['transport'], 'transport is still learning');
   assert.equal(s.mix.listening, 1);

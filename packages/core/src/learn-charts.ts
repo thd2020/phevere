@@ -276,7 +276,7 @@ export function retentionHtml(spec: RetentionSpec): string {
     <svg class="lrc-svg" viewBox="0 0 ${R_W} ${R_H}" role="img" aria-label="Predicted recall of your words if you stop reviewing">
       <text class="lrc-ylabel" x="0" y="9">Recall</text>
       ${grid}${xt}
-      <text class="lrc-target" x="${R_W - 6}" y="${(ry(DESIRED_RETENTION) - 4).toFixed(1)}">Target: a word is due when it falls here</text>
+      <text class="lrc-target" x="${R_W - 6}" y="${(ry(DESIRED_RETENTION) - 4).toFixed(1)}">Due at ${Math.round(DESIRED_RETENTION * 100)}% recall</text>
       <polyline class="lrc-line lrc-line--share" points="${curvePoints(share, maxDays)}"/>
       <polyline class="lrc-line lrc-line--avg" points="${curvePoints(avg, maxDays)}"/>
       <polyline class="lrc-line lrc-line--word" data-lrc-wordline points=""/>
@@ -432,4 +432,17 @@ export function wordChips(lemmas: string[], max = 24): string {
   if (!lemmas.length) return '';
   const shown = lemmas.slice(0, max).map((l) => `<button type="button" class="lrc-chip" data-act="lookup" data-q="${esc(l)}">${esc(l)}</button>`).join('');
   return `<div class="lrc-chips">${shown}${lemmas.length > max ? `<span class="lrc-more">+${fmt(lemmas.length - max)} more</span>` : ''}</div>`;
+}
+
+/**
+ * Brings a new question into view with its progress bar and instruction below the app's sticky
+ * header (`header`), when it starts above that line, as after Continue at the bottom of a long answer.
+ */
+export function revealQuestion(root: ParentNode, header: Element | null): void {
+  const quiz = root.querySelector<HTMLElement>('.nbv-quiz:not([data-answered])');
+  if (!quiz) return;
+  const top = header ? Math.max(0, header.getBoundingClientRect().bottom) : 0;
+  if (quiz.getBoundingClientRect().top >= top + 4) return;
+  quiz.style.scrollMarginTop = `${top + 8}px`;
+  quiz.scrollIntoView({ block: 'start' });
 }
