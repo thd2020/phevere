@@ -286,7 +286,7 @@ same(
     si
       .assignPictures(pool, [
         { meaning: 'To blow air through a wind instrument.', partOfSpeech: 'verb' },
-        { meaning: 'Real or perceived movement of atmospheric air.', partOfSpeech: 'noun' },
+        { meaning: 'A natural current of air outdoors.', partOfSpeech: 'noun' },
       ])
       .map((x) => x && x.title),
     [null, 'Wind'],
@@ -304,7 +304,11 @@ function stubHttp(log, opts = {}) {
       if (opts.fail && opts.fail(url)) throw new Error('HTTP 503');
       const u = new URL(url);
       const q = u.searchParams;
-      if (u.hostname === 'query.wikidata.org') return JSON.parse(JSON.stringify(craneSparql));
+      if (u.hostname === 'query.wikidata.org') {
+        // The lexeme query, or the item-image query for Wiktionary's sense lines and articles.
+        if (q.get('query').includes('wikibase:lemma')) return JSON.parse(JSON.stringify(craneSparql));
+        return { results: { bindings: [] } };
+      }
       if (u.hostname === 'en.wiktionary.org') {
         const pages = q.get('titles').split('|').map((t) => (fx.wiktionary[t] ? fx.wiktionary[t].query.pages[0] : { title: t, missing: true }));
         return { query: { pages } };
@@ -388,7 +392,7 @@ function memoryStore() {
     const log2 = [];
     const m4 = load({ isCoreConfigured: () => true, getHttp: () => stubHttp(log2), getLookupCache: () => null });
     await Promise.all([m4.fetchWordImage('crane', { lang: 'en', gloss: 'A mechanical lifting machine.' }), m4.fetchWordImage('bank', { lang: 'en', gloss: 'A financial institution.' })]);
-    assert.strictEqual(log2.filter((r) => r.url.includes('query.wikidata.org')).length, 1, 'one lexeme query');
+    assert.strictEqual(log2.filter((r) => decodeURIComponent(r.url).includes('wikibase:lemma')).length, 1, 'one lexeme query');
     assert.strictEqual(log2.filter((r) => r.url.includes('wiktionary')).length, 1, 'one Wiktionary request');
     assert.ok(decodeURIComponent(log2.find((r) => r.url.includes('wikidata')).url).includes('"crane"@en "bank"@en'));
   }
@@ -423,7 +427,7 @@ function memoryStore() {
       isCoreConfigured: () => true,
       getHttp: () => ({
         requestJson: async (url) => {
-          if (url.includes('wikidata') && tries++ === 0) throw new Error('HTTP 429: Too Many Requests');
+          if (decodeURIComponent(url).includes('wikibase:lemma') && tries++ === 0) throw new Error('HTTP 429: Too Many Requests');
           return stubHttp([]).requestJson(url);
         },
       }),

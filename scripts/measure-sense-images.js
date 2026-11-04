@@ -258,11 +258,13 @@ function relevanceReport(rows, fx) {
       if (pair.must) mustFail.push(`${pair.word} "${pair.sense}" (sense missing)`);
       continue;
     }
+    if (pair.mustNone) must += 1;
     if (!sense.image) {
       empty += 1;
       if (pair.must) mustFail.push(`${pair.word} "${pair.sense}" (none)`);
       continue;
     }
+    if (pair.mustNone && !pair.right.includes(sense.image.file)) mustFail.push(`${pair.word} "${pair.sense}" should show none -> ${sense.image.file}`);
     const file = sense.image.file;
     if (pair.must && !pair.right.includes(file)) mustFail.push(`${pair.word} "${pair.sense}" -> ${file}`);
     if (pair.right.includes(file)) right += 1;

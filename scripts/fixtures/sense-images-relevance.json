@@ -1,6 +1,6 @@
 {
  "recorded": "2026-11-04",
- "note": "Hand-labelled word senses for scripts/measure-sense-images.js --relevance. A pair names a sense by the start of its Wiktionary gloss (tags stripped, as the script prints it); right and wrong list Commons files judged by eye for that sense; none: true means any picture not listed as right is wrong there; must: true means the sense has to show a right picture.",
+ "note": "Hand-labelled word senses for scripts/measure-sense-images.js --relevance. A pair names a sense by the start of its Wiktionary gloss (tags stripped, as the script prints it); right and wrong list Commons files judged by eye for that sense; none: true means any picture not listed as right is wrong there; must: true means the sense has to show a right picture; mustNone: true means it has to show none.",
  "pairs": [
   {
    "word": "crane",
@@ -27,7 +27,8 @@
    "sense": "An institution where one can place and borrow mo",
    "pos": "noun",
    "right": [
-    "Bank of England Building, London, UK - Diliff.jpg"
+    "Bank of England Building, London, UK - Diliff.jpg",
+    "National Bank of Liechtenstein.JPG"
    ],
    "wrong": [],
    "must": true
@@ -37,7 +38,8 @@
    "sense": "An edge of river , lake , or other watercourse .",
    "pos": "noun",
    "right": [
-    "Perfume River Bank, as seen from Trường Tiền Bridge, 2019.jpg"
+    "Perfume River Bank, as seen from Trường Tiền Bridge, 2019.jpg",
+    "Pepingen - Heikruis - Ter Rijst - Kasteel (2020-07-07 15-35-31) X-T3 1-420s ISO320 f5.6.jpg"
    ],
    "wrong": [],
    "must": true
@@ -47,7 +49,8 @@
    "sense": "Any flying mammal of the order Chiroptera , usua",
    "pos": "noun",
    "right": [
-    "Mariana Fruit Bat.jpg"
+    "Mariana Fruit Bat.jpg",
+    "Big-eared-townsend-fledermaus.jpg"
    ],
    "wrong": [],
    "must": true
@@ -115,7 +118,8 @@
    "sense": "Real or perceived movement of atmospheric air us",
    "pos": "noun",
    "right": [
-    "Cherry tree moving in the wind 1.gif"
+    "Cherry tree moving in the wind 1.gif",
+    "Bundesarchiv Bild 183-1990-0206-324, Berlin, Passanten im Wind.jpg"
    ],
    "wrong": [],
    "must": true
@@ -167,7 +171,8 @@
    "sense": "A weapon made of a curved piece of wood or other",
    "pos": "noun",
    "right": [
-    "Hun bow.jpg"
+    "Hun bow.jpg",
+    "Arco - África MN 01.jpg"
    ],
    "wrong": []
   },
@@ -176,7 +181,8 @@
    "sense": "A rod with horsehair (or an artificial substitut",
    "pos": "noun",
    "right": [
-    "Bows-ViolaBassGdulkaKemence.jpg"
+    "Bows-ViolaBassGdulkaKemence.jpg",
+    "Arc de violí.JPG"
    ],
    "wrong": []
   },
@@ -185,7 +191,8 @@
    "sense": "A type of knot with two loops, used to tie toget",
    "pos": "noun",
    "right": [
-    "Explosion Box (closed).jpg"
+    "Explosion Box (closed).jpg",
+    "Pink Bow.jpg"
    ],
    "wrong": []
   },
@@ -363,7 +370,8 @@
    "sense": "An organism that is not an animal , especially a",
    "pos": "noun",
    "right": [
-    "Frühling blühender Kirschenbaum.jpg"
+    "Frühling blühender Kirschenbaum.jpg",
+    "Thanh Long ở Ninh Thuận.jpg"
    ],
    "wrong": []
   },
@@ -463,7 +471,8 @@
    "sense": "A common , firm , round fruit produced by a tree",
    "pos": "noun",
    "right": [
-    "Pink lady and cross section.jpg"
+    "Pink lady and cross section.jpg",
+    "Honeycrisp.jpg"
    ],
    "wrong": [
     "Apfelbaum Holz.JPG"
@@ -483,7 +492,8 @@
    "sense": "A hoofed mammal , Equus ferus caballus , often u",
    "pos": "noun",
    "right": [
-    "Nokota Horses cropped.jpg"
+    "Nokota Horses cropped.jpg",
+    "Biandintz eta zaldiak - modified2.jpg"
    ],
    "wrong": []
   },
@@ -511,7 +521,8 @@
    "pos": "",
    "right": [],
    "wrong": [],
-   "none": true
+   "none": true,
+   "mustNone": true
   },
   {
    "word": "vicissitude",
@@ -519,7 +530,8 @@
    "pos": "",
    "right": [],
    "wrong": [],
-   "none": true
+   "none": true,
+   "mustNone": true
   },
   {
    "word": "vicissitude",
@@ -535,7 +547,8 @@
    "pos": "",
    "right": [],
    "wrong": [],
-   "none": true
+   "none": true,
+   "mustNone": true
   },
   {
    "word": "insight",
@@ -543,7 +556,8 @@
    "pos": "",
    "right": [],
    "wrong": [],
-   "none": true
+   "none": true,
+   "mustNone": true
   },
   {
    "word": "slander",
@@ -559,7 +573,8 @@
    "pos": "",
    "right": [],
    "wrong": [],
-   "none": true
+   "none": true,
+   "mustNone": true
   },
   {
    "word": "dictum",
@@ -617,7 +632,36 @@
    "pos": "noun",
    "right": [
     "Standing jaguar.jpg",
-    "Onça-pintada-PE Encontro das Águas-Thiagomarcelcampi(0).jpg"
+    "Onça-pintada-PE Encontro das Águas-Thiagomarcelcampi(0).jpg",
+    "Onça-pintada-PE Encontro das Águas-Thiagomarcelcampi(001).jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "spring",
+   "sense": "A spray or body of water springing from the gro",
+   "pos": "noun",
+   "right": [
+    "Nacentemackinac.jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "pitcher",
+   "sense": "A wide-mouthed, deep vessel for holding liquids",
+   "pos": "noun",
+   "right": [],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "palm",
+   "sense": "Any of various evergreen trees from the family P",
+   "pos": "noun",
+   "right": [
+    "1859-Martinique.web.jpg"
    ],
    "wrong": [],
    "must": true

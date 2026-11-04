@@ -4,27 +4,36 @@
  * no such link shows none.
  *
  * Sources, all keyless and all files on Wikimedia Commons (free licences or public domain; each
- * picture carries its author, licence and file page for the credit line):
+ * picture carries its author, licence and file page for the credit line), in the order of how
+ * often each kind of link is right:
  *
- * 1. Wiktionary's own pictures. Editors place `[[File:...|thumb|caption]]` in an entry and often
- *    tie the caption to a sense with `{{senseno}}`; a caption-only picture counts when it shares
- *    two words with a gloss. Book covers and title pages from quotations are skipped.
- * 2. Wikidata lexemes. A lexeme sense links to the item it means ("item for this sense", P5137),
+ * 1. Wikidata lexemes. A lexeme sense links to the item it means ("item for this sense", P5137),
  *    whose image (P18) shows that meaning: "crane" the bird and "crane" the machine each have
  *    their own. One SPARQL query (Wikidata Query Service) returns every sense with its gloss, item
  *    label, item description and image; it is matched to our senses by part of speech and shared
  *    words, the head word of the lexeme's gloss among them (`lexemeFit`).
- * 3. The Wikipedia article titled with the word, for a noun sense whose gloss fits the article's
- *    description or first sentences; when the article has no free lead image, a picture used in
- *    it that names the word ("Lac Operon.svg" on "Operon"). A foreign word also tries the article
- *    titled with its short English gloss ("猫" gives "Cat").
+ * 2. Wiktionary definition lines tied to a Wikidata item (`{{senseid|en|Q…}}`), whose image shows
+ *    that line's sense ("spring" the water source, Q124714).
+ * 3. Wiktionary's own pictures. Editors tie a caption to a sense with `{{senseno}}` or a number
+ *    ("A mechanical crane (3)"); a caption-only picture counts when it shares two words with a
+ *    gloss, or names the word and the thing the gloss is about ("A palm tree"). Book covers and
+ *    title pages from quotations are skipped.
+ * 4. The Wikipedia article titled with the word, for a noun sense whose gloss fits the article's
+ *    description or first sentences: the article's Wikidata image first, its lead image second;
+ *    without either, a picture used in it that names the word ("Lac Operon.svg" on "Operon"). A
+ *    foreign word also tries the article titled with its short English gloss ("猫" gives "Cat").
+ *
+ * Captions and articles rest on shared words rather than a curated link, so they only go to a
+ * picturable sense: a noun whose gloss is not about an act, state, quality or idea
+ * (`picturableSense`). Abstract words such as serendipity or vicissitude show no picture.
  *
  * All three are gathered once per word into a pool (`PicturePool`), apart from the sense list,
  * and matched to senses locally (`assignPictures`), so a lookup whose senses arrive in steps and
  * the card for the same word share one pool. Which senses get a picture: the major ones first,
  * meaning each entry's first sense, each part of speech's first sense and every sense a
  * lexicographer tied to a picture, ordered by how often the sense is used (SemCor) when known;
- * minor senses only once every major sense has one. The rules sit in `SENSE_PICTURE_RULES`.
+ * minor senses only once every major sense has one; three pictures at most per entry. The rules
+ * sit in `SENSE_PICTURE_RULES`.
  *
  * Checks: a portrait of a named person goes only to a sense about people; works, places,
  * companies and disambiguation pages are never the article for a sense; a reader can hide a
@@ -74,8 +83,8 @@ const TIMEOUT_MS = 8000;
  * timeout; a timed-out page is asked again on the next call because the result is not cached.
  */
 const WIKTIONARY_TIMEOUT_MS = TIMEOUT_MS;
-// v5: pictures come from a per-word pool matched to senses locally; v4 per-sense-list results are dropped.
-const CACHE_VERSION = 'v5';
+// v6: pools also hold Wiktionary sense lines' Wikidata items and the article's Wikidata image.
+const CACHE_VERSION = 'v6';
 const PERSIST_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 /** A result with no picture at all is kept this long, so a word saved earlier is tried again. */
 const EMPTY_TTL_MS = 6 * 60 * 60 * 1000;
@@ -106,7 +115,9 @@ const ABSTRACT_HEADS = new Set(
     'combination discovery experience relationship relation attitude behaviour behavior activity measure ' +
     'unit name surname abbreviation initialism acronym symbol letter word phrase expression term status ' +
     'rank role duty right trait nature aspect affection happiness sadness fear anger desire luck chance ' +
-    'fortune opportunity success failure movement motion lack absence presence existence knowledge skill'
+    'fortune opportunity success failure movement motion lack absence presence existence knowledge skill ' +
+    'phenomenon view understanding perception change statement saying peculiarity characteristic meaning ' +
+    'reaction discovery difference sight thought mind'
   )
     .split(/\s+/)
     .map((w) => stem(w)),
@@ -251,10 +262,41 @@ export function isConcreteNounSense(sense: SenseInput, lemma: string): boolean {
 export interface WiktionaryImage {
   file: string;
   caption: string;
-  /** Text of the definition line a `{{senseno}}` in the caption points to. */
+  /** Text of the definition line a `{{senseno}}` or a "(3)" in the caption points to. */
   senseText: string;
   pos: string;
   etymology: number;
+}
+
+/** A definition line Wiktionary ties to a Wikidata item with `{{senseid|en|Q…}}`. */
+export interface WiktionarySenseItem {
+  item: string;
+  senseText: string;
+  pos: string;
+}
+
+/**
+ * Definition lines tied to a Wikidata item ("# {{senseid|en|Q102836}} An elastic mechanical
+ * part…"): the item's image shows that sense, the way a lexeme's "item for this sense" does.
+ */
+export function extractSenseItems(wikitext: string, lang: string): WiktionarySenseItem[] {
+  const section = wiktionaryLanguageSection(wikitext, lang);
+  if (!section) return [];
+  const out: WiktionarySenseItem[] = [];
+  let pos = '';
+  for (const line of section.split('\n')) {
+    const heading = line.match(/^(={3,})\s*([^=]+?)\s*\1\s*$/);
+    if (heading) {
+      const h = heading[2].toLowerCase();
+      if (/^etymology(\s+\d+)?$/.test(h)) pos = '';
+      else if (POS_HEADINGS[h]) pos = POS_HEADINGS[h];
+      continue;
+    }
+    if (!/^#+[^:*]/.test(line)) continue;
+    const id = line.match(/\{\{\s*(?:senseid|sid)\s*\|[^|}]*\|\s*(Q\d+)\s*\}\}/i);
+    if (id && !out.some((x) => x.item === id[1])) out.push({ item: id[1], senseText: wikiToText(line.replace(/^#+\s*/, '')), pos });
+  }
+  return out;
 }
 
 function languageName(lang: string): string {
@@ -351,7 +393,9 @@ export function extractWiktionaryImages(wikitext: string, lang: string): Wiktion
   if (!section) return [];
   // Definition lines that carry a sense id, with the part of speech they sit under.
   const senseLines = new Map<string, { text: string; pos: string }>();
-  const images: Array<WiktionaryImage & { senseId: string }> = [];
+  // Top-level definitions per etymology and part of speech, in order, for a caption's "(3)".
+  const defs = new Map<string, Array<{ text: string; pos: string }>>();
+  const images: Array<WiktionaryImage & { senseId: string; number: number }> = [];
   let pos = '';
   let etymology = 0;
   const lines = section.split('\n');
@@ -370,6 +414,11 @@ export function extractWiktionaryImages(wikitext: string, lang: string): Wiktion
     if (/^#+[^:*]/.test(line)) {
       const id = line.match(/\{\{\s*(?:senseid|sid)\s*\|[^|}]*\|\s*([^}|]+?)\s*\}\}/i);
       if (id) senseLines.set(id[1].toLowerCase(), { text: wikiToText(line.replace(/^#+\s*/, '')), pos });
+      if (/^#[^#:*]/.test(line) && pos) {
+        const key = `${etymology}|${pos}`;
+        if (!defs.has(key)) defs.set(key, []);
+        (defs.get(key) as Array<{ text: string; pos: string }>).push({ text: wikiToText(line.replace(/^#+\s*/, '')), pos });
+      }
     }
     let from = 0;
     for (;;) {
@@ -400,14 +449,23 @@ export function extractWiktionaryImages(wikitext: string, lang: string): Wiktion
       const caption = wikiToText(captionRaw) || wikiToText(altRaw);
       // A quotation's book cover or title page ("Afloat and Ashore, cover") shows a book, not the word.
       if (BOOK_PICTURE.test(caption) || BOOK_PICTURE.test(file)) continue;
-      images.push({ file, caption, senseText: '', pos, etymology, senseId: senseNo ? senseNo[1].toLowerCase() : '' });
+      // "A mechanical crane (3)": the number of the sense the picture shows.
+      const numbered = caption.match(/\((\d{1,2})\)\s*$/);
+      images.push({ file, caption, senseText: '', pos, etymology, senseId: senseNo ? senseNo[1].toLowerCase() : '', number: numbered ? Number(numbered[1]) : 0 });
     }
   }
   // Sense ids may be defined below the picture, so resolve them after the pass. A linked
   // definition line also says which part of speech the picture belongs to.
-  return images.map(({ senseId, ...img }) => {
+  return images.map(({ senseId, number, ...img }) => {
     const linked = senseId ? senseLines.get(senseId) : undefined;
-    return linked ? { ...img, senseText: linked.text, pos: linked.pos || img.pos } : img;
+    if (linked) return { ...img, senseText: linked.text, pos: linked.pos || img.pos };
+    if (number) {
+      // The numbered list is the picture's part of speech, or the first one of its etymology.
+      const key = img.pos ? `${img.etymology}|${img.pos}` : Array.from(defs.keys()).find((k) => k.startsWith(`${img.etymology}|`));
+      const line = key ? defs.get(key)?.[number - 1] : undefined;
+      if (line) return { ...img, senseText: line.text, pos: line.pos, caption: img.caption.replace(/\s*\(\d{1,2}\)\s*$/, '') };
+    }
+    return img;
   });
 }
 
@@ -445,6 +503,12 @@ export function matchWiktionaryImages(images: WiktionaryImage[], senses: SenseIn
       if (!score && cap.length) {
         const n = overlap(cap, st);
         if (n >= 2) score = n + n / Math.min(cap.length, st.length);
+        // "A palm tree" for "any of various evergreen trees from the family Palmae": the caption
+        // names the word and the thing the gloss is about.
+        else if (mentionsWord(img.caption, lemma)) {
+          const head = glossHead(glossBody(sense.meaning), lemma);
+          if (head && cap.some((c) => nearWord(c, head))) score = 1.5;
+        }
       }
       if (score > 0) cands.push({ senseIndex, imageIndex, score });
     });
@@ -479,12 +543,12 @@ export interface WikipediaPage {
   extract?: string;
   pageimage?: string;
   thumbnail?: { source: string; width: number; height: number };
-  pageprops?: { disambiguation?: string };
+  pageprops?: { disambiguation?: string; wikibase_item?: string };
 }
 
 const WIKI_PAGE_PROPS =
   `prop=pageimages|pageprops|description|extracts&piprop=name|thumbnail&pithumbsize=${THUMB_WIDTH}` +
-  '&pilicense=free&ppprop=disambiguation&exintro=1&explaintext=1&exsentences=2&exlimit=max';
+  '&pilicense=free&ppprop=disambiguation|wikibase_item&exintro=1&explaintext=1&exsentences=2&exlimit=max';
 
 /** Article whose title is exactly `title` (redirects followed). */
 export function buildWikipediaTitleUrl(title: string, lang = 'en'): string {
@@ -768,6 +832,9 @@ export function majorSenseIndexes(senses: SenseInput[], lemma: string, max = 4):
 /** Two stems are the same word when one starts the other ("balanc" and "balance"). */
 function nearWord(a: string, b: string): boolean {
   if (a === b) return true;
+  // "moving" and "movement" share a root once their endings go.
+  const root = (w: string) => w.replace(/(ments?|ings?|ed|es)$/, '').replace(/e$/, '');
+  if (root(a).length >= 3 && root(a) === root(b)) return true;
   const [s, l] = a.length <= b.length ? [a, b] : [b, a];
   // Five letters at least: "part" must not match "particle".
   return s.length >= 5 && l.startsWith(s) && l.length - s.length <= 3;
@@ -1307,7 +1374,7 @@ export function lexemeFit(l: LexemeSense, sense: SenseInput, lemma: string): num
  */
 export interface PoolPicture {
   file: string;
-  source: 'wiktionary' | 'lexeme' | 'article';
+  source: 'wiktionary' | 'lexeme' | 'senseitem' | 'article';
   /** Index into the pool's Wiktionary pictures or lexeme senses. */
   ref: number;
   image?: SenseImage;
@@ -1320,6 +1387,8 @@ export interface PicturePool {
   lang: string;
   wiktionary: WiktionaryImage[];
   lexemes: LexemeSense[];
+  /** Wiktionary definition lines tied to a Wikidata item, with the item's image. */
+  senseItems: Array<WiktionarySenseItem & { file: string }>;
   /** The article titled with the word (English) or on the word's own Wikipedia. */
   article: WikipediaPage | null;
   /** English articles titled with a foreign word's short gloss ("猫" gives "Cat"). */
@@ -1383,7 +1452,10 @@ export interface SensePictureRules {
   /** Pictures per lookup at most. */
   maxPictures: number;
   /** Source order: the higher rank wins when several sources fit a sense. 0 turns a source off. */
-  rank: { wiktionaryLinked: number; lexeme: number; wiktionaryCaption: number; glossArticle: number; article: number };
+  rank: { lexeme: number; senseItem: number; wiktionaryLinked: number; wiktionaryCaption: number; glossArticle: number; article: number };
+  /** Pictures that rest on shared words rather than a curated link (Wiktionary captions, the
+   *  word's article) only go to senses that name something you can see. */
+  picturableOnly: boolean;
   /** Senses a lexicographer tied to a picture count as major, beside entry and part-of-speech heads. */
   curatedAreMajor: boolean;
   /** Major senses are pictured in order of how often they are used (SemCor), when known. */
@@ -1395,8 +1467,10 @@ export interface SensePictureRules {
 }
 
 export const SENSE_PICTURE_RULES: SensePictureRules = {
-  maxPictures: 4,
-  rank: { wiktionaryLinked: 40, lexeme: 30, wiktionaryCaption: 20, glossArticle: 12, article: 10 },
+  maxPictures: 3,
+  // Source order by how often each kind of link is right (Wikidata's item images first).
+  rank: { lexeme: 40, senseItem: 38, wiktionaryLinked: 35, wiktionaryCaption: 20, glossArticle: 12, article: 10 },
+  picturableOnly: true,
   curatedAreMajor: true,
   byFrequency: true,
   minorsAfterMajors: true,
@@ -1431,6 +1505,40 @@ function senseOrder(
 }
 
 /**
+ * Whether a sense names something you can see: a noun (or a card's sense of unknown part of
+ * speech) with no slang or figurative label whose head is not an act, state, quality or idea.
+ * Concreteness ratings (Brysbaert, Warriner and Kuperman 2014) would be finer, but the article
+ * and its supplementary data state no licence for redistribution, so the part of speech and the
+ * gloss's head decide.
+ */
+export function picturableSense(sense: SenseInput, lemma: string): boolean {
+  const pos = canonicalSensePos(sense.partOfSpeech);
+  if (pos && pos !== 'noun' && pos !== 'proper noun') return false;
+  return isConcreteNounSense({ meaning: sense.meaning, partOfSpeech: 'noun' }, lemma);
+}
+
+/**
+ * How well a Wiktionary definition line fits one of our senses (0 when it does not): the same
+ * part of speech and two shared content words making half of the shorter gloss, or all of a
+ * gloss of one or two words. The line and our gloss usually are the same Wiktionary sentence.
+ */
+export function linkedLineFit(line: string, linePos: string, sense: SenseInput, lemma: string): number {
+  const sp = canonicalSensePos(sense.partOfSpeech);
+  if (linePos && sp && linePos !== sp) return 0;
+  const a = contentTokens(line, lemma);
+  const b = contentTokens(glossBody(sense.meaning), lemma);
+  if (!a.length || !b.length) return 0;
+  const n = overlap(a, b);
+  const ratio = n / Math.min(a.length, b.length);
+  // Accepted fits rank by how much of both they cover, so the sense that is the line itself
+  // wins over a longer one that only quotes it.
+  if ((n >= 2 && ratio >= 0.5) || (n >= 1 && n === Math.min(a.length, b.length) && Math.min(a.length, b.length) <= 2)) {
+    return n / Math.max(a.length, b.length);
+  }
+  return 0;
+}
+
+/**
  * Pictures for `senses` from a pool, aligned with `senses`, at most `max`. A sense takes the best
  * unused picture that fits it: a Wiktionary picture tied to it, then a Wikidata lexeme sense that
  * matches its gloss and part of speech, then a Wiktionary caption sharing two of its words, then
@@ -1455,8 +1563,10 @@ export function assignPictures(
 
   // Candidates per sense, best first.
   const cands = senses.map((): Array<{ key: string; rank: number; curated?: boolean }> => []);
+  const picturable = senses.map((s) => !SENSE_PICTURE_RULES.picturableOnly || picturableSense(s, lemma));
   for (const m of matchWiktionaryImages(pool.wiktionary, senses, lemma)) {
     const linked = !!pool.wiktionary[m.imageIndex].senseText;
+    if (!linked && !picturable[m.senseIndex]) continue;
     const base = linked ? R.wiktionaryLinked : R.wiktionaryCaption;
     if (base > 0) cands[m.senseIndex].push({ key: `wiktionary:${m.imageIndex}`, rank: base + m.score / 100, curated: linked });
   }
@@ -1473,6 +1583,13 @@ export function assignPictures(
       if (R.lexeme > 0 && f > 0 && f === bestForLexeme[k] && f === bestForSense[i]) cands[i].push({ key: `lexeme:${k}`, rank: R.lexeme + Math.min(f, 9), curated: true });
     });
   });
+  // Wiktionary lines tied to an item: the sense whose gloss the line matches, best fit only.
+  (pool.senseItems || []).forEach((x, k) => {
+    if (R.senseItem <= 0) return;
+    const fits = senses.map((s) => linkedLineFit(x.senseText, x.pos, s, lemma));
+    const best = Math.max(0, ...fits);
+    if (best > 0) fits.forEach((f, i) => f === best && cands[i].push({ key: `senseitem:${k}`, rank: R.senseItem + Math.min(f, 1), curated: true }));
+  });
   const code = String(pool.lang || 'en').toLowerCase().split(/[-_]/)[0] || 'en';
   const nouns = senses.map((s, i) => (stripHtml(s.meaning) && ['noun', ''].includes(canonicalSensePos(s.partOfSpeech)) ? i : -1)).filter((i) => i >= 0);
   if (pool.article) {
@@ -1481,7 +1598,7 @@ export function assignPictures(
         code === 'en'
           ? pageFitsGloss(pool.article as WikipediaPage, lemma, senses[i].meaning, lemma, { strict: k > 0 })
           : k === 0;
-      if (fits && R.article > 0) cands[i].push({ key: 'article:0', rank: R.article });
+      if (fits && R.article > 0 && picturable[i]) cands[i].push({ key: 'article:0', rank: R.article });
     });
   }
   pool.glossArticles.forEach((page, k) => {
@@ -1516,15 +1633,17 @@ export function assignPictures(
 }
 
 /**
- * One picture for a word with no gloss (a card saved without a definition): the article titled
- * with the word, else the first lexeme sense with a picture, else a Wiktionary picture tied to a
+ * One picture for a word with no gloss (a card saved without a definition): the first lexeme
+ * sense with a picture, else a Wiktionary sense line's item, else a Wiktionary picture tied to a
  * sense.
  */
 function wholeWordPicture(pool: PicturePool, hidden: Set<string>): SenseImage | null {
   const ok = (p: PoolPicture | undefined) => !!p && !!p.image && !p.portrait && !hidden.has(p.file.toLowerCase());
+  // Only curated links: with no gloss there is no way to tell an abstract word's article picture
+  // from a fitting one, and none is better than a wrong one.
   const order = [
-    ...pool.pictures.filter((p) => p.source === 'article'),
     ...pool.pictures.filter((p) => p.source === 'lexeme'),
+    ...pool.pictures.filter((p) => p.source === 'senseitem'),
     ...pool.pictures.filter((p) => p.source === 'wiktionary' && pool.wiktionary[p.ref]?.senseText),
   ];
   return order.find(ok)?.image || null;
@@ -1581,6 +1700,27 @@ async function lexemesFor(lemma: string, lang: string): Promise<{ senses: Lexeme
   return { senses: parseLexemeRows(res.results?.bindings || [], lemma), ok: true };
 }
 
+/** The images (P18) of Wikidata items, one SPARQL query for every item asked together. */
+export function buildItemImagesUrl(items: string[]): string {
+  const values = items.filter((q) => /^Q\d+$/.test(q)).map((q) => `wd:${q}`).join(' ');
+  const q = `SELECT ?item ?img WHERE { VALUES ?item { ${values} } ?item wdt:P18 ?img }`;
+  return `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(q)}`;
+}
+
+async function itemImages(items: string[]): Promise<{ images: Map<string, string[]>; ok: boolean }> {
+  const images = new Map<string, string[]>();
+  if (!items.length) return { images, ok: true };
+  const res = await batched<{ results?: { bindings?: SparqlBinding[] } }>('items', buildItemImagesUrl, items, 40);
+  if (!res) return { images, ok: false };
+  for (const b of res.results?.bindings || []) {
+    const id = (b.item?.value || '').split('/').pop() || '';
+    if (!id || !b.img) continue;
+    if (!images.has(id)) images.set(id, []);
+    (images.get(id) as string[]).push(b.img.value);
+  }
+  return { images, ok: true };
+}
+
 /** Commons file details for the pool's pictures that lack them, then the portrait mark. */
 async function fillImages(pool: PicturePool, titleOf: (p: PoolPicture) => string): Promise<boolean> {
   const missing = pool.pictures.filter((p) => !p.image);
@@ -1608,6 +1748,10 @@ function poolTitle(pool: PicturePool, p: PoolPicture): string {
     const l = pool.lexemes[p.ref];
     return (l && (l.itemLabel || l.gloss)) || commonsFileTitle(p.file);
   }
+  if (p.source === 'senseitem') {
+    const x = pool.senseItems[p.ref];
+    return (x && x.senseText.replace(/^(\([^)]*\)\s*)+/, '').slice(0, 80)) || commonsFileTitle(p.file);
+  }
   if (p.source === 'article' && p.ref < 0) return commonsFileTitle(p.file);
   const page = p.ref >= 1000 ? pool.glossArticles[p.ref - 1000] : pool.article;
   return page?.title || commonsFileTitle(p.file);
@@ -1632,6 +1776,7 @@ async function buildPool(lemma: string, lang: string, hints: string[], progress:
     lang: code,
     wiktionary: [],
     lexemes: [],
+    senseItems: [],
     article: null,
     glossArticles: [],
     etymology: [],
@@ -1654,6 +1799,18 @@ async function buildPool(lemma: string, lang: string, hints: string[], progress:
       pool.wiktionary = extractWiktionaryImages(text, code);
       pool.etymology = etymologyLines(text, code, lemma);
       pool.wiktionary.forEach((w, k) => addPicture(pool, w.file, 'wiktionary', k));
+      // Definition lines tied to a Wikidata item show that item's image.
+      const items = extractSenseItems(text, code);
+      if (items.length) {
+        const { images, ok: itemsOk } = await itemImages(items.map((x) => x.item));
+        for (const x of items) {
+          const pick = bestImage(images.get(x.item) || [], `${lemma} ${x.senseText}`);
+          if (!pick) continue;
+          pool.senseItems.push({ ...x, file: commonsFileFromUrl(pick) });
+          addPicture(pool, commonsFileFromUrl(pick), 'senseitem', pool.senseItems.length - 1);
+        }
+        if (!itemsOk) return false;
+      }
     }
     return ok;
   });
@@ -1671,6 +1828,17 @@ async function buildPool(lemma: string, lang: string, hints: string[], progress:
     const elsewhere = !!page && (BAD_DESCRIPTION.test(String(page.description || '')) || BAD_DESCRIPTION.test(titleParts(page.title).qualifier));
     if (!page || !usable || elsewhere) return true;
     pool.article = page;
+    // The article's Wikidata image first: it is chosen for the item, while a lead image may be
+    // a diagram or a detail ("Crane (machine)" opens with an SVG).
+    const item = page.pageprops?.wikibase_item;
+    if (item) {
+      const { images } = await itemImages([item]);
+      const pick = bestImage(images.get(item) || [], `${lemma} ${page.title}`);
+      if (pick) {
+        addPicture(pool, commonsFileFromUrl(pick), 'article', 0);
+        return true;
+      }
+    }
     if (acceptConceptPage(page)) {
       addPicture(pool, page.pageimage as string, 'article', 0);
       return true;
