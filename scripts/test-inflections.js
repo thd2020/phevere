@@ -20,7 +20,7 @@ function load(name) {
   return mod.exports;
 }
 
-const { inflectionsFromKaikki, selectInflections, englishPossessive } = load('inflections');
+const { inflectionsFromKaikki, selectInflections } = load('inflections');
 const { inflectionsHtml, wordFamilyHtml } = load('lexicon-parts');
 const { normalizeVocabLemma, closestSpelling, typoDistance } = load('vocab-lemma');
 
@@ -37,7 +37,7 @@ assert.deepEqual(rows(run.tables[0]), {
   Past: ['ran'],
   'Past participle': ['run'],
 });
-assert.deepEqual(rows(run.tables[1]), { Plural: ['runs'], Possessive: ["run's", "runs'"] });
+assert.deepEqual(rows(run.tables[1]), { Plural: ['runs'] }, 'no possessive row: learner dictionaries do not list one');
 assert.deepEqual(run.formOf, [], 'run is a lemma, not the dialect past participle of rin');
 
 // A plural points at its lemma, and the lemma's table stands in; the rare verb "mice" is dropped.
@@ -71,8 +71,6 @@ assert.deepEqual(manger.tables[0].grids[0].rows.map((r) => r.label), ['1st', '2n
 assert.deepEqual(manger.tables[0].grids[0].rows[0].cells, [['mange'], ['mangeons']]);
 assert.deepEqual(rows(manger.tables[0])['Past participle'], ['mangé']);
 
-assert.equal(englishPossessive('dogs', true), "dogs'");
-assert.equal(englishPossessive('children', true), "children's");
 
 // Rendering: the form-of sentence, the lemma link, and Russian stress set as a bold vowel.
 const formsHtml = inflectionsHtml(miceSel, 'mice', 'act');

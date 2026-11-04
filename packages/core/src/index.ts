@@ -374,7 +374,7 @@ export {
 export {
   inflectionsFromKaikki,
   selectInflections,
-  englishPossessive,
+  weighForms,
   type WordInflections,
   type InflectionTable,
   type InflectionGrid,

@@ -62,6 +62,7 @@
 .lx-infl__rows > div { display: contents; }
 .lx-infl__rows dt { padding-top: 3px; }
 .lx-infl__rows dd { margin: 0; font: 15px/1.45 var(--lx-serif); }
+.lx-note { font: italic 13px/1.4 var(--lx-serif); color: var(--lx-soft); }
 .lx-grid {
   border-collapse: collapse;
   font: 14.5px/1.4 var(--lx-serif);
