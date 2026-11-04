@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Linked words (2026-11-04): every word in a lookup opens its own lookup, on the desktop pop-up, the desktop lookup window and the phone. That covers definitions, examples, synonyms and antonyms, the etymology text and the older forms in the word history, and the forms in Forms. The words look like plain text until you point at or tap one, as in Apple's Dictionary. Back and Forward step through them like any other lookup, and selecting text in a definition still selects it instead of opening a word. Chinese and Japanese text, which has no spaces between words, stays plain.
+- Word part pages (2026-11-04): prefixes, suffixes, Latin and Greek roots and Proto-Indo-European roots have their own pages. Look up "ob-", "-ant", "-fac-" or "*bʰeh₂-", or tap a part under Built from, in an etymology or in a word history. A prefix or suffix page shows its senses and pronunciation from Wiktionary, its other spellings (oc-, op- for ob-), its origin and usage notes, the words in My words and in your word books that are built on it, the English words Wiktionary lists with it, and related parts. A Proto-Indo-European root shows each of its meanings, the English words Etymonline traces to it, and its descendants in Latin, Greek, Sanskrit and the other languages Wiktionary lists. A word that is also a part, such as "con" or "form", opens as a word and links to the part's page under the headword.
+
+### Fixed
+
+- Built from (2026-11-04): a suffix or prefix that Wiktionary writes without its hyphen in the etymology, as in assist + ant, now reads -ant and opens the suffix, not the insect.
+
 ## [4.0.0] - 2026-11-04
 
 The 4.0.0 files were first published on 2026-11-03 and rebuilt from `main` on 2026-11-04; the entries dated 2026-11-04 arrived with the rebuild.
