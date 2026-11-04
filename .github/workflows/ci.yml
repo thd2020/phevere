@@ -14,6 +14,36 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Offline suite (scripts/run-tests.js). Windows because the popup tests open hidden
+  # Electron windows and test-native-lifecycle loads the UI Automation addon.
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      # node_modules holds the Electron binary and the compiled addon, which the npm cache does not.
+      - name: Restore node_modules
+        id: modules
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            node_modules
+            apps/mobile/node_modules
+            native-addon/node_modules
+            native-addon/build
+          key: modules-${{ runner.os }}-node22-${{ hashFiles('package-lock.json', 'native-addon/package-lock.json', 'native-addon/binding.gyp', 'native-addon/src/**') }}
+      - name: Install (includes native addon)
+        if: steps.modules.outputs.cache-hit != 'true'
+        env:
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+        run: npm ci
+      - name: Run offline tests
+        run: npm test
+
   build:
     runs-on: windows-latest
     timeout-minutes: 30
