@@ -76,7 +76,7 @@ import { closestSpelling } from './vocab-lemma';
 import { wrapConsole } from './log';
 import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigured, type OfflineHit } from './runtime';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
-import { isGrammaticalFormOfGloss, splitSurfaceAndLemma, sameLookupFold } from './lookup-policy';
+import { isGrammaticalFormOfGloss, splitSurfaceAndLemma, sameLookupFold, stripGlossText } from './lookup-policy';
 import { formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, resolveFormOf } from './form-of';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { groupYoudaoEtymologies, serializeEtymologySources } from './etymology-sources';
@@ -2263,8 +2263,16 @@ export class DictionaryService extends BaseService {
       });
       // Removed verbose API response logging to prevent HTML floods
 
-      // Prioritize the language detected or specified
-      const langData = response ? response[language] || response['en'] : null;
+      // Prioritize the language detected or specified. A word English borrowed ("paparazzo",
+      // detected as Italian) has senses there that only repeat the word as its English
+      // translation; the English section is the one with meanings.
+      const echoesWord = (list: any[]) =>
+        Array.isArray(list) &&
+        list.every((e) =>
+          (e?.definitions || []).every((d: any) => foldLookupKey(stripGlossText(String(d?.definition || '')).replace(/\(.*\)/g, '')) === foldLookupKey(term)),
+        );
+      const own = response ? response[language] : null;
+      const langData = response ? (own && !(language !== 'en' && response.en && echoesWord(own)) ? own : response['en']) : null;
 
       if (langData && Array.isArray(langData) && langData.length > 0) {
         const definitions: Definition[] = [];
