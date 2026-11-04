@@ -1852,11 +1852,13 @@ async function resolveSenseImages(
     if (shown.some(Boolean)) emit(out.slice());
   }
 
-  // Still nothing: a Commons search for the word, by file name and then anywhere in the record.
-  if (!out.some(Boolean)) {
+  // The first sense still bare: a Commons search for the word, by file name and then anywhere
+  // in the record ("Static equilibrium same force" for equilibrium at rest).
+  if (!out[head] && out.filter(Boolean).length < max) {
     const state = fallbackState || (await resolveWordFallback(lemma, senses, code, wikt, fallbackReq, earlyFallback));
+    const taken = new Set(out.filter(Boolean).map((x) => (x as SenseImage).pageUrl));
     const img = state.image || (await commonsFallback(lemma, senses, code, state));
-    if (img) out[head] = img;
+    if (img && !taken.has(img.pageUrl)) out[head] = img;
   }
   return out;
 }
