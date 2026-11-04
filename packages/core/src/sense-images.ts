@@ -1462,7 +1462,7 @@ export interface PicturePool {
   wiktionary: WiktionaryImage[];
   lexemes: LexemeSense[];
   /** Wiktionary definition lines tied to a Wikidata item, with the item's image. */
-  senseItems: Array<WiktionarySenseItem & { file: string }>;
+  senseItems: Array<WiktionarySenseItem & { file: string; label?: string }>;
   /** The article titled with the word (English) or on the word's own Wikipedia. */
   article: WikipediaPage | null;
   /** English articles titled with a foreign word's short gloss ("猫" gives "Cat"). */
@@ -1786,24 +1786,27 @@ async function lexemesFor(lemma: string, lang: string): Promise<{ senses: Lexeme
 /** The images (P18) of Wikidata items, one SPARQL query for every item asked together. */
 export function buildItemImagesUrl(items: string[]): string {
   const values = items.filter((q) => /^Q\d+$/.test(q)).map((q) => `wd:${q}`).join(' ');
-  const q = `SELECT ?item ?img WHERE { VALUES ?item { ${values} } ?item wdt:P18 ?img }`;
+  const q = `SELECT ?item ?img ?label WHERE { VALUES ?item { ${values} } ?item wdt:P18 ?img . OPTIONAL { ?item rdfs:label ?label FILTER(LANG(?label) = "en") } }`;
   return `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(q)}`;
 }
 
-async function itemImages(items: string[]): Promise<{ images: Map<string, string[]>; ok: boolean }> {
+async function itemImages(items: string[]): Promise<{ images: Map<string, string[]>; labels: Map<string, string>; ok: boolean }> {
   const images = new Map<string, string[]>();
-  if (!items.length) return { images, ok: true };
+  const labels = new Map<string, string>();
+  if (!items.length) return { images, labels, ok: true };
   type Rows = { results?: { bindings?: SparqlBinding[] } };
   const res =
     (await batched<Rows>('items', buildItemImagesUrl, items, 40)) || (await getJson<Rows>(buildItemImagesUrl(items), RETRY_TIMEOUT_MS));
-  if (!res) return { images, ok: false };
+  if (!res) return { images, labels, ok: false };
   for (const b of res.results?.bindings || []) {
     const id = (b.item?.value || '').split('/').pop() || '';
     if (!id || !b.img) continue;
     if (!images.has(id)) images.set(id, []);
-    (images.get(id) as string[]).push(b.img.value);
+    const list = images.get(id) as string[];
+    if (!list.includes(b.img.value)) list.push(b.img.value);
+    if (b.label?.value && !labels.has(id)) labels.set(id, b.label.value);
   }
-  return { images, ok: true };
+  return { images, labels, ok: true };
 }
 
 /** Commons file details for the pool's pictures that lack them, then the portrait mark. */
@@ -1824,18 +1827,31 @@ async function fillImages(pool: PicturePool, titleOf: (p: PoolPicture) => string
   return ok;
 }
 
+/**
+ * A picture's title from a definition line when no label names it: the line's first clause,
+ * without labels in brackets, cut at a word before sixty letters ("Panthera tigris", not "Panthera
+ * tigris, a large predatory mammal (Felis tigris) of the cat fam").
+ */
+export function titleFromGloss(text: string): string {
+  const plain = stripHtml(text || '').replace(/^(\([^)]*\)\s*)+/, '').trim();
+  const clause = (plain.split(/[;:.]\s|,\s(?=an?\s|the\s|any\s|one\s)/i)[0] || plain).replace(/[.;:,]+$/, '').trim();
+  if (clause.length <= 60) return clause.charAt(0).toUpperCase() + clause.slice(1);
+  const cut = clause.slice(0, 60).replace(/\s+\S*$/, '').replace(/[\s,;:]+$/, '');
+  return `${cut.charAt(0).toUpperCase()}${cut.slice(1)}…`;
+}
+
 function poolTitle(pool: PicturePool, p: PoolPicture): string {
   if (p.source === 'wiktionary') {
     const w = pool.wiktionary[p.ref];
-    return (w && (w.caption || w.senseText)) || commonsFileTitle(p.file);
+    return (w && (w.caption || titleFromGloss(w.senseText))) || commonsFileTitle(p.file);
   }
   if (p.source === 'lexeme') {
     const l = pool.lexemes[p.ref];
-    return (l && (l.itemLabel || l.gloss)) || commonsFileTitle(p.file);
+    return (l && (l.itemLabel || titleFromGloss(l.gloss))) || commonsFileTitle(p.file);
   }
   if (p.source === 'senseitem') {
     const x = pool.senseItems[p.ref];
-    return (x && x.senseText.replace(/^(\([^)]*\)\s*)+/, '').slice(0, 80)) || commonsFileTitle(p.file);
+    return (x && (x.label || titleFromGloss(x.senseText))) || commonsFileTitle(p.file);
   }
   if (p.source === 'article' && p.ref < 0) return commonsFileTitle(p.file);
   if (p.ref >= 2000) return titleParts(pool.related?.[p.ref - 2000]?.title || '').base || commonsFileTitle(p.file);
@@ -1888,11 +1904,11 @@ async function buildPool(lemma: string, lang: string, hints: string[], progress:
       // Definition lines tied to a Wikidata item show that item's image.
       const items = extractSenseItems(text, code);
       if (items.length) {
-        const { images, ok: itemsOk } = await itemImages(items.map((x) => x.item));
+        const { images, labels, ok: itemsOk } = await itemImages(items.map((x) => x.item));
         for (const x of items) {
           const pick = bestImage(images.get(x.item) || [], `${lemma} ${x.senseText}`);
           if (!pick) continue;
-          pool.senseItems.push({ ...x, file: commonsFileFromUrl(pick) });
+          pool.senseItems.push({ ...x, label: labels.get(x.item) || '', file: commonsFileFromUrl(pick) });
           addPicture(pool, commonsFileFromUrl(pick), 'senseitem', pool.senseItems.length - 1);
         }
         if (!itemsOk) return false;

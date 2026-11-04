@@ -247,6 +247,11 @@ assert.strictEqual(
 );
 assert.strictEqual(fit(lex('water source'), 'The source from which an action or supply of something springs.', 'noun', 'spring'), 0, 'spring: a water source is not the source of an action');
 
+// Titles from definition lines: the first clause, whole words only.
+assert.strictEqual(si.titleFromGloss('Panthera tigris, a large predatory mammal of the cat family, native to Asia.'), 'Panthera tigris');
+assert.strictEqual(si.titleFromGloss('(zoology) A large bird of the family Gruidae with long legs and neck, found on every continent but South America and Antarctica'), 'A large bird of the family Gruidae with long legs and neck…');
+assert.ok(!/\s\S{1,2}…$/.test(si.titleFromGloss('An elastic device, usually a coil of metal wire, that regains its original shape after being compressed or extended')), 'no cut words');
+
 // Heads behind adjective lists, and articles from a disambiguation page.
 same(si.glossHeads('A royal, imperial or princely headdress; a diadem.', 'crown'), ['headdress']);
 same(si.glossHeads('Hard, protective outer layers created by an animal that lives in the sea'), ['layer']);
