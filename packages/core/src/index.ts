@@ -22,6 +22,7 @@ export {
   fetchWordImage,
   prefetchSenseImages,
   hideSenseImage,
+  unhideSenseImage,
   predictPictureSenses,
   registerWiktionaryWikitextSource,
   clearSenseImageCache,

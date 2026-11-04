@@ -1556,6 +1556,22 @@ html[data-mode="strip"][data-popup="floating"] .shell { border-radius: 20px; }
   z-index: 8;
   animation: toast-in 280ms var(--md-sys-motion);
 }
+.toast__msg {
+  flex: 1;
+}
+.toast__action {
+  margin: -8px -8px -8px 12px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--md-sys-shape-sm);
+  background: none;
+  color: var(--md-sys-color-inverse-primary, var(--md-sys-color-primary-container));
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
 html[data-mode="strip"] .toast {
   bottom: calc(var(--pv-inset-bottom) + 16px);
 }

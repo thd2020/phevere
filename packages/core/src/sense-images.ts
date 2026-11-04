@@ -36,7 +36,8 @@
  *
  * Checks: a portrait of a named person never shows; works, places,
  * companies and disambiguation pages are never the article for a sense; a reader can hide a
- * picture (`hideSenseImage`), and it never shows again for that word.
+ * picture (`hideSenseImage`), and it never shows again on that sense; Undo brings it back
+ * (`unhideSenseImage`).
  *
  * Speed: the pool's three sources start together (a lookup can start them when the word is
  * submitted, `prefetchSenseImages`) and the Wiktionary page is the one the dictionary already
@@ -1626,7 +1627,7 @@ export function assignPictures(
   const hidden = opts.hidden || new Set<string>();
   const byKey = new Map(pool.pictures.map((p) => [`${p.source}:${p.ref}`, p]));
   const usable = (p: PoolPicture | undefined, sense: SenseInput): p is PoolPicture & { image: SenseImage } =>
-    !!p && !!p.image && !hidden.has(p.file.toLowerCase()) && (!p.portrait || !SENSE_PICTURE_RULES.noNamedPortraits);
+    !!p && !!p.image && !isHidden(hidden, p.file, sense.meaning) && (!p.portrait || !SENSE_PICTURE_RULES.noNamedPortraits);
 
   // Candidates per sense, best first.
   const cands = senses.map((): Array<{ key: string; rank: number }> => []);
@@ -1718,7 +1719,9 @@ export function assignPictures(
  * sense.
  */
 function wholeWordPicture(pool: PicturePool, hidden: Set<string>): SenseImage | null {
-  const ok = (p: PoolPicture | undefined) => !!p && !!p.image && !p.portrait && !hidden.has(p.file.toLowerCase());
+  // Without a gloss there is no telling which sense a hidden picture was hidden on: any counts.
+  const files = new Set(Array.from(hidden, (h) => h.split(HIDDEN_SEP)[0]));
+  const ok = (p: PoolPicture | undefined) => !!p && !!p.image && !p.portrait && !files.has(p.file.toLowerCase());
   // Only curated links: with no gloss there is no way to tell an abstract word's article picture
   // from a fitting one, and none is better than a wrong one.
   const order = [
@@ -2093,7 +2096,27 @@ function getPool(lemma: string, lang: string, hints: string[], progress?: (pool:
 
 // ---------------------------------------------------------------- hidden pictures
 
+/**
+ * Hidden pictures of a word, as lower-case file names (hidden on every sense) or a file name and
+ * a sense key joined by `HIDDEN_SEP` (hidden on that sense only).
+ */
 const hiddenCache = new Map<string, Set<string>>();
+const HIDDEN_SEP = '\u0000';
+
+/** A sense's key for hiding: its first content words, so a card's copy of the gloss matches the lookup's. */
+function senseKey(gloss: string): string {
+  return contentTokens(glossBody(gloss)).slice(0, 8).join(' ');
+}
+
+function hiddenEntry(file: string, sense?: string): string {
+  const key = sense ? senseKey(sense) : '';
+  return key ? `${file.toLowerCase()}${HIDDEN_SEP}${key}` : file.toLowerCase();
+}
+
+function isHidden(hidden: Set<string>, file: string, sense: string): boolean {
+  if (!hidden.size) return false;
+  return hidden.has(file.toLowerCase()) || hidden.has(hiddenEntry(file, sense));
+}
 
 function hiddenKey(lemma: string, lang: string): string {
   return `sense-images-hidden:${String(lang || 'en').toLowerCase()}:${lemma.toLowerCase()}`;
@@ -2108,8 +2131,9 @@ async function hiddenFor(lemma: string, lang: string): Promise<Set<string>> {
   if (store) {
     try {
       const saved = await store.get(key);
-      const list = saved?.value as Array<{ file: string }> | undefined;
-      for (const h of Array.isArray(list) ? list : []) if (h?.file) set.add(String(h.file).toLowerCase());
+      const list = saved?.value as Array<{ file: string; sense?: string; scope?: string }> | undefined;
+      // Entries saved before pictures were hidden per sense have no scope and stay hidden on every sense.
+      for (const h of Array.isArray(list) ? list : []) if (h?.file) set.add(hiddenEntry(String(h.file), h.scope === 'sense' ? h.sense : ''));
       // Written again once a session, so a store that prunes old files (the desktop's, after 15
       // days) keeps the list.
       if (set.size) void Promise.resolve(store.set(key, list, Date.now() + 350 * 86_400_000)).catch((): undefined => undefined);
@@ -2132,32 +2156,51 @@ function fileOfImage(img: Pick<SenseImage, 'pageUrl'>): string {
 }
 
 /**
- * Hides a picture the reader marked as wrong: it never shows again for this word, on any sense
- * or card. The sense it was shown on is stored with it. Kept with the platform's lookup cache
- * (desktop: a file in userData; phone: localStorage) for a year.
+ * Hides a picture the reader marked as wrong. With `sense` it never shows again on that sense of
+ * the word (in a lookup or on a card saved with that sense); without, on any sense. Kept with the
+ * platform's lookup cache (desktop: a file in userData; phone: localStorage) for a year.
  */
 export async function hideSenseImage(
   lemma: string,
   img: Pick<SenseImage, 'pageUrl'>,
   opts?: { lang?: string; sense?: string },
 ): Promise<void> {
+  await setHidden(lemma, img, opts, true);
+}
+
+/** Shows a picture hidden with `hideSenseImage` again (the Undo after hiding). */
+export async function unhideSenseImage(
+  lemma: string,
+  img: Pick<SenseImage, 'pageUrl'>,
+  opts?: { lang?: string; sense?: string },
+): Promise<void> {
+  await setHidden(lemma, img, opts, false);
+}
+
+async function setHidden(lemma: string, img: Pick<SenseImage, 'pageUrl'>, opts: { lang?: string; sense?: string } | undefined, hide: boolean): Promise<void> {
   const word = String(lemma || '').trim();
   const file = fileOfImage(img);
   if (!word || !file) return;
   const lang = String(opts?.lang || 'en');
+  const sense = stripHtml(opts?.sense || '').slice(0, 160);
+  const entry = hiddenEntry(file, sense);
   const set = await hiddenFor(word, lang);
-  set.add(file.toLowerCase());
+  if (hide) set.add(entry);
+  else set.delete(entry);
   const store = getLookupCache();
   if (!store) return;
   const key = hiddenKey(word, lang);
-  let list: Array<{ file: string; sense?: string }> = [];
+  type Entry = { file: string; sense?: string; scope?: string };
+  let list: Entry[] = [];
   try {
     const saved = await store.get(key);
-    if (Array.isArray(saved?.value)) list = saved?.value as typeof list;
+    if (Array.isArray(saved?.value)) list = saved?.value as Entry[];
   } catch {
     /* start a new list */
   }
-  if (!list.some((h) => String(h.file).toLowerCase() === file.toLowerCase())) list.push({ file, sense: stripHtml(opts?.sense || '').slice(0, 120) || undefined });
+  const same = (h: Entry) => hiddenEntry(String(h.file), h.scope === 'sense' ? h.sense : '') === entry;
+  list = list.filter((h) => !same(h));
+  if (hide) list.push(sense && senseKey(sense) ? { file, sense, scope: 'sense' } : { file });
   // A date in the future keeps the list well past the lookup cache's usual age.
   await Promise.resolve(store.set(key, list, Date.now() + 350 * 86_400_000)).catch((): undefined => undefined);
 }
@@ -2178,7 +2221,7 @@ export function prefetchSenseImages(lemma: string, opts?: { lang?: string }): vo
 
 /**
  * One picture per sense where a faithful one exists, aligned with `senses`, at most `max`
- * (default 4). Never rejects; a failed request means fewer pictures. `onUpdate` gets the
+ * (default three, `SENSE_PICTURE_RULES.maxPictures`). Never rejects; a failed request means fewer pictures. `onUpdate` gets the
  * pictures found so far while slower sources still answer (not called when the pool is cached).
  */
 export async function fetchSenseImages(

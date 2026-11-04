@@ -44,7 +44,7 @@ async function startupAndGestures(floatingStrip) {
     listEmptyDefinitions: async () => [], listEmptyReadings: async () => [],
     findByLemma: async () => null, saveLemma: (result) => result.word, morphemeOf: () => null, primeBookLevels: async () => undefined,
     // Pictures are not under test here either.
-    prefetchSenseImages: () => {}, fetchSenseImages: async () => [], hideSenseImage: async () => {},
+    prefetchSenseImages: () => {}, fetchSenseImages: async () => [], hideSenseImage: async () => {}, unhideSenseImage: async () => {},
     dictionaryService: {
       getSupportedLanguages: () => [], getEnabledSources: () => [],
       lookup: (q, lang, sources, options) => new Promise((resolve) => lookups.push({ q, options, resolve })),

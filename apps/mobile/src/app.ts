@@ -7,6 +7,7 @@ import {
   fetchSenseImages,
   prefetchSenseImages,
   hideSenseImage,
+  unhideSenseImage,
   fillEmptyDefinitions,
   findByLemma,
   listEmptyDefinitions,
@@ -416,6 +417,8 @@ let packMsg = '';
 const lib = emptyLibraryState();
 let toastMsg = '';
 let toastTimer: number | null = null;
+/** What the toast's Undo button does, when it has one. */
+let toastUndo: (() => void) | null = null;
 let capture: CaptureInfo = { platform: 'web', canDrawOverlays: false };
 let accountState: AccountState | null = null;
 /** The account sheet is open from the app bar. */
@@ -461,14 +464,23 @@ let histIndex = -1;
 /** A lookup opened from Words or Learn: Back returns there once the trail is back at that word. */
 let lookupFrom: { tab: Tab; at: number } | null = null;
 
-function toast(msg: string): void {
+function toast(msg: string, undo?: () => void): void {
   toastMsg = msg;
+  toastUndo = undo || null;
   paint();
   if (toastTimer) window.clearTimeout(toastTimer);
+  // A toast with an action stays long enough to reach it.
   toastTimer = window.setTimeout(() => {
     toastMsg = '';
+    toastUndo = null;
     paint();
-  }, 2400);
+  }, undo ? 6000 : 2400);
+}
+
+function toastHtml(): string {
+  if (!toastMsg) return '';
+  const action = toastUndo ? '<button type="button" class="toast__action" data-act="toast-undo">Undo</button>' : '';
+  return `<div class="toast" role="status"><span class="toast__msg">${esc(toastMsg)}</span>${action}</div>`;
 }
 
 function postOsNotify(kind: 'incoming' | 'saved' | 'ocr', title: string, body: string): void {
@@ -648,7 +660,7 @@ function paint(): void {
       <span class="account-sheet__grip" aria-hidden="true"></span>
       ${accountPanelHtml(accountState, { deleting: accountDeleting, device: 'phone' })}
     </section>` : ''}
-    ${toastMsg ? `<div class="toast" role="status">${esc(toastMsg)}</div>` : ''}`;
+    ${toastHtml()}`;
   const q = document.getElementById('q') as HTMLInputElement | null;
   if (keepFocus && q) {
     q.focus();
@@ -1150,9 +1162,7 @@ function paintScan(page: ScanPage, hit: string): void {
   view.dataset.sheet = scanSheet;
   const body = view.querySelector<HTMLElement>('.scan-sheet__body')!;
   body.innerHTML = scanSheet === 'closed' ? '' : hit;
-  view.querySelector<HTMLElement>('.scan-toast')!.innerHTML = toastMsg
-    ? `<div class="toast" role="status">${esc(toastMsg)}</div>`
-    : '';
+  view.querySelector<HTMLElement>('.scan-toast')!.innerHTML = toastHtml();
   bindLexiconPane();
   bindWikiReader();
 }
@@ -1366,18 +1376,30 @@ async function runOcr(): Promise<void> {
 }
 
 /**
- * Hides a picture the reader marked as wrong: it never shows again for this word, and the sense
- * is matched again (another fitting picture may take its place, or none).
+ * Hides a picture the reader marked as wrong: it never shows again on this sense, and the senses
+ * are matched again (another fitting picture may take its place, or none). The toast's Undo
+ * brings it back.
  */
 async function hideSensePicture(frame: HTMLElement): Promise<void> {
   if (!result) return;
   const figure = frame.closest<HTMLElement>('.sense-figure');
   const index = Number(figure?.dataset.senseFigure ?? -1);
   const sense = lexiconSenses(result)[index];
-  await hideSenseImage(result.word || query, { pageUrl: frame.dataset.page || '' }, { lang: result.detectedLanguage || 'en', sense: sense?.meaning });
+  const word = result.word || query;
+  const picture = { pageUrl: frame.dataset.page || '' };
+  const opts = { lang: result.detectedLanguage || 'en', sense: sense?.meaning };
+  const generation = lookupGeneration;
+  await hideSenseImage(word, picture, opts);
   figure?.remove();
   senseImages = null;
-  void loadSenseImages(lookupGeneration);
+  void loadSenseImages(generation);
+  toast('Picture hidden', () => {
+    void unhideSenseImage(word, picture, opts).then(() => {
+      if (generation !== lookupGeneration) return;
+      senseImages = null;
+      void loadSenseImages(generation);
+    });
+  });
 }
 
 /** A sense picture at its larger size over the page; a tap outside the credit, or Back, closes it. */
@@ -2048,6 +2070,15 @@ function onQueryInput(): void {
 
 async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
   switch (act) {
+    case 'toast-undo': {
+      const undo = toastUndo;
+      toastUndo = null;
+      toastMsg = '';
+      if (toastTimer) window.clearTimeout(toastTimer);
+      paint();
+      undo?.();
+      return;
+    }
     case 'account-plus': {
       // Get Plus: the system browser, not the app's WebView.
       e.preventDefault();

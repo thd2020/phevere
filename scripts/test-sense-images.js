@@ -418,11 +418,19 @@ function memoryStore() {
   const again = load({ isCoreConfigured: () => true, getHttp: () => ({ requestJson: async () => { throw new Error('should not fetch'); } }), getLookupCache: () => store });
   assert.strictEqual((await again.fetchSenseImages('crane', craneSenses, { lang: 'en' }))[2].title, 'crane', 'persistent pool');
 
-  // Hiding a picture: gone for this word, also in a new session.
+  // Hiding a picture: gone on that sense, also in a new session, and back after Undo.
   await again.hideSenseImage('crane', imgs[2], { lang: 'en', sense: craneSenses[2].meaning });
   assert.strictEqual((await again.fetchSenseImages('crane', craneSenses, { lang: 'en' }))[2], null, 'hidden');
   const third = load({ isCoreConfigured: () => true, getHttp: () => ({ requestJson: async () => { throw new Error('should not fetch'); } }), getLookupCache: () => store });
   assert.strictEqual((await third.fetchSenseImages('crane', craneSenses, { lang: 'en' }))[2], null, 'still hidden after a restart');
+  assert.ok(await third.fetchWordImage('crane', { lang: 'en', gloss: 'A mechanical lifting machine or device, often used for lifting heavy loads.' }) === null, 'hidden on a card saved with that sense');
+  // The same file on another sense (a gloss that only this picture fits) still shows.
+  const other = [{ meaning: 'A machine for lifting loads, with a mechanical arm.', partOfSpeech: 'noun' }];
+  assert.ok((await third.fetchSenseImages('crane', other, { lang: 'en' }))[0], 'shown on another sense');
+  await third.unhideSenseImage('crane', imgs[2], { lang: 'en', sense: craneSenses[2].meaning });
+  assert.ok((await third.fetchSenseImages('crane', craneSenses, { lang: 'en' }))[2], 'back after Undo');
+  const fourth = load({ isCoreConfigured: () => true, getHttp: () => ({ requestJson: async () => { throw new Error('should not fetch'); } }), getLookupCache: () => store });
+  assert.ok((await fourth.fetchSenseImages('crane', craneSenses, { lang: 'en' }))[2], 'Undo is saved');
 
   // Offline: no picture, nothing saved.
   {
