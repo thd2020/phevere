@@ -487,7 +487,15 @@ async function loadSenseImages(generation: number): Promise<void> {
     const list = await fetchSenseImages(
       result.word || query,
       senses.map((d) => ({ meaning: d.meaning, partOfSpeech: d.partOfSpeech })),
-      { lang: result.detectedLanguage || 'en' },
+      {
+        lang: result.detectedLanguage || 'en',
+        // The first pictures go in while the slower steps look for the rest.
+        onUpdate: (partial) => {
+          if (generation !== lookupGeneration) return;
+          senseImages = { key, list: partial };
+          placeSenseFigures();
+        },
+      },
     );
     if (generation !== lookupGeneration) return;
     senseImages = { key, list };
