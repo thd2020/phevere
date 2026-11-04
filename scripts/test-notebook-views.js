@@ -78,7 +78,9 @@ assert.doesNotMatch(views.familiesHtml(a, 'char'), /nbv-letter__head/);
 // A family that knows its other spellings shows them after the main one; without them, none.
 const withForms = { ...a, families: a.families.map((f) => (f.key === 'root:spect' ? { ...f, forms: ['spect', 'spic', 'spec'] } : f)) };
 assert.match(views.familiesHtml(withForms, 'root'), /<span class="nbv-fam__forms"><span>spic<\/span><span>spec<\/span><\/span>/);
-assert.doesNotMatch(fhtml, /nbv-fam__forms/);
+// The analysis gives the spellings as one string; a family it has none for shows none.
+assert.match(fhtml, /<span class="nbv-fam__label">spect<\/span>\s*<span class="nbv-fam__forms"><span>spec<\/span><span>spic<\/span><\/span>/);
+assert.match(fhtml, /<span class="nbv-fam__label">nat<\/span>\s*<span class="nbv-fam__gloss">/);
 assert.match(views.familiesHtml(a, 'tree'), /data-tree-open aria-label="Open the nation tree"/);
 
 // Map: deterministic layout, every edge points at real nodes.

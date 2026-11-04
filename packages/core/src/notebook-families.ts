@@ -63,7 +63,9 @@ function positionMark(kind: MorphKind | 'deep'): string {
  * the morphology analysis when it knows them; without it a family has its label alone.
  */
 function formsOf(f: { label: string; forms?: unknown }): string[] {
-  const extra = Array.isArray(f.forms) ? f.forms.filter((x): x is string => typeof x === 'string' && !!x.trim()) : [];
+  // The analysis gives "fac · fic · fec · fect"; a list is accepted too.
+  const raw = typeof f.forms === 'string' ? f.forms.split(/\s*[·,]\s*/) : Array.isArray(f.forms) ? f.forms : [];
+  const extra = raw.filter((x): x is string => typeof x === 'string' && !!x.trim()).map((x) => x.trim());
   return [f.label, ...extra.filter((x) => x !== f.label)];
 }
 
