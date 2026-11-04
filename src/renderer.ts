@@ -62,6 +62,11 @@ import {
   recentListHtml,
   learnHtml,
   attachLearnCharts,
+  revealQuestion,
+  reviewArmed,
+  markKnownInReview,
+  primeBookLevels,
+  ROUND_WORDS,
   memoryLevel,
   readNotebookView,
   reviewAnswerDetails,
@@ -2256,6 +2261,7 @@ async function refreshWords(): Promise<void> {
     wbUserBooks = state?.userBooks || [];
     wbProgress = new Map((state?.progress || []).map((p: any) => [p.lemma, p]));
     for (const s of wbSubs) if (!isUserBookId(s.bookId) && !wbBooks.has(s.bookId)) wbBooks.set(s.bookId, await loadWordbook(s.bookId));
+    await primeBookLevels(wbSubs.map((s) => s.bookId));
   } catch (error) {
     console.warn('word books unavailable', error);
   }
@@ -2266,7 +2272,7 @@ async function refreshWords(): Promise<void> {
 async function prefetchMeanings(wait = false): Promise<void> {
   const api = wordbookApi();
   if (!nbReview || wbScope === 'mine' || !wbCtx || !api?.meaning) return;
-  const lemmas = reviewNeedsMeaning(nbReview, scopeEntries(wbScope, wbCtx), 4).filter((l) => !wbMeaningInFlight.has(l.toLowerCase()));
+  const lemmas = reviewNeedsMeaning(nbReview, scopeEntries(wbScope, wbCtx), wait ? ROUND_WORDS : 4).filter((l) => !wbMeaningInFlight.has(l.toLowerCase()));
   if (!lemmas.length) return;
   const done = Promise.all(
     lemmas.map(async (lemma) => {
@@ -2830,9 +2836,9 @@ function rerenderActive(): void {
 /** After a Review render: put the cursor in the answer box, play a listening question once. */
 let nbAutoplayed = '';
 function focusReview(body: HTMLElement): void {
-  // A new question starts at its top, not where the last answer left the page.
-  const quiz = body.querySelector<HTMLElement>('.nbv-quiz:not([data-answered])');
-  if (quiz && quiz.getBoundingClientRect().top < 0) quiz.scrollIntoView({ block: 'start' });
+  // A new question starts with its progress bar and instruction below the sticky header.
+  const header = [...document.querySelectorAll<HTMLElement>('.ws-head')].find((h) => h.offsetParent) || null;
+  revealQuestion(body, header);
   const input = body.querySelector<HTMLInputElement>('#nbv-answer');
   if (input) input.focus();
   else {
@@ -3003,7 +3009,8 @@ function wireNotebookActions(root: HTMLElement): void {
         renderLearn();
         return;
       case 'nb-review-exit':
-        // Back to the Learn page; answers so far are already saved and rescheduled.
+        // Back to the Learn page. An answer on screen is saved first, as Continue would.
+        if (nbReview?.answer) await commitReview();
         nbReview = null;
         renderLearn();
         document.querySelector('.main-shell')?.scrollTo({ top: 0 });
@@ -3099,12 +3106,13 @@ function wireNotebookActions(root: HTMLElement): void {
         return;
       case 'wb-known':
       case 'wb-known-review': {
+        if (el.dataset.act === 'wb-known-review' && !reviewArmed(nbReview)) return;
         const lemma = el.dataset.q || '';
         const p = await wordbookApi()?.known(lemma, el.dataset.act === 'wb-known-review' || el.dataset.known === '1', scopeBookFor(wbScope, wbCtx, lemma));
         if (p) wbProgress.set(p.lemma, p);
         answerHistory = null;
         rebuildWordsContext();
-        if (el.dataset.act === 'wb-known-review' && nbReview) dropCurrentReview(nbReview);
+        if (el.dataset.act === 'wb-known-review' && nbReview) markKnownInReview(nbReview, lemma);
         rerenderActive();
         return;
       }
@@ -3125,13 +3133,14 @@ function wireNotebookActions(root: HTMLElement): void {
         renderLearn();
         return;
       case 'nb-choose':
-        answerCurrentReview({ choice: Number(el.dataset.choice) });
+        // Taps right after a question appears (a double tap on Continue) do not answer it.
+        if (reviewArmed(nbReview)) answerCurrentReview({ choice: Number(el.dataset.choice) });
         return;
       case 'nb-knew':
-        answerCurrentReview({ knew: el.dataset.knew === '1' });
+        if (reviewArmed(nbReview)) answerCurrentReview({ knew: el.dataset.knew === '1' });
         return;
       case 'nb-skip':
-        answerCurrentReview({});
+        if (reviewArmed(nbReview)) answerCurrentReview({});
         return;
       case 'nb-override':
         if (nbReview) overrideReview(nbReview, el.dataset.mode === 'easy' ? 'easy' : 'flip');

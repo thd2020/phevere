@@ -14,6 +14,11 @@ import {
   vocabPayloadFromResult,
   examplesFromResult,
   attachLearnCharts,
+  revealQuestion,
+  reviewArmed,
+  markKnownInReview,
+  primeBookLevels,
+  ROUND_WORDS,
   memoryLevel,
   wikipediaService,
   type Pronunciation,
@@ -333,6 +338,7 @@ async function refreshWords(): Promise<void> {
     wbUserBooks = await listUserBooks();
     wbProgress = new Map((await listBookProgress()).map((p) => [p.lemma, p]));
     for (const s of wbSubs) if (!isUserBookId(s.bookId) && !wbBooks.has(s.bookId)) wbBooks.set(s.bookId, await loadWordbook(s.bookId));
+    await primeBookLevels(wbSubs.map((s) => s.bookId));
     if (wordsState.scope !== 'mine' && !reviewPool.length) await loadReviewPool();
     rebuildWordsContext();
   } catch (err) {
@@ -350,7 +356,7 @@ function scopePool(): Array<VocabEntry | ReturnType<typeof bookEntry>> {
 async function prefetchMeanings(wait = false): Promise<void> {
   const r = nbState.review;
   if (!r || wordsState.scope === 'mine') return;
-  const lemmas = reviewNeedsMeaning(r, scopePool(), 4).filter((l) => !wbMeaningInFlight.has(l.toLowerCase()));
+  const lemmas = reviewNeedsMeaning(r, scopePool(), wait ? ROUND_WORDS : 4).filter((l) => !wbMeaningInFlight.has(l.toLowerCase()));
   if (!lemmas.length) return;
   const jobs = lemmas.map(async (lemma) => {
     const key = lemma.toLowerCase();
@@ -713,9 +719,8 @@ function revealWordsScope(): void {
 let reviewAutoplayed = '';
 function focusReview(page: HTMLElement): void {
   page.querySelector<HTMLInputElement>('#nbv-answer')?.focus();
-  // A new question starts at its top, not where the last answer left the page.
-  const quiz = page.querySelector<HTMLElement>('.nbv-quiz:not([data-answered])');
-  if (quiz && quiz.getBoundingClientRect().top < 0) quiz.scrollIntoView({ block: 'start' });
+  // A new question starts with its progress bar and instruction below the sticky app bar.
+  revealQuestion(page, document.querySelector('.top'));
   // After an answer, bring Continue into view with the verdict and the word above it.
   page.querySelector<HTMLElement>('.nbv-quiz__grade')?.scrollIntoView({ block: 'nearest' });
   const listen = page.querySelector<HTMLElement>('[data-autoplay]');
@@ -2333,11 +2338,12 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'wb-known-review': {
+      if (!reviewArmed(nbState.review)) return;
       const p = await setBookWordKnown(t.dataset.q || '', true, Date.now(), scopeBookFor(wordsState.scope, wordsState.ctx, t.dataset.q || ''));
       answerHistory = null;
       wbProgress.set(p.lemma, p);
       rebuildWordsContext();
-      if (nbState.review) dropCurrentReview(nbState.review);
+      if (nbState.review) markKnownInReview(nbState.review, t.dataset.q || '');
       paint();
       return;
     }
@@ -2406,7 +2412,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'nb-review-exit':
-      // Back to the Learn page; answers so far are already saved and rescheduled.
+      // Back to the Learn page. An answer on screen is saved first, as Continue would.
+      if (nbState.review?.answer) await commitReview();
       nbState.review = null;
       paint();
       return;
@@ -2427,13 +2434,13 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'nb-choose':
-      answerCurrentReview({ choice: Number(t.dataset.choice) });
+      if (reviewArmed(nbState.review)) answerCurrentReview({ choice: Number(t.dataset.choice) });
       return;
     case 'nb-knew':
-      answerCurrentReview({ knew: t.dataset.knew === '1' });
+      if (reviewArmed(nbState.review)) answerCurrentReview({ knew: t.dataset.knew === '1' });
       return;
     case 'nb-skip':
-      answerCurrentReview({});
+      if (reviewArmed(nbState.review)) answerCurrentReview({});
       return;
     case 'nb-override':
       if (nbState.review) overrideReview(nbState.review, t.dataset.mode === 'easy' ? 'easy' : 'flip');
@@ -2783,7 +2790,14 @@ export async function startApp(): Promise<void> {
       else { scan = null; clearScanPick(); paint(); }
       return true;
     }
-    if (tab === 'learn' && nbState.review) { nbState.review = null; paint(); return true; }
+    if (tab === 'learn' && nbState.review) {
+      const r = nbState.review;
+      void (r.answer ? commitReview() : Promise.resolve()).then(() => {
+        nbState.review = null;
+        paint();
+      });
+      return true;
+    }
     if (tab === 'notebook' && wordsState.library) { wordsState.library = false; paint(); return true; }
     if (tab !== 'lookup') { tab = 'lookup'; paint(); return true; }
     // Lookup: the same as its back arrow, the Wikipedia reader first, then the word before.
@@ -2834,6 +2848,28 @@ export async function startApp(): Promise<void> {
   });
   root.addEventListener('focusout', (e) => {
     if ((e.target as HTMLElement).id === 'q') setTimeout(paintSuggest, 0);
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (tab !== 'learn' || !nbState.review || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    const page = document.querySelector<HTMLElement>('.lrn-body');
+    const target = ev.target as HTMLElement | null;
+    if (!page || (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+    if (ev.key === 'Enter') {
+      const next = page.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-reveal"], [data-act="nb-round"]');
+      if (!next) return;
+      ev.preventDefault();
+      next.click();
+      return;
+    }
+    if (/^[1-4]$/.test(ev.key)) {
+      const n = Number(ev.key);
+      const hit =
+        page.querySelector<HTMLElement>(`[data-act="nb-choose"][data-choice="${n - 1}"]:not([disabled])`) ||
+        (n <= 2 ? page.querySelector<HTMLElement>(`[data-act="nb-knew"][data-knew="${n === 2 ? 1 : 0}"]`) : null);
+      if (!hit) return;
+      ev.preventDefault();
+      hit.click();
+    }
   });
   root.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).id !== 'q' || (e as KeyboardEvent).key !== 'Escape') return;
