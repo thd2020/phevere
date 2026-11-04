@@ -279,6 +279,11 @@ assert.equal(fo.dominantLemma(['child', 'unknown'], freq), null, 'a lemma withou
     Past: ['was', 'were'],
     'Past participle': ['been'],
   });
+  // am and are, was and were are different persons, never "less common" than each other.
+  const beTables = selectInflections(inflectionsFromKaikki(page('be'), 'en', 'be'), ['verb']).tables;
+  const beWeighed = weighForms(beTables, new Map([['am', 300], ['are', 3000], ['was', 3000], ['were', 900]]));
+  assert.ok(!beWeighed[0].rows.some((r) => r.notes), 'no row of be is weighed');
+  assert.deepEqual(rows(beWeighed[0]).Past, ['was', 'were']);
   assert.deepEqual(inflectionsFromKaikki(page('went'), 'en', 'went').formOf, [{ lemma: 'go', label: 'past', pos: 'verb' }]);
   assert.deepEqual(rows(selectInflections(inflectionsFromKaikki(page('child'), 'en', 'child'), ['noun']).tables[0]), { Plural: ['children'] });
   assert.deepEqual(rows(selectInflections(inflectionsFromKaikki(page('vicissitude'), 'en', 'vicissitude'), ['noun']).tables[0]), { Plural: ['vicissitudes'] });

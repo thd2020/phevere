@@ -22,6 +22,8 @@ export interface InflectionRow {
   forms: string[];
   /** A label per form, '' for none: "rare", "less common". */
   notes?: string[];
+  /** The forms belong to different persons ("am, are"), so they are not weighed against each other. */
+  distinct?: boolean;
 }
 
 /** A grid such as cases by number or persons by number. */
@@ -178,10 +180,14 @@ function tableFor(pos: string, forms: KaikkiForm[], word: string, lang: string, 
       // "be" alone has present forms other than its own: am, are.
       const present = collect(ok, (f) => has(f, 'present') && finite(f) && (has(f, 'first-person', 'singular') || (has(f, 'plural') && hasNone(f, 'first-person', 'second-person', 'third-person'))))
         .filter((f) => f.toLowerCase() !== word.toLowerCase());
-      row('Present', present);
+      if (present.length) rows.push({ label: 'Present', forms: present.slice(0, 3), distinct: true });
       en('Third-person singular', (f) => has(f, 'present', 'singular', 'third-person') && finite(f));
       en('Present participle', (f) => has(f, 'present', 'participle'));
       en('Past', (f) => has(f, 'past') && finite(f));
+      // "was, were" are different persons, not two spellings of one form.
+      const personal = (f: KaikkiForm) => ['first-person', 'second-person', 'third-person', 'plural'].some((t) => has(f, t));
+      const past = rows.find((r) => r.label === 'Past');
+      if (past && past.forms.some((form) => !okNoted.some((f) => String(f.form).trim() === form && has(f, 'past') && finite(f) && !personal(f)))) past.distinct = true;
       en('Past participle', (f) => has(f, 'past', 'participle'));
     } else {
       row('Present participle', collect(ok, (f) => has(f, 'present', 'participle')));
@@ -350,7 +356,7 @@ export function weighForms(tables: InflectionTable[], freq: Map<string, number>)
     ...t,
     rows: t.rows.map((r) => {
       const plainIdx = r.forms.map((_, i) => i).filter((i) => !r.notes?.[i]);
-      if (plainIdx.length < 2 || !plainIdx.every((i) => freq.has(r.forms[i]))) return r;
+      if (r.distinct || plainIdx.length < 2 || !plainIdx.every((i) => freq.has(r.forms[i]))) return r;
       const top = Math.max(...plainIdx.map((i) => freq.get(r.forms[i]) || 0));
       if (top <= 0) return r;
       const items = r.forms.map((form, i) => ({ form, note: r.notes?.[i] || '', f: plainIdx.includes(i) ? freq.get(form) || 0 : -1 }));
