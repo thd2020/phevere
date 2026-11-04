@@ -1,5 +1,7 @@
 # Publishing a GitHub release
 
+2026-11-04: The Windows jobs and the Linux job also upload a `.sha256` file beside each installer and package, in sha256sum format (`<hash>  <file name>`). The in-app updater reads GitHub's own asset digest from the API, but GitHub allows 60 unauthenticated API requests an hour per IP address, and shared or VPN addresses often use them up. The updater then reads the latest version from the `releases/latest` redirect and checks the download against this file, so a release without it can only update through the API. A retry that replaces an installer replaces its `.sha256` as well.
+
 2026-11-03: The Windows x64 job also uploads and attests `Phevere-OCR-PP-OCRv4.tar.gz`, the OCR pack that installers no longer include (`scripts/make-ocr-pack.js`). The app downloads it from the release, so every tag must carry it; a `windows-x64` retry replaces it too. The upgrade check now also requires that OCR models installed by an older version survive the upgrade and that a fresh install has none.
 
 2026-10-25: Tags also build Linux deb, rpm and AppImage for x64 (`ubuntu-22.04`) and arm64 (`ubuntu-22.04-arm`). Rebuild only those onto an existing tag with `targets=linux`.
