@@ -5,32 +5,72 @@
  */
 .nbv-maptools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 2px 0 12px; }
 .nbv-maptools .nbv-chips { margin: 0; }
+.nbv-map-find { position: relative; flex: 0 1 240px; min-width: 150px; }
 .nbv-map-search {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 0 1 220px;
-  min-width: 140px;
-  height: 30px;
-  padding: 0 10px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
   border: 1px solid var(--nbv-line);
   border-radius: 999px;
   background: var(--nbv-panel);
   color: var(--nbv-soft);
+  cursor: text;
 }
 .nbv-map-search:focus-within { border-color: var(--nbv-teal); }
 .nbv-map-search svg { flex: none; width: 15px; height: 15px; }
-.nbv-map-search input {
+/* The pill draws the field. Shell-wide input styles (the desktop window gives every search
+   field a border, a 38px height and a focus ring) must not draw a second box inside it. */
+.nbv-maptools .nbv-map-search input[type='search'],
+.nbv-maptools .nbv-map-search input[type='search']:focus {
+  flex: 1 1 auto;
   width: 100%;
   min-width: 0;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
   border: 0;
+  border-radius: 0;
   outline: 0;
+  box-shadow: none;
   background: transparent;
   color: var(--nbv-ink);
   font: 14px/1 var(--nbv-ui);
+  -webkit-appearance: none;
+  appearance: none;
 }
-.nbv-map-search input.is-miss { color: var(--nbv-ember); }
+.nbv-maptools .nbv-map-search input[type='search']::-webkit-search-decoration { -webkit-appearance: none; }
+.nbv-maptools .nbv-map-search input.is-miss { color: var(--nbv-ember); }
+.nbv-map-suggest {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 6;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--nbv-line);
+  border-radius: 12px;
+  background: var(--nbv-panel);
+  box-shadow: 0 6px 22px rgba(28, 25, 23, 0.12);
+}
+.nbv-map-suggest[hidden] { display: none; }
+.nbv-map-suggest__item {
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: var(--nbv-ink);
+  font: 15px/1.2 var(--nbv-serif);
+  cursor: pointer;
+}
+.nbv-map-suggest__item:hover,
+.nbv-map-suggest__item.is-active { background: var(--nbv-paper-2); }
 .nbv-map-hint { margin-left: auto; font: 500 12px/1 var(--nbv-ui); color: var(--nbv-soft); }
+.nbv-map-hint.is-miss { color: var(--nbv-ember); }
 
 .nbv-map {
   position: relative;
@@ -48,8 +88,13 @@
 .nbv-map__stage { position: absolute; inset: 0; z-index: 0; isolation: isolate; }
 .nbv-map__stage canvas { display: block; outline: none; }
 
-/* 3D labels */
+/* 3D labels: a layer over the canvas, each label moved into place with a transform. */
+.nbv-m3-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .nbv-m3-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
   margin-left: 2px;
   padding: 1px 4px;
   border-radius: 6px;
@@ -90,8 +135,8 @@
 
 .nbv-map__ctrl {
   position: absolute;
+  top: 10px;
   right: 10px;
-  bottom: 10px;
   z-index: 2;
   display: grid;
   gap: 4px;
@@ -182,7 +227,7 @@
 }
 .nbv-map__lookup:hover { background: #7f3200; }
 
-/* Phone: the panel becomes a sheet along the bottom, the buttons move to the top corner. */
+/* Phone: the panel becomes a sheet along the bottom. */
 @media (max-width: 600px) {
   .nbv-map__panel {
     top: auto;
@@ -192,8 +237,8 @@
     width: auto;
     max-height: 52%;
   }
-  .nbv-map__ctrl { top: 8px; right: 8px; bottom: auto; }
-  .nbv-map-search { flex: 1 1 160px; }
+  .nbv-map__ctrl { top: 8px; right: 8px; }
+  .nbv-map-find { flex: 1 1 160px; }
 }
 
 /* Flat map, drawn where WebGL is missing */
