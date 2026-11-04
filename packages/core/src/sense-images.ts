@@ -1989,7 +1989,9 @@ async function buildPool(lemma: string, lang: string, hints: string[], progress:
     return true;
   });
   const glossTitles = code === 'en' ? Promise.resolve() : addGlossArticles(pool, hints, step);
-  const related = code === 'en' ? step(() => addRelatedArticles(pool)) : Promise.resolve();
+  // The disambiguation page's articles mostly serve senses after the first, so they wait for the
+  // word's own article and do not hold up its request to Wikipedia.
+  const related = code === 'en' ? article.then(() => step(() => addRelatedArticles(pool))) : Promise.resolve();
   await Promise.all([wiktionary, lexemes, article, glossTitles, related]);
   pool.complete = true;
   return pool;
