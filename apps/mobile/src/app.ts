@@ -2,6 +2,7 @@ import { scrollLexiconTo } from './lexicon-scroll';
 import './platform/configure-core';
 import {
   addVocab,
+  morphemeOf,
   dictionaryService,
   fetchSenseImages,
   fillEmptyDefinitions,
@@ -458,7 +459,25 @@ function lookupPaneHtml(): string {
     savedFor: (q) => notebook.find((e) => e.lemma.trim().toLowerCase() === q.trim().toLowerCase()),
     headTools: !stripMode,
     senseImages: currentSenseImages(),
+    ownWords: morphemeOf(result) ? ownWords() : undefined,
   });
+}
+
+/**
+ * Saved words and the words of followed books, for a word part's "my words". Built again only
+ * when the notebook or the books change, so the part page's sections stay cached across paints.
+ */
+let ownWordsMemo: { sig: string; words: { mine: string[]; books: string[] } } | null = null;
+function ownWords(): { mine: string[]; books: string[] } {
+  const bookWords = wbSubs.map((s) => wbBooks.get(s.bookId)?.length || 0).join(',');
+  const sig = `${notebook.length}|${notebook[0]?.lemma || ''}|${bookWords}|${wbUserBooks.map((b) => b.words?.length || 0).join(',')}`;
+  if (ownWordsMemo?.sig === sig) return ownWordsMemo.words;
+  const words = {
+    mine: notebook.map((e) => e.lemma),
+    books: [...wbSubs.flatMap((s) => wbBooks.get(s.bookId) || []), ...wbUserBooks.flatMap((b) => b.words || [])],
+  };
+  ownWordsMemo = { sig, words };
+  return words;
 }
 
 function senseKey(r: DictionaryResult | null): string {
@@ -487,7 +506,8 @@ function placeSenseFigures(): void {
 let senseImagesPending = '';
 
 async function loadSenseImages(generation: number): Promise<void> {
-  if (prefs.senseImages === false || !result) return;
+  // A prefix or a root has no picture: one found for "shine" would illustrate the word, not the part.
+  if (prefs.senseImages === false || !result || morphemeOf(result)) return;
   const key = senseKey(result);
   if (senseImages?.key === key || senseImagesPending === key) return;
   const senses = lexiconSenses(result);
@@ -976,6 +996,11 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
     if (generation !== lookupGeneration) return;
     saved = nextSaved;
     void loadSenseImages(generation);
+    // A word part has no Wikipedia article ("*ten-" is not Ten (number)).
+    if (morphemeOf(next)) {
+      if (resultTab === 'translation' || resultTab === 'wikipedia') resultTab = 'lexicon';
+      return;
+    }
     void loadWikiHits(next.word || q).then(() => {
       if (tab === 'lookup' && resultTab === 'wikipedia') {
         void maybeAutoOpenWiki().then(() => paint());
@@ -1499,7 +1524,13 @@ function watchVoice(): void {
 
 /** Desktop lookup trail: same word replaces the current entry; capped at 40. */
 function rememberLookup(q: string): void {
-  const fold = (v: string) => v.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+  // "ob-" and "ob" are two pages: the marks of a word part stay in the key.
+  const fold = (v: string) => {
+    const t = v.trim();
+    const lead = /^[*-]/.test(t) ? t[0] : '';
+    const trail = t.length > 1 && t.endsWith('-') ? '-' : '';
+    return lead + t.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase() + trail;
+  };
   if (histIndex >= 0 && fold(history[histIndex] || '') === fold(q)) {
     history[histIndex] = q;
     return;
@@ -2044,6 +2075,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       }
       return;
     case 'lookup': {
+      // A word in running text that was selected, not tapped, stays selected.
+      if (t.classList.contains('lx-w') && String(window.getSelection?.() || '').trim()) return;
       const from = tab;
       if (t.dataset.q) await lookup(t.dataset.q);
       if (from !== 'lookup' && tab === 'lookup') lookupFrom = { tab: from, at: histIndex };
@@ -2787,6 +2820,13 @@ export async function startApp(): Promise<void> {
   applyPrefsToCore(prefs);
   await refreshCapture();
   root.addEventListener('click', onClick);
+  // Enter or Space on a focused word link opens it, as a tap does.
+  root.addEventListener('keydown', (e) => {
+    const el = e.target as HTMLElement | null;
+    if ((e.key !== 'Enter' && e.key !== ' ') || !el?.matches?.('[role="link"][data-act]')) return;
+    e.preventDefault();
+    el.click();
+  });
   root.addEventListener('submit', onSubmit);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onChange);

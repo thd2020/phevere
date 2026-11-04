@@ -241,12 +241,38 @@ function glossOf(t: RawTemplate, fallbackIndex: number): string | undefined {
   return t.named.t || t.named.gloss || t.positional[fallbackIndex] || undefined;
 }
 
+const PREFIX_TEMPLATES = new Set(['pre', 'prefix']);
+const SUFFIX_TEMPLATES = new Set(['suf', 'suffix']);
+const CONFIX_TEMPLATES = new Set(['con', 'confix']);
+
+/**
+ * The parts of an affix template, each written as Wiktionary titles it. {{prefix|en|un|happy}},
+ * {{suffix|en|assist|ant}} and {{confix|en|neuro|logy}} give the affix without its hyphen
+ * ("un", "ant"), which would read as the words "un" and "ant"; inline modifiers
+ * ("ob-<t:against>") are dropped.
+ */
+function affixParts(name: string, raw: string[]): string[] {
+  const parts = raw.map((p) => p.replace(/<[^>]*>/g, '').trim()).filter(Boolean);
+  const pre = (p: string) => (p.endsWith('-') || p.startsWith('-') || p.startsWith('*') ? p : `${p}-`);
+  const suf = (p: string) => (p.startsWith('-') || p.endsWith('-') || p.startsWith('*') ? p : `-${p}`);
+  if (PREFIX_TEMPLATES.has(name) && parts.length >= 2) {
+    return [...parts.slice(0, -1).map(pre), parts[parts.length - 1]];
+  }
+  if (SUFFIX_TEMPLATES.has(name) && parts.length >= 2) {
+    return [parts[0], ...parts.slice(1).map(suf)];
+  }
+  if (CONFIX_TEMPLATES.has(name) && parts.length >= 2) {
+    return [pre(parts[0]), ...parts.slice(1, -1), suf(parts[parts.length - 1])];
+  }
+  return parts;
+}
+
 export function templateToLink(t: RawTemplate): EtymologyLink | null {
   const relation = RELATION_BY_TEMPLATE[t.name];
   if (!relation) return null;
 
   if (relation === 'affix' || relation === 'blend') {
-    const parts = t.positional.slice(1).filter(Boolean);
+    const parts = affixParts(t.name, t.positional.slice(1));
     if (parts.length === 0) return null;
     return { relation, languageCode: t.positional[0], language: languageName(t.positional[0]), parts };
   }

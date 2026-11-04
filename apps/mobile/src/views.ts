@@ -15,6 +15,13 @@ import {
   vocabListHtml,
   inflectionsHtml,
   wordFamilyHtml,
+  linkHtml,
+  linkText,
+  wikiLinkLookup,
+  morphemeSections,
+  morphemeOfferHtml,
+  morphemeOf,
+  type OwnWords,
   analyzeNotebook,
   cardsHtml,
   familiesHtml,
@@ -266,13 +273,16 @@ function linkLemmaRefs(escaped: string): string {
   );
 }
 
-const WIKI_SKIP_NS = /^(File|Category|Special|Wiktionary|Template|Appendix|Help|Module|User|Talk|Reconstruction):/i;
-
 /**
  * Sense text for display. Wiktionary HTML keeps its /wiki/ links as in-place lookups (as on
- * desktop); plain text links "plural of X" and the like.
+ * desktop); plain text links "plural of X" and the like. Every other word links to its own
+ * lookup and looks like text until tapped.
  */
 function senseHtml(raw: string): string {
+  return linkHtml(labelLead(senseMarkup(raw)), 'act');
+}
+
+function senseMarkup(raw: string): string {
   const meaning = String(raw || '');
   if (!/<[a-z][\s\S]*>/i.test(meaning)) return linkLemmaRefs(esc(stripGlossText(meaning)));
   const links: Array<{ title: string; text: string }> = [];
@@ -286,8 +296,8 @@ function senseHtml(raw: string): string {
     } catch {
       title = m[1].replace(/_/g, ' ');
     }
-    title = title.replace(/#.*$/, '').trim();
-    if (!title || WIKI_SKIP_NS.test(title)) return inner;
+    title = wikiLinkLookup(title);
+    if (!title) return inner;
     links.push({ title, text });
     return `\u0001${links.length - 1}\u0002`;
   });
@@ -303,7 +313,7 @@ function senseHtml(raw: string): string {
 
 /** "(countable, chiefly in combination) An institution…": the labels set small, as printed. */
 function labelLead(html: string): string {
-  return html.replace(/^\s*\(([^()<]{1,80})\)\s*/, (_m, labels: string) => `<span class="sense-label">${labels}</span> `);
+  return html.replace(/^\s*\(([^()<]{1,80})\)\s*/, (_m, labels: string) => `<span class="sense-label lx-nolink">${labels}</span> `);
 }
 
 /** The definitions the Lexicon shows, in the core's order. Sense pictures are indexed by it. */
@@ -352,7 +362,7 @@ function renderSenses(
         cite.length && !sameAsNext ? cite.map((s) => `<span class="definition-source-badge">${esc(sourceName(s))}</span>`).join('') : '';
       const exHtml = examples.length
         ? `<div class="definition-examples">${examples
-            .map((ex) => `<div class="definition-example">${esc(stripGlossText(ex))}</div>`)
+            .map((ex) => `<div class="definition-example">${linkText(stripGlossText(ex), 'act')}</div>`)
             .join('')}</div>`
         : '';
       return `<div class="definition-item" data-sense="${at}">
@@ -360,7 +370,7 @@ function renderSenses(
           <div class="definition-sense-num">${i + 1}</div>
           <div class="definition-sense-body">
             ${img ? senseFigureHtml(img, at) : ''}
-            <div class="definition-text">${labelLead(senseHtml(d.meaning))}</div>
+            <div class="definition-text">${senseHtml(d.meaning)}</div>
             ${exHtml}
             ${badges ? `<div class="definition-source-badges">${badges}</div>` : ''}
           </div>
@@ -370,7 +380,12 @@ function renderSenses(
     .join('');
 }
 
-function lexiconPane(result: DictionaryResult, activePos: string, images: Array<SenseImage | null> | null): string {
+function lexiconPane(
+  result: DictionaryResult,
+  activePos: string,
+  images: Array<SenseImage | null> | null,
+  own: OwnWords = { mine: [], books: [] },
+): string {
   const defs = lexiconSenses(result);
   if (!defs.length) return `<div class="card empty">No definitions found.</div>`;
   const indexOf = new Map<Definition, number>(defs.map((d, i) => [d, i]));
@@ -416,7 +431,7 @@ function lexiconPane(result: DictionaryResult, activePos: string, images: Array<
       wrapGroup(
         'examples',
         'examples',
-        globalExamples.map((ex) => `<div class="example-item">${esc(stripGlossText(ex))}</div>`).join(''),
+        globalExamples.map((ex) => `<div class="example-item">${linkText(stripGlossText(ex), 'act')}</div>`).join(''),
       ),
     );
   }
@@ -425,11 +440,11 @@ function lexiconPane(result: DictionaryResult, activePos: string, images: Array<
   let relatedInner = '';
   if (syn.length) {
     relatedSections.push({ id: 'synonyms', label: 'synonyms' });
-    relatedInner += wrapGroup('synonyms', 'synonyms', `<div class="example-item">${esc(syn.join(', '))}</div>`);
+    relatedInner += wrapGroup('synonyms', 'synonyms', `<div class="example-item">${linkText(syn.join(', '), 'act')}</div>`);
   }
   if (ant.length) {
     relatedSections.push({ id: 'antonyms', label: 'antonyms' });
-    relatedInner += wrapGroup('antonyms', 'antonyms', `<div class="example-item">${esc(ant.join(', '))}</div>`);
+    relatedInner += wrapGroup('antonyms', 'antonyms', `<div class="example-item">${linkText(ant.join(', '), 'act')}</div>`);
   }
   if (relatedInner) allInner += wrapPane(relatedInner);
 
@@ -440,8 +455,13 @@ function lexiconPane(result: DictionaryResult, activePos: string, images: Array<
     allInner += wrapPane(wrapGroup('family', 'word family', familyHtml));
   }
 
+  // A prefix, suffix or root: its spellings and origin, the learner's words and the words built on it.
+  const morphSections = morphemeSections(result, own, 'act');
+  for (const s of morphSections) allInner += wrapPane(wrapGroup(s.id, s.label, `<div class="lx-family">${s.html}</div>`));
+
   const tocIds = [
     ...posSections.map((s) => s.id),
+    ...morphSections.map((s) => s.id),
     ...formsSections.map((s) => s.id),
     ...exampleSections.map((s) => s.id),
     ...relatedSections.map((s) => s.id),
@@ -450,6 +470,7 @@ function lexiconPane(result: DictionaryResult, activePos: string, images: Array<
   const active = activePos && tocIds.includes(activePos) ? activePos : tocIds[0] || '';
   const tabs = [
     railBlock(posSections, active),
+    railBlock(morphSections, active),
     railBlock(formsSections, active),
     railBlock(exampleSections, active),
     railBlock(relatedSections, active),
@@ -646,13 +667,13 @@ function formatEtymologyBody(body: string): string {
         /\b(Proto-Indo-European|Proto-Germanic|Proto-Italic|Proto-Hellenic|Proto-Celtic|Ancient Greek|Late Latin|Medieval Latin|Old English|Middle English|Old French|Middle French|Anglo-Norman|Old Norse|Old High German|Middle Dutch|Old Occitan|Old Provençal|Anglo-Saxon|Latin|Greek|French|German|Italian|Spanish|Portuguese|Dutch|Arabic|Persian|Sanskrit|Gothic)\b/gi,
         '<span class="etymology-language">$1</span>',
       )
-      .replace(/\*[\w\u0300-\u036f\-]+/g, '<span class="etymology-reconstructed">$&</span>')
+      .replace(/\*[\p{L}\p{M}\u02b0-\u02ff\u2080-\u2089-]+/gu, '<span class="etymology-reconstructed">$&</span>')
       .replace(/(\d+)(st|nd|rd|th)\s+century/gi, '<span class="etymology-century">$&</span>')
       .replace(/\b(BCE?|CE|AD|BC)\b/g, '<span class="etymology-era">$1</span>');
   const inner = (sentences.length ? sentences : [plain])
     .map((s) => s.trim())
     .filter(Boolean)
-    .map((s) => `<div class="etymology-sentence">${paint(s)}</div>`)
+    .map((s) => `<div class="etymology-sentence">${linkHtml(paint(s), 'act')}</div>`)
     .join('');
   return `<div class="etymology-text">${inner}</div>`;
 }
@@ -682,7 +703,11 @@ function formatEtymologyChain(result: DictionaryResult): string {
   const links = [...found.filter((l) => l.relation !== 'root'), ...found.filter((l) => l.relation === 'root')];
   const node = (lang: string, term: string, gloss: string, isHead: boolean): string =>
     `<span class="etymology-chain__node${isHead ? ' is-head' : ''}"><span class="etymology-chain__lang">${esc(lang)}</span>${
-      term ? `<span class="etymology-chain__term">${esc(term)}</span>` : ''}${
+      term
+        ? isHead
+          ? `<span class="etymology-chain__term">${esc(term)}</span>`
+          : `<span class="etymology-chain__term lx-w" role="link" tabindex="0" data-act="lookup" data-q="${esc(term)}">${esc(term)}</span>`
+        : ''}${
       gloss ? `<span class="etymology-chain__gloss">“${esc(gloss)}”</span>` : ''}</span>`;
   const step = (rel: string): string => {
     const label = ETYMOLOGY_STEP[rel] || '';
@@ -768,6 +793,8 @@ export function lookupBody(opts: {
   headTools?: boolean;
   /** Pictures for `lexiconSenses(result)`, index for index, once they have loaded. */
   senseImages?: Array<SenseImage | null> | null;
+  /** Saved words and word-book words, for a morpheme page's "my words". */
+  ownWords?: OwnWords;
 }): string {
   if (opts.looking && !opts.result) return lookupSkeleton(opts.query || '');
   if (opts.error && !opts.result) {
@@ -786,7 +813,9 @@ export function lookupBody(opts: {
   }
   const chips = ipaChips(opts.result.pronunciations, opts.result.pronunciation || '');
   const lemma = saveLemma(opts.result);
-  const tabs: ResultTab[] = ['lexicon', 'translation', 'wikipedia', 'etymology'];
+  // A word part ("ob-", "*bʰeh₂-") has no translation, article, recorded voice or notebook entry.
+  const part = !!morphemeOf(opts.result);
+  const tabs: ResultTab[] = part ? ['lexicon', 'etymology'] : ['lexicon', 'translation', 'wikipedia', 'etymology'];
   const icons: Record<ResultTab, string> = {
     lexicon: ICO.tabLexicon,
     translation: ICO.tabTranslation,
@@ -799,30 +828,32 @@ export function lookupBody(opts: {
     wikipedia: 'Wikipedia',
     etymology: 'Etymology',
   };
+  const resultTab: ResultTab = part && !tabs.includes(opts.resultTab) ? 'lexicon' : opts.resultTab;
   const pane =
-    opts.resultTab === 'translation'
+    resultTab === 'translation'
       ? translationPane(opts.result, opts.langs, opts.sourceLang, opts.targetLang, opts.langMenu, opts.recentLangs)
-      : opts.resultTab === 'wikipedia'
+      : resultTab === 'wikipedia'
         ? wikiPane(opts.wiki, opts.wikiLang, opts.wikiArticle, opts.wikiLoading, opts.wikiError)
-        : opts.resultTab === 'etymology'
+        : resultTab === 'etymology'
           ? etymPane(opts.result, opts.etymologySource)
-          : lexiconPane(opts.result, opts.lexiconPos, opts.senseImages || null);
+          : lexiconPane(opts.result, opts.lexiconPos, opts.senseImages || null, opts.ownWords);
   return `
     <div class="lookup-flow">
     <header class="head">
       <div class="word">
         <h2 class="lemma" style="--len:${[...String(opts.result.word || lemma)].length}">${esc(opts.result.word || lemma)}</h2>
+        ${morphemeOfferHtml(opts.result, 'act')}
       </div>
       <div class="head-actions">
         ${opts.headTools ? `<button type="button" class="icon-btn" data-act="copy" aria-label="Copy" title="Copy">${ICO.copy}</button>
         <button type="button" class="icon-btn" data-act="web-search" aria-label="Search the web" title="Search the web">${ICO.web}</button>` : ''}
-        <button type="button" class="tonal" data-act="speak" aria-label="Play pronunciation">${ICO.speaker}</button>
-        <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Remove from My words' : 'Save to My words'}">${ICO.heart}</button>
+        ${part ? '' : `<button type="button" class="tonal" data-act="speak" aria-label="Play pronunciation">${ICO.speaker}</button>
+        <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Remove from My words' : 'Save to My words'}">${ICO.heart}</button>`}
       </div>
       ${chips}
     </header>
     <div class="result-tabs" role="tablist">
-      ${tabs.map((t) => `<button type="button" class="result-tab" role="tab" data-act="result-tab" data-tab="${t}" aria-selected="${opts.resultTab === t}" aria-label="${labels[t]}" title="${labels[t]}">${icons[t]}</button>`).join('')}
+      ${tabs.map((t) => `<button type="button" class="result-tab" role="tab" data-act="result-tab" data-tab="${t}" aria-selected="${resultTab === t}" aria-label="${labels[t]}" title="${labels[t]}">${icons[t]}</button>`).join('')}
     </div>
     ${pane}
     </div>`;

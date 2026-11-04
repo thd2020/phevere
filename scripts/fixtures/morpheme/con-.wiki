@@ -1,0 +1,432 @@
+{{also|Appendix:Variations of "con"}}
+==English==
+
+===Alternative forms===
+* {{alt|en|com-}}
+* [[cor-#English|cor-]] ''([[prerhotic]])''
+* [[Ꝯ]]
+
+===Pronunciation===
+* {{IPA|en|/ˌkən/|/ˈkʌn/|/ˌkɑːn/|/ˈkɒn/}}
+
+===Etymology 1===
+{{etymon|en|id=with|:inh|enm:con-|tree=1}}
+{{inh+|en|enm|con-}}, from {{der|en|la|con-}}, from {{m|la|cum|t=with}}.
+
+====Prefix====
+{{en-prefix}}
+
+# {{senseid|en|unite}} [[unite|Unite]]: to unite into a collection indicated by the root word.
+#: {{uxi|en|[[concorporate|'''con'''corporate]]}} is united into a single body, {{uxi|en|[[conglobulate|'''con'''globulate]]}} is to collect together into a globule, {{uxi|en|[[conglutination|'''con'''glutination]]}} is to glue together into a glutination
+# {{senseid|en|together}} [[together|Together]]: the root is done together.
+#: {{uxi|en|[[conarticular|'''con'''articular]]}} is that articulates together, {{uxi|en|[[conjubilant|'''con'''jubilant]]}} is rejoicing together, {{uxi|en|[[consubsistence|'''con'''subsistence]]}} is subsistence together
+# {{senseid|en|commonality}} Having [[commonality]], having the same property indicated by the root.
+#: {{uxi|en|[[confocal|'''con'''focal]]}} is having the same foci, {{uxi|en|[[consimilar|'''con'''similar]]}} is having similarities in common, {{uxi|en|[[conterminant|'''con'''terminant]]}} is having the same termination
+## {{senseid|en|belonging}} [[belonging|Belonging]] to the same group indicated by the root.
+##: {{uxi|en|[[confamilial|'''con'''familial]]}} is belonging to the same taxonomic family, {{uxi|en|[[contypic|'''con'''typic]]}} is relating to the same type, {{uxi|en|[[conspecific|'''con'''specific]]}} is relating to the same species
+## {{senseid|en|synchronous}} [[synchronous|Synchronous]] or [[simultaneous]] with the root.
+##: {{uxi|en|[[connascent|'''con'''nascent]]}} is born together, {{uxi|en|[[concreate|'''con'''create]]}} is to create at the same time, {{uxi|en|[[congeneration|'''con'''generation]]}} is simultaneous generation (as of heat and light from the same action)
+## {{senseid|en|fellow}} A [[fellow]] kind of the root.
+##: {{uxi|en|[[concitizen|'''con'''citizen]]}} is a fellow citizen, {{uxi|en|[[condisciple|'''con'''disciple]]}} is a fellow disciple, {{uxi|en|[[concelebrant|'''con'''celebrant]]}} is one who concelebrates
+# {{senseid|en|doing}} To do the root.
+#: {{uxi|en|[[convivify|'''con'''vivify]]}} is to gain eternal life, {{uxi|en|[[confix|'''con'''fix]]}} is to make firm, {{uxi|en|[[constrict|'''con'''strict]]}} is to limit or restrict
+## {{senseid|en|intensifying}} [[intensifying|Intensifying]] the root.
+##: {{uxi|en|[[congenial|'''con'''genial]]}} is very genial, {{uxi|en|[[connatural|'''con'''natural]]}} is inherent (very natural), {{uxi|en|[[convicinity|'''con'''vicinity]]}} is immediate vicinity (very close)
+# Indicating a common origin:
+## {{senseid|en|with}} Found [[with]]. What is found with the root.
+##: {{uxi|en|[[consalazinic acid|'''con'''salazinic acid]]}} is a lichen acid found together with salazinic acid, {{uxi|en|[[conphaseolin|'''con'''phaseolin]]}} is a protein found with phaseolin, {{uxi|en|[[connegative|'''con'''negative]]}} is a verb form used with a negative verb in certain languages
+## {{senseid|en|from}} [[from|From]], coming from the root.
+##: {{uxi|en|[[consequence|'''con'''sequence]]}} as what comes from the sequence, {{uxi|en|[[convicine|'''con'''vicine]]}} is a glycoside coming from vicine, {{uxi|en|[[connatal|'''con'''natal]]}} is an anomaly present at birth
+# {{senseid|en|internal}} When one entity is put into another, or one entity affects the other.
+#: {{uxi|en|[[conplastic|'''con'''plastic]]}} is produced by introducing the genetic material from one strain into the cytoplasm of another; {{uxi|en|[[contour|'''con'''tour]]}} is a speech sound which behaves as a single segment, but which makes an internal transition from one quality, place, or manner to another; {{uxi|en|[[converb|'''con'''verb]]}} is a verb with a stressed, separable prefix
+# {{senseid|en|mutually}} [[mutuality|Mutuality]], indicating a reciprocal relationship or influence
+#: {{uxi|en|[[confraternization|'''con'''fraternization]]}} is mutual fraternization, {{uxi|en|[[confated|'''con'''fated]]}} is fated with something else, {{uxi|en|[[connascence|'''con'''nascence]]}} is a relationship between two or more elements of software in which changing one necessitates changing the others in order to maintain overall correctness
+# {{senseid|en|surround}} To [[surround]] or [[adorn]] with
+#: {{uxi|en|[[constrict|'''con'''strict]]}} is to coil around prey in order to asphyxiate it, {{uxi|en|[[constellate|'''con'''stellate]]}} is to adorn with constellations
+# {{senseid|en|uniform}} [[uniform|Uniform]], or made to be the same as.
+#: {{uxi|en|[[concolorate|'''con'''colorate]]}} is having a uniform colour
+
+=====Usage notes=====
+{{m|en||Con-}} becomes
+: {{m|en|col-}} before ''l'': {{m|en|collaborate}};
+: {{m|en|com-}} before ''b'', ''m'', and ''p'': {{m|en|combat}}, {{m|en|commit}}, {{m|en|compel}};
+: {{m|en|cor-}} before ''r'': {{m|en|correlation}};
+It can also appear as {{m|en|co-}} before a vowel: {{m|en|coexistence}}, {{m|en|cosine}}.
+
+=====Synonyms=====
+* {{sense|together}} {{l|en|co-}}, {{l|en|com-}}/{{l|en|col-}}/{{l|en|cor-}}, {{l|en|syn-}}/{{l|en|syl-}}/{{l|en|sym-}}, {{l|en|inter-}}
+
+=====Translations=====
+{{trans-top|add a notion similar to those conveyed by with, together, or joint}}
+* Chinese: {{t+|cmn|並|tr=bìng}}-, {{t+|cmn|協|tr=xié}}-, {{t+|cmn|共|tr=gòng}}-, {{t+|cmn|同|tr=tóng}}-
+* Danish: {{t|da|kon-}}, {{t|da|sam-}}
+* French: {{t+|fr|con-}}
+* German: {{t+|de|kon-}}, {{t+|de|mit-}}
+* Middle English: {{t|enm|con-}}
+* Norwegian:
+*: Bokmål: {{t|nb|kon-}}, {{t+|nb|sam-}}
+*: Nynorsk: {{t|nn|kon-}}
+* Old Norse: {{t|non|sam-}}
+* Swedish: {{t+|sv|kon-}}, {{t+|sv|sam-}}
+{{trans-bottom}}
+
+===Etymology 2===
+{{ety|en|:bf|conlang|tree=1|id=constructed}}
+{{bf|en|conlang}}, short for {{m|en|constructed language}}.
+
+====Prefix====
+{{en-prefix}}
+
+# attached to certain words to obtain new, informal, subcultural words in which '''con-''' conveys a notion of:
+## {{senseid|en|constructed}} [[constructed]], [[artificial]]
+## {{senseid|en|hypothetical}} [[hypothetical]], [[fictional]]
+## {{senseid|en|conlang}} related to [[conlang]]s, [[conworld]]s, etc.
+
+=====Derived terms=====
+{{prefixsee|en}}
+{{col6|en
+|conculture
+|conlang
+|conlanger
+|conlanging
+|conlangistan
+|conpeople
+|conperson
+|conreligion
+|conscript
+|con-script
+|consociety
+|conworld
+}}
+
+{{col5|en|title=terms derived from '''commonality'''
+|concause
+|concentric
+|concolonial
+|concurvity
+|concyclic
+|confocal
+|confocal
+|congenerate
+|congenetic
+|congenial
+|connascence
+|connatural
+|consignificant
+|consignification
+|consimilar
+|consimilitude
+|consubstantiate
+|conterminable
+|conterminant
+|conterraneous
+}}
+
+{{col5|en|title=terms derived from '''unite'''
+|concentre
+|concorporate
+|conflow
+|conglobation
+|conglobulate
+|conglutination
+|conjoin
+|constellate
+|consubstantiate
+|contesseration
+}}
+
+{{col5|en|title=terms derived from '''together'''
+|conarticular
+|concelebrate
+|concelebration
+|congenerate
+|conjoin
+|conjubilant
+|conrotatory
+|con-sensual
+|consignificant
+|consignify
+|constellate
+|consubsist
+|contesseration
+|contour
+}}
+
+{{col5|en|title=terms derived from '''belonging'''
+|collocal
+|concorporeal
+|confamilial
+|confamiliar
+|consanguineous
+|conspecific
+|consubgeneric
+|consubspecific
+|contypic
+|convariety
+}}
+
+{{col5|en|title=terms derived from '''doing'''
+|conduplicate
+|confix
+|constrict
+|constrictor
+|constuprate
+|consubstantiate
+|contour
+|convivify
+}}
+
+{{col4|en|title=terms derived from '''synchronous'''
+|concentre
+|concreate
+|confix
+|congeneration
+|connascence
+|connascent
+|con-sensual
+}}
+
+{{col4|en|title=terms derived from '''with'''
+|conjoin
+|connegative
+|conphaseolin
+|conpsoromic acid
+|consalazinic acid
+|consquamatic acid
+|converb
+}}
+
+{{col5|en|title=terms derived from '''internal'''
+|confix
+|connaturalize
+|conplastic
+|contour
+|converb
+}}
+
+{{col4|en|title=terms derived from '''fellow'''
+|concitizen
+|concelebrant
+|condisciple
+}}
+
+{{col4|en|title=terms derived from '''mutually'''
+|confated
+|confraternization
+|connascence
+|consequence
+}}
+
+{{col4|en|title=terms derived from '''from'''
+|connatal
+|consequence
+|convicine
+}}
+
+{{col4|en|title=terms derived from '''intensifying'''
+|congenial
+|connatural
+|convicinity
+}}
+
+{{col4|en|title=terms derived from '''surround'''
+|constellate
+|constrict
+}}
+
+{{col4|en|title=terms derived from '''uniform'''
+|concolorate
+}}
+
+===Anagrams===
+* {{anagrams|en|a=cno|CNO|NCO|NOC|OCN|ONC|onc}}
+
+{{cln|en|intensifiers|unproductive prefixes}}
+
+==Catalan==
+
+===Alternative forms===
+* {{alt|ca|co-|com-}}
+
+===Etymology===
+Ultimately from {{uder|ca|la|con-}}.
+
+===Pronunciation===
+* {{ca-IPA}}
+
+===Prefix===
+{{head|ca|prefix}}
+
+# {{l|en|con-}}, {{l|en|co-}}
+
+====Derived terms====
+{{prefixsee|ca}}
+
+==Dutch==
+
+===Etymology===
+Ultimately from {{der|nl|la|con-}}. {{etystub|nl}}
+
+===Pronunciation===
+* {{IPA|nl|/kɔn/}}
+* {{audio|nl|Nl-con-.ogg}}
+
+===Prefix===
+{{head|nl|prefix}}
+
+# {{l|en|con-}}
+
+====Derived terms====
+{{prefixsee|nl}}
+
+==French==
+
+===Etymology===
+{{inh+|fr|la|con-}}, from {{m|la|cum|t=with}}.
+
+===Pronunciation===
+* {{fr-IPA}}
+
+===Prefix===
+{{fr-prefix}}
+
+# {{l|en|con-}}
+
+====Usage notes====
+Behaves as it does in English; see English [[con-#Usage_notes|usage notes]].
+
+==Gallo==
+
+===Etymology===
+{{inh+|roa-gal|la|con-}}, from {{m|la|cum|t=with}}.
+
+===Pronunciation===
+* {{IPA|roa-gal|[kɔ̃]}}
+
+===Prefix===
+{{head|roa-gal|prefix}}
+
+# {{l|en|con-}} (1)
+
+====Synonyms====
+* {{l|roa-gal|com-}}, {{l|roa-gal|qem-}}, {{l|roa-gal|qen-}}
+
+==Gaulish==
+
+===Alternative forms===
+* {{alt|cel-gau|co-|com-}}
+
+===Etymology===
+{{inh+|cel-gau|cel-pro|*kom-|t=with, together}}, from {{der|cel-gau|ine-pro|*ḱóm}}. Cognate with {{cog|sga|com-}}, {{cog|cy|cyf-}}, {{cog|br|kev-}} or {{m|br|kem-}}.
+
+===Prefix===
+{{head|cel-gau|prefix}}
+
+# {{n-g|Used in compounds to indicate community, participation, relation, connection}}
+#: {{m|cel-gau|*kontowtos|'''kon'''towtos}}, {{m|cel-gau|*Komargos|'''Kom'''argos}}, {{m|cel-gau|*Komgenno|'''Kom'''genno}}, {{m|cel-gau|*Kongennolitanos|'''Kon'''gennolitanos}}, {{m|cel-gau|*Kobrunos|'''Kob'''runos}}, {{m|cel-gau|*kondate|'''kon'''date}}, {{m|cel-gau|*Kongestlos|'''Kon'''gestlos}}, {{m|cel-gau|*Komeliꟈꟈos|'''Ko'''meliꟈꟈos}}, {{m|cel-gau|*Kowiros|'''Ko'''wiros}}, {{m|cel-gau|*Kobnertos|'''Kob'''nertus}}, {{m|cel-gau|*Komaros|'''Ko'''maros}}, etc.
+
+==Italian==
+
+===Alternative forms===
+* {{alt|it|co-|com-}}
+
+===Etymology===
+{{inh+|it|la|con-}}, from {{m|la|cum|t=with}}.
+
+===Pronunciation===
+{{it-pr}}
+
+===Prefix===
+{{it-prefix}}
+
+# {{l|en|con-}} (1)
+
+==Latin==
+{{wikidata lexeme|L35197}}
+
+===Etymology===
+{{etymon|la|id=bringing together|:inh|itc-pro:*kom-<id:with>|tree=1}}
+{{inh+|la|itc-pro|*kom-}}. Related to the preposition {{m|la|cum|t=with}}.
+
+===Pronunciation===
+* {{la-IPA}}
+
+===Prefix===
+{{head|la|prefix}}
+
+# {{n-g|Used in compounds to indicate a being or bringing together of several objects}}
+#: {{m|la|coeo|'''co'''eō}}, {{m|la|colloquor|'''col'''loquor}}, {{m|la|convivor|'''con'''vīvor}}, etc.: {{m|la|colligo|'''col'''ligō}}, {{m|la|compono|'''com'''pōnō}}, {{m|la|condo|'''con'''dō}}, etc.
+# {{n-g|Used in compounds to indicate the completeness, perfecting of any act, and thus gives intensity to the signification of the simple word}}
+#: {{m|la|commaculo|'''com'''maculō}}, {{m|la|commendo|'''com'''mendō}}, {{m|la|concito|'''con'''citō}}, {{m|la|comminuo|'''com'''minuō}}, {{m|la|concerpo|'''con'''cerpō}}, {{m|la|concido|'''con'''cīdō}}, {{m|la|convello|'''con'''vellō}}, etc.
+
+====Usage notes====
+* Before vowel phonemes and ''h'', the prefix becomes {{m|la|co-}}, or rarely {{m|la|com-}}; this does not include ''i'' used as ''j'' or ''u'' used as ''v''.
+* Before ''b'', ''m'' and ''p'', the prefix may become {{m|la|com-}}.
+* Before ''l'', the prefix may become {{m|la|col-}}.
+* Before ''r'', the prefix may become {{m|la|cor-}}.
+* Before ''n'', the prefix becomes {{m|la|cō-}} (or remains {{m|la||con-}}, in [[Late Latin]]).
+* Before original ''gn'', the prefix becomes {{m|la|co-}} and ''gn'' is not reduced to ''n''.
+
+As usual in Latin phonology, the sequences ''ons'' and ''onf'' are pronounced with nasalised long vowels, and the vowel is written with a macron, i.e., {{m|la|cōnspīrō}} and {{m|la|cōnferō}}.
+
+====Derived terms====
+{{prefixsee|la}}
+
+===References===
+* {{R:la:Elementary Lewis}}
+
+==Middle English==
+
+===Alternative forms===
+* {{alt|enm|com-}}
+
+===Etymology===
+{{etymon|enm|:bor<conj:and>|fro:con-|la:con-}}
+{{bor+|enm|fro|con-}} and {{bor|enm|la|con-}}.
+
+===Pronunciation===
+* {{IPA|enm|/kɔn-/|/kun-/}}
+
+===Prefix===
+{{head|enm|prefix}}
+
+# {{lb|enm|non-productive}} {{l|en|con-}} {{gl|[[with]]}}
+
+====Usage notes====
+* This prefix frequently has [[reduced]] or no [[semantic]] force.
+
+====Derived terms====
+{{prefixsee|enm|head=con-}}
+
+====Descendants====
+* {{desc|en|con-}}
+* {{desc|sco|con-}}
+
+===References===
+* {{R:MED Online|entry=con-, cǒn-|pos=pref|id=MED8791}}
+
+==Spanish==
+
+===Alternative forms===
+* {{alt|es|co-|com-}}
+
+===Etymology===
+{{inh+|es|la|con-}}, from {{m|la|cum|t=with}}.
+
+===Pronunciation===
+{{es-pr}}
+
+===Prefix===
+{{head|es|prefix}}
+
+# [[with]]
+
+====Usage notes====
+* Before the letters ''b'' or ''p'' use the form '''com-'''. Sometimes the '''co-''' form is used instead.
+
+====Derived terms====
+{{prefixsee|es}}
+{{col|es|conjuntar}}
+
+===Further reading===
+* {{R:es:DRAE}}

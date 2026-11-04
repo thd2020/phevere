@@ -668,6 +668,8 @@ export interface MorphEntry {
   origin: string;
   /** Its spellings, the label first: ["ob-", "oc-", "of-", "op-"], ["fac", "fic", "fec", "fect"]. */
   forms: string[];
+  /** Proto-Indo-European root as Wiktionary writes it ("*dʰeh₁-"), when the table records one. */
+  pie?: string;
 }
 
 function entryOf(kind: MorphEntry['kind'], key: string, e: Entry): MorphEntry {
@@ -677,7 +679,7 @@ function entryOf(kind: MorphEntry['kind'], key: string, e: Entry): MorphEntry {
     return dash(body.slice(body.indexOf('|') + 1));
   });
   const forms = [key, ...(e.show || []), ...plain].filter((f, i, all) => all.indexOf(f) === i);
-  return { kind, key, gloss: e.gloss, origin: e.origin, forms };
+  return { kind, key, gloss: e.gloss, origin: e.origin, forms, ...(e.pie ? { pie: e.pie } : {}) };
 }
 
 /**

@@ -1,0 +1,208 @@
+{{also|Facio|fácio|facio-}}
+==Latin==
+
+===Alternative forms===
+* {{alt|itc-ala|𐌅𐌄𐌂𐌄𐌃|𐌅𐌇𐌄⁝𐌅𐌇𐌀𐌊𐌄𐌃||Old Latin}}
+
+===Etymology===
+{{etymon|la|title=faciō|id=to do|:inh|itc-pro:*fakjō<id:to make>|tree=1}}
+{{inh+|la|itc-pro|*fakjō}}, from {{inh|la|ine-pro|*dʰeh₁-|*dʰh₁k-yé-ti|to put, place}}. {{doublet|la|-ficō}}.<ref>{{R:itc:EDL|pages=198-9|head=faciō, -ere}}</ref>
+
+The passive voice is [[suppletive]]ly provided by the etymologically unrelated {{m|la|fīō||to become}}.
+
+===Pronunciation===
+* {{la-IPA|faciō}}
+
+===Verb===
+{{la-verb|irreg|faciō}}
+
+# to [[do]] {{gl|[[particularly]] as a [[specific]] [[instance]] or [[occasion]] of doing}}
+#: {{ux|la|Quid '''fēcī'''?|What '''have''' I '''done'''?}}
+#: {{ux|la|Latrōcinium modo '''factum est'''.|A robbery just '''took place'''.|q=special usage''; passive perfect = took place, lit. has been made/is done''}}
+#: {{ux|la|'''Factum''' est.|''(It)'' is '''done'''.}}
+#* {{RQ:Cicero Catiline|passage=Quam diu quisquam erit qui te defendere audeat, vives, et vives ita ut nunc vivis, multis meis et firmis praesidiis obsessus ne commovere te contra rem publicam possis. Multorum te etiam oculi et aures non sentientem, sicut adhuc '''fecerunt''', speculabuntur atque custodient.|translation=As long as one person exists who can dare to defend you, you shall live; but you shall live as you do now, surrounded by my many and trusty guards, so that you shall not be able to stir one finger against the republic: many eyes and ears shall still observe and watch you, as they have hitherto '''done''', though you shall not perceive them.}}
+# to [[make]], [[construct]], [[fashion]], [[frame]], [[build]], [[erect]]
+# to [[make]], [[produce]], [[compose]]
+#* {{Q|la|Jerome|Vulgate|Genesis|1|3|quote=dīxitque Deus '''fiat''' lūx et '''facta''' est lūx|trans=And God said: Let light be '''made'''. And light was '''made'''.}}
+# to [[appoint]]
+
+====Usage notes====
+{{m|la||Facere}} renders a sense of doing or making with respect to a specific instance of so doing or making; for more continuative senses of doing or making, compare {{m|la|agō}}, {{m|la|agitō}} and {{m|la|gerō}}. In [[Late Latin|Late]] and [[Medieval Latin]] the verb was used with infinitives to form causative constructions (e.g., cf. English {{m|en|fieri facias}}, from Medieval Latin {{m|la-med|[[fierī]] [[faciās]]}}), which are [[calque]]s from (Proto-)Romance considered [[inappropriate]] in [[Classical Latin]].
+
+====Conjugation====
+{{la-conj|irreg.sigmpasv|faciō}}
+;Passive: If one were to follow the Proto-Italic verb {{m|itc-pro|*fakjō}}, {{m|itc-pro|*fakiō|*fakjezi}}, the passive would be {{m|la||**facior}}, {{m|la||**facī}} in the present. However, these forms are not attested before or during the Classical period.
+
+====Derived terms====
+{{col|la
+|adlicefaciō
+|afficiō
+|allicefaciō
+|ārefaciō
+|benefaciō
+|calefaciō
+|calfaciō
+|candefaciō
+|commonefaciō
+|condocefaciō
+|cōnficiō
+|contābēfaciō
+|contrāfaciō
+|dēficiō
+|disfaciō
+|dolum faciō
+|efficiō
+|excandefaciō
+|expergēfaciō
+|facessō
+|faciēs
+|facilis
+|faciō dīlābī
+|factiō
+|factitō
+|factō
+|factor
+|factum
+|factus
+|frīgefaciō
+|incendefaciō
+|īnficiō
+|interficiō
+|labefaciō
+|liquefaciō
+|madefaciō
+|malefaciō
+|mollifaciō
+|obsurdefaciō
+|odefaciō
+|officiō
+|olfaciō
+|orbēfaciō
+|patefaciō
+|pavefaciō
+|percandefaciō
+|perficiō
+|perfrīgefaciō
+|permadefaciō
+|postfactus
+|praeficiō
+|prōficiō
+|pudefaciō
+|pūrefaciō
+|reficiō
+|rigefaciō
+|rubefaciō
+|satisfaciō
+|sēmifactus
+|stupefaciō
+|sufficiō
+|sūmptifaciō
+|tābefaciō
+|tepefaciō
+}}
+
+====Related terms====
+{{col5|la
+|facinus
+|-fex
+|-ficō
+|-ficus
+}}
+
+====Descendants====
+{{top3}}
+* Balkano-Romance:
+** {{desc|rup|fac|fatsiri}}
+** {{desc|ruo|facu}}
+** {{desc|ruq|fac|fațiri}}
+** {{desc|ro|face|facere}}
+* Italo-Romance:
+** {{desc|it|fare|facere}}
+** {{desc|scn|fari|fàciri}}
+* Gallo-Romance:
+** {{desc|ca|fer}}
+** {{desc|frp|fére|alt=fére, fâre}}
+** {{desc|oc|faire|fer}}
+*** {{desc|oc-gas|hèr}}
+** {{desc|fro|faire}} {{see desc}}
+* Ibero-Romance:
+** {{desctree|roa-opt|fazer}}
+** {{desc|roa-ole|fazer}}
+*** {{desc|ast|facer|fader|q2=Western|faer|q4=Eastern|ḥacer|fer|q5=Meridional, archaic}}
+*** {{desc|ext|hazel|hader}}
+*** {{desc|roa-leo|facere}}
+*** {{desc|mwl|fazer}}
+** {{desctree|osp|fazer}}
+* Insular Romance:
+** {{desc|sc|fàghere|alts=1}}
+* Borrowings:
+** {{desc|io|facar|bor=1}}
+** {{desc|ia|facer|bor=1}}
+** {{desc|pml|fazir|bor=1|qq=via one or more Romance languages}}
+{{bottom}}
+;
+Reflexes of the late variant {{m|la|fāre}}:
+{{top3}}
+* Italo-Dalmatian:
+** {{desc|co|fà}}
+*** {{desc|sdn|fà}}
+*** {{desc|sdc|fà}}
+** {{desc|dlm|fur}}
+** {{desc|ist|fà}}
+** {{desc|it|fare}}
+*** {{desc|eo|fari|bor=1}}
+** {{desc|itk|פַֿארֵי|tr=p̄aʔre|ts=fare}}
+** {{desc|nap|fare}}
+** {{desc|scn|fari}}
+** {{desc|vec|far}}
+* Rhaeto-Romance:
+** {{desc|fur|fâ}}
+** {{desc|lld|fé|fèr}}
+** {{desc|rm|far}}
+* Gallo-Italic:
+** {{desc|egl|fèr}}
+** {{desc|lmo|fà}}
+** {{desc|pms|fé}}
+** {{desc|rgn|fê}}
+* Gallo-Romance:
+** {{desc|oc|far}}
+*** {{desc|oc-gas|har}}
+** {{desc|roa-oca|far}}
+* Ibero-Romance:
+** {{desc|an|fer|unc=1}}
+** {{desc|mxi|פראיו}}
+** {{desc|osp|far}}
+{{bottom}}
+
+===References===
+{{reflist}}
+
+===Further reading===
+* {{R:la:L&S}}
+* {{R:la:Elementary Lewis}}
+* {{R:la:du Cange}}
+* {{R:la:Gaffiot}}
+* {{R:la:M&A}}
+* Wheelock's Latin, Wheelock, F.M. (6th ed., 2005). (Cited for abbreviation of singular imperative form; p. 51.) HarperCollins, N.Y.
+
+==Polish==
+
+===Etymology===
+{{clipping|pl|facet}} + {{af|pl|-o}}.
+
+===Pronunciation===
+{{pl-pr|a=LL-Q809 (pol)-Olaf-facio.wav}}
+
+===Noun===
+{{pl-noun|m-pr}}
+
+# {{lb|pl|colloquial}} [[guy]], [[fellow]], [[chap]]
+
+====Declension====
+{{pl-ndecl|<m.pr>}}
+
+===Further reading===
+* {{R:pl:WSJP}}
+* {{R:pl:PWN}}
+
+{{C|pl|Male people}}

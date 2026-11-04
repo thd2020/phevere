@@ -78,6 +78,7 @@ import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigur
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
 import { plainPluralOf, splitSurfaceAndLemma, sameLookupFold } from './lookup-policy';
 import { buildEtymology, EtymologyLink } from './etymology';
+import { lookupMorpheme, morphemeOffers, parseMorphemeQuery } from './morpheme';
 import { groupYoudaoEtymologies, serializeEtymologySources } from './etymology-sources';
 import { mergeSimilarDefinitions, dedupeExamples, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses } from './definition-merge';
 import { orderSensesByFrequency, warmSenseFrequency } from './sense-frequency';
@@ -586,9 +587,33 @@ export class DictionaryService extends BaseService {
   }
 
   /**
-   * Main lookup function - aggregates data from multiple sources with parallel processing
+   * Main lookup. A word part ("ob-", "-ant", "-fac-", "*bʰeh₂-") opens its morpheme page; a
+   * word or phrase goes through the sources (lookupWord).
    */
   async lookup(text: string, targetLanguage: string = 'auto', enabledSources?: string[], opts?: LookupOpts): Promise<DictionaryResult> {
+    const part = parseMorphemeQuery(text);
+    if (part) return lookupMorpheme(part);
+    return this.lookupWordOrPart(text, targetLanguage, enabledSources, opts);
+  }
+
+  /**
+   * A root of Phevere's tables that is no common English word ("fac", "spect") opens the root's
+   * page; "con" or "form" open the word, whose page links to the part.
+   */
+  private async lookupWordOrPart(text: string, targetLanguage: string, enabledSources?: string[], opts?: LookupOpts): Promise<DictionaryResult> {
+    const plain = String(text || '').trim().toLowerCase();
+    const root = /^[a-z]{2,8}$/.test(plain) ? morphemeOffers(plain).find((o) => o.kind === 'root') : undefined;
+    if (root && (await isCmuWord(plain).catch((): null => null)) === false) {
+      const page = await lookupMorpheme(root);
+      if (page.definitions.length) return page;
+    }
+    return this.lookupWord(text, targetLanguage, enabledSources, opts);
+  }
+
+  /**
+   * Word lookup - aggregates data from multiple sources with parallel processing
+   */
+  private async lookupWord(text: string, targetLanguage: string = 'auto', enabledSources?: string[], opts?: LookupOpts): Promise<DictionaryResult> {
     const startTime = Date.now();
 
     const query = normalizeQuery(text);
