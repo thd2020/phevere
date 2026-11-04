@@ -122,7 +122,10 @@ function notedRow(label: string, forms: KaikkiForm[], pick: (f: KaikkiForm) => b
   for (const f of forms) {
     if (!pick(f)) continue;
     const form = String(f.form).trim();
-    const note = NOTE_TAGS.find((t) => (f.tags || []).includes(t)) || '';
+    const notes = NOTE_TAGS.filter((t) => (f.tags || []).includes(t));
+    // Marked twice over ("octopii": hypercorrect and rare) is not worth a learner's attention.
+    if (notes.length > 1) continue;
+    const note = notes[0] || '';
     if (!note) {
       if (!plain.includes(form)) plain.push(form);
       const i = marked.findIndex(([m]) => m === form);
@@ -204,10 +207,12 @@ function tableFor(pos: string, forms: KaikkiForm[], word: string, lang: string, 
     const grid = caseGrid(ok);
     if (grid) grids.push(grid);
     else if (lang === 'en') {
-      // A plural spelt like the singular ("cactus" after cacti and cactuses) only counts when it is the only one.
+      // A plural spelt like the singular counts when Wiktionary gives it first ("fish, fishes"), not
+      // when it trails the others ("cactus" after cacti and cactuses).
       const plural = (f: KaikkiForm) => has(f, 'plural') && hasNone(f, ...CASES);
-      const others = okNoted.some((f) => plural(f) && String(f.form).trim().toLowerCase() !== word.toLowerCase());
-      en('Plural', (f) => plural(f) && !(others && String(f.form).trim().toLowerCase() === word.toLowerCase()));
+      const first = okNoted.find(plural);
+      const zeroFirst = !!first && String(first.form).trim().toLowerCase() === word.toLowerCase();
+      en('Plural', (f) => plural(f) && (zeroFirst || String(f.form).trim().toLowerCase() !== word.toLowerCase()));
     } else {
       row('Plural', collect(ok, (f) => has(f, 'plural') && hasNone(f, ...CASES)));
       row('Genitive', collect(ok, (f) => has(f, 'genitive') && hasNone(f, 'plural')));
@@ -238,6 +243,7 @@ function formLabel(tags: string[]): string {
 export function inflectionsFromKaikki(jsonl: string, lang: string, word: string): WordInflections {
   const out: WordInflections = { formOf: [], tables: [] };
   const seenPos = new Set<string>();
+  let nounHint = '';
   const entries: any[] = [];
   for (const line of (jsonl || '').split(/\r?\n/)) {
     const t = line.trim();
@@ -286,8 +292,24 @@ export function inflectionsFromKaikki(jsonl: string, lang: string, word: string)
       if (lemma && lemma !== word && !out.formOf.some((f) => f.lemma === lemma)) out.formOf.push({ lemma, label, pos });
       continue;
     }
-    if (!pos || seenPos.has(pos)) continue;
+    if (!pos) continue;
     const weight = senses.filter((x) => !(Array.isArray(x?.tags) ? x.tags : []).some((t: string) => MINOR_SENSE.test(t))).length;
+    if (seenPos.has(pos)) {
+      // Another noun spelt the same with its own plural: "die" the tool has dies, the cube dice.
+      if (pos === 'noun' && lang === 'en' && weight > 0) {
+        const other = tableFor(pos, Array.isArray(entry?.forms) ? entry.forms : [], word, lang, weight);
+        const prev = out.tables.find((t) => t.pos === 'noun');
+        const prevPlural = prev?.rows.find((r) => r.label.startsWith('Plural'));
+        const plural = other?.rows.find((r) => r.label === 'Plural');
+        const listed = (prev?.rows || []).filter((r) => r.label.startsWith('Plural')).flatMap((r) => r.forms);
+        if (prev && prevPlural && plural && plural.forms.some((f) => !listed.includes(f))) {
+          if (prevPlural.label === 'Plural' && nounHint) prevPlural.label = `Plural (${nounHint})`;
+          const hint = senseHint(senses);
+          prev.rows.push({ ...plural, label: hint ? `Plural (${hint})` : 'Plural' });
+        }
+      }
+      continue;
+    }
     let table = tableFor(pos, Array.isArray(entry?.forms) ? entry.forms : [], word, lang, weight);
     if (table && pos === 'noun' && formPos.has(pos)) {
       const rows = table.rows.filter((r) => r.forms.some((f) => f.toLowerCase() !== word.toLowerCase()));
@@ -296,9 +318,23 @@ export function inflectionsFromKaikki(jsonl: string, lang: string, word: string)
     if (table) {
       out.tables.push(table);
       seenPos.add(pos);
+      if (pos === 'noun') nounHint = senseHint(senses);
     }
   }
   return out;
+}
+
+/** A few words naming a sense, for telling two nouns apart: "isohedral polyhedron". */
+function senseHint(senses: any[]): string {
+  const s = senses.find((x) => !(x?.tags || []).some((t: string) => MINOR_SENSE.test(t)) && x?.glosses?.length) || senses[0];
+  const gloss = String(s?.glosses?.[0] || '')
+    .replace(/^\([^)]*\)\s*/, '')
+    .split(/[,;:(.]/)[0]
+    .replace(/^(?:an?|any|the|one)\s+/i, '')
+    .trim();
+  const words = gloss.split(/\s+/).slice(0, 5);
+  while (words.length > 1 && /^(?:a|an|the|of|for|to|in|on|with|or|and|that|which)$/i.test(words[words.length - 1])) words.pop();
+  return words.join(' ');
 }
 
 /**

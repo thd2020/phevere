@@ -250,6 +250,13 @@ assert.equal(fo.dominantLemma(['ax', 'axe', 'axis'], freq, [['ax', 'axe'], ['axi
   const octopus = selectInflections(inflectionsFromKaikki(page('octopus'), 'en', 'octopus'), ['noun']).tables[0].rows[0];
   assert.equal(octopus.forms[0], 'octopuses');
   assert.equal(octopus.notes[octopus.forms.indexOf('octopi')], 'hypercorrect');
+  assert.ok(!octopus.forms.includes('octopii'), 'hypercorrect and rare at once is left out');
+  // fish: the zero plural Wiktionary gives first stays.
+  assert.deepEqual(rows(selectInflections(inflectionsFromKaikki(page('fish'), 'en', 'fish'), ['noun']).tables[0]).Plural, ['fish', 'fishes']);
+  // die: the tool's plural and the cube's, each named.
+  const dieRows = selectInflections(inflectionsFromKaikki(page('die'), 'en', 'die'), ['verb', 'noun']).tables.find((t) => t.pos === 'noun').rows;
+  assert.ok(dieRows.some((r) => r.forms.includes('dice') && /polyhedron/.test(r.label)), 'dice for the cube');
+  assert.ok(dieRows.some((r) => r.forms.includes('dies') && r.label !== 'Plural'), 'dies for the tool, named');
   assert.ok(!octopus.forms.includes('octopusses'), 'a nonstandard form is left out');
   const octHtml = inflectionsHtml({ formOf: [], tables: [{ pos: 'noun', rows: [octopus], grids: [], weight: 6 }] }, 'octopus', 'act');
   assert.match(octHtml, /octopi <span class="lx-note">hypercorrect<\/span>/);
