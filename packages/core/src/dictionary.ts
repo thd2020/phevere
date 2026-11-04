@@ -82,7 +82,7 @@ import { formLine, formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, re
 import { buildEtymology, EtymologyLink } from './etymology';
 import { lookupMorpheme, morphemeOffers, parseMorphemeQuery } from './morpheme';
 import { groupYoudaoEtymologies, serializeEtymologySources } from './etymology-sources';
-import { mergeSimilarDefinitions, dedupeExamples, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses } from './definition-merge';
+import { mergeSimilarDefinitions, dedupeExamples, exampleKey, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses } from './definition-merge';
 import { orderSensesByFrequency, warmSenseFrequency } from './sense-frequency';
 import {
   Pronunciation,
@@ -1998,6 +1998,9 @@ export class DictionaryService extends BaseService {
       const defSeen = new Set<string>();
       const uniqueDefinitions: Definition[] = [];
       for (const d of definitions) {
+        // Wiktionary's group headings ("Meanings relating to a wind instrument."), which the Free
+        // Dictionary API passes on as senses, are not senses.
+        if (/^\s*meanings? relating to\b/i.test(String(d.meaning || '').replace(/<[^>]+>/g, ' '))) continue;
         const key = `${(d.partOfSpeech || '').toLowerCase()}|${(d.meaning || '').trim().toLowerCase()}|${(d.source || '').toLowerCase()}`;
         if (!defSeen.has(key)) {
           defSeen.add(key);
@@ -2010,7 +2013,20 @@ export class DictionaryService extends BaseService {
           mergeSimilarDefinitions(uniqueDefinitions) as Definition[],
         ) as Definition[],
       );
-      const mergedDefinitions = usageOrder ? orderSensesByFrequency(text, readingOrder) : readingOrder;
+      const ordered = usageOrder ? orderSensesByFrequency(text, readingOrder) : readingOrder;
+      // An example sentence shows once, under the first sense that has it ("A burst pipe flooded
+      // my bathroom." came with both the sense and its sub-sense).
+      const shownExamples = new Set<string>();
+      const mergedDefinitions = ordered.map((d) => {
+        if (!d.examples?.length) return d;
+        const examples = d.examples.filter((e) => {
+          const k = exampleKey(e);
+          if (!k || shownExamples.has(k)) return false;
+          shownExamples.add(k);
+          return true;
+        });
+        return examples.length === d.examples.length ? d : { ...d, examples };
+      });
       for (const d of mergedDefinitions) {
         if (d.examples?.length) d.examples = dedupeExamples(d.examples) || [];
       }
@@ -2421,13 +2437,28 @@ export class DictionaryService extends BaseService {
 
         for (const entry of langData) {
           if (entry.definitions && Array.isArray(entry.definitions)) {
-            entry.definitions.forEach((def: any) => {
+            const all: any[] = entry.definitions;
+            all.forEach((def: any, i: number) => {
               // The page's References section comes back as more senses ("in Dictionary.com Unabridged").
               if (!def?.definition || isCitationGloss(def.definition)) return;
+              let meaning = String(def.definition);
+              let examples: string[] = def.examples || [];
+              // A sense carries its sub-senses as a nested list ("A rigid tube … A water pipe."),
+              // and the sub-senses follow as definitions of their own with their examples; keep
+              // the sense's own text and examples only.
+              const nested = /<(?:ol|ul)[\s>]/i.exec(meaning);
+              if (nested) {
+                meaning = meaning.slice(0, nested.index);
+                const later = new Set(all.slice(i + 1).flatMap((d: any) => (d?.examples || []).map((e: string) => exampleKey(e))));
+                examples = examples.filter((e) => !later.has(exampleKey(e)));
+                // "Meanings relating to a wind instrument." heads a group; it is not a sense.
+                if (/^\s*meanings? relating to\b/i.test(meaning.replace(/<[^>]+>/g, ' '))) return;
+              }
+              if (!meaning.replace(/<[^>]+>/g, '').trim()) return;
               definitions.push({
                 partOfSpeech: this.normalizePartOfSpeech(entry.partOfSpeech),
-                meaning: def.definition,
-                examples: def.examples || [],
+                meaning,
+                examples,
                 source: 'Wiktionary'
               });
             });

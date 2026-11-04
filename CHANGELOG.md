@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Repeated senses and examples (2026-11-04): Wiktionary gives a sense together with its sub-senses and then each sub-sense again, so "pipe" showed "A rigid tube … A water pipe." and "A water pipe." with the same example under both. A sense now keeps only its own text, an example sentence shows once in an entry, and group headings such as "Meanings relating to a wind instrument." no longer show as senses.
 - Capitalised entries (2026-11-04): a word Wiktionary keeps only with a capital, such as the taxon "Whippomorpha", is found when typed in lower case.
 - Words with no entry (2026-11-04): a lookup that finds nothing, such as "coverness", says "Did you mean governess, covertness or coverless?" with the closest spelling first, instead of quietly opening a guess. Its Etymology tab no longer shows another word's history: Etymonline's stand-in word ("cover") is not used unless it is the same word without accents. A misspelling Wiktionary records, such as "idiosyncracy" or "recieve", still opens the right word.
 - Map (2026-11-04): the map now holds every connected word of the notebook or book. It used to stop at 220 words, so Postgraduate 考研 showed 220 of its 4,801 words and ob- listed none of its words; it now shows 2,599 words, and ob- lists 34, from obtain and observe to occur, offer and oppose. When Families learns a word's origin and the map changes, the words already on it stay where they were, with the same word in focus.
