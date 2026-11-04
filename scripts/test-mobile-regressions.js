@@ -42,7 +42,7 @@ async function startupAndGestures(floatingStrip) {
   const core = {
     listVocab: () => notebook,
     listEmptyDefinitions: async () => [], listEmptyReadings: async () => [],
-    findByLemma: async () => null, saveLemma: (result) => result.word, morphemeOf: () => null,
+    findByLemma: async () => null, saveLemma: (result) => result.word, morphemeOf: () => null, primeBookLevels: async () => undefined,
     dictionaryService: {
       getSupportedLanguages: () => [], getEnabledSources: () => [],
       lookup: (q, lang, sources, options) => new Promise((resolve) => lookups.push({ q, options, resolve })),
