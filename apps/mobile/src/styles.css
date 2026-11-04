@@ -224,11 +224,14 @@ a { color: var(--md-sys-color-tertiary); }
 .head .word {
   flex: 1;
   min-width: 0;
+  container-type: inline-size;
 }
+/* A long headword shrinks to fit its line before it would break mid-word. */
 .head .lemma {
   margin: 0;
   font-family: var(--md-font-display);
   font-size: clamp(1.75rem, 8vw, 2.6rem);
+  font-size: max(1.2rem, min(clamp(1.75rem, 8vw, 2.6rem), calc(100cqw / (var(--len, 8) * 0.56))));
   overflow-wrap: anywhere;
   font-weight: 700;
   letter-spacing: -0.04em;
@@ -311,6 +314,7 @@ html:not([data-mode="strip"]) .shell-lexicon .lookup-flow > .lexicon-block--sens
 html:not([data-mode="strip"]) .shell-lexicon .lexicon-pos-layout {
   flex: 1;
   height: auto;
+  min-width: 0;
 }
 .shell-lexicon .head { margin-bottom: 10px; }
 /* Pronunciations on one row that scrolls sideways, fading out at the edge. */
