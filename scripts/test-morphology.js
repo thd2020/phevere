@@ -112,4 +112,20 @@ assert.equal(fam('root:fac').forms, 'fac · fic · fec · fect');
 assert.ok(members('prefix:ad-').size >= 130, `ad-: ${members('prefix:ad-').size}`);
 assert.ok(ms < 3000, `analysis of 4,801 words took ${ms} ms`);
 
-console.log(`morphology: ok (考研: ${placed.size} of 4801 words in a root or prefix family, ${ms} ms)`);
+// The map holds every connected word of the book (it once stopped at 220), and a morpheme
+// lists all of its words.
+const t1 = Date.now();
+const md = views.notebookMapData(a, ['root', 'prefix', 'char']);
+const layoutMs = Date.now() - t1;
+const mapWords = md.nodes.filter((p) => p.k === 'word');
+assert.equal(md.total, 4801);
+assert.ok(mapWords.length >= 2500, `words on the map: ${mapWords.length}`);
+const ob = md.nodes.findIndex((p) => p.id === 'prefix:ob-');
+assert.ok(ob >= 0, 'ob- is on the map');
+assert.equal(md.edges.filter(([x]) => x === ob).length, members('prefix:ob-').size, 'every ob- word is joined to ob-');
+assert.equal(md.nodes[md.nodes.findIndex((p) => p.id === 'root:fac')].f, 'fac · fic · fec · fect');
+assert.ok(md.nodes.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z)));
+assert.ok(layoutMs < 3000, `layout of the book took ${layoutMs} ms`);
+assert.deepEqual(views.findMapWords(md, 'obtains', 1).map((p) => p.l), ['obtain']);
+
+console.log(`morphology: ok (考研: ${placed.size} of 4801 words in a root or prefix family, ${ms} ms; ${mapWords.length} words on the map, laid out in ${layoutMs} ms)`);
