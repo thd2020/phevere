@@ -1,0 +1,247 @@
+{{also|Appendix:Variations of "ob"}}
+==English==
+
+===Etymology 1===
+From {{der|en|la|ob-}}.
+
+====Prefix====
+{{en-prefix}}
+
+# {{lb|en|non-productive}} Against; facing; {{n-g|a combining prefix found in verbs of Latin origin}}.
+# {{lb|en|botany}} Of a reversed shape.
+
+=====Synonyms=====
+* {{sense|against}} {{l|en|anti-}}, {{l|en|counter-}}, {{l|en|contra-}}, {{l|en|dys-}}
+
+=====Derived terms=====
+{{prefixsee|en}}
+
+===Etymology 2===
+{{clipping|en|obligatory}}.
+
+====Prefix====
+{{en-prefix}}
+
+# {{lb|en|Internet|informal|humorous}} [[obligatory|Obligatory]]; [[prepend]]ed to the name of a topic being mentioned to avoid accusations of being [[off-topic]].
+#* {{quote-newsgroup|en|year=1998|author=Haydn Black|title=lesbian goths|newsgroup=alt.gothic
+|passage='''ObGoth''': Uh, well, it's like this you see, &lt;searches in random file o' obgoth things&gt; anyone out there got the new CoX album on Tess? If so which album is it *most* like?}}
+#* {{quote-newsgroup|en|year=1998|author=Peter Thomas|title=FAQ: more info request|newsgroup=comp.sys.sinclair
+|passage=Aren't Newcastle's chairman Sunderland supporters? (From the way they acted?) Erm...'''obspeccy'''? Tynesoft, eh? What happened to them?}}
+#* {{quote-newsgroup|en|year=2000|author=Dan Glover|title=Introduction to Linux article for commentary|newsgroup=alt.linux
+|passage='''ObLinux''': SAP were giving away a free development environment for use with RedHat v6.1 recently, a distinctly non-free complete system has been available for a while. This offers another example of a commercial application where the vendors now have sufficient confidence in Linux to release a port (even if it is distribution-specific).}}
+
+=====See also=====
+* {{l|en|thread tax}}
+
+===Anagrams===
+* {{anagrams|en|a=bo|BO|Bo|bo}}
+
+{{cln|en|unproductive prefixes}}
+{{cat|en|English Usenet slang}}
+
+==Czech==
+
+===Etymology===
+{{inh+|cs|zlw-ocs|ob-}}, from {{inh|cs|sla-pro|*ob}}, from {{der|cs|ine-pro|*h₃ebʰi}}. See {{m|cs|o}}.
+
+===Pronunciation===
+* {{cs-IPA}}
+
+===Prefix===
+{{head|cs|prefix}}
+
+# {{n-g|a [[prefix]] with various functions, e.g. expressing:}}
+#: [[omission]] (''obden'' = ob + [[den]] (day) = every other day)
+#: [[surrounding]] (''objet'' = ob + [[jet]] (drive) = to drive around)
+
+====Derived terms====
+{{prefixsee|cs}}
+{{col3|cs|objet
+|objevit
+|obvinit
+|obsílka
+|obšťastnit}}
+
+====See also====
+* {{l|cs|obe-}}
+
+===Further reading===
+* {{R:cs:Slovnik afixu|o-/ob(e)-}}
+
+==German==
+
+===Pronunciation===
+* {{audio|de|De-ob-.ogg|a=<<Germany>> (<<Berlin>>)}}
+
+===Etymology 1===
+From {{m|de|ob|id=on account of|t=over, above}}.
+
+====Prefix====
+{{head|de|prefix}}
+
+# [[over-]], [[super-]]
+
+===Etymology 2===
+From {{der|de|la|ob-}}.
+
+====Prefix====
+{{head|de|prefix}}
+
+# [[#English|ob-]]
+
+===Derived terms===
+{{prefixsee|de}}
+
+==Latin==
+
+===Alternative forms===
+* {{alter|la|obs-}}
+* {{alter|la|os-}}
+* {{alt|la|op-||pronunciation spelling}}
+
+===Etymology===
+{{ety|la|ob}}
+Prefixation of preposition {{m|la|ob||towards; against}}.
+
+===Prefix===
+{{head|la|prefix}}
+
+# [[towards]]; [[against]]
+
+====Usage notes====
+In compounds, the '''b''' is often (from the data of derived terms below, one fourth of the times) assimilated into the next consonant producing a [[geminate#Noun|geminate]].
+
+====Derived terms====
+{{prefixsee|la}}
+
+==Old Polish==
+
+===Etymology===
+{{etymon|zlw-opl|id=around|:inh|sla-pro:*o(b)-<ety:from<sla-pro:*o(b)<id:around>>>|tree=1|text=+}}
+
+===Pronunciation===
+* {{zlw-opl-IPA}}
+
+===Prefix===
+{{head|zlw-opl|prefix}}
+
+# {{ng|prefix added to verbs to mean surrounding, around}}
+#: {{prefixusex|zlw-opl|ić|obić}}
+# {{ng|prefix added to verbs with various meanings}}
+#: {{prefixusex|zlw-opl|mówić|obmówić}}
+
+====Derived terms====
+{{prefixsee|zlw-opl}}
+
+====See also====
+* {{l|zlw-opl|o}}
+
+==Polish==
+
+===Alternative forms===
+* {{alt|pl|obe-}}
+
+===Etymology===
+{{ety|pl|id=around|:inh|zlw-opl:ob-<id:around>|text=+|tree=1|doublet=o-}}
+
+===Pronunciation===
+{{pl-pr|a=LL-Q809 (pol)-Olaf-ob-.wav}}
+
+===Prefix===
+{{head|pl|prefix}}
+
+# {{ng|prefix added to verbs to mean surrounding, around}}
+#: {{prefixusex|pl|jechać|objechać}}
+#: {{syn|pl|o-}}
+# {{ng|prefix added to verbs meaning entirely}}
+#: {{prefex|pl|ob-|jeść|t2=to eat|[[objeść]] [[się]]|t3=to eat and be overstuffed}}
+
+Because the prefix ends with the consonant sometimes the first letter of the verb was dropped.
+#: {{prefixusex|pl|źrzeć|obejrzeć}}
+#: {{prefixusex|pl|walić|obalić}}
+
+====Derived terms====
+{{prefixsee|pl}}
+
+====See also====
+* {{l|pl|o}}
+
+==Serbo-Croatian==
+
+===Alternative forms===
+* {{alt|sh|o-||usually before plosives, sometimes also other consonants}}
+* {{alt|sh|op-||before unvoiced consonants}}
+* {{alt|sh|oba-||in a few words}}
+
+===Etymology===
+{{inh+|sh|sla-pro|*ob}}, from {{der|sh|ine-pro|*h₃ebʰi}}. See {{m|sh|o}}.
+
+===Pronunciation===
+* {{IPA|sh|/ob/}}
+
+===Prefix===
+{{sh-prefix}}
+
+# [[around]], [[enclosing]], [[surrounding]]
+#: {{l|sh|jahati}} → {{l|sh|objahati}}
+#: {{l|sh|grliti}} → {{l|sh|obgrliti}}
+#: {{l|sh|kružiti}} → {{l|sh|okružiti}}
+# [[around]], [[throughout]], [[wholly]]
+#: {{l|sh|javiti}} → {{l|sh|objaviti}}
+#: {{l|sh|uzeti}} → {{l|sh|obuzeti}}
+#: {{l|sh|lizati}} → {{l|sh|oblizati}}
+# on the surface or top of something
+#: {{l|sh|grepsti}} → {{l|sh|ogrepsti}}
+# {{non-gloss|forms perfective verbs from imperfectives}}
+#: {{l|sh|hrabriti}} → {{l|sh|ohrabriti}}
+# [[quite]], [[-ish]]
+#: {{l|sh|malen}} → {{l|sh|omalen}}
+
+====Derived terms====
+{{prefixsee|sh}}
+
+==Slovak==
+
+===Alternative forms===
+* {{alt|sk|obo-}}
+
+===Etymology===
+{{ety|sk|:inh|zlw-osk:ob-<ety:inh<sla-pro:*ob-<ety:from<*ob>>>>|text=+|tree=+}} Cf. {{m|sk|o}}.
+
+===Pronunciation===
+* {{sk-IPA}}
+
+===Prefix===
+{{head|sk|prefix}}
+
+# [[circum-]], [[peri-]] ({{n-g|prefix used to denote an action performed on the surface, around the edge, or the circumference of an object}})
+#: {{prefixusex|sk|sekať|obsekať<t:to trim around/off>}}
+#: {{prefixusex|sk|viazať|obviazať<t:to tie around/bandage>}}
+# {{n-g|prefix used to indicate that a state or action affects only the exterior or surface of an object}}
+#: {{prefixusex|sk|horieť|obhorieť<t:to be scorched on the surface>}}
+#: {{prefixusex|sk|schnúť|obschnúť<t:to dry on the surface>}}
+# [[circum-]] ({{n-g|prefix used with verbs of motion to indicate movement following a perimeter or circling an object}})
+#: {{prefixusex|sk|ísť|obísť<t:to go around/bypass>}}
+# {{n-g|prefix used to indicate a sequence of actions or movements visiting all individual points or objects in a set}}
+#: {{prefixusex|sk|letieť|obletieť<t:to fly around/visit all by flying>}}
+#: {{prefixusex|sk|behať|obbehať<t:to run around/visit all by running>}}
+# {{n-g|prefix used with frequentative verbs to denote a repetitive action or continuous presence in a certain area}}
+#: {{prefixusex|sk|stávať|obstávať<t:to loiter/stand around>}}
+#: {{prefixusex|sk|sedávať|obsedávať<t:to sit around/haunt (e.g. pubs)>}}
+# {{n-g|prefix used with stative verbs to indicate the acquisition of a specific property or state over time}}
+#: {{prefixusex|sk|starnúť|obstarnúť<t:to grow old/stale>}}
+#: {{prefixusex|sk|-živnúť|obživnúť<t:to come to life/revive>}}
+# [[re-]], [[be-]] ({{n-g|prefix used to indicate the conferring or bestowing of a quality or thing expressed by the word base}})
+#: {{prefixusex|sk|nový|obnoviť<t:to renew/restore>}}
+#: {{prefixusex|sk|čerstvý|občerstviť<t:to refresh>}}
+# {{n-g|prefix used to indicate the capacity or ability to perform or stay in a certain state despite difficulty}}
+#: {{prefixusex|sk|sedieť|obsedieť<t:to remain seated/stay on (e.g. a horse)>}}
+#: {{prefixusex|sk|stáť|obstáť<t:to stand one's ground/pass a test>}}
+# {{n-g|prefix used to indicate the direct targeting or thorough processing of a specific object or task}}
+#: {{prefixusex|sk|robiť|obrobiť<t:to till/cultivate/process>}}
+
+====Derived terms====
+{{prefixsee|sk}}
+
+===Further reading===
+* {{R:sk:SSJ}}

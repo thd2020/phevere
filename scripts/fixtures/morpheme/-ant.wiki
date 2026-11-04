@@ -1,0 +1,375 @@
+{{also|Appendix:Variations of "ant"}}
+==English==
+
+===Etymology===
+{{etymon|en|:inh|enm:-ant<ety:bor<fro:-ant>:inh<ang:-ende<id:participle>>>|tree=1}}
+From {{inh|en|enm|-ant}}, {{m|enm|-aunt}}, partly from {{der|en|fro|-ant}}, from {{der|en|la|-āns}}; and partly (in adjectival derivations) continuing {{inh|en|enm|-ant}}, a variant of {{m|enm|-and}}, {{m|enm|-end}}, from {{inh|en|ang|-ende|pos=present participle ending}}, see {{l|en|-and}}. {{false cognate|ms, id|-an}} (and so all its Austronesian cognates), and {{noncog|ar|ان||adjective forming suffix}}.
+
+===Pronunciation===
+* {{enPR|ənt}}, {{IPA|en|/ənt/}}
+* {{enPR|ĕnt|a=India}}, {{IPA|en|/enʈ/|[ë̞ɳʈ]}}
+* {{hmp|en|-ent}}
+
+===Suffix===
+{{head|en|suffix|cat2=adjective-forming suffixes}}
+
+# {{lb|en|nowadays|sciences|chiefly|medicine}} The [[agent]] noun derived from [[verb]].
+#: ''[[serve]]'' → ''[[servant]]''
+# An [[adjective]] corresponding to a [[noun]] in {{m|en|-ance}}, having the sense of "[[exhibit]]ing (the [[condition]] or [[process]] described by the noun)".
+# An adjective derived from a verb, having the senses of: (a) "[[do]]ing (the verbal action)", and/or (b) "[[prone]]/[[tending]] to do (the verbal action)".
+#: ''[[ascend]]'' → ''[[ascendant]]''
+#: ''[[err]]'' → ''[[errant]]''
+# {{alternative form of|en|-and}}.
+#: ''blat'''ant''''', ''blic'''ant'''''; ''flipp'''ant''''', ''old-farr'''ant'''''
+
+====Usage notes====
+* Many words in ''-ant'' were not actually coined in English but rather borrowed directly from Old French, Middle French or Modern French.
+
+====Derived terms====
+{{suffixsee|en}}
+
+====Related terms====
+* {{l|en|-ance}}
+
+===Anagrams===
+* {{anagrams|en|a=ant|TNA|TAN|NTA|Nat|NAT|ATN|nat|Tan|tan|Nat.}}
+
+{{cln|en|productive suffixes}}
+
+==Catalan==
+
+===Etymology===
+{{inh+|ca|roa-oca|-ant}}, from {{inh|ca|la|-āns|-antem}}, {{m|la|-ēns|-entem}}. Compare {{cog|fr|-ant}}, {{cog|it|-ent}}, {{cog|es|-ante}}, {{cog|pt|-ante}}.
+
+===Pronunciation===
+* {{ca-IPA}}
+
+===Suffix===
+{{head|ca|suffix}} {{q|invariable}}
+
+# [[-ing]]; {{n-g|suffix denoting the [[gerund]] and [[present participle]] of a verb}}
+#: {{sufex|ca|jugar|t1=to play|jug'''ant'''|t2=playing}}
+
+===Suffix===
+{{ca-adj}}
+
+# {{l|en|-ant}}, [[-ing]]; {{n-g|forms adjectives out of verbs}}
+
+===Suffix===
+{{ca-noun|m|f=+}}
+
+# [[-er]]; {{n-g|forms nouns out of verbs}}
+
+===See also===
+* {{l|ca|-ent}}
+
+==Danish==
+
+===Etymology===
+From {{der|da|la|-ans}}.
+
+===Pronunciation===
+* {{IPA|da|[ˈanˀd]}}
+
+===Suffix===
+{{head|da|suffix|cat2=noun-forming suffixes|g=c}}
+
+# Forms [[agent nouns]], mostly from verbs of Romance or Latin origin
+# something that is or happens in a certain way {{q|adjectives. E.g. {{l|da|arrogant}}}}
+
+====Declension====
+{{da-decl|en|er}}
+
+====Derived terms====
+{{suffixsee|da}}
+
+==Dutch==
+
+===Etymology===
+{{rfe|nl}}
+
+===Pronunciation===
+* {{IPA|nl|/ɑnt/}}
+* {{audio|nl|Nl--ant.ogg}}
+
+===Suffix===
+{{nl-noun|m|-en|+|f=-ante}}
+
+# {{ng|appended to the stem of a verb, it yields a noun which signifies the subject who performs the action of that verb (see [[Appendix:Glossary#agent noun|agent noun]])}}
+
+====Derived terms====
+{{suffixsee|nl}}
+
+==French==
+
+===Etymology===
+{{etymon|fr|id=-ing|:inh|fro:-ant<id:present participle>}}
+{{inh+|fr|fro|-ant}}, from a merger of {{inh|fr|la|-āns|-antem}}, {{m|la|-ēns|-entem|pos=present participle suffix}} with {{inh|fr|la|-andus|-andum}}, {{m|la|-endus|-endum|pos=gerundive suffix}}.
+
+Compare {{cog|it|-ante}}, {{m|it|-ando}}; {{cog|es|-ante}}, {{m|es|-ando}}.
+
+===Pronunciation===
+* {{fr-IPA}}
+* {{audio|fr|LL-Q150 (fra)-WikiLucas00--ant.wav|a=<<France>> (<<Lyon>>)}}
+* {{audio|fr|LL-Q150 (fra)-Jérémy-Günther-Heinz Jähnick--ant.wav|a=<<France>> (<<Somain>>)}}
+
+===Suffix===
+{{fr-suffix}} {{q|invariable}}
+
+# [[-ing]]; {{ng|suffix denoting the [[gerund]] and [[present participle]] of a verb}}
+#: {{sufex|fr|jouer|t1=to play|jou'''ant'''|t2=playing}}
+#: {{ux|fr|Mange'''ant''' du pain, j'ai trébuché sur une peau de banane.|Eat'''ing''' bread, I tripped over a banana peel.}}
+
+===Suffix===
+{{fr-adj}}
+
+# {{l|en|-ant}}, [[-ing]]; {{ng|forms adjectives out of verbs}}
+# {{lb|fr|rare}} {{ng|forms [[adjective]]s from words other than verbs}}
+#: {{sufex|fr|abracadabra|abracadabrant}}
+
+===Suffix===
+{{fr-noun|m|f=+}}
+
+# [[-er]]; {{ng|forms nouns out of verbs}}
+
+====Usage notes====
+* French present participles are used, chiefly in literary style, to replace [[relative clause]]s. In this case they are <u>not</u> inflected for number and gender: {{m|fr||une femme [[aimant]] ses enfants|t=a woman loving her children}}, equivalent to {{m|fr||une femme qui aime ses enfants|t=a woman who loves her children}}.
+* Some present participles can also be used as actual adjectives. In this case they are inflected: {{m|fr||une femme aimante|t=a loving/caring woman}}. Such adjectival uses are [[lexicalise]]d, however, and (unlike in English) not all participles allow it.
+* Unlike Spanish, English, Italian and Portuguese, it is grammatically incorrect to use the verb {{l|fr|être}} before a present participle for continuous tenses.
+
+====Related terms====
+* {{l|fr|-amment}}
+* {{l|fr|-ance}}
+
+==German==
+
+===Alternative forms===
+* {{alt|de|-ent}}
+* {{alt|de|-ans||learned terms only, usually neuter}}
+
+===Etymology===
+{{ety|de|:inh|gmh:-ant<ety:bor<fro:-ant>>|tree=+}}
+From {{inh|de|gmh|-ant}}, from {{der|de|la|-ans|-ans, -antis}}, in part through {{der|de|fro|-ant}}.
+
+===Pronunciation===
+* {{IPA|de|/ant/|/ɑnt/}}
+* {{audio|de|De--ant.ogg|a=<<Germany>> (<<Berlin>>)}}
+
+===Suffix===
+{{de-noun|m.weak|f=in}}
+
+# {{senseid|de|agent noun}} {{n-g|Forms agent nouns, mostly from verbs of Romance or Latin origin.}}
+#: {{suffixusex|de|liefern|t1=to supply|Lieferant|t2=supplier}}
+
+====Usage notes====
+* This ending is semi-{{glossary|productive}}, see e.g. {{m|de|Asylant}}, {{m|de|Antifant}}.
+* This ending rarely also occurs in the neuter gender, see e.g. {{l|de|Antiozonant}}.
+
+====Declension====
+{{de-ndecl|m.weak}}
+
+====Derived terms====
+{{suffixsee|de}}
+
+===Further reading===
+* {{R:de:DWDS}}
+* {{R:de:Duden}}
+
+==Hungarian==
+
+===Etymology===
+From {{af|hu|-a-|-n|-t|pos1=linking vowel|pos2=instantaneous suffix|pos3=causative suffix|nocat=y}}.<ref>{{R:Zaicz 2006}}</ref>
+
+===Pronunciation===
+* {{hu-IPA}}
+* {{rhymes|hu|ɒnt|s=1}}
+
+===Suffix===
+{{head|hu|suffix}}
+
+# {{lb|hu|instantaneous suffix}} {{ng|Added to a stem - often an [[onomatopoeia]] - to form a [[verb]] expressing an [[instantaneous]] action.}}
+#: {{m|hu|pill'''ant'''||to glance}}
+
+====Usage notes====
+* {{q|instantaneous suffix}} Variants:
+*: '''{{l|hu|-ant}}''' is added to back-vowel words
+*: '''{{l|hu|-ent}}''' is added to front-vowel words
+
+====Derived terms====
+{{suffixsee|hu|pos=verb}}
+
+====See also====
+* {{l|hu|-int}}
+* [[Appendix:Hungarian suffixes]]
+
+===References===
+{{reflist}}
+
+==Latin==
+
+===Etymology===
+From {{der|la|itc-pro|*-āō|*-ānt}}, from {{der|la|ine-pro|*-eh₂yéti|*-eh₂yónti}}.
+
+===Pronunciation===
+* {{la-IPA|ant}}
+
+===Suffix===
+{{head|la|suffix form}}
+
+# {{inflection of|la|-ō||3|p|pres|actv|indc}} {{q|first conjugation}}
+
+====Descendants====
+{{top2}}
+* {{desctree|roa-opt|-an}}
+* {{desc|scn|-anu|-annu}}
+* {{desc|es|-an}}
+{{bottom}}
+
+==Middle French==
+
+===Etymology===
+{{etymon|frm|:inh|fro:-ant}}
+{{rfe|frm}}
+From {{inh|frm|la|-āns}}, {{m|la|-ēns}}.
+
+===Suffix===
+{{head|frm|suffix}}
+
+# {{non-gloss|used to form the present participle of verbs}}
+
+==Norwegian Bokmål==
+
+===Pronunciation===
+* {{IPA|nb|/ant/}}
+* {{rhymes|nb|ant|s=1}}
+* {{hyphenation|nb|-ant}}
+
+===Etymology 1===
+{{bor+|nb|fr|-ant|t=agent- and noun-forming suffix}}, ultimately from {{der|nb|la|-āns|t=present-participle ending}}, genitive {{m|la|-antis}}.
+
+Compare {{cog|da|-ant|t=noun-forming suffix}}.
+
+====Suffix====
+{{head|nb|suffix|g=m|definite singular|-anten|indefinite plural|-anter|definite plural|-antene}}
+
+# Forms masculine nouns denoting a person or thing that performs a specified action, has a specified function or possesses a particular characteristic.
+#: {{m|nb|asylant|t=asylum seeker}}, {{m|nb|debutant|t=debutant}}, {{m|nb|demonstrant|t=demonstrator}}, {{m|nb|informant|t=informant}}, {{m|nb|okkupant|t=occupier}}, {{m|nb|spekulant|t=speculator}}
+
+=====Derived terms=====
+{{top2}}
+* {{l|nb|asylant||asylum seeker}}
+* {{l|nb|debutant||debutant}}
+* {{l|nb|demonstrant||demonstrator}}
+* {{l|nb|informant||informant}}
+* {{l|nb|okkupant||occupier}}
+* {{l|nb|spekulant||speculator}}
+{{bottom}}
+
+=====See also=====
+* {{l|nb|-ent||noun-forming suffix}}
+
+===Etymology 2===
+{{bor+|nb|fr|-ant|t=adjective-forming suffix}}, from {{der|nb|la|-āns|t=present-participle ending}}, genitive {{m|la|-antis}}.
+
+Compare {{cog|da|-ant|t=adjective-forming suffix}}.
+
+====Suffix====
+{{head|nb|suffix|neuter singular|-ant|definite singular and plural|-ante}}
+
+# Forms adjectives expressing a particular [[manner]], [[state]] or [[characteristic]].
+#: {{m|nb|arrogant|t=arrogant}}, {{m|nb|dominant|t=dominant}}, {{m|nb|galant|t=gallant}}, {{m|nb|intrigant|t=intriguing, scheming}}, {{m|nb|mutant|t=mutant}}
+
+=====Derived terms=====
+{{top2}}
+* {{l|nb|arrogant||arrogant}}
+* {{l|nb|dominant||dominant}}
+* {{l|nb|galant||gallant}}
+* {{l|nb|intrigant||intriguing, scheming}}
+* {{l|nb|mutant||mutant}}
+{{bottom}}
+
+=====See also=====
+* {{l|nb|-ent||adjective-forming suffix}}
+
+===Etymology 3===
+{{nonlemma}}
+
+====Suffix====
+{{head|nb|suffix form}}
+
+# {{infl of|nb|-an||n|s|t=adjective-forming suffix}}
+
+===References===
+* {{R:nb:OB|-ant}}
+* {{R:nb:NAOB|-ant}}
+
+===Anagrams===
+* {{anagrams|nb|nat|tan}}
+
+==Old French==
+
+===Etymology===
+{{etymon|fro|id=present participle|:inh|la:-āns<id:present active participle>}}
+From {{inh|fro|la|-āns}}, {{m|la|-ēns}}.
+
+===Suffix===
+{{head|fro|suffix}}
+
+# {{non-gloss|used to form the present participle of verbs}}
+
+====Related terms====
+* {{l|fro|-ance}}/{{l|fro|-anche}}
+
+====Descendants====
+* {{desc|en|-ant}}
+* {{desc|fr|-ant}}
+
+==Polish==
+
+===Etymology===
+{{ety|pl|id=agent|:bor|fr:-ant<id:-ing>|text=+|tree=1}}
+
+===Pronunciation===
+{{pl-pr|a=LL-Q809 (pol)-Olaf--ant.wav}}
+
+===Suffix===
+{{head|pl|suffix|g=m-pr}}
+
+# {{l|en|-ant}} {{gl|agent noun derived from verb}}
+#: {{suffixusex|pl|kurs|kursant}}
+
+====Declension====
+{{pl-ndecl|<m.pr>}}
+
+====Derived terms====
+{{suffixsee|pl}}
+
+===Further reading===
+* {{R:pl:PWN}}
+
+==Welsh==
+
+===Pronunciation===
+* {{IPA|cy|/ant/}}
+
+===Etymology 1===
+Cognate with {{cog|kw|-ans}}.
+
+====Alternative forms====
+* {{alt|cy|-iant}}
+
+====Suffix====
+{{cy-noun|m|-annau|cat=abstract noun suffixes}}
+
+# {{ng|forms nouns indicating the action of a verb or its result}}; [[-tion]], [[-ment]], [[-ness]]
+#: {{afex|cy|maddau<t:to forgive>|maddeuant<t:forgiveness>}}
+
+===Etymology 2===
+
+====Suffix====
+{{cy-head|verbf|inflsuf=1}}
+
+# {{lb|cy|literary}} {{ng|marks the [[third person|third-person]] [[plural]] [[present]] [[indicative]]/[[future]] of verbs}}
+
+=====Derived terms=====
+{{suffixsee|cy}}

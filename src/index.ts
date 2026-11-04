@@ -71,6 +71,7 @@ import {
   subscribeWordbook,
   unsubscribeWordbook,
   vocabPayloadFromResult,
+  examplesFromResult,
   type AnswerDetails,
 } from '@phevere/core';
 import {
@@ -3157,7 +3158,8 @@ ipcMain.handle('vocab-find', async (_e, lemma: string) => {
 });
 ipcMain.handle('vocab-add', async (_e, payload: vocabStore.VocabAddInput) => {
   try {
-    const entry = await vocabStore.addVocab(payload);
+    // resolveForm: the heart saves the word the lookup opens, even when tapped before the page turned to it.
+    const entry = await vocabStore.addVocab({ ...payload, resolveForm: true });
     if (!entry.definition || !String(entry.definition).trim()) {
       enqueueVocabEnrich(entry.lemma);
     }
@@ -3240,6 +3242,14 @@ async function lookupBookWord(lemma: string): Promise<vocabStore.VocabAddInput |
 ipcMain.handle('wordbook-meaning', async (_e, lemma: string) => {
   const payload = await lookupBookWord(String(lemma));
   return payload ? { definition: payload.definition, reading: payload.reading, partOfSpeech: payload.partOfSpeech } : null;
+});
+/** Example sentences for a quiz word (its gap-fill question), from the cached lookup. */
+ipcMain.handle('wordbook-examples', async (_e, lemma: string) => {
+  try {
+    return examplesFromResult(await dictionaryService.lookup(String(lemma), 'auto'));
+  } catch {
+    return [];
+  }
 });
 ipcMain.handle('wordbook-save', async (_e, lemma: string, hasMeaning?: boolean) => {
   const payload = hasMeaning ? {} : (await lookupBookWord(String(lemma))) || {};

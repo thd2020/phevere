@@ -2,6 +2,7 @@ import { scrollLexiconTo } from './lexicon-scroll';
 import './platform/configure-core';
 import {
   addVocab,
+  morphemeOf,
   dictionaryService,
   fetchSenseImages,
   fillEmptyDefinitions,
@@ -12,6 +13,14 @@ import {
   removeVocab,
   saveLemma,
   vocabPayloadFromResult,
+  examplesFromResult,
+  attachLearnCharts,
+  revealQuestion,
+  reviewArmed,
+  markKnownInReview,
+  primeBookLevels,
+  ROUND_WORDS,
+  memoryLevel,
   wikipediaService,
   type Pronunciation,
   type DictionaryResult,
@@ -25,9 +34,13 @@ import {
   HOLARKY_ACCOUNT,
   deleteEmailMatches,
   attachNotebookMap,
+  attachFamilies,
+  closeTreeInspector,
   traceNotebookFamilies,
   attachCardTable,
   disposeNotebookMaps,
+  peekSuggestions,
+  suggestWords,
   fetchWordImage,
   fillWordImages,
   startReview,
@@ -74,6 +87,7 @@ import {
   type WordbookSub,
   type WordsContext,
   type WordsScope,
+  type BookSort,
   type CardLayout,
   type FamilyGrouping,
   type MorphKind,
@@ -256,17 +270,54 @@ async function loadAnswerHistory(): Promise<void> {
 
 /* Word books: the list the Words tab shows (My words, a book or All books) and its data. */
 const WORDS_SCOPE_KEY = 'phevere.wordsScope';
+const BOOK_SORT_KEY = 'phevere.bookSort';
+function readBookSort(v: string | null): BookSort {
+  return v === 'recent' || v === 'az' ? v : 'book';
+}
+const wbMeaningInFlight = new Set<string>();
 const wordsState = {
   scope: (readStore(WORDS_SCOPE_KEY) || 'mine') as WordsScope,
   library: false,
   ctx: null as WordsContext | null,
   limit: BOOK_LIST_PAGE,
+  sort: readBookSort(readStore(BOOK_SORT_KEY)),
+  /** Book words opened on their brief definition, by lowercase headword. */
+  open: new Set<string>(),
+  loading: wbMeaningInFlight,
 };
 let wbSubs: WordbookSub[] = [];
 let wbUserBooks: UserBook[] = [];
 let wbProgress = new Map<string, BookWordProgress>();
 const wbBooks = new Map<string, string[]>();
-const wbMeaningInFlight = new Set<string>();
+/* Example sentences for the quiz's gap-fill questions, looked up ahead for words held for days. */
+const reviewExamples = new Map<string, string[]>();
+const examplesInFlight = new Set<string>();
+
+async function prefetchExamples(wait = false): Promise<void> {
+  const r = nbState.review;
+  if (!r) return;
+  const byId = new Map(scopePool().map((e) => [e.id, e]));
+  const lemmas: string[] = [];
+  for (let i = r.index + (wait ? 0 : 1); i < r.queue.length && lemmas.length < 3; i++) {
+    const e = byId.get(r.queue[i]);
+    const key = String(e?.lemma || '').toLowerCase();
+    if (!e || !key || reviewExamples.has(key) || examplesInFlight.has(key) || memoryLevel(e) < 2) continue;
+    lemmas.push(String(e.lemma));
+  }
+  const jobs = lemmas.map(async (lemma) => {
+    const key = lemma.toLowerCase();
+    examplesInFlight.add(key);
+    try {
+      const res = await dictionaryService.lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), { translationProvider: prefs.translationProvider });
+      reviewExamples.set(key, examplesFromResult(res));
+    } catch {
+      /* offline: no gap-fill from examples */
+    } finally {
+      examplesInFlight.delete(key);
+    }
+  });
+  if (wait) await Promise.all(jobs);
+}
 
 function rebuildWordsContext(): void {
   const mine = reviewPool.length >= notebook.length ? reviewPool : notebook;
@@ -293,6 +344,7 @@ async function refreshWords(): Promise<void> {
     wbUserBooks = await listUserBooks();
     wbProgress = new Map((await listBookProgress()).map((p) => [p.lemma, p]));
     for (const s of wbSubs) if (!isUserBookId(s.bookId) && !wbBooks.has(s.bookId)) wbBooks.set(s.bookId, await loadWordbook(s.bookId));
+    await primeBookLevels(wbSubs.map((s) => s.bookId));
     if (wordsState.scope !== 'mine' && !reviewPool.length) await loadReviewPool();
     rebuildWordsContext();
   } catch (err) {
@@ -306,30 +358,34 @@ function scopePool(): Array<VocabEntry | ReturnType<typeof bookEntry>> {
   return scopeEntries(wordsState.scope, wordsState.ctx);
 }
 
+/** Looks up a book word's meaning and keeps it with the word's book progress. */
+async function fetchBookMeaning(lemma: string): Promise<void> {
+  const key = lemma.toLowerCase();
+  if (wbMeaningInFlight.has(key)) return;
+  wbMeaningInFlight.add(key);
+  try {
+    const res = await dictionaryService.lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), {
+      translationProvider: prefs.translationProvider,
+    });
+    const payload = vocabPayloadFromResult(res, lemma);
+    const meaning = { definition: payload.definition, reading: payload.reading, partOfSpeech: payload.partOfSpeech };
+    await cacheBookWordMeaning(lemma, meaning);
+    const prev = wbProgress.get(key);
+    wbProgress.set(key, { ...(prev || { lemma: key, known: false, updatedAt: 0 }), ...meaning });
+  } catch {
+    /* offline: the word is asked as a flash card, and an opened row says it has no definition */
+  } finally {
+    wbMeaningInFlight.delete(key);
+  }
+}
+
 /** Looks up the next queued book words that have no meaning yet, so their quiz can ask it. */
 async function prefetchMeanings(wait = false): Promise<void> {
   const r = nbState.review;
   if (!r || wordsState.scope === 'mine') return;
-  const lemmas = reviewNeedsMeaning(r, scopePool(), 4).filter((l) => !wbMeaningInFlight.has(l.toLowerCase()));
+  const lemmas = reviewNeedsMeaning(r, scopePool(), wait ? ROUND_WORDS : 4).filter((l) => !wbMeaningInFlight.has(l.toLowerCase()));
   if (!lemmas.length) return;
-  const jobs = lemmas.map(async (lemma) => {
-    const key = lemma.toLowerCase();
-    wbMeaningInFlight.add(key);
-    try {
-      const res = await dictionaryService.lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), {
-        translationProvider: prefs.translationProvider,
-      });
-      const payload = vocabPayloadFromResult(res, lemma);
-      const meaning = { definition: payload.definition, reading: payload.reading, partOfSpeech: payload.partOfSpeech };
-      await cacheBookWordMeaning(lemma, meaning);
-      const prev = wbProgress.get(key);
-      wbProgress.set(key, { ...(prev || { lemma: key, known: false, updatedAt: 0 }), ...meaning });
-    } catch {
-      /* offline: the word is asked as a flash card */
-    } finally {
-      wbMeaningInFlight.delete(key);
-    }
-  });
+  const jobs = lemmas.map((lemma) => fetchBookMeaning(lemma));
   const done = Promise.all(jobs).then(() => {
     rebuildWordsContext();
     if (!wait && tab === 'learn' && !nbState.review?.answer) paint();
@@ -448,7 +504,25 @@ function lookupPaneHtml(): string {
     savedFor: (q) => notebook.find((e) => e.lemma.trim().toLowerCase() === q.trim().toLowerCase()),
     headTools: !stripMode,
     senseImages: currentSenseImages(),
+    ownWords: morphemeOf(result) ? ownWords() : undefined,
   });
+}
+
+/**
+ * Saved words and the words of followed books, for a word part's "my words". Built again only
+ * when the notebook or the books change, so the part page's sections stay cached across paints.
+ */
+let ownWordsMemo: { sig: string; words: { mine: string[]; books: string[] } } | null = null;
+function ownWords(): { mine: string[]; books: string[] } {
+  const bookWords = wbSubs.map((s) => wbBooks.get(s.bookId)?.length || 0).join(',');
+  const sig = `${notebook.length}|${notebook[0]?.lemma || ''}|${bookWords}|${wbUserBooks.map((b) => b.words?.length || 0).join(',')}`;
+  if (ownWordsMemo?.sig === sig) return ownWordsMemo.words;
+  const words = {
+    mine: notebook.map((e) => e.lemma),
+    books: [...wbSubs.flatMap((s) => wbBooks.get(s.bookId) || []), ...wbUserBooks.flatMap((b) => b.words || [])],
+  };
+  ownWordsMemo = { sig, words };
+  return words;
 }
 
 function senseKey(r: DictionaryResult | null): string {
@@ -477,7 +551,8 @@ function placeSenseFigures(): void {
 let senseImagesPending = '';
 
 async function loadSenseImages(generation: number): Promise<void> {
-  if (prefs.senseImages === false || !result) return;
+  // A prefix or a root has no picture: one found for "shine" would illustrate the word, not the part.
+  if (prefs.senseImages === false || !result || morphemeOf(result)) return;
   const key = senseKey(result);
   if (senseImages?.key === key || senseImagesPending === key) return;
   const senses = lexiconSenses(result);
@@ -567,6 +642,7 @@ function paint(): void {
   if (keepFocus && q) {
     q.focus();
     if (typeof caret === 'number') q.setSelectionRange(caret, caret);
+    paintSuggest();
   }
   const nbq = document.getElementById('nbq') as HTMLInputElement | null;
   if (keepNbq && nbq) {
@@ -602,7 +678,7 @@ function paint(): void {
 
 /** The Learn tab's state, starting today's session for the chosen list when there is none. */
 function learnViewState(): LearnState {
-  if (!nbState.review && wordsState.scope !== 'mine' && wordsState.ctx) {
+  if (!nbState.review && wordsState.ctx) {
     nbState.review = startScopeReview(wordsState.scope, wordsState.ctx, { mineGoal: nbState.goal, mineStartedToday: startedToday().length });
   }
   if (!nbState.review && reviewPool.length) nbState.review = startReview(reviewPool, nbState.goal, Date.now(), startedToday().length);
@@ -610,7 +686,7 @@ function learnViewState(): LearnState {
     review: nbState.review || startReview([], nbState.goal),
     goal: nbState.goal,
     pool: reviewPool,
-    reviewOptions: { audio: prefs.audioEnabled !== false, preview: previewReview, formatGap: formatReviewGap },
+    reviewOptions: { audio: prefs.audioEnabled !== false, preview: previewReview, formatGap: formatReviewGap, examples: (lemma) => reviewExamples.get(lemma.toLowerCase()) },
     page: learnPage,
     history: answerHistory,
     notice: plusNoticeHtml(accountState, HOLARKY_ACCOUNT.plusUrl, 'learn'),
@@ -629,6 +705,7 @@ function bindNotebookViews(): void {
   const page = document.querySelector('.nbv-body');
   if (!page) return;
   attachNotebookMap(page);
+  attachFamilies(page);
   if (nbState.view === 'families') {
     // Families groups the whole notebook (the review pool), not just the list's first page.
     const words = reviewPool.length > notebook.length ? reviewPool : notebook;
@@ -654,6 +731,7 @@ function bindNotebookViews(): void {
 function bindLearn(): void {
   const page = document.querySelector<HTMLElement>('.lrn-body');
   if (!page) return;
+  attachLearnCharts(page);
   if (learnPage === 'progress') {
     if (!answerHistory) void loadAnswerHistory().then(() => tab === 'learn' && learnPage === 'progress' && paint());
     return;
@@ -663,6 +741,7 @@ function bindLearn(): void {
   }
   focusReview(page);
   void prefetchMeanings();
+  void prefetchExamples();
 }
 
 /** Keeps the chosen list (or Add a word book) visible in the scrolling switcher. */
@@ -678,6 +757,8 @@ function revealWordsScope(): void {
 let reviewAutoplayed = '';
 function focusReview(page: HTMLElement): void {
   page.querySelector<HTMLInputElement>('#nbv-answer')?.focus();
+  // A new question starts with its progress bar and instruction below the sticky app bar.
+  revealQuestion(page, document.querySelector('.top'));
   // After an answer, bring Continue into view with the verdict and the word above it.
   page.querySelector<HTMLElement>('.nbv-quiz__grade')?.scrollIntoView({ block: 'nearest' });
   const listen = page.querySelector<HTMLElement>('[data-autoplay]');
@@ -972,6 +1053,11 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
     if (generation !== lookupGeneration) return;
     saved = nextSaved;
     void loadSenseImages(generation);
+    // A word part has no Wikipedia article ("*ten-" is not Ten (number)).
+    if (morphemeOf(next)) {
+      if (resultTab === 'translation' || resultTab === 'wikipedia') resultTab = 'lexicon';
+      return;
+    }
     void loadWikiHits(next.word || q).then(() => {
       if (tab === 'lookup' && resultTab === 'wikipedia') {
         void maybeAutoOpenWiki().then(() => paint());
@@ -1021,7 +1107,8 @@ async function saveCurrent(): Promise<void> {
       saved = null;
       toast('Removed from My words');
     } else {
-      const payload = { ...vocabPayloadFromResult(result, lemma), context: sourceForSave(lemma) };
+      // resolveForm: a tap before the page turns from "geese" to goose still saves goose.
+      const payload = { ...vocabPayloadFromResult(result, lemma), context: sourceForSave(lemma), resolveForm: true };
       saved = await addVocab(payload);
       toast('Saved to My words');
       postOsNotify('saved', 'Saved to My words', lemma);
@@ -1495,7 +1582,13 @@ function watchVoice(): void {
 
 /** Desktop lookup trail: same word replaces the current entry; capped at 40. */
 function rememberLookup(q: string): void {
-  const fold = (v: string) => v.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+  // "ob-" and "ob" are two pages: the marks of a word part stay in the key.
+  const fold = (v: string) => {
+    const t = v.trim();
+    const lead = /^[*-]/.test(t) ? t[0] : '';
+    const trail = t.length > 1 && t.endsWith('-') ? '-' : '';
+    return lead + t.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase() + trail;
+  };
   if (histIndex >= 0 && fold(history[histIndex] || '') === fold(q)) {
     history[histIndex] = q;
     return;
@@ -1844,6 +1937,11 @@ function onLexiconPosScroll(): void {
 function sizeLexiconPane(): void {
   const layout = document.querySelector('.lexicon-pos-layout') as HTMLElement | null;
   if (!layout) return;
+  // In the app's own lookup the frame is laid out by CSS (styles.css, .shell-lexicon).
+  if (!stripMode && !layout.closest('.scan-sheet') && layout.closest('.shell-lexicon')) {
+    layout.style.height = '';
+    return;
+  }
   const viewport = window.visualViewport?.height || window.innerHeight;
   const nav = document.querySelector('.nav');
   const bottom = layout.closest('.scan-sheet') ? viewport : nav ? nav.getBoundingClientRect().top : viewport;
@@ -1870,6 +1968,49 @@ function onClick(e: Event): void {
   }
   if (!t) return;
   void handleAct(act || '', t, e);
+}
+
+let suggestSeq = 0;
+/** After a lookup is submitted, the list stays shut until the next keystroke. */
+let suggestHeld = false;
+
+/** Common words that begin with what is typed, listed under the lookup field. */
+function paintSuggest(): void {
+  const input = document.getElementById('q') as HTMLInputElement | null;
+  const form = input?.closest('form.search');
+  if (!input || !form) return;
+  let list = form.querySelector<HTMLElement>('.suggest');
+  const typed = input.value.trim();
+  const words = document.activeElement === input && !suggestHeld ? peekSuggestions(typed, 6) : [];
+  if (!words.length) {
+    list?.remove();
+    return;
+  }
+  if (!list) {
+    list = document.createElement('div');
+    list.className = 'suggest';
+    list.setAttribute('role', 'listbox');
+    // Keep the field focused while a row is pressed, so the tap lands.
+    list.addEventListener('pointerdown', (ev) => ev.preventDefault());
+    form.append(list);
+  }
+  list.innerHTML = words
+    .map((w) => {
+      const head = w.toLowerCase().startsWith(typed.toLowerCase()) ? typed.length : 0;
+      return `<button type="button" class="suggest__row" role="option" data-act="suggest" data-word="${esc(w)}">${esc(w.slice(0, head))}<b>${esc(w.slice(head))}</b></button>`;
+    })
+    .join('');
+}
+
+function onQueryInput(): void {
+  suggestHeld = false;
+  paintSuggest();
+  const input = document.getElementById('q') as HTMLInputElement | null;
+  const asked = input?.value || '';
+  const seq = ++suggestSeq;
+  void suggestWords(asked).then(() => {
+    if (seq === suggestSeq) paintSuggest();
+  });
 }
 
 async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
@@ -1958,6 +2099,16 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'ocr':
       await runOcr();
       return;
+    case 'suggest': {
+      const word = t.dataset.word || '';
+      if (!word) return;
+      draft = word;
+      suggestHeld = true;
+      suggestSeq++;
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      await lookup(word);
+      return;
+    }
     case 'scan-close':
       scan = null;
       scanSheet = 'closed';
@@ -1982,6 +2133,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       }
       return;
     case 'lookup': {
+      // A word in running text that was selected, not tapped, stays selected.
+      if (t.classList.contains('lx-w') && String(window.getSelection?.() || '').trim()) return;
       const from = tab;
       if (t.dataset.q) await lookup(t.dataset.q);
       if (from !== 'lookup' && tab === 'lookup') lookupFrom = { tab: from, at: histIndex };
@@ -2218,6 +2371,28 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       await refreshWords();
       paint();
       return;
+    case 'wb-expand': {
+      const word = t.dataset.q || '';
+      const key = word.toLowerCase();
+      if (!key) return;
+      if (wordsState.open.has(key)) wordsState.open.delete(key);
+      else wordsState.open.add(key);
+      const e = wordsState.ctx ? bookEntry(word, wordsState.ctx) : null;
+      if (wordsState.open.has(key) && e && !e.definition) {
+        void fetchBookMeaning(word).then(() => {
+          rebuildWordsContext();
+          if (tab === 'notebook') paint();
+        });
+      }
+      paint();
+      return;
+    }
+    case 'wb-sort':
+      wordsState.sort = readBookSort(t.dataset.sort || '');
+      writeStore(BOOK_SORT_KEY, wordsState.sort);
+      wordsState.limit = BOOK_LIST_PAGE;
+      paint();
+      return;
     case 'wb-more':
       wordsState.limit += BOOK_LIST_PAGE;
       paint();
@@ -2231,11 +2406,12 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'wb-known-review': {
+      if (!reviewArmed(nbState.review)) return;
       const p = await setBookWordKnown(t.dataset.q || '', true, Date.now(), scopeBookFor(wordsState.scope, wordsState.ctx, t.dataset.q || ''));
       answerHistory = null;
       wbProgress.set(p.lemma, p);
       rebuildWordsContext();
-      if (nbState.review) dropCurrentReview(nbState.review);
+      if (nbState.review) markKnownInReview(nbState.review, t.dataset.q || '');
       paint();
       return;
     }
@@ -2304,13 +2480,20 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'nb-review-exit':
-      // Back to the Learn page; answers so far are already saved and rescheduled.
+      // Back to the Learn page. An answer on screen is saved first, as Continue would.
+      if (nbState.review?.answer) await commitReview();
       nbState.review = null;
       paint();
       return;
     case 'nb-start':
+    case 'nb-round':
+      // A new round plans again from what is due now.
+      if (t.dataset.act === 'nb-round') {
+        nbState.review = null;
+        learnViewState();
+      }
       // Book words get their meaning looked up before the first question is built.
-      await prefetchMeanings(true);
+      await Promise.all([prefetchMeanings(true), prefetchExamples(true)]);
       if (nbState.review) nbState.review.started = true;
       paint();
       return;
@@ -2319,16 +2502,16 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'nb-choose':
-      answerCurrentReview({ choice: Number(t.dataset.choice) });
+      if (reviewArmed(nbState.review)) answerCurrentReview({ choice: Number(t.dataset.choice) });
       return;
     case 'nb-knew':
-      answerCurrentReview({ knew: t.dataset.knew === '1' });
+      if (reviewArmed(nbState.review)) answerCurrentReview({ knew: t.dataset.knew === '1' });
       return;
     case 'nb-skip':
-      answerCurrentReview({});
+      if (reviewArmed(nbState.review)) answerCurrentReview({});
       return;
     case 'nb-override':
-      if (nbState.review) overrideReview(nbState.review);
+      if (nbState.review) overrideReview(nbState.review, t.dataset.mode === 'easy' ? 'easy' : 'flip');
       paint();
       return;
     case 'nb-next':
@@ -2604,6 +2787,7 @@ function onChange(e: Event): void {
   }
   if (el.id === 'q') {
     draft = (el as HTMLInputElement).value;
+    if (e.type === 'input') onQueryInput();
   } else if (el.id === 'nbq') {
     notebookFilter = (el as HTMLInputElement).value;
     paint();
@@ -2647,6 +2831,9 @@ function onSubmit(e: Event): void {
   if (!(form instanceof HTMLFormElement) || !form.classList.contains('search')) return;
   e.preventDefault();
   const input = document.getElementById('q') as HTMLInputElement | null;
+  suggestHeld = true;
+  suggestSeq++;
+  paintSuggest();
   if (input?.value) void lookup(input.value);
 }
 
@@ -2657,6 +2844,7 @@ export async function startApp(): Promise<void> {
   // when this returns false.
   // It does what the page's own back or close control would, innermost first.
   (window as unknown as { __pvBack?: () => boolean }).__pvBack = () => {
+    if (closeTreeInspector()) return true;
     const sheet = document.querySelector<HTMLDialogElement>('dialog[open]');
     if (sheet) {
       sheet.dispatchEvent(new Event('cancel'));
@@ -2671,7 +2859,14 @@ export async function startApp(): Promise<void> {
       else { scan = null; clearScanPick(); paint(); }
       return true;
     }
-    if (tab === 'learn' && nbState.review) { nbState.review = null; paint(); return true; }
+    if (tab === 'learn' && nbState.review) {
+      const r = nbState.review;
+      void (r.answer ? commitReview() : Promise.resolve()).then(() => {
+        nbState.review = null;
+        paint();
+      });
+      return true;
+    }
     if (tab === 'notebook' && wordsState.library) { wordsState.library = false; paint(); return true; }
     if (tab !== 'lookup') { tab = 'lookup'; paint(); return true; }
     // Lookup: the same as its back arrow, the Wikipedia reader first, then the word before.
@@ -2714,9 +2909,50 @@ export async function startApp(): Promise<void> {
   applyPrefsToCore(prefs);
   await refreshCapture();
   root.addEventListener('click', onClick);
+  // Enter or Space on a focused word link opens it, as a tap does.
+  root.addEventListener('keydown', (e) => {
+    const el = e.target as HTMLElement | null;
+    if ((e.key !== 'Enter' && e.key !== ' ') || !el?.matches?.('[role="link"][data-act]')) return;
+    e.preventDefault();
+    el.click();
+  });
   root.addEventListener('submit', onSubmit);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onChange);
+  root.addEventListener('focusin', (e) => {
+    if ((e.target as HTMLElement).id === 'q' && (e.target as HTMLInputElement).value.trim() && !suggestHeld) onQueryInput();
+  });
+  root.addEventListener('focusout', (e) => {
+    if ((e.target as HTMLElement).id === 'q') setTimeout(paintSuggest, 0);
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (tab !== 'learn' || !nbState.review || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    const page = document.querySelector<HTMLElement>('.lrn-body');
+    const target = ev.target as HTMLElement | null;
+    if (!page || (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+    if (ev.key === 'Enter') {
+      const next = page.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-reveal"], [data-act="nb-round"]');
+      if (!next) return;
+      ev.preventDefault();
+      next.click();
+      return;
+    }
+    if (/^[1-4]$/.test(ev.key)) {
+      const n = Number(ev.key);
+      const hit =
+        page.querySelector<HTMLElement>(`[data-act="nb-choose"][data-choice="${n - 1}"]:not([disabled])`) ||
+        (n <= 2 ? page.querySelector<HTMLElement>(`[data-act="nb-knew"][data-knew="${n === 2 ? 1 : 0}"]`) : null);
+      if (!hit) return;
+      ev.preventDefault();
+      hit.click();
+    }
+  });
+  root.addEventListener('keydown', (e) => {
+    if ((e.target as HTMLElement).id !== 'q' || (e as KeyboardEvent).key !== 'Escape') return;
+    suggestHeld = true;
+    suggestSeq++;
+    paintSuggest();
+  });
   // Settings disclosures stay open across repaints.
   root.addEventListener('toggle', (e) => {
     const d = e.target as HTMLDetailsElement | null;

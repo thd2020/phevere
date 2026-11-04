@@ -81,3 +81,16 @@ export function vocabPayloadFromResult(result: DictionaryResult | null, lemma: s
     targetLang,
   };
 }
+
+/** Example sentences from a lookup, for the quiz's gap-fill questions: plain text, each once, at most eight. */
+export function examplesFromResult(result: DictionaryResult | null): string[] {
+  const out: string[] = [];
+  for (const d of result?.definitions || []) {
+    for (const raw of d.examples || []) {
+      const t = stripGlossText(String(raw || '')).replace(/^[“"]|[”"]$/g, '').trim();
+      if (t.length >= 12 && t.length <= 220 && !out.includes(t)) out.push(t);
+      if (out.length >= 8) return out;
+    }
+  }
+  return out;
+}

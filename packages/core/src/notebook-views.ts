@@ -13,7 +13,8 @@
  * Everything here returns HTML strings with `data-act` hooks, like `vocab-view.ts`; the two
  * DOM helpers at the end (map pan and zoom, card pictures) use only standard DOM calls.
  */
-import { analyzeMorphemes, derivationStem, morphBreakdown, wordOrigin } from './morphology';
+import { analyzeMorphemes, derivationStem, morphBreakdown, wordOrigin, type MorphEtymon } from './morphology';
+import { cachedEtymon } from './notebook-etymology';
 import { clean, type Family, type NotebookAnalysis, type NotebookEntry, type NotebookView, type TreeNode, type WordInfo } from './notebook-shared';
 
 export * from './notebook-shared';
@@ -49,13 +50,17 @@ export function readNotebookView(stored: string | null | undefined): { view: Not
 
 /* ------------------------------------------------------------------ analysis */
 
-export function analyzeNotebook(entries: NotebookEntry[]): NotebookAnalysis {
+/**
+ * Words, their morpheme families and word trees. `etymon` is the etymology cache Families fills
+ * from Wiktionary; where it knows a word's origin, the morphemes are checked against it.
+ */
+export function analyzeNotebook(entries: NotebookEntry[], etymon: (lemma: string) => MorphEtymon | null = cachedEtymon): NotebookAnalysis {
   const words = new Map<string, WordInfo>();
   const byMorph = new Map<string, Family>();
   for (const entry of entries) {
     const lemma = clean(entry.lemma);
     if (!lemma) continue;
-    const morphs = analyzeMorphemes(lemma);
+    const morphs = analyzeMorphemes(lemma, /^[a-z]/i.test(lemma) ? etymon(lemma) : null);
     words.set(entry.id, { entry, morphs, parts: morphBreakdown(lemma, morphs), origin: wordOrigin(morphs) });
     const seen = new Set<string>();
     for (const m of morphs) {
@@ -64,7 +69,7 @@ export function analyzeNotebook(entries: NotebookEntry[]): NotebookAnalysis {
       seen.add(key);
       let fam = byMorph.get(key);
       if (!fam) {
-        fam = { key, kind: m.kind, label: m.label, gloss: m.gloss, origin: m.origin, ids: [] };
+        fam = { key, kind: m.kind, label: m.label, gloss: m.gloss, origin: m.origin, ids: [], ...(m.forms ? { forms: m.forms } : {}) };
         byMorph.set(key, fam);
       }
       fam.ids.push(entry.id);

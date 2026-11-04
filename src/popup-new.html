@@ -672,7 +672,7 @@
       .definition-text p, .definition-text li, .definition-text dd { margin: 0; padding: 0; }
       .definition-text ol, .definition-text ul, .definition-text dl { margin: 0; padding: 0; list-style: none; }
       .definition-text a,
-      a.lemma-link {
+      .lemma-link {
         color: var(--tertiary);
         text-decoration: underline;
         text-decoration-thickness: 1px;
@@ -681,7 +681,26 @@
         cursor: pointer;
         font-weight: 600;
       }
-      .definition-text a:hover, a.lemma-link:hover { text-decoration-color: var(--tertiary); }
+      .definition-text a:hover, .lemma-link:hover { text-decoration-color: var(--tertiary); }
+      /* A word part has no translation, article, recorded voice or notebook entry. */
+      body.is-part [data-tab="translation"],
+      body.is-part [data-tab="wikipedia"],
+      body.is-part #audioIcon,
+      body.is-part #vocabHeartIcon { display: none; }
+      /* Every other word: text until pointed at (lexicon-parts.css styles the hover). */
+      .lx-w {
+        color: inherit;
+        font-weight: inherit;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .lx-w:hover {
+        color: var(--tertiary);
+        text-decoration: underline;
+        text-decoration-thickness: 1px;
+        text-decoration-color: color-mix(in srgb, var(--tertiary) 45%, transparent);
+        text-underline-offset: 2px;
+      }
       .definition-examples { margin-top: 6px; }
       .definition-example,
       .example-item {
@@ -1481,7 +1500,11 @@
       var lookupNavGuardAt = 0;
       var LOOKUP_TRAIL_CAP = 40;
       function foldLookupKey(s) {
-        return String(s || '').replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+        // "ob-" and "ob" are two pages: the marks of a word part stay in the key.
+        var t = String(s || '').trim();
+        var lead = /^[*-]/.test(t) ? t[0] : '';
+        var trail = t.length > 1 && /-$/.test(t) ? '-' : '';
+        return lead + t.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase() + trail;
       }
 
       function syncLookupNav() {
@@ -2147,7 +2170,7 @@
           const sentences = plain.split(/(?<=[.!?。！？])\s+/).filter(function (s) { return s.trim().length > 2; });
           let formattedHtml = '<div class="etymology-text">';
           if (sentences.length === 0) {
-            formattedHtml += `<div class="etymology-sentence">${escapeHtml(plain)}</div>`;
+            formattedHtml += `<div class="etymology-sentence">${linkWords(plain)}</div>`;
           } else {
             sentences.forEach(function (sentence) {
               const trimmedSentence = sentence.trim();
@@ -2155,10 +2178,10 @@
               const highlightedSentence = escapeHtml(trimmedSentence)
                 .replace(/\b(Root|Origin|Etymology|Cognate with|Doublet of|来自|引申|词源)\b/gi, '<span class="etymology-keyword">$1</span>')
                 .replace(/\b(Proto-Indo-European|Proto-Germanic|Proto-Italic|Proto-Hellenic|Proto-Celtic|Ancient Greek|Late Latin|Medieval Latin|Old English|Middle English|Old French|Middle French|Anglo-Norman|Old Norse|Old High German|Middle Dutch|Old Occitan|Old Provençal|Anglo-Saxon|Latin|Greek|French|German|Italian|Spanish|Portuguese|Dutch|Arabic|Persian|Sanskrit|Gothic)\b/gi, '<span class="etymology-language">$1</span>')
-                .replace(/\*[\w\u0300-\u036f\-]+/g, '<span class="etymology-reconstructed">$&</span>')
+                .replace(/\*[\p{L}\p{M}\u02b0-\u02ff\u2080-\u2089-]+/gu, '<span class="etymology-reconstructed">$&</span>')
                 .replace(/(\d+)(st|nd|rd|th)\s+century/gi, '<span class="etymology-century">$&</span>')
                 .replace(/\b(BCE?|CE|AD|BC)\b/g, '<span class="etymology-era">$&</span>');
-              formattedHtml += `<div class="etymology-sentence">${highlightedSentence}</div>`;
+              formattedHtml += `<div class="etymology-sentence">${linkMarkup(highlightedSentence)}</div>`;
             });
           }
           formattedHtml += '</div>';
@@ -2200,7 +2223,11 @@
           var node = function (lang, term, gloss, isHead) {
             return '<span class="etymology-chain__node' + (isHead ? ' is-head' : '') + '">' +
               '<span class="etymology-chain__lang">' + escapeHtml(lang) + '</span>' +
-              (term ? '<span class="etymology-chain__term">' + escapeHtml(term) + '</span>' : '') +
+              (term
+                ? isHead
+                  ? '<span class="etymology-chain__term">' + escapeHtml(term) + '</span>'
+                  : '<span class="etymology-chain__term lx-w" role="link" tabindex="0" data-lookup="' + escapeHtml(term) + '">' + escapeHtml(term) + '</span>'
+                : '') +
               (gloss ? '<span class="etymology-chain__gloss">“' + escapeHtml(gloss) + '”</span>' : '') +
               '</span>';
           };
@@ -2734,6 +2761,13 @@ function startAutoCloseTimeout() {
              function displayDictionaryResult(result) {
          pvLog('[POPUP] displayDictionaryResult called with:', result);
          pvLog('[POPUP] Current tab:', currentTab);
+         // A word part ("ob-", "*bʰeh₂-") has no translation, article, voice or notebook entry.
+         var isPart = !!(result && result.metadata && result.metadata.morpheme);
+         document.body.classList.toggle('is-part', isPart);
+         if (isPart && (currentTab === 'translation' || currentTab === 'wikipedia')) {
+           activateTab('lexicon');
+           return;
+         }
          if (currentTab === 'etymology') {
            displayEtymologyResult(result);
            return;
@@ -3283,6 +3317,59 @@ function startAutoCloseTimeout() {
          `;
        }
 
+        /** Plain text with each word a link to its lookup (the shared core does the splitting). */
+        function linkWords(text) {
+          const lx = window.phevereLexicon;
+          return lx && lx.linkText ? lx.linkText(String(text || ''), 'lookup') : escapeHtml(String(text || ''));
+        }
+
+        /** Escaped HTML whose remaining words become links; existing links stay as they are. */
+        function linkMarkup(html) {
+          const lx = window.phevereLexicon;
+          return lx && lx.linkHtml ? lx.linkHtml(String(html || ''), 'lookup') : String(html || '');
+        }
+
+        /**
+         * Saved words and word-book words for a morpheme page's "my words". Loaded once per
+         * pop-up and again after a save; the page repaints when they arrive.
+         */
+        var ownWordsCache = null;
+        var ownWordsLoading = null;
+        window.addEventListener('focus', function () { ownWordsCache = null; });
+        function popupOwnWords(result) {
+          if (!(result && result.metadata && result.metadata.morpheme)) return { mine: [], books: [] };
+          if (ownWordsCache) return ownWordsCache;
+          if (!ownWordsLoading) {
+            ownWordsLoading = (async function () {
+              const mine = [];
+              const books = [];
+              try {
+                const list = window.vocabAPI && window.vocabAPI.list ? await window.vocabAPI.list(5000) : [];
+                (list || []).forEach(function (e) { if (e && e.lemma) mine.push(String(e.lemma)); });
+              } catch (_) { /* notebook unavailable */ }
+              try {
+                const state = window.wordbookAPI && window.wordbookAPI.state ? await window.wordbookAPI.state() : null;
+                const lx = window.phevereLexicon;
+                const subs = (state && state.subs) || [];
+                for (const s of subs) {
+                  if (!s || !s.bookId || String(s.bookId).indexOf('mine-') === 0) continue;
+                  const words = lx && lx.loadWordbook ? await lx.loadWordbook(s.bookId) : [];
+                  (words || []).forEach(function (w) { books.push(String(w)); });
+                }
+                ((state && state.userBooks) || []).forEach(function (b) {
+                  ((b && b.words) || []).forEach(function (w) { books.push(String(w)); });
+                });
+              } catch (_) { /* word books unavailable */ }
+              ownWordsCache = { mine: mine, books: books };
+              ownWordsLoading = null;
+              if (currentResult && currentResult.metadata && currentResult.metadata.morpheme && currentTab === 'lexicon') {
+                displayDictionaryResult(currentResult);
+              }
+            })();
+          }
+          return { mine: [], books: [] };
+        }
+
         function linkifyLemmaRefs(raw, isHtml) {
           if (!raw) return '';
           if (isHtml) {
@@ -3295,7 +3382,9 @@ function startAutoCloseTimeout() {
               } catch (_) {
                 title = m[1].replace(/_/g, ' ');
               }
-              title = title.replace(/#.*$/, '').trim();
+              title = window.phevereLexicon && window.phevereLexicon.wikiLinkLookup
+                ? window.phevereLexicon.wikiLinkLookup(title)
+                : title.replace(/#.*$/, '').trim();
               if (!title || /^(File|Category|Special|Wiktionary|Template|Appendix|Help|Module|User|Talk|Reconstruction):/i.test(title)) return full;
               if (/\bdata-lookup=/i.test(pre + post)) return full;
               return `<a ${pre}href=${q}${href}${q} data-lookup="${escapeHtml(title)}" class="lemma-link"${post}>`;
@@ -3442,6 +3531,8 @@ function startAutoCloseTimeout() {
 
         async function loadPopupSenseImages(result) {
           if (settings.senseImages === false || !result || !window.dictionaryAPI || !window.dictionaryAPI.senseImages) return;
+          // A prefix or a root has no picture of its own.
+          if (result.metadata && result.metadata.morpheme) return;
           const key = popupSenseKey(result);
           if ((popupSenseImages && popupSenseImages.key === key) || popupSenseImagesPending === key) {
             placePopupSenseFigures(result);
@@ -3511,7 +3602,7 @@ function startAutoCloseTimeout() {
         /** "(countable, chiefly in combination) An institution…": the labels set small, as printed. */
         function labelLead(html) {
           return String(html || '').replace(/^\s*\(([^()<]{1,80})\)\s*/, function (_m, labels) {
-            return '<span class="sense-label">' + labels + '</span> ';
+            return '<span class="sense-label lx-nolink">' + labels + '</span> ';
           });
         }
 
@@ -3588,7 +3679,7 @@ function startAutoCloseTimeout() {
               examples.forEach(function (ex) { shownExampleKeys.add(exampleKey(ex)); });
               const exHtml = examples.length
                 ? `<div class="definition-examples">${examples.map(function (ex) {
-                    return `<div class="definition-example">${escapeHtml(stripHtmlToText(ex))}</div>`;
+                    return `<div class="definition-example">${linkWords(stripHtmlToText(ex))}</div>`;
                   }).join('')}</div>`
                 : '';
               const citeSources = citeOf(d);
@@ -3605,7 +3696,7 @@ function startAutoCloseTimeout() {
                     <div class="definition-sense-num">${senseCounter}</div>
                     <div class="definition-sense-body">
                       ${img ? senseFigureHtml(img, at) : ''}
-                      <div class="definition-text">${labelLead(meaningHtml) || 'No definition.'}</div>
+                      <div class="definition-text">${linkMarkup(labelLead(meaningHtml)) || 'No definition.'}</div>
                       ${exHtml}
                       ${badges ? `<div class="definition-source-badges">${badges}</div>` : ''}
                     </div>
@@ -3635,13 +3726,22 @@ function startAutoCloseTimeout() {
             return { id: pos, label: pos === 'unknown' ? (order.length > 1 ? 'other' : 'senses') : chipPosLabel(pos) };
           });
           let allInner = wrapPane(posInner, 'lexicon-pane--pos');
+          const lexiconParts = window.phevereLexicon || null;
+
+          // A prefix, suffix or root: spellings and origin, the learner's words, the words built on it.
+          const morphSections = lexiconParts && lexiconParts.morphemeSections
+            ? lexiconParts.morphemeSections(result, popupOwnWords(result), 'lookup')
+            : [];
+          morphSections.forEach(function (s) {
+            tocIds.push(s.id);
+            allInner += wrapPane(wrapGroup(s.id, s.label, `<div class="lx-family">${s.html}</div>`));
+          });
 
           const globalExamples = uniqueExamples(result.examples || [])
             .filter(function (ex) { return !shownExampleKeys.has(exampleKey(ex)); })
             .slice(0, 8);
           const syn = result.synonyms || [];
           const ant = result.antonyms || [];
-          const lexiconParts = window.phevereLexicon || null;
           const formsSections = [];
           const formsHtml = lexiconParts ? lexiconParts.inflectionsHtml(result.inflections, result.word || '', 'lookup') : '';
           if (formsHtml) {
@@ -3655,7 +3755,7 @@ function startAutoCloseTimeout() {
             tocIds.push('examples');
             exampleSections.push({ id: 'examples', label: 'examples' });
             allInner += wrapPane(wrapGroup('examples', 'examples', globalExamples.map(function (ex) {
-              return `<div class="example-item">${escapeHtml(stripHtmlToText(ex))}</div>`;
+              return `<div class="example-item">${linkWords(stripHtmlToText(ex))}</div>`;
             }).join('')));
           }
 
@@ -3664,12 +3764,12 @@ function startAutoCloseTimeout() {
           if (syn.length) {
             tocIds.push('synonyms');
             relatedSections.push({ id: 'synonyms', label: 'synonyms' });
-            relatedInner += wrapGroup('synonyms', 'synonyms', `<div class="example-item">${escapeHtml(syn.join(', '))}</div>`);
+            relatedInner += wrapGroup('synonyms', 'synonyms', `<div class="example-item">${linkWords(syn.join(', '))}</div>`);
           }
           if (ant.length) {
             tocIds.push('antonyms');
             relatedSections.push({ id: 'antonyms', label: 'antonyms' });
-            relatedInner += wrapGroup('antonyms', 'antonyms', `<div class="example-item">${escapeHtml(ant.join(', '))}</div>`);
+            relatedInner += wrapGroup('antonyms', 'antonyms', `<div class="example-item">${linkWords(ant.join(', '))}</div>`);
           }
           if (relatedInner) allInner += wrapPane(relatedInner);
 
@@ -3681,11 +3781,13 @@ function startAutoCloseTimeout() {
             allInner += wrapPane(wrapGroup('family', 'word family', familyHtml));
           }
 
+
           if (!lastLexiconPos || tocIds.indexOf(lastLexiconPos) < 0) {
             lastLexiconPos = order[0] || tocIds[0] || '';
           }
           const tabsHtml = [
             renderRailBlock('lexicon', posSections),
+            renderRailBlock('', morphSections),
             renderRailBlock('', formsSections),
             renderRailBlock('', exampleSections),
             renderRailBlock('', relatedSections),
@@ -3697,6 +3799,7 @@ function startAutoCloseTimeout() {
             <div class="lexicon-stack">
                 <div class="result-card lexicon-block lexicon-block--headword">
                   <div class="result-word">${escapeHtml(result.word)}</div>
+                  ${lexiconParts && lexiconParts.morphemeOfferHtml ? lexiconParts.morphemeOfferHtml(result, 'lookup') : ''}
                   ${formatPronunciationHtml(result)}
                 </div>
                 <div class="lexicon-block--senses">
@@ -3812,10 +3915,18 @@ function startAutoCloseTimeout() {
        let savedVocabId = null;
        let savedVocabLemma = null;
 
+       /** The word the lookup opened instead of `text`: glean for "gleaned", receive for "recieve". */
+       function openedAs(text) {
+         var r = currentResult;
+         var m = r && r.metadata;
+         var from = m && (m.formFrom || m.correctedFrom);
+         if (r && r.word && from && foldLookupKey(String(from)) === foldLookupKey(String(text || ''))) return String(r.word);
+         return text;
+       }
+
        function lemmaForSave() {
          return String(
-           currentText ||
-           window['__popupCurrentText'] ||
+           openedAs(currentText || window['__popupCurrentText']) ||
            (currentResult && currentResult.metadata && currentResult.metadata.queriedAs) ||
            (currentResult && currentResult.word) ||
            ''
@@ -3924,7 +4035,7 @@ function startAutoCloseTimeout() {
 
        async function syncVocabHeart(lemma) {
          const word = String(
-           currentText ||
+           openedAs(currentText) ||
            lemma ||
            (currentResult && currentResult.metadata && currentResult.metadata.queriedAs) ||
            (currentResult && currentResult.word) ||
@@ -3969,7 +4080,8 @@ function startAutoCloseTimeout() {
 
            const payload = vocabPayloadFromResult(currentResult, lemma);
            const entry = await window.vocabAPI.add(payload);
-           setVocabHeartSaved(true, entry && entry.id, lemma);
+           // The main process may have saved the word the lookup opens (goose for "geese").
+           setVocabHeartSaved(true, entry && entry.id, (entry && entry.lemma) || lemma);
            showToast('Saved to My words');
            if (!currentResult && lemma) maybePreloadLookup(lemma);
          } catch (e) {
@@ -4335,6 +4447,16 @@ function startAutoCloseTimeout() {
            });
          })();
 
+           // Enter or Space on a focused word link opens it, as a click does.
+           var wordClickTimer = null;
+           document.addEventListener('keydown', function (e) {
+             if (e.key !== 'Enter' && e.key !== ' ') return;
+             var el = e.target;
+             if (!el || !el.matches || !el.matches('[role="link"][data-lookup]')) return;
+             e.preventDefault();
+             el.click();
+           });
+
                    // Handle hyperlinks in content — wiki lemma links look up in-popup
            document.addEventListener('click', function(e) {
              var t = e.target || null;
@@ -4363,11 +4485,32 @@ function startAutoCloseTimeout() {
              }
              var anchor = null;
              if (t && typeof t.closest === 'function') {
-               anchor = t.closest('a');
+               anchor = t.closest('a, [data-lookup]');
              }
              if (!anchor) return;
              e.preventDefault();
              e.stopPropagation();
+             // A word of running text is a span: a drag across it selects text (the selection
+             // lookup above takes it from there), and a double-click selects the word instead of
+             // opening it, so a single click waits a moment before it looks the word up.
+             if (anchor.tagName !== 'A') {
+               if (String(window.getSelection ? window.getSelection() : '').trim()) return;
+               if (wordClickTimer) clearTimeout(wordClickTimer);
+               wordClickTimer = null;
+               if (e.detail > 1) return;
+               var term = anchor.getAttribute('data-lookup') || '';
+               var openWord = function () {
+                 wordClickTimer = null;
+                 if (String(window.getSelection ? window.getSelection() : '').trim() || !term) return;
+                 if (!isExpanded) expandToolbar();
+                 currentText = term;
+                 activateTab('lexicon');
+                 lookupText(term);
+               };
+               if (e.detail === 0) openWord();
+               else wordClickTimer = setTimeout(openWord, 260);
+               return;
+             }
              const lookupTerm = anchor.getAttribute('data-lookup') || '';
              let href = anchor.getAttribute('href') || '';
              let wikiTitle = '';

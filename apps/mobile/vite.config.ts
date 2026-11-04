@@ -43,6 +43,20 @@ export default defineConfig({
           });
         },
       },
+      // kaikki.org sends no CORS headers; the phone's native HTTP does not need this.
+      '/__pv/kaikki': {
+        target: 'https://kaikki.org',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (p: string) => p.replace(/^\/__pv\/kaikki/, '') || '/',
+      },
+      // Neither does api.datamuse.com.
+      '/__pv/datamuse': {
+        target: 'https://api.datamuse.com',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (p: string) => p.replace(/^\/__pv\/datamuse/, '') || '/',
+      },
       '/__pv/youdao': {
         target: 'https://dict.youdao.com',
         changeOrigin: true,

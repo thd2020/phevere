@@ -78,6 +78,54 @@ export interface VocabAddInput {
   /** When the word was first saved, and on which device; set by an import, used only for a new row. */
   createdAt?: number;
   device?: string;
+  /**
+   * Set by the save button: the word goes through the lookup's form check first, so "geese"
+   * tapped before the page has turned to goose is saved as goose. Imports leave it unset.
+   */
+  resolveForm?: boolean;
+}
+
+type HeadwordResolver = (word: string, lang: string) => Promise<string>;
+let headwordResolver: HeadwordResolver | null = null;
+/** Returns the word the saved row was folded into, if it was. */
+type SaveHook = (entry: VocabEntry) => Promise<string | null>;
+let saveHook: SaveHook | null = null;
+
+/** Registered by dictionary.ts: the word a lookup of `word` opens ("goose" for "geese"). */
+export function registerHeadwordResolver(fn: HeadwordResolver): void {
+  headwordResolver = fn;
+}
+
+/** Registered by vocab-sync.ts: folds a word saved as a form of a saved word into it. */
+export function registerSaveHook(fn: SaveHook): void {
+  saveHook = fn;
+}
+
+/** The word to save: the one the lookup opens, when the input asks for it and the check answers. */
+async function headwordFor(input: VocabAddInput): Promise<VocabAddInput> {
+  if (!input.resolveForm || !headwordResolver) return input;
+  const lang = String(input.sourceLang || 'en').toLowerCase().split('-')[0];
+  const word = String(input.lemma || '').trim();
+  if (lang !== 'en' || !word || /\s/.test(word)) return input;
+  const target = await headwordResolver(word, lang).catch(() => word);
+  if (!target || target.toLowerCase() === word.toLowerCase()) return input;
+  // The form's IPA is not the lemma's, and "plural of goose" is not a meaning; the lemma's fill in.
+  const meaning = String(input.definition || '')
+    .split('\n')
+    .filter((l) => l.trim() && !/^(?:(?:simple|the)\s+)?(?:plural|past|present|third-person|comparative|superlative|alternative|misspelling)\b[^.]*\bof\s+\S+\.?$/i.test(l.trim()))
+    .join('\n');
+  return { ...input, lemma: target, reading: undefined, definition: meaning || undefined };
+}
+
+async function afterSave(entry: VocabEntry): Promise<VocabEntry> {
+  if (!saveHook) return entry;
+  // The fold waits its turn behind a running sync; the save does not wait for it longer than this.
+  const fold = saveHook(entry).catch((err): null => {
+    console.warn('[vocab] fold after save skipped', err);
+    return null;
+  });
+  const into = await Promise.race([fold, new Promise<null>((r) => setTimeout(() => r(null), 1500))]);
+  return (await getVocab(entry.id)) || (typeof into === 'string' ? await findByLemma(into) : null) || entry;
 }
 
 export function rowToEntry(row: Record<string, unknown>): VocabEntry {
@@ -119,9 +167,10 @@ export async function ensureVocabReady(): Promise<void> {
   }
 }
 
-export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
+export async function addVocab(raw: VocabAddInput): Promise<VocabEntry> {
   await ensureVocabReady();
   const db = getVocabDb();
+  const input = await headwordFor(raw);
   const lemma = normalizeVocabLemma(input.lemma || '', { pos: input.partOfSpeech, lang: input.sourceLang });
   if (!lemma) throw new Error('lemma required');
 
@@ -160,7 +209,7 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
     const updated = await getVocab(id);
     if (!updated) throw new Error('Failed to reload saved entry');
     notifyChanged();
-    return updated;
+    return raw.resolveForm ? afterSave(updated) : updated;
   }
 
   const id = getNewId();
@@ -188,7 +237,7 @@ export async function addVocab(input: VocabAddInput): Promise<VocabEntry> {
   const created = await getVocab(id);
   if (!created) throw new Error('Failed to reload saved entry');
   notifyChanged();
-  return created;
+  return raw.resolveForm ? afterSave(created) : created;
 }
 
 /** Fill notebook rows that were saved as lemma-only, or that still lack IPA. */

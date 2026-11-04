@@ -16,7 +16,7 @@
  */
 import { getDeviceName, getNewId, getVocabDb } from './runtime';
 import { scheduleReview, type ReviewGrade, type ScheduleFields, type ScheduleUpdate } from './review-schedule';
-import type { QuestionKind } from './review-quiz';
+import { sameLemma, type QuestionKind } from './review-quiz';
 
 export type Skill = 'meaning' | 'spelling' | 'listening';
 export const SKILLS: Skill[] = ['meaning', 'spelling', 'listening'];
@@ -204,6 +204,58 @@ export async function logKnownAnswer(lemma: string, known: boolean, answeredAt: 
   };
   await insertAnswer(rec);
   return rec;
+}
+
+/* ------------------------------------------------------- headword changes */
+
+const ALIAS_KEY = 'lemma-aliases';
+
+async function readAliases(): Promise<Record<string, string>> {
+  const row = await getVocabDb().queryOne(`SELECT value FROM sync_state WHERE key = ?`, [ALIAS_KEY]);
+  try {
+    const map = row?.value ? JSON.parse(String(row.value)) : {};
+    return map && typeof map === 'object' ? map : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Remembers that answers under one headword now belong to another (a saved "gleaned" folded into
+ * "glean", "paparazzi" into "paparazzo"), so answers that arrive later from a device that still
+ * uses the old headword attach to the same card (`localLemma`).
+ */
+export async function recordLemmaAliases(pairs: Array<[string, string]>): Promise<void> {
+  const map = await readAliases();
+  let changed = false;
+  for (const [from, to] of pairs) {
+    const a = answerKey(from);
+    const b = answerKey(to);
+    if (!a || !b || a === b || map[a] === b) continue;
+    map[a] = b;
+    changed = true;
+  }
+  if (changed) await getVocabDb().runWrite(`INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)`, [ALIAS_KEY, JSON.stringify(map)]);
+}
+
+/**
+ * The headword this device keeps an incoming answer under. A recorded alias wins; otherwise a
+ * headword that is not saved here but is another form or spelling of a saved word (an answer to
+ * "vicissitudes" when this device saved "vicissitude") goes to that word. Anything else is kept.
+ */
+export async function localLemma(lemma: string): Promise<string> {
+  let key = answerKey(lemma);
+  if (!key) return key;
+  const aliases = await readAliases();
+  for (let i = 0; i < 5 && aliases[key] && aliases[key] !== key; i++) key = aliases[key];
+  const db = getVocabDb();
+  if (await db.queryOne(`SELECT 1 AS x FROM vocab WHERE lower(lemma) = ? LIMIT 1`, [key])) return key;
+  const near = await db.queryAll(`SELECT lemma FROM vocab WHERE lower(lemma) LIKE ? LIMIT 200`, [`${key.slice(0, 2).replace(/[%_]/g, '')}%`]);
+  const match = near
+    .map((r) => answerKey(String(r.lemma)))
+    .filter((l) => l !== key && sameLemma(l, key))
+    .sort((a, b) => a.length - b.length)[0];
+  return match || key;
 }
 
 /** The history, oldest first; one word's when `lemma` is given. */

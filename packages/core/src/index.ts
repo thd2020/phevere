@@ -89,6 +89,8 @@ export {
   reviewHtml,
   fillWordImages,
   attachNotebookMap,
+  attachFamilies,
+  closeTreeInspector,
   disposeNotebookMaps,
   type NotebookView,
   type FamilyGrouping,
@@ -97,8 +99,8 @@ export {
   type ReviewState,
   type CardLayout,
 } from './notebook-views';
-export { analyzeMorphemes, morphBreakdown, wordOrigin, type Morph, type MorphKind } from './morphology';
-export { vocabPayloadFromResult } from './vocab-payload';
+export { analyzeMorphemes, morphBreakdown, morphEntry, morphForms, wordOrigin, type Morph, type MorphEntry, type MorphEtymon, type MorphKind } from './morphology';
+export { vocabPayloadFromResult, examplesFromResult } from './vocab-payload';
 
 export {
   type ContextOrigin,
@@ -237,6 +239,9 @@ export {
   isNewWord,
   memoryLevel,
   buildQuestion,
+  sameLemma,
+  reviewArmed,
+  ROUND_WORDS,
   type ReviewQuestion,
   type ReviewAnswer,
   type ReviewResult,
@@ -288,6 +293,8 @@ export {
   startScopeReview,
   reviewNeedsMeaning,
   dropCurrentReview,
+  markKnownInReview,
+  primeBookLevels,
   registerUserBooks,
   sourceGroups,
   isUserBookId,
@@ -305,6 +312,8 @@ export {
   sourcesHtml,
   wordbookHeaderHtml,
   wordbookListHtml,
+  sortBookEntries,
+  type BookSort,
   wordbookLibraryHtml,
   wordBookBadgesHtml,
   progressRingSvg,
@@ -324,6 +333,7 @@ export {
   type LearnPage,
 } from './learn-view';
 export { progressHtml, progressSummary, type ProgressInput, type ProgressSummary } from './learn-progress';
+export { attachLearnCharts, retentionAt, revealQuestion } from './learn-charts';
 export {
   SKILLS,
   MASTERY_THRESHOLD,
@@ -334,6 +344,8 @@ export {
   skillMastery,
   insertAnswer,
   answerKey,
+  localLemma,
+  recordLemmaAliases,
   type Skill,
   type AnswerKind,
   type AnswerRecord,
@@ -374,13 +386,27 @@ export {
 export {
   inflectionsFromKaikki,
   selectInflections,
-  englishPossessive,
+  weighForms,
   type WordInflections,
   type InflectionTable,
   type InflectionGrid,
   type InflectionRow,
 } from './inflections';
 export { inflectionsHtml, wordFamilyHtml, type LexiconLinks } from './lexicon-parts';
+export { linkHtml, linkText, wordLinkHtml, wikiLinkLookup } from './text-links';
+export {
+  parseMorphemeQuery,
+  morphemeLookupQuery,
+  morphemeOffers,
+  morphemeOf,
+  lookupMorpheme,
+  tableMorph,
+  type MorphemeEntry,
+  type MorphemeQuery,
+  type MorphemeKind,
+} from './morpheme';
+export { morphemeSections, morphemeOfferHtml, containsMorpheme, type MorphemeSection, type OwnWords } from './morpheme-view';
+export { suggestWords, peekSuggestions, warmSuggestions } from './word-suggest';
 export { normalizeVocabLemma, closestSpelling, typoDistance } from './vocab-lemma';
 export { normalizeStoredLemmas } from './vocab-sync';
 export { checkApiKey, type ApiProviderId, type ApiCredentials, type ApiKeyCheck } from './api-key-check';
