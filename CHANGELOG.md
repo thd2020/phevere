@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Search suggestions (2026-11-04): typing in the desktop search field or the phone's lookup field lists the commonest words that begin with what you typed, ranked by how often they are used in English rather than alphabetically. Plurals and past tenses of a listed word are left out, and a misspelling such as "recieve" or "accomodate" suggests the right spelling. The list works offline from the word books and widens online.
 
+### Fixed
+
+- Word forms (2026-11-04): looking up a past tense, participle, plural, third-person or comparative form whose only senses are "past tense of", "plural of" and the like now opens the word itself, as Merriam-Webster does: "gleaned" opens glean, "paparazzi" paparazzo, "vicissitudes" vicissitude, "went" go and "children" child. The same goes for a misspelling or another spelling of a word ("idiosyncracy" opens idiosyncrasy), but not for a regional spelling such as "estrus". A form with a meaning of its own, such as "glasses", "data" or "arms", still opens as itself. The heart saves the word that opened, on the desktop pop-up, the desktop main window and the phone.
+- Saved forms (2026-11-04): words already saved as a form of another word become that word once, on the desktop and the phone. A form whose saved meaning or spelling settles it changes at once; the rest are checked against Wiktionary in the background when online, so "gleaned" becomes glean and "idiosyncracy" joins idiosyncrasy. When the word is saved too, the two merge, keeping the earlier save date, the more studied schedule, both notes and the sentence it was met in, and the answer history and word-book progress follow.
+- References as senses (2026-11-04): a word could show Wiktionary's reference list as its meanings ("idiosyncracy, in Dictionary.com Unabridged ... ISBN"). References are no longer read as senses, and saved words that kept them lose those lines.
+- Forms (2026-11-04): the Forms section lists what learner dictionaries list. Possessives are gone, a form gets no forms of its own ("paparazzi" no longer shows the plural "paparazzis"), and a second form that is rarely written is dropped or marked "less common" by how often each is used, so paparazzo lists paparazzi without paparazzos and cactus lists cactuses as less common. A form Wiktionary marks rare, dated or hypercorrect shows that label, and "be" shows am, are, was and were.
+- Borrowed words (2026-11-04): "paparazzo", which language detection can take for Portuguese, showed the English word itself as its only sense. Its English senses are shown instead.
+
 ## [4.0.0] - 2026-11-04
 
 The 4.0.0 files were first published on 2026-11-03 and rebuilt from `main` on 2026-11-04; the entries dated 2026-11-04 arrived with the rebuild.
