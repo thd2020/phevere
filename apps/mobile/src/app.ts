@@ -2,6 +2,7 @@ import { scrollLexiconTo } from './lexicon-scroll';
 import './platform/configure-core';
 import {
   addVocab,
+  morphemeOf,
   dictionaryService,
   fetchSenseImages,
   fillEmptyDefinitions,
@@ -448,6 +449,12 @@ function lookupPaneHtml(): string {
     savedFor: (q) => notebook.find((e) => e.lemma.trim().toLowerCase() === q.trim().toLowerCase()),
     headTools: !stripMode,
     senseImages: currentSenseImages(),
+    ownWords: morphemeOf(result)
+      ? {
+          mine: notebook.map((e) => e.lemma),
+          books: [...wbSubs.flatMap((s) => wbBooks.get(s.bookId) || []), ...wbUserBooks.flatMap((b) => b.words || [])],
+        }
+      : undefined,
   });
 }
 
@@ -477,7 +484,8 @@ function placeSenseFigures(): void {
 let senseImagesPending = '';
 
 async function loadSenseImages(generation: number): Promise<void> {
-  if (prefs.senseImages === false || !result) return;
+  // A prefix or a root has no picture: one found for "shine" would illustrate the word, not the part.
+  if (prefs.senseImages === false || !result || morphemeOf(result)) return;
   const key = senseKey(result);
   if (senseImages?.key === key || senseImagesPending === key) return;
   const senses = lexiconSenses(result);
@@ -1487,7 +1495,13 @@ function watchVoice(): void {
 
 /** Desktop lookup trail: same word replaces the current entry; capped at 40. */
 function rememberLookup(q: string): void {
-  const fold = (v: string) => v.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+  // "ob-" and "ob" are two pages: the marks of a word part stay in the key.
+  const fold = (v: string) => {
+    const t = v.trim();
+    const lead = /^[*-]/.test(t) ? t[0] : '';
+    const trail = t.length > 1 && t.endsWith('-') ? '-' : '';
+    return lead + t.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase() + trail;
+  };
   if (histIndex >= 0 && fold(history[histIndex] || '') === fold(q)) {
     history[histIndex] = q;
     return;
@@ -1974,6 +1988,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       }
       return;
     case 'lookup': {
+      // A word in running text that was selected, not tapped, stays selected.
+      if (t.classList.contains('lx-w') && String(window.getSelection?.() || '').trim()) return;
       const from = tab;
       if (t.dataset.q) await lookup(t.dataset.q);
       if (from !== 'lookup' && tab === 'lookup') lookupFrom = { tab: from, at: histIndex };
