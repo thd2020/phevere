@@ -272,10 +272,11 @@ same(
   'a hidden picture never shows',
 );
 {
-  // A portrait of a named person only for a sense about people.
+  // A portrait of a named person never shows, not even on a sense about people.
   const pool = poolOf();
   pool.pictures[0].portrait = true;
   assert.strictEqual(si.assignPictures(pool, craneSenses)[0], null, 'no portrait for a bird');
+  assert.strictEqual(si.assignPictures(pool, [{ meaning: 'One who operates a crane.', partOfSpeech: 'noun' }])[0], null, 'no named portrait for a person sense');
 }
 {
   // The article titled with the word goes to a noun sense its description fits, never a verb.

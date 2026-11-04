@@ -30,12 +30,11 @@
  * All three are gathered once per word into a pool (`PicturePool`), apart from the sense list,
  * and matched to senses locally (`assignPictures`), so a lookup whose senses arrive in steps and
  * the card for the same word share one pool. Which senses get a picture: the major ones first,
- * meaning each entry's first sense, each part of speech's first sense and every sense a
- * lexicographer tied to a picture, ordered by how often the sense is used (SemCor) when known;
- * minor senses only once every major sense has one; three pictures at most per entry. The rules
- * sit in `SENSE_PICTURE_RULES`.
+ * meaning each entry's first sense and each part of speech's first sense, ordered by how often
+ * the sense is used (SemCor) when known; minor senses only once every major sense you can see has
+ * one; three pictures at most per entry. The rules sit in `SENSE_PICTURE_RULES`.
  *
- * Checks: a portrait of a named person goes only to a sense about people; works, places,
+ * Checks: a portrait of a named person never shows; works, places,
  * companies and disambiguation pages are never the article for a sense; a reader can hide a
  * picture (`hideSenseImage`), and it never shows again for that word.
  *
@@ -855,9 +854,6 @@ export function buildWikipediaBriefTitlesUrl(titles: string[], lang = 'en'): str
   );
 }
 
-/** "One who …", "a person …": a gloss about people, where a portrait is the right picture. */
-const PERSON_GLOSS = /\b(one who|someone|somebody|person|people|man|woman|men|women|child|children|boy|girl|individual|expert|master|player|worker|follower|member)\b/i;
-
 // ---------------------------------------------------------------- Commons file info
 
 interface ImageInfo {
@@ -1462,8 +1458,9 @@ export interface SensePictureRules {
   byFrequency: boolean;
   /** Minor senses get a picture only once every major sense you can see has one. */
   minorsAfterMajors: boolean;
-  /** A portrait of a named person goes only to a sense about people. */
-  portraitsOnlyForPeople: boolean;
+  /** A portrait of a named person never shows: it pictures that person, not the word ("pitcher"
+   *  the player is not one baseball player). */
+  noNamedPortraits: boolean;
 }
 
 export const SENSE_PICTURE_RULES: SensePictureRules = {
@@ -1473,7 +1470,7 @@ export const SENSE_PICTURE_RULES: SensePictureRules = {
   picturableOnly: true,
   byFrequency: true,
   minorsAfterMajors: true,
-  portraitsOnlyForPeople: true,
+  noNamedPortraits: true,
 };
 
 /** Changes some of the rules for every later lookup. Saved pools stay valid: rules apply when a pool is matched to senses. */
@@ -1537,7 +1534,7 @@ export function linkedLineFit(line: string, linePos: string, sense: SenseInput, 
  * matches its gloss and part of speech, then a Wiktionary caption sharing two of its words, then
  * the article titled with the word when the sense is a noun and its gloss fits the article's
  * description or first sentences. Nothing else is used: a wrong picture is worse than none. A
- * portrait of a named person goes only to a sense about people, and hidden files never show.
+ * portrait of a named person never shows, and hidden pictures never show.
  */
 export function assignPictures(
   pool: PicturePool,
@@ -1552,7 +1549,7 @@ export function assignPictures(
   const hidden = opts.hidden || new Set<string>();
   const byKey = new Map(pool.pictures.map((p) => [`${p.source}:${p.ref}`, p]));
   const usable = (p: PoolPicture | undefined, sense: SenseInput): p is PoolPicture & { image: SenseImage } =>
-    !!p && !!p.image && !hidden.has(p.file.toLowerCase()) && (!p.portrait || !SENSE_PICTURE_RULES.portraitsOnlyForPeople || PERSON_GLOSS.test(stripHtml(sense.meaning)));
+    !!p && !!p.image && !hidden.has(p.file.toLowerCase()) && (!p.portrait || !SENSE_PICTURE_RULES.noNamedPortraits);
 
   // Candidates per sense, best first.
   const cands = senses.map((): Array<{ key: string; rank: number }> => []);
