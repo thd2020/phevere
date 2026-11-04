@@ -556,6 +556,7 @@ html:not([data-mode="strip"]) .shell-lexicon .lexicon-pos-layout {
   transition: opacity 0.32s var(--md-sys-motion);
 }
 .sense-figure__frame.is-loaded img { opacity: 1; }
+.sense-figure.is-pending .sense-figure__frame { display: block; }
 .sense-figure__credit {
   position: absolute;
   left: 0;
@@ -2203,5 +2204,16 @@ html[data-notify="ios"] .toast {
   font: inherit;
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+.pic-view__hide {
+  display: block;
+  margin: 10px auto 0;
+  padding: 6px 14px;
+  border: 1px solid rgb(244 240 234 / 0.4);
+  border-radius: 999px;
+  background: none;
+  color: #f4f0ea;
+  font-family: var(--md-font-ui);
+  font-size: 0.8rem;
 }
 @media (prefers-reduced-motion: reduce) { .pic-view[open] { animation: none; } }

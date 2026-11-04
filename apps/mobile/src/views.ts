@@ -327,9 +327,10 @@ export function lexiconSenses(result: DictionaryResult | null): Definition[] {
  * and a credit line whose link opens the file page on Wikimedia Commons.
  */
 export function senseFigureHtml(img: SenseImage, index: number): string {
-  const ratio = img.width && img.height ? Math.min(1.6, Math.max(0.75, img.width / img.height)) : 1;
   const label = `${img.title} — ${img.credit}`;
-  return `<figure class="sense-figure" data-sense-figure="${index}" style="--ar:${ratio.toFixed(3)}">
+  // Every figure has the same 4:3 box as the placeholder kept for it, so nothing moves when it
+  // arrives; the picture is cropped to fill it, and opening it shows it whole.
+  return `<figure class="sense-figure" data-sense-figure="${index}" style="--ar:${SENSE_FIGURE_RATIO}">
     <button type="button" class="sense-figure__frame" data-act="sense-figure" data-full="${esc(img.url || img.thumb)}" data-thumb="${esc(img.thumb)}" data-title="${esc(img.title)}" data-credit="${esc(img.credit)}" data-page="${esc(img.pageUrl)}" aria-label="${esc(label)}" title="${esc(label)}">
       <img src="${esc(img.thumb)}" alt="${esc(img.title)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('is-loaded')" onerror="this.closest('figure').remove()" />
     </button>
@@ -337,11 +338,19 @@ export function senseFigureHtml(img: SenseImage, index: number): string {
   </figure>`;
 }
 
+const SENSE_FIGURE_RATIO = '1.333';
+
+/** The box a sense's picture will take, kept while pictures load so the text does not move. */
+export function senseFigurePlaceholder(index: number): string {
+  return `<figure class="sense-figure is-pending" data-sense-figure="${index}" style="--ar:${SENSE_FIGURE_RATIO}" aria-hidden="true"><span class="sense-figure__frame"></span></figure>`;
+}
+
 function renderSenses(
   senses: Definition[],
   shown: Set<string>,
   indexOf: Map<Definition, number>,
   images: Array<SenseImage | null> | null,
+  reserve: Set<number> = new Set(),
 ): string {
   const citeOf = (d: Definition | undefined): string[] =>
     Array.isArray(d?.sources) && d!.sources!.length
@@ -369,7 +378,7 @@ function renderSenses(
         <div class="definition-sense-row">
           <div class="definition-sense-num">${i + 1}</div>
           <div class="definition-sense-body">
-            ${img ? senseFigureHtml(img, at) : ''}
+            ${img ? senseFigureHtml(img, at) : !images && reserve.has(at) ? senseFigurePlaceholder(at) : ''}
             <div class="definition-text">${senseHtml(d.meaning)}</div>
             ${exHtml}
             ${badges ? `<div class="definition-source-badges">${badges}</div>` : ''}
@@ -402,12 +411,15 @@ function lexiconPane(
   }
 
   const shown = new Set<string>();
+  // While pictures load, the first noun sense (the one most likely to get one) keeps its box.
+  const firstNoun = defs.findIndex((d) => canonicalPos(d.partOfSpeech) === 'noun');
+  const reserve = new Set<number>(images === null && firstNoun >= 0 ? [firstNoun] : []);
   let posInner = '';
   // Senses with no part of speech are "other" beside real ones, and need no heading alone.
   const several = order.length > 1;
   const posSections = order.map((pos) => {
     const unknown = pos === 'unknown';
-    posInner += wrapGroup(pos, unknown ? (several ? 'other' : '') : pos, renderSenses(groups.get(pos) || [], shown, indexOf, images));
+    posInner += wrapGroup(pos, unknown ? (several ? 'other' : '') : pos, renderSenses(groups.get(pos) || [], shown, indexOf, images, reserve));
     return { id: pos, label: unknown ? (several ? 'other' : 'senses') : abbreviatePos(pos) };
   });
   let allInner = wrapPane(posInner, 'lexicon-pane--pos');

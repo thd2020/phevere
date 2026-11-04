@@ -5,6 +5,8 @@ import {
   morphemeOf,
   dictionaryService,
   fetchSenseImages,
+  prefetchSenseImages,
+  hideSenseImage,
   fillEmptyDefinitions,
   findByLemma,
   listEmptyDefinitions,
@@ -503,7 +505,8 @@ function lookupPaneHtml(): string {
     recent: recentLookups,
     savedFor: (q) => notebook.find((e) => e.lemma.trim().toLowerCase() === q.trim().toLowerCase()),
     headTools: !stripMode,
-    senseImages: currentSenseImages(),
+    // An empty list (pictures off, or a word part) keeps no picture boxes; null means loading.
+    senseImages: prefs.senseImages === false || (result && morphemeOf(result)) ? [] : currentSenseImages(),
     ownWords: morphemeOf(result) ? ownWords() : undefined,
   });
 }
@@ -535,16 +538,24 @@ function currentSenseImages(): Array<SenseImage | null> | null {
   return senseImages.key === senseKey(result) ? senseImages.list : null;
 }
 
-/** Puts loaded pictures into the painted Lexicon without repainting it (scroll stays put). */
-function placeSenseFigures(): void {
+/**
+ * Puts loaded pictures into the painted Lexicon without repainting it (scroll stays put): into
+ * the box kept for them when there is one. When the search is over (`final`), boxes that got no
+ * picture are removed.
+ */
+function placeSenseFigures(final = false): void {
   const list = currentSenseImages();
   if (!list) return;
   list.forEach((img, i) => {
     if (!img) return;
     const body = root.querySelector(`.definition-item[data-sense="${i}"] .definition-sense-body`);
-    if (!body || body.querySelector('.sense-figure')) return;
-    body.insertAdjacentHTML('afterbegin', senseFigureHtml(img, i));
+    if (!body) return;
+    const present = body.querySelector('.sense-figure');
+    if (present && !present.classList.contains('is-pending')) return;
+    if (present) present.outerHTML = senseFigureHtml(img, i);
+    else body.insertAdjacentHTML('afterbegin', senseFigureHtml(img, i));
   });
+  if (final) root.querySelectorAll('.sense-figure.is-pending').forEach((el) => el.remove());
 }
 
 /** Fetches pictures after the text has painted; a stale lookup's pictures are dropped. */
@@ -561,7 +572,7 @@ async function loadSenseImages(generation: number): Promise<void> {
   try {
     const list = await fetchSenseImages(
       result.word || query,
-      senses.map((d) => ({ meaning: d.meaning, partOfSpeech: d.partOfSpeech })),
+      senses.map((d) => ({ meaning: d.meaning, partOfSpeech: d.partOfSpeech, frequency: d.frequency })),
       {
         lang: result.detectedLanguage || 'en',
         // The first pictures go in while the slower steps look for the rest.
@@ -574,7 +585,7 @@ async function loadSenseImages(generation: number): Promise<void> {
     );
     if (generation !== lookupGeneration) return;
     senseImages = { key, list };
-    placeSenseFigures();
+    placeSenseFigures(true);
   } finally {
     if (senseImagesPending === key) senseImagesPending = '';
   }
@@ -1030,6 +1041,8 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
     rememberRecent(q);
   }
   paint();
+  // The word's pictures are gathered while the dictionaries answer, apart from the senses.
+  if (prefs.senseImages !== false) prefetchSenseImages(q, { lang: prefs.sourceLang === 'auto' ? 'en' : prefs.sourceLang });
   const enabled = dictionaryService.getEnabledSources();
   let settled = false;
   try {
@@ -1041,8 +1054,9 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
         result = partial;
         looking = false;
         paint();
-        // A source that answers after the lookup settled changes the sense list.
-        if (settled) void loadSenseImages(generation);
+        // Pictures go in as soon as there are senses to match them to; a later source that
+        // changes the sense list is matched again from the same pool, without new requests.
+        void loadSenseImages(generation);
       },
     });
     if (generation !== lookupGeneration) return;
@@ -1351,13 +1365,29 @@ async function runOcr(): Promise<void> {
   }
 }
 
+/**
+ * Hides a picture the reader marked as wrong: it never shows again for this word, and the sense
+ * is matched again (another fitting picture may take its place, or none).
+ */
+async function hideSensePicture(frame: HTMLElement): Promise<void> {
+  if (!result) return;
+  const figure = frame.closest<HTMLElement>('.sense-figure');
+  const index = Number(figure?.dataset.senseFigure ?? -1);
+  const sense = lexiconSenses(result)[index];
+  await hideSenseImage(result.word || query, { pageUrl: frame.dataset.page || '' }, { lang: result.detectedLanguage || 'en', sense: sense?.meaning });
+  figure?.remove();
+  senseImages = null;
+  void loadSenseImages(lookupGeneration);
+}
+
 /** A sense picture at its larger size over the page; a tap outside the credit, or Back, closes it. */
 function openSensePicture(frame: HTMLElement): void {
   const d = frame.dataset;
   const dlg = document.createElement('dialog');
   dlg.className = 'pic-view';
   dlg.innerHTML = `<img class="pic-view__img" src="${esc(d.thumb || '')}" alt="${esc(d.title || '')}" referrerpolicy="no-referrer" tabindex="-1" autofocus />
-    <p class="pic-view__cap"><span>${esc(d.title || '')}</span>${d.page ? `<button type="button" class="pic-view__credit" data-pic-credit="${esc(d.page)}">${esc(d.credit || 'Wikimedia Commons')}</button>` : ''}</p>`;
+    <p class="pic-view__cap"><span>${esc(d.title || '')}</span>${d.page ? `<button type="button" class="pic-view__credit" data-pic-credit="${esc(d.page)}">${esc(d.credit || 'Wikimedia Commons')}</button>` : ''}</p>
+    ${d.page ? '<button type="button" class="pic-view__hide" data-pic-hide>Hide picture</button>' : ''}`;
   // The thumbnail shows at once; the larger rendering replaces it when it has arrived.
   const img = dlg.querySelector('img') as HTMLImageElement;
   const full = new Image();
@@ -1368,7 +1398,10 @@ function openSensePicture(frame: HTMLElement): void {
     e.stopPropagation();
     const link = (e.target as HTMLElement).closest<HTMLElement>('[data-pic-credit]');
     if (link) openExternal(link.dataset.picCredit || '');
-    else dlg.close();
+    else if ((e.target as HTMLElement).closest('[data-pic-hide]')) {
+      dlg.close();
+      void hideSensePicture(frame);
+    } else dlg.close();
   });
   dlg.addEventListener('cancel', () => dlg.close());
   dlg.addEventListener('close', () => dlg.remove());
