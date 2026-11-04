@@ -12,7 +12,7 @@
  * one the Last, and the Web Animations API plays the Invert. No animation library is used.
  */
 import { vocabReadings, vocabSenses } from './vocab-view';
-import { clean, dayStart, DAY, esc, type NotebookAnalysis, type NotebookEntry } from './notebook-shared';
+import { clean, dayStart, DAY, esc, revealBelow, scrollerOf, visibleBand, type NotebookAnalysis, type NotebookEntry } from './notebook-shared';
 
 export type CardLayout = 'piles' | 'scatter' | 'grid';
 
@@ -118,7 +118,23 @@ export function cardsHtml(
   const cards = piles
     .flatMap((p) => p.ids.map((id, rank) => cardHtml(byId.get(id)!, a, flipped.has(id), p.key, rank)))
     .join('');
-  return `<div class="nbv-table" data-layout="${layout}">${bar}<div class="nbv-table__felt">${pileHtml}${cards}</div></div>`;
+  // The table keeps the height it had last time, so a repaint (the phone repaints the whole page)
+  // does not shrink the page for a moment and pull the scroll position back to the top.
+  const scope = tableScope(entries);
+  const kept = feltHeight.get(`${scope}|${layout}`);
+  const style = kept ? ` style="height:${Math.round(kept)}px"` : '';
+  return `<div class="nbv-table" data-layout="${layout}" data-scope="${scope}">${bar}<div class="nbv-table__felt"${style}>${pileHtml}${cards}</div></div>`;
+}
+
+/** Which list the table shows (My words, a book), so open piles and heights stay with their list. */
+function tableScope(entries: NotebookEntry[]): string {
+  let h = 2166136261;
+  for (const e of entries) {
+    const id = String(e.id);
+    for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+    h = Math.imul(h ^ 44, 16777619);
+  }
+  return `${entries.length}-${(h >>> 0).toString(36)}`;
 }
 
 function cardHtml(e: NotebookEntry, a: NotebookAnalysis, open: boolean, pile: string, rank: number): string {
@@ -164,9 +180,16 @@ type Band = { key: string; top: number; h: number; notch: number };
 
 /** Scattered positions outlive a re-render (the phone repaints the whole page). */
 const scattered = new Map<string, Stored>();
-/** Piles opened in place, and where their cards landed; these outlive a re-render too. */
-const openPiles = new Set<string>();
+/**
+ * The open pile of each list (see 	ableScope), and where the reader dragged its cards: x as a
+ * fraction of the table's width, y in px below the band's top. These outlive a re-render too.
+ */
+const openByScope = new Map<string, Set<string>>();
 const bandSpots = new Map<string, Stored>();
+/** The felt's last height per list and layout, written into the next render's markup. */
+const feltHeight = new Map<string, number>();
+/** How many cards of each open pile are dealt so far, per list and pile. */
+const dealtCount = new Map<string, number>();
 const zOrder = new Map<string, number>();
 let zTop = 0;
 let detachTable: (() => void) | null = null;
@@ -199,6 +222,8 @@ const QUICK_MS = 160;
 /** Room at the top of a band for its Gather button, and the band's side margin. */
 const BAND_HEAD = 44;
 const BAND_PAD = 10;
+/** Room under the dealt rows for the More button. */
+const MORE_ROOM = 56;
 
 /** Stable per-card jitter: the same card leans the same way in its pile every time. */
 function seeded(id: string, salt: number): number {
@@ -246,6 +271,11 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
   const reduced = () => !!win.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const canSpring = !!win.CSS?.supports?.('transition-timing-function', 'linear(0, 1)');
   let layout = (table.dataset.layout as CardLayout) || 'piles';
+  const scope = table.dataset.scope || '';
+  const openPiles = openByScope.get(scope) || new Set<string>();
+  openByScope.set(scope, openPiles);
+  /** Clicks on cards wait until a pile has finished opening or closing. */
+  let busyUntil = 0;
   let cw = 0;
   let ch = 0;
   let W = 0;
@@ -268,23 +298,53 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     eh = ch * sc;
     offX = (cw - ew) / 2;
     offY = (ch - eh) / 2;
+    const v = visibleBand(table);
+    visH = Math.max(320, v.bottom - v.top);
   };
+  let visH = 600;
 
-  const isOut = (c: HTMLElement) => layout === 'piles' && openPiles.has(c.dataset.pile || '');
+  const isOut = (c: HTMLElement) => {
+    const k = c.dataset.pile || '';
+    return layout === 'piles' && openPiles.has(k) && (Number(c.dataset.rank) || 0) <= dealing(k).dealt;
+  };
   /**
    * A card turned to its meaning straightens up while it is read: tilted text is hard to read,
    * and a tilted list would scroll along the page while its lines run along the card.
    */
   const view = (c: HTMLElement, p: Pos): Pos =>
     p.rot !== 0 && c.classList.contains('is-flipped') && (layout === 'scatter' || c.classList.contains('is-out')) ? { ...p, rot: 0 } : p;
-  const bandPos = (b: Band, s: Stored): Pos => ({
-    x: BAND_PAD + s.fx * Math.max(0, W - 2 * BAND_PAD - ew) - offX,
-    y: b.top + BAND_HEAD + s.fy * Math.max(0, b.h - BAND_HEAD - eh - 8) - offY,
-    rot: s.rot,
-    s: sc,
-  });
   const bandFor = (c: HTMLElement) => bands.find((b) => b.key === c.dataset.pile);
-  const throwSpot = (): Stored => ({ fx: Math.random(), fy: Math.random(), rot: (Math.random() - 0.5) * 26 });
+  /**
+   * An open pile is dealt in rows right under it, newest first. Each row overlaps the lower part
+   * of the row before, which still shows its picture and word. One screenful is dealt at a time;
+   * More at the bottom of the band deals the next, so a pile of 140 does not run on for pages.
+   */
+  const dealing = (k: string) => {
+    const n = Math.max(0, (pileSize.get(k) || 1) - 1);
+    const gap = W < 560 ? 8 : 12;
+    const cols = Math.max(2, Math.floor((W - 2 * BAND_PAD + gap) / (ew + gap)));
+    const step = Math.round(eh * 0.6);
+    const batch = cols * Math.max(2, Math.floor((visH * 0.8 - BAND_HEAD - eh) / step) + 1);
+    const dealt = Math.min(n, dealtCount.get(`${scope}|${k}`) ?? batch);
+    const rows = Math.max(1, Math.ceil(dealt / cols));
+    const more = n - dealt;
+    return { n, gap, cols, rows, step, batch, dealt, more, h: BAND_HEAD + eh + (rows - 1) * step + 16 + (more > 0 ? MORE_ROOM : 0) };
+  };
+  const dealtPos = (b: Band, c: HTMLElement, rank: number): Pos => {
+    const id = c.dataset.id || '';
+    const s = bandSpots.get(id);
+    if (s) return { x: s.fx * W - offX, y: b.top + s.fy - offY, rot: s.rot, s: sc };
+    const d = dealing(b.key);
+    const i = rank - 1;
+    const inRow = Math.min(d.cols, d.dealt - Math.floor(i / d.cols) * d.cols);
+    const ox = (W - (inRow * ew + (inRow - 1) * d.gap)) / 2;
+    return {
+      x: ox + (i % d.cols) * (ew + d.gap) + (seeded(id, 5) - 0.5) * 8 - offX,
+      y: b.top + BAND_HEAD + Math.floor(i / d.cols) * d.step + (seeded(id, 6) - 0.5) * 6 - offY,
+      rot: (seeded(id, 7) - 0.5) * 7,
+      s: sc,
+    };
+  };
 
   /** Where every card and pile label goes in `l`; also sets the felt height H and the bands. */
   const compute = (l: CardLayout, fresh = false) => {
@@ -315,8 +375,7 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
         y += slotH;
         for (const k of row) {
           if (!openPiles.has(k)) continue;
-          const n = Math.max(1, (pileSize.get(k) || 1) - 1);
-          const h = BAND_HEAD + 8 + Math.max(eh, (n * ew * eh) / (W * 1.4));
+          const h = dealing(k).h;
           bands.push({ key: k, top: y - 14, h, notch: labels.get(k)!.x + cw / 2 });
           y += h + 14;
         }
@@ -329,9 +388,7 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
         const id = c.dataset.id || '';
         const b = band.get(k);
         if (b && rank > 0) {
-          let s = bandSpots.get(id);
-          if (!s) bandSpots.set(id, (s = throwSpot()));
-          pos.set(c, bandPos(b, s));
+          pos.set(c, dealtPos(b, c, rank));
           continue;
         }
         const r = Math.min(rank, PILE_FACE_CARDS - 1);
@@ -386,8 +443,8 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
       for (const c of cards) {
         const rank = Number(c.dataset.rank) || 0;
         const id = c.dataset.id || '';
-        // Spread cards sit above every pile; a card picked up or read goes on top of them.
-        c.style.zIndex = String(c.classList.contains('is-out') && rank > 0 ? zOrder.get(id) ?? 40 + Math.max(0, 60 - rank) : 10 + PILE_FACE_CARDS * 4 - rank);
+        // Spread cards sit above every pile, each row over the one before; a card picked up or read goes on top.
+        c.style.zIndex = String(c.classList.contains('is-out') && rank > 0 ? zOrder.get(id) ?? 40 + rank : 10 + PILE_FACE_CARDS * 4 - rank);
       }
     } else {
       for (const c of cards) c.style.zIndex = '1';
@@ -432,12 +489,23 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
         el.dataset.pile = b.key;
         const label = pileEls.find((p) => p.dataset.pile === b.key)?.querySelector('.nbv-pile__label')?.firstChild?.textContent || '';
         el.innerHTML = `<button type="button" class="nbv-band__gather" data-band-gather="${esc(b.key)}" aria-label="Gather ${esc(label)}">${LAYOUT_ICON.piles}<span>Gather</span></button>`;
-        felt.insertBefore(el, felt.firstChild);
+        // Right after its pile, so Tab goes from the pile to Gather, then on to the cards.
+        const pileEl = pileEls.find((p) => p.dataset.pile === b.key);
+        if (pileEl) pileEl.after(el);
+        else felt.prepend(el);
         bandEls.set(b.key, el);
       }
       el.style.transform = `translate3d(0, ${b.top.toFixed(1)}px, 0)`;
       el.style.height = `${Math.round(b.h)}px`;
       el.style.setProperty('--notch', `${b.notch.toFixed(1)}px`);
+      const left = dealing(b.key).more;
+      let more = el.querySelector('.nbv-band__more') as HTMLElement | null;
+      if (left > 0 && !more) {
+        el.insertAdjacentHTML('beforeend', `<button type="button" class="nbv-band__more" data-band-more="${esc(b.key)}">More<b></b></button>`);
+        more = el.querySelector('.nbv-band__more') as HTMLElement;
+      }
+      if (more && left > 0) (more.querySelector('b') as HTMLElement).textContent = String(left);
+      else more?.remove();
       if (fresh && motion) {
         el.animate([{ opacity: 0, transform: `translate3d(0, ${(b.top - 18).toFixed(1)}px, 0)` }, { opacity: 1, transform: el.style.transform }], {
           duration: quick ? QUICK_MS : 420,
@@ -447,7 +515,8 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     }
   };
 
-  const apply = (l: CardLayout, animate: boolean, fresh = false) => {
+  /** Lay the table out as `l`; returns how long the cards take to land, in ms. */
+  const apply = (l: CardLayout, animate: boolean, fresh = false): number => {
     const before = H;
     const wasOut = new Set(cards.filter((c) => c.classList.contains('is-out')));
     layout = l;
@@ -510,6 +579,8 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
       table.classList.remove('is-moving');
       felt.style.height = `${Math.round(H)}px`;
     }
+    feltHeight.set(`${scope}|${l}`, H);
+    return flying ? longest : 0;
   };
 
   const choose = (l: CardLayout, fresh = false) => {
@@ -527,12 +598,22 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     opts.onLayout?.(l);
   };
 
-  /** Open one pile where it lies, or gather it back; every other pile stays as it is. */
+  const coverOf = (key: string) => cards.find((c) => c.dataset.pile === key && c.dataset.rank === '0');
+  /**
+   * Open one pile where it lies, or gather it back. One pile is open at a time; whatever closes
+   * above it, the pile's top card stays where the reader clicked it, and the page then scrolls
+   * just enough to show the first rows of the cards dealt under it.
+   */
   const setPile = (key: string, open: boolean) => {
     if (open === openPiles.has(key)) return;
+    const cover = coverOf(key);
+    const scroller = scrollerOf(table);
+    const before = cover?.getBoundingClientRect().top ?? 0;
     if (open) {
+      openPiles.clear();
       openPiles.add(key);
-      // A fresh throw each time the pile is opened.
+      dealtCount.delete(`${scope}|${key}`);
+      // Dealt fresh each time the pile is opened.
       for (const c of cards) {
         if (c.dataset.pile !== key) continue;
         bandSpots.delete(c.dataset.id || '');
@@ -541,7 +622,32 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     } else {
       openPiles.delete(key);
     }
-    apply('piles', true);
+    const ms = apply('piles', true);
+    busyUntil = win.performance.now() + Math.min(ms, 900);
+    const shift = (cover?.getBoundingClientRect().top ?? before) - before;
+    if (Math.abs(shift) > 0.5) scroller.scrollTop += shift;
+    const b = bands.find((x) => x.key === key);
+    if (open && b && cover) {
+      const feltTop = felt.getBoundingClientRect().top;
+      const { top, bottom } = visibleBand(table);
+      revealBelow(table, feltTop + b.top, Math.min(b.h, (bottom - top) * 0.6), cover.getBoundingClientRect().top);
+    }
+    if (!open) cover?.focus({ preventScroll: true });
+  };
+
+  /** Deal the next screenful of an open pile and bring its first new row into view. */
+  const dealMore = (key: string) => {
+    const d = dealing(key);
+    if (d.more <= 0) return;
+    dealtCount.set(`${scope}|${key}`, d.dealt + d.batch);
+    const ms = apply('piles', true);
+    busyUntil = win.performance.now() + Math.min(ms, 900);
+    const b = bands.find((x) => x.key === key);
+    if (!b) return;
+    const y = felt.getBoundingClientRect().top + b.top + BAND_HEAD + d.rows * d.step;
+    revealBelow(table, y, Math.min(eh + 2 * d.step, visH * 0.6), y);
+    const next = cards.find((c) => c.dataset.pile === key && Number(c.dataset.rank) === d.dealt + 1);
+    next?.focus({ preventScroll: true });
   };
 
   measure();
@@ -571,18 +677,36 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
       setPile(gather.dataset.bandGather || '', false);
       return;
     }
+    const more = t.closest?.('[data-band-more]') as HTMLElement | null;
+    if (more) {
+      ev.stopPropagation();
+      ev.preventDefault();
+      dealMore(more.dataset.bandMore || '');
+      return;
+    }
     if (layout !== 'piles') return;
     const pile = t.closest?.('.nbv-pile') as HTMLElement | null;
     const card = t.closest?.('.nbv-card') as HTMLElement | null;
+    // While a pile opens or closes, a second click on its flying cards does nothing.
+    if ((pile || card) && win.performance.now() < busyUntil) {
+      ev.stopPropagation();
+      ev.preventDefault();
+      return;
+    }
+    const k = (pile || card)?.dataset.pile || '';
     if (pile) {
       ev.stopPropagation();
       ev.preventDefault();
-      const k = pile.dataset.pile || '';
       setPile(k, !openPiles.has(k));
     } else if (card && !card.classList.contains('is-out') && !keyOpen) {
       ev.stopPropagation();
       ev.preventDefault();
-      setPile(card.dataset.pile || '', true);
+      setPile(k, true);
+    } else if (card && card.dataset.rank === '0' && openPiles.has(k) && !keyOpen && !t.closest?.('.nbv-card__flip, .nbv-card__look')) {
+      // The top card of an open pile stays on the pile, and gathers it like the pile does.
+      ev.stopPropagation();
+      ev.preventDefault();
+      setPile(k, false);
     }
   }, true);
   on(table, 'keydown', (ev: any) => {
@@ -655,11 +779,7 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     const id = el.dataset.id || '';
     const b = layout === 'piles' ? bandFor(el) : undefined;
     if (b) {
-      bandSpots.set(id, {
-        fx: (p.x + offX - BAND_PAD) / Math.max(1, W - 2 * BAND_PAD - ew),
-        fy: (p.y + offY - b.top - BAND_HEAD) / Math.max(1, b.h - BAND_HEAD - eh - 8),
-        rot: p.rot,
-      });
+      bandSpots.set(id, { fx: (p.x + offX) / Math.max(1, W), fy: p.y + offY - b.top, rot: p.rot });
     } else {
       scattered.set(id, { fx: (p.x + offX) / Math.max(1, W - ew), fy: (p.y + offY) / Math.max(1, H - eh), rot: p.rot });
     }
@@ -675,6 +795,26 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     drag.el.style.transform = tf(shown, 1.05);
     shownAt.set(drag.el, shown);
   };
+  /** Pick the card up: from here on it follows the pointer and the page does not scroll. */
+  const lift = (pointerId: number) => {
+    if (!drag || drag.live) return;
+    win.clearTimeout(holdTimer);
+    drag.live = true;
+    drag.el.getAnimations?.().forEach((an: any) => an.cancel());
+    try {
+      drag.el.setPointerCapture?.(pointerId);
+    } catch {
+      /* the pointer already went away */
+    }
+    drag.el.classList.add('is-lifted');
+    raise(drag.el);
+    drag.sx = drag.px;
+    drag.sy = drag.py;
+  };
+  // A finger swiping up or down scrolls the page; a card is picked up by a long press or by a
+  // move that is mostly sideways. The mouse picks it up as soon as it moves.
+  const HOLD_MS = 320;
+  let holdTimer = 0;
   on(felt, 'pointerdown', (ev: any) => {
     if (drag || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
     const el = (ev.target as HTMLElement).closest?.('.nbv-card') as HTMLElement | null;
@@ -683,21 +823,33 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     const list = (ev.target as HTMLElement).closest?.('.nbv-card__back ol') as HTMLElement | null;
     if (list && ev.pointerType !== 'mouse' && list.scrollHeight > list.clientHeight + 1) return;
     drag = { el, id: ev.pointerId, sx: ev.clientX, sy: ev.clientY, base: cur.get(el)!, live: false, samples: [], raf: 0, px: ev.clientX, py: ev.clientY };
+    win.clearTimeout(holdTimer);
+    if (ev.pointerType !== 'mouse') {
+      const id = ev.pointerId;
+      holdTimer = win.setTimeout(() => {
+        if (drag && drag.id === id && Math.hypot(drag.px - drag.sx, drag.py - drag.sy) < 8) lift(id);
+      }, HOLD_MS);
+    }
   });
   on(felt, 'pointermove', (ev: any) => {
     if (!drag || ev.pointerId !== drag.id) return;
     drag.px = ev.clientX;
     drag.py = ev.clientY;
     if (!drag.live) {
-      const slop = ev.pointerType === 'mouse' ? 4 : 8;
-      if (Math.hypot(drag.px - drag.sx, drag.py - drag.sy) < slop) return;
-      drag.live = true;
-      drag.el.getAnimations?.().forEach((an: any) => an.cancel());
-      drag.el.setPointerCapture?.(ev.pointerId);
-      drag.el.classList.add('is-lifted');
-      raise(drag.el);
-      drag.sx = drag.px;
-      drag.sy = drag.py;
+      const dx = Math.abs(drag.px - drag.sx);
+      const dy = Math.abs(drag.py - drag.sy);
+      if (ev.pointerType === 'mouse') {
+        if (Math.hypot(dx, dy) < 4) return;
+      } else {
+        if (Math.hypot(dx, dy) < 10) return;
+        if (dx < dy * 1.5) {
+          // An up or down swipe: the browser scrolls the page, and the card stays put.
+          win.clearTimeout(holdTimer);
+          drag = null;
+          return;
+        }
+      }
+      lift(ev.pointerId);
     }
     const t = ev.timeStamp || win.performance.now();
     drag.samples.push({ x: drag.px, y: drag.py, t });
@@ -705,6 +857,7 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     if (!drag.raf) drag.raf = win.requestAnimationFrame(paintDrag);
   });
   const endDrag = (ev: any, cancelled: boolean) => {
+    win.clearTimeout(holdTimer);
     if (!drag || ev.pointerId !== drag.id) return;
     const d = drag;
     drag = null;
@@ -748,6 +901,10 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
   on(felt, 'touchmove', (ev: any) => {
     if (drag?.live) ev.preventDefault();
   });
+  // The long press that picks a card up must not open the phone's context menu.
+  on(felt, 'contextmenu', (ev: any) => {
+    if (drag && (ev.target as HTMLElement).closest?.('.nbv-card')) ev.preventDefault();
+  });
 
   /* Width changes re-flow the layout without motion. */
   const RO = win.ResizeObserver;
@@ -769,5 +926,6 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     ro?.disconnect();
     mo?.disconnect();
     win.clearTimeout(moveTimer);
+    win.clearTimeout(holdTimer);
   };
 }

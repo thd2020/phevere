@@ -75,6 +75,10 @@ assert.equal(views.familyLetter('対'), '#');
 const letters = [...views.familiesHtml(a, 'prefix').matchAll(/data-letter="([^"]*)"/g)].map((m) => m[1]);
 assert.deepEqual(letters, [...letters].sort(), 'letter sections in alphabetical order');
 assert.doesNotMatch(views.familiesHtml(a, 'char'), /nbv-letter__head/);
+// A family that knows its other spellings shows them after the main one; without them, none.
+const withForms = { ...a, families: a.families.map((f) => (f.key === 'root:spect' ? { ...f, forms: ['spect', 'spic', 'spec'] } : f)) };
+assert.match(views.familiesHtml(withForms, 'root'), /<span class="nbv-fam__forms"><span>spic<\/span><span>spec<\/span><\/span>/);
+assert.doesNotMatch(fhtml, /nbv-fam__forms/);
 assert.match(views.familiesHtml(a, 'tree'), /data-tree-open aria-label="Open the nation tree"/);
 
 // Map: deterministic layout, every edge points at real nodes.
@@ -121,7 +125,9 @@ assert.equal(folded[0].label, 'December 2025');
 assert.equal(folded.reduce((n, p) => n + p.ids.length, 0), 12);
 
 const chtml = views.cardsHtml(entries, a, new Set(['id1']), 'scatter', now);
-assert.match(chtml, /<div class="nbv-table" data-layout="scatter">/);
+assert.match(chtml, /<div class="nbv-table" data-layout="scatter" data-scope="[^"]+">/);
+// Each list has its own scope, so an open pile in My words is not open in a book.
+assert.notEqual(chtml.match(/data-scope="([^"]+)"/)[1], views.cardsHtml(entries.slice(1), a, new Set(), 'scatter', now).match(/data-scope="([^"]+)"/)[1]);
 assert.match(chtml, /data-cards-layout="piles"[^>]*aria-pressed="false"/);
 assert.match(chtml, /data-cards-layout="scatter"[^>]*aria-pressed="true"/);
 assert.match(chtml, /data-cards-layout="grid"/);
