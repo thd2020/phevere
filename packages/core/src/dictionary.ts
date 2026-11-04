@@ -68,6 +68,7 @@ export interface Definition {
 }
 
 import { BaseService, DictionaryError, withTimeout } from './base';
+import { registerWiktionaryWikitextSource } from './sense-images';
 import { checkApiKey, type ApiKeyCheck, type ApiProviderId } from './api-key-check';
 import { detectLanguageLocal, englishCandidateWords, isAmbiguousHan, remoteFitsScript } from './lang-detect';
 import { isCmuWord, warmCmuIpa } from './cmu-ipa';
@@ -315,6 +316,8 @@ export class DictionaryService extends BaseService {
     this.apiKey = apiKey || null;
     this.deeplApiKey = deeplApiKey || null;
     this.updateSourceAvailability();
+    // Sense pictures read the same Wiktionary page the lookup already fetched and cached.
+    registerWiktionaryWikitextSource((word) => this.getWiktionaryWikitext(word));
   }
 
   /**

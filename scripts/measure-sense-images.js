@@ -5,6 +5,7 @@
  * Run:
  *   node scripts/measure-sense-images.js --db <notebook.sqlite> [--limit 100] [--out result.json]
  *   node scripts/measure-sense-images.js --words words.txt [--mode cards|lookup|both] [--parallel 1]
+ *   node scripts/measure-sense-images.js --relevance scripts/fixtures/sense-images-relevance.json --senses 60
  *
  * `--db` reads the lemma, language and saved definition of every word in the `vocab` table; the
  * file is read into memory and never written. `--words` reads one word per line, optionally
@@ -39,7 +40,8 @@ const limit = Number(arg('limit', '0')) || 0;
 const outPath = arg('out', '');
 const cacheDir = arg('cache', path.join(os.tmpdir(), 'phevere-measure-sense-images'));
 const parallel = Math.max(1, Number(arg('parallel', '3')) || 3);
-const mode = arg('mode', 'both');
+const relevancePath = arg('relevance', '');
+const mode = relevancePath ? 'lookup' : arg('mode', 'both');
 const maxSenses = Math.max(1, Number(arg('senses', '12')) || 12);
 fs.mkdirSync(cacheDir, { recursive: true });
 
@@ -133,6 +135,10 @@ function memoryStore() {
 }
 
 async function readWords() {
+  if (relevancePath) {
+    const fx = JSON.parse(fs.readFileSync(relevancePath, 'utf8'));
+    return Array.from(new Set(fx.pairs.map((p) => p.word))).map((lemma) => ({ lemma, lang: 'en', gloss: '', pos: '' }));
+  }
   if (dbPath) {
     const initSqlJs = require('sql.js');
     const SQL = await initSqlJs();
@@ -217,6 +223,64 @@ function majorSenses(senses, si, lemma) {
   return out;
 }
 
+/** The Commons file name of a chosen picture. */
+function fileOf(img) {
+  try {
+    return decodeURIComponent(String(img.pageUrl || '').split('/File:')[1] || '').replace(/_/g, ' ');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Precision and coverage on the hand-labelled pairs: a picture on a pair's sense is right when
+ * the pair lists its file as right, wrong when it lists it as wrong or marks the sense as having
+ * no fitting picture (`none`), and unlabelled otherwise (label it and add it to the fixture).
+ * Coverage counts pairs with a known right picture that got one.
+ */
+function relevanceReport(rows, fx) {
+  let right = 0;
+  let wrong = 0;
+  let empty = 0;
+  let coverable = 0;
+  const missing = [];
+  const unlabelled = [];
+  const wrongs = [];
+  const mustFail = [];
+  let must = 0;
+  for (const pair of fx.pairs) {
+    if (pair.must) must += 1;
+    const row = rows.find((r) => r.lemma === pair.word);
+    const sense = row && (row.senses || []).find((s) => s.meaning.startsWith(pair.sense));
+    if (pair.right.length) coverable += 1;
+    if (!sense) {
+      missing.push(`${pair.word} "${pair.sense}"`);
+      if (pair.must) mustFail.push(`${pair.word} "${pair.sense}" (sense missing)`);
+      continue;
+    }
+    if (!sense.image) {
+      empty += 1;
+      if (pair.must) mustFail.push(`${pair.word} "${pair.sense}" (none)`);
+      continue;
+    }
+    const file = sense.image.file;
+    if (pair.must && !pair.right.includes(file)) mustFail.push(`${pair.word} "${pair.sense}" -> ${file}`);
+    if (pair.right.includes(file)) right += 1;
+    else if (pair.wrong.includes(file) || pair.none) {
+      wrong += 1;
+      wrongs.push(`${pair.word} "${pair.sense}" -> ${file}`);
+    } else unlabelled.push(`${pair.word} "${pair.sense}" -> ${file}`);
+  }
+  const lines = [
+    `relevance: ${fx.pairs.length} labelled pairs; ${right + wrong + unlabelled.length} pictures shown on them: right ${right}, wrong ${wrong}, unlabelled ${unlabelled.length}; precision ${pct(right, right + wrong)}; coverage ${right}/${coverable} pairs with a known right picture (${pct(right, coverable)}); ${empty} pairs without a picture`,
+  ];
+  lines.push(`must-pass: ${must - mustFail.length}/${must}${mustFail.length ? `; failing: ${mustFail.join('; ')}` : ''}`);
+  if (wrongs.length) lines.push(`wrong: ${wrongs.join('; ')}`);
+  if (unlabelled.length) lines.push(`unlabelled: ${unlabelled.join('; ')}`);
+  if (missing.length) lines.push(`senses not in the lookup: ${missing.join('; ')}`);
+  return lines;
+}
+
 function pct(n, d) {
   return d ? `${((100 * n) / d).toFixed(1)}%` : '-';
 }
@@ -290,7 +354,7 @@ async function main() {
             pos: s.partOfSpeech,
             meaning: stripHtml(s.meaning).slice(0, 120),
             major: major.includes(k),
-            image: images[k] ? { title: images[k].title, thumb: images[k].thumb, credit: images[k].credit } : null,
+            image: images[k] ? { title: images[k].title, thumb: images[k].thumb, credit: images[k].credit, pageUrl: images[k].pageUrl, file: fileOf(images[k]) } : null,
           }));
         }
       }
@@ -340,6 +404,7 @@ async function main() {
   const missingLookup = rows.filter((r) => r.senses && r.senses.length && !r.senses.some((s) => s.image)).map((r) => r.lemma);
   if (missingCards.length) report.push(`no card picture (${missingCards.length}): ${missingCards.slice(0, 80).join(', ')}`);
   if (missingLookup.length) report.push(`no lookup picture (${missingLookup.length}): ${missingLookup.slice(0, 80).join(', ')}`);
+  if (relevancePath) report.push(...relevanceReport(rows, JSON.parse(fs.readFileSync(relevancePath, 'utf8'))));
   console.log(report.join('\n'));
   if (outPath) fs.writeFileSync(outPath, JSON.stringify({ report, rows }, null, 1));
 }
