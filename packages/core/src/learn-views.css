@@ -130,6 +130,7 @@
 
 .lrc-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 0; font: 500 11.5px/1.2 var(--nbv-ui); color: var(--nbv-soft); }
 .lrc-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.lrc-legend [hidden] { display: none; }
 .lrc-legend i { width: 10px; height: 10px; border-radius: 2.5px; }
 .lrc-legend--heat { justify-content: flex-end; gap: 3px; }
 .lrc-legend--heat span { margin: 0 4px; font-variant-numeric: tabular-nums; }
@@ -196,3 +197,13 @@
 .lrc-range output { min-width: 58px; text-align: right; font: 600 16px/1 var(--nbv-serif); font-variant-numeric: tabular-nums; }
 .lrc-range input { width: 100%; accent-color: var(--nbv-teal); height: 28px; }
 @media (max-width: 420px) { .lrc-range { grid-template-columns: minmax(0, 1fr) auto; } .lrc-range input { grid-column: 1 / -1; grid-row: 2; } }
+
+/* Wide windows: charts keep a readable size, and the retention chart puts its slider and readout beside it. */
+.lrc-svg { max-width: 560px; }
+@media (min-width: 760px) {
+  .lrc--retention { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); column-gap: 24px; align-items: start; }
+  .lrc--retention > .lrc-svg { grid-row: 1 / span 4; }
+  .lrc--retention > .lrc-legend,
+  .lrc--retention > .lrc-range,
+  .lrc--retention > .lrc-readout { grid-column: 2; }
+}

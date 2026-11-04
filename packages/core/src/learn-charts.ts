@@ -228,7 +228,7 @@ const R_H = 182;
 const R_LEFT = 32;
 const R_TOP = 24;
 const R_BASE = R_H - 26;
-const R_LO = 0.4;
+const R_LO = 0;
 
 function rx(day: number, maxDays: number): number {
   return R_LEFT + ((R_W - R_LEFT - 6) * day) / maxDays;
@@ -260,7 +260,7 @@ export function retentionHtml(spec: RetentionSpec): string {
   const words = spec.words;
   const avg = (d: number) => retentionAt(words, spec.now, d, 0).average;
   const share = (d: number) => (words.length ? retentionAt(words, spec.now, d, 0).above / words.length : 0);
-  const grid = [1, 0.9, 0.8, 0.6, 0.4]
+  const grid = [1, 0.9, 0.75, 0.5, 0.25, 0]
     .map((r) => {
       const target = Math.abs(r - DESIRED_RETENTION) < 1e-9;
       return `<line class="lrc-grid${target ? ' is-target' : ''}" x1="${R_LEFT}" x2="${R_W - 6}" y1="${ry(r).toFixed(1)}" y2="${ry(r).toFixed(1)}"/><text class="lrc-ytick${target ? ' is-target' : ''}" x="${R_LEFT - 5}" y="${(ry(r) + 3).toFixed(1)}">${Math.round(r * 100)}%</text>`;

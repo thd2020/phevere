@@ -85,9 +85,12 @@ export function forecastChartHtml(entries: NotebookEntry[], now: number, days = 
       s.mature.length ? `${s.mature.length} mature` : '',
     ].filter(Boolean);
     const late = i === 0 && overdue ? `, ${overdue} of them overdue` : '';
+    // Two weeks fit a label a day; a month gets one a week.
+    const dense = days <= 20;
+    const show = dense || i % 7 === 0;
     return {
-      tick: String(date.getDate()),
-      sub: i === 0 ? 'Today' : date.toLocaleDateString('en-US', { weekday: 'narrow' }),
+      tick: show ? String(date.getDate()) : '',
+      sub: i === 0 ? 'Today' : !show ? '' : dense ? date.toLocaleDateString('en-US', { weekday: 'narrow' }) : date.toLocaleDateString('en-US', { month: 'short' }),
       segments: [
         { cls: 'learning', value: s.learning.length },
         { cls: 'young', value: s.young.length },

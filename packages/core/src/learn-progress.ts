@@ -347,7 +347,7 @@ function perDayChart(perDay: ProgressSummary['perDay']): string {
 }
 
 function strengthChart(strength: ProgressSummary['strength']): string {
-  const short = ['Learning', '< 1 wk', '1–3 wk', '3 wk–3 mo', '3 mo +'];
+  const short = ['Learning', 'Under 1 wk', '1–3 wk', '3 wk–3 mo', 'Over 3 mo'];
   const total = strength.reduce((s, b) => s + b.words.length, 0);
   const data: BarDatum[] = strength.map((b, i) => ({
     tick: short[i],
