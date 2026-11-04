@@ -16,7 +16,7 @@ const bundle = esbuild.buildSync({
     contents: `
       export * from './src/review-quiz';
       export * from './src/review-schedule';
-      export { reviewHtml } from './src/notebook-review';
+      export { reviewHtml, MARK_MS } from './src/notebook-review';
       export { configureCore } from './src/runtime';
       export { addVocab, listVocab, getVocab, reviewVocab, updateVocabNote } from './src/vocab-store';
       export { syncVocab } from './src/vocab-sync';
@@ -357,7 +357,7 @@ const pool = [
   }
   assert.equal(loop.results.length, core.MAX_ASKS_PER_SESSION);
   const html = core.reviewHtml(pool, loop, 10, { now });
-  assert.match(html, /Session done/);
+  assert.match(html, /Done for today/);
   assert.match(html, /data-act="lookup" data-q="abandon"/, 'missed words open in lookup');
 }
 
@@ -381,6 +381,27 @@ const pool = [
   assert.match(html, /data-act="nb-override"[^>]*>I knew it/);
   assert.match(html, /data-act="nb-next"/);
   assert.match(html, /<b class="is-g1">Again<\/b> · back in 1 min/);
+  // The mark is drawn over the whole question: the stage holds the prompt, the options and the ink.
+  const stage = html.slice(html.indexOf('nbv-quiz__stage'), html.indexOf('nbv-quiz__actions'));
+  assert.match(stage, /class="nbv-options/);
+  assert.match(stage, /class="nbv-ink is-wrong"/);
+  assert.match(stage, /class="nbv-wash is-wrong"/);
+  assert.equal((stage.match(/nbv-ink__reveal--/g) || []).length, 2, 'a cross is two strokes');
+  // A repaint a second later resumes the mark from where it is; after it has played it is gone.
+  const later = core.reviewHtml(pool, state, 10, { now: now + 2000, audio: true });
+  assert.match(later, /nbv-quiz__stage is-wrong" style="--t:-1000ms"/);
+  assert.match(later, /nbv-ink is-wrong/);
+  const done = core.reviewHtml(pool, state, 10, { now: now + 1000 + core.MARK_MS, audio: true });
+  assert.doesNotMatch(done, /nbv-ink/);
+  // A right answer offers "Too easy".
+  const right = core.startReview(pool, 10, now);
+  right.started = true;
+  const rq = core.ensureReviewQuestion(right, pool, { now });
+  core.answerReview(right, { choice: rq.correct }, now + 1500);
+  const rhtml = core.reviewHtml(pool, right, 10, { now: now + 1600 });
+  assert.match(rhtml, /data-mode="easy"[^>]*>Too easy/);
+  assert.match(rhtml, /class="nbv-ink is-right"/);
+  assert.equal((rhtml.match(/nbv-ink__reveal--/g) || []).length, 1, 'a tick is one stroke');
 }
 
 /* ------------------------------------------------------------------- FSRS */

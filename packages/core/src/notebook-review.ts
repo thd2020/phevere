@@ -1,12 +1,14 @@
 /**
- * Review, on the Learn tab's Today page: a quiz over today's due and new words (logic in
- * `review-quiz.ts`), the daily goal for new words, the next two weeks of reviews and the words
- * saved over twelve weeks.
+ * Review, on the Learn tab's Today page: a quiz over today's due and new words in rounds of
+ * twenty (logic in `review-quiz.ts`), the daily goal for new words, the reviews due over the next
+ * two weeks and the words saved over twelve weeks. The two charts take a pointer or a tap
+ * (`learn-charts.ts`).
  */
 import { vocabReadings, vocabSenses } from './vocab-view';
 import { DAY, clean, dayStart, esc, type NotebookEntry } from './notebook-shared';
-import { ensureReviewQuestion, memoryLevel, type ReviewGrade, type ReviewQuestion, type ReviewState } from './review-quiz';
+import { ensureReviewQuestion, memoryLevel, ROUND_WORDS, type ReviewGrade, type ReviewQuestion, type ReviewState } from './review-quiz';
 import { bookName } from './book-names';
+import { barChartHtml, dayLabel, heatmapHtml, wordChips, type BarDatum } from './learn-charts';
 
 export * from './review-quiz';
 
@@ -26,6 +28,8 @@ export interface ReviewRenderOptions {
   goalBook?: { id: string; goal: number };
   /** Book scopes count words started rather than saved. */
   started?: boolean;
+  /** Example sentences for a word, for gap-fill questions (from its dictionary entry). */
+  examples?: (lemma: string) => string[] | undefined;
 }
 
 export interface BookPlanRow {
@@ -42,6 +46,8 @@ const GRADE_LABEL: Record<ReviewGrade, string> = { 1: 'Again', 2: 'Hard', 3: 'Go
 const PLAY_ICON =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4zM15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+const fmt = (n: number) => n.toLocaleString('en-US');
+
 function isNew(e: NotebookEntry): boolean {
   return memoryLevel(e) === 0;
 }
@@ -51,63 +57,96 @@ function daysBetween(a: number, b: number): number {
   return Math.round((dayStart(b) - dayStart(a)) / DAY);
 }
 
-function forecastSvg(entries: NotebookEntry[], now: number): string {
+
+/* ------------------------------------------------------------------ charts */
+
+/** Reviews due on each of the next `days` days, split by how firmly each word is held, with its words. */
+export function forecastChartHtml(entries: NotebookEntry[], now: number, days = 14, id = 'due'): string {
   const today = dayStart(now);
-  const days = 14;
-  const counts = new Array(days).fill(0);
+  const slots = Array.from({ length: days }, () => ({ learning: [] as string[], young: [] as string[], mature: [] as string[] }));
+  let overdue = 0;
   for (const e of entries) {
-    if (e.reviewDue == null || isNew(e)) continue;
+    if (e.reviewDue == null || isNew(e) || (e as { known?: boolean }).known) continue;
     const d = daysBetween(today, Number(e.reviewDue));
-    if (d < days) counts[Math.max(0, d)] += 1;
+    if (d >= days) continue;
+    if (d < 0) overdue += 1;
+    const level = memoryLevel(e);
+    const key = level <= 1 ? 'learning' : level === 2 ? 'young' : 'mature';
+    slots[Math.max(0, d)][key].push(clean(e.lemma));
   }
-  const max = Math.max(1, ...counts);
-  const W = 280;
-  const H = 86;
-  const top = 14;
-  const base = H - 14;
-  const bw = W / days;
-  const bars = counts
-    .map((c, i) => {
-      const h = Math.round((c / max) * (base - top));
-      const x = i * bw + 2;
-      const label = i === 0 ? 'Today' : new Date(today + i * DAY).toLocaleDateString(undefined, { weekday: 'narrow' });
-      const when = i === 0 ? 'today' : i === 1 ? 'tomorrow' : `in ${i} days`;
-      return `<g><rect class="nbv-bar${i === 0 ? ' is-today' : ''}" x="${x.toFixed(1)}" y="${base - Math.max(h, 1)}" width="${(bw - 4).toFixed(1)}" height="${Math.max(h, 1)}" rx="2"><title>${c} due ${when}</title></rect>${
-        c ? `<text class="nbv-bar__n" x="${(x + (bw - 4) / 2).toFixed(1)}" y="${base - h - 3}">${c}</text>` : ''
-      }${i === 0 ? `<text x="${x.toFixed(1)}" y="${H - 2}">${esc(label)}</text>` : i > 1 ? `<text class="nbv-bar__d" x="${(x + (bw - 4) / 2).toFixed(1)}" y="${H - 2}">${esc(label)}</text>` : ''}</g>`;
-    })
-    .join('');
-  return `<svg class="nbv-forecast" viewBox="0 0 ${W} ${H}" role="img" aria-label="Reviews due over the next two weeks">${bars}</svg>`;
+  const data: BarDatum[] = slots.map((s, i) => {
+    const t = today + i * DAY + DAY / 2;
+    const date = new Date(t);
+    const total = s.learning.length + s.young.length + s.mature.length;
+    const when = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : dayLabel(t);
+    const parts = [
+      s.learning.length ? `${s.learning.length} learning` : '',
+      s.young.length ? `${s.young.length} young` : '',
+      s.mature.length ? `${s.mature.length} mature` : '',
+    ].filter(Boolean);
+    const late = i === 0 && overdue ? `, ${overdue} of them overdue` : '';
+    return {
+      tick: String(date.getDate()),
+      sub: i === 0 ? 'Today' : date.toLocaleDateString('en-US', { weekday: 'narrow' }),
+      segments: [
+        { cls: 'learning', value: s.learning.length },
+        { cls: 'young', value: s.young.length },
+        { cls: 'mature', value: s.mature.length },
+      ],
+      mark: i === 0,
+      aria: `${when}: ${total} due`,
+      detail: `<p class="lrc-read__head"><b>${esc(i > 1 ? when : `${when}, ${dayLabel(t)}`)}</b> · ${total ? `${fmt(total)} due${late}` : 'nothing due'}</p>${parts.length ? `<p class="lrc-read__sub">${parts.join(', ')}</p>` : ''}${wordChips([...s.learning, ...s.young, ...s.mature])}`,
+    };
+  });
+  const totals = data.map((d) => d.segments.reduce((a, x) => a + x.value, 0));
+  const sum = totals.reduce((a, b) => a + b, 0);
+  const peak = totals.indexOf(Math.max(...totals));
+  const summary = sum
+    ? `<p class="lrc-read__head"><b>${fmt(sum)}</b> due in ${days} days · <b>${fmt(totals[0])}</b> today${peak > 0 && totals[peak] ? ` · most on ${esc(dayLabel(today + peak * DAY + DAY / 2))} (${fmt(totals[peak])})` : ''}</p><p class="lrc-read__sub">Pick a day to see its words</p>`
+    : `<p class="lrc-read__head">Nothing due in the next ${days} days</p>`;
+  return barChartHtml({
+    id,
+    data,
+    yLabel: 'Words due',
+    summary,
+    legend: [
+      { cls: 'learning', name: 'Learning' },
+      { cls: 'young', name: 'Under 3 weeks' },
+      { cls: 'mature', name: '3 weeks or more' },
+    ],
+    height: days > 20 ? 162 : 170,
+  });
 }
 
-function activitySvg(entries: NotebookEntry[], now: number): string {
-  const weeks = 12;
+/** Words saved (or, in a book, started) per day over twelve weeks, with the words of each day. */
+export function savedHeatmapHtml(entries: NotebookEntry[], now: number, noun = 'saved', weeks = 12): string {
   const today = dayStart(now);
-  const startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - (weeks * 7 - 1) - startDate.getDay());
-  const start = startDate.getTime();
-  const counts = new Map<number, number>();
+  const start = dayStart(today - (weeks * 7 - 1) * DAY + DAY / 2);
+  const byDay = new Map<number, string[]>();
   for (const e of entries) {
     const t = Number(e.createdAt || 0);
     if (!t || t < start) continue;
     const d = dayStart(t);
-    counts.set(d, (counts.get(d) || 0) + 1);
+    const list = byDay.get(d);
+    if (list) list.push(clean(e.lemma));
+    else byDay.set(d, [clean(e.lemma)]);
   }
-  const max = Math.max(1, ...counts.values());
-  const cell = 11;
-  const gap = 3;
-  let cells = '';
-  const day = new Date(start);
-  for (let i = 0; day.getTime() <= today; i++, day.setDate(day.getDate() + 1)) {
-    const d = day.getTime();
-    const c = counts.get(d) || 0;
-    const level = c ? Math.min(4, Math.ceil((c / max) * 4)) : 0;
-    const col = Math.floor(i / 7);
-    const row = i % 7;
-    cells += `<rect class="nbv-heat nbv-heat--${level}" x="${col * (cell + gap)}" y="${row * (cell + gap)}" width="${cell}" height="${cell}" rx="2.5"><title>${new Date(d).toLocaleDateString()}: ${c} saved</title></rect>`;
+  const cells = [];
+  for (let d = start; d <= today; d = dayStart(d + DAY + DAY / 2)) {
+    const words = byDay.get(d) || [];
+    cells.push({
+      day: d,
+      count: words.length,
+      detail: `<p class="lrc-read__head"><b>${esc(dayLabel(d))}</b> · ${words.length ? `${fmt(words.length)} ${noun}` : `nothing ${noun}`}</p>${wordChips(words)}`,
+    });
   }
-  const cols = Math.ceil((daysBetween(start, today) + 1) / 7);
-  return `<svg class="nbv-activity" viewBox="0 0 ${cols * (cell + gap)} ${7 * (cell + gap)}" role="img" aria-label="Words saved per day over twelve weeks">${cells}</svg>`;
+  const total = cells.reduce((s, c) => s + c.count, 0);
+  const week = cells.slice(-7).reduce((s, c) => s + c.count, 0);
+  const best = cells.reduce((b, c) => (c.count > b.count ? c : b), cells[0]);
+  const summary = total
+    ? `<p class="lrc-read__head"><b>${fmt(total)}</b> ${noun} in ${weeks} weeks · <b>${fmt(week)}</b> in the last 7 days · most on ${esc(dayLabel(best.day))} (${fmt(best.count)})</p>`
+    : `<p class="lrc-read__head">Nothing ${noun} in ${weeks} weeks</p>`;
+  return heatmapHtml({ id: `heat-${noun}`, cells, noun, summary });
 }
 
 function bookRowsHtml(rows: BookPlanRow[]): string {
@@ -119,8 +158,8 @@ function bookRowsHtml(rows: BookPlanRow[]): string {
       return `<div class="nbv-books__row" role="listitem">
         <span class="nbv-books__name">${esc(bookName(r.bookId)?.short || r.bookId)}</span>
         <span class="nbv-books__today">${r.newToday} new · ${r.due} due</span>
-        <span class="wb-bar"><i class="wb-bar__known" style="width:${k.toFixed(2)}%"></i><i class="wb-bar__learning" style="width:${l.toFixed(2)}%"></i></span>
-        <span class="nbv-books__n">${r.known.toLocaleString('en-US')} / ${r.total.toLocaleString('en-US')} known</span>
+        <span class="wb-bar" role="img" aria-label="${fmt(r.known)} known, ${fmt(r.learning)} learning of ${fmt(r.total)}"><i class="wb-bar__known" style="width:${k.toFixed(2)}%"></i><i class="wb-bar__learning" style="width:${l.toFixed(2)}%"></i></span>
+        <span class="nbv-books__n">${fmt(r.known)} / ${fmt(r.total)} known</span>
       </div>`;
     })
     .join('')}</div>`;
@@ -157,22 +196,26 @@ function planHtml(entries: NotebookEntry[], goal: number, now: number, opts: Rev
   const marked = (e: NotebookEntry) => !!(e as { known?: boolean }).known;
   const reviewed = entries.filter((e) => !isNew(e) || marked(e));
   const known = reviewed.filter((e) => marked(e) || memoryLevel(e) === 3).length;
-  const week = entries.filter((e) => Number(e.createdAt || 0) >= dayStart(now) - 6 * DAY).length;
-  const verb = opts.started ? 'Started' : 'Saved';
-  const legend = [0, 1, 2, 3, 4].map((l) => `<i class="nbv-heat-key nbv-heat--${l}"></i>`).join('');
+  const total = Math.max(1, entries.length);
+  const parts = [
+    { cls: 'known', n: known, label: 'Known' },
+    { cls: 'learning', n: reviewed.length - known, label: 'Learning' },
+    { cls: 'new', n: entries.length - reviewed.length, label: 'Not started' },
+  ];
+  const noun = opts.started ? 'started' : 'saved';
   return `<aside class="nbv-plan">
-    <div class="nbv-stats">
-      <div><b>${reviewed.length - known}</b><span>Learning</span></div>
-      <div><b>${known}</b><span>Known</span></div>
-      <div><b>${entries.length - reviewed.length}</b><span>Not started</span></div>
-      <div><b>${week}</b><span>${verb} this week</span></div>
+    <div class="nbv-split" role="img" aria-label="${parts.map((p) => `${fmt(p.n)} ${p.label.toLowerCase()}`).join(', ')}">
+      <div class="nbv-split__bar">${parts.map((p) => (p.n ? `<i class="nbv-split--${p.cls}" style="flex:${p.n / total}"></i>` : '')).join('')}</div>
+      <div class="nbv-split__nums">${parts.map((p) => `<span class="nbv-split__n"><i class="nbv-split--${p.cls}"></i><b>${fmt(p.n)}</b>${p.label}</span>`).join('')}</div>
     </div>
     ${bookRowsHtml(opts.books || [])}
     ${opts.showGoal === false ? '' : goalHtml(goal, opts)}
-    <figure><figcaption>Due, next 14 days</figcaption>${forecastSvg(entries, now)}</figure>
-    <figure><figcaption>${verb}, last 12 weeks</figcaption>${activitySvg(entries, now)}<div class="nbv-heat-legend"><span>Fewer</span>${legend}<span>More</span></div></figure>
+    <figure class="nbv-fig"><figcaption>Reviews due, next 14 days</figcaption>${forecastChartHtml(entries, now)}</figure>
+    <figure class="nbv-fig"><figcaption>Words ${noun}, last 12 weeks</figcaption>${savedHeatmapHtml(entries, now, noun)}</figure>
   </aside>`;
 }
+
+/* -------------------------------------------------------------------- quiz */
 
 function playButton(lemma: string, big = false): string {
   return `<button type="button" class="vocab-play${big ? ' nbv-play-big' : ''}" data-act="nb-play" data-lemma="${esc(lemma)}" aria-label="Play ${big ? 'the word' : esc(lemma)}">${PLAY_ICON}</button>`;
@@ -211,8 +254,8 @@ function promptHtml(q: ReviewQuestion, e: NotebookEntry): string {
   }
 }
 
-const OPTION_TICK = '<svg class="nbv-option__mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7" /></svg>';
-const OPTION_CROSS = '<svg class="nbv-option__mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" /></svg>';
+const OPTION_TICK = '<svg class="nbv-option__mark" viewBox="0 0 24 24" aria-hidden="true"><path pathLength="1" d="M5 12.5l4.2 4.2L19 7" /></svg>';
+const OPTION_CROSS = '<svg class="nbv-option__mark" viewBox="0 0 24 24" aria-hidden="true"><path pathLength="1" d="M7 7l10 10M17 7L7 17" /></svg>';
 const BACK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>';
 
 function optionsHtml(q: ReviewQuestion, state: ReviewState): string {
@@ -221,12 +264,12 @@ function optionsHtml(q: ReviewQuestion, state: ReviewState): string {
     .map((text, i) => {
       let cls = '';
       if (a) {
-        if (i === q.correct) cls = ' is-right';
-        else if (i === a.choice) cls = ' is-wrong';
+        if (i === q.correct) cls = a.choice === i ? ' is-right is-chosen' : ' is-right';
+        else if (i === a.choice) cls = ' is-wrong is-chosen';
         else cls = ' is-dim';
       }
       const word = a && q.kind === 'meaning-choice' && i !== q.correct && i === a.choice ? `<small>${esc(q.optionWords[i])}</small>` : '';
-      const tick = cls === ' is-right' ? OPTION_TICK : cls === ' is-wrong' ? OPTION_CROSS : '';
+      const tick = cls.includes('is-right') ? OPTION_TICK : cls.includes('is-wrong') ? OPTION_CROSS : '';
       return `<button type="button" class="nbv-option${cls}" data-act="nb-choose" data-choice="${i}"${a ? ' disabled' : ''}><kbd>${i + 1}</kbd><span>${esc(text)}${word}</span>${tick}</button>`;
     })
     .join('')}</div>`;
@@ -252,26 +295,48 @@ function verdictHtml(q: ReviewQuestion, state: ReviewState): string {
   return `<p class="nbv-verdict is-${a.result}${a.result === 'close' ? '' : ' nbv-vh'}" role="status">${text}</p>`;
 }
 
-/** Answers whose mark has been drawn, so a repaint of the same answer does not draw it again. */
-const drawnMarks = new Set<string>();
+/** How long the mark and the wash play, in milliseconds (keep in step with notebook-views.css). */
+export const MARK_MS = 2800;
+
+/*
+ * The ink marks, drawn on a 240 by 200 sheet. Each stroke is a tapered brush shape (`body`)
+ * revealed by a wide pen line along its centre (`reveal`), so the ink thickens into the turn of
+ * the tick and thins at the flick.
+ */
+const TICK = {
+  reveal: 'M34 104 C 54 116, 72 136, 92 166 C 116 118, 156 62, 220 22',
+  body: 'M37 101 C 58 109, 76 127, 93 149 C 121 106, 160 56, 214 20 Q 222 17, 219 25 C 162 72, 125 121, 98 170 Q 92 179, 85 171 C 70 146, 54 124, 34 109 Q 30 103, 37 101 Z',
+};
+const CROSS = [
+  {
+    reveal: 'M60 46 C 92 80, 134 124, 184 168',
+    body: 'M57 49 C 88 78, 130 120, 182 162 Q 189 168, 184 172 C 132 132, 92 92, 64 58 Q 52 44, 57 49 Z',
+  },
+  {
+    reveal: 'M188 44 C 150 82, 110 124, 56 170',
+    body: 'M184 41 C 148 76, 108 120, 60 162 Q 52 170, 56 174 C 106 136, 150 94, 192 54 Q 199 44, 184 41 Z',
+  },
+];
+
+function inkStroke(id: string, s: { reveal: string; body: string }, n: number): string {
+  return `<mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="240" height="200"><path class="nbv-ink__reveal nbv-ink__reveal--${n}" pathLength="1" d="${s.reveal}"/></mask>
+    <g mask="url(#${id})"><path class="nbv-ink__bleed" d="${s.body}"/><path class="nbv-ink__body" d="${s.body}"/></g>`;
+}
 
 /**
- * The teacher's mark on the question: a check drawn like a pen stroke for a right answer, a
- * lighter check for an almost, a cross for a wrong one. It takes no taps, so Continue works
- * while it plays, and it is drawn once per answer.
+ * The teacher's mark over the whole question, prompt and options together: a brush tick for a
+ * right answer, a lighter one for an almost, a cross for a wrong one, over a soft wash. It takes
+ * no taps, so Continue works while it plays. A repaint resumes it where it was (from the answer's
+ * time) instead of starting it again, and after MARK_MS it is no longer drawn.
  */
-function markHtml(q: ReviewQuestion, state: ReviewState): string {
+function markHtml(q: ReviewQuestion, state: ReviewState, now: number): string {
   const a = state.answer;
   if (!a || q.kind === 'flash') return '';
-  const key = `${q.id}:${state.index}:${a.result}:${a.overridden ? 1 : 0}`;
-  if (drawnMarks.has(key)) return '';
-  drawnMarks.add(key);
-  if (drawnMarks.size > 200) drawnMarks.clear();
-  const path =
-    a.result === 'wrong'
-      ? '<path class="nbv-mark__stroke" pathLength="1" d="M62 52 C 96 88, 132 122, 180 160"/><path class="nbv-mark__stroke nbv-mark__stroke--2" pathLength="1" d="M182 48 C 146 82, 104 124, 58 166"/>'
-      : '<path class="nbv-mark__stroke" pathLength="1" d="M38 112 C 52 120, 70 138, 90 166 C 112 122, 152 70, 214 28"/>';
-  return `<div class="nbv-mark is-${a.result}" aria-hidden="true"><svg viewBox="0 0 240 200">${path}</svg></div>`;
+  const elapsed = a.at != null ? Math.max(0, now - a.at) : MARK_MS;
+  if (elapsed >= MARK_MS) return '';
+  const key = `nbv-ink-${state.index}-${String(q.id).replace(/[^\w-]/g, '').slice(-12)}`;
+  const strokes = a.result === 'wrong' ? CROSS.map((s, i) => inkStroke(`${key}-${i}`, s, i + 1)).join('') : inkStroke(`${key}-0`, TICK, 1);
+  return `<div class="nbv-wash is-${a.result}" aria-hidden="true"></div><div class="nbv-ink is-${a.result}" aria-hidden="true"><svg viewBox="0 0 240 200" preserveAspectRatio="xMidYMid meet">${strokes}</svg></div>`;
 }
 
 function answerCardHtml(e: NotebookEntry): string {
@@ -290,7 +355,27 @@ function answerCardHtml(e: NotebookEntry): string {
   </div>`;
 }
 
-function questionHtml(q: ReviewQuestion, e: NotebookEntry, state: ReviewState, opts: ReviewRenderOptions): string {
+/** Small tags beside the instruction: a new word and the books that share it, or a leech. */
+function tagsHtml(q: ReviewQuestion, e: NotebookEntry): string {
+  const tags: string[] = [];
+  if (q.leech) tags.push('<span class="nbv-tag is-leech">Trouble word</span>');
+  else if (q.level === 0) tags.push('<span class="nbv-tag is-new">New</span>');
+  const books = ((e as { books?: string[] | null }).books || []).map((id) => bookName(id)?.short || id);
+  if (q.level === 0 && books.length >= 2) tags.push(`<span class="nbv-tag">${esc(books.join(' · '))}</span>`);
+  return tags.join('');
+}
+
+function overrideButtons(q: ReviewQuestion, state: ReviewState): string {
+  const a = state.answer!;
+  if (q.kind === 'flash') return '';
+  const easyOn = a.overridden && a.grade === 4 && a.result !== 'wrong';
+  const flipOn = a.overridden && !easyOn;
+  const flip = `<button type="button" class="nbv-link" data-act="nb-override" data-mode="flip" aria-pressed="${flipOn}">${flipOn ? 'Undo' : a.result === 'wrong' ? 'I knew it' : "I didn't know it"}</button>`;
+  const easy = a.result === 'right' ? `<button type="button" class="nbv-link" data-act="nb-override" data-mode="easy" aria-pressed="${easyOn}">${easyOn ? 'Undo' : 'Too easy'}</button>` : '';
+  return `<span class="nbv-quiz__links">${flip}${easy}</span>`;
+}
+
+function questionHtml(q: ReviewQuestion, e: NotebookEntry, state: ReviewState, opts: ReviewRenderOptions, now: number): string {
   const a = state.answer;
   const total = state.queue.length;
   const pct = Math.round((state.index / Math.max(1, total)) * 100);
@@ -306,93 +391,138 @@ function questionHtml(q: ReviewQuestion, e: NotebookEntry, state: ReviewState, o
     }
   } else {
     body = choice ? optionsHtml(q, state) : typedHtml(q, state);
-    if (!a) body += `<button type="button" class="nbv-link nbv-skip" data-act="nb-skip">I don't know</button>`;
   }
-  // A new word from a word book can be set aside for good, like 斩 in 百词斩.
-  if (!a && q.level === 0 && String(e.id).startsWith('wb:')) {
-    body += `<button type="button" class="nbv-link nbv-skip" data-act="wb-known-review" data-q="${esc(q.lemma)}">Already know it</button>`;
-  }
+  let below = '';
+  if (!a && q.kind !== 'flash') below += `<button type="button" class="nbv-link nbv-skip" data-act="nb-skip">I don't know</button>`;
+  // A new word can be set aside for good, like 斩 in 百词斩.
+  if (!a && q.level === 0) below += `<button type="button" class="nbv-link nbv-skip" data-act="wb-known-review" data-q="${esc(clean(e.lemma))}">Already know it</button>`;
   let feedback = '';
   if (a) {
     const next = opts.preview && opts.formatGap ? opts.formatGap(opts.preview(e, a.grade)) : '';
-    const override =
-      q.kind === 'flash'
-        ? ''
-        : `<button type="button" class="nbv-link" data-act="nb-override" aria-pressed="${a.overridden}">${
-            a.overridden ? 'Undo' : a.result === 'wrong' ? 'I knew it' : "I didn't know it"
-          }</button>`;
     // Continue sits above the word card, so a picture loading below never moves it.
     feedback = `${verdictHtml(q, state)}
       <div class="nbv-quiz__actions">
         <button type="button" class="nbv-secondary" data-act="lookup" data-q="${esc(q.lemma)}">Open in lookup</button>
-        ${override}
+        ${overrideButtons(q, state)}
         <button type="button" class="nbv-primary" data-act="nb-next" autofocus>Continue<kbd>Enter</kbd></button>
       </div>
       <p class="nbv-quiz__grade"><b class="is-g${a.grade}">${GRADE_LABEL[a.grade]}</b>${next ? ` · back in ${esc(next)}` : ''}</p>
       ${answerCardHtml(e)}`;
     if (q.kind === 'flash') body = '';
   }
+  const elapsed = a?.at != null ? Math.max(0, now - a.at) : MARK_MS;
+  const stageCls = a ? ` is-${a.result}` : '';
+  const stageStyle = a ? ` style="--t:-${Math.min(elapsed, MARK_MS)}ms"` : '';
   return `<section class="nbv-quiz" data-id="${esc(q.id)}" data-kind="${q.kind}"${a ? ' data-answered="1"' : ''}>
     <div class="nbv-quiz__top">
       <button type="button" class="nbv-quiz__back" data-act="nb-review-exit" aria-label="Back to Learn" title="Back to Learn">${BACK_ICON}</button>
       <div class="nbv-progress" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${state.index}"><span style="width:${pct}%"></span></div>
       <span class="nbv-quiz__count">${Math.min(state.index + 1, total)} / ${total}</span>
     </div>
-    <p class="nbv-quiz__ask">${ASK[q.kind]}</p>
-    <div class="nbv-quiz__q">${promptHtml(q, e)}${markHtml(q, state)}</div>
-    ${body}
+    <div class="nbv-quiz__stage${stageCls}"${stageStyle}>
+      <p class="nbv-quiz__ask">${ASK[q.kind]}${tagsHtml(q, e)}</p>
+      <div class="nbv-quiz__q">${promptHtml(q, e)}</div>
+      ${body}
+      ${markHtml(q, state, now)}
+    </div>
+    ${below ? `<div class="nbv-quiz__below">${below}</div>` : ''}
     ${feedback}
   </section>`;
+}
+
+/** Minutes a round should take: a review about eight seconds, a new word asked two or three times. */
+function roundMinutes(due: number, fresh: number): number {
+  return Math.max(1, Math.round(((due * 1.2 + fresh * 2.4) * 8) / 60));
 }
 
 function startHtml(entries: NotebookEntry[], state: ReviewState, now: number): string {
   const byId = new Map(entries.map((e) => [e.id, e]));
   const queued = state.queue.map((id) => byId.get(id)).filter(Boolean) as NotebookEntry[];
   const fresh = queued.filter(isNew).length;
-  const due = queued.length - fresh;
+  const learning = queued.filter((e) => !isNew(e) && memoryLevel(e) <= 1).length;
+  const review = queued.length - fresh - learning;
   if (!queued.length) {
     const next = entries
-      .filter((e) => !isNew(e) && e.reviewDue != null)
+      .filter((e) => !isNew(e) && e.reviewDue != null && !(e as { known?: boolean }).known)
       .map((e) => Number(e.reviewDue))
       .sort((a, b) => a - b)[0];
-    const when = next == null ? '' : daysBetween(now, next) <= 1 ? 'tomorrow' : new Date(next).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+    const when = next == null ? '' : daysBetween(now, next) <= 1 ? 'tomorrow' : new Date(next).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
     return `<section class="nbv-quiz nbv-quiz--idle"><p class="nbv-quiz__big">Nothing due today</p>${when ? `<p class="nbv-quiz__sub">Next review ${esc(when)}</p>` : ''}</section>`;
   }
+  const rest = state.rest || 0;
+  const held = state.heldBack || 0;
+  const parts = [
+    { cls: 'learning', n: learning, label: 'Learning' },
+    { cls: 'review', n: review, label: 'Review' },
+    { cls: 'new', n: fresh, label: 'New' },
+  ];
   return `<section class="nbv-quiz nbv-quiz--start">
-    <div class="nbv-counts">
-      <div><b>${due}</b><span>Due</span></div>
-      <div><b>${fresh}</b><span>New</span></div>
+    <div class="nbv-start__head">
+      <p class="nbv-quiz__big">${rest ? `Round of ${fmt(queued.length)}` : `${fmt(queued.length)} ${queued.length === 1 ? 'word' : 'words'}`}</p>
+      <p class="nbv-quiz__sub">About ${roundMinutes(learning + review, fresh)} min${rest ? ` · ${fmt(rest)} more today` : ''}</p>
     </div>
+    <div class="nbv-start__bar" aria-hidden="true">${parts.map((p) => (p.n ? `<i class="nbv-start--${p.cls}" style="flex:${p.n}"></i>` : '')).join('')}</div>
+    <div class="nbv-counts">${parts.map((p) => `<div><b>${fmt(p.n)}</b><span><i class="nbv-start--${p.cls}"></i>${p.label}</span></div>`).join('')}</div>
+    ${held ? `<p class="nbv-quiz__note">${fmt(held)} new ${held === 1 ? 'word waits' : 'words wait'} until the reviews are done</p>` : ''}
     <button type="button" class="nbv-primary nbv-wide" data-act="nb-start" autofocus>Start review<kbd>Enter</kbd></button>
   </section>`;
 }
+
+const LEVEL_NAME = ['New', 'Learning', 'Under 3 weeks', '3 weeks or more'];
 
 function summaryHtml(entries: NotebookEntry[], state: ReviewState, now: number): string {
   const r = state.results;
   // The saved grade counts, so "I knew it" and "I didn't know it" are respected here too.
   const right = r.filter((x) => x.grade > 1).length;
-  const missed = [...new Map(r.filter((x) => x.grade === 1).map((x) => [x.id, x])).values()];
   const byId = new Map(entries.map((e) => [e.id, e]));
+  const words = new Map<string, { lemma: string; from: number; to: number; missed: boolean }>();
+  for (const x of r) {
+    const w = words.get(x.id);
+    if (w) {
+      w.to = x.levelAfter ?? w.to;
+      w.missed = w.missed || x.grade === 1;
+    } else words.set(x.id, { lemma: x.lemma, from: x.levelBefore ?? 0, to: x.levelAfter ?? x.levelBefore ?? 0, missed: x.grade === 1 });
+  }
+  const list = [...words.entries()];
+  const started = list.filter(([, w]) => w.from === 0).map(([, w]) => w.lemma);
+  const up = list.filter(([, w]) => w.from > 0 && w.to > w.from);
+  const down = list.filter(([, w]) => w.to < w.from);
+  const missed = list.filter(([, w]) => w.missed);
+  const secs = r.reduce((s, x) => s + x.ms, 0) / 1000;
+  const time = secs >= 60 ? `${Math.floor(secs / 60)}m ${String(Math.round(secs % 60)).padStart(2, '0')}s` : `${Math.round(secs)}s`;
   const tomorrow = dayStart(now) + DAY;
   const dueTomorrow = entries.filter((e) => !isNew(e) && e.reviewDue != null && Number(e.reviewDue) >= tomorrow && Number(e.reviewDue) < tomorrow + DAY).length;
-  const avg = r.length ? r.reduce((s, x) => s + x.ms, 0) / r.length / 1000 : 0;
+  const rest = state.rest || 0;
+  const moved = (rows: typeof up, title: string, cls: string) =>
+    rows.length
+      ? `<div class="nbv-moved nbv-moved--${cls}"><p class="nbv-quiz__ask">${title} <b>${rows.length}</b></p><ul>${rows
+          .map(([, w]) => `<li><button type="button" class="nbv-missed__word" data-act="lookup" data-q="${esc(w.lemma)}">${esc(w.lemma)}</button><span>${LEVEL_NAME[w.from]} → ${LEVEL_NAME[w.to]}</span></li>`)
+          .join('')}</ul></div>`
+      : '';
   return `<section class="nbv-quiz nbv-quiz--done">
-    <p class="nbv-quiz__big">Session done</p>
+    <p class="nbv-quiz__big">${rest ? 'Round done' : 'Done for today'}</p>
     <div class="nbv-counts">
       <div><b>${r.length}</b><span>Answered</span></div>
       <div><b>${r.length ? Math.round((right / r.length) * 100) : 0}%</b><span>Correct</span></div>
-      <div><b>${avg ? avg.toFixed(1) : '0'}s</b><span>Per answer</span></div>
+      <div><b>${time}</b><span>Time</span></div>
       <div><b>${dueTomorrow}</b><span>Due tomorrow</span></div>
     </div>
+    ${started.length ? `<div class="nbv-moved nbv-moved--new"><p class="nbv-quiz__ask">New words started <b>${started.length}</b></p>${wordChips(started, 40)}</div>` : ''}
+    ${moved(up, 'Stronger', 'up')}
+    ${moved(down, 'Slipped back', 'down')}
     ${missed.length
-      ? `<div class="nbv-missed"><p class="nbv-quiz__ask">Missed</p><ul>${missed
-          .map((x) => {
-            const e = byId.get(x.id);
+      ? `<div class="nbv-missed"><p class="nbv-quiz__ask">Missed <b>${missed.length}</b></p><ul>${missed
+          .map(([id, w]) => {
+            const e = byId.get(id);
             const sense = e ? vocabSenses(e.definition)[0] || '' : '';
-            return `<li><button type="button" class="nbv-missed__word" data-act="lookup" data-q="${esc(x.lemma)}">${esc(x.lemma)}</button><span>${esc(sense)}</span></li>`;
+            return `<li><button type="button" class="nbv-missed__word" data-act="lookup" data-q="${esc(w.lemma)}">${esc(w.lemma)}</button><span>${esc(sense)}</span></li>`;
           })
           .join('')}</ul></div>`
       : ''}
+    <div class="nbv-quiz__actions">
+      <button type="button" class="nbv-secondary" data-act="nb-review-exit">Back to Learn</button>
+      ${rest ? `<button type="button" class="nbv-primary" data-act="nb-round" autofocus>Next round · ${fmt(Math.min(rest, ROUND_WORDS))}<kbd>Enter</kbd></button>` : ''}
+    </div>
   </section>`;
 }
 
@@ -404,9 +534,10 @@ export function reviewHtml(entries: NotebookEntry[], state: ReviewState, goal: n
   } else if (!state.started) {
     quiz = startHtml(entries, state, now);
   } else {
-    const q = ensureReviewQuestion(state, entries, { audio: opts.audio, now });
+    const q = ensureReviewQuestion(state, entries, { audio: opts.audio, now, examples: opts.examples });
     const e = q ? entries.find((x) => x.id === q.id) : undefined;
-    quiz = q && e ? questionHtml(q, e, state, opts) : summaryHtml(entries, state, now);
+    quiz = q && e ? questionHtml(q, e, state, opts, now) : summaryHtml(entries, state, now);
   }
-  return `<div class="nbv-review-wrap">${quiz}${planHtml(entries, goal, now, opts)}</div>`;
+  return `<div class="nbv-review-wrap${state.started ? ' is-running' : ''}">${quiz}${planHtml(entries, goal, now, opts)}</div>`;
 }
+

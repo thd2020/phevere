@@ -186,6 +186,7 @@
   opacity: 0.55;
 }
 .nbv-quiz > * { min-width: 0; }
+.nbv-quiz { scroll-margin-top: 76px; }
 @media (pointer: coarse) { .nbv-quiz kbd { display: none; } }
 .nbv-quiz__top { display: flex; align-items: center; gap: 10px; }
 .nbv-progress { flex: 1; height: 5px; border-radius: 999px; background: var(--nbv-paper-2); overflow: hidden; }
@@ -244,49 +245,101 @@
 .nbv-option__mark { width: 18px; height: 18px; margin-left: auto; flex: none; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 
 /*
- * The teacher's mark (2026-11-03): drawn over the question like a pen stroke, then lifted.
- * Physical personality, three curves: the stroke draws with --nbv-pen, the mark settles with
- * --nbv-spring, presses use --nbv-snap. It never takes taps, so Continue works while it plays.
+ * The teacher's mark (2026-11-04): an ink tick or cross drawn by brush over the whole question
+ * (instruction, prompt and options), over a soft wash of teal or rust, while the right option
+ * settles. Three curves: --nbv-pen draws the stroke, --nbv-spring settles the option, --nbv-snap
+ * presses. Every delay adds --t, a negative offset set on the stage from the answer's time, so a
+ * repaint resumes the mark instead of replaying it. It never takes taps.
+ *
+ * The shells turn every animation off under prefers-reduced-motion with an !important rule, so
+ * these declarations carry !important and a longer selector. Reduced motion keeps the ink drawing
+ * in and the wash fading, and drops the lift, the settle and the shake.
  */
-.nbv { --nbv-pen: cubic-bezier(0.16, 1, 0.3, 1); --nbv-snap: cubic-bezier(0.22, 1, 0.36, 1);
+.nbv { --nbv-pen: cubic-bezier(0.33, 0.02, 0.18, 1); --nbv-snap: cubic-bezier(0.22, 1, 0.36, 1); --nbv-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --nbv-spring: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.067 22.5%, 1.089 26%, 1.079 30.3%, 1.049 36%, 1.024 42.6%, 1.011 50.3%, 1.004 59.2%, 1.001 69.3%, 1); }
 .nbv-quiz__q { position: relative; display: grid; gap: inherit; }
-.nbv-mark {
-  position: absolute;
-  inset: -14px 0;
-  z-index: 3;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-  animation: nbv-mark-life 1.4s var(--nbv-pen) both;
+.nbv-quiz__stage { position: relative; display: grid; gap: 14px; min-width: 0; --t: 0ms; }
+.nbv-quiz__stage > * { min-width: 0; }
+.nbv-quiz__below { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: -4px; }
+
+.nbv-wash,
+.nbv-ink { position: absolute; inset: -10px -8px; z-index: 3; pointer-events: none; border-radius: 16px; }
+.nbv-wash { background: radial-gradient(120% 90% at 50% 46%, rgba(15, 110, 113, 0.16), rgba(15, 110, 113, 0.05) 55%, transparent 78%); opacity: 0; z-index: 2; }
+.nbv-wash.is-wrong { background: radial-gradient(120% 90% at 50% 46%, rgba(156, 61, 0, 0.15), rgba(156, 61, 0, 0.05) 55%, transparent 78%); }
+.nbv-wash.is-close { background: radial-gradient(120% 90% at 50% 46%, rgba(138, 125, 116, 0.16), transparent 75%); }
+.nbv-ink { display: grid; place-items: center; }
+.nbv-ink svg { width: auto; height: min(88%, 232px); min-height: 96px; max-width: 92%; overflow: visible; transform: rotate(-6deg); }
+.nbv-ink__reveal { fill: none; stroke: #fff; stroke-width: 34; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1 1.02; stroke-dashoffset: 1.01; }
+.nbv-ink__body { fill: var(--nbv-teal); }
+.nbv-ink__bleed { fill: var(--nbv-teal); opacity: 0.22; transform: translate(1.6px, 1.2px) scale(1.012); transform-origin: 50% 50%; }
+.nbv-ink.is-close .nbv-ink__body, .nbv-ink.is-close .nbv-ink__bleed { fill: var(--nbv-stone); }
+.nbv-ink.is-close svg { height: min(70%, 180px); }
+.nbv-ink.is-wrong .nbv-ink__body, .nbv-ink.is-wrong .nbv-ink__bleed { fill: var(--nbv-ember); }
+
+.nbv .nbv-quiz .nbv-wash { animation: nbv-wash 2.8s var(--nbv-ease-out) calc(var(--t) + 0ms) both !important; }
+.nbv .nbv-quiz .nbv-ink { animation: nbv-ink-life 2.8s var(--nbv-ease-out) calc(var(--t) + 0ms) both !important; }
+.nbv .nbv-quiz .nbv-ink svg { animation: nbv-ink-settle 0.9s var(--nbv-spring) calc(var(--t) + 0ms) both !important; }
+.nbv .nbv-quiz .nbv-ink__reveal { animation: nbv-ink-draw 0.82s var(--nbv-pen) calc(var(--t) + 90ms) both !important; }
+.nbv .nbv-quiz .nbv-ink.is-wrong .nbv-ink__reveal--1 { animation-duration: 0.5s !important; }
+.nbv .nbv-quiz .nbv-ink.is-wrong .nbv-ink__reveal--2 { animation-duration: 0.5s !important; animation-delay: calc(var(--t) + 640ms) !important; }
+@keyframes nbv-ink-draw { from { stroke-dashoffset: 1.01; } to { stroke-dashoffset: 0; } }
+@keyframes nbv-ink-settle { from { transform: rotate(-6deg) scale(0.92); } to { transform: rotate(-6deg) scale(1); } }
+/* Drawn, held, then lifted off the page. */
+@keyframes nbv-ink-life {
+  0%, 62% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-14px); }
 }
-.nbv-mark svg { height: min(100%, 140px); min-height: 64px; width: auto; overflow: visible; transform: rotate(-7deg); animation: nbv-mark-settle 0.7s var(--nbv-spring) both; }
-.nbv-mark__stroke {
-  fill: none;
-  stroke: var(--nbv-teal);
-  stroke-width: 16;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: nbv-mark-draw 0.6s var(--nbv-pen) 0.05s forwards;
+@keyframes nbv-wash {
+  0% { opacity: 0; }
+  14% { opacity: 1; }
+  55% { opacity: 0.85; }
+  100% { opacity: 0; }
 }
-.nbv-mark.is-close .nbv-mark__stroke { stroke: var(--nbv-stone); stroke-width: 12; }
-.nbv-mark.is-wrong .nbv-mark__stroke { stroke: var(--nbv-ember); stroke-width: 14; animation-duration: 0.34s; }
-.nbv-mark.is-wrong .nbv-mark__stroke--2 { animation-delay: 0.36s; }
-@keyframes nbv-mark-draw { to { stroke-dashoffset: 0; } }
-@keyframes nbv-mark-settle { from { transform: rotate(-7deg) scale(0.94); } to { transform: rotate(-7deg) scale(1); } }
-/* Visible while drawn, then lifted off the page. */
-@keyframes nbv-mark-life {
-  0%, 72% { opacity: 1; transform: none; }
-  100% { opacity: 0; transform: translateY(-10px) scale(1.03); }
+
+/* The options under the mark: the right one fills and settles, a wrong pick gives a small shake. */
+.nbv .nbv-quiz__stage.is-right .nbv-option.is-right,
+.nbv .nbv-quiz__stage.is-wrong .nbv-option.is-right,
+.nbv .nbv-quiz__stage.is-close .nbv-option.is-right { animation: nbv-settle 0.9s var(--nbv-spring) calc(var(--t) + 260ms) both !important; }
+.nbv .nbv-quiz__stage .nbv-option.is-wrong.is-chosen { animation: nbv-shake 0.46s var(--nbv-snap) calc(var(--t) + 60ms) both !important; }
+.nbv .nbv-quiz__stage .nbv-option.is-dim { animation: nbv-dim 0.6s var(--nbv-ease-out) calc(var(--t) + 120ms) both !important; }
+.nbv .nbv-quiz__stage .nbv-option__mark path { stroke-dasharray: 1 1.02; animation: nbv-ink-draw 0.5s var(--nbv-pen) calc(var(--t) + 520ms) both !important; }
+@keyframes nbv-settle {
+  0% { transform: scale(0.985); background-color: var(--nbv-panel); }
+  100% { transform: scale(1); background-color: var(--nbv-teal-soft); }
 }
+@keyframes nbv-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  55% { transform: translateX(3px); }
+  80% { transform: translateX(-1.5px); }
+}
+@keyframes nbv-dim { from { opacity: 1; } to { opacity: 0.5; } }
+
 @media (prefers-reduced-motion: reduce) {
-  .nbv-mark { animation: nbv-mark-fade 1s linear both; }
-  .nbv-mark svg { animation: none; }
-  .nbv-mark__stroke { animation: none; stroke-dashoffset: 0; }
-  @keyframes nbv-mark-fade { 0%, 50% { opacity: 1; } 100% { opacity: 0; } }
+  .nbv.nbv .nbv-quiz .nbv-ink { animation: nbv-fade-out 2.8s linear calc(var(--t) + 0ms) both !important; }
+  .nbv.nbv .nbv-quiz .nbv-ink svg { animation: none !important; }
+  .nbv.nbv .nbv-quiz__stage .nbv-option.is-right { animation: nbv-fill 0.6s linear calc(var(--t) + 200ms) both !important; }
+  .nbv.nbv .nbv-quiz__stage .nbv-option.is-wrong.is-chosen { animation: none !important; }
+  @keyframes nbv-fade-out { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes nbv-fill { from { background-color: var(--nbv-panel); } to { background-color: var(--nbv-teal-soft); } }
 }
+
+/* Tags beside the instruction: a new word, the books that share it, a leech. */
+.nbv-quiz__ask { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.nbv-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--nbv-paper-2);
+  color: var(--nbv-soft);
+  font: 600 10.5px/1 var(--nbv-ui);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+.nbv-tag.is-new { background: var(--nbv-teal-soft); color: #00393b; }
+.nbv-tag.is-leech { background: var(--nbv-ember-soft); color: #5a2000; }
 
 /* Back to the Learn page from inside a session. */
 .nbv-quiz__back {
@@ -434,36 +487,51 @@
 
 .nbv-plan {
   display: grid;
-  gap: 18px;
-  padding: 16px 18px;
+  gap: 20px;
+  padding: 16px 18px 18px;
   border: 1px solid var(--nbv-line);
   border-radius: 18px;
   background: var(--nbv-panel);
   min-width: 0;
 }
-.nbv-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-.nbv-stats div { display: grid; gap: 3px; }
-.nbv-stats b { font: 600 24px/1 var(--nbv-serif); font-variant-numeric: tabular-nums; }
-.nbv-stats span { font: 500 12px/1.2 var(--nbv-ui); color: var(--nbv-soft); }
+/* Known, learning and not started, as one bar with the numbers under it. */
+.nbv-split { display: grid; gap: 8px; }
+.nbv-split__bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--nbv-paper-2); gap: 2px; }
+.nbv-split__bar i { display: block; min-width: 3px; }
+.nbv-split--known { background: var(--nbv-teal); }
+.nbv-split--learning { background: #8fd3d5; }
+.nbv-split--new { background: var(--nbv-paper-2); box-shadow: inset 0 0 0 1px var(--nbv-line); }
+.nbv-split__nums { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.nbv-split__n { display: inline-flex; align-items: baseline; gap: 6px; font: 500 12.5px/1.2 var(--nbv-ui); color: var(--nbv-soft); }
+.nbv-split__n i { width: 9px; height: 9px; border-radius: 2.5px; align-self: center; }
+.nbv-split__n b { font: 600 20px/1 var(--nbv-serif); color: var(--nbv-ink); font-variant-numeric: tabular-nums; }
 .nbv-goal { display: grid; gap: 8px; font: 500 12.5px/1 var(--nbv-ui); color: var(--nbv-soft); }
 .nbv-goal__chips { display: flex; gap: 6px; }
-.nbv-plan figure { margin: 0; display: grid; gap: 8px; }
-.nbv-plan figcaption { font: 600 11px/1 var(--nbv-ui); letter-spacing: 0.07em; text-transform: uppercase; color: var(--nbv-soft); }
-.nbv-forecast { width: 100%; height: auto; overflow: visible; }
-.nbv-forecast text { font: 9px var(--nbv-ui); fill: var(--nbv-soft); }
-.nbv-forecast .nbv-bar__n { font: 600 9px var(--nbv-ui); fill: var(--nbv-ink); text-anchor: middle; }
-.nbv-forecast .nbv-bar__d { text-anchor: middle; }
-.nbv-bar { fill: rgba(15, 110, 113, 0.45); }
-.nbv-bar.is-today { fill: var(--nbv-teal); }
-.nbv-activity { width: 100%; height: auto; }
-.nbv-heat--0 { fill: var(--nbv-paper-2); background: var(--nbv-paper-2); }
-.nbv-heat--1 { fill: #f2c3a8; background: #f2c3a8; }
-.nbv-heat--2 { fill: #d98a5c; background: #d98a5c; }
-.nbv-heat--3 { fill: #b85e24; background: #b85e24; }
-.nbv-heat--4 { fill: var(--nbv-ember); background: var(--nbv-ember); }
-.nbv-heat-legend { display: flex; align-items: center; justify-content: flex-end; gap: 3px; font: 500 11px/1 var(--nbv-ui); color: var(--nbv-soft); }
-.nbv-heat-legend span { margin: 0 4px; }
-.nbv-heat-key { width: 10px; height: 10px; border-radius: 2.5px; }
+.nbv-fig { margin: 0; display: grid; gap: 8px; min-width: 0; }
+.nbv-fig figcaption { font: 600 11px/1 var(--nbv-ui); letter-spacing: 0.07em; text-transform: uppercase; color: var(--nbv-soft); }
+
+/* Start card: the round as a bar of learning, review and new words. */
+.nbv-quiz--start { gap: 16px; }
+.nbv-start__head { display: grid; gap: 10px; }
+.nbv-start__head .nbv-quiz__big { font-size: clamp(24px, 4.6vw, 30px); letter-spacing: -0.02em; line-height: 1.05; }
+.nbv-start__bar { display: flex; gap: 3px; height: 12px; border-radius: 999px; overflow: hidden; }
+.nbv-start__bar i { display: block; min-width: 4px; }
+.nbv-start--learning { background: #f2c3a8; }
+.nbv-start--review { background: var(--nbv-teal); }
+.nbv-start--new { background: #8fd3d5; }
+.nbv-quiz--start .nbv-counts span { display: inline-flex; align-items: center; gap: 6px; }
+.nbv-quiz--start .nbv-counts span i { width: 9px; height: 9px; border-radius: 2.5px; }
+.nbv-quiz__note { margin: -4px 0 0; font: 500 12.5px/1.35 var(--nbv-ui); color: var(--nbv-soft); }
+
+/* Round summary: what moved. */
+.nbv-moved { display: grid; gap: 8px; }
+.nbv-moved ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.nbv-moved li { display: flex; align-items: baseline; gap: 10px; padding: 6px 0; border-top: 1px solid var(--nbv-paper-2); font: 500 12.5px/1.4 var(--nbv-ui); color: var(--nbv-soft); }
+.nbv-moved--up li span { color: var(--nbv-teal); }
+.nbv-moved--down li span { color: var(--nbv-ember); }
+.nbv-quiz__ask b { font-weight: 700; color: var(--nbv-ink); margin-left: 2px; }
+.nbv-quiz--done .nbv-quiz__actions { margin-top: 4px; }
+.nbv-quiz__links { display: inline-flex; flex-wrap: wrap; gap: 0 14px; }
 
 @media (prefers-reduced-motion: reduce) {
   .nbv *, .nbv *::before { transition: none !important; }

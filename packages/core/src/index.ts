@@ -98,7 +98,7 @@ export {
   type CardLayout,
 } from './notebook-views';
 export { analyzeMorphemes, morphBreakdown, wordOrigin, type Morph, type MorphKind } from './morphology';
-export { vocabPayloadFromResult } from './vocab-payload';
+export { vocabPayloadFromResult, examplesFromResult } from './vocab-payload';
 
 export {
   type ContextOrigin,
@@ -237,6 +237,8 @@ export {
   isNewWord,
   memoryLevel,
   buildQuestion,
+  sameLemma,
+  ROUND_WORDS,
   type ReviewQuestion,
   type ReviewAnswer,
   type ReviewResult,
@@ -324,6 +326,7 @@ export {
   type LearnPage,
 } from './learn-view';
 export { progressHtml, progressSummary, type ProgressInput, type ProgressSummary } from './learn-progress';
+export { attachLearnCharts, retentionAt } from './learn-charts';
 export {
   SKILLS,
   MASTERY_THRESHOLD,
