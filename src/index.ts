@@ -112,7 +112,18 @@ import {
   NotificationKind,
   NotificationPrefs,
 } from './services/notification-prefs-store';
-import { getLocalDb, flushPersist as persistLocalDb, closeLocalDb, resolveSqlAsmPath } from './services/local-db';
+import { getLocalDb, flushPersist as persistLocalDb, closeLocalDb, resolveSqlAsmPath, localDbPath } from './services/local-db';
+import {
+  checkForUpdates,
+  getUpdateState,
+  installPendingOnQuit,
+  installUpdateNow,
+  noteSessionEnding,
+  rollBack,
+  setUpdateMode,
+  startUpdater,
+} from './services/updater';
+import type { UpdateMode } from './services/update-prefs-store';
 import * as vocabStore from './services/vocab-store';
 import { clearLookupSources, disposeSourceCapture, noteLookupSource, sourceForSavedWord } from './services/source-capture';
 import { canSynthesizeKeys, focusWindowHandle, foregroundWindowHandle } from './services/key-synth';
@@ -962,8 +973,22 @@ function hideMainToTray(target: BrowserWindow): void {
   target.hide();
 }
 
+/** "Restart to update" once a release is downloaded; "Update to …" when one waits for the user. */
+function updateTrayItems(): Electron.MenuItemConstructorOptions[] {
+  const state = getUpdateState();
+  if (!state.available || state.status === 'installing') return [];
+  const label =
+    state.status === 'ready'
+      ? `Restart to update to ${state.available.version}`
+      : state.canInstall
+        ? `Update to ${state.available.version}`
+        : `Download Phevere ${state.available.version}…`;
+  return [{ label, click: () => void installUpdateNow() }, { type: 'separator' }];
+}
+
 function buildTrayContextMenu(): Electron.Menu {
   return Menu.buildFromTemplate([
+    ...updateTrayItems(),
     {
       label: 'Open Phevere',
       click: () => showOrRestoreMainWindow(),
@@ -1084,6 +1109,7 @@ async function quitPhevere(): Promise<void> {
   if (appIsQuitting) return;
   appIsQuitting = true;
   log.info('main', 'Quit Phevere (orderly)');
+  await installPendingOnQuit();
 
   try {
     hoverLookup?.stop();
@@ -2980,6 +3006,50 @@ ipcMain.handle('set-notification-prefs', (_event, patch: Partial<NotificationPre
   return mergeNotificationPrefs(patch || {});
 });
 
+ipcMain.handle('updates-get-state', () => getUpdateState());
+ipcMain.handle('updates-set-mode', (_event, mode: UpdateMode) => setUpdateMode(mode));
+ipcMain.handle('updates-check', async () => {
+  await checkForUpdates(true);
+  return getUpdateState();
+});
+ipcMain.handle('updates-install', () => installUpdateNow());
+ipcMain.handle('updates-rollback', () => rollBack());
+
+/** Copy the notebook to userData/backups before another version replaces this one. Keeps the newest five. */
+async function backUpNotebook(from: string, to: string): Promise<void> {
+  await persistLocalDb();
+  const source = localDbPath();
+  if (!fs.existsSync(source)) return;
+  const dir = path.join(app.getPath('userData'), 'backups');
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  fs.copyFileSync(source, path.join(dir, `phevere-${from}-before-${to}-${stamp}.sqlite`));
+  const old = fs
+    .readdirSync(dir)
+    .filter((name) => /^phevere-.*\.sqlite$/.test(name))
+    .sort()
+    .reverse()
+    .slice(5);
+  for (const name of old) fs.rmSync(path.join(dir, name), { force: true });
+  log.info('updater', 'notebook backed up', { dir, from, to });
+}
+
+function startUpdates(): void {
+  // Logoff or shutdown on Windows: do not start an installer the session will kill halfway.
+  app.on('browser-window-created', (_event, win) => win.on('session-end', noteSessionEnding));
+  for (const win of BrowserWindow.getAllWindows()) win.on('session-end', noteSessionEnding);
+  startUpdater({
+    notify: (text) => notifyUser(text, 'updates'),
+    beforeInstall: backUpNotebook,
+    quit: () => void quitPhevere(),
+    changed: (state) => {
+      broadcastToWindows('updates-changed', state);
+      updateTrayContextMenu();
+    },
+    parentWindow: () => (settingsWindow && !settingsWindow.isDestroyed() ? settingsWindow : null),
+  });
+}
+
 function broadcastToWindows(channel: string, payload: unknown): void {
   for (const w of BrowserWindow.getAllWindows()) {
     if (w.isDestroyed()) continue;
@@ -3614,6 +3684,7 @@ app.on('ready', () => {
   monitorSettings = loadMonitorSettings();
   createMainWindow();
   void initTray();
+  startUpdates();
   registerFixedAppShortcuts();
   startClipboardImageWatcher();
   syncGlobalMonitorShortcuts();
