@@ -487,6 +487,7 @@ contextBridge.exposeInMainWorld('wordbookAPI', {
   review: (lemma: string, grade: 1 | 2 | 3 | 4, details?: Record<string, unknown>) => ipcRenderer.invoke('wordbook-review', lemma, grade, details),
   known: (lemma: string, known: boolean, bookId?: string | null) => ipcRenderer.invoke('wordbook-known', lemma, known, bookId),
   meaning: (lemma: string) => ipcRenderer.invoke('wordbook-meaning', lemma),
+  examples: (lemma: string) => ipcRenderer.invoke('wordbook-examples', lemma),
   save: (lemma: string, hasMeaning?: boolean) => ipcRenderer.invoke('wordbook-save', lemma, hasMeaning),
   createBook: (title: string, words: string[], source?: string) => ipcRenderer.invoke('wordbook-user-create', title, words, source),
   renameBook: (bookId: string, title: string) => ipcRenderer.invoke('wordbook-user-rename', bookId, title),

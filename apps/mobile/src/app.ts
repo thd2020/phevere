@@ -12,6 +12,9 @@ import {
   removeVocab,
   saveLemma,
   vocabPayloadFromResult,
+  examplesFromResult,
+  attachLearnCharts,
+  memoryLevel,
   wikipediaService,
   type Pronunciation,
   type DictionaryResult,
@@ -267,6 +270,35 @@ let wbUserBooks: UserBook[] = [];
 let wbProgress = new Map<string, BookWordProgress>();
 const wbBooks = new Map<string, string[]>();
 const wbMeaningInFlight = new Set<string>();
+/* Example sentences for the quiz's gap-fill questions, looked up ahead for words held for days. */
+const reviewExamples = new Map<string, string[]>();
+const examplesInFlight = new Set<string>();
+
+async function prefetchExamples(wait = false): Promise<void> {
+  const r = nbState.review;
+  if (!r) return;
+  const byId = new Map(scopePool().map((e) => [e.id, e]));
+  const lemmas: string[] = [];
+  for (let i = r.index + (wait ? 0 : 1); i < r.queue.length && lemmas.length < 3; i++) {
+    const e = byId.get(r.queue[i]);
+    const key = String(e?.lemma || '').toLowerCase();
+    if (!e || !key || reviewExamples.has(key) || examplesInFlight.has(key) || memoryLevel(e) < 2) continue;
+    lemmas.push(String(e.lemma));
+  }
+  const jobs = lemmas.map(async (lemma) => {
+    const key = lemma.toLowerCase();
+    examplesInFlight.add(key);
+    try {
+      const res = await dictionaryService.lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), { translationProvider: prefs.translationProvider });
+      reviewExamples.set(key, examplesFromResult(res));
+    } catch {
+      /* offline: no gap-fill from examples */
+    } finally {
+      examplesInFlight.delete(key);
+    }
+  });
+  if (wait) await Promise.all(jobs);
+}
 
 function rebuildWordsContext(): void {
   const mine = reviewPool.length >= notebook.length ? reviewPool : notebook;
@@ -594,7 +626,7 @@ function paint(): void {
 
 /** The Learn tab's state, starting today's session for the chosen list when there is none. */
 function learnViewState(): LearnState {
-  if (!nbState.review && wordsState.scope !== 'mine' && wordsState.ctx) {
+  if (!nbState.review && wordsState.ctx) {
     nbState.review = startScopeReview(wordsState.scope, wordsState.ctx, { mineGoal: nbState.goal, mineStartedToday: startedToday().length });
   }
   if (!nbState.review && reviewPool.length) nbState.review = startReview(reviewPool, nbState.goal, Date.now(), startedToday().length);
@@ -602,7 +634,7 @@ function learnViewState(): LearnState {
     review: nbState.review || startReview([], nbState.goal),
     goal: nbState.goal,
     pool: reviewPool,
-    reviewOptions: { audio: prefs.audioEnabled !== false, preview: previewReview, formatGap: formatReviewGap },
+    reviewOptions: { audio: prefs.audioEnabled !== false, preview: previewReview, formatGap: formatReviewGap, examples: (lemma) => reviewExamples.get(lemma.toLowerCase()) },
     page: learnPage,
     history: answerHistory,
     notice: plusNoticeHtml(accountState, HOLARKY_ACCOUNT.plusUrl, 'learn'),
@@ -646,6 +678,7 @@ function bindNotebookViews(): void {
 function bindLearn(): void {
   const page = document.querySelector<HTMLElement>('.lrn-body');
   if (!page) return;
+  attachLearnCharts(page);
   if (learnPage === 'progress') {
     if (!answerHistory) void loadAnswerHistory().then(() => tab === 'learn' && learnPage === 'progress' && paint());
     return;
@@ -655,6 +688,7 @@ function bindLearn(): void {
   }
   focusReview(page);
   void prefetchMeanings();
+  void prefetchExamples();
 }
 
 /** Keeps the chosen list (or Add a word book) visible in the scrolling switcher. */
@@ -670,6 +704,9 @@ function revealWordsScope(): void {
 let reviewAutoplayed = '';
 function focusReview(page: HTMLElement): void {
   page.querySelector<HTMLInputElement>('#nbv-answer')?.focus();
+  // A new question starts at its top, not where the last answer left the page.
+  const quiz = page.querySelector<HTMLElement>('.nbv-quiz:not([data-answered])');
+  if (quiz && quiz.getBoundingClientRect().top < 0) quiz.scrollIntoView({ block: 'start' });
   // After an answer, bring Continue into view with the verdict and the word above it.
   page.querySelector<HTMLElement>('.nbv-quiz__grade')?.scrollIntoView({ block: 'nearest' });
   const listen = page.querySelector<HTMLElement>('[data-autoplay]');
@@ -2301,8 +2338,14 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'nb-start':
+    case 'nb-round':
+      // A new round plans again from what is due now.
+      if (t.dataset.act === 'nb-round') {
+        nbState.review = null;
+        learnViewState();
+      }
       // Book words get their meaning looked up before the first question is built.
-      await prefetchMeanings(true);
+      await Promise.all([prefetchMeanings(true), prefetchExamples(true)]);
       if (nbState.review) nbState.review.started = true;
       paint();
       return;
@@ -2320,7 +2363,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       answerCurrentReview({});
       return;
     case 'nb-override':
-      if (nbState.review) overrideReview(nbState.review);
+      if (nbState.review) overrideReview(nbState.review, t.dataset.mode === 'easy' ? 'easy' : 'flip');
       paint();
       return;
     case 'nb-next':

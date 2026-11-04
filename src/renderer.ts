@@ -61,6 +61,8 @@ import {
   notebookViewSwitchHtml,
   recentListHtml,
   learnHtml,
+  attachLearnCharts,
+  memoryLevel,
   readNotebookView,
   reviewAnswerDetails,
   scopeBookFor,
@@ -2187,6 +2189,36 @@ const wbBooks = new Map<string, string[]>();
 let wbCtx: WordsContext | null = null;
 let wbAnalysis: { key: unknown; q: string; view: string; value: ReturnType<typeof analyzeNotebook> } | null = null;
 const wbMeaningInFlight = new Set<string>();
+/* Example sentences for the quiz's gap-fill questions, looked up ahead for words held for days. */
+const reviewExamples = new Map<string, string[]>();
+const examplesInFlight = new Set<string>();
+
+async function prefetchExamples(wait = false): Promise<void> {
+  const api = wordbookApi();
+  if (!nbReview || !api?.examples) return;
+  const pool: any[] = wbCtx && wbScope !== 'mine' ? scopeEntries(wbScope, wbCtx) : vocabNotebookCache;
+  const byId = new Map(pool.map((e: any) => [e.id, e]));
+  const lemmas: string[] = [];
+  for (let i = nbReview.index + (wait ? 0 : 1); i < nbReview.queue.length && lemmas.length < 3; i++) {
+    const e: any = byId.get(nbReview.queue[i]);
+    const key = String(e?.lemma || '').toLowerCase();
+    if (!e || !key || reviewExamples.has(key) || examplesInFlight.has(key) || memoryLevel(e) < 2) continue;
+    lemmas.push(String(e.lemma));
+  }
+  const jobs = lemmas.map(async (lemma) => {
+    const key = lemma.toLowerCase();
+    examplesInFlight.add(key);
+    try {
+      const list = await api.examples(lemma);
+      reviewExamples.set(key, Array.isArray(list) ? list : []);
+    } catch {
+      /* offline: no gap-fill from examples */
+    } finally {
+      examplesInFlight.delete(key);
+    }
+  });
+  if (wait) await Promise.all(jobs);
+}
 
 function wordbookApi(): any {
   return (window as any).wordbookAPI;
@@ -2761,7 +2793,7 @@ function renderLearn(): void {
     mine: vocabNotebookCache,
     review: nbReview || startReview([], nbGoal),
     goal: nbGoal,
-    options: { audio: true, preview: (e, g) => previewReview(e, g), formatGap: formatReviewGap },
+    options: { audio: true, preview: (e, g) => previewReview(e, g), formatGap: formatReviewGap, examples: (lemma) => reviewExamples.get(lemma.toLowerCase()) },
     page: learnPage,
     history: answerHistory,
     notice: learnNotice,
@@ -2769,6 +2801,7 @@ function renderLearn(): void {
   pane.querySelector<HTMLElement>('.wb-scope.is-active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   const body = pane.querySelector<HTMLElement>('.lrn-body');
   if (!body) return;
+  attachLearnCharts(body);
   if (learnPage === 'progress') {
     if (!answerHistory) loadAnswerHistory();
     return;
@@ -2777,6 +2810,7 @@ function renderLearn(): void {
   if (fetchImage) fillWordImages(body, fetchImage);
   focusReview(body);
   void prefetchMeanings();
+  void prefetchExamples();
 }
 
 /** Repaints whichever of Words and Learn is showing. */
@@ -2788,10 +2822,13 @@ function rerenderActive(): void {
 /** After a Review render: put the cursor in the answer box, play a listening question once. */
 let nbAutoplayed = '';
 function focusReview(body: HTMLElement): void {
+  // A new question starts at its top, not where the last answer left the page.
+  const quiz = body.querySelector<HTMLElement>('.nbv-quiz:not([data-answered])');
+  if (quiz && quiz.getBoundingClientRect().top < 0) quiz.scrollIntoView({ block: 'start' });
   const input = body.querySelector<HTMLInputElement>('#nbv-answer');
   if (input) input.focus();
   else {
-    const next = body.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"]');
+    const next = body.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-round"]');
     next?.focus({ preventScroll: true });
     if (next?.dataset.act === 'nb-next') body.querySelector('.nbv-quiz__grade')?.scrollIntoView({ block: 'nearest' });
   }
@@ -2854,7 +2891,7 @@ function onReviewKey(ev: KeyboardEvent): void {
   if (target && target.id !== 'nbv-answer' && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
   if (target?.id === 'nbv-answer') return;
   if (ev.key === 'Enter') {
-    const next = body.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-reveal"]');
+    const next = body.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-reveal"], [data-act="nb-round"]');
     if (!next) return;
     ev.preventDefault();
     next.click();
@@ -2964,8 +3001,14 @@ function wireNotebookActions(root: HTMLElement): void {
         document.querySelector('.main-shell')?.scrollTo({ top: 0 });
         return;
       case 'nb-start':
+      case 'nb-round':
+        // A new round plans again from what is due now; renderLearn starts it.
+        if (el.dataset.act === 'nb-round') {
+          nbReview = null;
+          renderLearn();
+        }
         // Book words get their meaning looked up before the first question is built.
-        await prefetchMeanings(true);
+        await Promise.all([prefetchMeanings(true), prefetchExamples(true)]);
         if (nbReview) nbReview.started = true;
         renderLearn();
         return;
@@ -3077,7 +3120,7 @@ function wireNotebookActions(root: HTMLElement): void {
         answerCurrentReview({});
         return;
       case 'nb-override':
-        if (nbReview) overrideReview(nbReview);
+        if (nbReview) overrideReview(nbReview, el.dataset.mode === 'easy' ? 'easy' : 'flip');
         renderLearn();
         return;
       case 'nb-next':
