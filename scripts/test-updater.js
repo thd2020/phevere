@@ -62,7 +62,22 @@ assert.equal(rel.rollbackTarget(releases, '4.0.0', { kind: 'manual', arch: 'x64'
 assert.equal(releases[0].assets.find((a) => a.name.endsWith('.AppImage')).sha256, null);
 
 // --- The updater with a fake Electron ----------------------------------------------------------
-async function scenario({ digest, mode = 'auto', skipped = null, api = 'ok', sumFile = true, cache = null } = {}) {
+/** A body that sends the first `cut` bytes, then fails like a dropped connection. */
+function brokenBody(buf, cut) {
+  let sent = false;
+  return new ReadableStream({
+    pull(controller) {
+      if (!sent) {
+        sent = true;
+        controller.enqueue(new Uint8Array(buf.subarray(0, cut)));
+      } else {
+        controller.error(new Error('net::ERR_CONNECTION_CLOSED'));
+      }
+    },
+  });
+}
+
+async function scenario({ digest, mode = 'auto', skipped = null, api = 'ok', sumFile = true, cache = null, drops = 0 } = {}) {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'phevere-updater-'));
   if (mode !== 'auto' || skipped) fs.writeFileSync(path.join(userData, 'update-prefs.json'), JSON.stringify({ mode, skipped }));
   if (cache) fs.writeFileSync(path.join(userData, 'update-releases.json'), JSON.stringify(cache));
@@ -96,7 +111,14 @@ async function scenario({ digest, mode = 'auto', skipped = null, api = 'ok', sum
           return sumFile ? new Response(`${sha(good)}  Phevere-Setup-4.0.0-x64.exe
 `, { status: 200 }) : new Response('Not Found', { status: 404 });
         }
-        return new Response(good, { status: 200, headers: { 'content-length': String(good.length) } });
+        const range = /^bytes=(\d+)-$/.exec((init.headers || {}).Range || '');
+        const from = range ? Number(range[1]) : 0;
+        const rest = good.subarray(from);
+        if (drops > 0) {
+          drops--;
+          return new Response(brokenBody(rest, 5), { status: range ? 206 : 200 });
+        }
+        return new Response(rest, { status: range ? 206 : 200, headers: { 'content-length': String(rest.length) } });
       },
     },
   };
@@ -172,6 +194,24 @@ async function scenario({ digest, mode = 'auto', skipped = null, api = 'ok', sum
   }
 
   {
+    const { updater, userData, headers } = await scenario({ drops: 2 });
+    await updater.checkForUpdates();
+    assert.equal(updater.getUpdateState().status, 'ready', updater.getUpdateState().error || '');
+    const ranges = headers.map((h) => h.Range).filter(Boolean);
+    assert.deepEqual(ranges, ['bytes=5-', 'bytes=10-'], 'a dropped download resumes where it stopped');
+    assert.deepEqual(fs.readFileSync(path.join(userData, 'updates', 'Phevere-Setup-4.0.0-x64.exe')), good);
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
+  {
+    const { updater, userData } = await scenario({ drops: 9 });
+    await updater.checkForUpdates();
+    const state = updater.getUpdateState();
+    assert.equal(state.status, 'error');
+    assert.match(state.error, /resumes where it stopped/);
+    assert.ok(fs.existsSync(path.join(userData, 'updates', 'Phevere-Setup-4.0.0-x64.exe.part')), 'the partial file is kept for the next check');
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
+  {
     const { updater, userData, fetched } = await scenario({ api: 'limited' });
     await updater.checkForUpdates();
     const state = updater.getUpdateState();
@@ -226,7 +266,7 @@ async function scenario({ digest, mode = 'auto', skipped = null, api = 'ok', sum
     }
     console.log(`Live: ${latest.version} is offered over ${back.release.version}; rollback from ${latest.version} installs ${back.release.version}.`);
   }
-  console.log('Updater passed: release choice, skipped version, rollback target, checksum check, ask/off modes, install on quit, backup hook, and the fallback when the API is rate-limited.');
+  console.log('Updater passed: release choice, skipped version, rollback target, checksum check, ask/off modes, install on quit, backup hook, resumed downloads, and the fallback when the API is rate-limited.');
   process.exit(0); // the updater's 6-hour timer would keep Node running
 })().catch((err) => {
   console.error(err);

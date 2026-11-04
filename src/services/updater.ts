@@ -232,8 +232,9 @@ async function download(choice: UpdateChoice): Promise<string> {
   const dir = updatesDir();
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, asset.name);
+  const part = `${file}.part`;
   for (const name of fs.readdirSync(dir)) {
-    if (name !== asset.name) fs.rmSync(path.join(dir, name), { force: true, recursive: true });
+    if (name !== asset.name && name !== `${asset.name}.part`) fs.rmSync(path.join(dir, name), { force: true, recursive: true });
   }
   if (fs.existsSync(file) && (await sha256Of(file)) === asset.sha256) return file;
 
@@ -241,20 +242,59 @@ async function download(choice: UpdateChoice): Promise<string> {
   progress = 0;
   lastError = null;
   emit();
-  const part = `${file}.part`;
-  const res = await net.fetch(asset.url, { headers: { 'User-Agent': `Phevere/${app.getVersion()}` } });
-  if (!res.ok || !res.body) throw new Error(`The download failed (HTTP ${res.status}).`);
-  const total = Number(res.headers.get('content-length')) || asset.size || 1;
-  const hash = createHash('sha256');
-  const out = fs.createWriteStream(part);
+  // Downloads from GitHub often break off on slow or filtered connections. Keep what arrived
+  // and resume with a Range request, a few times now and again on the next check.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await fetchInto(part, asset.url, asset.size);
+      break;
+    } catch (err) {
+      log.warn('updater', 'download interrupted', { attempt, bytes: partSize(part), error: String(err) });
+      if (attempt >= DOWNLOAD_ATTEMPTS) {
+        throw new Error('The download was interrupted. It resumes where it stopped on the next check.');
+      }
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+  }
+  if ((await sha256Of(part)) !== asset.sha256) {
+    fs.rmSync(part, { force: true });
+    throw new Error(`${asset.name} did not match GitHub's checksum, so it was deleted.`);
+  }
+  fs.renameSync(part, file);
+  progress = 1;
+  log.info('updater', 'downloaded', { file, version: choice.release.version });
+  return file;
+}
+
+const DOWNLOAD_ATTEMPTS = 4;
+
+function partSize(part: string): number {
+  try {
+    return fs.statSync(part).size;
+  } catch {
+    return 0;
+  }
+}
+
+/** Append the rest of `url` to `part`, starting from what is already there. */
+async function fetchInto(part: string, url: string, size: number): Promise<void> {
+  let start = partSize(part);
+  if (size && start >= size) return;
+  const headers: Record<string, string> = { 'User-Agent': userAgent() };
+  if (start > 0) headers.Range = `bytes=${start}-`;
+  const res = await net.fetch(url, { headers });
+  if (!res.body || (res.status !== 200 && res.status !== 206)) throw new Error(`HTTP ${res.status}`);
+  // 200 means the server ignored the range: start the file again.
+  if (res.status === 200) start = 0;
+  const total = size || start + (Number(res.headers.get('content-length')) || 0) || 1;
+  const out = fs.createWriteStream(part, { flags: start > 0 ? 'a' : 'w' });
   const reader = res.body.getReader();
-  let received = 0;
+  let received = start;
   let lastEmit = 0;
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      hash.update(value);
       if (!out.write(Buffer.from(value))) await new Promise<void>((r) => out.once('drain', () => r()));
       received += value.length;
       progress = Math.min(0.99, received / total);
@@ -267,14 +307,6 @@ async function download(choice: UpdateChoice): Promise<string> {
     await new Promise<void>((resolve) => out.end(() => resolve()));
     reader.releaseLock();
   }
-  if (hash.digest('hex') !== asset.sha256) {
-    fs.rmSync(part, { force: true });
-    throw new Error(`${asset.name} did not match GitHub's checksum, so it was deleted.`);
-  }
-  fs.renameSync(part, file);
-  progress = 1;
-  log.info('updater', 'downloaded', { file, version: choice.release.version });
-  return file;
 }
 
 function downloadOnce(choice: UpdateChoice): Promise<string> {
