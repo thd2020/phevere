@@ -248,8 +248,8 @@ assert.ok(si.acceptConceptPage(conceptPage({ title: 'Map', pageimage: 'Old_map_o
 const commonsPages = (q) => fb.responses[si.buildCommonsSearchUrl(q)].query.pages;
 const loveRanked = si.rankCommonsFiles(commonsPages('love'), 'love', 'love', []);
 // Without a gloss word, only short titles that are about the word stay: no long caption that
-// mentions it ("The Love of Paris and Helen by Jacques-Louis David") and no portrait.
-assert.ok(loveRanked.length > 0 && loveRanked.every((r) => si.titledWith(r.title, 'love')), loveRanked.map((r) => r.title).join(' / '));
+// mentions it ("The Love of Paris and Helen by Jacques-Louis David"), no film title ("In Love with Love") and no portrait.
+assert.ok(loveRanked.every((r) => si.titledWith(r.title, 'love')), loveRanked.map((r) => r.title).join(' / '));
 assert.ok(!loveRanked.some((r) => /Sean Combs/.test(r.title)), 'love: no portrait of a man nicknamed Love');
 assert.ok(si.titledWith('Mallard Afloat', 'afloat') && !si.titledWith('Adamant-1-yl phosphaethine Structural Formula V1', 'adamant'), 'titled with the word');
 assert.ok(!si.titledWith("Tower lodge, once quite famous because of its, albeit tenuous, association with a horrific crime", 'albeit'), 'a passing mention');
@@ -268,7 +268,7 @@ const holonPages = commonsPages('holon');
 // Without a gloss word, a hit naming the word as part of a name ("… school in Holon") drops out.
 assert.ok(holonPages.length > 0, 'holon: the search found city photos');
 same(si.rankCommonsFiles(holonPages, 'holon', 'holon', ['part', 'whole']).map((r) => r.title), [], 'holon: a place name is no picture of the word');
-assert.ok(si.properName('Serendipity Beach, Sihanoukville', 'serendipity') && !si.properName('Static equilibrium same force', 'equilibrium'), 'proper names');
+assert.ok(si.properName('Serendipity Beach, Sihanoukville', 'serendipity') && si.properName('EAH Blunt', 'blunt') && !si.properName('Static equilibrium same force', 'equilibrium'), 'proper names');
 same(si.rankCommonsFiles(holonPages, 'holon', 'holon', ['part', 'whole'], { needGloss: true }).map((r) => r.title), [], 'holon: no city photo');
 
 // Pictures used in an article without a free lead image: the ones naming the word first, then

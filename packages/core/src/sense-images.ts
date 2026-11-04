@@ -950,8 +950,10 @@ export function properName(title: string, word: string): boolean {
   const isCap = (t: string | undefined) => !!t && /^\p{Lu}/u.test(t) && !STOP.has(t.toLowerCase());
   // "… school in Holon": a capitalised word after "in", "at" or "near" is a place.
   const place = (i: number) => i > 0 && /^\p{Lu}/u.test(tokens[i]) && /^(in|at|near|from)$/.test(tokens[i - 1]);
-  // The first word of a title is capitalised anyway ("Static equilibrium", "Mallard Afloat").
-  return tokens.some((t, i) => t.toLowerCase() === w && (isCap(tokens[i + 1]) || (i > 1 && isCap(tokens[i - 1])) || place(i)));
+  // A capitalised word before it counts too ("EAH Blunt" is a man), unless the word itself is in
+  // lower case after a title's first word ("Static equilibrium").
+  const capAfterCap = (i: number) => i > 0 && isCap(tokens[i - 1]) && /^\p{Lu}/u.test(tokens[i]);
+  return tokens.some((t, i) => t.toLowerCase() === w && (isCap(tokens[i + 1]) || capAfterCap(i) || place(i)));
 }
 
 export interface CommonsPage {
