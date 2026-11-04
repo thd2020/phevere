@@ -65,16 +65,11 @@ assert.deepEqual(views.familyGroupings(a), ['root', 'prefix', 'suffix', 'origin'
 const fhtml = views.familiesHtml(a, 'root');
 assert.match(fhtml, /in<b>spect<\/b>or/);
 assert.match(views.familiesHtml(a, 'tree'), /nationality/);
-// Families file A to Z under letter headings; tiles are sized by family size; trees open large.
-assert.match(fhtml, /<section class="nbv-letter" data-letter="S"><h3 class="nbv-letter__head">S<\/h3>/);
+// Families are in A to Z order in one grid, with no letter index or headings; tiles are sized by family size.
+assert.doesNotMatch(fhtml, /nbv-letter__head|nbv-abc/);
 assert.match(fhtml, /class="nbv-fam nbv-fam--root nbv-fam--s"/);
-assert.equal(views.familyLetter('-tion'), 'T');
-assert.equal(views.familyLetter('*bʰer-'), 'B');
-assert.equal(views.familyLetter('éco'), 'E');
-assert.equal(views.familyLetter('対'), '#');
-const letters = [...views.familiesHtml(a, 'prefix').matchAll(/data-letter="([^"]*)"/g)].map((m) => m[1]);
-assert.deepEqual(letters, [...letters].sort(), 'letter sections in alphabetical order');
-assert.doesNotMatch(views.familiesHtml(a, 'char'), /nbv-letter__head/);
+const order = [...views.familiesHtml(a, 'root').matchAll(/<span class="nbv-fam__label">([^<]*)<\/span>/g)].map((m) => m[1]);
+assert.deepEqual(order, [...order].sort((x, y) => x.localeCompare(y)), 'families in alphabetical order');
 // A family that knows its other spellings shows them after the main one; without them, none.
 const withForms = { ...a, families: a.families.map((f) => (f.key === 'root:spect' ? { ...f, forms: ['spect', 'spic', 'spec'] } : f)) };
 assert.match(views.familiesHtml(withForms, 'root'), /<span class="nbv-fam__forms"><span>spic<\/span><span>spec<\/span><\/span>/);

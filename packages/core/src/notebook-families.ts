@@ -144,13 +144,6 @@ function familyCard(c: CardSpec, i = 0): string {
   </details>`;
 }
 
-/** The letter a family files under: "-tion" under T, "*bʰer-" under B, a Han character under #. */
-export function familyLetter(label: string): string {
-  const key = sortKey(label);
-  const ch = key.charAt(0).toUpperCase();
-  return /^[A-Z]$/.test(ch) ? ch : '#';
-}
-
 function sortKey(label: string): string {
   return label
     .normalize('NFD')
@@ -160,32 +153,17 @@ function sortKey(label: string): string {
 }
 
 /**
- * Families A to Z under letter headings, each tile sized by how many words it holds. Opening a
- * tile shows its words in a drawer under its row (see `attachFamilies`), so the tile itself
- * never moves. Han characters have no alphabet and keep their size order in one section.
+ * Families in A to Z order, one grid with no letter headings, each tile sized by how many
+ * words it holds. Opening a tile shows its words in a drawer under its row (see
+ * `attachFamilies`), so the tile itself never moves. Han characters have no alphabet and keep
+ * their size order.
  */
 function alphabetHtml(cards: CardSpec[], byLetter: boolean): string {
   const sorted = byLetter
     ? [...cards].sort((x, y) => sortKey(x.label).localeCompare(sortKey(y.label)) || x.label.localeCompare(y.label))
     : cards;
-  const sections = new Map<string, CardSpec[]>();
-  for (const c of sorted) {
-    const k = byLetter ? familyLetter(c.label) : '';
-    sections.set(k, [...(sections.get(k) || []), c]);
-  }
-  const letters = [...sections.keys()];
-  const index =
-    byLetter && letters.length > 6
-      ? `<nav class="nbv-abc" aria-label="Letters">${letters.map((l) => `<button type="button" data-fam-jump="${esc(l)}">${esc(l)}</button>`).join('')}</nav>`
-      : '';
-  let i = 0;
-  const body = letters
-    .map((l) => {
-      const tiles = sections.get(l)!.map((c) => familyCard(c, i++)).join('');
-      return `<section class="nbv-letter" data-letter="${esc(l)}">${l ? `<h3 class="nbv-letter__head">${esc(l)}</h3>` : ''}<div class="nbv-letter__tiles">${tiles}</div></section>`;
-    })
-    .join('');
-  return `${index}<div class="nbv-fams">${body}</div>`;
+  const tiles = sorted.map((c, i) => familyCard(c, i)).join('');
+  return `<div class="nbv-fams"><section class="nbv-letter"><div class="nbv-letter__tiles">${tiles}</div></section></div>`;
 }
 
 function unsortedHtml(a: NotebookAnalysis, placed: Set<string>, label: string): string {
@@ -544,7 +522,6 @@ export function attachFamilies(root: any): void {
   detachFamilies = null;
   const fams = root?.querySelector?.('.nbv-fams') as HTMLElement | null;
   const forest = root?.querySelector?.('.nbv-forest') as HTMLElement | null;
-  const abc = root?.querySelector?.('.nbv-abc') as HTMLElement | null;
   if (closeInspector) {
     const same = forest
       ? ([...forest.querySelectorAll('.nbv-grove')] as HTMLElement[]).find((g) => g.querySelector('.nbv-tree__base')?.getAttribute('data-q') === inspectorWord)
@@ -683,15 +660,6 @@ export function attachFamilies(root: any): void {
       else openFamilyKey = '';
     }
   }
-  if (abc) {
-    on(abc, 'click', (ev: any) => {
-      const b = (ev.target as HTMLElement).closest?.('[data-fam-jump]') as HTMLElement | null;
-      if (!b) return;
-      const sec = [...root.querySelectorAll('.nbv-letter')].find((s: any) => s.dataset.letter === b.dataset.famJump) as HTMLElement | undefined;
-      sec?.scrollIntoView({ block: 'start', behavior: reduced() ? 'auto' : 'smooth' });
-    });
-  }
-
   /* Word trees open large */
   if (forest) {
     on(forest, 'click', (ev: any) => {
