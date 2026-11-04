@@ -754,7 +754,7 @@ function bookCandidates(): Promise<Array<{ word: string; freq: number }>> {
         ...general.map((word, i) => ({ word: word.toLowerCase(), freq: 60000 / (i + 30) })),
         ...academic.map((word, i) => ({ word: word.toLowerCase(), freq: 60000 / (3000 + i * 6) })),
       ])
-      .catch(() => []);
+      .catch((): Array<{ word: string; freq: number }> => []);
   }
   return bookWords;
 }
