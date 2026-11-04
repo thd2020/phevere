@@ -42,10 +42,11 @@ export function isCitationGloss(meaning: string): boolean {
 
 /** A saved definition without the reference lines; '' when nothing else was there. */
 export function stripCitationLines(definition: string): string {
-  return String(definition || '')
-    .split('\n')
-    .filter((line) => line.trim() && !isCitationGloss(line))
-    .join('\n');
+  const text = String(definition || '');
+  const lines = text.split('\n');
+  const kept = lines.filter((line) => !isCitationGloss(line));
+  if (kept.length === lines.length) return text;
+  return kept.join('\n').trim();
 }
 
 /* ------------------------------------------------------------ text senses */
@@ -173,7 +174,8 @@ export function formOfLemmasFromKaikki(jsonl: string, word: string, lang = 'en')
     const separate = tags.some((x) => SEPARATE_WORD.has(x));
     let lemma = '';
     if (formOf && tags.includes('form-of') && !separate) lemma = formOf;
-    else if (altOf && (tags.includes('alternative') || tags.includes('misspelling')) && !separate) lemma = altOf;
+    // A regional spelling ("estrus", American for oestrus) is the standard where it is used, so it stays.
+    else if (altOf && (tags.includes('alternative') || tags.includes('misspelling')) && !separate && !tags.some((x) => /^[A-Z]/.test(x))) lemma = altOf;
     if (lemma && lemma.toLowerCase() !== w.toLowerCase()) {
       if (!lemmas.some((l) => l.toLowerCase() === lemma.toLowerCase())) lemmas.push(lemma);
       continue;
@@ -249,7 +251,7 @@ export function resolveFormOf(http: HttpClient, word: string, lang = 'en', timeo
   if (!p) {
     p = fetchKaikkiPage(http, w, dir, timeoutMs).then(async (page) => {
       // No page is no answer: the caller falls back to the senses it has.
-      if (!page.trim()) throw new Error(`no kaikki page for ${w}`);
+      if (!page.trim()) throw Object.assign(new Error(`no kaikki page for ${w}`), { code: 'NO_PAGE' });
       const lemmas = formOfLemmasFromKaikki(page, w, lang);
       if (lemmas.length < 2) return lemmas[0] || null;
       const freq = await wordFrequencies(http, lemmas.slice(0, 3));

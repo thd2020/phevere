@@ -33,6 +33,119 @@ const fo = load('form-of');
 const { inflectionsFromKaikki, selectInflections, weighForms } = load('inflections');
 const { inflectionsHtml } = load('lexicon-parts');
 
+/** A notebook in sql.js with the reported rows, run through the v2 forms migration (vocab-sync.ts). */
+async function savedNotebook(http) {
+  const esbuild = require('esbuild');
+  const initSqlJs = require('sql.js');
+  const bundle = esbuild.buildSync({
+    stdin: {
+      contents: `
+        export { configureCore } from './src/runtime';
+        export { addVocab, reviewVocab, findByLemma, updateVocabNote } from './src/vocab-store';
+        export { foldStoredForms, resolveStoredForms } from './src/vocab-sync';
+        export { VOCAB_SCHEMA_SQL } from './src/schema';
+      `,
+      resolveDir: path.join(__dirname, '..', 'packages', 'core'),
+      loader: 'ts',
+    },
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    write: false,
+    // Without the lemmatizer, as on the phone.
+    external: ['wink-lemmatizer'],
+    loader: { '.json': 'json' },
+  }).outputFiles[0].text;
+  const mod = { exports: {} };
+  new Function('module', 'exports', 'require', bundle)(mod, mod.exports, (d) => {
+    if (d === 'wink-lemmatizer') throw new Error('not on the phone');
+    return require(d);
+  });
+  const core = mod.exports;
+  const SQL = await initSqlJs();
+  const db = new SQL.Database();
+  for (const stmt of core.VOCAB_SCHEMA_SQL.split(';')) if (stmt.trim()) db.run(stmt);
+  const queryAll = async (sql, params = []) => {
+    const st = db.prepare(sql);
+    try {
+      st.bind(params);
+      const out = [];
+      while (st.step()) out.push(st.getAsObject());
+      return out;
+    } finally {
+      st.free();
+    }
+  };
+  let n = 0;
+  core.configureCore({
+    http,
+    sha256Hex: () => '',
+    vocabDb: { ready: async () => {}, initError: () => null, queryAll, queryOne: async (q, p) => (await queryAll(q, p))[0] || null, runWrite: async (q, p = []) => db.run(q, p) },
+    deviceName: () => 'test',
+    newId: () => `id-${String(++n).padStart(3, '0')}`,
+  });
+  const add = (lemma, definition, extra = {}) => core.addVocab({ lemma, definition, sourceLang: 'en', ...extra });
+  const vicPlural = await add('vicissitudes', "Regular change or succession from one thing to another, or one part of a cycle to the next; alternation; mutual succession; interchange.\n(often in the plural) A change, especially in one's life or fortunes.", { createdAt: 1000 });
+  await core.updateVocabNote(vicPlural.id, 'from Middlemarch');
+  const vic = await add('vicissitude', "Regular change or succession from one thing to another, or one part of a cycle to the next; alternation; mutual succession; interchange; variability.\nA change, especially in one's life or fortunes.", { createdAt: 5000 });
+  for (let i = 0; i < 3; i++) await core.reviewVocab(vic.id, 3, 10_000 + i);
+  const gleaned = await add('gleaned', 'To collect (grain, grapes, etc.) left behind after the main harvest or gathering.', { reading: 'US /ɡlind/' });
+  await core.reviewVocab(gleaned.id, 3, 20_000);
+  await add('paparazzi', 'plural of paparazzo\nAlternative form of paparazzo.');
+  await add('paparazzo', 'A freelance photographer who sells photographs of celebrities to the media.');
+  const idio = await add(
+    'idiosyncracy',
+    '↑ “ idiosyncracy ”, in Dictionary.com Unabridged , Dictionary.com, LLC , 1995–present.\n↑ “idiosyncracy”, in The American Heritage Dictionary of the English Language , 4th edition, Boston, Mass. : Houghton Mifflin , 2000 , →ISBN .',
+    { createdAt: 2000 },
+  );
+  await core.reviewVocab(idio.id, 4, 30_000);
+  await add('idiosyncrasy', 'A behavior or way of thinking that is characteristic of a person or a group.', { createdAt: 9000 });
+  await add('glasses', 'Spectacles, frames bearing two lenses worn in front of the eyes.');
+  await add('lobotomized', 'simple past and past participle of lobotomize');
+  db.run(`INSERT INTO book_words (lemma, reps, updated_at) VALUES ('gleaned', 2, 1)`);
+  db.run(`INSERT INTO user_books (book_id, title, words, created_at, updated_at) VALUES ('u1', 'Reading', '["gleaned","glean","paparazzi"]', 1, 1)`);
+
+  // Offline: the references go, and what the saved data decides is folded.
+  await core.foldStoredForms(50_000);
+  assert.ok(await core.findByLemma('lobotomize'), '"simple past of lobotomize", a regular ending: decided offline');
+  const vicOne = await core.findByLemma('vicissitude');
+  assert.equal(await core.findByLemma('vicissitudes'), null, 'merged into the saved singular it shares a meaning with');
+  assert.equal(vicOne.createdAt, 1000, 'the earlier save date');
+  assert.ok(vicOne.reps >= 3, 'the more studied schedule');
+  assert.equal(vicOne.note, 'from Middlemarch');
+  assert.equal((await core.findByLemma('idiosyncracy')).definition || '', '', 'reference lines are not a meaning');
+  assert.ok(await core.findByLemma('gleaned'), 'past forms need the network unless the saved senses say so');
+
+  // Online, through the fake kaikki pages.
+  await core.resolveStoredForms(http, { pauseMs: 0 });
+  const glean = await core.findByLemma('glean');
+  assert.ok(glean && !(await core.findByLemma('gleaned')));
+  assert.equal(glean.definition, 'To collect (grain, grapes, etc.) left behind after the main harvest or gathering.', "glean's own senses, saved with gleaned, stay");
+  assert.ok(!glean.reading, "gleaned's IPA is not glean's");
+  assert.ok(glean.reps >= 1);
+  assert.ok(await core.findByLemma('paparazzo') && !(await core.findByLemma('paparazzi')));
+  const idioOne = await core.findByLemma('idiosyncrasy');
+  assert.ok(idioOne && !(await core.findByLemma('idiosyncracy')));
+  assert.equal(idioOne.createdAt, 2000);
+  assert.equal(idioOne.definition, 'A behavior or way of thinking that is characteristic of a person or a group.');
+  assert.ok(idioOne.reps >= 1, "the misspelling's review comes along");
+  assert.ok(await core.findByLemma('glasses'), 'glasses are spectacles');
+
+  const history = await queryAll(`SELECT lemma FROM answer_history ORDER BY answered_at`);
+  assert.ok(!history.some((h) => ['gleaned', 'idiosyncracy', 'vicissitudes'].includes(h.lemma)), 'answers point at the new word');
+  assert.ok(history.some((h) => h.lemma === 'glean'));
+  assert.deepEqual(await queryAll(`SELECT lemma, reps FROM book_words`), [{ lemma: 'glean', reps: 2 }]);
+  assert.deepEqual(JSON.parse((await queryAll(`SELECT words FROM user_books`))[0].words), ['glean', 'paparazzo']);
+  const ids = new Set((await queryAll(`SELECT id FROM vocab`)).map((r) => r.id));
+  const tombs = (await queryAll(`SELECT id FROM vocab_deleted`)).map((r) => r.id);
+  assert.equal(tombs.length, 3, 'vicissitudes, paparazzi and idiosyncracy leave tombstones for sync');
+  assert.ok(tombs.every((id) => !ids.has(id)));
+
+  // Once per notebook.
+  assert.equal(await core.foldStoredForms(60_000), 0);
+  assert.equal(await core.resolveStoredForms(http, { pauseMs: 0 }), 0);
+}
+
 const page = (w) => fs.readFileSync(path.join(__dirname, 'fixtures', 'inflections', `en-${w}.jsonl`), 'utf8');
 const rows = (table) => Object.fromEntries(table.rows.map((r) => [r.label, r.forms]));
 
@@ -170,7 +283,14 @@ assert.equal(fo.dominantLemma(['child', 'unknown'], freq), null, 'a lemma withou
   assert.deepEqual(rows(selectInflections(inflectionsFromKaikki(page('child'), 'en', 'child'), ['noun']).tables[0]), { Plural: ['children'] });
   assert.deepEqual(rows(selectInflections(inflectionsFromKaikki(page('vicissitude'), 'en', 'vicissitude'), ['noun']).tables[0]), { Plural: ['vicissitudes'] });
 
-  console.log(`Word forms passed (${requests.length} fake requests): forms open as their lemma, references are not senses, Forms list standard forms.`);
+  // A regional spelling is the standard where it is used: "estrus" stays.
+  const estrus = JSON.stringify({ lang_code: 'en', word: 'estrus', pos: 'noun', senses: [{ tags: ['US', 'alt-of', 'alternative'], alt_of: [{ word: 'oestrus' }], glosses: ['Alternative spelling of oestrus.'] }] });
+  assert.deepEqual(fo.formOfLemmasFromKaikki(estrus, 'estrus'), []);
+
+  // The saved notebook, once: forms become their word and merge into it where it is saved.
+  await savedNotebook(http);
+
+  console.log(`Word forms passed (${requests.length} fake requests): forms open as their lemma, references are not senses, Forms list standard forms, saved forms fold once.`);
 })().catch((err) => {
   console.error(err);
   process.exit(1);
