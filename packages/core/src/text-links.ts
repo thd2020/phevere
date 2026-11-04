@@ -1,7 +1,7 @@
 /**
- * Every word of a lookup's text is a link to its own lookup: definitions, examples,
- * etymology prose, synonyms. As in Apple's Dictionary and in Wiktionary's running text the
- * words stay plain until pointed at, so a sense does not read as a row of underlines.
+ * Word parts written in a lookup's text are links to their own page: "ob-" and "-ant" in an
+ * etymology, "*bʰeh₂-", "-fic-". Ordinary words stay text; the sources' own links (Wiktionary's)
+ * and the lookup's dedicated rows (Built from, Forms, word family) are the way to other words.
  *
  * The links are spans with role="link", not anchors: dragging across an anchor drags the
  * link in Chromium instead of selecting text, and selecting a phrase in a definition to look
@@ -107,12 +107,18 @@ export function wordTokens(text: string): Token[] {
   return out.sort((a, b) => a.start - b.start);
 }
 
-/** Plain text as HTML, each word a link. */
+/** "ob-", "-ant", "-fic-", "*bʰeh₂-": a query that names a word part, not a word. */
+function isPartQuery(q: string): boolean {
+  return /^\*/.test(q) || /^-\p{L}/u.test(q) || /\p{L}[\p{M}ʰ-˿₀-₉]*-$/u.test(q);
+}
+
+/** Plain text as HTML, with the word parts in it made links. */
 export function linkText(text: string, links: LexiconLinks): string {
   const s = String(text || '');
   let out = '';
   let at = 0;
   for (const t of wordTokens(s)) {
+    if (!isPartQuery(t.query)) continue;
     out += esc(s.slice(at, t.start));
     out += wordLinkHtml(t.query, esc(s.slice(t.start, t.end)), links);
     at = t.end;
@@ -123,7 +129,7 @@ export function linkText(text: string, links: LexiconLinks): string {
 const SKIP_TAGS = new Set(['a', 'button', 'script', 'style', 'code', 'svg', 'textarea', 'select', 'option']);
 
 /**
- * Escaped HTML with the words of its text made links. Text already inside a link, a button
+ * Escaped HTML with the word parts in its text made links. Text already inside a link, a button
  * or a lookup span keeps that link; attributes are never touched.
  */
 export function linkHtml(html: string, links: LexiconLinks): string {

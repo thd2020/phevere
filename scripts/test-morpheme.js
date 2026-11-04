@@ -219,13 +219,19 @@ const sec = (list, id) => list.find((s) => s.id === id);
   same(q('-tain-握住 拉丁 ob-'), ['-tain-', 'ob-'], 'Chinese text stays text');
   same(q('from Middle English mid-15c. via -i- and the Rome’s walls'), ['from', 'Middle English', 'mid', 'via', 'and', 'the', 'Rome', 'walls']);
   same(q("He's a I"), ["He's"], 'single letters are not links; "he" alone is no lookup');
-  assert.equal(M.linkText('a cat', 'lookup'), 'a <span class="lx-w" role="link" tabindex="0" data-lookup="cat">cat</span>');
-  const html = M.linkHtml('<i>Latin</i> &amp; <a href="/wiki/x">kept link</a> don&#39;t <span class="sense-label lx-nolink">botany</span> <span class="lx-w" role="link" data-lookup="y">y y</span>', 'act');
-  assert.match(html, /<i><span class="lx-w" role="link" tabindex="0" data-act="lookup" data-q="Latin">Latin<\/span><\/i>/);
+  // Only word parts become links in running text; ordinary words stay text.
+  assert.equal(M.linkText('a cat', 'lookup'), 'a cat');
+  assert.equal(
+    M.linkText('from ob- and *bʰeh₂-', 'lookup'),
+    'from <span class="lx-w" role="link" tabindex="0" data-lookup="ob-">ob-</span> and <span class="lx-w" role="link" tabindex="0" data-lookup="*bʰeh₂-">*bʰeh₂-</span>',
+  );
+  assert.equal(M.linkText('pre- and post-war, mid-15c.', 'lookup'), '<span class="lx-w" role="link" tabindex="0" data-lookup="pre-">pre-</span> and post-war, mid-15c.');
+  const html = M.linkHtml('<i>Latin</i> &amp; <a href="/wiki/x">kept link</a> from -ant <span class="sense-label lx-nolink">-ism</span> <span class="lx-w" role="link" data-lookup="y">y y</span>', 'act');
+  assert.match(html, /<i>Latin<\/i>/, 'a plain word stays text');
   assert.match(html, /<a href="\/wiki\/x">kept link<\/a>/, 'an existing link is left alone');
-  assert.match(html, /data-q="don&#39;t"/, 'text after a link is linked again');
-  assert.match(html, /lx-nolink">botany<\/span>/, 'sense labels stay text');
-  assert.match(html, /data-lookup="y">y y<\/span>/, 'a word link is not linked twice');
+  assert.match(html, /from <span class="lx-w" role="link" tabindex="0" data-act="lookup" data-q="-ant">-ant<\/span>/, 'a part after a link is linked');
+  assert.match(html, /lx-nolink">-ism<\/span>/, 'sense labels stay text');
+  assert.match(html, /data-lookup="y">y y<\/span>/, 'a link is not linked twice');
   assert.equal(M.wikiLinkLookup('Reconstruction:Proto-Indo-European/bʰeh₂-'), '*bʰeh₂-');
   assert.equal(M.wikiLinkLookup('Category:English prefixes'), '');
 
