@@ -1092,7 +1092,8 @@ async function saveCurrent(): Promise<void> {
       saved = null;
       toast('Removed from My words');
     } else {
-      const payload = { ...vocabPayloadFromResult(result, lemma), context: sourceForSave(lemma) };
+      // resolveForm: a tap before the page turns from "geese" to goose still saves goose.
+      const payload = { ...vocabPayloadFromResult(result, lemma), context: sourceForSave(lemma), resolveForm: true };
       saved = await addVocab(payload);
       toast('Saved to My words');
       postOsNotify('saved', 'Saved to My words', lemma);

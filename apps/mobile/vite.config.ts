@@ -50,6 +50,13 @@ export default defineConfig({
         secure: true,
         rewrite: (p: string) => p.replace(/^\/__pv\/kaikki/, '') || '/',
       },
+      // Neither does api.datamuse.com.
+      '/__pv/datamuse': {
+        target: 'https://api.datamuse.com',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (p: string) => p.replace(/^\/__pv\/datamuse/, '') || '/',
+      },
       '/__pv/youdao': {
         target: 'https://dict.youdao.com',
         changeOrigin: true,

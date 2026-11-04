@@ -3158,7 +3158,8 @@ ipcMain.handle('vocab-find', async (_e, lemma: string) => {
 });
 ipcMain.handle('vocab-add', async (_e, payload: vocabStore.VocabAddInput) => {
   try {
-    const entry = await vocabStore.addVocab(payload);
+    // resolveForm: the heart saves the word the lookup opens, even when tapped before the page turned to it.
+    const entry = await vocabStore.addVocab({ ...payload, resolveForm: true });
     if (!entry.definition || !String(entry.definition).trim()) {
       enqueueVocabEnrich(entry.lemma);
     }

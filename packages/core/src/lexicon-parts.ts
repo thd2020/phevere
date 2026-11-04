@@ -1,6 +1,6 @@
 /**
  * Two Lexicon sections shared by the desktop pop-up and the phone: Forms (tenses,
- * participles, plural, possessive, cases, degrees, and "plural of mouse") and Word family
+ * participles, plural, cases, degrees, and "plural of mouse") and Word family
  * (derived and related words, phrases, other spellings, and what the word is built from).
  *
  * The family shows the closest members of each group in a line of plain links, the way a
@@ -52,7 +52,10 @@ function tableHtml(t: InflectionTable, links: LexiconLinks): string {
     : `<h4 class="lx-infl__pos">${esc(t.pos)}</h4>`;
   const rows = t.rows.length
     ? `<dl class="lx-infl__rows">${t.rows
-        .map((r) => `<div><dt>${esc(r.label)}</dt><dd>${r.forms.map((f) => formLink(f, links)).join('<span class="lx-comma">, </span>')}</dd></div>`)
+        .map((r) => {
+          const forms = r.forms.map((f, i) => (r.notes?.[i] ? `${formLink(f, links)} <span class="lx-note">${esc(r.notes[i])}</span>` : formLink(f, links)));
+          return `<div><dt>${esc(r.label)}</dt><dd>${forms.join('<span class="lx-comma">, </span>')}</dd></div>`;
+        })
         .join('')}</dl>`
     : '';
   const grids = t.grids
