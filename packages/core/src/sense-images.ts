@@ -1417,13 +1417,13 @@ export function relatedPageFit(page: WikipediaPage, sense: SenseInput, lemma: st
   const headed = headsMeet(heads, pageHeads);
   const d = contentTokens(`${page.description || ''} ${page.extract || ''}`, lemma).filter((t) => !label.includes(t));
   const shared = overlap(g, d);
-  // Two different things by head ("Jet (fluid)" is a stream, the sense a nozzle): the title's word
-  // in the gloss is not enough without two more shared words.
-  if (heads.length && pageHeads.length && !headed && !(named && shared >= 2)) return 0;
+  // Two different things by head ("Jet (fluid)" is a stream, the sense a nozzle or an engine):
+  // the title's word in the gloss is not enough without three more shared words.
+  if (heads.length && pageHeads.length && !headed && !(named && shared >= 3)) return 0;
   const score = (named ? 2 : 0) + (headed ? 2 : 0) + Math.min(3, shared);
-  // A one-word compound is usually another thing ("whiteboard", "eggshell"): it needs its
-  // modifier in the gloss, or the head and three shared words.
-  const need = named ? 3 : /[\s(-]/.test(page.title) ? 4 : 5;
+  // A compound is usually another thing ("whiteboard", "astrophysical jet"): it needs its
+  // modifier in the gloss, or the head and three shared words. A qualified title needs less.
+  const need = named ? 3 : /\(/.test(page.title) ? 4 : 5;
   return score >= need ? score : 0;
 }
 
