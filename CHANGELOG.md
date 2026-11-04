@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Word trees (2026-11-04): clicking a tree in Families → Word trees, or its open button, shows that tree alone and large, so the words on a big tree can be read. The wheel or a pinch zooms around the pointer, dragging moves the tree, a double click zooms in, and the bar has zoom out, fit, zoom in and close. Escape closes it on the desktop and Back on the phone, and a word in it opens the lookup.
+
+### Changed
+
+- Families (2026-11-04): Roots, Prefixes, Suffixes and Deep roots are in A to Z order under letter headings, with a row of letters at the top to jump to one. A family's tile is sized by how many words it holds: a family of two is a small tile, one of sixteen or more a wide tile with a larger name and more of its words shown. Opening a family shows its words in a drawer under its row and leaves the tile where it was.
+- Cards (2026-11-04): on the desktop as on the phone, clicking a card's picture turns it over and clicking its text opens the lookup. On the back, a click anywhere turns it back to the picture, and a Look up button sits in the bottom-left corner.
+- Cards (2026-11-04): clicking a pile, or its top card, opens only that pile. Its top card stays where it was and the rest of its cards spread on the table just below its row, while the other piles stay closed and the page does not scroll. Gather, the pile itself or Piles puts the cards back. Scatter still spreads every pile at once.
+
+### Fixed
+
+- Families (2026-11-04): clicking a small family tile such as flu could send it dozens of rows down the page, out of view. Small tiles were drawn in gaps beside large ones, away from their place in the list, and an open tile no longer fitted in its gap.
+- Cards (2026-11-04): a card turned to its meaning on a scattered table now straightens up and comes to the top while it is read, then leans back when turned again. Before, scrolling a tilted card's meanings moved them along the page while the lines ran along the card.
+
 ## [4.0.0] - 2026-11-04
 
 The 4.0.0 files were first published on 2026-11-03 and rebuilt from `main` on 2026-11-04; the entries dated 2026-11-04 arrived with the rebuild.
