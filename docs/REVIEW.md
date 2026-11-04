@@ -1,8 +1,12 @@
-# Notebook review: what works and what Phevere does
+# Learning in Phevere: what works and what Phevere does
+
+2026-11-04: the Learn tab was rebuilt after a user called it a toy. Questions now follow a ladder by memory strength with a skill balance (listening at most a fifth of a session), sessions run in rounds of twenty, leeches are recognised, new words are picked across all your books as one pool, and Today and Progress have charts with axes and readouts you can point at. The research behind these choices is under "Sessions, ladders and charts in the mature apps", and the design under "What Phevere does now".
 
 2026-11-03: review moved out of the Words switcher into its own tab, Learn, on desktop and phone. The quiz and the plan described here are its Today page.
 
-2026-11-03. This memo is the reason review is a quiz rather than a flashcard with four self-rating buttons. It looks at how the main vocabulary apps run review, what memory research says about it, and then the design built in `packages/core/src/review-quiz.ts` (questions and grading), `review-schedule.ts` (FSRS scheduling) and `notebook-review.ts` (the view).
+This memo is the reason review is a quiz rather than a flashcard with four self-rating buttons, and the reason for the way a session is put together. It looks at how the main vocabulary apps run review, what memory research says about it, and then the design built in `packages/core/src/review-quiz.ts` (the session, the questions and grading), `review-schedule.ts` (FSRS scheduling), `wordbooks.ts` (sessions across word books), `notebook-review.ts` (the Today page), `learn-progress.ts` (the Progress page) and `learn-charts.ts` (the charts).
+
+The screenshots below show the Learn tab before the 2026-11-04 rebuild and are due to be retaken.
 
 ![Screenshot of a meaning question: the word abandon with four meanings to choose from](REVIEW.assets/meaning-question.png)
 
@@ -38,22 +42,83 @@ Multiple choice still has a place if it is done well. Wrong options can stick as
 
 Response time carries information. A scheduler that used both accuracy and response time beat fixed schedules on immediate and delayed tests ([Mettler, Massey and Kellman 2016](https://doi.org/10.1037/xge0000170)). FSRS itself does not take answer time as input ([FSRS contributor on the Anki forum](https://forums.ankiweb.net/t/several-fsrs-related-suggestions/44673?page=4)), so time has to be folded into the grade before FSRS sees it. A picture next to the word gives a second route to recall ([dual coding](https://en.wikipedia.org/wiki/Dual-coding_theory)), and the notebook already has one for every word.
 
+## Sessions, ladders and charts in the mature apps
+
+2026-11-04. The first version of Learn answered the question "how should a word be tested". It did not answer how a session is built, what happens to a word that keeps failing, or what the charts are for. This section looks at those questions across Anki with FSRS, WaniKani, Duolingo, Memrise, Quizlet Learn, Lingvist, Vocabulary.com, Clozemaster, 墨墨背单词 (MaiMemo), 百词斩 (Baicizhan), 不背单词 (Bubei) and 扇贝单词 (Shanbay). Baicizhan, Bubei and Shanbay publish little about their design, so what is said of them comes from reviews and how-to pages.
+
+### How a session is built
+
+Every app puts due reviews first and caps new words. Anki defaults to 20 new cards and 200 reviews a day, and its review limit also holds back new cards; the manual advises against adding new cards while reviews are overdue ([deck options](https://docs.ankiweb.net/deck-options.html)). MaiMemo deliberately has no fixed number of new words: when more reviews are due it hands out fewer new ones, because a fixed quota lets the pile of reviews grow until people quit ([MaiMemo docs](https://memodocs.maimemo.com/docs/TXhHwrM8Ei5QKjk562mcq8uInef)); its reviews come first, most forgotten first ([docs](https://memodocs.maimemo.com/docs/PulqwOB1xi5jV0kb8Y1cPE7ZnKc)). Lingvist shows no new words until every word at risk has been reviewed ([help](https://lingvist.com/help/why-do-i-see-new-words/)). Sessions come in short, countable pieces: Bubei works in groups of ten words and asks whether to go on ([sspai](https://sspai.com/post/87587)), Clozemaster and Vocabulary.com work in rounds ([Clozemaster FAQ](https://www.clozemaster.com/faq), [Vocabulary.com](https://www.vocabulary.com/how-it-works/)), and Duolingo lessons have a progress bar and an end.
+
+### The exercise ladder
+
+Quizlet Learn starts with multiple choice and moves to written questions as answers come back right, because early multiple choice can be passed by elimination ([how Quizlet works](https://quizlet.com/features/how-quizlet-works)). Baicizhan teaches a new word in three steps, from a picture chosen for an example sentence to the Chinese meaning, and a miss sends the word back a step ([woshipm review](https://www.woshipm.com/evaluating/3923886.html)). Duolingo's Birdbrain model picks the exercise a learner should find just hard enough ([Duolingo blog](https://blog.duolingo.com/learning-how-to-help-you-learn-introducing-birdbrain)). Clozemaster gives typed answers twice the points of multiple choice ([docs](https://docs.clozemaster.com/article/103-how-do-points-work)). None of them picks the kind of question at random.
+
+### Leeches
+
+Anki tags a card that has lapsed eight times as a leech and suspends it ([manual](https://docs.ankiweb.net/leeches.html)). WaniKani has no built-in leech handling; its community scores leeches by wrong answers over the current streak ([forum](https://community.wanikani.com/t/userscript-wanikani-dashboard-leech-tables-notice-your-leeches/33124)), and its Extra Study mode drills the last day's mistakes without counting them against the schedule ([help](https://knowledge.wanikani.com/widgets/extra-study/)). Vocabulary.com keeps a Trouble Words list and brushes those words up more often ([help](https://www.vocabulary.com/help/tracking-progress/monitoring-your-trouble-words)).
+
+### Overrides
+
+Five of the apps let you declare a word known: MaiMemo's 熟知, Baicizhan's 斩 (tapped again to undo), Shanbay's 太简单, Memrise's Known and Lingvist's mute ([MaiMemo](https://memodocs.maimemo.com/docs/Ok6YwF2X7iJZvvkCunjcmWwLnzb/), [Baicizhan](https://jingyan.baidu.com/article/09ea3edec060ad81afde3949.html), [Lingvist](https://lingvist.com/help/can-i-skip-certain-words/)). Quizlet offers "Override: I was correct" after a typed answer was marked wrong. Anki undoes the last answer with Ctrl+Z. Lingvist decides from the letters' positions whether a slip is a typo ([help](https://lingvist.com/help/how-do-you-count-mistakes)); WaniKani's matching is reported as too loose, accepting "north" for "south".
+
+### Several books
+
+MaiMemo keeps one pool of words and treats its books as ways of sorting it: a word learned in one book is learned in every book, with one history and one next review ([docs](https://memodocs.maimemo.com/docs/Y0iDwaZYeixhnzkuqJRcOEt6ncc/)). Shanbay instead filters a newly added book against your history once ([baidu](https://jingyan.baidu.com/article/ea24bc39774c019a62b331fe.html)).
+
+### Charts
+
+Anki's statistics answer questions a learner acts on: the future due forecast says whether to add new cards today, true retention says whether the scheduler meets its target, and the FSRS simulator forecasts the daily load for given limits ([stats manual](https://docs.ankiweb.net/stats.html)). MaiMemo shows a forgetting curve, the review load ahead and a distribution of how durable each word's memory is ([App Store](https://apps.apple.com/us/app/id888483369)); Shanbay shows how each book's words spread across familiarity levels. One review notes that Baicizhan and Bubei chart nothing ([woshipm](https://www.woshipm.com/evaluating/4425622.html)).
+
+### What Phevere took, and what it left
+
+Phevere took these, each for a reason it can name:
+
+| Practice | Taken from | Why |
+|---|---|---|
+| New words fall as the review load grows | MaiMemo, Anki's review limit | The user's own complaint about long sessions is the failure MaiMemo describes |
+| Rounds of twenty words with a clear end | Bubei, Clozemaster, Duolingo | A backlog of 4,801 words should never be one endless session |
+| A ladder by memory strength, moving up within a session | Quizlet Learn, Baicizhan | Picking the kind at random gave the user 21 listening questions out of 44 |
+| A skill balance with listening capped | None directly; Duolingo's "right difficulty" idea | Listening is the weakest signal of knowing a word and was half of a session |
+| Leeches held at the learning stage and listed | Anki, Vocabulary.com | Drilling the same failing format again is what does not work |
+| "Too easy" and "Already know it" | Shanbay, Baicizhan, MaiMemo | One tap for a word that wastes your time |
+| One card per word across books, new words from one pool | MaiMemo | Phevere already kept progress per word; the books were still drawn separately |
+| Charts that answer a question, with readouts | Anki, MaiMemo, Shanbay | The old charts had no axes and said nothing on a tap |
+
+It left out an undo after Continue. Nothing is saved until Continue, and before that "I knew it", "I didn't know it" and "Too easy" already overturn the grade, which covers the slip Anki's undo is for; undoing a saved answer would mean deleting from an append-only history that other devices replay. It left out suspending a leech, because a word you saved is a word you want, and it left out a separate mistakes drill, because a leech already comes back in the easier format. Fitting FSRS parameters to your own history waits until there are a few hundred answers.
+
 ## What Phevere does now
 
-Each due word becomes one question, and the kind of question follows how firmly the word is held. Strength comes from FSRS stability.
+### A day's plan and its rounds
 
-| Memory | Question |
-|---|---|
-| New word | Pick the meaning of the word from four |
-| Learning, relearning after a miss, or stability under 4 days | Pick the word for a meaning, or pick the word you hear |
-| Stability 4 to 21 days | Type the word from its meaning with the first letter shown, or type the word you hear |
-| Stability over 21 days | Fill the gap in a sentence from your own note, when the note has one; otherwise type the word |
+Today's plan is every word due by the end of today, most overdue first, with today's new words spread among them. My words gives its own new words, oldest saved first, up to its daily goal. A word book gives words from the pool described under "Word books as one pool". While due reviews are at most five times the daily goal, the whole goal is given; beyond that each five more reviews hold back one new word, and at ten times the goal no new word comes until the reviews are done. The start card says how many wait.
 
-That ladder follows Laufer and Goldstein from the easiest kind of knowledge to the hardest, and it ends in the typed recall that WaniKani and Lingvist use. Wrong options come from other saved words in the same language and, where possible, the same part of speech; for word options, words of similar length and first letter come first. The word is blanked out of any meaning that contains it. A word with no saved meaning and too few other words falls back to a plain card where you say whether you knew it.
+A session takes the first twenty words of the plan as a round. The start card shows the round as learning, review and new words with an estimate of the time, and how many more words today has. A round ends with how many answers were given, the share right, the time, the words due tomorrow, the new words started, the words that moved up or slipped back a stage, and the words missed, each of which opens in lookup. Next round plans again from what is due now.
 
-![Screenshot of the feedback after a wrong choice: the right meaning in teal, the chosen one in red with the word it belongs to, then Continue, Open in lookup and I knew it](REVIEW.assets/wrong-answer.png)
+Two forms or spellings of one word count as one word (`sameLemma` in `review-quiz.ts`): "vicissitude" and "vicissitudes", "glean" and "gleaned", "colour" and "color", "idiosyncrasy" and its misspelling. A session asks only the first of them, a question shows the shortest saved form and accepts either form typed, and no question offers two of them as options. Confusable but different words, such as "principal" and "principle", stay apart, because they make the best wrong options.
 
-*After a miss, the chosen option names the word it belongs to, and "I knew it" overturns the grade.*
+### The ladder
+
+Each question's kind follows the word's stage. The stage is the word's memory level, moved up a step each time the word comes back in the same session, so a new word is recognised, then recalled from four, then typed:
+
+| Stage | When | Kinds, most fitting first |
+|---|---|---|
+| 0 | New word, first time today | Pick the meaning; pick the word |
+| 1 | Learning or relearning, stability under 4 days, or a new word's second ask | Pick the word; pick the meaning; pick the word you hear; type the word |
+| 2 | Stability 4 to 21 days, or a new word's third ask | Type the word from its meaning; fill the gap in a sentence; type the word you hear |
+| 3 | Stability over 21 days | Fill the gap; type the word; type the word you hear |
+
+That order follows Laufer and Goldstein from the easiest kind of knowledge to the hardest, and it ends in the typed recall that WaniKani and Lingvist use.
+
+Within a stage the kind is chosen by cost (`chooseKind`): its place in the stage's order, plus a penalty when the session already leans on its skill more than the aim (meaning 45%, spelling 40%, listening 15%), plus a small penalty for repeating the last kind. Listening is never more than a fifth of a session, and never in the first four questions; it passes that cap only for a word that has nothing else to ask. In the user's session of 2026-11-04, 21 of 44 questions were listening; the same words now get at most eight.
+
+A gap-fill question uses a sentence from your note, then the sentence the word was saved from, then the dictionary's example sentences, which the apps look up a few words ahead.
+
+### Senses a question can use
+
+A question shows the first usable sense of the word (`bestSense`). Citation lines that some sources return instead of a sense ("↑ "idiosyncracy", in Dictionary.com Unabridged…"), "plural of" and "past tense of" lines, and text that is only Wiktionary style rules are not usable; "Alternative form of mock-up. [A scale model…]" uses the bracketed gloss. An everyday sense comes before a dialect, obsolete or rare one, so "shed" asks "to part with, cast off" rather than its UK dialect sense. A word with no usable sense is skipped unless it can be heard; a word with no senses at all still gets the plain card.
+
+### Grading and overrides
 
 The answer is graded automatically and mapped to FSRS's four grades, so the learner never rates their own memory:
 
@@ -61,9 +126,27 @@ The answer is graded automatically and mapped to FSRS's four grades, so the lear
 - A right choice is Good, or Hard after ten seconds. Recognition never earns Easy.
 - A right typed answer is Easy within 2.5 seconds plus a quarter second per letter, Hard after 15 seconds plus that allowance, and Good in between.
 
-One tap overturns the grade: "I knew it" after a miss (a slip of the finger or a typo) makes it Good, and "I didn't know it" after a lucky guess makes it Again. The answer shows at once with the picture, the pronunciation, the saved senses and the note, plus an "Open in lookup" button for the full entry, and the line under the buttons says when the word comes back. Words due again within 20 minutes, which is Anki's learn-ahead limit, come back in the same session, up to three times. The session ends with how many answers were given, the share right, the average time and the words missed, each of which opens in lookup. On the desktop, 1 to 4 pick an option and Enter starts or continues.
+![Screenshot of the feedback after a wrong choice: the right meaning in teal, the chosen one in red with the word it belongs to, then Continue, Open in lookup and I knew it](REVIEW.assets/wrong-answer.png)
 
-Scheduling uses [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs) 5.4.2 (MIT) with 90% desired retention, Anki's default learning steps of 1 and 10 minutes, and interval fuzz. Version 6.0.0 came out on 2026-10-28 and requires Node 24, while the desktop app runs on Electron 28, so the 5.x line is the one that fits. The notebook keeps stability, difficulty, state, lapses, the last review time and the learning step in new columns, added with `ALTER TABLE ADD COLUMN` so no row is rewritten. A word reviewed only under the old scheduler gets its first FSRS state from its interval and ease with the same formula fsrs-rs uses when Anki switches a collection to FSRS: stability equals the old interval, and difficulty follows from the ease. The old interval, ease and due fields stay filled, so an older app syncing the same notebook still sees sensible due dates. When an older app edits only a note, the newer app keeps its memory state; when the older app reviews the word itself, the state is rebuilt from the old fields at the next review.
+*After a miss, the chosen option names the word it belongs to, and "I knew it" overturns the grade.*
+
+One tap overturns the grade before Continue saves it: "I knew it" after a miss makes it Good, "I didn't know it" after a lucky guess makes it Again, and "Too easy" after a right answer makes it Easy. A new word from any list can be set aside with "Already know it". The answer shows at once with the picture, the pronunciation, the saved senses and the note, and the line under the buttons says when the word comes back. Words due again within 20 minutes, Anki's learn-ahead limit, come back in the same session, up to three times. On the desktop, 1 to 4 pick an option and Enter starts, continues or begins the next round.
+
+### Leeches
+
+A word with four lapses or more is a leech (`isLeech`). Anki's threshold is eight, but Anki's lapses come from the learner's own Again; here every miss counts, so the line is lower. A leech is asked at the learning stage whatever its stability, in the easier recognition formats, is tagged "Trouble word" on the question, comes back at most once more in a session, and is listed with its misses on the Progress page.
+
+### The answer mark
+
+The answer is marked on the question itself, over the instruction, the prompt and the options together: a brush tick for a right answer, a lighter tick for an almost, a cross for a wrong one, each a tapered ink shape revealed by a pen line along its middle, over a soft wash of teal or rust. The right option fills and settles and a wrong pick gives a small shake. The whole mark takes about three seconds and takes no taps, so Continue works while it plays. A repaint resumes it from the time of the answer, so a picture or a meaning loading in the background no longer cuts it short.
+
+Windows reports reduced motion when "Show animations" is off, and both apps turned every animation off then, which is why the mark never showed for some users. The mark now draws in that case too, with the lift, the settle and the shake left out.
+
+### Word books as one pool
+
+Progress belongs to the word, not to a book (see `wordbook-store.ts`): a word saved to My words is scheduled on its `vocab` row, and a book word on its `book_words` row, both keyed by the lowercase headword. So a word known through My words counts as known in 考研 and every other book that lists it, and an answer in any list updates it everywhere.
+
+New book words are picked across the scope's books as one pool (`pickNewBookWords`). Each book offers the next words in its own order, which is frequency order for every shipped book, several times its allowance. The pool is ranked by position in that order, with two kinds of word moved forward: words that more of your books list, and words that share a root or a stem with a word you saved or started ("nationality" after "nation"). Each book's daily goal still sets how many words the pool gives. A new word's question is tagged with the books that share it. On Progress, each list says how many words it shares with the others and how many of its words were started through another list.
 
 ## The answer history
 
@@ -75,14 +158,30 @@ The FSRS schedule can be rebuilt from the history. `replaySchedule` runs the gra
 
 ## The Progress page
 
-Learn has a second page, Progress, built from the answer history and the words' FSRS state in `packages/core/src/learn-progress.ts`. It follows the list chosen in the Learn switcher, except the Words card, which always lists My words and every book.
+Learn has a second page, Progress, built from the answer history and the words' FSRS state in `packages/core/src/learn-progress.ts`. It follows the list chosen in the Learn switcher, except the Words card, which always lists My words and every book. Every chart has a y axis with its unit, gridlines and labelled days, and a readout under it: pointing at a bar or a day, tapping it, or moving to it with the keyboard names it and lists its words, which open in lookup.
 
-![Screenshot of the Progress page on a phone: today's new words and reviews against the goal, a one-day streak, words per state, skill bars, root families, answers per day and the forgetting curve](REVIEW.assets/learn-progress.png)
+![Screenshot of the Progress page on a phone before the 2026-11-04 rebuild: today's new words and reviews against the goal, a one-day streak, words per state, skill bars, root families, answers per day and the forgetting curve](REVIEW.assets/learn-progress.png)
 
-*The Progress page after a session: the rings fill towards the day's goals, and the curve shows how recall would fall over a month without review.*
+*The Progress page before the rebuild; the charts described below replace the forgetting curve and the bars.*
 
-New words today counts words whose first graded answer fell today, against the sum of the daily goals in the list. Reviews counts today's graded answers against those plus the reviews still due. The streak counts days in a row with at least one answer, ending today or, before today's first answer, yesterday. Root families are the root families of Families plus the deep roots, among the words already started or saved, so a book of thousands of new words does not bury them. The forgetting curve averages FSRS's predicted recall, from each word's stability and last review, over the words in rotation for the next 30 days, with the 90% target as a dashed line.
+The cards answer one question each:
+
+| Card | The question it answers |
+|---|---|
+| Today | How far am I through today's new words and reviews, how many were right, and how long is my streak? |
+| If you stop reviewing | What would my recall be after N days without review? A slider sets N from 0 to 60 days; the readout gives the average recall, how many words would still be at 90% or more, and the weakest words, and tapping one draws its own curve. The dashed line at 90% is labelled as the point where a word falls due. |
+| Reviews ahead, 30 days | How busy are the coming days, and with which words? Bars split learning words, words held under three weeks and words held longer. |
+| Answers per day | How much did I study each day, how much was right, and for how long? |
+| How long words are held | How many started words are held for under a week, up to three weeks, up to three months and longer? |
+| Skills | How many words are mastered in meaning, spelling and listening, and what was last week's mix of question kinds against the listening cap? |
+| Words | How far am I through each list, what does it share with the others, and how much of it did I learn elsewhere? |
+| Trouble words | Which words do I keep missing? |
+| Root families | How much of each root family do I know? |
+
+New words today counts words whose first graded answer fell today, against the sum of the daily goals in the list. Reviews counts today's graded answers against those plus the reviews still due. The streak counts days in a row with at least one answer, ending today or, before today's first answer, yesterday. A word's skill score moves halfway towards 1 after a right answer and halfway towards 0 after a wrong one, and 0.75 counts as mastered.
+
+The Today page has two charts of its own: reviews due over the next fourteen days, where tapping a day lists its words, and the words saved (in a book, started) per day over twelve weeks, with months along the top, weekdays down the side and each day's count and words on a tap.
 
 ## What is left open
 
-Automatic grading by time is a judgement call. If the thresholds feel wrong in use, they live in `autoGrade` in `review-quiz.ts`. FSRS can fit its parameters to a learner's own history once there are a few hundred reviews. The answer history now holds what that fitting needs, but Phevere still runs on the default parameters.
+Automatic grading by time is a judgement call. If the thresholds feel wrong in use, they live in `autoGrade` in `review-quiz.ts`. The skill aims and the listening cap live in `SKILL_TARGET` and `LISTEN_CAP`, the leech line in `LEECH_LAPSES`, and the round size in `ROUND_WORDS`. FSRS can fit its parameters to a learner's own history once there are a few hundred reviews; the answer history holds what that fitting needs, but Phevere still runs on the default parameters. The screenshots in this memo show the Learn tab before the 2026-11-04 rebuild.
