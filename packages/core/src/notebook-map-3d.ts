@@ -77,8 +77,23 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
   let W = Math.max(1, stage.clientWidth);
   let H = Math.max(1, stage.clientHeight);
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  const ratio = () => Math.min(2, window.devicePixelRatio || 1);
+  renderer.setPixelRatio(ratio());
   renderer.setSize(W, H);
+  // A window moved to a screen with another pixel density, or a browser zoom, changes the ratio.
+  let dprQuery: MediaQueryList | null = null;
+  const onDpr = () => {
+    renderer.setPixelRatio(ratio());
+    renderer.setSize(W, H);
+    watchDpr();
+    wake();
+  };
+  const watchDpr = () => {
+    dprQuery?.removeEventListener('change', onDpr);
+    dprQuery = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`) || null;
+    dprQuery?.addEventListener('change', onDpr);
+  };
+  watchDpr();
   renderer.setClearColor(BG);
   renderer.domElement.style.display = 'block';
   stage.appendChild(renderer.domElement);
@@ -265,8 +280,23 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
     return true;
   };
 
-  // A drag that ends with the pointer still moving keeps turning for a moment.
+  // A drag that ends with the pointer still moving keeps turning for a moment, at the speed of
+  // its last 80 ms. A pointer held still before it lifts leaves the map where it is.
   const spin = { theta: 0, phi: 0 };
+  const turns: { t: number; theta: number; phi: number }[] = [];
+  const RELEASE_MS = 80;
+  const releaseSpin = () => {
+    const now = performance.now();
+    const recent = turns.filter((x) => now - x.t <= RELEASE_MS);
+    turns.length = 0;
+    spin.theta = 0;
+    spin.phi = 0;
+    if (recent.length < 2) return;
+    const span = Math.max(16, now - recent[0].t);
+    // Per frame of about 16 ms.
+    spin.theta = (recent.reduce((s, x) => s + x.theta, 0) / span) * 16;
+    spin.phi = (recent.reduce((s, x) => s + x.phi, 0) / span) * 16;
+  };
   const stepSpin = (): boolean => {
     if (reduced || (Math.abs(spin.theta) < 1e-4 && Math.abs(spin.phi) < 1e-4) || pointers.size) return false;
     sph.theta += spin.theta;
@@ -295,13 +325,14 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
   let pair: { d: number; a: number; mx: number; my: number } | null = null;
 
   const rect = () => stage.getBoundingClientRect();
+  // As in OrbitControls with rotateSpeed 1: a drag across the height of the map is a full turn.
+  const turnPerPx = () => (2 * Math.PI) / Math.max(200, H);
   const rotateBy = (dx: number, dy: number) => {
-    // A drag across the full height of the map turns it about half a turn.
-    const k = (Math.PI * 1.0) / Math.max(200, H);
+    const k = turnPerPx();
     sph.theta -= dx * k;
     sph.phi -= dy * k;
-    spin.theta = -dx * k;
-    spin.phi = -dy * k;
+    turns.push({ t: performance.now(), theta: -dx * k, phi: -dy * k });
+    if (turns.length > 30) turns.shift();
     place();
   };
   const panBy = (dx: number, dy: number) => {
@@ -327,6 +358,7 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
     flight = null;
     spin.theta = 0;
     spin.phi = 0;
+    turns.length = 0;
     pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY, x0: ev.clientX, y0: ev.clientY, t0: performance.now(), type: ev.pointerType, button: ev.button, target: ev.target });
     try {
       stage.setPointerCapture(ev.pointerId);
@@ -369,7 +401,7 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
       da = Math.atan2(Math.sin(da), Math.cos(da));
       sph.theta -= da;
       // Both fingers up or down together tilt the map.
-      sph.phi -= ((now.my - pair.my) * Math.PI) / Math.max(200, H);
+      sph.phi -= (now.my - pair.my) * turnPerPx();
       place();
       pair = now;
     }
@@ -391,12 +423,15 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
       rest.y0 = rest.y;
       pair = null;
       mode = 'rotate';
+      turns.length = 0;
       return;
     }
     if (pointers.size) return;
     pair = null;
     const tap = !dragging && ev.type === 'pointerup' && performance.now() - p.t0 < TAP_MS && p.button === 0;
-    if (!dragging || mode !== 'rotate') {
+    if (dragging && mode === 'rotate') releaseSpin();
+    else {
+      turns.length = 0;
       spin.theta = 0;
       spin.phi = 0;
     }
@@ -631,9 +666,10 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
     const h = stage.clientHeight;
     hidden = !w || !h;
     if (hidden) return;
-    if (w !== W || h !== H) {
+    if (w !== W || h !== H || renderer.getPixelRatio() !== ratio()) {
       W = w;
       H = h;
+      renderer.setPixelRatio(ratio());
       renderer.setSize(W, H);
       applyOffset();
     }
@@ -698,6 +734,7 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
       cancelAnimationFrame(raf);
       cancelAnimationFrame(hoverRaf);
       clearInterval(watch);
+      dprQuery?.removeEventListener('change', onDpr);
       ro.disconnect();
       stage.removeEventListener('pointerdown', onDown);
       stage.removeEventListener('pointermove', onMove);
