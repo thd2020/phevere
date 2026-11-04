@@ -339,6 +339,8 @@ export {
   skillMastery,
   insertAnswer,
   answerKey,
+  localLemma,
+  recordLemmaAliases,
   type Skill,
   type AnswerKind,
   type AnswerRecord,

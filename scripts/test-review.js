@@ -20,7 +20,7 @@ const bundle = esbuild.buildSync({
       export { configureCore } from './src/runtime';
       export { addVocab, listVocab, getVocab, reviewVocab, updateVocabNote } from './src/vocab-store';
       export { syncVocab } from './src/vocab-sync';
-      export { listAnswerHistory, replaySchedule, historyByWord, skillMastery, skillFor } from './src/answer-history';
+      export { listAnswerHistory, replaySchedule, historyByWord, skillMastery, skillFor, localLemma, recordLemmaAliases } from './src/answer-history';
       export { reviewBookWord, setBookWordKnown, listBookProgress, rebuildWordSchedule, subscribeWordbook, listWordbookSubs } from './src/wordbook-store';
       export { syncProgress } from './src/progress-sync';
       export { syncWordbooks } from './src/wordbook-sync';
@@ -691,6 +691,26 @@ async function main() {
   await B.c.syncProgress(account);
   await A.c.syncProgress(account);
   assert.deepEqual(sched(await A.c.getVocab(saved.id)), sched(afterB));
+
+  // A device that still files answers under an old headword ("gleaned", "paparazzi"): the answers
+  // land on this device's card for the word, by form or by an alias the fold recorded.
+  {
+    const D = device('d');
+    const C = device('c');
+    await D.c.reviewBookWord('gleaned', 3, t1 + 4 * DAY, { kind: 'meaning-choice', correct: true, ms: 3000 });
+    await D.c.reviewBookWord('paparazzi', 3, t1 + 4 * DAY, { kind: 'meaning-choice', correct: true, ms: 3000 });
+    await D.c.syncProgress(account);
+    const glean = await C.c.addVocab({ lemma: 'glean', definition: 'to gather bit by bit' });
+    await C.c.recordLemmaAliases([['paparazzi', 'paparazzo']]);
+    assert.equal(await C.c.localLemma('Gleaned'), 'glean');
+    assert.equal(await C.c.localLemma('paparazzi'), 'paparazzo');
+    assert.equal(await C.c.localLemma('lantern'), 'lantern', 'a word not saved here keeps its headword');
+    await C.c.syncProgress(account);
+    const onC = await C.c.listAnswerHistory();
+    assert.ok(onC.some((r) => r.lemma === 'glean') && !onC.some((r) => r.lemma === 'gleaned'), 'filed under glean');
+    assert.ok(onC.some((r) => r.lemma === 'paparazzo') && !onC.some((r) => r.lemma === 'paparazzi'), 'filed under paparazzo');
+    assert.ok((await C.c.getVocab(glean.id)).reps > 0, 'and replayed onto the glean card');
+  }
 
   // Book words that are not in My words: progress and "Already know it" travel only in the history.
   await B.c.reviewBookWord('ember', 3, t1 + 3 * DAY, { kind: 'meaning-choice', correct: true, ms: 3000, bookId: 'starter' });
