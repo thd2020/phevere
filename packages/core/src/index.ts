@@ -90,6 +90,7 @@ export {
   fillWordImages,
   attachNotebookMap,
   attachFamilies,
+  closeTreeInspector,
   disposeNotebookMaps,
   type NotebookView,
   type FamilyGrouping,

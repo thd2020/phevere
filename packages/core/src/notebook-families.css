@@ -361,6 +361,7 @@
   position: relative;
   display: grid;
   place-items: end center;
+  cursor: zoom-in;
   margin: 0;
   padding: 10px 8px 4px;
   overflow-x: auto;
@@ -399,3 +400,94 @@
 @keyframes nbv-grow { to { stroke-dashoffset: 0; } }
 @keyframes nbv-fade { to { opacity: 1; } }
 @keyframes nbv-crown { to { opacity: 0.13; } }
+
+/* A tree's open button, top-right of its grove. */
+.nbv-grove__open {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--nbv-line);
+  border-radius: 999px;
+  background: var(--nbv-panel);
+  color: var(--nbv-soft);
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.16s var(--nbv-motion), color 0.16s var(--nbv-motion), background-color 0.16s var(--nbv-motion);
+}
+.nbv-grove__open svg { width: 15px; height: 15px; }
+.nbv-grove:hover .nbv-grove__open,
+.nbv-grove__open:focus-visible { opacity: 1; color: var(--nbv-ember); }
+.nbv-grove__open:focus-visible { outline: 2px solid var(--nbv-ember); outline-offset: 1px; }
+
+/* The tree inspector: one tree, large, with pan and zoom. */
+.nbv-inspect {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(28, 25, 23, 0.42);
+  overscroll-behavior: contain;
+}
+.nbv-inspect__sheet {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  width: min(1100px, 100%);
+  height: min(820px, 100%);
+  overflow: hidden;
+  border: 1px solid var(--nbv-line);
+  border-radius: 20px;
+  background: linear-gradient(180deg, #fbf8f2 0%, var(--nbv-panel) 62%, #f3ede3 100%);
+  box-shadow: 0 30px 60px -30px rgba(28, 25, 23, 0.6);
+}
+.nbv-inspect__bar {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 14px 14px 10px 22px;
+  border-bottom: 1px solid var(--nbv-paper-2);
+}
+.nbv-inspect__title { margin: 0; font: 600 26px/1.1 var(--nbv-serif); letter-spacing: -0.02em; color: var(--nbv-ink); }
+.nbv-inspect__n { font: 500 13px/1 var(--nbv-ui); color: var(--nbv-soft); font-variant-numeric: tabular-nums; }
+.nbv-inspect__tools { display: flex; gap: 4px; margin-left: auto; align-self: center; }
+.nbv-inspect__tools button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--nbv-line);
+  border-radius: 999px;
+  background: var(--nbv-panel);
+  color: var(--nbv-ink);
+  cursor: pointer;
+  transition: background-color 0.16s var(--nbv-motion), color 0.16s var(--nbv-motion);
+}
+.nbv-inspect__tools button svg { width: 17px; height: 17px; }
+.nbv-inspect__tools button:hover { background: var(--nbv-paper-2); color: var(--nbv-ember); }
+.nbv-inspect__tools button:focus-visible { outline: 2px solid var(--nbv-ember); outline-offset: 1px; }
+.nbv-inspect__close { margin-left: 6px; }
+.nbv-inspect__view {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.nbv-inspect__view.is-panning { cursor: grabbing; }
+.nbv-inspect__view svg { display: block; width: 100%; height: 100%; max-width: none; }
+.nbv-inspect .nbv-tree__word text { stroke: #fbf8f2; }
+@media (max-width: 560px) {
+  .nbv-inspect { padding: 0; }
+  .nbv-inspect__sheet { width: 100%; height: 100%; border: 0; border-radius: 0; padding-top: env(safe-area-inset-top); }
+  .nbv-inspect__bar { padding-left: 16px; }
+  .nbv-inspect__n { display: none; }
+}

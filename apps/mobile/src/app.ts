@@ -26,6 +26,7 @@ import {
   deleteEmailMatches,
   attachNotebookMap,
   attachFamilies,
+  closeTreeInspector,
   traceNotebookFamilies,
   attachCardTable,
   disposeNotebookMaps,
@@ -2651,6 +2652,7 @@ export async function startApp(): Promise<void> {
   // when this returns false.
   // It does what the page's own back or close control would, innermost first.
   (window as unknown as { __pvBack?: () => boolean }).__pvBack = () => {
+    if (closeTreeInspector()) return true;
     const sheet = document.querySelector<HTMLDialogElement>('dialog[open]');
     if (sheet) {
       sheet.dispatchEvent(new Event('cancel'));

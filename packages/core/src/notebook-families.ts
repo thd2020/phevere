@@ -34,6 +34,8 @@ const ORIGIN_GLYPH: Record<string, string> = {
   Yiddish: 'ײ', Malay: 'M', Nahuatl: 'tl', 'Proto-Indo-European': '*',
 };
 
+const EXPAND_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 export type EtymonLookup = (lemma: string) => WordEtymon | null;
 
 export interface FamiliesOptions {
@@ -382,7 +384,8 @@ export function familiesHtml(a: NotebookAnalysis, grouping: FamilyGrouping, opts
       .map((t) => {
         collectIds(t, placed);
         const wide = leafCount(t) >= 4 ? ' is-wide' : '';
-        return `<figure class="nbv-grove${wide}">${treeSvg(t, a)}</figure>`;
+        const base = clean(a.words.get(t.id)?.entry.lemma);
+        return `<figure class="nbv-grove${wide}">${treeSvg(t, a)}<button type="button" class="nbv-grove__open" data-tree-open aria-label="Open the ${esc(base)} tree" title="Open">${EXPAND_ICON}</button></figure>`;
       })
       .join('')}</div>`;
     rest = 'Not part of a tree';
@@ -475,10 +478,21 @@ export function traceNotebookFamilies(lemmas: string[], getRoot: () => any, onDo
 const EASE_OUT = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
 const SHEET_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
 const ZOOM_ICON = {
+  out: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  in: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12M12 6v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  fit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
 };
 
 let detachFamilies: (() => void) | null = null;
+let closeInspector: (() => void) | null = null;
+
+/** Close the word-tree inspector if it is open; true when it was. The phone's Back uses this. */
+export function closeTreeInspector(): boolean {
+  if (!closeInspector) return false;
+  closeInspector();
+  return true;
+}
 
 /** The element that scrolls the view: the nearest scrolling ancestor, or the page. */
 function scrollerOf(el: any): any {
@@ -498,6 +512,7 @@ function scrollerOf(el: any): any {
 export function attachFamilies(root: any): void {
   detachFamilies?.();
   detachFamilies = null;
+  closeInspector?.();
   const fams = root?.querySelector?.('.nbv-fams') as HTMLElement | null;
   const forest = root?.querySelector?.('.nbv-forest') as HTMLElement | null;
   const abc = root?.querySelector?.('.nbv-abc') as HTMLElement | null;
@@ -627,6 +642,244 @@ export function attachFamilies(root: any): void {
       const sec = [...root.querySelectorAll('.nbv-letter')].find((s: any) => s.dataset.letter === b.dataset.famJump) as HTMLElement | undefined;
       sec?.scrollIntoView({ block: 'start', behavior: reduced() ? 'auto' : 'smooth' });
     });
+  }
+
+  /* Word trees open large */
+  if (forest) {
+    on(forest, 'click', (ev: any) => {
+      const t = ev.target as Element;
+      if (t.closest?.('[data-act]')) return;
+      const grove = t.closest?.('.nbv-grove') as HTMLElement | null;
+      if (grove) openInspector(grove);
+    });
+  }
+
+  function openInspector(grove: HTMLElement): void {
+    closeInspector?.();
+    const svg0 = grove.querySelector('svg.nbv-tree-svg') as SVGSVGElement | null;
+    if (!svg0) return;
+    const [, , W, H] = (svg0.getAttribute('viewBox') || '0 0 300 200').split(/\s+/).map(Number);
+    const base = grove.querySelector('.nbv-tree__base') as SVGGElement | null;
+    const label = base?.getAttribute('data-q') || '';
+    const bx = Number((base?.getAttribute('transform') || '').match(/translate\(([\d.]+)/)?.[1]) || W / 2;
+    const n = grove.querySelectorAll('.nbv-tree__word').length;
+    const overlay = doc.createElement('div');
+    overlay.className = 'nbv nbv-inspect';
+    overlay.innerHTML = `<div class="nbv-inspect__sheet" role="dialog" aria-modal="true" aria-label="${esc(label)}">
+      <header class="nbv-inspect__bar">
+        <h2 class="nbv-inspect__title">${esc(label)}</h2><span class="nbv-inspect__n">${n} words</span>
+        <div class="nbv-inspect__tools">
+          <button type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out">${ZOOM_ICON.out}</button>
+          <button type="button" data-zoom="fit" aria-label="Fit" title="Fit">${ZOOM_ICON.fit}</button>
+          <button type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in">${ZOOM_ICON.in}</button>
+          <button type="button" class="nbv-inspect__close" data-inspect-close aria-label="Close" title="Close">${ZOOM_ICON.close}</button>
+        </div>
+      </header>
+      <div class="nbv-inspect__view">${svg0.outerHTML}</div>
+    </div>`;
+    doc.body.appendChild(overlay);
+    const sheet = overlay.querySelector('.nbv-inspect__sheet') as HTMLElement;
+    const view = overlay.querySelector('.nbv-inspect__view') as HTMLElement;
+    const svg = view.querySelector('svg') as SVGSVGElement;
+    svg.removeAttribute('width');
+    svg.removeAttribute('height');
+    svg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
+    const io = new AbortController();
+    const onI = (el: any, type: string, fn: (e: any) => void, opts: AddEventListenerOptions = {}) =>
+      el.addEventListener(type, fn, { ...opts, signal: io.signal });
+
+    // The view: `s` screen pixels per tree unit, and the tree point (x, y) at the top-left corner.
+    let s = 1;
+    let x = 0;
+    let y = 0;
+    let tween = 0;
+    const size = () => ({ w: view.clientWidth || 320, h: view.clientHeight || 320 });
+    const fitScale = () => {
+      const { w, h } = size();
+      return Math.min(w / W, h / H) * 0.92;
+    };
+    const minS = () => Math.min(fitScale(), 1) * 0.75;
+    const MAX_S = 5;
+    const clampS = (v: number) => Math.min(MAX_S, Math.max(minS(), v));
+    const draw = () => {
+      const { w, h } = size();
+      svg.setAttribute('viewBox', `${x.toFixed(2)} ${y.toFixed(2)} ${(w / s).toFixed(2)} ${(h / s).toFixed(2)}`);
+    };
+    /** Keep some of the tree on screen however far it is dragged. */
+    const bound = () => {
+      const { w, h } = size();
+      const vw = w / s;
+      const vh = h / s;
+      x = Math.min(Math.max(x, -vw * 0.8), W - vw * 0.2);
+      y = Math.min(Math.max(y, -vh * 0.8), H - vh * 0.2);
+    };
+    const home = (): { s: number; x: number; y: number } => {
+      const { w, h } = size();
+      // Fit when the labels stay readable; otherwise start at full size on the trunk.
+      const ns = Math.min(2.4, Math.max(fitScale(), 0.9));
+      const vw = w / ns;
+      const vh = h / ns;
+      const nx = W <= vw ? W / 2 - vw / 2 : Math.min(Math.max(bx - vw / 2, 0), W - vw);
+      const ny = H <= vh ? H / 2 - vh / 2 : H - vh;
+      return { s: ns, x: nx, y: ny };
+    };
+    const go = (to: { s: number; x: number; y: number }, animate: boolean) => {
+      win.cancelAnimationFrame(tween);
+      if (!animate) {
+        ({ s, x, y } = to);
+        bound();
+        draw();
+        return;
+      }
+      const from = { s, x, y };
+      const ms = reduced() ? 120 : 260;
+      const t0 = win.performance.now();
+      const step = (now: number) => {
+        const k = Math.min(1, Math.max(0, (now - t0) / ms));
+        const e = 1 - Math.pow(1 - k, 3);
+        s = from.s + (to.s - from.s) * e;
+        x = from.x + (to.x - from.x) * e;
+        y = from.y + (to.y - from.y) * e;
+        draw();
+        if (k < 1) tween = win.requestAnimationFrame(step);
+        else bound();
+      };
+      tween = win.requestAnimationFrame(step);
+    };
+    /** Zoom to `ns` keeping the tree point under (px, py) in place. */
+    const zoomAt = (ns: number, px: number, py: number, animate: boolean) => {
+      ns = clampS(ns);
+      const tx = x + px / s;
+      const ty = y + py / s;
+      go({ s: ns, x: tx - px / ns, y: ty - py / ns }, animate);
+    };
+    const local = (ev: any) => {
+      const r = view.getBoundingClientRect();
+      return { px: ev.clientX - r.left, py: ev.clientY - r.top };
+    };
+    go(home(), false);
+
+    onI(view, 'wheel', (ev: any) => {
+      ev.preventDefault();
+      const { px, py } = local(ev);
+      zoomAt(s * Math.exp(-ev.deltaY * (ev.ctrlKey ? 0.01 : 0.0018)), px, py, false);
+    }, { passive: false });
+    const pts = new Map<number, { x: number; y: number }>();
+    let moved = 0;
+    let pinch = 0;
+    onI(view, 'pointerdown', (ev: any) => {
+      if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+      pts.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (pts.size === 1) moved = 0;
+      if (pts.size === 2) {
+        const [a, b] = [...pts.values()];
+        pinch = Math.hypot(a.x - b.x, a.y - b.y);
+      }
+      win.cancelAnimationFrame(tween);
+    });
+    onI(view, 'pointermove', (ev: any) => {
+      const p = pts.get(ev.pointerId);
+      if (!p) return;
+      const dx = ev.clientX - p.x;
+      const dy = ev.clientY - p.y;
+      p.x = ev.clientX;
+      p.y = ev.clientY;
+      if (pts.size === 1) {
+        moved += Math.abs(dx) + Math.abs(dy);
+        if (moved > 4) {
+          view.setPointerCapture?.(ev.pointerId);
+          view.classList.add('is-panning');
+        }
+        x -= dx / s;
+        y -= dy / s;
+        bound();
+        draw();
+      } else if (pts.size === 2) {
+        moved = 99;
+        const [a, b] = [...pts.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        const r = view.getBoundingClientRect();
+        if (pinch) zoomAt(s * (d / pinch), (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top, false);
+        pinch = d;
+      }
+    });
+    const lift = (ev: any) => {
+      pts.delete(ev.pointerId);
+      if (pts.size < 2) pinch = 0;
+      if (!pts.size) view.classList.remove('is-panning');
+    };
+    onI(view, 'pointerup', lift);
+    onI(view, 'pointercancel', lift);
+    onI(view, 'dblclick', (ev: any) => {
+      const { px, py } = local(ev);
+      zoomAt(s * 1.8, px, py, true);
+    });
+    onI(overlay, 'click', (ev: any) => {
+      const t = ev.target as Element;
+      if (t === overlay || t.closest?.('[data-inspect-close]')) {
+        close();
+        return;
+      }
+      const z = (t.closest?.('[data-zoom]') as HTMLElement | null)?.dataset.zoom;
+      if (z) {
+        const { w, h } = size();
+        if (z === 'fit') go(home(), true);
+        else zoomAt(s * (z === 'in' ? 1.5 : 1 / 1.5), w / 2, h / 2, true);
+        return;
+      }
+      // A word: look it up through the tree on the page, which the app is listening on.
+      const word = t.closest?.('.nbv-tree__word[data-q]') as Element | null;
+      if (!word || moved > 4) return;
+      const q = word.getAttribute('data-q') || '';
+      const orig = [...grove.querySelectorAll('.nbv-tree__word')].find((g) => g.getAttribute('data-q') === q);
+      close();
+      orig?.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    onI(doc, 'keydown', (ev: any) => {
+      const { w, h } = size();
+      const pan = 60 / s;
+      if (ev.key === 'Escape') close();
+      else if (ev.key === '+' || ev.key === '=') zoomAt(s * 1.5, w / 2, h / 2, true);
+      else if (ev.key === '-' || ev.key === '_') zoomAt(s / 1.5, w / 2, h / 2, true);
+      else if (ev.key === '0') go(home(), true);
+      else if (ev.key === 'ArrowLeft') go({ s, x: x - pan, y }, true);
+      else if (ev.key === 'ArrowRight') go({ s, x: x + pan, y }, true);
+      else if (ev.key === 'ArrowUp') go({ s, x, y: y - pan }, true);
+      else if (ev.key === 'ArrowDown') go({ s, x, y: y + pan }, true);
+      else if (ev.key === 'Tab') {
+        // Focus stays inside the sheet while it is open.
+        const f = [...sheet.querySelectorAll('button')] as HTMLElement[];
+        const i = f.indexOf(doc.activeElement as HTMLElement);
+        f[(i + (ev.shiftKey ? -1 : 1) + f.length) % f.length]?.focus();
+      } else return;
+      ev.preventDefault();
+      ev.stopPropagation();
+    }, { capture: true });
+    const RO = win.ResizeObserver;
+    let vro: any = null;
+    if (RO) {
+      vro = new RO(() => draw());
+      vro.observe(view);
+    }
+    const opener = grove.querySelector('[data-tree-open]') as HTMLElement | null;
+    const ms = reduced() ? 120 : 280;
+    overlay.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms, easing: EASE_OUT });
+    sheet.animate([{ opacity: 0, transform: 'translateY(14px) scale(0.97)' }, { opacity: 1, transform: 'none' }], { duration: ms + 60, easing: SHEET_EASE });
+    (overlay.querySelector('[data-inspect-close]') as HTMLElement | null)?.focus({ preventScroll: true });
+
+    function close(): void {
+      if (closeInspector !== close) return;
+      closeInspector = null;
+      io.abort();
+      vro?.disconnect();
+      win.cancelAnimationFrame(tween);
+      const out = reduced() ? 100 : 180;
+      overlay.style.pointerEvents = 'none';
+      overlay.animate([{ opacity: 1 }, { opacity: 0 }], { duration: out, easing: EASE_OUT, fill: 'forwards' });
+      win.setTimeout(() => overlay.remove(), out + 20);
+      opener?.focus({ preventScroll: true });
+    }
+    closeInspector = close;
   }
 
   detachFamilies = () => {

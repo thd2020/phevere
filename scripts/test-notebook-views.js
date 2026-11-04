@@ -75,6 +75,8 @@ assert.equal(views.familyLetter('対'), '#');
 const letters = [...views.familiesHtml(a, 'prefix').matchAll(/data-letter="([^"]*)"/g)].map((m) => m[1]);
 assert.deepEqual(letters, [...letters].sort(), 'letter sections in alphabetical order');
 assert.doesNotMatch(views.familiesHtml(a, 'char'), /nbv-letter__head/);
+assert.match(views.familiesHtml(a, 'tree'), /data-tree-open aria-label="Open the nation tree"/);
+
 // Map: deterministic layout, every edge points at real nodes.
 const m1 = views.layoutNotebookMap(a, { kinds: ['root', 'char'] });
 const m2 = views.layoutNotebookMap(a, { kinds: ['root', 'char'] });
