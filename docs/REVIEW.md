@@ -95,7 +95,7 @@ Today's plan is every word due by the end of today, most overdue first, with tod
 
 A session takes the first twenty words of the plan as a round. The start card shows the round as learning, review and new words with an estimate of the time, and how many more words today has. A round ends with how many answers were given, the share right, the time, the words due tomorrow, the new words started, the words that moved up or slipped back a stage, and the words missed, each of which opens in lookup. Next round plans again from what is due now.
 
-Two forms or spellings of one word count as one word (`sameLemma` in `review-quiz.ts`): "vicissitude" and "vicissitudes", "glean" and "gleaned", "colour" and "color", "idiosyncrasy" and its misspelling. A session asks only the first of them, a question shows the shortest saved form and accepts either form typed, and no question offers two of them as options. Confusable but different words, such as "principal" and "principle", stay apart, because they make the best wrong options.
+A question always asks, answers and records the word it was built for; it never shows another headword in its place. Two headwords count as one word only by a strict rule (`regularForms` in `review-quiz.ts`): the regular -s, -es, -ed and -ing endings, with a final e dropped, y turned to i, and a consonant doubled only before -ed and -ing in a one-syllable word, plus British and American spellings such as "colour" and "color". -er, -est and -ly are left out, because they make other words: "leader" is not "lead", "forest" is not "fore", and "rate" is not "rat". No choice question offers two forms of one word. Two saved entries are asked once in a session only when, beyond the spelling, one entry is listed as a form of the other ("simple past of glean") or their meanings are mostly the same; then the word itself, or the entry with a usable sense, is kept. Words of a word book are never folded together, since each book lists its own headwords. Confusable words such as "principal" and "principle", or "advice" and "advise", stay apart and make good wrong options.
 
 ### The ladder
 
@@ -116,7 +116,7 @@ A gap-fill question uses a sentence from your note, then the sentence the word w
 
 ### Senses a question can use
 
-A question shows the first usable sense of the word (`bestSense`). Citation lines that some sources return instead of a sense ("↑ "idiosyncracy", in Dictionary.com Unabridged…"), "plural of" and "past tense of" lines, and text that is only Wiktionary style rules are not usable; "Alternative form of mock-up. [A scale model…]" uses the bracketed gloss. An everyday sense comes before a dialect, obsolete or rare one, so "shed" asks "to part with, cast off" rather than its UK dialect sense. A word with no usable sense is skipped unless it can be heard; a word with no senses at all still gets the plain card.
+A question shows the first usable sense of the word (`bestSense`). Citation lines that some sources return instead of a sense ("↑ "idiosyncracy", in Dictionary.com Unabridged…"), "plural of" and "past tense of" lines, and text that is only Wiktionary style rules are not usable; "Alternative form of mock-up. [A scale model…]" uses the bracketed gloss. An everyday sense comes before a dialect, obsolete or rare one, so "shed" asks "to part with, cast off" rather than its UK dialect sense. A word with no usable sense is skipped unless a sentence can be found for it; it is never pushed into listening instead. A word with no senses at all, such as a book word whose lookup failed, gets the plain card: the word, then its pronunciation, picture and Open in lookup. Before a round starts, the apps look up the meaning of every book word in it, so the plain card is the exception.
 
 ### Grading and overrides
 
@@ -130,7 +130,7 @@ The answer is graded automatically and mapped to FSRS's four grades, so the lear
 
 *After a miss, the chosen option names the word it belongs to, and "I knew it" overturns the grade.*
 
-One tap overturns the grade before Continue saves it: "I knew it" after a miss makes it Good, "I didn't know it" after a lucky guess makes it Again, and "Too easy" after a right answer makes it Easy. A new word from any list can be set aside with "Already know it". The answer shows at once with the picture, the pronunciation, the saved senses and the note, and the line under the buttons says when the word comes back. Words due again within 20 minutes, Anki's learn-ahead limit, come back in the same session, up to three times. On the desktop, 1 to 4 pick an option and Enter starts, continues or begins the next round.
+One tap overturns the grade before Continue saves it: "I knew it" after a miss makes it Good, "I didn't know it" after a lucky guess makes it Again, and "Too easy" after a right answer makes it Easy. A new word from any list can be set aside with "Already know it", which sits at the end of the instruction row, away from where Continue appears; the round's summary lists those words with Undo. Taps and keys in the first 0.4 seconds of a question are ignored, so a double tap on Continue cannot answer the next one. Back during an answer saves it first, as Continue would. The answer shows at once with the picture, the pronunciation, the saved senses and the note, and the line under the buttons says when the word comes back. Words due again within 20 minutes, Anki's learn-ahead limit, come back in the same session, up to three times. With a keyboard, on the desktop and on a phone or tablet that has one, 1 to 4 pick an option and Enter starts, continues or begins the next round; the key hints show only where a keyboard-like pointer exists.
 
 ### Leeches
 
@@ -146,7 +146,9 @@ Windows reports reduced motion when "Show animations" is off, and both apps turn
 
 Progress belongs to the word, not to a book (see `wordbook-store.ts`): a word saved to My words is scheduled on its `vocab` row, and a book word on its `book_words` row, both keyed by the lowercase headword. So a word known through My words counts as known in 考研 and every other book that lists it, and an answer in any list updates it everywhere.
 
-New book words are picked across the scope's books as one pool (`pickNewBookWords`). Each book offers the next words in its own order, which is frequency order for every shipped book, several times its allowance. The pool is ranked by position in that order, with two kinds of word moved forward: words that more of your books list, and words that share a root or a stem with a word you saved or started ("nationality" after "nation"). Each book's daily goal still sets how many words the pool gives. A new word's question is tagged with the books that share it. On Progress, each list says how many words it shares with the others and how many of its words were started through another list.
+New book words are picked across the scope's books as one pool (`pickNewBookWords`). Each book offers its words at its own level first: a word of 考研 or CET-4 that Starter, 中考 or 高考 already teach waits until the book's own words run out, because the learner most likely knows it. Book order alone started 考研 with state, might, part, against and system; it now starts with federal, republican, congress, democratic and executive. Within that, words that share a root or a stem with a word you saved or started ("nationality" after "nation") and words more of your books list move a little forward, and each book's daily goal still sets how many words the pool gives.
+
+For words that slip through, the choice was between this level filter and a placement pass, the quick "know it or not" triage that 不背单词 and MaiMemo offer when a book is added (MaiMemo's 熟知 also marks words known one at a time). The level filter costs the learner nothing before the first question and is right for most of a graded book, while a placement pass costs minutes up front and asks the same question "Already know it" already asks in the round. So Phevere filters by level and keeps "Already know it", with Undo, as the triage. A new word's question is tagged with the books that share it. On Progress, each list says how many words it shares with the others and how many of its words were started through another list.
 
 ## The answer history
 
@@ -173,7 +175,7 @@ The cards answer one question each:
 | Reviews ahead, 30 days | How busy are the coming days, and with which words? Bars split learning words, words held under three weeks and words held longer. |
 | Answers per day | How much did I study each day, how much was right, and for how long? |
 | How long words are held | How many started words are held for under a week, up to three weeks, up to three months and longer? |
-| Skills | How many words are mastered in meaning, spelling and listening, and what was last week's mix of question kinds against the listening cap? |
+| Skills | How many words are mastered in meaning, spelling and listening, and what was last week's mix of question kinds? |
 | Words | How far am I through each list, what does it share with the others, and how much of it did I learn elsewhere? |
 | Trouble words | Which words do I keep missing? |
 | Root families | How much of each root family do I know? |
