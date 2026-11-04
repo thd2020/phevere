@@ -43,6 +43,8 @@ async function startupAndGestures(floatingStrip) {
     listVocab: () => notebook,
     listEmptyDefinitions: async () => [], listEmptyReadings: async () => [],
     findByLemma: async () => null, saveLemma: (result) => result.word, morphemeOf: () => null, primeBookLevels: async () => undefined,
+    // Pictures are not under test here either.
+    prefetchSenseImages: () => {}, fetchSenseImages: async () => [], hideSenseImage: async () => {}, unhideSenseImage: async () => {},
     dictionaryService: {
       getSupportedLanguages: () => [], getEnabledSources: () => [],
       lookup: (q, lang, sources, options) => new Promise((resolve) => lookups.push({ q, options, resolve })),
@@ -75,7 +77,7 @@ async function startupAndGestures(floatingStrip) {
     './platform/offline': { listCatalogStatus: async () => [], markInstalledPacksOnCore: async () => {} },
     './platform/prefs': { loadPrefs: () => prefs, savePrefs: () => {}, applyPrefsToCore: () => {} },
     './views': {
-      esc: (s) => s, lookupBody: ({ result }) => JSON.stringify(result), appBarHtml: (_t, q) => q, popupBarHtml: () => '',
+      esc: (s) => s, lookupBody: ({ result }) => JSON.stringify(result), appBarHtml: (_t, q) => q, popupBarHtml: () => '', lexiconSenses: (r) => (r && r.definitions) || [],
       // Settings state the shell creates at start-up; its shape does not matter here.
       emptyLibraryState: () => ({ openDetails: new Set(), packProgress: null, inspecting: null, inspectorEntering: false, packDetails: new Map() }),
       keyPresent: () => false,

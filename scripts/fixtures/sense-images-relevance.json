@@ -1,0 +1,756 @@
+{
+ "recorded": "2026-11-04",
+ "note": "Hand-labelled word senses for scripts/measure-sense-images.js --relevance. A pair names a sense by the start of its Wiktionary gloss (tags stripped, as the script prints it); right and wrong list Commons files judged by eye for that sense; none: true means any picture not listed as right is wrong there; must: true means the sense has to show a right picture; mustNone: true means it has to show none. Relabelled after the second review: a keystone arch, a named pitcher's portrait, a Taoist diagram, the Chinese cun and an apple on the apple-tree sense are wrong.",
+ "pairs": [
+  {
+   "word": "crane",
+   "sense": "Any bird of the family Gruidae , large birds wit",
+   "pos": "noun",
+   "right": [
+    "Demoiselle Cranes at Tal Chappar.jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "crane",
+   "sense": "A mechanical lifting machine or device , often u",
+   "pos": "noun",
+   "right": [
+    "Turmdrehkran-liebherr.jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "bank",
+   "sense": "An institution where one can place and borrow mo",
+   "pos": "noun",
+   "right": [
+    "Bank of England Building, London, UK - Diliff.jpg",
+    "National Bank of Liechtenstein.JPG"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "bank",
+   "sense": "An edge of river , lake , or other watercourse .",
+   "pos": "noun",
+   "right": [
+    "Perfume River Bank, as seen from Trường Tiền Bridge, 2019.jpg",
+    "Pepingen - Heikruis - Ter Rijst - Kasteel (2020-07-07 15-35-31) X-T3 1-420s ISO320 f5.6.jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "bat",
+   "sense": "Any flying mammal of the order Chiroptera , usua",
+   "pos": "noun",
+   "right": [
+    "Mariana Fruit Bat.jpg",
+    "Big-eared-townsend-fledermaus.jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "bat",
+   "sense": "A club made of wood or aluminium used for striki",
+   "pos": "noun",
+   "right": [
+    "Marcus Thames Tigers 2007.jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "bat",
+   "sense": "To take a turn at hitting a ball with a bat in s",
+   "pos": "verb",
+   "right": [
+    "Ian Westwood.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "spring",
+   "sense": "The season of the year in temperate regions in w",
+   "pos": "noun",
+   "right": [
+    "Krokusse violett.jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "spring",
+   "sense": "An elastic mechanical part or device in any shap",
+   "pos": "noun",
+   "right": [
+    "Springs 009.jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "compass",
+   "sense": "A magnetic or electronic device used to determin",
+   "pos": "noun",
+   "right": [
+    "Plastic-compass.jpg",
+    "2016 Busola.JPG"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "compass",
+   "sense": "A pair of compasses (a device used to draw circu",
+   "pos": "noun",
+   "right": [
+    "Cyrkiel RB1.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "wind",
+   "sense": "Real or perceived movement of atmospheric air us",
+   "pos": "noun",
+   "right": [
+    "Cherry tree moving in the wind 1.gif",
+    "Bundesarchiv Bild 183-1990-0206-324, Berlin, Passanten im Wind.jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "mouse",
+   "sense": "Any mammal of the many rodent families (especial",
+   "pos": "noun",
+   "right": [
+    "Мышь 2.jpg",
+    "House mouse.jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "mouse",
+   "sense": "An input device that is moved over a pad or othe",
+   "pos": "noun",
+   "right": [
+    "ComputerMouseCloseup3.jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "seal",
+   "sense": "A pinniped ( Pinnipedia ), particularly an earle",
+   "pos": "noun",
+   "right": [
+    "Hydrurga leptonyx.JPG"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "seal",
+   "sense": "A stamp used to impress a design on a soft subst",
+   "pos": "noun",
+   "right": [
+    "聖朝大印.png",
+    "Chinese seal and paste.JPG"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "bow",
+   "sense": "A weapon made of a curved piece of wood or other",
+   "pos": "noun",
+   "right": [
+    "Hun bow.jpg",
+    "Arco - África MN 01.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "bow",
+   "sense": "A rod with horsehair (or an artificial substitut",
+   "pos": "noun",
+   "right": [
+    "Bows-ViolaBassGdulkaKemence.jpg",
+    "Arc de violí.JPG"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "bow",
+   "sense": "A type of knot with two loops, used to tie toget",
+   "pos": "noun",
+   "right": [
+    "Explosion Box (closed).jpg",
+    "Pink Bow.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "bow",
+   "sense": "Two pieces of wood which form the arched forward",
+   "pos": "noun",
+   "right": [
+    "Baizo p1 approaching Port of Rotterdam, Holland 06-Aug-2005.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "palm",
+   "sense": "The inner and somewhat concave part of the human",
+   "pos": "noun",
+   "right": [
+    "Myhand.jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "palm",
+   "sense": "Any of various units of length notionally derived",
+   "pos": "noun",
+   "right": [],
+   "wrong": [
+    "Cun3.gif"
+   ],
+   "none": true
+  },
+  {
+   "word": "organ",
+   "sense": "The larger part of an organism , composed of tis",
+   "pos": "noun",
+   "right": [
+    "Internal organs.svg"
+   ],
+   "wrong": [
+    "Equisetum braunii (strobilus), Portland, Oregon.jpg"
+   ]
+  },
+  {
+   "word": "organ",
+   "sense": "A musical instrument that has multiple pipes whi",
+   "pos": "noun",
+   "right": [
+    "Main pipe organ - Frauenkirche - Munich - Germany 2017 (2).jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "pupil",
+   "sense": "The hole in the middle of the iris of the eye ,",
+   "pos": "noun",
+   "right": [
+    "Pupillary light reflex.jpg",
+    "Eye iris.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "trunk",
+   "sense": "The conspicuously extended , mobile , nose -like",
+   "pos": "noun",
+   "right": [
+    "Asian elephant trunk.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "trunk",
+   "sense": "A container. A large suitcase , chest , or simil",
+   "pos": "noun",
+   "right": [
+    "Betty Ford's travel trunk.JPG"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "trunk",
+   "sense": "The luggage storage compartment of a sedan / sal",
+   "pos": "noun",
+   "right": [
+    "1955 Hudson Rambler 2-door AACA Iowa 2012 e.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "mole",
+   "sense": "Any of several small, burrowing, insectivorous m",
+   "pos": "noun",
+   "right": [
+    "Talpa europaea MHNT.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "mole",
+   "sense": "A massive structure, usually of stone, used as a",
+   "pos": "noun",
+   "right": [
+    "Baske22.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "mole",
+   "sense": "A hemorrhagic mass of tissue in the uterus cause",
+   "pos": "noun",
+   "right": [
+    "Vesicular Mole 20x.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "mole",
+   "sense": "Any of several spicy sauces typical of the cuisi",
+   "pos": "noun",
+   "right": [
+    "Chilaquiles in Mole Negro.jpg",
+    "ChickRedMole.JPG"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "bass",
+   "sense": "The section of a musical ensemble that produces",
+   "pos": "noun",
+   "right": [],
+   "wrong": [
+    "1930's Gibson bass banjo ad.jpg",
+    "Bass drum.jpg"
+   ]
+  },
+  {
+   "word": "bass",
+   "sense": "An instrument that plays in the bass range, in p",
+   "pos": "noun",
+   "right": [
+    "MusicmanStingray.jpg",
+    "AGK bass1 full.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "nail",
+   "sense": "A spike -shaped metal fastener used for joining",
+   "pos": "noun",
+   "right": [
+    "Nails.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "match",
+   "sense": "A small wooden stick specially treated with chem",
+   "pos": "noun",
+   "right": [
+    "Streichholz.jpg",
+    "Streichholz.JPG"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "ruler",
+   "sense": "A (usually rigid ), flat , rectangular measuring",
+   "pos": "noun",
+   "right": [
+    "Measurement unit.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "plant",
+   "sense": "An organism that is not an animal , especially a",
+   "pos": "noun",
+   "right": [
+    "Frühling blühender Kirschenbaum.jpg",
+    "Thanh Long ở Ninh Thuận.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "plant",
+   "sense": "An organism of the kingdom Plantae , and now spe",
+   "pos": "noun",
+   "right": [
+    "Thanh Long ở Ninh Thuận.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "pitcher",
+   "sense": "One who pitches (in any sense) anything",
+   "pos": "noun",
+   "right": [],
+   "wrong": [
+    "Clayton Kershaw on July 23, 2015 (2).jpg"
+   ]
+  },
+  {
+   "word": "jam",
+   "sense": "A sweet mixture of fruit boiled with sugar and a",
+   "pos": "noun",
+   "right": [
+    "Strawberry jam on a dish.JPG"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "key",
+   "sense": "An object designed to open and close a lock or t",
+   "pos": "noun",
+   "right": [
+    "Llave bronce.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "key",
+   "sense": "In musical instruments , one of the valve levers",
+   "pos": "noun",
+   "right": [],
+   "wrong": [
+    "Key-Signatures-sharps.svg",
+    "Toetsen Johannusorgel Heilig Hartkerk Hasselt.jpg"
+   ]
+  },
+  {
+   "word": "star",
+   "sense": "A very massive ball of plasma with strong enough",
+   "pos": "noun",
+   "right": [
+    "The Sun by the Atmospheric Imaging Assembly of NASA's Solar Dynamics Observatory - 20100819.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "star",
+   "sense": "senses derived from the apparent shape of a star",
+   "pos": "noun",
+   "right": [
+    "Four-point star (fixed width).svg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "star",
+   "sense": "To feature (a performer or a headliner), especia",
+   "pos": "verb",
+   "right": [],
+   "wrong": [
+    "Casting black cats in 1961.jpg"
+   ]
+  },
+  {
+   "word": "adept",
+   "sense": "One fully skilled or well versed in anything; a",
+   "pos": "noun",
+   "right": [],
+   "wrong": [
+    "The Immortal Soul of the Taoist Adept.PNG"
+   ]
+  },
+  {
+   "word": "capstone",
+   "sense": "Any of the stones making up the top layer of a w",
+   "pos": "noun",
+   "right": [],
+   "wrong": [
+    "L-Karniesbogen (keystone).png"
+   ]
+  },
+  {
+   "word": "apple",
+   "sense": "A common , firm , round fruit produced by a tree",
+   "pos": "noun",
+   "right": [
+    "Pink lady and cross section.jpg",
+    "Honeycrisp.jpg"
+   ],
+   "wrong": [
+    "Apfelbaum Holz.JPG"
+   ]
+  },
+  {
+   "word": "apple",
+   "sense": "A tree of the genus Malus ; especially Malus dom",
+   "pos": "noun",
+   "right": [],
+   "wrong": [
+    "Honeycrisp.jpg"
+   ]
+  },
+  {
+   "word": "horse",
+   "sense": "A hoofed mammal , Equus ferus caballus , often u",
+   "pos": "noun",
+   "right": [
+    "Nokota Horses cropped.jpg",
+    "Biandintz eta zaldiak - modified2.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "horse",
+   "sense": "Any current or extinct animal of the family Equi",
+   "pos": "noun",
+   "right": [
+    "Biandintz eta zaldiak - modified2.jpg",
+    "Equus species.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "equilibrium",
+   "sense": "The condition of a system in which competing inf",
+   "pos": "",
+   "right": [],
+   "wrong": [],
+   "none": true
+  },
+  {
+   "word": "serendipity",
+   "sense": "The phenomenon of making an unplanned , fortunat",
+   "pos": "",
+   "right": [],
+   "wrong": [],
+   "none": true,
+   "mustNone": true
+  },
+  {
+   "word": "vicissitude",
+   "sense": "Regular change or succession from one thing to a",
+   "pos": "",
+   "right": [],
+   "wrong": [],
+   "none": true,
+   "mustNone": true
+  },
+  {
+   "word": "vicissitude",
+   "sense": "A change, especially in one's life or fortunes .",
+   "pos": "",
+   "right": [],
+   "wrong": [],
+   "none": true
+  },
+  {
+   "word": "idiosyncrasy",
+   "sense": "A behavior or way of thinking that is characteri",
+   "pos": "",
+   "right": [],
+   "wrong": [],
+   "none": true,
+   "mustNone": true
+  },
+  {
+   "word": "insight",
+   "sense": "A sight or view of the interior of anything; a d",
+   "pos": "",
+   "right": [],
+   "wrong": [],
+   "none": true,
+   "mustNone": true
+  },
+  {
+   "word": "slander",
+   "sense": "A false or unsupported, malicious statement (spo",
+   "pos": "",
+   "right": [],
+   "wrong": [],
+   "none": true
+  },
+  {
+   "word": "indifference",
+   "sense": "The state of being indifferent .",
+   "pos": "",
+   "right": [],
+   "wrong": [],
+   "none": true,
+   "mustNone": true
+  },
+  {
+   "word": "dictum",
+   "sense": "An authoritative statement ; a dogmatic saying ;",
+   "pos": "",
+   "right": [],
+   "wrong": [],
+   "none": true
+  },
+  {
+   "word": "adept",
+   "sense": "Well skilled ; completely versed ; thoroughly pr",
+   "pos": "",
+   "right": [],
+   "wrong": [],
+   "none": true
+  },
+  {
+   "word": "afloat",
+   "sense": "In or into a state of floating .",
+   "pos": "",
+   "right": [],
+   "wrong": [],
+   "none": true
+  },
+  {
+   "word": "struck",
+   "sense": "simple past and past participle of strike",
+   "pos": "",
+   "right": [],
+   "wrong": [],
+   "none": true
+  },
+  {
+   "word": "bow",
+   "sense": "A stringed instrument ( chordophone ), consistin",
+   "pos": "",
+   "right": [],
+   "wrong": [
+    "Arc de violí.JPG"
+   ]
+  },
+  {
+   "word": "star",
+   "sense": "To appear as a featured performer or headliner, e",
+   "pos": "",
+   "right": [],
+   "wrong": [
+    "Casting black cats in 1961.jpg"
+   ]
+  },
+  {
+   "word": "jaguar",
+   "sense": "A carnivorous spotted large cat native to South",
+   "pos": "noun",
+   "right": [
+    "Standing jaguar.jpg",
+    "Onça-pintada-PE Encontro das Águas-Thiagomarcelcampi(0).jpg",
+    "Onça-pintada-PE Encontro das Águas-Thiagomarcelcampi(001).jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "spring",
+   "sense": "A spray or body of water springing from the gro",
+   "pos": "noun",
+   "right": [
+    "Nacentemackinac.jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "pitcher",
+   "sense": "A wide-mouthed, deep vessel for holding liquids",
+   "pos": "noun",
+   "right": [
+    "KrugSteinzeug.jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "palm",
+   "sense": "Any of various evergreen trees from the family P",
+   "pos": "noun",
+   "right": [
+    "1859-Martinique.web.jpg"
+   ],
+   "wrong": [],
+   "must": true
+  },
+  {
+   "word": "bank",
+   "sense": "An elevation under the sea; a shallow area of shif",
+   "pos": "noun",
+   "right": [],
+   "wrong": [
+    "GulfofMaine.jpg"
+   ]
+  },
+  {
+   "word": "compass",
+   "sense": "A curved circular form.",
+   "pos": "noun",
+   "right": [],
+   "wrong": [
+    "Fantasy of Flight Front Entrance - Compass Rose Window.JPG"
+   ]
+  },
+  {
+   "word": "mouse",
+   "sense": "Such a rodent that is of the genus Mus",
+   "pos": "noun",
+   "right": [
+    "Мышь 2.jpg",
+    "House mouse.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "bow",
+   "sense": "The front of a boat or ship",
+   "pos": "noun",
+   "right": [
+    "Baizo p1 approaching Port of Rotterdam, Holland 06-Aug-2005.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "mole",
+   "sense": "A naevus , a pigmented , slightly raised, and some",
+   "pos": "noun",
+   "right": [
+    "Normal mole with border.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "bass",
+   "sense": "The perch ; any of various marine and freshwater f",
+   "pos": "noun",
+   "right": [
+    "Micropterus dolomieu.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "nail",
+   "sense": "The horny plate or appendage at the ends of the di",
+   "pos": "noun",
+   "right": [
+    "Toes.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "plant",
+   "sense": "To place (a seed or plant) in soil or other substr",
+   "pos": "verb",
+   "right": [
+    "Dat 1 Planting 7.jpg"
+   ],
+   "wrong": []
+  },
+  {
+   "word": "apple",
+   "sense": "Synonym of applewood",
+   "pos": "noun",
+   "right": [
+    "Apfelbaum Holz.JPG"
+   ],
+   "wrong": []
+  }
+ ]
+}

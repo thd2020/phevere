@@ -149,7 +149,7 @@ function cardHtml(e: NotebookEntry, a: NotebookAnalysis, open: boolean, pile: st
   return `<article class="nbv-card${open ? ' is-flipped' : ''}" data-act="lookup" data-q="${esc(lemma)}" data-id="${esc(e.id)}" data-pile="${esc(pile)}" data-rank="${rank}"${rank >= PILE_FACE_CARDS ? ' data-deep' : ''} tabindex="0" aria-label="${esc(lemma)}: open lookup">
     <div class="nbv-card__inner">
       <div class="nbv-card__face nbv-card__front">
-        <div class="nbv-card__pic"${flip} data-img-lemma="${esc(lemma)}" data-img-lang="${esc(clean(e.sourceLang))}" data-img-gloss="${esc(senses[0] || '')}" aria-hidden="true"><span>${esc(lemma.charAt(0))}</span></div>
+        <div class="nbv-card__pic"${flip} data-img-lemma="${esc(lemma)}" data-img-lang="${esc(clean(e.sourceLang))}" data-img-gloss="${esc(senses[0] || '')}" data-img-pos="${esc(clean(e.partOfSpeech || ''))}"><span aria-hidden="true">${esc(lemma.charAt(0))}</span></div>
         <div class="nbv-card__body">
           <h3 class="nbv-card__word">${parts.length ? parts.map((p, i) => `<span>${esc(p)}</span>${i < parts.length - 1 ? '<i>·</i>' : ''}`).join('') : esc(lemma)}</h3>
           ${reading ? `<p class="nbv-card__ipa">${esc(reading.ipa)}</p>` : ''}

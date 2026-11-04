@@ -142,48 +142,150 @@ export function notebookViewSwitchHtml(view: NotebookView): string {
 
 type Img = { thumb: string; title: string; pageUrl: string; credit: string } | null;
 
+/** How a card asks for its picture: word, language, saved sense, part of speech, and early news. */
+export type WordImageFetcher = (
+  lemma: string,
+  lang?: string,
+  gloss?: string,
+  pos?: string,
+  onPicture?: (img: Img) => void,
+) => Promise<Img>;
+
+/** Card pictures being chosen at once, across every list on the page. */
+const CARD_SLOTS = 4;
+let cardRunning = 0;
+const cardQueue = new Set<any>();
+const cardState = new WeakMap<any, { visible: boolean; near: boolean; fetch: WordImageFetcher }>();
+
 /**
- * Fill each `[data-img-lemma]` box with a picture as boxes scroll into view. The word's first
- * sense goes along when it has one, so the picture is checked against what the word means.
+ * A card behind the top card of a closed pile cannot be seen, so it waits until its pile opens
+ * or the table is scattered.
  */
-export function fillWordImages(root: any, fetchImage: (lemma: string, lang?: string, gloss?: string) => Promise<Img>): void {
+function coveredCard(box: any): boolean {
+  const card = box.closest?.('[data-pile][data-rank]');
+  if (!card || card.getAttribute('data-rank') === '0') return false;
+  const table = card.closest?.('[data-layout]');
+  if (!table || table.getAttribute('data-layout') !== 'piles') return false;
+  const key = card.getAttribute('data-pile') || '';
+  const pile = table.querySelector?.(`.nbv-pile[data-pile="${String(key).replace(/"/g, '\\"')}"]`);
+  return !(pile && pile.getAttribute('aria-expanded') === 'true');
+}
+
+function showPicture(box: any, img: Img): void {
+  if (!img || !img.thumb) return;
+  let el = box.querySelector('img');
+  if (el && el.getAttribute('src') === img.thumb) return;
+  if (!el) {
+    el = box.ownerDocument.createElement('img');
+    el.loading = 'lazy';
+    el.decoding = 'async';
+    el.alt = '';
+    el.addEventListener('load', () => box.classList.add('has-img'));
+    box.appendChild(el);
+  }
+  el.src = img.thumb;
+  el.title = `${img.title} · ${img.credit}`;
+  // The credit shows when the picture is tapped (phones have no hover).
+  let credit = box.querySelector('.nbv-card__credit');
+  if (!credit) {
+    credit = box.ownerDocument.createElement('button');
+    credit.type = 'button';
+    credit.className = 'nbv-card__credit';
+    credit.setAttribute('aria-label', 'Picture credit');
+    credit.textContent = 'i';
+    credit.addEventListener('click', (ev: any) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+      box.classList.toggle('show-credit');
+    });
+    box.appendChild(credit);
+    const line = box.ownerDocument.createElement('span');
+    line.className = 'nbv-card__credit-line';
+    box.appendChild(line);
+  }
+  const line = box.querySelector('.nbv-card__credit-line');
+  if (line) line.textContent = img.credit;
+}
+
+/** Starts the next cards: on screen first, then the ones about to scroll in. */
+function pumpCards(): void {
+  while (cardRunning < CARD_SLOTS && cardQueue.size) {
+    const ready = Array.from(cardQueue).filter((b) => b.isConnected !== false && !coveredCard(b));
+    const next = ready.find((b) => cardState.get(b)?.visible) || ready.find((b) => cardState.get(b)?.near);
+    if (!next) return;
+    cardQueue.delete(next);
+    startCard(next);
+  }
+}
+
+function startCard(box: any): void {
+  const st = cardState.get(box);
+  if (!st) return;
+  box.setAttribute('data-img-done', '1');
+  cardRunning += 1;
+  const lemma = box.getAttribute('data-img-lemma') || '';
+  const gloss = box.getAttribute('data-img-gloss') || undefined;
+  const pos = box.getAttribute('data-img-pos') || undefined;
+  void st
+    .fetch(lemma, box.getAttribute('data-img-lang') || undefined, gloss, pos, (img) => showPicture(box, img))
+    .then((img) => {
+      if (!img || !img.thumb) {
+        if (!box.querySelector('img')) box.classList.add('is-empty');
+        return;
+      }
+      showPicture(box, img);
+    })
+    .catch(() => {
+      if (!box.querySelector('img')) box.classList.add('is-empty');
+    })
+    .finally(() => {
+      cardRunning -= 1;
+      pumpCards();
+    });
+}
+
+/**
+ * Fill each `[data-img-lemma]` box with a picture: boxes on screen first, then those within
+ * about a screen of it, four at a time. A box that scrolls away before its turn is dropped from
+ * the queue (and asked for again when it returns), a card hidden in a closed pile waits, and a
+ * picture shows as soon as the first source finds it. The word's saved sense and part of speech
+ * go along, so the picture is checked against what the word means.
+ */
+export function fillWordImages(root: any, fetchImage: WordImageFetcher): void {
   const boxes: any[] = Array.from(root?.querySelectorAll?.('[data-img-lemma]:not([data-img-done])') || []);
   if (!boxes.length) return;
-  const load = (box: any) => {
-    box.setAttribute('data-img-done', '1');
-    const lemma = box.getAttribute('data-img-lemma') || '';
-    const gloss = box.getAttribute('data-img-gloss') || undefined;
-    void fetchImage(lemma, box.getAttribute('data-img-lang') || undefined, gloss)
-      .then((img) => {
-        if (!img || !img.thumb) {
-          box.classList.add('is-empty');
-          return;
-        }
-        const el = box.ownerDocument.createElement('img');
-        el.loading = 'lazy';
-        el.decoding = 'async';
-        el.alt = '';
-        el.src = img.thumb;
-        el.title = `${img.title} · ${img.credit}`;
-        el.addEventListener('load', () => box.classList.add('has-img'));
-        box.appendChild(el);
-      })
-      .catch(() => box.classList.add('is-empty'));
-  };
+  for (const b of boxes) cardState.set(b, { visible: false, near: false, fetch: fetchImage });
   const IO = (globalThis as any).IntersectionObserver;
   if (!IO) {
-    boxes.slice(0, 24).forEach(load);
+    boxes.slice(0, 24).forEach((b) => {
+      (cardState.get(b) as { near: boolean }).near = true;
+      cardQueue.add(b);
+    });
+    pumpCards();
     return;
   }
-  const io = new IO(
-    (items: any[]) => {
-      for (const it of items) {
-        if (!it.isIntersecting) continue;
-        io.unobserve(it.target);
-        load(it.target);
-      }
-    },
-    { rootMargin: '200px' },
-  );
-  boxes.forEach((b) => io.observe(b));
+  const track = (key: 'visible' | 'near') => (items: any[]) => {
+    for (const it of items) {
+      const st = cardState.get(it.target);
+      if (!st || it.target.hasAttribute('data-img-done')) continue;
+      st[key] = it.isIntersecting;
+      if (st.visible || st.near) cardQueue.add(it.target);
+      else cardQueue.delete(it.target);
+    }
+    pumpCards();
+  };
+  const seen = new IO(track('visible'), { rootMargin: '0px' });
+  const near = new IO(track('near'), { rootMargin: '600px 0px' });
+  for (const b of boxes) {
+    seen.observe(b);
+    near.observe(b);
+  }
+  // A pile opening or the table being scattered uncovers cards without moving them in or out of
+  // view; look again when the table is clicked.
+  if (root?.addEventListener && !pumpRoots.has(root)) {
+    pumpRoots.add(root);
+    root.addEventListener('click', () => setTimeout(pumpCards, 50));
+  }
 }
+
+const pumpRoots = new WeakSet<object>();
