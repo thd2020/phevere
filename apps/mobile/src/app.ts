@@ -457,13 +457,25 @@ function lookupPaneHtml(): string {
     savedFor: (q) => notebook.find((e) => e.lemma.trim().toLowerCase() === q.trim().toLowerCase()),
     headTools: !stripMode,
     senseImages: currentSenseImages(),
-    ownWords: morphemeOf(result)
-      ? {
-          mine: notebook.map((e) => e.lemma),
-          books: [...wbSubs.flatMap((s) => wbBooks.get(s.bookId) || []), ...wbUserBooks.flatMap((b) => b.words || [])],
-        }
-      : undefined,
+    ownWords: morphemeOf(result) ? ownWords() : undefined,
   });
+}
+
+/**
+ * Saved words and the words of followed books, for a word part's "my words". Built again only
+ * when the notebook or the books change, so the part page's sections stay cached across paints.
+ */
+let ownWordsMemo: { sig: string; words: { mine: string[]; books: string[] } } | null = null;
+function ownWords(): { mine: string[]; books: string[] } {
+  const bookWords = wbSubs.map((s) => wbBooks.get(s.bookId)?.length || 0).join(',');
+  const sig = `${notebook.length}|${notebook[0]?.lemma || ''}|${bookWords}|${wbUserBooks.map((b) => b.words?.length || 0).join(',')}`;
+  if (ownWordsMemo?.sig === sig) return ownWordsMemo.words;
+  const words = {
+    mine: notebook.map((e) => e.lemma),
+    books: [...wbSubs.flatMap((s) => wbBooks.get(s.bookId) || []), ...wbUserBooks.flatMap((b) => b.words || [])],
+  };
+  ownWordsMemo = { sig, words };
+  return words;
 }
 
 function senseKey(r: DictionaryResult | null): string {
@@ -981,6 +993,11 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
     if (generation !== lookupGeneration) return;
     saved = nextSaved;
     void loadSenseImages(generation);
+    // A word part has no Wikipedia article ("*ten-" is not Ten (number)).
+    if (morphemeOf(next)) {
+      if (resultTab === 'translation' || resultTab === 'wikipedia') resultTab = 'lexicon';
+      return;
+    }
     void loadWikiHits(next.word || q).then(() => {
       if (tab === 'lookup' && resultTab === 'wikipedia') {
         void maybeAutoOpenWiki().then(() => paint());
@@ -2791,6 +2808,13 @@ export async function startApp(): Promise<void> {
   applyPrefsToCore(prefs);
   await refreshCapture();
   root.addEventListener('click', onClick);
+  // Enter or Space on a focused word link opens it, as a tap does.
+  root.addEventListener('keydown', (e) => {
+    const el = e.target as HTMLElement | null;
+    if ((e.key !== 'Enter' && e.key !== ' ') || !el?.matches?.('[role="link"][data-act]')) return;
+    e.preventDefault();
+    el.click();
+  });
   root.addEventListener('submit', onSubmit);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onChange);

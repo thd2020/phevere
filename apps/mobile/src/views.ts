@@ -20,6 +20,7 @@ import {
   wikiLinkLookup,
   morphemeSections,
   morphemeOfferHtml,
+  morphemeOf,
   type OwnWords,
   analyzeNotebook,
   cardsHtml,
@@ -705,7 +706,7 @@ function formatEtymologyChain(result: DictionaryResult): string {
       term
         ? isHead
           ? `<span class="etymology-chain__term">${esc(term)}</span>`
-          : `<span class="etymology-chain__term lx-w" data-act="lookup" data-q="${esc(term)}">${esc(term)}</span>`
+          : `<span class="etymology-chain__term lx-w" role="link" tabindex="0" data-act="lookup" data-q="${esc(term)}">${esc(term)}</span>`
         : ''}${
       gloss ? `<span class="etymology-chain__gloss">“${esc(gloss)}”</span>` : ''}</span>`;
   const step = (rel: string): string => {
@@ -812,7 +813,9 @@ export function lookupBody(opts: {
   }
   const chips = ipaChips(opts.result.pronunciations, opts.result.pronunciation || '');
   const lemma = saveLemma(opts.result);
-  const tabs: ResultTab[] = ['lexicon', 'translation', 'wikipedia', 'etymology'];
+  // A word part ("ob-", "*bʰeh₂-") has no translation, article, recorded voice or notebook entry.
+  const part = !!morphemeOf(opts.result);
+  const tabs: ResultTab[] = part ? ['lexicon', 'etymology'] : ['lexicon', 'translation', 'wikipedia', 'etymology'];
   const icons: Record<ResultTab, string> = {
     lexicon: ICO.tabLexicon,
     translation: ICO.tabTranslation,
@@ -825,12 +828,13 @@ export function lookupBody(opts: {
     wikipedia: 'Wikipedia',
     etymology: 'Etymology',
   };
+  const resultTab: ResultTab = part && !tabs.includes(opts.resultTab) ? 'lexicon' : opts.resultTab;
   const pane =
-    opts.resultTab === 'translation'
+    resultTab === 'translation'
       ? translationPane(opts.result, opts.langs, opts.sourceLang, opts.targetLang, opts.langMenu, opts.recentLangs)
-      : opts.resultTab === 'wikipedia'
+      : resultTab === 'wikipedia'
         ? wikiPane(opts.wiki, opts.wikiLang, opts.wikiArticle, opts.wikiLoading, opts.wikiError)
-        : opts.resultTab === 'etymology'
+        : resultTab === 'etymology'
           ? etymPane(opts.result, opts.etymologySource)
           : lexiconPane(opts.result, opts.lexiconPos, opts.senseImages || null, opts.ownWords);
   return `
@@ -843,13 +847,13 @@ export function lookupBody(opts: {
       <div class="head-actions">
         ${opts.headTools ? `<button type="button" class="icon-btn" data-act="copy" aria-label="Copy" title="Copy">${ICO.copy}</button>
         <button type="button" class="icon-btn" data-act="web-search" aria-label="Search the web" title="Search the web">${ICO.web}</button>` : ''}
-        <button type="button" class="tonal" data-act="speak" aria-label="Play pronunciation">${ICO.speaker}</button>
-        <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Remove from My words' : 'Save to My words'}">${ICO.heart}</button>
+        ${part ? '' : `<button type="button" class="tonal" data-act="speak" aria-label="Play pronunciation">${ICO.speaker}</button>
+        <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Remove from My words' : 'Save to My words'}">${ICO.heart}</button>`}
       </div>
       ${chips}
     </header>
     <div class="result-tabs" role="tablist">
-      ${tabs.map((t) => `<button type="button" class="result-tab" role="tab" data-act="result-tab" data-tab="${t}" aria-selected="${opts.resultTab === t}" aria-label="${labels[t]}" title="${labels[t]}">${icons[t]}</button>`).join('')}
+      ${tabs.map((t) => `<button type="button" class="result-tab" role="tab" data-act="result-tab" data-tab="${t}" aria-selected="${resultTab === t}" aria-label="${labels[t]}" title="${labels[t]}">${icons[t]}</button>`).join('')}
     </div>
     ${pane}
     </div>`;
