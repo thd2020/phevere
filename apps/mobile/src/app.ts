@@ -28,6 +28,8 @@ import {
   traceNotebookFamilies,
   attachCardTable,
   disposeNotebookMaps,
+  peekSuggestions,
+  suggestWords,
   fetchWordImage,
   fillWordImages,
   startReview,
@@ -559,6 +561,7 @@ function paint(): void {
   if (keepFocus && q) {
     q.focus();
     if (typeof caret === 'number') q.setSelectionRange(caret, caret);
+    paintSuggest();
   }
   const nbq = document.getElementById('nbq') as HTMLInputElement | null;
   if (keepNbq && nbq) {
@@ -1864,6 +1867,46 @@ function onClick(e: Event): void {
   void handleAct(act || '', t, e);
 }
 
+let suggestSeq = 0;
+
+/** Common words that begin with what is typed, listed under the lookup field. */
+function paintSuggest(): void {
+  const input = document.getElementById('q') as HTMLInputElement | null;
+  const form = input?.closest('form.search');
+  if (!input || !form) return;
+  let list = form.querySelector<HTMLElement>('.suggest');
+  const typed = input.value.trim();
+  const words = document.activeElement === input ? peekSuggestions(typed, 6) : [];
+  if (!words.length) {
+    list?.remove();
+    return;
+  }
+  if (!list) {
+    list = document.createElement('div');
+    list.className = 'suggest';
+    list.setAttribute('role', 'listbox');
+    // Keep the field focused while a row is pressed, so the tap lands.
+    list.addEventListener('pointerdown', (ev) => ev.preventDefault());
+    form.append(list);
+  }
+  list.innerHTML = words
+    .map((w) => {
+      const head = w.toLowerCase().startsWith(typed.toLowerCase()) ? typed.length : 0;
+      return `<button type="button" class="suggest__row" role="option" data-act="suggest" data-word="${esc(w)}">${esc(w.slice(0, head))}<b>${esc(w.slice(head))}</b></button>`;
+    })
+    .join('');
+}
+
+function onQueryInput(): void {
+  paintSuggest();
+  const input = document.getElementById('q') as HTMLInputElement | null;
+  const asked = input?.value || '';
+  const seq = ++suggestSeq;
+  void suggestWords(asked).then(() => {
+    if (seq === suggestSeq) paintSuggest();
+  });
+}
+
 async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
   switch (act) {
     case 'account-plus': {
@@ -1950,6 +1993,14 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'ocr':
       await runOcr();
       return;
+    case 'suggest': {
+      const word = t.dataset.word || '';
+      if (!word) return;
+      draft = word;
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      await lookup(word);
+      return;
+    }
     case 'scan-close':
       scan = null;
       scanSheet = 'closed';
@@ -2596,6 +2647,7 @@ function onChange(e: Event): void {
   }
   if (el.id === 'q') {
     draft = (el as HTMLInputElement).value;
+    if (e.type === 'input') onQueryInput();
   } else if (el.id === 'nbq') {
     notebookFilter = (el as HTMLInputElement).value;
     paint();
@@ -2709,6 +2761,12 @@ export async function startApp(): Promise<void> {
   root.addEventListener('submit', onSubmit);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onChange);
+  root.addEventListener('focusin', (e) => {
+    if ((e.target as HTMLElement).id === 'q' && (e.target as HTMLInputElement).value.trim()) onQueryInput();
+  });
+  root.addEventListener('focusout', (e) => {
+    if ((e.target as HTMLElement).id === 'q') setTimeout(paintSuggest, 0);
+  });
   // Settings disclosures stay open across repaints.
   root.addEventListener('toggle', (e) => {
     const d = e.target as HTMLDetailsElement | null;

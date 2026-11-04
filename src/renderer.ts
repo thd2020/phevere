@@ -122,6 +122,7 @@ import {
 } from '@phevere/core';
 import { choiceRowHtml, keycapsHtml, rangeRowHtml, switchRowHtml } from '@phevere/core';
 import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
+import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
 
 const rlog = (...args: unknown[]) => {
   if (!__PHEVERE_DEV__) return;
@@ -3194,7 +3195,10 @@ function wireMainWorkspace(): void {
         rerenderNotebook();
       },
       openSettings: (section) => void window.electronAPI?.showSettingsWindow?.(section),
+      suggestions: (q) => peekSuggestions(q),
+      loadSuggestions: (q) => suggestWords(q),
     });
+    search.addEventListener('focus', () => void warmSuggestions(), { once: true });
   }
   document.addEventListener('keydown', onReviewKey);
   // Links in Words, Learn and the account popover (sources, licences, Get Plus) open in the browser.

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Search suggestions (2026-11-04): typing in the desktop search field or the phone's lookup field lists the commonest words that begin with what you typed, ranked by how often they are used in English rather than alphabetically. Plurals and past tenses of a listed word are left out, and a misspelling such as "recieve" or "accomodate" suggests the right spelling. The list works offline from the word books and widens online.
+
 ## [4.0.0] - 2026-11-04
 
 The 4.0.0 files were first published on 2026-11-03 and rebuilt from `main` on 2026-11-04; the entries dated 2026-11-04 arrived with the rebuild.
