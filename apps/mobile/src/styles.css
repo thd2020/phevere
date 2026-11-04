@@ -281,9 +281,50 @@ a { color: var(--md-sys-color-tertiary); }
   color: var(--md-sys-color-surface);
 }
 
-.shell-lexicon .page {
-  overflow: visible;
+/* A lookup with definitions is a fixed frame: the word, its pronunciations and the source tabs
+   stay where they are, and only the definitions scroll. */
+html:not([data-mode="strip"]) body:has(.shell-lexicon) { overflow: hidden; }
+html:not([data-mode="strip"]) .shell-lexicon {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
+html:not([data-mode="strip"]) .shell-lexicon .page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+  padding-bottom: 8px;
+}
+html:not([data-mode="strip"]) .shell-lexicon .lookup-flow {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+html:not([data-mode="strip"]) .shell-lexicon .lookup-flow > .lexicon-block--senses {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+html:not([data-mode="strip"]) .shell-lexicon .lexicon-pos-layout {
+  flex: 1;
+  height: auto;
+}
+.shell-lexicon .head { margin-bottom: 10px; }
+/* Pronunciations on one row that scrolls sideways, fading out at the edge. */
+.shell-lexicon .head > .ipa-chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  margin-right: -16px;
+  padding-right: 24px;
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+.shell-lexicon .head > .ipa-chips::-webkit-scrollbar { display: none; }
+.shell-lexicon .head > .ipa-chips .ipa-chip { flex: none; }
 .lookup-flow {
   min-height: 0;
 }

@@ -1845,6 +1845,11 @@ function onLexiconPosScroll(): void {
 function sizeLexiconPane(): void {
   const layout = document.querySelector('.lexicon-pos-layout') as HTMLElement | null;
   if (!layout) return;
+  // In the app's own lookup the frame is laid out by CSS (styles.css, .shell-lexicon).
+  if (!stripMode && !layout.closest('.scan-sheet') && layout.closest('.shell-lexicon')) {
+    layout.style.height = '';
+    return;
+  }
   const viewport = window.visualViewport?.height || window.innerHeight;
   const nav = document.querySelector('.nav');
   const bottom = layout.closest('.scan-sheet') ? viewport : nav ? nav.getBoundingClientRect().top : viewport;

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Phone lookup (2026-11-04): the word, its pronunciations and the source tabs stay fixed and only the definitions scroll, so scrolling to the end of a long entry no longer pushes the word off the top. Pronunciations sit on one row that scrolls sideways, which leaves more room for the definitions.
 - Word book lists (2026-11-04): a book's List can be ordered by the book's own order, by the words you met most recently, or A to Z, and each word keeps its place number in the book. The book's header no longer carries the New a day chips (the daily goal lives in Learn), and Remove book is now a red close button on the book's chip in the switcher: it shows when you point at the chip on the desktop, and on the open book's chip on a phone.
 
 ### Added
