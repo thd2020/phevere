@@ -274,18 +274,21 @@ const BOOK_SORT_KEY = 'phevere.bookSort';
 function readBookSort(v: string | null): BookSort {
   return v === 'recent' || v === 'az' ? v : 'book';
 }
+const wbMeaningInFlight = new Set<string>();
 const wordsState = {
   scope: (readStore(WORDS_SCOPE_KEY) || 'mine') as WordsScope,
   library: false,
   ctx: null as WordsContext | null,
   limit: BOOK_LIST_PAGE,
   sort: readBookSort(readStore(BOOK_SORT_KEY)),
+  /** Book words opened on their brief definition, by lowercase headword. */
+  open: new Set<string>(),
+  loading: wbMeaningInFlight,
 };
 let wbSubs: WordbookSub[] = [];
 let wbUserBooks: UserBook[] = [];
 let wbProgress = new Map<string, BookWordProgress>();
 const wbBooks = new Map<string, string[]>();
-const wbMeaningInFlight = new Set<string>();
 /* Example sentences for the quiz's gap-fill questions, looked up ahead for words held for days. */
 const reviewExamples = new Map<string, string[]>();
 const examplesInFlight = new Set<string>();
@@ -355,30 +358,34 @@ function scopePool(): Array<VocabEntry | ReturnType<typeof bookEntry>> {
   return scopeEntries(wordsState.scope, wordsState.ctx);
 }
 
+/** Looks up a book word's meaning and keeps it with the word's book progress. */
+async function fetchBookMeaning(lemma: string): Promise<void> {
+  const key = lemma.toLowerCase();
+  if (wbMeaningInFlight.has(key)) return;
+  wbMeaningInFlight.add(key);
+  try {
+    const res = await dictionaryService.lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), {
+      translationProvider: prefs.translationProvider,
+    });
+    const payload = vocabPayloadFromResult(res, lemma);
+    const meaning = { definition: payload.definition, reading: payload.reading, partOfSpeech: payload.partOfSpeech };
+    await cacheBookWordMeaning(lemma, meaning);
+    const prev = wbProgress.get(key);
+    wbProgress.set(key, { ...(prev || { lemma: key, known: false, updatedAt: 0 }), ...meaning });
+  } catch {
+    /* offline: the word is asked as a flash card, and an opened row says it has no definition */
+  } finally {
+    wbMeaningInFlight.delete(key);
+  }
+}
+
 /** Looks up the next queued book words that have no meaning yet, so their quiz can ask it. */
 async function prefetchMeanings(wait = false): Promise<void> {
   const r = nbState.review;
   if (!r || wordsState.scope === 'mine') return;
   const lemmas = reviewNeedsMeaning(r, scopePool(), wait ? ROUND_WORDS : 4).filter((l) => !wbMeaningInFlight.has(l.toLowerCase()));
   if (!lemmas.length) return;
-  const jobs = lemmas.map(async (lemma) => {
-    const key = lemma.toLowerCase();
-    wbMeaningInFlight.add(key);
-    try {
-      const res = await dictionaryService.lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), {
-        translationProvider: prefs.translationProvider,
-      });
-      const payload = vocabPayloadFromResult(res, lemma);
-      const meaning = { definition: payload.definition, reading: payload.reading, partOfSpeech: payload.partOfSpeech };
-      await cacheBookWordMeaning(lemma, meaning);
-      const prev = wbProgress.get(key);
-      wbProgress.set(key, { ...(prev || { lemma: key, known: false, updatedAt: 0 }), ...meaning });
-    } catch {
-      /* offline: the word is asked as a flash card */
-    } finally {
-      wbMeaningInFlight.delete(key);
-    }
-  });
+  const jobs = lemmas.map((lemma) => fetchBookMeaning(lemma));
   const done = Promise.all(jobs).then(() => {
     rebuildWordsContext();
     if (!wait && tab === 'learn' && !nbState.review?.answer) paint();
@@ -2356,6 +2363,22 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       await refreshWords();
       paint();
       return;
+    case 'wb-expand': {
+      const word = t.dataset.q || '';
+      const key = word.toLowerCase();
+      if (!key) return;
+      if (wordsState.open.has(key)) wordsState.open.delete(key);
+      else wordsState.open.add(key);
+      const e = wordsState.ctx ? bookEntry(word, wordsState.ctx) : null;
+      if (wordsState.open.has(key) && e && !e.definition) {
+        void fetchBookMeaning(word).then(() => {
+          rebuildWordsContext();
+          if (tab === 'notebook') paint();
+        });
+      }
+      paint();
+      return;
+    }
     case 'wb-sort':
       wordsState.sort = readBookSort(t.dataset.sort || '');
       writeStore(BOOK_SORT_KEY, wordsState.sort);

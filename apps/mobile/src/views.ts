@@ -905,6 +905,8 @@ export interface WordsState {
   ctx: WordsContext | null;
   limit: number;
   sort: BookSort;
+  open: Set<string>;
+  loading: Set<string>;
 }
 
 export function notebookBody(
@@ -987,7 +989,7 @@ function bookScopeBody(words: WordsState, ctx: WordsContext, filter: string, nb:
     </div>
     <div class="nbv nb-views">${notebookViewSwitchHtml(nb.view)}</div>`;
   let body: string;
-  if (nb.view === 'list') body = wordbookListHtml(list, { scope: words.scope, limit: words.limit, filtered: !!q, sort: words.sort });
+  if (nb.view === 'list') body = wordbookListHtml(list, { scope: words.scope, limit: words.limit, filtered: !!q, sort: words.sort, expanded: words.open, loading: words.loading });
   else {
     const study = nb.view === 'cards' ? scopeStudySet(list) : nb.view === 'map' ? all : list;
     const analysis = analyzeNotebook(study);

@@ -2199,6 +2199,8 @@ const wbBooks = new Map<string, string[]>();
 let wbCtx: WordsContext | null = null;
 let wbAnalysis: { key: unknown; q: string; view: string; value: ReturnType<typeof analyzeNotebook> } | null = null;
 const wbMeaningInFlight = new Set<string>();
+/** Book words opened on their brief definition, by lowercase headword. */
+const wbOpen = new Set<string>();
 /* Example sentences for the quiz's gap-fill questions, looked up ahead for words held for days. */
 const reviewExamples = new Map<string, string[]>();
 const examplesInFlight = new Set<string>();
@@ -2269,6 +2271,22 @@ async function refreshWords(): Promise<void> {
   rebuildWordsContext();
 }
 
+/** Looks up a book word's meaning through the main process, which caches it with the word. */
+async function fetchBookMeaning(lemma: string): Promise<void> {
+  const api = wordbookApi();
+  const key = lemma.toLowerCase();
+  if (!api?.meaning || wbMeaningInFlight.has(key)) return;
+  wbMeaningInFlight.add(key);
+  try {
+    const meaning = await api.meaning(lemma);
+    if (meaning) wbProgress.set(key, { ...(wbProgress.get(key) || { lemma: key, known: false, updatedAt: 0 }), ...meaning });
+  } catch {
+    /* offline: an opened row says it has no definition */
+  } finally {
+    wbMeaningInFlight.delete(key);
+  }
+}
+
 /** Looks up the next queued book words that have no meaning yet, so their quiz can ask it. */
 async function prefetchMeanings(wait = false): Promise<void> {
   const api = wordbookApi();
@@ -2276,16 +2294,7 @@ async function prefetchMeanings(wait = false): Promise<void> {
   const lemmas = reviewNeedsMeaning(nbReview, scopeEntries(wbScope, wbCtx), wait ? ROUND_WORDS : 4).filter((l) => !wbMeaningInFlight.has(l.toLowerCase()));
   if (!lemmas.length) return;
   const done = Promise.all(
-    lemmas.map(async (lemma) => {
-      const key = lemma.toLowerCase();
-      wbMeaningInFlight.add(key);
-      try {
-        const meaning = await api.meaning(lemma);
-        if (meaning) wbProgress.set(key, { ...(wbProgress.get(key) || { lemma: key, known: false, updatedAt: 0 }), ...meaning });
-      } finally {
-        wbMeaningInFlight.delete(key);
-      }
-    }),
+    lemmas.map((lemma) => fetchBookMeaning(lemma)),
   ).then(() => {
     rebuildWordsContext();
     if (!wait && mainTab === 'learn' && !nbReview?.answer) renderLearn();
@@ -2318,7 +2327,7 @@ function renderBookScope(body: HTMLElement, wrap: HTMLElement, list: HTMLElement
   const shown = q ? all.filter((e) => e.lemma.toLowerCase().includes(q)) : all;
   if (nbView === 'list') {
     disposeNotebookMaps(true);
-    body.innerHTML = wordbookListHtml(shown, { scope: wbScope, limit: wbLimit, filtered: !!q, sort: wbSort });
+    body.innerHTML = wordbookListHtml(shown, { scope: wbScope, limit: wbLimit, filtered: !!q, sort: wbSort, expanded: wbOpen, loading: wbMeaningInFlight });
     return true;
   }
   // The map always holds the whole book; the search flies to a word on it instead.
@@ -3111,6 +3120,22 @@ function wireNotebookActions(root: HTMLElement): void {
         wbLimit += BOOK_LIST_PAGE;
         rerenderNotebook();
         return;
+      case 'wb-expand': {
+        const word = el.dataset.q || '';
+        const key = word.toLowerCase();
+        if (!key) return;
+        if (wbOpen.has(key)) wbOpen.delete(key);
+        else wbOpen.add(key);
+        const e = wbCtx ? bookEntry(word, wbCtx) : null;
+        if (wbOpen.has(key) && e && !e.definition) {
+          void fetchBookMeaning(word).then(() => {
+            rebuildWordsContext();
+            rerenderNotebook();
+          });
+        }
+        rerenderNotebook();
+        return;
+      }
       case 'wb-sort':
         wbSort = readBookSort(el.dataset.sort || '');
         writePref(WB_SORT_KEY, wbSort);
