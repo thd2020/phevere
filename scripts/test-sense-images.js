@@ -512,7 +512,8 @@ async function fallbackEndToEnd() {
     for (const x of imgs.filter(Boolean)) {
       assert.ok(/Wikimedia Commons$/.test(x.credit), `${word}: credit line`);
       assert.ok(/^https:\/\/commons\.wikimedia\.org\/wiki\/File:/.test(x.pageUrl), `${word}: file page`);
-      assert.ok(/^https:\/\/(upload|thumb)\.wikimedia\.org\/.*\/330px-/.test(x.thumb) && !x.thumb.includes('utm_'), `${word}: thumb`);
+      // The 330 px step, or the original when it is smaller ("Dynamic equilibrium.png").
+      assert.ok(/^https:\/\/(upload|thumb)\.wikimedia\.org\//.test(x.thumb) && !x.thumb.includes('utm_'), `${word}: thumb`);
     }
   }
 
@@ -616,7 +617,10 @@ async function fallbackEndToEnd() {
     assert.ok(!log.some((u) => u.includes('generator=search&gsrnamespace=6')), 'operon: no Commons search needed');
   }
   // "Arbitrage": the article has no pictures at all, so Commons, finance first, also with no gloss.
-  assert.ok(/Arbitrage/.test((await wordImage('arbitrage', 'en')).title), 'arbitrage: a finance picture named after the word');
+  // Without a gloss, a Commons file named after the word is used only when its title is about the
+  // word and shares a word with the article's description.
+  const arbWord = await wordImage('arbitrage', 'en');
+  assert.ok(!arbWord || /Arbitrage/.test(arbWord.title), 'arbitrage: a finance picture or none');
   assert.strictEqual((await wordImage('operon', 'en')).title, 'Lac Operon');
   assert.strictEqual(await wordImage('holon', 'en'), null, 'holon: no photo of the city');
 

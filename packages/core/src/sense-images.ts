@@ -763,8 +763,8 @@ export function rankArticleImages(files: string[], lemma: string, gloss: string[
 export interface WordArticle {
   page: WikipediaPage | null;
   /**
-   * The word's own title names something else (a city, a film, a person) or is a disambiguation
-   * page, so a file named after the word is no evidence; Commons hits must share a gloss word.
+   * The word's own title names something else (a city, a film, a person), so a file named after
+   * the word is no evidence; Commons hits must share a gloss word.
    */
   ambiguous: boolean;
 }
@@ -797,7 +797,9 @@ function wordTitleState(q: TitleQuery | null, req: FallbackTitles): { exact?: Wi
   const disambiguation = exact.pageprops?.disambiguation !== undefined || /disambiguation/i.test(exact.title);
   const elsewhere =
     BAD_DESCRIPTION.test(String(exact.description || '')) || BAD_DESCRIPTION.test(titleParts(exact.title).qualifier);
-  return { exact, usable: !disambiguation && !elsewhere, ambiguous: disambiguation || elsewhere };
+  // A disambiguation page only says the word has several meanings ("Afloat", "Apparatus"); a
+  // title about a place, work or person ("Holon" the city) is what makes Commons hits suspect.
+  return { exact, usable: !disambiguation && !elsewhere, ambiguous: elsewhere };
 }
 
 /**
@@ -1210,7 +1212,7 @@ export function standInWords(meaning: string, lemma: string, limit = 4): StandIn
       add(stripHtml(target), true);
     }
     for (const w of stripHtml(glossBody(stripHtml(clause))).toLowerCase().match(/\p{L}[\p{L}-]*/gu) || []) {
-      if (w.length >= 4 && !/ly$/.test(w)) add(w, false);
+      if (w.length >= 3 && !/ly$/.test(w)) add(w, false);
     }
   }
   return { words: out.slice(0, limit), whole: short > 0 && short === clauses.length };
