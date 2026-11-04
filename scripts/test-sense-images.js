@@ -377,14 +377,28 @@ function memoryStore() {
     assert.strictEqual([...s2.m.keys()].filter((k) => k.includes(':pool:')).length, 0, 'offline: nothing saved');
   }
 
-  // A failed source keeps the pictures the others found, for a day.
+  // A failed source still shows the pictures the others found, but the pool is not saved, so
+  // the next lookup asks again.
   {
     const s3 = memoryStore();
     const m3 = load({ isCoreConfigured: () => true, getHttp: () => stubHttp([], { fail: (u) => u.includes('wiktionary') }), getLookupCache: () => s3 });
     const got = await m3.fetchSenseImages('crane', craneSenses, { lang: 'en' });
     assert.ok(got[0] && got[2], 'lexeme pictures despite Wiktionary failing');
-    const saved = [...s3.m.entries()].find(([k]) => k.includes(':pool:'));
-    assert.ok(saved && saved[1].value.failed, 'saved as partial');
+    assert.strictEqual([...s3.m.keys()].filter((k) => k.includes(':pool:')).length, 0, 'a partial pool is not saved');
+  }
+
+  // A lexeme batch that times out is asked again for the one lemma.
+  {
+    const log5 = [];
+    let failedOnce = false;
+    const m5 = load({
+      isCoreConfigured: () => true,
+      getHttp: () => stubHttp(log5, { fail: (u) => decodeURIComponent(u).includes('wikibase:lemma') && !failedOnce && (failedOnce = true) }),
+      getLookupCache: () => null,
+    });
+    const got = await m5.fetchSenseImages('crane', craneSenses, { lang: 'en' });
+    assert.ok(got[0], 'lexeme picture after the retry');
+    assert.strictEqual(log5.filter((r) => decodeURIComponent(r.url).includes('wikibase:lemma')).length, 2, 'asked twice');
   }
 
   // Cards on screen share requests: two words, one lexeme query, one Wiktionary request.

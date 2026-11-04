@@ -83,13 +83,15 @@ const TIMEOUT_MS = 8000;
  * timeout; a timed-out page is asked again on the next call because the result is not cached.
  */
 const WIKTIONARY_TIMEOUT_MS = TIMEOUT_MS;
+/** A query asked again on its own after its batch failed gets longer. */
+const RETRY_TIMEOUT_MS = 15000;
 // v6: pools also hold Wiktionary sense lines' Wikidata items and the article's Wikidata image.
 const CACHE_VERSION = 'v6';
 const PERSIST_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 /** A result with no picture at all is kept this long, so a word saved earlier is tried again. */
 const EMPTY_TTL_MS = 6 * 60 * 60 * 1000;
-/** A result found while a request failed, with at least one picture, is kept this long. */
-const PARTIAL_TTL_MS = 24 * 60 * 60 * 1000;
+/** A result found while a request failed is never saved, and kept in memory only this long. */
+const FAILED_MEMORY_MS = 3 * 60 * 1000;
 const API_UA = 'Phevere/2 (https://github.com/thd2020/phevere)';
 
 const STOP = new Set(
@@ -1690,12 +1692,12 @@ const LEXEME_BATCH = 12;
 
 async function lexemesFor(lemma: string, lang: string): Promise<{ senses: LexemeSense[]; ok: boolean }> {
   const tag = lexemeLanguageTag(lang);
-  const res = await batched<{ results?: { bindings?: SparqlBinding[] } }>(
-    `lexemes:${tag}`,
-    (lemmas) => buildLexemeQueryUrl(lemmas, tag),
-    [lemma],
-    LEXEME_BATCH,
-  );
+  type Rows = { results?: { bindings?: SparqlBinding[] } };
+  // A batch the query service could not answer in time is asked again for this lemma alone,
+  // which is quick: the batch is slow because of its size, not because of any one word.
+  const res =
+    (await batched<Rows>(`lexemes:${tag}`, (lemmas) => buildLexemeQueryUrl(lemmas, tag), [lemma], LEXEME_BATCH)) ||
+    (await getJson<Rows>(buildLexemeQueryUrl([lemma], tag), RETRY_TIMEOUT_MS));
   if (!res) return { senses: [], ok: false };
   return { senses: parseLexemeRows(res.results?.bindings || [], lemma), ok: true };
 }
@@ -1710,7 +1712,9 @@ export function buildItemImagesUrl(items: string[]): string {
 async function itemImages(items: string[]): Promise<{ images: Map<string, string[]>; ok: boolean }> {
   const images = new Map<string, string[]>();
   if (!items.length) return { images, ok: true };
-  const res = await batched<{ results?: { bindings?: SparqlBinding[] } }>('items', buildItemImagesUrl, items, 40);
+  type Rows = { results?: { bindings?: SparqlBinding[] } };
+  const res =
+    (await batched<Rows>('items', buildItemImagesUrl, items, 40)) || (await getJson<Rows>(buildItemImagesUrl(items), RETRY_TIMEOUT_MS));
   if (!res) return { images, ok: false };
   for (const b of res.results?.bindings || []) {
     const id = (b.item?.value || '').split('/').pop() || '';
@@ -1882,9 +1886,9 @@ function poolKey(lemma: string, lang: string): string {
   return `sense-images:${CACHE_VERSION}:pool:${String(lang || 'en').toLowerCase()}:${lemma.toLowerCase()}`;
 }
 
-/** A pool keeps two weeks when it found pictures, a day when a request failed, six hours when empty. */
+/** A saved pool keeps two weeks when it found pictures and six hours when empty; one built while a request failed is not saved. */
 function poolTtl(pool: PicturePool): number {
-  if (pool.failed) return pool.pictures.some((p) => p.image) ? PARTIAL_TTL_MS : 0;
+  if (pool.failed) return 0;
   return pool.pictures.some((p) => p.image) ? PERSIST_TTL_MS : EMPTY_TTL_MS;
 }
 
@@ -1939,9 +1943,9 @@ function getPool(lemma: string, lang: string, hints: string[], progress?: (pool:
         }
       }
     });
-    const ttl = poolTtl(pool);
-    entry.until = Date.now() + (ttl ? Math.min(ttl, PERSIST_TTL_MS) : 0);
-    if (!ttl && poolCache.get(key) === entry) poolCache.delete(key);
+    const life = pool.failed ? FAILED_MEMORY_MS : poolTtl(pool);
+    entry.until = Date.now() + life;
+    if (!life && poolCache.get(key) === entry) poolCache.delete(key);
     writePool(key, pool);
     return pool;
   })();
