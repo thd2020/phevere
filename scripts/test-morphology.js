@@ -83,6 +83,20 @@ for (const w of ['limit', 'summit', 'imitate', 'missing', 'smith']) assert.ok(!h
 for (const w of ['mission', 'missile']) assert.ok(!has(w, 'mis-'), `${w} has no mis-`);
 assert.ok(!has('person', 'per-') && !has('personal', 'son'));
 
+// Look-alikes found in a real notebook.
+for (const [w, part] of [['alum', 'luc'], ['metamorphosis', 'am'], ['attenuated', 'ten'], ['capstone', 'cap'], ['dismantle', 'man'], ['estrus', 'struct'], ['utensil', 'tend'], ['forensic', 'fore-'], ['mandible', 'mand'], ['triumphant', 'tri-'], ['voluptuous', 'vol'], ['anomaly', 'nom'], ['diffeomorphism', 'dis-']]) {
+  assert.ok(!has(w, part), `${w} is not ${part}: ${labels(w)}`);
+}
+
+// A word part by its label or any spelling, for pages about one part.
+const { morphEntry } = load('morphology');
+assert.deepEqual(morphEntry('oc-'), { kind: 'prefix', key: 'ob-', gloss: 'against, toward', origin: 'Latin', forms: ['ob-', 'oc-', 'of-', 'op-'] });
+assert.equal(morphEntry('fect').key, 'fac');
+assert.deepEqual(morphEntry('fac').forms.slice(0, 4), ['fac', 'fic', 'fec', 'fect']);
+assert.equal(morphEntry('ceive').key, 'cap');
+assert.equal(morphEntry('-tion').key, '-sion');
+assert.equal(morphEntry('zzz'), null);
+
 // The etymology cache: a Germanic word drops its Latin parts, and a root whose PIE root
 // differs from the word's is dropped.
 assert.ok(has('defeat', 'fac'));

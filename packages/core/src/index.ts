@@ -97,7 +97,7 @@ export {
   type ReviewState,
   type CardLayout,
 } from './notebook-views';
-export { analyzeMorphemes, morphBreakdown, morphForms, wordOrigin, type Morph, type MorphEtymon, type MorphKind } from './morphology';
+export { analyzeMorphemes, morphBreakdown, morphEntry, morphForms, wordOrigin, type Morph, type MorphEntry, type MorphEtymon, type MorphKind } from './morphology';
 export { vocabPayloadFromResult } from './vocab-payload';
 
 export {
