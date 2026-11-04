@@ -180,6 +180,24 @@ async function savedNotebook(http) {
   assert.equal(await core.findByLemma('berries'), null);
   // An import is saved as it comes.
   assert.equal((await core.addVocab({ lemma: 'mice', definition: 'plural of mouse', sourceLang: 'en' })).lemma, 'mice');
+
+  // Datamuse down: "teeth" (tooth or teethe) gets no answer rather than staying itself, so it is
+  // not noted as checked, and the next run, with the frequencies back, folds it into tooth.
+  const noFreq = {
+    ...http,
+    requestJson: async (url) => {
+      if (/md=f/.test(url)) throw new Error('offline');
+      return http.requestJson(url);
+    },
+  };
+  await add('teeth', '');
+  await assert.rejects(core.resolveFormOf(noFreq, 'teeth'), (err) => err.code === 'NO_FREQUENCY');
+  await core.resolveStoredForms(noFreq, { pauseMs: 0 });
+  assert.ok(await core.findByLemma('teeth'), 'teeth stays saved while the frequencies are missing');
+  const checked = await queryAll(`SELECT value FROM sync_state WHERE key = 'lemma-forms-checked-v2'`);
+  assert.ok(!JSON.parse(checked[0].value).includes('teeth'), 'and is not marked checked');
+  await core.resolveStoredForms(http, { pauseMs: 0 });
+  assert.ok(!(await core.findByLemma('teeth')) && (await core.findByLemma('tooth')), 'a later run folds it');
 }
 
 const page = (w) => fs.readFileSync(path.join(__dirname, 'fixtures', 'inflections', `en-${w}.jsonl`), 'utf8');
