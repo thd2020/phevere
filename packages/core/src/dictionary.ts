@@ -2585,9 +2585,20 @@ export class DictionaryService extends BaseService {
     }
   }
 
-  private async getWiktionaryWikitext(word: string): Promise<string> {
+  /** Wiktionary pages being fetched, so the lookup, its IPA and its pictures share one request. */
+  private wikitextInFlight = new Map<string, Promise<string>>();
+
+  private getWiktionaryWikitext(word: string): Promise<string> {
     const head = foldLatinHeadword(word) || word.trim();
-    if (!head) return '';
+    if (!head) return Promise.resolve('');
+    const pending = this.wikitextInFlight.get(head);
+    if (pending) return pending;
+    const p = this.fetchWiktionaryWikitext(head).finally(() => this.wikitextInFlight.delete(head));
+    this.wikitextInFlight.set(head, p);
+    return p;
+  }
+
+  private async fetchWiktionaryWikitext(head: string): Promise<string> {
     const wrapped = await this.cachedSource(
       'wiktionaryWikitext',
       head,
