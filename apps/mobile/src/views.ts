@@ -811,7 +811,7 @@ export function lookupBody(opts: {
     <div class="lookup-flow">
     <header class="head">
       <div class="word">
-        <h2 class="lemma">${esc(opts.result.word || lemma)}</h2>
+        <h2 class="lemma" style="--len:${[...String(opts.result.word || lemma)].length}">${esc(opts.result.word || lemma)}</h2>
       </div>
       <div class="head-actions">
         ${opts.headTools ? `<button type="button" class="icon-btn" data-act="copy" aria-label="Copy" title="Copy">${ICO.copy}</button>
