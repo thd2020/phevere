@@ -949,8 +949,11 @@ export class DictionaryService extends BaseService {
     const decisionKey = foldLookupKey(query.trimmed);
     const kaikkiOn =
       lang === 'en' && isCoreConfigured() && query.kind === 'word' && !/\s/.test(headword) && this.isNamedSourceOn('Kaikki', enabledSources);
+    // "Paris" typed with its capital is the city, not the plural of pari.
+    const formOrProper = (): Promise<string | null> =>
+      Promise.all([resolveFormOf(getHttp(), headword, 'en'), this.isProperNoun(query.trimmed)]).then(([lemma, proper]) => (proper ? null : lemma));
     const early: Promise<string | null> | null =
-      !opts?.noFormRedirect && kaikkiOn ? withTimeout(resolveFormOf(getHttp(), headword, 'en'), FORM_CHECK_MS, 'form-of') : null;
+      !opts?.noFormRedirect && kaikkiOn ? withTimeout(formOrProper(), FORM_CHECK_MS, 'form-of') : null;
     let earlyAnswer: { lemma: string | null } | undefined;
     if (early) {
       early.then((lemma) => (earlyAnswer = { lemma }), (): undefined => undefined);
@@ -1088,6 +1091,7 @@ export class DictionaryService extends BaseService {
       if (pending) return (await withTimeout(pending, FORM_CHECK_MS + 1000, 'form-of')) || w;
       const lang = (language || 'en').toLowerCase().split('-')[0];
       if (lang === 'en' && isCoreConfigured() && !/\s/.test(w) && this.isNamedSourceOn('Kaikki')) {
+        if (await this.isProperNoun(w).catch(() => false)) return w;
         return (await withTimeout(resolveFormOf(getHttp(), foldLatinHeadword(w) || w, 'en'), FORM_CHECK_MS, 'form-of')) || w;
       }
     } catch {
@@ -1230,7 +1234,7 @@ export class DictionaryService extends BaseService {
     candidate: string,
     lemmaFallback = false,
   ): DictionaryResult {
-    const surface = foldLatinHeadword(query.trimmed) || query.trimmed;
+    const surface = this.displayHeadword(query.trimmed);
     acc.word = surface;
     acc.metadata = {
       ...(acc.metadata || {}),
@@ -1380,7 +1384,7 @@ export class DictionaryService extends BaseService {
     fn: () => Promise<T>,
     useful: (data: T) => boolean,
   ): Promise<{ type: string; data?: T; error?: unknown; status: 'ok' | 'empty' | 'fail' | 'skip' }> {
-    const key = `${source}:${foldLatinHeadword(word)}`;
+    const key = `${source}:${isCapitalised(word) ? word.trim() : foldLatinHeadword(word)}`;
     const now = Date.now();
     const hit = this.sourceLayer.get(key);
     if (hit) {
@@ -1755,7 +1759,8 @@ export class DictionaryService extends BaseService {
       if (!this.isSourceDown('wiktionary')) expectedSources.push('wiktionary');
       // en.wiktionary keys its answer by language: собака lives under `ru`, not `en`.
       const wikiLang = langForDict === 'auto' ? 'en' : langForDict;
-      const wikiWord = wikiLang === 'en' ? lookupWord : text;
+      // A capitalised word goes as typed, so Wiktionary can put "May" the month before "may".
+      const wikiWord = wikiLang === 'en' && !isCapitalised(text) ? lookupWord : text;
       primaryPromises.push(pushCore(
         this.cachedSource(
           'wiktionary',
@@ -2055,7 +2060,7 @@ export class DictionaryService extends BaseService {
       const uniqueSynonyms = Array.from(new Set(synonyms.map((s) => (s || '').trim()).filter(Boolean)));
       const uniqueAntonyms = Array.from(new Set(antonyms.map((s) => (s || '').trim()).filter(Boolean)));
       const uniqueSources = Array.from(new Set(sources.map((s) => (s || '').trim())));
-      const surfaceForm = foldLatinHeadword(trimEdges(sanitize(opts?.originalSelection || text))) || text;
+      const surfaceForm = this.displayHeadword(trimEdges(sanitize(opts?.originalSelection || text))) || text;
       const headword = surfaceForm;
       const fallbackIpa = pronunciations.some((p) => p.ipa)
         ? undefined
@@ -2382,6 +2387,40 @@ export class DictionaryService extends BaseService {
     }
   }
 
+  private readonly wiktionaryPages = new Map<string, Promise<any | null>>();
+  /** Capitalised words Wiktionary has as proper nouns this session; their headword keeps its capital. */
+  private readonly properNouns = new Set<string>();
+
+  /** The headword a result shows: "Paris" as typed when it is a proper noun, otherwise folded. */
+  private displayHeadword(typed: string): string {
+    const t = String(typed || '').trim();
+    return this.properNouns.has(t) ? t : foldLatinHeadword(t) || t;
+  }
+
+  /** Wiktionary's definitions page for an exact title ("Paris" and "paris" differ), or null. */
+  private wiktionaryDefinitions(title: string): Promise<any | null> {
+    let page = this.wiktionaryPages.get(title);
+    if (!page) {
+      page = this.request<any>(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(title)}`, {
+        headers: { 'User-Agent': DictionaryService.WIKIMEDIA_USER_AGENT },
+      }).catch((): null => null);
+      this.wiktionaryPages.set(title, page);
+      void page.then((r) => {
+        if (!r) this.wiktionaryPages.delete(title);
+      });
+      if (this.wiktionaryPages.size > 120) this.wiktionaryPages.delete(this.wiktionaryPages.keys().next().value as string);
+    }
+    return page;
+  }
+
+  /** Whether `word`, typed with a capital, is a proper noun in its own right ("Paris", "May"). */
+  private async isProperNoun(word: string): Promise<boolean> {
+    if (!/^\p{Lu}/u.test(word) || word === foldLatinHeadword(word)) return false;
+    const proper = hasProperNoun(await this.wiktionaryDefinitions(word));
+    if (proper) this.properNouns.add(word);
+    return proper;
+  }
+
   /**
    * Get data from Wiktionary API with a focus on definitions and etymology.
    */
@@ -2399,24 +2438,28 @@ export class DictionaryService extends BaseService {
         ? wikiTextPromise.then((wt) => extractIpaFromWikitext(wt)).catch((): Pronunciation[] => [])
         : Promise.resolve([] as Pronunciation[]);
     try {
-      const rest = (t: string) =>
-        this.request<any>(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(t)}`, {
-          headers: { 'User-Agent': DictionaryService.WIKIMEDIA_USER_AGENT },
-        });
-      // Lower case finds "marionette" for "Marionette". A page Wiktionary keeps capitalised (the
-      // taxon "Whippomorpha", typed "whippomorpha"; a name) is asked for capitalised, or as typed,
-      // when the lower-case page does not exist.
+      // Lower case finds "marionette" for "Marionette". A capitalised word is also asked for as
+      // typed, and its page comes first: "Paris" is the city before "paris", the plural of pari.
+      // A page Wiktionary keeps only capitalised (the taxon "Whippomorpha", typed in lower case)
+      // is asked for capitalised when the lower-case page does not exist.
       const typed = text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
       const capitalised = term.charAt(0).toLocaleUpperCase() + term.slice(1);
-      const retries = [...new Set([typed, capitalised])].filter((t) => t && t !== term);
-      const response = await rest(term).catch(async (error: unknown) => {
-        if (language !== 'en' || !retries.length) throw error;
-        for (const t of retries) {
-          const found = await rest(t).catch((): null => null);
-          if (found) return found;
+      let response: any = null;
+      if (language === 'en' && typed !== term && /^\p{Lu}/u.test(typed)) {
+        const [own, lower] = await Promise.all([this.wiktionaryDefinitions(typed), this.wiktionaryDefinitions(term)]);
+        if (hasProperNoun(own)) {
+          this.properNouns.add(typed);
+          // The lower-case word's "plural of pari" says nothing about the city.
+          response = mergeWiktionaryPages(own, withoutFormOf(lower));
+        } else {
+          // "Went" as a surname or a Yorkshire river comes after went, the past of go.
+          response = mergeWiktionaryPages(lower, own);
         }
-        throw error;
-      });
+      } else {
+        response = await this.wiktionaryDefinitions(term);
+        if (!response && language === 'en' && capitalised !== term) response = await this.wiktionaryDefinitions(capitalised);
+      }
+      if (!response) throw new Error(`no Wiktionary page for ${term}`);
       // Removed verbose API response logging to prevent HTML floods
 
       // Prioritize the language detected or specified. A word English borrowed ("paparazzo",
@@ -4135,4 +4178,60 @@ registerHeadwordResolver((word, lang) => dictionaryService.settledHeadword(word,
 function sameLetters(a: string, b: string): boolean {
   const fold = (x: string) => foldLookupKey(x.normalize('NFD').replace(/\p{M}/gu, ''));
   return fold(a) === fold(b);
+}
+
+/** Two Wiktionary definition pages as one, the first page's entries first in each language. */
+function mergeWiktionaryPages(first: any, second: any): any {
+  if (!first) return second || null;
+  if (!second) return first;
+  const out: Record<string, unknown[]> = {};
+  for (const key of new Set([...Object.keys(first), ...Object.keys(second)])) {
+    out[key] = [...(Array.isArray(first[key]) ? first[key] : []), ...(Array.isArray(second[key]) ? second[key] : [])];
+  }
+  return out;
+}
+
+/**
+ * Whether a Wiktionary definitions page has a proper noun that stands for something in its own
+ * right: the city of Paris, the month of May. One whose first sense is only a surname, a given
+ * name or a minor place ("Children", "Went") does not count, so a capital at the start of a
+ * sentence does not hide the word.
+ */
+function hasProperNoun(page: any): boolean {
+  const minor = /^\s*(?:an?\s+)?(?:(?:english|habitational|occupational|common)\s+)?(?:surname|(?:male|female|unisex)\s+given\s+name|given\s+name|placename|place\s+name|number\s+of\s+places|river|village|hamlet|town|locale)\b/i;
+  return Object.values(page || {}).some(
+    (list) =>
+      Array.isArray(list) &&
+      list.some((e: any) => {
+        if (!/proper noun/i.test(String(e?.partOfSpeech || ''))) return false;
+        const first = (e?.definitions || [])
+          .map((d: any) => String(d?.definition || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
+          .find((t: string) => t);
+        return !!first && !minor.test(first) && !/^the river\b/i.test(first);
+      }),
+  );
+}
+
+/** A Wiktionary definitions page without its "plural of …" and other form-of senses. */
+function withoutFormOf(page: any): any {
+  if (!page) return page;
+  const out: Record<string, unknown[]> = {};
+  for (const [lang, list] of Object.entries(page)) {
+    if (!Array.isArray(list)) continue;
+    out[lang] = list
+      .map((e: any) => ({
+        ...e,
+        definitions: (e?.definitions || []).filter(
+          (d: any) => !formOfGlossLemma(stripGlossText(String(d?.definition || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())),
+        ),
+      }))
+      .filter((e: any) => e.definitions.length);
+  }
+  return out;
+}
+
+/** "Paris", "May": a word typed with a capital, not an acronym ("USA") or a word in capitals. */
+function isCapitalised(word: string): boolean {
+  const w = String(word || '').trim();
+  return /^\p{Lu}\p{Ll}/u.test(w) && w !== w.toLocaleLowerCase();
 }
