@@ -273,12 +273,23 @@ function relevanceReport(rows, fx) {
       wrongs.push(`${pair.word} "${pair.sense}" -> ${file}`);
     } else unlabelled.push(`${pair.word} "${pair.sense}" -> ${file}`);
   }
+  // Pictures on senses of fixture words that no pair labels count against precision too.
+  const offFixture = [];
+  for (const word of new Set(fx.pairs.map((p) => p.word))) {
+    const row = rows.find((r) => r.lemma === word);
+    for (const s of (row && row.senses) || []) {
+      if (!s.image || fx.pairs.some((p) => p.word === word && s.meaning.startsWith(p.sense))) continue;
+      offFixture.push(`${word} "${s.meaning.slice(0, 50)}" -> ${s.image.file}`);
+    }
+  }
+  const shown = right + wrong + unlabelled.length + offFixture.length;
   const lines = [
-    `relevance: ${fx.pairs.length} labelled pairs; ${right + wrong + unlabelled.length} pictures shown on them: right ${right}, wrong ${wrong}, unlabelled ${unlabelled.length}; precision ${pct(right, right + wrong)}; coverage ${right}/${coverable} pairs with a known right picture (${pct(right, coverable)}); ${empty} pairs without a picture`,
+    `relevance: ${fx.pairs.length} labelled pairs; ${shown} pictures shown on fixture words: right ${right}, wrong ${wrong}, unlabelled ${unlabelled.length}, on senses no pair covers ${offFixture.length}; precision ${pct(right, shown)} (anything not labelled right counts as wrong); coverage ${right}/${coverable} pairs with a known right picture (${pct(right, coverable)}); ${empty} pairs without a picture`,
   ];
   lines.push(`must-pass: ${must - mustFail.length}/${must}${mustFail.length ? `; failing: ${mustFail.join('; ')}` : ''}`);
   if (wrongs.length) lines.push(`wrong: ${wrongs.join('; ')}`);
   if (unlabelled.length) lines.push(`unlabelled: ${unlabelled.join('; ')}`);
+  if (offFixture.length) lines.push(`on senses no pair covers: ${offFixture.join('; ')}`);
   if (missing.length) lines.push(`senses not in the lookup: ${missing.join('; ')}`);
   return lines;
 }

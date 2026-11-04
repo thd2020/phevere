@@ -1,6 +1,6 @@
 {
  "recorded": "2026-11-04",
- "note": "Hand-labelled word senses for scripts/measure-sense-images.js --relevance. A pair names a sense by the start of its Wiktionary gloss (tags stripped, as the script prints it); right and wrong list Commons files judged by eye for that sense; none: true means any picture not listed as right is wrong there; must: true means the sense has to show a right picture; mustNone: true means it has to show none.",
+ "note": "Hand-labelled word senses for scripts/measure-sense-images.js --relevance. A pair names a sense by the start of its Wiktionary gloss (tags stripped, as the script prints it); right and wrong list Commons files judged by eye for that sense; none: true means any picture not listed as right is wrong there; must: true means the sense has to show a right picture; mustNone: true means it has to show none. Relabelled after the second review: a keystone arch, a named pitcher's portrait, a Taoist diagram, the Chinese cun and an apple on the apple-tree sense are wrong.",
  "pairs": [
   {
    "word": "crane",
@@ -219,10 +219,11 @@
    "word": "palm",
    "sense": "Synonym of hand , any of various units of length",
    "pos": "noun",
-   "right": [
+   "right": [],
+   "wrong": [
     "Cun3.gif"
    ],
-   "wrong": []
+   "none": true
   },
   {
    "word": "organ",
@@ -388,11 +389,10 @@
    "word": "pitcher",
    "sense": "One who pitches (in any sense) anything",
    "pos": "noun",
-   "right": [
+   "right": [],
+   "wrong": [
     "Clayton Kershaw on July 23, 2015 (2).jpg"
-   ],
-   "wrong": [],
-   "must": true
+   ]
   },
   {
    "word": "jam",
@@ -452,19 +452,19 @@
    "word": "adept",
    "sense": "One fully skilled or well versed in anything; a",
    "pos": "noun",
-   "right": [
+   "right": [],
+   "wrong": [
     "The Immortal Soul of the Taoist Adept.PNG"
-   ],
-   "wrong": []
+   ]
   },
   {
    "word": "capstone",
    "sense": "Any of the stones making up the top layer of a w",
    "pos": "noun",
-   "right": [
+   "right": [],
+   "wrong": [
     "L-Karniesbogen (keystone).png"
-   ],
-   "wrong": []
+   ]
   },
   {
    "word": "apple",
@@ -482,10 +482,10 @@
    "word": "apple",
    "sense": "A tree of the genus Malus ; especially Malus dom",
    "pos": "noun",
-   "right": [
+   "right": [],
+   "wrong": [
     "Honeycrisp.jpg"
-   ],
-   "wrong": []
+   ]
   },
   {
    "word": "horse",
