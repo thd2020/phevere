@@ -311,6 +311,7 @@ html:not([data-mode="strip"]) .shell-lexicon .lookup-flow > .lexicon-block--sens
 html:not([data-mode="strip"]) .shell-lexicon .lexicon-pos-layout {
   flex: 1;
   height: auto;
+  min-width: 0;
 }
 .shell-lexicon .head { margin-bottom: 10px; }
 /* Pronunciations on one row that scrolls sideways, fading out at the edge. */
