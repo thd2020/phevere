@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Sense pictures (2026-11-04): each major sense of a word now gets its own picture, not only the word's first. A word with unrelated meanings gets one per meaning ("bank" of money and of a river, "wind" the moving air and "wind" a coil of rope), and a word with distinct technical senses gets them too ("equilibrium" of a body at rest shows a balance, of a chemical reaction a reaction chart). An abstract sense whose definition is a word or two borrows that word's picture ("at sea" shows the sea). Pictures that only look related are left out: a portrait of a named person for a word that is not about people (Horace Walpole for "serendipity"), a book cover from a quotation, a place, band or person that shares the word's name ("Serendipity Beach", "EAH Blunt"), and long Commons captions that mention the word in passing. Up to four pictures appear per lookup, and on the phone the first ones appear while the rest are still being found.
+- Picture loading (2026-11-04): the cards in Words choose their pictures up to two screens ahead of where you are, and cards that load together share their requests to Wikimedia (one request for their Wiktionary pages, one for their article titles, one for file details) instead of several each. Pictures found while Wikimedia turned some requests away are kept for a day rather than fetched again at every visit. On the phone, card pictures have their own part of the saved lookups, so opening Cards on a large notebook no longer pushes out saved dictionary results. Pictures saved by earlier versions are looked up again once.
+
 ## [4.0.0] - 2026-11-04
 
 The 4.0.0 files were first published on 2026-11-03 and rebuilt from `main` on 2026-11-04; the entries dated 2026-11-04 arrived with the rebuild.
