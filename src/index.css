@@ -3202,6 +3202,8 @@ body.main-window .gsearch__row--lookup .gsearch__label,
 body.main-window .gsearch__row--setting .gsearch__label,
 body.main-window .gsearch__row--all .gsearch__label { font: 500 13.5px/1.2 Outfit, 'Segoe UI', sans-serif; }
 body.main-window .gsearch__label b { font: 600 15px/1 'Source Serif 4 Variable', Georgia, serif; color: var(--pv-ember); }
+body.main-window .gsearch__row--suggest .gsearch__label { color: var(--pv-ink-soft); }
+body.main-window .gsearch__row--suggest .gsearch__label b { color: var(--pv-ink); }
 body.main-window .gsearch__hint {
   min-width: 0;
   overflow: hidden;

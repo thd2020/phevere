@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Search suggestions (2026-11-04): typing in the desktop search field or the phone's lookup field lists the commonest words that begin with what you typed, ranked by how often they are used in English rather than alphabetically. Plurals and past tenses of a listed word are left out, and a misspelling such as "recieve" or "accomodate" suggests the right spelling. The list works offline from the word books and widens online.
+
+### Changed
+
+- Phone lookup (2026-11-04): the word, its pronunciations and the source tabs stay fixed and only the definitions scroll, so scrolling to the end of a long entry no longer pushes the word off the top. Pronunciations sit on one row that scrolls sideways, which leaves more room for the definitions.
+- Word book lists (2026-11-04): a book's List can be ordered by the book's own order, by the words you met most recently, or A to Z, and each word keeps its place number in the book. The book's header no longer carries the New a day chips (the daily goal lives in Learn), and Remove book is now a red close button on the book's chip in the switcher: it shows when you point at the chip on the desktop, and on the open book's chip on a phone.
+
 ### Fixed
 
 - Map (2026-11-04): the map now holds every connected word of the notebook or book. It used to stop at 220 words, so Postgraduate 考研 showed 220 of its 4,801 words and ob- listed none of its words; it now shows 2,595 words, and ob- lists 34, from obtain and observe to occur, offer and oppose.

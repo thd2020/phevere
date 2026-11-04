@@ -1,7 +1,7 @@
 /**
  * The main window's search field. Typing still filters the notebook below, and a panel under
- * the field offers everything else the query can mean: look it up, saved words, recent
- * lookups, and the Settings page that holds a matching option. Arrow keys move through the
+ * the field offers everything else the query can mean: look it up, common words that begin
+ * with it, saved words, recent lookups, and the Settings page that holds a matching option. Arrow keys move through the
  * rows, Enter opens the highlighted one (looking the query up by default), Escape closes.
  */
 
@@ -19,10 +19,14 @@ export interface GlobalSearchSources {
   /** Show every notebook match in the list (the field already filters it). */
   showNotebook(): void;
   openSettings(section: string): void;
+  /** Common words beginning with the query, as far as they are known right now. */
+  suggestions?(q: string): string[];
+  /** Fetch better suggestions; the panel repaints when this settles. */
+  loadSuggestions?(q: string): Promise<unknown>;
 }
 
 interface Row {
-  kind: 'lookup' | 'word' | 'recent' | 'setting' | 'all';
+  kind: 'lookup' | 'suggest' | 'word' | 'recent' | 'setting' | 'all';
   label: string;
   hint?: string;
   run: () => void;
@@ -74,6 +78,10 @@ export function searchRows(q: string, src: GlobalSearchSources): Row[] {
   const rows: Row[] = [{ kind: 'lookup', label: query, run: () => src.lookup(query) }];
   const words = notebookMatches(src.notebook(), lower);
   const saved = new Set(words.map((w) => w.lemma.toLowerCase()));
+  const shownSaved = new Set(words.slice(0, 5).map((w) => w.lemma.toLowerCase()));
+  for (const w of (src.suggestions?.(query) || []).filter((s) => !shownSaved.has(s.toLowerCase())).slice(0, 5)) {
+    rows.push({ kind: 'suggest', label: w, run: () => src.lookup(w) });
+  }
   for (const w of words.slice(0, 5)) {
     rows.push({ kind: 'word', label: w.lemma, hint: firstSense(w.definition), run: () => src.lookup(w.lemma) });
   }
@@ -92,6 +100,7 @@ export function searchRows(q: string, src: GlobalSearchSources): Row[] {
 
 const HEADING: Record<Row['kind'], string> = {
   lookup: '',
+  suggest: '',
   word: 'My words',
   all: 'My words',
   recent: 'Recent',
@@ -100,11 +109,19 @@ const HEADING: Record<Row['kind'], string> = {
 
 const ICON: Record<Row['kind'], string> = {
   lookup: '<path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8"/>',
+  suggest: '<path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8"/>',
   word: '<path d="M6 4h10a2 2 0 0 1 2 2v14l-7-3.5L4 20V6a2 2 0 0 1 2-2z"/>',
   all: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
   recent: '<path d="M12 7v5l3 2M21 12a9 9 0 1 1-3-6.7M21 4v4h-4"/>',
   setting: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
 };
+
+/** The typed part plain, the completion bold, as search engines show it. */
+function suggestLabel(word: string, typed: string): string {
+  const t = typed.trim();
+  if (t && word.toLowerCase().startsWith(t.toLowerCase())) return `${esc(word.slice(0, t.length))}<b>${esc(word.slice(t.length))}</b>`;
+  return `<b>${esc(word)}</b>`;
+}
 
 export function wireGlobalSearch(input: HTMLInputElement, src: GlobalSearchSources): void {
   const panel = document.createElement('div');
@@ -121,8 +138,11 @@ export function wireGlobalSearch(input: HTMLInputElement, src: GlobalSearchSourc
 
   let rows: Row[] = [];
   let active = 0;
+  // Bumped when the panel closes, so suggestions that arrive later do not reopen it.
+  let epoch = 0;
 
   const close = () => {
+    epoch += 1;
     panel.hidden = true;
     input.setAttribute('aria-expanded', 'false');
     input.removeAttribute('aria-activedescendant');
@@ -141,7 +161,12 @@ export function wireGlobalSearch(input: HTMLInputElement, src: GlobalSearchSourc
         const head = HEADING[r.kind];
         const title = head && head !== last ? `<p class="gsearch__head">${head}</p>` : '';
         last = head || last;
-        const label = r.kind === 'lookup' ? `Look up <b>${esc(r.label)}</b>` : esc(r.label);
+        const label =
+          r.kind === 'lookup'
+            ? `Look up <b>${esc(r.label)}</b>`
+            : r.kind === 'suggest'
+              ? suggestLabel(r.label, input.value)
+              : esc(r.label);
         return `${title}<div class="gsearch__row gsearch__row--${r.kind}${i === active ? ' is-active' : ''}" role="option" id="gsearch-${i}" data-i="${i}" aria-selected="${i === active}">
           <svg viewBox="0 0 24 24" aria-hidden="true">${ICON[r.kind]}</svg>
           <span class="gsearch__label">${label}</span>
@@ -165,6 +190,11 @@ export function wireGlobalSearch(input: HTMLInputElement, src: GlobalSearchSourc
   input.addEventListener('input', () => {
     active = 0;
     paint();
+    const asked = input.value;
+    const at = epoch;
+    void src.loadSuggestions?.(asked).then(() => {
+      if (input.value === asked && document.activeElement === input && epoch === at) paint();
+    });
   });
   input.addEventListener('focus', () => {
     if (input.value.trim()) paint();
