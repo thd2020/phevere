@@ -74,16 +74,25 @@
   .nbv-letter__head { position: static; text-align: left; font-size: 30px; }
 }
 
-/* Tiles sized by family size; each line fills the width, the last line keeps natural sizes. */
-.nbv-letter__tiles { display: flex; flex-wrap: wrap; align-items: stretch; gap: 14px 12px; min-width: 0; }
-.nbv-letter__tiles::after { content: ''; flex: 3 1 0; }
+/* Tiles sized by family size alone, never by where they fall on a line: a twelve-column grid
+   where a tile spans more columns the more words it holds. The spans change with the width of
+   the tiles block, so on a phone small families go two to a row and large ones take the row. */
+.nbv-letter__tiles {
+  container-type: inline-size;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 14px 12px;
+  min-width: 0;
+}
+.nbv-letter__tiles > .nbv-fam { grid-column: span var(--span, 3); }
 .nbv-fam {
   --accent: var(--nbv-teal);
   --accent-soft: var(--nbv-teal-soft);
   --label: 22px;
   position: relative;
   isolation: isolate;
-  flex: 1 1 150px;
+  --span: 3;
   max-width: 100%;
   min-width: 0;
   border: 1px solid var(--nbv-line);
@@ -98,7 +107,7 @@
 }
 .nbv-fam--m {
   --label: 26px;
-  flex: 1.4 1 200px;
+  --span: 4;
   box-shadow:
     4px 4px 0 -1px var(--nbv-panel), 4px 4px 0 0 var(--nbv-line),
     8px 8px 0 -1px var(--nbv-panel), 8px 8px 0 0 var(--nbv-line);
@@ -106,13 +115,25 @@
 .nbv-fam--l,
 .nbv-fam--xl {
   --label: 32px;
-  flex: 2 1 270px;
+  --span: 6;
   box-shadow:
     4px 4px 0 -1px var(--nbv-panel), 4px 4px 0 0 var(--nbv-line),
     8px 8px 0 -1px var(--nbv-panel), 8px 8px 0 0 var(--nbv-line),
     12px 12px 0 -1px var(--nbv-panel), 12px 12px 0 0 var(--nbv-line);
 }
-.nbv-fam--xl { --label: 40px; flex: 2.8 1 340px; }
+.nbv-fam--xl { --label: 40px; --span: 9; }
+@container (max-width: 760px) {
+  .nbv-letter__tiles > .nbv-fam { --span: 4; }
+  .nbv-letter__tiles > .nbv-fam--m { --span: 6; }
+  .nbv-letter__tiles > .nbv-fam--l { --span: 8; }
+  .nbv-letter__tiles > .nbv-fam--xl { --span: 12; }
+}
+@container (max-width: 480px) {
+  .nbv-letter__tiles > .nbv-fam,
+  .nbv-letter__tiles > .nbv-fam--m { --span: 6; }
+  .nbv-letter__tiles > .nbv-fam--l,
+  .nbv-letter__tiles > .nbv-fam--xl { --span: 12; }
+}
 .nbv-fam:not([open]):hover { transform: translate(-1px, -2px); }
 .nbv-fam[open] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 10px 30px -18px rgba(28, 25, 23, 0.45); }
 .nbv-fam--prefix { --accent: var(--nbv-ember); --accent-soft: var(--nbv-ember-soft); }
@@ -120,13 +141,13 @@
 .nbv-fam--deep { --accent: var(--nbv-ink); --accent-soft: var(--nbv-paper-2); }
 /* With the drawer wired up, an open tile keeps its size and its words show below the row. */
 .nbv-fams.is-live .nbv-fam > .nbv-fam__words { display: none; }
-.nbv-fams:not(.is-live) .nbv-fam[open] { flex-basis: 100%; }
+.nbv-fams:not(.is-live) .nbv-fam[open] { grid-column: 1 / -1; }
 
 /* The drawer under an open tile's row, with a notch pointing up at the tile. */
 .nbv-drawer {
   --accent: var(--nbv-teal);
   position: relative;
-  flex: 0 0 100%;
+  grid-column: 1 / -1;
   margin-top: 2px;
   border: 1px solid var(--accent);
   border-radius: 16px;
@@ -213,6 +234,9 @@
 /* Reconstructed roots use ʰ, ʷ and subscript digits, which Charis SIL draws. */
 .nbv-fam--deep .nbv-fam__label { font-family: var(--nbv-ipa); letter-spacing: 0; }
 .nbv-fam__gloss { font: italic 15px/1.25 var(--nbv-serif); color: var(--nbv-ink); }
+/* Other spellings of the part (fic, fec, fect after fac): the same face, quieter and smaller. */
+.nbv-fam__forms { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; font: 600 calc(var(--label) * 0.55)/1 var(--nbv-serif); color: var(--accent); opacity: 0.62; }
+.nbv-fam__forms span::before { content: '\00B7'; margin-right: 6px; color: var(--nbv-stone); }
 .nbv-fam__meta { display: flex; align-items: center; gap: 8px; align-self: start; }
 .nbv-fam__n {
   display: inline-grid;

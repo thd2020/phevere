@@ -12,7 +12,7 @@
  */
 import type { Morph, MorphKind } from './morphology';
 import { cachedEtymon, cachedRootGloss, traceEtymons, traceRootGlosses, type WordEtymon } from './notebook-etymology';
-import { clean, esc, type Family, type FamilyGrouping, type NotebookAnalysis, type TreeNode, type WordInfo } from './notebook-shared';
+import { clean, esc, revealBelow, scrollerOf, type Family, type FamilyGrouping, type NotebookAnalysis, type TreeNode, type WordInfo } from './notebook-shared';
 
 const GROUP_LABEL: Record<FamilyGrouping, string> = {
   root: 'Roots',
@@ -58,12 +58,33 @@ function positionMark(kind: MorphKind | 'deep'): string {
   return `<svg class="nbv-fam__pos" viewBox="0 0 20 10" aria-hidden="true">${cells}</svg>`;
 }
 
-function wordChip(info: WordInfo, highlight?: Morph, i = 0): string {
+/**
+ * The spellings a family goes by (fac, fic, fec, fect), main one first. `Family.forms` comes from
+ * the morphology analysis when it knows them; without it a family has its label alone.
+ */
+function formsOf(f: { label: string; forms?: unknown }): string[] {
+  const extra = Array.isArray(f.forms) ? f.forms.filter((x): x is string => typeof x === 'string' && !!x.trim()) : [];
+  return [f.label, ...extra.filter((x) => x !== f.label)];
+}
+
+function wordChip(info: WordInfo, highlight?: Morph, i = 0, forms: string[] = []): string {
   const lemma = clean(info.entry.lemma);
   let shown = esc(lemma);
+  const mark = (start: number, end: number) => `${esc(lemma.slice(0, start))}<b>${esc(lemma.slice(start, end))}</b>${esc(lemma.slice(end))}`;
   if (highlight && highlight.kind !== 'char') {
-    const m = info.morphs.find((x) => x.kind === highlight.kind && x.label === highlight.label);
-    if (m) shown = `${esc(lemma.slice(0, m.start))}<b>${esc(lemma.slice(m.start, m.end))}</b>${esc(lemma.slice(m.end))}`;
+    const m =
+      info.morphs.find((x) => x.kind === highlight.kind && x.label === highlight.label) ||
+      info.morphs.find((x) => x.kind === highlight.kind && forms.includes(x.label));
+    if (m) shown = mark(m.start, m.end);
+    else {
+      // The word spells the part another way (infect for fac): mark the longest form it contains.
+      const low = lemma.toLowerCase();
+      const hit = [...forms].sort((x, y) => y.length - x.length).find((f) => f.length > 1 && low.includes(f.toLowerCase()));
+      if (hit) {
+        const at = low.indexOf(hit.toLowerCase());
+        shown = mark(at, at + hit.length);
+      }
+    }
   } else if (highlight) {
     shown = [...lemma].map((ch) => (ch === highlight.label ? `<b>${esc(ch)}</b>` : esc(ch))).join('');
   }
@@ -84,6 +105,8 @@ interface CardSpec {
   origin: string;
   words: WordInfo[];
   highlight?: Morph;
+  /** Every spelling of the part, main one first. */
+  forms?: string[];
 }
 
 /** Tile size by family size: a family of two is a small tile, one of sixteen or more a wide one. */
@@ -101,18 +124,21 @@ function familyCard(c: CardSpec, i = 0): string {
     .map((w) => esc(clean(w.entry.lemma)))
     .join(', ');
   const glyph = c.kind === 'deep' ? '*' : c.origin ? glyphFor(c.origin) : '';
+  const forms = c.forms?.length ? c.forms : [c.label];
+  const others = forms.filter((f) => f !== c.label);
   return `<details class="nbv-fam nbv-fam--${c.kind} nbv-fam--${size}" style="--i:${Math.min(i, 30)}">
     <summary class="nbv-fam__head">
       ${glyph ? `<span class="nbv-fam__glyph" aria-hidden="true">${esc(glyph)}</span>` : ''}
       <span class="nbv-fam__title">
         ${positionMark(c.kind)}
         <span class="nbv-fam__label">${esc(c.label)}</span>
+        ${others.length ? `<span class="nbv-fam__forms">${others.map((f) => `<span>${esc(f)}</span>`).join('')}</span>` : ''}
         ${c.gloss ? `<span class="nbv-fam__gloss">${esc(c.gloss)}</span>` : ''}
       </span>
       <span class="nbv-fam__meta">${c.origin ? `<span class="nbv-origin">${esc(c.origin)}</span>` : ''}<span class="nbv-fam__n">${n}</span></span>
       <span class="nbv-fam__peek">${peek}${n > shown ? ` <i>+${n - shown}</i>` : ''}</span>
     </summary>
-    <div class="nbv-fam__words">${c.words.map((w, i) => wordChip(w, c.highlight, i)).join('')}</div>
+    <div class="nbv-fam__words">${c.words.map((w, i) => wordChip(w, c.highlight, i, forms)).join('')}</div>
   </details>`;
 }
 
@@ -405,6 +431,7 @@ export function familiesHtml(a: NotebookAnalysis, grouping: FamilyGrouping, opts
         origin: g === 'deep' ? '' : f.origin,
         words: byLemma(a, f.ids),
         highlight: g === 'deep' ? undefined : ({ kind: f.kind, label: f.label } as Morph),
+        forms: g === 'deep' ? undefined : formsOf(f as Family & { forms?: unknown }),
       };
     });
     body = alphabetHtml(specs, g !== 'char');
@@ -486,6 +513,11 @@ const ZOOM_ICON = {
 
 let detachFamilies: (() => void) | null = null;
 let closeInspector: (() => void) | null = null;
+/** The open inspector's tree, and how to point it at the same tree after a repaint. */
+let inspectorWord = '';
+let rebindInspector: ((grove: HTMLElement) => void) | null = null;
+/** The open family (grouping and label), reopened when a repaint brings the same tile back. */
+let openFamilyKey = '';
 
 /** Close the word-tree inspector if it is open; true when it was. The phone's Back uses this. */
 export function closeTreeInspector(): boolean {
@@ -494,28 +526,30 @@ export function closeTreeInspector(): boolean {
   return true;
 }
 
-/** The element that scrolls the view: the nearest scrolling ancestor, or the page. */
-function scrollerOf(el: any): any {
-  const win = el.ownerDocument.defaultView;
-  for (let p = el.parentElement; p; p = p.parentElement) {
-    const oy = win.getComputedStyle(p).overflowY;
-    if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight) return p;
-  }
-  return el.ownerDocument.scrollingElement || el.ownerDocument.documentElement;
+/** True while a word tree is open large; the shells hold back their repaints then too. */
+export function treeInspectorOpen(): boolean {
+  return !!closeInspector;
 }
 
 /**
  * Wire the Families view rendered by `familiesHtml` inside `root`: a family opens into a drawer
  * under its row while the tile stays where it was, the letter index jumps to a letter, and a
- * word tree opens large in an inspector with pan and zoom. Safe to call after every render.
+ * word tree opens large in an inspector with pan and zoom. Safe to call after every render: an
+ * open inspector stays open when the repaint still shows its tree, and closes otherwise.
  */
 export function attachFamilies(root: any): void {
   detachFamilies?.();
   detachFamilies = null;
-  closeInspector?.();
   const fams = root?.querySelector?.('.nbv-fams') as HTMLElement | null;
   const forest = root?.querySelector?.('.nbv-forest') as HTMLElement | null;
   const abc = root?.querySelector?.('.nbv-abc') as HTMLElement | null;
+  if (closeInspector) {
+    const same = forest
+      ? ([...forest.querySelectorAll('.nbv-grove')] as HTMLElement[]).find((g) => g.querySelector('.nbv-tree__base')?.getAttribute('data-q') === inspectorWord)
+      : undefined;
+    if (same && rebindInspector) rebindInspector(same);
+    else closeInspector();
+  }
   if (!fams && !forest) return;
   const doc = (fams || forest)!.ownerDocument;
   const win: any = doc.defaultView || globalThis;
@@ -552,7 +586,10 @@ export function attachFamilies(root: any): void {
     if (Math.abs(to - from) < 1) return;
     el.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: reduced() ? 140 : 380, easing: SHEET_EASE });
   };
-  const openFamily = (tile: HTMLDetailsElement) => {
+  const group = (root.querySelector('.nbv-chip.is-active') as HTMLElement | null)?.dataset.group || '';
+  const keyOf = (tile: HTMLElement) => `${group}|${tile.querySelector('.nbv-fam__label')?.textContent || ''}`;
+  /** `quiet`: reopen after a repaint, in place, with no motion, scrolling or focus change. */
+  const openFamily = (tile: HTMLDetailsElement, quiet = false) => {
     const scroller = scrollerOf(tile);
     const before = tile.getBoundingClientRect().top;
     const prev = openTile;
@@ -563,10 +600,12 @@ export function attachFamilies(root: any): void {
     if (!drawer || !sameRow) {
       drawer = doc.createElement('div');
       drawer.setAttribute('role', 'region');
+      drawer.tabIndex = -1;
     }
     const d = drawer!;
     tile.open = true;
     openTile = tile;
+    openFamilyKey = keyOf(tile);
     d.setAttribute('aria-label', tile.querySelector('.nbv-fam__label')?.textContent || '');
     const kind = [...tile.classList].find((c) => /^nbv-fam--(root|prefix|suffix|deep|char)$/.test(c)) || '';
     d.className = `nbv-drawer${kind ? ` ${kind.replace('nbv-fam', 'nbv-drawer')}` : ''}`;
@@ -574,24 +613,24 @@ export function attachFamilies(root: any): void {
     d.innerHTML = `<button type="button" class="nbv-drawer__close" data-fam-close aria-label="Close">${ZOOM_ICON.close}</button>`;
     if (words) d.prepend(words);
     place(tile);
+    if (quiet) return;
     // Whatever closed above it, the tile stays under the pointer.
     const shift = tile.getBoundingClientRect().top - before;
     if (Math.abs(shift) > 0.5) scroller.scrollTop += shift;
-    // A drawer that would open below the fold is brought into view, never pushing the tile off.
-    const page = scroller === doc.scrollingElement || scroller === doc.documentElement;
-    const top0 = page ? 0 : scroller.getBoundingClientRect().top;
-    const vh = page ? win.innerHeight : scroller.clientHeight;
+    // Keyboard and screen-reader users land in the words; the page itself does not jump.
+    d.focus({ preventScroll: true });
+    // A drawer that would open below the fold or under the phone's bar is brought into view,
+    // never pushing the tile off the top.
     const full = d.offsetHeight;
-    const need = d.getBoundingClientRect().top - top0 + Math.min(full, 160) - (vh - 16);
-    const room = tile.getBoundingClientRect().top - top0 - 72;
+    const dTop = d.getBoundingClientRect().top;
     grow(d, fromH);
-    const by = Math.min(need, room);
-    if (by > 1) scroller.scrollBy({ top: by, behavior: reduced() ? 'auto' : 'smooth' });
+    revealBelow(tile, dTop, Math.min(full, 160), tile.getBoundingClientRect().top);
   };
   const closeFamily = () => {
     if (!openTile) return;
     openTile.open = false;
     openTile = null;
+    openFamilyKey = '';
     const d = drawer;
     drawer = null;
     if (!d) return;
@@ -633,6 +672,13 @@ export function attachFamilies(root: any): void {
         if (openTile) place(openTile);
       });
       ro.observe(fams);
+    }
+    // A repaint (the phone repaints on resume, the desktop when origins finish tracing) brings
+    // back the same family open.
+    if (openFamilyKey) {
+      const again = ([...fams.querySelectorAll('.nbv-fam')] as HTMLDetailsElement[]).find((x) => keyOf(x) === openFamilyKey);
+      if (again) openFamily(again, true);
+      else openFamilyKey = '';
     }
   }
   if (abc) {
@@ -836,6 +882,8 @@ export function attachFamilies(root: any): void {
       orig?.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
     });
     onI(doc, 'keydown', (ev: any) => {
+      // Ctrl and Cmd shortcuts (the window's own zoom among them) are left to the app.
+      if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
       const { w, h } = size();
       const pan = 60 / s;
       if (ev.key === 'Escape') close();
@@ -861,7 +909,6 @@ export function attachFamilies(root: any): void {
       vro = new RO(() => draw());
       vro.observe(view);
     }
-    const opener = grove.querySelector('[data-tree-open]') as HTMLElement | null;
     const ms = reduced() ? 120 : 280;
     overlay.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms, easing: EASE_OUT });
     sheet.animate([{ opacity: 0, transform: 'translateY(14px) scale(0.97)' }, { opacity: 1, transform: 'none' }], { duration: ms + 60, easing: SHEET_EASE });
@@ -870,6 +917,8 @@ export function attachFamilies(root: any): void {
     function close(): void {
       if (closeInspector !== close) return;
       closeInspector = null;
+      rebindInspector = null;
+      inspectorWord = '';
       io.abort();
       vro?.disconnect();
       win.cancelAnimationFrame(tween);
@@ -877,9 +926,14 @@ export function attachFamilies(root: any): void {
       overlay.style.pointerEvents = 'none';
       overlay.animate([{ opacity: 1 }, { opacity: 0 }], { duration: out, easing: EASE_OUT, fill: 'forwards' });
       win.setTimeout(() => overlay.remove(), out + 20);
-      opener?.focus({ preventScroll: true });
+      (grove.querySelector('[data-tree-open]') as HTMLElement | null)?.focus({ preventScroll: true });
     }
     closeInspector = close;
+    inspectorWord = label;
+    // A repaint replaced the tree on the page: lookups and focus go to the new one.
+    rebindInspector = (g) => {
+      grove = g;
+    };
   }
 
   detachFamilies = () => {
