@@ -237,6 +237,7 @@ const pool = [
   skip.started = true;
   assert.equal(core.ensureReviewQuestion(skip, [idio, ...forms], { audio: false, now }).id, 'c1', 'a word with nothing usable to ask is skipped');
   assert.equal(core.usableSense('plural of vicissitude', 'vicissitudes'), false);
+  assert.equal(core.usableSense('An earthenware container, used for burial. .mw-parser-output .deflabel{font-variant:small-caps}', 'urn'), false, 'Wiktionary style text');
   assert.equal(core.usableSense('A change, especially in one’s life or fortunes.', 'vicissitude'), true);
   // An everyday sense before a dialect one.
   const shed = { lemma: 'shed', definition: '(transitive, UK, dialectal) To part, separate or divide.\n(ambitransitive) To part with, cast off, let fall.\nTo pour; to make flow.' };

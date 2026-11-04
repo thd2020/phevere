@@ -339,7 +339,7 @@ export function sameLemma(a: string, b: string): boolean {
 }
 
 /** Citations and reference lines that sources sometimes return in place of a sense. */
-const CITATION = /↑|\bISBN\b|\bOCLC\b|\bUnabridged\b|Dictionary\.com|Merriam-Webster|English Dictionary|Historical Principles|\beditors?\b|\b\d{4}\s*[–-]\s*present\b|^\s*\d{3,4}\s*[,:]|\bRetrieved\b|\bp\.\s*\d|https?:\/\//i;
+const CITATION = /↑|\bISBN\b|\bOCLC\b|\bUnabridged\b|Dictionary\.com|Merriam-Webster|English Dictionary|Historical Principles|\beditors?\b|\b\d{4}\s*[–-]\s*present\b|^\s*\d{3,4}\s*[,:]|\bRetrieved\b|\bp\.\s*\d|https?:\/\/|mw-parser-output|\{[^}]*:[^}]*\}/i;
 /** Senses a learner is unlikely to need first: dialect, obsolete, archaic and rare uses. */
 const MARGINAL = /^\(([^)]*\b(?:obsolete|archaic|dialect(?:al)?|rare|nonstandard|regional|historical|dated|uncommon)\b[^)]*)\)/i;
 
@@ -361,6 +361,8 @@ export function bestSense(e: NotebookEntry): string {
   const lemma = clean(e.lemma);
   // "Alternative form of mock-up. [A scale model …]": the bracketed gloss is the sense.
   const senses = vocabSenses(e.definition)
+    // Wiktionary style rules that leaked into a gloss (".mw-parser-output .defdate{…}") go; the gloss stays.
+    .map((s) => s.replace(/\s*\.?mw-parser-output[^{]*\{[^}]*\}/g, '').replace(/\s+\.\s*$/, '.').trim())
     .map((s) => s.replace(/^(?:(?:alternative|obsolete|archaic|dated)\s+(?:form|spelling)|misspelling)\s+of\s+[^.[]+\.?\s*\[(.+)\]\s*$/i, '$1'))
     .filter((s) => usableSense(s, lemma));
   return senses.find((s) => !MARGINAL.test(s)) || senses[0] || '';
