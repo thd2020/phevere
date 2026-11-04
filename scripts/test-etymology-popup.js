@@ -20,6 +20,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const directory = process.env.PHEVERE_ETYMOLOGY_TEST_DIR;
 assert.ok(directory, 'Run through Node so temporary files are removed after Electron exits');
 app.setPath('userData', directory);
+require('./electron-test-env')(app);
 app.on('window-all-closed', () => {});
 const root = path.resolve(__dirname, '..');
 const grouping = { exports: {} };
