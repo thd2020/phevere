@@ -35,6 +35,8 @@ export interface Family {
   gloss: string;
   origin: string;
   ids: string[];
+  /** The spellings a root or prefix takes: "fac · fic · fec · fect". */
+  forms?: string;
 }
 
 export interface TreeNode {

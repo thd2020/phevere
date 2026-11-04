@@ -2282,13 +2282,15 @@ function renderBookScope(body: HTMLElement, wrap: HTMLElement, list: HTMLElement
     body.innerHTML = wordbookListHtml(shown, { scope: wbScope, limit: wbLimit, filtered: !!q, sort: wbSort });
     return true;
   }
-  const study = nbView === 'cards' ? scopeStudySet(shown) : shown;
-  if (!wbAnalysis || wbAnalysis.key !== wbCtx || wbAnalysis.q !== q || wbAnalysis.view !== nbView) {
-    wbAnalysis = { key: wbCtx, q, view: nbView, value: analyzeNotebook(study) };
+  // The map always holds the whole book; the search flies to a word on it instead.
+  const study = nbView === 'cards' ? scopeStudySet(shown) : nbView === 'map' ? all : shown;
+  const aq = nbView === 'map' ? '' : q;
+  if (!wbAnalysis || wbAnalysis.key !== wbCtx || wbAnalysis.q !== aq || wbAnalysis.view !== nbView) {
+    wbAnalysis = { key: wbCtx, q: aq, view: nbView, value: analyzeNotebook(study) };
   }
   const analysis = wbAnalysis.value;
   if (nbView === 'families') body.innerHTML = familiesHtml(analysis, nbGroup, { tracing: familiesTraceProgress() });
-  else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
+  else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds, { query: q });
   else body.innerHTML = cardsHtml(study, analysis, nbFlipped, nbCardsLayout);
   attachNotebookMap(body);
   attachCardTable(body, {
@@ -2648,10 +2650,13 @@ function renderVocabNotebook(entries: any[]): void {
     vocabRenderToken += 1;
     flushVocabChunks = null;
     list.innerHTML = '';
-    // The analysis only changes when the notebook or the search does.
-    const q = `${(document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || ''}|${wordsLang}`;
+    // The analysis only changes when the notebook or the search does. The map always holds
+    // every word in the chosen language; the search flies to a word on it instead.
+    const search = (document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '';
+    const isMap = nbView === 'map';
+    const q = `${isMap ? ' map' : search}|${wordsLang}`;
     if (!nbAnalysis || nbAnalysis.key !== vocabNotebookCache || nbAnalysis.q !== q) {
-      nbAnalysis = { key: vocabNotebookCache, q, value: analyzeNotebook(sorted) };
+      nbAnalysis = { key: vocabNotebookCache, q, value: analyzeNotebook(isMap ? filterVocabByLang(vocabNotebookCache, wordsLang, langs) : sorted) };
     }
     const analysis = nbAnalysis.value;
     if (nbView === 'families') {
@@ -2665,7 +2670,7 @@ function renderVocabNotebook(entries: any[]): void {
         },
       );
     }
-    else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds);
+    else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds, { query: search.trim() });
     else body.innerHTML = cardsHtml(sorted, analysis, nbFlipped, nbCardsLayout);
     attachNotebookMap(body);
     attachCardTable(body, {

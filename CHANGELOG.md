@@ -7,14 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Search suggestions (2026-11-04): typing in the desktop search field or the phone's lookup field lists the commonest words that begin with what you typed, ranked by how often they are used in English rather than alphabetically. Plurals and past tenses of a listed word are left out, and a misspelling such as "recieve" or "accomodate" suggests the right spelling. The list works offline from the word books and widens online.
+
 ### Changed
 
 - Phone lookup (2026-11-04): the word, its pronunciations and the source tabs stay fixed and only the definitions scroll, so scrolling to the end of a long entry no longer pushes the word off the top. Pronunciations sit on one row that scrolls sideways, which leaves more room for the definitions.
 - Word book lists (2026-11-04): a book's List can be ordered by the book's own order, by the words you met most recently, or A to Z, and each word keeps its place number in the book. The book's header no longer carries the New a day chips (the daily goal lives in Learn), and Remove book is now a red close button on the book's chip in the switcher: it shows when you point at the chip on the desktop, and on the open book's chip on a phone.
 
-### Added
+### Fixed
 
-- Search suggestions (2026-11-04): typing in the desktop search field or the phone's lookup field lists the commonest words that begin with what you typed, ranked by how often they are used in English rather than alphabetically. Plurals and past tenses of a listed word are left out, and a misspelling such as "recieve" or "accomodate" suggests the right spelling. The list works offline from the word books and widens online.
+- Map (2026-11-04): the map now holds every connected word of the notebook or book. It used to stop at 220 words, so Postgraduate 考研 showed 220 of its 4,801 words and ob- listed none of its words; it now shows 2,599 words, and ob- lists 34, from obtain and observe to occur, offer and oppose. When Families learns a word's origin and the map changes, the words already on it stay where they were, with the same word in focus.
+- Map (2026-11-04): on the desktop, drag turns and tilts the map, right-drag or Shift-drag moves it, and the wheel or a trackpad pinch zooms, as on the phone. On the phone, a drag or a two-finger pinch, twist or tilt works even when it starts on a word, and only a short tap opens a word. A drag across the map's height is a full turn, and the map keeps turning after you let go only if your finger was still moving. Zoom and Reset view sit in the top-right corner on every screen. On the phone the map fits above the tab bar, and a word's sheet scrolls into view so Look up can be reached. Without 3D graphics the flat map shows the 48 largest word parts and up to 220 of their words.
+- Map (2026-11-04): the Find a word field fits its pill in the desktop window, suggests words as you type, and goes to one with a click or Enter. Typing an inflected form finds the word it comes from, so "changes" finds "change". It also finds word parts by any of their spellings, with or without the hyphen, so "ob-", "oc" and "fect" go to ob- and fac.
+- Map (2026-11-04): the Words search no longer empties the map. The map opens on the word it finds, or says that no word matches and keeps the whole map.
+- Map (2026-11-04): a word looked up from the map keeps its orange highlight when you come back to the map.
+- Roots and prefixes (2026-11-04): a root is matched in all its spellings and shows them, so fac (make, do) reads "fac · fic · fec · fect" and takes in factory, infect, efficient, perfect, benefit and significant. Prefixes are matched in their assimilated forms: ob- as oc-, of- and op- (occur, offer, oppose), ad- before a doubled consonant (accept, affect, attract), and likewise in-, con- and sub-. The longest prefix wins, so undergo is under- and contrast is contra-, while contract stays con- with tract. Words that only look like a part are left out, such as face and fiction under fac, capital and captain under cap, certain and attain under ten, senate under nat, and electric under ex-. Where Families has read a word's origin from Wiktionary, a word of Old English or Old Norse origin loses its Latin parts. Families uses the same analysis.
 
 ## [4.0.0] - 2026-11-04
 

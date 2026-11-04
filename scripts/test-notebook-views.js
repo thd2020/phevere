@@ -83,18 +83,30 @@ const hubOf = (label) => m3a.nodes.find((n) => n.kind !== 'word' && n.label === 
 const wordOf = (label) => m3a.nodes.find((n) => n.kind === 'word' && n.label === label);
 const dist = (p, q) => Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z);
 assert.ok(dist(wordOf('spectator'), hubOf('spect')) < dist(hubOf('spect'), hubOf('対')));
-// mapHtml hands the renderers the graph as JSON, with search, filters and the controls.
+// mapHtml names the cached graph by its signature, with search, filters and the controls.
 const mh = views.mapHtml(a, ['root', 'char']);
-const json = mh.match(/<script type="application\/json" data-map-data>([\s\S]*?)<\/script>/);
-assert.ok(json, 'graph data embedded');
-const md = JSON.parse(json[1]);
+const md = views.notebookMapData(a, ['root', 'char']);
+assert.match(mh, new RegExp(`data-map-sig="${md.sig.replace(/[+]/g, '\\+')}"`));
+assert.ok(!/data-map-data/.test(mh), 'the graph is not written into the page');
 assert.equal(md.nodes.length, m3a.nodes.length);
+assert.equal(md.total, a.words.size);
 assert.ok(md.edges.every(([x, y]) => md.nodes[x] && md.nodes[y]));
 assert.match(mh, /data-map-search/);
-assert.match(mh, /<option value="inspector">/);
 assert.match(mh, /data-act="nb-map-kind" data-kind="root"/);
 assert.match(mh, /data-map-act="reset"/);
-assert.equal(views.notebookMapData(a, ['root', 'char']), views.notebookMapData(a, ['root', 'char']), 'layout cached');
+assert.match(mh, /8 of 9 words/, 'apple is the one word with no connection');
+assert.equal(views.notebookMapData(a, ['root', 'char']), md, 'layout cached');
+// Finding a word: itself first, then the word it inflects, then words starting with it.
+assert.deepEqual(views.findMapWords(md, 'inspect').map((p) => p.l), ['inspect', 'inspector']);
+assert.deepEqual(views.findMapWords(md, 'inspects').map((p) => p.l), ['inspect', 'inspector']);
+assert.deepEqual(views.findMapWords(md, 'spect').map((p) => p.l), ['spect', 'spectator', 'inspect', 'inspector'], 'the part first');
+assert.ok(views.queryForms('changes').includes('change'));
+assert.ok(views.queryForms('studied').includes('study'));
+// The Words search goes to the map: a match opens on it, a miss says so and keeps the map.
+assert.match(views.mapHtml(a, ['root', 'char'], { query: 'inspects' }), /data-map-goto="id0"/);
+const missed = views.mapHtml(a, ['root', 'char'], { query: 'changes' });
+assert.match(missed, /No word matches “changes”/);
+assert.match(missed, /data-map-sig=/);
 
 // Cards: piles by when the words were saved, newest pile and newest card first.
 const piles = views.cardPiles(entries, now);

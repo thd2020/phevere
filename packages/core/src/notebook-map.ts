@@ -1,13 +1,14 @@
 /**
  * Map view: words joined through the morphemes they share.
  *
- * `mapHtml` writes the toolbar, the panel and the graph data as JSON; `attachNotebookMap`
- * turns that into a 3D scene (three.js through 3d-force-graph, loaded on demand) or, where
+ * `mapHtml` writes the toolbar and the panel and names the graph it laid out by signature;
+ * `attachNotebookMap` turns that graph into a 3D scene (three.js, loaded on demand) or, where
  * WebGL is missing, a flat SVG. Both renderers share the focus logic in this file: a click
  * focuses a word or a morpheme, lights its neighbourhood, dims the rest and fills the panel.
+ * The map holds every connected word of the notebook or book, thousands for a large book.
  */
 import type { MorphKind } from './morphology';
-import { esc, clean, type NotebookAnalysis } from './notebook-shared';
+import { esc, clean, type Family, type NotebookAnalysis, type NotebookEntry, type WordInfo } from './notebook-shared';
 import { loadMapScene } from './notebook-map-load';
 
 export interface MapNode {
@@ -24,6 +25,8 @@ export interface MapNode {
   /** Words in the family for a morpheme; 1 for a word. */
   size: number;
   gloss: string;
+  /** A morpheme's spellings: "fac · fic · fec · fect". */
+  forms?: string;
 }
 
 export interface MapEdge {
@@ -36,6 +39,8 @@ export interface MapOptions {
   kinds?: MorphKind[];
   maxWords?: number;
   maxHubs?: number;
+  /** Positions from an earlier layout of the same words: nodes found here keep their place. */
+  seed?: Map<string, [number, number, number]>;
   /** 2 (default) lays the graph out on a plane; 3 in space, centred on the origin. */
   dimensions?: 2 | 3;
 }
@@ -52,12 +57,14 @@ export interface MapLayout {
 /**
  * Force-directed layout of words and the morphemes they share. Deterministic: the same
  * notebook always draws the same picture, so the map does not reshuffle on every paint.
- * Morphemes carry a larger charge than words, so they push each other apart and their words
- * gather around them in clusters.
+ * The flat (2D) layout is a full force simulation, kept for small graphs, and keeps its old
+ * limits of 48 morphemes and 220 words by default; the 3D layout the map draws holds every
+ * connected word (see `layoutSpace`).
  */
 export function layoutNotebookMap(a: NotebookAnalysis, opts: MapOptions = {}): MapLayout {
   const dims = opts.dimensions === 3 ? 3 : 2;
   const kinds = new Set<MorphKind>(opts.kinds || ['root', 'prefix', 'char']);
+  if (dims === 3) return layoutSpace(a, kinds, opts.maxWords ?? Infinity, opts.maxHubs ?? Infinity, opts.seed);
   const hubs = a.families.filter((f) => kinds.has(f.kind)).slice(0, opts.maxHubs ?? 48);
   const wordIndex = new Map<string, number>();
   const nodes: MapNode[] = [];
@@ -98,57 +105,22 @@ export function layoutNotebookMap(a: NotebookAnalysis, opts: MapOptions = {}): M
   const n = nodes.length;
   if (!n) return { nodes, edges, width: 0, height: 0, radius: 0 };
 
-  if (dims === 2) {
-    // Golden-angle spiral start.
-    nodes.forEach((node, i) => {
-      const r = 18 * Math.sqrt(i + 1);
-      const t = i * 2.399963;
-      node.x = Math.cos(t) * r;
-      node.y = Math.sin(t) * r;
-    });
-  } else {
-    // Morphemes on a Fibonacci sphere; each word starts at the middle of its morphemes.
-    const hubIdx = nodes.map((p, i) => (p.kind === 'word' ? -1 : i)).filter((i) => i >= 0);
-    const R = 46 * Math.cbrt(hubIdx.length + 1);
-    hubIdx.forEach((i, h) => {
-      const y = 1 - (2 * (h + 0.5)) / hubIdx.length;
-      const r = Math.sqrt(Math.max(0, 1 - y * y));
-      const t = h * 2.399963;
-      nodes[i].x = Math.cos(t) * r * R;
-      nodes[i].y = y * R;
-      nodes[i].z = Math.sin(t) * r * R;
-    });
-    const sum = new Map<number, { x: number; y: number; z: number; c: number }>();
-    for (const e of edges) {
-      if (e.kind !== 'morph') continue;
-      const s = sum.get(e.b) || { x: 0, y: 0, z: 0, c: 0 };
-      s.x += nodes[e.a].x;
-      s.y += nodes[e.a].y;
-      s.z += nodes[e.a].z;
-      s.c += 1;
-      sum.set(e.b, s);
-    }
-    nodes.forEach((p, i) => {
-      if (p.kind !== 'word') return;
-      const s = sum.get(i);
-      const t = i * 2.399963;
-      const u = ((i * 0.618034) % 1) * 2 - 1;
-      const rr = Math.sqrt(1 - u * u) * 12;
-      p.x = (s ? s.x / s.c : 0) + Math.cos(t) * rr;
-      p.y = (s ? s.y / s.c : 0) + u * 12;
-      p.z = (s ? s.z / s.c : 0) + Math.sin(t) * rr;
-    });
-  }
+  // Golden-angle spiral start.
+  nodes.forEach((node, i) => {
+    const r = 18 * Math.sqrt(i + 1);
+    const t = i * 2.399963;
+    node.x = Math.cos(t) * r;
+    node.y = Math.sin(t) * r;
+  });
 
-  const hubCharge = dims === 3 ? 5 : 3;
-  const charge = nodes.map((p) => (p.kind === 'word' ? 1 : hubCharge));
+  const charge = nodes.map((p) => (p.kind === 'word' ? 1 : 3));
   const iterations = n > 200 ? 220 : 300;
-  const repulse = dims === 3 ? 1400 : 2000;
-  const spring = dims === 3 ? 0.05 : 0.04;
-  const restMorph = dims === 3 ? 30 : 74;
-  const restDerived = dims === 3 ? 24 : 74;
-  const gravity = dims === 3 ? 0.0025 : 0.004;
-  const cutoff = dims === 3 ? 62500 : 90000;
+  const repulse = 2000;
+  const spring = 0.04;
+  const restMorph = 74;
+  const restDerived = 74;
+  const gravity = 0.004;
+  const cutoff = 90000;
   for (let it = 0; it < iterations; it++) {
     const cool = 1 - it / iterations;
     for (let i = 0; i < n; i++) {
@@ -193,8 +165,7 @@ export function layoutNotebookMap(a: NotebookAnalysis, opts: MapOptions = {}): M
     for (const p of nodes) {
       p.vx -= p.x * gravity;
       p.vy -= p.y * gravity;
-      p.vz -= p.z * gravity;
-      if (dims === 2) p.vz = 0;
+      p.vz = 0;
       const len = Math.hypot(p.vx, p.vy, p.vz) || 1;
       const step = Math.min(len, 12 * cool + 0.5);
       p.x += (p.vx / len) * step;
@@ -206,27 +177,6 @@ export function layoutNotebookMap(a: NotebookAnalysis, opts: MapOptions = {}): M
     }
   }
 
-  if (dims === 3) {
-    let cx = 0;
-    let cy = 0;
-    let cz = 0;
-    for (const p of nodes) {
-      cx += p.x / n;
-      cy += p.y / n;
-      cz += p.z / n;
-    }
-    const dist: number[] = [];
-    for (const p of nodes) {
-      p.x = Math.round((p.x - cx) * 10) / 10;
-      p.y = Math.round((p.y - cy) * 10) / 10;
-      p.z = Math.round((p.z - cz) * 10) / 10;
-      dist.push(Math.hypot(p.x, p.y, p.z));
-    }
-    dist.sort((x, y) => x - y);
-    // The radius the camera frames: a few stray words far out should not shrink the rest.
-    const core = dist[Math.floor((dist.length - 1) * 0.9)] * 1.1;
-    return { nodes, edges, width: 0, height: 0, radius: Math.round(Math.min(dist[dist.length - 1], core)) };
-  }
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -246,17 +196,358 @@ export function layoutNotebookMap(a: NotebookAnalysis, opts: MapOptions = {}): M
   return { nodes, edges, width: Math.round(maxX - minX + pad * 2), height: Math.round(maxY - minY + pad * 2), radius: 0 };
 }
 
+/** A deterministic direction for index `i`: points spread evenly over a sphere. */
+function spiral(i: number, n: number): [number, number, number] {
+  const y = 1 - (2 * (i + 0.5)) / Math.max(1, n);
+  const r = Math.sqrt(Math.max(0, 1 - y * y));
+  const t = i * 2.399963;
+  return [Math.cos(t) * r, y, Math.sin(t) * r];
+}
+
+/**
+ * The 3D layout, built to hold a whole word book (thousands of words) in well under a second.
+ * Morphemes are laid out first with a force simulation among themselves only, pulled
+ * together by the words they share. Each word then sits inside a ball around its morphemes,
+ * nearer the more specific one, and a few passes over a spatial grid push apart words that
+ * landed on top of each other. Every step is linear in the number of words except the
+ * morpheme simulation, which only sees the few hundred morphemes.
+ */
+function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: number, maxHubs: number, seed?: Map<string, [number, number, number]>): MapLayout {
+  const hubs = a.families.filter((f) => kinds.has(f.kind)).slice(0, maxHubs);
+  const nodes: MapNode[] = [];
+  const edges: MapEdge[] = [];
+  const wordIndex = new Map<string, number>();
+  const blank = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, degree: 0 };
+  const addWord = (id: string): number => {
+    let i = wordIndex.get(id);
+    if (i !== undefined) return i;
+    if (nodes.length - hubs.length >= maxWords) return -1;
+    const w = a.words.get(id);
+    if (!w) return -1;
+    i = nodes.length;
+    nodes.push({ id, kind: 'word', label: clean(w.entry.lemma), size: 1, gloss: '', ...blank });
+    wordIndex.set(id, i);
+    return i;
+  };
+  hubs.forEach((f) => nodes.push({ id: f.key, kind: f.kind, label: f.label, size: f.ids.length, gloss: clean(f.gloss), ...(f.forms ? { forms: f.forms } : {}), ...blank }));
+  const wordHubs = new Map<number, number[]>();
+  hubs.forEach((f, h) => {
+    for (const id of f.ids) {
+      const i = addWord(id);
+      if (i < 0) continue;
+      edges.push({ a: h, b: i, kind: 'morph' });
+      const list = wordHubs.get(i);
+      if (list) list.push(h);
+      else wordHubs.set(i, [h]);
+    }
+  });
+  const parentOf = new Map<number, number>();
+  for (const [child, par] of a.parent) {
+    const c = addWord(child);
+    const p = addWord(par);
+    if (c < 0 || p < 0) continue;
+    edges.push({ a: p, b: c, kind: 'derived' });
+    parentOf.set(c, p);
+  }
+  for (const e of edges) {
+    nodes[e.a].degree += 1;
+    nodes[e.b].degree += 1;
+  }
+  const n = nodes.length;
+  if (!n) return { nodes, edges, width: 0, height: 0, radius: 0 };
+  const H = hubs.length;
+
+  // Morphemes: each owns a ball sized for its words; morphemes sharing words attract.
+  const ball = hubs.map((f) => 8 + 6.5 * Math.cbrt(f.ids.length));
+  const shared = new Map<number, number>();
+  for (const list of wordHubs.values()) {
+    for (let x = 0; x < list.length; x++) {
+      for (let y = x + 1; y < list.length; y++) {
+        const k = list[x] * 65536 + list[y];
+        shared.set(k, (shared.get(k) || 0) + 1);
+      }
+    }
+  }
+  // The radius that packs every ball with some air between them.
+  const R0 = 1.4 * Math.cbrt(ball.reduce((s, b) => s + b * b * b, 0)) + 20;
+  // Nodes from an earlier layout keep their place, so the map does not reshuffle when a
+  // Families trace adds a few words or parts; only the new ones are laid out.
+  const fixed = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const at = seed?.get(nodes[i].id);
+    if (!at) continue;
+    [nodes[i].x, nodes[i].y, nodes[i].z] = at;
+    fixed[i] = 1;
+  }
+  for (let h = 0; h < H; h++) {
+    if (fixed[h]) continue;
+    const [x, y, z] = spiral(h, H);
+    nodes[h].x = x * R0;
+    nodes[h].y = y * R0;
+    nodes[h].z = z * R0;
+  }
+  const springs = [...shared].map(([k, count]) => ({ p: Math.floor(k / 65536), q: k % 65536, w: Math.min(1, count / 3) }));
+  const iterations = fixed.some((f, i) => i < H && !f) ? 260 : 0;
+  for (let it = 0; it < iterations; it++) {
+    const cool = 1 - it / iterations;
+    for (let i = 0; i < H; i++) {
+      const p = nodes[i];
+      for (let j = i + 1; j < H; j++) {
+        const q = nodes[j];
+        let dx = p.x - q.x;
+        let dy = p.y - q.y;
+        const dz = p.z - q.z;
+        let d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < 0.01) {
+          dx = 0.1 * (i - j);
+          dy = 0.1;
+          d2 = dx * dx + dy * dy + dz * dz;
+        }
+        const gap = ball[i] + ball[j];
+        // Only near neighbours push: a hard push while two balls overlap and a soft one
+        // just outside, so the balls pack together under the pull toward the centre.
+        if (d2 > 4 * gap * gap) continue;
+        const d = Math.sqrt(d2);
+        let f = (2 * gap - d) * 0.03;
+        if (d < gap * 1.1) f += (gap * 1.1 - d) * 0.4;
+        p.vx += (dx / d) * f;
+        p.vy += (dy / d) * f;
+        p.vz += (dz / d) * f;
+        q.vx -= (dx / d) * f;
+        q.vy -= (dy / d) * f;
+        q.vz -= (dz / d) * f;
+      }
+    }
+    for (const s of springs) {
+      const p = nodes[s.p];
+      const q = nodes[s.q];
+      const dx = q.x - p.x;
+      const dy = q.y - p.y;
+      const dz = q.z - p.z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+      const f = (d - (ball[s.p] + ball[s.q]) * 0.9) * 0.03 * s.w;
+      p.vx += (dx / d) * f;
+      p.vy += (dy / d) * f;
+      p.vz += (dz / d) * f;
+      q.vx -= (dx / d) * f;
+      q.vy -= (dy / d) * f;
+      q.vz -= (dz / d) * f;
+    }
+    for (let i = 0; i < H; i++) {
+      const p = nodes[i];
+      if (fixed[i]) {
+        p.vx = p.vy = p.vz = 0;
+        continue;
+      }
+      p.vx -= p.x * 0.02;
+      p.vy -= p.y * 0.02;
+      p.vz -= p.z * 0.02;
+      const len = Math.hypot(p.vx, p.vy, p.vz) || 1;
+      const step = Math.min(len, 8 * cool + 0.3);
+      p.x += (p.vx / len) * step;
+      p.y += (p.vy / len) * step;
+      p.z += (p.vz / len) * step;
+      p.vx *= 0.5;
+      p.vy *= 0.5;
+      p.vz *= 0.5;
+    }
+  }
+
+  // Words: inside the ball of their most specific morpheme, drawn toward the others.
+  const seat = new Map<number, number>();
+  const placed = new Uint8Array(n);
+  for (let h = 0; h < H; h++) placed[h] = 1;
+  for (let i = H; i < n; i++) if (fixed[i]) placed[i] = 1;
+  for (const [i, list] of wordHubs) {
+    if (fixed[i]) continue;
+    let main = list[0];
+    for (const h of list) if (hubs[h].ids.length < hubs[main].ids.length) main = h;
+    const k = seat.get(main) || 0;
+    seat.set(main, k + 1);
+    const size = hubs[main].ids.length;
+    const [ux, uy, uz] = spiral(k, size);
+    const r = 5 + (ball[main] - 5) * Math.cbrt((k + 0.5) / size);
+    let cx = nodes[main].x;
+    let cy = nodes[main].y;
+    let cz = nodes[main].z;
+    if (list.length > 1) {
+      // Weighted toward the smaller family, so "infect" sits by fac rather than in the middle of in-.
+      let sw = 0;
+      let sx = 0;
+      let sy = 0;
+      let sz = 0;
+      for (const h of list) {
+        const wgt = 1 / Math.sqrt(hubs[h].ids.length);
+        sw += wgt;
+        sx += nodes[h].x * wgt;
+        sy += nodes[h].y * wgt;
+        sz += nodes[h].z * wgt;
+      }
+      cx = (cx + sx / sw) / 2;
+      cy = (cy + sy / sw) / 2;
+      cz = (cz + sz / sw) / 2;
+    }
+    const p = nodes[i];
+    p.x = cx + ux * r;
+    p.y = cy + uy * r;
+    p.z = cz + uz * r;
+    placed[i] = 1;
+  }
+  // Words joined only to other words ("nation", "national", "nationality"): walk out from the
+  // words already placed, each beside its neighbour. A family of such words with no morpheme
+  // at all goes on a shell just outside the morphemes.
+  const near = new Map<number, number[]>();
+  for (const [c, p] of parentOf) {
+    near.set(c, [...(near.get(c) || []), p]);
+    near.set(p, [...(near.get(p) || []), c]);
+  }
+  const spread = (start: number[]) => {
+    const queue = [...start];
+    while (queue.length) {
+      const at = queue.shift()!;
+      for (const next of near.get(at) || []) {
+        if (placed[next]) continue;
+        const [ux, uy, uz] = spiral(next % 97, 97);
+        nodes[next].x = nodes[at].x + ux * 9;
+        nodes[next].y = nodes[at].y + uy * 9;
+        nodes[next].z = nodes[at].z + uz * 9;
+        placed[next] = 1;
+        queue.push(next);
+      }
+    }
+  };
+  spread([...near.keys()].filter((i) => placed[i]));
+  let hubR = 0;
+  for (let h = 0; h < H; h++) hubR = Math.max(hubR, Math.hypot(nodes[h].x, nodes[h].y, nodes[h].z) + ball[h]);
+  const loose = [...near.keys()].filter((i) => !placed[i]).sort((x, y) => x - y);
+  const shell = (hubR || 30) + 25;
+  // One seat on the shell per family of loose words, spread over the whole sphere.
+  const seen = new Set<number>();
+  const heads: number[] = [];
+  for (const i of loose) {
+    if (seen.has(i)) continue;
+    heads.push(i);
+    const queue = [i];
+    seen.add(i);
+    while (queue.length) {
+      for (const next of near.get(queue.shift()!) || []) {
+        if (seen.has(next)) continue;
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  let group = 0;
+  for (const i of heads) {
+    const [ux, uy, uz] = spiral(group++, heads.length);
+    nodes[i].x = ux * shell;
+    nodes[i].y = uy * shell;
+    nodes[i].z = uz * shell;
+    placed[i] = 1;
+    spread([i]);
+  }
+
+  // Push apart words closer than MIN to each other, using a grid so each word only checks its cell's neighbours.
+  const MIN = 4.5;
+  const CELL = MIN * 2;
+  for (let pass = 0; pass < 6; pass++) {
+    const grid = new Map<number, number[]>();
+    // Cells as one number: 1,024 cells a side is far more than any layout spans.
+    const cellKey = (gx: number, gy: number, gz: number) => ((gx + 512) * 1024 + (gy + 512)) * 1024 + (gz + 512);
+    const cellOf = (v: number) => Math.floor(v / CELL);
+    for (let i = H; i < n; i++) {
+      const k = cellKey(cellOf(nodes[i].x), cellOf(nodes[i].y), cellOf(nodes[i].z));
+      const list = grid.get(k);
+      if (list) list.push(i);
+      else grid.set(k, [i]);
+    }
+    let moved = 0;
+    for (let i = H; i < n; i++) {
+      const p = nodes[i];
+      const gx = cellOf(p.x);
+      const gy = cellOf(p.y);
+      const gz = cellOf(p.z);
+      for (let ox = -1; ox <= 1; ox++) {
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let oz = -1; oz <= 1; oz++) {
+            const list = grid.get(cellKey(gx + ox, gy + oy, gz + oz));
+            if (!list) continue;
+            for (const j of list) {
+              if (j <= i) continue;
+              const q = nodes[j];
+              let dx = p.x - q.x;
+              let dy = p.y - q.y;
+              let dz = p.z - q.z;
+              let d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+              if (d >= MIN) continue;
+              if (d < 0.01) {
+                [dx, dy, dz] = spiral((i * 31 + j) % 50, 50);
+                d = 1;
+              }
+              // A word kept from the earlier layout stays put; the other one moves the whole way.
+              if (fixed[i] && fixed[j]) continue;
+              const pp = fixed[i] ? 0 : fixed[j] ? MIN - d : (MIN - d) / 2;
+              const qq = fixed[j] ? 0 : fixed[i] ? MIN - d : (MIN - d) / 2;
+              p.x += (dx / d) * pp;
+              p.y += (dy / d) * pp;
+              p.z += (dz / d) * pp;
+              q.x -= (dx / d) * qq;
+              q.y -= (dy / d) * qq;
+              q.z -= (dz / d) * qq;
+              moved += 1;
+            }
+          }
+        }
+      }
+    }
+    if (!moved) break;
+  }
+
+  // Centre the map on the origin, unless it was seeded: then the old nodes stay exactly where
+  // the camera last saw them.
+  let cx = 0;
+  let cy = 0;
+  let cz = 0;
+  if (!fixed.some((f) => f)) {
+    for (const p of nodes) {
+      cx += p.x / n;
+      cy += p.y / n;
+      cz += p.z / n;
+    }
+  }
+  const dist: number[] = [];
+  for (const p of nodes) {
+    p.x = Math.round((p.x - cx) * 10) / 10;
+    p.y = Math.round((p.y - cy) * 10) / 10;
+    p.z = Math.round((p.z - cz) * 10) / 10;
+    p.vx = 0;
+    p.vy = 0;
+    p.vz = 0;
+    dist.push(Math.hypot(p.x, p.y, p.z));
+  }
+  dist.sort((x, y) => x - y);
+  // The radius the camera frames: a few stray words far out should not shrink the rest.
+  const core = dist[Math.floor((dist.length - 1) * 0.9)] * 1.1;
+  return { nodes, edges, width: 0, height: 0, radius: Math.round(Math.min(dist[dist.length - 1], core)) };
+}
+
 /** The graph as `mapHtml` hands it to the renderers. */
 export interface MapData {
   sig: string;
   radius: number;
-  nodes: { id: string; k: 'word' | MorphKind; l: string; x: number; y: number; z: number; n: number; g?: string }[];
+  /** Words in the notebook or book the map was drawn from, connected or not. */
+  total: number;
+  /** The signature of the earlier layout this one kept its positions from, if any. */
+  from?: string;
+  nodes: { id: string; k: 'word' | MorphKind; l: string; x: number; y: number; z: number; n: number; g?: string; f?: string }[];
   /** [from, to, 1 when the second word is built from the first]. */
   edges: [number, number, 0 | 1][];
 }
 
 // The shells repaint the whole view for small reasons (a toast, a filter); keep the last
-// few layouts so a repaint does not run the force loop again.
+// few layouts so a repaint does not run the layout again. `attachNotebookMap` reads the
+// graph from here by its signature, so a book of thousands of words is not written into
+// the page as JSON on every paint.
 const layoutCache = new Map<string, MapData>();
 
 function graphSignature(a: NotebookAnalysis, kinds: MorphKind[]): string {
@@ -276,17 +567,110 @@ function graphSignature(a: NotebookAnalysis, kinds: MorphKind[]): string {
 export function notebookMapData(a: NotebookAnalysis, kinds: MorphKind[]): MapData {
   const sig = graphSignature(a, kinds);
   const hit = layoutCache.get(sig);
-  if (hit) return hit;
-  const { nodes, edges, radius } = layoutNotebookMap(a, { kinds, dimensions: 3 });
+  if (hit) {
+    // Most recently used last, so the oldest layout is the one dropped.
+    layoutCache.delete(sig);
+    layoutCache.set(sig, hit);
+    return hit;
+  }
+  // The same words drawn a moment ago under another signature (a Families trace refined a few
+  // parts): keep their positions, so the map does not reshuffle under the reader.
+  const prev = seedFor(a, kinds);
+  const { nodes, edges, radius } = layoutNotebookMap(a, { kinds, dimensions: 3, ...(prev ? { seed: prev.seed } : {}) });
   const data: MapData = {
     sig,
     radius,
-    nodes: nodes.map((p) => ({ id: p.id, k: p.kind, l: p.label, x: p.x, y: p.y, z: p.z, n: p.size, ...(p.gloss ? { g: p.gloss } : {}) })),
+    total: a.words.size,
+    ...(prev ? { from: prev.sig } : {}),
+    nodes: nodes.map((p) => ({
+      id: p.id,
+      k: p.kind,
+      l: p.label,
+      x: p.x,
+      y: p.y,
+      z: p.z,
+      n: p.size,
+      ...(p.gloss ? { g: p.gloss } : {}),
+      ...(p.forms ? { f: p.forms } : {}),
+    })),
     edges: edges.map((e) => [e.a, e.b, e.kind === 'derived' ? 1 : 0]),
   };
   layoutCache.set(sig, data);
   if (layoutCache.size > 6) layoutCache.delete(layoutCache.keys().next().value as string);
   return data;
+}
+
+/** The most recent cached layout of the same morpheme kinds that shares nearly all its words with `a`. */
+function seedFor(a: NotebookAnalysis, kinds: MorphKind[]): { sig: string; seed: Map<string, [number, number, number]> } | null {
+  const head = `${kinds.slice().sort().join('+')}:`;
+  for (const data of [...layoutCache.values()].reverse()) {
+    if (!data.sig.startsWith(head)) continue;
+    const words = data.nodes.filter((p) => p.k === 'word');
+    if (!words.length) continue;
+    const shared = words.reduce((s, p) => s + (a.words.has(p.id) ? 1 : 0), 0);
+    if (shared / words.length < 0.9 || Math.abs(a.words.size - data.total) > Math.max(5, data.total * 0.05)) continue;
+    return { sig: data.sig, seed: new Map(data.nodes.map((p) => [p.id, [p.x, p.y, p.z] as [number, number, number]])) };
+  }
+  return null;
+}
+
+/** What a typed word could be the inflection of: "changes" also tries "change", "studied" "study". */
+export function queryForms(q: string): string[] {
+  const s = String(q || '').trim().toLocaleLowerCase();
+  if (!s) return [];
+  const out = [s];
+  const add = (x: string) => {
+    if (x.length >= 2 && !out.includes(x)) out.push(x);
+  };
+  if (s.endsWith('ies') || s.endsWith('ied')) add(s.slice(0, -3) + 'y');
+  if (s.endsWith('es')) add(s.slice(0, -2));
+  if (s.endsWith('s') && !s.endsWith('ss')) add(s.slice(0, -1));
+  if (s.endsWith('ed')) {
+    add(s.slice(0, -1));
+    add(s.slice(0, -2));
+    if (/(.)\1ed$/.test(s)) add(s.slice(0, -3));
+  }
+  if (s.endsWith('ing')) {
+    add(s.slice(0, -3) + 'e');
+    add(s.slice(0, -3));
+    if (/(.)\1ing$/.test(s)) add(s.slice(0, -4));
+  }
+  return out;
+}
+
+/**
+ * Nodes on the map that match what was typed, best first. Word parts come first: one spelled
+ * as typed, with or without its hyphen and in any of its spellings ("ob-", "oc", "fect"), then
+ * parts that start with it. Then words: the word itself, the word it is an inflection of
+ * ("changes" finds "change"), words starting with it, then words containing it.
+ */
+export function findMapWords(data: MapData, q: string, limit = 8): MapData['nodes'] {
+  const forms = queryForms(q);
+  if (!forms.length) return [];
+  const s = forms[0];
+  const bare = (x: string) => x.toLocaleLowerCase().replace(/^-+|-+$/g, '');
+  const part = bare(s);
+  const scored: { p: MapData['nodes'][number]; r: number }[] = [];
+  for (const p of data.nodes) {
+    if (p.k !== 'word') {
+      if (!part) continue;
+      const spellings = (p.f ? p.f.split(' · ') : [p.l]).map(bare);
+      if (spellings.includes(part)) scored.push({ p, r: -2 });
+      else if (part.length >= 2 && spellings.some((x) => x.startsWith(part))) scored.push({ p, r: -1 });
+      continue;
+    }
+    const l = p.l.toLocaleLowerCase();
+    const fi = forms.indexOf(l);
+    let r = -1;
+    if (fi === 0) r = 0;
+    else if (fi > 0) r = 1;
+    else if (l.startsWith(s)) r = 2;
+    else if (forms.some((f, i) => i > 0 && f.length >= 3 && l.startsWith(f))) r = 3;
+    else if (s.length >= 2 && l.includes(s)) r = 4;
+    if (r >= 0) scored.push({ p, r });
+  }
+  scored.sort((x, y) => x.r - y.r || x.p.l.length - y.p.l.length || x.p.l.localeCompare(y.p.l));
+  return scored.slice(0, limit).map((x) => x.p);
 }
 
 const MAP_KIND_LABEL: Record<MorphKind, string> = { root: 'Roots', prefix: 'Prefixes', suffix: 'Suffixes', char: 'Characters' };
@@ -296,7 +680,14 @@ const ICON_SEARCH = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.
 
 let mapSeq = 0;
 
-export function mapHtml(a: NotebookAnalysis, kinds: MorphKind[]): string {
+const count = (n: number) => n.toLocaleString('en');
+
+export interface MapHtmlOptions {
+  /** The Words search: the map opens on the word it finds, or says that nothing matches. */
+  query?: string;
+}
+
+export function mapHtml(a: NotebookAnalysis, kinds: MorphKind[], opts: MapHtmlOptions = {}): string {
   const available = (['root', 'prefix', 'suffix', 'char'] as MorphKind[]).filter((k) => a.families.some((f) => f.kind === k));
   if (!available.length && !a.parent.size) {
     return `<p class="nbv-empty">No connected words yet.</p>`;
@@ -304,25 +695,26 @@ export function mapHtml(a: NotebookAnalysis, kinds: MorphKind[]): string {
   const on = kinds.filter((k) => available.includes(k));
   const active = on.length || a.parent.size ? on : available.slice(0, 1);
   const data = notebookMapData(a, active);
-  const words = data.nodes.filter((x) => x.k === 'word');
-  const listId = `nbv-map-words-${++mapSeq}`;
+  const words = data.nodes.reduce((s, p) => s + (p.k === 'word' ? 1 : 0), 0);
+  const q = clean(opts.query);
+  const hit = q ? findMapWords(data, q, 1)[0] : undefined;
+  const listId = `nbv-map-suggest-${++mapSeq}`;
   const chips = available
     .map((k) => `<button type="button" class="nbv-chip nbv-chip--${k}${active.includes(k) ? ' is-active' : ''}" data-act="nb-map-kind" data-kind="${k}" aria-pressed="${active.includes(k)}">${MAP_KIND_LABEL[k]}</button>`)
     .join('');
-  const search = words.length
-    ? `<label class="nbv-map-search">${ICON_SEARCH}<input type="search" data-map-search list="${listId}" placeholder="Find a word" autocomplete="off" enterkeyhint="go" aria-label="Find a word on the map"/></label>
-      <datalist id="${listId}">${words
-        .map((w) => w.l)
-        .sort((x, y) => x.localeCompare(y))
-        .map((l) => `<option value="${esc(l)}"></option>`)
-        .join('')}</datalist>`
+  const search = words
+    ? `<div class="nbv-map-find" data-map-find>
+        <label class="nbv-map-search">${ICON_SEARCH}<input type="search" data-map-search placeholder="Find a word" value="${esc(q)}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${listId}" aria-label="Find a word on the map"/></label>
+        <ul class="nbv-map-suggest" id="${listId}" role="listbox" data-map-suggest hidden></ul>
+      </div>`
     : '';
-  const tools = `<div class="nbv-maptools"><div class="nbv-chips" aria-label="Show">${chips}</div>${search}<span class="nbv-map-hint">${words.length} words</span></div>`;
+  const total = words < data.total ? `${count(words)} of ${count(data.total)} words` : `${count(words)} ${words === 1 ? 'word' : 'words'}`;
+  const miss = q && !hit;
+  const hint = `<span class="nbv-map-hint${miss ? ' is-miss' : ''}" data-map-hint data-count="${esc(total)}">${miss ? `No word matches “${esc(q)}”` : total}</span>`;
+  const tools = `<div class="nbv-maptools"><div class="nbv-chips" aria-label="Show">${chips}</div>${search}${hint}</div>`;
   if (!data.nodes.length) return tools + `<p class="nbv-empty">Nothing to connect with these filters.</p>`;
-  const json = JSON.stringify(data).replace(/</g, '\\u003c');
-  return `${tools}<div class="nbv-map" data-map>
-    <script type="application/json" data-map-data>${json}</script>
-    <div class="nbv-map__stage" data-map-stage role="img" aria-label="Map of related notebook words"></div>
+  return `${tools}<div class="nbv-map" data-map data-map-sig="${esc(data.sig)}"${hit ? ` data-map-goto="${esc(hit.id)}" data-map-query="${esc(q)}"` : ''}>
+    <div class="nbv-map__stage" data-map-stage role="img" aria-label="Map of related words"></div>
     <div class="nbv-map__ctrl">
       <button type="button" data-map-act="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
       <button type="button" data-map-act="zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
@@ -374,6 +766,7 @@ class MapController {
   constructor(map: HTMLElement, data: MapData) {
     this.map = map;
     this.data = data;
+    this.adopt();
     data.nodes.forEach((p, i) => this.index.set(p.id, i));
     this.adj = data.nodes.map((): number[] => []);
     data.edges.forEach((e, k) => {
@@ -400,39 +793,100 @@ class MapController {
     };
     map.addEventListener('click', onClick);
     map.addEventListener('keydown', onKey);
+    const onResize = () => fitMap(map);
+    window.addEventListener('resize', onResize);
+    this.offs.push(() => window.removeEventListener('resize', onResize));
     this.offs.push(() => map.removeEventListener('click', onClick), () => map.removeEventListener('keydown', onKey));
     const input = map.parentElement?.querySelector<HTMLInputElement>('[data-map-search]');
     if (input) this.wireSearch(input);
   }
 
   private wireSearch(input: HTMLInputElement): void {
-    const find = (q: string, exact: boolean): string | null => {
-      const s = q.trim().toLocaleLowerCase();
-      if (!s) return null;
-      const words = this.data.nodes.filter((p) => p.k === 'word');
-      const by = (f: (l: string) => boolean) => words.filter((p) => f(p.l.toLocaleLowerCase())).sort((x, y) => x.l.length - y.l.length)[0];
-      const hit = by((l) => l === s) || (exact ? undefined : by((l) => l.startsWith(s)) || by((l) => l.includes(s)));
-      return hit ? hit.id : null;
+    const list = input.closest('[data-map-find]')?.querySelector<HTMLElement>('[data-map-suggest]') || null;
+    const hint = this.map.parentElement?.querySelector<HTMLElement>('[data-map-hint]') || null;
+    let items: MapData['nodes'] = [];
+    let active = -1;
+    const close = () => {
+      items = [];
+      active = -1;
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-activedescendant');
+      if (list) {
+        list.hidden = true;
+        list.innerHTML = '';
+      }
     };
-    const go = (exact: boolean) => {
-      const id = find(input.value, exact);
-      input.classList.toggle('is-miss', !id && !exact && !!input.value.trim());
-      if (id) this.focus(id, true);
+    const paint = () => {
+      if (!list || !items.length) return close();
+      list.innerHTML = items
+        .map((p, i) => {
+          const text = p.k === 'word' ? esc(p.l) : `<span class="nbv-morph nbv-morph--${p.k}">${esc(p.f || p.l)}</span>${p.g ? `<span class="nbv-map-suggest__gloss">${esc(p.g)}</span>` : ''}`;
+          return `<li role="option" id="${list.id}-${i}" class="nbv-map-suggest__item${i === active ? ' is-active' : ''}" data-i="${i}" aria-selected="${i === active}">${text}</li>`;
+        })
+        .join('');
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      if (active >= 0) input.setAttribute('aria-activedescendant', `${list.id}-${active}`);
     };
-    const onInput = (ev: Event) => {
-      input.classList.remove('is-miss');
-      // A pick from the suggestion list arrives as one replacement, not as typing.
-      const type = (ev as InputEvent).inputType;
-      if (!type || type === 'insertReplacementText') go(true);
+    const say = (miss: string | null) => {
+      input.classList.toggle('is-miss', !!miss);
+      if (!hint) return;
+      hint.textContent = miss ? `No word matches “${miss}”` : hint.dataset.count || '';
+      hint.classList.toggle('is-miss', !!miss);
+    };
+    const go = (p: MapData['nodes'][number]) => {
+      input.value = p.l;
+      close();
+      say(null);
+      this.focus(p.id, true);
+      if (memory) memory.find = p.l;
+    };
+    // A repaint (a toast, a meaning arriving) rebuilds the field; keep the word that was found in it.
+    if (!input.value && memory && memory.sig === this.data.sig && memory.find && memory.focus) input.value = memory.find;
+    const onInput = () => {
+      say(null);
+      items = input.value.trim() ? findMapWords(this.data, input.value, 8) : [];
+      active = items.length ? 0 : -1;
+      paint();
     };
     const onKey = (ev: KeyboardEvent) => {
-      if (ev.key !== 'Enter') return;
-      ev.preventDefault();
-      go(false);
+      if ((ev.key === 'ArrowDown' || ev.key === 'ArrowUp') && items.length) {
+        ev.preventDefault();
+        active = (active + (ev.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+        paint();
+      } else if (ev.key === 'Enter') {
+        ev.preventDefault();
+        const p = items[active] || findMapWords(this.data, input.value, 1)[0];
+        if (p) go(p);
+        else if (input.value.trim()) {
+          close();
+          say(input.value.trim());
+        }
+      } else if (ev.key === 'Escape' && items.length) {
+        ev.stopPropagation();
+        close();
+      }
     };
+    // Keep focus in the field while a suggestion is pressed, so the pick is not lost to blur.
+    const onListDown = (ev: Event) => ev.preventDefault();
+    const onListClick = (ev: Event) => {
+      const li = (ev.target as HTMLElement | null)?.closest?.('[data-i]') as HTMLElement | null;
+      const p = li ? items[Number(li.dataset.i)] : undefined;
+      if (p) go(p);
+    };
+    const onBlur = () => close();
     input.addEventListener('input', onInput);
     input.addEventListener('keydown', onKey);
-    this.offs.push(() => input.removeEventListener('input', onInput), () => input.removeEventListener('keydown', onKey));
+    input.addEventListener('blur', onBlur);
+    list?.addEventListener('pointerdown', onListDown);
+    list?.addEventListener('click', onListClick);
+    this.offs.push(() => {
+      input.removeEventListener('input', onInput);
+      input.removeEventListener('keydown', onKey);
+      input.removeEventListener('blur', onBlur);
+      list?.removeEventListener('pointerdown', onListDown);
+      list?.removeEventListener('click', onListClick);
+    });
   }
 
   use(renderer: MapRenderer): void {
@@ -441,7 +895,16 @@ class MapController {
       return;
     }
     this.renderer = renderer;
-    if (memory && memory.sig === this.data.sig && memory.focus && this.index.has(memory.focus)) this.focus(memory.focus, false);
+    // Back on the same map (after a lookup, say): the word that was focused stays focused.
+    // A new search from the Words field flies to the word it found instead.
+    const query = this.map.dataset.mapQuery || '';
+    const goto = this.map.dataset.mapGoto || '';
+    this.adopt();
+    const same = !!memory && memory.sig === this.data.sig;
+    if (goto && (!same || memory!.query !== query) && this.index.has(goto)) {
+      this.focus(goto, true);
+      memory!.query = query;
+    } else if (same && memory!.focus && this.index.has(memory!.focus)) this.focus(memory!.focus, false);
   }
 
   get alive(): boolean {
@@ -476,8 +939,10 @@ class MapController {
   focus(id: string | null, fly: boolean): void {
     if (id && !this.index.has(id)) id = null;
     this.focusId = id;
-    if (memory && memory.sig === this.data.sig) memory.focus = id;
-    else memory = { sig: this.data.sig, focus: id, view: null };
+    if (memory && memory.sig === this.data.sig) {
+      memory.focus = id;
+      memory.find = undefined;
+    } else memory = { sig: this.data.sig, focus: id, view: null, query: '' };
     const h = id ? this.neighbourhood(id) : null;
     this.map.classList.toggle('is-focus', !!h);
     this.paintPanel(h);
@@ -504,7 +969,7 @@ class MapController {
     }
     hubs.sort((x, y) => y.n - x.n);
     words.sort((x, y) => x.l.localeCompare(y.l));
-    const CAP = 30;
+    const CAP = 300;
     const wordBtns = words
       .slice(0, CAP)
       .map((p) => `<button type="button" class="nbv-map__word" data-map-act="focus" data-id="${esc(p.id)}">${esc(p.l)}</button>`)
@@ -520,7 +985,7 @@ class MapController {
         ${words.length ? `<p class="nbv-map__sub">Connected words</p><div class="nbv-map__words">${wordBtns}${more}</div>` : ''}
         <button type="button" class="nbv-map__lookup" data-act="lookup" data-q="${esc(me.l)}">Look up</button>`;
     } else {
-      panel.innerHTML = `<div class="nbv-map__head"><h3 class="nbv-map__title"><span class="nbv-morph nbv-morph--${me.k}">${esc(me.l)}</span></h3>${close}</div>
+      panel.innerHTML = `<div class="nbv-map__head"><h3 class="nbv-map__title"><span class="nbv-morph nbv-morph--${me.k}">${esc(me.f || me.l)}</span></h3>${close}</div>
         ${me.g ? `<p class="nbv-map__gloss">${esc(me.g)}</p>` : ''}
         <p class="nbv-map__sub">${words.length} ${words.length === 1 ? 'word' : 'words'}</p><div class="nbv-map__words">${wordBtns}${more}</div>`;
     }
@@ -529,6 +994,12 @@ class MapController {
     const p = panel.getBoundingClientRect();
     const side = p.width < m.width * 0.6;
     this.renderer?.inset?.(side ? p.right - m.left : 0, side ? 0 : m.bottom - p.top);
+    // A sheet along the bottom must clear the app's tab bar, so its Look up button can be reached.
+    if (!side) {
+      const band = visibleBand();
+      const below = m.bottom - band.bottom + 8;
+      if (below > 0) scrollParent(this.map).scrollBy({ top: below, behavior: reducedMotion() ? 'auto' : 'smooth' });
+    }
   }
 
   pick = (id: string | null): void => {
@@ -544,7 +1015,7 @@ class MapController {
     this.disposed = true;
     const view = this.renderer?.view() || null;
     if (memory && memory.sig === this.data.sig) memory.view = view;
-    else memory = { sig: this.data.sig, focus: this.focusId, view };
+    else memory = { sig: this.data.sig, focus: this.focusId, view, query: '' };
     this.renderer?.dispose();
     this.renderer = null;
     this.offs.splice(0).forEach((f) => f());
@@ -552,12 +1023,63 @@ class MapController {
   }
 
   savedView(): MapView | null {
+    this.adopt();
     return memory && memory.sig === this.data.sig ? memory.view : null;
+  }
+
+  /** The remembered focus and camera belong to the layout this one grew from: take them over. */
+  private adopt(): void {
+    if (memory && this.data.from && memory.sig === this.data.from) memory.sig = this.data.sig;
   }
 }
 
 const live = new Set<MapController>();
-let memory: { sig: string; focus: string | null; view: MapView | null } | null = null;
+
+const reducedMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+/** The fixed or sticky bar an element at this point sits in, if any. */
+function barAt(x: number, y: number): DOMRect | null {
+  for (const hit of document.elementsFromPoint?.(x, y) || []) {
+    for (let el: Element | null = hit; el && el !== document.body; el = el.parentElement) {
+      const pos = getComputedStyle(el).position;
+      if (pos === 'fixed' || pos === 'sticky') return el.getBoundingClientRect();
+    }
+  }
+  return null;
+}
+
+/**
+ * The part of the window not covered by the shell's fixed bars: a tab bar along the bottom (the
+ * phone's Lookup, Words, Learn and Settings) and a sticky header along the top.
+ */
+function visibleBand(): { top: number; bottom: number } {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const low = barAt(w / 2, h - 2);
+  const high = barAt(w / 2, 2);
+  return { top: high && high.bottom < h / 2 ? high.bottom : 0, bottom: low && low.top > h / 2 ? low.top : h };
+}
+
+function scrollParent(el: HTMLElement): Element {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const o = getComputedStyle(p).overflowY;
+    if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+  }
+  return document.scrollingElement || document.documentElement;
+}
+
+/**
+ * Keep the map no taller than the room between the shell's bars, so the whole stage, and the
+ * sheet along its bottom, can be on screen at once.
+ */
+function fitMap(map: HTMLElement): void {
+  map.style.height = '';
+  const natural = map.getBoundingClientRect().height;
+  const band = visibleBand();
+  const room = Math.floor(band.bottom - band.top - 16);
+  if (room >= 260 && natural > room) map.style.height = `${room}px`;
+}
+let memory: { sig: string; focus: string | null; view: MapView | null; query: string; find?: string } | null = null;
 let webgl: boolean | null = null;
 
 function webglAvailable(): boolean {
@@ -591,24 +1113,18 @@ export function attachNotebookMap(root: any): void {
   disposeNotebookMaps(true);
   const map: HTMLElement | null = root?.querySelector?.('[data-map]') || null;
   if (!map || map.dataset.wired) return;
-  const raw = map.querySelector('[data-map-data]')?.textContent;
+  const data = layoutCache.get(map.dataset.mapSig || '');
   const stage = map.querySelector<HTMLElement>('[data-map-stage]');
-  if (!raw || !stage) return;
-  let data: MapData;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    return;
-  }
+  if (!data || !stage) return;
   map.dataset.wired = '1';
+  fitMap(map);
   const ctl = new MapController(map, data);
   live.add(ctl);
-  const reducedMotion = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const opts: MapRendererOptions = { reducedMotion, restore: ctl.savedView(), onPick: ctl.pick };
+  const opts: MapRendererOptions = { reducedMotion: reducedMotion(), restore: ctl.savedView(), onPick: ctl.pick };
   const flat = () => {
     if (!ctl.alive || !map.isConnected) return;
     map.classList.add('is-flat');
-    ctl.use(createFlatMap(stage, data, opts));
+    ctl.use(createFlatMap(stage, flatMapData(data), opts));
   };
   if (!webglAvailable()) {
     flat();
@@ -635,13 +1151,51 @@ export function attachNotebookMap(root: any): void {
 }
 
 /** The flat SVG map for devices without WebGL: drag to pan, wheel or pinch to zoom. */
-function createFlatMap(stage: HTMLElement, data: MapData, opts: MapRendererOptions): MapRenderer {
+/** The flat map's graph: a subset of the map, with each edge's index in the full map. */
+interface FlatData extends MapData {
+  edgeIds: number[];
+}
+
+/**
+ * Without WebGL thousands of nodes on a plane are a tangle, so the flat map draws what the old
+ * map drew: the 48 largest morphemes and up to 220 of their words, laid out flat by the force
+ * simulation. Search and focus still work on the whole map; a word outside the subset is
+ * found and listed but not drawn.
+ */
+export function flatMapData(data: MapData, maxHubs = 48, maxWords = 220): FlatData {
+  const hubs = data.nodes
+    .map((p, i) => ({ p, i }))
+    .filter((x) => x.p.k !== 'word')
+    .sort((a, b) => b.p.n - a.p.n || a.p.l.localeCompare(b.p.l))
+    .slice(0, maxHubs);
+  const byHub = new Map<number, string[]>();
+  const parent = new Map<string, string>();
+  data.edges.forEach(([a, b, derived]) => {
+    if (derived) parent.set(data.nodes[b].id, data.nodes[a].id);
+    else byHub.set(a, [...(byHub.get(a) || []), data.nodes[b].id]);
+  });
+  const words = new Map(
+    data.nodes.filter((p) => p.k === 'word').map((p) => [p.id, { entry: { id: p.id, lemma: p.l } as NotebookEntry, morphs: [], parts: [], origin: '' } as WordInfo]),
+  );
+  const families: Family[] = hubs.map(({ p, i }) => ({ key: p.id, kind: p.k as MorphKind, label: p.l, gloss: p.g || '', origin: '', ids: byHub.get(i) || [], ...(p.f ? { forms: p.f } : {}) }));
+  const kinds = [...new Set(families.map((f) => f.kind))];
+  const flat = layoutNotebookMap({ words, families, trees: [], parent }, { kinds, dimensions: 2, maxHubs, maxWords });
+  const index = new Map(data.nodes.map((p, i) => [p.id, i]));
+  const edgeIndex = new Map(data.edges.map(([a, b], k) => [`${data.nodes[a].id}>${data.nodes[b].id}`, k]));
+  const nodes = flat.nodes.map((p) => ({ ...data.nodes[index.get(p.id)!], x: p.x, y: -p.y, z: 0 }));
+  const edges: MapData['edges'] = flat.edges.map((e) => [e.a, e.b, e.kind === 'derived' ? 1 : 0]);
+  const edgeIds = flat.edges.map((e) => edgeIndex.get(`${flat.nodes[e.a].id}>${flat.nodes[e.b].id}`) ?? -1);
+  return { ...data, nodes, edges, edgeIds };
+}
+
+function createFlatMap(stage: HTMLElement, data: FlatData, opts: MapRendererOptions): MapRenderer {
   const pad = 60;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  const scale = 2.2;
+  // The flat layout is already in pixels.
+  const scale = 1;
   const pts = data.nodes.map((p) => ({ x: p.x * scale, y: -p.y * scale }));
   for (const p of pts) {
     minX = Math.min(minX, p.x);
@@ -658,7 +1212,7 @@ function createFlatMap(stage: HTMLElement, data: MapData, opts: MapRendererOptio
   const edgeSvg = data.edges
     .map(([a, b, derived], k) => {
       const kind = derived ? 'derived' : data.nodes[a].k;
-      return `<line class="nbv-edge nbv-edge--${kind}" data-e="${k}" x1="${pts[a].x}" y1="${pts[a].y}" x2="${pts[b].x}" y2="${pts[b].y}"/>`;
+      return `<line class="nbv-edge nbv-edge--${kind}" data-e="${data.edgeIds[k]}" x1="${pts[a].x}" y1="${pts[a].y}" x2="${pts[b].x}" y2="${pts[b].y}"/>`;
     })
     .join('');
   const nodeSvg = data.nodes
@@ -766,6 +1320,10 @@ function createFlatMap(stage: HTMLElement, data: MapData, opts: MapRendererOptio
   return {
     highlight(h, fly) {
       svg.querySelectorAll('.is-lit, .is-focus').forEach((el) => el.classList.remove('is-lit', 'is-focus'));
+      // A word the flat map does not draw is shown in the panel only; the map stays undimmed.
+      const focus = h?.focus;
+      if (focus && !data.nodes.some((p) => p.id === focus)) h = null;
+      stage.closest('[data-map]')?.classList.toggle('is-focus', !!h);
       if (!h) return;
       svg.querySelectorAll<SVGElement>('.nbv-node').forEach((el) => {
         const id = el.getAttribute('data-id') || '';
