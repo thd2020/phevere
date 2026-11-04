@@ -672,9 +672,14 @@ async function fallbackEndToEnd() {
             };
           }
           if (url.includes('en.wikipedia.org') && titles.length) {
-            const word = titles[0];
-            const name = word.charAt(0).toUpperCase() + word.slice(1);
-            return { query: { normalized: [{ from: word, to: name }], pages: [{ title: name, description: 'Small round object', pageimage: `${name}.jpg`, thumbnail: { source: 'https://x/330px-a.jpg', width: 330, height: 220 } }] } };
+            const known = titles.filter((t) => t === 'pebble' || t === 'marble');
+            const name = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+            return {
+              query: {
+                normalized: known.map((w) => ({ from: w, to: name(w) })),
+                pages: known.map((w) => ({ title: name(w), description: 'Small round object', pageimage: `${name(w)}.jpg`, thumbnail: { source: 'https://x/330px-a.jpg', width: 330, height: 220 } })),
+              },
+            };
           }
           return { query: { pages: [] } };
         },
@@ -684,6 +689,8 @@ async function fallbackEndToEnd() {
     const [a, b] = await Promise.all([mod.fetchWordImage('pebble', { lang: 'en' }), mod.fetchWordImage('marble', { lang: 'en' })]);
     assert.ok(a && b && a.title === 'Pebble' && b.title === 'Marble', 'both cards have a picture');
     assert.strictEqual(asked.filter((u) => u.includes('prop=imageinfo')).length, 1, 'one imageinfo request for both cards');
+    assert.strictEqual(asked.filter((u) => u.includes('en.wikipedia.org') && u.includes('prop=pageimages')).length, 1, 'one title query for both cards');
+    assert.strictEqual(asked.filter((u) => u.includes('wiktionary.org') && u.includes('rvprop=content')).length, 1, 'one Wiktionary request for both cards');
   }
 
   // At most three requests in flight, however many cards ask at once.

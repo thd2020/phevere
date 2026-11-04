@@ -85,6 +85,12 @@ export interface SenseInput {
 const THUMB_WIDTH = 330;
 const LARGE_WIDTH = 960;
 const TIMEOUT_MS = 8000;
+/**
+ * Every later step waits for the Wiktionary page, and Wiktionary is the first host to slow down
+ * when a notebook of cards asks at once, so it gets less time; a timed-out page is asked again
+ * on the next call because the result is not cached.
+ */
+const WIKTIONARY_TIMEOUT_MS = 4000;
 // v4: a picture for each major sense (v3 gave one picture to most words), so v3 results are redone.
 const CACHE_VERSION = 'v4';
 const PERSIST_TTL_MS = 14 * 24 * 60 * 60 * 1000;
@@ -695,6 +701,15 @@ export interface FallbackTitles {
   titles: string[];
   /** How many leading titles name the word itself (the rest are derived nouns). */
   exact: number;
+}
+
+/**
+ * The fallback's title query. It needs no extracts (only lead images, descriptions and
+ * disambiguation marks), so up to 50 titles fit one request and the cards on screen share it.
+ */
+function fallbackTitles(req: FallbackTitles): Promise<TitleQuery | null> {
+  const lang = titleQueryLang(req);
+  return batchedTitleQuery(`wikipedia-brief:${lang}`, (t) => buildWikipediaBriefTitlesUrl(t, lang), req.titles);
 }
 
 /** The Wikipedia language a fallback title query asks. */
@@ -1379,11 +1394,11 @@ let failures = 0;
 
 const jsonCache = new Map<string, Promise<unknown>>();
 
-function getJson<T>(url: string): Promise<T | null> {
+function getJson<T>(url: string, timeoutMs = TIMEOUT_MS): Promise<T | null> {
   const hit = jsonCache.get(url);
   if (hit) return hit as Promise<T | null>;
   const { http, headers } = client();
-  const once = () => throttled(() => http.requestJson<T>(url, { headers, timeoutMs: TIMEOUT_MS }));
+  const once = () => throttled(() => http.requestJson<T>(url, { headers, timeoutMs }));
   const p = once()
     .catch(async (err: unknown) => {
       // Rate limited or overloaded: one more try after a pause.
@@ -1401,11 +1416,18 @@ function getJson<T>(url: string): Promise<T | null> {
   return p;
 }
 
+/** Wiktionary pages asked for together (a screen of cards) come in one request, eight at most. */
+const WIKTIONARY_BATCH = 8;
+
 async function wiktionaryPage(lemma: string): Promise<string> {
-  const res = await getJson<{
-    query?: { pages?: Array<{ missing?: boolean; revisions?: Array<{ slots?: { main?: { content?: string } } }> }> };
-  }>(buildWiktionaryUrl(lemma));
-  const page = res?.query?.pages?.[0];
+  const q = await batchedTitleQuery(
+    'wiktionary-page',
+    (titles) => buildWiktionaryUrl(titles.join('|')),
+    [lemma],
+    WIKTIONARY_BATCH,
+    WIKTIONARY_TIMEOUT_MS,
+  );
+  const page = q ? (resolveTitle(q, lemma) as { revisions?: Array<{ slots?: { main?: { content?: string } } }> } | undefined) : undefined;
   return page?.revisions?.[0]?.slots?.main?.content || '';
 }
 
@@ -1462,27 +1484,33 @@ interface TitleBatch {
 }
 const titleBatches = new Map<string, TitleBatch>();
 
-function flushBatch(kind: string, build: (titles: string[]) => string): void {
+function flushBatch(kind: string, build: (titles: string[]) => string, timeoutMs = TIMEOUT_MS): void {
   const batch = titleBatches.get(kind);
   if (!batch) return;
   titleBatches.delete(kind);
   if (batch.timer) clearTimeout(batch.timer);
-  void getJson<{ query?: TitleQuery }>(build(batch.titles)).then((res) => {
+  void getJson<{ query?: TitleQuery }>(build(batch.titles), timeoutMs).then((res) => {
     for (const w of batch.waiters) w(res?.query || null);
   });
 }
 
-function batchedTitleQuery(kind: string, build: (titles: string[]) => string, titles: string[]): Promise<TitleQuery | null> {
+function batchedTitleQuery(
+  kind: string,
+  build: (titles: string[]) => string,
+  titles: string[],
+  max = BATCH_MAX,
+  timeoutMs = TIMEOUT_MS,
+): Promise<TitleQuery | null> {
   const wanted = Array.from(new Set(titles.filter(Boolean)));
   if (!wanted.length) return Promise.resolve(null);
-  if (wanted.length > BATCH_MAX) return titleQuery(build(wanted.slice(0, BATCH_MAX)));
+  if (wanted.length > max) return getJson<{ query?: TitleQuery }>(build(wanted.slice(0, max)), timeoutMs).then((r) => r?.query || null);
   const open = titleBatches.get(kind);
-  if (open && new Set([...open.titles, ...wanted]).size > BATCH_MAX) flushBatch(kind, build);
+  if (open && new Set([...open.titles, ...wanted]).size > max) flushBatch(kind, build, timeoutMs);
   let batch = titleBatches.get(kind);
   if (!batch) {
     batch = { titles: [], waiters: [], timer: null };
     titleBatches.set(kind, batch);
-    batch.timer = setTimeout(() => flushBatch(kind, build), BATCH_WINDOW_MS);
+    batch.timer = setTimeout(() => flushBatch(kind, build, timeoutMs), BATCH_WINDOW_MS);
   }
   for (const t of wanted) if (!batch.titles.includes(t)) batch.titles.push(t);
   const b = batch;
@@ -1613,7 +1641,7 @@ async function resolveSenseImages(
   // sense searches and its stand-in queries start now, beside the Wiktionary request.
   const fallbackReq = fallbackTitleQuery(lemma, senses, code);
   const early = !candidates.length;
-  const earlyFallback = early && fallbackReq ? titleQuery(fallbackReq.url) : null;
+  const earlyFallback = early && fallbackReq ? fallbackTitles(fallbackReq) : null;
 
   // The senses that each deserve a picture: entry heads ("bank" of money, "bank" of a river),
   // other parts of speech, and senses unlike the ones before them.
@@ -1651,7 +1679,7 @@ async function resolveSenseImages(
       p = titles.length
         ? Promise.all([
             batchedTitleQuery('wiktionary-lead', buildWiktionaryPageImagesUrl, titles),
-            batchedTitleQuery('wikipedia-brief', (t) => buildWikipediaBriefTitlesUrl(t), titles),
+            batchedTitleQuery('wikipedia-brief:en', (t) => buildWikipediaBriefTitlesUrl(t, 'en'), titles),
           ])
         : Promise.resolve([null, null]);
       standInAsked.set(key, p);
@@ -1851,7 +1879,7 @@ async function resolveWordFallback(
   req: FallbackTitles | null,
   pending: Promise<TitleQuery | null> | null,
 ): Promise<WordFallbackState> {
-  const q = req ? await (pending || titleQuery(req.url)) : null;
+  const q = req ? await (pending || fallbackTitles(req)) : null;
   const concept = req ? rankConceptPages(q, req) : [];
   const wk = rankWiktionaryFallback(wikt, senses, lemma);
   const ordered: Pick[] = [];
