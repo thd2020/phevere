@@ -438,6 +438,8 @@ function memoryStore() {
   // The same file on another sense (a gloss that only this picture fits) still shows.
   const other = [{ meaning: 'A machine for lifting loads, with a mechanical arm.', partOfSpeech: 'noun' }];
   assert.ok((await third.fetchSenseImages('crane', other, { lang: 'en' }))[0], 'shown on another sense');
+  const both = await third.fetchSenseImages('crane', [...craneSenses, ...other], { lang: 'en' });
+  assert.ok(!both.some((x) => x && x.pageUrl === imgs[2].pageUrl), 'does not move to another sense of the same list');
   await third.unhideSenseImage('crane', imgs[2], { lang: 'en', sense: craneSenses[2].meaning });
   assert.ok((await third.fetchSenseImages('crane', craneSenses, { lang: 'en' }))[2], 'back after Undo');
   const fourth = load({ isCoreConfigured: () => true, getHttp: () => ({ requestJson: async () => { throw new Error('should not fetch'); } }), getLookupCache: () => store });

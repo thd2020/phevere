@@ -1654,10 +1654,13 @@ export function assignPictures(
   if (!max) return out;
   const hidden = opts.hidden || new Set<string>();
   const byKey = new Map(pool.pictures.map((p) => [`${p.source}:${p.ref}`, p]));
-  const usable = (p: PoolPicture | undefined, sense: SenseInput): p is PoolPicture & { image: SenseImage } =>
+  // A picture hidden on one of these senses does not move to another of them: in this list it
+  // would look as if hiding had not worked. A card saved with another sense still shows it.
+  const hiddenHere = new Set(pool.pictures.filter((p) => senses.some((s) => isHidden(hidden, p.file, s.meaning))).map((p) => p.file.toLowerCase()));
+  const usable = (p: PoolPicture | undefined, _sense: SenseInput): p is PoolPicture & { image: SenseImage } =>
     !!p &&
     !!p.image &&
-    !isHidden(hidden, p.file, sense.meaning) &&
+    !hiddenHere.has(p.file.toLowerCase()) &&
     (!p.portrait || !SENSE_PICTURE_RULES.noNamedPortraits) &&
     // An article's map or logo is never the thing; a link an editor made may be ("Gulf").
     !(p.chart && p.source === 'article');
