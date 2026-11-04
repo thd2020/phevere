@@ -191,14 +191,29 @@ assert.equal(fam('root:fac').forms, 'fac · fic · fec · fect');
 assert.ok(members('prefix:ad-').size >= 130, `ad-: ${members('prefix:ad-').size}`);
 assert.ok(ms < 3000, `analysis of 4,801 words took ${ms} ms`);
 
-// The map holds every connected word of the book (it once stopped at 220), and a morpheme
-// lists all of its words.
+// The map holds every word of the book: it once stopped at 220, then at the 2,599 words that
+// share a part. A morpheme lists all of its words.
 const t1 = Date.now();
 const md = views.notebookMapData(a, ['root', 'prefix', 'char']);
 const layoutMs = Date.now() - t1;
 const mapWords = md.nodes.filter((p) => p.k === 'word');
 assert.equal(md.total, 4801);
-assert.ok(mapWords.length >= 2800, `words on the map: ${mapWords.length}`);
+assert.equal(mapWords.length, 4801, 'every word of the book is on the map');
+assert.deepEqual(new Set(mapWords.map((p) => p.id)), new Set(a.words.keys()), 'each word once');
+const linked = mapWords.filter((p) => !p.u);
+assert.ok(linked.length >= 2800, `linked words: ${linked.length}`);
+// A word that shares no part is unlinked: no edge, found by Find a word, in a group of its own.
+const lone = new Set(md.nodes.map((p, i) => (p.u ? i : -1)).filter((i) => i >= 0));
+assert.equal(lone.size, 4801 - linked.length);
+assert.ok(md.edges.every(([x, y]) => !lone.has(x) && !lone.has(y)), 'unlinked words have no edges');
+for (const w of ['might', 'happen', 'however', 'quite'].filter((x) => book.words.includes(x))) {
+  const hit = views.findMapWords(md, w, 1)[0];
+  assert.ok(hit && hit.l === w && hit.u === 1, `${w} is found, unlinked`);
+}
+const centre = (list) => list.reduce((c, p) => c + p.x / list.length, 0);
+assert.ok(centre(mapWords.filter((p) => p.u)) - centre(linked) > md.radius * 0.4, 'the unlinked group sits beside the linked graph');
+assert.ok(mapWords.every((p) => !p.u || Math.hypot(p.x, p.y, p.z) <= md.radius + 1), 'the home view frames the unlinked group');
+assert.match(views.mapHtml(a, ['root', 'prefix', 'char']), /data-count="4,801 words"/, 'the count is the whole book');
 const ob = md.nodes.findIndex((p) => p.id === 'prefix:ob-');
 assert.ok(ob >= 0, 'ob- is on the map');
 assert.equal(md.edges.filter(([x]) => x === ob).length, members('prefix:ob-').size, 'every ob- word is joined to ob-');
@@ -222,11 +237,14 @@ assert.notEqual(md2.sig, md.sig, 'the graph changed');
 assert.equal(md2.from, md.sig, 'laid out from the earlier map');
 const before = new Map(md.nodes.map((p) => [p.id, p]));
 const moved = md2.nodes.filter((p) => before.has(p.id) && (before.get(p.id).x !== p.x || before.get(p.id).y !== p.y || before.get(p.id).z !== p.z));
-assert.equal(moved.length, 0, `nodes moved: ${moved.slice(0, 5).map((p) => p.l)}`);
+// offend loses its Latin parts and joins the unlinked group (oppose keeps opposition, built
+// from it); nothing else moves.
+assert.deepEqual(moved.map((p) => p.l), ['offend'], `nodes moved: ${moved.slice(0, 5).map((p) => p.l)}`);
+assert.ok(moved.every((p) => p.u && !before.get(p.id).u), 'a word that lost its links went to the unlinked group');
 
 // Word parts are found by any spelling, with or without the hyphen, and listed first.
 for (const q of ['ob-', 'ob', 'oc-', 'op']) assert.equal(views.findMapWords(md, q, 1)[0]?.id, 'prefix:ob-', `"${q}" finds ob-`);
 for (const q of ['fac', 'fect', 'fic']) assert.equal(views.findMapWords(md, q, 1)[0]?.id, 'root:fac', `"${q}" finds fac`);
 assert.equal(views.findMapWords(md, 'fac')[1].k, 'word', 'words follow the part');
 
-console.log(`morphology: ok (考研: ${placed.size} of 4801 words in a root or prefix family, ${ms} ms; ${mapWords.length} words on the map, laid out in ${layoutMs} ms)`);
+console.log(`morphology: ok (考研: ${placed.size} of 4801 words in a root or prefix family, ${ms} ms; ${mapWords.length} words on the map, ${linked.length} linked, laid out in ${layoutMs} ms)`);

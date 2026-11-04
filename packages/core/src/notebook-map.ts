@@ -5,7 +5,8 @@
  * `attachNotebookMap` turns that graph into a 3D scene (three.js, loaded on demand) or, where
  * WebGL is missing, a flat SVG. Both renderers share the focus logic in this file: a click
  * focuses a word or a morpheme, lights its neighbourhood, dims the rest and fills the panel.
- * The map holds every connected word of the notebook or book, thousands for a large book.
+ * The map holds every word of the notebook or book, thousands for a large book. Words that share
+ * no part with another word sit together, unlinked, beside the graph.
  */
 import type { MorphKind } from './morphology';
 import { esc, clean, type Family, type NotebookAnalysis, type NotebookEntry, type WordInfo } from './notebook-shared';
@@ -27,6 +28,8 @@ export interface MapNode {
   gloss: string;
   /** A morpheme's spellings: "fac · fic · fec · fect". */
   forms?: string;
+  /** A word that shares no shown part and no derivation with another word (3D layout only). */
+  unlinked?: boolean;
 }
 
 export interface MapEdge {
@@ -59,7 +62,7 @@ export interface MapLayout {
  * notebook always draws the same picture, so the map does not reshuffle on every paint.
  * The flat (2D) layout is a full force simulation, kept for small graphs, and keeps its old
  * limits of 48 morphemes and 220 words by default; the 3D layout the map draws holds every
- * connected word (see `layoutSpace`).
+ * word, linked or not (see `layoutSpace`).
  */
 export function layoutNotebookMap(a: NotebookAnalysis, opts: MapOptions = {}): MapLayout {
   const dims = opts.dimensions === 3 ? 3 : 2;
@@ -210,7 +213,8 @@ function spiral(i: number, n: number): [number, number, number] {
  * together by the words they share. Each word then sits inside a ball around its morphemes,
  * nearer the more specific one, and a few passes over a spatial grid push apart words that
  * landed on top of each other. Every step is linear in the number of words except the
- * morpheme simulation, which only sees the few hundred morphemes.
+ * morpheme simulation, which only sees the few hundred morphemes. Words linked to nothing go
+ * in one ball beside the rest.
  */
 function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: number, maxHubs: number, seed?: Map<string, [number, number, number]>): MapLayout {
   const hubs = a.families.filter((f) => kinds.has(f.kind)).slice(0, maxHubs);
@@ -253,6 +257,14 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
     nodes[e.a].degree += 1;
     nodes[e.b].degree += 1;
   }
+  // Every other word of the notebook or book, so the map holds all of it and Find a word finds
+  // any word. They come last, so the linked nodes keep their indices.
+  const firstLone = nodes.length;
+  for (const id of a.words.keys()) {
+    if (wordIndex.has(id)) continue;
+    const i = addWord(id);
+    if (i >= 0) nodes[i].unlinked = true;
+  }
   const n = nodes.length;
   if (!n) return { nodes, edges, width: 0, height: 0, radius: 0 };
   const H = hubs.length;
@@ -274,7 +286,9 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
   // Families trace adds a few words or parts; only the new ones are laid out.
   const fixed = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
-    const at = seed?.get(nodes[i].id);
+    // An unlinked word is seeded under its own key, so a word that gains or loses its links
+    // moves between the linked graph and the unlinked group.
+    const at = seed?.get(nodes[i].unlinked ? `~${nodes[i].id}` : nodes[i].id);
     if (!at) continue;
     [nodes[i].x, nodes[i].y, nodes[i].z] = at;
     fixed[i] = 1;
@@ -447,6 +461,29 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
     spread([i]);
   }
 
+  // Unlinked words: one ball of small points beside the linked graph, as graph tools pack
+  // isolated nodes beside the main component (Cytoscape's layouts, Obsidian's orphans), so
+  // they neither tangle with the graph nor sit between it and the camera.
+  const lone: number[] = [];
+  for (let i = firstLone; i < n; i++) if (!fixed[i]) lone.push(i);
+  if (lone.length) {
+    let edge = heads.length ? shell : hubR;
+    for (let i = H; i < firstLone; i++) edge = Math.max(edge, Math.hypot(nodes[i].x, nodes[i].y, nodes[i].z));
+    const U = n - firstLone;
+    // Room for each point at the spacing the push-apart pass keeps (4.5), packed loosely.
+    const r = Math.max(10, 4.5 * Math.cbrt(U * 0.45));
+    const cx = firstLone > 0 ? edge + 18 + r : 0;
+    lone.forEach((i, k) => {
+      // Directions in golden-ratio order, so the ball fills evenly from the centre out.
+      const [ux, uy, uz] = spiral(Math.floor(((k * 0.6180339887) % 1) * lone.length), lone.length);
+      const d = r * Math.cbrt((k + 0.5) / lone.length);
+      nodes[i].x = cx + ux * d;
+      nodes[i].y = uy * d;
+      nodes[i].z = uz * d;
+      placed[i] = 1;
+    });
+  }
+
   // Push apart words closer than MIN to each other, using a grid so each word only checks its cell's neighbours.
   const MIN = 4.5;
   const CELL = MIN * 2;
@@ -503,19 +540,33 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
     if (!moved) break;
   }
 
+  // The sphere the camera frames: around the linked graph, where a few stray words far out
+  // should not shrink the rest, and around the unlinked group, which is always in the picture.
+  // With both, the smallest sphere that holds the two.
+  const mean = (list: MapNode[]): [number, number, number] =>
+    list.reduce<[number, number, number]>((c, p) => [c[0] + p.x / list.length, c[1] + p.y / list.length, c[2] + p.z / list.length], [0, 0, 0]);
+  const reach = (list: MapNode[], c: [number, number, number], all: boolean) => {
+    const d = list.map((p) => Math.hypot(p.x - c[0], p.y - c[1], p.z - c[2])).sort((x, y) => x - y);
+    if (!d.length) return 0;
+    return all ? d[d.length - 1] : Math.min(d[d.length - 1], d[Math.floor((d.length - 1) * 0.9)] * 1.1);
+  };
+  const linkedNodes = nodes.slice(0, firstLone);
+  const loneNodes = nodes.slice(firstLone);
+  let centre = mean(linkedNodes.length ? linkedNodes : loneNodes);
+  let radius = reach(linkedNodes.length ? linkedNodes : loneNodes, centre, !linkedNodes.length);
+  if (linkedNodes.length && loneNodes.length) {
+    const c2 = mean(loneNodes);
+    const r2 = reach(loneNodes, c2, true);
+    const gap = Math.hypot(c2[0] - centre[0], c2[1] - centre[1], c2[2] - centre[2]) || 1;
+    const k = (gap + r2 - radius) / 2 / gap;
+    centre = [centre[0] + (c2[0] - centre[0]) * k, centre[1] + (c2[1] - centre[1]) * k, centre[2] + (c2[2] - centre[2]) * k];
+    radius = Math.max(radius, r2, (gap + radius + r2) / 2);
+  }
   // Centre the map on the origin, unless it was seeded: then the old nodes stay exactly where
   // the camera last saw them.
-  let cx = 0;
-  let cy = 0;
-  let cz = 0;
-  if (!fixed.some((f) => f)) {
-    for (const p of nodes) {
-      cx += p.x / n;
-      cy += p.y / n;
-      cz += p.z / n;
-    }
-  }
-  const dist: number[] = [];
+  const seeded = fixed.some((f) => f);
+  if (seeded) radius += Math.hypot(...centre);
+  const [cx, cy, cz] = seeded ? [0, 0, 0] : centre;
   for (const p of nodes) {
     p.x = Math.round((p.x - cx) * 10) / 10;
     p.y = Math.round((p.y - cy) * 10) / 10;
@@ -523,12 +574,8 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
     p.vx = 0;
     p.vy = 0;
     p.vz = 0;
-    dist.push(Math.hypot(p.x, p.y, p.z));
   }
-  dist.sort((x, y) => x - y);
-  // The radius the camera frames: a few stray words far out should not shrink the rest.
-  const core = dist[Math.floor((dist.length - 1) * 0.9)] * 1.1;
-  return { nodes, edges, width: 0, height: 0, radius: Math.round(Math.min(dist[dist.length - 1], core)) };
+  return { nodes, edges, width: 0, height: 0, radius: Math.round(radius) };
 }
 
 /** The graph as `mapHtml` hands it to the renderers. */
@@ -539,7 +586,8 @@ export interface MapData {
   total: number;
   /** The signature of the earlier layout this one kept its positions from, if any. */
   from?: string;
-  nodes: { id: string; k: 'word' | MorphKind; l: string; x: number; y: number; z: number; n: number; g?: string; f?: string }[];
+  /** `u`: an unlinked word, drawn small in the group beside the graph. */
+  nodes: { id: string; k: 'word' | MorphKind; l: string; x: number; y: number; z: number; n: number; g?: string; f?: string; u?: 1 }[];
   /** [from, to, 1 when the second word is built from the first]. */
   edges: [number, number, 0 | 1][];
 }
@@ -592,6 +640,7 @@ export function notebookMapData(a: NotebookAnalysis, kinds: MorphKind[]): MapDat
       n: p.size,
       ...(p.gloss ? { g: p.gloss } : {}),
       ...(p.forms ? { f: p.forms } : {}),
+      ...(p.unlinked ? { u: 1 as const } : {}),
     })),
     edges: edges.map((e) => [e.a, e.b, e.kind === 'derived' ? 1 : 0]),
   };
@@ -609,7 +658,7 @@ function seedFor(a: NotebookAnalysis, kinds: MorphKind[]): { sig: string; seed: 
     if (!words.length) continue;
     const shared = words.reduce((s, p) => s + (a.words.has(p.id) ? 1 : 0), 0);
     if (shared / words.length < 0.9 || Math.abs(a.words.size - data.total) > Math.max(5, data.total * 0.05)) continue;
-    return { sig: data.sig, seed: new Map(data.nodes.map((p) => [p.id, [p.x, p.y, p.z] as [number, number, number]])) };
+    return { sig: data.sig, seed: new Map(data.nodes.map((p) => [p.u ? `~${p.id}` : p.id, [p.x, p.y, p.z] as [number, number, number]])) };
   }
   return null;
 }
