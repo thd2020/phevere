@@ -247,8 +247,12 @@ assert.ok(si.acceptConceptPage(conceptPage({ title: 'Map', pageimage: 'Old_map_o
 // Recorded Commons searches: portraits, logos and unrelated hits sink.
 const commonsPages = (q) => fb.responses[si.buildCommonsSearchUrl(q)].query.pages;
 const loveRanked = si.rankCommonsFiles(commonsPages('love'), 'love', 'love', []);
-assert.strictEqual(loveRanked[0].title, 'The Love of Paris and Helen by Jacques-Louis David');
-assert.ok(!loveRanked.slice(0, 3).some((r) => /Sean Combs/.test(r.title)), 'love: no portrait of a man nicknamed Love near the top');
+// Without a gloss word, only short titles that are about the word stay: no long caption that
+// mentions it ("The Love of Paris and Helen by Jacques-Louis David") and no portrait.
+assert.ok(loveRanked.length > 0 && loveRanked.every((r) => si.titledWith(r.title, 'love')), loveRanked.map((r) => r.title).join(' / '));
+assert.ok(!loveRanked.some((r) => /Sean Combs/.test(r.title)), 'love: no portrait of a man nicknamed Love');
+assert.ok(si.titledWith('Mallard Afloat', 'afloat') && !si.titledWith('Adamant-1-yl phosphaethine Structural Formula V1', 'adamant'), 'titled with the word');
+assert.ok(!si.titledWith("Tower lodge, once quite famous because of its, albeit tenuous, association with a horrific crime", 'albeit'), 'a passing mention');
 assert.ok(/\binspect\b/.test(si.rankCommonsFiles(commonsPages('inspect'), 'inspect', 'inspect', [])[0].title), 'inspect: people inspecting');
 
 // A one-word Commons search looks in file names and takes drawings too: a full-text search for

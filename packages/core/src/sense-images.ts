@@ -928,6 +928,19 @@ export function commonsFileTitle(file: string): string {
     .trim();
 }
 
+/**
+ * Whether a short file title is about `word`: it is one of the first three words of a title of
+ * six words at most ("Mallard Afloat", "Afloat at Dartmouth"), not a passing mention in a long
+ * caption ("Tower lodge, once quite famous because of its, albeit tenuous, …") or part of a
+ * compound name ("Adamant-1-yl phosphaethine").
+ */
+export function titledWith(title: string, word: string): boolean {
+  const w = String(word || '').toLowerCase();
+  const tokens = String(title || '').split(/\s+/).map((t) => t.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '').toLowerCase()).filter(Boolean);
+  if (!tokens.length || tokens.length > 6) return false;
+  return tokens.slice(0, 3).some((t) => t === w || (!t.includes('-') && stem(t) === stem(w)));
+}
+
 /** Whether `word` sits in `title` as part of a capitalised name ("Serendipity Beach"). */
 export function properName(title: string, word: string): boolean {
   const w = String(word || '').toLowerCase();
@@ -980,7 +993,7 @@ export function rankCommonsFiles(
       if (opts.needGloss && !shared) return null;
       // Without a gloss word, the word must name what the file shows, not a place, band or boat
       // called by it: "Serendipity Beach", "Serendipity Singers".
-      if (!shared && properName(name, lemma)) return null;
+      if (!shared && (properName(name, lemma) || !titledWith(name, lemma))) return null;
       let score = shared * 2 + (1 - i / n);
       if (inName) score += 2;
       if (badMatch(BAD_FILE, name, lemma) || badMatch(BAD_CATEGORY, categories, lemma)) score -= 5;
