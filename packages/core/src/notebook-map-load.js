@@ -1,5 +1,5 @@
 /*
- * Loads the 3D map scene, and with it three.js and 3d-force-graph, on first use.
+ * Loads the 3D map scene, and with it three.js, on first use.
  *
  * This file is plain JavaScript on purpose. The desktop build compiles TypeScript to
  * CommonJS, which rewrites import() into require() and would pull the whole 3D stack into

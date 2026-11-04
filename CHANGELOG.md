@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Built from (2026-11-04): a suffix or prefix that Wiktionary writes without its hyphen in the etymology, as in assist + ant, now reads -ant and opens the suffix, not the insect.
+- Map (2026-11-04): the map now holds every connected word of the notebook or book. It used to stop at 220 words, so Postgraduate 考研 showed 220 of its 4,801 words and ob- listed none of its words; it now shows 2,595 words, and ob- lists 34, from obtain and observe to occur, offer and oppose.
+- Map (2026-11-04): on the desktop, drag turns and tilts the map, right-drag or Shift-drag moves it, and the wheel or a trackpad pinch zooms, as on the phone. On the phone, a drag or a two-finger pinch, twist or tilt works even when it starts on a word, and only a short tap opens a word. Zoom and Reset view sit in the top-right corner on every screen.
+- Map (2026-11-04): the Find a word field fits its pill in the desktop window, suggests words as you type, and goes to one with a click or Enter. Typing an inflected form finds the word it comes from, so "changes" finds "change".
+- Map (2026-11-04): the Words search no longer empties the map. The map opens on the word it finds, or says that no word matches and keeps the whole map.
+- Map (2026-11-04): a word looked up from the map keeps its orange highlight when you come back to the map.
+- Roots and prefixes (2026-11-04): a root is matched in all its spellings and shows them, so fac (make, do) reads "fac · fic · fec · fect" and takes in factory, infect, efficient, perfect, benefit and significant. Prefixes are matched in their assimilated forms: ob- as oc-, of- and op- (occur, offer, oppose), ad- before a doubled consonant (accept, affect, attract), and likewise in-, con- and sub-. Words that only look like a part are left out, such as face and fiction under fac, capital and captain under cap, certain and attain under ten, and electric under ex-. Where Families has read a word's origin from Wiktionary, a word of Old English or Old Norse origin loses its Latin parts. Families uses the same analysis.
 
 ## [4.0.0] - 2026-11-04
 
