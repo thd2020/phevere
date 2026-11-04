@@ -2,6 +2,7 @@ import { langBarHtml, langSheetHtml, type LangSide } from './picker';
 import {
   abbreviatePos,
   canonicalPos,
+  picturableSense,
   formatVocabLangPair,
   saveLemma,
   stripGlossText,
@@ -413,9 +414,11 @@ function lexiconPane(
   }
 
   const shown = new Set<string>();
-  // While pictures load, the first noun sense (the one most likely to get one) keeps its box.
+  // While pictures load, the first noun sense keeps its box when it names something you can see
+  // (the sense most likely to get one); "patience" keeps none.
   const firstNoun = defs.findIndex((d) => canonicalPos(d.partOfSpeech) === 'noun');
-  const reserve = new Set<number>(images === null && firstNoun >= 0 ? [firstNoun] : []);
+  const seen = firstNoun >= 0 && picturableSense({ meaning: defs[firstNoun].meaning, partOfSpeech: 'noun' }, result.word || '');
+  const reserve = new Set<number>(images === null && seen ? [firstNoun] : []);
   let posInner = '';
   // Senses with no part of speech are "other" beside real ones, and need no heading alone.
   const several = order.length > 1;

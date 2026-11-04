@@ -23,6 +23,7 @@ export {
   prefetchSenseImages,
   hideSenseImage,
   unhideSenseImage,
+  picturableSense,
   predictPictureSenses,
   registerWiktionaryWikitextSource,
   clearSenseImageCache,
