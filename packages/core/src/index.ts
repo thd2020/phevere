@@ -381,6 +381,19 @@ export {
   type InflectionRow,
 } from './inflections';
 export { inflectionsHtml, wordFamilyHtml, type LexiconLinks } from './lexicon-parts';
+export { linkHtml, linkText, wordLinkHtml, wikiLinkLookup } from './text-links';
+export {
+  parseMorphemeQuery,
+  morphemeLookupQuery,
+  morphemeOffers,
+  morphemeOf,
+  lookupMorpheme,
+  tableMorph,
+  type MorphemeEntry,
+  type MorphemeQuery,
+  type MorphemeKind,
+} from './morpheme';
+export { morphemeSections, morphemeOfferHtml, containsMorpheme, type MorphemeSection, type OwnWords } from './morpheme-view';
 export { normalizeVocabLemma, closestSpelling, typoDistance } from './vocab-lemma';
 export { normalizeStoredLemmas } from './vocab-sync';
 export { checkApiKey, type ApiProviderId, type ApiCredentials, type ApiKeyCheck } from './api-key-check';

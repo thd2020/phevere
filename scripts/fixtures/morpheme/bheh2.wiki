@@ -1,0 +1,144 @@
+{{reconstructed}}
+==Proto-Indo-European==
+
+===Root 1===
+{{etymon|ine-pro|id=shine|pos=root}}
+{{ine-root|impf}}<ref>{{R:ine:IEW|pages=104-105|head=bhā-, bhō-, bhə}}</ref><ref>{{R:ine:LIV|head=1. *bʰeh₂-|pages=68-69}}</ref><ref>{{R:ine:Cheung2007|head=*baH|page=1}}</ref>
+
+# to [[shine]], glow [[light]]
+#: {{syn|ine-pro|*bʰleyǵ-|*ḱweyt-|*keyt-}}
+# to [[appear]], be [[visible]]
+
+====Extensions====
+* {{l|ine-pro||*bʰeh₂-u-}}
+** {{l|ine-pro||*bʰh₂-w-e-ti}}
+*** {{desc|grk-pro|*pʰáwō}}
+**** {{desc|grc|φαῦω|φᾰ́ω}}
+** {{l|ine-pro||*bʰeh₂-w-eh₁-ye-ti}}?
+*** {{desc|itc-pro|*fāwēō}}?
+**** {{desc|la|faveō}}
+** {{l|ine-pro||*bʰh₂-we-dʰe-ti}}
+*** {{desc|grk-pro|*pʰawétʰō}}
+**** {{desc|grc|φᾰέθω}}
+** {{l|ine-pro||*bʰi-bʰh₂-u-sḱéti}}
+*** {{desc|grk-pro|*pipʰáwskō}}
+**** {{desc|grc|πῑ̆φαύσκω}}
+** {{l|ine-pro||*bʰéh₂-w-os ~ *bʰéh₂-w-es-}}
+*** {{desc|grk-pro|*pʰáwos}}
+**** {{desc|grc-aeo|φᾰ́ϝος|φαῦος}}
+**** {{desc|grc|φᾶος}} {{desc|grc|nolang=1|φᾰ́ος|der=1}} {{desc|grc|nolang=1|φῶς|der=1}}
+** {{l|ine-pro||*bʰh₂-w-es-no-}}
+*** {{desc|grk-pro|*pʰawehnós}}
+**** {{desc|grc|φᾰεννός}} {{desc|grc|nolang=1|φᾰεινός|der=1}} {{desc|grc|nolang=1|φᾰείνω|der=1}}
+** {{l|ine-pro||*bʰéh₂-u-ti-}}
+*** {{desc|grk-pro|*pʰáwtis}}
+**** {{desc|grc|φαῦσῐς}}
+
+====Derived terms====
+{{rootsee|id=shine}}
+
+* {{l|ine-pro||*bʰéh₂-ti ~ *bʰh₂-énti|pos=athematic root present}}
+** Hellenic:
+*** {{desc|grc|φᾱ́ς|t=shining}}
+** {{desc|iir-pro|*bʰáHti}} {{see desc}}
+* {{l|ine-pro||*bʰh₂-n-yé-ti|pos=innovative nasal-infix zero-grade ye-present}}
+** {{desc|sqj-pro|*banja}}<ref>{{R:sq:Orel|head=bëj ~ bâj|page=22}}</ref> {{see desc}}
+** {{q|probably}} Armenian:
+*** {{desc|xcl|բանամ}} {{see desc}}
+** {{desc|grk-pro|*pʰáňňō}} {{see desc}}
+* {{l|ine-pro||*bʰéh₂-ti-s ~ *bʰh₂-téy-s}}
+** {{desc|grk-pro|*pʰátis}}
+*** {{desc|grc|φᾰ́σῐς|φᾰ́τῐς}} {{see desc}}
+* {{l|ine-pro||*bʰéh₂-os ~ *bʰéh₂-es-os}}
+** {{desc|iir-pro|*bʰáHas}} {{see desc}}
+** {{desc|itc-pro|alt=*βās}}{{attn|itc-pro}}
+*** {{desc|itc-pro|*djuβās|alt=*dju-βās|der=1|nolang=1}} {{q|< {{m|ine-pro|*[[dyew-|dyew]]-bʰéh₂-os}}}}
+**** {{desc|la|iubar|t=celestial light, splendor}}
+* {{l|ine-pro||*bʰóh₂-mo-s}}
+** {{desc|iir-pro|*bʰáHmas}} {{see desc}}
+* {{l|ine-pro|*bʰeh₂nós|*bʰeh₂-nó-s}}
+
+; Unsorted formations:
+* {{desc|gem-pro|*bandwijaną}}
+* {{desc|gem-pro|*bandwǭ}}
+* {{desc|gem-pro|*baukną}}
+
+====Descendants====
+* {{desc|iir-pro|*bʰaH-}}
+
+===Root 2===
+{{etymon|ine-pro|id=speak|pos=root}}
+{{ine-root|impf}}<ref>{{R:ine:IEW|pages=105-106|head=bhā-}}</ref><ref>{{R:ine:LIV|head=2. *bʰeh₂-|pages=69-70}}</ref>
+
+# to [[speak]]
+#: {{syn|ine-pro|*mlewH-|*h₂wedH-|*ter-|*yek-}}
+# to [[say]]
+#: {{syn|ine-pro|*gʷet-|id1=say|*Hedʰ-|*h₂eǵ-|*sekʷ-|id4=say|*wekʷ-|*werh₁-|*weth₂-}}
+
+====Derived terms====
+{{rootsee|id=speak}}
+
+* {{l|ine-pro|*bʰéh₂ti|*bʰéh₂-ti ~ *bʰh₂-énti|pos=athematic root present}}
+* {{l|ine-pro||*bʰh₂-néw-ti ~ *bʰh₂-n̥w-énti|pos=innovative nasal-infixed zero-grade athematic present}}
+** {{desc|gem-pro|*bannaną}} {{see desc}}
+* {{l|ine-pro||*bʰh₂-sḱéti}}
+** {{desc|grk-pro}}
+*** {{desc|grc|φᾰ́σκω|t=to declare; to affirm; to think}}
+* {{l|ine-pro||*bʰn̥h₂-é-ti|pos=innovative nasal-infixed zero-grade thematic present}}
+** {{desc|iir-pro|*bʰánati}}
+*** {{desc|inc-pro|*bʰánati}}
+**** {{desc|sa-ved|भन॑ति}} {{see desc}}
+* {{l|ine-pro||*bʰéh₂-meh₂}}
+** {{desc|grk-pro|*pʰā́mā}}
+*** {{desc|grc|φήμη}} {{see desc}}
+** {{desc|itc-pro|*fāmā}} {{see desc}}
+* {{l|ine-pro||*bʰéh₂-os ~ *bʰéh₂-es-os}}
+** {{desc|iir-pro|*bʰáHšaH}} (or from {{m|ine-pro|*bʰel-|*bʰels-}})
+*** {{desc|inc-pro|*bʰáHṣaH}}
+**** {{desc|sa|भाषा}} {{see desc}}, {{l|sa|भाष॑ति|tr=bhā́ṣati}}
+** {{desc|itc-pro|*fās}}
+*** {{desc|la|fās}}
+* {{l|ine-pro||*bʰoh₂-néh₂}}
+** {{desc|grk-pro|*pʰōnā́}}
+*** {{desc|grc|φωνή|t=voice}} {{see desc}}
+* {{l|ine-pro||*bʰeh₂-mi-s}}
+** {{desc|grc|φῆμῐς}}
+* {{l|ine-pro||*bʰeh₂-mn̥}}
+** {{desc|grc|φῆμᾰ}}
+* {{l|ine-pro||*bʰeh₂-ni-s}}
+** {{desc|hyx-pro}}
+*** {{desc|xcl|բան|t=speech, word}} {{see desc}}
+** {{desc|ine-bsl-pro|*bāˀnis}}
+*** {{desc|sla-pro|*basnь}} {{see desc}}
+** {{desc|gem-pro|*bōniz}} {{see desc}}
+* {{l|ine-pro||*bʰéh₂-ti-s ~ *bʰh₂-téy-s}}<ref>{{R:xcl:Martirosyan|page=165}}</ref>
+** Armenian:
+*** {{desc|xcl|բայ|id=speech}} {{see desc}}
+** {{desc|grk-pro|*pʰátis}}
+*** {{desc|grc|φᾰ́σῐς|φᾰ́τῐς}} {{see desc}}
+* {{l|ine-pro||*bʰh₂-tó-s}}
+** {{desc|grk-pro|*pʰatós}} {{see desc}}
+** {{desc|itc-pro|*fatos}}
+*** {{desc|la|fātus}}
+*** {{desc|itc-pro|*fatēōr|der=1}} {{see desc}}
+* {{l|ine-pro||*bʰéh₂-tu-s ~ *bʰh₂-téw-s}}
+** {{desc|itc-pro|*fātus}}
+*** {{desc|la|fātus}}
+** {{desc|itc-pro|der=1|*Fatowos}} {{see desc}}
+* {{l|ine-pro||*bʰeh₂-dʰli-}}
+** {{desc|ine-bsl-pro|*bāˀdlis}}
+*** {{desc|sla-pro|*badli}} {{see desc}}
+
+; Unsorted formations:
+* Armenian:
+** {{desc|xcl|բառ|t1=word, language, speech|բանկն|t2=myth, fairy-tale}} {{see desc}}
+* {{desc|ine-bsl-pro|*bāˀjakāˀ}}
+** {{desc|sla-pro|*bajьka|t=fable}} {{see desc}}
+
+===References===
+{{reflist}}
+<!-- non standard interwiki links -->
+[[el:*bʰeh₂-]]
+
+{{topics|ine-pro|Light|Talking}}
+{{catlangname|ine-pro|homonymic roots}}

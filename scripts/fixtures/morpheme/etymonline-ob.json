@@ -1,0 +1,16 @@
+{
+ "code": 200,
+ "data": {
+  "items": [
+   {
+    "vocabularies": [
+     {
+      "word": "ob-",
+      "property": "",
+      "etymology_plain": "word-forming element meaning \"toward; against; before; near; across; down,\" also used as an intensive, from Latin ob (prep.) \"in the direction of, in front of, before; toward, to, at, upon, about; in the way of; with regard to, because of,\" from PIE root *epi, also *opi \"near, against\" (see epi-)."
+     }
+    ]
+   }
+  ]
+ }
+}

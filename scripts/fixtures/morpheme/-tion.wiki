@@ -1,0 +1,234 @@
+{{also|tion|tìơn}}
+==English==
+{{rfc|en}}
+
+===Alternative forms===
+* {{l|en|-ion}} (as in {{m|en|complexion}})
+* {{l|en|-ation}}
+* {{l|en|-sion}}
+* {{l|en|-ition}} (as in {{m|en|definition}})
+* {{l|en|⠰⠝}}
+
+===Etymology===
+From rebracketed {{inh|en|enm|-cioun}}, rebracketed borrowing of {{der|en|fro|-tion}}, {{m|fro|-cion}}, borrowed from the stem of {{der|en|la|-tiō}}. The {{inh|en|enm||-cioun}} became {{m|en||-tion}} in Modern English under the influence of the {{cog|frm|-tion}} and original Latin spellings. Always {{m|en|-ate}} or t-final/te-final base + {{m|en|-ion}}.
+
+===Pronunciation===
+* {{IPA|en|/-ʃən/|q2=after a preceding “s”|/-tʃən/}}
+* {{audio|en|LL-Q1860 (eng)-Vealhurl-&#45;tion.wav|a=Southern England}}
+
+===Suffix===
+{{en-noun|~|s}}
+
+# {{lb|en|non-productive}} {{n-g|Used to form nouns meaning "the action of (a verb)" or "the result of (a verb)". Words ending in this suffix are almost always derived from a similar Latin word; a few (''e.g''. [[gumption]]) are not derived from Latin and are unrelated to any verb. More often, {{m|en|-ation}} is used.}}
+#: {{suffixusex|en|ignore|ignortion}}
+#: {{suffixusex|en|scrimp|scrimption}}
+
+====Derived terms====
+{{suffixsee|en}}
+
+====Related terms====
+* {{l|en|-ion}}
+* {{l|en|-ation}}
+* {{l|en|-isation}}/[[-ization]]
+
+====Descendants====
+* {{desc|ms|-syen|-sen|bor=1|q=proscribed}}
+
+====Translations====
+{{trans-top|producing a noun meaning the action or effect of a verb}}
+* Abkhaz: {{t|ab|-циа}}
+* Afrikaans: {{t|af|-sie}}
+* Aragonese: {{t|an|-ción|f}}
+* Armenian: {{t|hy|-ություն}}, {{t|hy|-ցիա}}
+* Aromanian: {{t|rup|-tsie|f}}
+* Azerbaijani: {{t|az|-siya}}, {{t|az|-ţiya}} {{qualifier|South Azerbaijani}}, {{t|az|-mə}}, {{t|az|-ləşmə}}
+* Basque: {{t+|eu|-zio}}
+* Belarusian: {{t|be|-цыя}}
+* Bulgarian: {{t|bg|-ция}}
+* Catalan: {{t+|ca|-ció|f}} (always forms a feminine noun)
+* Crimean Tatar: {{t|crh|-tsiya}}
+* Czech: {{t|cs|-ce}}
+* Danish: {{t|da|-tion|c}}
+* Dutch: {{t+|nl|-ing}} {{qualifier|Germanic}}, {{t+|nl|-tie}} {{qualifier|Romanic}}
+* Esperanto: {{t+|eo|-ado}}
+* Estonian: {{t|et|-tsioon}}
+* Faroese: {{t|fo|-sjón|f}}
+* Finnish: {{t+|fi|-minen}}, {{t|fi|-tio}}
+* French: {{t+|fr|-tion}}
+* Frisian:
+*: West Frisian: {{t|fy|-sje}}
+* Gagauz: {{t|gag|-ţiya}}
+* Galician: {{t+|gl|-ción|f}}, {{t|gl|-ção}}, {{t|gl|-çom}} {{qualifier|reintegrationist}}
+* Georgian: {{t|ka|-ცია}}
+* German: {{t+|de|-ung|f}} {{qualifier|Germanic}}, {{t+|de|-tion|f}} {{qualifier|Latin; Romanic}}
+* Greenlandic: {{t|kl|-neq}}
+* Haitian Creole: {{t|ht|-syon}}
+* Hebrew: {{t|he|-ציה|f|tr=tsya}}
+* Hindi: {{t|hi|-शन}} {{qualifier|used for borrowed words, like in "[[स्टेशन]]", etc.}}
+* Hungarian: {{t+|hu|-ció}}
+* Indonesian: {{t|id|-si}}
+* Italian: {{t|it|-zione}} {{qualifier|unless previous letter was "s", when "z" becomes "t", like in "[[digestione]]", "[[questione]]", etc.}}
+* Japanese: {{t|ja|-化|tr=-か, -ka}}, {{t|ja|-ション|tr=-shon}} {{qualifier|used for certain borrowed words, like in "[[コミュニケーション]]", etc.}}
+* Kazakh: {{t|kk|-ция}}
+* Khmer: {{t+|km|ការ}}
+* Korean: {{t|ko|-션}} {{qualifier|used for borrowed words, like in "[[커뮤니케이션]]", etc.}}
+* Kyrgyz: {{t|ky|-ция}}
+* Ladino: {{t|lad|-syon}}
+* Lai: {{t|cnh|-nak}} {{t|cnh|-cio}}
+* Latgalian: {{t|ltg|-ceja}}
+* Latin: {{t|la|-tiō|f}}
+* Latvian: {{t|lv|-cija}}
+* Lithuanian: {{t|lt|-cija|f}}
+* Luxembourgish: {{t|lb|-tioun|f}}
+* Macedonian: {{t|mk|-ција}}
+* Malay: {{t|ms|-si}}, {{t|ms|-syen}}, {{t|ms|-sen}}, {{t|ms|peng--an}}, {{t|ms|per--an}}
+* Maltese: {{t|mt|-zzjoni|f}}
+* Norwegian: {{t+|no|-sjon|m}}
+* Occitan: {{t|oc|-cion|f}}
+* Old English: {{t|ang|-ing|f}}
+* Polish: {{t|pl|-cja|f}}
+* Portuguese: {{t+|pt|-ção}} {{qualifier|unless previous letter was "s", when "ç" becomes "t", like in "[[digestão]]", "[[questão]]", etc.}}
+* Romanian: {{t|ro|-ție}}, {{t|ro|-țiune}} {{qualifier|unless previous letter was "s", when "ț" becomes "t", like in "[[digestie]]", "[[chestiune]]", etc.}}, {{t|ro|-ciune}}
+* Romansh: {{t|rm|-ziun|m}}, {{t|rm|-schun|m}}
+* Russian: {{t|ru|-ция}}
+* Serbo-Croatian:
+*: Cyrillic: {{t|sh|-ција}}
+*: Latin: {{t|sh|-cija}}
+* Slovak: {{t|sk|-cia|f}}
+* Slovene: {{t|sl|-cija}}
+* Spanish: {{t+|es|-ción}} {{qualifier|unless previous letter was "s", when "c" becomes "t", like in "[[digestión]]", "[[cuestión]]", etc.}}; {{t|es|-xión}} (for few specific cases)
+* Swedish: {{t+|sv|-tion|c}}, {{t+|sv|-ing|c}}
+* Tagalog: {{t|tl|-siyon}} {{qualifier|used for borrowed words, like in "[[edukasiyon]]", etc.}}, {{t|tl|-syon}}, {{t|tl|-asyon}}
+* Tajik: {{t|tg|-тсия}}
+* Thai: {{t+|th|การ}}, {{t+|th|ความ}}
+* Turkish: {{t|tr|-syon}}, {{t|tr|-siyon}}
+* Turkmen: {{t|tk|-siýa}}
+* Ukrainian: {{t|uk|-ння}}, {{t|uk|-ція}}
+* Urdu: {{t|ur|-شَن}} {{qualifier|used for borrowed words, like in "[[اسٹیشن]]", etc.}}
+* Uzbek: {{t|uz|-tsiya}}
+* Yiddish: {{t+|yi|־ונג|f}}, {{t|yi|-ציע|f}}
+{{trans-bottom}}
+
+====See also====
+* {{l|en|-al}}
+* {{l|en|-ing}}
+* {{l|en|-ure}}
+
+===Further reading===
+* {{R:OneLook}}
+* {{R:Online Etymology Dictionary|-ion}}
+* {{R:Online Etymology Dictionary|-tion}}
+
+===Anagrams===
+* {{anagrams|en|a=inot|-toin|INTO|Toni|into|noit|oint|on it}}
+
+{{cln|en|unproductive suffixes}}
+
+==Alemannic German==
+
+===Etymology===
+{{ety|gsw|:der|la:-tiō}}
+Ultimately from {{der|gsw|la|-tiō}}. Cognate with {{cog|de|-tion}}.
+
+===Suffix===
+{{head|gsw|suffix|g=f|plural|-tione}}
+
+# {{l|en|-tion}} {{gloss|nominalizer}}
+
+====Derived terms====
+{{suffixsee|gsw}}
+
+{{cln|gsw|noun-forming suffixes}}
+
+==Danish==
+
+===Alternative forms===
+* {{l|da|-sion}} (as in {{l|da|eksplosion}})
+* {{l|da|-ssion}}
+
+===Etymology===
+From {{der|da|fr|-tion}}, from the stem of {{der|da|la|-tiō}}.
+
+===Pronunciation===
+* {{IPA|da|[-ˈɕoˀːn]}}
+
+===Suffix===
+{{head|da|suffix}}
+
+# used to form nouns that denote an [[action]] or a [[process]].
+# The [[result]] of the aforementioned.
+
+====Declension====
+{{da-decl|en|er}}
+
+====Derived terms====
+{{suffixsee|da}}
+
+===References===
+* {{R:DDO}}
+
+==French==
+{{etymon|fr|:der|-ation}}
+
+===Pronunciation===
+* {{fr-IPA|sion}}
+* {{fr-IPA}} (if previous letter is "s", as in "{{l|fr|digestion}}", "{{l|fr|question}}", "{{l|fr|combustion}}", etc.)
+* {{rhymes|fr|ɔ̃|s=1}}
+
+===Suffix===
+{{fr-noun|f|~}}
+
+# {{alt form of|fr|-ation}}: {{n-g|Used to indicate action, condition, result or effect}}; {{l|en|-tion}}
+
+====Descendants====
+* {{desc|no|-|bor=1}} {{l|nb|-sjon}}
+* {{desc|ota|ـسیون|tr=-syon, -siyon|bor=1}}
+** {{desc|tr|-syon|-siyon}}
+
+==German==
+
+===Alternative forms===
+* {{alter|de|-ation||different (surface) analysis}}
+
+===Etymology===
+{{ety|de|:der|la:-tiō}}
+From {{der|de|la|-tiō}}.
+
+{{etystub|de}}
+
+===Pronunciation===
+* {{IPA|de|/-ˈtsi̯oːn/|[-ˈt͡sjoːn]|[-t͡siˈoːn]}}
+* The pronunciation with a syllabic {{IPAchar|[i]}} is virtually obsolete, thus one may simply transcribe {{IPAchar|/-ˈtsjoːn/}}.
+* {{audio|de|LL-Q188 (deu)-Frank C. Müller--tion.wav}}
+* {{audio|de|De--tion.ogg|a=<<Germany>> (<<Berlin>>)}}
+
+===Suffix===
+{{head|de|suffix|cat2=noun-forming suffixes|g=f|genitive|-tion|plural|-tionen}}
+
+# {{l|en|-tion}}
+
+====Derived terms====
+{{suffixsee|de}}
+
+====Related terms====
+* {{l|de|-ion}}
+* {{l|de|Aktion}}
+* {{l|de|Kommunikation}}
+
+===Further reading===
+* {{R:de:Duden|_ation|-ation}}, {{R:de:Duden|_ion|-ion}}, {{R:de:Duden|_ation__ierung|-ation/-ierung}} (doesn't have ''-tion, -ition'')
+* {{R:de:DWDS|-ation}} (doesn't have ''-tion, -ion, -ition'')
+
+==Swedish==
+
+===Pronunciation===
+* {{IPA|sv|/-ˈɧuːn/}}
+* {{homophones|sv|-sion}}
+
+===Suffix===
+{{head|sv|suffix|g=c}}
+
+# {{l|en|-tion}}; making nouns. See also {{l|sv|-else}}, {{l|sv|-ing}} and {{l|sv|-ning}}.
+
+====Derived terms====
+{{suffixsee|sv}}
