@@ -402,7 +402,7 @@ export {
   type InflectionGrid,
   type InflectionRow,
 } from './inflections';
-export { inflectionsHtml, wordFamilyHtml, type LexiconLinks } from './lexicon-parts';
+export { inflectionsHtml, wordFamilyHtml, formLineHtml, type LexiconLinks } from './lexicon-parts';
 export { linkHtml, linkText, wordLinkHtml, wikiLinkLookup } from './text-links';
 export {
   parseMorphemeQuery,

@@ -162,3 +162,18 @@
 .lx-family .lx-link,
 .lx-morph .lx-link,
 .lx-words .lx-link { color: var(--lx-teal, #0f6e71); }
+
+/* "ran /ræn/ · past tense of run" above the entry an irregular form opens. */
+.lx-formline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin: 0 0 4px;
+  font: 500 13px/1.35 var(--lx-ui, Outfit, system-ui, sans-serif);
+  color: var(--lx-soft, #5c534e);
+}
+.lx-formline__form { font: 600 15px/1.2 var(--lx-serif, 'Source Serif 4 Variable', Georgia, serif); color: var(--lx-ink, #1c1917); }
+.lx-formline__ipa { font-family: var(--lx-ipa, inherit); }
+.lx-formline__label { font-style: italic; }
+.lx-formline__label::before { content: '·'; margin-right: 8px; font-style: normal; }

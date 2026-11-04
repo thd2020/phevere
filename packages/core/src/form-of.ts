@@ -165,6 +165,37 @@ export interface FormOfReading {
   groups: string[][];
   /** Whether the word is a plural noun form, for which other dictionaries get a say. */
   plural: boolean;
+  /** What the word is of each lemma, by lower-case lemma: "past tense", "plural", "comparative". */
+  labels?: Map<string, Set<string>>;
+  /** The word's own pronunciation, as Wiktionary gives it. */
+  ipa?: string;
+}
+
+/**
+ * A learner dictionary's name for a form: from Wiktionary's wording when it says it plainly
+ * ("simple past and past participle of teach" is both), else from Wiktextract's tags; '' for a
+ * spelling.
+ */
+function formLabels(tags: string[], gloss: string): string[] {
+  const g = gloss.toLowerCase();
+  const said: string[] = [];
+  if (/\bsimple past\b|\bpast tense\b|\bpreterite\b/.test(g)) said.push('past tense');
+  if (/\bpast participle\b/.test(g)) said.push('past participle');
+  if (/\bpresent participle\b/.test(g)) said.push('present participle');
+  if (said.length) return said;
+  const one = formLabel(tags);
+  return one ? [one] : [];
+}
+
+function formLabel(tags: string[]): string {
+  const t = new Set(tags);
+  if (t.has('comparative')) return 'comparative';
+  if (t.has('superlative')) return 'superlative';
+  if (t.has('participle')) return t.has('past') ? 'past participle' : 'present participle';
+  if (t.has('past')) return 'past tense';
+  if (t.has('present')) return t.has('third-person') && t.has('singular') ? 'third person singular' : 'present tense';
+  if (t.has('plural')) return 'plural';
+  return '';
 }
 
 /**
@@ -180,6 +211,7 @@ export function readFormOf(jsonl: string, word: string, lang = 'en'): FormOfRead
   const w = String(word || '').trim();
   const lower = w === w.toLowerCase();
   const senses: Array<{ s: KaikkiSense; minor: boolean; pos: string }> = [];
+  let ipa = '';
   for (const line of String(jsonl || '').split(/\r?\n/)) {
     const t = line.trim();
     if (!t.startsWith('{')) continue;
@@ -192,6 +224,9 @@ export function readFormOf(jsonl: string, word: string, lang = 'en'): FormOfRead
     if (lang && entry?.lang_code && entry.lang_code !== lang) continue;
     if (lower && typeof entry?.word === 'string' && entry.word !== w) continue;
     if (lower && SKIPPED_POS.has(String(entry?.pos || ''))) continue;
+    if (!ipa && Array.isArray(entry?.sounds)) {
+      ipa = String(entry.sounds.find((x: { ipa?: string }) => typeof x?.ipa === 'string')?.ipa || '');
+    }
     for (const s of Array.isArray(entry?.senses) ? (entry.senses as KaikkiSense[]) : []) {
       const tags = tagsOf(s);
       if (tags.includes('no-gloss') || (!s.glosses?.length && !s.form_of?.length && !s.alt_of?.length)) continue;
@@ -223,12 +258,20 @@ export function readFormOf(jsonl: string, word: string, lang = 'en'): FormOfRead
   const groups: string[][] = [];
   const others: Array<{ s: KaikkiSense; pos: string }> = [];
   const formPos = new Set<string>();
+  const labels = new Map<string, Set<string>>();
   let plural = false;
   for (const { s, pos } of use) {
     const names = splitLemma(lemmaOf(s)).filter((l) => l.toLowerCase() !== w.toLowerCase());
     if (names.length) {
       if (pos === 'noun' && tagsOf(s).includes('plural') && s.form_of?.length) plural = true;
       formPos.add(pos);
+      for (const label of formLabels(tagsOf(s), String(s.glosses?.[0] || ''))) {
+        for (const l of names) {
+          const set = labels.get(l.toLowerCase()) || new Set<string>();
+          set.add(label);
+          labels.set(l.toLowerCase(), set);
+        }
+      }
       const fresh = names.filter((l) => !lemmas.some((x) => x.toLowerCase() === l.toLowerCase()));
       lemmas.push(...fresh);
       if (fresh.length) groups.push(fresh);
@@ -248,7 +291,7 @@ export function readFormOf(jsonl: string, word: string, lang = 'en'): FormOfRead
   );
   // One sense of its own in another part of speech is allowed (the verb "mice", the adjective
   // "oxen"); one in the same part of speech is a meaning the form adds ("bacteria" as a strain).
-  if (!own.length || (own.length === 1 && !formPos.has(own[0].pos))) return { lemmas, groups, plural };
+  if (!own.length || (own.length === 1 && !formPos.has(own[0].pos))) return { lemmas, groups, plural, labels, ipa };
   return none;
 }
 
@@ -350,6 +393,52 @@ export function pluralHasOwnSense(http: HttpClient, word: string): Promise<boole
 /* --------------------------------------------------------------- resolving */
 
 const resolved = new Map<string, Promise<string | null>>();
+/** What a resolved form is, for the line above its lemma's entry: "ran /ræn/ · past tense of run". */
+const lines = new Map<string, FormLine>();
+
+export interface FormLine {
+  form: string;
+  ipa: string;
+  /** "past tense of run" */
+  label: string;
+}
+
+/**
+ * The line a lookup of `word` shows above the entry it opens, or null when the form opens its
+ * lemma plainly. Set once resolveFormOf has answered for the word.
+ */
+export function formLine(word: string, lang = 'en'): FormLine | null {
+  return lines.get(`${lang}:${String(word || '').trim()}`) || null;
+}
+
+/**
+ * Whether a learner dictionary gives `form` a short entry of its own ("ran: past tense of run")
+ * rather than opening `lemma` directly. The Oxford Advanced Learner's Dictionary and
+ * Merriam-Webster both do it for irregular forms spelled unlike their headword: verbs (ran, swam,
+ * bought, was, went, been), comparatives (better, worst), plurals that change a vowel or an f
+ * (feet, mice, men, knives, wolves). Regular forms (gleaned, cities, stopped), plurals from Latin
+ * and Greek (criteria, crises, phenomena) and irregular plurals that begin like their singular
+ * (children, paparazzi, oxen) open the headword. Checked on 2026-11-04 against 60 OALD searches;
+ * scripts/test-word-forms.js keeps them.
+ */
+export function hasOwnFormEntry(form: string, lemma: string): boolean {
+  const f = String(form || '').toLowerCase();
+  const l = String(lemma || '').toLowerCase();
+  if (!f || !l || f === l) return false;
+  // lie → lying, die → dying, tie → tying
+  if (/ie$/.test(l) && f === `${l.slice(0, -2)}ying`) return true;
+  if (isRegularInflection(f, l)) return false;
+  // leaf → leaves, knife → knives, wolf → wolves
+  if (/(?:f|fe)$/.test(l) && /ves$/.test(f)) return true;
+  if (FOREIGN_PLURALS.some(([a, b]) => l.endsWith(a) && f === l.slice(0, l.length - a.length) + b)) return false;
+  if (l === 'ox' && f === 'oxen') return false;
+  return !(l.length >= 3 && f.startsWith(l.slice(0, -1)));
+}
+
+/** Singular and plural endings of Latin, Greek and French plurals. */
+const FOREIGN_PLURALS: Array<[string, string]> = [
+  ['um', 'a'], ['on', 'a'], ['us', 'i'], ['is', 'es'], ['a', 'ae'], ['ex', 'ices'], ['ix', 'ices'], ['o', 'i'], ['eau', 'eaux'],
+];
 
 /**
  * The word to open and save instead of `word`, or null when `word` is a word in its own right.
@@ -367,14 +456,21 @@ export function resolveFormOf(http: HttpClient, word: string, lang = 'en', timeo
       if (!page.trim()) throw Object.assign(new Error(`no kaikki page for ${w}`), { code: 'NO_PAGE' });
       const reading = readFormOf(page, w, lang);
       if (!reading.lemmas.length || PLURALS_WITH_OWN_ENTRY.has(w.toLowerCase())) return null;
+      const note = (lemma: string | null): string | null => {
+        const kinds = lemma ? reading.labels?.get(lemma.toLowerCase()) : undefined;
+        if (lemma && kinds?.size && hasOwnFormEntry(w, lemma)) {
+          lines.set(key, { form: w, ipa: reading.ipa || '', label: `${[...kinds].join(', ')} of ${lemma}` });
+        }
+        return lemma;
+      };
       // Only a regular plural (savings, belongings) can be a word of its own here; men and teeth are not.
       const regular = reading.lemmas.some((l) => isRegularInflection(w, l));
       if (reading.plural && regular && (await pluralHasOwnSense(http, w).catch(() => PLURALS_WITH_OWN_ENTRY.has(w.toLowerCase())))) return null;
-      if (reading.lemmas.length === 1) return reading.lemmas[0];
-      if (reading.groups.length < 2) return dominantLemma(reading.lemmas, await wordFrequencies(http, reading.lemmas.slice(0, 4)).catch(() => new Map<string, number>()), reading.groups);
+      if (reading.lemmas.length === 1) return note(reading.lemmas[0]);
+      if (reading.groups.length < 2) return note(dominantLemma(reading.lemmas, await wordFrequencies(http, reading.lemmas.slice(0, 4)).catch(() => new Map<string, number>()), reading.groups));
       const lemmas = reading.lemmas.slice(0, 4);
       const freq = await wordFrequencies(http, lemmas);
-      return dominantLemma(lemmas, freq, reading.groups.map((g) => g.filter((l) => lemmas.includes(l))).filter((g) => g.length));
+      return note(dominantLemma(lemmas, freq, reading.groups.map((g) => g.filter((l) => lemmas.includes(l))).filter((g) => g.length)));
     });
     resolved.set(key, p);
     p.catch(() => resolved.delete(key));

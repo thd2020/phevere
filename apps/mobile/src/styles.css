@@ -220,7 +220,8 @@ a { color: var(--md-sys-color-tertiary); }
 }
 /* IPA row spans under both the headword and its buttons, so chips sit side by side. */
 .head > .ipa-chips,
-.head > .ipa-line { grid-column: 1 / -1; }
+.head > .ipa-line,
+.head > .lx-formline { grid-column: 1 / -1; }
 .head .word {
   flex: 1;
   min-width: 0;

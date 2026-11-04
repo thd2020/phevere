@@ -194,6 +194,33 @@ assert.equal(fo.dominantLemma(['axe', 'axis'], freq), null);
 assert.equal(fo.dominantLemma(['child', 'unknown'], freq), null, 'a lemma without a frequency decides nothing');
 assert.equal(fo.dominantLemma(['ax', 'axe', 'axis'], freq, [['ax', 'axe'], ['axis']]), null, '"ax and axe" is one lemma beside axis');
 
+// Which forms get a line of their own above the entry ("ran /ræn/ · past tense of run"), as the
+// Oxford Advanced Learner's Dictionary gives them a short entry: its searches of 2026-11-04.
+{
+  const own = ['ran:run', 'mice:mouse', 'men:man', 'taught:teach', 'better:good', 'worse:bad', 'geese:goose', 'teeth:tooth',
+    'was:be', 'were:be', 'been:be', 'went:go', 'is:be', 'had:have', 'did:do', 'has:have', 'knives:knife', 'wolves:wolf',
+    'leaves:leaf', 'lives:life', 'feet:foot', 'swam:swim', 'sung:sing', 'bought:buy', 'lying:lie', 'wrote:write',
+    'caught:catch', 'held:hold', 'brought:bring', 'sat:sit', 'worst:bad', 'best:good'];
+  const plain = ['children:child', 'gleaned:glean', 'paparazzi:paparazzo', 'vicissitudes:vicissitude', 'savings:saving',
+    'cities:city', 'criteria:criterion', 'crises:crisis', 'phenomena:phenomenon', 'oxen:ox', 'stopped:stop',
+    'analyses:analysis', 'goes:go', 'fishes:fish'];
+  for (const pair of own) assert.equal(fo.hasOwnFormEntry(...pair.split(':')), true, `${pair} has a short entry in OALD`);
+  for (const pair of plain) assert.equal(fo.hasOwnFormEntry(...pair.split(':')), false, `${pair} opens the headword in OALD`);
+  // Where OALD departs from any rule: "does" has its own entry (it is also the plural of doe) and
+  // "women" opens woman, while "men" has an entry. The rule gives the opposite for both.
+  assert.equal(fo.hasOwnFormEntry('does', 'do'), false);
+  assert.equal(fo.hasOwnFormEntry('women', 'woman'), true);
+  // The line's wording comes from Wiktionary's gloss first: "simple past and past participle" is both.
+  const taught = [
+    JSON.stringify({ word: 'taught', lang_code: 'en', pos: 'verb', sounds: [{ ipa: '/tɔːt/' }], senses: [{ tags: ['form-of', 'participle', 'past'], glosses: ['simple past and past participle of teach'], form_of: [{ word: 'teach' }] }] }),
+    JSON.stringify({ word: 'taught', lang_code: 'en', pos: 'adj', senses: [{ tags: ['alt-of', 'misspelling'], glosses: ['Misspelling of taut.'], alt_of: [{ word: 'taut' }] }] }),
+  ].join('\n');
+  const read = fo.readFormOf(taught, 'taught');
+  assert.deepEqual(read.lemmas, ['teach']);
+  assert.deepEqual([...read.labels.get('teach')], ['past tense', 'past participle']);
+  assert.equal(read.ipa, '/tɔːt/');
+}
+
 // Through a fake HTTP client: kaikki pages, then Datamuse for frequencies and for definitions.
 (async () => {
   const requests = [];

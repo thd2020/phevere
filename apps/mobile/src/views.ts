@@ -14,6 +14,7 @@ import {
   type WikipediaResult,
   vocabListHtml,
   inflectionsHtml,
+  formLineHtml,
   wordFamilyHtml,
   linkHtml,
   linkText,
@@ -852,6 +853,7 @@ export function lookupBody(opts: {
   return `
     <div class="lookup-flow">
     <header class="head">
+      ${formLineHtml(opts.result)}
       <div class="word">
         <h2 class="lemma" style="--len:${[...String(opts.result.word || lemma)].length}">${esc(opts.result.word || lemma)}</h2>
         ${morphemeOfferHtml(opts.result, 'act')}
