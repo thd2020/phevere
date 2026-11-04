@@ -55,9 +55,10 @@ export function stripCitationLines(definition: string): string {
 const LABEL_WORDS = new Set([
   'simple', 'past', 'tense', 'participle', 'present', 'and', 'or', 'plural', 'third-person', 'singular', 'indicative',
   'form', 'gerund', 'comparative', 'superlative', 'degree', 'alternative', 'obsolete', 'archaic', 'dated', 'spelling',
-  'misspelling', 'common', 'letter-case', 'inflection', 'the', 'a', 'an',
+  'misspelling', 'common', 'letter-case', 'inflection', 'the', 'a', 'an', 'subjunctive', 'imperative', 'first-person', 'remote',
+  'second-person', 'first/third-person', 'first/second/third-person',
 ]);
-const LABEL_CORE = /\b(?:past|participle|plural|singular|gerund|comparative|superlative|spelling|form|inflection)\b/;
+const LABEL_CORE = /\b(?:past|participle|plural|singular|gerund|comparative|superlative|spelling|form|inflection|subjunctive|imperative)\b/;
 const FORM_OF_TEXT =
   /^(.{1,90}?)\s+of\s+["“]?([\p{L}][\p{L}'’-]*(?:\s[\p{L}][\p{L}'’-]*){0,2}?)["”]?\s*(?:\(\s*[“"][^)]*\))?\s*[.;]?$/u;
 
@@ -92,6 +93,7 @@ export function formOfGlossLemma(meaning: string): string | null {
  * the senses name more than one lemma.
  */
 export function formOfLemmaFromGlosses(senses: string[], word = ''): string | null {
+  if (PLURALS_WITH_OWN_ENTRY.has(word.trim().toLowerCase())) return null;
   const list = senses.filter((s) => s && !isCitationGloss(s)).map(stripGlossText).filter(Boolean);
   let lemma = '';
   const rest: string[] = [];
@@ -113,7 +115,7 @@ export function formOfLemmaFromGlosses(senses: string[], word = ''): string | nu
 /** Senses a learner dictionary leaves out; they neither block nor make a redirect. */
 const MINOR = new Set([
   'obsolete', 'archaic', 'dialectal', 'rare', 'nonstandard', 'nonce-word', 'proscribed', 'humorous', 'poetic',
-  'eye-dialect', 'pronunciation-spelling', 'hypercorrect', 'misconstruction', 'error-unrecognized-form',
+  'eye-dialect', 'pronunciation-spelling', 'hypercorrect', 'misconstruction', 'error-unrecognized-form', 'dated', 'slang', 'vulgar', 'colloquial',
 ]);
 /** Kinds of "X of Y" that are separate words: "abbreviation of", "diminutive of". */
 const SEPARATE_WORD = new Set([
@@ -136,14 +138,48 @@ function tagsOf(s: KaikkiSense): string[] {
 }
 
 /**
- * Lemmas the word is a form of according to one kaikki.org page, most-cited first; [] when the word
- * has a meaning of its own (or the page has no senses). Senses tagged obsolete, archaic, dialectal,
- * rare or nonstandard are left out unless nothing else is left.
+ * Plurals learner dictionaries give an entry of their own, though Wiktionary may call them only
+ * "plural of": savings is money put by, not several acts of saving.
  */
-export function formOfLemmasFromKaikki(jsonl: string, word: string, lang = 'en'): string[] {
+export const PLURALS_WITH_OWN_ENTRY = new Set([
+  'savings', 'belongings', 'earnings', 'surroundings', 'lodgings', 'proceeds', 'customs', 'manners', 'goods',
+  'outskirts', 'premises', 'quarters', 'remains', 'riches', 'valuables', 'winnings', 'takings', 'holdings',
+  'findings', 'glasses', 'spectacles', 'clothes', 'contents', 'damages', 'arms', 'odds', 'means', 'grounds',
+  'looks', 'pains', 'regards', 'spirits', 'stairs', 'terms', 'troops', 'wages', 'works', 'greens', 'headquarters',
+  'authorities', 'data', 'media', 'news', 'scissors', 'trousers', 'pants', 'goggles', 'thanks', 'congratulations',
+]);
+
+/** "ax and axe", "ax or axe": Wiktextract names two spellings of one lemma in one link. */
+function splitLemma(lemma: string): string[] {
+  return lemma
+    .split(/\s+(?:and|or)\s+|\s*,\s*/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+/** One kaikki.org page read for whether the word is a form, and of what. */
+export interface FormOfReading {
+  /** Lemmas the word is a form of, most-cited first; [] when it is a word in its own right. */
+  lemmas: string[];
+  /** Spellings that name one lemma ("ax", "axe"), so they count as one when choosing. */
+  groups: string[][];
+  /** Whether the word is a plural noun form, for which other dictionaries get a say. */
+  plural: boolean;
+}
+
+/**
+ * Reads one kaikki.org page. Senses tagged obsolete, archaic, dialectal, rare, nonstandard or
+ * misspelling, and regional spellings of another word ("is" as Geordie for us), are left out unless
+ * nothing else is left. A single sense of its own beside the form-of senses does not stop the word
+ * being a form: "mice" is also a rare Bermudan verb, "oxen" an adjective "oxlike", "rested" an
+ * adjective "recovered", "was" the colloquial "there was" with a plural subject. Two senses of its
+ * own do ("glasses", "pants", "ironed").
+ */
+export function readFormOf(jsonl: string, word: string, lang = 'en'): FormOfReading {
+  const none: FormOfReading = { lemmas: [], groups: [], plural: false };
   const w = String(word || '').trim();
   const lower = w === w.toLowerCase();
-  const senses: Array<{ s: KaikkiSense; minor: boolean }> = [];
+  const senses: Array<{ s: KaikkiSense; minor: boolean; pos: string }> = [];
   for (const line of String(jsonl || '').split(/\r?\n/)) {
     const t = line.trim();
     if (!t.startsWith('{')) continue;
@@ -159,31 +195,66 @@ export function formOfLemmasFromKaikki(jsonl: string, word: string, lang = 'en')
     for (const s of Array.isArray(entry?.senses) ? (entry.senses as KaikkiSense[]) : []) {
       const tags = tagsOf(s);
       if (tags.includes('no-gloss') || (!s.glosses?.length && !s.form_of?.length && !s.alt_of?.length)) continue;
-      senses.push({ s, minor: tags.some((x) => MINOR.has(x)) });
+      const regionalSpelling = !!s.alt_of?.length && tags.some((x) => /^[A-Z]/.test(x));
+      senses.push({ s, minor: tags.some((x) => MINOR.has(x)) || regionalSpelling, pos: String(entry?.pos || '') });
     }
   }
-  const major = senses.filter((x) => !x.minor);
-  const use = major.length ? major : senses;
-  if (!use.length) return [];
-  const lemmas: string[] = [];
-  const others: string[] = [];
-  for (const { s } of use) {
+  const lemmaOf = (s: KaikkiSense): string => {
     const tags = tagsOf(s);
     const formOf = String(s.form_of?.[0]?.word || '').trim();
     const altOf = String(s.alt_of?.[0]?.word || '').trim();
-    const separate = tags.some((x) => SEPARATE_WORD.has(x));
-    let lemma = '';
-    if (formOf && tags.includes('form-of') && !separate) lemma = formOf;
+    if (tags.some((x) => SEPARATE_WORD.has(x))) return '';
+    if (formOf && tags.includes('form-of')) return formOf;
     // A regional spelling ("estrus", American for oestrus) is the standard where it is used, so it stays.
-    else if (altOf && (tags.includes('alternative') || tags.includes('misspelling')) && !separate && !tags.some((x) => /^[A-Z]/.test(x))) lemma = altOf;
-    if (lemma && lemma.toLowerCase() !== w.toLowerCase()) {
-      if (!lemmas.some((l) => l.toLowerCase() === lemma.toLowerCase())) lemmas.push(lemma);
+    if (altOf && (tags.includes('alternative') || tags.includes('misspelling')) && !tags.some((x) => /^[A-Z]/.test(x))) return altOf;
+    // Wiktextract sometimes leaves the tags off a form-of sense ("simple subjunctive of be").
+    return s.form_of?.length || s.alt_of?.length ? '' : formOfGlossLemma(String(s.glosses?.[0] || '')) || '';
+  };
+  const isMisspelling = (s: KaikkiSense) => tagsOf(s).includes('misspelling');
+  const major = senses.filter((x) => !x.minor);
+  let use = major.length ? major : senses;
+  // "taught" is the past of teach; that it is also a common misspelling of taut does not count. A
+  // word that is only a misspelling ("accomodate") is decided by its misspelling senses.
+  const proper = use.filter((x) => !isMisspelling(x.s) && lemmaOf(x.s));
+  if (proper.length) use = use.filter((x) => !isMisspelling(x.s));
+  else if (!use.some((x) => lemmaOf(x.s))) use = [...use, ...senses.filter((x) => isMisspelling(x.s))];
+  if (!use.length) return none;
+  const lemmas: string[] = [];
+  const groups: string[][] = [];
+  const others: Array<{ s: KaikkiSense; pos: string }> = [];
+  const formPos = new Set<string>();
+  let plural = false;
+  for (const { s, pos } of use) {
+    const names = splitLemma(lemmaOf(s)).filter((l) => l.toLowerCase() !== w.toLowerCase());
+    if (names.length) {
+      if (pos === 'noun' && tagsOf(s).includes('plural') && s.form_of?.length) plural = true;
+      formPos.add(pos);
+      const fresh = names.filter((l) => !lemmas.some((x) => x.toLowerCase() === l.toLowerCase()));
+      lemmas.push(...fresh);
+      if (fresh.length) groups.push(fresh);
       continue;
     }
-    others.push(String(s.glosses?.[0] || ''));
+    others.push({ s, pos });
   }
-  if (!lemmas.length) return [];
-  return others.every((g) => isRestatement(g, [w, ...lemmas])) ? lemmas : [];
+  if (!lemmas.length) return none;
+  // Plural-only senses of a plural ("teeth": power to enforce; "men": enlisted personnel) are uses
+  // the singular's entry covers; a plural that is a word of its own is caught by pluralHasOwnSense.
+  const own = others.filter(
+    ({ s }) =>
+      !isRestatement(String(s.glosses?.[0] || ''), [w, ...lemmas]) &&
+      !(plural && tagsOf(s).includes('plural-only')) &&
+      // "had" forming the past perfect is a use of have its own entry describes.
+      !tagsOf(s).includes('auxiliary'),
+  );
+  // One sense of its own in another part of speech is allowed (the verb "mice", the adjective
+  // "oxen"); one in the same part of speech is a meaning the form adds ("bacteria" as a strain).
+  if (!own.length || (own.length === 1 && !formPos.has(own[0].pos))) return { lemmas, groups, plural };
+  return none;
+}
+
+/** Lemmas only, for callers that do not choose between them. */
+export function formOfLemmasFromKaikki(jsonl: string, word: string, lang = 'en'): string[] {
+  return readFormOf(jsonl, word, lang).lemmas;
 }
 
 /* ------------------------------------------------------------ frequencies */
@@ -224,14 +295,56 @@ export async function wordFrequencies(http: HttpClient, words: string[]): Promis
   return out;
 }
 
-/** The lemma far more common than the others (fifty times), or null when none is. */
-export function dominantLemma(lemmas: string[], freq: Map<string, number>): string | null {
-  if (lemmas.length === 1) return lemmas[0];
+/**
+ * The lemma far more common than the others (twenty times), or null when none is. `groups` puts
+ * spellings of one lemma together ("ax" and "axe"), which count as one at their commonest spelling.
+ */
+export function dominantLemma(lemmas: string[], freq: Map<string, number>, groups: string[][] = lemmas.map((l) => [l])): string | null {
+  if (groups.length === 1) return [...groups[0]].sort((a, b) => (freq.get(b) || 0) - (freq.get(a) || 0))[0] || null;
   if (!lemmas.every((l) => freq.has(l))) return null;
-  const ranked = [...lemmas].sort((a, b) => (freq.get(b) || 0) - (freq.get(a) || 0));
-  const top = freq.get(ranked[0]) || 0;
-  const next = freq.get(ranked[1]) || 0;
-  return top > 0 && top >= next * 50 ? ranked[0] : null;
+  const ranked = groups
+    .map((g) => {
+      const best = [...g].sort((a, b) => (freq.get(b) || 0) - (freq.get(a) || 0))[0];
+      return { best, f: freq.get(best) || 0 };
+    })
+    .sort((a, b) => b.f - a.f);
+  return ranked[0].f > 0 && ranked[0].f >= (ranked[1]?.f || 0) * 20 ? ranked[0].best : null;
+}
+
+const ownSenseMemo = new Map<string, Promise<boolean>>();
+
+/**
+ * Whether other dictionaries define a plural as a word of its own: WordNet, through Datamuse,
+ * has "savings" as "a fund of money put by", while "geese" and "paparazzi" have nothing of their
+ * own there, or only senses marked nonstandard ("(nonstandard) A paparazzo.").
+ */
+export function pluralHasOwnSense(http: HttpClient, word: string): Promise<boolean> {
+  const key = word.toLowerCase();
+  if (PLURALS_WITH_OWN_ENTRY.has(key)) return Promise.resolve(true);
+  let p = ownSenseMemo.get(key);
+  if (!p) {
+    p = http
+      .requestJson<Array<{ word?: string; defHeadword?: string; defs?: string[] }>>(
+        `https://api.datamuse.com/words?sp=${encodeURIComponent(word)}&md=d&max=1`,
+        { timeoutMs: 4000 },
+      )
+      .then((rows) => {
+        const hit = (rows || []).find((r) => String(r.word || '').toLowerCase() === key);
+        if (!hit || hit.defHeadword) return false;
+        return (hit.defs || []).some((d) => {
+          const [pos, gloss = ''] = String(d).split('\t');
+          if (pos !== 'n') return false;
+          const text = gloss.trim();
+          const label = /^\(([^)]*)\)/.exec(text)?.[1] || '';
+          if (/nonstandard|proscribed|rare|obsolete|archaic|dialect|uncountable/i.test(label)) return false;
+          if (/^(?:a|an|the)?\s*(?:individual\s+|single\s+)?[\p{L}-]+\.?$/iu.test(text.replace(/^\([^)]*\)\s*/, ''))) return false;
+          return !formOfGlossLemma(text);
+        });
+      });
+    ownSenseMemo.set(key, p);
+    p.catch(() => ownSenseMemo.delete(key));
+  }
+  return p;
 }
 
 /* --------------------------------------------------------------- resolving */
@@ -252,10 +365,16 @@ export function resolveFormOf(http: HttpClient, word: string, lang = 'en', timeo
     p = fetchKaikkiPage(http, w, dir, timeoutMs).then(async (page) => {
       // No page is no answer: the caller falls back to the senses it has.
       if (!page.trim()) throw Object.assign(new Error(`no kaikki page for ${w}`), { code: 'NO_PAGE' });
-      const lemmas = formOfLemmasFromKaikki(page, w, lang);
-      if (lemmas.length < 2) return lemmas[0] || null;
-      const freq = await wordFrequencies(http, lemmas.slice(0, 3));
-      return dominantLemma(lemmas.slice(0, 3), freq);
+      const reading = readFormOf(page, w, lang);
+      if (!reading.lemmas.length || PLURALS_WITH_OWN_ENTRY.has(w.toLowerCase())) return null;
+      // Only a regular plural (savings, belongings) can be a word of its own here; men and teeth are not.
+      const regular = reading.lemmas.some((l) => isRegularInflection(w, l));
+      if (reading.plural && regular && (await pluralHasOwnSense(http, w).catch(() => PLURALS_WITH_OWN_ENTRY.has(w.toLowerCase())))) return null;
+      if (reading.lemmas.length === 1) return reading.lemmas[0];
+      if (reading.groups.length < 2) return dominantLemma(reading.lemmas, await wordFrequencies(http, reading.lemmas.slice(0, 4)).catch(() => new Map<string, number>()), reading.groups);
+      const lemmas = reading.lemmas.slice(0, 4);
+      const freq = await wordFrequencies(http, lemmas);
+      return dominantLemma(lemmas, freq, reading.groups.map((g) => g.filter((l) => lemmas.includes(l))).filter((g) => g.length));
     });
     resolved.set(key, p);
     p.catch(() => resolved.delete(key));

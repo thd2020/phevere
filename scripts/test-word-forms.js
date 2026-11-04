@@ -149,27 +149,24 @@ async function savedNotebook(http) {
 const page = (w) => fs.readFileSync(path.join(__dirname, 'fixtures', 'inflections', `en-${w}.jsonl`), 'utf8');
 const rows = (table) => Object.fromEntries(table.rows.map((r) => [r.label, r.forms]));
 
-// Forms of one word open as that word; words with meanings of their own stay.
-const lemmas = (w) => fo.formOfLemmasFromKaikki(page(w), w);
-assert.deepEqual(lemmas('gleaned'), ['glean']);
-assert.deepEqual(lemmas('vicissitudes'), ['vicissitude']);
-assert.deepEqual(lemmas('paparazzi'), ['paparazzo'], '"Alternative form of" and "taken as a group" are not meanings of its own');
-assert.deepEqual(lemmas('idiosyncracy'), ['idiosyncrasy']);
-assert.deepEqual(lemmas('went'), ['go'], 'the obsolete noun and the archaic past of wend do not count');
-assert.deepEqual(lemmas('children'), ['child', 'childer']);
-for (const w of ['glasses', 'data', 'arms', 'news', 'is', 'glean', 'paparazzo', 'vicissitude', 'child', 'go', 'be']) {
-  assert.deepEqual(lemmas(w), [], `${w} is a word in its own right`);
-}
-
 // Two lemmas: the one far more common wins ("childer" is dialectal); two common ones stay ambiguous.
-const freq = new Map([['child', 180.9], ['childer', 0.027], ['axe', 3.3], ['axis', 23.7]]);
+const freq = new Map([
+  ['child', 180.9], ['childer', 0.027], ['ax', 1.2], ['axe', 3.3], ['axis', 23.7], ['be', 2600], ['wer', 0.05], ['tooth', 30], ['teethe', 0.3], ['run', 300], ['rin', 0.01],
+]);
 assert.equal(fo.dominantLemma(['child', 'childer'], freq), 'child');
 assert.equal(fo.dominantLemma(['axe', 'axis'], freq), null);
 assert.equal(fo.dominantLemma(['child', 'unknown'], freq), null, 'a lemma without a frequency decides nothing');
+assert.equal(fo.dominantLemma(['ax', 'axe', 'axis'], freq, [['ax', 'axe'], ['axis']]), null, '"ax and axe" is one lemma beside axis');
 
-// The same, resolved through a fake HTTP client: kaikki pages, then Datamuse for the tie.
+// Through a fake HTTP client: kaikki pages, then Datamuse for frequencies and for definitions.
 (async () => {
   const requests = [];
+  // WordNet, through Datamuse, defines savings as a word of its own; geese only as a band name.
+  const defs = {
+    savings: { word: 'savings', defs: ['n\ta fund of money put by as a reserve'] },
+    geese: { word: 'geese', defHeadword: 'Geese', defs: ['N\tan American rock band'] },
+    paparazzi: { word: 'paparazzi', defs: ['n\t(nonstandard, uncountable) Paparazzi taken as a group.', 'n\t(nonstandard) A paparazzo.'] },
+  };
   const http = {
     requestText: async (url) => {
       requests.push(url);
@@ -183,13 +180,23 @@ assert.equal(fo.dominantLemma(['child', 'unknown'], freq), null, 'a lemma withou
     requestJson: async (url) => {
       requests.push(url);
       const w = decodeURIComponent(/sp=([^&]+)/.exec(url)[1]);
+      if (/md=d/.test(url)) return defs[w] ? [defs[w]] : [];
       return freq.has(w) ? [{ word: w, tags: [`f:${freq.get(w)}`] }] : [];
     },
     requestBytes: async () => ({ ok: false, status: 404, bytes: new Uint8Array(), contentType: '' }),
   };
-  assert.equal(await fo.resolveFormOf(http, 'children'), 'child');
-  assert.equal(await fo.resolveFormOf(http, 'gleaned'), 'glean');
-  assert.equal(await fo.resolveFormOf(http, 'glasses'), null);
+  const opens = async (w) => fo.resolveFormOf(http, w);
+  // Forms of one word open as that word.
+  const forms = {
+    gleaned: 'glean', vicissitudes: 'vicissitude', paparazzi: 'paparazzo', idiosyncracy: 'idiosyncrasy', went: 'go',
+    children: 'child', geese: 'goose', mice: 'mouse', oxen: 'ox', ran: 'run', taught: 'teach', rested: 'rest', men: 'man',
+    teeth: 'tooth', is: 'be', was: 'be', were: 'be', been: 'be', had: 'have',
+  };
+  for (const [w, lemma] of Object.entries(forms)) assert.equal(await opens(w), lemma, `${w} opens ${lemma}`);
+  // Words with meanings of their own stay.
+  for (const w of ['glasses', 'data', 'arms', 'news', 'savings', 'axes', 'bacteria', 'ironed', 'glean', 'paparazzo', 'vicissitude', 'child', 'go', 'be']) {
+    assert.equal(await opens(w), null, `${w} is a word in its own right`);
+  }
   await assert.rejects(fo.resolveFormOf(http, 'nosuchword'), 'no page is no answer, so the caller falls back');
 
   // Wiktionary's REST senses as text, the fallback.

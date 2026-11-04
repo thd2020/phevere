@@ -1,2 +1,2 @@
-{"lang_code":"en","pos":"noun","senses":[{"tags":["form-of","plural"],"form_of":[{"word":"mouse"}]}]}
-{"lang_code":"en","pos":"verb","forms":[{"form":"mices","tags":["present","singular","third-person"]},{"form":"micing","tags":["participle","present"]},{"form":"miced","tags":["participle","past"]},{"form":"miced","tags":["past"]}],"senses":[{}]}
+{"lang_code":"en","word":"mice","pos":"noun","forms":[],"senses":[{"tags":["form-of","plural"],"glosses":["plural of mouse"],"form_of":[{"word":"mouse"}]}]}
+{"lang_code":"en","word":"mice","pos":"verb","forms":[{"form":"mices","tags":["present","singular","third-person"]},{"form":"micing","tags":["participle","present"]},{"form":"miced","tags":["participle","past"]},{"form":"miced","tags":["past"]}],"senses":[{"glosses":["To be distracted or inattentive (possibly alluding to a cat being distracted by a mouse)."]}]}
