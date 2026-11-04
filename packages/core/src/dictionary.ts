@@ -130,7 +130,7 @@ const PARTIAL_PERSIST_TTL_MS = 24 * 60 * 60 * 1000;
 /** Longest wait for the tagged page that says whether a word is a form of another. */
 const FORM_CHECK_MS = 3500;
 /** Longest a result that may be a form is held back while that page is on its way. */
-const FORM_HOLD_MS = 1500;
+const FORM_HOLD_MS = 1200;
 /** Results saved before forms opened as their word are looked up again once (2026-11-04). */
 const FORM_RULES_SINCE = Date.UTC(2026, 10, 4, 12);
 
@@ -981,7 +981,12 @@ export class DictionaryService extends BaseService {
     let releasing = false;
     const handle = (r: DictionaryResult): void => {
       if (movedOn || !opts?.onUpdate) return;
-      if (!formCheck && early && !earlyAnswer && Date.now() - started < FORM_HOLD_MS && (mayBeInflected || mayBeFormOf(r))) {
+      // Wiktionary calling the word a form keeps it back until the page answers; a word that may be
+      // inflected, or a result Wiktionary has not reached yet, waits a shorter while.
+      const formLike = mayBeFormOf(r);
+      const limit = formLike ? FORM_CHECK_MS : FORM_HOLD_MS;
+      const unsure = formLike || mayBeInflected || !wiktionarySenses(r).length;
+      if (!formCheck && early && !earlyAnswer && Date.now() - started < limit && unsure) {
         held = r;
         if (!releasing) {
           releasing = true;
@@ -991,7 +996,7 @@ export class DictionaryService extends BaseService {
             releasing = false;
             if (h && !movedOn) handle(h);
           };
-          void Promise.race([early.catch((): null => null), new Promise((res) => setTimeout(res, FORM_HOLD_MS - (Date.now() - started)))]).then(release);
+          void Promise.race([early.catch((): null => null), new Promise((res) => setTimeout(res, Math.max(0, limit - (Date.now() - started))))]).then(release);
         }
         return;
       }
