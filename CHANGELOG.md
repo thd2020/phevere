@@ -9,12 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Learn sessions (2026-11-04): a day's review runs in rounds of up to twenty words. The start card shows the round as learning, review and new words with an estimated time and how many more words today has, and a round ends with what you answered, the words you started, the words that grew stronger or slipped back, the words you missed, and a Next round button (Enter on the desktop). When more than five times your daily goal is due, fewer new words come that day, and the start card says how many wait.
+- Learn questions (2026-11-04): the kind of question follows how firmly you know the word instead of chance. A new word is recognised first, then picked from four, then typed when it comes back the same day; words held for days are typed, and words held for weeks are filled into a sentence, which can now come from the dictionary's example sentences when you saved no note. Listening questions are never more than a fifth of a session (one session of 44 questions had 21), and the session leans to whichever of meaning and spelling it has asked less.
+- Learn and word books (2026-11-04): new words are picked across your books as one pool instead of book by book. Each book still gives its daily number, but words that more of your books list, and words of a family you have started ("nationality" after "nation"), come first. A new word's question names the books that share it.
+- Progress (2026-11-04): every chart has axes, labels and units, and pointing at or tapping a bar or a day names it and lists its words, which open in lookup. The forgetting curve became "If you stop reviewing": a slider from 0 to 60 days shows your average recall, how many words would still be at 90% or more, and the weakest words, and tapping one draws its own curve. New cards show the reviews ahead for 30 days, answers per day with accuracy and time, how long your words are held, last week's mix of question kinds, what each list shares with the others, and trouble words. On the Today page, tapping a day of the due forecast lists its words, and the saved-words calendar has months, weekdays and each day's words.
 - Phone lookup (2026-11-04): the word, its pronunciations and the source tabs stay fixed and only the definitions scroll, so scrolling to the end of a long entry no longer pushes the word off the top. Pronunciations sit on one row that scrolls sideways, which leaves more room for the definitions.
 - Word book lists (2026-11-04): a book's List can be ordered by the book's own order, by the words you met most recently, or A to Z, and each word keeps its place number in the book. The book's header no longer carries the New a day chips (the daily goal lives in Learn), and Remove book is now a red close button on the book's chip in the switcher: it shows when you point at the chip on the desktop, and on the open book's chip on a phone.
 
 ### Added
 
+- Learn (2026-11-04): "Too easy" after a right answer saves it as easy, "Already know it" now works for any new word, My words included, and a word you keep missing (four lapses) is tagged as a trouble word, asked in an easier form and listed on Progress.
 - Search suggestions (2026-11-04): typing in the desktop search field or the phone's lookup field lists the commonest words that begin with what you typed, ranked by how often they are used in English rather than alphabetically. Plurals and past tenses of a listed word are left out, and a misspelling such as "recieve" or "accomodate" suggests the right spelling. The list works offline from the word books and widens online.
+
+### Fixed
+
+- Learn answer mark (2026-11-04): the check or cross now draws as an ink stroke over the whole question, its prompt and its options, more slowly, over a soft wash, while the right option fills. It plays on desktop and phone, also when Windows has "Show animations" off, which had hidden it completely; reduced motion keeps the fade and the drawing and leaves out the movement. A repaint while it plays no longer cuts it short.
+- Learn options (2026-11-04): a question no longer offers two forms or spellings of one word, such as "vicissitude" and "vicissitudes" or "glean" and "gleaned", and the shortest saved form is the answer. A session asks one form of each word.
+- Learn senses (2026-11-04): a question uses the first real sense of a word and skips citations ("↑ idiosyncracy, in Dictionary.com Unabridged…"), "plural of" lines and Wiktionary style text, and prefers an everyday sense to a dialect one. A word with nothing usable is skipped, or only heard.
+- Progress sync (2026-11-04): an answer from a device that still saves an older form of a word ("gleaned") lands on this device's card for the word ("glean").
 
 ## [4.0.0] - 2026-11-04
 
