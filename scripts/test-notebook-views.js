@@ -203,7 +203,18 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.equal(s.inRotation, 2);
   assert.ok(s.curve[0] > s.curve[30], 'recall falls without review');
   const page = progressHtml({ history, scope: 'mine', ctx: null, mine: words, goal: 10, now: t0 });
-  for (const label of ['New words', 'Reviews', 'Streak', 'Skills', 'Root families', 'Answers per day', 'Forgetting curve']) assert.match(page, new RegExp(label));
+  for (const label of ['New words', 'Reviews', 'Streak', 'Skills', 'Root families', 'Answers per day', 'If you stop reviewing', 'Reviews ahead, 30 days', 'How long words are held', 'Trouble words']) assert.match(page, new RegExp(label));
+  // Every chart has a y axis label, ticks and a readout, and each bar its own readout.
+  assert.match(page, /data-lrc="retention"[\s\S]*data-lrc-range/);
+  assert.match(page, /data-lrc="due30"[\s\S]*class="lrc-ylabel"[^>]*>Words due/);
+  assert.equal((page.match(/data-lrc="due30"[\s\S]*?<\/svg>/)[0].match(/class="lrc-hit"/g) || []).length, 30, 'one bar a day');
+  assert.match(page, /data-lrc="answers"[\s\S]*<template data-for="29"><p class="lrc-read__head"><b>[^<]+<\/b> · 2 answers, 50% right/);
+  assert.match(page, /Target: a word is due when it falls here/);
+  assert.equal(s.strength.reduce((n, b) => n + b.words.length, 0), 2, 'two started words');
+  assert.deepEqual(s.strength[0].words, ['transport'], 'transport is still learning');
+  assert.equal(s.mix.listening, 1);
+  const r14 = load('learn-charts').retentionAt(s.rotation, t0, 14);
+  assert.ok(r14.average < 1 && r14.weakest[0].lemma === 'transport', 'the learning word is weakest after two weeks');
   assert.match(progressHtml({ history: [], scope: 'mine', ctx: null, mine: [], goal: 10, now: t0 }), /No answers yet/);
 }
 
