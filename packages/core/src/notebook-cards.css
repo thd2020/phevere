@@ -99,6 +99,59 @@
 .nbv-pile__label b { font-weight: 600; color: var(--nbv-stone); font-variant-numeric: tabular-nums; }
 .nbv-pile:focus-visible { outline: none; }
 .nbv-pile:focus-visible .nbv-pile__label { text-decoration: underline 2px var(--nbv-ember); text-underline-offset: 4px; }
+/* An open pile: its cards have left, so the stack edge goes and its place is outlined. */
+.nbv-pile.is-open .nbv-pile__stack {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--felt-edge);
+}
+.nbv-pile.is-open .nbv-pile__label { color: var(--nbv-ember); }
+
+/* The strip under an open pile where its cards land, with a notch pointing up at the pile. */
+.nbv-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 0;
+  border-radius: 18px;
+  background: rgba(120, 88, 58, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(110, 80, 52, 0.12);
+  transition: transform 0.5s var(--card-ease), height 0.45s var(--card-ease);
+}
+.nbv-band::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  left: calc(var(--notch, 50%) - 8px);
+  width: 16px;
+  height: 16px;
+  border-radius: 3px 0 0 0;
+  background: inherit;
+  box-shadow: inset 1px 1px 0 rgba(110, 80, 52, 0.12);
+  transform: rotate(45deg);
+}
+.nbv-band__gather {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px 0 9px;
+  border: 1px solid var(--nbv-line);
+  border-radius: 999px;
+  background: var(--nbv-panel);
+  color: var(--nbv-ember);
+  font: 600 12.5px/1 var(--nbv-ui);
+  cursor: pointer;
+  transition: background-color 0.18s var(--card-ease);
+}
+.nbv-band__gather svg { width: 16px; height: 16px; }
+.nbv-band__gather:hover { background: var(--nbv-ember-soft); }
+.nbv-band__gather:focus-visible { outline: 2px solid var(--nbv-ember); outline-offset: 1px; }
+.nbv-table:not([data-layout='piles']) .nbv-band { display: none; }
+
 /* Scattered, the pile shrinks to a label at the top of its band of the table. */
 .nbv-table[data-layout='scatter'] .nbv-pile { width: auto; pointer-events: none; }
 .nbv-table[data-layout='scatter'] .nbv-pile__stack { display: none; }
@@ -126,12 +179,17 @@
   contain-intrinsic-size: var(--card-w) var(--card-h);
 }
 .nbv-table:not(.is-ready) .nbv-card { visibility: hidden; }
-.nbv-table[data-layout='piles']:not(.is-moving) .nbv-card[data-deep] { display: none; }
-.nbv-table[data-layout='scatter'] .nbv-card { touch-action: none; cursor: grab; }
+.nbv-table[data-layout='piles']:not(.is-moving) .nbv-card[data-deep]:not(.is-out) { display: none; }
+.nbv-table[data-layout='scatter'] .nbv-card,
+.nbv-card.is-out:not([data-rank='0']) { touch-action: none; cursor: grab; }
 .nbv-card.is-lifted { cursor: grabbing; box-shadow: var(--lift-shadow); will-change: transform; }
 .nbv-card:focus-visible { box-shadow: var(--card-shadow), 0 0 0 2px var(--nbv-panel), 0 0 0 4px var(--nbv-ember); }
 .nbv-table[data-layout='grid'] .nbv-card:hover,
-.nbv-table[data-layout='scatter'] .nbv-card:hover { box-shadow: var(--lift-shadow); }
+.nbv-table[data-layout='scatter'] .nbv-card:hover,
+.nbv-card.is-out:hover { box-shadow: var(--lift-shadow); }
+/* The picture turns the card over; the text under it opens the lookup. */
+.nbv-card__pic[data-act='nb-flip'] { cursor: pointer; }
+.nbv-table[data-layout='piles'] .nbv-card:not(.is-out) .nbv-card__pic { cursor: inherit; }
 
 .nbv-card__inner {
   position: relative;
@@ -193,7 +251,29 @@
 }
 .nbv-card__back p { margin: 0; font: 14px/1.4 var(--nbv-serif); color: var(--nbv-soft); }
 
-/* The meaning flip: a small round button so a tap on the card stays a lookup. */
+/* Look up, in the back's bottom-left corner opposite the turn button. */
+.nbv-card__look {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 11px 0 9px;
+  border: 1px solid var(--nbv-line);
+  border-radius: 999px;
+  background: var(--nbv-panel);
+  color: var(--nbv-teal);
+  font: 600 12.5px/1 var(--nbv-ui);
+  cursor: pointer;
+  transition: background-color 0.18s var(--card-ease);
+}
+.nbv-card__look svg { width: 15px; height: 15px; }
+.nbv-card__look:hover { background: var(--nbv-teal-soft); }
+.nbv-card__look:focus-visible { outline: 2px solid var(--nbv-teal); outline-offset: 1px; }
+
+/* The meaning flip: a small round button in the bottom-right corner of both sides. */
 .nbv-card__flip {
   position: absolute;
   right: 8px;
@@ -215,11 +295,13 @@
 .nbv-card__flip:hover { background: var(--nbv-ember-soft); }
 .nbv-card__flip:focus-visible { outline: 2px solid var(--nbv-ember); outline-offset: 1px; }
 .nbv-card.is-flipped .nbv-card__flip { transform: rotate(180deg); }
-.nbv-table[data-layout='piles'] .nbv-card__flip { display: none; }
+.nbv-table[data-layout='piles'] .nbv-card:not(.is-out) .nbv-card__flip { display: none; }
 
+/* Reduced motion: the same moves, short and without overshoot. */
 @media (prefers-reduced-motion: reduce) {
   .nbv-table__felt,
   .nbv-pile,
-  .nbv-card__inner,
-  .nbv-card__flip { transition: none; }
+  .nbv-band,
+  .nbv-card__flip { transition-duration: 0.14s; transition-timing-function: var(--card-ease); }
+  .nbv-card__inner { transition: transform 0.16s var(--card-ease); }
 }

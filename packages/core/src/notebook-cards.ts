@@ -1,7 +1,10 @@
 /**
  * Cards view: every saved word is an index card on a table. The cards start in piles (one
- * pile per stretch of time the words were saved in), burst out across the table when the
- * reader scatters them, can be dragged around freely, and line up in an A to Z grid.
+ * pile per stretch of time the words were saved in). Opening a pile spreads its cards on the
+ * table just below it while the other piles stay where they are; Scatter throws every pile
+ * across the table at once. Spread cards can be dragged around freely, and Grid lines them up
+ * A to Z. A card's picture turns it over, its back turns it back, and a card that shows its
+ * meaning straightens up so its text reads and scrolls along the page.
  *
  * `cardsHtml` returns the markup; `attachCardTable` lays the cards out and runs the motion.
  * Every layout is computed here as an absolute `transform` per card, so a change of layout
@@ -83,10 +86,12 @@ const LAYOUT_ICON: Record<CardLayout, string> = {
   grid: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6.5v6.5H4zM13.5 4H20v6.5h-6.5zM4 13.5h6.5V20H4zM13.5 13.5H20V20h-6.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
 };
 const FLIP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 12a8 8 0 0 1-13.7 5.6M17.5 3v3.6h-3.6M6.5 21v-3.6h3.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const LOOK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15 15l5 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
 
 /**
- * `picFlips` (the phone): a tap on the card's picture turns it over, as the turn button does,
- * and a tap on its text opens the lookup. Without it a click anywhere but the button looks up.
+ * On desktop and phone alike, the card's picture turns it over (as the turn button does) and its
+ * text opens the lookup. On the back, a click anywhere turns it back, and the Look up button in
+ * its corner opens the lookup. `opts` is kept for callers written before this was the default.
  */
 export function cardsHtml(
   entries: NotebookEntry[],
@@ -94,7 +99,7 @@ export function cardsHtml(
   flipped: Set<string>,
   layout: CardLayout = 'piles',
   now = Date.now(),
-  opts: { picFlips?: boolean } = {},
+  _opts: { picFlips?: boolean } = {},
 ): string {
   if (!entries.length) return `<p class="nbv-empty">No saved words.</p>`;
   const piles = cardPiles(entries, now);
@@ -104,24 +109,24 @@ export function cardsHtml(
     .join('')}</div>`;
   const pileHtml = piles
     .map(
-      (p) => `<button type="button" class="nbv-pile${p.ids.length > PILE_FACE_CARDS ? ' has-depth' : ''}" data-pile="${esc(p.key)}" aria-label="${esc(p.label)}, ${p.ids.length} ${p.ids.length === 1 ? 'card' : 'cards'}: scatter">
+      (p) => `<button type="button" class="nbv-pile${p.ids.length > PILE_FACE_CARDS ? ' has-depth' : ''}" data-pile="${esc(p.key)}" aria-expanded="false" aria-label="${esc(p.label)}, ${p.ids.length} ${p.ids.length === 1 ? 'card' : 'cards'}">
         <span class="nbv-pile__stack" aria-hidden="true"></span>
         <span class="nbv-pile__label">${esc(p.label)}<b>${p.ids.length}</b></span>
       </button>`,
     )
     .join('');
   const cards = piles
-    .flatMap((p) => p.ids.map((id, rank) => cardHtml(byId.get(id)!, a, flipped.has(id), p.key, rank, !!opts.picFlips)))
+    .flatMap((p) => p.ids.map((id, rank) => cardHtml(byId.get(id)!, a, flipped.has(id), p.key, rank)))
     .join('');
   return `<div class="nbv-table" data-layout="${layout}">${bar}<div class="nbv-table__felt">${pileHtml}${cards}</div></div>`;
 }
 
-function cardHtml(e: NotebookEntry, a: NotebookAnalysis, open: boolean, pile: string, rank: number, picFlips: boolean): string {
+function cardHtml(e: NotebookEntry, a: NotebookAnalysis, open: boolean, pile: string, rank: number): string {
   const w = a.words.get(e.id);
   const lemma = clean(e.lemma);
   const reading = vocabReadings(e.reading)[0];
   const senses = vocabSenses(e.definition).slice(0, 8);
-  const flip = picFlips ? ` data-act="nb-flip" data-id="${esc(e.id)}"` : '';
+  const flip = ` data-act="nb-flip" data-id="${esc(e.id)}"`;
   const morphs = (w?.morphs || []).filter((m) => m.kind !== 'char' || m.gloss).slice(0, 3);
   const parts = w && w.parts.length > 1 ? w.parts : [];
   const note = clean(e.note);
@@ -138,9 +143,10 @@ function cardHtml(e: NotebookEntry, a: NotebookAnalysis, open: boolean, pile: st
           ${note ? `<p class="nbv-card__note">${esc(note)}</p>` : ''}
         </div>
       </div>
-      <div class="nbv-card__face nbv-card__back">
+      <div class="nbv-card__face nbv-card__back"${flip}>
         <h3 class="nbv-card__word">${esc(lemma)}</h3>
         ${senses.length ? `<ol>${senses.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : '<p>No definition saved.</p>'}
+        <button type="button" class="nbv-card__look" data-act="lookup" data-q="${esc(lemma)}" tabindex="${open ? 0 : -1}">${LOOK_ICON}<span>Look up</span></button>
       </div>
     </div>
     <button type="button" class="nbv-card__flip" data-act="nb-flip" data-id="${esc(e.id)}" aria-pressed="${open}" aria-label="${open ? 'Show word' : 'Show meaning'}" title="${open ? 'Show word' : 'Show meaning'}">${FLIP_ICON}</button>

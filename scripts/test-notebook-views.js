@@ -119,6 +119,12 @@ assert.equal((chtml.match(/<article class="nbv-card[^"]*" data-act="lookup" data
 assert.match(chtml, /<article class="nbv-card" data-act="lookup" data-q="inspect"[^>]*tabindex="0"/);
 assert.equal((chtml.match(/<button type="button" class="nbv-card__flip" data-act="nb-flip"/g) || []).length, entries.length);
 assert.match(chtml, /class="nbv-card is-flipped" data-act="lookup" data-q="inspector"/);
+// The picture and the back turn the card over; Look up on the back opens the lookup.
+assert.equal((chtml.match(/class="nbv-card__pic" data-act="nb-flip"/g) || []).length, entries.length);
+assert.equal((chtml.match(/class="nbv-card__face nbv-card__back" data-act="nb-flip"/g) || []).length, entries.length);
+assert.match(chtml, /class="nbv-card__look" data-act="lookup" data-q="inspector" tabindex="0"/);
+assert.match(chtml, /class="nbv-card__look" data-act="lookup" data-q="inspect" tabindex="-1"/);
+assert.match(chtml, /class="nbv-pile[^"]*" data-pile="week" aria-expanded="false"/);
 assert.match(chtml, /class="nbv-pile[^"]*" data-pile="week"/);
 assert.match(chtml, /This week<b>\d+<\/b>/);
 assert.match(chtml, /data-img-lemma="spectator"/);

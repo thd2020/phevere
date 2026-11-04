@@ -2945,10 +2945,15 @@ function wireNotebookActions(root: HTMLElement): void {
         if (nbFlipped.has(id)) nbFlipped.delete(id);
         else nbFlipped.add(id);
         const open = nbFlipped.has(id);
-        el.closest<HTMLElement>('.nbv-card')?.classList.toggle('is-flipped', open);
-        el.setAttribute('aria-pressed', open ? 'true' : 'false');
-        el.setAttribute('aria-label', open ? 'Show word' : 'Show meaning');
-        el.title = open ? 'Show word' : 'Show meaning';
+        // The picture, the back of the card and the turn button all flip; the button shows the state.
+        const card = el.closest<HTMLElement>('.nbv-card');
+        card?.classList.toggle('is-flipped', open);
+        const turn = card?.querySelector<HTMLElement>('.nbv-card__flip');
+        if (turn) {
+          turn.setAttribute('aria-pressed', open ? 'true' : 'false');
+          turn.setAttribute('aria-label', open ? 'Show word' : 'Show meaning');
+          turn.title = open ? 'Show word' : 'Show meaning';
+        }
         return;
       }
       case 'nb-goal':
