@@ -38,6 +38,7 @@ async function database() {
 async function storage() {
   const { app, BrowserWindow } = require('electron');
   app.setPath('userData', userData);
+  require('./electron-test-env')(app);
   await app.whenReady();
   const window = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
   await window.loadFile(fixture);

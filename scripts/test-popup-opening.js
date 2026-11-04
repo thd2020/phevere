@@ -19,6 +19,7 @@ const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const fixture = process.env.PHEVERE_POPUP_OPENING_TEST_DIR;
 assert.ok(fixture, 'Run through Node so cleanup follows Electron exit');
 app.setPath('userData', fixture);
+require('./electron-test-env')(app);
 app.on('window-all-closed', () => {});
 let win;
 const sizeModule = { exports: {} };
