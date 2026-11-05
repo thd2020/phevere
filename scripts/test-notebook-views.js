@@ -106,7 +106,14 @@ assert.ok(md.edges.every(([x, y]) => md.nodes[x] && md.nodes[y]));
 assert.match(mh, /data-map-search/);
 assert.match(mh, /data-act="nb-map-kind" data-kind="root"/);
 assert.match(mh, /data-map-act="reset"/);
-assert.match(mh, /8 of 9 words/, 'apple is the one word with no connection');
+// apple shares nothing: it is on the map all the same, unlinked, and Find a word finds it.
+assert.match(mh, /data-count="9 words"/);
+const apple = md.nodes.find((p) => p.l === 'apple');
+assert.equal(apple?.u, 1, 'apple is unlinked');
+assert.equal(md.nodes.filter((p) => p.u).length, 1, 'the only unlinked word');
+assert.ok(!md.edges.some(([x, y]) => md.nodes[x] === apple || md.nodes[y] === apple));
+assert.deepEqual(views.findMapWords(md, 'apple').map((p) => p.l), ['apple']);
+assert.match(views.mapHtml(a, ['root', 'char'], { query: 'apple' }), /data-map-goto="[^"]+"/, 'the Words search opens the map on an unlinked word');
 assert.equal(views.notebookMapData(a, ['root', 'char']), md, 'layout cached');
 // Finding a word: itself first, then the word it inflects, then words starting with it.
 assert.deepEqual(views.findMapWords(md, 'inspect').map((p) => p.l), ['inspect', 'inspector']);
