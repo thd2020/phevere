@@ -469,16 +469,15 @@ function groupsFromBuckets(buckets: FamilyBuckets, surfaceKey = ''): WordFamilyG
       }
       seen.add(k);
       unique.push({ word: it.word, label: it.label });
+      if (unique.length >= FAMILY_CAP) break;
     }
     if (!unique.length) continue;
-    // Ranked before the cap, so a long list (Wiktionary's derived terms of "time") keeps its
-    // closest members rather than its first forty.
     if (relation === 'derived' || relation === 'phrases' || relation === 'related') {
       const indexed = unique.map((it, i) => ({ it, i, r: familyRank(it.word, surfaceKey, relation) }));
       indexed.sort((a, b) => a.r - b.r || a.i - b.i);
-      out.push({ relation, items: indexed.map((x) => x.it).slice(0, FAMILY_CAP) });
+      out.push({ relation, items: indexed.map((x) => x.it) });
     } else {
-      out.push({ relation, items: unique.slice(0, FAMILY_CAP) });
+      out.push({ relation, items: unique });
     }
   }
   return out;
