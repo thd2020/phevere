@@ -4,7 +4,7 @@
  *
  * Run:
  *   node scripts/measure-sense-images.js --db <notebook.sqlite> [--limit 100] [--out result.json]
- *   node scripts/measure-sense-images.js --words words.txt [--mode cards|lookup|both] [--parallel 1]
+ *   node scripts/measure-sense-images.js --words words.txt [--mode cards|lookup|both] [--parallel 1] [--app] [--gap 2500] [--client node] [--trace]
  *   node scripts/measure-sense-images.js --relevance scripts/fixtures/sense-images-relevance.json --senses 60
  *
  * `--db` reads the lemma, language and saved definition of every word in the `vocab` table; the
@@ -43,7 +43,8 @@ const parallel = Math.max(1, Number(arg('parallel', '3')) || 3);
 const relevancePath = arg('relevance', '');
 const mode = relevancePath ? 'lookup' : arg('mode', 'both');
 const appMode = args.includes('--app');
-const maxSenses =Math.max(1, Number(arg('senses', '12')) || 12);
+const gapMs = Math.max(0, Number(arg('gap', '0')) || 0);
+const maxSenses = Math.max(1, Number(arg('senses', '12')) || 12);
 fs.mkdirSync(cacheDir, { recursive: true });
 
 const UA = 'Phevere-measure/1 (https://github.com/thd2020/phevere)';
@@ -437,6 +438,9 @@ async function main() {
         }
       }
       if (!warm && (i + 1) % 50 === 0) console.log(`  ${i + 1} words, ${requests - startRequests} requests`);
+      // `--gap` waits between words, so the run stays under the request rate without the pacing
+      // above holding up a word that is being timed.
+      if (gapMs && !warm) await new Promise((r) => setTimeout(r, gapMs));
     });
     return times;
   };
