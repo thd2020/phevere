@@ -502,7 +502,7 @@ function suggestHtml(goal: number, opts: ReviewRenderOptions): string {
   const current = opts.goalBook ? opts.goalBook.goal : goal;
   const n = suggestGoal(current, opts.pace);
   if (n == null) return '';
-  return `<p class="nbv-quiz__note nbv-suggest">${fmt(n)} new words a day fits your recent study time <button type="button" class="nbv-link" data-act="learn-use-goal" data-book="${esc(opts.goalBook?.id || '')}" data-goal="${n}">Use ${fmt(n)}</button></p>`;
+  return `<p class="nbv-quiz__note nbv-suggest">${fmt(n)} new ${n === 1 ? 'word' : 'words'} a day fits your recent study time <button type="button" class="nbv-link" data-act="learn-use-goal" data-book="${esc(opts.goalBook?.id || '')}" data-goal="${n}">Use ${fmt(n)}</button></p>`;
 }
 
 function startHtml(entries: NotebookEntry[], state: ReviewState, now: number, goal = 0, opts: ReviewRenderOptions = {}): string {
