@@ -86,6 +86,11 @@ const degrees = inflectionsHtml(
 assert.doesNotMatch(degrees, /data-lookup="more redundant"|data-lookup="most redundant"/, 'a multi-word form is not a link');
 assert.match(degrees, /more redundant/, 'but it is still shown');
 assert.match(degrees, /data-lookup="redundanter"/, 'a one-word form stays a link');
+// "better is the comparative of good and well": two links, not one to "good and well".
+const better = inflectionsHtml({ formOf: [{ label: 'comparative', lemma: 'good and well' }], tables: [] }, 'better', 'lookup');
+assert.doesNotMatch(better, /data-lookup="good and well"/, 'two lemmas are not one link');
+assert.match(better, /data-lookup="good"[^>]*>good<\/span> and <span[^>]*data-lookup="well"/, 'each lemma is its own link');
+assert.match(inflectionsHtml({ formOf: [{ label: 'form', lemma: 'look up' }], tables: [] }, 'looked up', 'lookup'), /data-lookup="look up"/, 'a phrasal lemma stays one link');
 
 // Word family: closest members in a line, the rest folded, affixes and roots as "Built from".
 const many = Array.from({ length: 15 }, (_, i) => ({ word: `run${i}` }));

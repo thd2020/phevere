@@ -76,13 +76,25 @@ function tableHtml(t: InflectionTable, links: LexiconLinks): string {
   return `<section class="lx-infl">${head}${rows}${grids}</section>`;
 }
 
+/**
+ * The word a form belongs to, linked. Wiktextract names two lemmas in one string ("good and
+ * well" for better, "ax and axe" for axes); each is linked on its own and "and" stays text.
+ * A lemma of several words with no "and" or "or" ("look up") stays one link.
+ */
+function lemmaLinks(lemma: string, links: LexiconLinks): string {
+  const parts = String(lemma || '').split(/(\s+(?:and|or)\s+|\s*,\s*)/);
+  const names = parts.filter((_, i) => i % 2 === 0);
+  if (parts.length < 3 || names.some((p) => !p.trim() || /\s/.test(p.trim()))) return link(lemma, links);
+  return parts.map((p, i) => (i % 2 ? esc(p) : link(p.trim(), links))).join('');
+}
+
 /** The Forms section, or '' when there is nothing to show. */
 export function inflectionsHtml(infl: WordInflections | null | undefined, word: string, links: LexiconLinks): string {
   if (!infl || (!infl.formOf.length && !infl.tables.length)) return '';
   const formOf = infl.formOf
     .map((f) => {
       const label = f.label === 'form' ? 'a form' : `the ${esc(f.label)}`;
-      return `<p class="lx-formof"><i>${esc(word)}</i> is ${label} of ${link(f.lemma, links)}.</p>`;
+      return `<p class="lx-formof"><i>${esc(word)}</i> is ${label} of ${lemmaLinks(f.lemma, links)}.</p>`;
     })
     .join('');
   return `<div class="lx-forms">${formOf}${infl.tables.map((t) => tableHtml(t, links)).join('')}</div>`;
