@@ -344,6 +344,21 @@ export function dominantLemma(lemmas: string[], freq: Map<string, number>, group
 const ownSenseMemo = new Map<string, Promise<boolean>>();
 
 /**
+ * One Datamuse definition ("n\ta fund of money put by as a reserve") that is a common noun sense
+ * of its own: not a proper noun (Datamuse writes "N"), not marked nonstandard, rare or the like,
+ * not a bare pointer such as "A paparazzo.", and not "plural of …".
+ */
+export function isOwnNounGloss(raw: string): boolean {
+  const [pos, gloss = ''] = String(raw).split('\t');
+  if (pos !== 'n') return false;
+  const text = gloss.trim();
+  const label = /^\(([^)]*)\)/.exec(text)?.[1] || '';
+  if (/nonstandard|proscribed|rare|obsolete|archaic|dialect|uncountable/i.test(label)) return false;
+  if (/^(?:a|an|the)?\s*(?:individual\s+|single\s+)?[\p{L}-]+\.?$/iu.test(text.replace(/^\([^)]*\)\s*/, ''))) return false;
+  return !formOfGlossLemma(text);
+}
+
+/**
  * Whether other dictionaries define a plural as a word of its own: WordNet, through Datamuse,
  * has "savings" as "a fund of money put by", while "geese" and "paparazzi" have nothing of their
  * own there, or only senses marked nonstandard ("(nonstandard) A paparazzo.").
@@ -360,15 +375,7 @@ export function pluralHasOwnSense(http: HttpClient, word: string): Promise<boole
       .then((rows) => {
         const hit = (rows || []).find((r) => String(r.word || '').toLowerCase() === key);
         if (!hit || hit.defHeadword) return false;
-        return (hit.defs || []).some((d) => {
-          const [pos, gloss = ''] = String(d).split('\t');
-          if (pos !== 'n') return false;
-          const text = gloss.trim();
-          const label = /^\(([^)]*)\)/.exec(text)?.[1] || '';
-          if (/nonstandard|proscribed|rare|obsolete|archaic|dialect|uncountable/i.test(label)) return false;
-          if (/^(?:a|an|the)?\s*(?:individual\s+|single\s+)?[\p{L}-]+\.?$/iu.test(text.replace(/^\([^)]*\)\s*/, ''))) return false;
-          return !formOfGlossLemma(text);
-        });
+        return (hit.defs || []).some((d) => isOwnNounGloss(String(d)));
       });
     ownSenseMemo.set(key, p);
     p.catch(() => ownSenseMemo.delete(key));

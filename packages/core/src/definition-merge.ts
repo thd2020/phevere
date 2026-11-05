@@ -18,6 +18,11 @@ export interface MergeableDefinition {
   senseOrder?: number;
   /** SemCor tag count of the aligned WordNet sense (see sense-frequency.ts); absent when unaligned. */
   frequency?: number;
+  /**
+   * A sense of the looked-up form itself from a source that usually answers with its lemma's:
+   * WordNet, through Datamuse, defines "savings" as "a fund of money put by as a reserve".
+   */
+  ownSense?: boolean;
 }
 
 /** Strip sense numbers, parenthetical asides, and normalize for comparison. */
@@ -311,6 +316,7 @@ export function mergeSimilarDefinitions(defs: MergeableDefinition[]): MergeableD
       sources,
       source: formatSourceLabel(sources),
       senseOrder: Math.min(base.senseOrder ?? 80, incoming.senseOrder ?? 80),
+      ...(base.ownSense || incoming.ownSense ? { ownSense: true } : {}),
     };
   }
 
@@ -336,23 +342,59 @@ function sourceRank(def: MergeableDefinition): number {
  * glosses (“present participle of …”), and every sense from Wiktionary,
  * whose page for the form holds only that form's senses.
  */
-export function stripCrossLemmaSenses<T extends MergeableDefinition>(surface: string, defs: T[]): T[] {
+export function stripCrossLemmaSenses<T extends MergeableDefinition>(
+  surface: string,
+  defs: T[],
+  isFormOf: (meaning: string) => boolean = isGrammaticalFormOfGloss,
+): T[] {
   const lemmas = latinLemmasByPos(surface);
   if (!lemmas.noun && !lemmas.verb && !lemmas.adjective) return defs;
-  return (defs || []).filter((d) => {
-    if (isGrammaticalFormOfGloss(d.meaning)) return true;
-    // Wiktionary's page for the form lists the form's own senses ("glasses": spectacles).
-    if (/wiktionary/i.test(String((d as { source?: unknown }).source || ''))) return true;
+  const bucketOf = (d: MergeableDefinition): 'noun' | 'verb' | 'adjective' | null => {
     const pos = canonicalPos(d.partOfSpeech);
     const raw = String(d.partOfSpeech || '');
-    const bucket =
-      pos === 'noun' ? 'noun'
+    return pos === 'noun' ? 'noun'
       : pos === 'verb' || /participle|gerund/i.test(raw) ? 'verb'
       : pos === 'adjective' ? 'adjective'
       : null;
+  };
+  const fromWiktionary = (d: MergeableDefinition) => /wiktionary/i.test(String(d.source || ''));
+  // Parts of speech where Wiktionary's page for the form has a sense of its own.
+  const wikiOwn = new Set((defs || []).filter((d) => fromWiktionary(d) && !isFormOf(d.meaning)).map(bucketOf));
+  return (defs || []).filter((d) => {
+    if (isGrammaticalFormOfGloss(d.meaning)) return true;
+    // Wiktionary's page for the form lists the form's own senses ("glasses": spectacles).
+    if (fromWiktionary(d)) return true;
+    const bucket = bucketOf(d);
     if (!bucket) return true;
+    // Where Wiktionary has only "plural of saving", WordNet's own "savings" sense stays.
+    if (d.ownSense && !wikiOwn.has(bucket)) return true;
     return !lemmas[bucket];
   });
+}
+
+/**
+ * Within each part of speech that has senses of its own, "plural of saving" and other form-of
+ * senses come after them, as learner dictionaries give "savings" its money sense first and
+ * leave the relation to a note. Every sense keeps a place its part of speech held, so the parts
+ * of speech stay in their order, and one made only of form-of senses is left as it is.
+ */
+export function formOfSensesLast<T extends MergeableDefinition>(defs: T[], isFormOf: (meaning: string) => boolean): T[] {
+  const list = [...(defs || [])];
+  const slots = new Map<string, number[]>();
+  list.forEach((d, i) => {
+    const pos = canonicalPos(d.partOfSpeech);
+    if (!slots.has(pos)) slots.set(pos, []);
+    slots.get(pos)!.push(i);
+  });
+  const out = [...list];
+  for (const at of slots.values()) {
+    const members = at.map((i) => list[i]);
+    const own = members.filter((d) => !isFormOf(d.meaning));
+    if (!own.length || own.length === members.length) continue;
+    const ordered = [...own, ...members.filter((d) => isFormOf(d.meaning))];
+    at.forEach((i, k) => (out[i] = ordered[k]));
+  }
+  return out;
 }
 
 /** Free Dictionary / Wiktionary native order first (common-reading), then other packs. */

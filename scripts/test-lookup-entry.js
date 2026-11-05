@@ -134,6 +134,21 @@ configureCore({
   assert.equal((await exact.lookup('it.', 'zh')).word, 'it', 'a page with no English section is not the typed title');
   assert.equal((await exact.lookup('e.g.', 'zh')).word, 'e.g.', 'the last stop of e.g. belongs to it');
   assert.equal((await exact.lookup("'em", 'zh')).word, "'em", 'an apostrophe with a page of its own stays');
+
+  // "savings": Wiktionary has only "plural of saving"; WordNet, through Datamuse, defines the plural
+  // itself (both as answered on 2026-11-05). It keeps its own entry and its money sense comes first.
+  rest.savings = { en: [{ partOfSpeech: 'Noun', language: 'English', definitions: [{ definition: '<span class="form-of-definition">plural of <a href="/wiki/saving">saving</a></span>' }] }] };
+  kaikki.savings = { word: 'savings', lang_code: 'en', pos: 'noun', senses: [{ tags: ['form-of', 'plural'], form_of: [{ word: 'saving' }], glosses: ['plural of saving'] }] };
+  routes.json.unshift([
+    (u) => u.hostname === 'api.datamuse.com' && u.pathname === '/words' && u.searchParams.get('sp') === 'savings',
+    () => [{ word: 'savings', tags: ['f:30.1'], defs: ['n\ta fund of money put by as a reserve'] }],
+  ]);
+  const savings = await new DictionaryService().lookup('savings', 'zh');
+  assert.equal(savings.word, 'savings', 'a plural with a sense of its own keeps its entry');
+  const senses = savings.definitions.map((d) => d.meaning);
+  assert.match(senses[0], /fund of money/, 'its own sense first');
+  const plural = senses.findIndex((m) => /plural of/.test(m));
+  assert.ok(plural > 0, `"plural of saving" after it (${senses.join(' | ')})`);
   console.log('Lookup entry passed: "Did you mean" stays through later updates; "etc.", "e.g." and "C++" open as typed; "hello,", "no." and "it." open hello, no and it.');
   // The service keeps safety-net timers for lookups; they would hold the process open.
   process.exit(0);

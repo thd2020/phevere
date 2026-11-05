@@ -65,6 +65,8 @@ export interface Definition {
   senseOrder?: number;
   /** SemCor tag count of the WordNet sense this sense aligns to (English only; see sense-frequency.ts). */
   frequency?: number;
+  /** The looked-up form's own sense from a source that usually gives its lemma's (definition-merge.ts). */
+  ownSense?: boolean;
 }
 
 import { BaseService, DictionaryError, withTimeout } from './base';
@@ -79,11 +81,11 @@ import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigur
 import { registerHeadwordResolver } from './vocab-store';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey, exactQuery, exactLookupKey, hasEdgePunctuation } from './text-normalize';
 import { isGrammaticalFormOfGloss, splitSurfaceAndLemma, sameLookupFold, stripGlossText } from './lookup-policy';
-import { formLine, formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, resolveFormOf } from './form-of';
+import { formLine, formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, isOwnNounGloss, resolveFormOf } from './form-of';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { lookupMorpheme, morphemeOffers, parseMorphemeQuery } from './morpheme';
 import { groupYoudaoEtymologies, sameHeadword, serializeEtymologySources } from './etymology-sources';
-import { mergeSimilarDefinitions, dedupeExamples, exampleKey, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses } from './definition-merge';
+import { mergeSimilarDefinitions, dedupeExamples, exampleKey, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses, formOfSensesLast } from './definition-merge';
 import { orderSensesByFrequency, warmSenseFrequency } from './sense-frequency';
 import {
   Pronunciation,
@@ -183,6 +185,12 @@ type LookupOpts = {
   /** Set on the lookup of the word a form stands for, so it cannot redirect again. */
   noFormRedirect?: boolean;
 };
+
+/** "plural of saving", "past tense of go": a sense that only points at another word. */
+function isFormOfSense(meaning: string): boolean {
+  const text = stripGlossText(String(meaning || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+  return !!formOfGlossLemma(text) || isGrammaticalFormOfGloss(text);
+}
 
 /** The characters trimming took off the edges of `sanitized` to leave `trimmed` ("etc." gives "."). */
 function edgeMarks(sanitized: string, trimmed: string): string[] {
@@ -1316,9 +1324,10 @@ export class DictionaryService extends BaseService {
     const sorted = sortDefinitionsByReadingOrder(
       mergeSimilarDefinitions([...(base.definitions || []), ...(extra.definitions || [])]) as Definition[],
     ) as Definition[];
-    const definitions = (extra.detectedLanguage || base.detectedLanguage) === 'en'
-      ? orderSensesByFrequency(extra.word || base.word, sorted)
-      : sorted;
+    const definitions = formOfSensesLast(
+      (extra.detectedLanguage || base.detectedLanguage) === 'en' ? orderSensesByFrequency(extra.word || base.word, sorted) : sorted,
+      isFormOfSense,
+    );
     const pronunciations = mergePronunciations(base.pronunciations, extra.pronunciations);
     const sourceStatus: Record<string, string> = {};
     const rank = (s?: string) => (s === 'ok' ? 3 : s === 'empty' ? 2 : s === 'skip' ? 1 : 0);
@@ -2112,8 +2121,9 @@ export class DictionaryService extends BaseService {
         sortDefinitionsByReadingOrder(
           mergeSimilarDefinitions(uniqueDefinitions) as Definition[],
         ) as Definition[],
+        isFormOfSense,
       );
-      const ordered = usageOrder ? orderSensesByFrequency(text, readingOrder) : readingOrder;
+      const ordered = formOfSensesLast(usageOrder ? orderSensesByFrequency(text, readingOrder) : readingOrder, isFormOfSense);
       // An example sentence shows once, under the first sense that has it ("A burst pipe flooded
       // my bathroom." came with both the sense and its sub-sense).
       const shownExamples = new Set<string>();
@@ -3073,7 +3083,10 @@ export class DictionaryService extends BaseService {
         definitions.push({
           partOfSpeech: DictionaryService.DATAMUSE_POS[pos] || pos || 'unknown',
           meaning,
-          source: 'Datamuse'
+          source: 'Datamuse',
+          // No defHeadword: WordNet defines this very form ("savings": a fund of money), as
+          // pluralHasOwnSense judges it, rather than lending it its lemma's senses.
+          ...(!top.defHeadword && isOwnNounGloss(String(raw)) ? { ownSense: true } : {}),
         });
       }
     }
