@@ -4,10 +4,26 @@
  * `screen.getCursorScreenPoint()` use Electron DIP.
  */
 
-import { screen } from 'electron';
+import { screen, type BrowserWindow, type Rectangle } from 'electron';
 import type { ContextEvent } from './context-capture';
 
 export type ScreenCoordSpace = 'dip' | 'physical';
+
+/**
+ * Move a window, and repeat the move once if Windows put it somewhere else. Moving onto a
+ * display with another scale factor sends WM_DPICHANGED, and Chromium then rescales the
+ * rectangle it was given (electron/electron#27651, #18622; the workaround there is a
+ * second setBounds). A strip reused across a 100% and a 150% monitor landed far from the
+ * word without it.
+ */
+export function setWindowBounds(win: Pick<BrowserWindow, 'setBounds' | 'getBounds'>, rect: Rectangle): void {
+  win.setBounds(rect, false);
+  if (process.platform !== 'win32') return;
+  const got = win.getBounds();
+  if (got.x !== rect.x || got.y !== rect.y || got.width !== rect.width || got.height !== rect.height) {
+    win.setBounds(rect, false);
+  }
+}
 
 export function eventCoordSpace(
   event?: Pick<ContextEvent, 'origin' | 'coordSpace'> | null,
