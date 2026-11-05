@@ -259,6 +259,7 @@ export {
   type ReviewResult,
   type QuestionKind,
 } from './review-quiz';
+export { singleVoice, type VoiceBackend, type VoiceOutcome } from './pronounce-once';
 export { type ReviewRenderOptions } from './notebook-review';
 
 export { onVocabChanged } from './vocab-store';

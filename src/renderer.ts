@@ -74,6 +74,7 @@ import {
   scopeBookFor,
   type AnswerRecord,
   type LearnPage,
+  singleVoice,
   startReview,
   answerReview,
   overrideReview,
@@ -4433,29 +4434,27 @@ async function wireUpdatesPanel(): Promise<void> {
 
 let lemmaAudio: HTMLAudioElement | null = null;
 
+let lemmaAudioPrefs: { enabled?: boolean; speed?: number; volume?: number } = { enabled: true, speed: 1, volume: 1 };
+
+function playLemmaSrc(src: string, recorded: boolean): Promise<void> {
+  const prefs = lemmaAudioPrefs;
+  const el = new Audio(src);
+  el.volume = Math.max(0, Math.min(1, Number(prefs.volume ?? 1)));
+  el.preservesPitch = true;
+  el.playbackRate = recorded ? Math.max(0.5, Math.min(2, Number(prefs.speed) || 1)) : 1;
+  lemmaAudio = el;
+  return el.play();
+}
+
 /**
- * Notebook ▶, same rule as the phone's playLemma: recorded clip (US, UK, other) from the
- * word's lookup, usually cached; otherwise the voice chosen in Settings → Audio.
+ * Notebook and Learn ▶, same rule as the phone's playLemma: the recorded clip (US, UK, other)
+ * from the word's lookup, usually cached, or else the voice chosen in Settings → Audio; never
+ * both, and a newer press stops an older one (`singleVoice`). A clip is fetched before it counts
+ * as the word's recording, so one that cannot be fetched leaves the synthetic voice.
  */
-async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise<void> {
-  const api = window.electronAPI as any;
-  const prefs = (await api?.getAudioPrefs?.()) || { enabled: true, speed: 1, volume: 1 };
-  if (prefs.enabled === false) return;
-  btn?.classList.add('is-speaking');
-  const play = async (src: string, recorded: boolean) => {
-    try {
-      lemmaAudio?.pause();
-    } catch {
-      /* ignore */
-    }
-    const el = new Audio(src);
-    el.volume = Math.max(0, Math.min(1, Number(prefs.volume)));
-    el.preservesPitch = true;
-    el.playbackRate = recorded ? Math.max(0.5, Math.min(2, Number(prefs.speed) || 1)) : 1;
-    lemmaAudio = el;
-    await el.play();
-  };
-  try {
+const sayLemma = singleVoice({
+  recordings: async (lemma) => {
+    const api = window.electronAPI as any;
     let urls: string[] = [];
     try {
       const result: any = await window.dictionaryAPI?.lookup(lemma, 'auto');
@@ -4473,16 +4472,37 @@ async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise
       try {
         const got = await api?.fetchPronunciationAudio?.(u);
         const src = got && got.ok ? got.playUrl || got.dataUrl : '';
-        if (!src) continue;
-        await play(src, true);
-        return;
+        if (src) return [src];
       } catch {
         /* next clip */
       }
     }
+    return [];
+  },
+  playRecording: (src) => playLemmaSrc(src, true),
+  speak: async (lemma) => {
+    const api = window.electronAPI as any;
     const speech = await api?.synthesizeSpeech?.({ text: lemma, lang: 'en' });
-    if (speech?.ok && speech.dataUrl) await play(speech.dataUrl, false);
+    if (speech?.ok && speech.dataUrl) await playLemmaSrc(speech.dataUrl, false);
     else showNotification('Could not play pronunciation');
+  },
+  stop: () => {
+    try {
+      lemmaAudio?.pause();
+    } catch {
+      /* ignore */
+    }
+    lemmaAudio = null;
+  },
+});
+
+async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise<void> {
+  const api = window.electronAPI as any;
+  lemmaAudioPrefs = (await api?.getAudioPrefs?.()) || { enabled: true, speed: 1, volume: 1 };
+  if (lemmaAudioPrefs.enabled === false) return;
+  btn?.classList.add('is-speaking');
+  try {
+    await sayLemma(lemma);
   } finally {
     setTimeout(() => btn?.classList.remove('is-speaking'), 500);
   }

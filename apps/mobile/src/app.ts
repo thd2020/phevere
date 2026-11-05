@@ -99,6 +99,7 @@ import {
   reviewAnswerDetails,
   scopeBookFor,
   listAnswerHistory,
+  singleVoice,
   type AnswerRecord,
   type LearnPage,
   type RecentLookup,
@@ -112,7 +113,7 @@ import {
   type BookScope,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
-import { playRecorded, prefetchRecorded, recordedReady, speakIpa, speakText } from './platform/audio';
+import { playClip, playRecorded, prefetchRecorded, recordedReady, recordedUrls, speakIpa, speakText, stopAudio } from './platform/audio';
 import {
   applyInsets,
   hasNativeBridge,
@@ -1808,18 +1809,30 @@ function onSelectionSettled(): void {
   void lookup(q);
 }
 
-/** Notebook ▶ plays the same recorded human clip as the lookup headword button. */
+/**
+ * Notebook and Learn ▶ play the same recorded human clip as the lookup headword button, or the
+ * synthetic voice when the word has none; never both, and a newer press stops an older one.
+ */
+let sayLemma: ((lemma: string) => Promise<unknown>) | null = null;
+
+const lemmaVoice = () => singleVoice({
+  recordings: async (lemma) => {
+    if (result && result.word.toLowerCase() === lemma.toLowerCase()) return recordedUrls(result);
+    // Lookups are cached in core; a word saved earlier usually resolves without network.
+    const found = await dictionaryService
+      .lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), { skipEtymology: true })
+      .catch(() => null);
+    return recordedUrls(found);
+  },
+  playRecording: (url) => playClip(url, prefs),
+  speak: (lemma) => speakText(lemma, prefs),
+  stop: stopAudio,
+});
+
 async function playLemma(lemma: string): Promise<void> {
-  if (!lemma) return;
-  if (result && result.word.toLowerCase() === lemma.toLowerCase()) {
-    await playRecorded(result, prefs);
-    return;
-  }
-  // Lookups are cached in core; a word saved earlier usually resolves without network.
-  const found = await dictionaryService
-    .lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), { skipEtymology: true })
-    .catch(() => null);
-  await playRecorded(found ?? { word: lemma } as DictionaryResult, prefs);
+  if (!lemma || !prefs.audioEnabled) return;
+  sayLemma ??= lemmaVoice();
+  await sayLemma(lemma);
 }
 
 /** A speaker tapped with Pronunciation switched off says why nothing plays. */
