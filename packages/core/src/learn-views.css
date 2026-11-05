@@ -122,9 +122,6 @@
 .lrc-seg--mature, .lrc-seg--right { fill: var(--nbv-teal); background: var(--nbv-teal); }
 .lrc-seg--wrong { fill: #d98a5c; background: #d98a5c; }
 .lrc-seg--none { fill: var(--nbv-line); }
-.lrc-seg--avg { background: var(--nbv-teal); }
-.lrc-seg--share { background: #8fd3d5; }
-.lrc-seg--word { background: var(--nbv-ember); }
 
 .lrc-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 0; font: 500 11.5px/1.2 var(--nbv-ui); color: var(--nbv-soft); }
 .lrc-legend span { display: inline-flex; align-items: center; gap: 5px; }
@@ -184,24 +181,55 @@
 .lrc-heat--4 { fill: var(--nbv-ember); background: var(--nbv-ember); }
 .lrc-heat-key { width: 10px; height: 10px; border-radius: 2.5px; }
 
-/* Retention */
-.lrc-line { fill: none; stroke-linejoin: round; stroke-linecap: round; pointer-events: none; }
-.lrc-line--avg { stroke: var(--nbv-teal); stroke-width: 2.4; }
-.lrc-line--share { stroke: #8fd3d5; stroke-width: 2; stroke-dasharray: 1 0; }
-.lrc-line--word { stroke: var(--nbv-ember); stroke-width: 2; }
-.lrc-cursor { stroke: var(--nbv-ink); stroke-width: 1; opacity: 0.6; }
-.lrc-dot { fill: var(--nbv-panel); stroke: var(--nbv-teal); stroke-width: 2.4; }
-.lrc-range { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; font: 600 12.5px/1 var(--nbv-ui); color: var(--nbv-ink); }
-.lrc-range output { min-width: 58px; text-align: right; font: 600 16px/1 var(--nbv-serif); font-variant-numeric: tabular-nums; }
-.lrc-range input { width: 100%; accent-color: var(--nbv-teal); height: 28px; }
-@media (max-width: 420px) { .lrc-range { grid-template-columns: minmax(0, 1fr) auto; } .lrc-range input { grid-column: 1 / -1; grid-row: 2; } }
-
-/* Wide windows: charts keep a readable size, and the retention chart puts its slider and readout beside it. */
-.lrc-svg { max-width: 560px; }
+/*
+ * Memory (learn-charts.ts): the number of words you would recall, a sentence with what changes,
+ * and a strip with one dot per word by its chance of recall, teal when held and rust once below
+ * 90% (due). Today, In a week and In a month move the dots to where they would be.
+ */
+.lrc--memory { display: grid; gap: 16px; }
 @media (min-width: 760px) {
-  .lrc--retention { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); column-gap: 24px; align-items: start; }
-  .lrc--retention > .lrc-svg { grid-row: 1 / span 4; }
-  .lrc--retention > .lrc-legend,
-  .lrc--retention > .lrc-range,
-  .lrc--retention > .lrc-readout { grid-column: 2; }
+  .lrc--memory { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); column-gap: 36px; align-items: start; }
+  .lrc-mem__head { grid-row: 1 / span 2; }
+  .lrc--memory > .lrc-readout { grid-column: 2; }
 }
+.lrc-mem__head { min-width: 0; }
+.lrc-mem__big {
+  margin: 0;
+  font: 700 clamp(104px, 28vw, 184px)/0.76 var(--nbv-serif);
+  font-variation-settings: 'opsz' 60;
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: -0.07em;
+  color: var(--nbv-teal);
+}
+.lrc-mem__lede { max-width: 28ch; margin: 14px 0 0; font: 400 18px/1.3 var(--nbv-serif); letter-spacing: -0.01em; color: var(--nbv-ink); text-wrap: pretty; }
+.lrc-mem__lede b { font-weight: 700; font-variant-numeric: lining-nums; color: var(--nbv-ember); }
+.lrc-mem__chart { display: grid; gap: 8px; min-width: 0; }
+.lrc-mem__whens { display: inline-flex; justify-self: start; gap: 2px; padding: 3px; border-radius: 999px; background: var(--nbv-paper-2); }
+.lrc-mem__when {
+  height: 30px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--nbv-soft);
+  font: 600 12.5px/1 var(--nbv-ui);
+  cursor: pointer;
+  transition: background-color 0.2s var(--nbv-motion), color 0.2s var(--nbv-motion), box-shadow 0.2s var(--nbv-motion);
+}
+.lrc-mem__when.is-on { background: var(--nbv-panel); color: var(--nbv-ink); box-shadow: 0 1px 2px rgba(28, 25, 23, 0.12); }
+.lrc-mem__when:focus-visible { outline: 2px solid var(--nbv-teal); outline-offset: 1px; }
+.lrc-svg.lrc-mem__svg { max-width: 520px; outline: none; cursor: crosshair; }
+.lrc-mem__svg:focus-visible { outline: 2px solid var(--nbv-teal); outline-offset: 4px; border-radius: 6px; }
+.lrc-mem__zone { fill: rgba(156, 61, 0, 0.06); }
+.lrc-mem__zlabel { font: 700 8px var(--nbv-ui); letter-spacing: 0.1em; text-transform: uppercase; text-anchor: end; fill: var(--nbv-ember) !important; }
+.lrc-mem__zlabel.is-held { text-anchor: start; fill: var(--nbv-teal) !important; }
+.lrc-mem__dot { fill: var(--nbv-teal); transition: transform 0.75s cubic-bezier(0.22, 1, 0.36, 1), fill 0.45s var(--nbv-motion); }
+.lrc-mem__dot.is-due { fill: var(--nbv-ember); }
+.lrc-mem__ring { fill: none; stroke: var(--nbv-ink); stroke-width: 1.4; pointer-events: none; transition: transform 0.22s var(--nbv-motion), opacity 0.15s var(--nbv-motion); }
+.lrc-xlabel { margin: 0; font: 600 9.5px/1 var(--nbv-ui); letter-spacing: 0.02em; text-align: right; color: var(--nbv-soft); }
+@media (prefers-reduced-motion: reduce) {
+  .lrc-mem__dot, .lrc-mem__ring { transition: none; }
+}
+
+/* Wide windows: charts keep a readable size. */
+.lrc-svg { max-width: 560px; }

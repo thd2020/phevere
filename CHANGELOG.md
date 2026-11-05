@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Learn settings (2026-11-05): new words a day moved from the Learn tab to a new Learn section in Settings, on the desktop and the phone. It sets the goal for My words and for each word book you study, from 5, 10, 20 or 40 or any number up to 999. The same section has a countdown for choice questions (Off, or 5 to 30 seconds) and, once the device has a microphone that Phevere may use, a switch for speaking questions. The Today page now shows the goal as a fact, such as "10 new words a day"; tapping it opens Settings → Learn. A round already under way is not restarted when you change a goal.
+- Memory on Progress (2026-11-05): "If you stop reviewing", with its 0 to 60 day slider and average recall, is replaced by Memory. A large number says how many of the words you are learning you would recall today, counted as the sum of each word's chance of recall, and a sentence says how many are below 90% and due. Below it every word is a dot placed by its chance of recall, teal while held and rust once due. Today, In a week and In a month move the dots to where they would be without review, and the sentence then says how many fewer words you would recall and how many would be due. Pointing at or tapping a dot, or moving along them with the arrow keys, names the word, its recall, when you last reviewed it and the date it falls below 90%; the words fading first are listed under the strip.
 
 ## [4.1.0] - 2026-11-05
 

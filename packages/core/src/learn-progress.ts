@@ -1,6 +1,6 @@
 /**
- * The Learn tab's Progress page: today against the daily goals and the streak, what your memory
- * of the words would do if you stopped reviewing (a slider over FSRS's predicted recall), the
+ * The Learn tab's Progress page: today against the daily goals and the streak, your memory of the
+ * words today and after a week or a month without review (one dot per word by FSRS's recall), the
  * reviews ahead, answers per day, how firmly the words are held, the skills and the mix of
  * question kinds, each list with what it shares with the others, trouble words and root families.
  *
@@ -14,7 +14,7 @@ import { predictedRecall } from './review-schedule';
 import { SKILLS, historyByWord, skillMastery, type AnswerRecord, type Skill } from './answer-history';
 import { bookEntry, bookProgress, scopeEntries, wordStatus, wordbookMeta, type WordsContext, type WordsEntry, type WordsScope } from './wordbooks';
 import { LEECH_LAPSES, memoryLevel } from './review-quiz';
-import { barChartHtml, dayLabel, retentionHtml, wordChips, type BarDatum, type RetentionWord } from './learn-charts';
+import { barChartHtml, dayLabel, memoryHtml, wordChips, type BarDatum, type RetentionWord } from './learn-charts';
 import { forecastChartHtml } from './notebook-review';
 
 export interface ProgressInput {
@@ -428,8 +428,8 @@ export function progressHtml(input: ProgressInput): string {
       <div class="lrp-stat"><b>${accuracy}</b><span>Right today</span></div>
       <div class="lrp-streak${s.streak ? ' is-on' : ''}">${flame}<div><b>${s.streak}<small> ${s.streak === 1 ? 'day' : 'days'}</small></b><span>Streak · best ${s.bestStreak}</span></div></div>
     </section>
-    <section class="lrp-card lrp-wide"><h3>If you stop reviewing</h3>${
-      s.inRotation ? retentionHtml({ id: 'retention', words: s.rotation, now, days: 14, maxDays: 60 }) : '<p class="lrp-none">No words in rotation yet</p>'
+    <section class="lrp-card lrp-wide"><h3>Memory</h3>${
+      s.inRotation ? memoryHtml({ id: 'memory', words: s.rotation, now }) : '<p class="lrp-none">No words in rotation yet</p>'
     }</section>
     <section class="lrp-card"><h3>Reviews ahead, 30 days</h3>${forecastChartHtml(words, now, 30, 'due30')}</section>
     <section class="lrp-card"><h3>Answers per day</h3>${answered ? perDayChart(s.perDay) : '<p class="lrp-none">No answers yet</p>'}</section>

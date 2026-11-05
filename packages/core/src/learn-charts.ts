@@ -1,15 +1,15 @@
 /**
  * Charts of the Learn tab, shared by the Today and Progress pages on desktop and phone: bar charts
  * with axes, gridlines and a readout that names the day (or bucket) under the pointer or finger,
- * a calendar heatmap with month and weekday labels, and the retention chart with its "stop
- * reviewing for N days" slider.
+ * a calendar heatmap with month and weekday labels, and the memory strip: one dot per word by its
+ * chance of recall today, in a week or in a month without review.
  *
- * Rendering is pure HTML and SVG. `attachLearnCharts` adds the pointer, keyboard and slider
+ * Rendering is pure HTML and SVG. `attachLearnCharts` adds the pointer, keyboard and switch
  * behaviour; each shell calls it after painting Learn. Without it every chart still shows its
  * numbers and its default readout.
  *
  * Hooks: data-lrc (a chart), data-i (a bar or cell), template[data-for] (its readout),
- * data-lrc-readout, data-lrc-range (the slider), data-lrc-word (a word whose curve to draw).
+ * data-lrc-readout, data-lrc-when (a moment on the memory strip), data-lrc-word (a word to point out).
  */
 import { esc } from './notebook-shared';
 import { DESIRED_RETENTION, recallAt } from './review-schedule';
@@ -186,22 +186,12 @@ export function heatmapHtml(spec: HeatmapSpec): string {
   </div>`;
 }
 
-/* --------------------------------------------------------------- retention */
+/* ------------------------------------------------------------------ memory */
 
 export interface RetentionWord {
   lemma: string;
   stability: number;
   lastReview: number;
-}
-
-export interface RetentionSpec {
-  id: string;
-  words: RetentionWord[];
-  now: number;
-  /** Days on the slider at first. */
-  days?: number;
-  /** The slider's end. */
-  maxDays?: number;
 }
 
 export interface RetentionAt {
@@ -223,69 +213,185 @@ export function retentionAt(words: RetentionWord[], now: number, days: number, w
   return { days, average, above, weakest: list.slice(0, weakest) };
 }
 
-const R_W = 320;
-const R_H = 182;
-const R_LEFT = 32;
-const R_TOP = 24;
-const R_BASE = R_H - 26;
-const R_LO = 0;
+/** Today, a week and a month without review: the three moments the memory strip shows. */
+export const MEMORY_HORIZONS = [
+  { days: 0, label: 'Today', phrase: 'today' },
+  { days: 7, label: 'In a week', phrase: 'in a week without review' },
+  { days: 30, label: 'In a month', phrase: 'in a month without review' },
+] as const;
 
-function rx(day: number, maxDays: number): number {
-  return R_LEFT + ((R_W - R_LEFT - 6) * day) / maxDays;
-}
-function ry(r: number): number {
-  return R_TOP + (R_BASE - R_TOP) * (1 - (Math.max(R_LO, Math.min(1, r)) - R_LO) / (1 - R_LO));
-}
-
-/** The polyline points of one curve, sampled every day from now. */
-export function curvePoints(f: (day: number) => number, maxDays: number): string {
-  const pts: string[] = [];
-  for (let d = 0; d <= maxDays; d++) pts.push(`${rx(d, maxDays).toFixed(1)},${ry(f(d)).toFixed(1)}`);
-  return pts.join(' ');
+export interface MemoryAt {
+  days: number;
+  /** Words you would recall: the sum of every word's chance of recall (Anki's "estimated total knowledge"). */
+  recalled: number;
+  /** Words below the target retention, which are due for review by then. */
+  below: number;
+  /** Recall of each word, in the order given. */
+  recall: number[];
 }
 
-function retentionReadout(r: RetentionAt, total: number): string {
-  const when = r.days === 0 ? 'Now' : `After ${r.days} ${r.days === 1 ? 'day' : 'days'} without review`;
-  const weak = r.weakest
-    .map((w) => `<button type="button" class="lrc-word" data-lrc-word="${esc(w.lemma)}" aria-pressed="false">${esc(w.lemma)}<small>${Math.round(w.recall * 100)}%</small></button>`)
+export function memoryAt(words: RetentionWord[], now: number, days: number): MemoryAt {
+  const at = now + days * DAY;
+  const recall = words.map((w) => recallAt(w.stability, w.lastReview, at));
+  return {
+    days,
+    recalled: recall.reduce((s, r) => s + r, 0),
+    below: recall.filter((r) => r < DESIRED_RETENTION - 1e-9).length,
+    recall,
+  };
+}
+
+/** When a word's recall falls to the target: FSRS stability is the days from the last review until it does. */
+export function slipDate(w: RetentionWord): number {
+  return w.lastReview + w.stability * DAY;
+}
+
+const M_W = 320;
+const M_LEFT = 6;
+const M_RIGHT = 6;
+const M_TOP = 18;
+const M_DOTS = 70;
+const M_BASE = M_TOP + M_DOTS;
+const M_H = M_BASE + 20;
+/** The strip runs from 50% recall at the left to 100% at the right; lower recall piles up at the left edge. */
+const M_LO = 0.5;
+
+function mx(r: number): number {
+  const v = Math.max(M_LO, Math.min(1, r));
+  return M_LEFT + ((M_W - M_LEFT - M_RIGHT) * (v - M_LO)) / (1 - M_LO);
+}
+
+export interface MemoryLayout {
+  /** Dot diameter, the same for every horizon so the dots keep their size as they move. */
+  size: number;
+  /** Per horizon, each word's centre. */
+  at: Array<Array<{ x: number; y: number }>>;
+}
+
+/**
+ * A beeswarm of the words along the recall axis for each horizon: words fall into columns one dot
+ * wide and stack up from the baseline. The dot size is the largest that fits the tallest stack.
+ */
+export function memoryLayout(recalls: number[][]): MemoryLayout {
+  const usable = M_W - M_LEFT - M_RIGHT;
+  const tallest = (size: number) =>
+    Math.max(
+      0,
+      ...recalls.map((rs) => {
+        const cols = new Map<number, number>();
+        for (const r of rs) {
+          const c = Math.round((mx(r) - M_LEFT) / size);
+          cols.set(c, (cols.get(c) || 0) + 1);
+        }
+        return Math.max(0, ...cols.values());
+      }),
+    );
+  let size = 9;
+  while (size > 2 && tallest(size) * size > M_DOTS) size -= 0.5;
+  const at = recalls.map((rs) => {
+    const order = rs.map((r, i) => ({ r, i })).sort((a, b) => b.r - a.r || a.i - b.i);
+    const height = new Map<number, number>();
+    const out: Array<{ x: number; y: number }> = new Array(rs.length);
+    for (const { r, i } of order) {
+      const c = Math.min(Math.round(usable / size), Math.max(0, Math.round((mx(r) - M_LEFT) / size)));
+      const h = height.get(c) || 0;
+      height.set(c, h + 1);
+      out[i] = { x: M_LEFT + c * size, y: M_BASE - size / 2 - h * size };
+    }
+    return out;
+  });
+  return { size, at };
+}
+
+export interface MemorySpec {
+  id: string;
+  words: RetentionWord[];
+  now: number;
+}
+
+/** Recall as a whole percent, rounded down, so a word just under the target never reads as 90%. */
+const recallPct = (r: number) => `${Math.floor(r * 100 + 1e-9)}%`;
+
+function memoryLede(m: MemoryAt, total: number, today: MemoryAt, h: (typeof MEMORY_HORIZONS)[number]): string {
+  const target = `${Math.round(DESIRED_RETENTION * 100)}%`;
+  const lost = Math.round(today.recalled) - Math.round(m.recalled);
+  const loss = m.days && lost > 0 ? `, <b>${fmt(lost)}</b> fewer than today` : '';
+  let due: string;
+  if (!m.days) {
+    due = m.below ? `<b>${fmt(m.below)}</b> ${m.below === 1 ? 'is' : 'are'} below ${target} and due now.` : `Every one is above ${target}.`;
+  } else if (!m.below) {
+    due = `Every one would still be above ${target}.`;
+  } else {
+    due = m.below === total ? `All of them would be below ${target}.` : `<b>${fmt(m.below)}</b> would be below ${target}.`;
+  }
+  return `words you would ${m.days ? 'still ' : ''}recall ${h.phrase}, of ${fmt(total)} you are learning${loss}. ${due}`;
+}
+
+function memoryReadout(words: RetentionWord[], m: MemoryAt, picked: number | null, now: number): string {
+  const target = `${Math.round(DESIRED_RETENTION * 100)}%`;
+  if (picked != null && words[picked]) {
+    const w = words[picked];
+    const slip = slipDate(w);
+    const when = slip <= now ? `Fell below ${target} on ${esc(dayLabel(slip))}, so it is due.` : `Falls below ${target} on ${esc(dayLabel(slip))}.`;
+    const at = m.days ? (MEMORY_HORIZONS.find((h) => h.days === m.days)?.label.toLowerCase() ?? '') : 'today';
+    return `<p class="lrc-read__head"><button type="button" class="lrc-chip" data-act="lookup" data-q="${esc(w.lemma)}">${esc(w.lemma)}</button> <b>${recallPct(m.recall[picked])}</b> recall ${esc(at)}</p><p class="lrc-read__sub">Last reviewed ${esc(dayLabel(w.lastReview))}. ${when}</p>`;
+  }
+  const order = m.recall.map((r, i) => ({ r, i })).sort((a, b) => a.r - b.r || words[a.i].lemma.localeCompare(words[b.i].lemma));
+  const weak = order
+    .slice(0, 8)
+    .map(({ r, i }) => `<button type="button" class="lrc-word" data-lrc-word="${i}" aria-pressed="false">${esc(words[i].lemma)}<small>${recallPct(r)}</small></button>`)
     .join('');
-  return `<p class="lrc-read__head"><b>${when}</b></p>
-    <p class="lrc-read__nums"><span><b>${Math.round(r.average * 100)}%</b> average recall</span><span><b>${fmt(r.above)}</b> of ${fmt(total)} words at ${Math.round(DESIRED_RETENTION * 100)}% or more</span></p>
-    ${weak ? `<p class="lrc-read__label">Weakest by then</p><div class="lrc-words">${weak}</div>` : ''}`;
+  return `<p class="lrc-read__label">Fading first</p><div class="lrc-words">${weak}</div>`;
 }
 
-export function retentionHtml(spec: RetentionSpec): string {
-  const maxDays = spec.maxDays ?? 60;
-  const days = Math.max(0, Math.min(maxDays, spec.days ?? 14));
+/**
+ * Your memory now and after a week or a month without review: one dot per word placed by its
+ * chance of recall, the words below 90% (due) in ember, the number of words you would recall
+ * and how many fewer that is than today. A word's dot tells when it falls below 90%.
+ */
+export function memoryHtml(spec: MemorySpec): string {
   const words = spec.words;
-  const avg = (d: number) => retentionAt(words, spec.now, d, 0).average;
-  const share = (d: number) => (words.length ? retentionAt(words, spec.now, d, 0).above / words.length : 0);
-  const grid = [1, 0.9, 0.75, 0.5, 0.25, 0]
-    .map((r) => {
-      const target = Math.abs(r - DESIRED_RETENTION) < 1e-9;
-      return `<line class="lrc-grid${target ? ' is-target' : ''}" x1="${R_LEFT}" x2="${R_W - 6}" y1="${ry(r).toFixed(1)}" y2="${ry(r).toFixed(1)}"/><text class="lrc-ytick${target ? ' is-target' : ''}" x="${R_LEFT - 5}" y="${(ry(r) + 3).toFixed(1)}">${Math.round(r * 100)}%</text>`;
+  const states = MEMORY_HORIZONS.map((h) => memoryAt(words, spec.now, h.days));
+  const layout = memoryLayout(states.map((s) => s.recall));
+  const today = states[0];
+  const r = layout.size / 2 - 0.4;
+  const dots = words
+    .map((w, i) => {
+      const p = layout.at[0][i];
+      return `<circle class="lrc-mem__dot${today.recall[i] < DESIRED_RETENTION - 1e-9 ? ' is-due' : ''}" data-w="${i}" r="${r.toFixed(2)}" style="transform:translate(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px);transition-delay:${Math.round((i / Math.max(1, words.length)) * 160)}ms"/>`;
     })
     .join('');
-  const xt = [0, 7, 14, 30, maxDays]
-    .filter((d, i, a) => d <= maxDays && a.indexOf(d) === i)
-    .map((d) => `<text class="lrc-xtick" x="${rx(d, maxDays).toFixed(1)}" y="${R_BASE + 14}">${d === 0 ? 'Now' : `${d} d`}</text>`)
+  const ticks = [0.5, 0.7, 0.9, 1]
+    .map((v) => `<text class="lrc-xtick${v === DESIRED_RETENTION ? ' is-mark' : ''}" x="${mx(v).toFixed(1)}" y="${M_BASE + 14}">${v === M_LO ? '≤50%' : `${Math.round(v * 100)}%`}</text>`)
     .join('');
-  const at = retentionAt(words, spec.now, days);
-  const data = JSON.stringify({ now: spec.now, max: maxDays, words: words.map((w) => [w.lemma, Math.round(w.stability * 1000) / 1000, w.lastReview]) }).replace(/</g, '\\u003c');
-  return `<div class="lrc lrc--retention" data-lrc="${esc(spec.id)}">
-    <svg class="lrc-svg" viewBox="0 0 ${R_W} ${R_H}" role="img" aria-label="Predicted recall of your words if you stop reviewing">
-      <text class="lrc-ylabel" x="0" y="9">Recall</text>
-      ${grid}${xt}
-      <text class="lrc-target" x="${R_W - 6}" y="${(ry(DESIRED_RETENTION) - 4).toFixed(1)}">Due at ${Math.round(DESIRED_RETENTION * 100)}% recall</text>
-      <polyline class="lrc-line lrc-line--share" points="${curvePoints(share, maxDays)}"/>
-      <polyline class="lrc-line lrc-line--avg" points="${curvePoints(avg, maxDays)}"/>
-      <polyline class="lrc-line lrc-line--word" data-lrc-wordline points=""/>
-      <line class="lrc-cursor" data-lrc-cursor x1="${rx(days, maxDays).toFixed(1)}" x2="${rx(days, maxDays).toFixed(1)}" y1="${R_TOP}" y2="${R_BASE}"/>
-      <circle class="lrc-dot" data-lrc-dot cx="${rx(days, maxDays).toFixed(1)}" cy="${ry(at.average).toFixed(1)}" r="4"/>
-    </svg>
-    <p class="lrc-legend"><span><i class="lrc-seg--avg"></i>Average recall</span><span><i class="lrc-seg--share"></i>Words at ${Math.round(DESIRED_RETENTION * 100)}% or more</span><span data-lrc-wordkey hidden><i class="lrc-seg--word"></i><b></b></span></p>
-    <label class="lrc-range"><span>Stop reviewing for</span><input type="range" min="0" max="${maxDays}" step="1" value="${days}" data-lrc-range aria-label="Days without review"/><output data-lrc-days>${days} ${days === 1 ? 'day' : 'days'}</output></label>
-    <div class="lrc-readout lrc-readout--retention" data-lrc-readout aria-live="polite">${retentionReadout(at, words.length)}</div>
+  const target = mx(DESIRED_RETENTION);
+  const seg = MEMORY_HORIZONS.map(
+    (h, i) => `<button type="button" class="lrc-mem__when${i === 0 ? ' is-on' : ''}" data-lrc-when="${i}" aria-pressed="${i === 0}">${esc(h.label)}</button>`,
+  ).join('');
+  const data = JSON.stringify({
+    now: spec.now,
+    words: words.map((w) => [w.lemma, Math.round(w.stability * 1000) / 1000, w.lastReview]),
+  }).replace(/</g, '\\u003c');
+  return `<div class="lrc lrc--memory" data-lrc="${esc(spec.id)}">
+    <div class="lrc-mem__head">
+      <p class="lrc-mem__big" data-mem-big>${fmt(Math.round(today.recalled))}</p>
+      <p class="lrc-mem__lede" data-mem-lede>${memoryLede(today, words.length, today, MEMORY_HORIZONS[0])}</p>
+    </div>
+    <div class="lrc-mem__chart">
+      <div class="lrc-mem__whens" role="group" aria-label="Without review">${seg}</div>
+      <svg class="lrc-svg lrc-mem__svg" viewBox="0 0 ${M_W} ${M_H}" role="img" aria-label="Your words by chance of recall" tabindex="0">
+        <rect class="lrc-mem__zone" x="${M_LEFT - 2}" y="${M_TOP - 6}" width="${(target - M_LEFT + 2).toFixed(1)}" height="${M_DOTS + 6}" rx="6"/>
+        <line class="lrc-grid is-base" x1="${M_LEFT}" x2="${M_W - M_RIGHT}" y1="${M_BASE}" y2="${M_BASE}"/>
+        <line class="lrc-grid is-target" x1="${target.toFixed(1)}" x2="${target.toFixed(1)}" y1="${M_TOP - 6}" y2="${M_BASE}"/>
+        <text class="lrc-mem__zlabel" x="${(target - 5).toFixed(1)}" y="${M_TOP + 4}">Due</text>
+        <text class="lrc-mem__zlabel is-held" x="${(target + 5).toFixed(1)}" y="${M_TOP + 4}">Held</text>
+        ${ticks}
+        <g class="lrc-mem__dots">${dots}</g>
+        <circle class="lrc-mem__ring" data-mem-ring r="${(layout.size / 2 + 2.5).toFixed(2)}" style="opacity:0"/>
+      </svg>
+      <p class="lrc-xlabel">Chance of recall</p>
+    </div>
+    <div class="lrc-readout" data-lrc-readout aria-live="polite">${memoryReadout(words, today, null, spec.now)}</div>
     <script type="application/json" data-lrc-data>${data}</script>
   </div>`;
 }
@@ -323,58 +429,125 @@ function itemOf(target: EventTarget | null, chart: HTMLElement): HTMLElement | n
   return el && chart.contains(el) ? el : null;
 }
 
-function wireRetention(chart: HTMLElement): void {
-  let data: { now: number; max: number; words: Array<[string, number, number]> };
+function wireMemory(chart: HTMLElement): void {
+  let data: { now: number; words: Array<[string, number, number]> };
   try {
     data = JSON.parse(chart.querySelector('[data-lrc-data]')?.textContent || '');
   } catch {
     return;
   }
   const words: RetentionWord[] = data.words.map(([lemma, stability, lastReview]) => ({ lemma, stability, lastReview }));
-  const range = chart.querySelector<HTMLInputElement>('[data-lrc-range]');
+  const states = MEMORY_HORIZONS.map((h) => memoryAt(words, data.now, h.days));
+  const layout = memoryLayout(states.map((s) => s.recall));
+  const svg = chart.querySelector<SVGSVGElement>('.lrc-mem__svg');
+  const dots = [...chart.querySelectorAll<SVGCircleElement>('.lrc-mem__dot')];
+  const ring = chart.querySelector<SVGCircleElement>('[data-mem-ring]');
+  const big = chart.querySelector<HTMLElement>('[data-mem-big]');
+  const lede = chart.querySelector<HTMLElement>('[data-mem-lede]');
   const out = chart.querySelector<HTMLElement>('[data-lrc-readout]');
-  const label = chart.querySelector<HTMLElement>('[data-lrc-days]');
-  const cursor = chart.querySelector<SVGLineElement>('[data-lrc-cursor]');
-  const dot = chart.querySelector<SVGCircleElement>('[data-lrc-dot]');
-  const line = chart.querySelector<SVGPolylineElement>('[data-lrc-wordline]');
-  const key = chart.querySelector<HTMLElement>('[data-lrc-wordkey]');
-  let word = '';
-  const drawWord = () => {
-    const w = words.find((x) => x.lemma === word);
-    if (!line || !key) return;
-    if (!w) {
-      line.setAttribute('points', '');
-      key.hidden = true;
+  let when = 0;
+  let picked: number | null = null;
+  let hover: number | null = null;
+  const place = (i: number) => layout.at[when][i];
+  const mark = () => {
+    const i = hover ?? picked;
+    if (!ring) return;
+    if (i == null) {
+      ring.style.opacity = '0';
       return;
     }
-    line.setAttribute('points', curvePoints((d) => recallAt(w.stability, w.lastReview, data.now + d * DAY), data.max));
-    key.hidden = false;
-    const b = key.querySelector('b');
-    if (b) b.textContent = w.lemma;
+    const p = place(i);
+    ring.style.opacity = '1';
+    ring.style.transform = `translate(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px)`;
   };
-  const update = () => {
-    const days = Number(range?.value || 0);
-    const r = retentionAt(words, data.now, days);
-    if (label) label.textContent = `${days} ${days === 1 ? 'day' : 'days'}`;
-    const x = rx(days, data.max).toFixed(1);
-    cursor?.setAttribute('x1', x);
-    cursor?.setAttribute('x2', x);
-    dot?.setAttribute('cx', x);
-    dot?.setAttribute('cy', ry(r.average).toFixed(1));
-    if (word && !r.weakest.some((w) => w.lemma === word)) {
-      const w = words.find((x) => x.lemma === word);
-      if (w) r.weakest.push({ lemma: w.lemma, recall: recallAt(w.stability, w.lastReview, data.now + days * DAY) });
+  const readout = () => {
+    if (out) out.innerHTML = memoryReadout(words, states[when], hover ?? picked, data.now);
+    out?.querySelectorAll<HTMLElement>('[data-lrc-word]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.lrcWord) === picked)));
+    mark();
+  };
+  const show = (next: number) => {
+    when = next;
+    const m = states[when];
+    dots.forEach((dot, i) => {
+      const p = place(i);
+      dot.style.transform = `translate(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px)`;
+      dot.classList.toggle('is-due', m.recall[i] < DESIRED_RETENTION - 1e-9);
+    });
+    if (big) big.textContent = fmt(Math.round(m.recalled));
+    if (lede) lede.innerHTML = memoryLede(m, words.length, states[0], MEMORY_HORIZONS[when]);
+    chart.querySelectorAll<HTMLElement>('[data-lrc-when]').forEach((b) => {
+      const on = Number(b.dataset.lrcWhen) === when;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+    readout();
+  };
+  /** The word whose dot is nearest the pointer, within a finger's reach. */
+  const nearest = (ev: PointerEvent | MouseEvent): number | null => {
+    if (!svg) return null;
+    const box = svg.getBoundingClientRect();
+    if (!box.width) return null;
+    const scale = M_W / box.width;
+    const x = (ev.clientX - box.left) * scale;
+    const y = (ev.clientY - box.top) * scale;
+    let best: number | null = null;
+    let dist = (ev as PointerEvent).pointerType === 'touch' ? 22 * scale : 12 * scale;
+    for (let i = 0; i < words.length; i++) {
+      const p = place(i);
+      const d = Math.hypot(p.x - x, p.y - y);
+      if (d < dist) {
+        dist = d;
+        best = i;
+      }
     }
-    if (out) out.innerHTML = retentionReadout(r, words.length);
-    out?.querySelectorAll<HTMLElement>('[data-lrc-word]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lrcWord === word)));
+    return best;
   };
-  range?.addEventListener('input', update);
   chart.addEventListener('click', (ev) => {
+    const w = (ev.target as Element | null)?.closest?.('[data-lrc-when]') as HTMLElement | null;
+    if (w) {
+      show(Number(w.dataset.lrcWhen) || 0);
+      return;
+    }
     const b = (ev.target as Element | null)?.closest?.('[data-lrc-word]') as HTMLElement | null;
-    if (!b) return;
-    word = word === b.dataset.lrcWord ? '' : b.dataset.lrcWord || '';
-    drawWord();
-    update();
+    if (b) {
+      const i = Number(b.dataset.lrcWord);
+      picked = picked === i ? null : i;
+      readout();
+    }
+  });
+  svg?.addEventListener('pointermove', (ev) => {
+    if (ev.pointerType === 'touch') return;
+    const i = nearest(ev);
+    if (i === hover) return;
+    hover = i;
+    readout();
+  });
+  svg?.addEventListener('pointerleave', () => {
+    if (hover == null) return;
+    hover = null;
+    readout();
+  });
+  svg?.addEventListener('click', (ev) => {
+    const i = nearest(ev as PointerEvent);
+    picked = i == null || i === picked ? null : i;
+    hover = null;
+    readout();
+  });
+  // Arrow keys walk the words from the weakest to the strongest at the shown moment.
+  svg?.addEventListener('keydown', (ev) => {
+    const k = ev.key;
+    if (k !== 'ArrowRight' && k !== 'ArrowLeft' && k !== 'Escape') return;
+    ev.preventDefault();
+    if (k === 'Escape') {
+      picked = null;
+      readout();
+      return;
+    }
+    const order = states[when].recall.map((r, i) => ({ r, i })).sort((a, b) => a.r - b.r || a.i - b.i).map((o) => o.i);
+    const at = picked == null ? -1 : order.indexOf(picked);
+    const next = k === 'ArrowRight' ? Math.min(order.length - 1, at + 1) : Math.max(0, at - 1);
+    picked = order[next] ?? null;
+    readout();
   });
 }
 
@@ -383,8 +556,8 @@ export function attachLearnCharts(root: ParentNode): void {
   root.querySelectorAll<HTMLElement>('[data-lrc]').forEach((chart) => {
     if (wired.has(chart)) return;
     wired.add(chart);
-    if (chart.classList.contains('lrc--retention')) {
-      wireRetention(chart);
+    if (chart.classList.contains('lrc--memory')) {
+      wireMemory(chart);
       return;
     }
     chart.addEventListener('pointerover', (ev) => {
