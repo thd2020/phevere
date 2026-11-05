@@ -227,6 +227,24 @@ const countdownChecks = async () => {
   core.armCountdown(s3, 0.05, () => false, () => (painted += 1));
   await new Promise((r) => setTimeout(r, 120));
   assert.equal(s3.answer, null, 'not answered while Learn is not showing');
+  // Time away from the question does not count: back on Learn, the time that was left remains.
+  const s4 = core.startReview([fresh], 10, Date.now());
+  s4.started = true;
+  const q4 = core.ensureReviewQuestion(s4, [fresh, ...pool.slice(3)], { now: Date.now() });
+  let onScreen = true;
+  core.armCountdown(s4, 0.6, () => onScreen, () => (painted += 1));
+  await new Promise((r) => setTimeout(r, 250));
+  onScreen = false;
+  await new Promise((r) => setTimeout(r, 900));
+  assert.equal(s4.answer, null, 'not timed out while away');
+  assert.ok(q4.countdownSpent >= 150 && q4.countdownSpent < 450, `time on screen only: ${q4.countdownSpent}`);
+  onScreen = true;
+  core.armCountdown(s4, 0.6, () => onScreen, () => (painted += 1));
+  assert.match(core.reviewHtml([fresh, ...pool.slice(3)], s4, 10, { now: Date.now(), learnPrefs: { countdown: 0.6, speaking: false } }), new RegExp(`--cd-t:-${q4.countdownSpent}ms`), 'the bar resumes where it stood');
+  await new Promise((r) => setTimeout(r, 120));
+  assert.equal(s4.answer, null, 'back on screen with time left');
+  await new Promise((r) => setTimeout(r, 600));
+  assert.equal(s4.answer?.timedOut, true, 'and it runs out after the rest of the time');
 };
 
 /* ----------------------------------------------------- one voice per press */

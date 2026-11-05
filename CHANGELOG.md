@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Learn stages (2026-11-05): every word is New, Learning, Relearning, Young or Mature, as in Anki, with Mature meaning its memory now lasts three weeks or more. The stage shows on each question, the plan beside the quiz counts your words per stage, the reviews forecast splits by stage, and a round's summary lists the words that moved up a stage or slipped back.
 - Dictation (2026-11-05): from the Young stage on, listening questions ask you to type the word you hear. Picking the word you hear from four stays for words you are still learning.
 - Letter hints (2026-11-05): typed questions show how many letters the word has, show more first letters for a word you hold less firmly, and have a Hint button that reveals one more letter, up to all but the last. A right answer after a Hint counts as Hard.
-- Countdown on choice questions (2026-11-05): with a countdown set in Settings → Learn, a question answered by picking one of four shows a bar that empties over those seconds, and when it runs out the question counts as not known and says "Time is up".
+- Countdown on choice questions (2026-11-05): with a countdown set in Settings → Learn, a question answered by picking one of four shows a bar that empties over those seconds, and when it runs out the question counts as not known and says "Time is up". The countdown pauses while you are on another tab or in another app.
 - New words a day (2026-11-05): after three days of study, the start card offers the number of new words a day that fits how much you usually study, with a button to use it.
 
 ### Changed

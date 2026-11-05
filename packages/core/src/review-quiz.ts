@@ -57,6 +57,8 @@ export interface ReviewQuestion {
   maturity?: Maturity;
   /** Predicted chance of a right answer to this question, from the word's recall and the learner. */
   predicted?: number;
+  /** Countdown milliseconds used while the question was on screen (`armCountdown`). */
+  countdownSpent?: number;
 }
 
 export interface ReviewAnswer {
@@ -1163,36 +1165,74 @@ export function countdownMs(q: ReviewQuestion | null | undefined, seconds: numbe
 }
 
 /**
+ * Countdown time a question has used: the time it was on screen once `armCountdown` has run, and
+ * until then the time since it was shown.
+ */
+export function countdownElapsed(q: ReviewQuestion, now = Date.now()): number {
+  return q.countdownSpent ?? Math.max(0, now - q.shownAt);
+}
+
+/**
  * The countdown ran out: the question counts as not known (Again), as "I don't know" would, and
  * the answer is marked as timed out. False when there is nothing to time out.
  */
 export function expireCountdown(state: ReviewState, seconds: number | null | undefined, now = Date.now()): boolean {
   const q = state.question;
   const ms = countdownMs(q, seconds);
-  if (!q || state.answer || !ms || now < q.shownAt + ms) return false;
+  if (!q || state.answer || !ms || countdownElapsed(q, now) < ms) return false;
   const a = answerReview(state, {}, q.shownAt + ms);
   if (a) a.timedOut = true;
   return !!a;
 }
 
-let countdownTimer: ReturnType<typeof setTimeout> | null = null;
+/** How often the countdown checks whether its question is still on screen. */
+const COUNTDOWN_TICK_MS = 100;
+
+let countdownTick: ReturnType<typeof setInterval> | null = null;
+
+const pageHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
 /**
- * Starts the countdown for the question on screen, replacing any earlier one; the shells call it
- * after every paint. When it runs out while the question is still showing (`showing`), the
- * question is answered as not known and `onExpire` repaints.
+ * Runs the countdown for the question on screen, replacing any earlier one; the shells call it
+ * after every paint of Learn. Time counts only while the question is on screen (`showing`) and
+ * the app is in front: a learner who opens Settings or another tab, or puts the phone away, comes
+ * back to the time that was left. When it runs out the question is answered as not known and
+ * `repaint` draws the answer; `repaint` also redraws the bar when the app comes back to the front.
  */
-export function armCountdown(state: ReviewState | null | undefined, seconds: number | null | undefined, showing: () => boolean, onExpire: () => void, now = Date.now()): void {
-  if (countdownTimer) clearTimeout(countdownTimer);
-  countdownTimer = null;
+export function armCountdown(state: ReviewState | null | undefined, seconds: number | null | undefined, showing: () => boolean, repaint: () => void, now = Date.now()): void {
+  if (countdownTick) clearInterval(countdownTick);
+  countdownTick = null;
   const q = state?.question;
   const ms = countdownMs(q, seconds);
   if (!state || !q || state.answer || !ms) return;
-  countdownTimer = setTimeout(() => {
-    countdownTimer = null;
-    if (state.question !== q || state.answer || !showing()) return;
-    if (expireCountdown(state, seconds, Math.max(Date.now(), q.shownAt + ms))) onExpire();
-  }, Math.max(0, q.shownAt + ms - now));
+  q.countdownSpent = countdownElapsed(q, now);
+  let mark = now;
+  let wasHidden = false;
+  const stop = () => {
+    if (countdownTick === tick) clearInterval(tick);
+    if (countdownTick === tick) countdownTick = null;
+  };
+  const tick: ReturnType<typeof setInterval> = setInterval(() => {
+    const t = Date.now();
+    // Off screen: the next paint of Learn arms the countdown again from where it stands.
+    if (state.question !== q || state.answer || !showing()) return stop();
+    if (pageHidden()) {
+      wasHidden = true;
+      mark = t;
+      return;
+    }
+    q.countdownSpent = (q.countdownSpent || 0) + (t - mark);
+    mark = t;
+    if (q.countdownSpent >= ms) {
+      stop();
+      if (expireCountdown(state, seconds, t)) repaint();
+    } else if (wasHidden) {
+      // Back in front: the bar's animation kept running while the app was hidden.
+      stop();
+      repaint();
+    }
+  }, COUNTDOWN_TICK_MS);
+  countdownTick = tick;
 }
 
 /**

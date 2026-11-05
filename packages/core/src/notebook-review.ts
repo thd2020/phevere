@@ -8,6 +8,7 @@ import { vocabReadings, vocabSenses } from './vocab-view';
 import { DAY, clean, dayStart, esc, type NotebookEntry } from './notebook-shared';
 import {
   bestSense,
+  countdownElapsed,
   countdownMs,
   ensureReviewQuestion,
   hintsLeft,
@@ -331,7 +332,7 @@ function verdictHtml(q: ReviewQuestion, state: ReviewState): string {
 function countdownHtml(q: ReviewQuestion, state: ReviewState, opts: ReviewRenderOptions, now: number): string {
   const ms = countdownMs(q, opts.learnPrefs?.countdown);
   if (!ms || state.answer) return '';
-  const elapsed = Math.min(ms, Math.max(0, now - q.shownAt));
+  const elapsed = Math.min(ms, countdownElapsed(q, now));
   const s = Math.round(ms / 1000);
   return `<div class="nbv-countdown" role="timer" aria-label="${s} seconds to answer" style="--cd:${ms}ms;--cd-t:-${elapsed}ms"><i></i></div>`;
 }
