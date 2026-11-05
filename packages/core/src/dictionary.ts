@@ -1112,6 +1112,18 @@ export class DictionaryService extends BaseService {
     opts?: LookupOpts,
   ): Promise<DictionaryResult> {
     const { surface, lemma } = splitSurfaceAndLemma(query);
+    // Translation and IPA keep arriving after the lookup found no entry; each of those updates
+    // carries the "Did you mean …" suggestions too, or the line would vanish with the next one.
+    let noEntry: Record<string, unknown> | null = null;
+    const own: LookupOpts | undefined = opts?.onUpdate
+      ? {
+          ...opts,
+          onUpdate: (r) => {
+            if (noEntry && !this.hasRealDefinitions(r)) r.metadata = { ...(r.metadata || {}), ...noEntry };
+            opts.onUpdate!(r);
+          },
+        }
+      : opts;
 
     const surfaceHit = await this.lookupCandidateList(
       surface,
@@ -1120,7 +1132,7 @@ export class DictionaryService extends BaseService {
       detectedLanguage,
       enabledSources,
       holder,
-      opts,
+      own,
       false,
     );
     if (surfaceHit && this.hasRealDefinitions(surfaceHit)) {
@@ -1134,7 +1146,7 @@ export class DictionaryService extends BaseService {
       detectedLanguage,
       enabledSources,
       holder,
-      opts,
+      own,
       true,
     );
     if (lemmaHit && this.hasRealDefinitions(lemmaHit)) {
@@ -1159,14 +1171,14 @@ export class DictionaryService extends BaseService {
     // Misspellings Wiktionary records ("idiosyncracy") still open their word (misspellingTarget).
     const closest = detectedLanguage === 'en' ? closestSpelling(query.trimmed, found) : null;
     const suggestions = closest ? [closest, ...found.filter((w) => w !== closest)] : found;
-    fallback.metadata = {
-      ...(fallback.metadata || {}),
+    noEntry = {
       isSentence: false,
       queryKind: query.kind,
       originalSelection: query.raw,
       matchedQuery: null,
       suggestions: suggestions.length > 0 ? suggestions : undefined
     };
+    fallback.metadata = { ...(fallback.metadata || {}), ...noEntry };
 
     return fallback;
   }
