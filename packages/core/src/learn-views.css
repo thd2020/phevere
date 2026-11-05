@@ -237,6 +237,7 @@
 .lrc-bar.is-picked .lrc-col { fill: rgba(156, 61, 0, 0.08); }
 .lrc-bar.is-picked .lrc-seg, .lrc-bar.is-hover .lrc-seg { stroke: var(--nbv-ink); stroke-width: 0.8; }
 .lrc-seg { pointer-events: none; transition: opacity 0.16s var(--nbv-motion); }
+.lrc-seg--new { fill: var(--nbv-paper-2); background: var(--nbv-paper-2); stroke: var(--nbv-line); stroke-width: 0.6; }
 .lrc-seg--learning { fill: #f2c3a8; background: #f2c3a8; }
 .lrc-seg--young { fill: #8fd3d5; background: #8fd3d5; }
 .lrc-seg--mature, .lrc-seg--right { fill: var(--nbv-teal); background: var(--nbv-teal); }

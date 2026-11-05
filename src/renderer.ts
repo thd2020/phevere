@@ -78,6 +78,14 @@ import {
   scopeBookFor,
   type AnswerRecord,
   type LearnPage,
+  type LearnerModel,
+  type StudyPace,
+  learnerModel,
+  studyPace,
+  hintReview,
+  armCountdown,
+  markHeard,
+  singleVoice,
   startReview,
   answerReview,
   overrideReview,
@@ -2877,6 +2885,23 @@ function loadAnswerHistory(): void {
     });
 }
 
+/** What the answer history says about the learner, for choosing questions and today's new words; null until loaded. */
+let learner: { model: LearnerModel; pace: StudyPace | null } | null = null;
+let learnerLoading: Promise<void> | null = null;
+
+function loadLearner(): Promise<void> {
+  const api = (window as any).vocabAPI;
+  if (learnerLoading) return learnerLoading;
+  learnerLoading = Promise.resolve(api?.history ? api.history() : [])
+    .catch((): AnswerRecord[] => [])
+    .then((rows: AnswerRecord[]) => {
+      const now = Date.now();
+      learner = { model: learnerModel(rows || [], now), pace: studyPace(rows || [], now) };
+      learnerLoading = null;
+    });
+  return learnerLoading;
+}
+
 /* The account, for the Plus line in Learn when progress sync is off. */
 let learnNotice = '';
 
@@ -2892,10 +2917,18 @@ function renderLearn(): void {
   const pane = document.getElementById('paneLearn');
   if (!pane || pane.hidden) return;
   const scope = wbCtx ? wbScope : 'mine';
+  const pace = learner?.pace ?? null;
   if (!nbReview && (scope !== 'mine' || vocabNotebookCache.length)) {
     nbReview = wbCtx
-      ? startScopeReview(scope, wbCtx, { mineGoal: nbGoal, mineStartedToday: startedToday().length })
-      : startReview(vocabNotebookCache, nbGoal, Date.now(), startedToday().length);
+      ? startScopeReview(scope, wbCtx, { mineGoal: nbGoal, mineStartedToday: startedToday().length, pace })
+      : startReview(vocabNotebookCache, nbGoal, Date.now(), startedToday().length, pace);
+  }
+  if (!learner) {
+    // Today's plan waits for nothing; once the learner is known, a session not yet started plans again.
+    void loadLearner().then(() => {
+      if (nbReview && !nbReview.started) nbReview = null;
+      if (mainTab === 'learn') renderLearn();
+    });
   }
   pane.innerHTML = learnHtml({
     scope,
@@ -2908,6 +2941,8 @@ function renderLearn(): void {
       preview: (e, g) => previewReview(e, g),
       formatGap: formatReviewGap,
       examples: (lemma) => reviewExamples.get(lemma.toLowerCase()),
+      learner: learner?.model ?? null,
+      pace,
       learnPrefs,
       microphone: learnMicrophone,
     },
@@ -2943,8 +2978,14 @@ function focusReview(body: HTMLElement): void {
   const header = [...document.querySelectorAll<HTMLElement>('.ws-head')].find((h) => h.offsetParent) || null;
   revealQuestion(body, header);
   const input = body.querySelector<HTMLInputElement>('#nbv-answer');
-  if (input) input.focus();
-  else {
+  if (input) {
+    input.focus();
+    // After a Hint the box holds the letters shown so far; typing goes on after them.
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+  // Settings → Learn: the countdown on a choice question, answered as not known when it runs out.
+  armCountdown(nbReview, learnPrefs.countdown, () => mainTab === 'learn' && learnPage === 'today', () => renderLearn());
+  if (!input) {
     const next = body.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-round"]');
     next?.focus({ preventScroll: true });
     if (next?.dataset.act === 'nb-next') body.querySelector('.nbv-quiz__grade')?.scrollIntoView({ block: 'nearest' });
@@ -2989,6 +3030,8 @@ async function commitReview(): Promise<void> {
     console.error('review failed', error);
   }
   advanceReview(nbReview, updated);
+  // Today's answers count against the learner's usual day, so the next round plans fewer new words.
+  if (learner?.pace) learner.pace.answersToday = (learner.pace.answersToday || 0) + 1;
   answerHistory = null;
   nbGrading = false;
   renderLearn();
@@ -3114,6 +3157,23 @@ function wireNotebookActions(root: HTMLElement): void {
         // The goal on Today opens where it is changed.
         void window.electronAPI?.showSettingsWindow?.('learn');
         return;
+      case 'learn-use-goal': {
+        // The start card's suggested number of new words a day, stored where Settings → Learn keeps it.
+        const goal = parseGoal(el.dataset.goal);
+        if (goal == null) return;
+        const book = el.dataset.book || '';
+        if (book) {
+          await wordbookApi()?.setGoal?.(book, goal);
+          writePref(LEARN_BOOKS_KEY, String(Date.now()));
+          await refreshWords();
+        } else {
+          nbGoal = goal;
+          writePref(NB_GOAL_KEY, String(goal));
+        }
+        if (!nbReview?.started) nbReview = null;
+        rerenderActive();
+        return;
+      }
       case 'nb-review-exit':
         // Back to the Learn page. An answer on screen is saved first, as Continue would.
         if (nbReview?.answer) await commitReview();
@@ -3123,8 +3183,10 @@ function wireNotebookActions(root: HTMLElement): void {
         return;
       case 'nb-start':
       case 'nb-round':
-        // A new round plans again from what is due now; renderLearn starts it.
+        // A new round plans again from what is due now and from the answers so far; renderLearn starts it.
         if (el.dataset.act === 'nb-round') {
+          learner = null;
+          await loadLearner();
           nbReview = null;
           renderLearn();
         }
@@ -3302,6 +3364,10 @@ function wireNotebookActions(root: HTMLElement): void {
         return;
       case 'nb-skip':
         if (reviewArmed(nbReview)) answerCurrentReview({});
+        return;
+      case 'nb-hint':
+        // What is typed so far stays where it matches the answer; the next letter is added.
+        if (nbReview && hintReview(nbReview, root.querySelector<HTMLInputElement>('#nbv-answer')?.value || '')) renderLearn();
         return;
       case 'nb-override':
         if (nbReview) overrideReview(nbReview, el.dataset.mode === 'easy' ? 'easy' : 'flip');
@@ -4493,29 +4559,37 @@ async function wireUpdatesPanel(): Promise<void> {
 
 let lemmaAudio: HTMLAudioElement | null = null;
 
+let lemmaAudioPrefs: { enabled?: boolean; speed?: number; volume?: number } = { enabled: true, speed: 1, volume: 1 };
+
+function playLemmaSrc(src: string, recorded: boolean): Promise<void> {
+  const prefs = lemmaAudioPrefs;
+  const el = new Audio(src);
+  el.volume = Math.max(0, Math.min(1, Number(prefs.volume ?? 1)));
+  el.preservesPitch = true;
+  el.playbackRate = recorded ? Math.max(0.5, Math.min(2, Number(prefs.speed) || 1)) : 1;
+  lemmaAudio = el;
+  // Resolves when the clip has played to its end or was stopped, so a listening question's
+  // countdown starts after the word, not while it plays.
+  return el.play().then(
+    () =>
+      new Promise<void>((resolve) => {
+        if (el.ended || el.paused) return resolve();
+        el.addEventListener('ended', () => resolve(), { once: true });
+        el.addEventListener('pause', () => resolve(), { once: true });
+        el.addEventListener('error', () => resolve(), { once: true });
+      }),
+  );
+}
+
 /**
- * Notebook ▶, same rule as the phone's playLemma: recorded clip (US, UK, other) from the
- * word's lookup, usually cached; otherwise the voice chosen in Settings → Audio.
+ * Notebook and Learn ▶, same rule as the phone's playLemma: the recorded clip (US, UK, other)
+ * from the word's lookup, usually cached, or else the voice chosen in Settings → Audio; never
+ * both, and a newer press stops an older one (`singleVoice`). A clip is fetched before it counts
+ * as the word's recording, so one that cannot be fetched leaves the synthetic voice.
  */
-async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise<void> {
-  const api = window.electronAPI as any;
-  const prefs = (await api?.getAudioPrefs?.()) || { enabled: true, speed: 1, volume: 1 };
-  if (prefs.enabled === false) return;
-  btn?.classList.add('is-speaking');
-  const play = async (src: string, recorded: boolean) => {
-    try {
-      lemmaAudio?.pause();
-    } catch {
-      /* ignore */
-    }
-    const el = new Audio(src);
-    el.volume = Math.max(0, Math.min(1, Number(prefs.volume)));
-    el.preservesPitch = true;
-    el.playbackRate = recorded ? Math.max(0.5, Math.min(2, Number(prefs.speed) || 1)) : 1;
-    lemmaAudio = el;
-    await el.play();
-  };
-  try {
+const sayLemma = singleVoice({
+  recordings: async (lemma) => {
+    const api = window.electronAPI as any;
     let urls: string[] = [];
     try {
       const result: any = await window.dictionaryAPI?.lookup(lemma, 'auto');
@@ -4533,18 +4607,44 @@ async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise
       try {
         const got = await api?.fetchPronunciationAudio?.(u);
         const src = got && got.ok ? got.playUrl || got.dataUrl : '';
-        if (!src) continue;
-        await play(src, true);
-        return;
+        if (src) return [src];
       } catch {
         /* next clip */
       }
     }
+    return [];
+  },
+  playRecording: (src) => playLemmaSrc(src, true),
+  speak: async (lemma) => {
+    const api = window.electronAPI as any;
     const speech = await api?.synthesizeSpeech?.({ text: lemma, lang: 'en' });
-    if (speech?.ok && speech.dataUrl) await play(speech.dataUrl, false);
+    if (speech?.ok && speech.dataUrl) await playLemmaSrc(speech.dataUrl, false);
     else showNotification('Could not play pronunciation');
+  },
+  stop: () => {
+    try {
+      lemmaAudio?.pause();
+    } catch {
+      /* ignore */
+    }
+    lemmaAudio = null;
+  },
+});
+
+async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise<void> {
+  try {
+    const api = window.electronAPI as any;
+    lemmaAudioPrefs = (await api?.getAudioPrefs?.()) || { enabled: true, speed: 1, volume: 1 };
+    if (lemmaAudioPrefs.enabled === false) return;
+    btn?.classList.add('is-speaking');
+    try {
+      await sayLemma(lemma);
+    } finally {
+      setTimeout(() => btn?.classList.remove('is-speaking'), 500);
+    }
   } finally {
-    setTimeout(() => btn?.classList.remove('is-speaking'), 500);
+    // A listening question's countdown starts once its word has played, failed to, or is off.
+    if (markHeard(nbReview, lemma)) renderLearn();
   }
 }
 

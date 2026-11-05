@@ -264,12 +264,21 @@ export {
   buildQuestion,
   sameLemma,
   reviewArmed,
+  hintReview,
+  armCountdown,
+  markHeard,
+  wordMaturity,
   ROUND_WORDS,
   type ReviewQuestion,
   type ReviewAnswer,
   type ReviewResult,
   type QuestionKind,
+  type Maturity,
+  type LearnerModel,
+  type StudyPace,
 } from './review-quiz';
+export { learnerModel, studyPace, suggestGoal } from './learn-adapt';
+export { singleVoice, type VoiceBackend, type VoiceOutcome } from './pronounce-once';
 export { type ReviewRenderOptions } from './notebook-review';
 
 export { onVocabChanged } from './vocab-store';

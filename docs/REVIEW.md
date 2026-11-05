@@ -1,12 +1,14 @@
 # Learning in Phevere: what works and what Phevere does
 
+2026-11-05: every word now has one of Anki's stages (new, learning, relearning, young, mature), read from FSRS stability, and the stage shows on each question. Within a stage the quiz picks the kind of question the learner should get right about 85% of the time, using a model of the learner fitted to their own answers. Listening became dictation from the young stage on, with picking the word you hear kept for the early stages. Typed answers show the letter count, more letters for a weaker word, and a Hint button that reveals one more letter. Today's new words vary with the day's reviews once Phevere knows how much you usually study, and the start card offers the number of new words a day that fits. Prompts are never cut off, and a word is spoken by one voice only. The research is under "Stages, adaptive questions and dictation", the design under "Adapting to the learner".
+
 2026-11-05: Progress is set as an editorial spread, "If you stop reviewing" became Memory, a strip with one dot per word that shows what a week or a month off would cost, and new words a day and the countdown on choice questions moved to Settings → Learn. See "The Progress page" and "Settings → Learn".
 
 2026-11-04: the Learn tab was rebuilt after a user called it a toy. Questions now follow a ladder by memory strength with a skill balance (listening at most a fifth of a session), sessions run in rounds of twenty, leeches are recognised, new words are picked across all your books as one pool, and Today and Progress have charts with axes and readouts you can point at. The research behind these choices is under "Sessions, ladders and charts in the mature apps", and the design under "What Phevere does now".
 
 2026-11-03: review moved out of the Words switcher into its own tab, Learn, on desktop and phone. The quiz and the plan described here are its Today page.
 
-This memo is the reason review is a quiz rather than a flashcard with four self-rating buttons, and the reason for the way a session is put together. It looks at how the main vocabulary apps run review, what memory research says about it, and then the design built in `packages/core/src/review-quiz.ts` (the session, the questions and grading), `review-schedule.ts` (FSRS scheduling), `wordbooks.ts` (sessions across word books), `notebook-review.ts` (the Today page), `learn-progress.ts` (the Progress page) and `learn-charts.ts` (the charts).
+This memo is the reason review is a quiz rather than a flashcard with four self-rating buttons, and the reason for the way a session is put together. It looks at how the main vocabulary apps run review, what memory research says about it, and then the design built in `packages/core/src/review-quiz.ts` (the session, the questions and grading), `review-schedule.ts` (FSRS scheduling), `learn-adapt.ts` (the learner model and study pace), `wordbooks.ts` (sessions across word books), `notebook-review.ts` (the Today page), `learn-progress.ts` (the Progress page) and `learn-charts.ts` (the charts).
 
 The two question screenshots below show the Learn tab before the 2026-11-04 rebuild and are due to be retaken; the Progress and Settings screenshots are from 2026-11-05 and use made-up words.
 
@@ -89,36 +91,96 @@ Phevere took these, each for a reason it can name:
 
 It left out an undo after Continue. Nothing is saved until Continue, and before that "I knew it", "I didn't know it" and "Too easy" already overturn the grade, which covers the slip Anki's undo is for; undoing a saved answer would mean deleting from an append-only history that other devices replay. It left out suspending a leech, because a word you saved is a word you want, and it left out a separate mistakes drill, because a leech already comes back in the easier format. Fitting FSRS parameters to your own history waits until there are a few hundred answers.
 
+## Stages, adaptive questions and dictation
+
+2026-11-05. Learn moved every word up a fixed ladder by its memory strength, and a word was either "Known" or "Learning" on the plan. This section looks at how mature apps and the research describe a word's progress, how they choose a question's difficulty, and what they do about listening and spelling.
+
+### Stages of a word
+
+Anki gives every card a stage. New cards have never been studied, learning cards were seen recently and are still in their first steps, review cards have finished learning, and relearning cards are review cards that were forgotten. A review card is young while its interval is under 21 days and mature from 21 days on ([Anki manual](https://docs.ankiweb.net/getting-started.html)). FSRS describes memory by stability, the number of days until recall falls to 90% ([the algorithm](https://github.com/open-spaced-repetition/awesome-fsrs/wiki/The-Algorithm)). Anki still draws the young and mature line on the interval. A thread on the Anki forum proposes drawing it on stability instead, because the interval moves whenever desired retention changes; no version of Anki does this yet ([forum](https://forums.ankiweb.net/t/maturity-based-on-stability/51718)). WaniKani has nine stages from Apprentice to Burned ([SRS stages](https://knowledge.wanikani.com/wanikani/srs-stages/)).
+
+### Choosing how hard a question is
+
+Duolingo's Birdbrain estimates both the learner's ability and each exercise's difficulty, predicts the chance of a right answer, and gives exercises of "just the right difficulty" ([Duolingo blog](https://blog.duolingo.com/learning-how-to-help-you-learn-introducing-birdbrain/)). Its blog states no target rate. Luis von Ahn gave about 70% as an example in an interview ([VentureBeat](https://venturebeat.com/ai/how-duolingo-uses-ai-in-every-part-of-its-app)). Wilson and colleagues derive an optimal training accuracy of about 85% for a class of learners trained by gradient descent ([Wilson et al. 2019](https://doi.org/10.1038/s41467-019-12552-4)), and Wilson says it fits perceptual learning best; I found no study of the best accuracy for vocabulary, so 85% is an extrapolation. Rating learners and items together in this way is the Elo method that adaptive learning systems use widely ([Pelánek 2016](https://doi.org/10.1016/j.compedu.2016.03.017)). Half-life regression, Duolingo's earlier model, predicts recall from practice history ([Settles and Meeder 2016](https://aclanthology.org/P16-1174/)).
+
+### New words a day
+
+Anki's manual says 20 new cards a day lead to roughly 200 reviews a day, which is the source of the rule of thumb of ten answers per new card ([deck options](https://docs.ankiweb.net/deck-options.html)). Anki does not compute a number of new cards from a learner's results; its review limit also holds back new cards, and a forum answer shows how to use that so Anki gives exactly as many new cards as the review cap allows ([forum](https://forums.ankiweb.net/t/how-many-new-cards-can-be-studied-every-day-while-the-workload-stays-the-same-long-term/69218)). MaiMemo's study amount is reviews plus new words, so a heavy review day leaves fewer new words. I found no app that suggests a number from the learner's results.
+
+### Dictation and letter cues
+
+I found no randomised study that compares dictation training with listening by multiple choice. Word recognition measured by partial dictation predicted about half the variance in listening comprehension among 167 Chinese learners ([Matthews and Cheng 2015](https://doi.org/10.1016/j.system.2015.04.015)). Duolingo's early listening exercises show the words alongside the audio and later ones are audio only, including typing a missing word you hear ([Duolingo blog](https://blog.duolingo.com/covering-all-the-bases-duolingos-approach-to-listening-skills/)). The general finding that producing an answer teaches more than recognising one (Bertsch et al., above) points the same way: picking from four lets a learner recognise the word by elimination, while dictation makes them hold its sound and spelling.
+
+Showing some of the answer's letters and showing fewer as the learner improves is called diminishing-cue retrieval practice. Diminishing letter cues gave the best final recall in [Finley et al. 2011](https://doi.org/10.1016/j.jml.2011.01.006); they help most on hard items without feedback and match plain retrieval when feedback follows ([Fiechter and Benjamin 2018](https://doi.org/10.3758/s13423-017-1366-9)). Typing a word from its meaning is the hardest of Laufer and Goldstein's four levels of knowing a word, and recalling the meaning best predicted classroom performance ([Laufer and Goldstein 2004](https://doi.org/10.1111/j.0023-8333.2004.00260.x)), so spelling every word is not required to know it. 不背单词 lets a learner spell only the words they missed, with separate switches for spelling after study and after review ([App Store](https://apps.apple.com/cn/app/id698570469)).
+
+### What Phevere took, for stages and adaptive questions
+
+| Practice | Taken from | Why |
+|---|---|---|
+| New, learning, relearning, young and mature, the line at 21 days | Anki | The user asked that a word never be only new or learned |
+| The line drawn on stability, not the interval | The Anki forum proposal | Stability is what FSRS knows about memory, and it stays put when retention settings change |
+| The kind of question chosen to be right about 85% of the time | Birdbrain, Wilson et al. 2019, Elo | A word met at different strengths gets questions of different difficulty, which the user liked |
+| Picking the word you hear early, dictation later | Duolingo's listening ladder | The user found multiple-choice listening too easy |
+| Letter count, more letters for a weaker word, Hint for one more | Diminishing cues | Spelling is hard; help should shrink as the word strengthens |
+| Fewer typed questions for a learner who misspells | 不背单词's spelling switches, Laufer and Goldstein | Not every word has to be spelled to be known |
+| Fewer new words on a heavy day, a suggested number from the usual day | Anki's review limit and rule of thumb, MaiMemo | The number of new words should fit the time the learner actually spends |
+
 ## What Phevere does now
 
 ### A day's plan and its rounds
 
-Today's plan is every word due by the end of today, most overdue first, with today's new words spread among them. My words gives its own new words, oldest saved first, up to its daily goal. A word book gives words from the pool described under "Word books as one pool". While due reviews are at most five times the daily goal, the whole goal is given; beyond that each five more reviews hold back one new word, and at ten times the goal no new word comes until the reviews are done. The start card says how many wait.
+Today's plan is every word due by the end of today, most overdue first, with today's new words spread among them. My words gives its own new words, oldest saved first, up to its daily goal. A word book gives words from the pool described under "Word books as one pool". While due reviews are at most five times the daily goal, the whole goal is given; beyond that each five more reviews hold back one new word, and at ten times the goal no new word comes until the reviews are done. Once Phevere knows how much you usually study (see "Adapting to the learner"), today's new words also have to fit beside today's reviews in a usual day's answers, with a fifth to spare, so a heavy day gets fewer and a light day the whole goal. In All books, My words and the books share that room by their goals. The room is for the whole day: the answers already given today count against it (`answersToday` in `studyPace`, which each shell adds to as answers are saved), so another round after the first batch plans no new batch. The start card says how many new words wait until the reviews are done and how many wait for tomorrow.
 
 A session takes the first twenty words of the plan as a round. The start card shows the round as learning, review and new words with an estimate of the time, and how many more words today has. A round ends with how many answers were given, the share right, the time, the words due tomorrow, the new words started, the words that moved up or slipped back a stage, and the words missed, each of which opens in lookup. Next round plans again from what is due now.
 
 A question always asks, answers and records the word it was built for; it never shows another headword in its place. Two headwords count as one word only by a strict rule (`regularForms` in `review-quiz.ts`): the regular -s, -es, -ed and -ing endings, with a final e dropped, y turned to i, and a consonant doubled only before -ed and -ing in a one-syllable word, plus British and American spellings such as "colour" and "color". -er, -est and -ly are left out, because they make other words: "leader" is not "lead", "forest" is not "fore", and "rate" is not "rat". No choice question offers two forms of one word. Two saved entries are asked once in a session only when, beyond the spelling, one entry is listed as a form of the other ("simple past of glean") or their meanings are mostly the same; then the word itself, or the entry with a usable sense, is kept. Words of a word book are never folded together, since each book lists its own headwords. Confusable words such as "principal" and "principle", or "advice" and "advise", stay apart and make good wrong options.
 
+### Stages
+
+Every word has one of Anki's stages (`wordMaturity` in `review-quiz.ts`): new until its first answer, learning in its first steps, relearning after a lapse, young while FSRS stability is under 21 days, and mature from 21 days. The line is drawn on stability rather than the interval, so changing the desired retention does not move words between young and mature. Words saved before FSRS use their old interval. The stage is tagged on every question, the plan beside the quiz counts words per stage, the forecast of reviews splits by stage, and a round's summary lists the words that moved up a stage ("Young → Mature") or slipped back ("Mature → Relearning").
+
 ### The ladder
 
-Each question's kind follows the word's stage. The stage is the word's memory level, moved up a step each time the word comes back in the same session, so a new word is recognised, then recalled from four, then typed:
+Each stage opens a set of kinds, in an order that follows Laufer and Goldstein from the easiest kind of knowledge to the hardest:
 
-| Stage | When | Kinds, most fitting first |
+| Stage | When | Kinds it may ask |
 |---|---|---|
-| 0 | New word, first time today | Pick the meaning; pick the word |
-| 1 | Learning or relearning, stability under 4 days, or a new word's second ask | Pick the word; pick the meaning; pick the word you hear; type the word |
-| 2 | Stability 4 to 21 days, or a new word's third ask | Type the word from its meaning; fill the gap in a sentence; type the word you hear |
-| 3 | Stability over 21 days | Fill the gap; type the word; type the word you hear |
+| 0 | New, first time today | Pick the meaning; pick the word |
+| 1 | Learning, relearning, a new word asked again today, or a leech | Pick the word; pick the meaning; pick the word you hear; type the word |
+| 2 | Young: in review, stability under 21 days | Type the word; pick the word; fill the gap; type the word you hear; pick the word you hear |
+| 3 | Mature | Fill the gap; type the word; type the word you hear; pick the word; pick the meaning |
 
-That order follows Laufer and Goldstein from the easiest kind of knowledge to the hardest, and it ends in the typed recall that WaniKani and Lingvist use.
+The stage is the one the word's tag shows (`wordMaturity`), so a word tagged Young is asked from the Young row even when it is held for only a few days; the predicted chance below still steers a shaky word towards the easier kinds. Picking the word you hear belongs to the early stages and typing the word you hear, dictation, to the later ones. A new word asked again in its first session is recognised again, never typed, so spelling waits for a later day, and a leech is only asked in the recognition formats.
 
-Within a stage the kind is chosen by cost (`chooseKind`): its place in the stage's order, plus a penalty when the session already leans on its skill more than the aim (meaning 45%, spelling 40%, listening 15%), plus a small penalty for repeating the last kind. Listening is never more than a fifth of a session, and never in the first four questions; it passes that cap only for a word that has nothing else to ask. In the user's session of 2026-11-04, 21 of 44 questions were listening; the same words now get at most eight.
+Within the stage the kind is the one the learner should get right about 85% of the time (`chooseKind`, `TARGET_SUCCESS`). The predicted chance of a right answer (`successChance`) adds up, in log-odds, how firmly the word is held now (FSRS's predicted recall, an even chance for a new word), how easy the kind is (`KIND_EASE`: picking a meaning +1.8, picking the word +1.4, picking the word heard +1.1, the gap +0.1, typing 0, dictation -0.5), what the learner's own answers say about that kind (see "Adapting to the learner"), and the letters shown. A shortfall from 85% costs twice as much as an excess, because a miss sends the word back to relearning while an easy question still makes the learner retrieve it. So a young word due today is typed, the same word long overdue steps back to picking it from four, and a word held for weeks is filled into a sentence or written from dictation: one word meets questions of different difficulty as its memory changes.
+
+The session's skill balance still applies. A kind whose skill the session already leans on more than the aim costs more (meaning 50%, spelling 35%, listening 15% by default), repeating the last kind costs a little, and listening is never more than a fifth of a session nor in its first four questions. The spelling aim moves with the learner: from 15% for a learner whose typed answers go wrong more often than predicted to 45% for one who spells well, so not every word has to be spelled. In a 40-day simulation a learner who spells poorly never typed about a sixth of the words started in the first fortnight.
 
 A gap-fill question uses a sentence from your note, then the sentence the word was saved from, then the dictionary's example sentences, which the apps look up a few words ahead.
 
+### Letters shown and Hint
+
+A typed question shows the answer's length as one dot per letter, with "7 letters" under the box. Typing the word and filling the gap show its first letter, and dictation none. A weaker word gets more, one letter at a time while the predicted chance stays under 85%, but never more than a third of the word (`cueLetters`); as the word strengthens the cue shrinks, which is diminishing-cue practice. Hint keeps what the learner has typed as far as it matches the answer and puts the next letter after it into the box, up to all but the last letter; anything typed past the first wrong letter is dropped. A right answer after a Hint is Hard, and one given extra letters up front is at most Good.
+
+![Screenshot of a gap-fill question for tremble after one Hint: the box holds tr, with 7 letters, Hint and I don't know under it](REVIEW.assets/hint-letters.png)
+
+*After one Hint the box holds the first two letters, and the learner types the rest.*
+
+![Screenshot of a dictation question for a mature word: a large play button, a box showing s and six dots, and 7 letters under it](REVIEW.assets/dictation-question.png)
+
+*Dictation for a mature word: the word is played once and typed, with the first letter shown because the learner's dictation has been weak.*
+
+### Unlocking
+
+Harder kinds open for a learner after easier ones have gone right (`KIND_UNLOCK`): typing after five right answers picking a word or a meaning, filling a gap after three right typed words, and dictation after three right answers picking the word heard or typing a word. Typed answers count because picking the word heard is never asked of a mature word, so a learner whose words are all mature would otherwise never reach dictation. Right answers in the current session count, so a new learner reaches typing during their first session.
+
 ### Senses a question can use
 
-A question shows the first usable sense of the word (`bestSense`). Citation lines that some sources return instead of a sense ("↑ "idiosyncracy", in Dictionary.com Unabridged…"), "plural of" and "past tense of" lines, and text that is only Wiktionary style rules are not usable; "Alternative form of mock-up. [A scale model…]" uses the bracketed gloss. An everyday sense comes before a dialect, obsolete or rare one, so "shed" asks "to part with, cast off" rather than its UK dialect sense. A word with no usable sense is skipped unless a sentence can be found for it; it is never pushed into listening instead. A word with no senses at all, such as a book word whose lookup failed, gets the plain card: the word, then its pronunciation, picture and Open in lookup. Before a round starts, the apps look up the meaning of every book word in it, so the plain card is the exception.
+A question shows the first usable sense of the word (`bestSense`). Citation lines that some sources return instead of a sense ("↑ "idiosyncracy", in Dictionary.com Unabridged…"), "plural of" and "past tense of" lines, and text that is only Wiktionary style rules are not usable; "Alternative form of mock-up. [A scale model…]" uses the bracketed gloss. An everyday sense comes before a dialect, obsolete or rare one, so "shed" asks "to part with, cast off" rather than its UK dialect sense. A sense is never cut short. When the first everyday sense runs past 160 characters (`PROMPT_CHARS`) and one of the next two is shorter, the shorter one is asked; otherwise the long one is shown whole. "Funnel" now asks "A passage or avenue for a fluid or flowing substance." instead of its cone-shaped utensil sense cut off after "typically used when…".
+
+![Screenshot of a typing question that shows a long sense of colander whole, over six lines, with col and five dots in the answer box](REVIEW.assets/long-prompt.png)
+
+*A long sense with no shorter one is shown whole.* A word with no usable sense is skipped unless a sentence can be found for it; it is never pushed into listening instead. A word with no senses at all, such as a book word whose lookup failed, gets the plain card: the word, then its pronunciation, picture and Open in lookup. Before a round starts, the apps look up the meaning of every book word in it, so the plain card is the exception.
 
 ### Grading and overrides
 
@@ -126,7 +188,7 @@ The answer is graded automatically and mapped to FSRS's four grades, so the lear
 
 - A wrong answer is Again, and a typed answer one letter off in a word of five letters or more (two letters in ten or more) is Hard.
 - A right choice is Good, or Hard after ten seconds. Recognition never earns Easy.
-- A right typed answer is Easy within 2.5 seconds plus a quarter second per letter, Hard after 15 seconds plus that allowance, and Good in between.
+- A right typed answer is Easy within 2.5 seconds plus a quarter second per letter, Hard after 15 seconds plus that allowance, and Good in between. After a Hint it is Hard, and with extra letters shown up front it is at most Good.
 
 ![Screenshot of the feedback after a wrong choice: the right meaning in teal, the chosen one in red with the word it belongs to, then Continue, Open in lookup and I knew it](REVIEW.assets/wrong-answer.png)
 
@@ -137,6 +199,20 @@ One tap overturns the grade before Continue saves it: "I knew it" after a miss m
 ### Leeches
 
 A word with four lapses or more is a leech (`isLeech`). Anki's threshold is eight, but Anki's lapses come from the learner's own Again; here every miss counts, so the line is lower. A leech is asked at the learning stage whatever its stability, in the easier recognition formats, is tagged "Trouble word" on the question, comes back at most once more in a session, and is listed with its misses on the Progress page.
+
+### Adapting to the learner
+
+`packages/core/src/learn-adapt.ts` reads the answer history twice when Learn opens and again before each new round.
+
+The learner model (`learnerModel`) keeps, for each kind of question, how much better or worse this learner does than predicted, in log-odds. It replays the history in time order, rebuilds each word's FSRS state as `replaySchedule` does, predicts each answer from the word's recall at that moment and the kind's ease, and moves the kind's offset by the surprise, an Elo update whose step starts at 0.4 and shrinks to 0.05 as answers of that kind accumulate. During a session each answer moves the offsets again from the question's own prediction. A learner who spells well gets harder typed questions with fewer letters; one who misspells gets more letters and fewer typed questions. The history does not record the letters shown, so past answers are predicted with the usual cue, which makes a weak speller's offset a little kinder than the truth.
+
+The study pace (`studyPace`) looks at the last fourteen days with answers within four weeks, leaving today out: the median answers a day, how many answers a new word took on its first day, and how often review answers were right. Following Anki's ten answers per new card, each new word a day later adds about 7.5 review answers to every day, more when reviews go wrong more often than the 90% the schedule aims at. The suggested number of new words a day is the usual day's answers divided by what a new word costs. When it differs from your goal by at least two words and a third of the goal, the start card says so, with a button that sets it ("8 new words a day fits your recent study time · Use 8"); All books, with several goals, gets no offer. With fewer than three study days there is no pace, and the plan follows the review-load rule alone.
+
+In a simulation of 40 days at 70 answers a day (`scripts/test-learn-adapt.js`), words passed through every stage, more than half met three kinds of question or more, dictation came only for young and mature words, a weak speller got fewer typed questions than an average one, and about 70 answers a day led to a suggestion of five or six new words.
+
+### One voice
+
+A listening question plays the word once when it appears, and ▶ plays it again. Either plays the recorded clip when the word has one and the synthetic voice only when it has none (`singleVoice` in `pronounce-once.ts`). A newer press stops the older one, and the older one never starts a voice after that; before, a tap while the word was still being looked up could play the synthetic voice and then the recording. A recording that cannot be loaded is stopped before the synthetic voice speaks, so it cannot follow it.
 
 ### The answer mark
 
@@ -185,7 +261,7 @@ The sections answer one question each:
 | Masthead | How long is my streak, and how far am I through today's new words and reviews? |
 | Memory | How many of my words would I recall today, in a week or in a month without review, and which fade first? |
 | Reviews ahead | How busy are the coming days, and with which words? Bars split learning words, words held under three weeks and words held longer. |
-| How long words are held | How many started words are held for under a week, up to three weeks, up to three months and longer? |
+| How long words are held | How many words are at each stage (New, Learning, Young, Mature), the same stages Today and the question tags show? |
 | Answers per day | How much did I study each day, how much was right, and for how long? |
 | Skills | How many words are mastered in meaning, spelling and listening, and what was last week's mix of question kinds? |
 | Words | How far am I through each list, what does it share with the others, and how much of it did I learn elsewhere? |
@@ -218,8 +294,8 @@ Since 2026-11-05 the options for Learn live in Settings, on the desktop and the 
 
 *Settings → Learn: a goal per list and the countdown.*
 
-New words a day has a row for My words and one for each word book you study, with 5, 10, 20 and 40 and an Other field for any number up to 999. Countdown on choice questions is Off or 5 to 30 seconds. It reaches Learn as `learnPrefs` in `ReviewRenderOptions` (`packages/core/src/learn-prefs.ts`), and the countdown itself belongs to the question logic in `review-quiz.ts`. There is no switch for speaking questions, because none exist yet. The stored `speaking` preference and the microphone check (`microphoneAvailable`) are kept, and `SPEAKING_QUESTIONS` in `settings-learn.ts` turns the switch on once speaking questions are built; it will then appear only on a device with a microphone Phevere may use. A round under way is not restarted when a goal changes.
+New words a day has a row for My words and one for each word book you study, with 5, 10, 20 and 40 and an Other field for any number up to 999. Countdown on choice questions is Off or 5 to 30 seconds. It reaches Learn as `learnPrefs` in `ReviewRenderOptions` (`packages/core/src/learn-prefs.ts`), and the countdown itself belongs to the question logic in `review-quiz.ts`. There is no switch for speaking questions, because none exist yet. The stored `speaking` preference and the microphone check (`microphoneAvailable`) are kept, and `SPEAKING_QUESTIONS` in `settings-learn.ts` turns the switch on once speaking questions are built; it will then appear only on a device with a microphone Phevere may use. The countdown applies to the questions answered by picking one of four (`COUNTDOWN_KINDS`): a thin bar under the instruction empties over the chosen seconds, and when it runs out the question counts as not known (Again) and says "Time is up" (`armCountdown`, `expireCountdown`). Only time on screen counts: a learner who opens Settings or another tab, or puts the phone away, comes back to the seconds that were left, and a repaint resumes the bar where it stood. On a question that plays the word, the bar stays full until the word has played or failed to load (`markHeard`, at most `COUNTDOWN_WAIT_MS`, 8 seconds). Typed questions have no countdown, since their time already sets the grade. A round under way is not restarted when a goal changes.
 
 ## What is left open
 
-Automatic grading by time is a judgement call. If the thresholds feel wrong in use, they live in `autoGrade` in `review-quiz.ts`. The skill aims and the listening cap live in `SKILL_TARGET` and `LISTEN_CAP`, the leech line in `LEECH_LAPSES`, and the round size in `ROUND_WORDS`. FSRS can fit its parameters to a learner's own history once there are a few hundred reviews; the answer history holds what that fitting needs, but Phevere still runs on the default parameters. The question screenshots in this memo show the Learn tab before the 2026-11-04 rebuild.
+Automatic grading by time is a judgement call. If the thresholds feel wrong in use, they live in `autoGrade` in `review-quiz.ts`. The skill aims and the listening cap live in `SKILL_TARGET` and `LISTEN_CAP`, the leech line in `LEECH_LAPSES`, and the round size in `ROUND_WORDS`. The 85% aim (`TARGET_SUCCESS`), the ease of each kind (`KIND_EASE`), the worth of a letter (`LETTER_EASE`) and the unlock counts (`KIND_UNLOCK`) are first guesses from the literature, not fitted to Phevere's own answers; the answer history could fit them once it holds a few thousand answers, and recording the letters shown with each answer would make the learner model exact. FSRS can fit its parameters to a learner's own history once there are a few hundred reviews; the answer history holds what that fitting needs, but Phevere still runs on the default parameters. The question screenshots in this memo, other than those of hints, dictation and long prompts, show the Learn tab before the 2026-11-04 rebuild.

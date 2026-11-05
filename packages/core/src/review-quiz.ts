@@ -11,16 +11,16 @@
 import { clean, dayStart, DAY, type NotebookEntry } from './notebook-shared';
 import { vocabSenses } from './vocab-view';
 import { isGrammaticalFormOfGloss } from './lookup-policy';
-import type { ReviewGrade } from './review-schedule';
+import { predictedRecall, type ReviewGrade } from './review-schedule';
 
 export type { ReviewGrade };
 
 /**
  * - meaning-choice: the word is shown, pick its meaning (passive recognition).
  * - word-choice: the meaning is shown, pick the word (active recognition).
- * - listen-choice: the word is played, pick it.
- * - recall: the meaning is shown with the first letter, type the word (active recall).
- * - listen-type: the word is played, type it.
+ * - listen-choice: the word is played, pick it (early stages only).
+ * - recall: the meaning is shown with the first letter or more, type the word (active recall).
+ * - listen-type: dictation; the word is played, type it.
  * - cloze: a sentence from the learner's note with the word blanked out, type it.
  * - flash: show the word, then the meaning, and the learner says whether they knew it; used only
  *   when nothing else can be asked (no meaning saved and too few other words).
@@ -42,11 +42,25 @@ export interface ReviewQuestion {
   correct: number;
   /** Typed answers that count as right. */
   answers: string[];
-  /** First letter, for typed questions. */
+  /** The letters shown before typing (typed questions): the first `reveal` letters of the answer. */
   hint: string;
+  /** How many letters `hint` holds; more for a weaker word (diminishing cues), none for dictation of a firm word. */
+  reveal?: number;
+  /** Letters revealed on request with Hint. */
+  hinted?: number;
+  /** The answer box after a Hint: the letters shown so far, for the learner to finish. */
+  draft?: string;
   shownAt: number;
   /** Missed LEECH_LAPSES times or more. */
   leech?: boolean;
+  /** The word's stage when asked. */
+  maturity?: Maturity;
+  /** Predicted chance of a right answer to this question, from the word's recall and the learner. */
+  predicted?: number;
+  /** Countdown milliseconds used while the question was on screen (`armCountdown`). */
+  countdownSpent?: number;
+  /** A listening question's word has played, or could not be played (`markHeard`). */
+  heard?: boolean;
 }
 
 export interface ReviewAnswer {
@@ -59,6 +73,8 @@ export interface ReviewAnswer {
   grade: ReviewGrade;
   overridden: boolean;
   ms: number;
+  /** The countdown on a choice question ran out before an answer. */
+  timedOut?: boolean;
   /** When the answer was given, so a repaint can resume the mark where it was. */
   at?: number;
 }
@@ -73,6 +89,13 @@ export interface ReviewResult {
   /** Memory level (0 new to 3 held for weeks) before and after the answer. */
   levelBefore?: number;
   levelAfter?: number;
+  /** Stage before and after the answer. */
+  maturityBefore?: Maturity;
+  maturityAfter?: Maturity;
+  /** Letters revealed with Hint. */
+  hinted?: number;
+  /** The question's predicted chance of a right answer, for updating the learner model. */
+  predicted?: number;
 }
 
 export interface ReviewState {
@@ -91,6 +114,8 @@ export interface ReviewState {
   rest?: number;
   /** New words held back today because many reviews are due. */
   heldBack?: number;
+  /** New words held back until tomorrow because today's answers already fill the learner's usual day. */
+  heldForToday?: number;
   /** Words set aside with "Already know it" this round, for the summary's Undo. */
   knownMarked?: string[];
 }
@@ -105,6 +130,36 @@ export interface QuestionOptions {
   asked?: QuestionKind[];
   /** How often this word was asked earlier in this session. */
   repeat?: number;
+  /** What the learner's answers say about them (`learnerModel` in learn-adapt.ts). Without it every kind is open. */
+  learner?: LearnerModel | null;
+}
+
+/**
+ * What a learner's own answers say, for choosing questions. `offset` is added to the predicted
+ * log-odds of a right answer for each kind: positive when the learner gets that kind right more
+ * often than the model expects. `right` counts right answers per kind, for unlocking harder kinds.
+ */
+export interface LearnerModel {
+  offset: Partial<Record<QuestionKind, number>>;
+  right: Partial<Record<QuestionKind, number>>;
+}
+
+/** How much a learner studies, from their answer history (`studyPace` in learn-adapt.ts). */
+export interface StudyPace {
+  /** Answers on a usual study day: the median of the recent days with any answers. */
+  answersPerDay: number;
+  /** Share of review answers that were right on those days. */
+  accuracy: number;
+  /** Answers a new word takes on the day it is started. */
+  firstDayAnswers: number;
+  /** Review answers each new word a day adds to a later day's load. */
+  reviewsPerNew: number;
+  /** New words a day that keep a day's work near the usual day. */
+  suggested: number;
+  /** Study days the numbers come from. */
+  days: number;
+  /** Answers given so far today; the shells add each new one, so another round does not plan a new batch. */
+  answersToday?: number;
 }
 
 /** Taps and keys this soon after a question appears are ignored, so a double tap on Continue cannot answer the next one. */
@@ -157,6 +212,25 @@ export function newWordAllowance(goal: number, due: number): number {
   const g = Math.max(0, Math.round(goal));
   if (!g || due <= 5 * g) return g;
   return Math.max(0, g - Math.ceil((due - 5 * g) / 5));
+}
+
+/** Answers a due review takes on average, counting the relearning asks after a miss. */
+export const ANSWERS_PER_REVIEW = 1.2;
+
+/**
+ * New words that may still start today, which vary with the day's load as MaiMemo's do:
+ * `newWordAllowance`, and, once the learner's pace is known, no more than fit in a usual day's
+ * answers with a fifth to spare beside the reviews still due and the answers already given today
+ * (`pace.answersToday`). The callers take the words already started off the goal, so the pace is
+ * a limit for the day: a second round does not plan another batch. A heavy day gets fewer new
+ * words and a light day the whole goal.
+ */
+export function newWordsToday(goal: number, due: number, pace?: StudyPace | null): number {
+  const base = newWordAllowance(goal, due);
+  if (!pace || !(pace.answersPerDay > 0)) return base;
+  const room = (pace.answersPerDay - (pace.answersToday || 0) - due * ANSWERS_PER_REVIEW) * 1.2;
+  const byLoad = Math.floor(Math.max(0, room) / Math.max(1, pace.firstDayAnswers));
+  return Math.max(0, Math.min(base, byLoad));
 }
 
 /**
@@ -219,16 +293,18 @@ export interface QueuePlan {
   ids: string[];
   due: number;
   fresh: number;
-  /** New words the goal allowed but the review load held back. */
+  /** New words the goal allowed but the review load held back; they come once the reviews are done. */
   heldBack: number;
+  /** New words the goal allowed but the learner's usual day has no room for; they wait for tomorrow. */
+  heldForToday?: number;
 }
 
 /**
  * Today's plan: words due by the end of today, most overdue first, and today's new words (oldest
- * saved first, up to the daily goal less those started today, fewer when many reviews are due)
- * spread among them. One form of each word only.
+ * saved first, up to the daily goal less those started today, fewer when many reviews are due,
+ * `newWordsToday`) spread among them. One form of each word only.
  */
-export function reviewPlan(entries: NotebookEntry[], goal: number, now = Date.now(), startedToday = 0): QueuePlan {
+export function reviewPlan(entries: NotebookEntry[], goal: number, now = Date.now(), startedToday = 0, pace?: StudyPace | null): QueuePlan {
   const end = dayStart(now) + DAY;
   const dueAll = entries.filter((e) => !isNew(e) && e.reviewDue != null && Number(e.reviewDue) < end).sort((x, y) => Number(x.reviewDue) - Number(y.reviewDue));
   const newAll = entries.filter((e) => isNew(e) && clean(e.lemma)).sort((x, y) => Number(x.createdAt || 0) - Number(y.createdAt || 0));
@@ -236,13 +312,15 @@ export function reviewPlan(entries: NotebookEntry[], goal: number, now = Date.no
   const due = dueAll.filter((e) => kept.has(e));
   const fresh = newAll.filter((e) => kept.has(e));
   const left = Math.max(0, goal - startedToday);
-  const taken = fresh.slice(0, Math.min(left, newWordAllowance(goal, due.length)));
-  return { ids: interleaveNew(due, taken).map((e) => e.id), due: due.length, fresh: taken.length, heldBack: Math.min(fresh.length, left) - taken.length };
+  const avail = Math.min(fresh.length, left);
+  const byReviews = Math.min(avail, newWordAllowance(goal, due.length));
+  const taken = fresh.slice(0, Math.min(byReviews, newWordsToday(goal, due.length, pace)));
+  return { ids: interleaveNew(due, taken).map((e) => e.id), due: due.length, fresh: taken.length, heldBack: avail - byReviews, heldForToday: byReviews - taken.length };
 }
 
 /** Today's queue (`reviewPlan` ids). */
-export function reviewQueue(entries: NotebookEntry[], goal: number, now = Date.now(), startedToday = 0): string[] {
-  return reviewPlan(entries, goal, now, startedToday).ids;
+export function reviewQueue(entries: NotebookEntry[], goal: number, now = Date.now(), startedToday = 0, pace?: StudyPace | null): string[] {
+  return reviewPlan(entries, goal, now, startedToday, pace).ids;
 }
 
 /** A session over the first round of a plan. */
@@ -259,11 +337,12 @@ export function reviewStateFor(plan: QueuePlan, now = Date.now()): ReviewState {
     seed: Math.floor(now % 2147483647),
     rest: Math.max(0, plan.ids.length - ROUND_WORDS),
     heldBack: plan.heldBack,
+    heldForToday: plan.heldForToday || 0,
   };
 }
 
-export function startReview(entries: NotebookEntry[], goal: number, now = Date.now(), startedToday = 0): ReviewState {
-  return reviewStateFor(reviewPlan(entries, goal, now, startedToday), now);
+export function startReview(entries: NotebookEntry[], goal: number, now = Date.now(), startedToday = 0, pace?: StudyPace | null): ReviewState {
+  return reviewStateFor(reviewPlan(entries, goal, now, startedToday, pace), now);
 }
 
 /* ------------------------------------------------------------- strength */
@@ -278,8 +357,31 @@ export function memoryLevel(e: NotebookEntry): number {
   if (state === 1 || state === 3) return 1;
   const s = Number(e.stability ?? e.reviewInterval ?? 0) || 0;
   if (s < 4) return 1;
-  if (s < 21) return 2;
+  if (s < MATURE_DAYS) return 2;
   return 3;
+}
+
+/**
+ * A word's stage, Anki's card stages with FSRS stability in place of the interval: new (never
+ * answered), learning (first steps), relearning (after a lapse), young (in review, held under
+ * three weeks) and mature (held three weeks or more). Stability, unlike the interval, does not
+ * move when the desired retention changes.
+ */
+export type Maturity = 'new' | 'learning' | 'relearning' | 'young' | 'mature';
+
+/** Anki's line between young and mature, in days of stability. */
+export const MATURE_DAYS = 21;
+
+export const MATURITY_NAME: Record<Maturity, string> = { new: 'New', learning: 'Learning', relearning: 'Relearning', young: 'Young', mature: 'Mature' };
+
+export function wordMaturity(e: NotebookEntry): Maturity {
+  if (isNew(e)) return 'new';
+  const state = Number(e.state);
+  if (state === 1) return 'learning';
+  if (state === 3) return 'relearning';
+  const s = Number(e.stability ?? e.reviewInterval ?? 0) || 0;
+  if (!s && !state) return 'learning';
+  return s >= MATURE_DAYS ? 'mature' : 'young';
 }
 
 /* ---------------------------------------------------------------- text */
@@ -495,7 +597,14 @@ export function usableSense(text: string, lemma = ''): boolean {
   return /\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}/u.test(rest) ? letters >= 2 : letters >= 3;
 }
 
-/** The sense a question shows: the first usable one, an everyday sense before a dialect or obsolete one. */
+/** A first sense longer than this gives way to a shorter one among the next two everyday senses. */
+export const PROMPT_CHARS = 160;
+
+/**
+ * The sense a question shows: the first usable one, an everyday sense before a dialect or obsolete
+ * one, and a shorter everyday sense when the first runs past PROMPT_CHARS. A sense is never cut:
+ * when no shorter one exists the long one is shown whole.
+ */
 export function bestSense(e: NotebookEntry): string {
   const lemma = clean(e.lemma);
   // "Alternative form of mock-up. [A scale model …]": the bracketed gloss is the sense.
@@ -504,19 +613,21 @@ export function bestSense(e: NotebookEntry): string {
     .map((s) => s.replace(/\s*\.?mw-parser-output[^{]*\{[^}]*\}/g, '').replace(/\s+\.\s*$/, '.').trim())
     .map((s) => s.replace(/^(?:(?:alternative|obsolete|archaic|dated)\s+(?:form|spelling)|misspelling)\s+of\s+[^.[]+\.?\s*\[(.+)\]\s*$/i, '$1'))
     .filter((s) => usableSense(s, lemma));
-  return senses.find((s) => !MARGINAL.test(s)) || senses[0] || '';
+  const everyday = senses.filter((s) => !MARGINAL.test(s));
+  const list = everyday.length ? everyday : senses;
+  const first = list[0] || '';
+  if (first.length <= PROMPT_CHARS) return first;
+  return list.slice(1, 3).find((s) => s.length <= PROMPT_CHARS) || first;
 }
 
 const meaningCache = new Map<string, string>();
 
-/** The best sense, with the word blanked out and trimmed to a readable length; empty when none is usable. */
+/** The best sense, whole, with the word blanked out; empty when none is usable. */
 export function questionMeaning(e: NotebookEntry): string {
   const key = `${clean(e.lemma)}\u0000${clean(e.definition)}`;
   const hit = meaningCache.get(key);
   if (hit != null) return hit;
-  const sense = bestSense(e);
-  const masked = maskWord(sense, clean(e.lemma));
-  const out = masked.length > 160 ? `${masked.slice(0, 157).replace(/\s+\S*$/, '')}…` : masked;
+  const out = maskWord(bestSense(e), clean(e.lemma));
   if (meaningCache.size > 20000) meaningCache.clear();
   meaningCache.set(key, out);
   return out;
@@ -616,14 +727,16 @@ export function pickDistractors(
 /* ------------------------------------------------------------- questions */
 
 /**
- * The exercise ladder (docs/REVIEW.md). Each stage lists the kinds it asks, most fitting first:
- * a new word is recognised, a learning word is recalled from four, a word held for days is typed,
- * and a word held for weeks is typed into a sentence. Listening joins from the learning stage.
+ * The kinds each stage may ask (docs/REVIEW.md), most fitting first. A new word is recognised; a
+ * learning word is recognised, heard among four or typed; a young word is typed, filled into a
+ * sentence or written from dictation; a mature word is mostly produced. Listening by choice
+ * belongs to the early stages and dictation to the later ones. Within a stage the kind is chosen
+ * by how likely the learner is to get it right (`chooseKind`).
  */
 export const STAGE_KINDS: Record<number, QuestionKind[]> = {
   0: ['meaning-choice', 'word-choice', 'flash'],
   1: ['word-choice', 'meaning-choice', 'listen-choice', 'recall', 'cloze', 'flash'],
-  2: ['recall', 'cloze', 'listen-type', 'word-choice', 'listen-choice', 'meaning-choice', 'flash'],
+  2: ['recall', 'word-choice', 'cloze', 'listen-type', 'listen-choice', 'meaning-choice', 'flash'],
   3: ['cloze', 'recall', 'listen-type', 'word-choice', 'meaning-choice', 'flash'],
 };
 
@@ -639,11 +752,127 @@ const KIND_SKILL: Record<QuestionKind, QuizSkill> = {
   'listen-type': 'listening',
 };
 
+/** Kinds answered by typing the word. */
+export const TYPED_KINDS: QuestionKind[] = ['recall', 'cloze', 'listen-type'];
+
 /** Shares of a session each skill aims at; listening also has a hard cap (LISTEN_CAP). */
-export const SKILL_TARGET: Record<QuizSkill, number> = { meaning: 0.45, spelling: 0.4, listening: 0.15 };
+export const SKILL_TARGET: Record<QuizSkill, number> = { meaning: 0.5, spelling: 0.35, listening: 0.15 };
+
+/**
+ * The share of right answers the choice of kind aims at. Wilson et al. (2019) derive about 85%
+ * as the best training accuracy, and Duolingo's Birdbrain picks exercises the learner should find
+ * just hard enough; the FSRS schedule itself aims at 90% recall when a word falls due.
+ */
+export const TARGET_SUCCESS = 0.85;
+
+/**
+ * How much easier (+) or harder (-) each kind is than typing the word from its meaning with its
+ * first letter, in log-odds. The order is Laufer and Goldstein's (2004): recognising a meaning is
+ * easiest, then recognising the word, then recalling it; dictation adds hearing to spelling.
+ */
+export const KIND_EASE: Record<QuestionKind, number> = {
+  'meaning-choice': 1.8,
+  'word-choice': 1.4,
+  'listen-choice': 1.1,
+  flash: 1.0,
+  cloze: 0.1,
+  recall: 0,
+  'listen-type': -0.5,
+};
+
+/** Each letter shown beyond the usual cue makes a typed answer this much easier, in log-odds. */
+export const LETTER_EASE = 0.45;
+
+/**
+ * Harder kinds open for a learner once they have answered easier ones right this many times,
+ * counting every word: typing after recognising words, a sentence gap after typing, dictation
+ * after picking words they heard or typing words right. Typed answers count for dictation because
+ * picking the word heard is asked only of words not yet mature, so a learner whose words are all
+ * mature would otherwise never reach it. Without a learner model every kind is open.
+ */
+export const KIND_UNLOCK: Partial<Record<QuestionKind, { after: QuestionKind[]; right: number }>> = {
+  recall: { after: ['word-choice', 'meaning-choice'], right: 5 },
+  cloze: { after: ['recall'], right: 3 },
+  'listen-type': { after: ['listen-choice', 'recall', 'cloze'], right: 3 },
+};
 
 export function kindSkill(kind: QuestionKind): QuizSkill {
   return KIND_SKILL[kind] || 'meaning';
+}
+
+/** Whether a learner has unlocked a kind (`KIND_UNLOCK`). */
+export function kindUnlocked(kind: QuestionKind, learner?: LearnerModel | null): boolean {
+  const rule = KIND_UNLOCK[kind];
+  if (!rule || !learner) return true;
+  return rule.after.reduce((n, k) => n + (learner.right[k] || 0), 0) >= rule.right;
+}
+
+const logit = (p: number) => Math.log(p / (1 - p));
+const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
+
+/**
+ * How firmly the word is held now, in log-odds: FSRS's predicted recall, an even chance for a word
+ * never answered, and a guess from the stage for rows without a memory state.
+ */
+export function wordStrength(e: NotebookEntry, now = Date.now()): number {
+  if (isNew(e)) return 0;
+  return wordStrengthFrom(predictedRecall(e, now) ?? [0.5, 0.85, 0.9, 0.93][memoryLevel(e)]);
+}
+
+/** A recall probability in log-odds, kept off 0 and 1; null (never answered) is an even chance. */
+export function wordStrengthFrom(recall: number | null): number {
+  if (recall == null) return 0;
+  return logit(Math.min(0.995, Math.max(0.03, recall)));
+}
+
+/** Learner offsets stay within this many log-odds. */
+const MAX_OFFSET = 2;
+
+/**
+ * One Elo-style update of a learner offset: it moves by the surprise (the outcome less the
+ * predicted chance), by a step that starts at 0.4 and shrinks as answers of the kind accumulate,
+ * never below 0.05, so recent answers keep counting.
+ */
+export function eloStep(offset: number, outcome: number, predicted: number, answers: number): number {
+  const k = Math.max(0.05, 0.4 / (1 + answers / 20));
+  return Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, offset + k * (outcome - predicted)));
+}
+
+/** Letters a typed kind usually shows: the first letter, none for dictation. */
+function baseLetters(kind: QuestionKind): number {
+  return kind === 'listen-type' ? 0 : 1;
+}
+
+/** Predicted chance of a right answer to `kind` for a word of `strength`, with `letters` shown. */
+export function successChance(kind: QuestionKind, strength: number, learner?: LearnerModel | null, letters = baseLetters(kind)): number {
+  const extra = TYPED_KINDS.includes(kind) ? Math.max(0, letters - baseLetters(kind)) * LETTER_EASE : 0;
+  return sigmoid(strength + KIND_EASE[kind] + (learner?.offset[kind] || 0) + extra);
+}
+
+/**
+ * Letters to show for a typed answer, as diminishing cues (Finley et al. 2011, Fiechter and
+ * Benjamin 2018): the usual cue, plus a letter at a time while the predicted chance stays below
+ * TARGET_SUCCESS, never more than a third of the word.
+ */
+export function cueLetters(kind: QuestionKind, answer: string, strength: number, learner?: LearnerModel | null): number {
+  const base = baseLetters(kind);
+  const len = [...answer].length;
+  const most = Math.max(0, Math.floor((len - 2) / 3));
+  let n = 0;
+  while (n < most && successChance(kind, strength, learner, base + n) < TARGET_SUCCESS) n += 1;
+  return Math.min(base + n, Math.max(0, len - 1));
+}
+
+/**
+ * Skill aims for a session. Spelling is the hardest kind of knowing a word, so its share shrinks
+ * for a learner whose typed answers go wrong more often than expected and grows a little for one
+ * who spells well; meaning takes the rest.
+ */
+export function skillTargets(learner?: LearnerModel | null): Record<QuizSkill, number> {
+  if (!learner) return SKILL_TARGET;
+  const typed = ((learner.offset.recall || 0) + (learner.offset.cloze || 0)) / 2;
+  const spelling = Math.min(0.45, Math.max(0.15, SKILL_TARGET.spelling + 0.2 * typed));
+  return { meaning: 1 - spelling - SKILL_TARGET.listening, spelling, listening: SKILL_TARGET.listening };
 }
 
 /** Whether one more listening question keeps listening within LISTEN_CAP of the session. */
@@ -652,24 +881,36 @@ export function listeningAllowed(asked: QuestionKind[]): boolean {
   return listened + 1 <= LISTEN_CAP * (asked.length + 1) + 1e-9;
 }
 
+const STAGE_OF: Record<Maturity, number> = { new: 0, learning: 1, relearning: 1, young: 2, mature: 3 };
+
 /**
- * The stage a word is asked at: its memory level, moved up a step each time it comes back in the
- * same session (a new word is recognised, then recalled from four, then typed), and held at the
- * learning stage while it is a leech.
+ * The stage a word is asked at, by the stage its tag shows (`wordMaturity`): 0 new, 1 learning or
+ * relearning, 2 young, 3 mature. A new word coming back in the same session moves to the learning
+ * stage; a leech stays at the learning stage. Within a stage the predicted chance of a right
+ * answer picks the kind, so a young word held only a few days still gets the easier ones.
  */
 export function questionStage(e: NotebookEntry, repeat = 0): number {
-  const level = memoryLevel(e);
-  const stage = Math.max(level, Math.min(repeat, 2));
+  const m = wordMaturity(e);
+  const stage = m === 'new' ? Math.min(repeat, 1) : STAGE_OF[m];
   return isLeech(e) ? Math.min(stage, 1) : stage;
 }
 
+export interface KindChoice {
+  /** Predicted chance of a right answer for each kind. */
+  predict?: (kind: QuestionKind) => number;
+  /** Skill aims (`skillTargets`). */
+  targets?: Record<QuizSkill, number>;
+}
+
 /**
- * Picks the kind for a word: the stage's order, with a kind whose skill the session already leans
- * on costing more and the previous kind costing a little, and listening only within its cap.
- * Listening passes the cap only when nothing else can be asked.
+ * Picks the kind for a word among those its stage allows: the one whose predicted chance of a
+ * right answer is nearest TARGET_SUCCESS (a shortfall counting double), with a kind whose skill the session already leans on
+ * costing more, the previous kind costing a little, and listening only within its cap. Listening
+ * passes the cap only when nothing else can be asked.
  */
-export function chooseKind(stage: number, can: Record<QuestionKind, boolean>, asked: QuestionKind[] = [], rand: () => number = Math.random): QuestionKind {
+export function chooseKind(stage: number, can: Record<QuestionKind, boolean>, asked: QuestionKind[] = [], rand: () => number = Math.random, choice: KindChoice = {}): QuestionKind {
   const order = STAGE_KINDS[stage] || STAGE_KINDS[0];
+  const targets = choice.targets || SKILL_TARGET;
   const total = asked.length;
   const share = (skill: QuizSkill) => (total ? asked.filter((k) => KIND_SKILL[k] === skill).length / total : 0);
   const listenOk = listeningAllowed(asked);
@@ -680,8 +921,12 @@ export function chooseKind(stage: number, can: Record<QuestionKind, boolean>, as
     if (!can[k]) return;
     const skill = KIND_SKILL[k];
     if (skill === 'listening' && !listenOk) return;
+    // Falling short of the aim costs twice as much as passing it: a miss sends the word back to
+    // relearning, while an easy question still makes the learner retrieve the word.
+    const p = choice.predict ? choice.predict(k) : 0;
+    const fit = choice.predict ? (p < TARGET_SUCCESS ? 2 * (TARGET_SUCCESS - p) : p - TARGET_SUCCESS) * 4 : i * 0.5;
     // The plain card is the last resort, whatever the balance says.
-    const cost = k === 'flash' ? 99 : i * 0.6 + Math.max(0, share(skill) - SKILL_TARGET[skill]) * 4 + (k === last ? 0.5 : 0) + rand() * 0.25;
+    const cost = k === 'flash' ? 99 : fit + i * 0.1 + Math.max(0, share(skill) - targets[skill]) * 4 + (k === last ? 0.5 : 0) + rand() * 0.15;
     if (cost < bestCost) {
       bestCost = cost;
       best = k;
@@ -708,27 +953,40 @@ export function canAsk(entry: NotebookEntry, opts: QuestionOptions = {}): boolea
   return !!clozeFrom(entry, opts.examples?.(clean(entry.lemma)) || []);
 }
 
-/** Builds the question for one word. `pool` is the whole notebook, for wrong options. */
+/**
+ * Builds the question for one word. `pool` is the whole notebook, for wrong options. Typed kinds
+ * wait until the learner has unlocked them, never come up for a leech, and never come up for a
+ * learning word asked again in the same session, so spelling waits for a later day.
+ */
 export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts: QuestionOptions = {}, rand: () => number = Math.random): ReviewQuestion {
   const now = opts.now ?? Date.now();
   // Always the word that was asked: answers are recorded under it.
   const lemma = clean(entry.lemma);
   const level = memoryLevel(entry);
+  const repeat = opts.repeat ?? 0;
+  const stage = questionStage(entry, repeat);
+  const learner = opts.learner || null;
   const meaning = questionMeaning(entry);
   const hasMeaning = !!meaning && meaning !== '…';
   const cloze = clozeFrom(entry, opts.examples?.(clean(entry.lemma)) || []);
   const meaningLures = hasMeaning ? pickDistractors(entry, pool, 'meaning', 3, rand) : [];
   const wordLures = pickDistractors(entry, pool, 'word', 3, rand);
+  const typedOk = !isLeech(entry) && !(repeat > 0 && stage <= 1);
+  const open = (k: QuestionKind) => kindUnlocked(k, learner) && (!TYPED_KINDS.includes(k) || typedOk);
   const can: Record<QuestionKind, boolean> = {
     'meaning-choice': hasMeaning && meaningLures.length >= 2,
     'word-choice': hasMeaning && wordLures.length >= 2,
     'listen-choice': !!opts.audio && wordLures.length >= 2,
-    recall: hasMeaning,
-    'listen-type': !!opts.audio,
-    cloze: !!cloze,
+    recall: hasMeaning && open('recall'),
+    'listen-type': !!opts.audio && open('listen-type'),
+    cloze: !!cloze && open('cloze'),
     flash: hasMeaning || !clean(entry.definition),
   };
-  const kind = chooseKind(questionStage(entry, opts.repeat ?? 0), can, opts.asked || [], rand);
+  const strength = wordStrength(entry, now);
+  const answerOf = (k: QuestionKind) => (k === 'cloze' && cloze ? cloze.form : lemma);
+  const lettersFor = (k: QuestionKind) => (TYPED_KINDS.includes(k) ? cueLetters(k, answerOf(k), strength, learner) : 0);
+  const predict = (k: QuestionKind) => successChance(k, strength, learner, lettersFor(k));
+  const kind = chooseKind(stage, can, opts.asked || [], rand, { predict, targets: skillTargets(learner) });
 
   const answers = [lemma];
   const base: ReviewQuestion = {
@@ -742,8 +1000,12 @@ export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts:
     correct: -1,
     answers,
     hint: '',
+    reveal: 0,
+    hinted: 0,
     shownAt: now,
     leech: isLeech(entry),
+    maturity: wordMaturity(entry),
+    predicted: Math.round(predict(kind) * 1000) / 1000,
   };
   if (kind === 'meaning-choice' || kind === 'word-choice' || kind === 'listen-choice') {
     const lures = kind === 'meaning-choice' ? meaningLures : wordLures;
@@ -755,17 +1017,46 @@ export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts:
     base.optionWords = all.map((e) => (e === entry ? lemma : clean(e.lemma)));
     base.correct = all.indexOf(entry);
     if (kind === 'word-choice') base.prompt = meaning;
-  } else if (kind === 'recall') {
-    base.prompt = meaning;
-    base.hint = lemma.charAt(0);
+  } else if (kind === 'recall' || kind === 'listen-type') {
+    if (kind === 'recall') base.prompt = meaning;
+    base.reveal = lettersFor(kind);
+    base.hint = [...lemma].slice(0, base.reveal).join('');
   } else if (kind === 'cloze' && cloze) {
     base.prompt = cloze.sentence;
     base.answers = [...new Set([cloze.form, ...answers])];
-    base.hint = cloze.form.charAt(0);
+    base.reveal = lettersFor(kind);
+    base.hint = [...cloze.form].slice(0, base.reveal).join('');
   } else if (kind === 'flash') {
     base.prompt = meaning;
   }
   return base;
+}
+
+/** Letters still hidden that Hint may reveal: all but the last one. */
+export function hintsLeft(q: ReviewQuestion): number {
+  if (!TYPED_KINDS.includes(q.kind)) return 0;
+  const len = [...(q.answers[0] || '')].length;
+  return Math.max(0, len - 1 - (q.reveal || 0) - (q.hinted || 0));
+}
+
+/**
+ * Hint: reveals the next letter of the answer into the answer box. What the learner typed (`typed`,
+ * the box as it stands) is kept as far as it matches the answer, letter case aside, and the letter
+ * after that is revealed; anything typed past the first wrong letter is dropped. The last letter
+ * is never revealed. A right answer after a hint counts as Hard, as a near miss does.
+ */
+export function hintReview(state: ReviewState, typed = ''): boolean {
+  const q = state.question;
+  if (!q || state.answer || !TYPED_KINDS.includes(q.kind)) return false;
+  const answer = [...(q.answers[0] || '')];
+  const mine = [...typed];
+  let right = 0;
+  while (right < mine.length && right < answer.length && mine[right].toLowerCase() === answer[right].toLowerCase()) right += 1;
+  const shown = Math.max(right, (q.reveal || 0) + (q.hinted || 0));
+  if (shown + 1 > answer.length - 1) return false;
+  q.hinted = shown + 1 - (q.reveal || 0);
+  q.draft = mine.slice(0, Math.min(right, shown)).join('') + answer.slice(Math.min(right, shown), shown + 1).join('');
+  return true;
 }
 
 /* --------------------------------------------------------------- answers */
@@ -811,24 +1102,45 @@ export function checkTyped(typed: string, answers: string[]): AnswerResult {
   return best;
 }
 
-const TYPED: QuestionKind[] = ['recall', 'listen-type', 'cloze'];
+/** How much help a typed answer had: letters shown beyond the usual cue, and letters asked for with Hint. */
+export interface AnswerHelp {
+  extra?: number;
+  hinted?: number;
+}
 
 /**
  * Grade from the outcome and the response time. A wrong answer is Again and a near miss is Hard.
  * A right choice is Good, or Hard after ten seconds; recognising a word never earns Easy. A right
  * typed answer is Easy when it came quickly (2.5 s plus a quarter second per letter), Hard when
- * it took more than 15 s plus that allowance, and Good otherwise.
+ * it took more than 15 s plus that allowance, and Good otherwise. A typed answer finished after a
+ * Hint is Hard, and one given extra letters up front is at most Good.
  */
-export function autoGrade(kind: QuestionKind, result: AnswerResult, ms: number, length = 0): ReviewGrade {
+export function autoGrade(kind: QuestionKind, result: AnswerResult, ms: number, length = 0, help: AnswerHelp = {}): ReviewGrade {
   if (result === 'wrong') return 1;
   if (result === 'close') return 2;
-  if (TYPED.includes(kind)) {
+  if (TYPED_KINDS.includes(kind)) {
+    if (help.hinted) return 2;
     const allowance = 250 * length;
-    if (ms <= 2500 + allowance) return 4;
+    if (ms <= 2500 + allowance) return help.extra ? 3 : 4;
     if (ms > 15000 + allowance) return 2;
     return 3;
   }
   return ms > 10000 ? 2 : 3;
+}
+
+/**
+ * The learner model with this session's answers folded in: right answers counted, so harder kinds
+ * open during a session, and each offset moved by the session's surprises (`eloStep`).
+ */
+export function sessionLearner(learner: LearnerModel | null | undefined, results: ReviewResult[]): LearnerModel | null {
+  if (!learner) return null;
+  const right = { ...learner.right };
+  const offset = { ...learner.offset };
+  for (const r of results) {
+    if (r.grade > 1) right[r.kind] = (right[r.kind] || 0) + 1;
+    if (r.predicted != null) offset[r.kind] = eloStep(offset[r.kind] || 0, r.grade > 1 ? 1 : 0, r.predicted, 40);
+  }
+  return { offset, right };
 }
 
 /** The current question, built on first use so it stays put across re-renders. */
@@ -844,7 +1156,8 @@ export function ensureReviewQuestion(state: ReviewState, entries: NotebookEntry[
   }
   const asked = state.seen[id] || 0;
   const kinds = state.results.map((r) => r.kind);
-  state.question = buildQuestion(entry, entries, { ...opts, asked: kinds, repeat: asked }, seededRandom(hash(`${id}:${state.seed}:${asked}`)));
+  const learner = sessionLearner(opts.learner, state.results);
+  state.question = buildQuestion(entry, entries, { ...opts, learner, asked: kinds, repeat: asked }, seededRandom(hash(`${id}:${state.seed}:${asked}`)));
   state.answer = null;
   state.revealed = false;
   return state.question;
@@ -862,9 +1175,114 @@ export function answerReview(state: ReviewState, input: { choice?: number; typed
   if (q.kind === 'flash') result = input.knew ? 'right' : 'wrong';
   else if (q.correct >= 0) result = input.choice === q.correct ? 'right' : 'wrong';
   else if (input.typed != null) result = checkTyped(input.typed, q.answers);
-  const auto = q.kind === 'flash' ? (input.knew ? 3 : 1) : autoGrade(q.kind, result, ms, q.lemma.length);
+  const help: AnswerHelp = { extra: Math.max(0, (q.reveal || 0) - (q.kind === 'listen-type' ? 0 : 1)), hinted: q.hinted || 0 };
+  const auto = q.kind === 'flash' ? (input.knew ? 3 : 1) : autoGrade(q.kind, result, ms, q.lemma.length, help);
   state.answer = { choice: input.choice ?? -1, typed: input.typed ?? '', result, auto, grade: auto, overridden: false, ms, at: now };
   return state.answer;
+}
+
+/** Kinds the countdown in Settings → Learn applies to: the questions answered by picking one of four. */
+export const COUNTDOWN_KINDS: QuestionKind[] = ['meaning-choice', 'word-choice', 'listen-choice'];
+
+/** Milliseconds a question allows with a countdown of `seconds` (0 is off); 0 for kinds without one. */
+export function countdownMs(q: ReviewQuestion | null | undefined, seconds: number | null | undefined): number {
+  const s = Number(seconds) || 0;
+  if (!q || s <= 0 || !COUNTDOWN_KINDS.includes(q.kind)) return 0;
+  return s * 1000;
+}
+
+/** The longest a listening question's countdown waits for its word to play before it starts anyway. */
+export const COUNTDOWN_WAIT_MS = 8000;
+
+/**
+ * A listening question's countdown waits until its word has played or failed to load
+ * (`markHeard`), and at most COUNTDOWN_WAIT_MS from the question's start.
+ */
+export function countdownWaiting(q: ReviewQuestion, now = Date.now()): boolean {
+  return kindSkill(q.kind) === 'listening' && !q.heard && now - q.shownAt < COUNTDOWN_WAIT_MS;
+}
+
+/**
+ * The word of the question on screen has played, or could not be played: a listening question's
+ * countdown may start. True when that changed something, so the shell repaints.
+ */
+export function markHeard(state: ReviewState | null | undefined, lemma: string): boolean {
+  const q = state?.question;
+  if (!q || state.answer || q.heard || clean(q.lemma).toLowerCase() !== clean(lemma).toLowerCase()) return false;
+  q.heard = true;
+  return true;
+}
+
+/**
+ * Countdown time a question has used: the time it was on screen once `armCountdown` has run, and
+ * until then the time since it was shown, or none while a listening question waits for its word.
+ */
+export function countdownElapsed(q: ReviewQuestion, now = Date.now()): number {
+  return q.countdownSpent ?? (countdownWaiting(q, now) ? 0 : Math.max(0, now - q.shownAt));
+}
+
+/**
+ * The countdown ran out: the question counts as not known (Again), as "I don't know" would, and
+ * the answer is marked as timed out. False when there is nothing to time out.
+ */
+export function expireCountdown(state: ReviewState, seconds: number | null | undefined, now = Date.now()): boolean {
+  const q = state.question;
+  const ms = countdownMs(q, seconds);
+  if (!q || state.answer || !ms || countdownElapsed(q, now) < ms) return false;
+  const a = answerReview(state, {}, q.shownAt + ms);
+  if (a) a.timedOut = true;
+  return !!a;
+}
+
+/** How often the countdown checks whether its question is still on screen. */
+const COUNTDOWN_TICK_MS = 100;
+
+let countdownTick: ReturnType<typeof setInterval> | null = null;
+
+const pageHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden';
+
+/**
+ * Runs the countdown for the question on screen, replacing any earlier one; the shells call it
+ * after every paint of Learn. Time counts only while the question is on screen (`showing`) and
+ * the app is in front: a learner who opens Settings or another tab, or puts the phone away, comes
+ * back to the time that was left. When it runs out the question is answered as not known and
+ * `repaint` draws the answer; `repaint` also redraws the bar when the app comes back to the front.
+ */
+export function armCountdown(state: ReviewState | null | undefined, seconds: number | null | undefined, showing: () => boolean, repaint: () => void, now = Date.now()): void {
+  if (countdownTick) clearInterval(countdownTick);
+  countdownTick = null;
+  const q = state?.question;
+  const ms = countdownMs(q, seconds);
+  if (!state || !q || state.answer || !ms) return;
+  q.countdownSpent = countdownElapsed(q, now);
+  let mark = now;
+  let wasHidden = false;
+  const stop = () => {
+    if (countdownTick === tick) clearInterval(tick);
+    if (countdownTick === tick) countdownTick = null;
+  };
+  const tick: ReturnType<typeof setInterval> = setInterval(() => {
+    const t = Date.now();
+    // Off screen: the next paint of Learn arms the countdown again from where it stands.
+    if (state.question !== q || state.answer || !showing()) return stop();
+    // In the background, or a listening question whose word has not played yet: no time counts.
+    if (pageHidden() || countdownWaiting(q, t)) {
+      wasHidden = true;
+      mark = t;
+      return;
+    }
+    q.countdownSpent = (q.countdownSpent || 0) + (t - mark);
+    mark = t;
+    if (q.countdownSpent >= ms) {
+      stop();
+      if (expireCountdown(state, seconds, t)) repaint();
+    } else if (wasHidden) {
+      // Back in front, or the word has played: the bar starts or resumes where the time stands.
+      stop();
+      repaint();
+    }
+  }, COUNTDOWN_TICK_MS);
+  countdownTick = tick;
 }
 
 /**
@@ -894,7 +1312,21 @@ export function advanceReview(state: ReviewState, updated?: NotebookEntry | null
   const a = state.answer;
   if (!q || !a) return;
   const levelAfter = updated ? memoryLevel(updated) : q.level;
-  state.results.push({ id: q.id, lemma: q.lemma, kind: q.kind, result: a.result, grade: a.grade, ms: a.ms, levelBefore: q.level, levelAfter });
+  const maturityAfter = updated ? wordMaturity(updated) : q.maturity;
+  state.results.push({
+    id: q.id,
+    lemma: q.lemma,
+    kind: q.kind,
+    result: a.result,
+    grade: a.grade,
+    ms: a.ms,
+    levelBefore: q.level,
+    levelAfter,
+    maturityBefore: q.maturity,
+    maturityAfter,
+    hinted: q.hinted || 0,
+    predicted: q.predicted,
+  });
   const asked = (state.seen[q.id] || 0) + 1;
   state.seen[q.id] = asked;
   const soon = updated?.reviewDue != null ? Number(updated.reviewDue) - now <= LEARN_AHEAD_MS : a.grade === 1;

@@ -367,6 +367,9 @@
   text-transform: none;
 }
 .nbv-tag.is-new { background: var(--nbv-teal-soft); color: #00393b; }
+.nbv-tag.is-learning,
+.nbv-tag.is-relearning { background: #fbe3d4; color: #5a2000; }
+.nbv-tag.is-mature { background: var(--nbv-teal); color: #fff; }
 .nbv-tag.is-leech { background: var(--nbv-ember-soft); color: #5a2000; }
 /* "Already know it" sits at the end of the instruction row, far from where Continue appears. */
 .nbv-known {
@@ -456,6 +459,17 @@
 }
 .nbv-link[aria-pressed='true'] { color: var(--nbv-soft); }
 .nbv-skip { margin-top: -4px; }
+.nbv-quiz__below { align-items: baseline; }
+.nbv-type__count { font: 500 12.5px/1 var(--nbv-ui); color: var(--nbv-soft); font-variant-numeric: tabular-nums; }
+/* The countdown on a choice question: a thin bar that empties; --cd-t resumes it on a repaint. It
+ * carries !important so the shells' reduced-motion rule does not stop the timer it shows. */
+.nbv-countdown { height: 4px; margin-top: -6px; border-radius: 999px; background: var(--nbv-paper-2); overflow: hidden; }
+.nbv-countdown i { display: block; height: 100%; border-radius: inherit; background: var(--nbv-ember); transform-origin: left center; }
+.nbv .nbv-quiz .nbv-countdown i { animation: nbv-countdown var(--cd) cubic-bezier(0, 0, 1, 1) var(--cd-t) both !important; }
+.nbv .nbv-quiz .nbv-countdown.is-waiting i { animation-play-state: paused !important; }
+@keyframes nbv-countdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.nbv-suggest { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.nbv-suggest .nbv-link { padding: 2px; font-size: 12.5px; }
 .nbv-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
 .nbv-verdict { margin: 0; font: 600 17px/1.2 var(--nbv-ui); }
@@ -540,8 +554,9 @@
 .nbv-split { display: grid; gap: 8px; }
 .nbv-split__bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--nbv-paper-2); gap: 2px; }
 .nbv-split__bar i { display: block; min-width: 3px; }
-.nbv-split--known { background: var(--nbv-teal); }
-.nbv-split--learning { background: #8fd3d5; }
+.nbv-split--mature { background: var(--nbv-teal); }
+.nbv-split--young { background: #8fd3d5; }
+.nbv-split--learning { background: #f2c3a8; }
 .nbv-split--new { background: var(--nbv-paper-2); box-shadow: inset 0 0 0 1px var(--nbv-line); }
 .nbv-split__nums { display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .nbv-split__n { display: inline-flex; align-items: baseline; gap: 6px; font: 500 12.5px/1.2 var(--nbv-ui); color: var(--nbv-soft); }
