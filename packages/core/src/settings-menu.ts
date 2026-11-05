@@ -93,10 +93,14 @@ export function enhanceSelect(select: HTMLSelectElement): void {
     list.style.maxHeight = '';
     const height = Math.min(list.scrollHeight, 288);
     const up = height > room && above > room;
-    list.style.maxHeight = `${Math.max(120, Math.min(288, up ? above : room))}px`;
+    const max = Math.max(120, Math.min(288, up ? above : room));
+    list.style.maxHeight = `${max}px`;
+    const shown = Math.min(height, max);
     const width = list.offsetWidth;
     list.style.left = `${Math.round(Math.max(8, Math.min(r.left, window.innerWidth - width - 8)))}px`;
-    list.style.top = up ? `${Math.round(r.top - 4 - Math.min(height, above))}px` : `${Math.round(r.bottom + 4)}px`;
+    // In a very short window the list may cover the button rather than run off the edge.
+    const top = up ? r.top - 4 - shown : r.bottom + 4;
+    list.style.top = `${Math.round(Math.max(8, Math.min(top, window.innerHeight - shown - 8)))}px`;
     list.classList.toggle('is-up', up);
   };
   const isOpen = () => !list.hidden;
@@ -113,6 +117,8 @@ export function enhanceSelect(select: HTMLSelectElement): void {
     window.addEventListener('resize', onAway);
     window.addEventListener('blur', onAway);
     document.addEventListener('scroll', onScroll, true);
+    // A page still sliding in moves a fixed list with it; place it again when that animation ends.
+    document.addEventListener('animationend', onSettled, true);
   };
   function close(refocus = false) {
     if (!isOpen()) return;
@@ -123,6 +129,7 @@ export function enhanceSelect(select: HTMLSelectElement): void {
     window.removeEventListener('resize', onAway);
     window.removeEventListener('blur', onAway);
     document.removeEventListener('scroll', onScroll, true);
+    document.removeEventListener('animationend', onSettled, true);
     if (refocus === true) button.focus({ preventScroll: true });
   }
   const choose = (i: number) => {
@@ -133,6 +140,9 @@ export function enhanceSelect(select: HTMLSelectElement): void {
       select.dispatchEvent(new Event('change', { bubbles: true }));
     }
   };
+  function onSettled(e: Event) {
+    if (e.target !== list) place();
+  }
   function onAway() {
     close();
   }
@@ -180,8 +190,17 @@ export function enhanceSelect(select: HTMLSelectElement): void {
       case 'End': setActive(count - 1); break;
       case 'PageDown': setActive(active + page); break;
       case 'PageUp': setActive(active - page); break;
-      case 'Enter':
       case ' ':
+        // A space inside a type-ahead search is part of the search, as in a native select.
+        if (typed && Date.now() - typedAt <= 700) {
+          const i = typeAhead(' ');
+          if (i >= 0) setActive(i);
+          break;
+        }
+        choose(active);
+        close(true);
+        break;
+      case 'Enter':
         choose(active);
         close(true);
         break;
@@ -235,7 +254,11 @@ export function enhanceSelect(select: HTMLSelectElement): void {
   select.addEventListener('change', paintButton);
   new MutationObserver(() => {
     paintButton();
-    if (isOpen()) paintList();
+    if (!isOpen()) return;
+    // Options replaced while the list is open: redraw, keep a highlight inside the new list, re-place.
+    paintList();
+    setActive(Math.min(Math.max(active, 0), options().length - 1));
+    place();
   }).observe(select, { childList: true, subtree: true, attributes: true, characterData: true });
   paintButton();
 }
