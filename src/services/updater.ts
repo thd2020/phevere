@@ -485,7 +485,7 @@ export function startUpdater(h: UpdaterHooks): void {
   // A finished update or rollback leaves its installer behind; keep only downloads newer than this version.
   try {
     for (const name of fs.readdirSync(updatesDir())) {
-      const version = /(d+.d+.d+)/.exec(name)?.[1];
+      const version = /(\d+\.\d+\.\d+)/.exec(name)?.[1];
       if (!version || compareVersions(version, currentVersion()) <= 0) {
         fs.rmSync(path.join(updatesDir(), name), { recursive: true, force: true });
       }

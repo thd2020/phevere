@@ -2736,7 +2736,7 @@ function renderVocabNotebook(entries: any[]): void {
     // every word in the chosen language; the search flies to a word on it instead.
     const search = (document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '';
     const isMap = nbView === 'map';
-    const q = `${isMap ? ' map' : search}|${wordsLang}`;
+    const q = `${isMap ? '\0map' : search}|${wordsLang}`;
     if (!nbAnalysis || nbAnalysis.key !== vocabNotebookCache || nbAnalysis.q !== q) {
       nbAnalysis = { key: vocabNotebookCache, q, value: analyzeNotebook(isMap ? filterVocabByLang(vocabNotebookCache, wordsLang, langs) : sorted) };
     }
