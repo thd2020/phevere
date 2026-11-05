@@ -235,6 +235,20 @@ const sec = (list, id) => list.find((s) => s.id === id);
   assert.equal(M.wikiLinkLookup('Reconstruction:Proto-Indo-European/bʰeh₂-'), '*bʰeh₂-');
   assert.equal(M.wikiLinkLookup('Category:English prefixes'), '');
 
+  // A gloss keeps only the link Wiktionary marks as the form-of target; the rest lose the link,
+  // and spaces left inside brackets and quotes and before punctuation go.
+  const etc = '<span class="form-of-definition use-with-mention">Abbreviation of <span class="form-of-definition-link"><i class="Latn mention" lang="la"><a href="/wiki/et_cetera#Latin" title="et cetera">et cetera</a></i></span></span> ( “ <a href="/wiki/and_so_on" title="and so on">and so on</a> ” ); used to <a href="/wiki/note">note</a> that the <a href="/wiki/rest">rest</a> is <a href="/wiki/left_out">left out</a> .';
+  const pruned = M.pruneGlossLinks(etc);
+  assert.equal((pruned.match(/<a\s/g) || []).length, 1, 'only the form-of target stays a link');
+  assert.match(pruned, /<a href="\/wiki\/et_cetera#Latin"[^>]*>et cetera<\/a>/);
+  assert.match(pruned, /\(“and so on”\)/, 'no spaces inside the brackets and quotes');
+  assert.match(pruned, /left out\.$/, 'no space before the full stop');
+  assert.equal(M.pruneGlossLinks('A <a href="/wiki/rigid">rigid</a> tube.'), 'A rigid tube.');
+  // Wiktionary's real markup: the target's own gloss sits inside the form-of span.
+  const real = '<span class="form-of-definition use-with-mention"><a rel="mw:WikiLink" href="/wiki/Appendix:Glossary#abbreviation">Abbreviation</a> of <span class="form-of-definition-link"><i class="Latn mention" lang="en"><a rel="mw:WikiLink" href="/wiki/et_cetera#English">et cetera</a></i> <span class="mention-gloss-paren annotation-paren">(</span><span class="mention-gloss-double-quote">“</span><span class="mention-gloss"><a rel="mw:WikiLink" href="/wiki/and_so_on">and so on</a>; <span class="use-with-mention">used to <a rel="mw:WikiLink" href="/wiki/note#English">note</a> that</span></span><span class="mention-gloss-double-quote">”</span><span class="mention-gloss-paren annotation-paren">)</span></span></span>';
+  const realPruned = M.pruneGlossLinks(real);
+  assert.deepEqual([...realPruned.matchAll(/<a\s[^>]*>([^<]*)<\/a>/g)].map((m) => m[1]), ['et cetera']);
+
   // Affix templates name their parts with hyphens, so Built from links to the part's page.
   const parts = (t) => M.templateToLink(M.scanTemplates(t)[0]).parts;
   same(parts('{{suffix|en|assist|ant}}'), ['assist', '-ant']);

@@ -29,6 +29,7 @@ import {
   linkHtml,
   linkText,
   wikiLinkLookup,
+  pruneGlossLinks,
   morphemeSections,
   morphemeOfferHtml,
   morphemeOf,
@@ -285,8 +286,9 @@ function senseHtml(raw: string): string {
 }
 
 function senseMarkup(raw: string): string {
-  const meaning = String(raw || '');
-  if (!/<[a-z][\s\S]*>/i.test(meaning)) return linkLemmaRefs(esc(stripGlossText(meaning)));
+  const plain = String(raw || '');
+  if (!/<[a-z][\s\S]*>/i.test(plain)) return linkLemmaRefs(esc(stripGlossText(plain)));
+  const meaning = pruneGlossLinks(plain);
   const links: Array<{ title: string; text: string }> = [];
   const marked = meaning.replace(/<a\s[^>]*?href=(["'])([^"']+)\1[^>]*>([\s\S]*?)<\/a>/gi, (_full, _q, href: string, inner: string) => {
     const m = String(href).match(/\/wiki\/([^?#]+)/i);
