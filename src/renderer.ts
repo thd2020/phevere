@@ -2759,13 +2759,16 @@ function renderVocabNotebook(entries: any[]): void {
     else body.innerHTML = cardsHtml(sorted, analysis, nbFlipped, nbCardsLayout);
     attachNotebookMap(body);
     attachFamilies(body);
+    const fetchImage = wordImageFetcher();
     attachCardTable(body, {
       onLayout: (layout) => {
         nbCardsLayout = layout;
         writePref(NB_CARDS_LAYOUT_KEY, layout);
       },
+      onCards: () => {
+        if (fetchImage) fillWordImages(body, fetchImage);
+      },
     });
-    const fetchImage = wordImageFetcher();
     if (fetchImage) fillWordImages(body, fetchImage);
     return;
   }
