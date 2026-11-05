@@ -94,10 +94,12 @@ import {
   cleanIpa,
 } from './pronunciation';
 import { arpabetToIpa, cmuIpaFor } from './cmu-ipa';
-import { buildWordFamily, mergeWordFamilyGroups, mergeWordFamilyGroupsFor, familyFromEtymologyChain, type WordFamilyGroup } from './word-family';
+import { buildWordFamily, mergeWordFamilyGroups, mergeWordFamilyGroupsFor, familyFromEtymologyChain, familyFromKaikki, type WordFamilyGroup } from './word-family';
 import {
   fetchJisho,
   fetchKaikki,
+  fetchKaikkiPage,
+  kaikkiDirectory,
   fetchOpenRussian,
   fetchWiktionaryEdition,
   editionServes,
@@ -683,7 +685,7 @@ export class DictionaryService extends BaseService {
       const txProvider = opts?.translationProvider || 'auto';
       // Switching on a Wiktionary edition must not be hidden by a result cached before it.
       const editionsOn = EDITIONS.filter((ed) => this.isNamedSourceOn(WIKTIONARY_EDITIONS[ed].source, enabledSources)).join(',');
-      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}${editionsOn ? `|wikt:${editionsOn}` : ''}`);
+      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki${editionsOn ? `|wikt:${editionsOn}` : ''}`);
 
       const remember = (r: DictionaryResult) => {
         if (this.isUncacheableResult(r) || this.isStillFilling(r)) return;
@@ -1821,6 +1823,25 @@ export class DictionaryService extends BaseService {
           .catch((): undefined => undefined),
       );
     }
+    // Derived and related words from the same page, so the family does not hang on Wiktionary's
+    // parse API answering within its budget ("redundancy" under redundant, "dichotomize").
+    let kaikkiFamily: WordFamilyGroup[] | undefined;
+    const kaikkiDir = kaikkiDirectory(langForDict);
+    if (kaikkiDir && isSourceEnabled('Kaikki') && !/\s/.test(languageWord.trim())) {
+      const familyKey = `${languageWord.replace(/\p{Lu}/gu, (c) => `^${c}`)}@${langForDict}`;
+      auxPromises.push(
+        this.cachedSource(
+          'kaikkiFamily',
+          familyKey,
+          async () => familyFromKaikki(await fetchKaikkiPage(getHttp(), languageWord, kaikkiDir), languageWord, langForDict),
+          (d) => Array.isArray(d) && d.length > 0,
+        )
+          .then((r) => {
+            if (Array.isArray(r.data) && r.data.length) kaikkiFamily = r.data as WordFamilyGroup[];
+          })
+          .catch((): undefined => undefined),
+      );
+    }
 
     if (preferLatinSources && !hasCJK && isSourceEnabled('Datamuse')) {
       if (!this.isSourceDown('datamuse')) expectedSources.push('datamuse');
@@ -2095,6 +2116,7 @@ export class DictionaryService extends BaseService {
       const wordFamily = mergeWordFamilyGroupsFor(
         headword,
         wikiFamily,
+        kaikkiFamily,
         familyFromEtymologyChain(etymologyChain, headword),
         buildWordFamily({
           surface: headword,

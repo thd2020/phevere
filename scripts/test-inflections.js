@@ -103,6 +103,25 @@ assert.match(fam, /<summary>All 15<\/summary>/);
 assert.equal((fam.match(/data-lookup="run\d+"/g) || []).length, 15);
 assert.equal(wordFamilyHtml([], 'act'), '');
 
+// Word family from kaikki.org's parse of the page (the "redundant" and "dichotomy" entries of
+// 2026-11-05, shortened): derived and related terms, without the words a Thesaurus page adds.
+{
+  const { familyFromKaikki } = load('word-family');
+  const redundant = JSON.stringify({
+    word: 'redundant', lang_code: 'en', pos: 'adj',
+    derived: [{ word: 'redundantly' }, { word: 'nonredundant' }, { word: 'redundant array of independent disks' }],
+    related: [{ word: 'redound', tags: ['verb'] }, { word: 'redundance' }, { word: 'redundancy' }, { word: 'turgid', source: 'Thesaurus:redundant' }],
+  });
+  const groups = Object.fromEntries(familyFromKaikki(redundant, 'redundant').map((g) => [g.relation, g.items.map((i) => i.word)]));
+  assert.ok(groups.related.includes('redundancy'), 'redundancy is in the family of redundant');
+  assert.ok(!groups.related.includes('turgid'), 'a Thesaurus synonym is not family');
+  assert.deepEqual(groups.phrases, ['redundant array of independent disks'], 'a multi-word derived term is a phrase');
+  const dichotomy = JSON.stringify({ word: 'dichotomy', lang_code: 'en', pos: 'noun', derived: [{ word: 'dichotomize' }, { word: 'dichotomous' }, { word: 'false dichotomy' }] });
+  assert.ok(familyFromKaikki(dichotomy, 'dichotomy').find((g) => g.relation === 'derived').items.some((i) => i.word === 'dichotomize'));
+  const other = JSON.stringify({ word: 'redundant', lang_code: 'fr', pos: 'adj', derived: [{ word: 'redondance' }] });
+  assert.deepEqual(familyFromKaikki(other, 'redundant', 'en'), [], 'another language section is not read');
+}
+
 // Saved headwords in dictionary form.
 assert.equal(normalizeVocabLemma('CODON', { pos: 'noun', lang: 'en' }), 'codon');
 assert.equal(normalizeVocabLemma('Bunny,', { pos: 'noun', lang: 'en' }), 'bunny');

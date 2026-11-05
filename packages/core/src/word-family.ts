@@ -501,6 +501,38 @@ export function mergeWordFamilyGroupsFor(surface: string, ...lists: Array<WordFa
   return groupsFromBuckets(buckets, foldLookupKey(surface));
 }
 
+/**
+ * Derived and related terms from Wiktextract's parse of the word's Wiktionary page (one kaikki.org
+ * JSON Lines page): the same "Derived terms" and "Related terms" lists the wikitext has, already
+ * parsed, from a static file that answers when Wiktionary's parse API is slow. Words that only
+ * come from a Thesaurus page (synonyms, not family) are left out.
+ */
+export function familyFromKaikki(jsonl: string, word: string, lang = 'en'): WordFamilyGroup[] {
+  const w = String(word || '').trim();
+  const surfaceKey = foldLookupKey(w);
+  const buckets: FamilyBuckets = new Map();
+  for (const line of String(jsonl || '').split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t.startsWith('{')) continue;
+    let entry: any;
+    try {
+      entry = JSON.parse(t);
+    } catch {
+      continue;
+    }
+    if (lang && entry?.lang_code && entry.lang_code !== lang) continue;
+    if (typeof entry?.word === 'string' && foldLookupKey(entry.word) !== surfaceKey) continue;
+    for (const [field, relation] of [['derived', 'derived'], ['related', 'related']] as const) {
+      const list: Array<{ word?: string; source?: string; tags?: string[] }> = Array.isArray(entry?.[field]) ? entry[field] : [];
+      const items = list
+        .filter((x) => x && typeof x.word === 'string' && !/^Thesaurus:/i.test(String(x.source || '')))
+        .map((x) => ({ word: String(x.word), label: posFromWiki((x.tags || []).find((tag) => !!posFromWiki(tag))) }));
+      addUniqueItems(buckets, relation, items, surfaceKey);
+    }
+  }
+  return groupsFromBuckets(buckets, surfaceKey);
+}
+
 export function buildWordFamily(opts: {
   surface: string;
   wikitext?: string;
