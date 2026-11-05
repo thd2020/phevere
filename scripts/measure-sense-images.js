@@ -6,7 +6,10 @@
  *   node scripts/measure-sense-images.js --db <notebook.sqlite> [--limit 100] [--out result.json]
  *   node scripts/measure-sense-images.js --words words.txt [--mode cards|lookup|both] [--parallel 1] [--app] [--gap 2500] [--client node] [--trace]
  *   node scripts/measure-sense-images.js --relevance scripts/fixtures/sense-images-relevance.json --senses 60
+ *   node scripts/measure-sense-images.js --words words.txt --mode lookup --replay <dir> [--offline] [--delay 1000-3000] [--hang 0.05]
  *
+ * `--replay` saves every response in a folder and answers from it on later runs; `--delay` and
+ * `--hang` put a slow network in front (scripts/latency-http.js), the same for every run.
  * `--db` reads the lemma, language and saved definition of every word in the `vocab` table; the
  * file is read into memory and never written. `--words` reads one word per line, optionally
  * followed by a tab and the language code. Two passes run for each word:
@@ -27,6 +30,7 @@ const os = require('os');
 const path = require('path');
 const vm = require('vm');
 const ts = require('typescript');
+const { withLatency, replayHttp } = require('./latency-http');
 
 const root = path.join(__dirname, '..');
 const args = process.argv.slice(2);
@@ -136,7 +140,7 @@ async function get(url, headers, timeoutMs = 8000) {
   }
 }
 
-const http = {
+const liveClient = {
   async requestJson(url, options) {
     const res = await get(url, options && options.headers, options && options.timeoutMs);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -148,17 +152,47 @@ const http = {
   },
 };
 
+/**
+ * `--replay <dir>` answers from responses saved there and fetches (and saves) the rest, so runs
+ * before and after a change see the same answers; `--offline` answers a URL not saved with 404.
+ * `--delay 1000-3000` adds that much to every request and `--hang 0.05` lets that share of
+ * requests hang until their timeout (scripts/latency-http.js), as on a slow connection.
+ */
+const replayDir = arg('replay', '');
+const delayArg = arg('delay', '');
+const hangShare = Number(arg('hang', '0')) || 0;
+const replayed = replayDir
+  ? replayHttp({ dir: replayDir, live: args.includes('--offline') ? null : { requestText: (url, o) => get(url, o && o.headers, 20000) } })
+  : null;
+const slowNet =
+  delayArg || hangShare
+    ? withLatency(replayed ? replayed.http : liveClient, { delay: delayArg ? delayArg.split('-').map(Number) : [0, 0], hang: hangShare, seed: arg('seed', 'phevere') })
+    : null;
+const http = slowNet ? slowNet.http : replayed ? replayed.http : liveClient;
+
 // `--module` measures another copy of the module, such as the one from an earlier commit.
 const modulePath = arg('module', path.join(root, 'packages', 'core', 'src', 'sense-images.ts'));
 const src = fs.readFileSync(modulePath, 'utf8');
 const js = ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
 
+/** net.ts next to the measured module (a module from before it existed does not ask for it). */
+function loadNet() {
+  const file = path.join(path.dirname(modulePath), 'net.ts');
+  if (!fs.existsSync(file)) return {};
+  const out = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+  const mod = { exports: {} };
+  vm.runInNewContext(out, { module: mod, exports: mod.exports, require, setTimeout, clearTimeout });
+  return mod.exports;
+}
+
 function load(store) {
   const mod = { exports: {} };
   const runtime = { isCoreConfigured: () => true, getHttp: () => http, getLookupCache: () => store };
+  const net = loadNet();
   const req = (name) => {
     if (name === './runtime') return runtime;
     if (name === './http') return {};
+    if (name === './net') return net;
     return require(name);
   };
   vm.runInNewContext(js, {
@@ -417,7 +451,7 @@ async function main() {
         let defs = 0;
         if (appMode && si.prefetchSenseImages) {
           si.prefetchSenseImages(w.lemma, { lang: w.lang });
-          await get(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(w.lemma)}`).catch(() => null);
+          await http.requestText(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(w.lemma)}`, { timeoutMs: 8000 }).catch(() => null);
           defs = Date.now() - t0;
         }
         const images = await si.fetchSenseImages(w.lemma, list, { lang: w.lang, onUpdate });
@@ -494,6 +528,10 @@ async function main() {
     if (appMode) report.push(`definitions arrived after median ${quantile(cold.defs, 0.5)} ms; first picture after the definitions: median ${quantile(cold.afterDefs, 0.5)} ms, p90 ${quantile(cold.afterDefs, 0.9)} ms`);
   }
   report.push(`warm pass made ${requests - r1} requests`);
+  if (replayed) report.push(`replay: ${replayed.stats.replayed} answered from ${replayDir}, ${replayed.stats.fetched} fetched, ${replayed.stats.missing} not saved (404)`);
+  if (slowNet) {
+    report.push(`slow network: ${slowNet.stats.requests} requests, ${slowNet.stats.hung} hung, ${slowNet.stats.timedOut} timed out; most in flight at once per host: ${Object.entries(slowNet.maxInFlight).sort((a, b) => b[1] - a[1]).map(([h, n]) => `${h} ${n}`).join(', ')}`);
+  }
   if (trace) {
     for (const [kind, list] of Object.entries(byKind).sort((a, b) => b[1].length - a[1].length)) {
       report.push(`request ${kind}: ${list.length}, median ${quantile(list, 0.5)} ms, p90 ${quantile(list, 0.9)} ms, max ${Math.max(...list)} ms`);
