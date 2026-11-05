@@ -321,7 +321,7 @@ assert.doesNotMatch(web, /vocab-context/, 'no quote without a sentence');
 const sc = load('source-context');
 assert.equal(sc.siteIconUrl('reddit.com'), 'https://reddit.com/favicon.ico');
 assert.equal(sc.siteIconUrl('not a host'), '');
-assert.deepEqual(['reddit.com', 'en.wikipedia.org', 'bbc.co.uk', 'old.reddit.com', 'news.ycombinator.com', 't.co'].map(sc.siteMonogram), ['R', 'W', 'B', 'R', 'Y', 'T']);
+assert.deepEqual(['reddit.com', 'en.wikipedia.org', 'bbc.co.uk', 'old.reddit.com', 'news.ycombinator.com', 't.co', 'edition.cnn.com', 'mail.qq.com', 'news.sina.com.cn', 'news.bbc.de'].map(sc.siteMonogram), ['R', 'W', 'B', 'R', 'Y', 'T', 'C', 'Q', 'S', 'B']);
 
 // Recent lookups use the notebook row and show what the notebook knows.
 const rec = recentListHtml(

@@ -181,6 +181,9 @@ export function siteIconUrl(host: string): string {
   return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(h) ? `https://${h}/favicon.ico` : '';
 }
 
+/** Second-level labels that countries register names under, as in bbc.co.uk or sina.com.cn. */
+const SECOND_LEVEL = new Set(['co', 'com', 'net', 'org', 'gov', 'edu', 'ac', 'or', 'ne', 'go', 'gob', 'mil', 'nic']);
+
 /**
  * The letter on a site's tile when its icon does not load, as Chrome's new tab page draws one:
  * the first letter of the site's name, skipping "www", subdomains such as "en", the top-level
@@ -188,8 +191,10 @@ export function siteIconUrl(host: string): string {
  */
 export function siteMonogram(host: string): string {
   const labels = String(host || '').toLowerCase().split('.').filter(Boolean);
-  if (labels.length > 1) labels.pop();
-  if (labels.length > 1 && labels[labels.length - 1].length <= 3) labels.pop();
+  const tld = labels.length > 1 ? labels.pop()! : '';
+  // Only a country's own second level ("co.uk", "com.cn"), so a short name such as cnn in
+  // edition.cnn.com or qq in mail.qq.com stays the name.
+  if (tld.length === 2 && labels.length > 1 && SECOND_LEVEL.has(labels[labels.length - 1])) labels.pop();
   const name = labels[labels.length - 1] || '';
   return (name.match(/[\p{L}\p{N}]/u)?.[0] || '').toLocaleUpperCase('en');
 }
