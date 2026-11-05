@@ -189,6 +189,8 @@ type LookupOpts = {
 /** "plural of saving", "past tense of go": a sense that only points at another word. */
 function isFormOfSense(meaning: string): boolean {
   const text = stripGlossText(String(meaning || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+  // "Misspelling of accommodate" stays where it is: misspellingTarget reads it from the top.
+  if (/^(?:a\s+)?(?:common\s+|rare\s+|nonstandard\s+)?misspelling of\s/i.test(text)) return false;
   return !!formOfGlossLemma(text) || isGrammaticalFormOfGloss(text);
 }
 
@@ -1832,7 +1834,8 @@ export class DictionaryService extends BaseService {
       // en.wiktionary keys its answer by language: собака lives under `ru`, not `en`.
       const wikiLang = langForDict === 'auto' ? 'en' : langForDict;
       // A capitalised word goes as typed, so Wiktionary can put "May" the month before "may".
-      const wikiWord = wikiLang === 'en' && !isCapitalised(text) ? lookupWord : text;
+      // So does a title found as typed ("U.K.": Wiktionary has no "u.k.").
+      const wikiWord = wikiLang === 'en' && !isCapitalised(text) && !this.typedTitles.has(text) ? lookupWord : text;
       primaryPromises.push(pushCore(
         this.cachedSource(
           'wiktionary',

@@ -170,6 +170,30 @@ configureCore({
   assert.ok(!mr.definitions.some((d) => /Marathi/.test(d.meaning)), '"mr" is another word');
   const state = await caps.lookup('State', 'zh');
   assert.equal(state.word, 'state', 'a capital at the start of a sentence still folds');
+
+  // "U.K." is asked for as typed: Wiktionary has no page "u.k." (2026-11-05).
+  rest['U.K.'] = { en: [{ partOfSpeech: 'Proper noun', language: 'English', definitions: [{ definition: 'Initialism of <a href="/wiki/United_Kingdom">United Kingdom</a>.' }] }] };
+  const uk = await new DictionaryService().lookup('U.K.', 'zh');
+  assert.equal(uk.word, 'U.K.');
+  assert.match(uk.definitions[0].meaning, /United Kingdom/, 'the typed title is the page asked for');
+
+  // A misspelling still opens its word when the page also has another sense: moving form-of
+  // senses last must not move "Misspelling of" away from the top.
+  rest.accomodate = {
+    en: [
+      {
+        partOfSpeech: 'Verb',
+        language: 'English',
+        definitions: [
+          { definition: '<span class="form-of-definition">Misspelling of <a href="/wiki/accommodate">accommodate</a>.</span>' },
+          { definition: '(Scotland) <a href="/wiki/accommodated">accommodated</a>' },
+        ],
+      },
+    ],
+  };
+  rest.accommodate = { en: [{ partOfSpeech: 'Verb', language: 'English', definitions: [{ definition: 'To provide housing for.' }] }] };
+  const fixed = await new DictionaryService().lookup('accomodate', 'zh');
+  assert.equal(fixed.word, 'accommodate', 'a misspelling opens its word');
   console.log('Lookup entry passed: "Did you mean" stays through later updates; "etc.", "e.g." and "C++" open as typed; "hello,", "no." and "it." open hello, no and it.');
   // The service keeps safety-net timers for lookups; they would hold the process open.
   process.exit(0);
