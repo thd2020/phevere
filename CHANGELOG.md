@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Cards (2026-11-05): the Piles, Scatter and Grid switch is gone. Clicking a pile pours its cards out where the pile lies: they slide off one after another into the pile's place and the places after it, and the piles that follow move out of their way. Clicking the pile's label, now under its first card, gathers the cards back. Expand all, a see-through button in the table's top-right corner that stays on screen as you scroll, pours every pile out at once, and Collapse all gathers them. On a phone, shaking it twice does the same. On an iPhone the app asks for motion access the first time you tap the cards. Phevere remembers whether every pile was out and opens the cards that way after you leave Words or restart, and a table you had on Scatter opens with every pile out. Dragging cards around the table is gone with Scatter.
+
 ### Fixed
 
 - Cards (2026-11-05): clicking a card's picture several times quickly only turns the card over and back, however fast you click. It used to open the lookup when a click landed while the card was half turned. A card now opens the lookup only from its text or from Look up on its back.

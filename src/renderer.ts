@@ -49,6 +49,7 @@ import {
   attachNotebookMap,
   attachFamilies,
   attachCardTable,
+  cardLayoutOf,
   cardsHtml,
   disposeNotebookMaps,
   deleteEmailMatches,
@@ -2207,7 +2208,7 @@ let nbMapKinds = readPref(NB_MAP_KINDS_KEY, 'root,prefix,char').split(',').filte
 let nbGoal = Number(readPref(NB_GOAL_KEY, '10')) || 10;
 let nbReview: ReviewState | null = null;
 const nbFlipped = new Set<string>();
-let nbCardsLayout = readPref(NB_CARDS_LAYOUT_KEY, 'piles') as CardLayout;
+let nbCardsLayout: CardLayout = cardLayoutOf(readPref(NB_CARDS_LAYOUT_KEY, 'piles'));
 const nbExpanded = new Set<string>();
 let vocabRenderToken = 0;
 let nbGrading = false;
@@ -2375,13 +2376,16 @@ function renderBookScope(body: HTMLElement, wrap: HTMLElement, list: HTMLElement
   else body.innerHTML = cardsHtml(study, analysis, nbFlipped, nbCardsLayout);
   attachNotebookMap(body);
   attachFamilies(body);
+  const fetchImage = wordImageFetcher();
   attachCardTable(body, {
     onLayout: (layout) => {
       nbCardsLayout = layout;
       writePref(NB_CARDS_LAYOUT_KEY, layout);
     },
+    onCards: () => {
+      if (fetchImage) fillWordImages(body, fetchImage);
+    },
   });
-  const fetchImage = wordImageFetcher();
   if (fetchImage) fillWordImages(body, fetchImage);
   return true;
 }

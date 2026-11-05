@@ -41,6 +41,7 @@ import {
   closeTreeInspector,
   traceNotebookFamilies,
   attachCardTable,
+  cardLayoutOf,
   disposeNotebookMaps,
   peekSuggestions,
   suggestWords,
@@ -252,7 +253,7 @@ const nbState = {
   group: (readStore(NB_GROUP_KEY) || 'root') as FamilyGrouping,
   mapKinds: (readStore(NB_MAP_KEY) || 'root,prefix,char').split(',').filter(Boolean) as MorphKind[],
   flipped: new Set<string>(),
-  cardLayout: (readStore(NB_CARDS_KEY) || 'piles') as CardLayout,
+  cardLayout: cardLayoutOf(readStore(NB_CARDS_KEY)),
   review: null as ReviewState | null,
   goal: Number(readStore(NB_GOAL_KEY)) || 10,
   lang: readStore(NB_LANG_KEY) || 'all',
@@ -745,15 +746,19 @@ function bindNotebookViews(): void {
       },
     );
   }
+  const fillImages = () => {
+    if (prefs.senseImages !== false) {
+      fillWordImages(page, (lemma, lang, gloss, pos, onPicture) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture }));
+    }
+  };
   attachCardTable(page, {
     onLayout: (layout) => {
       nbState.cardLayout = layout;
       writeStore(NB_CARDS_KEY, layout);
     },
+    onCards: fillImages,
   });
-  if (prefs.senseImages !== false) {
-    fillWordImages(page, (lemma, lang, gloss, pos, onPicture) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture }));
-  }
+  fillImages();
 }
 
 function bindLearn(): void {

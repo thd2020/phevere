@@ -96,6 +96,8 @@ export {
   cardsHtml,
   cardPiles,
   attachCardTable,
+  cardLayoutOf,
+  planTable,
   reviewQueue,
   reviewHtml,
   fillWordImages,
