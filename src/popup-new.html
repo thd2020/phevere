@@ -1658,6 +1658,10 @@
           pvLog('[POPUP] ignore stale selection', next, when, lastAppliedSelectionAt);
           return;
         }
+        // A strip sent a word, new or repeated, gets the full time again. Counting from when
+        // it first opened closed it moments after a move, and the word went with it.
+        // An expanded panel has no timer, and this call leaves it so.
+        startAutoCloseTimeout();
         if (when === lastAppliedSelectionAt && next === currentText) return;
         lastAppliedSelectionAt = when;
         currentText = next;
