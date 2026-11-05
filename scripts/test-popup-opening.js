@@ -35,6 +35,7 @@ vm.runInNewContext(main.slice(start, end), {
   ipcMain: { on: (_name, handler) => { resize = handler; } }, BrowserWindow, screen,
   popupSize: sizeModule.exports.popupSize, inFlightPopup: null,
   log: { debug() {} }, placePopupNearPoint: (x, y) => ({ x, y }),
+  setWindowBounds: (target, rect) => target.setBounds(rect, false),
 });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 350));
 const js = (code) => win.webContents.executeJavaScript(code);
