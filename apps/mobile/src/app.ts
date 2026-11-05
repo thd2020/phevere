@@ -1449,7 +1449,11 @@ function openSensePicture(frame: HTMLElement): void {
  * A small choice sheet over the app: a message, a line of detail and one button per answer.
  * Resolves with the chosen button's index, or -1 when dismissed.
  */
-function askChoice(message: string, detail: string, buttons: string[]): Promise<number> {
+/**
+ * A choice sheet. `focus` is the button that has focus when it opens; a destructive question
+ * puts it on Cancel, as Apple's alerts and Material's dialogs do, so Enter never destroys.
+ */
+function askChoice(message: string, detail: string, buttons: string[], focus = 0): Promise<number> {
   return new Promise((resolve) => {
     const dlg = document.createElement('dialog');
     dlg.className = 'pv-choice nbv';
@@ -1469,6 +1473,7 @@ function askChoice(message: string, detail: string, buttons: string[]): Promise<
     dlg.addEventListener('cancel', () => done(-1));
     document.body.appendChild(dlg);
     dlg.showModal();
+    if (focus) dlg.querySelector<HTMLElement>(`[data-i="${focus}"]`)?.focus();
   });
 }
 
@@ -2407,7 +2412,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       const title = wordbookMeta(id)?.title || id;
       // Progress belongs to the word: it stays, and the confirmation says so.
       const ask = bookRemovalPrompt(id);
-      if ((await askChoice(ask.title, ask.detail, [ask.confirm, 'Cancel'])) !== 0) return;
+      if ((await askChoice(ask.title, ask.detail, [ask.confirm, 'Cancel'], 1)) !== 0) return;
       if (isUserBookId(id)) await deleteUserBook(id);
       else await unsubscribeWordbook(id);
       if (wordsState.scope === id) setWordsScope(isUserBookId(id) ? 'sources' : 'mine');
