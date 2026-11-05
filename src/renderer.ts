@@ -74,6 +74,11 @@ import {
   scopeBookFor,
   type AnswerRecord,
   type LearnPage,
+  type LearnerModel,
+  type StudyPace,
+  learnerModel,
+  studyPace,
+  hintReview,
   singleVoice,
   startReview,
   answerReview,
@@ -2832,6 +2837,23 @@ function loadAnswerHistory(): void {
     });
 }
 
+/** What the answer history says about the learner, for choosing questions and today's new words; null until loaded. */
+let learner: { model: LearnerModel; pace: StudyPace | null } | null = null;
+let learnerLoading: Promise<void> | null = null;
+
+function loadLearner(): Promise<void> {
+  const api = (window as any).vocabAPI;
+  if (learnerLoading) return learnerLoading;
+  learnerLoading = Promise.resolve(api?.history ? api.history() : [])
+    .catch((): AnswerRecord[] => [])
+    .then((rows: AnswerRecord[]) => {
+      const now = Date.now();
+      learner = { model: learnerModel(rows || [], now), pace: studyPace(rows || [], now) };
+      learnerLoading = null;
+    });
+  return learnerLoading;
+}
+
 /* The account, for the Plus line in Learn when progress sync is off. */
 let learnNotice = '';
 
@@ -2847,10 +2869,18 @@ function renderLearn(): void {
   const pane = document.getElementById('paneLearn');
   if (!pane || pane.hidden) return;
   const scope = wbCtx ? wbScope : 'mine';
+  const pace = learner?.pace ?? null;
   if (!nbReview && (scope !== 'mine' || vocabNotebookCache.length)) {
     nbReview = wbCtx
-      ? startScopeReview(scope, wbCtx, { mineGoal: nbGoal, mineStartedToday: startedToday().length })
-      : startReview(vocabNotebookCache, nbGoal, Date.now(), startedToday().length);
+      ? startScopeReview(scope, wbCtx, { mineGoal: nbGoal, mineStartedToday: startedToday().length, pace })
+      : startReview(vocabNotebookCache, nbGoal, Date.now(), startedToday().length, pace);
+  }
+  if (!learner) {
+    // Today's plan waits for nothing; once the learner is known, a session not yet started plans again.
+    void loadLearner().then(() => {
+      if (nbReview && !nbReview.started) nbReview = null;
+      if (mainTab === 'learn') renderLearn();
+    });
   }
   pane.innerHTML = learnHtml({
     scope,
@@ -2858,7 +2888,14 @@ function renderLearn(): void {
     mine: vocabNotebookCache,
     review: nbReview || startReview([], nbGoal),
     goal: nbGoal,
-    options: { audio: true, preview: (e, g) => previewReview(e, g), formatGap: formatReviewGap, examples: (lemma) => reviewExamples.get(lemma.toLowerCase()) },
+    options: {
+      audio: true,
+      preview: (e, g) => previewReview(e, g),
+      formatGap: formatReviewGap,
+      examples: (lemma) => reviewExamples.get(lemma.toLowerCase()),
+      learner: learner?.model ?? null,
+      pace,
+    },
     page: learnPage,
     history: answerHistory,
     notice: learnNotice,
@@ -2891,8 +2928,11 @@ function focusReview(body: HTMLElement): void {
   const header = [...document.querySelectorAll<HTMLElement>('.ws-head')].find((h) => h.offsetParent) || null;
   revealQuestion(body, header);
   const input = body.querySelector<HTMLInputElement>('#nbv-answer');
-  if (input) input.focus();
-  else {
+  if (input) {
+    input.focus();
+    // After a Hint the box holds the letters shown so far; typing goes on after them.
+    input.setSelectionRange(input.value.length, input.value.length);
+  } else {
     const next = body.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-round"]');
     next?.focus({ preventScroll: true });
     if (next?.dataset.act === 'nb-next') body.querySelector('.nbv-quiz__grade')?.scrollIntoView({ block: 'nearest' });
@@ -3073,8 +3113,10 @@ function wireNotebookActions(root: HTMLElement): void {
         return;
       case 'nb-start':
       case 'nb-round':
-        // A new round plans again from what is due now; renderLearn starts it.
+        // A new round plans again from what is due now and from the answers so far; renderLearn starts it.
         if (el.dataset.act === 'nb-round') {
+          learner = null;
+          await loadLearner();
           nbReview = null;
           renderLearn();
         }
@@ -3213,6 +3255,9 @@ function wireNotebookActions(root: HTMLElement): void {
         return;
       case 'nb-skip':
         if (reviewArmed(nbReview)) answerCurrentReview({});
+        return;
+      case 'nb-hint':
+        if (nbReview && hintReview(nbReview)) renderLearn();
         return;
       case 'nb-override':
         if (nbReview) overrideReview(nbReview, el.dataset.mode === 'easy' ? 'easy' : 'flip');

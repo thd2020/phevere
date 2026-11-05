@@ -144,11 +144,13 @@ const pool = [
   const learning = { ...pool[0], reps: 2, state: 1, stability: 2, lastReview: now - DAY };
   const kinds1 = new Set();
   for (let s = 0; s < 30; s++) kinds1.add(core.buildQuestion(learning, pool, { audio: true, now }, core.seededRandom(s)).kind);
-  assert.deepEqual([...kinds1], ['word-choice'], 'a learning word recalls the word from four; no listening first thing in a session');
+  assert.ok(kinds1.has('word-choice'), 'a learning word recalls the word from four');
+  assert.ok([...kinds1].every((k) => ['word-choice', 'meaning-choice'].includes(k)), `no listening first thing in a session, and a fresh word is not spelled: ${[...kinds1]}`);
   const heavy = new Array(8).fill('word-choice');
   const kindsHeavy = new Set();
   for (let s = 0; s < 30; s++) kindsHeavy.add(core.buildQuestion(learning, pool, { audio: true, now, asked: heavy }, core.seededRandom(s)).kind);
-  assert.deepEqual([...kindsHeavy], ['listen-choice'], 'a session full of meaning questions turns to listening');
+  assert.ok(kindsHeavy.has('listen-choice'), 'a session full of meaning questions turns to listening');
+  assert.ok([...kindsHeavy].every((k) => ['listen-choice', 'recall'].includes(k)), `or to spelling: ${[...kindsHeavy]}`);
   const noAudio = new Set();
   for (let s = 0; s < 30; s++) noAudio.add(core.buildQuestion(learning, pool, { audio: false, now, asked: heavy }, core.seededRandom(s)).kind);
   assert.ok(!noAudio.has('listen-choice'), 'no listening question with sound off');
@@ -159,17 +161,26 @@ const pool = [
   assert.deepEqual([...kinds2], ['recall'], 'a word held for days is typed; no cloze without a sentence');
   const spelled = new Array(8).fill('recall');
   assert.equal(core.buildQuestion(firm, pool, { audio: true, now, asked: spelled }, core.seededRandom(1)).kind, 'listen-type', 'listening balances a spelling-heavy session');
-  // A new word moves up the ladder each time it comes back in a session.
-  assert.equal(core.buildQuestion(pool[0], pool, { now, repeat: 1 }, core.seededRandom(1)).kind, 'word-choice');
-  assert.equal(core.buildQuestion(pool[0], pool, { now, repeat: 2 }, core.seededRandom(1)).kind, 'recall');
+  // A new word coming back in its first session is recognised again, never spelled: spelling waits for a later day.
+  for (const repeat of [1, 2]) {
+    for (let s = 0; s < 20; s++) {
+      const k = core.buildQuestion(pool[0], pool, { now, repeat, audio: true, asked: new Array(6).fill('meaning-choice') }, core.seededRandom(s)).kind;
+      assert.ok(!core.TYPED_KINDS.includes(k), `repeat ${repeat} of a new word asked ${k}`);
+    }
+  }
   const recall = core.buildQuestion(firm, pool, { audio: false, now }, core.seededRandom(2));
   assert.equal(recall.kind, 'recall');
   assert.equal(recall.hint, 'a');
   assert.equal(recall.prompt, 'to leave behind for good');
 
   const strong = { ...firm, stability: 60, note: 'They had to abandon the car in the snow.' };
-  const cloze = core.buildQuestion(strong, pool, { audio: true, now }, core.seededRandom(5));
-  assert.equal(cloze.kind, 'cloze');
+  let cloze = null;
+  for (let s = 0; s < 20 && !cloze; s++) {
+    const q = core.buildQuestion(strong, pool, { audio: true, now }, core.seededRandom(s));
+    assert.ok(core.TYPED_KINDS.includes(q.kind), `a mature word is produced, not recognised: ${q.kind}`);
+    if (q.kind === 'cloze') cloze = q;
+  }
+  assert.ok(cloze, 'a mature word with a sentence gets the gap');
   assert.equal(cloze.prompt, 'They had to _____ the car in the snow.');
 
   const bare = { id: 'b', lemma: 'zephyr', reps: 0, createdAt: now };

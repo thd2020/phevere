@@ -6,7 +6,24 @@
  */
 import { vocabReadings, vocabSenses } from './vocab-view';
 import { DAY, clean, dayStart, esc, type NotebookEntry } from './notebook-shared';
-import { bestSense, ensureReviewQuestion, memoryLevel, ROUND_WORDS, usableSense, type ReviewGrade, type ReviewQuestion, type ReviewState } from './review-quiz';
+import {
+  bestSense,
+  ensureReviewQuestion,
+  hintsLeft,
+  MATURITY_NAME,
+  memoryLevel,
+  ROUND_WORDS,
+  TYPED_KINDS,
+  usableSense,
+  wordMaturity,
+  type LearnerModel,
+  type Maturity,
+  type ReviewGrade,
+  type ReviewQuestion,
+  type ReviewState,
+  type StudyPace,
+} from './review-quiz';
+import { suggestGoal } from './learn-adapt';
 import { bookName } from './book-names';
 import { barChartHtml, dayLabel, heatmapHtml, wordChips, type BarDatum } from './learn-charts';
 
@@ -30,6 +47,10 @@ export interface ReviewRenderOptions {
   started?: boolean;
   /** Example sentences for a word, for gap-fill questions (from its dictionary entry). */
   examples?: (lemma: string) => string[] | undefined;
+  /** The learner model from the answer history (`learnerModel`), for choosing questions. */
+  learner?: LearnerModel | null;
+  /** How much the learner studies (`studyPace`); the start card offers its number of new words a day. */
+  pace?: StudyPace | null;
 }
 
 export interface BookPlanRow {
@@ -70,8 +91,8 @@ export function forecastChartHtml(entries: NotebookEntry[], now: number, days = 
     const d = daysBetween(today, Number(e.reviewDue));
     if (d >= days) continue;
     if (d < 0) overdue += 1;
-    const level = memoryLevel(e);
-    const key = level <= 1 ? 'learning' : level === 2 ? 'young' : 'mature';
+    const stage = wordMaturity(e);
+    const key = stage === 'young' || stage === 'mature' ? stage : 'learning';
     slots[Math.max(0, d)][key].push(clean(e.lemma));
   }
   const data: BarDatum[] = slots.map((s, i) => {
@@ -114,8 +135,8 @@ export function forecastChartHtml(entries: NotebookEntry[], now: number, days = 
     summary,
     legend: [
       { cls: 'learning', name: 'Learning' },
-      { cls: 'young', name: 'Under 3 weeks' },
-      { cls: 'mature', name: '3 weeks or more' },
+      { cls: 'young', name: 'Young' },
+      { cls: 'mature', name: 'Mature' },
     ],
     height: days > 20 ? 162 : 170,
   });
@@ -197,13 +218,14 @@ function goalHtml(goal: number, opts: ReviewRenderOptions): string {
 function planHtml(entries: NotebookEntry[], goal: number, now: number, opts: ReviewRenderOptions = {}): string {
   // A word book word marked "already know it" counts as known without a review.
   const marked = (e: NotebookEntry) => !!(e as { known?: boolean }).known;
-  const reviewed = entries.filter((e) => !isNew(e) || marked(e));
-  const known = reviewed.filter((e) => marked(e) || memoryLevel(e) === 3).length;
+  const count: Record<Maturity, number> = { new: 0, learning: 0, relearning: 0, young: 0, mature: 0 };
+  for (const e of entries) count[marked(e) ? 'mature' : wordMaturity(e)] += 1;
   const total = Math.max(1, entries.length);
   const parts = [
-    { cls: 'known', n: known, label: 'Known' },
-    { cls: 'learning', n: reviewed.length - known, label: 'Learning' },
-    { cls: 'new', n: entries.length - reviewed.length, label: 'Not started' },
+    { cls: 'mature', n: count.mature, label: 'Mature' },
+    { cls: 'young', n: count.young, label: 'Young' },
+    { cls: 'learning', n: count.learning + count.relearning, label: 'Learning' },
+    { cls: 'new', n: count.new, label: 'New' },
   ];
   const noun = opts.started ? 'started' : 'saved';
   return `<aside class="nbv-plan">
@@ -278,15 +300,26 @@ function optionsHtml(q: ReviewQuestion, state: ReviewState): string {
     .join('')}</div>`;
 }
 
+/** The answer box's placeholder: the letters shown, then a dot for each hidden letter, spaces kept. */
+export function typedPlaceholder(q: ReviewQuestion): string {
+  const chars = [...(q.answers[0] || '')];
+  const shown = (q.reveal || 0) + (q.hinted || 0);
+  return chars.map((c, i) => (i < shown ? c : /\s/.test(c) ? ' ' : '·')).join('');
+}
+
+function letterCount(answer: string): string {
+  const n = [...answer].filter((c) => /\p{L}/u.test(c)).length;
+  return n === 1 ? '1 letter' : `${n} letters`;
+}
+
 function typedHtml(q: ReviewQuestion, state: ReviewState): string {
   const a = state.answer;
   if (a) {
     if (!a.typed) return '';
     return `<p class="nbv-typed nbv-typed--${a.result}"><span>${esc(a.typed)}</span></p>`;
   }
-  const placeholder = q.hint ? `${q.hint}${'·'.repeat(Math.max(0, Math.min(q.answers[0].length, 14) - 1))}` : '';
   return `<form class="nbv-type" data-act-form="nb-submit" autocomplete="off">
-    <input id="nbv-answer" class="nbv-type__input" type="text" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="${esc(placeholder)}" aria-label="Answer" />
+    <input id="nbv-answer" class="nbv-type__input" type="text" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="${esc(typedPlaceholder(q))}" value="${esc(q.draft || '')}" aria-label="Answer, ${letterCount(q.answers[0] || '')}" />
     <button type="submit" class="nbv-primary">Check</button>
   </form>`;
 }
@@ -366,11 +399,12 @@ function answerCardHtml(e: NotebookEntry): string {
   </div>`;
 }
 
-/** Small tags beside the instruction: a new word and the books that share it, or a leech. */
+/** Small tags beside the instruction: the word's stage, or a leech, and for a new word the books that share it. */
 function tagsHtml(q: ReviewQuestion, e: NotebookEntry): string {
   const tags: string[] = [];
+  const stage = q.maturity || wordMaturity(e);
   if (q.leech) tags.push('<span class="nbv-tag is-leech">Trouble word</span>');
-  else if (q.level === 0) tags.push('<span class="nbv-tag is-new">New</span>');
+  else tags.push(`<span class="nbv-tag is-${stage}">${MATURITY_NAME[stage]}</span>`);
   const books = ((e as { books?: string[] | null }).books || []).map((id) => bookName(id)?.short || id);
   if (q.level === 0 && books.length >= 2) tags.push(`<span class="nbv-tag">${esc(books.join(' · '))}</span>`);
   return tags.join('');
@@ -404,6 +438,10 @@ function questionHtml(q: ReviewQuestion, e: NotebookEntry, state: ReviewState, o
     body = choice ? optionsHtml(q, state) : typedHtml(q, state);
   }
   let below = '';
+  if (!a && TYPED_KINDS.includes(q.kind)) {
+    below += `<span class="nbv-type__count">${letterCount(q.answers[0] || '')}</span>`;
+    if (hintsLeft(q)) below += `<button type="button" class="nbv-link" data-act="nb-hint">Hint</button>`;
+  }
   if (!a && q.kind !== 'flash') below += `<button type="button" class="nbv-link nbv-skip" data-act="nb-skip">I don't know</button>`;
   // A new word can be set aside for good, like 斩 in 百词斩. It sits in the instruction row, far
   // from where Continue was, so a double tap on Continue cannot reach it; the summary can undo it.
@@ -447,7 +485,20 @@ function roundMinutes(due: number, fresh: number): number {
   return Math.max(1, Math.round(((due * 1.2 + fresh * 2.4) * 8) / 60));
 }
 
-function startHtml(entries: NotebookEntry[], state: ReviewState, now: number): string {
+/**
+ * The start card's offer of the number of new words a day that fits the learner's pace, on the
+ * goal hook the plan's chips use. Only for one goal (My words or one book), not for All books.
+ */
+function suggestHtml(goal: number, opts: ReviewRenderOptions): string {
+  if (opts.showGoal === false || (opts.books?.length && !opts.goalBook)) return '';
+  const current = opts.goalBook ? opts.goalBook.goal : goal;
+  const n = suggestGoal(current, opts.pace);
+  if (n == null) return '';
+  const hook = opts.goalBook ? `data-act="wb-goal" data-book="${esc(opts.goalBook.id)}"` : 'data-act="nb-goal"';
+  return `<p class="nbv-quiz__note nbv-suggest">${fmt(n)} new words a day fits your recent study time <button type="button" class="nbv-link" ${hook} data-goal="${n}">Use ${fmt(n)}</button></p>`;
+}
+
+function startHtml(entries: NotebookEntry[], state: ReviewState, now: number, goal = 0, opts: ReviewRenderOptions = {}): string {
   const byId = new Map(entries.map((e) => [e.id, e]));
   const queued = state.queue.map((id) => byId.get(id)).filter(Boolean) as NotebookEntry[];
   const fresh = queued.filter(isNew).length;
@@ -476,11 +527,12 @@ function startHtml(entries: NotebookEntry[], state: ReviewState, now: number): s
     <div class="nbv-start__bar" aria-hidden="true">${parts.map((p) => (p.n ? `<i class="nbv-start--${p.cls}" style="flex:${p.n}"></i>` : '')).join('')}</div>
     <div class="nbv-counts">${parts.map((p) => `<div><b>${fmt(p.n)}</b><span><i class="nbv-start--${p.cls}"></i>${p.label}</span></div>`).join('')}</div>
     ${held ? `<p class="nbv-quiz__note">${fmt(held)} new ${held === 1 ? 'word waits' : 'words wait'} until the reviews are done</p>` : ''}
+    ${suggestHtml(goal, opts)}
     <button type="button" class="nbv-primary nbv-wide" data-act="nb-start" autofocus>Start review<kbd>Enter</kbd></button>
   </section>`;
 }
 
-const LEVEL_NAME = ['New', 'Learning', 'Under 3 weeks', '3 weeks or more'];
+const MATURITY_RANK: Record<Maturity, number> = { new: 0, relearning: 1, learning: 1, young: 2, mature: 3 };
 
 /** Words set aside with "Already know it" this round, each with Undo while it is still set aside. */
 function knownHtml(entries: NotebookEntry[], state: ReviewState): string {
@@ -503,18 +555,23 @@ function summaryHtml(entries: NotebookEntry[], state: ReviewState, now: number):
   // The saved grade counts, so "I knew it" and "I didn't know it" are respected here too.
   const right = r.filter((x) => x.grade > 1).length;
   const byId = new Map(entries.map((e) => [e.id, e]));
-  const words = new Map<string, { lemma: string; from: number; to: number; missed: boolean }>();
+  const fallback = (level: number | undefined): Maturity => (['new', 'learning', 'young', 'mature'] as Maturity[])[level ?? 0] || 'new';
+  const words = new Map<string, { lemma: string; from: Maturity; to: Maturity; missed: boolean }>();
   for (const x of r) {
     const w = words.get(x.id);
+    const before = x.maturityBefore || fallback(x.levelBefore);
+    const after = x.maturityAfter || (x.levelAfter != null ? fallback(x.levelAfter) : before);
     if (w) {
-      w.to = x.levelAfter ?? w.to;
+      w.to = after;
       w.missed = w.missed || x.grade === 1;
-    } else words.set(x.id, { lemma: x.lemma, from: x.levelBefore ?? 0, to: x.levelAfter ?? x.levelBefore ?? 0, missed: x.grade === 1 });
+    } else words.set(x.id, { lemma: x.lemma, from: before, to: after, missed: x.grade === 1 });
   }
   const list = [...words.entries()];
-  const started = list.filter(([, w]) => w.from === 0).map(([, w]) => w.lemma);
-  const up = list.filter(([, w]) => w.from > 0 && w.to > w.from);
-  const down = list.filter(([, w]) => w.to < w.from);
+  const rank = (m: Maturity) => MATURITY_RANK[m];
+  const started = list.filter(([, w]) => w.from === 'new').map(([, w]) => w.lemma);
+  // Up a stage, or a lapsed word back in review; down a stage, or into relearning.
+  const up = list.filter(([, w]) => w.from !== 'new' && (rank(w.to) > rank(w.from) || (w.from === 'relearning' && w.to !== 'relearning')));
+  const down = list.filter(([, w]) => rank(w.to) < rank(w.from) || (w.to === 'relearning' && w.from !== 'relearning'));
   const missed = list.filter(([, w]) => w.missed);
   const secs = r.reduce((s, x) => s + x.ms, 0) / 1000;
   const time = `${Math.floor(secs / 60)}:${String(Math.round(secs % 60)).padStart(2, '0')}`;
@@ -524,7 +581,7 @@ function summaryHtml(entries: NotebookEntry[], state: ReviewState, now: number):
   const moved = (rows: typeof up, title: string, cls: string) =>
     rows.length
       ? `<div class="nbv-moved nbv-moved--${cls}"><p class="nbv-quiz__ask">${title} <b>${rows.length}</b></p><ul>${rows
-          .map(([, w]) => `<li><button type="button" class="nbv-missed__word" data-act="lookup" data-q="${esc(w.lemma)}">${esc(w.lemma)}</button><span>${LEVEL_NAME[w.from]} → ${LEVEL_NAME[w.to]}</span></li>`)
+          .map(([, w]) => `<li><button type="button" class="nbv-missed__word" data-act="lookup" data-q="${esc(w.lemma)}">${esc(w.lemma)}</button><span>${MATURITY_NAME[w.from]} → ${MATURITY_NAME[w.to]}</span></li>`)
           .join('')}</ul></div>`
       : '';
   return `<section class="nbv-quiz nbv-quiz--done">
@@ -561,9 +618,9 @@ export function reviewHtml(entries: NotebookEntry[], state: ReviewState, goal: n
   if (!entries.length) {
     quiz = `<p class="nbv-empty">Save words to start reviewing.</p>`;
   } else if (!state.started) {
-    quiz = startHtml(entries, state, now);
+    quiz = startHtml(entries, state, now, goal, opts);
   } else {
-    const q = ensureReviewQuestion(state, entries, { audio: opts.audio, now, examples: opts.examples });
+    const q = ensureReviewQuestion(state, entries, { audio: opts.audio, now, examples: opts.examples, learner: opts.learner });
     const e = q ? entries.find((x) => x.id === q.id) : undefined;
     quiz = q && e ? questionHtml(q, e, state, opts, now) : summaryHtml(entries, state, now);
   }

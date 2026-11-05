@@ -99,7 +99,12 @@ import {
   reviewAnswerDetails,
   scopeBookFor,
   listAnswerHistory,
+  learnerModel,
+  studyPace,
+  hintReview,
   singleVoice,
+  type LearnerModel,
+  type StudyPace,
   type AnswerRecord,
   type LearnPage,
   type RecentLookup,
@@ -272,6 +277,20 @@ async function loadAnswerHistory(): Promise<void> {
   } catch {
     answerHistory = [];
   }
+}
+
+/** What the answer history says about the learner, for choosing questions and today's new words; null until loaded. */
+let learner: { model: LearnerModel; pace: StudyPace | null } | null = null;
+
+async function loadLearner(): Promise<void> {
+  let rows: AnswerRecord[] = [];
+  try {
+    rows = await listAnswerHistory();
+  } catch {
+    rows = [];
+  }
+  const now = Date.now();
+  learner = { model: learnerModel(rows, now), pace: studyPace(rows, now) };
 }
 
 /* Word books: the list the Words tab shows (My words, a book or All books) and its data. */
@@ -707,15 +726,23 @@ function paint(): void {
 
 /** The Learn tab's state, starting today's session for the chosen list when there is none. */
 function learnViewState(): LearnState {
+  const pace = learner?.pace ?? null;
   if (!nbState.review && wordsState.ctx) {
-    nbState.review = startScopeReview(wordsState.scope, wordsState.ctx, { mineGoal: nbState.goal, mineStartedToday: startedToday().length });
+    nbState.review = startScopeReview(wordsState.scope, wordsState.ctx, { mineGoal: nbState.goal, mineStartedToday: startedToday().length, pace });
   }
-  if (!nbState.review && reviewPool.length) nbState.review = startReview(reviewPool, nbState.goal, Date.now(), startedToday().length);
+  if (!nbState.review && reviewPool.length) nbState.review = startReview(reviewPool, nbState.goal, Date.now(), startedToday().length, pace);
   return {
     review: nbState.review || startReview([], nbState.goal),
     goal: nbState.goal,
     pool: reviewPool,
-    reviewOptions: { audio: prefs.audioEnabled !== false, preview: previewReview, formatGap: formatReviewGap, examples: (lemma) => reviewExamples.get(lemma.toLowerCase()) },
+    reviewOptions: {
+      audio: prefs.audioEnabled !== false,
+      preview: previewReview,
+      formatGap: formatReviewGap,
+      examples: (lemma) => reviewExamples.get(lemma.toLowerCase()),
+      learner: learner?.model ?? null,
+      pace,
+    },
     page: learnPage,
     history: answerHistory,
     notice: plusNoticeHtml(accountState, HOLARKY_ACCOUNT.plusUrl, 'learn'),
@@ -771,6 +798,13 @@ function bindLearn(): void {
   focusReview(page);
   void prefetchMeanings();
   void prefetchExamples();
+  // Today's plan waits for nothing; once the learner is known, a session not yet started plans again.
+  if (!learner) {
+    void loadLearner().then(() => {
+      if (nbState.review && !nbState.review.started) nbState.review = null;
+      if (tab === 'learn' && learnPage === 'today') paint();
+    });
+  }
 }
 
 /** Keeps the chosen list (or Add a word book) visible in the scrolling switcher. */
@@ -785,7 +819,12 @@ function revealWordsScope(): void {
 /** After a Review paint: the answer box gets the cursor, a listening question plays once. */
 let reviewAutoplayed = '';
 function focusReview(page: HTMLElement): void {
-  page.querySelector<HTMLInputElement>('#nbv-answer')?.focus();
+  const input = page.querySelector<HTMLInputElement>('#nbv-answer');
+  if (input) {
+    input.focus();
+    // After a Hint the box holds the letters shown so far; typing goes on after them.
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
   // A new question starts with its progress bar and instruction below the sticky app bar.
   revealQuestion(page, document.querySelector('.top'));
   // After an answer, bring Continue into view with the verdict and the word above it.
@@ -2569,8 +2608,9 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'nb-start':
     case 'nb-round':
-      // A new round plans again from what is due now.
+      // A new round plans again from what is due now and from the answers so far.
       if (t.dataset.act === 'nb-round') {
+        await loadLearner();
         nbState.review = null;
         learnViewState();
       }
@@ -2591,6 +2631,9 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'nb-skip':
       if (reviewArmed(nbState.review)) answerCurrentReview({});
+      return;
+    case 'nb-hint':
+      if (nbState.review && hintReview(nbState.review)) paint();
       return;
     case 'nb-override':
       if (nbState.review) overrideReview(nbState.review, t.dataset.mode === 'easy' ? 'easy' : 'flip');
