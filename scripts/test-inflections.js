@@ -201,6 +201,12 @@ assert.equal(wordFamilyHtml([], 'act'), '');
   assert.doesNotMatch(line, /data-lookup="redundantant"/, 'a coinage waits under All in a long list');
   assert.match(famHtml, /<summary>All 14<\/summary>[\s\S]*data-lookup="redundantant"/, 'and is still listed there');
   assert.deepEqual(rankFamilyByFrequency(ranked, null), ranked, 'no frequencies, no change');
+  // "Batman" is printed more often than "batty" but is a name, not family.
+  const bat = rankFamilyByFrequency(
+    [{ relation: 'derived', items: [{ word: 'Batman' }, { word: 'batty' }, { word: 'batsman' }] }],
+    { stem: 'bat', complete: false, freq: { batman: 4.1, batty: 1.2, batsman: 0.9 } },
+  );
+  assert.deepEqual(bat[0].items.map((i) => i.word), ['batty', 'batsman', 'Batman'], 'a name after the family words');
 })().catch((err) => {
   console.error(err);
   process.exit(1);

@@ -540,7 +540,9 @@ export function rankFamilyByFrequency(groups: WordFamilyGroup[], data: FamilyFre
       const k = foldLookupKey(it.word);
       const f = data.freq[k] || 0;
       const rare = !f && ((data.complete && k.includes(data.stem)) || cmuKnownSync(k) === false);
-      return { it, i, f, tier: f ? 0 : rare ? 2 : 1 };
+      // A name ("Batman" under bat) is common in print but no member of the family proper.
+      const name = /^\p{Lu}/u.test(it.word.trim()) && !g.items.every((x) => /^\p{Lu}/u.test(x.word.trim()));
+      return { it, i, f, tier: rare ? 2 : f && !name ? 0 : 1 };
     });
     indexed.sort((a, b) => a.tier - b.tier || b.f - a.f || a.i - b.i);
     return { ...g, items: indexed.map(({ it, tier }) => (tier === 2 ? { ...it, rare: true } : it)) };
