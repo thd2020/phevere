@@ -24,10 +24,14 @@ function link(word: string, links: LexiconLinks, inner = esc(word)): string {
     : wordLinkHtml(word, inner, links, 'lx-link lemma-link');
 }
 
-/** A form in a table or row, linked to its own lookup; the stress mark is not part of the query. */
+/**
+ * A form in a table or row, linked to its own lookup; the stress mark is not part of the query.
+ * Only a single word is a link: "more redundant" and "will have gone" are phrases built from other
+ * words, not entries, as the Forms tables of Wiktionary and the learner dictionaries print them.
+ */
 function formLink(f: string, links: LexiconLinks): string {
   const query = f.normalize('NFD').replace(/́/g, '').normalize('NFC');
-  if (!/\p{L}/u.test(query)) return formText(f);
+  if (!/\p{L}/u.test(query) || /\s/u.test(query.trim())) return formText(f);
   return wordLinkHtml(query, formText(f), links);
 }
 

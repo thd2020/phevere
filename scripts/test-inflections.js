@@ -77,6 +77,15 @@ const formsHtml = inflectionsHtml(miceSel, 'mice', 'act');
 assert.match(formsHtml, /<i>mice<\/i> is the plural of <button[^>]*data-q="mouse"/);
 assert.match(inflectionsHtml(sobaka, 'собака', 'lookup'), /соб<b class="lx-stress">а<\/b>ка/);
 assert.equal(inflectionsHtml(undefined, 'x', 'act'), '');
+// Periphrastic forms are phrases, not entries: "more redundant" is text, "redundanter" a link.
+const degrees = inflectionsHtml(
+  { formOf: [], tables: [{ pos: 'adjective', rows: [{ label: 'Comparative', forms: ['more redundant', 'redundanter'] }, { label: 'Superlative', forms: ['most redundant'] }], grids: [] }] },
+  'redundant',
+  'lookup',
+);
+assert.doesNotMatch(degrees, /data-lookup="more redundant"|data-lookup="most redundant"/, 'a multi-word form is not a link');
+assert.match(degrees, /more redundant/, 'but it is still shown');
+assert.match(degrees, /data-lookup="redundanter"/, 'a one-word form stays a link');
 
 // Word family: closest members in a line, the rest folded, affixes and roots as "Built from".
 const many = Array.from({ length: 15 }, (_, i) => ({ word: `run${i}` }));
