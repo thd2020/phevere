@@ -335,7 +335,7 @@ export function senseFigureHtml(img: SenseImage, index: number): string {
   // arrives; the picture is cropped to fill it, and opening it shows it whole.
   return `<figure class="sense-figure" data-sense-figure="${index}" style="--ar:${SENSE_FIGURE_RATIO}">
     <button type="button" class="sense-figure__frame" data-act="sense-figure" data-full="${esc(img.url || img.thumb)}" data-thumb="${esc(img.thumb)}" data-title="${esc(img.title)}" data-credit="${esc(img.credit)}" data-page="${esc(img.pageUrl)}" aria-label="${esc(label)}" title="${esc(label)}">
-      <img src="${esc(img.thumb)}" alt="${esc(img.title)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('is-loaded')" onerror="this.closest('figure').remove()" />
+      <img src="${esc(img.thumb)}" alt="${esc(img.title)}" decoding="async" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('is-loaded')" onerror="this.closest('figure').remove()" />
     </button>
     <figcaption class="sense-figure__credit"><button type="button" class="sense-figure__link" data-act="sense-credit" data-url="${esc(img.pageUrl)}">${esc(img.credit)}</button></figcaption>
   </figure>`;

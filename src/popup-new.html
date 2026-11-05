@@ -2638,6 +2638,12 @@ function startAutoCloseTimeout() {
                 });
               }
 
+              // A word's pictures start now, while the dictionaries answer.
+              if (settings.senseImages !== false && window.dictionaryAPI.prefetchSenseImages && isPictureWord(text)) {
+                window.dictionaryAPI.prefetchSenseImages(text.trim(), sourceLang && sourceLang !== 'auto' ? sourceLang : 'en');
+                warmPictureHost();
+              }
+
               const lookupPromise = Promise.race([
                 window.dictionaryAPI.lookup(text, targetLang, undefined, sourceLang ? { sourceLanguage: sourceLang } : undefined),
                 new Promise(function (_, reject) {
@@ -3522,7 +3528,7 @@ function startAutoCloseTimeout() {
           const label = (img.title || '') + ' — ' + (img.credit || '');
           return `<figure class="sense-figure" data-sense-figure="${index}" style="--ar:${ratio.toFixed(3)}">` +
             `<button type="button" class="sense-figure__frame" data-sense-view="${escapeHtml(img.url || img.thumb)}" data-thumb="${escapeHtml(img.thumb)}" data-title="${escapeHtml(img.title || '')}" data-credit="${escapeHtml(img.credit || '')}" data-page="${escapeHtml(img.pageUrl || '')}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">` +
-            `<img src="${escapeHtml(img.thumb)}" alt="${escapeHtml(img.title || '')}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('is-loaded')" onerror="this.closest('figure').remove()">` +
+            `<img src="${escapeHtml(img.thumb)}" alt="${escapeHtml(img.title || '')}" decoding="async" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('is-loaded')" onerror="this.closest('figure').remove()">` +
             `</button>` +
             `<figcaption class="sense-figure__credit">${escapeHtml(img.credit || '')}</figcaption>` +
             `</figure>`;
@@ -3531,11 +3537,47 @@ function startAutoCloseTimeout() {
         function placePopupSenseFigures(result) {
           const list = currentPopupSenseImages(result);
           if (!list) return;
+          // Pictures arrive in steps, and a later step can move a picture to the sense it fits
+          // better, so the figures follow the latest list.
           list.forEach(function (img, i) {
-            if (!img) return;
             const body = document.querySelector('.definition-item[data-sense="' + i + '"] .definition-sense-body');
-            if (!body || body.querySelector('.sense-figure')) return;
+            if (!body) return;
+            const present = body.querySelector('.sense-figure');
+            const shown = present && present.querySelector('[data-page]');
+            if (!img) {
+              if (present) present.remove();
+              return;
+            }
+            if (shown && shown.getAttribute('data-page') === (img.pageUrl || '')) return;
+            if (present) present.remove();
             body.insertAdjacentHTML('afterbegin', senseFigureHtml(img, i));
+          });
+        }
+
+        /**
+         * Pictures are gathered ahead of the senses only for an English word or short phrase; a
+         * selected sentence or another script waits for the lookup to name its language.
+         */
+        function isPictureWord(text) {
+          const t = String(text || '').trim();
+          return !!t && t.length <= 40 && t.split(/\s+/).length <= 3 && /^[\p{Script=Latin}\s'’.-]+$/u.test(t);
+        }
+
+        /**
+         * Opens connections to the hosts that serve the pictures, so the first thumbnail does not
+         * wait for a handshake: thumbnails come from thumb.wikimedia.org, the larger view from
+         * upload.wikimedia.org. The hints are added again for each lookup: Chrome drops a
+         * preconnected socket that stays unused for about ten seconds.
+         */
+        function warmPictureHost() {
+          ['thumb', 'upload'].forEach(function (host) {
+            const old = document.getElementById('pictureHostHint-' + host);
+            if (old) old.remove();
+            const link = document.createElement('link');
+            link.id = 'pictureHostHint-' + host;
+            link.rel = 'preconnect';
+            link.href = 'https://' + host + '.wikimedia.org';
+            document.head.appendChild(link);
           });
         }
 
@@ -3553,15 +3595,22 @@ function startAutoCloseTimeout() {
           });
           if (!senses.length) return;
           popupSenseImagesPending = key;
+          warmPictureHost();
+          // Each picture goes in as soon as its sense has one; the rest follow.
+          const place = function (list) {
+            if (!Array.isArray(list)) return;
+            // A word looked up since then keeps its own pictures: a late answer for this one
+            // must not replace them, or the next repaint of that word would drop them.
+            if (!currentResult || popupSenseKey(currentResult) !== key) return;
+            if (popupSenseImages && popupSenseImages.key === key && popupSenseImages.list === list) return;
+            popupSenseImages = { key: key, list: list };
+            if (currentTab === 'lexicon') placePopupSenseFigures(currentResult);
+          };
           try {
             const list = await window.dictionaryAPI.senseImages(result.word || currentText || '', senses, {
               lang: result.detectedLanguage || 'en',
-            });
-            if (!Array.isArray(list)) return;
-            popupSenseImages = { key: key, list: list };
-            if (currentResult && popupSenseKey(currentResult) === key && currentTab === 'lexicon') {
-              placePopupSenseFigures(currentResult);
-            }
+            }, place);
+            place(list);
           } catch (e) {
             /* no pictures */
           } finally {

@@ -635,16 +635,44 @@ function currentSenseImages(): Array<SenseImage | null> | null {
 function placeSenseFigures(final = false): void {
   const list = currentSenseImages();
   if (!list) return;
+  // Pictures arrive in steps, and a later step can move a picture to the sense it fits better, so
+  // the figures follow the latest list. A placeholder waits until the last step.
   list.forEach((img, i) => {
-    if (!img) return;
     const body = root.querySelector(`.definition-item[data-sense="${i}"] .definition-sense-body`);
     if (!body) return;
     const present = body.querySelector('.sense-figure');
-    if (present && !present.classList.contains('is-pending')) return;
+    const pending = !!present && present.classList.contains('is-pending');
+    if (!img) {
+      if (present && !pending) present.remove();
+      return;
+    }
+    if (present && !pending && present.querySelector('[data-page]')?.getAttribute('data-page') === img.pageUrl) return;
     if (present) present.outerHTML = senseFigureHtml(img, i);
     else body.insertAdjacentHTML('afterbegin', senseFigureHtml(img, i));
   });
   if (final) root.querySelectorAll('.sense-figure.is-pending').forEach((el) => el.remove());
+}
+
+/**
+ * Opens connections to the hosts that serve the pictures when a word is submitted, so the first
+ * thumbnail does not wait for a handshake: thumbnails come from thumb.wikimedia.org, the larger
+ * view from upload.wikimedia.org. The hints go in again for each lookup: the WebView drops a
+ * preconnected socket that stays unused for about ten seconds.
+ */
+function warmPictureHost(): void {
+  // Only a hint: a lookup goes on without it.
+  try {
+    for (const host of ['thumb', 'upload']) {
+      document.getElementById(`pictureHostHint-${host}`)?.remove();
+      const link = document.createElement('link');
+      link.id = `pictureHostHint-${host}`;
+      link.rel = 'preconnect';
+      link.href = `https://${host}.wikimedia.org`;
+      document.head.appendChild(link);
+    }
+  } catch {
+    /* no document head */
+  }
 }
 
 /** Fetches pictures after the text has painted; a stale lookup's pictures are dropped. */
@@ -1170,7 +1198,10 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
   }
   paint();
   // The word's pictures are gathered while the dictionaries answer, apart from the senses.
-  if (prefs.senseImages !== false) prefetchSenseImages(q, { lang: prefs.sourceLang === 'auto' ? 'en' : prefs.sourceLang });
+  if (prefs.senseImages !== false) {
+    prefetchSenseImages(q, { lang: prefs.sourceLang === 'auto' ? 'en' : prefs.sourceLang });
+    warmPictureHost();
+  }
   const enabled = dictionaryService.getEnabledSources();
   let settled = false;
   try {
