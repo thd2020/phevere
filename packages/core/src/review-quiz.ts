@@ -112,6 +112,8 @@ export interface ReviewState {
   rest?: number;
   /** New words held back today because many reviews are due. */
   heldBack?: number;
+  /** New words held back until tomorrow because today's answers already fill the learner's usual day. */
+  heldForToday?: number;
   /** Words set aside with "Already know it" this round, for the summary's Undo. */
   knownMarked?: string[];
 }
@@ -154,6 +156,8 @@ export interface StudyPace {
   suggested: number;
   /** Study days the numbers come from. */
   days: number;
+  /** Answers given so far today; the shells add each new one, so another round does not plan a new batch. */
+  answersToday?: number;
 }
 
 /** Taps and keys this soon after a question appears are ignored, so a double tap on Continue cannot answer the next one. */
@@ -212,14 +216,17 @@ export function newWordAllowance(goal: number, due: number): number {
 export const ANSWERS_PER_REVIEW = 1.2;
 
 /**
- * New words for today, which vary with the day's load as MaiMemo's do: `newWordAllowance`, and,
- * once the learner's pace is known, no more than fit beside today's reviews in a usual day's
- * answers with a fifth to spare. A heavy day gets fewer new words and a light day the whole goal.
+ * New words that may still start today, which vary with the day's load as MaiMemo's do:
+ * `newWordAllowance`, and, once the learner's pace is known, no more than fit in a usual day's
+ * answers with a fifth to spare beside the reviews still due and the answers already given today
+ * (`pace.answersToday`). The callers take the words already started off the goal, so the pace is
+ * a limit for the day: a second round does not plan another batch. A heavy day gets fewer new
+ * words and a light day the whole goal.
  */
 export function newWordsToday(goal: number, due: number, pace?: StudyPace | null): number {
   const base = newWordAllowance(goal, due);
   if (!pace || !(pace.answersPerDay > 0)) return base;
-  const room = (pace.answersPerDay - due * ANSWERS_PER_REVIEW) * 1.2;
+  const room = (pace.answersPerDay - (pace.answersToday || 0) - due * ANSWERS_PER_REVIEW) * 1.2;
   const byLoad = Math.floor(Math.max(0, room) / Math.max(1, pace.firstDayAnswers));
   return Math.max(0, Math.min(base, byLoad));
 }
@@ -284,8 +291,10 @@ export interface QueuePlan {
   ids: string[];
   due: number;
   fresh: number;
-  /** New words the goal allowed but the review load held back. */
+  /** New words the goal allowed but the review load held back; they come once the reviews are done. */
   heldBack: number;
+  /** New words the goal allowed but the learner's usual day has no room for; they wait for tomorrow. */
+  heldForToday?: number;
 }
 
 /**
@@ -301,8 +310,10 @@ export function reviewPlan(entries: NotebookEntry[], goal: number, now = Date.no
   const due = dueAll.filter((e) => kept.has(e));
   const fresh = newAll.filter((e) => kept.has(e));
   const left = Math.max(0, goal - startedToday);
-  const taken = fresh.slice(0, Math.min(left, newWordsToday(goal, due.length, pace)));
-  return { ids: interleaveNew(due, taken).map((e) => e.id), due: due.length, fresh: taken.length, heldBack: Math.min(fresh.length, left) - taken.length };
+  const avail = Math.min(fresh.length, left);
+  const byReviews = Math.min(avail, newWordAllowance(goal, due.length));
+  const taken = fresh.slice(0, Math.min(byReviews, newWordsToday(goal, due.length, pace)));
+  return { ids: interleaveNew(due, taken).map((e) => e.id), due: due.length, fresh: taken.length, heldBack: avail - byReviews, heldForToday: byReviews - taken.length };
 }
 
 /** Today's queue (`reviewPlan` ids). */
@@ -324,6 +335,7 @@ export function reviewStateFor(plan: QueuePlan, now = Date.now()): ReviewState {
     seed: Math.floor(now % 2147483647),
     rest: Math.max(0, plan.ids.length - ROUND_WORDS),
     heldBack: plan.heldBack,
+    heldForToday: plan.heldForToday || 0,
   };
 }
 

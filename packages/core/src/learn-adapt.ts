@@ -124,6 +124,7 @@ export function studyPace(history: AnswerRecord[], now = Date.now()): StudyPace 
     reviewsPerNew: Math.round(reviewsPerNew * 100) / 100,
     suggested,
     days: days.length,
+    answersToday: rows.filter((r) => r.answeredAt >= today).length,
   };
 }
 

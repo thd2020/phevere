@@ -921,6 +921,8 @@ async function commitReview(): Promise<void> {
     toast(err instanceof Error ? err.message : String(err));
   }
   advanceReview(r, updated);
+  // Today's answers count against the learner's usual day, so the next round plans fewer new words.
+  if (learner?.pace) learner.pace.answersToday = (learner.pace.answersToday || 0) + 1;
   answerHistory = null;
   grading = false;
   paint();

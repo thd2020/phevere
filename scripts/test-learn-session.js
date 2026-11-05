@@ -123,7 +123,8 @@ const started = (lemma, extra = {}) => ({ lemma, known: false, reps: 2, state: 2
   // 60 answers a day less 40 reviews (48 answers), a fifth to spare: 14 answers, four new words at three answers each.
   assert.equal(hp.fresh, 4, `a heavy day gives fewer: ${hp.fresh}`);
   assert.equal(hp.ids.filter((id) => id.startsWith('m')).length, 2, 'shared by goal: half from My words');
-  assert.equal(hp.heldBack, 16);
+  assert.equal(hp.heldForToday, 16, 'the pace holds them for tomorrow');
+  assert.equal(hp.heldBack, 0, 'the reviews alone would not');
   // Only words that exist wait: My words with no new word holds nothing back.
   const none = core.buildWordsContext([], words.slice(0, 5).map((w) => started(w, { reviewDue: now - 1000 })), [], new Map());
   assert.equal(core.scopeReviewPlan('mine', none, { now, mineGoal: 10, pace }).heldBack, 0);

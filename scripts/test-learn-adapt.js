@@ -203,6 +203,26 @@ const rec = (lemma, kind, correct, answeredAt, grade = correct ? 3 : 1) => ({ id
   assert.ok(core.newWordsToday(10, 70, pace) < 10 && core.newWordsToday(10, 70, pace) > 0);
   assert.equal(core.newWordsToday(10, 120, pace), 0, 'reviews beyond a usual day hold every new word back');
   assert.equal(core.newWordsToday(10, 20, null), 10, 'without a pace, the old rule');
+  assert.equal(pace.answersToday, 0, 'nothing answered yet today');
+  assert.equal(core.studyPace([...days, rec('today1', 'recall', true, now - 60_000), rec('today2', 'recall', false, now - 30_000)], now).answersToday, 2);
+
+  // The pace is a limit for the day. 60 answers a day, 2.5 for a new word's first day, 10 due:
+  // (60 - 12) * 1.2 / 2.5 makes 23 new words, and once they are started and answered, another
+  // round plans no new batch; the rest wait for tomorrow.
+  const dayPace = { ...pace, answersPerDay: 60, firstDayAnswers: 2.5, answersToday: 0 };
+  const dueWords = Array.from({ length: 10 }, (_, i) => ({ id: `d${i}`, lemma: `due${i}`, definition: 'x', reps: 3, state: 2, stability: 5, lastReview: now - 5 * DAY, reviewDue: now - 1000, createdAt: now - 30 * DAY }));
+  const newWords = Array.from({ length: 40 }, (_, i) => ({ id: `n${i}`, lemma: `fresh${i}`, definition: 'x', reps: 0, createdAt: now - DAY + i }));
+  const first = core.reviewPlan([...dueWords, ...newWords], 30, now, 0, dayPace);
+  assert.equal(first.fresh, 23);
+  assert.equal(first.heldForToday, 7, 'the rest of the goal waits for tomorrow');
+  assert.equal(first.heldBack, 0, 'not for the reviews');
+  const second = core.reviewPlan(newWords.slice(23), 30, now, 23, { ...dayPace, answersToday: 12 + Math.round(23 * 2.5) });
+  assert.equal(second.fresh, 0, 'a second round plans no new batch');
+  assert.equal(second.heldForToday, 7);
+  assert.match(core.reviewHtml(newWords.slice(23), core.reviewStateFor(second, now), 30, { now }), /Nothing due today/);
+  const card = core.reviewHtml([...dueWords, ...newWords], core.reviewStateFor(first, now), 30, { now });
+  assert.match(card, /7 new words wait for tomorrow/);
+  assert.doesNotMatch(card, /until the reviews are done/);
 }
 
 /* ------------------------------------- countdown on choice questions (#37) */

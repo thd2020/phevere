@@ -436,11 +436,17 @@ export function scopeReviewPlan(scope: WordsScope, ctx: WordsContext, opts: Scop
   const bookFresh = pickNewBookWords(bookIds, ctx, now, due.length, undefined, bookRoom);
   const fresh = dedupeLemmas([...due, ...mineFresh, ...bookFresh]).slice(due.length);
   const bookQuota = progress.reduce((s, p) => s + p.newToday, 0);
-  const bookAllowed = Math.min(bookQuota, newWordAllowance(bookGoals, due.length), bookRoom);
-  const mineAllowed = Math.min(mineLeft, newWordAllowance(mineGoal, due.length), mineRoom);
-  // Only words that exist wait: a goal of ten with three unstarted words holds back at most three.
-  const heldBack = Math.min(mineLeft, mineWaiting) - Math.min(mineAllowed, mineWaiting) + (bookQuota - bookAllowed);
-  return { ids: interleaveNew(due, fresh).map((e) => e.id), due: due.length, fresh: fresh.length, heldBack };
+  // Held back by the reviews (they come once the reviews are done) or by the learner's usual day
+  // (they wait for tomorrow). Only words that exist wait: a goal of ten with three unstarted words
+  // holds back at most three.
+  const bookByReviews = Math.min(bookQuota, newWordAllowance(bookGoals, due.length));
+  const bookAllowed = Math.min(bookByReviews, bookRoom);
+  const mineAvail = Math.min(mineLeft, mineWaiting);
+  const mineByReviews = Math.min(mineAvail, newWordAllowance(mineGoal, due.length));
+  const mineAllowed = Math.min(mineByReviews, mineRoom);
+  const heldBack = mineAvail - mineByReviews + (bookQuota - bookByReviews);
+  const heldForToday = mineByReviews - mineAllowed + (bookByReviews - bookAllowed);
+  return { ids: interleaveNew(due, fresh).map((e) => e.id), due: due.length, fresh: fresh.length, heldBack, heldForToday };
 }
 
 /** Today's queue for a scope (`scopeReviewPlan` ids). */

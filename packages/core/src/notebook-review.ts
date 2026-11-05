@@ -521,6 +521,7 @@ function startHtml(entries: NotebookEntry[], state: ReviewState, now: number, go
   }
   const rest = state.rest || 0;
   const held = state.heldBack || 0;
+  const later = state.heldForToday || 0;
   const parts = [
     { cls: 'learning', n: learning, label: 'Learning' },
     { cls: 'review', n: review, label: 'Review' },
@@ -534,6 +535,7 @@ function startHtml(entries: NotebookEntry[], state: ReviewState, now: number, go
     <div class="nbv-start__bar" aria-hidden="true">${parts.map((p) => (p.n ? `<i class="nbv-start--${p.cls}" style="flex:${p.n}"></i>` : '')).join('')}</div>
     <div class="nbv-counts">${parts.map((p) => `<div><b>${fmt(p.n)}</b><span><i class="nbv-start--${p.cls}"></i>${p.label}</span></div>`).join('')}</div>
     ${held ? `<p class="nbv-quiz__note">${fmt(held)} new ${held === 1 ? 'word waits' : 'words wait'} until the reviews are done</p>` : ''}
+    ${later ? `<p class="nbv-quiz__note">${fmt(later)} new ${later === 1 ? 'word waits' : 'words wait'} for tomorrow</p>` : ''}
     ${suggestHtml(goal, opts)}
     <button type="button" class="nbv-primary nbv-wide" data-act="nb-start" autofocus>Start review<kbd>Enter</kbd></button>
   </section>`;
