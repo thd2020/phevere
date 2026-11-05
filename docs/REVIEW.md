@@ -214,7 +214,7 @@ The Today page has two charts of its own: reviews due over the next fourteen day
 
 Since 2026-11-05 the options for Learn live in Settings, on the desktop and the phone, and the Learn tab only shows what they settle. That is where every app we looked at keeps them: Anki's daily limits and timers are deck options ([manual](https://docs.ankiweb.net/deck-options.html)), Shanbay keeps 每日单词量 under 我的 and 学习设置, Duolingo keeps the daily goal and the speaking and listening switches in Settings, and WaniKani moved its daily lesson count to App Settings ([blog](https://blog.wanikani.com/posts/today-lessons-count-setting/)).
 
-![Screenshot of Settings → Learn on a phone: new words a day for My words and for the Postgraduate book, and the countdown on choice questions set to 5 seconds](REVIEW.assets/settings-learn-phone.png)
+![Screenshot of Settings → Learn on a phone: new words a day for My words set to 12 in the Other field, and the countdown on choice questions set to 5 seconds](REVIEW.assets/settings-learn-phone.png)
 
 *Settings → Learn: a goal per list and the countdown.*
 
