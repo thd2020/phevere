@@ -348,9 +348,7 @@ function initializeSettingsWindow() {
             <div class="sv sv-page">
               <div class="sv-ledger">
                 ${switchRowHtml({ label: 'Image copied', on: true, attrs: 'id="notify-clipboard-image"' })}
-                ${switchRowHtml({ label: 'No image on clipboard', on: true, attrs: 'id="notify-clipboard-empty"' })}
                 ${switchRowHtml({ label: 'Hover lookup switched on or off', on: true, attrs: 'id="notify-hover-toggle"' })}
-                ${switchRowHtml({ label: 'Quick translation failed', on: true, attrs: 'id="notify-quick-translate"' })}
                 ${switchRowHtml({ label: 'Update ready or available', on: true, attrs: 'id="notify-updates"' })}
               </div>
             </div>
@@ -4355,37 +4353,29 @@ async function wireNotificationSettings(): Promise<void> {
   const api = (window as any).electronAPI;
   if (!api?.getNotificationPrefs || !api?.setNotificationPrefs) return;
   const imageEl = document.getElementById('notify-clipboard-image') as HTMLInputElement | null;
-  const emptyEl = document.getElementById('notify-clipboard-empty') as HTMLInputElement | null;
   const hoverEl = document.getElementById('notify-hover-toggle') as HTMLInputElement | null;
-  const quickEl = document.getElementById('notify-quick-translate') as HTMLInputElement | null;
   const updatesEl = document.getElementById('notify-updates') as HTMLInputElement | null;
-  if (!imageEl || !emptyEl || !hoverEl) return;
+  if (!imageEl || !hoverEl || !updatesEl) return;
   try {
     const prefs = await api.getNotificationPrefs();
     imageEl.checked = prefs.clipboardImage !== false;
-    emptyEl.checked = prefs.clipboardEmpty !== false;
     hoverEl.checked = prefs.hoverToggle !== false;
-    if (quickEl) quickEl.checked = prefs.quickTranslate !== false;
-    if (updatesEl) updatesEl.checked = prefs.updates !== false;
+    updatesEl.checked = prefs.updates !== false;
   } catch {
     imageEl.checked = true;
-    emptyEl.checked = true;
     hoverEl.checked = true;
+    updatesEl.checked = true;
   }
   const persist = () => {
     void api.setNotificationPrefs({
       clipboardImage: imageEl.checked,
-      clipboardEmpty: emptyEl.checked,
       hoverToggle: hoverEl.checked,
-      quickTranslate: quickEl ? quickEl.checked : true,
-      updates: updatesEl ? updatesEl.checked : true,
+      updates: updatesEl.checked,
     });
   };
   imageEl.addEventListener('change', persist);
-  emptyEl.addEventListener('change', persist);
   hoverEl.addEventListener('change', persist);
-  quickEl?.addEventListener('change', persist);
-  updatesEl?.addEventListener('change', persist);
+  updatesEl.addEventListener('change', persist);
 }
 
 interface UpdateView {

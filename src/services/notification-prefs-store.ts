@@ -1,19 +1,19 @@
 /**
  * OS / tray notification toggles (userData/notification-prefs.json).
- * In-app toasts and OCR progress windows are not gated here.
+ * In-app toasts and OCR progress windows are not gated here, and neither is the
+ * message that answers a shortcut that could not do its job (no image on the
+ * clipboard, a quick translation that failed): those always show.
  */
 
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 
-export type NotificationKind = 'clipboardImage' | 'clipboardEmpty' | 'hoverToggle' | 'quickTranslate' | 'updates';
+export type NotificationKind = 'clipboardImage' | 'hoverToggle' | 'updates';
 
 export interface NotificationPrefs {
   clipboardImage: boolean;
-  clipboardEmpty: boolean;
   hoverToggle: boolean;
-  quickTranslate: boolean;
   updates: boolean;
 }
 
@@ -21,9 +21,7 @@ const FILE_NAME = 'notification-prefs.json';
 
 export const notificationPrefsDefaults: NotificationPrefs = {
   clipboardImage: true,
-  clipboardEmpty: true,
   hoverToggle: true,
-  quickTranslate: true,
   updates: true,
 };
 
@@ -47,9 +45,7 @@ export function loadNotificationPrefs(): NotificationPrefs {
     const raw = JSON.parse(fs.readFileSync(p, 'utf8')) as Partial<NotificationPrefs>;
     return {
       clipboardImage: asBool(raw.clipboardImage, notificationPrefsDefaults.clipboardImage),
-      clipboardEmpty: asBool(raw.clipboardEmpty, notificationPrefsDefaults.clipboardEmpty),
       hoverToggle: asBool(raw.hoverToggle, notificationPrefsDefaults.hoverToggle),
-      quickTranslate: asBool(raw.quickTranslate, notificationPrefsDefaults.quickTranslate),
       updates: asBool(raw.updates, notificationPrefsDefaults.updates),
     };
   } catch {
@@ -60,9 +56,7 @@ export function loadNotificationPrefs(): NotificationPrefs {
 export function saveNotificationPrefs(next: NotificationPrefs): NotificationPrefs {
   const prefs: NotificationPrefs = {
     clipboardImage: !!next.clipboardImage,
-    clipboardEmpty: !!next.clipboardEmpty,
     hoverToggle: !!next.hoverToggle,
-    quickTranslate: next.quickTranslate !== false,
     updates: next.updates !== false,
   };
   const p = resolvePath();
@@ -77,9 +71,7 @@ export function mergeNotificationPrefs(
 ): NotificationPrefs {
   return saveNotificationPrefs({
     clipboardImage: patch.clipboardImage ?? base.clipboardImage,
-    clipboardEmpty: patch.clipboardEmpty ?? base.clipboardEmpty,
     hoverToggle: patch.hoverToggle ?? base.hoverToggle,
-    quickTranslate: patch.quickTranslate ?? base.quickTranslate,
     updates: patch.updates ?? base.updates,
   });
 }
