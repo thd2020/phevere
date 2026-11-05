@@ -68,14 +68,22 @@ async function pace() {
 }
 
 /**
- * `--client` picks the HTTP client: `fetch` (Node's own, which keeps connections open like a
- * browser or the phone's OkHttp), `node` (node-fetch with keep-alive agents, the desktop app's
- * client) or `node18` (node-fetch opening a new connection for every request, as the desktop app
- * did on Electron 28's Node 18 before its agents kept connections open).
+ * `--client` picks the HTTP client: `fetch` (Node's own, which drops an idle connection after
+ * four seconds), `phone` (pooled for five minutes with HTTP/2, like the Android app's OkHttp),
+ * `node` (node-fetch with keep-alive agents, the desktop app's client) or `node18` (node-fetch
+ * opening a new connection for every request, as the desktop app did on Electron 28's Node 18
+ * before its agents kept connections open).
  */
 const clientName = arg('client', 'fetch');
 const clientFetch = (() => {
   if (clientName === 'fetch') return fetch;
+  // `phone`: like the Android app's OkHttp, idle connections stay pooled for five minutes and
+  // HTTP/2 is used where offered. Node's own fetch drops an idle connection after four seconds.
+  if (clientName === 'phone') {
+    const undici = require('undici');
+    const dispatcher = new undici.Agent({ keepAliveTimeout: 300000, keepAliveMaxTimeout: 300000, allowH2: true });
+    return (url, init) => undici.fetch(url, { ...init, dispatcher });
+  }
   const nodeFetch = require('node-fetch');
   const https = require('https');
   const agent = new https.Agent({ keepAlive: clientName === 'node' });
