@@ -13,7 +13,7 @@ import { deepRootFamilies } from './notebook-families';
 import { predictedRecall } from './review-schedule';
 import { SKILLS, historyByWord, skillMastery, type AnswerRecord, type Skill } from './answer-history';
 import { bookEntry, bookProgress, scopeEntries, wordStatus, wordbookMeta, type WordsContext, type WordsEntry, type WordsScope } from './wordbooks';
-import { LEECH_LAPSES, memoryLevel } from './review-quiz';
+import { LEECH_LAPSES, MATURITY_NAME, memoryLevel, wordMaturity, type Maturity } from './review-quiz';
 import { barChartHtml, dayLabel, memoryHtml, wordChips, type BarDatum, type RetentionWord } from './learn-charts';
 import { forecastChartHtml } from './notebook-review';
 
@@ -98,16 +98,12 @@ function streaks(days: Set<number>, today: number): { streak: number; best: numb
   return { streak, best };
 }
 
-const STRENGTH_LABELS = ['Learning', 'Under 1 week', '1 to 3 weeks', '3 weeks to 3 months', '3 months or more'];
+/** The stages the words are counted in, as Today and the question tags name them (`wordMaturity`). */
+const STAGES: Maturity[] = ['new', 'learning', 'young', 'mature'];
 
-function strengthBucket(e: WordsEntry): number {
-  const state = Number(e.state);
-  if (state === 1 || state === 3 || memoryLevel(e) <= 1) return 0;
-  const s = Number(e.stability ?? e.reviewInterval ?? 0) || 0;
-  if (s < 7) return 1;
-  if (s < 21) return 2;
-  if (s < 90) return 3;
-  return 4;
+function stageIndex(e: WordsEntry): number {
+  const m = wordMaturity(e);
+  return m === 'relearning' ? 1 : STAGES.indexOf(m);
 }
 
 export function progressSummary(input: ProgressInput): ProgressSummary {
@@ -257,10 +253,11 @@ export function progressSummary(input: ProgressInput): ProgressSummary {
     const at = now + t * DAY;
     curve.push(inRot.length ? inRot.reduce((s, e) => s + (predictedRecall(e, at) ?? 0), 0) / inRot.length : 0);
   }
-  const strength = STRENGTH_LABELS.map((label) => ({ label, words: [] as string[] }));
+  // Words by stage; a word marked "Already know it" without a review has none.
+  const strength = STAGES.map((m) => ({ label: MATURITY_NAME[m], words: [] as string[] }));
   for (const e of words) {
-    if (wordStatus(e) === 'new' || (e.known && !e.saved && !Number(e.reps))) continue;
-    strength[strengthBucket(e)].words.push(clean(e.lemma));
+    if (e.known && !e.saved && !Number(e.reps)) continue;
+    strength[wordStatus(e) === 'new' ? 0 : stageIndex(e)].words.push(clean(e.lemma));
   }
 
   // Trouble words: missed three times or more, or leeches.
@@ -350,11 +347,10 @@ function perDayChart(perDay: ProgressSummary['perDay']): string {
 }
 
 function strengthChart(strength: ProgressSummary['strength']): string {
-  const short = ['Learning', 'Under 1 wk', '1–3 wk', '3 wk–3 mo', 'Over 3 mo'];
   const total = strength.reduce((s, b) => s + b.words.length, 0);
   const data: BarDatum[] = strength.map((b, i) => ({
-    tick: short[i],
-    segments: [{ cls: i === 0 ? 'learning' : i <= 2 ? 'young' : 'mature', value: b.words.length }],
+    tick: b.label,
+    segments: [{ cls: STAGES[i], value: b.words.length }],
     aria: `${b.label}: ${b.words.length} words`,
     detail: `<p class="lrc-read__head"><b>${esc(b.label)}</b> · ${fmt(b.words.length)} ${b.words.length === 1 ? 'word' : 'words'}${total ? ` (${pct(b.words.length, total)}%)` : ''}</p>${wordChips(b.words, 30)}`,
   }));
@@ -413,10 +409,10 @@ export function progressHtml(input: ProgressInput): string {
   const week = dueWithin(words, now, 7);
   const ahead = `${figure(fmt(week), `${week === 1 ? 'review' : 'reviews'} in the next 7 days`)}${forecastChartHtml(words, now, 30, 'due30')}`;
 
-  const started = s.strength.reduce((n, b) => n + b.words.length, 0);
-  const held = s.strength.slice(3).reduce((n, b) => n + b.words.length, 0);
+  const started = s.strength.slice(1).reduce((n, b) => n + b.words.length, 0);
+  const held = s.strength[3].words.length;
   const heldBody = started
-    ? `${figure(fmt(held), `of ${fmt(started)} started ${started === 1 ? 'word is' : 'words are'} held for 3 weeks or more`, 'is-teal')}${strengthChart(s.strength)}`
+    ? `${figure(fmt(held), `of ${fmt(started)} started ${started === 1 ? 'word is' : 'words are'} mature, held for 3 weeks or more`, 'is-teal')}${strengthChart(s.strength)}`
     : '<p class="lrp-none">No words started yet</p>';
 
   const answers30 = s.perDay.reduce((n, d) => n + d.right + d.wrong, 0);

@@ -304,8 +304,11 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.match(page, /class="lrp-giant">3</, 'the streak is the masthead numeral');
   assert.doesNotMatch(page, /lrp-card|data-lrc-range/, 'no cards and no slider');
   assert.doesNotMatch(page, /at most 20%/);
-  assert.equal(s.strength.reduce((n, b) => n + b.words.length, 0), 2, 'two started words');
-  assert.deepEqual(s.strength[0].words, ['transport'], 'transport is still learning');
+  // Words by the stages Today and the question tags use.
+  assert.deepEqual(s.strength.map((b) => b.label), ['New', 'Learning', 'Young', 'Mature']);
+  assert.deepEqual(s.strength.map((b) => b.words), [['export'], ['transport'], [], ['portable']]);
+  assert.match(page, /<b class="lrp-fig__n">1<\/b><p class="lrp-fig__text">of 2 started words are mature/);
+  assert.doesNotMatch(page, /Under 1 wk|3 wk–3 mo/, 'no week buckets');
   assert.equal(s.mix.listening, 1);
   const charts = load('learn-charts');
   const r14 = charts.retentionAt(s.rotation, t0, 14);

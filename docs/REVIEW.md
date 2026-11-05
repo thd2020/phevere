@@ -146,11 +146,11 @@ Each stage opens a set of kinds, in an order that follows Laufer and Goldstein f
 | Stage | When | Kinds it may ask |
 |---|---|---|
 | 0 | New, first time today | Pick the meaning; pick the word |
-| 1 | Learning, relearning, stability under 4 days, a new word asked again today, or a leech | Pick the word; pick the meaning; pick the word you hear; type the word |
-| 2 | Young, stability 4 to 21 days | Type the word; pick the word; fill the gap; type the word you hear; pick the word you hear |
+| 1 | Learning, relearning, a new word asked again today, or a leech | Pick the word; pick the meaning; pick the word you hear; type the word |
+| 2 | Young: in review, stability under 21 days | Type the word; pick the word; fill the gap; type the word you hear; pick the word you hear |
 | 3 | Mature | Fill the gap; type the word; type the word you hear; pick the word; pick the meaning |
 
-Picking the word you hear belongs to the early stages and typing the word you hear, dictation, to the later ones. A new word asked again in its first session is recognised again, never typed, so spelling waits for a later day, and a leech is only asked in the recognition formats.
+The stage is the one the word's tag shows (`wordMaturity`), so a word tagged Young is asked from the Young row even when it is held for only a few days; the predicted chance below still steers a shaky word towards the easier kinds. Picking the word you hear belongs to the early stages and typing the word you hear, dictation, to the later ones. A new word asked again in its first session is recognised again, never typed, so spelling waits for a later day, and a leech is only asked in the recognition formats.
 
 Within the stage the kind is the one the learner should get right about 85% of the time (`chooseKind`, `TARGET_SUCCESS`). The predicted chance of a right answer (`successChance`) adds up, in log-odds, how firmly the word is held now (FSRS's predicted recall, an even chance for a new word), how easy the kind is (`KIND_EASE`: picking a meaning +1.8, picking the word +1.4, picking the word heard +1.1, the gap +0.1, typing 0, dictation -0.5), what the learner's own answers say about that kind (see "Adapting to the learner"), and the letters shown. A shortfall from 85% costs twice as much as an excess, because a miss sends the word back to relearning while an easy question still makes the learner retrieve it. So a young word due today is typed, the same word long overdue steps back to picking it from four, and a word held for weeks is filled into a sentence or written from dictation: one word meets questions of different difficulty as its memory changes.
 
@@ -261,7 +261,7 @@ The sections answer one question each:
 | Masthead | How long is my streak, and how far am I through today's new words and reviews? |
 | Memory | How many of my words would I recall today, in a week or in a month without review, and which fade first? |
 | Reviews ahead | How busy are the coming days, and with which words? Bars split learning words, words held under three weeks and words held longer. |
-| How long words are held | How many started words are held for under a week, up to three weeks, up to three months and longer? |
+| How long words are held | How many words are at each stage (New, Learning, Young, Mature), the same stages Today and the question tags show? |
 | Answers per day | How much did I study each day, how much was right, and for how long? |
 | Skills | How many words are mastered in meaning, spelling and listening, and what was last week's mix of question kinds? |
 | Words | How far am I through each list, what does it share with the others, and how much of it did I learn elsewhere? |

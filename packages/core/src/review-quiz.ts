@@ -865,14 +865,17 @@ export function listeningAllowed(asked: QuestionKind[]): boolean {
   return listened + 1 <= LISTEN_CAP * (asked.length + 1) + 1e-9;
 }
 
+const STAGE_OF: Record<Maturity, number> = { new: 0, learning: 1, relearning: 1, young: 2, mature: 3 };
+
 /**
- * The stage a word is asked at: 0 new, 1 learning or relearning or held under four days, 2 young,
- * 3 mature (`memoryLevel`). A new word coming back in the same session moves to the learning
- * stage; a leech stays at the learning stage.
+ * The stage a word is asked at, by the stage its tag shows (`wordMaturity`): 0 new, 1 learning or
+ * relearning, 2 young, 3 mature. A new word coming back in the same session moves to the learning
+ * stage; a leech stays at the learning stage. Within a stage the predicted chance of a right
+ * answer picks the kind, so a young word held only a few days still gets the easier ones.
  */
 export function questionStage(e: NotebookEntry, repeat = 0): number {
-  const level = memoryLevel(e);
-  const stage = level === 0 ? Math.min(repeat, 1) : level;
+  const m = wordMaturity(e);
+  const stage = m === 'new' ? Math.min(repeat, 1) : STAGE_OF[m];
   return isLeech(e) ? Math.min(stage, 1) : stage;
 }
 

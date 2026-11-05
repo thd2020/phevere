@@ -143,6 +143,18 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
   // Dictation belongs to the later stages and listening by choice to the earlier ones.
   assert.ok(!core.STAGE_KINDS[0].includes('listen-choice') && !core.STAGE_KINDS[3].includes('listen-choice'));
   assert.ok(!core.STAGE_KINDS[1].includes('listen-type') && core.STAGE_KINDS[2].includes('listen-type') && core.STAGE_KINDS[3].includes('listen-type'));
+  // A word tagged Young is asked as young, however few days it is held: dictation included.
+  const shaky = { ...pool[2], reps: 2, state: 2, stability: 2.5, lastReview: now - 2.5 * DAY, reviewDue: now };
+  assert.equal(core.wordMaturity(shaky), 'young');
+  assert.equal(core.questionStage(shaky), 2, 'the stage the tag shows');
+  const shakyKinds = new Set();
+  for (let s = 0; s < 120; s++) {
+    const q = core.buildQuestion(shaky, pool, { now, audio: true, learner: ready, asked: s % 2 ? ['recall', 'recall', 'word-choice', 'word-choice'] : [] }, core.seededRandom(s));
+    assert.equal(q.maturity, 'young');
+    shakyKinds.add(q.kind);
+  }
+  assert.ok([...shakyKinds].every((k) => core.STAGE_KINDS[2].includes(k)), `young kinds only: ${[...shakyKinds]}`);
+  assert.ok(shakyKinds.has('listen-type'), `dictation reachable for a young word held under four days: ${[...shakyKinds]}`);
 }
 
 /* ------------------------------------------------- learner model and pace */
