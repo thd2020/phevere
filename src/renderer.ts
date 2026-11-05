@@ -318,9 +318,10 @@ function initializeSettingsWindow() {
                   <label class="sv-ctl"><input type="checkbox" role="switch" class="sv-switch" id="remember-sources" checked aria-labelledby="remember-sources-label" /></label>
                 </div>
               </div>
-              <div class="sv-drop" id="settings-dropzone" tabindex="0">
+              <div class="sv-drop" id="settings-dropzone" tabindex="0" role="button" aria-label="Choose, drop or paste an image">
                 <strong>Drop or paste an image</strong>
                 <span>PNG, JPEG or WebP</span>
+                <input type="file" id="settings-dropzone-file" accept="image/png,image/jpeg,image/webp" hidden />
               </div>
               <header class="sv-head"><h3 class="sv-head__title">Text recognition</h3></header>
               <div class="sv-ledger">
@@ -928,16 +929,7 @@ function wireSettingsImageDrop(): void {
     zone.classList.toggle('is-busy', busy);
   };
 
-  zone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    zone.classList.add('is-dragover');
-  });
-  zone.addEventListener('dragleave', () => zone.classList.remove('is-dragover'));
-  zone.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    zone.classList.remove('is-dragover');
-    const file = e.dataTransfer?.files?.[0];
-    if (!file) return;
+  const scanFile = async (file: File) => {
     setBusy(true);
     try {
       const anyFile = file as File & { path?: string };
@@ -955,7 +947,40 @@ function wireSettingsImageDrop(): void {
     } finally {
       setBusy(false);
     }
+  };
+
+  zone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    zone.classList.add('is-dragover');
   });
+  zone.addEventListener('dragleave', () => zone.classList.remove('is-dragover'));
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('is-dragover');
+    const file = e.dataTransfer?.files?.[0];
+    if (file) void scanFile(file);
+  });
+
+  // A click, Enter or Space opens the file picker.
+  const picker = document.getElementById('settings-dropzone-file') as HTMLInputElement | null;
+  if (picker) {
+    const open = () => {
+      if (!zone.classList.contains('is-busy')) picker.click();
+    };
+    zone.addEventListener('click', (e) => {
+      if (e.target !== picker) open();
+    });
+    zone.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      open();
+    });
+    picker.addEventListener('change', () => {
+      const file = picker.files?.[0];
+      picker.value = '';
+      if (file) void scanFile(file);
+    });
+  }
 
   zone.addEventListener('paste', async (e) => {
     const items = e.clipboardData?.items;
