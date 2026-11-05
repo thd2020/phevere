@@ -254,6 +254,7 @@ export {
   sameLemma,
   reviewArmed,
   hintReview,
+  armCountdown,
   wordMaturity,
   ROUND_WORDS,
   type ReviewQuestion,

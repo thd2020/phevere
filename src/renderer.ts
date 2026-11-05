@@ -79,6 +79,7 @@ import {
   learnerModel,
   studyPace,
   hintReview,
+  armCountdown,
   singleVoice,
   startReview,
   answerReview,
@@ -3023,7 +3024,10 @@ function focusReview(body: HTMLElement): void {
     input.focus();
     // After a Hint the box holds the letters shown so far; typing goes on after them.
     input.setSelectionRange(input.value.length, input.value.length);
-  } else {
+  }
+  // Settings → Learn: the countdown on a choice question, answered as not known when it runs out.
+  armCountdown(nbReview, learnPrefs.countdown, () => mainTab === 'learn' && learnPage === 'today', () => renderLearn());
+  if (!input) {
     const next = body.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-round"]');
     next?.focus({ preventScroll: true });
     if (next?.dataset.act === 'nb-next') body.querySelector('.nbv-quiz__grade')?.scrollIntoView({ block: 'nearest' });

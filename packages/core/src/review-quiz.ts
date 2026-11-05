@@ -69,6 +69,8 @@ export interface ReviewAnswer {
   grade: ReviewGrade;
   overridden: boolean;
   ms: number;
+  /** The countdown on a choice question ran out before an answer. */
+  timedOut?: boolean;
   /** When the answer was given, so a repaint can resume the mark where it was. */
   at?: number;
 }
@@ -1148,6 +1150,49 @@ export function answerReview(state: ReviewState, input: { choice?: number; typed
   const auto = q.kind === 'flash' ? (input.knew ? 3 : 1) : autoGrade(q.kind, result, ms, q.lemma.length, help);
   state.answer = { choice: input.choice ?? -1, typed: input.typed ?? '', result, auto, grade: auto, overridden: false, ms, at: now };
   return state.answer;
+}
+
+/** Kinds the countdown in Settings → Learn applies to: the questions answered by picking one of four. */
+export const COUNTDOWN_KINDS: QuestionKind[] = ['meaning-choice', 'word-choice', 'listen-choice'];
+
+/** Milliseconds a question allows with a countdown of `seconds` (0 is off); 0 for kinds without one. */
+export function countdownMs(q: ReviewQuestion | null | undefined, seconds: number | null | undefined): number {
+  const s = Number(seconds) || 0;
+  if (!q || s <= 0 || !COUNTDOWN_KINDS.includes(q.kind)) return 0;
+  return s * 1000;
+}
+
+/**
+ * The countdown ran out: the question counts as not known (Again), as "I don't know" would, and
+ * the answer is marked as timed out. False when there is nothing to time out.
+ */
+export function expireCountdown(state: ReviewState, seconds: number | null | undefined, now = Date.now()): boolean {
+  const q = state.question;
+  const ms = countdownMs(q, seconds);
+  if (!q || state.answer || !ms || now < q.shownAt + ms) return false;
+  const a = answerReview(state, {}, q.shownAt + ms);
+  if (a) a.timedOut = true;
+  return !!a;
+}
+
+let countdownTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Starts the countdown for the question on screen, replacing any earlier one; the shells call it
+ * after every paint. When it runs out while the question is still showing (`showing`), the
+ * question is answered as not known and `onExpire` repaints.
+ */
+export function armCountdown(state: ReviewState | null | undefined, seconds: number | null | undefined, showing: () => boolean, onExpire: () => void, now = Date.now()): void {
+  if (countdownTimer) clearTimeout(countdownTimer);
+  countdownTimer = null;
+  const q = state?.question;
+  const ms = countdownMs(q, seconds);
+  if (!state || !q || state.answer || !ms) return;
+  countdownTimer = setTimeout(() => {
+    countdownTimer = null;
+    if (state.question !== q || state.answer || !showing()) return;
+    if (expireCountdown(state, seconds, Math.max(Date.now(), q.shownAt + ms))) onExpire();
+  }, Math.max(0, q.shownAt + ms - now));
 }
 
 /**

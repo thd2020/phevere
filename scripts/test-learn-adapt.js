@@ -193,8 +193,45 @@ const rec = (lemma, kind, correct, answeredAt, grade = correct ? 3 : 1) => ({ id
   assert.equal(core.newWordsToday(10, 20, null), 10, 'without a pace, the old rule');
 }
 
+/* ------------------------------------- countdown on choice questions (#37) */
+const countdownChecks = async () => {
+  const fresh = { ...pool[2], reps: 0, createdAt: now };
+  const state = core.startReview([fresh], 10, now);
+  state.started = true;
+  const q = core.ensureReviewQuestion(state, [fresh, ...pool.slice(3)], { now });
+  assert.ok(core.COUNTDOWN_KINDS.includes(q.kind), q.kind);
+  assert.equal(core.countdownMs(q, 8), 8000);
+  assert.equal(core.countdownMs(q, 0), 0, 'Off');
+  assert.equal(core.countdownMs({ ...q, kind: 'recall' }, 8), 0, 'typed questions have no countdown');
+  const html = core.reviewHtml([fresh, ...pool.slice(3)], state, 10, { now: now + 3000, learnPrefs: { countdown: 8, speaking: false } });
+  assert.match(html, /class="nbv-countdown" role="timer" aria-label="8 seconds to answer" style="--cd:8000ms;--cd-t:-3000ms"/, 'resumes from the question start');
+  assert.doesNotMatch(core.reviewHtml([fresh, ...pool.slice(3)], state, 10, { now }), /nbv-countdown/, 'no bar when the countdown is off');
+  assert.equal(core.expireCountdown(state, 8, now + 7000), false, 'not yet');
+  assert.ok(core.expireCountdown(state, 8, now + 8000));
+  assert.equal(state.answer.result, 'wrong');
+  assert.equal(state.answer.grade, 1, 'running out counts as not known');
+  assert.equal(state.answer.timedOut, true);
+  assert.match(core.reviewHtml([fresh, ...pool.slice(3)], state, 10, { now: now + 8100, learnPrefs: { countdown: 8, speaking: false } }), /Time is up/);
+  // The timer the shells arm: it answers only the question still on screen.
+  const s2 = core.startReview([fresh], 10, Date.now());
+  s2.started = true;
+  core.ensureReviewQuestion(s2, [fresh, ...pool.slice(3)], { now: Date.now() });
+  let painted = 0;
+  core.armCountdown(s2, 0.05, () => true, () => (painted += 1));
+  await new Promise((r) => setTimeout(r, 120));
+  assert.equal(painted, 1);
+  assert.equal(s2.answer.timedOut, true);
+  const s3 = core.startReview([fresh], 10, Date.now());
+  s3.started = true;
+  core.ensureReviewQuestion(s3, [fresh, ...pool.slice(3)], { now: Date.now() });
+  core.armCountdown(s3, 0.05, () => false, () => (painted += 1));
+  await new Promise((r) => setTimeout(r, 120));
+  assert.equal(s3.answer, null, 'not answered while Learn is not showing');
+};
+
 /* ----------------------------------------------------- one voice per press */
 (async () => {
+  await countdownChecks();
   const log = [];
   let release = null;
   const backend = {

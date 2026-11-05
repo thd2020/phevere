@@ -102,6 +102,7 @@ import {
   learnerModel,
   studyPace,
   hintReview,
+  armCountdown,
   singleVoice,
   type LearnerModel,
   type StudyPace,
@@ -868,6 +869,8 @@ function focusReview(page: HTMLElement): void {
     // After a Hint the box holds the letters shown so far; typing goes on after them.
     input.setSelectionRange(input.value.length, input.value.length);
   }
+  // Settings → Learn: the countdown on a choice question, answered as not known when it runs out.
+  armCountdown(nbState.review, learnPrefs.countdown, () => tab === 'learn' && learnPage === 'today', () => paint());
   // A new question starts with its progress bar and instruction below the sticky app bar.
   revealQuestion(page, document.querySelector('.top'));
   // After an answer, bring Continue into view with the verdict and the word above it.

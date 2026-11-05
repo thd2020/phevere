@@ -8,6 +8,7 @@ import { vocabReadings, vocabSenses } from './vocab-view';
 import { DAY, clean, dayStart, esc, type NotebookEntry } from './notebook-shared';
 import {
   bestSense,
+  countdownMs,
   ensureReviewQuestion,
   hintsLeft,
   MATURITY_NAME,
@@ -320,9 +321,19 @@ function typedHtml(q: ReviewQuestion, state: ReviewState): string {
 
 function verdictHtml(q: ReviewQuestion, state: ReviewState): string {
   const a = state.answer!;
+  if (a.timedOut) return `<p class="nbv-verdict is-wrong" role="status">Time is up</p>`;
   const text = a.result === 'right' ? 'Correct' : a.result === 'close' ? `Almost: ${esc(q.answers[0])}` : q.kind === 'flash' ? 'Keep practising' : 'Not quite';
   // The mark says right or wrong; only "Almost" carries something to read, the right spelling.
   return `<p class="nbv-verdict is-${a.result}${a.result === 'close' ? '' : ' nbv-vh'}" role="status">${text}</p>`;
+}
+
+/** The countdown bar on a choice question (Settings → Learn), resumed from the question's start on a repaint. */
+function countdownHtml(q: ReviewQuestion, state: ReviewState, opts: ReviewRenderOptions, now: number): string {
+  const ms = countdownMs(q, opts.learnPrefs?.countdown);
+  if (!ms || state.answer) return '';
+  const elapsed = Math.min(ms, Math.max(0, now - q.shownAt));
+  const s = Math.round(ms / 1000);
+  return `<div class="nbv-countdown" role="timer" aria-label="${s} seconds to answer" style="--cd:${ms}ms;--cd-t:-${elapsed}ms"><i></i></div>`;
 }
 
 /** How long the mark and the wash play, in milliseconds (keep in step with notebook-views.css). */
@@ -465,6 +476,7 @@ function questionHtml(q: ReviewQuestion, e: NotebookEntry, state: ReviewState, o
     </div>
     <div class="nbv-quiz__stage${stageCls}"${stageStyle}>
       <p class="nbv-quiz__ask">${ASK[q.kind]}${tagsHtml(q, e)}${known}</p>
+      ${countdownHtml(q, state, opts, now)}
       <div class="nbv-quiz__q">${promptHtml(q, e)}</div>
       ${body}
       ${markHtml(q, state, now)}
