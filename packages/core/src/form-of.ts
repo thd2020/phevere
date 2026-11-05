@@ -343,6 +343,35 @@ export function dominantLemma(lemmas: string[], freq: Map<string, number>, group
 
 const ownSenseMemo = new Map<string, Promise<boolean>>();
 
+/** Datamuse's entry for one word: its definitions (and, when they are its lemma's, defHeadword). */
+export interface DatamuseEntry {
+  word?: string;
+  defHeadword?: string;
+  defs?: string[];
+  tags?: string[];
+}
+
+const entryMemo = new Map<string, Promise<DatamuseEntry | null>>();
+
+/**
+ * Datamuse's entry for a word, asked for once per word and shared by the lookup's Datamuse
+ * definitions and pluralHasOwnSense, so the plural check does not hang on a second request that
+ * can time out on a slow connection while the first one answers.
+ */
+export function datamuseEntry(http: HttpClient, word: string): Promise<DatamuseEntry | null> {
+  const key = String(word || '').toLocaleLowerCase();
+  let p = entryMemo.get(key);
+  if (!p) {
+    p = http
+      .requestJson<DatamuseEntry[]>(`https://api.datamuse.com/words?sp=${encodeURIComponent(key)}&md=dr&max=1`, { timeoutMs: 4000 })
+      .then((rows) => (Array.isArray(rows) ? rows : []).find((r) => String(r?.word || '').toLocaleLowerCase() === key) || null);
+    entryMemo.set(key, p);
+    p.catch(() => entryMemo.delete(key));
+    if (entryMemo.size > 200) entryMemo.delete(entryMemo.keys().next().value as string);
+  }
+  return p;
+}
+
 /**
  * One Datamuse definition ("n\ta fund of money put by as a reserve") that is a common noun sense
  * of its own: not a proper noun (Datamuse writes "N"), not marked nonstandard, rare or the like,
@@ -367,16 +396,10 @@ export function pluralHasOwnSense(http: HttpClient, word: string): Promise<boole
   const key = word.toLowerCase();
   let p = ownSenseMemo.get(key);
   if (!p) {
-    p = http
-      .requestJson<Array<{ word?: string; defHeadword?: string; defs?: string[] }>>(
-        `https://api.datamuse.com/words?sp=${encodeURIComponent(word)}&md=d&max=1`,
-        { timeoutMs: 4000 },
-      )
-      .then((rows) => {
-        const hit = (rows || []).find((r) => String(r.word || '').toLowerCase() === key);
-        if (!hit || hit.defHeadword) return false;
-        return (hit.defs || []).some((d) => isOwnNounGloss(String(d)));
-      });
+    p = datamuseEntry(http, word).then((hit) => {
+      if (!hit || hit.defHeadword) return false;
+      return (hit.defs || []).some((d) => isOwnNounGloss(String(d)));
+    });
     ownSenseMemo.set(key, p);
     p.catch(() => ownSenseMemo.delete(key));
   }

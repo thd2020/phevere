@@ -81,7 +81,7 @@ import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigur
 import { registerHeadwordResolver } from './vocab-store';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey, exactQuery, exactLookupKey, hasEdgePunctuation } from './text-normalize';
 import { isGrammaticalFormOfGloss, splitSurfaceAndLemma, sameLookupFold, stripGlossText } from './lookup-policy';
-import { formLine, formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, isOwnNounGloss, resolveFormOf } from './form-of';
+import { datamuseEntry, formLine, formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, isOwnNounGloss, resolveFormOf } from './form-of';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { lookupMorpheme, morphemeOffers, parseMorphemeQuery } from './morpheme';
 import { groupYoudaoEtymologies, sameHeadword, serializeEtymologySources } from './etymology-sources';
@@ -3058,8 +3058,9 @@ export class DictionaryService extends BaseService {
 
     const encoded = encodeURIComponent(word);
     const [entries, related] = await Promise.all([
+      // Shared with pluralHasOwnSense, which reads the same entry.
       withTimeout(
-        this.request<any[]>(`https://api.datamuse.com/words?sp=${encoded}&md=dr&max=1`),
+        datamuseEntry(getHttp(), word).then((hit): any[] => (hit ? [hit] : [])),
         2500,
         'datamuse.sp',
       ),
