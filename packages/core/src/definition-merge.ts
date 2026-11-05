@@ -379,9 +379,12 @@ export function formOfSensesLast<T extends MergeableDefinition>(defs: T[], isFor
   const out = [...list];
   for (const at of slots.values()) {
     const members = at.map((i) => list[i]);
+    const formOf = members.filter((d) => isFormOf(d.meaning));
     const own = members.filter((d) => !isFormOf(d.meaning));
-    if (!own.length || own.length === members.length) continue;
-    const ordered = [...own, ...members.filter((d) => isFormOf(d.meaning))];
+    // A Wiktionary sub-heading ("from leave:") is not a sense of its own.
+    const heading = (d: T) => /:\s*$/.test(String(d.meaning || '').replace(/<[^>]+>/g, ' ').trim());
+    if (!formOf.length || !own.some((d) => !heading(d))) continue;
+    const ordered = [...own, ...formOf];
     at.forEach((i, k) => (out[i] = ordered[k]));
   }
   return out;
