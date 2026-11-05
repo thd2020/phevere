@@ -126,6 +126,15 @@
 .nbv-m3-label--prefix { border-color: #d9735a; background: var(--nbv-ember-soft); color: #351000; }
 .nbv-m3-label--suffix { border-color: var(--nbv-stone); background: var(--nbv-paper-2); color: var(--nbv-ink); }
 .nbv-m3-label--char { border-color: #7a5a3a; background: #f1e4d3; color: #2b1d10; font-size: 15px; }
+/* The name over the group of unlinked words: a caption, not a control. */
+.nbv-m3-label--group {
+  margin: 0;
+  color: var(--nbv-stone);
+  font: 600 11.5px/1.2 var(--nbv-ui);
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  cursor: default;
+}
 .nbv-m3-label.is-focus {
   padding: 2px 8px;
   border: 0;

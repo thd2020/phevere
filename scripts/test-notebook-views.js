@@ -106,7 +106,14 @@ assert.ok(md.edges.every(([x, y]) => md.nodes[x] && md.nodes[y]));
 assert.match(mh, /data-map-search/);
 assert.match(mh, /data-act="nb-map-kind" data-kind="root"/);
 assert.match(mh, /data-map-act="reset"/);
-assert.match(mh, /8 of 9 words/, 'apple is the one word with no connection');
+// apple shares nothing: it is on the map all the same, unlinked, and Find a word finds it.
+assert.match(mh, /data-count="9 words"/);
+const apple = md.nodes.find((p) => p.l === 'apple');
+assert.equal(apple?.u, 1, 'apple is unlinked');
+assert.equal(md.nodes.filter((p) => p.u).length, 1, 'the only unlinked word');
+assert.ok(!md.edges.some(([x, y]) => md.nodes[x] === apple || md.nodes[y] === apple));
+assert.deepEqual(views.findMapWords(md, 'apple').map((p) => p.l), ['apple']);
+assert.match(views.mapHtml(a, ['root', 'char'], { query: 'apple' }), /data-map-goto="[^"]+"/, 'the Words search opens the map on an unlinked word');
 assert.equal(views.notebookMapData(a, ['root', 'char']), md, 'layout cached');
 // Finding a word: itself first, then the word it inflects, then words starting with it.
 assert.deepEqual(views.findMapWords(md, 'inspect').map((p) => p.l), ['inspect', 'inspector']);
@@ -119,6 +126,33 @@ assert.match(views.mapHtml(a, ['root', 'char'], { query: 'inspects' }), /data-ma
 const missed = views.mapHtml(a, ['root', 'char'], { query: 'changes' });
 assert.match(missed, /No word matches “changes”/);
 assert.match(missed, /data-map-sig=/);
+// The focused word survives a rebuilt graph. Saving a book word from its lookup gives it a
+// new id (wb:spectator becomes n2); the map finds it again by its headword, keeps it where it
+// stood, and so keeps the camera.
+const bookWords = ['inspect', 'inspector', 'spectator', 'spectacle', 'prospect', 'respect', 'nation', 'national', 'nationality', 'international', '対応', '対策'];
+const bookEntry = (lemma, id = `wb:${lemma}`) => ({ id, lemma, definition: `${lemma} sense`, createdAt: 0, updatedAt: 0 });
+const bd1 = views.notebookMapData(views.analyzeNotebook(bookWords.map((w) => bookEntry(w))), ['root', 'char']);
+const spot1 = bd1.nodes.find((p) => p.id === 'wb:spectator');
+const view = { pos: { x: 1, y: 2, z: 300 }, target: { x: 0, y: 0, z: 0 } };
+const mem = { sig: bd1.sig, focus: 'wb:spectator', word: 'spectator', at: [spot1.x, spot1.y, spot1.z], view, query: '' };
+const bd2 = views.notebookMapData(views.analyzeNotebook(bookWords.map((w) => (w === 'spectator' ? bookEntry(w, 'n2') : bookEntry(w)))), ['root', 'char']);
+assert.notEqual(bd2.sig, bd1.sig);
+assert.equal(bd2.from, bd1.sig, 'the new graph grew from the old one');
+const spot2 = bd2.nodes.find((p) => p.id === 'n2');
+assert.deepEqual([spot2.x, spot2.y, spot2.z], mem.at, 'the saved word keeps its place');
+const carried = views.carryMapMemory(mem, bd2);
+assert.equal(carried.sig, bd2.sig);
+assert.equal(carried.focus, 'n2', 'focus follows the word to its new id');
+assert.equal(carried.view, view, 'the camera stays on it');
+assert.equal(views.carryMapMemory(carried, bd2), carried, 'the same graph keeps the memory as it is');
+// A graph laid out afresh still focuses the word, and drops the camera so the map flies to it.
+const fresh = { ...bd2, sig: 'fresh', from: undefined, nodes: bd2.nodes.map((p) => ({ ...p, x: p.x + 40 })) };
+const flown = views.carryMapMemory(mem, fresh);
+assert.equal(flown.focus, 'n2');
+assert.equal(flown.view, null);
+// A graph without the word, that did not grow from this one, leaves the memory alone.
+const other = views.notebookMapData(views.analyzeNotebook(entries.filter((e) => e.lemma !== 'spectator')), ['root', 'char']);
+assert.equal(views.carryMapMemory(mem, other), mem);
 
 // Cards: piles by when the words were saved, newest pile and newest card first.
 const piles = views.cardPiles(entries, now);

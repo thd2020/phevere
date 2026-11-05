@@ -2672,7 +2672,7 @@ function filterVocabEntries(entries: any[]): any[] {
 }
 
 /** Card and review pictures follow the lookup pane's Images switch, stored by the pop-up. */
-function wordImageFetcher(): ((lemma: string, lang?: string, gloss?: string) => Promise<any>) | null {
+function wordImageFetcher(): ((lemma: string, lang?: string, gloss?: string, pos?: string) => Promise<any>) | null {
   try {
     if (JSON.parse(localStorage.getItem('phevereSettings') || '{}').senseImages === false) return null;
   } catch {
@@ -2682,13 +2682,13 @@ function wordImageFetcher(): ((lemma: string, lang?: string, gloss?: string) => 
   // ten requests a minute, a deck of cards needs several per card) and caches on disk.
   const api = (window as any).dictionaryAPI;
   if (api?.senseImages) {
-    return (lemma, lang, gloss) => {
+    return (lemma, lang, gloss, pos) => {
       const g = String(gloss || '').trim();
-      const sense = g ? { meaning: g, partOfSpeech: 'noun' } : { meaning: '' };
+      const sense = g ? { meaning: g, partOfSpeech: pos || '' } : { meaning: '' };
       return api.senseImages(lemma, [sense], { max: 1, lang }).then((r: any[]) => (Array.isArray(r) && r[0]) || null);
     };
   }
-  return (lemma, lang, gloss) => fetchWordImage(lemma, { lang, gloss });
+  return (lemma, lang, gloss, pos) => fetchWordImage(lemma, { lang, gloss, pos });
 }
 
 function renderVocabNotebook(entries: any[]): void {

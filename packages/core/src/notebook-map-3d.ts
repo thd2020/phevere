@@ -12,7 +12,8 @@
  * small pool. A culling pass in the spirit of sigma.js's label grid decides what shows: the
  * focused word and the hovered node first, then every morpheme, then the focused
  * neighbourhood, then words near the camera, each only where it does not overlap a label
- * already placed.
+ * already placed. Words linked to nothing are smaller, lighter points in one group with a
+ * single caption, and each is named only when pointed at or focused.
  *
  * The camera follows three.js OrbitControls and graph tools such as 3d-force-graph and
  * Obsidian's graph view. With a mouse, drag turns the map (left and right) and tilts it (up
@@ -47,6 +48,8 @@ const EDGE_LIT = 0.9;
 const EDGE_DIM = 0.05;
 /** Dimmed nodes blend this far toward the background. */
 const NODE_DIM = 0.86;
+/** Unlinked words are drawn this much lighter than linked ones. */
+const UNLINKED_FADE = 0.45;
 
 /** Pixels a press may move and still count as a tap. */
 const TAP_SLOP = { mouse: 5, touch: 10 };
@@ -66,12 +69,16 @@ interface Label {
 /** Ease in and out (cubic), for camera flights. */
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
-export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRendererOptions, onDetached: () => void): MapRenderer {
+export function createMapScene(stage: HTMLElement, laid: MapData, opts: MapRendererOptions, onDetached: () => void): MapRenderer {
+  // The layout puts the unlinked group beside the graph. On a tall screen, a phone held upright,
+  // the scene turns a quarter so the group sits below the graph and both fit the width.
+  const tall = stage.clientHeight > stage.clientWidth * 1.15 && laid.nodes.some((p) => p.u);
+  const data: MapData = tall ? { ...laid, nodes: laid.nodes.map((p) => ({ ...p, x: p.y, y: -p.x })) } : laid;
   const reduced = opts.reducedMotion;
   const R = Math.max(40, data.radius);
   const N = data.nodes.length;
   const hub = (i: number) => data.nodes[i].k !== 'word';
-  const radiusOf = (i: number) => (hub(i) ? Math.min(7, 2.6 + Math.sqrt(data.nodes[i].n) * 0.8) : 1.7);
+  const radiusOf = (i: number) => (hub(i) ? Math.min(7, 2.6 + Math.sqrt(data.nodes[i].n) * 0.8) : data.nodes[i].u ? 1.1 : 1.7);
   const byId = new Map<string, number>(data.nodes.map((p, i) => [p.id, i]));
 
   let W = Math.max(1, stage.clientWidth);
@@ -147,7 +154,10 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
   const tmp = new THREE.Color();
   const edgeKind = data.edges.map(([a, , d]) => (d ? 'derived' : data.nodes[a].k));
   const edgeBase = edgeKind.map((k) => new THREE.Color(EDGE_COLOR[k] || EDGE_COLOR.root));
-  const nodeBase = data.nodes.map((p) => new THREE.Color(NODE_COLOR[p.k] || NODE_COLOR.word));
+  const nodeBase = data.nodes.map((p) => {
+    const c = new THREE.Color(NODE_COLOR[p.k] || NODE_COLOR.word);
+    return p.u ? c.lerp(bg, UNLINKED_FADE) : c;
+  });
   const focusColor = new THREE.Color(FOCUS_COLOR);
 
   let hl: MapHighlight | null = null;
@@ -194,6 +204,26 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
   }
   const pool: Label[] = [];
   for (let k = 0; k < Math.min(WORD_LABELS, N); k++) pool.push({ i: -1, el: makeEl('nbv-m3-label nbv-m3-label--word'), w: 0, h: 18, shown: false, opacity: 1 });
+  // The group of unlinked words gets one name, above its middle.
+  let lone: { at: THREE.Vector3; centre: THREE.Vector3; r: number; label: Label } | null = null;
+  {
+    const members = data.nodes.filter((p) => p.u);
+    if (members.length) {
+      const q = new THREE.Vector3();
+      const centre = new THREE.Vector3();
+      for (const p of members) centre.add(q.set(p.x, p.y, p.z));
+      centre.divideScalar(members.length);
+      let r = 0;
+      let top = -Infinity;
+      for (const p of members) {
+        r = Math.max(r, q.set(p.x, p.y, p.z).distanceTo(centre));
+        top = Math.max(top, p.y);
+      }
+      const el = makeEl('nbv-m3-label nbv-m3-label--group');
+      el.textContent = `Unlinked words · ${members.length.toLocaleString('en')}`;
+      lone = { at: new THREE.Vector3(centre.x, top + 6, centre.z), centre, r, label: { i: -1, el, w: el.textContent.length * 7 + 16, h: 20, shown: false, opacity: 1 } };
+    }
+  }
   const wordLabelOf = new Map<number, Label>();
 
   // Camera: an orbit around `target`.
@@ -523,6 +553,7 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
       const isHub = hub(i);
       // Words far from the camera and outside the focus never get a label: skip the projection.
       if (!isHub && i !== hover && p.id !== focus && !(hl && hl.nodes.has(p.id))) {
+        if (p.u) continue;
         const dx = p.x - camera.position.x;
         const dy = p.y - camera.position.y;
         const dz = p.z - camera.position.z;
@@ -536,7 +567,8 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
       if (p.id === focus || i === hover) pri = 0;
       else if (isHub) pri = hl ? (hl.nodes.has(p.id) ? 2 : 3) : 1;
       else if (hl) pri = hl.nodes.has(p.id) ? 2 : 9;
-      else if (d < near) pri = 4;
+      // An unlinked word is named only when pointed at or focused, so its group stays quiet.
+      else if (d < near && !p.u) pri = 4;
       if (pri === 9) continue;
       cands.push({ i, pri, d, sx: ((v.x + 1) / 2) * W, sy: ((1 - v.y) / 2) * H });
     }
@@ -554,6 +586,24 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
     };
     const hubShown = new Set<number>();
     const words: { c: (typeof cands)[number]; faint: boolean }[] = [];
+    if (lone) {
+      v.copy(lone.at);
+      const d = v.distanceTo(camera.position);
+      v.project(camera);
+      if (v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1) {
+        const sx = ((v.x + 1) / 2) * W;
+        const sy = ((1 - v.y) / 2) * H;
+        const { w, h } = lone.label;
+        cells(sx - w / 2, sy - h / 2, sx + w / 2, sy + h / 2, (k) => {
+          const list = grid.get(k);
+          const r = [sx - w / 2, sy - h / 2, sx + w / 2, sy + h / 2];
+          if (list) list.push(r);
+          else grid.set(k, [r]);
+        });
+        const depth = Math.min(1, Math.max(0.45, 1.15 - Math.max(0, d - camDist) / (R * 1.4)));
+        showLabel(lone.label, sx, sy, true, depth * (hl ? 0.4 : 1));
+      } else hideLabel(lone.label);
+    }
     for (const c of cands) {
       const isHub = hub(c.i);
       if (!isHub && words.length >= pool.length) continue;
@@ -693,8 +743,15 @@ export function createMapScene(stage: HTMLElement, data: MapData, opts: MapRende
     c.divideScalar(near.length + 2);
     let extent = 12;
     for (const q of [n, ...near]) extent = Math.max(extent, Math.hypot(q.x - c.x, q.y - c.y, q.z - c.z));
-    const dist = THREE.MathUtils.clamp((extent / Math.tan(minFov(true) / 2)) * 1.25, 40, R * 3);
+    let dist = THREE.MathUtils.clamp((extent / Math.tan(minFov(true) / 2)) * 1.25, 40, R * 3);
     const from = new THREE.Vector3().subVectors(camera.position, c);
+    // An unlinked word is seen from outside its group, looking in, so the camera does not end
+    // up among the other points.
+    if (n.u && lone) {
+      const out = new THREE.Vector3(n.x, n.y, n.z).sub(lone.centre);
+      if (out.lengthSq() > 1) from.copy(out);
+      dist = Math.max(dist, lone.r + 55 - out.length());
+    }
     if (from.lengthSq() < 1) from.set(0, 0, 1);
     from.setLength(dist);
     flyView({ pos: { x: c.x + from.x, y: c.y + from.y, z: c.z + from.z }, target: { x: c.x, y: c.y, z: c.z } }, 900);

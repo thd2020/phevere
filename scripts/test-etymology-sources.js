@@ -9,7 +9,7 @@ const moduleFixture = { exports: {} };
 vm.runInNewContext(ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText, { module: moduleFixture, exports: moduleFixture.exports });
-const { groupYoudaoEtymologies, serializeEtymologySources } = moduleFixture.exports;
+const { groupYoudaoEtymologies, sameHeadword, serializeEtymologySources } = moduleFixture.exports;
 const prefix = 'An identical introduction that exceeds forty-eight characters. ';
 const first = `${prefix}First explanation.`;
 const second = `${prefix}A different explanation.`;
@@ -52,4 +52,15 @@ for (const input of [undefined, null, [], {}, 'invalid']) {
   assert.equal(groupYoudaoEtymologies(input).length, 0);
   assert.equal(serializeEtymologySources(groupYoudaoEtymologies(input)), undefined);
 }
-console.log('Etymology source grouping passed: authors, languages, full-text deduplication and serialization.');
+// A row about another word is left out; accents and case do not make another word.
+const named = groupYoudaoEtymologies({
+  zh: [
+    { source: '有道', word: 'cover', value: 'From Old French covrir, to cover.' },
+    { source: '有道', word: 'Café', value: 'From French café, coffee house.' },
+    { source: '童理民', value: 'A row that names no word stays.' },
+  ],
+}, 'cafe');
+assert.equal(named.map((g) => g.body).join(' | '), 'From French café, coffee house. | A row that names no word stays.');
+assert.ok(sameHeadword('café', 'cafe') && sameHeadword('Paris', 'paris') && sameHeadword("don’t", "don't"));
+assert.ok(!sameHeadword('coverness', 'cover') && !sameHeadword('covers', 'cover') && !sameHeadword('octopi', 'octopus'));
+console.log('Etymology source grouping passed: authors, languages, full-text deduplication, serialization and rows about another word.');

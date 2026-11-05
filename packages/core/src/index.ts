@@ -17,7 +17,18 @@ export {
   type TranslationProvider,
 } from './dictionary';
 export { WikipediaService, wikipediaService, type WikipediaResult, type WikipediaSearchResult } from './wikipedia';
-export { fetchSenseImages, fetchWordImage, clearSenseImageCache, type SenseImage } from './sense-images';
+export {
+  fetchSenseImages,
+  fetchWordImage,
+  prefetchSenseImages,
+  hideSenseImage,
+  unhideSenseImage,
+  picturableSense,
+  predictPictureSenses,
+  registerWiktionaryWikitextSource,
+  clearSenseImageCache,
+  type SenseImage,
+} from './sense-images';
 export {
   addVocab,
   fillEmptyDefinitions,
@@ -88,6 +99,7 @@ export {
   reviewQueue,
   reviewHtml,
   fillWordImages,
+  type WordImageFetcher,
   attachNotebookMap,
   attachFamilies,
   closeTreeInspector,

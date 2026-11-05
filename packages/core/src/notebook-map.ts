@@ -5,7 +5,8 @@
  * `attachNotebookMap` turns that graph into a 3D scene (three.js, loaded on demand) or, where
  * WebGL is missing, a flat SVG. Both renderers share the focus logic in this file: a click
  * focuses a word or a morpheme, lights its neighbourhood, dims the rest and fills the panel.
- * The map holds every connected word of the notebook or book, thousands for a large book.
+ * The map holds every word of the notebook or book, thousands for a large book. Words that share
+ * no part with another word sit together, unlinked, beside the graph.
  */
 import type { MorphKind } from './morphology';
 import { esc, clean, type Family, type NotebookAnalysis, type NotebookEntry, type WordInfo } from './notebook-shared';
@@ -27,6 +28,8 @@ export interface MapNode {
   gloss: string;
   /** A morpheme's spellings: "fac · fic · fec · fect". */
   forms?: string;
+  /** A word that shares no shown part and no derivation with another word (3D layout only). */
+  unlinked?: boolean;
 }
 
 export interface MapEdge {
@@ -59,7 +62,7 @@ export interface MapLayout {
  * notebook always draws the same picture, so the map does not reshuffle on every paint.
  * The flat (2D) layout is a full force simulation, kept for small graphs, and keeps its old
  * limits of 48 morphemes and 220 words by default; the 3D layout the map draws holds every
- * connected word (see `layoutSpace`).
+ * word, linked or not (see `layoutSpace`).
  */
 export function layoutNotebookMap(a: NotebookAnalysis, opts: MapOptions = {}): MapLayout {
   const dims = opts.dimensions === 3 ? 3 : 2;
@@ -210,7 +213,8 @@ function spiral(i: number, n: number): [number, number, number] {
  * together by the words they share. Each word then sits inside a ball around its morphemes,
  * nearer the more specific one, and a few passes over a spatial grid push apart words that
  * landed on top of each other. Every step is linear in the number of words except the
- * morpheme simulation, which only sees the few hundred morphemes.
+ * morpheme simulation, which only sees the few hundred morphemes. Words linked to nothing go
+ * in one ball beside the rest.
  */
 function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: number, maxHubs: number, seed?: Map<string, [number, number, number]>): MapLayout {
   const hubs = a.families.filter((f) => kinds.has(f.kind)).slice(0, maxHubs);
@@ -253,6 +257,14 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
     nodes[e.a].degree += 1;
     nodes[e.b].degree += 1;
   }
+  // Every other word of the notebook or book, so the map holds all of it and Find a word finds
+  // any word. They come last, so the linked nodes keep their indices.
+  const firstLone = nodes.length;
+  for (const id of a.words.keys()) {
+    if (wordIndex.has(id)) continue;
+    const i = addWord(id);
+    if (i >= 0) nodes[i].unlinked = true;
+  }
   const n = nodes.length;
   if (!n) return { nodes, edges, width: 0, height: 0, radius: 0 };
   const H = hubs.length;
@@ -274,7 +286,12 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
   // Families trace adds a few words or parts; only the new ones are laid out.
   const fixed = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
-    const at = seed?.get(nodes[i].id);
+    // An unlinked word is seeded under its own key, so a word that gains or loses its links
+    // moves between the linked graph and the unlinked group. A word saved from a book comes back
+    // under a new id; its headword keeps its place.
+    const at =
+      seed?.get(nodes[i].unlinked ? `~${nodes[i].id}` : nodes[i].id) ??
+      (nodes[i].kind === 'word' ? seed?.get(`${nodes[i].unlinked ? '~' : ''}${seedWordKey(nodes[i].label)}`) : undefined);
     if (!at) continue;
     [nodes[i].x, nodes[i].y, nodes[i].z] = at;
     fixed[i] = 1;
@@ -447,6 +464,29 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
     spread([i]);
   }
 
+  // Unlinked words: one ball of small points beside the linked graph, as graph tools pack
+  // isolated nodes beside the main component (Cytoscape's layouts, Obsidian's orphans), so
+  // they neither tangle with the graph nor sit between it and the camera.
+  const lone: number[] = [];
+  for (let i = firstLone; i < n; i++) if (!fixed[i]) lone.push(i);
+  if (lone.length) {
+    let edge = heads.length ? shell : hubR;
+    for (let i = H; i < firstLone; i++) edge = Math.max(edge, Math.hypot(nodes[i].x, nodes[i].y, nodes[i].z));
+    const U = n - firstLone;
+    // Room for each point at the spacing the push-apart pass keeps (4.5), packed loosely.
+    const r = Math.max(10, 4.5 * Math.cbrt(U * 0.45));
+    const cx = firstLone > 0 ? edge + 18 + r : 0;
+    lone.forEach((i, k) => {
+      // Directions in golden-ratio order, so the ball fills evenly from the centre out.
+      const [ux, uy, uz] = spiral(Math.floor(((k * 0.6180339887) % 1) * lone.length), lone.length);
+      const d = r * Math.cbrt((k + 0.5) / lone.length);
+      nodes[i].x = cx + ux * d;
+      nodes[i].y = uy * d;
+      nodes[i].z = uz * d;
+      placed[i] = 1;
+    });
+  }
+
   // Push apart words closer than MIN to each other, using a grid so each word only checks its cell's neighbours.
   const MIN = 4.5;
   const CELL = MIN * 2;
@@ -503,19 +543,33 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
     if (!moved) break;
   }
 
+  // The sphere the camera frames: around the linked graph, where a few stray words far out
+  // should not shrink the rest, and around the unlinked group, which is always in the picture.
+  // With both, the smallest sphere that holds the two.
+  const mean = (list: MapNode[]): [number, number, number] =>
+    list.reduce<[number, number, number]>((c, p) => [c[0] + p.x / list.length, c[1] + p.y / list.length, c[2] + p.z / list.length], [0, 0, 0]);
+  const reach = (list: MapNode[], c: [number, number, number], all: boolean) => {
+    const d = list.map((p) => Math.hypot(p.x - c[0], p.y - c[1], p.z - c[2])).sort((x, y) => x - y);
+    if (!d.length) return 0;
+    return all ? d[d.length - 1] : Math.min(d[d.length - 1], d[Math.floor((d.length - 1) * 0.9)] * 1.1);
+  };
+  const linkedNodes = nodes.slice(0, firstLone);
+  const loneNodes = nodes.slice(firstLone);
+  let centre = mean(linkedNodes.length ? linkedNodes : loneNodes);
+  let radius = reach(linkedNodes.length ? linkedNodes : loneNodes, centre, !linkedNodes.length);
+  if (linkedNodes.length && loneNodes.length) {
+    const c2 = mean(loneNodes);
+    const r2 = reach(loneNodes, c2, true);
+    const gap = Math.hypot(c2[0] - centre[0], c2[1] - centre[1], c2[2] - centre[2]) || 1;
+    const k = (gap + r2 - radius) / 2 / gap;
+    centre = [centre[0] + (c2[0] - centre[0]) * k, centre[1] + (c2[1] - centre[1]) * k, centre[2] + (c2[2] - centre[2]) * k];
+    radius = Math.max(radius, r2, (gap + radius + r2) / 2);
+  }
   // Centre the map on the origin, unless it was seeded: then the old nodes stay exactly where
   // the camera last saw them.
-  let cx = 0;
-  let cy = 0;
-  let cz = 0;
-  if (!fixed.some((f) => f)) {
-    for (const p of nodes) {
-      cx += p.x / n;
-      cy += p.y / n;
-      cz += p.z / n;
-    }
-  }
-  const dist: number[] = [];
+  const seeded = fixed.some((f) => f);
+  if (seeded) radius += Math.hypot(...centre);
+  const [cx, cy, cz] = seeded ? [0, 0, 0] : centre;
   for (const p of nodes) {
     p.x = Math.round((p.x - cx) * 10) / 10;
     p.y = Math.round((p.y - cy) * 10) / 10;
@@ -523,12 +577,8 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
     p.vx = 0;
     p.vy = 0;
     p.vz = 0;
-    dist.push(Math.hypot(p.x, p.y, p.z));
   }
-  dist.sort((x, y) => x - y);
-  // The radius the camera frames: a few stray words far out should not shrink the rest.
-  const core = dist[Math.floor((dist.length - 1) * 0.9)] * 1.1;
-  return { nodes, edges, width: 0, height: 0, radius: Math.round(Math.min(dist[dist.length - 1], core)) };
+  return { nodes, edges, width: 0, height: 0, radius: Math.round(radius) };
 }
 
 /** The graph as `mapHtml` hands it to the renderers. */
@@ -539,7 +589,8 @@ export interface MapData {
   total: number;
   /** The signature of the earlier layout this one kept its positions from, if any. */
   from?: string;
-  nodes: { id: string; k: 'word' | MorphKind; l: string; x: number; y: number; z: number; n: number; g?: string; f?: string }[];
+  /** `u`: an unlinked word, drawn small in the group beside the graph. */
+  nodes: { id: string; k: 'word' | MorphKind; l: string; x: number; y: number; z: number; n: number; g?: string; f?: string; u?: 1 }[];
   /** [from, to, 1 when the second word is built from the first]. */
   edges: [number, number, 0 | 1][];
 }
@@ -592,6 +643,7 @@ export function notebookMapData(a: NotebookAnalysis, kinds: MorphKind[]): MapDat
       n: p.size,
       ...(p.gloss ? { g: p.gloss } : {}),
       ...(p.forms ? { f: p.forms } : {}),
+      ...(p.unlinked ? { u: 1 as const } : {}),
     })),
     edges: edges.map((e) => [e.a, e.b, e.kind === 'derived' ? 1 : 0]),
   };
@@ -599,6 +651,11 @@ export function notebookMapData(a: NotebookAnalysis, kinds: MorphKind[]): MapDat
   if (layoutCache.size > 6) layoutCache.delete(layoutCache.keys().next().value as string);
   return data;
 }
+
+/** A word's headword, lower case: how the map knows a word again when its id changes. */
+const headword = (l: string) => String(l || '').trim().toLocaleLowerCase();
+/** A seed key by headword, apart from node ids. */
+const seedWordKey = (l: string) => `headword ${headword(l)}`;
 
 /** The most recent cached layout of the same morpheme kinds that shares nearly all its words with `a`. */
 function seedFor(a: NotebookAnalysis, kinds: MorphKind[]): { sig: string; seed: Map<string, [number, number, number]> } | null {
@@ -609,7 +666,13 @@ function seedFor(a: NotebookAnalysis, kinds: MorphKind[]): { sig: string; seed: 
     if (!words.length) continue;
     const shared = words.reduce((s, p) => s + (a.words.has(p.id) ? 1 : 0), 0);
     if (shared / words.length < 0.9 || Math.abs(a.words.size - data.total) > Math.max(5, data.total * 0.05)) continue;
-    return { sig: data.sig, seed: new Map(data.nodes.map((p) => [p.id, [p.x, p.y, p.z] as [number, number, number]])) };
+    const seed = new Map<string, [number, number, number]>();
+    for (const p of data.nodes) {
+      seed.set(p.u ? `~${p.id}` : p.id, [p.x, p.y, p.z]);
+      const word = `${p.u ? '~' : ''}${seedWordKey(p.l)}`;
+      if (p.k === 'word' && !seed.has(word)) seed.set(word, [p.x, p.y, p.z]);
+    }
+    return { sig: data.sig, seed };
   }
   return null;
 }
@@ -904,7 +967,10 @@ class MapController {
     if (goto && (!same || memory!.query !== query) && this.index.has(goto)) {
       this.focus(goto, true);
       memory!.query = query;
-    } else if (same && memory!.focus && this.index.has(memory!.focus)) this.focus(memory!.focus, false);
+    } else if (same && memory!.focus && this.index.has(memory!.focus)) {
+      // Without a saved camera (a rebuilt graph moved the word, or the flat map) fly back to it.
+      this.focus(memory!.focus, !memory!.view);
+    }
   }
 
   get alive(): boolean {
@@ -940,9 +1006,10 @@ class MapController {
     if (id && !this.index.has(id)) id = null;
     this.focusId = id;
     if (memory && memory.sig === this.data.sig) {
-      memory.focus = id;
-      memory.find = undefined;
-    } else memory = { sig: this.data.sig, focus: id, view: null, query: '' };
+      // Focusing the same word again (a repaint) keeps the word typed to find it.
+      if (memory.focus !== id) memory.find = undefined;
+      Object.assign(memory, this.spot(id));
+    } else memory = { sig: this.data.sig, ...this.spot(id), view: null, query: '' };
     const h = id ? this.neighbourhood(id) : null;
     this.map.classList.toggle('is-focus', !!h);
     this.paintPanel(h);
@@ -1015,11 +1082,17 @@ class MapController {
     this.disposed = true;
     const view = this.renderer?.view() || null;
     if (memory && memory.sig === this.data.sig) memory.view = view;
-    else memory = { sig: this.data.sig, focus: this.focusId, view, query: '' };
+    else memory = { sig: this.data.sig, ...this.spot(this.focusId), view, query: '' };
     this.renderer?.dispose();
     this.renderer = null;
     this.offs.splice(0).forEach((f) => f());
     live.delete(this);
+  }
+
+  /** The focused node as the memory keeps it: its id, its headword, and where it stands. */
+  private spot(id: string | null): Pick<MapMemory, 'focus' | 'word' | 'at'> {
+    const p = id ? this.data.nodes[this.index.get(id)!] : null;
+    return { focus: id, word: p && p.k === 'word' ? headword(p.l) : null, at: p ? [p.x, p.y, p.z] : null };
   }
 
   savedView(): MapView | null {
@@ -1027,9 +1100,9 @@ class MapController {
     return memory && memory.sig === this.data.sig ? memory.view : null;
   }
 
-  /** The remembered focus and camera belong to the layout this one grew from: take them over. */
+  /** Take over the focus and camera remembered on an earlier graph of the same words. */
   private adopt(): void {
-    if (memory && this.data.from && memory.sig === this.data.from) memory.sig = this.data.sig;
+    memory = carryMapMemory(memory, this.data);
   }
 }
 
@@ -1079,7 +1152,47 @@ function fitMap(map: HTMLElement): void {
   const room = Math.floor(band.bottom - band.top - 16);
   if (room >= 260 && natural > room) map.style.height = `${room}px`;
 }
-let memory: { sig: string; focus: string | null; view: MapView | null; query: string; find?: string } | null = null;
+/**
+ * What the map remembers between paints: the focused node, the camera, the Words search that
+ * last flew somewhere, and the word typed in the map's own field.
+ */
+export interface MapMemory {
+  sig: string;
+  focus: string | null;
+  /** The focused word's headword, lower case; null for a word part. */
+  word?: string | null;
+  /** Where the focused node stood when it was focused. */
+  at?: [number, number, number] | null;
+  view: MapView | null;
+  query: string;
+  find?: string;
+}
+
+/**
+ * Carry what the map remembered into a rebuilt graph. A lookup that saves a word, or a trace
+ * that refines its parts, draws a new graph, and saving a book word gives it a new id: the
+ * focused word is found again by its id, then by its headword. The camera stays only when the
+ * word still stands where the camera last saw it; otherwise `view` is dropped and the map flies
+ * to the word.
+ */
+export function carryMapMemory(m: MapMemory | null, data: MapData): MapMemory | null {
+  if (!m || m.sig === data.sig) return m;
+  let node = m.focus ? data.nodes.find((p) => p.id === m.focus) : undefined;
+  if (!node && m.word) node = data.nodes.find((p) => p.k === 'word' && headword(p.l) === m.word);
+  // A graph this one did not grow from, without the focused word: nothing to carry.
+  if (!node && data.from !== m.sig) return m;
+  const still = node ? !!m.at && Math.hypot(node.x - m.at[0], node.y - m.at[1], node.z - m.at[2]) < 0.5 : data.from === m.sig;
+  return {
+    ...m,
+    sig: data.sig,
+    focus: node ? node.id : null,
+    word: node && node.k === 'word' ? headword(node.l) : null,
+    at: node ? [node.x, node.y, node.z] : null,
+    view: still ? m.view : null,
+  };
+}
+
+let memory: MapMemory | null = null;
 let webgl: boolean | null = null;
 
 function webglAvailable(): boolean {

@@ -11,6 +11,8 @@
  * are not listed, as learner dictionaries do not list them. When Wiktionary gives two forms
  * without a label (paparazzi and paparazzos), Datamuse's word frequencies decide: a form under
  * half as common as the first is marked "less common", and one Datamuse barely knows is dropped.
+ * Without frequencies only the form Wiktionary gives first stays, as its labels cannot tell a
+ * standard alternative (cactuses) from a nonstandard one (paparazzos).
  */
 
 import type { HttpClient } from './http';
@@ -385,16 +387,18 @@ function unlabelledAlternatives(tables: InflectionTable[]): string[] {
  * Weighs forms Wiktionary lists side by side without a label by how often each is written
  * (`freq`, per million words): the most common comes first, one under half as common is marked
  * "less common", and one under a fiftieth as common, or unknown to the frequency list, is dropped
- * ("paparazzos" beside paparazzi). A row whose forms are missing from `freq` is left as it is.
+ * ("paparazzos" beside paparazzi). A row whose forms `freq` cannot rank (Datamuse did not answer,
+ * or knows none of them) keeps only the first: Wiktionary lists paparazzi and paparazzos, cacti and
+ * cactuses alike without a label, so the order is all it says about which is the main form.
  */
 export function weighForms(tables: InflectionTable[], freq: Map<string, number>): InflectionTable[] {
   return tables.map((t) => ({
     ...t,
     rows: t.rows.map((r) => {
       const plainIdx = r.forms.map((_, i) => i).filter((i) => !r.notes?.[i]);
-      if (r.distinct || plainIdx.length < 2 || !plainIdx.every((i) => freq.has(r.forms[i]))) return r;
+      if (r.distinct || plainIdx.length < 2) return r;
       const top = Math.max(...plainIdx.map((i) => freq.get(r.forms[i]) || 0));
-      if (top <= 0) return r;
+      if (!plainIdx.every((i) => freq.has(r.forms[i])) || top <= 0) return firstPlain(r, plainIdx);
       const items = r.forms.map((form, i) => ({ form, note: r.notes?.[i] || '', f: plainIdx.includes(i) ? freq.get(form) || 0 : -1 }));
       const plain = items.filter((x) => x.f >= 0 && x.f >= top / 50).sort((a, b) => b.f - a.f);
       for (const x of plain) if (x.f < top / 2) x.note = 'less common';
@@ -406,15 +410,20 @@ export function weighForms(tables: InflectionTable[], freq: Map<string, number>)
   }));
 }
 
+/** The first of a row's unlabelled forms, with the forms Wiktionary labels (rare, dated) after it. */
+function firstPlain(r: InflectionRow, plainIdx: number[]): InflectionRow {
+  const keep = r.forms.map((_, i) => i).filter((i) => i === plainIdx[0] || !plainIdx.includes(i));
+  const out: InflectionRow = { label: r.label, forms: keep.map((i) => r.forms[i]) };
+  if (keep.some((i) => r.notes?.[i])) out.notes = keep.map((i) => r.notes?.[i] || '');
+  return out;
+}
+
 async function weighed(http: HttpClient, tables: InflectionTable[] | undefined, lang: string): Promise<InflectionTable[] | undefined> {
   if (!tables?.length || lang !== 'en') return tables;
   const words = unlabelledAlternatives(tables);
   if (!words.length) return tables;
-  try {
-    return weighForms(tables, await wordFrequencies(http, words.slice(0, 8)));
-  } catch {
-    return tables;
-  }
+  const freq = await wordFrequencies(http, words.slice(0, 8)).catch(() => new Map<string, number>());
+  return weighForms(tables, freq);
 }
 
 /**

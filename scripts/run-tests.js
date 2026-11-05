@@ -8,7 +8,7 @@ const path = require('path');
 const ALL = [
   'notebook-views', 'morphology', 'review', 'vocab-sync', 'wordbooks', 'vocab-lang', 'vocab-lemma', 'notebook-csv',
   'sense-images', 'sense-frequency', 'pronunciation', 'inflections', 'lang-detect', 'multilingual-sources',
-  'etymology-sources', 'etymology-cache', 'etymology-availability', 'etymology-popup',
+  'etymology-sources', 'etymology-cache', 'etymology-availability', 'etymology-headword', 'etymology-popup',
   'ocr-text', 'ocr-pack', 'speech-stream', 'hover-selection', 'native-selection-repeat',
   'popup-opening', 'popup-retrigger', 'popup-sizing', 'mobile-regressions', 'desktop-diagnostics', 'installer-audio-cli',
   'word-sources', 'book-file', 'plural-forms', 'morpheme', 'word-suggest', 'learn-session', 'word-forms',
