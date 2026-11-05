@@ -225,7 +225,7 @@ function playButton(lemma: string, big = false): string {
 }
 
 function picHtml(e: NotebookEntry, gloss: string): string {
-  return `<div class="nbv-card__pic nbv-quiz__pic" data-img-lemma="${esc(clean(e.lemma))}" data-img-lang="${esc(clean(e.sourceLang))}" data-img-gloss="${esc(gloss)}" aria-hidden="true"></div>`;
+  return `<div class="nbv-card__pic nbv-quiz__pic" data-img-lemma="${esc(clean(e.lemma))}" data-img-lang="${esc(clean(e.sourceLang))}" data-img-gloss="${esc(gloss)}" data-img-pos="${esc(clean(e.partOfSpeech || ''))}" aria-hidden="true"></div>`;
 }
 
 const ASK: Record<ReviewQuestion['kind'], string> = {

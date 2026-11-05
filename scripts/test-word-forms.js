@@ -30,7 +30,7 @@ function load(name) {
 }
 
 const fo = load('form-of');
-const { inflectionsFromKaikki, selectInflections, weighForms } = load('inflections');
+const { fetchInflections, inflectionsFromKaikki, selectInflections, weighForms } = load('inflections');
 const { inflectionsHtml, didYouMeanHtml } = load('lexicon-parts');
 
 /** A notebook in sql.js with the reported rows, run through the v2 forms migration (vocab-sync.ts). */
@@ -180,6 +180,24 @@ async function savedNotebook(http) {
   assert.equal(await core.findByLemma('berries'), null);
   // An import is saved as it comes.
   assert.equal((await core.addVocab({ lemma: 'mice', definition: 'plural of mouse', sourceLang: 'en' })).lemma, 'mice');
+
+  // Datamuse down: "teeth" (tooth or teethe) gets no answer rather than staying itself, so it is
+  // not noted as checked, and the next run, with the frequencies back, folds it into tooth.
+  const noFreq = {
+    ...http,
+    requestJson: async (url) => {
+      if (/md=f/.test(url)) throw new Error('offline');
+      return http.requestJson(url);
+    },
+  };
+  await add('teeth', '');
+  await assert.rejects(core.resolveFormOf(noFreq, 'teeth'), (err) => err.code === 'NO_FREQUENCY');
+  await core.resolveStoredForms(noFreq, { pauseMs: 0 });
+  assert.ok(await core.findByLemma('teeth'), 'teeth stays saved while the frequencies are missing');
+  const checked = await queryAll(`SELECT value FROM sync_state WHERE key = 'lemma-forms-checked-v2'`);
+  assert.ok(!JSON.parse(checked[0].value).includes('teeth'), 'and is not marked checked');
+  await core.resolveStoredForms(http, { pauseMs: 0 });
+  assert.ok(!(await core.findByLemma('teeth')) && (await core.findByLemma('tooth')), 'a later run folds it');
 }
 
 const page = (w) => fs.readFileSync(path.join(__dirname, 'fixtures', 'inflections', `en-${w}.jsonl`), 'utf8');
@@ -322,8 +340,9 @@ assert.match(didYouMeanHtml({ metadata: { suggestions: ['governess', 'governesse
   assert.deepEqual(rows(cactus.tables[0]).Plural, ['cacti', 'cactuses', 'cactusses']);
   const cacti = weighForms(cactus.tables, new Map([['cacti', 0.346], ['cactuses', 0.0498], ['cactusses', 0]]))[0].rows[0];
   assert.deepEqual([cacti.forms, cacti.notes], [['cacti', 'cactuses'], ['', 'less common']]);
-  // A row is left alone when a frequency is missing (Datamuse did not answer).
-  assert.deepEqual(rows(weighForms(cactus.tables, new Map([['cacti', 0.3]]))[0]).Plural, ['cacti', 'cactuses', 'cactusses']);
+  // Without a frequency for every form (Datamuse did not answer), only Wiktionary's first stays.
+  assert.deepEqual(rows(weighForms(cactus.tables, new Map([['cacti', 0.3]]))[0]).Plural, ['cacti']);
+  assert.deepEqual(rows(weighForms(paparazzo.tables, new Map())[0]).Plural, ['paparazzi']);
   // Forms Wiktionary labels keep the label: octopi is hypercorrect, octopodes rare.
   const octopus = selectInflections(inflectionsFromKaikki(page('octopus'), 'en', 'octopus'), ['noun']).tables[0].rows[0];
   assert.equal(octopus.forms[0], 'octopuses');
@@ -383,6 +402,39 @@ assert.match(didYouMeanHtml({ metadata: { suggestions: ['governess', 'governesse
   // A regional spelling is the standard where it is used: "estrus" stays.
   const estrus = JSON.stringify({ lang_code: 'en', word: 'estrus', pos: 'noun', senses: [{ tags: ['US', 'alt-of', 'alternative'], alt_of: [{ word: 'oestrus' }], glosses: ['Alternative spelling of oestrus.'] }] });
   assert.deepEqual(fo.formOfLemmasFromKaikki(estrus, 'estrus'), []);
+
+  // Datamuse down: the Forms still list only standard plurals. Wiktionary gives "paparazzi or
+  // paparazzos" and "cacti or cactuses" alike without a label, so its first form is the one kept;
+  // a form it labels rare keeps its label (criterions), and a single plural stays (graffiti).
+  {
+    const offline = {
+      ...http,
+      requestJson: async (url) => {
+        requests.push(url);
+        throw new Error('offline');
+      },
+    };
+    const plural = async (w) => rows(selectInflections(await fetchInflections(offline, w, 'en'), ['noun']).tables[0]).Plural;
+    assert.deepEqual(await plural('paparazzo'), ['paparazzi'], 'no paparazzos without frequencies');
+    assert.deepEqual(await plural('cactus'), ['cacti'], 'cactusses is not listed unweighed');
+    const inline = (entry) => JSON.stringify({ lang_code: 'en', pos: 'noun', ...entry });
+    const criterion = inline({ word: 'criterion', forms: [{ form: 'criteria', tags: ['plural'] }, { form: 'criterions', tags: ['plural', 'rare'] }], senses: [{ glosses: ['A standard or test by which something can be judged.'] }] });
+    const graffito = inline({ word: 'graffito', forms: [{ form: 'graffiti', tags: ['plural'] }], senses: [{ glosses: ['A single instance of graffiti.'] }] });
+    const crit = weighForms(selectInflections(inflectionsFromKaikki(criterion, 'en', 'criterion'), ['noun']).tables, new Map())[0].rows[0];
+    assert.deepEqual([crit.forms, crit.notes], [['criteria', 'criterions'], ['', 'rare']]);
+    assert.deepEqual(rows(weighForms(selectInflections(inflectionsFromKaikki(graffito, 'en', 'graffito'), ['noun']).tables, new Map())[0]).Plural, ['graffiti']);
+    // Back online, the weighed list returns cactuses as less common.
+    const cactusFreq = { cacti: 0.346, cactuses: 0.0498, cactusses: 0 };
+    const online = {
+      ...http,
+      requestJson: async (url) => {
+        const w = decodeURIComponent(/sp=([^&]+)/.exec(url)[1]);
+        return [{ word: w, tags: [`f:${cactusFreq[w] ?? 0}`] }];
+      },
+    };
+    const back = selectInflections(await fetchInflections(online, 'cactus', 'en'), ['noun']).tables[0].rows[0];
+    assert.deepEqual([back.forms, back.notes], [['cacti', 'cactuses'], ['', 'less common']]);
+  }
 
   // The saved notebook, once: forms become their word and merge into it where it is saved.
   await savedNotebook(http);

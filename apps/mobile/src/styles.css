@@ -557,6 +557,7 @@ html:not([data-mode="strip"]) .shell-lexicon .lexicon-pos-layout {
   transition: opacity 0.32s var(--md-sys-motion);
 }
 .sense-figure__frame.is-loaded img { opacity: 1; }
+.sense-figure.is-pending .sense-figure__frame { display: block; }
 .sense-figure__credit {
   position: absolute;
   left: 0;
@@ -1555,6 +1556,22 @@ html[data-mode="strip"][data-popup="floating"] .shell { border-radius: 20px; }
   z-index: 8;
   animation: toast-in 280ms var(--md-sys-motion);
 }
+.toast__msg {
+  flex: 1;
+}
+.toast__action {
+  margin: -8px -8px -8px 12px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--md-sys-shape-sm);
+  background: none;
+  color: var(--md-sys-color-inverse-primary, var(--md-sys-color-primary-container));
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
 html[data-mode="strip"] .toast {
   bottom: calc(var(--pv-inset-bottom) + 16px);
 }
@@ -2204,5 +2221,16 @@ html[data-notify="ios"] .toast {
   font: inherit;
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+.pic-view__hide {
+  display: block;
+  margin: 10px auto 0;
+  padding: 6px 14px;
+  border: 1px solid rgb(244 240 234 / 0.4);
+  border-radius: 999px;
+  background: none;
+  color: #f4f0ea;
+  font-family: var(--md-font-ui);
+  font-size: 0.8rem;
 }
 @media (prefers-reduced-motion: reduce) { .pic-view[open] { animation: none; } }

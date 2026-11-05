@@ -413,13 +413,14 @@ export function formLine(word: string, lang = 'en'): FormLine | null {
 
 /**
  * Whether a learner dictionary gives `form` a short entry of its own ("ran: past tense of run")
- * rather than opening `lemma` directly. The Oxford Advanced Learner's Dictionary and
- * Merriam-Webster both do it for irregular forms spelled unlike their headword: verbs (ran, swam,
- * bought, was, went, been), comparatives (better, worst), plurals that change a vowel or an f
- * (feet, mice, men, knives, wolves). Regular forms (gleaned, cities, stopped), plurals from Latin
- * and Greek (criteria, crises, phenomena) and irregular plurals that begin like their singular
- * (children, paparazzi, oxen) open the headword. Checked on 2026-11-04 against 60 OALD searches;
- * scripts/test-word-forms.js keeps them.
+ * rather than opening `lemma` directly. This follows the Oxford Advanced Learner's Dictionary,
+ * which does it for irregular forms spelled unlike their headword: verbs (ran, swam, bought, was,
+ * went, been) and plurals that change a vowel or an f (feet, mice, men, knives, wolves). Regular
+ * forms (gleaned, cities, stopped), plurals from Latin and Greek (criteria, crises, phenomena) and
+ * irregular plurals that begin like their singular (children, paparazzi, oxen) open the headword.
+ * The 48 forms in scripts/test-word-forms.js were searched in OALD on 2026-11-04 and the rule
+ * agrees on 46 ("does" and "women" are the exceptions). Longman and Cambridge also give
+ * "children" a short entry; docs/WORD_FORMS.md has the comparison.
  */
 export function hasOwnFormEntry(form: string, lemma: string): boolean {
   const f = String(form || '').toLowerCase();
@@ -442,7 +443,8 @@ const FOREIGN_PLURALS: Array<[string, string]> = [
 
 /**
  * The word to open and save instead of `word`, or null when `word` is a word in its own right.
- * Rejects when the page could not be fetched, so a caller can fall back or try again later.
+ * Rejects when the page could not be fetched, or when the word frequencies that choose between
+ * two lemmas could not, so a caller can fall back or try again later.
  */
 export function resolveFormOf(http: HttpClient, word: string, lang = 'en', timeoutMs = 4000): Promise<string | null> {
   const w = String(word || '').trim();
@@ -470,6 +472,11 @@ export function resolveFormOf(http: HttpClient, word: string, lang = 'en', timeo
       if (reading.groups.length < 2) return note(dominantLemma(reading.lemmas, await wordFrequencies(http, reading.lemmas.slice(0, 4)).catch(() => new Map<string, number>()), reading.groups));
       const lemmas = reading.lemmas.slice(0, 4);
       const freq = await wordFrequencies(http, lemmas);
+      // Without every lemma's frequency ("teeth": tooth or teethe) there is no answer yet, not an
+      // answer that the word is its own: the caller tries again later instead of noting it checked.
+      if (!lemmas.every((l) => freq.has(l))) {
+        throw Object.assign(new Error(`no word frequencies for ${lemmas.join(', ')}`), { code: 'NO_FREQUENCY' });
+      }
       return note(dominantLemma(lemmas, freq, reading.groups.map((g) => g.filter((l) => lemmas.includes(l))).filter((g) => g.length)));
     });
     resolved.set(key, p);
