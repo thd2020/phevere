@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Windows Setup (2026-11-05): Custom options no longer stack every group in a large box. The install folder sits in one field with Browse beside it, and Shortcuts, Startup and Downloads are plain lists of checkboxes under short headings, with each download's size on the right. The pronunciation voice is a choice of None, Standard (132 MB) or High quality (350 MB) instead of a dropdown. While the options are open, the space required shows at the bottom left and Hide options and Install at the bottom right. Every option and what Setup installs are the same as before.
+- Settings menus (2026-11-05): Install updates in Settings → Updates is a three-part switch (Automatically, Ask first, Off) on the desktop and on Android. The From and To languages under Quick translation and the text recognition Model open a menu in Phevere's own style instead of the plain system list. The menus work from the keyboard: the arrow keys move, typing a letter jumps to it, Enter chooses and Escape closes.
+- Settings → Shortcuts (2026-11-05): the Save button now sits at the bottom of the shortcuts card, so the Built-in list follows at the same distance as every other section.
+- Settings → Capture (2026-11-05): clicking the "Drop or paste an image" area, or pressing Enter or Space on it, opens a file picker. The chosen image is scanned like a dropped one.
+- Notifications (2026-11-05): the "No image on clipboard" and "Quick translation failed" switches are gone. Those messages answer a shortcut you just pressed that could not work, so they always show; with them off, the shortcut seemed to do nothing. Image copied, Hover lookup switched on or off, and Update ready or available can still be turned off.
+
 ## [4.1.0] - 2026-11-05
 
 ### Added
