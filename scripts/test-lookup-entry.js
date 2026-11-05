@@ -95,6 +95,8 @@ configureCore({
     'it.': { de: [{ partOfSpeech: 'Abbreviation', language: 'German', definitions: [{ definition: 'Abkürzung von italienisch' }] }] },
     it: { en: [{ partOfSpeech: 'Pronoun', language: 'English', definitions: [{ definition: 'The thing being discussed.' }] }] },
     'e.g.': { en: [{ partOfSpeech: 'Adverb', language: 'English', definitions: [{ definition: 'For example.' }] }] },
+    "'em": { en: [{ partOfSpeech: 'Pronoun', language: 'English', definitions: [{ definition: 'Them.' }] }] },
+    em: { en: [{ partOfSpeech: 'Noun', language: 'English', definitions: [{ definition: 'The name of the Latin-script letter M.' }] }] },
     'e.g': { en: [{ partOfSpeech: 'Adverb', language: 'English', definitions: [{ definition: 'An initialism of exempli gratia.' }] }] },
   };
   const kaikki = {
@@ -131,6 +133,7 @@ configureCore({
   assert.equal((await exact.lookup('no.', 'zh')).word, 'no', '"no." at the end of a sentence is no');
   assert.equal((await exact.lookup('it.', 'zh')).word, 'it', 'a page with no English section is not the typed title');
   assert.equal((await exact.lookup('e.g.', 'zh')).word, 'e.g.', 'the last stop of e.g. belongs to it');
+  assert.equal((await exact.lookup("'em", 'zh')).word, "'em", 'an apostrophe with a page of its own stays');
   console.log('Lookup entry passed: "Did you mean" stays through later updates; "etc.", "e.g." and "C++" open as typed; "hello,", "no." and "it." open hello, no and it.');
   // The service keeps safety-net timers for lookups; they would hold the process open.
   process.exit(0);

@@ -2496,9 +2496,11 @@ export class DictionaryService extends BaseService {
     const detected = (language || 'en').toLowerCase().split('-')[0] || 'en';
     const exact = query.sanitized;
     const dropped = Array.from(new Set(edgeMarks(exact, query.trimmed)));
+    // An apostrophe is as often part of the word ("'em", "dogs'") as a quote, so it is left to
+    // the dictionary like "+" in "C++".
     const sentenceMarks =
       dropped.length > 0 &&
-      dropped.every((c) => /[\p{Terminal_Punctuation}\p{Quotation_Mark}\p{Ps}\p{Pe}\p{Pi}\p{Pf}]/u.test(c)) &&
+      dropped.every((c) => c !== "'" && c !== '’' && /[\p{Terminal_Punctuation}\p{Quotation_Mark}\p{Ps}\p{Pe}\p{Pi}\p{Pf}]/u.test(c)) &&
       !dropped.some((c) => query.trimmed.includes(c));
     const fetchPage = (title: string) =>
       withTimeout(this.wiktionaryDefinitions(title), EXACT_TITLE_MS, 'exact-title').catch((): null => null);
