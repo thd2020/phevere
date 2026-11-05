@@ -4,8 +4,8 @@
  * with its progress ring and counts, a book's word list in order, and the library ordered
  * as a learning path. HTML strings with `data-act` hooks, like the other notebook views.
  *
- * Hooks: wb-scope (data-scope), wb-library, wb-sub and wb-unsub (data-book), wb-goal (data-book,
- * data-goal), wb-save and wb-known (data-q, data-known), wb-more, wb-sort (data-sort: book,
+ * Hooks: wb-scope (data-scope), wb-library, wb-sub and wb-unsub (data-book),
+ * wb-save and wb-known (data-q, data-known), wb-more, wb-sort (data-sort: book,
  * recent or az), wb-expand (data-q) to open a row on its brief definition, and lookup (data-q). A subscribed book's chip in the switcher carries its own
  * wb-unsub close button.
  *

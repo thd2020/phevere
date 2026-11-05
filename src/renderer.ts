@@ -131,6 +131,7 @@ import {
 } from '@phevere/core';
 import { choiceRowHtml, keycapsHtml, rangeRowHtml, switchRowHtml } from '@phevere/core';
 import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
+import { learnSettingsHtml, microphoneAvailable, readLearnPrefs, watchMicrophone, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
 
 const rlog = (...args: unknown[]) => {
@@ -213,6 +214,7 @@ function initializeSettingsWindow() {
         <nav class="settings-nav" aria-label="Settings sections">
           <button type="button" class="settings-nav__item is-active" data-section="shortcuts">Shortcuts</button>
           <button type="button" class="settings-nav__item" data-section="capture">Capture</button>
+          <button type="button" class="settings-nav__item" data-section="learn">Learn</button>
           <button type="button" class="settings-nav__item" data-section="notifications">Notifications</button>
           <button type="button" class="settings-nav__item" data-section="sources">Sources</button>
           <button type="button" class="settings-nav__item" data-section="offline">Offline</button>
@@ -340,6 +342,13 @@ function initializeSettingsWindow() {
             </div>
           </section>
 
+          <section class="settings-panel" data-panel="learn" aria-labelledby="settings-learn-heading">
+            <div class="settings-panel__intro">
+              <h2 id="settings-learn-heading" class="settings-panel__title">Learn</h2>
+            </div>
+            <div id="learn-settings-host"></div>
+          </section>
+
           <section class="settings-panel" data-panel="notifications" aria-labelledby="settings-notifications-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-notifications-heading" class="settings-panel__title">Notifications</h2>
@@ -459,6 +468,7 @@ function initializeSettingsWindow() {
   wireSettingsLibraryLinks();
   void wireSourcesPanel();
   void wireApiKeysPanel();
+  wireLearnSettings();
   wireInAppTextSelectionLookup();
   setupAudioSettings();
   void wireNotificationSettings();
@@ -475,6 +485,79 @@ function initializeSettingsWindow() {
     window.addEventListener('pagehide', () => stopCapture());
   });
   wireLiveResizeClass();
+}
+
+/**
+ * Settings → Learn: new words a day for My words and each subscribed book, the countdown on choice
+ * questions, and speaking questions once a microphone is there. My words' goal and the options go
+ * to local storage, which the main window watches; a book's goal goes to the word-book store, and
+ * a bump of LEARN_BOOKS_KEY tells the main window to reload the books.
+ */
+function wireLearnSettings(): void {
+  const host = document.getElementById('learn-settings-host');
+  if (!host) return;
+  let microphone = false;
+  let books: Array<{ id: string; title: string; goal: number }> = [];
+  const paint = () => {
+    host.innerHTML = learnSettingsHtml({
+      goal: Number(readPref(NB_GOAL_KEY, '10')) || 10,
+      books,
+      prefs: readLearnPrefs(readPref(LEARN_PREFS_KEY, '')),
+      microphone,
+    });
+  };
+  const loadBooks = async () => {
+    try {
+      const state = await wordbookApi()?.state?.();
+      const made: Array<{ bookId: string; title: string }> = state?.userBooks || [];
+      books = (state?.subs || []).map((s: { bookId: string; dailyNew: number }) => ({
+        id: s.bookId,
+        title: wordbookMeta(s.bookId)?.title || made.find((b) => b.bookId === s.bookId)?.title || s.bookId,
+        goal: s.dailyNew,
+      }));
+    } catch {
+      books = [];
+    }
+    paint();
+  };
+  const setGoal = async (book: string, goal: number) => {
+    if (book) {
+      await wordbookApi()?.setGoal?.(book, goal);
+      writePref(LEARN_BOOKS_KEY, String(Date.now()));
+      await loadBooks();
+    } else {
+      writePref(NB_GOAL_KEY, String(goal));
+      paint();
+    }
+  };
+  host.addEventListener('change', (ev) => {
+    const el = ev.target as HTMLInputElement | HTMLSelectElement;
+    const act = el.dataset.act;
+    if (act === 'learn-goal' || act === 'learn-goal-input') {
+      const goal = parseGoal(el.value);
+      if (goal != null) void setGoal(el.dataset.book || '', goal);
+    } else if (act === 'learn-countdown') {
+      const prefs = readLearnPrefs(readPref(LEARN_PREFS_KEY, ''));
+      writePref(LEARN_PREFS_KEY, writeLearnPrefs({ ...prefs, countdown: Number(el.value) || 0 }));
+    } else if (act === 'learn-speaking') {
+      const prefs = readLearnPrefs(readPref(LEARN_PREFS_KEY, ''));
+      writePref(LEARN_PREFS_KEY, writeLearnPrefs({ ...prefs, speaking: (el as HTMLInputElement).checked }));
+    }
+  });
+  const onMicrophone = (on: boolean) => {
+    if (on === microphone) return;
+    microphone = on;
+    paint();
+  };
+  paint();
+  void loadBooks();
+  void microphoneAvailable().then(onMicrophone);
+  watchMicrophone(onMicrophone);
+  // A book subscribed or dropped in the main window shows up when Settings comes forward again.
+  window.addEventListener('focus', () => void loadBooks());
+  window.addEventListener('storage', (e) => {
+    if (e.key === NB_GOAL_KEY) paint();
+  });
 }
 
 type OcrPackView = { installed: boolean; installing: boolean; progress: number; error: string | null; needsPack: boolean };
@@ -2176,6 +2259,9 @@ const NB_CARDS_LAYOUT_KEY = 'phevere-notebook-cards-layout';
 const NB_GROUP_KEY = 'phevere-notebook-group';
 const NB_MAP_KINDS_KEY = 'phevere-notebook-map-kinds';
 const NB_GOAL_KEY = 'phevere-review-goal';
+const LEARN_PREFS_KEY = 'phevere-learn-prefs';
+/** Bumped by Settings → Learn after it changes a word book's goal, so the main window reloads the books. */
+const LEARN_BOOKS_KEY = 'phevere-learn-books-changed';
 const WS_TAB_KEY = 'phevere-main-tab';
 type VocabSortMode = 'recent' | 'alpha';
 
@@ -2205,6 +2291,9 @@ let nbView: NotebookView = savedNbView.view;
 let nbGroup = readPref(NB_GROUP_KEY, 'root') as FamilyGrouping;
 let nbMapKinds = readPref(NB_MAP_KINDS_KEY, 'root,prefix,char').split(',').filter(Boolean) as MorphKind[];
 let nbGoal = Number(readPref(NB_GOAL_KEY, '10')) || 10;
+/* Settings → Learn writes these from its own window; the main window follows through storage events. */
+let learnPrefs: LearnPrefs = readLearnPrefs(readPref(LEARN_PREFS_KEY, ''));
+let learnMicrophone = false;
 let nbReview: ReviewState | null = null;
 const nbFlipped = new Set<string>();
 let nbCardsLayout = readPref(NB_CARDS_LAYOUT_KEY, 'piles') as CardLayout;
@@ -2857,7 +2946,14 @@ function renderLearn(): void {
     mine: vocabNotebookCache,
     review: nbReview || startReview([], nbGoal),
     goal: nbGoal,
-    options: { audio: true, preview: (e, g) => previewReview(e, g), formatGap: formatReviewGap, examples: (lemma) => reviewExamples.get(lemma.toLowerCase()) },
+    options: {
+      audio: true,
+      preview: (e, g) => previewReview(e, g),
+      formatGap: formatReviewGap,
+      examples: (lemma) => reviewExamples.get(lemma.toLowerCase()),
+      learnPrefs,
+      microphone: learnMicrophone,
+    },
     page: learnPage,
     history: answerHistory,
     notice: learnNotice,
@@ -3057,11 +3153,9 @@ function wireNotebookActions(root: HTMLElement): void {
         }
         return;
       }
-      case 'nb-goal':
-        nbGoal = Number(el.dataset.goal) || 10;
-        writePref(NB_GOAL_KEY, String(nbGoal));
-        nbReview = null;
-        renderLearn();
+      case 'learn-settings':
+        // The goal on Today opens where it is changed.
+        void window.electronAPI?.showSettingsWindow?.('learn');
         return;
       case 'nb-review-exit':
         // Back to the Learn page. An answer on screen is saved first, as Continue would.
@@ -3143,12 +3237,6 @@ function wireNotebookActions(root: HTMLElement): void {
         await refreshWords();
         rerenderNotebook();
         return;
-      case 'wb-goal':
-        await wordbookApi()?.setGoal(el.dataset.book || '', Number(el.dataset.goal) || 10);
-        nbReview = null;
-        await refreshWords();
-        rerenderActive();
-        return;
       case 'wb-more':
         wbLimit += BOOK_LIST_PAGE;
         rerenderNotebook();
@@ -3228,16 +3316,6 @@ function wireNotebookActions(root: HTMLElement): void {
     if (!el || !root.contains(el)) return;
     void run(el, ev);
   });
-  // The goal field: a typed number goes through the same action as the preset chips.
-  root.addEventListener('change', (ev) => {
-    const field = ev.target as HTMLElement;
-    if (!(field instanceof HTMLInputElement) || !field.hasAttribute('data-goal-input')) return;
-    const goal = parseGoal(field.value);
-    if (goal == null || !field.dataset.goalAct) return;
-    field.dataset.goal = String(goal);
-    field.dataset.act = field.dataset.goalAct;
-    void run(field, ev);
-  });
   // A made book: rename on change of its title, add a word from its form.
   root.addEventListener('change', (ev) => {
     const input = ev.target as HTMLElement;
@@ -3306,7 +3384,25 @@ function setMainTab(tab: MainTab): void {
 function wireMainWorkspace(): void {
   window.addEventListener('storage', (e) => {
     if (e.key === RECENT_SELECTIONS_STORAGE_KEY) renderRecentLookups();
+    // Settings → Learn, from the Settings window. A round under way keeps going.
+    if (e.key === NB_GOAL_KEY || e.key === LEARN_BOOKS_KEY) {
+      nbGoal = Number(readPref(NB_GOAL_KEY, '10')) || 10;
+      if (!nbReview?.started) nbReview = null;
+      if (e.key === LEARN_BOOKS_KEY) void refreshWords().then(rerenderActive);
+      else renderLearn();
+    }
+    if (e.key === LEARN_PREFS_KEY) {
+      learnPrefs = readLearnPrefs(e.newValue);
+      renderLearn();
+    }
   });
+  const onMicrophone = (on: boolean) => {
+    if (on === learnMicrophone) return;
+    learnMicrophone = on;
+    renderLearn();
+  };
+  void microphoneAvailable().then(onMicrophone);
+  watchMicrophone(onMicrophone);
   document.querySelectorAll<HTMLElement>('.ws-tab').forEach((b) =>
     b.addEventListener('click', () => setMainTab(readMainTab(b.dataset.ws))),
   );

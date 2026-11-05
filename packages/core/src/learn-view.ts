@@ -86,7 +86,9 @@ export function learnTodayHtml(input: LearnViewInput): string {
   // My words through the word-book context, so a word marked "Already know it" counts as known here as on Progress.
   if (scope === 'mine') return reviewHtml(scopeEntries('mine', ctx), review, goal, options);
   const sub = ctx.subs.find((s) => s.bookId === scope);
-  return reviewHtml(scopeEntries(scope, ctx), review, goal, {
+  // All books: My words' goal and every book's together.
+  const total = scope === 'all' ? goal + ctx.subs.reduce((s, x) => s + (x.dailyNew || 0), 0) : goal;
+  return reviewHtml(scopeEntries(scope, ctx), review, total, {
     ...options,
     books: reviewBookRows(scope, ctx, now),
     goalBook: sub ? { id: sub.bookId, goal: sub.dailyNew } : undefined,

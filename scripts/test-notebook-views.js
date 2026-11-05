@@ -230,9 +230,29 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   const { learnHtml } = load('learn-view');
   const html = learnHtml({ scope: 'mine', ctx: null, mine: rq, review: views.startReview(rq, 2, now), goal: 10, now });
   assert.match(html, /data-act="nb-start"/, 'Learn starts today\'s review');
-  assert.match(html, /data-act="nb-goal"/, 'My words keeps its goal chips');
+  assert.match(html, /class="nbv-goalfact" data-act="learn-settings"><b>10<\/b><span>new words a day/, 'Today shows the goal and links to Settings');
+  assert.doesNotMatch(html, /data-act="nb-goal"|data-goal-input/, 'the goal is set in Settings, not on Today');
   assert.doesNotMatch(html, /lrn-scopes/, 'no list switcher without word books');
   assert.match(html, /data-act="learn-page" data-page="progress"/);
+}
+
+// Settings → Learn: a goal per list, the countdown, and speaking questions only with a microphone.
+{
+  const { learnSettingsHtml } = load('settings-learn');
+  const { readLearnPrefs, writeLearnPrefs, DEFAULT_LEARN_PREFS } = load('learn-prefs');
+  const input = { goal: 12, books: [{ id: 'cet4', title: 'CET-4', goal: 20 }], prefs: { countdown: 8, speaking: false }, microphone: false };
+  const html = learnSettingsHtml(input);
+  assert.equal((html.match(/data-act="learn-goal" data-book=""/g) || []).length, 4, 'four presets for My words');
+  assert.match(html, /data-act="learn-goal-input" data-book="" aria-label="My words, other number a day"/);
+  assert.match(html, /class="sv-num is-on"[^>]*value="12"/, 'a goal off the presets fills the Other field');
+  assert.match(html, /data-book="cet4" value="20" checked/, 'a book keeps its own goal');
+  assert.match(html, /<option value="8" selected>8 seconds<\/option>/);
+  assert.doesNotMatch(html, /learn-speaking/, 'no speaking switch without a microphone');
+  assert.match(learnSettingsHtml({ ...input, microphone: true }), /data-act="learn-speaking"/);
+  assert.deepEqual(readLearnPrefs(null), DEFAULT_LEARN_PREFS);
+  assert.deepEqual(readLearnPrefs('{bad'), DEFAULT_LEARN_PREFS);
+  assert.deepEqual(readLearnPrefs(writeLearnPrefs({ countdown: 10, speaking: false })), { countdown: 10, speaking: false });
+  assert.equal(readLearnPrefs('{"countdown":-3}').countdown, 0);
 }
 
 // Progress: today against the goal, the streak, skills, families and the forgetting curve.
