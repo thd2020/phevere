@@ -218,6 +218,7 @@ function initializeSettingsWindow() {
           <button type="button" class="settings-nav__item" data-section="offline">Offline</button>
           <button type="button" class="settings-nav__item" data-section="api">API keys</button>
           <button type="button" class="settings-nav__item" data-section="audio">Audio</button>
+          <button type="button" class="settings-nav__item" data-section="updates">Updates</button>
         </nav>
         <main class="settings-main">
           <section class="settings-panel is-active" data-panel="shortcuts" aria-labelledby="settings-monitor-heading">
@@ -349,6 +350,37 @@ function initializeSettingsWindow() {
                 ${switchRowHtml({ label: 'No image on clipboard', on: true, attrs: 'id="notify-clipboard-empty"' })}
                 ${switchRowHtml({ label: 'Hover lookup switched on or off', on: true, attrs: 'id="notify-hover-toggle"' })}
                 ${switchRowHtml({ label: 'Quick translation failed', on: true, attrs: 'id="notify-quick-translate"' })}
+                ${switchRowHtml({ label: 'Update ready or available', on: true, attrs: 'id="notify-updates"' })}
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-panel="updates" aria-labelledby="settings-updates-heading">
+            <div class="settings-panel__intro">
+              <h2 id="settings-updates-heading" class="settings-panel__title">Updates</h2>
+            </div>
+            <div class="sv sv-page">
+              <div class="sv-ledger">
+                <div class="sv-row">
+                  <span class="sv-row__text">
+                    <span id="update-version" class="sv-row__label">Phevere</span>
+                    <span id="update-status" class="sv-row__sub" role="status" aria-live="polite"></span>
+                  </span>
+                  <button type="button" id="update-action" class="sv-btn sv-btn--accent" hidden></button>
+                  <div id="update-progress" class="sv-progress" hidden><span></span></div>
+                </div>
+                <div class="sv-row">
+                  <span class="sv-row__text"><label for="update-mode" class="sv-row__label">Install updates</label></span>
+                  <select id="update-mode" class="sv-select">
+                    <option value="auto">Automatically</option>
+                    <option value="ask">Ask first</option>
+                    <option value="off">Off</option>
+                  </select>
+                </div>
+                <div class="sv-ledger__foot">
+                  <button type="button" id="update-rollback" class="sv-btn" hidden></button>
+                  <button type="button" id="update-check" class="sv-btn">Check now</button>
+                </div>
               </div>
             </div>
           </section>
@@ -430,6 +462,7 @@ function initializeSettingsWindow() {
   wireInAppTextSelectionLookup();
   setupAudioSettings();
   void wireNotificationSettings();
+  void wireUpdatesPanel();
   wireSettingsImageDrop();
   void wireOfflineSettingsPanel();
   void wireOcrSettingsPanel();
@@ -4062,6 +4095,7 @@ function showSettingsSection(section: string, provider?: string): void {
   });
   if (section === 'api') void renderApiKeysPanel(provider);
   if (section === 'sources') void renderSourcesPanel();
+  if (section === 'updates') checkUpdatesOnOpen?.();
 }
 
 /** Settings links open in the browser; "API key required" and similar jump to their tab. */
@@ -4299,6 +4333,7 @@ async function wireNotificationSettings(): Promise<void> {
   const emptyEl = document.getElementById('notify-clipboard-empty') as HTMLInputElement | null;
   const hoverEl = document.getElementById('notify-hover-toggle') as HTMLInputElement | null;
   const quickEl = document.getElementById('notify-quick-translate') as HTMLInputElement | null;
+  const updatesEl = document.getElementById('notify-updates') as HTMLInputElement | null;
   if (!imageEl || !emptyEl || !hoverEl) return;
   try {
     const prefs = await api.getNotificationPrefs();
@@ -4306,6 +4341,7 @@ async function wireNotificationSettings(): Promise<void> {
     emptyEl.checked = prefs.clipboardEmpty !== false;
     hoverEl.checked = prefs.hoverToggle !== false;
     if (quickEl) quickEl.checked = prefs.quickTranslate !== false;
+    if (updatesEl) updatesEl.checked = prefs.updates !== false;
   } catch {
     imageEl.checked = true;
     emptyEl.checked = true;
@@ -4317,12 +4353,82 @@ async function wireNotificationSettings(): Promise<void> {
       clipboardEmpty: emptyEl.checked,
       hoverToggle: hoverEl.checked,
       quickTranslate: quickEl ? quickEl.checked : true,
+      updates: updatesEl ? updatesEl.checked : true,
     });
   };
   imageEl.addEventListener('change', persist);
   emptyEl.addEventListener('change', persist);
   hoverEl.addEventListener('change', persist);
   quickEl?.addEventListener('change', persist);
+  updatesEl?.addEventListener('change', persist);
+}
+
+interface UpdateView {
+  current: string;
+  mode: 'auto' | 'ask' | 'off';
+  canInstall: boolean;
+  status: 'idle' | 'checking' | 'downloading' | 'ready' | 'installing' | 'error';
+  upToDate: boolean;
+  available: { version: string; page: string } | null;
+  progress: number;
+  error: string | null;
+  rollback: string | null;
+}
+
+let checkUpdatesOnOpen: (() => void) | null = null;
+
+/** Updates page: version and status, the install mode, Check now and Roll back. */
+async function wireUpdatesPanel(): Promise<void> {
+  const api = (window as any).updatesAPI;
+  const version = document.getElementById('update-version');
+  const status = document.getElementById('update-status');
+  const action = document.getElementById('update-action') as HTMLButtonElement | null;
+  const bar = document.getElementById('update-progress');
+  const mode = document.getElementById('update-mode') as HTMLSelectElement | null;
+  const check = document.getElementById('update-check') as HTMLButtonElement | null;
+  const rollback = document.getElementById('update-rollback') as HTMLButtonElement | null;
+  if (!api?.getState || !version || !status || !action || !bar || !mode || !check || !rollback) return;
+  const fill = bar.firstElementChild as HTMLElement | null;
+  const paint = (s: UpdateView) => {
+    const busy = s.status === 'checking' || s.status === 'downloading' || s.status === 'installing';
+    const next = s.available?.version;
+    version.textContent = `Phevere ${s.current}`;
+    status.classList.toggle('is-error', s.status === 'error');
+    status.textContent =
+      s.status === 'checking' ? 'Checking…'
+      : s.status === 'downloading' ? `Downloading ${next}… ${Math.round(s.progress * 100)}%`
+      : s.status === 'installing' ? `Installing ${next}…`
+      : s.status === 'error' ? s.error || 'Update failed'
+      : s.status === 'ready' ? `${next} is ready. It installs when Phevere quits.`
+      : next ? `${next} is available`
+      : s.upToDate ? 'Up to date'
+      : '';
+    action.hidden = !next || busy;
+    action.textContent = s.status === 'ready' ? 'Restart to update' : s.canInstall ? 'Update now' : 'Download…';
+    bar.hidden = s.status !== 'downloading';
+    if (fill) fill.style.width = `${Math.round(s.progress * 100)}%`;
+    mode.querySelector('option[value="auto"]')?.toggleAttribute('hidden', !s.canInstall);
+    mode.value = !s.canInstall && s.mode === 'auto' ? 'ask' : s.mode;
+    rollback.hidden = !s.canInstall || !s.rollback;
+    rollback.textContent = `Roll back to ${s.rollback}`;
+    rollback.disabled = busy;
+    check.disabled = busy;
+  };
+  const run = async (call: () => Promise<UpdateView>) => paint(await call());
+  action.addEventListener('click', () => void run(() => api.install()));
+  rollback.addEventListener('click', () => void run(() => api.rollBack()));
+  check.addEventListener('click', () => void run(() => api.check()));
+  mode.addEventListener('change', () => void run(() => api.setMode(mode.value)));
+  api.onChanged?.((s: UpdateView) => paint(s));
+  paint(await api.getState());
+  // The rollback version comes from the release list, so opening the page checks once.
+  let checked = false;
+  checkUpdatesOnOpen = () => {
+    if (checked) return;
+    checked = true;
+    void run(() => api.check());
+  };
+  if (document.querySelector('.settings-panel.is-active')?.getAttribute('data-panel') === 'updates') checkUpdatesOnOpen();
 }
 
 let lemmaAudio: HTMLAudioElement | null = null;

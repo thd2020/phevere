@@ -549,6 +549,19 @@ contextBridge.exposeInMainWorld('ocrAPI', {
   },
 });
 
+contextBridge.exposeInMainWorld('updatesAPI', {
+  getState: () => ipcRenderer.invoke('updates-get-state'),
+  setMode: (mode: 'auto' | 'ask' | 'off') => ipcRenderer.invoke('updates-set-mode', mode),
+  check: () => ipcRenderer.invoke('updates-check'),
+  install: () => ipcRenderer.invoke('updates-install'),
+  rollBack: () => ipcRenderer.invoke('updates-rollback'),
+  onChanged: (callback: (state: unknown) => void) => {
+    const listener = (_event: unknown, state: unknown) => callback(state);
+    ipcRenderer.on('updates-changed', listener);
+    return () => ipcRenderer.removeListener('updates-changed', listener);
+  },
+});
+
 // Expose search API
 contextBridge.exposeInMainWorld('searchAPI', {
   getSuggestions: (query: string): Promise<SearchSuggestion[]> => 
