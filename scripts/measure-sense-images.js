@@ -42,7 +42,8 @@ const cacheDir = arg('cache', path.join(os.tmpdir(), 'phevere-measure-sense-imag
 const parallel = Math.max(1, Number(arg('parallel', '3')) || 3);
 const relevancePath = arg('relevance', '');
 const mode = relevancePath ? 'lookup' : arg('mode', 'both');
-const maxSenses = Math.max(1, Number(arg('senses', '12')) || 12);
+const appMode = args.includes('--app');
+const maxSenses =Math.max(1, Number(arg('senses', '12')) || 12);
 fs.mkdirSync(cacheDir, { recursive: true });
 
 const UA = 'Phevere-measure/1 (https://github.com/thd2020/phevere)';
@@ -65,6 +66,39 @@ async function pace() {
   }
 }
 
+/**
+ * `--client` picks the HTTP client: `fetch` (Node's own, which keeps connections open like a
+ * browser or the phone's OkHttp), `node` (node-fetch with keep-alive agents, the desktop app's
+ * client) or `node18` (node-fetch opening a new connection for every request, as the desktop app
+ * did on Electron 28's Node 18 before its agents kept connections open).
+ */
+const clientName = arg('client', 'fetch');
+const clientFetch = (() => {
+  if (clientName === 'fetch') return fetch;
+  const nodeFetch = require('node-fetch');
+  const https = require('https');
+  const agent = new https.Agent({ keepAlive: clientName === 'node' });
+  return (url, init) => nodeFetch(url, { ...init, agent });
+})();
+
+/**
+ * What a request asks for, for `--trace`: the host and the API module ("wikidata sparql
+ * lexemes", "en.wikipedia.org prop=pageimages|pageprops", "www.wikidata.org wbgetentities").
+ */
+function requestKind(url) {
+  const u = new URL(url);
+  const host = u.host.replace(/^query\.wikidata\.org$/, 'wdqs');
+  if (host === 'wdqs') return `wdqs ${/ontolex/.test(u.searchParams.get('query') || '') ? 'lexemes' : 'items'}`;
+  const p = u.searchParams;
+  const what = p.get('action') === 'query' ? p.get('generator') ? `generator=${p.get('generator')}` : `prop=${p.get('prop') || p.get('list')}` : p.get('action') || u.pathname;
+  return `${host} ${what}`;
+}
+
+/** Durations of every request by kind, and each word's requests in order, when `--trace` is on. */
+const trace = args.includes('--trace');
+const byKind = {};
+let traceLog = null;
+
 async function get(url, headers, timeoutMs = 8000) {
   const host = new URL(url).host;
   if (/wikimedia|wikipedia|wiktionary|wikidata/.test(host)) await pace();
@@ -72,8 +106,15 @@ async function get(url, headers, timeoutMs = 8000) {
   hosts[host] = (hosts[host] || 0) + 1;
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  const t0 = Date.now();
+  const note = () => {
+    if (!trace) return;
+    const kind = requestKind(url);
+    (byKind[kind] = byKind[kind] || []).push(Date.now() - t0);
+    if (traceLog) traceLog.push({ kind, start: t0 - traceLog.t0, ms: Date.now() - t0 });
+  };
   try {
-    const res = await fetch(url, { headers: { 'User-Agent': UA, ...(headers || {}) }, signal: ctl.signal });
+    const res = await clientFetch(url, { headers: { 'User-Agent': UA, ...(headers || {}) }, signal: ctl.signal });
     const text = await res.text();
     if (!res.ok) failed += 1;
     return { ok: res.ok, status: res.status, text };
@@ -81,6 +122,7 @@ async function get(url, headers, timeoutMs = 8000) {
     failed += 1;
     throw e;
   } finally {
+    note();
     clearTimeout(timer);
   }
 }
@@ -334,7 +376,7 @@ async function main() {
   const run = async (warm, which) => {
     // One module for each pass, as in the app; each word is still cold in it the first time.
     const si = load(store);
-    const times = { cards: [], lookup: [], lookupAll: [] };
+    const times = { cards: [], lookup: [], lookupAll: [], pictured: [], picturedAll: [], defs: [], afterDefs: [] };
     await pool(words, parallel, async (w, i) => {
       const row = rows[i] || (rows[i] = { lemma: w.lemma, lang: w.lang });
       if (which === 'cards') {
@@ -351,16 +393,39 @@ async function main() {
           return;
         }
         const t0 = Date.now();
+        // With one word at a time the requests in the log are this word's own.
+        if (trace && parallel === 1 && !warm && i < 12) {
+          traceLog = [];
+          traceLog.t0 = t0;
+        }
         let first = 0;
         // A module with progressive results reports its first pictures early (`onUpdate`).
         const onUpdate = () => {
           if (!first) first = Date.now() - t0;
         };
+        // `--app` times a lookup as the app runs it: pictures start when the word is submitted,
+        // the definitions are fetched meanwhile, and the senses are handed over when they arrive.
+        let defs = 0;
+        if (appMode && si.prefetchSenseImages) {
+          si.prefetchSenseImages(w.lemma, { lang: w.lang });
+          await get(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(w.lemma)}`).catch(() => null);
+          defs = Date.now() - t0;
+        }
         const images = await si.fetchSenseImages(w.lemma, list, { lang: w.lang, onUpdate });
         const all = Date.now() - t0;
         if (!first) first = all;
         times.lookup.push(first);
         times.lookupAll.push(all);
+        if (images.some(Boolean)) {
+          times.pictured.push(first);
+          times.picturedAll.push(all);
+          if (appMode) times.afterDefs.push(Math.max(0, first - defs));
+        }
+        if (appMode) times.defs.push(defs);
+        if (traceLog) {
+          console.log(`  ${w.lemma}: first ${first} ms, all ${all} ms; ${traceLog.map((r) => `${r.kind} @${r.start}+${r.ms}`).join(', ')}`);
+          traceLog = null;
+        }
         if (!warm) {
           const major = majorSenses(list, si, w.lemma);
           row.senses = list.map((s, k) => ({
@@ -378,13 +443,13 @@ async function main() {
 
   // Cards and lookup each get their own cold module, so one does not warm the other.
   const passes = mode === 'both' ? ['cards', 'lookup'] : [mode];
-  const cold = { cards: [], lookup: [], lookupAll: [] };
+  const cold = { cards: [], lookup: [], lookupAll: [], pictured: [], picturedAll: [], defs: [], afterDefs: [] };
   const warm = { cards: [], lookup: [], lookupAll: [] };
   const t0 = Date.now();
   for (const p of passes) {
     const t = await run(false, p);
     cold[p] = t[p];
-    if (p === 'lookup') cold.lookupAll = t.lookupAll;
+    if (p === 'lookup') Object.assign(cold, { lookupAll: t.lookupAll, pictured: t.pictured, picturedAll: t.picturedAll, defs: t.defs, afterDefs: t.afterDefs });
   }
   const coldWall = Date.now() - t0;
   const coldRequests = requests - startRequests;
@@ -411,8 +476,15 @@ async function main() {
     report.push(`lookup: ${anyPic}/${looked.length} words with senses have a picture (${pct(anyPic, looked.length)}); ${words.length - looked.length} words had no Wiktionary senses`);
     report.push(`lookup senses: ${pics}/${senses} senses pictured (${pct(pics, senses)}); major senses ${majorPics}/${major} (${pct(majorPics, major)}); words with several major senses, all pictured: ${multiAll}/${multi.length}`);
     report.push(`lookup time to first picture, cold: median ${quantile(cold.lookup, 0.5)} ms, p90 ${quantile(cold.lookup, 0.9)} ms; all pictures: median ${quantile(cold.lookupAll, 0.5)} ms, p90 ${quantile(cold.lookupAll, 0.9)} ms; warm: median ${quantile(warm.lookup, 0.5)} ms, p90 ${quantile(warm.lookup, 0.9)} ms`);
+    report.push(`words that show a picture (${cold.pictured.length}), cold, from ${appMode ? 'submitting the word' : 'asking with the senses'}: first picture median ${quantile(cold.pictured, 0.5)} ms, p90 ${quantile(cold.pictured, 0.9)} ms; every picture median ${quantile(cold.picturedAll, 0.5)} ms, p90 ${quantile(cold.picturedAll, 0.9)} ms`);
+    if (appMode) report.push(`definitions arrived after median ${quantile(cold.defs, 0.5)} ms; first picture after the definitions: median ${quantile(cold.afterDefs, 0.5)} ms, p90 ${quantile(cold.afterDefs, 0.9)} ms`);
   }
   report.push(`warm pass made ${requests - r1} requests`);
+  if (trace) {
+    for (const [kind, list] of Object.entries(byKind).sort((a, b) => b[1].length - a[1].length)) {
+      report.push(`request ${kind}: ${list.length}, median ${quantile(list, 0.5)} ms, p90 ${quantile(list, 0.9)} ms`);
+    }
+  }
   const missingCards = rows.filter((r) => mode !== 'lookup' && !r.card).map((r) => r.lemma);
   const missingLookup = rows.filter((r) => r.senses && r.senses.length && !r.senses.some((s) => s.image)).map((r) => r.lemma);
   if (missingCards.length) report.push(`no card picture (${missingCards.length}): ${missingCards.slice(0, 80).join(', ')}`);
