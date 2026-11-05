@@ -77,8 +77,12 @@ function brokenBody(buf, cut) {
   });
 }
 
-async function scenario({ digest, mode = 'auto', skipped = null, api = 'ok', sumFile = true, cache = null, drops = 0 } = {}) {
+async function scenario({ digest, mode = 'auto', skipped = null, api = 'ok', sumFile = true, cache = null, drops = 0, leftovers = [] } = {}) {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'phevere-updater-'));
+  if (leftovers.length) {
+    fs.mkdirSync(path.join(userData, 'updates'), { recursive: true });
+    for (const name of leftovers) fs.writeFileSync(path.join(userData, 'updates', name), 'x');
+  }
   if (mode !== 'auto' || skipped) fs.writeFileSync(path.join(userData, 'update-prefs.json'), JSON.stringify({ mode, skipped }));
   if (cache) fs.writeFileSync(path.join(userData, 'update-releases.json'), JSON.stringify(cache));
   const fetched = [];
@@ -136,6 +140,12 @@ async function scenario({ digest, mode = 'auto', skipped = null, api = 'ok', sum
 }
 
 (async () => {
+  {
+    // Start-up keeps only downloads newer than the running version (3.0.0 here).
+    const { userData } = await scenario({ leftovers: ['Phevere-Setup-2.3.0-x64.exe', 'Phevere-Setup-3.0.0-x64.exe', 'Phevere-Setup-4.0.0-x64.exe'] });
+    assert.deepEqual(fs.readdirSync(path.join(userData, 'updates')), ['Phevere-Setup-4.0.0-x64.exe']);
+    fs.rmSync(userData, { recursive: true, force: true });
+  }
   {
     const { updater, userData, events } = await scenario();
     await updater.checkForUpdates();
