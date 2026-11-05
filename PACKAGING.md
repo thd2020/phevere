@@ -2,7 +2,9 @@
 
 2026-11-03: Desktop packages no longer carry the PP-OCRv4 models, which makes the x64 Setup.exe about 15 MB smaller (132.4 MB for 3.0.0, 117.6 MB now). Text recognition needs the OCR pack, a separate 13.7 MB release asset (`Phevere-OCR-PP-OCRv4.tar.gz`) that the app installs from Settings → Capture or that Setup downloads when you tick it under Custom options. Upgrading a Windows install made by 3.0 or earlier keeps the models it already has. See "OCR pack" below.
 
-2026-11-03: The Custom options page is regrouped: install location with the space required, Shortcuts, Startup, and Downloads with their sizes. A new install no longer creates a desktop shortcut unless you tick it.
+2026-11-05: The Custom options page is laid out the way Inno Setup, JetBrains and Visual Studio Installer lay out theirs: the install folder in one field with Browse beside it, then plain checkbox groups under short headings, with no cards around them. The pronunciation voice is a list of three choices with their sizes instead of a dropdown. While the options are open, the footer shows the space required on the left and Hide options and Install on the right. `node scripts/render-installer-ui.js` renders the page to PNG files in `out/installer-ui-render` without opening a window.
+
+2026-11-03: The Custom options page is regrouped: install location, Shortcuts, Startup, and Downloads with their sizes. A new install no longer creates a desktop shortcut unless you tick it.
 
 2026-10-25: Linux packages. `npm run make:linux:x64` / `make:linux:arm64` build a deb, an rpm and an AppImage per arch (`scripts/make-linux.js`, one maker at a time to save memory). Releases build them on Ubuntu 22.04 runners. See the Linux section below.
 
@@ -10,9 +12,9 @@
 
 ![Screenshot of the illustrated Windows installer with its Install button and Custom options](PACKAGING.assets/installer-main.png)
 
-Custom options replace the illustration within the same window. Each row is one checkbox you can click anywhere on, or reach with Tab and toggle with Space.
+Custom options replace the illustration within the same window. Every option is a checkbox or a radio button you can click on its label, or reach with Tab and toggle with Space; the arrow keys move between the voices.
 
-![Screenshot of Windows Setup custom options with install location, Shortcuts, Startup, and Downloads with sizes](PACKAGING.assets/installer-options.png)
+![Render of Windows Setup custom options: install location with Browse, Shortcuts, Startup, and Downloads with sizes](PACKAGING.assets/installer-options.png)
 
 The page as a new computer sees it: Start menu and Open Phevere after setup are on, everything else is off, and the space required counts the app plus whatever downloads are ticked.
 

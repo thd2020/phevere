@@ -45,12 +45,13 @@ internal sealed class SetupWindow : Window
     readonly long appBytes;
     readonly TextBox folder;
     readonly CheckBox ocr, desktop, startMenu, startup, launch, agreement;
-    readonly ComboBox voice;
+    /// <summary>Pronunciation voice: None, Standard, High quality (index 0, 1, 2).</summary>
+    readonly RadioButton[] voices;
     readonly Grid stage;
     readonly ScrollViewer optionsPanel;
     readonly System.Windows.Controls.Image hero;
-    readonly TextBlock heading, status;
-    TextBlock space;
+    readonly TextBlock heading, status, space;
+    readonly StackPanel actions, links;
     FontFamily display;
     readonly Button next, custom, cancel, skip;
     readonly ProgressBar progress;
@@ -75,20 +76,9 @@ internal sealed class SetupWindow : Window
  <Grid.Resources>
   <Style TargetType='TextBlock'><Setter Property='Foreground' Value='#1C1917'/><Setter Property='FontFamily' Value='Segoe UI'/><Setter Property='FontSize' Value='14'/><Setter Property='TextWrapping' Value='Wrap'/></Style>
   <Style TargetType='Button'><Setter Property='Foreground' Value='#1C1917'/><Setter Property='Background' Value='#FFFDF9'/><Setter Property='BorderBrush' Value='#D7C3BB'/><Setter Property='BorderThickness' Value='1'/><Setter Property='FontFamily' Value='Segoe UI'/><Setter Property='FontSize' Value='14'/><Setter Property='FontWeight' Value='SemiBold'/><Setter Property='Padding' Value='20,10'/><Setter Property='MinHeight' Value='42'/><Setter Property='Cursor' Value='Hand'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='Button'><Border x:Name='Plate' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='7' Padding='{TemplateBinding Padding}'><ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center' RecognizesAccessKey='True'/></Border><ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Plate' Property='Opacity' Value='0.86'/></Trigger><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Plate' Property='BorderBrush' Value='#9C3D00'/><Setter TargetName='Plate' Property='BorderThickness' Value='2'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter TargetName='Plate' Property='Opacity' Value='0.45'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
-  <Style TargetType='CheckBox'><Setter Property='FontFamily' Value='Segoe UI'/><Setter Property='FontSize' Value='14'/><Setter Property='Foreground' Value='#1C1917'/><Setter Property='Padding' Value='0'/><Setter Property='Margin' Value='0'/><Setter Property='Cursor' Value='Hand'/><Setter Property='FocusVisualStyle' Value='{x:Null}'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='CheckBox'><Grid Background='Transparent'><Border x:Name='Plate' Margin='4,1' CornerRadius='7' Background='Transparent'/><Border x:Name='Ring' Margin='4,1' CornerRadius='7' BorderThickness='2' BorderBrush='Transparent'/><Grid Margin='{TemplateBinding Padding}'><Grid.ColumnDefinitions><ColumnDefinition Width='30'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions><Border x:Name='Box' Width='18' Height='18' CornerRadius='4' BorderBrush='#85736C' BorderThickness='1.5' Background='#FFFDF9' VerticalAlignment='Center' HorizontalAlignment='Left'><Path x:Name='Tick' Data='M 3.5,8.5 L 7,12 L 14,4.5' Stroke='#FFF7F3' StrokeThickness='2' StrokeStartLineCap='Round' StrokeEndLineCap='Round' StrokeLineJoin='Round' Visibility='Collapsed' VerticalAlignment='Center' HorizontalAlignment='Center'/></Border><ContentPresenter Grid.Column='1' VerticalAlignment='Center' HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' RecognizesAccessKey='True'/></Grid></Grid><ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Plate' Property='Background' Value='#F6EFE8'/><Setter TargetName='Box' Property='BorderBrush' Value='#9C3D00'/></Trigger><Trigger Property='IsChecked' Value='True'><Setter TargetName='Box' Property='Background' Value='#9C3D00'/><Setter TargetName='Box' Property='BorderBrush' Value='#9C3D00'/><Setter TargetName='Tick' Property='Visibility' Value='Visible'/></Trigger><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Ring' Property='BorderBrush' Value='#9C3D00'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter TargetName='Box' Property='Opacity' Value='0.55'/><Setter Property='Cursor' Value='Arrow'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
-  <Style TargetType='TextBox'><Setter Property='FontFamily' Value='Segoe UI'/><Setter Property='FontSize' Value='14'/><Setter Property='Padding' Value='12,10'/><Setter Property='Background' Value='#F6F2EC'/><Setter Property='BorderBrush' Value='#D7C3BB'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='TextBox'><Border x:Name='Plate' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='1' CornerRadius='7'><ScrollViewer x:Name='PART_ContentHost'/></Border><ControlTemplate.Triggers><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Plate' Property='BorderBrush' Value='#9C3D00'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
-  <Style TargetType='ComboBox'>
-   <Setter Property='FontFamily' Value='Segoe UI'/><Setter Property='FontSize' Value='14'/><Setter Property='MinHeight' Value='42'/><Setter Property='Foreground' Value='#1C1917'/>
-   <Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ComboBox'><Grid>
-    <ToggleButton Focusable='False' IsChecked='{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}'>
-     <ToggleButton.Template><ControlTemplate TargetType='ToggleButton'><Border x:Name='ComboPlate' CornerRadius='7' Background='#F6F2EC' BorderBrush='#D7C3BB' BorderThickness='1'><Grid><Path Data='M 0,0 L 4,4 L 8,0' Stroke='#5C534E' StrokeThickness='1.5' HorizontalAlignment='Right' VerticalAlignment='Center' Margin='0,0,14,0'/></Grid></Border><ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='ComboPlate' Property='BorderBrush' Value='#9C3D00'/></Trigger></ControlTemplate.Triggers></ControlTemplate></ToggleButton.Template>
-    </ToggleButton>
-    <ContentPresenter Margin='12,9,34,9' VerticalAlignment='Center' IsHitTestVisible='False' Content='{TemplateBinding SelectionBoxItem}' ContentTemplate='{TemplateBinding SelectionBoxItemTemplate}'/>
-    <Border x:Name='KeyboardFocus' CornerRadius='7' BorderThickness='2' BorderBrush='Transparent' IsHitTestVisible='False'/>
-    <Popup x:Name='PART_Popup' Placement='Bottom' IsOpen='{TemplateBinding IsDropDownOpen}' AllowsTransparency='True' Focusable='False'><Border MinWidth='{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}' MaxHeight='220' CornerRadius='7' BorderBrush='#D7C3BB' BorderThickness='1' Background='#FFFDF9' Padding='4'><ScrollViewer><ItemsPresenter KeyboardNavigation.DirectionalNavigation='Contained'/></ScrollViewer></Border></Popup>
-   </Grid><ControlTemplate.Triggers><Trigger Property='IsKeyboardFocusWithin' Value='True'><Setter TargetName='KeyboardFocus' Property='BorderBrush' Value='#9C3D00'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
-  </Style>
-  <Style TargetType='ComboBoxItem'><Setter Property='Padding' Value='8,9'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ComboBoxItem'><Border x:Name='ItemPlate' Background='Transparent' CornerRadius='4' Padding='{TemplateBinding Padding}'><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property='IsHighlighted' Value='True'><Setter TargetName='ItemPlate' Property='Background' Value='#FFDBCC'/></Trigger><Trigger Property='IsSelected' Value='True'><Setter Property='FontWeight' Value='SemiBold'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
+  <Style TargetType='CheckBox'><Setter Property='FontFamily' Value='Segoe UI'/><Setter Property='FontSize' Value='14'/><Setter Property='Foreground' Value='#1C1917'/><Setter Property='Padding' Value='0'/><Setter Property='Margin' Value='0'/><Setter Property='Cursor' Value='Hand'/><Setter Property='FocusVisualStyle' Value='{x:Null}'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='CheckBox'><Grid Background='Transparent'><Border x:Name='Ring' Margin='-6,-3' CornerRadius='6' BorderThickness='2' BorderBrush='Transparent'/><Grid Margin='{TemplateBinding Padding}'><Grid.ColumnDefinitions><ColumnDefinition Width='28'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions><Border x:Name='Box' Width='18' Height='18' Margin='0,1,0,0' CornerRadius='4' BorderBrush='#85736C' BorderThickness='1.5' Background='#FFFDF9' VerticalAlignment='Top' HorizontalAlignment='Left'><Path x:Name='Tick' Data='M 3.5,8.5 L 7,12 L 14,4.5' Stroke='#FFF7F3' StrokeThickness='2' StrokeStartLineCap='Round' StrokeEndLineCap='Round' StrokeLineJoin='Round' Visibility='Collapsed' VerticalAlignment='Center' HorizontalAlignment='Center'/></Border><ContentPresenter Grid.Column='1' VerticalAlignment='Center' HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' RecognizesAccessKey='True'/></Grid></Grid><ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Box' Property='BorderBrush' Value='#9C3D00'/></Trigger><Trigger Property='IsChecked' Value='True'><Setter TargetName='Box' Property='Background' Value='#9C3D00'/><Setter TargetName='Box' Property='BorderBrush' Value='#9C3D00'/><Setter TargetName='Tick' Property='Visibility' Value='Visible'/></Trigger><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Ring' Property='BorderBrush' Value='#9C3D00'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter TargetName='Box' Property='Opacity' Value='0.5'/><Setter Property='Cursor' Value='Arrow'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
+  <Style TargetType='RadioButton'><Setter Property='FontFamily' Value='Segoe UI'/><Setter Property='FontSize' Value='14'/><Setter Property='Foreground' Value='#1C1917'/><Setter Property='Padding' Value='0'/><Setter Property='Cursor' Value='Hand'/><Setter Property='FocusVisualStyle' Value='{x:Null}'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='RadioButton'><Grid Background='Transparent'><Border x:Name='Ring' Margin='-6,-3' CornerRadius='6' BorderThickness='2' BorderBrush='Transparent'/><Grid Margin='{TemplateBinding Padding}'><Grid.ColumnDefinitions><ColumnDefinition Width='28'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions><Grid Width='18' Height='18' Margin='0,1,0,0' VerticalAlignment='Top' HorizontalAlignment='Left'><Ellipse x:Name='Dial' Stroke='#85736C' StrokeThickness='1.5' Fill='#FFFDF9'/><Ellipse x:Name='Dot' Width='8' Height='8' Fill='#9C3D00' Visibility='Collapsed'/></Grid><ContentPresenter Grid.Column='1' VerticalAlignment='Center' HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' RecognizesAccessKey='True'/></Grid></Grid><ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Dial' Property='Stroke' Value='#9C3D00'/></Trigger><Trigger Property='IsChecked' Value='True'><Setter TargetName='Dial' Property='Stroke' Value='#9C3D00'/><Setter TargetName='Dot' Property='Visibility' Value='Visible'/></Trigger><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Ring' Property='BorderBrush' Value='#9C3D00'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
+  <Style TargetType='TextBox'><Setter Property='FontFamily' Value='Segoe UI'/><Setter Property='FontSize' Value='14'/><Setter Property='Padding' Value='8,0'/><Setter Property='Background' Value='#FFFDF9'/><Setter Property='BorderBrush' Value='#D7C3BB'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='TextBox'><Border x:Name='Plate' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='1' CornerRadius='6'><ScrollViewer x:Name='PART_ContentHost' VerticalAlignment='Center'/></Border><ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Plate' Property='BorderBrush' Value='#85736C'/></Trigger><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Plate' Property='BorderBrush' Value='#9C3D00'/><Setter TargetName='Plate' Property='BorderThickness' Value='1,1,1,2'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
   <Style TargetType='ScrollBar'><Setter Property='Width' Value='8'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ScrollBar'><Track x:Name='PART_Track' IsDirectionReversed='True'><Track.DecreaseRepeatButton><RepeatButton Command='ScrollBar.PageUpCommand'><RepeatButton.Template><ControlTemplate TargetType='RepeatButton'><Border Background='Transparent'/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton><Track.Thumb><Thumb><Thumb.Template><ControlTemplate TargetType='Thumb'><Border Background='#B8ACA1' CornerRadius='4' Opacity='0.7'/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb><Track.IncreaseRepeatButton><RepeatButton Command='ScrollBar.PageDownCommand'><RepeatButton.Template><ControlTemplate TargetType='RepeatButton'><Border Background='Transparent'/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton></Track></ControlTemplate></Setter.Value></Setter></Style>
  </Grid.Resources>
  <Grid Margin='34,20,34,18'>
@@ -96,17 +86,23 @@ internal sealed class SetupWindow : Window
   <StackPanel Orientation='Horizontal' Margin='0,0,0,8'><TextBlock x:Name='Heading' Text='Phevere' FontSize='32' FontWeight='Bold'/><TextBlock x:Name='BuildLabel' FontSize='12' Foreground='#5C534E' VerticalAlignment='Bottom' Margin='12,0,0,8'/></StackPanel>
   <Grid x:Name='Stage' Grid.Row='1' Margin='0,0,0,10'>
    <Image x:Name='Hero' Stretch='Uniform' HorizontalAlignment='Stretch' VerticalAlignment='Center'/>
-   <ScrollViewer x:Name='OptionsPanel' Visibility='Collapsed' VerticalScrollBarVisibility='Auto' HorizontalScrollBarVisibility='Disabled' Margin='14,8,14,6'/>
+   <ScrollViewer x:Name='OptionsPanel' Visibility='Collapsed' VerticalScrollBarVisibility='Auto' HorizontalScrollBarVisibility='Disabled' Margin='0,8,0,6'/>
   </Grid>
-  <StackPanel Grid.Row='2'>
+  <Grid Grid.Row='2'>
+   <Grid.RowDefinitions><RowDefinition Height='Auto'/><RowDefinition Height='Auto'/><RowDefinition Height='Auto'/></Grid.RowDefinitions>
    <TextBlock x:Name='Status' TextAlignment='Center' Foreground='#5C534E' FontSize='13' Margin='0,0,0,8' Visibility='Collapsed'/>
-   <ProgressBar x:Name='Progress' Height='5' Maximum='1' Margin='52,0,52,16' Visibility='Collapsed' Foreground='#9C3D00' Background='#E0D8D0' BorderThickness='0'/>
-   <Button x:Name='InstallButton' Content='_Install' Width='186' MinHeight='46' FontSize='16' Background='#9C3D00' Foreground='#FFF7F3' BorderBrush='#9C3D00' HorizontalAlignment='Center' IsDefault='True'/>
-   <StackPanel Orientation='Horizontal' HorizontalAlignment='Center' Margin='0,6,0,8'>
-    <Button x:Name='CustomOptions' Content='Custom options' FontSize='12' MinHeight='28' Padding='8,4' Background='Transparent' BorderThickness='0' Foreground='#5C534E'/>
-    <Button x:Name='SkipModel' Content='Finish without model' FontSize='12' MinHeight='28' Padding='8,4' Background='Transparent' BorderThickness='0' Foreground='#5C534E' Visibility='Collapsed'/>
-   </StackPanel>
-  </StackPanel>
+   <ProgressBar x:Name='Progress' Grid.Row='1' Height='5' Maximum='1' Margin='52,0,52,16' Visibility='Collapsed' Foreground='#9C3D00' Background='#E0D8D0' BorderThickness='0'/>
+   <Grid Grid.Row='2'>
+    <TextBlock x:Name='Space' FontSize='12.5' Foreground='#5C534E' VerticalAlignment='Center' HorizontalAlignment='Left' Visibility='Collapsed'/>
+    <StackPanel x:Name='Actions' HorizontalAlignment='Center'>
+     <Button x:Name='InstallButton' Content='_Install' Width='186' MinHeight='46' FontSize='16' Background='#9C3D00' Foreground='#FFF7F3' BorderBrush='#9C3D00' HorizontalAlignment='Center' VerticalAlignment='Center' IsDefault='True'/>
+     <StackPanel x:Name='Links' Orientation='Horizontal' HorizontalAlignment='Center' VerticalAlignment='Center' Margin='0,6,0,8'>
+      <Button x:Name='CustomOptions' Content='Custom options' FontSize='12' MinHeight='28' Padding='8,4' Background='Transparent' BorderThickness='0' Foreground='#5C534E'/>
+      <Button x:Name='SkipModel' Content='Finish without model' FontSize='12' MinHeight='28' Padding='8,4' Background='Transparent' BorderThickness='0' Foreground='#5C534E' Visibility='Collapsed'/>
+     </StackPanel>
+    </StackPanel>
+   </Grid>
+  </Grid>
   <Grid Grid.Row='3'>
    <StackPanel x:Name='AgreementPanel' Orientation='Horizontal' VerticalAlignment='Center'>
     <CheckBox x:Name='Agreement' Content='I agree to the' FontSize='12' Margin='0,0,0,0' IsChecked='True'/>
@@ -134,6 +130,7 @@ internal sealed class SetupWindow : Window
         heading = Find<TextBlock>(root, "Heading"); status = Find<TextBlock>(root, "Status");
         stage = Find<Grid>(root, "Stage"); hero = Find<System.Windows.Controls.Image>(root, "Hero"); optionsPanel = Find<ScrollViewer>(root, "OptionsPanel");
         next = Find<Button>(root, "InstallButton"); custom = Find<Button>(root, "CustomOptions"); cancel = Find<Button>(root, "CloseButton"); skip = Find<Button>(root, "SkipModel"); progress = Find<ProgressBar>(root, "Progress");
+        space = Find<TextBlock>(root, "Space"); actions = Find<StackPanel>(root, "Actions"); links = Find<StackPanel>(root, "Links");
         agreement = Find<CheckBox>(root, "Agreement");
         var fontDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "fonts") + Path.DirectorySeparatorChar;
         if (Directory.Exists(fontDirectory)) display = new FontFamily(new Uri(fontDirectory, UriKind.Absolute), "#Outfit");
@@ -144,7 +141,7 @@ internal sealed class SetupWindow : Window
             var bitmap = new System.Windows.Media.Imaging.BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad; bitmap.UriSource = new Uri(art); bitmap.EndInit(); bitmap.Freeze(); hero.Source = bitmap;
         }
         try { Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.ico"))); } catch { }
-        folder = new TextBox { Text = fresh ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Phevere") : ExistingFolder(), MinHeight = 40, VerticalContentAlignment = VerticalAlignment.Center };
+        folder = new TextBox { Text = fresh ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Phevere") : ExistingFolder(), MinHeight = 34, VerticalContentAlignment = VerticalAlignment.Center };
         System.Windows.Automation.AutomationProperties.SetName(folder, "Install location");
         // Start menu on, desktop off for a new install (the Windows default); an upgrade keeps the last choice.
         startMenu = Option("Start menu", null, ExistingChoice("StartMenuShortcut", File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "Phevere.lnk")), true));
@@ -154,12 +151,11 @@ internal sealed class SetupWindow : Window
         ocrInstalled = !fresh && OcrPackPresent(folder.Text);
         ocr = Option("OCR pack", "For hover lookup and Scan", ocrInstalled);
         if (ocrInstalled) ocr.IsEnabled = false;
-        voice = new ComboBox { MinHeight = 36, Width = 196, VerticalAlignment = VerticalAlignment.Center };
-        voice.Items.Add("None"); voice.Items.Add("Standard (132 MB)"); voice.Items.Add("High quality, recommended (350 MB)"); voice.SelectedIndex = fresh ? 0 : ExistingVoice();
-        System.Windows.Automation.AutomationProperties.SetName(voice, "Pronunciation voice");
+        int savedVoice = fresh ? 0 : ExistingVoice();
+        voices = new[] { Choice("None", null, savedVoice == 0), Choice("Standard", "132 MB", savedVoice == 1), Choice("High quality, recommended", "350 MB", savedVoice == 2) };
         BuildOptions();
         foreach (var box in new[] { ocr, desktop, startMenu, startup, launch }) { box.Checked += delegate { UpdateSpace(); }; box.Unchecked += delegate { UpdateSpace(); }; }
-        voice.SelectionChanged += delegate { UpdateSpace(); };
+        foreach (var choice in voices) choice.Checked += delegate { UpdateSpace(); };
         UpdateSpace();
         custom.Click += delegate { optionsOpen = !optionsOpen; ShowStage(); if (optionsOpen) folder.Focus(); };
         Find<Button>(root, "License").Click += delegate { try { Process.Start(new ProcessStartInfo("https://github.com/thd2020/phevere/blob/main/LICENSE") { UseShellExecute = true }); } catch (Exception error) { ShowStatus(error.Message, true); } };
@@ -175,107 +171,122 @@ internal sealed class SetupWindow : Window
     static string Get(Dictionary<string, string> options, string key, string fallback) { string value; return options.TryGetValue(key, out value) ? value : fallback; }
     static bool On(CheckBox box) { return box.IsChecked == true; }
     static Brush Hex(string value) { var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(value)); brush.Freeze(); return brush; }
-    static readonly Brush Ink = Hex("#1C1917"), Muted = Hex("#5C534E"), Rule = Hex("#E6DCD3"), Card = Hex("#FFFDF9");
+    static readonly Brush Ink = Hex("#1C1917"), Muted = Hex("#5C534E"), Rule = Hex("#E6DCD3");
 
-    /// <summary>One option row: the whole row is the checkbox, so a click anywhere on it toggles.</summary>
+    /// <summary>One option: a checkbox with its label, an optional detail line under it, and a size at the end of the line.</summary>
     CheckBox Option(string title, string detail, bool selected) {
-        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        text.Children.Add(new TextBlock { Text = title, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink, TextWrapping = TextWrapping.Wrap });
-        if (detail != null) text.Children.Add(new TextBlock { Text = detail, FontSize = 12.5, Foreground = Muted, Margin = new Thickness(0, 1, 0, 0), TextWrapping = TextWrapping.Wrap });
-        var row = new Grid();
-        row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        row.Children.Add(text);
-        var size = new TextBlock { FontSize = 12.5, Foreground = Muted, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
-        Grid.SetColumn(size, 1); row.Children.Add(size);
-        var box = new CheckBox { Content = row, IsChecked = selected, Padding = new Thickness(14, 10, 14, 10), HorizontalContentAlignment = HorizontalAlignment.Stretch, Tag = size };
+        var box = new CheckBox { Content = OptionText(title, detail), IsChecked = selected, HorizontalContentAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, 10) };
+        box.Tag = ((Grid)box.Content).Children[1];
         System.Windows.Automation.AutomationProperties.SetName(box, detail == null ? title : title + ", " + detail);
         return box;
     }
 
+    /// <summary>One choice of a radio group, with its size at the end of the line.</summary>
+    RadioButton Choice(string title, string size, bool selected) {
+        var choice = new RadioButton { Content = OptionText(title, null), GroupName = "Voice", IsChecked = selected, HorizontalContentAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, 8) };
+        ((TextBlock)((Grid)choice.Content).Children[1]).Text = size ?? "";
+        System.Windows.Automation.AutomationProperties.SetName(choice, size == null ? title : title + ", " + size);
+        return choice;
+    }
+
+    static Grid OptionText(string title, string detail) {
+        var text = new StackPanel();
+        text.Children.Add(new TextBlock { Text = title, FontSize = 14, Foreground = Ink, TextWrapping = TextWrapping.Wrap });
+        if (detail != null) text.Children.Add(new TextBlock { Text = detail, FontSize = 12.5, Foreground = Muted, Margin = new Thickness(0, 1, 0, 0), TextWrapping = TextWrapping.Wrap });
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.Children.Add(text);
+        var size = new TextBlock { FontSize = 12.5, Foreground = Muted, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(12, 1, 0, 0) };
+        Grid.SetColumn(size, 1); row.Children.Add(size);
+        return row;
+    }
+
     static void SetSize(CheckBox box, string text) { ((TextBlock)box.Tag).Text = text; }
 
-    TextBlock SectionTitle(string text) {
-        var title = new TextBlock { Text = text, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Muted, Margin = new Thickness(2, 0, 0, 8) };
+    TextBlock SectionTitle(string text, double top) {
+        var title = new TextBlock { Text = text, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink, Margin = new Thickness(0, top, 0, 10) };
         if (display != null) title.FontFamily = display;
         return title;
     }
 
-    static Border Group(params FrameworkElement[] rows) {
-        var stack = new StackPanel();
-        for (int i = 0; i < rows.Length; i++) {
-            if (i > 0) stack.Children.Add(new Border { Height = 1, Background = Rule, Margin = new Thickness(14, 0, 14, 0) });
-            stack.Children.Add(rows[i]);
-        }
-        return new Border { Background = Card, BorderBrush = Rule, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(0, 3, 0, 3), Child = stack };
-    }
-
-    static StackPanel Section(TextBlock title, Border group, double bottom) {
-        var section = new StackPanel { Margin = new Thickness(0, 0, 0, bottom) };
-        section.Children.Add(title); section.Children.Add(group);
-        return section;
-    }
-
     /// <summary>
-    /// Custom options: install location across the top, then two columns. Shortcuts and
-    /// Startup on the left; downloads (each with its size) on the right. Rows are whole-row
-    /// checkboxes in cards, reachable with Tab and toggled with Space.
+    /// Custom options, laid out the way Inno Setup, JetBrains and Visual Studio Installer lay out
+    /// theirs: the install folder in one field with Browse beside it, a rule, then plain groups of
+    /// checkboxes under short headings in two columns (Shortcuts and Startup on the left, Downloads
+    /// on the right, each with its size). No cards; the space required sits in the footer by Install.
     /// </summary>
     void BuildOptions() {
-        var page = new Grid { Margin = new Thickness(0, 2, 6, 4) };
-        page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        page.ColumnDefinitions.Add(new ColumnDefinition()); page.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) }); page.ColumnDefinitions.Add(new ColumnDefinition());
+        var page = new Grid { Margin = new Thickness(0, 4, 0, 4) };
+        for (int i = 0; i < 3; i++) page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        page.ColumnDefinitions.Add(new ColumnDefinition()); page.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) }); page.ColumnDefinitions.Add(new ColumnDefinition());
         optionsPanel.Content = page;
 
-        var locationHeader = new Grid();
-        locationHeader.ColumnDefinitions.Add(new ColumnDefinition()); locationHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        locationHeader.Children.Add(SectionTitle("Install location"));
-        space = new TextBlock { FontSize = 12.5, Foreground = Muted, Margin = new Thickness(0, 0, 2, 8), VerticalAlignment = VerticalAlignment.Bottom };
-        Grid.SetColumn(space, 1); locationHeader.Children.Add(space);
-        var directoryRow = new Grid { Margin = new Thickness(12, 9, 12, 9) };
+        var location = new StackPanel();
+        var locationTitle = new Label { Content = "Install _location", Target = folder, Padding = new Thickness(0), Margin = new Thickness(0, 0, 0, 8), FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink, FontFamily = display ?? new FontFamily("Segoe UI") };
+        location.Children.Add(locationTitle);
+        var directoryRow = new Grid();
         directoryRow.ColumnDefinitions.Add(new ColumnDefinition()); directoryRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         directoryRow.Children.Add(folder);
-        var browse = new Button { Content = "_Browse…", Margin = new Thickness(10, 0, 0, 0), Padding = new Thickness(16, 6, 16, 6), MinHeight = 40 }; Grid.SetColumn(browse, 1); directoryRow.Children.Add(browse);
+        var browse = new Button { Content = "_Browse…", Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(14, 0, 14, 0), MinHeight = 34, FontSize = 13.5 }; Grid.SetColumn(browse, 1); directoryRow.Children.Add(browse);
         browse.Click += delegate { using (var dialog = new System.Windows.Forms.FolderBrowserDialog { Description = "Install Phevere in", SelectedPath = folder.Text, ShowNewFolderButton = true }) if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK) folder.Text = dialog.SelectedPath; };
-        var locationCard = Group(directoryRow); locationCard.Padding = new Thickness(0);
-        var location = new StackPanel { Margin = new Thickness(0, 0, 0, 18) };
-        location.Children.Add(locationHeader); location.Children.Add(locationCard);
+        location.Children.Add(directoryRow);
         Grid.SetColumnSpan(location, 3); page.Children.Add(location);
 
-        var left = new StackPanel();
-        left.Children.Add(Section(SectionTitle("Shortcuts"), Group(startMenu, desktop), 18));
-        left.Children.Add(Section(SectionTitle("Startup"), Group(startup, launch), 0));
-        Grid.SetRow(left, 1); page.Children.Add(left);
+        var rule = new Border { Height = 1, Background = Rule, Margin = new Thickness(0, 22, 0, 18) };
+        Grid.SetRow(rule, 1); Grid.SetColumnSpan(rule, 3); page.Children.Add(rule);
 
-        var downloadRows = new List<FrameworkElement> { ocr };
+        var left = new StackPanel();
+        left.Children.Add(SectionTitle("Shortcuts", 0)); left.Children.Add(startMenu); left.Children.Add(desktop);
+        left.Children.Add(SectionTitle("Startup", 12)); left.Children.Add(startup); left.Children.Add(launch);
+        Grid.SetRow(left, 2); page.Children.Add(left);
+
+        var right = new StackPanel();
+        right.Children.Add(SectionTitle("Downloads", 0)); right.Children.Add(ocr);
         if (arch != "arm64") {
-            // Text lines up with the checkbox labels above; the picker sits under its title.
-            var voiceRow = new StackPanel { Margin = new Thickness(44, 10, 14, 12) };
-            var voiceTitle = new Label { Content = "_Pronunciation voice", Target = voice, Padding = new Thickness(0), FontFamily = new FontFamily("Segoe UI"), FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Ink };
-            voiceRow.Children.Add(voiceTitle);
-            voiceRow.Children.Add(new TextBlock { Text = "Kokoro neural voice", FontSize = 12.5, Foreground = Muted, Margin = new Thickness(0, 1, 0, 8) });
-            voice.Width = Double.NaN; voice.HorizontalAlignment = HorizontalAlignment.Stretch;
-            voiceRow.Children.Add(voice);
-            downloadRows.Add(voiceRow);
+            // The voices are a radio group indented under its name, like a component's sub-options.
+            var voiceTitle = new StackPanel { Margin = new Thickness(0, 4, 0, 8) };
+            voiceTitle.Children.Add(new TextBlock { Text = "Pronunciation voice", FontSize = 14, Foreground = Ink });
+            voiceTitle.Children.Add(new TextBlock { Text = "Kokoro neural voice", FontSize = 12.5, Foreground = Muted, Margin = new Thickness(0, 1, 0, 0) });
+            right.Children.Add(voiceTitle);
+            var group = new StackPanel { Margin = new Thickness(2, 0, 0, 0) };
+            System.Windows.Automation.AutomationProperties.SetName(group, "Pronunciation voice");
+            foreach (var choice in voices) group.Children.Add(choice);
+            right.Children.Add(group);
         }
-        var right = Section(SectionTitle("Downloads"), Group(downloadRows.ToArray()), 0);
-        Grid.SetRow(right, 1); Grid.SetColumn(right, 2); page.Children.Add(right);
+        Grid.SetRow(right, 2); Grid.SetColumn(right, 2); page.Children.Add(right);
     }
 
     static long Megabytes(long bytes) { return (bytes + 524288) / 1048576; }
+
+    int VoiceIndex { get { return voices[2].IsChecked == true ? 2 : voices[1].IsChecked == true ? 1 : 0; } }
 
     void UpdateSpace() {
         SetSize(ocr, ocrInstalled ? "Installed" : "14 MB");
         long total = appBytes;
         if (On(ocr) && !ocrInstalled) total += OcrPackBytes;
-        if (arch != "arm64") total += voice.SelectedIndex == 2 ? 350L * 1048576 : voice.SelectedIndex == 1 ? 132L * 1048576 : 0;
+        if (arch != "arm64") total += VoiceIndex == 2 ? 350L * 1048576 : VoiceIndex == 1 ? 132L * 1048576 : 0;
         space.Text = total > 0 ? "Space required: " + Megabytes(total).ToString("N0") + " MB" : "";
     }
 
+    /// <summary>
+    /// The hero page has a large centred Install with Custom options under it. With the options open,
+    /// the footer becomes a wizard bar: space required on the left, Hide options and Install on the right.
+    /// </summary>
     void ShowStage() {
         bool showOptions = optionsOpen && !installing && !complete && !downloadFailed;
         hero.Visibility = showOptions ? Visibility.Collapsed : Visibility.Visible;
         optionsPanel.Visibility = showOptions ? Visibility.Visible : Visibility.Collapsed;
         custom.Content = showOptions ? "Hide options" : "Custom options";
+        space.Visibility = showOptions && space.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        actions.Children.Clear();
+        if (showOptions) { actions.Children.Add(links); actions.Children.Add(next); } else { actions.Children.Add(next); actions.Children.Add(links); }
+        actions.Orientation = showOptions ? Orientation.Horizontal : Orientation.Vertical;
+        actions.HorizontalAlignment = showOptions ? HorizontalAlignment.Right : HorizontalAlignment.Center;
+        actions.Margin = showOptions ? new Thickness(0, 4, 0, 14) : new Thickness(0);
+        space.Margin = actions.Margin;
+        links.Margin = showOptions ? new Thickness(0, 0, 10, 0) : new Thickness(0, 6, 0, 8);
+        custom.FontSize = showOptions ? 13.5 : 12;
+        next.Width = showOptions ? 132 : 186; next.MinHeight = showOptions ? 38 : 46; next.FontSize = showOptions ? 14 : 16;
     }
 
     void ShowStatus(string text, bool error) {
@@ -284,7 +295,7 @@ internal sealed class SetupWindow : Window
     }
 
     InstallChoices Snapshot() {
-        return new InstallChoices { Folder = folder.Text, Ocr = On(ocr) && !ocrInstalled, Desktop = On(desktop), StartMenu = On(startMenu), Startup = On(startup), Launch = On(launch), Model = arch == "arm64" ? "none" : voice.SelectedIndex == 2 ? "kokoro-full" : voice.SelectedIndex == 1 ? "kokoro-compact" : "none" };
+        return new InstallChoices { Folder = folder.Text, Ocr = On(ocr) && !ocrInstalled, Desktop = On(desktop), StartMenu = On(startMenu), Startup = On(startup), Launch = On(launch), Model = arch == "arm64" ? "none" : VoiceIndex == 2 ? "kokoro-full" : VoiceIndex == 1 ? "kokoro-compact" : "none" };
     }
 
     void ValidateFolder() {
