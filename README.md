@@ -55,19 +55,15 @@ Phevere is a dictionary that works wherever you read. Select a word in any app t
 
 ## Download
 
-Get the file for your device from the [latest release](https://github.com/thd2020/phevere/releases/latest).
+Every download is on the [latest release](https://github.com/thd2020/phevere/releases/latest), with Arm builds for Linux too.
 
-| Device | File | Requires |
+| Platform | Download | Requires |
 |---|---|---|
-| Windows (most PCs) | `Phevere-Setup-<version>-x64.exe` | Windows 10 |
-| Windows on Arm | `Phevere-Setup-<version>-arm64.exe` | Windows 11 |
-| Mac with Apple silicon | `Phevere-<version>-darwin-arm64.dmg` | macOS 11 |
-| Mac with Intel | `Phevere-<version>-darwin-x64.dmg` | macOS 11 |
-| Debian, Ubuntu | `phevere_<version>_amd64.deb` | Ubuntu 22.04 |
-| Fedora, openSUSE | `phevere-<version>-1.x86_64.rpm` | Fedora 36 |
-| Other Linux | `Phevere-<version>-x64.AppImage` | Ubuntu 22.04 or equivalent |
-| Android | `Phevere-<version>-android.apk` | Android 7.0 |
-| iOS | `Phevere-<version>-ios-unsigned.ipa` (sign it yourself) | iOS 15.1 |
+| Windows | <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="x64 Setup" src="https://img.shields.io/badge/x64-Setup-3d444d?style=for-the-badge&labelColor=1f2328&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wIDBoMTEuNHYxMS40SDB6TTEyLjYgMEgyNHYxMS40SDEyLjZ6TTAgMTIuNmgxMS40VjI0SDB6TTEyLjYgMTIuNkgyNFYyNEgxMi42eiIvPjwvc3ZnPg%3D%3D&logoColor=white"></a> <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="ARM64 Setup" src="https://img.shields.io/badge/ARM64-Setup-3d444d?style=for-the-badge&labelColor=1f2328&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wIDBoMTEuNHYxMS40SDB6TTEyLjYgMEgyNHYxMS40SDEyLjZ6TTAgMTIuNmgxMS40VjI0SDB6TTEyLjYgMTIuNkgyNFYyNEgxMi42eiIvPjwvc3ZnPg%3D%3D&logoColor=white"></a> | Windows 10 |
+| macOS | <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="Apple silicon DMG" src="https://img.shields.io/badge/Apple%20silicon-DMG-3d444d?style=for-the-badge&labelColor=1f2328&logo=apple&logoColor=white"></a> <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="Intel DMG" src="https://img.shields.io/badge/Intel-DMG-3d444d?style=for-the-badge&labelColor=1f2328&logo=apple&logoColor=white"></a> | macOS 11 |
+| Linux | <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="Debian, Ubuntu DEB" src="https://img.shields.io/badge/Debian%2C%20Ubuntu-DEB-3d444d?style=for-the-badge&labelColor=1f2328&logo=debian&logoColor=white"></a> <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="Fedora, openSUSE RPM" src="https://img.shields.io/badge/Fedora%2C%20openSUSE-RPM-3d444d?style=for-the-badge&labelColor=1f2328&logo=fedora&logoColor=white"></a> <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="Any distribution AppImage" src="https://img.shields.io/badge/Any%20distribution-AppImage-3d444d?style=for-the-badge&labelColor=1f2328&logo=linux&logoColor=white"></a> | Ubuntu 22.04, Fedora 36 |
+| Android | <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="Android APK" src="https://img.shields.io/badge/Android-APK-3d444d?style=for-the-badge&labelColor=1f2328&logo=android&logoColor=white"></a> | Android 7.0 |
+| iOS | <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="iOS IPA" src="https://img.shields.io/badge/iOS-IPA-3d444d?style=for-the-badge&labelColor=1f2328&logo=ios&logoColor=white"></a> | iOS 15.1, sign it yourself |
 
 Windows and macOS show a warning the first time you open Phevere; choose to run it anyway. Setup notes: [macOS](docs/MACOS_SELECTION.md), [Linux](docs/LINUX_SELECTION.md), [Android](apps/mobile/ANDROID.md).
 
