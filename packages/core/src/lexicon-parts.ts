@@ -114,7 +114,7 @@ function words(items: Array<{ word: string }>, links: LexiconLinks): string {
 
 /** The Word family section, or '' when the word has none. */
 export function wordFamilyHtml(groups: WordFamilyGroup[] | null | undefined, links: LexiconLinks): string {
-  const byRel = new Map<string, Array<{ word: string }>>();
+  const byRel = new Map<string, Array<{ word: string; rare?: boolean }>>();
   for (const g of groups || []) {
     const items = (g.items || []).filter((i) => i && String(i.word || '').trim());
     if (items.length) byRel.set(String(g.relation), [...(byRel.get(String(g.relation)) || []), ...items]);
@@ -127,8 +127,10 @@ export function wordFamilyHtml(groups: WordFamilyGroup[] | null | undefined, lin
   for (const f of FAMILY) {
     const items = byRel.get(f.relation) || [];
     if (!items.length) continue;
-    const shown = items.slice(0, f.shown);
-    const rest = items.slice(f.shown);
+    // In a long list, words with no recorded use ("redundantant") wait under "All".
+    const common = items.length > f.shown ? items.filter((i) => !i.rare) : items;
+    const shown = (common.length ? common : items).slice(0, f.shown);
+    const rest = items.filter((i) => !shown.includes(i));
     parts.push(`<div class="lx-fam">
       <h4 class="lx-label">${f.label}${items.length > f.shown ? ` <span class="lx-count">${items.length}</span>` : ''}</h4>
       <p class="lx-words">${words(shown, links)}</p>

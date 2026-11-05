@@ -143,6 +143,56 @@ assert.equal(wordFamilyHtml([], 'act'), '');
   assert.deepEqual(familyFromKaikki(other, 'redundant', 'en'), [], 'another language section is not read');
 }
 
+// Word family by frequency: Datamuse's answer for "*redund*" of 2026-11-05, shortened. Common
+// words lead; coinages Datamuse does not list wait under "All" when the list is long.
+(async () => {
+  const { familyStem, fetchFamilyFrequencies, rankFamilyByFrequency } = load('word-family');
+  assert.equal(familyStem('redundant'), 'redund');
+  assert.equal(familyStem('dichotomy'), 'dichot');
+  assert.equal(familyStem('time'), 'time');
+  const asked = [];
+  const http = {
+    requestJson: async (url) => {
+      asked.push(url);
+      return [
+        { word: 'redundant', tags: ['f:3.407348'] },
+        { word: 'redundancy', tags: ['f:2.668625'] },
+        { word: 'redundantly', tags: ['f:0.069678'] },
+        { word: 'redundance', tags: ['f:0.041261'] },
+        { word: 'cyclic redundancy check', tags: ['f:0.000000'] },
+      ];
+    },
+  };
+  const freq = await fetchFamilyFrequencies(http, 'redundant');
+  assert.match(asked[0], /sp=\*redund\*&md=f/, 'one wildcard query for the stem');
+  assert.equal(freq.complete, true);
+  const coinages = ['redundantant', 'irredundant', 'reredundant', 'georedundant', 'semiredundant', 'redundundant', 'hyperredundant',
+    'superredundant', 'multiredundant', 'preredundant', 'postredundant', 'unredundant', 'antiredundant'];
+  const ranked = rankFamilyByFrequency(
+    [
+      { relation: 'derived', items: [...coinages.slice(0, 1), 'redundantly', ...coinages.slice(1)].map((word) => ({ word })) },
+      { relation: 'related', items: ['redound', 'redundance', 'redundancy'].map((word) => ({ word })) },
+      { relation: 'alternatives', items: [{ word: 'redundent' }] },
+    ],
+    freq,
+  );
+  const byRel = Object.fromEntries(ranked.map((g) => [g.relation, g.items]));
+  assert.deepEqual(byRel.related.map((i) => i.word), ['redundancy', 'redundance', 'redound'], 'commonest first; a word without the stem is not called rare');
+  assert.equal(byRel.derived[0].word, 'redundantly', 'the real derivative before the coinages');
+  assert.ok(byRel.derived.slice(1).every((i) => i.rare), 'words with the stem that Datamuse does not list are rare');
+  assert.ok(!byRel.related.some((i) => i.rare));
+  assert.deepEqual(byRel.alternatives, [{ word: 'redundent' }], 'other groups keep their order');
+  const famHtml = wordFamilyHtml(ranked, 'lookup');
+  const line = famHtml.split('<details')[0];
+  assert.match(line, /data-lookup="redundantly"/);
+  assert.doesNotMatch(line, /data-lookup="redundantant"/, 'a coinage waits under All in a long list');
+  assert.match(famHtml, /<summary>All 14<\/summary>[\s\S]*data-lookup="redundantant"/, 'and is still listed there');
+  assert.deepEqual(rankFamilyByFrequency(ranked, null), ranked, 'no frequencies, no change');
+})().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+
 // Saved headwords in dictionary form.
 assert.equal(normalizeVocabLemma('CODON', { pos: 'noun', lang: 'en' }), 'codon');
 assert.equal(normalizeVocabLemma('Bunny,', { pos: 'noun', lang: 'en' }), 'bunny');

@@ -94,7 +94,18 @@ import {
   cleanIpa,
 } from './pronunciation';
 import { arpabetToIpa, cmuIpaFor } from './cmu-ipa';
-import { buildWordFamily, mergeWordFamilyGroups, mergeWordFamilyGroupsFor, familyFromEtymologyChain, familyFromKaikki, type WordFamilyGroup } from './word-family';
+import {
+  buildWordFamily,
+  mergeWordFamilyGroups,
+  mergeWordFamilyGroupsFor,
+  familyFromEtymologyChain,
+  familyFromKaikki,
+  fetchFamilyFrequencies,
+  familyStem,
+  rankFamilyByFrequency,
+  type FamilyFrequencies,
+  type WordFamilyGroup,
+} from './word-family';
 import {
   fetchJisho,
   fetchKaikki,
@@ -1397,7 +1408,8 @@ export class DictionaryService extends BaseService {
       (r.examples || []).length,
       (r.etymology || '').length,
       JSON.stringify(r.metadata?.etymologyUnavailable || []),
-      (r.wordFamily || []).length,
+      // A later family source or the frequencies can add words or reorder them in the same groups.
+      (r.wordFamily || []).map((g) => `${g.relation}:${g.items.length}:${g.items.slice(0, 3).map((i) => i.word).join(',')}`).join('|'),
       hasInflections(r.inflections) ? (r.inflections!.tables.length + r.inflections!.formOf.length) : 0,
       r.metadata?.pendingTranslation ? 1 : 0,
       r.metadata?.pendingEtymology ? 1 : 0,
@@ -1870,6 +1882,19 @@ export class DictionaryService extends BaseService {
           .catch((): undefined => undefined),
       );
     }
+    // How common each derived and related word is, so "redundancy" leads and "redundantant" waits
+    // under All: one Datamuse query for every word containing the stem.
+    let familyFrequencies: FamilyFrequencies | null = null;
+    const stem = langForDict === 'en' && isSourceEnabled('Datamuse') ? familyStem(languageWord) : '';
+    if (stem) {
+      auxPromises.push(
+        this.cachedSource('familyFrequency', stem, () => fetchFamilyFrequencies(getHttp(), languageWord), (d) => !!d)
+          .then((r) => {
+            if (r.data) familyFrequencies = r.data as FamilyFrequencies;
+          })
+          .catch((): undefined => undefined),
+      );
+    }
 
     if (preferLatinSources && !hasCJK && isSourceEnabled('Datamuse')) {
       if (!this.isSourceDown('datamuse')) expectedSources.push('datamuse');
@@ -2141,7 +2166,7 @@ export class DictionaryService extends BaseService {
             : undefined;
       const ipaList = mergePronunciations(pronunciations, fallbackIpa);
       const ipaLine = formatPronunciationLine(ipaList) || pronunciation;
-      const wordFamily = mergeWordFamilyGroupsFor(
+      const wordFamily = rankFamilyByFrequency(mergeWordFamilyGroupsFor(
         headword,
         wikiFamily,
         kaikkiFamily,
@@ -2151,7 +2176,7 @@ export class DictionaryService extends BaseService {
           language: sourceLanguage,
           definitions: mergedDefinitions,
         }),
-      );
+      ), familyFrequencies);
       return {
         word: headword,
         pronunciation: ipaLine,
