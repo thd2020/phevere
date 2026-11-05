@@ -37,6 +37,11 @@ export interface ContextEvent {
   coordSpace?: 'dip' | 'physical';
   /** OCR / fuzzy confidence in [0, 1]. */
   confidence?: number;
+  /**
+   * The user asked for this lookup with the trigger shortcut, so it opens the pop-up
+   * even after the shortcut was released. Hover sets it on the word it reads for a trigger.
+   */
+  requested?: boolean;
   bounds?: ContextBounds;
   /** Cache key for captured bitmaps. */
   imageHash?: string;

@@ -34,6 +34,7 @@ const mainContext = {
   screen: require('electron').screen,
   log: { debug() {} },
   placePopupNearPoint: (x, y) => ({ x, y }),
+  setWindowBounds: (target, rect) => target.setBounds(rect, false),
 };
 vm.runInNewContext(mainSource.slice(handlerStart, handlerEnd), mainContext);
 
@@ -43,6 +44,7 @@ const retargetEnd = mainSource.indexOf('// An open lookup panel', retargetStart)
 const retargetContext = {
   inFlightPopup: { isDestroyed: () => false },
   isCollapsedStrip: () => false,
+  stripTargets: new WeakMap(),
   popupWidth: 315, popupHeight: 36, space: 'dip',
   placePopupNearPoint: () => { throw Error('expanded popup was retargeted'); },
   log: { warn: (_scope, _message, detail) => { throw Error(detail.err); } },
@@ -136,6 +138,13 @@ app.whenReady().then(async () => {
   await js(`collapseToolbar()`);
   await tick();
   await visibleControls('strip');
+  // A strip moved to a new word gets its full auto-close time again.
+  await js(`timeoutDuration = 700; startAutoCloseTimeout()`);
+  await tick(450);
+  win.webContents.send('test-text', 'third selection', Date.now());
+  await tick(450);
+  assert.ok(!win.isDestroyed(), 'a new word must restart the strip auto-close timer');
+  await js(`timeoutDuration = 10000; startAutoCloseTimeout()`);
   await js(`document.getElementById('settingsIcon').click()`);
   await tick();
   await visibleControls('options');

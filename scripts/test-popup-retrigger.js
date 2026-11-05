@@ -35,8 +35,11 @@ function declaration(name) {
 
 let now = 10000;
 let created = 0;
+// Strips open off screen and never take focus, so the test does not disturb the desktop.
 class TrackedWindow extends BrowserWindow {
   constructor(options) { super(options); created++; }
+  show() { this.showInactive(); }
+  focus() {}
 }
 const context = vm.createContext({
   BrowserWindow: TrackedWindow,
@@ -45,7 +48,9 @@ const context = vm.createContext({
   TRIGGER_AFTER_SELECTION_MAX_MS: 60000,
   lastSelectionEvent: { text: 'repeat', x: 100, y: 100, timestamp: now, coordSpace: 'dip' },
   lastSelectedText: 'repeat', lastPopupAt: 0, lastPopupText: '', popupWindows: [], inFlightPopup: null,
-  placePopupNearPoint: (x, y) => ({ x, y, displayId: 1 }),
+  placePopupNearPoint: (x, y) => ({ x: x - 4000, y, displayId: 1 }),
+  setWindowBounds: (window, rect) => window.setBounds(rect, false),
+  stripTargets: new WeakMap(), closingPopups: new WeakSet(), hoverLookup: null,
   eventCoordSpace: (event) => event.coordSpace || 'dip',
   withWin11Chrome: (options) => options,
   withPopupDevFlag: (url) => url,
