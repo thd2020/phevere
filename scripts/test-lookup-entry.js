@@ -149,6 +149,27 @@ configureCore({
   assert.match(senses[0], /fund of money/, 'its own sense first');
   const plural = senses.findIndex((m) => /plural of/.test(m));
   assert.ok(plural > 0, `"plural of saving" after it (${senses.join(' | ')})`);
+
+  // "Mr" is spelt with its capital: "mr" in English is only Marathi's code and millirem (Wiktionary,
+  // 2026-11-05). "State" at the start of a sentence is still state, which is a word of its own.
+  const formOf = (lemma) => `<span class="form-of-definition use-with-mention">Abbreviation of <a href="/wiki/${lemma}">${lemma}</a>.</span>`;
+  rest['Mr.'] = { en: [{ partOfSpeech: 'Noun', language: 'English', definitions: [{ definition: formOf('Mister') }] }] };
+  rest.Mr = { en: [{ partOfSpeech: 'Noun', language: 'English', definitions: [{ definition: formOf('Mister') }, { definition: formOf('March') }] }] };
+  rest.mr = {
+    en: [
+      { partOfSpeech: 'Symbol', language: 'English', definitions: [{ definition: 'ISO 639-1 language code for Marathi.' }] },
+      { partOfSpeech: 'Noun', language: 'English', definitions: [{ definition: formOf('millirem') }] },
+    ],
+  };
+  rest.State = { en: [{ partOfSpeech: 'Noun', language: 'English', definitions: [{ definition: 'A political entity that regulates society.' }] }] };
+  rest.state = { en: [{ partOfSpeech: 'Noun', language: 'English', definitions: [{ definition: 'A condition; a set of circumstances.' }] }] };
+  const caps = new DictionaryService();
+  const mr = await caps.lookup('Mr.', 'zh');
+  assert.equal(mr.word, 'Mr', '"Mr." keeps its capital');
+  assert.match(mr.definitions[0].meaning, /Mister/, 'and opens with mister, not the language code');
+  assert.ok(!mr.definitions.some((d) => /Marathi/.test(d.meaning)), '"mr" is another word');
+  const state = await caps.lookup('State', 'zh');
+  assert.equal(state.word, 'state', 'a capital at the start of a sentence still folds');
   console.log('Lookup entry passed: "Did you mean" stays through later updates; "etc.", "e.g." and "C++" open as typed; "hello,", "no." and "it." open hello, no and it.');
   // The service keeps safety-net timers for lookups; they would hold the process open.
   process.exit(0);

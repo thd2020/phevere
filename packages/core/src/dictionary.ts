@@ -2573,7 +2573,8 @@ export class DictionaryService extends BaseService {
   /** Whether `word`, typed with a capital, is a proper noun in its own right ("Paris", "May"). */
   private async isProperNoun(word: string): Promise<boolean> {
     if (!/^\p{Lu}/u.test(word) || word === foldLatinHeadword(word)) return false;
-    const proper = hasProperNoun(await this.wiktionaryDefinitions(word));
+    const [own, lower] = await Promise.all([this.wiktionaryDefinitions(word), this.wiktionaryDefinitions(foldLatinHeadword(word))]);
+    const proper = hasProperNoun(own) || capitalIsSpelling(own, lower);
     if (proper) this.properNouns.add(word);
     return proper;
   }
@@ -2608,6 +2609,10 @@ export class DictionaryService extends BaseService {
           this.properNouns.add(typed);
           // The lower-case word's "plural of pari" says nothing about the city.
           response = mergeWiktionaryPages(own, withoutFormOf(lower));
+        } else if (capitalIsSpelling(own, lower)) {
+          // "Mr" is spelt with its capital; "mr" is only Marathi's language code and millirem.
+          this.properNouns.add(typed);
+          response = own;
         } else {
           // "Went" as a surname or a Yorkshire river comes after went, the past of go.
           response = mergeWiktionaryPages(lower, own);
@@ -4383,6 +4388,24 @@ function hasProperNoun(page: any): boolean {
           .find((t: string) => t);
         return !!first && !minor.test(first) && !/^the river\b/i.test(first);
       }),
+  );
+}
+
+/**
+ * Whether a capitalised word is spelt with its capital, as "Mr" and "Dr" are: its own page has
+ * English senses that are not proper nouns, and the lower-case page has no English sense of its
+ * own, only symbols (the language code "mr") and form-of senses ("Abbreviation of millirem").
+ * "State" and "Will" at the start of a sentence fold, because "state" and "will" are words.
+ */
+function capitalIsSpelling(own: any, lower: any): boolean {
+  const text = (d: any) => String(d?.definition || '').replace(/<[^>]+>/g, ' ').trim();
+  const english = (page: any) => (Array.isArray(page?.en) ? page.en : []) as any[];
+  const common = english(own).filter((e) => !/proper noun/i.test(String(e?.partOfSpeech || '')) && (e?.definitions || []).some((d: any) => text(d)));
+  if (!common.length) return false;
+  return english(lower).every(
+    (e) =>
+      /symbol/i.test(String(e?.partOfSpeech || '')) ||
+      (e?.definitions || []).every((d: any) => !text(d) || /form-of-definition/.test(String(d?.definition || ''))),
   );
 }
 
