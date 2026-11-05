@@ -31,6 +31,12 @@ const MIN_RTO_MS = 1000;
 const MAX_RTO_MS = 15000;
 /** Before a host has answered once, a backup request waits this long (RFC 2988's first RTO). */
 const FIRST_HEDGE_MS = 3000;
+/**
+ * No stretched budget is longer than this. A budget of several round trips (the lookup's deadline
+ * is seven) to a host whose RTO grew on a slow connection would otherwise reach a minute or more,
+ * and a host that stops answering then gives no new round trips to bring it down again.
+ */
+const MAX_BUDGET_MS = 30000;
 /** What the platform clients use when a request names no timeout. */
 const CLIENT_TIMEOUT_MS = 8000;
 
@@ -115,7 +121,7 @@ export function typicalRtoMs(): number {
 export function budgetMs(base: number, on: string | string[] = [], trips = 1): number {
   const list = (Array.isArray(on) ? on : [on]).map((h) => (/\//.test(h) ? hostOf(h) : h.toLowerCase()));
   const rto = Math.max(0, ...(list.length ? list : ['']).map((h) => (h && rtoMs(h)) || typicalRtoMs()));
-  return Math.max(base, Math.round(trips * rto));
+  return Math.max(base, Math.min(MAX_BUDGET_MS, Math.round(trips * rto)));
 }
 
 /** Requests open to `host` right now (for tests and measurements). */

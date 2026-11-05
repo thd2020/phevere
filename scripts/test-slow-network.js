@@ -177,6 +177,16 @@ dead['a slow first answer and a hung neighbour'] = async () => {
   assert.equal(b, 'b', 'the hung request is answered by its backup');
   assert.ok(took < 7000, `three seconds and a round trip in (${took} ms)`);
 };
+// A host that was slow and then stops answering keeps its last RTO. A budget of several round
+// trips to it still ends within half a minute; the lookup's deadline (seven) would be 105 s.
+dead['budgets after a slow host stops answering'] = async () => {
+  const { core } = app({});
+  const http = core.trackHttp({ requestJson: () => new Promise((r) => setTimeout(() => r({}), 4000)), requestText: async () => ({}), requestBytes: async () => ({}) });
+  await Promise.all([http.requestJson('https://was-slow.example.org/a', { timeoutMs: 20000, hedge: false }), http.requestJson('https://was-slow.example.org/b', { timeoutMs: 20000, hedge: false })]);
+  const b = core.budgetMs(12000, 'was-slow.example.org', 7);
+  assert.ok(core.rtoMs('was-slow.example.org') >= 8000, 'the host is slow');
+  assert.ok(b <= 30000, `seven round trips to it are ${b} ms`);
+};
 // A request answered by its backup: the original answering late is not a round trip (Karn), or one
 // hung request would put the host's next backups six seconds out.
 dead['a late answer after its backup'] = async () => {
