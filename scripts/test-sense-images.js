@@ -14,15 +14,26 @@ const ts = require('typescript');
 const root = path.join(__dirname, '..');
 const fx = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'sense-images.json'), 'utf8'));
 
+/** packages/core/src/net.ts, fresh for each load: round trips, backup requests and host slots. */
+function loadNet() {
+  const src = fs.readFileSync(path.join(root, 'packages', 'core', 'src', 'net.ts'), 'utf8');
+  const js = ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+  const mod = { exports: {} };
+  vm.runInNewContext(js, { module: mod, exports: mod.exports, require, setTimeout, clearTimeout });
+  return mod.exports;
+}
+
 function load(runtimeStub) {
   const src = fs.readFileSync(path.join(root, 'packages', 'core', 'src', 'sense-images.ts'), 'utf8');
   const js = ts.transpileModule(src, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText;
   const mod = { exports: {} };
+  const net = loadNet();
   const req = (name) => {
     if (name === './runtime') return runtimeStub;
     if (name === './http') return {};
+    if (name === './net') return net;
     return require(name);
   };
   vm.runInNewContext(js, {
@@ -363,9 +374,17 @@ same(
 
 const craneSparql = { results: { bindings: craneRows } };
 function stubHttp(log, opts = {}) {
+  const asked = new Map();
   return {
     requestJson: async (url, o) => {
-      log.push({ url, headers: (o && o.headers) || {} });
+      log.push({ url, headers: (o && o.headers) || {}, at: Date.now() });
+      const n = (asked.get(url) || 0) + 1;
+      asked.set(url, n);
+      // A hung request answers nothing and fails when its timeout runs out, as the app's clients do.
+      if (opts.hang && opts.hang(url, n)) {
+        await new Promise((r) => setTimeout(r, (o && o.timeoutMs) || 8000));
+        throw new Error('Request failed: timed out');
+      }
       if (opts.delay) await new Promise((r) => setTimeout(r, opts.delay));
       if (opts.fail && opts.fail(url)) throw new Error('HTTP 503');
       const u = new URL(url);
@@ -539,6 +558,37 @@ function memoryStore() {
     await m7.fetchSenseImages('bank', bankSenses, { lang: 'en' });
     assert.strictEqual(asked, 1, 'the dictionary page');
     assert.ok(!log3.some((r) => r.url.includes('wiktionary')), 'no second download');
+  }
+
+  // A slow network: every request takes 1.2 s and the first lexeme query never answers. Its backup
+  // request answers it a round trip later, so the pictures do not wait out the 8 s timeout and
+  // the retry after it, and no host has more than three requests open.
+  {
+    const live = new Map();
+    let peak = 0;
+    const inner = stubHttp([], { delay: 1200, hang: (url, n) => n === 1 && decodeURIComponent(url).includes('wikibase:lemma') });
+    const m8 = load({
+      isCoreConfigured: () => true,
+      getHttp: () => ({
+        requestJson: async (url, o) => {
+          const host = new URL(url).hostname;
+          live.set(host, (live.get(host) || 0) + 1);
+          peak = Math.max(peak, live.get(host));
+          try {
+            return await inner.requestJson(url, o);
+          } finally {
+            live.set(host, live.get(host) - 1);
+          }
+        },
+      }),
+      getLookupCache: () => null,
+    });
+    const t = Date.now();
+    const pics = await m8.fetchSenseImages('crane', craneSenses, { lang: 'en' });
+    const took = Date.now() - t;
+    assert.ok(pics[0], 'the bird, from the lexeme query that hung once');
+    assert.ok(took < 7000, `pictures in ${took} ms, not after the 8 s timeout`);
+    assert.ok(peak <= 3, `peak per host ${peak} with backup requests`);
   }
 
   console.log('sense-images ok');
