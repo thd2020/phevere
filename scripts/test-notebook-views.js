@@ -317,6 +317,12 @@ const web = vocabEntryHtml(
 assert.match(web, /<a href="https:\/\/en\.wikipedia\.org\/wiki\/Strand\?a=1&amp;b=2" target="_blank" rel="noopener noreferrer">Strand &lt;b&gt;<\/a><span class="vocab-source__more">en\.wikipedia\.org<\/span>/);
 assert.doesNotMatch(web, /vocab-context/, 'no quote without a sentence');
 
+// A source site's tile: the site's own /favicon.ico over its first letter, for any site.
+const sc = load('source-context');
+assert.equal(sc.siteIconUrl('reddit.com'), 'https://reddit.com/favicon.ico');
+assert.equal(sc.siteIconUrl('not a host'), '');
+assert.deepEqual(['reddit.com', 'en.wikipedia.org', 'bbc.co.uk', 'old.reddit.com', 'news.ycombinator.com', 't.co'].map(sc.siteMonogram), ['R', 'W', 'B', 'R', 'Y', 'T']);
+
 // Recent lookups use the notebook row and show what the notebook knows.
 const rec = recentListHtml(
   [{ q: 'inspect', at: now - 1000 }, { q: 'gargantuan', at: now - 2000 }, { q: 'old', at: 0 }],

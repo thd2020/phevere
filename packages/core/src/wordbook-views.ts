@@ -33,6 +33,7 @@ import {
   type WordsScope,
 } from './wordbooks';
 import { bookWordKey, type UserBook } from './wordbook-store';
+import { siteIconUrl, siteMonogram } from './source-context';
 import { addToBookButtonHtml, compareAz, vocabReadings, vocabSenses } from './vocab-view';
 import type { MenuItem } from './popover-menu';
 
@@ -292,6 +293,41 @@ export function scopeStudySet(entries: WordsEntry[], nextNew = 40): WordsEntry[]
 /** Words a source row shows before "and N more". */
 const SOURCE_WORDS_SHOWN = 14;
 
+/**
+ * Site icons by host: loaded ones show at once on the next paint, failed ones are not asked
+ * for again this session. One listener for the whole document, since load and error events do
+ * not bubble and the lists are repainted as HTML.
+ */
+const siteIcons = new Map<string, 'ok' | 'failed'>();
+if (typeof document !== 'undefined') {
+  const settle = (ev: Event, state: 'ok' | 'failed') => {
+    const img = ev.target as HTMLElement | null;
+    const host = img?.tagName === 'IMG' ? img.getAttribute('data-site-icon') : null;
+    if (!img || !host) return;
+    siteIcons.set(host, state);
+    if (state === 'ok') img.classList.add('is-on');
+    else img.remove();
+  };
+  document.addEventListener('load', (ev) => settle(ev, 'ok'), true);
+  document.addEventListener('error', (ev) => settle(ev, 'failed'), true);
+}
+
+/**
+ * A site's tile: its first letter, covered by the site's own icon once that loads, so a site
+ * whose icon does not load (offline, or none at /favicon.ico) keeps its letter, as Chrome's
+ * new tab tiles do.
+ */
+function siteIconHtml(host: string): string {
+  const url = siteIconUrl(host);
+  const letter = siteMonogram(host);
+  const state = siteIcons.get(host);
+  return `<span class="wb-src__icon wb-src__icon--site" aria-hidden="true">${letter ? `<b>${esc(letter)}</b>` : ICON.globe}${
+    url && state !== 'failed'
+      ? `<img src="${esc(url)}" alt="" width="20" height="20" decoding="async" referrerpolicy="no-referrer" data-site-icon="${esc(host)}"${state === 'ok' ? ' class="is-on"' : ''} />`
+      : ''
+  }</span>`;
+}
+
 function sourceRowHtml(g: SourceGroup, ctx: WordsContext, now: number): string {
   const words = g.entries.map((e) => e.lemma);
   const shown = words.slice(-SOURCE_WORDS_SHOWN).reverse();
@@ -308,8 +344,8 @@ function sourceRowHtml(g: SourceGroup, ctx: WordsContext, now: number): string {
     }`;
   } else action = `<button type="button" class="nbv-primary" data-act="src-book" data-source="${key}">Make a word book</button>`;
   const last = g.latest ? new Date(g.latest).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
-  return `<li class="wb-src">
-    <span class="wb-src__icon" aria-hidden="true">${g.kind === 'doc' ? ICON.book : ICON.globe}</span>
+  return `<li class="wb-src wb-src--${g.kind}">
+    ${g.kind === 'doc' ? `<span class="wb-src__icon" aria-hidden="true">${ICON.book}</span>` : siteIconHtml(g.label)}
     <div class="wb-src__main">
       <h3 class="wb-src__name" title="${esc(g.label)}">${esc(g.label)}</h3>
       <p class="wb-src__meta"><span>${fmt(words.length)} ${words.length === 1 ? 'word' : 'words'}</span>${last ? `<span>${esc(last)}</span>` : ''}</p>

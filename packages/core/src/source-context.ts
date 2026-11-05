@@ -171,6 +171,29 @@ export function siteOf(url: string | undefined): string {
   }
 }
 
+/**
+ * The site's own icon, the way browsers find one when a page names none: /favicon.ico at the
+ * site's address. It comes from the site the word was read on, not from a third-party icon
+ * service, so it loads wherever that site does. '' for an unreadable host.
+ */
+export function siteIconUrl(host: string): string {
+  const h = String(host || '').trim().toLowerCase();
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(h) ? `https://${h}/favicon.ico` : '';
+}
+
+/**
+ * The letter on a site's tile when its icon does not load, as Chrome's new tab page draws one:
+ * the first letter of the site's name, skipping "www", subdomains such as "en", the top-level
+ * domain and a short second level such as the "co" of bbc.co.uk.
+ */
+export function siteMonogram(host: string): string {
+  const labels = String(host || '').toLowerCase().split('.').filter(Boolean);
+  if (labels.length > 1) labels.pop();
+  if (labels.length > 1 && labels[labels.length - 1].length <= 3) labels.pop();
+  const name = labels[labels.length - 1] || '';
+  return (name.match(/[\p{L}\p{N}]/u)?.[0] || '').toLocaleUpperCase('en');
+}
+
 /** The group a saved word belongs to: the document when there is one, otherwise the web site. */
 export function sourceGroupOf(ctx: SourceContext | null | undefined): SourceGroupKey | null {
   if (!ctx) return null;

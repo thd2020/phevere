@@ -342,6 +342,11 @@ button.wb-act:hover { background: var(--nbv-paper-2, #eeeae4); color: var(--nbv-
   color: var(--nbv-ink, #1c1917);
 }
 .wb-src__icon svg { width: 20px; height: 20px; }
+/* A site: its icon on a white tile, over its first letter, which shows when the icon fails. */
+.wb-src__icon--site { position: relative; overflow: hidden; background: #fff; box-shadow: inset 0 0 0 1px var(--nbv-line, #d7c3bb); }
+.wb-src__icon--site b { font: 700 17px/1 var(--nbv-ui, Outfit, system-ui, sans-serif); color: var(--nbv-soft, #5c534e); }
+.wb-src__icon--site img { position: absolute; inset: 0; margin: auto; width: 20px; height: 20px; background: #fff; box-shadow: 0 0 0 8px #fff; opacity: 0; transition: opacity 0.16s cubic-bezier(0.2, 0, 0, 1); }
+.wb-src__icon--site img.is-on { opacity: 1; }
 .wb-src__main { min-width: 0; display: grid; gap: 6px; }
 .wb-src__name { margin: 0; font: 600 17px/1.2 var(--nbv-serif, Georgia, serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wb-src__meta { display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 0; font: 500 12px/1.3 var(--nbv-ui, Outfit, system-ui, sans-serif); color: var(--nbv-soft, #5c534e); font-variant-numeric: tabular-nums; }
