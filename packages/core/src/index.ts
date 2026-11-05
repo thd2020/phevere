@@ -78,10 +78,15 @@ export {
   vocabListHtml,
   vocabEntryGroup,
   recentListHtml,
+  vocabAzLetter,
+  AZ_INDEX,
+  compareAz,
+  addToBookButtonHtml,
   type RecentLookup,
   type VocabViewEntry,
   type VocabListOptions,
 } from './vocab-view';
+export { wireIndexRail, type IndexRailOptions } from './index-rail';
 export {
   analyzeNotebook,
   notebookViewSwitchHtml,
@@ -337,7 +342,12 @@ export {
   progressRingSvg,
   reviewBookRows,
   BOOK_LIST_PAGE,
+  bookMenuItems,
+  bookRemovalPrompt,
+  bookSorts,
+  bookPickItems,
 } from './wordbook-views';
+export { openMenu, closeMenu, menuOpen, type MenuItem, type MenuOptions } from './popover-menu';
 export {
   learnHtml,
   learnTodayHtml,

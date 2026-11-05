@@ -439,6 +439,12 @@ const web = vocabEntryHtml(
 assert.match(web, /<a href="https:\/\/en\.wikipedia\.org\/wiki\/Strand\?a=1&amp;b=2" target="_blank" rel="noopener noreferrer">Strand &lt;b&gt;<\/a><span class="vocab-source__more">en\.wikipedia\.org<\/span>/);
 assert.doesNotMatch(web, /vocab-context/, 'no quote without a sentence');
 
+// A source site's tile: the site's own /favicon.ico over its first letter, for any site.
+const sc = load('source-context');
+assert.equal(sc.siteIconUrl('reddit.com'), 'https://reddit.com/favicon.ico');
+assert.equal(sc.siteIconUrl('not a host'), '');
+assert.deepEqual(['reddit.com', 'en.wikipedia.org', 'bbc.co.uk', 'old.reddit.com', 'news.ycombinator.com', 't.co', 'edition.cnn.com', 'mail.qq.com', 'news.sina.com.cn', 'news.bbc.de'].map(sc.siteMonogram), ['R', 'W', 'B', 'R', 'Y', 'T', 'C', 'Q', 'S', 'B']);
+
 // Recent lookups use the notebook row and show what the notebook knows.
 const rec = recentListHtml(
   [{ q: 'inspect', at: now - 1000 }, { q: 'gargantuan', at: now - 2000 }, { q: 'old', at: 0 }],
@@ -449,6 +455,22 @@ assert.match(rec, /class="vocab-item recent-item is-collapsed is-saved"/);
 assert.match(rec, /\/ɪnˈspɛkt\//);
 assert.equal((rec.match(/class="vocab-group"/g) || []).length, 2, 'Today and Earlier');
 assert.equal((rec.match(/data-act="lookup"/g) || []).length, 6, 'row and button per item');
+// Each recent row carries the lookup's save control: the heart saves or removes in place.
+assert.match(rec, /class="vocab-open vocab-save is-on" data-act="nb-del" data-id="x" aria-pressed="true"/);
+assert.match(rec, /class="vocab-open vocab-save" data-act="wb-save" data-q="gargantuan" aria-pressed="false"/);
+assert.doesNotMatch(rec, /data-act="ub-pick"/, 'no "Add to word book" without books of your own');
+const recBooks = recentListHtml([{ q: 'inspect', at: now }], () => undefined, now, { bookPick: true });
+assert.match(recBooks, /data-act="ub-pick" data-q="inspect" aria-haspopup="menu"/);
+assert.match(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now, { bookPick: true }), /data-act="ub-pick" data-q="braid"[^>]*>.*Add to word book/);
+assert.doesNotMatch(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now), /ub-pick/);
+
+// A to Z: "#" (digits, symbols, other scripts) comes after Z in the rail and in the list.
+const { AZ_INDEX, compareAz } = load('vocab-view');
+assert.equal(AZ_INDEX[0], 'A');
+assert.equal(AZ_INDEX[AZ_INDEX.length - 1], '#');
+assert.deepEqual(['対応', 'zebra', '3D', 'apple', 'Émigré', 'Banana'].sort(compareAz), ['apple', 'Banana', 'Émigré', 'zebra', '3D', '対応']);
+assert.equal(load('vocab-view').vocabAzLetter('Émigré'), 'E', 'an accented letter files under its base letter');
+assert.equal(load('vocab-view').vocabAzLetter('3D'), '#');
 
 // Origins and deep roots from Wiktionary templates.
 const ety = load('etymology');
@@ -477,6 +499,8 @@ const strata = views.originGroups(a, lookupEty);
 assert.equal(strata[0].origin, 'Latin');
 assert.match(views.familiesHtml(a, 'origin', { etymon: lookupEty }), /via French/);
 assert.match(views.familiesHtml(a, 'root'), /Not in a family yet/);
+// Every word named on a family tile opens its lookup, not only the chips in the open drawer.
+assert.match(views.familiesHtml(a, 'root'), /<button type="button" class="nbv-fam__peekw" data-act="lookup" data-q="inspect">inspect<\/button>/);
 
 // A typed daily goal: whole numbers from 1 to 999; empty or not a number is ignored.
 assert.strictEqual(views.parseGoal('15'), 15);

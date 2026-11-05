@@ -35,6 +35,7 @@ import '@phevere/core/notebook-families.css';
 import '@phevere/core/notebook-cards.css';
 import '@phevere/core/notebook-map.css';
 import '@phevere/core/wordbook-views.css';
+import '@phevere/core/popover-menu.css';
 import '@phevere/core/learn-views.css';
 import '@phevere/core/settings-kit.css';
 import '@phevere/core/settings-sources.css';
@@ -134,6 +135,8 @@ import {
 import { choiceRowHtml, keycapsHtml, rangeRowHtml, switchRowHtml } from '@phevere/core';
 import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
+import { AZ_INDEX, compareAz, vocabAzLetter, wireIndexRail } from '@phevere/core';
+import { bookMenuItems, bookPickItems, bookRemovalPrompt, openMenu } from '@phevere/core';
 
 const rlog = (...args: unknown[]) => {
   if (!__PHEVERE_DEV__) return;
@@ -2280,6 +2283,11 @@ function wordbookApi(): any {
   return (window as any).wordbookAPI;
 }
 
+/** Books the learner made or imported exist, so rows offer "Add to word book". */
+function hasOwnBooks(): boolean {
+  return wbUserBooks.some((b) => !b.deleted);
+}
+
 function setWordsScope(scope: WordsScope): void {
   wbScope = scope;
   wbLibrary = false;
@@ -2367,7 +2375,7 @@ function renderBookScope(body: HTMLElement, wrap: HTMLElement, list: HTMLElement
   const shown = q ? all.filter((e) => e.lemma.toLowerCase().includes(q)) : all;
   if (nbView === 'list') {
     disposeNotebookMaps(true);
-    body.innerHTML = wordbookListHtml(shown, { scope: wbScope, limit: wbLimit, filtered: !!q, sort: wbSort, expanded: wbOpen, loading: wbMeaningInFlight });
+    body.innerHTML = wordbookListHtml(shown, { scope: wbScope, limit: wbLimit, filtered: !!q, sort: wbSort, expanded: wbOpen, loading: wbMeaningInFlight, bookPick: hasOwnBooks() });
     return true;
   }
   // The map always holds the whole book; the search flies to a word on it instead.
@@ -2420,20 +2428,10 @@ function setVocabSortMode(mode: VocabSortMode): void {
   document.getElementById('vocabSortAlpha')?.setAttribute('aria-pressed', mode === 'alpha' ? 'true' : 'false');
 }
 
-function vocabAzLetter(lemma: string): string {
-  const ch = (lemma || '').trim().charAt(0);
-  if (!ch) return '#';
-  const up = ch.toLocaleUpperCase('en');
-  if (up >= 'A' && up <= 'Z') return up;
-  return '#';
-}
-
 function sortVocabEntries(entries: any[]): any[] {
   const copy = [...entries];
   if (getVocabSortMode() === 'alpha') {
-    copy.sort((a, b) =>
-      String(a.lemma || '').localeCompare(String(b.lemma || ''), undefined, { sensitivity: 'base', numeric: true }),
-    );
+    copy.sort((a, b) => compareAz(String(a.lemma || ''), String(b.lemma || '')));
   } else {
     // Saved order: reviews and sync bump updatedAt, which must not move words.
     copy.sort((a, b) => Number(b.createdAt || b.updatedAt || 0) - Number(a.createdAt || a.updatedAt || 0));
@@ -2445,12 +2443,11 @@ function ensureVocabAzIndex(): HTMLElement | null {
   const nav = document.getElementById('vocabAz');
   if (!nav) return null;
   if (!nav.dataset.ready) {
-    const letters = ['#', ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i))];
-    nav.innerHTML = letters
+    nav.innerHTML = AZ_INDEX
       .map((letter) => `<button type="button" class="vocab-az__letter" data-letter="${letter}">${letter}</button>`)
       .join('');
     nav.dataset.ready = '1';
-    wireVocabAzScrub(nav);
+    wireIndexRail(nav, { jump: scrollVocabToLetter, hud: (key) => (key ? showVocabAzHud(key) : hideVocabAzHud()) });
   }
   return nav;
 }
@@ -2459,66 +2456,19 @@ function scrollVocabToLetter(letter: string): void {
   const list = document.getElementById('vocabList');
   if (!list) return;
   flushVocabChunks?.();
-  const target =
-    list.querySelector(`[data-az="${letter}"]`) ||
-    (letter === '#' ? list.querySelector('.vocab-item') : null);
-  (target as HTMLElement | null)?.scrollIntoView({ block: 'start' });
+  list.querySelector<HTMLElement>(`[data-az="${letter}"]`)?.scrollIntoView({ block: 'start' });
 }
 
 function showVocabAzHud(letter: string): void {
   const hud = document.getElementById('vocabAzHud');
   if (!hud) return;
   hud.textContent = letter;
-  hud.classList.toggle('is-wide', [...letter].length > 2);
   hud.hidden = false;
 }
 
 function hideVocabAzHud(): void {
   const hud = document.getElementById('vocabAzHud');
   if (hud) hud.hidden = true;
-}
-
-function letterFromAzPointer(nav: HTMLElement, clientY: number): string | null {
-  const buttons = [...nav.querySelectorAll<HTMLElement>('.vocab-az__letter')];
-  if (!buttons.length) return null;
-  const rect = nav.getBoundingClientRect();
-  const t = (clientY - rect.top) / Math.max(rect.height, 1);
-  const idx = Math.max(0, Math.min(buttons.length - 1, Math.floor(t * buttons.length)));
-  return buttons[idx].dataset.letter || null;
-}
-
-function wireVocabAzScrub(
-  nav: HTMLElement,
-  jump: (key: string) => void = scrollVocabToLetter,
-  hud: (key: string) => string = (key) => key,
-): void {
-  let scrubbing = false;
-  const onMove = (ev: PointerEvent) => {
-    const letter = letterFromAzPointer(nav, ev.clientY);
-    if (!letter) return;
-    showVocabAzHud(hud(letter));
-    jump(letter);
-  };
-  nav.addEventListener('pointerdown', (ev) => {
-    const t = ev.target as HTMLElement;
-    const letter = t.closest('.vocab-az__letter')?.getAttribute('data-letter') || letterFromAzPointer(nav, ev.clientY);
-    if (!letter) return;
-    scrubbing = true;
-    nav.setPointerCapture(ev.pointerId);
-    showVocabAzHud(hud(letter));
-    jump(letter);
-    ev.preventDefault();
-  });
-  nav.addEventListener('pointermove', (ev) => {
-    if (!scrubbing) return;
-    onMove(ev);
-  });
-  const endScrub = () => {
-    scrubbing = false;
-    hideVocabAzHud();
-  };
-  nav.addEventListener('pointerup', endScrub);
-  nav.addEventListener('pointercancel', endScrub);
 }
 
 /* Timeline rail: the Recent list's counterpart to A to Z, by week or by month. */
@@ -2615,12 +2565,12 @@ function syncVocabTimeline(entries: any[]): void {
     .map((b, i) => {
       const mark = i > 0 && b.year !== year ? ` data-year="${b.year}"` : '';
       year = b.year;
-      return `<button type="button" class="vocab-az__letter vocab-az__time"${mark} data-letter="${b.key}" title="${b.label}">${b.short}</button>`;
+      return `<button type="button" class="vocab-az__letter vocab-az__time"${mark} data-letter="${b.key}" aria-label="${b.label}">${b.short}</button>`;
     })
     .join('');
   if (!nav.dataset.ready) {
     nav.dataset.ready = '1';
-    wireVocabAzScrub(nav, scrollVocabToTime, (key) => vocabTimeIndex.get(key)?.label || '');
+    wireIndexRail(nav, { jump: scrollVocabToTime });
   }
 }
 
@@ -2790,7 +2740,7 @@ function renderVocabNotebook(entries: any[]): void {
   const shell = document.querySelector<HTMLElement>('.main-shell');
   const first = Math.max(120, Math.ceil(((shell?.scrollTop || 0) + (shell?.clientHeight || 800)) / 48) + 40);
   const scrollTop = shell?.scrollTop || 0;
-  list.innerHTML = vocabListHtml(sorted.slice(0, first), { sort, expanded: nbExpanded });
+  list.innerHTML = vocabListHtml(sorted.slice(0, first), { sort, expanded: nbExpanded, bookPick: hasOwnBooks() });
   if (shell && scrollTop) shell.scrollTop = scrollTop;
   let next = first;
   const appendChunk = (size: number) => {
@@ -2798,7 +2748,7 @@ function renderVocabNotebook(entries: any[]): void {
     const afterGroup = sort === 'recent' ? vocabEntryGroup(sorted[next - 1]) : '';
     list.insertAdjacentHTML(
       'beforeend',
-      vocabListHtml(sorted.slice(next, next + size), { sort, expanded: nbExpanded, afterGroup }),
+      vocabListHtml(sorted.slice(next, next + size), { sort, expanded: nbExpanded, afterGroup, bookPick: hasOwnBooks() }),
     );
     next += size;
     return next < sorted.length;
@@ -3116,8 +3066,53 @@ function wireNotebookActions(root: HTMLElement): void {
         document.querySelector('.main-shell')?.scrollTo({ top: 0 });
         return;
       }
+      case 'wb-menu': {
+        // A list's own menu, from its chip: Export, Export for Anki, Remove or Delete.
+        const items = bookMenuItems(el.dataset.scope || 'mine');
+        if (!items.length) return;
+        openMenu(el, {
+          label: el.dataset.title || 'Book',
+          items,
+          onPick: (item) => {
+            const pick = document.createElement('button');
+            Object.assign(pick.dataset, item.data || {}, { act: item.act });
+            return run(pick, ev);
+          },
+        });
+        return;
+      }
+      case 'ub-pick': {
+        // "Add to word book": the books you made or imported, ticked where the word is.
+        const word = el.dataset.q || '';
+        const items = bookPickItems(word, wbUserBooks);
+        if (!word || !items.length) return;
+        openMenu(el, {
+          label: 'Add to word book',
+          items,
+          multi: true,
+          onPick: async (item) => {
+            const book = item.data?.book || '';
+            if (item.checked) await wordbookApi()?.addBookWords(book, [word]);
+            else await wordbookApi()?.removeBookWord(book, word);
+            await refreshWords();
+            rerenderNotebook();
+            renderRecentLookups();
+          },
+        });
+        return;
+      }
+      case 'wb-export':
+        await exportWords(el.dataset.scope || 'mine', el.dataset.fmt === 'anki');
+        return;
+      case 'wb-import':
+        await importWords();
+        return;
       case 'wb-unsub': {
         const id = el.dataset.book || '';
+        // Progress belongs to the word: it stays, and the confirmation says so.
+        const ask = bookRemovalPrompt(id);
+        const ok = await (window as any).vocabAPI?.confirm?.({ message: ask.title, detail: ask.detail, confirm: ask.confirm });
+        if (!ok) return;
         if (isUserBookId(id)) await wordbookApi()?.deleteBook(id);
         else await wordbookApi()?.unsubscribe(id);
         if (wbScope === id) setWordsScope(isUserBookId(id) ? 'sources' : 'mine');
@@ -3304,7 +3299,6 @@ function setMainTab(tab: MainTab): void {
   if (nb) nb.hidden = tab !== 'notebook';
   if (learn) learn.hidden = tab !== 'learn';
   if (rc) rc.hidden = tab !== 'recent';
-  document.getElementById('notebookTools')?.toggleAttribute('hidden', tab !== 'notebook');
   document.getElementById('recentTools')?.toggleAttribute('hidden', tab !== 'recent');
   document.querySelector('.main-shell')?.scrollTo({ top: 0 });
   if (tab === 'learn') renderLearn();
@@ -3353,41 +3347,6 @@ function wireMainWorkspace(): void {
   });
 }
 
-/** Export, Import and Refresh sit in a menu at the end of the Words header. */
-function wireWordsMoreMenu(): void {
-  const btn = document.getElementById('wordsMoreBtn');
-  const menu = document.getElementById('wordsMoreMenu');
-  if (!btn || !menu) return;
-  const setOpen = (open: boolean) => {
-    menu.hidden = !open;
-    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) menu.querySelector<HTMLElement>('.ws-menu__item')?.focus();
-  };
-  btn.addEventListener('click', () => setOpen(menu.hidden));
-  menu.addEventListener('click', (ev) => {
-    if ((ev.target as HTMLElement).closest('.ws-menu__item')) setOpen(false);
-  });
-  menu.addEventListener('keydown', (ev) => {
-    const items = [...menu.querySelectorAll<HTMLElement>('.ws-menu__item')];
-    const at = items.indexOf(document.activeElement as HTMLElement);
-    if (ev.key === 'Escape') {
-      setOpen(false);
-      btn.focus();
-    } else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
-      ev.preventDefault();
-      items[(at + (ev.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
-    }
-  });
-  document.addEventListener('pointerdown', (ev) => {
-    if (!menu.hidden && !(ev.target as HTMLElement).closest('#notebookTools')) setOpen(false);
-  });
-}
-wireWordsMoreMenu();
-
-document.getElementById('refreshVocabBtn')?.addEventListener('click', () => {
-  void loadVocabNotebook();
-});
-
 let vocabSearchTimer: ReturnType<typeof setTimeout> | null = null;
 document.getElementById('vocabSearch')?.addEventListener('input', () => {
   if (vocabSearchTimer) clearTimeout(vocabSearchTimer);
@@ -3404,26 +3363,24 @@ document.getElementById('vocabSortAlpha')?.addEventListener('click', () => {
   rerenderNotebook();
 });
 
-/** The book Words is showing, as an export scope: My words, a made book or a catalog book. */
-function exportScope(): { kind: 'mine' } | { kind: 'user' | 'catalog'; id: string } {
-  if (wbScope === 'mine' || wbScope === 'all' || wbScope === 'sources' || wbLibrary) return { kind: 'mine' };
-  return isUserBookId(wbScope) ? { kind: 'user', id: wbScope } : { kind: 'catalog', id: wbScope };
+/** A list from its menu (My words, a made book or a catalog book), as an export scope. */
+function exportScope(scope: string): { kind: 'mine' } | { kind: 'user' | 'catalog'; id: string } {
+  if (!scope || scope === 'mine' || scope === 'all' || scope === 'sources') return { kind: 'mine' };
+  return isUserBookId(scope) ? { kind: 'user', id: scope } : { kind: 'catalog', id: scope };
 }
 
-async function exportWords(anki: boolean): Promise<void> {
+async function exportWords(scope: string, anki: boolean): Promise<void> {
   const api = (window as any).vocabAPI;
   if (!api?.exportNotebook) return;
   try {
-    await api.exportNotebook({ scope: exportScope(), anki });
+    await api.exportNotebook({ scope: exportScope(scope), anki });
   } catch (error) {
     console.error('vocab export failed', error);
   }
 }
 
-document.getElementById('exportVocabBtn')?.addEventListener('click', () => void exportWords(false));
-document.getElementById('exportAnkiBtn')?.addEventListener('click', () => void exportWords(true));
-
-document.getElementById('importVocabBtn')?.addEventListener('click', async () => {
+/** Import, from the word book library: a .pvbook, an Anki deck or an older My words file. */
+async function importWords(): Promise<void> {
   const api = (window as any).vocabAPI;
   if (!api?.importNotebook) return;
   try {
@@ -3438,7 +3395,7 @@ document.getElementById('importVocabBtn')?.addEventListener('click', async () =>
   } catch (error) {
     console.error('vocab import failed', error);
   }
-});
+}
 
 setVocabSortMode(getVocabSortMode());
 
@@ -3760,7 +3717,7 @@ function renderRecentLookups(): void {
   }
   const saved = new Map<string, any>();
   for (const e of vocabNotebookCache) saved.set(String(e.lemma || '').trim().toLowerCase(), e);
-  list.innerHTML = recentListHtml(items, (q) => saved.get(q.trim().toLowerCase()));
+  list.innerHTML = recentListHtml(items, (q) => saved.get(q.trim().toLowerCase()), Date.now(), { bookPick: hasOwnBooks() });
 }
 
 function addToRecentSelections(text: string): void {

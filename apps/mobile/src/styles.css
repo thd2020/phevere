@@ -1930,7 +1930,10 @@ html[data-notify="ios"] .toast {
   text-transform: uppercase;
   color: var(--md-sys-color-on-surface-variant);
 }
-.recent-lookups .vocab-saved-mark { width: 7px; height: 7px; border-radius: 999px; background: var(--md-sys-color-tertiary); align-self: center; }
+/* Recent rows save in place, as a lookup does: the heart fills when the word is in My words. */
+.vocab-list .vocab-save.is-on { color: var(--md-sys-color-tertiary); }
+.vocab-list .vocab-save.is-on svg path { fill: currentColor; }
+.vocab-list .vocab-tobook svg { width: 20px; height: 20px; }
 
 /* Notebook A–Z rail (sort A–Z) and the letter shown while scrubbing. */
 .vocab-item { scroll-margin-top: calc(var(--pv-inset-top) + 84px); }

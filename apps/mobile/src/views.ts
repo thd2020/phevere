@@ -14,6 +14,10 @@ import {
   type VocabEntry,
   type WikipediaResult,
   vocabListHtml,
+  addToBookButtonHtml,
+  vocabAzLetter,
+  AZ_INDEX,
+  compareAz,
   inflectionsHtml,
   formLineHtml,
   didYouMeanHtml,
@@ -129,10 +133,6 @@ export function appBarHtml(tab: Tab, query: string, canBack: boolean, canFwd: bo
         ${lookup ? `<div class="hist">
           <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="Back">${ICO.back}</button>
           <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="Forward">${ICO.fwd}</button>
-        </div>` : ''}
-        ${tab === 'notebook' ? `<div class="hist">
-          <button type="button" class="icon-btn" data-act="nb-import" aria-label="Import words" title="Import">${ICO.import}</button>
-          <button type="button" class="icon-btn" data-act="nb-export" data-fmt="json" aria-label="Export My words" title="Export">${ICO.export}</button>
         </div>` : ''}
         ${accountBtn}
         </div>
@@ -812,6 +812,10 @@ export function lookupBody(opts: {
   senseImages?: Array<SenseImage | null> | null;
   /** Saved words and word-book words, for a morpheme page's "my words". */
   ownWords?: OwnWords;
+  /** The learner has books of their own: the save control and recent rows offer "Add to word book". */
+  bookPick?: boolean;
+  /** The word the heart saves, which "Add to word book" adds too. */
+  saveWord?: string;
 }): string {
   if (opts.looking && !opts.result) return lookupSkeleton(opts.query || '');
   if (opts.error && !opts.result) {
@@ -825,7 +829,7 @@ export function lookupBody(opts: {
     </div>
     ${recent.length ? `<section class="recent-lookups" aria-label="Recent lookups">
       <h3 class="recent-lookups__title">Recent</h3>
-      <div class="vocab-list">${recentListHtml(recent, opts.savedFor || (() => undefined))}</div>
+      <div class="vocab-list">${recentListHtml(recent, opts.savedFor || (() => undefined), Date.now(), { bookPick: opts.bookPick })}</div>
     </section>` : ''}`;
   }
   const chips = ipaChips(opts.result.pronunciations, opts.result.pronunciation || '');
@@ -866,7 +870,8 @@ export function lookupBody(opts: {
         ${opts.headTools ? `<button type="button" class="icon-btn" data-act="copy" aria-label="Copy" title="Copy">${ICO.copy}</button>
         <button type="button" class="icon-btn" data-act="web-search" aria-label="Search the web" title="Search the web">${ICO.web}</button>` : ''}
         ${part ? '' : `<button type="button" class="tonal" data-act="speak" aria-label="Play pronunciation">${ICO.speaker}</button>
-        <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Remove from My words' : 'Save to My words'}">${ICO.heart}</button>`}
+        <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Remove from My words' : 'Save to My words'}">${ICO.heart}</button>
+        ${opts.bookPick && opts.saveWord ? addToBookButtonHtml(opts.saveWord, 'tonal') : ''}`}
       </div>
       ${chips}
     </header>
@@ -926,6 +931,8 @@ export interface WordsState {
   sort: BookSort;
   open: Set<string>;
   loading: Set<string>;
+  /** The learner has books of their own: rows offer "Add to word book". */
+  bookPick?: boolean;
 }
 
 export function notebookBody(
@@ -950,7 +957,7 @@ export function notebookBody(
   // A chosen language filters the whole notebook, not only the page the list has loaded.
   const source = langOn ? filterVocabByLang(everything, nb.lang, langs) : entries;
   let list = ctx ? source.map((e) => ({ ...e, books: ctx.index.get(e.lemma.trim().toLowerCase()) })) : [...source];
-  if (sort === 'az') list.sort((a, b) => a.lemma.localeCompare(b.lemma, undefined, { sensitivity: 'base', numeric: true }));
+  if (sort === 'az') list.sort((a, b) => compareAz(a.lemma, b.lemma));
   // Saved order: reviews and sync bump updatedAt, which must not move words.
   else list.sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));
   const matches = (e: VocabEntry) =>
@@ -990,7 +997,7 @@ export function notebookBody(
           : cardsHtml(list, analysis, nb.flipped, cardLayoutIn(nb.cardLayouts, 'mine'), undefined, { picFlips: true, list: 'mine' });
     return `${head}<div class="nbv nbv-body">${body}</div>`;
   }
-  const rows = vocabListHtml(list, { sort, expanded });
+  const rows = vocabListHtml(list, { sort, expanded, bookPick: !!words?.bookPick });
   return `${head}
     <div class="ptr" aria-hidden="true"><span class="md-spinner"></span></div>
     <div class="vocab-list">${rows || `<p class="empty">${q ? 'No matching words.' : 'No saved words.'}</p>`}</div>
@@ -1008,7 +1015,7 @@ function bookScopeBody(words: WordsState, ctx: WordsContext, filter: string, nb:
     </div>
     <div class="nbv nb-views">${notebookViewSwitchHtml(nb.view)}</div>`;
   let body: string;
-  if (nb.view === 'list') body = wordbookListHtml(list, { scope: words.scope, limit: words.limit, filtered: !!q, sort: words.sort, expanded: words.open, loading: words.loading });
+  if (nb.view === 'list') body = wordbookListHtml(list, { scope: words.scope, limit: words.limit, filtered: !!q, sort: words.sort, expanded: words.open, loading: words.loading, bookPick: words.bookPick });
   else {
     const study = nb.view === 'map' ? all : list;
     const analysis = analyzeNotebook(study);
@@ -1022,14 +1029,8 @@ function bookScopeBody(words: WordsState, ctx: WordsContext, filter: string, nb:
   return `<div class="nbv">${head}</div><div class="nbv nbv-body">${body}</div>`;
 }
 
-function vocabAzLetter(lemma: string): string {
-  const up = (lemma || '').trim().charAt(0).toLocaleUpperCase('en');
-  return up >= 'A' && up <= 'Z' ? up : '#';
-}
-
 function vocabAzRail(present: Set<string>): string {
-  const letters = ['#', ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i))];
-  return `<nav class="vocab-az" data-az-rail aria-label="Jump to letter">${letters
+  return `<nav class="vocab-az" data-az-rail aria-label="Jump to letter">${AZ_INDEX
     .map((l) => `<button type="button" class="vocab-az__letter${present.has(l) ? '' : ' is-empty'}" data-letter="${l}">${l}</button>`)
     .join('')}</nav>
     <div class="vocab-az-hud" hidden aria-hidden="true"></div>`;
