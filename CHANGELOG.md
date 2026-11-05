@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Sense labels and sources (2026-11-05): labels such as "(usually uncountable, politics)" now sit on the definition's own line in the same type as the definition, in italic and grey within brackets, the way Wiktionary and the Oxford Learner's Dictionary print them, instead of in smaller sans-serif capitals that did not line up with the text. The grey source line that followed runs of senses is gone; one line under the last sense names every source, as in "Definitions from Free Dictionary, Wiktionary and Datamuse". Desktop and phone alike.
+
 ### Fixed
 
 - Map on the desktop (2026-11-05): Words → Map now draws the same 3D map as the phone. Before, the desktop app always fell back to a flat drawing of small dots, because the 3D part failed to load in the desktop window. Drag turns and tilts the map, right-drag or Shift-drag moves it, the wheel or a trackpad pinch zooms, and +, − and Reset view work as before. Roots, Prefixes and Suffixes, Find a word, the Unlinked words group and the orange word you last looked up all appear on it.

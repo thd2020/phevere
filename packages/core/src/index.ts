@@ -404,7 +404,7 @@ export {
   type InflectionGrid,
   type InflectionRow,
 } from './inflections';
-export { inflectionsHtml, wordFamilyHtml, formLineHtml, didYouMeanHtml, type LexiconLinks } from './lexicon-parts';
+export { inflectionsHtml, wordFamilyHtml, formLineHtml, didYouMeanHtml, senseLabelLead, definitionSourcesHtml, type LexiconLinks } from './lexicon-parts';
 export { linkHtml, linkText, wordLinkHtml, wikiLinkLookup } from './text-links';
 export {
   parseMorphemeQuery,

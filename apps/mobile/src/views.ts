@@ -17,6 +17,8 @@ import {
   inflectionsHtml,
   formLineHtml,
   didYouMeanHtml,
+  senseLabelLead,
+  definitionSourcesHtml,
   wordFamilyHtml,
   linkHtml,
   linkText,
@@ -282,7 +284,7 @@ function linkLemmaRefs(escaped: string): string {
  * lookup and looks like text until tapped.
  */
 function senseHtml(raw: string): string {
-  return linkHtml(labelLead(senseMarkup(raw)), 'act');
+  return linkHtml(senseLabelLead(senseMarkup(raw)), 'act');
 }
 
 function senseMarkup(raw: string): string {
@@ -314,11 +316,6 @@ function senseMarkup(raw: string): string {
     .replace(/(<button [^>]*>[^<]*<\/button>)([,.;:!?)]+)/g, '<span class="nobr">$1$2</span>');
 }
 
-/** "(countable, chiefly in combination) An institution…": the labels set small, as printed. */
-function labelLead(html: string): string {
-  return html.replace(/^\s*\(([^()<]{1,80})\)\s*/, (_m, labels: string) => `<span class="sense-label lx-nolink">${labels}</span> `);
-}
-
 /** The definitions the Lexicon shows, in the core's order. Sense pictures are indexed by it. */
 export function lexiconSenses(result: DictionaryResult | null): Definition[] {
   return (result?.definitions || []).filter(usableDef);
@@ -348,6 +345,15 @@ export function senseFigurePlaceholder(index: number): string {
   return `<figure class="sense-figure is-pending" data-sense-figure="${index}" style="--ar:${SENSE_FIGURE_RATIO}" aria-hidden="true"><span class="sense-figure__frame"></span></figure>`;
 }
 
+/** The sources one sense was merged from. */
+function citeOf(d: Definition | undefined): string[] {
+  return Array.isArray(d?.sources) && d!.sources!.length
+    ? d!.sources!
+    : String(d?.source || '')
+        .split(/\s*·\s*/)
+        .filter(Boolean);
+}
+
 function renderSenses(
   senses: Definition[],
   shown: Set<string>,
@@ -355,23 +361,12 @@ function renderSenses(
   images: Array<SenseImage | null> | null,
   reserve: Set<number> = new Set(),
 ): string {
-  const citeOf = (d: Definition | undefined): string[] =>
-    Array.isArray(d?.sources) && d!.sources!.length
-      ? d!.sources!
-      : String(d?.source || '')
-          .split(/\s*·\s*/)
-          .filter(Boolean);
   return senses
     .map((d, i) => {
       const at = indexOf.get(d) ?? -1;
       const img = images && at >= 0 ? images[at] : null;
       const examples = uniqueExamples(d.examples || []);
       examples.forEach((ex) => shown.add(exampleKey(ex)));
-      const cite = citeOf(d);
-      // Shown after the last sense of a run that shares the same sources.
-      const sameAsNext = i + 1 < senses.length && citeOf(senses[i + 1]).join('|') === cite.join('|');
-      const badges =
-        cite.length && !sameAsNext ? cite.map((s) => `<span class="definition-source-badge">${esc(sourceName(s))}</span>`).join('') : '';
       const exHtml = examples.length
         ? `<div class="definition-examples">${examples
             .map((ex) => `<div class="definition-example">${linkText(stripGlossText(ex), 'act')}</div>`)
@@ -384,7 +379,6 @@ function renderSenses(
             ${img ? senseFigureHtml(img, at) : !images && reserve.has(at) ? senseFigurePlaceholder(at) : ''}
             <div class="definition-text">${senseHtml(d.meaning)}</div>
             ${exHtml}
-            ${badges ? `<div class="definition-source-badges">${badges}</div>` : ''}
           </div>
         </div>
       </div>`;
@@ -427,6 +421,7 @@ function lexiconPane(
     posInner += wrapGroup(pos, unknown ? (several ? 'other' : '') : pos, renderSenses(groups.get(pos) || [], shown, indexOf, images, reserve));
     return { id: pos, label: unknown ? (several ? 'other' : 'senses') : abbreviatePos(pos) };
   });
+  posInner += definitionSourcesHtml(defs.flatMap((d) => citeOf(d).map(sourceName)));
   let allInner = wrapPane(posInner, 'lexicon-pane--pos');
 
   const globalExamples = uniqueExamples(result.examples || [])

@@ -103,6 +103,22 @@ assert.match(fam, /<summary>All 15<\/summary>/);
 assert.equal((fam.match(/data-lookup="run\d+"/g) || []).length, 15);
 assert.equal(wordFamilyHtml([], 'act'), '');
 
+// Sense labels as Wiktionary prints them, on the gloss's line; sources once under the senses.
+{
+  const { senseLabelLead, definitionSourcesHtml } = load('lexicon-parts');
+  assert.equal(
+    senseLabelLead('(usually uncountable, politics) The capitalist class.'),
+    '<span class="sense-label lx-nolink">(<i>usually uncountable</i>, <i>politics</i>)</span> The capitalist class.',
+  );
+  assert.equal(senseLabelLead('The (main) city.'), 'The (main) city.', 'only a leading bracket is a label');
+  assert.equal(
+    definitionSourcesHtml(['Free Dictionary', 'Wiktionary', 'Free Dictionary', 'Datamuse']),
+    '<p class="lx-sources">Definitions from Free Dictionary, Wiktionary and Datamuse</p>',
+  );
+  assert.equal(definitionSourcesHtml(['Wiktionary']), '<p class="lx-sources">Definitions from Wiktionary</p>');
+  assert.equal(definitionSourcesHtml([]), '');
+}
+
 // Word family from kaikki.org's parse of the page (the "redundant" and "dichotomy" entries of
 // 2026-11-05, shortened): derived and related terms, without the words a Thesaurus page adds.
 {

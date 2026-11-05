@@ -127,6 +127,36 @@ export function wordFamilyHtml(groups: WordFamilyGroup[] | null | undefined, lin
 }
 
 /**
+ * A sense's leading labels as dictionaries print them: "(uncountable, politics)" on the
+ * definition's own line and in its own type, the labels in italic and the brackets and commas
+ * upright, in a quieter colour. This is how Wiktionary renders {{lb}} and close to Oxford
+ * Learner's grammar and register labels. `html` is the sense's escaped HTML; only a plain-text
+ * bracket at its start is a label.
+ */
+export function senseLabelLead(html: string): string {
+  return String(html || '').replace(/^\s*\(([^()<]{1,80})\)\s*/, (_m, raw: string) => {
+    const labels = raw
+      .split(/\s*,\s*/)
+      .filter(Boolean)
+      .map((l) => `<i>${l}</i>`);
+    return `<span class="sense-label lx-nolink">(${labels.join(', ')})</span> `;
+  });
+}
+
+/**
+ * Where the senses came from, said once under them as Cambridge, Collins and Dictionary.com do
+ * for each dictionary they quote, rather than under every sense: "Definitions from Wiktionary,
+ * Free Dictionary and Datamuse". `names` are display names in the senses' order; repeats drop.
+ */
+export function definitionSourcesHtml(names: string[]): string {
+  const list: string[] = [];
+  for (const n of names.map((x) => String(x || '').trim())) if (n && !list.includes(n)) list.push(n);
+  if (!list.length) return '';
+  const joined = list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}` : list[0];
+  return `<p class="lx-sources">Definitions from ${esc(joined)}</p>`;
+}
+
+/**
  * "Did you mean governess?" under a lookup that found nothing, with up to three spellings to
  * try, the closest first, as Oxford and Merriam-Webster offer them instead of guessing.
  */
