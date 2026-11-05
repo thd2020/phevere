@@ -1,6 +1,6 @@
 {
   "name": "@phevere/mobile",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "private": true,
   "description": "Phevere dictionary for Android and iOS (native WebView, Material 3)",
   "type": "module",

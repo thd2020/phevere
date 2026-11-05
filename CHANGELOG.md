@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.0] - 2026-11-06
+
 ### Added
 
 - Learn stages (2026-11-05): every word is New, Learning, Relearning, Young or Mature, as in Anki, with Mature meaning its memory now lasts three weeks or more. The stage shows on each question, the plan beside the quiz counts your words per stage, the reviews forecast splits by stage, and a round's summary lists the words that moved up a stage or slipped back.
@@ -612,7 +614,8 @@ All six downloads were replaced on the existing 2.1.0 release; the git tag is un
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v4.1.0...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v4.2.0...HEAD
+[4.2.0]: https://github.com/thd2020/phevere/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/thd2020/phevere/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/thd2020/phevere/compare/v3.0.0...v4.0.0
 [3.0.0]: https://github.com/thd2020/phevere/compare/v2.3.0...v3.0.0
