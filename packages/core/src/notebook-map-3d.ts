@@ -205,7 +205,7 @@ export function createMapScene(stage: HTMLElement, laid: MapData, opts: MapRende
   const pool: Label[] = [];
   for (let k = 0; k < Math.min(WORD_LABELS, N); k++) pool.push({ i: -1, el: makeEl('nbv-m3-label nbv-m3-label--word'), w: 0, h: 18, shown: false, opacity: 1 });
   // The group of unlinked words gets one name, above its middle.
-  let lone: { at: THREE.Vector3; centre: THREE.Vector3; r: number; label: Label } | null = null;
+  let lone: { centre: THREE.Vector3; r: number; label: Label } | null = null;
   {
     const members = data.nodes.filter((p) => p.u);
     if (members.length) {
@@ -214,14 +214,10 @@ export function createMapScene(stage: HTMLElement, laid: MapData, opts: MapRende
       for (const p of members) centre.add(q.set(p.x, p.y, p.z));
       centre.divideScalar(members.length);
       let r = 0;
-      let top = -Infinity;
-      for (const p of members) {
-        r = Math.max(r, q.set(p.x, p.y, p.z).distanceTo(centre));
-        top = Math.max(top, p.y);
-      }
+      for (const p of members) r = Math.max(r, q.set(p.x, p.y, p.z).distanceTo(centre));
       const el = makeEl('nbv-m3-label nbv-m3-label--group');
       el.textContent = `Unlinked words · ${members.length.toLocaleString('en')}`;
-      lone = { at: new THREE.Vector3(centre.x, top + 6, centre.z), centre, r, label: { i: -1, el, w: el.textContent.length * 7 + 16, h: 20, shown: false, opacity: 1 } };
+      lone = { centre, r, label: { i: -1, el, w: el.textContent.length * 7 + 16, h: 20, shown: false, opacity: 1 } };
     }
   }
   const wordLabelOf = new Map<number, Label>();
@@ -229,7 +225,6 @@ export function createMapScene(stage: HTMLElement, laid: MapData, opts: MapRende
   // Camera: an orbit around `target`.
   const target = new THREE.Vector3();
   const sph = new THREE.Spherical();
-  const fitDistance = () => (R / Math.sin(minFov() / 2)) * 0.92;
   /** The narrower of the vertical and horizontal fields of view, in radians. */
   function minFov(visible = false): number {
     const w = visible ? Math.max(80, W - insetL) : W;
@@ -251,7 +246,55 @@ export function createMapScene(stage: HTMLElement, laid: MapData, opts: MapRende
     sph.setFromVector3(new THREE.Vector3(v.pos.x - v.target.x, v.pos.y - v.target.y, v.pos.z - v.target.z));
     place();
   };
-  const home = (): MapView => ({ pos: { x: 0, y: 0, z: fitDistance() }, target: { x: 0, y: 0, z: 0 } });
+  // The home view looks straight at the map and fits what it frames to the stage, as graph
+  // viewers' "zoom to fit" does (3d-force-graph's zoomToFit, Obsidian's graph on open): the
+  // nodes' extent, measured across and up the screen, fills the width and the height. Framing
+  // a bounding sphere instead leaves a wide desktop stage mostly empty, with the graph a
+  // cluster of dots in the middle. A few linked words far out from the rest (the farthest
+  // tenth, more than a tenth beyond the others) may fall outside.
+  const framed: number[] = (() => {
+    const linked: number[] = [];
+    const rest: number[] = [];
+    data.nodes.forEach((p, i) => (hub(i) || p.u ? rest : linked).push(i));
+    if (linked.length < 10) return [...linked, ...rest];
+    const c = { x: 0, y: 0, z: 0 };
+    for (const i of linked) {
+      c.x += data.nodes[i].x / linked.length;
+      c.y += data.nodes[i].y / linked.length;
+      c.z += data.nodes[i].z / linked.length;
+    }
+    const far = linked.map((i) => Math.hypot(data.nodes[i].x - c.x, data.nodes[i].y - c.y, data.nodes[i].z - c.z));
+    const sorted = [...far].sort((a, b) => a - b);
+    const cut = sorted[Math.floor((sorted.length - 1) * 0.9)] * 1.1;
+    return [...linked.filter((_, k) => far[k] <= cut), ...rest];
+  })();
+  const home = (): MapView => {
+    if (!framed.length) return { pos: { x: 0, y: 0, z: 100 }, target: { x: 0, y: 0, z: 0 } };
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    for (const i of framed) {
+      const p = data.nodes[i];
+      x0 = Math.min(x0, p.x);
+      x1 = Math.max(x1, p.x);
+      y0 = Math.min(y0, p.y);
+      y1 = Math.max(y1, p.y);
+    }
+    const cx = (x0 + x1) / 2;
+    const cy = (y0 + y1) / 2;
+    // Leave room at the edges for the morphemes' labels and for the zoom buttons.
+    const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * 0.86;
+    const tanH = tanV * (W / H) * (W > 520 ? 0.9 : 0.94);
+    let d = minDist;
+    for (const i of framed) {
+      const p = data.nodes[i];
+      const r = radiusOf(i);
+      d = Math.max(d, (Math.abs(p.x - cx) + r) / tanH + p.z, (Math.abs(p.y - cy) + r) / tanV + p.z);
+    }
+    d = Math.min(d, maxDist());
+    return { pos: { x: cx, y: cy, z: d }, target: { x: cx, y: cy, z: 0 } };
+  };
   setView(opts.restore || home());
 
   // The panel covers part of the canvas. Shifting the projection window keeps the camera's
@@ -539,13 +582,15 @@ export function createMapScene(stage: HTMLElement, laid: MapData, opts: MapRende
 
   /* ------------------------------------------------------------- labels */
 
-  const cands: { i: number; pri: number; d: number; sx: number; sy: number }[] = [];
+  /** `r`: the node's drawn radius in pixels, so a word's label starts beside its ball. */
+  const cands: { i: number; pri: number; d: number; sx: number; sy: number; r: number }[] = [];
   const cull = () => {
     const camDist = camera.position.distanceTo(target);
     const fog = scene.fog as THREE.Fog;
     fog.near = Math.max(1, camDist - R * 0.2);
     fog.far = camDist + R * 1.7;
     const near = Math.max(55, camDist * 0.7);
+    const perPx = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / H;
     const focus = hl?.focus ?? null;
     cands.length = 0;
     for (let i = 0; i < N; i++) {
@@ -570,7 +615,7 @@ export function createMapScene(stage: HTMLElement, laid: MapData, opts: MapRende
       // An unlinked word is named only when pointed at or focused, so its group stays quiet.
       else if (d < near && !p.u) pri = 4;
       if (pri === 9) continue;
-      cands.push({ i, pri, d, sx: ((v.x + 1) / 2) * W, sy: ((1 - v.y) / 2) * H });
+      cands.push({ i, pri, d, sx: ((v.x + 1) / 2) * W, sy: ((1 - v.y) / 2) * H, r: radiusOf(i) / (Math.max(1, d) * perPx) });
     }
     // Within a rank, larger morphemes first, then nearer nodes.
     cands.sort((a, b) => a.pri - b.pri || data.nodes[b.i].n - data.nodes[a.i].n || a.d - b.d);
@@ -587,12 +632,15 @@ export function createMapScene(stage: HTMLElement, laid: MapData, opts: MapRende
     const hubShown = new Set<number>();
     const words: { c: (typeof cands)[number]; faint: boolean }[] = [];
     if (lone) {
-      v.copy(lone.at);
+      // The caption sits just above the group as drawn, however the map is turned, so it never
+      // lies across the points.
+      v.copy(lone.centre);
       const d = v.distanceTo(camera.position);
       v.project(camera);
+      const above = lone.r / (Math.max(1, d) * ((2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / H)) + lone.label.h / 2 + 4;
       if (v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1) {
         const sx = ((v.x + 1) / 2) * W;
-        const sy = ((1 - v.y) / 2) * H;
+        const sy = Math.max(lone.label.h / 2 + 2, ((1 - v.y) / 2) * H - above);
         const { w, h } = lone.label;
         cells(sx - w / 2, sy - h / 2, sx + w / 2, sy + h / 2, (k) => {
           const list = grid.get(k);
@@ -610,7 +658,7 @@ export function createMapScene(stage: HTMLElement, laid: MapData, opts: MapRende
       const p = data.nodes[c.i];
       const w = isHub ? p.l.length * 8 + 18 : p.l.length * 7.2 + 8;
       const h = isHub ? 22 : 18;
-      const x0 = isHub ? c.sx - w / 2 : c.sx + 4;
+      const x0 = isHub ? c.sx - w / 2 : c.sx + c.r + 4;
       const y0 = c.sy - h / 2;
       const x1 = x0 + w;
       const y1 = y0 + h;
@@ -657,7 +705,7 @@ export function createMapScene(stage: HTMLElement, laid: MapData, opts: MapRende
       const id = data.nodes[c.i].id;
       l.el.classList.toggle('is-focus', !!hl && id === hl.focus);
       l.el.classList.toggle('is-lit', !!hl && hl.nodes.has(id));
-      showLabel(l, c.sx, c.sy, false, 1);
+      showLabel(l, c.sx + c.r, c.sy, false, 1);
     }
   };
   function showLabel(l: Label, x: number, y: number, centred: boolean, opacity: number) {

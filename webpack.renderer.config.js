@@ -36,6 +36,11 @@ const rendererConfig = {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css'],
     alias: {
       '@phevere/core': path.resolve(__dirname, 'packages/core/src'),
+      // ts-loader compiles `import * as THREE from 'three'` to require(), which picks three's
+      // CommonJS build. That build calls process.emitWarning() when it loads, and the renderer
+      // has no `process`, so the 3D map failed to load and the desktop drew the flat fallback.
+      // The ES module build is the one three.js supports and the one the phone (Vite) uses.
+      three$: path.join(path.dirname(require.resolve('three')), 'three.module.js'),
     },
     fallback: {
       "path": false, // Disable path module in renderer
