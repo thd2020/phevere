@@ -268,14 +268,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   getNotificationPrefs: (): Promise<{
     clipboardImage: boolean;
-    clipboardEmpty: boolean;
     hoverToggle: boolean;
+    updates: boolean;
   }> => {
     return ipcRenderer.invoke('get-notification-prefs');
   },
   setNotificationPrefs: (
-    prefs: Partial<{ clipboardImage: boolean; clipboardEmpty: boolean; hoverToggle: boolean }>,
-  ): Promise<{ clipboardImage: boolean; clipboardEmpty: boolean; hoverToggle: boolean }> => {
+    prefs: Partial<{ clipboardImage: boolean; hoverToggle: boolean; updates: boolean }>,
+  ): Promise<{ clipboardImage: boolean; hoverToggle: boolean; updates: boolean }> => {
     return ipcRenderer.invoke('set-notification-prefs', prefs);
   },
   /** Quick translation: settings, whether this machine can paste into other apps, languages. */
@@ -667,12 +667,12 @@ declare global {
       setHoverEnabled?: (enabled: boolean) => Promise<{ success: boolean; hoverEnabled?: boolean }>;
       getNotificationPrefs?: () => Promise<{
         clipboardImage: boolean;
-        clipboardEmpty: boolean;
         hoverToggle: boolean;
+        updates: boolean;
       }>;
       setNotificationPrefs?: (
-        prefs: Partial<{ clipboardImage: boolean; clipboardEmpty: boolean; hoverToggle: boolean }>,
-      ) => Promise<{ clipboardImage: boolean; clipboardEmpty: boolean; hoverToggle: boolean }>;
+        prefs: Partial<{ clipboardImage: boolean; hoverToggle: boolean; updates: boolean }>,
+      ) => Promise<{ clipboardImage: boolean; hoverToggle: boolean; updates: boolean }>;
       toggleHoverEnabled?: () => Promise<{ success: boolean; hoverEnabled?: boolean }>;
       startOcrRegion?: () => Promise<{ success: boolean; open?: boolean }>;
       onMonitorHoverChanged?: (callback: (payload: { hoverEnabled: boolean }) => void) => void;

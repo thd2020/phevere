@@ -323,9 +323,9 @@ function hoverYieldsToSelection(): boolean {
 }
 
 /** Windows tray balloon; macOS / Linux Notification (displayBalloon is Win32-only). */
-function notifyUser(content: string, kind: NotificationKind, title = 'Phevere'): void {
-  const prefs = loadNotificationPrefs();
-  if (!prefs[kind]) return;
+/** A null kind always shows: it answers a shortcut that could not do its job. */
+function notifyUser(content: string, kind: NotificationKind | null, title = 'Phevere'): void {
+  if (kind && !loadNotificationPrefs()[kind]) return;
   try {
     if (process.platform === 'win32') {
       if (tray && !tray.isDestroyed()) {
@@ -685,7 +685,7 @@ async function runQuickReplace(): Promise<void> {
     if (!text) return;
     const hit = await dictionaryService.translateText(text, quickPrefs.to, quickPrefs.from, loadTranslationPrefs().provider);
     if (!hit?.text) {
-      notifyUser('Could not translate the selection.', 'quickTranslate');
+      notifyUser('Could not translate the selection.', null);
       return;
     }
     clipboardService.pauseFor(2000);
@@ -2316,7 +2316,7 @@ async function ocrClipboardImage(): Promise<void> {
   const img = readClipboardImage();
   if (!img) {
     log.info('main', 'No clipboard image to OCR');
-    notifyUser(clipboardOcrHint(), 'clipboardEmpty');
+    notifyUser(clipboardOcrHint(), null);
     return;
   }
   lastClipboardImageHash = img.imageHash;

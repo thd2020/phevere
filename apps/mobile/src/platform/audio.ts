@@ -56,6 +56,11 @@ function volume(prefs: MobilePrefs): number {
   return hasNativeBridge() ? gain : Math.min(1, gain);
 }
 
+/** Plays one recorded clip; rejects when it cannot be loaded or played. */
+export function playClip(url: string, prefs: MobilePrefs): Promise<void> {
+  return playUrl(url, prefs);
+}
+
 /** onStart fires once the clip is playing; native reports only the end, so it fires then. */
 async function playUrl(url: string, prefs: MobilePrefs, onStart?: () => void): Promise<void> {
   if (!prefs.audioEnabled || !url) return;

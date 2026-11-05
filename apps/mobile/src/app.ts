@@ -100,6 +100,14 @@ import {
   reviewAnswerDetails,
   scopeBookFor,
   listAnswerHistory,
+  learnerModel,
+  studyPace,
+  hintReview,
+  armCountdown,
+  markHeard,
+  singleVoice,
+  type LearnerModel,
+  type StudyPace,
   type AnswerRecord,
   type LearnPage,
   type RecentLookup,
@@ -124,7 +132,7 @@ import {
   openMenu,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
-import { playRecorded, prefetchRecorded, recordedReady, speakIpa, speakText } from './platform/audio';
+import { playClip, playRecorded, prefetchRecorded, recordedReady, recordedUrls, speakIpa, speakText, stopAudio } from './platform/audio';
 import {
   applyInsets,
   hasNativeBridge,
@@ -318,6 +326,20 @@ async function loadAnswerHistory(): Promise<void> {
   } catch {
     answerHistory = [];
   }
+}
+
+/** What the answer history says about the learner, for choosing questions and today's new words; null until loaded. */
+let learner: { model: LearnerModel; pace: StudyPace | null } | null = null;
+
+async function loadLearner(): Promise<void> {
+  let rows: AnswerRecord[] = [];
+  try {
+    rows = await listAnswerHistory();
+  } catch {
+    rows = [];
+  }
+  const now = Date.now();
+  learner = { model: learnerModel(rows, now), pace: studyPace(rows, now) };
 }
 
 /* Word books: the list the Words tab shows (My words, a book or All books) and its data. */
@@ -786,10 +808,11 @@ function paint(): void {
 
 /** The Learn tab's state, starting today's session for the chosen list when there is none. */
 function learnViewState(): LearnState {
+  const pace = learner?.pace ?? null;
   if (!nbState.review && wordsState.ctx) {
-    nbState.review = startScopeReview(wordsState.scope, wordsState.ctx, { mineGoal: nbState.goal, mineStartedToday: startedToday().length });
+    nbState.review = startScopeReview(wordsState.scope, wordsState.ctx, { mineGoal: nbState.goal, mineStartedToday: startedToday().length, pace });
   }
-  if (!nbState.review && reviewPool.length) nbState.review = startReview(reviewPool, nbState.goal, Date.now(), startedToday().length);
+  if (!nbState.review && reviewPool.length) nbState.review = startReview(reviewPool, nbState.goal, Date.now(), startedToday().length, pace);
   return {
     review: nbState.review || startReview([], nbState.goal),
     goal: nbState.goal,
@@ -799,6 +822,8 @@ function learnViewState(): LearnState {
       preview: previewReview,
       formatGap: formatReviewGap,
       examples: (lemma) => reviewExamples.get(lemma.toLowerCase()),
+      learner: learner?.model ?? null,
+      pace,
       learnPrefs,
       microphone,
     },
@@ -861,6 +886,13 @@ function bindLearn(): void {
   focusReview(page);
   void prefetchMeanings();
   void prefetchExamples();
+  // Today's plan waits for nothing; once the learner is known, a session not yet started plans again.
+  if (!learner) {
+    void loadLearner().then(() => {
+      if (nbState.review && !nbState.review.started) nbState.review = null;
+      if (tab === 'learn' && learnPage === 'today') paint();
+    });
+  }
 }
 
 /** Keeps the chosen list (or Add a word book) visible in the scrolling switcher. */
@@ -875,7 +907,14 @@ function revealWordsScope(): void {
 /** After a Review paint: the answer box gets the cursor, a listening question plays once. */
 let reviewAutoplayed = '';
 function focusReview(page: HTMLElement): void {
-  page.querySelector<HTMLInputElement>('#nbv-answer')?.focus();
+  const input = page.querySelector<HTMLInputElement>('#nbv-answer');
+  if (input) {
+    input.focus();
+    // After a Hint the box holds the letters shown so far; typing goes on after them.
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+  // Settings → Learn: the countdown on a choice question, answered as not known when it runs out.
+  armCountdown(nbState.review, learnPrefs.countdown, () => tab === 'learn' && learnPage === 'today', () => paint());
   // A new question starts with its progress bar and instruction below the sticky app bar.
   revealQuestion(page, document.querySelector('.top'));
   // After an answer, bring Continue into view with the verdict and the word above it.
@@ -885,7 +924,14 @@ function focusReview(page: HTMLElement): void {
   if (!listen || key === reviewAutoplayed || !prefs.audioEnabled) return;
   reviewAutoplayed = key;
   const btn = listen.querySelector<HTMLElement>('[data-act="nb-play"]');
-  if (btn) void pulseSpeak(btn, playLemma(listen.dataset.autoplay || ''));
+  if (!btn) return;
+  const word = listen.dataset.autoplay || '';
+  const played = playLemma(word);
+  void pulseSpeak(btn, played);
+  // A listening question's countdown starts once its word has played or failed to.
+  void played.catch(() => undefined).then(() => {
+    if (markHeard(nbState.review, word)) paint();
+  });
 }
 
 function answerCurrentReview(input: { choice?: number; typed?: string; knew?: boolean }): void {
@@ -926,6 +972,8 @@ async function commitReview(): Promise<void> {
     toast(err instanceof Error ? err.message : String(err));
   }
   advanceReview(r, updated);
+  // Today's answers count against the learner's usual day, so the next round plans fewer new words.
+  if (learner?.pace) learner.pace.answersToday = (learner.pace.answersToday || 0) + 1;
   answerHistory = null;
   grading = false;
   paint();
@@ -1904,18 +1952,30 @@ function onSelectionSettled(): void {
   void lookup(q);
 }
 
-/** Notebook ▶ plays the same recorded human clip as the lookup headword button. */
+/**
+ * Notebook and Learn ▶ play the same recorded human clip as the lookup headword button, or the
+ * synthetic voice when the word has none; never both, and a newer press stops an older one.
+ */
+let sayLemma: ((lemma: string) => Promise<unknown>) | null = null;
+
+const lemmaVoice = () => singleVoice({
+  recordings: async (lemma) => {
+    if (result && result.word.toLowerCase() === lemma.toLowerCase()) return recordedUrls(result);
+    // Lookups are cached in core; a word saved earlier usually resolves without network.
+    const found = await dictionaryService
+      .lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), { skipEtymology: true })
+      .catch(() => null);
+    return recordedUrls(found);
+  },
+  playRecording: (url) => playClip(url, prefs),
+  speak: (lemma) => speakText(lemma, prefs),
+  stop: stopAudio,
+});
+
 async function playLemma(lemma: string): Promise<void> {
-  if (!lemma) return;
-  if (result && result.word.toLowerCase() === lemma.toLowerCase()) {
-    await playRecorded(result, prefs);
-    return;
-  }
-  // Lookups are cached in core; a word saved earlier usually resolves without network.
-  const found = await dictionaryService
-    .lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), { skipEtymology: true })
-    .catch(() => null);
-  await playRecorded(found ?? { word: lemma } as DictionaryResult, prefs);
+  if (!lemma || !prefs.audioEnabled) return;
+  sayLemma ??= lemmaVoice();
+  await sayLemma(lemma);
 }
 
 /** A speaker tapped with Pronunciation switched off says why nothing plays. */
@@ -2533,6 +2593,14 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     }
+    case 'learn-use-goal': {
+      // The start card's suggested number of new words a day.
+      const goal = parseGoal(t.dataset.goal);
+      if (goal == null) return;
+      await setLearnGoal(t.dataset.book || '', goal);
+      paint();
+      return;
+    }
     case 'learn-goal': {
       // A preset in Settings → Learn; the radio's own click, not its label's.
       if (!(t instanceof HTMLInputElement)) return;
@@ -2662,8 +2730,9 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'nb-start':
     case 'nb-round':
-      // A new round plans again from what is due now.
+      // A new round plans again from what is due now and from the answers so far.
       if (t.dataset.act === 'nb-round') {
+        await loadLearner();
         nbState.review = null;
         learnViewState();
       }
@@ -2685,6 +2754,10 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'nb-skip':
       if (reviewArmed(nbState.review)) answerCurrentReview({});
       return;
+    case 'nb-hint':
+      // What is typed so far stays where it matches the answer; the next letter is added.
+      if (nbState.review && hintReview(nbState.review, document.querySelector<HTMLInputElement>('#nbv-answer')?.value || '')) paint();
+      return;
     case 'nb-override':
       if (nbState.review) overrideReview(nbState.review, t.dataset.mode === 'easy' ? 'easy' : 'flip');
       paint();
@@ -2695,6 +2768,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'nb-play':
       if (soundOff()) return;
       await pulseSpeak(t, playLemma(t.dataset.lemma || ''));
+      if (markHeard(nbState.review, t.dataset.lemma || '')) paint();
       return;
     case 'nb-more': {
       const def = t.previousElementSibling as HTMLElement | null;
@@ -2963,8 +3037,8 @@ function onChange(e: Event): void {
     });
     return;
   }
-  if (e.type === 'change' && el.id === 'update-mode') {
-    const mode = (el as HTMLSelectElement).value;
+  if (e.type === 'change' && el instanceof HTMLInputElement && el.name === 'update-mode') {
+    const mode = el.value;
     if (mode === 'auto' || mode === 'ask' || mode === 'off') phoneUpdates?.setMode(mode);
     return;
   }
