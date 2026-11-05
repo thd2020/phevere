@@ -132,9 +132,23 @@ export function vocabWhen(t: number, now = Date.now()): string {
   return d.toLocaleDateString(undefined, sameYear ? { month: 'short', day: 'numeric' } : { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+/** The rail letter a word files under; an accented Latin letter files under its base letter. */
 export function vocabAzLetter(lemma: string): string {
-  const up = (lemma || '').trim().charAt(0).toLocaleUpperCase('en');
+  const up = (lemma || '').trim().normalize('NFD').charAt(0).toLocaleUpperCase('en');
   return up >= 'A' && up <= 'Z' ? up : '#';
+}
+
+/**
+ * The A–Z rail's entries. Words that do not start with a Latin letter (digits, symbols, other
+ * scripts) share "#", which comes after Z, as in iOS Contacts and Android's contacts index.
+ */
+export const AZ_INDEX: readonly string[] = [...Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i)), '#'];
+
+/** A to Z order with the "#" words last, matching the rail. */
+export function compareAz(a: string, b: string): number {
+  const ha = vocabAzLetter(a) === '#' ? 1 : 0;
+  const hb = vocabAzLetter(b) === '#' ? 1 : 0;
+  return ha - hb || String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base', numeric: true });
 }
 
 function posTag(pos: string): string {

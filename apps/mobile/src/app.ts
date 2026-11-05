@@ -110,6 +110,7 @@ import {
   findBookConflict,
   importBookPayload,
   type BookScope,
+  wireIndexRail,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
 import { playRecorded, prefetchRecorded, recordedReady, speakIpa, speakText } from './platform/audio';
@@ -1862,61 +1863,19 @@ function legacyCopy(text: string): boolean {
 }
 
 /**
- * Notebook A–Z rail (sort A–Z): tap or drag along the letters to jump; a large letter
- * shows in the middle of the screen while the finger is down, as on desktop.
+ * Notebook A–Z rail (sort A–Z): tap a letter, or press and drag along the letters, to jump; a
+ * large letter shows in the middle of the screen while dragging, as on desktop.
  */
 function bindAzRail(): void {
   const nav = document.querySelector<HTMLElement>('[data-az-rail]');
   const hud = document.querySelector<HTMLElement>('.vocab-az-hud');
   if (!nav || !hud) return;
-  const letters = [...nav.querySelectorAll<HTMLElement>('.vocab-az__letter')];
-  const letterAt = (y: number): string | null => {
-    const r = nav.getBoundingClientRect();
-    const i = Math.max(0, Math.min(letters.length - 1, Math.floor(((y - r.top) / Math.max(r.height, 1)) * letters.length)));
-    return letters[i]?.dataset.letter || null;
-  };
-  let current = '';
-  const jump = (letter: string | null) => {
-    if (!letter) return;
-    hud.textContent = letter;
-    hud.hidden = false;
-    if (letter === current) return;
-    current = letter;
-    const target =
-      document.querySelector<HTMLElement>(`.vocab-list [data-az="${letter}"]`) ||
-      (letter === '#' ? document.querySelector<HTMLElement>('.vocab-list .vocab-item') : null);
-    target?.scrollIntoView({ block: 'start' });
-  };
-  let scrubbing = false;
-  nav.addEventListener('pointerdown', (e) => {
-    scrubbing = true;
-    current = '';
-    try {
-      nav.setPointerCapture(e.pointerId);
-    } catch {
-      /* pointer already gone */
-    }
-    jump((e.target as HTMLElement).closest<HTMLElement>('.vocab-az__letter')?.dataset.letter || letterAt(e.clientY));
-    e.preventDefault();
-  });
-  nav.addEventListener('pointermove', (e) => {
-    if (scrubbing) jump(letterAt(e.clientY));
-  });
-  const end = () => {
-    scrubbing = false;
-    hud.hidden = true;
-  };
-  nav.addEventListener('pointerup', end);
-  nav.addEventListener('pointercancel', end);
-  nav.addEventListener('lostpointercapture', end);
-  // Keyboard and screen readers: a click on a letter jumps without the HUD.
-  nav.addEventListener('click', (e) => {
-    const letter = (e.target as HTMLElement).closest<HTMLElement>('.vocab-az__letter')?.dataset.letter;
-    if (letter && !scrubbing) {
-      current = '';
-      jump(letter);
-      hud.hidden = true;
-    }
+  wireIndexRail(nav, {
+    jump: (letter) => document.querySelector<HTMLElement>(`.vocab-list [data-az="${letter}"]`)?.scrollIntoView({ block: 'start' }),
+    hud: (letter) => {
+      hud.textContent = letter || '';
+      hud.hidden = !letter;
+    },
   });
 }
 

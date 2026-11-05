@@ -3255,18 +3255,5 @@ body.main-window .vocab-az--time { right: 16px; }
 body.main-window .vocab-list-wrap.is-alpha .selections-list { padding-right: 0; }
 body.main-window .vocab-list-wrap.is-alpha :is(#vocabList) { margin-right: 0; }
 body.main-window .vocab-list-wrap.is-timeline :is(#vocabList) { margin-right: 28px; }
-
-/* The scrub indicator grows to fit a date ("Week of November 2"); a letter keeps the square. */
-body.main-window .vocab-az-hud.is-wide {
-  width: auto;
-  min-width: 88px;
-  height: auto;
-  min-height: 56px;
-  padding: 12px 20px;
-  font-size: 1.25rem;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-}
 /* Settings → Offline inspector opens under the title bar. */
 body.settings-page { --sv-inspector-top: var(--settings-titlebar-h); }

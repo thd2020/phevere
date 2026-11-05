@@ -14,6 +14,9 @@ import {
   type VocabEntry,
   type WikipediaResult,
   vocabListHtml,
+  vocabAzLetter,
+  AZ_INDEX,
+  compareAz,
   inflectionsHtml,
   formLineHtml,
   didYouMeanHtml,
@@ -949,7 +952,7 @@ export function notebookBody(
   // A chosen language filters the whole notebook, not only the page the list has loaded.
   const source = langOn ? filterVocabByLang(everything, nb.lang, langs) : entries;
   let list = ctx ? source.map((e) => ({ ...e, books: ctx.index.get(e.lemma.trim().toLowerCase()) })) : [...source];
-  if (sort === 'az') list.sort((a, b) => a.lemma.localeCompare(b.lemma, undefined, { sensitivity: 'base', numeric: true }));
+  if (sort === 'az') list.sort((a, b) => compareAz(a.lemma, b.lemma));
   // Saved order: reviews and sync bump updatedAt, which must not move words.
   else list.sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));
   const matches = (e: VocabEntry) =>
@@ -1021,14 +1024,8 @@ function bookScopeBody(words: WordsState, ctx: WordsContext, filter: string, nb:
   return `<div class="nbv">${head}</div><div class="nbv nbv-body">${body}</div>`;
 }
 
-function vocabAzLetter(lemma: string): string {
-  const up = (lemma || '').trim().charAt(0).toLocaleUpperCase('en');
-  return up >= 'A' && up <= 'Z' ? up : '#';
-}
-
 function vocabAzRail(present: Set<string>): string {
-  const letters = ['#', ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i))];
-  return `<nav class="vocab-az" data-az-rail aria-label="Jump to letter">${letters
+  return `<nav class="vocab-az" data-az-rail aria-label="Jump to letter">${AZ_INDEX
     .map((l) => `<button type="button" class="vocab-az__letter${present.has(l) ? '' : ' is-empty'}" data-letter="${l}">${l}</button>`)
     .join('')}</nav>
     <div class="vocab-az-hud" hidden aria-hidden="true"></div>`;

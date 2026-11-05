@@ -132,6 +132,7 @@ import {
 import { choiceRowHtml, keycapsHtml, rangeRowHtml, switchRowHtml } from '@phevere/core';
 import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
+import { AZ_INDEX, compareAz, vocabAzLetter, wireIndexRail } from '@phevere/core';
 
 const rlog = (...args: unknown[]) => {
   if (!__PHEVERE_DEV__) return;
@@ -2413,20 +2414,10 @@ function setVocabSortMode(mode: VocabSortMode): void {
   document.getElementById('vocabSortAlpha')?.setAttribute('aria-pressed', mode === 'alpha' ? 'true' : 'false');
 }
 
-function vocabAzLetter(lemma: string): string {
-  const ch = (lemma || '').trim().charAt(0);
-  if (!ch) return '#';
-  const up = ch.toLocaleUpperCase('en');
-  if (up >= 'A' && up <= 'Z') return up;
-  return '#';
-}
-
 function sortVocabEntries(entries: any[]): any[] {
   const copy = [...entries];
   if (getVocabSortMode() === 'alpha') {
-    copy.sort((a, b) =>
-      String(a.lemma || '').localeCompare(String(b.lemma || ''), undefined, { sensitivity: 'base', numeric: true }),
-    );
+    copy.sort((a, b) => compareAz(String(a.lemma || ''), String(b.lemma || '')));
   } else {
     // Saved order: reviews and sync bump updatedAt, which must not move words.
     copy.sort((a, b) => Number(b.createdAt || b.updatedAt || 0) - Number(a.createdAt || a.updatedAt || 0));
@@ -2438,12 +2429,11 @@ function ensureVocabAzIndex(): HTMLElement | null {
   const nav = document.getElementById('vocabAz');
   if (!nav) return null;
   if (!nav.dataset.ready) {
-    const letters = ['#', ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i))];
-    nav.innerHTML = letters
+    nav.innerHTML = AZ_INDEX
       .map((letter) => `<button type="button" class="vocab-az__letter" data-letter="${letter}">${letter}</button>`)
       .join('');
     nav.dataset.ready = '1';
-    wireVocabAzScrub(nav);
+    wireIndexRail(nav, { jump: scrollVocabToLetter, hud: (key) => (key ? showVocabAzHud(key) : hideVocabAzHud()) });
   }
   return nav;
 }
@@ -2452,66 +2442,19 @@ function scrollVocabToLetter(letter: string): void {
   const list = document.getElementById('vocabList');
   if (!list) return;
   flushVocabChunks?.();
-  const target =
-    list.querySelector(`[data-az="${letter}"]`) ||
-    (letter === '#' ? list.querySelector('.vocab-item') : null);
-  (target as HTMLElement | null)?.scrollIntoView({ block: 'start' });
+  list.querySelector<HTMLElement>(`[data-az="${letter}"]`)?.scrollIntoView({ block: 'start' });
 }
 
 function showVocabAzHud(letter: string): void {
   const hud = document.getElementById('vocabAzHud');
   if (!hud) return;
   hud.textContent = letter;
-  hud.classList.toggle('is-wide', [...letter].length > 2);
   hud.hidden = false;
 }
 
 function hideVocabAzHud(): void {
   const hud = document.getElementById('vocabAzHud');
   if (hud) hud.hidden = true;
-}
-
-function letterFromAzPointer(nav: HTMLElement, clientY: number): string | null {
-  const buttons = [...nav.querySelectorAll<HTMLElement>('.vocab-az__letter')];
-  if (!buttons.length) return null;
-  const rect = nav.getBoundingClientRect();
-  const t = (clientY - rect.top) / Math.max(rect.height, 1);
-  const idx = Math.max(0, Math.min(buttons.length - 1, Math.floor(t * buttons.length)));
-  return buttons[idx].dataset.letter || null;
-}
-
-function wireVocabAzScrub(
-  nav: HTMLElement,
-  jump: (key: string) => void = scrollVocabToLetter,
-  hud: (key: string) => string = (key) => key,
-): void {
-  let scrubbing = false;
-  const onMove = (ev: PointerEvent) => {
-    const letter = letterFromAzPointer(nav, ev.clientY);
-    if (!letter) return;
-    showVocabAzHud(hud(letter));
-    jump(letter);
-  };
-  nav.addEventListener('pointerdown', (ev) => {
-    const t = ev.target as HTMLElement;
-    const letter = t.closest('.vocab-az__letter')?.getAttribute('data-letter') || letterFromAzPointer(nav, ev.clientY);
-    if (!letter) return;
-    scrubbing = true;
-    nav.setPointerCapture(ev.pointerId);
-    showVocabAzHud(hud(letter));
-    jump(letter);
-    ev.preventDefault();
-  });
-  nav.addEventListener('pointermove', (ev) => {
-    if (!scrubbing) return;
-    onMove(ev);
-  });
-  const endScrub = () => {
-    scrubbing = false;
-    hideVocabAzHud();
-  };
-  nav.addEventListener('pointerup', endScrub);
-  nav.addEventListener('pointercancel', endScrub);
 }
 
 /* Timeline rail: the Recent list's counterpart to A to Z, by week or by month. */
@@ -2608,12 +2551,12 @@ function syncVocabTimeline(entries: any[]): void {
     .map((b, i) => {
       const mark = i > 0 && b.year !== year ? ` data-year="${b.year}"` : '';
       year = b.year;
-      return `<button type="button" class="vocab-az__letter vocab-az__time"${mark} data-letter="${b.key}" title="${b.label}">${b.short}</button>`;
+      return `<button type="button" class="vocab-az__letter vocab-az__time"${mark} data-letter="${b.key}" aria-label="${b.label}">${b.short}</button>`;
     })
     .join('');
   if (!nav.dataset.ready) {
     nav.dataset.ready = '1';
-    wireVocabAzScrub(nav, scrollVocabToTime, (key) => vocabTimeIndex.get(key)?.label || '');
+    wireIndexRail(nav, { jump: scrollVocabToTime });
   }
 }
 

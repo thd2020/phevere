@@ -30,7 +30,7 @@ import {
   type WordsScope,
 } from './wordbooks';
 import { bookWordKey } from './wordbook-store';
-import { vocabReadings, vocabSenses } from './vocab-view';
+import { compareAz, vocabReadings, vocabSenses } from './vocab-view';
 
 const ICON = {
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
@@ -194,7 +194,7 @@ function addedAt(e: WordsEntry): number {
  */
 export function sortBookEntries(entries: WordsEntry[], sort: BookSort): Array<{ e: WordsEntry; n: number }> {
   const rows = entries.map((e, i) => ({ e, n: i + 1 }));
-  if (sort === 'az') rows.sort((a, b) => a.e.lemma.localeCompare(b.e.lemma, 'en', { sensitivity: 'base' }) || a.n - b.n);
+  if (sort === 'az') rows.sort((a, b) => compareAz(a.e.lemma, b.e.lemma) || a.n - b.n);
   else if (sort === 'recent') rows.sort((a, b) => addedAt(b.e) - addedAt(a.e) || a.n - b.n);
   return rows;
 }

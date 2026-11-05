@@ -78,10 +78,14 @@ export {
   vocabListHtml,
   vocabEntryGroup,
   recentListHtml,
+  vocabAzLetter,
+  AZ_INDEX,
+  compareAz,
   type RecentLookup,
   type VocabViewEntry,
   type VocabListOptions,
 } from './vocab-view';
+export { wireIndexRail, type IndexRailOptions } from './index-rail';
 export {
   analyzeNotebook,
   notebookViewSwitchHtml,

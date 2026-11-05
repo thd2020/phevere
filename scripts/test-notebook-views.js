@@ -328,6 +328,14 @@ assert.match(rec, /\/ɪnˈspɛkt\//);
 assert.equal((rec.match(/class="vocab-group"/g) || []).length, 2, 'Today and Earlier');
 assert.equal((rec.match(/data-act="lookup"/g) || []).length, 6, 'row and button per item');
 
+// A to Z: "#" (digits, symbols, other scripts) comes after Z in the rail and in the list.
+const { AZ_INDEX, compareAz } = load('vocab-view');
+assert.equal(AZ_INDEX[0], 'A');
+assert.equal(AZ_INDEX[AZ_INDEX.length - 1], '#');
+assert.deepEqual(['対応', 'zebra', '3D', 'apple', 'Émigré', 'Banana'].sort(compareAz), ['apple', 'Banana', 'Émigré', 'zebra', '3D', '対応']);
+assert.equal(load('vocab-view').vocabAzLetter('Émigré'), 'E', 'an accented letter files under its base letter');
+assert.equal(load('vocab-view').vocabAzLetter('3D'), '#');
+
 // Origins and deep roots from Wiktionary templates.
 const ety = load('etymology');
 const ne = load('notebook-etymology');
