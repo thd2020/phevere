@@ -59,6 +59,8 @@ export interface ReviewQuestion {
   predicted?: number;
   /** Countdown milliseconds used while the question was on screen (`armCountdown`). */
   countdownSpent?: number;
+  /** A listening question's word has played, or could not be played (`markHeard`). */
+  heard?: boolean;
 }
 
 export interface ReviewAnswer {
@@ -1189,12 +1191,34 @@ export function countdownMs(q: ReviewQuestion | null | undefined, seconds: numbe
   return s * 1000;
 }
 
+/** The longest a listening question's countdown waits for its word to play before it starts anyway. */
+export const COUNTDOWN_WAIT_MS = 8000;
+
+/**
+ * A listening question's countdown waits until its word has played or failed to load
+ * (`markHeard`), and at most COUNTDOWN_WAIT_MS from the question's start.
+ */
+export function countdownWaiting(q: ReviewQuestion, now = Date.now()): boolean {
+  return kindSkill(q.kind) === 'listening' && !q.heard && now - q.shownAt < COUNTDOWN_WAIT_MS;
+}
+
+/**
+ * The word of the question on screen has played, or could not be played: a listening question's
+ * countdown may start. True when that changed something, so the shell repaints.
+ */
+export function markHeard(state: ReviewState | null | undefined, lemma: string): boolean {
+  const q = state?.question;
+  if (!q || state.answer || q.heard || clean(q.lemma).toLowerCase() !== clean(lemma).toLowerCase()) return false;
+  q.heard = true;
+  return true;
+}
+
 /**
  * Countdown time a question has used: the time it was on screen once `armCountdown` has run, and
- * until then the time since it was shown.
+ * until then the time since it was shown, or none while a listening question waits for its word.
  */
 export function countdownElapsed(q: ReviewQuestion, now = Date.now()): number {
-  return q.countdownSpent ?? Math.max(0, now - q.shownAt);
+  return q.countdownSpent ?? (countdownWaiting(q, now) ? 0 : Math.max(0, now - q.shownAt));
 }
 
 /**
@@ -1241,7 +1265,8 @@ export function armCountdown(state: ReviewState | null | undefined, seconds: num
     const t = Date.now();
     // Off screen: the next paint of Learn arms the countdown again from where it stands.
     if (state.question !== q || state.answer || !showing()) return stop();
-    if (pageHidden()) {
+    // In the background, or a listening question whose word has not played yet: no time counts.
+    if (pageHidden() || countdownWaiting(q, t)) {
       wasHidden = true;
       mark = t;
       return;
@@ -1252,7 +1277,7 @@ export function armCountdown(state: ReviewState | null | undefined, seconds: num
       stop();
       if (expireCountdown(state, seconds, t)) repaint();
     } else if (wasHidden) {
-      // Back in front: the bar's animation kept running while the app was hidden.
+      // Back in front, or the word has played: the bar starts or resumes where the time stands.
       stop();
       repaint();
     }

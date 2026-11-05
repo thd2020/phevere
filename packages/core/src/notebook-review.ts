@@ -10,6 +10,7 @@ import {
   bestSense,
   countdownElapsed,
   countdownMs,
+  countdownWaiting,
   ensureReviewQuestion,
   hintsLeft,
   MATURITY_NAME,
@@ -334,7 +335,9 @@ function countdownHtml(q: ReviewQuestion, state: ReviewState, opts: ReviewRender
   if (!ms || state.answer) return '';
   const elapsed = Math.min(ms, countdownElapsed(q, now));
   const s = Math.round(ms / 1000);
-  return `<div class="nbv-countdown" role="timer" aria-label="${s} seconds to answer" style="--cd:${ms}ms;--cd-t:-${elapsed}ms"><i></i></div>`;
+  // A listening question's bar stays full until its word has played.
+  const waiting = countdownWaiting(q, now) ? ' is-waiting' : '';
+  return `<div class="nbv-countdown${waiting}" role="timer" aria-label="${s} seconds to answer" style="--cd:${ms}ms;--cd-t:-${elapsed}ms"><i></i></div>`;
 }
 
 /** How long the mark and the wash play, in milliseconds (keep in step with notebook-views.css). */

@@ -80,6 +80,7 @@ import {
   studyPace,
   hintReview,
   armCountdown,
+  markHeard,
   singleVoice,
   startReview,
   answerReview,
@@ -4603,7 +4604,17 @@ function playLemmaSrc(src: string, recorded: boolean): Promise<void> {
   el.preservesPitch = true;
   el.playbackRate = recorded ? Math.max(0.5, Math.min(2, Number(prefs.speed) || 1)) : 1;
   lemmaAudio = el;
-  return el.play();
+  // Resolves when the clip has played to its end or was stopped, so a listening question's
+  // countdown starts after the word, not while it plays.
+  return el.play().then(
+    () =>
+      new Promise<void>((resolve) => {
+        if (el.ended || el.paused) return resolve();
+        el.addEventListener('ended', () => resolve(), { once: true });
+        el.addEventListener('pause', () => resolve(), { once: true });
+        el.addEventListener('error', () => resolve(), { once: true });
+      }),
+  );
 }
 
 /**
@@ -4657,14 +4668,19 @@ const sayLemma = singleVoice({
 });
 
 async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise<void> {
-  const api = window.electronAPI as any;
-  lemmaAudioPrefs = (await api?.getAudioPrefs?.()) || { enabled: true, speed: 1, volume: 1 };
-  if (lemmaAudioPrefs.enabled === false) return;
-  btn?.classList.add('is-speaking');
   try {
-    await sayLemma(lemma);
+    const api = window.electronAPI as any;
+    lemmaAudioPrefs = (await api?.getAudioPrefs?.()) || { enabled: true, speed: 1, volume: 1 };
+    if (lemmaAudioPrefs.enabled === false) return;
+    btn?.classList.add('is-speaking');
+    try {
+      await sayLemma(lemma);
+    } finally {
+      setTimeout(() => btn?.classList.remove('is-speaking'), 500);
+    }
   } finally {
-    setTimeout(() => btn?.classList.remove('is-speaking'), 500);
+    // A listening question's countdown starts once its word has played, failed to, or is off.
+    if (markHeard(nbReview, lemma)) renderLearn();
   }
 }
 

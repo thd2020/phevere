@@ -302,6 +302,28 @@ const countdownChecks = async () => {
   assert.equal(s4.answer, null, 'back on screen with time left');
   await new Promise((r) => setTimeout(r, 600));
   assert.equal(s4.answer?.timedOut, true, 'and it runs out after the rest of the time');
+  // A listening question's countdown waits until its word has played (or failed to).
+  const s5 = core.startReview([fresh], 10, Date.now());
+  s5.started = true;
+  const q5 = core.ensureReviewQuestion(s5, [fresh, ...pool.slice(3)], { now: Date.now() });
+  q5.kind = 'listen-choice';
+  const prefs5 = { countdown: 0.3, speaking: false };
+  assert.ok(core.countdownWaiting(q5));
+  assert.match(core.reviewHtml([fresh, ...pool.slice(3)], s5, 10, { now: Date.now() + 3000, learnPrefs: prefs5 }), /class="nbv-countdown is-waiting"[^>]*--cd-t:-0ms/, 'the bar stays full while the word plays');
+  core.armCountdown(s5, 0.3, () => true, () => (painted += 1));
+  await new Promise((r) => setTimeout(r, 600));
+  assert.equal(s5.answer, null, 'no time counts before the word has played');
+  assert.equal(core.markHeard(s5, 'someotherword'), false, 'only the word on screen counts');
+  assert.equal(core.markHeard(s5, q5.lemma.toUpperCase()), true);
+  assert.equal(core.markHeard(s5, q5.lemma), false, 'once');
+  core.armCountdown(s5, 0.3, () => true, () => (painted += 1));
+  await new Promise((r) => setTimeout(r, 120));
+  assert.equal(s5.answer, null, 'the countdown starts from the full time once heard');
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(s5.answer?.timedOut, true);
+  // A word that never reports back does not hold the countdown for ever.
+  assert.equal(core.countdownWaiting({ ...q5, heard: false, shownAt: Date.now() - core.COUNTDOWN_WAIT_MS - 1 }), false);
+  assert.equal(core.countdownWaiting({ ...q5, kind: 'word-choice', heard: false }), false, 'choice questions without sound do not wait');
 };
 
 /* ----------------------------------------------------- one voice per press */

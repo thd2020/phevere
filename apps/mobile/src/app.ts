@@ -103,6 +103,7 @@ import {
   studyPace,
   hintReview,
   armCountdown,
+  markHeard,
   singleVoice,
   type LearnerModel,
   type StudyPace,
@@ -880,7 +881,14 @@ function focusReview(page: HTMLElement): void {
   if (!listen || key === reviewAutoplayed || !prefs.audioEnabled) return;
   reviewAutoplayed = key;
   const btn = listen.querySelector<HTMLElement>('[data-act="nb-play"]');
-  if (btn) void pulseSpeak(btn, playLemma(listen.dataset.autoplay || ''));
+  if (!btn) return;
+  const word = listen.dataset.autoplay || '';
+  const played = playLemma(word);
+  void pulseSpeak(btn, played);
+  // A listening question's countdown starts once its word has played or failed to.
+  void played.catch(() => undefined).then(() => {
+    if (markHeard(nbState.review, word)) paint();
+  });
 }
 
 function answerCurrentReview(input: { choice?: number; typed?: string; knew?: boolean }): void {
@@ -2709,6 +2717,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'nb-play':
       if (soundOff()) return;
       await pulseSpeak(t, playLemma(t.dataset.lemma || ''));
+      if (markHeard(nbState.review, t.dataset.lemma || '')) paint();
       return;
     case 'nb-more': {
       const def = t.previousElementSibling as HTMLElement | null;

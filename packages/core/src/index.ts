@@ -255,6 +255,7 @@ export {
   reviewArmed,
   hintReview,
   armCountdown,
+  markHeard,
   wordMaturity,
   ROUND_WORDS,
   type ReviewQuestion,
