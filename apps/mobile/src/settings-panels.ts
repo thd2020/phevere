@@ -20,6 +20,7 @@ import {
   type PackView,
   type SourceRowInput,
 } from '@phevere/core';
+import { UPDATE_MODES, updateActionText, updateStatusText, type PhoneUpdateState } from './app-update';
 import type { CatalogStatus } from './platform/offline';
 import type { MobilePrefs } from './platform/prefs';
 
@@ -135,7 +136,7 @@ function selectionBarSection(capture: CaptureInfo): string {
     </div>`;
 }
 
-export type SettingsSection = 'capture' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio';
+export type SettingsSection = 'capture' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio' | 'updates';
 
 const TAB_ICON: Record<SettingsSection, string> = {
   capture: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M9 9h6M12 9v7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -144,6 +145,7 @@ const TAB_ICON: Record<SettingsSection, string> = {
   offline: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM12 7v7M9 11l3 3 3-3M8.5 17h7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   api: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M11 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM11 12h10M18 12v3M21 12v2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   audio: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4zM15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  updates: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4M12 8.5v4l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
 export const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = [
@@ -154,9 +156,10 @@ export const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = 
   { id: 'audio', label: 'Audio' },
 ];
 
-export function settingsSections(capture: CaptureInfo): Array<{ id: SettingsSection; label: string }> {
+/** `updates`: the Android updater is running (never on iOS or in the browser). */
+export function settingsSections(capture: CaptureInfo, updates = false): Array<{ id: SettingsSection; label: string }> {
   if (capture.platform === 'web') return SETTINGS_SECTIONS;
-  return [
+  const list: Array<{ id: SettingsSection; label: string }> = [
     { id: 'capture', label: 'Capture' },
     { id: 'notifications', label: 'Notifications' },
     { id: 'sources', label: 'Sources' },
@@ -164,6 +167,38 @@ export function settingsSections(capture: CaptureInfo): Array<{ id: SettingsSect
     { id: 'api', label: 'API keys' },
     { id: 'audio', label: 'Audio' },
   ];
+  if (updates && capture.platform === 'android') list.push({ id: 'updates', label: 'Updates' });
+  return list;
+}
+
+/** The desktop's Updates panel without Roll back, which Android cannot do. */
+function updatesPanel(u: PhoneUpdateState): string {
+  const status = updateStatusText(u);
+  const action = updateActionText(u);
+  const pct = Math.round(u.progress * 100);
+  const busy = u.status === 'checking' || u.status === 'downloading';
+  const options = UPDATE_MODES.filter((m) => u.canInstall || m.id !== 'auto')
+    .map((m) => `<option value="${m.id}"${u.mode === m.id ? ' selected' : ''}>${esc(m.label)}</option>`)
+    .join('');
+  return `<div class="sv sv-page">
+    <div class="sv-ledger">
+      <div class="sv-row">
+        <span class="sv-row__text">
+          <span class="sv-row__label">Phevere ${esc(u.current)}</span>
+          <span class="sv-row__sub${u.status === 'error' ? ' is-error' : ''}" role="status" aria-live="polite">${esc(status)}</span>
+        </span>
+        ${action ? `<button type="button" class="sv-btn sv-btn--accent" data-act="update-install">${esc(action)}</button>` : ''}
+        ${u.status === 'downloading' ? `<div class="sv-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Downloading update"><span style="width:${pct}%"></span></div>` : ''}
+      </div>
+      <div class="sv-row">
+        <span class="sv-row__text"><label for="update-mode" class="sv-row__label">Install updates</label></span>
+        <select id="update-mode" class="sv-select">${options}</select>
+      </div>
+      <div class="sv-ledger__foot">
+        <button type="button" class="sv-btn" data-act="update-check"${busy ? ' disabled' : ''}>Check now</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 const TRANSLATION_ONLY = new Set(['DeepL API', 'Google Translate API']);
@@ -246,7 +281,7 @@ function picturesHtml(prefs: MobilePrefs): string {
   </div>`;
 }
 
-function notificationsPanel(prefs: MobilePrefs, capture: CaptureInfo): string {
+function notificationsPanel(prefs: MobilePrefs, capture: CaptureInfo, updates: boolean): string {
   const allow = !capture.notificationsGranted
     ? navRowHtml({ label: 'Notifications', value: 'Off', attrs: 'data-act="notify-allow"' })
     : '';
@@ -256,6 +291,7 @@ function notificationsPanel(prefs: MobilePrefs, capture: CaptureInfo): string {
       ${switchRowHtml({ label: 'Incoming lookup', on: !!prefs.notifyIncoming, attrs: 'data-act="notify" data-key="incoming"' })}
       ${switchRowHtml({ label: 'Saved to notebook', on: !!prefs.notifySaved, attrs: 'data-act="notify" data-key="saved"' })}
       ${switchRowHtml({ label: 'Scan finished', on: !!prefs.notifyOcr, attrs: 'data-act="notify" data-key="ocr"' })}
+      ${updates ? switchRowHtml({ label: 'Update ready or available', on: prefs.notifyUpdates !== false, attrs: 'data-act="notify" data-key="updates"' }) : ''}
       ${navRowHtml({ label: 'System notification settings', attrs: 'data-act="notify-settings"' })}
     </div>
   </div>`;
@@ -394,32 +430,35 @@ export function settingsBody(
   section: SettingsSection,
   voice: VoiceStatus | null = null,
   lib: LibraryState = emptyLibraryState(),
+  updates: PhoneUpdateState | null = null,
 ): string {
-  const tabs = settingsSections(capture)
+  const sections = settingsSections(capture, !!updates);
+  const tabs = sections
     .map(
       (s) =>
         `<button type="button" class="result-tab" role="tab" data-act="settings-section" data-section="${s.id}" aria-selected="${section === s.id}" aria-label="${s.label}" title="${s.label}">${TAB_ICON[s.id]}</button>`,
     )
     .join('');
-  const sections = settingsSections(capture);
   const current = sections.find((s) => s.id === section) || sections[0];
   section = current.id;
   const panel =
     section === 'capture'
       ? capturePanel(prefs, capture)
       : section === 'notifications'
-        ? notificationsPanel(prefs, capture)
+        ? notificationsPanel(prefs, capture, !!updates)
         : section === 'sources'
           ? sourcesPanel(prefs, sources, lib)
           : section === 'offline'
             ? offlinePanel(packs, packMsg, lib, capture.platform)
             : section === 'api'
               ? apiPanel(prefs, lib)
-              : audioPanel(prefs, capture, voice);
+              : section === 'updates' && updates
+                ? updatesPanel(updates)
+                : audioPanel(prefs, capture, voice);
   return `
     <div class="settings">
       <div class="settings-sticky">
-        <div class="result-tabs settings-tabs" role="tablist" aria-label="Settings sections" style="--tabs:${settingsSections(capture).length}">${tabs}</div>
+        <div class="result-tabs settings-tabs" role="tablist" aria-label="Settings sections" style="--tabs:${sections.length}">${tabs}</div>
       </div>
       <div class="settings-panel" role="tabpanel" aria-label="${current.label}"><h2 class="settings-panel__name">${current.label}</h2>${panel}</div>
     </div>`;

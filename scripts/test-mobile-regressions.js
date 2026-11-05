@@ -76,6 +76,9 @@ async function startupAndGestures(floatingStrip) {
     './platform/audio': {}, './platform/native': native, './platform/notebook-io': {},
     './platform/offline': { listCatalogStatus: async () => [], markInstalledPacksOnCore: async () => {} },
     './platform/prefs': { loadPrefs: () => prefs, savePrefs: () => {}, applyPrefsToCore: () => {} },
+    // The pop-up never starts the updater; test-mobile-update.js covers it.
+    './platform/updates': { startPhoneUpdates: async () => { throw new Error('the pop-up must not check for updates'); } },
+    './app-update': { updateStatusText: () => '' },
     './views': {
       esc: (s) => s, lookupBody: ({ result }) => JSON.stringify(result), appBarHtml: (_t, q) => q, popupBarHtml: () => '', lexiconSenses: (r) => (r && r.definitions) || [],
       // Settings state the shell creates at start-up; its shape does not matter here.
