@@ -3371,7 +3371,10 @@ function startAutoCloseTimeout() {
         function linkifyLemmaRefs(raw, isHtml) {
           if (!raw) return '';
           if (isHtml) {
-            return String(raw).replace(/<a\s+([^>]*?)href=(["'])([^"']+)\2([^>]*)>/gi, function (full, pre, q, href, post) {
+            const pruned = window.phevereLexicon && window.phevereLexicon.pruneGlossLinks
+              ? window.phevereLexicon.pruneGlossLinks(String(raw))
+              : String(raw);
+            return pruned.replace(/<a\s+([^>]*?)href=(["'])([^"']+)\2([^>]*)>/gi, function (full, pre, q, href, post) {
               const m = String(href).match(/\/wiki\/([^?#]+)/i);
               if (!m) return full;
               let title = '';
