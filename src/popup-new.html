@@ -3413,7 +3413,10 @@ function startAutoCloseTimeout() {
           });
         }
 
+        /** The core's comparison (example-text.ts) once the shared bundle is in; quotes and spaces before. */
         function exampleKey(s) {
+          var lx = window.phevereLexicon;
+          if (lx && lx.exampleKey) return lx.exampleKey(String(stripHtmlToText(s) || ''));
           return String(stripHtmlToText(s) || '')
             .replace(/[\u201C\u201D]/g, '"')
             .replace(/[\u2018\u2019]/g, "'")
@@ -3421,6 +3424,11 @@ function startAutoCloseTimeout() {
             .replace(/\s+/g, ' ')
             .trim()
             .toLowerCase();
+        }
+        /** "made redundant ." shown as "made redundant.". */
+        function tidyExampleText(s) {
+          var lx = window.phevereLexicon;
+          return lx && lx.tidyExample ? lx.tidyExample(String(s || '')) : String(s || '');
         }
         function uniqueExamples(list) {
           const out = [];
@@ -3675,7 +3683,7 @@ function startAutoCloseTimeout() {
               examples.forEach(function (ex) { shownExampleKeys.add(exampleKey(ex)); });
               const exHtml = examples.length
                 ? `<div class="definition-examples">${examples.map(function (ex) {
-                    return `<div class="definition-example">${linkWords(stripHtmlToText(ex))}</div>`;
+                    return `<div class="definition-example">${linkWords(tidyExampleText(stripHtmlToText(ex)))}</div>`;
                   }).join('')}</div>`
                 : '';
               citeOf(d).forEach(function (s) { senseSourceNames.push(normalizeSourceName(s)); });
@@ -3745,7 +3753,7 @@ function startAutoCloseTimeout() {
             tocIds.push('examples');
             exampleSections.push({ id: 'examples', label: 'examples' });
             allInner += wrapPane(wrapGroup('examples', 'examples', globalExamples.map(function (ex) {
-              return `<div class="example-item">${linkWords(stripHtmlToText(ex))}</div>`;
+              return `<div class="example-item">${linkWords(tidyExampleText(stripHtmlToText(ex)))}</div>`;
             }).join('')));
           }
 

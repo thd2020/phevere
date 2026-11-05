@@ -13,6 +13,7 @@ import './fonts';
 import '@phevere/core/lexicon-parts.css';
 import { definitionSourcesHtml, didYouMeanHtml, formLineHtml, inflectionsHtml, senseLabelLead, wordFamilyHtml } from '@phevere/core/lexicon-parts';
 import { linkHtml, linkText, wikiLinkLookup } from '@phevere/core/text-links';
+import { exampleKey, tidyExample } from '@phevere/core/example-text';
 import { morphemeOfferHtml, morphemeSections } from '@phevere/core/morpheme-view';
 import { loadWordbook } from '@phevere/core/wordbooks';
 import '@phevere/core/popover-menu.css';
@@ -28,6 +29,8 @@ import { bookPickItems } from '@phevere/core/wordbook-views';
   didYouMeanHtml,
   senseLabelLead,
   definitionSourcesHtml,
+  exampleKey,
+  tidyExample,
   linkHtml,
   linkText,
   wikiLinkLookup,

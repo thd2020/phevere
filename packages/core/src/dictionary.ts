@@ -85,7 +85,7 @@ import { datamuseEntry, formLine, formOfGlossLemma, formOfLemmaFromGlosses, isCi
 import { buildEtymology, EtymologyLink } from './etymology';
 import { lookupMorpheme, morphemeOffers, parseMorphemeQuery } from './morpheme';
 import { groupYoudaoEtymologies, sameHeadword, serializeEtymologySources } from './etymology-sources';
-import { mergeSimilarDefinitions, dedupeExamples, exampleKey, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses, formOfSensesLast } from './definition-merge';
+import { mergeSimilarDefinitions, dedupeExamples, exampleKey, tidyExample, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses, formOfSensesLast } from './definition-merge';
 import { orderSensesByFrequency, warmSenseFrequency } from './sense-frequency';
 import {
   Pronunciation,
@@ -2158,8 +2158,9 @@ export class DictionaryService extends BaseService {
       const exSet = new Set<string>();
       const uniqueExamples: string[] = [];
       for (const ex of examples) {
-        const n = normalizeExample(ex);
-        if (n && !exSet.has(n)) { exSet.add(n); uniqueExamples.push(n); }
+        const n = tidyExample(normalizeExample(ex));
+        const k = exampleKey(n);
+        if (n && k && !exSet.has(k)) { exSet.add(k); uniqueExamples.push(n); }
       }
 
       const uniqueSynonyms = Array.from(new Set(synonyms.map((s) => (s || '').trim()).filter(Boolean)));

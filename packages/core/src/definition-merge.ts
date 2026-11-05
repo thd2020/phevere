@@ -5,6 +5,9 @@
 
 import { isGrammaticalFormOfGloss } from './lookup-policy';
 import { latinLemmasByPos } from './text-normalize';
+import { exampleKey, tidyExample } from './example-text';
+
+export { exampleKey, tidyExample };
 
 export interface MergeableDefinition {
   partOfSpeech: string;
@@ -208,22 +211,9 @@ function unionUnique(a?: string[], b?: string[]): string[] | undefined {
     const k = exampleKey(x);
     if (!k || seen.has(k)) continue;
     seen.add(k);
-    out.push(String(x).trim());
+    out.push(tidyExample(String(x)));
   }
   return out.length ? out : undefined;
-}
-
-/** Collapse quote/HTML/whitespace variants so the same sentence is not shown twice. */
-export function exampleKey(s: string): string {
-  return (s || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&[a-z]+;/gi, ' ')
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/["']/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
 }
 
 export function dedupeExamples(list?: string[]): string[] | undefined {

@@ -143,6 +143,19 @@ assert.equal(wordFamilyHtml([], 'act'), '');
   assert.deepEqual(familyFromKaikki(other, 'redundant', 'en'), [], 'another language section is not read');
 }
 
+// One example from two sources shows once, tidied: Wiktionary and the Free Dictionary API gave
+// "redundant" this sentence with and without a space before the full stop (2026-11-05).
+{
+  const { exampleKey, tidyExample, dedupeExamples } = load('definition-merge');
+  const a = 'Four employees were made redundant.';
+  const b = 'Four employees were made redundant .';
+  assert.equal(exampleKey(a), exampleKey(b), 'a space before the full stop is not a different sentence');
+  assert.equal(exampleKey('“It’s a word—really”'), exampleKey('"it\'s a word-really."'), 'quotes, dashes, case and closing stop');
+  assert.deepEqual(dedupeExamples([b, a]), [a], 'kept once, as the clean copy');
+  assert.equal(tidyExample('Ask him ( politely ) , then leave .'), 'Ask him ( politely), then leave.');
+  assert.equal(tidyExample(a), a, 'a clean example is left alone');
+}
+
 // Word family by frequency: Datamuse's answer for "*redund*" of 2026-11-05, shortened. Common
 // words lead; coinages Datamuse does not list wait under "All" when the list is long.
 (async () => {

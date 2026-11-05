@@ -6,6 +6,8 @@ import {
   formatVocabLangPair,
   saveLemma,
   stripGlossText,
+  exampleKey as coreExampleKey,
+  tidyExample,
   type Definition,
   type DictionaryResult,
   type Pronunciation,
@@ -200,14 +202,9 @@ function ipaChips(list: Pronunciation[] | undefined, fallback: string): string {
     : `<p class="ipa-line">${esc(shown)}</p>`;
 }
 
+/** The core's comparison, so results saved before it changed also show a sentence once. */
 function exampleKey(s: string): string {
-  return stripGlossText(s)
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/["']/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
+  return coreExampleKey(stripGlossText(s));
 }
 
 function uniqueExamples(list: string[]): string[] {
@@ -369,7 +366,7 @@ function renderSenses(
       examples.forEach((ex) => shown.add(exampleKey(ex)));
       const exHtml = examples.length
         ? `<div class="definition-examples">${examples
-            .map((ex) => `<div class="definition-example">${linkText(stripGlossText(ex), 'act')}</div>`)
+            .map((ex) => `<div class="definition-example">${linkText(tidyExample(stripGlossText(ex)), 'act')}</div>`)
             .join('')}</div>`
         : '';
       return `<div class="definition-item" data-sense="${at}">
@@ -443,7 +440,7 @@ function lexiconPane(
       wrapGroup(
         'examples',
         'examples',
-        globalExamples.map((ex) => `<div class="example-item">${linkText(stripGlossText(ex), 'act')}</div>`).join(''),
+        globalExamples.map((ex) => `<div class="example-item">${linkText(tidyExample(stripGlossText(ex)), 'act')}</div>`).join(''),
       ),
     );
   }

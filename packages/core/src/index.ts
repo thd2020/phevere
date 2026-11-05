@@ -172,6 +172,7 @@ export {
   canonicalPos,
   abbreviatePos,
   exampleKey,
+  tidyExample,
   dedupeExamples,
   mergeSimilarDefinitions,
   stripCrossLemmaSenses,
