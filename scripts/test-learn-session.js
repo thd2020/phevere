@@ -110,6 +110,26 @@ const started = (lemma, extra = {}) => ({ lemma, known: false, reps: 2, state: 2
   assert.equal(state.heldBack, 2);
 }
 
+/* With the learner's pace, today's new words fit beside the reviews, shared between My words and the books by goal. */
+{
+  const words = Array.from({ length: 80 }, (_, i) => `p${String(i).padStart(2, '0')}word`);
+  const mine = Array.from({ length: 30 }, (_, i) => ({ id: `m${i}`, lemma: `mine${String(i).padStart(2, '0')}word`, definition: 'a word', reps: 0, createdAt: now - DAY - i }));
+  const pace = { answersPerDay: 60, accuracy: 0.9, firstDayAnswers: 3, reviewsPerNew: 7.5, suggested: 6, days: 10 };
+  const light = core.buildWordsContext(mine, words.slice(0, 5).map((w, i) => started(w, { reviewDue: now - (i + 1) * 1000 })), [sub('ngsl', 10)], new Map([['ngsl', words]]));
+  const lp = core.scopeReviewPlan('all', light, { now, mineGoal: 10, pace });
+  assert.equal(lp.fresh, 20, 'a light day gives both goals in full');
+  const heavy = core.buildWordsContext(mine, words.slice(0, 40).map((w, i) => started(w, { reviewDue: now - (i + 1) * 1000 })), [sub('ngsl', 10)], new Map([['ngsl', words]]));
+  const hp = core.scopeReviewPlan('all', heavy, { now, mineGoal: 10, pace });
+  // 60 answers a day less 40 reviews (48 answers), a fifth to spare: 14 answers, four new words at three answers each.
+  assert.equal(hp.fresh, 4, `a heavy day gives fewer: ${hp.fresh}`);
+  assert.equal(hp.ids.filter((id) => id.startsWith('m')).length, 2, 'shared by goal: half from My words');
+  assert.equal(hp.heldForToday, 16, 'the pace holds them for tomorrow');
+  assert.equal(hp.heldBack, 0, 'the reviews alone would not');
+  // Only words that exist wait: My words with no new word holds nothing back.
+  const none = core.buildWordsContext([], words.slice(0, 5).map((w) => started(w, { reviewDue: now - 1000 })), [], new Map());
+  assert.equal(core.scopeReviewPlan('mine', none, { now, mineGoal: 10, pace }).heldBack, 0);
+}
+
 /* "Already know it" on a saved new word keeps it out of today's new words. */
 {
   const mine = [

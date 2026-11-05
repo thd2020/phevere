@@ -78,6 +78,14 @@ import {
   scopeBookFor,
   type AnswerRecord,
   type LearnPage,
+  type LearnerModel,
+  type StudyPace,
+  learnerModel,
+  studyPace,
+  hintReview,
+  armCountdown,
+  markHeard,
+  singleVoice,
   startReview,
   answerReview,
   overrideReview,
@@ -132,7 +140,7 @@ import {
   type WordsScope,
   type BookSort,
 } from '@phevere/core';
-import { choiceRowHtml, keycapsHtml, rangeRowHtml, switchRowHtml } from '@phevere/core';
+import { choiceRowHtml, enhanceSelect, keycapsHtml, rangeRowHtml, segRowHtml, switchRowHtml } from '@phevere/core';
 import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
 import { learnSettingsHtml, microphoneAvailable, readLearnPrefs, watchMicrophone, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
@@ -258,10 +266,10 @@ function initializeSettingsWindow() {
                   <input type="text" id="hover-shortcut" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-hover-shortcut" />
                   <button type="button" class="sv-btn" id="hover-shortcut-set">Set…</button>
                 </div>
-              </div>
-              <div class="sv-actions">
-                <span id="monitor-shortcuts-status" class="sv-actions__status" role="status" aria-live="polite"></span>
-                <button type="button" id="monitor-save-shortcuts" class="sv-btn sv-btn--accent">Save</button>
+                <div class="sv-ledger__foot">
+                  <span id="monitor-shortcuts-status" class="sv-actions__status" role="status" aria-live="polite"></span>
+                  <button type="button" id="monitor-save-shortcuts" class="sv-btn sv-btn--accent">Save</button>
+                </div>
               </div>
               <header class="sv-head"><h3 class="sv-head__title">Built-in</h3></header>
               <ul class="sv-ledger" id="builtin-shortcuts">
@@ -325,9 +333,10 @@ function initializeSettingsWindow() {
                   <label class="sv-ctl"><input type="checkbox" role="switch" class="sv-switch" id="remember-sources" checked aria-labelledby="remember-sources-label" /></label>
                 </div>
               </div>
-              <div class="sv-drop" id="settings-dropzone" tabindex="0">
+              <div class="sv-drop" id="settings-dropzone" tabindex="0" role="button" aria-label="Choose, drop or paste an image">
                 <strong>Drop or paste an image</strong>
                 <span>PNG, JPEG or WebP</span>
+                <input type="file" id="settings-dropzone-file" accept="image/png,image/jpeg,image/webp" hidden />
               </div>
               <header class="sv-head"><h3 class="sv-head__title">Text recognition</h3></header>
               <div class="sv-ledger">
@@ -361,9 +370,7 @@ function initializeSettingsWindow() {
             <div class="sv sv-page">
               <div class="sv-ledger">
                 ${switchRowHtml({ label: 'Image copied', on: true, attrs: 'id="notify-clipboard-image"' })}
-                ${switchRowHtml({ label: 'No image on clipboard', on: true, attrs: 'id="notify-clipboard-empty"' })}
                 ${switchRowHtml({ label: 'Hover lookup switched on or off', on: true, attrs: 'id="notify-hover-toggle"' })}
-                ${switchRowHtml({ label: 'Quick translation failed', on: true, attrs: 'id="notify-quick-translate"' })}
                 ${switchRowHtml({ label: 'Update ready or available', on: true, attrs: 'id="notify-updates"' })}
               </div>
             </div>
@@ -383,14 +390,7 @@ function initializeSettingsWindow() {
                   <button type="button" id="update-action" class="sv-btn sv-btn--accent" hidden></button>
                   <div id="update-progress" class="sv-progress" hidden><span></span></div>
                 </div>
-                <div class="sv-row">
-                  <span class="sv-row__text"><label for="update-mode" class="sv-row__label">Install updates</label></span>
-                  <select id="update-mode" class="sv-select">
-                    <option value="auto">Automatically</option>
-                    <option value="ask">Ask first</option>
-                    <option value="off">Off</option>
-                  </select>
-                </div>
+                ${segRowHtml({ label: 'Install updates', name: 'update-mode', value: 'auto', options: [{ value: 'auto', label: 'Automatically' }, { value: 'ask', label: 'Ask first' }, { value: 'off', label: 'Off' }] })}
                 <div class="sv-ledger__foot">
                   <button type="button" id="update-rollback" class="sv-btn" hidden></button>
                   <button type="button" id="update-check" class="sv-btn">Check now</button>
@@ -470,6 +470,8 @@ function initializeSettingsWindow() {
   showSectionFromHash();
   window.addEventListener('hashchange', showSectionFromHash);
 
+  // Native selects get the app's menu; their code keeps using the select.
+  document.querySelectorAll<HTMLSelectElement>('.settings-main select.sv-select').forEach(enhanceSelect);
   wireSettingsLibraryLinks();
   void wireSourcesPanel();
   void wireApiKeysPanel();
@@ -1016,16 +1018,7 @@ function wireSettingsImageDrop(): void {
     zone.classList.toggle('is-busy', busy);
   };
 
-  zone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    zone.classList.add('is-dragover');
-  });
-  zone.addEventListener('dragleave', () => zone.classList.remove('is-dragover'));
-  zone.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    zone.classList.remove('is-dragover');
-    const file = e.dataTransfer?.files?.[0];
-    if (!file) return;
+  const scanFile = async (file: File) => {
     setBusy(true);
     try {
       const anyFile = file as File & { path?: string };
@@ -1043,7 +1036,40 @@ function wireSettingsImageDrop(): void {
     } finally {
       setBusy(false);
     }
+  };
+
+  zone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    zone.classList.add('is-dragover');
   });
+  zone.addEventListener('dragleave', () => zone.classList.remove('is-dragover'));
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('is-dragover');
+    const file = e.dataTransfer?.files?.[0];
+    if (file) void scanFile(file);
+  });
+
+  // A click, Enter or Space opens the file picker.
+  const picker = document.getElementById('settings-dropzone-file') as HTMLInputElement | null;
+  if (picker) {
+    const open = () => {
+      if (!zone.classList.contains('is-busy')) picker.click();
+    };
+    zone.addEventListener('click', (e) => {
+      if (e.target !== picker) open();
+    });
+    zone.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      open();
+    });
+    picker.addEventListener('change', () => {
+      const file = picker.files?.[0];
+      picker.value = '';
+      if (file) void scanFile(file);
+    });
+  }
 
   zone.addEventListener('paste', async (e) => {
     const items = e.clipboardData?.items;
@@ -2877,6 +2903,23 @@ function loadAnswerHistory(): void {
     });
 }
 
+/** What the answer history says about the learner, for choosing questions and today's new words; null until loaded. */
+let learner: { model: LearnerModel; pace: StudyPace | null } | null = null;
+let learnerLoading: Promise<void> | null = null;
+
+function loadLearner(): Promise<void> {
+  const api = (window as any).vocabAPI;
+  if (learnerLoading) return learnerLoading;
+  learnerLoading = Promise.resolve(api?.history ? api.history() : [])
+    .catch((): AnswerRecord[] => [])
+    .then((rows: AnswerRecord[]) => {
+      const now = Date.now();
+      learner = { model: learnerModel(rows || [], now), pace: studyPace(rows || [], now) };
+      learnerLoading = null;
+    });
+  return learnerLoading;
+}
+
 /* The account, for the Plus line in Learn when progress sync is off. */
 let learnNotice = '';
 
@@ -2892,10 +2935,18 @@ function renderLearn(): void {
   const pane = document.getElementById('paneLearn');
   if (!pane || pane.hidden) return;
   const scope = wbCtx ? wbScope : 'mine';
+  const pace = learner?.pace ?? null;
   if (!nbReview && (scope !== 'mine' || vocabNotebookCache.length)) {
     nbReview = wbCtx
-      ? startScopeReview(scope, wbCtx, { mineGoal: nbGoal, mineStartedToday: startedToday().length })
-      : startReview(vocabNotebookCache, nbGoal, Date.now(), startedToday().length);
+      ? startScopeReview(scope, wbCtx, { mineGoal: nbGoal, mineStartedToday: startedToday().length, pace })
+      : startReview(vocabNotebookCache, nbGoal, Date.now(), startedToday().length, pace);
+  }
+  if (!learner) {
+    // Today's plan waits for nothing; once the learner is known, a session not yet started plans again.
+    void loadLearner().then(() => {
+      if (nbReview && !nbReview.started) nbReview = null;
+      if (mainTab === 'learn') renderLearn();
+    });
   }
   pane.innerHTML = learnHtml({
     scope,
@@ -2908,6 +2959,8 @@ function renderLearn(): void {
       preview: (e, g) => previewReview(e, g),
       formatGap: formatReviewGap,
       examples: (lemma) => reviewExamples.get(lemma.toLowerCase()),
+      learner: learner?.model ?? null,
+      pace,
       learnPrefs,
       microphone: learnMicrophone,
     },
@@ -2943,8 +2996,14 @@ function focusReview(body: HTMLElement): void {
   const header = [...document.querySelectorAll<HTMLElement>('.ws-head')].find((h) => h.offsetParent) || null;
   revealQuestion(body, header);
   const input = body.querySelector<HTMLInputElement>('#nbv-answer');
-  if (input) input.focus();
-  else {
+  if (input) {
+    input.focus();
+    // After a Hint the box holds the letters shown so far; typing goes on after them.
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+  // Settings → Learn: the countdown on a choice question, answered as not known when it runs out.
+  armCountdown(nbReview, learnPrefs.countdown, () => mainTab === 'learn' && learnPage === 'today', () => renderLearn());
+  if (!input) {
     const next = body.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-round"]');
     next?.focus({ preventScroll: true });
     if (next?.dataset.act === 'nb-next') body.querySelector('.nbv-quiz__grade')?.scrollIntoView({ block: 'nearest' });
@@ -2989,6 +3048,8 @@ async function commitReview(): Promise<void> {
     console.error('review failed', error);
   }
   advanceReview(nbReview, updated);
+  // Today's answers count against the learner's usual day, so the next round plans fewer new words.
+  if (learner?.pace) learner.pace.answersToday = (learner.pace.answersToday || 0) + 1;
   answerHistory = null;
   nbGrading = false;
   renderLearn();
@@ -3114,6 +3175,23 @@ function wireNotebookActions(root: HTMLElement): void {
         // The goal on Today opens where it is changed.
         void window.electronAPI?.showSettingsWindow?.('learn');
         return;
+      case 'learn-use-goal': {
+        // The start card's suggested number of new words a day, stored where Settings → Learn keeps it.
+        const goal = parseGoal(el.dataset.goal);
+        if (goal == null) return;
+        const book = el.dataset.book || '';
+        if (book) {
+          await wordbookApi()?.setGoal?.(book, goal);
+          writePref(LEARN_BOOKS_KEY, String(Date.now()));
+          await refreshWords();
+        } else {
+          nbGoal = goal;
+          writePref(NB_GOAL_KEY, String(goal));
+        }
+        if (!nbReview?.started) nbReview = null;
+        rerenderActive();
+        return;
+      }
       case 'nb-review-exit':
         // Back to the Learn page. An answer on screen is saved first, as Continue would.
         if (nbReview?.answer) await commitReview();
@@ -3123,8 +3201,10 @@ function wireNotebookActions(root: HTMLElement): void {
         return;
       case 'nb-start':
       case 'nb-round':
-        // A new round plans again from what is due now; renderLearn starts it.
+        // A new round plans again from what is due now and from the answers so far; renderLearn starts it.
         if (el.dataset.act === 'nb-round') {
+          learner = null;
+          await loadLearner();
           nbReview = null;
           renderLearn();
         }
@@ -3302,6 +3382,10 @@ function wireNotebookActions(root: HTMLElement): void {
         return;
       case 'nb-skip':
         if (reviewArmed(nbReview)) answerCurrentReview({});
+        return;
+      case 'nb-hint':
+        // What is typed so far stays where it matches the answer; the next letter is added.
+        if (nbReview && hintReview(nbReview, root.querySelector<HTMLInputElement>('#nbv-answer')?.value || '')) renderLearn();
         return;
       case 'nb-override':
         if (nbReview) overrideReview(nbReview, el.dataset.mode === 'easy' ? 'easy' : 'flip');
@@ -4390,37 +4474,29 @@ async function wireNotificationSettings(): Promise<void> {
   const api = (window as any).electronAPI;
   if (!api?.getNotificationPrefs || !api?.setNotificationPrefs) return;
   const imageEl = document.getElementById('notify-clipboard-image') as HTMLInputElement | null;
-  const emptyEl = document.getElementById('notify-clipboard-empty') as HTMLInputElement | null;
   const hoverEl = document.getElementById('notify-hover-toggle') as HTMLInputElement | null;
-  const quickEl = document.getElementById('notify-quick-translate') as HTMLInputElement | null;
   const updatesEl = document.getElementById('notify-updates') as HTMLInputElement | null;
-  if (!imageEl || !emptyEl || !hoverEl) return;
+  if (!imageEl || !hoverEl || !updatesEl) return;
   try {
     const prefs = await api.getNotificationPrefs();
     imageEl.checked = prefs.clipboardImage !== false;
-    emptyEl.checked = prefs.clipboardEmpty !== false;
     hoverEl.checked = prefs.hoverToggle !== false;
-    if (quickEl) quickEl.checked = prefs.quickTranslate !== false;
-    if (updatesEl) updatesEl.checked = prefs.updates !== false;
+    updatesEl.checked = prefs.updates !== false;
   } catch {
     imageEl.checked = true;
-    emptyEl.checked = true;
     hoverEl.checked = true;
+    updatesEl.checked = true;
   }
   const persist = () => {
     void api.setNotificationPrefs({
       clipboardImage: imageEl.checked,
-      clipboardEmpty: emptyEl.checked,
       hoverToggle: hoverEl.checked,
-      quickTranslate: quickEl ? quickEl.checked : true,
-      updates: updatesEl ? updatesEl.checked : true,
+      updates: updatesEl.checked,
     });
   };
   imageEl.addEventListener('change', persist);
-  emptyEl.addEventListener('change', persist);
   hoverEl.addEventListener('change', persist);
-  quickEl?.addEventListener('change', persist);
-  updatesEl?.addEventListener('change', persist);
+  updatesEl.addEventListener('change', persist);
 }
 
 interface UpdateView {
@@ -4444,10 +4520,10 @@ async function wireUpdatesPanel(): Promise<void> {
   const status = document.getElementById('update-status');
   const action = document.getElementById('update-action') as HTMLButtonElement | null;
   const bar = document.getElementById('update-progress');
-  const mode = document.getElementById('update-mode') as HTMLSelectElement | null;
+  const modes = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="update-mode"]'));
   const check = document.getElementById('update-check') as HTMLButtonElement | null;
   const rollback = document.getElementById('update-rollback') as HTMLButtonElement | null;
-  if (!api?.getState || !version || !status || !action || !bar || !mode || !check || !rollback) return;
+  if (!api?.getState || !version || !status || !action || !bar || !modes.length || !check || !rollback) return;
   const fill = bar.firstElementChild as HTMLElement | null;
   const paint = (s: UpdateView) => {
     const busy = s.status === 'checking' || s.status === 'downloading' || s.status === 'installing';
@@ -4467,8 +4543,11 @@ async function wireUpdatesPanel(): Promise<void> {
     action.textContent = s.status === 'ready' ? 'Restart to update' : s.canInstall ? 'Update now' : 'Download…';
     bar.hidden = s.status !== 'downloading';
     if (fill) fill.style.width = `${Math.round(s.progress * 100)}%`;
-    mode.querySelector('option[value="auto"]')?.toggleAttribute('hidden', !s.canInstall);
-    mode.value = !s.canInstall && s.mode === 'auto' ? 'ask' : s.mode;
+    const current = !s.canInstall && s.mode === 'auto' ? 'ask' : s.mode;
+    for (const radio of modes) {
+      if (radio.value === 'auto') (radio.parentElement as HTMLElement).hidden = !s.canInstall;
+      radio.checked = radio.value === current;
+    }
     rollback.hidden = !s.canInstall || !s.rollback;
     rollback.textContent = `Roll back to ${s.rollback}`;
     rollback.disabled = busy;
@@ -4478,7 +4557,11 @@ async function wireUpdatesPanel(): Promise<void> {
   action.addEventListener('click', () => void run(() => api.install()));
   rollback.addEventListener('click', () => void run(() => api.rollBack()));
   check.addEventListener('click', () => void run(() => api.check()));
-  mode.addEventListener('change', () => void run(() => api.setMode(mode.value)));
+  for (const radio of modes) {
+    radio.addEventListener('change', () => {
+      if (radio.checked) void run(() => api.setMode(radio.value));
+    });
+  }
   api.onChanged?.((s: UpdateView) => paint(s));
   paint(await api.getState());
   // The rollback version comes from the release list, so opening the page checks once.
@@ -4493,29 +4576,37 @@ async function wireUpdatesPanel(): Promise<void> {
 
 let lemmaAudio: HTMLAudioElement | null = null;
 
+let lemmaAudioPrefs: { enabled?: boolean; speed?: number; volume?: number } = { enabled: true, speed: 1, volume: 1 };
+
+function playLemmaSrc(src: string, recorded: boolean): Promise<void> {
+  const prefs = lemmaAudioPrefs;
+  const el = new Audio(src);
+  el.volume = Math.max(0, Math.min(1, Number(prefs.volume ?? 1)));
+  el.preservesPitch = true;
+  el.playbackRate = recorded ? Math.max(0.5, Math.min(2, Number(prefs.speed) || 1)) : 1;
+  lemmaAudio = el;
+  // Resolves when the clip has played to its end or was stopped, so a listening question's
+  // countdown starts after the word, not while it plays.
+  return el.play().then(
+    () =>
+      new Promise<void>((resolve) => {
+        if (el.ended || el.paused) return resolve();
+        el.addEventListener('ended', () => resolve(), { once: true });
+        el.addEventListener('pause', () => resolve(), { once: true });
+        el.addEventListener('error', () => resolve(), { once: true });
+      }),
+  );
+}
+
 /**
- * Notebook ▶, same rule as the phone's playLemma: recorded clip (US, UK, other) from the
- * word's lookup, usually cached; otherwise the voice chosen in Settings → Audio.
+ * Notebook and Learn ▶, same rule as the phone's playLemma: the recorded clip (US, UK, other)
+ * from the word's lookup, usually cached, or else the voice chosen in Settings → Audio; never
+ * both, and a newer press stops an older one (`singleVoice`). A clip is fetched before it counts
+ * as the word's recording, so one that cannot be fetched leaves the synthetic voice.
  */
-async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise<void> {
-  const api = window.electronAPI as any;
-  const prefs = (await api?.getAudioPrefs?.()) || { enabled: true, speed: 1, volume: 1 };
-  if (prefs.enabled === false) return;
-  btn?.classList.add('is-speaking');
-  const play = async (src: string, recorded: boolean) => {
-    try {
-      lemmaAudio?.pause();
-    } catch {
-      /* ignore */
-    }
-    const el = new Audio(src);
-    el.volume = Math.max(0, Math.min(1, Number(prefs.volume)));
-    el.preservesPitch = true;
-    el.playbackRate = recorded ? Math.max(0.5, Math.min(2, Number(prefs.speed) || 1)) : 1;
-    lemmaAudio = el;
-    await el.play();
-  };
-  try {
+const sayLemma = singleVoice({
+  recordings: async (lemma) => {
+    const api = window.electronAPI as any;
     let urls: string[] = [];
     try {
       const result: any = await window.dictionaryAPI?.lookup(lemma, 'auto');
@@ -4533,18 +4624,44 @@ async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise
       try {
         const got = await api?.fetchPronunciationAudio?.(u);
         const src = got && got.ok ? got.playUrl || got.dataUrl : '';
-        if (!src) continue;
-        await play(src, true);
-        return;
+        if (src) return [src];
       } catch {
         /* next clip */
       }
     }
+    return [];
+  },
+  playRecording: (src) => playLemmaSrc(src, true),
+  speak: async (lemma) => {
+    const api = window.electronAPI as any;
     const speech = await api?.synthesizeSpeech?.({ text: lemma, lang: 'en' });
-    if (speech?.ok && speech.dataUrl) await play(speech.dataUrl, false);
+    if (speech?.ok && speech.dataUrl) await playLemmaSrc(speech.dataUrl, false);
     else showNotification('Could not play pronunciation');
+  },
+  stop: () => {
+    try {
+      lemmaAudio?.pause();
+    } catch {
+      /* ignore */
+    }
+    lemmaAudio = null;
+  },
+});
+
+async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise<void> {
+  try {
+    const api = window.electronAPI as any;
+    lemmaAudioPrefs = (await api?.getAudioPrefs?.()) || { enabled: true, speed: 1, volume: 1 };
+    if (lemmaAudioPrefs.enabled === false) return;
+    btn?.classList.add('is-speaking');
+    try {
+      await sayLemma(lemma);
+    } finally {
+      setTimeout(() => btn?.classList.remove('is-speaking'), 500);
+    }
   } finally {
-    setTimeout(() => btn?.classList.remove('is-speaking'), 500);
+    // A listening question's countdown starts once its word has played, failed to, or is off.
+    if (markHeard(nbReview, lemma)) renderLearn();
   }
 }
 

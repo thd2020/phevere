@@ -10,7 +10,7 @@
  */
 import { WORDBOOK_CATALOG, type WordbookMeta } from './wordbook-catalog';
 import { clean, dayStart, DAY, type NotebookEntry } from './notebook-shared';
-import { dedupeLemmas, interleaveNew, isNewWord, memoryLevel, newWordAllowance, reviewStateFor, type QueuePlan, type ReviewState } from './review-quiz';
+import { dedupeLemmas, interleaveNew, isNewWord, memoryLevel, newWordAllowance, newWordsToday, reviewStateFor, type QueuePlan, type ReviewState, type StudyPace } from './review-quiz';
 import { analyzeMorphemes, derivationStem } from './morphology';
 import { bookWordKey, DEFAULT_DAILY_NEW, isUserBookId, type BookWordProgress, type UserBook, type WordbookSub } from './wordbook-store';
 import { setMadeBookNames, shortBookTitle } from './book-names';
@@ -280,6 +280,8 @@ export interface ScopeReviewOptions {
   /** My words' daily goal and how many of its new words were started today. */
   mineGoal?: number;
   mineStartedToday?: number;
+  /** The learner's pace (`studyPace`): today's new words then fit beside today's reviews. */
+  pace?: StudyPace | null;
 }
 
 /** Roots and stems of a word, for spotting family links ("nation" in "nationality", spect in inspect). */
@@ -342,7 +344,7 @@ function wordsBelow(bookId: string): Set<string> {
  * that, words of a family you have started, and words more of your books list, move a little
  * forward. Each book's daily goal sets how many words the pool gives.
  */
-export function pickNewBookWords(bookIds: string[], ctx: WordsContext, now = Date.now(), dueCount = 0, reasons?: Map<string, NewWordReason>): WordsEntry[] {
+export function pickNewBookWords(bookIds: string[], ctx: WordsContext, now = Date.now(), dueCount = 0, reasons?: Map<string, NewWordReason>, cap = Infinity): WordsEntry[] {
   let quota = 0;
   let goals = 0;
   const cands = new Map<string, { e: WordsEntry; rank: number }>();
@@ -373,7 +375,7 @@ export function pickNewBookWords(bookIds: string[], ctx: WordsContext, now = Dat
       if (!prev || rank < prev.rank) cands.set(k, { e: bookEntry(w, ctx), rank });
     });
   }
-  quota = Math.min(quota, newWordAllowance(goals, dueCount));
+  quota = Math.min(quota, newWordAllowance(goals, dueCount), cap);
   if (!quota || !cands.size) return [];
   // Families of the words already saved or started.
   const fam = new Map<string, string>();
@@ -393,7 +395,9 @@ export function pickNewBookWords(bookIds: string[], ctx: WordsContext, now = Dat
  * Today's plan for a scope. Due words come from everywhere in the scope, most overdue first, one
  * form of each word. New words: My words' own new words oldest first up to its goal, then book
  * words picked across the scope's books (`pickNewBookWords`); fewer of both when many reviews are
- * due. New words are spread evenly among the reviews.
+ * due. Once the learner's pace is known, the new words of the whole scope fit beside today's
+ * reviews together (`newWordsToday`), shared between My words and the books by their goals. New
+ * words are spread evenly among the reviews.
  */
 export function scopeReviewPlan(scope: WordsScope, ctx: WordsContext, opts: ScopeReviewOptions = {}): QueuePlan {
   const now = opts.now ?? Date.now();
@@ -406,26 +410,43 @@ export function scopeReviewPlan(scope: WordsScope, ctx: WordsContext, opts: Scop
   );
   let mineFresh: WordsEntry[] = [];
   let mineLeft = 0;
-  if (scope === 'mine' || scope === 'all') {
-    const goal = opts.mineGoal ?? DEFAULT_DAILY_NEW;
+  let mineWaiting = 0;
+  const withMine = scope === 'mine' || scope === 'all';
+  const bookIds = scope === 'mine' ? [] : scope === 'all' ? ctx.subs.map((s) => s.bookId) : [scope];
+  const progress = bookIds.map((id) => bookProgress(id, ctx, now));
+  const mineGoal = withMine ? opts.mineGoal ?? DEFAULT_DAILY_NEW : 0;
+  const bookGoals = progress.reduce((s, p) => s + p.dailyNew, 0);
+  // The day's room for new words, shared by goal; without a pace each part keeps its own rule.
+  const room = opts.pace ? newWordsToday(mineGoal + bookGoals, due.length, opts.pace) : Infinity;
+  const mineRoom = Number.isFinite(room) ? Math.round((room * mineGoal) / Math.max(1, mineGoal + bookGoals)) : Infinity;
+  const bookRoom = Number.isFinite(room) ? room - mineRoom : Infinity;
+  if (withMine) {
+    const goal = mineGoal;
     mineLeft = Math.max(0, goal - (opts.mineStartedToday ?? 0));
-    const allowed = Math.min(mineLeft, newWordAllowance(goal, due.length));
-    mineFresh = dedupeLemmas(
+    const allowed = Math.min(mineLeft, newWordAllowance(goal, due.length), mineRoom);
+    const waiting = dedupeLemmas(
       ctx.mine
         .filter((e) => isNewWord(e) && clean(e.lemma) && !ctx.progress.get(bookWordKey(e.lemma))?.known)
         .sort((x, y) => Number(x.createdAt || 0) - Number(y.createdAt || 0))
         .map((e) => ({ ...e, saved: true, books: ctx.index.get(bookWordKey(e.lemma)) })),
-    ).slice(0, allowed);
+    );
+    mineWaiting = waiting.length;
+    mineFresh = waiting.slice(0, allowed);
   }
-  const bookIds = scope === 'mine' ? [] : scope === 'all' ? ctx.subs.map((s) => s.bookId) : [scope];
-  const bookFresh = pickNewBookWords(bookIds, ctx, now, due.length);
+  const bookFresh = pickNewBookWords(bookIds, ctx, now, due.length, undefined, bookRoom);
   const fresh = dedupeLemmas([...due, ...mineFresh, ...bookFresh]).slice(due.length);
-  const progress = bookIds.map((id) => bookProgress(id, ctx, now));
   const bookQuota = progress.reduce((s, p) => s + p.newToday, 0);
-  const bookAllowed = Math.min(bookQuota, newWordAllowance(progress.reduce((s, p) => s + p.dailyNew, 0), due.length));
-  const mineAllowed = Math.min(mineLeft, newWordAllowance(opts.mineGoal ?? DEFAULT_DAILY_NEW, due.length));
-  const heldBack = mineLeft - mineAllowed + (bookQuota - bookAllowed);
-  return { ids: interleaveNew(due, fresh).map((e) => e.id), due: due.length, fresh: fresh.length, heldBack };
+  // Held back by the reviews (they come once the reviews are done) or by the learner's usual day
+  // (they wait for tomorrow). Only words that exist wait: a goal of ten with three unstarted words
+  // holds back at most three.
+  const bookByReviews = Math.min(bookQuota, newWordAllowance(bookGoals, due.length));
+  const bookAllowed = Math.min(bookByReviews, bookRoom);
+  const mineAvail = Math.min(mineLeft, mineWaiting);
+  const mineByReviews = Math.min(mineAvail, newWordAllowance(mineGoal, due.length));
+  const mineAllowed = Math.min(mineByReviews, mineRoom);
+  const heldBack = mineAvail - mineByReviews + (bookQuota - bookByReviews);
+  const heldForToday = mineByReviews - mineAllowed + (bookByReviews - bookAllowed);
+  return { ids: interleaveNew(due, fresh).map((e) => e.id), due: due.length, fresh: fresh.length, heldBack, heldForToday };
 }
 
 /** Today's queue for a scope (`scopeReviewPlan` ids). */
