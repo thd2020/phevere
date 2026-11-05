@@ -173,6 +173,34 @@ type LookupOpts = {
   noFormRedirect?: boolean;
 };
 
+/** The characters trimming took off the edges of `sanitized` to leave `trimmed` ("etc." gives "."). */
+function edgeMarks(sanitized: string, trimmed: string): string[] {
+  const at = trimmed ? sanitized.indexOf(trimmed) : -1;
+  if (at < 0) return Array.from(sanitized);
+  return Array.from(sanitized.slice(0, at) + sanitized.slice(at + trimmed.length));
+}
+
+/** The definitions of one language section of a Wiktionary REST definition page. */
+function sectionSenses(page: any, lang: string): Array<{ definition?: string }> {
+  const section = page && typeof page === 'object' ? page[lang] : null;
+  if (!Array.isArray(section)) return [];
+  return section.flatMap((e: any) => (Array.isArray(e?.definitions) ? e.definitions : [])).filter((d: any) => d && d.definition);
+}
+
+/** Whether a REST definition links to the page `title` ("Alternative form of etc." links to etc.). */
+function linksToTitle(def: { definition?: string }, title: string): boolean {
+  for (const m of String(def?.definition || '').matchAll(/href="\/wiki\/([^"#?]+)/g)) {
+    let target = m[1];
+    try {
+      target = decodeURIComponent(target);
+    } catch {
+      /* keep the raw path */
+    }
+    if (target.replace(/_/g, ' ') === title) return true;
+  }
+  return false;
+}
+
 /** Wiktionary's senses of the looked-up word; other sources answer a form with the base word's senses. */
 function wiktionarySenses(result: DictionaryResult | null | undefined): string[] {
   return (result?.definitions || [])
@@ -675,10 +703,10 @@ export class DictionaryService extends BaseService {
     }
 
     try {
-      query = await this.withExactTitle(query);
       const hintedSource = (opts?.sourceLanguage || '').toLowerCase().split('-')[0];
       const detectedLanguage =
         hintedSource && hintedSource !== 'auto' ? hintedSource : await this.detectSourceLanguage(query.trimmed);
+      query = await this.withExactTitle(query, detectedLanguage);
 
       // Auto pairing is zh↔en (and ja/ko→en). An explicit Translation-tab target is honoured.
       const resolvedTarget = this.resolveTargetLanguage(detectedLanguage, targetLanguage);
@@ -2451,15 +2479,35 @@ export class DictionaryService extends BaseService {
 
   /**
    * The query as typed when its edge punctuation may belong to the word and Wiktionary has a page
-   * with that exact title: "etc." and "C++" open as typed, while "hello," has no page and is
-   * looked up as "hello". The dictionary decides, not a list of abbreviations.
+   * with that exact title in the query's language: "etc." and "C++" open as typed, while "hello,"
+   * has no page and is looked up as "hello". The dictionary decides, not a list of abbreviations.
+   *
+   * A full stop, comma, quote or bracket may also just be the sentence around a word. When the
+   * bare word has a page of its own, it wins: "no." and "in." are no and in at the end of a
+   * sentence, though Wiktionary also has "no." (number) and "in." (inch). The typed title still
+   * wins when most of the bare word's senses point to it ("etc" is mostly "Alternative form of
+   * etc.") or when the same mark is also inside the word ("e.g.", "U.S.").
    */
-  private async withExactTitle(query: NormalizedQuery): Promise<NormalizedQuery> {
+  private async withExactTitle(query: NormalizedQuery, language: string): Promise<NormalizedQuery> {
     if (!hasEdgePunctuation(query) || !isCoreConfigured()) return query;
     if (this.typedTitles.has(query.sanitized)) return exactQuery(query);
-    const page = await withTimeout(this.wiktionaryDefinitions(query.sanitized), EXACT_TITLE_MS, 'exact-title').catch((): null => null);
-    if (!page || typeof page !== 'object' || !Object.keys(page).length) return query;
-    this.typedTitles.add(query.sanitized);
+    const lang = (language || 'en').toLowerCase().split('-')[0] || 'en';
+    const exact = query.sanitized;
+    const dropped = Array.from(new Set(edgeMarks(exact, query.trimmed)));
+    const sentenceMarks =
+      dropped.length > 0 &&
+      dropped.every((c) => /[\p{Terminal_Punctuation}\p{Quotation_Mark}\p{Ps}\p{Pe}\p{Pi}\p{Pf}]/u.test(c)) &&
+      !dropped.some((c) => query.trimmed.includes(c));
+    const fetchPage = (title: string) =>
+      withTimeout(this.wiktionaryDefinitions(title), EXACT_TITLE_MS, 'exact-title').catch((): null => null);
+    const [page, bare] = await Promise.all([fetchPage(exact), sentenceMarks ? fetchPage(query.trimmed) : Promise.resolve(null)]);
+    if (!sectionSenses(page, lang).length) return query;
+    if (sentenceMarks) {
+      const own = sectionSenses(bare, lang);
+      const pointing = own.filter((d) => linksToTitle(d, exact)).length;
+      if (own.length && pointing * 2 < own.length) return query;
+    }
+    this.typedTitles.add(exact);
     if (this.typedTitles.size > 400) this.typedTitles.delete(this.typedTitles.values().next().value as string);
     return exactQuery(query);
   }

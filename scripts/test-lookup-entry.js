@@ -78,6 +78,24 @@ configureCore({
     hello: { en: [{ partOfSpeech: 'Interjection', language: 'English', definitions: [{ definition: 'A greeting said when meeting someone.' }] }] },
     'C++': { en: [{ partOfSpeech: 'Proper noun', language: 'English', definitions: [{ definition: 'A programming language derived from C.' }] }] },
     C: { en: [{ partOfSpeech: 'Letter', language: 'English', definitions: [{ definition: 'The third letter of the English alphabet.' }] }] },
+    // A full stop after a word with a page of its own ends a sentence: "no." is no, though
+    // Wiktionary also has "no." (number). "it." has pages only in other languages. "e.g." keeps
+    // its last stop because the same mark is inside the word.
+    'no.': { en: [{ partOfSpeech: 'Noun', language: 'English', definitions: [{ definition: 'Alternative form of <a rel="mw:WikiLink" href="/wiki/No." title="No.">No.</a>' }] }] },
+    'No.': { en: [{ partOfSpeech: 'Noun', language: 'English', definitions: [{ definition: 'Abbreviation of <a rel="mw:WikiLink" href="/wiki/number" title="number">number</a>.' }] }] },
+    no: {
+      en: [
+        {
+          partOfSpeech: 'Determiner',
+          language: 'English',
+          definitions: [{ definition: 'Not any.' }, { definition: 'Not a.' }, { definition: 'Alternative form of <a rel="mw:WikiLink" href="/wiki/no." title="no.">no.</a>' }],
+        },
+      ],
+    },
+    'it.': { de: [{ partOfSpeech: 'Abbreviation', language: 'German', definitions: [{ definition: 'Abkürzung von italienisch' }] }] },
+    it: { en: [{ partOfSpeech: 'Pronoun', language: 'English', definitions: [{ definition: 'The thing being discussed.' }] }] },
+    'e.g.': { en: [{ partOfSpeech: 'Adverb', language: 'English', definitions: [{ definition: 'For example.' }] }] },
+    'e.g': { en: [{ partOfSpeech: 'Adverb', language: 'English', definitions: [{ definition: 'An initialism of exempli gratia.' }] }] },
   };
   const kaikki = {
     etc: { word: 'etc', lang_code: 'en', pos: 'phrase', senses: [{ tags: ['alt-of', 'alternative'], alt_of: [{ word: 'etc.' }], glosses: ['Alternative form of etc..'] }] },
@@ -110,7 +128,10 @@ configureCore({
   const cpp = await exact.lookup('C++', 'zh');
   assert.equal(cpp.word, 'C++');
   assert.match(cpp.definitions[0].meaning, /programming language/, 'C++ is not the letter C');
-  console.log('Lookup entry passed: "Did you mean" stays through later updates; "etc." and "C++" open as typed, "hello," as hello.');
+  assert.equal((await exact.lookup('no.', 'zh')).word, 'no', '"no." at the end of a sentence is no');
+  assert.equal((await exact.lookup('it.', 'zh')).word, 'it', 'a page with no English section is not the typed title');
+  assert.equal((await exact.lookup('e.g.', 'zh')).word, 'e.g.', 'the last stop of e.g. belongs to it');
+  console.log('Lookup entry passed: "Did you mean" stays through later updates; "etc.", "e.g." and "C++" open as typed; "hello,", "no." and "it." open hello, no and it.');
   // The service keeps safety-net timers for lookups; they would hold the process open.
   process.exit(0);
 })().catch((err) => {
