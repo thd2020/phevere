@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Sync (2026-11-05): a word or word book saved in the same millisecond that a sync started could stay on that device. It is now sent with the next sync.
 - Map on the desktop (2026-11-05): Words → Map now draws the same 3D map as the phone. Before, the desktop app always fell back to a flat drawing of small dots, because the 3D part failed to load in the desktop window. Drag turns and tilts the map, right-drag or Shift-drag moves it, the wheel or a trackpad pinch zooms, and +, − and Reset view work as before. Roots, Prefixes and Suffixes, Find a word, the Unlinked words group and the orange word you last looked up all appear on it.
 - Map (2026-11-05): Reset view, and the map when it opens, now fill the width and height of the map with the graph and the unlinked words, so a wide desktop window no longer shows the graph as a small cluster in the middle. The Unlinked words caption stays above its group however the map is turned, and a word's name starts beside its ball instead of across it when you are close.
 
