@@ -49,6 +49,8 @@ interface HostState {
   later: Array<() => void>;
   /** Backup timers set before the host had answered once, set again by its first answer. */
   onFirstAnswer: Set<() => void>;
+  /** When it last answered (Date.now()). */
+  answeredAt: number;
 }
 
 const hosts = new Map<string, HostState>();
@@ -61,7 +63,7 @@ export function hostOf(url: string): string {
 function state(host: string): HostState {
   let s = hosts.get(host);
   if (!s) {
-    s = { srtt: 0, rttvar: 0, samples: 0, inFlight: 0, first: [], later: [], onFirstAnswer: new Set() };
+    s = { srtt: 0, rttvar: 0, samples: 0, inFlight: 0, first: [], later: [], onFirstAnswer: new Set(), answeredAt: 0 };
     hosts.set(host, s);
   }
   return s;
@@ -79,6 +81,7 @@ export function noteRoundTrip(host: string, ms: number): void {
     s.srtt = 0.875 * s.srtt + 0.125 * ms;
   }
   s.samples += 1;
+  s.answeredAt = Date.now();
   if (s.samples === 1) for (const f of Array.from(s.onFirstAnswer)) f();
 }
 
@@ -105,7 +108,13 @@ const waiting = new Set<{ since: number }>();
  * so on a dead connection no budget ever ran out before its requests did.
  */
 export function typicalRtoMs(): number {
-  const list = Array.from(hosts.keys()).map(rtoMs).filter(Boolean).sort((a, b) => a - b);
+  // Only hosts that answered after the last request that got no answer at all: when the
+  // connection dies, hosts not asked since still hold the round trips of the slow connection.
+  const list = Array.from(hosts.entries())
+    .filter(([, s]) => s.answeredAt > lastSilentAt)
+    .map(([h]) => rtoMs(h))
+    .filter(Boolean)
+    .sort((a, b) => a - b);
   if (list.length) return list[Math.floor((list.length - 1) / 2)];
   let oldest = 0;
   const now = Date.now();
@@ -127,6 +136,19 @@ export function budgetMs(base: number, on: string | string[] = [], trips = 1): n
 /** Requests open to `host` right now (for tests and measurements). */
 export function inFlight(host: string): number {
   return hosts.get(host)?.inFlight || 0;
+}
+
+/** The host's round trips are forgotten; it counts as not yet answered. */
+/** When a request last got no answer at all (forgetHost). */
+let lastSilentAt = 0;
+
+function forgetHost(host: string): void {
+  lastSilentAt = Date.now();
+  const s = hosts.get(host);
+  if (!s) return;
+  s.srtt = 0;
+  s.rttvar = 0;
+  s.samples = 0;
 }
 
 /** For tests: forget every host's round trips. Requests in flight keep their slots. */
@@ -201,7 +223,17 @@ export function trackHttp(inner: HttpClient): HttpClient {
         if (api && !decided?.()) noteRoundTrip(host, Date.now() - started);
         return value;
       } catch (err) {
-        if (api && answered(err) && !decided?.()) noteRoundTrip(host, Date.now() - started);
+        if (api && !decided?.()) {
+          if (answered(err)) noteRoundTrip(host, Date.now() - started);
+          // No answer at all (a timeout, a refused or reset connection): the host's round trips
+          // say nothing about it any more. Kept, an RTO that grew on a slow connection would go on
+          // stretching every timeout and budget for that host to half a minute after the
+          // connection died (a VPN dropping), since a silent host gives no new round trips. It
+          // counts as not yet answered until it answers again. A request with a backup (decided is
+          // set) is not over yet when one of its two fails; settle below forgets the host once
+          // both have failed without an answer.
+          else if (!decided) forgetHost(host);
+        }
         throw err;
       } finally {
         waiting.delete(mark);
@@ -233,6 +265,7 @@ export function trackHttp(inner: HttpClient): HttpClient {
           done = true;
           clearTimeout(timer);
           unhook();
+          if (api) forgetHost(host);
           reject(firstError);
         }
       };

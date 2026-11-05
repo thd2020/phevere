@@ -187,6 +187,29 @@ dead['budgets after a slow host stops answering'] = async () => {
   assert.ok(core.rtoMs('was-slow.example.org') >= 8000, 'the host is slow');
   assert.ok(b <= 30000, `seven round trips to it are ${b} ms`);
 };
+// A slow host whose next request gets no answer at all (the VPN dropped) is not slow any more but
+// silent: its budgets go back to those of a host that has not answered.
+dead['a slow host that falls silent'] = async () => {
+  const { core } = app({});
+  let silent = false;
+  const http = core.trackHttp({
+    requestJson: (url, o) => new Promise((resolve, reject) => setTimeout(() => (silent ? reject(new core.DictionaryError('timed out', 'TIMEOUT', true)) : resolve({})), silent ? 50 : 4000)),
+    requestText: async () => ({}),
+    requestBytes: async () => ({}),
+  });
+  // Another slow host, not asked again after the connection dies.
+  const hosts = ['silent.example.org', 'not-asked.example.org'];
+  await Promise.all(hosts.flatMap((h) => ['a', 'b'].map((p) => http.requestJson(`https://${h}/${p}`, { timeoutMs: 20000, hedge: false }))));
+  const slow = core.budgetMs(1500, 'silent.example.org', 2);
+  silent = true;
+  await http.requestJson('https://silent.example.org/c', { hedge: false }).catch(() => {});
+  const after = core.budgetMs(1500, 'silent.example.org', 2);
+  const unseen = core.budgetMs(1500, 'never-asked.example.org', 2);
+  assert.ok(slow >= 15000, `two round trips to the slow host: ${slow} ms`);
+  assert.ok(after <= 6000, `and once it falls silent: ${after} ms`);
+  // The host not asked since still holds the slow round trips, but they are not taken as typical.
+  assert.ok(unseen <= 6000, `a host never asked, after the silence: ${unseen} ms`);
+};
 // A request answered by its backup: the original answering late is not a round trip (Karn), or one
 // hung request would put the host's next backups six seconds out.
 dead['a late answer after its backup'] = async () => {
