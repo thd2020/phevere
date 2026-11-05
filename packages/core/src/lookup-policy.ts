@@ -24,6 +24,8 @@ export function stripGlossText(meaning: string): string {
   return String(meaning || '')
     // Wiktionary inlines <style> blocks (.mw-parser-output .defdate{…}); their text is not a gloss.
     .replace(/<(style|script)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    // Inline tags join their text as a browser shows it: "(<span>“</span>and" is "(“and", not "( “ and".
+    .replace(/<\/?(?:a|abbr|b|bdi|bdo|cite|code|dfn|em|i|kbd|mark|q|s|samp|small|span|strong|sub|sup|time|u|var)\b[^>]*>/gi, '')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
     .replace(/\s+/g, ' ')

@@ -166,6 +166,55 @@ export function linkHtml(html: string, links: LexiconLinks): string {
 }
 
 /**
+ * A Wiktionary definition as shown in a Lexicon: Wiktionary links almost every word of a gloss,
+ * but a dictionary page links only the word a definition points to. A link stays only inside the
+ * span Wiktionary marks as a form-of target ("Abbreviation of *et cetera*", "plural of *mouse*");
+ * every other link keeps its text and loses the link. Spaces just inside brackets and quotes and
+ * before punctuation, left where Wiktionary's markup was, are removed.
+ */
+export function pruneGlossLinks(html: string): string {
+  // Wiktionary's form-of span also holds the target's own gloss ("et cetera (“and so on; used
+  // to note …”)"); only the target, outside that gloss, keeps its link.
+  const stack: Array<{ name: string; target: boolean; gloss: boolean }> = [];
+  const openAnchors: boolean[] = [];
+  const out = String(html || '')
+    .split(/(<[^>]+>)/g)
+    .map((part) => {
+      const tag = /^<\s*(\/)?\s*([a-z0-9]+)([^>]*?)(\/)?\s*>$/i.exec(part);
+      if (!tag) return part;
+      const closing = !!tag[1];
+      const name = tag[2].toLowerCase();
+      const inTarget = stack.some((t) => t.target) && !stack.some((t) => t.gloss);
+      if (name === 'a') {
+        if (closing) return openAnchors.pop() ? part : '';
+        openAnchors.push(inTarget);
+        return inTarget ? part : '';
+      }
+      if (closing) {
+        let at = stack.length - 1;
+        while (at >= 0 && stack[at].name !== name) at -= 1;
+        if (at >= 0) stack.splice(at);
+      } else if (!tag[4] && !/^(br|img|hr|wbr|input|meta|link)$/.test(name)) {
+        stack.push({
+          name,
+          target: /\bclass\s*=\s*["'][^"']*\bform-of-definition-link\b/i.test(tag[3]),
+          gloss: /\bclass\s*=\s*["'][^"']*\bmention-gloss\b/i.test(tag[3]),
+        });
+      }
+      return part;
+    })
+    .join('');
+  return tidyGlossSpacing(out);
+}
+
+/** Removes spaces just inside brackets and quotes and before punctuation; tags in between are kept. */
+export function tidyGlossSpacing(html: string): string {
+  return String(html || '')
+    .replace(/([(\[“‘])((?:<[^>]+>)*)\s+/g, '$1$2')
+    .replace(/\s+((?:<\/[^>]+>)*)([)\]”’,.;:!?])/g, '$1$2');
+}
+
+/**
  * The lookup a Wiktionary link names: "Reconstruction:Proto-Indo-European/bʰeh₂-" is the
  * root *bʰeh₂-; other namespaces (File:, Category:, Appendix:) are not lookups.
  */
