@@ -255,7 +255,7 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.equal(readLearnPrefs('{"countdown":-3}').countdown, 0);
 }
 
-// Progress: today against the goal, the streak, skills, families and the forgetting curve.
+// Progress: today against the goal, the streak, memory, skills and families.
 {
   const { progressSummary, progressHtml } = load('learn-progress');
   const t0 = new Date(2026, 10, 3, 12).getTime();
@@ -289,21 +289,24 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.equal(s.inRotation, 2);
   assert.ok(s.curve[0] > s.curve[30], 'recall falls without review');
   const page = progressHtml({ history, scope: 'mine', ctx: null, mine: words, goal: 10, now: t0 });
-  for (const label of ['New words', 'Reviews', 'Streak', 'Skills', 'Root families', 'Answers per day', 'Memory', 'Reviews ahead, 30 days', 'How long words are held', 'Trouble words']) assert.match(page, new RegExp(label));
+  for (const label of ['New words', 'Reviews', 'Streak', 'Skills', 'Root families', 'Answers per day', 'Memory', 'Reviews ahead', 'How long words are held', 'Trouble words']) assert.match(page, new RegExp(label));
   // Every chart has a y axis label, ticks and a readout, and each bar its own readout.
   assert.match(page, /data-lrc="memory"[\s\S]*data-lrc-when="1"[\s\S]*data-lrc-when="2"/, 'memory today, in a week and in a month');
   assert.equal((page.match(/class="lrc-mem__dot[" ]/g) || []).length, 2, 'one dot per word in rotation');
   assert.match(page, /data-lrc="due30"[\s\S]*class="lrc-ylabel"[^>]*>Words due/);
   assert.equal((page.match(/data-lrc="due30"[\s\S]*?<\/svg>/)[0].match(/class="lrc-hit"/g) || []).length, 30, 'one bar a day');
   assert.match(page, /data-lrc="answers"[\s\S]*<template data-for="29"><p class="lrc-read__head"><b>[^<]+<\/b> · 2 answers, 50% right/);
-  assert.ok(page.includes('<b>2<small> of 3</small></b><span>Reviews, of those due today'), 'the review ring says what it counts');
+  assert.match(page, /aria-label="Reviews: 2 of 3"/, 'the review gauge says what it counts');
+  assert.match(page, /Today you started <b>1<\/b> of <b>10<\/b> new words and answered <b>2<\/b> questions, <b>50%<\/b> of them right\. <b>1<\/b> review is still due\./);
+  assert.match(page, /class="lrp-giant">3</, 'the streak is the masthead numeral');
+  assert.doesNotMatch(page, /lrp-card|data-lrc-range/, 'no cards and no slider');
   assert.doesNotMatch(page, /at most 20%/);
   assert.equal(s.strength.reduce((n, b) => n + b.words.length, 0), 2, 'two started words');
   assert.deepEqual(s.strength[0].words, ['transport'], 'transport is still learning');
   assert.equal(s.mix.listening, 1);
-  const r14 = load('learn-charts').retentionAt(s.rotation, t0, 14);
-  assert.ok(r14.average < 1 && r14.weakest[0].lemma === 'transport', 'the learning word is weakest after two weeks');
   const charts = load('learn-charts');
+  const r14 = charts.retentionAt(s.rotation, t0, 14);
+  assert.ok(r14.average < 1 && r14.weakest[0].lemma === 'transport', 'the learning word is weakest after two weeks');
   // Memory: the words you would recall fall over a week, and a word falls below 90% one stability after its review.
   const m0 = charts.memoryAt(s.rotation, t0, 0);
   const m7 = charts.memoryAt(s.rotation, t0, 7);
@@ -316,7 +319,10 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.ok(layout.at[0][1].y < layout.at[0][0].y, 'the second dot sits on the first');
   assert.equal(layout.at[1][2].x, Math.min(...layout.at.flat().map((p) => p.x)), 'recall at or under 50% piles at the left edge');
   assert.ok(charts.memoryLayout([[0.4], [0.3]]).at[0][0].x === charts.memoryLayout([[0.4], [0.3]]).at[1][0].x, 'everything under 50% shares the edge');
-  assert.match(progressHtml({ history: [], scope: 'mine', ctx: null, mine: [], goal: 10, now: t0 }), /No answers yet/);
+  const empty = progressHtml({ history: [], scope: 'mine', ctx: null, mine: [], goal: 10, now: t0 });
+  assert.match(empty, /No answers yet/);
+  assert.match(empty, /No words in rotation yet/);
+  assert.match(empty, /Nothing answered yet today\. Nothing is due, and the goal is <b>10<\/b> new words\./);
 }
 
 // Rows: Look up sits in the collapsed row, not only in the details.

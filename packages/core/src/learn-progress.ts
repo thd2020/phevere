@@ -1,8 +1,8 @@
 /**
  * The Learn tab's Progress page: today against the daily goals and the streak, your memory of the
- * words today and after a week or a month without review (one dot per word by FSRS's recall), the
- * reviews ahead, answers per day, how firmly the words are held, the skills and the mix of
- * question kinds, each list with what it shares with the others, trouble words and root families.
+ * words today and after a week or a month without review (FSRS's predicted recall, one dot per
+ * word), the reviews ahead, answers per day, how firmly the words are held, the skills and the mix
+ * of question kinds, each list with what it shares with the others, trouble words and root families.
  *
  * Everything comes from the answer history (answer-history.ts) and the words' FSRS state. The
  * charts take a pointer, a tap or the keyboard (`learn-charts.ts`).
@@ -299,16 +299,13 @@ export function progressSummary(input: ProgressInput): ProgressSummary {
 
 /* ------------------------------------------------------------------- pieces */
 
-function meter(label: string, value: number, target: number): string {
-  const r = 26;
-  const c = 2 * Math.PI * r;
+/** A thin rule that fills towards a target, with its count; teal when the target is met. */
+function gauge(label: string, value: number, target: number): string {
   const share = target ? Math.min(1, value / target) : value ? 1 : 0;
-  return `<div class="lrp-meter">
-    <svg viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="${esc(label)}: ${value} of ${target}">
-      <circle class="lrp-meter__track" cx="32" cy="32" r="${r}"/>
-      ${share ? `<circle class="lrp-meter__fill${share >= 1 ? ' is-done' : ''}" cx="32" cy="32" r="${r}" stroke-dasharray="${(share * c).toFixed(2)} ${c.toFixed(2)}"/>` : ''}
-    </svg>
-    <div><b>${fmt(value)}<small> of ${fmt(target)}</small></b><span>${esc(label)}</span></div>
+  return `<div class="lrp-gauge${share >= 1 ? ' is-done' : ''}" role="img" aria-label="${esc(label)}: ${value} of ${target}">
+    <span class="lrp-gauge__label">${esc(label)}</span>
+    <span class="lrp-gauge__n"><b>${fmt(value)}</b> of ${fmt(target)}</span>
+    <span class="lrp-gauge__bar"><i style="width:${(share * 100).toFixed(1)}%"></i></span>
   </div>`;
 }
 
@@ -316,6 +313,16 @@ function stackBar(known: number, learning: number, total: number, label: string)
   const k = total ? (known / total) * 100 : 0;
   const l = total ? (learning / total) * 100 : 0;
   return `<span class="wb-bar lrp-bar" role="img" aria-label="${esc(label)}"><i class="wb-bar__known" style="width:${k.toFixed(2)}%"></i><i class="wb-bar__learning" style="width:${l.toFixed(2)}%"></i></span>`;
+}
+
+/** A section: a numbered label on a rule, then its body. */
+function section(cls: string, n: number, label: string, body: string): string {
+  return `<section class="lrp-sec ${cls}" aria-label="${esc(label)}"><h3 class="lrp-sec__label"><span>${String(n).padStart(2, '0')}</span>${esc(label)}</h3>${body}</section>`;
+}
+
+/** An oversized number with the sentence that says what it counts. */
+function figure(n: string, text: string, cls = ''): string {
+  return `<div class="lrp-fig${cls ? ` ${cls}` : ''}"><b class="lrp-fig__n">${n}</b><p class="lrp-fig__text">${text}</p></div>`;
 }
 
 function perDayChart(perDay: ProgressSummary['perDay']): string {
@@ -339,11 +346,8 @@ function perDayChart(perDay: ProgressSummary['perDay']): string {
         : `<p class="lrc-read__head"><b>${esc(dayLabel(d.day))}</b> · no answers</p>`,
     };
   });
-  const total = perDay.reduce((s, d) => s + d.right + d.wrong, 0);
-  const right = perDay.reduce((s, d) => s + d.right, 0);
-  const active = perDay.filter((d) => d.right + d.wrong).length;
-  const summary = `<p class="lrc-read__head"><b>${fmt(total)}</b> answers in 30 days · <b>${pct(right, total)}%</b> right · ${active} ${active === 1 ? 'day' : 'days'} studied</p>`;
-  return barChartHtml({ id: 'answers', data, yLabel: 'Answers', summary, legend: [{ cls: 'right', name: 'Right' }, { cls: 'wrong', name: 'Wrong' }], height: 162 });
+  const summary = '<p class="lrc-read__sub">Pick a day to see its answers and words</p>';
+  return barChartHtml({ id: 'answers', data, yLabel: 'Answers', summary, legend: [{ cls: 'right', name: 'Right' }, { cls: 'wrong', name: 'Wrong' }], height: 150 });
 }
 
 function strengthChart(strength: ProgressSummary['strength']): string {
@@ -355,90 +359,136 @@ function strengthChart(strength: ProgressSummary['strength']): string {
     aria: `${b.label}: ${b.words.length} words`,
     detail: `<p class="lrc-read__head"><b>${esc(b.label)}</b> · ${fmt(b.words.length)} ${b.words.length === 1 ? 'word' : 'words'}${total ? ` (${pct(b.words.length, total)}%)` : ''}</p>${wordChips(b.words, 30)}`,
   }));
-  const held = strength.slice(3).reduce((s, b) => s + b.words.length, 0);
-  const summary = `<p class="lrc-read__head"><b>${fmt(held)}</b> of ${fmt(total)} started words held for 3 weeks or more</p>`;
-  return barChartHtml({ id: 'strength', data, yLabel: 'Words', summary, height: 152 });
+  const summary = '<p class="lrc-read__sub">Pick a bar to see its words</p>';
+  return barChartHtml({ id: 'strength', data, yLabel: 'Words', summary, height: 150 });
 }
 
 function mixHtml(mix: Record<Skill, number>): string {
   const total = SKILLS.reduce((s, k) => s + mix[k], 0);
   if (!total) return '';
   const seg = SKILLS.map((k) => `<i class="lrp-mix--${k}" style="flex:${mix[k] || 0.0001}" title="${SKILL_LABEL[k]}: ${mix[k]}"></i>`).join('');
-  const nums = SKILLS.map((k) => `<span><i class="lrp-mix--${k}"></i>${SKILL_LABEL[k]} <b>${pct(mix[k], total)}%</b></span>`).join('');
+  const parts = SKILLS.map((k) => `<span class="lrp-mix__k"><i class="lrp-mix--${k}"></i><b>${pct(mix[k], total)}%</b> ${SKILL_LABEL[k].toLowerCase()}</span>`);
   return `<div class="lrp-mix">
-    <p class="lrp-label">Last 7 days, ${fmt(total)} questions</p>
     <div class="lrp-mix__bar" role="img" aria-label="${SKILLS.map((k) => `${SKILL_LABEL[k]} ${pct(mix[k], total)}%`).join(', ')}">${seg}</div>
-    <p class="lrp-mix__nums">${nums}</p>
+    <p class="lrp-mix__text">Last 7 days, ${fmt(total)} questions: ${parts[0]}, ${parts[1]} and ${parts[2]}</p>
   </div>`;
+}
+
+/** Reviews due within `days` days from today, overdue ones included (as on the forecast chart). */
+function dueWithin(words: WordsEntry[], now: number, days: number): number {
+  const end = dayStart(now) + days * DAY;
+  return words.filter((e) => e.reviewDue != null && memoryLevel(e) > 0 && !e.known && Number(e.reviewDue) < end).length;
 }
 
 /* --------------------------------------------------------------------- page */
 
+/**
+ * The page reads like a printed spread rather than a grid of cards: a masthead with the streak as
+ * a giant numeral and today told in one sentence, then numbered sections on rules, each led by one
+ * oversized number with what it counts, at sizes that differ from section to section. Wide windows
+ * set the sections on a twelve-column grid in uneven pairs; a phone stacks them.
+ */
 export function progressHtml(input: ProgressInput): string {
   const now = input.now ?? Date.now();
   const s = progressSummary(input);
   const words = scopeWords(input);
-  const flame = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.2 1-3.6 2.2-4.6.2 1.6 1 2.6 2 3 0-3.3-.3-5.8.8-8.4z" fill="currentColor"/></svg>';
-  const total = s.reviewsToday + s.dueLeft;
-  const lists = s.lists
+  const due = s.reviewsToday + s.dueLeft;
+  const date = new Date(now).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const lede = s.reviewsToday
+    ? `Today you started <b>${fmt(s.newToday)}</b> of <b>${fmt(s.newGoal)}</b> new words and answered <b>${fmt(s.reviewsToday)}</b> ${s.reviewsToday === 1 ? 'question' : 'questions'}, <b>${pct(s.correctToday, s.reviewsToday)}%</b> of them right. ${
+        s.dueLeft ? `<b>${fmt(s.dueLeft)}</b> ${s.dueLeft === 1 ? 'review is' : 'reviews are'} still due.` : 'Nothing else is due today.'
+      }`
+    : `Nothing answered yet today. ${s.dueLeft ? `<b>${fmt(s.dueLeft)}</b> ${s.dueLeft === 1 ? 'review is' : 'reviews are'} due` : 'Nothing is due'}, and the goal is <b>${fmt(s.newGoal)}</b> new ${s.newGoal === 1 ? 'word' : 'words'}.`;
+  const mast = `<header class="lrp-mast${s.streak ? ' is-on' : ''}" aria-label="Today">
+    <p class="lrp-kicker">${esc(date)}</p>
+    <div class="lrp-mast__streak">
+      <b class="lrp-giant">${fmt(s.streak)}</b>
+      <p class="lrp-mast__cap"><span>${s.streak === 1 ? 'day' : 'days'} in a row</span><small>Streak · best ${fmt(s.bestStreak)}</small></p>
+    </div>
+    <p class="lrp-lede">${lede}</p>
+    <div class="lrp-gauges">${gauge('New words', s.newToday, s.newGoal)}${gauge('Reviews', s.reviewsToday, due)}</div>
+  </header>`;
+
+  const memory = s.inRotation ? memoryHtml({ id: 'memory', words: s.rotation, now }) : '<p class="lrp-none">No words in rotation yet</p>';
+
+  const week = dueWithin(words, now, 7);
+  const ahead = `${figure(fmt(week), `${week === 1 ? 'review' : 'reviews'} in the next 7 days`)}${forecastChartHtml(words, now, 30, 'due30')}`;
+
+  const started = s.strength.reduce((n, b) => n + b.words.length, 0);
+  const held = s.strength.slice(3).reduce((n, b) => n + b.words.length, 0);
+  const heldBody = started
+    ? `${figure(fmt(held), `of ${fmt(started)} started ${started === 1 ? 'word is' : 'words are'} held for 3 weeks or more`, 'is-teal')}${strengthChart(s.strength)}`
+    : '<p class="lrp-none">No words started yet</p>';
+
+  const answers30 = s.perDay.reduce((n, d) => n + d.right + d.wrong, 0);
+  const right30 = s.perDay.reduce((n, d) => n + d.right, 0);
+  const days30 = s.perDay.filter((d) => d.right + d.wrong).length;
+  const answersBody = answers30
+    ? `${figure(fmt(answers30), `answers in 30 days, <b>${pct(right30, answers30)}%</b> right, on ${days30} ${days30 === 1 ? 'day' : 'days'}`, 'is-wide')}${perDayChart(s.perDay)}`
+    : '<p class="lrp-none">No answers yet</p>';
+
+  const skills = `<div class="lrp-skills">${SKILLS.map((k) => {
+    const v = s.skills[k];
+    const share = v.tested ? v.mastered / v.tested : 0;
+    return `<div class="lrp-skill">
+      <span class="lrp-skill__name">${SKILL_LABEL[k]}</span>
+      <b class="lrp-skill__pct">${v.tested ? `${pct(v.mastered, v.tested)}<small>%</small>` : '–'}</b>
+      <span class="lrp-skill__bar" role="img" aria-label="${v.mastered} of ${v.tested} mastered"><i style="width:${(share * 100).toFixed(1)}%"></i></span>
+      <span class="lrp-skill__n">${fmt(v.mastered)} of ${fmt(v.tested)} words mastered</span>
+    </div>`;
+  }).join('')}</div>${mixHtml(s.mix)}`;
+
+  const lists = `<ul class="lrp-lists">${s.lists
     .map((l) => {
       const o = s.overlaps[l.id];
       const shared = o?.shared.slice(0, 3).map((x) => `${fmt(x.shared)} with ${esc(x.label)}`) || [];
       const extra = [o?.elsewhere ? `${fmt(o.elsewhere)} started through other lists` : '', shared.length ? `Shares ${shared.join(', ')}` : ''].filter(Boolean);
       return `<li class="lrp-list">
         <span class="lrp-list__name">${esc(l.label)}</span>
+        <span class="lrp-list__n"><b>${fmt(l.known)}</b> of ${fmt(l.total)} known</span>
         ${stackBar(l.known, l.learning, l.total, `${l.known} of ${l.total} known`)}
-        <span class="lrp-list__n"><b>${fmt(l.known)}</b> known · ${fmt(l.learning)} learning · ${fmt(l.fresh)} new</span>
-        ${extra.length ? `<span class="lrp-list__share">${extra.join(' · ')}</span>` : ''}
+        <span class="lrp-list__more">${fmt(l.learning)} learning, ${fmt(l.fresh)} new${extra.length ? `. ${extra.join('. ')}` : ''}</span>
       </li>`;
     })
-    .join('');
-  const skills = SKILLS.map((k) => {
-    const v = s.skills[k];
-    return `<li class="lrp-skill">
-      <span class="lrp-skill__name">${SKILL_LABEL[k]}</span>
-      <span class="wb-bar lrp-bar" role="img" aria-label="${v.mastered} of ${v.tested} mastered"><i class="wb-bar__known" style="width:${pct(v.mastered, v.tested)}%"></i></span>
-      <span class="lrp-skill__n">${fmt(v.mastered)} of ${fmt(v.tested)} words</span>
-    </li>`;
-  }).join('');
+    .join('')}</ul>
+    <p class="lrp-key"><i class="lrp-key__known"></i>Known<i class="lrp-key__learning"></i>Learning<i class="lrp-key__new"></i>New</p>`;
+
+  // Trouble words set as one run of type: the more often missed, the larger and darker the word.
+  const worst = Math.max(0.0001, ...s.trouble.map((t) => t.misses / Math.max(1, t.answers)));
+  const trouble = s.trouble.length
+    ? `<p class="lrp-trouble">${s.trouble
+        .map((t) => {
+          const w = t.misses / Math.max(1, t.answers) / worst;
+          return `<button type="button" class="lrp-tw${t.leech ? ' is-leech' : ''}" style="--w:${w.toFixed(2)}" data-act="lookup" data-q="${esc(t.lemma)}" title="${t.misses} of ${t.answers} missed, last ${esc(dayLabel(t.lastMiss))}">${esc(t.lemma)}<sup>${t.misses}/${t.answers}</sup></button>`;
+        })
+        .join(' ')}</p><p class="lrp-note">Missed of answered${s.trouble.some((t) => t.leech) ? '; leeches in rust' : ''}</p>`
+    : '<p class="lrp-none">No trouble words</p>';
+
+  const biggest = Math.max(1, ...s.families.map((f) => f.size));
   const fams = s.families.length
     ? `<ul class="lrp-fams">${s.families
         .map(
-          (f) => `<li class="lrp-fam">
-            <span class="lrp-fam__root">${esc(f.label)}${f.gloss ? `<small>${esc(f.gloss)}</small>` : ''}</span>
+          (f) => `<li class="lrp-fam" style="--s:${(f.size / biggest).toFixed(2)}">
+            <span class="lrp-fam__root">${esc(f.label)}</span>
+            ${f.gloss ? `<span class="lrp-fam__gloss">${esc(f.gloss)}</span>` : ''}
             ${stackBar(f.known, f.learning, f.size, `${f.known} of ${f.size} known`)}
-            <span class="lrp-fam__n">${f.known} / ${f.size}</span>
+            <span class="lrp-fam__n">${f.known} of ${f.size} known</span>
           </li>`,
         )
         .join('')}</ul>`
     : '<p class="lrp-none">No root families yet</p>';
-  const trouble = s.trouble.length
-    ? `<ul class="lrp-trouble">${s.trouble
-        .map(
-          (t) => `<li><button type="button" class="nbv-missed__word" data-act="lookup" data-q="${esc(t.lemma)}">${esc(t.lemma)}</button>${t.leech ? '<span class="nbv-tag is-leech">Leech</span>' : ''}<span class="lrp-trouble__n">${t.misses} of ${t.answers} missed · last ${esc(dayLabel(t.lastMiss))}</span></li>`,
-        )
-        .join('')}</ul>`
-    : '<p class="lrp-none">No trouble words</p>';
-  const answered = s.perDay.some((d) => d.right + d.wrong);
-  const accuracy = s.reviewsToday ? `${pct(s.correctToday, s.reviewsToday)}%` : '–';
+
+  let n = 0;
   return `<div class="lrp">
-    <section class="lrp-card lrp-today" aria-label="Today">
-      ${meter('New words, of the daily goal', s.newToday, s.newGoal)}
-      ${meter('Reviews, of those due today', s.reviewsToday, total)}
-      <div class="lrp-stat"><b>${accuracy}</b><span>Right today</span></div>
-      <div class="lrp-streak${s.streak ? ' is-on' : ''}">${flame}<div><b>${s.streak}<small> ${s.streak === 1 ? 'day' : 'days'}</small></b><span>Streak · best ${s.bestStreak}</span></div></div>
-    </section>
-    <section class="lrp-card lrp-wide"><h3>Memory</h3>${
-      s.inRotation ? memoryHtml({ id: 'memory', words: s.rotation, now }) : '<p class="lrp-none">No words in rotation yet</p>'
-    }</section>
-    <section class="lrp-card"><h3>Reviews ahead, 30 days</h3>${forecastChartHtml(words, now, 30, 'due30')}</section>
-    <section class="lrp-card"><h3>Answers per day</h3>${answered ? perDayChart(s.perDay) : '<p class="lrp-none">No answers yet</p>'}</section>
-    <section class="lrp-card"><h3>How long words are held</h3>${s.strength.some((b) => b.words.length) ? strengthChart(s.strength) : '<p class="lrp-none">No words started yet</p>'}</section>
-    <section class="lrp-card"><h3>Skills</h3><p class="lrp-label">Words mastered of words tested</p><ul class="lrp-skills">${skills}</ul>${mixHtml(s.mix)}</section>
-    <section class="lrp-card"><h3>Words</h3><ul class="lrp-lists">${lists}</ul>
-      <p class="lrp-key"><i class="lrp-key__known"></i>Known<i class="lrp-key__learning"></i>Learning<i class="lrp-key__new"></i>New</p></section>
-    <section class="lrp-card"><h3>Trouble words</h3>${trouble}</section>
-    <section class="lrp-card"><h3>Root families</h3>${fams}</section>
+    ${mast}
+    ${section('lrp-sec--memory', ++n, 'Memory', memory)}
+    ${section('lrp-sec--ahead', ++n, 'Reviews ahead', ahead)}
+    ${section('lrp-sec--held', ++n, 'How long words are held', heldBody)}
+    ${section('lrp-sec--answers', ++n, 'Answers per day', answersBody)}
+    ${section('lrp-sec--skills', ++n, 'Skills', skills)}
+    ${section('lrp-sec--lists', ++n, 'Words', lists)}
+    ${section('lrp-sec--trouble', ++n, 'Trouble words', trouble)}
+    ${section('lrp-sec--fams', ++n, 'Root families', fams)}
   </div>`;
 }
-
