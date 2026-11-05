@@ -55,6 +55,9 @@ async function startupAndGestures(floatingStrip) {
     readNotebookView: (v) => ({ view: v === 'review' || !v ? 'list' : v, learn: v === 'review' }),
     listWordbookSubs: async () => [], listUserBooks: async () => [], listBookProgress: async () => [],
     buildWordsContext: () => ({ mine: [], progress: new Map(), subs: [], books: new Map(), index: new Map(), saved: new Map() }),
+    // Settings → Learn: stored options and the microphone check.
+    readLearnPrefs: () => ({ countdown: 0, speaking: true }), writeLearnPrefs: (p) => JSON.stringify(p),
+    microphoneAvailable: async () => false, watchMicrophone: () => {},
   };
   const native = {
     hasNativeBridge: () => true, installNativeCallbacks: () => {}, applyInsets: () => {},
