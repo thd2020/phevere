@@ -220,7 +220,7 @@ assert.equal(fo.dominantLemma(['ax', 'axe', 'axis'], freq, [['ax', 'axe'], ['axi
     'leaves:leaf', 'lives:life', 'feet:foot', 'swam:swim', 'sung:sing', 'bought:buy', 'lying:lie', 'wrote:write',
     'caught:catch', 'held:hold', 'brought:bring', 'sat:sit', 'worst:bad', 'best:good'];
   const plain = ['children:child', 'gleaned:glean', 'paparazzi:paparazzo', 'vicissitudes:vicissitude', 'savings:saving',
-    'cities:city', 'criteria:criterion', 'crises:crisis', 'phenomena:phenomenon', 'oxen:ox', 'stopped:stop',
+    'cities:city', 'criteria:criterion', 'crises:crisis', 'phenomena:phenomenon', 'stopped:stop',
     'analyses:analysis', 'goes:go', 'fishes:fish'];
   for (const pair of own) assert.equal(fo.hasOwnFormEntry(...pair.split(':')), true, `${pair} has a short entry in OALD`);
   for (const pair of plain) assert.equal(fo.hasOwnFormEntry(...pair.split(':')), false, `${pair} opens the headword in OALD`);
@@ -228,6 +228,8 @@ assert.equal(fo.dominantLemma(['ax', 'axe', 'axis'], freq, [['ax', 'axe'], ['axi
   // "women" opens woman, while "men" has an entry. The rule gives the opposite for both.
   assert.equal(fo.hasOwnFormEntry('does', 'do'), false);
   assert.equal(fo.hasOwnFormEntry('women', 'woman'), true);
+  // "oxen" opens ox in OALD; the rule gives it a line, as no word is special-cased to agree.
+  assert.equal(fo.hasOwnFormEntry('oxen', 'ox'), true);
   // The line's wording comes from Wiktionary's gloss first: "simple past and past participle" is both.
   const taught = [
     JSON.stringify({ word: 'taught', lang_code: 'en', pos: 'verb', sounds: [{ ipa: '/tɔːt/' }], senses: [{ tags: ['form-of', 'participle', 'past'], glosses: ['simple past and past participle of teach'], form_of: [{ word: 'teach' }] }] }),
@@ -252,6 +254,8 @@ assert.match(didYouMeanHtml({ metadata: { suggestions: ['governess', 'governesse
   // WordNet, through Datamuse, defines savings as a word of its own; geese only as a band name.
   const defs = {
     savings: { word: 'savings', defs: ['n\ta fund of money put by as a reserve'] },
+    // As Datamuse answered on 2026-11-05.
+    glasses: { word: 'glasses', defs: ['n\tSpectacles, frames bearing two lenses worn in front of the eyes. ', 'n\tField glasses; binoculars. '] },
     geese: { word: 'geese', defHeadword: 'Geese', defs: ['N\tan American rock band'] },
     paparazzi: { word: 'paparazzi', defs: ['n\t(nonstandard, uncountable) Paparazzi taken as a group.', 'n\t(nonstandard) A paparazzo.'] },
   };

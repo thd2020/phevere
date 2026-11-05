@@ -163,6 +163,23 @@
 .lx-morph .lx-link,
 .lx-words .lx-link { color: var(--lx-teal, #0f6e71); }
 
+/*
+ * Sense labels sit in the definition's own serif, size and baseline; only the colour (set by
+ * each shell, for its dark theme) and the italic of the label words set them apart, as in
+ * Wiktionary and Oxford Learner's.
+ */
+.sense-label {
+  font: inherit;
+  letter-spacing: normal;
+}
+.sense-label i { font-style: italic; }
+
+/* "Definitions from Wiktionary and Datamuse": once, under the last sense. */
+.lx-sources {
+  margin: 18px 0 0;
+  font: italic 13px/1.4 var(--lx-serif, 'Source Serif 4 Variable', Georgia, serif);
+}
+
 /* "Did you mean governess?" under a lookup that found nothing. */
 .lx-didyoumean { margin: 10px 0 0; font: 500 15px/1.4 var(--lx-ui, Outfit, system-ui, sans-serif); color: var(--lx-soft, #5c534e); }
 .lx-didyoumean .lx-link { font: 600 16px/1.2 var(--lx-serif, 'Source Serif 4 Variable', Georgia, serif); color: var(--lx-teal, #0f6e71); }

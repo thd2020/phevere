@@ -65,6 +65,8 @@ export interface Definition {
   senseOrder?: number;
   /** SemCor tag count of the WordNet sense this sense aligns to (English only; see sense-frequency.ts). */
   frequency?: number;
+  /** The looked-up form's own sense from a source that usually gives its lemma's (definition-merge.ts). */
+  ownSense?: boolean;
 }
 
 import { BaseService, DictionaryError, withTimeout } from './base';
@@ -77,13 +79,13 @@ import { closestSpelling } from './vocab-lemma';
 import { wrapConsole } from './log';
 import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigured, type OfflineHit } from './runtime';
 import { registerHeadwordResolver } from './vocab-store';
-import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
+import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey, exactQuery, exactLookupKey, hasEdgePunctuation } from './text-normalize';
 import { isGrammaticalFormOfGloss, splitSurfaceAndLemma, sameLookupFold, stripGlossText } from './lookup-policy';
-import { formLine, formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, resolveFormOf } from './form-of';
+import { datamuseEntry, formLine, formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, isOwnNounGloss, resolveFormOf } from './form-of';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { lookupMorpheme, morphemeOffers, parseMorphemeQuery } from './morpheme';
 import { groupYoudaoEtymologies, sameHeadword, serializeEtymologySources } from './etymology-sources';
-import { mergeSimilarDefinitions, dedupeExamples, exampleKey, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses } from './definition-merge';
+import { mergeSimilarDefinitions, dedupeExamples, exampleKey, tidyExample, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses, formOfSensesLast } from './definition-merge';
 import { orderSensesByFrequency, warmSenseFrequency } from './sense-frequency';
 import {
   Pronunciation,
@@ -94,10 +96,23 @@ import {
   cleanIpa,
 } from './pronunciation';
 import { arpabetToIpa, cmuIpaFor } from './cmu-ipa';
-import { buildWordFamily, mergeWordFamilyGroups, mergeWordFamilyGroupsFor, familyFromEtymologyChain, type WordFamilyGroup } from './word-family';
+import {
+  buildWordFamily,
+  mergeWordFamilyGroups,
+  mergeWordFamilyGroupsFor,
+  familyFromEtymologyChain,
+  familyFromKaikki,
+  fetchFamilyFrequencies,
+  familyStem,
+  rankFamilyByFrequency,
+  type FamilyFrequencies,
+  type WordFamilyGroup,
+} from './word-family';
 import {
   fetchJisho,
   fetchKaikki,
+  fetchKaikkiPage,
+  kaikkiDirectory,
   fetchOpenRussian,
   fetchWiktionaryEdition,
   editionServes,
@@ -132,6 +147,8 @@ const PARTIAL_PERSIST_TTL_MS = 24 * 60 * 60 * 1000;
 const FORM_CHECK_MS = 3500;
 /** Longest a result that may be a form is held back while that page is on its way. */
 const FORM_HOLD_MS = 1200;
+/** Longest wait for whether Wiktionary has a page titled exactly as typed ("etc.", "C++"). */
+const EXACT_TITLE_MS = 1500;
 /**
  * Stored on every result saved since forms opened as their word (2026-11-04); a saved result
  * without it is looked up again once. A mark, not a date: partial results are saved with an
@@ -168,6 +185,42 @@ type LookupOpts = {
   /** Set on the lookup of the word a form stands for, so it cannot redirect again. */
   noFormRedirect?: boolean;
 };
+
+/** "plural of saving", "past tense of go": a sense that only points at another word. */
+function isFormOfSense(meaning: string): boolean {
+  const text = stripGlossText(String(meaning || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+  // "Misspelling of accommodate" stays where it is: misspellingTarget reads it from the top.
+  if (/^(?:a\s+)?(?:common\s+|rare\s+|nonstandard\s+)?misspelling of\s/i.test(text)) return false;
+  return !!formOfGlossLemma(text) || isGrammaticalFormOfGloss(text);
+}
+
+/** The characters trimming took off the edges of `sanitized` to leave `trimmed` ("etc." gives "."). */
+function edgeMarks(sanitized: string, trimmed: string): string[] {
+  const at = trimmed ? sanitized.indexOf(trimmed) : -1;
+  if (at < 0) return Array.from(sanitized);
+  return Array.from(sanitized.slice(0, at) + sanitized.slice(at + trimmed.length));
+}
+
+/** The definitions of one language section of a Wiktionary REST definition page. */
+function sectionSenses(page: any, lang: string): Array<{ definition?: string }> {
+  const section = page && typeof page === 'object' ? page[lang] : null;
+  if (!Array.isArray(section)) return [];
+  return section.flatMap((e: any) => (Array.isArray(e?.definitions) ? e.definitions : [])).filter((d: any) => d && d.definition);
+}
+
+/** Whether a REST definition links to the page `title` ("Alternative form of etc." links to etc.). */
+function linksToTitle(def: { definition?: string }, title: string): boolean {
+  for (const m of String(def?.definition || '').matchAll(/href="\/wiki\/([^"#?]+)/g)) {
+    let target = m[1];
+    try {
+      target = decodeURIComponent(target);
+    } catch {
+      /* keep the raw path */
+    }
+    if (target.replace(/_/g, ' ') === title) return true;
+  }
+  return false;
+}
 
 /** Wiktionary's senses of the looked-up word; other sources answer a form with the base word's senses. */
 function wiktionarySenses(result: DictionaryResult | null | undefined): string[] {
@@ -653,7 +706,7 @@ export class DictionaryService extends BaseService {
   private async lookupWord(text: string, targetLanguage: string = 'auto', enabledSources?: string[], opts?: LookupOpts): Promise<DictionaryResult> {
     const startTime = Date.now();
 
-    const query = normalizeQuery(text);
+    let query = normalizeQuery(text);
 
     if (!query.trimmed) {
       return {
@@ -674,13 +727,14 @@ export class DictionaryService extends BaseService {
       const hintedSource = (opts?.sourceLanguage || '').toLowerCase().split('-')[0];
       const detectedLanguage =
         hintedSource && hintedSource !== 'auto' ? hintedSource : await this.detectSourceLanguage(query.trimmed);
+      query = await this.withExactTitle(query, detectedLanguage);
 
       // Auto pairing is zh↔en (and ja/ko→en). An explicit Translation-tab target is honoured.
       const resolvedTarget = this.resolveTargetLanguage(detectedLanguage, targetLanguage);
       const txProvider = opts?.translationProvider || 'auto';
       // Switching on a Wiktionary edition must not be hidden by a result cached before it.
       const editionsOn = EDITIONS.filter((ed) => this.isNamedSourceOn(WIKTIONARY_EDITIONS[ed].source, enabledSources)).join(',');
-      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}${editionsOn ? `|wikt:${editionsOn}` : ''}`);
+      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki${editionsOn ? `|wikt:${editionsOn}` : ''}`);
 
       const remember = (r: DictionaryResult) => {
         if (this.isUncacheableResult(r) || this.isStillFilling(r)) return;
@@ -932,7 +986,10 @@ export class DictionaryService extends BaseService {
         r.metadata = { ...(r.metadata || {}), ...mark, originalSelection: query.raw };
         return r;
       };
-      const next = await this.lookupWithCandidates(normalizeQuery(word), targetLanguage, detectedLanguage, enabledSources, holder, {
+      // The word comes from the dictionary's own data, so its spelling is kept as it is ("etc.").
+      const exact = normalizeQuery(word);
+      if (hasEdgePunctuation(exact)) this.typedTitles.add(exact.sanitized);
+      const next = await this.lookupWithCandidates(exactQuery(exact), targetLanguage, detectedLanguage, enabledSources, holder, {
         ...(opts || {}),
         ...extra,
         originalSelection: word,
@@ -949,7 +1006,7 @@ export class DictionaryService extends BaseService {
     const started = Date.now();
     const lang = (detectedLanguage || 'en').toLowerCase().split('-')[0];
     const headword = foldLatinHeadword(query.trimmed) || query.trimmed;
-    const decisionKey = foldLookupKey(query.trimmed);
+    const decisionKey = exactLookupKey(query.trimmed);
     const kaikkiOn =
       lang === 'en' && isCoreConfigured() && query.kind === 'word' && !/\s/.test(headword) && this.isNamedSourceOn('Kaikki', enabledSources);
     // "Paris" typed with its capital is the city, not the plural of pari.
@@ -979,7 +1036,7 @@ export class DictionaryService extends BaseService {
       const decision = this.decideForm(r, early);
       if (!early) this.noteFormDecision(decisionKey, decision.then((d) => d.lemma));
       formCheck = decision.then(({ lemma, sure }) => {
-        if (lemma && foldLookupKey(lemma) !== foldLookupKey(query.trimmed)) {
+        if (lemma && exactLookupKey(lemma) !== exactLookupKey(query.trimmed)) {
           // An irregular form spelled unlike its lemma ("ran", "was", "mice") says what it is above
           // the entry, as learner dictionaries give it a short entry of its own.
           const line = formLine(headword, 'en');
@@ -1049,7 +1106,7 @@ export class DictionaryService extends BaseService {
     if (formOf) return formOf;
     stamp(result);
     const target = opts?.noCorrection ? null : misspellingTarget(result);
-    if (!target || foldLookupKey(target) === foldLookupKey(query.trimmed)) return result;
+    if (!target || exactLookupKey(target) === exactLookupKey(query.trimmed)) return result;
     const fixed = await instead(target, { noCorrection: true }, { correctedFrom: result.metadata?.correctedFrom || query.trimmed });
     if (!fixed || misspellingTarget(fixed)) return result;
     return fixed;
@@ -1089,7 +1146,7 @@ export class DictionaryService extends BaseService {
    */
   async settledHeadword(word: string, language = 'en'): Promise<string> {
     const w = String(word || '').trim();
-    const pending = this.formDecisions.get(foldLookupKey(w));
+    const pending = this.formDecisions.get(exactLookupKey(w));
     try {
       if (pending) return (await withTimeout(pending, FORM_CHECK_MS + 1000, 'form-of')) || w;
       const lang = (language || 'en').toLowerCase().split('-')[0];
@@ -1112,6 +1169,18 @@ export class DictionaryService extends BaseService {
     opts?: LookupOpts,
   ): Promise<DictionaryResult> {
     const { surface, lemma } = splitSurfaceAndLemma(query);
+    // Translation and IPA keep arriving after the lookup found no entry; each of those updates
+    // carries the "Did you mean …" suggestions too, or the line would vanish with the next one.
+    let noEntry: Record<string, unknown> | null = null;
+    const own: LookupOpts | undefined = opts?.onUpdate
+      ? {
+          ...opts,
+          onUpdate: (r) => {
+            if (noEntry && !this.hasRealDefinitions(r)) r.metadata = { ...(r.metadata || {}), ...noEntry };
+            opts.onUpdate!(r);
+          },
+        }
+      : opts;
 
     const surfaceHit = await this.lookupCandidateList(
       surface,
@@ -1120,7 +1189,7 @@ export class DictionaryService extends BaseService {
       detectedLanguage,
       enabledSources,
       holder,
-      opts,
+      own,
       false,
     );
     if (surfaceHit && this.hasRealDefinitions(surfaceHit)) {
@@ -1134,7 +1203,7 @@ export class DictionaryService extends BaseService {
       detectedLanguage,
       enabledSources,
       holder,
-      opts,
+      own,
       true,
     );
     if (lemmaHit && this.hasRealDefinitions(lemmaHit)) {
@@ -1159,14 +1228,14 @@ export class DictionaryService extends BaseService {
     // Misspellings Wiktionary records ("idiosyncracy") still open their word (misspellingTarget).
     const closest = detectedLanguage === 'en' ? closestSpelling(query.trimmed, found) : null;
     const suggestions = closest ? [closest, ...found.filter((w) => w !== closest)] : found;
-    fallback.metadata = {
-      ...(fallback.metadata || {}),
+    noEntry = {
       isSentence: false,
       queryKind: query.kind,
       originalSelection: query.raw,
       matchedQuery: null,
       suggestions: suggestions.length > 0 ? suggestions : undefined
     };
+    fallback.metadata = { ...(fallback.metadata || {}), ...noEntry };
 
     return fallback;
   }
@@ -1257,9 +1326,10 @@ export class DictionaryService extends BaseService {
     const sorted = sortDefinitionsByReadingOrder(
       mergeSimilarDefinitions([...(base.definitions || []), ...(extra.definitions || [])]) as Definition[],
     ) as Definition[];
-    const definitions = (extra.detectedLanguage || base.detectedLanguage) === 'en'
-      ? orderSensesByFrequency(extra.word || base.word, sorted)
-      : sorted;
+    const definitions = formOfSensesLast(
+      (extra.detectedLanguage || base.detectedLanguage) === 'en' ? orderSensesByFrequency(extra.word || base.word, sorted) : sorted,
+      isFormOfSense,
+    );
     const pronunciations = mergePronunciations(base.pronunciations, extra.pronunciations);
     const sourceStatus: Record<string, string> = {};
     const rank = (s?: string) => (s === 'ok' ? 3 : s === 'empty' ? 2 : s === 'skip' ? 1 : 0);
@@ -1349,7 +1419,8 @@ export class DictionaryService extends BaseService {
       (r.examples || []).length,
       (r.etymology || '').length,
       JSON.stringify(r.metadata?.etymologyUnavailable || []),
-      (r.wordFamily || []).length,
+      // A later family source or the frequencies can add words or reorder them in the same groups.
+      (r.wordFamily || []).map((g) => `${g.relation}:${g.items.length}:${g.items.slice(0, 3).map((i) => i.word).join(',')}`).join('|'),
       hasInflections(r.inflections) ? (r.inflections!.tables.length + r.inflections!.formOf.length) : 0,
       r.metadata?.pendingTranslation ? 1 : 0,
       r.metadata?.pendingEtymology ? 1 : 0,
@@ -1763,7 +1834,8 @@ export class DictionaryService extends BaseService {
       // en.wiktionary keys its answer by language: собака lives under `ru`, not `en`.
       const wikiLang = langForDict === 'auto' ? 'en' : langForDict;
       // A capitalised word goes as typed, so Wiktionary can put "May" the month before "may".
-      const wikiWord = wikiLang === 'en' && !isCapitalised(text) ? lookupWord : text;
+      // So does a title found as typed ("U.K.": Wiktionary has no "u.k.").
+      const wikiWord = wikiLang === 'en' && !isCapitalised(text) && !this.typedTitles.has(text) ? lookupWord : text;
       primaryPromises.push(pushCore(
         this.cachedSource(
           'wiktionary',
@@ -1780,7 +1852,7 @@ export class DictionaryService extends BaseService {
 
     // kaikki.org paths are case-sensitive (Haus is German, haus is not): keep the
     // selection's spelling when this candidate is only its folded form.
-    const selection = trimEdges(sanitize(opts?.originalSelection || ''));
+    const selection = this.typedForm(opts?.originalSelection || '');
     const languageWord = selection && foldLookupKey(selection) === foldLookupKey(text) ? selection : text;
     this.queueLanguageSources(languageWord, langForDict, {
       isSourceEnabled,
@@ -1799,6 +1871,38 @@ export class DictionaryService extends BaseService {
         this.cachedSource('inflections', formsKey, () => fetchInflections(getHttp(), languageWord, langForDict), (d) => !!d)
           .then((r) => {
             if (r.data) rawInflections = r.data as WordInflections;
+          })
+          .catch((): undefined => undefined),
+      );
+    }
+    // Derived and related words from the same page, so the family does not hang on Wiktionary's
+    // parse API answering within its budget ("redundancy" under redundant, "dichotomize").
+    let kaikkiFamily: WordFamilyGroup[] | undefined;
+    const kaikkiDir = kaikkiDirectory(langForDict);
+    if (kaikkiDir && isSourceEnabled('Kaikki') && !/\s/.test(languageWord.trim())) {
+      const familyKey = `${languageWord.replace(/\p{Lu}/gu, (c) => `^${c}`)}@${langForDict}`;
+      auxPromises.push(
+        this.cachedSource(
+          'kaikkiFamily',
+          familyKey,
+          async () => familyFromKaikki(await fetchKaikkiPage(getHttp(), languageWord, kaikkiDir), languageWord, langForDict),
+          (d) => Array.isArray(d) && d.length > 0,
+        )
+          .then((r) => {
+            if (Array.isArray(r.data) && r.data.length) kaikkiFamily = r.data as WordFamilyGroup[];
+          })
+          .catch((): undefined => undefined),
+      );
+    }
+    // How common each derived and related word is, so "redundancy" leads and "redundantant" waits
+    // under All: one Datamuse query for every word containing the stem.
+    let familyFrequencies: FamilyFrequencies | null = null;
+    const stem = langForDict === 'en' && isSourceEnabled('Datamuse') ? familyStem(languageWord) : '';
+    if (stem) {
+      auxPromises.push(
+        this.cachedSource('familyFrequency', stem, () => fetchFamilyFrequencies(getHttp(), languageWord), (d) => !!d)
+          .then((r) => {
+            if (r.data) familyFrequencies = r.data as FamilyFrequencies;
           })
           .catch((): undefined => undefined),
       );
@@ -2020,8 +2124,9 @@ export class DictionaryService extends BaseService {
         sortDefinitionsByReadingOrder(
           mergeSimilarDefinitions(uniqueDefinitions) as Definition[],
         ) as Definition[],
+        isFormOfSense,
       );
-      const ordered = usageOrder ? orderSensesByFrequency(text, readingOrder) : readingOrder;
+      const ordered = formOfSensesLast(usageOrder ? orderSensesByFrequency(text, readingOrder) : readingOrder, isFormOfSense);
       // An example sentence shows once, under the first sense that has it ("A burst pipe flooded
       // my bathroom." came with both the sense and its sub-sense).
       const shownExamples = new Set<string>();
@@ -2056,14 +2161,15 @@ export class DictionaryService extends BaseService {
       const exSet = new Set<string>();
       const uniqueExamples: string[] = [];
       for (const ex of examples) {
-        const n = normalizeExample(ex);
-        if (n && !exSet.has(n)) { exSet.add(n); uniqueExamples.push(n); }
+        const n = tidyExample(normalizeExample(ex));
+        const k = exampleKey(n);
+        if (n && k && !exSet.has(k)) { exSet.add(k); uniqueExamples.push(n); }
       }
 
       const uniqueSynonyms = Array.from(new Set(synonyms.map((s) => (s || '').trim()).filter(Boolean)));
       const uniqueAntonyms = Array.from(new Set(antonyms.map((s) => (s || '').trim()).filter(Boolean)));
       const uniqueSources = Array.from(new Set(sources.map((s) => (s || '').trim())));
-      const surfaceForm = this.displayHeadword(trimEdges(sanitize(opts?.originalSelection || text))) || text;
+      const surfaceForm = this.displayHeadword(this.typedForm(opts?.originalSelection || text)) || text;
       const headword = surfaceForm;
       const fallbackIpa = pronunciations.some((p) => p.ipa)
         ? undefined
@@ -2074,16 +2180,17 @@ export class DictionaryService extends BaseService {
             : undefined;
       const ipaList = mergePronunciations(pronunciations, fallbackIpa);
       const ipaLine = formatPronunciationLine(ipaList) || pronunciation;
-      const wordFamily = mergeWordFamilyGroupsFor(
+      const wordFamily = rankFamilyByFrequency(mergeWordFamilyGroupsFor(
         headword,
         wikiFamily,
+        kaikkiFamily,
         familyFromEtymologyChain(etymologyChain, headword),
         buildWordFamily({
           surface: headword,
           language: sourceLanguage,
           definitions: mergedDefinitions,
         }),
-      );
+      ), familyFrequencies);
       return {
         word: headword,
         pronunciation: ipaLine,
@@ -2394,10 +2501,61 @@ export class DictionaryService extends BaseService {
   /** Capitalised words Wiktionary has as proper nouns this session; their headword keeps its capital. */
   private readonly properNouns = new Set<string>();
 
+  /** Titles looked up as typed, punctuation and capitals included ("etc.", "U.S.", "C++"). */
+  private readonly typedTitles = new Set<string>();
+
   /** The headword a result shows: "Paris" as typed when it is a proper noun, otherwise folded. */
   private displayHeadword(typed: string): string {
     const t = String(typed || '').trim();
-    return this.properNouns.has(t) ? t : foldLatinHeadword(t) || t;
+    return this.properNouns.has(t) || this.typedTitles.has(t) ? t : foldLatinHeadword(t) || t;
+  }
+
+  /** A selection as the lookup took it: whole when it is a typed title ("etc."), else edge-trimmed. */
+  private typedForm(selection: string): string {
+    const t = sanitize(selection || '');
+    return this.typedTitles.has(t) ? t : trimEdges(t);
+  }
+
+  /**
+   * The query as typed when its edge punctuation may belong to the word and Wiktionary has a page
+   * with that exact title in the query's language: "etc." and "C++" open as typed, while "hello,"
+   * has no page and is looked up as "hello". The dictionary decides, not a list of abbreviations.
+   *
+   * A full stop, comma, quote or bracket may also just be the sentence around a word, so then the
+   * bare word comes first: "no." and "in." are no and in at the end of a sentence, though
+   * Wiktionary also has "no." (number) and "in." (inch). The typed title comes first only when
+   * a third or more of the bare word's senses point to it ("etc" and "vs" are another form of
+   * "etc." and "vs.", while two of the 24 senses of "no" point to "no.") or
+   * when the same mark is also inside the word ("e.g.", "U.S.").
+   */
+  private async withExactTitle(query: NormalizedQuery, language: string): Promise<NormalizedQuery> {
+    if (!hasEdgePunctuation(query) || !isCoreConfigured()) return query;
+    if (this.typedTitles.has(query.sanitized)) return exactQuery(query);
+    // Detection is unsure of short tokens ("e.g" comes back as Italian), so English counts too.
+    const detected = (language || 'en').toLowerCase().split('-')[0] || 'en';
+    const exact = query.sanitized;
+    const dropped = Array.from(new Set(edgeMarks(exact, query.trimmed)));
+    // An apostrophe is as often part of the word ("'em", "dogs'") as a quote, so it is left to
+    // the dictionary like "+" in "C++".
+    const sentenceMarks =
+      dropped.length > 0 &&
+      dropped.every((c) => c !== "'" && c !== '’' && /[\p{Terminal_Punctuation}\p{Quotation_Mark}\p{Ps}\p{Pe}\p{Pi}\p{Pf}]/u.test(c)) &&
+      !dropped.some((c) => query.trimmed.includes(c));
+    const fetchPage = (title: string) =>
+      withTimeout(this.wiktionaryDefinitions(title), EXACT_TITLE_MS, 'exact-title').catch((): null => null);
+    const [page, bare] = await Promise.all([fetchPage(exact), sentenceMarks ? fetchPage(query.trimmed) : Promise.resolve(null)]);
+    const lang = [detected, 'en'].find((l) => sectionSenses(page, l).length);
+    if (!lang) return query;
+    if (sentenceMarks) {
+      const own = sectionSenses(bare, lang);
+      const pointing = own.filter((d) => linksToTitle(d, exact)).length;
+      // No answer for the bare word (slow, or no page) leaves the usual order, which still tries
+      // the typed title after the bare word: "do." must not open "ditto" because "do" was slow.
+      if (!own.length || pointing * 3 < own.length) return query;
+    }
+    this.typedTitles.add(exact);
+    if (this.typedTitles.size > 400) this.typedTitles.delete(this.typedTitles.values().next().value as string);
+    return exactQuery(query);
   }
 
   /** Wiktionary's definitions page for an exact title ("Paris" and "paris" differ), or null. */
@@ -2419,7 +2577,8 @@ export class DictionaryService extends BaseService {
   /** Whether `word`, typed with a capital, is a proper noun in its own right ("Paris", "May"). */
   private async isProperNoun(word: string): Promise<boolean> {
     if (!/^\p{Lu}/u.test(word) || word === foldLatinHeadword(word)) return false;
-    const proper = hasProperNoun(await this.wiktionaryDefinitions(word));
+    const [own, lower] = await Promise.all([this.wiktionaryDefinitions(word), this.wiktionaryDefinitions(foldLatinHeadword(word))]);
+    const proper = hasProperNoun(own) || capitalIsSpelling(own, lower);
     if (proper) this.properNouns.add(word);
     return proper;
   }
@@ -2454,6 +2613,10 @@ export class DictionaryService extends BaseService {
           this.properNouns.add(typed);
           // The lower-case word's "plural of pari" says nothing about the city.
           response = mergeWiktionaryPages(own, withoutFormOf(lower));
+        } else if (capitalIsSpelling(own, lower)) {
+          // "Mr" is spelt with its capital; "mr" is only Marathi's language code and millirem.
+          this.properNouns.add(typed);
+          response = own;
         } else {
           // "Went" as a surname or a Yorkshire river comes after went, the past of go.
           response = mergeWiktionaryPages(lower, own);
@@ -2899,8 +3062,9 @@ export class DictionaryService extends BaseService {
 
     const encoded = encodeURIComponent(word);
     const [entries, related] = await Promise.all([
+      // Shared with pluralHasOwnSense, which reads the same entry.
       withTimeout(
-        this.request<any[]>(`https://api.datamuse.com/words?sp=${encoded}&md=dr&max=1`),
+        datamuseEntry(getHttp(), word).then((hit): any[] => (hit ? [hit] : [])),
         2500,
         'datamuse.sp',
       ),
@@ -2929,7 +3093,10 @@ export class DictionaryService extends BaseService {
         definitions.push({
           partOfSpeech: DictionaryService.DATAMUSE_POS[pos] || pos || 'unknown',
           meaning,
-          source: 'Datamuse'
+          source: 'Datamuse',
+          // No defHeadword: WordNet defines this very form ("savings": a fund of money), as
+          // pluralHasOwnSense judges it, rather than lending it its lemma's senses.
+          ...(!top.defHeadword && isOwnNounGloss(String(raw)) ? { ownSense: true } : {}),
         });
       }
     }
@@ -4226,6 +4393,24 @@ function hasProperNoun(page: any): boolean {
           .find((t: string) => t);
         return !!first && !minor.test(first) && !/^the river\b/i.test(first);
       }),
+  );
+}
+
+/**
+ * Whether a capitalised word is spelt with its capital, as "Mr" and "Dr" are: its own page has
+ * English senses that are not proper nouns, and the lower-case page has no English sense of its
+ * own, only symbols (the language code "mr") and form-of senses ("Abbreviation of millirem").
+ * "State" and "Will" at the start of a sentence fold, because "state" and "will" are words.
+ */
+function capitalIsSpelling(own: any, lower: any): boolean {
+  const text = (d: any) => String(d?.definition || '').replace(/<[^>]+>/g, ' ').trim();
+  const english = (page: any) => (Array.isArray(page?.en) ? page.en : []) as any[];
+  const common = english(own).filter((e) => !/proper noun/i.test(String(e?.partOfSpeech || '')) && (e?.definitions || []).some((d: any) => text(d)));
+  if (!common.length) return false;
+  return english(lower).every(
+    (e) =>
+      /symbol/i.test(String(e?.partOfSpeech || '')) ||
+      (e?.definitions || []).every((d: any) => !text(d) || /form-of-definition/.test(String(d?.definition || ''))),
   );
 }
 

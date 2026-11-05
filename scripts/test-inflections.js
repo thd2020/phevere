@@ -77,6 +77,20 @@ const formsHtml = inflectionsHtml(miceSel, 'mice', 'act');
 assert.match(formsHtml, /<i>mice<\/i> is the plural of <button[^>]*data-q="mouse"/);
 assert.match(inflectionsHtml(sobaka, 'собака', 'lookup'), /соб<b class="lx-stress">а<\/b>ка/);
 assert.equal(inflectionsHtml(undefined, 'x', 'act'), '');
+// Periphrastic forms are phrases, not entries: "more redundant" is text, "redundanter" a link.
+const degrees = inflectionsHtml(
+  { formOf: [], tables: [{ pos: 'adjective', rows: [{ label: 'Comparative', forms: ['more redundant', 'redundanter'] }, { label: 'Superlative', forms: ['most redundant'] }], grids: [] }] },
+  'redundant',
+  'lookup',
+);
+assert.doesNotMatch(degrees, /data-lookup="more redundant"|data-lookup="most redundant"/, 'a multi-word form is not a link');
+assert.match(degrees, /more redundant/, 'but it is still shown');
+assert.match(degrees, /data-lookup="redundanter"/, 'a one-word form stays a link');
+// "better is the comparative of good and well": two links, not one to "good and well".
+const better = inflectionsHtml({ formOf: [{ label: 'comparative', lemma: 'good and well' }], tables: [] }, 'better', 'lookup');
+assert.doesNotMatch(better, /data-lookup="good and well"/, 'two lemmas are not one link');
+assert.match(better, /data-lookup="good"[^>]*>good<\/span> and <span[^>]*data-lookup="well"/, 'each lemma is its own link');
+assert.match(inflectionsHtml({ formOf: [{ label: 'form', lemma: 'look up' }], tables: [] }, 'looked up', 'lookup'), /data-lookup="look up"/, 'a phrasal lemma stays one link');
 
 // Word family: closest members in a line, the rest folded, affixes and roots as "Built from".
 const many = Array.from({ length: 15 }, (_, i) => ({ word: `run${i}` }));
@@ -93,6 +107,110 @@ assert.match(fam, /Derived words <span class="lx-count">15<\/span>/);
 assert.match(fam, /<summary>All 15<\/summary>/);
 assert.equal((fam.match(/data-lookup="run\d+"/g) || []).length, 15);
 assert.equal(wordFamilyHtml([], 'act'), '');
+
+// Sense labels as Wiktionary prints them, on the gloss's line; sources once under the senses.
+{
+  const { senseLabelLead, definitionSourcesHtml } = load('lexicon-parts');
+  assert.equal(
+    senseLabelLead('(usually uncountable, politics) The capitalist class.'),
+    '<span class="sense-label lx-nolink">(<i>usually uncountable</i>, <i>politics</i>)</span> The capitalist class.',
+  );
+  assert.equal(senseLabelLead('The (main) city.'), 'The (main) city.', 'only a leading bracket is a label');
+  assert.equal(
+    definitionSourcesHtml(['Free Dictionary', 'Wiktionary', 'Free Dictionary', 'Datamuse']),
+    '<p class="lx-sources">Definitions from Free Dictionary, Wiktionary and Datamuse</p>',
+  );
+  assert.equal(definitionSourcesHtml(['Wiktionary']), '<p class="lx-sources">Definitions from Wiktionary</p>');
+  assert.equal(definitionSourcesHtml([]), '');
+}
+
+// Word family from kaikki.org's parse of the page (the "redundant" and "dichotomy" entries of
+// 2026-11-05, shortened): derived and related terms, without the words a Thesaurus page adds.
+{
+  const { familyFromKaikki } = load('word-family');
+  const redundant = JSON.stringify({
+    word: 'redundant', lang_code: 'en', pos: 'adj',
+    derived: [{ word: 'redundantly' }, { word: 'nonredundant' }, { word: 'redundant array of independent disks' }],
+    related: [{ word: 'redound', tags: ['verb'] }, { word: 'redundance' }, { word: 'redundancy' }, { word: 'turgid', source: 'Thesaurus:redundant' }],
+  });
+  const groups = Object.fromEntries(familyFromKaikki(redundant, 'redundant').map((g) => [g.relation, g.items.map((i) => i.word)]));
+  assert.ok(groups.related.includes('redundancy'), 'redundancy is in the family of redundant');
+  assert.ok(!groups.related.includes('turgid'), 'a Thesaurus synonym is not family');
+  assert.deepEqual(groups.phrases, ['redundant array of independent disks'], 'a multi-word derived term is a phrase');
+  const dichotomy = JSON.stringify({ word: 'dichotomy', lang_code: 'en', pos: 'noun', derived: [{ word: 'dichotomize' }, { word: 'dichotomous' }, { word: 'false dichotomy' }] });
+  assert.ok(familyFromKaikki(dichotomy, 'dichotomy').find((g) => g.relation === 'derived').items.some((i) => i.word === 'dichotomize'));
+  const other = JSON.stringify({ word: 'redundant', lang_code: 'fr', pos: 'adj', derived: [{ word: 'redondance' }] });
+  assert.deepEqual(familyFromKaikki(other, 'redundant', 'en'), [], 'another language section is not read');
+}
+
+// One example from two sources shows once, tidied: Wiktionary and the Free Dictionary API gave
+// "redundant" this sentence with and without a space before the full stop (2026-11-05).
+{
+  const { exampleKey, tidyExample, dedupeExamples } = load('definition-merge');
+  const a = 'Four employees were made redundant.';
+  const b = 'Four employees were made redundant .';
+  assert.equal(exampleKey(a), exampleKey(b), 'a space before the full stop is not a different sentence');
+  assert.equal(exampleKey('“It’s a word—really”'), exampleKey('"it\'s a word-really."'), 'quotes, dashes, case and closing stop');
+  assert.deepEqual(dedupeExamples([b, a]), [a], 'kept once, as the clean copy');
+  assert.equal(tidyExample('Ask him ( politely ) , then leave .'), 'Ask him ( politely), then leave.');
+  assert.equal(tidyExample(a), a, 'a clean example is left alone');
+}
+
+// Word family by frequency: Datamuse's answer for "*redund*" of 2026-11-05, shortened. Common
+// words lead; coinages Datamuse does not list wait under "All" when the list is long.
+(async () => {
+  const { familyStem, fetchFamilyFrequencies, rankFamilyByFrequency } = load('word-family');
+  assert.equal(familyStem('redundant'), 'redund');
+  assert.equal(familyStem('dichotomy'), 'dichot');
+  assert.equal(familyStem('time'), 'time');
+  const asked = [];
+  const http = {
+    requestJson: async (url) => {
+      asked.push(url);
+      return [
+        { word: 'redundant', tags: ['f:3.407348'] },
+        { word: 'redundancy', tags: ['f:2.668625'] },
+        { word: 'redundantly', tags: ['f:0.069678'] },
+        { word: 'redundance', tags: ['f:0.041261'] },
+        { word: 'cyclic redundancy check', tags: ['f:0.000000'] },
+      ];
+    },
+  };
+  const freq = await fetchFamilyFrequencies(http, 'redundant');
+  assert.match(asked[0], /sp=\*redund\*&md=f/, 'one wildcard query for the stem');
+  assert.equal(freq.complete, true);
+  const coinages = ['redundantant', 'irredundant', 'reredundant', 'georedundant', 'semiredundant', 'redundundant', 'hyperredundant',
+    'superredundant', 'multiredundant', 'preredundant', 'postredundant', 'unredundant', 'antiredundant'];
+  const ranked = rankFamilyByFrequency(
+    [
+      { relation: 'derived', items: [...coinages.slice(0, 1), 'redundantly', ...coinages.slice(1)].map((word) => ({ word })) },
+      { relation: 'related', items: ['redound', 'redundance', 'redundancy'].map((word) => ({ word })) },
+      { relation: 'alternatives', items: [{ word: 'redundent' }] },
+    ],
+    freq,
+  );
+  const byRel = Object.fromEntries(ranked.map((g) => [g.relation, g.items]));
+  assert.deepEqual(byRel.related.map((i) => i.word), ['redundancy', 'redundance', 'redound'], 'commonest first; a word without the stem is not called rare');
+  assert.equal(byRel.derived[0].word, 'redundantly', 'the real derivative before the coinages');
+  assert.ok(byRel.derived.slice(1).every((i) => i.rare), 'words with the stem that Datamuse does not list are rare');
+  assert.ok(!byRel.related.some((i) => i.rare));
+  assert.deepEqual(byRel.alternatives, [{ word: 'redundent' }], 'other groups keep their order');
+  const famHtml = wordFamilyHtml(ranked, 'lookup');
+  const line = famHtml.split('<details')[0];
+  assert.match(line, /data-lookup="redundantly"/);
+  assert.doesNotMatch(line, /data-lookup="redundantant"/, 'a coinage waits under All in a long list');
+  assert.match(famHtml, /<summary>All 14<\/summary>[\s\S]*data-lookup="redundantant"/, 'and is still listed there');
+  assert.deepEqual(rankFamilyByFrequency(ranked, null), ranked, 'no frequencies, no change');
+  // "Batman" is printed more often than "batty" but is a name, not family.
+  const bat = rankFamilyByFrequency(
+    [{ relation: 'derived', items: [{ word: 'Batman' }, { word: 'batty' }, { word: 'batsman' }] }],
+    { stem: 'bat', complete: false, freq: { batman: 4.1, batty: 1.2, batsman: 0.9 } },
+  );
+  assert.deepEqual(bat[0].items.map((i) => i.word), ['batty', 'batsman', 'Batman'], 'a name after the family words');
+})().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
 
 // Saved headwords in dictionary form.
 assert.equal(normalizeVocabLemma('CODON', { pos: 'noun', lang: 'en' }), 'codon');

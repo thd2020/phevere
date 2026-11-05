@@ -93,7 +93,6 @@ export function formOfGlossLemma(meaning: string): string | null {
  * the senses name more than one lemma.
  */
 export function formOfLemmaFromGlosses(senses: string[], word = ''): string | null {
-  if (PLURALS_WITH_OWN_ENTRY.has(word.trim().toLowerCase())) return null;
   const list = senses.filter((s) => s && !isCitationGloss(s)).map(stripGlossText).filter(Boolean);
   let lemma = '';
   const rest: string[] = [];
@@ -136,18 +135,6 @@ interface KaikkiSense {
 function tagsOf(s: KaikkiSense): string[] {
   return Array.isArray(s.tags) ? s.tags : [];
 }
-
-/**
- * Plurals learner dictionaries give an entry of their own, though Wiktionary may call them only
- * "plural of": savings is money put by, not several acts of saving.
- */
-export const PLURALS_WITH_OWN_ENTRY = new Set([
-  'savings', 'belongings', 'earnings', 'surroundings', 'lodgings', 'proceeds', 'customs', 'manners', 'goods',
-  'outskirts', 'premises', 'quarters', 'remains', 'riches', 'valuables', 'winnings', 'takings', 'holdings',
-  'findings', 'glasses', 'spectacles', 'clothes', 'contents', 'damages', 'arms', 'odds', 'means', 'grounds',
-  'looks', 'pains', 'regards', 'spirits', 'stairs', 'terms', 'troops', 'wages', 'works', 'greens', 'headquarters',
-  'authorities', 'data', 'media', 'news', 'scissors', 'trousers', 'pants', 'goggles', 'thanks', 'congratulations',
-]);
 
 /** "ax and axe", "ax or axe": Wiktextract names two spellings of one lemma in one link. */
 function splitLemma(lemma: string): string[] {
@@ -356,6 +343,50 @@ export function dominantLemma(lemmas: string[], freq: Map<string, number>, group
 
 const ownSenseMemo = new Map<string, Promise<boolean>>();
 
+/** Datamuse's entry for one word: its definitions (and, when they are its lemma's, defHeadword). */
+export interface DatamuseEntry {
+  word?: string;
+  defHeadword?: string;
+  defs?: string[];
+  tags?: string[];
+}
+
+const entryMemo = new Map<string, Promise<DatamuseEntry | null>>();
+
+/**
+ * Datamuse's entry for a word, asked for once per word and shared by the lookup's Datamuse
+ * definitions and pluralHasOwnSense, so the plural check does not hang on a second request that
+ * can time out on a slow connection while the first one answers.
+ */
+export function datamuseEntry(http: HttpClient, word: string): Promise<DatamuseEntry | null> {
+  const key = String(word || '').toLocaleLowerCase();
+  let p = entryMemo.get(key);
+  if (!p) {
+    p = http
+      .requestJson<DatamuseEntry[]>(`https://api.datamuse.com/words?sp=${encodeURIComponent(key)}&md=dr&max=1`, { timeoutMs: 4000 })
+      .then((rows) => (Array.isArray(rows) ? rows : []).find((r) => String(r?.word || '').toLocaleLowerCase() === key) || null);
+    entryMemo.set(key, p);
+    p.catch(() => entryMemo.delete(key));
+    if (entryMemo.size > 200) entryMemo.delete(entryMemo.keys().next().value as string);
+  }
+  return p;
+}
+
+/**
+ * One Datamuse definition ("n\ta fund of money put by as a reserve") that is a common noun sense
+ * of its own: not a proper noun (Datamuse writes "N"), not marked nonstandard, rare or the like,
+ * not a bare pointer such as "A paparazzo.", and not "plural of …".
+ */
+export function isOwnNounGloss(raw: string): boolean {
+  const [pos, gloss = ''] = String(raw).split('\t');
+  if (pos !== 'n') return false;
+  const text = gloss.trim();
+  const label = /^\(([^)]*)\)/.exec(text)?.[1] || '';
+  if (/nonstandard|proscribed|rare|obsolete|archaic|dialect|uncountable/i.test(label)) return false;
+  if (/^(?:a|an|the)?\s*(?:individual\s+|single\s+)?[\p{L}-]+\.?$/iu.test(text.replace(/^\([^)]*\)\s*/, ''))) return false;
+  return !formOfGlossLemma(text);
+}
+
 /**
  * Whether other dictionaries define a plural as a word of its own: WordNet, through Datamuse,
  * has "savings" as "a fund of money put by", while "geese" and "paparazzi" have nothing of their
@@ -363,27 +394,12 @@ const ownSenseMemo = new Map<string, Promise<boolean>>();
  */
 export function pluralHasOwnSense(http: HttpClient, word: string): Promise<boolean> {
   const key = word.toLowerCase();
-  if (PLURALS_WITH_OWN_ENTRY.has(key)) return Promise.resolve(true);
   let p = ownSenseMemo.get(key);
   if (!p) {
-    p = http
-      .requestJson<Array<{ word?: string; defHeadword?: string; defs?: string[] }>>(
-        `https://api.datamuse.com/words?sp=${encodeURIComponent(word)}&md=d&max=1`,
-        { timeoutMs: 4000 },
-      )
-      .then((rows) => {
-        const hit = (rows || []).find((r) => String(r.word || '').toLowerCase() === key);
-        if (!hit || hit.defHeadword) return false;
-        return (hit.defs || []).some((d) => {
-          const [pos, gloss = ''] = String(d).split('\t');
-          if (pos !== 'n') return false;
-          const text = gloss.trim();
-          const label = /^\(([^)]*)\)/.exec(text)?.[1] || '';
-          if (/nonstandard|proscribed|rare|obsolete|archaic|dialect|uncountable/i.test(label)) return false;
-          if (/^(?:a|an|the)?\s*(?:individual\s+|single\s+)?[\p{L}-]+\.?$/iu.test(text.replace(/^\([^)]*\)\s*/, ''))) return false;
-          return !formOfGlossLemma(text);
-        });
-      });
+    p = datamuseEntry(http, word).then((hit) => {
+      if (!hit || hit.defHeadword) return false;
+      return (hit.defs || []).some((d) => isOwnNounGloss(String(d)));
+    });
     ownSenseMemo.set(key, p);
     p.catch(() => ownSenseMemo.delete(key));
   }
@@ -417,9 +433,10 @@ export function formLine(word: string, lang = 'en'): FormLine | null {
  * which does it for irregular forms spelled unlike their headword: verbs (ran, swam, bought, was,
  * went, been) and plurals that change a vowel or an f (feet, mice, men, knives, wolves). Regular
  * forms (gleaned, cities, stopped), plurals from Latin and Greek (criteria, crises, phenomena) and
- * irregular plurals that begin like their singular (children, paparazzi, oxen) open the headword.
+ * irregular plurals that begin like their singular (children, paparazzi) open the headword.
  * The 48 forms in scripts/test-word-forms.js were searched in OALD on 2026-11-04 and the rule
- * agrees on 46 ("does" and "women" are the exceptions). Longman and Cambridge also give
+ * agrees on 45 ("does", "women" and "oxen" are the exceptions; no word is special-cased to
+ * match them). Longman and Cambridge also give
  * "children" a short entry; docs/WORD_FORMS.md has the comparison.
  */
 export function hasOwnFormEntry(form: string, lemma: string): boolean {
@@ -432,7 +449,6 @@ export function hasOwnFormEntry(form: string, lemma: string): boolean {
   // leaf → leaves, knife → knives, wolf → wolves
   if (/(?:f|fe)$/.test(l) && /ves$/.test(f)) return true;
   if (FOREIGN_PLURALS.some(([a, b]) => l.endsWith(a) && f === l.slice(0, l.length - a.length) + b)) return false;
-  if (l === 'ox' && f === 'oxen') return false;
   return !(l.length >= 3 && f.startsWith(l.slice(0, -1)));
 }
 
@@ -457,7 +473,7 @@ export function resolveFormOf(http: HttpClient, word: string, lang = 'en', timeo
       // No page is no answer: the caller falls back to the senses it has.
       if (!page.trim()) throw Object.assign(new Error(`no kaikki page for ${w}`), { code: 'NO_PAGE' });
       const reading = readFormOf(page, w, lang);
-      if (!reading.lemmas.length || PLURALS_WITH_OWN_ENTRY.has(w.toLowerCase())) return null;
+      if (!reading.lemmas.length) return null;
       const note = (lemma: string | null): string | null => {
         const kinds = lemma ? reading.labels?.get(lemma.toLowerCase()) : undefined;
         if (lemma && kinds?.size && hasOwnFormEntry(w, lemma)) {
@@ -465,9 +481,11 @@ export function resolveFormOf(http: HttpClient, word: string, lang = 'en', timeo
         }
         return lemma;
       };
-      // Only a regular plural (savings, belongings) can be a word of its own here; men and teeth are not.
+      // Only a regular plural (savings, belongings) can be a word of its own here; men and teeth are
+      // not. Irregular plurals with a meaning of their own (data, media) already have senses of
+      // their own on the tagged page. When the definitions cannot be had, there is no answer yet.
       const regular = reading.lemmas.some((l) => isRegularInflection(w, l));
-      if (reading.plural && regular && (await pluralHasOwnSense(http, w).catch(() => PLURALS_WITH_OWN_ENTRY.has(w.toLowerCase())))) return null;
+      if (reading.plural && regular && (await pluralHasOwnSense(http, w))) return null;
       if (reading.lemmas.length === 1) return note(reading.lemmas[0]);
       if (reading.groups.length < 2) return note(dominantLemma(reading.lemmas, await wordFrequencies(http, reading.lemmas.slice(0, 4)).catch(() => new Map<string, number>()), reading.groups));
       const lemmas = reading.lemmas.slice(0, 4);

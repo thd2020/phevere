@@ -34,6 +34,8 @@ export interface WordFamilyItem {
   word: string;
   /** Short POS / formation banner on the chip: adj./adv. for long labels; noun/verb stay full. */
   label?: string;
+  /** No recorded use at all (a coinage such as "redundantant"): listed only under "All". */
+  rare?: boolean;
 }
 
 export interface WordFamilyGroup {
@@ -481,6 +483,72 @@ function groupsFromBuckets(buckets: FamilyBuckets, surfaceKey = ''): WordFamilyG
   return out;
 }
 
+/**
+ * The part of a word its derived and related words share, for one Datamuse query that returns
+ * their frequencies: "redund" for redundant (redundancy, redundantly), "dichot" for dichotomy.
+ */
+export function familyStem(word: string): string {
+  const w = foldLookupKey(word);
+  if (!/^\p{L}+$/u.test(w)) return '';
+  return w.length <= 4 ? w : w.slice(0, Math.max(4, w.length - 3));
+}
+
+/** Frequencies for one family: per million words, keyed by folded word. */
+export interface FamilyFrequencies {
+  stem: string;
+  /** Every word containing the stem is listed, so a missing one has no recorded use. */
+  complete: boolean;
+  freq: Record<string, number>;
+}
+
+/**
+ * How often each word containing the stem is used, per million words (Google Books Ngrams,
+ * through Datamuse, the same figures the search suggestions use), from one wildcard query.
+ */
+export async function fetchFamilyFrequencies(
+  http: { requestJson<T>(url: string, init?: { timeoutMs?: number }): Promise<T> },
+  word: string,
+): Promise<FamilyFrequencies | null> {
+  const stem = familyStem(word);
+  if (!stem) return null;
+  const max = 1000;
+  const rows = await http.requestJson<Array<{ word?: string; tags?: string[] }>>(
+    `https://api.datamuse.com/words?sp=${encodeURIComponent(`*${stem}*`)}&md=f&max=${max}`,
+    { timeoutMs: 4000 },
+  );
+  const list = Array.isArray(rows) ? rows : [];
+  const freq: Record<string, number> = {};
+  for (const r of list) {
+    const f = Number((r?.tags || []).find((t) => t.startsWith('f:'))?.slice(2) || 0);
+    if (r?.word && f > 0) freq[foldLookupKey(r.word)] = f;
+  }
+  return { stem, complete: list.length < max, freq };
+}
+
+/**
+ * Derived and related words ordered by how common they are, commonest first: "redundancy" and
+ * "redundantly" before "redundantant". Then the words with no frequency that are still known
+ * words (in the pronouncing dictionary, as "redound" is), then those with no recorded use at
+ * all, which are marked rare: a word containing the stem that Datamuse does not list, or one
+ * the pronouncing dictionary does not have. Without frequencies the groups stay as they are.
+ */
+export function rankFamilyByFrequency(groups: WordFamilyGroup[], data: FamilyFrequencies | null | undefined): WordFamilyGroup[] {
+  if (!data || !Object.keys(data.freq || {}).length) return groups;
+  return groups.map((g) => {
+    if (g.relation !== 'derived' && g.relation !== 'related') return g;
+    const indexed = g.items.map((it, i) => {
+      const k = foldLookupKey(it.word);
+      const f = data.freq[k] || 0;
+      const rare = !f && ((data.complete && k.includes(data.stem)) || cmuKnownSync(k) === false);
+      // A name ("Batman" under bat) is common in print but no member of the family proper.
+      const name = /^\p{Lu}/u.test(it.word.trim()) && !g.items.every((x) => /^\p{Lu}/u.test(x.word.trim()));
+      return { it, i, f, tier: rare ? 2 : f && !name ? 0 : 1 };
+    });
+    indexed.sort((a, b) => a.tier - b.tier || b.f - a.f || a.i - b.i);
+    return { ...g, items: indexed.map(({ it, tier }) => (tier === 2 ? { ...it, rare: true } : it)) };
+  });
+}
+
 export function mergeWordFamilyGroups(...lists: Array<WordFamilyGroup[] | undefined>): WordFamilyGroup[] {
   return mergeWordFamilyGroupsFor('', ...lists);
 }
@@ -499,6 +567,38 @@ export function mergeWordFamilyGroupsFor(surface: string, ...lists: Array<WordFa
     }
   }
   return groupsFromBuckets(buckets, foldLookupKey(surface));
+}
+
+/**
+ * Derived and related terms from Wiktextract's parse of the word's Wiktionary page (one kaikki.org
+ * JSON Lines page): the same "Derived terms" and "Related terms" lists the wikitext has, already
+ * parsed, from a static file that answers when Wiktionary's parse API is slow. Words that only
+ * come from a Thesaurus page (synonyms, not family) are left out.
+ */
+export function familyFromKaikki(jsonl: string, word: string, lang = 'en'): WordFamilyGroup[] {
+  const w = String(word || '').trim();
+  const surfaceKey = foldLookupKey(w);
+  const buckets: FamilyBuckets = new Map();
+  for (const line of String(jsonl || '').split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t.startsWith('{')) continue;
+    let entry: any;
+    try {
+      entry = JSON.parse(t);
+    } catch {
+      continue;
+    }
+    if (lang && entry?.lang_code && entry.lang_code !== lang) continue;
+    if (typeof entry?.word === 'string' && foldLookupKey(entry.word) !== surfaceKey) continue;
+    for (const [field, relation] of [['derived', 'derived'], ['related', 'related']] as const) {
+      const list: Array<{ word?: string; source?: string; tags?: string[] }> = Array.isArray(entry?.[field]) ? entry[field] : [];
+      const items = list
+        .filter((x) => x && typeof x.word === 'string' && !/^Thesaurus:/i.test(String(x.source || '')))
+        .map((x) => ({ word: String(x.word), label: posFromWiki((x.tags || []).find((tag) => !!posFromWiki(tag))) }));
+      addUniqueItems(buckets, relation, items, surfaceKey);
+    }
+  }
+  return groupsFromBuckets(buckets, surfaceKey);
 }
 
 export function buildWordFamily(opts: {

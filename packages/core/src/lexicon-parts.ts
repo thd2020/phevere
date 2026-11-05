@@ -24,10 +24,14 @@ function link(word: string, links: LexiconLinks, inner = esc(word)): string {
     : wordLinkHtml(word, inner, links, 'lx-link lemma-link');
 }
 
-/** A form in a table or row, linked to its own lookup; the stress mark is not part of the query. */
+/**
+ * A form in a table or row, linked to its own lookup; the stress mark is not part of the query.
+ * Only a single word is a link: "more redundant" and "will have gone" are phrases built from other
+ * words, not entries, as the Forms tables of Wiktionary and the learner dictionaries print them.
+ */
 function formLink(f: string, links: LexiconLinks): string {
   const query = f.normalize('NFD').replace(/́/g, '').normalize('NFC');
-  if (!/\p{L}/u.test(query)) return formText(f);
+  if (!/\p{L}/u.test(query) || /\s/u.test(query.trim())) return formText(f);
   return wordLinkHtml(query, formText(f), links);
 }
 
@@ -72,13 +76,25 @@ function tableHtml(t: InflectionTable, links: LexiconLinks): string {
   return `<section class="lx-infl">${head}${rows}${grids}</section>`;
 }
 
+/**
+ * The word a form belongs to, linked. Wiktextract names two lemmas in one string ("good and
+ * well" for better, "ax and axe" for axes); each is linked on its own and "and" stays text.
+ * A lemma of several words with no "and" or "or" ("look up") stays one link.
+ */
+function lemmaLinks(lemma: string, links: LexiconLinks): string {
+  const parts = String(lemma || '').split(/(\s+(?:and|or)\s+|\s*,\s*)/);
+  const names = parts.filter((_, i) => i % 2 === 0);
+  if (parts.length < 3 || names.some((p) => !p.trim() || /\s/.test(p.trim()))) return link(lemma, links);
+  return parts.map((p, i) => (i % 2 ? esc(p) : link(p.trim(), links))).join('');
+}
+
 /** The Forms section, or '' when there is nothing to show. */
 export function inflectionsHtml(infl: WordInflections | null | undefined, word: string, links: LexiconLinks): string {
   if (!infl || (!infl.formOf.length && !infl.tables.length)) return '';
   const formOf = infl.formOf
     .map((f) => {
       const label = f.label === 'form' ? 'a form' : `the ${esc(f.label)}`;
-      return `<p class="lx-formof"><i>${esc(word)}</i> is ${label} of ${link(f.lemma, links)}.</p>`;
+      return `<p class="lx-formof"><i>${esc(word)}</i> is ${label} of ${lemmaLinks(f.lemma, links)}.</p>`;
     })
     .join('');
   return `<div class="lx-forms">${formOf}${infl.tables.map((t) => tableHtml(t, links)).join('')}</div>`;
@@ -98,7 +114,7 @@ function words(items: Array<{ word: string }>, links: LexiconLinks): string {
 
 /** The Word family section, or '' when the word has none. */
 export function wordFamilyHtml(groups: WordFamilyGroup[] | null | undefined, links: LexiconLinks): string {
-  const byRel = new Map<string, Array<{ word: string }>>();
+  const byRel = new Map<string, Array<{ word: string; rare?: boolean }>>();
   for (const g of groups || []) {
     const items = (g.items || []).filter((i) => i && String(i.word || '').trim());
     if (items.length) byRel.set(String(g.relation), [...(byRel.get(String(g.relation)) || []), ...items]);
@@ -111,8 +127,10 @@ export function wordFamilyHtml(groups: WordFamilyGroup[] | null | undefined, lin
   for (const f of FAMILY) {
     const items = byRel.get(f.relation) || [];
     if (!items.length) continue;
-    const shown = items.slice(0, f.shown);
-    const rest = items.slice(f.shown);
+    // In a long list, words with no recorded use ("redundantant") wait under "All".
+    const common = items.length > f.shown ? items.filter((i) => !i.rare) : items;
+    const shown = (common.length ? common : items).slice(0, f.shown);
+    const rest = items.filter((i) => !shown.includes(i));
     parts.push(`<div class="lx-fam">
       <h4 class="lx-label">${f.label}${items.length > f.shown ? ` <span class="lx-count">${items.length}</span>` : ''}</h4>
       <p class="lx-words">${words(shown, links)}</p>
@@ -120,6 +138,36 @@ export function wordFamilyHtml(groups: WordFamilyGroup[] | null | undefined, lin
     </div>`);
   }
   return parts.length ? `<div class="lx-family">${parts.join('')}</div>` : '';
+}
+
+/**
+ * A sense's leading labels as dictionaries print them: "(uncountable, politics)" on the
+ * definition's own line and in its own type, the labels in italic and the brackets and commas
+ * upright, in a quieter colour. This is how Wiktionary renders {{lb}} and close to Oxford
+ * Learner's grammar and register labels. `html` is the sense's escaped HTML; only a plain-text
+ * bracket at its start is a label.
+ */
+export function senseLabelLead(html: string): string {
+  return String(html || '').replace(/^\s*\(([^()<]{1,80})\)\s*/, (_m, raw: string) => {
+    const labels = raw
+      .split(/\s*,\s*/)
+      .filter(Boolean)
+      .map((l) => `<i>${l}</i>`);
+    return `<span class="sense-label lx-nolink">(${labels.join(', ')})</span> `;
+  });
+}
+
+/**
+ * Where the senses came from, said once under them as Cambridge, Collins and Dictionary.com do
+ * for each dictionary they quote, rather than under every sense: "Definitions from Wiktionary,
+ * Free Dictionary and Datamuse". `names` are display names in the senses' order; repeats drop.
+ */
+export function definitionSourcesHtml(names: string[]): string {
+  const list: string[] = [];
+  for (const n of names.map((x) => String(x || '').trim())) if (n && !list.includes(n)) list.push(n);
+  if (!list.length) return '';
+  const joined = list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}` : list[0];
+  return `<p class="lx-sources">Definitions from ${esc(joined)}</p>`;
 }
 
 /**

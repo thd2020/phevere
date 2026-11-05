@@ -549,13 +549,8 @@
         color: var(--on-surface);
       }
       .definition-sense-body { min-width: 0; display: flow-root; }
-      .sense-label {
-        font-family: var(--font-ui);
-        font-size: 12px;
-        font-weight: 500;
-        letter-spacing: 0.02em;
-        color: var(--on-surface-variant);
-      }
+      /* "(uncountable, politics)" in the gloss's own type (lexicon-parts.css), quieter in colour. */
+      .sense-label { color: var(--on-surface-variant); }
 
       /* A sense picture floats beside its gloss in a fixed aspect box; hover shows the credit. */
       .sense-figure {
@@ -731,19 +726,8 @@
         background: color-mix(in srgb, var(--primary) 30%, transparent);
       }
       /* Where a run of senses came from: one quiet line after the run, not a label on every sense. */
-      .definition-source-badges {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: baseline;
-        margin-top: 6px;
-        font: 400 11.5px/1.35 var(--font-ui);
-        color: color-mix(in srgb, var(--on-surface-variant) 78%, transparent);
-      }
-      .definition-source-badge + .definition-source-badge::before {
-        content: '·';
-        margin: 0 6px;
-        color: var(--outline-variant);
-      }
+      /* "Definitions from …": once, under the last sense (lexicon-parts.css sets the type). */
+      .lx-sources { color: var(--on-surface-variant); }
 
       /* Word family */
       .word-family-row {
@@ -1503,11 +1487,9 @@
       var lookupNavGuardAt = 0;
       var LOOKUP_TRAIL_CAP = 40;
       function foldLookupKey(s) {
-        // "ob-" and "ob" are two pages: the marks of a word part stay in the key.
-        var t = String(s || '').trim();
-        var lead = /^[*-]/.test(t) ? t[0] : '';
-        var trail = t.length > 1 && /-$/.test(t) ? '-' : '';
-        return lead + t.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase() + trail;
+        // Every character counts: "etc." and "etc", or "ob-" and "ob", are two pages. Only case
+        // and spacing are folded, as in the core's exactLookupKey.
+        return String(s || '').normalize('NFC').replace(/[\s ]+/g, ' ').trim().toLowerCase();
       }
 
       function syncLookupNav() {
@@ -3437,7 +3419,10 @@ function startAutoCloseTimeout() {
           });
         }
 
+        /** The core's comparison (example-text.ts) once the shared bundle is in; quotes and spaces before. */
         function exampleKey(s) {
+          var lx = window.phevereLexicon;
+          if (lx && lx.exampleKey) return lx.exampleKey(String(stripHtmlToText(s) || ''));
           return String(stripHtmlToText(s) || '')
             .replace(/[\u201C\u201D]/g, '"')
             .replace(/[\u2018\u2019]/g, "'")
@@ -3445,6 +3430,11 @@ function startAutoCloseTimeout() {
             .replace(/\s+/g, ' ')
             .trim()
             .toLowerCase();
+        }
+        /** "made redundant ." shown as "made redundant.". */
+        function tidyExampleText(s) {
+          var lx = window.phevereLexicon;
+          return lx && lx.tidyExample ? lx.tidyExample(String(s || '')) : String(s || '');
         }
         function uniqueExamples(list) {
           const out = [];
@@ -3659,10 +3649,10 @@ function startAutoCloseTimeout() {
         });
 
         /** "(countable, chiefly in combination) An institution…": the labels set small, as printed. */
+        /** "(uncountable, politics)": the shared rendering in lexicon-parts.ts. */
         function labelLead(html) {
-          return String(html || '').replace(/^\s*\(([^()<]{1,80})\)\s*/, function (_m, labels) {
-            return '<span class="sense-label lx-nolink">' + labels + '</span> ';
-          });
+          var lx = window.phevereLexicon;
+          return lx && lx.senseLabelLead ? lx.senseLabelLead(String(html || '')) : String(html || '');
         }
 
         function createLexiconCard(result) {
@@ -3720,6 +3710,8 @@ function startAutoCloseTimeout() {
           }
 
           const shownExampleKeys = new Set();
+          // Every sense's sources in order, said once under the senses.
+          const senseSourceNames = [];
           function renderSenses(senses) {
             let panel = '';
             let senseCounter = 0;
@@ -3740,17 +3732,10 @@ function startAutoCloseTimeout() {
               examples.forEach(function (ex) { shownExampleKeys.add(exampleKey(ex)); });
               const exHtml = examples.length
                 ? `<div class="definition-examples">${examples.map(function (ex) {
-                    return `<div class="definition-example">${linkWords(stripHtmlToText(ex))}</div>`;
+                    return `<div class="definition-example">${linkWords(tidyExampleText(stripHtmlToText(ex)))}</div>`;
                   }).join('')}</div>`
                 : '';
-              const citeSources = citeOf(d);
-              // Shown after the last sense of a run that shares the same sources.
-              const sameAsNext = idx + 1 < senses.length && citeOf(senses[idx + 1]).join('|') === citeSources.join('|');
-              const badges = citeSources.length && !sameAsNext
-                ? citeSources.map(function (s) {
-                    return `<span class="definition-source-badge">${escapeHtml(normalizeSourceName(s))}</span>`;
-                  }).join('')
-                : '';
+              citeOf(d).forEach(function (s) { senseSourceNames.push(normalizeSourceName(s)); });
               panel += `
                 <div class="definition-item" data-sense="${at}">
                   <div class="definition-sense-row">
@@ -3759,7 +3744,6 @@ function startAutoCloseTimeout() {
                       ${img ? senseFigureHtml(img, at) : ''}
                       <div class="definition-text">${linkMarkup(labelLead(meaningHtml)) || 'No definition.'}</div>
                       ${exHtml}
-                      ${badges ? `<div class="definition-source-badges">${badges}</div>` : ''}
                     </div>
                   </div>
                 </div>`;
@@ -3786,6 +3770,8 @@ function startAutoCloseTimeout() {
             posInner += wrapGroup(pos, posHeading(pos), renderSenses(groups[pos]));
             return { id: pos, label: pos === 'unknown' ? (order.length > 1 ? 'other' : 'senses') : chipPosLabel(pos) };
           });
+          const lxSources = window.phevereLexicon;
+          if (lxSources && lxSources.definitionSourcesHtml) posInner += lxSources.definitionSourcesHtml(senseSourceNames);
           let allInner = wrapPane(posInner, 'lexicon-pane--pos');
           const lexiconParts = window.phevereLexicon || null;
 
@@ -3816,7 +3802,7 @@ function startAutoCloseTimeout() {
             tocIds.push('examples');
             exampleSections.push({ id: 'examples', label: 'examples' });
             allInner += wrapPane(wrapGroup('examples', 'examples', globalExamples.map(function (ex) {
-              return `<div class="example-item">${linkWords(stripHtmlToText(ex))}</div>`;
+              return `<div class="example-item">${linkWords(tidyExampleText(stripHtmlToText(ex)))}</div>`;
             }).join('')));
           }
 
