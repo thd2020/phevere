@@ -46,7 +46,7 @@ function goalRow(key: string, book: string, label: string, goal: number): string
 function countdownRow(seconds: number): string {
   const options = COUNTDOWN_CHOICES.map((s) => `<option value="${s}"${s === seconds ? ' selected' : ''}>${s ? `${s} seconds` : 'Off'}</option>`).join('');
   const extra = COUNTDOWN_CHOICES.includes(seconds as (typeof COUNTDOWN_CHOICES)[number]) ? '' : `<option value="${seconds}" selected>${seconds} seconds</option>`;
-  return `<div class="sv-row">
+  return `<div class="sv-row sv-row--select">
     <span class="sv-row__text"><label for="learn-countdown" class="sv-row__label">Countdown on choice questions</label></span>
     <select id="learn-countdown" class="sv-select" data-act="learn-countdown">${options}${extra}</select>
   </div>`;

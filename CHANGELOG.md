@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Settings → Learn (2026-11-05): on a phone, the Countdown on choice questions label no longer breaks into fragments under its menu; the menu sits under the label. On the desktop it opens the same styled menu as the other Settings menus.
 - Cards (2026-11-05): clicking a card's picture several times quickly only turns the card over and back, however fast you click. It used to open the lookup when a click landed while the card was half turned. A card now opens the lookup only from its text or from Look up on its back.
 - Cards for word books (2026-11-05): every word of a word book now has a card. Cards used to show only the words you had started plus the next 40, so the Postgraduate 考研 book showed 70 to 80 cards of its 4,801 words. Words you have not started yet lie in a New pile after the dated piles, in the book's order. The cards are drawn as you scroll to them, so a book of thousands of words opens and scrolls as quickly as a short list.
 - Sync (2026-11-05): a word or word book saved in the same millisecond that a sync started could stay on that device. It is now sent with the next sync.
