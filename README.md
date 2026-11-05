@@ -1,151 +1,95 @@
-# Phevere
+<div align="center">
 
-<img src="README.assets/phevere-icon.png" width="96" alt="The Phevere icon: a forward-leaning lowercase p with a plum stem and a hollow mint bowl, the Holarky family letter">
+<img src="README.assets/phevere-icon.png" width="96" alt="The Phevere icon: a forward-leaning lowercase p with a plum stem and a hollow mint bowl">
+
+<h1>Phevere</h1>
+
+<p>Select a word in any app and look it up where you are reading. Keep it, and learn it.</p>
 
 [![Release](https://img.shields.io/github/v/release/thd2020/phevere?display_name=tag)](https://github.com/thd2020/phevere/releases/latest)
 [![CI](https://github.com/thd2020/phevere/actions/workflows/ci.yml/badge.svg)](https://github.com/thd2020/phevere/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/thd2020/phevere)](LICENSE)
 
-Phevere is a dictionary for text you are already reading. Select a word in any application and a lookup opens beside it, with definitions, pronunciation, translation, etymology, and Wikipedia, and a local notebook for the words you keep. It runs on Windows, macOS, and Linux as a tray application, and on Android and iOS as a phone app built on the same dictionary core.
+[Download](https://github.com/thd2020/phevere/releases/latest) · [Changelog](CHANGELOG.md) · [Documentation](docs)
 
-<p align="center">
-  <img src="README.assets/phone-overview.png" width="860" alt="Screenshots of the Android app: a lookup of serendipity, Scan with a selected word, and Capture settings">
-</p>
-<p align="center"><sub>Android app: a lookup, a word selected on a scanned page, and the selection-bar settings.</sub></p>
+<img src="README.assets/phone-overview.png" width="860" alt="Screenshots of the Android app: a lookup of serendipity, Scan with a selected word, and Capture settings">
 
-The current release is **4.0.0** on desktop and phone, with its files rebuilt on 2026-11-04. It turns the notebook into a place to learn: Words with graded word books from primary school to CET-6 and 考研, a Learn tab with a quiz and a progress page, words that remember the page or PDF you met them in, Families, Map and Cards redrawn, and one file per word book that moves a book and its progress between devices or to and from Anki. Desktop installers no longer bundle the OCR models, which the app downloads when you need them. Changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
+</div>
 
-## Learning
+## About
 
-A lookup usually ends when you close it. Phevere keeps the word, shows how it relates to the words you already know, and brings it back until you remember it. It does this in two tabs beside Lookup: Words, for what you are learning, and Learn, for practising it.
+Phevere is a dictionary for text you are already reading. Select a word in a browser, a PDF or any other application, and a lookup opens beside it with definitions, pronunciation, translation, etymology and Wikipedia. Words you save go into a local notebook, where word books, a daily quiz and maps of shared roots help you learn them. It runs as a tray app on Windows, macOS and Linux, and as a phone app on Android and iOS, all built on one dictionary core.
 
-<p align="center">
-  <img src="README.assets/learning-overview.png" width="860" alt="Screenshots of the phone app: a Learn question, the Progress page, the word-book library and Families grouped by origin">
-</p>
-<p align="center"><sub>A Learn question, the Progress page, the word-book library ordered by school level, and Families grouping 153 saved words by the language they came from.</sub></p>
-
-**Words** starts with My words, everything you save from a lookup. Next to it sit word books, the graded lists Chinese learners study from: Starter 1000 for primary school, 中考, 高考, CET-4, CET-6, 考研, General English, Academic English, TOEIC and Business English, each with a progress ring and a daily goal. Their sources and licences are in [`docs/WORDBOOKS.md`](docs/WORDBOOKS.md). Progress belongs to the word, so a word you learn once counts in every book that lists it. Sources groups the words you saved by the book or site you met them in, so the words you looked up while reading *Gödel, Escher, Bach* can become a word book of their own.
-
-Any list can be seen four ways. List shows the words in order, each with when and where you saved it and the sentence it came from. Families groups words by the parts they share, from Latin and Greek roots to the Proto-Indo-European roots Wiktionary records, by the language they came from, and as small drawn trees of one word built from another. Map shows the same relations as a 3D graph you can turn and search, and Cards lays the words out in piles you can open one at a time or scatter, drag and sort.
-
-**Learn** runs each day's review in rounds of twenty words over My words, one book or all of them, with fewer new words on days when many reviews are due. A new word starts with picking its meaning; as it sticks, the questions get harder: picking it from four, typing it from its meaning, filling it into a sentence, with listening kept to a fifth of a session. Words you keep missing are asked in an easier form and listed as trouble words, and new words are drawn from all your books as one pool, words shared by several books and words of families you have started first. Phevere grades each answer from whether it was right and how long it took, and schedules the next review with FSRS, the scheduler Anki adopted in 2023; [`docs/REVIEW.md`](docs/REVIEW.md) explains the research behind this. The Progress page shows today against your goal and your streak, what you would still remember if you stopped reviewing for a chosen number of days, the reviews ahead, answers per day, how long your words are held, your meaning, spelling and listening, what each book shares with the others, and your root families; every chart names a day and its words when you point at it or tap it.
-
-<p align="center">
-  <img src="README.assets/learning-detail.png" width="660" alt="Screenshots of the phone app: a word book's list, the answer screen after a question, and the map of shared roots">
-</p>
-<p align="center"><sub>CET-4 opened as a list, the answer screen with when the word comes back, and the map of roots and prefixes the saved words share.</sub></p>
-
-Saved words and word books sync free with a Holarky account. Syncing learning progress between devices will be part of a paid Plus membership; without it, progress stays on each device.
+Version 4.1.0 adds updates from inside the app on the desktop and Android, search suggestions, a picture for each meaning that has one, and pages for prefixes, suffixes and roots. See [what's new](CHANGELOG.md).
 
 ## Features
 
 **Lookup**
 
-- Definitions from Free Dictionary, Wiktionary, and Datamuse for English, and English definitions for words in other languages from Jisho (Japanese), OpenRussian (Russian) and kaikki.org (any language English Wiktionary covers). All of them are merged into a single lexicon in the headword's language. The exact form is preferred, and lemma senses are used only when no source defines that form. Chinese, Russian and Japanese Wiktionary, off until you switch them on in Settings → Sources, define words of those languages in their own language. [`docs/MULTILINGUAL.md`](docs/MULTILINGUAL.md) lists the sources per language. English entries list the most common part of speech first and the most common senses first within it, by how often each WordNet sense is tagged in the SemCor corpus; senses no WordNet sense matches stay next to their neighbours, and other languages keep the sources' order.
-- The Lexicon is set like a printed dictionary page, with part-of-speech headings, numbered senses in a serif face and examples in italic. A sense shows a picture only when someone linked that meaning to a picture: a Wikidata word sense and the image of the item it means, a Wiktionary definition tied to a Wikidata item, a picture Wiktionary editors tied to the sense, or, for a noun naming something you can see, the Wikipedia article titled with the word or one on its disambiguation page ("Pitcher (container)"). So "crane" shows the bird and the machine, "bank" the institution and the river edge, and abstract words such as serendipity show none. Up to three pictures appear per entry, and Hide picture in the enlarged view keeps a wrong one from coming back on that sense (Undo brings it back). Every picture comes from Wikimedia Commons; clicking one shows it larger with its author, licence and a link to its page on Commons. Pictures can be turned off with the Images switch in the pop-up settings on the desktop and with Pictures beside senses in Settings → Sources on the phone.
-- A Forms section lists a word's grammatical forms: tenses and participles for verbs, plural and possessive for nouns, cases for German and Russian nouns, persons for French and Spanish verbs, and comparative and superlative for adjectives. A form such as mice says that it is the plural of mouse and shows mouse's forms. The data is Wiktionary's inflection tables as parsed by Wiktextract (kaikki.org).
-- A Word family section shows a word's closest derived and related words, phrases and other spellings as short lines of links, with the rest under All, and what the word is built from.
-- A misspelled English word one or two letters off (recieve, definately) is looked up and saved as the word it meant, and a plain plural (acronyms) as its singular. A plural with senses of its own, such as bacteria or glasses, keeps its own entry.
-- IPA by accent (US and UK), each chip spoken from its own transcription by eSpeak NG. Words no online source transcribes get US IPA from the CMU Pronouncing Dictionary, or, when it lacks them too (holon, operon), from the pronunciation Datamuse gives. Recorded pronunciations come from Free Dictionary and Wikimedia Commons and are cached on disk; when a word has none, the chosen voice says it. Neural Kokoro voices (132 MB or 350 MB) can be downloaded in Settings → Audio on the desktop, Android and iOS.
-- Translation through Google Translate and MyMemory without a key, or through Youdao or DeepL with your own keys. The speaker beside either side reads it aloud with the chosen voice; a long paragraph starts playing after its first sentence is ready, and pressing the speaker again stops it. Settings → API keys checks a key with one request to its provider.
-- Quick translation on the desktop, off until you switch it on in Settings → Shortcuts. One shortcut replaces the selected text in any application with its translation; another opens a small panel with every engine's translation, where the arrow keys pick one and Enter pastes it. The clipboard is put back afterwards. Linux needs `xdotool`.
-- Etymology from Wiktionary, Etymonline, and Youdao, and a Wikipedia reader in the same pane.
-- Offline packs, listed in Settings → Offline under the language of their headwords: WordNet, Webster 1913 (GCIDE) and FreeDict English–Chinese for English; CC-CEDICT for Chinese; JMdict for Japanese; Kengdic for Korean; and FreeDict packs from German, French, Italian, Portuguese, Dutch, Polish, Russian, Greek, Finnish, Hungarian, Catalan and Croatian into English. The German pack and the full JMdict are desktop only; the phone gets JMdict's common words. Selecting a pack shows its edition, licence, source, entry count and size.
-- Words are saved in dictionary form (lower case, except German nouns, proper nouns and abbreviations), and words saved earlier in another form are fixed once.
-- Recent lookups, shown as the same rows as the notebook. The source language is detected by default, including Japanese text written only in kanji.
-- An optional Holarky account, from the button at the right of the title bar on desktop or the app bar on the phone. Sign in with email and password, a passkey, or Google; while signed in, My words and your word books sync between your desktops and phones, including notes and deletions. Learning progress syncs with a Plus membership; without it, progress stays on each device. Without an account Phevere works as before, and lookups never wait for it.
+- Definitions from Free Dictionary, Wiktionary and Datamuse, merged into one entry with the commonest senses first
+- Pictures from Wikimedia Commons beside the meanings they show: "crane" gets the bird and the machine
+- Word forms, and a form such as "children" or "gleaned" that opens its headword, as learner dictionaries do
+- US and UK pronunciation, recorded audio where it exists, and optional neural voices
+- Translation through Google Translate and MyMemory, or Youdao and DeepL with your own keys
+- Etymology from Wiktionary, Etymonline and Youdao, and pages for prefixes, suffixes and roots
+- Search suggestions ranked by how common a word is, and "Did you mean" for a word with no entry
+- Offline packs: WordNet, Webster 1913, CC-CEDICT, JMdict and FreeDict for twelve languages
+- Other languages through Jisho, OpenRussian and kaikki.org ([languages and sources](docs/MULTILINGUAL.md))
 
 **Words and Learn**
 
-- Words: My words, your own list stored locally in SQLite, with search and sorting, plus word books you add from a library ordered from primary school up. A book word opens its lookup and can be added to My words, and every word shows which of your books list it. Progress belongs to the word, so learning it once counts in every book that has it. Besides the list, My words, each book and All books have Families (words grouped by shared root, prefix, suffix, origin or character, and word trees), Map (the same relations as a graph) and Cards (each word split into its parts, with your note as a mnemonic). When My words holds words in several languages, chips above the views show one language at a time. Each book exports to one `.pvbook` file that another device imports with its progress, and Anki decks go both ways ([`docs/BOOK_FORMAT.md`](docs/BOOK_FORMAT.md)).
-- Sources, in the Words tab's book switcher, groups the words you saved by the document or web site they came from (GEB.pdf, en.wikipedia.org), each with its count. Make a word book turns a source into your own book, which then appears beside the shipped books with its own progress; you can rename it, add words by name and remove words, and it syncs with the rest of your word books.
-- Learn: a daily quiz over My words, one book or All books, in rounds of twenty words, scheduled with FSRS. It asks each due word in a harder form as you learn it, from picking its meaning to typing it into a sentence, keeps listening to a fifth of a session, and has a daily goal, a two-week forecast you can tap for its words, and a Progress page of interactive charts; see [`docs/REVIEW.md`](docs/REVIEW.md).
+- My words, plus graded word books from primary school to CET-6, 考研, TOEIC and Business English ([sources](docs/WORDBOOKS.md))
+- Each saved word remembers the web page, PDF page or app you met it in
+- Four views of any list: List, Families by root and origin, a 3D Map and Cards
+- A daily quiz scheduled with FSRS, whose questions get harder as a word sticks ([how it works](docs/REVIEW.md))
+- Progress charts for your goal, streak, upcoming reviews and retention
+- Word books that export to one file, and Anki decks in both directions ([format](docs/BOOK_FORMAT.md))
+- Optional sync of words and books with a free Holarky account ([account](docs/ACCOUNT.md))
 
-**Desktop (Windows, macOS, Linux)**
+**On each platform**
 
-- Select-to-lookup in other applications. On Windows, Phevere reads the selection through UI Automation, then a Chromium accessibility request, then a silent copy that restores the clipboard. On macOS it uses the Accessibility API, then AppleScript for Safari and Chrome, then a silent copy. On Linux it watches the primary selection that every toolkit sets on select (Wayland data-control on KDE Plasma and wlroots desktops, XFixes on X11), so nothing is copied. Password fields are skipped.
-- OCR for text that cannot be selected: hover, region, clipboard image, and whole window, using PP-OCRv4 models from the OCR pack, a 14 MB download from Settings → Capture (PP-OCRv5 is available as a download).
-- When you save a word from the pop-up, Phevere keeps where you met it: the app, the web page title and address in Chrome, Edge and Firefox (Safari and Chrome on macOS), the document name in a PDF reader (Acrobat, Foxit, SumatraPDF, WPS, or a PDF tab in a browser) with the page number when the reader shows it, and on Windows the sentence around the word. Private and incognito windows are never recorded. Settings → Capture → Remember where words were saved turns it off.
-- Back and forward through recent lookups, including the mouse's extra buttons.
-- A slim toolbar opens beside the selection. Its first four icons open the Lexicon, Translation, Wikipedia, and Etymology views, and the open view shows as a tab joined to the page.
+- Desktop: select-to-lookup in other apps, OCR for text you cannot select, and a translate-in-place shortcut
+- Android: Phevere on the text-selection bar, a lookup that floats over the current app, and Scan for photos
+- iOS: share text to Phevere, and Scan for photos
 
-**Android**
+<div align="center">
+<img src="README.assets/learning-overview.png" width="860" alt="Screenshots of the phone app: a Learn question, the Progress page, the word-book library and Families grouped by origin">
+<p><sub>A Learn question, Progress, the word-book library, and Families grouped by origin.</sub></p>
+</div>
 
-- **Phevere** on the system text-selection bar opens a compact lookup beside the selected word. The lookup is a floating window over the current app when *Display over other apps* is granted, and a bottom sheet otherwise.
-- *Pop up on selection* opens the lookup as soon as text is selected, without a tap. Without root this uses an accessibility service; on rooted devices it uses the LSPosed module described below.
-- A word saved from the selection-bar lookup keeps the name of the app it came from, and with the LSPosed module also the screen's title and, in an app showing a web page, its address.
-- Scan: take or choose a photo and select words directly on the picture. Recognition runs on the device with ML Kit, for Latin and Chinese script.
-- Pronunciation works offline with a bundled eSpeak NG voice. Two optional neural voices (Kokoro, 132 MB and 350 MB) can be downloaded in Settings.
+## Download
 
-**iOS**
+Every file is on the [latest release](https://github.com/thd2020/phevere/releases/latest).
 
-- Share text to Phevere, or open `phevere://lookup?q=word`, to show the lookup as a floating card or a sheet.
-- Selected text inside the app has a **Phevere** item in the edit menu. Scan uses Apple Vision. Pronunciation uses the voices installed on the device, or one of the two Neural Kokoro voices (132 MB or 350 MB) downloaded in Settings → Audio.
+| Platform | File | Requires |
+|---|---|---|
+| Windows x64 | `Phevere-Setup-<version>-x64.exe` | Windows 10 |
+| Windows ARM64 | `Phevere-Setup-<version>-arm64.exe` | Windows 11 |
+| macOS Apple silicon | `Phevere-<version>-darwin-arm64.dmg` | macOS 11 |
+| macOS Intel | `Phevere-<version>-darwin-x64.dmg` | macOS 11 |
+| Debian, Ubuntu | `phevere_<version>_amd64.deb`, `_arm64.deb` | Ubuntu 22.04 |
+| Fedora, openSUSE | `phevere-<version>-1.x86_64.rpm`, `.arm64.rpm` | glibc 2.35 |
+| Other Linux | `Phevere-<version>-x64.AppImage`, `-arm64.AppImage` | glibc 2.35 |
+| Android | `Phevere-<version>-android.apk` | Android 7.0 |
+| iOS | `Phevere-<version>-ios-unsigned.ipa` (sign it yourself) | iOS 15.1 |
 
-## Installation
+The builds are not code-signed, so SmartScreen and Gatekeeper ask once on first launch ([code signing](docs/CODE_SIGNING.md)). Hover lookup and Scan need the 14 MB OCR pack, which you install from **Settings → Capture**.
 
-### Windows, macOS, and Linux
+On macOS, open Phevere with right-click → **Open** the first time and grant Accessibility and Screen Recording ([macOS notes](docs/MACOS_SELECTION.md)). On GNOME Wayland, bind `phevere --lookup-selection` to a keyboard shortcut ([Linux notes](docs/LINUX_SELECTION.md)). The optional LSPosed module for rooted Android phones is described in [ANDROID.md](apps/mobile/ANDROID.md).
 
-Download the installer for your platform from [GitHub Releases](https://github.com/thd2020/phevere/releases/latest). Node.js is not required.
+## Updates
 
-| Platform | File |
-|---|---|
-| Windows 10 and 11, x64 | `Phevere-Setup-<version>-x64.exe` |
-| Windows 11, ARM64 | `Phevere-Setup-<version>-arm64.exe` |
-| macOS 11 or later, Intel | `Phevere-<version>-darwin-x64.dmg` |
-| macOS 11 or later, Apple silicon | `Phevere-<version>-darwin-arm64.dmg` |
-| Debian, Ubuntu 22.04 or later, x64 / arm64 | `phevere_<version>_amd64.deb` / `phevere_<version>_arm64.deb` |
-| Fedora, openSUSE, x64 / arm64 | `phevere-<version>-1.x86_64.rpm` / `phevere-<version>-1.arm64.rpm` |
-| Any glibc 2.35+ distribution, x64 / arm64 | `Phevere-<version>-x64.AppImage` / `Phevere-<version>-arm64.AppImage` |
+Phevere checks GitHub Releases every six hours and verifies each download against its SHA-256 checksum. **Settings → Updates** has three modes: Automatically (the default), Ask first and Off.
 
-Since 2026-11-03 the installers do not include the OCR models. Hover lookup over text that cannot be selected, and Scan, need the OCR pack: open **Settings → Capture** and select **Install** next to Hover lookup (14 MB). Until then that row says "Needs the OCR pack" and the Hover chip at the bottom of the notebook reads No OCR. On Windows you can also tick the OCR pack under Custom options, and upgrading an installation of 3.0 or earlier keeps the models it already has. On macOS and Linux an upgrade replaces the whole app, so install the pack again.
-
-<p align="center"><img src="README.assets/desktop-settings-capture-ocr.png" width="560" alt="Screenshot of Settings, Capture tab, with Needs the OCR pack and an Install button beside Hover lookup"></p>
-
-**Updates.** Phevere checks GitHub Releases after it starts and every six hours. In **Settings → Updates** you choose how new versions install: Automatically (the default) downloads a new release in the background and installs it when Phevere quits, Ask first tells you and waits, and Off checks only when you select Check now. Every download is checked against the SHA-256 checksum GitHub publishes for it. Roll back installs the release before yours; your notebook is copied to the `backups` folder in Phevere's data folder first, and automatic updates skip the version you left until a newer one comes out. The Windows installer and the AppImage update themselves. On macOS and with the deb or rpm packages, Phevere tells you about a new version and opens its download page.
-
-On Android the same Settings → Updates section downloads the release APK. Automatically downloads it in the background on Wi-Fi or another unmetered network, checks it, and then opens Android's install prompt, which you confirm; Android never installs a downloaded APK without asking. On mobile data, Automatically waits until you select Check now. Ask first sends a notification and downloads only after you tap Update now. The first update needs Android's Install unknown apps permission for Phevere, and Phevere opens that page when it is off. An update keeps your notebook and settings. It installs only over a copy signed with the release key, so a debug build from CI or a copy you signed yourself shows the release page instead of installing. There is no rollback on Android, because Android installs an older version only after an uninstall, which deletes the notebook. The iOS app has no in-app updates.
-
-Release builds are not code-signed, so Windows SmartScreen and macOS Gatekeeper will ask for confirmation on first launch. [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md) describes how to sign your own builds.
-
-**Windows.** Select Install, or open Custom options to choose the folder, Start menu and desktop shortcuts, starting with Windows, and two downloads: the OCR pack (14 MB) and, on x64, a pronunciation voice, Standard (132 MB) or High quality (350 MB). High quality is the recommended one: on most PCs it is also the faster of the two. Downloads run before setup finishes, and the page shows the space required. The default folder is `C:\Program Files\Phevere`; replacement installs reuse the existing folder and preserve your notebook and settings. Running Phevere as administrator lets UI Automation read selections in elevated applications. To uninstall, use **Settings → Apps → Phevere**. Normal uninstall retains your notebook and settings. If an earlier installation left files behind that the Apps list no longer shows, run `scripts\remove-ghost-phevere.ps1` from an elevated PowerShell prompt.
-
-**macOS.** Drag Phevere to Applications and open it with right-click → **Open** the first time. Grant **Accessibility** for select-to-lookup and **Screen Recording** for OCR; the menu-bar icon links to both settings. See [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md).
-
-**Linux.** Install the deb with `sudo apt install ./phevere_<version>_amd64.deb` or the rpm with `sudo dnf install ./phevere-<version>-1.x86_64.rpm`; or make the AppImage executable and run it. Select-to-lookup works without setup on KDE Plasma, wlroots desktops (Sway, Hyprland) and any X11 session. On KDE Plasma Wayland the popup opens at the pointer and hover lookup follows it there too. GNOME on Wayland gives applications no background access to the selection; bind the command `phevere --lookup-selection` to a keyboard shortcut in **Settings → Keyboard → Custom Shortcuts** and press it after selecting. The tray icon needs a panel that hosts StatusNotifierItem icons, which KDE Plasma, Cinnamon, Budgie, XFCE and waybar's tray module do. GNOME needs the AppIndicator extension. If the panel starts after Phevere, the icon appears once the panel is up; if no tray turns up within a minute, Phevere shows a notification, and running `phevere` again reopens its window. Notebook and settings live in `~/.config/phevere`. See [`docs/LINUX_SELECTION.md`](docs/LINUX_SELECTION.md).
-
-### Android
-
-Android 7.0 (API 24) or later. Download `Phevere-<version>-android.apk` from [GitHub Releases](https://github.com/thd2020/phevere/releases/latest); the app is not in an app store. Release APKs are signed with one release key (see [`docs/ANDROID_SIGNING.md`](docs/ANDROID_SIGNING.md)), so a newer release installs over an older one and keeps your data; Settings → Updates does this from inside the app. Each CI run on `main` also builds a debug-signed APK, available from the run's **Artifacts** section as `phevere-android`; its version has the form `<version>-dev.<build>+<commit>`, and a release cannot install over it without an uninstall first.
-
-The LSPosed module is optional and requires a rooted device. Enabled in LSPosed for the apps you choose, it hooks the system text-selection toolbar so that Phevere appears at a position you set, is added back in apps that hide third-party actions (X, for example), and can be pressed automatically on selection. Setup steps are in [`apps/mobile/ANDROID.md`](apps/mobile/ANDROID.md).
-
-### iOS
-
-iOS 15.1 or later. Download `Phevere-<version>-ios-unsigned.ipa` from [GitHub Releases](https://github.com/thd2020/phevere/releases/latest) and sign it with your own signing tool before installing it on a device.
+- **Windows and AppImage** install the update when Phevere quits. **Roll back** returns to the previous release after backing up your notebook.
+- **macOS, deb and rpm** tell you about a new version and open its download page.
+- **Android** downloads on Wi-Fi and opens the system install prompt for you to confirm. It has no rollback, because Android needs an uninstall to go back a version.
 
 ## Privacy
 
-- The notebook and settings are stored on the device. Without an account, Phevere keeps nothing off the device.
-- The Holarky account is optional. Sign-in runs on Auth0; while you are signed in, your profile and notebook are stored by the Holarky service on Cloudflare so that your devices match. Delete account in the account panel removes the account everywhere; the notebook on the device stays. See the [privacy page](https://holarky-api.thdfreelancer.workers.dev/privacy).
-- Lookups and translations are sent only to the services enabled in Settings.
-- Selection capture skips password fields, and a silent copy restores the previous clipboard contents.
-- Where a word was saved (page title, address, document name and sentence) is stored only in your notebook and, when you are signed in, synced only inside your own account. Private and incognito browser windows are skipped, and only web addresses are kept, never local file paths.
-- On macOS, Screen Recording permission is used only for OCR.
-- On Android, the LSPosed module adds only the Phevere item to a selection bar. When an app gives no other way to read the selection, the module copies the selected text and then restores the clipboard.
+Your notebook and settings stay on your device. Lookups go only to the sources you have enabled, password fields are never read, and private browser windows are never recorded. With a Holarky account, your words sync through the Holarky service until you delete the account ([privacy policy](https://holarky-api.thdfreelancer.workers.dev/privacy)).
 
 ## Building from source
-
-### Prerequisites
-
-- Node.js 18 or later (CI uses Node.js 22)
-- Windows: Visual Studio 2022 with the *Desktop development with C++* workload, for the UI Automation addon
-- macOS: Xcode Command Line Tools
-- Linux: `build-essential pkg-config libx11-dev libxfixes-dev libatspi2.0-dev libglib2.0-dev libwayland-dev`, plus `fakeroot rpm squashfs-tools` to build packages
-- Android: JDK 17 or later and the Android SDK (API 36, NDK 28.2, CMake 3.22.1); Python 3 for the speech bundle
-- iOS: Xcode on macOS
-
-### Desktop
 
 ```bash
 git clone https://github.com/thd2020/phevere.git
@@ -154,65 +98,16 @@ npm install
 npm start
 ```
 
-To build installers:
-
-```bash
-npm run build-native
-npm run make:win          # Windows x64 installer
-npm run make:win:arm64    # Windows ARM64 installer
-npm run make:mac:x64      # macOS Intel DMG
-npm run make:mac:arm64    # macOS Apple silicon DMG
-npm run make:linux:x64    # Linux x64 deb, rpm, AppImage (cross-builds from an arm64 machine)
-npm run make:linux:arm64  # Linux arm64 deb, rpm, AppImage
-```
-
-Output is written to `out/make`. [`PACKAGING.md`](PACKAGING.md) covers the installer configuration. If the Electron download stalls during `npm install`, set `ELECTRON_SKIP_BINARY_DOWNLOAD=1`; the install and start scripts then fetch the runtime with `scripts/ensure-electron.js`.
-
-### Mobile
-
-```bash
-npm run mobile:dev        # phone UI in a desktop browser, with development proxies
-npm run mobile:build      # build the web bundle and copy it into the Android and iOS projects
-```
-
-For the Android APK, prepare the speech bundle and run Gradle:
-
-```bash
-python apps/mobile/scripts/prepare-speech.py
-cd apps/mobile/android
-./gradlew assembleDebug
-```
-
-For iOS, open `apps/mobile/ios/App/App.xcodeproj` in Xcode. Further detail is in [`docs/MOBILE.md`](docs/MOBILE.md) and [`apps/mobile/ANDROID.md`](apps/mobile/ANDROID.md).
-
-### Continuous integration and releases
-
-Every pull request and every push to `main` builds the desktop applications for Windows, macOS, and Linux, the Android APK, and the iOS IPA, and runs the mobile regression tests. A tag of the form `v*.*.*` builds the Windows installers, macOS disk images, Linux packages, Android APK, and iOS IPA, attaches them to a GitHub Release, and publishes build provenance attestations. Pushing a new `version` in `package.json` to `main` creates that tag and starts the release; a tag pushed by hand works too. See [`docs/RELEASE.md`](docs/RELEASE.md).
-
-## Project structure
+You need Node.js 18 or later, plus a C++ toolchain for the selection addon: Visual Studio 2022 on Windows, Xcode Command Line Tools on macOS, and on Linux `build-essential pkg-config libx11-dev libxfixes-dev libatspi2.0-dev libglib2.0-dev libwayland-dev`. The `npm run make:*` scripts build installers ([packaging](PACKAGING.md)), and `npm run mobile:dev` runs the phone app in a browser ([mobile](docs/MOBILE.md)). Pushing a new version to `main` publishes a release ([releasing](docs/RELEASE.md)).
 
 | Path | Contents |
 |---|---|
-| [`packages/core`](packages/core) | Dictionary sources, merging, translation, pronunciation, notebook storage, and the Holarky account and notebook sync, shared by all platforms |
-| [`src`](src) | Desktop application (Electron main process and renderer) |
-| [`native-addon`](native-addon) | Selection capture: UI Automation on Windows, Accessibility on macOS, primary selection and AT-SPI on Linux |
-| [`apps/mobile`](apps/mobile) | Phone user interface, and the native Android and iOS projects that host it |
-| [`packaging`](packaging) | Installer configuration and icons |
-| [`docs`](docs) | Platform notes, release process, and design documents |
-
-## Documentation
-
-- [`docs/ACCOUNT.md`](docs/ACCOUNT.md): the Holarky account and notebook sync
-- [`docs/WORDBOOKS.md`](docs/WORDBOOKS.md): the word books, where each list comes from and its licence
-- [`docs/REVIEW.md`](docs/REVIEW.md): how Learn quizzes and schedules words, and the research behind it
-- [`docs/WORD_FORMS.md`](docs/WORD_FORMS.md): when a lookup of "was" or "children" opens another word, compared with Oxford, Longman and Cambridge
-- [`docs/MOBILE.md`](docs/MOBILE.md): phone apps, architecture, and limitations
-- [`apps/mobile/ANDROID.md`](apps/mobile/ANDROID.md): Android build, speech, versioning, and the LSPosed module
-- [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md): macOS permissions and selection capture
-- [`docs/LINUX_SELECTION.md`](docs/LINUX_SELECTION.md): Linux selection capture, desktops, and limits
-- [`docs/MULTILINGUAL.md`](docs/MULTILINGUAL.md): supported languages and sources
-- [`docs/OCR_CONTEXT_CAPTURE.md`](docs/OCR_CONTEXT_CAPTURE.md): the OCR pipeline
+| [`packages/core`](packages/core) | Dictionary sources, notebook and sync, shared by every platform |
+| [`src`](src) | Desktop app (Electron) |
+| [`native-addon`](native-addon) | Selection capture on Windows, macOS and Linux |
+| [`apps/mobile`](apps/mobile) | Phone app and its Android and iOS projects |
+| [`docs`](docs) | Platform notes and design documents |
 
 ## License
 
-Phevere is released under the [MIT License](LICENSE). The names Phevere, Holarky and knowrld and their logos are not covered by it; see [`TRADEMARKS.md`](TRADEMARKS.md). The Android application and the desktop builds bundle eSpeak NG, which is licensed under GPL-3.0-or-later; see [`apps/mobile/ANDROID.md`](apps/mobile/ANDROID.md) for the licence terms of the distributed APK. The sense-frequency table in `packages/core/src/sense-frequency-data.ts` is derived from Princeton WordNet 3.1 under the WordNet licence, whose notice is kept at the top of that file.
+[MIT](LICENSE). The names Phevere, Holarky and knowrld and their logos are not covered; see [TRADEMARKS.md](TRADEMARKS.md). The apps bundle eSpeak NG under GPL-3.0-or-later ([terms](apps/mobile/ANDROID.md)), and the sense-frequency table is derived from Princeton WordNet 3.1 under the WordNet licence.
