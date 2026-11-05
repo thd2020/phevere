@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Cards (2026-11-05): clicking a card's picture several times quickly only turns the card over and back, however fast you click. It used to open the lookup when a click landed while the card was half turned. A card now opens the lookup only from its text or from Look up on its back.
+
 ## [4.1.0] - 2026-11-05
 
 ### Added

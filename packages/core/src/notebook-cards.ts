@@ -146,11 +146,11 @@ function cardHtml(e: NotebookEntry, a: NotebookAnalysis, open: boolean, pile: st
   const morphs = (w?.morphs || []).filter((m) => m.kind !== 'char' || m.gloss).slice(0, 3);
   const parts = w && w.parts.length > 1 ? w.parts : [];
   const note = clean(e.note);
-  return `<article class="nbv-card${open ? ' is-flipped' : ''}" data-act="lookup" data-q="${esc(lemma)}" data-id="${esc(e.id)}" data-pile="${esc(pile)}" data-rank="${rank}"${rank >= PILE_FACE_CARDS ? ' data-deep' : ''} tabindex="0" aria-label="${esc(lemma)}: open lookup">
+  return `<article class="nbv-card${open ? ' is-flipped' : ''}" data-q="${esc(lemma)}" data-id="${esc(e.id)}" data-pile="${esc(pile)}" data-rank="${rank}"${rank >= PILE_FACE_CARDS ? ' data-deep' : ''} tabindex="0" aria-label="${esc(lemma)}: open lookup">
     <div class="nbv-card__inner">
       <div class="nbv-card__face nbv-card__front">
         <div class="nbv-card__pic"${flip} data-img-lemma="${esc(lemma)}" data-img-lang="${esc(clean(e.sourceLang))}" data-img-gloss="${esc(senses[0] || '')}" data-img-pos="${esc(clean(e.partOfSpeech || ''))}"><span aria-hidden="true">${esc(lemma.charAt(0))}</span></div>
-        <div class="nbv-card__body">
+        <div class="nbv-card__body" data-act="lookup" data-q="${esc(lemma)}">
           <h3 class="nbv-card__word">${parts.length ? parts.map((p, i) => `<span>${esc(p)}</span>${i < parts.length - 1 ? '<i>·</i>' : ''}`).join('') : esc(lemma)}</h3>
           ${reading ? `<p class="nbv-card__ipa">${esc(reading.ipa)}</p>` : ''}
           ${morphs.length ? `<ul class="nbv-card__morphs">${morphs
@@ -219,6 +219,8 @@ const GLIDE_EASE = 'cubic-bezier(0.05, 0.7, 0.1, 1)';
 /** Reduced motion keeps every move, short and without overshoot. */
 const QUICK_EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
 const QUICK_MS = 160;
+/** How long a card takes to turn over (.nbv-card__inner in notebook-cards.css). */
+const TURN_MS = 550;
 /** Room at the top of a band for its Gather button, and the band's side margin. */
 const BAND_HEAD = 44;
 const BAND_PAD = 10;
@@ -654,6 +656,19 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
   apply(layout, false);
   table.classList.add('is-ready');
 
+  /**
+   * Clicks that turn a card rather than look it up. While a card turns it is edge-on for a
+   * moment, and a click then lands on the card between its faces; right after a turn, a click
+   * on the text is one more of a run of fast clicks. Both turn the card again, so fast clicks on
+   * the picture only ever turn it.
+   */
+  const turnedAt = new WeakMap<HTMLElement, number>();
+  const turnsCard = (card: HTMLElement, t: HTMLElement) => {
+    if (t.closest?.('.nbv-card__flip, .nbv-card__look')) return false;
+    if (!t.closest?.('.nbv-card__face')) return true;
+    return !!t.closest?.('.nbv-card__body') && win.performance.now() - (turnedAt.get(card) ?? -Infinity) < TURN_MS;
+  };
+
   /* Controls: the layout buttons, a pile or its top card opens the pile, Gather closes it. */
   let keyOpen = false;
   let suppressClick = false;
@@ -684,9 +699,15 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
       dealMore(more.dataset.bandMore || '');
       return;
     }
-    if (layout !== 'piles') return;
     const pile = t.closest?.('.nbv-pile') as HTMLElement | null;
     const card = t.closest?.('.nbv-card') as HTMLElement | null;
+    if (card && (layout !== 'piles' || card.classList.contains('is-out')) && turnsCard(card, t)) {
+      ev.stopPropagation();
+      ev.preventDefault();
+      (card.querySelector('.nbv-card__flip') as HTMLElement | null)?.click();
+      return;
+    }
+    if (layout !== 'piles') return;
     // While a pile opens or closes, a second click on its flying cards does nothing.
     if ((pile || card) && win.performance.now() < busyUntil) {
       ev.stopPropagation();
@@ -715,6 +736,11 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     if (!t.classList?.contains('nbv-card')) return;
     ev.preventDefault();
     ev.stopPropagation();
+    if (layout !== 'piles' || t.classList.contains('is-out')) {
+      // Enter on a spread card is the lookup its text opens.
+      (t.querySelector('.nbv-card__body') as HTMLElement | null)?.click();
+      return;
+    }
     keyOpen = true;
     t.click();
     keyOpen = false;
@@ -729,6 +755,7 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
           if (!c.classList?.contains('nbv-card')) continue;
           const flipped = c.classList.contains('is-flipped');
           if (flipped === String(r.oldValue || '').split(/\s+/).includes('is-flipped')) continue;
+          turnedAt.set(c, win.performance.now());
           const look = c.querySelector('.nbv-card__look') as HTMLElement | null;
           if (look) look.tabIndex = flipped ? 0 : -1;
           const p = cur.get(c);

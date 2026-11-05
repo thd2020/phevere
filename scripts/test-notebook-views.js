@@ -174,11 +174,12 @@ assert.notEqual(chtml.match(/data-scope="([^"]+)"/)[1], views.cardsHtml(entries.
 assert.match(chtml, /data-cards-layout="piles"[^>]*aria-pressed="false"/);
 assert.match(chtml, /data-cards-layout="scatter"[^>]*aria-pressed="true"/);
 assert.match(chtml, /data-cards-layout="grid"/);
-// A tap on a card is a lookup; the meaning flip is its own button.
-assert.equal((chtml.match(/<article class="nbv-card[^"]*" data-act="lookup" data-q="[^"]+"/g) || []).length, entries.length);
-assert.match(chtml, /<article class="nbv-card" data-act="lookup" data-q="inspect"[^>]*tabindex="0"/);
+// The card's text is the lookup, not the whole card, so fast clicks on the picture only turn it.
+assert.equal((chtml.match(/<article class="nbv-card[^"]*" data-act=/g) || []).length, 0);
+assert.equal((chtml.match(/class="nbv-card__body" data-act="lookup" data-q="[^"]+"/g) || []).length, entries.length);
+assert.match(chtml, /<article class="nbv-card" data-q="inspect"[^>]*tabindex="0"/);
 assert.equal((chtml.match(/<button type="button" class="nbv-card__flip" data-act="nb-flip"/g) || []).length, entries.length);
-assert.match(chtml, /class="nbv-card is-flipped" data-act="lookup" data-q="inspector"/);
+assert.match(chtml, /class="nbv-card is-flipped" data-q="inspector"/);
 // The picture and the back turn the card over; Look up on the back opens the lookup.
 assert.equal((chtml.match(/class="nbv-card__pic" data-act="nb-flip"/g) || []).length, entries.length);
 assert.equal((chtml.match(/class="nbv-card__face nbv-card__back" data-act="nb-flip"/g) || []).length, entries.length);
