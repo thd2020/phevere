@@ -291,7 +291,7 @@ function layoutSpace(a: NotebookAnalysis, kinds: Set<MorphKind>, maxWords: numbe
     // under a new id; its headword keeps its place.
     const at =
       seed?.get(nodes[i].unlinked ? `~${nodes[i].id}` : nodes[i].id) ??
-      (nodes[i].kind === 'word' ? seed?.get(seedWordKey(nodes[i].label)) : undefined);
+      (nodes[i].kind === 'word' ? seed?.get(`${nodes[i].unlinked ? '~' : ''}${seedWordKey(nodes[i].label)}`) : undefined);
     if (!at) continue;
     [nodes[i].x, nodes[i].y, nodes[i].z] = at;
     fixed[i] = 1;
@@ -669,7 +669,8 @@ function seedFor(a: NotebookAnalysis, kinds: MorphKind[]): { sig: string; seed: 
     const seed = new Map<string, [number, number, number]>();
     for (const p of data.nodes) {
       seed.set(p.u ? `~${p.id}` : p.id, [p.x, p.y, p.z]);
-      if (p.k === 'word' && !seed.has(seedWordKey(p.l))) seed.set(seedWordKey(p.l), [p.x, p.y, p.z]);
+      const word = `${p.u ? '~' : ''}${seedWordKey(p.l)}`;
+      if (p.k === 'word' && !seed.has(word)) seed.set(word, [p.x, p.y, p.z]);
     }
     return { sig: data.sig, seed };
   }
