@@ -395,7 +395,7 @@ async function main() {
         }
         const t0 = Date.now();
         // With one word at a time the requests in the log are this word's own.
-        if (trace && parallel === 1 && !warm && i < 12) {
+        if (trace && parallel === 1 && !warm) {
           traceLog = [];
           traceLog.t0 = t0;
         }
@@ -423,10 +423,12 @@ async function main() {
           if (appMode) times.afterDefs.push(Math.max(0, first - defs));
         }
         if (appMode) times.defs.push(defs);
-        if (traceLog) {
+        // The first dozen words, and any word whose pictures took four seconds or more.
+        if (traceLog && (i < 12 || all >= 4000)) {
           console.log(`  ${w.lemma}: first ${first} ms, all ${all} ms; ${traceLog.map((r) => `${r.kind} @${r.start}+${r.ms}`).join(', ')}`);
-          traceLog = null;
         }
+        traceLog = null;
+        if (!warm) Object.assign(row, { firstMs: first, allMs: all, defsMs: defs });
         if (!warm) {
           const major = majorSenses(list, si, w.lemma);
           row.senses = list.map((s, k) => ({
@@ -486,7 +488,7 @@ async function main() {
   report.push(`warm pass made ${requests - r1} requests`);
   if (trace) {
     for (const [kind, list] of Object.entries(byKind).sort((a, b) => b[1].length - a[1].length)) {
-      report.push(`request ${kind}: ${list.length}, median ${quantile(list, 0.5)} ms, p90 ${quantile(list, 0.9)} ms`);
+      report.push(`request ${kind}: ${list.length}, median ${quantile(list, 0.5)} ms, p90 ${quantile(list, 0.9)} ms, max ${Math.max(...list)} ms`);
     }
   }
   const missingCards = rows.filter((r) => mode !== 'lookup' && !r.card).map((r) => r.lemma);
