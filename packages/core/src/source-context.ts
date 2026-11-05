@@ -171,6 +171,34 @@ export function siteOf(url: string | undefined): string {
   }
 }
 
+/**
+ * The site's own icon, the way browsers find one when a page names none: /favicon.ico at the
+ * site's address. It comes from the site the word was read on, not from a third-party icon
+ * service, so it loads wherever that site does. '' for an unreadable host.
+ */
+export function siteIconUrl(host: string): string {
+  const h = String(host || '').trim().toLowerCase();
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(h) ? `https://${h}/favicon.ico` : '';
+}
+
+/** Second-level labels that countries register names under, as in bbc.co.uk or sina.com.cn. */
+const SECOND_LEVEL = new Set(['co', 'com', 'net', 'org', 'gov', 'edu', 'ac', 'or', 'ne', 'go', 'gob', 'mil', 'nic']);
+
+/**
+ * The letter on a site's tile when its icon does not load, as Chrome's new tab page draws one:
+ * the first letter of the site's name, skipping "www", subdomains such as "en", the top-level
+ * domain and a short second level such as the "co" of bbc.co.uk.
+ */
+export function siteMonogram(host: string): string {
+  const labels = String(host || '').toLowerCase().split('.').filter(Boolean);
+  const tld = labels.length > 1 ? labels.pop()! : '';
+  // Only a country's own second level ("co.uk", "com.cn"), so a short name such as cnn in
+  // edition.cnn.com or qq in mail.qq.com stays the name.
+  if (tld.length === 2 && labels.length > 1 && SECOND_LEVEL.has(labels[labels.length - 1])) labels.pop();
+  const name = labels[labels.length - 1] || '';
+  return (name.match(/[\p{L}\p{N}]/u)?.[0] || '').toLocaleUpperCase('en');
+}
+
 /** The group a saved word belongs to: the document when there is one, otherwise the web site. */
 export function sourceGroupOf(ctx: SourceContext | null | undefined): SourceGroupKey | null {
   if (!ctx) return null;

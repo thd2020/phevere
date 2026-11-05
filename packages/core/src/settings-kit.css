@@ -384,6 +384,36 @@ label.sv-row { cursor: pointer; }
 }
 .sv .sv-seg__item:has(input:focus-visible) { outline: 2px solid var(--sv-rust); outline-offset: 1px; }
 
+/* Settings → Learn: a daily goal as preset numbers and an "Other" field beside them. */
+.sv .sv-row--goal { flex-wrap: wrap; row-gap: 8px; }
+.sv .sv-row--goal .sv-row__text { flex: 1 1 140px; min-width: 0; }
+.sv .sv-goal { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.sv .sv-goal .sv-seg__item { min-width: 40px; justify-content: center; padding: 0 10px; font-variant-numeric: tabular-nums; }
+.sv .sv-num {
+  width: 72px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--sv-line);
+  border-radius: 999px;
+  background: var(--sv-card);
+  color: var(--sv-ink);
+  font: 600 13px/1 var(--sv-ui);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  appearance: textfield;
+  -moz-appearance: textfield;
+  transition: border-color 0.2s var(--sv-ease), box-shadow 0.2s var(--sv-ease);
+}
+.sv .sv-num::-webkit-outer-spin-button, .sv .sv-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.sv .sv-num::placeholder { color: var(--sv-ink-soft); font-weight: 500; }
+.sv .sv-num.is-on { border-color: rgb(156 61 0 / 0.45); color: var(--sv-rust); }
+.sv .sv-num:focus { outline: none; border-color: var(--sv-rust); box-shadow: 0 0 0 3px rgb(156 61 0 / 0.14); }
+@media (max-width: 600px) {
+  .sv .sv-row--goal .sv-row__text { flex-basis: 100%; }
+  .sv .sv-goal { width: 100%; justify-content: space-between; }
+  .sv .sv-goal .sv-seg__item { min-width: 0; padding: 0 12px; }
+}
+
 /* ---------------------------------------------------------------- choices with downloads */
 
 /* A radio row for an option that may need a download: seal, name, size or state, trailing mark. */

@@ -17,6 +17,7 @@ import '@phevere/core/notebook-families.css';
 import '@phevere/core/notebook-cards.css';
 import '@phevere/core/notebook-map.css';
 import '@phevere/core/wordbook-views.css';
+import '@phevere/core/popover-menu.css';
 import '@phevere/core/learn-views.css';
 import '@phevere/core/lexicon-parts.css';
 import '@phevere/core/settings-kit.css';

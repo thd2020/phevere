@@ -121,9 +121,13 @@ function familyCard(c: CardSpec, i = 0): string {
   const n = c.words.length;
   const size = sizeOf(n);
   const shown = Math.min(PEEK[size], n);
+  // Each word in the peek opens its lookup, as the chips in the open drawer do.
   const peek = c.words
     .slice(0, shown)
-    .map((w) => esc(clean(w.entry.lemma)))
+    .map((w) => {
+      const lemma = esc(clean(w.entry.lemma));
+      return `<button type="button" class="nbv-fam__peekw" data-act="lookup" data-q="${lemma}">${lemma}</button>`;
+    })
     .join(', ');
   const glyph = c.kind === 'deep' ? '*' : c.origin ? glyphFor(c.origin) : '';
   const forms = c.forms?.length ? c.forms : [c.label];
@@ -630,6 +634,8 @@ export function attachFamilies(root: any): void {
       const head = t.closest?.('summary.nbv-fam__head') as HTMLElement | null;
       if (!head || !fams.contains(head)) return;
       ev.preventDefault();
+      // A word in the tile's peek looks up; the shell's own click handler takes it from here.
+      if (t.closest?.('[data-act]')) return;
       const tile = head.parentElement as HTMLDetailsElement;
       if (tile === openTile) closeFamily();
       else openFamily(tile);

@@ -474,6 +474,8 @@ contextBridge.exposeInMainWorld('vocabAPI', {
   updateNote: (id: string, note: string) => ipcRenderer.invoke('vocab-update-note', id, note),
   review: (id: string, grade: 1 | 2 | 3 | 4, details?: Record<string, unknown>) => ipcRenderer.invoke('vocab-review', id, grade, details),
   history: () => ipcRenderer.invoke('vocab-history'),
+  /** A native confirmation: resolves true when the confirm button is chosen. */
+  confirm: (ask: { message: string; detail?: string; confirm: string }) => ipcRenderer.invoke('vocab-confirm', ask),
   onUpdated: (callback: (payload: { id: string; lemma: string }) => void) => {
     ipcRenderer.on('vocab-updated', (_event, payload) => callback(payload));
   },
