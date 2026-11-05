@@ -250,9 +250,10 @@ const M_W = 320;
 const M_LEFT = 6;
 const M_RIGHT = 6;
 const M_TOP = 18;
+/** The usual height of the dot area; it grows only when the tallest stack cannot fit at the smallest dot. */
 const M_DOTS = 70;
-const M_BASE = M_TOP + M_DOTS;
-const M_H = M_BASE + 20;
+/** The smallest dot, so a notebook of thousands of words still fits the strip's width. */
+const M_MIN_DOT = 1;
 /** The strip runs from 50% recall at the left to 100% at the right; lower recall piles up at the left edge. */
 const M_LO = 0.5;
 
@@ -266,6 +267,8 @@ export interface MemoryLayout {
   size: number;
   /** Per horizon, each word's centre. */
   at: Array<Array<{ x: number; y: number }>>;
+  /** The baseline the stacks rise from; every dot lies between M_TOP and it. */
+  base: number;
 }
 
 /**
@@ -287,7 +290,8 @@ export function memoryLayout(recalls: number[][]): MemoryLayout {
       }),
     );
   let size = 9;
-  while (size > 2 && tallest(size) * size > M_DOTS) size -= 0.5;
+  while (size > M_MIN_DOT && tallest(size) * size > M_DOTS) size -= size > 2 ? 0.5 : 0.25;
+  const base = M_TOP + Math.max(M_DOTS, tallest(size) * size);
   const at = recalls.map((rs) => {
     const order = rs.map((r, i) => ({ r, i })).sort((a, b) => b.r - a.r || a.i - b.i);
     const height = new Map<number, number>();
@@ -296,11 +300,11 @@ export function memoryLayout(recalls: number[][]): MemoryLayout {
       const c = Math.min(Math.round(usable / size), Math.max(0, Math.round((mx(r) - M_LEFT) / size)));
       const h = height.get(c) || 0;
       height.set(c, h + 1);
-      out[i] = { x: M_LEFT + c * size, y: M_BASE - size / 2 - h * size };
+      out[i] = { x: M_LEFT + c * size, y: base - size / 2 - h * size };
     }
     return out;
   });
-  return { size, at };
+  return { size, at, base };
 }
 
 export interface MemorySpec {
@@ -354,7 +358,9 @@ export function memoryHtml(spec: MemorySpec): string {
   const states = MEMORY_HORIZONS.map((h) => memoryAt(words, spec.now, h.days));
   const layout = memoryLayout(states.map((s) => s.recall));
   const today = states[0];
-  const r = layout.size / 2 - 0.4;
+  const base = layout.base;
+  // A small gap between neighbours while the dots are large enough to show one.
+  const r = layout.size >= 3 ? layout.size / 2 - 0.4 : layout.size * 0.42;
   const dots = words
     .map((w, i) => {
       const p = layout.at[0][i];
@@ -362,7 +368,7 @@ export function memoryHtml(spec: MemorySpec): string {
     })
     .join('');
   const ticks = [0.5, 0.7, 0.9, 1]
-    .map((v) => `<text class="lrc-xtick${v === DESIRED_RETENTION ? ' is-mark' : ''}" x="${mx(v).toFixed(1)}" y="${M_BASE + 14}">${v === M_LO ? '≤50%' : `${Math.round(v * 100)}%`}</text>`)
+    .map((v) => `<text class="lrc-xtick${v === DESIRED_RETENTION ? ' is-mark' : ''}" x="${mx(v).toFixed(1)}" y="${base + 14}">${v === M_LO ? '≤50%' : `${Math.round(v * 100)}%`}</text>`)
     .join('');
   const target = mx(DESIRED_RETENTION);
   const seg = MEMORY_HORIZONS.map(
@@ -379,10 +385,10 @@ export function memoryHtml(spec: MemorySpec): string {
     </div>
     <div class="lrc-mem__chart">
       <div class="lrc-mem__whens" role="group" aria-label="Without review">${seg}</div>
-      <svg class="lrc-svg lrc-mem__svg" viewBox="0 0 ${M_W} ${M_H}" role="img" aria-label="Your words by chance of recall" tabindex="0">
-        <rect class="lrc-mem__zone" x="${M_LEFT - 2}" y="${M_TOP - 6}" width="${(target - M_LEFT + 2).toFixed(1)}" height="${M_DOTS + 6}" rx="6"/>
-        <line class="lrc-grid is-base" x1="${M_LEFT}" x2="${M_W - M_RIGHT}" y1="${M_BASE}" y2="${M_BASE}"/>
-        <line class="lrc-grid is-target" x1="${target.toFixed(1)}" x2="${target.toFixed(1)}" y1="${M_TOP - 6}" y2="${M_BASE}"/>
+      <svg class="lrc-svg lrc-mem__svg" viewBox="0 0 ${M_W} ${base + 20}" role="img" aria-label="Your words by chance of recall" tabindex="0">
+        <rect class="lrc-mem__zone" x="${M_LEFT - 2}" y="${M_TOP - 6}" width="${(target - M_LEFT + 2).toFixed(1)}" height="${base - M_TOP + 6}" rx="6"/>
+        <line class="lrc-grid is-base" x1="${M_LEFT}" x2="${M_W - M_RIGHT}" y1="${base}" y2="${base}"/>
+        <line class="lrc-grid is-target" x1="${target.toFixed(1)}" x2="${target.toFixed(1)}" y1="${M_TOP - 6}" y2="${base}"/>
         <text class="lrc-mem__zlabel" x="${(target - 5).toFixed(1)}" y="${M_TOP + 4}">Due</text>
         <text class="lrc-mem__zlabel is-held" x="${(target + 5).toFixed(1)}" y="${M_TOP + 4}">Held</text>
         ${ticks}
