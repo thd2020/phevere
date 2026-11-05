@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Hover lookup strip (2026-11-05): pressing the trigger shortcut after moving to another word now looks up the word under the pointer and opens the strip there. Before, it reopened the previous word where you had hovered it, which looked like a stuck strip and later like strips drifting far from the pointer. A word hovered soon after the last one now opens once the short pause between lookups ends, instead of needing another nudge of the mouse. A word read after the pointer already left is dropped, so the strip no longer appears where the pointer used to be. The same word elsewhere on the page opens its own strip, and a word whose strip you clicked away opens again once the pointer leaves it and comes back. A strip that moves to a new word stays open its full ten seconds. On Windows with monitors at different scaling, a strip moved from one monitor to the other lands at the word.
+
 ## [4.1.0] - 2026-11-05
 
 ### Added
