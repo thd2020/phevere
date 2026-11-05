@@ -166,6 +166,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+          cache: gradle
+          cache-dependency-path: |
+            apps/mobile/android/**/*.gradle*
+            apps/mobile/android/**/gradle-wrapper.properties
       - name: Accept Android SDK licenses
         run: |
           set -euo pipefail
