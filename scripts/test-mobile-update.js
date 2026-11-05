@@ -230,12 +230,14 @@ function harness({ mode = 'auto', metered = false, debuggable = false, api = 'ok
   assert.equal(h.downloads.length, 1);
   assert.equal(h.downloads[0].sha256, 'b'.repeat(64), 'the hash comes from the .sha256 file');
   assert.equal(h.downloads[0].url, 'https://github.com/thd2020/phevere/releases/download/v4.1.0/Phevere-4.1.0-android.apk');
-  // ... without the .sha256 file nothing downloads.
+  // ... without the .sha256 file (the APK is not up yet) the release is not offered at all.
   h = harness({ api: 'limited', sumFile: false });
   await h.updater.init();
   await h.updater.check();
   assert.equal(h.downloads.length, 0);
-  assert.match(h.last().error, /no checksum/);
+  assert.equal(h.last().error, null, 'no error: there is simply no update yet');
+  assert.equal(h.last().available, null);
+  assert.equal(h.notes.length, 0, 'no notice for a release the phone cannot install');
   // ... a cached list from an earlier answer still counts.
   h = harness({ api: 'limited', cache: { etag: 'W/"0"', releases: rel.releasesFromGitHub(github()) } });
   await h.updater.init();

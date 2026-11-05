@@ -174,15 +174,20 @@ export function createPhoneUpdater(deps: PhoneUpdateDeps) {
     emit();
   }
 
-  /** The latest release from the releases/latest redirect and the .sha256 file beside the APK. */
+  /**
+   * The latest release from the releases/latest redirect and the .sha256 file beside the APK.
+   * Throws when GitHub cannot be reached; null means GitHub answered but the APK is not ready.
+   */
   async function latestWithoutApi(): Promise<Release | null> {
     const res = await deps.fetch({ url: LATEST_PAGE, head: true, redirect: false });
     const version = res.location ? versionFromReleaseUrl(res.location) : null;
-    if (!version) return null;
+    if (!version) throw new Error(`GitHub answered ${res.status}`);
     const name = assetNameFor(APK, version) as string;
-    let sha256: string | null = null;
+    // The Android job uploads after the desktop ones and can fail: until the APK and its .sha256
+    // are there, the release is not one the phone can install, so it is not offered.
     const sums = await deps.fetch({ url: `${DOWNLOAD_BASE}/v${version}/${name}.sha256` });
-    if (sums.status === 200) sha256 = sha256FromSumFile(sums.text, name);
+    const sha256 = sums.status === 200 ? sha256FromSumFile(sums.text, name) : null;
+    if (!sha256) return null;
     return latestReleaseWithoutApi(version, res.location, APK, sha256);
   }
 
@@ -202,10 +207,14 @@ export function createPhoneUpdater(deps: PhoneUpdateDeps) {
     } catch (err) {
       apiError = err instanceof Error ? err.message : String(err);
     }
-    const latest = await latestWithoutApi().catch((): null => null);
-    const list = withLatest(cache ? cache.releases : [], latest);
-    if (!list.length) throw new Error(apiError);
-    return list;
+    let latest: Release | null;
+    try {
+      latest = await latestWithoutApi();
+    } catch {
+      if (cache && cache.releases.length) return cache.releases;
+      throw new Error(apiError);
+    }
+    return withLatest(cache ? cache.releases : [], latest);
   }
 
   function downloadOnce(choice: UpdateChoice): Promise<string> {
