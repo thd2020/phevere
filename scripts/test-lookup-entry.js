@@ -68,7 +68,49 @@ configureCore({
   const after = updates.filter((r) => (r.translations || []).some((t) => t.text));
   assert.ok(after.length, 'the translation arrives as a later update');
   for (const r of after) assert.deepEqual(r.metadata.suggestions, result.metadata.suggestions, 'every later update keeps the suggestions');
-  console.log('Lookup entry passed: "Did you mean" stays through later updates.');
+
+  // Edge punctuation stays when Wiktionary has a page with that exact title (its REST answers of
+  // 2026-11-05, shortened): "etc." is a word, "hello," is not. "etc" is Wiktionary's
+  // "Alternative form of etc.", so it opens etc.; no list of abbreviations decides any of it.
+  const rest = {
+    'etc.': { en: [{ partOfSpeech: 'Phrase', language: 'English', definitions: [{ definition: 'Abbreviation of <i>et cetera</i> (“and so on”).' }] }] },
+    etc: { en: [{ partOfSpeech: 'Phrase', language: 'English', definitions: [{ definition: '<span class="form-of-definition">Alternative form of <a href="/wiki/etc.">etc.</a></span>' }] }] },
+    hello: { en: [{ partOfSpeech: 'Interjection', language: 'English', definitions: [{ definition: 'A greeting said when meeting someone.' }] }] },
+    'C++': { en: [{ partOfSpeech: 'Proper noun', language: 'English', definitions: [{ definition: 'A programming language derived from C.' }] }] },
+    C: { en: [{ partOfSpeech: 'Letter', language: 'English', definitions: [{ definition: 'The third letter of the English alphabet.' }] }] },
+  };
+  const kaikki = {
+    etc: { word: 'etc', lang_code: 'en', pos: 'phrase', senses: [{ tags: ['alt-of', 'alternative'], alt_of: [{ word: 'etc.' }], glosses: ['Alternative form of etc..'] }] },
+  };
+  routes.json.unshift([
+    (u) => u.hostname === 'en.wiktionary.org' && u.pathname.startsWith('/api/rest_v1/page/definition/'),
+    (u) => {
+      const title = decodeURIComponent(u.pathname.slice('/api/rest_v1/page/definition/'.length));
+      if (rest[title]) return rest[title];
+      throw notFound();
+    },
+  ]);
+  routes.text.push([
+    (u) => u.hostname === 'kaikki.org',
+    (u) => {
+      const w = decodeURIComponent(u.pathname.split('/').pop().replace(/\.jsonl$/, ''));
+      if (kaikki[w]) return JSON.stringify(kaikki[w]);
+      throw notFound();
+    },
+  ]);
+  const exact = new DictionaryService();
+  const etc = await exact.lookup('etc.', 'zh');
+  assert.equal(etc.word, 'etc.', '"etc." is looked up as typed');
+  assert.match(etc.definitions[0].meaning, /et cetera/);
+  const bare = await exact.lookup('etc', 'zh');
+  assert.equal(bare.word, 'etc.', '"etc" opens the word it is another form of');
+  assert.equal(bare.metadata.formFrom, 'etc');
+  const hello = await exact.lookup('hello,', 'zh');
+  assert.equal(hello.word, 'hello', 'a comma is not part of hello');
+  const cpp = await exact.lookup('C++', 'zh');
+  assert.equal(cpp.word, 'C++');
+  assert.match(cpp.definitions[0].meaning, /programming language/, 'C++ is not the letter C');
+  console.log('Lookup entry passed: "Did you mean" stays through later updates; "etc." and "C++" open as typed, "hello," as hello.');
   // The service keeps safety-net timers for lookups; they would hold the process open.
   process.exit(0);
 })().catch((err) => {

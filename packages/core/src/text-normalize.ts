@@ -5,9 +5,10 @@
  * scored match tiers, Yomitan's preprocess-then-deinflect pipeline): sanitize
  * the raw selection, trim punctuation at the edges only, then try a ladder of
  * punctuation/script variants. Inflected lemmas are not mixed into a hit;
- * they are only a fallback when the exact form has no senses at all. An exact
- * match always outranks a normalized one, so forms like "U.S." and "C++"
- * survive while "word." still resolves to "word".
+ * they are only a fallback when the exact form has no senses at all. Whether
+ * the edge punctuation belongs to the word is not guessed here: the lookup asks
+ * Wiktionary for a page with the exact title ("etc.", "C++", "U.S.") and uses
+ * exactQuery() when there is one, so "word." still resolves to "word".
  */
 
 export type QueryKind = 'word' | 'phrase' | 'sentence';
@@ -129,19 +130,6 @@ export function classify(trimmed: string): QueryKind {
   return 'sentence';
 }
 
-/**
- * Abbreviations lose meaning when their periods are trimmed, so they must be
- * tried verbatim first. Same for tokens that trim down to almost nothing
- * ("C++" -> "C").
- */
-function preferExactFirst(sanitized: string, trimmed: string): boolean {
-  if (sanitized === trimmed) return false;
-  // Abbreviations lose their identity without the interior periods.
-  if (/\p{L}\.\p{L}/u.test(sanitized)) return true;
-  // Trailing symbols that belong to the token itself: "C++", "C#".
-  return trimmed.length <= 2 && /\p{S}$/u.test(sanitized);
-}
-
 function pushCandidate(list: string[], seen: Set<string>, value: string | undefined | null): void {
   if (!value) return;
   const v = value.trim();
@@ -158,10 +146,6 @@ export function buildCandidates(sanitized: string, trimmed: string, kind: QueryK
   const seen = new Set<string>();
 
   if (!trimmed) return candidates;
-
-  if (preferExactFirst(sanitized, trimmed)) {
-    pushCandidate(candidates, seen, sanitized);
-  }
 
   const isCJK = CJK_CHAR.test(trimmed);
   // A capitalised word goes first: Wiktionary has "Paris" (the city) and "May" (the month) apart
@@ -269,6 +253,31 @@ export function normalizeQuery(raw: string): NormalizedQuery {
     isCJK: CJK_CHAR.test(trimmed),
     candidates: buildCandidates(sanitized, trimmed, kind)
   };
+}
+
+/**
+ * The query taken as typed, edge punctuation included: "etc.", "C++", "U.S." when the dictionary
+ * has a page of that exact title. Its own spelling comes first, then the usual ladder.
+ */
+export function exactQuery(query: NormalizedQuery): NormalizedQuery {
+  const exact = query.sanitized;
+  if (!exact || exact === query.trimmed) return query;
+  const kind = classify(exact);
+  const candidates = [exact, ...buildCandidates(exact, exact, kind).filter((c) => c !== exact)];
+  return { ...query, trimmed: exact, kind, candidates };
+}
+
+/** Whether trimming the edges dropped anything a dictionary title could keep ("etc." against "etc"). */
+export function hasEdgePunctuation(query: NormalizedQuery): boolean {
+  return !!query.trimmed && query.sanitized !== query.trimmed && !query.isCJK && query.kind !== 'sentence';
+}
+
+/**
+ * Two spellings that open the same page: case and spacing aside, every character counts, so
+ * "etc." and "etc", or "ob-" and "ob", are two lookups.
+ */
+export function exactLookupKey(text: string): string {
+  return sanitize(text || '').toLocaleLowerCase();
 }
 
 /**

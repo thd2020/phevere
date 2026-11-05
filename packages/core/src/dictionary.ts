@@ -77,7 +77,7 @@ import { closestSpelling } from './vocab-lemma';
 import { wrapConsole } from './log';
 import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigured, type OfflineHit } from './runtime';
 import { registerHeadwordResolver } from './vocab-store';
-import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey } from './text-normalize';
+import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey, exactQuery, exactLookupKey, hasEdgePunctuation } from './text-normalize';
 import { isGrammaticalFormOfGloss, splitSurfaceAndLemma, sameLookupFold, stripGlossText } from './lookup-policy';
 import { formLine, formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, resolveFormOf } from './form-of';
 import { buildEtymology, EtymologyLink } from './etymology';
@@ -132,6 +132,8 @@ const PARTIAL_PERSIST_TTL_MS = 24 * 60 * 60 * 1000;
 const FORM_CHECK_MS = 3500;
 /** Longest a result that may be a form is held back while that page is on its way. */
 const FORM_HOLD_MS = 1200;
+/** Longest wait for whether Wiktionary has a page titled exactly as typed ("etc.", "C++"). */
+const EXACT_TITLE_MS = 1500;
 /**
  * Stored on every result saved since forms opened as their word (2026-11-04); a saved result
  * without it is looked up again once. A mark, not a date: partial results are saved with an
@@ -653,7 +655,7 @@ export class DictionaryService extends BaseService {
   private async lookupWord(text: string, targetLanguage: string = 'auto', enabledSources?: string[], opts?: LookupOpts): Promise<DictionaryResult> {
     const startTime = Date.now();
 
-    const query = normalizeQuery(text);
+    let query = normalizeQuery(text);
 
     if (!query.trimmed) {
       return {
@@ -671,6 +673,7 @@ export class DictionaryService extends BaseService {
     }
 
     try {
+      query = await this.withExactTitle(query);
       const hintedSource = (opts?.sourceLanguage || '').toLowerCase().split('-')[0];
       const detectedLanguage =
         hintedSource && hintedSource !== 'auto' ? hintedSource : await this.detectSourceLanguage(query.trimmed);
@@ -932,7 +935,10 @@ export class DictionaryService extends BaseService {
         r.metadata = { ...(r.metadata || {}), ...mark, originalSelection: query.raw };
         return r;
       };
-      const next = await this.lookupWithCandidates(normalizeQuery(word), targetLanguage, detectedLanguage, enabledSources, holder, {
+      // The word comes from the dictionary's own data, so its spelling is kept as it is ("etc.").
+      const exact = normalizeQuery(word);
+      if (hasEdgePunctuation(exact)) this.typedTitles.add(exact.sanitized);
+      const next = await this.lookupWithCandidates(exactQuery(exact), targetLanguage, detectedLanguage, enabledSources, holder, {
         ...(opts || {}),
         ...extra,
         originalSelection: word,
@@ -949,7 +955,7 @@ export class DictionaryService extends BaseService {
     const started = Date.now();
     const lang = (detectedLanguage || 'en').toLowerCase().split('-')[0];
     const headword = foldLatinHeadword(query.trimmed) || query.trimmed;
-    const decisionKey = foldLookupKey(query.trimmed);
+    const decisionKey = exactLookupKey(query.trimmed);
     const kaikkiOn =
       lang === 'en' && isCoreConfigured() && query.kind === 'word' && !/\s/.test(headword) && this.isNamedSourceOn('Kaikki', enabledSources);
     // "Paris" typed with its capital is the city, not the plural of pari.
@@ -979,7 +985,7 @@ export class DictionaryService extends BaseService {
       const decision = this.decideForm(r, early);
       if (!early) this.noteFormDecision(decisionKey, decision.then((d) => d.lemma));
       formCheck = decision.then(({ lemma, sure }) => {
-        if (lemma && foldLookupKey(lemma) !== foldLookupKey(query.trimmed)) {
+        if (lemma && exactLookupKey(lemma) !== exactLookupKey(query.trimmed)) {
           // An irregular form spelled unlike its lemma ("ran", "was", "mice") says what it is above
           // the entry, as learner dictionaries give it a short entry of its own.
           const line = formLine(headword, 'en');
@@ -1049,7 +1055,7 @@ export class DictionaryService extends BaseService {
     if (formOf) return formOf;
     stamp(result);
     const target = opts?.noCorrection ? null : misspellingTarget(result);
-    if (!target || foldLookupKey(target) === foldLookupKey(query.trimmed)) return result;
+    if (!target || exactLookupKey(target) === exactLookupKey(query.trimmed)) return result;
     const fixed = await instead(target, { noCorrection: true }, { correctedFrom: result.metadata?.correctedFrom || query.trimmed });
     if (!fixed || misspellingTarget(fixed)) return result;
     return fixed;
@@ -1089,7 +1095,7 @@ export class DictionaryService extends BaseService {
    */
   async settledHeadword(word: string, language = 'en'): Promise<string> {
     const w = String(word || '').trim();
-    const pending = this.formDecisions.get(foldLookupKey(w));
+    const pending = this.formDecisions.get(exactLookupKey(w));
     try {
       if (pending) return (await withTimeout(pending, FORM_CHECK_MS + 1000, 'form-of')) || w;
       const lang = (language || 'en').toLowerCase().split('-')[0];
@@ -1792,7 +1798,7 @@ export class DictionaryService extends BaseService {
 
     // kaikki.org paths are case-sensitive (Haus is German, haus is not): keep the
     // selection's spelling when this candidate is only its folded form.
-    const selection = trimEdges(sanitize(opts?.originalSelection || ''));
+    const selection = this.typedForm(opts?.originalSelection || '');
     const languageWord = selection && foldLookupKey(selection) === foldLookupKey(text) ? selection : text;
     this.queueLanguageSources(languageWord, langForDict, {
       isSourceEnabled,
@@ -2075,7 +2081,7 @@ export class DictionaryService extends BaseService {
       const uniqueSynonyms = Array.from(new Set(synonyms.map((s) => (s || '').trim()).filter(Boolean)));
       const uniqueAntonyms = Array.from(new Set(antonyms.map((s) => (s || '').trim()).filter(Boolean)));
       const uniqueSources = Array.from(new Set(sources.map((s) => (s || '').trim())));
-      const surfaceForm = this.displayHeadword(trimEdges(sanitize(opts?.originalSelection || text))) || text;
+      const surfaceForm = this.displayHeadword(this.typedForm(opts?.originalSelection || text)) || text;
       const headword = surfaceForm;
       const fallbackIpa = pronunciations.some((p) => p.ipa)
         ? undefined
@@ -2406,10 +2412,34 @@ export class DictionaryService extends BaseService {
   /** Capitalised words Wiktionary has as proper nouns this session; their headword keeps its capital. */
   private readonly properNouns = new Set<string>();
 
+  /** Titles looked up as typed, punctuation and capitals included ("etc.", "U.S.", "C++"). */
+  private readonly typedTitles = new Set<string>();
+
   /** The headword a result shows: "Paris" as typed when it is a proper noun, otherwise folded. */
   private displayHeadword(typed: string): string {
     const t = String(typed || '').trim();
-    return this.properNouns.has(t) ? t : foldLatinHeadword(t) || t;
+    return this.properNouns.has(t) || this.typedTitles.has(t) ? t : foldLatinHeadword(t) || t;
+  }
+
+  /** A selection as the lookup took it: whole when it is a typed title ("etc."), else edge-trimmed. */
+  private typedForm(selection: string): string {
+    const t = sanitize(selection || '');
+    return this.typedTitles.has(t) ? t : trimEdges(t);
+  }
+
+  /**
+   * The query as typed when its edge punctuation may belong to the word and Wiktionary has a page
+   * with that exact title: "etc." and "C++" open as typed, while "hello," has no page and is
+   * looked up as "hello". The dictionary decides, not a list of abbreviations.
+   */
+  private async withExactTitle(query: NormalizedQuery): Promise<NormalizedQuery> {
+    if (!hasEdgePunctuation(query) || !isCoreConfigured()) return query;
+    if (this.typedTitles.has(query.sanitized)) return exactQuery(query);
+    const page = await withTimeout(this.wiktionaryDefinitions(query.sanitized), EXACT_TITLE_MS, 'exact-title').catch((): null => null);
+    if (!page || typeof page !== 'object' || !Object.keys(page).length) return query;
+    this.typedTitles.add(query.sanitized);
+    if (this.typedTitles.size > 400) this.typedTitles.delete(this.typedTitles.values().next().value as string);
+    return exactQuery(query);
   }
 
   /** Wiktionary's definitions page for an exact title ("Paris" and "paris" differ), or null. */
