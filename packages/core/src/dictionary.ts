@@ -157,6 +157,11 @@ const PARTIAL_PERSIST_TTL_MS = 24 * 60 * 60 * 1000;
 const FORM_CHECK_MS = 3500;
 /** Longest a result that may be a form is held back while that page is on its way. */
 const FORM_HOLD_MS = 1200;
+/**
+ * Longest wait on a normal network for whether Wiktionary has a page titled exactly as typed
+ * ("etc.", "C++"); withBudget stretches it to two of Wiktionary's round trips when that is longer.
+ */
+const EXACT_TITLE_MS = 1500;
 /** Whether Wiktionary has a page titled exactly as typed ("etc.") is kept this long. */
 const EXACT_TITLE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /**
@@ -1983,13 +1988,15 @@ export class DictionaryService extends BaseService {
     }
     // A first paint without a single sense reads as "no definitions", and the lookup then moves on
     // to the lemma and to spelling suggestions. While the dictionaries have not answered (a slow
-    // connection), there is nothing to paint yet: wait for them, as long as the lookup's deadline
-    // allows. Each request is bounded by its own timeout and backup request (net.ts).
+    // connection), there is nothing to paint yet: wait for them, two more of their round trips
+    // (a hung request's backup goes out after one). A dictionary host that answers nothing at all
+    // must not hold a word it does not know until the lookup's deadline: with Wiktionary down,
+    // "qwzxv" would end as "Lookup timed out" after twelve seconds instead of no definitions.
     const anySenses = () =>
       definitions.length > 0 ||
       finished.some((v: any) => v && !v.error && ((v.data?.definitions?.length || 0) > 0 || (v.type === 'offlineFallback' && v.data?.length > 0)));
     if (!hasLocal && primaryPromises.length && !anySenses()) {
-      await this.waitForFirstPaint(primaryPromises, primaryPromises, 0, budgetMs(LOOKUP_DEADLINE_MS, [FREE_DICTIONARY, WIKTIONARY], 6));
+      await this.waitForFirstPaint(primaryPromises, primaryPromises, 0, budgetMs(CORE_WAIT_WITHOUT_LOCAL_MS, [FREE_DICTIONARY, WIKTIONARY], 2));
     }
     if (frequencyReady) await withTimeout(frequencyReady, 250, 'sense-frequency').catch((): undefined => undefined);
 
@@ -2617,15 +2624,27 @@ export class DictionaryService extends BaseService {
     } catch {
       /* asked again below */
     }
-    // No time limit of its own: the decision must not depend on how slow the connection is. Each
-    // request is bounded by its timeout and its backup request (net.ts); only a Wiktionary that
-    // keeps failing outright leaves the bare word.
     if (this.isSourceDown('wiktionary')) return query;
-    const [page, bare] = await Promise.all([
-      this.wiktionaryDefinitions(exact),
-      sentenceMarks ? this.wiktionaryDefinitions(query.trimmed) : Promise.resolve(null),
-    ]);
-    const unanswered = this.unansweredTitles.has(exact) || (sentenceMarks && this.unansweredTitles.has(query.trimmed));
+    // The wait follows Wiktionary's round trip (withBudget), so a slow connection still gets the
+    // answer, a hung request included (its backup goes out a round trip later). Every lookup with
+    // a mark at its edge ("hello," from a sentence) waits here before anything shows, cached
+    // words too, so a Wiktionary that answers nothing at all must not hold it for the requests'
+    // whole timeouts. A check that ran out decides nothing and is not saved.
+    let timedOut = false;
+    const [page, bare] = await withBudget(
+      Promise.all([
+        this.wiktionaryDefinitions(exact),
+        sentenceMarks ? this.wiktionaryDefinitions(query.trimmed) : Promise.resolve(null),
+      ]),
+      EXACT_TITLE_MS,
+      WIKTIONARY,
+      1,
+      'exact-title',
+    ).catch((): [null, null] => {
+      timedOut = true;
+      return [null, null];
+    });
+    const unanswered = timedOut || this.unansweredTitles.has(exact) || (sentenceMarks && this.unansweredTitles.has(query.trimmed));
     const decide = (typed: boolean): NormalizedQuery => {
       if (!unanswered && store) {
         void Promise.resolve(store.set(key, { typed }, Date.now())).catch((): undefined => undefined);

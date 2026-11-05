@@ -41,6 +41,8 @@ interface HostState {
   inFlight: number;
   first: Array<() => void>;
   later: Array<() => void>;
+  /** Backup timers set before the host had answered once, set again by its first answer. */
+  onFirstAnswer: Set<() => void>;
 }
 
 const hosts = new Map<string, HostState>();
@@ -53,7 +55,7 @@ export function hostOf(url: string): string {
 function state(host: string): HostState {
   let s = hosts.get(host);
   if (!s) {
-    s = { srtt: 0, rttvar: 0, samples: 0, inFlight: 0, first: [], later: [] };
+    s = { srtt: 0, rttvar: 0, samples: 0, inFlight: 0, first: [], later: [], onFirstAnswer: new Set() };
     hosts.set(host, s);
   }
   return s;
@@ -71,6 +73,7 @@ export function noteRoundTrip(host: string, ms: number): void {
     s.srtt = 0.875 * s.srtt + 0.125 * ms;
   }
   s.samples += 1;
+  if (s.samples === 1) for (const f of Array.from(s.onFirstAnswer)) f();
 }
 
 /** The host's retransmission timeout, or 0 before it has answered once. */
@@ -89,6 +92,11 @@ const waiting = new Set<{ since: number }>();
  * (the first lookup after an app start), the oldest request still waiting is taken as a first
  * round trip, since the real one is at least that long, and turned into an RTO the way RFC 6298
  * turns a first sample into one (three times the sample). Nothing sent yet gives 0.
+ *
+ * That guess stops at FIRST_HEDGE_MS. A connection that is slow and one that answers nothing at
+ * all (Wi-Fi without internet) look the same until the first answer, and an uncapped guess grows
+ * with the wait itself: every budget asked again when it ran out was three times further away,
+ * so on a dead connection no budget ever ran out before its requests did.
  */
 export function typicalRtoMs(): number {
   const list = Array.from(hosts.keys()).map(rtoMs).filter(Boolean).sort((a, b) => a - b);
@@ -96,7 +104,7 @@ export function typicalRtoMs(): number {
   let oldest = 0;
   const now = Date.now();
   for (const w of waiting) oldest = Math.max(oldest, now - w.since);
-  return oldest ? Math.round(Math.min(MAX_RTO_MS, Math.max(MIN_RTO_MS, 3 * oldest))) : 0;
+  return oldest ? Math.round(Math.min(FIRST_HEDGE_MS, Math.max(MIN_RTO_MS, 3 * oldest))) : 0;
 }
 
 /**
@@ -208,6 +216,7 @@ export function trackHttp(inner: HttpClient): HttpClient {
         if (ok || answered(v)) {
           done = true;
           clearTimeout(timer);
+          unhook();
           if (ok) resolve(v as T);
           else reject(v);
           return;
@@ -217,16 +226,36 @@ export function trackHttp(inner: HttpClient): HttpClient {
         if (!pending && !backupWaiting) {
           done = true;
           clearTimeout(timer);
+          unhook();
           reject(firstError);
         }
       };
       let backupWaiting = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
       // The backup is due a round trip after the first request went out, not after it queued.
+      // Before the host has answered once that round trip is a guess (FIRST_HEDGE_MS); the host's
+      // first answer, to this request's neighbours, replaces the guess with its RTO.
+      let rearm: (() => void) | null = null;
+      const unhook = () => {
+        if (rearm) s.onFirstAnswer.delete(rearm);
+        rearm = null;
+      };
       const arm = () => {
-        timer = setTimeout(backup, hedgeAfter);
+        const sentAt = Date.now();
+        // A request that queued for a slot may go out after the host's first answer.
+        const known = rtoMs(host);
+        timer = setTimeout(backup, known || hedgeAfter);
+        if (known) return;
+        rearm = () => {
+          unhook();
+          if (done) return;
+          clearTimeout(timer);
+          timer = setTimeout(backup, Math.max(0, sentAt + rtoMs(host) - Date.now()));
+        };
+        s.onFirstAnswer.add(rearm);
       };
       const backup = () => {
+        unhook();
         if (done) return;
         // The backup takes one of the host's three slots, waiting for one if all are open.
         backupWaiting = true;

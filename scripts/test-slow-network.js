@@ -125,9 +125,40 @@ const cases = {
   },
 };
 
+// Wiktionary answers nothing at all (blocked, or its address resolves to nowhere) while the other
+// dictionaries answer at once. A word with a comma waits for the exact-title check only a few of
+// the typical round trips, and a word no dictionary knows still ends as no definitions.
+// These run after the cases above, so their copies of core do not hold up the others' timers.
+const dead = {};
+const wiktionaryDown = (seed) => ({ delay: [150, 250], hang: 1, hangOnly: (url) => url.includes('wiktionary.org'), seed });
+dead['"cat," with Wiktionary down'] = async () => {
+  const started = Date.now();
+  const cat = await app(wiktionaryDown('down-a')).service.lookup('cat,', 'zh');
+  const took = Date.now() - started;
+  assert.equal(cat.word, 'cat', '"cat," opens cat');
+  assert.ok(senses(cat).some((m) => /feline/.test(m)), 'with the Free Dictionary sense');
+  assert.ok(took < 9000, `the exact-title check gives up a few round trips in (${took} ms; each request's timeout and backup take 9 s)`);
+};
+dead['a word nobody knows with Wiktionary down'] = async () => {
+  const started = Date.now();
+  const r = await app(wiktionaryDown('down-b')).service.lookup('qwzxv', 'zh');
+  const took = Date.now() - started;
+  assert.ok(!r.metadata.timedOut, `ends as no definitions, not "Lookup timed out" (${took} ms)`);
+  assert.ok(took < 10000, `within ten seconds (${took} ms)`);
+};
+// Nothing answers at all (Wi-Fi without internet). Before any host has answered, the guess at the
+// round trip grows with the wait but stops at three seconds, so a budget asked again keeps its end.
+dead['budgets on a connection that answers nothing'] = async () => {
+  const { core } = app({});
+  const dead = { requestJson: (url, o) => new Promise((_, reject) => setTimeout(() => reject(new core.DictionaryError('timed out', 'TIMEOUT', true)), o.timeoutMs)), requestText: async () => ({}), requestBytes: async () => ({}) };
+  core.trackHttp(dead).requestJson('https://nowhere.example.org/a', { timeoutMs: 20000 }).catch(() => {});
+  await new Promise((r) => setTimeout(r, 6000));
+  const b = core.budgetMs(1500, 'unseen.example.org');
+  assert.ok(b <= 3000, `six seconds into a request nobody answers, a 1.5 s budget is ${b} ms`);
+};
 // A request answered by its backup: the original answering late is not a round trip (Karn), or one
 // hung request would put the host's next backups six seconds out.
-cases['a late answer after its backup'] = async () => {
+dead['a late answer after its backup'] = async () => {
   const { core } = app({});
   let n = 0;
   const http = core.trackHttp({
@@ -165,13 +196,16 @@ for (const [label, net] of Object.entries(etcNets)) {
 
 (async () => {
   const t0 = Date.now();
-  // Each case runs in its own copy of core, all at once.
-  const names = Object.keys(cases);
-  const results = await Promise.allSettled(names.map((n) => cases[n]()));
-  const failed = results.map((r, i) => [names[i], r]).filter(([, r]) => r.status === 'rejected');
+  // Each case runs in its own copy of core, all of a batch at once.
+  const failed = [];
+  for (const batch of [cases, dead]) {
+    const names = Object.keys(batch);
+    const results = await Promise.allSettled(names.map((n) => batch[n]()));
+    failed.push(...results.map((r, i) => [names[i], r]).filter(([, r]) => r.status === 'rejected'));
+  }
   for (const [name, r] of failed) console.error(`FAIL ${name}: ${r.reason && r.reason.message}`);
   if (failed.length) process.exit(1);
-  console.log(`Slow network passed in ${Math.round((Date.now() - t0) / 1000)} s: definitions arrive at 3 s a request, "etc." opens etc. with 2 to 3 s and hangs, a hung request is answered by its backup.`);
+  console.log(`Slow network passed in ${Math.round((Date.now() - t0) / 1000)} s: definitions arrive at 3 s a request, "etc." opens etc. with 2 to 3 s and hangs, a hung request is answered by its backup, a Wiktionary that answers nothing holds no lookup for long.`);
   // The service keeps safety-net timers for lookups; they would hold the process open.
   process.exit(0);
 })().catch((err) => {
