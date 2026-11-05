@@ -125,6 +125,28 @@ const cases = {
   },
 };
 
+// A request answered by its backup: the original answering late is not a round trip (Karn), or one
+// hung request would put the host's next backups six seconds out.
+cases['a late answer after its backup'] = async () => {
+  const { core } = app({});
+  let n = 0;
+  const http = core.trackHttp({
+    requestJson: () => {
+      n += 1;
+      const ms = n === 11 ? 5500 : 300;
+      return new Promise((r) => setTimeout(() => r({}), ms));
+    },
+    requestText: async () => ({}),
+    requestBytes: async () => ({}),
+  });
+  for (let i = 0; i < 10; i += 1) await http.requestJson('https://late.example.org/a');
+  const before = core.rtoMs('late.example.org');
+  await http.requestJson('https://late.example.org/b');
+  await new Promise((r) => setTimeout(r, 6000));
+  const after = core.rtoMs('late.example.org');
+  assert.ok(after <= before + 200, `the host's RTO stays ${before} ms (now ${after} ms)`);
+};
+
 // "etc." is a title of its own; with Wiktionary two or three seconds away it is still opened as
 // typed, and so it is when the first request for its page never answers.
 const etcNets = {

@@ -171,7 +171,11 @@ export function trackHttp(inner: HttpClient): HttpClient {
     const asked = rest.timeoutMs ?? CLIENT_TIMEOUT_MS;
     const timeoutMs = api && 2 * rto > asked ? Math.min(MAX_RTO_MS * 2, 2 * rto) : rest.timeoutMs;
     const init: HttpRequestInit = timeoutMs != null ? { ...rest, timeoutMs } : rest;
-    const once = async (queued: boolean, took = false, onSend?: () => void): Promise<T> => {
+    // `decided`: the request's backup has already answered, so this answer is late. Its time is
+    // left out of the round trips, as Karn's algorithm leaves out a retransmitted segment's: a
+    // request that hung for six seconds would otherwise raise the host's RTO to six seconds, and
+    // the next hung request would wait that long for its backup.
+    const once = async (queued: boolean, took = false, onSend?: () => void, decided?: () => boolean): Promise<T> => {
       if (queued && !took) await takeSlot(s, slot === 'later');
       else if (!took) s.inFlight += 1;
       onSend?.();
@@ -180,10 +184,10 @@ export function trackHttp(inner: HttpClient): HttpClient {
       if (api) waiting.add(mark);
       try {
         const value = await (inner[kind] as (u: string, o?: HttpRequestInit) => Promise<T>).call(inner, url, init);
-        if (api) noteRoundTrip(host, Date.now() - started);
+        if (api && !decided?.()) noteRoundTrip(host, Date.now() - started);
         return value;
       } catch (err) {
-        if (api && answered(err)) noteRoundTrip(host, Date.now() - started);
+        if (api && answered(err) && !decided?.()) noteRoundTrip(host, Date.now() - started);
         throw err;
       } finally {
         waiting.delete(mark);
@@ -233,13 +237,13 @@ export function trackHttp(inner: HttpClient): HttpClient {
             return;
           }
           pending += 1;
-          once(false, true).then(
+          once(false, true, undefined, () => done).then(
             (v) => settle(true, v),
             (e) => settle(false, e),
           );
         });
       };
-      once(!!slot, false, arm).then(
+      once(!!slot, false, arm, () => done).then(
         (v) => settle(true, v),
         (e) => {
           // A first request that failed outright before its backup was due is not hedged.
