@@ -1,0 +1,91 @@
+/*
+ * Menus opened from a button (popover-menu.ts): a word book's actions and "Add to word book".
+ * A floating card under its button on wide screens, a sheet from the bottom on a phone. The
+ * colours fall back to the notebook palette where its variables are not defined (the lookup
+ * window).
+ */
+.pv-menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  /* Over a window's drag region (the lookup window's toolbar), clicks still reach the menu. */
+  -webkit-app-region: no-drag;
+}
+.pv-menu-scrim.is-sheet {
+  background: rgba(28, 25, 23, 0.32);
+  animation: pv-menu-fade 0.18s cubic-bezier(0.2, 0, 0, 1) both;
+}
+.pv-menu {
+  position: fixed;
+  min-width: 200px;
+  max-width: min(320px, calc(100vw - 16px));
+  max-height: min(420px, calc(100vh - 16px));
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--nbv-line, #d7c3bb);
+  border-radius: 12px;
+  background: var(--nbv-panel, #fffdf9);
+  box-shadow: 0 12px 32px -12px rgba(28, 25, 23, 0.35), 0 2px 6px rgba(28, 25, 23, 0.08);
+  font: 500 13.5px/1.25 var(--nbv-ui, Outfit, 'Segoe UI', system-ui, sans-serif);
+  color: var(--nbv-ink, #1c1917);
+  animation: pv-menu-in 0.16s cubic-bezier(0.2, 0, 0, 1) both;
+}
+.pv-menu.is-sheet {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-width: 0;
+  max-width: none;
+  max-height: 70vh;
+  padding: 8px 8px calc(12px + env(safe-area-inset-bottom, 0px));
+  border: 0;
+  border-radius: 20px 20px 0 0;
+  animation: pv-menu-up 0.24s cubic-bezier(0.2, 0, 0, 1) both;
+}
+.pv-menu__title {
+  margin: 6px 12px 8px;
+  font: 600 12px/1 var(--nbv-ui, Outfit, system-ui, sans-serif);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nbv-soft, #5c534e);
+}
+.pv-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pv-menu.is-sheet .pv-menu__item { min-height: 48px; font-size: 15px; }
+.pv-menu__item:hover,
+.pv-menu__item:focus-visible { background: var(--nbv-paper-2, #eeeae4); outline: none; }
+.pv-menu__item.is-danger { color: #a8281c; }
+.pv-menu__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-menu__tick {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--nbv-line, #d7c3bb);
+  border-radius: 6px;
+  color: transparent;
+  transition: background-color 0.14s cubic-bezier(0.2, 0, 0, 1), border-color 0.14s cubic-bezier(0.2, 0, 0, 1);
+}
+.pv-menu__tick svg { width: 14px; height: 14px; }
+.pv-menu__item[aria-checked='true'] .pv-menu__tick { border-color: var(--nbv-teal, #0f6e71); background: var(--nbv-teal, #0f6e71); color: #fff; }
+
+@keyframes pv-menu-in { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes pv-menu-up { from { transform: translateY(100%); } }
+@keyframes pv-menu-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .pv-menu, .pv-menu.is-sheet, .pv-menu-scrim.is-sheet { animation: none; }
+}

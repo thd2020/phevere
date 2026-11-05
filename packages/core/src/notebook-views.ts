@@ -252,7 +252,9 @@ function startCard(box: any): void {
  * go along, so the picture is checked against what the word means.
  */
 export function fillWordImages(root: any, fetchImage: WordImageFetcher): void {
-  const boxes: any[] = Array.from(root?.querySelectorAll?.('[data-img-lemma]:not([data-img-done])') || []);
+  // Boxes already waiting for a picture keep their place in the queue; the card table calls
+  // this again each time it draws more cards.
+  const boxes: any[] = Array.from(root?.querySelectorAll?.('[data-img-lemma]:not([data-img-done])') || []).filter((b) => !cardState.has(b));
   if (!boxes.length) return;
   for (const b of boxes) cardState.set(b, { visible: false, near: false, fetch: fetchImage });
   const IO = (globalThis as any).IntersectionObserver;

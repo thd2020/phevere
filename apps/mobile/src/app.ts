@@ -41,6 +41,8 @@ import {
   closeTreeInspector,
   traceNotebookFamilies,
   attachCardTable,
+  readCardLayouts,
+  withCardLayout,
   disposeNotebookMaps,
   peekSuggestions,
   suggestWords,
@@ -91,7 +93,6 @@ import {
   type WordsContext,
   type WordsScope,
   type BookSort,
-  type CardLayout,
   type FamilyGrouping,
   type MorphKind,
   type NotebookView,
@@ -124,6 +125,11 @@ import {
   findBookConflict,
   importBookPayload,
   type BookScope,
+  wireIndexRail,
+  bookMenuItems,
+  bookRemovalPrompt,
+  bookPickItems,
+  openMenu,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
 import { playClip, playRecorded, prefetchRecorded, recordedReady, recordedUrls, speakIpa, speakText, stopAudio } from './platform/audio';
@@ -266,7 +272,8 @@ const nbState = {
   group: (readStore(NB_GROUP_KEY) || 'root') as FamilyGrouping,
   mapKinds: (readStore(NB_MAP_KEY) || 'root,prefix,char').split(',').filter(Boolean) as MorphKind[],
   flipped: new Set<string>(),
-  cardLayout: (readStore(NB_CARDS_KEY) || 'piles') as CardLayout,
+  // Expanded or not, per list; a single choice saved by an older version applies to every list.
+  cardLayouts: readCardLayouts(readStore(NB_CARDS_KEY)),
   review: null as ReviewState | null,
   goal: Number(readStore(NB_GOAL_KEY)) || 10,
   lang: readStore(NB_LANG_KEY) || 'all',
@@ -351,6 +358,7 @@ const wordsState = {
   /** Book words opened on their brief definition, by lowercase headword. */
   open: new Set<string>(),
   loading: wbMeaningInFlight,
+  bookPick: false,
 };
 let wbSubs: WordbookSub[] = [];
 let wbUserBooks: UserBook[] = [];
@@ -409,6 +417,7 @@ async function refreshWords(): Promise<void> {
   try {
     wbSubs = await listWordbookSubs();
     wbUserBooks = await listUserBooks();
+    wordsState.bookPick = wbUserBooks.some((b) => !b.deleted);
     wbProgress = new Map((await listBookProgress()).map((p) => [p.lemma, p]));
     for (const s of wbSubs) if (!isUserBookId(s.bookId) && !wbBooks.has(s.bookId)) wbBooks.set(s.bookId, await loadWordbook(s.bookId));
     await primeBookLevels(wbSubs.map((s) => s.bookId));
@@ -583,6 +592,8 @@ function lookupPaneHtml(): string {
     recent: recentLookups,
     savedFor: (q) => notebook.find((e) => e.lemma.trim().toLowerCase() === q.trim().toLowerCase()),
     headTools: !stripMode,
+    bookPick: wordsState.bookPick,
+    saveWord: result ? saveLemma(result) : undefined,
     // An empty list (pictures off, or a word part) keeps no picture boxes; null means loading.
     senseImages: prefs.senseImages === false || (result && morphemeOf(result)) ? [] : currentSenseImages(),
     ownWords: morphemeOf(result) ? ownWords() : undefined,
@@ -818,15 +829,19 @@ function bindNotebookViews(): void {
       },
     );
   }
+  const fillImages = () => {
+    if (prefs.senseImages !== false) {
+      fillWordImages(page, (lemma, lang, gloss, pos, onPicture) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture }));
+    }
+  };
   attachCardTable(page, {
-    onLayout: (layout) => {
-      nbState.cardLayout = layout;
-      writeStore(NB_CARDS_KEY, layout);
+    onLayout: (layout, list) => {
+      nbState.cardLayouts = withCardLayout(nbState.cardLayouts, list || 'mine', layout);
+      writeStore(NB_CARDS_KEY, JSON.stringify(nbState.cardLayouts));
     },
+    onCards: fillImages,
   });
-  if (prefs.senseImages !== false) {
-    fillWordImages(page, (lemma, lang, gloss, pos, onPicture) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture }));
-  }
+  fillImages();
 }
 
 function bindLearn(): void {
@@ -1536,7 +1551,11 @@ function openSensePicture(frame: HTMLElement): void {
  * A small choice sheet over the app: a message, a line of detail and one button per answer.
  * Resolves with the chosen button's index, or -1 when dismissed.
  */
-function askChoice(message: string, detail: string, buttons: string[]): Promise<number> {
+/**
+ * A choice sheet. `focus` is the button that has focus when it opens; a destructive question
+ * puts it on Cancel, as Apple's alerts and Material's dialogs do, so Enter never destroys.
+ */
+function askChoice(message: string, detail: string, buttons: string[], focus = 0): Promise<number> {
   return new Promise((resolve) => {
     const dlg = document.createElement('dialog');
     dlg.className = 'pv-choice nbv';
@@ -1556,21 +1575,19 @@ function askChoice(message: string, detail: string, buttons: string[]): Promise<
     dlg.addEventListener('cancel', () => done(-1));
     document.body.appendChild(dlg);
     dlg.showModal();
+    if (focus) dlg.querySelector<HTMLElement>(`[data-i="${focus}"]`)?.focus();
   });
 }
 
-/** The book Words is showing, as an export scope. */
-function exportScope(): BookScope {
-  const s = wordsState.scope;
-  if (s === 'mine' || s === 'all' || s === 'sources' || wordsState.library) return { kind: 'mine' };
+/** A list from its menu (My words or a book), as an export scope. */
+function exportScope(s: string): BookScope {
+  if (!s || s === 'mine' || s === 'all' || s === 'sources') return { kind: 'mine' };
   return isUserBookId(s) ? { kind: 'user', id: s } : { kind: 'catalog', id: s };
 }
 
-async function exportWords(): Promise<void> {
-  const pick = await askChoice('Export this book', '', ['Phevere book', 'For Anki', 'Cancel']);
-  if (pick !== 0 && pick !== 1) return;
+async function exportWords(scope: string, anki: boolean): Promise<void> {
   try {
-    const name = await exportBook(exportScope(), pick === 1);
+    const name = await exportBook(exportScope(scope), anki);
     toast(`Saved ${name}`);
   } catch (err) {
     toast(err instanceof Error ? err.message : 'Could not export');
@@ -1970,61 +1987,19 @@ function legacyCopy(text: string): boolean {
 }
 
 /**
- * Notebook A–Z rail (sort A–Z): tap or drag along the letters to jump; a large letter
- * shows in the middle of the screen while the finger is down, as on desktop.
+ * Notebook A–Z rail (sort A–Z): tap a letter, or press and drag along the letters, to jump; a
+ * large letter shows in the middle of the screen while dragging, as on desktop.
  */
 function bindAzRail(): void {
   const nav = document.querySelector<HTMLElement>('[data-az-rail]');
   const hud = document.querySelector<HTMLElement>('.vocab-az-hud');
   if (!nav || !hud) return;
-  const letters = [...nav.querySelectorAll<HTMLElement>('.vocab-az__letter')];
-  const letterAt = (y: number): string | null => {
-    const r = nav.getBoundingClientRect();
-    const i = Math.max(0, Math.min(letters.length - 1, Math.floor(((y - r.top) / Math.max(r.height, 1)) * letters.length)));
-    return letters[i]?.dataset.letter || null;
-  };
-  let current = '';
-  const jump = (letter: string | null) => {
-    if (!letter) return;
-    hud.textContent = letter;
-    hud.hidden = false;
-    if (letter === current) return;
-    current = letter;
-    const target =
-      document.querySelector<HTMLElement>(`.vocab-list [data-az="${letter}"]`) ||
-      (letter === '#' ? document.querySelector<HTMLElement>('.vocab-list .vocab-item') : null);
-    target?.scrollIntoView({ block: 'start' });
-  };
-  let scrubbing = false;
-  nav.addEventListener('pointerdown', (e) => {
-    scrubbing = true;
-    current = '';
-    try {
-      nav.setPointerCapture(e.pointerId);
-    } catch {
-      /* pointer already gone */
-    }
-    jump((e.target as HTMLElement).closest<HTMLElement>('.vocab-az__letter')?.dataset.letter || letterAt(e.clientY));
-    e.preventDefault();
-  });
-  nav.addEventListener('pointermove', (e) => {
-    if (scrubbing) jump(letterAt(e.clientY));
-  });
-  const end = () => {
-    scrubbing = false;
-    hud.hidden = true;
-  };
-  nav.addEventListener('pointerup', end);
-  nav.addEventListener('pointercancel', end);
-  nav.addEventListener('lostpointercapture', end);
-  // Keyboard and screen readers: a click on a letter jumps without the HUD.
-  nav.addEventListener('click', (e) => {
-    const letter = (e.target as HTMLElement).closest<HTMLElement>('.vocab-az__letter')?.dataset.letter;
-    if (letter && !scrubbing) {
-      current = '';
-      jump(letter);
-      hud.hidden = true;
-    }
+  wireIndexRail(nav, {
+    jump: (letter) => document.querySelector<HTMLElement>(`.vocab-list [data-az="${letter}"]`)?.scrollIntoView({ block: 'start' }),
+    hud: (letter) => {
+      hud.textContent = letter || '';
+      hud.hidden = !letter;
+    },
   });
 }
 
@@ -2504,9 +2479,54 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       window.scrollTo({ top: 0 });
       return;
     }
+    case 'wb-menu': {
+      // A list's own menu, from its chip: Export, Export for Anki, Remove or Delete.
+      const items = bookMenuItems(t.dataset.scope || 'mine');
+      if (!items.length) return;
+      openMenu(t, {
+        label: t.dataset.title || 'Book',
+        items,
+        onPick: (item) => {
+          const el = document.createElement('button');
+          Object.assign(el.dataset, item.data || {}, { act: item.act });
+          return handleAct(item.act, el, e);
+        },
+      });
+      return;
+    }
+    case 'ub-pick': {
+      // "Add to word book": the books you made or imported, ticked where the word is.
+      const word = t.dataset.q || '';
+      const items = bookPickItems(word, wbUserBooks);
+      if (!word || !items.length) return;
+      openMenu(t, {
+        label: 'Add to word book',
+        items,
+        multi: true,
+        onPick: async (item) => {
+          const book = item.data?.book || '';
+          const title = wordbookMeta(book)?.title || item.label;
+          if (item.checked) await addUserBookWords(book, [word]);
+          else await removeUserBookWord(book, word);
+          toast(item.checked ? `Added to ${title}` : `Removed from ${title}`);
+          await refreshWords();
+          paint();
+        },
+      });
+      return;
+    }
+    case 'wb-export':
+      await exportWords(t.dataset.scope || 'mine', t.dataset.fmt === 'anki');
+      return;
+    case 'wb-import':
+      await pickAndImportNotebook();
+      return;
     case 'wb-unsub': {
       const id = t.dataset.book || '';
       const title = wordbookMeta(id)?.title || id;
+      // Progress belongs to the word: it stays, and the confirmation says so.
+      const ask = bookRemovalPrompt(id);
+      if ((await askChoice(ask.title, ask.detail, [ask.confirm, 'Cancel'], 1)) !== 0) return;
       if (isUserBookId(id)) await deleteUserBook(id);
       else await unsubscribeWordbook(id);
       if (wordsState.scope === id) setWordsScope(isUserBookId(id) ? 'sources' : 'mine');
@@ -2733,12 +2753,6 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
         await refreshNotebook();
         paint();
       }
-      return;
-    case 'nb-export':
-      await exportWords();
-      return;
-    case 'nb-import':
-      await pickAndImportNotebook();
       return;
     case 'src': {
       const name = t.dataset.name || '';

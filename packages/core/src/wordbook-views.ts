@@ -4,10 +4,13 @@
  * with its progress ring and counts, a book's word list in order, and the library ordered
  * as a learning path. HTML strings with `data-act` hooks, like the other notebook views.
  *
- * Hooks: wb-scope (data-scope), wb-library, wb-sub and wb-unsub (data-book),
- * wb-save and wb-known (data-q, data-known), wb-more, wb-sort (data-sort: book,
- * recent or az), wb-expand (data-q) to open a row on its brief definition, and lookup (data-q). A subscribed book's chip in the switcher carries its own
- * wb-unsub close button.
+ * Hooks: wb-scope (data-scope), wb-library, wb-sub and wb-unsub (data-book), wb-save and
+ * wb-known (data-q, data-known), wb-more, wb-sort (data-sort: book, recent or az), wb-expand
+ * (data-q) to open a row on its brief definition, and lookup (data-q).
+ * The open list's chip in the switcher carries wb-menu (data-scope), which opens the list's
+ * own menu (`bookMenuItems`): Export, Export for Anki and, for a book, Remove or Delete, as
+ * Anki's deck menu and Quizlet's set menu hold them. The library's wb-import imports a file,
+ * since an import adds a book.
  *
  * Sources (scope 'sources') lists My words grouped by the document or site they were saved
  * from. Its hooks: src-book (data-source) makes a word book from a source, src-add (data-source,
@@ -29,8 +32,10 @@ import {
   type WordsEntry,
   type WordsScope,
 } from './wordbooks';
-import { bookWordKey } from './wordbook-store';
-import { vocabReadings, vocabSenses } from './vocab-view';
+import { bookWordKey, type UserBook } from './wordbook-store';
+import { siteIconUrl, siteMonogram } from './source-context';
+import { addToBookButtonHtml, compareAz, vocabReadings, vocabSenses } from './vocab-view';
+import type { MenuItem } from './popover-menu';
 
 const ICON = {
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
@@ -43,6 +48,7 @@ const ICON = {
   sources: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h6l2 2h8v11H4zM8 12h8M8 15.5h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   lookup: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
   close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  more: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="19" cy="12" r="1.9" fill="currentColor"/></svg>',
 };
 
 const STATUS_LABEL = { new: 'New', learning: 'Learning', known: 'Known' } as const;
@@ -82,20 +88,23 @@ function barHtml(p: { known: number; learning: number; total: number }): string 
 export function wordsScopeSwitchHtml(scope: WordsScope, ctx: WordsContext, library: boolean, now = Date.now()): string {
   const btn = (id: string, label: string, extra = '', title = label) =>
     `<button type="button" role="tab" class="wb-scope${!library && scope === id ? ' is-active' : ''}" data-act="wb-scope" data-scope="${esc(id)}" aria-selected="${!library && scope === id}" title="${esc(title)}">${extra}<span>${esc(label)}</span></button>`;
+  // The open list's chip carries a button for its menu (Export, Remove), like a split button.
+  const withMenu = (id: string, title: string, chip: string) =>
+    !library && scope === id
+      ? `<span class="wb-scope-wrap is-active">${chip}<button type="button" class="wb-scope__more" data-act="wb-menu" data-scope="${esc(id)}" data-title="${esc(title)}" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(title)} menu" title="More">${ICON.more}</button></span>`
+      : chip;
   const books = ctx.subs
     .map((s) => {
       const meta = wordbookMeta(s.bookId);
       if (!meta) return '';
       const p = bookProgress(s.bookId, ctx, now);
       const chip = btn(s.bookId, meta.short, progressRingSvg(p.known, p.learning, p.total, 18), `${meta.title}: ${fmt(p.known)} of ${fmt(p.total)} known`);
-      // A made book is deleted from its own header, where the loss is spelled out.
-      if (meta.user) return chip;
-      return `<span class="wb-scope-wrap">${chip}<button type="button" class="wb-scope__x" data-act="wb-unsub" data-book="${esc(s.bookId)}" aria-label="Remove ${esc(meta.title)}" title="Remove">${ICON.close}</button></span>`;
+      return withMenu(s.bookId, meta.title, chip);
     })
     .join('');
   const count = ctx.mine.length ? `<b class="wb-scope__n">${fmt(ctx.mine.length)}</b>` : '';
   return `<div class="wb-switch" role="tablist" aria-label="Word lists">
-    ${btn('mine', 'My words', '').replace('</span></button>', `</span>${count}</button>`)}
+    ${withMenu('mine', 'My words', btn('mine', 'My words', '').replace('</span></button>', `</span>${count}</button>`))}
     ${books}
     ${ctx.subs.length ? btn('all', 'All books', ICON.stack) : ''}
     ${scope === 'sources' || sourceGroups(ctx).length ? btn('sources', 'Sources', ICON.sources) : ''}
@@ -132,7 +141,7 @@ export function wordbookHeaderHtml(scope: WordsScope, ctx: WordsContext, now = D
   </section>`;
 }
 
-/** A made book: its title can be edited in place, words added by name, the book deleted. */
+/** A made book: its title can be edited in place and words added by name. */
 function madeBookHeaderHtml(bookId: string, title: string, sourceKey: string | undefined, p: BookProgress): string {
   const from = sourceKey ? sourceKey.replace(/^(doc|site):/, '') : '';
   const id = esc(bookId);
@@ -148,7 +157,6 @@ function madeBookHeaderHtml(bookId: string, title: string, sourceKey: string | u
         <input name="word" type="text" placeholder="Add a word" aria-label="Add a word" autocomplete="off" autocapitalize="off" spellcheck="false" />
         <button type="submit" class="nbv-secondary">Add</button>
       </form>
-      <button type="button" class="nbv-link wb-unsub" data-act="wb-unsub" data-book="${id}">Delete book</button>
     </div>
   </section>`;
 }
@@ -194,13 +202,22 @@ function addedAt(e: WordsEntry): number {
  */
 export function sortBookEntries(entries: WordsEntry[], sort: BookSort): Array<{ e: WordsEntry; n: number }> {
   const rows = entries.map((e, i) => ({ e, n: i + 1 }));
-  if (sort === 'az') rows.sort((a, b) => a.e.lemma.localeCompare(b.e.lemma, 'en', { sensitivity: 'base' }) || a.n - b.n);
+  if (sort === 'az') rows.sort((a, b) => compareAz(a.e.lemma, b.e.lemma) || a.n - b.n);
   else if (sort === 'recent') rows.sort((a, b) => addedAt(b.e) - addedAt(a.e) || a.n - b.n);
   return rows;
 }
 
-function sortBarHtml(sort: BookSort): string {
-  return `<div class="wb-sort" role="group" aria-label="Sort">${(Object.keys(SORT_LABEL) as BookSort[])
+/**
+ * The sorts a list offers. A book Phevere ships has its own order and no words you put there,
+ * so it has no Recent; a book you made or imported, and All books, keep it.
+ */
+export function bookSorts(scope: WordsScope): BookSort[] {
+  const meta = wordbookMeta(String(scope));
+  return meta && !meta.user ? ['book', 'az'] : ['book', 'recent', 'az'];
+}
+
+function sortBarHtml(sort: BookSort, sorts: BookSort[]): string {
+  return `<div class="wb-sort" role="group" aria-label="Sort">${sorts
     .map((k) => `<button type="button" class="nbv-chip${k === sort ? ' is-active' : ''}" data-act="wb-sort" data-sort="${k}" aria-pressed="${k === sort}">${SORT_LABEL[k]}</button>`)
     .join('')}</div>`;
 }
@@ -217,10 +234,13 @@ export function wordbookListHtml(
     expanded?: Set<string>;
     /** Lowercase headwords whose meaning is being looked up. */
     loading?: Set<string>;
+    /** The learner has books of their own: rows offer "Add to word book". */
+    bookPick?: boolean;
   },
 ): string {
   if (!entries.length) return `<p class="nbv-empty">${opts.filtered ? 'No matching words.' : 'No words.'}</p>`;
-  const sort = opts.sort || 'book';
+  const sorts = bookSorts(opts.scope);
+  const sort = opts.sort && sorts.includes(opts.sort) ? opts.sort : 'book';
   const shown = sortBookEntries(entries, sort).slice(0, opts.limit);
   const except = opts.scope === 'all' ? '' : String(opts.scope);
   const made = !!wordbookMeta(String(opts.scope))?.user;
@@ -241,7 +261,7 @@ export function wordbookListHtml(
         <button type="button" class="wb-row__word" data-act="wb-expand" data-q="${q}" aria-expanded="${open}">${q}</button>
         ${badgesHtml(e.books, except)}
         <span class="wb-state wb-state--${st}">${STATUS_LABEL[st]}</span>
-        <span class="wb-row__acts"><button type="button" class="wb-act" data-act="lookup" data-q="${q}" title="Look up" aria-label="Look up ${q}">${ICON.lookup}</button>${known}${save}${
+        <span class="wb-row__acts"><button type="button" class="wb-act" data-act="lookup" data-q="${q}" title="Look up" aria-label="Look up ${q}">${ICON.lookup}</button>${known}${opts.bookPick ? addToBookButtonHtml(e.lemma, 'wb-act') : ''}${save}${
           made
             ? `<button type="button" class="wb-act wb-act--drop" data-act="ub-drop" data-book="${esc(String(opts.scope))}" data-q="${q}" title="Remove from this book" aria-label="Remove ${q} from this book">${ICON.close}</button>`
             : ''
@@ -251,27 +271,48 @@ export function wordbookListHtml(
     })
     .join('');
   const more = entries.length > shown.length ? `<button type="button" class="nbv-secondary wb-more" data-act="wb-more">Show ${fmt(Math.min(BOOK_LIST_PAGE, entries.length - shown.length))} more</button>` : '';
-  return `${sortBarHtml(sort)}<ol class="wb-list">${rows}</ol>${more}`;
-}
-
-/**
- * Cards and Map on a book of thousands would draw thousands of cards; they show the words
- * already started or saved plus the next new ones in book order.
- */
-export function scopeStudySet(entries: WordsEntry[], nextNew = 40): WordsEntry[] {
-  let fresh = 0;
-  return entries.filter((e) => {
-    if (e.saved || wordStatus(e) !== 'new') return true;
-    if (e.known) return false;
-    fresh += 1;
-    return fresh <= nextNew;
-  });
+  return `${sortBarHtml(sort, sorts)}<ol class="wb-list">${rows}</ol>${more}`;
 }
 
 /* ------------------------------------------------------------------ sources */
 
 /** Words a source row shows before "and N more". */
 const SOURCE_WORDS_SHOWN = 14;
+
+/**
+ * Site icons by host: loaded ones show at once on the next paint, failed ones are not asked
+ * for again this session. One listener for the whole document, since load and error events do
+ * not bubble and the lists are repainted as HTML.
+ */
+const siteIcons = new Map<string, 'ok' | 'failed'>();
+if (typeof document !== 'undefined') {
+  const settle = (ev: Event, state: 'ok' | 'failed') => {
+    const img = ev.target as HTMLElement | null;
+    const host = img?.tagName === 'IMG' ? img.getAttribute('data-site-icon') : null;
+    if (!img || !host) return;
+    siteIcons.set(host, state);
+    if (state === 'ok') img.classList.add('is-on');
+    else img.remove();
+  };
+  document.addEventListener('load', (ev) => settle(ev, 'ok'), true);
+  document.addEventListener('error', (ev) => settle(ev, 'failed'), true);
+}
+
+/**
+ * A site's tile: its first letter, covered by the site's own icon once that loads, so a site
+ * whose icon does not load (offline, or none at /favicon.ico) keeps its letter, as Chrome's
+ * new tab tiles do.
+ */
+function siteIconHtml(host: string): string {
+  const url = siteIconUrl(host);
+  const letter = siteMonogram(host);
+  const state = siteIcons.get(host);
+  return `<span class="wb-src__icon wb-src__icon--site" aria-hidden="true">${letter ? `<b>${esc(letter)}</b>` : ICON.globe}${
+    url && state !== 'failed'
+      ? `<img src="${esc(url)}" alt="" width="20" height="20" decoding="async" referrerpolicy="no-referrer" data-site-icon="${esc(host)}"${state === 'ok' ? ' class="is-on"' : ''} />`
+      : ''
+  }</span>`;
+}
 
 function sourceRowHtml(g: SourceGroup, ctx: WordsContext, now: number): string {
   const words = g.entries.map((e) => e.lemma);
@@ -289,8 +330,8 @@ function sourceRowHtml(g: SourceGroup, ctx: WordsContext, now: number): string {
     }`;
   } else action = `<button type="button" class="nbv-primary" data-act="src-book" data-source="${key}">Make a word book</button>`;
   const last = g.latest ? new Date(g.latest).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
-  return `<li class="wb-src">
-    <span class="wb-src__icon" aria-hidden="true">${g.kind === 'doc' ? ICON.book : ICON.globe}</span>
+  return `<li class="wb-src wb-src--${g.kind}">
+    ${g.kind === 'doc' ? `<span class="wb-src__icon" aria-hidden="true">${ICON.book}</span>` : siteIconHtml(g.label)}
     <div class="wb-src__main">
       <h3 class="wb-src__name" title="${esc(g.label)}">${esc(g.label)}</h3>
       <p class="wb-src__meta"><span>${fmt(words.length)} ${words.length === 1 ? 'word' : 'words'}</span>${last ? `<span>${esc(last)}</span>` : ''}</p>
@@ -335,7 +376,53 @@ export function wordbookLibraryHtml(ctx: WordsContext, now = Date.now()): string
       </div>
     </li>`;
   }).join('');
-  return `<section class="wb-library"><ol class="wb-path">${items}</ol></section>`;
+  return `<section class="wb-library"><div class="wb-library__bar"><button type="button" class="nbv-secondary" data-act="wb-import">Import…</button></div><ol class="wb-path">${items}</ol></section>`;
+}
+
+/**
+ * A list's own menu, opened from its chip: My words exports; a book also has Remove (a book
+ * Phevere ships) or Delete (one you made or imported).
+ */
+export function bookMenuItems(scope: WordsScope): MenuItem[] {
+  if (scope === 'all' || scope === 'sources') return [];
+  const meta = scope === 'mine' ? null : wordbookMeta(String(scope));
+  if (scope !== 'mine' && !meta) return [];
+  const id = String(scope);
+  const items: MenuItem[] = [
+    { label: 'Export…', act: 'wb-export', data: { scope: id, fmt: 'book' } },
+    { label: 'Export for Anki…', act: 'wb-export', data: { scope: id, fmt: 'anki' } },
+  ];
+  if (meta) items.push({ label: meta.user ? 'Delete book' : 'Remove', act: 'wb-unsub', data: { book: id }, danger: true });
+  return items;
+}
+
+/**
+ * The confirmation before a book leaves your lists. Progress belongs to the word, so it stays
+ * either way and comes back if the book is added again.
+ */
+export function bookRemovalPrompt(bookId: string): { title: string; detail: string; confirm: string } {
+  const meta = wordbookMeta(bookId);
+  const name = meta?.title || bookId;
+  return meta?.user
+    ? { title: `Delete “${name}”?`, detail: 'Your progress on its words is kept.', confirm: 'Delete' }
+    : { title: `Remove “${name}”?`, detail: 'Your progress on its words is kept.', confirm: 'Remove' };
+}
+
+/**
+ * The books a word can be added to, for "Add to word book": the ones you made or imported, in
+ * the order you made them, ticked when they hold the word. Phevere's own books are fixed lists
+ * and are not offered. Each pick is ub-toggle (data-book, data-q) and applies at once.
+ */
+export function bookPickItems(word: string, books: UserBook[]): MenuItem[] {
+  const key = bookWordKey(word);
+  return books
+    .filter((b) => !b.deleted)
+    .map((b) => ({
+      label: b.title,
+      act: 'ub-toggle',
+      data: { book: b.bookId, q: word },
+      checked: b.words.some((w) => bookWordKey(w) === key),
+    }));
 }
 
 /** Book rows for the Review plan panel: today's new and due words and progress per book. */

@@ -53,6 +53,7 @@ const base = (word) => ({ word, detectedLanguage: 'en', language: 'zh',
 let result = base('example');
 const opened = [];
 let win;
+let finishing = false;
 const tick = (ms = 100) => new Promise((resolve) => setTimeout(resolve, ms));
 const js = (code) => win.webContents.executeJavaScript(code);
 const active = () => js(`document.querySelector('.etymology-tab.is-active')?.textContent`);
@@ -88,6 +89,9 @@ app.whenReady().then(async () => {
   try {
     win = new BrowserWindow({ width: 560, height: 620, frame: false, show: false,
       webPreferences: { preload, contextIsolation: true, backgroundThrottling: false } });
+    // The pop-up closes itself after ten seconds; on a slow runner the test outlasts that and the
+    // window is gone mid-test. Only the test closes it here.
+    win.on('close', (event) => { if (!finishing) event.preventDefault(); });
     await win.loadFile(path.join(root, 'src/popup-new.html'));
     win.setPosition(-2000, 100);
     win.showInactive();
@@ -152,6 +156,7 @@ app.whenReady().then(async () => {
     }
     console.log('Etymology popup passed complete grouped passages, source/view tabs, blocked recovery action, late updates, provider recovery, new-word reset, keyboard navigation, and invalid URLs.');
   } finally {
+    finishing = true;
     if (win && !win.isDestroyed()) win.close();
   }
   app.exit(0);
