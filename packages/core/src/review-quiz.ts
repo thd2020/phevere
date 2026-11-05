@@ -495,7 +495,14 @@ export function usableSense(text: string, lemma = ''): boolean {
   return /\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}/u.test(rest) ? letters >= 2 : letters >= 3;
 }
 
-/** The sense a question shows: the first usable one, an everyday sense before a dialect or obsolete one. */
+/** A first sense longer than this gives way to a shorter one among the next two everyday senses. */
+export const PROMPT_CHARS = 160;
+
+/**
+ * The sense a question shows: the first usable one, an everyday sense before a dialect or obsolete
+ * one, and a shorter everyday sense when the first runs past PROMPT_CHARS. A sense is never cut:
+ * when no shorter one exists the long one is shown whole.
+ */
 export function bestSense(e: NotebookEntry): string {
   const lemma = clean(e.lemma);
   // "Alternative form of mock-up. [A scale model …]": the bracketed gloss is the sense.
@@ -504,19 +511,21 @@ export function bestSense(e: NotebookEntry): string {
     .map((s) => s.replace(/\s*\.?mw-parser-output[^{]*\{[^}]*\}/g, '').replace(/\s+\.\s*$/, '.').trim())
     .map((s) => s.replace(/^(?:(?:alternative|obsolete|archaic|dated)\s+(?:form|spelling)|misspelling)\s+of\s+[^.[]+\.?\s*\[(.+)\]\s*$/i, '$1'))
     .filter((s) => usableSense(s, lemma));
-  return senses.find((s) => !MARGINAL.test(s)) || senses[0] || '';
+  const everyday = senses.filter((s) => !MARGINAL.test(s));
+  const list = everyday.length ? everyday : senses;
+  const first = list[0] || '';
+  if (first.length <= PROMPT_CHARS) return first;
+  return list.slice(1, 3).find((s) => s.length <= PROMPT_CHARS) || first;
 }
 
 const meaningCache = new Map<string, string>();
 
-/** The best sense, with the word blanked out and trimmed to a readable length; empty when none is usable. */
+/** The best sense, whole, with the word blanked out; empty when none is usable. */
 export function questionMeaning(e: NotebookEntry): string {
   const key = `${clean(e.lemma)}\u0000${clean(e.definition)}`;
   const hit = meaningCache.get(key);
   if (hit != null) return hit;
-  const sense = bestSense(e);
-  const masked = maskWord(sense, clean(e.lemma));
-  const out = masked.length > 160 ? `${masked.slice(0, 157).replace(/\s+\S*$/, '')}…` : masked;
+  const out = maskWord(bestSense(e), clean(e.lemma));
   if (meaningCache.size > 20000) meaningCache.clear();
   meaningCache.set(key, out);
   return out;
