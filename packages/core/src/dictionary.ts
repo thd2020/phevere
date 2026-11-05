@@ -2485,7 +2485,8 @@ export class DictionaryService extends BaseService {
    * A full stop, comma, quote or bracket may also just be the sentence around a word, so then the
    * bare word comes first: "no." and "in." are no and in at the end of a sentence, though
    * Wiktionary also has "no." (number) and "in." (inch). The typed title comes first only when
-   * most of the bare word's senses point to it ("etc" is mostly "Alternative form of etc.") or
+   * a third or more of the bare word's senses point to it ("etc" and "vs" are another form of
+   * "etc." and "vs.", while two of the 24 senses of "no" point to "no.") or
    * when the same mark is also inside the word ("e.g.", "U.S.").
    */
   private async withExactTitle(query: NormalizedQuery, language: string): Promise<NormalizedQuery> {
@@ -2509,7 +2510,7 @@ export class DictionaryService extends BaseService {
       const pointing = own.filter((d) => linksToTitle(d, exact)).length;
       // No answer for the bare word (slow, or no page) leaves the usual order, which still tries
       // the typed title after the bare word: "do." must not open "ditto" because "do" was slow.
-      if (!own.length || pointing * 2 < own.length) return query;
+      if (!own.length || pointing * 3 < own.length) return query;
     }
     this.typedTitles.add(exact);
     if (this.typedTitles.size > 400) this.typedTitles.delete(this.typedTitles.values().next().value as string);
