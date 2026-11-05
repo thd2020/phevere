@@ -3548,10 +3548,13 @@ function startAutoCloseTimeout() {
           });
         }
 
-        /** A word or a short phrase has pictures; a selected sentence does not. */
+        /**
+         * Pictures are gathered ahead of the senses only for an English word or short phrase; a
+         * selected sentence or another script waits for the lookup to name its language.
+         */
         function isPictureWord(text) {
           const t = String(text || '').trim();
-          return !!t && t.length <= 40 && t.split(/\s+/).length <= 3;
+          return !!t && t.length <= 40 && t.split(/\s+/).length <= 3 && /^[\p{Script=Latin}\s'’.-]+$/u.test(t);
         }
 
         /**
