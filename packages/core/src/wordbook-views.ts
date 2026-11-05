@@ -254,20 +254,6 @@ export function wordbookListHtml(
   return `${sortBarHtml(sort)}<ol class="wb-list">${rows}</ol>${more}`;
 }
 
-/**
- * Cards and Map on a book of thousands would draw thousands of cards; they show the words
- * already started or saved plus the next new ones in book order.
- */
-export function scopeStudySet(entries: WordsEntry[], nextNew = 40): WordsEntry[] {
-  let fresh = 0;
-  return entries.filter((e) => {
-    if (e.saved || wordStatus(e) !== 'new') return true;
-    if (e.known) return false;
-    fresh += 1;
-    return fresh <= nextNew;
-  });
-}
-
 /* ------------------------------------------------------------------ sources */
 
 /** Words a source row shows before "and N more". */

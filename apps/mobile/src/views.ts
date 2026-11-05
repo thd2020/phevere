@@ -35,7 +35,8 @@ import {
   learnHtml,
   type LearnPage,
   type AnswerRecord,
-  type CardLayout,
+  type CardLayouts,
+  cardLayoutIn,
   type FamilyGrouping,
   type MorphKind,
   type NotebookView,
@@ -44,7 +45,6 @@ import {
   type ReviewRenderOptions,
   type VocabViewEntry,
   scopeEntries,
-  scopeStudySet,
   wordbookHeaderHtml,
   wordbookLibraryHtml,
   wordbookListHtml,
@@ -882,7 +882,8 @@ export interface NotebookViewState {
   group: FamilyGrouping;
   mapKinds: MorphKind[];
   flipped: Set<string>;
-  cardLayout: CardLayout;
+  /** Expanded or not, per list ('mine', a book's id, 'all'). */
+  cardLayouts: CardLayouts;
   /** Every saved word; the list pages through the notebook, the other views need all of it. */
   pool: VocabEntry[];
   /** The language chip chosen above My words ('all' when none is). */
@@ -986,7 +987,7 @@ export function notebookBody(
         ? familiesHtml(analysis, nb.group, { tracing: familiesTraceProgress() })
         : nb.view === 'map'
           ? mapHtml(analysis, nb.mapKinds, { query: filter.trim() })
-          : cardsHtml(list, analysis, nb.flipped, nb.cardLayout, undefined, { picFlips: true });
+          : cardsHtml(list, analysis, nb.flipped, cardLayoutIn(nb.cardLayouts, 'mine'), undefined, { picFlips: true, list: 'mine' });
     return `${head}<div class="nbv nbv-body">${body}</div>`;
   }
   const rows = vocabListHtml(list, { sort, expanded });
@@ -1009,14 +1010,14 @@ function bookScopeBody(words: WordsState, ctx: WordsContext, filter: string, nb:
   let body: string;
   if (nb.view === 'list') body = wordbookListHtml(list, { scope: words.scope, limit: words.limit, filtered: !!q, sort: words.sort, expanded: words.open, loading: words.loading });
   else {
-    const study = nb.view === 'cards' ? scopeStudySet(list) : nb.view === 'map' ? all : list;
+    const study = nb.view === 'map' ? all : list;
     const analysis = analyzeNotebook(study);
     body =
       nb.view === 'families'
         ? familiesHtml(analysis, nb.group, { tracing: familiesTraceProgress() })
         : nb.view === 'map'
           ? mapHtml(analysis, nb.mapKinds, { query: filter.trim() })
-          : cardsHtml(study, analysis, nb.flipped, nb.cardLayout, undefined, { picFlips: true });
+          : cardsHtml(study, analysis, nb.flipped, cardLayoutIn(nb.cardLayouts, String(words.scope)), undefined, { picFlips: true, list: String(words.scope) });
   }
   return `<div class="nbv">${head}</div><div class="nbv nbv-body">${body}</div>`;
 }

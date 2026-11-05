@@ -19,34 +19,6 @@
   .nbv-table { --card-w: 150px; --card-h: 220px; --card-r: 12px; }
 }
 
-/* Layout control */
-.nbv-table__bar {
-  justify-self: start;
-  display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 999px;
-  background: var(--nbv-paper-2);
-}
-.nbv-table__btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 14px 0 11px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--nbv-soft);
-  font: 600 13px/1 var(--nbv-ui);
-  cursor: pointer;
-  transition: background-color 0.18s var(--card-ease), color 0.18s var(--card-ease);
-}
-.nbv-table__btn svg { width: 17px; height: 17px; }
-.nbv-table__btn:hover { color: var(--nbv-ink); }
-.nbv-table__btn.is-active { background: var(--nbv-panel); color: var(--nbv-ember); box-shadow: 0 1px 2px rgba(70, 45, 25, 0.14); }
-.nbv-table__btn:focus-visible { outline: 2px solid var(--nbv-ember); outline-offset: 1px; }
-
 /* The tabletop: warm paper with a faint fibre grain and a soft edge. */
 .nbv-table__felt {
   position: relative;
@@ -62,7 +34,54 @@
   touch-action: pan-y;
   transition: height 0.45s var(--card-ease);
 }
-.nbv-table[data-layout='grid'] .nbv-table__felt { background: transparent; box-shadow: none; overflow: visible; }
+
+/*
+ * Expand all, in the table's top-right corner. It stays in that corner of the screen while the
+ * table scrolls under it, half see-through over the cards until the pointer is on it.
+ */
+.nbv-table__corner {
+  position: sticky;
+  top: 0;
+  z-index: 300;
+  height: 0;
+  pointer-events: none;
+}
+.nbv-table__all {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 14px 0 11px;
+  border: 1px solid rgba(110, 80, 52, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 253, 249, 0.55);
+  color: rgba(48, 36, 28, 0.72);
+  font: 600 13px/1 var(--nbv-ui);
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.nbv-table__all svg { width: 17px; height: 17px; }
+.nbv-table__all:hover,
+.nbv-table__all:focus-visible {
+  border-color: var(--nbv-line);
+  background: var(--nbv-panel);
+  color: var(--nbv-ember);
+  box-shadow: 0 1px 2px rgba(70, 45, 25, 0.12), 0 8px 18px -10px rgba(70, 45, 25, 0.45);
+}
+.nbv-table__all:focus-visible { outline: 2px solid var(--nbv-ember); outline-offset: 1px; }
+.nbv-table__all:active { background: var(--nbv-ember-soft); }
+/* Pressed: every pile is out, and a press gathers them. */
+.nbv-table__all[aria-pressed='true'] { border-color: var(--nbv-ember); color: var(--nbv-ember); }
 
 /* Piles: a stack edge under the top cards and a label below. */
 .nbv-pile {
@@ -76,7 +95,6 @@
   background: none;
   color: var(--nbv-ink);
   cursor: pointer;
-  transition: transform 0.5s var(--card-ease), opacity 0.25s var(--card-ease);
 }
 .nbv-pile__stack { display: block; height: var(--card-h); border-radius: var(--card-r); }
 .nbv-pile.has-depth .nbv-pile__stack {
@@ -99,86 +117,9 @@
 .nbv-pile__label b { font-weight: 600; color: var(--nbv-stone); font-variant-numeric: tabular-nums; }
 .nbv-pile:focus-visible { outline: none; }
 .nbv-pile:focus-visible .nbv-pile__label { text-decoration: underline 2px var(--nbv-ember); text-underline-offset: 4px; }
-/* An open pile: its cards have left, so the stack edge goes and its place is outlined. */
-.nbv-pile.is-open .nbv-pile__stack {
-  background: none;
-  box-shadow: inset 0 0 0 1.5px var(--felt-edge);
-}
-.nbv-pile.is-open .nbv-pile__label { color: var(--nbv-ember); }
-
-/* The strip under an open pile where its cards land, with a notch pointing up at the pile. */
-.nbv-band {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  z-index: 0;
-  border-radius: 18px;
-  background: rgba(120, 88, 58, 0.07);
-  box-shadow: inset 0 0 0 1px rgba(110, 80, 52, 0.12);
-  transition: transform 0.5s var(--card-ease), height 0.45s var(--card-ease);
-}
-.nbv-band::before {
-  content: '';
-  position: absolute;
-  top: -7px;
-  left: calc(var(--notch, 50%) - 8px);
-  width: 16px;
-  height: 16px;
-  border-radius: 3px 0 0 0;
-  background: inherit;
-  box-shadow: inset 1px 1px 0 rgba(110, 80, 52, 0.12);
-  transform: rotate(45deg);
-}
-.nbv-band__gather {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 12px 0 9px;
-  border: 1px solid var(--nbv-line);
-  border-radius: 999px;
-  background: var(--nbv-panel);
-  color: var(--nbv-ember);
-  font: 600 12.5px/1 var(--nbv-ui);
-  cursor: pointer;
-  transition: background-color 0.18s var(--card-ease);
-}
-.nbv-band__gather svg { width: 16px; height: 16px; }
-.nbv-band__gather:hover { background: var(--nbv-ember-soft); }
-.nbv-band__gather:focus-visible { outline: 2px solid var(--nbv-ember); outline-offset: 1px; }
-.nbv-table:not([data-layout='piles']) .nbv-band { display: none; }
-/* More, under the dealt rows of a big pile: deals the next screenful. */
-.nbv-band__more {
-  position: absolute;
-  left: 50%;
-  bottom: 12px;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 7px;
-  height: 34px;
-  padding: 0 16px;
-  border: 1px solid var(--nbv-line);
-  border-radius: 999px;
-  background: var(--nbv-panel);
-  color: var(--nbv-ember);
-  font: 600 13px/32px var(--nbv-ui);
-  cursor: pointer;
-  transform: translateX(-50%);
-  transition: background-color 0.18s var(--card-ease);
-}
-.nbv-band__more b { font-weight: 600; color: var(--nbv-stone); font-variant-numeric: tabular-nums; }
-.nbv-band__more:hover { background: var(--nbv-ember-soft); }
-.nbv-band__more:focus-visible { outline: 2px solid var(--nbv-ember); outline-offset: 1px; }
-
-/* Scattered, the pile shrinks to a label at the top of its band of the table. */
-.nbv-table[data-layout='scatter'] .nbv-pile { width: auto; pointer-events: none; }
-.nbv-table[data-layout='scatter'] .nbv-pile__stack { display: none; }
-.nbv-table[data-layout='scatter'] .nbv-pile__label { margin: 0; padding: 4px 10px; border-radius: 999px; background: rgba(255, 253, 249, 0.7); color: var(--nbv-soft); }
-.nbv-table[data-layout='grid'] .nbv-pile { opacity: 0; pointer-events: none; }
+/* A poured-out pile keeps only its label, under its first card; clicking it gathers the pile. */
+.nbv-pile.is-open .nbv-pile__stack { visibility: hidden; }
+.nbv-pile.is-open .nbv-pile__label { margin-top: 14px; color: var(--nbv-ember); }
 
 /* Cards */
 .nbv-card {
@@ -197,22 +138,11 @@
   user-select: none;
   -webkit-user-select: none;
   contain: layout style;
-  content-visibility: auto;
-  contain-intrinsic-size: var(--card-w) var(--card-h);
 }
 .nbv-table:not(.is-ready) .nbv-card { visibility: hidden; }
-.nbv-table[data-layout='piles']:not(.is-moving) .nbv-card[data-deep]:not(.is-out) { display: none; }
-/* Spread cards: an up or down swipe scrolls the page; a long press or a sideways move drags. */
-.nbv-table[data-layout='scatter'] .nbv-card,
-.nbv-card.is-out:not([data-rank='0']) { touch-action: pan-y; -webkit-touch-callout: none; cursor: grab; }
-.nbv-card.is-lifted { cursor: grabbing; box-shadow: var(--lift-shadow); will-change: transform; }
+.nbv-table:not(.is-moving) .nbv-card[data-deep]:not(.is-out) { display: none; }
 .nbv-card:focus-visible { box-shadow: var(--card-shadow), 0 0 0 2px var(--nbv-panel), 0 0 0 4px var(--nbv-ember); }
-.nbv-table[data-layout='grid'] .nbv-card:hover,
-.nbv-table[data-layout='scatter'] .nbv-card:hover,
 .nbv-card.is-out:hover { box-shadow: var(--lift-shadow); }
-/* The picture turns the card over; the text under it opens the lookup. */
-.nbv-card__pic[data-act='nb-flip'] { cursor: pointer; }
-.nbv-table[data-layout='piles'] .nbv-card:not(.is-out) .nbv-card__pic { cursor: inherit; }
 
 .nbv-card__inner {
   position: relative;
@@ -318,13 +248,12 @@
 .nbv-card__flip:hover { background: var(--nbv-ember-soft); }
 .nbv-card__flip:focus-visible { outline: 2px solid var(--nbv-ember); outline-offset: 1px; }
 .nbv-card.is-flipped .nbv-card__flip { transform: rotate(180deg); }
-.nbv-table[data-layout='piles'] .nbv-card:not(.is-out) .nbv-card__flip { display: none; }
+.nbv-card:not(.is-out) .nbv-card__flip { display: none; }
 
 /* Reduced motion: the same moves, short and without overshoot. */
 @media (prefers-reduced-motion: reduce) {
   .nbv-table__felt,
-  .nbv-pile,
-  .nbv-band,
+  .nbv-table__all,
   .nbv-card__flip { transition-duration: 0.14s; transition-timing-function: var(--card-ease); }
   .nbv-card__inner { transition: transform 0.16s var(--card-ease); }
 }
