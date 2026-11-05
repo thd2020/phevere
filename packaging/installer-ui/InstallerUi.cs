@@ -266,6 +266,7 @@ internal sealed class SetupWindow : Window
         if (On(ocr) && !ocrInstalled) total += OcrPackBytes;
         if (arch != "arm64") total += VoiceIndex == 2 ? 350L * 1048576 : VoiceIndex == 1 ? 132L * 1048576 : 0;
         space.Text = total > 0 ? "Space required: " + Megabytes(total).ToString("N0") + " MB" : "";
+        space.Visibility = optionsPanel.Visibility == Visibility.Visible && space.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>
