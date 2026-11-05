@@ -130,6 +130,7 @@ import {
   type BookSort,
 } from '@phevere/core';
 import { choiceRowHtml, keycapsHtml, rangeRowHtml, switchRowHtml } from '@phevere/core';
+import { UPDATE_MODE_LABELS, type UpdateMode } from '@phevere/core';
 import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
 
@@ -218,6 +219,7 @@ function initializeSettingsWindow() {
           <button type="button" class="settings-nav__item" data-section="offline">Offline</button>
           <button type="button" class="settings-nav__item" data-section="api">API keys</button>
           <button type="button" class="settings-nav__item" data-section="audio">Audio</button>
+          <button type="button" class="settings-nav__item" data-section="updates">Updates</button>
         </nav>
         <main class="settings-main">
           <section class="settings-panel is-active" data-panel="shortcuts" aria-labelledby="settings-monitor-heading">
@@ -406,6 +408,37 @@ function initializeSettingsWindow() {
               </div>
             </div>
           </section>
+
+          <section class="settings-panel" data-panel="updates" aria-labelledby="settings-updates-heading">
+            <div class="settings-panel__intro">
+              <h2 id="settings-updates-heading" class="settings-panel__title">Updates</h2>
+            </div>
+            <div class="sv sv-page">
+              <div class="sv-ledger">
+                <div class="sv-row">
+                  <span class="sv-row__text"><span class="sv-row__label">Version</span></span>
+                  <span id="updates-version" class="sv-nav__value"></span>
+                </div>
+                <div class="sv-row" id="updates-mode-row" hidden>
+                  <span class="sv-row__text"><label for="updates-mode" class="sv-row__label">Updates</label></span>
+                  <select id="updates-mode" class="sv-select"></select>
+                </div>
+                <div class="sv-row" id="updates-check-row" hidden>
+                  <span class="sv-row__text">
+                    <span class="sv-row__label">Last checked</span>
+                    <span id="updates-status" class="sv-row__status" role="status" aria-live="polite" hidden></span>
+                  </span>
+                  <span id="updates-last-check" class="sv-nav__value"></span>
+                  <div id="updates-progress" class="sv-progress" hidden><span></span></div>
+                </div>
+                <div class="sv-ledger__foot" id="updates-actions" hidden>
+                  <button type="button" id="updates-rollback" class="sv-btn" hidden></button>
+                  <button type="button" id="updates-check" class="sv-btn">Check now</button>
+                  <button type="button" id="updates-action" class="sv-btn sv-btn--accent" hidden></button>
+                </div>
+              </div>
+            </div>
+          </section>
         </main>
       </div>
       <div id="pack-inspector-host"></div>
@@ -430,6 +463,7 @@ function initializeSettingsWindow() {
   wireInAppTextSelectionLookup();
   setupAudioSettings();
   void wireNotificationSettings();
+  void wireUpdateSettings();
   wireSettingsImageDrop();
   void wireOfflineSettingsPanel();
   void wireOcrSettingsPanel();
@@ -4323,6 +4357,103 @@ async function wireNotificationSettings(): Promise<void> {
   emptyEl.addEventListener('change', persist);
   hoverEl.addEventListener('change', persist);
   quickEl?.addEventListener('change', persist);
+}
+
+type UpdateView = {
+  version: string;
+  modes: UpdateMode[];
+  mode: UpdateMode;
+  lastCheck: number | null;
+  phase: string;
+  available: string | null;
+  progress: number | null;
+  action: 'update' | 'download' | 'restart' | null;
+  rollbackTo: string | null;
+};
+
+function updateStatusText(v: UpdateView): { text: string; error: boolean } | null {
+  const pct = Math.round((v.progress ?? 0) * 100);
+  switch (v.phase) {
+    case 'checking': return { text: 'Checking…', error: false };
+    case 'up-to-date': return { text: 'Up to date', error: false };
+    case 'available': return v.available ? { text: `${v.available} available`, error: false } : null;
+    case 'downloading': return { text: `Downloading ${pct}%`, error: false };
+    case 'ready': return v.available ? { text: `${v.available} downloaded`, error: false } : null;
+    case 'installing': return { text: 'Installing…', error: false };
+    case 'check-failed': return { text: 'Check failed', error: true };
+    case 'download-failed': return { text: 'Download failed', error: true };
+    case 'rollback-failed': return { text: 'Rollback failed', error: true };
+    default: return null;
+  }
+}
+
+function lastCheckedText(ts: number | null): string {
+  if (!ts) return 'Never';
+  const d = new Date(ts);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay
+    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+/** Settings → Updates: mode, last check, Check now, the update button and Roll back. */
+async function wireUpdateSettings(): Promise<void> {
+  const api = (window as any).updatesAPI;
+  const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
+  const version = el('updates-version');
+  const modeRow = el('updates-mode-row');
+  const mode = el<HTMLSelectElement>('updates-mode');
+  const checkRow = el('updates-check-row');
+  const status = el('updates-status');
+  const last = el('updates-last-check');
+  const bar = el('updates-progress');
+  const actions = el('updates-actions');
+  const rollback = el<HTMLButtonElement>('updates-rollback');
+  const check = el<HTMLButtonElement>('updates-check');
+  const action = el<HTMLButtonElement>('updates-action');
+  if (!api?.get || !version || !modeRow || !mode || !checkRow || !status || !last || !bar || !actions || !rollback || !check || !action) return;
+  const paint = (v: UpdateView) => {
+    version.textContent = v.version;
+    const enabled = v.modes.length > 0;
+    modeRow.hidden = !enabled;
+    checkRow.hidden = !enabled;
+    actions.hidden = !enabled;
+    if (!enabled) return;
+    if (mode.options.length !== v.modes.length) {
+      mode.innerHTML = v.modes.map((m) => `<option value="${m}">${UPDATE_MODE_LABELS[m]}</option>`).join('');
+    }
+    mode.value = v.mode;
+    last.textContent = lastCheckedText(v.lastCheck);
+    const s = updateStatusText(v);
+    status.hidden = !s;
+    status.textContent = s?.text || '';
+    status.classList.toggle('is-error', !!s?.error);
+    const busy = v.phase === 'checking' || v.phase === 'downloading' || v.phase === 'installing';
+    bar.hidden = v.phase !== 'downloading';
+    const fill = bar.firstElementChild as HTMLElement | null;
+    if (fill) fill.style.width = `${Math.round((v.progress ?? 0) * 100)}%`;
+    check.disabled = busy;
+    action.hidden = !v.action;
+    action.disabled = busy;
+    action.textContent =
+      v.action === 'restart' ? 'Restart to update'
+        : v.action === 'download' ? `Download ${v.available}`
+          : v.action === 'update' ? `Update to ${v.available}` : '';
+    rollback.hidden = !v.rollbackTo;
+    rollback.disabled = busy;
+    rollback.textContent = v.rollbackTo ? `Roll back to ${v.rollbackTo}` : '';
+  };
+  const run = (p: Promise<UpdateView>): void => void p.then(paint).catch((): undefined => undefined);
+  mode.addEventListener('change', () => run(api.setMode(mode.value)));
+  check.addEventListener('click', () => run(api.check()));
+  action.addEventListener('click', () => run(api.install()));
+  rollback.addEventListener('click', () => run(api.rollback()));
+  api.onChanged?.((v: UpdateView) => paint(v));
+  try {
+    paint(await api.get());
+  } catch {
+    /* the section keeps its Version row empty */
+  }
 }
 
 let lemmaAudio: HTMLAudioElement | null = null;

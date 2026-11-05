@@ -549,6 +549,20 @@ contextBridge.exposeInMainWorld('ocrAPI', {
   },
 });
 
+// Settings → Updates (src/services/app-updater.ts).
+contextBridge.exposeInMainWorld('updatesAPI', {
+  get: () => ipcRenderer.invoke('updates-get'),
+  setMode: (mode: string) => ipcRenderer.invoke('updates-set-mode', mode),
+  check: () => ipcRenderer.invoke('updates-check'),
+  install: () => ipcRenderer.invoke('updates-install'),
+  rollback: () => ipcRenderer.invoke('updates-rollback'),
+  onChanged: (callback: (view: unknown) => void) => {
+    const listener = (_event: unknown, view: unknown) => callback(view);
+    ipcRenderer.on('updates-changed', listener);
+    return () => ipcRenderer.removeListener('updates-changed', listener);
+  },
+});
+
 // Expose search API
 contextBridge.exposeInMainWorld('searchAPI', {
   getSuggestions: (query: string): Promise<SearchSuggestion[]> => 

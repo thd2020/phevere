@@ -33,23 +33,24 @@ const workflow = yaml.load(fs.readFileSync(path.join(root, '.github/workflows/re
 const jobs = Object.entries(workflow.jobs);
 const expected = {
   all: jobs.map(([name]) => name),
-  desktop: ['release', 'release-win-arm64', 'release-mac', 'release-linux'],
-  phone: ['release-android', 'release-ios'],
-  android: ['release-android'],
-  'windows-x64': ['release'],
-  'windows-arm64': ['release-win-arm64'],
-  linux: ['release-linux'],
+  desktop: ['release', 'release-win-arm64', 'release-mac', 'release-linux', 'release-update-metadata'],
+  phone: ['release-android', 'release-update-metadata', 'release-ios'],
+  android: ['release-android', 'release-update-metadata'],
+  'windows-x64': ['release', 'release-update-metadata'],
+  'windows-arm64': ['release-win-arm64', 'release-update-metadata'],
+  linux: ['release-linux', 'release-update-metadata'],
+  'update-metadata': ['release-update-metadata'],
   invalid: [],
 };
 let selections = 0;
 for (const ref_type of ['branch', 'tag']) for (const [targets, names] of Object.entries(expected)) {
   const github = { ref_type, event_name: 'workflow_dispatch', event: { inputs: { targets } } };
-  const selected = jobs.filter(([, job]) => vm.runInNewContext(job.if, { github })).map(([name]) => name);
+  const selected = jobs.filter(([, job]) => vm.runInNewContext(job.if, { github, cancelled: () => false })).map(([name]) => name);
   assert.deepEqual(selected, names, `dispatch ${targets} from ${ref_type}`);
   selections++;
 }
 const tagged = { ref_type: 'tag', event_name: 'push', event: { inputs: {} } };
-assert.ok(jobs.every(([, job]) => vm.runInNewContext(job.if, { github: tagged })));
+assert.ok(jobs.every(([, job]) => vm.runInNewContext(job.if, { github: tagged, cancelled: () => false })));
 const android = workflow.jobs['release-android'];
 const names = android.steps.map((step) => step.name);
 const before = (a, b) => assert.ok(names.indexOf(a) >= 0 && names.indexOf(a) < names.indexOf(b), `${a} must precede ${b}`);

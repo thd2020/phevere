@@ -19,7 +19,9 @@ import {
   type PackProgress,
   type PackView,
   type SourceRowInput,
+  UPDATE_MODE_LABELS,
 } from '@phevere/core';
+import { lastCheckedText, updateStatusText, type PhoneUpdateView } from './app-update';
 import type { CatalogStatus } from './platform/offline';
 import type { MobilePrefs } from './platform/prefs';
 
@@ -135,7 +137,7 @@ function selectionBarSection(capture: CaptureInfo): string {
     </div>`;
 }
 
-export type SettingsSection = 'capture' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio';
+export type SettingsSection = 'capture' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio' | 'updates';
 
 const TAB_ICON: Record<SettingsSection, string> = {
   capture: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M9 9h6M12 9v7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -144,6 +146,7 @@ const TAB_ICON: Record<SettingsSection, string> = {
   offline: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM12 7v7M9 11l3 3 3-3M8.5 17h7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   api: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M11 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM11 12h10M18 12v3M21 12v2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   audio: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4zM15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  updates: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4M12 8.5v4l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
 export const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = [
@@ -154,9 +157,9 @@ export const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = 
   { id: 'audio', label: 'Audio' },
 ];
 
-export function settingsSections(capture: CaptureInfo): Array<{ id: SettingsSection; label: string }> {
+export function settingsSections(capture: CaptureInfo, updates = false): Array<{ id: SettingsSection; label: string }> {
   if (capture.platform === 'web') return SETTINGS_SECTIONS;
-  return [
+  const list: Array<{ id: SettingsSection; label: string }> = [
     { id: 'capture', label: 'Capture' },
     { id: 'notifications', label: 'Notifications' },
     { id: 'sources', label: 'Sources' },
@@ -164,6 +167,47 @@ export function settingsSections(capture: CaptureInfo): Array<{ id: SettingsSect
     { id: 'api', label: 'API keys' },
     { id: 'audio', label: 'Audio' },
   ];
+  // Android release builds only: iOS and debug builds have no update path.
+  if (updates && capture.platform === 'android') list.push({ id: 'updates', label: 'Updates' });
+  return list;
+}
+
+/** Version, mode, last check and the one action that applies now. */
+function updatesPanel(v: PhoneUpdateView): string {
+  const modes = v.modes
+    .map((m) => `<label class="sv-seg__item"><input type="radio" name="update-mode" data-act="update-mode" value="${m}" ${v.mode === m ? 'checked' : ''} />${esc(UPDATE_MODE_LABELS[m])}</label>`)
+    .join('');
+  const status = updateStatusText(v);
+  const busy = v.phase === 'checking' || v.phase === 'downloading';
+  const pct = Math.round(v.progress * 100);
+  const action =
+    v.phase === 'ready'
+      ? '<button type="button" class="sv-btn sv-btn--accent" data-act="update-install">Install</button>'
+      : v.available && (v.phase === 'available' || v.phase === 'error')
+        ? `<button type="button" class="sv-btn sv-btn--accent" data-act="update-install">Update to ${esc(v.available)}</button>`
+        : '';
+  const bar =
+    v.phase === 'downloading'
+      ? `<span class="sv-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Downloading update"><span style="width:${pct}%"></span></span>`
+      : '';
+  return `<div class="sv sv-page">
+    <div class="sv-ledger">
+      <div class="sv-row"><span class="sv-row__text"><span class="sv-row__label">Version</span></span><span class="sv-nav__value">${esc(v.version)}</span></div>
+      <div class="sv-row">
+        <span class="sv-row__text"><span class="sv-row__label" id="update-mode-label">Updates</span></span>
+        <div class="sv-seg" role="radiogroup" aria-labelledby="update-mode-label">${modes}</div>
+      </div>
+      <div class="sv-row">
+        <span class="sv-row__text"><span class="sv-row__label">Last checked</span>${status ? `<span class="sv-row__status${v.phase === 'error' ? ' is-error' : ''}" role="status" aria-live="polite">${esc(status)}</span>` : ''}</span>
+        <span class="sv-nav__value">${esc(lastCheckedText(v.lastCheck))}</span>
+        ${bar}
+      </div>
+      <div class="sv-ledger__foot">
+        <button type="button" class="sv-btn" data-act="update-check"${busy ? ' disabled' : ''}>Check now</button>
+        ${action}
+      </div>
+    </div>
+  </div>`;
 }
 
 const TRANSLATION_ONLY = new Set(['DeepL API', 'Google Translate API']);
@@ -394,14 +438,15 @@ export function settingsBody(
   section: SettingsSection,
   voice: VoiceStatus | null = null,
   lib: LibraryState = emptyLibraryState(),
+  updates: PhoneUpdateView | null = null,
 ): string {
-  const tabs = settingsSections(capture)
+  const sections = settingsSections(capture, !!updates);
+  const tabs = sections
     .map(
       (s) =>
         `<button type="button" class="result-tab" role="tab" data-act="settings-section" data-section="${s.id}" aria-selected="${section === s.id}" aria-label="${s.label}" title="${s.label}">${TAB_ICON[s.id]}</button>`,
     )
     .join('');
-  const sections = settingsSections(capture);
   const current = sections.find((s) => s.id === section) || sections[0];
   section = current.id;
   const panel =
@@ -415,11 +460,13 @@ export function settingsBody(
             ? offlinePanel(packs, packMsg, lib, capture.platform)
             : section === 'api'
               ? apiPanel(prefs, lib)
-              : audioPanel(prefs, capture, voice);
+              : section === 'updates' && updates
+                ? updatesPanel(updates)
+                : audioPanel(prefs, capture, voice);
   return `
     <div class="settings">
       <div class="settings-sticky">
-        <div class="result-tabs settings-tabs" role="tablist" aria-label="Settings sections" style="--tabs:${settingsSections(capture).length}">${tabs}</div>
+        <div class="result-tabs settings-tabs" role="tablist" aria-label="Settings sections" style="--tabs:${sections.length}">${tabs}</div>
       </div>
       <div class="settings-panel" role="tabpanel" aria-label="${current.label}"><h2 class="settings-panel__name">${current.label}</h2>${panel}</div>
     </div>`;

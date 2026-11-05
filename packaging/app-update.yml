@@ -1,0 +1,7 @@
+# Read by electron-updater from resources/app-update.yml (forge.config.js copies it on Windows and Linux).
+# src/services/app-updater.ts sets the same GitHub feed in code. Add `publisherName: <certificate CN>`
+# here once Setup.exe is Authenticode-signed, so updates signed by anyone else are refused.
+provider: github
+owner: thd2020
+repo: phevere
+updaterCacheDirName: phevere-updater

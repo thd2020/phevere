@@ -1,4 +1,4 @@
-import { dictionaryService, type TranslationProvider } from '@phevere/core';
+import { dictionaryService, type TranslationProvider, type UpdateState } from '@phevere/core';
 
 const KEY = 'phevere.mobile.prefs';
 
@@ -97,6 +97,26 @@ export function loadPrefs(): MobilePrefs {
 
 export function savePrefs(prefs: MobilePrefs): void {
   localStorage.setItem(KEY, JSON.stringify(prefs));
+}
+
+const UPDATE_KEY = 'phevere.mobile.updates';
+
+/** Update mode, last check and versions (UpdateState in @phevere/core), kept apart from the prefs above. */
+export function loadUpdateState(): UpdateState {
+  try {
+    const raw = JSON.parse(localStorage.getItem(UPDATE_KEY) || '{}');
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as UpdateState) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveUpdateState(state: UpdateState): void {
+  try {
+    localStorage.setItem(UPDATE_KEY, JSON.stringify(state));
+  } catch {
+    /* storage blocked: the state lasts this session only */
+  }
 }
 
 export function applyPrefsToCore(prefs: MobilePrefs): void {

@@ -124,6 +124,8 @@ function writeAppImageLauncher(appDir) {
     launcher,
     [
       '#!/bin/sh',
+      // electron-updater runs the new AppImage once with this set after replacing the old one.
+      'if [ "$APPIMAGE_EXIT_AFTER_INSTALL" = "true" ]; then exit 0; fi',
       'HERE="$(dirname "$(readlink -f "$0")")"',
       'if ! unshare --user --map-root-user true 2>/dev/null; then',
       '  set -- --no-sandbox "$@"',
@@ -172,6 +174,8 @@ module.exports = {
       ...(process.platform === 'darwin' ? ['packaging/icon.png', 'packaging/icon.icns'] : []),
       // Linux: window / notification icon (nativeImage cannot read .ico there).
       ...(process.platform === 'linux' ? ['packaging/icon.png'] : []),
+      // In-app updates (src/services/app-updater.ts). macOS is unsigned and only opens the DMG download.
+      ...(process.platform === 'darwin' ? [] : ['packaging/app-update.yml']),
     ],
     // Avoid github.com timeouts when re-fetching Electron (npmmirror). Override via ELECTRON_MIRROR.
     download: {

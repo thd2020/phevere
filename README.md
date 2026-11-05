@@ -110,9 +110,28 @@ Release builds are not code-signed, so Windows SmartScreen and macOS Gatekeeper 
 
 **Linux.** Install the deb with `sudo apt install ./phevere_<version>_amd64.deb` or the rpm with `sudo dnf install ./phevere-<version>-1.x86_64.rpm`; or make the AppImage executable and run it. Select-to-lookup works without setup on KDE Plasma, wlroots desktops (Sway, Hyprland) and any X11 session. On KDE Plasma Wayland the popup opens at the pointer and hover lookup follows it there too. GNOME on Wayland gives applications no background access to the selection; bind the command `phevere --lookup-selection` to a keyboard shortcut in **Settings → Keyboard → Custom Shortcuts** and press it after selecting. The tray icon needs a panel that hosts StatusNotifierItem icons, which KDE Plasma, Cinnamon, Budgie, XFCE and waybar's tray module do. GNOME needs the AppIndicator extension. If the panel starts after Phevere, the icon appears once the panel is up; if no tray turns up within a minute, Phevere shows a notification, and running `phevere` again reopens its window. Notebook and settings live in `~/.config/phevere`. See [`docs/LINUX_SELECTION.md`](docs/LINUX_SELECTION.md).
 
+### Updates and rollback
+
+Since 2026-11-04 Phevere updates itself from GitHub releases. **Settings → Updates** shows the version you run, when Phevere last checked, a **Check now** button and the update mode. It checks 45 seconds after it starts and then every four hours, and a failed check is retried after 5, 10, 20 and more minutes.
+
+| Install | Modes | Roll back |
+|---|---|---|
+| Windows Setup.exe | Automatic, Ask first, Off | Yes |
+| Linux AppImage | Automatic, Ask first, Off | Yes |
+| Linux deb | Ask first, Off | Yes |
+| Linux rpm | Ask first, Off | No |
+| macOS DMG | Ask first, Off | No |
+| Android APK | Automatic, Ask first, Off | No |
+
+Automatic is the default where it is offered. It downloads a new release in the background and installs it when you quit Phevere; **Restart to update** installs it straight away. Ask first shows one notification per release and installs only after you select **Update to** that version. Off never checks on its own, but Check now still works. Every download is checked against the SHA-512 published with the release before it runs.
+
+What you see while an update installs depends on the platform. On Windows, Phevere is installed in Program Files, so Windows asks once for administrator permission (the User Account Control prompt) when the update installs, and the prompt names an unknown publisher because releases are not signed. SmartScreen does not appear, because it only checks files opened from a browser or Explorer. The deb and rpm packages install through your system's password prompt. The macOS build is not signed, so it cannot replace itself: **Download** opens the new DMG in your browser. On Android the update downloads in Phevere and then the system install prompt appears; the first time, Android asks you to allow Phevere to install apps.
+
+**Roll back to** reinstalls the version you ran before the last update, or the release before yours when Phevere did not record one, and restarts. The version you left is then skipped until a newer release comes out. Your notebook and settings stay in place, as with any upgrade. Rollback only goes as far back as the first release with this updater (the one after 4.0.0); to go further back, install an older Setup.exe, DMG or package by hand from the releases page. Copies that were not installed (an unzipped folder, or a build you ran with `npm start`) show the version only.
+
 ### Android
 
-Android 7.0 (API 24) or later. Download `Phevere-<version>-android.apk` from [GitHub Releases](https://github.com/thd2020/phevere/releases/latest); the app is not in an app store. The APK is debug-signed, and each build is signed with its runner's debug key, so installing a newer release may require uninstalling the old one first. The version shown by the installer has the form `<version>-dev.<build>+<commit>`. Each CI run on `main` also builds an APK, available from the run's **Artifacts** section as `phevere-android`.
+Android 7.0 (API 24) or later. Download `Phevere-<version>-android.apk` from [GitHub Releases](https://github.com/thd2020/phevere/releases/latest); the app is not in an app store. Release APKs are all signed with the same key, so a newer one installs over the old one and keeps your notebook; Settings → Updates installs them for you. Each CI run on `main` also builds an APK, available from the run's **Artifacts** section as `phevere-android`; those are debug-signed, cannot update a release install, and never update themselves.
 
 The LSPosed module is optional and requires a rooted device. Enabled in LSPosed for the apps you choose, it hooks the system text-selection toolbar so that Phevere appears at a position you set, is added back in apps that hide third-party actions (X, for example), and can be pressed automatically on selection. Setup steps are in [`apps/mobile/ANDROID.md`](apps/mobile/ANDROID.md).
 

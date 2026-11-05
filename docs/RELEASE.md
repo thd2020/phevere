@@ -1,5 +1,7 @@
 # Publishing a GitHub release
 
+2026-11-04: A last job, `release-update-metadata`, writes the files the in-app updater reads and uploads them to the release: `latest.yml` (both Windows Setup files), `latest-linux.yml`, `latest-linux-arm64.yml` (AppImage, deb and rpm per architecture) and `latest-android.yml` (the APK). It runs after the Windows, Linux and Android jobs, whether they built, were skipped or failed, downloads that release's installers and hashes them with `scripts/update-metadata.js`, so the files always describe what is actually published. A platform with no installer for the version gets no file, and `latest.yml` waits until both the x64 and the arm64 Setup are there. Until the job finishes, apps find no update file on the new release and report that they are up to date. To rewrite the files for an existing tag, run Actions → release with `targets` set to `update-metadata`. Releases up to 4.0.0 have none, which is why rollback never offers them.
+
 2026-11-03: The Windows x64 job also uploads and attests `Phevere-OCR-PP-OCRv4.tar.gz`, the OCR pack that installers no longer include (`scripts/make-ocr-pack.js`). The app downloads it from the release, so every tag must carry it; a `windows-x64` retry replaces it too. The upgrade check now also requires that OCR models installed by an older version survive the upgrade and that a fresh install has none.
 
 2026-10-25: Tags also build Linux deb, rpm and AppImage for x64 (`ubuntu-22.04`) and arm64 (`ubuntu-22.04-arm`). Rebuild only those onto an existing tag with `targets=linux`.

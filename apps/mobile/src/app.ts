@@ -127,6 +127,8 @@ import {
   type CatalogStatus,
 } from './platform/offline';
 import { applyPrefsToCore, loadPrefs, savePrefs, type MobilePrefs } from './platform/prefs';
+import { startPhoneUpdates } from './platform/updates';
+import type { PhoneUpdater } from './app-update';
 import * as accountPlatform from './platform/account';
 import {
   lookupBody,
@@ -415,6 +417,8 @@ const lib = emptyLibraryState();
 let toastMsg = '';
 let toastTimer: number | null = null;
 let capture: CaptureInfo = { platform: 'web', canDrawOverlays: false };
+/** Android release builds in the full app; null elsewhere (no Updates section). */
+let phoneUpdates: PhoneUpdater | null = null;
 let accountState: AccountState | null = null;
 /** The account sheet is open from the app bar. */
 let accountOpen = false;
@@ -615,6 +619,7 @@ function paint(): void {
             settingsSection,
             voice,
             lib,
+            phoneUpdates?.view() ?? null,
           )
         : hit;
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
@@ -2028,7 +2033,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'settings-section': {
       const next = t.dataset.section as SettingsSection | undefined;
-      if (next === 'capture' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio') {
+      if (next === 'capture' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio' || (next === 'updates' && phoneUpdates)) {
         settingsSection = next;
         langMenu = '';
         if (next === 'offline') await refreshPacks();
@@ -2614,6 +2619,17 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       lib.inspecting = null;
       paint();
       return;
+    case 'update-mode': {
+      const mode = (t as HTMLInputElement).value;
+      if (mode === 'auto' || mode === 'ask' || mode === 'off') phoneUpdates?.setMode(mode);
+      return;
+    }
+    case 'update-check':
+      await phoneUpdates?.check();
+      return;
+    case 'update-install':
+      await phoneUpdates?.install();
+      return;
     case 'notify-allow':
       if (hasNativeBridge()) {
         await nativeCall('requestNotifications', {});
@@ -3019,10 +3035,26 @@ export async function startApp(): Promise<void> {
       },
     });
   }
+  if (!stripMode && capture.platform === 'android') {
+    void startPhoneUpdates({
+      onChange: () => {
+        if (tab === 'settings' && settingsSection === 'updates') paint();
+      },
+      busy: () => looking || !!scan || document.visibilityState !== 'visible',
+      announce: (version) => {
+        if (document.visibilityState === 'visible') toast(`Phevere ${version} is available`);
+        else void nativeCall('notify', { title: 'Phevere', body: `Phevere ${version} is available` }).catch(() => undefined);
+      },
+    }).then((updater) => {
+      phoneUpdates = updater;
+      if (tab === 'settings') paint();
+    });
+  }
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     void refreshCapture().then(() => paint());
     if (!stripMode) accountPlatform.syncSoon();
+    phoneUpdates?.idle();
   });
   const q = queryFromLocation();
   if (q) await lookup(q);

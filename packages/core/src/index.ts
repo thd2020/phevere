@@ -462,3 +462,25 @@ export {
 } from './book-file';
 export { exportBookFile, findBookConflict, importBookPayload, type BookConflict, type BookImportResult, type BookScope } from './book-transfer';
 export { ankiFieldText, ankiTextFromBook, isZip, parseAnkiPackage, parseAnkiText, type OpenSqlite, type SqliteReader } from './anki-import';
+export {
+  LAST_VERSION_WITHOUT_UPDATER,
+  UPDATE_MODE_LABELS,
+  UPDATE_TIMING,
+  compareVersions,
+  effectiveMode,
+  isUpdateOffered,
+  nextCheckDelay,
+  parseUpdateMetadata,
+  parseVersion,
+  pickUpdateFile,
+  recordLaunch,
+  rollbackTarget,
+  startRollback,
+  updateCapabilities,
+  type UpdateCapabilities,
+  type UpdateFile,
+  type UpdateMetadata,
+  type UpdateMode,
+  type UpdateState,
+  type UpdateTarget,
+} from './update-policy';

@@ -74,6 +74,7 @@ async function startupAndGestures(floatingStrip) {
     './platform/audio': {}, './platform/native': native, './platform/notebook-io': {},
     './platform/offline': { listCatalogStatus: async () => [], markInstalledPacksOnCore: async () => {} },
     './platform/prefs': { loadPrefs: () => prefs, savePrefs: () => {}, applyPrefsToCore: () => {} },
+    './platform/updates': { startPhoneUpdates: async () => null },
     './views': {
       esc: (s) => s, lookupBody: ({ result }) => JSON.stringify(result), appBarHtml: (_t, q) => q, popupBarHtml: () => '',
       // Settings state the shell creates at start-up; its shape does not matter here.

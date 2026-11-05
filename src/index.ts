@@ -9,6 +9,7 @@ import { provisionInstallerAudio } from './services/installer-provisioning';
 import { installerAudioModelArgument, runInstallerAudioCommand } from './services/installer-audio-cli';
 import { INSTALL_OCR_PACK_FLAG, runInstallerOcrCommand } from './services/installer-ocr-cli';
 import { getOcrPackState, installOcrPack, onOcrPackChange } from './services/ocr-pack';
+import { initAppUpdater, installUpdateOnQuit } from './services/app-updater';
 import { clipboardService } from './services/clipboard';
 import { dictionaryService } from './services/dictionary';
 import { wikipediaService } from './services/wikipedia';
@@ -1084,6 +1085,8 @@ async function quitPhevere(): Promise<void> {
   if (appIsQuitting) return;
   appIsQuitting = true;
   log.info('main', 'Quit Phevere (orderly)');
+  // Automatic updates: start the downloaded installer; it waits for this process to exit.
+  installUpdateOnQuit();
 
   try {
     hoverLookup?.stop();
@@ -3650,7 +3653,38 @@ app.on('ready', () => {
     setTimeout(() => void lookupSelectionFromCli(), 600);
   }
   void provisionInstallerAudio().catch((err) => log.warn('installer', 'audio provisioning failed', { err: String(err) }));
+  initAppUpdater({
+    isBusy: () =>
+      popupWindows.some((w) => !w.isDestroyed() && w.isVisible()) ||
+      Boolean(ocrOverlayWindow && !ocrOverlayWindow.isDestroyed() && ocrOverlayWindow.isVisible()),
+    notify: notifyUpdate,
+    openUpdatesSettings: () => createSettingsWindow('updates'),
+  });
 });
+
+/** Kept so the click handler is not garbage-collected with the notification. */
+let updateNotification: Notification | null = null;
+
+/** Update notices ignore the Notifications toggles: they are rare and the user chose Ask. */
+function notifyUpdate(message: string, onClick: () => void): void {
+  try {
+    if (process.platform === 'win32') {
+      if (!tray || tray.isDestroyed()) return;
+      const clicked = () => onClick();
+      tray.once('balloon-click', clicked);
+      tray.once('balloon-closed', () => tray?.removeListener('balloon-click', clicked));
+      tray.displayBalloon?.({ title: 'Phevere', content: message });
+      return;
+    }
+    if (Notification.isSupported()) {
+      updateNotification = new Notification({ title: 'Phevere', body: message });
+      updateNotification.on('click', onClick);
+      updateNotification.show();
+    }
+  } catch {
+    /* optional */
+  }
+}
 
 app.on('second-instance', (_event, argv) => {
   if (argv.includes(LOOKUP_SELECTION_FLAG)) {

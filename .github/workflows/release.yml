@@ -1,6 +1,8 @@
 # Unsigned Windows NSIS + macOS DMGs + Linux deb/rpm/AppImage + Android APK + iOS IPA on v* tags.
 # workflow_dispatch: rebuild the chosen artifacts from this ref and replace
 # same-named files on an existing tag (does not retag).
+# The last job writes the in-app update metadata (latest*.yml) from the files on the release;
+# targets: update-metadata reruns only that job.
 # Keep run: | bodies indented — a flush-left line inside a Mac step
 # made GitHub reject the whole file (0-job failure on every main push).
 name: release
@@ -29,6 +31,7 @@ on:
           - android
           - windows-arm64
           - linux
+          - update-metadata
 
 permissions:
   contents: read
@@ -529,6 +532,38 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: ${{ steps.pkg.outputs.file }}
+
+  # latest.yml (Windows x64 and arm64), latest-linux.yml, latest-linux-arm64.yml and
+  # latest-android.yml for the in-app updater (src/services/app-updater.ts, apps/mobile).
+  # Hashed from the files on the release, so they describe the published bytes even when this
+  # run rebuilt only some targets. Runs after the build jobs whether they ran, were skipped or
+  # failed; a platform whose files for this version are missing gets no metadata file.
+  release-update-metadata:
+    needs: [release, release-win-arm64, release-linux, release-android]
+    if: ((github.event_name == 'push' && github.ref_type == 'tag') || (github.event_name == 'workflow_dispatch' && (github.event.inputs.targets == 'all' || github.event.inputs.targets == 'desktop' || github.event.inputs.targets == 'phone' || github.event.inputs.targets == 'android' || github.event.inputs.targets == 'windows-x64' || github.event.inputs.targets == 'windows-arm64' || github.event.inputs.targets == 'linux' || github.event.inputs.targets == 'update-metadata'))) && !cancelled()
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Write and upload update metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          ASSETS="$RUNNER_TEMP/release-assets"
+          META="$RUNNER_TEMP/update-metadata"
+          mkdir -p "$ASSETS" "$META"
+          gh release download "$TAG" --dir "$ASSETS" --clobber \
+            --pattern 'Phevere-Setup-*.exe' --pattern '*.AppImage' --pattern '*.deb' --pattern '*.rpm' --pattern '*-android.apk'
+          node scripts/update-metadata.js --version "${TAG#v}" --out "$META" "$ASSETS"/*
+          for f in "$META"/*.yml; do echo "::group::$(basename "$f")"; cat "$f"; echo "::endgroup::"; done
+          gh release upload "$TAG" "$META"/*.yml --clobber
 
   release-ios:
     if: (github.event_name == 'push' && github.ref_type == 'tag') || (github.event_name == 'workflow_dispatch' && (github.event.inputs.targets == 'all' || github.event.inputs.targets == 'phone'))
