@@ -215,6 +215,21 @@ async function main() {
   assert.strictEqual(quiet.received, 0);
   assert.strictEqual(quiet.merged, 0);
 
+  // 7b. A word saved in the same millisecond a sync started still reaches the other device. With
+  //     the clock frozen, the save and the previous sync share one timestamp.
+  const realNow = Date.now;
+  const frozen = realNow();
+  Date.now = () => frozen;
+  try {
+    await A.sync();
+    await A.core.addVocab({ lemma: 'samemillisecond' });
+  } finally {
+    Date.now = realNow;
+  }
+  await tick();
+  await both();
+  assert.ok(await B.core.findByLemma('samemillisecond'), 'a word saved in the millisecond of a sync is still sent');
+
   // 8. Where a word was saved travels with it; a later save does not replace it; a record from an
   //    older app, which knows nothing of it, leaves it in place.
   const ctx = { app: 'Acrobat', doc: 'GEB.pdf', page: 12, sentence: 'An Eternal Golden Braid.' };

@@ -123,7 +123,9 @@ async function runSync(account: VocabSyncAccount, now: () => number): Promise<Vo
   };
 
   await exchange(outgoing);
-  await writeState('vocab.pushedAt', String(startedAt));
+  // One millisecond back: a change saved in the same millisecond the sync started is sent
+  // again next time rather than never. Sending a record twice is harmless.
+  await writeState('vocab.pushedAt', String(startedAt - 1));
 
   await settleCarriedProgress(carried);
   // Folding duplicates edits rows here; send those edits now rather than on the next sync.

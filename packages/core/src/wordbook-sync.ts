@@ -99,7 +99,9 @@ async function runSync(account: VocabSyncAccount, now: () => number): Promise<Wo
     await writeState('wordbooks.cursor', String(cursor));
     more = res.more;
   }
-  await writeState('wordbooks.pushedAt', String(startedAt));
+  // One millisecond back: a change saved in the same millisecond the sync started is sent
+  // again next time rather than never. Sending a record twice is harmless.
+  await writeState('wordbooks.pushedAt', String(startedAt - 1));
   return { pushed: outgoing.length, received };
 }
 
