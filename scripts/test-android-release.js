@@ -57,6 +57,11 @@ before('Prepare release signing', 'Build Android APK');
 before('Verify signing identity and preserve previous APK', 'Remove existing asset with the same name');
 before('Retain Android rollback copy', 'Remove existing asset with the same name');
 before('Upgrade the previous release in place on an emulator', 'Remove existing asset with the same name');
+// The phone's updater falls back to Phevere-<version>-android.apk.sha256 when the API is rate-limited.
+before('Write the APK checksum', 'Upload GitHub Release');
+before('Remove existing APK checksum', 'Upload GitHub Release');
+assert.match(android.steps.find((step) => step.name === 'Write the APK checksum').run, /sha256sum .*\.sha256"/);
+assert.match(android.steps.find((step) => step.name === 'Upload GitHub Release').with.files, /steps\.sum\.outputs\.file/);
 const build = android.steps.find((step) => step.name === 'Build Android APK');
 assert.match(build.run, /assembleRelease/);
 assert.doesNotMatch(build.run, /assembleDebug/);
