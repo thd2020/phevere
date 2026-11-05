@@ -53,6 +53,7 @@ import {
 } from './services/speech';
 import {
   fetchSenseImages,
+  prefetchSenseImages,
   recordedPronunciationUrls,
   cacheBookWordMeaning,
   listAnswerHistory,
@@ -3026,11 +3027,31 @@ ipcMain.handle('dictionary-get-supported-languages', () => {
 });
 
 // Pictures for the pop-up's senses, fetched in the main process (Node HTTP, shared cache).
+// With an `updateId`, the first pictures go to the pop-up while slower sources still answer.
 ipcMain.handle(
   'dictionary-sense-images',
-  (_event, lemma: string, senses: Array<{ meaning: string; partOfSpeech?: string }>, opts?: { max?: number; lang?: string }) =>
-    fetchSenseImages(String(lemma || ''), Array.isArray(senses) ? senses.slice(0, 200) : [], opts),
+  (event, lemma: string, senses: Array<{ meaning: string; partOfSpeech?: string }>, opts?: { max?: number; lang?: string; updateId?: string }) => {
+    const updateId = typeof opts?.updateId === 'string' ? opts.updateId : '';
+    return fetchSenseImages(String(lemma || ''), Array.isArray(senses) ? senses.slice(0, 200) : [], {
+      max: opts?.max,
+      lang: opts?.lang,
+      onUpdate: updateId
+        ? (list) => {
+            try {
+              if (!event.sender.isDestroyed()) event.sender.send('dictionary-sense-images-update', updateId, list);
+            } catch {
+              /* pop-up closed */
+            }
+          }
+        : undefined,
+    });
+  },
 );
+
+// The pictures of a submitted word start while the dictionaries answer.
+ipcMain.on('dictionary-sense-images-prefetch', (_event, lemma: string, lang?: string) => {
+  prefetchSenseImages(String(lemma || ''), { lang: typeof lang === 'string' && lang ? lang : 'en' });
+});
 
 ipcMain.handle('dictionary-get-translation-prefs', () => {
   return loadTranslationPrefs();

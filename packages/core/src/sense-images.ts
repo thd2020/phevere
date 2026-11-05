@@ -39,13 +39,18 @@
  * picture (`hideSenseImage`), and it never shows again on that sense; Undo brings it back
  * (`unhideSenseImage`).
  *
- * Speed: the pool's three sources start together (a lookup can start them when the word is
- * submitted, `prefetchSenseImages`) and the Wiktionary page is the one the dictionary already
- * fetched; each source's files get their Commons details as soon as it answers, and `onUpdate`
- * hands the lookup its first pictures then. Requests asked within a few milliseconds of each
- * other (a screen of cards) share one request per kind, at most three go to one host at a time
- * with an identifying User-Agent, and a failure is logged once per host. Pools are kept in memory
- * and in the platform's lookup cache: two weeks with pictures, a day when a request failed, six
+ * Speed: each request to Wikimedia costs a round trip of about half a second from Asia, so the
+ * pool keeps chains short. Every source starts at once (a lookup starts them when the word is
+ * submitted, `prefetchSenseImages`): the Wiktionary page, which is the one the dictionary
+ * already fetched, the lexeme query, the article titled with the word together with its item's
+ * image (asked for by title rather than after the article names the item), and the
+ * disambiguation page, whose links carry their items so their images are asked for alongside
+ * the articles' first sentences. Each source's files get their Commons details as soon as it
+ * answers, and `onUpdate` hands the lookup its first pictures then. Requests asked within a few
+ * milliseconds of each other (a screen of cards) share one request per kind, at most three go
+ * to one host at a time with an identifying User-Agent, the disambiguation page's requests
+ * queue behind the others, and a failure is logged once per host. Pools are kept in memory and
+ * in the platform's lookup cache: two weeks with pictures, a day when a request failed, six
  * hours when empty.
  */
 import { getHttp, getLookupCache, isCoreConfigured } from './runtime';
@@ -991,28 +996,32 @@ function client(): { http: HttpClient; headers?: Record<string, string> } {
  */
 const MAX_IN_FLIGHT = 3;
 const RETRY_MS = 1500;
-const lanes = new Map<string, { inFlight: number; waiting: Array<() => void> }>();
+/**
+ * Each host's queue has two levels. Requests for the pictures of a word's major senses go first;
+ * the disambiguation page's articles, which mostly serve later senses, wait for a free slot.
+ */
+const lanes = new Map<string, { inFlight: number; waiting: Array<() => void>; later: Array<() => void> }>();
 
 function hostOf(url: string): string {
   const m = String(url || '').match(/^https?:\/\/([^/]+)/);
   return m ? m[1] : '';
 }
 
-async function throttled<T>(url: string, run: () => Promise<T>): Promise<T> {
+async function throttled<T>(url: string, run: () => Promise<T>, later = false): Promise<T> {
   const host = hostOf(url);
   let lane = lanes.get(host);
   if (!lane) {
-    lane = { inFlight: 0, waiting: [] };
+    lane = { inFlight: 0, waiting: [], later: [] };
     lanes.set(host, lane);
   }
   const l = lane;
-  if (l.inFlight >= MAX_IN_FLIGHT) await new Promise<void>((resolve) => l.waiting.push(resolve));
+  if (l.inFlight >= MAX_IN_FLIGHT) await new Promise<void>((resolve) => (later ? l.later : l.waiting).push(resolve));
   l.inFlight += 1;
   try {
     return await run();
   } finally {
     l.inFlight -= 1;
-    l.waiting.shift()?.();
+    (l.waiting.shift() || l.later.shift())?.();
   }
 }
 
@@ -1035,11 +1044,11 @@ function logFailure(url: string, err: unknown): void {
 const jsonCache = new Map<string, Promise<unknown>>();
 
 /** A JSON answer, or null when the request failed (the failure is logged once per host). */
-function getJson<T>(url: string, timeoutMs = TIMEOUT_MS): Promise<T | null> {
+function getJson<T>(url: string, timeoutMs = TIMEOUT_MS, later = false): Promise<T | null> {
   const hit = jsonCache.get(url);
   if (hit) return hit as Promise<T | null>;
   const { http, headers } = client();
-  const once = () => throttled(url, () => http.requestJson<T>(url, { headers, timeoutMs }));
+  const once = () => throttled(url, () => http.requestJson<T>(url, { headers, timeoutMs }), later);
   const p = once()
     .catch(async (err: unknown) => {
       // Rate limited or overloaded: one more try after a pause.
@@ -1057,8 +1066,8 @@ function getJson<T>(url: string, timeoutMs = TIMEOUT_MS): Promise<T | null> {
   return p;
 }
 
-async function titleQuery(url: string): Promise<TitleQuery | null> {
-  const res = await getJson<{ query?: TitleQuery }>(url);
+async function titleQuery(url: string, later = false): Promise<TitleQuery | null> {
+  const res = await getJson<{ query?: TitleQuery }>(url, TIMEOUT_MS, later);
   return res?.query || null;
 }
 
@@ -1092,29 +1101,36 @@ interface Batch {
 }
 const batches = new Map<string, Batch>();
 
-function flushBatch(kind: string, build: (keys: string[]) => string, timeoutMs = TIMEOUT_MS): void {
+function flushBatch(kind: string, build: (keys: string[]) => string, timeoutMs = TIMEOUT_MS, later = false): void {
   const batch = batches.get(kind);
   if (!batch) return;
   batches.delete(kind);
   if (batch.timer) clearTimeout(batch.timer);
-  void getJson<unknown>(build(batch.keys), timeoutMs).then((res) => {
+  void getJson<unknown>(build(batch.keys), timeoutMs, later).then((res) => {
     for (const w of batch.waiters) w(res);
   });
 }
 
-function batched<T>(kind: string, build: (keys: string[]) => string, keys: string[], max = BATCH_MAX, timeoutMs = TIMEOUT_MS): Promise<T | null> {
+function batched<T>(
+  kind: string,
+  build: (keys: string[]) => string,
+  keys: string[],
+  max = BATCH_MAX,
+  timeoutMs = TIMEOUT_MS,
+  later = false,
+): Promise<T | null> {
   const wanted = Array.from(new Set(keys.filter(Boolean)));
   if (!wanted.length) return Promise.resolve(null);
-  if (wanted.length > max) return getJson<T>(build(wanted.slice(0, max)), timeoutMs);
+  if (wanted.length > max) return getJson<T>(build(wanted.slice(0, max)), timeoutMs, later);
   const open = batches.get(kind);
-  if (open && new Set([...open.keys, ...wanted]).size > max) flushBatch(kind, build, timeoutMs);
+  if (open && new Set([...open.keys, ...wanted]).size > max) flushBatch(kind, build, timeoutMs, later);
   let batch = batches.get(kind);
   if (!batch) {
     batch = { keys: [], waiters: [], timer: null };
     batches.set(kind, batch);
     const b0 = batch;
     batch.timer = setTimeout(() => {
-      if (batches.get(kind) === b0) flushBatch(kind, build, timeoutMs);
+      if (batches.get(kind) === b0) flushBatch(kind, build, timeoutMs, later);
     }, BATCH_WINDOW_MS);
   }
   for (const t of wanted) if (!batch.keys.includes(t)) batch.keys.push(t);
@@ -1828,13 +1844,14 @@ export function buildItemImagesUrl(items: string[]): string {
   return `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(q)}`;
 }
 
-async function itemImages(items: string[]): Promise<{ images: Map<string, string[]>; labels: Map<string, string>; ok: boolean }> {
+async function itemImages(items: string[], later = false): Promise<{ images: Map<string, string[]>; labels: Map<string, string>; ok: boolean }> {
   const images = new Map<string, string[]>();
   const labels = new Map<string, string>();
   if (!items.length) return { images, labels, ok: true };
   type Rows = { results?: { bindings?: SparqlBinding[] } };
   const res =
-    (await batched<Rows>('items', buildItemImagesUrl, items, 40)) || (await getJson<Rows>(buildItemImagesUrl(items), RETRY_TIMEOUT_MS));
+    (await batched<Rows>(later ? 'items-later' : 'items', buildItemImagesUrl, items, 40, TIMEOUT_MS, later)) ||
+    (await getJson<Rows>(buildItemImagesUrl(items), RETRY_TIMEOUT_MS, later));
   if (!res) return { images, labels, ok: false };
   for (const b of res.results?.bindings || []) {
     const id = (b.item?.value || '').split('/').pop() || '';
@@ -1847,11 +1864,60 @@ async function itemImages(items: string[]): Promise<{ images: Map<string, string
   return { images, labels, ok: true };
 }
 
+/** A Wikipedia title as the wiki stores it: first letter upper case, spaces for underscores. */
+function wikiTitle(text: string): string {
+  const t = String(text || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  return t ? `${t.charAt(0).toUpperCase()}${t.slice(1)}` : '';
+}
+
+/**
+ * The images (P18) of the Wikidata items whose Wikipedia article in `lang` has one of these
+ * titles, by title. Asking by title lets this run alongside the Wikipedia request that names the
+ * article's item, instead of after it.
+ */
+export function buildTitledItemImagesUrl(titles: string[], lang = 'en'): string {
+  const code = lexemeLanguageTag(lang);
+  const values = titles.map((t) => `"${wikiTitle(t).replace(/["\\\n]/g, '')}"@${code}`).join(' ');
+  const q =
+    `SELECT ?name ?item ?img WHERE { VALUES ?name { ${values} } ` +
+    `?article schema:about ?item; schema:isPartOf <https://${code}.wikipedia.org/>; schema:name ?name. ` +
+    `OPTIONAL { ?item wdt:P18 ?img } }`;
+  return `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(q)}`;
+}
+
+/** The item of the article titled `title` and that item's images; no item when it has none or the request failed. */
+async function articleItemImages(title: string, lang: string): Promise<{ item: string; images: Map<string, string[]> }> {
+  const images = new Map<string, string[]>();
+  const name = wikiTitle(title);
+  const code = lexemeLanguageTag(lang);
+  if (!name) return { item: '', images };
+  type Rows = { results?: { bindings?: SparqlBinding[] } };
+  const res = await batched<Rows>(`titled-items:${code}`, (titles) => buildTitledItemImagesUrl(titles, code), [name], 40);
+  let item = '';
+  for (const b of res?.results?.bindings || []) {
+    if (b.name?.value !== name) continue;
+    const id = (b.item?.value || '').split('/').pop() || '';
+    if (!id || (item && id !== item)) continue;
+    item = id;
+    if (!images.has(id)) images.set(id, []);
+    const list = images.get(id) as string[];
+    if (b.img && !list.includes(b.img.value)) list.push(b.img.value);
+  }
+  return { item, images };
+}
+
+/** Pictures whose Commons details are being fetched. */
+const filling = new WeakSet<PoolPicture>();
+
 /** Commons file details for the pool's pictures that lack them, then the portrait mark. */
 async function fillImages(pool: PicturePool, titleOf: (p: PoolPicture) => string): Promise<boolean> {
-  const missing = pool.pictures.filter((p) => !p.image);
+  // A picture whose details another source's step already asked for is left to that step.
+  const missing = pool.pictures.filter((p) => !p.image && !filling.has(p));
   if (!missing.length) return true;
-  const infos = await imageInfos(missing.map((p) => p.file));
+  for (const p of missing) filling.add(p);
+  const infos = await imageInfos(missing.map((p) => p.file)).finally(() => {
+    for (const p of missing) filling.delete(p);
+  });
   let ok = true;
   for (const p of missing) {
     const info = infos.get(p.file.toLowerCase());
@@ -1935,24 +2001,28 @@ async function buildPool(lemma: string, lang: string, hints: string[], progress:
     if (!(await fillImages(pool, (p) => poolTitle(pool, p)))) pool.failed = true;
     progress(pool);
   };
+  const wikitext = wikitextFor(lemma);
+  // The page's own pictures get their file details while its sense lines' items are looked up.
   const wiktionary = step(async () => {
-    const { text, ok } = await wikitextFor(lemma);
+    const { text, ok } = await wikitext;
     if (text) {
       pool.wiktionary = extractWiktionaryImages(text, code);
       pool.etymology = etymologyLines(text, code, lemma);
       pool.wiktionary.forEach((w, k) => addPicture(pool, w.file, 'wiktionary', k));
-      // Definition lines tied to a Wikidata item show that item's image.
-      const items = extractSenseItems(text, code);
-      if (items.length) {
-        const { images, labels, ok: itemsOk } = await itemImages(items.map((x) => x.item));
-        for (const x of items) {
-          const pick = bestImage(images.get(x.item) || [], `${lemma} ${x.senseText}`);
-          if (!pick) continue;
-          pool.senseItems.push({ ...x, label: labels.get(x.item) || '', file: commonsFileFromUrl(pick) });
-          addPicture(pool, commonsFileFromUrl(pick), 'senseitem', pool.senseItems.length - 1);
-        }
-        if (!itemsOk) return false;
-      }
+    }
+    return ok;
+  });
+  // Definition lines tied to a Wikidata item show that item's image.
+  const senseItems = step(async () => {
+    const { text } = await wikitext;
+    const items = text ? extractSenseItems(text, code) : [];
+    if (!items.length) return true;
+    const { images, labels, ok } = await itemImages(items.map((x) => x.item));
+    for (const x of items) {
+      const pick = bestImage(images.get(x.item) || [], `${lemma} ${x.senseText}`);
+      if (!pick) continue;
+      pool.senseItems.push({ ...x, label: labels.get(x.item) || '', file: commonsFileFromUrl(pick) });
+      addPicture(pool, commonsFileFromUrl(pick), 'senseitem', pool.senseItems.length - 1);
     }
     return ok;
   });
@@ -1962,6 +2032,9 @@ async function buildPool(lemma: string, lang: string, hints: string[], progress:
     senses.forEach((l, k) => addPicture(pool, l.file, 'lexeme', k));
     return ok;
   });
+  // The image of the item the article titled with the word belongs to is asked for at once, by
+  // the article's title, rather than after the article has named its item.
+  const titledImages = articleItemImages(lemma.trim(), code);
   const article = step(async () => {
     const q = await titleQuery(buildWikipediaTitleUrl(lemma.trim(), code === 'en' ? 'en' : code));
     if (!q) return false;
@@ -1974,7 +2047,9 @@ async function buildPool(lemma: string, lang: string, hints: string[], progress:
     // a diagram or a detail ("Crane (machine)" opens with an SVG).
     const item = page.pageprops?.wikibase_item;
     if (item) {
-      const { images } = await itemImages([item]);
+      // A title that redirects ("cats" to "Cat") has no item of its own: ask by the item.
+      const titled = await titledImages;
+      const { images } = titled.item === item ? titled : await itemImages([item]);
       const pick = bestImage(images.get(item) || [], `${lemma} ${page.title}`);
       if (pick) {
         addPicture(pool, commonsFileFromUrl(pick), 'article', 0);
@@ -1992,10 +2067,10 @@ async function buildPool(lemma: string, lang: string, hints: string[], progress:
     return true;
   });
   const glossTitles = code === 'en' ? Promise.resolve() : addGlossArticles(pool, hints, step);
-  // The disambiguation page's articles mostly serve senses after the first, so they wait for the
-  // word's own article and do not hold up its request to Wikipedia.
-  const related = code === 'en' ? article.then(() => step(() => addRelatedArticles(pool))) : Promise.resolve();
-  await Promise.all([wiktionary, lexemes, article, glossTitles, related]);
+  // The disambiguation page's articles start at once too. They mostly serve senses after the
+  // first, so their requests to Wikipedia queue behind the others when the host is busy.
+  const related = code === 'en' ? step(() => addRelatedArticles(pool, article)) : Promise.resolve();
+  await Promise.all([wiktionary, senseItems, lexemes, article, glossTitles, related]);
   pool.complete = true;
   return pool;
 }
@@ -2029,20 +2104,28 @@ const RELATED_MAX = 20;
  * (container)", "Tobacco pipe", "Seashell"), each with its Wikidata image or its free lead
  * image, for senses the article titled with the bare word does not cover.
  */
-async function addRelatedArticles(pool: PicturePool): Promise<boolean> {
-  const res = await getJson<{ query?: { pages?: WikipediaPage[] } }>(buildDisambiguationLinksUrl(pool.lemma));
+async function addRelatedArticles(pool: PicturePool, article: Promise<unknown>): Promise<boolean> {
+  const res = await getJson<{ query?: { pages?: WikipediaPage[] } }>(buildDisambiguationLinksUrl(pool.lemma), TIMEOUT_MS, true);
   if (!res) return false;
-  const names = (res.query?.pages || [])
+  const linked = (res.query?.pages || [])
     .filter((p) => !p.missing && p.pageprops?.disambiguation === undefined && relatedTitle(p.title, pool.lemma))
     .filter((p) => !BAD_DESCRIPTION.test(String(p.description || '')) && !BAD_DESCRIPTION.test(titleParts(p.title).qualifier))
-    .map((p) => p.title)
     .slice(0, RELATED_MAX);
+  const names = linked.map((p) => p.title);
   if (!names.length) return true;
-  const q = await titleQuery(buildWikipediaTitlesUrl(names));
+  // The links already carry each article's Wikidata item, so the items' images are asked for
+  // while the articles' first sentences and lead images are.
+  const linkedItems = linked.map((p) => p.pageprops?.wikibase_item || '').filter(Boolean);
+  const [q, early] = await Promise.all([titleQuery(buildWikipediaTitlesUrl(names), true), itemImages(linkedItems, true)]);
   if (!q) return false;
+  // The word's own article is not repeated among them.
+  await article;
   const pages = names.map((t) => resolveTitle(q, t)).filter((p): p is WikipediaPage => !!p && !p.missing && p.title !== pool.article?.title);
   const items = pages.map((p) => p.pageprops?.wikibase_item || '').filter(Boolean);
-  const { images, ok } = await itemImages(items);
+  const more = items.filter((x) => !linkedItems.includes(x));
+  const late = more.length ? await itemImages(more, true) : { images: new Map<string, string[]>(), ok: true };
+  const images = new Map([...early.images, ...late.images]);
+  const ok = early.ok && late.ok;
   pool.related = pool.related || [];
   for (const page of pages) {
     if (BAD_DESCRIPTION.test(String(page.description || ''))) continue;

@@ -1,3 +1,5 @@
+import * as http from 'http';
+import * as https from 'https';
 import fetch, { RequestInit, Response } from 'node-fetch';
 import {
   DictionaryError,
@@ -10,6 +12,19 @@ import {
 
 const DEFAULT_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+/**
+ * Connections are kept open between requests. Electron 28 runs Node 18, whose default agent
+ * closes every connection after one response, so each request paid a new TCP and TLS handshake
+ * (several hundred milliseconds to Wikimedia's edge from Asia). Browsers and Node 19 and later
+ * keep connections alive by default.
+ */
+const httpAgent = new http.Agent({ keepAlive: true, keepAliveMsecs: 15_000 });
+const httpsAgent = new https.Agent({ keepAlive: true, keepAliveMsecs: 15_000 });
+
+function agentFor(parsed: URL): http.Agent {
+  return parsed.protocol === 'http:' ? httpAgent : httpsAgent;
+}
 
 async function rawFetch(url: string, options?: HttpRequestInit): Promise<Response> {
   const timeoutMs = options?.timeoutMs ?? 6000;
@@ -24,6 +39,7 @@ async function rawFetch(url: string, options?: HttpRequestInit): Promise<Respons
         body: options?.body,
         timeout: timeoutMs,
         headers,
+        agent: agentFor,
       } as RequestInit),
       timeoutMs + 500,
       `fetch ${url.slice(0, 64)}`,
