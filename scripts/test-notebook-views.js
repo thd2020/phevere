@@ -167,34 +167,156 @@ assert.equal(folded[5].label, 'Earlier');
 assert.equal(folded[0].label, 'December 2025');
 assert.equal(folded.reduce((n, p) => n + p.ids.length, 0), 12);
 
+// A layout saved by earlier versions: Scatter became the grid, anything unknown the piles.
+assert.equal(views.cardLayoutOf('scatter'), 'grid');
+assert.equal(views.cardLayoutOf('grid'), 'grid');
+assert.equal(views.cardLayoutOf('piles'), 'piles');
+assert.equal(views.cardLayoutOf(null), 'piles');
+assert.equal(views.cardLayoutOf('bogus'), 'piles');
+
+// Expanded or not is kept per list. Opening My words' only pile leaves 考研 in piles.
+{
+  let saved = views.readCardLayouts(null);
+  assert.equal(views.cardLayoutIn(saved, 'kaoyan'), 'piles');
+  saved = views.readCardLayouts(JSON.stringify(views.withCardLayout(saved, 'mine', 'grid')));
+  assert.equal(views.cardLayoutIn(saved, 'mine'), 'grid');
+  assert.equal(views.cardLayoutIn(saved, 'kaoyan'), 'piles');
+  assert.equal(views.cardLayoutIn(saved, 'all'), 'piles');
+  // The single choice of earlier versions applies to every list until a list has its own;
+  // Scatter became every pile out.
+  const old = views.readCardLayouts('scatter');
+  assert.equal(views.cardLayoutIn(old, 'mine'), 'grid');
+  assert.equal(views.cardLayoutIn(old, 'kaoyan'), 'grid');
+  const mixed = views.withCardLayout(old, 'kaoyan', 'piles');
+  assert.equal(views.cardLayoutIn(mixed, 'kaoyan'), 'piles');
+  assert.equal(views.cardLayoutIn(mixed, 'mine'), 'grid');
+  assert.equal(views.cardLayoutIn(views.readCardLayouts('{not json'), 'mine'), 'piles');
+  assert.equal(views.cardLayoutIn(views.readCardLayouts('{"mine":"scatter","cet4":"bogus"}'), 'mine'), 'grid');
+  assert.equal(views.cardLayoutIn(views.readCardLayouts('{"mine":"scatter","cet4":"bogus"}'), 'cet4'), 'piles');
+}
+
 const chtml = views.cardsHtml(entries, a, new Set(['id1']), 'scatter', now);
-assert.match(chtml, /<div class="nbv-table" data-layout="scatter" data-scope="[^"]+">/);
+assert.match(chtml, /<div class="nbv-table" data-layout="grid" data-scope="[^"]+">/);
+// The table names its list, and Expand all keeps its name: aria-pressed says whether it is on.
+assert.match(views.cardsHtml(entries, a, new Set(), 'grid', now, { list: 'kaoyan' }), /data-list="kaoyan"/);
+assert.match(chtml, /<button type="button" class="nbv-table__all" data-cards-all aria-pressed="true">[\s\S]*?<span>Expand all<\/span><\/button>/);
+assert.doesNotMatch(chtml, /Collapse all/);
 // Each list has its own scope, so an open pile in My words is not open in a book.
-assert.notEqual(chtml.match(/data-scope="([^"]+)"/)[1], views.cardsHtml(entries.slice(1), a, new Set(), 'scatter', now).match(/data-scope="([^"]+)"/)[1]);
-assert.match(chtml, /data-cards-layout="piles"[^>]*aria-pressed="false"/);
-assert.match(chtml, /data-cards-layout="scatter"[^>]*aria-pressed="true"/);
-assert.match(chtml, /data-cards-layout="grid"/);
-// A tap on a card is a lookup; the meaning flip is its own button.
-assert.equal((chtml.match(/<article class="nbv-card[^"]*" data-act="lookup" data-q="[^"]+"/g) || []).length, entries.length);
-assert.match(chtml, /<article class="nbv-card" data-act="lookup" data-q="inspect"[^>]*tabindex="0"/);
-assert.equal((chtml.match(/<button type="button" class="nbv-card__flip" data-act="nb-flip"/g) || []).length, entries.length);
-assert.match(chtml, /class="nbv-card is-flipped" data-act="lookup" data-q="inspector"/);
+assert.notEqual(chtml.match(/data-scope="([^"]+)"/)[1], views.cardsHtml(entries.slice(1), a, new Set(), 'grid', now).match(/data-scope="([^"]+)"/)[1]);
+// No layout switch: one Expand all button, pressed while every pile is out.
+assert.doesNotMatch(chtml, /data-cards-layout/);
+const phtml = views.cardsHtml(entries, a, new Set(['id1']), 'piles', now);
+assert.match(phtml, /data-cards-all aria-pressed="false">[\s\S]*?<span>Expand all<\/span>/);
+// The markup holds each pile's top cards; the table draws the rest when they near the screen.
+const shownPiles = views.cardPiles(entries, now);
+const faceCount = shownPiles.reduce((n, p) => n + Math.min(views.PILE_FACE_CARDS, p.ids.length), 0);
+assert.equal((chtml.match(/<article class="nbv-card/g) || []).length, faceCount);
+// The card's text is the lookup, not the whole card, so fast clicks on the picture only turn it.
+assert.equal((chtml.match(/<article class="nbv-card[^"]*" data-act=/g) || []).length, 0);
+assert.equal((chtml.match(/class="nbv-card__body" data-act="lookup" data-q="[^"]+"/g) || []).length, faceCount);
+assert.match(chtml, /<article class="nbv-card" data-q="inspect"[^>]*tabindex="0"/);
+assert.equal((chtml.match(/<button type="button" class="nbv-card__flip" data-act="nb-flip"/g) || []).length, faceCount);
+assert.match(chtml, /class="nbv-card is-flipped" data-q="inspector"/);
 // The picture and the back turn the card over; Look up on the back opens the lookup.
-assert.equal((chtml.match(/class="nbv-card__pic" data-act="nb-flip"/g) || []).length, entries.length);
-assert.equal((chtml.match(/class="nbv-card__face nbv-card__back" data-act="nb-flip"/g) || []).length, entries.length);
+assert.equal((chtml.match(/class="nbv-card__pic" data-act="nb-flip"/g) || []).length, faceCount);
+assert.equal((chtml.match(/class="nbv-card__face nbv-card__back" data-act="nb-flip"/g) || []).length, faceCount);
 assert.match(chtml, /class="nbv-card__look" data-act="lookup" data-q="inspector" tabindex="0"/);
 assert.match(chtml, /class="nbv-card__look" data-act="lookup" data-q="inspect" tabindex="-1"/);
 assert.match(chtml, /class="nbv-pile[^"]*" data-pile="week" aria-expanded="false"/);
-assert.match(chtml, /class="nbv-pile[^"]*" data-pile="week"/);
 assert.match(chtml, /This week<b>\d+<\/b>/);
 assert.match(chtml, /data-img-lemma="spectator"/);
 assert.match(views.cardsHtml(entries, a, new Set(), undefined, now), /data-layout="piles"/);
 assert.match(views.cardsHtml([], a, new Set()), /No saved words/);
-// Only the top cards of a big pile are drawn; the rest are marked deep.
+// A big pile draws only its top cards, and none of them is deep.
 const many = Array.from({ length: 30 }, (_, i) => ({ id: `c${i}`, lemma: `word${i}`, createdAt: now - i * 1000 }));
 const mhtml = views.cardsHtml(many, views.analyzeNotebook(many), new Set(), 'piles', now);
-assert.equal((mhtml.match(/ data-deep /g) || []).length, 30 - views.PILE_FACE_CARDS);
+assert.equal((mhtml.match(/<article class="nbv-card/g) || []).length, views.PILE_FACE_CARDS);
+assert.equal((mhtml.match(/ data-deep /g) || []).length, 0);
 assert.match(mhtml, /class="nbv-pile has-depth"/);
+
+// A word book's words that were never started have no date: they go last, in book order, in
+// one "New" pile, and every word of the book is in some pile.
+const book = [
+  { id: 'mine1', lemma: 'alpha', createdAt: now - 1000, saved: true },
+  { id: 'wb:started', lemma: 'beta', createdAt: now - 40 * DAY, saved: false },
+  ...Array.from({ length: 5000 }, (_, i) => ({ id: `wb:w${i}`, lemma: `w${i}`, createdAt: 0, saved: false })),
+  { id: 'old', lemma: 'gamma', createdAt: 0, saved: true },
+];
+const bookPiles = views.cardPiles(book, now);
+assert.equal(bookPiles.reduce((n, p) => n + p.ids.length, 0), book.length, 'every book word has a card');
+assert.equal(bookPiles[bookPiles.length - 1].label, 'New');
+assert.equal(bookPiles[bookPiles.length - 1].ids.length, 5000);
+assert.equal(bookPiles[bookPiles.length - 1].ids[0], 'wb:w0', 'book order kept');
+assert.equal(bookPiles[bookPiles.length - 1].ids[4999], 'wb:w4999');
+assert.equal(bookPiles[bookPiles.length - 2].label, 'Earlier', 'a saved word with no date stays in Earlier');
+// The book's table renders at once however long the book is.
+const t0 = Date.now();
+const bhtml = views.cardsHtml(book, views.analyzeNotebook(book.slice(0, 50)), new Set(), 'grid', now);
+assert.ok(Date.now() - t0 < 1500, 'a 5000-word book renders quickly');
+assert.match(bhtml, /New<b>5000<\/b>/);
+
+// The table's flow: a closed pile takes one place, an open pile one place per card, starting
+// where the pile lay, so opening a pile moves only the piles after it.
+const geo = { width: 600, cardW: 180, cardH: 250, gap: 16 };
+const flowPiles = [
+  { key: 'a', label: 'A', ids: ['a0', 'a1', 'a2', 'a3', 'a4'] },
+  { key: 'b', label: 'B', ids: ['b0', 'b1'] },
+  { key: 'c', label: 'C', ids: ['c0'] },
+];
+const closed = views.planTable(flowPiles, new Set(), geo);
+assert.equal(closed.cols, 3);
+assert.equal(closed.piles.get('a').y, closed.piles.get('c').y, 'three piles fit one row');
+assert.equal(closed.cards.size, 8, 'every card has a place');
+const openB = views.planTable(flowPiles, new Set(['b']), geo);
+assert.deepEqual(openB.piles.get('a'), closed.piles.get('a'), 'a pile before the open one stays put');
+assert.deepEqual(openB.piles.get('b'), closed.piles.get('b'), 'the open pile starts where it lay');
+assert.ok(Math.abs(openB.cards.get('b0').x - closed.piles.get('b').x) < 4, 'its first card lands on its place');
+assert.ok(Math.abs(openB.cards.get('b1').x - closed.piles.get('c').x) < 4, 'its next card takes the place after');
+assert.ok(openB.piles.get('c').y > closed.piles.get('c').y, 'the pile after it is pushed to the next row');
+assert.ok(openB.height > closed.height);
+const all = views.planTable(flowPiles, new Set(['a', 'b', 'c']), geo);
+const ys = [...all.cards.values()].map((p) => p.y);
+assert.equal(new Set(flowPiles.flatMap((p) => p.ids).map((id) => Math.round(all.cards.get(id).x / 100))).size, 3, 'poured cards fill three columns');
+assert.ok(Math.max(...ys) > Math.min(...ys) + 2 * geo.cardH, 'eight cards make three rows');
+for (const p of all.cards.values()) assert.ok(Math.abs(p.rot) <= 1.2, 'poured cards lie nearly straight');
+// A 5000-card pile lays out in a few milliseconds.
+const big = [{ key: 'new', label: 'New', ids: Array.from({ length: 5000 }, (_, i) => `n${i}`) }];
+const t1 = Date.now();
+const bigPlan = views.planTable(big, new Set(['new']), { width: 343, cardW: 150, cardH: 220, gap: 10 });
+assert.ok(Date.now() - t1 < 200);
+assert.equal(bigPlan.cols, 2);
+assert.equal(bigPlan.cards.size, 5000);
+
+// Shakes, after Square's Seismic: a quarter second of strong motion is one shake, two with a
+// pause between them are a double shake, and one long shake is never two.
+const shake = load('shake');
+const feed = (det, from, ms, strong) => {
+  let hit = 0;
+  for (let t = from; t < from + ms; t += 16) if (det.push(t, strong ? ((t / 16) % 2 ? 15 : -15) : 0.2, 9.8, 0)) hit += 1;
+  return hit;
+};
+const one = shake.shakeDetector();
+assert.equal(feed(one, 0, 200, true), 0, 'under a quarter second is not a shake');
+assert.equal(feed(one, 200, 100, true), 1, 'a quarter second or more is');
+assert.equal(feed(shake.shakeDetector(), 0, 3000, false), 0, 'holding the phone is not a shake');
+const dbl = shake.doubleShakeDetector();
+let t = 0;
+assert.equal(feed(dbl, t, 400, true), 0, 'one shake alone does nothing');
+t += 400;
+assert.equal(feed(dbl, t, 250, false), 0);
+t += 250;
+assert.equal(feed(dbl, t, 400, true), 1, 'a second shake after a pause is a double shake');
+const long = shake.doubleShakeDetector();
+assert.equal(feed(long, 0, 2000, true), 0, 'two seconds of shaking without a pause is one shake');
+const slow = shake.doubleShakeDetector();
+feed(slow, 0, 400, true);
+feed(slow, 400, 2000, false);
+assert.equal(feed(slow, 2400, 400, true), 0, 'shakes further apart than 1.5 s are two single shakes');
+// Walking or a bumpy ride stays under the threshold.
+const walk = shake.doubleShakeDetector();
+let walked = 0;
+for (let i = 0; i < 600; i++) if (walk.push(i * 16, Math.sin(i / 4) * 2.5, 9.8 + Math.sin(i / 3) * 2, 0)) walked += 1;
+assert.equal(walked, 0);
 
 // Review queue: due reviews first, then new words up to the goal.
 const rq = [
@@ -367,6 +489,12 @@ const web = vocabEntryHtml(
 assert.match(web, /<a href="https:\/\/en\.wikipedia\.org\/wiki\/Strand\?a=1&amp;b=2" target="_blank" rel="noopener noreferrer">Strand &lt;b&gt;<\/a><span class="vocab-source__more">en\.wikipedia\.org<\/span>/);
 assert.doesNotMatch(web, /vocab-context/, 'no quote without a sentence');
 
+// A source site's tile: the site's own /favicon.ico over its first letter, for any site.
+const sc = load('source-context');
+assert.equal(sc.siteIconUrl('reddit.com'), 'https://reddit.com/favicon.ico');
+assert.equal(sc.siteIconUrl('not a host'), '');
+assert.deepEqual(['reddit.com', 'en.wikipedia.org', 'bbc.co.uk', 'old.reddit.com', 'news.ycombinator.com', 't.co', 'edition.cnn.com', 'mail.qq.com', 'news.sina.com.cn', 'news.bbc.de'].map(sc.siteMonogram), ['R', 'W', 'B', 'R', 'Y', 'T', 'C', 'Q', 'S', 'B']);
+
 // Recent lookups use the notebook row and show what the notebook knows.
 const rec = recentListHtml(
   [{ q: 'inspect', at: now - 1000 }, { q: 'gargantuan', at: now - 2000 }, { q: 'old', at: 0 }],
@@ -377,6 +505,22 @@ assert.match(rec, /class="vocab-item recent-item is-collapsed is-saved"/);
 assert.match(rec, /\/ɪnˈspɛkt\//);
 assert.equal((rec.match(/class="vocab-group"/g) || []).length, 2, 'Today and Earlier');
 assert.equal((rec.match(/data-act="lookup"/g) || []).length, 6, 'row and button per item');
+// Each recent row carries the lookup's save control: the heart saves or removes in place.
+assert.match(rec, /class="vocab-open vocab-save is-on" data-act="nb-del" data-id="x" aria-pressed="true"/);
+assert.match(rec, /class="vocab-open vocab-save" data-act="wb-save" data-q="gargantuan" aria-pressed="false"/);
+assert.doesNotMatch(rec, /data-act="ub-pick"/, 'no "Add to word book" without books of your own');
+const recBooks = recentListHtml([{ q: 'inspect', at: now }], () => undefined, now, { bookPick: true });
+assert.match(recBooks, /data-act="ub-pick" data-q="inspect" aria-haspopup="menu"/);
+assert.match(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now, { bookPick: true }), /data-act="ub-pick" data-q="braid"[^>]*>.*Add to word book/);
+assert.doesNotMatch(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now), /ub-pick/);
+
+// A to Z: "#" (digits, symbols, other scripts) comes after Z in the rail and in the list.
+const { AZ_INDEX, compareAz } = load('vocab-view');
+assert.equal(AZ_INDEX[0], 'A');
+assert.equal(AZ_INDEX[AZ_INDEX.length - 1], '#');
+assert.deepEqual(['対応', 'zebra', '3D', 'apple', 'Émigré', 'Banana'].sort(compareAz), ['apple', 'Banana', 'Émigré', 'zebra', '3D', '対応']);
+assert.equal(load('vocab-view').vocabAzLetter('Émigré'), 'E', 'an accented letter files under its base letter');
+assert.equal(load('vocab-view').vocabAzLetter('3D'), '#');
 
 // Origins and deep roots from Wiktionary templates.
 const ety = load('etymology');
@@ -405,6 +549,8 @@ const strata = views.originGroups(a, lookupEty);
 assert.equal(strata[0].origin, 'Latin');
 assert.match(views.familiesHtml(a, 'origin', { etymon: lookupEty }), /via French/);
 assert.match(views.familiesHtml(a, 'root'), /Not in a family yet/);
+// Every word named on a family tile opens its lookup, not only the chips in the open drawer.
+assert.match(views.familiesHtml(a, 'root'), /<button type="button" class="nbv-fam__peekw" data-act="lookup" data-q="inspect">inspect<\/button>/);
 
 // A typed daily goal: whole numbers from 1 to 999; empty or not a number is ignored.
 assert.strictEqual(views.parseGoal('15'), 15);

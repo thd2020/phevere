@@ -182,6 +182,7 @@
       }
       .toolbar-icon.toolbar-heart.is-saved { color: var(--tertiary); }
       .toolbar-icon.toolbar-heart.is-saved .heart-fill { fill: currentColor; }
+      .toolbar-icon[hidden] { display: none; }
       .toolbar-icon.is-speaking { color: var(--tertiary); }
       .tx-speak.is-speaking { background: var(--tertiary-container); color: var(--on-tertiary-container); }
 
@@ -686,7 +687,8 @@
       body.is-part [data-tab="translation"],
       body.is-part [data-tab="wikipedia"],
       body.is-part #audioIcon,
-      body.is-part #vocabHeartIcon { display: none; }
+      body.is-part #vocabHeartIcon,
+      body.is-part #bookAddIcon { display: none; }
       /* Every other word: text until pointed at (lexicon-parts.css styles the hover). */
       .lx-w {
         color: inherit;
@@ -1400,6 +1402,7 @@
               <button type="button" class="toolbar-icon" id="clipboardIcon" title="Copy" aria-label="Copy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1zM5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
               <button type="button" class="toolbar-icon" id="searchIcon" title="Search the web" aria-label="Search the web"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
               <button type="button" class="toolbar-icon toolbar-heart" id="vocabHeartIcon" title="Save to notebook" aria-pressed="false" aria-label="Save to notebook"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="heart-fill" d="M12 20s-7-4.4-8.9-8.6C1.8 8.4 3.6 5 6.9 5c2 0 3.3 1 5.1 3 1.8-2 3.1-3 5.1-3 3.3 0 5.1 3.4 3.8 6.4C19 15.6 12 20 12 20z"/></svg></button>
+              <button type="button" class="toolbar-icon" id="bookAddIcon" title="Add to word book" aria-label="Add to word book" aria-haspopup="menu" aria-expanded="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5H7.5A2.5 2.5 0 0 1 5 17V4.5h9.5A2.5 2.5 0 0 1 17 7v5M5 17a2.5 2.5 0 0 1 2.5-2.5H12M18 15v6M15 18h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
               <button type="button" class="toolbar-icon" id="settingsIcon" title="Pop-up settings" aria-label="Pop-up settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 13.5l1.6 1.2-2 3.4-1.9-.7a7.6 7.6 0 0 1-2 1.2L14.8 21h-4l-.4-2.4a7.6 7.6 0 0 1-2-1.2l-2 .8-2-3.5 1.6-1.2a7.4 7.4 0 0 1 0-2.4L4.4 9.9l2-3.4 2 .7a7.6 7.6 0 0 1 2-1.2L10.8 3.6h4l.4 2.4a7.6 7.6 0 0 1 2 1.2l2-.8 2 3.5-1.6 1.2a7.4 7.4 0 0 1 0 2.4z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
               <button type="button" class="toolbar-icon" id="closeIcon" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             </div>
@@ -1812,6 +1815,9 @@
             });
             document.getElementById('vocabHeartIcon')?.addEventListener('click', () => {
               void toggleVocabHeart();
+            });
+            document.getElementById('bookAddIcon')?.addEventListener('click', () => {
+              openBookAdd();
             });
             document.getElementById('closeIcon').addEventListener('click', () => {
               pvLog('[POPUP] Close clicked');
@@ -4040,7 +4046,45 @@ function startAutoCloseTimeout() {
          btn.title = saved ? 'Remove from My words' : 'Save to My words';
        }
 
+       /*
+        * "Add to word book" beside the heart: the books the reader made or imported, ticked where
+        * the word is. Shown only when there is such a book; Phevere's own books are fixed lists.
+        */
+       let popupUserBooks = [];
+       async function syncBookAdd() {
+         const btn = document.getElementById('bookAddIcon');
+         if (!btn) return;
+         try {
+           const state = window.wordbookAPI && window.wordbookAPI.state ? await window.wordbookAPI.state() : null;
+           popupUserBooks = ((state && state.userBooks) || []).filter(function (b) { return !b.deleted; });
+         } catch (e) {
+           popupUserBooks = [];
+         }
+         btn.hidden = !popupUserBooks.length;
+       }
+
+       function openBookAdd() {
+         const btn = document.getElementById('bookAddIcon');
+         const lex = window.phevereLexicon;
+         const word = lemmaForSave();
+         if (!btn || !lex || !lex.openMenu || !word || !popupUserBooks.length) return;
+         lex.openMenu(btn, {
+           label: 'Add to word book',
+           sheet: false,
+           multi: true,
+           items: lex.bookPickItems(word, popupUserBooks),
+           onPick: async function (item) {
+             const book = (item.data && item.data.book) || '';
+             if (item.checked) await window.wordbookAPI.addBookWords(book, [word]);
+             else await window.wordbookAPI.removeBookWord(book, word);
+             showToast((item.checked ? 'Added to ' : 'Removed from ') + item.label);
+             await syncBookAdd();
+           },
+         });
+       }
+
        async function syncVocabHeart(lemma) {
+         void syncBookAdd();
          const word = String(
            openedAs(currentText) ||
            lemma ||
