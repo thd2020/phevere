@@ -53,7 +53,8 @@ async function startupAndGestures(floatingStrip) {
     // Notebook views are not under test here; the shell only needs the calls to exist.
     disposeNotebookMaps: () => {},
     readNotebookView: (v) => ({ view: v === 'review' || !v ? 'list' : v, learn: v === 'review' }),
-    cardLayoutOf: (v) => (v === 'grid' || v === 'scatter' ? 'grid' : 'piles'),
+    readCardLayouts: () => ({}),
+    withCardLayout: (all, list, layout) => ({ ...all, [list]: layout }),
     listWordbookSubs: async () => [], listUserBooks: async () => [], listBookProgress: async () => [],
     buildWordsContext: () => ({ mine: [], progress: new Map(), subs: [], books: new Map(), index: new Map(), saved: new Map() }),
   };

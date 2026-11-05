@@ -41,7 +41,8 @@ import {
   closeTreeInspector,
   traceNotebookFamilies,
   attachCardTable,
-  cardLayoutOf,
+  readCardLayouts,
+  withCardLayout,
   disposeNotebookMaps,
   peekSuggestions,
   suggestWords,
@@ -92,7 +93,6 @@ import {
   type WordsContext,
   type WordsScope,
   type BookSort,
-  type CardLayout,
   type FamilyGrouping,
   type MorphKind,
   type NotebookView,
@@ -253,7 +253,8 @@ const nbState = {
   group: (readStore(NB_GROUP_KEY) || 'root') as FamilyGrouping,
   mapKinds: (readStore(NB_MAP_KEY) || 'root,prefix,char').split(',').filter(Boolean) as MorphKind[],
   flipped: new Set<string>(),
-  cardLayout: cardLayoutOf(readStore(NB_CARDS_KEY)),
+  // Expanded or not, per list; a single choice saved by an older version applies to every list.
+  cardLayouts: readCardLayouts(readStore(NB_CARDS_KEY)),
   review: null as ReviewState | null,
   goal: Number(readStore(NB_GOAL_KEY)) || 10,
   lang: readStore(NB_LANG_KEY) || 'all',
@@ -752,9 +753,9 @@ function bindNotebookViews(): void {
     }
   };
   attachCardTable(page, {
-    onLayout: (layout) => {
-      nbState.cardLayout = layout;
-      writeStore(NB_CARDS_KEY, layout);
+    onLayout: (layout, list) => {
+      nbState.cardLayouts = withCardLayout(nbState.cardLayouts, list || 'mine', layout);
+      writeStore(NB_CARDS_KEY, JSON.stringify(nbState.cardLayouts));
     },
     onCards: fillImages,
   });

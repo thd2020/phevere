@@ -49,7 +49,9 @@ import {
   attachNotebookMap,
   attachFamilies,
   attachCardTable,
-  cardLayoutOf,
+  cardLayoutIn,
+  readCardLayouts,
+  withCardLayout,
   cardsHtml,
   disposeNotebookMaps,
   deleteEmailMatches,
@@ -2207,7 +2209,12 @@ let nbMapKinds = readPref(NB_MAP_KINDS_KEY, 'root,prefix,char').split(',').filte
 let nbGoal = Number(readPref(NB_GOAL_KEY, '10')) || 10;
 let nbReview: ReviewState | null = null;
 const nbFlipped = new Set<string>();
-let nbCardsLayout: CardLayout = cardLayoutOf(readPref(NB_CARDS_LAYOUT_KEY, 'piles'));
+// Expanded or not, per list; a single choice saved by an older version applies to every list.
+let nbCardLayouts = readCardLayouts(readPref(NB_CARDS_LAYOUT_KEY, ''));
+function saveCardLayout(layout: CardLayout, list: string): void {
+  nbCardLayouts = withCardLayout(nbCardLayouts, list || 'mine', layout);
+  writePref(NB_CARDS_LAYOUT_KEY, JSON.stringify(nbCardLayouts));
+}
 const nbExpanded = new Set<string>();
 let vocabRenderToken = 0;
 let nbGrading = false;
@@ -2372,15 +2379,12 @@ function renderBookScope(body: HTMLElement, wrap: HTMLElement, list: HTMLElement
   const analysis = wbAnalysis.value;
   if (nbView === 'families') body.innerHTML = familiesHtml(analysis, nbGroup, { tracing: familiesTraceProgress() });
   else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds, { query: q });
-  else body.innerHTML = cardsHtml(study, analysis, nbFlipped, nbCardsLayout);
+  else body.innerHTML = cardsHtml(study, analysis, nbFlipped, cardLayoutIn(nbCardLayouts, String(wbScope)), undefined, { list: String(wbScope) });
   attachNotebookMap(body);
   attachFamilies(body);
   const fetchImage = wordImageFetcher();
   attachCardTable(body, {
-    onLayout: (layout) => {
-      nbCardsLayout = layout;
-      writePref(NB_CARDS_LAYOUT_KEY, layout);
-    },
+    onLayout: saveCardLayout,
     onCards: () => {
       if (fetchImage) fillWordImages(body, fetchImage);
     },
@@ -2756,15 +2760,12 @@ function renderVocabNotebook(entries: any[]): void {
       );
     }
     else if (nbView === 'map') body.innerHTML = mapHtml(analysis, nbMapKinds, { query: search.trim() });
-    else body.innerHTML = cardsHtml(sorted, analysis, nbFlipped, nbCardsLayout);
+    else body.innerHTML = cardsHtml(sorted, analysis, nbFlipped, cardLayoutIn(nbCardLayouts, 'mine'), undefined, { list: 'mine' });
     attachNotebookMap(body);
     attachFamilies(body);
     const fetchImage = wordImageFetcher();
     attachCardTable(body, {
-      onLayout: (layout) => {
-        nbCardsLayout = layout;
-        writePref(NB_CARDS_LAYOUT_KEY, layout);
-      },
+      onLayout: saveCardLayout,
       onCards: () => {
         if (fetchImage) fillWordImages(body, fetchImage);
       },

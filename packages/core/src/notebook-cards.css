@@ -80,6 +80,8 @@
 }
 .nbv-table__all:focus-visible { outline: 2px solid var(--nbv-ember); outline-offset: 1px; }
 .nbv-table__all:active { background: var(--nbv-ember-soft); }
+/* Pressed: every pile is out, and a press gathers them. */
+.nbv-table__all[aria-pressed='true'] { border-color: var(--nbv-ember); color: var(--nbv-ember); }
 
 /* Piles: a stack edge under the top cards and a label below. */
 .nbv-pile {

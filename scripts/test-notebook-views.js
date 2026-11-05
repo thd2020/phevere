@@ -174,13 +174,37 @@ assert.equal(views.cardLayoutOf('piles'), 'piles');
 assert.equal(views.cardLayoutOf(null), 'piles');
 assert.equal(views.cardLayoutOf('bogus'), 'piles');
 
+// Expanded or not is kept per list. Opening My words' only pile leaves 考研 in piles.
+{
+  let saved = views.readCardLayouts(null);
+  assert.equal(views.cardLayoutIn(saved, 'kaoyan'), 'piles');
+  saved = views.readCardLayouts(JSON.stringify(views.withCardLayout(saved, 'mine', 'grid')));
+  assert.equal(views.cardLayoutIn(saved, 'mine'), 'grid');
+  assert.equal(views.cardLayoutIn(saved, 'kaoyan'), 'piles');
+  assert.equal(views.cardLayoutIn(saved, 'all'), 'piles');
+  // The single choice of earlier versions applies to every list until a list has its own;
+  // Scatter became every pile out.
+  const old = views.readCardLayouts('scatter');
+  assert.equal(views.cardLayoutIn(old, 'mine'), 'grid');
+  assert.equal(views.cardLayoutIn(old, 'kaoyan'), 'grid');
+  const mixed = views.withCardLayout(old, 'kaoyan', 'piles');
+  assert.equal(views.cardLayoutIn(mixed, 'kaoyan'), 'piles');
+  assert.equal(views.cardLayoutIn(mixed, 'mine'), 'grid');
+  assert.equal(views.cardLayoutIn(views.readCardLayouts('{not json'), 'mine'), 'piles');
+  assert.equal(views.cardLayoutIn(views.readCardLayouts('{"mine":"scatter","cet4":"bogus"}'), 'mine'), 'grid');
+  assert.equal(views.cardLayoutIn(views.readCardLayouts('{"mine":"scatter","cet4":"bogus"}'), 'cet4'), 'piles');
+}
+
 const chtml = views.cardsHtml(entries, a, new Set(['id1']), 'scatter', now);
 assert.match(chtml, /<div class="nbv-table" data-layout="grid" data-scope="[^"]+">/);
+// The table names its list, and Expand all keeps its name: aria-pressed says whether it is on.
+assert.match(views.cardsHtml(entries, a, new Set(), 'grid', now, { list: 'kaoyan' }), /data-list="kaoyan"/);
+assert.match(chtml, /<button type="button" class="nbv-table__all" data-cards-all aria-pressed="true">[\s\S]*?<span>Expand all<\/span><\/button>/);
+assert.doesNotMatch(chtml, /Collapse all/);
 // Each list has its own scope, so an open pile in My words is not open in a book.
 assert.notEqual(chtml.match(/data-scope="([^"]+)"/)[1], views.cardsHtml(entries.slice(1), a, new Set(), 'grid', now).match(/data-scope="([^"]+)"/)[1]);
-// No layout switch: one Expand all button, which reads Collapse all while every pile is out.
+// No layout switch: one Expand all button, pressed while every pile is out.
 assert.doesNotMatch(chtml, /data-cards-layout/);
-assert.match(chtml, /class="nbv-table__all" data-cards-all aria-pressed="true">[\s\S]*?<span>Collapse all<\/span>/);
 const phtml = views.cardsHtml(entries, a, new Set(['id1']), 'piles', now);
 assert.match(phtml, /data-cards-all aria-pressed="false">[\s\S]*?<span>Expand all<\/span>/);
 // The markup holds each pile's top cards; the table draws the rest when they near the screen.

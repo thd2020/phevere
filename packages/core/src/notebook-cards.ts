@@ -24,6 +24,39 @@ export function cardLayoutOf(v: unknown): CardLayout {
   return v === 'grid' || v === 'scatter' ? 'grid' : 'piles';
 }
 
+/**
+ * Whether every pile is out, kept per list: 'mine' for My words, a book's id, 'all' for All
+ * books. Under '*' is the one choice earlier versions kept for every list (Scatter among them),
+ * which a list follows until it has a choice of its own.
+ */
+export type CardLayouts = Record<string, CardLayout>;
+
+/** The saved layouts, from their stored JSON or from the single layout of earlier versions. */
+export function readCardLayouts(stored: unknown): CardLayouts {
+  if (stored == null || stored === '') return {};
+  if (typeof stored === 'string' && stored.trim().startsWith('{')) {
+    try {
+      const raw = JSON.parse(stored) as Record<string, unknown>;
+      const out: CardLayouts = {};
+      for (const [k, v] of Object.entries(raw || {})) out[k] = cardLayoutOf(v);
+      return out;
+    } catch {
+      return {};
+    }
+  }
+  return { '*': cardLayoutOf(stored) };
+}
+
+/** The layout a list opens with. */
+export function cardLayoutIn(layouts: CardLayouts, list: string): CardLayout {
+  return layouts[list] ?? layouts['*'] ?? 'piles';
+}
+
+/** The layouts with one list's choice changed, to store as JSON. */
+export function withCardLayout(layouts: CardLayouts, list: string, layout: CardLayout): CardLayouts {
+  return { ...layouts, [list]: layout };
+}
+
 export interface CardPile {
   key: string;
   label: string;
@@ -106,16 +139,18 @@ interface Deck {
 }
 let lastDeck: Deck | null = null;
 
+/** Expand all is a toggle: its name stays, aria-pressed says whether every pile is out. */
 function allButtonHtml(all: boolean): string {
-  return `${all ? STACK_ICON : SPREAD_ICON}<span>${all ? 'Collapse all' : 'Expand all'}</span>`;
+  return `${all ? STACK_ICON : SPREAD_ICON}<span>Expand all</span>`;
 }
 
 /**
  * The table with its piles and the top cards of each; `attachCardTable` draws the other cards
  * when they come near the screen. On desktop and phone alike, the card's picture turns it over
  * (as the turn button does) and its text opens the lookup. On the back, a click anywhere turns
- * it back, and the Look up button in its corner opens the lookup. `opts` is kept for callers
- * written before this was the default.
+ * it back, and the Look up button in its corner opens the lookup. `opts.list` names the list
+ * the cards are from ('mine', a book's id, 'all'); `onLayout` hands it back with each change.
+ * `opts.picFlips` is kept for callers written before turning by the picture was the default.
  */
 export function cardsHtml(
   entries: NotebookEntry[],
@@ -123,7 +158,7 @@ export function cardsHtml(
   flipped: Set<string>,
   layout: CardLayout | string = 'piles',
   now = Date.now(),
-  _opts: { picFlips?: boolean } = {},
+  opts: { picFlips?: boolean; list?: string } = {},
 ): string {
   if (!entries.length) return `<p class="nbv-empty">No saved words.</p>`;
   const l = cardLayoutOf(layout);
@@ -147,7 +182,8 @@ export function cardsHtml(
   const kept = feltHeight.get(`${scope}|${l}`);
   const style = kept ? ` style="height:${Math.round(kept)}px"` : '';
   const corner = `<div class="nbv-table__corner"><button type="button" class="nbv-table__all" data-cards-all aria-pressed="${l === 'grid'}">${allButtonHtml(l === 'grid')}</button></div>`;
-  return `<div class="nbv-table" data-layout="${l}" data-scope="${scope}"><div class="nbv-table__felt"${style}>${corner}${body}</div></div>`;
+  const list = opts.list ? ` data-list="${esc(opts.list)}"` : '';
+  return `<div class="nbv-table" data-layout="${l}" data-scope="${scope}"${list}><div class="nbv-table__felt"${style}>${corner}${body}</div></div>`;
 }
 
 /** Which list the table shows (My words, a book), so open piles and heights stay with their list. */
@@ -322,8 +358,11 @@ const feltHeight = new Map<string, number>();
 let detachTable: (() => void) | null = null;
 
 export interface CardTableOptions {
-  /** Called when the reader pours every pile out or gathers them, so the shell can remember it. */
-  onLayout?: (layout: CardLayout) => void;
+  /**
+   * Called when every pile of a list comes out or one goes back, with the list named by
+   * `cardsHtml`'s `opts.list`, so the shell can remember it for that list.
+   */
+  onLayout?: (layout: CardLayout, list: string) => void;
   /** Called after more cards are drawn, so the shell can fill in their pictures. */
   onCards?: () => void;
 }
@@ -431,6 +470,15 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     return p.y + ch > near.top - m && p.y < near.bottom + m;
   };
 
+  const pileName = new Map<string, string>();
+  for (const p of piles) pileName.set(p.key, p.label || (pileEls.get(p.key)?.getAttribute('aria-label') || '').split(',')[0]);
+  /** A card on a closed pile opens the pile, a poured-out card the lookup; its name says which. */
+  const labelCard = (c: HTMLElement) => {
+    const q = c.dataset.q || '';
+    const name = outOf(c) ? `${q}: open lookup` : `${q}: open the ${pileName.get(c.dataset.pile || '') || ''} pile`;
+    if (c.getAttribute('aria-label') !== name) c.setAttribute('aria-label', name);
+  };
+
   const setZ = (c: HTMLElement) => {
     const o = pileOf.get(c.dataset.id || '');
     const rank = o?.rank ?? 0;
@@ -473,6 +521,7 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
           els.set(id, el);
           made.push(el);
           el.classList.toggle('is-out', isOpen(p.key));
+          labelCard(el);
           const at = from?.get(id) || plan.cards.get(id)!;
           const shown = view(el, at);
           el.style.transform = tf(shown);
@@ -507,7 +556,10 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     plan = planTable(piles, openPiles, { width: W, cardW: cw, cardH: ch, gap });
     syncButton();
     const quick = reduced();
-    for (const [, el] of els) el.classList.toggle('is-out', outOf(el));
+    for (const [, el] of els) {
+      el.classList.toggle('is-out', outOf(el));
+      labelCard(el);
+    }
     // The table keeps its old height until the cards have landed, so the page does not jump.
     felt.style.height = `${Math.round(animate ? Math.max(plan.height, beforeH) : plan.height)}px`;
     // Cards that come out of an opening pile start on the pile.
@@ -583,7 +635,7 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     const next: CardLayout = pileKeys.length && pileKeys.every(isOpen) ? 'grid' : 'piles';
     if (next === layout) return;
     layout = next;
-    opts.onLayout?.(next);
+    opts.onLayout?.(next, table.dataset.list || '');
   };
 
   /**
@@ -607,7 +659,7 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     if (!open) pileEl?.focus({ preventScroll: true });
   };
 
-  /** Expand all or Collapse all: pour every pile out at once, or gather them all. */
+  /** Expand all, pressed or not: pour every pile out at once, or gather them all. */
   const toggleAll = () => {
     const all = layout !== 'grid';
     const changed = new Set(pileKeys.filter((k) => isOpen(k) !== all));
