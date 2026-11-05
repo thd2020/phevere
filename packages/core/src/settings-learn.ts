@@ -1,8 +1,9 @@
 /**
  * Settings → Learn, desktop and phone: new words a day for My words and for each subscribed word
- * book, the countdown on choice questions, and the speaking-question switch, which only appears
- * when the device has a microphone (`microphoneAvailable` in learn-prefs.ts). The Learn tab shows
- * the settled goal and links here.
+ * book and the countdown on choice questions. The Learn tab shows the settled goal and links here.
+ * The speaking-question switch (shown only with a microphone, `microphoneAvailable` in
+ * learn-prefs.ts) stays hidden until speaking questions exist (`SPEAKING_QUESTIONS`); its stored
+ * preference is kept.
  *
  * Hooks: learn-goal (a preset radio, data-book; empty for My words), learn-goal-input (the
  * "Other" field, same data-book; act on change), learn-countdown (select), learn-speaking (switch).
@@ -22,6 +23,9 @@ export interface LearnSettingsInput {
 }
 
 export const GOAL_PRESETS = [5, 10, 20, 40];
+
+/** Speaking questions are not built yet, so Settings does not offer the switch for them. */
+export const SPEAKING_QUESTIONS = false;
 
 function goalRow(key: string, book: string, label: string, goal: number): string {
   const labelId = `learn-goal-${key}`;
@@ -50,7 +54,7 @@ function countdownRow(seconds: number): string {
 
 export function learnSettingsHtml(input: LearnSettingsInput): string {
   const goals = [goalRow('mine', '', 'My words', input.goal), ...input.books.map((b, i) => goalRow(`b${i}`, b.id, b.title, b.goal))].join('');
-  const speaking = input.microphone
+  const speaking = SPEAKING_QUESTIONS && input.microphone
     ? switchRowHtml({ label: 'Speaking questions', on: input.prefs.speaking, attrs: 'data-act="learn-speaking" id="learn-speaking"' })
     : '';
   return `<div class="sv sv-page sv-learn">

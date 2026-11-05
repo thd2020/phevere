@@ -236,7 +236,7 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.match(html, /data-act="learn-page" data-page="progress"/);
 }
 
-// Settings → Learn: a goal per list, the countdown, and speaking questions only with a microphone.
+// Settings → Learn: a goal per list and the countdown; no speaking switch until speaking questions exist.
 {
   const { learnSettingsHtml } = load('settings-learn');
   const { readLearnPrefs, writeLearnPrefs, DEFAULT_LEARN_PREFS } = load('learn-prefs');
@@ -248,7 +248,7 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.match(html, /data-book="cet4" value="20" checked/, 'a book keeps its own goal');
   assert.match(html, /<option value="8" selected>8 seconds<\/option>/);
   assert.doesNotMatch(html, /learn-speaking/, 'no speaking switch without a microphone');
-  assert.match(learnSettingsHtml({ ...input, microphone: true }), /data-act="learn-speaking"/);
+  assert.doesNotMatch(learnSettingsHtml({ ...input, microphone: true, prefs: { countdown: 8, speaking: true } }), /learn-speaking|Speaking/, 'no speaking switch even with a microphone');
   assert.deepEqual(readLearnPrefs(null), DEFAULT_LEARN_PREFS);
   assert.deepEqual(readLearnPrefs('{bad'), DEFAULT_LEARN_PREFS);
   assert.deepEqual(readLearnPrefs(writeLearnPrefs({ countdown: 10, speaking: false })), { countdown: 10, speaking: false });
@@ -290,6 +290,9 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.ok(s.curve[0] > s.curve[30], 'recall falls without review');
   const page = progressHtml({ history, scope: 'mine', ctx: null, mine: words, goal: 10, now: t0 });
   for (const label of ['New words', 'Reviews', 'Streak', 'Skills', 'Root families', 'Answers per day', 'Memory', 'Reviews ahead', 'How long words are held', 'Trouble words']) assert.match(page, new RegExp(label));
+  // Labels name things; no line tells the learner how to use a chart.
+  assert.doesNotMatch(page, /Pick a|Tap a|to see its/, 'no instructions on Progress');
+  assert.doesNotMatch(views.reviewHtml(rq, rs, 10, { now }), /Pick a|Tap a|to see its/, 'no instructions on Today');
   // Every chart has a y axis label, ticks and a readout, and each bar its own readout.
   assert.match(page, /data-lrc="memory"[\s\S]*data-lrc-when="1"[\s\S]*data-lrc-when="2"/, 'memory today, in a week and in a month');
   assert.equal((page.match(/class="lrc-mem__dot[" ]/g) || []).length, 2, 'one dot per word in rotation');

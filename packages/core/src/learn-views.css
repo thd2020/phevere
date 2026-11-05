@@ -261,6 +261,8 @@
   color: var(--nbv-soft);
 }
 .lrc-readout p { margin: 0; }
+/* A chart without a summary keeps the readout's room, so the page does not jump when a bar is picked. */
+.lrc-readout:empty { visibility: hidden; }
 .lrc-read__head { color: var(--nbv-ink); }
 .lrc-read__head b { font-weight: 700; font-variant-numeric: tabular-nums; }
 .lrc-read__sub { font-size: 12px; }
