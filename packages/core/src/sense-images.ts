@@ -49,12 +49,14 @@
  * answers, and `onUpdate` hands the lookup its first pictures then. Requests asked within a few
  * milliseconds of each other (a screen of cards) share one request per kind, at most three go
  * to one host at a time with an identifying User-Agent, the disambiguation page's requests
- * queue behind the others, and a failure is logged once per host. Pools are kept in memory and
+ * queue behind the others, a request that hangs gets a backup request after its host's usual
+ * round trip (net.ts), and a failure is logged once per host. Pools are kept in memory and
  * in the platform's lookup cache: two weeks with pictures, a day when a request failed, six
  * hours when empty.
  */
 import { getHttp, getLookupCache, isCoreConfigured } from './runtime';
 import type { HttpClient, HttpRequestInit, HttpTextResponse, HttpBytesResponse } from './http';
+import { hostOf, trackHttp } from './net';
 
 export interface SenseImage {
   /** A larger rendering (at most 960 px wide) for a zoomed view. */
@@ -984,46 +986,24 @@ const fetchClient: HttpClient = {
  * so the configured client sends ours. A browser (no configured client) cannot set User-Agent.
  * https://www.mediawiki.org/wiki/Wikimedia_APIs/Rate_limits
  */
+let trackedFetch: HttpClient | null = null;
+
 function client(): { http: HttpClient; headers?: Record<string, string> } {
-  if (isCoreConfigured()) return { http: getHttp(), headers: { 'User-Agent': API_UA, 'Api-User-Agent': API_UA } };
-  return { http: fetchClient };
+  // The configured client is already tracked (runtime.ts); trackHttp returns it as it is.
+  if (isCoreConfigured()) return { http: trackHttp(getHttp()), headers: { 'User-Agent': API_UA, 'Api-User-Agent': API_UA } };
+  return { http: (trackedFetch = trackedFetch || trackHttp(fetchClient)) };
 }
 
 /**
- * Wikimedia asks for "at most 3 concurrent requests". Each host keeps its own three slots
- * (Wiktionary, Wikipedia, Commons and the Wikidata Query Service are separate services), so a
- * slow Wiktionary page does not hold up the file details another word is waiting for.
+ * Wikimedia asks for "at most 3 concurrent requests". Every request here waits for one of its
+ * host's three slots (net.ts; Wiktionary, Wikipedia, Commons and the Wikidata Query Service are
+ * separate hosts, so a slow Wiktionary page does not hold up the file details another word is
+ * waiting for). Requests for the pictures of a word's major senses go first; the disambiguation
+ * page's articles, which mostly serve later senses, wait behind them (`later`). A request that
+ * has not answered within its host's usual round trip gets one backup request in a free slot,
+ * so a hung Wikidata query or Commons request costs a round trip, not its whole timeout.
  */
-const MAX_IN_FLIGHT = 3;
 const RETRY_MS = 1500;
-/**
- * Each host's queue has two levels. Requests for the pictures of a word's major senses go first;
- * the disambiguation page's articles, which mostly serve later senses, wait for a free slot.
- */
-const lanes = new Map<string, { inFlight: number; waiting: Array<() => void>; later: Array<() => void> }>();
-
-function hostOf(url: string): string {
-  const m = String(url || '').match(/^https?:\/\/([^/]+)/);
-  return m ? m[1] : '';
-}
-
-async function throttled<T>(url: string, run: () => Promise<T>, later = false): Promise<T> {
-  const host = hostOf(url);
-  let lane = lanes.get(host);
-  if (!lane) {
-    lane = { inFlight: 0, waiting: [], later: [] };
-    lanes.set(host, lane);
-  }
-  const l = lane;
-  if (l.inFlight >= MAX_IN_FLIGHT) await new Promise<void>((resolve) => (later ? l.later : l.waiting).push(resolve));
-  l.inFlight += 1;
-  try {
-    return await run();
-  } finally {
-    l.inFlight -= 1;
-    (l.waiting.shift() || l.later.shift())?.();
-  }
-}
 
 /** One console line per host and kind of failure, not one per request. */
 const logged = new Set<string>();
@@ -1048,7 +1028,7 @@ function getJson<T>(url: string, timeoutMs = TIMEOUT_MS, later = false): Promise
   const hit = jsonCache.get(url);
   if (hit) return hit as Promise<T | null>;
   const { http, headers } = client();
-  const once = () => throttled(url, () => http.requestJson<T>(url, { headers, timeoutMs }), later);
+  const once = () => http.requestJson<T>(url, { headers, timeoutMs, slot: later ? 'later' : 'first' });
   const p = once()
     .catch(async (err: unknown) => {
       // Rate limited or overloaded: one more try after a pause.

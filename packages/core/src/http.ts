@@ -3,6 +3,13 @@ export interface HttpRequestInit {
   headers?: Record<string, string>;
   body?: string;
   timeoutMs?: number;
+  /**
+   * Wait for one of the host's three request slots (net.ts); `later` waits behind the others.
+   * Read by core's request layer and not passed on to the platform's client.
+   */
+  slot?: 'first' | 'later';
+  /** `false`: never send a backup request for this one (net.ts). */
+  hedge?: boolean;
 }
 
 export interface HttpTextResponse {
