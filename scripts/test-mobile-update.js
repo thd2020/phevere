@@ -296,7 +296,8 @@ function harness({ mode = 'auto', metered = false, debuggable = false, api = 'ok
   assert.match(html, /Phevere 4\.0\.0/);
   assert.match(html, /4\.1\.0 is ready to install/);
   assert.match(html, /data-act="update-install">Install</);
-  assert.match(html, /<option value="auto" selected>Automatically<\/option><option value="ask">Ask first<\/option><option value="off">Off<\/option>/);
+  assert.match(html, /role="radiogroup" aria-labelledby="update-mode-label"/, 'Install updates is a segmented choice');
+  assert.match(html, /value="auto" checked \/>Automatically<\/label><label class="sv-seg__item"><input type="radio" name="update-mode" value="ask" \/>Ask first<\/label><label class="sv-seg__item"><input type="radio" name="update-mode" value="off" \/>Off<\/label>/);
   assert.match(html, /data-act="update-check"/);
   assert.doesNotMatch(html, /[Rr]oll ?back/, 'no rollback control on the phone');
   const debug = panels.settingsBody(prefs, [], [], '', android, 'updates', null, undefined, { ...ready, canInstall: false, mode: 'ask', status: 'idle' });
@@ -323,6 +324,7 @@ function loadPanels() {
   const core = {
     API_PROVIDERS: [], SOURCE_INFO: {}, TRANSLATION_ENGINES: [], apiKeysPanelHtml: () => '', choiceRowHtml: row,
     groupCatalogByLanguage: () => [], navRowHtml: row, rangeRowHtml: row, switchRowHtml: row,
+    segRowHtml: bundle('packages/core/src/settings-kit.ts').segRowHtml,
     offlineShelvesHtml: () => '', packInspectorHtml: () => '', sourcesPanelHtml: () => '',
   };
   const mod = { exports: {} };

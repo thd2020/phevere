@@ -3006,8 +3006,8 @@ function onChange(e: Event): void {
     });
     return;
   }
-  if (e.type === 'change' && el.id === 'update-mode') {
-    const mode = (el as HTMLSelectElement).value;
+  if (e.type === 'change' && el instanceof HTMLInputElement && el.name === 'update-mode') {
+    const mode = el.value;
     if (mode === 'auto' || mode === 'ask' || mode === 'off') phoneUpdates?.setMode(mode);
     return;
   }

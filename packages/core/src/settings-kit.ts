@@ -48,6 +48,29 @@ export function switchRowHtml(r: SwitchRowInput): string {
   </label>`;
 }
 
+/**
+ * A row with a label and a segmented choice of two to five short options: radios on a paper
+ * track, so arrow keys move between them and a screen reader hears a radio group.
+ */
+export interface SegRowInput {
+  label: string;
+  /** Radio group name; also the label's id stem. */
+  name: string;
+  options: Array<{ value: string; label: string }>;
+  value: string;
+}
+
+export function segRowHtml(r: SegRowInput): string {
+  const labelId = `${r.name}-label`;
+  const items = r.options
+    .map((o) => `<label class="sv-seg__item"><input type="radio" name="${esc(r.name)}" value="${esc(o.value)}"${o.value === r.value ? ' checked' : ''} />${esc(o.label)}</label>`)
+    .join('');
+  return `<div class="sv-row sv-row--seg">
+    <span class="sv-row__text"><span class="sv-row__label" id="${esc(labelId)}">${esc(r.label)}</span></span>
+    <div class="sv-seg" role="radiogroup" aria-labelledby="${esc(labelId)}">${items}</div>
+  </div>`;
+}
+
 /** A labelled slider with its value in mono. */
 export interface RangeRowInput {
   label: string;

@@ -140,7 +140,7 @@ import {
   type WordsScope,
   type BookSort,
 } from '@phevere/core';
-import { choiceRowHtml, keycapsHtml, rangeRowHtml, switchRowHtml } from '@phevere/core';
+import { choiceRowHtml, enhanceSelect, keycapsHtml, rangeRowHtml, segRowHtml, switchRowHtml } from '@phevere/core';
 import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
 import { learnSettingsHtml, microphoneAvailable, readLearnPrefs, watchMicrophone, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
@@ -266,10 +266,10 @@ function initializeSettingsWindow() {
                   <input type="text" id="hover-shortcut" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-hover-shortcut" />
                   <button type="button" class="sv-btn" id="hover-shortcut-set">Set…</button>
                 </div>
-              </div>
-              <div class="sv-actions">
-                <span id="monitor-shortcuts-status" class="sv-actions__status" role="status" aria-live="polite"></span>
-                <button type="button" id="monitor-save-shortcuts" class="sv-btn sv-btn--accent">Save</button>
+                <div class="sv-ledger__foot">
+                  <span id="monitor-shortcuts-status" class="sv-actions__status" role="status" aria-live="polite"></span>
+                  <button type="button" id="monitor-save-shortcuts" class="sv-btn sv-btn--accent">Save</button>
+                </div>
               </div>
               <header class="sv-head"><h3 class="sv-head__title">Built-in</h3></header>
               <ul class="sv-ledger" id="builtin-shortcuts">
@@ -333,9 +333,10 @@ function initializeSettingsWindow() {
                   <label class="sv-ctl"><input type="checkbox" role="switch" class="sv-switch" id="remember-sources" checked aria-labelledby="remember-sources-label" /></label>
                 </div>
               </div>
-              <div class="sv-drop" id="settings-dropzone" tabindex="0">
+              <div class="sv-drop" id="settings-dropzone" tabindex="0" role="button" aria-label="Choose, drop or paste an image">
                 <strong>Drop or paste an image</strong>
                 <span>PNG, JPEG or WebP</span>
+                <input type="file" id="settings-dropzone-file" accept="image/png,image/jpeg,image/webp" hidden />
               </div>
               <header class="sv-head"><h3 class="sv-head__title">Text recognition</h3></header>
               <div class="sv-ledger">
@@ -369,9 +370,7 @@ function initializeSettingsWindow() {
             <div class="sv sv-page">
               <div class="sv-ledger">
                 ${switchRowHtml({ label: 'Image copied', on: true, attrs: 'id="notify-clipboard-image"' })}
-                ${switchRowHtml({ label: 'No image on clipboard', on: true, attrs: 'id="notify-clipboard-empty"' })}
                 ${switchRowHtml({ label: 'Hover lookup switched on or off', on: true, attrs: 'id="notify-hover-toggle"' })}
-                ${switchRowHtml({ label: 'Quick translation failed', on: true, attrs: 'id="notify-quick-translate"' })}
                 ${switchRowHtml({ label: 'Update ready or available', on: true, attrs: 'id="notify-updates"' })}
               </div>
             </div>
@@ -391,14 +390,7 @@ function initializeSettingsWindow() {
                   <button type="button" id="update-action" class="sv-btn sv-btn--accent" hidden></button>
                   <div id="update-progress" class="sv-progress" hidden><span></span></div>
                 </div>
-                <div class="sv-row">
-                  <span class="sv-row__text"><label for="update-mode" class="sv-row__label">Install updates</label></span>
-                  <select id="update-mode" class="sv-select">
-                    <option value="auto">Automatically</option>
-                    <option value="ask">Ask first</option>
-                    <option value="off">Off</option>
-                  </select>
-                </div>
+                ${segRowHtml({ label: 'Install updates', name: 'update-mode', value: 'auto', options: [{ value: 'auto', label: 'Automatically' }, { value: 'ask', label: 'Ask first' }, { value: 'off', label: 'Off' }] })}
                 <div class="sv-ledger__foot">
                   <button type="button" id="update-rollback" class="sv-btn" hidden></button>
                   <button type="button" id="update-check" class="sv-btn">Check now</button>
@@ -478,6 +470,8 @@ function initializeSettingsWindow() {
   showSectionFromHash();
   window.addEventListener('hashchange', showSectionFromHash);
 
+  // Native selects get the app's menu; their code keeps using the select.
+  document.querySelectorAll<HTMLSelectElement>('.settings-main select.sv-select').forEach(enhanceSelect);
   wireSettingsLibraryLinks();
   void wireSourcesPanel();
   void wireApiKeysPanel();
@@ -1024,16 +1018,7 @@ function wireSettingsImageDrop(): void {
     zone.classList.toggle('is-busy', busy);
   };
 
-  zone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    zone.classList.add('is-dragover');
-  });
-  zone.addEventListener('dragleave', () => zone.classList.remove('is-dragover'));
-  zone.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    zone.classList.remove('is-dragover');
-    const file = e.dataTransfer?.files?.[0];
-    if (!file) return;
+  const scanFile = async (file: File) => {
     setBusy(true);
     try {
       const anyFile = file as File & { path?: string };
@@ -1051,7 +1036,40 @@ function wireSettingsImageDrop(): void {
     } finally {
       setBusy(false);
     }
+  };
+
+  zone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    zone.classList.add('is-dragover');
   });
+  zone.addEventListener('dragleave', () => zone.classList.remove('is-dragover'));
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('is-dragover');
+    const file = e.dataTransfer?.files?.[0];
+    if (file) void scanFile(file);
+  });
+
+  // A click, Enter or Space opens the file picker.
+  const picker = document.getElementById('settings-dropzone-file') as HTMLInputElement | null;
+  if (picker) {
+    const open = () => {
+      if (!zone.classList.contains('is-busy')) picker.click();
+    };
+    zone.addEventListener('click', (e) => {
+      if (e.target !== picker) open();
+    });
+    zone.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      open();
+    });
+    picker.addEventListener('change', () => {
+      const file = picker.files?.[0];
+      picker.value = '';
+      if (file) void scanFile(file);
+    });
+  }
 
   zone.addEventListener('paste', async (e) => {
     const items = e.clipboardData?.items;
@@ -4456,37 +4474,29 @@ async function wireNotificationSettings(): Promise<void> {
   const api = (window as any).electronAPI;
   if (!api?.getNotificationPrefs || !api?.setNotificationPrefs) return;
   const imageEl = document.getElementById('notify-clipboard-image') as HTMLInputElement | null;
-  const emptyEl = document.getElementById('notify-clipboard-empty') as HTMLInputElement | null;
   const hoverEl = document.getElementById('notify-hover-toggle') as HTMLInputElement | null;
-  const quickEl = document.getElementById('notify-quick-translate') as HTMLInputElement | null;
   const updatesEl = document.getElementById('notify-updates') as HTMLInputElement | null;
-  if (!imageEl || !emptyEl || !hoverEl) return;
+  if (!imageEl || !hoverEl || !updatesEl) return;
   try {
     const prefs = await api.getNotificationPrefs();
     imageEl.checked = prefs.clipboardImage !== false;
-    emptyEl.checked = prefs.clipboardEmpty !== false;
     hoverEl.checked = prefs.hoverToggle !== false;
-    if (quickEl) quickEl.checked = prefs.quickTranslate !== false;
-    if (updatesEl) updatesEl.checked = prefs.updates !== false;
+    updatesEl.checked = prefs.updates !== false;
   } catch {
     imageEl.checked = true;
-    emptyEl.checked = true;
     hoverEl.checked = true;
+    updatesEl.checked = true;
   }
   const persist = () => {
     void api.setNotificationPrefs({
       clipboardImage: imageEl.checked,
-      clipboardEmpty: emptyEl.checked,
       hoverToggle: hoverEl.checked,
-      quickTranslate: quickEl ? quickEl.checked : true,
-      updates: updatesEl ? updatesEl.checked : true,
+      updates: updatesEl.checked,
     });
   };
   imageEl.addEventListener('change', persist);
-  emptyEl.addEventListener('change', persist);
   hoverEl.addEventListener('change', persist);
-  quickEl?.addEventListener('change', persist);
-  updatesEl?.addEventListener('change', persist);
+  updatesEl.addEventListener('change', persist);
 }
 
 interface UpdateView {
@@ -4510,10 +4520,10 @@ async function wireUpdatesPanel(): Promise<void> {
   const status = document.getElementById('update-status');
   const action = document.getElementById('update-action') as HTMLButtonElement | null;
   const bar = document.getElementById('update-progress');
-  const mode = document.getElementById('update-mode') as HTMLSelectElement | null;
+  const modes = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="update-mode"]'));
   const check = document.getElementById('update-check') as HTMLButtonElement | null;
   const rollback = document.getElementById('update-rollback') as HTMLButtonElement | null;
-  if (!api?.getState || !version || !status || !action || !bar || !mode || !check || !rollback) return;
+  if (!api?.getState || !version || !status || !action || !bar || !modes.length || !check || !rollback) return;
   const fill = bar.firstElementChild as HTMLElement | null;
   const paint = (s: UpdateView) => {
     const busy = s.status === 'checking' || s.status === 'downloading' || s.status === 'installing';
@@ -4533,8 +4543,11 @@ async function wireUpdatesPanel(): Promise<void> {
     action.textContent = s.status === 'ready' ? 'Restart to update' : s.canInstall ? 'Update now' : 'Download…';
     bar.hidden = s.status !== 'downloading';
     if (fill) fill.style.width = `${Math.round(s.progress * 100)}%`;
-    mode.querySelector('option[value="auto"]')?.toggleAttribute('hidden', !s.canInstall);
-    mode.value = !s.canInstall && s.mode === 'auto' ? 'ask' : s.mode;
+    const current = !s.canInstall && s.mode === 'auto' ? 'ask' : s.mode;
+    for (const radio of modes) {
+      if (radio.value === 'auto') (radio.parentElement as HTMLElement).hidden = !s.canInstall;
+      radio.checked = radio.value === current;
+    }
     rollback.hidden = !s.canInstall || !s.rollback;
     rollback.textContent = `Roll back to ${s.rollback}`;
     rollback.disabled = busy;
@@ -4544,7 +4557,11 @@ async function wireUpdatesPanel(): Promise<void> {
   action.addEventListener('click', () => void run(() => api.install()));
   rollback.addEventListener('click', () => void run(() => api.rollBack()));
   check.addEventListener('click', () => void run(() => api.check()));
-  mode.addEventListener('change', () => void run(() => api.setMode(mode.value)));
+  for (const radio of modes) {
+    radio.addEventListener('change', () => {
+      if (radio.checked) void run(() => api.setMode(radio.value));
+    });
+  }
   api.onChanged?.((s: UpdateView) => paint(s));
   paint(await api.getState());
   // The rollback version comes from the release list, so opening the page checks once.
