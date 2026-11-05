@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Learn stages (2026-11-05): every word is New, Learning, Relearning, Young or Mature, as in Anki, with Mature meaning its memory now lasts three weeks or more. The stage shows on each question, the plan beside the quiz counts your words per stage, the reviews forecast splits by stage, and a round's summary lists the words that moved up a stage or slipped back.
+- Dictation (2026-11-05): from the Young stage on, listening questions ask you to type the word you hear. Picking the word you hear from four stays for words you are still learning.
+- Letter hints (2026-11-05): typed questions show how many letters the word has, show more first letters for a word you hold less firmly, and have a Hint button that reveals one more letter, up to all but the last. A right answer after a Hint counts as Hard.
+- New words a day (2026-11-05): after three days of study, the start card offers the number of new words a day that fits how much you usually study, with a button to use it.
+
+### Changed
+
+- Learn questions (2026-11-05): the kind of question is the one you should get right about 85% of the time, judged from how firmly you hold the word now and from how you have done on each kind before. A word you are about to forget is picked from four again, and a word you know well is typed, filled into a sentence or written from dictation. Typing, filling a gap and dictation open once easier questions have gone right, a word started today is never typed the same day, and if your typed answers often go wrong you get fewer of them, so not every word has to be spelled.
+- Today's new words (2026-11-05): once Phevere knows how much you usually study, a day with many reviews gives fewer new words and a light day the whole goal.
+
+### Fixed
+
+- Learn prompts (2026-11-05): a long meaning is no longer cut off with "…". The question uses a shorter meaning of the word when it has one and shows the long one whole when it does not.
+- Pronunciation in Learn (2026-11-05): a listening question plays the recorded voice when the word has one and the synthetic voice only when it has none, never one after the other, also when you tap play while the word is still loading.
+
 ## [4.1.0] - 2026-11-05
 
 ### Added
