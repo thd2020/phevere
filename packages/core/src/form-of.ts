@@ -413,13 +413,14 @@ export function formLine(word: string, lang = 'en'): FormLine | null {
 
 /**
  * Whether a learner dictionary gives `form` a short entry of its own ("ran: past tense of run")
- * rather than opening `lemma` directly. The Oxford Advanced Learner's Dictionary and
- * Merriam-Webster both do it for irregular forms spelled unlike their headword: verbs (ran, swam,
- * bought, was, went, been), comparatives (better, worst), plurals that change a vowel or an f
- * (feet, mice, men, knives, wolves). Regular forms (gleaned, cities, stopped), plurals from Latin
- * and Greek (criteria, crises, phenomena) and irregular plurals that begin like their singular
- * (children, paparazzi, oxen) open the headword. Checked on 2026-11-04 against 60 OALD searches;
- * scripts/test-word-forms.js keeps them.
+ * rather than opening `lemma` directly. This follows the Oxford Advanced Learner's Dictionary,
+ * which does it for irregular forms spelled unlike their headword: verbs (ran, swam, bought, was,
+ * went, been) and plurals that change a vowel or an f (feet, mice, men, knives, wolves). Regular
+ * forms (gleaned, cities, stopped), plurals from Latin and Greek (criteria, crises, phenomena) and
+ * irregular plurals that begin like their singular (children, paparazzi, oxen) open the headword.
+ * The 48 forms in scripts/test-word-forms.js were searched in OALD on 2026-11-04 and the rule
+ * agrees on 46 ("does" and "women" are the exceptions). Longman and Cambridge also give
+ * "children" a short entry; docs/WORD_FORMS.md has the comparison.
  */
 export function hasOwnFormEntry(form: string, lemma: string): boolean {
   const f = String(form || '').toLowerCase();

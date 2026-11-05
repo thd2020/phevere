@@ -201,6 +201,7 @@ Every pull request and every push to `main` builds the desktop applications for 
 - [`docs/ACCOUNT.md`](docs/ACCOUNT.md): the Holarky account and notebook sync
 - [`docs/WORDBOOKS.md`](docs/WORDBOOKS.md): the word books, where each list comes from and its licence
 - [`docs/REVIEW.md`](docs/REVIEW.md): how Learn quizzes and schedules words, and the research behind it
+- [`docs/WORD_FORMS.md`](docs/WORD_FORMS.md): when a lookup of "was" or "children" opens another word, compared with Oxford, Longman and Cambridge
 - [`docs/MOBILE.md`](docs/MOBILE.md): phone apps, architecture, and limitations
 - [`apps/mobile/ANDROID.md`](apps/mobile/ANDROID.md): Android build, speech, versioning, and the LSPosed module
 - [`docs/MACOS_SELECTION.md`](docs/MACOS_SELECTION.md): macOS permissions and selection capture
