@@ -32,6 +32,12 @@ export interface HoverLookupOptions {
   isMouseDown?: () => boolean;
   /** Longest a selection keeps hover quiet when no press is seen. */
   selectionHoldMs?: number;
+  /**
+   * A result counts only while the pointer is still this close (DIP) to where the dwell
+   * started. UIA and OCR take hundreds of ms, and a word read after the pointer left
+   * would open the strip where the pointer used to be.
+   */
+  staleTolerancePx?: number;
   /** UIA word-at-point; returns empty when unavailable. */
   getWordAtPoint?: (x: number, y: number) => WordAtPoint | Promise<WordAtPoint>;
   /**
@@ -51,7 +57,11 @@ const DEFAULTS = {
    */
   ocrHalfWidthPx: 180,
   selectionHoldMs: 60_000,
+  staleTolerancePx: 24,
 };
+
+/** How long a {@link HoverLookupService.requestNow} waits for the running probe to finish. */
+const FORCED_PROBE_MS = 2500;
 
 export class HoverLookupService {
   private timer: NodeJS.Timeout | null = null;
@@ -61,6 +71,11 @@ export class HoverLookupService {
   private dwellConsumed = false;
   private lastEmitText = '';
   private lastEmitAt = 0;
+  private lastEmitPoint: { x: number; y: number } | null = null;
+  /** The last word's strip closed with the pointer still on it; stay quiet there until it leaves. */
+  private quietUntilLeave = false;
+  /** Until this time the next tick probes at once, skipping the dwell and the repeat checks. */
+  private forcedUntil = 0;
   private probing = false;
   /** Bumped by every selection, so a probe that started before it cannot emit after it. */
   private generation = 0;
@@ -137,6 +152,43 @@ export class HoverLookupService {
     return true;
   }
 
+  /** True while the pointer is still on the spot (DIP) a hover word was read at. */
+  pointerNear(x: number, y: number): boolean {
+    const pos = this.cursorPoint();
+    const t = this.opts.staleTolerancePx;
+    return Math.abs(pos.x - x) <= t && Math.abs(pos.y - y) <= t;
+  }
+
+  /**
+   * Read the word under the pointer now instead of after a dwell. The trigger shortcut
+   * uses this when the stored hover word is somewhere the pointer has left.
+   */
+  requestNow(): void {
+    if (!this.running) return;
+    this.forcedUntil = Date.now() + FORCED_PROBE_MS;
+    if (!this.probing) {
+      const pos = this.cursorPoint();
+      this.resetDwell(pos.x, pos.y);
+    }
+    void this.tick();
+  }
+
+  /**
+   * The strip that showed the last hover word closed, so that word may open it again.
+   * A click that closed it usually leaves the pointer on the word; then the word opens
+   * again only after the pointer has left it, or the strip would come straight back.
+   */
+  forgetLastEmit(): void {
+    const last = this.lastEmitPoint;
+    if (last && this.pointerNear(last.x, last.y)) {
+      this.quietUntilLeave = true;
+      return;
+    }
+    this.lastEmitText = '';
+    this.lastEmitPoint = null;
+    this.quietUntilLeave = false;
+  }
+
   private cursorPoint(): { x: number; y: number } {
     return this.opts.cursor ? this.opts.cursor.point() : screen.getCursorScreenPoint();
   }
@@ -152,38 +204,52 @@ export class HoverLookupService {
 
     const pos = this.cursorPoint();
 
+    // A trigger pressed during a selection hold or a drag is not carried over to
+    // wherever the pointer is once it ends.
     if (this.watchSelectionHold()) {
+      this.forcedUntil = 0;
       this.resetDwell(pos.x, pos.y);
       return;
     }
 
     if (this.opts.isBlocked && this.opts.isBlocked()) {
+      this.forcedUntil = 0;
       this.resetDwell(pos.x, pos.y);
       return;
     }
 
+    const last = this.lastEmitPoint;
+    if (this.quietUntilLeave && last && !this.pointerNear(last.x, last.y)) this.forgetLastEmit();
+
+    const forced = Date.now() < this.forcedUntil;
     const dx = Math.abs(pos.x - this.anchor.x);
     const dy = Math.abs(pos.y - this.anchor.y);
     if (dx > this.opts.moveTolerancePx || dy > this.opts.moveTolerancePx) {
       this.resetDwell(pos.x, pos.y);
-      return;
+      if (!forced) return;
     }
 
-    if (this.dwellConsumed) return;
-    if (Date.now() - this.dwellStartedAt < this.opts.dwellMs) return;
+    if (!forced) {
+      if (this.dwellConsumed) return;
+      if (Date.now() - this.dwellStartedAt < this.opts.dwellMs) return;
+      // Wait out the cooldown without spending the dwell. When probe() returned early
+      // for it, the dwell still counted as used, and a word hovered soon after the last
+      // one never opened until the pointer moved again.
+      if (Date.now() - this.lastEmitAt < this.opts.cooldownMs) return;
+    }
 
+    this.forcedUntil = 0;
     this.dwellConsumed = true;
     this.probing = true;
     try {
-      await this.probe(this.anchor.x, this.anchor.y);
+      await this.probe(this.anchor.x, this.anchor.y, forced);
     } finally {
       this.probing = false;
     }
   }
 
-  private async probe(x: number, y: number): Promise<void> {
+  private async probe(x: number, y: number, forced = false): Promise<void> {
     const now = Date.now();
-    if (now - this.lastEmitAt < this.opts.cooldownMs) return;
     const generation = this.generation;
 
     let text = '';
@@ -222,12 +288,30 @@ export class HoverLookupService {
     if (!text) return;
     // UIA and OCR take hundreds of ms; a selection made meanwhile wins.
     if (generation !== this.generation || this.isHeldBySelection() || this.opts.isBlocked?.()) return;
-    if (text === this.lastEmitText && now - this.lastEmitAt < this.opts.cooldownMs * 3) {
+    // The pointer left while UIA or OCR ran. The dwell at the new spot looks that word up.
+    if (!this.pointerNear(anchorX, anchorY)) return;
+    // Jitter inside one word restarts the dwell; that must not move the strip. The same
+    // word somewhere else, or after its strip closed, is a new lookup.
+    const last = this.lastEmitPoint;
+    const t = this.opts.staleTolerancePx;
+    if (
+      !forced &&
+      text === this.lastEmitText &&
+      last &&
+      Math.abs(last.x - anchorX) <= t &&
+      Math.abs(last.y - anchorY) <= t &&
+      (this.quietUntilLeave || now - this.lastEmitAt < this.opts.cooldownMs * 3)
+    ) {
       return;
     }
 
     this.lastEmitText = text;
     this.lastEmitAt = now;
+    this.lastEmitPoint = { x: anchorX, y: anchorY };
+    this.quietUntilLeave = false;
+    // A probe already running when the trigger came, and still under the pointer, answers it.
+    const requested = forced || Date.now() < this.forcedUntil;
+    this.forcedUntil = 0;
 
     contextCaptureHub.emit({
       text,
@@ -237,6 +321,7 @@ export class HoverLookupService {
       origin: 'hover',
       coordSpace: 'dip',
       confidence: 0.85,
+      ...(requested ? { requested: true } : {}),
     });
   }
 }
