@@ -2491,7 +2491,8 @@ export class DictionaryService extends BaseService {
   private async withExactTitle(query: NormalizedQuery, language: string): Promise<NormalizedQuery> {
     if (!hasEdgePunctuation(query) || !isCoreConfigured()) return query;
     if (this.typedTitles.has(query.sanitized)) return exactQuery(query);
-    const lang = (language || 'en').toLowerCase().split('-')[0] || 'en';
+    // Detection is unsure of short tokens ("e.g" comes back as Italian), so English counts too.
+    const detected = (language || 'en').toLowerCase().split('-')[0] || 'en';
     const exact = query.sanitized;
     const dropped = Array.from(new Set(edgeMarks(exact, query.trimmed)));
     const sentenceMarks =
@@ -2501,7 +2502,8 @@ export class DictionaryService extends BaseService {
     const fetchPage = (title: string) =>
       withTimeout(this.wiktionaryDefinitions(title), EXACT_TITLE_MS, 'exact-title').catch((): null => null);
     const [page, bare] = await Promise.all([fetchPage(exact), sentenceMarks ? fetchPage(query.trimmed) : Promise.resolve(null)]);
-    if (!sectionSenses(page, lang).length) return query;
+    const lang = [detected, 'en'].find((l) => sectionSenses(page, l).length);
+    if (!lang) return query;
     if (sentenceMarks) {
       const own = sectionSenses(bare, lang);
       const pointing = own.filter((d) => linksToTitle(d, exact)).length;
