@@ -1,6 +1,6 @@
 # Learning in Phevere: what works and what Phevere does
 
-2026-11-05: Progress is set as an editorial spread, "If you stop reviewing" became Memory, a strip with one dot per word that shows what a week or a month off would cost, and new words a day, the countdown on choice questions and speaking questions moved to Settings → Learn. See "The Progress page" and "Settings → Learn".
+2026-11-05: Progress is set as an editorial spread, "If you stop reviewing" became Memory, a strip with one dot per word that shows what a week or a month off would cost, and new words a day and the countdown on choice questions moved to Settings → Learn. See "The Progress page" and "Settings → Learn".
 
 2026-11-04: the Learn tab was rebuilt after a user called it a toy. Questions now follow a ladder by memory strength with a skill balance (listening at most a fifth of a session), sessions run in rounds of twenty, leeches are recognised, new words are picked across all your books as one pool, and Today and Progress have charts with axes and readouts you can point at. The research behind these choices is under "Sessions, ladders and charts in the mature apps", and the design under "What Phevere does now".
 
@@ -214,11 +214,11 @@ The Today page has two charts of its own: reviews due over the next fourteen day
 
 Since 2026-11-05 the options for Learn live in Settings, on the desktop and the phone, and the Learn tab only shows what they settle. That is where every app we looked at keeps them: Anki's daily limits and timers are deck options ([manual](https://docs.ankiweb.net/deck-options.html)), Shanbay keeps 每日单词量 under 我的 and 学习设置, Duolingo keeps the daily goal and the speaking and listening switches in Settings, and WaniKani moved its daily lesson count to App Settings ([blog](https://blog.wanikani.com/posts/today-lessons-count-setting/)).
 
-![Screenshot of Settings → Learn on a phone: new words a day for My words and for the Postgraduate book, the countdown on choice questions set to 8 seconds, and the speaking-questions switch](REVIEW.assets/settings-learn-phone.png)
+![Screenshot of Settings → Learn on a phone: new words a day for My words and for the Postgraduate book, and the countdown on choice questions set to 5 seconds](REVIEW.assets/settings-learn-phone.png)
 
-*Settings → Learn: a goal per list, the countdown, and speaking questions once a microphone is there.*
+*Settings → Learn: a goal per list and the countdown.*
 
-New words a day has a row for My words and one for each word book you study, with 5, 10, 20 and 40 and an Other field for any number up to 999. Countdown on choice questions is Off or 5 to 30 seconds. Speaking questions appears only when the device lists a microphone Phevere may use; when microphone access is refused or there is none, the row is not there at all. Both options reach Learn as `learnPrefs` and `microphone` in `ReviewRenderOptions` (`packages/core/src/learn-prefs.ts`); the countdown and the speaking question itself belong to the question logic in `review-quiz.ts`. A round under way is not restarted when a goal changes.
+New words a day has a row for My words and one for each word book you study, with 5, 10, 20 and 40 and an Other field for any number up to 999. Countdown on choice questions is Off or 5 to 30 seconds. It reaches Learn as `learnPrefs` in `ReviewRenderOptions` (`packages/core/src/learn-prefs.ts`), and the countdown itself belongs to the question logic in `review-quiz.ts`. There is no switch for speaking questions, because none exist yet. The stored `speaking` preference and the microphone check (`microphoneAvailable`) are kept, and `SPEAKING_QUESTIONS` in `settings-learn.ts` turns the switch on once speaking questions are built; it will then appear only on a device with a microphone Phevere may use. A round under way is not restarted when a goal changes.
 
 ## What is left open
 

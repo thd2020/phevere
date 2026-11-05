@@ -236,7 +236,7 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.match(html, /data-act="learn-page" data-page="progress"/);
 }
 
-// Settings → Learn: a goal per list, the countdown, and speaking questions only with a microphone.
+// Settings → Learn: a goal per list and the countdown; no speaking switch until speaking questions exist.
 {
   const { learnSettingsHtml } = load('settings-learn');
   const { readLearnPrefs, writeLearnPrefs, DEFAULT_LEARN_PREFS } = load('learn-prefs');
@@ -248,7 +248,7 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.match(html, /data-book="cet4" value="20" checked/, 'a book keeps its own goal');
   assert.match(html, /<option value="8" selected>8 seconds<\/option>/);
   assert.doesNotMatch(html, /learn-speaking/, 'no speaking switch without a microphone');
-  assert.match(learnSettingsHtml({ ...input, microphone: true }), /data-act="learn-speaking"/);
+  assert.doesNotMatch(learnSettingsHtml({ ...input, microphone: true, prefs: { countdown: 8, speaking: true } }), /learn-speaking|Speaking/, 'no speaking switch even with a microphone');
   assert.deepEqual(readLearnPrefs(null), DEFAULT_LEARN_PREFS);
   assert.deepEqual(readLearnPrefs('{bad'), DEFAULT_LEARN_PREFS);
   assert.deepEqual(readLearnPrefs(writeLearnPrefs({ countdown: 10, speaking: false })), { countdown: 10, speaking: false });
