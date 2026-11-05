@@ -18,76 +18,76 @@
 
 ## About
 
-Phevere is a dictionary for text you are already reading. Select a word in a browser, a PDF or any other application, and a lookup opens beside it with definitions, pronunciation, translation, etymology and Wikipedia. Words you save go into a local notebook, where word books, a daily quiz and maps of shared roots help you learn them. It runs as a tray app on Windows, macOS and Linux, and as a phone app on Android and iOS, all built on one dictionary core.
+Phevere is a dictionary for whatever you are reading. Select a word in a web page, a PDF or any other app, and its meaning appears right beside it, with pronunciation, translation, word history and Wikipedia. Save the words you want to keep, and Phevere helps you learn them with word books, a short daily review and maps of related words. It runs on Windows, macOS, Linux, Android and iOS.
 
-Version 4.1.0 adds updates from inside the app on the desktop and Android, search suggestions, a picture for each meaning that has one, and pages for prefixes, suffixes and roots. See [what's new](CHANGELOG.md).
+Version 4.1.0 keeps itself up to date, suggests words as you type, shows pictures for more meanings, and lets you look up prefixes, suffixes and roots. See [what's new](CHANGELOG.md).
 
 ## Features
 
-**Lookup**
+**Look up**
 
-- Definitions from Free Dictionary, Wiktionary and Datamuse, merged into one entry with the commonest senses first
-- Pictures from Wikimedia Commons beside the meanings they show: "crane" gets the bird and the machine
-- Word forms, and a form such as "children" or "gleaned" that opens its headword, as learner dictionaries do
-- US and UK pronunciation, recorded audio where it exists, and optional neural voices
-- Translation through Google Translate and MyMemory, or Youdao and DeepL with your own keys
-- Etymology from Wiktionary, Etymonline and Youdao, and pages for prefixes, suffixes and roots
-- Search suggestions ranked by how common a word is, and "Did you mean" for a word with no entry
-- Offline packs: WordNet, Webster 1913, CC-CEDICT, JMdict and FreeDict for twelve languages
-- Other languages through Jisho, OpenRussian and kaikki.org ([languages and sources](docs/MULTILINGUAL.md))
+- Clear definitions with the most common meanings first
+- Pictures for things you can see: "crane" shows both the bird and the machine
+- Every form of a word, such as plurals and past tenses; looking up "gleaned" takes you to "glean"
+- American and British pronunciation, with recordings where they exist and natural-sounding voices you can download
+- Translation with Google Translate or MyMemory, or with Youdao or DeepL if you have a key
+- Word histories, and pages for prefixes, suffixes and roots such as "ob-" or "-ant"
+- Suggestions as you type, and "Did you mean…" when a word is misspelled
+- Offline dictionaries for English, Chinese, Japanese, Korean and twelve other languages
+- Definitions for words in many languages besides English ([supported languages](docs/MULTILINGUAL.md))
 
-**Words and Learn**
+**Learn**
 
-- My words, plus graded word books from primary school to CET-6, 考研, TOEIC and Business English ([sources](docs/WORDBOOKS.md))
-- Each saved word remembers the web page, PDF page or app you met it in
-- Four views of any list: List, Families by root and origin, a 3D Map and Cards
-- A daily quiz scheduled with FSRS, whose questions get harder as a word sticks ([how it works](docs/REVIEW.md))
-- Progress charts for your goal, streak, upcoming reviews and retention
-- Word books that export to one file, and Anki decks in both directions ([format](docs/BOOK_FORMAT.md))
-- Optional sync of words and books with a free Holarky account ([account](docs/ACCOUNT.md))
+- Graded word books from primary school to CET-6, 考研, TOEIC and Business English ([book list](docs/WORDBOOKS.md))
+- Each saved word remembers where you found it: the web page, the PDF page or the app
+- Your words grouped into families that share a root, laid out as a 3D map, or dealt out as cards
+- A daily review that brings each word back before you forget it, with questions that get harder as you learn ([how it works](docs/REVIEW.md))
+- Charts of your daily goal, your streak, the reviews ahead and how much you remember
+- Move a word book and its progress to another device, or swap decks with Anki ([file format](docs/BOOK_FORMAT.md))
+- Your words on all your devices with a free account ([account](docs/ACCOUNT.md))
 
-**On each platform**
+**On your device**
 
-- Desktop: select-to-lookup in other apps, OCR for text you cannot select, and a translate-in-place shortcut
-- Android: Phevere on the text-selection bar, a lookup that floats over the current app, and Scan for photos
-- iOS: share text to Phevere, and Scan for photos
+- Computer: select a word in any app to look it up, hover over words in images and scanned pages, and replace selected text with its translation by a shortcut
+- Android: a Phevere button in the menu that appears when you select text, a lookup that floats over the app you are in, and words picked out of a photo
+- iOS: share text to Phevere, and pick words out of a photo
 
 <div align="center">
-<img src="README.assets/learning-overview.png" width="860" alt="Screenshots of the phone app: a Learn question, the Progress page, the word-book library and Families grouped by origin">
-<p><sub>A Learn question, Progress, the word-book library, and Families grouped by origin.</sub></p>
+<img src="README.assets/learning-overview.png" width="860" alt="Screenshots of the phone app: a review question, the Progress page, the word-book library and word families grouped by origin">
+<p><sub>A review question, Progress, the word-book library, and word families grouped by language of origin.</sub></p>
 </div>
 
 ## Download
 
-Every file is on the [latest release](https://github.com/thd2020/phevere/releases/latest).
+Get the file for your device from the [latest release](https://github.com/thd2020/phevere/releases/latest).
 
-| Platform | File | Requires |
+| Device | File | Requires |
 |---|---|---|
-| Windows x64 | `Phevere-Setup-<version>-x64.exe` | Windows 10 |
-| Windows ARM64 | `Phevere-Setup-<version>-arm64.exe` | Windows 11 |
-| macOS Apple silicon | `Phevere-<version>-darwin-arm64.dmg` | macOS 11 |
-| macOS Intel | `Phevere-<version>-darwin-x64.dmg` | macOS 11 |
-| Debian, Ubuntu | `phevere_<version>_amd64.deb`, `_arm64.deb` | Ubuntu 22.04 |
-| Fedora, openSUSE | `phevere-<version>-1.x86_64.rpm`, `.arm64.rpm` | glibc 2.35 |
-| Other Linux | `Phevere-<version>-x64.AppImage`, `-arm64.AppImage` | glibc 2.35 |
+| Windows (most PCs) | `Phevere-Setup-<version>-x64.exe` | Windows 10 |
+| Windows on Arm | `Phevere-Setup-<version>-arm64.exe` | Windows 11 |
+| Mac with Apple silicon | `Phevere-<version>-darwin-arm64.dmg` | macOS 11 |
+| Mac with Intel | `Phevere-<version>-darwin-x64.dmg` | macOS 11 |
+| Debian, Ubuntu | `phevere_<version>_amd64.deb` | Ubuntu 22.04 |
+| Fedora, openSUSE | `phevere-<version>-1.x86_64.rpm` | Fedora 36 |
+| Other Linux | `Phevere-<version>-x64.AppImage` | Ubuntu 22.04 or equivalent |
 | Android | `Phevere-<version>-android.apk` | Android 7.0 |
-| iOS | `Phevere-<version>-ios-unsigned.ipa` (sign it yourself) | iOS 15.1 |
+| iOS | `Phevere-<version>-ios-unsigned.ipa` (you sign it yourself) | iOS 15.1 |
 
-The builds are not code-signed, so SmartScreen and Gatekeeper ask once on first launch ([code signing](docs/CODE_SIGNING.md)). Hover lookup and Scan need the 14 MB OCR pack, which you install from **Settings → Capture**.
+Linux packages for Arm computers are on the release page too.
 
-On macOS, open Phevere with right-click → **Open** the first time and grant Accessibility and Screen Recording ([macOS notes](docs/MACOS_SELECTION.md)). On GNOME Wayland, bind `phevere --lookup-selection` to a keyboard shortcut ([Linux notes](docs/LINUX_SELECTION.md)). The optional LSPosed module for rooted Android phones is described in [ANDROID.md](apps/mobile/ANDROID.md).
+Windows and macOS warn you the first time you open Phevere, because it is not signed by a paid developer account; choose to run it anyway. On a Mac, right-click Phevere and choose **Open** the first time, then allow Accessibility and Screen Recording when asked ([Mac setup](docs/MACOS_SELECTION.md)). On a computer, looking up words in images needs a 14 MB download from **Settings → Capture**. GNOME on Wayland needs a keyboard shortcut set up once ([Linux setup](docs/LINUX_SELECTION.md)), and rooted Android phones can add an LSPosed module for more control ([Android setup](apps/mobile/ANDROID.md)).
 
 ## Updates
 
-Phevere checks GitHub Releases every six hours and verifies each download against its SHA-256 checksum. **Settings → Updates** has three modes: Automatically (the default), Ask first and Off.
+Phevere checks for a new version every six hours and makes sure each download is intact before installing it. In **Settings → Updates** you can let it update automatically (the default), ask you first, or turn updates off.
 
-- **Windows and AppImage** install the update when Phevere quits. **Roll back** returns to the previous release after backing up your notebook.
-- **macOS, deb and rpm** tell you about a new version and open its download page.
-- **Android** downloads on Wi-Fi and opens the system install prompt for you to confirm. It has no rollback, because Android needs an uninstall to go back a version.
+- **Windows and AppImage**: the update installs when you quit Phevere. **Roll back** returns to the previous version if a new one gives you trouble, and backs up your words first.
+- **macOS, deb and rpm**: Phevere tells you about the new version and opens its download page.
+- **Android**: the update downloads on Wi-Fi, then Android asks you to confirm the install. Going back a version is not possible on Android without uninstalling, which would delete your words.
 
 ## Privacy
 
-Your notebook and settings stay on your device. Lookups go only to the sources you have enabled, password fields are never read, and private browser windows are never recorded. With a Holarky account, your words sync through the Holarky service until you delete the account ([privacy policy](https://holarky-api.thdfreelancer.workers.dev/privacy)).
+Your words and settings stay on your device. Lookups go only to the dictionaries and translators you have turned on, password fields are never read, and private browser windows are never recorded. If you sign in, your words are stored in your account so your devices match, and deleting the account removes them ([privacy policy](https://holarky-api.thdfreelancer.workers.dev/privacy)).
 
 ## Building from source
 
@@ -98,7 +98,7 @@ npm install
 npm start
 ```
 
-You need Node.js 18 or later, plus a C++ toolchain for the selection addon: Visual Studio 2022 on Windows, Xcode Command Line Tools on macOS, and on Linux `build-essential pkg-config libx11-dev libxfixes-dev libatspi2.0-dev libglib2.0-dev libwayland-dev`. The `npm run make:*` scripts build installers ([packaging](PACKAGING.md)), and `npm run mobile:dev` runs the phone app in a browser ([mobile](docs/MOBILE.md)). Pushing a new version to `main` publishes a release ([releasing](docs/RELEASE.md)).
+You need Node.js 18 or later, plus a C++ toolchain for the native module: Visual Studio 2022 on Windows, Xcode Command Line Tools on macOS, and on Linux `build-essential pkg-config libx11-dev libxfixes-dev libatspi2.0-dev libglib2.0-dev libwayland-dev`. The `npm run make:*` scripts build installers ([packaging](PACKAGING.md)), and `npm run mobile:dev` runs the phone app in a browser ([mobile](docs/MOBILE.md)). Pushing a new version to `main` publishes a release ([releasing](docs/RELEASE.md)).
 
 | Path | Contents |
 |---|---|
