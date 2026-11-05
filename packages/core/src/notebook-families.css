@@ -244,6 +244,23 @@
   -webkit-box-orient: vertical;
 }
 .nbv-fam__peek i { font-style: normal; font: 600 12px/1 var(--nbv-ui); color: var(--accent); }
+.nbv-fam__peekw {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 3px;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: color 0.14s var(--nbv-motion), text-decoration-color 0.14s var(--nbv-motion);
+}
+.nbv-fam__peekw:hover { color: var(--nbv-ink); text-decoration-color: currentColor; }
+.nbv-fam__peekw:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .nbv-fams:not(.is-live) .nbv-fam[open] .nbv-fam__peek { display: none; }
 .nbv-fam__words { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 16px 16px; }
 .nbv-fam .nbv-word b { color: var(--accent); }

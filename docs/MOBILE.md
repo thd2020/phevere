@@ -21,7 +21,7 @@
 | Surface | How |
 |---|---|
 | Lookup | Material 3 search + lexicon / translation / Wikipedia / etymology. IPA chips under the headword, recorded audio, word-family links, back/forward |
-| Notebook | Save from the heart. Same list as desktop: expandable rows, Recent / A–Z, Export, Import, Refresh. Empty glosses fill in the background. |
+| Notebook | Save from the heart, and add to your own word books from the button beside it. Same list as desktop: expandable rows, Recent / A–Z. Export sits in the open list's menu on its chip, Import in the word book library, and pulling down the list reloads it. Empty glosses fill in the background. |
 | Settings | Capture, Notifications (Android / iOS), Sources, Offline, API keys, Audio. Capture holds camera/photo **Scan**. Notifications are three on/off rows: **Incoming lookup**, **Saved to notebook**, **Scan finished**, plus Allow / the OS screen. Desktop-only items (shortcuts, hover, tray balloons, PP-OCR) are not shown. |
 | Process Text | Android: select text → **Phevere** in the system toolbar opens a compact lookup card. With **Display over other apps**, the card floats and the other app stays interactive. |
 | Share / deep link | iOS: Share sheet or `phevere://lookup?q=word` opens the lookup pop-up (floating card or half-sheet, per **Floating pop-up**). |

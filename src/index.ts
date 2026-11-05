@@ -26,7 +26,7 @@ import { captureScreenRegion, captureAroundPoint, canCaptureWithoutPrompt } from
 import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile, resetOcrEngine } from './services/ocr-engine';
 import { isLookupWorthy } from './services/text-normalize';
 import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
-import { placePopupNearPoint, eventCoordSpace, type ScreenCoordSpace } from './services/popup-placement';
+import { placePopupNearPoint, eventCoordSpace, physicalToDip, setWindowBounds, type ScreenCoordSpace } from './services/popup-placement';
 import { popupSize } from './services/popup-size';
 import { showWorkProgress, updateWorkProgress, closeWorkProgress } from './services/work-progress';
 import { isAcceleratorPhysicallyHeld, isPrimaryMouseDown, primaryMousePressedSinceLastPoll } from './services/accelerator-key-state';
@@ -355,6 +355,10 @@ let lastPopupText: string = '';
 let lastPopupAt: number = 0;
 /** Latest strip still loading or collapsed — retarget here instead of spawning another. */
 let inFlightPopup: BrowserWindow | null = null;
+/** Where each strip was last asked to open, and for which word. */
+const stripTargets = new WeakMap<BrowserWindow, { x: number; y: number; space: ScreenCoordSpace; text: string }>();
+/** Popups that started closing; they are still in popupWindows until 'closed'. */
+const closingPopups = new WeakSet<BrowserWindow>();
 let ocrOverlayWindow: BrowserWindow | null = null;
 let contextHubWired = false;
 let hoverLookup: HoverLookupService | null = null;
@@ -457,6 +461,30 @@ function onTriggerShortcutAfterSelection(): void {
   }
   const now = Date.now();
   const ev = lastSelectionEvent;
+  // A stored hover word is only what the user means while the pointer is still on it.
+  // Hovering A and then pressing the trigger over B must look up B at B, the way
+  // modifier-key scan pop-ups (GoldenDict, Eudic) read the word under the pointer at the
+  // key press. Reopening A at A looked like a stuck strip, then like a strip that drifts.
+  // A selection counts the same way once a click has released its hold on hover: the
+  // click usually cleared it, and the pointer now rests somewhere else.
+  const hover = hoverLookup && hoverLookup.isRunning() ? hoverLookup : null;
+  let readUnderPointer = !!hover && !ev;
+  if (hover && ev) {
+    const at = eventCoordSpace(ev) === 'physical' ? physicalToDip(ev.x, ev.y) : { x: ev.x, y: ev.y };
+    const left = !hover.pointerNear(at.x, at.y);
+    if (ev.origin === 'hover') {
+      // Resting on a word longer than the selection window still means that word.
+      readUnderPointer = left || now - ev.timestamp > TRIGGER_AFTER_SELECTION_MAX_MS;
+    } else if (ev.origin === 'selection' || ev.origin === 'manual') {
+      readUnderPointer = left && !hover.isHeldBySelection();
+    }
+  }
+  if (readUnderPointer && hover) {
+    // The word comes back through the context hub marked `requested`, which opens it.
+    hover.requestNow();
+    log.debug('main', 'Trigger shortcut: reading the word under the pointer');
+    return;
+  }
   if (!ev || !String(ev.text || '').trim()) {
     log.debug('main', 'Trigger shortcut: no stored selection');
     return;
@@ -1593,9 +1621,13 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
   log.debug('main', 'Create popup window', { x, y, textLen: textForPopup.length });
   const nowTs = Date.now();
   const STRIP_MAX_H = 64;
+  // A strip whose auto-close or blur already called close() is still in popupWindows
+  // until 'closed'. Handing it the next word lost that word with the window.
+  const isLivePopup = (win: BrowserWindow): boolean =>
+    !!win && !win.isDestroyed() && !closingPopups.has(win);
   const isCollapsedStrip = (win: BrowserWindow): boolean => {
     try {
-      if (!win || win.isDestroyed()) return false;
+      if (!isLivePopup(win)) return false;
       const [, h] = win.getSize();
       return h <= STRIP_MAX_H;
     } catch {
@@ -1604,7 +1636,7 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
   };
   const reusableStrip = popupWindows.find((win) => isCollapsedStrip(win));
   const hasExpandedLookup = popupWindows.some(
-    (win) => win && !win.isDestroyed() && !isCollapsedStrip(win),
+    (win) => isLivePopup(win) && !isCollapsedStrip(win),
   );
 
   const applyStripTarget = (
@@ -1617,10 +1649,13 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
   ): void => {
     try {
       if (!win || win.isDestroyed()) return;
+      // The load handlers below place the strip at this target, never at whatever
+      // event came in last; a hover stored meanwhile in shortcut mode is not a request.
+      stripTargets.set(win, { x: px, y: py, space: stripSpace, text });
       const stillStrip = isCollapsedStrip(win);
       if (!stillStrip) return;
       const placed = placePopupNearPoint(px, py, popupWidth, popupHeight, { space: stripSpace });
-      win.setBounds({ x: placed.x, y: placed.y, width: popupWidth, height: popupHeight }, false);
+      setWindowBounds(win, { x: placed.x, y: placed.y, width: popupWidth, height: popupHeight });
       if (showIfReady) {
         try {
           if (!win.webContents.isLoadingMainFrame()) win.show();
@@ -1638,14 +1673,16 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
   // An open lookup panel must stay put. Explicit shortcuts can immediately
   // reopen the selected word, while any loading strip still handles only one request.
   if (!hasExpandedLookup || explicitTrigger) {
-    if (!explicitTrigger && textForPopup && lastPopupText === textForPopup && nowTs - lastPopupAt < 1000) {
-      log.debug('main', 'Skip duplicate popup (same text, 1s)');
-      return;
-    }
     const live =
       (inFlightPopup && isCollapsedStrip(inFlightPopup) ? inFlightPopup : null)
       || reusableStrip
       || null;
+    // Only a strip that is still open makes a repeat redundant. Once it has closed,
+    // the same word must open it again.
+    if (live && !explicitTrigger && textForPopup && lastPopupText === textForPopup && nowTs - lastPopupAt < 1000) {
+      log.debug('main', 'Skip duplicate popup (same text, 1s)');
+      return;
+    }
     if (live) {
       lastPopupAt = nowTs;
       lastPopupText = textForPopup;
@@ -1689,6 +1726,7 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
                 },
               }, 'solid'));
   inFlightPopup = newPopupWindow;
+  stripTargets.set(newPopupWindow, { x, y, space, text: textForPopup });
   interceptPopupHistoryKeys(newPopupWindow);
   trackPopupFocus(newPopupWindow);
   // Close on blur to match intended UX (give clicks time to land on icons)
@@ -1757,11 +1795,9 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
   // After the popup finishes loading, send the selected text to the renderer
   newPopupWindow.webContents.on('did-finish-load', () => {
     try {
-      const ev = lastSelectionEvent;
-      const textToSend = (ev && ev.text) || lastSelectedText || '';
-      const tx = ev && typeof ev.x === 'number' ? ev.x : x;
-      const ty = ev && typeof ev.y === 'number' ? ev.y : y;
-      applyStripTarget(newPopupWindow, tx, ty, textToSend, false, ev ? eventCoordSpace(ev) : space);
+      const target = stripTargets.get(newPopupWindow) || { x, y, space, text: textForPopup };
+      const textToSend = target.text;
+      applyStripTarget(newPopupWindow, target.x, target.y, textToSend, false, target.space);
       if (!newPopupWindow.isDestroyed() && !newPopupWindow.isVisible()) {
         newPopupWindow.show();
       }
@@ -1775,15 +1811,22 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
 
   // Show popup when ready
   newPopupWindow.once('ready-to-show', () => {
-    const ev = lastSelectionEvent;
-    if (ev) applyStripTarget(newPopupWindow, ev.x, ev.y, ev.text || '', false, eventCoordSpace(ev));
+    const target = stripTargets.get(newPopupWindow);
+    if (target) applyStripTarget(newPopupWindow, target.x, target.y, target.text, false, target.space);
     newPopupWindow.show();
     try { newPopupWindow.focus(); } catch {}
+  });
+
+  newPopupWindow.on('close', () => {
+    closingPopups.add(newPopupWindow);
+    if (inFlightPopup === newPopupWindow) inFlightPopup = null;
   });
 
                 newPopupWindow.on('closed', () => {
                 if (inFlightPopup === newPopupWindow) inFlightPopup = null;
                 popupWindows = popupWindows.filter(win => win !== newPopupWindow);
+                // Hovering the word this strip showed may open a strip again.
+                hoverLookup?.forgetLastEmit();
 
                 // Keep the selected text available for an immediate explicit relookup.
                 // Selection expiry is checked by the shortcut handler.
@@ -1875,9 +1918,10 @@ function wireContextCaptureHubOnce(): void {
       } catch (e) {
         log.warn('main', 'selection-changed IPC failed', { err: String(e) });
       }
-      if (isAcceleratorPhysicallyHeld(monitorSettings.triggerShortcut)) {
+      const asked = event.origin === 'hover' && event.requested === true;
+      if (asked || isAcceleratorPhysicallyHeld(monitorSettings.triggerShortcut)) {
         rememberLookupSource(event);
-        createPopupWindow(event.x, event.y, eventCoordSpace(event));
+        createPopupWindow(event.x, event.y, eventCoordSpace(event), asked);
       }
       return;
     }
@@ -3271,6 +3315,20 @@ ipcMain.handle('vocab-review', async (_e, id: string, grade: 1 | 2 | 3 | 4, deta
   return vocabStore.reviewVocab(id, grade, Date.now(), answerDetailsFrom(details));
 });
 ipcMain.handle('vocab-history', async () => listAnswerHistory());
+// A destructive step asks first, in the system's own dialog like the import questions.
+ipcMain.handle('vocab-confirm', async (e, ask: { message?: unknown; detail?: unknown; confirm?: unknown }) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const opts = {
+    type: 'warning' as const,
+    buttons: [String(ask?.confirm || 'OK'), 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    message: String(ask?.message || ''),
+    detail: ask?.detail ? String(ask.detail) : undefined,
+  };
+  const r = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts);
+  return r.response === 0;
+});
 
 // Word books (packages/core/src/wordbook-store.ts): subscriptions and progress live in the same
 // database as the notebook; the word lists themselves ship with the renderer.
@@ -3814,7 +3872,7 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
               }
               if (Number.isFinite(x) && Number.isFinite(y)) {
                 const placed = placePopupNearPoint(x, y, w, h, { space: 'dip' });
-                target.setBounds({ x: placed.x, y: placed.y, width: w, height: h }, false);
+                setWindowBounds(target, { x: placed.x, y: placed.y, width: w, height: h });
                 return;
               }
               target.setSize(w, h);

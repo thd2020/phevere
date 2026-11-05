@@ -5,6 +5,7 @@ import {
   apiKeysPanelHtml,
   choiceRowHtml,
   groupCatalogByLanguage,
+  learnSettingsHtml,
   navRowHtml,
   rangeRowHtml,
   segRowHtml,
@@ -16,6 +17,7 @@ import {
   type DictionarySource,
   type KeyCardState,
   type KeyStatus,
+  type LearnSettingsInput,
   type PackDetails,
   type PackProgress,
   type PackView,
@@ -137,10 +139,11 @@ function selectionBarSection(capture: CaptureInfo): string {
     </div>`;
 }
 
-export type SettingsSection = 'capture' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio' | 'updates';
+export type SettingsSection = 'capture' | 'learn' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio' | 'updates';
 
 const TAB_ICON: Record<SettingsSection, string> = {
   capture: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M9 9h6M12 9v7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  learn: '<svg viewBox="0 0 24 24" class="ico-line"><rect x="4" y="5" width="16" height="15" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M4 10h16M9 3v4M15 3v4M9 15l2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   notifications: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M6 16v-5a6 6 0 1 1 12 0v5l2 2H4zM10 21h4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   sources: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M5 4.5h4v15H5zM10.5 4.5h4v15h-4zM16 6l3.6-1 3 14.2-3.6 1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   offline: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM12 7v7M9 11l3 3 3-3M8.5 17h7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -151,6 +154,7 @@ const TAB_ICON: Record<SettingsSection, string> = {
 
 export const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = [
   { id: 'capture', label: 'Capture' },
+  { id: 'learn', label: 'Learn' },
   { id: 'sources', label: 'Sources' },
   { id: 'offline', label: 'Offline' },
   { id: 'api', label: 'API keys' },
@@ -162,6 +166,7 @@ export function settingsSections(capture: CaptureInfo, updates = false): Array<{
   if (capture.platform === 'web') return SETTINGS_SECTIONS;
   const list: Array<{ id: SettingsSection; label: string }> = [
     { id: 'capture', label: 'Capture' },
+    { id: 'learn', label: 'Learn' },
     { id: 'notifications', label: 'Notifications' },
     { id: 'sources', label: 'Sources' },
     { id: 'offline', label: 'Offline' },
@@ -427,6 +432,7 @@ export function settingsBody(
   voice: VoiceStatus | null = null,
   lib: LibraryState = emptyLibraryState(),
   updates: PhoneUpdateState | null = null,
+  learn: LearnSettingsInput | null = null,
 ): string {
   const sections = settingsSections(capture, !!updates);
   const tabs = sections
@@ -440,6 +446,8 @@ export function settingsBody(
   const panel =
     section === 'capture'
       ? capturePanel(prefs, capture)
+      : section === 'learn' && learn
+        ? learnSettingsHtml(learn)
       : section === 'notifications'
         ? notificationsPanel(prefs, capture, !!updates)
         : section === 'sources'
