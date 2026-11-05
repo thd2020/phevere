@@ -270,6 +270,8 @@ label.sv-row { cursor: pointer; }
   height: 1px;
   background: var(--sv-line-soft);
 }
+/* A status line in a footer reads from the left; the buttons stay on the right. */
+.sv .sv-ledger__foot > .sv-actions__status { margin-right: auto; }
 .sv .sv-actions {
   display: flex;
   flex-wrap: wrap;

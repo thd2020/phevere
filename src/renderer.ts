@@ -251,10 +251,10 @@ function initializeSettingsWindow() {
                   <input type="text" id="hover-shortcut" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-hover-shortcut" />
                   <button type="button" class="sv-btn" id="hover-shortcut-set">Set…</button>
                 </div>
-              </div>
-              <div class="sv-actions">
-                <span id="monitor-shortcuts-status" class="sv-actions__status" role="status" aria-live="polite"></span>
-                <button type="button" id="monitor-save-shortcuts" class="sv-btn sv-btn--accent">Save</button>
+                <div class="sv-ledger__foot">
+                  <span id="monitor-shortcuts-status" class="sv-actions__status" role="status" aria-live="polite"></span>
+                  <button type="button" id="monitor-save-shortcuts" class="sv-btn sv-btn--accent">Save</button>
+                </div>
               </div>
               <header class="sv-head"><h3 class="sv-head__title">Built-in</h3></header>
               <ul class="sv-ledger" id="builtin-shortcuts">
