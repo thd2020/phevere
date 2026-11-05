@@ -64,7 +64,8 @@ final class AppUpdate {
   }
 
   interface Starter {
-    void start(Intent intent);
+    /** Throws when no app on the phone can open the intent. */
+    void start(Intent intent) throws Exception;
   }
 
   private AppUpdate() {}
@@ -317,7 +318,11 @@ final class AppUpdate {
     JSONObject out = new JSONObject();
     if (!installsAllowed(ctx)) {
       Intent allow = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + ctx.getPackageName()));
-      starter.start(allow);
+      try {
+        starter.start(allow);
+      } catch (android.content.ActivityNotFoundException e) {
+        throw new Exception("Allow Phevere to install apps in Settings, under Apps, Special app access.");
+      }
       out.put("needsPermission", true);
       return out;
     }
@@ -325,7 +330,11 @@ final class AppUpdate {
     Intent view = new Intent(Intent.ACTION_VIEW);
     view.setDataAndType(uri, "application/vnd.android.package-archive");
     view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-    starter.start(view);
+    try {
+      starter.start(view);
+    } catch (android.content.ActivityNotFoundException e) {
+      throw new Exception("No app on this phone can install the update.");
+    }
     out.put("started", true);
     return out;
   }
