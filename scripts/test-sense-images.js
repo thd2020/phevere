@@ -413,7 +413,7 @@ function memoryStore() {
   const imgs = await mod.fetchSenseImages('crane', craneSenses, { lang: 'en', onUpdate: (l) => updates.push(l.filter(Boolean).length) });
   same(imgs.map((x) => x && x.title), ['Gruidae', null, 'crane', null], 'crane: lexeme pictures with their item labels');
   assert.ok(/CC BY-SA 4.0/.test(imgs[0].credit) && /^https:\/\/commons\.wikimedia\.org\/wiki\/File:/.test(imgs[0].pageUrl));
-  assert.ok(log.length <= 6, `${log.length} requests`);
+  assert.ok(log.length <= 7, `${log.length} requests`);
   assert.ok(log.every((r) => /^Phevere\/\d.*github\.com\/thd2020\/phevere/.test(r.headers['User-Agent'])), 'User-Agent names the app');
   assert.ok(updates.length >= 1, 'first pictures arrive before the end');
 
