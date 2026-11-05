@@ -69,7 +69,8 @@ export interface Definition {
   ownSense?: boolean;
 }
 
-import { BaseService, DictionaryError, withTimeout } from './base';
+import { BaseService, DictionaryError, withBudget, withTimeout } from './base';
+import { budgetMs } from './net';
 import { registerWiktionaryWikitextSource } from './sense-images';
 import { checkApiKey, type ApiKeyCheck, type ApiProviderId } from './api-key-check';
 import { detectLanguageLocal, englishCandidateWords, isAmbiguousHan, remoteFitsScript } from './lang-detect';
@@ -126,6 +127,15 @@ import {
 } from './multilingual-sources';
 
 const console = wrapConsole('dictionary');
+/**
+ * The budgets below are set for a normal network. Each one that waits for a host goes through
+ * budgetMs (net.ts), which stretches it to the host's observed round trip when the host is
+ * slower, so a slow connection gets the same answers later instead of different answers.
+ */
+const WIKTIONARY = 'en.wiktionary.org';
+const FREE_DICTIONARY = 'api.dictionaryapi.dev';
+const KAIKKI = 'kaikki.org';
+const DATAMUSE = 'api.datamuse.com';
 /** Hard ceiling so renderer IPC never waits forever (etymology / hung hosts). */
 const LOOKUP_DEADLINE_MS = 12000;
 const IPA_BUDGET_MS = 1500;
@@ -147,8 +157,8 @@ const PARTIAL_PERSIST_TTL_MS = 24 * 60 * 60 * 1000;
 const FORM_CHECK_MS = 3500;
 /** Longest a result that may be a form is held back while that page is on its way. */
 const FORM_HOLD_MS = 1200;
-/** Longest wait for whether Wiktionary has a page titled exactly as typed ("etc.", "C++"). */
-const EXACT_TITLE_MS = 1500;
+/** Whether Wiktionary has a page titled exactly as typed ("etc.") is kept this long. */
+const EXACT_TITLE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /**
  * Stored on every result saved since forms opened as their word (2026-11-04); a saved result
  * without it is looked up again once. A mark, not a date: partial results are saved with an
@@ -283,6 +293,12 @@ const LANGUAGE_SOURCE_LABELS: Record<string, string> = {
 };
 
 const EDITIONS = Object.keys(WIKTIONARY_EDITIONS) as WiktionaryEdition[];
+
+/** The order a lookup folds its sources' answers in, whatever order they arrive in. */
+const SOURCE_ORDER = [
+  'oxford', 'collins', 'wordsApi', 'youdao', 'freeDictionary', 'wiktionary', 'jisho', 'openRussian',
+  'wikt-zh', 'wikt-ru', 'wikt-ja', 'kaikki', 'offlineFallback', 'datamuse', 'cmu', 'tatoeba', 'translation',
+];
 
 function isLocalPackSource(source?: string): boolean {
   const k = (source || '').toLowerCase();
@@ -852,7 +868,8 @@ export class DictionaryService extends BaseService {
           : this.lookupWithCandidates(query, resolvedTarget, detectedLanguage, enabledSources, holder, mergedOpts);
 
       try {
-        result = await withTimeout(coreLookup, LOOKUP_DEADLINE_MS, 'dictionary.lookup');
+        // A lookup is a few round trips in a row (title check, dictionaries, form check).
+        result = await withBudget(coreLookup, LOOKUP_DEADLINE_MS, [WIKTIONARY, FREE_DICTIONARY], 6, 'dictionary.lookup');
       } catch (deadlineErr) {
         console.warn('Lookup hit deadline; returning best-effort fallback', deadlineErr);
         if (holder.current && this.hasRealDefinitions(holder.current)) {
@@ -1013,7 +1030,7 @@ export class DictionaryService extends BaseService {
     const formOrProper = (): Promise<string | null> =>
       Promise.all([resolveFormOf(getHttp(), headword, 'en'), this.isProperNoun(query.trimmed)]).then(([lemma, proper]) => (proper ? null : lemma));
     const early: Promise<string | null> | null =
-      !opts?.noFormRedirect && kaikkiOn ? withTimeout(formOrProper(), FORM_CHECK_MS, 'form-of') : null;
+      !opts?.noFormRedirect && kaikkiOn ? withBudget(formOrProper(), FORM_CHECK_MS, [KAIKKI, WIKTIONARY], 2, 'form-of') : null;
     let earlyAnswer: { lemma: string | null } | undefined;
     if (early) {
       early.then((lemma) => (earlyAnswer = { lemma }), (): undefined => undefined);
@@ -1062,7 +1079,7 @@ export class DictionaryService extends BaseService {
       // Wiktionary calling the word a form keeps it back until the page answers; a word that may be
       // inflected, or a result Wiktionary has not reached yet, waits a shorter while.
       const formLike = mayBeFormOf(r);
-      const limit = formLike ? FORM_CHECK_MS : FORM_HOLD_MS;
+      const limit = formLike ? budgetMs(FORM_CHECK_MS, [KAIKKI, WIKTIONARY], 2) : budgetMs(FORM_HOLD_MS, [KAIKKI, WIKTIONARY]);
       const unsure = formLike || mayBeInflected || !wiktionarySenses(r).length;
       if (!formCheck && early && !earlyAnswer && Date.now() - started < limit && unsure) {
         held = r;
@@ -1148,11 +1165,11 @@ export class DictionaryService extends BaseService {
     const w = String(word || '').trim();
     const pending = this.formDecisions.get(exactLookupKey(w));
     try {
-      if (pending) return (await withTimeout(pending, FORM_CHECK_MS + 1000, 'form-of')) || w;
+      if (pending) return (await withBudget(pending, FORM_CHECK_MS + 1000, [KAIKKI, WIKTIONARY], 2, 'form-of')) || w;
       const lang = (language || 'en').toLowerCase().split('-')[0];
       if (lang === 'en' && isCoreConfigured() && !/\s/.test(w) && this.isNamedSourceOn('Kaikki')) {
         if (await this.isProperNoun(w).catch(() => false)) return w;
-        return (await withTimeout(resolveFormOf(getHttp(), foldLatinHeadword(w) || w, 'en'), FORM_CHECK_MS, 'form-of')) || w;
+        return (await withBudget(resolveFormOf(getHttp(), foldLatinHeadword(w) || w, 'en'), FORM_CHECK_MS, [KAIKKI, WIKTIONARY], 2, 'form-of')) || w;
       }
     } catch {
       /* saved as it is; the fold after the save and the background check catch it later */
@@ -1637,7 +1654,7 @@ export class DictionaryService extends BaseService {
     const translationResults = await Promise.allSettled(
       translationPromises.map(
         (p: Promise<Translation | null>): Promise<Translation | null> =>
-          withTimeout(p, 5500, 'translation').catch((): null => null),
+          withBudget(p, 5500, [], 1, 'translation').catch((): null => null),
       ),
     );
 
@@ -1960,9 +1977,19 @@ export class DictionaryService extends BaseService {
 
     await offlinePromise;
     const hasLocal = definitions.some((d) => isLocalPackSource(d.source));
-    const coreWait = hasLocal ? CORE_WAIT_WITH_LOCAL_MS : CORE_WAIT_WITHOUT_LOCAL_MS;
+    const coreWait = hasLocal ? CORE_WAIT_WITH_LOCAL_MS : budgetMs(CORE_WAIT_WITHOUT_LOCAL_MS, [FREE_DICTIONARY, WIKTIONARY]);
     if (corePromises.length) {
       await this.waitForFirstPaint(corePromises, primaryPromises, hasLocal ? coreWait : 0, coreWait);
+    }
+    // A first paint without a single sense reads as "no definitions", and the lookup then moves on
+    // to the lemma and to spelling suggestions. While the dictionaries have not answered (a slow
+    // connection), there is nothing to paint yet: wait for them, as long as the lookup's deadline
+    // allows. Each request is bounded by its own timeout and backup request (net.ts).
+    const anySenses = () =>
+      definitions.length > 0 ||
+      finished.some((v: any) => v && !v.error && ((v.data?.definitions?.length || 0) > 0 || (v.type === 'offlineFallback' && v.data?.length > 0)));
+    if (!hasLocal && primaryPromises.length && !anySenses()) {
+      await this.waitForFirstPaint(primaryPromises, primaryPromises, 0, budgetMs(LOOKUP_DEADLINE_MS, [FREE_DICTIONARY, WIKTIONARY], 6));
     }
     if (frequencyReady) await withTimeout(frequencyReady, 250, 'sense-frequency').catch((): undefined => undefined);
 
@@ -2098,12 +2125,47 @@ export class DictionaryService extends BaseService {
       }
     };
 
+    // What the local packs gave before any source answered; every rebuild starts from it.
+    let base: { definitions: Definition[]; sources: string[] } | null = null;
+    const ingested: any[] = [];
+    let ipaTopUp: Pronunciation[] = [];
+    /**
+     * Folds in the answers that came in since the last call. The entry is rebuilt from every
+     * answer in a fixed order of sources, not in the order they arrived: which senses survive the
+     * merge of near-duplicates depends on that order, and a slow connection reorders the arrivals.
+     */
     const drain = () => {
-      for (const item of finished) {
-        if (absorbed.has(item)) continue;
+      if (!base) base = { definitions: [...definitions], sources: [...sources] };
+      const fresh = finished.filter((item) => !absorbed.has(item));
+      if (!fresh.length) return;
+      for (const item of fresh) {
         absorbed.add(item);
-        ingest(item);
+        ingested.push(item);
       }
+      definitions.length = 0;
+      definitions.push(...base.definitions);
+      sources.length = 0;
+      sources.push(...base.sources);
+      translations = [];
+      examples = [];
+      synonyms = [];
+      antonyms = [];
+      pronunciation = undefined;
+      pronunciations = [];
+      for (const k of Object.keys(sourceStatus)) delete sourceStatus[k];
+      wikiFamily = undefined;
+      cmuIpa = '';
+      datamuseIpa = '';
+      if (skipEtymology) etymology = undefined;
+      const rank = (item: any) => {
+        const at = SOURCE_ORDER.indexOf(String(item?.type || ''));
+        return at < 0 ? SOURCE_ORDER.length : at;
+      };
+      ingested
+        .map((item, i) => ({ item, i }))
+        .sort((a, b) => rank(a.item) - rank(b.item) || a.i - b.i)
+        .forEach(({ item }) => ingest(item));
+      if (ipaTopUp.length) pronunciations = mergePronunciations(pronunciations, ipaTopUp);
     };
 
     const buildResult = (): DictionaryResult => {
@@ -2264,16 +2326,16 @@ export class DictionaryService extends BaseService {
       const [lemmaPhon, wikiIpa] = await Promise.all([
         this.cachedSource('freeDictionary', ipaWord, () => this.getFreeDictionaryData(ipaWord, 'en'), () => true)
           .then((r) => (r.data || {}) as { pronunciations?: Pronunciation[]; pronunciation?: string }),
-        withTimeout(this.getWiktionaryIpa(ipaWord), IPA_BUDGET_MS * 2, 'wiki.ipa').catch((): Pronunciation[] => []),
+        withBudget(this.getWiktionaryIpa(ipaWord), IPA_BUDGET_MS * 2, WIKTIONARY, 1, 'wiki.ipa').catch((): Pronunciation[] => []),
       ]);
-      pronunciations = mergePronunciations(
-        pronunciations,
+      ipaTopUp = mergePronunciations(
         lemmaPhon.pronunciations,
         !lemmaPhon.pronunciations?.length && lemmaPhon.pronunciation && !/US\s|UK\s/.test(lemmaPhon.pronunciation)
           ? [{ ipa: lemmaPhon.pronunciation, accent: 'other', source: 'Free Dictionary API' }]
           : undefined,
         wikiIpa,
       );
+      pronunciations = mergePronunciations(pronunciations, ipaTopUp);
     }).catch((): undefined => undefined);
 
     for (const p of corePromises) void p.then(schedule);
@@ -2504,6 +2566,9 @@ export class DictionaryService extends BaseService {
   /** Titles looked up as typed, punctuation and capitals included ("etc.", "U.S.", "C++"). */
   private readonly typedTitles = new Set<string>();
 
+  /** Titles whose definitions page failed to load (not a 404), so the page's absence says nothing. */
+  private readonly unansweredTitles = new Set<string>();
+
   /** The headword a result shows: "Paris" as typed when it is a proper noun, otherwise folded. */
   private displayHeadword(typed: string): string {
     const t = String(typed || '').trim();
@@ -2541,19 +2606,47 @@ export class DictionaryService extends BaseService {
       dropped.length > 0 &&
       dropped.every((c) => c !== "'" && c !== '’' && /[\p{Terminal_Punctuation}\p{Quotation_Mark}\p{Ps}\p{Pe}\p{Pi}\p{Pf}]/u.test(c)) &&
       !dropped.some((c) => query.trimmed.includes(c));
-    const fetchPage = (title: string) =>
-      withTimeout(this.wiktionaryDefinitions(title), EXACT_TITLE_MS, 'exact-title').catch((): null => null);
-    const [page, bare] = await Promise.all([fetchPage(exact), sentenceMarks ? fetchPage(query.trimmed) : Promise.resolve(null)]);
+    // The answer is saved, so the next lookup of "etc." (after a restart too) needs no request.
+    const key = `exact-title:v1:${detected}:${exact}`;
+    const store = getLookupCache();
+    try {
+      const saved = store ? await store.get(key) : null;
+      if (saved && Date.now() - saved.savedAt < EXACT_TITLE_TTL_MS && typeof (saved.value as any)?.typed === 'boolean') {
+        return (saved.value as any).typed ? this.typedTitle(query) : query;
+      }
+    } catch {
+      /* asked again below */
+    }
+    // No time limit of its own: the decision must not depend on how slow the connection is. Each
+    // request is bounded by its timeout and its backup request (net.ts); only a Wiktionary that
+    // keeps failing outright leaves the bare word.
+    if (this.isSourceDown('wiktionary')) return query;
+    const [page, bare] = await Promise.all([
+      this.wiktionaryDefinitions(exact),
+      sentenceMarks ? this.wiktionaryDefinitions(query.trimmed) : Promise.resolve(null),
+    ]);
+    const unanswered = this.unansweredTitles.has(exact) || (sentenceMarks && this.unansweredTitles.has(query.trimmed));
+    const decide = (typed: boolean): NormalizedQuery => {
+      if (!unanswered && store) {
+        void Promise.resolve(store.set(key, { typed }, Date.now())).catch((): undefined => undefined);
+      }
+      return typed ? this.typedTitle(query) : query;
+    };
     const lang = [detected, 'en'].find((l) => sectionSenses(page, l).length);
-    if (!lang) return query;
+    if (!lang) return decide(false);
     if (sentenceMarks) {
       const own = sectionSenses(bare, lang);
       const pointing = own.filter((d) => linksToTitle(d, exact)).length;
-      // No answer for the bare word (slow, or no page) leaves the usual order, which still tries
-      // the typed title after the bare word: "do." must not open "ditto" because "do" was slow.
-      if (!own.length || pointing * 3 < own.length) return query;
+      // No answer for the bare word (it failed, or has no page) leaves the usual order, which still
+      // tries the typed title after the bare word: "do." must not open "ditto" because "do" failed.
+      if (!own.length || pointing * 3 < own.length) return decide(false);
     }
-    this.typedTitles.add(exact);
+    return decide(true);
+  }
+
+  /** The query as typed, remembered so the sources ask for that title ("etc.", not "etc"). */
+  private typedTitle(query: NormalizedQuery): NormalizedQuery {
+    this.typedTitles.add(query.sanitized);
     if (this.typedTitles.size > 400) this.typedTitles.delete(this.typedTitles.values().next().value as string);
     return exactQuery(query);
   }
@@ -2562,9 +2655,14 @@ export class DictionaryService extends BaseService {
   private wiktionaryDefinitions(title: string): Promise<any | null> {
     let page = this.wiktionaryPages.get(title);
     if (!page) {
+      this.unansweredTitles.delete(title);
       page = this.request<any>(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(title)}`, {
         headers: { 'User-Agent': DictionaryService.WIKIMEDIA_USER_AGENT },
-      }).catch((): null => null);
+      }).catch((error: unknown): null => {
+        // A 404 says there is no such page; anything else leaves the question open.
+        if (!(error instanceof DictionaryError && error.code === 'HTTP_404')) this.unansweredTitles.add(title);
+        return null;
+      });
       this.wiktionaryPages.set(title, page);
       void page.then((r) => {
         if (!r) this.wiktionaryPages.delete(title);
@@ -2594,7 +2692,7 @@ export class DictionaryService extends BaseService {
     wordFamily?: WordFamilyGroup[];
   }> {
     const term = language === 'en' ? foldLatinHeadword(text) : text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-    const wikiTextPromise = withTimeout(this.getWiktionaryWikitext(term), 2200, 'wiki.wikitext').catch((): string => '');
+    const wikiTextPromise = withBudget(this.getWiktionaryWikitext(term), 2200, WIKTIONARY, 1, 'wiki.wikitext').catch((): string => '');
     const ipaPromise =
       language === 'en'
         ? wikiTextPromise.then((wt) => extractIpaFromWikitext(wt)).catch((): Pronunciation[] => [])
@@ -3035,9 +3133,9 @@ export class DictionaryService extends BaseService {
     return [{ partOfSpeech: 'definition', meaning: entry, source: 'CC-CEDICT' }];
   }
 
-  /** Caps a slow source so it cannot hold up the whole aggregation. */
+  /** Caps a slow source so it cannot hold up the whole aggregation; the cap follows the network (withBudget). */
   private withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
-    return withTimeout(promise, ms, 'source').catch(() => fallback);
+    return withBudget(promise, ms, [], 1, 'source').catch(() => fallback);
   }
 
   private static readonly DATAMUSE_POS: Record<string, string> = {
@@ -3063,14 +3161,18 @@ export class DictionaryService extends BaseService {
     const encoded = encodeURIComponent(word);
     const [entries, related] = await Promise.all([
       // Shared with pluralHasOwnSense, which reads the same entry.
-      withTimeout(
+      withBudget(
         datamuseEntry(getHttp(), word).then((hit): any[] => (hit ? [hit] : [])),
         2500,
+        DATAMUSE,
+        1,
         'datamuse.sp',
       ),
-      withTimeout(
+      withBudget(
         this.request<any[]>(`https://api.datamuse.com/words?rel_syn=${encoded}&max=8`),
         2500,
+        DATAMUSE,
+        1,
         'datamuse.syn',
       ).catch((): any[] => []),
     ]);
@@ -3206,7 +3308,7 @@ export class DictionaryService extends BaseService {
     let chain: EtymologyLink[] | undefined;
 
     const one = <T,>(p: Promise<T | undefined>, ms: number, label: string): Promise<T | undefined> =>
-      withTimeout(p, ms, label).catch((error: unknown): undefined => {
+      withBudget(p, ms, [], 1, label).catch((error: unknown): undefined => {
         console.warn(`${label} failed`, error);
         return undefined;
       });
@@ -3214,7 +3316,7 @@ export class DictionaryService extends BaseService {
     // Per-source budgets: a 502 on Etymonline must not discard Wiktionary/Youdao.
     const [wiktionaryEtymology, etymonlineEtymology, youdaoEtymology, oxfordEtymology] = await Promise.all([
       one(this.fetchEtymologyFromWikitext(text), 4500, 'ety.wiktionary'),
-      withTimeout(this.fetchEtymologyFromEtymonline(text), 10000, 'ety.etymonline')
+      withBudget(this.fetchEtymologyFromEtymonline(text), 10000, 'www.etymonline.com', 1, 'ety.etymonline')
         .catch((error: unknown) => etymonlineUnavailable(this.cleanWordForEtymology(text), etymologyErrorCode(error))),
       one(this.fetchEtymologyFromYoudao(text), 12000, 'ety.youdao'),
       this.oxfordAppId && this.oxfordAppKey
@@ -4224,7 +4326,7 @@ export class DictionaryService extends BaseService {
     if (local.confident) return local.lang;
     const remote = await Promise.race([
       this.remoteDetectLanguage(text),
-      new Promise<string>((r) => setTimeout(() => r(''), 900)),
+      new Promise<string>((r) => setTimeout(() => r(''), budgetMs(900, 'translate.googleapis.com'))),
     ]);
     return remote && remoteFitsScript(text, remote) ? remote : local.lang;
   }
