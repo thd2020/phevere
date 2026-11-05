@@ -6,7 +6,7 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 
 const ALL = [
-  'notebook-views', 'morphology', 'review', 'vocab-sync', 'wordbooks', 'vocab-lang', 'vocab-lemma', 'notebook-csv',
+  'notebook-views', 'desktop-map-bundle', 'morphology', 'review', 'vocab-sync', 'wordbooks', 'vocab-lang', 'vocab-lemma', 'notebook-csv',
   'sense-images', 'sense-frequency', 'pronunciation', 'inflections', 'lang-detect', 'multilingual-sources',
   'etymology-sources', 'etymology-cache', 'etymology-availability', 'etymology-headword', 'etymology-popup',
   'ocr-text', 'ocr-pack', 'speech-stream', 'hover-selection', 'native-selection-repeat',
