@@ -76,6 +76,19 @@ export function openMenu(anchor: HTMLElement, opts: MenuOptions): () => void {
   scrim.appendChild(menu);
   doc.body.appendChild(scrim);
   anchor.setAttribute('aria-expanded', 'true');
+  // A pick may repaint the page and replace the button; focus then returns to its replacement,
+  // found by the same hook and word in the same place among its kind.
+  const same = ['act', 'q', 'scope', 'book']
+    .filter((k) => anchor.dataset[k] != null)
+    .map((k) => `[data-${k}="${CSS.escape(anchor.dataset[k] || '')}"]`)
+    .join('');
+  const nth = same ? [...doc.querySelectorAll<HTMLElement>(same)].indexOf(anchor) : -1;
+  const returnTo = (): HTMLElement | null => {
+    if (anchor.isConnected) return anchor;
+    if (!same) return null;
+    const all = [...doc.querySelectorAll<HTMLElement>(same)];
+    return all[nth] || all[0] || null;
+  };
 
   if (!sheet) {
     const r = anchor.getBoundingClientRect();
@@ -97,7 +110,9 @@ export function openMenu(anchor: HTMLElement, opts: MenuOptions): () => void {
     scrim.remove();
     doc.removeEventListener('keydown', onKey, true);
     anchor.setAttribute('aria-expanded', 'false');
-    if (anchor.isConnected) anchor.focus({ preventScroll: true });
+    const back = returnTo();
+    back?.setAttribute('aria-expanded', 'false');
+    back?.focus({ preventScroll: true });
   };
   const onKey = (ev: KeyboardEvent) => {
     const list = items();
