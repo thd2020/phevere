@@ -2482,11 +2482,11 @@ export class DictionaryService extends BaseService {
    * with that exact title in the query's language: "etc." and "C++" open as typed, while "hello,"
    * has no page and is looked up as "hello". The dictionary decides, not a list of abbreviations.
    *
-   * A full stop, comma, quote or bracket may also just be the sentence around a word. When the
-   * bare word has a page of its own, it wins: "no." and "in." are no and in at the end of a
-   * sentence, though Wiktionary also has "no." (number) and "in." (inch). The typed title still
-   * wins when most of the bare word's senses point to it ("etc" is mostly "Alternative form of
-   * etc.") or when the same mark is also inside the word ("e.g.", "U.S.").
+   * A full stop, comma, quote or bracket may also just be the sentence around a word, so then the
+   * bare word comes first: "no." and "in." are no and in at the end of a sentence, though
+   * Wiktionary also has "no." (number) and "in." (inch). The typed title comes first only when
+   * most of the bare word's senses point to it ("etc" is mostly "Alternative form of etc.") or
+   * when the same mark is also inside the word ("e.g.", "U.S.").
    */
   private async withExactTitle(query: NormalizedQuery, language: string): Promise<NormalizedQuery> {
     if (!hasEdgePunctuation(query) || !isCoreConfigured()) return query;
@@ -2507,7 +2507,9 @@ export class DictionaryService extends BaseService {
     if (sentenceMarks) {
       const own = sectionSenses(bare, lang);
       const pointing = own.filter((d) => linksToTitle(d, exact)).length;
-      if (own.length && pointing * 2 < own.length) return query;
+      // No answer for the bare word (slow, or no page) leaves the usual order, which still tries
+      // the typed title after the bare word: "do." must not open "ditto" because "do" was slow.
+      if (!own.length || pointing * 2 < own.length) return query;
     }
     this.typedTitles.add(exact);
     if (this.typedTitles.size > 400) this.typedTitles.delete(this.typedTitles.values().next().value as string);
