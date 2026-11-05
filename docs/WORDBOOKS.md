@@ -20,7 +20,7 @@ Phevere follows that pattern. The Words tab has a switcher with My words first, 
 <p align="center"><img src="WORDBOOKS.assets/phone-library.png" width="300" alt="Screenshot of the phone library: word books on a path from primary school up, Starter 1000 added with its progress bar"></p>
 <p align="center"><sub>The library on the phone. An added book shows its progress and an Open button; the others show Add.</sub></p>
 
-Each book has its own daily goal for new words. The Learn tab has the same switcher without "Add a word book", and choosing a list in either tab chooses it in both. Review in Learn draws that many new words from the book in its order and mixes in every word due that day. A word learned once counts in every book that contains it, so in All books the plan panel lists each book's new and due words for today and how many of its words are known.
+Each book has its own daily goal for new words, set with My words' goal in Settings → Learn. The Learn tab has the same switcher without "Add a word book", and choosing a list in either tab chooses it in both. Review in Learn draws that many new words from the book in its order and mixes in every word due that day. A word learned once counts in every book that contains it, so in All books the plan panel lists each book's new and due words for today and how many of its words are known.
 
 <p align="center"><img src="WORDBOOKS.assets/phone-all-books-plan.png" width="300" alt="Screenshot of the All books review plan with a row per book showing new and due words and known out of total"></p>
 <p align="center"><sub>All books on the phone: one session across My words and two books, with a row per book.</sub></p>

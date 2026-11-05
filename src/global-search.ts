@@ -36,6 +36,7 @@ interface Row {
 const SETTINGS: Array<{ section: string; label: string; words: string[] }> = [
   { section: 'shortcuts', label: 'Shortcuts', words: ['shortcut', 'hotkey', 'keyboard', 'accelerator', 'key binding'] },
   { section: 'capture', label: 'Capture', words: ['selection', 'select', 'hover', 'ocr', 'scan', 'clipboard', 'popup', 'pop-up', 'region', 'screen', 'remember', 'source', 'where', 'page', 'pdf', 'book'] },
+  { section: 'learn', label: 'Learn', words: ['learn', 'new words', 'words a day', 'daily goal', 'goal', 'countdown', 'timer', 'speaking', 'microphone', 'review'] },
   { section: 'notifications', label: 'Notifications', words: ['notification', 'toast', 'banner', 'tray', 'alert'] },
   { section: 'sources', label: 'Sources', words: ['source', 'dictionary', 'wiktionary', 'datamuse', 'jisho', 'kaikki', 'translation engine', 'google translate', 'mymemory', 'youdao', 'deepl', 'images', 'pictures'] },
   { section: 'offline', label: 'Offline', words: ['offline', 'pack', 'download', 'wordnet', 'cedict', 'jmdict', 'freedict', 'kengdic', 'webster'] },
