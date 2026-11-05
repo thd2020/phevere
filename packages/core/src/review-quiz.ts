@@ -784,12 +784,14 @@ export const LETTER_EASE = 0.45;
 /**
  * Harder kinds open for a learner once they have answered easier ones right this many times,
  * counting every word: typing after recognising words, a sentence gap after typing, dictation
- * after picking words they heard. Without a learner model every kind is open.
+ * after picking words they heard or typing words right. Typed answers count for dictation because
+ * picking the word heard is asked only of words not yet mature, so a learner whose words are all
+ * mature would otherwise never reach it. Without a learner model every kind is open.
  */
 export const KIND_UNLOCK: Partial<Record<QuestionKind, { after: QuestionKind[]; right: number }>> = {
   recall: { after: ['word-choice', 'meaning-choice'], right: 5 },
   cloze: { after: ['recall'], right: 3 },
-  'listen-type': { after: ['listen-choice'], right: 3 },
+  'listen-type': { after: ['listen-choice', 'recall', 'cloze'], right: 3 },
 };
 
 export function kindSkill(kind: QuestionKind): QuizSkill {

@@ -154,6 +154,14 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
   const ready = { offset: {}, right: { 'word-choice': 5, 'listen-choice': 3, recall: 3 } };
   assert.ok(core.kindUnlocked('recall', ready) && core.kindUnlocked('listen-type', ready) && core.kindUnlocked('cloze', ready));
   assert.ok(!core.kindUnlocked('listen-type', { offset: {}, right: { 'listen-choice': 2 } }));
+  // Dictation is reachable for a learner whose words are all mature: picking the word heard is
+  // never asked of a mature word, so right typed answers open it too.
+  const maturesOnly = { offset: {}, right: { 'word-choice': 8, recall: 3 } };
+  assert.ok(core.kindUnlocked('listen-type', maturesOnly), 'three right typed answers open dictation');
+  const mature = { ...pool[3], reps: 8, state: 2, stability: 60, lastReview: now - 60 * DAY, reviewDue: now };
+  const matureKinds = new Set();
+  for (let s = 0; s < 120; s++) matureKinds.add(core.buildQuestion(mature, pool, { now, audio: true, learner: maturesOnly, asked: s % 2 ? ['recall', 'cloze', 'word-choice', 'meaning-choice'] : [] }, core.seededRandom(s)).kind);
+  assert.ok(matureKinds.has('listen-type'), `a mature word gets dictation: ${[...matureKinds]}`);
   // Right answers in the session count, so typing opens during the first session.
   const results = Array.from({ length: 5 }, (_, i) => ({ id: `x${i}`, lemma: 'x', kind: 'word-choice', result: 'right', grade: 3, ms: 3000 }));
   assert.ok(core.kindUnlocked('recall', core.sessionLearner(fresh, results)));

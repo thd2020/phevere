@@ -172,7 +172,7 @@ A typed question shows the answer's length as one dot per letter, with "7 letter
 
 ### Unlocking
 
-Harder kinds open for a learner after easier ones have gone right (`KIND_UNLOCK`): typing after five right answers picking a word or a meaning, filling a gap after three right typed words, and dictation after three right answers picking the word heard. Right answers in the current session count, so a new learner reaches typing during their first session.
+Harder kinds open for a learner after easier ones have gone right (`KIND_UNLOCK`): typing after five right answers picking a word or a meaning, filling a gap after three right typed words, and dictation after three right answers picking the word heard or typing a word. Typed answers count because picking the word heard is never asked of a mature word, so a learner whose words are all mature would otherwise never reach dictation. Right answers in the current session count, so a new learner reaches typing during their first session.
 
 ### Senses a question can use
 
