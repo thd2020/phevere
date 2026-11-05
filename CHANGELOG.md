@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Picture speed (2026-11-05): sense pictures appear much sooner after a lookup. The desktop pop-up now starts finding a word's pictures when you look it up, shows each picture as soon as its sense has one instead of waiting for every source, and keeps its connections to Wikimedia open between requests, as the phone already did. On both, the pictures from Wikipedia articles and from the word's disambiguation page no longer wait for each other, and the thumbnail server is contacted while the definitions load. On 120 common words looked up for the first time, the desktop's first picture now arrives about a second after you look the word up, and the last one about 1.6 seconds after; before, the pop-up showed nothing until about 12 seconds after the definitions. On the phone, the first picture arrives after 0.9 seconds instead of 1.3, and the last after 1.4 seconds instead of 2.8. Which pictures appear, and on which senses, is unchanged.
+
 ### Fixed
 
 - Sync (2026-11-05): a word or word book saved in the same millisecond that a sync started could stay on that device. It is now sent with the next sync.
