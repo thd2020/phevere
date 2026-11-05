@@ -18,43 +18,39 @@
 
 ## About
 
-Phevere is a dictionary for whatever you are reading. Select a word in a web page, a PDF or any other app, and its meaning appears right beside it, with pronunciation, translation, word history and Wikipedia. Save the words you want to keep, and Phevere helps you learn them with word books, a short daily review and maps of related words. It runs on Windows, macOS, Linux, Android and iOS.
-
-Version 4.1.0 keeps itself up to date, suggests words as you type, shows pictures for more meanings, and lets you look up prefixes, suffixes and roots. See [what's new](CHANGELOG.md).
+Phevere is a dictionary that works wherever you read. Select a word in any app to see its meaning, pronunciation, translation and history, then save it to learn later. It runs on Windows, macOS, Linux, Android and iOS.
 
 ## Features
 
 **Look up**
 
-- Clear definitions with the most common meanings first
-- Pictures for things you can see: "crane" shows both the bird and the machine
-- Every form of a word, such as plurals and past tenses; looking up "gleaned" takes you to "glean"
-- American and British pronunciation, with recordings where they exist and natural-sounding voices you can download
-- Translation with Google Translate or MyMemory, or with Youdao or DeepL if you have a key
-- Word histories, and pages for prefixes, suffixes and roots such as "ob-" or "-ant"
-- Suggestions as you type, and "Did you mean…" when a word is misspelled
-- Offline dictionaries for English, Chinese, Japanese, Korean and twelve other languages
-- Definitions for words in many languages besides English ([supported languages](docs/MULTILINGUAL.md))
+- Definitions, pictures, pronunciation, translation, word history and Wikipedia in one place
+- American and British pronunciation, with extra voices to download
+- Translation with Google Translate, MyMemory, Youdao or DeepL
+- Word forms, and pages for prefixes, suffixes and roots
+- Suggestions as you type
+- Offline dictionaries for sixteen languages
+- Definitions for words in many languages besides English ([languages](docs/MULTILINGUAL.md))
 
 **Learn**
 
-- Graded word books from primary school to CET-6, 考研, TOEIC and Business English ([book list](docs/WORDBOOKS.md))
-- Each saved word remembers where you found it: the web page, the PDF page or the app
-- Your words grouped into families that share a root, laid out as a 3D map, or dealt out as cards
-- A daily review that brings each word back before you forget it, with questions that get harder as you learn ([how it works](docs/REVIEW.md))
-- Charts of your daily goal, your streak, the reviews ahead and how much you remember
-- Move a word book and its progress to another device, or swap decks with Anki ([file format](docs/BOOK_FORMAT.md))
-- Your words on all your devices with a free account ([account](docs/ACCOUNT.md))
+- Word books from primary school to CET-6, 考研, TOEIC and Business English ([book list](docs/WORDBOOKS.md))
+- Saved words remember where you found them
+- Word families, a word map and flash cards
+- A daily review with spaced repetition ([how it works](docs/REVIEW.md))
+- Progress charts
+- Import and export with Anki ([file format](docs/BOOK_FORMAT.md))
+- Sync across your devices with a free account ([account](docs/ACCOUNT.md))
 
 **On your device**
 
-- Computer: select a word in any app to look it up, hover over words in images and scanned pages, and replace selected text with its translation by a shortcut
-- Android: a Phevere button in the menu that appears when you select text, a lookup that floats over the app you are in, and words picked out of a photo
-- iOS: share text to Phevere, and pick words out of a photo
+- Computer: look up selected text in any app or words inside images, and translate selected text in place
+- Android: look up from the text-selection menu in any app, and scan words from photos
+- iOS: look up from the Share menu, and scan words from photos
 
 <div align="center">
-<img src="README.assets/learning-overview.png" width="860" alt="Screenshots of the phone app: a review question, the Progress page, the word-book library and word families grouped by origin">
-<p><sub>A review question, Progress, the word-book library, and word families grouped by language of origin.</sub></p>
+<img src="README.assets/learning-overview.png" width="860" alt="Screenshots of the phone app: a review question, the progress page, the word-book library and word families">
+<p><sub>Review, progress, word books and word families.</sub></p>
 </div>
 
 ## Download
@@ -71,23 +67,21 @@ Get the file for your device from the [latest release](https://github.com/thd202
 | Fedora, openSUSE | `phevere-<version>-1.x86_64.rpm` | Fedora 36 |
 | Other Linux | `Phevere-<version>-x64.AppImage` | Ubuntu 22.04 or equivalent |
 | Android | `Phevere-<version>-android.apk` | Android 7.0 |
-| iOS | `Phevere-<version>-ios-unsigned.ipa` (you sign it yourself) | iOS 15.1 |
+| iOS | `Phevere-<version>-ios-unsigned.ipa` (sign it yourself) | iOS 15.1 |
 
-Linux packages for Arm computers are on the release page too.
-
-Windows and macOS warn you the first time you open Phevere, because it is not signed by a paid developer account; choose to run it anyway. On a Mac, right-click Phevere and choose **Open** the first time, then allow Accessibility and Screen Recording when asked ([Mac setup](docs/MACOS_SELECTION.md)). On a computer, looking up words in images needs a 14 MB download from **Settings → Capture**. GNOME on Wayland needs a keyboard shortcut set up once ([Linux setup](docs/LINUX_SELECTION.md)), and rooted Android phones can add an LSPosed module for more control ([Android setup](apps/mobile/ANDROID.md)).
+Windows and macOS show a warning the first time you open Phevere; choose to run it anyway. Setup notes: [macOS](docs/MACOS_SELECTION.md), [Linux](docs/LINUX_SELECTION.md), [Android](apps/mobile/ANDROID.md).
 
 ## Updates
 
-Phevere checks for a new version every six hours and makes sure each download is intact before installing it. In **Settings → Updates** you can let it update automatically (the default), ask you first, or turn updates off.
+Phevere updates itself. In **Settings → Updates**, choose Automatically, Ask first or Off.
 
-- **Windows and AppImage**: the update installs when you quit Phevere. **Roll back** returns to the previous version if a new one gives you trouble, and backs up your words first.
-- **macOS, deb and rpm**: Phevere tells you about the new version and opens its download page.
-- **Android**: the update downloads on Wi-Fi, then Android asks you to confirm the install. Going back a version is not possible on Android without uninstalling, which would delete your words.
+- Windows and AppImage install the update when you quit Phevere, and **Roll back** returns to the previous version.
+- macOS, deb and rpm open the download page of the new version.
+- Android downloads the update on Wi-Fi and asks you to confirm the install.
 
 ## Privacy
 
-Your words and settings stay on your device. Lookups go only to the dictionaries and translators you have turned on, password fields are never read, and private browser windows are never recorded. If you sign in, your words are stored in your account so your devices match, and deleting the account removes them ([privacy policy](https://holarky-api.thdfreelancer.workers.dev/privacy)).
+Your words and settings stay on your device unless you sign in to sync them. Phevere never reads password fields or records private browser windows. See the [privacy policy](https://holarky-api.thdfreelancer.workers.dev/privacy).
 
 ## Building from source
 
