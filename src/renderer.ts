@@ -512,6 +512,8 @@ function wireLearnSettings(): void {
       prefs: readLearnPrefs(readPref(LEARN_PREFS_KEY, '')),
       microphone,
     });
+    // This panel repaints after start-up, so its selects miss the pass that styles the others.
+    host.querySelectorAll<HTMLSelectElement>('select.sv-select').forEach(enhanceSelect);
   };
   const loadBooks = async () => {
     try {

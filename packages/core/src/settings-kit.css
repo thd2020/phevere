@@ -410,6 +410,10 @@ label.sv-row { cursor: pointer; }
 .sv .sv-num::placeholder { color: var(--sv-ink-soft); font-weight: 500; }
 .sv .sv-num.is-on { border-color: rgb(156 61 0 / 0.45); color: var(--sv-rust); }
 .sv .sv-num:focus { outline: none; border-color: var(--sv-rust); box-shadow: 0 0 0 3px rgb(156 61 0 / 0.14); }
+/* A label and a menu: the label keeps its words whole, and the menu drops under it when the row is narrow. */
+.sv .sv-row--select { flex-wrap: wrap; row-gap: 8px; }
+.sv .sv-row--select > .sv-row__text { flex: 1 1 160px; min-width: 0; }
+.sv .sv-row--select > .sv-select, .sv .sv-row--select > .sv-menu-btn { flex: none; }
 @media (max-width: 600px) {
   .sv .sv-row--goal .sv-row__text { flex-basis: 100%; }
   .sv .sv-goal { width: 100%; justify-content: space-between; }
