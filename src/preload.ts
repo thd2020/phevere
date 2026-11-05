@@ -422,8 +422,22 @@ contextBridge.exposeInMainWorld('dictionaryAPI', {
     lemma: string,
     senses: Array<{ meaning: string; partOfSpeech?: string }>,
     opts?: { max?: number; lang?: string },
+    onUpdate?: (list: Array<SenseImage | null>) => void,
   ): Promise<Array<SenseImage | null>> => {
-    return ipcRenderer.invoke('dictionary-sense-images', lemma, senses, opts);
+    if (!onUpdate) return ipcRenderer.invoke('dictionary-sense-images', lemma, senses, opts);
+    // The first pictures arrive while slower sources still answer.
+    const updateId = `si-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const listener = (_event: unknown, id: string, list: Array<SenseImage | null>) => {
+      if (id === updateId) onUpdate(list);
+    };
+    ipcRenderer.on('dictionary-sense-images-update', listener);
+    return ipcRenderer
+      .invoke('dictionary-sense-images', lemma, senses, { ...(opts || {}), updateId })
+      .finally(() => ipcRenderer.removeListener('dictionary-sense-images-update', listener));
+  },
+  /** Starts gathering a word's pictures when it is submitted, before its senses are known. */
+  prefetchSenseImages: (lemma: string, lang?: string): void => {
+    ipcRenderer.send('dictionary-sense-images-prefetch', lemma, lang);
   },
 });
 
@@ -695,7 +709,9 @@ declare global {
         lemma: string,
         senses: Array<{ meaning: string; partOfSpeech?: string }>,
         opts?: { max?: number; lang?: string },
+        onUpdate?: (list: Array<SenseImage | null>) => void,
       ) => Promise<Array<SenseImage | null>>;
+      prefetchSenseImages?: (lemma: string, lang?: string) => void;
       setOxfordCredentials?: (appId: string, appKey: string) => Promise<{ success: boolean }>;
       setYoudaoCredentials?: (appKey: string, appSecret: string) => Promise<{ success: boolean }>;
       setWordsApiCredentials?: (rapidApiKey: string, rapidApiHost?: string) => Promise<{ success: boolean }>;
