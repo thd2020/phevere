@@ -55,7 +55,7 @@
 .nbv-switch__btn.is-active { background: var(--nbv-panel); color: var(--nbv-ink); box-shadow: 0 1px 2px rgba(28, 25, 23, 0.12); }
 .nbv-switch__btn.is-active svg { color: var(--nbv-ember); }
 
-/* Chips (group by, map filters, daily goal) */
+/* Chips (group by, map filters) */
 .nbv-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 14px; }
 .nbv-chip {
   height: 28px;
@@ -70,11 +70,6 @@
 }
 .nbv-chip:hover { background: var(--nbv-paper-2); }
 .nbv-chip.is-active { border-color: transparent; background: var(--nbv-teal-soft); color: #002021; }
-/* The goal's own number, beside the presets. */
-.nbv-goal__input { width: 64px; text-align: center; appearance: textfield; -moz-appearance: textfield; cursor: text; }
-.nbv-goal__input::-webkit-outer-spin-button, .nbv-goal__input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.nbv-goal__input::placeholder { color: var(--nbv-soft); font-weight: 500; }
-.nbv-goal__input:focus { outline: none; border-color: var(--nbv-teal); background: var(--nbv-panel); }
 /* Language chips above Words: the count sits after the name, lighter. */
 .vocab-lang-chip__n { margin-left: 6px; font-weight: 500; color: var(--nbv-soft); font-variant-numeric: tabular-nums; }
 .vocab-lang-chip.is-active .vocab-lang-chip__n { color: inherit; opacity: 0.7; }
@@ -560,8 +555,28 @@
 .nbv-split__n { display: inline-flex; align-items: baseline; gap: 6px; font: 500 12.5px/1.2 var(--nbv-ui); color: var(--nbv-soft); }
 .nbv-split__n i { width: 9px; height: 9px; border-radius: 2.5px; align-self: center; }
 .nbv-split__n b { font: 600 20px/1 var(--nbv-serif); color: var(--nbv-ink); font-variant-numeric: tabular-nums; }
-.nbv-goal { display: grid; gap: 8px; font: 500 12.5px/1 var(--nbv-ui); color: var(--nbv-soft); }
-.nbv-goal__chips { display: flex; gap: 6px; }
+/* The daily goal as a fact; it opens Settings → Learn. */
+.nbv-goalfact {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  width: 100%;
+  margin: 0;
+  padding: 10px 2px 10px 0;
+  border: 0;
+  border-top: 1px solid var(--nbv-paper-2);
+  border-bottom: 1px solid var(--nbv-paper-2);
+  background: none;
+  color: var(--nbv-soft);
+  font: 500 13px/1 var(--nbv-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.nbv-goalfact b { font: 600 22px/1 var(--nbv-serif); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--nbv-ink); }
+.nbv-goalfact span { flex: 1 1 auto; }
+.nbv-goalfact svg { align-self: center; width: 16px; height: 16px; flex: none; color: var(--nbv-stone); transition: transform 0.2s var(--nbv-motion), color 0.2s var(--nbv-motion); }
+@media (hover: hover) and (pointer: fine) { .nbv-goalfact:hover svg { color: var(--nbv-ink); transform: translateX(2px); } }
+.nbv-goalfact:focus-visible { outline: 2px solid var(--nbv-teal); outline-offset: 2px; border-radius: 4px; }
 .nbv-fig { margin: 0; display: grid; gap: 8px; min-width: 0; }
 .nbv-fig figcaption { font: 600 11px/1 var(--nbv-ui); letter-spacing: 0.07em; text-transform: uppercase; color: var(--nbv-soft); }
 

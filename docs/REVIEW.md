@@ -2,13 +2,15 @@
 
 2026-11-05: every word now has one of Anki's stages (new, learning, relearning, young, mature), read from FSRS stability, and the stage shows on each question. Within a stage the quiz picks the kind of question the learner should get right about 85% of the time, using a model of the learner fitted to their own answers. Listening became dictation from the young stage on, with picking the word you hear kept for the early stages. Typed answers show the letter count, more letters for a weaker word, and a Hint button that reveals one more letter. Today's new words vary with the day's reviews once Phevere knows how much you usually study, and the start card offers the number of new words a day that fits. Prompts are never cut off, and a word is spoken by one voice only. The research is under "Stages, adaptive questions and dictation", the design under "Adapting to the learner".
 
+2026-11-05: Progress is set as an editorial spread, "If you stop reviewing" became Memory, a strip with one dot per word that shows what a week or a month off would cost, and new words a day, the countdown on choice questions and speaking questions moved to Settings → Learn. See "The Progress page" and "Settings → Learn".
+
 2026-11-04: the Learn tab was rebuilt after a user called it a toy. Questions now follow a ladder by memory strength with a skill balance (listening at most a fifth of a session), sessions run in rounds of twenty, leeches are recognised, new words are picked across all your books as one pool, and Today and Progress have charts with axes and readouts you can point at. The research behind these choices is under "Sessions, ladders and charts in the mature apps", and the design under "What Phevere does now".
 
 2026-11-03: review moved out of the Words switcher into its own tab, Learn, on desktop and phone. The quiz and the plan described here are its Today page.
 
 This memo is the reason review is a quiz rather than a flashcard with four self-rating buttons, and the reason for the way a session is put together. It looks at how the main vocabulary apps run review, what memory research says about it, and then the design built in `packages/core/src/review-quiz.ts` (the session, the questions and grading), `review-schedule.ts` (FSRS scheduling), `learn-adapt.ts` (the learner model and study pace), `wordbooks.ts` (sessions across word books), `notebook-review.ts` (the Today page), `learn-progress.ts` (the Progress page) and `learn-charts.ts` (the charts).
 
-The screenshots below show the Learn tab before the 2026-11-04 rebuild and are due to be retaken.
+The two question screenshots below show the Learn tab before the 2026-11-04 rebuild and are due to be retaken; the Progress and Settings screenshots are from 2026-11-05 and use made-up words.
 
 ![Screenshot of a meaning question: the word abandon with four meanings to choose from](REVIEW.assets/meaning-question.png)
 
@@ -236,21 +238,31 @@ The FSRS schedule can be rebuilt from the history. `replaySchedule` runs the gra
 
 ## The Progress page
 
-Learn has a second page, Progress, built from the answer history and the words' FSRS state in `packages/core/src/learn-progress.ts`. It follows the list chosen in the Learn switcher, except the Words card, which always lists My words and every book. Every chart has a y axis with its unit, gridlines and labelled days, and a readout under it: pointing at a bar or a day, tapping it, or moving to it with the keyboard names it and lists its words, which open in lookup.
+Learn has a second page, Progress, built from the answer history and the words' FSRS state in `packages/core/src/learn-progress.ts`. It follows the list chosen in the Learn switcher, except the Words section, which always lists My words and every book. Every chart has a y axis with its unit, gridlines and labelled days, and a readout under it: pointing at a bar or a day, tapping it, or moving to it with the keyboard names it and lists its words, which open in lookup.
 
-![Screenshot of the Progress page on a phone before the 2026-11-04 rebuild: today's new words and reviews against the goal, a one-day streak, words per state, skill bars, root families, answers per day and the forgetting curve](REVIEW.assets/learn-progress.png)
+Since 2026-11-05 the page is set like a printed spread rather than a grid of equal cards. The streak is a giant numeral at the top, today is told in one sentence with its numbers in rust, and each section after it sits on an ink rule with a number and a label, led by one oversized number at a size of its own. On a wide window the sections pair up on twelve columns as seven and five; on a phone they stack.
 
-*The Progress page before the rebuild; the charts described below replace the forgetting curve and the bars.*
+![Screenshot of the Progress page on a phone with made-up words: a 29-day streak as a giant rust numeral, today in one sentence, two thin gauges, and the Memory section whose number 37 rises through its rule](REVIEW.assets/progress-phone.png)
 
-The cards answer one question each:
+*The top of Progress on a phone: the streak, today in a sentence, and Memory.*
 
-| Card | The question it answers |
+![Screenshot of the Progress page in a wide window with made-up words: the masthead beside the sentence about today, Memory with its dot strip set to In a week, and the paired Reviews ahead and How long words are held sections](REVIEW.assets/progress-desktop.png)
+
+*In a wide window the big number and its sentence sit beside the strip, and the next sections pair up seven to five.*
+
+![Screenshot of the lower half of Progress in a wide window: three skill percentages as small multiples, the week's mix as a ribbon and a sentence, My words with its known count, trouble words set as one run of type, and root families in large italics](REVIEW.assets/progress-desktop-lower.png)
+
+*Skills as small multiples, trouble words sized by how often they were missed, and root families sized by how many words they gather.*
+
+The sections answer one question each:
+
+| Section | The question it answers |
 |---|---|
-| Today | How far am I through today's new words and reviews, how many were right, and how long is my streak? |
-| If you stop reviewing | What would my recall be after N days without review? A slider sets N from 0 to 60 days; the readout gives the average recall, how many words would still be at 90% or more, and the weakest words, and tapping one draws its own curve. The dashed line at 90% is labelled as the point where a word falls due. |
-| Reviews ahead, 30 days | How busy are the coming days, and with which words? Bars split learning words, words held under three weeks and words held longer. |
-| Answers per day | How much did I study each day, how much was right, and for how long? |
+| Masthead | How long is my streak, and how far am I through today's new words and reviews? |
+| Memory | How many of my words would I recall today, in a week or in a month without review, and which fade first? |
+| Reviews ahead | How busy are the coming days, and with which words? Bars split learning words, words held under three weeks and words held longer. |
 | How long words are held | How many started words are held for under a week, up to three weeks, up to three months and longer? |
+| Answers per day | How much did I study each day, how much was right, and for how long? |
 | Skills | How many words are mastered in meaning, spelling and listening, and what was last week's mix of question kinds? |
 | Words | How far am I through each list, what does it share with the others, and how much of it did I learn elsewhere? |
 | Trouble words | Which words do I keep missing? |
@@ -258,8 +270,32 @@ The cards answer one question each:
 
 New words today counts words whose first graded answer fell today, against the sum of the daily goals in the list. Reviews counts today's graded answers against those plus the reviews still due. The streak counts days in a row with at least one answer, ending today or, before today's first answer, yesterday. A word's skill score moves halfway towards 1 after a right answer and halfway towards 0 after a wrong one, and 0.75 counts as mastered.
 
-The Today page has two charts of its own: reviews due over the next fourteen days, where tapping a day lists its words, and the words saved (in a book, started) per day over twelve weeks, with months along the top, weekdays down the side and each day's count and words on a tap.
+### Memory
+
+Memory replaced "If you stop reviewing", which drew the average recall over a slider from 0 to 60 days. An average of 67% after fourteen days tells a learner nothing they can act on. What a learner can act on is a count of words and a date. Anki's "estimated total knowledge" is the sum of every card's chance of recall ([stats manual](https://docs.ankiweb.net/stats.html)), and MaiMemo shows how durable each word's memory is rather than one curve ([App Store](https://apps.apple.com/us/app/id888483369)).
+
+So Memory leads with the number of words you would recall, which is that sum, and a sentence that says how many are below 90% and due. Every word is a dot placed by its chance of recall, teal while it is held and rust once it is due. Today, In a week and In a month move the dots to where they would be without review, and the sentence then says how many fewer words you would recall and how many would be due, so the cost of a week off is a number. Pointing at or tapping a dot, or walking the dots with the arrow keys, names the word, its recall, when it was last reviewed and the date it falls below 90%. In FSRS that date is the last review plus the word's stability, since stability is defined as the days until recall falls to 90%. The words fading first are listed under the strip.
+
+![Screenshot of Memory set to In a month with made-up words: 32 words recalled, five fewer than today, most dots rust and left of the 90% line, and the words fading first listed below](REVIEW.assets/progress-memory-month.png)
+
+*In a month without review, most of the dots have crossed into the rust zone.*
+
+### What the layout follows
+
+Apple Fitness and Health lead each metric with one large number and a sentence about the learner's own trend. Spotify Wrapped sets numbers as shapes at many times the body size, and Strava's Year in Sport, designed by Manual, keeps its type, strips and circles simple enough to animate. Tufte's sparklines and the direct-labelling advice from Datawrapper and the EU data visualisation guide argue for putting numbers inside sentences and labels on the data instead of in legends. The Pudding's notes on responsive graphics ask for charts that work on a phone first and for fixed annotations where hover is missing ([Pudding](https://pudding.cool/process/responsive-scrollytelling/), [Datawrapper](https://www.datawrapper.de/blog/better-more-responsive-annotations-in-Datawrapper-data-visualizations/), [Tufte](https://www.edwardtufte.com/notebook/sparkline-theory-and-practice-edward-tufte/)). The page keeps the app's three hues and its serif, Source Serif 4, at its display optical size for the numbers; the charts keep their readouts, so every bar and dot can still be pointed at, tapped and reached by keyboard.
+
+The Today page has two charts of its own: reviews due over the next fourteen days, where tapping a day lists its words, and the words saved (in a book, started) per day over twelve weeks, with months along the top, weekdays down the side and each day's count and words on a tap. It shows the daily goal for new words as a fact, which opens Settings → Learn.
+
+## Settings → Learn
+
+Since 2026-11-05 the options for Learn live in Settings, on the desktop and the phone, and the Learn tab only shows what they settle. That is where every app we looked at keeps them: Anki's daily limits and timers are deck options ([manual](https://docs.ankiweb.net/deck-options.html)), Shanbay keeps 每日单词量 under 我的 and 学习设置, Duolingo keeps the daily goal and the speaking and listening switches in Settings, and WaniKani moved its daily lesson count to App Settings ([blog](https://blog.wanikani.com/posts/today-lessons-count-setting/)).
+
+![Screenshot of Settings → Learn on a phone: new words a day for My words and for the Postgraduate book, the countdown on choice questions set to 8 seconds, and the speaking-questions switch](REVIEW.assets/settings-learn-phone.png)
+
+*Settings → Learn: a goal per list, the countdown, and speaking questions once a microphone is there.*
+
+New words a day has a row for My words and one for each word book you study, with 5, 10, 20 and 40 and an Other field for any number up to 999. Countdown on choice questions is Off or 5 to 30 seconds. Speaking questions appears only when the device lists a microphone Phevere may use; when microphone access is refused or there is none, the row is not there at all. Both options reach Learn as `learnPrefs` and `microphone` in `ReviewRenderOptions` (`packages/core/src/learn-prefs.ts`); the countdown and the speaking question itself belong to the question logic in `review-quiz.ts`. A round under way is not restarted when a goal changes.
 
 ## What is left open
 
-Automatic grading by time is a judgement call. If the thresholds feel wrong in use, they live in `autoGrade` in `review-quiz.ts`. The skill aims and the listening cap live in `SKILL_TARGET` and `LISTEN_CAP`, the leech line in `LEECH_LAPSES`, and the round size in `ROUND_WORDS`. The 85% aim (`TARGET_SUCCESS`), the ease of each kind (`KIND_EASE`), the worth of a letter (`LETTER_EASE`) and the unlock counts (`KIND_UNLOCK`) are first guesses from the literature, not fitted to Phevere's own answers; the answer history could fit them once it holds a few thousand answers, and recording the letters shown with each answer would make the learner model exact. FSRS can fit its parameters to a learner's own history once there are a few hundred reviews; the answer history holds what that fitting needs, but Phevere still runs on the default parameters. The screenshots in this memo show the Learn tab before the 2026-11-04 rebuild.
+Automatic grading by time is a judgement call. If the thresholds feel wrong in use, they live in `autoGrade` in `review-quiz.ts`. The skill aims and the listening cap live in `SKILL_TARGET` and `LISTEN_CAP`, the leech line in `LEECH_LAPSES`, and the round size in `ROUND_WORDS`. The 85% aim (`TARGET_SUCCESS`), the ease of each kind (`KIND_EASE`), the worth of a letter (`LETTER_EASE`) and the unlock counts (`KIND_UNLOCK`) are first guesses from the literature, not fitted to Phevere's own answers; the answer history could fit them once it holds a few thousand answers, and recording the letters shown with each answer would make the learner model exact. FSRS can fit its parameters to a learner's own history once there are a few hundred reviews; the answer history holds what that fitting needs, but Phevere still runs on the default parameters. The question screenshots in this memo, other than those of hints, dictation and long prompts, show the Learn tab before the 2026-11-04 rebuild.

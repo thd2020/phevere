@@ -1,7 +1,7 @@
 /**
  * Review, on the Learn tab's Today page: a quiz over today's due and new words in rounds of
- * twenty (logic in `review-quiz.ts`), the daily goal for new words, the reviews due over the next
- * two weeks and the words saved over twelve weeks. The two charts take a pointer or a tap
+ * twenty (logic in `review-quiz.ts`), the daily goal for new words (set in Settings → Learn,
+ * `settings-learn.ts`), the reviews due over the next two weeks and the words saved over twelve weeks. The two charts take a pointer or a tap
  * (`learn-charts.ts`).
  */
 import { vocabReadings, vocabSenses } from './vocab-view';
@@ -26,6 +26,7 @@ import {
 import { suggestGoal } from './learn-adapt';
 import { bookName } from './book-names';
 import { barChartHtml, dayLabel, heatmapHtml, wordChips, type BarDatum } from './learn-charts';
+import type { LearnPrefs } from './learn-prefs';
 
 export * from './review-quiz';
 
@@ -39,10 +40,14 @@ export interface ReviewRenderOptions {
   formatGap?: (ms: number) => string;
   /** Word books in this session: today's new and due words and progress for each (`reviewBookRows`). */
   books?: BookPlanRow[];
-  /** Show the daily goal chips. */
+  /** Show the daily goal (changed in Settings → Learn). */
   showGoal?: boolean;
-  /** The scope is one word book: the chips set that book's goal (`wb-goal`) instead of My words'. */
+  /** The scope is one word book: the goal shown is that book's instead of My words'. */
   goalBook?: { id: string; goal: number };
+  /** Settings → Learn: the countdown on choice questions and the speaking switch (learn-prefs.ts). */
+  learnPrefs?: LearnPrefs;
+  /** The device has a microphone the app may use; speaking questions need it and `learnPrefs.speaking`. */
+  microphone?: boolean;
   /** Book scopes count words started rather than saved. */
   started?: boolean;
   /** Example sentences for a word, for gap-fill questions (from its dictionary entry). */
@@ -189,8 +194,6 @@ function bookRowsHtml(rows: BookPlanRow[]): string {
     .join('')}</div>`;
 }
 
-const GOAL_PRESETS = [5, 10, 20, 40];
-
 /** A daily goal typed into the goal field: a whole number from 1 to 999, or null when empty or not a number. */
 export function parseGoal(raw: unknown): number | null {
   const n = Math.round(Number(String(raw ?? '').trim()));
@@ -198,21 +201,12 @@ export function parseGoal(raw: unknown): number | null {
   return Math.max(1, Math.min(999, n));
 }
 
-function goalHtml(goal: number, opts: ReviewRenderOptions): string {
-  const book = opts.goalBook;
-  const current = book ? book.goal : goal;
-  const label = !book && opts.books?.length ? 'My words, new a day' : 'New words a day';
-  const hook = book ? `data-act="wb-goal" data-book="${esc(book.id)}"` : 'data-act="nb-goal"';
-  // The field fires the same action on change (Enter or leaving it); data-goal-act, not
-  // data-act, so a tap into it does not count as picking a preset.
-  const fieldHook = book ? `data-goal-act="wb-goal" data-book="${esc(book.id)}"` : 'data-goal-act="nb-goal"';
-  const custom = !GOAL_PRESETS.includes(current);
-  return `<div class="nbv-goal" role="group" aria-label="New words a day">
-      <span>${label}</span>
-      <div class="nbv-goal__chips">${GOAL_PRESETS
-        .map((g) => `<button type="button" class="nbv-chip${g === current ? ' is-active' : ''}" ${hook} data-goal="${g}" aria-pressed="${g === current}">${g}</button>`)
-        .join('')}<input type="number" class="nbv-chip nbv-goal__input${custom ? ' is-active' : ''}" inputmode="numeric" min="1" max="999" step="1" value="${custom ? current : ''}" placeholder="Other" aria-label="Other number of new words a day" enterkeyhint="done" ${fieldHook} data-goal-input /></div>
-    </div>`;
+const CHEVRON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/** The settled daily goal, which opens Settings → Learn, where it is changed. */
+function goalFactHtml(goal: number, opts: ReviewRenderOptions): string {
+  const current = opts.goalBook ? opts.goalBook.goal : goal;
+  return `<button type="button" class="nbv-goalfact" data-act="learn-settings"><b>${fmt(current)}</b><span>new ${current === 1 ? 'word' : 'words'} a day</span>${CHEVRON}</button>`;
 }
 
 function planHtml(entries: NotebookEntry[], goal: number, now: number, opts: ReviewRenderOptions = {}): string {
@@ -234,7 +228,7 @@ function planHtml(entries: NotebookEntry[], goal: number, now: number, opts: Rev
       <div class="nbv-split__nums">${parts.map((p) => `<span class="nbv-split__n"><i class="nbv-split--${p.cls}"></i><b>${fmt(p.n)}</b>${p.label}</span>`).join('')}</div>
     </div>
     ${bookRowsHtml(opts.books || [])}
-    ${opts.showGoal === false ? '' : goalHtml(goal, opts)}
+    ${opts.showGoal === false ? '' : goalFactHtml(goal, opts)}
     <figure class="nbv-fig"><figcaption>Reviews due, next 14 days</figcaption>${forecastChartHtml(entries, now)}</figure>
     <figure class="nbv-fig"><figcaption>Words ${noun}, last 12 weeks</figcaption>${savedHeatmapHtml(entries, now, noun)}</figure>
   </aside>`;
@@ -486,16 +480,16 @@ function roundMinutes(due: number, fresh: number): number {
 }
 
 /**
- * The start card's offer of the number of new words a day that fits the learner's pace, on the
- * goal hook the plan's chips use. Only for one goal (My words or one book), not for All books.
+ * The start card's offer of the number of new words a day that fits the learner's pace. Hook:
+ * learn-use-goal (data-goal, and data-book for a word book; empty for My words), which sets the
+ * same goal as Settings → Learn. Only for one goal (My words or one book), not for All books.
  */
 function suggestHtml(goal: number, opts: ReviewRenderOptions): string {
   if (opts.showGoal === false || (opts.books?.length && !opts.goalBook)) return '';
   const current = opts.goalBook ? opts.goalBook.goal : goal;
   const n = suggestGoal(current, opts.pace);
   if (n == null) return '';
-  const hook = opts.goalBook ? `data-act="wb-goal" data-book="${esc(opts.goalBook.id)}"` : 'data-act="nb-goal"';
-  return `<p class="nbv-quiz__note nbv-suggest">${fmt(n)} new words a day fits your recent study time <button type="button" class="nbv-link" ${hook} data-goal="${n}">Use ${fmt(n)}</button></p>`;
+  return `<p class="nbv-quiz__note nbv-suggest">${fmt(n)} new words a day fits your recent study time <button type="button" class="nbv-link" data-act="learn-use-goal" data-book="${esc(opts.goalBook?.id || '')}" data-goal="${n}">Use ${fmt(n)}</button></p>`;
 }
 
 function startHtml(entries: NotebookEntry[], state: ReviewState, now: number, goal = 0, opts: ReviewRenderOptions = {}): string {

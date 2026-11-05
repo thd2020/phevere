@@ -113,6 +113,12 @@ import {
   patchApiKeyCard,
   type ApiProviderId,
   parseGoal,
+  microphoneAvailable,
+  readLearnPrefs,
+  watchMicrophone,
+  writeLearnPrefs,
+  type LearnPrefs,
+  type LearnSettingsInput,
   findBookConflict,
   importBookPayload,
   type BookScope,
@@ -269,6 +275,40 @@ let grading = false;
 /* Learn: Today or Progress, and the answer history Progress draws from (null until loaded). */
 const LEARN_PAGE_KEY = 'phevere.learnPage';
 let learnPage: LearnPage = readStore(LEARN_PAGE_KEY) === 'progress' ? 'progress' : 'today';
+/* Settings → Learn: the countdown and the speaking switch, and whether a microphone is there. */
+const LEARN_PREFS_KEY = 'phevere.learnPrefs';
+let learnPrefs: LearnPrefs = readLearnPrefs(readStore(LEARN_PREFS_KEY));
+let microphone = false;
+
+function saveLearnPrefs(next: Partial<LearnPrefs>): void {
+  learnPrefs = { ...learnPrefs, ...next };
+  writeStore(LEARN_PREFS_KEY, writeLearnPrefs(learnPrefs));
+}
+
+function learnSettingsInput(): LearnSettingsInput {
+  return {
+    goal: nbState.goal,
+    books: wbSubs.map((s) => ({
+      id: s.bookId,
+      title: wordbookMeta(s.bookId)?.title || wbUserBooks.find((b) => b.bookId === s.bookId)?.title || s.bookId,
+      goal: s.dailyNew,
+    })),
+    prefs: learnPrefs,
+    microphone,
+  };
+}
+
+/** A goal changed in Settings → Learn: My words' (book empty) or a word book's. A round under way keeps going. */
+async function setLearnGoal(book: string, goal: number): Promise<void> {
+  if (book) {
+    await setWordbookGoal(book, goal);
+    await refreshWords();
+  } else {
+    nbState.goal = goal;
+    writeStore(NB_GOAL_KEY, String(goal));
+  }
+  if (!nbState.review?.started) nbState.review = null;
+}
 let answerHistory: AnswerRecord[] | null = null;
 
 async function loadAnswerHistory(): Promise<void> {
@@ -671,6 +711,7 @@ function paint(): void {
             voice,
             lib,
             phoneUpdates?.state() ?? null,
+            learnSettingsInput(),
           )
         : hit;
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
@@ -742,6 +783,8 @@ function learnViewState(): LearnState {
       examples: (lemma) => reviewExamples.get(lemma.toLowerCase()),
       learner: learner?.model ?? null,
       pace,
+      learnPrefs,
+      microphone,
     },
     page: learnPage,
     history: answerHistory,
@@ -2157,7 +2200,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'settings-section': {
       const next = t.dataset.section as SettingsSection | undefined;
-      if (next === 'capture' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio' || (next === 'updates' && phoneUpdates)) {
+      if (next === 'capture' || next === 'learn' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio' || (next === 'updates' && phoneUpdates)) {
         settingsSection = next;
         langMenu = '';
         if (next === 'offline') await refreshPacks();
@@ -2486,12 +2529,23 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     }
-    case 'wb-goal':
-      await setWordbookGoal(t.dataset.book || '', Number(t.dataset.goal) || 10);
-      nbState.review = null;
-      await refreshWords();
+    case 'learn-use-goal': {
+      // The start card's suggested number of new words a day.
+      const goal = parseGoal(t.dataset.goal);
+      if (goal == null) return;
+      await setLearnGoal(t.dataset.book || '', goal);
       paint();
       return;
+    }
+    case 'learn-goal': {
+      // A preset in Settings → Learn; the radio's own click, not its label's.
+      if (!(t instanceof HTMLInputElement)) return;
+      const goal = parseGoal(t.value);
+      if (goal == null) return;
+      await setLearnGoal(t.dataset.book || '', goal);
+      paint();
+      return;
+    }
     case 'wb-expand': {
       const word = t.dataset.q || '';
       const key = word.toLowerCase();
@@ -2593,12 +2647,16 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       }
       return;
     }
-    case 'nb-goal':
-      nbState.goal = Number(t.dataset.goal) || 10;
-      writeStore(NB_GOAL_KEY, String(nbState.goal));
-      nbState.review = null;
-      await loadReviewPool();
+    case 'learn-settings':
+      // The goal on Today opens where it is changed.
+      tab = 'settings';
+      settingsSection = 'learn';
+      await refreshWords();
       paint();
+      window.scrollTo({ top: 0 });
+      return;
+    case 'learn-speaking':
+      saveLearnPrefs({ speaking: (t as HTMLInputElement).checked });
       return;
     case 'nb-review-exit':
       // Back to the Learn page. An answer on screen is saved first, as Continue would.
@@ -2887,13 +2945,15 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
 function onChange(e: Event): void {
   const el = e.target as HTMLElement | null;
   if (!el) return;
-  // The goal field: a typed number goes through the same action as the preset chips.
-  if (el instanceof HTMLInputElement && el.hasAttribute('data-goal-input')) {
-    const goal = parseGoal(el.value);
-    if (goal != null && el.dataset.goalAct) {
-      el.dataset.goal = String(goal);
-      void handleAct(el.dataset.goalAct, el, e);
-    }
+  // Settings → Learn: a typed goal counts once the field is left or Enter is pressed.
+  if (el.dataset.act === 'learn-goal-input') {
+    if (e.type !== 'change') return;
+    const goal = parseGoal((el as HTMLInputElement).value);
+    if (goal != null) void setLearnGoal(el.dataset.book || '', goal).then(paint);
+    return;
+  }
+  if (el.dataset.act === 'learn-countdown') {
+    if (e.type === 'change') saveLearnPrefs({ countdown: Number((el as HTMLSelectElement).value) || 0 });
     return;
   }
   if (el.id === 'account-delete-email') {
@@ -3045,6 +3105,14 @@ export async function startApp(): Promise<void> {
   applyInsets();
   applyPrefsToCore(prefs);
   await refreshCapture();
+  // Speaking questions are offered once a microphone is there; Settings → Learn shows the switch then.
+  const onMicrophone = (on: boolean) => {
+    if (on === microphone) return;
+    microphone = on;
+    if (tab === 'settings' && settingsSection === 'learn') paint();
+  };
+  void microphoneAvailable().then(onMicrophone);
+  watchMicrophone(onMicrophone);
   root.addEventListener('click', onClick);
   // Enter or Space on a focused word link opens it, as a tap does.
   root.addEventListener('keydown', (e) => {

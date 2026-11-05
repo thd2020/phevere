@@ -24,74 +24,194 @@
 }
 .hx-plus .hx-plus__link:hover { color: var(--nbv-ink, #1c1917); text-decoration-color: currentColor; }
 
-/* Progress */
-.lrp { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
-@media (max-width: 760px) { .lrp { grid-template-columns: minmax(0, 1fr); } }
-.lrp-card {
+/*
+ * Progress, set like a printed spread rather than a grid of cards: a masthead with the streak as a
+ * giant numeral and today in one sentence, then numbered sections on ink rules, each led by an
+ * oversized number at a size of its own. Wide windows put the sections on twelve columns in uneven
+ * pairs (seven and five); a phone stacks them. Numbers are Source Serif at its display optical size.
+ */
+.lrp {
+  --lrp-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --lrp-display: 'opsz' 60;
   display: grid;
-  gap: 12px;
-  padding: 14px 16px 16px;
-  border: 1px solid var(--nbv-line);
-  border-radius: 18px;
-  background: var(--nbv-panel);
-  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  padding-bottom: 28px;
 }
-.lrp-wide { grid-column: 1 / -1; }
-.lrp-card h3 { margin: 0; font: 600 17px/1.2 var(--nbv-serif); letter-spacing: -0.01em; color: var(--nbv-ink); }
-.lrp-none, .lrp-sub, .lrp-label { margin: 0; font: 500 12.5px/1.35 var(--nbv-ui); color: var(--nbv-soft); }
+@media (min-width: 760px) {
+  .lrp { grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 36px; }
+  .lrp-mast, .lrp-sec--memory, .lrp-sec--answers, .lrp-sec--skills, .lrp-sec--fams { grid-column: 1 / -1; }
+  .lrp-sec--ahead, .lrp-sec--lists { grid-column: 1 / span 7; }
+  .lrp-sec--held, .lrp-sec--trouble { grid-column: 8 / -1; }
+}
+.lrp-none, .lrp-note { margin: 0; font: 500 12.5px/1.35 var(--nbv-ui); color: var(--nbv-soft); }
 
-.lrp-today { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; }
-@media (max-width: 560px) { .lrp-today { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.lrp-meter, .lrp-streak, .lrp-stat { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.lrp-stat { display: grid; gap: 4px; padding-left: 4px; }
-.lrp-meter svg { flex: none; transform: rotate(-90deg); }
-.lrp-meter circle { fill: none; stroke-width: 6; }
-.lrp-meter__track { stroke: var(--nbv-paper-2); }
-.lrp-meter__fill { stroke: #8fd3d5; stroke-linecap: round; transition: stroke-dasharray 0.4s var(--nbv-motion); }
-.lrp-meter__fill.is-done { stroke: var(--nbv-teal); }
-.lrp-meter b, .lrp-streak b, .lrp-stat b { display: block; font: 600 22px/1 var(--nbv-serif); font-variant-numeric: tabular-nums; color: var(--nbv-ink); }
-.lrp-meter small, .lrp-streak small { font: 500 12px/1 var(--nbv-ui); color: var(--nbv-soft); }
-.lrp-meter span, .lrp-streak span, .lrp-stat span { display: block; margin-top: 4px; font: 500 12px/1.2 var(--nbv-ui); color: var(--nbv-soft); }
-.lrp-streak > svg { width: 30px; height: 30px; flex: none; color: var(--nbv-line); }
-.lrp-streak.is-on > svg { color: var(--nbv-ember); }
+/* Masthead: the date, the streak as a giant numeral, today in a sentence, two thin gauges. */
+.lrp-mast {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'kicker' 'streak' 'lede' 'gauges';
+  padding: 4px 0 44px;
+}
+@media (min-width: 640px) {
+  .lrp-mast {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: 'kicker kicker' 'streak lede' 'gauges gauges';
+    column-gap: 28px;
+    align-items: end;
+  }
+}
+.lrp-kicker {
+  grid-area: kicker;
+  margin: 0 0 6px;
+  font: 600 11px/1 var(--nbv-ui);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--nbv-soft);
+}
+.lrp-mast__streak { grid-area: streak; display: flex; align-items: flex-end; gap: 12px; min-width: 0; }
+.lrp-giant {
+  margin-left: -0.05em;
+  font: 700 clamp(120px, 34vw, 210px)/0.76 var(--nbv-serif);
+  font-variation-settings: var(--lrp-display);
+  font-variant-numeric: lining-nums;
+  letter-spacing: -0.07em;
+  color: var(--nbv-line);
+}
+.lrp-mast.is-on .lrp-giant { color: var(--nbv-ember); }
+.lrp-mast__cap { display: grid; gap: 6px; margin: 0 0 6px; }
+.lrp-mast__cap span { font: italic 500 19px/1 var(--nbv-serif); color: var(--nbv-ink); }
+.lrp-mast__cap small { font: 600 10.5px/1 var(--nbv-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--nbv-soft); }
+.lrp-lede {
+  grid-area: lede;
+  max-width: 30ch;
+  margin: 18px 0 0;
+  font: 400 clamp(20px, 2.6vw, 28px)/1.2 var(--nbv-serif);
+  letter-spacing: -0.014em;
+  color: var(--nbv-ink);
+  text-wrap: pretty;
+}
+@media (min-width: 640px) { .lrp-lede { margin: 0 0 4px; } }
+.lrp-lede b { font-weight: 700; font-variant-numeric: lining-nums tabular-nums; color: var(--nbv-ember); }
+.lrp-gauges { grid-area: gauges; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-top: 22px; }
+.lrp-gauge { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 7px 8px; }
+.lrp-gauge__label { font: 600 10.5px/1 var(--nbv-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--nbv-soft); }
+.lrp-gauge__n { font: 500 12px/1 var(--nbv-ui); color: var(--nbv-soft); white-space: nowrap; }
+.lrp-gauge__n b { font: 700 17px/1 var(--nbv-serif); font-variant-numeric: lining-nums tabular-nums; color: var(--nbv-ink); }
+.lrp-gauge__bar { grid-column: 1 / -1; height: 3px; background: var(--nbv-paper-2); overflow: hidden; }
+.lrp-gauge__bar i { display: block; height: 100%; background: #8fd3d5; transition: width 0.6s var(--lrp-ease); }
+.lrp-gauge.is-done .lrp-gauge__bar i { background: var(--nbv-teal); }
 
-.lrp-lists, .lrp-skills, .lrp-fams, .lrp-trouble { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
-.lrp-list { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; }
-.lrp-list__name, .lrp-skill__name { font: 600 13px/1.2 var(--nbv-ui); color: var(--nbv-ink); }
-.lrp-list .lrp-bar { grid-column: 1 / -1; grid-row: 2; }
-.lrp-list__n { grid-row: 1; grid-column: 2; font: 500 11.5px/1.2 var(--nbv-ui); color: var(--nbv-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.lrp-list__n b { color: var(--nbv-teal); font-weight: 700; }
-.lrp-list__share { grid-column: 1 / -1; font: 500 11.5px/1.35 var(--nbv-ui); color: var(--nbv-soft); }
-.lrp-bar { height: 8px; min-width: 0; }
-.lrp-skill, .lrp-fam { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
-.lrp-skill__n, .lrp-fam__n { font: 600 12px/1 var(--nbv-ui); color: var(--nbv-soft); text-align: right; font-variant-numeric: tabular-nums; }
-.lrp-fam { grid-template-columns: 112px minmax(0, 1fr) 48px; }
-.lrp-fam__root { font: 600 14px/1.15 var(--nbv-serif); color: var(--nbv-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lrp-fam__root small { display: block; margin-top: 2px; font: 500 11px/1.2 var(--nbv-ui); color: var(--nbv-soft); overflow: hidden; text-overflow: ellipsis; }
-.lrp-trouble li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding-top: 8px; border-top: 1px solid var(--nbv-paper-2); }
-.lrp-trouble li:first-child { border-top: 0; padding-top: 0; }
-.lrp-trouble__n { margin-left: auto; font: 500 11.5px/1.2 var(--nbv-ui); color: var(--nbv-soft); font-variant-numeric: tabular-nums; }
+/* Sections: a numbered label on an ink rule. The full-width ones carry a heavier rule. */
+.lrp-sec { display: grid; gap: 16px; align-content: start; min-width: 0; padding: 12px 0 34px; border-top: 1px solid var(--nbv-ink); }
+.lrp-sec--memory, .lrp-sec--answers, .lrp-sec--skills { border-top-width: 3px; }
+.lrp-sec__label { display: flex; align-items: baseline; gap: 10px; margin: 0; font: 600 10.5px/1 var(--nbv-ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--nbv-ink); }
+.lrp-sec__label span { font: italic 600 14px/1 var(--nbv-serif); letter-spacing: 0; color: var(--nbv-ember); }
+/* Memory and Answers: the label moves to the right and the big number rises through the rule. */
+.lrp-sec--memory, .lrp-sec--answers { position: relative; }
+.lrp-sec--memory > .lrp-sec__label, .lrp-sec--answers > .lrp-sec__label { position: absolute; top: 14px; right: 0; }
+.lrp-sec--memory .lrc-mem__big, .lrp-sec--answers .lrp-fig__n { position: relative; margin-top: calc(-12px - 0.2em); }
+@media (max-width: 759px) {
+  .lrp-sec--answers .lrp-fig { flex-direction: column; align-items: flex-start; }
+  .lrp-sec--answers .lrp-fig__text { flex: none; }
+}
 
-/* The mix of question kinds over the last week, with the listening cap marked. */
-.lrp-mix { display: grid; gap: 8px; padding-top: 4px; border-top: 1px solid var(--nbv-paper-2); }
-.lrp-mix__bar { position: relative; display: flex; gap: 2px; height: 12px; border-radius: 999px; overflow: visible; }
+/* An oversized number and the sentence that says what it counts. */
+.lrp-fig { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; min-width: 0; }
+.lrp-fig__n {
+  font: 700 clamp(60px, 15vw, 96px)/0.8 var(--nbv-serif);
+  font-variation-settings: var(--lrp-display);
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: -0.06em;
+  color: var(--nbv-ink);
+}
+.lrp-fig__text { flex: 1 1 140px; max-width: 24ch; margin: 0; font: 400 16px/1.28 var(--nbv-serif); color: var(--nbv-soft); text-wrap: pretty; }
+.lrp-fig__text b { font-weight: 700; color: var(--nbv-ink); }
+.lrp-fig.is-teal .lrp-fig__n { color: var(--nbv-teal); }
+.lrp-fig.is-wide .lrp-fig__n { font-size: clamp(72px, 19vw, 136px); }
+/* The held count leans the other way: number on the right, its sentence on the left. */
+.lrp-sec--held .lrp-fig { flex-direction: row-reverse; justify-content: flex-end; text-align: right; }
+@media (min-width: 760px) { .lrp-sec--held .lrp-fig { justify-content: flex-start; } }
+
+/* Skills as three small multiples on one scale, divided by hairlines. */
+.lrp-skills { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.lrp-skill { display: grid; align-content: start; gap: 8px; min-width: 0; padding: 0 14px; border-left: 1px solid var(--nbv-line); }
+.lrp-skill:first-child { padding-left: 0; border-left: 0; }
+.lrp-skill__name { font: 600 10.5px/1 var(--nbv-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--nbv-soft); }
+.lrp-skill__pct {
+  font: 700 clamp(44px, 12vw, 76px)/0.82 var(--nbv-serif);
+  font-variation-settings: var(--lrp-display);
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: -0.06em;
+  color: var(--nbv-ink);
+}
+.lrp-skill__pct small { margin-left: 2px; font-size: 0.4em; letter-spacing: 0; color: var(--nbv-soft); }
+.lrp-skill__bar { height: 3px; background: var(--nbv-paper-2); overflow: hidden; }
+.lrp-skill__bar i { display: block; height: 100%; background: var(--nbv-teal); }
+.lrp-skill__n { font: 500 11.5px/1.3 var(--nbv-ui); color: var(--nbv-soft); }
+
+/* The mix of question kinds over the last week: a ribbon and the same numbers in a sentence. */
+.lrp-mix { display: grid; gap: 10px; }
+.lrp-mix__bar { display: flex; gap: 2px; height: 10px; }
 .lrp-mix__bar i { display: block; min-width: 0; }
-.lrp-mix__bar i:first-child { border-radius: 999px 0 0 999px; }
-.lrp-mix__bar i:last-of-type { border-radius: 0 999px 999px 0; }
 .lrp-mix--meaning { background: var(--nbv-teal); }
 .lrp-mix--spelling { background: #8fd3d5; }
 .lrp-mix--listening { background: #d98a5c; }
-.lrp-mix__nums { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; font: 500 12px/1.2 var(--nbv-ui); color: var(--nbv-soft); }
-.lrp-mix__nums span { display: inline-flex; align-items: center; gap: 5px; }
-.lrp-mix__nums i { width: 9px; height: 9px; border-radius: 2.5px; }
-.lrp-mix__nums b { color: var(--nbv-ink); font-weight: 700; }
+.lrp-mix__text { margin: 0; font: 400 15px/1.4 var(--nbv-serif); color: var(--nbv-soft); }
+.lrp-mix__k { white-space: nowrap; }
+.lrp-mix__k i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 2px; vertical-align: 0.05em; }
+.lrp-mix__k b { font-weight: 700; color: var(--nbv-ink); }
 
+/* Each list: its name in serif, the known count large in teal, the bar, then the rest in a line. */
+.lrp-lists { display: grid; gap: 18px; margin: 0; padding: 0; list-style: none; }
+.lrp-list { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 7px 12px; }
+.lrp-list__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 21px/1.1 var(--nbv-serif); letter-spacing: -0.015em; color: var(--nbv-ink); }
+.lrp-list__n { font: 500 12px/1 var(--nbv-ui); color: var(--nbv-soft); white-space: nowrap; }
+.lrp-list__n b { margin-right: 2px; font: 700 28px/1 var(--nbv-serif); font-variant-numeric: lining-nums tabular-nums; letter-spacing: -0.04em; color: var(--nbv-teal); }
+.lrp-list .lrp-bar { grid-column: 1 / -1; }
+.lrp-list__more { grid-column: 1 / -1; font: 500 11.5px/1.4 var(--nbv-ui); color: var(--nbv-soft); }
+.lrp-bar { height: 6px; min-width: 0; }
 .lrp-key { display: flex; align-items: center; gap: 6px; margin: 0; font: 500 11px/1 var(--nbv-ui); color: var(--nbv-soft); }
 .lrp-key i { width: 10px; height: 10px; border-radius: 2.5px; margin-left: 6px; }
 .lrp-key i:first-child { margin-left: 0; }
 .lrp-key__known { background: var(--nbv-teal); }
 .lrp-key__learning { background: #8fd3d5; }
 .lrp-key__new { background: var(--nbv-paper-2); }
+
+/* Trouble words as one run of type: the more often missed, the larger and darker; leeches in rust. */
+.lrp-trouble { margin: 0; line-height: 1.02; text-wrap: balance; }
+.lrp-tw {
+  --w: 0.5;
+  display: inline-flex;
+  align-items: flex-start;
+  min-height: 32px;
+  padding: 2px 2px 2px 0;
+  border: 0;
+  background: none;
+  color: color-mix(in srgb, var(--nbv-ink) calc(40% + var(--w) * 60%), var(--nbv-stone));
+  font: 600 calc(17px + var(--w) * 21px)/1 var(--nbv-serif);
+  letter-spacing: -0.02em;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 5px;
+  transition: text-decoration-color 0.18s var(--nbv-motion);
+}
+.lrp-tw:nth-child(3n + 2) { font-style: italic; font-weight: 400; }
+.lrp-tw:nth-child(4n + 3) { transform: translateY(0.14em); }
+.lrp-tw.is-leech { color: var(--nbv-ember); }
+.lrp-tw sup { margin-left: 2px; font: 600 9.5px/1 var(--nbv-ui); font-style: normal; letter-spacing: 0; color: var(--nbv-soft); }
+.lrp-tw:focus-visible { outline: 2px solid var(--nbv-teal); outline-offset: 2px; border-radius: 4px; }
+@media (hover: hover) and (pointer: fine) { .lrp-tw:hover { text-decoration-color: currentColor; } }
+
+/* Root families: each root set large in italic, sized by how many words it gathers. */
+.lrp-fams { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 22px 28px; margin: 0; padding: 0; list-style: none; }
+.lrp-fam { --s: 0.5; display: grid; align-content: end; gap: 5px; min-width: 0; }
+.lrp-fam__root { overflow-wrap: anywhere; font: italic 500 calc(20px + var(--s) * 24px)/0.95 var(--nbv-serif); letter-spacing: -0.02em; color: var(--nbv-ink); }
+.lrp-fam__gloss { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 11.5px/1.2 var(--nbv-ui); color: var(--nbv-soft); }
+.lrp-fam__n { font: 600 11px/1 var(--nbv-ui); font-variant-numeric: tabular-nums; color: var(--nbv-soft); }
+
+/* Readouts sit on the panel colour, since Progress has no cards behind them. */
+.lrp .lrc-readout { background: var(--nbv-panel); box-shadow: inset 0 0 0 1px var(--nbv-paper-2); }
 
 /*
  * Charts (learn-charts.ts). Gridlines and axis text in stone, bars in the three hues, the bar
@@ -122,9 +242,6 @@
 .lrc-seg--mature, .lrc-seg--right { fill: var(--nbv-teal); background: var(--nbv-teal); }
 .lrc-seg--wrong { fill: #d98a5c; background: #d98a5c; }
 .lrc-seg--none { fill: var(--nbv-line); }
-.lrc-seg--avg { background: var(--nbv-teal); }
-.lrc-seg--share { background: #8fd3d5; }
-.lrc-seg--word { background: var(--nbv-ember); }
 
 .lrc-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 0; font: 500 11.5px/1.2 var(--nbv-ui); color: var(--nbv-soft); }
 .lrc-legend span { display: inline-flex; align-items: center; gap: 5px; }
@@ -184,24 +301,55 @@
 .lrc-heat--4 { fill: var(--nbv-ember); background: var(--nbv-ember); }
 .lrc-heat-key { width: 10px; height: 10px; border-radius: 2.5px; }
 
-/* Retention */
-.lrc-line { fill: none; stroke-linejoin: round; stroke-linecap: round; pointer-events: none; }
-.lrc-line--avg { stroke: var(--nbv-teal); stroke-width: 2.4; }
-.lrc-line--share { stroke: #8fd3d5; stroke-width: 2; stroke-dasharray: 1 0; }
-.lrc-line--word { stroke: var(--nbv-ember); stroke-width: 2; }
-.lrc-cursor { stroke: var(--nbv-ink); stroke-width: 1; opacity: 0.6; }
-.lrc-dot { fill: var(--nbv-panel); stroke: var(--nbv-teal); stroke-width: 2.4; }
-.lrc-range { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; font: 600 12.5px/1 var(--nbv-ui); color: var(--nbv-ink); }
-.lrc-range output { min-width: 58px; text-align: right; font: 600 16px/1 var(--nbv-serif); font-variant-numeric: tabular-nums; }
-.lrc-range input { width: 100%; accent-color: var(--nbv-teal); height: 28px; }
-@media (max-width: 420px) { .lrc-range { grid-template-columns: minmax(0, 1fr) auto; } .lrc-range input { grid-column: 1 / -1; grid-row: 2; } }
-
-/* Wide windows: charts keep a readable size, and the retention chart puts its slider and readout beside it. */
-.lrc-svg { max-width: 560px; }
+/*
+ * Memory (learn-charts.ts): the number of words you would recall, a sentence with what changes,
+ * and a strip with one dot per word by its chance of recall, teal when held and rust once below
+ * 90% (due). Today, In a week and In a month move the dots to where they would be.
+ */
+.lrc--memory { display: grid; gap: 16px; }
 @media (min-width: 760px) {
-  .lrc--retention { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); column-gap: 24px; align-items: start; }
-  .lrc--retention > .lrc-svg { grid-row: 1 / span 4; }
-  .lrc--retention > .lrc-legend,
-  .lrc--retention > .lrc-range,
-  .lrc--retention > .lrc-readout { grid-column: 2; }
+  .lrc--memory { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); column-gap: 36px; align-items: start; }
+  .lrc-mem__head { grid-row: 1 / span 2; }
+  .lrc--memory > .lrc-readout { grid-column: 2; }
 }
+.lrc-mem__head { min-width: 0; }
+.lrc-mem__big {
+  margin: 0;
+  font: 700 clamp(104px, 28vw, 184px)/0.76 var(--nbv-serif);
+  font-variation-settings: 'opsz' 60;
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: -0.07em;
+  color: var(--nbv-teal);
+}
+.lrc-mem__lede { max-width: 28ch; margin: 14px 0 0; font: 400 18px/1.3 var(--nbv-serif); letter-spacing: -0.01em; color: var(--nbv-ink); text-wrap: pretty; }
+.lrc-mem__lede b { font-weight: 700; font-variant-numeric: lining-nums; color: var(--nbv-ember); }
+.lrc-mem__chart { display: grid; gap: 8px; min-width: 0; }
+.lrc-mem__whens { display: inline-flex; justify-self: start; gap: 2px; padding: 3px; border-radius: 999px; background: var(--nbv-paper-2); }
+.lrc-mem__when {
+  height: 30px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--nbv-soft);
+  font: 600 12.5px/1 var(--nbv-ui);
+  cursor: pointer;
+  transition: background-color 0.2s var(--nbv-motion), color 0.2s var(--nbv-motion), box-shadow 0.2s var(--nbv-motion);
+}
+.lrc-mem__when.is-on { background: var(--nbv-panel); color: var(--nbv-ink); box-shadow: 0 1px 2px rgba(28, 25, 23, 0.12); }
+.lrc-mem__when:focus-visible { outline: 2px solid var(--nbv-teal); outline-offset: 1px; }
+.lrc-svg.lrc-mem__svg { max-width: 520px; outline: none; cursor: crosshair; }
+.lrc-mem__svg:focus-visible { outline: 2px solid var(--nbv-teal); outline-offset: 4px; border-radius: 6px; }
+.lrc-mem__zone { fill: rgba(156, 61, 0, 0.06); }
+.lrc-mem__zlabel { font: 700 8px var(--nbv-ui); letter-spacing: 0.1em; text-transform: uppercase; text-anchor: end; fill: var(--nbv-ember) !important; }
+.lrc-mem__zlabel.is-held { text-anchor: start; fill: var(--nbv-teal) !important; }
+.lrc-mem__dot { fill: var(--nbv-teal); transition: transform 0.75s cubic-bezier(0.22, 1, 0.36, 1), fill 0.45s var(--nbv-motion); }
+.lrc-mem__dot.is-due { fill: var(--nbv-ember); }
+.lrc-mem__ring { fill: none; stroke: var(--nbv-ink); stroke-width: 1.4; pointer-events: none; transition: transform 0.22s var(--nbv-motion), opacity 0.15s var(--nbv-motion); }
+.lrc-xlabel { margin: 0; font: 600 9.5px/1 var(--nbv-ui); letter-spacing: 0.02em; text-align: right; color: var(--nbv-soft); }
+@media (prefers-reduced-motion: reduce) {
+  .lrc-mem__dot, .lrc-mem__ring, .lrp-gauge__bar i { transition: none; }
+}
+
+/* Wide windows: charts keep a readable size. */
+.lrc-svg { max-width: 560px; }

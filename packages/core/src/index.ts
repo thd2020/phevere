@@ -469,6 +469,16 @@ export {
   type KeyCardState,
   type KeyStatus,
 } from './settings-keys';
+export { GOAL_PRESETS, learnSettingsHtml, type LearnSettingsInput } from './settings-learn';
+export {
+  COUNTDOWN_CHOICES,
+  DEFAULT_LEARN_PREFS,
+  microphoneAvailable,
+  readLearnPrefs,
+  watchMicrophone,
+  writeLearnPrefs,
+  type LearnPrefs,
+} from './learn-prefs';
 export {
   BOOK_FILE_EXTENSION,
   BookLockedError,
