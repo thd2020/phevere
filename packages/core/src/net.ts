@@ -233,8 +233,9 @@ export function trackHttp(inner: HttpClient): HttpClient {
       let backupWaiting = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
       // The backup is due a round trip after the first request went out, not after it queued.
-      // Before the host has answered once that round trip is a guess (FIRST_HEDGE_MS); the host's
-      // first answer, to this request's neighbours, replaces the guess with its RTO.
+      // Before the host has answered once that round trip is a guess (FIRST_HEDGE_MS). When the
+      // host's first answer, to this request's neighbours, gives an RTO shorter than the guess, the
+      // backup goes out then; a longer one leaves the guess, which RFC 6298 would back off from.
       let rearm: (() => void) | null = null;
       const unhook = () => {
         if (rearm) s.onFirstAnswer.delete(rearm);
@@ -248,9 +249,10 @@ export function trackHttp(inner: HttpClient): HttpClient {
         if (known) return;
         rearm = () => {
           unhook();
-          if (done) return;
+          const due = rtoMs(host);
+          if (done || !due || due >= hedgeAfter) return;
           clearTimeout(timer);
-          timer = setTimeout(backup, Math.max(0, sentAt + rtoMs(host) - Date.now()));
+          timer = setTimeout(backup, Math.max(0, sentAt + due - Date.now()));
         };
         s.onFirstAnswer.add(rearm);
       };

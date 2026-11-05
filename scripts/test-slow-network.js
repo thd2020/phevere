@@ -156,6 +156,27 @@ dead['budgets on a connection that answers nothing'] = async () => {
   const b = core.budgetMs(1500, 'unseen.example.org');
   assert.ok(b <= 3000, `six seconds into a request nobody answers, a 1.5 s budget is ${b} ms`);
 };
+// A host's first answer only brings a waiting backup forward. A first answer of 2.5 s gives an RTO
+// of 7.5 s; a hung request beside it still gets its backup three seconds in, not 7.5.
+dead['a slow first answer and a hung neighbour'] = async () => {
+  const { core } = app({});
+  let n = 0;
+  const http = core.trackHttp({
+    requestJson: (url, o) => {
+      n += 1;
+      if (url.endsWith('/a')) return new Promise((r) => setTimeout(() => r('a'), 2500));
+      if (n === 2) return new Promise((_, reject) => setTimeout(() => reject(new core.DictionaryError('timed out', 'TIMEOUT', true)), o.timeoutMs));
+      return new Promise((r) => setTimeout(() => r('b'), 2000));
+    },
+    requestText: async () => ({}),
+    requestBytes: async () => ({}),
+  });
+  const started = Date.now();
+  const [, b] = await Promise.all([http.requestJson('https://first.example.org/a', { timeoutMs: 10000 }), http.requestJson('https://first.example.org/b', { timeoutMs: 10000 }).catch((e) => e.message)]);
+  const took = Date.now() - started;
+  assert.equal(b, 'b', 'the hung request is answered by its backup');
+  assert.ok(took < 7000, `three seconds and a round trip in (${took} ms)`);
+};
 // A request answered by its backup: the original answering late is not a round trip (Karn), or one
 // hung request would put the host's next backups six seconds out.
 dead['a late answer after its backup'] = async () => {
