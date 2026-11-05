@@ -3599,11 +3599,12 @@ function startAutoCloseTimeout() {
           // Each picture goes in as soon as its sense has one; the rest follow.
           const place = function (list) {
             if (!Array.isArray(list)) return;
+            // A word looked up since then keeps its own pictures: a late answer for this one
+            // must not replace them, or the next repaint of that word would drop them.
+            if (!currentResult || popupSenseKey(currentResult) !== key) return;
             if (popupSenseImages && popupSenseImages.key === key && popupSenseImages.list === list) return;
             popupSenseImages = { key: key, list: list };
-            if (currentResult && popupSenseKey(currentResult) === key && currentTab === 'lexicon') {
-              placePopupSenseFigures(currentResult);
-            }
+            if (currentTab === 'lexicon') placePopupSenseFigures(currentResult);
           };
           try {
             const list = await window.dictionaryAPI.senseImages(result.word || currentText || '', senses, {
