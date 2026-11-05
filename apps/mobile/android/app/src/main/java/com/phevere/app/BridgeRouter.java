@@ -300,6 +300,25 @@ final class BridgeRouter {
             host.runUi(() -> SelectionSetup.show(host.activity(), false));
             resolve(id, new JSONObject().put("ok", true));
             break;
+          case "updateInfo":
+            resolve(id, AppUpdate.info(host.context()));
+            break;
+          case "updateFetch":
+            resolve(id, AppUpdate.fetch(p));
+            break;
+          case "updateDownload":
+            // Progress goes to window.__pvUpdateProgress(done, total) while the call runs.
+            resolve(id, AppUpdate.download(host.context(), p, (done, total) -> {
+              String js = "window.__pvUpdateProgress && window.__pvUpdateProgress(" + done + "," + total + ")";
+              host.runUi(() -> {
+                WebView web = host.web();
+                if (web != null) web.evaluateJavascript(js, null);
+              });
+            }));
+            break;
+          case "updateInstall":
+            resolve(id, AppUpdate.install(host.context(), p.optString("name"), this::startOnUi));
+            break;
           default:
             fail(id, "Unknown method " + method);
         }
@@ -336,6 +355,26 @@ final class BridgeRouter {
     }
     Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
     startExternal(view);
+  }
+
+  /**
+   * Starts an activity on the UI thread and waits for it, so a screen the phone lacks comes back
+   * to the caller as an error instead of crashing the app. Called from the io pool only.
+   */
+  private void startOnUi(Intent intent) throws Exception {
+    java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+    Exception[] failed = new Exception[1];
+    host.runUi(() -> {
+      try {
+        startExternal(intent);
+      } catch (Exception e) {
+        failed[0] = e;
+      } finally {
+        done.countDown();
+      }
+    });
+    if (!done.await(5, java.util.concurrent.TimeUnit.SECONDS)) throw new Exception("The installer did not open. Try again.");
+    if (failed[0] != null) throw failed[0];
   }
 
   private void startExternal(Intent intent) {

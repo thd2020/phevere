@@ -491,6 +491,13 @@ jobs:
           cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "$NAME"
           echo "file=$PWD/$NAME" >> "$GITHUB_OUTPUT"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
+      - name: Write the APK checksum
+        id: sum
+        run: |
+          set -euo pipefail
+          # The phone's updater checks downloads against this file when the GitHub API is rate-limited.
+          sha256sum "${{ steps.pkg.outputs.name }}" > "${{ steps.pkg.outputs.name }}.sha256"
+          echo "file=$PWD/${{ steps.pkg.outputs.name }}.sha256" >> "$GITHUB_OUTPUT"
       - name: Verify signing identity and preserve previous APK
         id: previous
         env:
@@ -574,11 +581,20 @@ jobs:
           ASSET: ${{ steps.pkg.outputs.name }}
         shell: pwsh
         run: ./scripts/gh-delete-release-asset.ps1
+      - name: Remove existing APK checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
+          ASSET: ${{ steps.pkg.outputs.name }}.sha256
+        shell: pwsh
+        run: ./scripts/gh-delete-release-asset.ps1
       - name: Upload GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.attach_tag || github.ref_name }}
-          files: ${{ steps.pkg.outputs.file }}
+          files: |
+            ${{ steps.pkg.outputs.file }}
+            ${{ steps.sum.outputs.file }}
           fail_on_unmatched_files: true
           generate_release_notes: false
           make_latest: false

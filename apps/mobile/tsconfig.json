@@ -9,7 +9,8 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client"],
     "paths": {
-      "@phevere/core": ["../../packages/core/src/index.ts"]
+      "@phevere/core": ["../../packages/core/src/index.ts"],
+      "@phevere/core/*": ["../../packages/core/src/*"]
     }
   },
   "include": ["src/**/*", "vite.config.ts"]

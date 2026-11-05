@@ -1,6 +1,7 @@
 /**
  * Which GitHub release to install: newer ones for updates, the newest older one for rollback.
- * No Electron imports, so scripts/test-updater.js can run it under plain Node.
+ * Shared by the desktop updater (src/services/updater.ts) and the Android one
+ * (apps/mobile/src/app-update.ts). No Electron or DOM imports, so the tests run it under plain Node.
  */
 
 export const RELEASES_API = 'https://api.github.com/repos/thd2020/phevere/releases?per_page=50';
@@ -22,8 +23,11 @@ export interface Release {
   assets: ReleaseAsset[];
 }
 
-/** How this copy of Phevere was installed. Only the Windows installer and AppImage replace themselves. */
-export type InstallKind = 'nsis' | 'appimage' | 'manual';
+/**
+ * How this copy of Phevere was installed. The Windows installer and AppImage replace themselves;
+ * the Android APK goes to the system installer, which cannot install an older version.
+ */
+export type InstallKind = 'nsis' | 'appimage' | 'apk' | 'manual';
 
 export interface InstallTarget {
   kind: InstallKind;
@@ -75,6 +79,7 @@ export function releasesFromGitHub(json: unknown): Release[] {
 export function assetNameFor(target: InstallTarget, version: string): string | null {
   if (target.kind === 'nsis') return `Phevere-Setup-${version}-${target.arch}.exe`;
   if (target.kind === 'appimage') return `Phevere-${version}-${target.arch}.AppImage`;
+  if (target.kind === 'apk') return `Phevere-${version}-android.apk`;
   return null;
 }
 
@@ -144,9 +149,12 @@ export function newestUpdate(
   return null;
 }
 
-/** Newest release below `current` that has an installer for this target. */
+/**
+ * Newest release below `current` that has an installer for this target. None on Android: a lower
+ * versionCode installs only after an uninstall, which deletes the notebook.
+ */
 export function rollbackTarget(releases: Release[], current: string, target: InstallTarget): UpdateChoice | null {
-  if (target.kind === 'manual') return null;
+  if (target.kind === 'manual' || target.kind === 'apk') return null;
   for (const release of releases) {
     if (compareVersions(release.version, current) >= 0) continue;
     const choice = choiceFor(release, target);

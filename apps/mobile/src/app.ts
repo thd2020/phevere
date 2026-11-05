@@ -130,6 +130,8 @@ import {
   type CatalogStatus,
 } from './platform/offline';
 import { applyPrefsToCore, loadPrefs, savePrefs, type MobilePrefs } from './platform/prefs';
+import { startPhoneUpdates } from './platform/updates';
+import { updateStatusText, type PhoneUpdateState, type PhoneUpdater } from './app-update';
 import * as accountPlatform from './platform/account';
 import {
   lookupBody,
@@ -420,6 +422,8 @@ let toastTimer: number | null = null;
 /** What the toast's Undo button does, when it has one. */
 let toastUndo: (() => void) | null = null;
 let capture: CaptureInfo = { platform: 'web', canDrawOverlays: false };
+/** The Android updater in the full app; null on iOS, in the pop-up and in the browser. */
+let phoneUpdates: PhoneUpdater | null = null;
 let accountState: AccountState | null = null;
 /** The account sheet is open from the app bar. */
 let accountOpen = false;
@@ -646,6 +650,7 @@ function paint(): void {
             settingsSection,
             voice,
             lib,
+            phoneUpdates?.state() ?? null,
           )
         : hit;
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
@@ -2100,7 +2105,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'settings-section': {
       const next = t.dataset.section as SettingsSection | undefined;
-      if (next === 'capture' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio') {
+      if (next === 'capture' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio' || (next === 'updates' && phoneUpdates)) {
         settingsSection = next;
         langMenu = '';
         if (next === 'offline') await refreshPacks();
@@ -2686,6 +2691,12 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       lib.inspecting = null;
       paint();
       return;
+    case 'update-check':
+      await phoneUpdates?.check();
+      return;
+    case 'update-install':
+      await phoneUpdates?.install();
+      return;
     case 'notify-allow':
       if (hasNativeBridge()) {
         await nativeCall('requestNotifications', {});
@@ -2701,6 +2712,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       if (t.dataset.key === 'incoming') prefs.notifyIncoming = on;
       else if (t.dataset.key === 'saved') prefs.notifySaved = on;
       else if (t.dataset.key === 'ocr') prefs.notifyOcr = on;
+      else if (t.dataset.key === 'updates') prefs.notifyUpdates = on;
       persistPrefs();
       if (on && hasNativeBridge() && capture.notificationsGranted === false) {
         await nativeCall('requestNotifications', {});
@@ -2847,6 +2859,11 @@ function onChange(e: Event): void {
       await refreshWords();
       paint();
     });
+    return;
+  }
+  if (e.type === 'change' && el.id === 'update-mode') {
+    const mode = (el as HTMLSelectElement).value;
+    if (mode === 'auto' || mode === 'ask' || mode === 'off') phoneUpdates?.setMode(mode);
     return;
   }
   if (el.id === 'q') {
@@ -3091,13 +3108,46 @@ export async function startApp(): Promise<void> {
       },
     });
   }
+  if (!stripMode && capture.platform === 'android') {
+    void startPhoneUpdates({
+      changed: showUpdateState,
+      busy: () => looking || !!scan || document.visibilityState !== 'visible',
+      notify: (text) => {
+        if (prefs.notifyUpdates !== false) void nativeCall('notify', { title: 'Phevere', body: text }).catch(() => undefined);
+      },
+      openPage: openExternal,
+    }).then((updater) => {
+      phoneUpdates = updater;
+      if (tab === 'settings') paint();
+    });
+  }
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     void refreshCapture().then(() => paint());
     if (!stripMode) accountPlatform.syncSoon();
+    void phoneUpdates?.resume();
   });
   const q = queryFromLocation();
   if (q) await lookup(q);
+  paint();
+}
+
+/**
+ * Repaints Settings → Updates. A download only moves its bar and status line, so an open
+ * Install updates list is not closed by every percent.
+ */
+function showUpdateState(s: PhoneUpdateState): void {
+  if (tab !== 'settings' || settingsSection !== 'updates') return;
+  const bar = document.querySelector<HTMLElement>('.settings-panel .sv-progress');
+  if (s.status === 'downloading' && bar) {
+    const pct = Math.round(s.progress * 100);
+    bar.setAttribute('aria-valuenow', String(pct));
+    const fill = bar.firstElementChild as HTMLElement | null;
+    if (fill) fill.style.width = `${pct}%`;
+    const line = document.querySelector<HTMLElement>('.settings-panel .sv-row__sub[role="status"]');
+    if (line) line.textContent = updateStatusText(s);
+    return;
+  }
   paint();
 }
 

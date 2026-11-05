@@ -34,6 +34,8 @@ export interface MobilePrefs {
   notifyIncoming: boolean;
   notifySaved: boolean;
   notifyOcr: boolean;
+  /** Android: an update was found (Ask first) or downloaded (Automatically). */
+  notifyUpdates: boolean;
 }
 
 export const defaultPrefs = (): MobilePrefs => ({
@@ -61,6 +63,7 @@ export const defaultPrefs = (): MobilePrefs => ({
   notifyIncoming: true,
   notifySaved: true,
   notifyOcr: true,
+  notifyUpdates: true,
 });
 
 export function loadPrefs(): MobilePrefs {

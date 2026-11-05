@@ -1,5 +1,5 @@
 /**
- * Updates from GitHub Releases (src/services/update-releases.ts, updater.ts): which release is
+ * Updates from GitHub Releases (packages/core/src/update-releases.ts, src/services/updater.ts): which release is
  * offered or rolled back to, the skipped version, checksum verification of downloads, the
  * install-on-quit path and the notebook backup hook. Electron and GitHub are faked; nothing installs.
  *
@@ -46,7 +46,7 @@ const github = (overrides = {}) => [
 ];
 
 // --- Choosing releases -------------------------------------------------------------------------
-const rel = load(build('src/services/update-releases.ts'));
+const rel = load(build('packages/core/src/update-releases.ts'));
 const releases = rel.releasesFromGitHub(github());
 assert.deepEqual(releases.map((r) => r.version), ['4.0.0', '3.0.0'], 'drafts, prereleases and odd tags are left out');
 assert.equal(rel.compareVersions('4.0.10', '4.0.9') > 0, true);

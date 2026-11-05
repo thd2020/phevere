@@ -34,7 +34,7 @@ import {
   type InstallTarget,
   type Release,
   type UpdateChoice,
-} from './update-releases';
+} from '@phevere/core/update-releases';
 
 const FIRST_CHECK_MS = 30_000;
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
