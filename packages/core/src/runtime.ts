@@ -1,4 +1,5 @@
 import type { HttpClient } from './http';
+import { trackHttp } from './net';
 
 export interface OfflineHit {
   headword: string;
@@ -55,7 +56,8 @@ let lookupCache: LookupCacheStore | null = null;
 let deviceName: () => string = () => '';
 
 export function configureCore(opts: CoreRuntime): void {
-  http = opts.http;
+  // Round trips per host, adaptive timeouts, backup requests and Wikimedia's three slots (net.ts).
+  http = trackHttp(opts.http);
   sha256Hex = opts.sha256Hex;
   if (opts.lookupOffline) lookupOffline = opts.lookupOffline;
   if (opts.vocabDb) vocabDb = opts.vocabDb;
