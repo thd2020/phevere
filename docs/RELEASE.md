@@ -1,5 +1,7 @@
 # Publishing a GitHub release
 
+2026-11-05: The Android job also uploads `Phevere-x.y.z-android.apk.sha256` beside the APK, in the same sha256sum format. The phone's updater uses it the same way when the API is rate-limited, and a `targets=android` retry replaces it with the APK.
+
 2026-11-04: The Windows jobs and the Linux job also upload a `.sha256` file beside each installer and package, in sha256sum format (`<hash>  <file name>`). The in-app updater reads GitHub's own asset digest from the API, but GitHub allows 60 unauthenticated API requests an hour per IP address, and shared or VPN addresses often use them up. The updater then reads the latest version from the `releases/latest` redirect and checks the download against this file, so a release without it can only update through the API. A retry that replaces an installer replaces its `.sha256` as well.
 
 2026-11-03: The Windows x64 job also uploads and attests `Phevere-OCR-PP-OCRv4.tar.gz`, the OCR pack that installers no longer include (`scripts/make-ocr-pack.js`). The app downloads it from the release, so every tag must carry it; a `windows-x64` retry replaces it too. The upgrade check now also requires that OCR models installed by an older version survive the upgrade and that a fresh install has none.
@@ -76,7 +78,7 @@ The workflow owns the Windows Setup and macOS DMG assets. The same tag also gets
 - **macOS Intel DMG:** `Phevere-x.y.z-darwin-x64.dmg`
 - **macOS Apple Silicon DMG:** `Phevere-x.y.z-darwin-arm64.dmg`
 - **OCR pack:** `Phevere-OCR-PP-OCRv4.tar.gz` (downloaded by the app; you do not need to fetch it yourself)
-- **Android APK:** `Phevere-x.y.z-android.apk` (debug-signed; each build is signed with that runner's debug key, so an update may need an uninstall first)
+- **Android APK:** `Phevere-x.y.z-android.apk` and its `.sha256` (release-signed with the key in `docs/ANDROID_SIGNING.md`, so it installs over an earlier release and the app's updater can install it)
 - **iOS IPA:** `Phevere-x.y.z-ios-unsigned.ipa` (unsigned; sideload with your own signing tool)
 
 ## Requirements
