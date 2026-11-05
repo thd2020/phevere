@@ -352,12 +352,32 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   const { learnHtml } = load('learn-view');
   const html = learnHtml({ scope: 'mine', ctx: null, mine: rq, review: views.startReview(rq, 2, now), goal: 10, now });
   assert.match(html, /data-act="nb-start"/, 'Learn starts today\'s review');
-  assert.match(html, /data-act="nb-goal"/, 'My words keeps its goal chips');
+  assert.match(html, /class="nbv-goalfact" data-act="learn-settings"><b>10<\/b><span>new words a day/, 'Today shows the goal and links to Settings');
+  assert.doesNotMatch(html, /data-act="nb-goal"|data-goal-input/, 'the goal is set in Settings, not on Today');
   assert.doesNotMatch(html, /lrn-scopes/, 'no list switcher without word books');
   assert.match(html, /data-act="learn-page" data-page="progress"/);
 }
 
-// Progress: today against the goal, the streak, skills, families and the forgetting curve.
+// Settings → Learn: a goal per list and the countdown; no speaking switch until speaking questions exist.
+{
+  const { learnSettingsHtml } = load('settings-learn');
+  const { readLearnPrefs, writeLearnPrefs, DEFAULT_LEARN_PREFS } = load('learn-prefs');
+  const input = { goal: 12, books: [{ id: 'cet4', title: 'CET-4', goal: 20 }], prefs: { countdown: 8, speaking: false }, microphone: false };
+  const html = learnSettingsHtml(input);
+  assert.equal((html.match(/data-act="learn-goal" data-book=""/g) || []).length, 4, 'four presets for My words');
+  assert.match(html, /data-act="learn-goal-input" data-book="" aria-label="My words, other number a day"/);
+  assert.match(html, /class="sv-num is-on"[^>]*value="12"/, 'a goal off the presets fills the Other field');
+  assert.match(html, /data-book="cet4" value="20" checked/, 'a book keeps its own goal');
+  assert.match(html, /<option value="8" selected>8 seconds<\/option>/);
+  assert.doesNotMatch(html, /learn-speaking/, 'no speaking switch without a microphone');
+  assert.doesNotMatch(learnSettingsHtml({ ...input, microphone: true, prefs: { countdown: 8, speaking: true } }), /learn-speaking|Speaking/, 'no speaking switch even with a microphone');
+  assert.deepEqual(readLearnPrefs(null), DEFAULT_LEARN_PREFS);
+  assert.deepEqual(readLearnPrefs('{bad'), DEFAULT_LEARN_PREFS);
+  assert.deepEqual(readLearnPrefs(writeLearnPrefs({ countdown: 10, speaking: false })), { countdown: 10, speaking: false });
+  assert.equal(readLearnPrefs('{"countdown":-3}').countdown, 0);
+}
+
+// Progress: today against the goal, the streak, memory, skills and families.
 {
   const { progressSummary, progressHtml } = load('learn-progress');
   const t0 = new Date(2026, 10, 3, 12).getTime();
@@ -391,21 +411,51 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.equal(s.inRotation, 2);
   assert.ok(s.curve[0] > s.curve[30], 'recall falls without review');
   const page = progressHtml({ history, scope: 'mine', ctx: null, mine: words, goal: 10, now: t0 });
-  for (const label of ['New words', 'Reviews', 'Streak', 'Skills', 'Root families', 'Answers per day', 'If you stop reviewing', 'Reviews ahead, 30 days', 'How long words are held', 'Trouble words']) assert.match(page, new RegExp(label));
+  for (const label of ['New words', 'Reviews', 'Streak', 'Skills', 'Root families', 'Answers per day', 'Memory', 'Reviews ahead', 'How long words are held', 'Trouble words']) assert.match(page, new RegExp(label));
+  // Labels name things; no line tells the learner how to use a chart.
+  assert.doesNotMatch(page, /Pick a|Tap a|to see its/, 'no instructions on Progress');
+  assert.doesNotMatch(views.reviewHtml(rq, rs, 10, { now }), /Pick a|Tap a|to see its/, 'no instructions on Today');
   // Every chart has a y axis label, ticks and a readout, and each bar its own readout.
-  assert.match(page, /data-lrc="retention"[\s\S]*data-lrc-range/);
+  assert.match(page, /data-lrc="memory"[\s\S]*data-lrc-when="1"[\s\S]*data-lrc-when="2"/, 'memory today, in a week and in a month');
+  assert.equal((page.match(/class="lrc-mem__dot[" ]/g) || []).length, 2, 'one dot per word in rotation');
   assert.match(page, /data-lrc="due30"[\s\S]*class="lrc-ylabel"[^>]*>Words due/);
   assert.equal((page.match(/data-lrc="due30"[\s\S]*?<\/svg>/)[0].match(/class="lrc-hit"/g) || []).length, 30, 'one bar a day');
   assert.match(page, /data-lrc="answers"[\s\S]*<template data-for="29"><p class="lrc-read__head"><b>[^<]+<\/b> · 2 answers, 50% right/);
-  assert.match(page, />Due at 90% recall</);
-  assert.ok(page.includes('<b>2<small> of 3</small></b><span>Reviews, of those due today'), 'the review ring says what it counts');
+  assert.match(page, /aria-label="Reviews: 2 of 3"/, 'the review gauge says what it counts');
+  assert.match(page, /Today you started <b>1<\/b> of <b>10<\/b> new words and answered <b>2<\/b> questions, <b>50%<\/b> of them right\. <b>1<\/b> review is still due\./);
+  assert.match(page, /class="lrp-giant">3</, 'the streak is the masthead numeral');
+  assert.doesNotMatch(page, /lrp-card|data-lrc-range/, 'no cards and no slider');
   assert.doesNotMatch(page, /at most 20%/);
   assert.equal(s.strength.reduce((n, b) => n + b.words.length, 0), 2, 'two started words');
   assert.deepEqual(s.strength[0].words, ['transport'], 'transport is still learning');
   assert.equal(s.mix.listening, 1);
-  const r14 = load('learn-charts').retentionAt(s.rotation, t0, 14);
+  const charts = load('learn-charts');
+  const r14 = charts.retentionAt(s.rotation, t0, 14);
   assert.ok(r14.average < 1 && r14.weakest[0].lemma === 'transport', 'the learning word is weakest after two weeks');
-  assert.match(progressHtml({ history: [], scope: 'mine', ctx: null, mine: [], goal: 10, now: t0 }), /No answers yet/);
+  // Memory: the words you would recall fall over a week, and a word falls below 90% one stability after its review.
+  const m0 = charts.memoryAt(s.rotation, t0, 0);
+  const m7 = charts.memoryAt(s.rotation, t0, 7);
+  assert.ok(m0.recalled > m7.recalled && m7.below >= m0.below);
+  const portable = s.rotation.find((w) => w.lemma === 'portable');
+  assert.equal(charts.slipDate(portable), t0 - 2 * DAYMS + 30 * DAYMS);
+  assert.ok(Math.abs(charts.memoryAt([portable], charts.slipDate(portable), 0).recall[0] - 0.9) < 1e-6, 'recall is 90% at the slip date');
+  const layout = charts.memoryLayout([[0.95, 0.95, 0.6], [0.7, 0.7, 0.4]]);
+  assert.equal(layout.at[0][0].x, layout.at[0][1].x, 'equal recall stacks in one column');
+  assert.ok(layout.at[0][1].y < layout.at[0][0].y, 'the second dot sits on the first');
+  assert.equal(layout.at[1][2].x, Math.min(...layout.at.flat().map((p) => p.x)), 'recall at or under 50% piles at the left edge');
+  assert.ok(charts.memoryLayout([[0.4], [0.3]]).at[0][0].x === charts.memoryLayout([[0.4], [0.3]]).at[1][0].x, 'everything under 50% shares the edge');
+  // A large notebook held near 100%: every dot stays inside the strip, which grows only if it must.
+  for (const n of [1500, 5000]) {
+    const big = charts.memoryLayout([Array.from({ length: n }, (_, i) => 0.97 + (0.03 * i) / n)]);
+    const ys = big.at[0].map((p) => p.y);
+    assert.ok(Math.min(...ys) - big.size / 2 >= 0, `${n} words: no dot above the strip (top ${Math.min(...ys)})`);
+    assert.ok(Math.max(...ys) + big.size / 2 <= big.base + 1e-9, `${n} words: no dot below the baseline`);
+  }
+  assert.equal(charts.memoryLayout([[0.95, 0.9]]).base, layout.base, 'a small notebook keeps the usual height');
+  const empty = progressHtml({ history: [], scope: 'mine', ctx: null, mine: [], goal: 10, now: t0 });
+  assert.match(empty, /No answers yet/);
+  assert.match(empty, /No words in rotation yet/);
+  assert.match(empty, /Nothing answered yet today\. Nothing is due, and the goal is <b>10<\/b> new words\./);
 }
 
 // Rows: Look up sits in the collapsed row, not only in the details.

@@ -4,9 +4,9 @@
  * with its progress ring and counts, a book's word list in order, and the library ordered
  * as a learning path. HTML strings with `data-act` hooks, like the other notebook views.
  *
- * Hooks: wb-scope (data-scope), wb-library, wb-sub and wb-unsub (data-book), wb-goal (data-book,
- * data-goal), wb-save and wb-known (data-q, data-known), wb-more, wb-sort (data-sort: book,
- * recent or az), wb-expand (data-q) to open a row on its brief definition, and lookup (data-q).
+ * Hooks: wb-scope (data-scope), wb-library, wb-sub and wb-unsub (data-book), wb-save and
+ * wb-known (data-q, data-known), wb-more, wb-sort (data-sort: book, recent or az), wb-expand
+ * (data-q) to open a row on its brief definition, and lookup (data-q).
  * The open list's chip in the switcher carries wb-menu (data-scope), which opens the list's
  * own menu (`bookMenuItems`): Export, Export for Anki and, for a book, Remove or Delete, as
  * Anki's deck menu and Quizlet's set menu hold them. The library's wb-import imports a file,
