@@ -110,7 +110,7 @@ export function forecastChartHtml(entries: NotebookEntry[], now: number, days = 
   const sum = totals.reduce((a, b) => a + b, 0);
   const peak = totals.indexOf(Math.max(...totals));
   const summary = sum
-    ? `<p class="lrc-read__head"><b>${fmt(sum)}</b> due in ${days} days · <b>${fmt(totals[0])}</b> today${peak > 0 && totals[peak] ? ` · most on ${esc(dayLabel(today + peak * DAY + DAY / 2))} (${fmt(totals[peak])})` : ''}</p><p class="lrc-read__sub">Pick a day to see its words</p>`
+    ? `<p class="lrc-read__head"><b>${fmt(sum)}</b> due in ${days} days · <b>${fmt(totals[0])}</b> today${peak > 0 && totals[peak] ? ` · most on ${esc(dayLabel(today + peak * DAY + DAY / 2))} (${fmt(totals[peak])})` : ''}</p>`
     : `<p class="lrc-read__head">Nothing due in the next ${days} days</p>`;
   return barChartHtml({
     id,

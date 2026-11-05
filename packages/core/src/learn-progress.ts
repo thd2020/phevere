@@ -346,8 +346,7 @@ function perDayChart(perDay: ProgressSummary['perDay']): string {
         : `<p class="lrc-read__head"><b>${esc(dayLabel(d.day))}</b> · no answers</p>`,
     };
   });
-  const summary = '<p class="lrc-read__sub">Pick a day to see its answers and words</p>';
-  return barChartHtml({ id: 'answers', data, yLabel: 'Answers', summary, legend: [{ cls: 'right', name: 'Right' }, { cls: 'wrong', name: 'Wrong' }], height: 150 });
+  return barChartHtml({ id: 'answers', data, yLabel: 'Answers', summary: '', legend: [{ cls: 'right', name: 'Right' }, { cls: 'wrong', name: 'Wrong' }], height: 150 });
 }
 
 function strengthChart(strength: ProgressSummary['strength']): string {
@@ -359,8 +358,7 @@ function strengthChart(strength: ProgressSummary['strength']): string {
     aria: `${b.label}: ${b.words.length} words`,
     detail: `<p class="lrc-read__head"><b>${esc(b.label)}</b> · ${fmt(b.words.length)} ${b.words.length === 1 ? 'word' : 'words'}${total ? ` (${pct(b.words.length, total)}%)` : ''}</p>${wordChips(b.words, 30)}`,
   }));
-  const summary = '<p class="lrc-read__sub">Pick a bar to see its words</p>';
-  return barChartHtml({ id: 'strength', data, yLabel: 'Words', summary, height: 150 });
+  return barChartHtml({ id: 'strength', data, yLabel: 'Words', summary: '', height: 150 });
 }
 
 function mixHtml(mix: Record<Skill, number>): string {
