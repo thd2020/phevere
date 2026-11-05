@@ -32,8 +32,8 @@ import {
   type WordsEntry,
   type WordsScope,
 } from './wordbooks';
-import { bookWordKey } from './wordbook-store';
-import { compareAz, vocabReadings, vocabSenses } from './vocab-view';
+import { bookWordKey, type UserBook } from './wordbook-store';
+import { addToBookButtonHtml, compareAz, vocabReadings, vocabSenses } from './vocab-view';
 import type { MenuItem } from './popover-menu';
 
 const ICON = {
@@ -233,6 +233,8 @@ export function wordbookListHtml(
     expanded?: Set<string>;
     /** Lowercase headwords whose meaning is being looked up. */
     loading?: Set<string>;
+    /** The learner has books of their own: rows offer "Add to word book". */
+    bookPick?: boolean;
   },
 ): string {
   if (!entries.length) return `<p class="nbv-empty">${opts.filtered ? 'No matching words.' : 'No words.'}</p>`;
@@ -258,7 +260,7 @@ export function wordbookListHtml(
         <button type="button" class="wb-row__word" data-act="wb-expand" data-q="${q}" aria-expanded="${open}">${q}</button>
         ${badgesHtml(e.books, except)}
         <span class="wb-state wb-state--${st}">${STATUS_LABEL[st]}</span>
-        <span class="wb-row__acts"><button type="button" class="wb-act" data-act="lookup" data-q="${q}" title="Look up" aria-label="Look up ${q}">${ICON.lookup}</button>${known}${save}${
+        <span class="wb-row__acts"><button type="button" class="wb-act" data-act="lookup" data-q="${q}" title="Look up" aria-label="Look up ${q}">${ICON.lookup}</button>${known}${opts.bookPick ? addToBookButtonHtml(e.lemma, 'wb-act') : ''}${save}${
           made
             ? `<button type="button" class="wb-act wb-act--drop" data-act="ub-drop" data-book="${esc(String(opts.scope))}" data-q="${q}" title="Remove from this book" aria-label="Remove ${q} from this book">${ICON.close}</button>`
             : ''
@@ -382,6 +384,23 @@ export function bookRemovalPrompt(bookId: string): { title: string; detail: stri
   return meta?.user
     ? { title: `Delete “${name}”?`, detail: 'Your progress on its words is kept.', confirm: 'Delete' }
     : { title: `Remove “${name}”?`, detail: 'Your progress on its words is kept.', confirm: 'Remove' };
+}
+
+/**
+ * The books a word can be added to, for "Add to word book": the ones you made or imported, in
+ * the order you made them, ticked when they hold the word. Phevere's own books are fixed lists
+ * and are not offered. Each pick is ub-toggle (data-book, data-q) and applies at once.
+ */
+export function bookPickItems(word: string, books: UserBook[]): MenuItem[] {
+  const key = bookWordKey(word);
+  return books
+    .filter((b) => !b.deleted)
+    .map((b) => ({
+      label: b.title,
+      act: 'ub-toggle',
+      data: { book: b.bookId, q: word },
+      checked: b.words.some((w) => bookWordKey(w) === key),
+    }));
 }
 
 /** Book rows for the Review plan panel: today's new and due words and progress per book. */

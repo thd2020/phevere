@@ -8,6 +8,8 @@
   position: fixed;
   inset: 0;
   z-index: 1000;
+  /* Over a window's drag region (the lookup window's toolbar), clicks still reach the menu. */
+  -webkit-app-region: no-drag;
 }
 .pv-menu-scrim.is-sheet {
   background: rgba(28, 25, 23, 0.32);

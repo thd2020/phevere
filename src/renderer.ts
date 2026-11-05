@@ -134,7 +134,7 @@ import { choiceRowHtml, keycapsHtml, rangeRowHtml, switchRowHtml } from '@phever
 import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
 import { AZ_INDEX, compareAz, vocabAzLetter, wireIndexRail } from '@phevere/core';
-import { bookMenuItems, bookRemovalPrompt, openMenu } from '@phevere/core';
+import { bookMenuItems, bookPickItems, bookRemovalPrompt, openMenu } from '@phevere/core';
 
 const rlog = (...args: unknown[]) => {
   if (!__PHEVERE_DEV__) return;
@@ -2276,6 +2276,11 @@ function wordbookApi(): any {
   return (window as any).wordbookAPI;
 }
 
+/** Books the learner made or imported exist, so rows offer "Add to word book". */
+function hasOwnBooks(): boolean {
+  return wbUserBooks.some((b) => !b.deleted);
+}
+
 function setWordsScope(scope: WordsScope): void {
   wbScope = scope;
   wbLibrary = false;
@@ -2363,7 +2368,7 @@ function renderBookScope(body: HTMLElement, wrap: HTMLElement, list: HTMLElement
   const shown = q ? all.filter((e) => e.lemma.toLowerCase().includes(q)) : all;
   if (nbView === 'list') {
     disposeNotebookMaps(true);
-    body.innerHTML = wordbookListHtml(shown, { scope: wbScope, limit: wbLimit, filtered: !!q, sort: wbSort, expanded: wbOpen, loading: wbMeaningInFlight });
+    body.innerHTML = wordbookListHtml(shown, { scope: wbScope, limit: wbLimit, filtered: !!q, sort: wbSort, expanded: wbOpen, loading: wbMeaningInFlight, bookPick: hasOwnBooks() });
     return true;
   }
   // The map always holds the whole book; the search flies to a word on it instead.
@@ -2728,7 +2733,7 @@ function renderVocabNotebook(entries: any[]): void {
   const shell = document.querySelector<HTMLElement>('.main-shell');
   const first = Math.max(120, Math.ceil(((shell?.scrollTop || 0) + (shell?.clientHeight || 800)) / 48) + 40);
   const scrollTop = shell?.scrollTop || 0;
-  list.innerHTML = vocabListHtml(sorted.slice(0, first), { sort, expanded: nbExpanded });
+  list.innerHTML = vocabListHtml(sorted.slice(0, first), { sort, expanded: nbExpanded, bookPick: hasOwnBooks() });
   if (shell && scrollTop) shell.scrollTop = scrollTop;
   let next = first;
   const appendChunk = (size: number) => {
@@ -2736,7 +2741,7 @@ function renderVocabNotebook(entries: any[]): void {
     const afterGroup = sort === 'recent' ? vocabEntryGroup(sorted[next - 1]) : '';
     list.insertAdjacentHTML(
       'beforeend',
-      vocabListHtml(sorted.slice(next, next + size), { sort, expanded: nbExpanded, afterGroup }),
+      vocabListHtml(sorted.slice(next, next + size), { sort, expanded: nbExpanded, afterGroup, bookPick: hasOwnBooks() }),
     );
     next += size;
     return next < sorted.length;
@@ -3065,6 +3070,26 @@ function wireNotebookActions(root: HTMLElement): void {
             const pick = document.createElement('button');
             Object.assign(pick.dataset, item.data || {}, { act: item.act });
             return run(pick, ev);
+          },
+        });
+        return;
+      }
+      case 'ub-pick': {
+        // "Add to word book": the books you made or imported, ticked where the word is.
+        const word = el.dataset.q || '';
+        const items = bookPickItems(word, wbUserBooks);
+        if (!word || !items.length) return;
+        openMenu(el, {
+          label: 'Add to word book',
+          items,
+          multi: true,
+          onPick: async (item) => {
+            const book = item.data?.book || '';
+            if (item.checked) await wordbookApi()?.addBookWords(book, [word]);
+            else await wordbookApi()?.removeBookWord(book, word);
+            await refreshWords();
+            rerenderNotebook();
+            renderRecentLookups();
           },
         });
         return;
@@ -3685,7 +3710,7 @@ function renderRecentLookups(): void {
   }
   const saved = new Map<string, any>();
   for (const e of vocabNotebookCache) saved.set(String(e.lemma || '').trim().toLowerCase(), e);
-  list.innerHTML = recentListHtml(items, (q) => saved.get(q.trim().toLowerCase()));
+  list.innerHTML = recentListHtml(items, (q) => saved.get(q.trim().toLowerCase()), Date.now(), { bookPick: hasOwnBooks() });
 }
 
 function addToRecentSelections(text: string): void {

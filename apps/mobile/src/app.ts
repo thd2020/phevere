@@ -113,6 +113,7 @@ import {
   wireIndexRail,
   bookMenuItems,
   bookRemovalPrompt,
+  bookPickItems,
   openMenu,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
@@ -293,6 +294,7 @@ const wordsState = {
   /** Book words opened on their brief definition, by lowercase headword. */
   open: new Set<string>(),
   loading: wbMeaningInFlight,
+  bookPick: false,
 };
 let wbSubs: WordbookSub[] = [];
 let wbUserBooks: UserBook[] = [];
@@ -351,6 +353,7 @@ async function refreshWords(): Promise<void> {
   try {
     wbSubs = await listWordbookSubs();
     wbUserBooks = await listUserBooks();
+    wordsState.bookPick = wbUserBooks.some((b) => !b.deleted);
     wbProgress = new Map((await listBookProgress()).map((p) => [p.lemma, p]));
     for (const s of wbSubs) if (!isUserBookId(s.bookId) && !wbBooks.has(s.bookId)) wbBooks.set(s.bookId, await loadWordbook(s.bookId));
     await primeBookLevels(wbSubs.map((s) => s.bookId));
@@ -525,6 +528,8 @@ function lookupPaneHtml(): string {
     recent: recentLookups,
     savedFor: (q) => notebook.find((e) => e.lemma.trim().toLowerCase() === q.trim().toLowerCase()),
     headTools: !stripMode,
+    bookPick: wordsState.bookPick,
+    saveWord: result ? saveLemma(result) : undefined,
     // An empty list (pictures off, or a word part) keeps no picture boxes; null means loading.
     senseImages: prefs.senseImages === false || (result && morphemeOf(result)) ? [] : currentSenseImages(),
     ownWords: morphemeOf(result) ? ownWords() : undefined,
@@ -2366,6 +2371,27 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
           const el = document.createElement('button');
           Object.assign(el.dataset, item.data || {}, { act: item.act });
           return handleAct(item.act, el, e);
+        },
+      });
+      return;
+    }
+    case 'ub-pick': {
+      // "Add to word book": the books you made or imported, ticked where the word is.
+      const word = t.dataset.q || '';
+      const items = bookPickItems(word, wbUserBooks);
+      if (!word || !items.length) return;
+      openMenu(t, {
+        label: 'Add to word book',
+        items,
+        multi: true,
+        onPick: async (item) => {
+          const book = item.data?.book || '';
+          const title = wordbookMeta(book)?.title || item.label;
+          if (item.checked) await addUserBookWords(book, [word]);
+          else await removeUserBookWord(book, word);
+          toast(item.checked ? `Added to ${title}` : `Removed from ${title}`);
+          await refreshWords();
+          paint();
         },
       });
       return;

@@ -38,6 +38,8 @@ export interface VocabListOptions {
   now?: number;
   /** Day heading already shown above these rows, when a long list is rendered in chunks. */
   afterGroup?: string;
+  /** The learner has books of their own: rows offer "Add to word book". */
+  bookPick?: boolean;
 }
 
 const ICON = {
@@ -45,7 +47,18 @@ const ICON = {
   lookup: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   remove: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10.5 11v5M13.5 11v5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   chevron: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  bookAdd: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5H7.5A2.5 2.5 0 0 1 5 17V4.5h9.5A2.5 2.5 0 0 1 17 7v5M5 17a2.5 2.5 0 0 1 2.5-2.5H12M18 15v6M15 18h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>',
 };
+
+/**
+ * "Add to word book": opens the list of the learner's own books (made or imported) with a tick
+ * on those that hold the word (hook ub-pick, data-q). `cls` is the button's class in its row.
+ */
+export function addToBookButtonHtml(lemma: string, cls = 'vocab-open vocab-tobook'): string {
+  const q = esc(clean(lemma));
+  return `<button type="button" class="${cls}" data-act="ub-pick" data-q="${q}" aria-haspopup="menu" aria-expanded="false" title="Add to word book" aria-label="Add ${q} to a word book">${ICON.bookAdd}</button>`;
+}
 
 /** Senses shown before "Show more". */
 const SENSES_SHOWN = 4;
@@ -221,7 +234,7 @@ function factsHtml(e: VocabViewEntry, t: number, now: number): string {
   return `<dl class="vocab-facts">${facts.map(([k, v]) => `<div${k === 'Source' ? ' class="vocab-source"' : ''}><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
 }
 
-export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now()): string {
+export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(), opts: { bookPick?: boolean } = {}): string {
   const lemma = clean(e.lemma);
   const readings = vocabReadings(e.reading);
   const senses = vocabSenses(e.definition);
@@ -262,6 +275,7 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
       <div class="vocab-foot">
         ${factsHtml(e, t, now)}
         <span class="vocab-actions">
+          ${opts.bookPick ? `<button type="button" class="vocab-action vocab-tobook" data-act="ub-pick" data-q="${esc(lemma)}" aria-haspopup="menu" aria-expanded="false">${ICON.bookAdd}<span>Add to word book</span></button>` : ''}
           <button type="button" class="vocab-action vocab-remove" data-act="nb-del" data-id="${id}">${ICON.remove}<span>Remove</span></button>
         </span>
       </div>
@@ -299,7 +313,7 @@ export function vocabListHtml(entries: VocabViewEntry[], opts: VocabListOptions)
           heading = `<h4 class="vocab-group">${esc(g)}</h4>`;
         }
       }
-      return heading + vocabEntryHtml(e, opts.expanded.has(e.id), now);
+      return heading + vocabEntryHtml(e, opts.expanded.has(e.id), now, { bookPick: opts.bookPick });
     })
     .join('');
 }
@@ -312,12 +326,16 @@ export interface RecentLookup {
 
 /**
  * Recent lookups as notebook rows: the word, and when it is in the notebook its first
- * pronunciation and part of speech, then Play, Look up and the time. The row itself looks up.
+ * pronunciation and part of speech, then Play, Look up, the same save control a lookup has
+ * (the heart for My words and, with books of your own, "Add to word book"), and the time.
+ * The row itself looks up. The heart saves with wb-save (data-q) and removes with nb-del
+ * (data-id), as Google Translate's history rows star a word in place.
  */
 export function recentListHtml(
   items: RecentLookup[],
   saved: (q: string) => VocabViewEntry | undefined,
   now = Date.now(),
+  opts: { bookPick?: boolean } = {},
 ): string {
   let group = '';
   return items
@@ -336,11 +354,14 @@ export function recentListHtml(
         <h3 class="vocab-lemma">${esc(q)}</h3>
         ${reading ? `<span class="vocab-reading">${esc(reading.ipa)}</span>` : ''}
         ${posTag(pos)}
-        ${e ? '<span class="vocab-saved-mark" title="In notebook" aria-label="In notebook"></span>' : ''}
       </div></div>
       <span class="vocab-row__end">
         ${playButton(q)}
         ${lookupButton(q)}
+        ${e
+          ? `<button type="button" class="vocab-open vocab-save is-on" data-act="nb-del" data-id="${esc(e.id)}" aria-pressed="true" title="Remove from My words" aria-label="Remove ${esc(q)} from My words">${ICON.heart}</button>`
+          : `<button type="button" class="vocab-open vocab-save" data-act="wb-save" data-q="${esc(q)}" aria-pressed="false" title="Save to My words" aria-label="Save ${esc(q)} to My words">${ICON.heart}</button>`}
+        ${opts.bookPick ? addToBookButtonHtml(q) : ''}
         <time class="vocab-when"${item.at ? ` datetime="${new Date(item.at).toISOString()}"` : ''}>${esc(vocabWhen(item.at, now))}</time>
       </span>
     </div>

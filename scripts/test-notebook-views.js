@@ -327,6 +327,14 @@ assert.match(rec, /class="vocab-item recent-item is-collapsed is-saved"/);
 assert.match(rec, /\/ɪnˈspɛkt\//);
 assert.equal((rec.match(/class="vocab-group"/g) || []).length, 2, 'Today and Earlier');
 assert.equal((rec.match(/data-act="lookup"/g) || []).length, 6, 'row and button per item');
+// Each recent row carries the lookup's save control: the heart saves or removes in place.
+assert.match(rec, /class="vocab-open vocab-save is-on" data-act="nb-del" data-id="x" aria-pressed="true"/);
+assert.match(rec, /class="vocab-open vocab-save" data-act="wb-save" data-q="gargantuan" aria-pressed="false"/);
+assert.doesNotMatch(rec, /data-act="ub-pick"/, 'no "Add to word book" without books of your own');
+const recBooks = recentListHtml([{ q: 'inspect', at: now }], () => undefined, now, { bookPick: true });
+assert.match(recBooks, /data-act="ub-pick" data-q="inspect" aria-haspopup="menu"/);
+assert.match(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now, { bookPick: true }), /data-act="ub-pick" data-q="braid"[^>]*>.*Add to word book/);
+assert.doesNotMatch(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now), /ub-pick/);
 
 // A to Z: "#" (digits, symbols, other scripts) comes after Z in the rail and in the list.
 const { AZ_INDEX, compareAz } = load('vocab-view');

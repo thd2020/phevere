@@ -23,6 +23,8 @@ export interface MenuOptions {
   label: string;
   items: MenuItem[];
   multi?: boolean;
+  /** Force the bottom sheet on or off; by default it follows the window's width. */
+  sheet?: boolean;
   onPick: (item: MenuItem) => void | Promise<void>;
 }
 
@@ -60,7 +62,7 @@ export function openMenu(anchor: HTMLElement, opts: MenuOptions): () => void {
   const doc = anchor.ownerDocument;
   const win = doc.defaultView || window;
   const multi = !!opts.multi;
-  const sheet = win.innerWidth < SHEET_BELOW;
+  const sheet = opts.sheet ?? win.innerWidth < SHEET_BELOW;
   const scrim = doc.createElement('div');
   scrim.className = `nbv pv-menu-scrim${sheet ? ' is-sheet' : ''}`;
   const menu = doc.createElement('div');

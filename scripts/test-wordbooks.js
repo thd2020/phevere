@@ -20,7 +20,7 @@ const bundle = esbuild.buildSync({
       export * from './src/wordbook-store';
       export * from './src/wordbook-sync';
       export { syncProgress } from './src/progress-sync';
-      export { wordbookLibraryHtml, wordbookListHtml, sortBookEntries, wordbookHeaderHtml, wordsScopeSwitchHtml, bookMenuItems, bookRemovalPrompt } from './src/wordbook-views';
+      export { wordbookLibraryHtml, wordbookListHtml, sortBookEntries, wordbookHeaderHtml, wordsScopeSwitchHtml, bookMenuItems, bookRemovalPrompt, bookPickItems } from './src/wordbook-views';
       export { configureCore } from './src/runtime';
       export { addVocab, listVocab, reviewVocab, findByLemma } from './src/vocab-store';
       export { syncVocab } from './src/vocab-sync';
@@ -225,6 +225,17 @@ async function main() {
   assert.doesNotMatch(sw, /wb-scope__x/, 'no close button on the chips');
   assert.match(core.wordbookLibraryHtml(ctx), /data-act="wb-import"/, 'Import sits in the library, where books are added');
 
+  // "Add to word book" offers the books you made or imported, ticked where the word is; never
+  // Phevere's own books, and never a deleted one.
+  const own = [
+    { bookId: 'mine-1', title: 'GEB', words: ['Braid', 'fugue'], deleted: false, createdAt: 1, updatedAt: 1 },
+    { bookId: 'mine-2', title: 'Imported deck', words: ['canon'], deleted: false, createdAt: 2, updatedAt: 2 },
+    { bookId: 'mine-3', title: 'Gone', words: ['braid'], deleted: true, createdAt: 3, updatedAt: 3 },
+  ];
+  const picks = core.bookPickItems('braid', own);
+  assert.deepEqual(picks.map((p) => [p.label, p.checked]), [['GEB', true], ['Imported deck', false]]);
+  assert.deepEqual(picks[1].data, { book: 'mine-2', q: 'braid' });
+
   // ---- Library: every card keeps its source and licence, folded into a Source disclosure ----
   {
     const lib = core.wordbookLibraryHtml(ctx);
@@ -285,6 +296,8 @@ async function main() {
   assert.doesNotMatch(listHtml, /data-sort="recent"/, 'no Recent in a shipped book');
   assert.match(core.wordbookListHtml(met, { scope: 'kaoyan', limit: 10, sort: 'recent' }), /data-sort="book" aria-pressed="true"/);
   assert.match(core.wordbookListHtml(met, { scope: 'all', limit: 10, sort: 'recent' }), /data-sort="recent" aria-pressed="true"/, 'All books keeps Recent');
+  assert.match(core.wordbookListHtml(met, { scope: 'kaoyan', limit: 10, bookPick: true }), /data-act="ub-pick" data-q="state"/);
+  assert.doesNotMatch(core.wordbookListHtml(met, { scope: 'kaoyan', limit: 10 }), /ub-pick/);
   assert.doesNotMatch(core.wordbookHeaderHtml('starter', ctx), /wb-goal|wb-unsub/, 'no goal chips or Remove link in a book header');
 
   console.log('test-wordbooks: all passed');

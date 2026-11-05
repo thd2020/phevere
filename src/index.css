@@ -3084,13 +3084,8 @@ body.main-window :is(#vocabList, #selectionsList) .vocab-open {
 }
 body.main-window :is(#vocabList, #selectionsList) .vocab-open:hover { background: var(--pv-surface-container); }
 body.main-window :is(#vocabList, #selectionsList) .vocab-open svg { width: 16px; height: 16px; }
-body.main-window #selectionsList .vocab-saved-mark {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--pv-teal);
-  align-self: center;
-}
+body.main-window #selectionsList .vocab-save.is-on { color: var(--pv-teal); }
+body.main-window #selectionsList .vocab-save.is-on svg path { fill: currentColor; }
 body.main-window :is(#vocabList, #selectionsList) .vocab-when { min-width: 64px; text-align: right; }
 body.main-window :is(#vocabList, #selectionsList) .vocab-item,
 body.main-window #vocabList .vocab-group { scroll-margin-top: 84px; }

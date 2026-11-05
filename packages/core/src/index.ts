@@ -81,6 +81,7 @@ export {
   vocabAzLetter,
   AZ_INDEX,
   compareAz,
+  addToBookButtonHtml,
   type RecentLookup,
   type VocabViewEntry,
   type VocabListOptions,
@@ -339,6 +340,7 @@ export {
   bookMenuItems,
   bookRemovalPrompt,
   bookSorts,
+  bookPickItems,
 } from './wordbook-views';
 export { openMenu, closeMenu, menuOpen, type MenuItem, type MenuOptions } from './popover-menu';
 export {

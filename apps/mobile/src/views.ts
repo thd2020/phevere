@@ -14,6 +14,7 @@ import {
   type VocabEntry,
   type WikipediaResult,
   vocabListHtml,
+  addToBookButtonHtml,
   vocabAzLetter,
   AZ_INDEX,
   compareAz,
@@ -811,6 +812,10 @@ export function lookupBody(opts: {
   senseImages?: Array<SenseImage | null> | null;
   /** Saved words and word-book words, for a morpheme page's "my words". */
   ownWords?: OwnWords;
+  /** The learner has books of their own: the save control and recent rows offer "Add to word book". */
+  bookPick?: boolean;
+  /** The word the heart saves, which "Add to word book" adds too. */
+  saveWord?: string;
 }): string {
   if (opts.looking && !opts.result) return lookupSkeleton(opts.query || '');
   if (opts.error && !opts.result) {
@@ -824,7 +829,7 @@ export function lookupBody(opts: {
     </div>
     ${recent.length ? `<section class="recent-lookups" aria-label="Recent lookups">
       <h3 class="recent-lookups__title">Recent</h3>
-      <div class="vocab-list">${recentListHtml(recent, opts.savedFor || (() => undefined))}</div>
+      <div class="vocab-list">${recentListHtml(recent, opts.savedFor || (() => undefined), Date.now(), { bookPick: opts.bookPick })}</div>
     </section>` : ''}`;
   }
   const chips = ipaChips(opts.result.pronunciations, opts.result.pronunciation || '');
@@ -865,7 +870,8 @@ export function lookupBody(opts: {
         ${opts.headTools ? `<button type="button" class="icon-btn" data-act="copy" aria-label="Copy" title="Copy">${ICO.copy}</button>
         <button type="button" class="icon-btn" data-act="web-search" aria-label="Search the web" title="Search the web">${ICO.web}</button>` : ''}
         ${part ? '' : `<button type="button" class="tonal" data-act="speak" aria-label="Play pronunciation">${ICO.speaker}</button>
-        <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Remove from My words' : 'Save to My words'}">${ICO.heart}</button>`}
+        <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Remove from My words' : 'Save to My words'}">${ICO.heart}</button>
+        ${opts.bookPick && opts.saveWord ? addToBookButtonHtml(opts.saveWord, 'tonal') : ''}`}
       </div>
       ${chips}
     </header>
@@ -924,6 +930,8 @@ export interface WordsState {
   sort: BookSort;
   open: Set<string>;
   loading: Set<string>;
+  /** The learner has books of their own: rows offer "Add to word book". */
+  bookPick?: boolean;
 }
 
 export function notebookBody(
@@ -988,7 +996,7 @@ export function notebookBody(
           : cardsHtml(list, analysis, nb.flipped, nb.cardLayout, undefined, { picFlips: true });
     return `${head}<div class="nbv nbv-body">${body}</div>`;
   }
-  const rows = vocabListHtml(list, { sort, expanded });
+  const rows = vocabListHtml(list, { sort, expanded, bookPick: !!words?.bookPick });
   return `${head}
     <div class="ptr" aria-hidden="true"><span class="md-spinner"></span></div>
     <div class="vocab-list">${rows || `<p class="empty">${q ? 'No matching words.' : 'No saved words.'}</p>`}</div>
@@ -1006,7 +1014,7 @@ function bookScopeBody(words: WordsState, ctx: WordsContext, filter: string, nb:
     </div>
     <div class="nbv nb-views">${notebookViewSwitchHtml(nb.view)}</div>`;
   let body: string;
-  if (nb.view === 'list') body = wordbookListHtml(list, { scope: words.scope, limit: words.limit, filtered: !!q, sort: words.sort, expanded: words.open, loading: words.loading });
+  if (nb.view === 'list') body = wordbookListHtml(list, { scope: words.scope, limit: words.limit, filtered: !!q, sort: words.sort, expanded: words.open, loading: words.loading, bookPick: words.bookPick });
   else {
     const study = nb.view === 'cards' ? scopeStudySet(list) : nb.view === 'map' ? all : list;
     const analysis = analyzeNotebook(study);
