@@ -12,6 +12,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
 
+import androidx.annotation.RequiresApi;
 import androidx.core.content.FileProvider;
 
 import org.json.JSONObject;
@@ -290,6 +291,7 @@ final class AppUpdate {
     return false;
   }
 
+  @RequiresApi(28)
   private static Set<String> certs(SigningInfo info) throws Exception {
     Set<String> out = new HashSet<>();
     if (info == null) return out;
