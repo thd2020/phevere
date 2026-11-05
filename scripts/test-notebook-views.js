@@ -363,6 +363,8 @@ const strata = views.originGroups(a, lookupEty);
 assert.equal(strata[0].origin, 'Latin');
 assert.match(views.familiesHtml(a, 'origin', { etymon: lookupEty }), /via French/);
 assert.match(views.familiesHtml(a, 'root'), /Not in a family yet/);
+// Every word named on a family tile opens its lookup, not only the chips in the open drawer.
+assert.match(views.familiesHtml(a, 'root'), /<button type="button" class="nbv-fam__peekw" data-act="lookup" data-q="inspect">inspect<\/button>/);
 
 // A typed daily goal: whole numbers from 1 to 999; empty or not a number is ignored.
 assert.strictEqual(views.parseGoal('15'), 15);
