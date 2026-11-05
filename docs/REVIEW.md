@@ -160,7 +160,7 @@ A gap-fill question uses a sentence from your note, then the sentence the word w
 
 ### Letters shown and Hint
 
-A typed question shows the answer's length as one dot per letter, with "7 letters" under the box. Typing the word and filling the gap show its first letter, and dictation none. A weaker word gets more, one letter at a time while the predicted chance stays under 85%, but never more than a third of the word (`cueLetters`); as the word strengthens the cue shrinks, which is diminishing-cue practice. Hint puts the next letter into the box, up to all but the last letter. A right answer after a Hint is Hard, and one given extra letters up front is at most Good.
+A typed question shows the answer's length as one dot per letter, with "7 letters" under the box. Typing the word and filling the gap show its first letter, and dictation none. A weaker word gets more, one letter at a time while the predicted chance stays under 85%, but never more than a third of the word (`cueLetters`); as the word strengthens the cue shrinks, which is diminishing-cue practice. Hint keeps what the learner has typed as far as it matches the answer and puts the next letter after it into the box, up to all but the last letter; anything typed past the first wrong letter is dropped. A right answer after a Hint is Hard, and one given extra letters up front is at most Good.
 
 ![Screenshot of a gap-fill question for tremble after one Hint: the box holds tr, with 7 letters, Hint and I don't know under it](REVIEW.assets/hint-letters.png)
 

@@ -1036,14 +1036,22 @@ export function hintsLeft(q: ReviewQuestion): number {
 }
 
 /**
- * Hint: reveals the next letter of the answer into the answer box. A right answer after a hint
- * counts as Hard, as a near miss does.
+ * Hint: reveals the next letter of the answer into the answer box. What the learner typed (`typed`,
+ * the box as it stands) is kept as far as it matches the answer, letter case aside, and the letter
+ * after that is revealed; anything typed past the first wrong letter is dropped. The last letter
+ * is never revealed. A right answer after a hint counts as Hard, as a near miss does.
  */
-export function hintReview(state: ReviewState): boolean {
+export function hintReview(state: ReviewState, typed = ''): boolean {
   const q = state.question;
-  if (!q || state.answer || !hintsLeft(q)) return false;
-  q.hinted = (q.hinted || 0) + 1;
-  q.draft = [...q.answers[0]].slice(0, (q.reveal || 0) + q.hinted).join('');
+  if (!q || state.answer || !TYPED_KINDS.includes(q.kind)) return false;
+  const answer = [...(q.answers[0] || '')];
+  const mine = [...typed];
+  let right = 0;
+  while (right < mine.length && right < answer.length && mine[right].toLowerCase() === answer[right].toLowerCase()) right += 1;
+  const shown = Math.max(right, (q.reveal || 0) + (q.hinted || 0));
+  if (shown + 1 > answer.length - 1) return false;
+  q.hinted = shown + 1 - (q.reveal || 0);
+  q.draft = mine.slice(0, Math.min(right, shown)).join('') + answer.slice(Math.min(right, shown), shown + 1).join('');
   return true;
 }
 

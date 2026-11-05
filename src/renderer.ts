@@ -3363,7 +3363,8 @@ function wireNotebookActions(root: HTMLElement): void {
         if (reviewArmed(nbReview)) answerCurrentReview({});
         return;
       case 'nb-hint':
-        if (nbReview && hintReview(nbReview)) renderLearn();
+        // What is typed so far stays where it matches the answer; the next letter is added.
+        if (nbReview && hintReview(nbReview, root.querySelector<HTMLInputElement>('#nbv-answer')?.value || '')) renderLearn();
         return;
       case 'nb-override':
         if (nbReview) overrideReview(nbReview, el.dataset.mode === 'easy' ? 'easy' : 'flip');

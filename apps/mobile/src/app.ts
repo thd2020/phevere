@@ -2696,7 +2696,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       if (reviewArmed(nbState.review)) answerCurrentReview({});
       return;
     case 'nb-hint':
-      if (nbState.review && hintReview(nbState.review)) paint();
+      // What is typed so far stays where it matches the answer; the next letter is added.
+      if (nbState.review && hintReview(nbState.review, document.querySelector<HTMLInputElement>('#nbv-answer')?.value || '')) paint();
       return;
     case 'nb-override':
       if (nbState.review) overrideReview(nbState.review, t.dataset.mode === 'easy' ? 'easy' : 'flip');

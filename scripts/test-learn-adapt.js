@@ -117,6 +117,23 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
   const a = core.answerReview(state, { typed: 'harbour' }, now + 2000);
   assert.equal(a.result, 'right');
   assert.equal(a.grade, 2, 'right after a hint is Hard');
+  // Hint keeps what the learner typed as far as it matches, and reveals the letter after it.
+  const hintAfter = (typed) => {
+    const s = core.startReview([firm], 10, now);
+    s.started = true;
+    const q = core.ensureReviewQuestion(s, [firm, ...pool.slice(1)], { now });
+    return { ok: core.hintReview(s, typed), q };
+  };
+  assert.equal(hintAfter('harb').q.draft, 'harbo', 'four right letters kept, the fifth revealed');
+  assert.equal(hintAfter('HARB').q.draft, 'HARBo', 'letter case aside, and as typed');
+  assert.equal(hintAfter('hax').q.draft, 'har', 'typing past the first wrong letter is dropped');
+  assert.equal(hintAfter('').q.draft, 'ha', 'an empty box gets the letter after the shown one');
+  const nearlyDone = hintAfter('harbou');
+  assert.equal(nearlyDone.ok, false, 'the last letter is never revealed');
+  assert.equal(nearlyDone.q.draft, undefined);
+  const kept = hintAfter('harb').q;
+  assert.equal(core.typedPlaceholder(kept), 'harbo··');
+  assert.equal(core.hintsLeft(kept), 1);
   assert.equal(core.autoGrade('recall', 'right', 2000, 7, { extra: 1 }), 3, 'extra letters up front: at most Good');
   assert.equal(core.autoGrade('recall', 'right', 2000, 7, {}), 4);
 
