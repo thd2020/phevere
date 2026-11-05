@@ -260,6 +260,10 @@ async function main() {
   assert.deepEqual(core.sortBookEntries(met, 'az').map((r) => `${r.n}:${r.e.lemma}`), ['2:Abate', '3:might', '4:part', '1:state', '5:zeal']);
   const listHtml = core.wordbookListHtml(met, { scope: 'kaoyan', limit: 10, sort: 'az' });
   assert.match(listHtml, /data-act="wb-sort" data-sort="az" aria-pressed="true"/);
+  // A shipped book has no Recent sort; a remembered Recent falls back to the book's order.
+  assert.doesNotMatch(listHtml, /data-sort="recent"/, 'no Recent in a shipped book');
+  assert.match(core.wordbookListHtml(met, { scope: 'kaoyan', limit: 10, sort: 'recent' }), /data-sort="book" aria-pressed="true"/);
+  assert.match(core.wordbookListHtml(met, { scope: 'all', limit: 10, sort: 'recent' }), /data-sort="recent" aria-pressed="true"/, 'All books keeps Recent');
   assert.doesNotMatch(core.wordbookHeaderHtml('starter', ctx), /wb-goal|wb-unsub/, 'no goal chips or Remove link in a book header');
 
   console.log('test-wordbooks: all passed');

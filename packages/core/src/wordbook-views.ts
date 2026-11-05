@@ -199,8 +199,17 @@ export function sortBookEntries(entries: WordsEntry[], sort: BookSort): Array<{ 
   return rows;
 }
 
-function sortBarHtml(sort: BookSort): string {
-  return `<div class="wb-sort" role="group" aria-label="Sort">${(Object.keys(SORT_LABEL) as BookSort[])
+/**
+ * The sorts a list offers. A book Phevere ships has its own order and no words you put there,
+ * so it has no Recent; a book you made or imported, and All books, keep it.
+ */
+export function bookSorts(scope: WordsScope): BookSort[] {
+  const meta = wordbookMeta(String(scope));
+  return meta && !meta.user ? ['book', 'az'] : ['book', 'recent', 'az'];
+}
+
+function sortBarHtml(sort: BookSort, sorts: BookSort[]): string {
+  return `<div class="wb-sort" role="group" aria-label="Sort">${sorts
     .map((k) => `<button type="button" class="nbv-chip${k === sort ? ' is-active' : ''}" data-act="wb-sort" data-sort="${k}" aria-pressed="${k === sort}">${SORT_LABEL[k]}</button>`)
     .join('')}</div>`;
 }
@@ -220,7 +229,8 @@ export function wordbookListHtml(
   },
 ): string {
   if (!entries.length) return `<p class="nbv-empty">${opts.filtered ? 'No matching words.' : 'No words.'}</p>`;
-  const sort = opts.sort || 'book';
+  const sorts = bookSorts(opts.scope);
+  const sort = opts.sort && sorts.includes(opts.sort) ? opts.sort : 'book';
   const shown = sortBookEntries(entries, sort).slice(0, opts.limit);
   const except = opts.scope === 'all' ? '' : String(opts.scope);
   const made = !!wordbookMeta(String(opts.scope))?.user;
@@ -251,7 +261,7 @@ export function wordbookListHtml(
     })
     .join('');
   const more = entries.length > shown.length ? `<button type="button" class="nbv-secondary wb-more" data-act="wb-more">Show ${fmt(Math.min(BOOK_LIST_PAGE, entries.length - shown.length))} more</button>` : '';
-  return `${sortBarHtml(sort)}<ol class="wb-list">${rows}</ol>${more}`;
+  return `${sortBarHtml(sort, sorts)}<ol class="wb-list">${rows}</ol>${more}`;
 }
 
 /**
