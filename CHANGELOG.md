@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add to word book (2026-11-05): next to the heart that saves a word to My words, a lookup has a button that adds the word to a book of your own, one you made from a source or imported. It lists those books with a tick on each one that already holds the word, and a tick or untick applies at once. The same button sits on the rows of a word book, in an opened My words row, on Recent rows, and in the desktop lookup window's toolbar. It appears only once you have such a book; Phevere's own books are not offered.
+- Save from Recent (2026-11-05): each row of Recent lookups has a heart, as a lookup does. Tap it to save the word to My words, or tap a filled heart to remove it.
+- Site icons in Sources (2026-11-05): a web site in Sources shows the site's own icon. When the icon cannot load, for example offline, the tile shows the site's first letter instead.
+
+### Changed
+
+- Export, Import and Remove (2026-11-05): the open list's chip in Words now has its own menu button (the "…" joined to the chip). For My words it holds Export… and Export for Anki…; for a word book it also holds Remove, or Delete book for a book you made or imported. Import… moved to the word book library (Add a word book). The "…" menu at the right of the Words header, with Refresh, is gone; the list reloads by itself when words change. On the phone the Import and Export buttons left the top bar for the same places.
+- Removing a word book asks first (2026-11-05): Remove and Delete book now ask for confirmation, which says that your progress on the book's words is kept. Removing Postgraduate 考研 and adding it again brings back where you were.
+- A–Z order (2026-11-05): "#" now comes after Z in the A–Z rail, and words that start with a digit, a symbol or another script come last in the list, as in phone contacts. An accented first letter such as É files under E.
+- Index rails (2026-11-05): the A–Z rail and the date rail jump when you click or tap a letter or date, or while you press and drag along them. Moving the mouse over them no longer moves the list. The date rail no longer shows a "Week of …" label in the middle of the list while you drag.
+- Word book sorts (2026-11-05): Phevere's own word books sort by Book order or A–Z; Recent is offered only in books you made or imported and in All books.
+- Families (2026-11-05): every word named on a family tile opens its lookup when clicked, not only the words in the open drawer.
+
 ### Fixed
 
 - Map on the desktop (2026-11-05): Words → Map now draws the same 3D map as the phone. Before, the desktop app always fell back to a flat drawing of small dots, because the 3D part failed to load in the desktop window. Drag turns and tilts the map, right-drag or Shift-drag moves it, the wheel or a trackpad pinch zooms, and +, − and Reset view work as before. Roots, Prefixes and Suffixes, Find a word, the Unlinked words group and the orange word you last looked up all appear on it.

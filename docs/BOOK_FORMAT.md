@@ -1,6 +1,6 @@
 # Word book files (.pvbook)
 
-Phevere saves one word book per file. Export writes the book you are looking at in Words (My words, a book you made, or one of Phevere's books), and Import reads it back on any device, the desktop or the phone. The file carries every word with everything Phevere keeps about it and the answer history behind its progress, so a book moved to a new device picks up where it was.
+Phevere saves one word book per file. Export, in the menu on the open list's chip in Words, writes that list (My words, a book you made, or one of Phevere's books), and Import, in the word book library (Add a word book), reads it back on any device, the desktop or the phone. The file carries every word with everything Phevere keeps about it and the answer history behind its progress, so a book moved to a new device picks up where it was.
 
 The same menus also read and write Anki decks, so a deck can come over from Anki and a book can go back to it. The code is in `packages/core/src/book-file.ts` (the container), `book-transfer.ts` (export and import against the notebook) and `anki-import.ts` (Anki). The test is `scripts/test-book-file.js`.
 
