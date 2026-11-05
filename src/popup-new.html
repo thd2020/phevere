@@ -3555,18 +3555,21 @@ function startAutoCloseTimeout() {
         }
 
         /**
-         * Opens a connection to the host that serves the pictures, so the first thumbnail does not
-         * wait for a handshake. The hint is added again for each lookup: Chrome drops a
+         * Opens connections to the hosts that serve the pictures, so the first thumbnail does not
+         * wait for a handshake: thumbnails come from thumb.wikimedia.org, the larger view from
+         * upload.wikimedia.org. The hints are added again for each lookup: Chrome drops a
          * preconnected socket that stays unused for about ten seconds.
          */
         function warmPictureHost() {
-          const old = document.getElementById('pictureHostHint');
-          if (old) old.remove();
-          const link = document.createElement('link');
-          link.id = 'pictureHostHint';
-          link.rel = 'preconnect';
-          link.href = 'https://upload.wikimedia.org';
-          document.head.appendChild(link);
+          ['thumb', 'upload'].forEach(function (host) {
+            const old = document.getElementById('pictureHostHint-' + host);
+            if (old) old.remove();
+            const link = document.createElement('link');
+            link.id = 'pictureHostHint-' + host;
+            link.rel = 'preconnect';
+            link.href = 'https://' + host + '.wikimedia.org';
+            document.head.appendChild(link);
+          });
         }
 
         async function loadPopupSenseImages(result) {

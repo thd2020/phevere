@@ -581,19 +581,22 @@ function placeSenseFigures(final = false): void {
 }
 
 /**
- * Opens a connection to the host that serves the pictures when a word is submitted, so the first
- * thumbnail does not wait for a handshake. The hint goes in again for each lookup: the WebView
- * drops a preconnected socket that stays unused for about ten seconds.
+ * Opens connections to the hosts that serve the pictures when a word is submitted, so the first
+ * thumbnail does not wait for a handshake: thumbnails come from thumb.wikimedia.org, the larger
+ * view from upload.wikimedia.org. The hints go in again for each lookup: the WebView drops a
+ * preconnected socket that stays unused for about ten seconds.
  */
 function warmPictureHost(): void {
   // Only a hint: a lookup goes on without it.
   try {
-    document.getElementById('pictureHostHint')?.remove();
-    const link = document.createElement('link');
-    link.id = 'pictureHostHint';
-    link.rel = 'preconnect';
-    link.href = 'https://upload.wikimedia.org';
-    document.head.appendChild(link);
+    for (const host of ['thumb', 'upload']) {
+      document.getElementById(`pictureHostHint-${host}`)?.remove();
+      const link = document.createElement('link');
+      link.id = `pictureHostHint-${host}`;
+      link.rel = 'preconnect';
+      link.href = `https://${host}.wikimedia.org`;
+      document.head.appendChild(link);
+    }
   } catch {
     /* no document head */
   }
