@@ -35,6 +35,7 @@ import '@phevere/core/notebook-families.css';
 import '@phevere/core/notebook-cards.css';
 import '@phevere/core/notebook-map.css';
 import '@phevere/core/wordbook-views.css';
+import '@phevere/core/popover-menu.css';
 import '@phevere/core/learn-views.css';
 import '@phevere/core/settings-kit.css';
 import '@phevere/core/settings-sources.css';
@@ -133,6 +134,7 @@ import { choiceRowHtml, keycapsHtml, rangeRowHtml, switchRowHtml } from '@phever
 import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
 import { AZ_INDEX, compareAz, vocabAzLetter, wireIndexRail } from '@phevere/core';
+import { bookMenuItems, bookRemovalPrompt, openMenu } from '@phevere/core';
 
 const rlog = (...args: unknown[]) => {
   if (!__PHEVERE_DEV__) return;
@@ -3052,8 +3054,33 @@ function wireNotebookActions(root: HTMLElement): void {
         document.querySelector('.main-shell')?.scrollTo({ top: 0 });
         return;
       }
+      case 'wb-menu': {
+        // A list's own menu, from its chip: Export, Export for Anki, Remove or Delete.
+        const items = bookMenuItems(el.dataset.scope || 'mine');
+        if (!items.length) return;
+        openMenu(el, {
+          label: el.dataset.title || 'Book',
+          items,
+          onPick: (item) => {
+            const pick = document.createElement('button');
+            Object.assign(pick.dataset, item.data || {}, { act: item.act });
+            return run(pick, ev);
+          },
+        });
+        return;
+      }
+      case 'wb-export':
+        await exportWords(el.dataset.scope || 'mine', el.dataset.fmt === 'anki');
+        return;
+      case 'wb-import':
+        await importWords();
+        return;
       case 'wb-unsub': {
         const id = el.dataset.book || '';
+        // Progress belongs to the word: it stays, and the confirmation says so.
+        const ask = bookRemovalPrompt(id);
+        const ok = await (window as any).vocabAPI?.confirm?.({ message: ask.title, detail: ask.detail, confirm: ask.confirm });
+        if (!ok) return;
         if (isUserBookId(id)) await wordbookApi()?.deleteBook(id);
         else await wordbookApi()?.unsubscribe(id);
         if (wbScope === id) setWordsScope(isUserBookId(id) ? 'sources' : 'mine');
@@ -3240,7 +3267,6 @@ function setMainTab(tab: MainTab): void {
   if (nb) nb.hidden = tab !== 'notebook';
   if (learn) learn.hidden = tab !== 'learn';
   if (rc) rc.hidden = tab !== 'recent';
-  document.getElementById('notebookTools')?.toggleAttribute('hidden', tab !== 'notebook');
   document.getElementById('recentTools')?.toggleAttribute('hidden', tab !== 'recent');
   document.querySelector('.main-shell')?.scrollTo({ top: 0 });
   if (tab === 'learn') renderLearn();
@@ -3289,41 +3315,6 @@ function wireMainWorkspace(): void {
   });
 }
 
-/** Export, Import and Refresh sit in a menu at the end of the Words header. */
-function wireWordsMoreMenu(): void {
-  const btn = document.getElementById('wordsMoreBtn');
-  const menu = document.getElementById('wordsMoreMenu');
-  if (!btn || !menu) return;
-  const setOpen = (open: boolean) => {
-    menu.hidden = !open;
-    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) menu.querySelector<HTMLElement>('.ws-menu__item')?.focus();
-  };
-  btn.addEventListener('click', () => setOpen(menu.hidden));
-  menu.addEventListener('click', (ev) => {
-    if ((ev.target as HTMLElement).closest('.ws-menu__item')) setOpen(false);
-  });
-  menu.addEventListener('keydown', (ev) => {
-    const items = [...menu.querySelectorAll<HTMLElement>('.ws-menu__item')];
-    const at = items.indexOf(document.activeElement as HTMLElement);
-    if (ev.key === 'Escape') {
-      setOpen(false);
-      btn.focus();
-    } else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
-      ev.preventDefault();
-      items[(at + (ev.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
-    }
-  });
-  document.addEventListener('pointerdown', (ev) => {
-    if (!menu.hidden && !(ev.target as HTMLElement).closest('#notebookTools')) setOpen(false);
-  });
-}
-wireWordsMoreMenu();
-
-document.getElementById('refreshVocabBtn')?.addEventListener('click', () => {
-  void loadVocabNotebook();
-});
-
 let vocabSearchTimer: ReturnType<typeof setTimeout> | null = null;
 document.getElementById('vocabSearch')?.addEventListener('input', () => {
   if (vocabSearchTimer) clearTimeout(vocabSearchTimer);
@@ -3340,26 +3331,24 @@ document.getElementById('vocabSortAlpha')?.addEventListener('click', () => {
   rerenderNotebook();
 });
 
-/** The book Words is showing, as an export scope: My words, a made book or a catalog book. */
-function exportScope(): { kind: 'mine' } | { kind: 'user' | 'catalog'; id: string } {
-  if (wbScope === 'mine' || wbScope === 'all' || wbScope === 'sources' || wbLibrary) return { kind: 'mine' };
-  return isUserBookId(wbScope) ? { kind: 'user', id: wbScope } : { kind: 'catalog', id: wbScope };
+/** A list from its menu (My words, a made book or a catalog book), as an export scope. */
+function exportScope(scope: string): { kind: 'mine' } | { kind: 'user' | 'catalog'; id: string } {
+  if (!scope || scope === 'mine' || scope === 'all' || scope === 'sources') return { kind: 'mine' };
+  return isUserBookId(scope) ? { kind: 'user', id: scope } : { kind: 'catalog', id: scope };
 }
 
-async function exportWords(anki: boolean): Promise<void> {
+async function exportWords(scope: string, anki: boolean): Promise<void> {
   const api = (window as any).vocabAPI;
   if (!api?.exportNotebook) return;
   try {
-    await api.exportNotebook({ scope: exportScope(), anki });
+    await api.exportNotebook({ scope: exportScope(scope), anki });
   } catch (error) {
     console.error('vocab export failed', error);
   }
 }
 
-document.getElementById('exportVocabBtn')?.addEventListener('click', () => void exportWords(false));
-document.getElementById('exportAnkiBtn')?.addEventListener('click', () => void exportWords(true));
-
-document.getElementById('importVocabBtn')?.addEventListener('click', async () => {
+/** Import, from the word book library: a .pvbook, an Anki deck or an older My words file. */
+async function importWords(): Promise<void> {
   const api = (window as any).vocabAPI;
   if (!api?.importNotebook) return;
   try {
@@ -3374,7 +3363,7 @@ document.getElementById('importVocabBtn')?.addEventListener('click', async () =>
   } catch (error) {
     console.error('vocab import failed', error);
   }
-});
+}
 
 setVocabSortMode(getVocabSortMode());
 

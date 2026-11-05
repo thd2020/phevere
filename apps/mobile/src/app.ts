@@ -111,6 +111,9 @@ import {
   importBookPayload,
   type BookScope,
   wireIndexRail,
+  bookMenuItems,
+  bookRemovalPrompt,
+  openMenu,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
 import { playRecorded, prefetchRecorded, recordedReady, speakIpa, speakText } from './platform/audio';
@@ -1464,18 +1467,15 @@ function askChoice(message: string, detail: string, buttons: string[]): Promise<
   });
 }
 
-/** The book Words is showing, as an export scope. */
-function exportScope(): BookScope {
-  const s = wordsState.scope;
-  if (s === 'mine' || s === 'all' || s === 'sources' || wordsState.library) return { kind: 'mine' };
+/** A list from its menu (My words or a book), as an export scope. */
+function exportScope(s: string): BookScope {
+  if (!s || s === 'mine' || s === 'all' || s === 'sources') return { kind: 'mine' };
   return isUserBookId(s) ? { kind: 'user', id: s } : { kind: 'catalog', id: s };
 }
 
-async function exportWords(): Promise<void> {
-  const pick = await askChoice('Export this book', '', ['Phevere book', 'For Anki', 'Cancel']);
-  if (pick !== 0 && pick !== 1) return;
+async function exportWords(scope: string, anki: boolean): Promise<void> {
   try {
-    const name = await exportBook(exportScope(), pick === 1);
+    const name = await exportBook(exportScope(scope), anki);
     toast(`Saved ${name}`);
   } catch (err) {
     toast(err instanceof Error ? err.message : 'Could not export');
@@ -2355,9 +2355,33 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       window.scrollTo({ top: 0 });
       return;
     }
+    case 'wb-menu': {
+      // A list's own menu, from its chip: Export, Export for Anki, Remove or Delete.
+      const items = bookMenuItems(t.dataset.scope || 'mine');
+      if (!items.length) return;
+      openMenu(t, {
+        label: t.dataset.title || 'Book',
+        items,
+        onPick: (item) => {
+          const el = document.createElement('button');
+          Object.assign(el.dataset, item.data || {}, { act: item.act });
+          return handleAct(item.act, el, e);
+        },
+      });
+      return;
+    }
+    case 'wb-export':
+      await exportWords(t.dataset.scope || 'mine', t.dataset.fmt === 'anki');
+      return;
+    case 'wb-import':
+      await pickAndImportNotebook();
+      return;
     case 'wb-unsub': {
       const id = t.dataset.book || '';
       const title = wordbookMeta(id)?.title || id;
+      // Progress belongs to the word: it stays, and the confirmation says so.
+      const ask = bookRemovalPrompt(id);
+      if ((await askChoice(ask.title, ask.detail, [ask.confirm, 'Cancel'])) !== 0) return;
       if (isUserBookId(id)) await deleteUserBook(id);
       else await unsubscribeWordbook(id);
       if (wordsState.scope === id) setWordsScope(isUserBookId(id) ? 'sources' : 'mine');
@@ -2563,12 +2587,6 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
         await refreshNotebook();
         paint();
       }
-      return;
-    case 'nb-export':
-      await exportWords();
-      return;
-    case 'nb-import':
-      await pickAndImportNotebook();
       return;
     case 'src': {
       const name = t.dataset.name || '';

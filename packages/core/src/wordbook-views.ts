@@ -6,8 +6,11 @@
  *
  * Hooks: wb-scope (data-scope), wb-library, wb-sub and wb-unsub (data-book), wb-goal (data-book,
  * data-goal), wb-save and wb-known (data-q, data-known), wb-more, wb-sort (data-sort: book,
- * recent or az), wb-expand (data-q) to open a row on its brief definition, and lookup (data-q). A subscribed book's chip in the switcher carries its own
- * wb-unsub close button.
+ * recent or az), wb-expand (data-q) to open a row on its brief definition, and lookup (data-q).
+ * The open list's chip in the switcher carries wb-menu (data-scope), which opens the list's
+ * own menu (`bookMenuItems`): Export, Export for Anki and, for a book, Remove or Delete, as
+ * Anki's deck menu and Quizlet's set menu hold them. The library's wb-import imports a file,
+ * since an import adds a book.
  *
  * Sources (scope 'sources') lists My words grouped by the document or site they were saved
  * from. Its hooks: src-book (data-source) makes a word book from a source, src-add (data-source,
@@ -31,6 +34,7 @@ import {
 } from './wordbooks';
 import { bookWordKey } from './wordbook-store';
 import { compareAz, vocabReadings, vocabSenses } from './vocab-view';
+import type { MenuItem } from './popover-menu';
 
 const ICON = {
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
@@ -43,6 +47,7 @@ const ICON = {
   sources: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h6l2 2h8v11H4zM8 12h8M8 15.5h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   lookup: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
   close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  more: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="19" cy="12" r="1.9" fill="currentColor"/></svg>',
 };
 
 const STATUS_LABEL = { new: 'New', learning: 'Learning', known: 'Known' } as const;
@@ -82,20 +87,23 @@ function barHtml(p: { known: number; learning: number; total: number }): string 
 export function wordsScopeSwitchHtml(scope: WordsScope, ctx: WordsContext, library: boolean, now = Date.now()): string {
   const btn = (id: string, label: string, extra = '', title = label) =>
     `<button type="button" role="tab" class="wb-scope${!library && scope === id ? ' is-active' : ''}" data-act="wb-scope" data-scope="${esc(id)}" aria-selected="${!library && scope === id}" title="${esc(title)}">${extra}<span>${esc(label)}</span></button>`;
+  // The open list's chip carries a button for its menu (Export, Remove), like a split button.
+  const withMenu = (id: string, title: string, chip: string) =>
+    !library && scope === id
+      ? `<span class="wb-scope-wrap is-active">${chip}<button type="button" class="wb-scope__more" data-act="wb-menu" data-scope="${esc(id)}" data-title="${esc(title)}" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(title)} menu" title="More">${ICON.more}</button></span>`
+      : chip;
   const books = ctx.subs
     .map((s) => {
       const meta = wordbookMeta(s.bookId);
       if (!meta) return '';
       const p = bookProgress(s.bookId, ctx, now);
       const chip = btn(s.bookId, meta.short, progressRingSvg(p.known, p.learning, p.total, 18), `${meta.title}: ${fmt(p.known)} of ${fmt(p.total)} known`);
-      // A made book is deleted from its own header, where the loss is spelled out.
-      if (meta.user) return chip;
-      return `<span class="wb-scope-wrap">${chip}<button type="button" class="wb-scope__x" data-act="wb-unsub" data-book="${esc(s.bookId)}" aria-label="Remove ${esc(meta.title)}" title="Remove">${ICON.close}</button></span>`;
+      return withMenu(s.bookId, meta.title, chip);
     })
     .join('');
   const count = ctx.mine.length ? `<b class="wb-scope__n">${fmt(ctx.mine.length)}</b>` : '';
   return `<div class="wb-switch" role="tablist" aria-label="Word lists">
-    ${btn('mine', 'My words', '').replace('</span></button>', `</span>${count}</button>`)}
+    ${withMenu('mine', 'My words', btn('mine', 'My words', '').replace('</span></button>', `</span>${count}</button>`))}
     ${books}
     ${ctx.subs.length ? btn('all', 'All books', ICON.stack) : ''}
     ${scope === 'sources' || sourceGroups(ctx).length ? btn('sources', 'Sources', ICON.sources) : ''}
@@ -132,7 +140,7 @@ export function wordbookHeaderHtml(scope: WordsScope, ctx: WordsContext, now = D
   </section>`;
 }
 
-/** A made book: its title can be edited in place, words added by name, the book deleted. */
+/** A made book: its title can be edited in place and words added by name. */
 function madeBookHeaderHtml(bookId: string, title: string, sourceKey: string | undefined, p: BookProgress): string {
   const from = sourceKey ? sourceKey.replace(/^(doc|site):/, '') : '';
   const id = esc(bookId);
@@ -148,7 +156,6 @@ function madeBookHeaderHtml(bookId: string, title: string, sourceKey: string | u
         <input name="word" type="text" placeholder="Add a word" aria-label="Add a word" autocomplete="off" autocapitalize="off" spellcheck="false" />
         <button type="submit" class="nbv-secondary">Add</button>
       </form>
-      <button type="button" class="nbv-link wb-unsub" data-act="wb-unsub" data-book="${id}">Delete book</button>
     </div>
   </section>`;
 }
@@ -345,7 +352,36 @@ export function wordbookLibraryHtml(ctx: WordsContext, now = Date.now()): string
       </div>
     </li>`;
   }).join('');
-  return `<section class="wb-library"><ol class="wb-path">${items}</ol></section>`;
+  return `<section class="wb-library"><div class="wb-library__bar"><button type="button" class="nbv-secondary" data-act="wb-import">Import…</button></div><ol class="wb-path">${items}</ol></section>`;
+}
+
+/**
+ * A list's own menu, opened from its chip: My words exports; a book also has Remove (a book
+ * Phevere ships) or Delete (one you made or imported).
+ */
+export function bookMenuItems(scope: WordsScope): MenuItem[] {
+  if (scope === 'all' || scope === 'sources') return [];
+  const meta = scope === 'mine' ? null : wordbookMeta(String(scope));
+  if (scope !== 'mine' && !meta) return [];
+  const id = String(scope);
+  const items: MenuItem[] = [
+    { label: 'Export…', act: 'wb-export', data: { scope: id, fmt: 'book' } },
+    { label: 'Export for Anki…', act: 'wb-export', data: { scope: id, fmt: 'anki' } },
+  ];
+  if (meta) items.push({ label: meta.user ? 'Delete book' : 'Remove', act: 'wb-unsub', data: { book: id }, danger: true });
+  return items;
+}
+
+/**
+ * The confirmation before a book leaves your lists. Progress belongs to the word, so it stays
+ * either way and comes back if the book is added again.
+ */
+export function bookRemovalPrompt(bookId: string): { title: string; detail: string; confirm: string } {
+  const meta = wordbookMeta(bookId);
+  const name = meta?.title || bookId;
+  return meta?.user
+    ? { title: `Delete “${name}”?`, detail: 'Your progress on its words is kept.', confirm: 'Delete' }
+    : { title: `Remove “${name}”?`, detail: 'Your progress on its words is kept.', confirm: 'Remove' };
 }
 
 /** Book rows for the Review plan panel: today's new and due words and progress per book. */

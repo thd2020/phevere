@@ -3271,6 +3271,20 @@ ipcMain.handle('vocab-review', async (_e, id: string, grade: 1 | 2 | 3 | 4, deta
   return vocabStore.reviewVocab(id, grade, Date.now(), answerDetailsFrom(details));
 });
 ipcMain.handle('vocab-history', async () => listAnswerHistory());
+// A destructive step asks first, in the system's own dialog like the import questions.
+ipcMain.handle('vocab-confirm', async (e, ask: { message?: unknown; detail?: unknown; confirm?: unknown }) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const opts = {
+    type: 'warning' as const,
+    buttons: [String(ask?.confirm || 'OK'), 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    message: String(ask?.message || ''),
+    detail: ask?.detail ? String(ask.detail) : undefined,
+  };
+  const r = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts);
+  return r.response === 0;
+});
 
 // Word books (packages/core/src/wordbook-store.ts): subscriptions and progress live in the same
 // database as the notebook; the word lists themselves ship with the renderer.

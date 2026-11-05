@@ -133,10 +133,6 @@ export function appBarHtml(tab: Tab, query: string, canBack: boolean, canFwd: bo
           <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="Back">${ICO.back}</button>
           <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="Forward">${ICO.fwd}</button>
         </div>` : ''}
-        ${tab === 'notebook' ? `<div class="hist">
-          <button type="button" class="icon-btn" data-act="nb-import" aria-label="Import words" title="Import">${ICO.import}</button>
-          <button type="button" class="icon-btn" data-act="nb-export" data-fmt="json" aria-label="Export My words" title="Export">${ICO.export}</button>
-        </div>` : ''}
         ${accountBtn}
         </div>
       </div>

@@ -336,7 +336,11 @@ export {
   scopeStudySet,
   reviewBookRows,
   BOOK_LIST_PAGE,
+  bookMenuItems,
+  bookRemovalPrompt,
+  bookSorts,
 } from './wordbook-views';
+export { openMenu, closeMenu, menuOpen, type MenuItem, type MenuOptions } from './popover-menu';
 export {
   learnHtml,
   learnTodayHtml,
