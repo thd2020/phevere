@@ -7,6 +7,7 @@ import {
   groupCatalogByLanguage,
   navRowHtml,
   rangeRowHtml,
+  segRowHtml,
   switchRowHtml,
   offlineShelvesHtml,
   packInspectorHtml,
@@ -177,9 +178,7 @@ function updatesPanel(u: PhoneUpdateState): string {
   const action = updateActionText(u);
   const pct = Math.round(u.progress * 100);
   const busy = u.status === 'checking' || u.status === 'downloading';
-  const options = UPDATE_MODES.filter((m) => u.canInstall || m.id !== 'auto')
-    .map((m) => `<option value="${m.id}"${u.mode === m.id ? ' selected' : ''}>${esc(m.label)}</option>`)
-    .join('');
+  const options = UPDATE_MODES.filter((m) => u.canInstall || m.id !== 'auto').map((m) => ({ value: m.id, label: m.label }));
   return `<div class="sv sv-page">
     <div class="sv-ledger">
       <div class="sv-row">
@@ -190,10 +189,7 @@ function updatesPanel(u: PhoneUpdateState): string {
         ${action ? `<button type="button" class="sv-btn sv-btn--accent" data-act="update-install">${esc(action)}</button>` : ''}
         ${u.status === 'downloading' ? `<div class="sv-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Downloading update"><span style="width:${pct}%"></span></div>` : ''}
       </div>
-      <div class="sv-row">
-        <span class="sv-row__text"><label for="update-mode" class="sv-row__label">Install updates</label></span>
-        <select id="update-mode" class="sv-select">${options}</select>
-      </div>
+      ${segRowHtml({ label: 'Install updates', name: 'update-mode', value: !u.canInstall && u.mode === 'auto' ? 'ask' : u.mode, options })}
       <div class="sv-ledger__foot">
         <button type="button" class="sv-btn" data-act="update-check"${busy ? ' disabled' : ''}>Check now</button>
       </div>

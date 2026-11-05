@@ -823,11 +823,6 @@ select, .field {
   border-radius: var(--md-sys-shape-sm);
   padding: 10px 12px;
 }
-/* A settings-kit list (Install updates) sits beside its label at its own width. */
-.sv select.sv-select {
-  width: auto;
-  flex: none;
-}
 /* Language bar + sheet (Google Translate / DeepL pattern). */
 .lang-bar {
   display: grid;

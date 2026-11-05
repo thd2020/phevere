@@ -129,7 +129,7 @@ import {
   type WordsScope,
   type BookSort,
 } from '@phevere/core';
-import { choiceRowHtml, keycapsHtml, rangeRowHtml, switchRowHtml } from '@phevere/core';
+import { choiceRowHtml, enhanceSelect, keycapsHtml, rangeRowHtml, segRowHtml, switchRowHtml } from '@phevere/core';
 import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
 
@@ -368,14 +368,7 @@ function initializeSettingsWindow() {
                   <button type="button" id="update-action" class="sv-btn sv-btn--accent" hidden></button>
                   <div id="update-progress" class="sv-progress" hidden><span></span></div>
                 </div>
-                <div class="sv-row">
-                  <span class="sv-row__text"><label for="update-mode" class="sv-row__label">Install updates</label></span>
-                  <select id="update-mode" class="sv-select">
-                    <option value="auto">Automatically</option>
-                    <option value="ask">Ask first</option>
-                    <option value="off">Off</option>
-                  </select>
-                </div>
+                ${segRowHtml({ label: 'Install updates', name: 'update-mode', value: 'auto', options: [{ value: 'auto', label: 'Automatically' }, { value: 'ask', label: 'Ask first' }, { value: 'off', label: 'Off' }] })}
                 <div class="sv-ledger__foot">
                   <button type="button" id="update-rollback" class="sv-btn" hidden></button>
                   <button type="button" id="update-check" class="sv-btn">Check now</button>
@@ -455,6 +448,8 @@ function initializeSettingsWindow() {
   showSectionFromHash();
   window.addEventListener('hashchange', showSectionFromHash);
 
+  // Native selects get the app's menu; their code keeps using the select.
+  document.querySelectorAll<HTMLSelectElement>('.settings-main select.sv-select').forEach(enhanceSelect);
   wireSettingsLibraryLinks();
   void wireSourcesPanel();
   void wireApiKeysPanel();
@@ -4399,10 +4394,10 @@ async function wireUpdatesPanel(): Promise<void> {
   const status = document.getElementById('update-status');
   const action = document.getElementById('update-action') as HTMLButtonElement | null;
   const bar = document.getElementById('update-progress');
-  const mode = document.getElementById('update-mode') as HTMLSelectElement | null;
+  const modes = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="update-mode"]'));
   const check = document.getElementById('update-check') as HTMLButtonElement | null;
   const rollback = document.getElementById('update-rollback') as HTMLButtonElement | null;
-  if (!api?.getState || !version || !status || !action || !bar || !mode || !check || !rollback) return;
+  if (!api?.getState || !version || !status || !action || !bar || !modes.length || !check || !rollback) return;
   const fill = bar.firstElementChild as HTMLElement | null;
   const paint = (s: UpdateView) => {
     const busy = s.status === 'checking' || s.status === 'downloading' || s.status === 'installing';
@@ -4422,8 +4417,11 @@ async function wireUpdatesPanel(): Promise<void> {
     action.textContent = s.status === 'ready' ? 'Restart to update' : s.canInstall ? 'Update now' : 'Download…';
     bar.hidden = s.status !== 'downloading';
     if (fill) fill.style.width = `${Math.round(s.progress * 100)}%`;
-    mode.querySelector('option[value="auto"]')?.toggleAttribute('hidden', !s.canInstall);
-    mode.value = !s.canInstall && s.mode === 'auto' ? 'ask' : s.mode;
+    const current = !s.canInstall && s.mode === 'auto' ? 'ask' : s.mode;
+    for (const radio of modes) {
+      if (radio.value === 'auto') (radio.parentElement as HTMLElement).hidden = !s.canInstall;
+      radio.checked = radio.value === current;
+    }
     rollback.hidden = !s.canInstall || !s.rollback;
     rollback.textContent = `Roll back to ${s.rollback}`;
     rollback.disabled = busy;
@@ -4433,7 +4431,11 @@ async function wireUpdatesPanel(): Promise<void> {
   action.addEventListener('click', () => void run(() => api.install()));
   rollback.addEventListener('click', () => void run(() => api.rollBack()));
   check.addEventListener('click', () => void run(() => api.check()));
-  mode.addEventListener('change', () => void run(() => api.setMode(mode.value)));
+  for (const radio of modes) {
+    radio.addEventListener('change', () => {
+      if (radio.checked) void run(() => api.setMode(radio.value));
+    });
+  }
   api.onChanged?.((s: UpdateView) => paint(s));
   paint(await api.getState());
   // The rollback version comes from the release list, so opening the page checks once.

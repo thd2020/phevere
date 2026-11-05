@@ -428,12 +428,15 @@ export {
   keycapsHtml,
   navRowHtml,
   rangeRowHtml,
+  segRowHtml,
   switchRowHtml,
   type ChoiceRowInput,
   type NavRowInput,
   type RangeRowInput,
+  type SegRowInput,
   type SwitchRowInput,
 } from './settings-kit';
+export { enhanceSelect } from './settings-menu';
 export {
   SOURCE_INFO,
   TRANSLATION_ENGINES,
