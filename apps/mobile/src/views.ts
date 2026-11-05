@@ -44,7 +44,6 @@ import {
   type ReviewRenderOptions,
   type VocabViewEntry,
   scopeEntries,
-  scopeStudySet,
   wordbookHeaderHtml,
   wordbookLibraryHtml,
   wordbookListHtml,
@@ -1009,7 +1008,7 @@ function bookScopeBody(words: WordsState, ctx: WordsContext, filter: string, nb:
   let body: string;
   if (nb.view === 'list') body = wordbookListHtml(list, { scope: words.scope, limit: words.limit, filtered: !!q, sort: words.sort, expanded: words.open, loading: words.loading });
   else {
-    const study = nb.view === 'cards' ? scopeStudySet(list) : nb.view === 'map' ? all : list;
+    const study = nb.view === 'map' ? all : list;
     const analysis = analyzeNotebook(study);
     body =
       nb.view === 'families'

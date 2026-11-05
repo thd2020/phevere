@@ -331,7 +331,6 @@ export {
   wordbookLibraryHtml,
   wordBookBadgesHtml,
   progressRingSvg,
-  scopeStudySet,
   reviewBookRows,
   BOOK_LIST_PAGE,
 } from './wordbook-views';

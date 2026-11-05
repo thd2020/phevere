@@ -115,7 +115,6 @@ import {
   loadWordbook,
   reviewNeedsMeaning,
   scopeEntries,
-  scopeStudySet,
   startScopeReview,
   wordbookHeaderHtml,
   wordbookLibraryHtml,
@@ -2365,7 +2364,7 @@ function renderBookScope(body: HTMLElement, wrap: HTMLElement, list: HTMLElement
     return true;
   }
   // The map always holds the whole book; the search flies to a word on it instead.
-  const study = nbView === 'cards' ? scopeStudySet(shown) : nbView === 'map' ? all : shown;
+  const study = nbView === 'map' ? all : shown;
   const aq = nbView === 'map' ? '' : q;
   if (!wbAnalysis || wbAnalysis.key !== wbCtx || wbAnalysis.q !== aq || wbAnalysis.view !== nbView) {
     wbAnalysis = { key: wbCtx, q: aq, view: nbView, value: analyzeNotebook(study) };
