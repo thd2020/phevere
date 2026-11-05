@@ -443,7 +443,8 @@ const FOREIGN_PLURALS: Array<[string, string]> = [
 
 /**
  * The word to open and save instead of `word`, or null when `word` is a word in its own right.
- * Rejects when the page could not be fetched, so a caller can fall back or try again later.
+ * Rejects when the page could not be fetched, or when the word frequencies that choose between
+ * two lemmas could not, so a caller can fall back or try again later.
  */
 export function resolveFormOf(http: HttpClient, word: string, lang = 'en', timeoutMs = 4000): Promise<string | null> {
   const w = String(word || '').trim();
@@ -471,6 +472,11 @@ export function resolveFormOf(http: HttpClient, word: string, lang = 'en', timeo
       if (reading.groups.length < 2) return note(dominantLemma(reading.lemmas, await wordFrequencies(http, reading.lemmas.slice(0, 4)).catch(() => new Map<string, number>()), reading.groups));
       const lemmas = reading.lemmas.slice(0, 4);
       const freq = await wordFrequencies(http, lemmas);
+      // Without every lemma's frequency ("teeth": tooth or teethe) there is no answer yet, not an
+      // answer that the word is its own: the caller tries again later instead of noting it checked.
+      if (!lemmas.every((l) => freq.has(l))) {
+        throw Object.assign(new Error(`no word frequencies for ${lemmas.join(', ')}`), { code: 'NO_FREQUENCY' });
+      }
       return note(dominantLemma(lemmas, freq, reading.groups.map((g) => g.filter((l) => lemmas.includes(l))).filter((g) => g.length)));
     });
     resolved.set(key, p);

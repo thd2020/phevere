@@ -1,3 +1,15 @@
+/**
+ * The same word up to accents, case and punctuation: "café" and "cafe", not "coverness" and
+ * "cover". An etymology is shown only for the looked-up word itself, never for a neighbour a
+ * source substitutes for a word it lacks. (The fold is foldLookupKey's, kept here so this module
+ * imports nothing and its tests can load it alone.)
+ */
+export function sameHeadword(a: string, b: string): boolean {
+  const fold = (x: string) =>
+    String(x || '').normalize('NFD').replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, '').toLocaleLowerCase();
+  return fold(a) === fold(b);
+}
+
 export interface EtymologySource {
   source: string;
   language: string;
@@ -5,8 +17,11 @@ export interface EtymologySource {
   body: string;
 }
 
-/** Youdao transports contributions from several authors and dictionaries. */
-export function groupYoudaoEtymologies(etyms: unknown): EtymologySource[] {
+/**
+ * Youdao transports contributions from several authors and dictionaries. Each row names the word
+ * it is about; given `word`, a row about another word is left out.
+ */
+export function groupYoudaoEtymologies(etyms: unknown, word?: string): EtymologySource[] {
   if (!etyms || typeof etyms !== 'object' || Array.isArray(etyms)) return [];
   const entries = etyms as Record<string, unknown>;
   const order = ['zh', 'en', ...Object.keys(entries).filter((k) => k !== 'zh' && k !== 'en')];
@@ -17,6 +32,7 @@ export function groupYoudaoEtymologies(etyms: unknown): EtymologySource[] {
     for (const row of rows) {
       if (!row || typeof row !== 'object') continue;
       const item = row as Record<string, unknown>;
+      if (word && typeof item.word === 'string' && item.word.trim() && !sameHeadword(item.word, word)) continue;
       const value = typeof item.value === 'string' ? item.value.trim() : '';
       if (value.length < 8) continue;
       const attribution = typeof item.source === 'string' ? item.source.trim() : '';
