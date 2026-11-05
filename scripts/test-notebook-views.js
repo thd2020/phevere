@@ -319,6 +319,14 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.ok(layout.at[0][1].y < layout.at[0][0].y, 'the second dot sits on the first');
   assert.equal(layout.at[1][2].x, Math.min(...layout.at.flat().map((p) => p.x)), 'recall at or under 50% piles at the left edge');
   assert.ok(charts.memoryLayout([[0.4], [0.3]]).at[0][0].x === charts.memoryLayout([[0.4], [0.3]]).at[1][0].x, 'everything under 50% shares the edge');
+  // A large notebook held near 100%: every dot stays inside the strip, which grows only if it must.
+  for (const n of [1500, 5000]) {
+    const big = charts.memoryLayout([Array.from({ length: n }, (_, i) => 0.97 + (0.03 * i) / n)]);
+    const ys = big.at[0].map((p) => p.y);
+    assert.ok(Math.min(...ys) - big.size / 2 >= 0, `${n} words: no dot above the strip (top ${Math.min(...ys)})`);
+    assert.ok(Math.max(...ys) + big.size / 2 <= big.base + 1e-9, `${n} words: no dot below the baseline`);
+  }
+  assert.equal(charts.memoryLayout([[0.95, 0.9]]).base, layout.base, 'a small notebook keeps the usual height');
   const empty = progressHtml({ history: [], scope: 'mine', ctx: null, mine: [], goal: 10, now: t0 });
   assert.match(empty, /No answers yet/);
   assert.match(empty, /No words in rotation yet/);
