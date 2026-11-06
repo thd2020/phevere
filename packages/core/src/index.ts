@@ -116,6 +116,7 @@ export {
   attachNotebookMap,
   attachFamilies,
   closeTreeInspector,
+  treeInspectorOpen,
   disposeNotebookMaps,
   type NotebookView,
   type FamilyGrouping,

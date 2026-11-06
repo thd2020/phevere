@@ -2,9 +2,12 @@
  * Cards view: every word is an index card on a table. The cards start in piles (one pile per
  * stretch of time the words were saved in). Clicking a pile pours its cards out where it lies:
  * they spread into the pile's place and the places after it, and the piles that follow slide
- * out of their way. Clicking the pile's label gathers them back. Expand all, in the table's
- * corner, or a double shake of the phone pours every pile out at once and gathers them again.
- * A card's picture turns it over, its back turns it back, and its text opens the lookup.
+ * out of their way. Clicking the pile's first card again, or its label, gathers them back, as
+ * the card you opened in Apple Wallet puts the stack back. Expand all, in the table's corner, or
+ * a double shake of the phone pours every pile out at once and gathers them again. A card's
+ * picture turns it over, its back turns it back, and its text opens the lookup; on the first
+ * card of a poured-out pile the text gathers the pile, and the Look up on its back opens the
+ * lookup.
  *
  * `cardsHtml` returns the markup; `attachCardTable` lays the cards out and runs the motion.
  * Every place on the table is computed here as an absolute `transform`, so a change is a FLIP
@@ -148,7 +151,8 @@ function allButtonHtml(all: boolean): string {
  * The table with its piles and the top cards of each; `attachCardTable` draws the other cards
  * when they come near the screen. On desktop and phone alike, the card's picture turns it over
  * (as the turn button does) and its text opens the lookup. On the back, a click anywhere turns
- * it back, and the Look up button in its corner opens the lookup. `opts.list` names the list
+ * it back, and the Look up button in its corner opens the lookup. Once a pile is poured out, the
+ * text of its first card gathers it again (`attachCardTable`). `opts.list` names the list
  * the cards are from ('mine', a book's id, 'all'); `onLayout` hands it back with each change.
  * `opts.picFlips` is kept for callers written before turning by the picture was the default.
  */
@@ -472,10 +476,16 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
 
   const pileName = new Map<string, string>();
   for (const p of piles) pileName.set(p.key, p.label || (pileEls.get(p.key)?.getAttribute('aria-label') || '').split(',')[0]);
-  /** A card on a closed pile opens the pile, a poured-out card the lookup; its name says which. */
+  /** The first card of a poured-out pile, which gathers the pile when its text is clicked. */
+  const isHead = (c: HTMLElement) => outOf(c) && pileOf.get(c.dataset.id || '')?.rank === 0;
+  /**
+   * A card on a closed pile opens the pile, a poured-out card the lookup, and the first card of a
+   * poured-out pile gathers it; its name says which.
+   */
   const labelCard = (c: HTMLElement) => {
     const q = c.dataset.q || '';
-    const name = outOf(c) ? `${q}: open lookup` : `${q}: open the ${pileName.get(c.dataset.pile || '') || ''} pile`;
+    const pile = pileName.get(c.dataset.pile || '') || '';
+    const name = isHead(c) ? `${q}: gather the ${pile} pile` : outOf(c) ? `${q}: open lookup` : `${q}: open the ${pile} pile`;
     if (c.getAttribute('aria-label') !== name) c.setAttribute('aria-label', name);
   };
 
@@ -695,7 +705,7 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     return !!t.closest?.('.nbv-card__body') && win.performance.now() - (turnedAt.get(card) ?? -Infinity) < TURN_MS;
   };
 
-  /* Controls: Expand all, a pile or a card on it opens the pile, and the open pile's label gathers it. */
+  /* Controls: Expand all, a pile or a card on it opens the pile, and the open pile's label or first card gathers it. */
   on(table, 'click', (ev: any) => {
     const t = ev.target as HTMLElement;
     const stop = () => {
@@ -710,9 +720,16 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     const pile = t.closest?.('.nbv-pile') as HTMLElement | null;
     const card = t.closest?.('.nbv-card') as HTMLElement | null;
     if (card && outOf(card)) {
-      if (!turnsCard(card, t)) return;
+      if (turnsCard(card, t)) {
+        stop();
+        (card.querySelector('.nbv-card__flip') as HTMLElement | null)?.click();
+        return;
+      }
+      // The first card's face, but for its picture (which turns it), gathers the pile again.
+      if (!isHead(card) || card.classList.contains('is-flipped') || t.closest?.('.nbv-card__pic, .nbv-card__flip')) return;
       stop();
-      (card.querySelector('.nbv-card__flip') as HTMLElement | null)?.click();
+      if (win.performance.now() < busyUntil) return;
+      setPile(card.dataset.pile || '', false);
       return;
     }
     if (!pile && !card) return;
@@ -732,7 +749,8 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
     if (!t.classList?.contains('nbv-card')) return;
     ev.preventDefault();
     ev.stopPropagation();
-    // Enter on a poured card is the lookup its text opens; on a pile's card it opens the pile.
+    // Enter on a poured card does what its text does (the lookup, or on the first card, gather
+    // the pile); on a pile's card it opens the pile.
     if (outOf(t)) (t.querySelector('.nbv-card__body') as HTMLElement | null)?.click();
     else t.click();
   });

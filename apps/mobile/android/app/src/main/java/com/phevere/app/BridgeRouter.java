@@ -50,6 +50,11 @@ final class BridgeRouter {
     default String takePendingAuthUrl() {
       return null;
     }
+    /**
+     * Whether the page has a step to go back to. When it has none, Back is left to the system,
+     * which leaves the app with its back-to-home preview. Only the full app keeps a history.
+     */
+    default void setBackEnabled(boolean on) {}
     /** The page finished writing its notebook after a close asked it to (NotebookClose). */
     default void notebookFlushed() {}
   }
@@ -283,6 +288,12 @@ final class BridgeRouter {
             Notify.post(host.context(), p.optString("title", "Phevere"), p.optString("body"));
             resolve(id, new JSONObject().put("ok", true));
             break;
+          case "setBackEnabled": {
+            boolean on = p.optBoolean("on", true);
+            host.runUi(() -> host.setBackEnabled(on));
+            resolve(id, new JSONObject().put("ok", true));
+            break;
+          }
           case "closeStrip":
             host.runUi(host::closeStrip);
             resolve(id, new JSONObject().put("ok", true));
