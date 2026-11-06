@@ -25,6 +25,11 @@
             <action android:name="android.intent.action.GET_CONTENT" />
             <data android:mimeType="image/*" />
         </intent>
+        <!-- Words, Sources: the icon of the app a word was saved from (AppIcons). -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application

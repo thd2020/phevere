@@ -182,6 +182,7 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
       pushInsets();
       if (!isStrip()) SelectionSetup.show(this, true);
     });
+    Notebook.register(this);
 
     if (!isStrip()) {
       // Back (button or gesture) goes to the page first: it closes what is open, then retraces
@@ -523,6 +524,7 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
 
   @Override
   protected void onDestroy() {
+    Notebook.unregister(this);
     io.shutdownNow();
     super.onDestroy();
   }

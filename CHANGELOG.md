@@ -7,15 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Apps in Sources (2026-11-06): Words → Sources now also groups words saved from an app that shows no web address or document, such as a chat app, under the app's name. On Android the row shows the app's own icon; elsewhere it shows the app's first letter. Like a site or a PDF, an app's words can be made into a word book.
+
 ### Changed
 
 - Cards (2026-11-06): once a pile is poured out, clicking its first card again gathers the cards back onto the pile, as the pile's label already did. That card's picture still turns it over, and the Look up button on its back opens the lookup. Every other poured-out card works as before: its text opens the lookup.
 
 ### Fixed
 
-- Back on the phone (2026-11-06): Android's Back button and gesture now go back one step at a time through everything you opened in Phevere: a lookup, the word you tapped inside it, Words, Learn, Settings and the word-book library, each with the tab you last had open and scrolled to where you were. Switching between tabs inside a screen, such as Dictionary and Translation, is not a step of its own. Menus, sheets, the language list, suggestions, a scan and a review close first. Looking up a word from Recent and pressing Back now returns to Recent instead of closing the app; Back closes Phevere only from Recent, and Android 15 and later show the back-to-home preview there. On the iPhone, a swipe in from the left edge does the same.
+- Back on the phone (2026-11-06): Android's Back button and gesture now go back one step at a time through what you opened in Phevere: a lookup, the word you tapped inside it, a word opened from a Words row, a card, the map or Learn, and the word-book library, each scrolled to where you were. A word opened from Words or Learn goes back there. Tapping Lookup, Words, Learn or Settings in the bottom bar is not a step: from any of them but Lookup, Back goes to Recent, as in other Android apps with a bottom bar. Switching between tabs inside a screen, such as Dictionary and Translation, is not a step either. Menus, sheets, the language list, suggestions, a scan and a review close first. Looking up a word from Recent and pressing Back now returns to Recent instead of closing the app; Back closes Phevere only from Recent, and Android 15 and later show the back-to-home preview there. On the iPhone, a swipe in from the left edge does the same.
 - Double shake on Android (2026-11-06): shaking the phone twice on the Cards view now pours every pile out, or gathers them, as Expand all does. It used to need two long, hard shakes, and almost never fired: in a simulation of two ordinary 0.3-second shakes, it fired in none of the runs, and now fires in 99 of 100 for a shake that peaks at about 1.5 g. Shaking the phone up and down works as well as shaking it sideways, and walking, running or turning the phone over does not set it off.
 - Map on the phone (2026-11-06): dragging with two fingers now moves the map, while pinching zooms and twisting turns it, as in map apps. One finger still turns and tilts it. A drag that starts on the map no longer pulls the Words list down to reload it.
+- Saving from the Android pop-up (2026-11-06): a word saved from the pop-up over another app is now kept. Before, it did not show in My words while the app was open in the background, and the app's next save erased it, so only words saved again inside the app stayed. Now the word is written at once, appears in the open app's My words straight away, and goes out with the next sync. Closing the pop-up right after tapping Save no longer loses the word either.
+- Android notebook that cannot be read (2026-11-06): if the phone cannot read the notebook file, Phevere now reports an error instead of starting an empty notebook that the next save would write over your words.
 
 ## [4.2.0] - 2026-11-06
 
