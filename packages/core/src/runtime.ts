@@ -23,6 +23,12 @@ export interface VocabDb {
   queryAll(sql: string, params?: unknown[]): Promise<Record<string, unknown>[]>;
   queryOne(sql: string, params?: unknown[]): Promise<Record<string, unknown> | null>;
   runWrite(sql: string, params?: unknown[]): Promise<void>;
+  /**
+   * Picks up writes another page made to the same notebook file since this copy was read. The
+   * phone keeps one copy per page (the app and its pop-up); a sync calls this first so it
+   * sends every word, wherever it was saved.
+   */
+  refresh?(): Promise<void>;
 }
 
 export type Sha256Hex = (input: string) => Promise<string> | string;

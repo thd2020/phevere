@@ -28,7 +28,7 @@ public class ProcessTextActivity extends Activity {
   }
 
   /**
-   * Where the selection was: the launching app's name always, and the page title or URL the
+   * Where the selection was: the launching app's name and package always, and the page title or URL the
    * LSPosed module read in that app. Null for a lookup from inside Phevere.
    */
   private org.json.JSONObject source() {
@@ -46,7 +46,8 @@ public class ProcessTextActivity extends Activity {
       }
     }
     try {
-      org.json.JSONObject out = new org.json.JSONObject().put("app", app.trim());
+      // The package name finds the app's icon for Words, Sources.
+      org.json.JSONObject out = new org.json.JSONObject().put("app", app.trim()).put("appId", pkg);
       String title = in != null ? in.getStringExtra(SelectionBar.EXTRA_SOURCE_TITLE) : null;
       String url = in != null ? in.getStringExtra(SelectionBar.EXTRA_SOURCE_URL) : null;
       if (title != null && !title.trim().isEmpty() && !title.trim().equals(app.trim())) out.put("title", title.trim());

@@ -7,11 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Apps in Sources (2026-11-06): Words → Sources now also groups words saved from an app that shows no web address or document, such as a chat app, under the app's name. On Android the row shows the app's own icon; elsewhere it shows the app's first letter. Like a site or a PDF, an app's words can be made into a word book.
+
 ### Fixed
 
 - Roots and Deep roots in Words → Families (2026-11-06): many words that share a root were left out. Most Wiktionary entries for English words do not name the Proto-Indo-European root themselves; the Latin, Greek or Old English word they came from usually does. Phevere now reads that word's entry too, so "cerebrate", "chisel" and "attest" join their deep roots. Roots also groups words that came from the same earlier word even when no root the spelling shows ties them, for example "cortex" and "cortical" under Latin cortex, "gilt" and "gilded" under Old English gyldan, and "synapsis" and "synapses" under Greek σύναψις. Words that only meet at a spelling shared by two older words, such as "fowl" and "foul" at Middle English foul, are not put together, and a word does not take the root of a preposition like Latin ex that it was built with. On a notebook of 577 saved words, Roots now groups about 75 words instead of 45 and Deep roots about 73 instead of 52, and about 127 words are in at least one of the two. The first time you open Families after updating, your words are traced again once; if that is cut short, the rest is read the next time you open Families.
 - Date and A–Z rails in Words (2026-11-06): the rail beside the list now always starts below the book row, the view switcher and the Recent and A–Z switch, and ends where the list ends or above the status bar, whichever comes first. Before, when Words had been drawn while another tab was open, the date rail started at the book row and ran over the switch. The rail now follows the list as rows above it change, as the window is resized and as you switch tabs. On a short window or a short list it shows every second or third date or letter so they never pile up, and dragging along it still reaches each one. A list of a row or two gets no rail. On the phone, the A–Z rail no longer starts behind the search and view rows.
 - Search and Clear on Recent (2026-11-06): on the desktop, the Clear button that wiped every recent lookup sat right where the search field's own clear button sits on the other tabs, so clearing the search could empty the Recent page. It is now called Clear history, sits above the list instead of beside the search field, and a bar at the bottom offers Undo for eight seconds. The search field now filters Recent as you type, as it filters Words, and clearing it brings the whole list back.
+- Saving from the Android pop-up (2026-11-06): a word saved from the pop-up over another app is now kept. Before, it did not show in My words while the app was open in the background, and the app's next save erased it, so only words saved again inside the app stayed. Now the word is written at once, appears in the open app's My words straight away, and goes out with the next sync. Closing the pop-up right after tapping Save no longer loses the word either.
+- Android notebook that cannot be read (2026-11-06): if the phone cannot read the notebook file, Phevere now reports an error instead of starting an empty notebook that the next save would write over your words.
 
 ## [4.2.0] - 2026-11-06
 
