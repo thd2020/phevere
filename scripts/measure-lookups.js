@@ -13,7 +13,10 @@
  *   --sample 40         that many words, evenly spaced through the book
  *   --also "etc.,e.g."  extra words, comma separated
  *   --profile normal    normal: every request 150 to 400 ms; slow: 1 to 3 s and 5% hang;
- *                       live: the network as it is, no replay
+ *                       dead: nothing answers, every request runs out its timeout (Wi-Fi
+ *                       without internet); refused: every request fails at once (no network,
+ *                       names do not resolve); live: the network as it is, no replay
+ *   --pack              every sampled word is also in a downloaded offline pack, with one sense
  *   --delay 1000-3000 --hang 0.05   override the profile's delay range and share of hangs
  *   --replay <dir>      saved responses (default: phevere-measure-lookups in the temp folder);
  *                       a URL not saved yet is fetched and saved, unless --offline is given
@@ -41,11 +44,19 @@ const arg = (name, def) => {
   return i >= 0 && i + 1 < args.length ? args[i + 1] : def;
 };
 const profile = arg('profile', 'normal');
-const PROFILES = { normal: { delay: [150, 400], hang: 0 }, slow: { delay: [1000, 3000], hang: 0.05 }, live: { delay: [0, 0], hang: 0 } };
+const PROFILES = {
+  normal: { delay: [150, 400], hang: 0 },
+  slow: { delay: [1000, 3000], hang: 0.05 },
+  dead: { delay: [0, 0], hang: 1 },
+  refused: { delay: [0, 0], hang: 0, refuse: 1 },
+  live: { delay: [0, 0], hang: 0 },
+};
 if (!PROFILES[profile]) throw new Error(`--profile is one of ${Object.keys(PROFILES).join(', ')}`);
 const delayArg = arg('delay', '');
 const delay = delayArg ? delayArg.split('-').map(Number) : PROFILES[profile].delay;
 const hang = Number(arg('hang', String(PROFILES[profile].hang)));
+const refuse = PROFILES[profile].refuse || 0;
+const withPack = args.includes('--pack');
 const seed = arg('seed', 'phevere');
 const replayDir = arg('replay', path.join(os.tmpdir(), 'phevere-measure-lookups'));
 const offline = args.includes('--offline');
@@ -134,8 +145,15 @@ async function lookupOne(word) {
     };
     base.requestBytes = async () => ({ ok: false, status: 404, bytes: new Uint8Array(), contentType: '' });
   }
-  const net = withLatency(base, { delay, hang, seed, errorClass: core.DictionaryError });
-  core.configureCore({ sha256Hex: (t) => t, http: net.http, lookupCache: { get: () => null, set: () => {} } });
+  const net = withLatency(base, { delay, hang, refuse, seed, errorClass: core.DictionaryError });
+  core.configureCore({
+    sha256Hex: (t) => t,
+    http: net.http,
+    lookupCache: { get: () => null, set: () => {} },
+    ...(withPack
+      ? { lookupOffline: async (hw) => (sampled.has(String(hw).toLowerCase()) ? [{ headword: hw, language: 'en', pos: 'noun', definition: `(offline pack) ${hw}`, packId: 'wordnet', packName: 'WordNet' }] : []) }
+      : {}),
+  });
   const service = new core.DictionaryService();
   const t0 = Date.now();
   let state = null;
@@ -183,9 +201,13 @@ function quantile(list, q) {
   return Math.round(s[Math.min(s.length - 1, Math.floor(q * s.length))]);
 }
 
+/** The sampled words, bare and lower case, for --pack. */
+const sampled = new Set();
+
 async function main() {
   const words = readWords();
-  console.log(`${words.length} words, profile ${profile} (delay ${delay.join('-')} ms, hang ${hang}), core ${path.relative(root, coreDir) || coreDir}`);
+  for (const w of words) sampled.add(w.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''));
+  console.log(`${words.length} words, profile ${profile} (delay ${delay.join('-')} ms, hang ${hang}${refuse ? `, refused ${refuse}` : ''}${withPack ? ', offline pack' : ''}), core ${path.relative(root, coreDir) || coreDir}`);
   const rows = [];
   let next = 0;
   await Promise.all(
