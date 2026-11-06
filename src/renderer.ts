@@ -68,6 +68,8 @@ import {
   notebookViewSwitchHtml,
   filterRecentLookups,
   recentListHtml,
+  vocabCopyText,
+  flashCopied,
   learnHtml,
   attachLearnCharts,
   revealQuestion,
@@ -3229,6 +3231,19 @@ function wireNotebookActions(root: HTMLElement): void {
         ev.stopPropagation();
         if (el.dataset.lemma) void playLemmaPronunciation(el.dataset.lemma, el);
         return;
+      case 'nb-copy': {
+        // data-q: the word as saved; data-id: an opened row's word with its meaning.
+        const entry = el.dataset.id ? vocabNotebookCache.find((x) => x?.id === el.dataset.id) : null;
+        const text = entry ? vocabCopyText(entry) : (el.dataset.q || '').trim();
+        if (!text) return;
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          await (window as any).clipboardAPI?.copy?.(text);
+        }
+        flashCopied(el);
+        return;
+      }
       case 'nb-toggle': {
         const item = el.closest<HTMLElement>('.vocab-item');
         const id = item?.dataset.id;

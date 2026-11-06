@@ -166,6 +166,8 @@
 .wb-state--learning { background: var(--nbv-teal-soft, #c5f0f1); color: #00393b; }
 .wb-state--known { background: var(--nbv-teal, #0f6e71); color: #fff; }
 .wb-row__acts { display: inline-flex; gap: 2px; flex: none; }
+/* A long word shortens with an ellipsis rather than pushing the row's buttons onto a second line. */
+.wb-row__word { flex: 1 1 0; max-width: max-content; }
 .wb-row { flex-wrap: wrap; }
 .wb-row__word { cursor: pointer; }
 .wb-row.is-open .wb-row__word { color: var(--nbv-ember, #9c3d00); }
@@ -206,6 +208,8 @@ button.wb-act:hover { background: var(--nbv-paper-2, #eeeae4); color: var(--nbv-
 .wb-act svg { width: 18px; height: 18px; }
 .wb-act.is-on { color: var(--nbv-ember, #9c3d00); }
 .wb-act[data-act='wb-known'].is-on { color: var(--nbv-teal, #0f6e71); }
+/* Copy turns into a tick for a moment after it copies. */
+.wb-act.is-copied { color: var(--nbv-teal, #0f6e71); }
 .wb-more { display: block; margin: 14px auto 6px; }
 
 /* Book badges on any row */
