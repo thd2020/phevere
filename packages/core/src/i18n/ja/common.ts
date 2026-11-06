@@ -1,0 +1,26 @@
+import type { Catalog } from '../runtime';
+
+export default {
+  'common.cancel': 'キャンセル',
+  'common.close': '閉じる',
+  'common.copy': 'コピー',
+  'common.copied': 'コピーしました',
+  'common.delete': '削除',
+  'common.remove': '削除',
+  'common.undo': '取り消す',
+  'common.save': '保存',
+  'common.loading': '読み込み中…',
+  'common.search': '検索',
+  'common.back': '戻る',
+  'common.more': 'その他',
+  'common.on': 'オン',
+  'common.off': 'オフ',
+  'common.download': 'ダウンロード',
+  'common.open': '開く',
+  'common.settings': '設定',
+  'common.learn': '学習',
+  'common.lookup': '調べる',
+  'common.translate': '翻訳',
+  'common.edit': '編集',
+  'common.ok': 'OK',
+} satisfies Partial<Catalog>;
