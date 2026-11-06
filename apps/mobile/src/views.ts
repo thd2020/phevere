@@ -73,6 +73,7 @@ import {
   languageName,
   vocabLangChipsHtml,
   vocabLanguages,
+  pictureSrc,
 } from '@phevere/core';
 
 export type Tab = 'lookup' | 'notebook' | 'learn' | 'settings';
@@ -335,10 +336,12 @@ export function lexiconSenses(result: DictionaryResult | null): Definition[] {
 export function senseFigureHtml(img: SenseImage, index: number): string {
   const label = `${img.title} — ${img.credit}`;
   // Every figure has the same 4:3 box as the placeholder kept for it, so nothing moves when it
-  // arrives; the picture is cropped to fill it, and opening it shows it whole.
+  // arrives; the picture is cropped to fill it, and opening it shows it whole. The box stays blank
+  // until the picture has loaded (hydratePictures, picture-load.ts); one already here shows at once.
+  const src = pictureSrc(img.thumb);
   return `<figure class="sense-figure" data-sense-figure="${index}" style="--ar:${SENSE_FIGURE_RATIO}">
-    <button type="button" class="sense-figure__frame" data-act="sense-figure" data-full="${esc(img.url || img.thumb)}" data-thumb="${esc(img.thumb)}" data-title="${esc(img.title)}" data-credit="${esc(img.credit)}" data-page="${esc(img.pageUrl)}" aria-label="${esc(label)}" title="${esc(label)}">
-      <img src="${esc(img.thumb)}" alt="${esc(img.title)}" decoding="async" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('is-loaded')" onerror="this.closest('figure').remove()" />
+    <button type="button" class="sense-figure__frame${src ? ' is-loaded' : ''}" data-act="sense-figure" data-full="${esc(img.url || img.thumb)}" data-thumb="${esc(img.thumb)}" data-title="${esc(img.title)}" data-credit="${esc(img.credit)}" data-page="${esc(img.pageUrl)}" aria-label="${esc(label)}" title="${esc(label)}">
+      <img data-pic="${esc(img.thumb)}"${src ? ` src="${esc(src)}"` : ''} alt="${esc(img.title)}" decoding="async" referrerpolicy="no-referrer" />
     </button>
     <figcaption class="sense-figure__credit"><button type="button" class="sense-figure__link" data-act="sense-credit" data-url="${esc(img.pageUrl)}">${esc(img.credit)}</button></figcaption>
   </figure>`;

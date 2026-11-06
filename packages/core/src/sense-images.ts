@@ -56,7 +56,7 @@
  */
 import { getHttp, getLookupCache, isCoreConfigured } from './runtime';
 import type { HttpClient, HttpRequestInit, HttpTextResponse, HttpBytesResponse } from './http';
-import { hostOf, trackHttp } from './net';
+import { dropUnwanted, hostOf, isCancelled, trackHttp } from './net';
 
 export interface SenseImage {
   /** A larger rendering (at most 960 px wide) for a zoomed view. */
@@ -1023,12 +1023,34 @@ function logFailure(url: string, err: unknown): void {
 
 const jsonCache = new Map<string, Promise<unknown>>();
 
-/** A JSON answer, or null when the request failed (the failure is logged once per host). */
-function getJson<T>(url: string, timeoutMs = TIMEOUT_MS, later = false): Promise<T | null> {
+/**
+ * Whether the pictures a request serves are still wanted: a card scrolled away no longer wants
+ * its word's pictures, a lookup always does (no function). Passed down from `fetchWordImage`.
+ */
+type Wanted = (() => boolean) | undefined;
+const ALWAYS = (): boolean => true;
+/** Who waits for each request not answered yet; it is dropped from its queue once none does. */
+const interest = new Map<string, Set<() => boolean>>();
+
+/** Whether any of these callers still wants the answer. */
+function anyWants(set: Set<() => boolean>): () => boolean {
+  return () => Array.from(set).some((f) => f());
+}
+
+/**
+ * A JSON answer, or null when the request failed (the failure is logged once per host) or was
+ * dropped before it went out because nobody wanted it any more (`wanted`).
+ */
+function getJson<T>(url: string, timeoutMs = TIMEOUT_MS, later = false, wanted?: Wanted): Promise<T | null> {
   const hit = jsonCache.get(url);
-  if (hit) return hit as Promise<T | null>;
+  if (hit) {
+    interest.get(url)?.add(wanted || ALWAYS);
+    return hit as Promise<T | null>;
+  }
+  const fans = new Set<() => boolean>([wanted || ALWAYS]);
+  interest.set(url, fans);
   const { http, headers } = client();
-  const once = () => http.requestJson<T>(url, { headers, timeoutMs, slot: later ? 'later' : 'first' });
+  const once = () => http.requestJson<T>(url, { headers, timeoutMs, slot: later ? 'later' : 'first', wanted: anyWants(fans) });
   const p = once()
     .catch(async (err: unknown) => {
       // Rate limited or overloaded: one more try after a pause.
@@ -1037,26 +1059,33 @@ function getJson<T>(url: string, timeoutMs = TIMEOUT_MS, later = false): Promise
       return once();
     })
     .catch((err: unknown): null => {
-      logFailure(url, err);
+      if (!isCancelled(err)) logFailure(url, err);
       jsonCache.delete(url);
       return null;
+    })
+    .then((v) => {
+      interest.delete(url);
+      return v;
     });
   if (jsonCache.size > 300) jsonCache.clear();
   jsonCache.set(url, p);
   return p;
 }
 
-async function titleQuery(url: string, later = false): Promise<TitleQuery | null> {
-  const res = await getJson<{ query?: TitleQuery }>(url, TIMEOUT_MS, later);
+async function titleQuery(url: string, later = false, wanted?: Wanted): Promise<TitleQuery | null> {
+  const res = await getJson<{ query?: TitleQuery }>(url, TIMEOUT_MS, later, wanted);
   return res?.query || null;
 }
 
 /** Pictures used in several articles, one request, by article title (redirects followed). */
-async function articleImageFilesMany(titles: string[], lang: string): Promise<Map<string, string[]>> {
+async function articleImageFilesMany(titles: string[], lang: string, wanted?: Wanted): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
   if (!titles.length) return out;
   const res = await getJson<{ query?: TitleQuery & { pages?: Array<WikipediaPage & { images?: Array<{ title: string }> }> } }>(
     buildArticleImagesManyUrl(titles, lang),
+    TIMEOUT_MS,
+    false,
+    wanted,
   );
   const q = res?.query;
   if (!q) return out;
@@ -1077,6 +1106,8 @@ const BATCH_MAX = 50;
 interface Batch {
   keys: string[];
   waiters: Array<(res: unknown) => void>;
+  /** Whether each waiter still wants the answer; the batch is wanted while any of them does. */
+  wants: Set<() => boolean>;
   timer: ReturnType<typeof setTimeout> | null;
 }
 const batches = new Map<string, Batch>();
@@ -1086,7 +1117,7 @@ function flushBatch(kind: string, build: (keys: string[]) => string, timeoutMs =
   if (!batch) return;
   batches.delete(kind);
   if (batch.timer) clearTimeout(batch.timer);
-  void getJson<unknown>(build(batch.keys), timeoutMs, later).then((res) => {
+  void getJson<unknown>(build(batch.keys), timeoutMs, later, anyWants(batch.wants)).then((res) => {
     for (const w of batch.waiters) w(res);
   });
 }
@@ -1098,22 +1129,24 @@ function batched<T>(
   max = BATCH_MAX,
   timeoutMs = TIMEOUT_MS,
   later = false,
+  wanted?: Wanted,
 ): Promise<T | null> {
-  const wanted = Array.from(new Set(keys.filter(Boolean)));
-  if (!wanted.length) return Promise.resolve(null);
-  if (wanted.length > max) return getJson<T>(build(wanted.slice(0, max)), timeoutMs, later);
+  const unique = Array.from(new Set(keys.filter(Boolean)));
+  if (!unique.length) return Promise.resolve(null);
+  if (unique.length > max) return getJson<T>(build(unique.slice(0, max)), timeoutMs, later, wanted);
   const open = batches.get(kind);
-  if (open && new Set([...open.keys, ...wanted]).size > max) flushBatch(kind, build, timeoutMs, later);
+  if (open && new Set([...open.keys, ...unique]).size > max) flushBatch(kind, build, timeoutMs, later);
   let batch = batches.get(kind);
   if (!batch) {
-    batch = { keys: [], waiters: [], timer: null };
+    batch = { keys: [], waiters: [], wants: new Set(), timer: null };
     batches.set(kind, batch);
     const b0 = batch;
     batch.timer = setTimeout(() => {
       if (batches.get(kind) === b0) flushBatch(kind, build, timeoutMs, later);
     }, BATCH_WINDOW_MS);
   }
-  for (const t of wanted) if (!batch.keys.includes(t)) batch.keys.push(t);
+  for (const t of unique) if (!batch.keys.includes(t)) batch.keys.push(t);
+  batch.wants.add(wanted || ALWAYS);
   const b = batch;
   return new Promise((resolve) => b.waiters.push((res) => resolve(res as T | null)));
 }
@@ -1124,14 +1157,15 @@ function batchedTitleQuery(
   titles: string[],
   max = BATCH_MAX,
   timeoutMs = TIMEOUT_MS,
+  wanted?: Wanted,
 ): Promise<TitleQuery | null> {
-  return batched<{ query?: TitleQuery }>(kind, build, titles, max, timeoutMs).then((r) => (r ? r.query || {} : null));
+  return batched<{ query?: TitleQuery }>(kind, build, titles, max, timeoutMs, false, wanted).then((r) => (r ? r.query || {} : null));
 }
 
 /** File details already fetched, by lower-case file name, so a file is asked for once. */
 const infoCache = new Map<string, ImageInfo>();
 
-async function imageInfos(files: string[]): Promise<Map<string, ImageInfo>> {
+async function imageInfos(files: string[], wanted?: Wanted): Promise<Map<string, ImageInfo>> {
   const out = new Map<string, ImageInfo>();
   const all = Array.from(new Set(files.map((f) => f.replace(/_/g, ' '))));
   for (const f of all) {
@@ -1140,7 +1174,7 @@ async function imageInfos(files: string[]): Promise<Map<string, ImageInfo>> {
   }
   const unique = all.filter((f) => !out.has(f.toLowerCase()));
   if (!unique.length) return out;
-  const q = (await batchedTitleQuery('commons-info', buildImageInfoUrl, unique)) as {
+  const q = (await batchedTitleQuery('commons-info', buildImageInfoUrl, unique, BATCH_MAX, TIMEOUT_MS, wanted)) as {
     normalized?: Array<{ from: string; to: string }>;
     pages?: Array<{ title: string; missing?: boolean; imageinfo?: ImageInfo[] }>;
   } | null;
@@ -1470,7 +1504,8 @@ export function lexemeFit(l: LexemeSense, sense: SenseInput, lemma: string): num
  */
 export interface PoolPicture {
   file: string;
-  source: 'wiktionary' | 'lexeme' | 'senseitem' | 'article';
+  /** `search`: a search for the word (`searchPictures`), made only for a card no source had a picture for. */
+  source: 'wiktionary' | 'lexeme' | 'senseitem' | 'article' | 'search';
   /** Index into the pool's Wiktionary pictures or lexeme senses. */
   ref: number;
   image?: SenseImage;
@@ -1500,6 +1535,8 @@ export interface PicturePool {
   complete: boolean;
   /** A request failed, so the pool may lack pictures it would otherwise have. */
   failed: boolean;
+  /** The search for the word has been made (`searchPictures`), so it is not made again. */
+  searched?: boolean;
 }
 
 /** Definition lines by etymology, from a Wiktionary language section with two etymologies or more. */
@@ -1766,6 +1803,143 @@ function wholeWordPicture(pool: PicturePool, hidden: Set<string>): SenseImage | 
   return order.find(ok)?.image || null;
 }
 
+/**
+ * A card always shows a picture when the word has one anywhere, the way flashcard apps put an
+ * image on every card they can. When no picture fits the card's saved sense, the card takes the
+ * word's best picture. Pictures editors placed on the word's Wiktionary entry come first (tied to
+ * a sense, then the entry's others, then a definition line's item), then the article titled with
+ * the word, then a Wikidata lexeme sense's picture (less curated: "popsicle" has a lone lexeme
+ * sense whose picture is of something else), then articles on the word's disambiguation page and
+ * a foreign word's gloss article, then a search for the word on Wikipedia and Commons
+ * (`searchPictures`). A sense labelled slang, vulgar, figurative and the like lends no picture.
+ * A portrait of a named person, a map or a logo comes only after everything else, and a hidden
+ * picture never. The lookup keeps its per-sense matching (`assignPictures`).
+ */
+function poolFallback(pool: PicturePool, hidden: Set<string>, sense: string, loose: boolean): SenseImage | null {
+  const off = (p: PoolPicture) => isHidden(hidden, p.file, sense) || (!sense && Array.from(hidden).some((h) => h.split(HIDDEN_SEP)[0] === p.file.toLowerCase()));
+  const labelled = (p: PoolPicture): boolean => {
+    const text =
+      p.source === 'lexeme'
+        ? pool.lexemes[p.ref]?.gloss
+        : p.source === 'senseitem'
+          ? pool.senseItems[p.ref]?.senseText
+          : p.source === 'wiktionary'
+            ? pool.wiktionary[p.ref]?.senseText
+            : '';
+    return BAD_LABELS.test(String(text || ''));
+  };
+  const tier = (p: PoolPicture): number => {
+    if (p.source === 'wiktionary') return pool.wiktionary[p.ref]?.senseText ? 0 : 1;
+    if (p.source === 'senseitem') return 2;
+    if (p.source === 'article' && p.ref < 1000) return 3;
+    if (p.source === 'lexeme') return 4;
+    if (p.source === 'article') return p.ref >= 2000 ? 5 : 6;
+    return 7;
+  };
+  const list = pool.pictures
+    .filter((p) => !!p.image && !off(p) && !labelled(p) && (loose || (!p.portrait && !p.chart)))
+    .map((p, i) => ({ p, i }))
+    .sort((x, y) => tier(x.p) - tier(y.p) || x.p.ref - y.p.ref || x.i - y.i);
+  return list[0]?.p.image || null;
+}
+
+/** A Commons search for files about a word, with each file's details, in one request. */
+export function buildCommonsSearchUrl(word: string): string {
+  return (
+    'https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2' +
+    `&generator=search&gsrnamespace=6&gsrlimit=12&gsrsearch=${encodeURIComponent(word)}` +
+    `&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=${THUMB_WIDTH}` +
+    '&iiextmetadatafilter=Artist|LicenseShortName|ImageDescription|Categories&iiextmetadatalanguage=en&origin=*'
+  );
+}
+
+/** A Wikipedia search for articles about a word, with each article's free lead image. */
+export function buildWikipediaSearchUrl(word: string, lang = 'en'): string {
+  return (
+    `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&formatversion=2` +
+    `&generator=search&gsrnamespace=0&gsrlimit=5&gsrsearch=${encodeURIComponent(word)}` +
+    `&prop=pageimages|pageprops|description&piprop=name|thumbnail&pithumbsize=${THUMB_WIDTH}` +
+    '&pilicense=free&ppprop=disambiguation&origin=*'
+  );
+}
+
+/**
+ * Adds the pictures a search for the word finds to the pool, for a card no source had one for.
+ * First the lead images of the articles Wikipedia's search ranks for the word ("anonymity" gives
+ * the article Anonymity), when the article is named with the word and is about a concept rather
+ * than a person, a work or a place (`acceptConceptPage`). Then files from a Commons search whose
+ * name has the word, best fitting the card's sense first; sounds, documents, interface icons,
+ * maps, logos and files named for a person or a work drop out. False when a request failed (the
+ * search is made again later).
+ */
+async function searchPictures(pool: PicturePool, gloss: string, wanted?: Wanted): Promise<boolean> {
+  type Page = { title: string; index?: number; imageinfo?: ImageInfo[] };
+  const lang = pool.lang === 'en' ? 'en' : pool.lang;
+  const [wiki, commons] = await Promise.all([
+    getJson<{ query?: { pages?: WikipediaPage[] } }>(buildWikipediaSearchUrl(pool.lemma, lang), TIMEOUT_MS, false, wanted),
+    getJson<{ query?: { pages?: Page[] } }>(buildCommonsSearchUrl(pool.lemma), TIMEOUT_MS, false, wanted),
+  ]);
+  if (!wiki || !commons) return false;
+  const articles = (wiki.query?.pages || [])
+    .slice()
+    .sort((x, y) => (x.index ?? 0) - (y.index ?? 0))
+    .filter((page) => sharesWord(titleParts(page.title).base, pool.lemma) && acceptConceptPage(page))
+    .slice(0, 2);
+  const infos = articles.length ? await imageInfos(articles.map((page) => String(page.pageimage)), wanted) : new Map<string, ImageInfo>();
+  const found: PoolPicture[] = [];
+  articles.forEach((page, k) => {
+    const file = String(page.pageimage).replace(/_/g, ' ');
+    const image = imageFromInfo(file, page.title, infos.get(file.toLowerCase()));
+    if (image) found.push({ file, source: 'search', ref: k, image });
+  });
+  const senseWords = contentTokens(glossBody(gloss), pool.lemma);
+  const named = (commons.query?.pages || [])
+    .map((page, i) => {
+      const file = String(page.title || '').replace(/^File:/i, '');
+      const info = page.imageinfo?.[0];
+      const name = commonsFileTitle(file);
+      if (!file || !info || !sharesWord(name, pool.lemma) || CHROME_FILE.test(name) || badMatch(BAD_FILE, name, pool.lemma)) return null;
+      const categories = stripHtml(info.extmetadata?.Categories?.value || '');
+      // "Apathy rapper", an album cover: a picture of a person or a work named with the word.
+      if (badMatch(BAD_DESCRIPTION, `${name} ${categories}`, pool.lemma) || PERSON_CATEGORY.test(categories)) return null;
+      const image = imageFromInfo(file, name, info);
+      if (!image) return null;
+      const score = overlap(contentTokens(name, pool.lemma), senseWords) - (page.index ?? i) / 100;
+      return { file, image, score, chart: badMatch(BAD_CATEGORY, categories, pool.lemma) };
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x)
+    .sort((x, y) => y.score - x.score)
+    .slice(0, 4);
+  named.forEach((x, k) => found.push({ file: x.file, source: 'search', ref: 10 + k, image: x.image, chart: x.chart }));
+  pool.pictures = pool.pictures.filter((p) => p.source !== 'search').concat(found);
+  pool.searched = true;
+  return true;
+}
+
+/**
+ * The picture a card shows: the one its saved sense would show in a lookup, else the word's best
+ * picture (`poolFallback`), searching for the word when the pool has none.
+ */
+async function cardPicture(
+  pool: PicturePool,
+  key: string,
+  hidden: Set<string>,
+  sense: string,
+  matched: SenseImage | null,
+  wanted?: Wanted,
+): Promise<SenseImage | null> {
+  if (matched) return matched;
+  const clean = poolFallback(pool, hidden, sense, false);
+  if (clean) return clean;
+  // A pool missing answers may still have pictures to come (a card retries), so it is not searched.
+  if (!pool.searched && !pool.failed && !(wanted && !wanted()) && (await searchPictures(pool, sense, wanted))) {
+    writePool(key, pool);
+    const found = poolFallback(pool, hidden, sense, false);
+    if (found) return found;
+  }
+  return poolFallback(pool, hidden, sense, true);
+}
+
 // ---------------------------------------------------------------- building a pool
 
 let wikitextSource: ((word: string) => Promise<string>) | null = null;
@@ -1781,7 +1955,7 @@ export function registerWiktionaryWikitextSource(source: ((word: string) => Prom
 /** Wiktionary pages asked for together (a screen of cards) come in one request, four at most. */
 const WIKTIONARY_BATCH = 4;
 
-async function wikitextFor(lemma: string): Promise<{ text: string; ok: boolean }> {
+async function wikitextFor(lemma: string, wanted?: Wanted): Promise<{ text: string; ok: boolean }> {
   if (wikitextSource) {
     try {
       const text = await wikitextSource(lemma);
@@ -1796,6 +1970,7 @@ async function wikitextFor(lemma: string): Promise<{ text: string; ok: boolean }
     [lemma],
     WIKTIONARY_BATCH,
     WIKTIONARY_TIMEOUT_MS,
+    wanted,
   );
   if (!q) return { text: '', ok: false };
   const page = resolveTitle(q, lemma) as { revisions?: Array<{ slots?: { main?: { content?: string } } }> } | undefined;
@@ -1805,14 +1980,14 @@ async function wikitextFor(lemma: string): Promise<{ text: string; ok: boolean }
 /** Lexeme queries asked together share one SPARQL request, twelve lemmas at most. */
 const LEXEME_BATCH = 12;
 
-async function lexemesFor(lemma: string, lang: string): Promise<{ senses: LexemeSense[]; ok: boolean }> {
+async function lexemesFor(lemma: string, lang: string, wanted?: Wanted): Promise<{ senses: LexemeSense[]; ok: boolean }> {
   const tag = lexemeLanguageTag(lang);
   type Rows = { results?: { bindings?: SparqlBinding[] } };
   // A batch the query service could not answer in time is asked again for this lemma alone,
   // which is quick: the batch is slow because of its size, not because of any one word.
   const res =
-    (await batched<Rows>(`lexemes:${tag}`, (lemmas) => buildLexemeQueryUrl(lemmas, tag), [lemma], LEXEME_BATCH)) ||
-    (await getJson<Rows>(buildLexemeQueryUrl([lemma], tag), RETRY_TIMEOUT_MS));
+    (await batched<Rows>(`lexemes:${tag}`, (lemmas) => buildLexemeQueryUrl(lemmas, tag), [lemma], LEXEME_BATCH, TIMEOUT_MS, false, wanted)) ||
+    (wanted && !wanted() ? null : await getJson<Rows>(buildLexemeQueryUrl([lemma], tag), RETRY_TIMEOUT_MS, false, wanted));
   if (!res) return { senses: [], ok: false };
   return { senses: parseLexemeRows(res.results?.bindings || [], lemma), ok: true };
 }
@@ -1824,14 +1999,18 @@ export function buildItemImagesUrl(items: string[]): string {
   return `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(q)}`;
 }
 
-async function itemImages(items: string[], later = false): Promise<{ images: Map<string, string[]>; labels: Map<string, string>; ok: boolean }> {
+async function itemImages(
+  items: string[],
+  later = false,
+  wanted?: Wanted,
+): Promise<{ images: Map<string, string[]>; labels: Map<string, string>; ok: boolean }> {
   const images = new Map<string, string[]>();
   const labels = new Map<string, string>();
   if (!items.length) return { images, labels, ok: true };
   type Rows = { results?: { bindings?: SparqlBinding[] } };
   const res =
-    (await batched<Rows>(later ? 'items-later' : 'items', buildItemImagesUrl, items, 40, TIMEOUT_MS, later)) ||
-    (await getJson<Rows>(buildItemImagesUrl(items), RETRY_TIMEOUT_MS, later));
+    (await batched<Rows>(later ? 'items-later' : 'items', buildItemImagesUrl, items, 40, TIMEOUT_MS, later, wanted)) ||
+    (wanted && !wanted() ? null : await getJson<Rows>(buildItemImagesUrl(items), RETRY_TIMEOUT_MS, later, wanted));
   if (!res) return { images, labels, ok: false };
   for (const b of res.results?.bindings || []) {
     const id = (b.item?.value || '').split('/').pop() || '';
@@ -1866,13 +2045,13 @@ export function buildTitledItemImagesUrl(titles: string[], lang = 'en'): string 
 }
 
 /** The item of the article titled `title` and that item's images; no item when it has none or the request failed. */
-async function articleItemImages(title: string, lang: string): Promise<{ item: string; images: Map<string, string[]> }> {
+async function articleItemImages(title: string, lang: string, wanted?: Wanted): Promise<{ item: string; images: Map<string, string[]> }> {
   const images = new Map<string, string[]>();
   const name = wikiTitle(title);
   const code = lexemeLanguageTag(lang);
   if (!name) return { item: '', images };
   type Rows = { results?: { bindings?: SparqlBinding[] } };
-  const res = await batched<Rows>(`titled-items:${code}`, (titles) => buildTitledItemImagesUrl(titles, code), [name], 40);
+  const res = await batched<Rows>(`titled-items:${code}`, (titles) => buildTitledItemImagesUrl(titles, code), [name], 40, TIMEOUT_MS, false, wanted);
   let item = '';
   for (const b of res?.results?.bindings || []) {
     if (b.name?.value !== name) continue;
@@ -1890,12 +2069,12 @@ async function articleItemImages(title: string, lang: string): Promise<{ item: s
 const filling = new WeakSet<PoolPicture>();
 
 /** Commons file details for the pool's pictures that lack them, then the portrait mark. */
-async function fillImages(pool: PicturePool, titleOf: (p: PoolPicture) => string): Promise<boolean> {
+async function fillImages(pool: PicturePool, titleOf: (p: PoolPicture) => string, wanted?: Wanted): Promise<boolean> {
   // A picture whose details another source's step already asked for is left to that step.
   const missing = pool.pictures.filter((p) => !p.image && !filling.has(p));
   if (!missing.length) return true;
   for (const p of missing) filling.add(p);
-  const infos = await imageInfos(missing.map((p) => p.file)).finally(() => {
+  const infos = await imageInfos(missing.map((p) => p.file), wanted).finally(() => {
     for (const p of missing) filling.delete(p);
   });
   let ok = true;
@@ -1957,7 +2136,13 @@ function addPicture(pool: PicturePool, file: string, source: PoolPicture['source
  * together; each source's files get their Commons details as soon as that source answers, and
  * `progress` sees the pool after each step, so the first pictures show before the slowest source.
  */
-async function buildPool(lemma: string, lang: string, hints: string[], progress: (pool: PicturePool) => void): Promise<PicturePool> {
+async function buildPool(
+  lemma: string,
+  lang: string,
+  hints: string[],
+  progress: (pool: PicturePool) => void,
+  wanted?: Wanted,
+): Promise<PicturePool> {
   const code = String(lang || 'en').toLowerCase().split(/[-_]/)[0] || 'en';
   const pool: PicturePool = {
     lemma,
@@ -1978,10 +2163,10 @@ async function buildPool(lemma: string, lang: string, hints: string[], progress:
     } catch {
       pool.failed = true;
     }
-    if (!(await fillImages(pool, (p) => poolTitle(pool, p)))) pool.failed = true;
+    if (!(await fillImages(pool, (p) => poolTitle(pool, p), wanted))) pool.failed = true;
     progress(pool);
   };
-  const wikitext = wikitextFor(lemma);
+  const wikitext = wikitextFor(lemma, wanted);
   // The page's own pictures get their file details while its sense lines' items are looked up.
   const wiktionary = step(async () => {
     const { text, ok } = await wikitext;
@@ -1997,7 +2182,7 @@ async function buildPool(lemma: string, lang: string, hints: string[], progress:
     const { text } = await wikitext;
     const items = text ? extractSenseItems(text, code) : [];
     if (!items.length) return true;
-    const { images, labels, ok } = await itemImages(items.map((x) => x.item));
+    const { images, labels, ok } = await itemImages(items.map((x) => x.item), false, wanted);
     for (const x of items) {
       const pick = bestImage(images.get(x.item) || [], `${lemma} ${x.senseText}`);
       if (!pick) continue;
@@ -2007,16 +2192,16 @@ async function buildPool(lemma: string, lang: string, hints: string[], progress:
     return ok;
   });
   const lexemes = step(async () => {
-    const { senses, ok } = await lexemesFor(lemma, code);
+    const { senses, ok } = await lexemesFor(lemma, code, wanted);
     pool.lexemes = senses;
     senses.forEach((l, k) => addPicture(pool, l.file, 'lexeme', k));
     return ok;
   });
   // The image of the item the article titled with the word belongs to is asked for at once, by
   // the article's title, rather than after the article has named its item.
-  const titledImages = articleItemImages(lemma.trim(), code);
+  const titledImages = articleItemImages(lemma.trim(), code, wanted);
   const article = step(async () => {
-    const q = await titleQuery(buildWikipediaTitleUrl(lemma.trim(), code === 'en' ? 'en' : code));
+    const q = await titleQuery(buildWikipediaTitleUrl(lemma.trim(), code === 'en' ? 'en' : code), false, wanted);
     if (!q) return false;
     const page = resolveTitle(q, lemma.trim()) || null;
     const usable = !!page && !page.missing && page.pageprops?.disambiguation === undefined && !/disambiguation/i.test(page.title);
@@ -2029,7 +2214,7 @@ async function buildPool(lemma: string, lang: string, hints: string[], progress:
     if (item) {
       // A title that redirects ("cats" to "Cat") has no item of its own: ask by the item.
       const titled = await titledImages;
-      const { images } = titled.item === item ? titled : await itemImages([item]);
+      const { images } = titled.item === item ? titled : await itemImages([item], false, wanted);
       const pick = bestImage(images.get(item) || [], `${lemma} ${page.title}`);
       if (pick) {
         addPicture(pool, commonsFileFromUrl(pick), 'article', 0);
@@ -2041,15 +2226,15 @@ async function buildPool(lemma: string, lang: string, hints: string[], progress:
       return true;
     }
     // No free lead image ("Operon"): a picture used in the article that names the word.
-    const files = await articleImageFilesMany([page.title], code === 'en' ? 'en' : code);
+    const files = await articleImageFilesMany([page.title], code === 'en' ? 'en' : code, wanted);
     const ranked = rankArticleImages(files.get(page.title) || [], lemma, []);
     if (ranked[0]) addPicture(pool, ranked[0], 'article', 0);
     return true;
   });
-  const glossTitles = code === 'en' ? Promise.resolve() : addGlossArticles(pool, hints, step);
+  const glossTitles = code === 'en' ? Promise.resolve() : addGlossArticles(pool, hints, step, wanted);
   // The disambiguation page's articles start at once too. They mostly serve senses after the
   // first, so their requests to Wikipedia queue behind the others when the host is busy.
-  const related = code === 'en' ? step(() => addRelatedArticles(pool, article)) : Promise.resolve();
+  const related = code === 'en' ? step(() => addRelatedArticles(pool, article, wanted)) : Promise.resolve();
   await Promise.all([wiktionary, senseItems, lexemes, article, glossTitles, related]);
   pool.complete = true;
   return pool;
@@ -2084,8 +2269,8 @@ const RELATED_MAX = 20;
  * (container)", "Tobacco pipe", "Seashell"), each with its Wikidata image or its free lead
  * image, for senses the article titled with the bare word does not cover.
  */
-async function addRelatedArticles(pool: PicturePool, article: Promise<unknown>): Promise<boolean> {
-  const res = await getJson<{ query?: { pages?: WikipediaPage[] } }>(buildDisambiguationLinksUrl(pool.lemma), TIMEOUT_MS, true);
+async function addRelatedArticles(pool: PicturePool, article: Promise<unknown>, wanted?: Wanted): Promise<boolean> {
+  const res = await getJson<{ query?: { pages?: WikipediaPage[] } }>(buildDisambiguationLinksUrl(pool.lemma), TIMEOUT_MS, true, wanted);
   if (!res) return false;
   const linked = (res.query?.pages || [])
     .filter((p) => !p.missing && p.pageprops?.disambiguation === undefined && relatedTitle(p.title, pool.lemma))
@@ -2096,14 +2281,14 @@ async function addRelatedArticles(pool: PicturePool, article: Promise<unknown>):
   // The links already carry each article's Wikidata item, so the items' images are asked for
   // while the articles' first sentences and lead images are.
   const linkedItems = linked.map((p) => p.pageprops?.wikibase_item || '').filter(Boolean);
-  const [q, early] = await Promise.all([titleQuery(buildWikipediaTitlesUrl(names), true), itemImages(linkedItems, true)]);
+  const [q, early] = await Promise.all([titleQuery(buildWikipediaTitlesUrl(names), true, wanted), itemImages(linkedItems, true, wanted)]);
   if (!q) return false;
   // The word's own article is not repeated among them.
   await article;
   const pages = names.map((t) => resolveTitle(q, t)).filter((p): p is WikipediaPage => !!p && !p.missing && p.title !== pool.article?.title);
   const items = pages.map((p) => p.pageprops?.wikibase_item || '').filter(Boolean);
   const more = items.filter((x) => !linkedItems.includes(x));
-  const late = more.length ? await itemImages(more, true) : { images: new Map<string, string[]>(), ok: true };
+  const late = more.length ? await itemImages(more, true, wanted) : { images: new Map<string, string[]>(), ok: true };
   const images = new Map([...early.images, ...late.images]);
   const ok = early.ok && late.ok;
   pool.related = pool.related || [];
@@ -2121,11 +2306,16 @@ async function addRelatedArticles(pool: PicturePool, article: Promise<unknown>):
 }
 
 /** English articles titled with a foreign word's short glosses ("猫" gives "Cat"). */
-async function addGlossArticles(pool: PicturePool, hints: string[], step: (fill: () => Promise<boolean>) => Promise<void>): Promise<void> {
+async function addGlossArticles(
+  pool: PicturePool,
+  hints: string[],
+  step: (fill: () => Promise<boolean>) => Promise<void>,
+  wanted?: Wanted,
+): Promise<void> {
   const titles = Array.from(new Set(hints.map((h) => h.toLowerCase()).filter(Boolean))).slice(0, 3);
   if (!titles.length) return;
   await step(async () => {
-    const q = await batchedTitleQuery('wikipedia-brief:en', (t) => buildWikipediaBriefTitlesUrl(t, 'en'), titles);
+    const q = await batchedTitleQuery('wikipedia-brief:en', (t) => buildWikipediaBriefTitlesUrl(t, 'en'), titles, BATCH_MAX, TIMEOUT_MS, wanted);
     if (!q) return false;
     titles.forEach((t) => {
       const page = resolveTitle(q, t);
@@ -2141,7 +2331,13 @@ async function addGlossArticles(pool: PicturePool, hints: string[], step: (fill:
 // ---------------------------------------------------------------- pool cache
 
 /** Pools by word, in memory; `until` ends an empty or partial pool's life early. */
-const poolCache = new Map<string, { p: Promise<PicturePool>; until: number; progress: Set<(pool: PicturePool) => void> }>();
+const poolCache = new Map<
+  string,
+  { p: Promise<PicturePool>; until: number; progress: Set<(pool: PicturePool) => void>; wants: Set<() => boolean>; failed?: boolean }
+>();
+
+/** Pools whose requests were dropped while nobody wanted them; never kept or saved. */
+const cutPools = new WeakSet<PicturePool>();
 
 function poolKey(lemma: string, lang: string): string {
   return `sense-images:${CACHE_VERSION}:pool:${String(lang || 'en').toLowerCase()}:${lemma.toLowerCase()}`;
@@ -2180,31 +2376,61 @@ function writePool(key: string, pool: PicturePool): void {
     .catch((): undefined => undefined);
 }
 
-function getPool(lemma: string, lang: string, hints: string[], progress?: (pool: PicturePool) => void): Promise<PicturePool> {
+function getPool(
+  lemma: string,
+  lang: string,
+  hints: string[],
+  progress?: (pool: PicturePool) => void,
+  wanted?: Wanted,
+  again = false,
+): Promise<PicturePool> {
   const key = poolKey(lemma, lang);
   const hit = poolCache.get(key);
-  if (hit && Date.now() < hit.until) {
+  // `again`: a deliberate second ask (a card retrying) builds a failed pool again rather than
+  // waiting out FAILED_MEMORY_MS.
+  if (hit && Date.now() < hit.until && !(again && hit.failed)) {
     if (progress) hit.progress.add(progress);
+    hit.wants.add(wanted || ALWAYS);
     return hit.p;
   }
   const listeners = new Set<(pool: PicturePool) => void>(progress ? [progress] : []);
-  const entry = { p: Promise.resolve(null as unknown as PicturePool), until: Infinity, progress: listeners };
+  // The pool is wanted while any caller wants it: a lookup always, a card while it is on screen.
+  const wants = new Set<() => boolean>([wanted || ALWAYS]);
+  const entry = { p: Promise.resolve(null as unknown as PicturePool), until: Infinity, progress: listeners, wants, failed: false };
+  // Set once nobody wanted the pool while it was built: some of its requests may have been dropped.
+  let cut = false;
+  const stillWanted = () => {
+    const yes = anyWants(wants)();
+    if (!yes) cut = true;
+    return yes;
+  };
   entry.p = (async () => {
     const saved = await readPool(key);
     if (saved) {
       entry.until = Date.now() + Math.max(60_000, poolTtl(saved));
       return saved;
     }
-    const pool = await buildPool(lemma, lang, hints, (partial) => {
-      for (const fn of listeners) {
-        try {
-          fn(partial);
-        } catch {
-          /* a listener's error never stops the pool */
+    const pool = await buildPool(
+      lemma,
+      lang,
+      hints,
+      (partial) => {
+        for (const fn of listeners) {
+          try {
+            fn(partial);
+          } catch {
+            /* a listener's error never stops the pool */
+          }
         }
-      }
-    });
-    const life = pool.failed ? FAILED_MEMORY_MS : poolTtl(pool);
+      },
+      stillWanted,
+    );
+    // A pool cut short because nobody wanted it for a while (its cards scrolled away) is not
+    // kept: the next call for the word builds it again from the answers that did come.
+    const dropped = pool.failed && cut;
+    if (dropped) cutPools.add(pool);
+    const life = dropped ? 0 : pool.failed ? FAILED_MEMORY_MS : poolTtl(pool);
+    entry.failed = !!pool.failed;
     entry.until = Date.now() + life;
     if (!life && poolCache.get(key) === entry) poolCache.delete(key);
     writePool(key, pool);
@@ -2352,6 +2578,19 @@ export async function fetchSenseImages(
     max?: number;
     lang?: string;
     onUpdate?: (list: Array<SenseImage | null>) => void;
+    /**
+     * Aborted when the pictures are no longer wanted (a card scrolled away). The word's requests
+     * not sent yet are then dropped unless another caller still wants them (a lookup always
+     * does), and the call resolves with what was found; a later call for the word starts again.
+     */
+    signal?: AbortSignal;
+    /** A deliberate second ask (a card retrying): a pool that failed a moment ago is built again. */
+    again?: boolean;
+    /**
+     * A card's one sense: when no picture fits it, the word's best picture is given instead
+     * (`cardPicture`). Only the final answer has it; `onUpdate` reports the sense's own picture.
+     */
+    wordPicture?: boolean;
   },
 ): Promise<Array<SenseImage | null>> {
   const word = String(lemma || '').trim();
@@ -2382,14 +2621,21 @@ export async function fetchSenseImages(
         /* a caller's error never stops the search */
       }
     };
-    const pool = await getPool(word, lang, hints, progress);
+    const signal = opts?.signal;
+    const wanted: Wanted = signal ? () => !signal.aborted : undefined;
+    if (signal && !signal.aborted) signal.addEventListener('abort', () => dropUnwanted(), { once: true });
+    let pool = await getPool(word, lang, hints, progress, wanted, opts?.again === true);
+    // Joined a pool whose requests were dropped while nobody wanted it: build it again (most of
+    // its answers are kept, so this costs the dropped requests only).
+    if (cutPools.has(pool) && !signal?.aborted) pool = await getPool(word, lang, hints, progress, wanted);
     const usesWholeWord = !list.some((s) => stripHtml(s.meaning));
-    if (usesWholeWord) {
-      const out: Array<SenseImage | null> = list.map((): null => null);
-      out[0] = wholeWordPicture(pool, hidden);
-      return out;
+    const out: Array<SenseImage | null> = usesWholeWord ? list.map((): null => null) : assignPictures(pool, list, { max, hidden });
+    if (usesWholeWord) out[0] = wholeWordPicture(pool, hidden);
+    // A card that scrolled away keeps what fits its sense; it asks again when it comes back.
+    if (opts?.wordPicture && list.length === 1 && !signal?.aborted) {
+      out[0] = await cardPicture(pool, poolKey(word, lang), hidden, list[0].meaning, out[0], wanted);
     }
-    return assignPictures(pool, list, { max, hidden });
+    return out;
   } catch {
     return list.map((): null => null);
   }
@@ -2398,11 +2644,12 @@ export async function fetchSenseImages(
 /**
  * One picture for a word (the notebook's card): the one its saved sense would show in a lookup,
  * or, without a saved sense, the best picture for the word as a whole. The part of speech is
- * used when the card knows it; otherwise any part of speech may match.
+ * used when the card knows it; otherwise any part of speech may match. When nothing fits the
+ * sense, the word's best picture shows anyway (`cardPicture`); null only when the word has none.
  */
 export async function fetchWordImage(
   lemma: string,
-  opts?: { lang?: string; gloss?: string; pos?: string; onUpdate?: (img: SenseImage | null) => void },
+  opts?: { lang?: string; gloss?: string; pos?: string; onUpdate?: (img: SenseImage | null) => void; signal?: AbortSignal; again?: boolean },
 ): Promise<SenseImage | null> {
   const gloss = String(opts?.gloss || '').trim();
   const update = opts?.onUpdate;
@@ -2410,6 +2657,9 @@ export async function fetchWordImage(
     max: 1,
     lang: opts?.lang,
     onUpdate: update ? (list) => update(list[0] || null) : undefined,
+    signal: opts?.signal,
+    again: opts?.again,
+    wordPicture: true,
   });
   return img || null;
 }
@@ -2417,6 +2667,7 @@ export async function fetchWordImage(
 /** For tests: forget every cached request, pool and hidden list. */
 export function clearSenseImageCache(): void {
   jsonCache.clear();
+  interest.clear();
   infoCache.clear();
   poolCache.clear();
   hiddenCache.clear();

@@ -8,6 +8,8 @@ import {
   dictionaryService,
   fetchSenseImages,
   prefetchSenseImages,
+  hydratePictures,
+  pictureSrc,
   hideSenseImage,
   unhideSenseImage,
   fillEmptyDefinitions,
@@ -1008,6 +1010,18 @@ function placeSenseFigures(final = false): void {
     else body.insertAdjacentHTML('afterbegin', senseFigureHtml(img, i));
   });
   if (final) root.querySelectorAll('.sense-figure.is-pending').forEach((el) => el.remove());
+  showSenseFigures();
+}
+
+/**
+ * Shows each sense picture once its bytes are here (picture-load.ts): the box stays blank until
+ * then, a failed request is asked again, and a picture that never comes gives its place back.
+ */
+function showSenseFigures(): void {
+  hydratePictures(root, {
+    onLoad: (img) => img.parentElement?.classList.add('is-loaded'),
+    onFail: (img) => img.closest('figure')?.remove(),
+  });
 }
 
 /**
@@ -1156,6 +1170,7 @@ function paintPage(): void {
     if (typeof deleteCaret === 'number') deleteInput.setSelectionRange(deleteCaret, deleteCaret);
   }
   bindLexiconPane();
+  showSenseFigures();
   bindWikiReader();
   bindMockBar();
   bindAzRail();
@@ -1226,7 +1241,7 @@ function bindNotebookViews(): void {
   }
   const fillImages = () => {
     if (prefs.senseImages !== false) {
-      fillWordImages(page, (lemma, lang, gloss, pos, onPicture) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture }));
+      fillWordImages(page, (lemma, lang, gloss, pos, onPicture, signal, again) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture, signal, again }));
     }
   };
   attachCardTable(page, {
@@ -1248,7 +1263,7 @@ function bindLearn(): void {
     return;
   }
   if (prefs.senseImages !== false) {
-    fillWordImages(page, (lemma, lang, gloss, pos, onPicture) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture }));
+    fillWordImages(page, (lemma, lang, gloss, pos, onPicture, signal, again) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture, signal, again }));
   }
   focusReview(page);
   void prefetchMeanings();
@@ -1739,6 +1754,7 @@ function paintScan(page: ScanPage, hit: string): void {
   body.innerHTML = scanSheet === 'closed' ? '' : hit;
   view.querySelector<HTMLElement>('.scan-toast')!.innerHTML = toastHtml();
   bindLexiconPane();
+  showSenseFigures();
   bindWikiReader();
 }
 
@@ -2005,7 +2021,7 @@ function openSensePicture(frame: HTMLElement): void {
   const d = frame.dataset;
   const dlg = document.createElement('dialog');
   dlg.className = 'pic-view';
-  dlg.innerHTML = `<img class="pic-view__img" src="${esc(d.thumb || '')}" alt="${esc(d.title || '')}" referrerpolicy="no-referrer" tabindex="-1" autofocus />
+  dlg.innerHTML = `<img class="pic-view__img" src="${esc(pictureSrc(d.thumb || '') || d.thumb || '')}" alt="${esc(d.title || '')}" referrerpolicy="no-referrer" tabindex="-1" autofocus />
     <p class="pic-view__cap"><span>${esc(d.title || '')}</span>${d.page ? `<button type="button" class="pic-view__credit" data-pic-credit="${esc(d.page)}">${esc(d.credit || 'Wikimedia Commons')}</button>` : ''}</p>
     ${d.page ? '<button type="button" class="pic-view__hide" data-pic-hide>Hide picture</button>' : ''}`;
   // The thumbnail shows at once; the larger rendering replaces it when it has arrived.

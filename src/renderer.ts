@@ -62,6 +62,7 @@ import {
   traceNotebookFamilies,
   fetchWordImage,
   fillWordImages,
+  type WordImageFetcher,
   formatVocabLangPair,
   mapHtml,
   notebookViewSwitchHtml,
@@ -2830,7 +2831,7 @@ function filterVocabEntries(entries: any[]): any[] {
 }
 
 /** Card and review pictures follow the lookup pane's Images switch, stored by the pop-up. */
-function wordImageFetcher(): ((lemma: string, lang?: string, gloss?: string, pos?: string) => Promise<any>) | null {
+function wordImageFetcher(): WordImageFetcher | null {
   try {
     if (JSON.parse(localStorage.getItem('phevereSettings') || '{}').senseImages === false) return null;
   } catch {
@@ -2839,14 +2840,18 @@ function wordImageFetcher(): ((lemma: string, lang?: string, gloss?: string, pos
   // Through the main process: it identifies itself to Wikimedia (anonymous clients get about
   // ten requests a minute, a deck of cards needs several per card) and caches on disk.
   const api = (window as any).dictionaryAPI;
+  // The card's picture shows as soon as the first source finds it, and a card that scrolls away
+  // stops its search in the main process too.
   if (api?.senseImages) {
-    return (lemma, lang, gloss, pos) => {
+    return (lemma, lang, gloss, pos, onPicture, signal, again) => {
       const g = String(gloss || '').trim();
       const sense = g ? { meaning: g, partOfSpeech: pos || '' } : { meaning: '' };
-      return api.senseImages(lemma, [sense], { max: 1, lang }).then((r: any[]) => (Array.isArray(r) && r[0]) || null);
+      const onUpdate = onPicture ? (list: any[]) => onPicture((Array.isArray(list) && list[0]) || null) : undefined;
+      const onCancel = signal ? (cancel: () => void) => signal.addEventListener('abort', cancel, { once: true }) : undefined;
+      return api.senseImages(lemma, [sense], { max: 1, lang, again, wordPicture: true }, onUpdate, onCancel).then((r: any[]) => (Array.isArray(r) && r[0]) || null);
     };
   }
-  return (lemma, lang, gloss, pos) => fetchWordImage(lemma, { lang, gloss, pos });
+  return (lemma, lang, gloss, pos, onPicture, signal, again) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture, signal, again });
 }
 
 function renderVocabNotebook(entries: any[]): void {

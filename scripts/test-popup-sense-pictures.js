@@ -119,6 +119,56 @@ const tick = () => new Promise((r) => setImmediate(r));
     assert.equal(api.current(a)[0].title, 'lantern');
   }
 
+  // A sense picture's box stays blank until its picture has loaded. A picture that fails twice
+  // shows on the third try; one that fails every try gives its place back; a slow one is waited for.
+  {
+    const tries = new Map();
+    class FakeImage {
+      set src(url) {
+        const n = (tries.get(url) || 0) + 1;
+        tries.set(url, n);
+        const ok = url.includes('flaky') ? n >= 3 : url.includes('slow') ? true : !url.includes('dead');
+        setTimeout(() => (ok ? this.onload() : this.onerror()), url.includes('slow') ? 1500 : 5);
+      }
+    }
+    const figure = (url) => {
+      const fig = { removed: false, remove() { fig.removed = true; } };
+      const frame = { classes: new Set(), classList: { add: (c) => frame.classes.add(c) } };
+      const img = { dataset: {}, isConnected: true, parentNode: frame, getAttribute: (k) => (k === 'data-pic' ? url : img.src || null), closest: () => fig };
+      return { fig, frame, img };
+    };
+    const figs = ['https://x/flaky.jpg', 'https://x/dead.jpg', 'https://x/slow.jpg'].map(figure);
+    const context = {
+      Image: FakeImage,
+      document: { querySelectorAll: () => figs.map((f) => f.img).filter((i) => !i.src) },
+      escapeHtml: (t) => String(t),
+      setTimeout,
+      Date,
+      MutationObserver: class { observe() {} },
+      queueMicrotask,
+    };
+    vm.createContext(context);
+    const block = script.slice(script.indexOf('const popupPictures ='), script.indexOf('function senseFigureHtml'));
+    vm.runInContext(`${block}
+${fn('senseFigureHtml')}
+this.api = { show: showPopupPictures, html: senseFigureHtml };`, context);
+    context.api.show();
+    const t0 = Date.now();
+    await new Promise((r) => setTimeout(r, 4800));
+    const [flaky, dead, slow] = figs;
+    assert.equal(flaky.img.src, 'https://x/flaky.jpg', 'a picture that failed twice shows on the third try');
+    assert.ok(flaky.frame.classes.has('is-loaded') && !flaky.fig.removed);
+    assert.equal(tries.get('https://x/flaky.jpg'), 3);
+    assert.ok(dead.fig.removed && !dead.img.src, 'a picture that fails every try gives its place back');
+    assert.equal(tries.get('https://x/dead.jpg'), 3, 'three tries, no more');
+    assert.equal(slow.img.src, 'https://x/slow.jpg', 'a slow picture is waited for');
+    assert.ok(Date.now() - t0 >= 1500);
+    // A repaint shows a loaded picture at once, without a blank box.
+    const again = context.api.html({ thumb: 'https://x/flaky.jpg', title: 't', credit: 'c' }, 0);
+    assert.ok(/class="sense-figure__frame is-loaded"/.test(again) && /src="https:\/\/x\/flaky.jpg"/.test(again));
+    assert.ok(!/ src=/.test(context.api.html({ thumb: 'https://x/new.jpg', title: 't', credit: 'c' }, 0)), 'a picture not loaded yet has no src');
+  }
+
   console.log('popup sense pictures ok');
 })().catch((e) => {
   console.error(e);

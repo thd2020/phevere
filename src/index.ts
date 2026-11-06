@@ -3075,15 +3075,32 @@ ipcMain.handle('dictionary-get-supported-languages', () => {
   return dictionaryService.getSupportedLanguages();
 });
 
-// Pictures for the pop-up's senses, fetched in the main process (Node HTTP, shared cache).
-// With an `updateId`, the first pictures go to the pop-up while slower sources still answer.
+// Pictures for the pop-up's senses and the notebook's cards, fetched in the main process (Node
+// HTTP, shared cache). With an `updateId`, the first pictures go to the window while slower
+// sources still answer; a `cancellable` search (a card) stops when the card scrolls away.
+const senseImageSearches = new Map<string, AbortController>();
+
+ipcMain.on('dictionary-sense-images-cancel', (_event, updateId: string) => {
+  senseImageSearches.get(String(updateId || ''))?.abort();
+});
+
 ipcMain.handle(
   'dictionary-sense-images',
-  (event, lemma: string, senses: Array<{ meaning: string; partOfSpeech?: string }>, opts?: { max?: number; lang?: string; updateId?: string }) => {
+  (
+    event,
+    lemma: string,
+    senses: Array<{ meaning: string; partOfSpeech?: string }>,
+    opts?: { max?: number; lang?: string; updateId?: string; cancellable?: boolean; again?: boolean; wordPicture?: boolean },
+  ) => {
     const updateId = typeof opts?.updateId === 'string' ? opts.updateId : '';
+    const ctl = updateId && opts?.cancellable ? new AbortController() : null;
+    if (ctl) senseImageSearches.set(updateId, ctl);
     return fetchSenseImages(String(lemma || ''), Array.isArray(senses) ? senses.slice(0, 200) : [], {
       max: opts?.max,
       lang: opts?.lang,
+      signal: ctl?.signal,
+      again: opts?.again === true,
+      wordPicture: opts?.wordPicture === true,
       onUpdate: updateId
         ? (list) => {
             try {
@@ -3093,6 +3110,8 @@ ipcMain.handle(
             }
           }
         : undefined,
+    }).finally(() => {
+      if (ctl) senseImageSearches.delete(updateId);
     });
   },
 );

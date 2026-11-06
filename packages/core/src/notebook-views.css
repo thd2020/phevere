@@ -134,7 +134,9 @@
   background: var(--nbv-paper-2);
   overflow: hidden;
 }
-.nbv-card__pic > span { font: 600 52px/1 var(--nbv-serif); color: rgba(92, 83, 78, 0.28); }
+.nbv-card__pic > span { font: 600 52px/1 var(--nbv-serif); color: rgba(92, 83, 78, 0.28); transition: opacity 0.3s var(--nbv-motion); }
+/* The letter goes once the picture is in, so it never shows through a transparent picture. */
+.nbv-card__pic.has-img > span { opacity: 0; }
 .nbv-card__pic img {
   position: absolute;
   inset: 0;

@@ -33,6 +33,7 @@ export {
   clearSenseImageCache,
   type SenseImage,
 } from './sense-images';
+export { loadPicture, pictureSrc, hydratePictures, clearPictureLoads } from './picture-load';
 export {
   addVocab,
   fillEmptyDefinitions,
