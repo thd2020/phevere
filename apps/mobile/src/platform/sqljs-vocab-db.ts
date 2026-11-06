@@ -1,5 +1,5 @@
 import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
-import { VOCAB_SCHEMA_SQL, vocabColumnMigrations, type VocabDb } from '@phevere/core';
+import { VOCAB_SCHEMA_SQL, t, vocabColumnMigrations, type VocabDb } from '@phevere/core';
 import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import { hasNativeBridge, nativeCall } from './native';
 
@@ -171,7 +171,7 @@ async function persistNow(): Promise<void> {
     dirty = true;
     await reload();
   }
-  throw new Error('The notebook kept changing while saving');
+  throw new Error(t('mobile.notebook.keptChanging'));
 }
 
 function persist(): Promise<void> {

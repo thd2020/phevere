@@ -11,7 +11,7 @@ import {
 } from '@phevere/core';
 import { openSqliteBytes } from './sqljs-vocab-db';
 import type { VocabAddInput, VocabEntry } from '@phevere/core';
-import { addVocab, listVocab } from '@phevere/core';
+import { addVocab, listVocab, t } from '@phevere/core';
 import { hasNativeBridge, nativeCall } from './native';
 
 export function vocabEntriesToCsv(entries: VocabEntry[]): string {
@@ -83,14 +83,14 @@ function parseCsvRecords(raw: string): string[][] {
       if (ch === '\r' && text[i + 1] === '\n') i += 1;
     } else {
       if (closedQuote || (ch === '"' && cur.length > 0)) {
-        throw new Error('Invalid CSV: unexpected character or quote in record ' + (records.length + 1));
+        throw new Error(t('mobile.import.csv.badQuote', { record: records.length + 1 }));
       }
       recordStarted = true;
       if (ch === '"') inQuotes = true;
       else cur += ch;
     }
   }
-  if (inQuotes) throw new Error('Invalid CSV: unterminated quoted field');
+  if (inQuotes) throw new Error(t('mobile.import.csv.unterminated'));
   endRecord();
   return records;
 }
@@ -117,7 +117,7 @@ function vocabRowToInput(row: Record<string, unknown>): VocabAddInput {
 export function vocabEntriesFromJson(raw: string): VocabAddInput[] {
   const parsed = JSON.parse(raw);
   const list = Array.isArray(parsed) ? parsed : parsed?.entries;
-  if (!Array.isArray(list)) throw new Error('JSON notebook must be an array (or { entries: [] })');
+  if (!Array.isArray(list)) throw new Error(t('mobile.import.json.notArray'));
   return list.map((row: Record<string, unknown>) => vocabRowToInput(row));
 }
 
@@ -126,13 +126,13 @@ export function vocabEntriesFromCsv(raw: string): VocabAddInput[] {
   if (!records.length) return [];
   const headers = records[0].map((h) => h.trim());
   if (!headers.includes('lemma') || headers.some((h) => !h) || new Set(headers).size !== headers.length) {
-    throw new Error('Invalid CSV: expected unique, non-empty headers including lemma');
+    throw new Error(t('mobile.import.csv.headers'));
   }
   const out: VocabAddInput[] = [];
   for (let i = 1; i < records.length; i++) {
     const cols = records[i];
     if (cols.length !== headers.length) {
-      throw new Error('Invalid CSV: column count does not match headers in record ' + (i + 1));
+      throw new Error(t('mobile.import.csv.columns', { record: i + 1 }));
     }
     const row: Record<string, string> = Object.create(null);
     headers.forEach((h, idx) => {

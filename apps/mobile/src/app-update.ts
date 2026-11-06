@@ -28,6 +28,7 @@ import {
   type Release,
   type UpdateChoice,
 } from '@phevere/core/update-releases';
+import { formatPercent, t, type MessageKey } from '@phevere/core/i18n/runtime';
 
 export const FIRST_CHECK_MS = 30_000;
 export const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
@@ -37,10 +38,11 @@ const IDLE_RETRY_MS = 10_000;
 export type UpdateMode = 'auto' | 'ask' | 'off';
 export type UpdateStatus = 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
 
-export const UPDATE_MODES: Array<{ id: UpdateMode; label: string }> = [
-  { id: 'auto', label: 'Automatically' },
-  { id: 'ask', label: 'Ask first' },
-  { id: 'off', label: 'Off' },
+/** The modes in the order Settings lists them; labelKey is read when the section is drawn. */
+export const UPDATE_MODES: Array<{ id: UpdateMode; labelKey: MessageKey }> = [
+  { id: 'auto', labelKey: 'mobile.update.mode.auto' },
+  { id: 'ask', labelKey: 'mobile.update.mode.ask' },
+  { id: 'off', labelKey: 'mobile.update.mode.off' },
 ];
 
 export interface PhoneUpdateState {
@@ -181,7 +183,7 @@ export function createPhoneUpdater(deps: PhoneUpdateDeps) {
   async function latestWithoutApi(): Promise<Release | null> {
     const res = await deps.fetch({ url: LATEST_PAGE, head: true, redirect: false });
     const version = res.location ? versionFromReleaseUrl(res.location) : null;
-    if (!version) throw new Error(`GitHub answered ${res.status}`);
+    if (!version) throw new Error(t('mobile.update.githubAnswered', { status: String(res.status) }));
     const name = assetNameFor(APK, version) as string;
     // The Android job uploads after the desktop ones and can fail: until the APK and its .sha256
     // are there, the release is not one the phone can install, so it is not offered.
@@ -203,7 +205,7 @@ export function createPhoneUpdater(deps: PhoneUpdateDeps) {
         deps.saveCache({ etag: res.etag || null, releases: list });
         return list;
       }
-      apiError = `GitHub answered ${res.status}`;
+      apiError = t('mobile.update.githubAnswered', { status: String(res.status) });
     } catch (err) {
       apiError = err instanceof Error ? err.message : String(err);
     }
@@ -225,7 +227,7 @@ export function createPhoneUpdater(deps: PhoneUpdateDeps) {
       lastError = null;
       emit();
       downloading = (async () => {
-        if (!asset.sha256) throw new Error(`GitHub lists no checksum for ${asset.name}, so it was not installed.`);
+        if (!asset.sha256) throw new Error(t('mobile.update.noChecksum', { file: asset.name }));
         const out = await deps.download({ url: asset.url, name: asset.name, sha256: asset.sha256, size: asset.size });
         progress = 1;
         return out.name;
@@ -284,7 +286,7 @@ export function createPhoneUpdater(deps: PhoneUpdateDeps) {
       try {
         releases = await fetchReleases();
       } catch (err) {
-        fail(new Error(`Could not reach GitHub. ${err instanceof Error ? err.message : String(err)}`));
+        fail(new Error(t('mobile.update.unreachable', { detail: err instanceof Error ? err.message : String(err) })));
         return;
       }
       const choice = newestUpdate(releases, current, APK);
@@ -304,7 +306,7 @@ export function createPhoneUpdater(deps: PhoneUpdateDeps) {
           readyName = readyName ?? (await downloadOnce(choice));
           status = 'ready';
           emit();
-          if (fresh) deps.notify(`Phevere ${version} is ready to install.`);
+          if (fresh) deps.notify(t('mobile.update.notify.ready', { version }));
           promptWhenIdle();
         } catch (err) {
           fail(err);
@@ -313,7 +315,7 @@ export function createPhoneUpdater(deps: PhoneUpdateDeps) {
       }
       if (!downloading) status = readyName ? 'ready' : 'idle';
       emit();
-      if (fresh && !manual) deps.notify(`Phevere ${version} is available.`);
+      if (fresh && !manual) deps.notify(t('mobile.update.notify.available', { version }));
     })().finally(() => {
       checking = null;
     });
@@ -390,18 +392,22 @@ export type PhoneUpdater = ReturnType<typeof createPhoneUpdater>;
 /** The line under the version, as on the desktop; empty when there is nothing to say. */
 export function updateStatusText(s: PhoneUpdateState): string {
   const next = s.available?.version;
-  if (s.status === 'checking') return 'Checking…';
-  if (s.status === 'downloading') return `Downloading ${next}… ${Math.round(s.progress * 100)}%`;
-  if (s.status === 'error') return s.error || 'Update failed';
-  if (s.status === 'ready') return s.needsPermission ? 'Install unknown apps is off for Phevere' : `${next} is ready to install`;
-  if (next) return `${next} is available`;
-  if (s.upToDate) return 'Up to date';
+  if (s.status === 'checking') return t('mobile.update.status.checking');
+  if (s.status === 'downloading') {
+    return t('mobile.update.status.downloading', { version: next || '', percent: formatPercent(Math.round(s.progress * 100) / 100) });
+  }
+  if (s.status === 'error') return s.error || t('mobile.update.status.failed');
+  if (s.status === 'ready') {
+    return s.needsPermission ? t('mobile.update.status.needsPermission') : t('mobile.update.status.ready', { version: next || '' });
+  }
+  if (next) return t('mobile.update.status.available', { version: next });
+  if (s.upToDate) return t('mobile.update.status.upToDate');
   return '';
 }
 
 /** The action button's label, or '' when it is hidden. */
 export function updateActionText(s: PhoneUpdateState): string {
   if (!s.available || s.status === 'checking' || s.status === 'downloading') return '';
-  if (!s.canInstall) return 'Download…';
-  return s.status === 'ready' ? 'Install' : 'Update now';
+  if (!s.canInstall) return t('mobile.update.action.download');
+  return s.status === 'ready' ? t('mobile.update.action.install') : t('mobile.update.action.updateNow');
 }

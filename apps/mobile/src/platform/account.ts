@@ -7,6 +7,7 @@ import {
   getHttp,
   httpClientFetch,
   resolveAccountApi,
+  t,
   type AccountState,
 } from '@phevere/core';
 import { hasNativeBridge, nativeCall } from './native';
@@ -64,7 +65,7 @@ export function getAccountState(): AccountState | null {
 export function signIn(): Promise<void> {
   if (!controller) return Promise.resolve();
   return controller.signIn(async (account) => {
-    if (!hasNativeBridge()) throw new Error('Sign-in works in the phevere app, not in a browser preview.');
+    if (!hasNativeBridge()) throw new Error(t('mobile.account.signInNeedsApp'));
     const url = await account.beginSignIn();
     const cancelled = new Promise<never>((_, reject) => {
       cancelPending = () => reject(new HolarkyAccountError('access_denied', 0));
@@ -74,7 +75,7 @@ export function signIn(): Promise<void> {
         nativeCall<{ url?: string }>('openAuth', { url }, SIGN_IN_TIMEOUT_MS),
         cancelled,
       ]);
-      if (!res.url) throw new Error('Sign-in did not finish.');
+      if (!res.url) throw new Error(t('mobile.account.signInUnfinished'));
       await account.completeSignIn(res.url);
     } catch (err) {
       // iOS reports a closed sign-in sheet as "cancelled".

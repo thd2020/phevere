@@ -70,10 +70,14 @@ import {
   type WordsScope,
   type BookSort,
   filterVocabByLang,
-  languageName,
+  languageDisplayName,
+  lookupNoticeText,
   vocabLangChipsHtml,
   vocabLanguages,
   pictureSrc,
+  t,
+  tHtml,
+  type MessageKey,
 } from '@phevere/core';
 
 export type Tab = 'lookup' | 'notebook' | 'learn' | 'settings';
@@ -85,6 +89,30 @@ export function esc(s: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/**
+ * ` lang="xx"` for dictionary text (glosses, examples, etymologies), so the document's lang, which
+ * is the interface language, does not choose its hyphenation and fonts. Latin-script text is in
+ * `latinLang` (English unless given), as Phevere's dictionaries write their glosses in English;
+ * other scripts say the language: kana is Japanese, hangul Korean, Han characters the entry's
+ * language when that is Chinese or Japanese and Chinese otherwise, any other script the entry's.
+ */
+export function contentLangAttr(text: string, entryLang = '', latinLang = 'en'): string {
+  const s = String(text || '');
+  const entry = String(entryLang || '').trim();
+  let lang = latinLang || 'en';
+  if (/[\u3040-\u30ff]/.test(s)) lang = 'ja';
+  else if (/[\uac00-\ud7af]/.test(s)) lang = 'ko';
+  else if (/[\u3400-\u9fff\uf900-\ufaff]/.test(s)) lang = /^(zh|ja)/.test(entry) ? entry : 'zh';
+  else if (/[\u0370-\u03ff\u0400-\u04ff\u0590-\u06ff\u0900-\u097f\u0e00-\u0e7f]/.test(s)) lang = entry === 'auto' ? '' : entry;
+  return lang ? ` lang="${esc(lang)}"` : '';
+}
+
+/** ` lang="xx"` for text whose language is known (a headword, a translation), or nothing. */
+export function langAttr(code: string | undefined): string {
+  const c = String(code || '').trim();
+  return c && c !== 'auto' ? ` lang="${esc(c)}"` : '';
 }
 
 /** Plain text of an HTML snippet (Wikipedia extracts), entities decoded. */
@@ -132,7 +160,7 @@ export function navHtml(tab: Tab): string {
     <button type="button" data-act="tab" data-tab="${id}" ${tab === id ? 'aria-current="page"' : ''}>
       <span class="ico">${svg}</span>${label}
     </button>`;
-  return `<nav class="nav" aria-label="Primary">${item('lookup', 'Lookup', ICO.search)}${item('notebook', 'Words', ICO.book)}${item('learn', 'Learn', ICO.learn)}${item('settings', 'Settings', ICO.gear)}</nav>`;
+  return `<nav class="nav" aria-label="${tHtml('mobile.nav.label')}">${item('lookup', tHtml('mobile.nav.lookup'), ICO.search)}${item('notebook', tHtml('mobile.nav.words'), ICO.book)}${item('learn', tHtml('common.learn'), ICO.learn)}${item('settings', tHtml('common.settings'), ICO.gear)}</nav>`;
 }
 
 /** One top bar for every tab: the same "Phevere" title and the account button; Lookup adds history and search. */
@@ -144,16 +172,16 @@ export function appBarHtml(tab: Tab, query: string, canBack: boolean, canFwd: bo
         <h1>Phevere</h1>
         <div class="brand-end">
         ${lookup ? `<div class="hist">
-          <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="Back">${ICO.back}</button>
-          <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="Forward">${ICO.fwd}</button>
+          <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="${tHtml('common.back')}">${ICO.back}</button>
+          <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="${tHtml('mobile.bar.forward')}">${ICO.fwd}</button>
         </div>` : ''}
         ${accountBtn}
         </div>
       </div>
       ${lookup ? `<form class="search">
-        <input id="q" type="search" enterkeyhint="search" placeholder="Look up a word or phrase" value="${esc(query)}" autocomplete="off" />
-        <button type="button" class="icon-btn" data-act="ocr" aria-label="Scan text" title="Scan text">${ICO.scan}</button>
-        <button type="submit" class="go" aria-label="Look up" title="Look up">${ICO.go}</button>
+        <input id="q" type="search" enterkeyhint="search" placeholder="${tHtml('mobile.search.placeholder')}" value="${esc(query)}" autocomplete="off" />
+        <button type="button" class="icon-btn" data-act="ocr" aria-label="${tHtml('mobile.bar.scanText')}" title="${tHtml('mobile.bar.scanText')}">${ICO.scan}</button>
+        <button type="submit" class="go" aria-label="${tHtml('common.lookup')}" title="${tHtml('common.lookup')}">${ICO.go}</button>
       </form>` : ''}
     </div>`;
 }
@@ -162,13 +190,13 @@ export function appBarHtml(tab: Tab, query: string, canBack: boolean, canFwd: bo
 export function popupBarHtml(canBack: boolean, canFwd: boolean, hasWord = false): string {
   return `
     <div class="popup-bar">
-      <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="Back">${ICO.back}</button>
-      <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="Forward">${ICO.fwd}</button>
+      <button type="button" class="icon-btn" data-act="back" ${canBack ? '' : 'disabled'} aria-label="${tHtml('common.back')}">${ICO.back}</button>
+      <button type="button" class="icon-btn" data-act="fwd" ${canFwd ? '' : 'disabled'} aria-label="${tHtml('mobile.bar.forward')}">${ICO.fwd}</button>
       <span class="popup-bar__gap"></span>
-      ${hasWord ? `<button type="button" class="icon-btn" data-act="copy" aria-label="Copy" title="Copy">${ICO.copy}</button>
-      <button type="button" class="icon-btn" data-act="web-search" aria-label="Search the web" title="Search the web">${ICO.web}</button>` : ''}
-      <button type="button" class="icon-btn" data-act="expand-strip" aria-label="Open in Phevere" title="Open in Phevere">${ICO.expand}</button>
-      <button type="button" class="icon-btn" data-act="close-strip" aria-label="Close">${ICO.close}</button>
+      ${hasWord ? `<button type="button" class="icon-btn" data-act="copy" aria-label="${tHtml('common.copy')}" title="${tHtml('common.copy')}">${ICO.copy}</button>
+      <button type="button" class="icon-btn" data-act="web-search" aria-label="${tHtml('mobile.bar.searchWeb')}" title="${tHtml('mobile.bar.searchWeb')}">${ICO.web}</button>` : ''}
+      <button type="button" class="icon-btn" data-act="expand-strip" aria-label="${tHtml('mobile.bar.openInApp')}" title="${tHtml('mobile.bar.openInApp')}">${ICO.expand}</button>
+      <button type="button" class="icon-btn" data-act="close-strip" aria-label="${tHtml('common.close')}">${ICO.close}</button>
     </div>`;
 }
 
@@ -185,8 +213,8 @@ function displayIpa(raw: string): string {
 
 function ipaChip(ipa: string, accent: string, shown: string): string {
   const tag = accent === 'us' ? 'US' : accent === 'uk' ? 'UK' : '';
-  const label = tag ? `${tag} pronunciation` : 'pronunciation';
-  return `<span class="ipa-chip">${tag ? `<b>${tag}</b>` : ''}${esc(shown)}<button type="button" data-act="speak-ipa" data-ipa="${esc(ipa)}" data-accent="${esc(accent)}" aria-label="Play ${label}" title="Play ${label}">${ICO.speaker}</button></span>`;
+  const label = accent === 'us' ? tHtml('mobile.ipa.playUs') : accent === 'uk' ? tHtml('mobile.ipa.playUk') : tHtml('mobile.ipa.play');
+  return `<span class="ipa-chip">${tag ? `<b>${tag}</b>` : ''}${esc(shown)}<button type="button" data-act="speak-ipa" data-ipa="${esc(ipa)}" data-accent="${esc(accent)}" aria-label="${label}" title="${label}">${ICO.speaker}</button></span>`;
 }
 
 function ipaChips(list: Pronunciation[] | undefined, fallback: string): string {
@@ -259,6 +287,7 @@ function railTab(id: string, label: string, active: string): string {
   return `<button type="button" class="lexicon-pos-tab${on ? ' is-active' : ''}" role="tab" data-act="lex-pos" data-pos="${esc(id)}" aria-selected="${on}">${esc(label)}</button>`;
 }
 
+/** A rail's sections; `label` is already in the interface language or the dictionary's. */
 function railBlock(sections: Array<{ id: string; label: string }>, active: string): string {
   if (!sections.length) return '';
   return `<div class="lexicon-rail-block">${sections.map((s) => railTab(s.id, s.label, active)).join('')}</div>`;
@@ -290,7 +319,7 @@ function linkLemmaRefs(escaped: string): string {
  * lookup and looks like text until tapped.
  */
 function senseHtml(d: Definition, hide: string[] = []): string {
-  return linkHtml(senseLabelLead(senseMarkup(d.meaning), d, hide), 'act');
+  return linkHtml(senseLabelLead(senseMarkup(lookupNoticeText(d.meaning)), d, hide), 'act');
 }
 
 function senseMarkup(raw: string): string {
@@ -371,6 +400,7 @@ function renderSenses(
   reserve: Set<number> = new Set(),
   hide: string[] = [],
   headword = '',
+  entryLang = '',
 ): string {
   return senses
     .map((d, i) => {
@@ -380,7 +410,10 @@ function renderSenses(
       examples.forEach((ex) => shown.add(exampleKey(ex)));
       const exHtml = examples.length
         ? `<div class="definition-examples">${examples
-            .map((ex) => `<div class="definition-example">${linkText(tidyExample(stripGlossText(ex)), 'act')}</div>`)
+            .map((ex) => {
+              const text = tidyExample(stripGlossText(ex));
+              return `<div class="definition-example"${contentLangAttr(text, entryLang, entryLang)}>${linkText(text, 'act')}</div>`;
+            })
             .join('')}</div>`
         : '';
       return `<div class="definition-item" data-sense="${at}">
@@ -388,7 +421,7 @@ function renderSenses(
           <div class="definition-sense-num">${i + 1}</div>
           <div class="definition-sense-body">
             ${img ? senseFigureHtml(img, at) : !images && reserve.has(at) ? senseFigurePlaceholder(at) : ''}
-            <div class="definition-text">${senseHtml(d, hide)}</div>
+            <div class="definition-text"${contentLangAttr(stripGlossText(d.meaning || ''), entryLang)}>${senseHtml(d, hide)}</div>
             ${exHtml}
             ${senseNotesHtml(d, 'act', headword)}
           </div>
@@ -405,7 +438,9 @@ function lexiconPane(
   own: OwnWords = { mine: [], books: [] },
 ): string {
   const defs = lexiconSenses(result);
-  if (!defs.length) return `<div class="card empty">No definitions found.${didYouMeanHtml(result, 'act')}</div>`;
+  if (!defs.length) return `<div class="card empty">${tHtml('mobile.lexicon.noDefinitions')}${didYouMeanHtml(result, 'act')}</div>`;
+  // Glosses are English; examples, synonyms and antonyms are in the entry's language.
+  const entryLang = result.detectedLanguage && result.detectedLanguage !== 'auto' ? result.detectedLanguage : '';
   const indexOf = new Map<Definition, number>(defs.map((d, i) => [d, i]));
 
   const groups = new Map<string, Definition[]>();
@@ -434,11 +469,11 @@ function lexiconPane(
     const code = posGrammarHtml(result.headGrammar?.[pos]);
     posInner += wrapGroup(
       pos,
-      unknown ? (several ? 'other' : '') : pos,
-      renderSenses(groups.get(pos) || [], shown, indexOf, images, reserve, code.hide, result.word || ''),
+      unknown ? (several ? t('mobile.lexicon.section.other') : '') : pos,
+      renderSenses(groups.get(pos) || [], shown, indexOf, images, reserve, code.hide, result.word || '', entryLang),
       code.html,
     );
-    return { id: pos, label: unknown ? (several ? 'other' : 'senses') : abbreviatePos(pos) };
+    return { id: pos, label: unknown ? (several ? t('mobile.lexicon.section.other') : t('mobile.lexicon.section.senses')) : abbreviatePos(pos) };
   });
   posInner += definitionSourcesHtml(defs.flatMap((d) => citeOf(d).map(sourceName)));
   let allInner = wrapPane(posInner, 'lexicon-pane--pos');
@@ -451,31 +486,37 @@ function lexiconPane(
   const formsHtml = inflectionsHtml(result.inflections, result.word || '', 'act');
   const formsSections: Array<{ id: string; label: string }> = [];
   if (formsHtml) {
-    formsSections.push({ id: 'forms', label: 'forms' });
-    allInner += wrapPane(wrapGroup('forms', 'forms', formsHtml));
+    formsSections.push({ id: 'forms', label: t('mobile.lexicon.section.forms') });
+    allInner += wrapPane(wrapGroup('forms', t('mobile.lexicon.section.forms'), formsHtml));
   }
 
   const exampleSections: Array<{ id: string; label: string }> = [];
   if (globalExamples.length) {
-    exampleSections.push({ id: 'examples', label: 'examples' });
+    exampleSections.push({ id: 'examples', label: t('mobile.lexicon.section.examples') });
     allInner += wrapPane(
       wrapGroup(
         'examples',
-        'examples',
-        globalExamples.map((ex) => `<div class="example-item">${linkText(tidyExample(stripGlossText(ex)), 'act')}</div>`).join(''),
+        t('mobile.lexicon.section.examples'),
+        globalExamples
+          .map((ex) => {
+            const text = tidyExample(stripGlossText(ex));
+            return `<div class="example-item"${contentLangAttr(text, entryLang, entryLang)}>${linkText(text, 'act')}</div>`;
+          })
+          .join(''),
       ),
     );
   }
 
   const relatedSections: Array<{ id: string; label: string }> = [];
   let relatedInner = '';
+  const wordsLang = langAttr(entryLang || 'en');
   if (syn.length) {
-    relatedSections.push({ id: 'synonyms', label: 'synonyms' });
-    relatedInner += wrapGroup('synonyms', 'synonyms', `<div class="example-item">${linkText(syn.join(', '), 'act')}</div>`);
+    relatedSections.push({ id: 'synonyms', label: t('mobile.lexicon.section.synonyms') });
+    relatedInner += wrapGroup('synonyms', t('mobile.lexicon.section.synonyms'), `<div class="example-item"${wordsLang}>${linkText(syn.join(', '), 'act')}</div>`);
   }
   if (ant.length) {
-    relatedSections.push({ id: 'antonyms', label: 'antonyms' });
-    relatedInner += wrapGroup('antonyms', 'antonyms', `<div class="example-item">${linkText(ant.join(', '), 'act')}</div>`);
+    relatedSections.push({ id: 'antonyms', label: t('mobile.lexicon.section.antonyms') });
+    relatedInner += wrapGroup('antonyms', t('mobile.lexicon.section.antonyms'), `<div class="example-item"${wordsLang}>${linkText(ant.join(', '), 'act')}</div>`);
   }
   if (relatedInner) allInner += wrapPane(relatedInner);
 
@@ -483,15 +524,15 @@ function lexiconPane(
   const phraseSections: Array<{ id: string; label: string }> = [];
   const phraseHtml = phrasesHtml(result.wordFamily, 'act', result.word || '', groups.has('verb'));
   if (phraseHtml) {
-    phraseSections.push({ id: 'phrases', label: 'phrases' });
-    allInner += wrapPane(wrapGroup('phrases', 'phrases', phraseHtml));
+    phraseSections.push({ id: 'phrases', label: t('mobile.lexicon.section.phrases') });
+    allInner += wrapPane(wrapGroup('phrases', t('mobile.lexicon.section.phrases'), phraseHtml));
   }
 
   const familySections: Array<{ id: string; label: string }> = [];
   const familyHtml = wordFamilyHtml(result.wordFamily, 'act', { phrases: false });
   if (familyHtml) {
-    familySections.push({ id: 'family', label: 'family' });
-    allInner += wrapPane(wrapGroup('family', 'word family', familyHtml));
+    familySections.push({ id: 'family', label: t('mobile.lexicon.section.family') });
+    allInner += wrapPane(wrapGroup('family', t('mobile.lexicon.section.wordFamily'), familyHtml));
   }
 
   // A prefix, suffix or root: its spellings and origin, the learner's words and the words built on it.
@@ -520,7 +561,7 @@ function lexiconPane(
 
   return `<div class="lexicon-block--senses">
     <div class="lexicon-pos-layout">
-      <nav class="lexicon-pos-tabs" role="tablist" aria-label="Lexicon sections">
+      <nav class="lexicon-pos-tabs" role="tablist" aria-label="${tHtml('mobile.lexicon.sections')}">
         <div class="lexicon-rail-inner">${tabs}</div>
       </nav>
       <div class="lexicon-pos-panel">${allInner}</div>
@@ -539,7 +580,7 @@ function tabPending(label: string): string {
 /** Lookup in flight: the word in the headword face, shimmer where IPA, rail and senses land. */
 export function lookupSkeleton(query: string): string {
   const word = query.length > 60 ? `${query.slice(0, 60)}…` : query;
-  return `<div class="loading" role="status" aria-live="polite" aria-label="Looking up">
+  return `<div class="loading" role="status" aria-live="polite" aria-label="${tHtml('mobile.lookup.lookingUp')}">
     <div class="skel-head">
       <div class="skel-word">${esc(word)}</div>
       <div class="skel-chips" aria-hidden="true"><span class="skel skel-pill"></span><span class="skel skel-pill"></span></div>
@@ -557,14 +598,10 @@ export function lookupSkeleton(query: string): string {
   </div>`;
 }
 
+/** A language's name in the interface language, over a translation's text. */
 function languageLabel(code: string): string {
   const c = String(code || '').trim();
-  if (!c) return '';
-  try {
-    return new Intl.DisplayNames(['en'], { type: 'language' }).of(c) || c;
-  } catch {
-    return c;
-  }
+  return c ? languageDisplayName(c) : '';
 }
 
 function friendlyTranslationSource(src?: string): string {
@@ -576,26 +613,26 @@ function friendlyTranslationSource(src?: string): string {
   return '';
 }
 
-function translationCard(word: string, t: Translation, wordLang: string): string {
-  const provider = friendlyTranslationSource(t.source);
-  const tgt = t.language || 'en';
+function translationCard(word: string, tr: Translation, wordLang: string): string {
+  const provider = friendlyTranslationSource(tr.source);
+  const tgt = tr.language || 'en';
   return `<div class="translation-card">
-    ${provider ? `<div class="translation-card__provider">via ${esc(provider)}</div>` : ''}
+    ${provider ? `<div class="translation-card__provider">${tHtml('mobile.translation.via', { provider })}</div>` : ''}
     <div class="translation-card__pair">
       <div class="translation-card__line">
         <div>
-          <div class="translation-card__label">${esc(languageLabel(wordLang) || 'Source')}</div>
-          <div class="translation-card__original">${esc(word)}</div>
+          <div class="translation-card__label">${esc(languageLabel(wordLang) || t('mobile.translation.source'))}</div>
+          <div class="translation-card__original"${langAttr(wordLang)}>${esc(word)}</div>
         </div>
-        <button type="button" class="icon-btn tx-speak" data-act="speak-text" data-text="${esc(word)}" data-lang="${esc(wordLang)}" aria-label="Play source" title="Play source">${ICO.speaker}</button>
+        <button type="button" class="icon-btn tx-speak" data-act="speak-text" data-text="${esc(word)}" data-lang="${esc(wordLang)}" aria-label="${tHtml('mobile.translation.playSource')}" title="${tHtml('mobile.translation.playSource')}">${ICO.speaker}</button>
       </div>
       <div class="translation-card__line">
         <div>
           <div class="translation-card__label">${esc(languageLabel(tgt))}</div>
-          <div class="translation-card__text">${esc(t.text)}</div>
-          ${t.pronunciation ? `<div class="translation-card__pron">${esc(t.pronunciation)}</div>` : ''}
+          <div class="translation-card__text"${langAttr(tgt)}>${esc(tr.text)}</div>
+          ${tr.pronunciation ? `<div class="translation-card__pron">${esc(tr.pronunciation)}</div>` : ''}
         </div>
-        <button type="button" class="icon-btn tx-speak" data-act="speak-text" data-text="${esc(t.text)}" data-lang="${esc(tgt)}" aria-label="Play translation" title="Play translation">${ICO.speaker}</button>
+        <button type="button" class="icon-btn tx-speak" data-act="speak-text" data-text="${esc(tr.text)}" data-lang="${esc(tgt)}" aria-label="${tHtml('mobile.translation.playTranslation')}" title="${tHtml('mobile.translation.playTranslation')}">${ICO.speaker}</button>
       </div>
     </div>
   </div>`;
@@ -613,10 +650,10 @@ function translationPane(
   const pending = !!result.metadata?.pendingTranslation && !list.length;
   const wordLang = result.detectedLanguage || (sourceLang !== 'auto' ? sourceLang : '') || 'en';
   const body = list.length
-    ? list.map((t) => translationCard(result.word, t, wordLang)).join('')
+    ? list.map((tr) => translationCard(result.word, tr, wordLang)).join('')
     : pending
-      ? tabPending('Translating')
-      : '<div class="error-message">No translation found.</div>';
+      ? tabPending(t('mobile.translation.translating'))
+      : `<div class="error-message">${tHtml('mobile.translation.none')}</div>`;
   return `
     ${langBarHtml(langs, sourceLang, targetLang)}
     ${langMenu ? langSheetHtml(langMenu, langs, langMenu === 'from' ? sourceLang : targetLang, recentLangs) : ''}
@@ -635,18 +672,18 @@ function wikiPane(
   if (article) {
     return `<section class="wikipedia-card wikipedia-reader">
       <div class="wikipedia-reader__bar">
-        <button type="button" class="icon-btn" data-act="wiki-back" aria-label="Back">${ICO.back}</button>
-        <div class="wikipedia-reader__title">${esc(article.title)}</div>
-        <button type="button" class="icon-btn" data-act="wiki-ext" data-url="${esc(article.url)}" aria-label="Open in browser" title="Open in browser">${ICO.open}</button>
+        <button type="button" class="icon-btn" data-act="wiki-back" aria-label="${tHtml('common.back')}">${ICO.back}</button>
+        <div class="wikipedia-reader__title"${langAttr(article.lang)}>${esc(article.title)}</div>
+        <button type="button" class="icon-btn" data-act="wiki-ext" data-url="${esc(article.url)}" aria-label="${tHtml('mobile.wiki.openInBrowser')}" title="${tHtml('mobile.wiki.openInBrowser')}">${ICO.open}</button>
       </div>
-      ${loading ? `<p class="status"><span class="md-spinner"></span> Loading article…</p>` : ''}
+      ${loading ? `<p class="status"><span class="md-spinner"></span> ${tHtml('mobile.wiki.loadingArticle')}</p>` : ''}
       ${error ? `<p class="status">${esc(error)}</p>` : ''}
       <iframe id="wiki-frame" class="wikipedia-reader__frame" title="${esc(article.title)}" referrerpolicy="no-referrer" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
     </section>`;
   }
   const list = items
     .map(
-      (it, i) => `<button type="button" class="wikipedia-item" data-act="wiki-open" data-i="${i}">
+      (it, i) => `<button type="button" class="wikipedia-item" data-act="wiki-open" data-i="${i}"${langAttr(wikiLang)}>
         <div class="wikipedia-item__title">
           ${it.thumbnail ? `<img src="${esc(it.thumbnail)}" alt="" loading="lazy" />` : ''}
           <span class="wikipedia-item__name">${esc(it.title)}</span>
@@ -656,17 +693,17 @@ function wikiPane(
     )
     .join('');
   const empty = error
-    ? '<div class="error-message">Wikipedia lookup failed.</div>'
+    ? `<div class="error-message">${tHtml('mobile.wiki.failed')}</div>`
     : loading
       ? ''
-      : '<div class="error-message">No Wikipedia articles found.</div>';
+      : `<div class="error-message">${tHtml('mobile.wiki.none')}</div>`;
   return `<section class="wikipedia-card">
     <div class="wikipedia-card__header">
       <span>Wikipedia</span>
       <span class="wikipedia-card__lang">${esc(wikiLang)}</span>
     </div>
     <div class="wikipedia-card__body">
-      ${loading && !list ? tabPending('Searching Wikipedia') : ''}
+      ${loading && !list ? tabPending(t('mobile.wiki.searching')) : ''}
       ${list || empty}
     </div>
   </section>`;
@@ -679,7 +716,7 @@ function splitEtymologySources(etymologyText: string): Array<{ label: string; bo
     .map((chunk, i) => {
       let body = chunk.trim();
       const labelMatch = body.match(/^\[([^\]]+)\]\s*\n([\s\S]*)$/);
-      let label = i === 0 ? 'Primary' : `Alt ${i + 1}`;
+      let label = i === 0 ? t('mobile.etymology.primary') : t('mobile.etymology.alternative', { n: String(i + 1) });
       if (labelMatch) {
         label = labelMatch[1].trim() || label;
         body = labelMatch[2].trim();
@@ -695,7 +732,7 @@ function splitEtymologySources(etymologyText: string): Array<{ label: string; bo
     });
 }
 
-function formatEtymologyBody(body: string): string {
+function formatEtymologyBody(body: string, entryLang = ''): string {
   const plain = stripGlossText(body || '');
   const sentences = plain.split(/(?<=[.!?。！？])\s+/).filter((s) => s.trim().length > 2);
   const paint = (sentence: string): string =>
@@ -716,18 +753,18 @@ function formatEtymologyBody(body: string): string {
     .filter(Boolean)
     .map((s) => `<div class="etymology-sentence">${linkHtml(paint(s), 'act')}</div>`)
     .join('');
-  return `<div class="etymology-text">${inner}</div>`;
+  return `<div class="etymology-text"${contentLangAttr(plain, entryLang)}>${inner}</div>`;
 }
 
-/** How each older form reached the next, read left to right. */
-const ETYMOLOGY_STEP: Record<string, string> = {
-  inherited: 'inherited',
-  borrowed: 'borrowed',
-  'learned borrowing': 'learned borrowing',
-  'semi-learned borrowing': 'borrowed',
-  derived: 'derived',
-  calque: 'calque',
-  root: 'root',
+/** How each older form reached the next, read left to right: the message for each relation. */
+const ETYMOLOGY_STEP: Record<string, MessageKey> = {
+  inherited: 'mobile.etymology.relation.inherited',
+  borrowed: 'mobile.etymology.relation.borrowed',
+  'learned borrowing': 'mobile.etymology.relation.learnedBorrowing',
+  'semi-learned borrowing': 'mobile.etymology.relation.borrowed',
+  derived: 'mobile.etymology.relation.derived',
+  calque: 'mobile.etymology.relation.calque',
+  root: 'mobile.etymology.relation.root',
 };
 
 /** The first sense of a gloss, so one long gloss does not stretch the line. */
@@ -742,26 +779,28 @@ function formatEtymologyChain(result: DictionaryResult): string {
   if (!found.length) return '';
   // A root names the oldest ancestor wherever Wiktionary placed its template.
   const links = [...found.filter((l) => l.relation !== 'root'), ...found.filter((l) => l.relation === 'root')];
-  const node = (lang: string, term: string, gloss: string, isHead: boolean): string =>
-    `<span class="etymology-chain__node${isHead ? ' is-head' : ''}"><span class="etymology-chain__lang">${esc(lang)}</span>${
+  // Language names and glosses are Wiktionary's English; a term is in its own language.
+  const node = (lang: string, term: string, gloss: string, isHead: boolean, termLang: string): string =>
+    `<span class="etymology-chain__node${isHead ? ' is-head' : ''}"><span class="etymology-chain__lang" lang="en">${esc(lang)}</span>${
       term
         ? isHead
-          ? `<span class="etymology-chain__term">${esc(term)}</span>`
-          : `<span class="etymology-chain__term lx-w" role="link" tabindex="0" data-act="lookup" data-q="${esc(term)}">${esc(term)}</span>`
+          ? `<span class="etymology-chain__term"${langAttr(termLang)}>${esc(term)}</span>`
+          : `<span class="etymology-chain__term lx-w" role="link" tabindex="0"${langAttr(termLang)} data-act="lookup" data-q="${esc(term)}">${esc(term)}</span>`
         : ''}${
-      gloss ? `<span class="etymology-chain__gloss">“${esc(gloss)}”</span>` : ''}</span>`;
+      gloss ? `<span class="etymology-chain__gloss" lang="en">“${esc(gloss)}”</span>` : ''}</span>`;
   const step = (rel: string): string => {
-    const label = ETYMOLOGY_STEP[rel] || '';
-    return `<span class="etymology-chain__step" aria-hidden="true">${label ? `<span class="etymology-chain__rel">${esc(label)}</span>` : ''}<span class="etymology-chain__arrow">→</span></span>`;
+    const key = ETYMOLOGY_STEP[rel];
+    return `<span class="etymology-chain__step" aria-hidden="true">${key ? `<span class="etymology-chain__rel">${tHtml(key)}</span>` : ''}<span class="etymology-chain__arrow">→</span></span>`;
   };
   const parts: string[] = [];
   for (let i = links.length - 1; i >= 0; i--) {
     const l = links[i];
-    parts.push(node(l.language || l.languageCode || '', l.term || '', shortGloss(l.gloss), false));
+    parts.push(node(l.language || l.languageCode || '', l.term || '', shortGloss(l.gloss), false, l.languageCode || ''));
     parts.push(step(l.relation));
   }
-  parts.push(node('English', result.word || '', '', true));
-  return `<div class="etymology-chain" role="list" aria-label="Word history, oldest first">${parts.join('')}</div>`;
+  // i18n-ignore: an English Wiktionary language name, like the chain's other language names.
+  parts.push(node('English', result.word || '', '', true, 'en'));
+  return `<div class="etymology-chain" role="list" aria-label="${tHtml('mobile.etymology.chain')}">${parts.join('')}</div>`;
 }
 
 export function etymologyEntryUrl(raw: string): string | null {
@@ -781,8 +820,8 @@ function etymPane(result: DictionaryResult, selectedSource = ''): string {
     if (url) sources.push({ label: 'Etymonline', body: '', unavailable: unavailable.status, url });
   }
   const pending = !!(result.metadata && result.metadata.pendingEtymology);
-  if (pending && !sources.length) return tabPending('Loading etymology');
-  if (!sources.length) return `<div class="etymology-no-data"><p><strong>No etymology found.</strong></p></div>`;
+  if (pending && !sources.length) return tabPending(t('mobile.etymology.loading'));
+  if (!sources.length) return `<div class="etymology-no-data"><p><strong>${tHtml('mobile.etymology.none')}</strong></p></div>`;
   const activeIndex = Math.max(0, sources.findIndex((s) => s.label === selectedSource));
   const tabs = sources
     .map(
@@ -794,14 +833,14 @@ function etymPane(result: DictionaryResult, selectedSource = ''): string {
     .map(
       (s, i) =>
         `<div class="etymology-panel-body" data-ety-panel="${i}" ${i === activeIndex ? '' : 'hidden'}>${s.unavailable
-          ? `<div class="etymology-unavailable"><p>${s.unavailable === 'blocked' ? 'Etymonline blocked this request.' : 'Etymonline is unavailable.'}</p><button type="button" class="etymology-open-entry" data-act="ety-open" data-url="${esc(s.url || '')}">Open on Etymonline</button></div>`
-          : formatEtymologyBody(s.body)}</div>`,
+          ? `<div class="etymology-unavailable"><p>${s.unavailable === 'blocked' ? tHtml('mobile.etymology.blocked') : tHtml('mobile.etymology.unavailable')}</p><button type="button" class="etymology-open-entry" data-act="ety-open" data-url="${esc(s.url || '')}">${tHtml('mobile.etymology.openOnEtymonline')}</button></div>`
+          : formatEtymologyBody(s.body, result.detectedLanguage || '')}</div>`,
     )
     .join('');
   return `<section class="card etymology-card">
     ${formatEtymologyChain(result)}
     <div class="etymology-layout">
-      <nav class="etymology-tabs" aria-label="Etymology sources">${tabs}</nav>
+      <nav class="etymology-tabs" aria-label="${tHtml('mobile.etymology.sources')}">${tabs}</nav>
       <div class="etymology-panel">${panels}</div>
     </div>
   </section>`;
@@ -843,16 +882,16 @@ export function lookupBody(opts: {
 }): string {
   if (opts.looking && !opts.result) return lookupSkeleton(opts.query || '');
   if (opts.error && !opts.result) {
-    return `<div class="error-message">Could not look up "${esc(opts.query || '')}".<small>${esc(opts.error || 'Unknown error')}</small></div>`;
+    return `<div class="error-message">${tHtml('mobile.lookup.failed', { word: opts.query || '' })}<small>${esc(opts.error || t('mobile.lookup.unknownError'))}</small></div>`;
   }
   if (opts.status && !opts.result) return `<p class="status">${esc(opts.status)}</p>`;
   if (!opts.result) {
     const recent = (opts.recent || []).filter((r) => r && r.q);
     return `<div class="empty">
-      <p>Type a word, or select text in another app.</p>
+      <p>${tHtml('mobile.lookup.empty')}</p>
     </div>
-    ${recent.length ? `<section class="recent-lookups" aria-label="Recent lookups">
-      <h3 class="recent-lookups__title">Recent</h3>
+    ${recent.length ? `<section class="recent-lookups" aria-label="${tHtml('mobile.lookup.recentLabel')}">
+      <h3 class="recent-lookups__title">${tHtml('mobile.lookup.recent')}</h3>
       <div class="vocab-list">${recentListHtml(recent, opts.savedFor || (() => undefined), Date.now(), { bookPick: opts.bookPick })}</div>
     </section>` : ''}`;
   }
@@ -868,10 +907,10 @@ export function lookupBody(opts: {
     etymology: ICO.tabEtymology,
   };
   const labels: Record<ResultTab, string> = {
-    lexicon: 'Lexicon',
-    translation: 'Translation',
+    lexicon: t('mobile.result.lexicon'),
+    translation: t('mobile.result.translation'),
     wikipedia: 'Wikipedia',
-    etymology: 'Etymology',
+    etymology: t('mobile.result.etymology'),
   };
   const resultTab: ResultTab = part && !tabs.includes(opts.resultTab) ? 'lexicon' : opts.resultTab;
   const pane =
@@ -887,21 +926,21 @@ export function lookupBody(opts: {
     <header class="head">
       ${formLineHtml(opts.result)}
       <div class="word">
-        <h2 class="lemma" style="--len:${[...String(opts.result.word || lemma)].length}">${esc(opts.result.word || lemma)}</h2>
+        <h2 class="lemma" style="--len:${[...String(opts.result.word || lemma)].length}"${langAttr(opts.result.detectedLanguage)}>${esc(opts.result.word || lemma)}</h2>
         ${morphemeOfferHtml(opts.result, 'act')}
       </div>
       <div class="head-actions">
-        ${opts.headTools ? `<button type="button" class="icon-btn" data-act="copy" aria-label="Copy" title="Copy">${ICO.copy}</button>
-        <button type="button" class="icon-btn" data-act="web-search" aria-label="Search the web" title="Search the web">${ICO.web}</button>` : ''}
-        ${part ? '' : `<button type="button" class="tonal" data-act="speak" aria-label="Play pronunciation">${ICO.speaker}</button>
-        <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Remove from My words' : 'Save to My words'}">${ICO.heart}</button>
+        ${opts.headTools ? `<button type="button" class="icon-btn" data-act="copy" aria-label="${tHtml('common.copy')}" title="${tHtml('common.copy')}">${ICO.copy}</button>
+        <button type="button" class="icon-btn" data-act="web-search" aria-label="${tHtml('mobile.bar.searchWeb')}" title="${tHtml('mobile.bar.searchWeb')}">${ICO.web}</button>` : ''}
+        ${part ? '' : `<button type="button" class="tonal" data-act="speak" aria-label="${tHtml('mobile.ipa.play')}">${ICO.speaker}</button>
+        <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? tHtml('mobile.lookup.removeFromMyWords') : tHtml('mobile.lookup.saveToMyWords')}">${ICO.heart}</button>
         ${opts.bookPick && opts.saveWord && canAddToWordBook(opts.result) ? addToBookButtonHtml(opts.saveWord, 'tonal') : ''}`}
       </div>
       ${chips}
       ${languageSwitchHtml(opts.result, 'act', { fold: false })}
     </header>
     <div class="result-tabs" role="tablist">
-      ${tabs.map((t) => `<button type="button" class="result-tab" role="tab" data-act="result-tab" data-tab="${t}" aria-selected="${resultTab === t}" aria-label="${labels[t]}" title="${labels[t]}">${icons[t]}</button>`).join('')}
+      ${tabs.map((id) => `<button type="button" class="result-tab" role="tab" data-act="result-tab" data-tab="${id}" aria-selected="${resultTab === id}" aria-label="${esc(labels[id])}" title="${esc(labels[id])}">${icons[id]}</button>`).join('')}
     </div>
     ${pane}
     </div>`;
@@ -977,7 +1016,7 @@ export function notebookBody(
   // Words saved in several languages: a chip per language, counted over the whole notebook.
   const everything = nb.pool.length > entries.length ? nb.pool : entries;
   const langs = vocabLanguages(everything);
-  const langChips = vocabLangChipsHtml(langs, nb.lang, everything.length, languageName);
+  const langChips = vocabLangChipsHtml(langs, nb.lang, everything.length, languageDisplayName);
   const langOn = !!langChips && nb.lang !== 'all';
   // A chosen language filters the whole notebook, not only the page the list has loaded.
   const source = langOn ? filterVocabByLang(everything, nb.lang, langs) : entries;
@@ -995,10 +1034,10 @@ export function notebookBody(
   if (q) list = list.filter(matches);
   const head = `${switcher}
     <div class="nb-head">
-      <input id="nbq" type="search" class="vocab-search" placeholder="Search words…" value="${esc(filter)}" autocomplete="off" aria-label="Search words" />
-      ${nb.view === 'list' ? `<div class="vocab-sort" role="group" aria-label="Sort">
-        <button type="button" class="vocab-sort-btn${sort === 'recent' ? ' is-active' : ''}" data-act="nb-sort" data-sort="recent" aria-pressed="${sort === 'recent'}" aria-label="Most recent first" title="Recent">${ICO.recent}</button>
-        <button type="button" class="vocab-sort-btn${sort === 'az' ? ' is-active' : ''}" data-act="nb-sort" data-sort="az" aria-pressed="${sort === 'az'}" aria-label="Alphabetical" title="A–Z">${ICO.az}</button>
+      <input id="nbq" type="search" class="vocab-search" placeholder="${tHtml('mobile.words.searchPlaceholder')}" value="${esc(filter)}" autocomplete="off" aria-label="${tHtml('mobile.words.search')}" />
+      ${nb.view === 'list' ? `<div class="vocab-sort" role="group" aria-label="${tHtml('mobile.words.sort')}">
+        <button type="button" class="vocab-sort-btn${sort === 'recent' ? ' is-active' : ''}" data-act="nb-sort" data-sort="recent" aria-pressed="${sort === 'recent'}" aria-label="${tHtml('mobile.words.sort.recentLabel')}" title="${tHtml('mobile.words.sort.recent')}">${ICO.recent}</button>
+        <button type="button" class="vocab-sort-btn${sort === 'az' ? ' is-active' : ''}" data-act="nb-sort" data-sort="az" aria-pressed="${sort === 'az'}" aria-label="${tHtml('mobile.words.sort.azLabel')}" title="${tHtml('mobile.words.sort.az')}">${ICO.az}</button>
       </div>` : ''}
     </div>
     ${langChips ? `<div class="nbv nb-langs">${langChips}</div>` : ''}
@@ -1025,7 +1064,7 @@ export function notebookBody(
   const rows = vocabListHtml(list, { sort, expanded, bookPick: !!words?.bookPick });
   return `${head}
     <div class="ptr" aria-hidden="true"><span class="md-spinner"></span></div>
-    <div class="vocab-list">${rows || `<p class="empty">${q ? 'No matching words.' : 'No saved words.'}</p>`}</div>
+    <div class="vocab-list">${rows || `<p class="empty">${q ? tHtml('mobile.words.noMatches') : tHtml('mobile.words.empty')}</p>`}</div>
     ${sort === 'az' && list.length ? vocabAzRail(new Set(list.map((e) => vocabAzLetter(e.lemma)))) : ''}`;
 }
 
@@ -1036,7 +1075,7 @@ function bookScopeBody(words: WordsState, ctx: WordsContext, filter: string, nb:
   const list = q ? all.filter((e) => e.lemma.toLowerCase().includes(q)) : all;
   const head = `${wordbookHeaderHtml(words.scope, ctx)}
     <div class="nb-head">
-      <input id="nbq" type="search" class="vocab-search" placeholder="Search this book…" value="${esc(filter)}" autocomplete="off" aria-label="Search this book" />
+      <input id="nbq" type="search" class="vocab-search" placeholder="${tHtml('mobile.words.searchBookPlaceholder')}" value="${esc(filter)}" autocomplete="off" aria-label="${tHtml('mobile.words.searchBook')}" />
     </div>
     <div class="nbv nb-views">${notebookViewSwitchHtml(nb.view)}</div>`;
   let body: string;
@@ -1055,7 +1094,7 @@ function bookScopeBody(words: WordsState, ctx: WordsContext, filter: string, nb:
 }
 
 function vocabAzRail(present: Set<string>): string {
-  return `<nav class="vocab-az" data-az-rail aria-label="Jump to letter">${AZ_INDEX
+  return `<nav class="vocab-az" data-az-rail aria-label="${tHtml('mobile.words.jumpToLetter')}">${AZ_INDEX
     .map((l) => `<button type="button" class="vocab-az__letter${present.has(l) ? '' : ' is-empty'}" data-letter="${l}">${l}</button>`)
     .join('')}</nav>
     <div class="vocab-az-hud" hidden aria-hidden="true"></div>`;
@@ -1092,18 +1131,18 @@ export function scanHtml(scan: ScanPage, page: OcrPage, id: number): string {
         <div class="scan-stage">
           <div class="scan-canvas">
             <div class="scan-frame ocr-frame" data-ratio="${scan.width && scan.height ? scan.width / scan.height : 0.75}">
-              <img src="data:image/jpeg;base64,${scan.jpeg}" alt="Scanned picture" draggable="false" />
+              <img src="data:image/jpeg;base64,${scan.jpeg}" alt="${tHtml('mobile.scan.picture')}" draggable="false" />
               <div class="ocr-layer"></div>
             </div>
           </div>
         </div>
         <div class="ocr-text scan-text" hidden></div>
       </div>
-      <button type="button" class="icon-btn scan-close" data-act="scan-close" aria-label="Back">${ICO.back}</button>
+      <button type="button" class="icon-btn scan-close" data-act="scan-close" aria-label="${tHtml('common.back')}">${ICO.back}</button>
       <div class="scan-bar">${ocrBarHtml({ saveImage: true, translate: true, empty })}</div>
-      ${empty ? '' : '<p class="scan-hint">Select text</p>'}
-      <section class="scan-sheet" data-state="closed" aria-label="Lookup">
-        <div class="scan-sheet__handle" data-drag="scan-sheet" role="button" tabindex="0" aria-label="Resize lookup"><span></span></div>
+      ${empty ? '' : `<p class="scan-hint">${tHtml('mobile.scan.selectText')}</p>`}
+      <section class="scan-sheet" data-state="closed" aria-label="${tHtml('mobile.scan.sheet')}">
+        <div class="scan-sheet__handle" data-drag="scan-sheet" role="button" tabindex="0" aria-label="${tHtml('mobile.scan.resizeSheet')}"><span></span></div>
         <div class="scan-sheet__body"></div>
       </section>
       <div class="scan-toast"></div>
@@ -1112,5 +1151,5 @@ export function scanHtml(scan: ScanPage, page: OcrPage, id: number): string {
 
 export type { CaptureInfo, SettingsSection, VoiceStatus } from './settings-panels';
 export { MOCK_BAR } from './settings-panels';
-export { SETTINGS_SECTIONS, emptyLibraryState, keyPresent, settingsBody } from './settings-panels';
+export { SETTINGS_SECTIONS, emptyLibraryState, keyPresent, settingsBody, settingsSectionLabel, speedText } from './settings-panels';
 
