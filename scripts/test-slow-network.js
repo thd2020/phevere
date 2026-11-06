@@ -184,16 +184,6 @@ const cases = {
     assert.ok(catMs < core.RECORDING_WAIT_MS, `a word with no recording does not wait out the limit (${catMs} ms)`);
     measured.push(`harbour: first paint ${paintMs} ms, recording ${waitMs} ms after the press; cat (no recording): voice ${catMs} ms after the press`);
   },
-  // The adaptive budgets: a host answering in two seconds stretches a budget of one and a half.
-  async 'budgets follow the round trip'() {
-    const { core } = app({});
-    const after = (ms) => ({ requestJson: () => new Promise((r) => setTimeout(() => r({}), ms)), requestText: async () => ({}), requestBytes: async () => ({}) });
-    assert.equal(core.budgetMs(1500, 'example.org'), 1500, 'no round trips yet: the budget as set');
-    await core.trackHttp(after(20)).requestJson('https://example.org/a');
-    assert.equal(core.budgetMs(2500, 'example.org'), 2500, 'a fast host leaves the budget as set');
-    await core.trackHttp(after(2000)).requestJson('https://slow.example.org/a');
-    assert.ok(core.budgetMs(1500, 'slow.example.org') >= 2000, 'a two-second host stretches it past two seconds');
-  },
 };
 
 // Wiktionary answers nothing at all (blocked, or its address resolves to nowhere) while the other
@@ -443,6 +433,18 @@ last['a skip outlives another host falling silent'] = async () => {
 // re-checked its held result in a loop of microtasks until its budget ran out, so no timer, tap
 // or paint could run for up to 17 s.
 const alone = {};
+// The adaptive budgets: a host answering in two seconds stretches a budget of one and a half.
+// Alone, because a 20 ms answer measured while other cases keep the event loop busy counts their
+// lag as round trip, and the first round trip sets a budget of three times it.
+alone['budgets follow the round trip'] = async () => {
+  const { core } = app({});
+  const after = (ms) => ({ requestJson: () => new Promise((r) => setTimeout(() => r({}), ms)), requestText: async () => ({}), requestBytes: async () => ({}) });
+  assert.equal(core.budgetMs(1500, 'example.org'), 1500, 'no round trips yet: the budget as set');
+  await core.trackHttp(after(20)).requestJson('https://example.org/a');
+  assert.equal(core.budgetMs(2500, 'example.org'), 2500, 'a fast host leaves the budget as set');
+  await core.trackHttp(after(2000)).requestJson('https://slow.example.org/a');
+  assert.ok(core.budgetMs(1500, 'slow.example.org') >= 2000, 'a two-second host stretches it past two seconds');
+};
 alone['a failed page check does not block the event loop'] = async () => {
   const link = { state: (u) => (/wiktionary\.org|kaikki\.org/.test(u) ? 'refused' : 'up') };
   const { service } = app({ delay: [100, 200], seed: 'spin' }, { link });
