@@ -10,6 +10,12 @@ export interface HttpRequestInit {
   slot?: 'first' | 'later';
   /** `false`: never send a backup request for this one (net.ts). */
   hedge?: boolean;
+  /**
+   * Whether the answer is still wanted (a card that scrolled away no longer wants its picture). A
+   * request waiting for a slot that is no longer wanted is dropped before it is sent, and fails
+   * with the code `CANCELLED`; one already sent runs on. Read by core's request layer only.
+   */
+  wanted?: () => boolean;
 }
 
 export interface HttpTextResponse {

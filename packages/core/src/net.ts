@@ -20,6 +20,8 @@
  *   requests) queue for one, the `later` ones behind the rest. The lookup's own requests never
  *   wait for a slot, so the first definitions are as fast as before.
  *   https://www.mediawiki.org/wiki/API:Etiquette, https://www.mediawiki.org/wiki/Wikimedia_APIs/Rate_limits
+ * - A request waiting for a slot whose answer nobody wants any more (`wanted`: the cards it was
+ *   for scrolled away) is dropped before it is sent, so the slots go to what is on screen.
  */
 import type { HttpClient, HttpRequestInit } from './http';
 
@@ -40,13 +42,20 @@ const MAX_BUDGET_MS = 30000;
 /** What the platform clients use when a request names no timeout. */
 const CLIENT_TIMEOUT_MS = 8000;
 
+/** A request waiting for a slot: `go` sends it, `drop` fails it when it is no longer wanted. */
+interface Waiter {
+  go: () => void;
+  wanted?: () => boolean;
+  drop: () => void;
+}
+
 interface HostState {
   srtt: number;
   rttvar: number;
   samples: number;
   inFlight: number;
-  first: Array<() => void>;
-  later: Array<() => void>;
+  first: Waiter[];
+  later: Waiter[];
   /** Backup timers set before the host had answered once, set again by its first answer. */
   onFirstAnswer: Set<() => void>;
   /** When it last answered (Date.now()). */
@@ -160,26 +169,69 @@ export function resetNetStats(): void {
   }
 }
 
-/** Waits for one of the host's slots; `later` waits behind every other request. */
-function takeSlot(s: HostState, later: boolean): Promise<void> {
+/** The error a request no longer wanted fails with, before it was sent. */
+export function cancelledError(): Error {
+  const e = new Error('Request cancelled') as Error & { code: string };
+  e.code = 'CANCELLED';
+  return e;
+}
+
+export function isCancelled(err: unknown): boolean {
+  return (err as { code?: unknown } | null)?.code === 'CANCELLED';
+}
+
+/**
+ * Waits for one of the host's slots; `later` waits behind every other request. A request that is
+ * no longer wanted when its turn comes is dropped and the next one goes, so the slots go to what
+ * is on screen (Glide and Coil cancel the loads of views scrolled away in the same way).
+ */
+function takeSlot(s: HostState, later: boolean, wanted?: () => boolean): Promise<void> {
+  if (wanted && !wanted()) return Promise.reject(cancelledError());
   if (s.inFlight < MAX_PER_HOST && !s.first.length && (later ? !s.later.length : true)) {
     s.inFlight += 1;
     return Promise.resolve();
   }
-  return new Promise((resolve) =>
-    (later ? s.later : s.first).push(() => {
-      s.inFlight += 1;
-      resolve();
+  return new Promise((resolve, reject) =>
+    (later ? s.later : s.first).push({
+      go: () => {
+        s.inFlight += 1;
+        resolve();
+      },
+      wanted,
+      drop: () => reject(cancelledError()),
     }),
   );
 }
 
 function releaseSlot(s: HostState): void {
   s.inFlight -= 1;
+  pumpSlots(s);
+}
+
+function pumpSlots(s: HostState): void {
   while (s.inFlight < MAX_PER_HOST) {
     const next = s.first.shift() || s.later.shift();
     if (!next) break;
-    next();
+    if (next.wanted && !next.wanted()) next.drop();
+    else next.go();
+  }
+}
+
+/**
+ * Drops every queued request that is no longer wanted, on every host, at once rather than when
+ * its turn comes (a screen of cards scrolled away). Requests already sent run on.
+ */
+export function dropUnwanted(): void {
+  for (const s of hosts.values()) {
+    for (const queue of [s.first, s.later]) {
+      for (let i = queue.length - 1; i >= 0; i--) {
+        const w = queue[i];
+        if (w.wanted && !w.wanted()) {
+          queue.splice(i, 1);
+          w.drop();
+        }
+      }
+    }
   }
 }
 
@@ -199,7 +251,7 @@ export function trackHttp(inner: HttpClient): HttpClient {
   const send = <T>(kind: Kind, url: string, options?: HttpRequestInit): Promise<T> => {
     const host = hostOf(url);
     const s = state(host);
-    const { slot, hedge, ...rest } = options || {};
+    const { slot, hedge, wanted, ...rest } = options || {};
     const rto = rtoMs(host);
     // Downloads (pictures, offline packs) keep the caller's timeout and are never hedged: they
     // are not small API answers, and a second copy would only compete for the same bandwidth.
@@ -212,7 +264,9 @@ export function trackHttp(inner: HttpClient): HttpClient {
     // request that hung for six seconds would otherwise raise the host's RTO to six seconds, and
     // the next hung request would wait that long for its backup.
     const once = async (queued: boolean, took = false, onSend?: () => void, decided?: () => boolean): Promise<T> => {
-      if (queued && !took) await takeSlot(s, slot === 'later');
+      // A request dropped while it queued was never sent: it holds no slot and says nothing about
+      // the host, so it leaves before the try below.
+      if (queued && !took) await takeSlot(s, slot === 'later', wanted);
       else if (!took) s.inFlight += 1;
       onSend?.();
       const started = Date.now();
@@ -251,7 +305,8 @@ export function trackHttp(inner: HttpClient): HttpClient {
       let firstError: unknown = null;
       const settle = (ok: boolean, v: unknown) => {
         if (done) return;
-        if (ok || answered(v)) {
+        // Dropped before it was sent: nothing went out, so the host is not forgotten either.
+        if (ok || answered(v) || isCancelled(v)) {
           done = true;
           clearTimeout(timer);
           unhook();
@@ -298,20 +353,31 @@ export function trackHttp(inner: HttpClient): HttpClient {
       const backup = () => {
         unhook();
         if (done) return;
-        // The backup takes one of the host's three slots, waiting for one if all are open.
+        // The backup takes one of the host's three slots, waiting for one if all are open. One
+        // for an answer nobody wants any more is not sent; the first request runs on.
         backupWaiting = true;
-        void takeSlot(s, false).then(() => {
-          backupWaiting = false;
-          if (done) {
-            releaseSlot(s);
-            return;
-          }
-          pending += 1;
-          once(false, true, undefined, () => done).then(
-            (v) => settle(true, v),
-            (e) => settle(false, e),
-          );
-        });
+        takeSlot(s, false, wanted).then(
+          () => {
+            backupWaiting = false;
+            if (done) {
+              releaseSlot(s);
+              return;
+            }
+            pending += 1;
+            once(false, true, undefined, () => done).then(
+              (v) => settle(true, v),
+              (e) => settle(false, e),
+            );
+          },
+          (err) => {
+            backupWaiting = false;
+            // The first request already failed and was waiting for this backup: it is over.
+            if (done || pending) return;
+            done = true;
+            clearTimeout(timer);
+            reject(firstError ?? err);
+          },
+        );
       };
       once(!!slot, false, arm, () => done).then(
         (v) => settle(true, v),
