@@ -9,10 +9,10 @@
  */
 import { esc, type NotebookEntry } from './notebook-shared';
 import { reviewHtml, type ReviewRenderOptions } from './notebook-review';
-import type { ReviewState } from './review-quiz';
+import { isLearnable, type ReviewState } from './review-quiz';
 import type { AnswerDetails, AnswerRecord } from './answer-history';
 import { progressHtml } from './learn-progress';
-import { bookProgress, scopeEntries, wordbookMeta, type WordsContext, type WordsScope } from './wordbooks';
+import { bookProgress, learnScopeEntries, scopeEntries, wordbookMeta, type WordsContext, type WordsScope } from './wordbooks';
 import { progressRingSvg, reviewBookRows } from './wordbook-views';
 
 export interface LearnViewInput {
@@ -71,10 +71,10 @@ export function reviewAnswerDetails(state: ReviewState, scope: WordsScope, ctx: 
   return { kind: q.kind, correct: a.grade > 1, ms: a.ms, bookId: scopeBookFor(scope, ctx, q.lemma) };
 }
 
-/** The scope's entries for review: My words, or the book words of a book or of All books. */
+/** The scope's entries for review: My words, or the book words of a book or of All books, less what Learn leaves out (`isLearnable`). */
 export function learnEntries(scope: WordsScope, ctx: WordsContext | null, mine: NotebookEntry[]): NotebookEntry[] {
-  if (scope === 'mine' || !ctx) return mine;
-  return scopeEntries(scope, ctx);
+  if (scope === 'mine' || !ctx) return mine.filter(isLearnable);
+  return learnScopeEntries(scope, ctx);
 }
 
 /** The Today page: today's quiz beside the plan for the chosen list. */

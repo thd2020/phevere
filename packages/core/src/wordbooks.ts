@@ -10,7 +10,7 @@
  */
 import { WORDBOOK_CATALOG, type WordbookMeta } from './wordbook-catalog';
 import { clean, dayStart, DAY, type NotebookEntry } from './notebook-shared';
-import { dedupeLemmas, interleaveNew, isNewWord, memoryLevel, newWordAllowance, newWordsToday, reviewStateFor, type QueuePlan, type ReviewState, type StudyPace } from './review-quiz';
+import { dedupeLemmas, interleaveNew, isLearnable, isNewWord, memoryLevel, newWordAllowance, newWordsToday, reviewStateFor, type QueuePlan, type ReviewState, type StudyPace } from './review-quiz';
 import { analyzeMorphemes, derivationStem } from './morphology';
 import { bookWordKey, DEFAULT_DAILY_NEW, isUserBookId, type BookWordProgress, type UserBook, type WordbookSub } from './wordbook-store';
 import { setMadeBookNames, shortBookTitle } from './book-names';
@@ -220,6 +220,11 @@ export function scopeEntries(scope: WordsScope, ctx: WordsContext): WordsEntry[]
   return (ctx.books.get(scope) || []).map((w) => bookEntry(w, ctx));
 }
 
+/** The words of a scope that Learn studies and counts (`isLearnable`); Words still shows every entry. */
+export function learnScopeEntries(scope: WordsScope, ctx: WordsContext): WordsEntry[] {
+  return scopeEntries(scope, ctx).filter(isLearnable);
+}
+
 /* ----------------------------------------------------------------- progress */
 
 export interface BookProgress {
@@ -402,7 +407,7 @@ export function pickNewBookWords(bookIds: string[], ctx: WordsContext, now = Dat
 export function scopeReviewPlan(scope: WordsScope, ctx: WordsContext, opts: ScopeReviewOptions = {}): QueuePlan {
   const now = opts.now ?? Date.now();
   const end = dayStart(now) + DAY;
-  const entries = scopeEntries(scope, ctx);
+  const entries = learnScopeEntries(scope, ctx);
   const due = dedupeLemmas(
     entries
       .filter((e) => !isNewWord(e) && !(e.known && !e.saved) && e.reviewDue != null && Number(e.reviewDue) < end)
@@ -426,7 +431,7 @@ export function scopeReviewPlan(scope: WordsScope, ctx: WordsContext, opts: Scop
     const allowed = Math.min(mineLeft, newWordAllowance(goal, due.length), mineRoom);
     const waiting = dedupeLemmas(
       ctx.mine
-        .filter((e) => isNewWord(e) && clean(e.lemma) && !ctx.progress.get(bookWordKey(e.lemma))?.known)
+        .filter((e) => isNewWord(e) && clean(e.lemma) && isLearnable(e) && !ctx.progress.get(bookWordKey(e.lemma))?.known)
         .sort((x, y) => Number(x.createdAt || 0) - Number(y.createdAt || 0))
         .map((e) => ({ ...e, saved: true, books: ctx.index.get(bookWordKey(e.lemma)) })),
     );

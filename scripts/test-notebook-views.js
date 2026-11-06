@@ -499,6 +499,18 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   // Words by the stages Today and the question tags use.
   assert.deepEqual(s.strength.map((b) => b.label), ['New', 'Learning', 'Young', 'Mature']);
   assert.deepEqual(s.strength.map((b) => b.words), [['export'], ['transport'], [], ['portable']]);
+  // A saved symbol and a saved sentence, even one answered before and due today, change none of Progress's numbers.
+  const odd = [
+    { id: 'p4', lemma: 'LIL', partOfSpeech: 'symbol', definition: 'ISO 639-3 language code for Lillooet.', reps: 2, state: 2, stability: 3, lastReview: t0 - 3 * DAYMS, reviewDue: t0 - DAYMS, createdAt: t0 - 9 * DAYMS },
+    { id: 'p5', lemma: '曹雪芹写贵重物品:金丝ハ宝攒珠', partOfSpeech: 'sentence', definition: 'Translation from JA to ZH', reps: 0, createdAt: t0 - DAYMS },
+  ];
+  const withOdd = progressSummary({ history: [...history, rec('lil', t0 - 3000, 'meaning-choice', 'meaning', true)], scope: 'mine', ctx: null, mine: [...words, ...odd], goal: 10, now: t0 });
+  assert.deepEqual(withOdd.lists[0], s.lists[0]);
+  assert.equal(withOdd.dueLeft, s.dueLeft);
+  assert.equal(withOdd.reviewsToday, s.reviewsToday);
+  assert.deepEqual(withOdd.strength.map((b) => b.words), s.strength.map((b) => b.words));
+  const oddPage = progressHtml({ history, scope: 'mine', ctx: null, mine: [...words, ...odd], goal: 10, now: t0 });
+  assert.equal(oddPage.match(/data-lrc="due30"[\s\S]*?<\/svg>/)[0], page.match(/data-lrc="due30"[\s\S]*?<\/svg>/)[0], 'the forecast is unchanged');
   assert.match(page, /<b class="lrp-fig__n" style="--ch:1">1<\/b><p class="lrp-fig__cap"><span class="lrp-fig__label">Mature<\/span><span class="lrp-fig__sub">of 2 started<\/span>/);
   // Memory's number is a prediction: "Remembered", never "Recalled today", which reads as answers given today.
   assert.match(page, /<span class="lrp-fig__label">Remembered<\/span><span class="lrp-fig__sub">of 2 words<\/span><span class="lrp-fig__facts"><span><b>\d+<\/b> due<\/span>/);
