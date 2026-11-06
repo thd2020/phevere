@@ -24,6 +24,8 @@ import {
 import { finalizeOcrLines, glueSpacedLetters } from './ocr-text';
 import { createElectronImageRaw } from './ocr-image-electron';
 import { findOcrPackRoot, installedPackRoot } from './ocr-pack';
+import { PpOcrPageReader } from './ocr-page-onnx';
+import { buildOcrPage, ocrPageText, pageLines, type OcrPage, type OcrRawLine, type OcrRawPage, type OcrQuad } from '@phevere/core/ocr-layout';
 
 export { glueSpacedLetters } from './ocr-text';
 
@@ -43,9 +45,18 @@ export interface OcrResult {
   language?: string;
 }
 
+/** A whole image read for the in-place text view: the page model and its text in reading order. */
+export interface OcrPageResult {
+  page: OcrPage;
+  text: string;
+  engine: OcrResult['engine'];
+}
+
 export interface OcrEngine {
   isAvailable(): Promise<boolean>;
   recognize(png: Buffer): Promise<OcrResult>;
+  /** Every line, word box and confidence of a whole image, laid out for reading. */
+  recognizePage?(png: Buffer): Promise<OcrPageResult>;
   /** Warm the worker so the first interactive OCR is fast. */
   warmUp?(): Promise<void>;
   dispose?(): void;
@@ -337,6 +348,14 @@ function loadGutenOcrOnce(): Promise<{ create: (opts: unknown) => Promise<any> }
   return gutenOcrLoad;
 }
 
+/** GutenYe's Detection and Recognition classes, once its backend is registered. */
+async function loadGutenModels(): Promise<any> {
+  await loadGutenOcrOnce();
+  const abs = resolveNodeModuleFile('@gutenye', 'ocr-common', 'build', 'models', 'index.js');
+  if (!abs) throw new Error('Cannot find @gutenye/ocr-common/build/models/index.js under node_modules');
+  return importEsm(pathToFileURL(abs).href);
+}
+
 function resolveModelRoot(): string {
   try {
     return path.join(app.getPath('userData'), 'ocr-models');
@@ -440,6 +459,7 @@ class OnnxNativeOcrEngine implements OcrEngine {
   private modelsPath = resolveBundledModelsRoot();
   private modelFiles: { det: string; rec: string; dict: string } | null = null;
   private settings: OcrSettings = loadOcrSettings();
+  private pageReader: PpOcrPageReader | null = null;
 
   getActiveProfileId(): string {
     return this.settings.activeProfileId;
@@ -653,6 +673,34 @@ class OnnxNativeOcrEngine implements OcrEngine {
     }
   }
 
+  /** Whole image: every detected line, kept even when the recogniser is unsure, with word boxes. */
+  async readPage(png: Buffer): Promise<OcrRawPage | null> {
+    try {
+      await this.ensureReady();
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      return null;
+    }
+    const size = pngSize(png);
+    if (!size || !this.modelFiles) return null;
+    if (!this.pageReader) this.pageReader = new PpOcrPageReader(this.modelFiles, loadGutenModels);
+    const tmp = path.join(os.tmpdir(), `phevere-onnx-page-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
+    try {
+      fs.writeFileSync(tmp, png);
+      return await this.pageReader.read(tmp, size.width, size.height);
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      console.warn('Native OCR page read failed', this.lastError);
+      return null;
+    } finally {
+      try {
+        fs.unlinkSync(tmp);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
   private async ensureReady(): Promise<void> {
     if (this.ocr) return;
     if (this.initPromise) return this.initPromise;
@@ -701,6 +749,7 @@ class OnnxNativeOcrEngine implements OcrEngine {
   dispose(): void {
     this.ocr = null;
     this.initPromise = null;
+    this.pageReader = null;
   }
 
   /** Forget a cached failure, e.g. after the OCR pack was installed. */
@@ -814,6 +863,42 @@ class RapidOcrWorkerEngine implements OcrEngine {
       }
 
       return this.mapResponse(resp);
+    } finally {
+      try {
+        fs.unlinkSync(tmp);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  /** Dev fallback: RapidOCR lines, with its word boxes when it gives them. */
+  async readPage(png: Buffer): Promise<OcrRawPage | null> {
+    if (!(await this.isAvailable())) return null;
+    const size = pngSize(png);
+    if (!size) return null;
+    const tmp = path.join(os.tmpdir(), `phevere-ocr-page-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
+    try {
+      fs.writeFileSync(tmp, png);
+      const resp = await this.request({ path: tmp, words: true }, 120000);
+      if (!resp?.ok) return null;
+      const txts: string[] = Array.isArray(resp.txts) ? resp.txts.map(String) : [];
+      const scores: number[] = Array.isArray(resp.scores) ? resp.scores.map(Number) : [];
+      const boxes: number[][][] = Array.isArray(resp.boxes) ? resp.boxes : [];
+      const words: any[][] = Array.isArray(resp.words) ? resp.words : [];
+      const lines: OcrRawLine[] = [];
+      txts.forEach((text, i) => {
+        const quad = boxes[i] as unknown as OcrQuad;
+        if (!quad || quad.length !== 4) return;
+        const ws = (words[i] || [])
+          .filter((w) => Array.isArray(w) && w[2]?.length === 4)
+          .map((w) => ({ text: String(w[0]), confidence: Number(w[1]), quad: w[2] as OcrQuad }));
+        lines.push({ text, quad, confidence: scores[i], words: ws.length ? ws : undefined });
+      });
+      return { width: size.width, height: size.height, engine: 'rapidocr', lines };
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      return null;
     } finally {
       try {
         fs.unlinkSync(tmp);
@@ -1103,6 +1188,25 @@ class CompositeOcrEngine implements OcrEngine {
     this.preferred = 'none';
   }
 
+  async recognizePage(png: Buffer): Promise<OcrPageResult> {
+    let raw: OcrRawPage | null = null;
+    let engine: OcrResult['engine'] = 'none';
+    if (await this.native.isAvailable()) {
+      this.preferred = 'onnx-native';
+      raw = await this.native.readPage(png);
+      engine = 'onnx-native';
+    }
+    if (!raw && !app.isPackaged && (await this.rapid.isAvailable())) {
+      this.preferred = 'python-fallback';
+      raw = await this.rapid.readPage(png);
+      engine = 'onnx-rapidocr';
+    }
+    const size = pngSize(png) || { width: 1, height: 1 };
+    const page = buildOcrPage(raw || { width: size.width, height: size.height, engine: 'none', lines: [] });
+    const text = ocrPageText(page);
+    return { page, text, engine: text ? engine : 'none' };
+  }
+
   async recognize(png: Buffer): Promise<OcrResult> {
     if (await this.native.isAvailable()) {
       this.preferred = 'onnx-native';
@@ -1130,6 +1234,16 @@ export const ocrEngine: OcrEngine = new CompositeOcrEngine();
 
 export async function ensureOcrDeps(): Promise<{ ok: boolean; detail: string }> {
   return (ocrEngine as CompositeOcrEngine).ensureDeps();
+}
+
+/** Read a whole image for the in-place text view. */
+export async function recognizeOcrPage(png: Buffer): Promise<OcrPageResult> {
+  return (ocrEngine as CompositeOcrEngine).recognizePage(png);
+}
+
+/** Lines of a page result, for callers that only need to know how much text there is. */
+export function ocrPageLineCount(result: OcrPageResult): number {
+  return pageLines(result.page).length;
 }
 
 export function getOcrStatus(): OcrStatus {
