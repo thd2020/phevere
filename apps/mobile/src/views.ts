@@ -1,4 +1,6 @@
 import { langBarHtml, langSheetHtml, type LangSide } from './picker';
+import { buildOcrPage, rawFromLegacyWords, rawFromNativeLines, type LegacyScanWord, type NativeScanLine, type OcrPage } from '@phevere/core/ocr-layout';
+import { ocrBarHtml } from '@phevere/core/ocr-view';
 import {
   abbreviatePos,
   canonicalPos,
@@ -1030,37 +1032,47 @@ function vocabAzRail(present: Set<string>): string {
     <div class="vocab-az-hud" hidden aria-hidden="true"></div>`;
 }
 
-/** One OCR word: text plus its box as fractions of the picture; l is its line on the page. */
-export type ScanWord = { t: string; x: number; y: number; w: number; h: number; l?: number };
-export type ScanPage = { jpeg: string; width: number; height: number; words: ScanWord[] };
+/** One OCR word from an older native build: its box as fractions of the picture; l is its line. */
+export type ScanWord = LegacyScanWord;
+/**
+ * What the native scanner returns: the picture, and its text as lines with quads (fractions of
+ * the picture), words and confidences; older builds send only `words`.
+ */
+export type ScanPage = { jpeg: string; width: number; height: number; words?: ScanWord[]; lines?: NativeScanLine[]; engine?: string };
+
+/** The page model of a scan, laid out for reading (packages/core/src/ocr-layout.ts). */
+export function scanOcrPage(scan: ScanPage): OcrPage {
+  const w = Number(scan.width) || 1, h = Number(scan.height) || 1;
+  const engine = scan.engine || 'phone';
+  const raw = Array.isArray(scan.lines) && scan.lines.length
+    ? rawFromNativeLines(scan.lines, w, h, engine)
+    : rawFromLegacyWords(scan.words || [], w, h, engine);
+  return buildOcrPage(raw);
+}
 
 /**
- * Scan: the picture fills the screen and carries its recognised text as an invisible, selectable
- * layer (like Live Text), so a long press selects a word and the selection stays visible.
- * Words on one line are joined by spaces and lines by newlines, so a selection copies as text.
- * The result opens in a bottom sheet over the picture.
+ * Scan: the picture fills the screen with its recognised text in place, real text over its own
+ * pixels like Live Text, so a long press selects a word. Text shows the recognised text alone;
+ * Edit changes it in place. The lookup opens in a bottom sheet over the picture.
  */
-export function scanHtml(scan: ScanPage, id: number): string {
-  const words = (scan.words || []).filter((w) => w.t && w.w > 0 && w.h > 0);
-  const parts: string[] = [];
-  words.forEach((w, i) => {
-    if (i > 0) parts.push(words[i - 1].l !== undefined && words[i - 1].l !== w.l ? '\n' : ' ');
-    parts.push(
-      `<span class="scan-word" data-w="${w.w}" style="left:${(w.x * 100).toFixed(3)}%;top:${(w.y * 100).toFixed(3)}%;height:${(w.h * 100).toFixed(3)}%">${esc(w.t)}</span>`,
-    );
-  });
+export function scanHtml(scan: ScanPage, page: OcrPage, id: number): string {
+  const empty = !page.blocks.length;
   return `
-    <div class="scan-view" data-scan-id="${id}">
-      <div class="scan-stage">
-        <div class="scan-canvas">
-          <div class="scan-frame" data-ratio="${scan.width && scan.height ? scan.width / scan.height : 0.75}">
-            <img src="data:image/jpeg;base64,${scan.jpeg}" alt="Scanned picture" draggable="false" />
-            <div class="scan-layer">${parts.join('')}</div>
+    <div class="scan-view ocr-view" data-scan-id="${id}" data-mode="picture">
+      <div class="scan-main">
+        <div class="scan-stage">
+          <div class="scan-canvas">
+            <div class="scan-frame ocr-frame" data-ratio="${scan.width && scan.height ? scan.width / scan.height : 0.75}">
+              <img src="data:image/jpeg;base64,${scan.jpeg}" alt="Scanned picture" draggable="false" />
+              <div class="ocr-layer"></div>
+            </div>
           </div>
         </div>
+        <div class="ocr-text scan-text" hidden></div>
       </div>
       <button type="button" class="icon-btn scan-close" data-act="scan-close" aria-label="Back">${ICO.back}</button>
-      <p class="scan-hint">${words.length ? 'Select text' : 'No text found'}</p>
+      <div class="scan-bar">${ocrBarHtml({ saveImage: true, empty })}</div>
+      ${empty ? '' : '<p class="scan-hint">Select text</p>'}
       <section class="scan-sheet" data-state="closed" aria-label="Lookup">
         <div class="scan-sheet__handle" data-drag="scan-sheet" role="button" tabindex="0" aria-label="Resize lookup"><span></span></div>
         <div class="scan-sheet__body"></div>

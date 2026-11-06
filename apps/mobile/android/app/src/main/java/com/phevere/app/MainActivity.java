@@ -495,7 +495,9 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
       boolean chinese = zh != null && zh.getText() != null && zh.getText().codePoints()
           .anyMatch(c -> Character.UnicodeScript.of(c) == Character.UnicodeScript.HAN);
       Ocr.addWords(words, chinese ? zh : latin, bmp.getWidth(), bmp.getHeight());
-      router.resolve(pendingJsId, Ocr.pack(bmp, words));
+      JSONArray lines = new JSONArray();
+      Ocr.addLines(lines, chinese ? zh : latin, bmp.getWidth(), bmp.getHeight());
+      router.resolve(pendingJsId, Ocr.pack(bmp, words, lines));
     } catch (Exception e) {
       failPending(e.getMessage());
     }

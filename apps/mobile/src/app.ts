@@ -131,6 +131,8 @@ import {
   bookPickItems,
   openMenu,
 } from '@phevere/core';
+import { OcrView } from '@phevere/core/ocr-view';
+import { pageLines, type OcrPage } from '@phevere/core/ocr-layout';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
 import { playClip, playRecorded, prefetchRecorded, recordedReady, recordedUrls, speakIpa, speakText, stopAudio } from './platform/audio';
 import {
@@ -163,6 +165,7 @@ import {
   learnBody,
   type LearnState,
   scanHtml,
+  scanOcrPage,
   appBarHtml,
   popupBarHtml,
   settingsBody,
@@ -524,6 +527,9 @@ function accountBadgeKey(s: AccountState | null): string {
   return [s.user?.email || '', s.user?.name || '', s.syncing, !!s.lastError, s.signingIn].join('|');
 }
 let scan: ScanPage | null = null;
+/** The scan's text laid out for reading, and the view that shows and edits it. */
+let scanPage: OcrPage | null = null;
+let scanView: OcrView | null = null;
 /** Bumped per picture, so a repaint keeps the rendered picture (and its selection) in place. */
 let scanId = 0;
 type SheetState = 'closed' | 'half' | 'full';
@@ -1300,8 +1306,14 @@ async function saveCurrent(): Promise<void> {
 function paintScan(page: ScanPage, hit: string): void {
   let view = root.querySelector<HTMLElement>('.scan-view');
   if (!view || view.dataset.scanId !== String(scanId)) {
-    root.innerHTML = scanHtml(page, scanId);
+    scanView?.destroy();
+    scanPage = scanOcrPage(page);
+    root.innerHTML = scanHtml(page, scanPage, scanId);
     view = root.querySelector<HTMLElement>('.scan-view')!;
+    scanView = new OcrView(view, scanPage, view.querySelector<HTMLImageElement>('.scan-frame img')!, {
+      copyText,
+      saveImage: saveScanImage,
+    });
     bindScanViewer(view);
   }
   const sheet = view.querySelector<HTMLElement>('.scan-sheet')!;
@@ -1317,7 +1329,7 @@ function paintScan(page: ScanPage, hit: string): void {
 /** Keep the looked-up words highlighted after the system selection goes away. */
 function markScanPick(): void {
   const sel = window.getSelection();
-  const layer = root.querySelector('.scan-layer');
+  const layer = root.querySelector('.scan-view .ocr-layer, .scan-view .ocr-text');
   if (!sel || !sel.rangeCount || !layer || !layer.contains(sel.getRangeAt(0).commonAncestorContainer)) return;
   const reg = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights;
   const Hl = (window as unknown as { Highlight?: new (r: Range) => unknown }).Highlight;
@@ -1339,18 +1351,27 @@ function lookupInPlace(text: string): void {
   void lookup(q);
 }
 
-/** Fit each invisible word over its box: font size from the box height, width by scaleX. */
-function fitScanWords(frame: HTMLElement): void {
-  const width = frame.clientWidth;
-  frame.querySelectorAll<HTMLElement>('.scan-word').forEach((el) => {
-    const h = el.offsetHeight;
-    el.style.fontSize = `${Math.max(4, h * 0.82)}px`;
-    el.style.lineHeight = `${h}px`;
-    el.style.transform = '';
-    const natural = el.offsetWidth;
-    const target = Number(el.dataset.w || 0) * width;
-    if (natural > 0 && target > 0) el.style.transform = `scaleX(${target / natural})`;
-  });
+/** Save the scanned picture with its edits as a PNG. */
+async function saveScanImage(png: Blob): Promise<void> {
+  const bytes = new Uint8Array(await png.arrayBuffer());
+  const name = 'Scanned text.png';
+  try {
+    if (hasNativeBridge()) {
+      let bin = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      await nativeCall('saveFile', { name, mime: 'image/png', b64: btoa(bin) });
+    } else {
+      const url = URL.createObjectURL(png);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    if (msg !== 'Cancelled') toast('Could not save');
+  }
 }
 
 /**
@@ -1377,7 +1398,7 @@ function bindScanViewer(view: HTMLElement): void {
     const fw = Math.min(W, H * ratio);
     frame.style.width = `${fw}px`;
     frame.style.height = `${fw / ratio}px`;
-    fitScanWords(frame);
+    scanView?.fit();
     clamp();
     apply();
   };
@@ -1503,23 +1524,35 @@ async function runOcr(): Promise<void> {
       toast('No picture');
       return;
     }
-    scanId += 1;
-    scanSheet = 'closed';
-    clearScanPick();
-    scan = {
-      jpeg: res.jpeg,
-      width: Number(res.width) || 0,
-      height: Number(res.height) || 0,
-      words: Array.isArray(res.words) ? res.words : [],
-    };
-    tab = 'lookup';
-    postOsNotify('ocr', 'Scan finished', scan.words.length ? `${scan.words.length} words` : 'No text');
-    paint();
+    showScan(res);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Could not scan';
     if (msg === 'Cancelled' || msg === 'No photo' || msg === 'No image') return;
     toast(msg);
   }
+}
+
+function showScan(res: ScanPage): void {
+  scanId += 1;
+  scanSheet = 'closed';
+  clearScanPick();
+  scan = {
+    jpeg: res.jpeg,
+    width: Number(res.width) || 0,
+    height: Number(res.height) || 0,
+    words: Array.isArray(res.words) ? res.words : [],
+    lines: Array.isArray(res.lines) ? res.lines : undefined,
+    engine: typeof res.engine === 'string' ? res.engine : undefined,
+  };
+  tab = 'lookup';
+  const words = pageLines(scanOcrPage(scan)).reduce((n, l) => n + l.words.length, 0);
+  postOsNotify('ocr', 'Scan finished', words ? `${words} words` : 'No text');
+  paint();
+}
+
+// Browser preview only: show a saved scan, since there is no camera bridge to make one.
+if (typeof __PHEVERE_DEV__ !== 'undefined' && __PHEVERE_DEV__) {
+  (window as unknown as { __phevereShowScan?: (p: ScanPage) => void }).__phevereShowScan = showScan;
 }
 
 /**
@@ -1935,7 +1968,7 @@ function onSelectionSettled(): void {
   if (!raw || raw.length > 200) return;
   const anchor = sel?.anchorNode;
   const el = anchor && (anchor.nodeType === 1 ? (anchor as Element) : anchor.parentElement);
-  if (el?.closest('input, textarea, [contenteditable="true"]')) return;
+  if (el?.closest('input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')) return;
   const q = extractLookupQuery(raw);
   if (!q || q === query) return;
   if (scan) {
@@ -2293,6 +2326,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'scan-close':
+      scanView?.destroy();
+      scanView = null;
       scan = null;
       scanSheet = 'closed';
       clearScanPick();
@@ -3113,7 +3148,7 @@ export async function startApp(): Promise<void> {
     if (lib.inspecting) { lib.inspecting = null; paint(); return true; }
     if (scan) {
       if (scanSheet !== 'closed') setScanSheet('closed');
-      else { scan = null; clearScanPick(); paint(); }
+      else { scanView?.destroy(); scanView = null; scan = null; clearScanPick(); paint(); }
       return true;
     }
     if (tab === 'learn' && nbState.review) {
