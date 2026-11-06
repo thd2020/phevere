@@ -292,7 +292,8 @@ assert.equal(bigPlan.cards.size, 5000);
 const shake = load('shake');
 const feed = (det, from, ms, strong) => {
   let hit = 0;
-  for (let t = from; t < from + ms; t += 16) if (det.push(t, strong ? ((t / 16) % 2 ? 15 : -15) : 0.2, 9.8, 0)) hit += 1;
+  let i = 0;
+  for (let t = from; t < from + ms; t += 16) if (det.push(t, strong ? (i++ % 2 ? 15 : -15) : 0.2, 9.8, 0)) hit += 1;
   return hit;
 };
 const one = shake.shakeDetector();
@@ -317,6 +318,32 @@ const walk = shake.doubleShakeDetector();
 let walked = 0;
 for (let i = 0; i < 600; i++) if (walk.push(i * 16, Math.sin(i / 4) * 2.5, 9.8 + Math.sin(i / 3) * 2, 0)) walked += 1;
 assert.equal(walked, 0);
+// Two short, ordinary shakes: 0.3 s each at five strokes a second, peaking at 15 m/s² (about
+// 1.5 g), a quarter second apart, sideways or up and down. Seismic's three-quarter rule on
+// acceleration with gravity needed each shake to last 0.6 s and peak near 2 g.
+const sine = (det, from, ms, peak, upDown) => {
+  let hit = 0;
+  for (let t = from; t < from + ms; t += 16.7) {
+    const a = peak * Math.sin((2 * Math.PI * 5 * t) / 1000);
+    if (upDown ? det.push(t, 0, 9.8 + a, 0) : det.push(t, a, 9.8, 0)) hit += 1;
+  }
+  return hit;
+};
+for (const upDown of [false, true]) {
+  const d2 = shake.doubleShakeDetector();
+  let fired = sine(d2, 0, 300, 0) + sine(d2, 300, 300, 15, upDown) + sine(d2, 600, 250, 0) + sine(d2, 850, 300, 15, upDown) + sine(d2, 1150, 500, 0);
+  assert.equal(fired, 1, `two short shakes ${upDown ? 'up and down' : 'sideways'} are a double shake`);
+}
+// Turning the phone between portrait and landscape, again and again, is not a shake.
+const turning = shake.doubleShakeDetector();
+let turned = 0;
+for (let t = 0; t < 20000; t += 16.7) {
+  const c = t % 1200;
+  const k = Math.min(1, c / 350);
+  const ang = ((Math.floor(t / 1200) % 2 ? 1 - k : k) * Math.PI) / 2;
+  if (turning.push(t, 9.8 * Math.sin(ang), 9.8 * Math.cos(ang), 0)) turned += 1;
+}
+assert.equal(turned, 0, 'turning the phone over is not a shake');
 
 // Review queue: due reviews first, then new words up to the goal.
 const rq = [
@@ -364,17 +391,56 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   const { readLearnPrefs, writeLearnPrefs, DEFAULT_LEARN_PREFS } = load('learn-prefs');
   const input = { goal: 12, books: [{ id: 'cet4', title: 'CET-4', goal: 20 }], prefs: { countdown: 8, speaking: false }, microphone: false };
   const html = learnSettingsHtml(input);
-  assert.equal((html.match(/data-act="learn-goal" data-book=""/g) || []).length, 4, 'four presets for My words');
-  assert.match(html, /data-act="learn-goal-input" data-book="" aria-label="My words, other number a day"/);
-  assert.match(html, /class="sv-num is-on"[^>]*value="12"/, 'a goal off the presets fills the Other field');
-  assert.match(html, /data-book="cet4" value="20" checked/, 'a book keeps its own goal');
-  assert.match(html, /<option value="8" selected>8 seconds<\/option>/);
+  // Every number is a spinbutton wheel with its range, its value and a name, not presets and a field.
+  assert.doesNotMatch(html, /type="radio"|<select|sv-num|Other/, 'no presets, no Other field, no menu');
+  assert.match(html, /id="learn-goal-mine" role="spinbutton" tabindex="0" aria-labelledby="learn-goal-mine-label" aria-valuemin="1" aria-valuemax="999" aria-valuenow="12"[^>]*data-value="12" data-act="learn-goal" data-book=""/);
+  assert.match(html, /id="learn-goal-mine-label">My words</);
+  assert.match(html, /aria-valuenow="20" aria-valuetext="20"[^>]*data-act="learn-goal" data-book="cet4"/, 'a book keeps its own goal');
+  assert.match(html, /id="learn-countdown" role="spinbutton"[^>]*aria-valuemin="0" aria-valuemax="30" aria-valuenow="8" aria-valuetext="8 seconds"[^>]*data-off=""/);
+  assert.match(learnSettingsHtml({ ...input, prefs: { countdown: 0, speaking: false } }), /class="nw is-off" id="learn-countdown"[^>]*aria-valuetext="Off"/, 'no countdown reads Off');
+  // The wheel draws the value in the middle with its neighbours, and nothing past either end.
+  assert.match(html, /class="nw__n is-centre"[^>]*>12</);
+  const mineWheel = html.slice(html.indexOf('id="learn-goal-mine"'), html.indexOf('</div>', html.indexOf('id="learn-goal-mine"')));
+  assert.deepEqual([...mineWheel.matchAll(/class="nw__n[^"]*"(?: hidden)? style="[^"]*">(\d*)</g)].map((m) => m[1]), ['9', '10', '11', '12', '13', '14', '15']);
+  const low = learnSettingsHtml({ ...input, goal: 1 });
+  assert.equal((low.slice(0, low.indexOf('learn-goal-b0')).match(/class="nw__n" hidden/g) || []).length, 3, 'nothing above 1');
   assert.doesNotMatch(html, /learn-speaking/, 'no speaking switch without a microphone');
   assert.doesNotMatch(learnSettingsHtml({ ...input, microphone: true, prefs: { countdown: 8, speaking: true } }), /learn-speaking|Speaking/, 'no speaking switch even with a microphone');
   assert.deepEqual(readLearnPrefs(null), DEFAULT_LEARN_PREFS);
   assert.deepEqual(readLearnPrefs('{bad'), DEFAULT_LEARN_PREFS);
   assert.deepEqual(readLearnPrefs(writeLearnPrefs({ countdown: 10, speaking: false })), { countdown: 10, speaking: false });
   assert.equal(readLearnPrefs('{"countdown":-3}').countdown, 0);
+  assert.equal(readLearnPrefs('{"countdown":2}').countdown, 5, 'a countdown below the range is the shortest one');
+  assert.equal(readLearnPrefs('{"countdown":90}').countdown, 30, 'and above it the longest');
+}
+
+// Number wheel: typed entries, and neighbours that never overlap as the wheel turns.
+{
+  const { parseWheelEntry, wheelItemStyle } = load('number-wheel');
+  const goal = { min: 1, max: 999, off: false };
+  const countdown = { min: 5, max: 30, off: true };
+  assert.equal(parseWheelEntry('25', goal), 25);
+  assert.equal(parseWheelEntry(' 1500 ', goal), 999, 'a typed number past the end is the end');
+  assert.equal(parseWheelEntry('0', goal), 1);
+  assert.equal(parseWheelEntry('', goal), null, 'an empty field leaves the value');
+  assert.equal(parseWheelEntry('abc', goal), null);
+  assert.equal(parseWheelEntry('off', countdown), 0);
+  assert.equal(parseWheelEntry('0', countdown), 0, '0 is Off on a countdown');
+  assert.equal(parseWheelEntry('Off', countdown), 0);
+  assert.equal(parseWheelEntry('１５', goal), 15, 'full-width digits from a Chinese keyboard');
+  assert.equal(parseWheelEntry('3', countdown), 5);
+  assert.equal(parseWheelEntry('45', countdown), 30);
+  const centre = wheelItemStyle(0);
+  assert.deepEqual([centre.y, centre.scale, centre.opacity], [0, 1, 1]);
+  assert.ok(wheelItemStyle(1).weight < centre.weight && wheelItemStyle(1).scale < 0.6, 'neighbours are smaller and lighter');
+  // A lining figure is about 0.68em tall: at every point of a turn, each pair of neighbours keeps a gap.
+  for (let f = 0; f < 1; f += 0.05) {
+    for (let k = -3; k < 3; k++) {
+      const a = wheelItemStyle(k - f);
+      const b = wheelItemStyle(k + 1 - f);
+      assert.ok(b.y - a.y - 0.34 * (a.scale + b.scale) > 0.03, `values ${k - f} and ${k + 1 - f} overlap`);
+    }
+  }
 }
 
 // Progress: today against the goal, the streak, memory, skills and families.
@@ -411,7 +477,7 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.equal(s.inRotation, 2);
   assert.ok(s.curve[0] > s.curve[30], 'recall falls without review');
   const page = progressHtml({ history, scope: 'mine', ctx: null, mine: words, goal: 10, now: t0 });
-  for (const label of ['New words', 'Reviews', 'Streak', 'Skills', 'Root families', 'Answers per day', 'Memory', 'Reviews ahead', 'How long words are held', 'Trouble words']) assert.match(page, new RegExp(label));
+  for (const label of ['New words', 'Reviews', 'Day streak', 'Skills', 'Root families', 'Answers per day', 'Memory', 'Reviews ahead', 'How long words are held', 'Trouble words']) assert.match(page, new RegExp(label));
   // Labels name things; no line tells the learner how to use a chart.
   assert.doesNotMatch(page, /Pick a|Tap a|to see its/, 'no instructions on Progress');
   assert.doesNotMatch(views.reviewHtml(rq, rs, 10, { now }), /Pick a|Tap a|to see its/, 'no instructions on Today');
@@ -422,14 +488,21 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.equal((page.match(/data-lrc="due30"[\s\S]*?<\/svg>/)[0].match(/class="lrc-hit"/g) || []).length, 30, 'one bar a day');
   assert.match(page, /data-lrc="answers"[\s\S]*<template data-for="29"><p class="lrc-read__head"><b>[^<]+<\/b> · 2 answers, 50% right/);
   assert.match(page, /aria-label="Reviews: 2 of 3"/, 'the review gauge says what it counts');
-  assert.match(page, /Today you started <b>1<\/b> of <b>10<\/b> new words and answered <b>2<\/b> questions, <b>50%<\/b> of them right\. <b>1<\/b> review is still due\./);
-  assert.match(page, /class="lrp-giant">3</, 'the streak is the masthead numeral');
+  assert.match(page, /aria-label="New words: 1 of 10"/);
+  assert.match(page, /aria-label="Right: 50%"/, "today's share right is a gauge, not a sentence");
+  // Short labels, not sentences: no caption on Progress runs past four words.
+  for (const m of page.matchAll(/class="lrp-fig__label">([^<]*)</g)) assert.ok(m[1].split(/\s+/).length <= 4, `label too long: ${m[1]}`);
+  assert.doesNotMatch(page, /lrp-lede|Today you started|words you would/);
+  assert.match(page, /class="lrp-giant" style="--ch:1">3</, 'the streak is the masthead numeral');
   assert.doesNotMatch(page, /lrp-card|data-lrc-range/, 'no cards and no slider');
   assert.doesNotMatch(page, /at most 20%/);
   // Words by the stages Today and the question tags use.
   assert.deepEqual(s.strength.map((b) => b.label), ['New', 'Learning', 'Young', 'Mature']);
   assert.deepEqual(s.strength.map((b) => b.words), [['export'], ['transport'], [], ['portable']]);
-  assert.match(page, /<b class="lrp-fig__n">1<\/b><p class="lrp-fig__text">of 2 started words are mature/);
+  assert.match(page, /<b class="lrp-fig__n" style="--ch:1">1<\/b><p class="lrp-fig__cap"><span class="lrp-fig__label">Mature<\/span><span class="lrp-fig__sub">of 2 started<\/span>/);
+  // Memory's number is a prediction: "Remembered", never "Recalled today", which reads as answers given today.
+  assert.match(page, /<span class="lrp-fig__label">Remembered<\/span><span class="lrp-fig__sub">of 2 words<\/span><span class="lrp-fig__facts"><span><b>\d+<\/b> due<\/span>/);
+  assert.doesNotMatch(page, /Recalled|below 90%<\/span>/);
   assert.doesNotMatch(page, /Under 1 wk|3 wk–3 mo/, 'no week buckets');
   assert.equal(s.mix.listening, 1);
   const charts = load('learn-charts');
@@ -458,7 +531,8 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   const empty = progressHtml({ history: [], scope: 'mine', ctx: null, mine: [], goal: 10, now: t0 });
   assert.match(empty, /No answers yet/);
   assert.match(empty, /No words in rotation yet/);
-  assert.match(empty, /Nothing answered yet today\. Nothing is due, and the goal is <b>10<\/b> new words\./);
+  assert.match(empty, /aria-label="New words: 0 of 10"[\s\S]*aria-label="Reviews: 0 of 0"/);
+  assert.doesNotMatch(empty, /aria-label="Right:/, 'no share right before any answer');
 }
 
 // Rows: Look up sits in the collapsed row, not only in the details.
