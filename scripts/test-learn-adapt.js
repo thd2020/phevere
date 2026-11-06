@@ -234,6 +234,24 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
   assert.ok(pluralGap);
   assert.ok(pluralGap.options.every((o) => /^[A-Z].*s$/.test(o)), `${pluralGap.options}`);
 
+  // An -ing gap offers only verbs, so no option is a made-up form of a noun ("lanterning"), and a
+  // word that the answer's definition names (a synonym that could fill the gap) is never offered.
+  const verb = (lemma, def) => ({ id: lemma, lemma, partOfSpeech: 'verb', sourceLang: 'en', definition: def, createdAt: now - 60 * DAY });
+  const wander = learning(verb('wander', 'to walk or roam slowly without a fixed course'));
+  const verbs = [wander, verb('gather', 'to bring together'), verb('borrow', 'to take and give back later'), verb('polish', 'to make shiny'), verb('roam', 'to move about aimlessly')];
+  const mixed = [...verbs, ...pool];
+  const ingSentences = () => ['We spent the afternoon wandering through the old market streets.'];
+  let ingGap = null;
+  for (let s = 0; s < 80 && !ingGap; s++) {
+    const q = core.buildQuestion(wander, mixed, { now, learner: ready, examples: ingSentences }, core.seededRandom(s));
+    if (q.kind === 'cloze-choice') ingGap = q;
+  }
+  assert.ok(ingGap, 'a verb in an -ing gap gets the gap question');
+  assert.equal(ingGap.options[ingGap.correct], 'wandering');
+  assert.ok(ingGap.options.every((o) => /ing$/.test(o)), `${ingGap.options}`);
+  assert.ok(ingGap.optionWords.every((w) => verbs.some((v) => v.lemma === w)), `only verbs: ${ingGap.optionWords}`);
+  assert.ok(!ingGap.optionWords.includes('roam'), 'a synonym named in the definition is not offered');
+
   // Letter tiles: the word's own letters, shuffled, for one word up to fourteen letters.
   assert.ok(core.tileable('harbour') && core.tileable("o'clock") && !core.tileable('make up') && !core.tileable('ab') && !core.tileable('extraordinarily'));
   const tiles = kindsOf(lantern, {}).get('spell-tiles');

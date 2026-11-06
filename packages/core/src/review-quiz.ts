@@ -1014,16 +1014,34 @@ export function canAsk(entry: NotebookEntry, opts: QuestionOptions = {}): boolea
   return !!clozeFrom(entry, opts.examples?.(clean(entry.lemma)) || []);
 }
 
+/** Whether `text` uses `word` or one of its forms (`formPattern`). */
+function mentions(text: string, word: string): boolean {
+  const t = clean(text);
+  return !!t && !!word && formPattern(word).test(t);
+}
+
 /**
  * Wrong options for a sentence's gap: other saved words (`pickDistractors`), each put in the form
- * the gap takes, so no option stands out by its ending. A word that cannot take that form, or
- * whose form is the answer's, is left out.
+ * the gap takes, so no option stands out by its ending. Only words of the answer's part of speech
+ * are offered when both are known, and an inflected gap takes only words whose part of speech is
+ * known (a verb for -ed and -ing), so no option is a made-up form such as "appling". A word that
+ * either definition names (a synonym that could fill the gap too), one that cannot take the form,
+ * or one whose form is the answer's, is left out.
  */
-function gapOptions(lemma: string, form: string, lures: NotebookEntry[]): Array<{ word: string; lemma: string }> {
+function gapOptions(target: NotebookEntry, form: string, lures: NotebookEntry[]): Array<{ word: string; lemma: string }> {
+  const lemma = clean(target.lemma);
+  const pos = normPos(target.partOfSpeech);
+  const inflected = clean(form).toLowerCase() !== lemma.toLowerCase();
+  const slots = inflected ? regularFormSlots(lemma) : null;
+  const verbOnly = !!slots && (slots.ed === clean(form).toLowerCase() || slots.ing === clean(form).toLowerCase());
   const out: Array<{ word: string; lemma: string }> = [];
   const seen = new Set([form.toLowerCase()]);
   for (const e of lures) {
     const other = clean(e.lemma);
+    const epos = normPos(e.partOfSpeech);
+    if (pos && epos && epos !== pos) continue;
+    if (inflected && (!epos || (verbOnly && epos !== 'verb'))) continue;
+    if (mentions(target.definition || '', other) || mentions(e.definition || '', lemma)) continue;
     const word = inflectLike(lemma, form, other);
     if (!word || seen.has(word.toLowerCase())) continue;
     seen.add(word.toLowerCase());
@@ -1067,11 +1085,13 @@ export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts:
   const hasMeaning = !!meaning && meaning !== '…';
   const cloze = clozeFrom(entry, opts.examples?.(clean(entry.lemma)) || []);
   const meaningLures = hasMeaning ? pickDistractors(entry, pool, 'meaning', 3, rand) : [];
-  const wordLures = pickDistractors(entry, pool, 'word', 3, rand);
+  // The gap question looks further down the same ranking, since its grammar rules many words out.
+  const wideLures = pickDistractors(entry, pool, 'word', 12, rand);
+  const wordLures = wideLures.slice(0, 3);
   const typedOk = !isLeech(entry) && !(repeat > 0 && stage <= 1);
   const open = (k: QuestionKind) => kindUnlocked(k, learner) && (!TYPED_KINDS.includes(k) || typedOk);
   // The gap's options, each in the form the gap takes (`inflectLike`).
-  const gapLures = cloze ? gapOptions(lemma, cloze.form, wordLures) : [];
+  const gapLures = cloze ? gapOptions(entry, cloze.form, wideLures) : [];
   const can: Record<QuestionKind, boolean> = {
     'meaning-choice': hasMeaning && meaningLures.length >= 2,
     'word-choice': hasMeaning && wordLures.length >= 2,
