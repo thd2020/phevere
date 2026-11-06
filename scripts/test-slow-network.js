@@ -361,6 +361,18 @@ dead['quick translation when the chosen engine is down'] = async () => {
   assert.ok(hit && /Google/.test(hit.source), `another engine answers (${hit && hit.source}; 4.2.0 gave nothing after 11 s)`);
 };
 
+// These run last, on their own, so their lookups do not slow the timed cases above.
+const last = {};
+// Right after an app start on a slow connection, a word with marks ("U.S.", "C++", "hello,") is
+// looked up beside its exact-title check. Wikimedia still never has more than three open at once.
+last['three requests at most to Wiktionary on a slow cold start'] = async () => {
+  for (const word of ['U.S.', 'C++', 'hello,', 'etc.']) {
+    const { service, net } = app({ delay: [1000, 3000], hang: 0.05, seed: `cap-${word}` });
+    await service.lookup(word, 'zh');
+    await new Promise((r) => setTimeout(r, 4000));
+    for (const [host, n] of Object.entries(net.maxInFlight)) assert.ok(n <= 3 || !/wik/.test(host), `${word}: ${host} had ${n} open`);
+  }
+};
 // "etc." is a title of its own; with Wiktionary two or three seconds away it is still opened as
 // typed, and so it is when the first request for its page never answers.
 const etcNets = {
@@ -381,7 +393,7 @@ for (const [label, net] of Object.entries(etcNets)) {
   const t0 = Date.now();
   // Each case runs in its own copy of core, all of a batch at once.
   const failed = [];
-  for (const batch of [cases, dead]) {
+  for (const batch of [cases, dead, last]) {
     const names = Object.keys(batch);
     const results = await Promise.allSettled(names.map((n) => batch[n]()));
     failed.push(...results.map((r, i) => [names[i], r]).filter(([, r]) => r.status === 'rejected'));

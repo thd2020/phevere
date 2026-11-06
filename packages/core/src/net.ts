@@ -17,8 +17,9 @@
  *   hangs until its timeout into one that costs a round trip more than usual.
  * - Wikimedia asks API clients for at most three requests at a time to one host. A backup request
  *   waits for a free one of those three, and requests that ask for a slot (`slot`, the pictures'
- *   requests) queue for one, the `later` ones behind the rest. The lookup's own requests never
- *   wait for a slot, so the first definitions are as fast as before.
+ *   requests) queue for one, the `later` ones behind the rest. The lookup's own requests go out
+ *   at once while fewer than three are open and otherwise wait first in line, ahead of backups
+ *   and pictures, so the first definitions are as fast as before.
  *   https://www.mediawiki.org/wiki/API:Etiquette, https://www.mediawiki.org/wiki/Wikimedia_APIs/Rate_limits
  * - A slow connection and a dead one look the same until something answers, so the connection
  *   is also watched as a whole, as Chrome's network quality estimator and Firestore's online
@@ -56,6 +57,8 @@ interface HostState {
   rttvar: number;
   samples: number;
   inFlight: number;
+  /** A lookup's own requests waiting for a slot on a Wikimedia host (wikimediaHost); they go first. */
+  now: Array<() => void>;
   first: Array<() => void>;
   later: Array<() => void>;
   /** Backup timers set before the host had answered once, set again by its first answer. */
@@ -238,7 +241,7 @@ export function hostOf(url: string): string {
 function state(host: string): HostState {
   let s = hosts.get(host);
   if (!s) {
-    s = { srtt: 0, rttvar: 0, samples: 0, inFlight: 0, first: [], later: [], onFirstAnswer: new Set(), answeredAt: 0, overdue: new Set(), silent: false, forgotten: false };
+    s = { srtt: 0, rttvar: 0, samples: 0, inFlight: 0, now: [], first: [], later: [], onFirstAnswer: new Set(), answeredAt: 0, overdue: new Set(), silent: false, forgotten: false };
     hosts.set(host, s);
   }
   return s;
@@ -356,24 +359,39 @@ export function resetNetStats(): void {
   unanswered.clear();
 }
 
-/** Waits for one of the host's slots; `later` waits behind every other request. */
-function takeSlot(s: HostState, later: boolean): Promise<void> {
-  if (s.inFlight < MAX_PER_HOST && !s.first.length && (later ? !s.later.length : true)) {
+/**
+ * Waits for one of the host's slots. `now` (a lookup's own request to a Wikimedia host that has
+ * three open) goes ahead of every other waiting request, and `later` waits behind all of them.
+ */
+function takeSlot(s: HostState, queue: 'now' | 'first' | 'later'): Promise<void> {
+  const ahead = s.now.length + (queue === 'now' ? 0 : s.first.length) + (queue === 'later' ? s.later.length : 0);
+  if (s.inFlight < MAX_PER_HOST && !ahead) {
     s.inFlight += 1;
     return Promise.resolve();
   }
   return new Promise((resolve) =>
-    (later ? s.later : s.first).push(() => {
+    s[queue].push(() => {
       s.inFlight += 1;
       resolve();
     }),
   );
 }
 
+/**
+ * Wikimedia's projects, which ask API clients for at most MAX_PER_HOST requests at a time. A
+ * lookup's own API requests to them go out at once while fewer are open and wait first in line
+ * otherwise; downloads keep their own pace. A word with a mark at its edge ("U.S.", "C++") looked
+ * up beside its exact-title check on a slow cold start would otherwise have five or six open to
+ * Wiktionary, and a dead connection's hung requests and their backups as many.
+ */
+function wikimediaHost(host: string): boolean {
+  return /(^|\.)(wikipedia|wiktionary|wikidata|wikimedia|wikibooks|wikiquote|wikisource|wikiversity|wikivoyage|wikinews|mediawiki)\.org$/.test(host);
+}
+
 function releaseSlot(s: HostState): void {
   s.inFlight -= 1;
   while (s.inFlight < MAX_PER_HOST) {
-    const next = s.first.shift() || s.later.shift();
+    const next = s.now.shift() || s.first.shift() || s.later.shift();
     if (!next) break;
     next();
   }
@@ -408,7 +426,8 @@ export function trackHttp(inner: HttpClient): HttpClient {
     // request that hung for six seconds would otherwise raise the host's RTO to six seconds, and
     // the next hung request would wait that long for its backup.
     const once = async (queued: boolean, took = false, onSend?: () => void, decided?: () => boolean): Promise<T> => {
-      if (queued && !took) await takeSlot(s, slot === 'later');
+      if (queued && !took) await takeSlot(s, slot === 'later' ? 'later' : 'first');
+      else if (!took && api && wikimediaHost(host)) await takeSlot(s, 'now');
       else if (!took) s.inFlight += 1;
       onSend?.();
       const started = Date.now();
@@ -508,7 +527,7 @@ export function trackHttp(inner: HttpClient): HttpClient {
         if (done) return;
         // The backup takes one of the host's three slots, waiting for one if all are open.
         backupWaiting = true;
-        void takeSlot(s, false).then(() => {
+        void takeSlot(s, 'first').then(() => {
           backupWaiting = false;
           if (done) {
             releaseSlot(s);
