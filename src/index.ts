@@ -27,7 +27,7 @@ import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile, r
 import { openOcrResultWindow } from './services/ocr-result-window';
 import { isLookupWorthy } from './services/text-normalize';
 import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
-import { placePopupNearPoint, eventCoordSpace, physicalToDip, setWindowBounds, type ScreenCoordSpace } from './services/popup-placement';
+import { placePopupNearPoint, placePanelNearPoint, eventCoordSpace, physicalToDip, setWindowBounds, type ScreenCoordSpace } from './services/popup-placement';
 import { popupSize } from './services/popup-size';
 import { showWorkProgress, updateWorkProgress, closeWorkProgress } from './services/work-progress';
 import { isAcceleratorPhysicallyHeld, isPrimaryMouseDown, primaryMousePressedSinceLastPoll } from './services/accelerator-key-state';
@@ -101,6 +101,7 @@ import {
   monitorDefaults,
   MonitorMode,
   MonitorSettings,
+  LookupOpens,
 } from './services/monitor-settings-store';
 import {
   loadTranslationPrefs,
@@ -365,6 +366,12 @@ let inFlightPopup: BrowserWindow | null = null;
 const stripTargets = new WeakMap<BrowserWindow, { x: number; y: number; space: ScreenCoordSpace; text: string }>();
 /** Popups that started closing; they are still in popupWindows until 'closed'. */
 const closingPopups = new WeakSet<BrowserWindow>();
+/**
+ * Full pop-ups that a lookup opened (Settings → Capture → Open lookups as → Full pop-up),
+ * with the word's point they sit next to. `moved` is set once the user drags or resizes
+ * the pop-up; from then on it stays where they put it.
+ */
+const panelAnchors = new WeakMap<BrowserWindow, { x: number; y: number; space: ScreenCoordSpace; moved: boolean }>();
 let ocrOverlayWindow: BrowserWindow | null = null;
 let contextHubWired = false;
 let hoverLookup: HoverLookupService | null = null;
@@ -1601,6 +1608,48 @@ function interceptPopupHistoryKeys(win: BrowserWindow): void {
   });
 }
 
+/** Size a full pop-up opens at before its page fits the height to the entry. */
+const PANEL_OPEN_WIDTH = 460;
+const PANEL_OPEN_HEIGHT = 500;
+
+/**
+ * Show `text` in a full pop-up opened by a lookup, next to the word at (x, y). A pop-up the
+ * user moved stays put, and so does one the word lies inside (a word selected in the pop-up).
+ */
+function applyPanelTarget(
+  win: BrowserWindow,
+  x: number,
+  y: number,
+  space: ScreenCoordSpace,
+  text: string,
+  showIfReady: boolean,
+): void {
+  try {
+    if (!win || win.isDestroyed()) return;
+    stripTargets.set(win, { x, y, space, text });
+    const anchor = panelAnchors.get(win);
+    const b = win.getBounds();
+    const pt = space === 'physical' ? physicalToDip(x, y) : { x, y };
+    const wordInside = pt.x >= b.x && pt.x < b.x + b.width && pt.y >= b.y && pt.y < b.y + b.height;
+    if (anchor && !anchor.moved && !wordInside) {
+      panelAnchors.set(win, { x, y, space, moved: false });
+      const placed = placePanelNearPoint(x, y, b.width, b.height, { space });
+      setWindowBounds(win, { x: placed.x, y: placed.y, width: b.width, height: placed.height });
+    }
+    if (showIfReady) {
+      try {
+        if (!win.webContents.isLoadingMainFrame()) win.show();
+      } catch {
+        /* not ready */
+      }
+      try { win.focus(); } catch {}
+    }
+    if (text) sendPopupText(win, text);
+  } catch (e) {
+    log.warn('main', 'Popup retarget failed', { err: String(e) });
+  }
+}
+
 const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip', explicitTrigger = false): void => {
   // Slim strip: ten 28px icons (four views, then audio, copy, search, save, options, close)
   // with 2px gaps, a divider and 4px padding. Keep in sync with the collapsed toolbar
@@ -1616,13 +1665,18 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
     POPUP_STRIP_ICONS * POPUP_STRIP_GAP +
     POPUP_STRIP_DIVIDER;
   const popupHeight = POPUP_STRIP_ICON + POPUP_STRIP_PAD * 2;
+  // Settings → Capture → Open lookups as: the strip, or the full pop-up straight away.
+  const opensFull = monitorSettings.lookupOpens === 'panel';
+  const openWidth = opensFull ? PANEL_OPEN_WIDTH : popupWidth;
 
   // Multi-monitor safe: convert physical UIA points only. DIP hover/OCR/cursor
   // must not go through screenToDipPoint (that pins HiDPI home PCs to one corner).
-  const placed = placePopupNearPoint(x, y, popupWidth, popupHeight, { space });
+  const panelPlace = opensFull ? placePanelNearPoint(x, y, openWidth, PANEL_OPEN_HEIGHT, { space }) : null;
+  const placed = panelPlace || placePopupNearPoint(x, y, popupWidth, popupHeight, { space });
+  const openHeight = panelPlace ? panelPlace.height : popupHeight;
   const popupX = placed.x;
   const popupY = placed.y;
-  log.debug('main', 'Popup bounds', { popupX, popupY, popupWidth, popupHeight, displayId: placed.displayId, space });
+  log.debug('main', 'Popup bounds', { popupX, popupY, openWidth, openHeight, displayId: placed.displayId, space, opensFull });
 
   // Coalesce duplicate requests for the same text within a short period
   const textForPopup = (lastSelectionEvent && (lastSelectionEvent.text || '').trim()) || lastSelectedText || '';
@@ -1680,7 +1734,7 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
 
   // An open lookup panel must stay put. Explicit shortcuts can immediately
   // reopen the selected word, while any loading strip still handles only one request.
-  if (!hasExpandedLookup || explicitTrigger) {
+  if (!opensFull && (!hasExpandedLookup || explicitTrigger)) {
     const live =
       (inFlightPopup && isCollapsedStrip(inFlightPopup) ? inFlightPopup : null)
       || reusableStrip
@@ -1700,6 +1754,23 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
     }
   }
 
+  // Full pop-up mode keeps one pop-up for lookups: the next word, selected, hovered or
+  // asked for with the trigger, shows in it and moves it to that word.
+  if (opensFull) {
+    const livePanel = [...popupWindows].reverse().find((win) => isLivePopup(win) && panelAnchors.has(win));
+    if (livePanel) {
+      if (!explicitTrigger && textForPopup && lastPopupText === textForPopup && nowTs - lastPopupAt < 1000) {
+        log.debug('main', 'Skip duplicate popup (same text, 1s)');
+        return;
+      }
+      lastPopupAt = nowTs;
+      lastPopupText = textForPopup;
+      applyPanelTarget(livePanel, x, y, space, textForPopup, true);
+      log.debug('main', 'Retarget full popup to latest selection');
+      return;
+    }
+  }
+
   // Commit immediately — do not wait for did-finish-load. Otherwise shortcut mode can
   // double-open: selection (keys held) + global trigger fire almost together, both pass
   // cooldown because lastPopupAt was still unset from the async popup path.
@@ -1707,8 +1778,8 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
   lastPopupText = textForPopup;
 
                 const newPopupWindow = new BrowserWindow(withWin11Chrome({
-                width: popupWidth,
-                height: popupHeight,
+                width: openWidth,
+                height: openHeight,
                 x: popupX,
                 y: popupY,
                 frame: false,
@@ -1718,8 +1789,8 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
                 focusable: true,
                 show: false,
                 transparent: false,
-                minWidth: 160,
-                minHeight: 32,
+                minWidth: opensFull ? PANEL_OPEN_WIDTH : 160,
+                minHeight: opensFull ? 200 : 32,
                 maxWidth: 1200,
                 maxHeight: 900,
                 movable: true, // Make window draggable
@@ -1735,6 +1806,16 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
               }, 'solid'));
   inFlightPopup = newPopupWindow;
   stripTargets.set(newPopupWindow, { x, y, space, text: textForPopup });
+  if (opensFull) {
+    panelAnchors.set(newPopupWindow, { x, y, space, moved: false });
+    // Only a drag or resize by hand fires these, never setBounds.
+    const keepWhereUserPutIt = (): void => {
+      const anchor = panelAnchors.get(newPopupWindow);
+      if (anchor) anchor.moved = true;
+    };
+    newPopupWindow.on('will-move', keepWhereUserPutIt);
+    newPopupWindow.on('will-resize', keepWhereUserPutIt);
+  }
   interceptPopupHistoryKeys(newPopupWindow);
   trackPopupFocus(newPopupWindow);
   // Close on blur to match intended UX (give clicks time to land on icons)
@@ -1759,7 +1840,9 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
   });
 // (moved) wiki handler registered at top-level below
 
-  const popupUrl = withPopupDevFlag(POPUP_WINDOW_WEBPACK_ENTRY);
+  // The page starts as the strip or as the full pop-up from this, with no strip shown first.
+  const devUrl = withPopupDevFlag(POPUP_WINDOW_WEBPACK_ENTRY);
+  const popupUrl = `${devUrl}${devUrl.includes('?') ? '&' : '?'}lookup=${opensFull ? 'panel' : 'strip'}`;
   let popupLoadRetries = 0;
 
   const loadPopupBundle = () => {
@@ -1805,7 +1888,8 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
     try {
       const target = stripTargets.get(newPopupWindow) || { x, y, space, text: textForPopup };
       const textToSend = target.text;
-      applyStripTarget(newPopupWindow, target.x, target.y, textToSend, false, target.space);
+      if (panelAnchors.has(newPopupWindow)) applyPanelTarget(newPopupWindow, target.x, target.y, target.space, target.text, false);
+      else applyStripTarget(newPopupWindow, target.x, target.y, textToSend, false, target.space);
       if (!newPopupWindow.isDestroyed() && !newPopupWindow.isVisible()) {
         newPopupWindow.show();
       }
@@ -1820,7 +1904,8 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
   // Show popup when ready
   newPopupWindow.once('ready-to-show', () => {
     const target = stripTargets.get(newPopupWindow);
-    if (target) applyStripTarget(newPopupWindow, target.x, target.y, target.text, false, target.space);
+    if (target && panelAnchors.has(newPopupWindow)) applyPanelTarget(newPopupWindow, target.x, target.y, target.space, target.text, false);
+    else if (target) applyStripTarget(newPopupWindow, target.x, target.y, target.text, false, target.space);
     newPopupWindow.show();
     try { newPopupWindow.focus(); } catch {}
   });
@@ -2641,7 +2726,15 @@ ipcMain.handle('monitor-get-state', () => {
     ocrShortcut: monitorSettings.ocrShortcut,
     hoverShortcut: monitorSettings.hoverShortcut,
     rememberSources: monitorSettings.rememberSources,
+    lookupOpens: monitorSettings.lookupOpens,
   };
+});
+
+ipcMain.handle('monitor-set-lookup-opens', (_event, value: LookupOpens) => {
+  if (value !== 'strip' && value !== 'panel') return { success: false, error: 'Invalid value' };
+  monitorSettings = mergeMonitorSettings({ lookupOpens: value }, monitorSettings);
+  saveMonitorSettingsFile(monitorSettings);
+  return { success: true, lookupOpens: monitorSettings.lookupOpens };
 });
 
 ipcMain.handle('monitor-set-hover', (_event, enabled: boolean) => {
@@ -3978,6 +4071,14 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
               if (Number.isFinite(x) && Number.isFinite(y)) {
                 const placed = placePopupNearPoint(x, y, w, h, { space: 'dip' });
                 setWindowBounds(target, { x: placed.x, y: placed.y, width: w, height: h });
+                return;
+              }
+              // A full pop-up opened by a lookup stays beside its word as the entry sets its
+              // height: one placed above the word keeps its lower edge clear of it.
+              const anchor = panelAnchors.get(target);
+              if (anchor && !anchor.moved && !size.strip) {
+                const placed = placePanelNearPoint(anchor.x, anchor.y, w, h, { space: anchor.space });
+                setWindowBounds(target, { x: placed.x, y: placed.y, width: w, height: placed.height });
                 return;
               }
               target.setSize(w, h);

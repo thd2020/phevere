@@ -368,6 +368,13 @@ function initializeSettingsWindow() {
                   <div id="hover-ocr-progress" class="sv-progress" hidden><span></span></div>
                 </div>
                 <div class="sv-row">
+                  <span class="sv-row__text"><label for="lookup-opens" class="sv-row__label">Open lookups as</label></span>
+                  <select id="lookup-opens" class="sv-select">
+                    <option value="strip">Strip</option>
+                    <option value="panel">Full pop-up</option>
+                  </select>
+                </div>
+                <div class="sv-row">
                   <span class="sv-row__text"><span id="remember-sources-label" class="sv-row__label">Remember where words were saved</span></span>
                   <label class="sv-ctl"><input type="checkbox" role="switch" class="sv-switch" id="remember-sources" checked aria-labelledby="remember-sources-label" /></label>
                 </div>
@@ -1299,6 +1306,11 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
   rememberToggle?.addEventListener('change', () => {
     void (window.electronAPI as { setRememberSources?: (on: boolean) => Promise<unknown> }).setRememberSources?.(rememberToggle.checked);
   });
+  const lookupOpensSelect = document.getElementById('lookup-opens') as HTMLSelectElement | null;
+  lookupOpensSelect?.addEventListener('change', () => {
+    const value = lookupOpensSelect.value === 'panel' ? 'panel' : 'strip';
+    void (window.electronAPI as { setLookupOpens?: (v: 'strip' | 'panel') => Promise<unknown> }).setLookupOpens?.(value);
+  });
   const cycleSetBtn = document.getElementById('monitor-cycle-set') as HTMLButtonElement | null;
   const triggerSetBtn = document.getElementById('monitor-trigger-set') as HTMLButtonElement | null;
   const ocrSetBtn = document.getElementById('ocr-shortcut-set') as HTMLButtonElement | null;
@@ -1364,6 +1376,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
     if (hoverEl) hoverEl.value = st.hoverShortcut || 'CommandOrControl+Shift+H';
     if (hoverToggle) hoverToggle.checked = st.hoverEnabled !== false;
     if (rememberToggle) rememberToggle.checked = (st as { rememberSources?: boolean }).rememberSources !== false;
+    if (lookupOpensSelect) lookupOpensSelect.value = (st as { lookupOpens?: string }).lookupOpens === 'panel' ? 'panel' : 'strip';
     if (cycleEl) paintShortcutKeycaps(cycleEl);
     if (triggerEl) paintShortcutKeycaps(triggerEl);
     if (ocrEl) paintShortcutKeycaps(ocrEl);

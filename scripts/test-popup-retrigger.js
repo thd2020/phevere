@@ -51,6 +51,9 @@ const context = vm.createContext({
   placePopupNearPoint: (x, y) => ({ x: x - 4000, y, displayId: 1 }),
   setWindowBounds: (window, rect) => window.setBounds(rect, false),
   stripTargets: new WeakMap(), closingPopups: new WeakSet(), hoverLookup: null,
+  panelAnchors: new WeakMap(),
+  placePanelNearPoint: (x, y, _w, h) => ({ x: x - 4000, y: y + 14, height: h, displayId: 1 }),
+  physicalToDip: (x, y) => ({ x, y }),
   eventCoordSpace: (event) => event.coordSpace || 'dip',
   withWin11Chrome: (options) => options,
   withPopupDevFlag: (url) => url,
@@ -63,7 +66,8 @@ const context = vm.createContext({
   rememberLookupSource: () => {},
   log: { debug() {}, warn() {}, error() {} }, setTimeout,
 });
-vm.runInContext(ts.transpileModule(declaration('createPopupWindow') + '\n' + declaration('onTriggerShortcutAfterSelection'), {}).outputText, context);
+vm.runInContext(ts.transpileModule(['PANEL_OPEN_WIDTH', 'PANEL_OPEN_HEIGHT', 'applyPanelTarget', 'createPopupWindow', 'onTriggerShortcutAfterSelection']
+  .map(declaration).join('\n'), {}).outputText, context);
 const tick = () => new Promise((resolve) => setTimeout(resolve, 80));
 async function loaded(window) {
   if (!window.webContents.isLoadingMainFrame()) return;
@@ -113,7 +117,36 @@ app.whenReady().then(async () => {
     context.lastSelectionEvent.timestamp = now;
     context.onTriggerShortcutAfterSelection();
     assert.equal(created, 3, 'Disabled monitoring mode must not open a shortcut lookup');
-    console.log('Popup retrigger passed immediate same-word reopen, loading-strip coalescing, automatic debounce, new-word retarget, expanded-panel preservation, expiry, and disabled mode.');
+    // Settings → Capture → Open lookups as → Full pop-up: one pop-up, opened full and reused.
+    for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) await close(window);
+    context.popupWindows.length = 0;
+    context.monitorSettings.mode = 'shortcut';
+    context.monitorSettings.lookupOpens = 'panel';
+    now += 5000;
+    context.lastSelectionEvent = { text: 'first', x: 200, y: 100, timestamp: now, coordSpace: 'dip' };
+    context.onTriggerShortcutAfterSelection();
+    assert.equal(created, 4, 'the trigger opens a pop-up');
+    const panel = context.popupWindows[0];
+    assert.deepEqual(panel.getSize(), [460, 500], 'the pop-up opens full, not as a strip');
+    assert.ok(panel.getURL().includes('lookup=panel') || panel.webContents.isLoadingMainFrame(), 'the page is told to open full');
+    await loaded(panel);
+    assert.equal(panel.lookupText, 'first');
+    now += 10;
+    context.lastSelectionEvent = { text: 'second', x: 300, y: 200, timestamp: now, coordSpace: 'dip' };
+    context.createPopupWindow(300, 200);
+    assert.equal(created, 4, 'a new word shows in the open pop-up');
+    assert.equal(panel.lookupText, 'second');
+    assert.deepEqual(panel.getPosition(), [300 - 4000, 214], 'the pop-up moves next to the new word');
+    context.createPopupWindow(300, 200);
+    assert.equal(created, 4, 'a repeated event within a second is skipped');
+    context.onTriggerShortcutAfterSelection();
+    assert.equal(created, 4, 'the trigger shortcut reuses the full pop-up');
+    await close(panel);
+    now += 10;
+    context.onTriggerShortcutAfterSelection();
+    assert.equal(created, 5, 'once closed, the trigger opens the word again');
+    assert.deepEqual(context.popupWindows.at(-1).getSize(), [460, 500]);
+    console.log('Popup retrigger passed immediate same-word reopen, loading-strip coalescing, automatic debounce, new-word retarget, expanded-panel preservation, expiry, disabled mode, and the full pop-up opened full and reused.');
   } finally {
     for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) await close(window);
   }

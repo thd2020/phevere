@@ -162,6 +162,7 @@ const context = vm.createContext({
   mainWindow: null,
   ocrOverlayWindow: null,
   placePopupNearPoint: placement.placePopupNearPoint,
+  placePanelNearPoint: placement.placePanelNearPoint,
   eventCoordSpace: placement.eventCoordSpace,
   physicalToDip: placement.physicalToDip,
   setWindowBounds: placement.setWindowBounds,
@@ -189,7 +190,7 @@ function declaration(name) {
   return statement.getText(ast);
 }
 vm.runInContext(transpile([
-  'stripTargets', 'closingPopups', 'setLastSelectionEvent', 'hoverYieldsToSelection',
+  'stripTargets', 'closingPopups', 'panelAnchors', 'PANEL_OPEN_WIDTH', 'PANEL_OPEN_HEIGHT', 'applyPanelTarget', 'setLastSelectionEvent', 'hoverYieldsToSelection',
   'onTriggerShortcutAfterSelection', 'createPopupWindow', 'wireContextCaptureHubOnce',
 ].map(declaration).join('\n') + '\nglobalThis.createPopupWindow = createPopupWindow;'), context);
 context.wireContextCaptureHubOnce();
@@ -426,6 +427,71 @@ function assertStripAt(win, word, message) {
   assert.equal(sel.displayId, 2, 'physical point on the 150% monitor maps to it');
   assert.equal(sel.y, 400 + 14, 'physical y is divided by that monitor\'s scale, not the primary\'s');
 
+  strips().forEach((w) => { w.close(); w.closed(); });
+
+  // Settings -> Capture -> Open lookups as -> Full pop-up. Each case: the pop-up opens full,
+  // shows the word, does not cover it, and stays on the word's monitor.
+  context.monitorSettings.mode = 'on';
+  context.monitorSettings.lookupOpens = 'panel';
+  const covers = (b, w) => b.x < w.x + w.width && b.x + b.width > w.x && b.y < w.y + w.height && b.y + b.height > w.y;
+  const onScreen = (b) => displays.some((d) => b.x >= d.workArea.x && b.y >= d.workArea.y
+    && b.x + b.width <= d.workArea.x + d.workArea.width && b.y + b.height <= d.workArea.y + d.workArea.height);
+  function assertPanelBeside(win, word, message) {
+    const b = win.getBounds();
+    assert.equal(b.width, 460, `${message}: full width, not a strip`);
+    assert.ok(b.height >= 200, `${message}: full height, not a strip (${b.height})`);
+    assert.ok(!covers(b, word), `${message}: covers ${word.text} ${JSON.stringify(b)}`);
+    assert.ok(onScreen(b), `${message}: off screen ${JSON.stringify(b)}`);
+    assert.equal(screen.getDisplayMatching(b).id, screen.getDisplayNearestPoint(center(word)).id, `${message}: another monitor`);
+    assert.equal(win.text, word.text, `${message}: shows ${word.text}`);
+  }
+  const panels = () => context.popupWindows.filter((w) => !w.isDestroyed());
+  const before = created;
+  now += 3000;
+  await dwellOn(alpha);
+  assert.equal(panels().length, 1, 'hover opens one pop-up');
+  const panel = panels()[0];
+  panel.finishLoad();
+  assertPanelBeside(panel, alpha, 'alpha, with room below');
+  assert.equal(panel.getBounds().y, center(alpha).y + 14, 'below the word when it fits');
+  // gamma is low on the 100% monitor: the pop-up goes above it.
+  now += 3000;
+  await dwellOn(gamma);
+  assert.equal(created, before + 1, 'the next word reuses the open pop-up');
+  assertPanelBeside(panel, gamma, 'gamma, near the bottom');
+  assert.ok(panel.getBounds().y + panel.getBounds().height <= gamma.y, 'above gamma');
+  // beta on the 150% monitor has room for neither 500 px below nor above: the pop-up takes
+  // the larger room and is made shorter, still on that monitor and clear of the word.
+  now += 3000;
+  await dwellOn(beta);
+  assert.equal(created, before + 1);
+  assertPanelBeside(panel, beta, 'beta, on the 150% monitor');
+  // The page grows the pop-up to its entry: it stays clear of the word.
+  context.applyPanelTarget(panel, center(alpha).x, center(alpha).y, 'dip', 'alpha', false);
+  const grown = placement.placePanelNearPoint(center(alpha).x, center(alpha).y, 460, 620, { space: 'dip' });
+  assert.ok(!covers({ ...grown, width: 460 }, alpha) && grown.height === 620, 'a taller entry still sits below alpha');
+  // A pop-up dragged aside by hand stays there; the next word only changes what it shows.
+  panel.emit('will-move');
+  const dragged = panel.getBounds();
+  now += 3000;
+  await dwellOn(the1);
+  assert.deepEqual(panel.getBounds(), dragged, 'a moved pop-up stays where the user put it');
+  assert.equal(panel.text, 'the');
+  panel.close();
+  panel.closed();
+  // A physical selection point on the 150% monitor (Windows UI Automation) opens there.
+  now += 3000;
+  context.setLastSelectionEvent({ text: 'selected', x: 1920 + 900, y: 300, timestamp: now, origin: 'selection', coordSpace: 'physical' });
+  context.createPopupWindow(1920 + 900, 300, 'physical');
+  const picked = panels()[0];
+  picked.finishLoad();
+  const pb = picked.getBounds();
+  assert.equal(screen.getDisplayMatching(pb).id, 2, 'a selection on the 150% monitor opens there');
+  assert.ok(onScreen(pb) && pb.y >= 200 + 14, 'below the selection point (y 200 in DIP)');
+  picked.close();
+  picked.closed();
+  context.monitorSettings.lookupOpens = 'strip';
+
   hover.stop();
-  console.log('Hover strip passed: trigger reads the word under the pointer, cooldown keeps the dwell, late reads dropped, same word elsewhere, closing strip skipped, load keeps its target, click-away stays shut, drag drops the trigger, clicked-away selection, mixed-DPI move.');
+  console.log('Hover strip passed: full pop-up beside the word, above it near the bottom, shorter on a short monitor, reused for the next word, kept where dragged, physical selection on 150%; trigger reads the word under the pointer, cooldown keeps the dwell, late reads dropped, same word elsewhere, closing strip skipped, load keeps its target, click-away stays shut, drag drops the trigger, clicked-away selection, mixed-DPI move.');
 })().catch((error) => { console.error(error); process.exit(1); });
