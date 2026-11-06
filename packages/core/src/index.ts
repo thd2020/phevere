@@ -267,6 +267,7 @@ export {
   sameLemma,
   reviewArmed,
   hintReview,
+  keepDraft,
   armCountdown,
   markHeard,
   wordMaturity,

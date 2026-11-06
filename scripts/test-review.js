@@ -107,7 +107,7 @@ const now = new Date(2026, 10, 3, 10, 0, 0).getTime();
   assert.equal(core.autoGrade('recall', 'right', 3500, 8), 4, 'quick recall is Easy');
   assert.equal(core.autoGrade('recall', 'right', 9000, 8), 3);
   assert.equal(core.autoGrade('recall', 'right', 20000, 8), 2);
-  assert.equal(core.autoGrade('recall', 'close', 2000, 8), 2, 'a near miss is Hard');
+  assert.equal(core.autoGrade('recall', 'close', 2000, 8), 1, 'a near miss is a miss');
   assert.equal(core.autoGrade('cloze', 'wrong', 2000, 8), 1);
 }
 

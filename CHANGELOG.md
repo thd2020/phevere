@@ -7,9 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Hints in typed questions (2026-11-06): a typed question now starts with the first letter only, however weakly you hold the word, instead of up to four letters for a long word; a word you hold weakly gets an easier kind of question instead. Each Hint gives one more letter and lowers the credit for your answer: any hint makes it Hard at most, and needing hints for more than a third of the hidden letters makes it Again. "I knew it" after such an answer makes it Hard.
+- "Almost" (2026-11-06): a typed answer one letter off now counts as a miss (Again) and gets the cross instead of the tick. "I knew it" makes it Hard, not Good.
+
 ### Fixed
 
 - Listening questions (2026-11-06): a word could still be heard twice, a few seconds apart. On the desktop, pressing play again while the synthetic voice was being made played both voices; on Android, a recording that hiccupped after it had started was followed by the next recording or the synthetic voice. Each press now gives one sound, and moving to the next question or leaving Learn stops a word that is still loading.
+- Typed answers (2026-11-06): the answer box no longer empties while you type, for example when a dictation's word finishes playing or a picture or sync redraws Learn, and Hint no longer deletes letters you typed after a mistake. The letters Hint shows appear under the box instead.
 
 ## [4.2.0] - 2026-11-06
 

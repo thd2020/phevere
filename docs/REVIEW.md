@@ -121,7 +121,8 @@ Showing some of the answer's letters and showing fewer as the learner improves i
 | The line drawn on stability, not the interval | The Anki forum proposal | Stability is what FSRS knows about memory, and it stays put when retention settings change |
 | The kind of question chosen to be right about 85% of the time | Birdbrain, Wilson et al. 2019, Elo | A word met at different strengths gets questions of different difficulty, which the user liked |
 | Picking the word you hear early, dictation later | Duolingo's listening ladder | The user found multiple-choice listening too easy |
-| Letter count, more letters for a weaker word, Hint for one more | Diminishing cues | Spelling is hard; help should shrink as the word strengthens |
+| Letter count, the first letter, Hint for one more | Diminishing cues, Memrise's hint button | The answer stays mostly the learner's own; a weak word gets an easier kind instead of a longer cue |
+| A near miss counted as a miss, hinted answers worth less | Quizlet, Lingvist, SuperMemo's grade scale | A typed question asks for the spelling; a word that was given is not recalled |
 | Fewer typed questions for a learner who misspells | 不背单词's spelling switches, Laufer and Goldstein | Not every word has to be spelled to be known |
 | Fewer new words on a heavy day, a suggested number from the usual day | Anki's review limit and rule of thumb, MaiMemo | The number of new words should fit the time the learner actually spends |
 
@@ -152,7 +153,7 @@ Each stage opens a set of kinds, in an order that follows Laufer and Goldstein f
 
 The stage is the one the word's tag shows (`wordMaturity`), so a word tagged Young is asked from the Young row even when it is held for only a few days; the predicted chance below still steers a shaky word towards the easier kinds. Picking the word you hear belongs to the early stages and typing the word you hear, dictation, to the later ones. A new word asked again in its first session is recognised again, never typed, so spelling waits for a later day, and a leech is only asked in the recognition formats.
 
-Within the stage the kind is the one the learner should get right about 85% of the time (`chooseKind`, `TARGET_SUCCESS`). The predicted chance of a right answer (`successChance`) adds up, in log-odds, how firmly the word is held now (FSRS's predicted recall, an even chance for a new word), how easy the kind is (`KIND_EASE`: picking a meaning +1.8, picking the word +1.4, picking the word heard +1.1, the gap +0.1, typing 0, dictation -0.5), what the learner's own answers say about that kind (see "Adapting to the learner"), and the letters shown. A shortfall from 85% costs twice as much as an excess, because a miss sends the word back to relearning while an easy question still makes the learner retrieve it. So a young word due today is typed, the same word long overdue steps back to picking it from four, and a word held for weeks is filled into a sentence or written from dictation: one word meets questions of different difficulty as its memory changes.
+Within the stage the kind is the one the learner should get right about 85% of the time (`chooseKind`, `TARGET_SUCCESS`). The predicted chance of a right answer (`successChance`) adds up, in log-odds, how firmly the word is held now (FSRS's predicted recall, an even chance for a new word), how easy the kind is (`KIND_EASE`: picking a meaning +1.8, picking the word +1.4, picking the word heard +1.1, the gap +0.1, typing 0, dictation -0.5), and what the learner's own answers say about that kind (see "Adapting to the learner"). A shortfall from 85% costs twice as much as an excess, because a miss sends the word back to relearning while an easy question still makes the learner retrieve it. So a young word due today is typed, the same word long overdue steps back to picking it from four, and a word held for weeks is filled into a sentence or written from dictation: one word meets questions of different difficulty as its memory changes.
 
 The session's skill balance still applies. A kind whose skill the session already leans on more than the aim costs more (meaning 50%, spelling 35%, listening 15% by default), repeating the last kind costs a little, and listening is never more than a fifth of a session nor in its first four questions. The spelling aim moves with the learner: from 15% for a learner whose typed answers go wrong more often than predicted to 45% for one who spells well, so not every word has to be spelled. In a 40-day simulation a learner who spells poorly never typed about a sixth of the words started in the first fortnight.
 
@@ -160,15 +161,19 @@ A gap-fill question uses a sentence from your note, then the sentence the word w
 
 ### Letters shown and Hint
 
-A typed question shows the answer's length as one dot per letter, with "7 letters" under the box. Typing the word and filling the gap show its first letter, and dictation none. A weaker word gets more, one letter at a time while the predicted chance stays under 85%, but never more than a third of the word (`cueLetters`); as the word strengthens the cue shrinks, which is diminishing-cue practice. Hint keeps what the learner has typed as far as it matches the answer and puts the next letter after it into the box, up to all but the last letter; anything typed past the first wrong letter is dropped. A right answer after a Hint is Hard, and one given extra letters up front is at most Good.
+A typed question shows the answer's length as one dot per letter, with "7 letters" under the box. Typing the word and filling the gap show its first letter, and dictation none, however weak the word is (`cueLetters`). Until 2026-11-06 a weaker word got up to a third of its letters up front, so a long word could open with four; now a weak word gets an easier kind of question instead, and the answer typed is mostly the learner's own.
+
+Each Hint gives one letter: the one after the letters the learner already has right, or after the letters shown so far. When the box holds the start of the answer, the letter is added after it. When it holds anything else, the box is left as typed and the letters shown appear under it. Hint never gives the last letter, and it never clears anything. The box itself is kept on every keystroke (`keepDraft`), so a repaint of Learn, from a word that finished playing, a sync or a picture that loaded, puts back exactly what was typed. Before, any repaint emptied the box, and a dictation repainted the moment its word finished playing.
+
+![Screenshot of a typing question for meadow after one Hint: the box still holds mae as typed, and me with four dots shows under it](REVIEW.assets/hint-kept.png)
+
+*The learner typed "mae" and pressed Hint: the box keeps "mae", and the letters shown are under it.*
 
 ![Screenshot of a gap-fill question for tremble after one Hint: the box holds tr, with 7 letters, Hint and I don't know under it](REVIEW.assets/hint-letters.png)
 
 *After one Hint the box holds the first two letters, and the learner types the rest.*
 
-![Screenshot of a dictation question for a mature word: a large play button, a box showing s and six dots, and 7 letters under it](REVIEW.assets/dictation-question.png)
 
-*Dictation for a mature word: the word is played once and typed, with the first letter shown because the learner's dictation has been weak.*
 
 ### Unlocking
 
@@ -186,15 +191,20 @@ A question shows the first usable sense of the word (`bestSense`). Citation line
 
 The answer is graded automatically and mapped to FSRS's four grades, so the learner never rates their own memory:
 
-- A wrong answer is Again, and a typed answer one letter off in a word of five letters or more (two letters in ten or more) is Hard.
+- A wrong answer is Again. So is a typed answer one letter off in a word of five letters or more (two letters in ten or more), shown as "Almost" with the right spelling and the cross. A typed question asks for the spelling, and Quizlet and Lingvist count a misspelt answer as missed too.
 - A right choice is Good, or Hard after ten seconds. Recognition never earns Easy.
-- A right typed answer is Easy within 2.5 seconds plus a quarter second per letter, Hard after 15 seconds plus that allowance, and Good in between. After a Hint it is Hard, and with extra letters shown up front it is at most Good.
+- A right typed answer is Easy within 2.5 seconds plus a quarter second per letter, Hard after 15 seconds plus that allowance, and Good in between.
+- Hints lower that by how much of the word they gave (`hintShare`, the letters Hint gave over the letters the learner had to supply). Any hint makes the answer Hard at most, and hints for more than a third of the hidden letters (`HINT_FAIL_SHARE`) make it Again, since the word was told rather than recalled. One hint in "idiosyncrasy" is Hard; four are Again. The learner model counts a hinted answer as only partly right, by the same share.
 
 ![Screenshot of the feedback after a wrong choice: the right meaning in teal, the chosen one in red with the word it belongs to, then Continue, Open in lookup and I knew it](REVIEW.assets/wrong-answer.png)
 
 *After a miss, the chosen option names the word it belongs to, and "I knew it" overturns the grade.*
 
-One tap overturns the grade before Continue saves it: "I knew it" after a miss makes it Good, "I didn't know it" after a lucky guess makes it Again, and "Too easy" after a right answer makes it Easy. A new word from any list can be set aside with "Already know it", which sits at the end of the instruction row, away from where Continue appears; the round's summary lists those words with Undo. Taps and keys in the first 0.4 seconds of a question are ignored, so a double tap on Continue cannot answer the next one. Back during an answer saves it first, as Continue would. The answer shows at once with the picture, the pronunciation, the saved senses and the note, and the line under the buttons says when the word comes back. Words due again within 20 minutes, Anki's learn-ahead limit, come back in the same session, up to three times. With a keyboard, on the desktop and on a phone or tablet that has one, 1 to 4 pick an option and Enter starts, continues or begins the next round; the key hints show only where a keyboard-like pointer exists.
+One tap overturns the grade before Continue saves it: "I knew it" after a miss makes it Good, and after a near miss or an answer that needed many hints makes it Hard; "I didn't know it" after a lucky guess makes it Again; and "Too easy" after a right answer without hints makes it Easy. A new word from any list can be set aside with "Already know it", which sits at the end of the instruction row, away from where Continue appears; the round's summary lists those words with Undo. Taps and keys in the first 0.4 seconds of a question are ignored, so a double tap on Continue cannot answer the next one. Back during an answer saves it first, as Continue would. The answer shows at once with the picture, the pronunciation, the saved senses and the note, and the line under the buttons says when the word comes back. Words due again within 20 minutes, Anki's learn-ahead limit, come back in the same session, up to three times. With a keyboard, on the desktop and on a phone or tablet that has one, 1 to 4 pick an option and Enter starts, continues or begins the next round; the key hints show only where a keyboard-like pointer exists.
+
+![Screenshot of the feedback after typing medow for meadow: a brush cross over the question, Almost: meadow in red, Again, back in 10 min, and I knew it](REVIEW.assets/almost-cross.png)
+
+*A near miss gets the cross and Again; "I knew it" would make it Hard.*
 
 ### Leeches
 
@@ -204,7 +214,7 @@ A word with four lapses or more is a leech (`isLeech`). Anki's threshold is eigh
 
 `packages/core/src/learn-adapt.ts` reads the answer history twice when Learn opens and again before each new round.
 
-The learner model (`learnerModel`) keeps, for each kind of question, how much better or worse this learner does than predicted, in log-odds. It replays the history in time order, rebuilds each word's FSRS state as `replaySchedule` does, predicts each answer from the word's recall at that moment and the kind's ease, and moves the kind's offset by the surprise, an Elo update whose step starts at 0.4 and shrinks to 0.05 as answers of that kind accumulate. During a session each answer moves the offsets again from the question's own prediction. A learner who spells well gets harder typed questions with fewer letters; one who misspells gets more letters and fewer typed questions. The history does not record the letters shown, so past answers are predicted with the usual cue, which makes a weak speller's offset a little kinder than the truth.
+The learner model (`learnerModel`) keeps, for each kind of question, how much better or worse this learner does than predicted, in log-odds. It replays the history in time order, rebuilds each word's FSRS state as `replaySchedule` does, predicts each answer from the word's recall at that moment and the kind's ease, and moves the kind's offset by the surprise, an Elo update whose step starts at 0.4 and shrinks to 0.05 as answers of that kind accumulate. During a session each answer moves the offsets again from the question's own prediction, a hinted answer counting only for the share of the word the learner supplied. A learner who spells well gets more typed questions; one who misspells gets fewer. The history does not record hints, so past hinted answers count as fully right there, which makes a weak speller's offset a little kinder than the truth.
 
 The study pace (`studyPace`) looks at the last fourteen days with answers within four weeks, leaving today out: the median answers a day, how many answers a new word took on its first day, and how often review answers were right. Following Anki's ten answers per new card, each new word a day later adds about 7.5 review answers to every day, more when reviews go wrong more often than the 90% the schedule aims at. The suggested number of new words a day is the usual day's answers divided by what a new word costs. When it differs from your goal by at least two words and a third of the goal, the start card says so, with a button that sets it ("8 new words a day fits your recent study time · Use 8"); All books, with several goals, gets no offer. With fewer than three study days there is no pace, and the plan follows the review-load rule alone.
 
@@ -218,7 +228,7 @@ Three more paths could still give two sounds until 2026-11-06, and each is close
 
 ### The answer mark
 
-The answer is marked on the question itself, over the instruction, the prompt and the options together: a brush tick for a right answer, a lighter tick for an almost, a cross for a wrong one, each a tapered ink shape revealed by a pen line along its middle, over a soft wash of teal or rust. The right option fills and settles and a wrong pick gives a small shake. The whole mark takes about three seconds and takes no taps, so Continue works while it plays. A repaint resumes it from the time of the answer, so a picture or a meaning loading in the background no longer cuts it short.
+The answer is marked on the question itself, over the instruction, the prompt and the options together: a brush tick for a right answer and a cross for a wrong one or an almost, each a tapered ink shape revealed by a pen line along its middle, over a soft wash of teal or rust. The right option fills and settles and a wrong pick gives a small shake. The whole mark takes about three seconds and takes no taps, so Continue works while it plays. A repaint resumes it from the time of the answer, so a picture or a meaning loading in the background no longer cuts it short.
 
 Windows reports reduced motion when "Show animations" is off, and both apps turned every animation off then, which is why the mark never showed for some users. The mark now draws in that case too, with the lift, the settle and the shake left out.
 

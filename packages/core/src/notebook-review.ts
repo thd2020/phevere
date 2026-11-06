@@ -13,6 +13,7 @@ import {
   countdownWaiting,
   ensureReviewQuestion,
   hintsLeft,
+  shownLetters,
   MATURITY_NAME,
   memoryLevel,
   ROUND_WORDS,
@@ -300,7 +301,7 @@ function optionsHtml(q: ReviewQuestion, state: ReviewState): string {
 /** The answer box's placeholder: the letters shown, then a dot for each hidden letter, spaces kept. */
 export function typedPlaceholder(q: ReviewQuestion): string {
   const chars = [...(q.answers[0] || '')];
-  const shown = (q.reveal || 0) + (q.hinted || 0);
+  const shown = shownLetters(q);
   return chars.map((c, i) => (i < shown ? c : /\s/.test(c) ? ' ' : '·')).join('');
 }
 
@@ -318,7 +319,7 @@ function typedHtml(q: ReviewQuestion, state: ReviewState): string {
   return `<form class="nbv-type" data-act-form="nb-submit" autocomplete="off">
     <input id="nbv-answer" class="nbv-type__input" type="text" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="${esc(typedPlaceholder(q))}" value="${esc(q.draft || '')}" aria-label="Answer, ${letterCount(q.answers[0] || '')}" />
     <button type="submit" class="nbv-primary">Check</button>
-  </form>`;
+  </form>${q.hinted ? `<p class="nbv-type__cue" aria-label="Letters shown">${esc(typedPlaceholder(q))}</p>` : ''}`;
 }
 
 function verdictHtml(q: ReviewQuestion, state: ReviewState): string {
@@ -380,8 +381,10 @@ function markHtml(q: ReviewQuestion, state: ReviewState, now: number): string {
   const elapsed = a.at != null ? Math.max(0, now - a.at) : MARK_MS;
   if (elapsed >= MARK_MS) return '';
   const key = `nbv-ink-${state.index}-${String(q.id).replace(/[^\w-]/g, '').slice(-12)}`;
-  const strokes = a.result === 'wrong' ? CROSS.map((s, i) => inkStroke(`${key}-${i}`, s, i + 1)).join('') : inkStroke(`${key}-0`, TICK, 1);
-  return `<div class="nbv-wash is-${a.result}" aria-hidden="true"></div><div class="nbv-ink is-${a.result}" aria-hidden="true"><svg viewBox="0 0 240 200" preserveAspectRatio="xMidYMid meet">${strokes}</svg></div>`;
+  // A near miss is a miss: it gets the cross, as a wrong answer does.
+  const mark = a.result === 'right' ? 'right' : 'wrong';
+  const strokes = mark === 'wrong' ? CROSS.map((s, i) => inkStroke(`${key}-${i}`, s, i + 1)).join('') : inkStroke(`${key}-0`, TICK, 1);
+  return `<div class="nbv-wash is-${mark}" aria-hidden="true"></div><div class="nbv-ink is-${mark}" aria-hidden="true"><svg viewBox="0 0 240 200" preserveAspectRatio="xMidYMid meet">${strokes}</svg></div>`;
 }
 
 /** The senses an answer shows: the one the question used first, then other usable ones; never citations. */
@@ -424,8 +427,9 @@ function overrideButtons(q: ReviewQuestion, state: ReviewState): string {
   if (q.kind === 'flash') return '';
   const easyOn = a.overridden && a.grade === 4 && a.result !== 'wrong';
   const flipOn = a.overridden && !easyOn;
-  const flip = `<button type="button" class="nbv-link" data-act="nb-override" data-mode="flip" aria-pressed="${flipOn}">${flipOn ? 'Undo' : a.result === 'wrong' ? 'I knew it' : "I didn't know it"}</button>`;
-  const easy = a.result === 'right' ? `<button type="button" class="nbv-link" data-act="nb-override" data-mode="easy" aria-pressed="${easyOn}">${easyOn ? 'Undo' : 'Too easy'}</button>` : '';
+  const flip = `<button type="button" class="nbv-link" data-act="nb-override" data-mode="flip" aria-pressed="${flipOn}">${flipOn ? 'Undo' : a.auto === 1 ? 'I knew it' : "I didn't know it"}</button>`;
+  // An answer finished with Hint was helped, so it cannot be marked too easy.
+  const easy = a.result === 'right' && !q.hinted ? `<button type="button" class="nbv-link" data-act="nb-override" data-mode="easy" aria-pressed="${easyOn}">${easyOn ? 'Undo' : 'Too easy'}</button>` : '';
   return `<span class="nbv-quiz__links">${flip}${easy}</span>`;
 }
 

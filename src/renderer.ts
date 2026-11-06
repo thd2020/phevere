@@ -83,6 +83,7 @@ import {
   learnerModel,
   studyPace,
   hintReview,
+  keepDraft,
   armCountdown,
   markHeard,
   singleVoice,
@@ -3389,8 +3390,8 @@ function wireNotebookActions(root: HTMLElement): void {
         if (reviewArmed(nbReview)) answerCurrentReview({});
         return;
       case 'nb-hint':
-        // What is typed so far stays where it matches the answer; the next letter is added.
-        if (nbReview && hintReview(nbReview, root.querySelector<HTMLInputElement>('#nbv-answer')?.value || '')) renderLearn();
+        // One more letter; what is typed stays, and the letter is added when it is the start of the word.
+        if (nbReview && hintReview(nbReview, root.querySelector<HTMLInputElement>('#nbv-answer')?.value ?? undefined)) renderLearn();
         return;
       case 'nb-override':
         if (nbReview) overrideReview(nbReview, el.dataset.mode === 'easy' ? 'easy' : 'flip');
@@ -3406,6 +3407,12 @@ function wireNotebookActions(root: HTMLElement): void {
     const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-act]');
     if (!el || !root.contains(el)) return;
     void run(el, ev);
+  });
+  // The answer box is kept on every keystroke, so a repaint of Learn (a word that finished
+  // playing, a sync, a picture) puts back what was typed.
+  root.addEventListener('input', (ev) => {
+    const input = ev.target as HTMLElement;
+    if (input instanceof HTMLInputElement && input.id === 'nbv-answer') keepDraft(nbReview, input.value);
   });
   // A made book: rename on change of its title, add a word from its form.
   root.addEventListener('change', (ev) => {

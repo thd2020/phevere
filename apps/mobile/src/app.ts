@@ -106,6 +106,7 @@ import {
   armCountdown,
   markHeard,
   singleVoice,
+  keepDraft,
   type SingleVoice,
   type LearnerModel,
   type StudyPace,
@@ -2759,8 +2760,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       if (reviewArmed(nbState.review)) answerCurrentReview({});
       return;
     case 'nb-hint':
-      // What is typed so far stays where it matches the answer; the next letter is added.
-      if (nbState.review && hintReview(nbState.review, document.querySelector<HTMLInputElement>('#nbv-answer')?.value || '')) paint();
+      // One more letter; what is typed stays, and the letter is added when it is the start of the word.
+      if (nbState.review && hintReview(nbState.review, document.querySelector<HTMLInputElement>('#nbv-answer')?.value ?? undefined)) paint();
       return;
     case 'nb-override':
       if (nbState.review) overrideReview(nbState.review, t.dataset.mode === 'easy' ? 'easy' : 'flip');
@@ -3009,6 +3010,12 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
 function onChange(e: Event): void {
   const el = e.target as HTMLElement | null;
   if (!el) return;
+  // The answer box is kept on every keystroke, so a repaint of Learn (a word that finished
+  // playing, a sync, a picture) puts back what was typed.
+  if (el.id === 'nbv-answer') {
+    keepDraft(nbState.review, (el as HTMLInputElement).value);
+    return;
+  }
   // Settings → Learn: a typed goal counts once the field is left or Enter is pressed.
   if (el.dataset.act === 'learn-goal-input') {
     if (e.type !== 'change') return;

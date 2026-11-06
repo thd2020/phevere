@@ -44,11 +44,13 @@ export interface ReviewQuestion {
   answers: string[];
   /** The letters shown before typing (typed questions): the first `reveal` letters of the answer. */
   hint: string;
-  /** How many letters `hint` holds; more for a weaker word (diminishing cues), none for dictation of a firm word. */
+  /** How many letters `hint` holds: the first letter, none for dictation (`cueLetters`). */
   reveal?: number;
-  /** Letters revealed on request with Hint. */
+  /** How many times Hint gave a letter. */
   hinted?: number;
-  /** The answer box after a Hint: the letters shown so far, for the learner to finish. */
+  /** Leading letters of the answer shown so far, by the question and by Hint. */
+  shown?: number;
+  /** What the answer box holds, kept on every keystroke so a repaint never clears it. */
   draft?: string;
   shownAt: number;
   /** Missed LEECH_LAPSES times or more. */
@@ -94,6 +96,8 @@ export interface ReviewResult {
   maturityAfter?: Maturity;
   /** Letters revealed with Hint. */
   hinted?: number;
+  /** Share of the hidden letters Hint gave away (`hintShare`), which lowers the answer's credit. */
+  hintShare?: number;
   /** The question's predicted chance of a right answer, for updating the learner model. */
   predicted?: number;
 }
@@ -850,17 +854,13 @@ export function successChance(kind: QuestionKind, strength: number, learner?: Le
 }
 
 /**
- * Letters to show for a typed answer, as diminishing cues (Finley et al. 2011, Fiechter and
- * Benjamin 2018): the usual cue, plus a letter at a time while the predicted chance stays below
- * TARGET_SUCCESS, never more than a third of the word.
+ * Letters shown before a typed answer: the first letter, none for dictation, whatever the word's
+ * strength. More help comes only from Hint, one letter a press, and each press lowers the
+ * answer's credit (`autoGrade`). A weak word gets an easier kind of question instead of a longer
+ * cue (`chooseKind`), so a typed answer is always mostly the learner's own.
  */
-export function cueLetters(kind: QuestionKind, answer: string, strength: number, learner?: LearnerModel | null): number {
-  const base = baseLetters(kind);
-  const len = [...answer].length;
-  const most = Math.max(0, Math.floor((len - 2) / 3));
-  let n = 0;
-  while (n < most && successChance(kind, strength, learner, base + n) < TARGET_SUCCESS) n += 1;
-  return Math.min(base + n, Math.max(0, len - 1));
+export function cueLetters(kind: QuestionKind, answer: string, _strength?: number, _learner?: LearnerModel | null): number {
+  return Math.min(baseLetters(kind), Math.max(0, [...answer].length - 1));
 }
 
 /**
@@ -1020,11 +1020,13 @@ export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts:
   } else if (kind === 'recall' || kind === 'listen-type') {
     if (kind === 'recall') base.prompt = meaning;
     base.reveal = lettersFor(kind);
+    base.shown = base.reveal;
     base.hint = [...lemma].slice(0, base.reveal).join('');
   } else if (kind === 'cloze' && cloze) {
     base.prompt = cloze.sentence;
     base.answers = [...new Set([cloze.form, ...answers])];
     base.reveal = lettersFor(kind);
+    base.shown = base.reveal;
     base.hint = [...cloze.form].slice(0, base.reveal).join('');
   } else if (kind === 'flash') {
     base.prompt = meaning;
@@ -1032,31 +1034,57 @@ export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts:
   return base;
 }
 
+/** Leading letters of the answer shown so far, by the question and by Hint. */
+export function shownLetters(q: ReviewQuestion): number {
+  return q.shown ?? (q.reveal || 0) + (q.hinted || 0);
+}
+
 /** Letters still hidden that Hint may reveal: all but the last one. */
 export function hintsLeft(q: ReviewQuestion): number {
   if (!TYPED_KINDS.includes(q.kind)) return 0;
   const len = [...(q.answers[0] || '')].length;
-  return Math.max(0, len - 1 - (q.reveal || 0) - (q.hinted || 0));
+  return Math.max(0, len - 1 - shownLetters(q));
 }
 
 /**
- * Hint: reveals the next letter of the answer into the answer box. What the learner typed (`typed`,
- * the box as it stands) is kept as far as it matches the answer, letter case aside, and the letter
- * after that is revealed; anything typed past the first wrong letter is dropped. The last letter
- * is never revealed. A right answer after a hint counts as Hard, as a near miss does.
+ * The share of the letters the learner had to supply that Hint gave instead. Each press gives
+ * one letter, so three presses on a word with twelve hidden letters give a quarter of it.
  */
-export function hintReview(state: ReviewState, typed = ''): boolean {
+export function hintShare(q: ReviewQuestion): number {
+  if (!q.hinted) return 0;
+  const hidden = Math.max(1, [...(q.answers[0] || '')].length - (q.reveal || 0));
+  return Math.min(1, q.hinted / hidden);
+}
+
+/**
+ * Hint gives one more letter: the one after the letters the learner already has right, or after
+ * the letters shown so far, whichever reaches further. `typed` is the answer box as it stands
+ * (by default the kept draft). The box is never cleared. When it holds the start of the answer,
+ * letter case aside, the new letter is added after it; when it holds anything else it stays as
+ * typed, and the letters shown appear under it. The last letter is never given. Each press lowers
+ * the answer's credit (`hintShare`, `autoGrade`).
+ */
+export function hintReview(state: ReviewState, typed?: string): boolean {
   const q = state.question;
   if (!q || state.answer || !TYPED_KINDS.includes(q.kind)) return false;
+  const box = typed ?? q.draft ?? '';
   const answer = [...(q.answers[0] || '')];
-  const mine = [...typed];
+  const mine = [...box];
   let right = 0;
   while (right < mine.length && right < answer.length && mine[right].toLowerCase() === answer[right].toLowerCase()) right += 1;
-  const shown = Math.max(right, (q.reveal || 0) + (q.hinted || 0));
-  if (shown + 1 > answer.length - 1) return false;
-  q.hinted = shown + 1 - (q.reveal || 0);
-  q.draft = mine.slice(0, Math.min(right, shown)).join('') + answer.slice(Math.min(right, shown), shown + 1).join('');
+  const known = Math.max(right, shownLetters(q));
+  if (known + 1 > answer.length - 1) return false;
+  q.shown = known + 1;
+  q.hinted = (q.hinted || 0) + 1;
+  q.draft = right === mine.length ? box + answer.slice(right, q.shown).join('') : box;
   return true;
+}
+
+/** Keeps what the answer box holds on each keystroke, so a repaint puts it back. */
+export function keepDraft(state: ReviewState | null | undefined, typed: string): void {
+  const q = state?.question;
+  if (!q || state.answer) return;
+  q.draft = typed;
 }
 
 /* --------------------------------------------------------------- answers */
@@ -1102,24 +1130,35 @@ export function checkTyped(typed: string, answers: string[]): AnswerResult {
   return best;
 }
 
-/** How much help a typed answer had: letters shown beyond the usual cue, and letters asked for with Hint. */
+/**
+ * How much help a typed answer had: letters shown beyond the usual cue, and the share of the
+ * hidden letters asked for with Hint (`hintShare`).
+ */
 export interface AnswerHelp {
   extra?: number;
-  hinted?: number;
+  hintShare?: number;
 }
 
+/** A typed answer that needed Hint for more than this share of its hidden letters was not recalled. */
+export const HINT_FAIL_SHARE = 1 / 3;
+
 /**
- * Grade from the outcome and the response time. A wrong answer is Again and a near miss is Hard.
- * A right choice is Good, or Hard after ten seconds; recognising a word never earns Easy. A right
- * typed answer is Easy when it came quickly (2.5 s plus a quarter second per letter), Hard when
- * it took more than 15 s plus that allowance, and Good otherwise. A typed answer finished after a
- * Hint is Hard, and one given extra letters up front is at most Good.
+ * Grade from the outcome and the response time. A wrong answer is Again, and so is a near miss
+ * ("Almost"): a typed question asks for the spelling, and Quizlet and Lingvist count a misspelt
+ * answer as missed too. "I knew it" turns a near miss into Hard at most (`knewItGrade`). A right
+ * choice is Good, or Hard after ten seconds; recognising a word never earns Easy. A right typed
+ * answer is Easy when it came quickly (2.5 s plus a quarter second per letter), Hard when it took
+ * more than 15 s plus that allowance, and Good otherwise. Hint lowers the credit with the letters
+ * it gives: any hint makes the answer Hard at most, and an answer that needed hints for more than
+ * a third of its hidden letters (HINT_FAIL_SHARE) is Again, since the learner was told the word
+ * rather than recalled it.
  */
 export function autoGrade(kind: QuestionKind, result: AnswerResult, ms: number, length = 0, help: AnswerHelp = {}): ReviewGrade {
-  if (result === 'wrong') return 1;
-  if (result === 'close') return 2;
+  if (result === 'wrong' || result === 'close') return 1;
   if (TYPED_KINDS.includes(kind)) {
-    if (help.hinted) return 2;
+    const share = help.hintShare || 0;
+    if (share > HINT_FAIL_SHARE + 1e-9) return 1;
+    if (share > 0) return 2;
     const allowance = 250 * length;
     if (ms <= 2500 + allowance) return help.extra ? 3 : 4;
     if (ms > 15000 + allowance) return 2;
@@ -1138,7 +1177,9 @@ export function sessionLearner(learner: LearnerModel | null | undefined, results
   const offset = { ...learner.offset };
   for (const r of results) {
     if (r.grade > 1) right[r.kind] = (right[r.kind] || 0) + 1;
-    if (r.predicted != null) offset[r.kind] = eloStep(offset[r.kind] || 0, r.grade > 1 ? 1 : 0, r.predicted, 40);
+    // A hinted answer counts as only partly right, by the share of the word it was given.
+    const outcome = r.grade > 1 ? 1 - (r.hintShare || 0) : 0;
+    if (r.predicted != null) offset[r.kind] = eloStep(offset[r.kind] || 0, outcome, r.predicted, 40);
   }
   return { offset, right };
 }
@@ -1175,7 +1216,7 @@ export function answerReview(state: ReviewState, input: { choice?: number; typed
   if (q.kind === 'flash') result = input.knew ? 'right' : 'wrong';
   else if (q.correct >= 0) result = input.choice === q.correct ? 'right' : 'wrong';
   else if (input.typed != null) result = checkTyped(input.typed, q.answers);
-  const help: AnswerHelp = { extra: Math.max(0, (q.reveal || 0) - (q.kind === 'listen-type' ? 0 : 1)), hinted: q.hinted || 0 };
+  const help: AnswerHelp = { extra: Math.max(0, (q.reveal || 0) - (q.kind === 'listen-type' ? 0 : 1)), hintShare: hintShare(q) };
   const auto = q.kind === 'flash' ? (input.knew ? 3 : 1) : autoGrade(q.kind, result, ms, q.lemma.length, help);
   state.answer = { choice: input.choice ?? -1, typed: input.typed ?? '', result, auto, grade: auto, overridden: false, ms, at: now };
   return state.answer;
@@ -1210,7 +1251,9 @@ export function markHeard(state: ReviewState | null | undefined, lemma: string):
   const q = state?.question;
   if (!q || state.answer || q.heard || clean(q.lemma).toLowerCase() !== clean(lemma).toLowerCase()) return false;
   q.heard = true;
-  return true;
+  // Only a question with a countdown has anything to redraw. Repainting a dictation here would
+  // interrupt the learner typing while the word plays.
+  return COUNTDOWN_KINDS.includes(q.kind);
 }
 
 /**
@@ -1286,13 +1329,22 @@ export function armCountdown(state: ReviewState | null | undefined, seconds: num
 }
 
 /**
- * Overturns the automatic grade: "I knew it" after a miss (Good), "I didn't know it" after a hit
- * (Again), or `easy` for "Too easy" after a hit (Easy). Tapping the same one again undoes it.
+ * The grade "I knew it" gives an answer graded Again: Good after a miss, and Hard at most after a
+ * near miss or a right answer that needed many hints.
+ */
+export function knewItGrade(a: ReviewAnswer): ReviewGrade {
+  return a.result === 'wrong' ? 3 : 2;
+}
+
+/**
+ * Overturns the automatic grade: "I knew it" after an answer graded Again (`knewItGrade`), "I
+ * didn't know it" after one graded higher (Again), or `easy` for "Too easy" after a hit (Easy).
+ * Tapping the same one again undoes it.
  */
 export function overrideReview(state: ReviewState, mode: 'flip' | 'easy' = 'flip'): void {
   const a = state.answer;
   if (!a) return;
-  const target: ReviewGrade = mode === 'easy' ? 4 : a.result === 'wrong' ? 3 : 1;
+  const target: ReviewGrade = mode === 'easy' ? 4 : a.auto === 1 ? knewItGrade(a) : 1;
   if (a.overridden && a.grade === target) {
     a.grade = a.auto;
     a.overridden = false;
@@ -1325,6 +1377,7 @@ export function advanceReview(state: ReviewState, updated?: NotebookEntry | null
     maturityBefore: q.maturity,
     maturityAfter,
     hinted: q.hinted || 0,
+    hintShare: hintShare(q),
     predicted: q.predicted,
   });
   const asked = (state.seen[q.id] || 0) + 1;

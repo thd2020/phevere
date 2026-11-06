@@ -294,14 +294,13 @@
 .nbv-ink { position: absolute; inset: -10px -8px; z-index: 3; pointer-events: none; border-radius: 16px; }
 .nbv-wash { background: radial-gradient(120% 90% at 50% 46%, rgba(15, 110, 113, 0.16), rgba(15, 110, 113, 0.05) 55%, transparent 78%); opacity: 0; z-index: 2; }
 .nbv-wash.is-wrong { background: radial-gradient(120% 90% at 50% 46%, rgba(156, 61, 0, 0.15), rgba(156, 61, 0, 0.05) 55%, transparent 78%); }
-.nbv-wash.is-close { background: radial-gradient(120% 90% at 50% 46%, rgba(138, 125, 116, 0.16), transparent 75%); }
+
 .nbv-ink { display: grid; place-items: center; }
 .nbv-ink svg { width: auto; height: min(88%, 232px); min-height: 96px; max-width: 92%; overflow: visible; transform: rotate(-6deg); }
 .nbv-ink__reveal { fill: none; stroke: #fff; stroke-width: 34; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1 1.02; stroke-dashoffset: 1.01; }
 .nbv-ink__body { fill: var(--nbv-teal); }
 .nbv-ink__bleed { fill: var(--nbv-teal); opacity: 0.22; transform: translate(1.6px, 1.2px) scale(1.012); transform-origin: 50% 50%; }
-.nbv-ink.is-close .nbv-ink__body, .nbv-ink.is-close .nbv-ink__bleed { fill: var(--nbv-stone); }
-.nbv-ink.is-close svg { height: min(70%, 180px); }
+
 .nbv-ink.is-wrong .nbv-ink__body, .nbv-ink.is-wrong .nbv-ink__bleed { fill: var(--nbv-ember); }
 
 .nbv .nbv-quiz .nbv-wash { animation: nbv-wash 2.8s var(--nbv-ease-out) calc(var(--t) + 0ms) both !important; }
@@ -423,6 +422,8 @@
 }
 .nbv-type__input:focus { border-color: var(--nbv-teal); box-shadow: 0 0 0 3px rgba(15, 110, 113, 0.18); }
 .nbv-type__input::placeholder { color: var(--nbv-stone); letter-spacing: 0.12em; }
+/* The letters Hint has shown, under the box, so they stay in sight once typing covers the placeholder. */
+.nbv-type__cue { margin: -6px 0 0; padding: 0 15px; color: var(--nbv-soft); font: 600 17px/1.2 var(--nbv-serif); letter-spacing: 0.12em; }
 .nbv-typed { margin: 0; padding: 12px 14px; border-radius: 12px; font: 600 19px/1.2 var(--nbv-serif); }
 .nbv-typed--right { background: var(--nbv-teal-soft); color: #002021; }
 .nbv-typed--close { background: var(--nbv-ember-soft); color: #341100; }
@@ -474,7 +475,7 @@
 
 .nbv-verdict { margin: 0; font: 600 17px/1.2 var(--nbv-ui); }
 .nbv-verdict.is-right { color: var(--nbv-teal); }
-.nbv-verdict.is-close { color: var(--nbv-ember); }
+.nbv-verdict.is-close { color: #ba1a1a; }
 .nbv-verdict.is-wrong { color: #ba1a1a; }
 .nbv-answer {
   display: grid;
