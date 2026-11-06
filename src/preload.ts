@@ -240,11 +240,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ocrShortcut?: string;
     hoverShortcut?: string;
     rememberSources?: boolean;
+    lookupOpens?: 'strip' | 'panel';
   }> => {
     return ipcRenderer.invoke('monitor-get-state');
   },
   setRememberSources: (enabled: boolean): Promise<{ success: boolean; rememberSources?: boolean }> => {
     return ipcRenderer.invoke('monitor-set-remember-sources', enabled);
+  },
+  setLookupOpens: (value: 'strip' | 'panel'): Promise<{ success: boolean; lookupOpens?: 'strip' | 'panel' }> => {
+    return ipcRenderer.invoke('monitor-set-lookup-opens', value);
   },
   setMonitorMode: (mode: string): Promise<{ success: boolean; error?: string }> => {
     return ipcRenderer.invoke('monitor-set-mode', mode);
@@ -671,8 +675,10 @@ declare global {
         ocrShortcut?: string;
         hoverShortcut?: string;
         rememberSources?: boolean;
+        lookupOpens?: 'strip' | 'panel';
       }>;
       setRememberSources?: (enabled: boolean) => Promise<{ success: boolean; rememberSources?: boolean }>;
+      setLookupOpens?: (value: 'strip' | 'panel') => Promise<{ success: boolean; lookupOpens?: 'strip' | 'panel' }>;
       setMonitorMode: (mode: string) => Promise<{ success: boolean; error?: string }>;
       cycleMonitorMode: () => Promise<{ success: boolean; mode?: string }>;
       setMonitorShortcuts: (payload: {

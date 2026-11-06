@@ -1347,12 +1347,6 @@
           <div class="settings-panel" id="settingsPanel">
         <div class="setting-item">
           <label class="setting-label">
-            <input type="checkbox" class="setting-checkbox" id="expandableMode">
-            <span>Open full lookup panel</span>
-          </label>
-        </div>
-        <div class="setting-item">
-          <label class="setting-label">
             <input type="checkbox" class="setting-checkbox" id="preloadContent">
             <span>Look up before expanding</span>
           </label>
@@ -1627,6 +1621,12 @@
         if (!t) return;
         const api = window.electronAPI;
         const openStrip = function () {
+          // With lookups opening as the full pop-up, a word selected in it is looked up
+          // here, and Back returns to the entry it was selected in.
+          if (lookupOpensParam === 'panel' && !settings.expandableMode && isExpanded) {
+            void lookupText(t);
+            return;
+          }
           if (api && api.showPopup) api.showPopup(screenX || 0, screenY || 0, t);
         };
         if (api && typeof api.getMonitorState === 'function') {
@@ -1639,6 +1639,10 @@
         openStrip();
       }
 
+      /** How the app opens lookups ("strip" or "panel"), given by the window that loaded this page. */
+      var lookupOpensParam = (function () {
+        try { return new URLSearchParams(window.location.search).get('lookup') || ''; } catch (e) { return ''; }
+      })();
       let settings = {
         expandableMode: true,
         preloadContent: true,
@@ -1766,8 +1770,18 @@
         if (savedSettings) {
           settings = { ...settings, ...JSON.parse(savedSettings) };
         }
+        // The app keeps how lookups open (Settings → Capture) and says it in the page address.
+        // The pop-up's options used to have this switch; a full pop-up chosen there becomes the app's.
+        if (lookupOpensParam === 'strip' || lookupOpensParam === 'panel') {
+          var chosenHere = settings.expandableMode === false;
+          settings.expandableMode = lookupOpensParam === 'strip';
+          if (chosenHere && lookupOpensParam === 'strip') {
+            settings.expandableMode = false;
+            setAppLookupOpens('panel');
+          }
+          saveSettings();
+        }
 
-        document.getElementById('expandableMode').checked = !settings.expandableMode;
         document.getElementById('preloadContent').checked = settings.preloadContent;
         const openExternalLinks = document.getElementById('openExternalLinks');
         if (openExternalLinks) openExternalLinks.checked = settings.openExternal;
@@ -1777,7 +1791,17 @@
 
       // Save settings to localStorage
       function saveSettings() {
-        localStorage.setItem('phevereSettings', JSON.stringify(settings));
+        var stored = { ...settings };
+        // The app keeps this one (Settings → Capture); a stored copy would bring an old choice back.
+        delete stored.expandableMode;
+        localStorage.setItem('phevereSettings', JSON.stringify(stored));
+      }
+
+      function setAppLookupOpens(value) {
+        try {
+          var api = window.electronAPI;
+          if (api && typeof api.setLookupOpens === 'function') void api.setLookupOpens(value);
+        } catch (e) { /* ignore */ }
       }
 
              // Setup event listeners for all UI elements
@@ -1819,14 +1843,6 @@
            });
 
         // Settings
-        document.getElementById('expandableMode').addEventListener('change', (e) => {
-          settings.expandableMode = !e.target.checked;
-          saveSettings();
-          setupToolbarBehavior();
-          if (!settings.expandableMode && currentText) {
-            void lookupText(currentText, { fromHistory: true });
-          }
-        });
         document.getElementById('preloadContent').addEventListener('change', (e) => {
           settings.preloadContent = e.target.checked;
           saveSettings();

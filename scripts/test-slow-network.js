@@ -131,6 +131,14 @@ const cases = {
     for (let i = 0; i < 50 && !gossip(cat) && !gossip(latest); i += 1) await new Promise((r) => setTimeout(r, 100));
     assert.ok(gossip(cat) || gossip(latest), "Datamuse's sense arrives at 3 s as well");
   },
+  // Datamuse answers at once and the dictionaries only after the first paint's usual wait (2.5 s).
+  // Datamuse's one WordNet sense is not the entry: the lookup waits for the dictionaries as it
+  // would with nothing at all, instead of opening cat as "A spiteful woman gossip."
+  async 'Datamuse answering before the dictionaries'() {
+    const fast = (url) => !url.includes('api.datamuse.com');
+    const cat = await app({ delay: [2800, 2800], only: fast, seed: 'cat-datamuse' }).service.lookup('cat', 'zh');
+    assert.ok(senses(cat).length >= 3, `cat opens with the dictionaries' senses (${JSON.stringify(senses(cat))})`);
+  },
   // A comma is still not part of the word.
   async '"hello," at 2 s'() {
     const hello = await app({ delay: [1900, 2100], seed: 'hello' }).service.lookup('hello,', 'zh');
