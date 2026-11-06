@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Grammar codes and usage notes in senses (2026-11-06): each sense now starts with its grammar in square brackets, such as [countable], [transitive] or [intransitive; with on or upon], in small teal type, followed by its usage labels in italic brackets, such as (informal, chiefly UK) or (law), the way the Oxford Learner's and Longman dictionaries set them. A noun whose senses are all one kind says so once after its heading, as in "noun [usually uncountable]". Under a sense you may now find its synonyms and opposites as words you can tap, and phrases it is often used in, with the word itself in bold. These come from Wiktionary's own labels, which the definitions Phevere showed before had left out. Desktop and phone alike.
+- Phrases section (2026-11-06): phrasal verbs, idioms and other set phrases with the word have their own section in the Lexicon, after Synonyms and before Word family. Phrasal verbs such as "give up" and "give in" come first; a long list no longer drops them behind dozens of alphabetically earlier phrases.
+- Language switch (2026-11-06): a word that Wiktionary has in several languages shows them as a row under the pronunciation, with English first. Tap French, Italian or any other to see the word's entry in that language, without the English senses or English pronunciation; tap English to go back. On the desktop a long list folds after seven names under "+N"; on the phone the row scrolls sideways.
+
+### Fixed
+
+- A box such as "English Wikipedia has an article on: proposition" no longer appears inside a sense (2026-11-06). Wiktionary's links to Wikipedia, Wikimedia Commons, Wikispecies and its other sister projects are left out of definitions, including in words you looked up before this change.
+- "i.e." and other words whose letters look foreign now open in English when Wiktionary has an English entry for them (2026-11-06). "i.e." used to show only its Italian sense.
+
 ## [4.2.0] - 2026-11-06
 
 ### Added
