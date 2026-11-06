@@ -4360,7 +4360,19 @@ export class DictionaryService extends BaseService {
             if (hit) finish(hit);
             else startNext();
           });
-        if (next < order.length) timer = setTimeout(startNext, budgetMs(TRANSLATION_STAGGER_MS, waitingOn));
+        if (next < order.length) {
+          // Worked out again when it runs out, as withBudget does: before the host has answered,
+          // its round trip is a guess that grows with the wait, so a slow connection does not
+          // send every translation to two engines.
+          const host = waitingOn;
+          const sentAt = Date.now();
+          const check = () => {
+            const left = budgetMs(TRANSLATION_STAGGER_MS, host) - (Date.now() - sentAt);
+            if (left > 0) timer = setTimeout(check, left);
+            else startNext();
+          };
+          timer = setTimeout(check, budgetMs(TRANSLATION_STAGGER_MS, host));
+        }
       };
       const off = onNetChange(() => {
         if (waitingOn && hostSilent(waitingOn)) startNext();
