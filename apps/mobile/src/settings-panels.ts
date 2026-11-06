@@ -470,7 +470,7 @@ export function settingsBody(
   return `
     <div class="settings">
       <div class="settings-sticky">
-        <div class="result-tabs settings-tabs" role="tablist" aria-label="Settings sections" style="--tabs:${sections.length}">${tabs}</div>
+        <div class="result-tabs settings-tabs" role="tablist" aria-label="Settings sections">${tabs}</div>
       </div>
       <div class="settings-panel" role="tabpanel" aria-label="${current.label}"><h2 class="settings-panel__name">${current.label}</h2>${panel}</div>
     </div>`;

@@ -755,6 +755,7 @@ function paint(): void {
   const deleteCaret = keepDelete ? deleteLive!.selectionStart : null;
   const entering = accountSheetEntering;
   accountSheetEntering = false;
+  const settingsTabsScroll = document.querySelector<HTMLElement>('.settings-tabs')?.scrollLeft ?? 0;
   const hit = lookupPaneHtml();
   if (tab === 'lookup' && scan) {
     paintScan(scan, hit);
@@ -821,6 +822,7 @@ function paint(): void {
   // A repaint replaces the map's element; release the old 3D renderer straight away.
   disposeNotebookMaps(true);
   if (tab === 'notebook' || tab === 'learn') revealWordsScope();
+  if (tab === 'settings') revealSettingsTab(settingsTabsScroll);
   if (tab === 'notebook') bindNotebookViews();
   if (tab === 'learn') bindLearn();
   lib.inspectorEntering = false;
@@ -927,6 +929,19 @@ function revealWordsScope(): void {
   if (!chip || !bar) return;
   const left = chip.offsetLeft - bar.offsetLeft;
   if (left < bar.scrollLeft || left + chip.offsetWidth > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = left - 16;
+}
+
+/** Settings tabs scroll on a narrow phone: keep where the row was, and bring the open tab into view. */
+function revealSettingsTab(scrollLeft: number): void {
+  const bar = document.querySelector<HTMLElement>('.settings-tabs');
+  const tab = bar?.querySelector<HTMLElement>('[aria-selected="true"]');
+  if (!bar || !tab) return;
+  bar.scrollLeft = scrollLeft;
+  const b = bar.getBoundingClientRect();
+  const t = tab.getBoundingClientRect();
+  const pad = 4;
+  if (t.left - pad < b.left) bar.scrollLeft -= b.left - t.left + pad;
+  else if (t.right + pad > b.right) bar.scrollLeft += t.right - b.right + pad;
 }
 
 /** After a Review paint: the answer box gets the cursor, a listening question plays once. */
