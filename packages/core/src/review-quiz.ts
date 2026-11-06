@@ -1346,12 +1346,20 @@ function isOtherWord(typed: string, answer: string): boolean {
 }
 
 /**
+ * The word's other national spelling (colour for color, centre for center, realise for realize),
+ * when the app lists it as a word. It is the same word, so it counts as right.
+ */
+function isOtherSpelling(typed: string, answer: string): boolean {
+  return [...answer].length >= 5 && listedWords.has(typed) && spellingKey(typed) === spellingKey(answer);
+}
+
+/**
  * One word against the right one: the same, a typo, or wrong. A typo is one letter missing, one
  * extra, one replaced, or two neighbours swapped, in a word of three letters or more, and the slip
  * must not spell another word (Duolingo's rule: "te" passes for "the", "he" does not).
  */
 function wordMatch(t: string, a: string): AnswerResult {
-  if (t === a) return 'right';
+  if (t === a || isOtherSpelling(t, a)) return 'right';
   if ([...a].length < 3) return 'wrong';
   if (editDistance(t, a) !== 1) return 'wrong';
   return isOtherWord(t, a) ? 'wrong' : 'typo';
@@ -1368,8 +1376,14 @@ export function checkTyped(typed: string, answers: string[]): AnswerResult {
     if (t === a) return 'right';
     const tw = t.split(' ');
     const aw = a.split(' ');
-    if (tw.length !== aw.length) continue;
+    if (tw.length !== aw.length) {
+      // A space or hyphen missed or swapped inside a phrase or compound (icecream, ice-cream for
+      // ice cream). A one-word answer split in two ("a part" for apart) stays wrong.
+      if (/[ -]/.test(a) && t.replace(/[ -]/g, '') === a.replace(/[ -]/g, '')) best = 'typo';
+      continue;
+    }
     const each = aw.map((w, i) => wordMatch(tw[i], w));
+    if (each.every((r) => r === 'right')) return 'right';
     if (!each.includes('wrong')) best = 'typo';
   }
   return best;
@@ -1394,8 +1408,9 @@ export function typoMarks(typed: string, answer: string): { text: string; slip: 
   for (let k = 0; k < aw.length; k++) {
     const x = [...tw[k]];
     const y = [...aw[k]];
-    if (wordMatch(tw[k], aw[k]) === 'wrong') return null;
-    if (tw[k] !== aw[k]) {
+    const match = wordMatch(tw[k], aw[k]);
+    if (match === 'wrong') return null;
+    if (match === 'typo') {
       let i = 0;
       while (i < x.length && i < y.length && x[i] === y[i]) i++;
       if (x.length === y.length) {

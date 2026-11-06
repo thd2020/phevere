@@ -107,6 +107,19 @@ const now = new Date(2026, 10, 3, 10, 0, 0).getTime();
   assert.equal(core.checkTyped('lok aftr', ['look after']), 'typo', 'one slip in each word of a phrase');
   assert.equal(core.checkTyped('lok afer', ['look after']), 'typo');
   assert.equal(core.checkTyped('look', ['look after']), 'wrong', 'a missing word is not a typo');
+  // The other national spelling is the same word, when it is a listed word; both word books list both.
+  core.registerListedWords(['colour', 'color', 'centre', 'center', 'realise', 'realize', 'four', 'for']);
+  assert.equal(core.checkTyped('colour', ['color']), 'right', 'British spelling of an American answer');
+  assert.equal(core.checkTyped('Center', ['centre']), 'right');
+  assert.equal(core.checkTyped('realize it', ['realise it']), 'right');
+  assert.equal(core.checkTyped('colur', ['colour']), 'typo');
+  assert.equal(core.checkTyped('precize', ['precise']), 'typo', 'an unlisted spelling is still a typo');
+  assert.equal(core.checkTyped('four', ['for']), 'wrong', 'a short word is not folded');
+  // A space or hyphen missed inside a phrase or compound is a typo.
+  assert.equal(core.checkTyped('icecream', ['ice cream']), 'typo');
+  assert.equal(core.checkTyped('ice-cream', ['ice cream']), 'typo');
+  assert.equal(core.checkTyped('well known', ['well-known']), 'typo');
+  assert.equal(core.checkTyped('a part', ['apart']), 'wrong', 'splitting a one-word answer is not a typo');
   const marks = (t, a) => (core.typoMarks(t, a) || []).map((p) => (p.slip ? `[${p.text}]` : p.text)).join('');
   assert.equal(marks('harbuor', 'harbour'), 'harb[ou]r', 'a swap marks both letters');
   assert.equal(marks('harbur', 'harbour'), 'harb[o]ur', 'a missing letter is marked');
@@ -114,6 +127,7 @@ const now = new Date(2026, 10, 3, 10, 0, 0).getTime();
   assert.equal(marks('harbiour', 'harbour'), 'har[b]our', 'an extra letter marks the one it followed');
   assert.equal(marks('lok aftr', 'look after'), 'lo[o]k aft[e]r');
   assert.equal(core.typoMarks('stret', 'start'), null);
+  assert.equal(marks('colour lok', 'color look'), 'color lo[o]k', 'the other spelling is not marked');
   assert.equal(core.checkTyped('to abandon', ['abandon']), 'right');
   assert.equal(core.checkTyped('cafe', ['café']), 'right');
   assert.equal(core.checkTyped('', ['x']), 'wrong');
