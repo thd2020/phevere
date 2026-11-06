@@ -85,7 +85,7 @@ async function startupAndGestures(floatingStrip) {
   const app = load('app.ts', {
     './lexicon-scroll': load('lexicon-scroll.ts', {}),
     './platform/configure-core': {}, '@phevere/core': core, './incoming-text': incoming,
-    './platform/audio': {}, './platform/native': native, './platform/notebook-io': {},
+    './platform/audio': { recordedUrls: () => [], prefetchRecorded: () => {} }, './platform/native': native, './platform/notebook-io': {},
     './platform/offline': { listCatalogStatus: async () => [], markInstalledPacksOnCore: async () => {} },
     './platform/prefs': { loadPrefs: () => prefs, savePrefs: () => {}, applyPrefsToCore: () => {} },
     // The pop-up never starts the updater; test-mobile-update.js covers it.

@@ -701,6 +701,10 @@ html:not([data-mode="strip"]) .shell-lexicon .lexicon-pos-layout {
   color: var(--md-sys-color-on-tertiary-container);
   animation: pv-speak 0.9s var(--md-sys-motion) infinite;
 }
+/* Waiting for the word's recording: the speaker's icon fades in and out until the sound starts. */
+.icon-btn.is-loading { cursor: progress; }
+.icon-btn.is-loading svg { opacity: 0.55; animation: pv-speaker-wait 0.9s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
+@keyframes pv-speaker-wait { from { opacity: 1; } to { opacity: 0.25; } }
 .etymology-card { padding: 12px 14px 16px; }
 .etymology-chain {
   display: flex;
