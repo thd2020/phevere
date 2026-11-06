@@ -14,16 +14,20 @@ import type { Morph, MorphKind } from './morphology';
 import { languageName } from './etymology';
 import { cachedEtymon, cachedRootGloss, sourcePageTitle, traceEtymons, traceRootGlosses, type WordEtymon } from './notebook-etymology';
 import { clean, esc, revealBelow, scrollerOf, type Family, type FamilyGrouping, type NotebookAnalysis, type TreeNode, type WordInfo } from './notebook-shared';
+import { formatList, formatNumber, formatPercent, rawHtml, t, tHtml, type MessageKey } from './i18n/runtime';
 
-const GROUP_LABEL: Record<FamilyGrouping, string> = {
-  root: 'Roots',
-  deep: 'Deep roots',
-  prefix: 'Prefixes',
-  suffix: 'Suffixes',
-  origin: 'Origins',
-  tree: 'Word trees',
-  char: 'Characters',
+const GROUP_KEY: Record<FamilyGrouping, MessageKey> = {
+  root: 'notebook.families.group.root',
+  deep: 'notebook.families.group.deep',
+  prefix: 'notebook.families.group.prefix',
+  suffix: 'notebook.families.group.suffix',
+  origin: 'notebook.families.group.origin',
+  tree: 'notebook.families.group.tree',
+  char: 'notebook.families.group.char',
 };
+
+/** "Tracing origins 3 of 40", the line while Wiktionary is asked for the words' origins. */
+const traceText = (p: { done: number; total: number }) => t('notebook.families.tracing', { done: p.done, total: p.total });
 
 const ORIGIN_ORDER = ['Latin', 'Greek', 'French', 'Old English', 'Old Norse'];
 
@@ -177,7 +181,7 @@ function unsortedHtml(a: NotebookAnalysis, placed: Set<string>, label: string): 
     .sort((x, y) => clean(x.entry.lemma).localeCompare(clean(y.entry.lemma)));
   if (!rest.length) return '';
   return `<details class="nbv-unsorted">
-    <summary><span>${esc(label)}</span><span class="nbv-fam__n">${rest.length}</span></summary>
+    <summary><span>${esc(label)}</span><span class="nbv-fam__n">${formatNumber(rest.length)}</span></summary>
     <div class="nbv-fam__words">${rest.map((w, i) => wordChip(w, undefined, i)).join('')}</div>
   </details>`;
 }
@@ -188,11 +192,11 @@ function coverageHtml(placed: number, total: number, tracing?: FamiliesOptions['
   const len = 2 * Math.PI * r;
   const trace =
     tracing && tracing.done < tracing.total
-      ? `<span class="nbv-trace"><span style="width:${Math.round((tracing.done / Math.max(1, tracing.total)) * 100)}%"></span></span><span class="nbv-trace__n">Tracing origins ${tracing.done} of ${tracing.total}</span>`
+      ? `<span class="nbv-trace"><span style="width:${Math.round((tracing.done / Math.max(1, tracing.total)) * 100)}%"></span></span><span class="nbv-trace__n">${esc(traceText(tracing))}</span>`
       : '';
   return `<div class="nbv-coverage">
     <svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="${r}" class="nbv-coverage__track"/><circle cx="18" cy="18" r="${r}" class="nbv-coverage__fill" stroke-dasharray="${(len * pct).toFixed(1)} ${len.toFixed(1)}"/></svg>
-    <span><b>${placed}</b> of ${total} words grouped</span>${trace}
+    <span>${tHtml('notebook.families.grouped', { placed: rawHtml(`<b>${formatNumber(placed)}</b>`), count: total })}</span>${trace}
   </div>`;
 }
 
@@ -298,7 +302,8 @@ export function originGroups(a: NotebookAnalysis, etymon: EtymonLookup = cachedE
     const e = etymon(clean(w.entry.lemma));
     const origin = e?.origin || w.origin;
     if (!origin) continue;
-    const route = e?.origin && e.via.length ? `via ${e.via.join(', ')}` : '';
+    // The languages on the way are names from the etymology data.
+    const route = e?.origin && e.via.length ? t('notebook.families.via', { languages: e.via.join(', ') }) : '';
     let g = groups.get(origin);
     if (!g) {
       g = { origin, routes: new Map(), count: 0 };
@@ -319,12 +324,13 @@ function originHtml(a: NotebookAnalysis, etymon: EtymonLookup): { html: string; 
   const placed = new Set<string>();
   if (!groups.length) return { html: '', placed };
   const total = groups.reduce((s, g) => s + g.count, 0);
-  const bar = `<div class="nbv-origin-bar" role="img" aria-label="${esc(groups.map((g) => `${g.origin} ${g.count}`).join(', '))}">${groups
-    .map((g, i) => `<span class="nbv-origin-bar__seg nbv-tone-${i % 6}" style="flex-grow:${g.count}" title="${esc(g.origin)} ${g.count}"></span>`)
+  const share = (g: OriginGroup) => t('notebook.families.originCount', { origin: g.origin, count: g.count });
+  const bar = `<div class="nbv-origin-bar" role="img" aria-label="${esc(formatList(groups.map(share), 'unit'))}">${groups
+    .map((g, i) => `<span class="nbv-origin-bar__seg nbv-tone-${i % 6}" style="flex-grow:${g.count}" title="${esc(share(g))}"></span>`)
     .join('')}</div>`;
   const strata = groups
     .map((g, i) => {
-      const share = Math.round((g.count / total) * 100);
+      const pct = Math.round((g.count / total) * 100);
       const routes = [...g.routes.entries()].sort(([x], [y]) => (x ? 1 : 0) - (y ? 1 : 0) || x.localeCompare(y));
       const body = routes
         .map(([route, ws]) => {
@@ -335,11 +341,11 @@ function originHtml(a: NotebookAnalysis, etymon: EtymonLookup): { html: string; 
             .join('')}</div></div>`;
         })
         .join('');
-      return `<details class="nbv-stratum nbv-stratum--${i % 6}" style="--share:${Math.max(share, 2)}">
+      return `<details class="nbv-stratum nbv-stratum--${i % 6}" style="--share:${Math.max(pct, 2)}">
         <summary>
           <span class="nbv-stratum__glyph" aria-hidden="true">${esc(glyphFor(g.origin))}</span>
           <span class="nbv-stratum__name">${esc(g.origin)}</span>
-          <span class="nbv-stratum__n"><b>${g.count}</b> ${share}%</span>
+          <span class="nbv-stratum__n"><b>${formatNumber(g.count)}</b> ${formatPercent(pct / 100)}</span>
         </summary>
         <div class="nbv-stratum__body">${body}</div>
       </details>`;
@@ -417,7 +423,7 @@ export function treeSvg(node: TreeNode, a: NotebookAnalysis): string {
   const trunk = `<path class="nbv-trunk" d="M${(root.x - 7).toFixed(1)} ${baseY} C${(root.x - 4).toFixed(1)} ${baseY - TRUNK * 0.6} ${(root.x - 3).toFixed(1)} ${y(0) + 6} ${root.x.toFixed(1)} ${y(0)} C${(root.x + 3).toFixed(1)} ${y(0) + 6} ${(root.x + 4).toFixed(1)} ${baseY - TRUNK * 0.6} ${(root.x + 7).toFixed(1)} ${baseY} Z"/>`;
   const ground = `<ellipse class="nbv-ground" cx="${root.x.toFixed(1)}" cy="${baseY + 1}" rx="${Math.min(width / 2 - 6, 70)}" ry="5"/>`;
   const plate = `<g class="nbv-tree__word nbv-tree__base" data-act="lookup" data-q="${esc(root.label)}" transform="translate(${root.x.toFixed(1)} ${baseY + 22})"><text text-anchor="middle">${esc(root.label)}</text></g>`;
-  return `<svg class="nbv-tree-svg" viewBox="0 0 ${width.toFixed(0)} ${height}" width="${width.toFixed(0)}" height="${height}" role="img" aria-label="${esc(root.label)} and the words built from it">${ground}${crowns}${trunk}${branches}${leaves}${labels}${plate}</svg>`;
+  return `<svg class="nbv-tree-svg" viewBox="0 0 ${width.toFixed(0)} ${height}" width="${width.toFixed(0)}" height="${height}" role="img" aria-label="${tHtml('notebook.families.treeAria', { word: root.label })}">${ground}${crowns}${trunk}${branches}${leaves}${labels}${plate}</svg>`;
 }
 
 function leafCount(n: TreeNode): number {
@@ -449,30 +455,30 @@ export function familiesHtml(a: NotebookAnalysis, grouping: FamilyGrouping, opts
   const etymon = opts.etymon || cachedEtymon;
   const options = familyGroupings(a, etymon);
   if (!options.length) {
-    return `<p class="nbv-empty">No shared roots, affixes or characters yet.</p>`;
+    return `<p class="nbv-empty">${tHtml('notebook.families.empty')}</p>`;
   }
   const g = options.includes(grouping) ? grouping : options[0];
-  const chips = `<div class="nbv-chips" role="tablist" aria-label="Group by">${options
-    .map((o) => `<button type="button" role="tab" class="nbv-chip${o === g ? ' is-active' : ''}" data-act="nb-group" data-group="${o}" aria-selected="${o === g}">${GROUP_LABEL[o]}</button>`)
+  const chips = `<div class="nbv-chips" role="tablist" aria-label="${tHtml('notebook.families.groupBy')}">${options
+    .map((o) => `<button type="button" role="tab" class="nbv-chip${o === g ? ' is-active' : ''}" data-act="nb-group" data-group="${o}" aria-selected="${o === g}">${tHtml(GROUP_KEY[o])}</button>`)
     .join('')}</div>`;
   const placed = new Set<string>();
   let body = '';
-  let rest = 'Not in a family yet';
+  let rest = t('notebook.families.rest.family');
   if (g === 'tree') {
     body = `<div class="nbv-forest">${a.trees
-      .map((t) => {
-        collectIds(t, placed);
-        const wide = leafCount(t) >= 4 ? ' is-wide' : '';
-        const base = clean(a.words.get(t.id)?.entry.lemma);
-        return `<figure class="nbv-grove${wide}">${treeSvg(t, a)}<button type="button" class="nbv-grove__open" data-tree-open aria-label="Open the ${esc(base)} tree" title="Open">${EXPAND_ICON}</button></figure>`;
+      .map((tree) => {
+        collectIds(tree, placed);
+        const wide = leafCount(tree) >= 4 ? ' is-wide' : '';
+        const base = clean(a.words.get(tree.id)?.entry.lemma);
+        return `<figure class="nbv-grove${wide}">${treeSvg(tree, a)}<button type="button" class="nbv-grove__open" data-tree-open aria-label="${tHtml('notebook.families.openTree', { word: base })}" title="${tHtml('common.open')}">${EXPAND_ICON}</button></figure>`;
       })
       .join('')}</div>`;
-    rest = 'Not part of a tree';
+    rest = t('notebook.families.rest.tree');
   } else if (g === 'origin') {
     const o = originHtml(a, etymon);
     body = o.html;
     o.placed.forEach((id) => placed.add(id));
-    rest = 'Origin not known yet';
+    rest = t('notebook.families.rest.origin');
   } else {
     const fams = g === 'deep' ? deepRootFamilies(a, etymon) : g === 'root' ? rootFamilies(a, etymon) : a.families.filter((f) => f.kind === g);
     const specs = fams.map((f): CardSpec => {
@@ -507,7 +513,7 @@ function showTrace(root: any, p: { done: number; total: number }): void {
     label = host.querySelector('.nbv-trace__n');
   }
   bar.style.width = `${Math.round((p.done / Math.max(1, p.total)) * 100)}%`;
-  label.textContent = `Tracing origins ${p.done} of ${p.total}`;
+  label.textContent = traceText(p);
 }
 
 let tracing: { done: number; total: number } | null = null;
@@ -663,7 +669,7 @@ export function attachFamilies(root: any): void {
     const kind = [...tile.classList].find((c) => /^nbv-fam--(root|prefix|suffix|deep|char)$/.test(c)) || '';
     d.className = `nbv-drawer${kind ? ` ${kind.replace('nbv-fam', 'nbv-drawer')}` : ''}`;
     const words = tile.querySelector('.nbv-fam__words')?.cloneNode(true) as HTMLElement | undefined;
-    d.innerHTML = `<button type="button" class="nbv-drawer__close" data-fam-close aria-label="Close">${ZOOM_ICON.close}</button>`;
+    d.innerHTML = `<button type="button" class="nbv-drawer__close" data-fam-close aria-label="${tHtml('common.close')}">${ZOOM_ICON.close}</button>`;
     if (words) d.prepend(words);
     place(tile);
     if (quiet) return;
@@ -759,12 +765,12 @@ export function attachFamilies(root: any): void {
     overlay.className = 'nbv nbv-inspect';
     overlay.innerHTML = `<div class="nbv-inspect__sheet" role="dialog" aria-modal="true" aria-label="${esc(label)}">
       <header class="nbv-inspect__bar">
-        <h2 class="nbv-inspect__title">${esc(label)}</h2><span class="nbv-inspect__n">${n} words</span>
+        <h2 class="nbv-inspect__title">${esc(label)}</h2><span class="nbv-inspect__n">${tHtml('notebook.words', { count: n })}</span>
         <div class="nbv-inspect__tools">
-          <button type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out">${ZOOM_ICON.out}</button>
-          <button type="button" data-zoom="fit" aria-label="Fit" title="Fit">${ZOOM_ICON.fit}</button>
-          <button type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in">${ZOOM_ICON.in}</button>
-          <button type="button" class="nbv-inspect__close" data-inspect-close aria-label="Close" title="Close">${ZOOM_ICON.close}</button>
+          <button type="button" data-zoom="out" aria-label="${tHtml('notebook.zoomOut')}" title="${tHtml('notebook.zoomOut')}">${ZOOM_ICON.out}</button>
+          <button type="button" data-zoom="fit" aria-label="${tHtml('notebook.zoomFit')}" title="${tHtml('notebook.zoomFit')}">${ZOOM_ICON.fit}</button>
+          <button type="button" data-zoom="in" aria-label="${tHtml('notebook.zoomIn')}" title="${tHtml('notebook.zoomIn')}">${ZOOM_ICON.in}</button>
+          <button type="button" class="nbv-inspect__close" data-inspect-close aria-label="${tHtml('common.close')}" title="${tHtml('common.close')}">${ZOOM_ICON.close}</button>
         </div>
       </header>
       <div class="nbv-inspect__view">${svg0.outerHTML}</div>

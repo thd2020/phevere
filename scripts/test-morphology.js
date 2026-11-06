@@ -13,14 +13,14 @@ const coreDir = path.join(__dirname, '..', 'packages', 'core', 'src');
 const cache = new Map();
 function load(name) {
   const base = path.join(coreDir, name.replace(/^\.\//, ''));
-  const file = fs.existsSync(base + '.ts') ? base + '.ts' : base + '.js';
+  const file = fs.existsSync(base + '.ts') ? base + '.ts' : fs.existsSync(base + '.js') ? base + '.js' : path.join(base, 'index.ts');
   if (cache.has(file)) return cache.get(file).exports;
   const js = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const mod = { exports: {} };
   cache.set(file, mod);
-  new Function('module', 'exports', 'require', js)(mod, mod.exports, (dep) => (dep.startsWith('.') ? load(dep) : require(dep)));
+  new Function('module', 'exports', 'require', js)(mod, mod.exports, (dep) => (dep.startsWith('.') ? load(path.relative(coreDir, path.resolve(path.dirname(file), dep))) : require(dep)));
   return mod.exports;
 }
 

@@ -25,6 +25,7 @@
  */
 import * as THREE from 'three';
 import type { MapData, MapHighlight, MapRenderer, MapRendererOptions, MapView } from './notebook-map';
+import { t } from './i18n/runtime';
 
 const BG = '#f4f0ea';
 const NODE_COLOR: Record<string, string> = {
@@ -217,7 +218,7 @@ export function createMapScene(stage: HTMLElement, laid: MapData, opts: MapRende
       let r = 0;
       for (const p of members) r = Math.max(r, q.set(p.x, p.y, p.z).distanceTo(centre));
       const el = makeEl('nbv-m3-label nbv-m3-label--group');
-      el.textContent = `Unlinked words · ${members.length.toLocaleString('en')}`;
+      el.textContent = t('notebook.map.unlinked', { count: members.length });
       lone = { centre, r, label: { i: -1, el, w: el.textContent.length * 7 + 16, h: 20, shown: false, opacity: 1 } };
     }
   }

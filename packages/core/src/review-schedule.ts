@@ -11,6 +11,7 @@
  * that syncs the same notebook still sees sensible due dates.
  */
 import { Rating, State, createEmptyCard, default_w, forgetting_curve, fsrs, generatorParameters, type Card, type Grade } from 'ts-fsrs';
+import { formatNumber } from './i18n/runtime';
 
 export type ReviewGrade = 1 | 2 | 3 | 4;
 
@@ -152,14 +153,17 @@ export function previewReview(e: ScheduleFields, grade: ReviewGrade, now = Date.
 
 /** "10 min", "3 days", "2 months": how long until a word comes back. */
 export function formatReviewGap(ms: number): string {
+  // Intl's unit formatting writes the number and unit the way the interface language does.
+  const unit = (n: number, u: string, unitDisplay: 'short' | 'long', maximumFractionDigits = 0) =>
+    formatNumber(n, { style: 'unit', unit: u, unitDisplay, maximumFractionDigits });
   const min = Math.round(ms / 60_000);
-  if (min < 60) return `${Math.max(1, min)} min`;
+  if (min < 60) return unit(Math.max(1, min), 'minute', 'short');
   const h = Math.round(ms / 3_600_000);
-  if (h < 24) return `${h} h`;
+  if (h < 24) return unit(h, 'hour', 'short');
   const d = Math.round(ms / DAY);
-  if (d < 31) return d === 1 ? '1 day' : `${d} days`;
+  if (d < 31) return unit(d, 'day', 'long');
   const mo = Math.round(d / 30.4);
-  if (mo < 12) return mo === 1 ? '1 month' : `${mo} months`;
+  if (mo < 12) return unit(mo, 'month', 'long');
   const y = Math.round((d / 365) * 10) / 10;
-  return y === 1 ? '1 year' : `${y} years`;
+  return unit(y, 'year', 'long', 1);
 }

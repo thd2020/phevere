@@ -22,6 +22,7 @@ import { loadWordbook } from './wordbooks';
 import { sectionBody, sectionTerms, sensesUnder, wikiInline, type WikiSense } from './morpheme-wiki';
 import { ROOT_LEMMA, parseLemmaPage, principalParts } from './morpheme-roots';
 import type { Definition, DictionaryResult } from './dictionary';
+import { t, type MessageKey } from './i18n/runtime';
 
 export { wikiInline } from './morpheme-wiki';
 
@@ -150,8 +151,21 @@ export function morphemeOffers(word: string): MorphemeQuery[] {
   return out;
 }
 
-export function morphemeKindLabel(kind: MorphemeKind): string {
+/** The kind as the result's part of speech: English, as dictionaries give it ("root", "prefix"). */
+function morphemeKindPos(kind: MorphemeKind): string {
   return kind === 'reconstructed' ? 'root' : kind;
+}
+
+const KIND_KEY: Record<MorphemeKind, MessageKey> = {
+  prefix: 'notebook.morpheme.kind.prefix',
+  suffix: 'notebook.morpheme.kind.suffix',
+  root: 'notebook.morpheme.kind.root',
+  reconstructed: 'notebook.morpheme.kind.root',
+};
+
+/** The kind's name in the interface language, for headings and labels ("root", "prefix"). */
+export function morphemeKindLabel(kind: MorphemeKind): string {
+  return t(KIND_KEY[kind] || KIND_KEY.root);
 }
 
 /* ------------------------------------------------------------------ membership */
@@ -638,7 +652,7 @@ export function buildMorphemeEntry(
 /** The lookup result a morpheme page renders from. */
 export function morphemeResult(q: MorphemeQuery, built: ReturnType<typeof buildMorphemeEntry>): DictionaryResult {
   const { entry } = built;
-  const pos = morphemeKindLabel(entry.kind);
+  const pos = morphemeKindPos(entry.kind);
   const source = entry.sources.includes('Wiktionary') ? 'Wiktionary' : entry.sources[0] || '';
   const definitions: Definition[] = [];
   for (const g of entry.groups) {

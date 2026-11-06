@@ -11,6 +11,7 @@
 import type { MorphKind } from './morphology';
 import { esc, clean, type Family, type NotebookAnalysis, type NotebookEntry, type WordInfo } from './notebook-shared';
 import { loadMapScene } from './notebook-map-load';
+import { t, tHtml, type MessageKey } from './i18n/runtime';
 
 export interface MapNode {
   id: string;
@@ -736,14 +737,18 @@ export function findMapWords(data: MapData, q: string, limit = 8): MapData['node
   return scored.slice(0, limit).map((x) => x.p);
 }
 
-const MAP_KIND_LABEL: Record<MorphKind, string> = { root: 'Roots', prefix: 'Prefixes', suffix: 'Suffixes', char: 'Characters' };
+const MAP_KIND_KEY: Record<MorphKind, MessageKey> = {
+  root: 'notebook.families.group.root',
+  prefix: 'notebook.families.group.prefix',
+  suffix: 'notebook.families.group.suffix',
+  char: 'notebook.families.group.char',
+};
 
 const ICON_RESET = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4 4.5v4h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const ICON_SEARCH = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M15 15l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
 
 let mapSeq = 0;
 
-const count = (n: number) => n.toLocaleString('en');
 
 export interface MapHtmlOptions {
   /** The Words search: the map opens on the word it finds, or says that nothing matches. */
@@ -753,7 +758,7 @@ export interface MapHtmlOptions {
 export function mapHtml(a: NotebookAnalysis, kinds: MorphKind[], opts: MapHtmlOptions = {}): string {
   const available = (['root', 'prefix', 'suffix', 'char'] as MorphKind[]).filter((k) => a.families.some((f) => f.kind === k));
   if (!available.length && !a.parent.size) {
-    return `<p class="nbv-empty">No connected words yet.</p>`;
+    return `<p class="nbv-empty">${tHtml('notebook.map.empty')}</p>`;
   }
   const on = kinds.filter((k) => available.includes(k));
   const active = on.length || a.parent.size ? on : available.slice(0, 1);
@@ -763,25 +768,25 @@ export function mapHtml(a: NotebookAnalysis, kinds: MorphKind[], opts: MapHtmlOp
   const hit = q ? findMapWords(data, q, 1)[0] : undefined;
   const listId = `nbv-map-suggest-${++mapSeq}`;
   const chips = available
-    .map((k) => `<button type="button" class="nbv-chip nbv-chip--${k}${active.includes(k) ? ' is-active' : ''}" data-act="nb-map-kind" data-kind="${k}" aria-pressed="${active.includes(k)}">${MAP_KIND_LABEL[k]}</button>`)
+    .map((k) => `<button type="button" class="nbv-chip nbv-chip--${k}${active.includes(k) ? ' is-active' : ''}" data-act="nb-map-kind" data-kind="${k}" aria-pressed="${active.includes(k)}">${tHtml(MAP_KIND_KEY[k])}</button>`)
     .join('');
   const search = words
     ? `<div class="nbv-map-find" data-map-find>
-        <label class="nbv-map-search">${ICON_SEARCH}<input type="search" data-map-search placeholder="Find a word" value="${esc(q)}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${listId}" aria-label="Find a word on the map"/></label>
+        <label class="nbv-map-search">${ICON_SEARCH}<input type="search" data-map-search placeholder="${tHtml('notebook.map.find')}" value="${esc(q)}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${listId}" aria-label="${tHtml('notebook.map.findLabel')}"/></label>
         <ul class="nbv-map-suggest" id="${listId}" role="listbox" data-map-suggest hidden></ul>
       </div>`
     : '';
-  const total = words < data.total ? `${count(words)} of ${count(data.total)} words` : `${count(words)} ${words === 1 ? 'word' : 'words'}`;
+  const total = words < data.total ? t('notebook.map.wordsOf', { shown: words, count: data.total }) : t('notebook.words', { count: words });
   const miss = q && !hit;
-  const hint = `<span class="nbv-map-hint${miss ? ' is-miss' : ''}" data-map-hint data-count="${esc(total)}">${miss ? `No word matches “${esc(q)}”` : total}</span>`;
-  const tools = `<div class="nbv-maptools"><div class="nbv-chips" aria-label="Show">${chips}</div>${search}${hint}</div>`;
-  if (!data.nodes.length) return tools + `<p class="nbv-empty">Nothing to connect with these filters.</p>`;
+  const hint = `<span class="nbv-map-hint${miss ? ' is-miss' : ''}" data-map-hint data-count="${esc(total)}">${miss ? tHtml('notebook.map.noMatch', { query: q }) : esc(total)}</span>`;
+  const tools = `<div class="nbv-maptools"><div class="nbv-chips" aria-label="${tHtml('notebook.map.show')}">${chips}</div>${search}${hint}</div>`;
+  if (!data.nodes.length) return tools + `<p class="nbv-empty">${tHtml('notebook.map.nothingToConnect')}</p>`;
   return `${tools}<div class="nbv-map" data-map data-map-sig="${esc(data.sig)}"${hit ? ` data-map-goto="${esc(hit.id)}" data-map-query="${esc(q)}"` : ''}>
-    <div class="nbv-map__stage" data-map-stage role="img" aria-label="Map of related words"></div>
+    <div class="nbv-map__stage" data-map-stage role="img" aria-label="${tHtml('notebook.map.label')}"></div>
     <div class="nbv-map__ctrl">
-      <button type="button" data-map-act="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
-      <button type="button" data-map-act="zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
-      <button type="button" data-map-act="reset" aria-label="Reset view" title="Reset view">${ICON_RESET}</button>
+      <button type="button" data-map-act="zoom-in" aria-label="${tHtml('notebook.zoomIn')}" title="${tHtml('notebook.zoomIn')}">+</button>
+      <button type="button" data-map-act="zoom-out" aria-label="${tHtml('notebook.zoomOut')}" title="${tHtml('notebook.zoomOut')}">−</button>
+      <button type="button" data-map-act="reset" aria-label="${tHtml('notebook.map.reset')}" title="${tHtml('notebook.map.reset')}">${ICON_RESET}</button>
     </div>
     <aside class="nbv-map__panel" data-map-panel aria-live="polite" hidden></aside>
   </div>`;
@@ -894,7 +899,7 @@ class MapController {
     const say = (miss: string | null) => {
       input.classList.toggle('is-miss', !!miss);
       if (!hint) return;
-      hint.textContent = miss ? `No word matches “${miss}”` : hint.dataset.count || '';
+      hint.textContent = miss ? t('notebook.map.noMatch', { query: miss }) : hint.dataset.count || '';
       hint.classList.toggle('is-miss', !!miss);
     };
     const go = (p: MapData['nodes'][number]) => {
@@ -1041,20 +1046,20 @@ class MapController {
       .slice(0, CAP)
       .map((p) => `<button type="button" class="nbv-map__word" data-map-act="focus" data-id="${esc(p.id)}">${esc(p.l)}</button>`)
       .join('');
-    const more = words.length > CAP ? `<span class="nbv-map__more">and ${words.length - CAP} more</span>` : '';
-    const close = `<button type="button" class="nbv-map__close" data-map-act="close" aria-label="Close">×</button>`;
+    const more = words.length > CAP ? `<span class="nbv-map__more">${tHtml('notebook.books.andMore', { count: words.length - CAP })}</span>` : '';
+    const close = `<button type="button" class="nbv-map__close" data-map-act="close" aria-label="${tHtml('common.close')}">×</button>`;
     if (me.k === 'word') {
       const hubBtns = hubs
         .map((p) => `<button type="button" class="nbv-morph nbv-morph--${p.k}" data-map-act="focus" data-id="${esc(p.id)}">${esc(p.l)}</button>`)
         .join('');
       panel.innerHTML = `<div class="nbv-map__head"><h3 class="nbv-map__title">${esc(me.l)}</h3>${close}</div>
         ${hubBtns ? `<div class="nbv-map__hubs">${hubBtns}</div>` : ''}
-        ${words.length ? `<p class="nbv-map__sub">Connected words</p><div class="nbv-map__words">${wordBtns}${more}</div>` : ''}
-        <button type="button" class="nbv-map__lookup" data-act="lookup" data-q="${esc(me.l)}">Look up</button>`;
+        ${words.length ? `<p class="nbv-map__sub">${tHtml('notebook.map.connected')}</p><div class="nbv-map__words">${wordBtns}${more}</div>` : ''}
+        <button type="button" class="nbv-map__lookup" data-act="lookup" data-q="${esc(me.l)}">${tHtml('common.lookup')}</button>`;
     } else {
       panel.innerHTML = `<div class="nbv-map__head"><h3 class="nbv-map__title"><span class="nbv-morph nbv-morph--${me.k}">${esc(me.f || me.l)}</span></h3>${close}</div>
         ${me.g ? `<p class="nbv-map__gloss">${esc(me.g)}</p>` : ''}
-        <p class="nbv-map__sub">${words.length} ${words.length === 1 ? 'word' : 'words'}</p><div class="nbv-map__words">${wordBtns}${more}</div>`;
+        <p class="nbv-map__sub">${tHtml('notebook.words', { count: words.length })}</p><div class="nbv-map__words">${wordBtns}${more}</div>`;
     }
     panel.hidden = false;
     const m = this.map.getBoundingClientRect();

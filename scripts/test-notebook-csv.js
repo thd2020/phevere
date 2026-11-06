@@ -4,6 +4,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
+const esbuild = require('esbuild');
+
+/** The interface strings notebook-io.ts throws with: the real runtime, in English. */
+function i18nRuntime() {
+  const code = esbuild.buildSync({
+    entryPoints: [path.join(__dirname, '..', 'packages/core/src/i18n/runtime.ts')],
+    bundle: true, platform: 'node', format: 'cjs', write: false,
+  }).outputFiles[0].text;
+  const mod = { exports: {} };
+  new Function('module', 'exports', 'require', code)(mod, mod.exports, require);
+  return mod.exports;
+}
 
 async function testNotebookCsv() {
   const writes = [];
@@ -13,7 +25,7 @@ async function testNotebookCsv() {
   }).outputText;
   const module = { exports: {} };
   const imports = {
-    '@phevere/core': { addVocab: async (row) => writes.push(row) },
+    '@phevere/core': { ...i18nRuntime(), addVocab: async (row) => writes.push(row) },
     './native': {},
     './sqljs-vocab-db': {},
   };

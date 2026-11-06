@@ -19,6 +19,7 @@ import { vocabReadings, vocabSenses } from './vocab-view';
 import { clean, dayStart, DAY, esc, revealBelow, scrollerOf, visibleBand, type NotebookAnalysis, type NotebookEntry } from './notebook-shared';
 import { onDoubleShake } from './shake';
 import { vocabLookupLang } from './vocab-lang';
+import { formatDate, t, tHtml } from './i18n/runtime';
 
 /** Piles, or every pile poured out. */
 export type CardLayout = 'piles' | 'grid';
@@ -71,7 +72,6 @@ export interface CardPile {
 /** Cards drawn on top of each pile; the rest are drawn when the pile is poured out. */
 export const PILE_FACE_CARDS = 4;
 const MAX_PILES = 6;
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 function savedAt(e: NotebookEntry): number {
   return Number(e.createdAt || e.updatedAt || 0);
@@ -91,23 +91,23 @@ export function cardPiles(entries: NotebookEntry[], now = Date.now()): CardPile[
   const order: string[] = [];
   const sorted = [...entries].sort((a, b) => savedAt(b) - savedAt(a));
   for (const e of sorted) {
-    const t = savedAt(e);
+    const at = savedAt(e);
     let key: string;
     let label: string;
-    if (!t) {
+    if (!at) {
       const unsaved = (e as { saved?: boolean }).saved === false;
       key = unsaved ? 'new' : 'earlier';
-      label = unsaved ? 'New' : 'Earlier';
-    } else if (t >= weekStart) {
+      label = unsaved ? t('notebook.cards.pile.new') : t('notebook.cards.pile.earlier');
+    } else if (at >= weekStart) {
       key = 'week';
-      label = 'This week';
-    } else if (t >= lastWeekStart) {
+      label = t('notebook.cards.pile.thisWeek');
+    } else if (at >= lastWeekStart) {
       key = 'last-week';
-      label = 'Last week';
+      label = t('notebook.cards.pile.lastWeek');
     } else {
-      const d = new Date(t);
+      const d = new Date(at);
       key = `m-${d.getFullYear()}-${d.getMonth()}`;
-      label = d.getFullYear() === nowYear ? MONTHS[d.getMonth()] : `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+      label = formatDate(d, d.getFullYear() === nowYear ? { month: 'long' } : { month: 'long', year: 'numeric' });
     }
     let pile = piles.get(key);
     if (!pile) {
@@ -121,7 +121,7 @@ export function cardPiles(entries: NotebookEntry[], now = Date.now()): CardPile[
   let list = order.filter((k) => k !== 'earlier' && k !== 'new').map((k) => piles.get(k)!);
   if (piles.has('earlier')) list.push(piles.get('earlier')!);
   if (list.length > MAX_PILES) {
-    const rest: CardPile = { key: 'earlier', label: 'Earlier', ids: list.slice(MAX_PILES - 1).flatMap((p) => p.ids) };
+    const rest: CardPile = { key: 'earlier', label: t('notebook.cards.pile.earlier'), ids: list.slice(MAX_PILES - 1).flatMap((p) => p.ids) };
     list = [...list.slice(0, MAX_PILES - 1), rest];
   }
   if (piles.has('new')) list.push(piles.get('new')!);
@@ -145,7 +145,7 @@ let lastDeck: Deck | null = null;
 
 /** Expand all is a toggle: its name stays, aria-pressed says whether every pile is out. */
 function allButtonHtml(all: boolean): string {
-  return `${all ? STACK_ICON : SPREAD_ICON}<span>Expand all</span>`;
+  return `${all ? STACK_ICON : SPREAD_ICON}<span>${tHtml('notebook.cards.expandAll')}</span>`;
 }
 
 /**
@@ -165,7 +165,7 @@ export function cardsHtml(
   now = Date.now(),
   opts: { picFlips?: boolean; list?: string } = {},
 ): string {
-  if (!entries.length) return `<p class="nbv-empty">No saved words.</p>`;
+  if (!entries.length) return `<p class="nbv-empty">${tHtml('notebook.cards.empty')}</p>`;
   const l = cardLayoutOf(layout);
   const piles = cardPiles(entries, now);
   const byId = new Map(entries.map((e) => [e.id, e]));
@@ -173,7 +173,7 @@ export function cardsHtml(
   lastDeck = { scope, piles, byId, a, flipped };
   const body = piles
     .map(
-      (p) => `<button type="button" class="nbv-pile${p.ids.length > PILE_FACE_CARDS ? ' has-depth' : ''}" data-pile="${esc(p.key)}" aria-expanded="false" aria-label="${esc(p.label)}, ${p.ids.length} ${p.ids.length === 1 ? 'card' : 'cards'}">
+      (p) => `<button type="button" class="nbv-pile${p.ids.length > PILE_FACE_CARDS ? ' has-depth' : ''}" data-pile="${esc(p.key)}" aria-expanded="false" aria-label="${tHtml('notebook.cards.pileAria', { pile: p.label, count: p.ids.length })}">
         <span class="nbv-pile__stack" aria-hidden="true"></span>
         <span class="nbv-pile__label">${esc(p.label)}<b>${p.ids.length}</b></span>
       </button>${p.ids
@@ -214,7 +214,8 @@ function cardHtml(e: NotebookEntry, a: NotebookAnalysis, open: boolean, pile: st
   // The Danish "give" opens in Danish, not as the English word its letters suggest.
   const lang = vocabLookupLang({ lemma, sourceLang: clean(e.sourceLang) });
   const look = `data-act="lookup" data-q="${esc(lemma)}"${lang ? ` data-lang="${esc(lang)}"` : ''}`;
-  return `<article class="nbv-card${open ? ' is-flipped' : ''}" data-q="${esc(lemma)}" data-id="${esc(e.id)}" data-pile="${esc(pile)}" data-rank="${rank}"${rank >= PILE_FACE_CARDS ? ' data-deep' : ''} tabindex="0" aria-label="${esc(lemma)}: open lookup">
+  const flipLabel = open ? tHtml('notebook.cards.showWord') : tHtml('notebook.cards.showMeaning');
+  return `<article class="nbv-card${open ? ' is-flipped' : ''}" data-q="${esc(lemma)}" data-id="${esc(e.id)}" data-pile="${esc(pile)}" data-rank="${rank}"${rank >= PILE_FACE_CARDS ? ' data-deep' : ''} tabindex="0" aria-label="${tHtml('notebook.cards.openLookup', { word: lemma })}">
     <div class="nbv-card__inner">
       <div class="nbv-card__face nbv-card__front">
         <div class="nbv-card__pic"${flip} data-img-lemma="${esc(lemma)}" data-img-lang="${esc(clean(e.sourceLang))}" data-img-gloss="${esc(senses[0] || '')}" data-img-pos="${esc(clean(e.partOfSpeech || ''))}"><span aria-hidden="true">${esc(lemma.charAt(0))}</span></div>
@@ -229,11 +230,11 @@ function cardHtml(e: NotebookEntry, a: NotebookAnalysis, open: boolean, pile: st
       </div>
       <div class="nbv-card__face nbv-card__back"${flip}>
         <h3 class="nbv-card__word">${esc(lemma)}</h3>
-        ${senses.length ? `<ol>${senses.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : '<p>No definition saved.</p>'}
-        <button type="button" class="nbv-card__look" ${look} tabindex="${open ? 0 : -1}">${LOOK_ICON}<span>Look up</span></button>
+        ${senses.length ? `<ol>${senses.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : `<p>${tHtml('notebook.list.noDefinition')}</p>`}
+        <button type="button" class="nbv-card__look" ${look} tabindex="${open ? 0 : -1}">${LOOK_ICON}<span>${tHtml('common.lookup')}</span></button>
       </div>
     </div>
-    <button type="button" class="nbv-card__flip" data-act="nb-flip" data-id="${esc(e.id)}" aria-pressed="${open}" aria-label="${open ? 'Show word' : 'Show meaning'}" title="${open ? 'Show word' : 'Show meaning'}">${FLIP_ICON}</button>
+    <button type="button" class="nbv-card__flip" data-act="nb-flip" data-id="${esc(e.id)}" aria-pressed="${open}" aria-label="${flipLabel}" title="${flipLabel}">${FLIP_ICON}</button>
   </article>`;
 }
 
@@ -489,7 +490,11 @@ export function attachCardTable(root: any, opts: CardTableOptions = {}): void {
   const labelCard = (c: HTMLElement) => {
     const q = c.dataset.q || '';
     const pile = pileName.get(c.dataset.pile || '') || '';
-    const name = isHead(c) ? `${q}: gather the ${pile} pile` : outOf(c) ? `${q}: open lookup` : `${q}: open the ${pile} pile`;
+    const name = isHead(c)
+      ? t('notebook.cards.gatherPile', { word: q, pile })
+      : outOf(c)
+        ? t('notebook.cards.openLookup', { word: q })
+        : t('notebook.cards.openPile', { word: q, pile });
     if (c.getAttribute('aria-label') !== name) c.setAttribute('aria-label', name);
   };
 

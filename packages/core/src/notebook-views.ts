@@ -17,6 +17,7 @@ import { analyzeMorphemes, derivationStem, morphBreakdown, wordOrigin, type Morp
 import { cachedEtymon } from './notebook-etymology';
 import { loadPicture } from './picture-load';
 import { clean, type Family, type NotebookAnalysis, type NotebookEntry, type NotebookView, type TreeNode, type WordInfo } from './notebook-shared';
+import { t, tHtml, type MessageKey } from './i18n/runtime';
 
 export * from './notebook-shared';
 export * from './notebook-families';
@@ -31,11 +32,11 @@ const ICON = {
   cards: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 15l5-4 4 3 3-2 6 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="16" cy="9" r="1.5" fill="currentColor"/></svg>',
 };
 
-const VIEW_LABEL: Record<NotebookView, string> = {
-  list: 'List',
-  families: 'Families',
-  map: 'Map',
-  cards: 'Cards',
+const VIEW_KEY: Record<NotebookView, MessageKey> = {
+  list: 'notebook.view.list',
+  families: 'notebook.view.families',
+  map: 'notebook.view.map',
+  cards: 'notebook.view.cards',
 };
 
 const VIEWS: NotebookView[] = ['list', 'families', 'map', 'cards'];
@@ -132,9 +133,9 @@ function treeSize(n: TreeNode): number {
 
 export function notebookViewSwitchHtml(view: NotebookView): string {
   const views = VIEWS;
-  return `<div class="nbv-switch" role="tablist" aria-label="Notebook view">${views
+  return `<div class="nbv-switch" role="tablist" aria-label="${tHtml('notebook.view.label')}">${views
     .map(
-      (v) => `<button type="button" role="tab" class="nbv-switch__btn${v === view ? ' is-active' : ''}" data-act="nb-view" data-view="${v}" aria-selected="${v === view}" title="${VIEW_LABEL[v]}">${ICON[v]}<span>${VIEW_LABEL[v]}</span></button>`,
+      (v) => `<button type="button" role="tab" class="nbv-switch__btn${v === view ? ' is-active' : ''}" data-act="nb-view" data-view="${v}" aria-selected="${v === view}" title="${tHtml(VIEW_KEY[v])}">${ICON[v]}<span>${tHtml(VIEW_KEY[v])}</span></button>`,
     )
     .join('')}</div>`;
 }
@@ -230,7 +231,7 @@ function placePicture(box: any, img: NonNullable<Img>, src: string): void {
     credit = box.ownerDocument.createElement('button');
     credit.type = 'button';
     credit.className = 'nbv-card__credit';
-    credit.setAttribute('aria-label', 'Picture credit');
+    credit.setAttribute('aria-label', t('notebook.cards.pictureCredit'));
     credit.textContent = 'i';
     credit.addEventListener('click', (ev: any) => {
       ev.stopPropagation();

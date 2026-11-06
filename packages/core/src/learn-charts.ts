@@ -11,11 +11,12 @@
  * Hooks: data-lrc (a chart), data-i (a bar or cell), template[data-for] (its readout),
  * data-lrc-readout, data-lrc-when (a moment on the memory strip), data-lrc-word (a word to point out).
  */
-import { esc } from './notebook-shared';
+import { boldCount, esc } from './notebook-shared';
 import { DESIRED_RETENTION, recallAt } from './review-schedule';
+import { formatDate, formatNumber, formatPercent, rawHtml, t, tHtml, type MessageKey } from './i18n/runtime';
 
 const DAY = 86_400_000;
-const fmt = (n: number) => n.toLocaleString('en-US');
+const fmt = (n: number) => formatNumber(n);
 
 /* --------------------------------------------------------------- bar chart */
 
@@ -84,7 +85,7 @@ export function barChartHtml(spec: BarChartSpec): string {
   const yMax = ticks[ticks.length - 1] || 1;
   const y = (v: number) => base - ((base - top) * v) / yMax;
   const grid = ticks
-    .map((t) => `<line class="lrc-grid${t === 0 ? ' is-base' : ''}" x1="${left}" x2="${W - right}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text class="lrc-ytick" x="${left - 5}" y="${(y(t) + 3).toFixed(1)}">${fmt(t)}</text>`)
+    .map((v) => `<line class="lrc-grid${v === 0 ? ' is-base' : ''}" x1="${left}" x2="${W - right}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text class="lrc-ytick" x="${left - 5}" y="${(y(v) + 3).toFixed(1)}">${fmt(v)}</text>`)
     .join('');
   const gap = Math.min(4, bw * 0.28);
   const bars = spec.data
@@ -137,7 +138,7 @@ export interface HeatmapSpec {
   id: string;
   /** One cell per day, oldest first, ending today. */
   cells: HeatCell[];
-  /** What a cell counts ("saved"). */
+  /** What a cell counts: "saved" (words saved), or "started" (words started in a word book). */
   noun: string;
   summary: string;
 }
@@ -152,6 +153,7 @@ export function heatmapHtml(spec: HeatmapSpec): string {
   const lead = (first.getDay() + 6) % 7; // rows before the first day in its week (Monday first)
   const max = Math.max(1, ...spec.cells.map((c) => c.count));
   const level = (c: number) => (c ? Math.min(4, Math.ceil((c / max) * 4)) : 0);
+  const started = spec.noun === 'started';
   let months = '';
   let lastMonth = -1;
   const rects = spec.cells
@@ -162,25 +164,28 @@ export function heatmapHtml(spec: HeatmapSpec): string {
       const d = new Date(c.day);
       if (d.getMonth() !== lastMonth && (row === 0 || i === 0)) {
         lastMonth = d.getMonth();
-        months += `<text class="lrc-month" x="${left + col * (cell + gap)}" y="${top - 4}">${esc(d.toLocaleDateString('en-US', { month: 'short' }))}</text>`;
+        months += `<text class="lrc-month" x="${left + col * (cell + gap)}" y="${top - 4}">${esc(formatDate(d, { month: 'short' }))}</text>`;
       }
       const x = left + col * (cell + gap);
       const yy = top + row * (cell + gap);
-      const label = `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}: ${c.count} ${spec.noun}`;
+      const date = formatDate(d, { weekday: 'short', month: 'short', day: 'numeric' });
+      const label = t(started ? 'notebook.charts.heat.cellStarted' : 'notebook.charts.heat.cellSaved', { date, count: c.count });
       return `<rect class="lrc-heat lrc-heat--${level(c.count)}${i === spec.cells.length - 1 ? ' is-mark' : ''}" data-i="${i}" x="${x}" y="${yy}" width="${cell}" height="${cell}" rx="2.5" tabindex="0" role="button" aria-label="${esc(label)}"/>`;
     })
     .join('');
   const cols = Math.ceil((spec.cells.length + lead) / 7);
-  const days = ['Mon', '', 'Wed', '', 'Fri', '', '']
-    .map((d, r) => (d ? `<text class="lrc-wday" x="0" y="${top + r * (cell + gap) + cell - 2}">${d}</text>` : ''))
+  // Monday, Wednesday and Friday in the interface language (5 January 1970 was a Monday).
+  const weekday = (r: number) => formatDate(new Date(1970, 0, 5 + r), { weekday: 'short' });
+  const days = [0, 2, 4]
+    .map((r) => `<text class="lrc-wday" x="0" y="${top + r * (cell + gap) + cell - 2}">${esc(weekday(r))}</text>`)
     .join('');
   const W = left + cols * (cell + gap);
   const H = top + 7 * (cell + gap);
   const templates = spec.cells.map((c, i) => `<template data-for="${i}">${c.detail}</template>`).join('');
   const key = [0, 1, 2, 3, 4].map((l) => `<i class="lrc-heat-key lrc-heat--${l}"></i>`).join('');
   return `<div class="lrc lrc--heat" data-lrc="${esc(spec.id)}">
-    <svg class="lrc-svg lrc-svg--heat" viewBox="0 0 ${W} ${H}" role="group" aria-label="Words ${esc(spec.noun)} per day">${months}${days}${rects}</svg>
-    <p class="lrc-legend lrc-legend--heat"><span>0</span>${key}<span>${fmt(max)} a day</span></p>
+    <svg class="lrc-svg lrc-svg--heat" viewBox="0 0 ${W} ${H}" role="group" aria-label="${tHtml(started ? 'notebook.charts.heat.labelStarted' : 'notebook.charts.heat.labelSaved')}">${months}${days}${rects}</svg>
+    <p class="lrc-legend lrc-legend--heat"><span>${fmt(0)}</span>${key}<span>${tHtml('notebook.charts.heat.perDay', { count: max })}</span></p>
     <div class="lrc-readout" data-lrc-readout aria-live="polite">${spec.summary}</div>
     <template data-for="summary">${spec.summary}</template>${templates}
   </div>`;
@@ -214,11 +219,40 @@ export function retentionAt(words: RetentionWord[], now: number, days: number, w
 }
 
 /** Today, a week and a month without review: the three moments the memory strip shows. */
-export const MEMORY_HORIZONS = [
-  { days: 0, label: 'Today' },
-  { days: 7, label: 'In a week' },
-  { days: 30, label: 'In a month' },
-] as const;
+export const MEMORY_HORIZONS: ReadonlyArray<{ readonly days: 0 | 7 | 30; readonly label: string }> = [
+  {
+    days: 0,
+    get label() {
+      return t('notebook.charts.memory.today');
+    },
+  },
+  {
+    days: 7,
+    get label() {
+      return t('notebook.charts.memory.inWeek');
+    },
+  },
+  {
+    days: 30,
+    get label() {
+      return t('notebook.charts.memory.inMonth');
+    },
+  },
+];
+
+/** "Remembered in a week": the caption over the number for each horizon. */
+const REMEMBERED_KEY: Record<number, MessageKey> = {
+  0: 'notebook.charts.memory.remembered',
+  7: 'notebook.charts.memory.rememberedWeek',
+  30: 'notebook.charts.memory.rememberedMonth',
+};
+
+/** "87% recall in a week": a word's recall at each horizon. */
+const RECALL_KEY: Record<number, MessageKey> = {
+  0: 'notebook.charts.memory.recallToday',
+  7: 'notebook.charts.memory.recallWeek',
+  30: 'notebook.charts.memory.recallMonth',
+};
 
 export interface MemoryAt {
   days: number;
@@ -314,7 +348,7 @@ export interface MemorySpec {
 }
 
 /** Recall as a whole percent, rounded down, so a word just under the target never reads as 90%. */
-const recallPct = (r: number) => `${Math.floor(r * 100 + 1e-9)}%`;
+const recallPct = (r: number) => formatPercent(Math.floor(r * 100 + 1e-9) / 100);
 
 /**
  * The caption under the number of words you would recall: what it counts, then the due and the loss
@@ -323,27 +357,27 @@ const recallPct = (r: number) => `${Math.floor(r * 100 + 1e-9)}%`;
  */
 function memoryLede(m: MemoryAt, total: number, today: MemoryAt, h: (typeof MEMORY_HORIZONS)[number]): string {
   const lost = Math.round(today.recalled) - Math.round(m.recalled);
-  const facts = [`<span><b>${fmt(m.below)}</b> due</span>`];
-  if (m.days && lost > 0) facts.push(`<span><b>${fmt(lost)}</b> fewer than today</span>`);
-  const label = m.days ? `Remembered ${h.label.toLowerCase()}` : 'Remembered';
-  return `<span class="lrp-fig__label">${esc(label)}</span><span class="lrp-fig__sub">of ${fmt(total)} ${total === 1 ? 'word' : 'words'}</span><span class="lrp-fig__facts">${facts.join('')}</span>`;
+  const facts = [`<span>${boldCount(tHtml('notebook.charts.memory.due', { count: m.below }), m.below)}</span>`];
+  if (m.days && lost > 0) facts.push(`<span>${boldCount(tHtml('notebook.charts.memory.fewer', { count: lost }), lost)}</span>`);
+  const label = t(REMEMBERED_KEY[h.days] ?? 'notebook.charts.memory.remembered');
+  return `<span class="lrp-fig__label">${esc(label)}</span><span class="lrp-fig__sub">${tHtml('notebook.charts.memory.ofWords', { count: total })}</span><span class="lrp-fig__facts">${facts.join('')}</span>`;
 }
 
 function memoryReadout(words: RetentionWord[], m: MemoryAt, picked: number | null, now: number): string {
-  const target = `${Math.round(DESIRED_RETENTION * 100)}%`;
   if (picked != null && words[picked]) {
     const w = words[picked];
     const slip = slipDate(w);
-    const when = `${slip <= now ? 'Due since' : 'Due'} ${esc(dayLabel(slip))}`;
-    const at = m.days ? (MEMORY_HORIZONS.find((h) => h.days === m.days)?.label.toLowerCase() ?? '') : 'today';
-    return `<p class="lrc-read__head"><button type="button" class="lrc-chip" data-act="lookup" data-q="${esc(w.lemma)}">${esc(w.lemma)}</button> <b>${recallPct(m.recall[picked])}</b> recall ${esc(at)}</p><p class="lrc-read__sub">Reviewed ${esc(dayLabel(w.lastReview))} · ${when}</p>`;
+    const when = tHtml(slip <= now ? 'notebook.charts.memory.dueSince' : 'notebook.charts.memory.dueOn', { day: dayLabel(slip) });
+    const chip = rawHtml(`<button type="button" class="lrc-chip" data-act="lookup" data-q="${esc(w.lemma)}">${esc(w.lemma)}</button>`);
+    const pct = rawHtml(`<b>${esc(recallPct(m.recall[picked]))}</b>`);
+    return `<p class="lrc-read__head">${tHtml(RECALL_KEY[m.days] ?? 'notebook.charts.memory.recallToday', { word: chip, percent: pct })}</p><p class="lrc-read__sub">${tHtml('notebook.charts.memory.reviewed', { day: dayLabel(w.lastReview) })} · ${when}</p>`;
   }
   const order = m.recall.map((r, i) => ({ r, i })).sort((a, b) => a.r - b.r || words[a.i].lemma.localeCompare(words[b.i].lemma));
   const weak = order
     .slice(0, 8)
-    .map(({ r, i }) => `<button type="button" class="lrc-word" data-lrc-word="${i}" aria-pressed="false">${esc(words[i].lemma)}<small>${recallPct(r)}</small></button>`)
+    .map(({ r, i }) => `<button type="button" class="lrc-word" data-lrc-word="${i}" aria-pressed="false">${esc(words[i].lemma)}<small>${esc(recallPct(r))}</small></button>`)
     .join('');
-  return `<p class="lrc-read__label">Fading first</p><div class="lrc-words">${weak}</div>`;
+  return `<p class="lrc-read__label">${tHtml('notebook.charts.memory.fadingFirst')}</p><div class="lrc-words">${weak}</div>`;
 }
 
 /**
@@ -366,7 +400,7 @@ export function memoryHtml(spec: MemorySpec): string {
     })
     .join('');
   const ticks = [0.5, 0.7, 0.9, 1]
-    .map((v) => `<text class="lrc-xtick${v === DESIRED_RETENTION ? ' is-mark' : ''}" x="${mx(v).toFixed(1)}" y="${base + 14}">${v === M_LO ? '≤50%' : `${Math.round(v * 100)}%`}</text>`)
+    .map((v) => `<text class="lrc-xtick${v === DESIRED_RETENTION ? ' is-mark' : ''}" x="${mx(v).toFixed(1)}" y="${base + 14}">${v === M_LO ? `≤${formatPercent(v)}` : formatPercent(v)}</text>`)
     .join('');
   const target = mx(DESIRED_RETENTION);
   const seg = MEMORY_HORIZONS.map(
@@ -382,18 +416,18 @@ export function memoryHtml(spec: MemorySpec): string {
       <p class="lrc-mem__cap" data-mem-lede>${memoryLede(today, words.length, today, MEMORY_HORIZONS[0])}</p>
     </div>
     <div class="lrc-mem__chart">
-      <div class="lrc-mem__whens" role="group" aria-label="Without review">${seg}</div>
-      <svg class="lrc-svg lrc-mem__svg" viewBox="0 0 ${M_W} ${base + 20}" role="img" aria-label="Your words by chance of recall" tabindex="0">
+      <div class="lrc-mem__whens" role="group" aria-label="${tHtml('notebook.charts.memory.withoutReview')}">${seg}</div>
+      <svg class="lrc-svg lrc-mem__svg" viewBox="0 0 ${M_W} ${base + 20}" role="img" aria-label="${tHtml('notebook.charts.memory.chartLabel')}" tabindex="0">
         <rect class="lrc-mem__zone" x="${M_LEFT - 2}" y="${M_TOP - 6}" width="${(target - M_LEFT + 2).toFixed(1)}" height="${base - M_TOP + 6}" rx="6"/>
         <line class="lrc-grid is-base" x1="${M_LEFT}" x2="${M_W - M_RIGHT}" y1="${base}" y2="${base}"/>
         <line class="lrc-grid is-target" x1="${target.toFixed(1)}" x2="${target.toFixed(1)}" y1="${M_TOP - 6}" y2="${base}"/>
-        <text class="lrc-mem__zlabel" x="${(target - 5).toFixed(1)}" y="${M_TOP + 4}">Due</text>
-        <text class="lrc-mem__zlabel is-held" x="${(target + 5).toFixed(1)}" y="${M_TOP + 4}">Held</text>
+        <text class="lrc-mem__zlabel" x="${(target - 5).toFixed(1)}" y="${M_TOP + 4}">${tHtml('notebook.charts.memory.zoneDue')}</text>
+        <text class="lrc-mem__zlabel is-held" x="${(target + 5).toFixed(1)}" y="${M_TOP + 4}">${tHtml('notebook.charts.memory.zoneHeld')}</text>
         ${ticks}
         <g class="lrc-mem__dots">${dots}</g>
         <circle class="lrc-mem__ring" data-mem-ring r="${(layout.size / 2 + 2.5).toFixed(2)}" style="opacity:0"/>
       </svg>
-      <p class="lrc-xlabel">Chance of recall</p>
+      <p class="lrc-xlabel">${tHtml('notebook.charts.memory.axis')}</p>
     </div>
     <div class="lrc-readout" data-lrc-readout aria-live="polite">${memoryReadout(words, today, null, spec.now)}</div>
     <script type="application/json" data-lrc-data>${data}</script>
@@ -602,16 +636,16 @@ export function attachLearnCharts(root: ParentNode): void {
   });
 }
 
-/** "Thu 6 Nov". */
-export function dayLabel(t: number): string {
-  return new Date(t).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
+/** "Thu, Nov 6", as the interface language writes a short day. */
+export function dayLabel(at: number): string {
+  return formatDate(at, { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 /** Word chips that open the lookup, up to `max`, then how many more. */
 export function wordChips(lemmas: string[], max = 24): string {
   if (!lemmas.length) return '';
   const shown = lemmas.slice(0, max).map((l) => `<button type="button" class="lrc-chip" data-act="lookup" data-q="${esc(l)}">${esc(l)}</button>`).join('');
-  return `<div class="lrc-chips">${shown}${lemmas.length > max ? `<span class="lrc-more">+${fmt(lemmas.length - max)} more</span>` : ''}</div>`;
+  return `<div class="lrc-chips">${shown}${lemmas.length > max ? `<span class="lrc-more">${tHtml('notebook.charts.moreWords', { count: lemmas.length - max })}</span>` : ''}</div>`;
 }
 
 /**

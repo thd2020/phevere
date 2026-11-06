@@ -39,7 +39,8 @@ const pageBundleReady = esbuild.build({
       build.onResolve({ filter: /^\.\/native$/ }, () => ({ path: nativeSource }));
       build.onLoad({ filter: /^wasm-url$/, namespace: 'stub' }, () => ({ contents: `export default ${JSON.stringify(wasm)};`, loader: 'js' }));
       build.onLoad({ filter: /^core$/, namespace: 'stub' }, () => ({
-        contents: `export { VOCAB_SCHEMA_SQL, vocabColumnMigrations } from ${JSON.stringify(path.join(root, 'packages/core/src/schema.ts'))};`,
+        contents: `export { VOCAB_SCHEMA_SQL, vocabColumnMigrations } from ${JSON.stringify(path.join(root, 'packages/core/src/schema.ts'))};
+export { t } from ${JSON.stringify(path.join(root, 'packages/core/src/i18n/runtime.ts'))};`,
         loader: 'ts',
         resolveDir: root,
       }));

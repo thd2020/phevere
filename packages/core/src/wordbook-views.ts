@@ -20,7 +20,7 @@
  * input name "word") adds a word, ub-drop (data-book, data-q) removes one, and wb-unsub deletes
  * the book. The title input and the form carry no data-act, so typing in them is never a click.
  */
-import { esc, type NotebookEntry } from './notebook-shared';
+import { boldCount, esc, type NotebookEntry } from './notebook-shared';
 import {
   bookProgress,
   sourceGroups,
@@ -37,6 +37,7 @@ import { bookWordKey, type UserBook } from './wordbook-store';
 import { siteIconUrl, siteMonogram } from './source-context';
 import { addToBookButtonHtml, compareAz, copyButtonHtml, vocabReadings, vocabSenses } from './vocab-view';
 import type { MenuItem } from './popover-menu';
+import { formatDate, formatNumber, formatPercent, t, tHtml, type MessageKey } from './i18n/runtime';
 
 const ICON = {
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
@@ -52,16 +53,29 @@ const ICON = {
   more: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="19" cy="12" r="1.9" fill="currentColor"/></svg>',
 };
 
-const STATUS_LABEL = { new: 'New', learning: 'Learning', known: 'Known' } as const;
+const STATUS_KEY: Record<'new' | 'learning' | 'known', MessageKey> = {
+  new: 'notebook.books.status.new',
+  learning: 'notebook.books.status.learning',
+  known: 'notebook.books.status.known',
+};
 /** How a book's list is ordered: the book's own order, newest first as in My words, or alphabetical. */
 export type BookSort = 'book' | 'recent' | 'az';
-const SORT_LABEL: Record<BookSort, string> = { book: 'Book order', recent: 'Recent', az: 'A–Z' };
+const SORT_KEY: Record<BookSort, MessageKey> = { book: 'notebook.books.sort.book', recent: 'notebook.books.sort.recent', az: 'notebook.books.sort.az' };
 /** Senses an opened row shows. */
 const BRIEF_SENSES = 3;
 /** Rows a book list shows before "Show more". */
 export const BOOK_LIST_PAGE = 200;
 
-const fmt = (n: number) => n.toLocaleString('en-US');
+const fmt = (n: number) => formatNumber(n);
+
+/** "12 known", "3 learning", "40 new" with the numbers in bold, as a book's header shows them. */
+function countsHtml(p: { known: number; learning: number; total: number }): string {
+  const count = (key: MessageKey, n: number) => `<span>${boldCount(tHtml(key, { count: n }), n)}</span>`;
+  return `<p class="wb-counts">${count('notebook.books.counts.known', p.known)}${count('notebook.books.counts.learning', p.learning)}${count(
+    'notebook.books.counts.new',
+    p.total - p.known - p.learning,
+  )}</p>`;
+}
 
 /** Known as a full arc, learning as a lighter arc after it. */
 export function progressRingSvg(known: number, learning: number, total: number, size = 36): string {
@@ -70,18 +84,18 @@ export function progressRingSvg(known: number, learning: number, total: number, 
   const k = total ? (known / total) * c : 0;
   const l = total ? (learning / total) * c : 0;
   const pct = total ? Math.round((known / total) * 100) : 0;
-  return `<svg class="wb-ring" viewBox="0 0 36 36" width="${size}" height="${size}" role="img" aria-label="${fmt(known)} of ${fmt(total)} known">
+  return `<svg class="wb-ring" viewBox="0 0 36 36" width="${size}" height="${size}" role="img" aria-label="${tHtml('notebook.books.knownOf', { known, total })}">
     <circle class="wb-ring__track" cx="18" cy="18" r="${r}"/>
     ${l ? `<circle class="wb-ring__learning" cx="18" cy="18" r="${r}" stroke-dasharray="${(k + l).toFixed(2)} ${c.toFixed(2)}"/>` : ''}
     ${k ? `<circle class="wb-ring__known" cx="18" cy="18" r="${r}" stroke-dasharray="${k.toFixed(2)} ${c.toFixed(2)}"/>` : ''}
-    ${size >= 48 ? `<text x="18" y="21.5">${pct}%</text>` : ''}
+    ${size >= 48 ? `<text x="18" y="21.5">${formatPercent(pct / 100)}</text>` : ''}
   </svg>`;
 }
 
 function barHtml(p: { known: number; learning: number; total: number }): string {
   const k = p.total ? (p.known / p.total) * 100 : 0;
   const l = p.total ? (p.learning / p.total) * 100 : 0;
-  return `<span class="wb-bar" role="img" aria-label="${fmt(p.known)} of ${fmt(p.total)} known"><i class="wb-bar__known" style="width:${k.toFixed(2)}%"></i><i class="wb-bar__learning" style="width:${l.toFixed(2)}%"></i></span>`;
+  return `<span class="wb-bar" role="img" aria-label="${tHtml('notebook.books.knownOf', { known: p.known, total: p.total })}"><i class="wb-bar__known" style="width:${k.toFixed(2)}%"></i><i class="wb-bar__learning" style="width:${l.toFixed(2)}%"></i></span>`;
 }
 
 /* ----------------------------------------------------------------- switcher */
@@ -92,24 +106,25 @@ export function wordsScopeSwitchHtml(scope: WordsScope, ctx: WordsContext, libra
   // The open list's chip carries a button for its menu (Export, Remove), like a split button.
   const withMenu = (id: string, title: string, chip: string) =>
     !library && scope === id
-      ? `<span class="wb-scope-wrap is-active">${chip}<button type="button" class="wb-scope__more" data-act="wb-menu" data-scope="${esc(id)}" data-title="${esc(title)}" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(title)} menu" title="More">${ICON.more}</button></span>`
+      ? `<span class="wb-scope-wrap is-active">${chip}<button type="button" class="wb-scope__more" data-act="wb-menu" data-scope="${esc(id)}" data-title="${esc(title)}" aria-haspopup="menu" aria-expanded="false" aria-label="${tHtml('notebook.books.menuLabel', { book: title })}" title="${tHtml('common.more')}">${ICON.more}</button></span>`
       : chip;
   const books = ctx.subs
     .map((s) => {
       const meta = wordbookMeta(s.bookId);
       if (!meta) return '';
       const p = bookProgress(s.bookId, ctx, now);
-      const chip = btn(s.bookId, meta.short, progressRingSvg(p.known, p.learning, p.total, 18), `${meta.title}: ${fmt(p.known)} of ${fmt(p.total)} known`);
+      const chip = btn(s.bookId, meta.short, progressRingSvg(p.known, p.learning, p.total, 18), t('notebook.learn.scope.bookTitle', { book: meta.title, known: p.known, total: p.total }));
       return withMenu(s.bookId, meta.title, chip);
     })
     .join('');
   const count = ctx.mine.length ? `<b class="wb-scope__n">${fmt(ctx.mine.length)}</b>` : '';
-  return `<div class="wb-switch" role="tablist" aria-label="Word lists">
-    ${withMenu('mine', 'My words', btn('mine', 'My words', '').replace('</span></button>', `</span>${count}</button>`))}
+  const mine = t('notebook.myWords');
+  return `<div class="wb-switch" role="tablist" aria-label="${tHtml('notebook.books.listsLabel')}">
+    ${withMenu('mine', mine, btn('mine', mine, '').replace('</span></button>', `</span>${count}</button>`))}
     ${books}
-    ${ctx.subs.length ? btn('all', 'All books', ICON.stack) : ''}
-    ${scope === 'sources' || sourceGroups(ctx).length ? btn('sources', 'Sources', ICON.sources) : ''}
-    <button type="button" class="wb-scope wb-scope--add${library ? ' is-active' : ''}" data-act="wb-library" aria-pressed="${library}">${ICON.plus}<span>Add a word book</span></button>
+    ${ctx.subs.length ? btn('all', t('notebook.allBooks'), ICON.stack) : ''}
+    ${scope === 'sources' || sourceGroups(ctx).length ? btn('sources', t('notebook.books.sources'), ICON.sources) : ''}
+    <button type="button" class="wb-scope wb-scope--add${library ? ' is-active' : ''}" data-act="wb-library" aria-pressed="${library}">${ICON.plus}<span>${tHtml('notebook.books.addBook')}</span></button>
   </div>`;
 }
 
@@ -137,7 +152,7 @@ export function wordbookHeaderHtml(scope: WordsScope, ctx: WordsContext, now = D
     <div class="wb-head__text">
       <p class="wb-level">${esc(meta.level)}</p>
       <h2 class="wb-title">${esc(meta.title)}</h2>
-      <p class="wb-counts"><span><b>${fmt(p.known)}</b> known</span><span><b>${fmt(p.learning)}</b> learning</span><span><b>${fmt(p.total - p.known - p.learning)}</b> new</span></p>
+      ${countsHtml(p)}
     </div>
   </section>`;
 }
@@ -149,14 +164,14 @@ function madeBookHeaderHtml(bookId: string, title: string, sourceKey: string | u
   return `<section class="wb-head wb-head--made">
     ${progressRingSvg(p.known, p.learning, p.total, 64)}
     <div class="wb-head__text">
-      <p class="wb-level">${from ? `From ${esc(from)}` : 'My word book'}</p>
-      <input class="wb-title wb-title-input" name="book-title" data-book="${id}" value="${esc(title)}" maxlength="80" aria-label="Book name" spellcheck="false" />
-      <p class="wb-counts"><span><b>${fmt(p.known)}</b> known</span><span><b>${fmt(p.learning)}</b> learning</span><span><b>${fmt(p.total - p.known - p.learning)}</b> new</span></p>
+      <p class="wb-level">${from ? tHtml('notebook.books.from', { source: from }) : tHtml('notebook.books.myBook')}</p>
+      <input class="wb-title wb-title-input" name="book-title" data-book="${id}" value="${esc(title)}" maxlength="80" aria-label="${tHtml('notebook.books.nameLabel')}" spellcheck="false" />
+      ${countsHtml(p)}
     </div>
     <div class="wb-head__side">
       <form class="wb-add" data-act-form="ub-add" data-book="${id}">
-        <input name="word" type="text" placeholder="Add a word" aria-label="Add a word" autocomplete="off" autocapitalize="off" spellcheck="false" />
-        <button type="submit" class="nbv-secondary">Add</button>
+        <input name="word" type="text" placeholder="${tHtml('notebook.books.addWord')}" aria-label="${tHtml('notebook.books.addWord')}" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <button type="submit" class="nbv-secondary">${tHtml('notebook.books.addWordButton')}</button>
       </form>
     </div>
   </section>`;
@@ -183,8 +198,8 @@ function briefHtml(e: WordsEntry, loading: boolean): string {
   const body = senses.length
     ? `<ol class="wb-brief__senses">${senses.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>`
     : loading
-      ? '<span class="wb-brief__wait" aria-label="Loading"><i></i><i></i></span>'
-      : '<p class="wb-brief__none">No definition found.</p>';
+      ? `<span class="wb-brief__wait" aria-label="${tHtml('common.loading')}"><i></i><i></i></span>`
+      : `<p class="wb-brief__none">${tHtml('notebook.books.noDefinition')}</p>`;
   return `<div class="wb-brief">${ipa || pos ? `<p class="wb-brief__head">${ipa ? `<span class="wb-brief__ipa">${esc(ipa)}</span>` : ''}${pos ? `<span class="wb-brief__pos">${esc(pos)}</span>` : ''}</p>` : ''}${body}</div>`;
 }
 
@@ -218,8 +233,8 @@ export function bookSorts(scope: WordsScope): BookSort[] {
 }
 
 function sortBarHtml(sort: BookSort, sorts: BookSort[]): string {
-  return `<div class="wb-sort" role="group" aria-label="Sort">${sorts
-    .map((k) => `<button type="button" class="nbv-chip${k === sort ? ' is-active' : ''}" data-act="wb-sort" data-sort="${k}" aria-pressed="${k === sort}">${SORT_LABEL[k]}</button>`)
+  return `<div class="wb-sort" role="group" aria-label="${tHtml('notebook.books.sort.label')}">${sorts
+    .map((k) => `<button type="button" class="nbv-chip${k === sort ? ' is-active' : ''}" data-act="wb-sort" data-sort="${k}" aria-pressed="${k === sort}">${tHtml(SORT_KEY[k])}</button>`)
     .join('')}</div>`;
 }
 
@@ -239,7 +254,7 @@ export function wordbookListHtml(
     bookPick?: boolean;
   },
 ): string {
-  if (!entries.length) return `<p class="nbv-empty">${opts.filtered ? 'No matching words.' : 'No words.'}</p>`;
+  if (!entries.length) return `<p class="nbv-empty">${opts.filtered ? tHtml('notebook.books.noMatches') : tHtml('notebook.books.noWords')}</p>`;
   const sorts = bookSorts(opts.scope);
   const sort = opts.sort && sorts.includes(opts.sort) ? opts.sort : 'book';
   const shown = sortBookEntries(entries, sort).slice(0, opts.limit);
@@ -249,29 +264,35 @@ export function wordbookListHtml(
     .map(({ e, n }) => {
       const st = wordStatus(e);
       const q = esc(e.lemma);
+      const word = e.lemma;
       const save = e.saved
-        ? `<span class="wb-act is-on" title="In My words" aria-label="In My words">${ICON.heartOn}</span>`
-        : `<button type="button" class="wb-act" data-act="wb-save" data-q="${q}" title="Add to My words" aria-label="Add ${q} to My words">${ICON.heart}</button>`;
+        ? `<span class="wb-act is-on" title="${tHtml('notebook.books.inMyWords')}" aria-label="${tHtml('notebook.books.inMyWords')}">${ICON.heartOn}</span>`
+        : `<button type="button" class="wb-act" data-act="wb-save" data-q="${q}" title="${tHtml('notebook.books.addToMyWords')}" aria-label="${tHtml('notebook.books.addWordToMyWords', { word })}">${ICON.heart}</button>`;
       const known = e.saved
         ? '<span class="wb-act" aria-hidden="true"></span>'
-        : `<button type="button" class="wb-act${e.known ? ' is-on' : ''}" data-act="wb-known" data-q="${q}" data-known="${e.known ? '0' : '1'}" aria-pressed="${!!e.known}" title="${e.known ? 'Marked known' : 'Mark known'}" aria-label="${e.known ? 'Unmark' : 'Mark'} ${q} known">${ICON.check}</button>`;
+        : `<button type="button" class="wb-act${e.known ? ' is-on' : ''}" data-act="wb-known" data-q="${q}" data-known="${e.known ? '0' : '1'}" aria-pressed="${!!e.known}" title="${
+            e.known ? tHtml('notebook.books.markedKnown') : tHtml('notebook.books.markKnown')
+          }" aria-label="${e.known ? tHtml('notebook.books.unmarkWordKnown', { word }) : tHtml('notebook.books.markWordKnown', { word })}">${ICON.check}</button>`;
       const key = bookWordKey(e.lemma);
       const open = !!opts.expanded?.has(key);
       return `<li class="wb-row is-${st}${open ? ' is-open' : ''}">
         <span class="wb-row__n">${n}</span>
         <button type="button" class="wb-row__word" data-act="wb-expand" data-q="${q}" aria-expanded="${open}">${q}</button>
         ${badgesHtml(e.books, except)}
-        <span class="wb-state wb-state--${st}">${STATUS_LABEL[st]}</span>
-        <span class="wb-row__acts">${copyButtonHtml(e.lemma, 'wb-act wb-copy')}<button type="button" class="wb-act" data-act="lookup" data-q="${q}" title="Look up" aria-label="Look up ${q}">${ICON.lookup}</button>${known}${opts.bookPick ? addToBookButtonHtml(e.lemma, 'wb-act') : ''}${save}${
+        <span class="wb-state wb-state--${st}">${tHtml(STATUS_KEY[st])}</span>
+        <span class="wb-row__acts">${copyButtonHtml(e.lemma, 'wb-act wb-copy')}<button type="button" class="wb-act" data-act="lookup" data-q="${q}" title="${tHtml('common.lookup')}" aria-label="${tHtml('notebook.lookUpWord', { word })}">${ICON.lookup}</button>${known}${opts.bookPick ? addToBookButtonHtml(e.lemma, 'wb-act') : ''}${save}${
           made
-            ? `<button type="button" class="wb-act wb-act--drop" data-act="ub-drop" data-book="${esc(String(opts.scope))}" data-q="${q}" title="Remove from this book" aria-label="Remove ${q} from this book">${ICON.close}</button>`
+            ? `<button type="button" class="wb-act wb-act--drop" data-act="ub-drop" data-book="${esc(String(opts.scope))}" data-q="${q}" title="${tHtml('notebook.books.removeFromBook')}" aria-label="${tHtml('notebook.books.removeWordFromBook', { word })}">${ICON.close}</button>`
             : ''
         }</span>
         ${open ? briefHtml(e, !!opts.loading?.has(key)) : ''}
       </li>`;
     })
     .join('');
-  const more = entries.length > shown.length ? `<button type="button" class="nbv-secondary wb-more" data-act="wb-more">Show ${fmt(Math.min(BOOK_LIST_PAGE, entries.length - shown.length))} more</button>` : '';
+  const more =
+    entries.length > shown.length
+      ? `<button type="button" class="nbv-secondary wb-more" data-act="wb-more">${tHtml('notebook.books.showMore', { count: Math.min(BOOK_LIST_PAGE, entries.length - shown.length) })}</button>`
+      : '';
   return `${sortBarHtml(sort, sorts)}<ol class="wb-list">${rows}</ol>${more}`;
 }
 
@@ -340,23 +361,23 @@ function sourceRowHtml(g: SourceGroup, ctx: WordsContext, now: number): string {
   const words = g.entries.map((e) => e.lemma);
   const shown = words.slice(-SOURCE_WORDS_SHOWN).reverse();
   const chips = shown.map((w) => `<button type="button" class="wb-src__word" data-act="lookup" data-q="${esc(w)}">${esc(w)}</button>`).join('');
-  const more = words.length > shown.length ? `<span class="wb-src__more">and ${fmt(words.length - shown.length)} more</span>` : '';
+  const more = words.length > shown.length ? `<span class="wb-src__more">${tHtml('notebook.books.andMore', { count: words.length - shown.length })}</span>` : '';
   const key = esc(g.key);
   let action: string;
   if (g.bookId) {
     const inBook = new Set((ctx.books.get(g.bookId) || []).map(bookWordKey));
     const fresh = words.filter((w) => !inBook.has(bookWordKey(w))).length;
     const p = bookProgress(g.bookId, ctx, now);
-    action = `<span class="wb-src__book">${progressRingSvg(p.known, p.learning, p.total, 18)}<button type="button" class="nbv-secondary" data-act="wb-scope" data-scope="${esc(g.bookId)}">Open word book</button></span>${
-      fresh ? `<button type="button" class="nbv-link" data-act="src-add" data-source="${key}" data-book="${esc(g.bookId)}">Add ${fmt(fresh)} new</button>` : ''
+    action = `<span class="wb-src__book">${progressRingSvg(p.known, p.learning, p.total, 18)}<button type="button" class="nbv-secondary" data-act="wb-scope" data-scope="${esc(g.bookId)}">${tHtml('notebook.books.openBook')}</button></span>${
+      fresh ? `<button type="button" class="nbv-link" data-act="src-add" data-source="${key}" data-book="${esc(g.bookId)}">${tHtml('notebook.books.addNew', { count: fresh })}</button>` : ''
     }`;
-  } else action = `<button type="button" class="nbv-primary" data-act="src-book" data-source="${key}">Make a word book</button>`;
-  const last = g.latest ? new Date(g.latest).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
+  } else action = `<button type="button" class="nbv-primary" data-act="src-book" data-source="${key}">${tHtml('notebook.books.makeBook')}</button>`;
+  const last = g.latest ? formatDate(g.latest, { day: 'numeric', month: 'short' }) : '';
   return `<li class="wb-src wb-src--${g.kind}">
     ${sourceIconHtml(g)}
     <div class="wb-src__main">
       <h3 class="wb-src__name" title="${esc(g.label)}">${esc(g.label)}</h3>
-      <p class="wb-src__meta"><span>${fmt(words.length)} ${words.length === 1 ? 'word' : 'words'}</span>${last ? `<span>${esc(last)}</span>` : ''}</p>
+      <p class="wb-src__meta"><span>${tHtml('notebook.words', { count: words.length })}</span>${last ? `<span>${esc(last)}</span>` : ''}</p>
       <div class="wb-src__words">${chips}${more}</div>
     </div>
     <div class="wb-src__acts">${action}</div>
@@ -366,7 +387,7 @@ function sourceRowHtml(g: SourceGroup, ctx: WordsContext, now: number): string {
 /** My words grouped by the document or site they were saved from. */
 export function sourcesHtml(ctx: WordsContext, now = Date.now()): string {
   const groups = sourceGroups(ctx);
-  if (!groups.length) return '<p class="nbv-empty">Words saved from a PDF, a web page or an app are grouped here.</p>';
+  if (!groups.length) return `<p class="nbv-empty">${tHtml('notebook.books.sourcesEmpty')}</p>`;
   return `<section class="wb-sources"><ol class="wb-src-list">${groups.map((g) => sourceRowHtml(g, ctx, now)).join('')}</ol></section>`;
 }
 
@@ -384,21 +405,21 @@ export function wordbookLibraryHtml(ctx: WordsContext, now = Date.now()): string
       <div class="wb-path__card">
         <div class="wb-path__main">
           <h3>${esc(meta.title)}</h3>
-          <div class="wb-path__meta"><span>${fmt(meta.count)} words</span><details class="wb-path__src">
-            <summary>Source</summary>
+          <div class="wb-path__meta"><span>${tHtml('notebook.words', { count: meta.count })}</span><details class="wb-path__src">
+            <summary>${tHtml('notebook.books.source')}</summary>
             <p><a href="${esc(meta.sourceUrl)}" target="_blank" rel="noopener noreferrer">${esc(meta.source)}</a><a href="${esc(meta.licenceUrl)}" target="_blank" rel="noopener noreferrer">${esc(meta.licence)}</a></p>
           </details></div>
           ${p ? `<div class="wb-path__progress">${barHtml(p)}<span>${fmt(p.known)} / ${fmt(p.total)}</span></div>` : ''}
         </div>
         <div class="wb-path__acts">${
           on
-            ? `<button type="button" class="nbv-secondary" data-act="wb-scope" data-scope="${esc(meta.id)}" aria-label="Open ${esc(meta.title)}">Open</button><button type="button" class="nbv-link" data-act="wb-unsub" data-book="${esc(meta.id)}" aria-label="Remove ${esc(meta.title)}">Remove</button>`
-            : `<button type="button" class="nbv-primary" data-act="wb-sub" data-book="${esc(meta.id)}" aria-label="Add ${esc(meta.title)}">Add</button>`
+            ? `<button type="button" class="nbv-secondary" data-act="wb-scope" data-scope="${esc(meta.id)}" aria-label="${tHtml('notebook.books.openNamed', { book: meta.title })}">${tHtml('common.open')}</button><button type="button" class="nbv-link" data-act="wb-unsub" data-book="${esc(meta.id)}" aria-label="${tHtml('notebook.books.removeNamed', { book: meta.title })}">${tHtml('common.remove')}</button>`
+            : `<button type="button" class="nbv-primary" data-act="wb-sub" data-book="${esc(meta.id)}" aria-label="${tHtml('notebook.books.addNamed', { book: meta.title })}">${tHtml('notebook.books.add')}</button>`
         }</div>
       </div>
     </li>`;
   }).join('');
-  return `<section class="wb-library"><div class="wb-library__bar"><button type="button" class="nbv-secondary" data-act="wb-import">Import…</button></div><ol class="wb-path">${items}</ol></section>`;
+  return `<section class="wb-library"><div class="wb-library__bar"><button type="button" class="nbv-secondary" data-act="wb-import">${tHtml('notebook.books.import')}</button></div><ol class="wb-path">${items}</ol></section>`;
 }
 
 /**
@@ -411,10 +432,10 @@ export function bookMenuItems(scope: WordsScope): MenuItem[] {
   if (scope !== 'mine' && !meta) return [];
   const id = String(scope);
   const items: MenuItem[] = [
-    { label: 'Export…', act: 'wb-export', data: { scope: id, fmt: 'book' } },
-    { label: 'Export for Anki…', act: 'wb-export', data: { scope: id, fmt: 'anki' } },
+    { label: t('notebook.books.export'), act: 'wb-export', data: { scope: id, fmt: 'book' } },
+    { label: t('notebook.books.exportAnki'), act: 'wb-export', data: { scope: id, fmt: 'anki' } },
   ];
-  if (meta) items.push({ label: meta.user ? 'Delete book' : 'Remove', act: 'wb-unsub', data: { book: id }, danger: true });
+  if (meta) items.push({ label: meta.user ? t('notebook.books.deleteBook') : t('common.remove'), act: 'wb-unsub', data: { book: id }, danger: true });
   return items;
 }
 
@@ -426,8 +447,8 @@ export function bookRemovalPrompt(bookId: string): { title: string; detail: stri
   const meta = wordbookMeta(bookId);
   const name = meta?.title || bookId;
   return meta?.user
-    ? { title: `Delete “${name}”?`, detail: 'Your progress on its words is kept.', confirm: 'Delete' }
-    : { title: `Remove “${name}”?`, detail: 'Your progress on its words is kept.', confirm: 'Remove' };
+    ? { title: t('notebook.books.deletePrompt', { book: name }), detail: t('notebook.books.progressKept'), confirm: t('common.delete') }
+    : { title: t('notebook.books.removePrompt', { book: name }), detail: t('notebook.books.progressKept'), confirm: t('common.remove') };
 }
 
 /**

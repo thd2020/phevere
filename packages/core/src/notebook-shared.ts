@@ -6,6 +6,7 @@
  */
 import type { Morph, MorphKind } from './morphology';
 import type { VocabViewEntry } from './vocab-view';
+import { escapeHtml, formatNumber } from './i18n/runtime';
 
 export type NotebookView = 'list' | 'families' | 'map' | 'cards';
 export type FamilyGrouping = 'root' | 'deep' | 'prefix' | 'suffix' | 'origin' | 'tree' | 'char';
@@ -61,6 +62,16 @@ export function esc(s: unknown): string {
 export function clean(s: unknown): string {
   const t = String(s ?? '').trim();
   return t === 'null' || t === 'None' || t === 'undefined' ? '' : t;
+}
+
+/**
+ * A count message as HTML with its number set in bold: `html` is tHtml() of a plural message and
+ * `count` its number, which appears in the text as the interface language formats it.
+ */
+export function boldCount(html: string, count: number): string {
+  const n = escapeHtml(formatNumber(count));
+  const at = html.indexOf(n);
+  return at < 0 ? html : `${html.slice(0, at)}<b>${n}</b>${html.slice(at + n.length)}`;
 }
 
 export function dayStart(t: number): number {

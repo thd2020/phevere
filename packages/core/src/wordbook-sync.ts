@@ -21,6 +21,7 @@ import { getVocabDb } from './runtime';
 import type { VocabSyncAccount } from './vocab-sync';
 import { ensureVocabReady } from './vocab-store';
 import { rowToSub, rowToUserBook, writeSub, writeUserBook, type WordbookSub } from './wordbook-store';
+import { t } from './i18n/runtime';
 
 export const WORDBOOK_SYNC_NAMESPACE = 'phevere/wordbooks';
 const PAGE = 500;
@@ -189,7 +190,7 @@ async function assembleBook(bookId: string): Promise<boolean> {
   }
   await writeUserBook({
     bookId,
-    title: String(head.name || '').trim() || 'My word book',
+    title: String(head.name || '').trim() || t('notebook.books.myBook'),
     words,
     source: typeof head.source === 'string' ? head.source : undefined,
     deleted: head.deleted === true,
