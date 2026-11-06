@@ -75,6 +75,8 @@ export function openOcrResultWindow(opts: {
   page: OcrPage;
   entry: string;
   preload: string;
+  /** The interface language switches for the preload (ui-language-store.ts). */
+  additionalArguments?: string[];
   near?: { x: number; y: number };
   icon?: Electron.NativeImage | string;
 }): BrowserWindow {
@@ -105,6 +107,7 @@ export function openOcrResultWindow(opts: {
     ...(opts.icon ? { icon: opts.icon } : {}),
     webPreferences: {
       preload: opts.preload,
+      additionalArguments: opts.additionalArguments || [],
       nodeIntegration: false,
       contextIsolation: true,
     },

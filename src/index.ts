@@ -130,7 +130,7 @@ import {
   startUpdater,
 } from './services/updater';
 import type { UpdateMode } from './services/update-prefs-store';
-import { loadUiLanguagePref, resolveDesktopLocale, saveUiLanguagePref } from './services/ui-language-store';
+import { setUiLanguagePref, uiLanguageArguments, uiLanguageState } from './services/ui-language-store';
 import { setUiLocale, t } from '@phevere/core/i18n/runtime';
 import { asUiLanguagePref } from '@phevere/core/i18n/locales';
 import * as vocabStore from './services/vocab-store';
@@ -733,6 +733,7 @@ function quickPanelWindow(): BrowserWindow {
     focusable: true,
     webPreferences: {
       preload: QUICK_PANEL_PRELOAD_WEBPACK_ENTRY,
+      additionalArguments: uiLanguageArguments(),
       nodeIntegration: false,
       contextIsolation: true,
     },
@@ -1559,6 +1560,7 @@ const createMainWindow = (): void => {
     ...(windowIcon ? { icon: windowIcon } : {}),
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      additionalArguments: uiLanguageArguments(),
       nodeIntegration: false,
       contextIsolation: true,
       // Allow text selection and copying in the main window
@@ -1857,6 +1859,7 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
                 movable: true, // Make window draggable
                 webPreferences: {
                   preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+                  additionalArguments: uiLanguageArguments(),
                   nodeIntegration: false,
                   contextIsolation: true,
                   webviewTag: true,
@@ -2013,6 +2016,7 @@ const createSettingsWindow = (section?: string): void => {
     minHeight: 480,
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      additionalArguments: uiLanguageArguments(),
       nodeIntegration: false,
       contextIsolation: true,
     },
@@ -2183,6 +2187,7 @@ async function startOcrRegionCapture(): Promise<void> {
     show: false,
     webPreferences: {
       preload: OCR_OVERLAY_PRELOAD_WEBPACK_ENTRY,
+      additionalArguments: uiLanguageArguments(),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -2331,6 +2336,7 @@ function showOcrResult(png: Buffer, ocr: OcrPageResult, near: { x: number; y: nu
       page: ocr.page,
       entry: OCR_RESULT_WEBPACK_ENTRY,
       preload: OCR_RESULT_PRELOAD_WEBPACK_ENTRY,
+      additionalArguments: uiLanguageArguments(),
       near,
       ...(icon ? { icon } : {}),
     });
@@ -3360,19 +3366,14 @@ function startUpdates(): void {
   });
 }
 
-// Interface language. Preloads read it synchronously so a window draws in its language from the
-// first paint; a change rebuilds the native menus and tells every window.
-ipcMain.on('ui-language-sync', (event) => {
-  const pref = loadUiLanguagePref();
-  event.returnValue = { pref, locale: resolveDesktopLocale(pref) };
-});
+// Interface language. Each window gets it on its command line (uiLanguageArguments), so it draws
+// in its language from the first paint; a change rebuilds the native menus and tells every window.
 ipcMain.handle('ui-language-set', async (_event, raw: unknown) => {
-  const pref = asUiLanguagePref(raw);
-  saveUiLanguagePref(pref);
-  const locale = await setUiLocale(resolveDesktopLocale(pref));
+  const next = setUiLanguagePref(asUiLanguagePref(raw));
+  await setUiLocale(next.locale);
   refreshLocalizedChrome();
-  broadcastToWindows('ui-language-changed', { pref, locale });
-  return { pref, locale };
+  broadcastToWindows('ui-language-changed', next);
+  return next;
 });
 
 /** Menus and the tray, which Electron draws natively, in the interface language. */
@@ -4046,7 +4047,7 @@ app.on('ready', () => {
     return;
   }
   if (!gotSingleInstanceLock) return;
-  void setUiLocale(resolveDesktopLocale()).then(refreshLocalizedChrome);
+  void setUiLocale(uiLanguageState().locale).then(refreshLocalizedChrome);
   // Settings → API keys saved in an earlier session (safeStorage needs the app ready).
   for (const [field, value] of loadApiKeys()) dictionaryService.setApiCredential(field, value);
   for (const [name, on] of Object.entries(loadSourcePrefs())) dictionaryService.setSourceEnabled(name, on);
@@ -4227,6 +4228,7 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
                 alwaysOnTop: true,
                 webPreferences: {
                   preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+                  additionalArguments: uiLanguageArguments(),
                   nodeIntegration: false,
                   contextIsolation: true,
                 },
@@ -4438,6 +4440,7 @@ function createDictionaryWindow(term: string, lang?: string): void {
       nodeIntegration: false,
       contextIsolation: true,
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      additionalArguments: uiLanguageArguments(),
       sandbox: false,
       backgroundThrottling: false,
       webviewTag: true,
