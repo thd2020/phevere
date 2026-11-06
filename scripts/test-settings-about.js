@@ -68,7 +68,10 @@ const { ABOUT_STRINGS_EN } = load('settings-about-strings');
   assert.ok(ids('windows').includes('ppocr'));
   assert.ok(!ids('android').includes('ppocr'), 'no desktop text-recognition models on the phone');
   assert.ok(ids('android').includes('espeak'));
-  assert.ok(!ids('ios').includes('espeak'));
+  // The Neural voices' engine reads text through eSpeak NG, so iOS bundles it too.
+  assert.ok(ids('ios').includes('espeak'));
+  assert.ok(!ids('web').includes('espeak'));
+  assert.match(about.aboutSettingsHtml({ version: '4.2.0', platform: 'ios' }), /eSpeak NG<\/a>\s*<span class="sv-row__sub">Pronunciation for the Neural voices</)
   assert.ok(!ids('web').includes('kokoro'), 'no voice downloads in the browser build');
   for (const c of about.ABOUT_CREDITS) {
     assert.ok(ABOUT_STRINGS_EN.provides[c.id], `${c.id} says what it provides`);

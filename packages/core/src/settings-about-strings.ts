@@ -25,7 +25,7 @@ export interface AboutStrings {
   servicesSub: string;
   perFile: string;
   perPack: string;
-  /** What each credited work provides, keyed by its id in ABOUT_CREDITS. */
+  /** What each credited work provides, keyed by its id in ABOUT_CREDITS; `id.platform` overrides it on one platform. */
   provides: Record<string, string>;
   /** The issue body's first line; the version text follows it. */
   issueIntro: string;
@@ -69,7 +69,8 @@ export const ABOUT_STRINGS_EN: AboutStrings = {
     ngsl: 'Starter, General, Academic, TOEIC and Business English word books',
     ecdict: '中考, 高考, CET-4, CET-6 and 考研 word books',
     cmudict: 'American pronunciation',
-    espeak: 'Mechanical voice',
+    espeak: 'Mechanical voice, and pronunciation for the Neural voices',
+    'espeak.ios': 'Pronunciation for the Neural voices',
     kokoro: 'Neural voices',
     sherpa: 'Speech engine',
     ppocr: 'Text recognition in images',

@@ -64,7 +64,7 @@ export const ABOUT_CREDITS: AboutCredit[] = [
   { id: 'ngsl', name: 'NGSL (Browne, Culligan and Phillips)', url: 'https://www.newgeneralservicelist.com/', licence: CC_BY_SA_4, group: 'data' },
   { id: 'ecdict', name: 'ECDICT', url: 'https://github.com/skywind3000/ECDICT', licence: { name: 'MIT', url: 'https://github.com/skywind3000/ECDICT/blob/master/LICENSE' }, group: 'data' },
   { id: 'cmudict', name: 'CMU Pronouncing Dictionary', url: 'https://github.com/cmusphinx/cmudict', licence: { name: 'BSD 2-Clause', url: 'https://github.com/cmusphinx/cmudict/blob/master/LICENSE' }, group: 'data' },
-  { id: 'espeak', name: 'eSpeak NG', url: 'https://github.com/espeak-ng/espeak-ng', licence: { name: 'GPL 3.0 or later', url: 'https://www.gnu.org/licenses/gpl-3.0.html' }, on: [...DESKTOP, 'android'], group: 'software' },
+  { id: 'espeak', name: 'eSpeak NG', url: 'https://github.com/espeak-ng/espeak-ng', licence: { name: 'GPL 3.0 or later', url: 'https://www.gnu.org/licenses/gpl-3.0.html' }, on: NATIVE, group: 'software' },
   { id: 'kokoro', name: 'Kokoro', url: 'https://huggingface.co/hexgrad/Kokoro-82M', licence: { name: 'Apache 2.0', url: 'https://www.apache.org/licenses/LICENSE-2.0' }, on: NATIVE, group: 'software' },
   { id: 'sherpa', name: 'sherpa-onnx', url: 'https://github.com/k2-fsa/sherpa-onnx', licence: { name: 'Apache 2.0', url: 'https://www.apache.org/licenses/LICENSE-2.0' }, on: NATIVE, group: 'software' },
   { id: 'ppocr', name: 'PaddleOCR and RapidOCR', url: 'https://github.com/RapidAI/RapidOCR', licence: { name: 'Apache 2.0', url: 'https://www.apache.org/licenses/LICENSE-2.0' }, on: DESKTOP, group: 'software' },
@@ -147,7 +147,7 @@ function linkRow(label: string, url: string, value?: string): string {
   </a>`;
 }
 
-function creditRow(c: AboutCredit, t: AboutStrings): string {
+function creditRow(c: AboutCredit, t: AboutStrings, platform: AboutPlatform): string {
   const licence = c.licence
     ? c.licence.url
       ? `<a class="sv-link" ${linkAttrs(c.licence.url)}>${esc(c.licence.name)}</a>`
@@ -158,7 +158,7 @@ function creditRow(c: AboutCredit, t: AboutStrings): string {
   return `<div class="sv-row sv-about__credit">
     <span class="sv-row__text">
       <a class="sv-about__name" ${linkAttrs(c.url)}>${esc(c.name)}</a>
-      <span class="sv-row__sub">${esc(t.provides[c.id] || '')}</span>
+      <span class="sv-row__sub">${esc(t.provides[`${c.id}.${platform}`] || t.provides[c.id] || '')}</span>
       <span class="sv-about__end">${licence}</span>
     </span>
   </div>`;
@@ -177,8 +177,8 @@ function servicesRow(t: AboutStrings): string {
 
 export function aboutSettingsHtml(info: AboutInfo, t: AboutStrings = ABOUT_STRINGS_EN): string {
   const credits = aboutCredits(info.platform);
-  const data = credits.filter((c) => c.group === 'data').map((c) => creditRow(c, t)).join('') + servicesRow(t);
-  const software = credits.filter((c) => c.group === 'software').map((c) => creditRow(c, t)).join('');
+  const data = credits.filter((c) => c.group === 'data').map((c) => creditRow(c, t, info.platform)).join('') + servicesRow(t);
+  const software = credits.filter((c) => c.group === 'software').map((c) => creditRow(c, t, info.platform)).join('');
   const copy = aboutVersionText(info);
   return `<div class="sv sv-page sv-about">
     <div class="sv-about__hero">
