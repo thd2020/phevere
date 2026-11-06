@@ -2,7 +2,7 @@ export { DictionaryError, BaseService, withTimeout, withBudget, withTimeoutFallb
 export type { CoreRequestInit } from './base';
 export type { HttpClient, HttpRequestInit, HttpTextResponse, HttpBytesResponse } from './http';
 export { bytesToBase64 } from './http';
-export { budgetMs, rtoMs, inFlight, trackHttp, MAX_PER_HOST } from './net';
+export { budgetMs, rtoMs, inFlight, trackHttp, MAX_PER_HOST, onNetChange, noteNetworkChange, noteOffline, connectionSilent, hostSilent } from './net';
 export { configureCore, getHttp, getSha256Hex, getLookupOffline, getVocabDb, getNewId, getLookupCache, isCoreConfigured } from './runtime';
 export type { CoreRuntime, LookupOffline, OfflineHit, VocabDb, Sha256Hex, LookupCacheStore } from './runtime';
 export { wrapConsole } from './log';
@@ -273,6 +273,8 @@ export {
   overrideReview,
   advanceReview,
   isNewWord,
+  isLearnable,
+  MAX_PHRASE_WORDS,
   memoryLevel,
   buildQuestion,
   sameLemma,
@@ -349,6 +351,7 @@ export {
   isBookOnlyId,
   wordStatus,
   scopeEntries,
+  learnScopeEntries,
   bookProgress,
   scopeReviewQueue,
   startScopeReview,

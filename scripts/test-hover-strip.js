@@ -166,7 +166,7 @@ const context = vm.createContext({
   physicalToDip: placement.physicalToDip,
   setWindowBounds: placement.setWindowBounds,
   isAcceleratorPhysicallyHeld: () => chordHeld,
-  rememberLookupSource: () => {},
+  rememberLookupSource: (ev) => remembered.push(ev.text),
   withWin11Chrome: (options) => options,
   withPopupDevFlag: (url) => url,
   MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: undefined,
@@ -195,6 +195,7 @@ vm.runInContext(transpile([
 context.wireContextCaptureHubOnce();
 hover.start();
 
+const remembered = [];
 const flush = async () => { for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r)); };
 const center = (w) => ({ x: w.x + Math.round(w.width / 2), y: w.y + Math.round(w.height / 2) });
 const strips = () => context.popupWindows.filter((w) => !w.isDestroyed());
@@ -231,6 +232,8 @@ function assertStripAt(win, word, message) {
   const strip = strips()[0];
   strip.finishLoad();
   assertStripAt(strip, alpha, 'trigger over alpha opens at alpha');
+  // A save from this strip names the window the word was met in (Sources).
+  assert.deepEqual(remembered, ['alpha'], 'the trigger notes where the word came from');
 
   // Move to beta on the 150% monitor and press the trigger before any dwell finished.
   // Before the fix this reopened alpha at alpha: the strip looked stuck.

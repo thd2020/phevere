@@ -257,8 +257,8 @@ async function cardScrolledAway() {
 
 /**
  * Three requests that hang at the start of a session hold the host's three slots only until
- * their backups go out: each backup takes over its request's slot, so a fourth request is not
- * held up until the hung ones time out.
+ * their backups go out: on a connection that works (another host answers meanwhile) each backup
+ * takes over its request's slot, so a fourth request is not held up until the hung ones time out.
  */
 async function hungRequestsLetGo() {
   const net = loadModule('net.ts', {});
@@ -278,7 +278,8 @@ async function hungRequestsLetGo() {
   const host = 'https://commons.example/w/api.php?';
   const t0 = Date.now();
   const slow = [1, 2, 3].map((i) => http.requestJson(`${host}a=${i}`, { slot: 'first', timeoutMs: 8000 }));
-  await tick(20);
+  // The lookup's own request to another host answers, so the connection works.
+  await http.requestJson('https://dict.example/entry', { timeoutMs: 8000 });
   const fourth = http.requestJson(`${host}b=1`, { slot: 'first', timeoutMs: 8000 });
   await fourth;
   const took = Date.now() - t0;
@@ -289,14 +290,44 @@ async function hungRequestsLetGo() {
   assert.equal(net.inFlight('commons.example'), 0, 'no slot is left taken once the hung requests end');
 }
 
+/**
+ * On a connection where nothing answers, a hung request is not presumed lost: its backup waits
+ * for a free slot, so the hung requests and their backups never make more than three open to
+ * one host, and nothing is left counted once they have all timed out.
+ */
+async function deadConnectionKeepsThree() {
+  const net = loadModule('net.ts', {});
+  let open = 0;
+  let most = 0;
+  const inner = {
+    requestJson: async (url, o) => {
+      open += 1;
+      most = Math.max(most, open);
+      await new Promise((r) => setTimeout(r, (o && o.timeoutMs) || 8000));
+      open -= 1;
+      throw Object.assign(new Error('Request failed: timed out'), { code: 'TIMEOUT' });
+    },
+    requestText: async () => ({ ok: false, status: 404, text: '' }),
+    requestBytes: async () => ({ ok: false, status: 404, bytes: new Uint8Array(), contentType: '' }),
+  };
+  const http = net.trackHttp(inner);
+  const host = 'https://commons.example/w/api.php?';
+  const all = [1, 2, 3, 4].map((i) => http.requestJson(`${host}d=${i}`, { slot: 'first', timeoutMs: 5000 }).catch(() => null));
+  await Promise.all(all);
+  assert.ok(most <= 3, `at most three open at once on a dead connection (${most})`);
+  await tick(5200);
+  assert.equal(net.inFlight('commons.example'), 0, 'no slot is left taken');
+}
+
 (async () => {
   await hungRequestsLetGo();
+  await deadConnectionKeepsThree();
   await queuedRequestsDropped();
   await cardScrolledAway();
   await pictureRetries();
   await blobsBounded();
   await failedPoolAskedAgain();
-  console.log('Picture loading passed: hung requests hand their slots to their backups, failed pictures are asked again and come through the HTTP client last, queued requests for cards scrolled away are dropped, the next card asks again, blob URLs are bounded, and a card asking again reaches the network.');
+  console.log('Picture loading passed: hung requests hand their slots to their backups while the connection works and keep three open at most when it is dead, failed pictures are asked again and come through the HTTP client last, queued requests for cards scrolled away are dropped, the next card asks again, blob URLs are bounded, and a card asking again reaches the network.');
 })().catch((e) => {
   console.error(e);
   process.exit(1);
