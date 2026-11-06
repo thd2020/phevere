@@ -248,6 +248,12 @@ const pool = [
     { id: 'a4', lemma: 'advice', definition: 'an opinion about what to do', reps: 2, state: 2, stability: 3, reviewDue: now - 800, createdAt: now - 9 * DAY },
   ];
   assert.deepEqual(core.reviewQueue(alike, 10, now), ['a1', 'a2', 'a3', 'a4']);
+  // The same spelling saved from two languages' entries is two words to learn.
+  const twoGives = [
+    { id: 'g1', lemma: 'give', definition: 'to transfer', sourceLang: 'en', reps: 0, createdAt: now - 2 * DAY },
+    { id: 'g2', lemma: 'give', definition: 'to yield', sourceLang: 'da', reps: 0, createdAt: now - DAY },
+  ];
+  assert.deepEqual(core.reviewQueue(twoGives, 10, now), ['g1', 'g2']);
   // Book words are never folded together, and a pass over a whole book is fast.
   const book = require(path.join(root, 'packages', 'core', 'wordbooks', 'kaoyan.json')).words.map((w) => ({ id: `wb:${w}`, lemma: w, reps: 0 }));
   const t0 = Date.now();

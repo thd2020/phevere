@@ -15,7 +15,7 @@ import {
 } from './text-normalize';
 import { abbreviatePos } from './definition-merge';
 import { isGrammaticalFormOfGloss } from './lookup-policy';
-import { extractLanguageSection, scanTemplates, templateToLink, type EtymologyLink } from './etymology';
+import { extractLanguageSection, languageName, scanTemplates, templateToLink, type EtymologyLink } from './etymology';
 import { derivationalStems } from './pronunciation';
 import { cmuKnownSync } from './cmu-ipa';
 
@@ -44,6 +44,13 @@ export interface WordFamilyGroup {
 }
 
 const FAMILY_CAP = 40;
+/**
+ * Phrases are kept in larger number until their frequencies are in (rankFamilyByFrequency), so
+ * "give up the ghost" is not cut for being longer than "give dap"; FAMILY_CAP stay after that.
+ */
+const PHRASE_INTAKE = 120;
+/** How many members a group takes in before the closest FAMILY_CAP are kept. */
+const FAMILY_INTAKE = 400;
 
 const LANG_SECTION: Record<string, string> = {
   en: 'English',
@@ -108,9 +115,13 @@ const FORM_OF_TEMPLATES = new Set([
   'alternative spelling of', 'alt sp',
 ]);
 
+/**
+ * The page section a language's family is read from. A language with no known name gets no
+ * section, so the page's English family is never shown under a Danish or Swedish entry.
+ */
 function langSectionName(language?: string): string {
   const code = (language || 'en').toLowerCase().split('-')[0];
-  return LANG_SECTION[code] || 'English';
+  return LANG_SECTION[code] || languageName(code) || code;
 }
 
 function cleanTerm(raw: string): string {
@@ -383,7 +394,7 @@ function addUniqueItems(
       buckets.set(dest, acc);
       continue;
     }
-    if (acc.length >= FAMILY_CAP) {
+    if (acc.length >= FAMILY_INTAKE) {
       buckets.set(dest, acc);
       continue;
     }
@@ -426,6 +437,12 @@ export function familyFromEtymologyChain(chain?: EtymologyLink[] | null, surface
   return groupsFromBuckets(buckets);
 }
 
+/** The adverbs and prepositions of a phrasal verb. */
+const PHRASAL_PARTICLES = new Set(
+  ('about above across after against ahead along apart around aside at away back behind by down for forth forward ' +
+    'from in into of off on onto out over past round through to together under up upon with without').split(' '),
+);
+
 /** How close a family member is to the headword: its derivatives first, proper names last. */
 function familyRank(word: string, surfaceKey: string, relation: WordFamilyRelation): number {
   const w = word.trim();
@@ -433,8 +450,11 @@ function familyRank(word: string, surfaceKey: string, relation: WordFamilyRelati
   let score = 0;
   if (/^\p{Lu}/u.test(w) && !/^\p{Lu}/u.test(surfaceKey)) score += 40;
   if (relation === 'phrases') {
-    score += Math.min(30, w.split(/\s+/).length * 4) + w.length / 10;
-    if (!k.split(/\s+/).includes(surfaceKey)) score += 8;
+    const words = k.split(/\s+/);
+    score += Math.min(30, words.length * 4) + w.length / 10;
+    if (!words.includes(surfaceKey)) score += 8;
+    // A phrasal verb ("give up", "give in") leads the phrases, as learner dictionaries list them first.
+    if (words.length > 1 && words[0] === surfaceKey && words.slice(1).every((x) => PHRASAL_PARTICLES.has(x))) score -= 6;
     return score;
   }
   // happy → happiness, happily: the stem drops a final y or e.
@@ -469,15 +489,16 @@ function groupsFromBuckets(buckets: FamilyBuckets, surfaceKey = ''): WordFamilyG
       }
       seen.add(k);
       unique.push({ word: it.word, label: it.label });
-      if (unique.length >= FAMILY_CAP) break;
     }
     if (!unique.length) continue;
+    // The closest members are kept when a long list is cut: "give up" is not lost behind
+    // forty alphabetically earlier phrases ("give a damn", "give a fig").
     if (relation === 'derived' || relation === 'phrases' || relation === 'related') {
       const indexed = unique.map((it, i) => ({ it, i, r: familyRank(it.word, surfaceKey, relation) }));
       indexed.sort((a, b) => a.r - b.r || a.i - b.i);
-      out.push({ relation, items: indexed.map((x) => x.it) });
+      out.push({ relation, items: indexed.slice(0, relation === 'phrases' ? PHRASE_INTAKE : FAMILY_CAP).map((x) => x.it) });
     } else {
-      out.push({ relation, items: unique });
+      out.push({ relation, items: unique.slice(0, FAMILY_CAP) });
     }
   }
   return out;
@@ -525,16 +546,90 @@ export async function fetchFamilyFrequencies(
   return { stem, complete: list.length < max, freq };
 }
 
+/** How common the phrases with one word are, from Datamuse (see fetchPhraseFrequencies). */
+export interface PhraseFrequencies {
+  /** The word the phrases were asked for, folded. */
+  word: string;
+  /** Per million words (Google Books Ngrams), for the phrases that have a figure. */
+  freq: Record<string, number>;
+  /** Datamuse's score for every phrase it lists; higher is more popular. */
+  score: Record<string, number>;
+}
+
+/**
+ * The phrases Datamuse lists with `word`: those that start with it ("give up", "give up the
+ * ghost") and those with it later on ("not give a damn"), two wildcard queries. Datamuse has a
+ * frequency for most two-word phrases and none for longer ones, so its own score is kept too.
+ */
+export async function fetchPhraseFrequencies(
+  http: { requestJson<T>(url: string, init?: { timeoutMs?: number }): Promise<T> },
+  word: string,
+): Promise<PhraseFrequencies | null> {
+  const w = foldLookupKey(word);
+  if (/\s/.test(word.trim()) || !/^\p{L}+$/u.test(w)) return null;
+  type Row = { word?: string; score?: number; tags?: string[] };
+  const lists = await Promise.all(
+    [`${w} *`, `* ${w}*`].map((sp) =>
+      http
+        .requestJson<Row[]>(`https://api.datamuse.com/words?sp=${encodeURIComponent(sp)}&md=f&max=1000`, { timeoutMs: 4000 })
+        .catch((): Row[] => []),
+    ),
+  );
+  const freq: Record<string, number> = {};
+  const score: Record<string, number> = {};
+  for (const r of lists.flatMap((l) => (Array.isArray(l) ? l : []))) {
+    if (!r?.word || !/\s/.test(r.word)) continue;
+    const k = foldLookupKey(r.word);
+    const f = Number((r.tags || []).find((t) => t.startsWith('f:'))?.slice(2) || 0);
+    if (f > 0) freq[k] = Math.max(freq[k] || 0, f);
+    score[k] = Math.max(score[k] || 0, Number(r.score) || 0);
+  }
+  return Object.keys(score).length ? { word: w, freq, score } : null;
+}
+
+/**
+ * A phrase used at least once per million words, Zipf 3 and up, is not a low-frequency one
+ * (van Heuven et al. 2014, the SUBTLEX-UK Zipf scale).
+ */
+const COMMON_PHRASE_PER_MILLION = 1;
+
+/**
+ * Phrases by how common they are. The common ones first, commonest first ("give up", "give way",
+ * "give in"); then the rest Datamuse lists, by its score, which ranks the longer idioms it has no
+ * figure for ("give up the ghost" before "give tongue"); then phrases without the word itself
+ * (another spelling's) in their own order; then those with the word that Datamuse does not list
+ * at all ("give dap", "give hat"), marked rare so they wait under "All". FAMILY_CAP are kept.
+ */
+function rankPhrases(g: WordFamilyGroup, data: PhraseFrequencies | null | undefined): WordFamilyGroup {
+  if (!data) return { ...g, items: g.items.slice(0, FAMILY_CAP) };
+  const indexed = g.items.map((it, i) => {
+    const k = foldLookupKey(it.word);
+    const f = data.freq[k] || 0;
+    const s = data.score[k];
+    const own = it.word.trim().split(/\s+/).map(foldLookupKey).includes(data.word);
+    const tier = f >= COMMON_PHRASE_PER_MILLION ? 0 : s != null ? 1 : own ? 3 : 2;
+    return { it, i, f, s: s || 0, tier };
+  });
+  indexed.sort((a, b) => a.tier - b.tier || (a.tier === 0 ? b.f - a.f : b.s - a.s) || a.i - b.i);
+  return { ...g, items: indexed.slice(0, FAMILY_CAP).map(({ it, tier }) => (tier === 3 ? { ...it, rare: true } : it)) };
+}
+
 /**
  * Derived and related words ordered by how common they are, commonest first: "redundancy" and
  * "redundantly" before "redundantant". Then the words with no frequency that are still known
  * words (in the pronouncing dictionary, as "redound" is), then those with no recorded use at
  * all, which are marked rare: a word containing the stem that Datamuse does not list, or one
  * the pronouncing dictionary does not have. Without frequencies the groups stay as they are.
+ * Phrases are ranked from `phrases` (rankPhrases).
  */
-export function rankFamilyByFrequency(groups: WordFamilyGroup[], data: FamilyFrequencies | null | undefined): WordFamilyGroup[] {
-  if (!data || !Object.keys(data.freq || {}).length) return groups;
-  return groups.map((g) => {
+export function rankFamilyByFrequency(
+  groups: WordFamilyGroup[],
+  data: FamilyFrequencies | null | undefined,
+  phrases?: PhraseFrequencies | null,
+): WordFamilyGroup[] {
+  const ranked = groups.map((g) => (g.relation === 'phrases' ? rankPhrases(g, phrases) : g));
+  if (!data || !Object.keys(data.freq || {}).length) return ranked;
+  return ranked.map((g) => {
     if (g.relation !== 'derived' && g.relation !== 'related') return g;
     const indexed = g.items.map((it, i) => {
       const k = foldLookupKey(it.word);

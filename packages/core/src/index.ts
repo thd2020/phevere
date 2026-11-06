@@ -16,7 +16,10 @@ export {
   type Translation,
   type DictionarySource,
   type TranslationProvider,
+  type EntryLanguage,
+  entryLanguages,
 } from './dictionary';
+export { wikiSenseSections, alignSenseNotes, labelTemplateNotes, isGrammarLabel, type SenseNotes, type WikiPosSection } from './sense-notes';
 export { WikipediaService, wikipediaService, type WikipediaResult, type WikipediaSearchResult } from './wikipedia';
 export {
   fetchSenseImages,
@@ -46,7 +49,7 @@ export {
   type VocabEntry,
   type VocabAddInput,
 } from './vocab-store';
-export { inferVocabGlossLang, formatVocabLangPair, vocabHeadwordLang, vocabLanguages, filterVocabByLang, vocabLangChipsHtml, type VocabLanguages } from './vocab-lang';
+export { inferVocabGlossLang, formatVocabLangPair, vocabHeadwordLang, vocabLookupLang, vocabLangKey, savedForSpelling, vocabLanguages, filterVocabByLang, vocabLangChipsHtml, type VocabLanguages } from './vocab-lang';
 export {
   normalizeSourceContext,
   sourceContextFromJson,
@@ -126,7 +129,7 @@ export {
   type CardLayout,
 } from './notebook-views';
 export { analyzeMorphemes, morphBreakdown, morphEntry, morphForms, wordOrigin, type Morph, type MorphEntry, type MorphEtymon, type MorphKind } from './morphology';
-export { vocabPayloadFromResult, examplesFromResult } from './vocab-payload';
+export { vocabPayloadFromResult, examplesFromResult, canAddToWordBook } from './vocab-payload';
 
 export {
   type ContextOrigin,
@@ -163,6 +166,7 @@ export {
   GRAMMATICAL_FORM_OF,
   GRAMMATICAL_FORM_OF_LINK,
   stripGlossText,
+  stripSisterProjects,
   isGrammaticalFormOfGloss,
   sameLookupFold,
   splitSurfaceAndLemma,
@@ -438,7 +442,19 @@ export {
   type InflectionGrid,
   type InflectionRow,
 } from './inflections';
-export { inflectionsHtml, wordFamilyHtml, formLineHtml, didYouMeanHtml, senseLabelLead, definitionSourcesHtml, type LexiconLinks } from './lexicon-parts';
+export {
+  inflectionsHtml,
+  wordFamilyHtml,
+  phrasesHtml,
+  formLineHtml,
+  didYouMeanHtml,
+  senseLabelLead,
+  senseNotesHtml,
+  posGrammarHtml,
+  languageSwitchHtml,
+  definitionSourcesHtml,
+  type LexiconLinks,
+} from './lexicon-parts';
 export { linkHtml, linkText, pruneGlossLinks, wordLinkHtml, wikiLinkLookup } from './text-links';
 export {
   parseMorphemeQuery,

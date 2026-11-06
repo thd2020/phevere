@@ -18,6 +18,7 @@
 import { vocabReadings, vocabSenses } from './vocab-view';
 import { clean, dayStart, DAY, esc, revealBelow, scrollerOf, visibleBand, type NotebookAnalysis, type NotebookEntry } from './notebook-shared';
 import { onDoubleShake } from './shake';
+import { vocabLookupLang } from './vocab-lang';
 
 /** Piles, or every pile poured out. */
 export type CardLayout = 'piles' | 'grid';
@@ -210,11 +211,14 @@ function cardHtml(e: NotebookEntry, a: NotebookAnalysis, open: boolean, pile: st
   const morphs = (w?.morphs || []).filter((m) => m.kind !== 'char' || m.gloss).slice(0, 3);
   const parts = w && w.parts.length > 1 ? w.parts : [];
   const note = clean(e.note);
+  // The Danish "give" opens in Danish, not as the English word its letters suggest.
+  const lang = vocabLookupLang({ lemma, sourceLang: clean(e.sourceLang) });
+  const look = `data-act="lookup" data-q="${esc(lemma)}"${lang ? ` data-lang="${esc(lang)}"` : ''}`;
   return `<article class="nbv-card${open ? ' is-flipped' : ''}" data-q="${esc(lemma)}" data-id="${esc(e.id)}" data-pile="${esc(pile)}" data-rank="${rank}"${rank >= PILE_FACE_CARDS ? ' data-deep' : ''} tabindex="0" aria-label="${esc(lemma)}: open lookup">
     <div class="nbv-card__inner">
       <div class="nbv-card__face nbv-card__front">
         <div class="nbv-card__pic"${flip} data-img-lemma="${esc(lemma)}" data-img-lang="${esc(clean(e.sourceLang))}" data-img-gloss="${esc(senses[0] || '')}" data-img-pos="${esc(clean(e.partOfSpeech || ''))}"><span aria-hidden="true">${esc(lemma.charAt(0))}</span></div>
-        <div class="nbv-card__body" data-act="lookup" data-q="${esc(lemma)}">
+        <div class="nbv-card__body" ${look}>
           <h3 class="nbv-card__word">${parts.length ? parts.map((p, i) => `<span>${esc(p)}</span>${i < parts.length - 1 ? '<i>·</i>' : ''}`).join('') : esc(lemma)}</h3>
           ${reading ? `<p class="nbv-card__ipa">${esc(reading.ipa)}</p>` : ''}
           ${morphs.length ? `<ul class="nbv-card__morphs">${morphs
@@ -226,7 +230,7 @@ function cardHtml(e: NotebookEntry, a: NotebookAnalysis, open: boolean, pile: st
       <div class="nbv-card__face nbv-card__back"${flip}>
         <h3 class="nbv-card__word">${esc(lemma)}</h3>
         ${senses.length ? `<ol>${senses.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : '<p>No definition saved.</p>'}
-        <button type="button" class="nbv-card__look" data-act="lookup" data-q="${esc(lemma)}" tabindex="${open ? 0 : -1}">${LOOK_ICON}<span>Look up</span></button>
+        <button type="button" class="nbv-card__look" ${look} tabindex="${open ? 0 : -1}">${LOOK_ICON}<span>Look up</span></button>
       </div>
     </div>
     <button type="button" class="nbv-card__flip" data-act="nb-flip" data-id="${esc(e.id)}" aria-pressed="${open}" aria-label="${open ? 'Show word' : 'Show meaning'}" title="${open ? 'Show word' : 'Show meaning'}">${FLIP_ICON}</button>

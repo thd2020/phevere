@@ -20,8 +20,49 @@ export const GRAMMATICAL_FORM_OF =
 export const GRAMMATICAL_FORM_OF_LINK =
   /\b((?:the\s+)?(?:plural|past(?:\s+tense)?|simple\s+past|present(?:\s+participle)?|gerund|(?:past|present)\s+participle|third-person\s+singular(?:\s+simple\s+present)?|alternative\s+(?:form|spelling)|(?:common\s+)?misspelling|obsolete\s+(?:form|spelling)|archaic\s+(?:form|spelling)|inflection|conjugated\s+form)\s+of)\s+([A-Za-z\u00C0-\u024F][A-Za-z\u00C0-\u024F'-]*)/gi;
 
+/** An element whose class marks a box pointing to a sister project (Wikipedia, Commons, Wikispecies…). */
+const SISTER_CLASS = /\bclass\s*=\s*["'][^"']*\b(?:sister-project|interproject-box|interProject|sister-[a-z]+)\b/i;
+const VOID_TAGS = /^(?:area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)$/i;
+
+/**
+ * Removes Wiktionary's sister-project boxes ("English Wikipedia has an article on: proposition")
+ * from a gloss. {{wp}}, {{commons}}, {{wikispecies}} and the like put them in front of a sense;
+ * they are marked by their class, whatever their words. A box whose end is missing leaves the
+ * gloss as it was.
+ */
+export function stripSisterProjects(html: string): string {
+  const s = String(html || '');
+  if (!/sister-|interproject/i.test(s)) return s;
+  const tags = /<(\/)?([a-z][a-z0-9]*)\b([^>]*?)(\/)?>/gi;
+  let out = '';
+  let from = 0;
+  let skip = '';
+  let depth = 0;
+  let m: RegExpExecArray | null;
+  while ((m = tags.exec(s))) {
+    const closing = !!m[1];
+    const name = m[2].toLowerCase();
+    const empty = !!m[4] || VOID_TAGS.test(name);
+    if (depth) {
+      if (name === skip && !empty) depth += closing ? -1 : 1;
+      if (!depth) from = m.index + m[0].length;
+      continue;
+    }
+    if (closing || !SISTER_CLASS.test(m[3])) continue;
+    out += s.slice(from, m.index);
+    if (empty) {
+      from = m.index + m[0].length;
+    } else {
+      skip = name;
+      depth = 1;
+    }
+  }
+  if (depth) return s;
+  return (out + s.slice(from)).replace(/^\s+/, '');
+}
+
 export function stripGlossText(meaning: string): string {
-  return String(meaning || '')
+  return stripSisterProjects(String(meaning || ''))
     // Wiktionary inlines <style> blocks (.mw-parser-output .defdate{…}); their text is not a gloss.
     .replace(/<(style|script)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
     // Inline tags join their text as a browser shows it: "(<span>“</span>and" is "(“and", not "( “ and".

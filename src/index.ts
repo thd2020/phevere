@@ -3294,9 +3294,9 @@ ipcMain.handle('vocab-import', async (e) => {
     throw error;
   }
 });
-ipcMain.handle('vocab-find', async (_e, lemma: string) => {
+ipcMain.handle('vocab-find', async (_e, lemma: string, lang?: string) => {
   try {
-    return await vocabStore.findByLemma(lemma);
+    return await vocabStore.findByLemma(lemma, lang);
   } catch (error) {
     log.error('main', 'vocab-find failed', { err: String(error) });
     throw error;
@@ -3863,9 +3863,9 @@ ipcMain.on('open-in-app', (_event, url: string) => {
 });
 
 // Open full dictionary window in-app for a given term
-ipcMain.on('open-full-lookup', (_event, term: string) => {
+ipcMain.on('open-full-lookup', (_event, term: string, lang?: string) => {
   try {
-    createDictionaryWindow(term);
+    createDictionaryWindow(term, typeof lang === 'string' ? lang : undefined);
   } catch (e) {
     log.error('main', 'Open full lookup failed', { err: String(e) });
   }
@@ -4108,7 +4108,8 @@ function createWebWindow(url: string): void {
 
 
 // Create a dedicated dictionary window that uses the same floating popup chrome
-function createDictionaryWindow(term: string): void {
+/** `lang`: open the word in that language (a saved Danish "give"), not the one its letters suggest. */
+function createDictionaryWindow(term: string, lang?: string): void {
   const popupWidth = 560;
   const popupHeight = 500;
   const mb = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : undefined;
@@ -4172,7 +4173,7 @@ function createDictionaryWindow(term: string): void {
   dictWindow.webContents.on('did-finish-load', () => {
     try {
       if (!dictWindow.isDestroyed() && term) {
-        dictWindow.webContents.send('popup-text', term, Date.now());
+        dictWindow.webContents.send('popup-text', term, Date.now(), lang);
       }
     } catch (e) {
       log.warn('main', 'History lookup send popup-text failed', { err: String(e) });
