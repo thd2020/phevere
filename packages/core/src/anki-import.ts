@@ -15,6 +15,7 @@
 import { strFromU8, unzipSync } from 'fflate';
 import { decompress as zstdDecompress } from 'fzstd';
 import type { BookPayload, BookWord } from './book-file';
+import { t } from './i18n/runtime';
 
 export interface SqliteReader {
   all(sql: string): Array<Record<string, unknown>>;
@@ -57,7 +58,7 @@ function toPayload(title: string, rows: Array<{ front: string; back: string }>, 
     version: 1,
     exportedAt: Date.now(),
     app: 'Anki',
-    book: { kind: 'user', id: '', title: title || 'Anki deck', source },
+    book: { kind: 'user', id: '', title: title || t('notebook.books.ankiDeck'), source },
     words,
     answers: [],
   };

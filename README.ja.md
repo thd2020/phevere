@@ -49,6 +49,7 @@ Phevere は、どこで読んでいても使える辞書です。どのアプリ
 - パソコン：どのアプリでも、選択したテキストや画像の中の単語を調べられます。選択したテキストをその場で翻訳することもできます
 - Android：どのアプリでもテキスト選択メニューから調べられます。写真から単語をスキャンすることもできます
 - iOS：共有メニューから調べられます。写真から単語をスキャンすることもできます
+- 表示言語は English、简体中文、繁體中文、日本語、한국어、Español、Français、Deutsch、Русский、Português (Brasil) に対応し、システムの言語に合わせて切り替わりますが、**設定**の一番上で変更することもできます
 
 <div align="center">
 <img src="README.assets/learning-overview.png" width="860" alt="スマートフォンアプリのスクリーンショット。復習の問題、進み具合のページ、単語帳のライブラリ、語族">
@@ -63,13 +64,13 @@ Phevere は[最新リリース](https://github.com/thd2020/phevere/releases/late
 
 ## アップデート
 
-Phevere は自動でアップデートします。**Settings → Updates** で、自動（Automatically）、事前に確認（Ask first）、オフ（Off）のいずれかを選べます。
+Phevere は自動でアップデートします。**設定 → アップデート**で、自動、事前に確認、オフのいずれかを選べます。
 
-- Windows と AppImage 版は Phevere を終了したときにアップデートをインストールします。**Roll back** で前のバージョンに戻せます。
+- Windows と AppImage 版は Phevere を終了したときにアップデートをインストールします。**…に戻す**を押すと前のバージョンに戻せます。
 - macOS、deb、rpm 版は新しいバージョンのダウンロードページを開きます。
 - Android 版は Wi-Fi 接続時にアップデートをダウンロードし、インストールの前に確認を求めます。
 
-**Settings → About** では、お使いのバージョン、新機能、問題の報告先を確認できます。
+**設定 → 情報**では、お使いのバージョン、新機能、問題の報告先を確認できます。
 
 ## プライバシー
 
@@ -88,7 +89,7 @@ Node.js 18 以降と、ネイティブモジュール用の C++ ツールチェ�
 
 | パス | 内容 |
 |---|---|
-| [`packages/core`](packages/core) | 辞書のソース、単語帳、同期。すべてのプラットフォームで共通 |
+| [`packages/core`](packages/core) | 辞書のソース、単語ノート、同期。すべてのプラットフォームで共通 |
 | [`src`](src) | デスクトップアプリ（Electron） |
 | [`native-addon`](native-addon) | Windows、macOS、Linux での選択テキストの取得 |
 | [`apps/mobile`](apps/mobile) | スマートフォンアプリと、その Android および iOS プロジェクト |
@@ -96,6 +97,6 @@ Node.js 18 以降と、ネイティブモジュール用の C++ ツールチェ�
 
 ## ライセンス
 
-[MIT](LICENSE)。Phevere、Holarky、knowrld の名称とロゴは対象外です。[TRADEMARKS.md](TRADEMARKS.md) をご覧ください。Wiktionary と Wikipedia の辞書テキストは CC BY-SA 4.0 で提供されています。アプリには GPL-3.0-or-later の eSpeak NG が同梱されており（[条件](apps/mobile/ANDROID.md)）、語義の頻度表は WordNet ライセンスのもとで Princeton WordNet 3.1 から作成しています。すべてのデータソースとそのライセンスは **Settings → About** に一覧があります。
+[MIT](LICENSE)。Phevere、Holarky、knowrld の名称とロゴは対象外です。[TRADEMARKS.md](TRADEMARKS.md) をご覧ください。Wiktionary と Wikipedia の辞書テキストは CC BY-SA 4.0 で提供されています。アプリには GPL-3.0-or-later の eSpeak NG が同梱されており（[条件](apps/mobile/ANDROID.md)）、語義の頻度表は WordNet ライセンスのもとで Princeton WordNet 3.1 から作成しています。すべてのデータソースとそのライセンスは **設定 → 情報**に一覧があります。
 
 Phevere が役に立ったら、GitHub で[スターを付けて](https://github.com/thd2020/phevere)いただけると、ほかの人にも見つけてもらいやすくなります。

@@ -20,6 +20,7 @@ import path from 'path';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { ipaToEspeakPhonemes, ipaToKokoroPhonemes, splitSpeechText } from '@phevere/core';
+import { formatMegabytes, t, type MessageKey } from '@phevere/core/i18n/runtime';
 import { log } from '../logger';
 
 export type VoiceId = 'mechanical' | 'compact' | 'full';
@@ -37,7 +38,7 @@ const DEFAULT_PREFS: AudioPrefs = { enabled: true, speed: 1, volume: 1, voice: '
 
 interface Variant {
   id: Exclude<VoiceId, 'mechanical'>;
-  name: string;
+  nameKey: MessageKey;
   dir: string;
   archiveDir: string;
   model: string;
@@ -48,7 +49,7 @@ interface Variant {
 const VARIANTS: Variant[] = [
   {
     id: 'compact',
-    name: 'Neural (standard)',
+    nameKey: 'main.speech.voice.neuralStandard',
     dir: 'kokoro-int8-v1',
     archiveDir: 'kokoro-int8-multi-lang-v1_0',
     model: 'model.int8.onnx',
@@ -57,7 +58,7 @@ const VARIANTS: Variant[] = [
   },
   {
     id: 'full',
-    name: 'Neural (high quality)',
+    nameKey: 'main.speech.voice.neuralHigh',
     dir: 'kokoro-v1',
     archiveDir: 'kokoro-multi-lang-v1_0',
     model: 'model.onnx',
@@ -520,15 +521,22 @@ export interface VoiceRow {
 
 export function listVoices(): VoiceRow[] {
   const rows: VoiceRow[] = [
-    { id: 'mechanical', name: 'Mechanical', detail: 'Built-in', installed: true, downloading: false, progress: 1 },
+    {
+      id: 'mechanical',
+      name: t('main.speech.voice.mechanical'),
+      detail: t('main.speech.voice.builtIn'),
+      installed: true,
+      downloading: false,
+      progress: 1,
+    },
   ];
   if (!neuralSupported()) return rows;
   for (const v of VARIANTS) {
     const d = downloads.get(v.id);
     rows.push({
       id: v.id,
-      name: v.name,
-      detail: `${v.downloadMb} MB`,
+      name: t(v.nameKey),
+      detail: formatMegabytes(v.downloadMb),
       recommended: v.id === 'full',
       installed: isInstalled(v.id),
       downloading: !!d && !d.error,
@@ -581,7 +589,7 @@ async function downloadVariant(v: Variant): Promise<void> {
   try {
     fs.mkdirSync(root, { recursive: true });
     const res = await net.fetch(modelUrl(v), { signal: state.abort.signal });
-    if (!res.ok || !res.body) throw new Error(`Download failed (HTTP ${res.status})`);
+    if (!res.ok || !res.body) throw new Error(t('main.speech.downloadFailed', { status: String(res.status) }));
     const total = Number(res.headers.get('content-length')) || v.downloadMb * 1024 * 1024;
     const hash = createHash('sha256');
     const out = fs.createWriteStream(archive);
@@ -605,7 +613,7 @@ async function downloadVariant(v: Variant): Promise<void> {
     };
     // pipeline owns errors and closes the file before cleanup, including disk-full failures.
     await pipeline(Readable.from(chunks()), out);
-    if (hash.digest('hex') !== v.sha) throw new Error('Download verification failed. Please retry.');
+    if (hash.digest('hex') !== v.sha) throw new Error(t('main.speech.verifyFailed'));
     fs.rmSync(staging, { recursive: true, force: true });
     fs.mkdirSync(staging, { recursive: true });
     // Straight to the worker: unpacking must not hold up speech queued behind it.

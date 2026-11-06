@@ -17,6 +17,7 @@
  * only compressed. See docs/BOOK_FORMAT.md.
  */
 import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
+import { t } from './i18n/runtime';
 
 export const BOOK_FILE_EXTENSION = 'pvbook';
 const MAGIC = [0x50, 0x56, 0x42, 0x4b]; // PVBK
@@ -86,7 +87,7 @@ export interface BookOpenOptions {
 /** WebCrypto, in Node 18+ and every WebView; typed loosely because core builds without the DOM types. */
 function subtle(): any {
   const c = (globalThis as { crypto?: { subtle?: unknown } }).crypto;
-  if (!c?.subtle) throw new BookLockedError('This device cannot open protected books.');
+  if (!c?.subtle) throw new BookLockedError(t('notebook.books.error.noCrypto'));
   return c.subtle;
 }
 
@@ -112,26 +113,26 @@ export function isBookFile(bytes: Uint8Array): boolean {
 
 /** Read a .pvbook. Throws BookLockedError for a book that needs the account to open. */
 export async function decodeBookFile(bytes: Uint8Array, opts: BookOpenOptions = {}): Promise<BookPayload> {
-  if (!isBookFile(bytes)) throw new Error('Not a Phevere book file.');
-  if (bytes[4] !== VERSION) throw new Error('This book was made by a newer Phevere; update to open it.');
+  if (!isBookFile(bytes)) throw new Error(t('notebook.books.error.notBook'));
+  if (bytes[4] !== VERSION) throw new Error(t('notebook.books.error.newer'));
   const flags = bytes[5];
   const length = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(8, true);
-  if (HEADER + length > bytes.length) throw new Error('This book file is incomplete.');
+  if (HEADER + length > bytes.length) throw new Error(t('notebook.books.error.incomplete'));
   let body = bytes.subarray(HEADER, HEADER + length);
   let keyId = '';
   if (flags & BOOK_FLAG_SIGNED) {
     const end = HEADER + length;
-    if (end + KEY_ID + SIGNATURE > bytes.length) throw new Error('This book file is incomplete.');
+    if (end + KEY_ID + SIGNATURE > bytes.length) throw new Error(t('notebook.books.error.incomplete'));
     keyId = hex(bytes.subarray(end, end + KEY_ID));
     const pub = opts.publicKeys?.[keyId];
-    if (!pub) throw new BookLockedError('This book comes from the Phevere store; sign in with Plus to open it.');
+    if (!pub) throw new BookLockedError(t('notebook.books.error.store'));
     const key = await subtle().importKey('raw', pub, { name: 'Ed25519' }, false, ['verify']);
     const ok = await subtle().verify('Ed25519', key, bytes.subarray(end + KEY_ID, end + KEY_ID + SIGNATURE), bytes.subarray(0, end));
-    if (!ok) throw new Error('This book file was changed after it was issued.');
+    if (!ok) throw new Error(t('notebook.books.error.changed'));
   }
   if (flags & BOOK_FLAG_ENCRYPTED) {
     const raw = await opts.bookKey?.(keyId);
-    if (!raw) throw new BookLockedError('This book needs Plus. Sign in with the account that has it.');
+    if (!raw) throw new BookLockedError(t('notebook.books.error.needsPlus'));
     const key = await subtle().importKey('raw', raw, { name: 'AES-GCM' }, false, ['decrypt']);
     const plain = await subtle().decrypt({ name: 'AES-GCM', iv: body.subarray(0, 12) }, key, body.subarray(12));
     body = new Uint8Array(plain);
@@ -141,10 +142,10 @@ export async function decodeBookFile(bytes: Uint8Array, opts: BookOpenOptions = 
   try {
     payload = JSON.parse(strFromU8(body));
   } catch {
-    throw new Error('This book file is damaged.');
+    throw new Error(t('notebook.books.error.damaged'));
   }
   if (payload?.format !== 'phevere-book' || !payload.book || !Array.isArray(payload.words)) {
-    throw new Error('Not a Phevere book file.');
+    throw new Error(t('notebook.books.error.notBook'));
   }
   if (!Array.isArray(payload.answers)) payload.answers = [];
   return payload;
@@ -152,6 +153,7 @@ export async function decodeBookFile(bytes: Uint8Array, opts: BookOpenOptions = 
 
 /** A file name for a book: its title without characters file systems refuse. */
 export function bookFileName(title: string): string {
-  const base = String(title || 'Words').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Words';
+  const fallback = t('notebook.books.fileName');
+  const base = String(title || fallback).replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || fallback;
   return `${base}.${BOOK_FILE_EXTENSION}`;
 }

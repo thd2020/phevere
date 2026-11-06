@@ -1,0 +1,26 @@
+import type { Catalog } from '../runtime';
+
+export default {
+  'common.cancel': '取消',
+  'common.close': '关闭',
+  'common.copy': '复制',
+  'common.copied': '已复制',
+  'common.delete': '删除',
+  'common.remove': '移除',
+  'common.undo': '撤销',
+  'common.save': '保存',
+  'common.loading': '正在加载…',
+  'common.search': '搜索',
+  'common.back': '返回',
+  'common.more': '更多',
+  'common.on': '开',
+  'common.off': '关',
+  'common.download': '下载',
+  'common.open': '打开',
+  'common.settings': '设置',
+  'common.learn': '学习',
+  'common.lookup': '查词',
+  'common.translate': '翻译',
+  'common.edit': '编辑',
+  'common.ok': '好',
+} satisfies Partial<Catalog>;

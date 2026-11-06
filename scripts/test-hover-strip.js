@@ -171,6 +171,7 @@ const context = vm.createContext({
   withWin11Chrome: (options) => options,
   withPopupDevFlag: (url) => url,
   MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: undefined,
+  uiLanguageArguments: () => [],
   POPUP_WINDOW_WEBPACK_ENTRY: 'about:blank',
   interceptPopupHistoryKeys: () => {},
   trackPopupFocus: () => {},

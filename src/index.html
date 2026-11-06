@@ -29,28 +29,28 @@
             </g>
           </svg>
         </span>
-        <span class="titlebar-title">Phevere</span>
+        <span class="titlebar-title" translate="no">Phevere</span>
       </div>
       <div class="titlebar-end">
         <div id="accountSlot" class="titlebar-account"></div>
-        <button type="button" id="settingsBtn" class="titlebar-gear" title="Settings" aria-label="Settings">
+        <button type="button" id="settingsBtn" class="titlebar-gear" title="Settings" aria-label="Settings" data-i18n-attr="title:common.settings; aria-label:common.settings">
           <svg class="titlebar-gear-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 13.5l1.6 1.2-2 3.4-1.9-.7a7.6 7.6 0 0 1-2 1.2L14.8 21h-4l-.4-2.4a7.6 7.6 0 0 1-2-1.2l-2 .8-2-3.5 1.6-1.2a7.4 7.4 0 0 1 0-2.4L4.4 9.9l2-3.4 2 .7a7.6 7.6 0 0 1 2-1.2L10.8 3.6h4l.4 2.4a7.6 7.6 0 0 1 2 1.2l2-.8 2 3.5-1.6 1.2a7.4 7.4 0 0 1 0 2.4z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </button>
-        <div class="window-controls" role="toolbar" aria-label="Window">
-          <button type="button" id="minimize-btn" class="window-control window-control-minimize" title="Minimize" aria-label="Minimize">
+        <div class="window-controls" role="toolbar" aria-label="Window" data-i18n-attr="aria-label:desktop.main.windowControls">
+          <button type="button" id="minimize-btn" class="window-control window-control-minimize" title="Minimize" aria-label="Minimize" data-i18n-attr="title:desktop.main.minimize; aria-label:desktop.main.minimize">
             <svg class="window-control-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
               <!-- 2px bar, vertically centered in 16×16 -->
               <rect x="3" y="7" width="10" height="2" rx="0.5" fill="currentColor" />
             </svg>
           </button>
-          <button type="button" id="maximize-btn" class="window-control window-control-maximize" title="Maximize" aria-label="Maximize">
+          <button type="button" id="maximize-btn" class="window-control window-control-maximize" title="Maximize" aria-label="Maximize" data-i18n-attr="title:desktop.main.maximize; aria-label:desktop.main.maximize">
             <svg class="window-control-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
               <path fill="currentColor" d="M4 4h8v8H4V4zm1 1v6h6V5H5z" />
             </svg>
           </button>
-          <button type="button" id="close-btn" class="window-control window-control-close" title="Close" aria-label="Close">
+          <button type="button" id="close-btn" class="window-control window-control-close" title="Close" aria-label="Close" data-i18n-attr="title:common.close; aria-label:common.close">
             <svg class="window-control-icon window-control-icon--stroke" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none">
               <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" />
             </svg>
@@ -58,74 +58,74 @@
         </div>
       </div>
     </header>
-    <div id="accountMenu" class="account-popover" role="dialog" aria-label="Account" hidden></div>
+    <div id="accountMenu" class="account-popover" role="dialog" aria-label="Account" data-i18n-attr="aria-label:desktop.main.account" hidden></div>
 
     <main class="container main-shell">
       <div class="ws-head">
-        <div class="ws-tabs" role="tablist" aria-label="Main">
-          <button type="button" role="tab" class="ws-tab is-active" data-ws="notebook" aria-selected="true" aria-controls="paneNotebook">Words<span id="vocabCount" class="ws-count"></span></button>
-          <button type="button" role="tab" class="ws-tab" data-ws="learn" aria-selected="false" aria-controls="paneLearn">Learn</button>
-          <button type="button" role="tab" class="ws-tab" data-ws="recent" aria-selected="false" aria-controls="paneRecent">Recent</button>
+        <div class="ws-tabs" role="tablist" aria-label="Main" data-i18n-attr="aria-label:desktop.main.tabs">
+          <button type="button" role="tab" class="ws-tab is-active" data-ws="notebook" aria-selected="true" aria-controls="paneNotebook"><span data-i18n="desktop.main.tab.words">Words</span><span id="vocabCount" class="ws-count"></span></button>
+          <button type="button" role="tab" class="ws-tab" data-ws="learn" aria-selected="false" aria-controls="paneLearn" data-i18n="common.learn">Learn</button>
+          <button type="button" role="tab" class="ws-tab" data-ws="recent" aria-selected="false" aria-controls="paneRecent" data-i18n="desktop.main.tab.recent">Recent</button>
         </div>
         <div class="ws-search">
-          <input type="search" id="vocabSearch" class="vocab-search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Search" />
+          <input type="search" id="vocabSearch" class="vocab-search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Search" data-i18n-attr="placeholder:common.search; aria-label:common.search" />
         </div>
       </div>
 
-      <section id="paneNotebook" class="vocab-notebook nbv" role="tabpanel" aria-label="Words">
+      <section id="paneNotebook" class="vocab-notebook nbv" role="tabpanel" aria-label="Words" data-i18n-attr="aria-label:desktop.main.tab.words">
         <div id="wbSwitch"></div>
         <div id="wbHead"></div>
         <div id="vocabLangs"></div>
         <div class="nb-bar">
           <div id="nbViewSwitch"></div>
-          <div class="vocab-sort" id="vocabSortGroup" role="group" aria-label="Sort">
-            <button type="button" id="vocabSortRecent" class="vocab-sort-btn is-active" aria-pressed="true">Recent</button>
-            <button type="button" id="vocabSortAlpha" class="vocab-sort-btn" aria-pressed="false">A–Z</button>
+          <div class="vocab-sort" id="vocabSortGroup" role="group" aria-label="Sort" data-i18n-attr="aria-label:desktop.words.sort">
+            <button type="button" id="vocabSortRecent" class="vocab-sort-btn is-active" aria-pressed="true" data-i18n="desktop.words.sortRecent">Recent</button>
+            <button type="button" id="vocabSortAlpha" class="vocab-sort-btn" aria-pressed="false" data-i18n="desktop.words.sortAz">A–Z</button>
           </div>
         </div>
         <div class="vocab-list-wrap" id="vocabListWrap">
           <div id="vocabList" class="selections-list">
-            <p class="empty-message">No saved words.</p>
+            <p class="empty-message" data-i18n="desktop.words.empty">No saved words.</p>
           </div>
-          <nav class="vocab-az" id="vocabAz" hidden aria-label="Jump to letter"></nav>
-          <nav class="vocab-az vocab-az--time" id="vocabTimeline" hidden aria-label="Jump to date"></nav>
+          <nav class="vocab-az" id="vocabAz" hidden aria-label="Jump to letter" data-i18n-attr="aria-label:desktop.words.jumpToLetter"></nav>
+          <nav class="vocab-az vocab-az--time" id="vocabTimeline" hidden aria-label="Jump to date" data-i18n-attr="aria-label:desktop.words.jumpToDate"></nav>
           <div class="vocab-az-hud" id="vocabAzHud" hidden aria-hidden="true"></div>
         </div>
         <div id="nbViewBody" class="nbv-body" hidden></div>
       </section>
 
-      <section id="paneLearn" class="nbv lrn" role="tabpanel" aria-label="Learn" hidden></section>
+      <section id="paneLearn" class="nbv lrn" role="tabpanel" aria-label="Learn" data-i18n-attr="aria-label:common.learn" hidden></section>
 
-      <section id="paneRecent" class="recent-selections" role="tabpanel" aria-label="Recent lookups" hidden>
+      <section id="paneRecent" class="recent-selections" role="tabpanel" aria-label="Recent lookups" data-i18n-attr="aria-label:desktop.recent.title" hidden>
         <div class="recent-bar">
-          <button type="button" id="clearSelectionsBtn" class="btn btn-outlined btn-small" hidden>Clear history</button>
+          <button type="button" id="clearSelectionsBtn" class="btn btn-outlined btn-small" data-i18n="desktop.recent.clear" hidden>Clear history</button>
         </div>
         <div id="selectionsList" class="selections-list">
-          <p class="empty-message">No recent lookups.</p>
+          <p class="empty-message" data-i18n="desktop.recent.empty">No recent lookups.</p>
         </div>
       </section>
     </main>
 
-    <footer class="status-bar" role="group" aria-label="Monitoring toggles">
+    <footer class="status-bar" role="group" aria-label="Monitoring toggles" data-i18n-attr="aria-label:desktop.status.toggles">
       <button type="button" id="selectionToggle" class="status-bar-item status-pill status-toggle" aria-pressed="true">
-        <span class="status-label">Selection</span>
-        <span id="selectionStatus" class="status-value running">On</span>
+        <span class="status-label" data-i18n="desktop.status.selection">Selection</span>
+        <span id="selectionStatus" class="status-value running" data-i18n="common.on">On</span>
       </button>
       <button type="button" id="clipboardToggle" class="status-bar-item status-pill status-toggle" aria-pressed="true">
-        <span class="status-label">Clipboard</span>
-        <span id="clipboardStatus" class="status-value running">On</span>
+        <span class="status-label" data-i18n="desktop.status.clipboard">Clipboard</span>
+        <span id="clipboardStatus" class="status-value running" data-i18n="common.on">On</span>
       </button>
       <button type="button" id="hoverToggle" class="status-bar-item status-pill status-toggle" aria-pressed="true">
-        <span class="status-label">Hover</span>
-        <span id="hoverStatus" class="status-value running">On</span>
+        <span class="status-label" data-i18n="desktop.status.hover">Hover</span>
+        <span id="hoverStatus" class="status-value running" data-i18n="common.on">On</span>
       </button>
       <button type="button" id="audioToggle" class="status-bar-item status-pill status-toggle" aria-pressed="true">
-        <span class="status-label">Audio</span>
-        <span id="audioStatus" class="status-value running">On</span>
+        <span class="status-label" data-i18n="desktop.status.audio">Audio</span>
+        <span id="audioStatus" class="status-value running" data-i18n="common.on">On</span>
       </button>
-      <button type="button" id="ocrStatusBtn" class="status-bar-item status-pill status-action" title="Scan region (Ctrl+Shift+O)">
-        <span class="status-label">Scan</span>
-        <span class="status-value">Region</span>
+      <button type="button" id="ocrStatusBtn" class="status-bar-item status-pill status-action">
+        <span class="status-label" data-i18n="desktop.status.scan">Scan</span>
+        <span class="status-value" data-i18n="desktop.status.region">Region</span>
       </button>
     </footer>
   </body>

@@ -10,19 +10,21 @@ const cache = new Map();
 
 /** Load a core TS module and the core modules it imports, transpiled to CommonJS. */
 function load(name) {
-  const file = path.join(coreDir, name.replace(/^\.\//, '')) + '.ts';
+  const base = path.join(coreDir, name.replace(/^\.\//, ''));
+  const file = fs.existsSync(base + '.ts') ? base + '.ts' : path.join(base, 'index.ts');
   if (cache.has(file)) return cache.get(file).exports;
   const js = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const mod = { exports: {} };
   cache.set(file, mod);
-  new Function('module', 'exports', 'require', js)(mod, mod.exports, (dep) => (dep.startsWith('.') ? load(dep) : require(dep)));
+  new Function('module', 'exports', 'require', js)(mod, mod.exports, (dep) => (dep.startsWith('.') ? load(path.relative(coreDir, path.resolve(path.dirname(file), dep))) : require(dep)));
   return mod.exports;
 }
 
 const about = load('settings-about');
-const { ABOUT_STRINGS_EN } = load('settings-about-strings');
+const runtime = load('i18n/runtime');
+const { EN } = load('i18n/en');
 
 // The version comes from the host; nothing in the page is a fixed version.
 {
@@ -74,7 +76,7 @@ const { ABOUT_STRINGS_EN } = load('settings-about-strings');
   assert.match(about.aboutSettingsHtml({ version: '4.2.0', platform: 'ios' }), /eSpeak NG<\/a>\s*<span class="sv-row__sub">Pronunciation for the Neural voices</)
   assert.ok(!ids('web').includes('kokoro'), 'no voice downloads in the browser build');
   for (const c of about.ABOUT_CREDITS) {
-    assert.ok(ABOUT_STRINGS_EN.provides[c.id], `${c.id} says what it provides`);
+    assert.ok(EN[`settings.about.provides.${c.id}`], `${c.id} says what it provides`);
     assert.ok(c.licence || c.licenceText, `${c.id} names its licence`);
   }
   const wiktionary = about.ABOUT_CREDITS.find((c) => c.id === 'wiktionary');
@@ -83,21 +85,25 @@ const { ABOUT_STRINGS_EN } = load('settings-about-strings');
   assert.match(html, /Wiktionary<\/a>[\s\S]*?CC BY-SA 4\.0<\/a>/);
 }
 
-// Every string a person reads is in the strings object, so a translation covers the page.
+// Every string a person reads comes from the catalogue, so a translation covers the page: with
+// every message replaced by a marker, no other text is left on the page.
 {
   const marker = Object.fromEntries(
-    Object.entries(ABOUT_STRINGS_EN).map(([k, v]) => [k, typeof v === 'string' ? `«${k}»` : Object.fromEntries(Object.keys(v).map((id) => [id, `«${id}»`]))]),
+    Object.entries(EN).map(([k, v]) => [k, typeof v === 'string' ? `«${k}»` : Object.fromEntries(Object.keys(v).map((form) => [form, `«${k}»`]))]),
   );
-  marker.version = '«version {version}»';
-  marker.versionBuild = '«versionBuild {version} {build}»';
-  const html = about.aboutSettingsHtml({ version: '4.2.0', build: '7', platform: 'windows' }, marker);
+  marker['settings.about.version'] = '«settings.about.version {version}»';
+  marker['settings.about.versionBuild'] = '«settings.about.versionBuild {version} {build}»';
+  runtime.useUiCatalog('de', marker);
+  const html = about.aboutSettingsHtml({ version: '4.2.0', build: '7', platform: 'windows' });
+  runtime.useUiCatalog('en', EN);
+  assert.match(html, /«settings\.about\.versionBuild 4\.2\.0 7»/);
   const text = html
     .replace(/<svg[\s\S]*?<\/svg>/g, '')
     .replace(/<[^>]+>/g, '\n')
     .split('\n')
     .map((s) => s.trim())
     .filter(Boolean);
-  const names = new Set([...about.ABOUT_CREDITS.map((c) => c.name), ...about.ABOUT_CREDITS.map((c) => c.licence && c.licence.name), ...about.ABOUT_SERVICES.map((s) => s.name), ',']);
+  const names = new Set([...about.ABOUT_CREDITS.filter((c) => !c.nameKey).map((c) => c.name), ...about.ABOUT_CREDITS.map((c) => c.licence && c.licence.name), ...about.ABOUT_SERVICES.map((s) => s.name), ',']);
   const leftover = text.filter((s) => !s.includes('«') && !names.has(s) && !['Phevere', 'GitHub', 'MIT', 'thd2020'].includes(s));
   assert.deepEqual(leftover, [], 'untranslatable text on the About page');
 }

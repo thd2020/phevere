@@ -4,6 +4,7 @@
  * when the user enables Electron / Phevere.
  */
 import { app, dialog, shell } from 'electron';
+import { t } from '@phevere/core/i18n/runtime';
 import { log } from '../logger';
 
 /** Opens the Accessibility list in System Settings (Ventura+) / System Preferences. */
@@ -22,10 +23,10 @@ export async function promptOpenMacAccessibilitySettings(): Promise<boolean> {
   const label = macAccessibilityAppLabel();
   const r = await dialog.showMessageBox({
     type: 'info',
-    title: 'Accessibility access required',
-    message: `${label} needs Accessibility access to read selected text.`,
-    detail: `In System Settings, open Privacy & Security, then Accessibility, and turn on ${label}.`,
-    buttons: ['Open System Settings', 'Not Now'],
+    title: t('main.mac.accessibility.title'),
+    message: t('main.mac.accessibility.message', { app: label }),
+    detail: t('main.mac.accessibility.detail', { app: label }),
+    buttons: [t('main.mac.openSystemSettings'), t('main.mac.notNow')],
     defaultId: 0,
     cancelId: 1,
   });

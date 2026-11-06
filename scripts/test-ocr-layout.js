@@ -13,13 +13,27 @@ const fs = require('fs');
 const path = require('path');
 const ts = require('typescript');
 
+const loaded = new Map();
+
+/**
+ * Load a TS file transpiled to CommonJS. `extra` stands in for some imports; another relative
+ * import loads the file it names, resolved from the importing file (a folder is its index.ts),
+ * as the i18n runtime and its catalogue are imported.
+ */
 function load(file, extra = {}) {
-  const src = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+  const full = path.join(__dirname, '..', file);
+  const src = fs.readFileSync(full, 'utf8');
   const js = ts.transpileModule(src, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText;
   const mod = { exports: {} };
-  new Function('module', 'exports', 'require', js)(mod, mod.exports, (id) => extra[id] || require(id));
+  const relative = (id) => {
+    const base = path.resolve(path.dirname(full), id);
+    const target = fs.existsSync(base + '.ts') ? base + '.ts' : path.join(base, 'index.ts');
+    if (!loaded.has(target)) loaded.set(target, load(path.relative(path.join(__dirname, '..'), target)));
+    return loaded.get(target);
+  };
+  new Function('module', 'exports', 'require', js)(mod, mod.exports, (id) => extra[id] || (id.startsWith('.') ? relative(id) : require(id)));
   return mod.exports;
 }
 

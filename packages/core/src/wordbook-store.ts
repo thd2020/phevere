@@ -23,6 +23,7 @@ import { getNewId, getVocabDb } from './runtime';
 import { scheduleReview, type ReviewGrade, type ScheduleFields } from './review-schedule';
 import { listAnswerHistory, logGradedAnswer, logKnownAnswer, replaySchedule, type AnswerDetails, type AnswerRecord } from './answer-history';
 import { addVocab, ensureVocabReady, findByLemma, notifyVocabChanged, type VocabAddInput, type VocabEntry } from './vocab-store';
+import { t } from './i18n/runtime';
 
 export interface WordbookSub {
   bookId: string;
@@ -375,7 +376,7 @@ export async function createUserBook(title: string, words: string[], source?: st
   await ensureVocabReady();
   const book: UserBook = {
     bookId: `${USER_BOOK_PREFIX}${getNewId()}`,
-    title: String(title || '').trim().slice(0, 80) || 'My word book',
+    title: String(title || '').trim().slice(0, 80) || t('notebook.books.myBook'),
     words: uniqueWords(words),
     source,
     deleted: false,

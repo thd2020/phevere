@@ -15,6 +15,7 @@ import {
   type OfflineCatalogItem,
   type OfflineHit,
   type ParsedOfflineEntry,
+  t,
 } from '@phevere/core';
 import type { Database } from 'sql.js';
 import { sqlJsVocabDb, writeDirect } from './sqljs-vocab-db';
@@ -157,7 +158,7 @@ async function writePack(
   entries: ParsedOfflineEntry[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<{ packId: string; count: number }> {
-  if (!entries.length) throw new Error(`No entries parsed for ${meta.name}`);
+  if (!entries.length) throw new Error(t('mobile.offline.error.noEntries', { name: meta.name }));
   // A word the pop-up saves during the install is in the newer file: the pack goes in again there.
   await writeDirect(
     (database) => fillPack(database, meta, entries, onProgress),
@@ -170,7 +171,7 @@ async function writePack(
 
 async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
   if (typeof DecompressionStream === 'undefined') {
-    throw new Error('This pack cannot be installed here.');
+    throw new Error(t('mobile.offline.error.cannotInstall'));
   }
   const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'));
   return new Uint8Array(await new Response(stream).arrayBuffer());
@@ -191,7 +192,7 @@ async function downloadFirst(urls: string[]): Promise<Uint8Array> {
       last = `${url}: ${err instanceof Error ? err.message : String(err)}`;
     }
   }
-  throw new Error(`Download failed: ${last}`);
+  throw new Error(t('mobile.offline.error.downloadFailed', { detail: last }));
 }
 
 function parsePack(item: OfflineCatalogItem, text: string): ParsedOfflineEntry[] {
@@ -226,26 +227,29 @@ export async function importTextPack(
   );
 }
 
+/** A step of a catalogue install; the caller words it in the interface language. */
+export type PackStep = { step: 'download' } | { step: 'unpack' } | { step: 'import'; done: number; total: number };
+
 export async function downloadCatalogPack(
   packId: string,
-  onProgress?: (msg: string) => void,
+  onProgress?: (step: PackStep) => void,
 ): Promise<{ packId: string; count: number }> {
   const item = OFFLINE_CATALOG.find((c) => c.id === packId);
-  if (!item) throw new Error(`Unknown pack ${packId}`);
-  onProgress?.('Downloading…');
+  if (!item) throw new Error(t('mobile.offline.error.unknownPack', { id: packId }));
+  onProgress?.({ step: 'download' });
   const bytes = await downloadFirst(item.urls);
   const decoder = new TextDecoder('utf-8');
-  const progress = (d: number, t: number) => onProgress?.(`Importing ${d} of ${t}…`);
+  const progress = (done: number, total: number) => onProgress?.({ step: 'import', done, total });
   if (item.archive === 'plain') {
     return importTextPack(item, decoder.decode(bytes), progress);
   }
-  onProgress?.('Unpacking…');
+  onProgress?.({ step: 'unpack' });
   if (item.archive === 'gz') {
     return importTextPack(item, decoder.decode(await gunzip(bytes)), progress);
   }
   const tar = item.archive === 'tar.xz' || isXz(bytes) ? xzDecompress(bytes) : await gunzip(bytes);
   const files = extractTar(tar, (name) => wantsArchiveMember(item.format, name));
-  if (!files.length) throw new Error('Archive had no dictionary files');
+  if (!files.length) throw new Error(t('mobile.offline.error.emptyArchive'));
   const joined = files.map((f) => decoder.decode(f.bytes)).join('\n');
   return importTextPack(item, joined, progress);
 }

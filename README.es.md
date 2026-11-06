@@ -49,6 +49,7 @@ Phevere es un diccionario que funciona donde sea que leas. Selecciona una palabr
 - Ordenador: busca el texto seleccionado en cualquier aplicación o las palabras dentro de imágenes, y traduce el texto seleccionado sin salir de donde estás
 - Android: busca desde el menú de selección de texto de cualquier aplicación y escanea palabras en fotos
 - iOS: busca desde el menú Compartir y escanea palabras en fotos
+- La interfaz está en English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch, Русский y Português (Brasil), sigue el idioma del sistema y se puede cambiar en la parte superior de **Ajustes**
 
 <div align="center">
 <img src="README.assets/learning-overview.png" width="860" alt="Capturas de la aplicación para móvil: una pregunta de repaso, la página de progreso, la biblioteca de listas y las familias de palabras">
@@ -63,13 +64,13 @@ Windows y macOS muestran un aviso la primera vez que abres Phevere; elige ejecut
 
 ## Actualizaciones
 
-Phevere se actualiza solo. En **Settings → Updates**, elige Automatically (automáticamente), Ask first (preguntar antes) u Off (desactivado).
+Phevere se actualiza solo. En **Ajustes → Actualizaciones**, elige Automáticamente, Preguntar antes o Desactivado.
 
-- En Windows y AppImage, la actualización se instala al cerrar Phevere, y **Roll back** vuelve a la versión anterior.
+- En Windows y AppImage, la actualización se instala al cerrar Phevere, y con **Volver a …** regresas a la versión anterior.
 - En macOS, deb y rpm se abre la página de descarga de la nueva versión.
 - En Android, la actualización se descarga con Wi-Fi y te pide confirmación antes de instalarse.
 
-En **Settings → About** verás tu versión, las novedades y dónde informar de un problema.
+En **Ajustes → Acerca de** verás tu versión, las novedades y dónde informar de un problema.
 
 ## Privacidad
 
@@ -96,6 +97,6 @@ Necesitas Node.js 18 o posterior y un compilador de C++ para el módulo nativo: 
 
 ## Licencia
 
-[MIT](LICENSE). Los nombres Phevere, Holarky y knowrld y sus logotipos no están incluidos; consulta [TRADEMARKS.md](TRADEMARKS.md). El texto de diccionario de Wiktionary y Wikipedia está bajo CC BY-SA 4.0. Las aplicaciones incluyen eSpeak NG bajo GPL-3.0-or-later ([condiciones](apps/mobile/ANDROID.md)), y la tabla de frecuencia de acepciones procede de Princeton WordNet 3.1 bajo la licencia de WordNet. En **Settings → About** encontrarás todas las fuentes de datos y sus licencias.
+[MIT](LICENSE). Los nombres Phevere, Holarky y knowrld y sus logotipos no están incluidos; consulta [TRADEMARKS.md](TRADEMARKS.md). El texto de diccionario de Wiktionary y Wikipedia está bajo CC BY-SA 4.0. Las aplicaciones incluyen eSpeak NG bajo GPL-3.0-or-later ([condiciones](apps/mobile/ANDROID.md)), y la tabla de frecuencia de acepciones procede de Princeton WordNet 3.1 bajo la licencia de WordNet. En **Ajustes → Acerca de** encontrarás todas las fuentes de datos y sus licencias.
 
 Si Phevere te resulta útil, una [estrella en GitHub](https://github.com/thd2020/phevere) ayuda a que más gente lo encuentre.

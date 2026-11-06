@@ -178,8 +178,12 @@ function formLabel(tags: string[]): string {
   const t = new Set(tags);
   if (t.has('comparative')) return 'comparative';
   if (t.has('superlative')) return 'superlative';
+  // The names below are ids; formLineHtml shows them through lexicon.formKind.*.
+  // i18n-ignore: form kind id
   if (t.has('participle')) return t.has('past') ? 'past participle' : 'present participle';
+  // i18n-ignore: form kind id
   if (t.has('past')) return 'past tense';
+  // i18n-ignore: form kind id
   if (t.has('present')) return t.has('third-person') && t.has('singular') ? 'third person singular' : 'present tense';
   if (t.has('plural')) return 'plural';
   return '';
@@ -415,8 +419,11 @@ const lines = new Map<string, FormLine>();
 export interface FormLine {
   form: string;
   ipa: string;
-  /** "past tense of run" */
+  /** "past tense of run", in English; lexicon-parts shows `kinds` and `lemma` in the interface language. */
   label: string;
+  /** What the form is: "past tense", "past participle" (formLabel's names). */
+  kinds?: string[];
+  lemma?: string;
 }
 
 /**
@@ -477,7 +484,8 @@ export function resolveFormOf(http: HttpClient, word: string, lang = 'en', timeo
       const note = (lemma: string | null): string | null => {
         const kinds = lemma ? reading.labels?.get(lemma.toLowerCase()) : undefined;
         if (lemma && kinds?.size && hasOwnFormEntry(w, lemma)) {
-          lines.set(key, { form: w, ipa: reading.ipa || '', label: `${[...kinds].join(', ')} of ${lemma}` });
+          // i18n-ignore: English label kept for saved results; formLineHtml shows kinds and lemma translated
+          lines.set(key, { form: w, ipa: reading.ipa || '', label: `${[...kinds].join(', ')} of ${lemma}`, kinds: [...kinds], lemma });
         }
         return lemma;
       };

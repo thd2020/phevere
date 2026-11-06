@@ -11,6 +11,7 @@ import { addVocab, listVocab, type VocabEntry } from './vocab-store';
 import { WORDBOOK_CATALOG } from './wordbook-catalog';
 import { vocabLangKey } from './vocab-lang';
 import { loadWordbook } from './wordbooks';
+import { t } from './i18n/runtime';
 import {
   bookWordKey,
   cacheBookWordMeaning,
@@ -88,7 +89,7 @@ export async function exportBookFile(scope: BookScope, app = 'Phevere'): Promise
   let words: BookWord[];
   if (scope.kind === 'mine') {
     const entries = await listVocab(1_000_000);
-    book = { kind: 'mine', id: 'mine', title: 'My words' };
+    book = { kind: 'mine', id: 'mine', title: t('notebook.myWords') };
     words = entries.map(wordFromEntry);
   } else {
     const progress = new Map((await listBookProgress()).map((p) => [p.lemma, p]));
@@ -96,12 +97,12 @@ export async function exportBookFile(scope: BookScope, app = 'Phevere'): Promise
     let lemmas: string[];
     if (scope.kind === 'user') {
       const ub = (await listUserBooks()).find((b) => b.bookId === scope.id);
-      if (!ub) throw new Error('That book is gone.');
+      if (!ub) throw new Error(t('notebook.books.error.gone'));
       book = { kind: 'user', id: ub.bookId, title: ub.title, source: ub.source };
       lemmas = ub.words;
     } else {
       const meta = WORDBOOK_CATALOG.find((b) => b.id === scope.id);
-      if (!meta) throw new Error('Unknown word book.');
+      if (!meta) throw new Error(t('notebook.books.error.unknown'));
       const sub = (await listWordbookSubs()).find((s) => s.bookId === scope.id);
       book = { kind: 'catalog', id: meta.id, title: meta.title, source: meta.source, goal: sub?.dailyNew };
       lemmas = await loadWordbook(meta.id);

@@ -6,6 +6,7 @@
 
 import { HolarkyAccount, HolarkyAccountError, type HolarkyUser, type KeyValueStorage } from './holarky-account';
 import type { HttpClient } from './http';
+import { t, type MessageKey } from './i18n/runtime';
 import { onVocabChanged } from './vocab-store';
 import { syncVocab, type VocabSyncResult } from './vocab-sync';
 import { syncWordbooks } from './wordbook-sync';
@@ -162,7 +163,7 @@ export class AccountController {
       this.set({ user: await account.getUser() });
     } catch (err) {
       this.opts.log?.('account sign-in failed', String(err));
-      this.set({ lastError: describeError(err, 'Sign-in did not finish.') });
+      this.set({ lastError: describeError(err, 'settings.account.error.signIn') });
     } finally {
       this.set({ signingIn: false });
     }
@@ -197,7 +198,7 @@ export class AccountController {
       this.opts.log?.('account deletion failed', String(err));
       const code = err instanceof HolarkyAccountError ? err.code : '';
       this.set({
-        lastError: code === 'confirm_email_mismatch' ? "That email doesn't match this account." : describeError(err, 'The account was not deleted.'),
+        lastError: code === 'confirm_email_mismatch' ? t('settings.account.error.emailMismatch') : describeError(err, 'settings.account.error.notDeleted'),
       });
       return false;
     }
@@ -238,7 +239,7 @@ export class AccountController {
     } catch (err) {
       this.opts.log?.('notebook sync failed', String(err));
       const signedOut = err instanceof HolarkyAccountError && err.code === 'signed_out';
-      this.set({ lastError: signedOut ? 'You were signed out. Sign in again to keep syncing.' : describeError(err, 'Sync failed.') });
+      this.set({ lastError: signedOut ? t('settings.account.error.signedOut') : describeError(err, 'settings.account.error.syncFailed') });
       if (signedOut) this.set({ user: null });
     } finally {
       this.set({ syncing: false });
@@ -283,15 +284,17 @@ export async function syncProgressForAccount(
   }
 }
 
-function describeError(err: unknown, fallback: string): string {
+/** The error line the account panel shows, in the interface language at the time of the error. */
+function describeError(err: unknown, fallbackKey: MessageKey): string {
+  const fallback = t(fallbackKey);
   if (err instanceof HolarkyAccountError) {
-    if (err.code === 'access_denied') return 'Sign-in was cancelled.';
-    if (err.status >= 500) return 'The account server had a problem. phevere will try again later.';
-    return `${fallback} (${err.code})`;
+    if (err.code === 'access_denied') return t('settings.account.error.cancelled');
+    if (err.status >= 500) return t('settings.account.error.server');
+    return t('settings.account.error.withCode', { message: fallback, code: err.code });
   }
   const msg = err instanceof Error ? err.message : String(err);
   if (/network|fetch|timed? ?out|ECONN|ENOTFOUND|Request failed/i.test(msg)) {
-    return "Couldn't reach the account server. phevere will try again later.";
+    return t('settings.account.error.unreachable');
   }
-  return `${fallback} ${msg}`.trim();
+  return msg ? t('settings.account.error.withDetail', { message: fallback, detail: msg }) : fallback;
 }

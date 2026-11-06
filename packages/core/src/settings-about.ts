@@ -4,13 +4,15 @@
  * tracker, privacy policy, licence and author, and the credits every bundled or fetched work
  * needs (CC BY-SA asks for the work's name, a link to it and a link to the licence).
  *
- * Strings: settings-about-strings.ts. Styles: settings-kit.css and settings-about.css.
+ * Strings: the `settings.about.*` keys of the interface catalogue (i18n/en/settings.ts). Names of
+ * works, people and licences (Wiktionary, CC BY-SA 4.0) stay as their owners write them.
+ * Styles: settings-kit.css and settings-about.css.
  * Hooks: links carry data-act="about-link" and data-url (the phone opens them in the system
  * browser; the desktop routes every target=_blank link there already); the Copy button carries
  * data-act="about-copy" and data-copy with the version text.
  */
 import { esc, SVG } from './settings-kit';
-import { ABOUT_STRINGS_EN, type AboutStrings } from './settings-about-strings';
+import { hasMessage, t, type MessageKey } from './i18n/runtime';
 
 export const REPO_URL = 'https://github.com/thd2020/phevere';
 export const AUTHOR = { name: 'thd2020', url: 'https://github.com/thd2020' };
@@ -37,10 +39,12 @@ const CC_BY_SA_4 = { name: 'CC BY-SA 4.0', url: 'https://creativecommons.org/lic
 export interface AboutCredit {
   id: string;
   name: string;
+  /** A generic name to show translated instead of `name` (the fonts row). */
+  nameKey?: MessageKey;
   url: string;
   /** Licence name and its text; leave out url where there is no single text to link. */
   licence?: { name: string; url?: string };
-  /** A licence string from AboutStrings instead of a licence name. */
+  /** A licence line from the catalogue (`settings.about.perFile`, `.perPack`) instead of a licence name. */
   licenceText?: 'perFile' | 'perPack';
   /** Only on these platforms; everywhere when left out. */
   on?: AboutPlatform[];
@@ -68,7 +72,7 @@ export const ABOUT_CREDITS: AboutCredit[] = [
   { id: 'kokoro', name: 'Kokoro', url: 'https://huggingface.co/hexgrad/Kokoro-82M', licence: { name: 'Apache 2.0', url: 'https://www.apache.org/licenses/LICENSE-2.0' }, on: NATIVE, group: 'software' },
   { id: 'sherpa', name: 'sherpa-onnx', url: 'https://github.com/k2-fsa/sherpa-onnx', licence: { name: 'Apache 2.0', url: 'https://www.apache.org/licenses/LICENSE-2.0' }, on: NATIVE, group: 'software' },
   { id: 'ppocr', name: 'PaddleOCR and RapidOCR', url: 'https://github.com/RapidAI/RapidOCR', licence: { name: 'Apache 2.0', url: 'https://www.apache.org/licenses/LICENSE-2.0' }, on: DESKTOP, group: 'software' },
-  { id: 'fonts', name: 'Fonts', url: 'https://fontsource.org/', licence: { name: 'SIL OFL 1.1', url: 'https://openfontlicense.org/' }, group: 'software' },
+  { id: 'fonts', name: 'Fonts', nameKey: 'settings.about.fontsName', url: 'https://fontsource.org/', licence: { name: 'SIL OFL 1.1', url: 'https://openfontlicense.org/' }, group: 'software' },
 ];
 
 /** Services Phevere calls under their own terms, with no open licence to credit. */
@@ -102,13 +106,22 @@ const APP_ICON = `<svg viewBox="0 0 1024 1024" focusable="false" aria-hidden="tr
   </g>
 </svg>`;
 
-function fill(template: string, values: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (m, k: string) => (k in values ? values[k] : m));
+export function aboutVersionLabel(info: AboutInfo): string {
+  if (!info.version) return t('settings.about.versionUnknown');
+  return info.build
+    ? t('settings.about.versionBuild', { version: info.version, build: info.build })
+    : t('settings.about.version', { version: info.version });
 }
 
-export function aboutVersionLabel(info: AboutInfo, t: AboutStrings = ABOUT_STRINGS_EN): string {
-  if (!info.version) return t.versionUnknown;
-  return info.build ? fill(t.versionBuild, { version: info.version, build: info.build }) : fill(t.version, { version: info.version });
+/**
+ * What a credited work provides, from `settings.about.provides.<id>`; a platform's own line
+ * (`<id><Platform>`, as espeakIos) wins over the general one.
+ */
+export function aboutProvides(id: string, platform?: AboutPlatform): string {
+  const own = platform ? `settings.about.provides.${id}${platform[0].toUpperCase()}${platform.slice(1)}` : '';
+  if (own && hasMessage(own)) return t(own);
+  const key = `settings.about.provides.${id}`;
+  return hasMessage(key) ? t(key) : '';
 }
 
 /** What Copy puts on the clipboard and what a new issue starts with. */
@@ -117,8 +130,8 @@ export function aboutVersionText(info: AboutInfo): string {
   return [`Phevere${version}`, info.system].filter(Boolean).join('\n');
 }
 
-export function aboutIssueUrl(info: AboutInfo, t: AboutStrings = ABOUT_STRINGS_EN): string {
-  const body = `${t.issueIntro}\n\n\n\n---\n${aboutVersionText(info)}`;
+export function aboutIssueUrl(info: AboutInfo): string {
+  const body = `${t('settings.about.issueIntro')}\n\n\n\n---\n${aboutVersionText(info)}`;
   return `${REPO_URL}/issues/new?body=${encodeURIComponent(body)}`;
 }
 
@@ -147,65 +160,67 @@ function linkRow(label: string, url: string, value?: string): string {
   </a>`;
 }
 
-function creditRow(c: AboutCredit, t: AboutStrings, platform: AboutPlatform): string {
+const LICENCE_TEXT = { perFile: 'settings.about.perFile', perPack: 'settings.about.perPack' } as const;
+
+function creditRow(c: AboutCredit, platform: AboutPlatform): string {
   const licence = c.licence
     ? c.licence.url
       ? `<a class="sv-link" ${linkAttrs(c.licence.url)}>${esc(c.licence.name)}</a>`
       : `<span class="sv-about__licence">${esc(c.licence.name)}</span>`
     : c.licenceText
-      ? `<span class="sv-about__licence">${esc(t[c.licenceText])}</span>`
+      ? `<span class="sv-about__licence">${esc(t(LICENCE_TEXT[c.licenceText]))}</span>`
       : '';
   return `<div class="sv-row sv-about__credit">
     <span class="sv-row__text">
-      <a class="sv-about__name" ${linkAttrs(c.url)}>${esc(c.name)}</a>
-      <span class="sv-row__sub">${esc(t.provides[`${c.id}.${platform}`] || t.provides[c.id] || '')}</span>
+      <a class="sv-about__name" ${linkAttrs(c.url)}>${esc(c.nameKey ? t(c.nameKey) : c.name)}</a>
+      <span class="sv-row__sub">${esc(aboutProvides(c.id, platform))}</span>
       <span class="sv-about__end">${licence}</span>
     </span>
   </div>`;
 }
 
-function servicesRow(t: AboutStrings): string {
+function servicesRow(): string {
   const names = ABOUT_SERVICES.map((s) => `<a class="sv-about__service" ${linkAttrs(s.url)}>${esc(s.name)}</a>`).join(', ');
   return `<div class="sv-row sv-about__credit">
     <span class="sv-row__text">
-      <span class="sv-about__name">${esc(t.servicesName)}</span>
+      <span class="sv-about__name">${esc(t('settings.about.servicesName'))}</span>
       <span class="sv-row__sub">${names}</span>
-      <span class="sv-about__end"><span class="sv-about__licence">${esc(t.servicesSub)}</span></span>
+      <span class="sv-about__end"><span class="sv-about__licence">${esc(t('settings.about.servicesSub'))}</span></span>
     </span>
   </div>`;
 }
 
-export function aboutSettingsHtml(info: AboutInfo, t: AboutStrings = ABOUT_STRINGS_EN): string {
+export function aboutSettingsHtml(info: AboutInfo): string {
   const credits = aboutCredits(info.platform);
-  const data = credits.filter((c) => c.group === 'data').map((c) => creditRow(c, t, info.platform)).join('') + servicesRow(t);
-  const software = credits.filter((c) => c.group === 'software').map((c) => creditRow(c, t, info.platform)).join('');
+  const data = credits.filter((c) => c.group === 'data').map((c) => creditRow(c, info.platform)).join('') + servicesRow();
+  const software = credits.filter((c) => c.group === 'software').map((c) => creditRow(c, info.platform)).join('');
   const copy = aboutVersionText(info);
   return `<div class="sv sv-page sv-about">
     <div class="sv-about__hero">
       <span class="sv-about__icon">${APP_ICON}</span>
       <span class="sv-about__title">
         <span class="sv-about__name-big">Phevere</span>
-        <span class="sv-about__version" id="about-version">${esc(aboutVersionLabel(info, t))}</span>
+        <span class="sv-about__version" id="about-version">${esc(aboutVersionLabel(info))}</span>
       </span>
-      <button type="button" class="sv-btn" data-act="about-copy" data-copy="${esc(copy)}" data-copied="${esc(t.copied)}" aria-describedby="about-version">${ICON.copy}<span>${esc(t.copy)}</span></button>
+      <button type="button" class="sv-btn" data-act="about-copy" data-copy="${esc(copy)}" data-copied="${esc(t('common.copied'))}" aria-describedby="about-version">${ICON.copy}<span>${esc(t('common.copy'))}</span></button>
     </div>
     <div class="sv-ledger sv-about__star">
       <div class="sv-row">
-        <span class="sv-row__text"><span class="sv-row__label">${esc(t.starTitle)}</span><span class="sv-row__sub">${esc(t.starSub)}</span></span>
-        <a class="sv-btn sv-btn--accent" ${linkAttrs(REPO_URL)}>${ICON.star}<span>${esc(t.star)}</span></a>
+        <span class="sv-row__text"><span class="sv-row__label">${esc(t('settings.about.starTitle'))}</span><span class="sv-row__sub">${esc(t('settings.about.starSub'))}</span></span>
+        <a class="sv-btn sv-btn--accent" ${linkAttrs(REPO_URL)}>${ICON.star}<span>${esc(t('settings.about.star'))}</span></a>
       </div>
     </div>
     <div class="sv-ledger">
-      ${linkRow(t.sourceCode, REPO_URL, 'GitHub')}
-      ${linkRow(t.whatsNew, `${REPO_URL}/blob/main/CHANGELOG.md`)}
-      ${linkRow(t.reportProblem, aboutIssueUrl(info, t))}
-      ${linkRow(t.privacy, PRIVACY_URL)}
-      ${linkRow(t.licence, APP_LICENCE.url, APP_LICENCE.name)}
-      ${linkRow(t.author, AUTHOR.url, AUTHOR.name)}
+      ${linkRow(t('settings.about.sourceCode'), REPO_URL, 'GitHub')}
+      ${linkRow(t('settings.about.whatsNew'), `${REPO_URL}/blob/main/CHANGELOG.md`)}
+      ${linkRow(t('settings.about.reportProblem'), aboutIssueUrl(info))}
+      ${linkRow(t('settings.about.privacy'), PRIVACY_URL)}
+      ${linkRow(t('settings.about.licence'), APP_LICENCE.url, APP_LICENCE.name)}
+      ${linkRow(t('settings.about.author'), AUTHOR.url, AUTHOR.name)}
     </div>
-    <header class="sv-head"><h3 class="sv-head__title">${esc(t.dataHead)}</h3></header>
+    <header class="sv-head"><h3 class="sv-head__title">${esc(t('settings.about.dataHead'))}</h3></header>
     <div class="sv-ledger">${data}</div>
-    <header class="sv-head"><h3 class="sv-head__title">${esc(t.softwareHead)}</h3></header>
+    <header class="sv-head"><h3 class="sv-head__title">${esc(t('settings.about.softwareHead'))}</h3></header>
     <div class="sv-ledger">${software}</div>
   </div>`;
 }

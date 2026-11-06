@@ -4,6 +4,7 @@
  */
 
 import { BrowserWindow, screen } from 'electron';
+import { formatPercent, t, uiLocale } from '@phevere/core/i18n/runtime';
 import { wrapConsole } from '../logger';
 
 const console = wrapConsole('work-progress');
@@ -18,7 +19,7 @@ export interface WorkProgressState {
 let progressWindow: BrowserWindow | null = null;
 
 function buildHtml(state: WorkProgressState): string {
-  const title = escapeHtml(state.title || 'Working…');
+  const title = escapeHtml(state.title || t('main.progress.working'));
   const subtitle = escapeHtml(state.subtitle || '');
   const pct =
     typeof state.percent === 'number'
@@ -28,10 +29,10 @@ function buildHtml(state: WorkProgressState): string {
     pct == null
       ? `<div class="bar indeterminate"></div>`
       : `<div class="bar determinate" style="width:${pct}%"></div>`;
-  const pctLabel = pct == null ? '' : `<span class="pct">${pct}%</span>`;
+  const pctLabel = pct == null ? '' : `<span class="pct">${escapeHtml(formatPercent(pct / 100))}</span>`;
 
   return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"/>
+<html lang="${escapeHtml(uiLocale())}"><head><meta charset="utf-8"/>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
     background:rgba(15,23,42,.88);color:#f8fafc;user-select:none;-webkit-app-region:drag}

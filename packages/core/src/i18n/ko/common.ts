@@ -1,0 +1,26 @@
+import type { Catalog } from '../runtime';
+
+export default {
+  'common.cancel': '취소',
+  'common.close': '닫기',
+  'common.copy': '복사',
+  'common.copied': '복사됨',
+  'common.delete': '삭제',
+  'common.remove': '제거',
+  'common.undo': '실행 취소',
+  'common.save': '저장',
+  'common.loading': '불러오는 중…',
+  'common.search': '검색',
+  'common.back': '뒤로',
+  'common.more': '더 보기',
+  'common.on': '켬',
+  'common.off': '끔',
+  'common.download': '다운로드',
+  'common.open': '열기',
+  'common.settings': '설정',
+  'common.learn': '학습',
+  'common.lookup': '찾아보기',
+  'common.translate': '번역',
+  'common.edit': '편집',
+  'common.ok': '확인',
+} satisfies Partial<Catalog>;

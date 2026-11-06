@@ -49,6 +49,7 @@ Phevere 是一部在哪裡閱讀都能用的字典。在任何應用程式裡選
 - 電腦：在任何應用程式裡查詢選取的文字或圖片中的單字，並直接翻譯選取的文字
 - Android：從任何應用程式的文字選取選單查字典，也可以拍照掃描單字
 - iOS：從分享選單查字典，也可以拍照掃描單字
+- 介面有 English、简体中文、繁體中文、日本語、한국어、Español、Français、Deutsch、Русский 和 Português (Brasil) 十種語言，預設跟隨系統語言，也可以在**設定**頂端更改
 
 <div align="center">
 <img src="README.assets/learning-overview.png" width="860" alt="手機應用程式截圖：一道複習題、進度頁面、單字書庫和字族">
@@ -63,13 +64,13 @@ Phevere 是一部在哪裡閱讀都能用的字典。在任何應用程式裡選
 
 ## 更新
 
-Phevere 會自動更新。在 **Settings → Updates** 中可以選擇自動更新（Automatically）、先詢問（Ask first）或關閉（Off）。
+Phevere 會自動更新。在**設定 → 更新**中可以選擇自動、先詢問或關閉。
 
-- Windows 和 AppImage 版會在你結束 Phevere 時安裝更新，按 **Roll back** 可以回到上一個版本。
+- Windows 和 AppImage 版會在你結束 Phevere 時安裝更新，按**退回 …** 就能裝回上一個版本。
 - macOS、deb 和 rpm 版會開啟新版本的下載頁面。
 - Android 版會在連上 Wi-Fi 時下載更新，安裝前會請你確認。
 
-**Settings → About** 會顯示目前的版本、更新內容，以及回報問題的地方。
+**設定 → 關於**會顯示目前的版本、更新內容，以及回報問題的地方。
 
 ## 隱私權
 
@@ -96,6 +97,6 @@ npm start
 
 ## 授權條款
 
-[MIT](LICENSE)。Phevere、Holarky、knowrld 這幾個名稱及其標誌不在此授權範圍內，詳見 [TRADEMARKS.md](TRADEMARKS.md)。來自維基詞典和維基百科的字典內容採用 CC BY-SA 4.0 授權。應用程式內附的 eSpeak NG 採用 GPL-3.0-or-later 授權（[條款](apps/mobile/ANDROID.md)），詞義頻率表取自 Princeton WordNet 3.1，依循 WordNet 授權。**Settings → About** 列出了所有資料來源及其授權條款。
+[MIT](LICENSE)。Phevere、Holarky、knowrld 這幾個名稱及其標誌不在此授權範圍內，詳見 [TRADEMARKS.md](TRADEMARKS.md)。來自維基詞典和維基百科的字典內容採用 CC BY-SA 4.0 授權。應用程式內附的 eSpeak NG 採用 GPL-3.0-or-later 授權（[條款](apps/mobile/ANDROID.md)），詞義頻率表取自 Princeton WordNet 3.1，依循 WordNet 授權。**設定 → 關於**列出了所有資料來源及其授權條款。
 
 如果 Phevere 對你有幫助，歡迎在 GitHub 上[給個星星](https://github.com/thd2020/phevere)，讓更多人找到它。

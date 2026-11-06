@@ -2,8 +2,12 @@
  * Language names and script hints shared by the multilingual sources and the
  * offline catalog. Codes are ISO 639-1 where one exists.
  */
+import { languageDisplayName, uiLocale } from './i18n/runtime';
 
-/** English names, as kaikki.org and the Settings headings spell them. */
+/**
+ * English names, as kaikki.org spells them: data for finding and matching sources. The interface
+ * names a language with languageDisplayName (i18n/runtime.ts) instead.
+ */
 export const LANGUAGE_NAMES: Record<string, string> = {
   en: 'English',
   zh: 'Chinese',
@@ -47,11 +51,12 @@ export function languageName(code: string): string {
   return LANGUAGE_NAMES[(code || '').toLowerCase()] || (code || '').toUpperCase();
 }
 
+/** Headings in the order Settings shows them: the ones above first, the rest by their name in the interface language. */
 export function compareLanguageHeadings(a: string, b: string): number {
   const ia = HEADING_ORDER.indexOf(a);
   const ib = HEADING_ORDER.indexOf(b);
   if (ia >= 0 || ib >= 0) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
-  return languageName(a).localeCompare(languageName(b));
+  return languageDisplayName(a).localeCompare(languageDisplayName(b), uiLocale());
 }
 
 /**

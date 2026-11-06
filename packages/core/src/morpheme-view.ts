@@ -12,6 +12,7 @@ import { warmCmuIpa } from './cmu-ipa';
 import { morphemeOf, morphemeOffers, morphemeKindLabel, parseMorphemeQuery, partInWord, type MorphemeEntry } from './morpheme';
 import { linkText, wordLinkHtml } from './text-links';
 import type { LexiconLinks } from './lexicon-parts';
+import { t, tHtml } from './i18n/runtime';
 
 export interface MorphemeSection {
   id: string;
@@ -39,7 +40,7 @@ function wordLine(items: string[], links: LexiconLinks, shown: number, inner?: (
   const head = items.slice(0, shown);
   const rest = items.slice(shown);
   return `<p class="lx-words">${html(head)}</p>${
-    rest.length ? `<details class="lx-more"><summary>All ${items.length}</summary><p class="lx-words">${html(rest)}</p></details>` : ''
+    rest.length ? `<details class="lx-more"><summary>${tHtml('lexicon.list.all', { count: items.length })}</summary><p class="lx-words">${html(rest)}</p></details>` : ''
   }`;
 }
 
@@ -116,37 +117,42 @@ function buildSections(entry: MorphemeEntry, own: OwnWords, links: LexiconLinks)
 
   // About: what kind of part, from which language, its spellings and how it is used.
   const rows: string[] = [];
-  const kind = entry.kind === 'reconstructed' ? 'Proto-Indo-European root' : `${entry.origin ? `${entry.origin} ` : ''}${morphemeKindLabel(entry.kind)}`;
-  rows.push(`<div><dt>Type</dt><dd>${linkText(kind, links)}</dd></div>`);
+  const kind =
+    entry.kind === 'reconstructed'
+      ? t('lexicon.morpheme.pieRootKind')
+      : entry.origin
+        ? t('lexicon.morpheme.kindFrom', { origin: entry.origin, kind: morphemeKindLabel(entry.kind) })
+        : morphemeKindLabel(entry.kind);
+  rows.push(`<div><dt>${tHtml('lexicon.morpheme.type')}</dt><dd>${linkText(kind, links)}</dd></div>`);
   if (entry.source) {
     rows.push(`<div><dt>${esc(entry.source.language)}</dt><dd>${linkText(entry.source.parts, links)}</dd></div>`);
   }
-  if (entry.gloss) rows.push(`<div><dt>Meaning</dt><dd>${linkText(entry.gloss, links)}</dd></div>`);
+  if (entry.gloss) rows.push(`<div><dt>${tHtml('lexicon.morpheme.meaning')}</dt><dd>${linkText(entry.gloss, links)}</dd></div>`);
   const variants = uniq(entry.variants).filter((v) => v.toLowerCase() !== entry.form.toLowerCase() && v.toLowerCase() !== entry.head.toLowerCase());
   if (variants.length) {
     const asQuery = (v: string) => (entry.kind === 'root' ? `-${v}-` : v);
     rows.push(
-      `<div><dt>Spellings</dt><dd>${[entry.head, ...variants]
+      `<div><dt>${tHtml('lexicon.morpheme.spellings')}</dt><dd>${[entry.head, ...variants]
         .map((v) => (v === entry.head ? `<span class="lx-self">${esc(v)}</span>` : wordLinkHtml(asQuery(v), esc(v), links, 'lx-link')))
         .join('<span class="lx-comma">, </span>')}</dd></div>`,
     );
   }
   if (entry.kind === 'root') {
     const roots = entry.pie ? [entry.pie] : deepRoots([...mine, ...books]);
-    if (roots.length) rows.push(`<div><dt>PIE root</dt><dd>${roots.map((r) => link(r, links)).join('<span class="lx-comma">, </span>')}</dd></div>`);
+    if (roots.length) rows.push(`<div><dt>${tHtml('lexicon.morpheme.pieRoot')}</dt><dd>${roots.map((r) => link(r, links)).join('<span class="lx-comma">, </span>')}</dd></div>`);
   }
-  if (entry.usage) rows.push(`<div><dt>Usage</dt><dd>${linkText(entry.usage, links)}</dd></div>`);
-  sections.push({ id: 'morph-about', label: 'about', html: `<dl class="lx-morph">${rows.join('')}</dl>` });
+  if (entry.usage) rows.push(`<div><dt>${tHtml('lexicon.morpheme.usage')}</dt><dd>${linkText(entry.usage, links)}</dd></div>`);
+  sections.push({ id: 'morph-about', label: t('lexicon.morpheme.section.about'), html: `<dl class="lx-morph">${rows.join('')}</dl>` });
 
-  if (mine.length) sections.push({ id: 'morph-mine', label: 'my words', html: wordLine(mine, links, 16, breakdown) });
-  if (books.length) sections.push({ id: 'morph-books', label: 'word books', html: wordLine(books, links, 16, breakdown) });
+  if (mine.length) sections.push({ id: 'morph-mine', label: t('lexicon.morpheme.section.myWords'), html: wordLine(mine, links, 16, breakdown) });
+  if (books.length) sections.push({ id: 'morph-books', label: t('lexicon.morpheme.section.wordBooks'), html: wordLine(books, links, 16, breakdown) });
 
   const several = entry.groups.filter((g) => g.derived.length).length > 1;
   const derivedHtml = entry.groups
     .filter((g) => g.derived.length)
     .map((g) => `${several && g.id ? `<h4 class="lx-label">${esc(g.id)}</h4>` : ''}${wordLine(g.derived, links, 24)}`)
     .join('');
-  if (derivedHtml) sections.push({ id: 'morph-derived', label: 'derived words', html: `<div class="lx-fam">${derivedHtml}</div>` });
+  if (derivedHtml) sections.push({ id: 'morph-derived', label: t('lexicon.morpheme.section.derived'), html: `<div class="lx-fam">${derivedHtml}</div>` });
 
   if (entry.kind === 'reconstructed') {
     const withDesc = entry.groups.filter((g) => g.descendants.length || g.sourceOf || g.formations.length);
@@ -163,7 +169,7 @@ function buildSections(entry: MorphemeEntry, own: OwnWords, links: LexiconLinks)
           )
           .join('');
         const formations = g.formations.length
-          ? `<div><dt>Formations</dt><dd>${g.formations.slice(0, 8).map((f) => `<span class="lx-recon">${esc(f)}</span>`).join('<span class="lx-comma">, </span>')}</dd></div>`
+          ? `<div><dt>${tHtml('lexicon.morpheme.formations')}</dt><dd>${g.formations.slice(0, 8).map((f) => `<span class="lx-recon">${esc(f)}</span>`).join('<span class="lx-comma">, </span>')}</dd></div>`
           : '';
         const sourceOf = g.sourceOf ? `<p class="lx-morph-note">${linkText(g.sourceOf, links)}</p>` : '';
         return `${withDesc.length > 1 && g.id ? `<h4 class="lx-label">${esc(g.id)}</h4>` : ''}${
@@ -171,11 +177,11 @@ function buildSections(entry: MorphemeEntry, own: OwnWords, links: LexiconLinks)
         }${sourceOf}`;
       })
       .join('');
-    if (desc) sections.push({ id: 'morph-descendants', label: 'descendants', html: `<div class="lx-fam">${desc}</div>` });
+    if (desc) sections.push({ id: 'morph-descendants', label: t('lexicon.morpheme.section.descendants'), html: `<div class="lx-fam">${desc}</div>` });
   }
 
   const related = entry.related.filter((w) => w !== entry.form);
-  if (related.length) sections.push({ id: 'morph-related', label: 'related', html: wordLine(related, links, 12) });
+  if (related.length) sections.push({ id: 'morph-related', label: t('lexicon.morpheme.section.related'), html: wordLine(related, links, 12) });
   return sections;
 }
 

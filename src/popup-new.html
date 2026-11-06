@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="color-scheme" content="light" />
-    <title>Phevere Dictionary</title>
+    <title data-i18n="popup.windowTitle">Phevere Dictionary</title>
     <style>
       /*
        * Design Read — the desktop pop-up follows the phone app (apps/mobile/src/styles.css).
@@ -1348,19 +1348,19 @@
         <div class="setting-item">
           <label class="setting-label">
             <input type="checkbox" class="setting-checkbox" id="preloadContent">
-            <span>Look up before expanding</span>
+            <span data-i18n="popup.options.preload">Look up before expanding</span>
           </label>
         </div>
         <div class="setting-item">
           <label class="setting-label">
             <input type="checkbox" class="setting-checkbox" id="openExternalLinks">
-             <span>Open links in browser</span>
+             <span data-i18n="popup.options.openLinksExternally">Open links in browser</span>
           </label>
         </div>
         <div class="setting-item">
           <label class="setting-label">
             <input type="checkbox" class="setting-checkbox" id="senseImages" checked>
-            <span>Images</span>
+            <span data-i18n="popup.options.images">Images</span>
           </label>
         </div>
       </div>
@@ -1368,26 +1368,26 @@
       <!-- Toolbar: slim strip when collapsed; tab strip when expanded -->
       <div class="toolbar" id="toolbar">
           <div class="toolbar-icons" id="toolbar-icons">
-            <div class="lookup-nav" role="group" aria-label="Lookup history">
-              <button type="button" class="lookup-nav-btn" id="lookupNavBack" title="Back (Alt+Left)" aria-label="Back" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-              <button type="button" class="lookup-nav-btn" id="lookupNavForward" title="Forward (Alt+Right)" aria-label="Forward" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <div class="lookup-nav" role="group" aria-label="Lookup history" data-i18n-attr="aria-label:popup.toolbar.history">
+              <button type="button" class="lookup-nav-btn" id="lookupNavBack" title="Back (Alt+Left)" aria-label="Back" data-i18n-attr="title:popup.toolbar.backTitle; aria-label:common.back" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="lookup-nav-btn" id="lookupNavForward" title="Forward (Alt+Right)" aria-label="Forward" data-i18n-attr="title:popup.toolbar.forwardTitle; aria-label:popup.toolbar.forward" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             </div>
-            <div class="toolbar-group" role="tablist" aria-label="Views">
-              <button type="button" class="toolbar-icon tab-icon" role="tab" data-tab="lexicon" id="dictionaryIcon" title="Lexicon" aria-label="Lexicon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5.5c2.8-1.2 5.6-1.2 8.5.6 2.9-1.8 5.7-1.8 8.5-.6v13c-2.8-1.2-5.6-1.2-8.5.6-2.9-1.8-5.7-1.8-8.5-.6zM12 6.1v13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-              <button type="button" class="toolbar-icon tab-icon" role="tab" data-tab="translation" title="Translation" aria-label="Translation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h9M8.5 3.5v2M11 5.5c-.8 3.8-3.4 6.9-6.5 8.5M6.5 8.5c1.3 2.3 3.3 4.3 5.5 5.5M12.5 20.5l4-9.5 4 9.5M14 17h5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <div class="toolbar-group" role="tablist" aria-label="Views" data-i18n-attr="aria-label:popup.toolbar.views">
+              <button type="button" class="toolbar-icon tab-icon" role="tab" data-tab="lexicon" id="dictionaryIcon" title="Lexicon" aria-label="Lexicon" data-i18n-attr="title:popup.tab.lexicon; aria-label:popup.tab.lexicon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5.5c2.8-1.2 5.6-1.2 8.5.6 2.9-1.8 5.7-1.8 8.5-.6v13c-2.8-1.2-5.6-1.2-8.5.6-2.9-1.8-5.7-1.8-8.5-.6zM12 6.1v13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="toolbar-icon tab-icon" role="tab" data-tab="translation" title="Translation" aria-label="Translation" data-i18n-attr="title:popup.tab.translation; aria-label:popup.tab.translation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h9M8.5 3.5v2M11 5.5c-.8 3.8-3.4 6.9-6.5 8.5M6.5 8.5c1.3 2.3 3.3 4.3 5.5 5.5M12.5 20.5l4-9.5 4 9.5M14 17h5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
               <button type="button" class="toolbar-icon tab-icon" role="tab" data-tab="wikipedia" title="Wikipedia" aria-label="Wikipedia"><span class="tab-w" aria-hidden="true">W</span></button>
-              <button type="button" class="toolbar-icon tab-icon" role="tab" data-tab="etymology" title="Etymology" aria-label="Etymology"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21v-9M12 12 6.5 6.5M12 12l5.5-5.5M12 15.5l-3.5-3M6.5 6.5V3.5M17.5 6.5V3.5M4 21h16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="toolbar-icon tab-icon" role="tab" data-tab="etymology" title="Etymology" aria-label="Etymology" data-i18n-attr="title:popup.tab.etymology; aria-label:popup.tab.etymology"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21v-9M12 12 6.5 6.5M12 12l5.5-5.5M12 15.5l-3.5-3M6.5 6.5V3.5M17.5 6.5V3.5M4 21h16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             </div>
             <span class="toolbar-spacer" aria-hidden="true"></span>
             <span class="toolbar-divider" aria-hidden="true"></span>
             <div class="toolbar-group">
-              <button type="button" class="toolbar-icon" id="audioIcon" title="Play pronunciation" aria-label="Play pronunciation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4zM15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-              <button type="button" class="toolbar-icon" id="clipboardIcon" title="Copy" aria-label="Copy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1zM5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-              <button type="button" class="toolbar-icon" id="searchIcon" title="Search the web" aria-label="Search the web"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-              <button type="button" class="toolbar-icon toolbar-heart" id="vocabHeartIcon" title="Save to notebook" aria-pressed="false" aria-label="Save to notebook"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="heart-fill" d="M12 20s-7-4.4-8.9-8.6C1.8 8.4 3.6 5 6.9 5c2 0 3.3 1 5.1 3 1.8-2 3.1-3 5.1-3 3.3 0 5.1 3.4 3.8 6.4C19 15.6 12 20 12 20z"/></svg></button>
-              <button type="button" class="toolbar-icon" id="bookAddIcon" title="Add to word book" aria-label="Add to word book" aria-haspopup="menu" aria-expanded="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5H7.5A2.5 2.5 0 0 1 5 17V4.5h9.5A2.5 2.5 0 0 1 17 7v5M5 17a2.5 2.5 0 0 1 2.5-2.5H12M18 15v6M15 18h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-              <button type="button" class="toolbar-icon" id="settingsIcon" title="Pop-up settings" aria-label="Pop-up settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 13.5l1.6 1.2-2 3.4-1.9-.7a7.6 7.6 0 0 1-2 1.2L14.8 21h-4l-.4-2.4a7.6 7.6 0 0 1-2-1.2l-2 .8-2-3.5 1.6-1.2a7.4 7.4 0 0 1 0-2.4L4.4 9.9l2-3.4 2 .7a7.6 7.6 0 0 1 2-1.2L10.8 3.6h4l.4 2.4a7.6 7.6 0 0 1 2 1.2l2-.8 2 3.5-1.6 1.2a7.4 7.4 0 0 1 0 2.4z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-              <button type="button" class="toolbar-icon" id="closeIcon" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="toolbar-icon" id="audioIcon" title="Play pronunciation" aria-label="Play pronunciation" data-i18n-attr="title:popup.playPronunciation; aria-label:popup.playPronunciation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4zM15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="toolbar-icon" id="clipboardIcon" title="Copy" aria-label="Copy" data-i18n-attr="title:common.copy; aria-label:common.copy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1zM5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="toolbar-icon" id="searchIcon" title="Search the web" aria-label="Search the web" data-i18n-attr="title:popup.toolbar.searchWeb; aria-label:popup.toolbar.searchWeb"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="toolbar-icon toolbar-heart" id="vocabHeartIcon" title="Save to notebook" aria-pressed="false" aria-label="Save to notebook" data-i18n-attr="title:popup.toolbar.saveToNotebook; aria-label:popup.toolbar.saveToNotebook"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="heart-fill" d="M12 20s-7-4.4-8.9-8.6C1.8 8.4 3.6 5 6.9 5c2 0 3.3 1 5.1 3 1.8-2 3.1-3 5.1-3 3.3 0 5.1 3.4 3.8 6.4C19 15.6 12 20 12 20z"/></svg></button>
+              <button type="button" class="toolbar-icon" id="bookAddIcon" title="Add to word book" aria-label="Add to word book" data-i18n-attr="title:popup.addToWordBook; aria-label:popup.addToWordBook" aria-haspopup="menu" aria-expanded="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5H7.5A2.5 2.5 0 0 1 5 17V4.5h9.5A2.5 2.5 0 0 1 17 7v5M5 17a2.5 2.5 0 0 1 2.5-2.5H12M18 15v6M15 18h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="toolbar-icon" id="settingsIcon" title="Pop-up settings" aria-label="Pop-up settings" data-i18n-attr="title:popup.toolbar.settings; aria-label:popup.toolbar.settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 13.5l1.6 1.2-2 3.4-1.9-.7a7.6 7.6 0 0 1-2 1.2L14.8 21h-4l-.4-2.4a7.6 7.6 0 0 1-2-1.2l-2 .8-2-3.5 1.6-1.2a7.4 7.4 0 0 1 0-2.4L4.4 9.9l2-3.4 2 .7a7.6 7.6 0 0 1 2-1.2L10.8 3.6h4l.4 2.4a7.6 7.6 0 0 1 2 1.2l2-.8 2 3.5-1.6 1.2a7.4 7.4 0 0 1 0 2.4z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button type="button" class="toolbar-icon" id="closeIcon" title="Close (Esc)" aria-label="Close" data-i18n-attr="title:popup.toolbar.closeTitle; aria-label:common.close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             </div>
           </div>
         </div>
@@ -1398,33 +1398,34 @@
          <div class="language-selection" id="languageSelection" style="display: none;">
            <div class="language-row">
              <div class="language-group">
-               <label for="sourceLanguage">From</label>
+               <label for="sourceLanguage" data-i18n="popup.translate.from">From</label>
+               <!-- Each language's name is filled in by the page's script (languageOptionLabel). -->
                <select id="sourceLanguage" class="language-select">
-                 <option value="auto" selected>Detect language</option>
-                 <option value="en">English</option>
-                 <option value="zh">Chinese</option>
-                 <option value="es">Spanish</option>
-                 <option value="fr">French</option>
-                 <option value="de">German</option>
-                 <option value="ja">Japanese</option>
-                 <option value="ko">Korean</option>
-                 <option value="ru">Russian</option>
+                 <option value="auto" selected data-i18n="popup.translate.detectLanguage">Detect language</option>
+                 <option value="en"></option>
+                 <option value="zh"></option>
+                 <option value="es"></option>
+                 <option value="fr"></option>
+                 <option value="de"></option>
+                 <option value="ja"></option>
+                 <option value="ko"></option>
+                 <option value="ru"></option>
                </select>
              </div>
-             <button type="button" class="tx-swap" id="txSwapLangs" title="Swap languages" aria-label="Swap languages">
+             <button type="button" class="tx-swap" id="txSwapLangs" title="Swap languages" aria-label="Swap languages" data-i18n-attr="title:popup.translate.swap; aria-label:popup.translate.swap">
                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h11M15 4l3 3-3 3M17 17H6M9 14l-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
              </button>
              <div class="language-group">
-               <label for="targetLanguage">To</label>
+               <label for="targetLanguage" data-i18n="popup.translate.to">To</label>
                <select id="targetLanguage" class="language-select">
-                 <option value="en">English</option>
-                 <option value="zh" selected>Chinese</option>
-                 <option value="es">Spanish</option>
-                 <option value="fr">French</option>
-                 <option value="de">German</option>
-                 <option value="ja">Japanese</option>
-                 <option value="ko">Korean</option>
-                 <option value="ru">Russian</option>
+                 <option value="en"></option>
+                 <option value="zh" selected></option>
+                 <option value="es"></option>
+                 <option value="fr"></option>
+                 <option value="de"></option>
+                 <option value="ja"></option>
+                 <option value="ko"></option>
+                 <option value="ru"></option>
                </select>
              </div>
            </div>
@@ -1466,6 +1467,54 @@
         window.pvLog = dev ? console.log.bind(console) : function () {};
       })();
       pvLog('[POPUP] Script tag loaded - popup-new.html is being executed!');
+
+      /*
+       * Interface strings come from the catalogue through window.phevereI18n, which the deferred
+       * bundle (popup-entry.ts) sets after this script's top level has run. These helpers read it
+       * at call time, and nothing builds text before i18nReady() resolves (initialize awaits it).
+       */
+      function T(key, params) {
+        var i = window.phevereI18n;
+        return i ? i.t(key, params) : key;
+      }
+      function TH(key, params) {
+        var i = window.phevereI18n;
+        return i ? i.tHtml(key, params) : escapeHtml(key);
+      }
+      function i18nReady() {
+        var i = window.phevereI18n;
+        return i && i.ready ? Promise.resolve(i.ready).catch(function () {}) : Promise.resolve();
+      }
+      /** A language's name in the interface language. */
+      function uiLanguageName(code) {
+        var i = window.phevereI18n;
+        var c = String(code || '').trim();
+        if (!c) return '';
+        return i && i.languageDisplayName ? i.languageDisplayName(c) || c : c;
+      }
+      /**
+       * ` lang="xx"` for dictionary text (glosses, examples, etymologies), so the page's own lang,
+       * which is the interface language, does not pick its fonts. Latin-script text is in
+       * `latinLang` (English unless given); other scripts say the language: kana is Japanese,
+       * hangul Korean, Han characters the entry's language when that is Chinese or Japanese and
+       * Chinese otherwise, and any other script the entry's.
+       */
+      function contentLangAttr(text, entryLang, latinLang) {
+        var s = String(text || '');
+        var entry = String(entryLang || '').trim();
+        var lang = latinLang || 'en';
+        if (/[\u3040-\u30FF]/.test(s)) lang = 'ja';
+        else if (/[\uAC00-\uD7AF]/.test(s)) lang = 'ko';
+        else if (/[\u3400-\u9FFF\uF900-\uFAFF]/.test(s)) lang = /^(zh|ja)/.test(entry) ? entry : 'zh';
+        else if (/[\u0370-\u03FF\u0400-\u04FF\u0590-\u06FF\u0900-\u097F\u0E00-\u0E7F]/.test(s)) lang = entry === 'auto' ? '' : entry;
+        return lang ? ' lang="' + escapeHtml(lang) + '"' : '';
+      }
+      /** ` lang="xx"` for text whose language the code knows (a headword, a translation). */
+      function langAttr(code) {
+        var c = String(code || '').trim();
+        return c && c !== 'auto' ? ' lang="' + escapeHtml(c) + '"' : '';
+      }
+
       // Global variables
       let currentText = '';
       let currentResult = null;
@@ -1738,6 +1787,9 @@
           // Start auto-close timeout for collapsed popup
           startAutoCloseTimeout();
 
+        // A lookup builds text, so the interface language is in before the first word arrives.
+        await i18nReady();
+
         try {
           if (window.electronAPI && typeof window.electronAPI.onPopupText === 'function') {
             pvLog('[POPUP] Registering onPopupText listener');
@@ -1815,7 +1867,7 @@
                pvLog('[POPUP] Clipboard copy button clicked');
                if (currentText && window.clipboardAPI && window.clipboardAPI.copy) {
                    await window.clipboardAPI.copy(currentText);
-                   showToast('Copied');
+                   showToast(T('common.copied'));
                }
            });
             document.getElementById('searchIcon').addEventListener('click', () => {
@@ -2052,6 +2104,7 @@
           const resultsContainer = document.getElementById('dictionary-results');
           showDictionaryResults('flow');
           const word = escapeHtml(result.word || '');
+          const wordLang = langAttr(result.detectedLanguage);
           const sources = splitEtymologySources(result.etymology || '');
           const unavailable = Array.isArray(result.metadata?.etymologyUnavailable)
             ? result.metadata.etymologyUnavailable.find(function (s) { return s?.source === 'Etymonline' && (s.status === 'blocked' || s.status === 'unavailable'); })
@@ -2076,8 +2129,8 @@
           if (pending) {
             etymologyHtml = `
               <div class="result-card">
-                  <div class="result-word">${word}</div>
-                  <div class="tab-pending" role="status" aria-label="Loading etymology">
+                  <div class="result-word"${wordLang}>${word}</div>
+                  <div class="tab-pending" role="status" aria-label="${TH('popup.etymology.loading')}">
                     <div class="skel-card" aria-hidden="true"><span class="skel skel-line w-label"></span><span class="skel skel-line w-90"></span><span class="skel skel-line w-75"></span><span class="skel skel-line w-55"></span></div>
                   </div>
               </div>`;
@@ -2087,26 +2140,26 @@
             }).join('');
             const panels = sources.map(function (s, i) {
               const body = s.unavailable
-                ? `<div class="etymology-no-data"><p>${s.unavailable === 'blocked' ? 'Etymonline blocked this request.' : 'Etymonline is unavailable.'}</p><button type="button" class="etymology-open-entry" data-ety-open="${escapeHtml(s.url)}">Open on Etymonline</button></div>`
-                : formatEtymologyBody(s.body);
+                ? `<div class="etymology-no-data"><p>${TH(s.unavailable === 'blocked' ? 'popup.etymology.blocked' : 'popup.etymology.unavailable')}</p><button type="button" class="etymology-open-entry" data-ety-open="${escapeHtml(s.url)}">${TH('popup.etymology.openOnEtymonline')}</button></div>`
+                : formatEtymologyBody(s.body, result.detectedLanguage);
               return `<div class="etymology-panel-body" data-ety-panel="${i}" style="${i === activeIndex ? '' : 'display:none'}">${body}</div>`;
             }).join('');
             etymologyHtml = `
               <div class="result-card">
-                  <div class="result-word">${word}</div>
+                  <div class="result-word"${wordLang}>${word}</div>
                   ${chainHtml}
                   <div class="etymology-layout">
-                    <nav class="etymology-tabs" aria-label="Etymology sources">${tabs}</nav>
+                    <nav class="etymology-tabs" aria-label="${TH('popup.etymology.sources')}">${tabs}</nav>
                     <div class="etymology-panel">${panels}</div>
                   </div>
               </div>`;
           } else {
             etymologyHtml = `
               <div class="result-card">
-                  <div class="result-word">${word}</div>
+                  <div class="result-word"${wordLang}>${word}</div>
                   <div class="etymology-no-data">
                     <div class="no-data-text">
-                      <p><strong>No etymology found.</strong></p>
+                      <p><strong>${TH('popup.etymology.none')}</strong></p>
                     </div>
                   </div>
               </div>`;
@@ -2162,7 +2215,7 @@
           return chunks.map(function (sourceText, i) {
             let body = sourceText.trim();
             const labelMatch = body.match(/^\[([^\]]+)\]\s*\n([\s\S]*)$/);
-            let label = i === 0 ? 'Primary' : 'Alt ' + (i + 1);
+            let label = i === 0 ? T('popup.etymology.primary') : T('popup.etymology.alternative', { n: i + 1 });
             if (labelMatch) {
               label = labelMatch[1].trim() || label;
               body = labelMatch[2].trim();
@@ -2180,10 +2233,10 @@
           });
         }
 
-        function formatEtymologyBody(body) {
+        function formatEtymologyBody(body, entryLang) {
           const plain = stripHtmlToText(body || '');
           const sentences = plain.split(/(?<=[.!?。！？])\s+/).filter(function (s) { return s.trim().length > 2; });
-          let formattedHtml = '<div class="etymology-text">';
+          let formattedHtml = `<div class="etymology-text"${contentLangAttr(plain, entryLang)}>`;
           if (sentences.length === 0) {
             formattedHtml += `<div class="etymology-sentence">${linkWords(plain)}</div>`;
           } else {
@@ -2210,15 +2263,15 @@
           }).join('');
         }
 
-        /** How each older form reached the next, read left to right. */
+        /** How each older form reached the next, read left to right: the message for each relation. */
         var ETYMOLOGY_STEP = {
-          inherited: 'inherited',
-          borrowed: 'borrowed',
-          'learned borrowing': 'learned borrowing',
-          'semi-learned borrowing': 'borrowed',
-          derived: 'derived',
-          calque: 'calque',
-          root: 'root'
+          inherited: 'popup.etymology.relation.inherited',
+          borrowed: 'popup.etymology.relation.borrowed',
+          'learned borrowing': 'popup.etymology.relation.learnedBorrowing',
+          'semi-learned borrowing': 'popup.etymology.relation.borrowed',
+          derived: 'popup.etymology.relation.derived',
+          calque: 'popup.etymology.relation.calque',
+          root: 'popup.etymology.relation.root'
         };
 
         /** The first sense of a gloss, so one long gloss does not stretch the line. */
@@ -2235,32 +2288,35 @@
           // A root names the oldest ancestor wherever Wiktionary placed its template.
           links = links.filter(function (l) { return l.relation !== 'root'; })
             .concat(links.filter(function (l) { return l.relation === 'root'; }));
-          var node = function (lang, term, gloss, isHead) {
-            return '<span class="etymology-chain__node' + (isHead ? ' is-head' : '') + '">' +
-              '<span class="etymology-chain__lang">' + escapeHtml(lang) + '</span>' +
+          // Language names and glosses are Wiktionary's English; a term is in its own language.
+          var node = function (lang, term, gloss, isHead, termLang) {
+            var termAttr = langAttr(termLang);
+            return `<span class="etymology-chain__node${isHead ? ' is-head' : ''}">` +
+              '<span class="etymology-chain__lang" lang="en">' + escapeHtml(lang) + '</span>' +
               (term
                 ? isHead
-                  ? '<span class="etymology-chain__term">' + escapeHtml(term) + '</span>'
-                  : '<span class="etymology-chain__term lx-w" role="link" tabindex="0" data-lookup="' + escapeHtml(term) + '">' + escapeHtml(term) + '</span>'
+                  ? `<span class="etymology-chain__term"${termAttr}>${escapeHtml(term)}</span>`
+                  : `<span class="etymology-chain__term lx-w" role="link" tabindex="0"${termAttr} data-lookup="${escapeHtml(term)}">${escapeHtml(term)}</span>`
                 : '') +
-              (gloss ? '<span class="etymology-chain__gloss">“' + escapeHtml(gloss) + '”</span>' : '') +
+              (gloss ? '<span class="etymology-chain__gloss" lang="en">“' + escapeHtml(gloss) + '”</span>' : '') +
               '</span>';
           };
           var step = function (rel) {
-            var label = ETYMOLOGY_STEP[rel] || '';
+            var key = ETYMOLOGY_STEP[rel] || '';
             return '<span class="etymology-chain__step" aria-hidden="true">' +
-              (label ? '<span class="etymology-chain__rel">' + escapeHtml(label) + '</span>' : '') +
+              (key ? '<span class="etymology-chain__rel">' + TH(key) + '</span>' : '') +
               '<span class="etymology-chain__arrow">→</span></span>';
           };
           var parts = [];
           for (var i = links.length - 1; i >= 0; i--) {
             var l = links[i];
-            parts.push(node(l.language || l.languageCode || '', l.term || '', shortGloss(l.gloss), false));
+            parts.push(node(l.language || l.languageCode || '', l.term || '', shortGloss(l.gloss), false, l.languageCode));
             // The relation on link i says how the newer form (link i-1, or the headword) came from it.
             parts.push(step(l.relation));
           }
-          parts.push(node('English', headword || '', '', true));
-          return '<div class="etymology-chain" role="list" aria-label="Word history, oldest first">' + parts.join('') + '</div>';
+          // i18n-ignore: an English Wiktionary language name, like the chain's other language names.
+          parts.push(node('English', headword || '', '', true, 'en'));
+          return `<div class="etymology-chain" role="list" aria-label="${TH('popup.etymology.chain')}">${parts.join('')}</div>`;
         }
 
 function startAutoCloseTimeout() {
@@ -2603,10 +2659,8 @@ function startAutoCloseTimeout() {
             }
             if (!silent) {
               showLoading({
-                title: 'Looking up…',
-                subtitle: 'Querying dictionary sources',
-                stages: ['Detect', 'Dictionary', 'Translate'],
-                activeStage: 1
+                title: T('popup.loading.lookingUp'),
+                subtitle: T('popup.loading.querying')
               });
             }
             return;
@@ -2621,10 +2675,8 @@ function startAutoCloseTimeout() {
           popupEntryLang = opts.sourceLanguage || '';
           if (!silent) {
             showLoading({
-              title: 'Looking up…',
-              subtitle: 'Detecting language and fetching sources',
-              stages: ['Detect', 'Dictionary', 'Translate'],
-              activeStage: 0
+              title: T('popup.loading.lookingUp'),
+              subtitle: T('popup.loading.detecting')
             });
           }
           try {
@@ -2642,10 +2694,8 @@ function startAutoCloseTimeout() {
 
               if (!silent) {
                 showLoading({
-                  title: 'Looking up…',
-                  subtitle: 'Querying dictionary sources',
-                  stages: ['Detect', 'Dictionary', 'Translate'],
-                  activeStage: 1
+                  title: T('popup.loading.lookingUp'),
+                  subtitle: T('popup.loading.querying')
                 });
               }
 
@@ -2659,7 +2709,7 @@ function startAutoCloseTimeout() {
                 window.dictionaryAPI.lookup(text, targetLang, undefined, sourceLang ? { sourceLanguage: sourceLang } : undefined),
                 new Promise(function (_, reject) {
                   setTimeout(function () {
-                    reject(new Error('Lookup timed out.'));
+                    reject(new Error(T('popup.error.timedOut')));
                   }, 12000);
                 }),
               ]);
@@ -2708,7 +2758,7 @@ function startAutoCloseTimeout() {
         const sourceSelect = document.getElementById('sourceLanguage');
         if (sourceSelect && source) {
           if (sourceSelect.value === 'auto' || !sourceSelect.value) {
-            sourceSelect.title = 'Detected: ' + source;
+            sourceSelect.title = T('popup.translate.detected', { language: uiLanguageName(source) });
           }
         }
       }
@@ -2737,10 +2787,10 @@ function startAutoCloseTimeout() {
         const word = String(opts.word != null ? opts.word : (currentText || window['__popupCurrentText'] || '')).trim();
         const wordEl = document.getElementById('loadingWord');
         if (wordEl) wordEl.textContent = word.length > 60 ? word.slice(0, 60) + '…' : word;
-        // A plain dictionary lookup needs no words: the skeleton says it. Only OCR and
-        // other callers with real progress get a status line and a bar.
+        // A plain dictionary or Wikipedia lookup needs no words: the skeleton says it. Only
+        // callers with real progress (a percent) get a status line and a bar.
         const hasProgress = typeof opts.percent === 'number';
-        const quiet = !hasProgress && !!word && /^(Looking up|Wikipedia)/.test(opts.title || 'Looking up');
+        const quiet = !hasProgress && !!word;
         el.classList.toggle('has-progress', hasProgress);
         el.classList.toggle('no-word', !word);
 
@@ -2816,8 +2866,8 @@ function startAutoCloseTimeout() {
              contentHtml = list.length
                ? list.map(tr => createTranslationCard(result.word, tr, result.detectedLanguage)).join('')
                : pending
-                 ? `<div class="tab-pending" role="status" aria-label="Translating"><div class="skel-card" aria-hidden="true"><span class="skel skel-line w-label"></span><span class="skel skel-line w-90"></span><span class="skel skel-line w-75"></span><span class="skel skel-line w-55"></span></div></div>`
-                 : `<div class="error-message">No translation found.</div>`;
+                 ? `<div class="tab-pending" role="status" aria-label="${TH('popup.translation.translating')}"><div class="skel-card" aria-hidden="true"><span class="skel skel-line w-label"></span><span class="skel skel-line w-90"></span><span class="skel skel-line w-75"></span><span class="skel skel-line w-55"></span></div></div>`
+                 : `<div class="error-message">${TH('popup.translation.none')}</div>`;
          } else if (currentTab === 'wikipedia') {
              void displayWikipediaResult(result.word || currentText);
              return;
@@ -2828,7 +2878,7 @@ function startAutoCloseTimeout() {
          }
 
          if (!contentHtml) {
-             contentHtml = `<div class="error-message">No results.</div>`;
+             contentHtml = `<div class="error-message">${TH('popup.results.none')}</div>`;
          }
 
           resultsContainer.innerHTML = contentHtml;
@@ -3128,7 +3178,7 @@ function startAutoCloseTimeout() {
           if (!word) return;
           var lang = (currentResult && currentResult.detectedLanguage) || 'en';
           var ok = await speakSynthetic({ text: word, lang: lang });
-          if (!ok) showToast('Could not play pronunciation');
+          if (!ok) showToast(T('popup.audio.failed'));
         }
 
         /**
@@ -3159,7 +3209,7 @@ function startAutoCloseTimeout() {
 
         async function playToolbarHuman() {
           if (audioPrefs.enabled === false) {
-            showToast('Pronunciation is off');
+            showToast(T('popup.audio.off'));
             pendingHumanPlay = false;
             stopRecordingWait();
             return;
@@ -3235,7 +3285,7 @@ function startAutoCloseTimeout() {
           var ipa = (btn.getAttribute('data-ipa') || '').trim();
           var accent = btn.getAttribute('data-accent') || '';
           if (!ipa) {
-            showToast('No IPA for this word');
+            showToast(T('popup.ipa.none'));
             return;
           }
           stopPopupSpeech();
@@ -3248,9 +3298,9 @@ function startAutoCloseTimeout() {
               var res = await window.electronAPI.speakIpa({ ipa: ipa, accent: accent });
               ok = !!(res && res.ok);
             }
-            if (!ok) showToast('Could not play this IPA');
+            if (!ok) showToast(T('popup.ipa.failed'));
           } catch (e) {
-            showToast('Could not play this IPA');
+            showToast(T('popup.ipa.failed'));
           } finally {
             ipaSpeakBusy = false;
             setTimeout(function () { btn.classList.remove('is-speaking'); }, 400);
@@ -3351,40 +3401,30 @@ function startAutoCloseTimeout() {
           if (shouldScroll) jumpToLexiconPos(lastLexiconPos, !!instant);
         }
 
-             function languageLabel(code) {
-               const c = String(code || '').trim();
-               if (!c) return '';
-               try {
-                 return new Intl.DisplayNames(['en'], { type: 'language' }).of(c) || c;
-               } catch (e) {
-                 return c;
-               }
-             }
-
              function createTranslationCard(word, trans, wordLang) {
          const origLang = wordLang || window['__audioLang'] || 'en';
          const provider = friendlyTranslationSource(trans.source);
-         const srcLangLabel = languageLabel(origLang) || 'Source';
+         const srcLangLabel = uiLanguageName(origLang) || T('popup.translation.source');
          const tgtLang = trans.language || 'en';
-         const tgtLabel = languageLabel(tgtLang);
+         const tgtLabel = uiLanguageName(tgtLang);
          return `
            <div class="translation-card">
-             ${provider ? `<div class="translation-card__provider">via ${escapeHtml(provider)}</div>` : ''}
+             ${provider ? `<div class="translation-card__provider">${TH('popup.translation.via', { provider: provider })}</div>` : ''}
              <div class="translation-card__pair">
                <div class="translation-card__line">
                  <div>
                    <div class="translation-card__label">${escapeHtml(srcLangLabel)}</div>
-                   <div class="translation-card__original">${escapeHtml(word)}</div>
+                   <div class="translation-card__original"${langAttr(origLang)}>${escapeHtml(word)}</div>
                  </div>
-                 <button type="button" class="tx-speak tx-play" title="Play source" aria-label="Play source" data-text="${escapeHtml(word)}" data-lang="${escapeHtml(origLang)}">${speakIcon()}</button>
+                 <button type="button" class="tx-speak tx-play" title="${TH('popup.translation.playSource')}" aria-label="${TH('popup.translation.playSource')}" data-text="${escapeHtml(word)}" data-lang="${escapeHtml(origLang)}">${speakIcon()}</button>
                </div>
                <div class="translation-card__line">
                  <div>
                    <div class="translation-card__label">${escapeHtml(tgtLabel)}</div>
-                   <div class="translation-card__text">${escapeHtml(trans.text)}</div>
+                   <div class="translation-card__text"${langAttr(tgtLang)}>${escapeHtml(trans.text)}</div>
                    ${trans.pronunciation ? `<div class="translation-card__pron">${escapeHtml(trans.pronunciation)}</div>` : ''}
                  </div>
-                 <button type="button" class="tx-speak tx-play" title="Play translation" aria-label="Play translation" data-text="${escapeHtml(trans.text)}" data-lang="${escapeHtml(trans.language || 'en')}">${speakIcon()}</button>
+                 <button type="button" class="tx-speak tx-play" title="${TH('popup.translation.playTranslation')}" aria-label="${TH('popup.translation.playTranslation')}" data-text="${escapeHtml(trans.text)}" data-lang="${escapeHtml(trans.language || 'en')}">${speakIcon()}</button>
                </div>
              </div>
            </div>
@@ -3546,11 +3586,11 @@ function startAutoCloseTimeout() {
             if (used.has(key)) return;
             used.add(key);
             const tag = accent === 'us' ? 'US' : accent === 'uk' ? 'UK' : '';
-            const label = tag ? tag + ' pronunciation' : 'pronunciation';
+            const label = TH(accent === 'us' ? 'popup.ipa.playUs' : accent === 'uk' ? 'popup.ipa.playUk' : 'popup.playPronunciation');
             chips.push(
               `<span class="ipa-chip">` +
                 `<span class="ipa-chip__text">${tag ? '<b>' + tag + '</b>' : ''}/${escapeHtml(clean)}/</span>` +
-                `<button type="button" class="tx-speak ipa-speak" data-accent="${escapeHtml(accent)}" data-ipa="${escapeHtml(clean)}" title="Play ${escapeHtml(label)}" aria-label="Play ${escapeHtml(label)}">${speakIcon()}</button>` +
+                `<button type="button" class="tx-speak ipa-speak" data-accent="${escapeHtml(accent)}" data-ipa="${escapeHtml(clean)}" title="${label}" aria-label="${label}">${speakIcon()}</button>` +
               `</span>`
             );
           };
@@ -3566,7 +3606,7 @@ function startAutoCloseTimeout() {
           const ipaMatch = shown.match(/\/([^/]+)\//);
           const ipaOnly = ipaMatch ? ipaMatch[1] : line.replace(/^\/+|\/+$/g, '');
           const fallbackChip = ipaOnly
-            ? `<span class="ipa-chip"><span class="ipa-chip__text">${escapeHtml(shown)}</span><button type="button" class="tx-speak ipa-speak" data-accent="other" data-ipa="${escapeHtml(ipaOnly)}" title="Play pronunciation" aria-label="Play pronunciation">${speakIcon()}</button></span>`
+            ? `<span class="ipa-chip"><span class="ipa-chip__text">${escapeHtml(shown)}</span><button type="button" class="tx-speak ipa-speak" data-accent="other" data-ipa="${escapeHtml(ipaOnly)}" title="${TH('popup.playPronunciation')}" aria-label="${TH('popup.playPronunciation')}">${speakIcon()}</button></span>`
             : escapeHtml(shown);
           return `<div class="result-pronunciation">${fallbackChip}</div>`;
         }
@@ -3813,8 +3853,9 @@ function startAutoCloseTimeout() {
           if (defs.length === 0) {
             const lx = window.phevereLexicon;
             const offer = lx && lx.didYouMeanHtml ? lx.didYouMeanHtml(result, 'lookup') : '';
-            return `<div class="error-message">No definitions found.${offer}</div>`;
+            return `<div class="error-message">${TH('popup.lexicon.noDefinitions')}${offer}</div>`;
           }
+          const entryLang = result.detectedLanguage || '';
           const senseIndex = new Map(defs.map(function (d, i) { return [d, i]; }));
           const senseImages = currentPopupSenseImages(result);
 
@@ -3879,14 +3920,18 @@ function startAutoCloseTimeout() {
               senseCounter += 1;
               const at = senseIndex.has(d) ? senseIndex.get(d) : -1;
               const img = senseImages && at >= 0 ? senseImages[at] : null;
-              const rawMeaning = d.meaning || d.definition || '';
+              // The no-definition and timed-out senses are English sentinels; show them in the interface language.
+              const notice = window.phevereLexicon && window.phevereLexicon.lookupNoticeText;
+              const rawMeaning = notice ? notice(d.meaning || d.definition || '') : d.meaning || d.definition || '';
               const isWikiHtml = /<[a-z][\s\S]*>/i.test(rawMeaning);
               const meaningHtml = linkifyLemmaRefs(rawMeaning, isWikiHtml);
               const examples = uniqueExamples(Array.isArray(d.examples) ? d.examples : []);
               examples.forEach(function (ex) { shownExampleKeys.add(exampleKey(ex)); });
+              // An example is in the headword's language; a gloss is English unless its script says otherwise.
               const exHtml = examples.length
                 ? `<div class="definition-examples">${examples.map(function (ex) {
-                    return `<div class="definition-example">${linkWords(tidyExampleText(stripHtmlToText(ex)))}</div>`;
+                    const exText = tidyExampleText(stripHtmlToText(ex));
+                    return `<div class="definition-example"${contentLangAttr(exText, entryLang, entryLang)}>${linkWords(exText)}</div>`;
                   }).join('')}</div>`
                 : '';
               citeOf(d).forEach(function (s) { senseSourceNames.push(normalizeSourceName(s)); });
@@ -3896,7 +3941,7 @@ function startAutoCloseTimeout() {
                     <div class="definition-sense-num">${senseCounter}</div>
                     <div class="definition-sense-body">
                       ${img ? senseFigureHtml(img, at) : ''}
-                      <div class="definition-text">${linkMarkup(labelLead(meaningHtml, d, hide)) || 'No definition.'}</div>
+                      <div class="definition-text"${contentLangAttr(stripHtmlToText(rawMeaning), entryLang)}>${linkMarkup(labelLead(meaningHtml, d, hide)) || TH('popup.lexicon.noDefinition')}</div>
                       ${exHtml}
                       ${lxNotes && lxNotes.senseNotesHtml ? lxNotes.senseNotesHtml(d, 'lookup', result.word || '') : ''}
                     </div>
@@ -3912,7 +3957,7 @@ function startAutoCloseTimeout() {
           }
           // Senses with no part of speech are "other" beside real ones, and need no heading alone.
           function posHeading(pos) {
-            return pos === 'unknown' ? (order.length > 1 ? 'other' : '') : pos;
+            return pos === 'unknown' ? (order.length > 1 ? T('popup.lexicon.section.other') : '') : pos;
           }
           function wrapPane(inner, extraClass) {
             return `<div class="result-card lexicon-block lexicon-pane${extraClass ? ' ' + extraClass : ''}">${inner}</div>`;
@@ -3927,7 +3972,7 @@ function startAutoCloseTimeout() {
               ? window.phevereLexicon.posGrammarHtml(result.headGrammar && result.headGrammar[pos])
               : { html: '', hide: [] };
             posInner += wrapGroup(pos, posHeading(pos), renderSenses(groups[pos], lxCode.hide), lxCode.html);
-            return { id: pos, label: pos === 'unknown' ? (order.length > 1 ? 'other' : 'senses') : chipPosLabel(pos) };
+            return { id: pos, label: pos === 'unknown' ? T(order.length > 1 ? 'popup.lexicon.section.other' : 'popup.lexicon.section.senses') : chipPosLabel(pos) };
           });
           const lxSources = window.phevereLexicon;
           if (lxSources && lxSources.definitionSourcesHtml) posInner += lxSources.definitionSourcesHtml(senseSourceNames);
@@ -3952,30 +3997,33 @@ function startAutoCloseTimeout() {
           const formsHtml = lexiconParts ? lexiconParts.inflectionsHtml(result.inflections, result.word || '', 'lookup') : '';
           if (formsHtml) {
             tocIds.push('forms');
-            formsSections.push({ id: 'forms', label: 'forms' });
-            allInner += wrapPane(wrapGroup('forms', 'forms', formsHtml));
+            formsSections.push({ id: 'forms', label: T('popup.lexicon.section.forms') });
+            allInner += wrapPane(wrapGroup('forms', T('popup.lexicon.section.forms'), formsHtml));
           }
 
           const exampleSections = [];
           if (globalExamples.length) {
             tocIds.push('examples');
-            exampleSections.push({ id: 'examples', label: 'examples' });
-            allInner += wrapPane(wrapGroup('examples', 'examples', globalExamples.map(function (ex) {
-              return `<div class="example-item">${linkWords(tidyExampleText(stripHtmlToText(ex)))}</div>`;
+            exampleSections.push({ id: 'examples', label: T('popup.lexicon.section.examples') });
+            allInner += wrapPane(wrapGroup('examples', T('popup.lexicon.section.examples'), globalExamples.map(function (ex) {
+              const exText = tidyExampleText(stripHtmlToText(ex));
+              return `<div class="example-item"${contentLangAttr(exText, entryLang, entryLang)}>${linkWords(exText)}</div>`;
             }).join('')));
           }
 
+          // Synonyms and antonyms are words of the headword's language.
+          const wordsLang = langAttr(entryLang || 'en');
           const relatedSections = [];
           let relatedInner = '';
           if (syn.length) {
             tocIds.push('synonyms');
-            relatedSections.push({ id: 'synonyms', label: 'synonyms' });
-            relatedInner += wrapGroup('synonyms', 'synonyms', `<div class="example-item">${linkWords(syn.join(', '))}</div>`);
+            relatedSections.push({ id: 'synonyms', label: T('popup.lexicon.section.synonyms') });
+            relatedInner += wrapGroup('synonyms', T('popup.lexicon.section.synonyms'), `<div class="example-item"${wordsLang}>${linkWords(syn.join(', '))}</div>`);
           }
           if (ant.length) {
             tocIds.push('antonyms');
-            relatedSections.push({ id: 'antonyms', label: 'antonyms' });
-            relatedInner += wrapGroup('antonyms', 'antonyms', `<div class="example-item">${linkWords(ant.join(', '))}</div>`);
+            relatedSections.push({ id: 'antonyms', label: T('popup.lexicon.section.antonyms') });
+            relatedInner += wrapGroup('antonyms', T('popup.lexicon.section.antonyms'), `<div class="example-item"${wordsLang}>${linkWords(ant.join(', '))}</div>`);
           }
           if (relatedInner) allInner += wrapPane(relatedInner);
 
@@ -3986,16 +4034,16 @@ function startAutoCloseTimeout() {
             : '';
           if (phraseHtml) {
             tocIds.push('phrases');
-            phraseSections.push({ id: 'phrases', label: 'phrases' });
-            allInner += wrapPane(wrapGroup('phrases', 'phrases', phraseHtml));
+            phraseSections.push({ id: 'phrases', label: T('popup.lexicon.section.phrases') });
+            allInner += wrapPane(wrapGroup('phrases', T('popup.lexicon.section.phrases'), phraseHtml));
           }
 
           const familySections = [];
           const familyHtml = lexiconParts ? lexiconParts.wordFamilyHtml(result.wordFamily, 'lookup', { phrases: !phraseHtml }) : '';
           if (familyHtml) {
             tocIds.push('family');
-            familySections.push({ id: 'family', label: 'family' });
-            allInner += wrapPane(wrapGroup('family', 'word family', familyHtml));
+            familySections.push({ id: 'family', label: T('popup.lexicon.section.family') });
+            allInner += wrapPane(wrapGroup('family', T('popup.lexicon.section.wordFamily'), familyHtml));
           }
 
 
@@ -4011,13 +4059,13 @@ function startAutoCloseTimeout() {
             renderRailBlock('', phraseSections),
             renderRailBlock('', familySections),
           ].join('');
-          const body = `<div class="lexicon-pos-layout"><nav class="lexicon-pos-tabs" role="tablist" aria-label="Lexicon sections" tabindex="0"><div class="lexicon-rail-inner">${tabsHtml}</div></nav><div class="lexicon-pos-panel">${allInner}</div></div>`;
+          const body = `<div class="lexicon-pos-layout"><nav class="lexicon-pos-tabs" role="tablist" aria-label="${TH('popup.lexicon.sections')}" tabindex="0"><div class="lexicon-rail-inner">${tabsHtml}</div></nav><div class="lexicon-pos-panel">${allInner}</div></div>`;
 
           return `
             <div class="lexicon-stack">
                 <div class="result-card lexicon-block lexicon-block--headword">
                   ${lexiconParts && lexiconParts.formLineHtml ? lexiconParts.formLineHtml(result) : ''}
-                  <div class="result-word">${escapeHtml(result.word)}</div>
+                  <div class="result-word"${langAttr(entryLang)}>${escapeHtml(result.word)}</div>
                   ${lexiconParts && lexiconParts.morphemeOfferHtml ? lexiconParts.morphemeOfferHtml(result, 'lookup') : ''}
                   ${formatPronunciationHtml(result)}
                   ${lexiconParts && lexiconParts.languageSwitchHtml ? lexiconParts.languageSwitchHtml(result, 'lookup') : ''}
@@ -4033,7 +4081,7 @@ function startAutoCloseTimeout() {
 
             // Do not dump every source under a wrong label
             if (defs.length === 0) {
-                return `<div class="error-message">No definitions from ${escapeHtml(normalizeSourceName(source))}.</div>`;
+                return `<div class="error-message">${TH('popup.lexicon.noDefinitionsFrom', { source: normalizeSourceName(source) })}</div>`;
             }
 
             // Prefer lexicon-style layout even for a single source
@@ -4049,6 +4097,7 @@ function startAutoCloseTimeout() {
         document.getElementById('loadingElement').style.display = 'none';
         showDictionaryResults('flow');
 
+        // i18n-ignore: a developer's stand-in when the page runs without the app's preload.
         document.getElementById('dictionary-results').innerHTML = `
           <div class="result-card">
             <div class="result-header">
@@ -4092,7 +4141,7 @@ function startAutoCloseTimeout() {
         document.getElementById('loadingElement').style.display = 'none';
         const container = document.getElementById('dictionary-results');
         showDictionaryResults('flow');
-        container.innerHTML = `<div class="error-message">Could not look up "${text}".<br><small>${error.message || 'Unknown error'}</small></div>`;
+        container.innerHTML = `<div class="error-message">${TH('popup.error.lookupFailed', { word: String(text || '') })}<br><small>${escapeHtml((error && error.message) || T('popup.error.unknown'))}</small></div>`;
         fitPanelHeight();
       }
 
@@ -4253,7 +4302,7 @@ function startAutoCloseTimeout() {
          savedVocabFor = saved ? currentResult : null;
          btn.classList.toggle('is-saved', !!saved);
          btn.setAttribute('aria-pressed', saved ? 'true' : 'false');
-         btn.title = saved ? 'Remove from My words' : 'Save to My words';
+         btn.title = T(saved ? 'popup.removeFromMyWords' : 'popup.saveToMyWords');
        }
 
        /*
@@ -4283,7 +4332,7 @@ function startAutoCloseTimeout() {
          const word = lemmaForSave();
          if (!btn || !lex || !lex.openMenu || !word || !popupUserBooks.length) return;
          lex.openMenu(btn, {
-           label: 'Add to word book',
+           label: T('popup.addToWordBook'),
            sheet: false,
            multi: true,
            items: lex.bookPickItems(word, popupUserBooks),
@@ -4291,7 +4340,7 @@ function startAutoCloseTimeout() {
              const book = (item.data && item.data.book) || '';
              if (item.checked) await window.wordbookAPI.addBookWords(book, [word]);
              else await window.wordbookAPI.removeBookWord(book, word);
-             showToast((item.checked ? 'Added to ' : 'Removed from ') + item.label);
+             showToast(T(item.checked ? 'popup.bookAdd.added' : 'popup.bookAdd.removed', { book: String(item.label || '') }));
              await syncBookAdd();
            },
          });
@@ -4331,16 +4380,16 @@ function startAutoCloseTimeout() {
 
        async function toggleVocabHeart() {
          try {
-           if (!window.vocabAPI) { showToast('Notebook unavailable'); return; }
+           if (!window.vocabAPI) { showToast(T('popup.save.notebookUnavailable')); return; }
            const lemma = lemmaForSave();
-           if (!lemma) { showToast('Nothing to save'); return; }
+           if (!lemma) { showToast(T('popup.save.nothing')); return; }
 
            // The id found for this entry only: a tap before the heart catches up with a new
            // entry (Danish "give" after the English one) looks the word up again below.
            if (savedVocabId && savedVocabFor === currentResult) {
              await window.vocabAPI.remove(savedVocabId);
              setVocabHeartSaved(false);
-             showToast('Removed from My words');
+             showToast(T('popup.save.removed'));
              return;
            }
 
@@ -4348,7 +4397,7 @@ function startAutoCloseTimeout() {
            if (existing && existing.id) {
              await window.vocabAPI.remove(existing.id);
              setVocabHeartSaved(false);
-             showToast('Removed from My words');
+             showToast(T('popup.save.removed'));
              return;
            }
 
@@ -4356,7 +4405,7 @@ function startAutoCloseTimeout() {
            const entry = await window.vocabAPI.add(payload);
            // The main process may have saved the word the lookup opens (goose for "geese").
            setVocabHeartSaved(true, entry && entry.id, (entry && entry.lemma) || lemma);
-           showToast('Saved to My words');
+           showToast(T('popup.save.saved'));
            if (!currentResult && lemma) maybePreloadLookup(lemma);
          } catch (e) {
            console.error(e);
@@ -4367,8 +4416,8 @@ function startAutoCloseTimeout() {
              .trim();
            showToast(
              short.length > 90
-               ? 'Could not save. My words is unavailable.'
-               : ('Could not save: ' + short),
+               ? T('popup.save.unavailable')
+               : T('popup.save.failed', { reason: short }),
            );
          }
        }
@@ -4651,6 +4700,13 @@ function startAutoCloseTimeout() {
            const targetLanguage = document.getElementById('targetLanguage');
            const swapBtn = document.getElementById('txSwapLangs');
 
+           /** A language in the From and To lists: its own name, then its name in the interface language. */
+           function languageOptionLabel(code, nativeName, fallbackName) {
+             if (code === 'auto') return T('popup.translate.detectLanguage');
+             const name = uiLanguageName(code) || fallbackName || code;
+             return nativeName ? T('popup.translate.languageOption', { native: nativeName, name: name }) : name;
+           }
+
            function fillLangSelect(select, languages, includeAuto, selected) {
              if (!select || !languages || !languages.length) return;
              const keep = selected || select.value;
@@ -4659,7 +4715,7 @@ function startAutoCloseTimeout() {
                if (!includeAuto && lang.code === 'auto') return;
                const opt = document.createElement('option');
                opt.value = lang.code;
-               opt.textContent = lang.nativeName ? lang.nativeName + ' (' + lang.name + ')' : lang.name;
+               opt.textContent = languageOptionLabel(lang.code, lang.nativeName, lang.name);
                select.appendChild(opt);
              });
              if (keep && [].some.call(select.options, function (o) { return o.value === keep; })) {
@@ -4667,12 +4723,22 @@ function startAutoCloseTimeout() {
              }
            }
 
-           if (window.dictionaryAPI && window.dictionaryAPI.getSupportedLanguages) {
-             void window.dictionaryAPI.getSupportedLanguages().then(function (languages) {
-               fillLangSelect(sourceLanguage, languages, true, sourceLanguage && sourceLanguage.value);
-               fillLangSelect(targetLanguage, languages, false, targetLanguage && targetLanguage.value);
-             }).catch(function () { /* keep markup defaults */ });
-           }
+           // The lists are named in the interface language, so they wait for it.
+           void i18nReady().then(function () {
+             // The markup's own short list, until the app's arrives (or for good, without one).
+             [sourceLanguage, targetLanguage].forEach(function (select) {
+               if (!select) return;
+               [].forEach.call(select.options, function (o) {
+                 if (o.value !== 'auto') o.textContent = languageOptionLabel(o.value, '', '');
+               });
+             });
+             if (window.dictionaryAPI && window.dictionaryAPI.getSupportedLanguages) {
+               return window.dictionaryAPI.getSupportedLanguages().then(function (languages) {
+                 fillLangSelect(sourceLanguage, languages, true, sourceLanguage && sourceLanguage.value);
+                 fillLangSelect(targetLanguage, languages, false, targetLanguage && targetLanguage.value);
+               }).catch(function () { /* keep markup defaults */ });
+             }
+           });
 
            if (swapBtn && sourceLanguage && targetLanguage) {
              swapBtn.addEventListener('click', () => {
@@ -4840,16 +4906,16 @@ function startAutoCloseTimeout() {
              if (!resultsContainer) return;
              if (loading) {
                loading.style.display = 'block';
-               showLoading({ title: 'Wikipedia…', subtitle: 'Fetching article summary' });
+               showLoading({ title: T('popup.loading.wikipedia'), subtitle: T('popup.loading.wikipediaSummary') });
              }
              try {
                if (!window.wikipediaAPI) {
-                 resultsContainer.innerHTML = `<div class="error-message">Wikipedia unavailable.</div>`;
+                 resultsContainer.innerHTML = `<div class="error-message">${TH('popup.wiki.unavailable')}</div>`;
                  return;
                }
                const q = String(term || '').trim();
                if (!q) {
-                 resultsContainer.innerHTML = `<div class="error-message">Nothing to search.</div>`;
+                 resultsContainer.innerHTML = `<div class="error-message">${TH('popup.wiki.nothingToSearch')}</div>`;
                  return;
                }
                const lang = (currentResult && currentResult.detectedLanguage) || 'en';
@@ -4871,14 +4937,14 @@ function startAutoCloseTimeout() {
                     </div>
                     <div class="wikipedia-card__body">
                       ${items.map((r, i) => `
-                        <div class="wikipedia-item" data-wiki-idx="${i}" role="button" tabindex="0">
+                        <div class="wikipedia-item" data-wiki-idx="${i}" role="button" tabindex="0" lang="${escapeHtml(wikiLang)}">
                           <div class="wikipedia-item__title">
                             ${r.thumbnail ? `<img src="${escapeHtml(r.thumbnail)}" alt="" loading="lazy" onerror="this.remove()" />` : ''}
                             <span class="wikipedia-item__name">${escapeHtml(r.title)}</span>
                           </div>
                           <div class="wikipedia-item__extract">${escapeHtml(stripHtmlToText(r.extract || ''))}</div>
                         </div>
-                      `).join('') || `<div class="error-message">No Wikipedia articles found.</div>`}
+                      `).join('') || `<div class="error-message">${TH('popup.wiki.none')}</div>`}
                     </div>
                   </div>`;
                  resultsContainer.innerHTML = html;
@@ -4908,9 +4974,9 @@ function startAutoCloseTimeout() {
                  resultsContainer.innerHTML = `
                   <div class="wikipedia-card wikipedia-reader">
                     <div class="wikipedia-reader__bar">
-                      <button type="button" class="wikipedia-reader__back" id="wikiReaderBack" title="Back to results" aria-label="Back to results"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-                      <div class="wikipedia-reader__title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
-                      <button type="button" class="wikipedia-reader__ext" id="wikiReaderExt" title="Open in browser" aria-label="Open in browser"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                      <button type="button" class="wikipedia-reader__back" id="wikiReaderBack" title="${TH('popup.wiki.back')}" aria-label="${TH('popup.wiki.back')}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                      <div class="wikipedia-reader__title" title="${escapeHtml(title)}" lang="${escapeHtml(wikiLang)}">${escapeHtml(title)}</div>
+                      <button type="button" class="wikipedia-reader__ext" id="wikiReaderExt" title="${TH('popup.wiki.openInBrowser')}" aria-label="${TH('popup.wiki.openInBrowser')}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                     </div>
                     <webview src="${escapeHtml(url)}" partition="persist:wikipedia" allowpopups></webview>
                   </div>`;
@@ -4934,7 +5000,7 @@ function startAutoCloseTimeout() {
                console.error('Wikipedia panel error', err);
                if (loading) loading.style.display = 'none';
                showDictionaryResults('flow');
-               resultsContainer.innerHTML = `<div class="error-message">Wikipedia lookup failed.</div>`;
+               resultsContainer.innerHTML = `<div class="error-message">${TH('popup.wiki.failed')}</div>`;
              }
            }
 

@@ -3,6 +3,9 @@
  * lookups through the same channel as selecting text in the main window, and translation.
  */
 import { contextBridge, ipcRenderer } from 'electron';
+import { exposeUiLanguage } from './ui-language-bridge';
+
+exposeUiLanguage();
 
 contextBridge.exposeInMainWorld('ocrResultAPI', {
   data: (): Promise<{ image: string; page: unknown } | null> => ipcRenderer.invoke('ocr-result-data'),

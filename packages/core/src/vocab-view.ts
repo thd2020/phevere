@@ -13,6 +13,12 @@ import { stripGlossText } from './lookup-policy';
 import { formatVocabLangPair, vocabLookupLang } from './vocab-lang';
 import { findWordInSentence, siteOf, type SourceContext } from './source-context';
 import { bookName } from './book-names';
+import { formatDate, formatRelativeTime, t, tHtml, uiLocale } from './i18n/runtime';
+
+/** A phrase put at the start of a line, with its first letter capitalised as that language does. */
+function sentenceStart(s: string): string {
+  return s ? s.charAt(0).toLocaleUpperCase(uiLocale()) + s.slice(1) : s;
+}
 
 export interface VocabViewEntry {
   id: string;
@@ -65,7 +71,7 @@ export const COPY_ICON =
  */
 export function copyButtonHtml(lemma: string, cls = 'vocab-open vocab-copy'): string {
   const q = esc(clean(lemma));
-  return `<button type="button" class="${cls}" data-act="nb-copy" data-q="${q}" title="Copy" aria-label="Copy ${q}">${COPY_ICON}</button>`;
+  return `<button type="button" class="${cls}" data-act="nb-copy" data-q="${q}" title="${tHtml('common.copy')}" aria-label="${tHtml('notebook.list.copyWord', { word: clean(lemma) })}">${COPY_ICON}</button>`;
 }
 
 /**
@@ -74,12 +80,14 @@ export function copyButtonHtml(lemma: string, cls = 'vocab-open vocab-copy'): st
  */
 export function addToBookButtonHtml(lemma: string, cls = 'vocab-open vocab-tobook'): string {
   const q = esc(clean(lemma));
-  return `<button type="button" class="${cls}" data-act="ub-pick" data-q="${q}" aria-haspopup="menu" aria-expanded="false" title="Add to word book" aria-label="Add ${q} to a word book">${ICON.bookAdd}</button>`;
+  return `<button type="button" class="${cls}" data-act="ub-pick" data-q="${q}" aria-haspopup="menu" aria-expanded="false" title="${tHtml('notebook.list.addToBook')}" aria-label="${tHtml('notebook.list.addWordToBook', { word: clean(lemma) })}">${ICON.bookAdd}</button>`;
 }
 
 /** Senses shown before "Show more". */
 const SENSES_SHOWN = 4;
 
+// The usual dictionary abbreviations of English part-of-speech labels, which come from the
+// dictionaries; they stay as dictionaries print them.
 const POS_SHORT: Record<string, string> = {
   noun: 'n.', verb: 'v.', adjective: 'adj.', adverb: 'adv.', preposition: 'prep.', pronoun: 'pron.',
   conjunction: 'conj.', interjection: 'interj.', determiner: 'det.', article: 'art.', numeral: 'num.',
@@ -155,26 +163,26 @@ function dayStart(t: number): number {
 }
 
 /** Heading for the Recent sort. */
-export function vocabDayGroup(t: number, now = Date.now()): string {
-  if (!t) return 'Earlier';
-  const days = Math.round((dayStart(now) - dayStart(t)) / 86_400_000);
-  if (days <= 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  if (days < 7) return 'This week';
-  const d = new Date(t);
+export function vocabDayGroup(when: number, now = Date.now()): string {
+  if (!when) return t('notebook.list.group.earlier');
+  const days = Math.round((dayStart(now) - dayStart(when)) / 86_400_000);
+  if (days <= 0) return t('notebook.list.group.today');
+  if (days === 1) return t('notebook.list.group.yesterday');
+  if (days < 7) return t('notebook.list.group.thisWeek');
+  const d = new Date(when);
   const sameYear = d.getFullYear() === new Date(now).getFullYear();
-  return d.toLocaleDateString(undefined, sameYear ? { month: 'long' } : { month: 'long', year: 'numeric' });
+  return formatDate(d, sameYear ? { month: 'long' } : { month: 'long', year: 'numeric' });
 }
 
 /** Short time at the end of a row: a clock time today, a weekday this week, otherwise a date. */
-export function vocabWhen(t: number, now = Date.now()): string {
-  if (!t) return '';
-  const d = new Date(t);
-  const days = Math.round((dayStart(now) - dayStart(t)) / 86_400_000);
-  if (days <= 0) return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'short' });
+export function vocabWhen(when: number, now = Date.now()): string {
+  if (!when) return '';
+  const d = new Date(when);
+  const days = Math.round((dayStart(now) - dayStart(when)) / 86_400_000);
+  if (days <= 0) return formatDate(d, { hour: '2-digit', minute: '2-digit' });
+  if (days < 7) return formatDate(d, { weekday: 'short' });
   const sameYear = d.getFullYear() === new Date(now).getFullYear();
-  return d.toLocaleDateString(undefined, sameYear ? { month: 'short', day: 'numeric' } : { year: 'numeric', month: 'short', day: 'numeric' });
+  return formatDate(d, sameYear ? { month: 'short', day: 'numeric' } : { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 /** The rail letter a word files under; an accented Latin letter files under its base letter. */
@@ -203,12 +211,12 @@ function posTag(pos: string): string {
 }
 
 function playButton(lemma: string): string {
-  return `<button type="button" class="vocab-play" data-act="nb-play" data-lemma="${esc(lemma)}" title="Play pronunciation" aria-label="Play ${esc(lemma)}">${ICON.play}</button>`;
+  return `<button type="button" class="vocab-play" data-act="nb-play" data-lemma="${esc(lemma)}" title="${tHtml('notebook.list.playPronunciation')}" aria-label="${tHtml('notebook.review.play', { word: lemma })}">${ICON.play}</button>`;
 }
 
 /** `lang`: the language to open the word in, for a word saved in another language than its letters suggest. */
 function lookupButton(lemma: string, lang = ''): string {
-  return `<button type="button" class="vocab-open" data-act="lookup" data-q="${esc(lemma)}" data-lemma="${esc(lemma)}"${lang ? ` data-lang="${esc(lang)}"` : ''} title="Look up" aria-label="Look up ${esc(lemma)}">${ICON.lookup}</button>`;
+  return `<button type="button" class="vocab-open" data-act="lookup" data-q="${esc(lemma)}" data-lemma="${esc(lemma)}"${lang ? ` data-lang="${esc(lang)}"` : ''} title="${tHtml('common.lookup')}" aria-label="${tHtml('notebook.lookUpWord', { word: lemma })}">${ICON.lookup}</button>`;
 }
 
 /** When the next review is, in words: "Due now", "Tomorrow", "In 5 days". */
@@ -219,9 +227,8 @@ function dueIn(due: number, now: number): string {
     return d.getTime();
   };
   const days = Math.round((day(due) - day(now)) / 86_400_000);
-  if (days <= 0) return 'Due now';
-  if (days === 1) return 'Tomorrow';
-  return days < 60 ? `In ${days} days` : `In ${Math.round(days / 30)} months`;
+  if (days <= 0) return t('notebook.list.dueNow');
+  return sentenceStart(days < 60 ? formatRelativeTime(days, 'day') : formatRelativeTime(Math.round(days / 30), 'month'));
 }
 
 /** Saved when and on which device, where the senses came from, and where review stands. */
@@ -237,7 +244,7 @@ export function sourceFactHtml(ctx: SourceContext | null | undefined): string {
   if (!name) return '';
   const label = ctx.url ? `<a href="${esc(ctx.url)}" target="_blank" rel="noopener noreferrer">${esc(name)}</a>` : esc(name);
   const extra: string[] = [];
-  if (ctx.page) extra.push(`p. ${ctx.page}`);
+  if (ctx.page) extra.push(t('notebook.list.page', { page: String(ctx.page) }));
   if (site && name !== site && !ctx.doc) extra.push(site);
   else if (!ctx.url && !ctx.doc && ctx.app && name !== clean(ctx.app)) extra.push(clean(ctx.app));
   return `${label}${extra.map((x) => `<span class="vocab-source__more">${esc(x)}</span>`).join('')}`;
@@ -252,19 +259,21 @@ export function sourceSentenceHtml(ctx: SourceContext | null | undefined, lemma:
   return `<blockquote class="vocab-context">${body}</blockquote>`;
 }
 
-function factsHtml(e: VocabViewEntry, t: number, now: number): string {
-  const facts: Array<[string, string]> = [];
-  if (t) facts.push(['Saved', esc(new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }))]);
+function factsHtml(e: VocabViewEntry, saved: number, now: number): string {
+  // [what the fact is, its label, its value as HTML]
+  const facts: Array<[string, string, string]> = [];
+  if (saved) facts.push(['saved', t('notebook.list.fact.saved'), esc(formatDate(saved, { dateStyle: 'medium', timeStyle: 'short' }))]);
   const source = sourceFactHtml(e.context);
-  if (source) facts.push(['Source', source]);
+  if (source) facts.push(['source', t('notebook.list.fact.source'), source]);
   const device = clean(e.device);
-  if (device) facts.push(['On', esc(device)]);
+  if (device) facts.push(['device', t('notebook.list.fact.device'), esc(device)]);
   const sources = (e.sources || []).map(clean).filter(Boolean).slice(0, 3);
-  if (sources.length) facts.push(['Dictionary', esc(sources.join(', '))]);
+  if (sources.length) facts.push(['dictionary', t('notebook.list.fact.dictionary'), esc(sources.join(', '))]);
   const reps = Number(e.reps || 0);
-  if (e.reviewDue != null && reps > 0) facts.push(['Review', esc(`${dueIn(Number(e.reviewDue), now)}, ${reps} ${reps === 1 ? 'review' : 'reviews'} so far`)]);
-  else facts.push(['Review', 'New']);
-  return `<dl class="vocab-facts">${facts.map(([k, v]) => `<div${k === 'Source' ? ' class="vocab-source"' : ''}><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
+  if (e.reviewDue != null && reps > 0) {
+    facts.push(['review', t('notebook.list.fact.review'), tHtml('notebook.list.reviewsSoFar', { when: dueIn(Number(e.reviewDue), now), count: reps })]);
+  } else facts.push(['review', t('notebook.list.fact.review'), tHtml('notebook.list.reviewNew')]);
+  return `<dl class="vocab-facts">${facts.map(([k, label, v]) => `<div${k === 'source' ? ' class="vocab-source"' : ''}><dt>${esc(label)}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
 }
 
 export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(), opts: { bookPick?: boolean } = {}): string {
@@ -273,7 +282,7 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
   const senses = vocabSenses(e.definition);
   const pos = clean(e.partOfSpeech);
   const note = clean(e.note);
-  const t = at(e);
+  const saved = at(e);
   // The language pair only matters for a translation.
   const pair = formatVocabLangPair({
     sourceLang: clean(e.sourceLang) || undefined,
@@ -301,16 +310,16 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
         .join('')}</div>` : ''}
       ${senses.length
         ? `<ol class="vocab-def vocab-senses${more ? ' is-clamped' : ''}">${senses.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>${more
-          ? `<button type="button" class="vocab-more btn-link" data-act="nb-more">Show more</button>` : ''}`
-        : '<p class="vocab-empty-def">No definition saved.</p>'}
+          ? `<button type="button" class="vocab-more btn-link" data-act="nb-more">${tHtml('notebook.list.showMore')}</button>` : ''}`
+        : `<p class="vocab-empty-def">${tHtml('notebook.list.noDefinition')}</p>`}
       ${sourceSentenceHtml(e.context, lemma)}
       ${note ? `<p class="vocab-note">${esc(note)}</p>` : ''}
       <div class="vocab-foot">
-        ${factsHtml(e, t, now)}
+        ${factsHtml(e, saved, now)}
         <span class="vocab-actions">
-          <button type="button" class="vocab-action vocab-copy-full" data-act="nb-copy" data-id="${id}">${COPY_ICON}<span>Copy with meaning</span></button>
-          ${opts.bookPick ? `<button type="button" class="vocab-action vocab-tobook" data-act="ub-pick" data-q="${esc(lemma)}" aria-haspopup="menu" aria-expanded="false">${ICON.bookAdd}<span>Add to word book</span></button>` : ''}
-          <button type="button" class="vocab-action vocab-remove" data-act="nb-del" data-id="${id}">${ICON.remove}<span>Remove</span></button>
+          <button type="button" class="vocab-action vocab-copy-full" data-act="nb-copy" data-id="${id}">${COPY_ICON}<span>${tHtml('notebook.list.copyWithMeaning')}</span></button>
+          ${opts.bookPick ? `<button type="button" class="vocab-action vocab-tobook" data-act="ub-pick" data-q="${esc(lemma)}" aria-haspopup="menu" aria-expanded="false">${ICON.bookAdd}<span>${tHtml('notebook.list.addToBook')}</span></button>` : ''}
+          <button type="button" class="vocab-action vocab-remove" data-act="nb-del" data-id="${id}">${ICON.remove}<span>${tHtml('common.remove')}</span></button>
         </span>
       </div>
     </div>`;
@@ -321,7 +330,7 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
         ${play}
         ${copyButtonHtml(lemma)}
         ${lookupButton(lemma, vocabLookupLang({ lemma, sourceLang: clean(e.sourceLang) }))}
-        <time class="vocab-when" datetime="${t ? new Date(t).toISOString() : ''}">${esc(vocabWhen(t, now))}</time>
+        <time class="vocab-when" datetime="${saved ? new Date(saved).toISOString() : ''}">${esc(vocabWhen(saved, now))}</time>
         <span class="vocab-chevron" aria-hidden="true">${ICON.chevron}</span>
       </span>
     </div>
@@ -394,7 +403,7 @@ export function recentListHtml(
       const reading = e ? vocabReadings(e.reading)[0] : undefined;
       const pos = e ? clean(e.partOfSpeech) : '';
       return `${heading}<article class="vocab-item recent-item is-collapsed${e ? ' is-saved' : ''}" data-q="${esc(q)}">
-    <div class="vocab-entry__toggle" data-act="lookup" data-q="${esc(q)}" role="button" tabindex="0" aria-label="Look up ${esc(q)}">
+    <div class="vocab-entry__toggle" data-act="lookup" data-q="${esc(q)}" role="button" tabindex="0" aria-label="${tHtml('notebook.lookUpWord', { word: q })}">
       <div class="vocab-row__main"><div class="vocab-row__head">
         <h3 class="vocab-lemma">${esc(q)}</h3>
         ${reading ? `<span class="vocab-reading">${esc(reading.ipa)}</span>` : ''}
@@ -405,8 +414,8 @@ export function recentListHtml(
         ${copyButtonHtml(q)}
         ${lookupButton(q)}
         ${e
-          ? `<button type="button" class="vocab-open vocab-save is-on" data-act="nb-del" data-id="${esc(e.id)}" aria-pressed="true" title="Remove from My words" aria-label="Remove ${esc(q)} from My words">${ICON.heart}</button>`
-          : `<button type="button" class="vocab-open vocab-save" data-act="wb-save" data-q="${esc(q)}" aria-pressed="false" title="Save to My words" aria-label="Save ${esc(q)} to My words">${ICON.heart}</button>`}
+          ? `<button type="button" class="vocab-open vocab-save is-on" data-act="nb-del" data-id="${esc(e.id)}" aria-pressed="true" title="${tHtml('notebook.list.removeFromMyWords')}" aria-label="${tHtml('notebook.list.removeWordFromMyWords', { word: q })}">${ICON.heart}</button>`
+          : `<button type="button" class="vocab-open vocab-save" data-act="wb-save" data-q="${esc(q)}" aria-pressed="false" title="${tHtml('notebook.list.saveToMyWords')}" aria-label="${tHtml('notebook.list.saveWordToMyWords', { word: q })}">${ICON.heart}</button>`}
         ${opts.bookPick ? addToBookButtonHtml(q) : ''}
         <time class="vocab-when"${item.at ? ` datetime="${new Date(item.at).toISOString()}"` : ''}>${esc(vocabWhen(item.at, now))}</time>
       </span>

@@ -153,6 +153,14 @@ import {
   closeMenu,
   menuOpen,
   setAppIconSource,
+  enhanceSelect,
+  resolveUiLocale,
+  asUiLanguagePref,
+  setUiLocale,
+  UI_LANGUAGE_SELECT_ID,
+  formatPercent,
+  t,
+  tHtml,
 } from '@phevere/core';
 import { OcrView } from '@phevere/core/ocr-view';
 import { pageLines, type OcrPage } from '@phevere/core/ocr-layout';
@@ -176,6 +184,7 @@ import {
   packStorageBytes,
   removePack,
   type CatalogStatus,
+  type PackStep,
 } from './platform/offline';
 import { applyPrefsToCore, loadPrefs, savePrefs, type MobilePrefs } from './platform/prefs';
 import { startPhoneUpdates } from './platform/updates';
@@ -205,6 +214,7 @@ import {
   type SettingsSection,
   type VoiceStatus,
   MOCK_BAR,
+  speedText,
   type Tab,
   type WikiArticle,
   esc,
@@ -651,10 +661,10 @@ let barTab: Tab | null = null;
 
 /** "ob-" and "ob" are two pages: the marks of a word part stay in the key. */
 function foldQuery(v: string): string {
-  const t = v.trim();
-  const lead = /^[*-]/.test(t) ? t[0] : '';
-  const trail = t.length > 1 && t.endsWith('-') ? '-' : '';
-  return lead + t.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase() + trail;
+  const target = v.trim();
+  const lead = /^[*-]/.test(target) ? target[0] : '';
+  const trail = target.length > 1 && target.endsWith('-') ? '-' : '';
+  return lead + target.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase() + trail;
 }
 
 function placeNow(): Place {
@@ -927,7 +937,7 @@ function toast(msg: string, undo?: () => void): void {
 
 function toastHtml(): string {
   if (!toastMsg) return '';
-  const action = toastUndo ? '<button type="button" class="toast__action" data-act="toast-undo">Undo</button>' : '';
+  const action = toastUndo ? `<button type="button" class="toast__action" data-act="toast-undo">${tHtml('common.undo')}</button>` : '';
   return `<div class="toast" role="status"><span class="toast__msg">${esc(toastMsg)}</span>${action}</div>`;
 }
 
@@ -1157,7 +1167,7 @@ function paintPage(): void {
     </div>
     ${stripMode ? '' : navHtml(tab)}
     ${!stripMode && accountOpen && accountState?.configured ? `<div class="sheet-scrim${entering ? ' is-entering' : ''}" data-act="account-close"></div>
-    <section class="account-sheet${entering ? ' is-entering' : ''}" role="dialog" aria-modal="true" aria-label="Account">
+    <section class="account-sheet${entering ? ' is-entering' : ''}" role="dialog" aria-modal="true" aria-label="${tHtml('mobile.account.sheet')}">
       <span class="account-sheet__grip" aria-hidden="true"></span>
       ${accountPanelHtml(accountState, { deleting: accountDeleting, device: 'phone' })}
     </section>` : ''}
@@ -1188,6 +1198,8 @@ function paintPage(): void {
   showSenseFigures();
   bindWikiReader();
   bindMockBar();
+  const uiLanguage = document.getElementById(UI_LANGUAGE_SELECT_ID) as HTMLSelectElement | null;
+  if (uiLanguage) enhanceSelect(uiLanguage);
   bindAzRail();
   // A repaint replaces the map's element; release the old 3D renderer straight away.
   disposeNotebookMaps(true);
@@ -1308,10 +1320,10 @@ function revealSettingsTab(scrollLeft: number): void {
   if (!bar || !tab) return;
   bar.scrollLeft = scrollLeft;
   const b = bar.getBoundingClientRect();
-  const t = tab.getBoundingClientRect();
+  const target = tab.getBoundingClientRect();
   const pad = 4;
-  if (t.left - pad < b.left) bar.scrollLeft -= b.left - t.left + pad;
-  else if (t.right + pad > b.right) bar.scrollLeft += t.right - b.right + pad;
+  if (target.left - pad < b.left) bar.scrollLeft -= b.left - target.left + pad;
+  else if (target.right + pad > b.right) bar.scrollLeft += target.right - b.right + pad;
 }
 
 /** After a Review paint: the answer box gets the cursor, a listening question plays once. */
@@ -1731,23 +1743,23 @@ async function saveCurrent(): Promise<void> {
     if (saved) {
       await removeVocab(saved.id);
       saved = null;
-      toast('Removed from My words');
+      toast(t('mobile.toast.removedFromMyWords'));
     } else {
       // resolveForm: a tap before the page turns from "geese" to goose still saves goose.
       const payload = { ...vocabPayloadFromResult(result, lemma), context: sourceForSave(lemma), resolveForm: true };
       saved = await addVocab(payload);
-      toast('Saved to My words');
-      postOsNotify('saved', 'Saved to My words', lemma);
+      toast(t('mobile.toast.savedToMyWords'));
+      postOsNotify('saved', t('mobile.notify.saved'), lemma);
     }
     changed = true;
   } catch (err) {
-    toast(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
+    toast(t('mobile.toast.couldNotSave', { error: err instanceof Error ? err.message : String(err) }));
   }
   await refreshNotebook();
   paint();
   // In the pop-up, the page may be closed a moment after this tap: write the word now. The
   // star and the toast do not wait for it (a notebook with packs is a large file).
-  if (changed) await flushNotebook().catch((err) => toast(`Could not save: ${err instanceof Error ? err.message : String(err)}`));
+  if (changed) await flushNotebook().catch((err) => toast(t('mobile.toast.couldNotSave', { error: err instanceof Error ? err.message : String(err) })));
 }
 
 /**
@@ -1816,7 +1828,7 @@ function lookupInPlace(text: string): void {
 /** Save the scanned picture with its edits as a PNG. */
 async function saveScanImage(png: Blob): Promise<void> {
   const bytes = new Uint8Array(await png.arrayBuffer());
-  const name = 'Scanned text.png';
+  const name = `${t('mobile.scan.imageFileName')}.png`;
   try {
     if (hasNativeBridge()) {
       let bin = '';
@@ -1832,7 +1844,7 @@ async function saveScanImage(png: Blob): Promise<void> {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : '';
-    if (msg !== 'Cancelled') toast('Could not save');
+    if (msg !== 'Cancelled') toast(t('mobile.scan.couldNotSaveImage'));
   }
 }
 
@@ -1979,19 +1991,20 @@ function setScanSheet(next: SheetState): void {
 
 async function runOcr(): Promise<void> {
   if (!hasNativeBridge()) {
-    toast('Scanning requires the Android or iOS app.');
+    toast(t('mobile.scan.needsApp'));
     return;
   }
   try {
     const res = await nativeCall<ScanPage>('scanOcr', {});
     if (!res?.jpeg) {
-      toast('No picture');
+      toast(t('mobile.scan.noPicture'));
       return;
     }
     showScan(res);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Could not scan';
-    if (msg === 'Cancelled' || msg === 'No photo' || msg === 'No image') return;
+    const msg = err instanceof Error ? err.message : t('mobile.scan.failed');
+    // The native scanner's codes for a scan the user called off; never shown.
+    if (msg === 'Cancelled' || msg === 'No photo' || msg === 'No image') return; // i18n-ignore: native error codes
     toast(msg);
   }
 }
@@ -2010,7 +2023,7 @@ function showScan(res: ScanPage): void {
   };
   tab = 'lookup';
   const words = pageLines(scanOcrPage(scan)).reduce((n, l) => n + l.words.length, 0);
-  postOsNotify('ocr', 'Scan finished', words ? `${words} words` : 'No text');
+  postOsNotify('ocr', t('mobile.notify.scanFinished'), words ? t('mobile.notify.scanWords', { count: words }) : t('mobile.notify.scanNoText'));
   paint();
 }
 
@@ -2037,7 +2050,7 @@ async function hideSensePicture(frame: HTMLElement): Promise<void> {
   figure?.remove();
   senseImages = null;
   void loadSenseImages(generation);
-  toast('Picture hidden', () => {
+  toast(t('mobile.picture.hidden'), () => {
     void unhideSenseImage(word, picture, opts).then(() => {
       if (generation !== lookupGeneration) return;
       senseImages = null;
@@ -2053,7 +2066,7 @@ function openSensePicture(frame: HTMLElement): void {
   dlg.className = 'pic-view';
   dlg.innerHTML = `<img class="pic-view__img" src="${esc(pictureSrc(d.thumb || '') || d.thumb || '')}" alt="${esc(d.title || '')}" referrerpolicy="no-referrer" tabindex="-1" autofocus />
     <p class="pic-view__cap"><span>${esc(d.title || '')}</span>${d.page ? `<button type="button" class="pic-view__credit" data-pic-credit="${esc(d.page)}">${esc(d.credit || 'Wikimedia Commons')}</button>` : ''}</p>
-    ${d.page ? '<button type="button" class="pic-view__hide" data-pic-hide>Hide picture</button>' : ''}`;
+    ${d.page ? `<button type="button" class="pic-view__hide" data-pic-hide>${tHtml('mobile.picture.hide')}</button>` : ''}`;
   // The thumbnail shows at once; the larger rendering replaces it when it has arrived.
   const img = dlg.querySelector('img') as HTMLImageElement;
   const full = new Image();
@@ -2116,9 +2129,9 @@ function exportScope(s: string): BookScope {
 async function exportWords(scope: string, anki: boolean): Promise<void> {
   try {
     const name = await exportBook(exportScope(scope), anki);
-    toast(`Saved ${name}`);
+    toast(t('mobile.toast.savedFile', { file: name }));
   } catch (err) {
-    toast(err instanceof Error ? err.message : 'Could not export');
+    toast(err instanceof Error ? err.message : t('mobile.toast.couldNotExport'));
   }
 }
 
@@ -2142,7 +2155,7 @@ async function pickAndImportNotebook(): Promise<void> {
       // An export from before word book files: rows of My words.
       const out = await importNotebookText(name, text);
       await refreshNotebook();
-      toast(`Imported ${out.imported}. Skipped ${out.skipped}.`);
+      toast(t('mobile.import.importedSkipped', { imported: out.imported, skipped: out.skipped }));
       paint();
       return;
     }
@@ -2150,14 +2163,18 @@ async function pickAndImportNotebook(): Promise<void> {
     const conflict = await findBookConflict(payload);
     if (conflict && payload.book.kind === 'user') {
       const pick = await askChoice(
-        `You already have a book named “${conflict.title}”.`,
-        `Replace overwrites its word list with this file's. Keep both adds this one as “${conflict.title} (2)”. Progress is merged either way.`,
-        ['Keep both', 'Replace', 'Cancel'],
+        t('mobile.import.conflictUser', { title: conflict.title }),
+        t('mobile.import.conflictUserDetail', { title: conflict.title }),
+        [t('mobile.import.keepBoth'), t('mobile.import.replace'), t('common.cancel')],
       );
       if (pick !== 0 && pick !== 1) return;
       mode = pick === 1 ? 'replace' : 'keep-both';
     } else if (conflict) {
-      const pick = await askChoice(`You already added “${conflict.title}”.`, "This file's progress is merged into it.", ['Merge progress', 'Cancel']);
+      const pick = await askChoice(
+        t('mobile.import.conflictCatalog', { title: conflict.title }),
+        t('mobile.import.conflictCatalogDetail'),
+        [t('mobile.import.mergeProgress'), t('common.cancel')],
+      );
       if (pick !== 0) return;
     }
     const result = await importBookPayload(payload, mode);
@@ -2165,10 +2182,14 @@ async function pickAndImportNotebook(): Promise<void> {
     await refreshWords();
     wordsState.scope = result.kind === 'mine' ? 'mine' : result.bookId;
     wordsState.library = false;
-    toast(result.kind === 'mine' ? `${result.added} new in My words` : `Imported ${result.title}: ${result.words} words`);
+    toast(
+      result.kind === 'mine'
+        ? t('mobile.import.newInMyWords', { count: result.added })
+        : t('mobile.import.importedBook', { title: result.title, count: result.words }),
+    );
     paint();
   } catch (err) {
-    toast(err instanceof Error ? err.message : 'Could not import');
+    toast(err instanceof Error ? err.message : t('mobile.toast.couldNotImport'));
   }
 }
 
@@ -2196,24 +2217,28 @@ async function downloadPack(id: string): Promise<void> {
   if (!item || lib.packProgress) return;
   if (!window.confirm(item.consent)) return;
   packMsg = '';
-  lib.packProgress = { id, fraction: null, label: 'Downloading…' };
+  lib.packProgress = { id, fraction: null, label: t('mobile.offline.downloading') };
   paint();
   let lastPaint = 0;
   try {
-    const out = await downloadCatalogPack(id, (msg) => {
-      // "Importing 1200 of 23000…" carries a fraction; the other steps have no size.
-      const m = msg.match(/^Importing (\d+) of (\d+)/);
+    const out = await downloadCatalogPack(id, (p: PackStep) => {
+      // Importing carries a fraction; the other steps have no size.
       const now = Date.now();
-      if (m && now - lastPaint < 120) return;
+      if (p.step === 'import' && now - lastPaint < 120) return;
       lastPaint = now;
       lib.packProgress = {
         id,
-        fraction: m ? Number(m[1]) / Math.max(1, Number(m[2])) : null,
-        label: m ? `Importing ${Number(m[1]).toLocaleString('en-US')} of ${Number(m[2]).toLocaleString('en-US')}` : msg,
+        fraction: p.step === 'import' ? p.done / Math.max(1, p.total) : null,
+        label:
+          p.step === 'import'
+            ? t('mobile.offline.importingProgress', { done: p.done, total: p.total })
+            : p.step === 'unpack'
+              ? t('mobile.offline.unpacking')
+              : t('mobile.offline.downloading'),
       };
       paint();
     });
-    packMsg = `Installed ${item.name}, ${out.count.toLocaleString('en-US')} entries`;
+    packMsg = t('mobile.offline.installed', { name: item.name, count: out.count });
     await refreshPacks();
     if (lib.inspecting === id) await loadPackDetails(id);
   } catch (err) {
@@ -2536,14 +2561,14 @@ async function playLemma(lemma: string, btn?: HTMLElement | null): Promise<void>
 /** A speaker tapped with Pronunciation switched off says why nothing plays. */
 function soundOff(): boolean {
   if (prefs.audioEnabled) return false;
-  toast('Pronunciation is off');
+  toast(t('mobile.toast.pronunciationOff'));
   return true;
 }
 
 async function copyText(text: string): Promise<void> {
   const value = text.trim();
   if (!value) return;
-  toast((await writeClipboard(value)) ? 'Copied' : 'Could not copy');
+  toast((await writeClipboard(value)) ? t('common.copied') : t('mobile.toast.couldNotCopy'));
 }
 
 /** Put text on the clipboard through the native bridge, or the browser's clipboard in the preview. */
@@ -2563,12 +2588,12 @@ async function writeClipboard(value: string): Promise<boolean> {
  * Copy on a word row (data-q: the word as saved) or an opened row's "Copy with meaning" (data-id).
  * The button shows the tick; only a failure raises a toast.
  */
-async function copyRowWord(t: HTMLElement): Promise<void> {
-  const entry = t.dataset.id ? notebook.find((x) => x.id === t.dataset.id) : undefined;
-  const text = entry ? vocabCopyText(entry) : (t.dataset.q || '').trim();
+async function copyRowWord(target: HTMLElement): Promise<void> {
+  const entry = target.dataset.id ? notebook.find((x) => x.id === target.dataset.id) : undefined;
+  const text = entry ? vocabCopyText(entry) : (target.dataset.q || '').trim();
   if (!text) return;
-  if (await writeClipboard(text)) flashCopied(t);
-  else toast('Could not copy');
+  if (await writeClipboard(text)) flashCopied(target);
+  else toast(t('mobile.toast.couldNotCopy'));
 }
 
 /** Browser preview without clipboard permission: copy through a hidden text area. */
@@ -2629,7 +2654,7 @@ function pulseSpeak(el: HTMLElement, done: Promise<void>): Promise<void> {
   const clear = () => el.classList.remove('is-speaking');
   const timeout = window.setTimeout(clear, 8000);
   return done.catch((err) => {
-    toast(err instanceof Error ? err.message : 'Could not play pronunciation');
+    toast(err instanceof Error ? err.message : t('mobile.toast.couldNotPlay'));
   }).finally(() => {
     window.clearTimeout(timeout);
     clear();
@@ -2721,16 +2746,16 @@ function bindLexiconPane(): void {
 }
 
 function onClick(e: Event): void {
-  const t = (e.target as HTMLElement | null)?.closest?.('[data-act]') as HTMLElement | null;
-  const act = t?.dataset.act;
+  const target = (e.target as HTMLElement | null)?.closest?.('[data-act]') as HTMLElement | null;
+  const act = target?.dataset.act;
   // Any tap outside the open language list closes it.
   // The language sheet is modal: taps inside it (search box, list) keep it open.
   if (langMenu && !(e.target as HTMLElement | null)?.closest?.('.lang-sheet') && act !== 'pick-open') {
     langMenu = '';
-    if (!t) paint();
+    if (!target) paint();
   }
-  if (!t) return;
-  void handleAct(act || '', t, e);
+  if (!target) return;
+  void handleAct(act || '', target, e);
 }
 
 let suggestSeq = 0;
@@ -2776,15 +2801,15 @@ function onQueryInput(): void {
   });
 }
 
-async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
+async function handleAct(act: string, target: HTMLElement, e: Event): Promise<void> {
   switch (act) {
     case 'about-link':
       // The system browser, not the app's WebView.
       e.preventDefault();
-      if (t.dataset.url) openExternal(t.dataset.url);
+      if (target.dataset.url) openExternal(target.dataset.url);
       return;
     case 'about-copy':
-      await copyText(t.dataset.copy || '');
+      await copyText(target.dataset.copy || '');
       return;
     case 'toast-undo': {
       const undo = toastUndo;
@@ -2798,19 +2823,19 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'account-plus': {
       // Get Plus: the system browser, not the app's WebView.
       e.preventDefault();
-      const url = (t as HTMLAnchorElement).href;
+      const url = (target as HTMLAnchorElement).href;
       if (url) openExternal(url);
       return;
     }
     case 'tab':
-      tab = (['notebook', 'learn', 'settings'] as const).find((id) => id === t.dataset.tab) || 'lookup';
+      tab = (['notebook', 'learn', 'settings'] as const).find((id) => id === target.dataset.tab) || 'lookup';
       // A bar tab is not a step: the history starts afresh from it (see notePlace).
       barTab = tab;
       await loadTab(tab);
       paint();
       return;
     case 'settings-section': {
-      const next = t.dataset.section as SettingsSection | undefined;
+      const next = target.dataset.section as SettingsSection | undefined;
       if (next === 'capture' || next === 'learn' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio' || next === 'about' || (next === 'updates' && phoneUpdates)) {
         settingsSection = next;
         langMenu = '';
@@ -2858,13 +2883,13 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'account-delete-confirm': {
       if (accountDeleteBusy) return;
       accountDeleteBusy = true;
-      (t as HTMLButtonElement).disabled = true;
+      (target as HTMLButtonElement).disabled = true;
       const typed = (document.getElementById('account-delete-email') as HTMLInputElement | null)?.value || '';
       try {
         if (await accountPlatform.deleteAccount(typed)) {
           accountDeleting = false;
           accountOpen = false;
-          toast('Account deleted');
+          toast(t('mobile.account.deleted'));
         }
       } finally {
         accountDeleteBusy = false;
@@ -2876,7 +2901,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       await runOcr();
       return;
     case 'suggest': {
-      const word = t.dataset.word || '';
+      const word = target.dataset.word || '';
       if (!word) return;
       draft = word;
       suggestHeld = true;
@@ -2896,7 +2921,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'back':
       // Desktop order: step back inside the Wikipedia reader first, then the lookup trail.
       if (wikiCanBack()) {
-        await handleAct('wiki-back', t, e);
+        await handleAct('wiki-back', target, e);
         return;
       }
       if (histIndex > 0) {
@@ -2916,18 +2941,18 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'lookup': {
       // A word in running text that was selected, not tapped, stays selected.
-      if (t.classList.contains('lx-w') && String(window.getSelection?.() || '').trim()) return;
+      if (target.classList.contains('lx-w') && String(window.getSelection?.() || '').trim()) return;
       // data-lang: a word saved in another language opens in it (the Danish "give").
-      if (t.dataset.q) await lookup(t.dataset.q, false, undefined, t.dataset.lang || undefined);
+      if (target.dataset.q) await lookup(target.dataset.q, false, undefined, target.dataset.lang || undefined);
       return;
     }
     case 'lookup-lang': {
       // The same word in another of its languages: no new history step.
-      if (t.dataset.q && t.dataset.lang) await lookup(t.dataset.q, true, 'lexicon', t.dataset.lang);
+      if (target.dataset.q && target.dataset.lang) await lookup(target.dataset.q, true, 'lexicon', target.dataset.lang);
       return;
     }
     case 'lex-pos': {
-      const pos = t.dataset.pos || '';
+      const pos = target.dataset.pos || '';
       if (!pos) return;
       lexiconPos = pos;
       highlightLexiconPosTab(pos);
@@ -2935,7 +2960,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'result-tab':
-      resultTab = (t.dataset.tab as ResultTab) || 'lexicon';
+      resultTab = (target.dataset.tab as ResultTab) || 'lexicon';
       paint();
       if (resultTab === 'wikipedia' && result) {
         if (!wiki.length) {
@@ -2946,9 +2971,9 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       }
       return;
     case 'ety-tab': {
-      const idx = Number(t.dataset.i);
-      etymologySource = t.dataset.source || '';
-      const rootEty = t.closest('.etymology-card') || document;
+      const idx = Number(target.dataset.i);
+      etymologySource = target.dataset.source || '';
+      const rootEty = target.closest('.etymology-card') || document;
       rootEty.querySelectorAll('.etymology-tab').forEach((btn) => {
         const on = Number((btn as HTMLElement).dataset.i) === idx;
         btn.classList.toggle('is-active', on);
@@ -2959,7 +2984,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'ety-open': {
-      const url = etymologyEntryUrl(t.dataset.url || '');
+      const url = etymologyEntryUrl(target.dataset.url || '');
       if (url) openExternal(url);
       return;
     }
@@ -2983,36 +3008,36 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       // Pressed before the word's pronunciation data came: the speaker shows it is loading and
       // waits for the recording, and plays the synthetic voice only when there is none. A
       // recording not kept on the phone yet comes over the network, and the speaker stays loading.
-      setSpeakerLoading(t, true);
+      setSpeakerLoading(target, true);
       const played = (async () => {
         if (!recordedUrls(result).length && (recordingPending(result) || (looking && !result))) await openLookupRecordings();
         if (!alive()) return;
         // Native reports a clip only when it ends, so a clip kept on the phone ends the loading now.
         const ready = await recordedReady(result);
         if (!alive()) return;
-        if (ready) setSpeakerLoading(t, false);
-        await playRecorded(result, prefs, () => setSpeakerLoading(t, false), alive);
+        if (ready) setSpeakerLoading(target, false);
+        await playRecorded(result, prefs, () => setSpeakerLoading(target, false), alive);
       })().finally(() => {
         // A newer press owns the loading state until it plays.
-        if (press === speakPress) setSpeakerLoading(t, false);
+        if (press === speakPress) setSpeakerLoading(target, false);
       });
-      await pulseSpeak(t, played);
+      await pulseSpeak(target, played);
       return;
     }
     case 'speak-ipa': {
       if (soundOff()) return;
-      const ipa = t.dataset.ipa || '';
+      const ipa = target.dataset.ipa || '';
       if (!ipa) return;
-      const accent = t.dataset.accent;
+      const accent = target.dataset.accent;
       const p: Pronunciation = { ipa, accent: accent === 'us' || accent === 'uk' ? accent : 'other' };
-      await pulseSpeak(t, speakIpa(p, prefs, result?.word).catch(() => {
-        throw new Error('Could not play this IPA');
+      await pulseSpeak(target, speakIpa(p, prefs, result?.word).catch(() => {
+        throw new Error(t('mobile.toast.couldNotPlayIpa'));
       }));
       return;
     }
     case 'speak-text':
       if (soundOff()) return;
-      await pulseSpeak(t, speakText(t.dataset.text || '', prefs, t.dataset.lang));
+      await pulseSpeak(target, speakText(target.dataset.text || '', prefs, target.dataset.lang));
       return;
     case 'swap': {
       const from = prefs.sourceLang;
@@ -3025,7 +3050,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'pick-open': {
-      const id = t.dataset.picker as PickerId;
+      const id = target.dataset.picker as PickerId;
       langMenu = langMenu === id ? '' : id;
       paint();
       document.querySelector('.lang-sheet .is-on')?.scrollIntoView({ block: 'center' });
@@ -3036,8 +3061,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'pick': {
-      const code = t.dataset.value || '';
-      const id = t.dataset.picker as PickerId;
+      const code = target.dataset.value || '';
+      const id = target.dataset.picker as PickerId;
       langMenu = '';
       if (code !== 'auto') prefs.recentLangs = [code, ...(prefs.recentLangs || []).filter((c) => c !== code)].slice(0, 4);
       if (id === 'to') prefs.targetLang = code;
@@ -3048,7 +3073,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'wiki-open': {
-      const item = wiki[Number(t.dataset.i)];
+      const item = wiki[Number(target.dataset.i)];
       if (item) await openWikiArticle(item);
       return;
     }
@@ -3068,19 +3093,19 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'wiki-ext': {
-      const url = t.dataset.url || wikiArticle?.url;
+      const url = target.dataset.url || wikiArticle?.url;
       if (!url) return;
       if (hasNativeBridge()) await nativeCall('openUrl', { url });
       else window.open(url, '_blank');
       return;
     }
     case 'nb-sort':
-      notebookSort = t.dataset.sort === 'az' ? 'az' : 'recent';
+      notebookSort = target.dataset.sort === 'az' ? 'az' : 'recent';
       writeStore(NOTEBOOK_SORT_KEY, notebookSort);
       paint();
       return;
     case 'nb-toggle': {
-      const id = t.dataset.id;
+      const id = target.dataset.id;
       if (!id) return;
       if (expandedVocab.has(id)) expandedVocab.delete(id);
       else expandedVocab.add(id);
@@ -3088,7 +3113,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'nb-view':
-      nbState.view = (t.dataset.view as NotebookView) || 'list';
+      nbState.view = (target.dataset.view as NotebookView) || 'list';
       writeStore(NB_VIEW_KEY, nbState.view);
       if (nbState.view !== 'list') {
         await loadReviewPool();
@@ -3098,7 +3123,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       window.scrollTo({ top: 0 });
       return;
     case 'wb-scope':
-      setWordsScope((t.dataset.scope as WordsScope) || 'mine');
+      setWordsScope((target.dataset.scope as WordsScope) || 'mine');
       notebookFilter = '';
       if (wordsState.scope !== 'mine' || nbState.view !== 'list') {
         await loadReviewPool();
@@ -3108,7 +3133,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       window.scrollTo({ top: 0 });
       return;
     case 'learn-page':
-      learnPage = t.dataset.page === 'progress' ? 'progress' : 'today';
+      learnPage = target.dataset.page === 'progress' ? 'progress' : 'today';
       writeStore(LEARN_PAGE_KEY, learnPage);
       if (learnPage === 'progress') await loadAnswerHistory();
       paint();
@@ -3120,22 +3145,22 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       window.scrollTo({ top: 0 });
       return;
     case 'wb-sub': {
-      const id = t.dataset.book || '';
+      const id = target.dataset.book || '';
       if (!wordbookMeta(id)) return;
       await subscribeWordbook(id);
       await refreshWords();
       setWordsScope(id);
-      toast(`Added ${wordbookMeta(id)!.title}`);
+      toast(t('mobile.books.added', { title: wordbookMeta(id)!.title }));
       paint();
       window.scrollTo({ top: 0 });
       return;
     }
     case 'wb-menu': {
       // A list's own menu, from its chip: Export, Export for Anki, Remove or Delete.
-      const items = bookMenuItems(t.dataset.scope || 'mine');
+      const items = bookMenuItems(target.dataset.scope || 'mine');
       if (!items.length) return;
-      openMenu(t, {
-        label: t.dataset.title || 'Book',
+      openMenu(target, {
+        label: target.dataset.title || t('mobile.books.menuFallback'),
         items,
         onPick: (item) => {
           const el = document.createElement('button');
@@ -3147,11 +3172,11 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     }
     case 'ub-pick': {
       // "Add to word book": the books you made or imported, ticked where the word is.
-      const word = t.dataset.q || '';
+      const word = target.dataset.q || '';
       const items = bookPickItems(word, wbUserBooks);
       if (!word || !items.length) return;
-      openMenu(t, {
-        label: 'Add to word book',
+      openMenu(target, {
+        label: t('mobile.books.addToBook'),
         items,
         multi: true,
         onPick: async (item) => {
@@ -3159,7 +3184,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
           const title = wordbookMeta(book)?.title || item.label;
           if (item.checked) await addUserBookWords(book, [word]);
           else await removeUserBookWord(book, word);
-          toast(item.checked ? `Added to ${title}` : `Removed from ${title}`);
+          toast(item.checked ? t('mobile.books.addedTo', { title }) : t('mobile.books.removedFrom', { title }));
           await refreshWords();
           paint();
         },
@@ -3167,62 +3192,62 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'wb-export':
-      await exportWords(t.dataset.scope || 'mine', t.dataset.fmt === 'anki');
+      await exportWords(target.dataset.scope || 'mine', target.dataset.fmt === 'anki');
       return;
     case 'wb-import':
       await pickAndImportNotebook();
       return;
     case 'wb-unsub': {
-      const id = t.dataset.book || '';
+      const id = target.dataset.book || '';
       const title = wordbookMeta(id)?.title || id;
       // Progress belongs to the word: it stays, and the confirmation says so.
       const ask = bookRemovalPrompt(id);
-      if ((await askChoice(ask.title, ask.detail, [ask.confirm, 'Cancel'], 1)) !== 0) return;
+      if ((await askChoice(ask.title, ask.detail, [ask.confirm, t('common.cancel')], 1)) !== 0) return;
       if (isUserBookId(id)) await deleteUserBook(id);
       else await unsubscribeWordbook(id);
       if (wordsState.scope === id) setWordsScope(isUserBookId(id) ? 'sources' : 'mine');
       await refreshWords();
-      toast(isUserBookId(id) ? `Deleted ${title}` : `Removed ${title}`);
+      toast(isUserBookId(id) ? t('mobile.books.deleted', { title }) : t('mobile.books.removed', { title }));
       paint();
       return;
     }
     case 'src-book': {
       // A source becomes a word book: its words in the order they were saved.
-      const g = wordsState.ctx ? sourceGroups(wordsState.ctx).find((x) => x.key === t.dataset.source) : null;
+      const g = wordsState.ctx ? sourceGroups(wordsState.ctx).find((x) => x.key === target.dataset.source) : null;
       if (!g) return;
       const book = await createUserBook(sourceBookTitle(g.label), g.entries.map((e) => e.lemma), g.key);
       await refreshWords();
       setWordsScope(book.bookId);
-      toast(`Made ${book.title}`);
+      toast(t('mobile.books.made', { title: book.title }));
       paint();
       window.scrollTo({ top: 0 });
       return;
     }
     case 'src-add': {
-      const g = wordsState.ctx ? sourceGroups(wordsState.ctx).find((x) => x.key === t.dataset.source) : null;
-      if (!g || !t.dataset.book) return;
-      await addUserBookWords(t.dataset.book, g.entries.map((e) => e.lemma));
+      const g = wordsState.ctx ? sourceGroups(wordsState.ctx).find((x) => x.key === target.dataset.source) : null;
+      if (!g || !target.dataset.book) return;
+      await addUserBookWords(target.dataset.book, g.entries.map((e) => e.lemma));
       await refreshWords();
       paint();
       return;
     }
     case 'ub-drop': {
-      if (!t.dataset.book || !t.dataset.q) return;
-      await removeUserBookWord(t.dataset.book, t.dataset.q);
+      if (!target.dataset.book || !target.dataset.q) return;
+      await removeUserBookWord(target.dataset.book, target.dataset.q);
       await refreshWords();
       paint();
       return;
     }
     case 'learn-use-goal': {
       // The start card's suggested number of new words a day.
-      const goal = parseGoal(t.dataset.goal);
+      const goal = parseGoal(target.dataset.goal);
       if (goal == null) return;
-      await setLearnGoal(t.dataset.book || '', goal);
+      await setLearnGoal(target.dataset.book || '', goal);
       paint();
       return;
     }
     case 'wb-expand': {
-      const word = t.dataset.q || '';
+      const word = target.dataset.q || '';
       const key = word.toLowerCase();
       if (!key) return;
       if (wordsState.open.has(key)) wordsState.open.delete(key);
@@ -3238,7 +3263,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'wb-sort':
-      wordsState.sort = readBookSort(t.dataset.sort || '');
+      wordsState.sort = readBookSort(target.dataset.sort || '');
       writeStore(BOOK_SORT_KEY, wordsState.sort);
       wordsState.limit = BOOK_LIST_PAGE;
       paint();
@@ -3248,7 +3273,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'wb-known': {
-      const p = await setBookWordKnown(t.dataset.q || '', t.dataset.known === '1', Date.now(), scopeBookFor(wordsState.scope, wordsState.ctx, t.dataset.q || ''));
+      const p = await setBookWordKnown(target.dataset.q || '', target.dataset.known === '1', Date.now(), scopeBookFor(wordsState.scope, wordsState.ctx, target.dataset.q || ''));
       answerHistory = null;
       wbProgress.set(p.lemma, p);
       rebuildWordsContext();
@@ -3257,16 +3282,16 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     }
     case 'wb-known-review': {
       if (!reviewArmed(nbState.review)) return;
-      const p = await setBookWordKnown(t.dataset.q || '', true, Date.now(), scopeBookFor(wordsState.scope, wordsState.ctx, t.dataset.q || ''));
+      const p = await setBookWordKnown(target.dataset.q || '', true, Date.now(), scopeBookFor(wordsState.scope, wordsState.ctx, target.dataset.q || ''));
       answerHistory = null;
       wbProgress.set(p.lemma, p);
       rebuildWordsContext();
-      if (nbState.review) markKnownInReview(nbState.review, t.dataset.q || '');
+      if (nbState.review) markKnownInReview(nbState.review, target.dataset.q || '');
       paint();
       return;
     }
     case 'wb-save': {
-      const lemma = t.dataset.q || '';
+      const lemma = target.dataset.q || '';
       if (!lemma) return;
       try {
         const cached = wbProgress.get(lemma.toLowerCase());
@@ -3278,9 +3303,9 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
           if (res) payload = vocabPayloadFromResult(res, lemma);
         }
         await saveBookWord(lemma, payload);
-        toast('Saved to My words');
+        toast(t('mobile.toast.savedToMyWords'));
       } catch (err) {
-        toast(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
+        toast(t('mobile.toast.couldNotSave', { error: err instanceof Error ? err.message : String(err) }));
       }
       await refreshNotebook();
       await loadReviewPool();
@@ -3289,36 +3314,37 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'vocab-lang':
-      nbState.lang = t.dataset.lang || 'all';
+      nbState.lang = target.dataset.lang || 'all';
       writeStore(NB_LANG_KEY, nbState.lang);
       paint();
       return;
     case 'nb-group':
-      nbState.group = (t.dataset.group as FamilyGrouping) || 'root';
+      nbState.group = (target.dataset.group as FamilyGrouping) || 'root';
       writeStore(NB_GROUP_KEY, nbState.group);
       paint();
       return;
     case 'nb-map-kind': {
-      const k = t.dataset.kind as MorphKind;
+      const k = target.dataset.kind as MorphKind;
       nbState.mapKinds = nbState.mapKinds.includes(k) ? nbState.mapKinds.filter((x) => x !== k) : [...nbState.mapKinds, k];
       writeStore(NB_MAP_KEY, nbState.mapKinds.join(','));
       paint();
       return;
     }
     case 'nb-flip': {
-      const id = t.dataset.id;
+      const id = target.dataset.id;
       if (!id) return;
       if (nbState.flipped.has(id)) nbState.flipped.delete(id);
       else nbState.flipped.add(id);
       // Turned in place: a repaint would rebuild the whole table under the reader.
       const open = nbState.flipped.has(id);
-      const card = t.closest('.nbv-card');
+      const card = target.closest('.nbv-card');
       card?.classList.toggle('is-flipped', open);
       const btn = card?.querySelector<HTMLElement>('.nbv-card__flip');
       if (btn) {
         btn.setAttribute('aria-pressed', String(open));
-        btn.setAttribute('aria-label', open ? 'Show word' : 'Show meaning');
-        btn.title = open ? 'Show word' : 'Show meaning';
+        const flipLabel = open ? t('mobile.words.card.showWord') : t('mobile.words.card.showMeaning');
+        btn.setAttribute('aria-label', flipLabel);
+        btn.title = flipLabel;
       }
       return;
     }
@@ -3331,7 +3357,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       window.scrollTo({ top: 0 });
       return;
     case 'learn-speaking':
-      saveLearnPrefs({ speaking: (t as HTMLInputElement).checked });
+      saveLearnPrefs({ speaking: (target as HTMLInputElement).checked });
       return;
     case 'nb-review-exit':
       // Back to the Learn page. An answer on screen is saved first, as Continue would.
@@ -3343,7 +3369,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'nb-start':
     case 'nb-round':
       // A new round plans again from what is due now and from the answers so far.
-      if (t.dataset.act === 'nb-round') {
+      if (target.dataset.act === 'nb-round') {
         await loadLearner();
         nbState.review = null;
         learnViewState();
@@ -3358,23 +3384,23 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'nb-choose':
-      if (reviewArmed(nbState.review)) answerCurrentReview({ choice: Number(t.dataset.choice) });
+      if (reviewArmed(nbState.review)) answerCurrentReview({ choice: Number(target.dataset.choice) });
       return;
     case 'nb-knew':
-      if (reviewArmed(nbState.review)) answerCurrentReview({ knew: t.dataset.knew === '1' });
+      if (reviewArmed(nbState.review)) answerCurrentReview({ knew: target.dataset.knew === '1' });
       return;
     case 'nb-skip':
       if (reviewArmed(nbState.review)) answerCurrentReview({});
       return;
     case 'nb-tile':
       // Letter tiles: placing the last one answers the question.
-      if (nbState.review && reviewArmed(nbState.review) && placeTile(nbState.review, Number(t.dataset.tile))) {
+      if (nbState.review && reviewArmed(nbState.review) && placeTile(nbState.review, Number(target.dataset.tile))) {
         paint();
         refocusTile();
       }
       return;
     case 'nb-tile-out':
-      if (nbState.review && returnTile(nbState.review, Number(t.dataset.pos))) {
+      if (nbState.review && returnTile(nbState.review, Number(target.dataset.pos))) {
         paint();
         refocusTile();
       }
@@ -3384,83 +3410,83 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       if (nbState.review && hintReview(nbState.review, document.querySelector<HTMLInputElement>('#nbv-answer')?.value ?? undefined)) paint();
       return;
     case 'nb-override':
-      if (nbState.review) overrideReview(nbState.review, t.dataset.mode === 'easy' ? 'easy' : 'flip');
+      if (nbState.review) overrideReview(nbState.review, target.dataset.mode === 'easy' ? 'easy' : 'flip');
       paint();
       return;
     case 'nb-next':
       await commitReview();
       return;
     case 'nb-copy':
-      await copyRowWord(t);
+      await copyRowWord(target);
       return;
     case 'nb-play':
       if (soundOff()) return;
-      await pulseSpeak(t, playLemma(t.dataset.lemma || '', t));
-      if (markHeard(nbState.review, t.dataset.lemma || '')) paint();
+      await pulseSpeak(target, playLemma(target.dataset.lemma || '', target));
+      if (markHeard(nbState.review, target.dataset.lemma || '')) paint();
       return;
     case 'nb-more': {
-      const def = t.previousElementSibling as HTMLElement | null;
+      const def = target.previousElementSibling as HTMLElement | null;
       if (!def) return;
       def.classList.toggle('is-clamped');
-      t.textContent = def.classList.contains('is-clamped') ? 'Show more' : 'Show less';
+      target.textContent = def.classList.contains('is-clamped') ? t('mobile.words.showMore') : t('mobile.words.showLess');
       return;
     }
     case 'nb-del':
-      if (t.dataset.id) {
-        await removeVocab(t.dataset.id);
-        expandedVocab.delete(t.dataset.id);
+      if (target.dataset.id) {
+        await removeVocab(target.dataset.id);
+        expandedVocab.delete(target.dataset.id);
         await refreshNotebook();
         paint();
       }
       return;
     case 'src': {
-      const name = t.dataset.name || '';
-      const on = (t as HTMLInputElement).checked;
+      const name = target.dataset.name || '';
+      const on = (target as HTMLInputElement).checked;
       prefs.sources[name] = on;
       persistPrefs();
       // In place: a repaint would close open disclosures and lose the scroll position.
-      t.closest('.sv-src')?.classList.toggle('is-on', on);
-      const ledger = t.closest('.sv-ledger');
+      target.closest('.sv-src')?.classList.toggle('is-on', on);
+      const ledger = target.closest('.sv-ledger');
       const count = document.querySelector('.sv-sources .sv-head__count');
       if (ledger && count) {
         const all = ledger.querySelectorAll('input[data-act="src"]').length;
         const onCount = ledger.querySelectorAll('input[data-act="src"]:checked').length;
-        count.textContent = `${onCount} of ${all} on`;
+        count.textContent = t('mobile.sources.countOn', { on: onCount, total: all });
       }
       return;
     }
     case 'engine':
-      prefs.translationProvider = (t as HTMLInputElement).value as MobilePrefs['translationProvider'];
+      prefs.translationProvider = (target as HTMLInputElement).value as MobilePrefs['translationProvider'];
       persistPrefs();
       document.querySelectorAll<HTMLInputElement>('input[data-act="engine"]').forEach((r) => {
         r.closest('.sv-src')?.classList.toggle('is-on', r.checked);
       });
       return;
     case 'goto-section': {
-      const next = t.dataset.section;
+      const next = target.dataset.section;
       if (next === 'api' || next === 'offline') {
         settingsSection = next;
-        lib.highlightKey = next === 'api' ? t.dataset.provider || '' : '';
+        lib.highlightKey = next === 'api' ? target.dataset.provider || '' : '';
         if (next === 'offline') await refreshPacks();
         paint();
       }
       return;
     }
     case 'key-reveal': {
-      const pref = t.dataset.pref || '';
+      const pref = target.dataset.pref || '';
       if (lib.revealedKeys.has(pref)) lib.revealedKeys.delete(pref);
       else lib.revealedKeys.add(pref);
       paint();
       return;
     }
     case 'key-clear': {
-      saveKeyField(t.dataset.pref || '', '', t.dataset.provider || '');
+      saveKeyField(target.dataset.pref || '', '', target.dataset.provider || '');
       paint();
       return;
     }
     case 'key-test': {
-      const provider = (t.dataset.provider || '') as ApiProviderId;
-      const card = t.closest('.sv-key');
+      const provider = (target.dataset.provider || '') as ApiProviderId;
+      const card = target.closest('.sv-key');
       card?.querySelectorAll<HTMLInputElement>('input[data-pref]').forEach((input) => {
         const pref = input.dataset.pref || '';
         if (input.value.trim() !== ((prefs as unknown as Record<string, string>)[pref] || '')) saveKeyField(pref, input.value, provider);
@@ -3481,7 +3507,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'pack-open': {
-      const id = t.dataset.id || '';
+      const id = target.dataset.id || '';
       lib.inspecting = id;
       lib.inspectorEntering = true;
       paint();
@@ -3510,11 +3536,11 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       if (hasNativeBridge()) void nativeCall('openNotificationSettings', {});
       return;
     case 'notify': {
-      const on = (t as HTMLInputElement).checked;
-      if (t.dataset.key === 'incoming') prefs.notifyIncoming = on;
-      else if (t.dataset.key === 'saved') prefs.notifySaved = on;
-      else if (t.dataset.key === 'ocr') prefs.notifyOcr = on;
-      else if (t.dataset.key === 'updates') prefs.notifyUpdates = on;
+      const on = (target as HTMLInputElement).checked;
+      if (target.dataset.key === 'incoming') prefs.notifyIncoming = on;
+      else if (target.dataset.key === 'saved') prefs.notifySaved = on;
+      else if (target.dataset.key === 'ocr') prefs.notifyOcr = on;
+      else if (target.dataset.key === 'updates') prefs.notifyUpdates = on;
       persistPrefs();
       if (on && hasNativeBridge() && capture.notificationsGranted === false) {
         await nativeCall('requestNotifications', {});
@@ -3524,7 +3550,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'voice':
-      voice = await nativeCall<VoiceStatus>('setSpeechVoice', { id: t.dataset.value || '' });
+      voice = await nativeCall<VoiceStatus>('setSpeechVoice', { id: target.dataset.value || '' });
       watchVoice();
       paint();
       return;
@@ -3533,25 +3559,25 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     case 'audio-on':
-      prefs.audioEnabled = (t as HTMLInputElement).checked;
+      prefs.audioEnabled = (target as HTMLInputElement).checked;
       persistPrefs();
       return;
     case 'sense-images':
-      prefs.senseImages = (t as HTMLInputElement).checked;
+      prefs.senseImages = (target as HTMLInputElement).checked;
       persistPrefs();
       if (prefs.senseImages && result) void loadSenseImages(lookupGeneration);
       return;
     case 'sense-figure':
-      openSensePicture(t);
+      openSensePicture(target);
       return;
     case 'sense-credit':
-      if (t.dataset.url) openExternal(t.dataset.url);
+      if (target.dataset.url) openExternal(target.dataset.url);
       return;
     case 'audio-speed':
     case 'audio-volume':
       return;
     case 'strip-on':
-      prefs.floatingStrip = (t as HTMLInputElement).checked;
+      prefs.floatingStrip = (target as HTMLInputElement).checked;
       persistPrefs();
       if (hasNativeBridge()) {
         void nativeCall('setFloatingStrip', { enabled: prefs.floatingStrip }).then(async () => {
@@ -3561,7 +3587,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       }
       return;
     case 'auto-popup': {
-      const on = (t as HTMLInputElement).checked;
+      const on = (target as HTMLInputElement).checked;
       if (hasNativeBridge()) {
         await nativeCall('setAutoPopup', { enabled: on });
         await refreshCapture();
@@ -3570,10 +3596,10 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'bar-place':
-      await setBarSlot((t as HTMLInputElement).value === 'custom' ? Math.max(0, capture.barSlot ?? 0) : -1);
+      await setBarSlot((target as HTMLInputElement).value === 'custom' ? Math.max(0, capture.barSlot ?? 0) : -1);
       return;
     case 'bar-slot-step':
-      await setBarSlot(Math.max(0, Math.min(MOCK_BAR.length, (capture.barSlot ?? 0) + Number(t.dataset.step || 0))));
+      await setBarSlot(Math.max(0, Math.min(MOCK_BAR.length, (capture.barSlot ?? 0) + Number(target.dataset.step || 0))));
       return;
     case 'a11y-settings':
       if (hasNativeBridge()) void nativeCall('openAccessibilitySettings', {});
@@ -3592,11 +3618,11 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       else window.location.href = `${window.location.pathname}${query ? `?q=${encodeURIComponent(query)}` : ''}`;
       return;
     case 'pack-dl':
-      if (t.dataset.id) await downloadPack(t.dataset.id);
+      if (target.dataset.id) await downloadPack(target.dataset.id);
       return;
     case 'pack-rm':
-      if (t.dataset.id && window.confirm('Remove this pack?')) {
-        await removePack(t.dataset.id);
+      if (target.dataset.id && window.confirm(t('mobile.offline.removePackConfirm'))) {
+        await removePack(target.dataset.id);
         await refreshPacks();
         paint();
       }
@@ -3613,11 +3639,11 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
         name = lastPickedName || name;
       }
       if (!text) return;
-      packMsg = 'Importing…';
+      packMsg = t('mobile.offline.importing');
       paint();
       try {
-        const out = await importUserFile(name, text, t.dataset.kind === 'cedict' ? 'cedict' : undefined);
-        packMsg = `Imported ${out.count} entries`;
+        const out = await importUserFile(name, text, target.dataset.kind === 'cedict' ? 'cedict' : undefined);
+        packMsg = t('mobile.offline.importedEntries', { count: out.count });
         await refreshPacks();
       } catch (err) {
         packMsg = err instanceof Error ? err.message : String(err);
@@ -3656,6 +3682,12 @@ function onChange(e: Event): void {
     if (confirm) confirm.disabled = accountDeleteBusy || !deleteEmailMatches(accountState, (el as HTMLInputElement).value);
     return;
   }
+  if (e.type === 'change' && el.id === UI_LANGUAGE_SELECT_ID) {
+    prefs.uiLanguage = asUiLanguagePref((el as HTMLSelectElement).value);
+    savePrefs(prefs);
+    void applyUiLanguage().then(() => paint());
+    return;
+  }
   if (el.id === 'lang-q') {
     // Filter in place so the search box keeps focus while typing.
     const needle = (el as HTMLInputElement).value.trim().toLowerCase();
@@ -3692,12 +3724,12 @@ function onChange(e: Event): void {
     prefs.audioVolume = (Number((el as HTMLInputElement).value) || 0) / 100;
     persistPrefs();
     const label = document.getElementById('volume-value');
-    if (label) label.textContent = `${Math.round(prefs.audioVolume * 100)}%`;
+    if (label) label.textContent = formatPercent(Math.round(prefs.audioVolume * 100) / 100);
   } else if (el.id === 'audio-speed' || el.dataset.act === 'audio-speed') {
     prefs.audioSpeed = Number((el as HTMLInputElement).value) || 1;
     persistPrefs();
     const label = document.getElementById('speed-value');
-    if (label) label.textContent = `${prefs.audioSpeed.toFixed(1)}×`;
+    if (label) label.textContent = speedText(prefs.audioSpeed);
   }
 }
 
@@ -3729,7 +3761,17 @@ function onSubmit(e: Event): void {
   if (input?.value) void lookup(input.value);
 }
 
+/** The interface language from the setting, or the phone's own languages for System. */
+function applyUiLanguage(): Promise<unknown> {
+  return setUiLocale(resolveUiLocale(prefs.uiLanguage, navigator.languages || [navigator.language]));
+}
+
 export async function startApp(): Promise<void> {
+  await applyUiLanguage();
+  // System follows a language change made while the app is open.
+  window.addEventListener('languagechange', () => {
+    if (prefs.uiLanguage === 'system') void applyUiLanguage().then(() => paint());
+  });
   installNativeCallbacks();
   setAppIconSource(appIconSource(() => {
     if (tab === 'notebook') paint();
@@ -3766,7 +3808,7 @@ export async function startApp(): Promise<void> {
   };
   startIncomingText((text, origin) => {
     stripExpanding = false;
-    if (origin === 'process-text' || origin === 'share') postOsNotify('incoming', 'Incoming lookup', text);
+    if (origin === 'process-text' || origin === 'share') postOsNotify('incoming', t('mobile.notify.incoming'), text);
     if (origin === 'process-text') void takeIncomingSource();
     resetTrail();
     void lookup(text);

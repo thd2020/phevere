@@ -4,6 +4,8 @@
  * languages. In-page (not <select>): the pop-up is a WebView in an overlay window, where
  * Android cannot open a native select list.
  */
+import { languageDisplayName, t, tHtml } from '@phevere/core';
+
 export type LangSide = 'from' | 'to';
 export type Lang = { code: string; name: string; nativeName: string };
 
@@ -17,14 +19,14 @@ const SWAP = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.99 11 3 15
 
 function label(langs: Lang[], code: string): string {
   const l = langs.find((x) => x.code === code);
-  return l ? (l.code === 'auto' ? 'Detect language' : l.nativeName) : code;
+  return l ? (l.code === 'auto' ? t('mobile.picker.detectLanguage') : l.nativeName) : code;
 }
 
 export function langBarHtml(langs: Lang[], from: string, to: string): string {
   return `<div class="lang-bar">
-    <button type="button" class="lang-bar__side" data-act="pick-open" data-picker="from" aria-haspopup="dialog" aria-label="Translate from: ${esc(label(langs, from))}">${esc(label(langs, from))}</button>
-    <button type="button" class="lang-bar__swap" data-act="swap" aria-label="Swap languages" ${from === 'auto' ? 'disabled' : ''}>${SWAP}</button>
-    <button type="button" class="lang-bar__side" data-act="pick-open" data-picker="to" aria-haspopup="dialog" aria-label="Translate to: ${esc(label(langs, to))}">${esc(label(langs, to))}</button>
+    <button type="button" class="lang-bar__side" data-act="pick-open" data-picker="from" aria-haspopup="dialog" aria-label="${tHtml('mobile.picker.fromLabel', { language: label(langs, from) })}">${esc(label(langs, from))}</button>
+    <button type="button" class="lang-bar__swap" data-act="swap" aria-label="${tHtml('mobile.picker.swap')}" ${from === 'auto' ? 'disabled' : ''}>${SWAP}</button>
+    <button type="button" class="lang-bar__side" data-act="pick-open" data-picker="to" aria-haspopup="dialog" aria-label="${tHtml('mobile.picker.toLabel', { language: label(langs, to) })}">${esc(label(langs, to))}</button>
   </div>`;
 }
 
@@ -32,26 +34,29 @@ export function langSheetHtml(side: LangSide, langs: Lang[], selected: string, r
   const choices = langs.filter((l) => side === 'from' || l.code !== 'auto');
   const row = (l: Lang) => {
     const on = l.code === selected;
-    const title = l.code === 'auto' ? 'Detect language' : l.nativeName;
-    const sub = l.code === 'auto' ? '' : l.name;
-    return `<button type="button" role="option" aria-selected="${on}" class="lang-row${on ? ' is-on' : ''}" data-act="pick" data-picker="${side}" data-value="${esc(l.code)}" data-search="${esc(`${l.nativeName} ${l.name} ${l.code}`.toLowerCase())}">
-      <span class="lang-row__text"><span>${esc(title)}</span>${sub && sub !== title ? `<small>${esc(sub)}</small>` : ''}</span>
+    const title = l.code === 'auto' ? t('mobile.picker.detectLanguage') : l.nativeName;
+    // Under the native name, the name in the interface language; the search also matches the English name.
+    const sub = l.code === 'auto' ? '' : languageDisplayName(l.code);
+    const search = `${title} ${l.nativeName} ${sub} ${l.name} ${l.code}`.toLowerCase();
+    return `<button type="button" role="option" aria-selected="${on}" class="lang-row${on ? ' is-on' : ''}" data-act="pick" data-picker="${side}" data-value="${esc(l.code)}" data-search="${esc(search)}">
+      <span class="lang-row__text"><span${l.code === 'auto' ? '' : ` lang="${esc(l.code)}"`}>${esc(title)}</span>${sub && sub !== title ? `<small>${esc(sub)}</small>` : ''}</span>
       ${on ? `<span class="lang-row__check">${CHECK}</span>` : ''}
     </button>`;
   };
   const recentRows = recent
     .map((code) => choices.find((l) => l.code === code))
     .filter((l): l is Lang => !!l && l.code !== 'auto');
-  return `<div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${side === 'from' ? 'Translate from' : 'Translate to'}">
+  const heading = side === 'from' ? tHtml('mobile.picker.from') : tHtml('mobile.picker.to');
+  return `<div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${heading}">
     <div class="lang-sheet__head">
-      <button type="button" class="icon-btn" data-act="pick-close" aria-label="Close">${BACK}</button>
-      <h2>${side === 'from' ? 'Translate from' : 'Translate to'}</h2>
+      <button type="button" class="icon-btn" data-act="pick-close" aria-label="${tHtml('common.close')}">${BACK}</button>
+      <h2>${heading}</h2>
     </div>
-    <input id="lang-q" class="lang-sheet__search" type="search" placeholder="Search languages" autocomplete="off" />
+    <input id="lang-q" class="lang-sheet__search" type="search" placeholder="${tHtml('mobile.picker.search')}" autocomplete="off" />
     <div class="lang-sheet__list" role="listbox">
       ${side === 'from' ? row(choices.find((l) => l.code === 'auto') || { code: 'auto', name: 'Auto', nativeName: 'Auto' }) : ''}
-      ${recentRows.length ? `<h3 class="lang-sheet__section">Recent languages</h3>${recentRows.map(row).join('')}` : ''}
-      <h3 class="lang-sheet__section">All languages</h3>
+      ${recentRows.length ? `<h3 class="lang-sheet__section">${tHtml('mobile.picker.recent')}</h3>${recentRows.map(row).join('')}` : ''}
+      <h3 class="lang-sheet__section">${tHtml('mobile.picker.all')}</h3>
       ${choices.filter((l) => l.code !== 'auto').map(row).join('')}
     </div>
   </div>`;

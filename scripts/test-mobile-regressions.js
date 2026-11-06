@@ -4,6 +4,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
+const esbuild = require('esbuild');
+
+/** The interface strings and the Language setting's helpers app.ts calls: the real ones, in English. */
+const i18n = (() => {
+  const code = esbuild.buildSync({
+    entryPoints: [path.join(__dirname, '..', 'packages/core/src/i18n/index.ts')],
+    bundle: true, platform: 'node', format: 'cjs', write: false,
+  }).outputFiles[0].text;
+  const mod = { exports: {} };
+  new Function('module', 'exports', 'require', code)(mod, mod.exports, require);
+  return mod.exports;
+})();
 
 function load(file, imports, globals = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', 'apps/mobile/src', file), 'utf8');
@@ -14,7 +26,8 @@ function load(file, imports, globals = {}) {
   vm.runInNewContext(js, { module, exports: module.exports, require: (name) => {
     assert.ok(name in imports, `Missing mock ${name}`);
     return imports[name];
-  }, URL, URLSearchParams, console, ...globals }, { filename: file });
+  // The Language setting reads the phone's languages at start-up.
+  }, URL, URLSearchParams, console, navigator: { language: 'en', languages: ['en'], userAgent: '' }, ...globals }, { filename: file });
   return module.exports;
 }
 const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -40,6 +53,7 @@ async function startupAndGestures(floatingStrip) {
   let releaseNotebook;
   const notebook = new Promise((resolve) => { releaseNotebook = resolve; });
   const core = {
+    ...i18n,
     listVocab: () => notebook,
     listEmptyDefinitions: async () => [], listEmptyReadings: async () => [],
     findByLemma: async () => null, saveLemma: (result) => result.word, morphemeOf: () => null, primeBookLevels: async () => undefined,
@@ -156,6 +170,7 @@ async function backHistory() {
   const incoming = load('incoming-text.ts', {}, globals);
   const prefs = { floatingStrip: false, sources: {}, sourceLang: 'auto', targetLang: 'zh', wikiLang: 'en', senseImages: false };
   const known = {
+    ...i18n,
     listVocab: async () => [], listEmptyDefinitions: async () => [], listEmptyReadings: async () => [],
     findByLemma: async () => null, saveLemma: (result) => result.word, morphemeOf: () => null, primeBookLevels: async () => undefined,
     dictionaryService: {

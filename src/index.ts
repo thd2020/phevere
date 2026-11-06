@@ -130,6 +130,9 @@ import {
   startUpdater,
 } from './services/updater';
 import type { UpdateMode } from './services/update-prefs-store';
+import { setUiLanguagePref, uiLanguageArguments, uiLanguageState } from './services/ui-language-store';
+import { setUiLocale, t } from '@phevere/core/i18n/runtime';
+import { asUiLanguagePref } from '@phevere/core/i18n/locales';
 import * as vocabStore from './services/vocab-store';
 import { clearLookupSources, disposeSourceCapture, noteLookupSource, sourceForSavedWord } from './services/source-capture';
 import { canSynthesizeKeys, focusWindowHandle, foregroundWindowHandle } from './services/key-synth';
@@ -349,15 +352,13 @@ function notifyUser(content: string, kind: NotificationKind | null, title = 'Phe
 }
 
 function clipboardOcrHint(): string {
-  if (process.platform === 'darwin') return 'No image on the clipboard. Press ⌘⌃⇧4 to capture one.';
-  if (process.platform === 'linux') return 'No image on the clipboard. Copy a region with Print Screen first.';
-  return 'No image on the clipboard. Press Win+Shift+S to capture one.';
+  if (process.platform === 'darwin') return t('main.notify.noClipboardImage', { keys: '⌘⌃⇧4' });
+  if (process.platform === 'linux') return t('main.notify.noClipboardImage.linux');
+  return t('main.notify.noClipboardImage', { keys: 'Win+Shift+S' });
 }
 
 function clipboardOcrReadyHint(): string {
-  return process.platform === 'darwin'
-    ? 'Image copied. Press ⌘⇧I to scan it.'
-    : 'Image copied. Press Ctrl+Shift+I to scan it.';
+  return t('main.notify.clipboardImageReady', { keys: process.platform === 'darwin' ? '⌘⇧I' : 'Ctrl+Shift+I' });
 }
 let lastPopupText: string = '';
 let lastPopupAt: number = 0;
@@ -650,9 +651,7 @@ function setHoverEnabled(enabled: boolean): void {
   }
   log.info('main', enabled ? 'Hover lookup enabled' : 'Hover lookup disabled');
   notifyUser(
-    enabled
-      ? `Hover lookup on (${monitorSettings.hoverShortcut})`
-      : `Hover lookup off (${monitorSettings.hoverShortcut})`,
+    t(enabled ? 'main.notify.hoverOn' : 'main.notify.hoverOff', { shortcut: monitorSettings.hoverShortcut }),
     'hoverToggle',
   );
 }
@@ -709,7 +708,7 @@ async function runQuickReplace(): Promise<void> {
     if (!text) return;
     const hit = await dictionaryService.translateText(text, quickPrefs.to, quickPrefs.from, loadTranslationPrefs().provider);
     if (!hit?.text) {
-      notifyUser('Could not translate the selection.', null);
+      notifyUser(t('main.notify.translateFailed'), null);
       return;
     }
     clipboardService.pauseFor(2000);
@@ -734,6 +733,7 @@ function quickPanelWindow(): BrowserWindow {
     focusable: true,
     webPreferences: {
       preload: QUICK_PANEL_PRELOAD_WEBPACK_ENTRY,
+      additionalArguments: uiLanguageArguments(),
       nodeIntegration: false,
       contextIsolation: true,
     },
@@ -823,7 +823,7 @@ ipcMain.handle('quick-translate-set', (_e, patch: Partial<QuickTranslatePrefs>) 
     const panel = (next.panelShortcut || '').trim();
     const taken = [monitorSettings.cycleShortcut, monitorSettings.triggerShortcut, monitorSettings.ocrShortcut, monitorSettings.hoverShortcut];
     if (!replace || !panel || replace === panel || taken.includes(replace) || taken.includes(panel)) {
-      return { success: false, error: 'Each shortcut must be different.', prefs: quickPrefs };
+      return { success: false, error: t('main.shortcuts.mustDiffer'), prefs: quickPrefs };
     }
   }
   // Save even when another app holds a shortcut, so the reader can pick a different one.
@@ -1040,12 +1040,13 @@ function hideMainToTray(target: BrowserWindow): void {
 function updateTrayItems(): Electron.MenuItemConstructorOptions[] {
   const state = getUpdateState();
   if (!state.available || state.status === 'installing') return [];
+  const version = state.available.version;
   const label =
     state.status === 'ready'
-      ? `Restart to update to ${state.available.version}`
+      ? t('main.tray.update.restart', { version })
       : state.canInstall
-        ? `Update to ${state.available.version}`
-        : `Download Phevere ${state.available.version}…`;
+        ? t('main.tray.update.install', { version })
+        : t('main.tray.update.download', { version });
   return [{ label, click: () => void installUpdateNow() }, { type: 'separator' }];
 }
 
@@ -1053,33 +1054,33 @@ function buildTrayContextMenu(): Electron.Menu {
   return Menu.buildFromTemplate([
     ...updateTrayItems(),
     {
-      label: 'Open Phevere',
+      label: t('main.tray.open'),
       click: () => showOrRestoreMainWindow(),
     },
     {
-      label: 'Settings…',
+      label: t('main.menu.settings'),
       click: () => {
         createSettingsWindow();
       },
     },
     { type: 'separator' },
     {
-      label: 'Selection mode',
+      label: t('main.tray.selectionMode'),
       submenu: [
         {
-          label: 'Off',
+          label: t('common.off'),
           type: 'radio',
           checked: monitorSettings.mode === 'off',
           click: () => setMonitoringMode('off'),
         },
         {
-          label: 'On',
+          label: t('common.on'),
           type: 'radio',
           checked: monitorSettings.mode === 'on',
           click: () => setMonitoringMode('on'),
         },
         {
-          label: 'Shortcut (hold the trigger key)',
+          label: t('main.tray.selectionMode.shortcut'),
           type: 'radio',
           checked: monitorSettings.mode === 'shortcut',
           click: () => setMonitoringMode('shortcut'),
@@ -1087,14 +1088,14 @@ function buildTrayContextMenu(): Electron.Menu {
       ],
     },
     {
-      label: 'Hover lookup',
+      label: t('main.tray.hoverLookup'),
       type: 'checkbox',
       checked: !!monitorSettings.hoverEnabled,
       accelerator: monitorSettings.hoverShortcut,
       click: (item) => setHoverEnabled(!!item.checked),
     },
     {
-      label: 'Scan region…',
+      label: t('main.tray.scanRegion'),
       accelerator: monitorSettings.ocrShortcut,
       click: () => {
         if (ocrOverlayWindow && !ocrOverlayWindow.isDestroyed()) {
@@ -1105,27 +1106,27 @@ function buildTrayContextMenu(): Electron.Menu {
       },
     },
     {
-      label: 'Scan under pointer',
+      label: t('main.tray.scanUnderPointer'),
       accelerator: 'CommandOrControl+Shift+G',
       click: () => void grabOcrUnderCursor(),
     },
     {
-      label: 'Scan active window',
+      label: t('main.tray.scanActiveWindow'),
       accelerator: 'CommandOrControl+Shift+W',
       click: () => void readForegroundWindowOcr(),
     },
     {
-      label: 'Scan clipboard image',
+      label: t('main.tray.scanClipboardImage'),
       accelerator: 'CommandOrControl+Shift+I',
       click: () => void ocrClipboardImage(),
     },
     {
-      label: 'Look up now playing',
+      label: t('main.tray.lookUpNowPlaying'),
       accelerator: 'CommandOrControl+Shift+P',
       click: () => void lookupNowPlaying(),
     },
     {
-      label: 'Clipboard history',
+      label: t('main.tray.clipboardHistory'),
       accelerator: 'CommandOrControl+Shift+V',
       click: () => {
         showOrRestoreMainWindow();
@@ -1140,7 +1141,7 @@ function buildTrayContextMenu(): Electron.Menu {
     ...(process.platform === 'darwin'
       ? [
           {
-            label: 'Open Accessibility Settings…',
+            label: t('main.tray.macAccessibilitySettings'),
             click: () => {
               nativeSelectionService.requestAccessibilityPrompt?.();
               void openMacAccessibilitySettings()
@@ -1149,7 +1150,7 @@ function buildTrayContextMenu(): Electron.Menu {
             },
           } as Electron.MenuItemConstructorOptions,
           {
-            label: 'Open Screen Recording Settings…',
+            label: t('main.tray.macScreenRecordingSettings'),
             click: () => {
               void openMacScreenRecordingSettings().catch((err) =>
                 log.warn('main', 'Open Screen Recording settings failed', { err: String(err) }),
@@ -1159,7 +1160,7 @@ function buildTrayContextMenu(): Electron.Menu {
         ]
       : []),
     {
-      label: 'Quit Phevere',
+      label: t('main.tray.quit'),
       click: () => {
         void quitPhevere();
       },
@@ -1391,9 +1392,7 @@ async function initTray(): Promise<void> {
         if (Notification.isSupported()) {
           new Notification({
             title: 'Phevere',
-            body: /gnome/i.test(session.desktop)
-              ? 'No tray icon: turn on the AppIndicator extension. Run Phevere again to reopen its window.'
-              : 'No tray icon: this desktop has no system tray. Run Phevere again to reopen its window.',
+            body: t(/gnome/i.test(session.desktop) ? 'main.notify.noTray.gnome' : 'main.notify.noTray'),
           }).show();
         }
       } catch {
@@ -1561,6 +1560,7 @@ const createMainWindow = (): void => {
     ...(windowIcon ? { icon: windowIcon } : {}),
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      additionalArguments: uiLanguageArguments(),
       nodeIntegration: false,
       contextIsolation: true,
       // Allow text selection and copying in the main window
@@ -1859,6 +1859,7 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
                 movable: true, // Make window draggable
                 webPreferences: {
                   preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+                  additionalArguments: uiLanguageArguments(),
                   nodeIntegration: false,
                   contextIsolation: true,
                   webviewTag: true,
@@ -2015,6 +2016,7 @@ const createSettingsWindow = (section?: string): void => {
     minHeight: 480,
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      additionalArguments: uiLanguageArguments(),
       nodeIntegration: false,
       contextIsolation: true,
     },
@@ -2185,6 +2187,7 @@ async function startOcrRegionCapture(): Promise<void> {
     show: false,
     webPreferences: {
       preload: OCR_OVERLAY_PRELOAD_WEBPACK_ENTRY,
+      additionalArguments: uiLanguageArguments(),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -2233,8 +2236,8 @@ async function handleOcrRegionSelected(region: {
   log.info('main', 'OCR region selected', screenRegion);
 
   showWorkProgress(progressX, progressY, {
-    title: 'Recognizing text…',
-    subtitle: 'Capturing screen region',
+    title: t('main.progress.recognizing'),
+    subtitle: t('main.progress.capturingRegion'),
   });
 
   const capture = await captureScreenRegion(screenRegion);
@@ -2242,24 +2245,24 @@ async function handleOcrRegionSelected(region: {
     closeWorkProgress();
     log.warn('main', 'Screen capture failed for OCR region');
     showWorkProgress(progressX, progressY, {
-      title: 'Capture failed',
-      subtitle: 'Try a larger region',
+      title: t('main.progress.captureFailed'),
+      subtitle: t('main.progress.tryLargerRegion'),
     });
     setTimeout(() => closeWorkProgress(), 1600);
     return;
   }
 
   updateWorkProgress({
-    title: 'Recognizing text…',
-    subtitle: 'Reading text',
+    title: t('main.progress.recognizing'),
+    subtitle: t('main.progress.readingText'),
   });
 
   const started = Date.now();
   const tick = setInterval(() => {
     const secs = Math.round((Date.now() - started) / 1000);
     updateWorkProgress({
-      title: 'Recognizing text…',
-      subtitle: `Still working… ${secs}s`,
+      title: t('main.progress.recognizing'),
+      subtitle: t('main.progress.stillWorking', { seconds: secs }),
     });
   }, 800);
 
@@ -2281,10 +2284,10 @@ async function handleOcrRegionSelected(region: {
     const available = await ocrEngine.isAvailable().catch(() => false);
     const status = getOcrStatus();
     const hint = available
-      ? '(No text found)'
+      ? t('main.scan.noText')
       : status.needsPack
-        ? '(Needs the OCR pack)'
-        : `(Text recognition unavailable: ${status.lastError || 'embedded engine failed to load'})`;
+        ? t('main.scan.needsPack')
+        : t('main.scan.unavailable', { reason: status.lastError || t('main.scan.engineFailedToLoad') });
     contextCaptureHub.emit({
       text: hint,
       x: progressX,
@@ -2306,7 +2309,7 @@ async function handleOcrRegionSelected(region: {
   }
 
   updateWorkProgress({
-    title: 'Looking up…',
+    title: t('main.progress.lookingUp'),
     subtitle: text.length > 48 ? text.slice(0, 48) + '…' : text,
   });
 
@@ -2333,6 +2336,7 @@ function showOcrResult(png: Buffer, ocr: OcrPageResult, near: { x: number; y: nu
       page: ocr.page,
       entry: OCR_RESULT_WEBPACK_ENTRY,
       preload: OCR_RESULT_PRELOAD_WEBPACK_ENTRY,
+      additionalArguments: uiLanguageArguments(),
       near,
       ...(icon ? { icon } : {}),
     });
@@ -2351,8 +2355,8 @@ ipcMain.on('ocr-overlay-cancel', (_event, reason?: string) => {
   if (reason === 'too-small') {
     const cursor = screen.getCursorScreenPoint();
     showWorkProgress(cursor.x, cursor.y, {
-      title: 'Region too small',
-      subtitle: 'Select a larger area.',
+      title: t('main.progress.regionTooSmall'),
+      subtitle: t('main.progress.selectLargerArea'),
     });
     setTimeout(() => closeWorkProgress(), 1600);
   }
@@ -2372,16 +2376,16 @@ async function emitOcrFromPng(opts: {
 }): Promise<void> {
   wireContextCaptureHubOnce();
   showWorkProgress(opts.x, opts.y, {
-    title: opts.progressTitle || 'Recognizing text…',
-    subtitle: 'Reading text',
+    title: opts.progressTitle || t('main.progress.recognizing'),
+    subtitle: t('main.progress.readingText'),
   });
 
   const started = Date.now();
   const tick = setInterval(() => {
     const secs = Math.round((Date.now() - started) / 1000);
     updateWorkProgress({
-      title: opts.progressTitle || 'Recognizing text…',
-      subtitle: `Still working… ${secs}s`,
+      title: opts.progressTitle || t('main.progress.recognizing'),
+      subtitle: t('main.progress.stillWorking', { seconds: secs }),
     });
   }, 800);
 
@@ -2407,10 +2411,10 @@ async function emitOcrFromPng(opts: {
       text:
         opts.emptyMessage ||
         (available
-          ? '(No text found)'
+          ? t('main.scan.noText')
           : getOcrStatus().needsPack
-            ? '(Needs the OCR pack)'
-            : `(Text recognition unavailable: ${getOcrStatus().lastError || 'embedded engine failed'})`),
+            ? t('main.scan.needsPack')
+            : t('main.scan.unavailable', { reason: getOcrStatus().lastError || t('main.scan.engineFailed') })),
       x: opts.x,
       y: opts.y,
       timestamp: Date.now(),
@@ -2423,7 +2427,7 @@ async function emitOcrFromPng(opts: {
   }
 
   updateWorkProgress({
-    title: 'Looking up…',
+    title: t('main.progress.lookingUp'),
     subtitle: text.length > 48 ? text.slice(0, 48) + '…' : text,
   });
   setTimeout(() => closeWorkProgress(), 180);
@@ -2444,8 +2448,8 @@ async function grabOcrUnderCursor(): Promise<void> {
   const cur = screen.getCursorScreenPoint();
   log.info('main', 'Grab OCR under cursor', { x: cur.x, y: cur.y });
   showWorkProgress(cur.x, cur.y + 24, {
-    title: 'Scanning under pointer…',
-    subtitle: 'Capturing nearby text',
+    title: t('main.progress.scanningUnderPointer'),
+    subtitle: t('main.progress.capturingNearby'),
   });
   const capture = await captureAroundPoint(cur.x, cur.y, 160, 64);
   if (!capture) {
@@ -2460,7 +2464,7 @@ async function grabOcrUnderCursor(): Promise<void> {
     bounds: capture.bounds,
     imageHash: capture.imageHash,
     origin: 'ocr',
-    progressTitle: 'Scanning under pointer…',
+    progressTitle: t('main.progress.scanningUnderPointer'),
   });
 }
 
@@ -2470,7 +2474,7 @@ async function readForegroundWindowOcr(): Promise<void> {
   if (!bounds) {
     log.warn('main', 'Foreground window bounds unavailable');
     contextCaptureHub.emit({
-      text: '(Could not scan this window)',
+      text: t('main.scan.windowFailed'),
       x: cur.x,
       y: cur.y,
       timestamp: Date.now(),
@@ -2487,8 +2491,8 @@ async function readForegroundWindowOcr(): Promise<void> {
 
   log.info('main', 'Read foreground window OCR', { ...bounds });
   showWorkProgress(bounds.x + Math.floor(bounds.width / 2), bounds.y + 40, {
-    title: 'Scanning window…',
-    subtitle: 'Capturing foreground window',
+    title: t('main.progress.scanningWindow'),
+    subtitle: t('main.progress.capturingWindow'),
   });
   const capture = await captureScreenRegion(bounds);
   if (!capture) {
@@ -2502,7 +2506,7 @@ async function readForegroundWindowOcr(): Promise<void> {
     bounds,
     imageHash: capture.imageHash,
     origin: 'ocr',
-    progressTitle: 'Scanning window…',
+    progressTitle: t('main.progress.scanningWindow'),
     view: 'multiline',
   });
 }
@@ -2522,7 +2526,7 @@ async function ocrClipboardImage(): Promise<void> {
     y: cur.y,
     imageHash: img.imageHash,
     origin: 'clipboard',
-    progressTitle: 'Scanning clipboard image…',
+    progressTitle: t('main.progress.scanningClipboard'),
     view: 'always',
   });
 }
@@ -2531,14 +2535,14 @@ async function lookupNowPlaying(): Promise<void> {
   wireContextCaptureHubOnce();
   const cur = screen.getCursorScreenPoint();
   showWorkProgress(cur.x, cur.y, {
-    title: 'Now playing…',
-    subtitle: 'Checking what is playing',
+    title: t('main.progress.nowPlaying'),
+    subtitle: t('main.progress.checkingNowPlaying'),
   });
   const info = await getNowPlaying();
   closeWorkProgress();
   if (!info) {
     contextCaptureHub.emit({
-      text: '(Nothing is playing)',
+      text: t('main.scan.nothingPlaying'),
       x: cur.x,
       y: cur.y,
       timestamp: Date.now(),
@@ -2570,14 +2574,14 @@ function startClipboardImageWatcher(): void {
 ipcMain.handle('ocr-image-file', async (_event, filePath: string) => {
   const cur = screen.getCursorScreenPoint();
   const img = loadImageFileAsPng(String(filePath || ''));
-  if (!img) return { success: false, error: 'Could not load image' };
+  if (!img) return { success: false, error: t('main.scan.imageLoadFailed') };
   await emitOcrFromPng({
     png: img.png,
     x: cur.x,
     y: cur.y,
     imageHash: img.imageHash,
     origin: 'ocr',
-    progressTitle: 'Scanning image…',
+    progressTitle: t('main.progress.scanningImage'),
     view: 'always',
   });
   return { success: true };
@@ -2586,14 +2590,14 @@ ipcMain.handle('ocr-image-file', async (_event, filePath: string) => {
 ipcMain.handle('ocr-image-data', async (_event, dataUrl: string) => {
   const cur = screen.getCursorScreenPoint();
   const img = pngFromBase64(String(dataUrl || ''));
-  if (!img) return { success: false, error: 'Could not decode image' };
+  if (!img) return { success: false, error: t('main.scan.imageDecodeFailed') };
   await emitOcrFromPng({
     png: img.png,
     x: cur.x,
     y: cur.y,
     imageHash: img.imageHash,
     origin: 'clipboard',
-    progressTitle: 'Scanning image…',
+    progressTitle: t('main.progress.scanningImage'),
     view: 'always',
   });
   return { success: true };
@@ -2863,11 +2867,11 @@ ipcMain.handle(
     const ocr = (payload?.ocrShortcut || monitorSettings.ocrShortcut).trim();
     const hover = (payload?.hoverShortcut || monitorSettings.hoverShortcut).trim();
     if (!cycle || !trigger || !ocr || !hover) {
-      return { success: false, error: 'All shortcut fields are required.' };
+      return { success: false, error: t('main.shortcuts.allRequired') };
     }
     const all = [cycle, trigger, ocr, hover];
     if (new Set(all).size !== all.length) {
-      return { success: false, error: 'Each shortcut must be different.' };
+      return { success: false, error: t('main.shortcuts.mustDiffer') };
     }
     if (
       !tryRegisterAccelerator(cycle) ||
@@ -2877,7 +2881,7 @@ ipcMain.handle(
     ) {
       return {
         success: false,
-        error: 'This shortcut is not valid.',
+        error: t('main.shortcuts.invalid'),
       };
     }
     monitorSettings = mergeMonitorSettings(
@@ -3362,6 +3366,22 @@ function startUpdates(): void {
   });
 }
 
+// Interface language. Each window gets it on its command line (uiLanguageArguments), so it draws
+// in its language from the first paint; a change rebuilds the native menus and tells every window.
+ipcMain.handle('ui-language-set', async (_event, raw: unknown) => {
+  const next = setUiLanguagePref(asUiLanguagePref(raw));
+  await setUiLocale(next.locale);
+  refreshLocalizedChrome();
+  broadcastToWindows('ui-language-changed', next);
+  return next;
+});
+
+/** Menus and the tray, which Electron draws natively, in the interface language. */
+function refreshLocalizedChrome(): void {
+  installDarwinAppMenu();
+  updateTrayContextMenu();
+}
+
 function broadcastToWindows(channel: string, payload: unknown): void {
   for (const w of BrowserWindow.getAllWindows()) {
     if (w.isDestroyed()) continue;
@@ -3397,7 +3417,7 @@ let sqlJsForImport: Promise<any> | null = null;
 const openSqliteForImport = async (bytes: Uint8Array) => {
   if (!sqlJsForImport) {
     const asm = resolveSqlAsmPath();
-    if (!asm) throw new Error('SQLite is not available to read this Anki file.');
+    if (!asm) throw new Error(t('main.books.sqliteMissing'));
     // eslint-disable-next-line no-eval
     const req = eval('require') as NodeRequire;
     sqlJsForImport = Promise.resolve(req(asm)()).catch((err: unknown) => {
@@ -3437,9 +3457,9 @@ ipcMain.handle('vocab-export', async (e, req?: { scope?: BookScope; anki?: boole
     const payload = anki ? await decodeBookFile(file.bytes) : null;
     const defaultPath = anki ? file.fileName.replace(/\.pvbook$/, ' (Anki).txt') : file.fileName;
     const result = await dialog.showSaveDialog(win || undefined, {
-      title: anki ? 'Export for Anki' : 'Export book',
+      title: t(anki ? 'main.books.exportAnkiTitle' : 'main.books.exportTitle'),
       defaultPath,
-      filters: anki ? [{ name: 'Anki text', extensions: ['txt'] }] : [{ name: 'Phevere book', extensions: [BOOK_FILE_EXTENSION] }],
+      filters: anki ? [{ name: t('main.books.fileType.ankiText'), extensions: ['txt'] }] : [{ name: t('main.books.fileType.book'), extensions: [BOOK_FILE_EXTENSION] }],
     });
     if (result.canceled || !result.filePath) return { cancelled: true };
     if (payload) fs.writeFileSync(result.filePath, ankiTextFromBook(payload), 'utf8');
@@ -3465,12 +3485,12 @@ ipcMain.handle('vocab-import', async (e) => {
   try {
     const win = BrowserWindow.fromWebContents(e.sender) || mainWindow;
     const picked = await dialog.showOpenDialog(win || undefined, {
-      title: 'Import a book',
+      title: t('main.books.importTitle'),
       filters: [
-        { name: 'Books', extensions: [BOOK_FILE_EXTENSION, 'apkg', 'txt', 'json', 'csv'] },
-        { name: 'Phevere book', extensions: [BOOK_FILE_EXTENSION] },
+        { name: t('main.books.fileType.books'), extensions: [BOOK_FILE_EXTENSION, 'apkg', 'txt', 'json', 'csv'] },
+        { name: t('main.books.fileType.book'), extensions: [BOOK_FILE_EXTENSION] },
         { name: 'Anki', extensions: ['apkg', 'txt'] },
-        { name: 'Older Phevere export', extensions: ['json', 'csv'] },
+        { name: t('main.books.fileType.olderExport'), extensions: ['json', 'csv'] },
       ],
       properties: ['openFile'],
     });
@@ -3481,7 +3501,7 @@ ipcMain.handle('vocab-import', async (e) => {
       payload = await bookPayloadFromFile(filePath);
     } catch (error) {
       if (error instanceof BookLockedError || error instanceof Error) {
-        await dialog.showMessageBox(win || undefined, { type: 'warning', message: 'This book could not be opened.', detail: error.message });
+        await dialog.showMessageBox(win || undefined, { type: 'warning', message: t('main.books.openFailed'), detail: error.message });
         return { cancelled: true };
       }
       throw error;
@@ -3496,29 +3516,29 @@ ipcMain.handle('vocab-import', async (e) => {
         await vocabStore.addVocab(row).then((): void => { imported += 1; }, (): void => undefined);
       }
       notifyWordsChanged();
-      return { cancelled: false, kind: 'mine', title: 'My words', words: imported };
+      return { cancelled: false, kind: 'mine', title: t('main.books.myWords'), words: imported };
     }
     let mode: 'replace' | 'keep-both' = 'keep-both';
     const conflict = await findBookConflict(payload);
     if (conflict && payload.book.kind === 'user') {
       const r = await dialog.showMessageBox(win || undefined, {
         type: 'question',
-        buttons: ['Replace', 'Keep both', 'Cancel'],
+        buttons: [t('main.books.replace'), t('main.books.keepBoth'), t('common.cancel')],
         defaultId: 1,
         cancelId: 2,
-        message: `You already have a book named “${conflict.title}”.`,
-        detail: `Replace overwrites its word list with this file's. Keep both adds this one as “${conflict.title} (2)”. Progress is merged either way.`,
+        message: t('main.books.nameTaken', { title: conflict.title }),
+        detail: t('main.books.nameTakenDetail', { title: conflict.title }),
       });
       if (r.response === 2) return { cancelled: true };
       mode = r.response === 0 ? 'replace' : 'keep-both';
     } else if (conflict) {
       const r = await dialog.showMessageBox(win || undefined, {
         type: 'question',
-        buttons: ['Merge progress', 'Cancel'],
+        buttons: [t('main.books.mergeProgress'), t('common.cancel')],
         defaultId: 0,
         cancelId: 1,
-        message: `You already added “${conflict.title}”.`,
-        detail: "This file's progress is merged into it.",
+        message: t('main.books.alreadyAdded', { title: conflict.title }),
+        detail: t('main.books.alreadyAddedDetail'),
       });
       if (r.response === 1) return { cancelled: true };
     }
@@ -3588,7 +3608,7 @@ ipcMain.handle('vocab-confirm', async (e, ask: { message?: unknown; detail?: unk
   const win = BrowserWindow.fromWebContents(e.sender);
   const opts = {
     type: 'warning' as const,
-    buttons: [String(ask?.confirm || 'OK'), 'Cancel'],
+    buttons: [String(ask?.confirm || t('common.ok')), t('common.cancel')],
     defaultId: 1,
     cancelId: 1,
     message: String(ask?.message || ''),
@@ -3737,10 +3757,10 @@ ipcMain.handle('offline-lookup', async (_e, headword: string, language?: string)
 ipcMain.handle('offline-import-json', async () => {
   const win = BrowserWindow.getFocusedWindow() || mainWindow;
   const result = await dialog.showOpenDialog(win || undefined, {
-    title: 'Import dictionary pack',
+    title: t('main.offline.importPackTitle'),
     filters: [
-      { name: 'Dictionary JSON', extensions: ['json', 'jsonl', 'ndjson'] },
-      { name: 'All files', extensions: ['*'] },
+      { name: t('main.offline.fileType.json'), extensions: ['json', 'jsonl', 'ndjson'] },
+      { name: t('main.offline.fileType.all'), extensions: ['*'] },
     ],
     properties: ['openFile'],
   });
@@ -3751,10 +3771,10 @@ ipcMain.handle('offline-import-json', async () => {
 ipcMain.handle('offline-import-cedict-file', async () => {
   const win = BrowserWindow.getFocusedWindow() || mainWindow;
   const result = await dialog.showOpenDialog(win || undefined, {
-    title: 'Import CC-CEDICT file',
+    title: t('main.offline.importCedictTitle'),
     filters: [
       { name: 'CEDICT', extensions: ['txt', 'u8'] },
-      { name: 'All files', extensions: ['*'] },
+      { name: t('main.offline.fileType.all'), extensions: ['*'] },
     ],
     properties: ['openFile'],
   });
@@ -3830,7 +3850,7 @@ ipcMain.handle('ocr-set-profile', async (_e, profileId: string, customPath?: str
 ipcMain.handle('ocr-pick-custom-folder', async () => {
   const win = BrowserWindow.getFocusedWindow() || mainWindow;
   const result = await dialog.showOpenDialog(win || undefined, {
-    title: 'Choose OCR model folder',
+    title: t('main.ocr.chooseFolderTitle'),
     properties: ['openDirectory'],
   });
   if (result.canceled || !result.filePaths?.[0]) {
@@ -3958,29 +3978,61 @@ app.on('browser-window-created', (_event, win) => {
 
 function installDarwinAppMenu(): void {
   if (process.platform !== 'darwin') return;
+  // Electron labels its roles in English only, so each role item carries a label in the interface language.
+  const name = { app: app.name };
   const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: app.name,
       submenu: [
-        { label: `About ${app.name}`, click: () => createSettingsWindow('about') },
+        { label: t('main.appMenu.about', name), click: () => createSettingsWindow('about') },
         { type: 'separator' },
         {
-          label: 'Settings…',
+          label: t('main.menu.settings'),
           accelerator: 'CommandOrControl+,',
           click: () => createSettingsWindow(),
         },
         { type: 'separator' },
-        { role: 'services' },
+        { role: 'services', label: t('main.appMenu.services') },
         { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
+        { role: 'hide', label: t('main.appMenu.hide', name) },
+        { role: 'hideOthers', label: t('main.appMenu.hideOthers') },
+        { role: 'unhide', label: t('main.appMenu.showAll') },
         { type: 'separator' },
-        { role: 'quit' },
+        { role: 'quit', label: t('main.appMenu.quit', name) },
       ],
     },
-    { role: 'editMenu' },
-    { role: 'windowMenu' },
+    {
+      label: t('main.appMenu.edit'),
+      submenu: [
+        { role: 'undo', label: t('main.appMenu.undo') },
+        { role: 'redo', label: t('main.appMenu.redo') },
+        { type: 'separator' },
+        { role: 'cut', label: t('main.appMenu.cut') },
+        { role: 'copy', label: t('main.appMenu.copy') },
+        { role: 'paste', label: t('main.appMenu.paste') },
+        { role: 'pasteAndMatchStyle', label: t('main.appMenu.pasteAndMatchStyle') },
+        { role: 'delete', label: t('main.appMenu.delete') },
+        { role: 'selectAll', label: t('main.appMenu.selectAll') },
+        { type: 'separator' },
+        {
+          label: t('main.appMenu.speech'),
+          submenu: [
+            { role: 'startSpeaking', label: t('main.appMenu.startSpeaking') },
+            { role: 'stopSpeaking', label: t('main.appMenu.stopSpeaking') },
+          ],
+        },
+      ],
+    },
+    {
+      role: 'window',
+      label: t('main.appMenu.window'),
+      submenu: [
+        { role: 'minimize', label: t('main.appMenu.minimize') },
+        { role: 'zoom', label: t('main.appMenu.zoom') },
+        { type: 'separator' },
+        { role: 'front', label: t('main.appMenu.front') },
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -3995,6 +4047,7 @@ app.on('ready', () => {
     return;
   }
   if (!gotSingleInstanceLock) return;
+  void setUiLocale(uiLanguageState().locale).then(refreshLocalizedChrome);
   // Settings → API keys saved in an earlier session (safeStorage needs the app ready).
   for (const [field, value] of loadApiKeys()) dictionaryService.setApiCredential(field, value);
   for (const [name, on] of Object.entries(loadSourcePrefs())) dictionaryService.setSourceEnabled(name, on);
@@ -4175,6 +4228,7 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
                 alwaysOnTop: true,
                 webPreferences: {
                   preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+                  additionalArguments: uiLanguageArguments(),
                   nodeIntegration: false,
                   contextIsolation: true,
                 },
@@ -4386,6 +4440,7 @@ function createDictionaryWindow(term: string, lang?: string): void {
       nodeIntegration: false,
       contextIsolation: true,
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      additionalArguments: uiLanguageArguments(),
       sandbox: false,
       backgroundThrottling: false,
       webviewTag: true,

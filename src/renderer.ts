@@ -150,12 +150,14 @@ import {
   type BookSort,
 } from '@phevere/core';
 import { choiceRowHtml, enhanceSelect, keycapsHtml, rangeRowHtml, segRowHtml, switchRowHtml } from '@phevere/core';
-import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages, savedForSpelling } from '@phevere/core';
+import { filterVocabByLang, parseGoal, vocabLangChipsHtml, vocabLanguages, savedForSpelling } from '@phevere/core';
 import { aboutSettingsHtml, flashAboutCopied, type AboutPlatform } from '@phevere/core';
 import { learnSettingsHtml, microphoneAvailable, readLearnPrefs, watchMicrophone, wireNumberWheels, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
 import { AZ_INDEX, compareAz, followIndexRail, vocabAzLetter, wireIndexRail } from '@phevere/core';
 import { bookMenuItems, bookPickItems, bookRemovalPrompt, openMenu } from '@phevere/core';
+import { languageRowHtml, asUiLanguagePref, t, tHtml, formatNumber, formatPercent, formatMegabytes, formatDate, formatList, languageDisplayName, uiLocale, UI_LANGUAGE_SELECT_ID } from '@phevere/core';
+import { setUiLanguagePref, uiLanguagePref, windowLanguageReady } from './ui-language';
 
 const rlog = (...args: unknown[]) => {
   if (!__PHEVERE_DEV__) return;
@@ -168,7 +170,7 @@ document.getElementById('clearSelectionsBtn')?.addEventListener('click', () => {
   const before = loadRecentLookups();
   saveRecentLookups([]);
   renderRecentLookups();
-  showUndoToast('Recent lookups cleared', () => {
+  showUndoToast(t('desktop.recent.cleared'), () => {
     // Lookups made while the toast was up stay on top of the restored ones.
     const now = loadRecentLookups();
     const seen = new Set(now.map((e) => e.q.toLowerCase()));
@@ -188,7 +190,7 @@ function showUndoToast(message: string, undo: () => void): void {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'undo-toast__action';
-  button.textContent = 'Undo';
+  button.textContent = t('common.undo');
   toast.append(text, button);
   const timer = setTimeout(() => toast.remove(), 8000);
   button.addEventListener('click', () => {
@@ -200,7 +202,10 @@ function showUndoToast(message: string, undo: () => void): void {
 }
 
 // Wait for DOM to be ready
-document.addEventListener('DOMContentLoaded', () => {
+// Each window loads its interface language before it builds any markup.
+document.addEventListener('DOMContentLoaded', () => void windowLanguageReady().then(startWindow));
+
+function startWindow(): void {
   const hash = window.location.hash;
   const path = window.location.pathname || '';
 
@@ -208,9 +213,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // The markup and behavior come from popup-new.html itself.
   if (path.includes('popup_window')) {
     rlog('[POPUP-RENDERER] Detected /popup_window. Skipping initializePopup() to use popup-new.html. hash=', hash);
-  } else if (hash === '#popup') {
-    // Legacy hash-based popup route (main bundle)
-    initializePopup();
   } else if (hash === '#settings' || hash.startsWith('#settings/')) {
     // Settings window functionality
     initializeSettingsWindow();
@@ -220,7 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Main window functionality
     initializeMainWindow();
   }
-});
+}
 
 // Also try immediate execution if DOM is already ready
 // IMPORTANT: Avoid double init. We rely solely on DOMContentLoaded above
@@ -254,96 +256,97 @@ function initializeSettingsWindow() {
           </span>
           <div class="settings-titlebar__text">
             <h1 class="settings-titlebar__heading">Phevere</h1>
-            <span class="settings-titlebar__sub">Settings</span>
+            <span class="settings-titlebar__sub">${tHtml('settings.title')}</span>
           </div>
         </div>
-        <button type="button" id="settings-close" class="settings-close-btn" title="Close" aria-label="Close">
+        <button type="button" id="settings-close" class="settings-close-btn" title="${tHtml('common.close')}" aria-label="${tHtml('common.close')}">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" />
           </svg>
         </button>
       </header>
       <div class="settings-shell">
-        <nav class="settings-nav" aria-label="Settings sections">
-          <button type="button" class="settings-nav__item is-active" data-section="shortcuts">Shortcuts</button>
-          <button type="button" class="settings-nav__item" data-section="capture">Capture</button>
-          <button type="button" class="settings-nav__item" data-section="learn">Learn</button>
-          <button type="button" class="settings-nav__item" data-section="notifications">Notifications</button>
-          <button type="button" class="settings-nav__item" data-section="sources">Sources</button>
-          <button type="button" class="settings-nav__item" data-section="offline">Offline</button>
-          <button type="button" class="settings-nav__item" data-section="api">API keys</button>
-          <button type="button" class="settings-nav__item" data-section="audio">Audio</button>
-          <button type="button" class="settings-nav__item" data-section="updates">Updates</button>
-          <button type="button" class="settings-nav__item" data-section="about">About</button>
+        <nav class="settings-nav" aria-label="${tHtml('settings.sections')}">
+          <button type="button" class="settings-nav__item is-active" data-section="shortcuts">${tHtml('settings.section.shortcuts')}</button>
+          <button type="button" class="settings-nav__item" data-section="capture">${tHtml('settings.section.capture')}</button>
+          <button type="button" class="settings-nav__item" data-section="learn">${tHtml('settings.section.learn')}</button>
+          <button type="button" class="settings-nav__item" data-section="notifications">${tHtml('settings.section.notifications')}</button>
+          <button type="button" class="settings-nav__item" data-section="sources">${tHtml('settings.section.sources')}</button>
+          <button type="button" class="settings-nav__item" data-section="offline">${tHtml('settings.section.offline')}</button>
+          <button type="button" class="settings-nav__item" data-section="api">${tHtml('settings.section.api')}</button>
+          <button type="button" class="settings-nav__item" data-section="audio">${tHtml('settings.section.audio')}</button>
+          <button type="button" class="settings-nav__item" data-section="updates">${tHtml('settings.section.updates')}</button>
+          <button type="button" class="settings-nav__item" data-section="about">${tHtml('settings.section.about')}</button>
         </nav>
         <main class="settings-main">
           <section class="settings-panel is-active" data-panel="shortcuts" aria-labelledby="settings-monitor-heading">
             <div class="settings-panel__intro">
-              <h2 id="settings-monitor-heading" class="settings-panel__title">Shortcuts</h2>
+              <h2 id="settings-monitor-heading" class="settings-panel__title">${tHtml('settings.section.shortcuts')}</h2>
             </div>
             <div class="sv sv-page">
+              ${languageRowHtml(asUiLanguagePref(uiLanguagePref()))}
               <div class="sv-ledger">
                 <div class="sv-row sv-row--keys">
-                  <span class="sv-row__text"><span id="label-monitor-cycle" class="sv-row__label">Selection mode</span></span>
+                  <span class="sv-row__text"><span id="label-monitor-cycle" class="sv-row__label">${tHtml('desktop.settings.shortcuts.selectionMode')}</span></span>
                   <div class="sv-keycaps sv-keyfield" id="monitor-cycle-shortcut-keys"></div>
                   <input type="text" id="monitor-cycle-shortcut" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-monitor-cycle" />
-                  <button type="button" class="sv-btn" id="monitor-cycle-set">Set…</button>
+                  <button type="button" class="sv-btn" id="monitor-cycle-set">${tHtml('desktop.settings.shortcuts.set')}</button>
                 </div>
                 <div class="sv-row sv-row--keys">
-                  <span class="sv-row__text"><span id="label-monitor-trigger" class="sv-row__label">Pop-up trigger</span><span class="sv-row__sub">Hold while selecting</span></span>
+                  <span class="sv-row__text"><span id="label-monitor-trigger" class="sv-row__label">${tHtml('desktop.settings.shortcuts.popupTrigger')}</span><span class="sv-row__sub">${tHtml('desktop.settings.shortcuts.popupTriggerHint')}</span></span>
                   <div class="sv-keycaps sv-keyfield" id="monitor-trigger-shortcut-keys"></div>
                   <input type="text" id="monitor-trigger-shortcut" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-monitor-trigger" />
-                  <button type="button" class="sv-btn" id="monitor-trigger-set">Set…</button>
+                  <button type="button" class="sv-btn" id="monitor-trigger-set">${tHtml('desktop.settings.shortcuts.set')}</button>
                 </div>
                 <div class="sv-row sv-row--keys">
-                  <span class="sv-row__text"><span id="label-ocr-shortcut" class="sv-row__label">Scan region</span></span>
+                  <span class="sv-row__text"><span id="label-ocr-shortcut" class="sv-row__label">${tHtml('desktop.settings.shortcuts.scanRegion')}</span></span>
                   <div class="sv-keycaps sv-keyfield" id="ocr-shortcut-keys"></div>
                   <input type="text" id="ocr-shortcut" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-ocr-shortcut" />
-                  <button type="button" class="sv-btn" id="ocr-shortcut-set">Set…</button>
+                  <button type="button" class="sv-btn" id="ocr-shortcut-set">${tHtml('desktop.settings.shortcuts.set')}</button>
                 </div>
                 <div class="sv-row sv-row--keys">
-                  <span class="sv-row__text"><span id="label-hover-shortcut" class="sv-row__label">Hover lookup</span></span>
+                  <span class="sv-row__text"><span id="label-hover-shortcut" class="sv-row__label">${tHtml('desktop.settings.shortcuts.hoverLookup')}</span></span>
                   <div class="sv-keycaps sv-keyfield" id="hover-shortcut-keys"></div>
                   <input type="text" id="hover-shortcut" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-hover-shortcut" />
-                  <button type="button" class="sv-btn" id="hover-shortcut-set">Set…</button>
+                  <button type="button" class="sv-btn" id="hover-shortcut-set">${tHtml('desktop.settings.shortcuts.set')}</button>
                 </div>
                 <div class="sv-ledger__foot">
                   <span id="monitor-shortcuts-status" class="sv-actions__status" role="status" aria-live="polite"></span>
-                  <button type="button" id="monitor-save-shortcuts" class="sv-btn sv-btn--accent">Save</button>
+                  <button type="button" id="monitor-save-shortcuts" class="sv-btn sv-btn--accent">${tHtml('common.save')}</button>
                 </div>
               </div>
-              <header class="sv-head"><h3 class="sv-head__title">Built-in</h3></header>
+              <header class="sv-head"><h3 class="sv-head__title">${tHtml('desktop.settings.shortcuts.builtIn')}</h3></header>
               <ul class="sv-ledger" id="builtin-shortcuts">
-                <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">Scan under pointer</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+G"></span></li>
-                <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">Scan active window</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+W"></span></li>
-                <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">Scan clipboard image</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+I"></span></li>
-                <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">Look up now playing</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+P"></span></li>
+                <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">${tHtml('desktop.settings.shortcuts.scanUnderPointer')}</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+G"></span></li>
+                <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">${tHtml('desktop.settings.shortcuts.scanActiveWindow')}</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+W"></span></li>
+                <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">${tHtml('desktop.settings.shortcuts.scanClipboardImage')}</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+I"></span></li>
+                <li class="sv-row sv-row--keys is-fixed"><span class="sv-row__label">${tHtml('desktop.settings.shortcuts.lookUpNowPlaying')}</span><span class="sv-keycaps" data-accel="CommandOrControl+Shift+P"></span></li>
               </ul>
               <div id="qt-section" class="sv-section" hidden>
-                <header class="sv-head"><h3 class="sv-head__title">Quick translation</h3></header>
+                <header class="sv-head"><h3 class="sv-head__title">${tHtml('desktop.settings.quickTranslation.title')}</h3></header>
                 <div class="sv-ledger">
                   <label class="sv-row">
-                    <span class="sv-row__text"><span class="sv-row__label" id="qt-enabled-label">Translate selected text in place</span></span>
+                    <span class="sv-row__text"><span class="sv-row__label" id="qt-enabled-label">${tHtml('desktop.settings.quickTranslation.enabled')}</span></span>
                     <span class="sv-ctl"><input type="checkbox" role="switch" class="sv-switch" id="qt-enabled" aria-labelledby="qt-enabled-label" /></span>
                   </label>
                   <div class="sv-row sv-row--keys" data-qt>
-                    <span class="sv-row__text"><span id="label-qt-replace" class="sv-row__label">Translate and replace</span></span>
+                    <span class="sv-row__text"><span id="label-qt-replace" class="sv-row__label">${tHtml('desktop.settings.quickTranslation.replace')}</span></span>
                     <div class="sv-keycaps sv-keyfield" id="qt-replace-keys"></div>
                     <input type="text" id="qt-replace" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-qt-replace" />
-                    <button type="button" class="sv-btn" id="qt-replace-set">Set…</button>
+                    <button type="button" class="sv-btn" id="qt-replace-set">${tHtml('desktop.settings.shortcuts.set')}</button>
                   </div>
                   <div class="sv-row sv-row--keys" data-qt>
-                    <span class="sv-row__text"><span id="label-qt-panel" class="sv-row__label">Choose a translation</span></span>
+                    <span class="sv-row__text"><span id="label-qt-panel" class="sv-row__label">${tHtml('desktop.settings.quickTranslation.panel')}</span></span>
                     <div class="sv-keycaps sv-keyfield" id="qt-panel-keys"></div>
                     <input type="text" id="qt-panel" readonly class="sv-vh" spellcheck="false" autocomplete="off" tabindex="-1" aria-labelledby="label-qt-panel" />
-                    <button type="button" class="sv-btn" id="qt-panel-set">Set…</button>
+                    <button type="button" class="sv-btn" id="qt-panel-set">${tHtml('desktop.settings.shortcuts.set')}</button>
                   </div>
                   <div class="sv-row" data-qt>
-                    <span class="sv-row__text"><label for="qt-from" class="sv-row__label">From</label></span>
+                    <span class="sv-row__text"><label for="qt-from" class="sv-row__label">${tHtml('desktop.settings.quickTranslation.from')}</label></span>
                     <select id="qt-from" class="sv-select"></select>
                   </div>
                   <div class="sv-row" data-qt>
-                    <span class="sv-row__text"><label for="qt-to" class="sv-row__label">To</label></span>
+                    <span class="sv-row__text"><label for="qt-to" class="sv-row__label">${tHtml('desktop.settings.quickTranslation.to')}</label></span>
                     <select id="qt-to" class="sv-select"></select>
                   </div>
                 </div>
@@ -354,51 +357,51 @@ function initializeSettingsWindow() {
 
           <section class="settings-panel" data-panel="capture" aria-labelledby="settings-capture-heading">
             <div class="settings-panel__intro">
-              <h2 id="settings-capture-heading" class="settings-panel__title">Capture</h2>
+              <h2 id="settings-capture-heading" class="settings-panel__title">${tHtml('settings.section.capture')}</h2>
             </div>
             <div class="sv sv-page">
               <div class="sv-ledger">
                 <div class="sv-row" role="group" aria-labelledby="enable-hover-label">
                   <span class="sv-row__text">
-                    <span id="enable-hover-label" class="sv-row__label">Hover lookup</span>
+                    <span id="enable-hover-label" class="sv-row__label">${tHtml('desktop.settings.capture.hoverLookup')}</span>
                     <span id="hover-ocr-status" class="sv-row__status" role="status" aria-live="polite" hidden></span>
                   </span>
                   <span class="sv-row__end">
-                    <button type="button" id="hover-ocr-install" class="sv-btn" hidden>Install</button>
+                    <button type="button" id="hover-ocr-install" class="sv-btn" hidden>${tHtml('desktop.settings.capture.install')}</button>
                     <label class="sv-ctl"><input type="checkbox" role="switch" class="sv-switch" id="enable-hover" checked aria-labelledby="enable-hover-label" aria-describedby="hover-ocr-status" /></label>
                   </span>
                   <div id="hover-ocr-progress" class="sv-progress" hidden><span></span></div>
                 </div>
                 <div class="sv-row">
-                  <span class="sv-row__text"><label for="lookup-opens" class="sv-row__label">Open lookups as</label></span>
+                  <span class="sv-row__text"><label for="lookup-opens" class="sv-row__label">${tHtml('desktop.settings.capture.openLookupsAs')}</label></span>
                   <select id="lookup-opens" class="sv-select">
-                    <option value="strip">Strip</option>
-                    <option value="panel">Full pop-up</option>
+                    <option value="strip">${tHtml('desktop.settings.capture.openAsStrip')}</option>
+                    <option value="panel">${tHtml('desktop.settings.capture.openAsPanel')}</option>
                   </select>
                 </div>
                 <div class="sv-row">
-                  <span class="sv-row__text"><span id="remember-sources-label" class="sv-row__label">Remember where words were saved</span></span>
+                  <span class="sv-row__text"><span id="remember-sources-label" class="sv-row__label">${tHtml('desktop.settings.capture.rememberSources')}</span></span>
                   <label class="sv-ctl"><input type="checkbox" role="switch" class="sv-switch" id="remember-sources" checked aria-labelledby="remember-sources-label" /></label>
                 </div>
               </div>
-              <div class="sv-drop" id="settings-dropzone" tabindex="0" role="button" aria-label="Choose, drop or paste an image">
-                <strong>Drop or paste an image</strong>
-                <span>PNG, JPEG or WebP</span>
+              <div class="sv-drop" id="settings-dropzone" tabindex="0" role="button" aria-label="${tHtml('desktop.settings.capture.dropLabel')}">
+                <strong>${tHtml('desktop.settings.capture.dropTitle')}</strong>
+                <span>${tHtml('desktop.settings.capture.dropFormats')}</span>
                 <input type="file" id="settings-dropzone-file" accept="image/png,image/jpeg,image/webp" hidden />
               </div>
-              <header class="sv-head"><h3 class="sv-head__title">Text recognition</h3></header>
+              <header class="sv-head"><h3 class="sv-head__title">${tHtml('desktop.settings.ocr.title')}</h3></header>
               <div class="sv-ledger">
                 <div class="sv-row">
                   <span class="sv-row__text">
-                    <label for="ocr-profile-select" class="sv-row__label">Model</label>
-                    <span id="ocr-status" class="sv-row__sub" role="status" aria-live="polite">Checking…</span>
+                    <label for="ocr-profile-select" class="sv-row__label">${tHtml('desktop.settings.ocr.model')}</label>
+                    <span id="ocr-status" class="sv-row__sub" role="status" aria-live="polite">${tHtml('desktop.settings.ocr.checking')}</span>
                   </span>
                   <select id="ocr-profile-select" class="sv-select"></select>
                 </div>
                 <div class="sv-ledger__foot">
-                  <button type="button" id="ocr-refresh-status" class="sv-btn">Refresh</button>
-                  <button type="button" id="ocr-upload-models" class="sv-btn">Choose folder…</button>
-                  <button type="button" id="ocr-apply-profile" class="sv-btn sv-btn--accent">Apply</button>
+                  <button type="button" id="ocr-refresh-status" class="sv-btn">${tHtml('desktop.settings.ocr.refresh')}</button>
+                  <button type="button" id="ocr-upload-models" class="sv-btn">${tHtml('desktop.settings.ocr.chooseFolder')}</button>
+                  <button type="button" id="ocr-apply-profile" class="sv-btn sv-btn--accent">${tHtml('desktop.settings.ocr.apply')}</button>
                 </div>
               </div>
             </div>
@@ -406,27 +409,27 @@ function initializeSettingsWindow() {
 
           <section class="settings-panel" data-panel="learn" aria-labelledby="settings-learn-heading">
             <div class="settings-panel__intro">
-              <h2 id="settings-learn-heading" class="settings-panel__title">Learn</h2>
+              <h2 id="settings-learn-heading" class="settings-panel__title">${tHtml('settings.section.learn')}</h2>
             </div>
             <div id="learn-settings-host"></div>
           </section>
 
           <section class="settings-panel" data-panel="notifications" aria-labelledby="settings-notifications-heading">
             <div class="settings-panel__intro">
-              <h2 id="settings-notifications-heading" class="settings-panel__title">Notifications</h2>
+              <h2 id="settings-notifications-heading" class="settings-panel__title">${tHtml('settings.section.notifications')}</h2>
             </div>
             <div class="sv sv-page">
               <div class="sv-ledger">
-                ${switchRowHtml({ label: 'Image copied', on: true, attrs: 'id="notify-clipboard-image"' })}
-                ${switchRowHtml({ label: 'Hover lookup switched on or off', on: true, attrs: 'id="notify-hover-toggle"' })}
-                ${switchRowHtml({ label: 'Update ready or available', on: true, attrs: 'id="notify-updates"' })}
+                ${switchRowHtml({ label: t('desktop.settings.notifications.imageCopied'), on: true, attrs: 'id="notify-clipboard-image"' })}
+                ${switchRowHtml({ label: t('desktop.settings.notifications.hoverToggled'), on: true, attrs: 'id="notify-hover-toggle"' })}
+                ${switchRowHtml({ label: t('desktop.settings.notifications.updates'), on: true, attrs: 'id="notify-updates"' })}
               </div>
             </div>
           </section>
 
           <section class="settings-panel" data-panel="updates" aria-labelledby="settings-updates-heading">
             <div class="settings-panel__intro">
-              <h2 id="settings-updates-heading" class="settings-panel__title">Updates</h2>
+              <h2 id="settings-updates-heading" class="settings-panel__title">${tHtml('settings.section.updates')}</h2>
             </div>
             <div class="sv sv-page">
               <div class="sv-ledger">
@@ -438,10 +441,10 @@ function initializeSettingsWindow() {
                   <button type="button" id="update-action" class="sv-btn sv-btn--accent" hidden></button>
                   <div id="update-progress" class="sv-progress" hidden><span></span></div>
                 </div>
-                ${segRowHtml({ label: 'Install updates', name: 'update-mode', value: 'auto', options: [{ value: 'auto', label: 'Automatically' }, { value: 'ask', label: 'Ask first' }, { value: 'off', label: 'Off' }] })}
+                ${segRowHtml({ label: t('desktop.settings.updates.install'), name: 'update-mode', value: 'auto', options: [{ value: 'auto', label: t('desktop.settings.updates.modeAuto') }, { value: 'ask', label: t('desktop.settings.updates.modeAsk') }, { value: 'off', label: t('desktop.settings.updates.modeOff') }] })}
                 <div class="sv-ledger__foot">
                   <button type="button" id="update-rollback" class="sv-btn" hidden></button>
-                  <button type="button" id="update-check" class="sv-btn">Check now</button>
+                  <button type="button" id="update-check" class="sv-btn">${tHtml('desktop.settings.updates.checkNow')}</button>
                 </div>
               </div>
             </div>
@@ -449,33 +452,33 @@ function initializeSettingsWindow() {
 
           <section class="settings-panel" data-panel="sources" aria-labelledby="settings-sources-heading">
             <div class="settings-panel__intro">
-              <h2 id="settings-sources-heading" class="settings-panel__title">Sources</h2>
+              <h2 id="settings-sources-heading" class="settings-panel__title">${tHtml('settings.section.sources')}</h2>
             </div>
             <div id="sources-host"></div>
           </section>
 
           <section class="settings-panel" data-panel="offline" aria-labelledby="settings-offline-heading">
             <div class="settings-panel__intro">
-              <h2 id="settings-offline-heading" class="settings-panel__title">Offline dictionary</h2>
+              <h2 id="settings-offline-heading" class="settings-panel__title">${tHtml('desktop.settings.offline.title')}</h2>
             </div>
             <p id="offline-status" class="settings-inline-status" role="status" aria-live="polite"></p>
             <div id="offline-catalog"></div>
-            <h3 class="settings-subhead">Import</h3>
+            <h3 class="settings-subhead">${tHtml('desktop.settings.offline.import')}</h3>
             <button type="button" id="offline-import-json" class="nav-row">
               <span class="nav-row__icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-              <span class="nav-row__label">Import pack<span class="nav-row__sub">JSON or JSONL</span></span>
+              <span class="nav-row__label">${tHtml('desktop.settings.offline.importPack')}<span class="nav-row__sub">${tHtml('desktop.settings.offline.importPackFormats')}</span></span>
               <span class="nav-row__chevron"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             </button>
             <button type="button" id="offline-import-cedict" class="nav-row">
               <span class="nav-row__icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-              <span class="nav-row__label">Import CEDICT file<span class="nav-row__sub">cedict_ts.u8</span></span>
+              <span class="nav-row__label">${tHtml('desktop.settings.offline.importCedict')}<span class="nav-row__sub" translate="no">cedict_ts.u8</span></span>
               <span class="nav-row__chevron"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             </button>
           </section>
 
           <section class="settings-panel" data-panel="api" aria-labelledby="settings-api-heading">
             <div class="settings-panel__intro">
-              <h2 id="settings-api-heading" class="settings-panel__title">API keys</h2>
+              <h2 id="settings-api-heading" class="settings-panel__title">${tHtml('settings.section.api')}</h2>
             </div>
             <div id="api-keys-host"></div>
           </section>
@@ -483,27 +486,27 @@ function initializeSettingsWindow() {
 
           <section class="settings-panel" data-panel="audio" aria-labelledby="settings-audio-heading">
             <div class="settings-panel__intro">
-              <h2 id="settings-audio-heading" class="settings-panel__title">Audio</h2>
+              <h2 id="settings-audio-heading" class="settings-panel__title">${tHtml('settings.section.audio')}</h2>
             </div>
             <div class="sv sv-page">
               <div class="sv-ledger">
-                ${switchRowHtml({ label: 'Pronunciation', on: true, attrs: 'id="enable-audio"' })}
+                ${switchRowHtml({ label: t('desktop.settings.audio.pronunciation'), on: true, attrs: 'id="enable-audio"' })}
               </div>
               <div class="sv-section" id="voice-section" hidden>
-                <header class="sv-head"><h3 class="sv-head__title">Pronunciation voice</h3></header>
-                <div class="sv-ledger" id="voice-list" role="radiogroup" aria-label="Pronunciation voice"></div>
+                <header class="sv-head"><h3 class="sv-head__title">${tHtml('desktop.settings.audio.voice')}</h3></header>
+                <div class="sv-ledger" id="voice-list" role="radiogroup" aria-label="${tHtml('desktop.settings.audio.voice')}"></div>
               </div>
-              <header class="sv-head"><h3 class="sv-head__title">Playback</h3></header>
+              <header class="sv-head"><h3 class="sv-head__title">${tHtml('desktop.settings.audio.playback')}</h3></header>
               <div class="sv-ledger">
-                ${rangeRowHtml({ label: 'Speed', id: 'audio-speed', min: 0.5, max: 2, step: 0.1, value: 1, valueId: 'speed-value', valueText: '1.0×' })}
-                ${rangeRowHtml({ label: 'Volume', id: 'audio-volume', min: 0, max: 100, step: 5, value: 100, valueId: 'volume-value', valueText: '100%' })}
+                ${rangeRowHtml({ label: t('desktop.settings.audio.speed'), id: 'audio-speed', min: 0.5, max: 2, step: 0.1, value: 1, valueId: 'speed-value', valueText: t('desktop.settings.audio.speedValue', { speed: formatNumber(1, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) }) })}
+                ${rangeRowHtml({ label: t('desktop.settings.audio.volume'), id: 'audio-volume', min: 0, max: 100, step: 5, value: 100, valueId: 'volume-value', valueText: formatPercent(1) })}
               </div>
             </div>
           </section>
 
           <section class="settings-panel" data-panel="about" aria-labelledby="settings-about-heading">
             <div class="settings-panel__intro">
-              <h2 id="settings-about-heading" class="settings-panel__title">About</h2>
+              <h2 id="settings-about-heading" class="settings-panel__title">${tHtml('settings.section.about')}</h2>
             </div>
             <div id="about-host"></div>
           </section>
@@ -527,6 +530,10 @@ function initializeSettingsWindow() {
 
   // Native selects get the app's menu; their code keeps using the select.
   document.querySelectorAll<HTMLSelectElement>('.settings-main select.sv-select').forEach(enhanceSelect);
+  // Language: every window follows; this one reloads in the new language on the same page.
+  document.getElementById(UI_LANGUAGE_SELECT_ID)?.addEventListener('change', (e) => {
+    void setUiLanguagePref((e.target as HTMLSelectElement).value);
+  });
   wireSettingsLibraryLinks();
   void wireSourcesPanel();
   void wireApiKeysPanel();
@@ -666,14 +673,14 @@ async function wireHoverOcrPack(): Promise<void> {
     status.hidden = !show;
     status.classList.toggle('is-error', failed && !s.installing);
     if (s.installing) {
-      status.textContent = `Installing the OCR pack… ${Math.round(s.progress * 100)}%`;
+      status.textContent = t('desktop.settings.ocrPack.installing', { percent: formatPercent(s.progress) });
     } else if (failed && s.needsPack) {
-      status.textContent = 'Download failed';
+      status.textContent = t('desktop.settings.ocrPack.failed');
     } else {
-      status.textContent = 'Needs the OCR pack (14 MB)';
+      status.textContent = t('desktop.settings.ocrPack.needed', { size: formatMegabytes(14) });
     }
     install.hidden = !s.needsPack || s.installing;
-    install.textContent = failed ? 'Retry' : 'Install';
+    install.textContent = failed ? t('desktop.settings.ocrPack.retry') : t('desktop.settings.capture.install');
     bar.hidden = !s.installing;
     if (fill) fill.style.width = `${Math.round(s.progress * 100)}%`;
   };
@@ -706,18 +713,18 @@ async function wireOcrSettingsPanel(): Promise<void> {
     const active = String(s?.activeProfileId || 'bundled-pp-ocrv4');
     selectEl.innerHTML = profiles
       .map((p: any) => {
-        const mark = p.installed ? '' : p.kind === 'download' ? ' (download)' : '';
-        return `<option value="${escapeHtmlSelection(p.id)}"${p.id === active ? ' selected' : ''}>${escapeHtmlSelection(p.label)}${mark}</option>`;
+        const name = p.installed || p.kind !== 'download' ? escapeHtmlSelection(p.label) : tHtml('desktop.settings.ocr.profileToDownload', { name: String(p.label) });
+        return `<option value="${escapeHtmlSelection(p.id)}"${p.id === active ? ' selected' : ''}>${name}</option>`;
       })
       .join('');
     if (!profiles.length) {
-      selectEl.innerHTML = `<option value="bundled-pp-ocrv4">PP-OCRv4 mobile</option>`;
+      selectEl.innerHTML = `<option value="bundled-pp-ocrv4">PP-OCRv4 mobile</option>`; // i18n-ignore: the model's name
     }
   };
 
   const refresh = async () => {
     if (!api?.getStatus) {
-      setStatus('Text recognition unavailable.');
+      setStatus(t('desktop.settings.ocr.unavailable'));
       return;
     }
     try {
@@ -726,16 +733,16 @@ async function wireOcrSettingsPanel(): Promise<void> {
       const label =
         (s.profiles || []).find((p: any) => p.id === s.activeProfileId)?.label || s.activeProfileId || 'OCR';
       if (s.available === true) {
-        setStatus(`${label}: ready`);
+        setStatus(t('desktop.settings.ocr.ready', { model: String(label) }));
       } else if (s.needsPack) {
-        setStatus('Needs the OCR pack');
+        setStatus(t('desktop.settings.ocr.needsPack'));
       } else if (s.available === false) {
-        setStatus(`${label}: ${s.lastError || 'unavailable'}`);
+        setStatus(t('desktop.settings.ocr.failed', { model: String(label), error: String(s.lastError || t('desktop.settings.ocr.unavailableShort')) }));
       } else {
-        setStatus(`${label}: checking…`);
+        setStatus(t('desktop.settings.ocr.modelChecking', { model: String(label) }));
       }
     } catch (e: any) {
-      setStatus(`Could not check status: ${e?.message || e}`);
+      setStatus(t('desktop.settings.ocr.checkFailed', { error: String(e?.message || e) }));
     }
   };
 
@@ -749,25 +756,26 @@ async function wireOcrSettingsPanel(): Promise<void> {
   document.getElementById('ocr-apply-profile')?.addEventListener('click', async () => {
     if (!api?.setProfile || !selectEl) return;
     const id = selectEl.value;
+    const switchFailed = (detail: unknown) => t('desktop.settings.ocr.switchFailed', { error: String(detail || t('desktop.settings.ocr.unknownError')) });
     if (id === 'custom') {
-      setStatus('Choose a model folder…');
+      setStatus(t('desktop.settings.ocr.chooseModelFolder'));
       const picked = await api.pickCustomFolder?.();
       if (!picked || picked.cancelled || !picked.path) {
-        setStatus('Cancelled.');
+        setStatus(t('desktop.settings.ocr.cancelled'));
         return;
       }
-      setStatus('Loading custom models…');
+      setStatus(t('desktop.settings.ocr.loadingCustom'));
       const r = await api.setProfile('custom', picked.path);
-      setStatus(r?.ok ? r.detail : `Could not switch model: ${r?.detail || 'unknown'}`);
+      setStatus(r?.ok ? r.detail : switchFailed(r?.detail));
       await refresh();
       return;
     }
-    setStatus(id.startsWith('pp-ocr') && id !== 'bundled-pp-ocrv4' ? 'Downloading models…' : 'Switching…');
+    setStatus(id.startsWith('pp-ocr') && id !== 'bundled-pp-ocrv4' ? t('desktop.settings.ocr.downloadingModels') : t('desktop.settings.ocr.switching'));
     try {
       const r = await api.setProfile(id);
-      setStatus(r?.ok ? r.detail : `Could not switch model: ${r?.detail || 'unknown'}`);
+      setStatus(r?.ok ? r.detail : switchFailed(r?.detail));
     } catch (e: any) {
-      setStatus(`Could not switch model: ${e?.message || e}`);
+      setStatus(switchFailed(e?.message || e));
     }
     await refresh();
   });
@@ -776,9 +784,9 @@ async function wireOcrSettingsPanel(): Promise<void> {
     if (!api?.setProfile) return;
     const picked = await api.pickCustomFolder?.();
     if (!picked || picked.cancelled || !picked.path) return;
-    setStatus('Loading custom models…');
+    setStatus(t('desktop.settings.ocr.loadingCustom'));
     const r = await api.setProfile('custom', picked.path);
-    setStatus(r?.ok ? r.detail : `Could not switch model: ${r?.detail || 'unknown'}`);
+    setStatus(r?.ok ? r.detail : t('desktop.settings.ocr.switchFailed', { error: String(r?.detail || t('desktop.settings.ocr.unknownError')) }));
     await refresh();
   });
 
@@ -909,7 +917,6 @@ async function wireOfflineSettingsPanel(): Promise<void> {
   let progress: PackProgress | null = null;
   let inspecting: string | null = null;
   const details = new Map<string, PackDetails>();
-  const entriesText = (n: unknown) => `${(Number(n) || 0).toLocaleString('en-US')} entries`;
 
   /** Repaints the drawer's contents in place, so its slide-in plays only when it opens. */
   const renderInspector = () => {
@@ -960,7 +967,7 @@ async function wireOfflineSettingsPanel(): Promise<void> {
   const refresh = async () => {
     if (!catalogEl) return;
     if (!api?.listCatalog) {
-      catalogEl.innerHTML = `<p class="settings-hint">Offline dictionaries unavailable.</p>`;
+      catalogEl.innerHTML = `<p class="settings-hint">${tHtml('desktop.settings.offline.unavailable')}</p>`;
       return;
     }
     try {
@@ -986,22 +993,22 @@ async function wireOfflineSettingsPanel(): Promise<void> {
       render();
     } catch (error) {
       console.error(error);
-      catalogEl.innerHTML = `<p class="settings-hint">Could not load catalog.</p>`;
+      catalogEl.innerHTML = `<p class="settings-hint">${tHtml('desktop.settings.offline.catalogFailed')}</p>`;
     }
   };
 
   const download = async (id: string) => {
     const p = packs.find((x) => x.id === id);
     if (!p || !api?.downloadPack || progress) return;
-    if (!confirm(p.consent || 'Download this dictionary pack?')) return;
-    progress = { id, fraction: null, label: 'Starting…' };
+    if (!confirm(p.consent || t('desktop.settings.offline.downloadConfirm'))) return;
+    progress = { id, fraction: null, label: t('desktop.settings.offline.starting') };
     setStatus('');
     render();
     try {
       const r = await api.downloadPack(id);
-      setStatus(r?.success ? `Installed ${p.name}, ${entriesText(r.count)}.` : 'Download failed.');
+      setStatus(r?.success ? t('desktop.settings.offline.installed', { name: p.name, count: Number(r.count) || 0 }) : t('desktop.settings.offline.downloadFailed'));
     } catch (e: any) {
-      setStatus(`Download failed: ${String(e?.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`);
+      setStatus(t('desktop.settings.offline.downloadFailedWith', { error: String(e?.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '') }));
     } finally {
       progress = null;
       await refresh();
@@ -1012,9 +1019,9 @@ async function wireOfflineSettingsPanel(): Promise<void> {
   const remove = async (id: string) => {
     const p = packs.find((x) => x.id === id);
     if (!p || !api?.removePack) return;
-    if (!confirm(`Remove ${p.name}?`)) return;
+    if (!confirm(t('desktop.settings.offline.removeConfirm', { name: p.name }))) return;
     await api.removePack(id);
-    setStatus(`Removed ${p.name}.`);
+    setStatus(t('desktop.settings.offline.removed', { name: p.name }));
     await refresh();
   };
 
@@ -1057,32 +1064,32 @@ async function wireOfflineSettingsPanel(): Promise<void> {
 
   document.getElementById('offline-import-json')?.addEventListener('click', async () => {
     if (!api?.importJson) return;
-    setStatus('Choose a JSON or JSONL file…');
+    setStatus(t('desktop.settings.offline.chooseJson'));
     try {
       const r = await api.importJson();
       if (r?.cancelled) {
-        setStatus('Import cancelled.');
+        setStatus(t('desktop.settings.offline.importCancelled'));
         return;
       }
-      setStatus(r?.success ? `Imported ${r.count} entries.` : 'Import failed.');
+      setStatus(r?.success ? t('desktop.settings.offline.imported', { count: Number(r.count) || 0 }) : t('desktop.settings.offline.importFailed'));
       await refresh();
     } catch (e: any) {
-      setStatus(`Import failed: ${e?.message || e}`);
+      setStatus(t('desktop.settings.offline.importFailedWith', { error: String(e?.message || e) }));
     }
   });
   document.getElementById('offline-import-cedict')?.addEventListener('click', async () => {
     if (!api?.importCedictFile) return;
-    setStatus('Choose a CEDICT file…');
+    setStatus(t('desktop.settings.offline.chooseCedict'));
     try {
       const r = await api.importCedictFile();
       if (r?.cancelled) {
-        setStatus('Import cancelled.');
+        setStatus(t('desktop.settings.offline.importCancelled'));
         return;
       }
-      setStatus(r?.success ? `Imported ${r.count} CEDICT entries.` : 'Import failed.');
+      setStatus(r?.success ? t('desktop.settings.offline.importedCedict', { count: Number(r.count) || 0 }) : t('desktop.settings.offline.importFailed'));
       await refresh();
     } catch (e: any) {
-      setStatus(`Import failed: ${e?.message || e}`);
+      setStatus(t('desktop.settings.offline.importFailedWith', { error: String(e?.message || e) }));
     }
   });
 
@@ -1237,8 +1244,8 @@ async function wireQuickTranslateSettings(
   section.hidden = false;
   const langs: Array<{ code: string; name: string }> = state.languages || [];
   const options = (auto: string) => langs.map((l) => `<option value="${escapeHtmlSelection(l.code)}">${escapeHtmlSelection(l.code === 'auto' ? auto : l.name)}</option>`).join('');
-  fromEl.innerHTML = options('Detect language');
-  toEl.innerHTML = options('Auto');
+  fromEl.innerHTML = options(t('desktop.settings.quickTranslation.detect'));
+  toEl.innerHTML = options(t('desktop.settings.quickTranslation.auto'));
   const paint = (prefs: any) => {
     enabledEl.checked = !!prefs.enabled;
     replaceEl.value = prefs.replaceShortcut;
@@ -1260,9 +1267,11 @@ async function wireQuickTranslateSettings(
     });
     const taken: string[] = r?.taken || [];
     const note = !r?.success
-      ? r?.error || 'Could not save'
+      ? r?.error || t('desktop.settings.shortcuts.saveFailed')
       : taken.length
-        ? `${taken.map((t) => (t === 'replace' ? 'Translate and replace' : 'Choose a translation')).join(' and ')}: shortcut in use by another app`
+        ? t('desktop.settings.quickTranslation.taken', {
+            names: formatList(taken.map((which) => (which === 'replace' ? t('desktop.settings.quickTranslation.replace') : t('desktop.settings.quickTranslation.panel')))),
+          })
         : '';
     if (statusEl) {
       statusEl.textContent = note;
@@ -1329,7 +1338,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
     cancelCapture?.();
     cancelCapture = null;
     for (const b of setBtns) {
-      b.textContent = 'Set…';
+      b.textContent = t('desktop.settings.shortcuts.set');
       b.classList.remove('is-recording');
     }
   }
@@ -1337,11 +1346,11 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
   function bindCapture(input: HTMLInputElement, setBtn: HTMLButtonElement, onSet?: () => void): void {
     const start = (): void => {
       stopCaptureUi();
-      setBtn.textContent = 'Press a shortcut…';
+      setBtn.textContent = t('desktop.settings.shortcuts.recording');
       setBtn.classList.add('is-recording');
       cancelCapture = captureNextShortcut((acc) => {
         cancelCapture = null;
-        setBtn.textContent = 'Set…';
+        setBtn.textContent = t('desktop.settings.shortcuts.set');
         setBtn.classList.remove('is-recording');
         if (acc) {
           input.value = acc;
@@ -1400,7 +1409,7 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
       hoverShortcut: hoverEl.value.trim(),
       hoverEnabled: hoverToggle ? hoverToggle.checked : true,
     });
-    statusEl.textContent = r.success ? 'Saved' : (r.error || 'Could not save');
+    statusEl.textContent = r.success ? t('desktop.settings.shortcuts.saved') : (r.error || t('desktop.settings.shortcuts.saveFailed'));
     statusEl.classList.toggle('is-error', !r.success);
   });
 
@@ -1417,866 +1426,6 @@ async function wireMonitorSettingsFields(): Promise<{ stopCapture: () => void }>
 
   return { stopCapture: stopCaptureUi };
 }
-
-let __popupInitDone = false;
-let __lastRenderedText = '';
-let __lastResizedForText = '';
-function initializePopup() {
-  if (__popupInitDone) {
-    rlog('[POPUP-RENDERER] initializePopup skipped (already initialized)');
-    return;
-  }
-  __popupInitDone = true;
-  rlog('[POPUP-RENDERER] initializePopup start hash=', window.location.hash, 'href=', window.location.href);
-  
-  // Create modern popup UI with tabs and language selection
-  const popupHTML = `
-    <div class="popup-container resizable-popup" id="popup-container">
-      <div class="popup-content">
-        <div class="selected-text-container">
-          <div class="selected-text" id="selected-text">Loading...</div>
-          <div class="language-controls" id="language-controls" style="display: none;">
-            <div class="language-selector">
-              <select id="source-lang" class="lang-select">
-                <option value="auto">Auto-detect</option>
-              </select>
-              <button class="swap-languages" id="swap-languages" title="Swap languages">⇄</button>
-              <select id="target-lang" class="lang-select">
-                <option value="en">English</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div class="popup-header">
-          <div class="popup-title">
-            <span class="title-text">📚 Phevere Dictionary</span>
-            <span class="title-subtitle" id="title-subtitle">Multi-source Translation</span>
-          </div>
-          <div class="toolbar">
-            <button id="copy-btn" class="toolbar-btn" title="Copy to clipboard">📋</button>
-            <button id="wikipedia-btn" class="toolbar-btn" title="Search Wikipedia">📚</button>
-            <button id="web-search-btn" class="toolbar-btn" title="Web search">🌐</button>
-            <button id="audio-btn" class="toolbar-btn" title="Play pronunciation">🔊</button>
-            <button id="settings-btn" class="toolbar-btn" title="Settings">⚙️</button>
-            <button id="open-full-btn" class="toolbar-btn" title="Open full window">🗖</button>
-          </div>
-          <button id="close-btn" class="close-btn">×</button>
-        </div>
-
-        <div class="loading" id="loadingElement">
-          <div class="loading-spinner"></div>
-          <span>Looking up definition...</span>
-        </div>
-        
-        <div class="tab-container" id="tab-container" style="display: none;">
-          <div class="tab-nav" id="tab-nav"></div>
-          <div class="tab-content" id="tab-content"></div>
-        </div>
-      </div>
-    </div>
-  `;
-  
-  document.body.innerHTML = popupHTML;
-  
-  
-  
-  // Add improved styling with tabs and better scrolling
-  const style = document.createElement('style');
-  style.textContent = `
-    body, html {
-  margin: 0 !important;
-  padding: 0 !important;
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-  background: transparent !important;
-}
-* {
-  box-sizing: border-box;
-}
-
-    
-    .popup-container {
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(20px);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      overflow: hidden;
-      min-width: 280px;
-      width: 100%;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    
-    .popup-header {
-      display: flex;
-      justify-content: flex-start;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px 10px 16px;
-      background: #ece6f0;
-      border-bottom: 1px solid rgba(121, 116, 126, 0.28);
-      flex-wrap: nowrap;
-      min-height: 52px;
-      box-sizing: border-box;
-    }
-    
-    .popup-title {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      flex: 1 1 auto;
-      min-width: 0;
-    }
-    
-    .title-text {
-      font-size: 15px;
-      font-weight: 600;
-      color: #1d1b20;
-      letter-spacing: 0.01em;
-    }
-    
-    .title-subtitle {
-      font-size: 12px;
-      color: #49454f;
-      font-weight: 400;
-    }
-    
-    .toolbar {
-      display: flex;
-      gap: 4px;
-      margin: 0;
-      flex: 0 0 auto;
-      align-items: center;
-    }
-    
-    .toolbar-btn {
-      background: rgba(103, 80, 164, 0.1);
-      border: none;
-      color: #49454f;
-      cursor: pointer;
-      font-size: 15px;
-      padding: 0;
-      border-radius: 10px;
-      transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-      width: 34px;
-      height: 34px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      line-height: 1;
-    }
-    
-    .toolbar-btn:hover {
-      background: rgba(103, 80, 164, 0.18);
-      color: #1d1b20;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-    }
-    
-    .toolbar-btn:active {
-      filter: brightness(0.96);
-    }
-    
-    .close-btn {
-      background: transparent;
-      border: none;
-      color: #49454f;
-      cursor: pointer;
-      font-size: 20px;
-      line-height: 1;
-      padding: 0;
-      border-radius: 10px;
-      transition: background-color 0.15s ease, color 0.15s ease;
-      width: 36px;
-      height: 36px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-    
-    .close-btn:hover {
-      color: #1d1b20;
-      background: rgba(103, 80, 164, 0.12);
-    }
-    
-    .popup-content {
-  flex-grow: 1; /* Allow this to grow and take up space */
-  overflow-y: auto; /* Add scrollbar only when content overflows */
-  padding: 16px; /* Keep your padding */
-  min-width: 350px;
-}
-    
-    .selected-text-container {
-      padding: 16px 20px 8px 20px;
-      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-    }
-    
-    .language-controls {
-      margin-top: 12px;
-      padding: 8px 0;
-    }
-    
-    .language-selector {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      justify-content: center;
-    }
-    
-    .lang-select {
-      padding: 6px 12px;
-      border: 1px solid rgba(0, 0, 0, 0.1);
-      border-radius: 6px;
-      background: white;
-      font-size: 12px;
-      min-width: 120px;
-      outline: none;
-      transition: all 0.2s ease;
-      position: relative;
-      z-index: 1000;
-      -webkit-appearance: none;
-      -moz-appearance: none;
-      appearance: none;
-      cursor: pointer;
-    }
-    
-    .lang-select:focus {
-      border-color: #2196f3;
-      box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
-      z-index: 1001;
-    }
-    
-    .lang-select:hover {
-      border-color: #666;
-    }
-    
-    /* Prevent dropdown from closing too quickly */
-    .language-selector {
-      position: relative;
-      z-index: 1000;
-    }
-    
-    .swap-languages {
-      background: #f8f9fa;
-      border: 1px solid rgba(0, 0, 0, 0.1);
-      color: #6c757d;
-      cursor: pointer;
-      font-size: 14px;
-      padding: 6px 8px;
-      border-radius: 6px;
-      transition: all 0.2s ease;
-      min-width: 32px;
-    }
-    
-    .swap-languages:hover {
-      background: #e9ecef;
-      color: #495057;
-    }
-    
-    .tab-container {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    
-    .tab-nav {
-      display: flex;
-      background: #f8f9fa;
-      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-      overflow-x: auto;
-      scrollbar-width: none;
-      -ms-overflow-style: none;
-    }
-    
-    .tab-nav::-webkit-scrollbar {
-      display: none;
-    }
-    
-    .tab-button {
-      background: none;
-      border: none;
-      padding: 12px 16px;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
-      color: #6c757d;
-      transition: all 0.2s ease;
-      white-space: nowrap;
-      border-bottom: 2px solid transparent;
-      position: relative;
-    }
-    
-    .tab-button:hover {
-      color: #495057;
-      background: rgba(0, 0, 0, 0.03);
-    }
-    
-    .tab-button.active {
-      color: #2196f3;
-      border-bottom-color: #2196f3;
-      background: rgba(33, 150, 243, 0.05);
-    }
-    
-    .tab-content {
-      flex: 1;
-      overflow-y: auto;
-      overflow-x: hidden;
-      padding: 20px;
-      position: relative;
-      scrollbar-width: thin;
-      scrollbar-color: #ccc #f8f9fa;
-      max-height: 400px;
-    }
-    
-    .tab-content::-webkit-scrollbar {
-      width: 8px;
-    }
-    
-    .tab-content::-webkit-scrollbar-track {
-      background: #f8f9fa;
-      border-radius: 4px;
-    }
-    
-    .tab-content::-webkit-scrollbar-thumb {
-      background: #ccc;
-      border-radius: 4px;
-    }
-    
-    .tab-content::-webkit-scrollbar-thumb:hover {
-      background: #999;
-    }
-    
-    .tab-pane {
-      display: none;
-      animation: fadeIn 0.3s ease-out;
-    }
-    
-    .tab-pane.active {
-      display: block;
-    }
-    
-    .selected-text {
-      background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
-      padding: 12px 16px;
-      border-radius: 8px;
-      margin-bottom: 16px;
-      font-size: 16px;
-      font-weight: 500;
-      color: #2c3e50;
-      border-left: 4px solid #2196f3;
-      word-break: break-word;
-    }
-    
-    .loading {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      padding: 20px;
-      color: #6c757d;
-      font-size: 14px;
-    }
-    
-    .loading-spinner {
-      width: 20px;
-      height: 20px;
-      border: 2px solid #e9ecef;
-      border-top: 2px solid #2196f3;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-    
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    
-    .dictionary-results {
-      animation: fadeIn 0.3s ease-out;
-    }
-    
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    
-    .dictionary-entry {
-      background: rgba(255, 255, 255, 0.8);
-      border-radius: 10px;
-      padding: 16px;
-      border: 1px solid rgba(0, 0, 0, 0.06);
-    }
-    
-    .word {
-      font-size: 24px;
-      font-weight: 700;
-      color: #2c3e50;
-      margin-bottom: 8px;
-      text-transform: capitalize;
-    }
-    
-    .pronunciation {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 16px;
-      font-family: 'Courier New', monospace;
-      color: #6c757d;
-      font-size: 14px;
-    }
-    
-    .pronunciation-item {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-    
-    .definitions {
-      margin-bottom: 20px;
-    }
-    
-    .definition {
-      background: rgba(248, 249, 250, 0.8);
-      padding: 12px 16px;
-      border-radius: 8px;
-      margin-bottom: 12px;
-      border-left: 3px solid #2196f3;
-    }
-    
-    .definition strong {
-      color: #2196f3;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      font-weight: 600;
-    }
-    
-    .synonyms {
-      margin-top: 8px;
-      font-size: 13px;
-      color: #6c757d;
-      font-style: italic;
-    }
-    
-    .antonyms {
-      margin-top: 4px;
-      font-size: 13px;
-      color: #dc3545;
-      font-style: italic;
-    }
-    
-    .synonyms-section {
-      background: rgba(232, 245, 233, 0.8);
-      padding: 12px 16px;
-      border-radius: 8px;
-      margin-bottom: 16px;
-      border-left: 3px solid #4caf50;
-      font-size: 14px;
-    }
-    
-    .antonyms-section {
-      background: rgba(255, 235, 238, 0.8);
-      padding: 12px 16px;
-      border-radius: 8px;
-      margin-bottom: 16px;
-      border-left: 3px solid #f44336;
-      font-size: 14px;
-    }
-    
-    .etymology {
-      background: rgba(255, 243, 224, 0.8);
-      padding: 12px 16px;
-      border-radius: 8px;
-      margin-bottom: 16px;
-      border-left: 3px solid #ff9800;
-      font-size: 14px;
-      font-style: italic;
-    }
-    
-    .sources-section {
-      background: rgba(240, 248, 255, 0.8);
-      padding: 8px 12px;
-      border-radius: 6px;
-      margin-top: 16px;
-      border-left: 3px solid #2196f3;
-      font-size: 12px;
-      color: #6c757d;
-    }
-    
-    .confidence {
-      font-size: 11px;
-      color: #28a745;
-      font-weight: 600;
-      margin-top: 4px;
-    }
-    
-    .source {
-      font-size: 11px;
-      color: #6c757d;
-      font-style: italic;
-      margin-top: 2px;
-    }
-    
-    .translations {
-      margin-bottom: 20px;
-    }
-    
-    .translation {
-      background: rgba(248, 249, 250, 0.8);
-      padding: 12px 16px;
-      border-radius: 8px;
-      margin-bottom: 12px;
-      border-left: 3px solid #4caf50;
-    }
-    
-    .translation strong {
-      color: #4caf50;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      font-weight: 600;
-    }
-    
-    .examples {
-      margin-bottom: 20px;
-    }
-    
-    .example {
-      background: rgba(255, 243, 224, 0.8);
-      padding: 12px 16px;
-      border-radius: 8px;
-      margin-bottom: 8px;
-      font-style: italic;
-      color: #795548;
-      border-left: 3px solid #ff9800;
-    }
-    
-    .word-origin {
-      background: rgba(232, 245, 233, 0.8);
-      padding: 12px 16px;
-      border-radius: 8px;
-      margin-bottom: 16px;
-      border-left: 3px solid #4caf50;
-    }
-    
-    .word-origin strong {
-      color: #4caf50;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      font-weight: 600;
-    }
-    
-    .error-message {
-      background: rgba(255, 235, 238, 0.8);
-      border: 1px solid rgba(244, 67, 54, 0.3);
-      color: #d32f2f;
-      padding: 16px;
-      border-radius: 8px;
-      text-align: center;
-      font-style: italic;
-    }
-    
-    .notification {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: #4caf50;
-      color: white;
-      padding: 12px 20px;
-      border-radius: 8px;
-      font-weight: 500;
-      z-index: 1000;
-      animation: slideIn 0.3s ease-out;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    }
-    
-    @keyframes slideIn {
-      from { transform: translateX(100%); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
-    }
-    
-    /* Tab content styles */
-    .translation-tab, .dictionary-tab {
-      line-height: 1.6;
-    }
-    
-    .translation-results {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    
-    .translation-item {
-      background: rgba(248, 249, 250, 0.8);
-      border-radius: 8px;
-      padding: 16px;
-      border-left: 4px solid #4caf50;
-    }
-    
-    .translation-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-    
-    .translation-language {
-      font-weight: 600;
-      color: #4caf50;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    
-    .translation-source {
-      font-size: 11px;
-      color: #6c757d;
-      font-style: italic;
-    }
-    
-    .confidence-score {
-      font-size: 11px;
-      color: #28a745;
-      font-weight: 600;
-    }
-    
-    .translation-text {
-      font-size: 16px;
-      color: #2c3e50;
-      font-weight: 500;
-    }
-    
-    .translation-pronunciation {
-      font-size: 12px;
-      color: #6c757d;
-      font-family: 'Courier New', monospace;
-      margin-top: 4px;
-    }
-    
-    .word-header {
-      margin-bottom: 20px;
-      padding-bottom: 12px;
-      border-bottom: 2px solid #e9ecef;
-    }
-    
-    .word-title {
-      font-size: 24px;
-      font-weight: 700;
-      color: #2c3e50;
-      margin-bottom: 4px;
-    }
-    
-    .pronunciation {
-      font-family: 'Courier New', monospace;
-      color: #6c757d;
-      font-size: 14px;
-    }
-    
-    .definitions-section, .examples-section, .etymology-section, 
-    .synonyms-section, .antonyms-section {
-      margin-bottom: 20px;
-    }
-    
-    .definitions-section h4, .examples-section h4, .etymology-section h4,
-    .synonyms-section h4, .antonyms-section h4 {
-      color: #495057;
-      font-size: 14px;
-      font-weight: 600;
-      margin-bottom: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    
-    .definition-item {
-      background: rgba(248, 249, 250, 0.6);
-      border-radius: 8px;
-      padding: 14px;
-      margin-bottom: 12px;
-      border-left: 3px solid #2196f3;
-    }
-    
-    .part-of-speech {
-      font-size: 12px;
-      color: #2196f3;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 6px;
-    }
-    
-    .definition-text {
-      color: #2c3e50;
-      line-height: 1.5;
-      margin-bottom: 8px;
-    }
-    
-    .definition-examples {
-      margin-top: 8px;
-    }
-    
-    .definition-examples .example {
-      font-style: italic;
-      color: #6c757d;
-      font-size: 14px;
-      margin-bottom: 4px;
-    }
-    
-    .synonyms {
-      font-size: 13px;
-      color: #28a745;
-      font-style: italic;
-      margin-top: 6px;
-    }
-    
-    .example {
-      font-style: italic;
-      color: #6c757d;
-      margin-bottom: 6px;
-      padding-left: 12px;
-      border-left: 2px solid #dee2e6;
-    }
-    
-    .etymology-text {
-      color: #6c757d;
-      font-style: italic;
-      line-height: 1.5;
-    }
-    
-    .word-list {
-      color: #495057;
-      line-height: 1.5;
-    }
-    
-    .no-data {
-      text-align: center;
-      color: #6c757d;
-      font-style: italic;
-      padding: 40px 20px;
-    }
-
-    .resizable-popup {
-      resize: both;
-      overflow: auto;
-      min-width: 300px;
-      min-height: 200px;
-      max-width: 800px;
-      max-height: 600px;
-    }
-  `;
-  document.head.appendChild(style);
-  
-  // Initialize language selectors
-  initializeLanguageSelectors();
-  
-  // Set up toolbar button handlers
-  rlog('[POPUP-RENDERER] initializePopup start');
-  document.getElementById('copy-btn')?.addEventListener('click', async () => {
-    const selectedText = document.getElementById('selected-text')?.textContent || '';
-    if (window.clipboardAPI) {
-      await window.clipboardAPI.copy(selectedText);
-    }
-  });
-  
-  document.getElementById('wikipedia-btn')?.addEventListener('click', () => {
-    const selectedText = document.getElementById('selected-text')?.textContent || '';
-    (window as any).searchWikipedia(selectedText);
-  });
-  
-  document.getElementById('web-search-btn')?.addEventListener('click', () => {
-    const selectedText = document.getElementById('selected-text')?.textContent || '';
-    (window as any).searchWeb(selectedText);
-  });
-  
-  document.getElementById('audio-btn')?.addEventListener('click', () => {
-    const selectedText = document.getElementById('selected-text')?.textContent || '';
-    // Determine language from current context
-    const sourceLang = (document.getElementById('source-lang') as HTMLSelectElement)?.value || 'en-US';
-    const detectedLang = sourceLang === 'auto' ? 'en-US' : sourceLang;
-    (window as any).playAudio(selectedText, detectedLang);
-  });
-  
-  document.getElementById('settings-btn')?.addEventListener('click', () => {
-    // Also support in-popup settings panel (for popup-new.html). If not present, open window.
-    const panel = document.getElementById('settingsPanel');
-    if (panel) {
-      panel.classList.toggle('show');
-    } else {
-      window.electronAPI.showSettingsWindow();
-    }
-  });
-
-  // Open full dictionary window instead of small popup
-  document.getElementById('open-full-btn')?.addEventListener('click', () => {
-    const text = (document.getElementById('selected-text')?.textContent || '').trim();
-    if (!text) return;
-    // Ask main to open a full in-app window instead of external protocol
-    window.electronAPI?.send('open-full-lookup', text);
-  });
-  
-  // Handle close button
-  document.getElementById('close-btn')?.addEventListener('click', () => {
-    rlog('[POPUP-RENDERER] Close button clicked');
-    window.close();
-  });
-  
-  // Listen for popup data from main process
-  if (window.electronAPI) {
-    rlog('[POPUP-RENDERER] getLastSelection invoke');
-    window.electronAPI.getLastSelection().then(selection => {
-      const txt = (selection && selection.text) ? selection.text : '';
-      rlog('[POPUP-RENDERER] getLastSelection OK (deferred lookup):', txt);
-      const selectedTextElement = document.getElementById('selected-text');
-      if (selectedTextElement && txt) selectedTextElement.textContent = txt;
-      if (txt) (window as any).__popupCurrentText = txt;
-      // Do NOT call updatePopupContent here; wait for user click
-    });
-    // Also listen for pushed text from main
-    let lastPushed = '';
-    window.electronAPI.onPopupText((text) => {
-      const t = (text || '').trim();
-      if (!t || t === lastPushed) return;
-      lastPushed = t;
-      rlog('[POPUP-RENDERER] onPopupText (deferred lookup):', t);
-      const selectedTextElement = document.getElementById('selected-text');
-      if (selectedTextElement) selectedTextElement.textContent = t;
-      (window as any).__popupCurrentText = t;
-      // Do NOT call updatePopupContent here; wait for user click
-    });
-  } else {
-    rlog('[POPUP-RENDERER] electronAPI not available');
-    updatePopupContent('Error: electronAPI not available.');
-  }
-  
-  // Handle escape key to close popup
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      rlog('🚀 Escape key pressed, closing popup');
-      window.close();
-    }
-  });
-  
-  // Remove aggressive fallback content injection to avoid confusing duplicates
-
-  // Handle clicks on hyperlinks
-  document.addEventListener('click', (event) => {
-    const target = event.target as HTMLElement;
-    const link = target.closest('a');
-    if (link && link.hasAttribute('href')) {
-      event.preventDefault();
-      let href = link.getAttribute('href');
-      if (href) {
-        if (href.startsWith('/')) href = `https://en.wiktionary.org${href}`;
-        if ((window as any).openLinksExternally) window.electronAPI.openExternal(href); else window.electronAPI.send('open-in-app', href);
-      }
-    }
-  });
-}
-
 
 
 function wireLiveResizeClass(): void {
@@ -2691,9 +1840,9 @@ function vocabTimeBuckets(entries: any[]): Array<{ key: string; short: string; l
   const out: Array<{ key: string; short: string; label: string; year: number; id: string }> = [];
   const seen = new Set<string>();
   for (const e of entries) {
-    const t = vocabSavedAt(e);
-    if (!t) continue;
-    const d = new Date(t);
+    const at = vocabSavedAt(e);
+    if (!at) continue;
+    const d = new Date(at);
     if (byWeek) {
       d.setHours(0, 0, 0, 0);
       d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
@@ -2704,11 +1853,11 @@ function vocabTimeBuckets(entries: any[]): Array<{ key: string; short: string; l
     out.push({
       key,
       short: byWeek
-        ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-        : d.toLocaleDateString(undefined, { month: 'short' }),
+        ? formatDate(d, { month: 'short', day: 'numeric' })
+        : formatDate(d, { month: 'short' }),
       label: byWeek
-        ? `Week of ${d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`
-        : d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+        ? t('desktop.words.weekOf', { date: formatDate(d, { month: 'long', day: 'numeric' }) })
+        : formatDate(d, { month: 'long', year: 'numeric' }),
       year: d.getFullYear(),
       id: String(e.id),
     });
@@ -2780,7 +1929,7 @@ function syncVocabTimeline(entries: any[]): void {
     .map((b, i) => {
       const mark = i > 0 && b.year !== year ? ` data-year="${b.year}"` : '';
       year = b.year;
-      return `<button type="button" class="vocab-az__letter vocab-az__time"${mark} data-letter="${b.key}" aria-label="${b.label}">${b.short}</button>`;
+      return `<button type="button" class="vocab-az__letter vocab-az__time"${mark} data-letter="${b.key}" aria-label="${escapeHtmlSelection(b.label)}">${escapeHtmlSelection(b.short)}</button>`;
     })
     .join('');
   if (!nav.dataset.ready) {
@@ -2815,7 +1964,7 @@ async function loadVocabNotebook(): Promise<void> {
   if (!list) return;
   const api = (window as any).vocabAPI;
   if (!api?.list) {
-    list.innerHTML = `<p class="empty-message">My words is unavailable.</p>`;
+    list.innerHTML = `<p class="empty-message">${tHtml('desktop.words.unavailable')}</p>`;
     return;
   }
   try {
@@ -2827,7 +1976,7 @@ async function loadVocabNotebook(): Promise<void> {
     renderRecentLookups();
   } catch (error) {
     console.error('vocab load failed', error);
-    list.innerHTML = `<p class="empty-message">Could not load My words.</p>`;
+    list.innerHTML = `<p class="empty-message">${tHtml('desktop.words.loadFailed')}</p>`;
   }
 }
 
@@ -2879,7 +2028,7 @@ function renderVocabNotebook(entries: any[]): void {
   document.getElementById('vocabSortGroup')?.toggleAttribute('hidden', nbView !== 'list');
   document.querySelector<HTMLElement>('#paneNotebook .nb-bar')?.removeAttribute('hidden');
   const count = document.getElementById('vocabCount');
-  if (count) count.textContent = vocabNotebookCache.length ? String(vocabNotebookCache.length) : '';
+  if (count) count.textContent = vocabNotebookCache.length ? formatNumber(vocabNotebookCache.length) : '';
   const wbSwitch = document.getElementById('wbSwitch');
   if (wbSwitch) {
     wbSwitch.innerHTML = wbCtx ? wordsScopeSwitchHtml(wbScope, wbCtx, wbLibrary) : '';
@@ -2896,7 +2045,7 @@ function renderVocabNotebook(entries: any[]): void {
   }
   // Words saved in several languages: a chip per language, and every view shows the chosen one.
   const langs = vocabLanguages(vocabNotebookCache);
-  if (langHost) langHost.innerHTML = vocabLangChipsHtml(langs, wordsLang, vocabNotebookCache.length, languageName);
+  if (langHost) langHost.innerHTML = vocabLangChipsHtml(langs, wordsLang, vocabNotebookCache.length, languageDisplayName);
   entries = filterVocabByLang(entries, wordsLang, langs);
   // My words rows carry a badge for each subscribed book that lists the word.
   const index = wbCtx?.index;
@@ -2948,7 +2097,7 @@ function renderVocabNotebook(entries: any[]): void {
   disposeNotebookMaps(true);
   if (!sorted.length) {
     const q = ((document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '').trim();
-    list.innerHTML = `<p class="empty-message">${q ? 'No matching words.' : 'No saved words.'}</p>`;
+    list.innerHTML = `<p class="empty-message">${q ? tHtml('desktop.words.noMatches') : tHtml('desktop.words.empty')}</p>`;
     return;
   }
   // Long notebooks: paint the first screenful now and append the rest in idle chunks, so
@@ -3260,7 +2409,7 @@ function wireNotebookActions(root: HTMLElement): void {
         const def = el.previousElementSibling as HTMLElement | null;
         if (!def) return;
         def.classList.toggle('is-clamped');
-        el.textContent = def.classList.contains('is-clamped') ? 'Show more' : 'Show less';
+        el.textContent = def.classList.contains('is-clamped') ? t('desktop.words.showMore') : t('desktop.words.showLess');
         return;
       }
       case 'nb-del': {
@@ -3308,8 +2457,8 @@ function wireNotebookActions(root: HTMLElement): void {
         const turn = card?.querySelector<HTMLElement>('.nbv-card__flip');
         if (turn) {
           turn.setAttribute('aria-pressed', open ? 'true' : 'false');
-          turn.setAttribute('aria-label', open ? 'Show word' : 'Show meaning');
-          turn.title = open ? 'Show word' : 'Show meaning';
+          turn.setAttribute('aria-label', open ? t('desktop.words.card.showWord') : t('desktop.words.card.showMeaning'));
+          turn.title = open ? t('desktop.words.card.showWord') : t('desktop.words.card.showMeaning');
         }
         return;
       }
@@ -3388,7 +2537,7 @@ function wireNotebookActions(root: HTMLElement): void {
         const items = bookMenuItems(el.dataset.scope || 'mine');
         if (!items.length) return;
         openMenu(el, {
-          label: el.dataset.title || 'Book',
+          label: el.dataset.title || t('desktop.words.bookMenu'),
           items,
           onPick: (item) => {
             const pick = document.createElement('button');
@@ -3404,7 +2553,7 @@ function wireNotebookActions(root: HTMLElement): void {
         const items = bookPickItems(word, wbUserBooks);
         if (!word || !items.length) return;
         openMenu(el, {
-          label: 'Add to word book',
+          label: t('desktop.words.addToBook'),
           items,
           multi: true,
           onPick: async (item) => {
@@ -3820,15 +2969,12 @@ function initializeMainWindowControls() {
   let isClipboardMonitoring = false;
   const AUDIO_KEY = 'phevereAudioEnabled';
 
-  const selectionModeLabels: Record<string, string> = {
-    off: 'Off',
-    on: 'On',
-    shortcut: 'Shortcut',
-  };
+  const selectionModeLabel = (mode: string): string =>
+    mode === 'off' ? t('common.off') : mode === 'on' ? t('common.on') : mode === 'shortcut' ? t('desktop.status.selectionShortcut') : mode;
 
   function syncSelectionMonitorUi(mode: string): void {
     if (!selectionStatus || !selectionToggle) return;
-    const label = selectionModeLabels[mode] || mode;
+    const label = selectionModeLabel(mode);
     selectionStatus.textContent = label;
     selectionStatus.className =
       mode === 'on'
@@ -3837,12 +2983,12 @@ function initializeMainWindowControls() {
           ? 'status-value shortcut'
           : 'status-value stopped';
     selectionToggle.setAttribute('aria-pressed', mode !== 'off' ? 'true' : 'false');
-    selectionToggle.setAttribute('aria-label', `Selection mode: ${label}`);
+    selectionToggle.setAttribute('aria-label', t('desktop.status.selectionLabel', { state: label }));
   }
 
   function syncClipboardUi(running: boolean): void {
     if (!clipboardStatus || !clipboardToggle) return;
-    clipboardStatus.textContent = running ? 'On' : 'Off';
+    clipboardStatus.textContent = running ? t('common.on') : t('common.off');
     clipboardStatus.className = running ? 'status-value running' : 'status-value stopped';
     clipboardToggle.setAttribute('aria-pressed', running ? 'true' : 'false');
   }
@@ -3853,12 +2999,12 @@ function initializeMainWindowControls() {
     hoverEnabled = enabled;
     if (!hoverStatus || !hoverToggle) return;
     // Without the OCR pack hover cannot read text on screen; do not show it as On.
-    const label = !enabled ? 'Off' : hoverNeedsPack ? 'No OCR' : 'On';
+    const label = !enabled ? t('common.off') : hoverNeedsPack ? t('desktop.status.hoverNoOcr') : t('common.on');
     hoverStatus.textContent = label;
     hoverStatus.className = !enabled ? 'status-value stopped' : hoverNeedsPack ? 'status-value needs' : 'status-value running';
     hoverToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
-    hoverToggle.setAttribute('aria-label', `Hover lookup: ${label}`);
-    if (hoverNeedsPack && enabled) hoverToggle.title = 'Needs the OCR pack';
+    hoverToggle.setAttribute('aria-label', t('desktop.status.hoverLabel', { state: label }));
+    if (hoverNeedsPack && enabled) hoverToggle.title = t('desktop.status.hoverNeedsPack');
     else hoverToggle.removeAttribute('title');
   }
   {
@@ -3874,10 +3020,10 @@ function initializeMainWindowControls() {
 
   function syncAudioUi(enabled: boolean): void {
     if (!audioStatus || !audioToggle) return;
-    audioStatus.textContent = enabled ? 'On' : 'Off';
+    audioStatus.textContent = enabled ? t('common.on') : t('common.off');
     audioStatus.className = enabled ? 'status-value running' : 'status-value stopped';
     audioToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
-    audioToggle.setAttribute('aria-label', `Pronunciation: ${enabled ? 'On' : 'Off'}`);
+    audioToggle.setAttribute('aria-label', t('desktop.status.audioLabel', { state: enabled ? t('common.on') : t('common.off') }));
   }
 
   if (minimizeBtn) {
@@ -3952,6 +3098,7 @@ function initializeMainWindowControls() {
     });
   }
 
+  if (ocrStatusBtn) ocrStatusBtn.title = t('desktop.status.scanTitle', { shortcut: 'Ctrl+Shift+O' });
   if (ocrStatusBtn && window.electronAPI?.startOcrRegion) {
     ocrStatusBtn.addEventListener('click', () => {
       void window.electronAPI.startOcrRegion!();
@@ -4058,7 +3205,7 @@ function renderRecentLookups(): void {
   // The header search filters whichever tab is open, Recent included.
   const items = filterRecentLookups(all, (document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '');
   if (!items.length) {
-    list.innerHTML = `<p class="empty-message">${all.length ? 'No matching lookups.' : 'No recent lookups.'}</p>`;
+    list.innerHTML = `<p class="empty-message">${all.length ? tHtml('desktop.recent.noMatches') : tHtml('desktop.recent.empty')}</p>`;
     return;
   }
   // A spelling saved in two languages: the row stands for the word a plain lookup opens.
@@ -4074,31 +3221,6 @@ function addToRecentSelections(text: string): void {
   renderRecentLookups();
 }
 
-function showTestPopup(text: string) {
-  // Simulate popup for testing
-  const popup = document.createElement('div');
-  popup.className = 'test-popup';
-  popup.innerHTML = `
-    <div class="popup-header">
-      <h3>${text}</h3>
-      <button onclick="this.parentElement.parentElement.remove()">×</button>
-    </div>
-    <div class="popup-content">
-      <p>Test popup for: "${text}"</p>
-      <p>Dictionary results would appear here...</p>
-    </div>
-  `;
-  
-  document.body.appendChild(popup);
-  
-  // Auto-remove after 5 seconds
-  setTimeout(() => {
-    if (popup.parentElement) {
-      popup.remove();
-    }
-  }, 5000);
-}
-
 function escapeHtmlClipboard(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -4111,7 +3233,7 @@ function formatClipboardTimestamp(ts: unknown): string {
   try {
     const d = ts instanceof Date ? ts : new Date(ts as string | number);
     if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleTimeString();
+    return formatDate(d, { timeStyle: 'medium' });
   } catch {
     return '';
   }
@@ -4119,7 +3241,7 @@ function formatClipboardTimestamp(ts: unknown): string {
 
 function renderClipboardItemsHtml(entries: { id: string; text: string; timestamp: unknown }[]): string {
   if (entries.length === 0) {
-    return '<p class="empty-state">No clipboard items.</p>';
+    return `<p class="empty-state">${tHtml('desktop.clipboard.empty')}</p>`;
   }
   return entries
     .map(
@@ -4128,8 +3250,8 @@ function renderClipboardItemsHtml(entries: { id: string; text: string; timestamp
           <div class="clipboard-text">${escapeHtmlClipboard(entry.text.substring(0, 200))}${entry.text.length > 200 ? '…' : ''}</div>
           <div class="clipboard-meta">
             <span class="clipboard-time">${escapeHtmlClipboard(formatClipboardTimestamp(entry.timestamp))}</span>
-            <button type="button" class="copy-btn" data-copy-id="${escapeHtmlClipboard(entry.id)}">Copy</button>
-            <button type="button" class="remove-btn" data-remove-id="${escapeHtmlClipboard(entry.id)}" aria-label="Remove" title="Remove">×</button>
+            <button type="button" class="copy-btn" data-copy-id="${escapeHtmlClipboard(entry.id)}">${tHtml('common.copy')}</button>
+            <button type="button" class="remove-btn" data-remove-id="${escapeHtmlClipboard(entry.id)}" aria-label="${tHtml('common.remove')}" title="${tHtml('common.remove')}">×</button>
           </div>
         </div>
       `
@@ -4154,15 +3276,15 @@ async function showClipboardHistory() {
     popup.className = 'clipboard-popup';
     popup.innerHTML = `
       <div class="popup-header">
-        <h3>Clipboard history (${stats.totalEntries})</h3>
+        <h3>${tHtml('desktop.clipboard.title', { count: Number(stats.totalEntries) || 0 })}</h3>
         <div class="popup-controls">
-          <button type="button" id="clear-clipboard" class="btn btn-danger">Clear</button>
-          <button type="button" class="close-btn" data-close-clipboard aria-label="Close">×</button>
+          <button type="button" id="clear-clipboard" class="btn btn-danger">${tHtml('desktop.clipboard.clear')}</button>
+          <button type="button" class="close-btn" data-close-clipboard aria-label="${tHtml('common.close')}">×</button>
         </div>
       </div>
       <div class="popup-content">
         <div class="clipboard-search">
-          <input type="text" id="clipboard-search" placeholder="Search clipboard…" class="search-input">
+          <input type="text" id="clipboard-search" placeholder="${tHtml('desktop.clipboard.search')}" class="search-input">
         </div>
         <div id="clipboard-list" class="clipboard-list">${renderClipboardItemsHtml(history)}</div>
       </div>
@@ -4197,7 +3319,7 @@ async function showClipboardHistory() {
           await window.clipboardAPI.copy(text);
           const notification = document.createElement('div');
           notification.className = 'copy-notification';
-          notification.textContent = 'Copied';
+          notification.textContent = t('common.copied');
           document.body.appendChild(notification);
           setTimeout(() => notification.remove(), 2000);
         }
@@ -4226,7 +3348,7 @@ async function showClipboardHistory() {
     });
 
     document.getElementById('clear-clipboard')?.addEventListener('click', async () => {
-      if (confirm('Clear clipboard history?')) {
+      if (confirm(t('desktop.clipboard.clearConfirm'))) {
         await window.clipboardAPI.clear();
         popup.remove();
       }
@@ -4241,155 +3363,6 @@ async function showClipboardHistory() {
     document.addEventListener('keydown', onKeydown);
   } catch (error) {
     console.error('Error loading clipboard history:', error);
-  }
-}
-
-// Make popup resizable
-function makePopupResizable(popup: HTMLElement) {
-  const resizeHandle = popup.querySelector('.resize-handle-se') as HTMLElement;
-  if (!resizeHandle) return;
-  
-  let isResizing = false;
-  let startX = 0;
-  let startY = 0;
-  let startWidth = 0;
-  let startHeight = 0;
-  
-  resizeHandle.addEventListener('mousedown', (e) => {
-    isResizing = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    startWidth = parseInt(window.getComputedStyle(popup).width, 10);
-    startHeight = parseInt(window.getComputedStyle(popup).height, 10);
-    
-    document.addEventListener('mousemove', handleResize);
-    document.addEventListener('mouseup', stopResize);
-    e.preventDefault();
-  });
-  
-  function handleResize(e: MouseEvent) {
-    if (!isResizing) return;
-    
-    const width = startWidth + e.clientX - startX;
-    const height = startHeight + e.clientY - startY;
-    
-    // Set minimum and maximum sizes
-    const minWidth = 400;
-    const minHeight = 300;
-    const maxWidth = window.innerWidth * 0.9;
-    const maxHeight = window.innerHeight * 0.9;
-    
-    popup.style.width = Math.min(Math.max(width, minWidth), maxWidth) + 'px';
-    popup.style.height = Math.min(Math.max(height, minHeight), maxHeight) + 'px';
-  }
-  
-  function stopResize() {
-    isResizing = false;
-    document.removeEventListener('mousemove', handleResize);
-    document.removeEventListener('mouseup', stopResize);
-  }
-}
-
-// Make settings modal draggable
-function makeSettingsModalDraggable(modal: HTMLElement, header: HTMLElement) {
-  let isDragging = false;
-  let startX = 0;
-  let startY = 0;
-  let startLeft = 0;
-  let startTop = 0;
-  
-  header.addEventListener('mousedown', (e) => {
-    // Don't drag if clicking on buttons
-    if ((e.target as HTMLElement).tagName === 'BUTTON') return;
-    
-    isDragging = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    
-    const rect = modal.getBoundingClientRect();
-    startLeft = rect.left;
-    startTop = rect.top;
-    
-    // Switch from flexbox positioning to absolute positioning
-    const overlay = modal.parentElement as HTMLElement;
-    overlay.style.alignItems = 'flex-start';
-    overlay.style.justifyContent = 'flex-start';
-    modal.style.position = 'absolute';
-    modal.style.left = startLeft + 'px';
-    modal.style.top = startTop + 'px';
-    
-    document.addEventListener('mousemove', handleDrag);
-    document.addEventListener('mouseup', stopDrag);
-    e.preventDefault();
-  });
-  
-  function handleDrag(e: MouseEvent) {
-    if (!isDragging) return;
-    
-    const left = startLeft + e.clientX - startX;
-    const top = startTop + e.clientY - startY;
-    
-    // Keep modal within screen bounds
-    const maxLeft = window.innerWidth - modal.offsetWidth;
-    const maxTop = window.innerHeight - modal.offsetHeight;
-    
-    modal.style.left = Math.min(Math.max(left, 0), maxLeft) + 'px';
-    modal.style.top = Math.min(Math.max(top, 0), maxTop) + 'px';
-  }
-  
-  function stopDrag() {
-    isDragging = false;
-    document.removeEventListener('mousemove', handleDrag);
-    document.removeEventListener('mouseup', stopDrag);
-  }
-}
-
-// Make popup draggable
-function makePopupDraggable(popup: HTMLElement) {
-  const header = popup.querySelector('.popup-header') as HTMLElement;
-  if (!header) return;
-  
-  let isDragging = false;
-  let startX = 0;
-  let startY = 0;
-  let startLeft = 0;
-  let startTop = 0;
-  
-  header.style.cursor = 'move';
-  
-  header.addEventListener('mousedown', (e) => {
-    // Don't drag if clicking on buttons
-    if ((e.target as HTMLElement).tagName === 'BUTTON') return;
-    
-    isDragging = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    startLeft = popup.offsetLeft;
-    startTop = popup.offsetTop;
-    
-    document.addEventListener('mousemove', handleDrag);
-    document.addEventListener('mouseup', stopDrag);
-    e.preventDefault();
-  });
-  
-  function handleDrag(e: MouseEvent) {
-    if (!isDragging) return;
-    
-    const left = startLeft + e.clientX - startX;
-    const top = startTop + e.clientY - startY;
-    
-    // Keep popup within screen bounds
-    const maxLeft = window.innerWidth - popup.offsetWidth;
-    const maxTop = window.innerHeight - popup.offsetHeight;
-    
-    popup.style.left = Math.min(Math.max(left, 0), maxLeft) + 'px';
-    popup.style.top = Math.min(Math.max(top, 0), maxTop) + 'px';
-  }
-  
-  function stopDrag() {
-    isDragging = false;
-    document.removeEventListener('mousemove', handleDrag);
-    document.removeEventListener('mouseup', stopDrag);
   }
 }
 
@@ -4501,7 +3474,7 @@ async function wireSourcesPanel(): Promise<void> {
       if (ledger && count) {
         const all = ledger.querySelectorAll('input[data-act="src"]');
         const on = ledger.querySelectorAll('input[data-act="src"]:checked');
-        count.textContent = `${on.length} of ${all.length} on`;
+        count.textContent = t('desktop.settings.sources.countOn', { on: on.length, total: all.length });
       }
     } else if (input.dataset.act === 'engine' && input.checked) {
       await api.setTranslationPrefs?.({ provider: input.value });
@@ -4693,19 +3666,20 @@ async function wireUpdatesPanel(): Promise<void> {
   const paint = (s: UpdateView) => {
     const busy = s.status === 'checking' || s.status === 'downloading' || s.status === 'installing';
     const next = s.available?.version;
-    version.textContent = `Phevere ${s.current}`;
+    const v = String(next || '');
+    version.textContent = t('desktop.settings.updates.version', { version: String(s.current) });
     status.classList.toggle('is-error', s.status === 'error');
     status.textContent =
-      s.status === 'checking' ? 'Checking…'
-      : s.status === 'downloading' ? `Downloading ${next}… ${Math.round(s.progress * 100)}%`
-      : s.status === 'installing' ? `Installing ${next}…`
-      : s.status === 'error' ? s.error || 'Update failed'
-      : s.status === 'ready' ? `${next} is ready. It installs when Phevere quits.`
-      : next ? `${next} is available`
-      : s.upToDate ? 'Up to date'
+      s.status === 'checking' ? t('desktop.settings.updates.checking')
+      : s.status === 'downloading' ? t('desktop.settings.updates.downloading', { version: v, percent: formatPercent(s.progress) })
+      : s.status === 'installing' ? t('desktop.settings.updates.installing', { version: v })
+      : s.status === 'error' ? s.error || t('desktop.settings.updates.failed')
+      : s.status === 'ready' ? t('desktop.settings.updates.ready', { version: v })
+      : next ? t('desktop.settings.updates.available', { version: v })
+      : s.upToDate ? t('desktop.settings.updates.upToDate')
       : '';
     action.hidden = !next || busy;
-    action.textContent = s.status === 'ready' ? 'Restart to update' : s.canInstall ? 'Update now' : 'Download…';
+    action.textContent = s.status === 'ready' ? t('desktop.settings.updates.restart') : s.canInstall ? t('desktop.settings.updates.updateNow') : t('desktop.settings.updates.download');
     bar.hidden = s.status !== 'downloading';
     if (fill) fill.style.width = `${Math.round(s.progress * 100)}%`;
     const current = !s.canInstall && s.mode === 'auto' ? 'ask' : s.mode;
@@ -4714,7 +3688,7 @@ async function wireUpdatesPanel(): Promise<void> {
       radio.checked = radio.value === current;
     }
     rollback.hidden = !s.canInstall || !s.rollback;
-    rollback.textContent = `Roll back to ${s.rollback}`;
+    rollback.textContent = t('desktop.settings.updates.rollBack', { version: String(s.rollback || '') });
     rollback.disabled = busy;
     check.disabled = busy;
   };
@@ -4798,7 +3772,7 @@ const sayLemma = singleVoice({
     // A newer press (or the next question) came while the voice was being made: it stays silent.
     if (!alive()) return;
     if (speech?.ok && speech.dataUrl) await playLemmaSrc(speech.dataUrl, false);
-    else showNotification('Could not play pronunciation');
+    else showNotification(t('desktop.audio.playFailed'));
   },
   stop: () => {
     try {
@@ -4852,6 +3826,11 @@ async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise
   }
 }
 
+/** Playback speed as "1.0×" in the interface language's digits. */
+function speedText(speed: number): string {
+  return t('desktop.settings.audio.speedValue', { speed: formatNumber(speed, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) });
+}
+
 // Setup audio settings (stored in the main process; the pop-up and notebook read the same prefs)
 function setupAudioSettings() {
   const api = window.electronAPI as any;
@@ -4867,19 +3846,19 @@ function setupAudioSettings() {
   const showPrefs = (p: { enabled: boolean; speed: number; volume: number }) => {
     if (enable) enable.checked = p.enabled !== false;
     if (speed) speed.value = String(p.speed ?? 1);
-    if (speedValue) speedValue.textContent = `${Number(p.speed ?? 1).toFixed(1)}×`;
+    if (speedValue) speedValue.textContent = speedText(Number(p.speed ?? 1));
     if (volume) volume.value = String(Math.round((p.volume ?? 1) * 100));
-    if (volumeValue) volumeValue.textContent = `${Math.round((p.volume ?? 1) * 100)}%`;
+    if (volumeValue) volumeValue.textContent = formatPercent(Math.round((p.volume ?? 1) * 100) / 100);
   };
   void api.getAudioPrefs().then(showPrefs);
   api.onAudioPrefsChanged?.((p: any) => showPrefs(p));
   enable?.addEventListener('change', () => void api.setAudioPrefs({ enabled: enable.checked }));
   speed?.addEventListener('input', () => {
-    if (speedValue) speedValue.textContent = `${Number(speed.value).toFixed(1)}×`;
+    if (speedValue) speedValue.textContent = speedText(Number(speed.value));
   });
   speed?.addEventListener('change', () => void api.setAudioPrefs({ speed: Number(speed.value) }));
   volume?.addEventListener('input', () => {
-    if (volumeValue) volumeValue.textContent = `${volume.value}%`;
+    if (volumeValue) volumeValue.textContent = formatPercent(Number(volume.value) / 100);
   });
   volume?.addEventListener('change', () => void api.setAudioPrefs({ volume: Number(volume.value) / 100 }));
 
@@ -4892,11 +3871,17 @@ function setupAudioSettings() {
       .map((v: any) => {
         const pct = Math.round((v.progress || 0) * 100);
         const id = escapeHtmlSelection(v.id);
-        const detail = v.downloading ? `Downloading ${pct}%` : v.error ? v.error : v.installed ? (v.id === 'mechanical' ? v.detail : 'Downloaded') : v.detail;
+        const detail = v.downloading
+          ? t('desktop.settings.audio.voiceDownloading', { percent: formatPercent(pct / 100) })
+          : v.error
+            ? v.error
+            : v.installed
+              ? (v.id === 'mechanical' ? v.detail : t('desktop.settings.audio.voiceDownloaded'))
+              : v.detail;
         return choiceRowHtml({
           name: v.name,
           meta: detail,
-          badge: v.recommended ? 'Recommended' : undefined,
+          badge: v.recommended ? t('desktop.settings.audio.voiceRecommended') : undefined,
           metaTone: v.downloading ? 'busy' : v.error ? 'error' : v.installed && v.id !== 'mechanical' ? 'installed' : undefined,
           on: v.id === state.selected,
           needsDownload: !v.installed,
@@ -4927,121 +3912,6 @@ function setupAudioSettings() {
   void api.speechVoices?.().then(renderVoices);
 }
 
-// Global functions for API key saving
-(window as any).savePopupGoogleKey = async function() {
-  const input = document.getElementById('popup-google-key') as HTMLInputElement;
-  if (input?.value && window.dictionaryAPI) {
-    await window.dictionaryAPI.setApiKey(input.value);
-    showNotification('Google API key saved');
-    input.value = '';
-  }
-};
-
-(window as any).savePopupDeepLKey = async function() {
-  const input = document.getElementById('popup-deepl-key') as HTMLInputElement;
-  if (input?.value && window.dictionaryAPI) {
-    await window.dictionaryAPI.setDeepLApiKey(input.value);
-    showNotification('DeepL API key saved');
-    input.value = '';
-  }
-};
-
-// Global functions for clipboard operations
-(window as any).copyClipboardText = async function(text: string) {
-  if (window.clipboardAPI) {
-    await window.clipboardAPI.copy(text);
-    // Show feedback
-    const notification = document.createElement('div');
-    notification.className = 'copy-notification';
-    notification.textContent = 'Copied';
-    document.body.appendChild(notification);
-    setTimeout(() => notification.remove(), 2000);
-  }
-};
-
-(window as any).removeClipboardEntry = async function(id: string) {
-  if (window.clipboardAPI) {
-    await window.clipboardAPI.removeEntry(id);
-    // Remove from UI
-    const item = document.querySelector(`[data-id="${id}"]`);
-    item?.remove();
-  }
-};
-
-// Global functions for dictionary actions
-(window as any).copyToClipboard = async function(text: string) {
-  if (window.clipboardAPI) {
-    await window.clipboardAPI.copy(text);
-    showNotification('Copied');
-  }
-};
-
-(window as any).searchWikipedia = async function(term: string) {
-  try {
-    if (window.wikipediaAPI) {
-      const result = await window.wikipediaAPI.search(term);
-      showWikipediaResults(result);
-    } else {
-      // Fallback: open Wikipedia in browser
-      window.open(`https://en.wikipedia.org/wiki/${encodeURIComponent(term)}`, '_blank');
-    }
-  } catch (error) {
-    console.error('Wikipedia search failed:', error);
-    showNotification('Wikipedia search failed');
-  }
-};
-
-(window as any).searchWeb = async function(query: string) {
-  try {
-    if (window.searchAPI) {
-      const result = await window.searchAPI.search(query);
-      showSearchResults(result);
-    } else {
-      // Fallback: open Google search in browser
-      window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank');
-    }
-  } catch (error) {
-    console.error('Web search failed:', error);
-    showNotification('Web search failed');
-  }
-};
-
-/**
- * FIXED: Replaced placeholder audio function with the actual Web Speech API implementation.
- */
-(window as any).playAudio = function(word: string, accent: string = 'en-US') {
-  rlog(`🔊 Playing audio for "${word}" with ${accent} accent`);
-  
-  try {
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(word);
-      const languageMap: { [key: string]: string } = {
-        'us': 'en-US', 'uk': 'en-GB', 'en-US': 'en-US', 'en-GB': 'en-GB',
-        'zh': 'zh-CN', 'ja': 'ja-JP', 'ko': 'ko-KR', 'fr': 'fr-FR', 
-        'de': 'de-DE', 'es': 'es-ES', 'it': 'it-IT', 'pt': 'pt-PT', 'ru': 'ru-RU'
-      };
-      utterance.lang = languageMap[accent] || 'en-US';
-      utterance.rate = 1.0;
-
-      // Find a suitable voice
-      const voices = window.speechSynthesis.getVoices();
-      const preferredVoice = voices.find(voice => voice.lang === utterance.lang);
-      if (preferredVoice) {
-        utterance.voice = preferredVoice;
-      }
-      
-      window.speechSynthesis.cancel(); // Cancel any previous speech
-      window.speechSynthesis.speak(utterance);
-      showNotification(`Playing pronunciation for "${word}"`);
-    } else {
-      showNotification('Audio playback is not supported by this browser.');
-    }
-  } catch (error) {
-    console.error('Audio playback failed:', error);
-    showNotification('Audio playback failed.');
-  }
-};
-
 function showNotification(message: string) {
   const notification = document.createElement('div');
   notification.className = 'notification';
@@ -5050,1358 +3920,5 @@ function showNotification(message: string) {
   setTimeout(() => notification.remove(), 2000);
 }
 
-function showWikipediaResults(result: any) {
-  const popup = document.createElement('div');
-  popup.className = 'wikipedia-popup';
-  popup.innerHTML = `
-    <div class="popup-header">
-      <h3>📚 Wikipedia Results for "${result.query}"</h3>
-      <button onclick="this.parentElement.parentElement.remove()" class="close-btn">×</button>
-    </div>
-    <div class="popup-content">
-      ${result.results.length === 0 ? 
-        '<p class="empty-state">No Wikipedia articles found</p>' :
-        result.results.map((article: any) => `
-          <div class="wikipedia-item">
-            <h4><a href="${article.url}" target="_blank">${article.title}</a></h4>
-            <p>${article.extract}</p>
-            <div class="article-meta">
-              <span class="language">${article.language.toUpperCase()}</span>
-              ${article.thumbnail ? `<img src="${article.thumbnail}" alt="Thumbnail" class="thumbnail">` : ''}
-            </div>
-          </div>
-        `).join('')
-      }
-    </div>
-  `;
-  
-  document.body.appendChild(popup);
-  
-  // Auto-remove on escape
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      popup.remove();
-    }
-  });
-}
-
-function showSearchResults(result: any) {
-  const popup = document.createElement('div');
-  popup.className = 'search-popup';
-  popup.innerHTML = `
-    <div class="popup-header">
-      <h3>🔍 Search Results for "${result.query}"</h3>
-      <button onclick="this.parentElement.parentElement.remove()" class="close-btn">×</button>
-    </div>
-    <div class="popup-content">
-      ${result.results.length === 0 ? 
-        '<p class="empty-state">No search results found</p>' :
-        result.results.map((item: any) => `
-          <div class="search-item">
-            <h4><a href="${item.url}" target="_blank">${item.title}</a></h4>
-            <p>${item.snippet}</p>
-            <div class="search-meta">
-              <span class="source">${item.source}</span>
-            </div>
-          </div>
-        `).join('')
-      }
-    </div>
-  `;
-  
-  document.body.appendChild(popup);
-  
-  // Auto-remove on escape
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      popup.remove();
-    }
-  });
-}
-
-// Initialize language selectors
-async function initializeLanguageSelectors() {
-  try {
-    if (window.dictionaryAPI && typeof window.dictionaryAPI.getSupportedLanguages === 'function') {
-      const languages = await window.dictionaryAPI.getSupportedLanguages();
-      
-      const sourceLangSelect = document.getElementById('source-lang') as HTMLSelectElement;
-      const targetLangSelect = document.getElementById('target-lang') as HTMLSelectElement;
-      
-      if (sourceLangSelect && targetLangSelect) {
-        // Clear existing options
-        sourceLangSelect.innerHTML = '';
-        targetLangSelect.innerHTML = '';
-        
-        // Add language options
-        languages.forEach(lang => {
-          const sourceOption = document.createElement('option');
-          sourceOption.value = lang.code;
-          sourceOption.textContent = `${lang.nativeName} (${lang.name})`;
-          sourceLangSelect.appendChild(sourceOption);
-          
-          const targetOption = document.createElement('option');
-          targetOption.value = lang.code;
-          targetOption.textContent = `${lang.nativeName} (${lang.name})`;
-          targetLangSelect.appendChild(targetOption);
-        });
-        
-        // Set default values
-        sourceLangSelect.value = 'auto';
-        targetLangSelect.value = 'en';
-        
-        // Add swap languages functionality
-        document.getElementById('swap-languages')?.addEventListener('click', () => {
-          const sourceValue = sourceLangSelect.value;
-          const targetValue = targetLangSelect.value;
-          
-          if (sourceValue !== 'auto') {
-            sourceLangSelect.value = targetValue;
-            targetLangSelect.value = sourceValue;
-            
-            // Re-lookup with swapped languages
-            const text = document.getElementById('selected-text')?.textContent;
-            if (text) {
-              updatePopupContent(text);
-            }
-          }
-        });
-        
-        sourceLangSelect.addEventListener('mousedown', (e) => e.stopPropagation());
-        targetLangSelect.addEventListener('mousedown', (e) => e.stopPropagation());
-
-        // When this container is clicked, stop the event from bubbling up
-      const languageSelectorContainer = document.getElementById('language-controls');
-      languageSelectorContainer.addEventListener('click', (event) => {
-        event.stopPropagation(); 
-      });
-        sourceLangSelect.addEventListener('change', (e) => {
-          rlog('🔄 [DEBUG] Source language changed:', (e.target as HTMLSelectElement).value);
-          const text = document.getElementById('selected-text')?.textContent;
-          if (text) {
-            updatePopupContent(text);
-          }
-        });
-        
-        targetLangSelect.addEventListener('change', (e) => {
-          rlog('🔄 [DEBUG] Target language changed:', (e.target as HTMLSelectElement).value);
-          const text = document.getElementById('selected-text')?.textContent;
-          if (text) {
-            updatePopupContent(text);
-          }
-        });
-        
-        // Debug: Log initial dropdown setup
-        rlog('🔄 [DEBUG] Language selectors initialized:', {
-          sourceOptions: sourceLangSelect.options.length,
-          targetOptions: targetLangSelect.options.length,
-          sourceValue: sourceLangSelect.value,
-          targetValue: targetLangSelect.value
-        });
-      }
-    }
-  } catch (error) {
-    console.error('Failed to initialize language selectors:', error);
-  }
-}
-
-// Tab management functions
-function createTabs(result: any, enabledSourceNames?: string[]) {
-  const tabNav = document.getElementById('tab-nav');
-  const tabContent = document.getElementById('tab-content');
-  
-  if (!tabNav || !tabContent) return;
-  
-  // Clear existing tabs
-  tabNav.innerHTML = '';
-  tabContent.innerHTML = '';
-  
-  const hasTranslation = result.translations && result.translations.length > 0;
-  if (hasTranslation) {
-    // Main combined Translation tab (deduped by source/text)
-    const tabId = 'translation';
-    const button = document.createElement('button');
-    button.className = `tab-button active`;
-    button.dataset.tabId = tabId;
-    button.innerHTML = `🌐 Translation`;
-    button.addEventListener('click', () => switchTab(tabId));
-    tabNav.appendChild(button);
-    
-    const pane = document.createElement('div');
-    pane.className = `tab-pane active`;
-    pane.id = `tab-${tabId}`;
-    pane.innerHTML = createTranslationTab(result);
-    tabContent.appendChild(pane);
-
-    // Add per-translation-source tabs without duplicates (source+text)
-    const seenKey = new Set<string>();
-    const sourceOrder: string[] = [];
-    (result.translations || []).forEach((t: any) => {
-      const s = (t?.source || 'Translation').toString();
-      const text = (t?.text || '').toString().trim();
-      const key = `${s}|${text}`;
-      if (!seenKey.has(key)) {
-        seenKey.add(key);
-        if (!sourceOrder.includes(s)) sourceOrder.push(s);
-      }
-    });
-    sourceOrder.forEach((src: string) => {
-      const id = `trans-${src.replace(/\s+/g, '-').toLowerCase()}`;
-      const btn = document.createElement('button');
-      btn.className = 'tab-button';
-      btn.dataset.tabId = id;
-      btn.innerHTML = `${getDictionaryIcon(src)} ${src}`;
-      btn.addEventListener('click', () => switchTab(id));
-      tabNav.appendChild(btn);
-      const p = document.createElement('div');
-      p.className = 'tab-pane';
-      p.id = `tab-${id}`;
-      p.innerHTML = createSingleTranslationSourceTab(result, src);
-      tabContent.appendChild(p);
-    });
-  }
-  
-  // Create tabs for each unique dictionary source with data
-  const definitions = result.definitions || [];
-  const sourcesWithData = new Set((definitions.map((d: any) => d.source).filter((s: string) => s && s !== 'Sentence' && s !== 'Fallback')));
-  // Merge in enabled sources, so users see a tab even when a source yields no results
-  const enabledList: string[] = Array.isArray(enabledSourceNames) ? (enabledSourceNames as string[]) : [];
-  const allSources: string[] = Array.from(new Set([...(enabledList), ...Array.from(sourcesWithData) as string[]]));
-  
-  allSources.forEach((source: string, index: number) => {
-    const isActive = !hasTranslation && index === 0;
-    const tabId = `dict-${source.replace(/\s+/g, '-').toLowerCase()}`;
-    const button = document.createElement('button');
-    button.className = `tab-button ${isActive ? 'active' : ''}`;
-    button.dataset.tabId = tabId;
-    button.innerHTML = `${getDictionaryIcon(source)} ${source}`;
-    button.addEventListener('click', () => switchTab(tabId));
-    tabNav.appendChild(button);
-    
-    const pane = document.createElement('div');
-    pane.className = `tab-pane ${isActive ? 'active' : ''}`;
-    pane.id = `tab-${tabId}`;
-    pane.innerHTML = createDictionaryTab(result, source);
-    tabContent.appendChild(pane);
-  });
-  
-  // If no content, show a message
-  if (!hasTranslation && allSources.length === 0) {
-    tabContent.innerHTML = `<div class="no-data">No definitions or translations found for "${result.word}".</div>`;
-  }
-}
-
-function switchTab(tabId: string) {
-  // Update tab buttons
-  document.querySelectorAll('.tab-button').forEach(btn => {
-    const element = btn as HTMLElement;
-    element.classList.toggle('active', element.dataset?.tabId === tabId);
-  });
-  
-  // Update tab panes
-  document.querySelectorAll('.tab-pane').forEach(pane => {
-    pane.classList.toggle('active', pane.id === `tab-${tabId}`);
-  });
-}
-
-function getDictionaryIcon(source: string): string {
-  const icons: { [key: string]: string } = {
-    'Free Dictionary API': '📖',
-    'Wiktionary': '📝',
-    'WordNet': '🔗',
-    'Oxford Dictionary': '🎓',
-    'Oxford Dictionary API': '🎓',
-    'Collins Dictionary': '📙',
-    'Collins Dictionary API': '📙',
-    'Cambridge Dictionary': '🏛️',
-    'Youdao API': '🇨🇳',
-    'WordsAPI': '🧠',
-    'CC-CEDICT': '📗',
-    'Princeton WordNet 3.1': '🔗',
-    "Webster's Unabridged 1913 (GCIDE)": '📘',
-    'FreeDict English–Chinese': '🈶',
-    'General': '📚'
-  };
-  return icons[source] || '📚';
-}
-
-function createTranslationTab(result: any): string {
-  const translations = result.translations || [];
-  
-  let html = `<div class="translation-tab">`;
-  
-  if (translations.length > 0) {
-    html += `<div class="translation-results">`;
-    translations.forEach((trans: any) => {
-      html += `
-        <div class="translation-item">
-          <div class="translation-header">
-            <span class="translation-language">${trans.language.toUpperCase()}</span>
-            ${trans.source ? `<span class="translation-source">${trans.source}</span>` : ''}
-            ${trans.confidence ? `<span class="confidence-score">${Math.round(trans.confidence * 100)}%</span>` : ''}
-          </div>
-          <div class="translation-text">${trans.text}</div>
-          ${trans.pronunciation ? `<div class="translation-pronunciation">${trans.pronunciation}</div>` : ''}
-        </div>
-      `;
-    });
-    html += `</div>`;
-  } else {
-    html += `<div class="no-data">No online translation available. Please check your API keys and network connection.</div>`;
-  }
-  
-  html += `</div>`;
-  return html;
-}
-
-function createDictionaryTab(result: any, source: string): string {
-  let html = `<div class="dictionary-tab">`;
-
-  // Filter definitions by the specific source for this tab
-  const sourceDefinitions = (result.definitions || []).filter((def: any) => def.source === source || source === 'General');
-
-  
-  // Word and pronunciation
-  html += `
-    <div class="word-header">
-      <div class="word-title">${result.word}</div>
-      ${result.pronunciation ? `<div class="pronunciation">/${result.pronunciation}/</div>` : ''}
-    </div>
-  `;
-  
-  // Definitions
-  if (sourceDefinitions && sourceDefinitions.length > 0) {
-    html += `<div class="definitions-section">`;
-    sourceDefinitions.forEach((def: any) => {
-      html += `
-        <div class="definition-item">
-          <div class="part-of-speech">${def.partOfSpeech}</div>
-          <div class="definition-text">${def.meaning}</div>
-          ${def.examples && def.examples.length > 0 ? 
-            `<div class="definition-examples">${def.examples.map((ex: string) => `<div class=\"example\">"${ex}"</div>`).join('')}</div>` : ''}
-          ${def.examples && def.examples.length > 0 ? 
-            `<div class="definition-examples">
-              ${def.examples.map((ex: string) => `<div class="example">"${ex}"</div>`).join('')}
-            </div>` : ''}
-          ${def.synonyms && def.synonyms.length > 0 ? 
-            `<div class="synonyms">Synonyms: ${def.synonyms.join(', ')}</div>` : ''}
-        </div>
-      `;
-    });
-    html += `</div>`;
-  } else {
-    html += `<div class="no-data">No results from ${source} for this term.</div>`;
-  }
-  
-  // Examples
-  if (result.examples && result.examples.length > 0) {
-    html += `
-      <div class="examples-section">
-        <h4>Examples</h4>
-        ${result.examples.map((ex: string) => `<div class="example">"${ex}"</div>`).join('')}
-      </div>
-    `;
-  }
-  
-  // Etymology
-  if (result.etymology) {
-    html += `
-      <div class="etymology-section">
-        <h4>Etymology</h4>
-        <div class="etymology-text">${result.etymology}</div>
-      </div>
-    `;
-  }
-  
-  // Synonyms and Antonyms
-  if (result.synonyms && result.synonyms.length > 0) {
-    html += `
-      <div class="synonyms-section">
-        <h4>Synonyms</h4>
-        <div class="word-list">${result.synonyms.join(', ')}</div>
-      </div>
-    `;
-  }
-  
-  if (result.antonyms && result.antonyms.length > 0) {
-    html += `
-      <div class="antonyms-section">
-        <h4>Antonyms</h4>
-        <div class="word-list">${result.antonyms.join(', ')}</div>
-      </div>
-    `;
-  }
-  
-  html += `</div>`;
-  return html;
-}
-
-// Render translations for a specific source as its own tab
-function createSingleTranslationSourceTab(result: any, sourceName: string): string {
-  // Deduplicate by text for this source
-  const seen = new Set<string>();
-  const translations = (result.translations || []).filter((t: any) => {
-    const match = (t?.source || '') === sourceName;
-    if (!match) return false;
-    const key = (t?.text || '').toString().trim();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  if (translations.length === 0) {
-    return `<div class="translation-tab"><div class="no-data">No translations from ${sourceName}.</div></div>`;
-  }
-  let html = `<div class="translation-tab">`;
-  html += `<div class="translation-results">`;
-  translations.forEach((trans: any) => {
-    html += `
-      <div class="translation-item">
-        <div class="translation-header">
-          <span class="translation-language">${(trans.language || '').toString().toUpperCase()}</span>
-          ${trans.source ? `<span class="translation-source">${trans.source}</span>` : ''}
-          ${trans.confidence ? `<span class="confidence-score">${Math.round(trans.confidence * 100)}%</span>` : ''}
-        </div>
-        <div class="translation-text">${trans.text || ''}</div>
-        ${trans.pronunciation ? `<div class="translation-pronunciation">${trans.pronunciation}</div>` : ''}
-      </div>
-    `;
-  });
-  html += `</div>`;
-  html += `</div>`;
-  return html;
-}
-
-async function updatePopupContent(text: string) {
-  rlog('[POPUP-RENDERER] updatePopupContent with text:', (text||'').slice(0,80), `(${text.length} chars)`);
-  const key = (text || '').trim();
-  if (!key) return;
-  if (key === __lastRenderedText) {
-    rlog('[POPUP-RENDERER] skip duplicate render for same text');
-    return;
-  }
-  __lastRenderedText = key;
-  
-  const selectedTextElement = document.getElementById('selected-text');
-  const loadingElement = document.getElementById('loadingElement');
-  const tabContainer = document.getElementById('tab-container');
-  const languageControls = document.getElementById('language-controls');
-  const titleSubtitle = document.getElementById('title-subtitle');
-  
-  if (selectedTextElement) {
-    selectedTextElement.textContent = text;
-  }
-  
-  // Show loading and ensure the toolbar/content are visible
-  if (loadingElement) loadingElement.style.display = 'flex';
-  if (tabContainer) tabContainer.style.display = 'flex';
-  
-  try {
-    // Get selected languages
-    const sourceLang = (document.getElementById('source-lang') as HTMLSelectElement)?.value || 'auto';
-    const targetLang = (document.getElementById('target-lang') as HTMLSelectElement)?.value || 'en';
-    
-    // Get enabled sources
-    let enabledSources: string[] | undefined;
-    if (window.dictionaryAPI && typeof window.dictionaryAPI.getEnabledSources === 'function') {
-      enabledSources = await window.dictionaryAPI.getEnabledSources();
-      rlog('[DBG] Enabled sources at lookup time:', enabledSources);
-    }
-    
-    // Use the dictionary service to get real results
-    if (window.dictionaryAPI && typeof window.dictionaryAPI.lookup === 'function') {
-      const result = await window.dictionaryAPI.lookup(text, targetLang, enabledSources, {
-        sourceLanguage: sourceLang,
-      });
-      rlog('[POPUP-RENDERER] lookup summary:', {
-        word: result.word,
-        definitions: result.definitions?.length || 0,
-        sources: result.sources,
-        hasTranslations: (result.translations?.length || 0) > 0
-      });
-      
-      // Update UI based on whether it's a sentence or word
-      const isSentence = result.metadata?.isSentence || false;
-      
-      if (isSentence) {
-        // Show language controls for sentences
-        if (languageControls) languageControls.style.display = 'block';
-        if (titleSubtitle) titleSubtitle.textContent = 'Translation';
-        
-        // Update language selectors based on detected language
-        if (result.detectedLanguage && sourceLang === 'auto') {
-          const sourceLangSelect = document.getElementById('source-lang') as HTMLSelectElement;
-          if (sourceLangSelect) {
-            sourceLangSelect.value = result.detectedLanguage;
-          }
-        }
-      } else {
-        // Hide language controls for words
-        if (languageControls) languageControls.style.display = 'none';
-        if (titleSubtitle) titleSubtitle.textContent = 'Dictionary Lookup';
-      }
-      
-      // Hide loading and create tabs
-      if (loadingElement) loadingElement.style.display = 'none';
-      if (tabContainer) tabContainer.style.display = 'flex';
-      
-      // Prefer runtime result.sources so tabs reflect APIs actually used
-      const tabSources = Array.isArray(result.sources) && result.sources.length > 0 ? result.sources : (enabledSources || []);
-      rlog('[POPUP-RENDERER] creating tabs for:', tabSources);
-      createTabs(result, tabSources);
-
-      // Ask main to resize the window once per text to prevent jumping
-      try {
-        if (__lastResizedForText !== key) {
-          const desiredW = 420;
-          const desiredH = 260;
-          window.electronAPI?.resizeWindow(desiredW, desiredH);
-          __lastResizedForText = key;
-          rlog('[POPUP-RENDERER] requested one-time resize:', desiredW, desiredH);
-        }
-      } catch {}
-    } else {
-      rlog('⚠️ Dictionary API not available, using mock data');
-      displayMockResult(text);
-    }
-  } catch (error) {
-    console.error('❌ Dictionary lookup failed:', error);
-    displayMockResult(text);
-  }
-}
-
-function displayDictionaryResult(result: any) {
-  const resultsElement = document.getElementById('dictionary-results');
-  const loadingElement = document.getElementById('loadingElement');
-  
-  if (loadingElement) {
-    loadingElement.style.display = 'none';
-  }
-  
-  if (resultsElement) {
-    resultsElement.style.display = 'block';
-    
-    // Generate pronunciation HTML
-    const pronunciationHtml = result.pronunciation ? `
-      <div class="pronunciation">
-        <div class="pronunciation-item">
-          <span>🇺🇸 /${result.pronunciation}/</span>
-        </div>
-        <div class="pronunciation-item">
-          <span>🇬🇧 /${result.pronunciation}/</span>
-        </div>
-      </div>
-    ` : '';
-    
-    // Generate definitions HTML with better fallback data
-    const definitionsHtml = result.definitions && result.definitions.length > 0 ? 
-      result.definitions.map((def: any) => `
-        <div class="definition">
-          <strong>${def.partOfSpeech}</strong> - ${def.meaning}
-          ${def.synonyms && def.synonyms.length > 0 ? 
-            `<div class="synonyms">Synonyms: ${def.synonyms.join(', ')}</div>` : ''}
-          ${def.antonyms && def.antonyms.length > 0 ? 
-            `<div class="antonyms">Antonyms: ${def.antonyms.join(', ')}</div>` : ''}
-          ${def.examples && def.examples.length > 0 ? 
-            def.examples.map((ex: string) => `<div class="example"><em>"${ex}"</em></div>`).join('') : ''}
-        </div>
-      `).join('') : getFallbackDefinitions(result.word);
-    
-    // Generate translations HTML
-    const translationsHtml = result.translations && result.translations.length > 0 ? 
-      result.translations.map((trans: any) => `
-        <div class="translation">
-          <strong>${trans.language.toUpperCase()}:</strong> ${trans.text}
-          ${trans.pronunciation ? `<div class="pronunciation">${trans.pronunciation}</div>` : ''}
-          ${trans.confidence ? `<div class="confidence">Confidence: ${Math.round(trans.confidence * 100)}%</div>` : ''}
-          ${trans.source ? `<div class="source">Source: ${trans.source}</div>` : ''}
-        </div>
-      `).join('') : getFallbackTranslations(result.word);
-    
-    // Generate examples HTML
-    const examplesHtml = result.examples && result.examples.length > 0 ? 
-      result.examples.map((example: string) => `
-        <div class="example">
-          <em>"${example}"</em>
-        </div>
-      `).join('') : getFallbackExamples(result.word);
-    
-    // Generate synonyms HTML
-    const synonymsHtml = result.synonyms && result.synonyms.length > 0 ? `
-      <div class="synonyms-section">
-        <strong>Synonyms:</strong> ${result.synonyms.join(', ')}
-      </div>
-    ` : '';
-    
-    // Generate antonyms HTML
-    const antonymsHtml = result.antonyms && result.antonyms.length > 0 ? `
-      <div class="antonyms-section">
-        <strong>Antonyms:</strong> ${result.antonyms.join(', ')}
-      </div>
-    ` : '';
-    
-    // Generate etymology HTML
-    const etymologyHtml = result.etymology ? `
-      <div class="etymology">
-        <strong>Etymology:</strong> ${result.etymology}
-      </div>
-    ` : '';
-    
-    // Generate sources HTML
-    const sourcesHtml = result.sources && result.sources.length > 0 ? `
-      <div class="sources-section">
-        <strong>Data Sources:</strong> ${result.sources.join(', ')}
-      </div>
-    ` : '';
-    
-    // Generate word origin HTML (fallback)
-    const wordOriginHtml = !result.etymology ? getWordOrigin(result.word) : '';
-    
-    resultsElement.innerHTML = `
-      <div class="dictionary-entry">
-        <div class="word">${result.word}</div>
-        ${pronunciationHtml}
-        ${etymologyHtml}
-        ${wordOriginHtml}
-        <div class="definitions">
-          ${definitionsHtml}
-        </div>
-        ${synonymsHtml}
-        ${antonymsHtml}
-        <div class="translations">
-          ${translationsHtml}
-        </div>
-        <div class="examples">
-          ${examplesHtml}
-        </div>
-        ${sourcesHtml}
-      </div>
-    `;
-  }
-}
-
-// Helper function to generate realistic pronunciation
-function getPronunciation(word: string): string {
-  const pronunciations: { [key: string]: string } = {
-    'hello': 'həˈloʊ',
-    'world': 'wɜːld',
-    'computer': 'kəmˈpjuːtər',
-    'dictionary': 'ˈdɪkʃəneri',
-    'translation': 'trænsˈleɪʃən',
-    'language': 'ˈlæŋɡwɪdʒ',
-    'share': 'ʃer',
-    'need': 'niːd',
-    'outcry': 'ˈaʊtkraɪ',
-    'google': 'ˈɡuːɡəl',
-    'wallet': 'ˈwɒlɪt',
-    'battery': 'ˈbætəri',
-    'screen': 'skriːn',
-    'refresh': 'rɪˈfreʃ',
-    'example': 'ɪɡˈzæmpəl',
-    'correct': 'kəˈrekt',
-    'incorrect': 'ˌɪnkəˈrekt',
-    'hours': 'ˈaʊəz',
-    'novel': 'ˈnɒvəl',
-    'reading': 'ˈriːdɪŋ'
-  };
-  
-  const lowerWord = word.toLowerCase();
-  return pronunciations[lowerWord] || `${lowerWord.replace(/[aeiou]/g, 'ə')}`;
-}
-
-// Helper function to generate word origin
-function getWordOrigin(word: string): string {
-  const origins: { [key: string]: string } = {
-    'hello': 'From Old English "hāl" (healthy, whole) + "ēalā" (oh, lo). Originally a greeting wishing good health.',
-    'world': 'From Old English "weorold" (age of man, human existence), from "wer" (man) + "eald" (age).',
-    'computer': 'From Latin "computare" (to calculate), from "com-" (together) + "putare" (to think, reckon).',
-    'dictionary': 'From Medieval Latin "dictionarium" (collection of words), from "dictio" (speaking, word).',
-    'translation': 'From Latin "translatio" (carrying across), from "trans-" (across) + "latus" (carried).',
-    'language': 'From Old French "langage" (speech, language), from Latin "lingua" (tongue, language).',
-    'share': 'From Old English "scearu" (cutting, division), related to "sceran" (to cut, shear).',
-    'need': 'From Old English "nēod" (necessity, compulsion), from Proto-Germanic "*naudiz".',
-    'outcry': 'From Middle English "outcrien" (to cry out), from "out" + "cry".',
-    'google': 'Coined in 1998, from "googol" (mathematical term for 10^100), suggesting vast amounts of information.',
-    'wallet': 'From Middle English "walet" (bag, sack), from Old French "walet" (bag, sack).',
-    'battery': 'From Old French "baterie" (action of beating), from "batre" (to beat), originally referring to artillery.',
-    'screen': 'From Middle English "screne" (protective barrier), from Old French "escren" (screen, shield).',
-    'refresh': 'From Old French "refreschir" (to refresh), from "re-" (again) + "fresche" (fresh).',
-    'example': 'From Latin "exemplum" (sample, pattern), from "eximere" (to take out, remove).',
-    'correct': 'From Latin "correctus" (corrected), from "corrigere" (to make straight, correct).',
-    'incorrect': 'From Latin "incorrectus" (not corrected), from "in-" (not) + "correctus".',
-    'hours': 'From Old French "hore" (hour), from Latin "hora" (hour, time).',
-    'novel': 'From Italian "novella" (new, fresh), from Latin "novellus" (new, young).',
-    'reading': 'From Old English "ræding" (reading), from "rædan" (to read, advise).'
-  };
-  
-  const lowerWord = word.toLowerCase();
-  return origins[lowerWord] ? `
-    <div class="word-origin">
-      <strong>Origin:</strong> ${origins[lowerWord]}
-    </div>
-  ` : '';
-}
-
-// Audio playback function using Web Speech API
-function playAudio(word: string, accent: string = 'en-US') {
-  rlog(`🔊 [DEBUG] playAudio called with word: "${word}", accent: "${accent}"`);
-  rlog(`🔊 [DEBUG] speechSynthesis available:`, 'speechSynthesis' in window);
-  
-  try {
-    // Check if Web Speech API is supported
-    if ('speechSynthesis' in window) {
-      const initVoices = () => {
-        const voices = window.speechSynthesis.getVoices();
-        if (voices.length > 0) {
-          rlog(`🔊 [DEBUG] Voices loaded: ${voices.length}`);
-          speak(word, accent, voices);
-        } else {
-          rlog(`🔊 [DEBUG] Voices not loaded yet, will try again`);
-        }
-      };
-
-      if (window.speechSynthesis.getVoices().length > 0) {
-        initVoices();
-      } else {
-        window.speechSynthesis.onvoiceschanged = initVoices;
-      }
-    } else {
-      // Fallback for browsers without Web Speech API
-      console.warn('🔊 Web Speech API not supported');
-      showNotification('Audio not supported in this browser');
-      tryAlternativeAudio(word, accent);
-    }
-  } catch (error) {
-    console.error('🔊 Audio playback error:', error);
-    showNotification('Audio playback failed');
-  }
-}
-
-function speak(word: string, accent: string, voices: SpeechSynthesisVoice[]) {
-  rlog(`🔊 [DEBUG] speak called with word: "${word}", accent: "${accent}"`);
-  
-  try {
-    // Cancel any ongoing speech
-    window.speechSynthesis.cancel();
-    rlog(`🔊 [DEBUG] Previous speech cancelled`);
-    
-    // Create speech utterance
-    const utterance = new SpeechSynthesisUtterance(word);
-    
-    // Set language based on accent
-    const languageMap: { [key: string]: string } = {
-      'us': 'en-US', 'uk': 'en-GB', 'en-US': 'en-US', 'en-GB': 'en-GB',
-      'zh-CN': 'zh-CN', 'zh-TW': 'zh-TW', 'ja': 'ja-JP', 'ko': 'ko-KR',
-      'fr': 'fr-FR', 'de': 'de-DE', 'es': 'es-ES', 'it': 'it-IT',
-      'pt': 'pt-PT', 'ru': 'ru-RU', 'ar': 'ar-SA'
-    };
-    utterance.lang = languageMap[accent] || 'en-US';
-    
-    // Get speech settings
-    const enableAudio = (document.getElementById('enable-audio') as HTMLInputElement)?.checked ?? true;
-    const audioSpeed = parseFloat((document.getElementById('audio-speed') as HTMLInputElement)?.value || '1');
-    
-    if (!enableAudio) {
-      showNotification('Audio is disabled in settings');
-      return;
-    }
-    
-    utterance.rate = audioSpeed;
-    
-    // Find a suitable voice
-    const preferredVoice = voices.find(voice => voice.lang === utterance.lang || voice.lang.startsWith(utterance.lang.split('-')[0]));
-    if (preferredVoice) {
-      utterance.voice = preferredVoice;
-    }
-    
-    // Event handlers
-    utterance.onstart = () => showNotification(`🔊 Playing pronunciation: "${word}"`);
-    utterance.onerror = (event) => showNotification(`Audio error: ${event.error}`);
-    
-    // Speak the word
-    window.speechSynthesis.speak(utterance);
-  } catch (error) {
-    console.error('🔊 Speech synthesis error:', error);
-    showNotification('Speech synthesis failed');
-  }
-}
-
-// Alternative audio implementation
-function tryAlternativeAudio(word: string, accent: string) {
-  try {
-    // Google Translate TTS as fallback (note: this may have limitations)
-    const languageCode = accent === 'us' ? 'en' : accent.split('-')[0];
-    const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(word)}&tl=${languageCode}&client=tw-ob`;
-    
-    const audio = new Audio(ttsUrl);
-    audio.crossOrigin = 'anonymous';
-    
-    audio.onloadstart = () => {
-      showNotification(`🔊 Loading pronunciation: "${word}"`);
-    };
-    
-    audio.oncanplay = () => {
-      audio.play().catch(error => {
-        console.error('🔊 Alternative audio failed:', error);
-        showNotification('Audio playback failed - check network connection');
-      });
-    };
-    
-    audio.onerror = () => {
-      console.error('🔊 Alternative audio error');
-      showNotification('Audio not available for this word');
-    };
-    
-  } catch (error) {
-    console.error('🔊 Alternative audio implementation failed:', error);
-  }
-}
-
-
-
-function displayMockResult(text: string) {
-  const resultsElement = document.getElementById('dictionary-results');
-  const loadingElement = document.getElementById('loadingElement');
-  
-  if (loadingElement) {
-    (loadingElement as HTMLElement).style.display = 'none';
-  }
-  
-  if (resultsElement) {
-    (resultsElement as HTMLElement).style.display = 'block';
-    resultsElement.innerHTML = `
-      <div class="dictionary-entry">
-        <div class="word">${text}</div>
-        <div class="pronunciation">/həˈloʊ/</div>
-        <div class="definition">
-          <strong>interjection</strong> - Used as a greeting or to begin a phone conversation.
-        </div>
-        <div class="example">
-          <em>"Hello, how are you today?"</em>
-        </div>
-        <div class="translation">
-          <strong>Chinese:</strong> 你好 (nǐ hǎo)
-        </div>
-        <div class="actions">
-          <button onclick="copyToClipboard('${text}')" class="btn btn-small">Copy</button>
-          <button onclick="searchWikipedia('${text}')" class="btn btn-small">Wikipedia</button>
-          <button onclick="searchWeb('${text}')" class="btn btn-small">Web Search</button>
-        </div>
-      </div>
-    `;
-  }
-}
-
-function displayErrorResult(text: string, error: any) {
-  const resultsElement = document.getElementById('dictionary-results');
-  const loadingElement = document.getElementById('loadingElement');
-  
-  if (loadingElement) {
-    (loadingElement as HTMLElement).style.display = 'none';
-  }
-  
-  if (resultsElement) {
-    (resultsElement as HTMLElement).style.display = 'block';
-    resultsElement.innerHTML = `
-      <div class="dictionary-entry error">
-        <div class="word">${text}</div>
-        <div class="error-message">
-          Failed to load dictionary results. Please try again.
-        </div>
-        <div class="actions">
-          <button onclick="copyToClipboard('${text}')" class="btn btn-small">Copy</button>
-          <button onclick="searchWikipedia('${text}')" class="btn btn-small">Wikipedia</button>
-          <button onclick="searchWeb('${text}')" class="btn btn-small">Web Search</button>
-        </div>
-      </div>
-    `;
-  }
-}
-
-// Settings helper functions
-async function refreshCacheStats() {
-  const cacheStatsElement = document.getElementById('cache-stats');
-  if (!cacheStatsElement) return;
-
-  try {
-    const dictStats = window.dictionaryAPI ? await window.dictionaryAPI.getCacheStats() : { size: 0, entries: [] };
-    const wikiStats = window.wikipediaAPI ? await window.wikipediaAPI.getCacheStats() : { size: 0, entries: [] };
-    const searchStats = window.searchAPI ? await window.searchAPI.getCacheStats() : { size: 0, entries: [] };
-    
-    const totalSize = dictStats.size + wikiStats.size + searchStats.size;
-    
-    cacheStatsElement.innerHTML = `
-      <div class="cache-stat-item">
-        <strong>Total cached items:</strong> ${totalSize}
-      </div>
-      <div class="cache-stat-item">
-        <strong>Dictionary cache:</strong> ${dictStats.size} items
-      </div>
-      <div class="cache-stat-item">
-        <strong>Wikipedia cache:</strong> ${wikiStats.size} items
-      </div>
-      <div class="cache-stat-item">
-        <strong>Search cache:</strong> ${searchStats.size} items
-      </div>
-    `;
-  } catch (error) {
-    cacheStatsElement.innerHTML = '<p class="error">Failed to load cache statistics</p>';
-  }
-}
-
-async function clearAllCaches() {
-  if (confirm('Are you sure you want to clear all caches? This will remove all cached dictionary, Wikipedia, and search results.')) {
-    try {
-      if (window.dictionaryAPI) await window.dictionaryAPI.clearCache();
-      if (window.wikipediaAPI) await window.wikipediaAPI.clearCache();
-      if (window.searchAPI) await window.searchAPI.clearCache();
-      
-      showNotification('All caches cleared successfully');
-      refreshCacheStats();
-    } catch (error) {
-      showNotification('Failed to clear caches');
-    }
-  }
-}
-
-// Test function for multi-source dictionary
-(window as any).testMultiSourceDictionary = async function() {
-  try {
-    rlog('🧪 Testing multi-source dictionary service...');
-    
-    // Test with a common word
-    const testWord = 'hello';
-    const result = await window.dictionaryAPI?.lookup(testWord, 'zh');
-    
-    rlog('✅ Multi-source dictionary test result:', result);
-    
-    if (result) {
-      showNotification(`✅ Multi-source lookup successful! Sources: ${result.sources?.join(', ') || 'None'}`);
-      
-      // Display the result in a test popup
-      const popup = document.createElement('div');
-      popup.className = 'test-popup';
-      popup.innerHTML = `
-        <div class="popup-header">
-          <h3>🧪 Multi-Source Test Result</h3>
-          <button onclick="this.parentElement.parentElement.remove()" class="close-btn">×</button>
-        </div>
-        <div class="popup-content">
-          <p><strong>Word:</strong> ${result.word}</p>
-          <p><strong>Pronunciation:</strong> ${result.pronunciation || 'N/A'}</p>
-          <p><strong>Definitions:</strong> ${result.definitions?.length || 0}</p>
-          <p><strong>Translations:</strong> ${result.translations?.length || 0}</p>
-          <p><strong>Examples:</strong> ${result.examples?.length || 0}</p>
-          <p><strong>Synonyms:</strong> ${result.synonyms?.length || 0}</p>
-          <p><strong>Sources:</strong> ${result.sources?.join(', ') || 'None'}</p>
-        </div>
-      `;
-      
-      document.body.appendChild(popup);
-      
-      // Auto-remove after 10 seconds
-      setTimeout(() => {
-        if (popup.parentElement) {
-          popup.remove();
-        }
-      }, 10000);
-    }
-    
-  } catch (error) {
-    console.error('❌ Multi-source dictionary test failed:', error);
-    showNotification('❌ Multi-source dictionary test failed');
-  }
-};
-
-(window as any).refreshSourceStats = async function() {
-  const sourceStatsElement = document.getElementById('source-stats');
-  if (!sourceStatsElement) return;
-
-  try {
-    const sourceStats = window.dictionaryAPI ? await window.dictionaryAPI.getSourceStats() : { total: 0, available: 0, sources: [] };
-
-    sourceStatsElement.innerHTML = `
-      <div class="source-stat-item">
-        <strong>Total Sources:</strong> ${sourceStats.total}
-      </div>
-      <div class="source-stat-item">
-        <strong>Available Sources:</strong> ${sourceStats.available}
-      </div>
-      <div class="source-stat-item">
-        <strong>Sources:</strong> ${sourceStats.sources.map(s => `${s.name} (${s.isAvailable ? '✅' : '❌'})`).join(', ')}
-      </div>
-    `;
-  } catch (error) {
-    sourceStatsElement.innerHTML = '<p class="error">Failed to load source statistics</p>';
-  }
-};
-
-(window as any).clearAllCaches = clearAllCaches;
-(window as any).refreshCacheStats = refreshCacheStats;
-
-// Helper function to generate fallback definitions
-function getFallbackDefinitions(word: string): string {
-  const fallbackDefs: { [key: string]: string[] } = {
-    'hello': ['Used as a greeting or to begin a phone conversation', 'An expression of greeting'],
-    'world': ['The earth, together with all of its countries, peoples, and natural features', 'All of the people and societies on the earth'],
-    'computer': ['An electronic device for storing and processing data', 'A machine that can be programmed to carry out sequences of arithmetic or logical operations'],
-    'dictionary': ['A book or electronic resource that lists the words of a language', 'A reference book containing words and their meanings'],
-    'translation': ['The process of translating words or text from one language into another', 'A written or spoken rendering of the meaning of a word or text'],
-    'language': ['The method of human communication, either spoken or written', 'A system of communication used by a particular country or community'],
-    'share': ['To have or use something at the same time as someone else', 'To give a portion of something to others'],
-    'need': ['To require something because it is essential or very important', 'A situation in which something is necessary'],
-    'were': ['Past tense of "be" for plural subjects', 'Used to indicate a state or condition in the past'],
-    'empty': ['Containing nothing; not filled or occupied', 'Having no meaning or value'],
-    '24': ['The number twenty-four', 'A quantity or amount'],
-    '01': ['The number one', 'A quantity or amount']
-  };
-  
-  const lowerWord = word.toLowerCase();
-  const definitions = fallbackDefs[lowerWord] || ['A word or term that may have various meanings depending on context'];
-  
-  return definitions.map(def => `
-    <div class="definition">
-      <strong>definition</strong> - ${def}
-    </div>
-  `).join('');
-}
-
-// Helper function to generate fallback translations
-function getFallbackTranslations(word: string): string {
-  const fallbackTrans: { [key: string]: string } = {
-    'hello': '你好 (nǐ hǎo)',
-    'world': '世界 (shì jiè)',
-    'computer': '计算机 (jì suàn jī)',
-    'dictionary': '词典 (cí diǎn)',
-    'translation': '翻译 (fān yì)',
-    'language': '语言 (yǔ yán)',
-    'share': '分享 (fēn xiǎng)',
-    'need': '需要 (xū yào)',
-    'were': '是 (shì) - 过去时',
-    'empty': '空的 (kōng de)',
-    '24': '二十四 (èr shí sì)',
-    '01': '零一 (líng yī)'
-  };
-  
-  const lowerWord = word.toLowerCase();
-  const translation = fallbackTrans[lowerWord] || '翻译不可用 (Translation not available)';
-  
-  return `
-    <div class="translation">
-      <strong>CHINESE:</strong> ${translation}
-    </div>
-  `;
-}
-
-// Helper function to generate fallback examples
-function getFallbackExamples(word: string): string {
-  const fallbackEx: { [key: string]: string[] } = {
-    'hello': ['Hello, how are you today?', 'She said hello to everyone in the room.'],
-    'world': ['The world is a beautiful place.', 'He traveled around the world.'],
-    'computer': ['I use my computer every day.', 'The computer crashed and I lost my work.'],
-    'dictionary': ['I looked up the word in the dictionary.', 'This dictionary has over 50,000 entries.'],
-    'translation': ['The translation was very accurate.', 'She works as a translator.'],
-    'language': ['English is a global language.', 'Learning a new language takes time.'],
-    'share': ['Let\'s share the pizza.', 'She likes to share her knowledge with others.'],
-    'need': ['I need to finish this work.', 'There is a need for more teachers.'],
-    'were': ['They were happy to see us.', 'The books were on the table.'],
-    'empty': ['The room was empty.', 'The glass is empty.'],
-    '24': ['There are 24 hours in a day.', 'The store is open 24 hours.'],
-    '01': ['The code starts with 01.', 'It\'s 01:00 in the morning.']
-  };
-  
-  const lowerWord = word.toLowerCase();
-  const examples = fallbackEx[lowerWord] || ['Example usage not available.'];
-  
-  return examples.map(ex => `
-    <div class="example">
-      <em>"${ex}"</em>
-    </div>
-  `).join('');
-}
-
-let popupTimeout: NodeJS.Timeout | null = null;
-let isPopupFocused = false;
-
-function showPopup(x: number, y: number, text: string) {
-  // Clear any existing timeout
-  if (popupTimeout) {
-    clearTimeout(popupTimeout);
-    popupTimeout = null;
-  }
-
-  // Remove existing popup
-  const existingPopup = document.getElementById('popup');
-  if (existingPopup) {
-    existingPopup.remove();
-  }
-
-  // Create new popup
-  const popup = document.createElement('div');
-  popup.id = 'popup';
-  popup.className = 'popup';
-  popup.style.left = `${x}px`;
-  popup.style.top = `${y}px`;
-  
-  // Add focus/blur event listeners
-  popup.addEventListener('mouseenter', () => {
-    isPopupFocused = true;
-    if (popupTimeout) {
-      clearTimeout(popupTimeout);
-      popupTimeout = null;
-    }
-  });
-  
-  popup.addEventListener('mouseleave', () => {
-    isPopupFocused = false;
-    // Start timeout when mouse leaves (but don't close immediately)
-    startPopupTimeout();
-  });
-
-  // Add click event to prevent closing when clicking inside
-  popup.addEventListener('click', (e) => {
-    e.stopPropagation();
-    isPopupFocused = true;
-    if (popupTimeout) {
-      clearTimeout(popupTimeout);
-      popupTimeout = null;
-    }
-  });
-
-  // Add focus event for keyboard navigation
-  popup.addEventListener('focus', () => {
-    isPopupFocused = true;
-    if (popupTimeout) {
-      clearTimeout(popupTimeout);
-      popupTimeout = null;
-    }
-  });
-
-  popup.addEventListener('blur', () => {
-    isPopupFocused = false;
-    startPopupTimeout();
-  });
-
-  // Make popup focusable
-  popup.tabIndex = 0;
-
-  // Show loading state
-  popup.innerHTML = `
-    <div class="popup-content">
-      <div class="loading">
-        <div class="spinner"></div>
-        <div>Looking up "${text}"...</div>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(popup);
-
-  // Start the lookup
-  performLookup(text, popup);
-}
-
-async function performLookup(text: string, popup: HTMLElement) {
-  try {
-    rlog('🔍 Performing lookup for:', text);
-    
-    // Use the dictionary service to get real results
-    if (window.dictionaryAPI && typeof window.dictionaryAPI.lookup === 'function') {
-      const result = await window.dictionaryAPI.lookup(text);
-      rlog('✅ Dictionary result received:', result);
-      
-      // Update popup content with results
-      displayDictionaryResultInPopup(result, popup);
-    } else {
-      rlog('⚠️ Dictionary API not available, using mock data');
-      // Fallback to mock data
-      displayMockResultInPopup(text, popup);
-    }
-  } catch (error) {
-    console.error('❌ Dictionary lookup failed:', error);
-    // Always fallback to mock data on error
-    displayErrorResultInPopup(text, error, popup);
-  }
-}
-
-function displayDictionaryResultInPopup(result: any, popup: HTMLElement) {
-  // Generate pronunciation HTML
-  const pronunciationHtml = result.pronunciation ? `
-    <div class="pronunciation">
-      <div class="pronunciation-item">
-        <span>🇺🇸 /${result.pronunciation}/</span>
-      </div>
-      <div class="pronunciation-item">
-        <span>🇬🇧 /${result.pronunciation}/</span>
-      </div>
-    </div>
-  ` : '';
-  
-  // Generate definitions HTML (deduped by meaning+POS+source)
-  const defSeen = new Set<string>();
-  const definitionsHtml = result.definitions && result.definitions.length > 0 ? 
-    result.definitions.filter((def: any) => {
-      const key = `${(def.partOfSpeech||'').toLowerCase()}|${(def.meaning||'').trim().toLowerCase()}|${(def.source||'').toLowerCase()}`;
-      if (defSeen.has(key)) return false;
-      defSeen.add(key);
-      return true;
-    }).map((def: any) => `
-      <div class="definition">
-        <strong>${def.partOfSpeech}</strong> - ${def.meaning}
-        ${def.synonyms && def.synonyms.length > 0 ? 
-          `<div class="synonyms">Synonyms: ${def.synonyms.join(', ')}</div>` : ''}
-        ${def.antonyms && def.antonyms.length > 0 ? 
-          `<div class="antonyms">Antonyms: ${def.antonyms.join(', ')}</div>` : ''}
-        ${def.examples && def.examples.length > 0 ? 
-          def.examples.map((ex: string) => `<div class="example"><em>"${ex}"</em></div>`).join('') : ''}
-      </div>
-    `).join('') : getFallbackDefinitions(result.word);
-  
-  // Generate translations HTML (dedupe by source+text)
-  const tSeen = new Set<string>();
-  const translationsHtml = result.translations && result.translations.length > 0 ? 
-    result.translations.filter((trans: any) => {
-      const key = `${(trans.source||'').toString().toLowerCase()}|${(trans.text||'').toString().trim()}`;
-      if (tSeen.has(key)) return false;
-      tSeen.add(key);
-      return true;
-    }).map((trans: any) => `
-      <div class="translation">
-        <strong>${trans.language.toUpperCase()}:</strong> ${trans.text}
-        ${trans.pronunciation ? `<div class="pronunciation">${trans.pronunciation}</div>` : ''}
-        ${trans.confidence ? `<div class="confidence">Confidence: ${Math.round(trans.confidence * 100)}%</div>` : ''}
-        ${trans.source ? `<div class="source">Source: ${trans.source}</div>` : ''}
-      </div>
-    `).join('') : getFallbackTranslations(result.word);
-  
-  // Generate examples HTML (normalize/dedupe)
-  const eSeen = new Set<string>();
-  const examplesHtml = result.examples && result.examples.length > 0 ? 
-    result.examples.map((example: string) => {
-      const n = (example || '')
-        .replace(/[“”]/g, '"')
-        .replace(/[‘’]/g, "'")
-        .replace(/^"|"$/g, '')
-        .trim();
-      if (!n || eSeen.has(n)) return '';
-      eSeen.add(n);
-      return `
-      <div class="example">
-        <em>"${n}"</em>
-      </div>
-    `;}).join('') : getFallbackExamples(result.word);
-  
-  // Generate synonyms HTML
-  const synonymsHtml = result.synonyms && result.synonyms.length > 0 ? `
-    <div class="synonyms-section">
-      <strong>Synonyms:</strong> ${result.synonyms.join(', ')}
-    </div>
-  ` : '';
-  
-  // Generate antonyms HTML
-  const antonymsHtml = result.antonyms && result.antonyms.length > 0 ? `
-    <div class="antonyms-section">
-      <strong>Antonyms:</strong> ${result.antonyms.join(', ')}
-    </div>
-  ` : '';
-  
-  // Generate etymology HTML
-  const etymologyHtml = result.etymology ? `
-    <div class="etymology">
-      <strong>Etymology:</strong> ${result.etymology}
-    </div>
-  ` : '';
-  
-  // Generate sources HTML
-  const sourcesHtml = result.sources && result.sources.length > 0 ? `
-    <div class="sources-section">
-      <strong>Data Sources:</strong> ${result.sources.join(', ')}
-    </div>
-  ` : '';
-  
-  // Generate word origin HTML (fallback)
-  const wordOriginHtml = !result.etymology ? getWordOrigin(result.word) : '';
-  
-  popup.innerHTML = `
-    <div class="popup-content">
-      <div class="dictionary-entry">
-        <div class="word">${result.word}</div>
-        ${pronunciationHtml}
-        ${etymologyHtml}
-        ${wordOriginHtml}
-        <div class="definitions">
-          ${definitionsHtml}
-        </div>
-        ${synonymsHtml}
-        ${antonymsHtml}
-        <div class="translations">
-          ${translationsHtml}
-        </div>
-        <div class="examples">
-          ${examplesHtml}
-        </div>
-        ${sourcesHtml}
-      </div>
-    </div>
-  `;
-}
-
-function displayMockResultInPopup(text: string, popup: HTMLElement) {
-  popup.innerHTML = `
-    <div class="popup-content">
-      <div class="dictionary-entry">
-        <div class="word">${text}</div>
-        <div class="pronunciation">
-          <div class="pronunciation-item">
-            <span>🇺🇸 /${getPronunciation(text)}/</span>
-          </div>
-        </div>
-        <div class="definitions">
-          ${getFallbackDefinitions(text)}
-        </div>
-        <div class="translations">
-          ${getFallbackTranslations(text)}
-        </div>
-        <div class="examples">
-          ${getFallbackExamples(text)}
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function displayErrorResultInPopup(text: string, error: any, popup: HTMLElement) {
-  popup.innerHTML = `
-    <div class="popup-content">
-      <div class="error-message">
-        <div class="word">${text}</div>
-        <div class="error-text">❌ Lookup failed</div>
-        <div class="error-details">${error.message || 'Unknown error'}</div>
-        <div class="fallback">
-          <div class="definitions">
-            ${getFallbackDefinitions(text)}
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function startPopupTimeout() {
-  // Clear existing timeout
-  if (popupTimeout) {
-    clearTimeout(popupTimeout);
-  }
-  
-  // Set new timeout with much longer duration (30 seconds instead of 3)
-  popupTimeout = setTimeout(() => {
-    if (!isPopupFocused) {
-      const popup = document.getElementById('popup');
-      if (popup) {
-        popup.remove();
-      }
-      popupTimeout = null;
-    }
-  }, 30000); // 30 seconds
-}
 
 

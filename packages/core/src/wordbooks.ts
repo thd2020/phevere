@@ -15,6 +15,7 @@ import { analyzeMorphemes, derivationStem } from './morphology';
 import { bookWordKey, DEFAULT_DAILY_NEW, isUserBookId, type BookWordProgress, type UserBook, type WordbookSub } from './wordbook-store';
 import { setMadeBookNames, shortBookTitle } from './book-names';
 import { sourceGroupOf, type SourceGroupKey } from './source-context';
+import { t } from './i18n/runtime';
 
 export type { WordbookMeta };
 
@@ -28,7 +29,7 @@ function metaForMade(b: UserBook, rank: number): BookMeta {
     id: b.bookId,
     title: b.title,
     short: shortBookTitle(b.title),
-    level: 'My word book',
+    level: t('notebook.books.myBook'),
     source: '',
     sourceUrl: '',
     order: 'frequency',

@@ -17,6 +17,7 @@ import { spawn } from 'child_process';
 import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { t } from '@phevere/core/i18n/runtime';
 import { log } from '../logger';
 import { loadUpdatePrefs, mergeUpdatePrefs, type UpdateMode } from './update-prefs-store';
 import {
@@ -227,8 +228,8 @@ function sha256Of(file: string): Promise<string> {
 /** Download the choice's file into userData/updates and verify it. Reuses a verified earlier download. */
 async function download(choice: UpdateChoice): Promise<string> {
   const asset = choice.asset;
-  if (!asset) throw new Error('This release has no installer for this computer.');
-  if (!asset.sha256) throw new Error(`GitHub lists no checksum for ${asset.name}, so it was not installed.`);
+  if (!asset) throw new Error(t('main.update.noInstaller'));
+  if (!asset.sha256) throw new Error(t('main.update.noChecksum', { file: asset.name }));
   const dir = updatesDir();
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, asset.name);
@@ -251,14 +252,14 @@ async function download(choice: UpdateChoice): Promise<string> {
     } catch (err) {
       log.warn('updater', 'download interrupted', { attempt, bytes: partSize(part), error: String(err) });
       if (attempt >= DOWNLOAD_ATTEMPTS) {
-        throw new Error('The download was interrupted. It resumes where it stopped on the next check.');
+        throw new Error(t('main.update.interrupted'));
       }
       await new Promise((r) => setTimeout(r, 2000 * attempt));
     }
   }
   if ((await sha256Of(part)) !== asset.sha256) {
     fs.rmSync(part, { force: true });
-    throw new Error(`${asset.name} did not match GitHub's checksum, so it was deleted.`);
+    throw new Error(t('main.update.checksumMismatch', { file: asset.name }));
   }
   fs.renameSync(part, file);
   progress = 1;
@@ -369,7 +370,7 @@ export function checkForUpdates(manual = false): Promise<void> {
     try {
       releases = await fetchReleases(installTarget());
     } catch (err) {
-      fail(new Error(`Could not reach GitHub. ${err instanceof Error ? err.message : String(err)}`));
+      fail(new Error(t('main.update.unreachable', { reason: err instanceof Error ? err.message : String(err) })));
       return;
     }
     const target = installTarget();
@@ -390,7 +391,7 @@ export function checkForUpdates(manual = false): Promise<void> {
         readyFile = await downloadOnce(choice);
         status = 'ready';
         emit();
-        if (fresh) hooks?.notify(`Phevere ${choice.release.version} is ready. It installs when Phevere quits.`);
+        if (fresh) hooks?.notify(t('main.notify.updateReady', { version: choice.release.version }));
       } catch (err) {
         fail(err);
       }
@@ -398,7 +399,7 @@ export function checkForUpdates(manual = false): Promise<void> {
     }
     status = 'idle';
     emit();
-    if (fresh && !manual) hooks?.notify(`Phevere ${choice.release.version} is available.`);
+    if (fresh && !manual) hooks?.notify(t('main.notify.updateAvailable', { version: choice.release.version }));
   })().finally(() => {
     checking = null;
   });
@@ -432,14 +433,11 @@ export async function rollBack(): Promise<UpdateState> {
   const to = choice.release.version;
   const options = {
     type: 'warning' as const,
-    buttons: [`Roll back to ${to}`, 'Cancel'],
+    buttons: [t('main.update.rollBack', { version: to }), t('common.cancel')],
     defaultId: 1,
     cancelId: 1,
-    message: `Replace Phevere ${from} with ${to}?`,
-    detail:
-      `Your notebook is copied to the backups folder first and stays in place. ` +
-      `${to} may drop details that only ${from} records, such as review history, for words it changes. ` +
-      `Automatic updates skip ${from} until a newer version is published.`,
+    message: t('main.update.rollBackQuestion', { from, to }),
+    detail: t('main.update.rollBackDetail', { from, to }),
   };
   const parent = hooks?.parentWindow();
   const { response } = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);

@@ -7,6 +7,7 @@
  * Android 13 and later shows its own clipboard confirmation, and Android's guidance asks apps
  * not to add a second one, so this stays on the button rather than raising a toast.
  */
+import { t } from './i18n/runtime';
 
 const TICK =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -39,7 +40,7 @@ export function announceStatus(text: string, doc: Document = document): void {
 }
 
 /** The button shows it copied, then goes back to how it was. */
-export function flashCopied(button: HTMLElement, label = 'Copied'): void {
+export function flashCopied(button: HTMLElement, label = t('common.copied')): void {
   announceStatus(label, button.ownerDocument);
   const prior = flashing.get(button);
   if (prior) window.clearTimeout(prior.timer);

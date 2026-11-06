@@ -1,0 +1,26 @@
+import type { Catalog } from '../runtime';
+
+export default {
+  'common.cancel': 'Abbrechen',
+  'common.close': 'Schließen',
+  'common.copy': 'Kopieren',
+  'common.copied': 'Kopiert',
+  'common.delete': 'Löschen',
+  'common.remove': 'Entfernen',
+  'common.undo': 'Rückgängig',
+  'common.save': 'Speichern',
+  'common.loading': 'Wird geladen…',
+  'common.search': 'Suchen',
+  'common.back': 'Zurück',
+  'common.more': 'Mehr',
+  'common.on': 'Ein',
+  'common.off': 'Aus',
+  'common.download': 'Herunterladen',
+  'common.open': 'Öffnen',
+  'common.settings': 'Einstellungen',
+  'common.learn': 'Lernen',
+  'common.lookup': 'Nachschlagen',
+  'common.translate': 'Übersetzen',
+  'common.edit': 'Bearbeiten',
+  'common.ok': 'OK',
+} satisfies Partial<Catalog>;

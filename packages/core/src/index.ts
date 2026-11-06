@@ -466,6 +466,7 @@ export {
   wordFamilyHtml,
   phrasesHtml,
   formLineHtml,
+  lookupNoticeText,
   didYouMeanHtml,
   senseLabelLead,
   senseNotesHtml,
@@ -543,6 +544,7 @@ export {
   REPO_URL,
   aboutCredits,
   aboutIssueUrl,
+  aboutProvides,
   aboutSettingsHtml,
   aboutVersionLabel,
   aboutVersionText,
@@ -552,7 +554,6 @@ export {
   type AboutInfo,
   type AboutPlatform,
 } from './settings-about';
-export { ABOUT_STRINGS_EN, type AboutStrings } from './settings-about-strings';
 export {
   COUNTDOWN_MAX,
   COUNTDOWN_MIN,
@@ -575,3 +576,5 @@ export {
 } from './book-file';
 export { exportBookFile, findBookConflict, importBookPayload, type BookConflict, type BookImportResult, type BookScope } from './book-transfer';
 export { ankiFieldText, ankiTextFromBook, isZip, parseAnkiPackage, parseAnkiText, type OpenSqlite, type SqliteReader } from './anki-import';
+export * from './i18n';
+export { languageRowHtml, UI_LANGUAGE_SELECT_ID } from './settings-language';

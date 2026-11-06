@@ -14,6 +14,7 @@ import { isGrammaticalFormOfGloss } from './lookup-policy';
 import { predictedRecall, type ReviewGrade } from './review-schedule';
 import { vocabHeadwordLang } from './vocab-lang';
 import { classify, sanitize, trimEdges } from './text-normalize';
+import { t } from './i18n/runtime';
 
 const langOf = (e: NotebookEntry) => ({ lemma: clean(e.lemma), sourceLang: clean(e.sourceLang) || undefined });
 
@@ -449,7 +450,24 @@ export type Maturity = 'new' | 'learning' | 'relearning' | 'young' | 'mature';
 /** Anki's line between young and mature, in days of stability. */
 export const MATURE_DAYS = 21;
 
-export const MATURITY_NAME: Record<Maturity, string> = { new: 'New', learning: 'Learning', relearning: 'Relearning', young: 'Young', mature: 'Mature' };
+/** A stage's name in the interface language, read when shown (getters, so it follows a language change). */
+export const MATURITY_NAME: Record<Maturity, string> = {
+  get new() {
+    return t('notebook.maturity.new');
+  },
+  get learning() {
+    return t('notebook.maturity.learning');
+  },
+  get relearning() {
+    return t('notebook.maturity.relearning');
+  },
+  get young() {
+    return t('notebook.maturity.young');
+  },
+  get mature() {
+    return t('notebook.maturity.mature');
+  },
+};
 
 export function wordMaturity(e: NotebookEntry): Maturity {
   if (isNew(e)) return 'new';

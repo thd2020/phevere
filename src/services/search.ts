@@ -142,13 +142,13 @@ export class SearchService extends BaseService {
     const mockResults: Record<string, SearchResult[]> = {
       'hello': [
         {
-          title: 'Hello - Wikipedia',
+          title: 'Hello - Wikipedia', // i18n-ignore: development mock result
           url: 'https://en.wikipedia.org/wiki/Hello',
           snippet: 'Hello is a salutation or greeting in the English language. It is first attested in writing from 1826.',
           source: 'wikipedia.org'
         },
         {
-          title: 'Hello World - Wikipedia',
+          title: 'Hello World - Wikipedia', // i18n-ignore: development mock result
           url: 'https://en.wikipedia.org/wiki/Hello_world',
           snippet: 'A "Hello, World!" program is a computer program that outputs or displays "Hello, World!" to a user.',
           source: 'wikipedia.org'
@@ -156,13 +156,13 @@ export class SearchService extends BaseService {
       ],
       'python': [
         {
-          title: 'Python (programming language) - Wikipedia',
+          title: 'Python (programming language) - Wikipedia', // i18n-ignore: development mock result
           url: 'https://en.wikipedia.org/wiki/Python_(programming_language)',
           snippet: 'Python is a high-level, interpreted programming language. Its design philosophy emphasizes code readability.',
           source: 'wikipedia.org'
         },
         {
-          title: 'Welcome to Python.org',
+          title: 'Welcome to Python.org', // i18n-ignore: development mock result
           url: 'https://www.python.org/',
           snippet: 'The official home of the Python Programming Language. Download Python, learn Python tutorials.',
           source: 'python.org'
@@ -170,13 +170,13 @@ export class SearchService extends BaseService {
       ],
       'javascript': [
         {
-          title: 'JavaScript - Wikipedia',
+          title: 'JavaScript - Wikipedia', // i18n-ignore: development mock result
           url: 'https://en.wikipedia.org/wiki/JavaScript',
           snippet: 'JavaScript, often abbreviated as JS, is a programming language that is one of the core technologies.',
           source: 'wikipedia.org'
         },
         {
-          title: 'JavaScript Tutorial - W3Schools',
+          title: 'JavaScript Tutorial - W3Schools', // i18n-ignore: development mock result
           url: 'https://www.w3schools.com/js/',
           snippet: 'JavaScript is the programming language of the Web. JavaScript is easy to learn.',
           source: 'w3schools.com'
@@ -187,7 +187,7 @@ export class SearchService extends BaseService {
     const lowerQuery = query.toLowerCase();
     const results = mockResults[lowerQuery] || [
       {
-        title: `${query} - Search Results`,
+        title: `${query} - Search Results`, // i18n-ignore: development mock result
         url: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
         snippet: `Search results for "${query}". Click to view more information about this topic.`,
         source: 'google.com'

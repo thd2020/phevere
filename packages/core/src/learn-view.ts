@@ -14,6 +14,7 @@ import type { AnswerDetails, AnswerRecord } from './answer-history';
 import { progressHtml } from './learn-progress';
 import { bookProgress, learnScopeEntries, scopeEntries, wordbookMeta, type WordsContext, type WordsScope } from './wordbooks';
 import { progressRingSvg, reviewBookRows } from './wordbook-views';
+import { t, tHtml } from './i18n/runtime';
 
 export interface LearnViewInput {
   scope: WordsScope;
@@ -38,8 +39,6 @@ export type LearnPage = 'today' | 'progress';
 const STACK =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7l8-4 8 4-8 4zM4 12l8 4 8-4M4 17l8 4 8-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
 
-const fmt = (n: number) => n.toLocaleString('en-US');
-
 /** My words, each subscribed book with its progress ring, and All books. Empty without books. */
 export function learnScopeSwitchHtml(scope: WordsScope, ctx: WordsContext | null, now = Date.now()): string {
   if (!ctx || !ctx.subs.length) return '';
@@ -50,10 +49,10 @@ export function learnScopeSwitchHtml(scope: WordsScope, ctx: WordsContext | null
       const meta = wordbookMeta(s.bookId);
       if (!meta) return '';
       const p = bookProgress(s.bookId, ctx, now);
-      return btn(s.bookId, meta.short, progressRingSvg(p.known, p.learning, p.total, 18), `${meta.title}: ${fmt(p.known)} of ${fmt(p.total)} known`);
+      return btn(s.bookId, meta.short, progressRingSvg(p.known, p.learning, p.total, 18), t('notebook.learn.scope.bookTitle', { book: meta.title, known: p.known, total: p.total }));
     })
     .join('');
-  return `<div class="wb-switch lrn-scopes" role="tablist" aria-label="Study list">${btn('mine', 'My words')}${books}${btn('all', 'All books', STACK)}</div>`;
+  return `<div class="wb-switch lrn-scopes" role="tablist" aria-label="${tHtml('notebook.learn.scope.label')}">${btn('mine', t('notebook.myWords'))}${books}${btn('all', t('notebook.allBooks'), STACK)}</div>`;
 }
 
 /** The book a scope studies a word from: the scope's own book, or in All books the first book that lists it. */
@@ -105,8 +104,8 @@ const PAGE_ICON: Record<LearnPage, string> = {
 
 export function learnPageSwitchHtml(page: LearnPage): string {
   const btn = (p: LearnPage, label: string) =>
-    `<button type="button" role="tab" class="nbv-switch__btn${p === page ? ' is-active' : ''}" data-act="learn-page" data-page="${p}" aria-selected="${p === page}">${PAGE_ICON[p]}<span>${label}</span></button>`;
-  return `<div class="nbv-switch lrn-pages" role="tablist" aria-label="Learn">${btn('today', 'Today')}${btn('progress', 'Progress')}</div>`;
+    `<button type="button" role="tab" class="nbv-switch__btn${p === page ? ' is-active' : ''}" data-act="learn-page" data-page="${p}" aria-selected="${p === page}">${PAGE_ICON[p]}<span>${esc(label)}</span></button>`;
+  return `<div class="nbv-switch lrn-pages" role="tablist" aria-label="${tHtml('common.learn')}">${btn('today', t('notebook.learn.page.today'))}${btn('progress', t('notebook.learn.page.progress'))}</div>`;
 }
 
 export function learnHtml(input: LearnViewInput): string {
@@ -115,7 +114,7 @@ export function learnHtml(input: LearnViewInput): string {
     page === 'progress'
       ? input.history
         ? progressHtml({ history: input.history, scope: input.scope, ctx: input.ctx, mine: input.mine, goal: input.goal, now: input.now })
-        : '<p class="nbv-empty">Loading…</p>'
+        : `<p class="nbv-empty">${tHtml('common.loading')}</p>`
       : learnTodayHtml(input);
   return `<div class="lrn-bar">${learnScopeSwitchHtml(input.scope, input.ctx, input.now)}${learnPageSwitchHtml(page)}</div>${input.notice || ''}<div class="nbv-body lrn-body">${body}</div>`;
 }

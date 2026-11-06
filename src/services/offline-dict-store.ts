@@ -16,6 +16,7 @@ import { promisify } from 'util';
 import * as readline from 'readline';
 import { createReadStream } from 'fs';
 import { getLocalDb, isLocalDbReady, localDbPath, markDirty, queryAll, queryOne, runBatch, runWrite } from './local-db';
+import { formatNumber, t } from '@phevere/core/i18n/runtime';
 import { wrapConsole } from '../logger';
 import { getCatalogItem, OFFLINE_CATALOG, type OfflineCatalogItem } from './offline-catalog';
 import {
@@ -246,8 +247,9 @@ async function eachLine(file: string, writer: PackWriter, onLine: (line: string)
   }
 }
 
+/** Bytes as megabytes with one decimal, in the interface language's digits. */
 function mb(n: number): string {
-  return (n / (1024 * 1024)).toFixed(1);
+  return formatNumber(n / (1024 * 1024), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
 async function downloadBuffer(urls: string[], onProgress?: PackProgressFn): Promise<Buffer> {
@@ -267,7 +269,7 @@ async function downloadBuffer(urls: string[], onProgress?: PackProgressFn): Prom
       const chunks: Uint8Array[] = [];
       let done = 0;
       let lastSent = 0;
-      onProgress({ fraction: total ? 0 : null, label: 'Downloading…' });
+      onProgress({ fraction: total ? 0 : null, label: t('main.offline.progress.downloading') });
       for (;;) {
         const { done: end, value } = await reader.read();
         if (end) break;
@@ -279,7 +281,9 @@ async function downloadBuffer(urls: string[], onProgress?: PackProgressFn): Prom
           lastSent = now;
           onProgress({
             fraction: total ? Math.min(1, done / total) : null,
-            label: total ? `Downloading ${mb(done)} of ${mb(total)} MB` : `Downloading ${mb(done)} MB`,
+            label: total
+              ? t('main.offline.progress.downloadingOf', { done: mb(done), total: mb(total) })
+              : t('main.offline.progress.downloadingSize', { done: mb(done) }),
           });
         }
       }
@@ -288,7 +292,7 @@ async function downloadBuffer(urls: string[], onProgress?: PackProgressFn): Prom
       last = `${url}: ${e instanceof Error ? e.message : String(e)}`;
     }
   }
-  throw new Error(`Download failed: ${last}`);
+  throw new Error(t('main.offline.downloadFailed', { reason: last }));
 }
 
 function mkWork(label: string): string {
@@ -395,10 +399,10 @@ async function importFiles(
   files: string[],
   onProgress?: PackProgressFn,
 ): Promise<{ packId: string; count: number }> {
-  onProgress?.({ fraction: null, label: 'Importing…' });
+  onProgress?.({ fraction: null, label: t('main.offline.progress.importing') });
   const writer = await PackWriter.begin(
     meta,
-    onProgress ? (n) => onProgress({ fraction: null, label: `Importing ${n.toLocaleString('en-US')} entries` }) : undefined,
+    onProgress ? (n) => onProgress({ fraction: null, label: t('main.offline.progress.importingCount', { count: n }) }) : undefined,
   );
   try {
     for (const file of files) {
@@ -448,7 +452,7 @@ export async function downloadCatalogPack(
   const work = mkWork(item.id);
   try {
     const buf = await downloadBuffer(item.urls, onProgress);
-    onProgress?.({ fraction: null, label: 'Unpacking…' });
+    onProgress?.({ fraction: null, label: t('main.offline.progress.unpacking') });
     let files: string[];
     if (item.archive === 'plain' || item.archive === 'gz') {
       const file = path.join(work, 'pack.txt');

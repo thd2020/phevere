@@ -2,6 +2,7 @@
  * Notebook language chip: lemma language → language of the saved gloss.
  * Do not use the translation-tab default (en→zh) when the card is an English dictionary sense.
  */
+import { formatNumber, t, tHtml } from './i18n/runtime';
 
 const LATIN_DICT =
   /wiktionary|wordnet|webster|gcide|free dictionary|oxford|datamuse|wordsapi|collins/i;
@@ -155,8 +156,8 @@ export function vocabLangChipsHtml(langs: VocabLanguages, active: string, total:
   if (!langs.groups.length) return '';
   const on = langs.groups.some((g) => g.code === active) ? active : 'all';
   const chip = (code: string, label: string, n: number) =>
-    `<button type="button" role="tab" class="nbv-chip vocab-lang-chip${code === on ? ' is-active' : ''}" data-act="vocab-lang" data-lang="${escAttr(code)}" aria-selected="${code === on}">${escAttr(label)}<span class="vocab-lang-chip__n">${n}</span></button>`;
-  return `<div class="nbv-chips vocab-langs" role="tablist" aria-label="Language">${chip('all', 'All', total)}${langs.groups
+    `<button type="button" role="tab" class="nbv-chip vocab-lang-chip${code === on ? ' is-active' : ''}" data-act="vocab-lang" data-lang="${escAttr(code)}" aria-selected="${code === on}">${escAttr(label)}<span class="vocab-lang-chip__n">${formatNumber(n)}</span></button>`;
+  return `<div class="nbv-chips vocab-langs" role="tablist" aria-label="${tHtml('notebook.list.languageLabel')}">${chip('all', t('notebook.list.allLanguages'), total)}${langs.groups
     .map((g) => chip(g.code, name(g.code), g.count))
     .join('')}</div>`;
 }

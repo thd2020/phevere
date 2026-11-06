@@ -16,6 +16,7 @@ import { bookEntry, bookProgress, learnScopeEntries, wordStatus, wordbookMeta, t
 import { isLearnable, LEECH_LAPSES, MATURITY_NAME, memoryLevel, wordMaturity, type Maturity } from './review-quiz';
 import { barChartHtml, dayLabel, memoryHtml, wordChips, type BarDatum, type RetentionWord } from './learn-charts';
 import { forecastChartHtml } from './notebook-review';
+import { formatDate, formatList, formatNumber, formatPercent, rawHtml, t, tHtml, type MessageKey } from './i18n/runtime';
 
 export interface ProgressInput {
   history: AnswerRecord[];
@@ -68,8 +69,26 @@ export interface ProgressSummary {
   trouble: Array<{ lemma: string; misses: number; answers: number; lastMiss: number; leech: boolean }>;
 }
 
-const SKILL_LABEL: Record<Skill, string> = { meaning: 'Meaning', spelling: 'Spelling', listening: 'Listening' };
-const fmt = (n: number) => n.toLocaleString('en-US');
+const SKILL_KEY: Record<Skill, MessageKey> = {
+  meaning: 'notebook.learn.skill.meaning',
+  spelling: 'notebook.learn.skill.spelling',
+  listening: 'notebook.learn.skill.listening',
+};
+/** "12 meaning", "3 listening": a skill's number of questions. */
+const SKILL_COUNT_KEY: Record<Skill, MessageKey> = {
+  meaning: 'notebook.learn.skillCount.meaning',
+  spelling: 'notebook.learn.skillCount.spelling',
+  listening: 'notebook.learn.skillCount.listening',
+};
+/** "40% meaning": a skill's share of the week's questions. */
+const MIX_KEY: Record<Skill, MessageKey> = {
+  meaning: 'notebook.learn.mix.meaning',
+  spelling: 'notebook.learn.mix.spelling',
+  listening: 'notebook.learn.mix.listening',
+};
+const skillLabel = (k: Skill) => t(SKILL_KEY[k]);
+const fmt = (n: number) => formatNumber(n);
+const bold = (html: string) => rawHtml(`<b>${html}</b>`);
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
 const key = (s: string) => clean(s).toLowerCase();
 
@@ -148,7 +167,7 @@ export function progressSummary(input: ProgressInput): ProgressSummary {
     }
     return { total: list.length, fresh, learning, known };
   };
-  lists.push({ id: 'mine', label: 'My words', ...count(mineWords) });
+  lists.push({ id: 'mine', label: t('notebook.myWords'), ...count(mineWords) });
   for (const s of ctx?.subs || []) {
     const p = bookProgress(s.bookId, ctx!, now);
     lists.push({ id: s.bookId, label: wordbookMeta(s.bookId)?.short || s.bookId, total: p.total, fresh: p.total - p.known - p.learning, learning: p.learning, known: p.known });
@@ -250,8 +269,8 @@ export function progressSummary(input: ProgressInput): ProgressSummary {
   const inRot = words.filter((e) => !(e.known && !e.saved) && predictedRecall(e, now) != null);
   const rotation: RetentionWord[] = inRot.map((e) => ({ lemma: clean(e.lemma), stability: Number(e.stability), lastReview: Number(e.lastReview) }));
   const curve: number[] = [];
-  for (let t = 0; t <= 30; t++) {
-    const at = now + t * DAY;
+  for (let day = 0; day <= 30; day++) {
+    const at = now + day * DAY;
     curve.push(inRot.length ? inRot.reduce((s, e) => s + (predictedRecall(e, at) ?? 0), 0) / inRot.length : 0);
   }
   // Words by stage; a word marked "Already know it" without a review has none.
@@ -300,9 +319,10 @@ export function progressSummary(input: ProgressInput): ProgressSummary {
 /** A thin rule that fills towards a target, with its count (or `shown` in its place); teal when the target is met. */
 function gauge(label: string, value: number, target: number, shown = ''): string {
   const share = target ? Math.min(1, value / target) : value ? 1 : 0;
-  return `<div class="lrp-gauge${share >= 1 ? ' is-done' : ''}" role="img" aria-label="${esc(label)}: ${shown || `${value} of ${target}`}">
+  const spoken = shown || t('notebook.learn.valueOf', { value, total: target });
+  return `<div class="lrp-gauge${share >= 1 ? ' is-done' : ''}" role="img" aria-label="${tHtml('notebook.learn.gaugeAria', { label, value: spoken })}">
     <span class="lrp-gauge__label">${esc(label)}</span>
-    <span class="lrp-gauge__n">${shown ? `<b>${shown}</b>` : `<b>${fmt(value)}</b> of ${fmt(target)}`}</span>
+    <span class="lrp-gauge__n">${shown ? `<b>${esc(shown)}</b>` : tHtml('notebook.learn.valueOf', { value: bold(fmt(value)), total: target })}</span>
     <span class="lrp-gauge__bar"><i style="width:${(share * 100).toFixed(1)}%"></i></span>
   </div>`;
 }
@@ -332,22 +352,34 @@ function perDayChart(perDay: ProgressSummary['perDay']): string {
     const date = new Date(d.day);
     const last = i === perDay.length - 1;
     const mins = d.ms / 60000;
-    const mix = SKILLS.filter((k) => d.skills[k]).map((k) => `${d.skills[k]} ${SKILL_LABEL[k].toLowerCase()}`);
+    const mix = SKILLS.filter((k) => d.skills[k]).map((k) => t(SKILL_COUNT_KEY[k], { count: d.skills[k] }));
+    const rightWrong = t('notebook.learn.answers.rightWrong', { right: d.right, wrong: d.wrong });
+    const minutes = mins >= 0.5 ? ` · ${tHtml('notebook.learn.answers.minutes', { count: Math.round(mins) })}` : '';
     return {
-      tick: last ? 'Today' : date.getDay() === 1 && i < perDay.length - 3 ? String(date.getDate()) : '',
-      sub: !last && date.getDay() === 1 && i < perDay.length - 3 ? date.toLocaleDateString('en-US', { month: 'short' }) : '',
+      tick: last ? t('notebook.learn.today') : date.getDay() === 1 && i < perDay.length - 3 ? String(date.getDate()) : '',
+      sub: !last && date.getDay() === 1 && i < perDay.length - 3 ? formatDate(date, { month: 'short' }) : '',
       segments: [
         { cls: 'right', value: d.right },
         { cls: 'wrong', value: d.wrong },
       ],
       mark: last,
-      aria: `${dayLabel(d.day)}: ${d.right} right, ${d.wrong} wrong`,
+      aria: t('notebook.learn.answers.dayAria', { day: dayLabel(d.day), detail: rightWrong }),
       detail: n
-        ? `<p class="lrc-read__head"><b>${esc(dayLabel(d.day))}</b> · ${fmt(n)} answers, ${pct(d.right, n)}% right${mins >= 0.5 ? ` · ${Math.round(mins)} min` : ''}</p><p class="lrc-read__sub">${d.right} right, ${d.wrong} wrong${mix.length ? ` · ${mix.join(', ')}` : ''}</p>${wordChips(d.words, 18)}`
-        : `<p class="lrc-read__head"><b>${esc(dayLabel(d.day))}</b> · no answers</p>`,
+        ? `<p class="lrc-read__head"><b>${esc(dayLabel(d.day))}</b> · ${tHtml('notebook.learn.answers.dayHead', { count: n, percent: formatPercent(pct(d.right, n) / 100) })}${minutes}</p><p class="lrc-read__sub">${esc(rightWrong)}${mix.length ? ` · ${esc(formatList(mix, 'unit'))}` : ''}</p>${wordChips(d.words, 18)}`
+        : `<p class="lrc-read__head"><b>${esc(dayLabel(d.day))}</b> · ${tHtml('notebook.learn.answers.none')}</p>`,
     };
   });
-  return barChartHtml({ id: 'answers', data, yLabel: 'Answers', summary: '', legend: [{ cls: 'right', name: 'Right' }, { cls: 'wrong', name: 'Wrong' }], height: 150 });
+  return barChartHtml({
+    id: 'answers',
+    data,
+    yLabel: t('notebook.learn.answers.yLabel'),
+    summary: '',
+    legend: [
+      { cls: 'right', name: t('notebook.learn.answers.right') },
+      { cls: 'wrong', name: t('notebook.learn.answers.wrong') },
+    ],
+    height: 150,
+  });
 }
 
 function strengthChart(strength: ProgressSummary['strength']): string {
@@ -355,20 +387,22 @@ function strengthChart(strength: ProgressSummary['strength']): string {
   const data: BarDatum[] = strength.map((b, i) => ({
     tick: b.label,
     segments: [{ cls: STAGES[i], value: b.words.length }],
-    aria: `${b.label}: ${b.words.length} words`,
-    detail: `<p class="lrc-read__head"><b>${esc(b.label)}</b> · ${fmt(b.words.length)} ${b.words.length === 1 ? 'word' : 'words'}${total ? ` (${pct(b.words.length, total)}%)` : ''}</p>${wordChips(b.words, 30)}`,
+    aria: t('notebook.learn.strength.aria', { stage: b.label, count: b.words.length }),
+    detail: `<p class="lrc-read__head"><b>${esc(b.label)}</b> · ${tHtml('notebook.words', { count: b.words.length })}${total ? ` (${formatPercent(pct(b.words.length, total) / 100)})` : ''}</p>${wordChips(b.words, 30)}`,
   }));
-  return barChartHtml({ id: 'strength', data, yLabel: 'Words', summary: '', height: 150 });
+  return barChartHtml({ id: 'strength', data, yLabel: t('notebook.learn.strength.yLabel'), summary: '', height: 150 });
 }
 
 function mixHtml(mix: Record<Skill, number>): string {
   const total = SKILLS.reduce((s, k) => s + mix[k], 0);
   if (!total) return '';
-  const seg = SKILLS.map((k) => `<i class="lrp-mix--${k}" style="flex:${mix[k] || 0.0001}" title="${SKILL_LABEL[k]}: ${mix[k]}"></i>`).join('');
-  const parts = SKILLS.map((k) => `<span class="lrp-mix__k"><i class="lrp-mix--${k}"></i><b>${pct(mix[k], total)}%</b> ${SKILL_LABEL[k].toLowerCase()}</span>`);
+  const share = (k: Skill) => formatPercent(pct(mix[k], total) / 100);
+  const seg = SKILLS.map((k) => `<i class="lrp-mix--${k}" style="flex:${mix[k] || 0.0001}" title="${tHtml('notebook.learn.gaugeAria', { label: skillLabel(k), value: mix[k] })}"></i>`).join('');
+  const parts = SKILLS.map((k) => `<span class="lrp-mix__k"><i class="lrp-mix--${k}"></i>${tHtml(MIX_KEY[k], { percent: bold(share(k)) })}</span>`);
+  const spoken = formatList(SKILLS.map((k) => t('notebook.learn.mix.shareAria', { skill: skillLabel(k), percent: share(k) })), 'unit');
   return `<div class="lrp-mix">
-    <div class="lrp-mix__bar" role="img" aria-label="${SKILLS.map((k) => `${SKILL_LABEL[k]} ${pct(mix[k], total)}%`).join(', ')}">${seg}</div>
-    <p class="lrp-mix__text"><span class="lrp-mix__head">Last 7 days · ${fmt(total)} ${total === 1 ? 'question' : 'questions'}</span>${parts.join('')}</p>
+    <div class="lrp-mix__bar" role="img" aria-label="${esc(spoken)}">${seg}</div>
+    <p class="lrp-mix__text"><span class="lrp-mix__head">${tHtml('notebook.learn.mix.head', { count: total })}</span>${parts.join('')}</p>
   </div>`;
 }
 
@@ -392,46 +426,49 @@ export function progressHtml(input: ProgressInput): string {
   const s = progressSummary(input);
   const words = scopeWords(input);
   const due = s.reviewsToday + s.dueLeft;
-  const date = new Date(now).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
+  const date = formatDate(now, { weekday: 'long', day: 'numeric', month: 'long' });
 
   const streak = fmt(s.streak);
-  const mast = `<header class="lrp-mast${s.streak ? ' is-on' : ''}" aria-label="Today">
+  const mast = `<header class="lrp-mast${s.streak ? ' is-on' : ''}" aria-label="${tHtml('notebook.learn.today')}">
     <p class="lrp-kicker">${esc(date)}</p>
     <div class="lrp-mast__streak">
       <b class="lrp-giant" style="--ch:${streak.length}">${streak}</b>
-      <p class="lrp-fig__cap"><span class="lrp-fig__label">Day streak</span><span class="lrp-fig__sub">Best ${fmt(s.bestStreak)}</span></p>
+      <p class="lrp-fig__cap"><span class="lrp-fig__label">${tHtml('notebook.learn.streak')}</span><span class="lrp-fig__sub">${tHtml('notebook.learn.bestStreak', { count: s.bestStreak })}</span></p>
     </div>
-    <div class="lrp-gauges">${gauge('New words', s.newToday, s.newGoal)}${gauge('Reviews', s.reviewsToday, due)}${
-      s.reviewsToday ? gauge('Right', s.correctToday, s.reviewsToday, `${pct(s.correctToday, s.reviewsToday)}%`) : ''
+    <div class="lrp-gauges">${gauge(t('notebook.learn.gauge.newWords'), s.newToday, s.newGoal)}${gauge(t('notebook.learn.gauge.reviews'), s.reviewsToday, due)}${
+      s.reviewsToday ? gauge(t('notebook.learn.gauge.right'), s.correctToday, s.reviewsToday, formatPercent(pct(s.correctToday, s.reviewsToday) / 100)) : ''
     }</div>
   </header>`;
 
-  const memory = s.inRotation ? memoryHtml({ id: 'memory', words: s.rotation, now }) : '<p class="lrp-none">No words in rotation yet</p>';
+  const memory = s.inRotation ? memoryHtml({ id: 'memory', words: s.rotation, now }) : `<p class="lrp-none">${tHtml('notebook.learn.none.rotation')}</p>`;
 
   const week = dueWithin(words, now, 7);
-  const ahead = `${figure(fmt(week), 'Due in 7 days')}${forecastChartHtml(words, now, 30, 'due30')}`;
+  const ahead = `${figure(fmt(week), t('notebook.learn.dueIn7Days'))}${forecastChartHtml(words, now, 30, 'due30')}`;
 
   const started = s.strength.slice(1).reduce((n, b) => n + b.words.length, 0);
   const held = s.strength[3].words.length;
   const heldBody = started
-    ? `${figure(fmt(held), 'Mature', `of ${fmt(started)} started`, 'is-teal')}${strengthChart(s.strength)}`
-    : '<p class="lrp-none">No words started yet</p>';
+    ? `${figure(fmt(held), MATURITY_NAME.mature, tHtml('notebook.learn.ofStarted', { count: started }), 'is-teal')}${strengthChart(s.strength)}`
+    : `<p class="lrp-none">${tHtml('notebook.learn.none.started')}</p>`;
 
   const answers30 = s.perDay.reduce((n, d) => n + d.right + d.wrong, 0);
   const right30 = s.perDay.reduce((n, d) => n + d.right, 0);
   const days30 = s.perDay.filter((d) => d.right + d.wrong).length;
+  const answersSub = tHtml('notebook.learn.answers.rightOnDays', { percent: bold(formatPercent(pct(right30, answers30) / 100)), count: days30 });
   const answersBody = answers30
-    ? `${figure(fmt(answers30), 'Answers in 30 days', `<b>${pct(right30, answers30)}%</b> right · ${days30} ${days30 === 1 ? 'day' : 'days'}`, 'is-wide')}${perDayChart(s.perDay)}`
-    : '<p class="lrp-none">No answers yet</p>';
+    ? `${figure(fmt(answers30), t('notebook.learn.answers.in30Days'), answersSub, 'is-wide')}${perDayChart(s.perDay)}`
+    : `<p class="lrp-none">${tHtml('notebook.learn.none.answers')}</p>`;
 
   const skills = `<div class="lrp-skills">${SKILLS.map((k) => {
     const v = s.skills[k];
     const share = v.tested ? v.mastered / v.tested : 0;
+    // The percent sign is set smaller than the number, so the number and the sign come apart here.
+    const pctHtml = esc(formatPercent(pct(v.mastered, v.tested) / 100)).replace(/(\s*%\s*)/, '<small>$1</small>');
     return `<div class="lrp-skill">
-      <span class="lrp-skill__name">${SKILL_LABEL[k]}</span>
-      <b class="lrp-skill__pct">${v.tested ? `${pct(v.mastered, v.tested)}<small>%</small>` : '–'}</b>
-      <span class="lrp-skill__bar" role="img" aria-label="${v.mastered} of ${v.tested} mastered"><i style="width:${(share * 100).toFixed(1)}%"></i></span>
-      <span class="lrp-skill__n">${fmt(v.mastered)} of ${fmt(v.tested)} mastered</span>
+      <span class="lrp-skill__name">${esc(skillLabel(k))}</span>
+      <b class="lrp-skill__pct">${v.tested ? pctHtml : '–'}</b>
+      <span class="lrp-skill__bar" role="img" aria-label="${tHtml('notebook.learn.mastered', { value: v.mastered, total: v.tested })}"><i style="width:${(share * 100).toFixed(1)}%"></i></span>
+      <span class="lrp-skill__n">${tHtml('notebook.learn.mastered', { value: v.mastered, total: v.tested })}</span>
     </div>`;
   }).join('')}</div>${mixHtml(s.mix)}`;
 
@@ -439,29 +476,33 @@ export function progressHtml(input: ProgressInput): string {
     .map((l) => {
       const o = s.overlaps[l.id];
       const extra = [
-        o?.elsewhere ? `${fmt(o.elsewhere)} started elsewhere` : '',
-        ...(o?.shared.slice(0, 3).map((x) => `${fmt(x.shared)} shared with ${esc(x.label)}`) || []),
+        o?.elsewhere ? t('notebook.learn.lists.elsewhere', { count: o.elsewhere }) : '',
+        ...(o?.shared.slice(0, 3).map((x) => t('notebook.learn.lists.shared', { count: x.shared, list: x.label })) || []),
       ].filter(Boolean);
+      const more = [t('notebook.review.count.learning', { count: l.learning }), t('notebook.review.count.new', { count: l.fresh }), ...extra];
       return `<li class="lrp-list">
         <span class="lrp-list__name">${esc(l.label)}</span>
-        <span class="lrp-list__n"><b>${fmt(l.known)}</b> of ${fmt(l.total)} known</span>
-        ${stackBar(l.known, l.learning, l.total, `${l.known} of ${l.total} known`)}
-        <span class="lrp-list__more">${[`${fmt(l.learning)} learning`, `${fmt(l.fresh)} new`, ...extra].join(' · ')}</span>
+        <span class="lrp-list__n">${tHtml('notebook.learn.known', { value: bold(fmt(l.known)), total: l.total })}</span>
+        ${stackBar(l.known, l.learning, l.total, t('notebook.learn.known', { value: l.known, total: l.total }))}
+        <span class="lrp-list__more">${more.map(esc).join(' · ')}</span>
       </li>`;
     })
     .join('')}</ul>
-    <p class="lrp-key"><i class="lrp-key__known"></i>Known<i class="lrp-key__learning"></i>Learning<i class="lrp-key__new"></i>New</p>`;
+    <p class="lrp-key"><i class="lrp-key__known"></i>${tHtml('notebook.learn.key.known')}<i class="lrp-key__learning"></i>${esc(MATURITY_NAME.learning)}<i class="lrp-key__new"></i>${esc(MATURITY_NAME.new)}</p>`;
 
   // Trouble words set as one run of type: the more often missed, the larger and darker the word.
-  const worst = Math.max(0.0001, ...s.trouble.map((t) => t.misses / Math.max(1, t.answers)));
+  const worst = Math.max(0.0001, ...s.trouble.map((tw) => tw.misses / Math.max(1, tw.answers)));
   const trouble = s.trouble.length
     ? `<p class="lrp-trouble">${s.trouble
-        .map((t) => {
-          const w = t.misses / Math.max(1, t.answers) / worst;
-          return `<button type="button" class="lrp-tw${t.leech ? ' is-leech' : ''}" style="--w:${w.toFixed(2)}" data-act="lookup" data-q="${esc(t.lemma)}" title="${t.misses} of ${t.answers} missed, last ${esc(dayLabel(t.lastMiss))}">${esc(t.lemma)}<sup>${t.misses}/${t.answers}</sup></button>`;
+        .map((tw) => {
+          const w = tw.misses / Math.max(1, tw.answers) / worst;
+          const title = tHtml('notebook.learn.trouble.title', { misses: tw.misses, answers: tw.answers, day: dayLabel(tw.lastMiss) });
+          return `<button type="button" class="lrp-tw${tw.leech ? ' is-leech' : ''}" style="--w:${w.toFixed(2)}" data-act="lookup" data-q="${esc(tw.lemma)}" title="${title}">${esc(tw.lemma)}<sup>${tw.misses}/${tw.answers}</sup></button>`;
         })
-        .join(' ')}</p><p class="lrp-key lrp-key--trouble"><sup>${s.trouble[0].misses}/${s.trouble[0].answers}</sup>Missed of answered${s.trouble.some((t) => t.leech) ? '<i class="lrp-key__leech"></i>Leech' : ''}</p>`
-    : '<p class="lrp-none">No trouble words</p>';
+        .join(' ')}</p><p class="lrp-key lrp-key--trouble"><sup>${s.trouble[0].misses}/${s.trouble[0].answers}</sup>${tHtml('notebook.learn.trouble.key')}${
+        s.trouble.some((tw) => tw.leech) ? `<i class="lrp-key__leech"></i>${tHtml('notebook.learn.trouble.leech')}` : ''
+      }</p>`
+    : `<p class="lrp-none">${tHtml('notebook.learn.none.trouble')}</p>`;
 
   const biggest = Math.max(1, ...s.families.map((f) => f.size));
   const fams = s.families.length
@@ -470,23 +511,23 @@ export function progressHtml(input: ProgressInput): string {
           (f) => `<li class="lrp-fam" style="--s:${(f.size / biggest).toFixed(2)}">
             <span class="lrp-fam__root">${esc(f.label)}</span>
             ${f.gloss ? `<span class="lrp-fam__gloss">${esc(f.gloss)}</span>` : ''}
-            ${stackBar(f.known, f.learning, f.size, `${f.known} of ${f.size} known`)}
-            <span class="lrp-fam__n">${f.known} of ${f.size} known</span>
+            ${stackBar(f.known, f.learning, f.size, t('notebook.learn.known', { value: f.known, total: f.size }))}
+            <span class="lrp-fam__n">${tHtml('notebook.learn.known', { value: f.known, total: f.size })}</span>
           </li>`,
         )
         .join('')}</ul>`
-    : '<p class="lrp-none">No root families yet</p>';
+    : `<p class="lrp-none">${tHtml('notebook.learn.none.families')}</p>`;
 
   let n = 0;
   return `<div class="lrp-frame"><div class="lrp">
     ${mast}
-    ${section('lrp-sec--memory', ++n, 'Memory', memory)}
-    ${section('lrp-sec--ahead', ++n, 'Reviews ahead', ahead)}
-    ${section('lrp-sec--held', ++n, 'How long words are held', heldBody)}
-    ${section('lrp-sec--answers', ++n, 'Answers per day', answersBody)}
-    ${section('lrp-sec--skills', ++n, 'Skills', skills)}
-    ${section('lrp-sec--lists', ++n, 'Words', lists)}
-    ${section('lrp-sec--trouble', ++n, 'Trouble words', trouble)}
-    ${section('lrp-sec--fams', ++n, 'Root families', fams)}
+    ${section('lrp-sec--memory', ++n, t('notebook.learn.section.memory'), memory)}
+    ${section('lrp-sec--ahead', ++n, t('notebook.learn.section.ahead'), ahead)}
+    ${section('lrp-sec--held', ++n, t('notebook.learn.section.held'), heldBody)}
+    ${section('lrp-sec--answers', ++n, t('notebook.learn.section.answers'), answersBody)}
+    ${section('lrp-sec--skills', ++n, t('notebook.learn.section.skills'), skills)}
+    ${section('lrp-sec--lists', ++n, t('notebook.learn.section.lists'), lists)}
+    ${section('lrp-sec--trouble', ++n, t('notebook.learn.section.trouble'), trouble)}
+    ${section('lrp-sec--fams', ++n, t('notebook.learn.section.families'), fams)}
   </div></div>`;
 }

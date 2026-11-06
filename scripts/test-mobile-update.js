@@ -27,6 +27,8 @@ const bundle = (entry) => {
   return mod.exports;
 };
 const up = bundle('apps/mobile/src/app-update.ts');
+// The interface strings the Settings panels call, in English.
+const i18n = bundle('packages/core/src/i18n/runtime.ts');
 const tick = async () => {
   for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
 };
@@ -322,10 +324,11 @@ function loadPanels() {
   }).outputText;
   const row = (r) => `<row>${r.label || r.name || ''}</row>`;
   const core = {
+    ...i18n,
     API_PROVIDERS: [], SOURCE_INFO: {}, TRANSLATION_ENGINES: [], apiKeysPanelHtml: () => '', choiceRowHtml: row,
     groupCatalogByLanguage: () => [], navRowHtml: row, rangeRowHtml: row, switchRowHtml: row,
     segRowHtml: bundle('packages/core/src/settings-kit.ts').segRowHtml,
-    offlineShelvesHtml: () => '', packInspectorHtml: () => '', sourcesPanelHtml: () => '',
+    offlineShelvesHtml: () => '', packInspectorHtml: () => '', sourcesPanelHtml: () => '', languageRowHtml: () => '',
   };
   const mod = { exports: {} };
   vm.runInNewContext(js, {

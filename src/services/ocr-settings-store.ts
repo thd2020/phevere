@@ -7,12 +7,15 @@
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { t, type MessageKey } from '@phevere/core/i18n/runtime';
 
 export type OcrProfileKind = 'bundled' | 'download' | 'custom';
 
 export interface OcrProfileMeta {
   id: string;
+  /** A model's own name; empty when labelKey names a catalogue message instead. */
   label: string;
+  labelKey?: MessageKey;
   kind: OcrProfileKind;
   /** Relative pack folder under userData/ocr-packs when downloaded. */
   packDir?: string;
@@ -37,12 +40,12 @@ const FILE_NAME = 'ocr-settings.json';
 export const OCR_PROFILES: OcrProfileMeta[] = [
   {
     id: 'bundled-pp-ocrv4',
-    label: 'PP-OCRv4 mobile',
+    label: 'PP-OCRv4 mobile', // i18n-ignore: the model's published name
     kind: 'bundled',
   },
   {
     id: 'pp-ocrv5-mobile',
-    label: 'PP-OCRv5 mobile',
+    label: 'PP-OCRv5 mobile', // i18n-ignore: the model's published name
     kind: 'download',
     packDir: 'pp-ocrv5-mobile',
     files: {
@@ -61,10 +64,16 @@ export const OCR_PROFILES: OcrProfileMeta[] = [
   },
   {
     id: 'custom',
-    label: 'Custom model folder…',
+    label: '',
+    labelKey: 'main.ocr.profile.custom',
     kind: 'custom',
   },
 ];
+
+/** The name Settings shows for a profile, in the interface language. */
+export function ocrProfileLabel(profile: OcrProfileMeta): string {
+  return profile.labelKey ? t(profile.labelKey) : profile.label;
+}
 
 export const ocrSettingsDefaults: OcrSettings = {
   activeProfileId: 'bundled-pp-ocrv4',

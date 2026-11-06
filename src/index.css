@@ -2257,7 +2257,8 @@ body.settings-page .settings-close-btn:focus-visible {
 body.settings-page .settings-shell {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: 140px minmax(0, 1fr);
+  /* The sidebar grows to its longest section name, such as German "Benachrichtigungen". */
+  grid-template-columns: minmax(140px, max-content) minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
@@ -3126,7 +3127,8 @@ body.main-window #vocabList .vocab-group { scroll-margin-top: 84px; }
 body.main-window .status-value.needs { color: var(--pv-ember); font-weight: 600; }
 
 /* Global search: the field sits between the tabs and the tools on both tabs. */
-body.main-window .ws-search { position: relative; flex: 1 1 14rem; max-width: 22rem; margin-left: auto; }
+/* A small basis keeps the search beside the tabs when their names run long (Russian, French). */
+body.main-window .ws-search { position: relative; flex: 1 1 9rem; max-width: 22rem; margin-left: auto; }
 body.main-window .ws-search .vocab-search {
   width: 100%;
   max-width: none;

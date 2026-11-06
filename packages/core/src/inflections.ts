@@ -19,6 +19,10 @@ import type { HttpClient } from './http';
 import { fetchKaikkiPage, kaikkiDirectory } from './multilingual-sources';
 import { wordFrequencies } from './form-of';
 
+/**
+ * Row, column and caption labels are English ids ("Past participle", "Cases", "Plural (…)") that
+ * the code below matches on; lexicon-parts.ts shows them in the interface language.
+ */
 export interface InflectionRow {
   label: string;
   forms: string[];
@@ -150,7 +154,7 @@ function caseGrid(forms: KaikkiForm[]): InflectionGrid | null {
     const pl = collect(forms, (f) => has(f, c, 'plural'));
     if (sg.length || pl.length) rows.push({ label: cap(c), cells: [sg, pl] });
   }
-  return rows.length >= 2 ? { caption: 'Cases', columns: ['Singular', 'Plural'], rows } : null;
+  return rows.length >= 2 ? { caption: 'Cases', columns: ['Singular', 'Plural'], rows } : null; // i18n-ignore: label ids, see InflectionRow
 }
 
 function personGrid(forms: KaikkiForm[], tense: string, caption: string): InflectionGrid | null {
@@ -185,7 +189,7 @@ function tableFor(pos: string, forms: KaikkiForm[], word: string, lang: string, 
       // "be" alone has present forms other than its own: am, are.
       const present = collect(ok, (f) => has(f, 'present') && finite(f) && (has(f, 'first-person', 'singular') || (has(f, 'plural') && hasNone(f, 'first-person', 'second-person', 'third-person'))))
         .filter((f) => f.toLowerCase() !== word.toLowerCase());
-      if (present.length) rows.push({ label: 'Present', forms: present.slice(0, 3), distinct: true });
+      if (present.length) rows.push({ label: 'Present', forms: present.slice(0, 3), distinct: true }); // i18n-ignore: label id
       en('Third-person singular', (f) => has(f, 'present', 'singular', 'third-person') && finite(f));
       en('Present participle', (f) => has(f, 'present', 'participle'));
       en('Past', (f) => has(f, 'past') && finite(f));
@@ -307,7 +311,7 @@ export function inflectionsFromKaikki(jsonl: string, lang: string, word: string)
         if (prev && prevPlural && plural && plural.forms.some((f) => !listed.includes(f))) {
           if (prevPlural.label === 'Plural' && nounHint) prevPlural.label = `Plural (${nounHint})`;
           const hint = senseHint(senses);
-          prev.rows.push({ ...plural, label: hint ? `Plural (${hint})` : 'Plural' });
+          prev.rows.push({ ...plural, label: hint ? `Plural (${hint})` : 'Plural' }); // i18n-ignore: label id
         }
       }
       continue;

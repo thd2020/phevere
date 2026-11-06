@@ -7,6 +7,7 @@ import {
   apiKeysPanelHtml,
   choiceRowHtml,
   groupCatalogByLanguage,
+  languageRowHtml,
   learnSettingsHtml,
   navRowHtml,
   rangeRowHtml,
@@ -24,6 +25,12 @@ import {
   type PackProgress,
   type PackView,
   type SourceRowInput,
+  formatMegabytes,
+  formatNumber,
+  formatPercent,
+  t,
+  tHtml,
+  type MessageKey,
 } from '@phevere/core';
 import { UPDATE_MODES, updateActionText, updateStatusText, type PhoneUpdateState } from './app-update';
 import type { CatalogStatus } from './platform/offline';
@@ -39,7 +46,8 @@ export type VoiceStatus = {
   variants: Array<{ id: string; mb: number; ready: boolean }>;
 };
 
-const VOICE_NAMES: Record<string, string> = { compact: 'Neural (standard)', full: 'Neural (high quality)' };
+/** The downloadable voices' names, read when the list is drawn. */
+const VOICE_NAMES: Record<string, MessageKey> = { compact: 'mobile.audio.voice.compact', full: 'mobile.audio.voice.full' };
 
 function esc(s: string): string {
   return (s || '')
@@ -62,19 +70,28 @@ export type CaptureInfo = {
   barSlot?: number;
 };
 
-/** Typical main row of Android's selection bar, for placing Phevere. */
-export const MOCK_BAR = ['Cut', 'Copy', 'Paste', 'Select all', 'Share'];
+/**
+ * Typical main row of Android's selection bar, for placing Phevere. Android shows these in the
+ * phone's language, so the mock does too; the labels are read when the bar is drawn.
+ */
+export const MOCK_BAR: MessageKey[] = [
+  'mobile.mockBar.cut',
+  'mobile.mockBar.copy',
+  'mobile.mockBar.paste',
+  'mobile.mockBar.selectAll',
+  'mobile.mockBar.share',
+];
 
 /** Mock selection bar: drag the Phevere chip (or use the arrows) to choose its slot. */
 export function mockBarHtml(slot: number): string {
   const at = Math.max(0, Math.min(MOCK_BAR.length, slot));
-  const chips = MOCK_BAR.map((label) => `<span class="mock-bar__item">${esc(label)}</span>`);
+  const chips = MOCK_BAR.map((key) => `<span class="mock-bar__item">${tHtml(key)}</span>`);
   chips.splice(at, 0, `<span class="mock-bar__item mock-bar__ours" data-drag="bar-slot" role="slider" tabindex="0"
-    aria-label="Phevere position on the selection bar" aria-valuemin="0" aria-valuemax="${MOCK_BAR.length}" aria-valuenow="${at}">Phevere</span>`);
+    aria-label="${tHtml('mobile.mockBar.position')}" aria-valuemin="0" aria-valuemax="${MOCK_BAR.length}" aria-valuenow="${at}">Phevere</span>`);
   return `<div class="mock-bar-wrap">
-    <button type="button" class="icon-btn" data-act="bar-slot-step" data-step="-1" aria-label="Move Phevere left" ${at === 0 ? 'disabled' : ''}>${ICON.left}</button>
+    <button type="button" class="icon-btn" data-act="bar-slot-step" data-step="-1" aria-label="${tHtml('mobile.mockBar.moveLeft')}" ${at === 0 ? 'disabled' : ''}>${ICON.left}</button>
     <div class="mock-bar" data-mock-bar>${chips.join('')}</div>
-    <button type="button" class="icon-btn" data-act="bar-slot-step" data-step="1" aria-label="Move Phevere right" ${at === MOCK_BAR.length ? 'disabled' : ''}>${ICON.right}</button>
+    <button type="button" class="icon-btn" data-act="bar-slot-step" data-step="1" aria-label="${tHtml('mobile.mockBar.moveRight')}" ${at === MOCK_BAR.length ? 'disabled' : ''}>${ICON.right}</button>
   </div>`;
 }
 
@@ -105,39 +122,38 @@ function navRow(act: string, icon: string, label: string, value = '', sub = '', 
   </button>`;
 }
 
-/** What the LSPosed module does, for people who meet it here before reading the README. */
-const MODULE_ABOUT = 'Adds Phevere to the text selection menu in chosen apps';
-
 function selectionBarSection(capture: CaptureInfo): string {
-  const instant = switchRowHtml({ label: 'Pop up on selection', on: !!capture.autoPopup, attrs: 'data-act="auto-popup"' });
+  // What the LSPosed module does, for people who meet it here before reading the README.
+  const moduleAbout = t('mobile.capture.moduleAbout');
+  const instant = switchRowHtml({ label: t('mobile.capture.popUpOnSelection'), on: !!capture.autoPopup, attrs: 'data-act="auto-popup"' });
   if (capture.moduleActive) {
     const slot = typeof capture.barSlot === 'number' ? capture.barSlot : -1;
     const custom = slot >= 0;
     const status = `<span class="sv-pill sv-pill--ok">${ICON.check}${esc(capture.moduleFramework || 'LSPosed')}</span>`;
     const place = capture.autoPopup ? '' : `
       <div class="sv-row">
-        <span class="sv-row__text"><span class="sv-row__label" id="bar-place-label">Position on bar</span></span>
+        <span class="sv-row__text"><span class="sv-row__label" id="bar-place-label">${tHtml('mobile.capture.positionOnBar')}</span></span>
         <div class="sv-seg" role="radiogroup" aria-labelledby="bar-place-label">
-          <label class="sv-seg__item"><input type="radio" name="bar-place" data-act="bar-place" value="default" ${custom ? '' : 'checked'} />System</label>
-          <label class="sv-seg__item"><input type="radio" name="bar-place" data-act="bar-place" value="custom" ${custom ? 'checked' : ''} />Custom</label>
+          <label class="sv-seg__item"><input type="radio" name="bar-place" data-act="bar-place" value="default" ${custom ? '' : 'checked'} />${tHtml('mobile.capture.position.system')}</label>
+          <label class="sv-seg__item"><input type="radio" name="bar-place" data-act="bar-place" value="custom" ${custom ? 'checked' : ''} />${tHtml('mobile.capture.position.custom')}</label>
         </div>
       </div>
       ${custom ? `<div class="sv-row sv-row--bar">${mockBarHtml(slot)}</div>` : ''}`;
-    return `<header class="sv-head"><h3 class="sv-head__title">Selection bar</h3>${status}</header>
+    return `<header class="sv-head"><h3 class="sv-head__title">${tHtml('mobile.capture.selectionBar')}</h3>${status}</header>
     <div class="sv-ledger">
       ${instant}
       ${place}
-      ${navRowHtml({ label: 'LSPosed module', sub: MODULE_ABOUT, attrs: 'data-act="selection-setup"' })}
+      ${navRowHtml({ label: t('mobile.capture.lsposedModule'), sub: moduleAbout, attrs: 'data-act="selection-setup"' })}
     </div>`;
   }
   const a11y = capture.autoPopup && !capture.accessibilityOn
-    ? navRowHtml({ label: 'Accessibility service', value: 'Off', attrs: 'data-act="a11y-settings"' })
+    ? navRowHtml({ label: t('mobile.capture.accessibilityService'), value: t('common.off'), attrs: 'data-act="a11y-settings"' })
     : '';
-  return `<header class="sv-head"><h3 class="sv-head__title">Selection bar</h3></header>
+  return `<header class="sv-head"><h3 class="sv-head__title">${tHtml('mobile.capture.selectionBar')}</h3></header>
     <div class="sv-ledger">
       ${instant}
       ${a11y}
-      ${navRowHtml({ label: 'LSPosed module', sub: MODULE_ABOUT, value: 'Inactive', attrs: 'data-act="selection-setup"' })}
+      ${navRowHtml({ label: t('mobile.capture.lsposedModule'), sub: moduleAbout, value: t('mobile.capture.moduleInactive'), attrs: 'data-act="selection-setup"' })}
     </div>`;
 }
 
@@ -155,31 +171,26 @@ const TAB_ICON: Record<SettingsSection, string> = {
   about: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM12 11v5.5M12 7.5v.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
-export const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = [
-  { id: 'capture', label: 'Capture' },
-  { id: 'learn', label: 'Learn' },
-  { id: 'sources', label: 'Sources' },
-  { id: 'offline', label: 'Offline' },
-  { id: 'api', label: 'API keys' },
-  { id: 'audio', label: 'Audio' },
-  { id: 'about', label: 'About' },
-];
+/** The browser's sections; the phone adds Notifications and, on Android, Updates. */
+export const SETTINGS_SECTIONS: SettingsSection[] = ['capture', 'learn', 'sources', 'offline', 'api', 'audio', 'about'];
+
+/** A section's name in the interface language. */
+export function settingsSectionLabel(id: SettingsSection): string {
+  return t(`settings.section.${id}`);
+}
 
 /** `updates`: the Android updater is running (never on iOS or in the browser). */
 export function settingsSections(capture: CaptureInfo, updates = false): Array<{ id: SettingsSection; label: string }> {
-  if (capture.platform === 'web') return SETTINGS_SECTIONS;
-  const list: Array<{ id: SettingsSection; label: string }> = [
-    { id: 'capture', label: 'Capture' },
-    { id: 'learn', label: 'Learn' },
-    { id: 'notifications', label: 'Notifications' },
-    { id: 'sources', label: 'Sources' },
-    { id: 'offline', label: 'Offline' },
-    { id: 'api', label: 'API keys' },
-    { id: 'audio', label: 'Audio' },
-  ];
-  if (updates && capture.platform === 'android') list.push({ id: 'updates', label: 'Updates' });
-  list.push({ id: 'about', label: 'About' });
-  return list;
+  const ids: SettingsSection[] =
+    capture.platform === 'web'
+      ? SETTINGS_SECTIONS
+      : ['capture', 'learn', 'notifications', 'sources', 'offline', 'api', 'audio'];
+  const list = ids.slice();
+  if (capture.platform !== 'web') {
+    if (updates && capture.platform === 'android') list.push('updates');
+    list.push('about');
+  }
+  return list.map((id) => ({ id, label: settingsSectionLabel(id) }));
 }
 
 /** The desktop's Updates panel without Roll back, which Android cannot do. */
@@ -188,7 +199,7 @@ function updatesPanel(u: PhoneUpdateState): string {
   const action = updateActionText(u);
   const pct = Math.round(u.progress * 100);
   const busy = u.status === 'checking' || u.status === 'downloading';
-  const options = UPDATE_MODES.filter((m) => u.canInstall || m.id !== 'auto').map((m) => ({ value: m.id, label: m.label }));
+  const options = UPDATE_MODES.filter((m) => u.canInstall || m.id !== 'auto').map((m) => ({ value: m.id, label: t(m.labelKey) }));
   return `<div class="sv sv-page">
     <div class="sv-ledger">
       <div class="sv-row">
@@ -197,22 +208,17 @@ function updatesPanel(u: PhoneUpdateState): string {
           <span class="sv-row__sub${u.status === 'error' ? ' is-error' : ''}" role="status" aria-live="polite">${esc(status)}</span>
         </span>
         ${action ? `<button type="button" class="sv-btn sv-btn--accent" data-act="update-install">${esc(action)}</button>` : ''}
-        ${u.status === 'downloading' ? `<div class="sv-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Downloading update"><span style="width:${pct}%"></span></div>` : ''}
+        ${u.status === 'downloading' ? `<div class="sv-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="${tHtml('mobile.update.downloadingLabel')}"><span style="width:${pct}%"></span></div>` : ''}
       </div>
-      ${segRowHtml({ label: 'Install updates', name: 'update-mode', value: !u.canInstall && u.mode === 'auto' ? 'ask' : u.mode, options })}
+      ${segRowHtml({ label: t('mobile.update.installUpdates'), name: 'update-mode', value: !u.canInstall && u.mode === 'auto' ? 'ask' : u.mode, options })}
       <div class="sv-ledger__foot">
-        <button type="button" class="sv-btn" data-act="update-check"${busy ? ' disabled' : ''}>Check now</button>
+        <button type="button" class="sv-btn" data-act="update-check"${busy ? ' disabled' : ''}>${tHtml('mobile.update.checkNow')}</button>
       </div>
     </div>
   </div>`;
 }
 
 const TRANSLATION_ONLY = new Set(['DeepL API', 'Google Translate API']);
-
-/** The tabs are icons, so each panel starts with its name (added in settingsBody). */
-function panelIntro(_title: string): string {
-  return '';
-}
 
 /** State the Sources, Offline and API keys panels keep between repaints. */
 export interface LibraryState {
@@ -252,15 +258,17 @@ export function keyPresent(prefs: MobilePrefs, id: ApiProviderId): boolean {
 }
 
 function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
-  const floating = switchRowHtml({ label: 'Floating pop-up', on: !!prefs.floatingStrip, attrs: 'data-act="strip-on"' });
+  const floating = switchRowHtml({ label: t('mobile.capture.floatingPopup'), on: !!prefs.floatingStrip, attrs: 'data-act="strip-on"' });
   const overlay =
     capture.platform === 'android' && prefs.floatingStrip && !capture.canDrawOverlays
-      ? navRowHtml({ label: 'Display over other apps', value: 'Off', attrs: 'data-act="overlay-perm"' })
+      ? navRowHtml({ label: t('mobile.capture.displayOverApps'), value: t('common.off'), attrs: 'data-act="overlay-perm"' })
       : '';
-  const scan = `<div class="sv-ledger">${navRowHtml({ icon: ICON.camera, label: 'Camera or photo', attrs: 'data-act="ocr"' })}</div>`;
-  const scanHead = '<header class="sv-head"><h3 class="sv-head__title">Scan</h3></header>';
+  const scan = `<div class="sv-ledger">${navRowHtml({ icon: ICON.camera, label: t('mobile.capture.cameraOrPhoto'), attrs: 'data-act="ocr"' })}</div>`;
+  const scanHead = `<header class="sv-head"><h3 class="sv-head__title">${tHtml('mobile.capture.scan')}</h3></header>`;
+  const language = languageRowHtml(prefs.uiLanguage);
   if (capture.platform === 'android') {
     return `<div class="sv sv-page">
+      ${language}
       <div class="sv-ledger">${floating}${overlay}</div>
       ${selectionBarSection(capture)}
       ${scanHead}
@@ -269,36 +277,37 @@ function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
   }
   if (capture.platform === 'ios') {
     return `<div class="sv sv-page">
+      ${language}
       <div class="sv-ledger">${floating}</div>
-      <header class="sv-head"><h3 class="sv-head__title">Selection</h3></header>
-      <div class="sv-ledger">${switchRowHtml({ label: 'Pop up on selection', on: !!capture.autoPopup, attrs: 'data-act="auto-popup"' })}</div>
+      <header class="sv-head"><h3 class="sv-head__title">${tHtml('mobile.capture.selection')}</h3></header>
+      <div class="sv-ledger">${switchRowHtml({ label: t('mobile.capture.popUpOnSelection'), on: !!capture.autoPopup, attrs: 'data-act="auto-popup"' })}</div>
       ${scanHead}
       ${scan}
     </div>`;
   }
-  return `<div class="sv sv-page">${scan}</div>`;
+  return `<div class="sv sv-page">${language}${scanHead}${scan}</div>`;
 }
 
 /** Pictures beside senses come from Wikimedia Commons, so their switch sits with the sources. */
 function picturesHtml(prefs: MobilePrefs): string {
   return `<div class="sv sv-sources">
-    <header class="sv-head"><h3 class="sv-head__title">Pictures</h3></header>
-    <div class="sv-ledger">${switchRowHtml({ label: 'Pictures beside senses', on: prefs.senseImages !== false, attrs: 'data-act="sense-images"' })}</div>
+    <header class="sv-head"><h3 class="sv-head__title">${tHtml('mobile.sources.pictures')}</h3></header>
+    <div class="sv-ledger">${switchRowHtml({ label: t('mobile.sources.picturesBesideSenses'), on: prefs.senseImages !== false, attrs: 'data-act="sense-images"' })}</div>
   </div>`;
 }
 
 function notificationsPanel(prefs: MobilePrefs, capture: CaptureInfo, updates: boolean): string {
   const allow = !capture.notificationsGranted
-    ? navRowHtml({ label: 'Notifications', value: 'Off', attrs: 'data-act="notify-allow"' })
+    ? navRowHtml({ label: t('mobile.notifications.allow'), value: t('common.off'), attrs: 'data-act="notify-allow"' })
     : '';
   return `<div class="sv sv-page">
     <div class="sv-ledger">
       ${allow}
-      ${switchRowHtml({ label: 'Incoming lookup', on: !!prefs.notifyIncoming, attrs: 'data-act="notify" data-key="incoming"' })}
-      ${switchRowHtml({ label: 'Saved to notebook', on: !!prefs.notifySaved, attrs: 'data-act="notify" data-key="saved"' })}
-      ${switchRowHtml({ label: 'Scan finished', on: !!prefs.notifyOcr, attrs: 'data-act="notify" data-key="ocr"' })}
-      ${updates ? switchRowHtml({ label: 'Update ready or available', on: prefs.notifyUpdates !== false, attrs: 'data-act="notify" data-key="updates"' }) : ''}
-      ${navRowHtml({ label: 'System notification settings', attrs: 'data-act="notify-settings"' })}
+      ${switchRowHtml({ label: t('mobile.notifications.incoming'), on: !!prefs.notifyIncoming, attrs: 'data-act="notify" data-key="incoming"' })}
+      ${switchRowHtml({ label: t('mobile.notifications.saved'), on: !!prefs.notifySaved, attrs: 'data-act="notify" data-key="saved"' })}
+      ${switchRowHtml({ label: t('mobile.notifications.scanFinished'), on: !!prefs.notifyOcr, attrs: 'data-act="notify" data-key="ocr"' })}
+      ${updates ? switchRowHtml({ label: t('mobile.notifications.updates'), on: prefs.notifyUpdates !== false, attrs: 'data-act="notify" data-key="updates"' }) : ''}
+      ${navRowHtml({ label: t('mobile.notifications.systemSettings'), attrs: 'data-act="notify-settings"' })}
     </div>
   </div>`;
 }
@@ -325,7 +334,6 @@ function sourcesPanel(prefs: MobilePrefs, sources: DictionarySource[], lib: Libr
     open: lib.openDetails.has(`src:radio:${e.id}`),
   }));
   return `
-    ${panelIntro('Sources')}
     ${sourcesPanelHtml({ dictionary, engines })}
     ${picturesHtml(prefs)}`;
 }
@@ -336,16 +344,15 @@ function offlinePanel(packs: CatalogStatus[], packMsg: string, lib: LibraryState
   const open = lib.inspecting ? views.find((p) => p.id === lib.inspecting) : undefined;
   const details: PackDetails = {
     ...(open ? lib.packDetails.get(open.id) : {}),
-    storedAt: platform === 'web' ? 'Browser storage for this site' : 'phevere.sqlite in app storage',
+    storedAt: platform === 'web' ? t('mobile.offline.storedInBrowser') : t('mobile.offline.storedInApp', { file: 'phevere.sqlite' }),
   };
   const progress = lib.packProgress;
   return `
-    ${panelIntro('Offline dictionary')}
     ${packMsg ? `<p class="status" role="status">${esc(packMsg)}</p>` : ''}
     ${offlineShelvesHtml({ groups: groupCatalogByLanguage(views), progress })}
-    <h3 class="settings-subhead">Import</h3>
-    ${navRow('pack-file', ICON.import, 'Import pack', '', 'FreeDict TEI, JMdict JSON, Kengdic TSV, WordNet or GCIDE')}
-    ${navRow('pack-file', ICON.import, 'Import CEDICT file', '', 'cedict_ts.u8', 'cedict')}
+    <h3 class="settings-subhead">${tHtml('mobile.offline.import')}</h3>
+    ${navRow('pack-file', ICON.import, t('mobile.offline.importPack'), '', t('mobile.offline.importPackFormats'))}
+    ${navRow('pack-file', ICON.import, t('mobile.offline.importCedict'), '', 'cedict_ts.u8', 'cedict')}
     ${open ? packInspectorHtml(open, details, progress && progress.id === open.id ? progress : null, !!progress, lib.inspectorEntering) : ''}`;
 }
 
@@ -365,7 +372,6 @@ function apiPanel(prefs: MobilePrefs, lib: LibraryState): string {
     };
   }
   return `
-    ${panelIntro('API keys')}
     ${apiKeysPanelHtml(states)}`;
 }
 
@@ -382,17 +388,17 @@ function voiceList(voice: VoiceStatus | null): string {
   const note = !voice.downloading && voice.progress && !/^(Connecting|Downloading|Installing)/.test(voice.progress)
     ? `<p class="sv-note">${esc(voice.progress)}</p>`
     : '';
-  return `<header class="sv-head"><h3 class="sv-head__title">Pronunciation voice</h3></header>
-    <div class="sv-ledger" role="radiogroup" aria-label="Pronunciation voice">${rows}</div>${note}`;
+  return `<header class="sv-head"><h3 class="sv-head__title">${tHtml('mobile.audio.voice')}</h3></header>
+    <div class="sv-ledger" role="radiogroup" aria-label="${tHtml('mobile.audio.voice')}">${rows}</div>${note}`;
 }
 
 function downloadRow(voice: VoiceStatus, v: VoiceStatus['variants'][number]): string {
   const busy = voice.downloading === v.id;
   const pct = busy && v.mb ? Math.min(100, Math.round(((voice.doneMb || 0) / v.mb) * 100)) : 0;
   const meta = busy
-    ? `Downloading ${pct}%`
-    : v.id === 'mechanical' ? 'Built-in' : v.ready ? 'Downloaded' : `${v.mb} MB`;
-  const name = v.id === 'mechanical' ? 'Mechanical' : VOICE_NAMES[v.id] || v.id;
+    ? t('mobile.audio.voiceDownloading', { percent: formatPercent(pct / 100) })
+    : v.id === 'mechanical' ? t('mobile.audio.voiceBuiltIn') : v.ready ? t('mobile.audio.voiceDownloaded') : formatMegabytes(v.mb);
+  const name = v.id === 'mechanical' ? t('mobile.audio.voice.mechanical') : VOICE_NAMES[v.id] ? t(VOICE_NAMES[v.id]) : v.id;
   return choiceRowHtml({
     name,
     meta,
@@ -401,7 +407,7 @@ function downloadRow(voice: VoiceStatus, v: VoiceStatus['variants'][number]): st
     needsDownload: !v.ready,
     disabled: !!voice.downloading && !busy && !v.ready,
     attrs: `data-act="voice" data-value="${esc(v.id)}"`,
-    ariaLabel: `${name}${v.ready ? '' : `, download ${v.mb} MB`}`,
+    ariaLabel: v.ready ? name : t('mobile.audio.voiceNeedsDownload', { name, size: formatMegabytes(v.mb) }),
     busy: busy ? { pct, cancelAttrs: 'data-act="voice-cancel"' } : undefined,
   });
 }
@@ -413,16 +419,21 @@ function systemVoiceRows(selected: string, rows: NonNullable<VoiceStatus['rows']
     .join('');
 }
 
+/** The playback speed beside its slider, as "1.0×" with the locale's decimal mark. */
+export function speedText(speed: number): string {
+  return t('mobile.audio.speedValue', { speed: formatNumber(speed, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) });
+}
+
 function audioPanel(prefs: MobilePrefs, capture: CaptureInfo, voice: VoiceStatus | null): string {
   const speed = Number.isFinite(prefs.audioSpeed) ? prefs.audioSpeed : 1;
   const volume = Math.round((Number.isFinite(prefs.audioVolume) ? prefs.audioVolume : 0.5) * 100);
   return `<div class="sv sv-page">
-    <div class="sv-ledger">${switchRowHtml({ label: 'Pronunciation', on: !!prefs.audioEnabled, attrs: 'data-act="audio-on"' })}</div>
+    <div class="sv-ledger">${switchRowHtml({ label: t('mobile.audio.pronunciation'), on: !!prefs.audioEnabled, attrs: 'data-act="audio-on"' })}</div>
     ${capture.platform !== 'web' ? voiceList(voice) : ''}
-    <header class="sv-head"><h3 class="sv-head__title">Playback</h3></header>
+    <header class="sv-head"><h3 class="sv-head__title">${tHtml('mobile.audio.playback')}</h3></header>
     <div class="sv-ledger">
-      ${rangeRowHtml({ label: 'Speed', id: 'audio-speed', min: 0.5, max: 2, step: 0.1, value: speed, valueId: 'speed-value', valueText: `${speed.toFixed(1)}×`, attrs: 'data-act="audio-speed"' })}
-      ${rangeRowHtml({ label: 'Volume', id: 'audio-volume', min: 0, max: 100, step: 5, value: volume, valueId: 'volume-value', valueText: `${volume}%`, attrs: 'data-act="audio-volume"' })}
+      ${rangeRowHtml({ label: t('mobile.audio.speed'), id: 'audio-speed', min: 0.5, max: 2, step: 0.1, value: speed, valueId: 'speed-value', valueText: speedText(speed), attrs: 'data-act="audio-speed"' })}
+      ${rangeRowHtml({ label: t('mobile.audio.volume'), id: 'audio-volume', min: 0, max: 100, step: 5, value: volume, valueId: 'volume-value', valueText: formatPercent(volume / 100), attrs: 'data-act="audio-volume"' })}
     </div>
   </div>`;
 }
@@ -444,7 +455,7 @@ export function settingsBody(
   const tabs = sections
     .map(
       (s) =>
-        `<button type="button" class="result-tab" role="tab" data-act="settings-section" data-section="${s.id}" aria-selected="${section === s.id}" aria-label="${s.label}" title="${s.label}">${TAB_ICON[s.id]}</button>`,
+        `<button type="button" class="result-tab" role="tab" data-act="settings-section" data-section="${s.id}" aria-selected="${section === s.id}" aria-label="${esc(s.label)}" title="${esc(s.label)}">${TAB_ICON[s.id]}</button>`,
     )
     .join('');
   const current = sections.find((s) => s.id === section) || sections[0];
@@ -470,8 +481,8 @@ export function settingsBody(
   return `
     <div class="settings">
       <div class="settings-sticky">
-        <div class="result-tabs settings-tabs" role="tablist" aria-label="Settings sections">${tabs}</div>
+        <div class="result-tabs settings-tabs" role="tablist" aria-label="${tHtml('settings.sections')}">${tabs}</div>
       </div>
-      <div class="settings-panel" role="tabpanel" aria-label="${current.label}"><h2 class="settings-panel__name">${current.label}</h2>${panel}</div>
+      <div class="settings-panel" role="tabpanel" aria-label="${esc(current.label)}"><h2 class="settings-panel__name">${esc(current.label)}</h2>${panel}</div>
     </div>`;
 }
