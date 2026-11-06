@@ -30,6 +30,9 @@ const rules = [
       loader: 'ts-loader',
       options: {
         transpileOnly: true,
+        // ES modules reach webpack untouched, so `import()` becomes a chunk loaded on demand (the
+        // interface languages, the 3D map) instead of a require() that inlines it into every window.
+        compilerOptions: { module: 'esnext' },
       },
     },
   },
