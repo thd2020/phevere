@@ -412,6 +412,14 @@ export class DictionaryService extends BaseService {
     this.updateSourceAvailability();
     // Sense pictures read the same Wiktionary page the lookup already fetched and cached.
     registerWiktionaryWikitextSource((word) => this.getWiktionaryWikitext(word));
+    // The connection answering again after a silence, or the platform reporting a network change,
+    // ends every skip: a skip that began while nothing could be reached says nothing about the
+    // sources now, and a phone back online gets its definitions on the first word.
+    onNetChange(() => {
+      if (connectionSilent()) return;
+      this.sourceHealth.clear();
+      this.translationDownUntil.clear();
+    });
   }
 
   /**
@@ -1622,7 +1630,10 @@ export class DictionaryService extends BaseService {
     // Requests already in flight when the skip began report late; they are the same outage.
     if (h.downUntil > Date.now()) return;
     h.fails += 1;
-    if (h.fails >= 2) {
+    // Only a host that fails while others answer is skipped. When nothing answers at all (no
+    // network, Wi-Fi without internet), every source fails together, and skipping them would keep
+    // them skipped after the network is back; the lookup's own budgets cope with a dead connection.
+    if (h.fails >= 2 && !connectionSilent()) {
       const backoff = Math.min(SOURCE_DOWN_MAX_MS, SOURCE_DOWN_BASE_MS * 2 ** (h.fails - 2));
       h.downUntil = Date.now() + backoff;
       console.warn(`${source} keeps failing; skipping it for ${Math.round(backoff / 1000)}s`);
