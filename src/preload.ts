@@ -316,6 +316,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: (url: string) => {
     ipcRenderer.send('open-external', url);
   },
+  getAppInfo: (): Promise<{ version: string; platform: string; arch: string; systemVersion: string }> =>
+    ipcRenderer.invoke('app-info'),
   openInApp: (url: string) => {
     ipcRenderer.send('open-in-app', url);
   },
@@ -650,6 +652,7 @@ declare global {
       getLastSelection: () => Promise<SelectionEvent>;
       resetSelectionState: () => Promise<{ success: boolean }>;
       openExternal: (url: string) => void;
+      getAppInfo?: () => Promise<{ version: string; platform: string; arch: string; systemVersion: string }>;
       minimizeWindow: () => void;
       maximizeWindow: () => void;
       closeWindow: () => Promise<{ ok: boolean }>;

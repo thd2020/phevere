@@ -73,6 +73,7 @@ import {
   unsubscribeWordbook,
   vocabPayloadFromResult,
   examplesFromResult,
+  QUESTION_KINDS,
   type AnswerDetails,
 } from '@phevere/core';
 import {
@@ -1840,7 +1841,9 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
 const createSettingsWindow = (section?: string): void => {
   const target = section && /^[a-z]+$/.test(section) ? section : '';
   if (settingsWindow && !settingsWindow.isDestroyed()) {
-    if (target) void settingsWindow.webContents.executeJavaScript(`location.hash = '#settings/${target}'`).catch((): void => undefined);
+    // Through #settings first: the hash may already name this page after the person moved to
+    // another one, and an unchanged hash fires no hashchange.
+    if (target) void settingsWindow.webContents.executeJavaScript(`location.hash = '#settings'; location.hash = '#settings/${target}'`).catch((): void => undefined);
     // A window that never painted stays hidden; focus() alone would leave the
     // gear doing nothing until restart.
     if (settingsWindow.isMinimized()) settingsWindow.restore();
@@ -2734,6 +2737,14 @@ ipcMain.on('hide-popup', () => {
   popupWindows = [];
 });
 
+// Settings → About: the installed version and the system, for the page and for bug reports.
+ipcMain.handle('app-info', () => ({
+  version: app.getVersion(),
+  platform: process.platform,
+  arch: process.arch,
+  systemVersion: process.getSystemVersion(),
+}));
+
 ipcMain.handle('show-settings-window', (_event, section?: unknown) => {
   createSettingsWindow(typeof section === 'string' ? section : undefined);
 });
@@ -3342,7 +3353,7 @@ ipcMain.handle('vocab-update-note', async (_e, id: string, note: string) => {
 /** The question facts the renderer sends with a grade, for the answer history; anything else is dropped. */
 function answerDetailsFrom(raw: unknown): AnswerDetails {
   const d = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-  const kinds = ['meaning-choice', 'word-choice', 'listen-choice', 'recall', 'listen-type', 'cloze', 'flash'];
+  const kinds: string[] = QUESTION_KINDS;
   return {
     kind: kinds.includes(String(d.kind)) ? (String(d.kind) as AnswerDetails['kind']) : undefined,
     correct: typeof d.correct === 'boolean' ? d.correct : undefined,
@@ -3734,7 +3745,7 @@ function installDarwinAppMenu(): void {
     {
       label: app.name,
       submenu: [
-        { role: 'about' },
+        { label: `About ${app.name}`, click: () => createSettingsWindow('about') },
         { type: 'separator' },
         {
           label: 'Settings…',

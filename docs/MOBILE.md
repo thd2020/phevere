@@ -22,7 +22,7 @@
 |---|---|
 | Lookup | Material 3 search + lexicon / translation / Wikipedia / etymology. IPA chips under the headword, recorded audio, word-family links, back/forward |
 | Notebook | Save from the heart, and add to your own word books from the button beside it. Same list as desktop: expandable rows, Recent / A–Z. Export sits in the open list's menu on its chip, Import in the word book library, and pulling down the list reloads it. Empty glosses fill in the background. |
-| Settings | Capture, Notifications (Android / iOS), Sources, Offline, API keys, Audio. Capture holds camera/photo **Scan**. Notifications are three on/off rows: **Incoming lookup**, **Saved to notebook**, **Scan finished**, plus Allow / the OS screen. Desktop-only items (shortcuts, hover, tray balloons, PP-OCR) are not shown. |
+| Settings | Capture, Learn, Notifications (Android / iOS), Sources, Offline, API keys, Audio, Updates (Android), About. About shows the version (Android reads versionName and versionCode from the package manager; iOS and the browser build use `apps/mobile/package.json`'s version, compiled in as `__PHEVERE_VERSION__`), the repository and star link, and the credits with licences. Capture holds camera/photo **Scan**. Notifications are three on/off rows: **Incoming lookup**, **Saved to notebook**, **Scan finished**, plus Allow / the OS screen. Desktop-only items (shortcuts, hover, tray balloons, PP-OCR) are not shown. |
 | Process Text | Android: select text → **Phevere** in the system toolbar opens a compact lookup card. With **Display over other apps**, the card floats and the other app stays interactive. |
 | Share / deep link | iOS: Share sheet or `phevere://lookup?q=word` opens the lookup pop-up (floating card or half-sheet, per **Floating pop-up**). |
 | In-app selection | Android and iOS: select text inside Phevere, then tap **Phevere** on the selection bar (Android) or edit menu (iOS); with **Pop up on selection** on, the pop-up opens beside the selection straight away. |
@@ -30,6 +30,8 @@
 | Wikipedia | Same hits as desktop. One hit (or an exact title) opens the article in the lookup pane. In-article links stay in the pane; Back walks the pages you opened, then the hit list. Open in browser is on the reader bar. |
 
 Lookups use **native HTTP** (OkHttp / URLSession), not WebView `fetch`, so dictionary APIs are not blocked by CORS. `npm run mobile:dev` proxies Etymonline and Youdao so the Chrome preview can show more than Wiktionary. The notebook is sql.js in `phevere.sqlite` (app files / Documents).
+
+On Android the app and its pop-up over another app are separate pages, and each keeps its own copy of the notebook in memory. Since 2026-11-06 the file has one owner, `Notebook.java`, which keeps a version number for it. A page writes with the version it last read; a write from an older copy is refused, and that page reloads the file, runs its unsaved statements again and writes. Every write is announced to the other open pages (`window.__pvNotebookChanged`), which reload and repaint My words. A pop-up that is closing asks its page to finish writing first (`NotebookClose.java`), and a sync reads the newest file before it runs. Before this, a word saved in the pop-up did not show in an open app, and the app's next save wrote it out of the file.
 
 ## Lookup strip
 

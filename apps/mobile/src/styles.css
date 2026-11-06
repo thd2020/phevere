@@ -1172,10 +1172,18 @@ select, .field {
 }
 
 .settings-sticky { margin: -8px 0 0; }
+/* Equal widths while every tab gets a 48px touch target; past that the row scrolls, as
+   Material's scrollable tabs do (Android with Updates has nine). */
 .result-tabs.settings-tabs {
-  grid-template-columns: repeat(var(--tabs, 6), 1fr);
+  display: flex;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  gap: 0;
   margin: 0 0 12px;
 }
+.result-tabs.settings-tabs::-webkit-scrollbar { display: none; }
+.settings-tabs .result-tab { flex: 1 0 48px; }
 
 .settings-subhead {
   margin: 20px 0 8px;
