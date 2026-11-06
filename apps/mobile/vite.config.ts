@@ -1,14 +1,17 @@
 import { defineConfig } from 'vite';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
+const version = (JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as { version: string }).version;
 
 export default defineConfig({
   root,
   base: './',
   define: {
     __PHEVERE_DEV__: JSON.stringify(process.env.NODE_ENV !== 'production'),
+    __PHEVERE_VERSION__: JSON.stringify(version),
   },
   resolve: {
     alias: {
