@@ -227,6 +227,55 @@ async function main() {
   assert.equal(popup.window.__pvFlushNotebook(), false, 'nothing left: it closes at once');
   checks += 4;
 
+  // A dictionary pack installs in the app while the pop-up saves a word: both stay, and the
+  // install does not fail on a copy swapped out under it.
+  const fill = async (d, pause) => {
+    d.run('DELETE FROM offline_entries WHERE pack_id = ?', ['p1']);
+    for (let i = 0; i < 50; i++) {
+      d.run('INSERT INTO offline_entries (headword, language, definition, pack_id) VALUES (?, ?, ?, ?)', [`h${i}`, 'en', 'd', 'p1']);
+      if (pause && i === 25) await settle(50);
+    }
+  };
+  const popupSave = (async () => {
+    await settle(10);
+    await popup.core.addVocab({ lemma: 'ostinato' });
+    await flush(popup);
+  })();
+  if (app.mod.writeDirect) await app.mod.writeDirect((d) => fill(d, true), (d) => fill(d, false));
+  else {
+    // The module before this fix: rows straight on the database, then marked dirty.
+    await fill(app.mod.getSqlDatabase(), true);
+    app.mod.markDbDirty();
+  }
+  await popupSave;
+  await settle();
+  await flush(app);
+  await settle();
+  assert.ok((await fileWords(ph.file)).includes('ostinato'), 'the pop-up word survives the pack install');
+  const packRows = async () => {
+    const SQL = await require('sql.js')();
+    const d = new SQL.Database(Buffer.from(ph.file.b64, 'base64'));
+    const n = d.exec("SELECT COUNT(*) FROM offline_entries WHERE pack_id = 'p1'")[0].values[0][0];
+    d.close();
+    return n;
+  };
+  assert.equal(await packRows(), 50, 'and the pack is whole in the file');
+  // The pop-up saves after the install, before the app has written it: the pack is made
+  // again on the newer file rather than the app's copy replacing it.
+  if (app.mod.writeDirect) await app.mod.writeDirect((d) => fill(d, false), (d) => fill(d, false));
+  else {
+    await fill(app.mod.getSqlDatabase(), false);
+    app.mod.markDbDirty();
+  }
+  await popup.core.addVocab({ lemma: 'coda' });
+  await flush(popup);
+  await settle();
+  await flush(app);
+  await settle();
+  assert.ok((await fileWords(ph.file)).includes('coda'), 'a word saved just after a pack install is kept');
+  assert.equal(await packRows(), 50, 'with the pack');
+  checks += 4;
+
   // A notebook that exists but cannot be read is an error, never a fresh empty notebook.
   const broken = ph.open('broken', { failRead: true });
   await assert.rejects(() => broken.db.ready(), /Out of memory/);

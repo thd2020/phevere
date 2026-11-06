@@ -20,7 +20,8 @@ const LS_KEY = 'phevere.sqlite.b64';
 /** A conflict means someone else wrote; more than a few in a row means something is wrong. */
 const MAX_ATTEMPTS = 4;
 
-type Stmt = { sql: string; params: unknown[] };
+/** A statement, or a change made straight on the database that can be made again (an offline pack). */
+type Stmt = { sql: string; params: unknown[] } | { apply: (d: Database) => void | Promise<void> };
 
 let SQL: SqlJsStatic | null = null;
 let db: Database | null = null;
@@ -32,8 +33,6 @@ let readyPromise: Promise<void> | null = null;
 let version: number | null = null;
 /** Statements run since the last write that reached the file, for replaying onto a newer file. */
 let log: Stmt[] = [];
-/** Changes made straight on the database (an offline pack), which cannot be replayed. */
-let unlogged = 0;
 let dirty = false;
 /** One write or reload at a time. */
 let chain: Promise<void> = Promise.resolve();
@@ -116,21 +115,15 @@ function openBytes(bytes: Uint8Array | null): Database {
   return next;
 }
 
-/**
- * Swaps in the file's newer notebook and runs this page's unsaved statements on it again.
- * Unsaved changes that cannot be replayed (an offline pack just installed) keep this copy, and
- * its next write replaces the file.
- */
+/** Swaps in the file's newer notebook and makes this page's unsaved changes on it again. */
 async function reload(): Promise<void> {
   const stored = await readStored();
-  if (unlogged) {
-    version = stored.version;
-    return;
-  }
   const next = openBytes(stored.bytes);
+  // A statement run while a replay waits is added to the log, and this loop reaches it too.
   for (const s of log) {
     try {
-      next.run(s.sql, s.params as never[]);
+      if ('apply' in s) await s.apply(next);
+      else next.run(s.sql, s.params as never[]);
     } catch (err) {
       // The other page changed the same row (a word saved in both): its version stands.
       console.warn('[sqljs-db] replay skipped', err);
@@ -162,7 +155,6 @@ async function persistNow(): Promise<void> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     if (!db || !dirty) return;
     const upto = log.length;
-    const unloggedAt = unlogged;
     dirty = false;
     let ok = false;
     try {
@@ -173,8 +165,7 @@ async function persistNow(): Promise<void> {
     }
     if (ok) {
       log = log.slice(upto);
-      if (unlogged === unloggedAt) unlogged = 0;
-      if (log.length || unlogged) dirty = true;
+      if (log.length) dirty = true;
       return;
     }
     dirty = true;
@@ -252,15 +243,21 @@ export async function openSqliteBytes(bytes: Uint8Array): Promise<{ all(sql: str
   };
 }
 
-export function getSqlDatabase(): Database | null {
-  return db;
-}
-
-/** After changes made straight on `getSqlDatabase()`. */
-export function markDbDirty(): void {
-  unlogged += 1;
-  dirty = true;
-  scheduleSave();
+/**
+ * A change made straight on the database, too large to log statement by statement (an offline
+ * pack's rows). `task` runs with no reload or save in between, so the database it is given
+ * stays the open one. `replay` makes the same change on a newer file if the other page writes
+ * before this one has saved.
+ */
+export function writeDirect(task: (d: Database) => Promise<void>, replay: (d: Database) => void | Promise<void>): Promise<void> {
+  return serial(async () => {
+    await sqlJsVocabDb.ready();
+    if (!db) throw new Error('notebook db not open');
+    await task(db);
+    if (version != null) log.push({ apply: replay });
+    dirty = true;
+    scheduleSave();
+  });
 }
 
 if (typeof window !== 'undefined') {
