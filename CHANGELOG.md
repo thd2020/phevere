@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Scanned text in place (2026-11-06): a scanned image now opens as the picture itself with every piece of recognised text turned into real text at the same place, size and angle, the way Live Text and Google Lens show it. You can select words on the picture, copy them, and look them up as you would anywhere else in Phevere. Text switches to the recognised text alone, paragraph by paragraph. Edit lets you change any line, on the picture or in Text; a changed line is painted over the picture in the line's own colours. Copy all copies the text in reading order, and Save image saves the picture with your changes (Copy image as well on the computer). Words the recognition was unsure about keep a dotted underline instead of being left out. On the computer this opens in its own window for pasted, dropped and clipboard images, a scanned window, and a scanned region with more than one line; a single-line region is still looked up straight away. On the phone it is the Scan screen.
+
+### Changed
+
+- Reading order of scanned text (2026-11-06): recognised text now reads as a person reads the image. Words join into lines and lines into paragraphs, a two-column page is read column by column instead of across both columns, a page photographed at an angle reads the same as a flat one, vertical Chinese reads from the right-hand column, a word broken with a hyphen at a line end is joined again, and a copied paragraph comes out as its sentences on one line. Text the recognition was unsure about is kept instead of dropped. On six test images (a web page, a two-column essay, a photographed page, a slide, mixed Chinese and English, and vertical Chinese), the words in correct order rose from 81% to over 99%, and whole paragraphs found from 11 of 33 to 33 of 33.
+
 ## [4.2.0] - 2026-11-06
 
 ### Added
