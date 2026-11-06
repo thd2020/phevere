@@ -1100,7 +1100,7 @@ export function scanHtml(scan: ScanPage, page: OcrPage, id: number): string {
         <div class="ocr-text scan-text" hidden></div>
       </div>
       <button type="button" class="icon-btn scan-close" data-act="scan-close" aria-label="Back">${ICO.back}</button>
-      <div class="scan-bar">${ocrBarHtml({ saveImage: true, empty })}</div>
+      <div class="scan-bar">${ocrBarHtml({ saveImage: true, translate: true, empty })}</div>
       ${empty ? '' : '<p class="scan-hint">Select text</p>'}
       <section class="scan-sheet" data-state="closed" aria-label="Lookup">
         <div class="scan-sheet__handle" data-drag="scan-sheet" role="button" tabindex="0" aria-label="Resize lookup"><span></span></div>

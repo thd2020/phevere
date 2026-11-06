@@ -1462,6 +1462,8 @@ select, .field {
 .scan-bar .ocr-bar__gap { display: none; }
 .scan-view[data-mode="picture"] .scan-bar .ocr-seg,
 .scan-view[data-mode="picture"] .scan-bar .ocr-btn,
+.scan-view[data-mode="picture"] .scan-bar .ocr-lang,
+.scan-view[data-mode="picture"] .scan-bar .ocr-bar__tr,
 .scan-view[data-mode="picture"] .scan-bar .ocr-bar__status {
   background: rgb(20 18 16 / 0.55);
   color: #fff;
@@ -1471,7 +1473,16 @@ select, .field {
 .scan-view[data-mode="picture"] .scan-bar .ocr-seg button { color: #fff; }
 .scan-view[data-mode="picture"] .scan-bar .ocr-seg button[aria-checked="true"] { background: rgb(255 255 255 / 0.22); box-shadow: none; }
 .scan-view[data-mode="picture"] .scan-bar .ocr-btn[aria-pressed="true"] { background: var(--md-sys-color-primary); }
-.scan-view[data-mode="picture"] .scan-bar .ocr-bar__status { border-radius: 999px; padding: 8px 14px; }
+.scan-view[data-mode="picture"] .scan-bar .ocr-bar__status,
+.scan-view[data-mode="picture"] .scan-bar .ocr-bar__tr { border-radius: 999px; padding: 8px 14px; }
+.scan-view[data-mode="picture"] .scan-bar .ocr-lang {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23fff' stroke-width='1.6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+}
+.scan-view .ocr-lang { min-height: 36px; }
+/* With Translate on, the language and progress take the bar to a third row. */
+.scan-view:has(.scan-bar [data-ocr-act="translate"][aria-pressed="true"]) .scan-text { padding-top: calc(160px + var(--pv-inset-top)); }
 .scan-view .ocr-seg button,
 .scan-view .ocr-btn { min-height: 36px; }
 .scan-view.is-editing .scan-hint,
