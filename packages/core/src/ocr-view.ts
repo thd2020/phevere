@@ -311,14 +311,24 @@ export class OcrView {
     st.fontSize = `${size}px`;
     st.lineHeight = `${th}px`;
     const textLen = this.textWidth(el.textContent || '', size, vertical, weight);
-    const stretch = textLen > 0 ? len / textLen : 1;
+    let stretch = textLen > 0 ? len / textLen : 1;
+    let boxLen = textLen;
+    if (p) {
+      // A painted line keeps the letter widths of the text it replaces, so a shorter edit is not
+      // pulled apart to the old length; a longer one narrows to stay inside the box. The paint
+      // still covers the whole box, so none of the old text shows past a shorter edit.
+      const line = this.lineById(Number(el.dataset.l));
+      const orig = line ? this.textWidth(line.text, size, vertical, weight) : 0;
+      if (orig > 0 && textLen > 0) stretch = Math.min(len / orig, len / textLen);
+      boxLen = len / stretch;
+    }
     if (vertical) {
       st.width = `${th}px`;
-      st.height = `${textLen}px`;
+      st.height = `${boxLen}px`;
       st.transform = `scaleY(${stretch})`;
     } else {
       st.height = `${th}px`;
-      st.width = `${textLen}px`;
+      st.width = `${boxLen}px`;
       st.transform = `rotate(${Number(el.dataset.a) || 0}deg) scaleX(${stretch})`;
     }
     if (p) {
@@ -335,6 +345,13 @@ export class OcrView {
     if (!ctx) return text.length * size * 0.55;
     ctx.font = `${weight === 700 ? '700 ' : ''}${size}px ${FONT}`;
     return ctx.measureText(text).width;
+  }
+
+  private byId: Map<number, OcrLine> | null = null;
+
+  private lineById(id: number): OcrLine | undefined {
+    if (!this.byId) this.byId = new Map(pageLines(this.page).map((l) => [l.id, l]));
+    return this.byId.get(id);
   }
 
   private loadPixels(): void {
@@ -488,7 +505,9 @@ export class OcrView {
         const size = th * 0.74;
         ctx.font = `${this.bold(p) ? '700 ' : ''}${size}px ${FONT}`;
         const w = ctx.measureText(t).width;
-        ctx.scale(w > 0 ? len / w : 1, 1);
+        const orig = ctx.measureText(line.text).width;
+        // Same letter widths as the text it replaces; a longer edit narrows to fit the box.
+        ctx.scale(w > 0 && orig > 0 ? Math.min(len / orig, len / w) : 1, 1);
         ctx.fillStyle = p.ink;
         ctx.textBaseline = 'middle';
         ctx.fillText(t, 0, th / 2);
