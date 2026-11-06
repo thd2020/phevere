@@ -52,6 +52,7 @@ const coreBundle = esbuild.buildSync({
     contents: `
       export { configureCore } from './src/runtime';
       export { addVocab, findByLemma, listVocab } from './src/vocab-store';
+      export { syncVocab } from './src/vocab-sync';
     `,
     resolveDir: path.join(root, 'packages', 'core'),
     loader: 'ts',
@@ -275,6 +276,27 @@ async function main() {
   assert.ok((await fileWords(ph.file)).includes('coda'), 'a word saved just after a pack install is kept');
   assert.equal(await packRows(), 50, 'with the pack');
   checks += 4;
+
+  // The pop-up saves a word a moment before a sync in the app starts, and its write reaches the
+  // file only after the sync has read the notebook. The next sync still sends the word.
+  const sent = new Set();
+  const account = {
+    getUser: async () => ({ id: 'u1' }),
+    async sync(_ns, cursor, changes) {
+      for (const c of changes) sent.add(c.data?.lemma);
+      return { changes: [], cursor, more: false };
+    },
+  };
+  await app.core.syncVocab(account);
+  await popup.core.addVocab({ lemma: 'refrain' });
+  await settle(5);
+  await app.core.syncVocab(account);
+  assert.ok(!sent.has('refrain'), 'not in the app yet');
+  await flush(popup);
+  await settle();
+  await app.core.syncVocab(account);
+  assert.ok(sent.has('refrain'), 'a pop-up word that reached the app after a sync goes out with the next one');
+  checks += 2;
 
   // A notebook that exists but cannot be read is an error, never a fresh empty notebook.
   const broken = ph.open('broken', { failRead: true });

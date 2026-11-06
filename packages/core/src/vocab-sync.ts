@@ -28,6 +28,12 @@ import { normalizeSourceContext, sourceContextFromJson, sourceContextToJson } fr
 
 export const VOCAB_SYNC_NAMESPACE = 'phevere/vocab';
 const PAGE = 500;
+/**
+ * On a notebook that another page of this device also writes (the phone's pop-up), a word saved
+ * there a moment before a sync can reach this copy only after the sync has read it. Each sync
+ * then sends the last minute again, so the next one still carries that word.
+ */
+const SHARED_RESEND_MS = 60_000;
 
 type SyncRecord = SyncChange<Partial<VocabEntry>>;
 
@@ -92,6 +98,7 @@ async function writeState(key: string, value: string): Promise<void> {
 async function runSync(account: VocabSyncAccount, now: () => number): Promise<VocabSyncResult> {
   await ensureVocabReady();
   // A word the phone's pop-up saved a moment ago must be in this copy before "pushedAt" moves past it.
+  const shared = !!getVocabDb().refresh;
   await getVocabDb().refresh?.();
   const user = await account.getUser();
   if (!user) throw new Error('Not signed in');
@@ -127,7 +134,7 @@ async function runSync(account: VocabSyncAccount, now: () => number): Promise<Vo
   await exchange(outgoing);
   // One millisecond back: a change saved in the same millisecond the sync started is sent
   // again next time rather than never. Sending a record twice is harmless.
-  await writeState('vocab.pushedAt', String(startedAt - 1));
+  await writeState('vocab.pushedAt', String(startedAt - (shared ? SHARED_RESEND_MS : 1)));
 
   await settleCarriedProgress(carried);
   // Folding duplicates edits rows here; send those edits now rather than on the next sync.
