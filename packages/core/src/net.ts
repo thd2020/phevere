@@ -63,7 +63,7 @@ interface HostState {
   /** When it last answered (Date.now()). */
   answeredAt: number;
   /** Its requests sent since its last answer that waited past their round trip or failed without one. */
-  overdue: Set<{ since: number }>;
+  overdue: Set<Mark>;
   /** Not answering while other hosts do (hostSilent). */
   silent: boolean;
   /** Its last request got no answer at all (forgetHost); cleared by its next answer. */
@@ -79,7 +79,7 @@ let silent = false;
 /** When the connection was last found silent. Round trips measured before it are stale. */
 let silentAt = 0;
 /** Requests sent after the last answer that have waited past their round trip or failed without an answer. */
-const unanswered = new Set<{ since: number; host: string }>();
+const unanswered = new Set<Mark>();
 const listeners = new Set<() => void>();
 
 /**
@@ -135,11 +135,42 @@ function heard(host: string): void {
   }
 }
 
-/** A request sent after the last answer has waited past its round trip, or failed without an answer. */
-function noAnswer(mark: { since: number; host: string }): void {
+/** A request's place in the watch for a silent connection (noAnswer). */
+interface Mark {
+  since: number;
+  host: string;
+  /** A round trip was measured when it went out, so being past it says something. */
+  expected: boolean;
+}
+
+/**
+ * Before any round trip has been measured, a request counts towards the whole connection's
+ * silence only after this long with no answer from anywhere, or when it fails before its own
+ * timeout (a refused connection, a name that does not resolve). Twice the first RTO of RFC 6298:
+ * a satellite link or a VPN setting up its first connections can take five seconds to give its
+ * first answers, and a guess of one round trip would take it for a dead one.
+ */
+const COLD_SILENCE_MS = 2 * FIRST_HEDGE_MS;
+
+/**
+ * A request sent after the last answer has gone without one: `overdue` when it has waited past
+ * its round trip, `long` when it has waited COLD_SILENCE_MS, `refused` when it failed before its
+ * timeout and `timedOut` when its timeout ran out.
+ *
+ * Before any round trip has been measured (an app start, or after a silence or a network change)
+ * the round trip it waited past is only a guess. A connection whose first answers take longer
+ * than that would be taken for a dead one: its budgets would drop to a normal network's, and the
+ * exact-title check and the first paint would give up just before the answers came. So until
+ * something answers, only a refusal or a wait of COLD_SILENCE_MS counts towards the whole
+ * connection's silence, as a browser goes offline on a failed connection and not on a slow one.
+ * One host lagging behind the others (hostSilent) still counts from the guess: the others
+ * answering show that the connection works.
+ */
+function noAnswer(mark: Mark, how: 'overdue' | 'long' | 'refused' | 'timedOut'): void {
   const s = state(mark.host);
   if (!s.silent && mark.since >= s.answeredAt) {
-    s.overdue.add(mark);
+    // The two earliest are enough to decide, and a dead connection does not pile them up.
+    if (s.overdue.size < 2) s.overdue.add(mark);
     let first = Infinity;
     for (const m of s.overdue) first = Math.min(first, m.since);
     if (s.overdue.size >= 2 && lastAnswerAt > first) {
@@ -148,6 +179,8 @@ function noAnswer(mark: { since: number; host: string }): void {
     }
   }
   if (silent || mark.since < lastAnswerAt) return;
+  const counts = mark.expected ? how !== 'long' : how === 'long' || how === 'refused' || (how === 'timedOut' && Date.now() - mark.since >= COLD_SILENCE_MS);
+  if (!counts) return;
   unanswered.add(mark);
   if (unanswered.size < 2 || new Set(Array.from(unanswered, (m) => m.host)).size < 2) return;
   markSilent();
@@ -379,9 +412,12 @@ export function trackHttp(inner: HttpClient): HttpClient {
       else if (!took) s.inFlight += 1;
       onSend?.();
       const started = Date.now();
-      const mark = { since: started, host };
       // Past its round trip with no answer: one more sign that the whole connection may be silent.
-      const overdue = api ? setTimeout(() => noAnswer(mark), rtoMs(host) || FIRST_HEDGE_MS) : undefined;
+      // A host not measured yet is given the connection's measured round trip when there is one.
+      const expectedRto = rtoMs(host) || typicalRtoMs(true);
+      const mark: Mark = { since: started, host, expected: expectedRto > 0 };
+      const overdue = api ? setTimeout(() => noAnswer(mark, 'overdue'), Math.max(expectedRto, rtoMs(host) ? 0 : FIRST_HEDGE_MS)) : undefined;
+      const long = api && !mark.expected ? setTimeout(() => noAnswer(mark, 'long'), COLD_SILENCE_MS) : undefined;
       if (api) waiting.add(mark);
       try {
         const value = await (inner[kind] as (u: string, o?: HttpRequestInit) => Promise<T>).call(inner, url, init);
@@ -391,7 +427,7 @@ export function trackHttp(inner: HttpClient): HttpClient {
       } catch (err) {
         if (api) {
           if (answered(err)) heard(host);
-          else noAnswer(mark);
+          else noAnswer(mark, Date.now() - started >= (init.timeoutMs ?? CLIENT_TIMEOUT_MS) - 100 ? 'timedOut' : 'refused');
         }
         if (api && !decided?.()) {
           if (answered(err)) noteRoundTrip(host, Date.now() - started);
@@ -407,6 +443,7 @@ export function trackHttp(inner: HttpClient): HttpClient {
         throw err;
       } finally {
         clearTimeout(overdue);
+        clearTimeout(long);
         waiting.delete(mark);
         releaseSlot(s);
       }

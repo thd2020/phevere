@@ -292,11 +292,24 @@ dead['"hello," from a sentence, an offline pack, a dead connection'] = async () 
   assert.equal(r.word, 'hello', '"hello," opens hello');
   assert.ok(first && first < 3000, `within three seconds (${first} ms; 4.2.0 took 13 s)`);
 };
-// No pack: "No definitions found" comes as soon as the connection is known to answer nothing.
+// No pack: "No definitions found" comes once the connection is known to answer nothing. Right
+// after an app start nothing has been measured, so that takes six seconds without an answer.
 dead['no pack, a dead connection'] = async () => {
   const { r, took } = await timedLookup(app({}, { link: { state: 'silent' } }).service, 'cat');
   assert.ok(!senses(r).length && !r.metadata.timedOut, 'no definitions, not "Lookup timed out"');
-  assert.ok(took < 5000, `within five seconds (${took} ms)`);
+  assert.ok(took < 8000, `within eight seconds (${took} ms; 4.2.0 took 16 s)`);
+};
+// A link whose first answers take five seconds (a satellite link, a VPN setting up) is slow, not
+// dead: right after an app start "etc." still opens etc. and "hello," keeps its sense.
+dead['a five-second link right after an app start'] = async () => {
+  const net = (seed) => ({ delay: [4500, 5500], seed });
+  const etc = await app(net('sat-etc')).service.lookup('etc.', 'zh');
+  assert.equal(etc.word, 'etc.', '"etc." opens etc.');
+  let latest = null;
+  const hello = await app(net('sat-hello')).service.lookup('hello,', 'zh', undefined, { onUpdate: (r) => (latest = r) });
+  await new Promise((r) => setTimeout(r, 3000));
+  assert.equal(hello.word, 'hello', '"hello," opens hello');
+  assert.ok(senses(latest || hello).some((m) => /greeting/.test(m)), `and keeps its sense (${JSON.stringify(senses(latest || hello))})`);
 };
 // A slow connection (two seconds a request) that then dies, as a VPN drops: the next lookup goes out
 // with the slow connection's long timeouts, but the waits end once nothing answers on two hosts.
