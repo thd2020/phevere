@@ -286,31 +286,30 @@ function harness({ mode = 'auto', metered = false, debuggable = false, api = 'ok
   // --- Settings section ------------------------------------------------------------------------
   const panels = loadPanels();
   const android = { platform: 'android', canDrawOverlays: true, notificationsGranted: true };
-  const ids = (capture, on) => panels.settingsSections(capture, on).map((s) => s.id);
-  assert.ok(ids(android, true).includes('updates'));
-  assert.ok(!ids(android, false).includes('updates'), 'no updater, no section');
-  assert.ok(!ids({ platform: 'ios', canDrawOverlays: false }, true).includes('updates'), 'never on iOS');
-  assert.ok(!ids({ platform: 'web', canDrawOverlays: false }, true).includes('updates'), 'never in the browser');
+  const ids = (capture) => panels.settingsSections(capture).map((s) => s.id);
+  assert.ok(!ids(android).includes('updates'), 'Updates lives on About, not in its own section');
   const prefs = { notifyIncoming: true, notifySaved: true, notifyOcr: true, notifyUpdates: true };
   const ready = { current: '4.0.0', mode: 'auto', canInstall: true, status: 'ready', upToDate: false,
     available: { version: '4.1.0', page: 'p' }, progress: 1, error: null, needsPermission: false };
-  const html = panels.settingsBody(prefs, [], [], '', android, 'updates', null, undefined, ready);
-  assert.match(html, /Phevere 4\.0\.0/);
+  const html = panels.settingsBody(prefs, [], [], '', android, 'about', null, undefined, ready);
   assert.match(html, /4\.1\.0 is ready to install/);
   assert.match(html, /data-act="update-install">Install</);
   assert.match(html, /role="radiogroup" aria-labelledby="update-mode-label"/, 'Install updates is a segmented choice');
   assert.match(html, /value="auto" checked \/>Automatically<\/label><label class="sv-seg__item"><input type="radio" name="update-mode" value="ask" \/>Ask first<\/label><label class="sv-seg__item"><input type="radio" name="update-mode" value="off" \/>Off<\/label>/);
   assert.match(html, /data-act="update-check"/);
   assert.doesNotMatch(html, /[Rr]oll ?back/, 'no rollback control on the phone');
-  const debug = panels.settingsBody(prefs, [], [], '', android, 'updates', null, undefined, { ...ready, canInstall: false, mode: 'ask', status: 'idle' });
+  assert.match(html, /<about-hero\/><div class="sv-ledger">[\s\S]*update-check[\s\S]*<about-links\/>/, 'Updates sits under the version, before the links');
+  const debug = panels.settingsBody(prefs, [], [], '', android, 'about', null, undefined, { ...ready, canInstall: false, mode: 'ask', status: 'idle' });
   assert.doesNotMatch(debug, /value="auto"/, 'Automatically is left out where it cannot work');
-  const ios = panels.settingsBody(prefs, [], [], '', { platform: 'ios', canDrawOverlays: false }, 'updates', null, undefined, ready);
-  assert.doesNotMatch(ios, /update-mode|data-section="updates"/, 'iOS falls back to another section');
+  const noUpdater = panels.settingsBody(prefs, [], [], '', android, 'about', null, undefined, null);
+  assert.doesNotMatch(noUpdater, /update-mode/, 'no updater, no Updates rows');
+  const ios = panels.settingsBody(prefs, [], [], '', { platform: 'ios', canDrawOverlays: false }, 'about', null, undefined, ready);
+  assert.doesNotMatch(ios, /update-mode/, 'never on iOS');
   const notes = panels.settingsBody(prefs, [], [], '', android, 'notifications', null, undefined, ready);
   assert.match(notes, /Update ready or available/);
   assert.doesNotMatch(panels.settingsBody(prefs, [], [], '', android, 'notifications', null, undefined, null), /Update ready/);
 
-  console.log('Mobile update passed: release choice, versions, metered rule, Automatically, Ask first, Off, checksum and signing errors, rate-limit fallback, ETag cache, Install unknown apps, idle prompt, debug builds, Settings section on Android, iOS and the browser.');
+  console.log('Mobile update passed: release choice, versions, metered rule, Automatically, Ask first, Off, checksum and signing errors, rate-limit fallback, ETag cache, Install unknown apps, idle prompt, debug builds, Updates on About on Android, not on iOS.');
 })().catch((err) => {
   console.error(err);
   process.exit(1);
@@ -329,6 +328,7 @@ function loadPanels() {
     groupCatalogByLanguage: () => [], navRowHtml: row, rangeRowHtml: row, switchRowHtml: row,
     segRowHtml: bundle('packages/core/src/settings-kit.ts').segRowHtml,
     offlineShelvesHtml: () => '', packInspectorHtml: () => '', sourcesPanelHtml: () => '', languageRowHtml: () => '',
+    aboutSettingsHtml: (_info, updates = '') => `<about-hero/>${updates}<about-links/>`,
   };
   const mod = { exports: {} };
   vm.runInNewContext(js, {

@@ -157,7 +157,7 @@ function selectionBarSection(capture: CaptureInfo): string {
     </div>`;
 }
 
-export type SettingsSection = 'capture' | 'learn' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio' | 'updates' | 'about';
+export type SettingsSection = 'capture' | 'learn' | 'notifications' | 'sources' | 'offline' | 'api' | 'audio' | 'about';
 
 const TAB_ICON: Record<SettingsSection, string> = {
   capture: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M9 9h6M12 9v7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -167,11 +167,10 @@ const TAB_ICON: Record<SettingsSection, string> = {
   offline: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM12 7v7M9 11l3 3 3-3M8.5 17h7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   api: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M11 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM11 12h10M18 12v3M21 12v2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   audio: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4zM15.5 9a4 4 0 0 1 0 6M18.5 6a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  updates: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4M12 8.5v4l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   about: '<svg viewBox="0 0 24 24" class="ico-line"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0zM12 11v5.5M12 7.5v.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
-/** The browser's sections; the phone adds Notifications and, on Android, Updates. */
+/** The browser's sections; the phone adds Notifications. */
 export const SETTINGS_SECTIONS: SettingsSection[] = ['capture', 'learn', 'sources', 'offline', 'api', 'audio', 'about'];
 
 /** A section's name in the interface language. */
@@ -179,32 +178,29 @@ export function settingsSectionLabel(id: SettingsSection): string {
   return t(`settings.section.${id}`);
 }
 
-/** `updates`: the Android updater is running (never on iOS or in the browser). */
-export function settingsSections(capture: CaptureInfo, updates = false): Array<{ id: SettingsSection; label: string }> {
+export function settingsSections(capture: CaptureInfo): Array<{ id: SettingsSection; label: string }> {
   const ids: SettingsSection[] =
     capture.platform === 'web'
       ? SETTINGS_SECTIONS
       : ['capture', 'learn', 'notifications', 'sources', 'offline', 'api', 'audio'];
   const list = ids.slice();
   if (capture.platform !== 'web') {
-    if (updates && capture.platform === 'android') list.push('updates');
     list.push('about');
   }
   return list.map((id) => ({ id, label: settingsSectionLabel(id) }));
 }
 
-/** The desktop's Updates panel without Roll back, which Android cannot do. */
-function updatesPanel(u: PhoneUpdateState): string {
+/** The desktop's Updates rows without Roll back, which Android cannot do; they sit on About. */
+function updatesRows(u: PhoneUpdateState): string {
   const status = updateStatusText(u);
   const action = updateActionText(u);
   const pct = Math.round(u.progress * 100);
   const busy = u.status === 'checking' || u.status === 'downloading';
   const options = UPDATE_MODES.filter((m) => u.canInstall || m.id !== 'auto').map((m) => ({ value: m.id, label: t(m.labelKey) }));
-  return `<div class="sv sv-page">
-    <div class="sv-ledger">
+  return `<div class="sv-ledger">
       <div class="sv-row">
         <span class="sv-row__text">
-          <span class="sv-row__label">Phevere ${esc(u.current)}</span>
+          <span class="sv-row__label">${tHtml('settings.section.updates')}</span>
           <span class="sv-row__sub${u.status === 'error' ? ' is-error' : ''}" role="status" aria-live="polite">${esc(status)}</span>
         </span>
         ${action ? `<button type="button" class="sv-btn sv-btn--accent" data-act="update-install">${esc(action)}</button>` : ''}
@@ -214,8 +210,7 @@ function updatesPanel(u: PhoneUpdateState): string {
       <div class="sv-ledger__foot">
         <button type="button" class="sv-btn" data-act="update-check"${busy ? ' disabled' : ''}>${tHtml('mobile.update.checkNow')}</button>
       </div>
-    </div>
-  </div>`;
+    </div>`;
 }
 
 const TRANSLATION_ONLY = new Set(['DeepL API', 'Google Translate API']);
@@ -451,7 +446,7 @@ export function settingsBody(
   learn: LearnSettingsInput | null = null,
   about: AboutInfo | null = null,
 ): string {
-  const sections = settingsSections(capture, !!updates);
+  const sections = settingsSections(capture);
   const tabs = sections
     .map(
       (s) =>
@@ -466,7 +461,7 @@ export function settingsBody(
       : section === 'learn' && learn
         ? learnSettingsHtml(learn)
       : section === 'about'
-        ? aboutSettingsHtml(about || { version: '', platform: capture.platform })
+        ? aboutSettingsHtml(about || { version: '', platform: capture.platform }, updates && capture.platform === 'android' ? updatesRows(updates) : '')
       : section === 'notifications'
         ? notificationsPanel(prefs, capture, !!updates)
         : section === 'sources'
@@ -475,9 +470,7 @@ export function settingsBody(
             ? offlinePanel(packs, packMsg, lib, capture.platform)
             : section === 'api'
               ? apiPanel(prefs, lib)
-              : section === 'updates' && updates
-                ? updatesPanel(updates)
-                : audioPanel(prefs, capture, voice);
+              : audioPanel(prefs, capture, voice);
   return `
     <div class="settings">
       <div class="settings-sticky">

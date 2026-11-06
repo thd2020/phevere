@@ -169,7 +169,6 @@ export default {
   'desktop.settings.updates.modeOff': 'Off',
   'desktop.settings.updates.checkNow': 'Check now',
   /** The installed version, such as "Phevere 2.4.1". */
-  'desktop.settings.updates.version': 'Phevere {version}',
   'desktop.settings.updates.checking': 'Checking…',
   'desktop.settings.updates.downloading': 'Downloading {version}… {percent}',
   'desktop.settings.updates.installing': 'Installing {version}…',

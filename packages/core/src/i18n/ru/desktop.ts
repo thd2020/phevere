@@ -136,7 +136,6 @@ export default {
   'desktop.settings.updates.modeAsk': 'Сначала спросить',
   'desktop.settings.updates.modeOff': 'Выключено',
   'desktop.settings.updates.checkNow': 'Проверить',
-  'desktop.settings.updates.version': 'Phevere {version}',
   'desktop.settings.updates.checking': 'Проверка…',
   'desktop.settings.updates.downloading': 'Загрузка {version}… {percent}',
   'desktop.settings.updates.installing': 'Установка {version}…',

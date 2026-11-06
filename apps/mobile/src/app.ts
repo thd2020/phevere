@@ -2836,7 +2836,7 @@ async function handleAct(act: string, target: HTMLElement, e: Event): Promise<vo
       return;
     case 'settings-section': {
       const next = target.dataset.section as SettingsSection | undefined;
-      if (next === 'capture' || next === 'learn' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio' || next === 'about' || (next === 'updates' && phoneUpdates)) {
+      if (next === 'capture' || next === 'learn' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio' || next === 'about') {
         settingsSection = next;
         langMenu = '';
         if (next === 'offline') await refreshPacks();
@@ -3973,11 +3973,11 @@ export async function startApp(): Promise<void> {
 }
 
 /**
- * Repaints Settings → Updates. A download only moves its bar and status line, so an open
+ * Repaints the Updates rows on Settings → About. A download only moves its bar and status line, so an open
  * Install updates list is not closed by every percent.
  */
 function showUpdateState(s: PhoneUpdateState): void {
-  if (tab !== 'settings' || settingsSection !== 'updates') return;
+  if (tab !== 'settings' || settingsSection !== 'about') return;
   const bar = document.querySelector<HTMLElement>('.settings-panel .sv-progress');
   if (s.status === 'downloading' && bar) {
     const pct = Math.round(s.progress * 100);

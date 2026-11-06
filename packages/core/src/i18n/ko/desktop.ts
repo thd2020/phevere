@@ -126,7 +126,6 @@ export default {
   'desktop.settings.updates.modeAsk': '먼저 묻기',
   'desktop.settings.updates.modeOff': '끔',
   'desktop.settings.updates.checkNow': '지금 확인',
-  'desktop.settings.updates.version': 'Phevere {version}',
   'desktop.settings.updates.checking': '확인 중…',
   'desktop.settings.updates.downloading': '{version} 다운로드 중… {percent}',
   'desktop.settings.updates.installing': '{version} 설치 중…',

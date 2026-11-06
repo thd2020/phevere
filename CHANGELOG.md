@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updates are on About (2026-11-07): Settings no longer has a separate Updates page. The update status, Install updates, Check now and, on the computer, Roll back now sit on Settings → About, right under the version, and opening About checks for an update. On the phone this shows on Android only, as before.
 - No "i" on card pictures (2026-11-07): pictures in Words → Cards and Learn no longer carry the small "i" button and its credit strip. On the computer the author and licence show when you hover the picture; on the phone they show in the full-screen picture. Settings → About still credits Wikimedia Commons.
 
 ### Fixed

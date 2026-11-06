@@ -275,7 +275,6 @@ function initializeSettingsWindow() {
           <button type="button" class="settings-nav__item" data-section="offline">${tHtml('settings.section.offline')}</button>
           <button type="button" class="settings-nav__item" data-section="api">${tHtml('settings.section.api')}</button>
           <button type="button" class="settings-nav__item" data-section="audio">${tHtml('settings.section.audio')}</button>
-          <button type="button" class="settings-nav__item" data-section="updates">${tHtml('settings.section.updates')}</button>
           <button type="button" class="settings-nav__item" data-section="about">${tHtml('settings.section.about')}</button>
         </nav>
         <main class="settings-main">
@@ -427,29 +426,6 @@ function initializeSettingsWindow() {
             </div>
           </section>
 
-          <section class="settings-panel" data-panel="updates" aria-labelledby="settings-updates-heading">
-            <div class="settings-panel__intro">
-              <h2 id="settings-updates-heading" class="settings-panel__title">${tHtml('settings.section.updates')}</h2>
-            </div>
-            <div class="sv sv-page">
-              <div class="sv-ledger">
-                <div class="sv-row">
-                  <span class="sv-row__text">
-                    <span id="update-version" class="sv-row__label">Phevere</span>
-                    <span id="update-status" class="sv-row__sub" role="status" aria-live="polite"></span>
-                  </span>
-                  <button type="button" id="update-action" class="sv-btn sv-btn--accent" hidden></button>
-                  <div id="update-progress" class="sv-progress" hidden><span></span></div>
-                </div>
-                ${segRowHtml({ label: t('desktop.settings.updates.install'), name: 'update-mode', value: 'auto', options: [{ value: 'auto', label: t('desktop.settings.updates.modeAuto') }, { value: 'ask', label: t('desktop.settings.updates.modeAsk') }, { value: 'off', label: t('desktop.settings.updates.modeOff') }] })}
-                <div class="sv-ledger__foot">
-                  <button type="button" id="update-rollback" class="sv-btn" hidden></button>
-                  <button type="button" id="update-check" class="sv-btn">${tHtml('desktop.settings.updates.checkNow')}</button>
-                </div>
-              </div>
-            </div>
-          </section>
-
           <section class="settings-panel" data-panel="sources" aria-labelledby="settings-sources-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-sources-heading" class="settings-panel__title">${tHtml('settings.section.sources')}</h2>
@@ -523,7 +499,7 @@ function initializeSettingsWindow() {
   // "#settings/offline" opens on that page, from the main window's search.
   const showSectionFromHash = () => {
     const section = location.hash.split('/')[1];
-    if (section) document.querySelector<HTMLElement>(`.settings-nav__item[data-section="${section}"]`)?.click();
+    if (section) showSettingsSection(section);
   };
   showSectionFromHash();
   window.addEventListener('hashchange', showSectionFromHash);
@@ -542,7 +518,6 @@ function initializeSettingsWindow() {
   wireInAppTextSelectionLookup();
   setupAudioSettings();
   void wireNotificationSettings();
-  void wireUpdatesPanel();
   wireSettingsImageDrop();
   void wireOfflineSettingsPanel();
   void wireOcrSettingsPanel();
@@ -555,6 +530,26 @@ function initializeSettingsWindow() {
     window.addEventListener('pagehide', () => stopCapture());
   });
   wireLiveResizeClass();
+}
+
+/** Settings → About's Updates rows: status, the install mode, Check now and Roll back. */
+function updatesRowsHtml(): string {
+  return `
+    <div class="sv-ledger">
+      <div class="sv-row">
+        <span class="sv-row__text">
+          <span class="sv-row__label">${tHtml('settings.section.updates')}</span>
+          <span id="update-status" class="sv-row__sub" role="status" aria-live="polite"></span>
+        </span>
+        <button type="button" id="update-action" class="sv-btn sv-btn--accent" hidden></button>
+        <div id="update-progress" class="sv-progress" hidden><span></span></div>
+      </div>
+      ${segRowHtml({ label: t('desktop.settings.updates.install'), name: 'update-mode', value: 'auto', options: [{ value: 'auto', label: t('desktop.settings.updates.modeAuto') }, { value: 'ask', label: t('desktop.settings.updates.modeAsk') }, { value: 'off', label: t('desktop.settings.updates.modeOff') }] })}
+      <div class="sv-ledger__foot">
+        <button type="button" id="update-rollback" class="sv-btn" hidden></button>
+        <button type="button" id="update-check" class="sv-btn">${tHtml('desktop.settings.updates.checkNow')}</button>
+      </div>
+    </div>`;
 }
 
 /** Settings → About: the version comes from the main process, so it is never out of date. */
@@ -571,7 +566,8 @@ async function wireAboutSettings(): Promise<void> {
   }
   const platform = names[info?.platform || window.electronAPI?.platform || ''] || 'windows';
   const system = info ? [systemNames[info.platform] || info.platform, info.systemVersion, info.arch].filter(Boolean).join(' ') : '';
-  host.innerHTML = aboutSettingsHtml({ version: info?.version || '', platform, system });
+  host.innerHTML = aboutSettingsHtml({ version: info?.version || '', platform, system }, updatesRowsHtml());
+  void wireUpdatesPanel();
   host.addEventListener('click', (ev) => {
     const btn = (ev.target as HTMLElement).closest<HTMLElement>('[data-act="about-copy"]');
     if (!btn) return;
@@ -3381,6 +3377,7 @@ async function showClipboardHistory() {
 /** Switch the Settings window to a section; an API keys jump can name the provider card to bring forward. */
 function showSettingsSection(section: string, provider?: string): void {
   if (!section) return;
+  if (section === 'updates') section = 'about';
   document.querySelectorAll('.settings-nav__item').forEach((b) => {
     b.classList.toggle('is-active', (b as HTMLElement).dataset.section === section);
   });
@@ -3389,7 +3386,7 @@ function showSettingsSection(section: string, provider?: string): void {
   });
   if (section === 'api') void renderApiKeysPanel(provider);
   if (section === 'sources') void renderSourcesPanel();
-  if (section === 'updates') checkUpdatesOnOpen?.();
+  if (section === 'about') checkUpdatesOnOpen?.();
 }
 
 /** Settings links open in the browser; "API key required" and similar jump to their tab. */
@@ -3663,23 +3660,21 @@ interface UpdateView {
 
 let checkUpdatesOnOpen: (() => void) | null = null;
 
-/** Updates page: version and status, the install mode, Check now and Roll back. */
+/** The Updates rows on the About page: status, the install mode, Check now and Roll back. */
 async function wireUpdatesPanel(): Promise<void> {
   const api = (window as any).updatesAPI;
-  const version = document.getElementById('update-version');
   const status = document.getElementById('update-status');
   const action = document.getElementById('update-action') as HTMLButtonElement | null;
   const bar = document.getElementById('update-progress');
   const modes = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="update-mode"]'));
   const check = document.getElementById('update-check') as HTMLButtonElement | null;
   const rollback = document.getElementById('update-rollback') as HTMLButtonElement | null;
-  if (!api?.getState || !version || !status || !action || !bar || !modes.length || !check || !rollback) return;
+  if (!api?.getState || !status || !action || !bar || !modes.length || !check || !rollback) return;
   const fill = bar.firstElementChild as HTMLElement | null;
   const paint = (s: UpdateView) => {
     const busy = s.status === 'checking' || s.status === 'downloading' || s.status === 'installing';
     const next = s.available?.version;
     const v = String(next || '');
-    version.textContent = t('desktop.settings.updates.version', { version: String(s.current) });
     status.classList.toggle('is-error', s.status === 'error');
     status.textContent =
       s.status === 'checking' ? t('desktop.settings.updates.checking')
@@ -3722,7 +3717,7 @@ async function wireUpdatesPanel(): Promise<void> {
     checked = true;
     void run(() => api.check());
   };
-  if (document.querySelector('.settings-panel.is-active')?.getAttribute('data-panel') === 'updates') checkUpdatesOnOpen();
+  if (document.querySelector('.settings-panel.is-active')?.getAttribute('data-panel') === 'about') checkUpdatesOnOpen();
 }
 
 let lemmaAudio: HTMLAudioElement | null = null;
