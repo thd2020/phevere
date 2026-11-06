@@ -11,7 +11,7 @@ const ALL = [
   'etymology-sources', 'etymology-cache', 'etymology-availability', 'etymology-headword', 'etymology-popup',
   'ocr-text', 'ocr-layout', 'ocr-pack', 'speech-stream', 'hover-selection', 'hover-strip','native-selection-repeat',
   'popup-opening', 'popup-retrigger', 'popup-sizing', 'popup-sense-pictures', 'mobile-regressions', 'desktop-diagnostics', 'installer-audio-cli',
-  'word-sources', 'book-file', 'plural-forms', 'morpheme', 'word-suggest', 'learn-session', 'learn-adapt', 'word-forms', 'lookup-entry', 'slow-network',
+  'word-sources', 'notebook-pages', 'book-file', 'plural-forms', 'morpheme', 'word-suggest', 'learn-session', 'learn-adapt', 'word-forms', 'lookup-entry', 'slow-network',
   'installer-audio', 'native-lifecycle', 'android-candidate-workflow', 'updater', 'mobile-update',
 ];
 

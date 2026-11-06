@@ -33,6 +33,8 @@
 
 Lookups use **native HTTP** (OkHttp / URLSession), not WebView `fetch`, so dictionary APIs are not blocked by CORS. `npm run mobile:dev` proxies Etymonline and Youdao so the Chrome preview can show more than Wiktionary. The notebook is sql.js in `phevere.sqlite` (app files / Documents).
 
+On Android the app and its pop-up over another app are separate pages, and each keeps its own copy of the notebook in memory. Since 2026-11-06 the file has one owner, `Notebook.java`, which keeps a version number for it. A page writes with the version it last read; a write from an older copy is refused, and that page reloads the file, runs its unsaved statements again and writes. Every write is announced to the other open pages (`window.__pvNotebookChanged`), which reload and repaint My words. A pop-up that is closing asks its page to finish writing first (`NotebookClose.java`), and a sync reads the newest file before it runs. Before this, a word saved in the pop-up did not show in an open app, and the app's next save wrote it out of the file.
+
 ## Lookup strip
 
 Select text in another Android app and tap **Phevere**: a compact card looks the word up. If you grant **Display over other apps**, that card floats and the other app stays interactive. Otherwise it is a bottom sheet. iPhone Share uses a half-sheet; iOS cannot draw over Safari.

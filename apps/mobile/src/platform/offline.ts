@@ -16,7 +16,8 @@ import {
   type OfflineHit,
   type ParsedOfflineEntry,
 } from '@phevere/core';
-import { getSqlDatabase, markDbDirty, sqlJsVocabDb } from './sqljs-vocab-db';
+import type { Database } from 'sql.js';
+import { sqlJsVocabDb, writeDirect } from './sqljs-vocab-db';
 
 export type { OfflineCatalogItem };
 
@@ -97,16 +98,13 @@ export async function removePack(packId: string): Promise<void> {
   await sqlJsVocabDb.runWrite(`DELETE FROM offline_packs WHERE id = ?`, [packId]);
 }
 
-async function writePack(
+/** Puts a pack's rows in the notebook, replacing an older copy of the pack. */
+async function fillPack(
+  database: Database,
   meta: { id: string; name: string; language: string; source?: string },
   entries: ParsedOfflineEntry[],
   onProgress?: (done: number, total: number) => void,
-): Promise<{ packId: string; count: number }> {
-  await sqlJsVocabDb.ready();
-  const database = getSqlDatabase();
-  if (!database) throw new Error('notebook db not open');
-  if (!entries.length) throw new Error(`No entries parsed for ${meta.name}`);
-
+): Promise<void> {
   database.run(`DELETE FROM offline_entries WHERE pack_id = ?`, [meta.id]);
   database.run(`DELETE FROM offline_packs WHERE id = ?`, [meta.id]);
   database.run(
@@ -152,7 +150,19 @@ async function writePack(
     stmt.free();
   }
   database.run(`UPDATE offline_packs SET entry_count = ? WHERE id = ?`, [entries.length, meta.id]);
-  markDbDirty();
+}
+
+async function writePack(
+  meta: { id: string; name: string; language: string; source?: string },
+  entries: ParsedOfflineEntry[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<{ packId: string; count: number }> {
+  if (!entries.length) throw new Error(`No entries parsed for ${meta.name}`);
+  // A word the pop-up saves during the install is in the newer file: the pack goes in again there.
+  await writeDirect(
+    (database) => fillPack(database, meta, entries, onProgress),
+    (database) => fillPack(database, meta, entries),
+  );
   dictionaryService.markOfflinePackAvailable(meta.name === 'CC-CEDICT' ? 'CC-CEDICT' : meta.name, true);
   onProgress?.(entries.length, entries.length);
   return { packId: meta.id, count: entries.length };

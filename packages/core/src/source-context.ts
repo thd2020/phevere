@@ -12,6 +12,8 @@
 export interface SourceContext {
   /** The app the word was selected in ("Chrome", "Acrobat", "Kindle"). */
   app?: string;
+  /** That app's package name on Android ("ai.x.grok"), which finds its icon. */
+  appId?: string;
   /** The web page or window title, without the app's name. */
   title?: string;
   /** The page address, http or https only. */
@@ -50,18 +52,27 @@ export function cleanSourceUrl(v: unknown): string | undefined {
   }
 }
 
+/** A package name or bundle ID: dot-separated identifiers, as Android and iOS define them. */
+function cleanAppId(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const s = v.trim();
+  return s.length <= 200 && /^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)+$/.test(s) ? s : undefined;
+}
+
 /** Validates any value (a parsed JSON column, a sync record, an IPC payload) into a SourceContext. */
 export function normalizeSourceContext(raw: unknown): SourceContext | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
   const out: SourceContext = {};
   const app = cleanText(r.app, LIMITS.app);
+  const appId = app ? cleanAppId(r.appId) : undefined;
   const title = cleanText(r.title, LIMITS.title);
   const url = cleanSourceUrl(r.url);
   const doc = cleanText(r.doc, LIMITS.doc);
   const sentence = cleanText(r.sentence, LIMITS.sentence);
   const page = Number(r.page);
   if (app) out.app = app;
+  if (appId) out.appId = appId;
   if (title) out.title = title;
   if (url) out.url = url;
   if (doc) out.doc = doc;
@@ -157,8 +168,10 @@ export function findWordInSentence(sentence: string, lemma: string): { index: nu
 
 export interface SourceGroupKey {
   key: string;
-  kind: 'doc' | 'site';
+  kind: 'doc' | 'site' | 'app';
   label: string;
+  /** For an app: its package name when one of its words recorded it. */
+  appId?: string;
 }
 
 /** Host without "www.", or '' for an unreadable address. */
@@ -199,12 +212,19 @@ export function siteMonogram(host: string): string {
   return (name.match(/[\p{L}\p{N}]/u)?.[0] || '').toLocaleUpperCase('en');
 }
 
-/** The group a saved word belongs to: the document when there is one, otherwise the web site. */
+/**
+ * The group a saved word belongs to: the document when there is one, otherwise the web site,
+ * otherwise the app it was selected in (a chat or reading app that shows no address).
+ */
 export function sourceGroupOf(ctx: SourceContext | null | undefined): SourceGroupKey | null {
   if (!ctx) return null;
   if (ctx.doc) return { key: `doc:${ctx.doc.toLowerCase()}`, kind: 'doc', label: ctx.doc };
   const site = siteOf(ctx.url);
   if (site) return { key: `site:${site}`, kind: 'site', label: site };
+  // By name, so words saved before the package name was recorded join the same group. The
+  // phone reports an app's name the same way every time, so the key keeps its capitals for
+  // the word book's "From Grok".
+  if (ctx.app) return { key: `app:${ctx.app}`, kind: 'app', label: ctx.app, ...(ctx.appId ? { appId: ctx.appId } : {}) };
   return null;
 }
 
