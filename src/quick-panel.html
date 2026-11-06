@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Quick translation</title>
+  <title data-i18n="popup.quick.windowTitle">Quick translation</title>
   <style>
     :root {
       --primary: #9c3d00;
@@ -125,18 +125,18 @@
 <body>
   <div class="qp" id="qp">
     <div class="qp-bar">
-      <select id="qpFrom" class="qp-lang" aria-label="Translate from"></select>
-      <button type="button" id="qpSwap" class="qp-swap" aria-label="Swap languages" title="Swap languages">
+      <select id="qpFrom" class="qp-lang" aria-label="Translate from" data-i18n-attr="aria-label:popup.quick.from"></select>
+      <button type="button" id="qpSwap" class="qp-swap" aria-label="Swap languages" title="Swap languages" data-i18n-attr="aria-label:popup.quick.swap; title:popup.quick.swap">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h12l-3-3M17 17H5l3 3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" /></svg>
       </button>
-      <select id="qpTo" class="qp-lang" aria-label="Translate to"></select>
+      <select id="qpTo" class="qp-lang" aria-label="Translate to" data-i18n-attr="aria-label:popup.quick.to"></select>
     </div>
     <p class="qp-source" id="qpSource"></p>
-    <ul class="qp-list" id="qpList" role="listbox" aria-label="Translations" tabindex="0"></ul>
+    <ul class="qp-list" id="qpList" role="listbox" aria-label="Translations" data-i18n-attr="aria-label:popup.quick.translations" tabindex="0"></ul>
     <div class="qp-keys" aria-hidden="true">
-      <span><kbd>↑</kbd><kbd>↓</kbd>Engine</span>
-      <span><kbd>Enter</kbd>Replace</span>
-      <span><kbd>Esc</kbd>Cancel</span>
+      <span><kbd>↑</kbd><kbd>↓</kbd><span data-i18n="popup.quick.keys.engine">Engine</span></span>
+      <span><kbd>Enter</kbd><span data-i18n="popup.quick.keys.replace">Replace</span></span>
+      <span><kbd>Esc</kbd><span data-i18n="common.cancel">Cancel</span></span>
     </div>
   </div>
 </body>

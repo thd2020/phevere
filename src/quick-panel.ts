@@ -5,7 +5,12 @@
  * (src/services/quick-translate.ts); this page only shows and picks.
  */
 import './fonts';
+import { languageDisplayName, tHtml } from '@phevere/core/i18n/runtime';
 import type { QuickPanelOpen } from './quick-panel-preload';
+import { windowLanguageReady } from './ui-language';
+
+/** The interface language is in before the panel builds any text. */
+const languageReady = windowLanguageReady();
 
 type Result = { state: 'wait' | 'ok' | 'error'; text: string; detected?: string };
 
@@ -36,23 +41,27 @@ function esc(s: string): string {
 
 function fillLanguages(languages: QuickPanelOpen['languages'], from: string, to: string): void {
   const opts = (auto: string) =>
-    languages.map((l) => `<option value="${esc(l.code)}">${esc(l.code === 'auto' ? auto : l.name)}</option>`).join('');
-  fromEl.innerHTML = opts('Detect language');
-  toEl.innerHTML = opts('Auto');
+    languages
+      .map((l) => `<option value="${esc(l.code)}">${l.code === 'auto' ? auto : esc(languageDisplayName(l.code) || l.name)}</option>`)
+      .join('');
+  fromEl.innerHTML = opts(tHtml('popup.quick.detectLanguage'));
+  toEl.innerHTML = opts(tHtml('popup.quick.autoTarget'));
   fromEl.value = from;
   toEl.value = to;
 }
 
 function render(): void {
+  // The translations are in the target language, which the page's own lang (the interface's) is not.
+  const target = toEl.value && toEl.value !== 'auto' ? toEl.value : '';
   listEl.innerHTML = providers
     .map((p, i) => {
       const r = results.get(p.id);
       const body =
         !r || r.state === 'wait'
-          ? '<span class="qp-item__text is-wait">Translating…</span>'
+          ? `<span class="qp-item__text is-wait">${tHtml('popup.quick.translating')}</span>`
           : r.state === 'error'
-            ? '<span class="qp-item__text is-error">No translation</span>'
-            : `<span class="qp-item__text">${esc(r.text)}</span>`;
+            ? `<span class="qp-item__text is-error">${tHtml('popup.quick.noTranslation')}</span>`
+            : `<span class="qp-item__text"${target ? ` lang="${esc(target)}"` : ''}>${esc(r.text)}</span>`;
       return `<li class="qp-item${i === active ? ' is-active' : ''}" role="option" aria-selected="${i === active}" data-i="${i}"><span class="qp-item__name">${esc(p.label)}</span>${body}</li>`;
     })
     .join('');
@@ -73,6 +82,9 @@ function choose(): void {
 
 function translateAll(): void {
   const gen = ++generation;
+  // The selection's language, once it is known, so the page's lang (the interface's) does not apply to it.
+  if (fromEl.value && fromEl.value !== 'auto') sourceEl.lang = fromEl.value;
+  else sourceEl.removeAttribute('lang');
   results = new Map(providers.map((p) => [p.id, { state: 'wait', text: '' } as Result]));
   render();
   for (const p of providers) {
@@ -82,6 +94,7 @@ function translateAll(): void {
       .then((hit) => {
         if (gen !== generation) return;
         results.set(p.id, hit?.text ? { state: 'ok', text: hit.text, detected: hit.detected } : { state: 'error', text: '' });
+        if (fromEl.value === 'auto' && hit?.detected) sourceEl.lang = hit.detected;
         render();
         if (chooseWhenReady && providers[active]?.id === p.id) choose();
       });
@@ -96,13 +109,15 @@ function move(step: number): void {
 }
 
 api.onOpen((p) => {
-  providers = p.providers;
-  active = 0;
-  chooseWhenReady = false;
-  sourceEl.textContent = p.text;
-  fillLanguages(p.languages, p.from, p.to);
-  translateAll();
-  listEl.focus();
+  void languageReady.then(() => {
+    providers = p.providers;
+    active = 0;
+    chooseWhenReady = false;
+    sourceEl.textContent = p.text;
+    fillLanguages(p.languages, p.from, p.to);
+    translateAll();
+    listEl.focus();
+  });
 });
 
 fromEl.addEventListener('change', translateAll);

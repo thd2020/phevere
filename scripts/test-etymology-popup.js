@@ -27,6 +27,12 @@ const grouping = { exports: {} };
 vm.runInNewContext(esbuild.transformSync(fs.readFileSync(path.join(root, 'packages/core/src/etymology-sources.ts'), 'utf8'),
   { loader: 'ts', format: 'cjs' }).code, { module: grouping, exports: grouping.exports });
 const { groupYoudaoEtymologies, serializeEtymologySources } = grouping.exports;
+// The page loads here without its bundle, so the preload gives it the English interface strings
+// the bundle's window.phevereI18n would (packages/core/src/i18n/en).
+const catalogue = { exports: {} };
+vm.runInNewContext(esbuild.buildSync({ entryPoints: [path.join(root, 'packages/core/src/i18n/en/index.ts')], bundle: true,
+  format: 'cjs', write: false, logLevel: 'silent' }).outputFiles[0].text, { module: catalogue, exports: catalogue.exports });
+const englishStrings = JSON.stringify(catalogue.exports.EN);
 const tongPassages = [
   'This is a synthetic regression passage for Tong. ' + 'A complete source passage must remain available. '.repeat(25) + 'Tong first passage tail.',
   'This is a synthetic regression passage for Tong. ' + 'Distinct continuations must remain separate. '.repeat(25) + 'Tong second passage tail.',
@@ -83,6 +89,21 @@ app.whenReady().then(async () => {
       onLookupUpdate: cb => ipcRenderer.on('test-lookup-update', (_,result) => cb(result)),
     });
     contextBridge.exposeInMainWorld('wikipediaAPI', {search: async () => ({results: []})});
+    const EN = ${englishStrings};
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const message = (key, params, html) => {
+      let m = EN[key];
+      if (m === undefined) return html ? esc(key) : key;
+      if (typeof m === 'object') m = (Number(params && params.count) === 1 && m.one) || m.other;
+      const body = html ? esc(m) : m;
+      return body.replace(/\\{(\\w+)\\}/g, (whole, name) => (params && name in params ? (html ? esc(params[name]) : String(params[name])) : whole));
+    };
+    contextBridge.exposeInMainWorld('phevereI18n', {
+      ready: Promise.resolve(),
+      t: (key, params) => message(key, params, false),
+      tHtml: (key, params) => message(key, params, true),
+      languageDisplayName: (code) => new Intl.DisplayNames(['en'], { type: 'language' }).of(code) || code,
+    });
   `);
   ipcMain.handle('test-lookup', () => result);
   ipcMain.on('test-open-external', (_event, url) => opened.push(url));

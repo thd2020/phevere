@@ -9,6 +9,8 @@ import './ocr-result.css';
 import { OcrView, ocrBarHtml } from '@phevere/core/ocr-view';
 import type { OcrPage } from '@phevere/core/ocr-layout';
 import type { UnitResult } from '@phevere/core/ocr-translate';
+import { t } from '@phevere/core/i18n/runtime';
+import { windowLanguageReady } from './ui-language';
 
 const api = (window as any).ocrResultAPI as {
   data: () => Promise<{ image: string; page: OcrPage } | null>;
@@ -65,6 +67,8 @@ function toast(message: string): void {
 }
 
 async function start(): Promise<void> {
+  // The toolbar and the toasts are built in the interface language, so it loads first.
+  await windowLanguageReady();
   const data = await api.data();
   if (!data) return;
   const page = data.page;
@@ -84,17 +88,17 @@ async function start(): Promise<void> {
     view.fit();
   };
   const view = new OcrView(root, page, img, {
-    copyText: async (t) => {
-      await api.copyText(t);
-      toast('Copied');
+    copyText: async (text) => {
+      await api.copyText(text);
+      toast(t('common.copied'));
     },
     copyImage: async (png) => {
       await api.copyImage(await png.arrayBuffer());
-      toast('Copied');
+      toast(t('common.copied'));
     },
     saveImage: async (png) => {
       const r = await api.saveImage(await png.arrayBuffer());
-      if (r.saved) toast('Saved');
+      if (r.saved) toast(t('popup.scanText.saved'));
     },
     translator: languages.length
       ? {

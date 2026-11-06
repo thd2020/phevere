@@ -22,6 +22,7 @@ import {
   senseLabelLead,
   senseNotesHtml,
   wordFamilyHtml,
+  lookupNoticeText,
 } from '@phevere/core/lexicon-parts';
 import { linkHtml, linkText, pruneGlossLinks, wikiLinkLookup } from '@phevere/core/text-links';
 import { exampleKey, tidyExample } from '@phevere/core/example-text';
@@ -74,6 +75,7 @@ import { windowLanguageReady } from './ui-language';
   phrasesHtml,
   languageSwitchHtml,
   definitionSourcesHtml,
+  lookupNoticeText,
   exampleKey,
   tidyExample,
   linkHtml,
