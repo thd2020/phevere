@@ -525,6 +525,16 @@
         background: var(--outline-variant);
         transform: translateY(-0.28em);
       }
+      /* Senses explained in another language ("In Chinese") keep the language name's own case. */
+      .lexicon-pos-group[data-pos^='gloss-'] .lexicon-pos-heading { text-transform: none; }
+      .lexicon-pos-group[data-pos^='gloss-'] { margin-top: 22px; }
+      .lexicon-gloss-pos {
+        margin: 10px 0 4px;
+        font-family: var(--font-display);
+        font-size: 14px;
+        font-style: italic;
+        color: var(--on-surface-variant);
+      }
 
       /*
        * Senses, set like a printed dictionary: a bold serif number, the gloss in the serif,
@@ -3859,10 +3869,16 @@ function startAutoCloseTimeout() {
           const senseIndex = new Map(defs.map(function (d, i) { return [d, i]; }));
           const senseImages = currentPopupSenseImages(result);
 
+          // Senses explained in English, and apart from them those explained in Chinese or another
+          // language, each in its own section with its own sources.
+          const lxSplit = window.phevereLexicon && window.phevereLexicon.splitByGlossLanguage
+            ? window.phevereLexicon.splitByGlossLanguage(defs)
+            : { main: defs, other: [] };
+
           // Group by part of speech; keep original order within groups
           const groups = {};
           const order = [];
-          defs.forEach(function (d) {
+          lxSplit.main.forEach(function (d) {
             const pos = (d.partOfSpeech || 'unknown').toLowerCase();
             if (!groups[pos]) {
               groups[pos] = [];
@@ -3975,7 +3991,31 @@ function startAutoCloseTimeout() {
             return { id: pos, label: pos === 'unknown' ? T(order.length > 1 ? 'popup.lexicon.section.other' : 'popup.lexicon.section.senses') : chipPosLabel(pos) };
           });
           const lxSources = window.phevereLexicon;
-          if (lxSources && lxSources.definitionSourcesHtml) posInner += lxSources.definitionSourcesHtml(senseSourceNames);
+          if (lxSources && lxSources.definitionSourcesHtml) posInner += lxSources.definitionSourcesHtml(senseSourceNames.splice(0));
+          lxSplit.other.forEach(function (g) {
+            if (!lxSources || !lxSources.glossSectionLabel) return;
+            const id = 'gloss-' + g.lang;
+            const label = lxSources.glossSectionLabel(g.lang);
+            const byPos = {};
+            const posOrder = [];
+            g.defs.forEach(function (d) {
+              const pos = (d.partOfSpeech || 'unknown').toLowerCase();
+              if (!byPos[pos]) {
+                byPos[pos] = [];
+                posOrder.push(pos);
+              }
+              byPos[pos].push(d);
+            });
+            let inner = '';
+            posOrder.forEach(function (pos) {
+              if (pos !== 'unknown' && (posOrder.length > 1 || order.length > 1)) inner += `<p class="lexicon-gloss-pos">${escapeHtml(pos)}</p>`;
+              inner += renderSenses(byPos[pos], []);
+            });
+            inner += lxSources.definitionSourcesHtml(senseSourceNames.splice(0));
+            posInner += wrapGroup(id, label.heading, inner);
+            tocIds.push(id);
+            posSections.push({ id: id, label: label.tab });
+          });
           let allInner = wrapPane(posInner, 'lexicon-pane--pos');
           const lexiconParts = window.phevereLexicon || null;
 

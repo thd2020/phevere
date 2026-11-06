@@ -100,6 +100,7 @@ export default {
   'lexicon.languageSwitch.label': 'Languages',
   /** Under the senses; {sources} lists dictionary names: "Definitions from Wiktionary and Datamuse". */
   'lexicon.sources.definitionsFrom': 'Definitions from {sources}',
+  'lexicon.section.glossIn': 'In {language}',
   /** Under a lookup that found nothing; {words} lists up to three spellings to try. */
   'lexicon.didYouMean': 'Did you mean {words}?',
 

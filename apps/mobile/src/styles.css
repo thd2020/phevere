@@ -468,6 +468,10 @@ html:not([data-mode="strip"]) .shell-lexicon .lexicon-pos-layout {
   transform: translateY(-0.28em);
 }
 .lexicon-pane--pos .lexicon-pos-group + .lexicon-pos-group { margin-top: 26px; }
+/* Senses explained in another language ("In Chinese") keep the language name's own case. */
+.lexicon-pos-group[data-pos^='gloss-'] .lexicon-pos-heading { text-transform: none; }
+.lexicon-pos-group[data-pos^='gloss-'] { margin-top: 22px; }
+.lexicon-gloss-pos { margin: 10px 0 4px; font-family: var(--md-font-display); font-size: 0.9rem; font-style: italic; color: var(--md-sys-color-on-surface-variant); }
 .definition-item { display: flow-root; }
 .definition-item + .definition-item { margin-top: 16px; }
 .definition-sense-row {

@@ -398,9 +398,10 @@ export function posGrammarHtml(codes: string[] | null | undefined): { html: stri
 /**
  * The languages Wiktionary has the word in: a row of buttons under the headword that opens the
  * word in another language, as Wiktionary's contents list leads to each language's section.
- * English comes first, then the language shown, then the rest in the page's order; past the
- * first seven the rest fold under "+N", unless `fold` is false (the phone's row scrolls
- * sideways instead). '' for a word in one language only.
+ * English comes first, then the rest in the page's order, so picking a language does not move
+ * the chips; past the first seven the rest fold under "+N" (the language shown is brought into
+ * the seven), unless `fold` is false (the phone's row scrolls sideways instead). '' for a word in
+ * one language only.
  */
 export function languageSwitchHtml(
   result: { word?: string; languages?: Array<{ code: string; name: string; current?: boolean }> } | null | undefined,
@@ -409,11 +410,11 @@ export function languageSwitchHtml(
 ): string {
   const langs = (result?.languages || []).filter((l) => l && l.code && l.name);
   if (langs.length < 2 || !langs.some((l) => l.current)) return '';
-  const rank = (l: { code: string; current?: boolean }) => (l.code === 'en' ? 0 : l.current ? 1 : 2);
-  const ordered = langs
-    .map((l, i) => ({ l, i }))
-    .sort((a, b) => rank(a.l) - rank(b.l) || a.i - b.i)
-    .map((x) => x.l);
+  // English first, then the page's order, so a chip stays where it was when it is picked; the
+  // language shown comes forward only when it would otherwise sit folded under "+N".
+  const ordered = [...langs.filter((l) => l.code === 'en'), ...langs.filter((l) => l.code !== 'en')];
+  const at = ordered.findIndex((l) => l.current);
+  if (opts.fold !== false && ordered.length > 8 && at >= 7) ordered.splice(1, 0, ...ordered.splice(at, 1));
   const word = esc(result?.word || '');
   const chip = (l: { code: string; name: string; current?: boolean }) => {
     const name = esc(languageName(l.code, l.name));
@@ -427,6 +428,56 @@ export function languageSwitchHtml(
     ? `<details class="lx-langs__all"><summary class="lx-lang">+${esc(formatNumber(rest.length))}</summary><div class="lx-langs__rest">${rest.map(chip).join('')}</div></details>`
     : '';
   return `<nav class="lx-langs" aria-label="${tHtml('lexicon.languageSwitch.label')}">${shown.map(chip).join('')}${more}</nav>`;
+}
+
+/** Sources whose glosses are written in another language than English: Wiktionary's other editions. */
+const GLOSS_SOURCE_LANG: Record<string, string> = {
+  'Chinese Wiktionary': 'zh',
+  'Russian Wiktionary': 'ru',
+  'Japanese Wiktionary': 'ja',
+};
+
+/**
+ * The language a sense is explained in: the edition's own (Chinese Wiktionary explains in
+ * Chinese), else what its script says (Han or kana without Latin words), else English.
+ */
+export function glossLanguage(d: { source?: string; sources?: string[]; meaning?: string; definition?: string }): string {
+  const cites = Array.isArray(d.sources) && d.sources.length ? d.sources : String(d.source || '').split(/\s*·\s*/);
+  for (const c of cites) {
+    const lang = GLOSS_SOURCE_LANG[String(c || '').trim()];
+    if (lang) return lang;
+  }
+  const text = String(d.meaning || d.definition || '').replace(/<[^>]*>/g, '');
+  if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text) && !/[A-Za-z]{3,}/.test(text)) {
+    return /[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text) ? 'ja' : 'zh';
+  }
+  return 'en';
+}
+
+/**
+ * Senses explained in English, and apart from them those explained in other languages, one group
+ * per language in the order they first come, as a bilingual dictionary keeps its Chinese
+ * equivalents apart from its English definitions. When no sense is in English, they all stay
+ * together.
+ */
+export function splitByGlossLanguage<T extends { source?: string; sources?: string[]; meaning?: string; definition?: string }>(
+  defs: T[],
+): { main: T[]; other: Array<{ lang: string; defs: T[] }> } {
+  const main: T[] = [];
+  const other = new Map<string, T[]>();
+  for (const d of defs) {
+    const lang = glossLanguage(d);
+    if (lang === 'en') main.push(d);
+    else other.set(lang, [...(other.get(lang) || []), d]);
+  }
+  if (!main.length) return { main: defs, other: [] };
+  return { main, other: [...other].map(([lang, list]) => ({ lang, defs: list })) };
+}
+
+/** The heading of a gloss-language section ("In Chinese"), and its short name for the section rail. */
+export function glossSectionLabel(lang: string): { heading: string; tab: string } {
+  const name = languageDisplayName(lang);
+  return { heading: t('lexicon.section.glossIn', { language: name }), tab: name };
 }
 
 /**

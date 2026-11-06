@@ -70,6 +70,7 @@ export default {
 
   'lexicon.languageSwitch.label': '언어',
   'lexicon.sources.definitionsFrom': '뜻풀이 출처: {sources}',
+  'lexicon.section.glossIn': '{language} 뜻',
   'lexicon.didYouMean': '이 단어를 찾으셨나요? {words}',
 
   'lexicon.morpheme.type': '종류',

@@ -13,6 +13,8 @@ import './fonts';
 import '@phevere/core/lexicon-parts.css';
 import {
   definitionSourcesHtml,
+  glossSectionLabel,
+  splitByGlossLanguage,
   didYouMeanHtml,
   formLineHtml,
   inflectionsHtml,
@@ -75,6 +77,8 @@ import { windowLanguageReady } from './ui-language';
   phrasesHtml,
   languageSwitchHtml,
   definitionSourcesHtml,
+  splitByGlossLanguage,
+  glossSectionLabel,
   lookupNoticeText,
   exampleKey,
   tidyExample,

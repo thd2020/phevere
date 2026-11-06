@@ -77,6 +77,7 @@ export default {
   // Lexicon: around the entry
   'lexicon.languageSwitch.label': '語言',
   'lexicon.sources.definitionsFrom': '釋義來源：{sources}',
+  'lexicon.section.glossIn': '{language}釋義',
   'lexicon.didYouMean': '你是不是要找 {words}？',
 
   // Lexicon: a prefix, suffix or root's page

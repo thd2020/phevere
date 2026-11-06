@@ -70,6 +70,7 @@ export default {
 
   'lexicon.languageSwitch.label': '言語',
   'lexicon.sources.definitionsFrom': '{sources}による定義',
+  'lexicon.section.glossIn': '{language}での意味',
   'lexicon.didYouMean': 'もしかして：{words}',
 
   'lexicon.morpheme.type': '種類',

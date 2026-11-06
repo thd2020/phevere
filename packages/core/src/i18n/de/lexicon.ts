@@ -70,6 +70,7 @@ export default {
 
   'lexicon.languageSwitch.label': 'Sprachen',
   'lexicon.sources.definitionsFrom': 'Definitionen von {sources}',
+  'lexicon.section.glossIn': 'Auf {language}',
   'lexicon.didYouMean': 'Meinten Sie {words}?',
 
   'lexicon.morpheme.type': 'Art',

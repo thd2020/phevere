@@ -477,6 +477,9 @@ export {
   posGrammarHtml,
   languageSwitchHtml,
   definitionSourcesHtml,
+  glossLanguage,
+  splitByGlossLanguage,
+  glossSectionLabel,
   type LexiconLinks,
 } from './lexicon-parts';
 export { linkHtml, linkText, pruneGlossLinks, wordLinkHtml, wikiLinkLookup } from './text-links';
