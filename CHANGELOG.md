@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - About page (2026-11-06): Settings has an About page on the desktop and on the phone. It shows the version you have installed, with a Copy button for bug reports, and links to the source code on GitHub, a button to star it, the changelog, a page for reporting a problem that already names your version and system, the privacy policy, the MIT licence and the author. It also credits every dictionary, word list, voice, model and font Phevere uses, each with its licence, so Wiktionary and the other CC BY-SA sources are properly attributed. On a Mac, Phevere → About Phevere opens this page.
+- README in other languages (2026-11-06): the README is now also in Simplified Chinese, Traditional Chinese, Japanese, Korean, Spanish, French, German, Russian and Brazilian Portuguese, with a language switcher at the top of each.
+
+### Changed
+
+- README download section (2026-11-06): the table of download buttons is gone. The section links to the latest release and lists the system each platform needs.
 ## [4.2.0] - 2026-11-06
 
 ### Added
