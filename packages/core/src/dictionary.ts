@@ -4492,6 +4492,11 @@ export class DictionaryService extends BaseService {
     const net = { slot: 'later' as const, wanted: opts.wanted, hedge: false, timeoutMs: 10000 };
     const form = { 'Content-Type': 'application/x-www-form-urlencoded' };
     const lined = (out: Array<{ text: string; from: string }> | null) => (out && out.length === items.length && out.every((o) => o.text) ? out : null);
+    // A word or short label keeps the source's case, as single translations do (withSourceCase).
+    const cased = (out: Array<{ text: string; from: string }> | null) =>
+      out
+        ? Promise.all(out.map(async (o, i) => ({ ...o, text: (await this.withSourceCase({ text: o.text } as Translation, items[i], o.from || 'auto', targetLanguage)).text })))
+        : null;
     if (provider === 'deepl') {
       if (!this.deeplApiKey) return null;
       try {
@@ -4502,7 +4507,7 @@ export class DictionaryService extends BaseService {
           body,
           ...net,
         });
-        return lined((r.translations || []).map((t) => ({ text: String(t.text || '').trim(), from: String(t.detected_source_language || '').toLowerCase() })));
+        return cased(lined((r.translations || []).map((t) => ({ text: String(t.text || '').trim(), from: String(t.detected_source_language || '').toLowerCase() }))));
       } catch (error) {
         if (isCancelled(error)) throw error;
         return null;
@@ -4517,7 +4522,7 @@ export class DictionaryService extends BaseService {
         ...net,
       });
       const out = lined(parseGoogleBatch(r));
-      if (out) return out;
+      if (out) return cased(out);
     } catch (error) {
       if (isCancelled(error)) throw error;
       if (error instanceof DictionaryError && error.code === 'HTTP_429') this.googleGtxCoolUntil = Date.now() + 90_000;
@@ -4528,7 +4533,7 @@ export class DictionaryService extends BaseService {
           `https://translation.googleapis.com/language/translate/v2?key=${this.apiKey}`,
           { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ q: items, target: targetLanguage, format: 'text' }), ...net },
         );
-        return lined((r.data?.translations || []).map((t) => ({ text: String(t.translatedText || '').trim(), from: String(t.detectedSourceLanguage || '') })));
+        return cased(lined((r.data?.translations || []).map((t) => ({ text: String(t.translatedText || '').trim(), from: String(t.detectedSourceLanguage || '') }))));
       } catch (error) {
         if (isCancelled(error)) throw error;
       }

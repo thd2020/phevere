@@ -115,12 +115,20 @@ function app({ down = [] } = {}) {
   const core = mod.exports;
   const notFound = () => new core.DictionaryError('HTTP 404', 'HTTP_404', false);
   const asked = [];
-  const answer = (u) => {
+  const answer = (u, o) => {
     if (u.hostname === 'en.wiktionary.org' && u.pathname.startsWith('/api/rest_v1/page/definition/')) {
       const title = decodeURIComponent(u.pathname.slice('/api/rest_v1/page/definition/'.length));
       asked.push(title);
       if (wiktionary[title]) return JSON.parse(JSON.stringify(wiktionary[title]));
       throw notFound();
+    }
+    if (u.hostname === 'translate.googleapis.com' && u.pathname === '/translate_a/t') {
+      // The list endpoint a scan uses: one [translation, language] per q.
+      return new URLSearchParams(String((o && o.body) || '')).getAll('q').map((q) => {
+        const text = engine.google[`${q}|${isoOf(u.searchParams.get('tl'))}`];
+        if (!text) throw notFound();
+        return [text, /[一-鿿]/.test(q) ? 'zh' : 'de'];
+      });
     }
     if (u.hostname === 'translate.googleapis.com') {
       const text = engine.google[`${u.searchParams.get('q')}|${isoOf(u.searchParams.get('tl'))}`];
@@ -142,7 +150,7 @@ function app({ down = [] } = {}) {
       throw new core.DictionaryError('Request failed: timed out', 'NETWORK_ERROR', true);
     }
     await new Promise((r) => setTimeout(r, 5));
-    return answer(u);
+    return answer(u, o);
   };
   const saved = new Map();
   core.configureCore({
@@ -285,6 +293,9 @@ assert.equal(capitalBelongsByWiktionary('Apple', 'en', 'zh', { sourcePage: null,
   const took = Date.now() - started;
   assert.equal(hit && hit.text, 'apple', 'without Wiktionary, 苹果 still comes back as apple');
   assert.ok(took < 3000, `and within three seconds (${took} ms)`);
+  // A scan's batch keeps the same case: Hund gives dog, Beijing and the sentence keep their capitals.
+  const batch = await service.translateBatch(['Hund', '北京', '我很好。'], 'en', { provider: 'google' });
+  assert.equal(JSON.stringify(batch && batch.map((b) => b.text)), JSON.stringify(['dog', 'Beijing', 'I am fine.']), `a scan batch follows the source case (${JSON.stringify(batch)})`);
   console.log('translation-case: all tests passed');
 })().catch((e) => {
   console.error(e);
