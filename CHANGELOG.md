@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Hints in typed questions (2026-11-06): a typed question now starts with the first letter only, however weakly you hold the word, instead of up to four letters for a long word; a word you hold weakly gets an easier kind of question instead. Each Hint gives one more letter and lowers the credit for your answer: any hint makes it Hard at most, and needing hints for more than a third of the hidden letters makes it Again. "I knew it" after such an answer makes it Hard.
-- "Almost" (2026-11-06): a typed answer one letter off now counts as a miss (Again) and gets the cross instead of the tick. "I knew it" makes it Hard, not Good.
+- Typos in typed answers (2026-11-06): a typed answer with one slip in a word now counts as right, as on Duolingo. A slip is one letter missing, one extra, one wrong, or two neighbouring letters swapped, in a word of three letters or more, and it must not spell another word: "strt" and "satrt" pass for "start", but "star", "starts" and "stret" do not. The answer gets the tick and Good, never Easy, and "You have a typo" shows the right spelling with the letters you got wrong underlined. Hints lower the credit as before.
 - README download section (2026-11-06): the table of download buttons is gone. The section links to the latest release and lists the system each platform needs.
 
 ### Fixed

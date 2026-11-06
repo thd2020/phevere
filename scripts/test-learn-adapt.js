@@ -167,21 +167,21 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
   assert.ok(core.hintReview(typing), 'Hint goes on from the kept box');
   assert.equal(typing.question.draft, 'harbo');
 
-  // "Almost" is a miss: Again, a cross over the question, and "I knew it" gives Hard at most.
+  // A typo counts as right, as on Duolingo: Good, a tick, and the right spelling with the slip marked.
   const near = core.startReview([firm], 10, now);
   near.started = true;
   core.ensureReviewQuestion(near, [firm, ...pool.slice(1)], { now });
   const na = core.answerReview(near, { typed: 'harbuor' }, now + 2000);
-  assert.equal(na.result, 'close');
-  assert.equal(na.grade, 1);
+  assert.equal(na.result, 'typo');
+  assert.equal(na.grade, 3);
   const nearHtml = core.reviewHtml([firm, ...pool.slice(1)], near, 10, { now: now + 2100 });
-  assert.match(nearHtml, /Almost: harbour/);
-  assert.match(nearHtml, /class="nbv-ink is-wrong"/, 'the wrong-answer mark');
-  assert.equal((nearHtml.match(/nbv-ink__reveal--/g) || []).length, 2, 'a cross, not a tick');
-  assert.match(nearHtml, />I knew it</);
-  assert.doesNotMatch(nearHtml, /Too easy/);
+  assert.match(nearHtml, /You have a typo<span class="nbv-fix">harb<mark>ou<\/mark>r<\/span>/);
+  assert.match(nearHtml, /class="nbv-ink is-right"/, 'the right-answer mark');
+  assert.equal((nearHtml.match(/nbv-ink__reveal--/g) || []).length, 1, 'a tick, not a cross');
+  assert.match(nearHtml, />I didn't know it</);
+  assert.doesNotMatch(nearHtml, /Too easy/, 'a typo cannot be marked too easy');
   core.overrideReview(near);
-  assert.equal(near.answer.grade, 2);
+  assert.equal(near.answer.grade, 1);
 
   // The stage tag is on every question.
   const tagState = core.startReview([firm], 10, now);
@@ -273,7 +273,7 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
   assert.equal(good.answer.result, 'right', 'placing the last tile answers');
   assert.equal(good.answer.grade, 3, 'tiles hand over the letters: Good, never Easy');
   const bad = build('lnatern');
-  assert.equal(bad.answer.result, 'wrong', 'a swapped pair is a misspelling, not "Almost"');
+  assert.equal(bad.answer.result, 'wrong', 'tiles hand over the letters, so a swapped pair is wrong, not a typo');
   const s7 = core.startReview([lantern], 10, now);
   s7.started = true;
   s7.question = { ...tiles, placed: [] };

@@ -18,6 +18,7 @@ import {
   memoryLevel,
   ROUND_WORDS,
   TYPED_KINDS,
+  typoMarks,
   usableSense,
   wordMaturity,
   type LearnerModel,
@@ -352,9 +353,19 @@ function tilesHtml(q: ReviewQuestion, state: ReviewState): string {
 function verdictHtml(q: ReviewQuestion, state: ReviewState): string {
   const a = state.answer!;
   if (a.timedOut) return `<p class="nbv-verdict is-wrong" role="status">Time is up</p>`;
-  const text = a.result === 'right' ? 'Correct' : a.result === 'close' ? `Almost: ${esc(q.answers[0])}` : q.kind === 'flash' ? 'Keep practising' : 'Not quite';
-  // The mark says right or wrong; only "Almost" carries something to read, the right spelling.
-  return `<p class="nbv-verdict is-${a.result}${a.result === 'close' ? '' : ' nbv-vh'}" role="status">${text}</p>`;
+  // The mark says right or wrong; only a typo carries something to read, the right spelling.
+  if (a.result === 'typo') return `<p class="nbv-verdict is-typo" role="status">You have a typo<span class="nbv-fix">${typoFixHtml(a.typed, q.answers)}</span></p>`;
+  const text = a.result === 'right' ? 'Correct' : q.kind === 'flash' ? 'Keep practising' : 'Not quite';
+  return `<p class="nbv-verdict is-${a.result} nbv-vh" role="status">${text}</p>`;
+}
+
+/** The right spelling with the letters the learner got wrong marked, as Duolingo shows a typo. */
+function typoFixHtml(typed: string, answers: string[]): string {
+  for (const answer of answers) {
+    const parts = typoMarks(typed, answer);
+    if (parts) return parts.map((p) => (p.slip ? `<mark>${esc(p.text)}</mark>` : esc(p.text))).join('');
+  }
+  return esc(answers[0] || '');
 }
 
 /** The countdown bar on a choice question (Settings → Learn), resumed from the question's start on a repaint. */
@@ -398,7 +409,7 @@ function inkStroke(id: string, s: { reveal: string; body: string }, n: number): 
 
 /**
  * The teacher's mark over the whole question, prompt and options together: a brush tick for a
- * right answer, a lighter one for an almost, a cross for a wrong one, over a soft wash. It takes
+ * right answer or a typo, a cross for a wrong one, over a soft wash. It takes
  * no taps, so Continue works while it plays. A repaint resumes it where it was (from the answer's
  * time) instead of starting it again, and after MARK_MS it is no longer drawn.
  */
@@ -408,8 +419,8 @@ function markHtml(q: ReviewQuestion, state: ReviewState, now: number): string {
   const elapsed = a.at != null ? Math.max(0, now - a.at) : MARK_MS;
   if (elapsed >= MARK_MS) return '';
   const key = `nbv-ink-${state.index}-${String(q.id).replace(/[^\w-]/g, '').slice(-12)}`;
-  // A near miss is a miss: it gets the cross, as a wrong answer does.
-  const mark = a.result === 'right' ? 'right' : 'wrong';
+  // A typo counts as right, so it gets the tick.
+  const mark = a.result === 'wrong' ? 'wrong' : 'right';
   const strokes = mark === 'wrong' ? CROSS.map((s, i) => inkStroke(`${key}-${i}`, s, i + 1)).join('') : inkStroke(`${key}-0`, TICK, 1);
   return `<div class="nbv-wash is-${mark}" aria-hidden="true"></div><div class="nbv-ink is-${mark}" aria-hidden="true"><svg viewBox="0 0 240 200" preserveAspectRatio="xMidYMid meet">${strokes}</svg></div>`;
 }
