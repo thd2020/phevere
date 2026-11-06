@@ -21,7 +21,9 @@ const compiled = esbuild.buildSync({
   entryPoints: [path.join(coreDir, 'index.ts')],
   bundle: true, platform: 'node', format: 'cjs', write: false, logLevel: 'silent',
   nodePaths: [path.join(__dirname, '../node_modules')],
-  external: ['cmu-pronouncing-dictionary'],
+  // The interface translations (i18n/runtime.ts loads them on demand) stay out: every app start
+  // below runs the whole bundle, and a megabyte of catalogues it never reads slows a CI runner's timers.
+  external: ['cmu-pronouncing-dictionary', './zh-CN', './zh-TW', './ja', './ko', './es', './fr', './de', './ru', './pt-BR'],
 }).outputFiles[0].text;
 const script = new vm.Script(compiled);
 
