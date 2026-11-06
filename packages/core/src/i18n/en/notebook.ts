@@ -131,6 +131,8 @@ export default {
   'notebook.review.nothingDueToday': 'Nothing due today',
   /** {when} is "tomorrow" or a date. */
   'notebook.review.nextReview': 'Next review {when}',
+  'notebook.review.more.new': { one: 'Learn {count} more word', other: 'Learn {count} more words' },
+  'notebook.review.more.ahead': { one: 'Review {count} word early', other: 'Review {count} words early' },
   /** Words due again for review, beside Learning and New. */
   'notebook.review.start.review': 'Review',
   'notebook.review.start.roundOf': 'Round of {count}',

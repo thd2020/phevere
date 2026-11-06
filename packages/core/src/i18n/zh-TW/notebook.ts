@@ -105,6 +105,8 @@ export default {
   // Review: the start card
   'notebook.review.nothingDueToday': '今天沒有待複習的單字',
   'notebook.review.nextReview': '下次複習：{when}',
+  'notebook.review.more.new': { other: '再學 {count} 個新詞' },
+  'notebook.review.more.ahead': { other: '提前複習 {count} 個詞' },
   'notebook.review.start.review': '複習',
   'notebook.review.start.roundOf': '本輪 {count} 個',
   'notebook.review.start.minutes': { other: '約 {count} 分鐘' },

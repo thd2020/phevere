@@ -148,6 +148,8 @@ export default {
 
   'notebook.review.nothingDueToday': 'Сегодня повторять нечего',
   'notebook.review.nextReview': 'Следующее повторение: {when}',
+  'notebook.review.more.new': { one: 'Выучить ещё {count} слово', few: 'Выучить ещё {count} слова', many: 'Выучить ещё {count} слов', other: 'Выучить ещё {count} слова' },
+  'notebook.review.more.ahead': { one: 'Повторить {count} слово заранее', few: 'Повторить {count} слова заранее', many: 'Повторить {count} слов заранее', other: 'Повторить {count} слова заранее' },
   'notebook.review.start.review': 'К повторению',
   'notebook.review.start.roundOf': 'Раунд из {count}',
   'notebook.review.start.minutes': { one: 'Около {count} мин', few: 'Около {count} мин', many: 'Около {count} мин', other: 'Около {count} мин' },

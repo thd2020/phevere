@@ -102,6 +102,8 @@ export default {
 
   'notebook.review.nothingDueToday': 'Heute nichts fällig',
   'notebook.review.nextReview': 'Nächste Wiederholung: {when}',
+  'notebook.review.more.new': { one: '{count} weiteres Wort lernen', other: '{count} weitere Wörter lernen' },
+  'notebook.review.more.ahead': { one: '{count} Wort vorziehen', other: '{count} Wörter vorziehen' },
   'notebook.review.start.review': 'Wiederholen',
   'notebook.review.start.roundOf': 'Runde mit {count}',
   'notebook.review.start.minutes': { one: 'Etwa {count} Min.', other: 'Etwa {count} Min.' },

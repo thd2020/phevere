@@ -56,6 +56,8 @@ import {
   vocabCopyText,
   flashCopied,
   startReview,
+  startExtraRound,
+  extraNewCount,
   answerReview,
   overrideReview,
   advanceReview,
@@ -3366,6 +3368,15 @@ async function handleAct(act: string, target: HTMLElement, e: Event): Promise<vo
       nbState.review = null;
       paint();
       return;
+    case 'learn-more': {
+      // Past today's plan: more new words, or reviews before they are due, from the list in Learn.
+      const pool = wordsState.ctx ? scopeEntries(wordsState.scope, wordsState.ctx) : reviewPool;
+      const kind = target.dataset.kind === 'ahead' ? 'ahead' : 'new';
+      nbState.review = startExtraRound(pool, kind, Date.now(), Number(target.dataset.count) || extraNewCount(nbState.goal));
+      await Promise.all([prefetchMeanings(true), prefetchExamples(true)]);
+      paint();
+      return;
+    }
     case 'nb-start':
     case 'nb-round':
       // A new round plans again from what is due now and from the answers so far.

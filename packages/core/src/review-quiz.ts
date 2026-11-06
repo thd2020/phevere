@@ -419,6 +419,38 @@ export function reviewStateFor(plan: QueuePlan, now = Date.now()): ReviewState {
   };
 }
 
+/** Which extra round "Nothing due today" offers: more new words, or reviews before they are due. */
+export type ExtraRound = 'new' | 'ahead';
+
+/**
+ * Words for a round past today's plan, as Anki's Custom Study offers: `new` takes the next unstarted
+ * words in saved order (book words in book order), `count` of them; `ahead` takes started words not
+ * due yet, soonest due first, one round's worth. Known words and what Learn leaves out stay out.
+ * Answering early is fine for the schedule, which counts the days that really passed.
+ */
+export function extraRoundIds(all: NotebookEntry[], kind: ExtraRound, now = Date.now(), count = ROUND_WORDS): string[] {
+  const end = dayStart(now) + DAY;
+  const entries = dedupeLemmas(all.filter((e) => isLearnable(e) && clean(e.lemma) && !(e as { known?: boolean }).known));
+  if (kind === 'new') {
+    return entries
+      .filter(isNew)
+      .sort((x, y) => Number(x.createdAt || 0) - Number(y.createdAt || 0))
+      .slice(0, Math.max(0, count))
+      .map((e) => e.id);
+  }
+  return entries
+    .filter((e) => !isNew(e) && e.reviewDue != null && Number(e.reviewDue) >= end)
+    .sort((x, y) => Number(x.reviewDue) - Number(y.reviewDue))
+    .slice(0, ROUND_WORDS)
+    .map((e) => e.id);
+}
+
+/** A started session over an extra round (`extraRoundIds`). */
+export function startExtraRound(all: NotebookEntry[], kind: ExtraRound, now = Date.now(), count = ROUND_WORDS): ReviewState {
+  const ids = extraRoundIds(all, kind, now, count);
+  return { ...reviewStateFor({ ids, due: kind === 'ahead' ? ids.length : 0, fresh: kind === 'new' ? ids.length : 0, heldBack: 0 }, now), started: true };
+}
+
 export function startReview(entries: NotebookEntry[], goal: number, now = Date.now(), startedToday = 0, pace?: StudyPace | null): ReviewState {
   return reviewStateFor(reviewPlan(entries, goal, now, startedToday, pace), now);
 }

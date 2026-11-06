@@ -102,6 +102,8 @@ export default {
 
   'notebook.review.nothingDueToday': 'Nada pendiente para hoy',
   'notebook.review.nextReview': 'Próximo repaso: {when}',
+  'notebook.review.more.new': { one: 'Aprender {count} palabra más', other: 'Aprender {count} palabras más' },
+  'notebook.review.more.ahead': { one: 'Repasar {count} palabra antes de tiempo', other: 'Repasar {count} palabras antes de tiempo' },
   'notebook.review.start.review': 'Repaso',
   'notebook.review.start.roundOf': 'Ronda de {count}',
   'notebook.review.start.minutes': { one: 'Alrededor de {count} min', other: 'Unos {count} min' },

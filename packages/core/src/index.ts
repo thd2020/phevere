@@ -268,6 +268,9 @@ export {
 } from './review-schedule';
 export {
   startReview,
+  startExtraRound,
+  extraRoundIds,
+  type ExtraRound,
   ensureReviewQuestion,
   answerReview,
   overrideReview,
@@ -310,7 +313,7 @@ export {
   type VoiceOutcome,
   type RecordingSource,
 } from './pronounce-once';
-export { type ReviewRenderOptions } from './notebook-review';
+export { extraNewCount, type ReviewRenderOptions } from './notebook-review';
 
 export { onVocabChanged } from './vocab-store';
 export { syncVocab, mergeDuplicateLemmas, VOCAB_SYNC_NAMESPACE, type VocabSyncAccount, type VocabSyncResult } from './vocab-sync';

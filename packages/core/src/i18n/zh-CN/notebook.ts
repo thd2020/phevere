@@ -105,6 +105,8 @@ export default {
   // Review: the start card
   'notebook.review.nothingDueToday': '今天没有待复习',
   'notebook.review.nextReview': '下次复习：{when}',
+  'notebook.review.more.new': { other: '再学 {count} 个新词' },
+  'notebook.review.more.ahead': { other: '提前复习 {count} 个词' },
   'notebook.review.start.review': '复习',
   'notebook.review.start.roundOf': '本轮 {count} 个',
   'notebook.review.start.minutes': { other: '约 {count} 分钟' },

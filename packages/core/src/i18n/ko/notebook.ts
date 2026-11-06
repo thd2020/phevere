@@ -97,6 +97,8 @@ export default {
 
   'notebook.review.nothingDueToday': '오늘 복습할 단어 없음',
   'notebook.review.nextReview': '다음 복습: {when}',
+  'notebook.review.more.new': { other: '새 단어 {count}개 더 배우기' },
+  'notebook.review.more.ahead': { other: '{count}개 미리 복습' },
   'notebook.review.start.review': '복습',
   'notebook.review.start.roundOf': '이번 회차 {count}개',
   'notebook.review.start.minutes': { other: '약 {count}분' },

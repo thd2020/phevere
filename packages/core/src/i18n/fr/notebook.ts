@@ -102,6 +102,8 @@ export default {
 
   'notebook.review.nothingDueToday': 'Rien à réviser aujourd’hui',
   'notebook.review.nextReview': 'Prochaine révision : {when}',
+  'notebook.review.more.new': { one: 'Apprendre {count} mot de plus', other: 'Apprendre {count} mots de plus' },
+  'notebook.review.more.ahead': { one: 'Réviser {count} mot en avance', other: 'Réviser {count} mots en avance' },
   'notebook.review.start.review': 'À réviser',
   'notebook.review.start.roundOf': 'Série de {count}',
   'notebook.review.start.minutes': { one: 'Environ {count} min', other: 'Environ {count} min' },

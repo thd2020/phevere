@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Learn more once today is done (2026-11-07): when Learn says "Nothing due today", it now offers "Learn 10 more words", which starts a round of the next new words past today's goal (the number is your daily goal, at least five), and "Review 20 words early", which asks the started words that are due soonest. Each shows only when it has words. They work on My words, a word book and All books, on the desktop and the phone.
 - Search shortcuts (2026-11-07): Ctrl+F and Ctrl+K (Cmd+F and Cmd+K on a Mac) put the cursor in the main window's search box from Words, Learn or Recent.
 
 ### Changed

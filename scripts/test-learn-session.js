@@ -167,4 +167,24 @@ const started = (lemma, extra = {}) => ({ lemma, known: false, reps: 2, state: 2
   assert.deepEqual(state.queue, ['wb:b']);
 }
 
+// Past today's plan: more new words in saved order, and started words before they are due.
+{
+  const now = Date.UTC(2026, 10, 7, 9);
+  const w = (id, extra) => ({ id, lemma: id, definition: 'a meaning', partOfSpeech: 'noun', createdAt: now - 10 * DAY, ...extra });
+  const started = (due) => ({ reps: 2, state: 2, lastReview: now - DAY, reviewDue: due });
+  const all = [
+    w('newer', { createdAt: now - DAY }),
+    w('older'),
+    w('known', { known: true }),
+    w('later', started(now + 5 * DAY)),
+    w('soon', started(now + 2 * DAY)),
+    w('today', started(now + 60_000)),
+  ];
+  assert.deepEqual(core.extraRoundIds(all, 'new', now, 1), ['older'], 'oldest saved new word first, count respected');
+  assert.deepEqual(core.extraRoundIds(all, 'ahead', now), ['soon', 'later'], 'not due today, soonest first; words due today and known words stay out');
+  const state = core.startExtraRound(all, 'new', now, 5);
+  assert.equal(state.started, true);
+  assert.deepEqual(state.queue, ['older', 'newer']);
+}
+
 console.log('test-learn-session: ok');

@@ -96,6 +96,8 @@ import {
   markHeard,
   singleVoice,
   startReview,
+  startExtraRound,
+  extraNewCount,
   answerReview,
   overrideReview,
   advanceReview,
@@ -2487,6 +2489,17 @@ function wireNotebookActions(root: HTMLElement): void {
         renderLearn();
         document.querySelector('.main-shell')?.scrollTo({ top: 0 });
         return;
+      case 'learn-more': {
+        // Past today's plan: more new words, or reviews before they are due, from the list in Learn.
+        const scope = wbCtx ? wbScope : 'mine';
+        const pool = wbCtx ? scopeEntries(scope, wbCtx) : vocabNotebookCache;
+        const kind = el.dataset.kind === 'ahead' ? 'ahead' : 'new';
+        nbReview = startExtraRound(pool, kind, Date.now(), Number(el.dataset.count) || extraNewCount(nbGoal));
+        await Promise.all([prefetchMeanings(true), prefetchExamples(true)]);
+        renderLearn();
+        document.querySelector('.main-shell')?.scrollTo({ top: 0 });
+        return;
+      }
       case 'nb-start':
       case 'nb-round':
         // A new round plans again from what is due now and from the answers so far; renderLearn starts it.

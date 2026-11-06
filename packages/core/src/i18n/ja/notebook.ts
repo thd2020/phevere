@@ -97,6 +97,8 @@ export default {
 
   'notebook.review.nothingDueToday': '今日の復習はありません',
   'notebook.review.nextReview': '次の復習：{when}',
+  'notebook.review.more.new': { other: '新しい単語をあと{count}語' },
+  'notebook.review.more.ahead': { other: '{count}語を前倒しで復習' },
   'notebook.review.start.review': '復習',
   'notebook.review.start.roundOf': '1ラウンド{count}問',
   'notebook.review.start.minutes': { other: '約{count}分' },
