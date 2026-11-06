@@ -93,6 +93,7 @@ import { detectLanguageLocal, englishCandidateWords, isAmbiguousHan, remoteFitsS
 import { isCmuWord, warmCmuIpa } from './cmu-ipa';
 import { fetchInflections, hasInflections, selectInflections, type WordInflections } from './inflections';
 import { closestSpelling } from './vocab-lemma';
+import { capitalBelongsByWiktionary, caseVerdict, hasProperNoun } from './translation-case';
 import { wrapConsole } from './log';
 import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigured, type OfflineHit } from './runtime';
 import { registerHeadwordResolver } from './vocab-store';
@@ -188,6 +189,12 @@ const EXACT_TITLE_MS = 1500;
 const TRANSLATION_STAGGER_MS = 1000;
 /** A sentence's translation shows once one engine answers; the others get this long to join it. */
 const SENTENCE_GRACE_MS = 300;
+/**
+ * Longest wait on a normal network for Wiktionary to say whether a short translation's capital
+ * belongs to the word ("Beijing") or only starts it ("Apple" for 苹果); withBudget stretches it on
+ * a slow connection. Without an answer the translation starts in lower case, as its source does.
+ */
+const TRANSLATION_CASE_MS = 800;
 /** A translation engine that gave no answer at all is asked last for this long. */
 const TRANSLATION_DOWN_MS = 5 * 60 * 1000;
 /**
@@ -2254,6 +2261,9 @@ export class DictionaryService extends BaseService {
     }
 
     await offlinePromise;
+    // What the dictionaries the first paint waits for have brought so far (anySenses below).
+    const primaryResults: any[] = [];
+    for (const p of primaryPromises) void p.then((v) => primaryResults.push(v));
     const hasLocal = definitions.some((d) => isLocalPackSource(d.source));
     const coreWait = () => (hasLocal ? CORE_WAIT_WITH_LOCAL_MS : budgetMs(CORE_WAIT_WITHOUT_LOCAL_MS, [FREE_DICTIONARY, WIKTIONARY]));
     if (corePromises.length) {
@@ -2265,9 +2275,14 @@ export class DictionaryService extends BaseService {
     // (a hung request's backup goes out after one). A dictionary host that answers nothing at all
     // must not hold a word it does not know until the lookup's deadline: with Wiktionary down,
     // "qwzxv" would end as "Lookup timed out" after twelve seconds instead of no definitions.
+    // Only the dictionaries' senses count. Datamuse often answers before them on a slow
+    // connection, and its WordNet glosses painted alone open the word without the dictionaries'
+    // senses, which then come only as an update (a test's "cat" opened as "A spiteful woman
+    // gossip."). So does a Wiktionary edition in another language, which joins an English
+    // lookup without holding it up.
     const anySenses = () =>
       definitions.length > 0 ||
-      finished.some((v: any) => v && !v.error && ((v.data?.definitions?.length || 0) > 0 || (v.type === 'offlineFallback' && v.data?.length > 0)));
+      primaryResults.some((v: any) => v && !v.error && ((v.data?.definitions?.length || 0) > 0 || (v.type === 'offlineFallback' && v.data?.length > 0)));
     if (!hasLocal && primaryPromises.length && !anySenses() && !connectionSilent()) {
       // It ends at once when the connection turns out to be silent: nothing it waits for is coming.
       await this.waitForFirstPaint(primaryPromises, primaryPromises, 0, () => (connectionSilent() ? 0 : budgetMs(CORE_WAIT_WITHOUT_LOCAL_MS, [FREE_DICTIONARY, WIKTIONARY], 2)));
@@ -4535,8 +4550,8 @@ export class DictionaryService extends BaseService {
   }
 
   /**
-   * The first translation any engine gives, the preferred engine first. The engines are started
-   * one after another the way Happy Eyeballs (RFC 8305) starts connection attempts: the next
+   * The first translation any engine gives, the preferred engine first, in the source's case
+   * (withSourceCase). The engines are started one after another the way Happy Eyeballs (RFC 8305) starts connection attempts: the next
    * engine starts as soon as the one before it fails, or when it has not answered within its
    * host's round trip (at least TRANSLATION_STAGGER_MS), or when its host stops answering while
    * others answer. The first answer wins. Before, each engine was waited out in turn: with Google
@@ -4545,6 +4560,75 @@ export class DictionaryService extends BaseService {
    * next translation starts with one that works.
    */
   private async getBestTranslation(
+    text: string,
+    targetLanguage: string,
+    sourceLanguage: string,
+    preferred: TranslationProvider = 'auto',
+  ): Promise<Translation | null> {
+    const hit = await this.firstTranslation(text, targetLanguage, sourceLanguage, preferred);
+    return hit ? this.withSourceCase(hit, text, sourceLanguage, hit.language || targetLanguage) : null;
+  }
+
+  /**
+   * A translation of a word or short phrase in the source's case (translation-case.ts): "apple"
+   * for 苹果 and "cat" for "chat", where engines answer "Apple" and "Cat", while "Beijing",
+   * "English", "NASA" and sentences keep the engine's capitals.
+   */
+  private async withSourceCase(hit: Translation, source: string, sourceLanguage: string, targetLanguage: string): Promise<Translation> {
+    const verdict = caseVerdict(source, hit.text, sourceLanguage, targetLanguage);
+    if (verdict.kind === 'keep') return hit;
+    const belongs = await this.capitalBelongs(verdict.word, source, sourceLanguage, targetLanguage);
+    return belongs ? hit : { ...hit, text: verdict.lowered };
+  }
+
+  /** Answers of capitalBelongs this session, so a repeated translation needs no request. */
+  private readonly translationCapitals = new Map<string, boolean>();
+
+  /**
+   * Whether the capital of a translation's first word belongs to it, from Wiktionary
+   * (capitalBelongsByWiktionary). The answer is saved, and the wait is short: without an answer
+   * (offline, Wiktionary slow or down) the translation follows the source and starts in lower case.
+   */
+  private async capitalBelongs(word: string, source: string, sourceLanguage: string, targetLanguage: string): Promise<boolean> {
+    const lang = (l: string) => (l || '').toLowerCase().split('-')[0];
+    const typed = trimEdges(sanitize(source));
+    const key = `translation-case:v1:${lang(sourceLanguage)}:${lang(targetLanguage)}:${typed}:${word}`;
+    const known = this.translationCapitals.get(key);
+    if (known !== undefined) return known;
+    const store = getLookupCache();
+    try {
+      const saved = store ? await store.get(key) : null;
+      if (saved && Date.now() - saved.savedAt < EXACT_TITLE_TTL_MS && typeof (saved.value as any)?.capital === 'boolean') {
+        this.translationCapitals.set(key, (saved.value as any).capital);
+        return (saved.value as any).capital;
+      }
+    } catch {
+      /* asked below */
+    }
+    if (!isCoreConfigured() || this.isSourceDown('wiktionary')) return false;
+    const lowerWord = word.charAt(0).toLocaleLowerCase(lang(targetLanguage) || undefined) + word.slice(1);
+    // Glosses of the source are asked for only when they are in the target language (English).
+    const titles = [lang(targetLanguage) === 'en' ? typed : '', word, lowerWord];
+    const pages = await withBudget(
+      Promise.all(titles.map((t) => (t ? this.wiktionaryDefinitions(t) : Promise.resolve(undefined)))),
+      TRANSLATION_CASE_MS,
+      WIKTIONARY,
+      1,
+      'translation-case',
+    ).catch((): null => null);
+    if (!pages) return false;
+    // A page that failed to load says nothing; one Wiktionary does not have (404) is null.
+    const [sourcePage, ownPage, lowerPage] = pages.map((p, i) => (titles[i] && this.unansweredTitles.has(titles[i]) ? undefined : p));
+    const answer = capitalBelongsByWiktionary(word, targetLanguage, sourceLanguage, { sourcePage, ownPage, lowerPage });
+    if (answer === undefined) return false;
+    this.translationCapitals.set(key, answer);
+    if (this.translationCapitals.size > 400) this.translationCapitals.delete(this.translationCapitals.keys().next().value as string);
+    if (store) void Promise.resolve(store.set(key, { capital: answer }, Date.now())).catch((): undefined => undefined);
+    return answer;
+  }
+
+  /** The first translation any engine gives (getBestTranslation), in the engine's own case. */
+  private async firstTranslation(
     text: string,
     targetLanguage: string,
     sourceLanguage: string,
@@ -5091,27 +5175,6 @@ function mergeWiktionaryPages(first: any, second: any): any {
     out[key] = [...(Array.isArray(first[key]) ? first[key] : []), ...(Array.isArray(second[key]) ? second[key] : [])];
   }
   return out;
-}
-
-/**
- * Whether a Wiktionary definitions page has a proper noun that stands for something in its own
- * right: the city of Paris, the month of May. One whose first sense is only a surname, a given
- * name or a minor place ("Children", "Went") does not count, so a capital at the start of a
- * sentence does not hide the word.
- */
-function hasProperNoun(page: any): boolean {
-  const minor = /^\s*(?:an?\s+)?(?:(?:english|habitational|occupational|common)\s+)?(?:surname|(?:male|female|unisex)\s+given\s+name|given\s+name|placename|place\s+name|number\s+of\s+places|river|village|hamlet|town|locale)\b/i;
-  return Object.values(page || {}).some(
-    (list) =>
-      Array.isArray(list) &&
-      list.some((e: any) => {
-        if (!/proper noun/i.test(String(e?.partOfSpeech || ''))) return false;
-        const first = (e?.definitions || [])
-          .map((d: any) => String(d?.definition || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
-          .find((t: string) => t);
-        return !!first && !minor.test(first) && !/^the river\b/i.test(first);
-      }),
-  );
 }
 
 /**

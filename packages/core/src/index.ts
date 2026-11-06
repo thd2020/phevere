@@ -489,6 +489,7 @@ export {
 export { morphemeSections, morphemeOfferHtml, containsMorpheme, type MorphemeSection, type OwnWords } from './morpheme-view';
 export { suggestWords, peekSuggestions, warmSuggestions } from './word-suggest';
 export { normalizeVocabLemma, closestSpelling, typoDistance } from './vocab-lemma';
+export { caseVerdict, capitalBelongsByWiktionary, isShortText, type CaseVerdict } from './translation-case';
 export { normalizeStoredLemmas } from './vocab-sync';
 export { checkApiKey, type ApiProviderId, type ApiCredentials, type ApiKeyCheck } from './api-key-check';
 export {
