@@ -2734,6 +2734,14 @@ ipcMain.on('hide-popup', () => {
   popupWindows = [];
 });
 
+// Settings → About: the installed version and the system, for the page and for bug reports.
+ipcMain.handle('app-info', () => ({
+  version: app.getVersion(),
+  platform: process.platform,
+  arch: process.arch,
+  systemVersion: process.getSystemVersion(),
+}));
+
 ipcMain.handle('show-settings-window', (_event, section?: unknown) => {
   createSettingsWindow(typeof section === 'string' ? section : undefined);
 });
@@ -3715,7 +3723,7 @@ function installDarwinAppMenu(): void {
     {
       label: app.name,
       submenu: [
-        { role: 'about' },
+        { label: `About ${app.name}`, click: () => createSettingsWindow('about') },
         { type: 'separator' },
         {
           label: 'Settings…',

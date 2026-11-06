@@ -39,6 +39,7 @@ import '@phevere/core/popover-menu.css';
 import '@phevere/core/learn-views.css';
 import '@phevere/core/settings-kit.css';
 import '@phevere/core/settings-sources.css';
+import '@phevere/core/settings-about.css';
 import '@phevere/core/settings-offline.css';
 import '@phevere/core/settings-keys.css';
 import {
@@ -142,6 +143,7 @@ import {
 } from '@phevere/core';
 import { choiceRowHtml, enhanceSelect, keycapsHtml, rangeRowHtml, segRowHtml, switchRowHtml } from '@phevere/core';
 import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
+import { aboutSettingsHtml, flashAboutCopied, type AboutPlatform } from '@phevere/core';
 import { learnSettingsHtml, microphoneAvailable, readLearnPrefs, watchMicrophone, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
 import { AZ_INDEX, compareAz, vocabAzLetter, wireIndexRail } from '@phevere/core';
@@ -234,6 +236,7 @@ function initializeSettingsWindow() {
           <button type="button" class="settings-nav__item" data-section="api">API keys</button>
           <button type="button" class="settings-nav__item" data-section="audio">Audio</button>
           <button type="button" class="settings-nav__item" data-section="updates">Updates</button>
+          <button type="button" class="settings-nav__item" data-section="about">About</button>
         </nav>
         <main class="settings-main">
           <section class="settings-panel is-active" data-panel="shortcuts" aria-labelledby="settings-monitor-heading">
@@ -452,6 +455,13 @@ function initializeSettingsWindow() {
               </div>
             </div>
           </section>
+
+          <section class="settings-panel" data-panel="about" aria-labelledby="settings-about-heading">
+            <div class="settings-panel__intro">
+              <h2 id="settings-about-heading" class="settings-panel__title">About</h2>
+            </div>
+            <div id="about-host"></div>
+          </section>
         </main>
       </div>
       <div id="pack-inspector-host"></div>
@@ -476,6 +486,7 @@ function initializeSettingsWindow() {
   void wireSourcesPanel();
   void wireApiKeysPanel();
   wireLearnSettings();
+  void wireAboutSettings();
   wireInAppTextSelectionLookup();
   setupAudioSettings();
   void wireNotificationSettings();
@@ -492,6 +503,28 @@ function initializeSettingsWindow() {
     window.addEventListener('pagehide', () => stopCapture());
   });
   wireLiveResizeClass();
+}
+
+/** Settings → About: the version comes from the main process, so it is never out of date. */
+async function wireAboutSettings(): Promise<void> {
+  const host = document.getElementById('about-host');
+  if (!host) return;
+  const names: Record<string, AboutPlatform> = { win32: 'windows', darwin: 'macos', linux: 'linux' };
+  const systemNames: Record<string, string> = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
+  let info: { version: string; platform: string; arch: string; systemVersion: string } | null = null;
+  try {
+    info = (await window.electronAPI?.getAppInfo?.()) || null;
+  } catch {
+    info = null;
+  }
+  const platform = names[info?.platform || window.electronAPI?.platform || ''] || 'windows';
+  const system = info ? [systemNames[info.platform] || info.platform, info.systemVersion, info.arch].filter(Boolean).join(' ') : '';
+  host.innerHTML = aboutSettingsHtml({ version: info?.version || '', platform, system });
+  host.addEventListener('click', (ev) => {
+    const btn = (ev.target as HTMLElement).closest<HTMLElement>('[data-act="about-copy"]');
+    if (!btn) return;
+    void navigator.clipboard.writeText(btn.dataset.copy || '').then(() => flashAboutCopied(btn));
+  });
 }
 
 /**

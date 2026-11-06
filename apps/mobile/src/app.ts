@@ -2,6 +2,8 @@ import { scrollLexiconTo } from './lexicon-scroll';
 import './platform/configure-core';
 import {
   addVocab,
+  type AboutInfo,
+  systemFromUserAgent,
   morphemeOf,
   dictionaryService,
   fetchSenseImages,
@@ -495,6 +497,28 @@ let toastUndo: (() => void) | null = null;
 let capture: CaptureInfo = { platform: 'web', canDrawOverlays: false };
 /** The Android updater in the full app; null on iOS, in the pop-up and in the browser. */
 let phoneUpdates: PhoneUpdater | null = null;
+
+/** Settings → About; read when the page first opens. */
+let aboutInfo: AboutInfo | null = null;
+
+/**
+ * The installed version: Android asks the package manager (versionName and versionCode);
+ * iOS and the browser build use the version the app was built from (apps/mobile/package.json).
+ */
+async function loadAboutInfo(): Promise<void> {
+  let version = __PHEVERE_VERSION__;
+  let build = '';
+  if (capture.platform === 'android' && hasNativeBridge()) {
+    try {
+      const info = await nativeCall<{ versionName?: string; versionCode?: number }>('updateInfo', {});
+      version = info.versionName || version;
+      build = info.versionCode ? String(info.versionCode) : '';
+    } catch {
+      /* the built-in version stands */
+    }
+  }
+  aboutInfo = { version, build: build || undefined, platform: capture.platform, system: systemFromUserAgent(navigator.userAgent) };
+}
 let accountState: AccountState | null = null;
 /** The account sheet is open from the app bar. */
 let accountOpen = false;
@@ -753,6 +777,7 @@ function paint(): void {
             lib,
             phoneUpdates?.state() ?? null,
             learnSettingsInput(),
+            aboutInfo || { version: __PHEVERE_VERSION__, platform: capture.platform },
           )
         : hit;
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
@@ -2189,6 +2214,14 @@ function onQueryInput(): void {
 
 async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
   switch (act) {
+    case 'about-link':
+      // The system browser, not the app's WebView.
+      e.preventDefault();
+      if (t.dataset.url) openExternal(t.dataset.url);
+      return;
+    case 'about-copy':
+      await copyText(t.dataset.copy || '');
+      return;
     case 'toast-undo': {
       const undo = toastUndo;
       toastUndo = null;
@@ -2219,11 +2252,12 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'settings-section': {
       const next = t.dataset.section as SettingsSection | undefined;
-      if (next === 'capture' || next === 'learn' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio' || (next === 'updates' && phoneUpdates)) {
+      if (next === 'capture' || next === 'learn' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio' || next === 'about' || (next === 'updates' && phoneUpdates)) {
         settingsSection = next;
         langMenu = '';
         if (next === 'offline') await refreshPacks();
         if (next === 'audio') await refreshVoice();
+        if (next === 'about' && !aboutInfo) await loadAboutInfo();
         paint();
       }
       return;

@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 
 declare const __PHEVERE_DEV__: boolean;
+/** apps/mobile/package.json's version at build time; Android also sets its versionName from it. */
+declare const __PHEVERE_VERSION__: string;
 
 interface ImportMetaEnv {
   /** Holarky API address for this build; empty turns sign-in off (docs/ACCOUNT.md). */
