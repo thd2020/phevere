@@ -24,6 +24,10 @@ import {
   formLineHtml,
   didYouMeanHtml,
   senseLabelLead,
+  senseNotesHtml,
+  posGrammarHtml,
+  phrasesHtml,
+  languageSwitchHtml,
   definitionSourcesHtml,
   wordFamilyHtml,
   linkHtml,
@@ -256,8 +260,8 @@ function railBlock(sections: Array<{ id: string; label: string }>, active: strin
   return `<div class="lexicon-rail-block">${sections.map((s) => railTab(s.id, s.label, active)).join('')}</div>`;
 }
 
-function wrapGroup(id: string, label: string, inner: string): string {
-  const head = label ? `<div class="lexicon-pos-heading">${esc(label)}</div>` : '';
+function wrapGroup(id: string, label: string, inner: string, extraHead = ''): string {
+  const head = label ? `<div class="lexicon-pos-heading"><span>${esc(label)}</span>${extraHead}</div>` : '';
   return `<div class="lexicon-pos-group" data-pos="${esc(id)}">${head}${inner}</div>`;
 }
 
@@ -281,8 +285,8 @@ function linkLemmaRefs(escaped: string): string {
  * desktop); plain text links "plural of X" and the like. Every other word links to its own
  * lookup and looks like text until tapped.
  */
-function senseHtml(raw: string): string {
-  return linkHtml(senseLabelLead(senseMarkup(raw)), 'act');
+function senseHtml(d: Definition, hide: string[] = []): string {
+  return linkHtml(senseLabelLead(senseMarkup(d.meaning), d, hide), 'act');
 }
 
 function senseMarkup(raw: string): string {
@@ -359,6 +363,8 @@ function renderSenses(
   indexOf: Map<Definition, number>,
   images: Array<SenseImage | null> | null,
   reserve: Set<number> = new Set(),
+  hide: string[] = [],
+  headword = '',
 ): string {
   return senses
     .map((d, i) => {
@@ -376,8 +382,9 @@ function renderSenses(
           <div class="definition-sense-num">${i + 1}</div>
           <div class="definition-sense-body">
             ${img ? senseFigureHtml(img, at) : !images && reserve.has(at) ? senseFigurePlaceholder(at) : ''}
-            <div class="definition-text">${senseHtml(d.meaning)}</div>
+            <div class="definition-text">${senseHtml(d, hide)}</div>
             ${exHtml}
+            ${senseNotesHtml(d, 'act', headword)}
           </div>
         </div>
       </div>`;
@@ -417,7 +424,14 @@ function lexiconPane(
   const several = order.length > 1;
   const posSections = order.map((pos) => {
     const unknown = pos === 'unknown';
-    posInner += wrapGroup(pos, unknown ? (several ? 'other' : '') : pos, renderSenses(groups.get(pos) || [], shown, indexOf, images, reserve));
+    // "noun [uncountable]": a code every sense shares goes on the heading instead.
+    const code = posGrammarHtml(result.headGrammar?.[pos]);
+    posInner += wrapGroup(
+      pos,
+      unknown ? (several ? 'other' : '') : pos,
+      renderSenses(groups.get(pos) || [], shown, indexOf, images, reserve, code.hide, result.word || ''),
+      code.html,
+    );
     return { id: pos, label: unknown ? (several ? 'other' : 'senses') : abbreviatePos(pos) };
   });
   posInner += definitionSourcesHtml(defs.flatMap((d) => citeOf(d).map(sourceName)));
@@ -459,8 +473,16 @@ function lexiconPane(
   }
   if (relatedInner) allInner += wrapPane(relatedInner);
 
+  // Phrasal verbs, idioms and set phrases get a section of their own, as in learner dictionaries.
+  const phraseSections: Array<{ id: string; label: string }> = [];
+  const phraseHtml = phrasesHtml(result.wordFamily, 'act', result.word || '', groups.has('verb'));
+  if (phraseHtml) {
+    phraseSections.push({ id: 'phrases', label: 'phrases' });
+    allInner += wrapPane(wrapGroup('phrases', 'phrases', phraseHtml));
+  }
+
   const familySections: Array<{ id: string; label: string }> = [];
-  const familyHtml = wordFamilyHtml(result.wordFamily, 'act');
+  const familyHtml = wordFamilyHtml(result.wordFamily, 'act', { phrases: false });
   if (familyHtml) {
     familySections.push({ id: 'family', label: 'family' });
     allInner += wrapPane(wrapGroup('family', 'word family', familyHtml));
@@ -476,6 +498,7 @@ function lexiconPane(
     ...formsSections.map((s) => s.id),
     ...exampleSections.map((s) => s.id),
     ...relatedSections.map((s) => s.id),
+    ...phraseSections.map((s) => s.id),
     ...familySections.map((s) => s.id),
   ];
   const active = activePos && tocIds.includes(activePos) ? activePos : tocIds[0] || '';
@@ -485,6 +508,7 @@ function lexiconPane(
     railBlock(formsSections, active),
     railBlock(exampleSections, active),
     railBlock(relatedSections, active),
+    railBlock(phraseSections, active),
     railBlock(familySections, active),
   ].join('');
 

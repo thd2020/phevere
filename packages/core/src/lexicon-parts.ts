@@ -8,7 +8,8 @@
  */
 import type { InflectionTable, WordInflections } from './inflections';
 import type { WordFamilyGroup } from './word-family';
-import { wordLinkHtml } from './text-links';
+import { linkHtml, wordLinkHtml } from './text-links';
+import { isGrammarLabel, type SenseNotes } from './sense-notes';
 
 /** How a word links: the phone's `data-act` targets, or the pop-up's `data-lookup` spans. */
 export type LexiconLinks = 'act' | 'lookup';
@@ -112,49 +113,217 @@ function words(items: Array<{ word: string }>, links: LexiconLinks): string {
   return items.map((i) => link(i.word, links)).join('<span class="lx-sep"> · </span>');
 }
 
-/** The Word family section, or '' when the word has none. */
-export function wordFamilyHtml(groups: WordFamilyGroup[] | null | undefined, links: LexiconLinks): string {
-  const byRel = new Map<string, Array<{ word: string; rare?: boolean }>>();
+type FamilyItem = { word: string; label?: string; rare?: boolean };
+
+/** One labelled line of links, the closest `shownMax` first and the rest folded under "All N". */
+function familyGroupHtml(label: string, items: FamilyItem[], shownMax: number, links: LexiconLinks): string {
+  // In a long list, words with no recorded use ("redundantant") wait under "All".
+  const common = items.length > shownMax ? items.filter((i) => !i.rare) : items;
+  const shown = (common.length ? common : items).slice(0, shownMax);
+  const rest = items.filter((i) => !shown.includes(i));
+  return `<div class="lx-fam">
+      <h4 class="lx-label">${label}${items.length > shownMax ? ` <span class="lx-count">${items.length}</span>` : ''}</h4>
+      <p class="lx-words">${words(shown, links)}</p>
+      ${rest.length ? `<details class="lx-more"><summary>All ${items.length}</summary><p class="lx-words">${words(rest, links)}</p></details>` : ''}
+    </div>`;
+}
+
+function familyByRelation(groups: WordFamilyGroup[] | null | undefined): Map<string, FamilyItem[]> {
+  const byRel = new Map<string, FamilyItem[]>();
   for (const g of groups || []) {
     const items = (g.items || []).filter((i) => i && String(i.word || '').trim());
     if (items.length) byRel.set(String(g.relation), [...(byRel.get(String(g.relation)) || []), ...items]);
   }
+  return byRel;
+}
+
+/**
+ * The Word family section, or '' when the word has none. With `phrases: false` the phrases are
+ * left to their own section (phrasesHtml).
+ */
+export function wordFamilyHtml(groups: WordFamilyGroup[] | null | undefined, links: LexiconLinks, opts: { phrases?: boolean } = {}): string {
+  const byRel = familyByRelation(groups);
   const parts: string[] = [];
   const built = [...(byRel.get('affixes') || []), ...(byRel.get('roots') || [])];
   if (built.length) {
     parts.push(`<p class="lx-built"><span class="lx-label">Built from</span> ${words(built.slice(0, 6), links)}</p>`);
   }
   for (const f of FAMILY) {
+    if (f.relation === 'phrases' && opts.phrases === false) continue;
     const items = byRel.get(f.relation) || [];
-    if (!items.length) continue;
-    // In a long list, words with no recorded use ("redundantant") wait under "All".
-    const common = items.length > f.shown ? items.filter((i) => !i.rare) : items;
-    const shown = (common.length ? common : items).slice(0, f.shown);
-    const rest = items.filter((i) => !shown.includes(i));
-    parts.push(`<div class="lx-fam">
-      <h4 class="lx-label">${f.label}${items.length > f.shown ? ` <span class="lx-count">${items.length}</span>` : ''}</h4>
-      <p class="lx-words">${words(shown, links)}</p>
-      ${rest.length ? `<details class="lx-more"><summary>All ${items.length}</summary><p class="lx-words">${words(rest, links)}</p></details>` : ''}
-    </div>`);
+    if (items.length) parts.push(familyGroupHtml(f.label, items, f.shown, links));
   }
   return parts.length ? `<div class="lx-family">${parts.join('')}</div>` : '';
 }
 
+/** The adverbs and prepositions a phrasal verb is built with ("give up", "look forward to"). */
+const PARTICLES = new Set(
+  ('about above across after against ahead along apart around aside at away back behind by down for forth forward ' +
+    'from in into of off on onto out over past round through to together under up upon with without').split(' '),
+);
+
 /**
- * A sense's leading labels as dictionaries print them: "(uncountable, politics)" on the
- * definition's own line and in its own type, the labels in italic and the brackets and commas
- * upright, in a quieter colour. This is how Wiktionary renders {{lb}} and close to Oxford
- * Learner's grammar and register labels. `html` is the sense's escaped HTML; only a plain-text
- * bracket at its start is a label.
+ * The Phrases section, as learner dictionaries give phrasal verbs and idioms a section of their
+ * own after the senses: phrasal verbs (the verb and its particles), idioms and proverbs, and the
+ * other set phrases with the word. '' when the word has none. `verb` says whether the word has
+ * verb senses, so "run up" is a phrasal verb and "front up" under the noun front is not.
  */
-export function senseLabelLead(html: string): string {
-  return String(html || '').replace(/^\s*\(([^()<]{1,80})\)\s*/, (_m, raw: string) => {
-    const labels = raw
-      .split(/\s*,\s*/)
-      .filter(Boolean)
-      .map((l) => `<i>${l}</i>`);
-    return `<span class="sense-label lx-nolink">(${labels.join(', ')})</span> `;
-  });
+export function phrasesHtml(groups: WordFamilyGroup[] | null | undefined, links: LexiconLinks, headword: string, verb: boolean): string {
+  const items = familyByRelation(groups).get('phrases') || [];
+  if (!items.length) return '';
+  const head = String(headword || '').trim().toLowerCase();
+  const phrasal: FamilyItem[] = [];
+  const idioms: FamilyItem[] = [];
+  const other: FamilyItem[] = [];
+  for (const it of items) {
+    const parts = it.word.trim().toLowerCase().split(/\s+/);
+    if (/idiom|proverb/i.test(it.label || '')) idioms.push(it);
+    else if (verb && parts.length > 1 && parts[0] === head && parts.slice(1).every((w) => PARTICLES.has(w))) phrasal.push(it);
+    else other.push(it);
+  }
+  const out = [
+    phrasal.length ? familyGroupHtml('Phrasal verbs', phrasal, 12, links) : '',
+    idioms.length ? familyGroupHtml('Idioms', idioms, 10, links) : '',
+    other.length ? familyGroupHtml(phrasal.length || idioms.length ? 'Other phrases' : 'Phrases', other, 12, links) : '',
+  ].join('');
+  return `<div class="lx-family lx-phrases">${out}</div>`;
+}
+
+/** A grammar note that names a pattern ("with on or upon", "+ to-infinitive"): its words are set bold. */
+const PATTERN_NOTE = /^(?:with|\+|followed by|construed with|used with|takes?)\b/i;
+/** The words of a pattern note that are not the pattern itself. */
+const PATTERN_PLAIN = new Set(
+  ('with or and also formerly usually often sometimes chiefly mainly mostly especially typically generally now rarely ' +
+    'followed by construed used take takes a an the + object infinitive to-infinitive bare gerund clause noun verb ' +
+    'preposition pronoun adjective adverb phrase direct indirect plural singular that-clause').split(' '),
+);
+
+function grammarNoteHtml(note: string): string {
+  if (!PATTERN_NOTE.test(note)) return esc(note);
+  return note
+    .split(/(\s+|,)/)
+    .map((w) => (!w.trim() || w === ',' || PATTERN_PLAIN.has(w.toLowerCase()) ? esc(w) : `<b>${esc(w)}</b>`))
+    .join('');
+}
+
+/** The sense fields this file reads. */
+export type SenseNoteFields = SenseNotes;
+
+/**
+ * A sense's grammar codes and labels as learner dictionaries print them, before the gloss on its
+ * own line. Grammar comes first in square brackets, upright: "[countable]", "[intransitive; with
+ * on or upon]", the words of a pattern in bold, as Oxford Learner's and Longman set them. Usage
+ * labels follow in round brackets, the labels in italic: "(informal, chiefly UK)", as Wiktionary
+ * and Oxford set register, region and subject. `hide` names codes the part-of-speech heading
+ * already gives ("[uncountable]" on the noun heading of advice).
+ *
+ * `html` is the sense's escaped HTML. A plain-text bracket at its start is a label too, as the
+ * Free Dictionary writes them ("(transitive) To…"); one that only repeats the notes is dropped.
+ */
+export function senseLabelLead(html: string, notes?: SenseNoteFields | null, hide: string[] = []): string {
+  let rest = String(html || '');
+  const grammar = [...(notes?.grammar || [])];
+  const labels = [...(notes?.labels || [])];
+  const known = new Set([...grammar, ...labels].map((x) => x.toLowerCase()));
+  const lead = /^\s*\(([^()<]{1,80})\)\s*/.exec(rest);
+  if (lead) {
+    // "(with on or upon, formerly also with in)" may be one note with a comma of its own.
+    const whole = lead[1].trim().toLowerCase();
+    const repeats = known.has(whole) || [...known].join(', ') === whole;
+    const items = repeats ? [] : lead[1].split(/\s*,\s*/).map((x) => x.trim()).filter(Boolean);
+    rest = rest.slice(lead[0].length);
+    for (const item of items) {
+      if (known.has(item.toLowerCase())) continue;
+      // Already escaped: it goes in as it is.
+      (isGrammarLabel(item) ? grammar : labels).push(item);
+      known.add(item.toLowerCase());
+    }
+  }
+  const hidden = new Set(hide.map((h) => h.toLowerCase()));
+  const codes = grammar.filter((g) => !hidden.has(g.toLowerCase()));
+  const fromNotes = new Set([...(notes?.grammar || []), ...(notes?.labels || [])]);
+  const text = (x: string) => (fromNotes.has(x) ? esc(x) : x);
+  let out = '';
+  if (codes.length) {
+    const inner = codes.map((g, i) => `${i ? (PATTERN_NOTE.test(g) || g.includes(',') ? '; ' : ', ') : ''}${fromNotes.has(g) ? grammarNoteHtml(g) : g}`).join('');
+    out += `<span class="sense-gram lx-nolink">[${inner}]</span> `;
+  }
+  if (labels.length) out += `<span class="sense-label lx-nolink">(${labels.map((l) => `<i>${text(l)}</i>`).join(', ')})</span> `;
+  return out + rest;
+}
+
+/**
+ * Synonyms, opposites and collocations under a sense, one labelled line each, as Oxford
+ * Learner's prints "SYN" and "OPP" under a definition and Longman its collocations. The words
+ * link to their own lookups; in a collocation the looked-up word is set bold. '' when the sense
+ * has none.
+ */
+export function senseNotesHtml(notes: SenseNoteFields | null | undefined, links: LexiconLinks, headword = ''): string {
+  if (!notes) return '';
+  const line = (label: string, inner: string, cls = '') =>
+    `<p class="sense-notes__line${cls}"><span class="sense-notes__k">${label}</span> ${inner}</p>`;
+  const list = (xs: string[] | undefined) => (xs || []).map((x) => String(x || '').trim()).filter(Boolean).slice(0, 8);
+  const syn = list(notes.synonyms);
+  const ant = list(notes.antonyms);
+  const coll = list(notes.collocations).slice(0, 4);
+  const head = String(headword || '').trim().toLowerCase();
+  const stem = head && !/\s/.test(head) ? head.slice(0, Math.max(3, head.length - 2)) : '';
+  const bold = (phrase: string) =>
+    phrase
+      .split(/(\s+)/)
+      .map((w) => (stem && w.toLowerCase().replace(/[^\p{L}'-]/gu, '').startsWith(stem) ? `<b>${esc(w)}</b>` : esc(w)))
+      .join('');
+  const lines = [
+    syn.length ? line(syn.length > 1 ? 'Synonyms' : 'Synonym', words(syn.map((word) => ({ word })), links)) : '',
+    ant.length ? line(ant.length > 1 ? 'Opposites' : 'Opposite', words(ant.map((word) => ({ word })), links)) : '',
+    coll.length ? line('Collocations', coll.map((c) => `<span class="sense-notes__coll">${linkHtml(bold(c), links)}</span>`).join('<span class="lx-sep"> · </span>')) : '',
+  ].join('');
+  return lines ? `<div class="sense-notes">${lines}</div>` : '';
+}
+
+/**
+ * The countability a part of speech has as a whole, after its heading: "noun [uncountable]", as
+ * Oxford Learner's prints it when every sense shares it. Nothing when the senses differ
+ * ("countable and uncountable"); those carry their own. Returns the HTML and the code the
+ * senses then need not repeat.
+ */
+export function posGrammarHtml(codes: string[] | null | undefined): { html: string; hide: string[] } {
+  const list = (codes || []).filter(Boolean);
+  if (list.length !== 1) return { html: '', hide: [] };
+  return { html: `<span class="lx-poscode">[${esc(list[0])}]</span>`, hide: list };
+}
+
+/**
+ * The languages Wiktionary has the word in: a row of buttons under the headword that opens the
+ * word in another language, as Wiktionary's contents list leads to each language's section.
+ * English comes first, then the language shown, then the rest in the page's order; past the
+ * first seven the rest fold under "+N", unless `fold` is false (the phone's row scrolls
+ * sideways instead). '' for a word in one language only.
+ */
+export function languageSwitchHtml(
+  result: { word?: string; languages?: Array<{ code: string; name: string; current?: boolean }> } | null | undefined,
+  links: LexiconLinks,
+  opts: { fold?: boolean } = {},
+): string {
+  const langs = (result?.languages || []).filter((l) => l && l.code && l.name);
+  if (langs.length < 2 || !langs.some((l) => l.current)) return '';
+  const rank = (l: { code: string; current?: boolean }) => (l.code === 'en' ? 0 : l.current ? 1 : 2);
+  const ordered = langs
+    .map((l, i) => ({ l, i }))
+    .sort((a, b) => rank(a.l) - rank(b.l) || a.i - b.i)
+    .map((x) => x.l);
+  const word = esc(result?.word || '');
+  const chip = (l: { code: string; name: string; current?: boolean }) => {
+    if (l.current) return `<span class="lx-lang is-current" aria-current="true">${esc(l.name)}</span>`;
+    const target = links === 'act' ? `data-act="lookup-lang" data-q="${word}" data-lang="${esc(l.code)}"` : `data-lookup-lang="${esc(l.code)}" data-q="${word}"`;
+    return `<button type="button" class="lx-lang" ${target}>${esc(l.name)}</button>`;
+  };
+  const shown = opts.fold !== false && ordered.length > 8 ? ordered.slice(0, 7) : ordered;
+  const rest = ordered.slice(shown.length);
+  const more = rest.length
+    ? `<details class="lx-langs__all"><summary class="lx-lang">+${rest.length}</summary><div class="lx-langs__rest">${rest.map(chip).join('')}</div></details>`
+    : '';
+  return `<nav class="lx-langs" aria-label="Languages">${shown.map(chip).join('')}${more}</nav>`;
 }
 
 /**

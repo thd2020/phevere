@@ -3651,11 +3651,10 @@ function startAutoCloseTimeout() {
           openSensePicture(btn);
         });
 
-        /** "(countable, chiefly in combination) An institution…": the labels set small, as printed. */
-        /** "(uncountable, politics)": the shared rendering in lexicon-parts.ts. */
-        function labelLead(html) {
+        /** "[countable] (informal, politics)" before the gloss: the shared rendering in lexicon-parts.ts. */
+        function labelLead(html, sense, hide) {
           var lx = window.phevereLexicon;
-          return lx && lx.senseLabelLead ? lx.senseLabelLead(String(html || '')) : String(html || '');
+          return lx && lx.senseLabelLead ? lx.senseLabelLead(String(html || ''), sense, hide || []) : String(html || '');
         }
 
         function createLexiconCard(result) {
@@ -3715,8 +3714,9 @@ function startAutoCloseTimeout() {
           const shownExampleKeys = new Set();
           // Every sense's sources in order, said once under the senses.
           const senseSourceNames = [];
-          function renderSenses(senses) {
+          function renderSenses(senses, hide) {
             let panel = '';
+            const lxNotes = window.phevereLexicon;
             let senseCounter = 0;
             // The core's order, so its ranking reaches the page.
             const citeOf = function (d) {
@@ -3745,8 +3745,9 @@ function startAutoCloseTimeout() {
                     <div class="definition-sense-num">${senseCounter}</div>
                     <div class="definition-sense-body">
                       ${img ? senseFigureHtml(img, at) : ''}
-                      <div class="definition-text">${linkMarkup(labelLead(meaningHtml)) || 'No definition.'}</div>
+                      <div class="definition-text">${linkMarkup(labelLead(meaningHtml, d, hide)) || 'No definition.'}</div>
                       ${exHtml}
+                      ${lxNotes && lxNotes.senseNotesHtml ? lxNotes.senseNotesHtml(d, 'lookup', result.word || '') : ''}
                     </div>
                   </div>
                 </div>`;
@@ -3754,8 +3755,8 @@ function startAutoCloseTimeout() {
             return panel;
           }
 
-          function wrapGroup(id, label, inner) {
-            const head = label ? `<div class="lexicon-pos-heading">${escapeHtml(label)}</div>` : '';
+          function wrapGroup(id, label, inner, extraHead) {
+            const head = label ? `<div class="lexicon-pos-heading"><span>${escapeHtml(label)}</span>${extraHead || ''}</div>` : '';
             return `<div class="lexicon-pos-group" data-pos="${escapeHtml(id)}">${head}${inner}</div>`;
           }
           // Senses with no part of speech are "other" beside real ones, and need no heading alone.
@@ -3770,7 +3771,11 @@ function startAutoCloseTimeout() {
           const tocIds = [];
           const posSections = order.map(function (pos) {
             tocIds.push(pos);
-            posInner += wrapGroup(pos, posHeading(pos), renderSenses(groups[pos]));
+            // "noun [uncountable]": a code every sense shares goes on the heading instead.
+            const lxCode = window.phevereLexicon && window.phevereLexicon.posGrammarHtml
+              ? window.phevereLexicon.posGrammarHtml(result.headGrammar && result.headGrammar[pos])
+              : { html: '', hide: [] };
+            posInner += wrapGroup(pos, posHeading(pos), renderSenses(groups[pos], lxCode.hide), lxCode.html);
             return { id: pos, label: pos === 'unknown' ? (order.length > 1 ? 'other' : 'senses') : chipPosLabel(pos) };
           });
           const lxSources = window.phevereLexicon;
@@ -3823,8 +3828,19 @@ function startAutoCloseTimeout() {
           }
           if (relatedInner) allInner += wrapPane(relatedInner);
 
+          // Phrasal verbs, idioms and set phrases get a section of their own, as in learner dictionaries.
+          const phraseSections = [];
+          const phraseHtml = lexiconParts && lexiconParts.phrasesHtml
+            ? lexiconParts.phrasesHtml(result.wordFamily, 'lookup', result.word || '', !!groups.verb)
+            : '';
+          if (phraseHtml) {
+            tocIds.push('phrases');
+            phraseSections.push({ id: 'phrases', label: 'phrases' });
+            allInner += wrapPane(wrapGroup('phrases', 'phrases', phraseHtml));
+          }
+
           const familySections = [];
-          const familyHtml = lexiconParts ? lexiconParts.wordFamilyHtml(result.wordFamily, 'lookup') : '';
+          const familyHtml = lexiconParts ? lexiconParts.wordFamilyHtml(result.wordFamily, 'lookup', { phrases: !phraseHtml }) : '';
           if (familyHtml) {
             tocIds.push('family');
             familySections.push({ id: 'family', label: 'family' });
@@ -3841,6 +3857,7 @@ function startAutoCloseTimeout() {
             renderRailBlock('', formsSections),
             renderRailBlock('', exampleSections),
             renderRailBlock('', relatedSections),
+            renderRailBlock('', phraseSections),
             renderRailBlock('', familySections),
           ].join('');
           const body = `<div class="lexicon-pos-layout"><nav class="lexicon-pos-tabs" role="tablist" aria-label="Lexicon sections" tabindex="0"><div class="lexicon-rail-inner">${tabsHtml}</div></nav><div class="lexicon-pos-panel">${allInner}</div></div>`;

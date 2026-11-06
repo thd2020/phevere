@@ -16,6 +16,10 @@ export interface DictionaryResult {
   inflections?: WordInflections;
   language?: string;
   detectedLanguage?: string;
+  /** Countability a part of speech has as a whole ("noun": ["uncountable"]), from Wiktionary's headword line. */
+  headGrammar?: Record<string, string[]>;
+  /** The languages Wiktionary has an entry for this word in, English first; `current` is the one shown. */
+  languages?: EntryLanguage[];
   sources: string[]; // Track which APIs were used
   metadata?: {
     isSentence?: boolean;
@@ -25,6 +29,12 @@ export interface DictionaryResult {
     etymologyUnavailable?: EtymologyUnavailable[];
     [key: string]: any;
   };
+}
+
+export interface EntryLanguage {
+  code: string;
+  name: string;
+  current?: boolean;
 }
 
 export interface EtymologyUnavailable {
@@ -67,6 +77,12 @@ export interface Definition {
   frequency?: number;
   /** The looked-up form's own sense from a source that usually gives its lemma's (definition-merge.ts). */
   ownSense?: boolean;
+  /** Grammar codes printed in square brackets: "countable", "transitive", "with on or upon" (sense-notes.ts). */
+  grammar?: string[];
+  /** Usage labels printed in round brackets: "informal", "chiefly UK", "law". */
+  labels?: string[];
+  /** Phrases the word is usually found in under this sense: "make a proposition". */
+  collocations?: string[];
 }
 
 import { BaseService, DictionaryError, withBudget, withTimeout } from './base';
@@ -81,7 +97,8 @@ import { wrapConsole } from './log';
 import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigured, type OfflineHit } from './runtime';
 import { registerHeadwordResolver } from './vocab-store';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey, exactQuery, exactLookupKey, hasEdgePunctuation } from './text-normalize';
-import { isGrammaticalFormOfGloss, splitSurfaceAndLemma, sameLookupFold, stripGlossText } from './lookup-policy';
+import { isGrammaticalFormOfGloss, splitSurfaceAndLemma, sameLookupFold, stripGlossText, stripSisterProjects } from './lookup-policy';
+import { alignSenseNotes, notesFields, wikiSenseSections } from './sense-notes';
 import { datamuseEntry, formLine, formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, isOwnNounGloss, resolveFormOf } from './form-of';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { lookupMorpheme, morphemeOffers, parseMorphemeQuery } from './morpheme';
@@ -756,7 +773,7 @@ export class DictionaryService extends BaseService {
       const txProvider = opts?.translationProvider || 'auto';
       // Switching on a Wiktionary edition must not be hidden by a result cached before it.
       const editionsOn = EDITIONS.filter((ed) => this.isNamedSourceOn(WIKTIONARY_EDITIONS[ed].source, enabledSources)).join(',');
-      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki${editionsOn ? `|wikt:${editionsOn}` : ''}`);
+      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki|notes:1${editionsOn ? `|wikt:${editionsOn}` : ''}`);
 
       const remember = (r: DictionaryResult) => {
         if (this.isUncacheableResult(r) || this.isStillFilling(r)) return;
@@ -1729,6 +1746,8 @@ export class DictionaryService extends BaseService {
     let etymologyChain: EtymologyLink[] | undefined;
     let etymologyUnavailableSources: EtymologyUnavailable[] | undefined;
     let wikiFamily: WordFamilyGroup[] | undefined;
+    let headGrammar: Record<string, string[]> | undefined;
+    let entryLangs: EntryLanguage[] | undefined;
     let pendingEtymology = !skipEtymology;
     let pendingTranslation = true;
 
@@ -2037,6 +2056,8 @@ export class DictionaryService extends BaseService {
           if (data?.wordFamily?.length) {
             wikiFamily = mergeWordFamilyGroups(wikiFamily, data.wordFamily);
           }
+          if (data?.headGrammar) headGrammar = data.headGrammar;
+          if (data?.languages) entryLangs = data.languages;
           if (data && data.definitions && data.definitions.length > 0) {
             const existingMeanings = new Set(definitions.map((d: Definition) => d.meaning));
             const newDefinitions = data.definitions
@@ -2162,6 +2183,8 @@ export class DictionaryService extends BaseService {
       pronunciations = [];
       for (const k of Object.keys(sourceStatus)) delete sourceStatus[k];
       wikiFamily = undefined;
+      headGrammar = undefined;
+      entryLangs = undefined;
       cmuIpa = '';
       datamuseIpa = '';
       if (skipEtymology) etymology = undefined;
@@ -2283,6 +2306,8 @@ export class DictionaryService extends BaseService {
         ),
         language: targetLanguage,
         detectedLanguage: sourceLanguage,
+        ...(headGrammar ? { headGrammar } : {}),
+        ...(entryLangs && entryLangs.length > 1 ? { languages: entryLangs } : {}),
         sources: uniqueSources,
         metadata: {
           queriedAs: opts?.originalSelection || text,
@@ -2745,6 +2770,8 @@ export class DictionaryService extends BaseService {
     pronunciations?: Pronunciation[];
     etymology?: string;
     wordFamily?: WordFamilyGroup[];
+    headGrammar?: Record<string, string[]>;
+    languages?: EntryLanguage[];
   }> {
     const term = language === 'en' ? foldLatinHeadword(text) : text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const wikiTextPromise = withBudget(this.getWiktionaryWikitext(term), 2200, WIKTIONARY, 1, 'wiki.wikitext').catch((): string => '');
@@ -2790,20 +2817,33 @@ export class DictionaryService extends BaseService {
           (e?.definitions || []).every((d: any) => foldLookupKey(stripGlossText(String(d?.definition || '')).replace(/\(.*\)/g, '')) === foldLookupKey(term)),
         );
       const own = response ? response[language] : null;
-      const langData = response ? (own && !(language !== 'en' && response.en && echoesWord(own)) ? own : response['en']) : null;
+      const shownKey = own && !(language !== 'en' && response.en && echoesWord(own)) ? language : 'en';
+      const langData = response ? response[shownKey] : null;
+      const languages = entryLanguages(response, shownKey);
 
       if (langData && Array.isArray(langData) && langData.length > 0) {
         const definitions: Definition[] = [];
         let pronunciation: string | undefined;
         let etymology: string | undefined;
+        // Each part of speech's glosses as the API gave them, so the wikitext's labels can be
+        // matched to them once the page's wikitext is in.
+        const glossed: GlossedPart[] = [];
 
         for (const entry of langData) {
           if (entry.definitions && Array.isArray(entry.definitions)) {
             const all: any[] = entry.definitions;
+            const part: GlossedPart = {
+              language: String(entry.language || ''),
+              pos: String(entry.partOfSpeech || ''),
+              glosses: all.map((d: any) => String(d?.definition || '')),
+              senses: [],
+            };
+            glossed.push(part);
             all.forEach((def: any, i: number) => {
               // The page's References section comes back as more senses ("in Dictionary.com Unabridged").
               if (!def?.definition || isCitationGloss(def.definition)) return;
-              let meaning = String(def.definition);
+              // "English Wikipedia has an article on: ..." is a box beside the sense, not its text.
+              let meaning = stripSisterProjects(String(def.definition));
               let examples: string[] = def.examples || [];
               // A sense carries its sub-senses as a nested list ("A rigid tube … A water pipe."),
               // and the sub-senses follow as definitions of their own with their examples; keep
@@ -2817,12 +2857,14 @@ export class DictionaryService extends BaseService {
                 if (/^\s*meanings? relating to\b/i.test(meaning.replace(/<[^>]+>/g, ' '))) return;
               }
               if (!meaning.replace(/<[^>]+>/g, '').trim()) return;
-              definitions.push({
+              const sense: Definition = {
                 partOfSpeech: this.normalizePartOfSpeech(entry.partOfSpeech),
                 meaning,
                 examples,
                 source: 'Wiktionary'
-              });
+              };
+              part.senses[i] = sense;
+              definitions.push(sense);
             });
           }
           if (!pronunciation && entry.pronunciations?.text) {
@@ -2859,6 +2901,7 @@ export class DictionaryService extends BaseService {
             : undefined,
         );
         const wikitext = await wikiTextPromise;
+        const headGrammar = attachSenseNotes(wikitext, glossed, (pos) => this.normalizePartOfSpeech(pos));
         const wordFamily = buildWordFamily({
           surface: term,
           wikitext,
@@ -2871,6 +2914,8 @@ export class DictionaryService extends BaseService {
           pronunciations,
           etymology,
           wordFamily: wordFamily.length ? wordFamily : undefined,
+          headGrammar,
+          languages,
         };
       } else {
         const pronunciations = await ipaPromise;
@@ -4522,6 +4567,66 @@ export const dictionaryService = new DictionaryService();
 registerHeadwordResolver((word, lang) => dictionaryService.settledHeadword(word, lang)); 
 
 /** Two Wiktionary definition pages as one, the first page's entries first in each language. */
+/**
+ * The languages a Wiktionary definitions page has entries in, English first and the rest in the
+ * page's order, with the one shown marked. "other" (several small languages together) and
+ * Translingual are left out: neither is a language a lookup can be asked in.
+ */
+export function entryLanguages(page: any, shown: string): EntryLanguage[] | undefined {
+  if (!page || typeof page !== 'object') return undefined;
+  const list: EntryLanguage[] = [];
+  for (const code of Object.keys(page)) {
+    if (!/^[a-z]{2,3}(?:-[a-z]{2,3})?$/.test(code) || code === 'mul' || code === 'other') continue;
+    const entries = Array.isArray(page[code]) ? page[code] : [];
+    const real = entries.some((e: any) => (e?.definitions || []).some((d: any) => d?.definition && !isCitationGloss(d.definition)));
+    if (!real) continue;
+    // The English key also holds Translingual entries ("run" as a symbol); the language most of
+    // its entries have names it.
+    const counts = new Map<string, number>();
+    for (const e of entries) if (e?.language) counts.set(String(e.language), (counts.get(String(e.language)) || 0) + 1);
+    const name = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || code;
+    list.push({ code, name, ...(code === shown ? { current: true } : {}) });
+  }
+  list.sort((a, b) => (a.code === 'en' ? -1 : b.code === 'en' ? 1 : 0));
+  return list.length ? list : undefined;
+}
+
+/** One part of speech of a definitions page: its glosses as given, and the senses made of them. */
+type GlossedPart = { language: string; pos: string; glosses: string[]; senses: Array<Definition | undefined> };
+
+/**
+ * Puts the labels, grammar codes, synonyms and collocations of the page's wikitext on the senses
+ * the definitions API gave (sense-notes.ts), and returns each part of speech's countability.
+ */
+function attachSenseNotes(wikitext: string, glossed: GlossedPart[], canonical: (pos: string) => string): Record<string, string[]> | undefined {
+  if (!wikitext || !glossed.length) return undefined;
+  const byLanguage = new Map<string, { sections: ReturnType<typeof wikiSenseSections>; next: number }>();
+  const head: Record<string, string[]> = {};
+  for (const part of glossed) {
+    if (!part.language) continue;
+    let lang = byLanguage.get(part.language);
+    if (!lang) byLanguage.set(part.language, (lang = { sections: wikiSenseSections(wikitext, part.language), next: 0 }));
+    const sections = lang.sections;
+    // The API's entries follow each language's part-of-speech headings in order.
+    const from = lang.next;
+    const at = sections.findIndex((s, i) => i >= from && s.heading.toLowerCase() === part.pos.toLowerCase());
+    if (at < 0) continue;
+    lang.next = at + 1;
+    const section = sections[at];
+    const notes = alignSenseNotes(section.senses, part.glosses.map((g) => stripGlossText(g)));
+    notes.forEach((n, i) => {
+      const sense = part.senses[i];
+      if (sense && n) Object.assign(sense, notesFields(n));
+    });
+    if (section.head.length) {
+      const key = canonical(part.pos);
+      const list = head[key] || (head[key] = []);
+      for (const g of section.head) if (!list.includes(g)) list.push(g);
+    }
+  }
+  return Object.keys(head).length ? head : undefined;
+}
+
 function mergeWiktionaryPages(first: any, second: any): any {
   if (!first) return second || null;
   if (!second) return first;

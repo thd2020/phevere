@@ -16,7 +16,10 @@ export {
   type Translation,
   type DictionarySource,
   type TranslationProvider,
+  type EntryLanguage,
+  entryLanguages,
 } from './dictionary';
+export { wikiSenseSections, alignSenseNotes, labelTemplateNotes, isGrammarLabel, type SenseNotes, type WikiPosSection } from './sense-notes';
 export { WikipediaService, wikipediaService, type WikipediaResult, type WikipediaSearchResult } from './wikipedia';
 export {
   fetchSenseImages,
@@ -161,6 +164,7 @@ export {
   GRAMMATICAL_FORM_OF,
   GRAMMATICAL_FORM_OF_LINK,
   stripGlossText,
+  stripSisterProjects,
   isGrammaticalFormOfGloss,
   sameLookupFold,
   splitSurfaceAndLemma,
@@ -430,7 +434,19 @@ export {
   type InflectionGrid,
   type InflectionRow,
 } from './inflections';
-export { inflectionsHtml, wordFamilyHtml, formLineHtml, didYouMeanHtml, senseLabelLead, definitionSourcesHtml, type LexiconLinks } from './lexicon-parts';
+export {
+  inflectionsHtml,
+  wordFamilyHtml,
+  phrasesHtml,
+  formLineHtml,
+  didYouMeanHtml,
+  senseLabelLead,
+  senseNotesHtml,
+  posGrammarHtml,
+  languageSwitchHtml,
+  definitionSourcesHtml,
+  type LexiconLinks,
+} from './lexicon-parts';
 export { linkHtml, linkText, pruneGlossLinks, wordLinkHtml, wikiLinkLookup } from './text-links';
 export {
   parseMorphemeQuery,

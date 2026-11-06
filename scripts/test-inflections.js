@@ -108,12 +108,13 @@ assert.match(fam, /<summary>All 15<\/summary>/);
 assert.equal((fam.match(/data-lookup="run\d+"/g) || []).length, 15);
 assert.equal(wordFamilyHtml([], 'act'), '');
 
-// Sense labels as Wiktionary prints them, on the gloss's line; sources once under the senses.
+// Sense labels on the gloss's line, grammar in square brackets (test-sense-notes.js has the rest);
+// sources once under the senses.
 {
   const { senseLabelLead, definitionSourcesHtml } = load('lexicon-parts');
   assert.equal(
     senseLabelLead('(usually uncountable, politics) The capitalist class.'),
-    '<span class="sense-label lx-nolink">(<i>usually uncountable</i>, <i>politics</i>)</span> The capitalist class.',
+    '<span class="sense-gram lx-nolink">[usually uncountable]</span> <span class="sense-label lx-nolink">(<i>politics</i>)</span> The capitalist class.',
   );
   assert.equal(senseLabelLead('The (main) city.'), 'The (main) city.', 'only a leading bracket is a label');
   assert.equal(
