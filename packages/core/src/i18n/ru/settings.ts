@@ -13,7 +13,7 @@ export default {
   'settings.section.audio': 'Звук',
   'settings.section.updates': 'Обновления',
   'settings.section.about': 'О программе',
-  'settings.language': 'Язык',
+  'settings.language': 'Язык приложения',
   'settings.language.system': 'Системный',
 
   'settings.kit.cancelDownload': 'Отменить загрузку',
@@ -38,7 +38,7 @@ export default {
   'settings.about.perFile': 'Лицензия указана у каждого файла',
   'settings.about.perPack': 'Лицензия указана у каждого пакета',
   'settings.about.issueIntro': 'Что произошло и чего вы ожидали?',
-  'settings.about.provides.wiktionary': 'Определения, произношение, история и семьи слов, в том числе через Free Dictionary API и Kaikki',
+  'settings.about.provides.wiktionary': 'Определения, произношение, история слов и однокоренные слова, в том числе через Free Dictionary API и Kaikki',
   'settings.about.provides.wikipedia': 'Краткое содержание статей',
   'settings.about.provides.commons': 'Картинки и записи произношения',
   'settings.about.provides.wikidata': 'Связь значений с картинками',
@@ -60,6 +60,7 @@ export default {
   'settings.about.provides.sherpa': 'Движок синтеза речи',
   'settings.about.provides.ppocr': 'Распознавание текста на изображениях',
   'settings.about.provides.fonts': 'Outfit, Source Serif 4, Charis SIL и IBM Plex Mono',
+  'settings.about.fontsName': 'Шрифты',
 
   'settings.keys.unlocks.google': 'Перевод и определение языка через Cloud Translation API',
   'settings.keys.unlocks.deepl': 'DeepL как движок перевода',

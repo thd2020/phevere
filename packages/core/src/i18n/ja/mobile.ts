@@ -124,8 +124,8 @@ export default {
   'mobile.lexicon.section.synonyms': '類義語',
   'mobile.lexicon.section.antonyms': '対義語',
   'mobile.lexicon.section.phrases': '成句',
-  'mobile.lexicon.section.family': '語族',
-  'mobile.lexicon.section.wordFamily': '語族',
+  'mobile.lexicon.section.family': '同族語',
+  'mobile.lexicon.section.wordFamily': '同族語',
 
   'mobile.translation.translating': '翻訳中',
   'mobile.translation.none': '翻訳が見つかりません。',

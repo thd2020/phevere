@@ -226,7 +226,7 @@ export default {
   'notebook.view.label': '生词本视图',
   'notebook.view.list': '列表',
   'notebook.view.families': '词族',
-  'notebook.view.map': '地图',
+  'notebook.view.map': '关系图',
   'notebook.view.cards': '卡片',
   'notebook.cards.pictureCredit': '图片来源',
 
@@ -277,12 +277,12 @@ export default {
   // Map (notebook-map.ts, notebook-map-3d.ts)
   'notebook.map.empty': '还没有相互关联的单词。',
   'notebook.map.find': '查找单词',
-  'notebook.map.findLabel': '在地图上查找单词',
+  'notebook.map.findLabel': '在关系图中查找单词',
   'notebook.map.wordsOf': { other: '显示 {shown}/{count} 个单词' },
   'notebook.map.noMatch': '没有与“{query}”匹配的单词',
   'notebook.map.show': '显示',
   'notebook.map.nothingToConnect': '在当前筛选条件下没有可关联的单词。',
-  'notebook.map.label': '相关单词地图',
+  'notebook.map.label': '相关单词关系图',
   'notebook.map.reset': '重置视图',
   'notebook.map.connected': '相互关联的单词',
   'notebook.map.unlinked': { other: '未关联的单词 · {count}' },

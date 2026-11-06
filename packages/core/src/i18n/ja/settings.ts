@@ -13,7 +13,7 @@ export default {
   'settings.section.audio': '音声',
   'settings.section.updates': 'アップデート',
   'settings.section.about': '情報',
-  'settings.language': '言語',
+  'settings.language': 'アプリの言語',
   'settings.language.system': 'システム',
 
   'settings.kit.cancelDownload': 'ダウンロードをキャンセル',
@@ -38,7 +38,7 @@ export default {
   'settings.about.perFile': 'ライセンスは各ファイルに記載',
   'settings.about.perPack': 'ライセンスは各パックに記載',
   'settings.about.issueIntro': '何が起きましたか？本来はどうなるはずでしたか？',
-  'settings.about.provides.wiktionary': '定義、発音、語源、語族（Free Dictionary APIとKaikki経由のものを含む）',
+  'settings.about.provides.wiktionary': '定義、発音、語源、同族語（Free Dictionary APIとKaikki経由のものを含む）',
   'settings.about.provides.wikipedia': '記事の概要',
   'settings.about.provides.commons': '画像と録音された発音',
   'settings.about.provides.wikidata': '語義と画像の関連付け',
@@ -60,6 +60,7 @@ export default {
   'settings.about.provides.sherpa': '音声エンジン',
   'settings.about.provides.ppocr': '画像内の文字認識',
   'settings.about.provides.fonts': 'Outfit、Source Serif 4、Charis SIL、IBM Plex Mono',
+  'settings.about.fontsName': 'フォント',
 
   'settings.keys.unlocks.google': 'Cloud Translation APIによる翻訳と言語検出',
   'settings.keys.unlocks.deepl': '翻訳エンジンとしてDeepLを使用',

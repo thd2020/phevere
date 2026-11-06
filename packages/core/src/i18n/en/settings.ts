@@ -15,7 +15,7 @@ export default {
   'settings.section.audio': 'Audio',
   'settings.section.updates': 'Updates',
   'settings.section.about': 'About',
-  'settings.language': 'Language',
+  'settings.language': 'App language',
   'settings.language.system': 'System',
 
   // Shared rows (settings-kit.ts)
@@ -72,6 +72,7 @@ export default {
   'settings.about.provides.ppocr': 'Text recognition in images',
   /** Outfit, Source Serif 4, Charis SIL and IBM Plex Mono are font names. */
   'settings.about.provides.fonts': 'Outfit, Source Serif 4, Charis SIL and IBM Plex Mono',
+  'settings.about.fontsName': 'Fonts',
 
   // Settings → API keys
   'settings.keys.unlocks.google': 'Translations and language detection through the Cloud Translation API',

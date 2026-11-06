@@ -81,8 +81,8 @@ export default {
   'popup.lexicon.section.synonyms': 'синонимы',
   'popup.lexicon.section.antonyms': 'антонимы',
   'popup.lexicon.section.phrases': 'фразы',
-  'popup.lexicon.section.family': 'семья',
-  'popup.lexicon.section.wordFamily': 'семья слов',
+  'popup.lexicon.section.family': 'однокоренные',
+  'popup.lexicon.section.wordFamily': 'однокоренные слова',
 
   'popup.save.notebookUnavailable': 'Тетрадь недоступна',
   'popup.save.nothing': 'Нечего сохранять',

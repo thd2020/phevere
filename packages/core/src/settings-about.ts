@@ -12,7 +12,7 @@
  * data-act="about-copy" and data-copy with the version text.
  */
 import { esc, SVG } from './settings-kit';
-import { hasMessage, t } from './i18n/runtime';
+import { hasMessage, t, type MessageKey } from './i18n/runtime';
 
 export const REPO_URL = 'https://github.com/thd2020/phevere';
 export const AUTHOR = { name: 'thd2020', url: 'https://github.com/thd2020' };
@@ -39,6 +39,8 @@ const CC_BY_SA_4 = { name: 'CC BY-SA 4.0', url: 'https://creativecommons.org/lic
 export interface AboutCredit {
   id: string;
   name: string;
+  /** A generic name to show translated instead of `name` (the fonts row). */
+  nameKey?: MessageKey;
   url: string;
   /** Licence name and its text; leave out url where there is no single text to link. */
   licence?: { name: string; url?: string };
@@ -70,7 +72,7 @@ export const ABOUT_CREDITS: AboutCredit[] = [
   { id: 'kokoro', name: 'Kokoro', url: 'https://huggingface.co/hexgrad/Kokoro-82M', licence: { name: 'Apache 2.0', url: 'https://www.apache.org/licenses/LICENSE-2.0' }, on: NATIVE, group: 'software' },
   { id: 'sherpa', name: 'sherpa-onnx', url: 'https://github.com/k2-fsa/sherpa-onnx', licence: { name: 'Apache 2.0', url: 'https://www.apache.org/licenses/LICENSE-2.0' }, on: NATIVE, group: 'software' },
   { id: 'ppocr', name: 'PaddleOCR and RapidOCR', url: 'https://github.com/RapidAI/RapidOCR', licence: { name: 'Apache 2.0', url: 'https://www.apache.org/licenses/LICENSE-2.0' }, on: DESKTOP, group: 'software' },
-  { id: 'fonts', name: 'Fonts', url: 'https://fontsource.org/', licence: { name: 'SIL OFL 1.1', url: 'https://openfontlicense.org/' }, group: 'software' },
+  { id: 'fonts', name: 'Fonts', nameKey: 'settings.about.fontsName', url: 'https://fontsource.org/', licence: { name: 'SIL OFL 1.1', url: 'https://openfontlicense.org/' }, group: 'software' },
 ];
 
 /** Services Phevere calls under their own terms, with no open licence to credit. */
@@ -170,7 +172,7 @@ function creditRow(c: AboutCredit, platform: AboutPlatform): string {
       : '';
   return `<div class="sv-row sv-about__credit">
     <span class="sv-row__text">
-      <a class="sv-about__name" ${linkAttrs(c.url)}>${esc(c.name)}</a>
+      <a class="sv-about__name" ${linkAttrs(c.url)}>${esc(c.nameKey ? t(c.nameKey) : c.name)}</a>
       <span class="sv-row__sub">${esc(aboutProvides(c.id, platform))}</span>
       <span class="sv-about__end">${licence}</span>
     </span>

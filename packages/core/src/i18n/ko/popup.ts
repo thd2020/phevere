@@ -81,8 +81,8 @@ export default {
   'popup.lexicon.section.synonyms': '동의어',
   'popup.lexicon.section.antonyms': '반의어',
   'popup.lexicon.section.phrases': '구문',
-  'popup.lexicon.section.family': '가족',
-  'popup.lexicon.section.wordFamily': '어휘 가족',
+  'popup.lexicon.section.family': '단어족',
+  'popup.lexicon.section.wordFamily': '단어족',
 
   'popup.save.notebookUnavailable': '단어 노트를 사용할 수 없음',
   'popup.save.nothing': '저장할 내용 없음',

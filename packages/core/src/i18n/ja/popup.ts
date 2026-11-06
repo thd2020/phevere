@@ -81,8 +81,8 @@ export default {
   'popup.lexicon.section.synonyms': '類義語',
   'popup.lexicon.section.antonyms': '対義語',
   'popup.lexicon.section.phrases': '成句',
-  'popup.lexicon.section.family': '語族',
-  'popup.lexicon.section.wordFamily': '語族',
+  'popup.lexicon.section.family': '同族語',
+  'popup.lexicon.section.wordFamily': '同族語',
 
   'popup.save.notebookUnavailable': '単語ノートを利用できません',
   'popup.save.nothing': '保存するものがありません',

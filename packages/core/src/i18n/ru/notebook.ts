@@ -304,7 +304,7 @@ export default {
   'notebook.learn.none.started': 'Пока нет начатых слов',
   'notebook.learn.none.answers': 'Пока нет ответов',
   'notebook.learn.none.trouble': 'Нет трудных слов',
-  'notebook.learn.none.families': 'Пока нет семей по корням',
+  'notebook.learn.none.families': 'Пока нет гнёзд по корням',
   'notebook.learn.section.memory': 'Память',
   'notebook.learn.section.ahead': 'Предстоящие повторения',
   'notebook.learn.section.held': 'Как долго помнятся слова',
@@ -312,7 +312,7 @@ export default {
   'notebook.learn.section.skills': 'Навыки',
   'notebook.learn.section.lists': 'Слова',
   'notebook.learn.section.trouble': 'Трудные слова',
-  'notebook.learn.section.families': 'Семьи по корням',
+  'notebook.learn.section.families': 'Гнёзда по корням',
 
   'notebook.learn.scope.label': 'Список для изучения',
   'notebook.learn.scope.bookTitle': '{book}: известно {known} из {total}',
@@ -321,8 +321,8 @@ export default {
 
   'notebook.view.label': 'Вид тетради',
   'notebook.view.list': 'Список',
-  'notebook.view.families': 'Семьи',
-  'notebook.view.map': 'Карта',
+  'notebook.view.families': 'Гнёзда',
+  'notebook.view.map': 'Связи',
   'notebook.view.cards': 'Карточки',
   'notebook.cards.pictureCredit': 'Автор изображения',
 
@@ -367,7 +367,7 @@ export default {
   'notebook.families.originCount': '{origin} {count}',
   'notebook.families.treeAria': '{word} и образованные от него слова',
   'notebook.families.empty': 'Пока нет общих корней, аффиксов или иероглифов.',
-  'notebook.families.rest.family': 'Пока без семьи',
+  'notebook.families.rest.family': 'Пока вне гнезда',
   'notebook.families.rest.tree': 'Не входят в дерево',
   'notebook.families.rest.origin': 'Происхождение пока неизвестно',
   'notebook.families.openTree': 'Открыть дерево слова {word}',
@@ -378,7 +378,7 @@ export default {
 
   'notebook.map.empty': 'Пока нет связанных слов.',
   'notebook.map.find': 'Найти слово',
-  'notebook.map.findLabel': 'Найти слово на карте',
+  'notebook.map.findLabel': 'Найти слово среди связей',
   'notebook.map.wordsOf': {
     one: '{shown} из {count} слова',
     few: '{shown} из {count} слов',
@@ -388,7 +388,7 @@ export default {
   'notebook.map.noMatch': 'Нет слов по запросу «{query}»',
   'notebook.map.show': 'Показать',
   'notebook.map.nothingToConnect': 'С этими фильтрами связывать нечего.',
-  'notebook.map.label': 'Карта связанных слов',
+  'notebook.map.label': 'Связи между словами',
   'notebook.map.reset': 'Сбросить вид',
   'notebook.map.connected': 'Связанные слова',
   'notebook.map.unlinked': {

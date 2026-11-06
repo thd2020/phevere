@@ -103,7 +103,7 @@ const { EN } = load('i18n/en');
     .split('\n')
     .map((s) => s.trim())
     .filter(Boolean);
-  const names = new Set([...about.ABOUT_CREDITS.map((c) => c.name), ...about.ABOUT_CREDITS.map((c) => c.licence && c.licence.name), ...about.ABOUT_SERVICES.map((s) => s.name), ',']);
+  const names = new Set([...about.ABOUT_CREDITS.filter((c) => !c.nameKey).map((c) => c.name), ...about.ABOUT_CREDITS.map((c) => c.licence && c.licence.name), ...about.ABOUT_SERVICES.map((s) => s.name), ',']);
   const leftover = text.filter((s) => !s.includes('«') && !names.has(s) && !['Phevere', 'GitHub', 'MIT', 'thd2020'].includes(s));
   assert.deepEqual(leftover, [], 'untranslatable text on the About page');
 }

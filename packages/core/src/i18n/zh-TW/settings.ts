@@ -13,7 +13,7 @@ export default {
   'settings.section.audio': '音訊',
   'settings.section.updates': '更新',
   'settings.section.about': '關於',
-  'settings.language': '語言',
+  'settings.language': '應用程式語言',
   'settings.language.system': '系統',
 
   // Shared rows (settings-kit.ts)
@@ -63,6 +63,7 @@ export default {
   'settings.about.provides.sherpa': '語音引擎',
   'settings.about.provides.ppocr': '圖片中的文字辨識',
   'settings.about.provides.fonts': 'Outfit、Source Serif 4、Charis SIL 和 IBM Plex Mono',
+  'settings.about.fontsName': '字型',
 
   // Settings → API keys
   'settings.keys.unlocks.google': '透過 Cloud Translation API 翻譯及偵測語言',

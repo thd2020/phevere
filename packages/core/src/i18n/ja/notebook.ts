@@ -195,7 +195,7 @@ export default {
   'notebook.learn.none.started': '始めた単語はまだありません',
   'notebook.learn.none.answers': '回答はまだありません',
   'notebook.learn.none.trouble': '苦手な単語はありません',
-  'notebook.learn.none.families': '語根の語族はまだありません',
+  'notebook.learn.none.families': '語根ごとの同族語はまだありません',
   'notebook.learn.section.memory': '記憶',
   'notebook.learn.section.ahead': '今後の復習',
   'notebook.learn.section.held': '記憶の持続期間',
@@ -203,7 +203,7 @@ export default {
   'notebook.learn.section.skills': 'スキル',
   'notebook.learn.section.lists': '単語',
   'notebook.learn.section.trouble': '苦手な単語',
-  'notebook.learn.section.families': '語根の語族',
+  'notebook.learn.section.families': '語根ごとの同族語',
 
   'notebook.learn.scope.label': '学習リスト',
   'notebook.learn.scope.bookTitle': '{book}：{total}語中{known}語を習得済み',
@@ -212,8 +212,8 @@ export default {
 
   'notebook.view.label': '単語ノートの表示',
   'notebook.view.list': 'リスト',
-  'notebook.view.families': '語族',
-  'notebook.view.map': 'マップ',
+  'notebook.view.families': '同族語',
+  'notebook.view.map': '単語マップ',
   'notebook.view.cards': 'カード',
   'notebook.cards.pictureCredit': '画像のクレジット',
 
@@ -248,7 +248,7 @@ export default {
   'notebook.families.originCount': '{origin}（{count}）',
   'notebook.families.treeAria': '{word}とその派生語',
   'notebook.families.empty': '共通の語根、接辞、漢字はまだありません。',
-  'notebook.families.rest.family': 'まだ語族に入っていない単語',
+  'notebook.families.rest.family': 'まだどの同族語にも入っていない単語',
   'notebook.families.rest.tree': 'ツリーに含まれない単語',
   'notebook.families.rest.origin': '起源がまだわからない単語',
   'notebook.families.openTree': '{word}のツリーを開く',

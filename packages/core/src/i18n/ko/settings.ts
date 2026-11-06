@@ -13,7 +13,7 @@ export default {
   'settings.section.audio': '오디오',
   'settings.section.updates': '업데이트',
   'settings.section.about': '정보',
-  'settings.language': '언어',
+  'settings.language': '앱 언어',
   'settings.language.system': '시스템',
 
   'settings.kit.cancelDownload': '다운로드 취소',
@@ -38,7 +38,7 @@ export default {
   'settings.about.perFile': '파일마다 라이선스 표시',
   'settings.about.perPack': '팩마다 라이선스 표시',
   'settings.about.issueIntro': '어떤 일이 있었고, 원래 어떻게 될 거라고 예상했나요?',
-  'settings.about.provides.wiktionary': '뜻풀이, 발음, 어원, 어휘 가족. Free Dictionary API와 Kaikki를 통해서도 제공',
+  'settings.about.provides.wiktionary': '뜻풀이, 발음, 어원, 단어족. Free Dictionary API와 Kaikki를 통해서도 제공',
   'settings.about.provides.wikipedia': '문서 요약',
   'settings.about.provides.commons': '그림과 녹음된 발음',
   'settings.about.provides.wikidata': '뜻과 그림의 연결',
@@ -60,6 +60,7 @@ export default {
   'settings.about.provides.sherpa': '음성 엔진',
   'settings.about.provides.ppocr': '이미지 속 텍스트 인식',
   'settings.about.provides.fonts': 'Outfit, Source Serif 4, Charis SIL, IBM Plex Mono',
+  'settings.about.fontsName': '글꼴',
 
   'settings.keys.unlocks.google': 'Cloud Translation API를 통한 번역과 언어 감지',
   'settings.keys.unlocks.deepl': 'DeepL을 번역 엔진으로 사용',

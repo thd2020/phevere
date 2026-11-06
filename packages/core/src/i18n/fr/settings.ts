@@ -13,7 +13,7 @@ export default {
   'settings.section.audio': 'Audio',
   'settings.section.updates': 'Mises à jour',
   'settings.section.about': 'À propos',
-  'settings.language': 'Langue',
+  'settings.language': 'Langue de l’app',
   'settings.language.system': 'Système',
 
   'settings.kit.cancelDownload': 'Annuler le téléchargement',
@@ -60,6 +60,7 @@ export default {
   'settings.about.provides.sherpa': 'Moteur vocal',
   'settings.about.provides.ppocr': 'Reconnaissance du texte dans les images',
   'settings.about.provides.fonts': 'Outfit, Source Serif 4, Charis SIL et IBM Plex Mono',
+  'settings.about.fontsName': 'Polices',
 
   'settings.keys.unlocks.google': 'Traductions et détection de la langue via l’API Cloud Translation',
   'settings.keys.unlocks.deepl': 'DeepL comme moteur de traduction',

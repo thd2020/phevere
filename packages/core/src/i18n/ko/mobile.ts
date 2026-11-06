@@ -124,8 +124,8 @@ export default {
   'mobile.lexicon.section.synonyms': '동의어',
   'mobile.lexicon.section.antonyms': '반의어',
   'mobile.lexicon.section.phrases': '구문',
-  'mobile.lexicon.section.family': '가족',
-  'mobile.lexicon.section.wordFamily': '어휘 가족',
+  'mobile.lexicon.section.family': '단어족',
+  'mobile.lexicon.section.wordFamily': '단어족',
 
   'mobile.translation.translating': '번역 중',
   'mobile.translation.none': '번역을 찾지 못했습니다.',

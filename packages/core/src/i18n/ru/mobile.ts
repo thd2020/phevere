@@ -134,8 +134,8 @@ export default {
   'mobile.lexicon.section.synonyms': 'синонимы',
   'mobile.lexicon.section.antonyms': 'антонимы',
   'mobile.lexicon.section.phrases': 'фразы',
-  'mobile.lexicon.section.family': 'семья',
-  'mobile.lexicon.section.wordFamily': 'семья слов',
+  'mobile.lexicon.section.family': 'однокоренные',
+  'mobile.lexicon.section.wordFamily': 'однокоренные слова',
 
   'mobile.translation.translating': 'Перевод',
   'mobile.translation.none': 'Перевод не найден.',

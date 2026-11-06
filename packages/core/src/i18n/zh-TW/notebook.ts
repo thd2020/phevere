@@ -226,7 +226,7 @@ export default {
   'notebook.view.label': '單字本檢視',
   'notebook.view.list': '清單',
   'notebook.view.families': '字族',
-  'notebook.view.map': '地圖',
+  'notebook.view.map': '關聯圖',
   'notebook.view.cards': '字卡',
   'notebook.cards.pictureCredit': '圖片來源',
 
@@ -277,12 +277,12 @@ export default {
   // Map (notebook-map.ts, notebook-map-3d.ts)
   'notebook.map.empty': '還沒有相關聯的單字。',
   'notebook.map.find': '尋找單字',
-  'notebook.map.findLabel': '在地圖上尋找單字',
+  'notebook.map.findLabel': '在關聯圖中尋找單字',
   'notebook.map.wordsOf': { other: '{shown} / {count} 個單字' },
   'notebook.map.noMatch': '沒有符合「{query}」的單字',
   'notebook.map.show': '顯示',
   'notebook.map.nothingToConnect': '在這些篩選條件下沒有可連結的單字。',
-  'notebook.map.label': '相關單字地圖',
+  'notebook.map.label': '相關單字關聯圖',
   'notebook.map.reset': '重設檢視',
   'notebook.map.connected': '相關聯的單字',
   'notebook.map.unlinked': { other: '未連結的單字 · {count}' },
