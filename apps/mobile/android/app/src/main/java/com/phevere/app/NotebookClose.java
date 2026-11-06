@@ -40,14 +40,13 @@ final class NotebookClose {
       }
     };
     pending = once;
+    // Armed before asking: a page that never answers (its renderer gone) must not keep the
+    // pop-up from closing.
+    ui.postDelayed(once, WAIT_MS);
     web.evaluateJavascript("window.__pvFlushNotebook ? window.__pvFlushNotebook() : false", value -> {
       if (pending != once) return;
-      if ("true".equals(value)) {
-        onWait.run();
-        ui.postDelayed(once, WAIT_MS);
-      } else {
-        once.run();
-      }
+      if ("true".equals(value)) onWait.run();
+      else once.run();
     });
   }
 
