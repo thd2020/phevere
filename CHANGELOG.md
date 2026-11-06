@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Translating a sentence (2026-11-06): the Translation tab shows the first engine's translation as soon as it arrives, and a second engine's translation joins it when that one answers, instead of the tab waiting for every engine.
+
+### Fixed
+
+- Lookups without internet (2026-11-06): right after Phevere starts on a connection that reaches nothing (Wi-Fi without internet), a word in a downloaded offline dictionary shows in about 1.2 seconds instead of 7, and a word picked from a sentence, such as "hello,", in under 2 seconds instead of 13. A word in no offline dictionary ends on "No definitions found" in about 3.5 seconds. On a working network nothing changes.
+- After a slow connection drops (2026-11-06): when a VPN or a slow connection stops answering, the next lookup ends in about 3.5 seconds instead of 22 to 30.
+- Words Wiktionary cannot answer (2026-11-06): with Wiktionary unreachable, a word with a full stop that no dictionary knows ends on "No definitions found" in about 6 seconds instead of 22.
+- Back online (2026-11-06): when your phone or computer comes back online, the next word gets its definitions. Before, dictionaries that had failed while you were offline were skipped for three minutes, so the next words showed "No definitions found".
+- Quick translation (2026-11-06): with Google Translate unreachable, the translation comes from MyMemory within a few seconds instead of after 17, and the next one starts with MyMemory and takes about as long as MyMemory needs to answer. When the engine chosen in Settings cannot answer, another engine translates instead of the shortcut saying it could not.
+
 ## [4.2.0] - 2026-11-06
 
 ### Added
