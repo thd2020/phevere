@@ -2254,6 +2254,9 @@ export class DictionaryService extends BaseService {
     }
 
     await offlinePromise;
+    // What the dictionaries the first paint waits for have brought so far (anySenses below).
+    const primaryResults: any[] = [];
+    for (const p of primaryPromises) void p.then((v) => primaryResults.push(v));
     const hasLocal = definitions.some((d) => isLocalPackSource(d.source));
     const coreWait = () => (hasLocal ? CORE_WAIT_WITH_LOCAL_MS : budgetMs(CORE_WAIT_WITHOUT_LOCAL_MS, [FREE_DICTIONARY, WIKTIONARY]));
     if (corePromises.length) {
@@ -2265,9 +2268,14 @@ export class DictionaryService extends BaseService {
     // (a hung request's backup goes out after one). A dictionary host that answers nothing at all
     // must not hold a word it does not know until the lookup's deadline: with Wiktionary down,
     // "qwzxv" would end as "Lookup timed out" after twelve seconds instead of no definitions.
+    // Only the dictionaries' senses count. Datamuse often answers before them on a slow
+    // connection, and its WordNet glosses painted alone open the word without the dictionaries'
+    // senses, which then come only as an update (a test's "cat" opened as "A spiteful woman
+    // gossip."). So does a Wiktionary edition in another language, which joins an English
+    // lookup without holding it up.
     const anySenses = () =>
       definitions.length > 0 ||
-      finished.some((v: any) => v && !v.error && ((v.data?.definitions?.length || 0) > 0 || (v.type === 'offlineFallback' && v.data?.length > 0)));
+      primaryResults.some((v: any) => v && !v.error && ((v.data?.definitions?.length || 0) > 0 || (v.type === 'offlineFallback' && v.data?.length > 0)));
     if (!hasLocal && primaryPromises.length && !anySenses() && !connectionSilent()) {
       // It ends at once when the connection turns out to be silent: nothing it waits for is coming.
       await this.waitForFirstPaint(primaryPromises, primaryPromises, 0, () => (connectionSilent() ? 0 : budgetMs(CORE_WAIT_WITHOUT_LOCAL_MS, [FREE_DICTIONARY, WIKTIONARY], 2)));
