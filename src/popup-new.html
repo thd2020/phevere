@@ -184,6 +184,11 @@
       .toolbar-icon.toolbar-heart.is-saved .heart-fill { fill: currentColor; }
       .toolbar-icon[hidden] { display: none; }
       .toolbar-icon.is-speaking { color: var(--tertiary); }
+      /* The speaker waiting for the word's recording: the icon fades in and out until the sound starts. */
+      .toolbar-icon.is-loading { cursor: progress; }
+      .toolbar-icon.is-loading svg { opacity: 0.55; animation: speaker-wait 0.9s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
+      @keyframes speaker-wait { from { opacity: 1; } to { opacity: 0.25; } }
+      @media (prefers-reduced-motion: reduce) { .toolbar-icon.is-loading svg { animation: none; } }
       .tx-speak.is-speaking { background: var(--tertiary-container); color: var(--on-tertiary-container); }
 
       /*
@@ -1592,6 +1597,7 @@
         lookupInFlight = null;
         pendingHumanPlay = false;
         toolbarHumanBusy = false;
+        stopRecordingWait();
       }
 
       function clearStaleLookupUi(nextFold) {
@@ -3109,26 +3115,66 @@ function startAutoCloseTimeout() {
           if (!ok) showToast('Could not play pronunciation');
         }
 
+        /**
+         * How long a press waits for the word's recording while the lookup is still bringing its
+         * pronunciation data (RECORDING_WAIT_MS in @phevere/core), before the synthetic voice speaks.
+         */
+        var RECORDING_WAIT_MS = 8000;
+        var recordingWaitTimer = null;
+
+        function setAudioIconLoading(on) {
+          var icon = document.getElementById('audioIcon');
+          if (!icon) return;
+          icon.classList.toggle('is-loading', !!on);
+          if (on) icon.setAttribute('aria-busy', 'true');
+          else icon.removeAttribute('aria-busy');
+        }
+
+        function stopRecordingWait() {
+          if (recordingWaitTimer) clearTimeout(recordingWaitTimer);
+          recordingWaitTimer = null;
+          setAudioIconLoading(false);
+        }
+
+        /** The lookup is still out, or still bringing the dictionaries that carry recordings. */
+        function recordingMayArrive() {
+          return !!lookupInFlight || !!(currentResult && currentResult.metadata && currentResult.metadata.pendingPronunciation);
+        }
+
         async function playToolbarHuman() {
           if (audioPrefs.enabled === false) {
             showToast('Pronunciation is off');
             pendingHumanPlay = false;
+            stopRecordingWait();
             return;
           }
           var urls = recordedUrlsFromResult(currentResult);
           if (!urls.length) {
-            if (lookupInFlight) {
+            // A press before the word's pronunciation data has come waits for it, so a word that
+            // has a recording never plays the synthetic voice first.
+            if (recordingMayArrive()) {
               pendingHumanPlay = true;
-              showToast('Loading pronunciation…');
+              setAudioIconLoading(true);
+              if (!recordingWaitTimer) {
+                recordingWaitTimer = setTimeout(function () {
+                  recordingWaitTimer = null;
+                  if (!pendingHumanPlay) return;
+                  pendingHumanPlay = false;
+                  setAudioIconLoading(false);
+                  void speakHeadwordFallback();
+                }, RECORDING_WAIT_MS);
+              }
               return;
             }
             pendingHumanPlay = false;
+            stopRecordingWait();
             void speakHeadwordFallback();
             return;
           }
           var localHit = urls.find(function (u) { return recordedAudioCache[u]; });
           if (localHit) {
             pendingHumanPlay = false;
+            stopRecordingWait();
             lastGoodAudioUrl = localHit;
             playRecordedDataUrl(recordedAudioCache[localHit]);
             return;
@@ -3138,28 +3184,30 @@ function startAutoCloseTimeout() {
             return;
           }
           pendingHumanPlay = false;
+          if (recordingWaitTimer) clearTimeout(recordingWaitTimer);
+          recordingWaitTimer = null;
           toolbarHumanBusy = true;
-          var fetchHint = setTimeout(function () { showToast('Loading pronunciation…'); }, 800);
+          // Fetching the clip: the speaker stays in its loading state until it plays.
+          setAudioIconLoading(true);
           try {
             var fetchAudio = window.electronAPI && window.electronAPI.fetchPronunciationAudio;
             if (typeof fetchAudio !== 'function') {
-              clearTimeout(fetchHint);
+              setAudioIconLoading(false);
               playRecordedDataUrl(urls[0], function () {
                 void speakHeadwordFallback();
               });
               return;
             }
             var hit = await firstAudioHit(urls, fetchAudio);
-            if (hit.cached) clearTimeout(fetchHint);
             rememberLocalAudio(hit.url, hit.dataUrl);
             lastGoodAudioUrl = hit.url;
-            clearTimeout(fetchHint);
+            setAudioIconLoading(false);
             playRecordedDataUrl(hit.dataUrl);
           } catch (e) {
-            clearTimeout(fetchHint);
+            setAudioIconLoading(false);
             void speakHeadwordFallback();
           } finally {
-            clearTimeout(fetchHint);
+            setAudioIconLoading(false);
             toolbarHumanBusy = false;
           }
         }

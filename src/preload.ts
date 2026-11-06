@@ -358,6 +358,8 @@ contextBridge.exposeInMainWorld('dictionaryAPI', {
   lookup: (text: string, targetLanguage?: string, enabledSources?: string[], lookupOpts?: { translationProvider?: string; sourceLanguage?: string }): Promise<DictionaryResult> => {
     return ipcRenderer.invoke('dictionary-lookup', text, targetLanguage, enabledSources, lookupOpts);
   },
+  /** The word's recorded clips, best first, once its lookup knows them; empty when it has none. */
+  recordings: (word: string): Promise<string[]> => ipcRenderer.invoke('dictionary-recordings', word),
   getTranslationPrefs: (): Promise<{ provider: string }> => {
     return ipcRenderer.invoke('dictionary-get-translation-prefs');
   },
@@ -712,6 +714,7 @@ declare global {
     dictionaryAPI: {
       lookup: (text: string, targetLanguage?: string, enabledSources?: string[], lookupOpts?: { translationProvider?: string; sourceLanguage?: string }) => Promise<DictionaryResult>;
       onLookupUpdate?: (callback: (result: DictionaryResult) => void) => void;
+      recordings?: (word: string) => Promise<string[]>;
       getTranslationPrefs?: () => Promise<{ provider: string }>;
       setTranslationPrefs?: (prefs: { provider: string }) => Promise<{ provider: string }>;
       setApiKey: (apiKey: string) => Promise<{ success: boolean }>;

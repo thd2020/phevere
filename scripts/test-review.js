@@ -90,8 +90,44 @@ const now = new Date(2026, 10, 3, 10, 0, 0).getTime();
   });
   assert.equal(core.clozeFrom({ lemma: 'ignore', note: 'ignore this' }), null, 'too short to be a sentence');
   assert.equal(core.checkTyped('Serendipity', ['serendipity']), 'right');
-  assert.equal(core.checkTyped('serendiptiy', ['serendipity']), 'close', 'one swap in a long word');
-  assert.equal(core.checkTyped('cat', ['cot']), 'wrong', 'no slack in short words');
+  // Duolingo's typo rule: one letter missing, extra, replaced or swapped with its neighbour, and
+  // the slip must not spell another word.
+  assert.equal(core.checkTyped('serendiptiy', ['serendipity']), 'typo', 'one swap');
+  for (const t of ['strt', 'stert', 'strart', 'satrt']) assert.equal(core.checkTyped(t, ['start']), 'typo', t);
+  assert.equal(core.checkTyped('stret', ['start']), 'wrong', 'two slips');
+  assert.equal(core.checkTyped('starts', ['start']), 'wrong', 'another form of the word');
+  assert.equal(core.checkTyped('used', ['use']), 'wrong', 'another form of the word');
+  core.registerListedWords(['star', 'smart', 'he', 'cat']);
+  assert.equal(core.checkTyped('star', ['start']), 'wrong', 'a slip that spells a listed word');
+  assert.equal(core.checkTyped('smart', ['start']), 'wrong');
+  assert.equal(core.checkTyped('te', ['the']), 'typo', 'a three-letter word still gets one slip');
+  assert.equal(core.checkTyped('he', ['the']), 'wrong', '"he" is a word');
+  assert.equal(core.checkTyped('cat', ['cot']), 'wrong', '"cat" is a word');
+  assert.equal(core.checkTyped('og', ['of']), 'wrong', 'no slip in a word under three letters');
+  assert.equal(core.checkTyped('lok aftr', ['look after']), 'typo', 'one slip in each word of a phrase');
+  assert.equal(core.checkTyped('lok afer', ['look after']), 'typo');
+  assert.equal(core.checkTyped('look', ['look after']), 'wrong', 'a missing word is not a typo');
+  // The other national spelling is the same word, when it is a listed word; both word books list both.
+  core.registerListedWords(['colour', 'color', 'centre', 'center', 'realise', 'realize', 'four', 'for']);
+  assert.equal(core.checkTyped('colour', ['color']), 'right', 'British spelling of an American answer');
+  assert.equal(core.checkTyped('Center', ['centre']), 'right');
+  assert.equal(core.checkTyped('realize it', ['realise it']), 'right');
+  assert.equal(core.checkTyped('colur', ['colour']), 'typo');
+  assert.equal(core.checkTyped('precize', ['precise']), 'typo', 'an unlisted spelling is still a typo');
+  assert.equal(core.checkTyped('four', ['for']), 'wrong', 'a short word is not folded');
+  // A space or hyphen missed inside a phrase or compound is a typo.
+  assert.equal(core.checkTyped('icecream', ['ice cream']), 'typo');
+  assert.equal(core.checkTyped('ice-cream', ['ice cream']), 'typo');
+  assert.equal(core.checkTyped('well known', ['well-known']), 'typo');
+  assert.equal(core.checkTyped('a part', ['apart']), 'wrong', 'splitting a one-word answer is not a typo');
+  const marks = (t, a) => (core.typoMarks(t, a) || []).map((p) => (p.slip ? `[${p.text}]` : p.text)).join('');
+  assert.equal(marks('harbuor', 'harbour'), 'harb[ou]r', 'a swap marks both letters');
+  assert.equal(marks('harbur', 'harbour'), 'harb[o]ur', 'a missing letter is marked');
+  assert.equal(marks('harbeur', 'harbour'), 'harb[o]ur', 'a replaced letter is marked');
+  assert.equal(marks('harbiour', 'harbour'), 'har[b]our', 'an extra letter marks the one it followed');
+  assert.equal(marks('lok aftr', 'look after'), 'lo[o]k aft[e]r');
+  assert.equal(core.typoMarks('stret', 'start'), null);
+  assert.equal(marks('colour lok', 'color look'), 'color lo[o]k', 'the other spelling is not marked');
   assert.equal(core.checkTyped('to abandon', ['abandon']), 'right');
   assert.equal(core.checkTyped('cafe', ['café']), 'right');
   assert.equal(core.checkTyped('', ['x']), 'wrong');
@@ -107,7 +143,10 @@ const now = new Date(2026, 10, 3, 10, 0, 0).getTime();
   assert.equal(core.autoGrade('recall', 'right', 3500, 8), 4, 'quick recall is Easy');
   assert.equal(core.autoGrade('recall', 'right', 9000, 8), 3);
   assert.equal(core.autoGrade('recall', 'right', 20000, 8), 2);
-  assert.equal(core.autoGrade('recall', 'close', 2000, 8), 1, 'a near miss is a miss');
+  assert.equal(core.autoGrade('recall', 'typo', 2000, 8), 3, 'a quick typo is Good, never Easy');
+  assert.equal(core.autoGrade('recall', 'typo', 20000, 8), 2, 'a slow typo is Hard');
+  assert.equal(core.autoGrade('recall', 'typo', 2000, 8, { hintShare: 0.2 }), 2, 'hints still lower a typo');
+  assert.equal(core.autoGrade('recall', 'typo', 2000, 8, { hintShare: 0.5 }), 1);
   assert.equal(core.autoGrade('cloze', 'wrong', 2000, 8), 1);
 }
 

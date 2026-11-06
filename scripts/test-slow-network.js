@@ -102,7 +102,15 @@ const rest = {
 };
 const free = {
   cat: [{ word: 'cat', phonetics: [], meanings: [{ partOfSpeech: 'noun', definitions: [{ definition: 'A feline animal kept as a pet.' }] }] }],
+  harbour: [{
+    word: 'harbour',
+    phonetics: [{ text: '/ˈhɑːbə/', audio: 'https://api.dictionaryapi.dev/media/pronunciations/en/harbour-uk.mp3' }],
+    meanings: [{ partOfSpeech: 'noun', definitions: [{ definition: 'A sheltered expanse of water.' }] }],
+  }],
 };
+rest.harbour = { en: [{ partOfSpeech: 'Noun', language: 'English', definitions: [{ definition: 'A sheltered place for ships.' }] }] };
+/** Numbers the cases measured, printed at the end. */
+const measured = [];
 
 const senses = (r) => (r.definitions || []).filter((d) => d.source !== 'Fallback' && d.source !== 'Timeout').map((d) => d.meaning);
 
@@ -139,6 +147,31 @@ const cases = {
     assert.ok(feline, 'the Free Dictionary sense arrives through the backup request');
     assert.ok(feline < 5000, `a round trip after the backup went out (${feline} ms; the request's timeout is 6 s)`);
     for (const [host, n] of Object.entries(hung.net.maxInFlight)) assert.ok(n <= 3 || !/wik/.test(host), `${host}: ${n} in flight`);
+  },
+  // The Free Dictionary, which carries the recording, answers two and a half to three seconds after
+  // Wiktionary has painted the senses. A press on the speaker at first paint used to find no clip
+  // and speak with the synthetic voice; it now waits for the clip, and a word that has none speaks
+  // as soon as the dictionaries are in.
+  async 'a press before the recording has come'() {
+    const { core, service } = app({ delay: [2500, 3000], only: (url) => url.includes('dictionaryapi'), seed: 'harbour' });
+    const started = Date.now();
+    const first = await service.lookup('harbour', 'zh');
+    const paintMs = Date.now() - started;
+    assert.equal(core.recordedPronunciationUrls(first.pronunciations).length, 0, `no clip at first paint (${paintMs} ms)`);
+    assert.ok(first.metadata.pendingPronunciation, 'and the result says more is coming');
+    const pressed = Date.now();
+    const urls = await core.awaitRecordings((onUpdate) => service.lookup('harbour', 'zh', undefined, { onUpdate }));
+    const waitMs = Date.now() - pressed;
+    assert.equal(urls.length, 1, 'the press gets the recording');
+    assert.match(urls[0], /harbour-uk\.mp3$/);
+    const cat = app({ delay: [2500, 3000], only: (url) => url.includes('dictionaryapi'), seed: 'cat' });
+    const catPaint = await cat.service.lookup('cat', 'zh');
+    const catPressed = Date.now();
+    assert.equal((await cat.core.awaitRecordings((onUpdate) => cat.service.lookup('cat', 'zh', undefined, { onUpdate }))).length, 0, 'cat has no recording');
+    const catMs = Date.now() - catPressed;
+    assert.ok(catPaint.metadata.pendingPronunciation, 'cat also paints before its dictionaries are in');
+    assert.ok(catMs < core.RECORDING_WAIT_MS, `a word with no recording does not wait out the limit (${catMs} ms)`);
+    measured.push(`harbour: first paint ${paintMs} ms, recording ${waitMs} ms after the press; cat (no recording): voice ${catMs} ms after the press`);
   },
   // The adaptive budgets: a host answering in two seconds stretches a budget of one and a half.
   async 'budgets follow the round trip'() {
@@ -421,7 +454,8 @@ for (const [label, net] of Object.entries(etcNets)) {
   }
   for (const [name, r] of failed) console.error(`FAIL ${name}: ${r.reason && r.reason.message}`);
   if (failed.length) process.exit(1);
-  console.log(`Slow network passed in ${Math.round((Date.now() - t0) / 1000)} s: definitions arrive at 3 s a request, "etc." opens etc. with 2 to 3 s and hangs, a hung request is answered by its backup, a Wiktionary that answers nothing holds no lookup for long.`);
+  console.log(`Slow network passed in ${Math.round((Date.now() - t0) / 1000)} s: definitions arrive at 3 s a request, "etc." opens etc. with 2 to 3 s and hangs, a hung request is answered by its backup, a speaker pressed before the recording came gets the recording, a Wiktionary that answers nothing holds no lookup for long.`);
+  for (const line of measured) console.log(`  ${line}`);
   // The service keeps safety-net timers for lookups; they would hold the process open.
   process.exit(0);
 })().catch((err) => {

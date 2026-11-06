@@ -111,6 +111,9 @@ import {
   armCountdown,
   markHeard,
   singleVoice,
+  awaitRecordings,
+  recordingPending,
+  type RecordingSource,
   keepDraft,
   placeTile,
   returnTile,
@@ -212,6 +215,14 @@ let query = '';
 let draft = '';
 let looking = false;
 let lookupGeneration = 0;
+/** Callers waiting on the open lookup's next version (a speaker pressed before its recording came). */
+const resultWaiters = new Set<(r: DictionaryResult) => void>();
+/** The first clip already handed to the phone's cache, so each update does not ask again. */
+let prefetchedClip = '';
+/** The speaker waiting for its word's recording, as a selector, so a repaint draws it loading again. */
+let loadingSpeaker = '';
+/** Presses of the lookup's speaker, so an older press stays silent once a newer one comes. */
+let speakPress = 0;
 let result: DictionaryResult | null = null;
 let saved: VocabEntry | null = null;
 let status = '';
@@ -1148,6 +1159,7 @@ function paintPage(): void {
       ${accountPanelHtml(accountState, { deleting: accountDeleting, device: 'phone' })}
     </section>` : ''}
     ${toastHtml()}`;
+  markSpeakersLoading(loadingSpeaker, true);
   const q = document.getElementById('q') as HTMLInputElement | null;
   if (keepFocus && q) {
     q.focus();
@@ -1321,7 +1333,7 @@ function focusReview(page: HTMLElement): void {
   const btn = listen.querySelector<HTMLElement>('[data-act="nb-play"]');
   if (!btn) return;
   const word = listen.dataset.autoplay || '';
-  const played = playLemma(word);
+  const played = playLemma(word, btn);
   void pulseSpeak(btn, played);
   // A listening question's countdown starts once its word has played or failed to.
   void played.catch(() => undefined).then(() => {
@@ -1643,6 +1655,8 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab, lang?:
         if (generation !== lookupGeneration) return;
         result = partial;
         looking = false;
+        prefetchClips(partial);
+        for (const wake of [...resultWaiters]) wake(partial);
         paint();
         // Pictures go in as soon as there are senses to match them to; a later source that
         // changes the sense list is matched again from the same pool, without new requests.
@@ -1652,7 +1666,8 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab, lang?:
     if (generation !== lookupGeneration) return;
     result = next;
     settled = true;
-    prefetchRecorded(next);
+    prefetchClips(next);
+    for (const wake of [...resultWaiters]) wake(next);
     // The saved word in the language shown: "give" opened in Danish is not the English one.
     const nextSaved = await findByLemma(saveLemma(next), next.detectedLanguage).catch(() => null);
     if (generation !== lookupGeneration) return;
@@ -1671,6 +1686,8 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab, lang?:
   } catch (err) {
     if (generation !== lookupGeneration) return;
     lookupError = err instanceof Error ? err.message : String(err);
+    // No recording will come: a speaker waiting on this lookup speaks at once.
+    for (const wake of [...resultWaiters]) wake(result || ({ word: q } as DictionaryResult));
   } finally {
     if (generation === lookupGeneration) {
       looking = false;
@@ -2414,30 +2431,93 @@ function onSelectionSettled(): void {
   void lookup(q);
 }
 
+function prefetchClips(r: DictionaryResult | null): void {
+  const first = recordedUrls(r)[0] || '';
+  if (!first || first === prefetchedClip) return;
+  prefetchedClip = first;
+  prefetchRecorded(r);
+}
+
+/**
+ * The open lookup's recordings, waiting for its later versions while the dictionaries are still
+ * out (`awaitRecordings`), so a speaker pressed early plays the recording, not the synthetic voice.
+ */
+function openLookupRecordings(): Promise<string[]> {
+  const generation = lookupGeneration;
+  let wake: ((r: DictionaryResult | null) => void) | null = null;
+  return awaitRecordings((onUpdate) => {
+    wake = (r) => {
+      if (generation === lookupGeneration) onUpdate(r || {});
+    };
+    resultWaiters.add(wake);
+    // Still looking: nothing to show yet, and the first version comes through the waiter.
+    const now: RecordingSource | null = looking && !result ? { metadata: { pendingPronunciation: true } } : result;
+    return Promise.resolve(now);
+  }).finally(() => {
+    if (wake) resultWaiters.delete(wake);
+  });
+}
+
 /**
  * Notebook and Learn ▶ play the same recorded human clip as the lookup headword button, or the
- * synthetic voice when the word has none; never both, and a newer press stops an older one.
+ * synthetic voice when the word has none; never both, and a newer press stops an older one. A
+ * press before the word's lookup has its pronunciation data waits for it.
  */
 let sayLemma: SingleVoice | null = null;
 
 const lemmaVoice = () => singleVoice({
   recordings: async (lemma) => {
-    if (result && result.word.toLowerCase() === lemma.toLowerCase()) return recordedUrls(result);
+    if (result && result.word.toLowerCase() === lemma.toLowerCase()) {
+      if (recordedUrls(result).length || !recordingPending(result)) return recordedUrls(result);
+      return openLookupRecordings();
+    }
     // Lookups are cached in core; a word saved earlier usually resolves without network.
-    const found = await dictionaryService
-      .lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), { skipEtymology: true })
-      .catch(() => null);
-    return recordedUrls(found);
+    return awaitRecordings((onUpdate) =>
+      dictionaryService.lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), { skipEtymology: true, onUpdate }),
+    );
   },
   playRecording: (url, alive) => (alive() ? playClip(url, prefs) : Promise.resolve()),
   speak: (lemma, alive) => (alive() ? speakText(lemma, prefs) : Promise.resolve()),
   stop: stopAudio,
 });
 
-async function playLemma(lemma: string): Promise<void> {
+function speakerSelector(btn: HTMLElement): string {
+  const act = btn.dataset.act || '';
+  const lemma = btn.dataset.lemma;
+  return `[data-act="${CSS.escape(act)}"]${lemma != null ? `[data-lemma="${CSS.escape(lemma)}"]` : ''}`;
+}
+
+function markSpeakersLoading(selector: string, on: boolean): void {
+  if (!selector) return;
+  document.querySelectorAll<HTMLElement>(selector).forEach((el) => {
+    el.classList.toggle('is-loading', on);
+    if (on) el.setAttribute('aria-busy', 'true');
+    else el.removeAttribute('aria-busy');
+  });
+}
+
+/** Shows a speaker as loading while the word's recording is still being found, across repaints. */
+function setSpeakerLoading(btn: HTMLElement | null | undefined, on: boolean): void {
+  if (!btn) return;
+  const selector = speakerSelector(btn);
+  if (on) {
+    markSpeakersLoading(loadingSpeaker, false);
+    loadingSpeaker = selector;
+  } else if (loadingSpeaker === selector) {
+    loadingSpeaker = '';
+  }
+  btn.classList.toggle('is-loading', on);
+  markSpeakersLoading(selector, on);
+}
+
+async function playLemma(lemma: string, btn?: HTMLElement | null): Promise<void> {
   if (!lemma || !prefs.audioEnabled) return;
   sayLemma ??= lemmaVoice();
-  await sayLemma(lemma);
+  try {
+    await sayLemma(lemma, { onLoading: (on) => setSpeakerLoading(btn, on) });
+  } finally {
+    setSpeakerLoading(btn, false);
+  }
 }
 
 /** A speaker tapped with Pronunciation switched off says why nothing plays. */
@@ -2866,10 +2946,27 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     }
     case 'speak': {
       if (soundOff()) return;
-      // A recording not kept on the phone yet comes over the network: say so only if it is slow.
-      const hint = (await recordedReady(result)) ? 0 : window.setTimeout(() => toast('Loading pronunciation…'), 2500);
-      const started = () => window.clearTimeout(hint);
-      await pulseSpeak(t, playRecorded(result, prefs, started).finally(started));
+      const generation = lookupGeneration;
+      // Each press supersedes the one before, so two presses give one sound.
+      const press = ++speakPress;
+      const alive = () => press === speakPress && generation === lookupGeneration;
+      // Pressed before the word's pronunciation data came: the speaker shows it is loading and
+      // waits for the recording, and plays the synthetic voice only when there is none. A
+      // recording not kept on the phone yet comes over the network, and the speaker stays loading.
+      setSpeakerLoading(t, true);
+      const played = (async () => {
+        if (!recordedUrls(result).length && (recordingPending(result) || (looking && !result))) await openLookupRecordings();
+        if (!alive()) return;
+        // Native reports a clip only when it ends, so a clip kept on the phone ends the loading now.
+        const ready = await recordedReady(result);
+        if (!alive()) return;
+        if (ready) setSpeakerLoading(t, false);
+        await playRecorded(result, prefs, () => setSpeakerLoading(t, false), alive);
+      })().finally(() => {
+        // A newer press owns the loading state until it plays.
+        if (press === speakPress) setSpeakerLoading(t, false);
+      });
+      await pulseSpeak(t, played);
       return;
     }
     case 'speak-ipa': {
@@ -3265,7 +3362,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'nb-play':
       if (soundOff()) return;
-      await pulseSpeak(t, playLemma(t.dataset.lemma || ''));
+      await pulseSpeak(t, playLemma(t.dataset.lemma || '', t));
       if (markHeard(nbState.review, t.dataset.lemma || '')) paint();
       return;
     case 'nb-more': {
