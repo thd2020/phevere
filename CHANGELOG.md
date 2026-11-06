@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.1] - 2026-11-07
+
 ### Added
 
 - Zoom in on a sense picture (2026-11-07): the large picture that opens from a sense can be zoomed and moved. On the computer, scroll over it to zoom around the pointer, double-click to switch between fit and 2.5×, drag to move a zoomed picture, and press +, − or 0; on the phone, pinch, double-tap and drag. It zooms up to 6× and never smaller than fit or off its frame. Clicking or tapping the picture no longer closes it; a click beside it, Escape or Back does.
@@ -699,7 +701,8 @@ All six downloads were replaced on the existing 2.1.0 release; the git tag is un
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v4.3.0...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v4.3.1...HEAD
+[4.3.1]: https://github.com/thd2020/phevere/compare/v4.3.0...v4.3.1
 [4.3.0]: https://github.com/thd2020/phevere/compare/v4.2.0...v4.3.0
 [4.2.0]: https://github.com/thd2020/phevere/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/thd2020/phevere/compare/v4.0.0...v4.1.0
