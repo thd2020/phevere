@@ -473,6 +473,9 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.deepEqual(s.strength.map((b) => b.label), ['New', 'Learning', 'Young', 'Mature']);
   assert.deepEqual(s.strength.map((b) => b.words), [['export'], ['transport'], [], ['portable']]);
   assert.match(page, /<b class="lrp-fig__n" style="--ch:1">1<\/b><p class="lrp-fig__cap"><span class="lrp-fig__label">Mature<\/span><span class="lrp-fig__sub">of 2 started<\/span>/);
+  // Memory's number is a prediction: "Remembered", never "Recalled today", which reads as answers given today.
+  assert.match(page, /<span class="lrp-fig__label">Remembered<\/span><span class="lrp-fig__sub">of 2 words<\/span><span class="lrp-fig__facts"><span><b>\d+<\/b> due<\/span>/);
+  assert.doesNotMatch(page, /Recalled|below 90%<\/span>/);
   assert.doesNotMatch(page, /Under 1 wk|3 wk–3 mo/, 'no week buckets');
   assert.equal(s.mix.listening, 1);
   const charts = load('learn-charts');

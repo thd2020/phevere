@@ -316,13 +316,17 @@ export interface MemorySpec {
 /** Recall as a whole percent, rounded down, so a word just under the target never reads as 90%. */
 const recallPct = (r: number) => `${Math.floor(r * 100 + 1e-9)}%`;
 
-/** The caption under the number of words you would recall: what it counts, then the due and the loss as short figures. */
+/**
+ * The caption under the number of words you would recall: what it counts, then the due and the loss
+ * as short figures. "Remembered", not "Recalled": the number is a prediction, and "recalled today"
+ * read as answers given today beside a Reviews gauge at 0. "Due" is the chart's word for below 90%.
+ */
 function memoryLede(m: MemoryAt, total: number, today: MemoryAt, h: (typeof MEMORY_HORIZONS)[number]): string {
-  const target = `${Math.round(DESIRED_RETENTION * 100)}%`;
   const lost = Math.round(today.recalled) - Math.round(m.recalled);
-  const facts = [`<span><b>${fmt(m.below)}</b> below ${target}</span>`];
+  const facts = [`<span><b>${fmt(m.below)}</b> due</span>`];
   if (m.days && lost > 0) facts.push(`<span><b>${fmt(lost)}</b> fewer than today</span>`);
-  return `<span class="lrp-fig__label">Recalled ${esc(h.label.toLowerCase())}</span><span class="lrp-fig__sub">of ${fmt(total)} learning</span><span class="lrp-fig__facts">${facts.join('')}</span>`;
+  const label = m.days ? `Remembered ${h.label.toLowerCase()}` : 'Remembered';
+  return `<span class="lrp-fig__label">${esc(label)}</span><span class="lrp-fig__sub">of ${fmt(total)} ${total === 1 ? 'word' : 'words'}</span><span class="lrp-fig__facts">${facts.join('')}</span>`;
 }
 
 function memoryReadout(words: RetentionWord[], m: MemoryAt, picked: number | null, now: number): string {
