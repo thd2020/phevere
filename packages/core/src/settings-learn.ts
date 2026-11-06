@@ -11,6 +11,7 @@
  * learn-speaking (switch). The host calls `wireNumberWheels` on a container that outlives repaints.
  * Styles: settings-kit.css.
  */
+import { t, tHtml } from './i18n/runtime';
 import { esc, switchRowHtml } from './settings-kit';
 import { COUNTDOWN_MAX, COUNTDOWN_MIN, type LearnPrefs } from './learn-prefs';
 import { numberWheelHtml } from './number-wheel';
@@ -49,10 +50,10 @@ function goalDial(key: string, book: string, label: string, goal: number): strin
 }
 
 export function learnSettingsHtml(input: LearnSettingsInput): string {
-  const goals = [goalDial('mine', '', 'My words', input.goal), ...input.books.map((b, i) => goalDial(`b${i}`, b.id, b.title, b.goal))].join('');
+  const goals = [goalDial('mine', '', t('settings.learn.myWords'), input.goal), ...input.books.map((b, i) => goalDial(`b${i}`, b.id, b.title, b.goal))].join('');
   const countdown = dial(
     'learn-countdown',
-    'Countdown on choice questions',
+    t('settings.learn.countdown'),
     numberWheelHtml({
       id: 'learn-countdown',
       labelledBy: 'learn-countdown-label',
@@ -60,18 +61,19 @@ export function learnSettingsHtml(input: LearnSettingsInput): string {
       min: COUNTDOWN_MIN,
       max: COUNTDOWN_MAX,
       off: true,
-      unit: 'seconds',
+      unit: t('settings.learn.seconds'),
+      unitValueKey: 'settings.learn.secondsValue',
       page: 5,
       attrs: 'data-act="learn-countdown"',
     }),
   );
   const speaking = SPEAKING_QUESTIONS && input.microphone
-    ? `<div class="sv-ledger">${switchRowHtml({ label: 'Speaking questions', on: input.prefs.speaking, attrs: 'data-act="learn-speaking" id="learn-speaking"' })}</div>`
+    ? `<div class="sv-ledger">${switchRowHtml({ label: t('settings.learn.speaking'), on: input.prefs.speaking, attrs: 'data-act="learn-speaking" id="learn-speaking"' })}</div>`
     : '';
   return `<div class="sv sv-page sv-learn">
-    <header class="sv-head"><h3 class="sv-head__title">New words a day</h3></header>
+    <header class="sv-head"><h3 class="sv-head__title">${tHtml('settings.learn.newWordsHead')}</h3></header>
     <div class="sv-dials">${goals}</div>
-    <header class="sv-head"><h3 class="sv-head__title">Questions</h3></header>
+    <header class="sv-head"><h3 class="sv-head__title">${tHtml('settings.learn.questionsHead')}</h3></header>
     <div class="sv-dials">${countdown}</div>
     ${speaking}
   </div>`;

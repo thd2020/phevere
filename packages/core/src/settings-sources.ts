@@ -5,7 +5,7 @@
  */
 
 import type { ApiProviderId } from './api-key-check';
-import { languageName } from './source-languages';
+import { languageDisplayName, t, tHtml } from './i18n/runtime';
 import { esc, hostOf, SVG } from './settings-kit';
 
 export interface SourceInfo {
@@ -13,8 +13,8 @@ export interface SourceInfo {
   mark: string;
   /** Headword languages as ISO codes, or 'many'. */
   languages: string[] | 'many';
-  /** What Phevere gets from it, at most two lines. */
-  about: string;
+  /** What Phevere gets from it, at most two lines, in the interface language (read when shown). */
+  readonly about: string;
   url?: string;
   /** Provider whose key it needs. */
   key?: ApiProviderId;
@@ -29,98 +29,128 @@ export const SOURCE_INFO: Record<string, SourceInfo> = {
   'Free Dictionary API': {
     mark: 'Fd',
     languages: ['en'],
-    about: 'English definitions, phonetic spellings and recorded pronunciations, drawn from Wiktionary.',
+    get about() {
+      return t('settings.sources.about.freeDictionary');
+    },
     url: 'https://dictionaryapi.dev/',
   },
   Wiktionary: {
     mark: 'W',
     languages: 'many',
-    about: 'Definitions, parts of speech and etymologies from the English Wiktionary, for words in any language it covers.',
+    get about() {
+      return t('settings.sources.about.wiktionary');
+    },
     url: 'https://en.wiktionary.org/',
   },
   'Oxford Dictionary API': {
     mark: 'Ox',
     languages: ['en'],
-    about: 'Oxford definitions, examples and etymologies for English words.',
+    get about() {
+      return t('settings.sources.about.oxford');
+    },
     url: 'https://developer.oxforddictionaries.com/',
     key: 'oxford',
   },
   'Collins Dictionary API': {
     mark: 'Co',
     languages: ['en'],
-    about: 'Collins English definitions, through a RapidAPI subscription.',
+    get about() {
+      return t('settings.sources.about.collins');
+    },
     url: 'https://www.collinsdictionary.com/',
     key: 'collins',
   },
   WordsAPI: {
     mark: 'Wa',
     languages: ['en'],
-    about: 'English definitions with synonyms and related words.',
+    get about() {
+      return t('settings.sources.about.wordsapi');
+    },
     url: 'https://www.wordsapi.com/',
     key: 'wordsapi',
   },
   'Youdao API': {
     mark: '有',
     languages: ['zh', 'en'],
-    about: 'Chinese–English dictionary entries and web translations from NetEase Youdao.',
+    get about() {
+      return t('settings.sources.about.youdao');
+    },
     url: 'https://ai.youdao.com/',
     key: 'youdao',
   },
   'CC-CEDICT': {
     mark: '典',
     languages: ['zh'],
-    about: 'Chinese–English entries with pinyin, read from the CC-CEDICT offline pack.',
+    get about() {
+      return t('settings.sources.about.cedict');
+    },
     url: 'https://cc-cedict.org/wiki/',
     pack: true,
   },
   Datamuse: {
     mark: 'Dm',
     languages: ['en'],
-    about: 'Short English definitions and synonyms from the Datamuse word-finding API.',
+    get about() {
+      return t('settings.sources.about.datamuse');
+    },
     url: 'https://www.datamuse.com/api/',
   },
   Tatoeba: {
     mark: 'Ta',
     languages: 'many',
-    about: 'Example sentences with translations, written and checked by volunteers.',
+    get about() {
+      return t('settings.sources.about.tatoeba');
+    },
     url: 'https://tatoeba.org/',
   },
   Jisho: {
     mark: '辞',
     languages: ['ja'],
-    about: 'Japanese words with readings and English glosses. Built on JMdict.',
+    get about() {
+      return t('settings.sources.about.jisho');
+    },
     url: 'https://jisho.org/',
   },
   OpenRussian: {
     mark: 'Ру',
     languages: ['ru'],
-    about: 'Russian words with stress marks, inflected forms and English translations.',
+    get about() {
+      return t('settings.sources.about.openrussian');
+    },
     url: 'https://en.openrussian.org/',
   },
   Kaikki: {
     mark: 'Kk',
     languages: 'many',
-    about: 'Wiktionary entries extracted by wiktextract, for words that are not English.',
+    get about() {
+      return t('settings.sources.about.kaikki');
+    },
     url: 'https://kaikki.org/',
   },
   'Chinese Wiktionary': {
     mark: '中',
     languages: 'many',
-    about: 'Definitions written in Chinese, for Chinese words and words of other languages. Literary and Classical senses are marked 〈书〉.',
+    get about() {
+      return t('settings.sources.about.zhWiktionary');
+    },
     url: 'https://zh.wiktionary.org/',
     native: true,
   },
   'Russian Wiktionary': {
     mark: 'Рв',
     languages: ['ru'],
-    about: 'Russian words defined in Russian.',
+    get about() {
+      return t('settings.sources.about.ruWiktionary');
+    },
     url: 'https://ru.wiktionary.org/',
     native: true,
   },
   'Japanese Wiktionary': {
     mark: '国',
     languages: ['ja'],
-    about: 'Japanese words defined in Japanese.',
+    get about() {
+      return t('settings.sources.about.jaWiktionary');
+    },
     url: 'https://ja.wiktionary.org/',
     native: true,
   },
@@ -128,23 +158,30 @@ export const SOURCE_INFO: Record<string, SourceInfo> = {
 
 export interface EngineInfo extends SourceInfo {
   id: string;
-  label: string;
+  /** The engine's name; Automatic follows the interface language. */
+  readonly label: string;
 }
 
 export const TRANSLATION_ENGINES: EngineInfo[] = [
   {
     id: 'auto',
-    label: 'Automatic',
+    get label() {
+      return t('settings.sources.engine.auto');
+    },
     mark: 'A',
     languages: 'many',
-    about: 'Google Translate first, then MyMemory when Google does not answer.',
+    get about() {
+      return t('settings.sources.about.engineAuto');
+    },
   },
   {
     id: 'google',
-    label: 'Google Translate',
+    label: 'Google Translate', // i18n-ignore: the service's name
     mark: 'G',
     languages: 'many',
-    about: 'Works without a key. With a Cloud Translation key it uses the official API.',
+    get about() {
+      return t('settings.sources.about.engineGoogle');
+    },
     url: 'https://translate.google.com/',
   },
   {
@@ -152,7 +189,9 @@ export const TRANSLATION_ENGINES: EngineInfo[] = [
     label: 'MyMemory',
     mark: 'Mm',
     languages: 'many',
-    about: 'Translation memory from Translated, mixing human and machine translations.',
+    get about() {
+      return t('settings.sources.about.engineMymemory');
+    },
     url: 'https://mymemory.translated.net/',
   },
   {
@@ -160,7 +199,9 @@ export const TRANSLATION_ENGINES: EngineInfo[] = [
     label: 'Youdao',
     mark: '有',
     languages: 'many',
-    about: 'Translation by NetEase Youdao.',
+    get about() {
+      return t('settings.sources.about.engineYoudao');
+    },
     url: 'https://ai.youdao.com/',
     key: 'youdao',
   },
@@ -169,7 +210,9 @@ export const TRANSLATION_ENGINES: EngineInfo[] = [
     label: 'DeepL',
     mark: 'D',
     languages: 'many',
-    about: 'Translation by DeepL, with a key from a DeepL API Free account.',
+    get about() {
+      return t('settings.sources.about.engineDeepl');
+    },
     url: 'https://www.deepl.com/translator',
     key: 'deepl',
   },
@@ -189,16 +232,16 @@ export interface SourceRowInput {
 
 function chipsHtml(languages: SourceInfo['languages'] | undefined): string {
   if (!languages) return '';
-  if (languages === 'many') return '<span class="sv-chip">Many languages</span>';
-  return languages.map((c) => `<span class="sv-chip" lang="${esc(c)}">${esc(languageName(c))}</span>`).join('');
+  if (languages === 'many') return `<span class="sv-chip">${tHtml('settings.sources.manyLanguages')}</span>`;
+  return languages.map((c) => `<span class="sv-chip">${esc(languageDisplayName(c))}</span>`).join('');
 }
 
 function requirementHtml(info: SourceInfo | undefined): string {
   if (info?.key) {
-    return `<button type="button" class="sv-need" data-act="goto-section" data-section="api" data-provider="${esc(info.key)}">API key required</button>`;
+    return `<button type="button" class="sv-need" data-act="goto-section" data-section="api" data-provider="${esc(info.key)}">${tHtml('settings.sources.needsKey')}</button>`;
   }
   if (info?.pack) {
-    return '<button type="button" class="sv-need" data-act="goto-section" data-section="offline">Offline pack required</button>';
+    return `<button type="button" class="sv-need" data-act="goto-section" data-section="offline">${tHtml('settings.sources.needsPack')}</button>`;
   }
   return '';
 }
@@ -241,14 +284,14 @@ export function sourcesPanelHtml(p: SourcesPanelInput): string {
   const native = p.dictionary.filter((r) => r.info?.native);
   const on = main.filter((r) => r.on).length;
   const nativeHtml = native.length
-    ? `<header class="sv-head"><h3 class="sv-head__title">Definitions in other languages</h3></header>
+    ? `<header class="sv-head"><h3 class="sv-head__title">${tHtml('settings.sources.nativeHead')}</h3></header>
     <div class="sv-ledger">${native.map(sourceRowHtml).join('')}</div>`
     : '';
   return `<div class="sv sv-sources">
-    <header class="sv-head"><h3 class="sv-head__title">Dictionaries</h3><span class="sv-head__count">${on} of ${main.length} on</span></header>
-    <div class="sv-ledger">${main.map(sourceRowHtml).join('') || '<p class="sv-empty">No dictionary sources loaded.</p>'}</div>
+    <header class="sv-head"><h3 class="sv-head__title">${tHtml('settings.sources.dictionaries')}</h3><span class="sv-head__count">${tHtml('settings.sources.countOn', { on, total: main.length })}</span></header>
+    <div class="sv-ledger">${main.map(sourceRowHtml).join('') || `<p class="sv-empty">${tHtml('settings.sources.empty')}</p>`}</div>
     ${nativeHtml}
-    <header class="sv-head"><h3 class="sv-head__title">Translation engine</h3></header>
-    <div class="sv-ledger" role="radiogroup" aria-label="Translation engine">${p.engines.map(sourceRowHtml).join('')}</div>
+    <header class="sv-head"><h3 class="sv-head__title">${tHtml('settings.sources.engineHead')}</h3></header>
+    <div class="sv-ledger" role="radiogroup" aria-label="${tHtml('settings.sources.engineHead')}">${p.engines.map(sourceRowHtml).join('')}</div>
   </div>`;
 }

@@ -5,6 +5,7 @@
  */
 
 import type { HttpClient, HttpTextResponse } from './http';
+import { t } from './i18n/runtime';
 
 export type ApiProviderId = 'google' | 'deepl' | 'youdao' | 'oxford' | 'wordsapi' | 'collins';
 
@@ -37,7 +38,7 @@ function errorText(res: HttpTextResponse): string {
   } catch {
     /* not JSON */
   }
-  return `HTTP ${res.status}`;
+  return t('settings.keys.check.httpStatus', { status: String(res.status) });
 }
 
 async function get(
@@ -49,7 +50,7 @@ async function get(
   try {
     return await http.requestText(url, { headers, timeoutMs: TIMEOUT_MS });
   } catch {
-    return { ok: false, message: `Could not reach ${host}` };
+    return { ok: false, message: t('settings.keys.check.unreachable', { host }) };
   }
 }
 
@@ -57,8 +58,8 @@ const isCheck = (r: HttpTextResponse | ApiKeyCheck): r is ApiKeyCheck => !('stat
 
 /** 2xx means the key works; a dictionary 404 means the key passed and the test word was missing. */
 function judge(res: HttpTextResponse, notFoundIsOk = false): ApiKeyCheck {
-  if (res.ok || (notFoundIsOk && res.status === 404)) return { ok: true, message: 'Key works' };
-  if (res.status === 429) return { ok: false, message: 'Rate limited; try again later' };
+  if (res.ok || (notFoundIsOk && res.status === 404)) return { ok: true, message: t('settings.keys.check.works') };
+  if (res.status === 429) return { ok: false, message: t('settings.keys.check.rateLimited') };
   return { ok: false, message: errorText(res) };
 }
 
@@ -68,7 +69,7 @@ export async function checkApiKey(
   c: ApiCredentials,
   sha256Hex?: (s: string) => string | Promise<string>,
 ): Promise<ApiKeyCheck> {
-  const missing: ApiKeyCheck = { ok: false, message: 'No key saved' };
+  const missing: ApiKeyCheck = { ok: false, message: t('settings.keys.check.noKey') };
   switch (provider) {
     case 'google': {
       if (!c.googleKey) return missing;
@@ -90,12 +91,12 @@ export async function checkApiKey(
         'api-free.deepl.com',
       );
       if (isCheck(r)) return r;
-      if (r.status === 403) return { ok: false, message: 'DeepL rejected the key' };
+      if (r.status === 403) return { ok: false, message: t('settings.keys.check.deeplRejected') };
       return judge(r);
     }
     case 'youdao': {
-      if (!c.youdaoKey || !c.youdaoSecret) return { ok: false, message: 'App key and secret are both needed' };
-      if (!sha256Hex) return { ok: false, message: 'Cannot sign the request here' };
+      if (!c.youdaoKey || !c.youdaoSecret) return { ok: false, message: t('settings.keys.check.youdaoBothNeeded') };
+      if (!sha256Hex) return { ok: false, message: t('settings.keys.check.cannotSign') };
       const q = 'hello';
       const salt = String(Date.now());
       const curtime = String(Math.round(Date.now() / 1000));
@@ -110,7 +111,7 @@ export async function checkApiKey(
           timeoutMs: TIMEOUT_MS,
         });
       } catch {
-        return { ok: false, message: 'Could not reach openapi.youdao.com' };
+        return { ok: false, message: t('settings.keys.check.unreachable', { host: 'openapi.youdao.com' }) };
       }
       let code = '';
       try {
@@ -118,13 +119,13 @@ export async function checkApiKey(
       } catch {
         return judge(r);
       }
-      if (code === '0') return { ok: true, message: 'Key works' };
-      if (code === '108') return { ok: false, message: 'Youdao does not recognise the app key (error 108)' };
-      if (code === '202') return { ok: false, message: 'Signature check failed; check the app secret (error 202)' };
-      return { ok: false, message: `Youdao error ${code || r.status}` };
+      if (code === '0') return { ok: true, message: t('settings.keys.check.works') };
+      if (code === '108') return { ok: false, message: t('settings.keys.check.youdaoUnknownKey') };
+      if (code === '202') return { ok: false, message: t('settings.keys.check.youdaoSignature') };
+      return { ok: false, message: t('settings.keys.check.youdaoError', { code: code || String(r.status) }) };
     }
     case 'oxford': {
-      if (!c.oxfordId || !c.oxfordKey) return { ok: false, message: 'App ID and app key are both needed' };
+      if (!c.oxfordId || !c.oxfordKey) return { ok: false, message: t('settings.keys.check.oxfordBothNeeded') };
       const r = await get(
         http,
         'https://od-api.oxforddictionaries.com/api/v2/entries/en-gb/test',
@@ -140,7 +141,7 @@ export async function checkApiKey(
       return isCheck(r) ? r : judge(r, true);
     }
     case 'collins': {
-      if (!c.collinsKey || !c.collinsHost) return { ok: false, message: 'API key and host are both needed' };
+      if (!c.collinsKey || !c.collinsHost) return { ok: false, message: t('settings.keys.check.collinsBothNeeded') };
       const host = c.collinsHost.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
       const r = await get(
         http,
@@ -151,6 +152,6 @@ export async function checkApiKey(
       return isCheck(r) ? r : judge(r, true);
     }
     default:
-      return { ok: false, message: 'Unknown provider' };
+      return { ok: false, message: t('settings.keys.check.unknownProvider') };
   }
 }

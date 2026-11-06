@@ -14,6 +14,7 @@
  * `data-value`. `wireNumberWheels` listens on a container once, so a repaint needs no rewiring.
  * Styles: settings-kit.css (`.nw`).
  */
+import { hasMessage, t, type MessageKey } from './i18n/runtime';
 import { esc } from './settings-kit';
 
 export interface NumberWheelInput {
@@ -27,6 +28,11 @@ export interface NumberWheelInput {
   off?: boolean;
   /** A word under the number, such as "seconds"; hidden while the wheel shows Off. */
   unit?: string;
+  /**
+   * A plural message with {count} that a screen reader hears for the value, such as
+   * "{count} seconds"; without it the value is read as the number and `unit`.
+   */
+  unitValueKey?: MessageKey;
   /** Page Up and Page Down step; 10 by default. */
   page?: number;
   /** Extra attributes for the wheel element, such as data-act. */
@@ -69,7 +75,7 @@ function indexOf(r: WheelRange, v: number): number {
   return clamped - r.min + (r.off ? 1 : 0);
 }
 
-const label = (v: number) => (v === 0 ? 'Off' : String(v));
+const label = (v: number) => (v === 0 ? t('common.off') : String(v));
 
 /**
  * Where a value `d` steps off centre is drawn: lifted along the drum, smaller, fainter and lighter.
@@ -92,9 +98,10 @@ function itemCss(d: number, word = false): string {
   return `transform:translateY(-50%) translateY(${(s.y / (word ? WORD_SIZE : 1)).toFixed(3)}em) scale(${s.scale.toFixed(3)});opacity:${s.opacity.toFixed(3)};font-variation-settings:'opsz' 60,'wght' ${s.weight}`;
 }
 
-function valueText(v: number, unit: string): string {
-  if (v === 0) return 'Off';
-  return unit ? `${v} ${unit}` : String(v);
+function valueText(v: number, unit: string, unitKey = ''): string {
+  if (v === 0) return t('common.off');
+  if (unitKey && hasMessage(unitKey)) return t(unitKey, { count: v });
+  return unit ? t('settings.wheel.valueUnit', { value: String(v), unit }) : String(v);
 }
 
 export function numberWheelHtml(w: NumberWheelInput): string {
@@ -111,7 +118,7 @@ export function numberWheelHtml(w: NumberWheelInput): string {
       `<span class="nw__n${k === 0 ? ' is-centre' : ''}${v === 0 ? ' is-word' : ''}"${inRange ? '' : ' hidden'} style="${itemCss(k, v === 0)}">${inRange ? label(v) : ''}</span>`,
     );
   }
-  return `<div class="nw${value === 0 ? ' is-off' : ''}" id="${esc(w.id)}" role="spinbutton" tabindex="0" aria-labelledby="${esc(w.labelledBy)}" aria-valuemin="${r.off ? 0 : r.min}" aria-valuemax="${r.max}" aria-valuenow="${value}" aria-valuetext="${esc(valueText(value, unit))}" data-min="${r.min}" data-max="${r.max}"${r.off ? ' data-off=""' : ''} data-page="${w.page ?? 10}" data-unit="${esc(unit)}" data-value="${value}"${w.attrs ? ` ${w.attrs}` : ''}>
+  return `<div class="nw${value === 0 ? ' is-off' : ''}" id="${esc(w.id)}" role="spinbutton" tabindex="0" aria-labelledby="${esc(w.labelledBy)}" aria-valuemin="${r.off ? 0 : r.min}" aria-valuemax="${r.max}" aria-valuenow="${value}" aria-valuetext="${esc(valueText(value, unit, w.unitValueKey))}" data-min="${r.min}" data-max="${r.max}"${r.off ? ' data-off=""' : ''} data-page="${w.page ?? 10}" data-unit="${esc(unit)}"${w.unitValueKey ? ` data-unit-key="${esc(w.unitValueKey)}"` : ''} data-value="${value}"${w.attrs ? ` ${w.attrs}` : ''}>
     <span class="nw__drum" aria-hidden="true">${items.join('')}</span>
     ${unit ? `<span class="nw__unit" aria-hidden="true">${esc(unit)}</span>` : ''}
   </div>`;
@@ -121,12 +128,17 @@ export function numberWheelHtml(w: NumberWheelInput): string {
 export function parseWheelEntry(raw: string, r: WheelRange): number | null {
   // NFKC folds full-width digits from a Chinese or Japanese keyboard (１５) into ASCII ones.
   const t = raw.normalize('NFKC').trim().toLowerCase();
-  if (r.off && (t === 'off' || t === '0')) return 0;
+  if (r.off && (t === 'off' || t === '0' || t === offWord())) return 0;
   const digits = t.replace(/[^\d]/g, '');
   if (!digits) return null;
   const n = Number(digits);
   if (!Number.isFinite(n)) return null;
   return valueAt(r, indexOf(r, n));
+}
+
+/** The word Off as the interface writes it, so it can be typed into the field. */
+function offWord(): string {
+  return t('common.off').normalize('NFKC').trim().toLowerCase();
 }
 
 /* ------------------------------------------------------------------ wiring */
@@ -209,7 +221,7 @@ function render(el: HTMLElement, st: State): void {
     st.shown = base;
     const v = valueAt(st.r, base);
     el.setAttribute('aria-valuenow', String(v));
-    el.setAttribute('aria-valuetext', valueText(v, el.dataset.unit || ''));
+    el.setAttribute('aria-valuetext', valueText(v, el.dataset.unit || '', el.dataset.unitKey || ''));
     el.classList.toggle('is-off', v === 0);
   }
 }
@@ -302,7 +314,7 @@ function openEntry(el: HTMLElement, st: State, first = ''): void {
   input.autocomplete = 'off';
   input.enterKeyHint = 'done';
   // Room for the largest number, and for the word "off" on a wheel that has it.
-  input.maxLength = Math.max(String(st.r.max).length, st.r.off ? 3 : 0);
+  input.maxLength = Math.max(String(st.r.max).length, st.r.off ? Math.max(3, offWord().length) : 0);
   const name = document.getElementById(el.getAttribute('aria-labelledby') || '')?.textContent || '';
   input.setAttribute('aria-label', name);
   input.value = first || label(valueAt(st.r, Math.round(st.pos)));

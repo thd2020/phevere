@@ -2,6 +2,7 @@
  * Shared pieces of every Settings page, desktop and phone: escaping, link markup,
  * icons, and the row, switch, choice, slider and key-cap markup. Styles: settings-kit.css.
  */
+import { tHtml } from './i18n/runtime';
 
 export function esc(s: unknown): string {
   return String(s ?? '')
@@ -138,7 +139,7 @@ export interface ChoiceRowInput {
 
 export function choiceRowHtml(c: ChoiceRowInput): string {
   const end = c.busy
-    ? `<button type="button" class="sv-icon sv-icon--small" ${c.busy.cancelAttrs} title="Cancel" aria-label="Cancel download">${SVG.close}</button>`
+    ? `<button type="button" class="sv-icon sv-icon--small" ${c.busy.cancelAttrs} title="${tHtml('common.cancel')}" aria-label="${tHtml('settings.kit.cancelDownload')}">${SVG.close}</button>`
     : c.on
       ? `<span class="sv-choice__mark sv-choice__mark--check" aria-hidden="true">${SVG.check}</span>`
       : c.needsDownload
@@ -157,7 +158,7 @@ export function choiceRowHtml(c: ChoiceRowInput): string {
 
 /** Key caps for a shortcut already split into display names (Ctrl, Shift, K). */
 export function keycapsHtml(parts: string[]): string {
-  if (!parts.length) return '<span class="sv-kbd-empty">Not set</span>';
+  if (!parts.length) return `<span class="sv-kbd-empty">${tHtml('settings.kit.shortcutNotSet')}</span>`;
   return parts.map((k) => `<kbd class="sv-kbd">${esc(k)}</kbd>`).join('<span class="sv-kbd-join">+</span>');
 }
 

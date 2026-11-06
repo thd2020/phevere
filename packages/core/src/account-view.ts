@@ -4,6 +4,7 @@
  * Both return HTML strings; buttons carry `data-act` so each shell wires them its own way.
  */
 import { HOLARKY_ACCOUNT, progressSyncOff, type AccountState } from './account';
+import { formatDate, formatRelativeTime, t, tHtml } from './i18n/runtime';
 
 /**
  * The Holarky mark (the Stride h) as the brand's small icon, `brand/svg/holarky-icon-small.svg`
@@ -33,14 +34,15 @@ function esc(s: string): string {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
-function timeAgo(at: number, now: number): string {
+/** "Synced just now", "Synced 5 minutes ago", "Synced 3 hours ago", then the date. */
+function syncedText(at: number, now: number): string {
   const s = Math.max(0, Math.round((now - at) / 1000));
-  if (s < 60) return 'just now';
+  if (s < 60) return t('settings.account.syncedJustNow');
   const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
+  if (m < 60) return t('settings.account.synced', { time: formatRelativeTime(-m, 'minute') });
   const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
-  return new Date(at).toLocaleDateString();
+  if (h < 24) return t('settings.account.synced', { time: formatRelativeTime(-h, 'hour') });
+  return t('settings.account.synced', { time: formatDate(at) });
 }
 
 function initial(state: AccountState): string {
@@ -50,12 +52,12 @@ function initial(state: AccountState): string {
 
 /** One line under the user, or under Sign in while the browser is open. */
 export function accountStatusText(state: AccountState, now = Date.now()): string {
-  if (state.signingIn) return 'Finish signing in in your browser.';
+  if (state.signingIn) return t('settings.account.finishInBrowser');
   if (state.lastError) return state.lastError;
   if (!state.user) return '';
-  if (state.syncing) return 'Syncing…';
-  if (state.lastSyncAt) return `Synced ${timeAgo(state.lastSyncAt, now)}`;
-  return 'Not synced yet';
+  if (state.syncing) return t('settings.account.syncing');
+  if (state.lastSyncAt) return syncedText(state.lastSyncAt, now);
+  return t('settings.account.notSynced');
 }
 
 /** Title-bar or app-bar button. Empty when this build has no account server. */
@@ -63,18 +65,18 @@ export function accountButtonHtml(state: AccountState | null, open = false): str
   if (!state?.configured) return '';
   const user = state.user;
   const sync = state.lastError ? 'error' : state.syncing ? 'syncing' : '';
-  const label = user ? `Account: ${user.email}` : 'Sign in';
+  const label = user ? t('settings.account.buttonLabel', { email: user.email }) : t('settings.account.signIn');
   const face = user
     ? `<span class="hx-avatar" aria-hidden="true">${esc(initial(state))}</span>`
     : holarkyMarkSvg('btn', 22);
-  return `<button type="button" class="hx-account-btn" data-act="account-open" data-sync="${sync}" aria-haspopup="dialog" aria-expanded="${open}" aria-label="${esc(label)}" title="${esc(user ? user.name || user.email : 'Sign in')}">${face}</button>`;
+  return `<button type="button" class="hx-account-btn" data-act="account-open" data-sync="${sync}" aria-haspopup="dialog" aria-expanded="${open}" aria-label="${esc(label)}" title="${esc(user ? user.name || user.email : t('settings.account.signIn'))}">${face}</button>`;
 }
 
 export interface AccountPanelOptions {
   /** The email confirmation step of Delete account is showing. */
   deleting?: boolean;
-  /** "phone" or "computer", for the line about the local notebook. */
-  device: string;
+  /** The device the notebook stays on, for the line about the local notebook. */
+  device: 'phone' | 'computer';
   now?: number;
   /** Where Get Plus leads; HOLARKY_ACCOUNT.plusUrl by default. */
   plusUrl?: string;
@@ -90,8 +92,8 @@ export function accountPanelHtml(state: AccountState | null, opts: AccountPanelO
   const user = state.user;
   if (!user) {
     const actions = state.signingIn
-      ? `<button type="button" class="hx-btn hx-btn--quiet" data-act="account-cancel">Cancel</button>`
-      : `<button type="button" class="hx-btn hx-btn--primary" data-act="account-sign-in">Sign in</button>`;
+      ? `<button type="button" class="hx-btn hx-btn--quiet" data-act="account-cancel">${tHtml('common.cancel')}</button>`
+      : `<button type="button" class="hx-btn hx-btn--primary" data-act="account-sign-in">${tHtml('settings.account.signIn')}</button>`;
     return `<div class="hx-acct">
       <div class="hx-acct__brand">${holarkyMarkSvg('panel', 30)}<strong>Holarky</strong></div>
       ${actions}
@@ -104,17 +106,17 @@ export function accountPanelHtml(state: AccountState | null, opts: AccountPanelO
     </div>
     <div class="hx-acct__sync">
       ${statusHtml || '<span></span>'}
-      <button type="button" class="hx-icon-btn${state.syncing ? ' is-spinning' : ''}" data-act="account-sync" aria-label="Sync now" title="Sync now" ${state.syncing ? 'disabled' : ''}>${SYNC_ICON}</button>
+      <button type="button" class="hx-icon-btn${state.syncing ? ' is-spinning' : ''}" data-act="account-sync" aria-label="${tHtml('settings.account.syncNow')}" title="${tHtml('settings.account.syncNow')}" ${state.syncing ? 'disabled' : ''}>${SYNC_ICON}</button>
     </div>`;
   if (opts.deleting) {
     return `<div class="hx-acct">
       ${head}
       <div class="hx-acct__delete">
-        <p>Deletes your Holarky account and its synced notebook in every Holarky app. The notebook on this ${esc(opts.device)} stays. Type your email to confirm.</p>
-        <input id="account-delete-email" type="email" autocomplete="off" spellcheck="false" aria-label="Account email" placeholder="${esc(user.email)}" />
+        <p>${tHtml(opts.device === 'phone' ? 'settings.account.deleteWarningPhone' : 'settings.account.deleteWarningComputer')}</p>
+        <input id="account-delete-email" type="email" autocomplete="off" spellcheck="false" aria-label="${tHtml('settings.account.emailField')}" placeholder="${esc(user.email)}" />
         <div class="hx-acct__row">
-          <button type="button" class="hx-btn hx-btn--danger" data-act="account-delete-confirm" disabled>Delete account</button>
-          <button type="button" class="hx-btn hx-btn--quiet" data-act="account-delete-cancel">Cancel</button>
+          <button type="button" class="hx-btn hx-btn--danger" data-act="account-delete-confirm" disabled>${tHtml('settings.account.delete')}</button>
+          <button type="button" class="hx-btn hx-btn--quiet" data-act="account-delete-cancel">${tHtml('common.cancel')}</button>
         </div>
       </div>
     </div>`;
@@ -123,8 +125,8 @@ export function accountPanelHtml(state: AccountState | null, opts: AccountPanelO
     ${head}
     ${plusNoticeHtml(state, opts.plusUrl ?? HOLARKY_ACCOUNT.plusUrl)}
     <div class="hx-acct__row">
-      <button type="button" class="hx-btn" data-act="account-sign-out">Sign out</button>
-      <button type="button" class="hx-btn hx-btn--quiet hx-btn--danger-text" data-act="account-delete-start">Delete account…</button>
+      <button type="button" class="hx-btn" data-act="account-sign-out">${tHtml('settings.account.signOut')}</button>
+      <button type="button" class="hx-btn hx-btn--quiet hx-btn--danger-text" data-act="account-delete-start">${tHtml('settings.account.deleteStart')}</button>
     </div>
   </div>`;
 }
@@ -141,10 +143,10 @@ export function plusNoticeHtml(state: AccountState | null, plusUrl: string, wher
   const kept = state!.plus!.keptUntil;
   if (where === 'learn' && !kept) return '';
   const line = kept
-    ? `Synced progress is kept until ${new Date(kept).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}.`
-    : 'Learning progress stays on this device.';
-  const link = kept ? 'Keep it with Plus' : 'Sync it with Plus';
-  return `<p class="hx-plus" role="note">${esc(line)} <a class="hx-plus__link" href="${esc(plusUrl)}" target="_blank" rel="noopener noreferrer" data-act="account-plus">${link}</a></p>`;
+    ? t('settings.account.plusKeptUntil', { date: formatDate(kept, { month: 'short', day: 'numeric', year: 'numeric' }) })
+    : t('settings.account.plusLocalOnly');
+  const link = t(kept ? 'settings.account.plusKeep' : 'settings.account.plusSync');
+  return `<p class="hx-plus" role="note">${esc(line)} <a class="hx-plus__link" href="${esc(plusUrl)}" target="_blank" rel="noopener noreferrer" data-act="account-plus">${esc(link)}</a></p>`;
 }
 
 /** Enables Delete account once the typed email matches the signed-in one. */

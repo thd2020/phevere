@@ -5,12 +5,14 @@
  */
 
 import type { ApiProviderId } from './api-key-check';
+import { t, tHtml, type MessageKey } from './i18n/runtime';
 import { esc, linkHtml, SVG } from './settings-kit';
 
 export interface ApiKeyField {
   /** Phone preference name; desktop maps it to an IPC setter. */
   pref: string;
-  label: string;
+  /** In the interface language, read when it is shown. */
+  readonly label: string;
   secret: boolean;
 }
 
@@ -18,70 +20,89 @@ export interface ApiProviderInfo {
   id: ApiProviderId;
   name: string;
   mark: string;
-  /** What the key turns on in Phevere. */
-  unlocks: string;
+  /** What the key turns on in Phevere, in the interface language, read when it is shown. */
+  readonly unlocks: string;
   console: string;
   fields: ApiKeyField[];
 }
 
+/** A field whose label follows the interface language. */
+function field(pref: string, labelKey: MessageKey, secret: boolean): ApiKeyField {
+  return {
+    pref,
+    secret,
+    get label() {
+      return t(labelKey);
+    },
+  };
+}
+
+/** A provider whose `unlocks` line follows the interface language. */
+function provider(p: Omit<ApiProviderInfo, 'unlocks'>, unlocksKey: MessageKey): ApiProviderInfo {
+  return Object.defineProperty(p, 'unlocks', { get: () => t(unlocksKey), enumerable: true }) as ApiProviderInfo;
+}
+
 export const API_PROVIDERS: ApiProviderInfo[] = [
-  {
-    id: 'google',
-    name: 'Google Translate',
-    mark: 'G',
-    unlocks: 'Translations and language detection through the Cloud Translation API',
-    console: 'https://console.cloud.google.com/apis/credentials',
-    fields: [{ pref: 'googleKey', label: 'API key', secret: true }],
-  },
-  {
-    id: 'deepl',
-    name: 'DeepL',
-    mark: 'D',
-    unlocks: 'DeepL as the translation engine',
-    console: 'https://www.deepl.com/your-account/keys',
-    fields: [{ pref: 'deeplKey', label: 'Authentication key', secret: true }],
-  },
-  {
-    id: 'youdao',
-    name: 'Youdao',
-    mark: '有',
-    unlocks: 'Youdao translation and Youdao dictionary entries',
-    console: 'https://ai.youdao.com/console/',
-    fields: [
-      { pref: 'youdaoKey', label: 'App key', secret: true },
-      { pref: 'youdaoSecret', label: 'App secret', secret: true },
-    ],
-  },
-  {
-    id: 'oxford',
-    name: 'Oxford Dictionaries',
-    mark: 'Ox',
-    unlocks: 'Oxford definitions and etymologies in lookups',
-    console: 'https://developer.oxforddictionaries.com/',
-    fields: [
-      { pref: 'oxfordId', label: 'App ID', secret: false },
-      { pref: 'oxfordKey', label: 'App key', secret: true },
-    ],
-  },
-  {
-    id: 'wordsapi',
-    name: 'WordsAPI',
-    mark: 'Wa',
-    unlocks: 'WordsAPI definitions and synonyms in lookups',
-    console: 'https://rapidapi.com/dpventures/api/wordsapi',
-    fields: [{ pref: 'wordsKey', label: 'RapidAPI key', secret: true }],
-  },
-  {
-    id: 'collins',
-    name: 'Collins',
-    mark: 'Co',
-    unlocks: 'Collins definitions in lookups',
-    console: 'https://rapidapi.com/search/collins',
-    fields: [
-      { pref: 'collinsKey', label: 'RapidAPI key', secret: true },
-      { pref: 'collinsHost', label: 'API host', secret: false },
-    ],
-  },
+  provider(
+    {
+      id: 'google',
+      name: 'Google Translate',
+      mark: 'G',
+      console: 'https://console.cloud.google.com/apis/credentials',
+      fields: [field('googleKey', 'settings.keys.field.apiKey', true)],
+    },
+    'settings.keys.unlocks.google',
+  ),
+  provider(
+    {
+      id: 'deepl',
+      name: 'DeepL',
+      mark: 'D',
+      console: 'https://www.deepl.com/your-account/keys',
+      fields: [field('deeplKey', 'settings.keys.field.authKey', true)],
+    },
+    'settings.keys.unlocks.deepl',
+  ),
+  provider(
+    {
+      id: 'youdao',
+      name: 'Youdao',
+      mark: '有',
+      console: 'https://ai.youdao.com/console/',
+      fields: [field('youdaoKey', 'settings.keys.field.appKey', true), field('youdaoSecret', 'settings.keys.field.appSecret', true)],
+    },
+    'settings.keys.unlocks.youdao',
+  ),
+  provider(
+    {
+      id: 'oxford',
+      name: 'Oxford Dictionaries',
+      mark: 'Ox',
+      console: 'https://developer.oxforddictionaries.com/',
+      fields: [field('oxfordId', 'settings.keys.field.appId', false), field('oxfordKey', 'settings.keys.field.appKey', true)],
+    },
+    'settings.keys.unlocks.oxford',
+  ),
+  provider(
+    {
+      id: 'wordsapi',
+      name: 'WordsAPI',
+      mark: 'Wa',
+      console: 'https://rapidapi.com/dpventures/api/wordsapi',
+      fields: [field('wordsKey', 'settings.keys.field.rapidApiKey', true)],
+    },
+    'settings.keys.unlocks.wordsapi',
+  ),
+  provider(
+    {
+      id: 'collins',
+      name: 'Collins',
+      mark: 'Co',
+      console: 'https://rapidapi.com/search/collins',
+      fields: [field('collinsKey', 'settings.keys.field.rapidApiKey', true), field('collinsHost', 'settings.keys.field.apiHost', false)],
+    },
+    'settings.keys.unlocks.collins',
+  ),
 ];
 
 export type KeyStatus = 'unset' | 'saved' | 'testing' | 'verified' | 'failed';
@@ -99,12 +120,12 @@ export interface KeyCardState {
   highlight?: boolean;
 }
 
-const STATUS_LABEL: Record<KeyStatus, string> = {
-  unset: 'Not set',
-  saved: 'Saved',
-  testing: 'Testing…',
-  verified: 'Verified',
-  failed: 'Failed',
+const STATUS_LABEL: Record<KeyStatus, MessageKey> = {
+  unset: 'settings.keys.status.unset',
+  saved: 'settings.keys.status.saved',
+  testing: 'settings.keys.status.testing',
+  verified: 'settings.keys.status.verified',
+  failed: 'settings.keys.status.failed',
 };
 
 export function apiKeyCardHtml(p: ApiProviderInfo, st: KeyCardState): string {
@@ -113,13 +134,13 @@ export function apiKeyCardHtml(p: ApiProviderInfo, st: KeyCardState): string {
       const value = st.values?.[f.pref] || '';
       const shown = !f.secret || !!st.revealed?.has(f.pref);
       const id = `sv-key-${p.id}-${f.pref}`;
-      const placeholder = st.savedHidden && !value ? (f.secret ? '•••••••••••• saved' : 'Saved') : '';
+      const placeholder = st.savedHidden && !value ? t(f.secret ? 'settings.keys.savedSecret' : 'settings.keys.savedPlain') : '';
       return `<div class="sv-field">
         <label class="sv-field__label" for="${id}">${esc(f.label)}</label>
         <span class="sv-field__box">
           <input id="${id}" class="sv-field__input" type="${shown ? 'text' : 'password'}" data-pref="${esc(f.pref)}" data-provider="${p.id}" value="${esc(value)}" placeholder="${esc(placeholder)}" autocomplete="off" spellcheck="false" />
-          ${f.secret ? `<button type="button" class="sv-icon sv-icon--small" data-act="key-reveal" data-provider="${p.id}" data-pref="${esc(f.pref)}" aria-label="${shown ? 'Hide' : 'Show'} ${esc(f.label)}" aria-pressed="${shown}">${shown ? SVG.eyeOff : SVG.eye}</button>` : ''}
-          <button type="button" class="sv-icon sv-icon--small" data-act="key-clear" data-provider="${p.id}" data-pref="${esc(f.pref)}" aria-label="Clear ${esc(f.label)}">${SVG.close}</button>
+          ${f.secret ? `<button type="button" class="sv-icon sv-icon--small" data-act="key-reveal" data-provider="${p.id}" data-pref="${esc(f.pref)}" aria-label="${tHtml(shown ? 'settings.keys.hide' : 'settings.keys.show', { field: f.label })}" aria-pressed="${shown}">${shown ? SVG.eyeOff : SVG.eye}</button>` : ''}
+          <button type="button" class="sv-icon sv-icon--small" data-act="key-clear" data-provider="${p.id}" data-pref="${esc(f.pref)}" aria-label="${tHtml('settings.keys.clear', { field: f.label })}">${SVG.close}</button>
         </span>
       </div>`;
     })
@@ -134,13 +155,13 @@ export function apiKeyCardHtml(p: ApiProviderInfo, st: KeyCardState): string {
         <h3 id="sv-key-${p.id}-name">${esc(p.name)}</h3>
         <p>${esc(p.unlocks)}</p>
       </div>
-      <span class="sv-key__status" role="status">${st.status === 'verified' ? SVG.check : ''}${STATUS_LABEL[st.status]}</span>
+      <span class="sv-key__status" role="status">${st.status === 'verified' ? SVG.check : ''}${tHtml(STATUS_LABEL[st.status])}</span>
     </header>
     <div class="sv-key__fields">${fields}</div>
     <footer class="sv-key__foot">
-      ${linkHtml(p.console, 'Get a key')}
+      ${linkHtml(p.console, t('settings.keys.getKey'))}
       <span class="sv-key__msg">${st.status === 'failed' && st.message ? esc(st.message) : ''}</span>
-      <button type="button" class="sv-btn" data-act="key-test" data-provider="${p.id}"${canTest ? '' : ' disabled'}>${st.status === 'testing' ? 'Testing…' : 'Test'}</button>
+      <button type="button" class="sv-btn" data-act="key-test" data-provider="${p.id}"${canTest ? '' : ' disabled'}>${tHtml(st.status === 'testing' ? 'settings.keys.status.testing' : 'settings.keys.test')}</button>
     </footer>
   </section>`;
 }

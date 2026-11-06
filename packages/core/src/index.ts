@@ -466,6 +466,7 @@ export {
   wordFamilyHtml,
   phrasesHtml,
   formLineHtml,
+  lookupNoticeText,
   didYouMeanHtml,
   senseLabelLead,
   senseNotesHtml,
@@ -543,6 +544,7 @@ export {
   REPO_URL,
   aboutCredits,
   aboutIssueUrl,
+  aboutProvides,
   aboutSettingsHtml,
   aboutVersionLabel,
   aboutVersionText,
@@ -552,7 +554,6 @@ export {
   type AboutInfo,
   type AboutPlatform,
 } from './settings-about';
-export { ABOUT_STRINGS_EN, type AboutStrings } from './settings-about-strings';
 export {
   COUNTDOWN_MAX,
   COUNTDOWN_MIN,
