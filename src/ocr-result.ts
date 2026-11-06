@@ -8,6 +8,7 @@ import '@phevere/core/ocr-view.css';
 import './ocr-result.css';
 import { OcrView, ocrBarHtml } from '@phevere/core/ocr-view';
 import type { OcrPage } from '@phevere/core/ocr-layout';
+import type { UnitResult } from '@phevere/core/ocr-translate';
 
 const api = (window as any).ocrResultAPI as {
   data: () => Promise<{ image: string; page: OcrPage } | null>;
@@ -15,7 +16,39 @@ const api = (window as any).ocrResultAPI as {
   copyImage: (png: ArrayBuffer) => Promise<void>;
   saveImage: (png: ArrayBuffer) => Promise<{ saved: boolean }>;
   lookup: (x: number, y: number, text: string) => void;
+  translateInfo: () => Promise<{ languages: { code: string; name: string }[] }>;
+  translateTarget: (sample: string) => Promise<string>;
+  setTranslateTarget: (code: string) => Promise<void>;
+  translate: (texts: string[], to: string, id: number) => Promise<UnitResult[]>;
+  cancelTranslate: (id: number) => void;
 };
+
+/**
+ * Translation goes through the main process, which cannot see the run's `wanted`. Each request
+ * has an id, and a request the page no longer wants is cancelled there, so its queued engine
+ * requests are dropped unsent.
+ */
+const asking = new Map<number, () => boolean>();
+let lastAsk = 0;
+let watch = 0;
+function translateAsked(texts: string[], to: string, wanted: () => boolean): Promise<UnitResult[]> {
+  const id = ++lastAsk;
+  asking.set(id, wanted);
+  if (!watch) {
+    watch = window.setInterval(() => {
+      for (const [k, w] of asking) {
+        if (w()) continue;
+        asking.delete(k);
+        api.cancelTranslate(k);
+      }
+      if (!asking.size) {
+        window.clearInterval(watch);
+        watch = 0;
+      }
+    }, 200);
+  }
+  return api.translate(texts, to, id).finally(() => asking.delete(id));
+}
 
 const root = document.querySelector<HTMLElement>('.ocr-view')!;
 const stage = root.querySelector<HTMLElement>('.ocr-window__stage')!;
@@ -36,7 +69,8 @@ async function start(): Promise<void> {
   if (!data) return;
   const page = data.page;
   const empty = !page.blocks.length;
-  root.querySelector('.ocr-window__bar')!.innerHTML = ocrBarHtml({ saveImage: true, copyImage: true, empty });
+  const { languages } = await api.translateInfo().catch(() => ({ languages: [] as { code: string; name: string }[] }));
+  root.querySelector('.ocr-window__bar')!.innerHTML = ocrBarHtml({ saveImage: true, copyImage: true, translate: languages.length > 0, empty });
   img.src = data.image;
   await img.decode().catch((): undefined => undefined);
 
@@ -62,6 +96,14 @@ async function start(): Promise<void> {
       const r = await api.saveImage(await png.arrayBuffer());
       if (r.saved) toast('Saved');
     },
+    translator: languages.length
+      ? {
+          languages,
+          target: (sample) => api.translateTarget(sample),
+          setTarget: (code) => void api.setTranslateTarget(code),
+          translate: (texts, to, wanted) => translateAsked(texts, to, wanted),
+        }
+      : undefined,
   });
   layout();
   new ResizeObserver(layout).observe(stage);
@@ -99,7 +141,7 @@ async function start(): Promise<void> {
   // Select to look up, as in the main window: a short selection of words opens the pop-up.
   let timer = 0;
   document.addEventListener('mouseup', (e) => {
-    if ((e.target as HTMLElement).closest('button, [contenteditable]')) return;
+    if ((e.target as HTMLElement).closest('button, select, [contenteditable]')) return;
     const text = view.selectionText().trim();
     if (!text || text.length > 80 || !/[\p{L}\p{N}]/u.test(text)) return;
     window.clearTimeout(timer);

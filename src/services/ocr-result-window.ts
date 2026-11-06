@@ -5,16 +5,47 @@
 import { BrowserWindow, clipboard, dialog, ipcMain, nativeImage, screen } from 'electron';
 import * as fs from 'fs';
 import type { OcrPage } from '@phevere/core/ocr-layout';
+import type { UnitResult } from '@phevere/core/ocr-translate';
 
 type Entry = { image: string; page: OcrPage };
 
+/** Translate in place: the main process owns the engines and the quick-translation target. */
+export interface OcrResultTranslate {
+  languages(): { code: string; name: string }[];
+  target(sample: string): Promise<string>;
+  setTarget(code: string): void;
+  translate(texts: string[], to: string, wanted: () => boolean): Promise<UnitResult[]>;
+}
+
+/** Requests a window cancelled, by sender and id; their engine requests not yet sent are dropped. */
+const cancelled = new Set<string>();
+
 const pages = new Map<number, Entry>();
 let wired = false;
+let translate: OcrResultTranslate | null = null;
+
+export function configureOcrResultTranslate(t: OcrResultTranslate): void {
+  translate = t;
+}
 
 function wire(): void {
   if (wired) return;
   wired = true;
   ipcMain.handle('ocr-result-data', (e) => pages.get(e.sender.id) || null);
+  ipcMain.handle('ocr-result-tr-info', () => ({ languages: translate ? translate.languages() : [] }));
+  ipcMain.handle('ocr-result-tr-target', (_e, sample: string) => (translate ? translate.target(String(sample || '')) : 'en'));
+  ipcMain.handle('ocr-result-tr-set', (_e, code: string) => translate?.setTarget(String(code || '')));
+  ipcMain.handle('ocr-result-tr', async (e, texts: unknown, to: string, id: number) => {
+    const list = Array.isArray(texts) ? texts.map((t) => String(t || '')) : [];
+    if (!translate) return list.map((): null => null);
+    const key = `${e.sender.id}:${Number(id)}`;
+    try {
+      return await translate.translate(list, String(to || ''), () => !cancelled.has(key) && !e.sender.isDestroyed());
+    } finally {
+      cancelled.delete(key);
+    }
+  });
+  ipcMain.on('ocr-result-tr-cancel', (e, id: number) => cancelled.add(`${e.sender.id}:${Number(id)}`));
   ipcMain.handle('ocr-result-copy-text', (_e, text: string) => {
     clipboard.writeText(String(text || ''));
   });

@@ -86,7 +86,7 @@ export interface Definition {
 }
 
 import { BaseService, DictionaryError, withBudget, withTimeout } from './base';
-import { budgetMs, connectionSilent, hostSilent, networkEpoch, onNetChange } from './net';
+import { budgetMs, cancelledError, connectionSilent, hostSilent, isCancelled, networkEpoch, onNetChange } from './net';
 import { registerWiktionaryWikitextSource } from './sense-images';
 import { checkApiKey, type ApiKeyCheck, type ApiProviderId } from './api-key-check';
 import { detectLanguageLocal, englishCandidateWords, isAmbiguousHan, remoteFitsScript } from './lang-detect';
@@ -4427,9 +4427,21 @@ export class DictionaryService extends BaseService {
     targetLanguage = 'auto',
     sourceLanguage = 'auto',
     provider: TranslationProvider = 'auto',
+    opts: { background?: boolean; wanted?: () => boolean } = {},
   ): Promise<Translation | null> {
     const input = String(text || '').trim();
     if (!input) return null;
+    // A scan's paragraph (`background`) waits while a lookup is translating; a lookup never waits.
+    if (opts.background) await this.foregroundIdle(opts.wanted);
+    else this.foreground += 1;
+    try {
+      return await this.translateTextNow(input, targetLanguage, sourceLanguage, provider);
+    } finally {
+      if (!opts.background) this.leaveForeground();
+    }
+  }
+
+  private async translateTextNow(input: string, targetLanguage: string, sourceLanguage: string, provider: TranslationProvider): Promise<Translation | null> {
     const source = !sourceLanguage || sourceLanguage === 'auto' ? await this.detectSourceLanguage(input) : sourceLanguage;
     let target = this.resolveTargetLanguage(source, targetLanguage);
     // Text already in the target language goes the other way (Chinese with a Chinese target → English).
@@ -4438,6 +4450,90 @@ export class DictionaryService extends BaseService {
     // whenever any engine can give one (getBestTranslation starts with the preferred engine).
     const hit = await this.getBestTranslation(input, target, source, provider);
     return hit ? { ...hit, language: hit.language || target, detectedSourceLanguage: hit.detectedSourceLanguage || source } : null;
+  }
+
+  /** Lookups' translations running now. A scan's requests wait until there are none. */
+  private foreground = 0;
+  private foregroundWaiters: (() => void)[] = [];
+
+  private foregroundIdle(wanted?: () => boolean): Promise<void> {
+    if (wanted && !wanted()) return Promise.reject(cancelledError());
+    if (!this.foreground) return Promise.resolve();
+    return new Promise((resolve, reject) => this.foregroundWaiters.push(() => (wanted && !wanted() ? reject(cancelledError()) : resolve())));
+  }
+
+  private leaveForeground(): void {
+    this.foreground = Math.max(0, this.foreground - 1);
+    if (!this.foreground) for (const go of this.foregroundWaiters.splice(0)) go();
+  }
+
+  /**
+   * Several passages into one language in one request, as browser page translators send a page:
+   * Google's Chrome-extension endpoint takes one `q` per passage, as the Cloud API takes a `q`
+   * array and DeepL a `text` list, and each answers one translation per passage, in order, with
+   * the language it read. One entry per passage, or null when the chosen engine takes no lists
+   * or the answer does not line up with the passages, and the caller then asks one at a time.
+   *
+   * A scan calls this. Its requests wait while a lookup is translating, queue behind the other
+   * requests to the host, and are dropped unsent once `wanted` says no (the page was closed, its
+   * translation turned off, or the language changed); a dropped batch rejects with a cancellation.
+   */
+  async translateBatch(
+    texts: string[],
+    targetLanguage: string,
+    opts: { provider?: TranslationProvider; wanted?: () => boolean } = {},
+  ): Promise<Array<{ text: string; from: string }> | null> {
+    const items = texts.map((t) => String(t || '').replace(/[​-‍﻿]/g, '').trim());
+    if (!items.length || items.some((t) => !t)) return null;
+    const provider = opts.provider || 'auto';
+    // MyMemory and Youdao take one passage a request.
+    if (provider === 'mymemory' || provider === 'youdao') return null;
+    await this.foregroundIdle(opts.wanted);
+    const net = { slot: 'later' as const, wanted: opts.wanted, hedge: false, timeoutMs: 10000 };
+    const form = { 'Content-Type': 'application/x-www-form-urlencoded' };
+    const lined = (out: Array<{ text: string; from: string }> | null) => (out && out.length === items.length && out.every((o) => o.text) ? out : null);
+    if (provider === 'deepl') {
+      if (!this.deeplApiKey) return null;
+      try {
+        const body = `${items.map((t) => `text=${encodeURIComponent(t)}`).join('&')}&target_lang=${encodeURIComponent(targetLanguage)}`;
+        const r = await this.request<{ translations?: { text: string; detected_source_language?: string }[] }>('https://api-free.deepl.com/v2/translate', {
+          method: 'POST',
+          headers: { ...form, Authorization: `DeepL-Auth-Key ${this.deeplApiKey}` },
+          body,
+          ...net,
+        });
+        return lined((r.translations || []).map((t) => ({ text: String(t.text || '').trim(), from: String(t.detected_source_language || '').toLowerCase() })));
+      } catch (error) {
+        if (isCancelled(error)) throw error;
+        return null;
+      }
+    }
+    const tl = this.isoLang(targetLanguage);
+    try {
+      const r = await this.request<unknown>(`https://translate.googleapis.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=${encodeURIComponent(tl)}`, {
+        method: 'POST',
+        headers: form,
+        body: items.map((t) => `q=${encodeURIComponent(t)}`).join('&'),
+        ...net,
+      });
+      const out = lined(parseGoogleBatch(r));
+      if (out) return out;
+    } catch (error) {
+      if (isCancelled(error)) throw error;
+      if (error instanceof DictionaryError && error.code === 'HTTP_429') this.googleGtxCoolUntil = Date.now() + 90_000;
+    }
+    if (this.apiKey) {
+      try {
+        const r = await this.request<{ data?: { translations?: { translatedText: string; detectedSourceLanguage?: string }[] } }>(
+          `https://translation.googleapis.com/language/translate/v2?key=${this.apiKey}`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ q: items, target: targetLanguage, format: 'text' }), ...net },
+        );
+        return lined((r.data?.translations || []).map((t) => ({ text: String(t.translatedText || '').trim(), from: String(t.detectedSourceLanguage || '') })));
+      } catch (error) {
+        if (isCancelled(error)) throw error;
+      }
+    }
+    return null;
   }
 
   /** The host each engine asks, for its round trip (net.ts). */
@@ -5130,4 +5226,22 @@ function safeDecode(segment: string): string {
   } catch {
     return segment;
   }
+}
+
+/**
+ * The Chrome-extension endpoint's answer to several `q`: one `[translation, language]` per passage
+ * when the source is auto, or one string each when it is given. Entities it escapes come back as
+ * the characters they stand for.
+ */
+export function parseGoogleBatch(r: unknown): Array<{ text: string; from: string }> | null {
+  if (!Array.isArray(r)) return null;
+  const unescape = (t: string) =>
+    t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').trim();
+  const out: Array<{ text: string; from: string }> = [];
+  for (const item of r) {
+    if (typeof item === 'string') out.push({ text: unescape(item), from: '' });
+    else if (Array.isArray(item) && typeof item[0] === 'string') out.push({ text: unescape(item[0]), from: typeof item[1] === 'string' ? item[1] : '' });
+    else return null;
+  }
+  return out;
 }

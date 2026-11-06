@@ -13,6 +13,7 @@
  */
 
 import {
+  isCjkChar,
   isUnsure,
   lineJoin,
   lineText,
@@ -27,6 +28,17 @@ import {
   type OcrPage,
   type OcrQuad,
 } from './ocr-layout';
+import {
+  PageTranslation,
+  reflow,
+  roughMeasure,
+  translatedPageText,
+  translationUnits,
+  type OcrFlow,
+  type OcrUnit,
+  type UnitResult,
+  type UnitState,
+} from './ocr-translate';
 
 export type OcrViewMode = 'picture' | 'text';
 
@@ -37,7 +49,27 @@ export interface OcrViewHost {
   saveImage?(png: Blob): Promise<void>;
   /** Put the picture with its edits on the clipboard; omitted where that cannot work. */
   copyImage?(png: Blob): Promise<void>;
+  /** Translate the picture in place; omitted where no engine can be reached. */
+  translator?: OcrTranslator;
 }
+
+export interface OcrTranslator {
+  /** Languages to translate into. */
+  languages: { code: string; name: string }[];
+  /** The language to translate into: the setting, with `auto` resolved for this page's text. */
+  target(sample: string): Promise<string>;
+  /** Keep a language picked in the view as the new setting. */
+  setTarget(code: string): void;
+  /**
+   * Paragraphs into `to`, one result each (translateUnits): `{ same }` when one is already in
+   * `to`, null when no engine answered. Rejects with a cancellation, sending nothing more, once
+   * `wanted` says no.
+   */
+  translate(texts: string[], to: string, wanted: () => boolean): Promise<UnitResult[]>;
+}
+
+/** What the layer needs to show translations: the units, their states, and which unit owns each line. */
+type Shown = { units: OcrUnit[]; states: UnitState[]; byLine: Map<number, number> };
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -45,13 +77,18 @@ const esc = (s: string) =>
 const n = (v: number) => Number(v.toFixed(2));
 
 /** The bar: view switch and actions. Labels name the action. */
-export function ocrBarHtml(opts: { saveImage?: boolean; copyImage?: boolean; empty?: boolean } = {}): string {
+export function ocrBarHtml(opts: { saveImage?: boolean; copyImage?: boolean; translate?: boolean; empty?: boolean } = {}): string {
   if (opts.empty) return '<div class="ocr-bar" role="toolbar" aria-label="Scanned text"><span class="ocr-bar__status">No text found</span></div>';
   return `<div class="ocr-bar" role="toolbar" aria-label="Scanned text">
     <div class="ocr-seg" role="radiogroup" aria-label="View">
       <button type="button" role="radio" aria-checked="true" data-ocr-act="picture">Picture</button>
       <button type="button" role="radio" aria-checked="false" data-ocr-act="text">Text</button>
     </div>
+    ${opts.translate ? `<button type="button" class="ocr-btn" data-ocr-act="translate" aria-pressed="false">Translate</button>
+    <select class="ocr-lang" data-ocr-lang aria-label="Translate to" hidden></select>
+    <span class="ocr-bar__tr" aria-hidden="true"></span>
+    <span class="ocr-bar__said" role="status"></span>
+    <button type="button" class="ocr-btn" data-ocr-act="retry" hidden>Retry</button>` : ''}
     <span class="ocr-bar__gap"></span>
     <button type="button" class="ocr-btn" data-ocr-act="edit" aria-pressed="false">Edit</button>
     <button type="button" class="ocr-btn" data-ocr-act="copy-all">Copy all</button>
@@ -96,10 +133,24 @@ function separators(page: OcrPage, edits: ReadonlyMap<number, string>): Map<numb
  * The text layer over the picture. Unedited lines are invisible words in place; an edited
  * line, or every line while editing, is one painted field.
  */
-export function ocrLayerHtml(page: OcrPage, edits: ReadonlyMap<number, string> = new Map(), editing = false): string {
+export function ocrLayerHtml(page: OcrPage, edits: ReadonlyMap<number, string> = new Map(), editing = false, shown?: Shown): string {
   const sep = separators(page, edits);
-  const parts: string[] = [];
+  // Every translated unit's background first, so no unit's paint covers a neighbour's text.
+  const parts: string[] = shown
+    ? shown.states.map((s, i) => (s.status === 'done' ? `<span class="ocr-tr-bg" data-u="${i}" aria-hidden="true"></span>` : '')).filter(Boolean)
+    : [];
   for (const line of pageLines(page)) {
+    const u = shown?.byLine.get(line.id);
+    const unit = u === undefined ? undefined : shown!.units[u];
+    const state = u === undefined ? undefined : shown!.states[u];
+    if (unit && state?.status === 'done') {
+      // A translated paragraph is one painted run over the whole paragraph; fit() sets its lines.
+      if (line.id === unit.lineIds[0]) parts.push(`<span class="ocr-tr" data-u="${u}">${esc(state.text)}</span>`);
+      // A translated unit ends its own line in a copy, whatever followed the original.
+      if (line.id === unit.lineIds[unit.lineIds.length - 1] && sep.has(line.id)) parts.push('\n');
+      continue;
+    }
+    if (unit && state?.status === 'failed' && line.id === unit.lineIds[0]) parts.push(`<span class="ocr-tr-miss" data-u="${u}" aria-hidden="true"></span>`);
     if (editing || edits.has(line.id)) {
       parts.push(
         `<span class="ocr-ln is-painted" data-l="${line.id}" ${geomAttrs(line.quad, line.vertical)}${editing ? ' contenteditable="plaintext-only" spellcheck="false"' : ''}>${esc(lineText(line, edits))}</span>`,
@@ -122,7 +173,16 @@ export function ocrLayerHtml(page: OcrPage, edits: ReadonlyMap<number, string> =
 }
 
 /** The plain recognised text, paragraph by paragraph; lines stay their own spans so edits map back. */
-export function ocrTextHtml(page: OcrPage, edits: ReadonlyMap<number, string> = new Map(), editing = false): string {
+export function ocrTextHtml(page: OcrPage, edits: ReadonlyMap<number, string> = new Map(), editing = false, shown?: Shown): string {
+  if (shown) {
+    // Translated: one paragraph per unit, the translation where it arrived.
+    return shown.units
+      .map((u, i) => {
+        const st = shown.states[i];
+        return st.status === 'done' ? `<p class="ocr-tp" data-u="${i}">${esc(st.text)}</p>` : `<p data-u="${i}">${esc(u.text)}</p>`;
+      })
+      .join('');
+  }
   const hy = pageHyphenated(page, edits);
   const paras: string[] = [];
   for (const b of page.blocks) {
@@ -227,6 +287,19 @@ export class OcrView {
   private pixels: { data: Uint8ClampedArray; w: number; h: number; s: number } | null = null;
   private readonly measure = document.createElement('canvas').getContext('2d');
   private readonly cleanup: (() => void)[] = [];
+  /** Showing the translation over the picture (and in the Text view). */
+  translated = false;
+  private run: PageTranslation | null = null;
+  private target = '';
+  /** Laid-out translation of each unit, keyed by its text and look, so zooming only rescales it. */
+  private readonly flows = new Map<number, { key: string; flow: OcrFlow }>();
+  private readonly looks = new Map<number, Look>();
+  /** Units already on screen, so only a newly arrived translation fades in. */
+  private readonly seen = new Set<number>();
+  private renderQueued = false;
+  /** The run the layer was last built for (null: the original), and units changed since. */
+  private drawn: PageTranslation | null = null;
+  private readonly arrived = new Set<number>();
 
   constructor(
     private readonly root: HTMLElement,
@@ -257,6 +330,12 @@ export class OcrView {
       else this.edits.set(id, t);
       if (el.classList.contains('ocr-ln')) this.fitOne(el);
     };
+    const onChange = (e: Event) => {
+      const sel = (e.target as HTMLElement).closest<HTMLSelectElement>('select[data-ocr-lang]');
+      if (!sel || !sel.value || !this.host.translator) return;
+      this.host.translator.setTarget(sel.value);
+      void this.translate(sel.value);
+    };
     const onKey = (e: KeyboardEvent) => {
       const el = (e.target as HTMLElement).closest<HTMLElement>('[data-l][contenteditable]');
       if (!el) return;
@@ -276,7 +355,10 @@ export class OcrView {
     root.addEventListener('copy', onCopy);
     root.addEventListener('input', onInput);
     root.addEventListener('keydown', onKey);
+    root.addEventListener('change', onChange);
     this.cleanup.push(() => {
+      root.removeEventListener('change', onChange);
+      this.run?.stop();
       root.removeEventListener('click', onClick);
       root.removeEventListener('copy', onCopy);
       root.removeEventListener('input', onInput);
@@ -297,15 +379,34 @@ export class OcrView {
     return this.root.querySelector('.ocr-text');
   }
 
+  /** The page's text in reading order: the translation where there is one while it shows. */
   text(): string {
-    return ocrPageText(this.page, this.edits);
+    const run = this.shownRun();
+    return run ? translatedPageText(run.units, run.states) : ocrPageText(this.page, this.edits);
+  }
+
+  private shownRun(): PageTranslation | null {
+    return this.translated && !this.editing ? this.run : null;
+  }
+
+  private shown(): Shown | undefined {
+    const run = this.shownRun();
+    if (!run) return undefined;
+    const byLine = new Map<number, number>();
+    run.units.forEach((u, i) => u.lineIds.forEach((id) => byLine.set(id, i)));
+    return { units: run.units, states: run.states, byLine };
   }
 
   render(): void {
+    const shown = this.shown();
+    this.drawn = this.shownRun();
+    this.arrived.clear();
     const layer = this.layer;
-    if (layer) layer.innerHTML = ocrLayerHtml(this.page, this.edits, this.editing && this.mode === 'picture');
+    if (layer) layer.innerHTML = ocrLayerHtml(this.page, this.edits, this.editing && this.mode === 'picture', shown);
     const pane = this.textPane;
-    if (pane) pane.innerHTML = ocrTextHtml(this.page, this.edits, this.editing && this.mode === 'text');
+    if (pane) pane.innerHTML = ocrTextHtml(this.page, this.edits, this.editing && this.mode === 'text', shown);
+    this.root.classList.toggle('is-translated', !!shown);
+    this.renderTranslateBar();
     this.root.dataset.mode = this.mode;
     this.root.classList.toggle('is-editing', this.editing);
     this.root.querySelectorAll<HTMLElement>('[data-ocr-act="picture"],[data-ocr-act="text"]').forEach((b) =>
@@ -321,6 +422,189 @@ export class OcrView {
     const layer = this.layer;
     if (!layer) return;
     layer.querySelectorAll<HTMLElement>('.ocr-w, .ocr-ln').forEach((el) => this.fitOne(el));
+    layer.querySelectorAll<HTMLElement>('.ocr-tr-bg, .ocr-tr, .ocr-tr-miss').forEach((el) => this.fitUnit(el));
+  }
+
+  /** Translate button, language, progress and Retry. */
+  private renderTranslateBar(): void {
+    const tr = this.host.translator;
+    const btn = this.root.querySelector<HTMLElement>('[data-ocr-act="translate"]');
+    if (!tr || !btn) return;
+    const on = this.translated && !this.editing;
+    btn.setAttribute('aria-pressed', String(on));
+    const sel = this.root.querySelector<HTMLSelectElement>('select[data-ocr-lang]');
+    if (sel) {
+      const langs = tr.languages.filter((l) => l.code && l.code !== 'auto');
+      if (this.target && !langs.some((l) => l.code === this.target)) langs.push({ code: this.target, name: this.target });
+      const opts = langs.map((l) => `<option value="${esc(l.code)}">${esc(l.name)}</option>`).join('');
+      if (sel.dataset.opts !== opts) {
+        sel.innerHTML = opts;
+        sel.dataset.opts = opts;
+      }
+      if (this.target) sel.value = this.target;
+      sel.hidden = !on || !this.target;
+    }
+    const status = this.root.querySelector<HTMLElement>('.ocr-bar__tr');
+    const retry = this.root.querySelector<HTMLElement>('[data-ocr-act="retry"]');
+    const run = this.run;
+    let text = '';
+    let canRetry = false;
+    if (on) {
+      const total = run?.units.length || 0;
+      if (!run || run.target !== this.target) text = 'Translating';
+      else if (run.pending) text = `Translating ${total - run.pending} of ${total}`;
+      else if (run.failed) {
+        text = `${run.failed} not translated`;
+        canRetry = true;
+      } else if (!run.done && total) {
+        const name = tr.languages.find((l) => l.code === run.target)?.name || run.target;
+        text = `Already in ${name}`;
+      }
+    }
+    if (status) {
+      status.textContent = text;
+      status.hidden = !text;
+    }
+    // A screen reader hears the start and the outcome, not every count in between.
+    const said = this.root.querySelector<HTMLElement>('.ocr-bar__said');
+    if (said) {
+      const say = !on ? '' : /^Translating/.test(text) ? 'Translating' : text || (run?.done ? 'Translated' : '');
+      if (said.textContent !== say) said.textContent = say;
+    }
+    if (retry) {
+      // Retry hides when it has done its work; keyboard focus moves to Translate rather than being lost.
+      if (!canRetry && !retry.hidden && document.activeElement === retry) btn.focus();
+      retry.hidden = !canRetry;
+    }
+  }
+
+  /**
+   * Show the translations that arrived, once per frame. Only the units that changed are
+   * repainted: rebuilding the whole layer for each arrival took 80 to 200 ms on a page of a
+   * hundred lines, which froze the view for as long as a page was translating.
+   */
+  private queueRender(index?: number): void {
+    if (index !== undefined) this.arrived.add(index);
+    if (this.renderQueued) return;
+    this.renderQueued = true;
+    let done = false;
+    const go = () => {
+      if (done) return;
+      done = true;
+      this.renderQueued = false;
+      const run = this.shownRun();
+      if (run !== this.drawn) this.render();
+      else {
+        if (run) for (const i of this.arrived) if (!this.paintArrival(run, i)) return this.render();
+        this.arrived.clear();
+        this.renderTranslateBar();
+      }
+    };
+    // A frame, or a timer where frames do not run (a hidden or occluded window), whichever comes first.
+    if (typeof requestAnimationFrame === 'function' && !document.hidden) requestAnimationFrame(go);
+    setTimeout(go, 100);
+  }
+
+  /** Repaint one unit after its state changed; false when the layer is not as expected and needs a full render. */
+  private paintArrival(run: PageTranslation, i: number): boolean {
+    const layer = this.layer;
+    const unit = run.units[i];
+    const state = run.states[i];
+    if (!layer || !unit) return true;
+    if (layer.querySelector(`.ocr-tr[data-u="${i}"]`)) return state.status === 'done';
+    layer.querySelectorAll(`[data-u="${i}"]`).forEach((el) => el.remove());
+    if (state.status === 'done' || state.status === 'failed') {
+      const ids = new Set(unit.lineIds);
+      const els = Array.from(layer.children).filter((el) => ids.has(Number((el as HTMLElement).dataset.l)));
+      if (!els.length) return false;
+      const first = els[0], last = els[els.length - 1];
+      const make = (cls: string, text = '') => {
+        const el = document.createElement('span');
+        el.className = cls;
+        el.dataset.u = String(i);
+        if (text) el.textContent = text;
+        else el.setAttribute('aria-hidden', 'true');
+        return el;
+      };
+      if (state.status === 'failed') {
+        const miss = make('ocr-tr-miss');
+        first.before(miss);
+        this.fitUnit(miss);
+      } else {
+        // The unit's lines become one run, as ocrLayerHtml writes it, ending its own line in a copy.
+        const range = document.createRange();
+        range.setStartBefore(first);
+        range.setEndAfter(last);
+        range.deleteContents();
+        const tr = make('ocr-tr', state.text);
+        range.insertNode(tr);
+        const sep = tr.nextSibling;
+        if (sep && sep.nodeType === Node.TEXT_NODE) sep.textContent = '\n';
+        const bg = make('ocr-tr-bg');
+        layer.prepend(bg);
+        this.fitUnit(bg);
+        this.fitUnit(tr);
+      }
+    }
+    const p = this.textPane?.querySelector<HTMLElement>(`p[data-u="${i}"]`);
+    if (p) {
+      p.textContent = state.status === 'done' ? state.text : unit.text;
+      p.classList.toggle('ocr-tp', state.status === 'done');
+    }
+    return true;
+  }
+
+  /**
+   * Show the page translated into `to` (the setting when omitted). Paragraphs already
+   * translated into that language show at once; the rest arrive one by one.
+   */
+  async translate(to?: string): Promise<void> {
+    const tr = this.host.translator;
+    if (!tr) return;
+    this.editing = false;
+    this.translated = true;
+    const units = translationUnits(this.page, this.edits);
+    if (!to && this.target) to = this.target;
+    if (!to) {
+      this.render();
+      to = await tr.target(ocrPageText(this.page, this.edits)).catch(() => 'en');
+      if (!this.translated) return;
+    }
+    const same =
+      this.run && this.run.target === to && this.run.units.length === units.length && this.run.units.every((u, i) => u.text === units[i].text);
+    this.target = to;
+    if (same) {
+      this.render();
+      // Turned off part-way: carry on with what was not asked yet.
+      if (this.run!.isStopped) await this.run!.resume();
+      return;
+    }
+    this.run?.stop();
+    this.flows.clear();
+    this.seen.clear();
+    const run: PageTranslation = new PageTranslation(
+      units,
+      to,
+      (texts, l, wanted) => tr.translate(texts, l, wanted),
+      (i) => {
+        if (this.run === run) this.queueRender(i);
+      },
+      { first: (i): boolean => this.onScreen(units[i]) },
+    );
+    this.run = run;
+    this.render();
+    await run.run();
+    if (this.run === run) this.queueRender();
+  }
+
+  /** Whether any of a unit's area is in the window now (a zoomed or scrolled picture shows part of the page). */
+  private onScreen(unit: OcrUnit): boolean {
+    const r = this.img.getBoundingClientRect();
+    if (!r.width || !this.page.width) return false;
+    const k = r.width / this.page.width;
+    const { x, y, w, h } = unit.area;
+    const left = r.left + x * k, top = r.top + y * k;
+    return left < window.innerWidth && left + w * k > 0 && top < window.innerHeight && top + h * k > 0;
   }
 
   private scale(): number {
@@ -442,6 +726,8 @@ export class OcrView {
     const range = sel.getRangeAt(0);
     const layer = this.layer;
     if (!layer || !layer.contains(range.commonAncestorContainer)) return sel.toString();
+    // Translated runs keep their own text, with the spaces where their lines wrap kept hidden.
+    if (this.shownRun()) return range.toString();
     const a = this.wordAt(range.startContainer, range.startOffset, true);
     const b = this.wordAt(range.endContainer, range.endOffset, false);
     if (!a || !b) return sel.toString();
@@ -484,8 +770,23 @@ export class OcrView {
         this.mode = action;
         this.render();
         return;
+      case 'translate':
+        if (this.translated && !this.editing) {
+          // Off: the requests not sent yet are dropped; on again resumes them.
+          this.translated = false;
+          this.run?.stop();
+          this.render();
+        } else await this.translate();
+        return;
+      case 'retry':
+        if (this.run) await this.run.retry();
+        return;
       case 'edit':
         this.editing = !this.editing;
+        if (this.editing) {
+          this.translated = false;
+          this.run?.stop();
+        }
         this.render();
         if (this.editing) {
           const first = this.root.querySelector<HTMLElement>(this.mode === 'text' ? '.ocr-tl[contenteditable]' : '.ocr-ln[contenteditable]');
@@ -504,15 +805,301 @@ export class OcrView {
     }
   }
 
-  /** The picture with every edited line painted in, as a PNG at the picture's own size. */
+  /** Background, ink and type of a translated paragraph, sampled from its pixels. */
+  private lookFor(i: number): Look {
+    const hit = this.looks.get(i);
+    if (hit) return hit;
+    const unit = this.run!.units[i];
+    const paints = unit.lineIds.map((id) => this.paint(id)).filter((p): p is Paint => !!p);
+    const ink = paints[0]?.ink || 'rgb(20, 20, 20)';
+    const serif = paints.filter((p) => p.serif).length * 2 > paints.length;
+    const bold = paints.filter((p) => this.bold(p)).length * 2 > paints.length;
+    const ring = this.ringAround(unit);
+    const fallback = parseRgb(paints[0]?.bg) || [255, 255, 255];
+    const top = ring?.top || fallback, bottom = ring?.bottom || fallback;
+    const avg = [0, 1, 2].map((k) => Math.round((top[k] + bottom[k]) / 2));
+    // A background that changes across the paragraph (light falling on a photo) is painted as a gradient.
+    const graded = Math.abs(top[0] - bottom[0]) + Math.abs(top[1] - bottom[1]) + Math.abs(top[2] - bottom[2]) > 24;
+    const look: Look = {
+      top: rgb(graded ? top : avg),
+      bottom: rgb(graded ? bottom : avg),
+      edge: rgb(avg),
+      patch: ring?.patch || null,
+      ink: contrasting(parseRgb(ink) || [20, 20, 20], avg),
+      weight: bold ? 700 : 400,
+      family: serif ? SERIF : FONT,
+    };
+    this.looks.set(i, look);
+    return look;
+  }
+
+  /**
+   * The background around a unit, sampled on a ring just outside its padded area. A ring of one
+   * colour (a screenshot) gives that colour, top and bottom. A ring of many (a photo, a
+   * chalkboard) also gives a patch that fills the area from the pixels on either side of its
+   * short dimension (above and below a line, left and right of a column), the simplest
+   * inpainting, so texture and light carry across.
+   */
+  private ringAround(unit: OcrUnit): { top: number[]; bottom: number[]; patch: HTMLCanvasElement | null } | null {
+    this.loadPixels();
+    const px = this.pixels;
+    if (!px) return null;
+    const { x, y, w, h, angle } = unit.area;
+    const m = unit.size * PAD;
+    const r = m + Math.max(1, unit.size * 0.1);
+    const ux = Math.cos(angle), uy = Math.sin(angle);
+    const at = (a: number, b: number): number[] | null => {
+      const xx = Math.round((x + a * ux - b * uy) * px.s), yy = Math.round((y + a * uy + b * ux) * px.s);
+      if (xx < 0 || yy < 0 || xx >= px.w || yy >= px.h) return null;
+      const i = (yy * px.w + xx) * 4;
+      return [px.data[i], px.data[i + 1], px.data[i + 2]];
+    };
+    const na = Math.max(8, Math.min(160, Math.round(w * px.s)));
+    const nb = Math.max(8, Math.min(160, Math.round(h * px.s)));
+    const above: (number[] | null)[] = [], below: (number[] | null)[] = [];
+    const left: (number[] | null)[] = [], right: (number[] | null)[] = [];
+    for (let k = 0; k <= na; k++) {
+      const a = -m + ((w + 2 * m) * k) / na;
+      above.push(at(a, -r));
+      below.push(at(a, h + r));
+    }
+    for (let j = 0; j <= nb; j++) {
+      const b = -m + ((h + 2 * m) * j) / nb;
+      left.push(at(-r, b));
+      right.push(at(w + r, b));
+    }
+    const some = (xs: (number[] | null)[]) => xs.filter((q): q is number[] => !!q);
+    const half = (xs: (number[] | null)[], first: boolean) => xs.slice(first ? 0 : xs.length >> 1, first ? (xs.length + 1) >> 1 : xs.length);
+    // Pixels inside the area count too: a rule or a border along one side of the ring is
+    // common there, but the background is commoner inside, where text covers the least.
+    const inTop: number[][] = [], inBottom: number[][] = [];
+    for (let j = 0; j <= 12; j++) {
+      const b = (h * j) / 12;
+      for (let k = 0; k <= 24; k++) {
+        const q = at((w * k) / 24, b);
+        if (q) (b < h / 2 ? inTop : inBottom).push(q);
+      }
+    }
+    const topPts = [...some(above), ...some(half(left, true)), ...some(half(right, true)), ...inTop];
+    const botPts = [...some(below), ...some(half(left, false)), ...some(half(right, false)), ...inBottom];
+    if (!topPts.length || !botPts.length) return null;
+    // Between the letters of a screenshot is one colour, give or take JPEG noise. When most of
+    // the inside is one colour, that is the background, whatever a border, a neighbouring bar
+    // or the gap between table rows puts on the ring.
+    const inside = [...inTop, ...inBottom];
+    if (inside.length) {
+      const c = commonest(inside);
+      const close = (q: number[]) => Math.abs(q[0] - c[0]) + Math.abs(q[1] - c[1]) + Math.abs(q[2] - c[2]) < 24;
+      if (inside.filter(close).length >= inside.length * 0.55) return { top: c, bottom: c, patch: null };
+    }
+    const top = commonest(topPts), bottom = commonest(botPts);
+    // A screenshot's background is one exact colour; a photo's spreads over many shades.
+    const all = [...topPts, ...botPts];
+    const near = (q: number[], c: number[]) => Math.abs(q[0] - c[0]) + Math.abs(q[1] - c[1]) + Math.abs(q[2] - c[2]) < 12;
+    const flat = all.filter((q) => near(q, top) || near(q, bottom)).length >= all.length * 0.45;
+    if (flat) return { top, bottom, patch: null };
+    const tall = h > w;
+    return { top, bottom, patch: tall ? this.patch(left, right, top, bottom, na + 1, false) : this.patch(above, below, top, bottom, nb + 1, true) };
+  }
+
+  /**
+   * Fill from one side's pixels to the other's, each smoothed by a median over its neighbours.
+   * `down`: the sides are above and below (one column per sample); otherwise left and right
+   * (one row per sample).
+   */
+  private patch(first: (number[] | null)[], second: (number[] | null)[], c1: number[], c2: number[], steps: number, down: boolean): HTMLCanvasElement | null {
+    const n = first.length;
+    const c = document.createElement('canvas');
+    c.width = down ? n : steps;
+    c.height = down ? steps : n;
+    const ctx = c.getContext('2d');
+    if (!ctx) return null;
+    const img = ctx.createImageData(c.width, c.height);
+    const span = Math.max(2, Math.round(n / 24));
+    const smooth = (side: (number[] | null)[], k: number, fallback: number[]) => {
+      const win = side.slice(Math.max(0, k - span), k + span + 1).filter((q): q is number[] => !!q);
+      if (!win.length) return fallback;
+      return [0, 1, 2].map((ch) => win.map((q) => q[ch]).sort((a, b) => a - b)[win.length >> 1]);
+    };
+    for (let k = 0; k < n; k++) {
+      const t = smooth(first, k, c1), b = smooth(second, k, c2);
+      for (let j = 0; j < steps; j++) {
+        const f = steps > 1 ? j / (steps - 1) : 0.5;
+        const o = down ? (j * c.width + k) * 4 : (k * c.width + j) * 4;
+        img.data[o] = t[0] + (b[0] - t[0]) * f;
+        img.data[o + 1] = t[1] + (b[1] - t[1]) * f;
+        img.data[o + 2] = t[2] + (b[2] - t[2]) * f;
+        img.data[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+
+  /** The translation of unit `i` laid out in its area, in picture pixels. */
+  private flowFor(i: number, text: string, look: Look): OcrFlow {
+    const key = `${this.target}\u0001${look.weight}\u0001${look.family}\u0001${text}`;
+    const hit = this.flows.get(i);
+    if (hit && hit.key === key) return hit.flow;
+    const ctx = this.measure;
+    const measure = ctx
+      ? (t: string, size: number) => {
+          ctx.font = `${look.weight} ${size}px ${look.family}`;
+          return ctx.measureText(t).width;
+        }
+      : roughMeasure;
+    const flow = reflow(text, this.run!.units[i], this.target, measure);
+    this.flows.set(i, { key, flow });
+    return flow;
+  }
+
+  /** Place a translated paragraph (or a failed one's outline) over its area at the current scale. */
+  private fitUnit(el: HTMLElement): void {
+    const i = Number(el.dataset.u);
+    const run = this.run;
+    const unit = run?.units[i];
+    if (!run || !unit) return;
+    const s = this.scale();
+    const a = unit.area;
+    const st = el.style;
+    st.left = `${a.x * s}px`;
+    st.top = `${a.y * s}px`;
+    st.width = `${a.w * s}px`;
+    st.height = `${a.h * s}px`;
+    st.transform = a.angle ? `rotate(${a.angle}rad)` : '';
+    const state = run.states[i];
+    if (state.status !== 'done' || el.classList.contains('ocr-tr-miss')) return;
+    const look = this.lookFor(i);
+    const flow = this.flowFor(i, state.text, look);
+    if (el.classList.contains('ocr-tr-bg')) {
+      // The paint reaches a little past the area, so no edge of the original shows, and under
+      // the whole translation where it ran into the room beside the area.
+      const m = unit.size * PAD * s;
+      const [e0, e1] = paintSpan(unit, flow);
+      st.width = `${(e1 - e0) * s + 2 * m}px`;
+      st.height = `${a.h * s + 2 * m}px`;
+      st.transform = `${a.angle ? `rotate(${a.angle}rad) ` : ''}translate(${e0 * s - m}px, ${-m}px)`;
+      if (look.patch) {
+        if (!look.patchUrl) look.patchUrl = look.patch.toDataURL();
+        st.background = `${look.edge} url(${look.patchUrl}) 0 0 / 100% 100% no-repeat`;
+      } else st.background = look.top === look.bottom ? look.top : `linear-gradient(${look.top}, ${look.bottom})`;
+      if (!this.seen.has(i)) el.classList.add('is-new');
+      return;
+    }
+    const b = unit.box;
+    // Across: the box. Along: where the flow starts and how far it runs (the box, unless widened).
+    const off = flow.vertical ? 0 : flow.start;
+    st.left = `${(b.x + off * Math.cos(a.angle)) * s}px`;
+    st.top = `${(b.y + off * Math.sin(a.angle)) * s}px`;
+    st.width = `${(flow.vertical ? b.w : flow.span) * s}px`;
+    st.height = `${b.h * s}px`;
+    st.color = look.ink;
+    st.fontFamily = look.family;
+    st.fontWeight = String(look.weight);
+    st.fontSize = `${flow.size * s}px`;
+    st.lineHeight = `${flow.pitch * s}px`;
+    st.textAlign = unit.align === 'center' && !flow.vertical ? 'center' : 'start';
+    el.classList.toggle('is-v', flow.vertical);
+    let inner = el.firstElementChild as HTMLElement | null;
+    if (!inner || !inner.classList.contains('ocr-tr-t')) {
+      el.textContent = '';
+      inner = document.createElement('span');
+      inner.className = 'ocr-tr-t';
+      el.appendChild(inner);
+    }
+    const k = flow.lines.join('\n');
+    if (inner.dataset.k !== k) {
+      inner.innerHTML = linesHtml(state.text, flow.lines);
+      inner.dataset.k = k;
+    }
+    // Each line's glyphs centred on its pitch, the first line starting at the area's edge.
+    inner.style.marginBlockStart = `${(-(flow.pitch - flow.size) / 2) * s}px`;
+    if (!this.seen.has(i)) {
+      this.seen.add(i);
+      el.classList.add('is-new');
+    }
+  }
+
+  /** Draw a translated paragraph into the saved picture, the way fitUnit shows it. */
+  private drawUnit(ctx: CanvasRenderingContext2D, i: number, text: string, pass: 'background' | 'text'): void {
+    const unit = this.run!.units[i];
+    const look = this.lookFor(i);
+    const flow = this.flowFor(i, text, look);
+    const a = unit.area;
+    const m = unit.size * PAD;
+    ctx.save();
+    ctx.translate(a.x, a.y);
+    ctx.rotate(a.angle);
+    if (pass === 'background') {
+      const [e0, e1] = paintSpan(unit, flow);
+      ctx.fillStyle = look.edge;
+      ctx.fillRect(e0 - m, -m, e1 - e0 + 2 * m, a.h + 2 * m);
+      if (look.patch) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(look.patch, e0 - m, -m, e1 - e0 + 2 * m, a.h + 2 * m);
+      } else if (look.top !== look.bottom) {
+        const g = ctx.createLinearGradient(0, 0, 0, a.h);
+        g.addColorStop(0, look.top);
+        g.addColorStop(1, look.bottom);
+        ctx.fillStyle = g;
+        ctx.fillRect(e0, 0, e1 - e0, a.h);
+      }
+      ctx.restore();
+      return;
+    }
+    // The text is set in the box, which differs from the area only on an unturned page.
+    ctx.translate(unit.box.x - a.x, unit.box.y - a.y);
+    const bw = unit.box.w;
+    ctx.fillStyle = look.ink;
+    ctx.font = `${look.weight} ${flow.size}px ${look.family}`;
+    ctx.textBaseline = 'middle';
+    flow.lines.forEach((ln, k) => {
+      const mid = k * flow.pitch + flow.size / 2;
+      if (!flow.vertical) {
+        const w = ctx.measureText(ln).width;
+        ctx.textAlign = 'left';
+        ctx.fillText(ln, flow.start + (unit.align === 'center' ? (flow.span - w) / 2 : 0), mid);
+        return;
+      }
+      // Columns right to left; CJK upright, other runs turned a quarter clockwise.
+      const cx = bw - mid;
+      let y = 0;
+      for (const run of [...ln].reduce<string[]>((out, ch) => {
+        const last = out[out.length - 1];
+        if (!isCjkChar(ch) && last && !isCjkChar([...last][0])) out[out.length - 1] += ch;
+        else out.push(ch);
+        return out;
+      }, [])) {
+        if (isCjkChar([...run][0])) {
+          ctx.textAlign = 'center';
+          ctx.fillText(run, cx, y + flow.size / 2);
+          y += flow.size;
+        } else {
+          ctx.save();
+          ctx.translate(cx, y);
+          ctx.rotate(Math.PI / 2);
+          ctx.textAlign = 'left';
+          ctx.fillText(run, 0, 0);
+          ctx.restore();
+          y += ctx.measureText(run).width;
+        }
+      }
+    });
+    ctx.restore();
+  }
+
+  /** The picture as shown: edited lines painted in, and the translation while it shows. PNG at the picture's own size. */
   async renderImage(): Promise<Blob> {
     const c = document.createElement('canvas');
     c.width = this.page.width;
     c.height = this.page.height;
     const ctx = c.getContext('2d')!;
     ctx.drawImage(this.img, 0, 0, c.width, c.height);
+    const shown = this.shown();
     for (const line of pageLines(this.page)) {
       if (!this.edits.has(line.id)) continue;
+      const u = shown?.byLine.get(line.id);
+      if (u !== undefined && shown!.states[u].status === 'done') continue;
       const p = this.paint(line.id) || { bg: '#fff', ink: '#111', cover: 0, serif: false };
       const family = p.serif ? SERIF : FONT;
       const t = lineText(line, this.edits);
@@ -548,8 +1135,83 @@ export class OcrView {
       }
       ctx.restore();
     }
+    for (const pass of ['background', 'text'] as const) {
+      shown?.states.forEach((st, i) => {
+        if (st.status === 'done') this.drawUnit(ctx, i, st.text, pass);
+      });
+    }
     return new Promise((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not draw the image'))), 'image/png'));
   }
+}
+
+/** How far a translation's background reaches past its area, as a share of the font size. */
+const PAD = 0.12;
+
+/** The stretch along the area, from its start, that a unit's paint covers: the area, and any room its translation ran into. */
+function paintSpan(unit: OcrUnit, flow: OcrFlow): [number, number] {
+  if (flow.vertical) return [0, unit.area.w];
+  const at = unit.box.x - unit.area.x + flow.start;
+  return [Math.min(0, at), Math.max(unit.area.w, at + flow.span)];
+}
+
+/** The commonest colour of a set of pixels, in buckets of 16 levels a channel, averaged within its bucket. */
+function commonest(pts: number[][]): number[] {
+  const buckets = new Map<number, { n: number; sum: number[] }>();
+  for (const p of pts) {
+    const key = ((p[0] >> 4) << 8) | ((p[1] >> 4) << 4) | (p[2] >> 4);
+    const b = buckets.get(key) || { n: 0, sum: [0, 0, 0] };
+    b.n++;
+    b.sum[0] += p[0];
+    b.sum[1] += p[1];
+    b.sum[2] += p[2];
+    buckets.set(key, b);
+  }
+  let best = { n: 0, sum: [255, 255, 255] };
+  for (const b of buckets.values()) if (b.n > best.n) best = b;
+  return best.sum.map((v) => Math.round(v / Math.max(1, best.n)));
+}
+
+/** How a translated paragraph is painted. */
+type Look = {
+  top: string;
+  bottom: string;
+  edge: string;
+  /** For a textured background: the area filled from the pixels around it (see ringAround). */
+  patch: HTMLCanvasElement | null;
+  patchUrl?: string;
+  ink: string;
+  weight: number;
+  family: string;
+};
+
+const rgb = (c: number[]) => `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+
+function parseRgb(s: string | undefined): number[] | null {
+  const m = /rgb\((\d+), (\d+), (\d+)\)/.exec(s || '');
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+/** The sampled ink, or black or white when it would not read on the background. */
+function contrasting(ink: number[], bg: number[]): string {
+  const lum = (c: number[]) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  if (Math.abs(lum(ink) - lum(bg)) > 60) return rgb(ink);
+  return lum(bg) > 128 ? 'rgb(20, 20, 20)' : 'rgb(245, 245, 245)';
+}
+
+/**
+ * A translation's lines joined by line breaks. The space a break replaced is kept in a hidden
+ * span, so a copy across the break reads as the sentence it was.
+ */
+function linesHtml(full: string, lines: string[]): string {
+  let pos = 0;
+  return lines
+    .map((ln, k) => {
+      const at = full.indexOf(ln, pos);
+      const gap = k && at >= 0 ? full.slice(pos, at) : '';
+      if (at >= 0) pos = at + ln.length;
+      return (k ? `<span class="ocr-tr-sp">${esc(gap)}</span><br>` : '') + esc(ln);
+    })
+    .join('');
 }
 
 function focusEnd(el: HTMLElement): void {
