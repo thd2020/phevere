@@ -60,6 +60,7 @@ const context = vm.createContext({
   trackPopupFocus: () => {},
   closePopupForOutsideClick: (window) => window.close(),
   sendPopupText: (window, text) => { window.lookupText = text; },
+  rememberLookupSource: () => {},
   log: { debug() {}, warn() {}, error() {} }, setTimeout,
 });
 vm.runInContext(ts.transpileModule(declaration('createPopupWindow') + '\n' + declaration('onTriggerShortcutAfterSelection'), {}).outputText, context);

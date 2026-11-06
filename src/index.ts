@@ -501,6 +501,8 @@ function onTriggerShortcutAfterSelection(): void {
     log.debug('main', 'Trigger shortcut: selection too old', { ageMs: age });
     return;
   }
+  // The word was met in the window still in front: note it now, before the pop-up takes focus.
+  rememberLookupSource(ev);
   createPopupWindow(ev.x, ev.y, eventCoordSpace(ev), true);
 }
 

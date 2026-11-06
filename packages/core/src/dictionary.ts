@@ -86,7 +86,7 @@ export interface Definition {
 }
 
 import { BaseService, DictionaryError, withBudget, withTimeout } from './base';
-import { budgetMs } from './net';
+import { budgetMs, connectionSilent, hostSilent, networkEpoch, onNetChange } from './net';
 import { registerWiktionaryWikitextSource } from './sense-images';
 import { checkApiKey, type ApiKeyCheck, type ApiProviderId } from './api-key-check';
 import { detectLanguageLocal, englishCandidateWords, isAmbiguousHan, remoteFitsScript } from './lang-detect';
@@ -181,6 +181,20 @@ const FORM_HOLD_MS = 1200;
  * ("etc.", "C++"); withBudget stretches it to two of Wiktionary's round trips when that is longer.
  */
 const EXACT_TITLE_MS = 1500;
+/**
+ * Quick translation starts the next engine when the one before it has not answered in this long,
+ * or in its host's round trip when that is longer (getBestTranslation).
+ */
+const TRANSLATION_STAGGER_MS = 1000;
+/** A sentence's translation shows once one engine answers; the others get this long to join it. */
+const SENTENCE_GRACE_MS = 300;
+/** A translation engine that gave no answer at all is asked last for this long. */
+const TRANSLATION_DOWN_MS = 5 * 60 * 1000;
+/**
+ * How long the exact-title check runs alone before the bare word's lookup starts beside it, when no
+ * round trip to Wiktionary has been measured yet; a measured round trip replaces it.
+ */
+const EXACT_TITLE_HEAD_START_MS = 500;
 /** Whether Wiktionary has a page titled exactly as typed ("etc.") is kept this long. */
 const EXACT_TITLE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /**
@@ -369,6 +383,8 @@ export class DictionaryService extends BaseService {
   private sourceHealth = new Map<string, { fails: number; downUntil: number }>();
   /** Skip Google gtx while it is 429ing; MyMemory still runs. */
   private googleGtxCoolUntil = 0;
+  /** Translation engines that gave no answer at all lately, and until when they go last. */
+  private translationDownUntil = new Map<string, number>();
   private cmuWarm = setTimeout(() => warmCmuIpa(), 0);
   /** A failed remote detection pauses it, so a blocked host does not slow every lookup. */
   private remoteDetectCoolUntil = 0;
@@ -421,6 +437,17 @@ export class DictionaryService extends BaseService {
     this.updateSourceAvailability();
     // Sense pictures read the same Wiktionary page the lookup already fetched and cached.
     registerWiktionaryWikitextSource((word) => this.getWiktionaryWikitext(word));
+    // The connection answering again after a silence, or the platform reporting a network change,
+    // ends every skip: a skip that began while nothing could be reached says nothing about the
+    // sources now, and a phone back online gets its definitions on the first word. One host
+    // falling silent while the others answer (Google blocked) ends none of them.
+    let seen = networkEpoch();
+    onNetChange(() => {
+      if (networkEpoch() === seen) return;
+      seen = networkEpoch();
+      this.sourceHealth.clear();
+      this.translationDownUntil.clear();
+    });
   }
 
   /**
@@ -685,6 +712,12 @@ export class DictionaryService extends BaseService {
             continue;
           }
           console.warn('Unofficial Google Translate path failed', { url: url.slice(0, 64), error });
+          // No answer at all (blocked, timed out): the other path is on the same host, so asking it
+          // too would only double the wait before the next engine is tried.
+          if (!/^HTTP_\d{3}$/.test(code)) {
+            this.noteTranslationDown('google');
+            return null;
+          }
         }
       }
       return null;
@@ -718,6 +751,7 @@ export class DictionaryService extends BaseService {
       };
     } catch (error) {
       console.warn('MyMemory translation failed:', error);
+      if (!(error instanceof DictionaryError && /^HTTP_\d{3}$/.test(error.code))) this.noteTranslationDown('mymemory');
       return null;
     }
   }
@@ -771,9 +805,115 @@ export class DictionaryService extends BaseService {
 
     try {
       const hintedSource = (opts?.sourceLanguage || '').toLowerCase().split('-')[0];
+      const detectedLanguage =
+        hintedSource && hintedSource !== 'auto' ? hintedSource : await this.detectSourceLanguage(query.trimmed);
+      const known = await this.knownTitle(query, detectedLanguage);
+      if (known) return await this.lookupAs(known, detectedLanguage, targetLanguage, enabledSources, opts, startTime);
+      return await this.lookupBesideTitleCheck(query, detectedLanguage, targetLanguage, enabledSources, opts, startTime);
+    } catch (error) {
+      console.error('❌ Dictionary lookup error:', error);
+      this.handleError(error);
+    }
+  }
+
+  /**
+   * A word with a mark at its edge whose exact title is not known yet ("hello," from a sentence,
+   * "etc."): when the check for a page titled as typed has not decided within a round trip, the
+   * bare word's lookup starts beside it instead of after it. Before, every such lookup waited for
+   * the check first, and on a connection that answers nothing for the check's whole budget,
+   * before anything showed.
+   *
+   * The bare word's result and updates are held until the check decides. When the bare word
+   * already has senses to show, it waits for the check only as long as the round trips measured
+   * so far say the check needs (a connection that has not answered yet, slow or dead, does not
+   * keep an offline pack's senses back); a check that decides later for the typed title moves the
+   * lookup there then, the way a form moves to its lemma. With nothing to show, the bare word
+   * waits for the check's own budget. When the check says the typed title is the word ("etc."),
+   * the bare word's updates are dropped and the typed title is looked up.
+   */
+  private async lookupBesideTitleCheck(
+    query: NormalizedQuery,
+    detectedLanguage: string,
+    targetLanguage: string,
+    enabledSources: string[] | undefined,
+    opts: LookupOpts | undefined,
+    startTime: number,
+  ): Promise<DictionaryResult> {
+    let decided: NormalizedQuery | null = null;
+    const check = this.askTitle(query, detectedLanguage).then(
+      (q) => (decided = q),
+      (): NormalizedQuery => (decided = query),
+    );
+    // How long senses already in hand wait for the check, counted from the start like the check.
+    const checkForShowable = withBudget(check, EXACT_TITLE_MS, WIKTIONARY, 1, 'exact-title', true).catch((): null => null);
+    const typed = (q: NormalizedQuery | null) => !!q && q.trimmed !== query.trimmed;
+
+    let gateOpen = false;
+    let dropped = false;
+    let held: DictionaryResult | null = null;
+    const bareOpts: LookupOpts = {
+      ...opts,
+      onUpdate: (r) => {
+        if (dropped) return;
+        if (gateOpen) opts?.onUpdate?.(r);
+        else held = r;
+      },
+    };
+    // The check gets a head start of one measured round trip to Wiktionary (EXACT_TITLE_HEAD_START_MS
+    // before anything is measured), as Happy Eyeballs gives the preferred address one: on a working
+    // network it has usually decided by then, and the bare word is not looked up for nothing.
+    await Promise.race([check, new Promise((r) => setTimeout(r, budgetMs(EXACT_TITLE_HEAD_START_MS, WIKTIONARY, 1, true)))]);
+    if (decided) return this.lookupAs(decided, detectedLanguage, targetLanguage, enabledSources, opts, startTime);
+    const bare = this.lookupAs(query, detectedLanguage, targetLanguage, enabledSources, bareOpts, startTime);
+    const bareSettled = bare.then(
+      (r) => r,
+      (): null => null,
+    );
+
+    const first = await Promise.race([check.then(() => 'check' as const), bareSettled.then(() => 'bare' as const)]);
+    if (first === 'bare' && !decided) {
+      const r = await bareSettled;
+      if (r && this.hasRealDefinitions(r)) await checkForShowable;
+      else await check;
+    }
+    if (typed(decided)) {
+      dropped = true;
+      return this.lookupAs(decided!, detectedLanguage, targetLanguage, enabledSources, opts, startTime);
+    }
+    if (!decided) {
+      // Shown as the bare word for now; a typed title found later takes over, as a form does.
+      void check.then((q) => {
+        if (!typed(q) || dropped) return;
+        dropped = true;
+        void this.lookupAs(q, detectedLanguage, targetLanguage, enabledSources, opts, Date.now())
+          .then((r) => {
+            if (this.hasRealDefinitions(r)) opts?.onUpdate?.(r);
+          })
+          .catch((): undefined => undefined);
+      });
+    }
+    const result = await bare;
+    gateOpen = true;
+    // An update held back meanwhile is newer than the first result.
+    return held || result;
+  }
+
+  /**
+   * The lookup of a query whose title is decided (lookupWord). The language is decided here too,
+   * for the title it is given: a detected language gives way to the word's English entry
+   * (englishFirst), and a language the reader chose is kept.
+   */
+  private async lookupAs(
+    query: NormalizedQuery,
+    detectedLanguage: string,
+    targetLanguage: string,
+    enabledSources: string[] | undefined,
+    opts: LookupOpts | undefined,
+    startTime: number,
+  ): Promise<DictionaryResult> {
+    {
+      const hintedSource = (opts?.sourceLanguage || '').toLowerCase().split('-')[0];
       const hinted = !!hintedSource && hintedSource !== 'auto';
-      let detectedLanguage = hinted ? hintedSource : await this.detectSourceLanguage(query.trimmed);
-      query = await this.withExactTitle(query, detectedLanguage);
       let preferEnglishEntry = false;
       if (!hinted && query.kind !== 'sentence') {
         const english = await this.englishFirst(query.trimmed, detectedLanguage);
@@ -941,9 +1081,6 @@ export class DictionaryService extends BaseService {
       }
       if (!this.isStillFilling(result) && this.inflight.get(cacheKey) === flight) this.inflight.delete(cacheKey);
       return result;
-    } catch (error) {
-      console.error('❌ Dictionary lookup error:', error);
-      this.handleError(error);
     }
   }
 
@@ -1070,6 +1207,12 @@ export class DictionaryService extends BaseService {
       Promise.all([resolveFormOf(getHttp(), headword, 'en'), this.isProperNoun(query.trimmed)]).then(([lemma, proper]) => (proper ? null : lemma));
     const early: Promise<string | null> | null =
       !opts?.noFormRedirect && kaikkiOn ? withBudget(formOrProper(), FORM_CHECK_MS, [KAIKKI, WIKTIONARY], 2, 'form-of') : null;
+    // Senses from an offline pack are there to show at once. They wait for the tagged page only as
+    // long as the round trips measured so far say it needs (FORM_HOLD_MS on a normal network), not
+    // as long as a connection that has not answered yet might take: dead or slow, it looks the same.
+    const earlyForLocal = early ? withBudget(early, FORM_HOLD_MS, [KAIKKI, WIKTIONARY], 1, 'form-of', true) : null;
+    earlyForLocal?.catch((): undefined => undefined);
+    const hasLocal = (r: DictionaryResult) => (r.definitions || []).some((d) => isLocalPackSource(d.source));
     let earlyAnswer: { lemma: string | null } | undefined;
     if (early) {
       early.then((lemma) => (earlyAnswer = { lemma }), (): undefined => undefined);
@@ -1089,7 +1232,7 @@ export class DictionaryService extends BaseService {
       // The last result waits for the page only when Wiktionary has not ruled the word out.
       const unruled = !wiktionarySenses(r).length;
       if (!mayBeFormOf(r) && !earlyAnswer?.lemma && !(final && early && unruled)) return null;
-      const decision = this.decideForm(r, early);
+      const decision = this.decideForm(r, hasLocal(r) ? earlyForLocal : early);
       if (!early) this.noteFormDecision(decisionKey, decision.then((d) => d.lemma));
       formCheck = decision.then(({ lemma, sure }) => {
         if (lemma && exactLookupKey(lemma) !== exactLookupKey(query.trimmed)) {
@@ -1118,7 +1261,8 @@ export class DictionaryService extends BaseService {
       // Wiktionary calling the word a form keeps it back until the page answers; a word that may be
       // inflected, or a result Wiktionary has not reached yet, waits a shorter while.
       const formLike = mayBeFormOf(r);
-      const limit = formLike ? budgetMs(FORM_CHECK_MS, [KAIKKI, WIKTIONARY], 2) : budgetMs(FORM_HOLD_MS, [KAIKKI, WIKTIONARY]);
+      const local = hasLocal(r);
+      const limit = formLike ? budgetMs(FORM_CHECK_MS, [KAIKKI, WIKTIONARY], 2, local) : budgetMs(FORM_HOLD_MS, [KAIKKI, WIKTIONARY], 1, local);
       const unsure = formLike || mayBeInflected || !wiktionarySenses(r).length;
       if (!formCheck && early && !earlyAnswer && Date.now() - started < limit && unsure) {
         held = r;
@@ -1278,7 +1422,8 @@ export class DictionaryService extends BaseService {
       sources: []
     };
 
-    const found = await this.fetchSpellingSuggestions(query.trimmed).catch((): string[] => []);
+    // Nothing answers while the connection is silent (net.ts), so suggestions are not waited for.
+    const found = connectionSilent() ? [] : await this.fetchSpellingSuggestions(query.trimmed).catch((): string[] => []);
     // A word with no entry is not swapped for a guess ("coverness" for governess): the page
     // says "Did you mean …?" with the closest spelling first, as Oxford and Merriam-Webster do.
     // Misspellings Wiktionary records ("idiosyncracy") still open their word (misspellingTarget).
@@ -1426,25 +1571,38 @@ export class DictionaryService extends BaseService {
    * First paint: as soon as Free Dictionary or Wiktionary brings senses, give the rest
    * FIRST_PAINT_GRACE_MS and go. If both come back empty or failed, go after the grace
    * as well. `capMs` bounds the whole wait; `minMs` keeps the local-pack coalesce window.
+   * A cap given as a function is a budget that follows the network: it is worked out again when
+   * the connection is found silent or answers again (net.ts), so a wait stretched for a slow
+   * connection that has since died ends at its normal length.
    */
   private waitForFirstPaint(
     all: Promise<any>[],
     primaries: Promise<any>[],
     minMs: number,
-    capMs: number,
+    capMs: number | (() => number),
   ): Promise<void> {
     return new Promise<void>((resolve) => {
       const started = Date.now();
       let done = false;
       let graceTimer: ReturnType<typeof setTimeout> | null = null;
+      const cap = () => (typeof capMs === 'function' ? capMs() : capMs);
+      let capTimer: ReturnType<typeof setTimeout> = setTimeout(() => finish(), cap());
+      const off = typeof capMs === 'function'
+        ? onNetChange(() => {
+            clearTimeout(capTimer);
+            capTimer = setTimeout(() => finish(), Math.max(0, cap() - (Date.now() - started)));
+          })
+        : (): void => undefined;
+      let quietDone: () => void = () => undefined;
       const finish = () => {
         if (done) return;
         done = true;
+        off();
+        quietDone();
         if (graceTimer) clearTimeout(graceTimer);
         clearTimeout(capTimer);
         resolve();
       };
-      const capTimer = setTimeout(finish, capMs);
       const graceThenFinish = () => {
         if (done || graceTimer) return;
         const wait = Math.max(FIRST_PAINT_GRACE_MS, minMs - (Date.now() - started));
@@ -1455,15 +1613,38 @@ export class DictionaryService extends BaseService {
         if (left > 0) setTimeout(finish, left);
         else finish();
       });
-      let settled = 0;
+      // A primary whose host has stopped answering while others answer (hostSilent in net.ts)
+      // counts as settled; what it brings later still arrives as an update.
+      const pending = new Set(primaries);
+      const quiet = () =>
+        Array.from(pending).every((p) => {
+          const host = this.primaryHosts.get(p);
+          // '' marks a fallback that waits for the other sources, so it is as quiet as they are.
+          return host === '' || (!!host && hostSilent(host));
+        });
+      const offQuiet = primaries.length ? onNetChange(() => {
+        if (quiet()) graceThenFinish();
+      }) : (): void => undefined;
+      void new Promise<void>((r) => {
+        quietDone = r;
+      }).then(offQuiet);
       for (const p of primaries) {
         void p.then((r: any) => {
-          settled += 1;
+          pending.delete(p);
           const senses = r?.status === 'ok' && (r?.data?.definitions?.length || 0) > 0;
-          if (senses || settled === primaries.length) graceThenFinish();
+          if (senses || quiet()) graceThenFinish();
         });
       }
+      if (primaries.length && quiet()) graceThenFinish();
     });
+  }
+
+  /** Which host each first-paint source asks, for waitForFirstPaint. */
+  private primaryHosts = new WeakMap<Promise<any>, string>();
+
+  private onHost<T>(p: Promise<T>, host: string): Promise<T> {
+    this.primaryHosts.set(p, host);
+    return p;
   }
 
   /** Cheap fingerprint so identical background updates are not re-sent. */
@@ -1502,7 +1683,10 @@ export class DictionaryService extends BaseService {
     // Requests already in flight when the skip began report late; they are the same outage.
     if (h.downUntil > Date.now()) return;
     h.fails += 1;
-    if (h.fails >= 2) {
+    // Only a host that fails while others answer is skipped. When nothing answers at all (no
+    // network, Wi-Fi without internet), every source fails together, and skipping them would keep
+    // them skipped after the network is back; the lookup's own budgets cope with a dead connection.
+    if (h.fails >= 2 && !connectionSilent()) {
       const backoff = Math.min(SOURCE_DOWN_MAX_MS, SOURCE_DOWN_BASE_MS * 2 ** (h.fails - 2));
       h.downUntil = Date.now() + backoff;
       console.warn(`${source} keeps failing; skipping it for ${Math.round(backoff / 1000)}s`);
@@ -1638,7 +1822,7 @@ export class DictionaryService extends BaseService {
         ),
       );
     }
-    ctx.primaryPromises.push(...fallbacks);
+    ctx.primaryPromises.push(...fallbacks.map((p) => this.onHost(p, '')));
   }
 
   private absorbOfflineHits(
@@ -1692,19 +1876,43 @@ export class DictionaryService extends BaseService {
       translationPromises.push(this.translateWithProvider(provider, text, actualTargetLanguage, sourceLanguage));
     }
 
-    const translationResults = await Promise.allSettled(
-      translationPromises.map(
-        (p: Promise<Translation | null>): Promise<Translation | null> =>
-          withBudget(p, 5500, [], 1, 'translation').catch((): null => null),
-      ),
+    // The first engine to answer shows; the others get SENTENCE_GRACE_MS to join it, and any that
+    // answer later arrive as an update. Before, the page waited for every engine, so one that never
+    // answers (Google blocked) held the translation for its whole budget.
+    const answers: Array<Translation | null | undefined> = translationPromises.map((): undefined => undefined);
+    const settled = translationPromises.map((p, i) =>
+      withBudget(p, 5500, [], 1, 'translation')
+        .catch((): null => null)
+        .then((v) => {
+          answers[i] = v;
+          return v;
+        }),
     );
-
-    for (const result of translationResults) {
-      if (result.status === 'fulfilled' && result.value) {
-        translations.push(result.value);
-        sources.push(result.value.source || 'Translation API');
+    await new Promise<void>((resolve) => {
+      let left = settled.length;
+      let grace: ReturnType<typeof setTimeout> | undefined;
+      if (!left) resolve();
+      for (const p of settled) {
+        void p.then((v) => {
+          left -= 1;
+          if (!left) {
+            clearTimeout(grace);
+            resolve();
+          } else if (v && !grace) grace = setTimeout(resolve, SENTENCE_GRACE_MS);
+        });
       }
-    }
+    });
+    const collect = () => {
+      translations.length = 0;
+      sources.length = 0;
+      for (const t of answers) {
+        if (!t) continue;
+        translations.push(t);
+        sources.push(t.source || 'Translation API');
+      }
+    };
+    collect();
+    const late = answers.some((a) => a === undefined);
 
     if (!translations.length && provider !== 'auto') {
       const fallback = await this.getBestTranslation(text, actualTargetLanguage, sourceLanguage, 'auto');
@@ -1735,6 +1943,13 @@ export class DictionaryService extends BaseService {
       }
     };
 
+    if (late && opts?.onUpdate) {
+      void Promise.all(settled).then(() => {
+        const more = answers.filter((t): t is Translation => !!t);
+        if (more.length <= result.translations.length) return;
+        opts.onUpdate!({ ...result, translations: more, sources: more.map((t) => t.source || 'Translation API') });
+      });
+    }
     return result;
   }
 
@@ -1884,14 +2099,14 @@ export class DictionaryService extends BaseService {
     // Free Dictionary + Datamuse: Latin/English path (CJK lemmas rarely have useful entries)
     if (preferLatinSources && !chosenOther && isSourceEnabled('Free Dictionary API')) {
       if (!this.isSourceDown('freeDictionary')) expectedSources.push('freeDictionary');
-      primaryPromises.push(pushCore(
+      primaryPromises.push(this.onHost(pushCore(
         this.cachedSource(
           'freeDictionary',
           lookupWord,
           () => this.getFreeDictionaryData(lookupWord, langForDict),
           (data) => (data.definitions?.length || 0) > 0 || !!(data.pronunciations && data.pronunciations.length) || !!data.pronunciation,
         ).then((r) => ({ ...r, type: 'freeDictionary' })),
-      ));
+      ), FREE_DICTIONARY));
     }
 
     // Wiktionary: always useful (defs + etymology). For CJK, still query when enabled.
@@ -1903,7 +2118,7 @@ export class DictionaryService extends BaseService {
       // So does a title found as typed ("U.K.": Wiktionary has no "u.k.").
       const wikiWord = wikiLang === 'en' && !isCapitalised(text) && !this.typedTitles.has(text) ? lookupWord : text;
       const preferEnglish = !!opts?.preferEnglishEntry && wikiLang !== 'en';
-      primaryPromises.push(pushCore(
+      primaryPromises.push(this.onHost(pushCore(
         this.cachedSource(
           'wiktionary',
           // One page answers every language, each from its own section: "i.e." in Italian is not
@@ -1916,7 +2131,7 @@ export class DictionaryService extends BaseService {
             || !!(data.pronunciations && data.pronunciations.length)
             || !!(data.wordFamily && data.wordFamily.length),
         ).then((r) => ({ ...r, type: 'wiktionary' })),
-      ));
+      ), WIKTIONARY));
     }
 
     // kaikki.org paths are case-sensitive (Haus is German, haus is not): keep the
@@ -2040,9 +2255,9 @@ export class DictionaryService extends BaseService {
 
     await offlinePromise;
     const hasLocal = definitions.some((d) => isLocalPackSource(d.source));
-    const coreWait = hasLocal ? CORE_WAIT_WITH_LOCAL_MS : budgetMs(CORE_WAIT_WITHOUT_LOCAL_MS, [FREE_DICTIONARY, WIKTIONARY]);
+    const coreWait = () => (hasLocal ? CORE_WAIT_WITH_LOCAL_MS : budgetMs(CORE_WAIT_WITHOUT_LOCAL_MS, [FREE_DICTIONARY, WIKTIONARY]));
     if (corePromises.length) {
-      await this.waitForFirstPaint(corePromises, primaryPromises, hasLocal ? coreWait : 0, coreWait);
+      await this.waitForFirstPaint(corePromises, primaryPromises, hasLocal ? CORE_WAIT_WITH_LOCAL_MS : 0, coreWait);
     }
     // A first paint without a single sense reads as "no definitions", and the lookup then moves on
     // to the lemma and to spelling suggestions. While the dictionaries have not answered (a slow
@@ -2053,8 +2268,9 @@ export class DictionaryService extends BaseService {
     const anySenses = () =>
       definitions.length > 0 ||
       finished.some((v: any) => v && !v.error && ((v.data?.definitions?.length || 0) > 0 || (v.type === 'offlineFallback' && v.data?.length > 0)));
-    if (!hasLocal && primaryPromises.length && !anySenses()) {
-      await this.waitForFirstPaint(primaryPromises, primaryPromises, 0, budgetMs(CORE_WAIT_WITHOUT_LOCAL_MS, [FREE_DICTIONARY, WIKTIONARY], 2));
+    if (!hasLocal && primaryPromises.length && !anySenses() && !connectionSilent()) {
+      // It ends at once when the connection turns out to be silent: nothing it waits for is coming.
+      await this.waitForFirstPaint(primaryPromises, primaryPromises, 0, () => (connectionSilent() ? 0 : budgetMs(CORE_WAIT_WITHOUT_LOCAL_MS, [FREE_DICTIONARY, WIKTIONARY], 2)));
     }
     if (frequencyReady) await withTimeout(frequencyReady, 250, 'sense-frequency').catch((): undefined => undefined);
 
@@ -2667,11 +2883,34 @@ export class DictionaryService extends BaseService {
    * a third or more of the bare word's senses point to it ("etc" and "vs" are another form of
    * "etc." and "vs.", while two of the 24 senses of "no" point to "no.") or
    * when the same mark is also inside the word ("e.g.", "U.S.").
+   *
+   * knownTitle gives the decision when it needs no request (no mark at the edge, or a saved
+   * answer), and null otherwise; askTitle asks Wiktionary (lookupBesideTitleCheck runs it).
    */
-  private async withExactTitle(query: NormalizedQuery, language: string): Promise<NormalizedQuery> {
+  private async knownTitle(query: NormalizedQuery, language: string): Promise<NormalizedQuery | null> {
     if (!hasEdgePunctuation(query) || !isCoreConfigured()) return query;
     if (this.typedTitles.has(query.sanitized)) return exactQuery(query);
+    const store = getLookupCache();
+    try {
+      const saved = store ? await store.get(this.exactTitleKey(query, language)) : null;
+      if (saved && Date.now() - saved.savedAt < EXACT_TITLE_TTL_MS && typeof (saved.value as any)?.typed === 'boolean') {
+        return (saved.value as any).typed ? this.typedTitle(query) : query;
+      }
+    } catch {
+      /* asked below */
+    }
+    if (this.isSourceDown('wiktionary')) return query;
+    return null;
+  }
+
+  private exactTitleKey(query: NormalizedQuery, language: string): string {
     // Detection is unsure of short tokens ("e.g" comes back as Italian), so English counts too.
+    const detected = (language || 'en').toLowerCase().split('-')[0] || 'en';
+    return `exact-title:v1:${detected}:${query.sanitized}`;
+  }
+
+  /** The exact-title check's requests (see knownTitle); its answer is saved. */
+  private async askTitle(query: NormalizedQuery, language: string): Promise<NormalizedQuery> {
     const detected = (language || 'en').toLowerCase().split('-')[0] || 'en';
     const exact = query.sanitized;
     const dropped = Array.from(new Set(edgeMarks(exact, query.trimmed)));
@@ -2681,22 +2920,12 @@ export class DictionaryService extends BaseService {
       dropped.length > 0 &&
       dropped.every((c) => c !== "'" && c !== '’' && /[\p{Terminal_Punctuation}\p{Quotation_Mark}\p{Ps}\p{Pe}\p{Pi}\p{Pf}]/u.test(c)) &&
       !dropped.some((c) => query.trimmed.includes(c));
-    // The answer is saved, so the next lookup of "etc." (after a restart too) needs no request.
-    const key = `exact-title:v1:${detected}:${exact}`;
+    // The answer is saved (knownTitle reads it), so the next lookup of "etc." needs no request.
+    const key = this.exactTitleKey(query, language);
     const store = getLookupCache();
-    try {
-      const saved = store ? await store.get(key) : null;
-      if (saved && Date.now() - saved.savedAt < EXACT_TITLE_TTL_MS && typeof (saved.value as any)?.typed === 'boolean') {
-        return (saved.value as any).typed ? this.typedTitle(query) : query;
-      }
-    } catch {
-      /* asked again below */
-    }
-    if (this.isSourceDown('wiktionary')) return query;
     // The wait follows Wiktionary's round trip (withBudget), so a slow connection still gets the
-    // answer, a hung request included (its backup goes out a round trip later). Every lookup with
-    // a mark at its edge ("hello," from a sentence) waits here before anything shows, cached
-    // words too, so a Wiktionary that answers nothing at all must not hold it for the requests'
+    // answer, a hung request included (its backup goes out a round trip later). A Wiktionary that
+    // answers nothing at all must not hold a lookup with nothing else to show for the requests'
     // whole timeouts. A check that ran out decides nothing and is not saved.
     let timedOut = false;
     const [page, bare] = await withBudget(
@@ -4190,13 +4419,35 @@ export class DictionaryService extends BaseService {
     let target = this.resolveTargetLanguage(source, targetLanguage);
     // Text already in the target language goes the other way (Chinese with a Chinese target → English).
     if (target === source.toLowerCase().split('-')[0]) target = this.defaultTargetForSource(source);
-    const hit =
-      provider === 'auto'
-        ? await this.getBestTranslation(input, target, source, 'auto')
-        : await this.translateWithProvider(provider, input, target, source);
+    // The chosen engine first; when it cannot answer, the others, so a translation comes back
+    // whenever any engine can give one (getBestTranslation starts with the preferred engine).
+    const hit = await this.getBestTranslation(input, target, source, provider);
     return hit ? { ...hit, language: hit.language || target, detectedSourceLanguage: hit.detectedSourceLanguage || source } : null;
   }
 
+  /** The host each engine asks, for its round trip (net.ts). */
+  private static readonly TRANSLATION_HOSTS: Record<Exclude<TranslationProvider, 'auto'>, string> = {
+    google: 'translate.googleapis.com',
+    mymemory: 'api.mymemory.translated.net',
+    youdao: 'openapi.youdao.com',
+    deepl: 'api-free.deepl.com',
+  };
+
+  /** An engine that gave no answer at all goes last for a while (cleared when the network changes). */
+  private noteTranslationDown(provider: Exclude<TranslationProvider, 'auto'>): void {
+    this.translationDownUntil.set(provider, Date.now() + TRANSLATION_DOWN_MS);
+  }
+
+  /**
+   * The first translation any engine gives, the preferred engine first. The engines are started
+   * one after another the way Happy Eyeballs (RFC 8305) starts connection attempts: the next
+   * engine starts as soon as the one before it fails, or when it has not answered within its
+   * host's round trip (at least TRANSLATION_STAGGER_MS), or when its host stops answering while
+   * others answer. The first answer wins. Before, each engine was waited out in turn: with Google
+   * blocked, every translation waited out both of Google's requests (ten seconds or more) before
+   * MyMemory was asked. An engine that gave no answer at all also goes last for a while, so the
+   * next translation starts with one that works.
+   */
   private async getBestTranslation(
     text: string,
     targetLanguage: string,
@@ -4204,22 +4455,75 @@ export class DictionaryService extends BaseService {
     preferred: TranslationProvider = 'auto',
   ): Promise<Translation | null> {
     const freeFirst: Array<Exclude<TranslationProvider, 'auto'>> = ['google', 'mymemory', 'youdao', 'deepl'];
-    const order: Array<Exclude<TranslationProvider, 'auto'>> =
-      preferred === 'youdao'
-        ? ['youdao', 'google', 'mymemory', 'deepl']
-        : preferred === 'deepl'
-          ? ['deepl', 'google', 'mymemory', 'youdao']
-          : preferred === 'mymemory'
-            ? ['mymemory', 'google', 'youdao', 'deepl']
-            : preferred === 'google'
-              ? ['google', 'mymemory', 'youdao', 'deepl']
-              : freeFirst;
+    const preferredOrder = preferred === 'auto' ? freeFirst : [preferred, ...freeFirst.filter((p) => p !== preferred)];
+    const usable = preferredOrder.filter((p) => this.canTranslateWith(p));
+    const now = Date.now();
+    const down = (p: Exclude<TranslationProvider, 'auto'>) => (this.translationDownUntil.get(p) || 0) > now;
+    const order = [...usable.filter((p) => !down(p)), ...usable.filter(down)];
+    if (!order.length) return null;
 
-    for (const p of order) {
-      const hit = await this.translateWithProvider(p, text, targetLanguage, sourceLanguage);
-      if (hit) return hit;
-    }
-    return null;
+    return new Promise<Translation | null>((resolve) => {
+      let next = 0;
+      let running = 0;
+      let done = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let waitingOn = '';
+      const pending = new Set<Exclude<TranslationProvider, 'auto'>>();
+      const finish = (hit: Translation | null) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        off();
+        // An engine still silent when another one answered goes last next time, until it answers.
+        for (const slow of pending) this.noteTranslationDown(slow);
+        resolve(hit);
+      };
+      const startNext = () => {
+        if (done) return;
+        clearTimeout(timer);
+        if (next >= order.length) {
+          if (!running) finish(null);
+          return;
+        }
+        const p = order[next++];
+        running += 1;
+        pending.add(p);
+        waitingOn = DictionaryService.TRANSLATION_HOSTS[p];
+        void this.translateWithProvider(p, text, targetLanguage, sourceLanguage)
+          .catch((): null => null)
+          .then((hit) => {
+            running -= 1;
+            pending.delete(p);
+            if (hit) this.translationDownUntil.delete(p);
+            if (hit) finish(hit);
+            else startNext();
+          });
+        if (next < order.length) {
+          // Worked out again when it runs out, as withBudget does: before the host has answered,
+          // its round trip is a guess that grows with the wait, so a slow connection does not
+          // send every translation to two engines.
+          const host = waitingOn;
+          const sentAt = Date.now();
+          const check = () => {
+            const left = budgetMs(TRANSLATION_STAGGER_MS, host) - (Date.now() - sentAt);
+            if (left > 0) timer = setTimeout(check, left);
+            else startNext();
+          };
+          timer = setTimeout(check, budgetMs(TRANSLATION_STAGGER_MS, host));
+        }
+      };
+      const off = onNetChange(() => {
+        if (waitingOn && hostSilent(waitingOn)) startNext();
+      });
+      startNext();
+    });
+  }
+
+  /** Whether the engine can be asked at all (DeepL and Youdao need their keys). */
+  private canTranslateWith(provider: Exclude<TranslationProvider, 'auto'>): boolean {
+    if (provider === 'deepl') return !!this.deeplApiKey;
+    if (provider === 'youdao') return !!(this.youdaoAppKey && this.youdaoAppSecret);
+    return true;
   }
 
   /**
