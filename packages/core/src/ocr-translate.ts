@@ -443,6 +443,32 @@ export function hasWords(text: string): boolean {
   return /\p{L}{2,}|\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/u.test(text);
 }
 
+/** Marks of program code that prose does not use, each a different kind. */
+const CODE_SIGNS = [
+  /[A-Za-z_]\w*\(/, // a call: name(
+  /->|=>|==|!=|:=|&&|\|\||::|\+=|-=/, // operators
+  /\s=\s/, // assignment
+  /[{}]/, // braces
+  /\b[a-z][a-z0-9]*_[a-z0-9_]+\b/, // snake_case
+  /\w\.\w+\(/, // a method call: obj.name(
+  /;\s*$/, // a statement's end
+];
+
+/**
+ * Whether a passage is program code, which an engine would translate into nonsense ("print"
+ * into 打印, a function's name into a word). Two different kinds of code marks, or one with
+ * brackets and operators making up a sixth or more of the characters. Prose with a "(s)" or a
+ * semicolon has one kind at most.
+ */
+export function looksLikeCode(text: string): boolean {
+  const t = String(text || '');
+  const kinds = CODE_SIGNS.filter((re) => re.test(t)).length;
+  if (kinds >= 2) return true;
+  const chars = t.replace(/\s/g, '');
+  const marks = (chars.match(/[(){}[\]<>=;_]/g) || []).length;
+  return kinds === 1 && chars.length > 0 && marks / chars.length >= 1 / 6;
+}
+
 /** What the engines need from the dictionary service. */
 export interface TranslateService {
   detectLanguage(text: string): Promise<string>;
@@ -453,11 +479,11 @@ export interface TranslateService {
 export type UnitResult = { text: string; from: string } | { same: true; from: string } | null;
 
 /**
- * Translate one paragraph into `to`. Text already in `to`, or with no words in it, is left
- * alone; `null` means no engine answered.
+ * Translate one paragraph into `to`. Text already in `to`, with no words in it, or program
+ * code, is left alone; `null` means no engine answered.
  */
 export async function translateUnit(svc: TranslateService, text: string, to: string, provider?: string): Promise<UnitResult> {
-  if (!hasWords(text)) return { same: true, from: '' };
+  if (!hasWords(text) || looksLikeCode(text)) return { same: true, from: '' };
   const from = await svc.detectLanguage(text).catch(() => '');
   if (from && sameLanguage(from, to)) return { same: true, from };
   const hit = await svc.translateText(text, to, from || 'auto', provider || 'auto');
@@ -524,7 +550,7 @@ export class PageTranslation {
     private readonly onChange: (index: number) => void,
     private readonly parallel = PARALLEL,
   ) {
-    this.states = units.map((u) => (hasWords(u.text) ? { status: 'pending' } : { status: 'same', from: '' }));
+    this.states = units.map((u) => (hasWords(u.text) && !looksLikeCode(u.text) ? { status: 'pending' } : { status: 'same', from: '' }));
   }
 
   get pending(): number {

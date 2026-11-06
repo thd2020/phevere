@@ -324,6 +324,21 @@ for (const name of PAGES) for (const engine of ['ppocr', 'rapid']) units[`${name
     assert.ok(T.hasWords('Tofu 25'));
   });
 
+  await test('program code is left as it is; prose with brackets, a semicolon or a formula is not taken for code', () => {
+    for (const code of ['def greet(name: str) -> str:', 'print(greet("Ada"))', 'const total = items.reduce((a, b) => a + b, 0);', 'if (user_id == null) { return; }', 'System.out.println(message);'])
+      assert.ok(T.looksLikeCode(code), code);
+    for (const prose of [
+      'Where the rock is hard the valley stays narrow and steep; where it is soft the river swings from side to side.',
+      'Select the file(s) you want to keep (see the list below).',
+      'Lagasse, Peter Frederick. Handbook for Predicting Stream Meander Migration. Washington, D.C.: 2004.',
+      'This article has no references or sources listed. (April 13, 2010)',
+      '在以下示例中，输入和输出通过是否存在提示（>>> 和 ...）来区分。',
+      'Revenue grew 12% to $4.2 million in the third quarter.',
+      'Contact: support@example.com',
+    ])
+      assert.ok(!T.looksLikeCode(prose), prose);
+  });
+
   const fakeSvc = (log, answers = {}) => ({
     detectLanguage: async (t) => (/[一-鿿]/.test(t) ? 'zh' : 'en'),
     resolveTargetLanguage: (src, req) => (req && req !== 'auto' ? req : src === 'en' ? 'zh' : 'en'),
