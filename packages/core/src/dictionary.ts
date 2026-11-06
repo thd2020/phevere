@@ -216,6 +216,12 @@ type LookupOpts = {
   noCorrection?: boolean;
   /** Set on the lookup of the word a form stands for, so it cannot redirect again. */
   noFormRedirect?: boolean;
+  /**
+   * The source language was detected, not chosen, and may be wrong for a word Wiktionary also
+   * has in English ("i.e.", detected as Italian): its Wiktionary step shows the English entry
+   * when the page has one (englishFirst).
+   */
+  preferEnglishEntry?: boolean;
 };
 
 /** "plural of saving", "past tense of go": a sense that only points at another word. */
@@ -766,14 +772,19 @@ export class DictionaryService extends BaseService {
       const hinted = !!hintedSource && hintedSource !== 'auto';
       let detectedLanguage = hinted ? hintedSource : await this.detectSourceLanguage(query.trimmed);
       query = await this.withExactTitle(query, detectedLanguage);
-      if (!hinted && query.kind !== 'sentence') detectedLanguage = await this.englishFirst(query, detectedLanguage);
+      let preferEnglishEntry = false;
+      if (!hinted && query.kind !== 'sentence') {
+        const english = await this.englishFirst(query.trimmed, detectedLanguage);
+        if (english === true) detectedLanguage = 'en';
+        else if (english === undefined) preferEnglishEntry = true;
+      }
 
       // Auto pairing is zh↔en (and ja/ko→en). An explicit Translation-tab target is honoured.
       const resolvedTarget = this.resolveTargetLanguage(detectedLanguage, targetLanguage);
       const txProvider = opts?.translationProvider || 'auto';
       // Switching on a Wiktionary edition must not be hidden by a result cached before it.
       const editionsOn = EDITIONS.filter((ed) => this.isNamedSourceOn(WIKTIONARY_EDITIONS[ed].source, enabledSources)).join(',');
-      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki|notes:2${editionsOn ? `|wikt:${editionsOn}` : ''}`);
+      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki|notes:2${editionsOn ? `|wikt:${editionsOn}` : ''}${preferEnglishEntry ? '|en-first' : ''}`);
 
       const remember = (r: DictionaryResult) => {
         if (this.isUncacheableResult(r) || this.isStillFilling(r)) return;
@@ -849,10 +860,12 @@ export class DictionaryService extends BaseService {
         }, LOOKUP_DEADLINE_MS * 2);
       }
       const decorate = (r: DictionaryResult): DictionaryResult => {
-        r.detectedLanguage = detectedLanguage;
+        // A detected language that gave way to the page's English entry (englishFirst) is English.
+        const shown = preferEnglishEntry && r.languages?.some((l) => l.current && l.code === 'en') ? 'en' : detectedLanguage;
+        r.detectedLanguage = shown;
         r.metadata = {
           ...(r.metadata || {}),
-          sourceLanguage: detectedLanguage,
+          sourceLanguage: shown,
           targetLanguage: resolvedTarget,
           originalTargetLanguage: targetLanguage,
           autoPaired: !targetLanguage || targetLanguage === 'auto' || targetLanguage === detectedLanguage,
@@ -864,6 +877,7 @@ export class DictionaryService extends BaseService {
       const holder: LookupHolder = {};
       const mergedOpts: LookupOpts = {
         ...opts,
+        ...(preferEnglishEntry ? { preferEnglishEntry: true } : {}),
         originalSelection: query.raw,
         onUpdate: (r) => {
           decorate(r);
@@ -1882,13 +1896,14 @@ export class DictionaryService extends BaseService {
       // A capitalised word goes as typed, so Wiktionary can put "May" the month before "may".
       // So does a title found as typed ("U.K.": Wiktionary has no "u.k.").
       const wikiWord = wikiLang === 'en' && !isCapitalised(text) && !this.typedTitles.has(text) ? lookupWord : text;
+      const preferEnglish = !!opts?.preferEnglishEntry && wikiLang !== 'en';
       primaryPromises.push(pushCore(
         this.cachedSource(
           'wiktionary',
           // One page answers every language, each from its own section: "i.e." in Italian is not
           // the English entry kept from a moment ago.
-          wikiLang === 'en' ? wikiWord : `${wikiWord}@${wikiLang}`,
-          () => this.getWiktionaryData(wikiWord, wikiLang),
+          wikiLang === 'en' ? wikiWord : `${wikiWord}@${wikiLang}${preferEnglish ? '+en' : ''}`,
+          () => this.getWiktionaryData(wikiWord, wikiLang, preferEnglish),
           (data) =>
             (data.definitions?.length || 0) > 0
             || !!data.pronunciation
@@ -2699,35 +2714,33 @@ export class DictionaryService extends BaseService {
    * A word Wiktionary has an English entry for opens in English, whatever language its letters
    * suggest: "i.e." is detected as Italian, but its reader means the English abbreviation. The
    * entry's other languages stay one tap away in its language switch. A language the reader chose
-   * is never overridden (the caller passes only detected languages). The answer is saved like the
-   * exact-title check, so the next lookup of the word asks nothing.
+   * is never overridden (the caller passes only detected languages).
+   *
+   * Nothing waits for the network here. A saved answer decides at once (true: open in English;
+   * false: keep the detected language). Without one the answer is undefined, and the lookup's
+   * Wiktionary step shows the English entry when the page it reads anyway has one, then saves
+   * the answer (rememberEnglishEntry), so a slow or dead connection costs no extra round trip.
    */
-  private async englishFirst(query: NormalizedQuery, detected: string): Promise<string> {
+  private async englishFirst(title: string, detected: string): Promise<boolean | undefined> {
     const lang = (detected || 'en').toLowerCase().split('-')[0];
-    if (lang === 'en' || !/\p{Script=Latin}/u.test(query.trimmed) || !isCoreConfigured()) return detected;
-    const titles = Array.from(new Set([query.trimmed, foldLatinHeadword(query.trimmed)].filter(Boolean)));
-    const key = `english-entry:v1:${lang}:${titles.join('|')}`;
+    if (lang === 'en' || !/\p{Script=Latin}/u.test(title) || !isCoreConfigured()) return false;
     const store = getLookupCache();
     try {
-      const saved = store ? await store.get(key) : null;
+      const saved = store ? await store.get(englishEntryKey(title, lang)) : null;
       if (saved && Date.now() - saved.savedAt < EXACT_TITLE_TTL_MS && typeof (saved.value as any)?.english === 'boolean') {
-        return (saved.value as any).english ? 'en' : detected;
+        return (saved.value as any).english;
       }
     } catch {
-      /* asked again below */
+      /* the Wiktionary step decides */
     }
-    if (this.isSourceDown('wiktionary')) return detected;
-    // The lookup reads the same pages next, so this adds no request; only a word detected as
-    // another language waits for the page here.
-    const pages = await withBudget(Promise.all(titles.map((t) => this.wiktionaryDefinitions(t))), EXACT_TITLE_MS, WIKTIONARY, 1, 'english-entry').catch(
-      (): null => null,
-    );
-    if (!pages) return detected;
-    const english = pages.some((p) => sectionSenses(p, 'en').some((d) => !isCitationGloss(String(d.definition || ''))));
-    if (store && !titles.some((t) => this.unansweredTitles.has(t))) {
-      void Promise.resolve(store.set(key, { english }, Date.now())).catch((): undefined => undefined);
-    }
-    return english ? 'en' : detected;
+    return undefined;
+  }
+
+  /** Saves whether a word detected as `lang` has an English entry (englishFirst). */
+  private rememberEnglishEntry(title: string, lang: string, english: boolean): void {
+    const store = getLookupCache();
+    if (!store) return;
+    void Promise.resolve(store.set(englishEntryKey(title, lang), { english }, Date.now())).catch((): undefined => undefined);
   }
 
   /** The query as typed, remembered so the sources ask for that title ("etc.", not "etc"). */
@@ -2770,7 +2783,7 @@ export class DictionaryService extends BaseService {
   /**
    * Get data from Wiktionary API with a focus on definitions and etymology.
    */
-  private async getWiktionaryData(text: string, language: string): Promise<{
+  private async getWiktionaryData(text: string, language: string, preferEnglish = false): Promise<{
     definitions: Definition[];
     pronunciation?: string;
     pronunciations?: Pronunciation[];
@@ -2823,7 +2836,11 @@ export class DictionaryService extends BaseService {
           (e?.definitions || []).every((d: any) => foldLookupKey(stripGlossText(String(d?.definition || '')).replace(/\(.*\)/g, '')) === foldLookupKey(term)),
         );
       const own = response ? response[language] : null;
-      const shownKey = own && !(language !== 'en' && response.en && echoesWord(own)) ? language : 'en';
+      // A detected language gives way to the page's English entry (englishFirst).
+      const englishEntry =
+        preferEnglish && language !== 'en' && sectionSenses(response, 'en').some((d) => !isCitationGloss(String(d.definition || '')));
+      if (preferEnglish && language !== 'en') this.rememberEnglishEntry(text, language, englishEntry);
+      const shownKey = englishEntry || !(own && !(language !== 'en' && response.en && echoesWord(own))) ? 'en' : language;
       const langData = response ? response[shownKey] : null;
       const languages = entryLanguages(response, shownKey);
 
@@ -2901,7 +2918,10 @@ export class DictionaryService extends BaseService {
         }
 
         const pronunciations = mergePronunciations(
-          await ipaPromise,
+          // The English entry of a word looked up in another language gets its English IPA.
+          await (shownKey === 'en' && language !== 'en'
+            ? wikiTextPromise.then((wt) => extractIpaFromWikitext(wt)).catch((): Pronunciation[] => [])
+            : ipaPromise),
           pronunciation && !/US\s|UK\s/.test(pronunciation)
             ? [{ ipa: pronunciation, accent: 'other', source: 'Wiktionary' }]
             : undefined,
@@ -2911,7 +2931,7 @@ export class DictionaryService extends BaseService {
         const wordFamily = buildWordFamily({
           surface: term,
           wikitext,
-          language,
+          language: shownKey,
           definitions,
         });
         return {
@@ -4572,7 +4592,11 @@ export const dictionaryService = new DictionaryService();
 // A word saved from a lookup is saved as the word the lookup opens ("geese" as goose).
 registerHeadwordResolver((word, lang) => dictionaryService.settledHeadword(word, lang)); 
 
-/** Two Wiktionary definition pages as one, the first page's entries first in each language. */
+/** Where englishFirst's answer for a word detected as `lang` is saved. */
+function englishEntryKey(title: string, lang: string): string {
+  return `english-entry:v2:${lang}:${foldLatinHeadword(String(title || '').trim())}`;
+}
+
 /**
  * The languages a Wiktionary definitions page has entries in, English first and the rest in the
  * page's order, with the one shown marked. "other" (several small languages together) and
@@ -4637,6 +4661,7 @@ function attachSenseNotes(wikitext: string, glossed: GlossedPart[], canonical: (
   return Object.keys(head).length ? head : undefined;
 }
 
+/** Two Wiktionary definition pages as one, the first page's entries first in each language. */
 function mergeWiktionaryPages(first: any, second: any): any {
   if (!first) return second || null;
   if (!second) return first;

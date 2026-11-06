@@ -29,7 +29,7 @@ const notFound = () => new DictionaryError('HTTP 404', 'HTTP_404', false);
 /** Answers by host and path; anything not listed is a 404. `json` routes may be async. */
 const routes = { json: [], text: [] };
 const requested = [];
-configureCore({
+const coreConfig = {
   sha256Hex: (text) => text,
   http: {
     requestJson: async (url) => {
@@ -44,8 +44,8 @@ configureCore({
     },
     requestBytes: async () => ({ ok: false, status: 404, bytes: new Uint8Array(), contentType: '' }),
   },
-  lookupCache: { get: () => null, set: () => {} },
-});
+};
+configureCore({ ...coreConfig, lookupCache: { get: () => null, set: () => {} } });
 
 (async () => {
   // "coverness" has no entry anywhere; Datamuse offers spellings; the translation comes late.
@@ -158,6 +158,26 @@ configureCore({
   assert.match(ieIt.definitions[0].meaning, /isto es/, 'the Italian entry opens when asked for');
   assert.ok(!ieIt.definitions.some((d) => /That is/.test(d.meaning)), 'without the English senses');
   assert.deepEqual(plain(ieIt.languages.find((l) => l.current)), { code: 'it', name: 'Italian', current: true });
+  // Detected as Italian (as on a real device): the lookup does not wait for the page before it
+  // starts; the Wiktionary step shows the English entry it reads anyway and saves the answer, so
+  // the next lookup starts in English.
+  const saved = new Map();
+  const store = { get: (k) => saved.get(k) || null, set: (k, value, savedAt) => void saved.set(k, { value, savedAt }) };
+  configureCore({ ...coreConfig, lookupCache: store });
+  const detectsItalian = () => {
+    const svc = new DictionaryService();
+    svc.detectSourceLanguage = async () => 'it';
+    return svc;
+  };
+  const ieDetected = await detectsItalian().lookup('i.e.', 'zh');
+  assert.match(ieDetected.definitions[0].meaning, /That is/, 'detected as Italian, the English entry opens');
+  assert.ok(!ieDetected.definitions.some((d) => /isto es/.test(d.meaning)), 'without the Italian sense');
+  assert.equal(ieDetected.detectedLanguage, 'en');
+  assert.deepEqual(plain(ieDetected.languages.find((l) => l.current)), { code: 'en', name: 'English', current: true });
+  assert.deepEqual(plain([...saved.entries()].filter(([k]) => k.startsWith('english-entry:')).map(([k, v]) => [k, v.value])), [['english-entry:v2:it:i.e.', { english: true }]]);
+  const ieAgain = await detectsItalian().lookup('i.e.', 'zh');
+  assert.equal(ieAgain.detectedLanguage, 'en', 'the saved answer opens it in English from the start');
+  configureCore({ ...coreConfig, lookupCache: { get: () => null, set: () => {} } });
 
   // "savings": Wiktionary has only "plural of saving"; WordNet, through Datamuse, defines the plural
   // itself (both as answered on 2026-11-05). It keeps its own entry and its money sense comes first.
