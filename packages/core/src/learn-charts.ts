@@ -70,6 +70,42 @@ function legendHtml(legend: BarChartSpec['legend']): string {
   return `<p class="lrc-legend">${legend.map((l) => `<span><i class="lrc-seg--${esc(l.cls)}"></i>${esc(l.name)}</span>`).join('')}</p>`;
 }
 
+/** Rough width of a label at the axis's 8.5px size: CJK and Hangul take a full em, the rest about 0.62. */
+function labelWidth(s: string): number {
+  let w = 0;
+  for (const ch of s) w += /[\u1100-\u11ff\u2e80-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/.test(ch) ? 8.5 : 5.3;
+  return w;
+}
+
+/**
+ * Where each label under the bars goes. A label wider than its column ("Today" in Russian or
+ * French) leans into the free side at the chart's edges, and a label it would run into is left
+ * out, so the row never overlaps whatever the language.
+ */
+function placeSubLabels(labels: string[], left: number, bw: number, rightEdge: number): Array<{ x: number; anchor: 'start' | 'middle' | 'end' } | null> {
+  let freeFrom = -Infinity;
+  return labels.map((label, i) => {
+    if (!label) return null;
+    const w = labelWidth(label);
+    const cx = left + i * bw + bw / 2;
+    let x = cx;
+    let anchor: 'start' | 'middle' | 'end' = 'middle';
+    let from = cx - w / 2;
+    if (from < left - 6) {
+      x = left + i * bw + 1;
+      anchor = 'start';
+      from = x;
+    } else if (from + w > rightEdge) {
+      x = rightEdge;
+      anchor = 'end';
+      from = rightEdge - w;
+    }
+    if (from < freeFrom + 2) return null;
+    freeFrom = from + w;
+    return { x, anchor };
+  });
+}
+
 export function barChartHtml(spec: BarChartSpec): string {
   const W = 320;
   const H = spec.height ?? 162;
@@ -88,6 +124,7 @@ export function barChartHtml(spec: BarChartSpec): string {
     .map((v) => `<line class="lrc-grid${v === 0 ? ' is-base' : ''}" x1="${left}" x2="${W - right}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text class="lrc-ytick" x="${left - 5}" y="${(y(v) + 3).toFixed(1)}">${fmt(v)}</text>`)
     .join('');
   const gap = Math.min(4, bw * 0.28);
+  const subs = placeSubLabels(spec.data.map((d) => d.sub || ''), left, bw, W - right);
   const bars = spec.data
     .map((d, i) => {
       const x = left + i * bw + gap / 2;
@@ -104,12 +141,13 @@ export function barChartHtml(spec: BarChartSpec): string {
         .join('');
       const cx = x + w / 2;
       const tick = d.tick ? `<text class="lrc-xtick${d.mark ? ' is-mark' : ''}" x="${cx.toFixed(1)}" y="${base + 13}">${esc(d.tick)}</text>` : '';
-      const sub = d.sub ? `<text class="lrc-xsub${d.mark ? ' is-mark' : ''}" x="${cx.toFixed(1)}" y="${base + 25}">${esc(d.sub)}</text>` : '';
+      const at = subs[i];
+      const sub = at ? `<text class="lrc-xsub${d.mark ? ' is-mark' : ''}" x="${at.x.toFixed(1)}" y="${base + 25}"${at.anchor !== 'middle' ? ` text-anchor="${at.anchor}"` : ''}>${esc(d.sub || '')}</text>` : null;
       const value = totals[i] && bw >= 14 ? `<text class="lrc-val" x="${cx.toFixed(1)}" y="${(y(totals[i]) - 4).toFixed(1)}">${fmt(totals[i])}</text>` : '';
       return `<g class="lrc-bar${d.mark ? ' is-mark' : ''}${spec.picked === i ? ' is-picked' : ''}" data-i="${i}">
         <rect class="lrc-hit" x="${(left + i * bw).toFixed(1)}" y="${top - 6}" width="${bw.toFixed(1)}" height="${(base - top + 6 + (subRow ? 28 : 16)).toFixed(1)}" tabindex="0" role="button" aria-label="${esc(d.aria)}"/>
         <rect class="lrc-col" x="${(left + i * bw).toFixed(1)}" y="${top - 6}" width="${bw.toFixed(1)}" height="${(base - top + 6).toFixed(1)}"/>
-        ${segs || `<rect class="lrc-seg lrc-seg--none" x="${x.toFixed(1)}" y="${base - 1}" width="${w.toFixed(1)}" height="1"/>`}${value}${tick}${sub}
+        ${segs || `<rect class="lrc-seg lrc-seg--none" x="${x.toFixed(1)}" y="${base - 1}" width="${w.toFixed(1)}" height="1"/>`}${value}${tick}${sub || ''}
       </g>`;
     })
     .join('');
