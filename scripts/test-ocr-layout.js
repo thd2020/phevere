@@ -279,4 +279,12 @@ assert.strictEqual(
   'the population grew from two to 3.5 million people in that decade',
 );
 
+// 18. A date set well apart from a CJK title gets a space; "2027年" in running text does not.
+{
+  const words = (spec) => spec.map(([t, x, w]) => ({ text: t, quad: box(x, 0, w, 20) }));
+  const one = (ws) => L.pageLines(L.buildOcrPage({ width: 600, height: 40, engine: 'test', lines: [{ text: ws.map((w) => w.text).join(''), quad: box(0, 0, 400, 20), words: ws }] }))[0].text;
+  assert.strictEqual(one(words([['通', 0, 16], ['知', 16, 16], ['2026-11-05', 52, 80]])), '通知 2026-11-05');
+  assert.strictEqual(one(words([['于', 0, 16], ['2027', 17, 34], ['年', 52, 16]])), '于2027年');
+}
+
 console.log('test-ocr-layout: ok');

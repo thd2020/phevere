@@ -369,7 +369,10 @@ function wordJoins(words: OcrWord[], text: string, angle: number, size: number):
     let j: string;
     if (found) j = /\s/.test(text.slice(ends[k - 1], starts[k])) ? ' ' : '';
     else j = wordJoiner(a, b, wordGap(words[k - 1], words[k], angle, size));
-    if (isCjkChar([...a].pop() || '') && isCjkChar([...b][0] || '')) j = '';
+    const ca = isCjkChar([...a].pop() || ''), cb = isCjkChar([...b][0] || '');
+    if (ca && cb) j = '';
+    // Engines run CJK into Latin or digits across a wide gap (a date set apart from a title).
+    else if (!j && ca !== cb && wordGap(words[k - 1], words[k], angle, size) >= 0.5) j = ' ';
     joins.push(j);
   }
   return joins;
