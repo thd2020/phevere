@@ -3055,6 +3055,8 @@ body.main-window .ws-tab.is-active::after {
 body.main-window .ws-count { font: 600 12px/1 var(--pv-font-ui); color: var(--pv-ink-soft); font-variant-numeric: tabular-nums; }
 /* Recent: Clear history sits above its own list, away from the search field's clear button. */
 body.main-window .recent-bar { display: flex; justify-content: flex-end; margin: 2px 0 10px; }
+/* The narrow-window rule that stretches every .btn would turn this into a full-width bar. */
+body.main-window .recent-bar .btn { width: auto; }
 body.main-window .recent-bar:has(> [hidden]:only-child) { display: none; }
 body.main-window .undo-toast {
   position: fixed;
