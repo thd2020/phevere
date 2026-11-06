@@ -96,6 +96,8 @@ import {
   markHeard,
   singleVoice,
   startReview,
+  startExtraRound,
+  extraNewCount,
   answerReview,
   overrideReview,
   advanceReview,
@@ -130,6 +132,7 @@ import {
   BOOK_LIST_PAGE,
   bookEntry,
   buildWordsContext,
+  learnListsLeft,
   dropCurrentReview,
   isBookOnlyId,
   loadWordbook,
@@ -152,7 +155,7 @@ import {
 import { choiceRowHtml, enhanceSelect, keycapsHtml, rangeRowHtml, segRowHtml, switchRowHtml } from '@phevere/core';
 import { filterVocabByLang, parseGoal, vocabLangChipsHtml, vocabLanguages, savedForSpelling } from '@phevere/core';
 import { aboutSettingsHtml, flashAboutCopied, type AboutPlatform } from '@phevere/core';
-import { learnSettingsHtml, microphoneAvailable, readLearnPrefs, watchMicrophone, wireNumberWheels, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
+import { learnPickValue, learnSettingsHtml, microphoneAvailable, readLearnPrefs, syncLearnPick, watchMicrophone, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
 import { AZ_INDEX, compareAz, followIndexRail, vocabAzLetter, wireIndexRail } from '@phevere/core';
 import { bookMenuItems, bookPickItems, bookRemovalPrompt, openMenu } from '@phevere/core';
@@ -275,7 +278,6 @@ function initializeSettingsWindow() {
           <button type="button" class="settings-nav__item" data-section="offline">${tHtml('settings.section.offline')}</button>
           <button type="button" class="settings-nav__item" data-section="api">${tHtml('settings.section.api')}</button>
           <button type="button" class="settings-nav__item" data-section="audio">${tHtml('settings.section.audio')}</button>
-          <button type="button" class="settings-nav__item" data-section="updates">${tHtml('settings.section.updates')}</button>
           <button type="button" class="settings-nav__item" data-section="about">${tHtml('settings.section.about')}</button>
         </nav>
         <main class="settings-main">
@@ -427,29 +429,6 @@ function initializeSettingsWindow() {
             </div>
           </section>
 
-          <section class="settings-panel" data-panel="updates" aria-labelledby="settings-updates-heading">
-            <div class="settings-panel__intro">
-              <h2 id="settings-updates-heading" class="settings-panel__title">${tHtml('settings.section.updates')}</h2>
-            </div>
-            <div class="sv sv-page">
-              <div class="sv-ledger">
-                <div class="sv-row">
-                  <span class="sv-row__text">
-                    <span id="update-version" class="sv-row__label">Phevere</span>
-                    <span id="update-status" class="sv-row__sub" role="status" aria-live="polite"></span>
-                  </span>
-                  <button type="button" id="update-action" class="sv-btn sv-btn--accent" hidden></button>
-                  <div id="update-progress" class="sv-progress" hidden><span></span></div>
-                </div>
-                ${segRowHtml({ label: t('desktop.settings.updates.install'), name: 'update-mode', value: 'auto', options: [{ value: 'auto', label: t('desktop.settings.updates.modeAuto') }, { value: 'ask', label: t('desktop.settings.updates.modeAsk') }, { value: 'off', label: t('desktop.settings.updates.modeOff') }] })}
-                <div class="sv-ledger__foot">
-                  <button type="button" id="update-rollback" class="sv-btn" hidden></button>
-                  <button type="button" id="update-check" class="sv-btn">${tHtml('desktop.settings.updates.checkNow')}</button>
-                </div>
-              </div>
-            </div>
-          </section>
-
           <section class="settings-panel" data-panel="sources" aria-labelledby="settings-sources-heading">
             <div class="settings-panel__intro">
               <h2 id="settings-sources-heading" class="settings-panel__title">${tHtml('settings.section.sources')}</h2>
@@ -523,7 +502,7 @@ function initializeSettingsWindow() {
   // "#settings/offline" opens on that page, from the main window's search.
   const showSectionFromHash = () => {
     const section = location.hash.split('/')[1];
-    if (section) document.querySelector<HTMLElement>(`.settings-nav__item[data-section="${section}"]`)?.click();
+    if (section) showSettingsSection(section);
   };
   showSectionFromHash();
   window.addEventListener('hashchange', showSectionFromHash);
@@ -542,7 +521,6 @@ function initializeSettingsWindow() {
   wireInAppTextSelectionLookup();
   setupAudioSettings();
   void wireNotificationSettings();
-  void wireUpdatesPanel();
   wireSettingsImageDrop();
   void wireOfflineSettingsPanel();
   void wireOcrSettingsPanel();
@@ -555,6 +533,26 @@ function initializeSettingsWindow() {
     window.addEventListener('pagehide', () => stopCapture());
   });
   wireLiveResizeClass();
+}
+
+/** Settings → About's Updates rows: status, the install mode, Check now and Roll back. */
+function updatesRowsHtml(): string {
+  return `
+    <div class="sv-ledger">
+      <div class="sv-row">
+        <span class="sv-row__text">
+          <span class="sv-row__label">${tHtml('settings.section.updates')}</span>
+          <span id="update-status" class="sv-row__sub" role="status" aria-live="polite"></span>
+        </span>
+        <button type="button" id="update-action" class="sv-btn sv-btn--accent" hidden></button>
+        <div id="update-progress" class="sv-progress" hidden><span></span></div>
+      </div>
+      ${segRowHtml({ label: t('desktop.settings.updates.install'), name: 'update-mode', value: 'auto', options: [{ value: 'auto', label: t('desktop.settings.updates.modeAuto') }, { value: 'ask', label: t('desktop.settings.updates.modeAsk') }, { value: 'off', label: t('desktop.settings.updates.modeOff') }] })}
+      <div class="sv-ledger__foot">
+        <button type="button" id="update-rollback" class="sv-btn" hidden></button>
+        <button type="button" id="update-check" class="sv-btn">${tHtml('desktop.settings.updates.checkNow')}</button>
+      </div>
+    </div>`;
 }
 
 /** Settings → About: the version comes from the main process, so it is never out of date. */
@@ -571,7 +569,8 @@ async function wireAboutSettings(): Promise<void> {
   }
   const platform = names[info?.platform || window.electronAPI?.platform || ''] || 'windows';
   const system = info ? [systemNames[info.platform] || info.platform, info.systemVersion, info.arch].filter(Boolean).join(' ') : '';
-  host.innerHTML = aboutSettingsHtml({ version: info?.version || '', platform, system });
+  host.innerHTML = aboutSettingsHtml({ version: info?.version || '', platform, system }, updatesRowsHtml());
+  void wireUpdatesPanel();
   host.addEventListener('click', (ev) => {
     const btn = (ev.target as HTMLElement).closest<HTMLElement>('[data-act="about-copy"]');
     if (!btn) return;
@@ -591,30 +590,53 @@ function wireLearnSettings(): void {
   const host = document.getElementById('learn-settings-host');
   if (!host) return;
   let microphone = false;
-  let books: Array<{ id: string; title: string; goal: number }> = [];
+  let books: Array<{ id: string; title: string; goal: number; left?: number }> = [];
+  let mineLeft: number | undefined;
+  let pace: StudyPace | null = null;
   const paint = () => {
-    // A repaint (books reloaded on focus, a microphone plugged in) keeps keyboard focus on its wheel.
-    const focused = host.contains(document.activeElement) ? document.activeElement?.id : '';
+    // A repaint (books reloaded on focus, a microphone plugged in) keeps keyboard focus where it was.
+    const focused = document.activeElement as HTMLInputElement | null;
+    const key = host.contains(focused) && focused ? `${focused.name || ''}|${focused.dataset.book ?? ''}|${focused.dataset.value ?? 'field'}` : '';
     host.innerHTML = learnSettingsHtml({
       goal: Number(readPref(NB_GOAL_KEY, '10')) || 10,
       books,
       prefs: readLearnPrefs(readPref(LEARN_PREFS_KEY, '')),
       microphone,
+      mineLeft,
+      pace,
     });
-    if (focused) document.getElementById(focused)?.focus();
+    if (key) {
+      const [name, book, value] = key.split('|');
+      const back = [...host.querySelectorAll<HTMLInputElement>('input[data-act]')].find(
+        (el) => (el.name || '') === name && (el.dataset.book ?? '') === book && (el.dataset.value ?? 'field') === value,
+      );
+      back?.focus();
+    }
   };
-  wireNumberWheels(host);
-  const loadBooks = async () => {
+  // The plan lines need each list's words not started yet and the learner's pace; both load once
+  // and again when Settings comes forward, since words are learned in the main window meanwhile.
+  const loadLists = async () => {
     try {
-      const state = await wordbookApi()?.state?.();
+      const api = wordbookApi();
+      const vocab = (window as any).vocabAPI;
+      const [state, mine, history] = await Promise.all([api?.state?.(), vocab?.list?.(5000), vocab?.history?.()]);
       const made: Array<{ bookId: string; title: string }> = state?.userBooks || [];
-      books = (state?.subs || []).map((s: { bookId: string; dailyNew: number }) => ({
+      const subs: Array<{ bookId: string; dailyNew: number }> = state?.subs || [];
+      const loaded = new Map<string, string[]>();
+      for (const s of subs) if (!isUserBookId(s.bookId)) loaded.set(s.bookId, await loadWordbook(s.bookId));
+      const progress = new Map((state?.progress || []).map((p: any) => [p.lemma, p]));
+      const ctx = buildWordsContext(mine || [], progress as any, subs as any, loaded, made as any);
+      const left = learnListsLeft(ctx);
+      mineLeft = left.mine;
+      pace = studyPace(history || []);
+      books = subs.map((s) => ({
         id: s.bookId,
         title: wordbookMeta(s.bookId)?.title || made.find((b) => b.bookId === s.bookId)?.title || s.bookId,
         goal: s.dailyNew,
+        left: left.books.get(s.bookId),
       }));
     } catch {
-      books = [];
+      /* the choices still work; the plan lines leave out what they could not count */
     }
     paint();
   };
@@ -631,15 +653,24 @@ function wireLearnSettings(): void {
     const el = ev.target as HTMLElement;
     const act = el.dataset.act;
     if (act === 'learn-goal') {
-      const goal = parseGoal(el.dataset.value);
-      if (goal != null) void setGoal(el.dataset.book || '', goal);
+      const goal = parseGoal(learnPickValue(el));
+      if (goal == null) return;
+      syncLearnPick(el, goal);
+      void setGoal(el.dataset.book || '', goal);
     } else if (act === 'learn-countdown') {
+      const seconds = Number(learnPickValue(el)) || 0;
+      syncLearnPick(el, seconds);
       const prefs = readLearnPrefs(readPref(LEARN_PREFS_KEY, ''));
-      writePref(LEARN_PREFS_KEY, writeLearnPrefs({ ...prefs, countdown: Number(el.dataset.value) || 0 }));
+      writePref(LEARN_PREFS_KEY, writeLearnPrefs({ ...prefs, countdown: seconds }));
     } else if (act === 'learn-speaking') {
       const prefs = readLearnPrefs(readPref(LEARN_PREFS_KEY, ''));
       writePref(LEARN_PREFS_KEY, writeLearnPrefs({ ...prefs, speaking: (el as HTMLInputElement).checked }));
     }
+  });
+  // Enter in the number field saves it at once, as leaving the field does.
+  host.addEventListener('keydown', (ev) => {
+    const el = ev.target as HTMLInputElement;
+    if (ev.key === 'Enter' && el.classList?.contains('sv-pick__field')) el.blur();
   });
   const onMicrophone = (on: boolean) => {
     if (on === microphone) return;
@@ -647,11 +678,10 @@ function wireLearnSettings(): void {
     paint();
   };
   paint();
-  void loadBooks();
+  void loadLists();
   void microphoneAvailable().then(onMicrophone);
   watchMicrophone(onMicrophone);
-  // A book subscribed or dropped in the main window shows up when Settings comes forward again.
-  window.addEventListener('focus', () => void loadBooks());
+  window.addEventListener('focus', () => void loadLists());
   window.addEventListener('storage', (e) => {
     if (e.key === NB_GOAL_KEY) paint();
   });
@@ -1599,6 +1629,7 @@ const wbMeaningInFlight = new Set<string>();
 const wbOpen = new Set<string>();
 /* Example sentences for the quiz's gap questions, looked up ahead for words already started. */
 const reviewExamples = new Map<string, string[]>();
+const reviewSynonyms = new Map<string, string[]>();
 const examplesInFlight = new Set<string>();
 
 async function prefetchExamples(wait = false): Promise<void> {
@@ -1617,8 +1648,9 @@ async function prefetchExamples(wait = false): Promise<void> {
     const key = lemma.toLowerCase();
     examplesInFlight.add(key);
     try {
-      const list = await api.examples(lemma);
-      reviewExamples.set(key, Array.isArray(list) ? list : []);
+      const res = await api.examples(lemma);
+      reviewExamples.set(key, Array.isArray(res) ? res : Array.isArray(res?.examples) ? res.examples : []);
+      reviewSynonyms.set(key, Array.isArray(res?.synonyms) ? res.synonyms : []);
     } catch {
       /* offline: no gap-fill from examples */
     } finally {
@@ -2214,6 +2246,7 @@ function renderLearn(): void {
       preview: (e, g) => previewReview(e, g),
       formatGap: formatReviewGap,
       examples: (lemma) => reviewExamples.get(lemma.toLowerCase()),
+      synonyms: (lemma) => reviewSynonyms.get(lemma.toLowerCase()),
       learner: learner?.model ?? null,
       pace,
       learnPrefs,
@@ -2491,6 +2524,17 @@ function wireNotebookActions(root: HTMLElement): void {
         renderLearn();
         document.querySelector('.main-shell')?.scrollTo({ top: 0 });
         return;
+      case 'learn-more': {
+        // Past today's plan: more new words, or reviews before they are due, from the list in Learn.
+        const scope = wbCtx ? wbScope : 'mine';
+        const pool = wbCtx ? scopeEntries(scope, wbCtx) : vocabNotebookCache;
+        const kind = el.dataset.kind === 'ahead' ? 'ahead' : 'new';
+        nbReview = startExtraRound(pool, kind, Date.now(), Number(el.dataset.count) || extraNewCount(nbGoal));
+        await Promise.all([prefetchMeanings(true), prefetchExamples(true)]);
+        renderLearn();
+        document.querySelector('.main-shell')?.scrollTo({ top: 0 });
+        return;
+      }
       case 'nb-start':
       case 'nb-round':
         // A new round plans again from what is due now and from the answers so far; renderLearn starts it.
@@ -2826,6 +2870,18 @@ function wireMainWorkspace(): void {
       loadSuggestions: (q) => suggestWords(q),
     });
     search.addEventListener('focus', () => void warmSuggestions(), { once: true });
+    // Ctrl+F and Ctrl+K (Cmd on a Mac) go to the search box from anywhere in the window.
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+        if (e.key.toLowerCase() !== 'f' && e.key.toLowerCase() !== 'k') return;
+        e.preventDefault();
+        search.focus();
+        search.select();
+      },
+      true,
+    );
   }
   document.addEventListener('keydown', onReviewKey);
   // Links in Words, Learn and the account popover (sources, licences, Get Plus) open in the browser.
@@ -3369,6 +3425,7 @@ async function showClipboardHistory() {
 /** Switch the Settings window to a section; an API keys jump can name the provider card to bring forward. */
 function showSettingsSection(section: string, provider?: string): void {
   if (!section) return;
+  if (section === 'updates') section = 'about';
   document.querySelectorAll('.settings-nav__item').forEach((b) => {
     b.classList.toggle('is-active', (b as HTMLElement).dataset.section === section);
   });
@@ -3377,7 +3434,7 @@ function showSettingsSection(section: string, provider?: string): void {
   });
   if (section === 'api') void renderApiKeysPanel(provider);
   if (section === 'sources') void renderSourcesPanel();
-  if (section === 'updates') checkUpdatesOnOpen?.();
+  if (section === 'about') checkUpdatesOnOpen?.();
 }
 
 /** Settings links open in the browser; "API key required" and similar jump to their tab. */
@@ -3651,23 +3708,21 @@ interface UpdateView {
 
 let checkUpdatesOnOpen: (() => void) | null = null;
 
-/** Updates page: version and status, the install mode, Check now and Roll back. */
+/** The Updates rows on the About page: status, the install mode, Check now and Roll back. */
 async function wireUpdatesPanel(): Promise<void> {
   const api = (window as any).updatesAPI;
-  const version = document.getElementById('update-version');
   const status = document.getElementById('update-status');
   const action = document.getElementById('update-action') as HTMLButtonElement | null;
   const bar = document.getElementById('update-progress');
   const modes = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="update-mode"]'));
   const check = document.getElementById('update-check') as HTMLButtonElement | null;
   const rollback = document.getElementById('update-rollback') as HTMLButtonElement | null;
-  if (!api?.getState || !version || !status || !action || !bar || !modes.length || !check || !rollback) return;
+  if (!api?.getState || !status || !action || !bar || !modes.length || !check || !rollback) return;
   const fill = bar.firstElementChild as HTMLElement | null;
   const paint = (s: UpdateView) => {
     const busy = s.status === 'checking' || s.status === 'downloading' || s.status === 'installing';
     const next = s.available?.version;
     const v = String(next || '');
-    version.textContent = t('desktop.settings.updates.version', { version: String(s.current) });
     status.classList.toggle('is-error', s.status === 'error');
     status.textContent =
       s.status === 'checking' ? t('desktop.settings.updates.checking')
@@ -3710,7 +3765,7 @@ async function wireUpdatesPanel(): Promise<void> {
     checked = true;
     void run(() => api.check());
   };
-  if (document.querySelector('.settings-panel.is-active')?.getAttribute('data-panel') === 'updates') checkUpdatesOnOpen();
+  if (document.querySelector('.settings-panel.is-active')?.getAttribute('data-panel') === 'about') checkUpdatesOnOpen();
 }
 
 let lemmaAudio: HTMLAudioElement | null = null;

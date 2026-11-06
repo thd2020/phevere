@@ -30,7 +30,7 @@ function load(name) {
 const { labelTemplateNotes, wikiSenseSections, alignSenseNotes, isGrammarLabel, glossOwnHtml, glossLabelMark } = load('sense-notes');
 const { stripSisterProjects, stripGlossText } = load('lookup-policy');
 const { pruneGlossLinks } = load('text-links');
-const { senseLabelLead, senseNotesHtml, posGrammarHtml, phrasesHtml, languageSwitchHtml, wordFamilyHtml } = load('lexicon-parts');
+const { senseLabelLead, senseNotesHtml, posGrammarHtml, phrasesHtml, languageSwitchHtml, wordFamilyHtml, glossLanguage, splitByGlossLanguage } = load('lexicon-parts');
 
 // {{lb}} labels are joined and sorted as Wiktionary joins them: qualifiers glue to the next label.
 assert.deepEqual(labelTemplateNotes(['countable', 'US', 'politics']), { grammar: ['countable'], labels: ['US', 'politics'] });
@@ -216,11 +216,28 @@ assert.equal(phrasesHtml([{ relation: 'derived', items: [{ word: 'giver' }] }], 
 assert.doesNotMatch(wordFamilyHtml(family, 'act', { phrases: false }), /give up/);
 assert.match(wordFamilyHtml(family, 'act'), /give up/, 'the family keeps phrases when asked to');
 
-// The language switch: English first, the language shown next and marked, the rest folded past seven.
+// Senses explained in Chinese stand apart from the English ones, each with its own sources.
+{
+  const en = { partOfSpeech: 'adjective', meaning: 'Weakened or worn out from age.', source: 'Free Dictionary API · Wiktionary' };
+  const zh = { partOfSpeech: 'adjective', meaning: '老态龙钟的；破旧不堪的', source: 'Chinese Wiktionary' };
+  const ja = { partOfSpeech: 'noun', meaning: 'ほうろう', source: 'Kaikki' };
+  assert.equal(glossLanguage(zh), 'zh');
+  assert.equal(glossLanguage({ meaning: 'enamel (牙釉质)', source: 'Kaikki' }), 'en', 'an English gloss naming a Chinese word stays English');
+  assert.equal(glossLanguage(ja), 'ja');
+  const split = splitByGlossLanguage([zh, en, ja]);
+  assert.deepEqual(split.main, [en]);
+  assert.deepEqual(split.other.map((g) => [g.lang, g.defs]), [['zh', [zh]], ['ja', [ja]]]);
+  assert.deepEqual(splitByGlossLanguage([zh]).main, [zh], 'with no English sense nothing is split off');
+}
+
+// The language switch: English first, the rest in the page's order so a picked chip stays put,
+// the language shown marked, the rest folded past seven with the shown one kept in view.
 const langs = (n, current) =>
   ['en', 'fr', 'ia', 'it', 'la', 'de', 'es', 'nl', 'sv', 'da'].slice(0, n).map((code) => ({ code, name: code.toUpperCase(), ...(code === current ? { current: true } : {}) }));
 const sw = languageSwitchHtml({ word: 'i.e.', languages: langs(5, 'it') }, 'lookup');
-assert.deepEqual([...sw.matchAll(/>([A-Z]{2})</g)].map((m) => m[1]), ['EN', 'IT', 'FR', 'IA', 'LA']);
+assert.deepEqual([...sw.matchAll(/>([A-Z]{2})</g)].map((m) => m[1]), ['EN', 'FR', 'IA', 'IT', 'LA']);
+const folded = languageSwitchHtml({ word: 'a', languages: langs(10, 'da') }, 'act');
+assert.deepEqual([...folded.split('<details')[0].matchAll(/>([A-Z]{2})</g)].map((m) => m[1]), ['EN', 'DA', 'FR', 'IA', 'IT', 'LA', 'DE'], 'a folded language shown comes into view');
 assert.match(sw, /<span class="lx-lang is-current" aria-current="true">IT<\/span>/);
 assert.match(sw, /data-lookup-lang="fr" data-q="i.e."/);
 assert.match(languageSwitchHtml({ word: 'a', languages: langs(10, 'en') }, 'act'), /<summary class="lx-lang">\+3<\/summary>/);

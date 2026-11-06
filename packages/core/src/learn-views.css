@@ -25,12 +25,12 @@
 .hx-plus .hx-plus__link:hover { color: var(--nbv-ink, #1c1917); text-decoration-color: currentColor; }
 
 /*
- * Progress, set like a printed spread rather than a grid of cards: a masthead with the streak as a
- * giant numeral beside today's gauges, then numbered sections on ink rules, each led by an
- * oversized number and a short label. Numbers stay below their rule and beside their label at every
- * width: each giant number takes `--ch` (its length) and shrinks to fit its column. The page and
- * each section are size containers, so the layout follows the width Progress actually has rather
- * than the window's. Numbers are Source Serif at its display optical size.
+ * Progress, set like a printed page rather than a grid of cards: a masthead with the streak beside
+ * today's gauges, then numbered sections on ink rules, each led by a large number and a short
+ * label. Numbers are sized to be read at a glance, not as posters, so a window shows several
+ * sections at once; each number still takes `--ch` (its length) and shrinks to fit its column. The
+ * page and each section are size containers, so the layout follows the width Progress actually has
+ * rather than the window's. Numbers are Source Serif at its display optical size.
  */
 .lrp-frame { container: lrp / inline-size; }
 .lrp {
@@ -41,10 +41,10 @@
   padding-bottom: 28px;
 }
 @container lrp (min-width: 720px) {
-  .lrp { grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 36px; }
-  .lrp-mast, .lrp-sec--memory, .lrp-sec--answers, .lrp-sec--skills, .lrp-sec--fams { grid-column: 1 / -1; }
-  .lrp-sec--ahead, .lrp-sec--lists { grid-column: 1 / span 7; }
-  .lrp-sec--held, .lrp-sec--trouble { grid-column: 8 / -1; }
+  .lrp { grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 32px; }
+  .lrp-mast, .lrp-sec--memory, .lrp-sec--fams { grid-column: 1 / -1; }
+  .lrp-sec--ahead, .lrp-sec--answers, .lrp-sec--lists { grid-column: 1 / span 7; }
+  .lrp-sec--held, .lrp-sec--skills, .lrp-sec--trouble { grid-column: 8 / -1; }
 }
 .lrp-none { margin: 0; font: 500 12.5px/1.35 var(--nbv-ui); color: var(--nbv-soft); }
 
@@ -53,20 +53,20 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas: 'kicker' 'streak' 'gauges';
-  padding: 4px 0 36px;
+  padding: 2px 0 18px;
 }
 @container lrp (min-width: 560px) {
   .lrp-mast {
     grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
     grid-template-areas: 'kicker kicker' 'streak gauges';
-    column-gap: 36px;
+    column-gap: 32px;
     align-items: end;
   }
-  .lrp-mast .lrp-gauges { grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 0; padding-bottom: 8px; }
+  .lrp-mast .lrp-gauges { grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 0; padding-bottom: 4px; }
 }
 .lrp-kicker {
   grid-area: kicker;
-  margin: 0 0 14px;
+  margin: 0 0 10px;
   font: 600 11px/1 var(--nbv-ui);
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -76,14 +76,14 @@
 .lrp-giant {
   --ch: 1;
   /* Line height 0.86 keeps the lining figures inside their own box, so nothing can run into them. */
-  font: 700 min(clamp(120px, 34cqi, 200px), calc(150cqi / var(--ch)))/0.86 var(--nbv-serif);
+  font: 700 min(clamp(52px, 12cqi, 72px), calc(80cqi / var(--ch)))/0.86 var(--nbv-serif);
   font-variation-settings: var(--lrp-display);
   font-variant-numeric: lining-nums tabular-nums;
   letter-spacing: -0.06em;
   color: var(--nbv-line);
 }
 .lrp-mast.is-on .lrp-giant { color: var(--nbv-ember); }
-.lrp-gauges { grid-area: gauges; display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 16px 24px; margin-top: 26px; }
+.lrp-gauges { grid-area: gauges; display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px 24px; margin-top: 14px; }
 .lrp-gauge { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 7px 8px; min-width: 0; }
 .lrp-gauge__label { font: 600 10.5px/1 var(--nbv-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--nbv-soft); }
 .lrp-gauge__n { font: 500 12px/1 var(--nbv-ui); color: var(--nbv-soft); white-space: nowrap; }
@@ -93,26 +93,26 @@
 .lrp-gauge.is-done .lrp-gauge__bar i { background: var(--nbv-teal); }
 
 /* Sections: a numbered label on an ink rule, then the body below it. The full-width ones carry a heavier rule. */
-.lrp-sec { container: lrp-sec / inline-size; display: grid; gap: 18px; align-content: start; min-width: 0; padding: 12px 0 34px; border-top: 1px solid var(--nbv-ink); }
+.lrp-sec { container: lrp-sec / inline-size; display: grid; gap: 12px; align-content: start; min-width: 0; padding: 10px 0 22px; border-top: 1px solid var(--nbv-ink); }
 .lrp-sec--memory, .lrp-sec--answers, .lrp-sec--skills { border-top-width: 3px; }
 .lrp-sec__label { display: flex; align-items: baseline; gap: 10px; margin: 0; font: 600 10.5px/1 var(--nbv-ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--nbv-ink); }
 .lrp-sec__label span { font: italic 600 14px/1 var(--nbv-serif); letter-spacing: 0; color: var(--nbv-ember); }
 
-/* An oversized number, and beside it a label that names it with one short line under the label. */
+/* A large number, and beside it a label that names it with one short line under the label. */
 .lrp-fig { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 16px; min-width: 0; }
 .lrp-fig__n {
   --ch: 1;
-  font: 700 min(clamp(60px, 15cqi, 96px), calc(150cqi / var(--ch)))/0.86 var(--nbv-serif);
+  font: 700 min(clamp(34px, 8cqi, 44px), calc(80cqi / var(--ch)))/0.9 var(--nbv-serif);
   font-variation-settings: var(--lrp-display);
   font-variant-numeric: lining-nums tabular-nums;
   letter-spacing: -0.05em;
   color: var(--nbv-ink);
 }
 .lrp-fig.is-teal .lrp-fig__n { color: var(--nbv-teal); }
-.lrp-fig.is-wide .lrp-fig__n { font-size: min(clamp(72px, 19cqi, 136px), calc(150cqi / var(--ch))); }
-.lrp-fig__cap { display: grid; gap: 5px; min-width: 0; margin: 0; padding-bottom: 0.2em; }
+.lrp-fig.is-wide .lrp-fig__n { font-size: min(clamp(36px, 9cqi, 48px), calc(80cqi / var(--ch))); }
+.lrp-fig__cap { display: grid; gap: 3px; min-width: 0; margin: 0; padding-bottom: 0.1em; }
 .lrp-fig__label { font: 600 10.5px/1.2 var(--nbv-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--nbv-ink); }
-.lrp-fig__sub { font: 400 15px/1.25 var(--nbv-serif); color: var(--nbv-soft); }
+.lrp-fig__sub { font: 400 14px/1.25 var(--nbv-serif); color: var(--nbv-soft); }
 .lrp-fig__sub b { font-weight: 700; font-variant-numeric: lining-nums tabular-nums; color: var(--nbv-ink); }
 .lrp-fig__facts { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 4px; font: 500 12px/1.3 var(--nbv-ui); color: var(--nbv-soft); }
 .lrp-fig__facts b { margin-right: 3px; font: 700 16px/1 var(--nbv-serif); font-variant-numeric: lining-nums tabular-nums; color: var(--nbv-ember); }
@@ -123,7 +123,7 @@
 .lrp-skill:first-child { padding-left: 0; border-left: 0; }
 .lrp-skill__name { font: 600 10.5px/1 var(--nbv-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--nbv-soft); }
 .lrp-skill__pct {
-  font: 700 clamp(40px, 11cqi, 76px)/0.86 var(--nbv-serif);
+  font: 700 clamp(24px, 6cqi, 32px)/0.9 var(--nbv-serif);
   font-variation-settings: var(--lrp-display);
   font-variant-numeric: lining-nums tabular-nums;
   letter-spacing: -0.05em;
@@ -148,11 +148,11 @@
 .lrp-mix__k b { margin-right: 3px; font: 700 15px/1 var(--nbv-serif); color: var(--nbv-ink); }
 
 /* Each list: its name in serif, the known count large in teal, the bar, then the rest in a line. */
-.lrp-lists { display: grid; gap: 18px; margin: 0; padding: 0; list-style: none; }
+.lrp-lists { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .lrp-list { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 7px 12px; }
-.lrp-list__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 21px/1.1 var(--nbv-serif); letter-spacing: -0.015em; color: var(--nbv-ink); }
+.lrp-list__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 17px/1.1 var(--nbv-serif); letter-spacing: -0.015em; color: var(--nbv-ink); }
 .lrp-list__n { font: 500 12px/1 var(--nbv-ui); color: var(--nbv-soft); white-space: nowrap; }
-.lrp-list__n b { margin-right: 2px; font: 700 28px/1 var(--nbv-serif); font-variant-numeric: lining-nums tabular-nums; letter-spacing: -0.04em; color: var(--nbv-teal); }
+.lrp-list__n b { margin-right: 2px; font: 700 20px/1 var(--nbv-serif); font-variant-numeric: lining-nums tabular-nums; letter-spacing: -0.04em; color: var(--nbv-teal); }
 .lrp-list .lrp-bar { grid-column: 1 / -1; }
 .lrp-list__more { grid-column: 1 / -1; font: 500 11.5px/1.4 var(--nbv-ui); color: var(--nbv-soft); }
 .lrp-bar { height: 6px; min-width: 0; }
@@ -171,7 +171,7 @@
   --w: 0.5;
   display: inline-flex;
   align-items: flex-start;
-  min-height: 32px;
+  min-height: 28px;
   padding: 2px 2px 2px 0;
   border: 0;
   background: none;
@@ -179,7 +179,7 @@
   /* A long word in a narrow column takes a smaller size, and breaks only as a last resort. */
   max-width: 100%;
   overflow-wrap: anywhere;
-  font: 600 min(calc(17px + var(--w) * 21px), 12cqi)/1 var(--nbv-serif);
+  font: 600 min(calc(15px + var(--w) * 13px), 12cqi)/1 var(--nbv-serif);
   letter-spacing: -0.02em;
   cursor: pointer;
   text-decoration: underline;
@@ -194,9 +194,9 @@
 @media (hover: hover) and (pointer: fine) { .lrp-tw:hover { text-decoration-color: currentColor; } }
 
 /* Root families: each root set large in italic, sized by how many words it gathers. */
-.lrp-fams { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 22px 28px; margin: 0; padding: 0; list-style: none; }
+.lrp-fams { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px 24px; margin: 0; padding: 0; list-style: none; }
 .lrp-fam { --s: 0.5; display: grid; align-content: end; gap: 5px; min-width: 0; }
-.lrp-fam__root { overflow-wrap: anywhere; font: italic 500 calc(20px + var(--s) * 24px)/0.95 var(--nbv-serif); letter-spacing: -0.02em; color: var(--nbv-ink); }
+.lrp-fam__root { overflow-wrap: anywhere; font: italic 500 calc(17px + var(--s) * 13px)/0.95 var(--nbv-serif); letter-spacing: -0.02em; color: var(--nbv-ink); }
 .lrp-fam__gloss { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 11.5px/1.2 var(--nbv-ui); color: var(--nbv-soft); }
 .lrp-fam__n { font: 600 11px/1 var(--nbv-ui); font-variant-numeric: tabular-nums; color: var(--nbv-soft); }
 
@@ -299,24 +299,24 @@
  * and a strip with one dot per word by its chance of recall, teal when held and rust once below
  * 90% (due). Today, In a week and In a month move the dots to where they would be.
  */
-.lrc--memory { display: grid; gap: 16px; }
+.lrc--memory { display: grid; gap: 12px; }
 .lrc-mem__head { min-width: 0; }
 .lrc-mem__big {
   --ch: 2;
   margin: 0;
-  font: 700 min(clamp(96px, 30cqi, 184px), calc(150cqi / var(--ch)))/0.86 var(--nbv-serif);
+  font: 700 min(clamp(44px, 10cqi, 60px), calc(80cqi / var(--ch)))/0.9 var(--nbv-serif);
   font-variation-settings: 'opsz' 60;
   font-variant-numeric: lining-nums tabular-nums;
   letter-spacing: -0.06em;
   color: var(--nbv-teal);
 }
 @container lrp-sec (min-width: 640px) {
-  .lrc--memory { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); column-gap: 36px; align-items: start; }
+  .lrc--memory { grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); column-gap: 32px; align-items: start; }
   .lrc-mem__head { grid-row: 1 / span 2; }
   .lrc--memory > .lrc-readout { grid-column: 2; }
-  .lrc-mem__big { font-size: min(184px, calc(70cqi / var(--ch))); }
+  .lrc-mem__big { font-size: min(60px, calc(40cqi / var(--ch))); }
 }
-.lrc-mem__cap { display: grid; gap: 5px; margin: 16px 0 0; }
+.lrc-mem__cap { display: grid; gap: 4px; margin: 8px 0 0; }
 .lrc-mem__chart { display: grid; gap: 8px; min-width: 0; }
 .lrc-mem__whens { display: inline-flex; justify-self: start; gap: 2px; padding: 3px; border-radius: 999px; background: var(--nbv-paper-2); }
 .lrc-mem__when {
@@ -332,7 +332,7 @@
 }
 .lrc-mem__when.is-on { background: var(--nbv-panel); color: var(--nbv-ink); box-shadow: 0 1px 2px rgba(28, 25, 23, 0.12); }
 .lrc-mem__when:focus-visible { outline: 2px solid var(--nbv-teal); outline-offset: 1px; }
-.lrc-svg.lrc-mem__svg { max-width: 520px; outline: none; cursor: crosshair; }
+.lrc-svg.lrc-mem__svg { max-width: 420px; outline: none; cursor: crosshair; }
 .lrc-mem__svg:focus-visible { outline: 2px solid var(--nbv-teal); outline-offset: 4px; border-radius: 6px; }
 .lrc-mem__zone { fill: rgba(156, 61, 0, 0.06); }
 .lrc-mem__zlabel { font: 700 8px var(--nbv-ui); letter-spacing: 0.1em; text-transform: uppercase; text-anchor: end; fill: var(--nbv-ember) !important; }
@@ -345,5 +345,5 @@
   .lrc-mem__dot, .lrc-mem__ring, .lrp-gauge__bar i { transition: none; }
 }
 
-/* Wide windows: charts keep a readable size. */
-.lrc-svg { max-width: 560px; }
+/* Wide windows: charts keep the size of their text close to the page's, rather than growing with the column. */
+.lrc-svg { max-width: 440px; }

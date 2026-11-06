@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.1] - 2026-11-07
+
+### Added
+
+- Zoom in on a sense picture (2026-11-07): the large picture that opens from a sense can be zoomed and moved. On the computer, scroll over it to zoom around the pointer, double-click to switch between fit and 2.5×, drag to move a zoomed picture, and press +, − or 0; on the phone, pinch, double-tap and drag. It zooms up to 6× and never smaller than fit or off its frame. Clicking or tapping the picture no longer closes it; a click beside it, Escape or Back does.
+- "Closest in meaning" questions (2026-11-07): Learn can now show a word and ask which of four words is closest to it in meaning, the vocabulary item of TOEFL reading and the GRE. The right answer is a synonym from the word's dictionary entry, under its main part of speech; the wrong ones are other words from your lists that look like that synonym, so the odd one out is never the answer, and a word that is itself a synonym is never offered as wrong. It comes up for words you are learning or hold for days, once you have answered a few meaning questions right, and like the other kinds it is picked by how likely you are to get it right. The countdown applies to it as to the other choice questions. Desktop and phone alike.
+- Learn more once today is done (2026-11-07): when Learn says "Nothing due today", it now offers "Learn 10 more words", which starts a round of the next new words past today's goal (the number is your daily goal, at least five), and "Review 20 words early", which asks the started words that are due soonest. Each shows only when it has words. They work on My words, a word book and All books, on the desktop and the phone.
+- Search shortcuts (2026-11-07): Ctrl+F and Ctrl+K (Cmd+F and Cmd+K on a Mac) put the cursor in the main window's search box from Words, Learn or Recent.
+
+### Changed
+
+- Chinese glosses have their own section (2026-11-07): an English word's Chinese equivalents from Chinese Wiktionary (and glosses in Japanese or Russian from those editions) are no longer numbered in among its English senses. They follow the English senses in their own section, "In Chinese" (中文释义 in Chinese), with its own "Definitions from Chinese Wiktionary" line, and the section rail has a Chinese tab to jump to it; the English senses' line names only the English sources. A word with only Chinese glosses shows them as its senses, as before. Desktop and phone alike.
+- The language row keeps its order (2026-11-07): picking a language under the headword no longer moves its chip to second place; English stays first and the rest keep the page's order. Only a language folded under "+N" is brought into view when it is the one shown.
+- Learn settings you tap instead of spin (2026-11-07): Settings → Learn no longer uses number wheels. Each list, My words and every word book you added, has a row of choices (5, 10, 15, 20, 30 and 50 new words a day) and an Other field for any number from 1 to 999. Under the choices a line says what the goal costs, "About 13 min a day", and when the last word in the list will have been started, "every word started by Dec 30", and it changes as soon as you pick another number; the row's corner shows how many words are not started yet. Once Phevere knows your pace from three or more study days, the number that fits your usual day is among the choices, marked Your pace. The countdown on choice questions is a row of choices too: Off, 5, 8, 10, 15, 20 and 30 seconds. Desktop and phone alike.
+- A denser Progress page (2026-11-07): Learn → Progress no longer sets its figures as posters. The streak, Memory, Reviews ahead, Answers and Skills numbers are about a third of their old size, sections sit closer together, Answers per day and Skills share a row on a wide window as Reviews ahead and How long words are held do, and charts stop growing past a readable width. A desktop window now shows about two sections at once instead of one number.
+- Updates are on About (2026-11-07): Settings no longer has a separate Updates page. The update status, Install updates, Check now and, on the computer, Roll back now sit on Settings → About, right under the version, and opening About checks for an update. On the phone this shows on Android only, as before.
+- No "i" on card pictures (2026-11-07): pictures in Words → Cards and Learn no longer carry the small "i" button and its credit strip. On the computer the author and licence show when you hover the picture; on the phone they show in the full-screen picture. Settings → About still credits Wikimedia Commons.
+
+### Fixed
+
+- The language switch moves and stays usable (2026-11-07): picking Romanian, French or another language under the headword now marks that language as the one shown, so the highlight moves and English stays one tap away. The entry shown is that language's own Wiktionary section, even when it only glosses the word with its English twin, as Romanian "decrepit" does; before, Phevere swapped in the English senses and left English highlighted, so the row looked stuck.
+- Rich senses no longer drop out for minutes (2026-11-07): looking up something Wiktionary has no page for, such as a stray string on the clipboard, counted as Wiktionary failing, and after two such misses Phevere skipped Wiktionary for three minutes or more. Every lookup in that time had only Free Dictionary's plain senses, without the grammar codes, usage labels, synonyms and examples Wiktionary gives, which is why some words looked detailed and others bare. Only a real network failure counts now.
+- Words list and export no longer freeze on Windows (2026-11-07): with another program reading windows through Windows accessibility, such as an automation or AI agent tool, Phevere's own accessibility tree was queried hundreds of thousands of times a second, and scrolling, hovering and clicking in Words stalled for seconds at a time. Phevere now builds that tree only while a screen reader such as Narrator, NVDA or JAWS is running; to keep it on for another assistive tool, create an empty file named `.enable-accessibility` in `%APPDATA%\phevere` and restart. Hover lookup also leaves Phevere's own windows and dialogs alone: resting the pointer on the Export or Export for Anki save dialog used to block the whole app for up to a minute.
+
 ## [4.3.0] - 2026-11-06
 
 ### Added
@@ -677,7 +701,8 @@ All six downloads were replaced on the existing 2.1.0 release; the git tag is un
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v4.3.0...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v4.3.1...HEAD
+[4.3.1]: https://github.com/thd2020/phevere/compare/v4.3.0...v4.3.1
 [4.3.0]: https://github.com/thd2020/phevere/compare/v4.2.0...v4.3.0
 [4.2.0]: https://github.com/thd2020/phevere/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/thd2020/phevere/compare/v4.0.0...v4.1.0

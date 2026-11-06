@@ -58,6 +58,7 @@ export default {
   'notebook.review.ask.listenChoice': '聞こえた単語を選んでください',
   'notebook.review.ask.clozeChoice': '空欄に入る単語を選んでください',
   'notebook.review.ask.spellTiles': '単語をつづってください',
+  'notebook.review.ask.synonymChoice': '意味が最も近い語を選ぶ',
   'notebook.review.ask.recall': '単語を入力してください',
   'notebook.review.ask.listenType': '聞こえた単語を入力してください',
   'notebook.review.ask.cloze': '空欄を埋めてください',
@@ -97,6 +98,8 @@ export default {
 
   'notebook.review.nothingDueToday': '今日の復習はありません',
   'notebook.review.nextReview': '次の復習：{when}',
+  'notebook.review.more.new': { other: '新しい単語をあと{count}語' },
+  'notebook.review.more.ahead': { other: '{count}語を前倒しで復習' },
   'notebook.review.start.review': '復習',
   'notebook.review.start.roundOf': '1ラウンド{count}問',
   'notebook.review.start.minutes': { other: '約{count}分' },
@@ -215,7 +218,6 @@ export default {
   'notebook.view.families': '同族語',
   'notebook.view.map': '単語マップ',
   'notebook.view.cards': 'カード',
-  'notebook.cards.pictureCredit': '画像のクレジット',
 
   'notebook.cards.empty': '保存した単語はありません。',
   'notebook.cards.expandAll': 'すべて広げる',

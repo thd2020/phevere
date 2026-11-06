@@ -881,8 +881,10 @@ void UIAutomationSelectionMonitor::runCaptureChain(int x, int y, uint64_t gen) {
                         std::cout << "[UIA] step1 TextPattern empty; capture chain 2→5" << std::endl;
                     }
 
-                    // 2. Force Chromium to build a UIA tree, then retry
-                    pokeChromiumUia(pt);
+                    // 2. Force Chromium to build a UIA tree, then retry. Not in Phevere's own
+                    // windows: that would switch on the main window's accessibility tree for the
+                    // rest of the session, and every repaint of the word list then pays for it.
+                    if (!ownProcess) pokeChromiumUia(pt);
                     std::this_thread::sleep_for(std::chrono::milliseconds(kUiaEnableSettleMs));
                     if (stillCurrent()) {
                         text = getSelectedTextFromFocusedOrPoint(uia);
@@ -1149,6 +1151,12 @@ public:
         });
 
         exports.Set("UIAutomationSelectionMonitor", func);
+        // A screen reader (Narrator, NVDA, JAWS) sets this; tools that only crawl windows do not.
+        exports.Set("isScreenReaderActive", Napi::Function::New(env, [](const Napi::CallbackInfo& info) {
+            BOOL on = FALSE;
+            SystemParametersInfoW(SPI_GETSCREENREADER, 0, &on, 0);
+            return Napi::Boolean::New(info.Env(), on != FALSE);
+        }));
         return exports;
     }
 
@@ -1255,6 +1263,21 @@ public:
         out.Set("text", Napi::String::New(env, ""));
         out.Set("x", Napi::Number::New(env, x));
         out.Set("y", Napi::Number::New(env, y));
+
+        // Phevere's own windows, its file dialogs included: a UIA call into this process from its
+        // own main thread blocks it (for over a minute behind a save dialog), and the page looks
+        // up its own words anyway.
+        {
+            POINT ownPt = { x, y };
+            HWND under = WindowFromPoint(ownPt);
+            DWORD pid = 0;
+            if (under) GetWindowThreadProcessId(under, &pid);
+            if (pid == GetCurrentProcessId()) {
+                out.Set("own", Napi::Boolean::New(env, true));
+                if (needUninit) CoUninitialize();
+                return out;
+            }
+        }
 
         CComPtr<IUIAutomation> automation;
         HRESULT hr = CoCreateInstance(__uuidof(CUIAutomation), NULL, CLSCTX_INPROC_SERVER,

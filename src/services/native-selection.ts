@@ -24,12 +24,24 @@ export type SelectionEvent = ContextEvent & {
   source?: 'native' | 'manual';
 };
 
+/** A screen reader is running (Windows). True when unknown: other systems, or no addon. */
+export function screenReaderActive(): boolean {
+  try {
+    const addon = require('../../native-addon');
+    return typeof addon.isScreenReaderActive === 'function' ? !!addon.isScreenReaderActive() : true;
+  } catch {
+    return true;
+  }
+}
+
 /** UIA word under a point. `bounds` is the word box in physical pixels, when the host reports one. */
 export interface WordAtPoint {
   text: string;
   x: number;
   y: number;
   bounds?: { x: number; y: number; width: number; height: number };
+  /** The point is over one of Phevere's own windows (Windows only); nothing there to look up. */
+  own?: boolean;
 }
 
 export interface NativeSelectionService {
@@ -171,6 +183,7 @@ class AddonBackedNativeSelectionService implements NativeSelectionService {
       x: typeof result?.x === 'number' ? result.x : x,
       y: typeof result?.y === 'number' ? result.y : y,
       ...(result?.bounds && typeof result.bounds.width === 'number' ? { bounds: result.bounds } : {}),
+      ...(result?.own ? { own: true } : {}),
     });
     try {
       const result = this.nativeAddon.getWordAtPoint(x, y);

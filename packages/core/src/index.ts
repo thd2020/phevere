@@ -134,7 +134,7 @@ export {
   type CardLayout,
 } from './notebook-views';
 export { analyzeMorphemes, morphBreakdown, morphEntry, morphForms, wordOrigin, type Morph, type MorphEntry, type MorphEtymon, type MorphKind } from './morphology';
-export { vocabPayloadFromResult, examplesFromResult, canAddToWordBook } from './vocab-payload';
+export { vocabPayloadFromResult, examplesFromResult, synonymsFromResult, canAddToWordBook } from './vocab-payload';
 
 export {
   type ContextOrigin,
@@ -268,6 +268,9 @@ export {
 } from './review-schedule';
 export {
   startReview,
+  startExtraRound,
+  extraRoundIds,
+  type ExtraRound,
   ensureReviewQuestion,
   answerReview,
   overrideReview,
@@ -310,7 +313,8 @@ export {
   type VoiceOutcome,
   type RecordingSource,
 } from './pronounce-once';
-export { type ReviewRenderOptions } from './notebook-review';
+export { extraNewCount, type ReviewRenderOptions } from './notebook-review';
+export { wirePictureZoom, type PictureZoom } from './picture-zoom';
 
 export { onVocabChanged } from './vocab-store';
 export { syncVocab, mergeDuplicateLemmas, VOCAB_SYNC_NAMESPACE, type VocabSyncAccount, type VocabSyncResult } from './vocab-sync';
@@ -353,6 +357,7 @@ export {
   scopeEntries,
   learnScopeEntries,
   bookProgress,
+  learnListsLeft,
   scopeReviewQueue,
   startScopeReview,
   reviewNeedsMeaning,
@@ -473,6 +478,9 @@ export {
   posGrammarHtml,
   languageSwitchHtml,
   definitionSourcesHtml,
+  glossLanguage,
+  splitByGlossLanguage,
+  glossSectionLabel,
   type LexiconLinks,
 } from './lexicon-parts';
 export { linkHtml, linkText, pruneGlossLinks, wordLinkHtml, wikiLinkLookup } from './text-links';
@@ -536,7 +544,7 @@ export {
   type KeyCardState,
   type KeyStatus,
 } from './settings-keys';
-export { GOAL_MAX, GOAL_MIN, learnSettingsHtml, type LearnSettingsInput } from './settings-learn';
+export { GOAL_MAX, GOAL_MIN, learnPickValue, learnSettingsHtml, syncLearnPick, type LearnSettingsInput } from './settings-learn';
 export { numberWheelHtml, parseWheelEntry, wheelItemStyle, wireNumberWheels, type NumberWheelInput } from './number-wheel';
 export {
   ABOUT_CREDITS,

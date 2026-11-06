@@ -32,6 +32,8 @@ import {
   phrasesHtml,
   languageSwitchHtml,
   definitionSourcesHtml,
+  glossSectionLabel,
+  splitByGlossLanguage,
   wordFamilyHtml,
   linkHtml,
   linkText,
@@ -443,9 +445,12 @@ function lexiconPane(
   const entryLang = result.detectedLanguage && result.detectedLanguage !== 'auto' ? result.detectedLanguage : '';
   const indexOf = new Map<Definition, number>(defs.map((d, i) => [d, i]));
 
+  // Senses explained in English, and apart from them those explained in Chinese or another
+  // language, each in its own section with its own sources.
+  const split = splitByGlossLanguage(defs);
   const groups = new Map<string, Definition[]>();
   const order: string[] = [];
-  for (const d of defs) {
+  for (const d of split.main) {
     const pos = canonicalPos(d.partOfSpeech);
     if (!groups.has(pos)) {
       groups.set(pos, []);
@@ -475,7 +480,24 @@ function lexiconPane(
     );
     return { id: pos, label: unknown ? (several ? t('mobile.lexicon.section.other') : t('mobile.lexicon.section.senses')) : abbreviatePos(pos) };
   });
-  posInner += definitionSourcesHtml(defs.flatMap((d) => citeOf(d).map(sourceName)));
+  posInner += definitionSourcesHtml(split.main.flatMap((d) => citeOf(d).map(sourceName)));
+  for (const g of split.other) {
+    const id = `gloss-${g.lang}`;
+    const label = glossSectionLabel(g.lang);
+    const byPos = new Map<string, Definition[]>();
+    for (const d of g.defs) {
+      const pos = canonicalPos(d.partOfSpeech);
+      byPos.set(pos, [...(byPos.get(pos) || []), d]);
+    }
+    let inner = '';
+    for (const [pos, list] of byPos) {
+      if (pos !== 'unknown' && (byPos.size > 1 || several)) inner += `<p class="lexicon-gloss-pos">${esc(pos)}</p>`;
+      inner += renderSenses(list, shown, indexOf, images, reserve, [], result.word || '', entryLang);
+    }
+    inner += definitionSourcesHtml(g.defs.flatMap((d) => citeOf(d).map(sourceName)));
+    posInner += wrapGroup(id, label.heading, inner);
+    posSections.push({ id, label: label.tab });
+  }
   let allInner = wrapPane(posInner, 'lexicon-pane--pos');
 
   const globalExamples = uniqueExamples(result.examples || [])

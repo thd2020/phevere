@@ -136,7 +136,6 @@ export default {
   'desktop.settings.updates.modeAsk': '先詢問',
   'desktop.settings.updates.modeOff': '關閉',
   'desktop.settings.updates.checkNow': '立即檢查',
-  'desktop.settings.updates.version': 'Phevere {version}',
   'desktop.settings.updates.checking': '正在檢查…',
   'desktop.settings.updates.downloading': '正在下載 {version}… {percent}',
   'desktop.settings.updates.installing': '正在安裝 {version}…',

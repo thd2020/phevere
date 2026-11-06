@@ -58,6 +58,7 @@ export default {
   'notebook.review.ask.listenChoice': '들리는 단어를 고르세요',
   'notebook.review.ask.clozeChoice': '빈칸에 들어갈 단어를 고르세요',
   'notebook.review.ask.spellTiles': '단어의 철자를 맞추세요',
+  'notebook.review.ask.synonymChoice': '뜻이 가장 가까운 단어 고르기',
   'notebook.review.ask.recall': '단어를 입력하세요',
   'notebook.review.ask.listenType': '들리는 단어를 입력하세요',
   'notebook.review.ask.cloze': '빈칸을 채우세요',
@@ -97,6 +98,8 @@ export default {
 
   'notebook.review.nothingDueToday': '오늘 복습할 단어 없음',
   'notebook.review.nextReview': '다음 복습: {when}',
+  'notebook.review.more.new': { other: '새 단어 {count}개 더 배우기' },
+  'notebook.review.more.ahead': { other: '{count}개 미리 복습' },
   'notebook.review.start.review': '복습',
   'notebook.review.start.roundOf': '이번 회차 {count}개',
   'notebook.review.start.minutes': { other: '약 {count}분' },
@@ -215,7 +218,6 @@ export default {
   'notebook.view.families': '단어족',
   'notebook.view.map': '단어 맵',
   'notebook.view.cards': '카드',
-  'notebook.cards.pictureCredit': '그림 출처',
 
   'notebook.cards.empty': '저장한 단어가 없습니다.',
   'notebook.cards.expandAll': '모두 펼치기',

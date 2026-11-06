@@ -99,6 +99,7 @@ export default {
   'notebook.review.ask.listenChoice': 'Выберите слово, которое слышите',
   'notebook.review.ask.clozeChoice': 'Выберите слово для пропуска',
   'notebook.review.ask.spellTiles': 'Составьте слово',
+  'notebook.review.ask.synonymChoice': 'Ближайшее по значению',
   'notebook.review.ask.recall': 'Введите слово',
   'notebook.review.ask.listenType': 'Введите слово, которое слышите',
   'notebook.review.ask.cloze': 'Заполните пропуск',
@@ -148,6 +149,8 @@ export default {
 
   'notebook.review.nothingDueToday': 'Сегодня повторять нечего',
   'notebook.review.nextReview': 'Следующее повторение: {when}',
+  'notebook.review.more.new': { one: 'Выучить ещё {count} слово', few: 'Выучить ещё {count} слова', many: 'Выучить ещё {count} слов', other: 'Выучить ещё {count} слова' },
+  'notebook.review.more.ahead': { one: 'Повторить {count} слово заранее', few: 'Повторить {count} слова заранее', many: 'Повторить {count} слов заранее', other: 'Повторить {count} слова заранее' },
   'notebook.review.start.review': 'К повторению',
   'notebook.review.start.roundOf': 'Раунд из {count}',
   'notebook.review.start.minutes': { one: 'Около {count} мин', few: 'Около {count} мин', many: 'Около {count} мин', other: 'Около {count} мин' },
@@ -324,7 +327,6 @@ export default {
   'notebook.view.families': 'Гнёзда',
   'notebook.view.map': 'Связи',
   'notebook.view.cards': 'Карточки',
-  'notebook.cards.pictureCredit': 'Автор изображения',
 
   'notebook.cards.empty': 'Нет сохранённых слов.',
   'notebook.cards.expandAll': 'Разложить все',

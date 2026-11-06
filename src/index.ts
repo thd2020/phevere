@@ -13,7 +13,7 @@ import { clipboardService } from './services/clipboard';
 import { dictionaryService } from './services/dictionary';
 import { wikipediaService } from './services/wikipedia';
 import { searchService } from './services/search';
-import { createNativeSelectionService, SelectionEvent, type NativeSelectionService } from './services/native-selection';
+import { createNativeSelectionService, screenReaderActive, SelectionEvent, type NativeSelectionService } from './services/native-selection';
 import {
   openMacAccessibilitySettings,
   promptOpenMacAccessibilitySettings,
@@ -76,6 +76,7 @@ import {
   unsubscribeWordbook,
   vocabPayloadFromResult,
   examplesFromResult,
+  synonymsFromResult,
   QUESTION_KINDS,
   type AnswerDetails,
 } from '@phevere/core';
@@ -205,6 +206,26 @@ try {
   }
 } catch (e) {
   /* ignore — path may be unavailable in odd launch contexts */
+}
+
+/**
+ * Chromium keeps a full accessibility tree of each page while any UI Automation or MSAA client
+ * listens, and serves every query on the UI thread. Tools that crawl windows (automation
+ * agents, some input helpers) then walk the word list hundreds of thousands of times a second
+ * and the window stops responding. Build the tree only for a screen reader, or when
+ * `%APPDATA%/phevere/.enable-accessibility` exists. Must run before ready.
+ */
+try {
+  if (
+    process.platform === 'win32' &&
+    !installerCommand &&
+    !fs.existsSync(path.join(app.getPath('userData'), '.enable-accessibility')) &&
+    !screenReaderActive()
+  ) {
+    app.commandLine.appendSwitch('disable-renderer-accessibility');
+  }
+} catch {
+  /* keep Chromium's default */
 }
 
 /** Only one packaged Phevere process. Dev/Forge must allow relaunch or the
@@ -3660,11 +3681,13 @@ ipcMain.handle('wordbook-meaning', async (_e, lemma: string) => {
   return payload ? { definition: payload.definition, reading: payload.reading, partOfSpeech: payload.partOfSpeech } : null;
 });
 /** Example sentences for a quiz word (its gap-fill question), from the cached lookup. */
+/** A word's example sentences and synonyms, for Learn's gap and "closest in meaning" questions. */
 ipcMain.handle('wordbook-examples', async (_e, lemma: string) => {
   try {
-    return examplesFromResult(await dictionaryService.lookup(String(lemma), 'auto'));
+    const result = await dictionaryService.lookup(String(lemma), 'auto');
+    return { examples: examplesFromResult(result), synonyms: synonymsFromResult(result) };
   } catch {
-    return [];
+    return { examples: [], synonyms: [] };
   }
 });
 ipcMain.handle('wordbook-save', async (_e, lemma: string, hasMeaning?: boolean) => {

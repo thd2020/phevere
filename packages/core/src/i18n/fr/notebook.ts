@@ -60,6 +60,7 @@ export default {
   'notebook.review.ask.listenChoice': 'Choisissez le mot entendu',
   'notebook.review.ask.clozeChoice': 'Choisissez le mot manquant',
   'notebook.review.ask.spellTiles': 'Épelez le mot',
+  'notebook.review.ask.synonymChoice': 'Le plus proche par le sens',
   'notebook.review.ask.recall': 'Saisissez le mot',
   'notebook.review.ask.listenType': 'Saisissez le mot entendu',
   'notebook.review.ask.cloze': 'Complétez la phrase',
@@ -102,6 +103,8 @@ export default {
 
   'notebook.review.nothingDueToday': 'Rien à réviser aujourd’hui',
   'notebook.review.nextReview': 'Prochaine révision : {when}',
+  'notebook.review.more.new': { one: 'Apprendre {count} mot de plus', other: 'Apprendre {count} mots de plus' },
+  'notebook.review.more.ahead': { one: 'Réviser {count} mot en avance', other: 'Réviser {count} mots en avance' },
   'notebook.review.start.review': 'À réviser',
   'notebook.review.start.roundOf': 'Série de {count}',
   'notebook.review.start.minutes': { one: 'Environ {count} min', other: 'Environ {count} min' },
@@ -221,7 +224,6 @@ export default {
   'notebook.view.families': 'Familles',
   'notebook.view.map': 'Carte',
   'notebook.view.cards': 'Fiches',
-  'notebook.cards.pictureCredit': 'Crédit de l’image',
 
   'notebook.cards.empty': 'Aucun mot enregistré.',
   'notebook.cards.expandAll': 'Tout étaler',

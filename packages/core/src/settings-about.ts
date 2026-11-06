@@ -190,7 +190,8 @@ function servicesRow(): string {
   </div>`;
 }
 
-export function aboutSettingsHtml(info: AboutInfo): string {
+/** `updates`: the platform's Updates rows, shown under the version when it has an updater. */
+export function aboutSettingsHtml(info: AboutInfo, updates = ''): string {
   const credits = aboutCredits(info.platform);
   const data = credits.filter((c) => c.group === 'data').map((c) => creditRow(c, info.platform)).join('') + servicesRow();
   const software = credits.filter((c) => c.group === 'software').map((c) => creditRow(c, info.platform)).join('');
@@ -204,6 +205,7 @@ export function aboutSettingsHtml(info: AboutInfo): string {
       </span>
       <button type="button" class="sv-btn" data-act="about-copy" data-copy="${esc(copy)}" data-copied="${esc(t('common.copied'))}" aria-describedby="about-version">${ICON.copy}<span>${esc(t('common.copy'))}</span></button>
     </div>
+    ${updates}
     <div class="sv-ledger sv-about__star">
       <div class="sv-row">
         <span class="sv-row__text"><span class="sv-row__label">${esc(t('settings.about.starTitle'))}</span><span class="sv-row__sub">${esc(t('settings.about.starSub'))}</span></span>

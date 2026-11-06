@@ -65,6 +65,7 @@ export default {
   'notebook.review.ask.listenChoice': '选出你听到的单词',
   'notebook.review.ask.clozeChoice': '选出填入空格的单词',
   'notebook.review.ask.spellTiles': '拼出单词',
+  'notebook.review.ask.synonymChoice': '选出意思最接近的词',
   'notebook.review.ask.recall': '输入单词',
   'notebook.review.ask.listenType': '输入你听到的单词',
   'notebook.review.ask.cloze': '填空',
@@ -105,6 +106,8 @@ export default {
   // Review: the start card
   'notebook.review.nothingDueToday': '今天没有待复习',
   'notebook.review.nextReview': '下次复习：{when}',
+  'notebook.review.more.new': { other: '再学 {count} 个新词' },
+  'notebook.review.more.ahead': { other: '提前复习 {count} 个词' },
   'notebook.review.start.review': '复习',
   'notebook.review.start.roundOf': '本轮 {count} 个',
   'notebook.review.start.minutes': { other: '约 {count} 分钟' },
@@ -228,7 +231,6 @@ export default {
   'notebook.view.families': '词族',
   'notebook.view.map': '关系图',
   'notebook.view.cards': '卡片',
-  'notebook.cards.pictureCredit': '图片来源',
 
   // Cards (notebook-cards.ts)
   'notebook.cards.empty': '还没有存下单词。',

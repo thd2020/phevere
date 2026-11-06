@@ -13,6 +13,8 @@ import './fonts';
 import '@phevere/core/lexicon-parts.css';
 import {
   definitionSourcesHtml,
+  glossSectionLabel,
+  splitByGlossLanguage,
   didYouMeanHtml,
   formLineHtml,
   inflectionsHtml,
@@ -28,6 +30,7 @@ import { linkHtml, linkText, pruneGlossLinks, wikiLinkLookup } from '@phevere/co
 import { exampleKey, tidyExample } from '@phevere/core/example-text';
 import { morphemeOfferHtml, morphemeSections } from '@phevere/core/morpheme-view';
 import { loadWordbook } from '@phevere/core/wordbooks';
+import { wirePictureZoom } from '@phevere/core/picture-zoom';
 import '@phevere/core/popover-menu.css';
 import { openMenu } from '@phevere/core/popover-menu';
 import { bookPickItems } from '@phevere/core/wordbook-views';
@@ -75,6 +78,8 @@ import { windowLanguageReady } from './ui-language';
   phrasesHtml,
   languageSwitchHtml,
   definitionSourcesHtml,
+  splitByGlossLanguage,
+  glossSectionLabel,
   lookupNoticeText,
   exampleKey,
   tidyExample,
@@ -88,6 +93,7 @@ import { windowLanguageReady } from './ui-language';
   openMenu,
   bookPickItems,
   canAddToWordBook,
+  wirePictureZoom,
 };
 
 export {};

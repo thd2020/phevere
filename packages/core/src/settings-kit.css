@@ -397,33 +397,63 @@ label.sv-row { cursor: pointer; }
  * keep one column width, so a lone countdown lines up with the goals above it.
  */
 .sv.sv-learn { container-type: inline-size; }
-.sv .sv-dials { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 164px), 1fr)); gap: 10px; }
-@container (min-width: 520px) {
-  .sv .sv-dials { grid-template-columns: repeat(auto-fill, minmax(164px, 1fr)); }
+/*
+ * Settings → Learn (settings-learn.ts): one row per list, its presets as chips, a field for any
+ * other number, and the plan line under them. The picked chip takes the seg control's raised look;
+ * the suggested one carries a small teal tag under its number.
+ */
+.sv .sv-goals { padding: 4px 18px; }
+.sv .sv-goal { display: grid; gap: 8px; padding: 14px 0; border-top: 1px solid var(--sv-line-soft); }
+.sv .sv-goal:first-child { border-top: 0; }
+.sv .sv-goal__top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; }
+.sv .sv-goal__name { font: 600 14px/1.3 var(--sv-ui); font-family: var(--sv-ui), var(--sv-cjk); color: var(--sv-ink); }
+.sv .sv-goal__left { font: 500 12px/1.3 var(--sv-ui); font-variant-numeric: tabular-nums; color: var(--sv-ink-soft); }
+.sv .sv-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.sv .sv-pick {
+  position: relative;
+  display: inline-grid;
+  justify-items: center;
+  align-content: center;
+  min-width: 48px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: var(--sv-paper-2);
+  box-shadow: inset 0 0 0 1px var(--sv-line-soft);
+  color: var(--sv-ink-soft);
+  cursor: pointer;
+  transition: background-color 0.2s var(--sv-ease), color 0.2s var(--sv-ease), box-shadow 0.2s var(--sv-ease);
 }
-.sv .sv-dial {
-  container-type: inline-size;
-  display: grid;
-  align-content: start;
-  gap: 4px;
-  min-width: 0;
-  padding: 14px 12px 12px;
-  border: 1px solid var(--sv-line-soft);
-  border-radius: 20px;
+.sv .sv-pick input[type='radio'] { position: absolute; opacity: 0; pointer-events: none; }
+.sv .sv-pick__n { font: 700 16px/1 var(--sv-serif); font-variant-numeric: lining-nums tabular-nums; }
+.sv .sv-pick__tag { margin-top: 3px; font: 700 8.5px/1 var(--sv-ui); letter-spacing: 0.08em; text-transform: uppercase; color: var(--sv-teal); }
+.sv .sv-pick.is-on,
+.sv .sv-pick:has(input[type='radio']:checked) {
   background: var(--sv-card);
-  box-shadow: var(--sv-shadow);
+  color: var(--sv-rust);
+  box-shadow: 0 1px 2px rgb(28 25 23 / 0.12), 0 0 0 1.5px rgb(156 61 0 / 0.35);
 }
-.sv .sv-dial__label {
-  display: -webkit-box;
-  min-height: 2.6em;
-  padding: 0 4px;
-  overflow: hidden;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  font: 600 13px/1.3 var(--sv-ui);
-  font-family: var(--sv-ui), var(--sv-cjk);
-  color: var(--sv-ink);
+.sv .sv-pick:has(input:focus-visible) { outline: 2px solid var(--sv-rust); outline-offset: 1px; }
+@media (hover: hover) and (pointer: fine) { .sv .sv-pick:not(.is-on):hover { background: var(--sv-card); color: var(--sv-ink); } }
+.sv .sv-pick--own { padding: 0 4px; cursor: text; }
+.sv .sv-picks .sv-pick__field {
+  width: 64px;
+  height: 32px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: 700 16px/1 var(--sv-serif);
+  font-variant-numeric: lining-nums tabular-nums;
+  text-align: center;
+  color: inherit;
+  outline: none;
+  -moz-appearance: textfield;
 }
+.sv .sv-picks .sv-pick__field::placeholder { font: 600 13px/1 var(--sv-ui); color: var(--sv-ink-soft); }
+.sv .sv-picks .sv-pick__field::-webkit-inner-spin-button,
+.sv .sv-picks .sv-pick__field::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.sv .sv-goal__plan { margin: 0; font: 500 12.5px/1.4 var(--sv-ui); font-variant-numeric: tabular-nums; color: var(--sv-ink-soft); }
 
 .sv .nw {
   --nw-size: clamp(56px, 44cqi, 96px);

@@ -65,6 +65,7 @@ export default {
   'notebook.review.ask.listenChoice': '選出你聽到的單字',
   'notebook.review.ask.clozeChoice': '選出填入空格的單字',
   'notebook.review.ask.spellTiles': '拼出這個單字',
+  'notebook.review.ask.synonymChoice': '選出意思最接近的詞',
   'notebook.review.ask.recall': '輸入這個單字',
   'notebook.review.ask.listenType': '輸入你聽到的單字',
   'notebook.review.ask.cloze': '填空',
@@ -105,6 +106,8 @@ export default {
   // Review: the start card
   'notebook.review.nothingDueToday': '今天沒有待複習的單字',
   'notebook.review.nextReview': '下次複習：{when}',
+  'notebook.review.more.new': { other: '再學 {count} 個新詞' },
+  'notebook.review.more.ahead': { other: '提前複習 {count} 個詞' },
   'notebook.review.start.review': '複習',
   'notebook.review.start.roundOf': '本輪 {count} 個',
   'notebook.review.start.minutes': { other: '約 {count} 分鐘' },
@@ -228,7 +231,6 @@ export default {
   'notebook.view.families': '字族',
   'notebook.view.map': '關聯圖',
   'notebook.view.cards': '字卡',
-  'notebook.cards.pictureCredit': '圖片來源',
 
   // Cards (notebook-cards.ts)
   'notebook.cards.empty': '沒有已存的單字。',

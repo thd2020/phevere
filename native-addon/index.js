@@ -10,8 +10,12 @@ function loadMonitorClass() {
     return binding.LinuxSelectionMonitor;
   }
   const binding = require('./build/Release/uiautomation_selection_monitor.node');
+  screenReaderProbe = binding.isScreenReaderActive || null;
   return binding.UIAutomationSelectionMonitor;
 }
+
+/** Windows only: the binding's SPI_GETSCREENREADER check, set when the binding loads. */
+let screenReaderProbe = null;
 
 const METHOD = { darwin: 'accessibility', linux: 'xfixes-atspi' }[process.platform] || 'uiautomation';
 const BINDING_FILE =
@@ -319,6 +323,19 @@ NativeSelectionMonitor.getWatchedCursor = function getWatchedCursor() {
     return desktopProbe.getWatchedCursor();
   } catch {
     return null;
+  }
+};
+
+/**
+ * True when a screen reader is running (Windows), or when it cannot be told (other systems,
+ * older binding), so callers only turn accessibility off when they know nobody needs it.
+ */
+NativeSelectionMonitor.isScreenReaderActive = function isScreenReaderActive() {
+  if (!screenReaderProbe) return true;
+  try {
+    return !!screenReaderProbe();
+  } catch {
+    return true;
   }
 };
 

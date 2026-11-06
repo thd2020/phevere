@@ -10,6 +10,7 @@ import {
   prefetchSenseImages,
   hydratePictures,
   pictureSrc,
+  wirePictureZoom,
   hideSenseImage,
   unhideSenseImage,
   fillEmptyDefinitions,
@@ -21,6 +22,7 @@ import {
   saveLemma,
   vocabPayloadFromResult,
   examplesFromResult,
+  synonymsFromResult,
   attachLearnCharts,
   revealQuestion,
   reviewArmed,
@@ -56,6 +58,8 @@ import {
   vocabCopyText,
   flashCopied,
   startReview,
+  startExtraRound,
+  extraNewCount,
   answerReview,
   overrideReview,
   advanceReview,
@@ -131,7 +135,9 @@ import {
   patchApiKeyCard,
   type ApiProviderId,
   parseGoal,
-  wireNumberWheels,
+  learnListsLeft,
+  learnPickValue,
+  syncLearnPick,
   microphoneAvailable,
   readLearnPrefs,
   watchMicrophone,
@@ -342,15 +348,19 @@ function saveLearnPrefs(next: Partial<LearnPrefs>): void {
 }
 
 function learnSettingsInput(): LearnSettingsInput {
+  const left = wordsState.ctx ? learnListsLeft(wordsState.ctx) : null;
   return {
     goal: nbState.goal,
     books: wbSubs.map((s) => ({
       id: s.bookId,
       title: wordbookMeta(s.bookId)?.title || wbUserBooks.find((b) => b.bookId === s.bookId)?.title || s.bookId,
       goal: s.dailyNew,
+      left: left?.books.get(s.bookId),
     })),
     prefs: learnPrefs,
     microphone,
+    mineLeft: left?.mine,
+    pace: learner?.pace ?? null,
   };
 }
 
@@ -413,6 +423,7 @@ let wbProgress = new Map<string, BookWordProgress>();
 const wbBooks = new Map<string, string[]>();
 /* Example sentences for the quiz's gap questions, looked up ahead for words already started. */
 const reviewExamples = new Map<string, string[]>();
+const reviewSynonyms = new Map<string, string[]>();
 const examplesInFlight = new Set<string>();
 
 async function prefetchExamples(wait = false): Promise<void> {
@@ -432,6 +443,7 @@ async function prefetchExamples(wait = false): Promise<void> {
     try {
       const res = await dictionaryService.lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), { translationProvider: prefs.translationProvider });
       reviewExamples.set(key, examplesFromResult(res));
+      reviewSynonyms.set(key, synonymsFromResult(res));
     } catch {
       /* offline: no gap-fill from examples */
     } finally {
@@ -1231,6 +1243,7 @@ function learnViewState(): LearnState {
       preview: previewReview,
       formatGap: formatReviewGap,
       examples: (lemma) => reviewExamples.get(lemma.toLowerCase()),
+      synonyms: (lemma) => reviewSynonyms.get(lemma.toLowerCase()),
       learner: learner?.model ?? null,
       pace,
       learnPrefs,
@@ -2059,12 +2072,15 @@ async function hideSensePicture(frame: HTMLElement): Promise<void> {
   });
 }
 
-/** A sense picture at its larger size over the page; a tap outside the credit, or Back, closes it. */
+/**
+ * A sense picture at its larger size over the page. A pinch, a double tap or a drag zooms and pans
+ * it (picture-zoom.ts); a tap beside the picture, or Back, closes it.
+ */
 function openSensePicture(frame: HTMLElement): void {
   const d = frame.dataset;
   const dlg = document.createElement('dialog');
   dlg.className = 'pic-view';
-  dlg.innerHTML = `<img class="pic-view__img" src="${esc(pictureSrc(d.thumb || '') || d.thumb || '')}" alt="${esc(d.title || '')}" referrerpolicy="no-referrer" tabindex="-1" autofocus />
+  dlg.innerHTML = `<div class="pic-view__stage"><img class="pic-view__img" src="${esc(pictureSrc(d.thumb || '') || d.thumb || '')}" alt="${esc(d.title || '')}" referrerpolicy="no-referrer" tabindex="0" autofocus draggable="false" /></div>
     <p class="pic-view__cap"><span>${esc(d.title || '')}</span>${d.page ? `<button type="button" class="pic-view__credit" data-pic-credit="${esc(d.page)}">${esc(d.credit || 'Wikimedia Commons')}</button>` : ''}</p>
     ${d.page ? `<button type="button" class="pic-view__hide" data-pic-hide>${tHtml('mobile.picture.hide')}</button>` : ''}`;
   // The thumbnail shows at once; the larger rendering replaces it when it has arrived.
@@ -2073,8 +2089,11 @@ function openSensePicture(frame: HTMLElement): void {
   full.referrerPolicy = 'no-referrer';
   full.onload = () => (img.src = full.src);
   full.src = d.full || '';
+  wirePictureZoom(img);
   dlg.addEventListener('click', (e) => {
     e.stopPropagation();
+    // The picture itself zooms and pans; only a tap beside it closes the viewer.
+    if (e.target === img) return;
     const link = (e.target as HTMLElement).closest<HTMLElement>('[data-pic-credit]');
     if (link) openExternal(link.dataset.picCredit || '');
     else if ((e.target as HTMLElement).closest('[data-pic-hide]')) {
@@ -2836,7 +2855,7 @@ async function handleAct(act: string, target: HTMLElement, e: Event): Promise<vo
       return;
     case 'settings-section': {
       const next = target.dataset.section as SettingsSection | undefined;
-      if (next === 'capture' || next === 'learn' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio' || next === 'about' || (next === 'updates' && phoneUpdates)) {
+      if (next === 'capture' || next === 'learn' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio' || next === 'about') {
         settingsSection = next;
         langMenu = '';
         if (next === 'offline') await refreshPacks();
@@ -3366,6 +3385,15 @@ async function handleAct(act: string, target: HTMLElement, e: Event): Promise<vo
       nbState.review = null;
       paint();
       return;
+    case 'learn-more': {
+      // Past today's plan: more new words, or reviews before they are due, from the list in Learn.
+      const pool = wordsState.ctx ? scopeEntries(wordsState.scope, wordsState.ctx) : reviewPool;
+      const kind = target.dataset.kind === 'ahead' ? 'ahead' : 'new';
+      nbState.review = startExtraRound(pool, kind, Date.now(), Number(target.dataset.count) || extraNewCount(nbState.goal));
+      await Promise.all([prefetchMeanings(true), prefetchExamples(true)]);
+      paint();
+      return;
+    }
     case 'nb-start':
     case 'nb-round':
       // A new round plans again from what is due now and from the answers so far.
@@ -3665,16 +3693,21 @@ function onChange(e: Event): void {
     keepDraft(nbState.review, (el as HTMLInputElement).value);
     return;
   }
-  // Settings → Learn: a number wheel sends change once it settles. It already shows the value, so
-  // saving it does not repaint (a repaint would take the wheel away from a finger or the keyboard).
+  // Settings → Learn: a preset or the number field. The row updates itself (syncLearnPick), so
+  // saving does not repaint and the keyboard stays open on the field.
   if (el.dataset.act === 'learn-goal') {
     if (e.type !== 'change') return;
-    const goal = parseGoal(el.dataset.value);
-    if (goal != null) void setLearnGoal(el.dataset.book || '', goal);
+    const goal = parseGoal(learnPickValue(el));
+    if (goal == null) return;
+    syncLearnPick(el, goal);
+    void setLearnGoal(el.dataset.book || '', goal);
     return;
   }
   if (el.dataset.act === 'learn-countdown') {
-    if (e.type === 'change') saveLearnPrefs({ countdown: Number(el.dataset.value) || 0 });
+    if (e.type !== 'change') return;
+    const seconds = Number(learnPickValue(el)) || 0;
+    syncLearnPick(el, seconds);
+    saveLearnPrefs({ countdown: seconds });
     return;
   }
   if (el.id === 'account-delete-email') {
@@ -3835,7 +3868,6 @@ export async function startApp(): Promise<void> {
   root.addEventListener('submit', onSubmit);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onChange);
-  wireNumberWheels(root);
   root.addEventListener('focusin', (e) => {
     if ((e.target as HTMLElement).id === 'q' && (e.target as HTMLInputElement).value.trim() && !suggestHeld) onQueryInput();
   });
@@ -3973,11 +4005,11 @@ export async function startApp(): Promise<void> {
 }
 
 /**
- * Repaints Settings → Updates. A download only moves its bar and status line, so an open
+ * Repaints the Updates rows on Settings → About. A download only moves its bar and status line, so an open
  * Install updates list is not closed by every percent.
  */
 function showUpdateState(s: PhoneUpdateState): void {
-  if (tab !== 'settings' || settingsSection !== 'updates') return;
+  if (tab !== 'settings' || settingsSection !== 'about') return;
   const bar = document.querySelector<HTMLElement>('.settings-panel .sv-progress');
   if (s.status === 'downloading' && bar) {
     const pct = Math.round(s.progress * 100);

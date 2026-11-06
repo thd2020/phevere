@@ -112,8 +112,15 @@ export default {
   'settings.learn.questionsHead': '題目',
   'settings.learn.myWords': '我的單字',
   'settings.learn.countdown': '選擇題倒數計時',
-  'settings.learn.seconds': '秒',
-  'settings.learn.secondsValue': { other: '{count} 秒' },
+  'settings.learn.plan.minutes': { other: '每天約 {count} 分鐘' },
+  'settings.learn.plan.finish': '{when} 前全部開始學',
+  'settings.learn.plan.allStarted': '已全部開始學',
+  'settings.learn.suggested': '適合你',
+  'settings.learn.other': '其他',
+  'settings.learn.otherLabel': '{list}每天的新詞數',
+  'settings.learn.left': { other: '{count} 個未學' },
+  'settings.learn.secondsShort': '{count} 秒',
+  'settings.learn.off': '關',
   'settings.learn.speaking': '口說題',
 
   // Settings → Sources

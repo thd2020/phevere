@@ -12,6 +12,7 @@ import {
   countdownMs,
   countdownWaiting,
   ensureReviewQuestion,
+  extraRoundIds,
   hintsLeft,
   isLearnable,
   shownLetters,
@@ -60,6 +61,8 @@ export interface ReviewRenderOptions {
   started?: boolean;
   /** Example sentences for a word, for gap-fill questions (from its dictionary entry). */
   examples?: (lemma: string) => string[] | undefined;
+  /** Synonyms of a word from its dictionary entry, for "closest in meaning" questions. */
+  synonyms?: (lemma: string) => string[] | undefined;
   /** The learner model from the answer history (`learnerModel`), for choosing questions. */
   learner?: LearnerModel | null;
   /** How much the learner studies (`studyPace`); the start card offers its number of new words a day. */
@@ -290,6 +293,7 @@ const ASK: Record<ReviewQuestion['kind'], MessageKey> = {
   'listen-choice': 'notebook.review.ask.listenChoice',
   'cloze-choice': 'notebook.review.ask.clozeChoice',
   'spell-tiles': 'notebook.review.ask.spellTiles',
+  'synonym-choice': 'notebook.review.ask.synonymChoice',
   recall: 'notebook.review.ask.recall',
   'listen-type': 'notebook.review.ask.listenType',
   cloze: 'notebook.review.ask.cloze',
@@ -300,6 +304,7 @@ function promptHtml(q: ReviewQuestion, e: NotebookEntry): string {
   const reading = vocabReadings(e.reading)[0];
   switch (q.kind) {
     case 'meaning-choice':
+    case 'synonym-choice':
     case 'flash':
       return `<div class="nbv-quiz__word"><h3>${esc(q.lemma)}</h3>${reading ? `<p class="nbv-card__ipa">${esc(reading.ipa)}</p>` : ''}${playButton(q.lemma)}</div>`;
     case 'word-choice':
@@ -591,6 +596,25 @@ function suggestHtml(goal: number, opts: ReviewRenderOptions): string {
   return `<p class="nbv-quiz__note nbv-suggest">${tHtml('notebook.review.suggest', { count: n })} <button type="button" class="nbv-link" data-act="learn-use-goal" data-book="${esc(opts.goalBook?.id || '')}" data-goal="${n}">${tHtml('notebook.review.suggestUse', { count: n })}</button></p>`;
 }
 
+/** New words "Learn more" adds: a day's goal, at least five. */
+export function extraNewCount(goal: number): number {
+  return Math.max(5, Math.round(goal) || 10);
+}
+
+/**
+ * Once today's plan is done, Anki's Custom Study choices: more new words (hook learn-more,
+ * data-kind="new", data-count) and reviews before they are due (data-kind="ahead"). Each shows
+ * only when it has words.
+ */
+function moreHtml(entries: NotebookEntry[], goal: number, now: number): string {
+  const fresh = extraRoundIds(entries, 'new', now, extraNewCount(goal)).length;
+  const ahead = extraRoundIds(entries, 'ahead', now).length;
+  if (!fresh && !ahead) return '';
+  const btn = (kind: 'new' | 'ahead', label: string, primary: boolean) =>
+    `<button type="button" class="${primary ? 'nbv-primary' : 'nbv-secondary'}" data-act="learn-more" data-kind="${kind}"${kind === 'new' ? ` data-count="${fresh}"` : ''}>${label}</button>`;
+  return `<div class="nbv-more">${fresh ? btn('new', tHtml('notebook.review.more.new', { count: fresh }), true) : ''}${ahead ? btn('ahead', tHtml('notebook.review.more.ahead', { count: ahead }), !fresh) : ''}</div>`;
+}
+
 function startHtml(entries: NotebookEntry[], state: ReviewState, now: number, goal = 0, opts: ReviewRenderOptions = {}): string {
   const byId = new Map(entries.map((e) => [e.id, e]));
   const queued = state.queue.map((id) => byId.get(id)).filter(Boolean) as NotebookEntry[];
@@ -604,7 +628,7 @@ function startHtml(entries: NotebookEntry[], state: ReviewState, now: number, go
       .sort((a, b) => a - b)[0];
     const when =
       next == null ? '' : daysBetween(now, next) <= 1 ? formatRelativeTime(1, 'day') : formatDate(next, { weekday: 'long', month: 'short', day: 'numeric' });
-    return `<section class="nbv-quiz nbv-quiz--idle"><p class="nbv-quiz__big">${tHtml('notebook.review.nothingDueToday')}</p>${when ? `<p class="nbv-quiz__sub">${tHtml('notebook.review.nextReview', { when })}</p>` : ''}</section>`;
+    return `<section class="nbv-quiz nbv-quiz--idle"><p class="nbv-quiz__big">${tHtml('notebook.review.nothingDueToday')}</p>${when ? `<p class="nbv-quiz__sub">${tHtml('notebook.review.nextReview', { when })}</p>` : ''}${moreHtml(entries, goal, now)}</section>`;
   }
   const rest = state.rest || 0;
   const held = state.heldBack || 0;
@@ -721,7 +745,7 @@ export function reviewHtml(all: NotebookEntry[], state: ReviewState, goal: numbe
   } else if (!state.started) {
     quiz = startHtml(entries, state, now, goal, opts);
   } else {
-    const q = ensureReviewQuestion(state, entries, { audio: opts.audio, now, examples: opts.examples, learner: opts.learner });
+    const q = ensureReviewQuestion(state, entries, { audio: opts.audio, now, examples: opts.examples, synonyms: opts.synonyms, learner: opts.learner });
     const e = q ? entries.find((x) => x.id === q.id) : undefined;
     quiz = q && e ? questionHtml(q, e, state, opts, now) : summaryHtml(entries, state, now);
   }

@@ -934,7 +934,7 @@ export class DictionaryService extends BaseService {
       const txProvider = opts?.translationProvider || 'auto';
       // Switching on a Wiktionary edition must not be hidden by a result cached before it.
       const editionsOn = EDITIONS.filter((ed) => this.isNamedSourceOn(WIKTIONARY_EDITIONS[ed].source, enabledSources)).join(',');
-      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki|notes:2${editionsOn ? `|wikt:${editionsOn}` : ''}${preferEnglishEntry ? '|en-first' : ''}`);
+      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki|notes:2${editionsOn ? `|wikt:${editionsOn}` : ''}${preferEnglishEntry ? '|en-first' : ''}${hinted ? '|chosen' : ''}`);
 
       const remember = (r: DictionaryResult) => {
         if (this.isUncacheableResult(r) || this.isStillFilling(r)) return;
@@ -2135,8 +2135,9 @@ export class DictionaryService extends BaseService {
           'wiktionary',
           // One page answers every language, each from its own section: "i.e." in Italian is not
           // the English entry kept from a moment ago.
-          wikiLang === 'en' ? wikiWord : `${wikiWord}@${wikiLang}${preferEnglish ? '+en' : ''}`,
-          () => this.getWiktionaryData(wikiWord, wikiLang, preferEnglish),
+          wikiLang === 'en' ? wikiWord : `${wikiWord}@${wikiLang}${preferEnglish ? '+en' : ''}${chosenOther ? '!' : ''}`,
+          // A language picked on the language switch is shown as it is, never swapped for English.
+          () => this.getWiktionaryData(wikiWord, wikiLang, preferEnglish, chosenOther),
           (data) =>
             (data.definitions?.length || 0) > 0
             || !!data.pronunciation
@@ -3055,7 +3056,12 @@ export class DictionaryService extends BaseService {
   /**
    * Get data from Wiktionary API with a focus on definitions and etymology.
    */
-  private async getWiktionaryData(text: string, language: string, preferEnglish = false): Promise<{
+  /**
+   * `chosen`: the reader picked `language` (the language switch), so its section is shown even when
+   * its senses only repeat the word, as a Romanian "decrepit" glossed "decrepit" does; detected
+   * languages still give way to the English section then.
+   */
+  private async getWiktionaryData(text: string, language: string, preferEnglish = false, chosen = false): Promise<{
     definitions: Definition[];
     pronunciation?: string;
     pronunciations?: Pronunciation[];
@@ -3096,7 +3102,12 @@ export class DictionaryService extends BaseService {
         response = await this.wiktionaryDefinitions(term);
         if (!response && language === 'en' && capitalised !== term) response = await this.wiktionaryDefinitions(capitalised);
       }
-      if (!response) throw new Error(`no Wiktionary page for ${term}`);
+      // A word Wiktionary has no page for (a 404) is an answer, not an outage: it must not count
+      // towards skipping Wiktionary, or a stray non-word leaves every lookup without it for minutes.
+      if (!response) {
+        const unanswered = this.unansweredTitles.has(term);
+        throw new DictionaryError(`no Wiktionary page for ${term}`, unanswered ? 'NETWORK' : 'NOT_FOUND', unanswered);
+      }
       // Removed verbose API response logging to prevent HTML floods
 
       // Prioritize the language detected or specified. A word English borrowed ("paparazzo",
@@ -3112,7 +3123,7 @@ export class DictionaryService extends BaseService {
       const englishEntry =
         preferEnglish && language !== 'en' && sectionSenses(response, 'en').some((d) => !isCitationGloss(String(d.definition || '')));
       if (preferEnglish && language !== 'en') this.rememberEnglishEntry(text, language, englishEntry);
-      const shownKey = englishEntry || !(own && !(language !== 'en' && response.en && echoesWord(own))) ? 'en' : language;
+      const shownKey = chosen && own ? language : englishEntry || !(own && !(language !== 'en' && response.en && echoesWord(own))) ? 'en' : language;
       const langData = response ? response[shownKey] : null;
       const languages = entryLanguages(response, shownKey);
 

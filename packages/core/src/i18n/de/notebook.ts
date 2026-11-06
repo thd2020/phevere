@@ -60,6 +60,7 @@ export default {
   'notebook.review.ask.listenChoice': 'Wählen Sie das gehörte Wort',
   'notebook.review.ask.clozeChoice': 'Wählen Sie das Wort für die Lücke',
   'notebook.review.ask.spellTiles': 'Buchstabieren Sie das Wort',
+  'notebook.review.ask.synonymChoice': 'Bedeutet am ehesten dasselbe',
   'notebook.review.ask.recall': 'Geben Sie das Wort ein',
   'notebook.review.ask.listenType': 'Geben Sie das gehörte Wort ein',
   'notebook.review.ask.cloze': 'Füllen Sie die Lücke',
@@ -102,6 +103,8 @@ export default {
 
   'notebook.review.nothingDueToday': 'Heute nichts fällig',
   'notebook.review.nextReview': 'Nächste Wiederholung: {when}',
+  'notebook.review.more.new': { one: '{count} weiteres Wort lernen', other: '{count} weitere Wörter lernen' },
+  'notebook.review.more.ahead': { one: '{count} Wort vorziehen', other: '{count} Wörter vorziehen' },
   'notebook.review.start.review': 'Wiederholen',
   'notebook.review.start.roundOf': 'Runde mit {count}',
   'notebook.review.start.minutes': { one: 'Etwa {count} Min.', other: 'Etwa {count} Min.' },
@@ -221,7 +224,6 @@ export default {
   'notebook.view.families': 'Familien',
   'notebook.view.map': 'Wortnetz',
   'notebook.view.cards': 'Karten',
-  'notebook.cards.pictureCredit': 'Bildnachweis',
 
   'notebook.cards.empty': 'Keine gespeicherten Wörter.',
   'notebook.cards.expandAll': 'Alle ausbreiten',

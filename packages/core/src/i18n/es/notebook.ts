@@ -60,6 +60,7 @@ export default {
   'notebook.review.ask.listenChoice': 'Elige la palabra que oyes',
   'notebook.review.ask.clozeChoice': 'Elige la palabra del hueco',
   'notebook.review.ask.spellTiles': 'Forma la palabra',
+  'notebook.review.ask.synonymChoice': 'El más parecido en significado',
   'notebook.review.ask.recall': 'Escribe la palabra',
   'notebook.review.ask.listenType': 'Escribe la palabra que oyes',
   'notebook.review.ask.cloze': 'Completa el hueco',
@@ -102,6 +103,8 @@ export default {
 
   'notebook.review.nothingDueToday': 'Nada pendiente para hoy',
   'notebook.review.nextReview': 'Próximo repaso: {when}',
+  'notebook.review.more.new': { one: 'Aprender {count} palabra más', other: 'Aprender {count} palabras más' },
+  'notebook.review.more.ahead': { one: 'Repasar {count} palabra antes de tiempo', other: 'Repasar {count} palabras antes de tiempo' },
   'notebook.review.start.review': 'Repaso',
   'notebook.review.start.roundOf': 'Ronda de {count}',
   'notebook.review.start.minutes': { one: 'Alrededor de {count} min', other: 'Unos {count} min' },
@@ -221,7 +224,6 @@ export default {
   'notebook.view.families': 'Familias',
   'notebook.view.map': 'Mapa',
   'notebook.view.cards': 'Tarjetas',
-  'notebook.cards.pictureCredit': 'Crédito de la imagen',
 
   'notebook.cards.empty': 'No hay palabras guardadas.',
   'notebook.cards.expandAll': 'Desplegar todo',

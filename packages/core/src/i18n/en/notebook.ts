@@ -80,6 +80,7 @@ export default {
   'notebook.review.ask.listenChoice': 'Choose the word you hear',
   'notebook.review.ask.clozeChoice': 'Choose the word for the gap',
   'notebook.review.ask.spellTiles': 'Spell the word',
+  'notebook.review.ask.synonymChoice': 'Closest in meaning',
   'notebook.review.ask.recall': 'Type the word',
   'notebook.review.ask.listenType': 'Type the word you hear',
   'notebook.review.ask.cloze': 'Fill the gap',
@@ -131,6 +132,8 @@ export default {
   'notebook.review.nothingDueToday': 'Nothing due today',
   /** {when} is "tomorrow" or a date. */
   'notebook.review.nextReview': 'Next review {when}',
+  'notebook.review.more.new': { one: 'Learn {count} more word', other: 'Learn {count} more words' },
+  'notebook.review.more.ahead': { one: 'Review {count} word early', other: 'Review {count} words early' },
   /** Words due again for review, beside Learning and New. */
   'notebook.review.start.review': 'Review',
   'notebook.review.start.roundOf': 'Round of {count}',
@@ -294,7 +297,6 @@ export default {
   'notebook.view.map': 'Map',
   /** Words as picture cards. */
   'notebook.view.cards': 'Cards',
-  'notebook.cards.pictureCredit': 'Picture credit',
 
   // Cards (notebook-cards.ts)
   'notebook.cards.empty': 'No saved words.',

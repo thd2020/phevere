@@ -126,7 +126,6 @@ export default {
   'desktop.settings.updates.modeAsk': 'Perguntar antes',
   'desktop.settings.updates.modeOff': 'Desativado',
   'desktop.settings.updates.checkNow': 'Verificar agora',
-  'desktop.settings.updates.version': 'Phevere {version}',
   'desktop.settings.updates.checking': 'Verificando…',
   'desktop.settings.updates.downloading': 'Baixando {version}… {percent}',
   'desktop.settings.updates.installing': 'Instalando {version}…',
