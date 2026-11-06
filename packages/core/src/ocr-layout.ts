@@ -312,9 +312,12 @@ function emOf(line: OcrLine): number {
 /** Same type size and style, judged by both height and character pitch. */
 function similarSize(a: Work, b: Work): boolean {
   const h = Math.max(a.rect.h, b.rect.h) / Math.max(1, Math.min(a.rect.h, b.rect.h));
+  const pitched = Number.isFinite(a.em) && Number.isFinite(b.em);
+  const em = pitched ? Math.max(a.em, b.em) / Math.max(0.1, Math.min(a.em, b.em)) : NaN;
+  // A footnote mark or an accent makes one line's box taller; the character pitch still matches.
+  if (pitched && em <= 1.15 && h <= 1.6) return true;
   if (h > 1.3) return false;
-  if (!Number.isFinite(a.em) || !Number.isFinite(b.em)) return true;
-  return Math.max(a.em, b.em) / Math.max(0.1, Math.min(a.em, b.em)) <= 1.25;
+  return !pitched || em <= 1.25;
 }
 
 function centre(q: OcrQuad): OcrPoint {
@@ -566,14 +569,18 @@ function stackBlocks(items: Work[]): BlockWork[] {
   return blocks;
 }
 
-const LIST_MARK = /^(?:[•●○◦▪■□‣∙·・\-–—*]\s|\(?\d{1,3}[.)、]\s?|\(?[a-zA-Z][.)]\s|[①-⑳]|[一二三四五六七八九十]+、)/;
+const LIST_MARK = /^(?:[•●○◦▪■□‣∙·・]\s?|[\-–—*]\s|\(?\d{1,3}[.)、](?!\d)\s?|\(?[a-zA-Z][.)]\s|[①-⑳]|[一二三四五六七八九十]+、)/;
 const SENTENCE_END = /[.!?。！？:：…"”’)）」』]$/;
+
+const OPENERS = /^[(\[{“‘"'（《〈「『【〔｛]+$/;
 
 /** Length of the line's first word: engine words joined without a space form one word, except CJK, which breaks anywhere. */
 function firstWordLength(w: Work): number {
   const { words, joins, angle } = w.line;
   if (!words.length) return w.line.size;
   let k = 0;
+  // An opening bracket or quote never ends a line, so it wraps with the word after it.
+  if (k + 1 < words.length && OPENERS.test(words[0].text)) k++;
   while (
     k + 1 < words.length &&
     joins[k] === '' &&
@@ -597,9 +604,40 @@ function splitParagraphs(block: BlockWork): Work[][] {
   const g = median(pitches);
   const lefts = lines.map((l) => l.rect.l);
   const left = median(lefts);
-  const right = Math.max(...lines.map((l) => l.rect.r));
-  const width = right - Math.min(...lefts);
   const h = median(lines.map((l) => l.rect.h));
+  // The right margin each line wrapped at. Text that flows beside a picture and then below it
+  // wraps at two widths in one block; measured against the block's widest line, every line beside
+  // the picture would look short. So the block is cut into runs where the margin moves for good,
+  // and each line is measured against the widest line of its own run. The margin moves out when
+  // two of three lines end at it (the third may be a paragraph's short last line) and the next
+  // two both end well past it; it moves in when three long lines end together well short of it.
+  // A wrapped line ends within about one word of its margin: a few letters for Latin text, one
+  // character for CJK, which wraps anywhere.
+  const em0 = median(lines.map((l) => (Number.isFinite(l.em) ? l.em : l.rect.h)));
+  const tol = 2 * Math.max(em0, median(lines.map(firstWordLength)));
+  const rs = (ws: Work[]) => ws.map((w) => w.rect.r);
+  const steady = (ws: Work[]) => ws.length === 3 && Math.max(...rs(ws)) - Math.min(...rs(ws)) <= tol;
+  const runOf: number[] = lines.map(() => 0);
+  let run = 0, runStart = 0;
+  for (let i = 1; i < lines.length; i++) {
+    const before = lines.slice(Math.max(runStart, i - 3), i);
+    const after = lines.slice(i, i + 3);
+    const margin = Math.max(...rs(before));
+    const atMargin = before.filter((w) => w.rect.r >= margin - tol).length;
+    const outward = before.length === 3 && atMargin >= 2 && after.length >= 2 && rs(after.slice(0, 2)).every((r) => r > margin + tol);
+    const inward = steady(after) && after.every((w) => w.rect.r - w.rect.l >= 18 * em0 && w.rect.r < margin - tol);
+    if (outward || inward) {
+      run++;
+      runStart = i;
+    }
+    runOf[i] = run;
+  }
+  const runEdge = new Map<number, { right: number; width: number }>();
+  for (let k = 0; k <= run; k++) {
+    const ws = lines.filter((_, i) => runOf[i] === k);
+    const r = Math.max(...ws.map((w) => w.rect.r));
+    runEdge.set(k, { right: r, width: r - Math.min(...ws.map((w) => w.rect.l)) });
+  }
   const indented = (w: Work) => w.rect.l - left > 0.9 * h;
   const indentCount = lines.filter(indented).length;
   // Every line opens with a capital, a digit or a list mark and none runs on with a comma or a
@@ -614,13 +652,16 @@ function splitParagraphs(block: BlockWork): Work[][] {
   const paras: Work[][] = [[lines[0]]];
   for (let i = 1; i < lines.length; i++) {
     const p = lines[i - 1], l = lines[i];
+    const { right, width } = runEdge.get(runOf[i - 1])!;
+    // Character pitch of the next line; a short label has none, so its text height stands in.
+    const em = Number.isFinite(l.em) ? l.em : l.rect.h;
     let brk = false;
     if (pitches[i - 1] - g > 0.4 * h) brk = true;
     else if (LIST_MARK.test(l.line.text)) brk = true;
     else if (lines.length >= 3 && indented(l) && !indented(p) && indentCount < lines.length / 2) brk = true;
     else if (right - p.rect.r > Math.max(2.5 * h, 0.18 * width) && SENTENCE_END.test(p.line.text)) brk = true;
     // The next line's first word would have fitted at the end of this one: the writer broke the line on purpose.
-    else if (right - p.rect.r > firstWordLength(l) + 0.8 * l.em && !HYPHEN_END.test(p.line.text)) brk = true;
+    else if (right - p.rect.r > firstWordLength(l) + 0.8 * em && !HYPHEN_END.test(p.line.text)) brk = true;
     // A short line with no closing punctuation followed by a capital: a list or a heading, not wrapped prose.
     else if (
       p.rect.r - p.rect.l < 0.85 * width &&

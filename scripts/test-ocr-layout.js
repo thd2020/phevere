@@ -234,4 +234,46 @@ assert.strictEqual(L.lineJoin('the', 'next').sep, ' ');
   assert.ok(Math.abs(L.quadAngle(vert.quad) - Math.PI / 2) < 1e-6, 'a tall crop reads downwards');
 }
 
+// 14. Text wrapping beside a picture and then below it is one paragraph; each line is measured
+// against the margin of its own stretch, not the block's widest line.
+{
+  const words = 'river water flows down the valley and carries sand gravel and stones toward the sea while banks slowly widen over many years'.split(' ');
+  const lines = [];
+  let y = 0, k = 0;
+  // Five lines beside a picture (wrapping near x 500), then four below it (near x 900).
+  const take = (limit) => {
+    const ws = [];
+    while (ws.join(' ').length + words[k % words.length].length + 1 <= limit) ws.push(words[k++ % words.length]);
+    return ws.join(' ');
+  };
+  for (let i = 0; i < 5; i++, y += 26) { const t = take(42); lines.push(line(t, 0, y, t.length * 11.5)); }
+  for (let i = 0; i < 4; i++, y += 26) { const t = i === 3 ? 'the end.' : take(78); lines.push(line(t, 0, y, t.length * 11.5)); }
+  const out = textOf(lines, 1000, 400).split('\n');
+  assert.strictEqual(out.length, 1, out.join(' / '));
+}
+
+// 15. A table column of short CJK cells stays one cell per line: the next cell's first
+// character would have fitted on the line before.
+{
+  const cells = ['分析', '烧嘴、火焰', '电导率', '密度', '电压（电动势）', '流量', '手动', '可燃气体和有毒气体'];
+  const out = textOf(cells.map((c, i) => line(c, 0, i * 27, c.length * 16, 16)), 600, 300).split('\n');
+  assert.deepStrictEqual(out, cells);
+}
+
+// 16. A footnote mark makes one line's box taller; the paragraph still reads whole.
+assert.strictEqual(
+  textOf([line('河流是陆地上自然流动的地表水[1]，绝大部分都是淡', 0, 0, 620, 27), line('水，但有些河流受到潮汐或风暴潮影响可能会成为半', 0, 27, 620, 20), line('咸水。', 0, 52, 60, 20)]),
+  '河流是陆地上自然流动的地表水[1]，绝大部分都是淡水，但有些河流受到潮汐或风暴潮影响可能会成为半咸水。',
+);
+
+// 17. Bullets without a space (as CJK pages set them) start items; "3.5" at a line start does not.
+assert.deepStrictEqual(
+  textOf([line('·国务院关于部分节假日安排的通知', 0, 0, 400), line('·国务院关于修改部分行政法规的决定', 0, 30, 420), line('·中共中央关于若干重大问题的决定', 0, 60, 400)]).split('\n').length,
+  3,
+);
+assert.strictEqual(
+  textOf([line('the population grew from two to', 0, 0, 360), line('3.5 million people in that decade', 0, 26, 380)]),
+  'the population grew from two to 3.5 million people in that decade',
+);
+
 console.log('test-ocr-layout: ok');
