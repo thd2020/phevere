@@ -3050,6 +3050,8 @@ async function commitReview(): Promise<void> {
     console.error('review failed', error);
   }
   advanceReview(nbReview, updated);
+  // The word of the question just left stops, and one still loading never plays over the next.
+  sayLemma.cancel();
   // Today's answers count against the learner's usual day, so the next round plans fewer new words.
   if (learner?.pace) learner.pace.answersToday = (learner.pace.answersToday || 0) + 1;
   answerHistory = null;
@@ -3197,6 +3199,7 @@ function wireNotebookActions(root: HTMLElement): void {
       case 'nb-review-exit':
         // Back to the Learn page. An answer on screen is saved first, as Continue would.
         if (nbReview?.answer) await commitReview();
+        sayLemma.cancel();
         nbReview = null;
         renderLearn();
         document.querySelector('.main-shell')?.scrollTo({ top: 0 });
@@ -4633,10 +4636,12 @@ const sayLemma = singleVoice({
     }
     return [];
   },
-  playRecording: (src) => playLemmaSrc(src, true),
-  speak: async (lemma) => {
+  playRecording: (src, alive) => (alive() ? playLemmaSrc(src, true) : Promise.resolve()),
+  speak: async (lemma, alive) => {
     const api = window.electronAPI as any;
     const speech = await api?.synthesizeSpeech?.({ text: lemma, lang: 'en' });
+    // A newer press (or the next question) came while the voice was being made: it stays silent.
+    if (!alive()) return;
     if (speech?.ok && speech.dataUrl) await playLemmaSrc(speech.dataUrl, false);
     else showNotification('Could not play pronunciation');
   },
@@ -4653,6 +4658,9 @@ const sayLemma = singleVoice({
 async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise<void> {
   try {
     const api = window.electronAPI as any;
+    // The press counts from now: anything still loading or playing for an earlier one stops, even
+    // while the audio settings are read.
+    sayLemma.cancel();
     lemmaAudioPrefs = (await api?.getAudioPrefs?.()) || { enabled: true, speed: 1, volume: 1 };
     if (lemmaAudioPrefs.enabled === false) return;
     btn?.classList.add('is-speaking');

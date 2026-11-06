@@ -357,6 +357,35 @@ const countdownChecks = async () => {
   const broken = core.singleVoice({ ...backend, recordings: async () => ['clip:broken'] });
   assert.equal(await broken('meadow'), 'speech');
   assert.deepEqual(log, ['stop', 'stop', 'voice:meadow']);
+  // The synthetic voice takes a while to make. A second press while the first is still being made
+  // gives one sound: the first stays silent once it is ready.
+  log.length = 0;
+  const pendingSynth = [];
+  const slowVoice = core.singleVoice({
+    ...backend,
+    recordings: async () => [],
+    speak: (w, alive) =>
+      new Promise((r) => pendingSynth.push(() => {
+        if (alive()) log.push(`voice:${w}`);
+        r();
+      })),
+  });
+  const p1 = slowVoice('ravine');
+  await new Promise((r) => setTimeout(r, 0));
+  const p2 = slowVoice('ravine');
+  await new Promise((r) => setTimeout(r, 0));
+  pendingSynth.forEach((done) => done());
+  assert.deepEqual([await p1, await p2], ['stale', 'speech']);
+  assert.deepEqual(log.filter((x) => x !== 'stop'), ['voice:ravine'], 'one sound for two presses');
+  // Moving on to the next question cancels a word still loading: it never plays.
+  log.length = 0;
+  const p3 = slowVoice('saddle');
+  await new Promise((r) => setTimeout(r, 0));
+  slowVoice.cancel();
+  pendingSynth.splice(0).forEach((done) => done());
+  pendingSynth.forEach((done) => done());
+  assert.equal(await p3, 'stale');
+  assert.deepEqual(log.filter((x) => x !== 'stop'), []);
 
   simulate();
   console.log('test-learn-adapt: ok');

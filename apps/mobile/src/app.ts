@@ -106,6 +106,7 @@ import {
   armCountdown,
   markHeard,
   singleVoice,
+  type SingleVoice,
   type LearnerModel,
   type StudyPace,
   type AnswerRecord,
@@ -972,6 +973,8 @@ async function commitReview(): Promise<void> {
     toast(err instanceof Error ? err.message : String(err));
   }
   advanceReview(r, updated);
+  // The word of the question just left stops, and one still loading never plays over the next.
+  sayLemma?.cancel();
   // Today's answers count against the learner's usual day, so the next round plans fewer new words.
   if (learner?.pace) learner.pace.answersToday = (learner.pace.answersToday || 0) + 1;
   answerHistory = null;
@@ -1956,7 +1959,7 @@ function onSelectionSettled(): void {
  * Notebook and Learn ▶ play the same recorded human clip as the lookup headword button, or the
  * synthetic voice when the word has none; never both, and a newer press stops an older one.
  */
-let sayLemma: ((lemma: string) => Promise<unknown>) | null = null;
+let sayLemma: SingleVoice | null = null;
 
 const lemmaVoice = () => singleVoice({
   recordings: async (lemma) => {
@@ -1967,8 +1970,8 @@ const lemmaVoice = () => singleVoice({
       .catch(() => null);
     return recordedUrls(found);
   },
-  playRecording: (url) => playClip(url, prefs),
-  speak: (lemma) => speakText(lemma, prefs),
+  playRecording: (url, alive) => (alive() ? playClip(url, prefs) : Promise.resolve()),
+  speak: (lemma, alive) => (alive() ? speakText(lemma, prefs) : Promise.resolve()),
   stop: stopAudio,
 });
 
@@ -2725,6 +2728,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'nb-review-exit':
       // Back to the Learn page. An answer on screen is saved first, as Continue would.
       if (nbState.review?.answer) await commitReview();
+      sayLemma?.cancel();
       nbState.review = null;
       paint();
       return;

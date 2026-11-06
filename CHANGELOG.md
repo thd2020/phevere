@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Listening questions (2026-11-06): a word could still be heard twice, a few seconds apart. On the desktop, pressing play again while the synthetic voice was being made played both voices; on Android, a recording that hiccupped after it had started was followed by the next recording or the synthetic voice. Each press now gives one sound, and moving to the next question or leaving Learn stops a word that is still loading.
+
 ## [4.2.0] - 2026-11-06
 
 ### Added

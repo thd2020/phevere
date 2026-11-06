@@ -30,6 +30,12 @@ final class Speak {
   private Completion pendingDone;
   private volatile int gen;
   private MediaPlayer player;
+  /**
+   * The current player has started making sound. A clip that fails after that has been heard, so
+   * it ends as done rather than as an error; an error would make the page try the next clip or
+   * the synthetic voice, and the learner would hear the word twice.
+   */
+  private boolean started;
   private LoudnessEnhancer boost;
   /**
    * Settings → Audio → Playback volume as a gain, 0–2: the slider's middle (50%) is the
@@ -191,6 +197,7 @@ final class Speak {
 
   private void startPlayer(String url, float rate, int token) {
     try {
+      started = false;
       player = new MediaPlayer();
       player.setAudioAttributes(new AudioAttributes.Builder()
           .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -208,23 +215,30 @@ final class Speak {
         float level = Math.min(1f, volume);
         mp.setVolume(level, level);
         applyBoost(mp);
-        try { mp.start(); }
+        try { mp.start(); started = true; }
         catch (Exception e) { stopMedia(); finish("Could not start pronunciation recording."); }
       });
       player.setOnCompletionListener(mp -> {
         if (token == gen) { stopMedia(); fireDone(); }
       });
       player.setOnErrorListener((mp, what, extra) -> {
-        if (token == gen) { stopMedia(); finish("Could not play pronunciation recording."); }
+        if (token != gen) return true;
+        boolean heard = started;
+        stopMedia();
+        if (heard) fireDone();
+        else finish("Could not play pronunciation recording.");
         return true;
       });
       player.prepareAsync();
       final MediaPlayer preparing = player;
       main.postDelayed(() -> {
-        if (token == gen && player == preparing && pendingDone != null && !player.isPlaying()) {
-          stopMedia();
-          finish("Pronunciation recording timed out.");
-        }
+        if (token != gen || player != preparing || pendingDone == null || player.isPlaying()) return;
+        // Still loading after 20 s: an error, so the page can try the next clip. A clip that
+        // started and then stalled has been heard: it ends there.
+        boolean heard = started;
+        stopMedia();
+        if (heard) fireDone();
+        else finish("Pronunciation recording timed out.");
       }, 20000);
     } catch (Exception e) {
       stopMedia();
