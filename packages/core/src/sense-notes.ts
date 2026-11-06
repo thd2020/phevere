@@ -38,7 +38,11 @@ const QUALIFIERS = new Set([
   'very', 'generally', 'formerly',
 ]);
 
-/** Short and alternative names {{lb}} accepts, as Wiktionary displays them. */
+/**
+ * Short and alternative names {{lb}} accepts, as Wiktionary displays them. Wiktionary keeps some
+ * near names apart: "figurative" and "figuratively", "dialect" and "dialectal" are labels of
+ * their own, and "trans" means transgender, not transitive.
+ */
 const ALIASES: Record<string, string> = {
   c: 'countable',
   count: 'countable',
@@ -47,7 +51,6 @@ const ALIASES: Record<string, string> = {
   'not countable': 'uncountable',
   t: 'transitive',
   tr: 'transitive',
-  trans: 'transitive',
   intr: 'intransitive',
   intrans: 'intransitive',
   ditrans: 'ditransitive',
@@ -70,9 +73,7 @@ const ALIASES: Record<string, string> = {
   fml: 'formal',
   colloq: 'colloquial',
   obs: 'obsolete',
-  fig: 'figuratively',
-  figurative: 'figuratively',
-  dialect: 'dialectal',
+  fig: 'figurative',
   pejorative: 'derogatory',
   euphemism: 'euphemistic',
   jocular: 'humorous',

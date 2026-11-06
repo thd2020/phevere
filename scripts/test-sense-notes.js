@@ -36,7 +36,9 @@ assert.deepEqual(labelTemplateNotes(['countable', 'US', 'politics']), { grammar:
 assert.deepEqual(labelTemplateNotes(['usually', 'uncountable']), { grammar: ['usually uncountable'], labels: [] });
 assert.deepEqual(labelTemplateNotes(['chiefly', 'UK', 'informal']), { grammar: [], labels: ['chiefly UK', 'informal'] });
 assert.deepEqual(labelTemplateNotes(['ambitransitive', 'obsolete']), { grammar: ['transitive', 'intransitive'], labels: ['obsolete'] });
-assert.deepEqual(labelTemplateNotes(['tr', 'fig']), { grammar: ['transitive'], labels: ['figuratively'] });
+assert.deepEqual(labelTemplateNotes(['tr', 'fig']), { grammar: ['transitive'], labels: ['figurative'] });
+// Wiktionary keeps these apart: each shows as written, and trans is transgender.
+assert.deepEqual(labelTemplateNotes(['figurative', 'figuratively', 'dialect', 'dialectal', 'trans']), { grammar: [], labels: ['figurative', 'figuratively', 'dialect', 'dialectal', 'trans'] });
 assert.deepEqual(labelTemplateNotes(['of a person', '_', 'chiefly', 'archaic']), { grammar: [], labels: ['of a person chiefly archaic'] });
 assert.deepEqual(
   labelTemplateNotes(['intransitive', 'with {{m|en|on}} or {{m|en|upon}}, [[formerly]] also with {{m|en|in}}']),
