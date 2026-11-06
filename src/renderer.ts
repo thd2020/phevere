@@ -3023,6 +3023,16 @@ function focusReview(body: HTMLElement): void {
   }
 }
 
+/**
+ * After a letter tile is placed or taken back the row is redrawn; the focus goes to the next
+ * letter left (or the word built), so a keyboard or screen reader carries on from there.
+ */
+function refocusTile(root: ParentNode): void {
+  if (nbReview?.answer) return;
+  const next = root.querySelector<HTMLElement>('.nbv-tiles__bank button.nbv-tile') || root.querySelector<HTMLElement>('.nbv-tiles__built button.nbv-tile');
+  next?.focus({ preventScroll: true });
+}
+
 /** Saves the answered question's grade and moves to the next one. */
 async function commitReview(): Promise<void> {
   const api = (window as any).vocabAPI;
@@ -3400,10 +3410,16 @@ function wireNotebookActions(root: HTMLElement): void {
         return;
       case 'nb-tile':
         // Letter tiles: placing the last one answers the question.
-        if (nbReview && reviewArmed(nbReview) && placeTile(nbReview, Number(el.dataset.tile))) renderLearn();
+        if (nbReview && reviewArmed(nbReview) && placeTile(nbReview, Number(el.dataset.tile))) {
+          renderLearn();
+          refocusTile(root);
+        }
         return;
       case 'nb-tile-out':
-        if (nbReview && returnTile(nbReview, Number(el.dataset.pos))) renderLearn();
+        if (nbReview && returnTile(nbReview, Number(el.dataset.pos))) {
+          renderLearn();
+          refocusTile(root);
+        }
         return;
       case 'nb-hint':
         // One more letter; what is typed stays, and the letter is added when it is the start of the word.

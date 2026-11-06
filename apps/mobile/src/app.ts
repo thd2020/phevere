@@ -944,6 +944,16 @@ function answerCurrentReview(input: { choice?: number; typed?: string; knew?: bo
   paint();
 }
 
+/**
+ * After a letter tile is placed or taken back the row is redrawn; the focus goes to the next
+ * letter left (or the word built), so a keyboard or screen reader carries on from there.
+ */
+function refocusTile(): void {
+  if (nbState.review?.answer) return;
+  const next = document.querySelector<HTMLElement>('.nbv-tiles__bank button.nbv-tile') || document.querySelector<HTMLElement>('.nbv-tiles__built button.nbv-tile');
+  next?.focus({ preventScroll: true });
+}
+
 /** Saves the answered question's grade and moves to the next one. */
 async function commitReview(): Promise<void> {
   const r = nbState.review;
@@ -2764,10 +2774,16 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'nb-tile':
       // Letter tiles: placing the last one answers the question.
-      if (nbState.review && reviewArmed(nbState.review) && placeTile(nbState.review, Number(t.dataset.tile))) paint();
+      if (nbState.review && reviewArmed(nbState.review) && placeTile(nbState.review, Number(t.dataset.tile))) {
+        paint();
+        refocusTile();
+      }
       return;
     case 'nb-tile-out':
-      if (nbState.review && returnTile(nbState.review, Number(t.dataset.pos))) paint();
+      if (nbState.review && returnTile(nbState.review, Number(t.dataset.pos))) {
+        paint();
+        refocusTile();
+      }
       return;
     case 'nb-hint':
       // One more letter; what is typed stays, and the letter is added when it is the start of the word.
