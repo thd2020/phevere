@@ -273,6 +273,14 @@ module.exports = {
               js: './src/ocr-overlay-preload.ts',
             },
           },
+          {
+            html: './src/ocr-result.html',
+            js: './src/ocr-result.ts',
+            name: 'ocr_result',
+            preload: {
+              js: './src/ocr-result-preload.ts',
+            },
+          },
         ],
       },
     }),
