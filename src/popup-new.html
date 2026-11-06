@@ -567,8 +567,8 @@
         border: 0;
         border-radius: 8px;
         overflow: hidden;
-        background: var(--surface-low);
-        box-shadow: inset 0 0 0 1px rgb(28 25 23 / 0.08);
+        /* Blank until the picture has loaded: no empty box while it is on its way. */
+        background: transparent;
         cursor: pointer;
       }
       .sense-figure__frame img {
@@ -1650,7 +1650,8 @@
         void lookupText(t, { silent: !isExpanded });
       }
 
-      function applyIncomingSelection(text, ts) {
+      /** `lang`: open the word in that language, as My words does for a saved Danish "give". */
+      function applyIncomingSelection(text, ts, lang) {
         const next = String(text || '').trim();
         if (!next) return;
         // Untimestamped IPC uses watermark 1 so a later dated event always wins.
@@ -1673,7 +1674,7 @@
         if (isFullLookupWindow() || !settings.expandableMode) {
           activateTab('lexicon');
           if (!isExpanded) expandToolbar();
-          void lookupText(currentText, { fromHistory: true });
+          void lookupText(currentText, lang ? { fromHistory: true, sourceLanguage: lang } : { fromHistory: true });
           return;
         }
         // Main still saw a strip when this was sent (the resize lags expandToolbar).
@@ -1730,9 +1731,9 @@
         try {
           if (window.electronAPI && typeof window.electronAPI.onPopupText === 'function') {
             pvLog('[POPUP] Registering onPopupText listener');
-            window.electronAPI.onPopupText((text, ts) => {
-              pvLog('[POPUP] onPopupText:', text, ts);
-              applyIncomingSelection(text, ts);
+            window.electronAPI.onPopupText((text, ts, lang) => {
+              pvLog('[POPUP] onPopupText:', text, ts, lang);
+              applyIncomingSelection(text, ts, lang);
             });
           } else {
             pvLog('[POPUP] electronAPI.onPopupText not available');
@@ -2544,6 +2545,8 @@ function startAutoCloseTimeout() {
                              const ipa = !!(result.pronunciation || (result.pronunciations && result.pronunciations.length));
                              return (defs.length ? 2 : 0) + (ipa ? 1 : 0);
                            }
+                           /** The language picked in the entry's language switch, or '' for the detected one. */
+                           var popupEntryLang = '';
                            async function lookupText(text, opts) {
           opts = opts || {};
           const silent = !!opts.silent;
@@ -2561,7 +2564,9 @@ function startAutoCloseTimeout() {
             folded &&
             currentResult &&
             foldLookupKey(currentResult.word || '') === folded &&
-            popupResultRank(currentResult) >= 2
+            popupResultRank(currentResult) >= 2 &&
+            // An entry opened in a picked language is not what a fresh lookup of the word shows.
+            (opts.sourceLanguage || '') === popupEntryLang
           ) {
             currentText = text;
             window['__popupCurrentText'] = text;
@@ -2591,6 +2596,7 @@ function startAutoCloseTimeout() {
           pvLog('[POPUP] lookupText called with:', text, 'currentTab:', currentTab, 'silent:', silent);
           const mySeq = ++lookupSeq;
           lookupFold = folded;
+          popupEntryLang = opts.sourceLanguage || '';
           if (!silent) {
             showLoading({
               title: 'Looking up…',
@@ -2603,8 +2609,9 @@ function startAutoCloseTimeout() {
             if (window.dictionaryAPI) {
               // Lexicon uses auto pairing. Translation tab honours From/To.
               let targetLang = 'auto';
-              let sourceLang;
-              if (currentTab === 'translation') {
+              // A language picked in the entry's language switch.
+              let sourceLang = opts.sourceLanguage || undefined;
+              if (!sourceLang && currentTab === 'translation') {
                 const targetSelect = document.getElementById('targetLanguage');
                 const sourceSelect = document.getElementById('sourceLanguage');
                 if (targetSelect) targetLang = targetSelect.value;
@@ -2641,7 +2648,8 @@ function startAutoCloseTimeout() {
                 return;
               }
               const sameLemma = currentResult && foldLookupKey(currentResult.word || '') === folded;
-              if (!sameLemma || popupResultRank(resolved) >= popupResultRank(currentResult)) {
+              // A language picked in the switch replaces the entry even when it has less (no IPA).
+              if (opts.sourceLanguage || !sameLemma || popupResultRank(resolved) >= popupResultRank(currentResult)) {
                 currentResult = resolved;
               }
               syncLanguageSelectsFromResult(currentResult);
@@ -2745,8 +2753,12 @@ function startAutoCloseTimeout() {
             updated.metadata && updated.metadata.originalSelection,
           ];
           if (!keys.some(function (k) { return k && norm(k) === cur; })) return;
+          // After a pick in the language switch, only that language's entry may land.
+          if (popupEntryLang && updated.detectedLanguage !== popupEntryLang) return;
           const sameLemma = currentResult && norm(currentResult.word) === cur;
-          if (sameLemma && popupResultRank(updated) < popupResultRank(currentResult)) return;
+          const sameLang = !currentResult || currentResult.detectedLanguage === updated.detectedLanguage;
+          if (sameLemma && !sameLang && !popupEntryLang) return;
+          if (sameLemma && sameLang && popupResultRank(updated) < popupResultRank(currentResult)) return;
           currentResult = updated;
           if (isExpanded) {
             if (currentTab === 'etymology') displayEtymologyResult(updated);
@@ -3516,12 +3528,87 @@ function startAutoCloseTimeout() {
           return popupSenseImages.key === popupSenseKey(result) ? popupSenseImages.list : null;
         }
 
+        /**
+         * Sense pictures load before they show (as packages/core/src/picture-load.ts does on the
+         * phone): the box stays blank until the bytes are decoded, a failed request is asked
+         * again after one and after three seconds, and only a picture that failed every try
+         * gives its place back. A slow picture is never cut off.
+         */
+        const popupPictures = { ready: new Map(), loading: new Map(), failedAt: new Map() };
+        const POPUP_PICTURE_RETRIES_MS = [1000, 3000];
+
+        function tryPopupPicture(url) {
+          return new Promise(function (resolve) {
+            const im = new Image();
+            im.referrerPolicy = 'no-referrer';
+            im.decoding = 'async';
+            im.onload = function () {
+              const done = function () { resolve(true); };
+              if (im.decode) im.decode().then(done, done); else done();
+            };
+            im.onerror = function () { resolve(false); };
+            im.src = url;
+          });
+        }
+
+        function loadPopupPicture(url) {
+          if (!url) return Promise.resolve(false);
+          if (popupPictures.ready.has(url)) return Promise.resolve(true);
+          if (popupPictures.loading.has(url)) return popupPictures.loading.get(url);
+          const failed = popupPictures.failedAt.get(url);
+          if (failed && Date.now() - failed < 60000) return Promise.resolve(false);
+          const p = (async function () {
+            for (let attempt = 0; attempt <= POPUP_PICTURE_RETRIES_MS.length; attempt++) {
+              if (attempt) await new Promise(function (r) { setTimeout(r, POPUP_PICTURE_RETRIES_MS[attempt - 1]); });
+              if (await tryPopupPicture(url)) return true;
+            }
+            return false;
+          })().then(function (ok) {
+            popupPictures.loading.delete(url);
+            if (ok) popupPictures.ready.set(url, true); else popupPictures.failedAt.set(url, Date.now());
+            return ok;
+          });
+          popupPictures.loading.set(url, p);
+          return p;
+        }
+
+        /** Fills every sense picture put in since the last look once its bytes are here. */
+        function showPopupPictures() {
+          document.querySelectorAll('img[data-pic]:not([src])').forEach(function (img) {
+            const url = img.getAttribute('data-pic') || '';
+            if (img.dataset.picAsked) return;
+            img.dataset.picAsked = '1';
+            loadPopupPicture(url).then(function (ok) {
+              if (!img.isConnected) return;
+              if (ok) {
+                img.src = url;
+                img.parentNode.classList.add('is-loaded');
+              } else {
+                const fig = img.closest('figure');
+                if (fig) fig.remove();
+              }
+            });
+          });
+        }
+
+        let popupPicturesQueued = false;
+        new MutationObserver(function () {
+          if (popupPicturesQueued) return;
+          popupPicturesQueued = true;
+          queueMicrotask(function () {
+            popupPicturesQueued = false;
+            showPopupPictures();
+          });
+        }).observe(document.documentElement, { childList: true, subtree: true });
+
         function senseFigureHtml(img, index) {
           const ratio = img.width && img.height ? Math.min(1.6, Math.max(0.75, img.width / img.height)) : 1;
           const label = (img.title || '') + ' — ' + (img.credit || '');
+          // A picture already here shows at once, so a repaint never blanks it.
+          const here = popupPictures.ready.has(img.thumb);
           return `<figure class="sense-figure" data-sense-figure="${index}" style="--ar:${ratio.toFixed(3)}">` +
-            `<button type="button" class="sense-figure__frame" data-sense-view="${escapeHtml(img.url || img.thumb)}" data-thumb="${escapeHtml(img.thumb)}" data-title="${escapeHtml(img.title || '')}" data-credit="${escapeHtml(img.credit || '')}" data-page="${escapeHtml(img.pageUrl || '')}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">` +
-            `<img src="${escapeHtml(img.thumb)}" alt="${escapeHtml(img.title || '')}" decoding="async" referrerpolicy="no-referrer" onload="this.parentNode.classList.add('is-loaded')" onerror="this.closest('figure').remove()">` +
+            `<button type="button" class="sense-figure__frame${here ? ' is-loaded' : ''}" data-sense-view="${escapeHtml(img.url || img.thumb)}" data-thumb="${escapeHtml(img.thumb)}" data-title="${escapeHtml(img.title || '')}" data-credit="${escapeHtml(img.credit || '')}" data-page="${escapeHtml(img.pageUrl || '')}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">` +
+            `<img data-pic="${escapeHtml(img.thumb)}"${here ? ` src="${escapeHtml(img.thumb)}"` : ''} alt="${escapeHtml(img.title || '')}" decoding="async" referrerpolicy="no-referrer">` +
             `</button>` +
             `<figcaption class="sense-figure__credit">${escapeHtml(img.credit || '')}</figcaption>` +
             `</figure>`;
@@ -3651,11 +3738,10 @@ function startAutoCloseTimeout() {
           openSensePicture(btn);
         });
 
-        /** "(countable, chiefly in combination) An institution…": the labels set small, as printed. */
-        /** "(uncountable, politics)": the shared rendering in lexicon-parts.ts. */
-        function labelLead(html) {
+        /** "[countable] (informal, politics)" before the gloss: the shared rendering in lexicon-parts.ts. */
+        function labelLead(html, sense, hide) {
           var lx = window.phevereLexicon;
-          return lx && lx.senseLabelLead ? lx.senseLabelLead(String(html || '')) : String(html || '');
+          return lx && lx.senseLabelLead ? lx.senseLabelLead(String(html || ''), sense, hide || []) : String(html || '');
         }
 
         function createLexiconCard(result) {
@@ -3715,8 +3801,9 @@ function startAutoCloseTimeout() {
           const shownExampleKeys = new Set();
           // Every sense's sources in order, said once under the senses.
           const senseSourceNames = [];
-          function renderSenses(senses) {
+          function renderSenses(senses, hide) {
             let panel = '';
+            const lxNotes = window.phevereLexicon;
             let senseCounter = 0;
             // The core's order, so its ranking reaches the page.
             const citeOf = function (d) {
@@ -3745,8 +3832,9 @@ function startAutoCloseTimeout() {
                     <div class="definition-sense-num">${senseCounter}</div>
                     <div class="definition-sense-body">
                       ${img ? senseFigureHtml(img, at) : ''}
-                      <div class="definition-text">${linkMarkup(labelLead(meaningHtml)) || 'No definition.'}</div>
+                      <div class="definition-text">${linkMarkup(labelLead(meaningHtml, d, hide)) || 'No definition.'}</div>
                       ${exHtml}
+                      ${lxNotes && lxNotes.senseNotesHtml ? lxNotes.senseNotesHtml(d, 'lookup', result.word || '') : ''}
                     </div>
                   </div>
                 </div>`;
@@ -3754,8 +3842,8 @@ function startAutoCloseTimeout() {
             return panel;
           }
 
-          function wrapGroup(id, label, inner) {
-            const head = label ? `<div class="lexicon-pos-heading">${escapeHtml(label)}</div>` : '';
+          function wrapGroup(id, label, inner, extraHead) {
+            const head = label ? `<div class="lexicon-pos-heading"><span>${escapeHtml(label)}</span>${extraHead || ''}</div>` : '';
             return `<div class="lexicon-pos-group" data-pos="${escapeHtml(id)}">${head}${inner}</div>`;
           }
           // Senses with no part of speech are "other" beside real ones, and need no heading alone.
@@ -3770,7 +3858,11 @@ function startAutoCloseTimeout() {
           const tocIds = [];
           const posSections = order.map(function (pos) {
             tocIds.push(pos);
-            posInner += wrapGroup(pos, posHeading(pos), renderSenses(groups[pos]));
+            // "noun [uncountable]": a code every sense shares goes on the heading instead.
+            const lxCode = window.phevereLexicon && window.phevereLexicon.posGrammarHtml
+              ? window.phevereLexicon.posGrammarHtml(result.headGrammar && result.headGrammar[pos])
+              : { html: '', hide: [] };
+            posInner += wrapGroup(pos, posHeading(pos), renderSenses(groups[pos], lxCode.hide), lxCode.html);
             return { id: pos, label: pos === 'unknown' ? (order.length > 1 ? 'other' : 'senses') : chipPosLabel(pos) };
           });
           const lxSources = window.phevereLexicon;
@@ -3823,8 +3915,19 @@ function startAutoCloseTimeout() {
           }
           if (relatedInner) allInner += wrapPane(relatedInner);
 
+          // Phrasal verbs, idioms and set phrases get a section of their own, as in learner dictionaries.
+          const phraseSections = [];
+          const phraseHtml = lexiconParts && lexiconParts.phrasesHtml
+            ? lexiconParts.phrasesHtml(result.wordFamily, 'lookup', result.word || '', !!groups.verb)
+            : '';
+          if (phraseHtml) {
+            tocIds.push('phrases');
+            phraseSections.push({ id: 'phrases', label: 'phrases' });
+            allInner += wrapPane(wrapGroup('phrases', 'phrases', phraseHtml));
+          }
+
           const familySections = [];
-          const familyHtml = lexiconParts ? lexiconParts.wordFamilyHtml(result.wordFamily, 'lookup') : '';
+          const familyHtml = lexiconParts ? lexiconParts.wordFamilyHtml(result.wordFamily, 'lookup', { phrases: !phraseHtml }) : '';
           if (familyHtml) {
             tocIds.push('family');
             familySections.push({ id: 'family', label: 'family' });
@@ -3841,6 +3944,7 @@ function startAutoCloseTimeout() {
             renderRailBlock('', formsSections),
             renderRailBlock('', exampleSections),
             renderRailBlock('', relatedSections),
+            renderRailBlock('', phraseSections),
             renderRailBlock('', familySections),
           ].join('');
           const body = `<div class="lexicon-pos-layout"><nav class="lexicon-pos-tabs" role="tablist" aria-label="Lexicon sections" tabindex="0"><div class="lexicon-rail-inner">${tabsHtml}</div></nav><div class="lexicon-pos-panel">${allInner}</div></div>`;
@@ -3852,6 +3956,7 @@ function startAutoCloseTimeout() {
                   <div class="result-word">${escapeHtml(result.word)}</div>
                   ${lexiconParts && lexiconParts.morphemeOfferHtml ? lexiconParts.morphemeOfferHtml(result, 'lookup') : ''}
                   ${formatPronunciationHtml(result)}
+                  ${lexiconParts && lexiconParts.languageSwitchHtml ? lexiconParts.languageSwitchHtml(result, 'lookup') : ''}
                 </div>
                 <div class="lexicon-block--senses">
                   ${body}
@@ -3965,6 +4070,8 @@ function startAutoCloseTimeout() {
 
        let savedVocabId = null;
        let savedVocabLemma = null;
+       /** The entry the saved id belongs to: after the language switch it is another word. */
+       let savedVocabFor = null;
 
        /** The word the lookup opened instead of `text`: glean for "gleaned", receive for "recieve". */
        function openedAs(text) {
@@ -4079,6 +4186,7 @@ function startAutoCloseTimeout() {
          if (!btn) return;
          savedVocabId = saved ? (id || savedVocabId) : null;
          savedVocabLemma = saved ? (lemma || savedVocabLemma) : null;
+         savedVocabFor = saved ? currentResult : null;
          btn.classList.toggle('is-saved', !!saved);
          btn.setAttribute('aria-pressed', saved ? 'true' : 'false');
          btn.title = saved ? 'Remove from My words' : 'Save to My words';
@@ -4098,7 +4206,11 @@ function startAutoCloseTimeout() {
          } catch (e) {
            popupUserBooks = [];
          }
-         btn.hidden = !popupUserBooks.length;
+         // An entry opened in another language whose spelling has an English entry is not
+         // offered: a book keeps spellings only (canAddToWordBook in vocab-payload.ts).
+         const lx = window.phevereLexicon;
+         const fits = !lx || !lx.canAddToWordBook || lx.canAddToWordBook(currentResult);
+         btn.hidden = !popupUserBooks.length || !fits;
        }
 
        function openBookAdd() {
@@ -4135,9 +4247,11 @@ function startAutoCloseTimeout() {
            return;
          }
          try {
-           let entry = await window.vocabAPI.find(word);
+           // The saved word in the language shown: "give" opened in Danish is not the English one.
+           const lang = shownEntryLang();
+           let entry = await window.vocabAPI.find(word, lang);
            if (!entry && currentText && String(currentText).trim().toLowerCase() !== word.toLowerCase()) {
-             entry = await window.vocabAPI.find(String(currentText).trim());
+             entry = await window.vocabAPI.find(String(currentText).trim(), lang);
            }
            setVocabHeartSaved(!!entry, entry && entry.id, entry && entry.lemma);
          } catch (e) {
@@ -4146,20 +4260,27 @@ function startAutoCloseTimeout() {
          }
        }
 
+       /** The language of the entry shown, so the heart saves and removes that language's word. */
+       function shownEntryLang() {
+         return (currentResult && currentResult.detectedLanguage) || undefined;
+       }
+
        async function toggleVocabHeart() {
          try {
            if (!window.vocabAPI) { showToast('Notebook unavailable'); return; }
            const lemma = lemmaForSave();
            if (!lemma) { showToast('Nothing to save'); return; }
 
-           if (savedVocabId) {
+           // The id found for this entry only: a tap before the heart catches up with a new
+           // entry (Danish "give" after the English one) looks the word up again below.
+           if (savedVocabId && savedVocabFor === currentResult) {
              await window.vocabAPI.remove(savedVocabId);
              setVocabHeartSaved(false);
              showToast('Removed from My words');
              return;
            }
 
-           const existing = await window.vocabAPI.find(lemma);
+           const existing = await window.vocabAPI.find(lemma, shownEntryLang());
            if (existing && existing.id) {
              await window.vocabAPI.remove(existing.id);
              setVocabHeartSaved(false);
@@ -4562,6 +4683,19 @@ function startAutoCloseTimeout() {
                  e.preventDefault();
                  e.stopPropagation();
                  window.playAudio(playBtn.getAttribute('data-text') || '', playBtn.getAttribute('data-lang') || '', playBtn);
+                 return;
+               }
+               // The same word in another of its languages, from the switch under the headword.
+               var langBtn = t.closest('[data-lookup-lang]');
+               if (langBtn) {
+                 e.preventDefault();
+                 e.stopPropagation();
+                 activateTab('lexicon');
+                 lookupText(langBtn.getAttribute('data-q') || currentText, {
+                   force: true,
+                   fromHistory: true,
+                   sourceLanguage: langBtn.getAttribute('data-lookup-lang') || '',
+                 });
                  return;
                }
                var posTab = t.closest('.lexicon-pos-tab');

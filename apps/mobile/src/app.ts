@@ -8,6 +8,8 @@ import {
   dictionaryService,
   fetchSenseImages,
   prefetchSenseImages,
+  hydratePictures,
+  pictureSrc,
   hideSenseImage,
   unhideSenseImage,
   fillEmptyDefinitions,
@@ -41,6 +43,7 @@ import {
   attachNotebookMap,
   attachFamilies,
   closeTreeInspector,
+  treeInspectorOpen,
   traceNotebookFamilies,
   attachCardTable,
   readCardLayouts,
@@ -123,6 +126,7 @@ import {
   patchApiKeyCard,
   type ApiProviderId,
   parseGoal,
+  wireNumberWheels,
   microphoneAvailable,
   readLearnPrefs,
   watchMicrophone,
@@ -138,8 +142,15 @@ import {
   bookRemovalPrompt,
   bookPickItems,
   openMenu,
+  savedForSpelling,
+  vocabLangKey,
+  vocabLookupLang,
+  closeMenu,
+  menuOpen,
   setAppIconSource,
 } from '@phevere/core';
+import { OcrView } from '@phevere/core/ocr-view';
+import { pageLines, type OcrPage } from '@phevere/core/ocr-layout';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
 import { appIconSource } from './platform/app-icons';
 import { flushNotebook, onNotebookReloaded } from './platform/sqljs-vocab-db';
@@ -174,6 +185,7 @@ import {
   learnBody,
   type LearnState,
   scanHtml,
+  scanOcrPage,
   appBarHtml,
   popupBarHtml,
   settingsBody,
@@ -510,12 +522,15 @@ let phoneUpdates: PhoneUpdater | null = null;
 /** Settings → About; read when the page first opens. */
 let aboutInfo: AboutInfo | null = null;
 
+/** The version the app was built from; the test harness bundles the app without it. */
+const BUILT_VERSION: string = typeof __PHEVERE_VERSION__ === 'string' ? __PHEVERE_VERSION__ : '';
+
 /**
  * The installed version: Android asks the package manager (versionName and versionCode);
  * iOS and the browser build use the version the app was built from (apps/mobile/package.json).
  */
 async function loadAboutInfo(): Promise<void> {
-  let version = __PHEVERE_VERSION__;
+  let version = BUILT_VERSION;
   let build = '';
   if (capture.platform === 'android' && hasNativeBridge()) {
     try {
@@ -557,6 +572,9 @@ function accountBadgeKey(s: AccountState | null): string {
   return [s.user?.email || '', s.user?.name || '', s.syncing, !!s.lastError, s.signingIn].join('|');
 }
 let scan: ScanPage | null = null;
+/** The scan's text laid out for reading, and the view that shows and edits it. */
+let scanPage: OcrPage | null = null;
+let scanView: OcrView | null = null;
 /** Bumped per picture, so a repaint keeps the rendered picture (and its selection) in place. */
 let scanId = 0;
 type SheetState = 'closed' | 'half' | 'full';
@@ -569,8 +587,316 @@ if (stripMode) document.documentElement.dataset.mode = 'strip';
 const history: string[] = [];
 const HISTORY_CAP = 40;
 let histIndex = -1;
-/** A lookup opened from Words or Learn: Back returns there once the trail is back at that word. */
-let lookupFrom: { tab: Tab; at: number } | null = null;
+/* ---------------------------------------------------------------- Back */
+
+/**
+ * One history for the system Back (Android's button and gesture, the iPhone's edge swipe), as a
+ * browser keeps one for its pages: every move to another place is a step, and Back retraces the
+ * steps one at a time. A place is a tab of the bar, the word on Lookup, or the word-book library.
+ * Moving to a place from the content (a word opened from a Words row, a card, the map, Learn or
+ * a link) is a step; tapping a tab in the bar is not. As in Material's bottom navigation and
+ * Android's Navigation library, a bar tab starts the history afresh, so Back from Words, Learn
+ * or Settings goes to the start screen.
+ * The tabs inside a place (Lookup's Dictionary, Translation and Wikipedia, the Words views,
+ * Learn's Today and Progress, the Settings sections) are views of it, not steps: Back leaves the
+ * place from whichever was showing, as Android's navigation guidance has it for tabs and view
+ * switches, and returns to the one last shown. Whatever is open over a place (a menu, a sheet,
+ * the language list, the suggestions, a scan, a review, a Wikipedia article, the map's word
+ * panel) closes first. The start screen, Lookup with Recent, is the root: reaching it starts the
+ * history afresh, Back with no steps left goes there, and only there does Back leave the app, as
+ * Android's predictive back asks. The native shell is told when the page has nothing to go back
+ * to, so the system can show its back-to-home preview.
+ */
+interface Place {
+  tab: Tab;
+  query: string;
+  resultTab: ResultTab;
+  settingsSection: SettingsSection;
+  nbView: NotebookView;
+  library: boolean;
+  learnPage: LearnPage;
+  /** The lookup trail of the arrows in the bar, and where in it the place was. */
+  trail: string[];
+  at: number;
+  scroll: number;
+}
+const backStack: Place[] = [];
+const BACK_CAP = 60;
+let here: Place | null = null;
+/**
+ * How the next repaint that moves to another place came about. 'quiet' is Back restoring a
+ * place, which is not a new step; 'trail' is the bar's back arrow, which takes back the step
+ * that led to the current word when it can.
+ */
+let navMove: 'quiet' | 'trail' | null = null;
+/**
+ * The bar tab just tapped. As Android's Navigation library does for a bottom bar, choosing a
+ * tab drops the history: Back from it goes to the start screen, and from there leaves the app.
+ */
+let barTab: Tab | null = null;
+
+/** "ob-" and "ob" are two pages: the marks of a word part stay in the key. */
+function foldQuery(v: string): string {
+  const t = v.trim();
+  const lead = /^[*-]/.test(t) ? t[0] : '';
+  const trail = t.length > 1 && t.endsWith('-') ? '-' : '';
+  return lead + t.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase() + trail;
+}
+
+function placeNow(): Place {
+  return {
+    tab,
+    query: query.trim(),
+    resultTab,
+    settingsSection,
+    nbView: nbState.view,
+    library: !!wordsState.library,
+    learnPage,
+    trail: history.slice(),
+    at: histIndex,
+    scroll: document.scrollingElement?.scrollTop || 0,
+  };
+}
+
+/** The same place, whichever of its tabs is showing. */
+function samePlace(a: Place, b: Place): boolean {
+  if (a.tab !== b.tab) return false;
+  if (a.tab === 'lookup') return foldQuery(a.query) === foldQuery(b.query);
+  if (a.tab === 'notebook') return a.library === b.library;
+  return true;
+}
+
+/** The start screen: Lookup with no word, which lists Recent. */
+function atStart(): boolean {
+  return tab === 'lookup' && !scan && !query && !result && !looking;
+}
+
+/** Called after every paint: a move to another place becomes a step Back can retrace. */
+function notePlace(): void {
+  if (stripMode) return;
+  const move = navMove;
+  navMove = null;
+  const now = placeNow();
+  if (!here) {
+    here = now;
+    return;
+  }
+  const chosen = barTab === now.tab;
+  barTab = null;
+  if (samePlace(now, here)) {
+    // A repaint, or another tab of the same place: Back returns to the tab last shown.
+    here = { ...now, scroll: here.scroll };
+    return;
+  }
+  if (chosen || (now.tab === 'lookup' && !now.query)) {
+    // The start screen is the root of the history, as Android's start destination is: from
+    // there Back leaves the app, however it was reached. A tab chosen in the bar starts afresh
+    // too; with no steps, Back goes from it to the start screen.
+    backStack.length = 0;
+  } else if (move === 'trail') {
+    const top = backStack[backStack.length - 1];
+    if (top && samePlace(top, now)) backStack.pop();
+  } else if (move !== 'quiet') {
+    backStack.push(here);
+    if (backStack.length > BACK_CAP) backStack.shift();
+  }
+  here = now;
+}
+
+/** Clear Lookup back to its start: no word, Recent listed. Lookups still running are dropped. */
+function clearLookup(): void {
+  lookupGeneration += 1;
+  query = '';
+  draft = '';
+  looking = false;
+  status = '';
+  lookupError = '';
+  result = null;
+  saved = null;
+  wiki = [];
+  wikiArticle = null;
+  wikiStack = [];
+  wikiFetch += 1;
+  wikiError = '';
+  wikiListOnly = false;
+  wikiLoading = false;
+  resultTab = 'lexicon';
+  lexiconPos = '';
+  etymologySource = '';
+  lexiconWord = '';
+}
+
+/** What a tab needs loaded before it shows the latest words, packs or voices. */
+async function loadTab(next: Tab): Promise<void> {
+  if (next === 'notebook' || next === 'learn') await refreshNotebook();
+  // Learn and every Words view but the list work on the whole notebook, not the first page of it.
+  if (next === 'learn' || (next === 'notebook' && (nbState.view !== 'list' || wordsState.scope !== 'mine'))) {
+    await loadReviewPool();
+    rebuildWordsContext();
+  }
+  if (next === 'settings') {
+    await refreshPacks();
+    if (settingsSection === 'audio') await refreshVoice();
+  }
+}
+
+/** Go back to a place from the history, as it was left: its word, its tab and its scroll. */
+function restorePlace(p: Place): void {
+  // The trail of the bar's arrows: keep the words ahead (Forward) when the place's trail leads here.
+  const leads = p.at < history.length && p.trail.slice(0, p.at + 1).every((q, i) => history[i] === q);
+  if (!leads) history.splice(0, history.length, ...p.trail);
+  histIndex = Math.min(p.at, history.length - 1);
+  wordsState.library = p.library;
+  // Only the place's own tab comes back: the Words view and Learn's page are kept as settings,
+  // and going back to a lookup must not undo a change made on Words or Learn since.
+  if (p.tab === 'settings') settingsSection = p.settingsSection;
+  if (p.tab === 'notebook' && nbState.view !== p.nbView) {
+    nbState.view = p.nbView;
+    writeStore(NB_VIEW_KEY, nbState.view);
+  }
+  if (p.tab === 'learn' && learnPage !== p.learnPage) {
+    learnPage = p.learnPage;
+    writeStore(LEARN_PAGE_KEY, learnPage);
+  }
+  const scrollBack = () => {
+    if (here && samePlace(here, p)) window.requestAnimationFrame(() => window.scrollTo({ top: p.scroll }));
+  };
+  if (p.tab === 'lookup' && foldQuery(p.query) !== foldQuery(query)) {
+    navMove = 'quiet';
+    if (p.query) {
+      void lookup(p.query, true, p.resultTab).then(scrollBack);
+    } else {
+      tab = 'lookup';
+      clearLookup();
+      paint();
+      scrollBack();
+    }
+    navMove = null;
+    return;
+  }
+  tab = p.tab;
+  if (p.tab === 'lookup') resultTab = p.resultTab;
+  navMove = 'quiet';
+  paint();
+  navMove = null;
+  scrollBack();
+  if (p.tab !== 'lookup') {
+    // The tab shows what it had at once and the latest once loaded.
+    void loadTab(p.tab).then(() => {
+      if (here && samePlace(here, p)) paint();
+    });
+  }
+}
+
+/** Whether Back has anything to do in the page, or would leave the app. */
+function canGoBack(): boolean {
+  if (stripMode) return false;
+  return (
+    !atStart() ||
+    backStack.length > 0 ||
+    treeInspectorOpen() ||
+    menuOpen() ||
+    accountOpen ||
+    !!langMenu ||
+    !!document.querySelector('dialog[open], form.search .suggest')
+  );
+}
+
+let backShown: boolean | null = null;
+let backFrame = 0;
+/** Tell the native shell whether Back stays in the page, once the current change settles. */
+function syncBack(): void {
+  if (backFrame) return;
+  backFrame = window.setTimeout(() => {
+    backFrame = 0;
+    const on = canGoBack();
+    if (on === backShown) return;
+    backShown = on;
+    if (hasNativeBridge()) void nativeCall('setBackEnabled', { on }, 5000).catch(() => undefined);
+  }, 0);
+}
+
+/**
+ * One step back, innermost first; false when there is nothing left and Back should leave the
+ * app. It does what the page's own back or close control would.
+ */
+function goBack(): boolean {
+  if (closeTreeInspector()) return true;
+  if (menuOpen()) {
+    closeMenu();
+    return true;
+  }
+  const sheet = document.querySelector<HTMLDialogElement>('dialog[open]');
+  if (sheet) {
+    sheet.dispatchEvent(new Event('cancel'));
+    if (sheet.open) sheet.close();
+    return true;
+  }
+  if (accountOpen) {
+    accountOpen = false;
+    accountDeleting = false;
+    paint();
+    return true;
+  }
+  if (langMenu) {
+    langMenu = '';
+    paint();
+    return true;
+  }
+  if (document.querySelector('form.search .suggest')) {
+    suggestHeld = true;
+    suggestSeq++;
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    paintSuggest();
+    return true;
+  }
+  if (lib.inspecting) {
+    lib.inspecting = null;
+    paint();
+    return true;
+  }
+  // The map's word panel, as its own Close does.
+  const mapClose = document.querySelector<HTMLElement>('.nbv-map__panel:not([hidden]) [data-map-act="close"]');
+  if (mapClose) {
+    mapClose.click();
+    return true;
+  }
+  if (scan) {
+    if (scanSheet !== 'closed') setScanSheet('closed');
+    else {
+      scanView?.destroy();
+      scanView = null;
+      scan = null;
+      clearScanPick();
+      paint();
+    }
+    return true;
+  }
+  if (tab === 'learn' && nbState.review?.started) {
+    // As the review's own close: an answer on screen is saved first.
+    const r = nbState.review;
+    void (r.answer ? commitReview() : Promise.resolve()).then(() => {
+      nbState.review = null;
+      paint();
+    });
+    return true;
+  }
+  // Inside the Wikipedia reader, the article before, then the list of articles.
+  if (tab === 'lookup' && wikiCanBack()) {
+    void handleAct('wiki-back', root, new Event('back'));
+    return true;
+  }
+  const prev = backStack.pop();
+  if (prev) {
+    restorePlace(prev);
+    return true;
+  }
+  if (!atStart()) {
+    restorePlace({ ...placeNow(), tab: 'lookup', query: '', resultTab: 'lexicon', trail: [], at: -1, scroll: 0 });
+    return true;
+  }
+  return false;
+}
 
 function toast(msg: string, undo?: () => void): void {
   toastMsg = msg;
@@ -623,7 +949,7 @@ function lookupPaneHtml(): string {
     query,
     error: lookupError,
     recent: recentLookups,
-    savedFor: (q) => notebook.find((e) => e.lemma.trim().toLowerCase() === q.trim().toLowerCase()),
+    savedFor: (q) => savedForSpelling(notebook, q),
     headTools: !stripMode,
     bookPick: wordsState.bookPick,
     saveWord: result ? saveLemma(result) : undefined,
@@ -684,6 +1010,18 @@ function placeSenseFigures(final = false): void {
     else body.insertAdjacentHTML('afterbegin', senseFigureHtml(img, i));
   });
   if (final) root.querySelectorAll('.sense-figure.is-pending').forEach((el) => el.remove());
+  showSenseFigures();
+}
+
+/**
+ * Shows each sense picture once its bytes are here (picture-load.ts): the box stays blank until
+ * then, a failed request is asked again, and a picture that never comes gives its place back.
+ */
+function showSenseFigures(): void {
+  hydratePictures(root, {
+    onLoad: (img) => img.parentElement?.classList.add('is-loaded'),
+    onFail: (img) => img.closest('figure')?.remove(),
+  });
 }
 
 /**
@@ -743,7 +1081,14 @@ async function loadSenseImages(generation: number): Promise<void> {
   if (generation === lookupGeneration && result && senseKey(result) !== key) void loadSenseImages(generation);
 }
 
+/** Repaint the page, and note a move to another place for Back. */
 function paint(): void {
+  paintPage();
+  notePlace();
+  syncBack();
+}
+
+function paintPage(): void {
   document.documentElement.dataset.popup = prefs.floatingStrip ? 'floating' : 'half';
   document.documentElement.dataset.notify = capture.platform === 'ios' ? 'ios' : 'android';
   document.documentElement.dataset.platform = capture.platform;
@@ -787,7 +1132,7 @@ function paint(): void {
             lib,
             phoneUpdates?.state() ?? null,
             learnSettingsInput(),
-            aboutInfo || { version: __PHEVERE_VERSION__, platform: capture.platform },
+            aboutInfo || { version: BUILT_VERSION, platform: capture.platform },
           )
         : hit;
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
@@ -825,6 +1170,7 @@ function paint(): void {
     if (typeof deleteCaret === 'number') deleteInput.setSelectionRange(deleteCaret, deleteCaret);
   }
   bindLexiconPane();
+  showSenseFigures();
   bindWikiReader();
   bindMockBar();
   bindAzRail();
@@ -895,7 +1241,7 @@ function bindNotebookViews(): void {
   }
   const fillImages = () => {
     if (prefs.senseImages !== false) {
-      fillWordImages(page, (lemma, lang, gloss, pos, onPicture) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture }));
+      fillWordImages(page, (lemma, lang, gloss, pos, onPicture, signal, again) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture, signal, again }));
     }
   };
   attachCardTable(page, {
@@ -917,7 +1263,7 @@ function bindLearn(): void {
     return;
   }
   if (prefs.senseImages !== false) {
-    fillWordImages(page, (lemma, lang, gloss, pos, onPicture) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture }));
+    fillWordImages(page, (lemma, lang, gloss, pos, onPicture, signal, again) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture, signal, again }));
   }
   focusReview(page);
   void prefetchMeanings();
@@ -1250,7 +1596,11 @@ async function refreshPacks(): Promise<void> {
   }
 }
 
-async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promise<void> {
+/**
+ * Looks a word up. `lang` asks for one language's entry (the entry's language switch); without
+ * it the source language set in Settings, or detection, decides.
+ */
+async function lookup(raw: string, fromHist = false, keepTab?: ResultTab, lang?: string): Promise<void> {
   const q = extractLookupQuery(raw);
   if (!q) return;
   const generation = ++lookupGeneration;
@@ -1280,7 +1630,7 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
   paint();
   // The word's pictures are gathered while the dictionaries answer, apart from the senses.
   if (prefs.senseImages !== false) {
-    prefetchSenseImages(q, { lang: prefs.sourceLang === 'auto' ? 'en' : prefs.sourceLang });
+    prefetchSenseImages(q, { lang: lang || (prefs.sourceLang === 'auto' ? 'en' : prefs.sourceLang) });
     warmPictureHost();
   }
   const enabled = dictionaryService.getEnabledSources();
@@ -1288,7 +1638,7 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
   try {
     const next = await dictionaryService.lookup(q, prefs.targetLang, enabled, {
       translationProvider: prefs.translationProvider,
-      sourceLanguage: prefs.sourceLang === 'auto' ? undefined : prefs.sourceLang,
+      sourceLanguage: lang || (prefs.sourceLang === 'auto' ? undefined : prefs.sourceLang),
       onUpdate: (partial) => {
         if (generation !== lookupGeneration) return;
         result = partial;
@@ -1303,7 +1653,8 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
     result = next;
     settled = true;
     prefetchRecorded(next);
-    const nextSaved = await findByLemma(saveLemma(next)).catch(() => null);
+    // The saved word in the language shown: "give" opened in Danish is not the English one.
+    const nextSaved = await findByLemma(saveLemma(next), next.detectedLanguage).catch(() => null);
     if (generation !== lookupGeneration) return;
     saved = nextSaved;
     void loadSenseImages(generation);
@@ -1386,8 +1737,14 @@ async function saveCurrent(): Promise<void> {
 function paintScan(page: ScanPage, hit: string): void {
   let view = root.querySelector<HTMLElement>('.scan-view');
   if (!view || view.dataset.scanId !== String(scanId)) {
-    root.innerHTML = scanHtml(page, scanId);
+    scanView?.destroy();
+    scanPage = scanOcrPage(page);
+    root.innerHTML = scanHtml(page, scanPage, scanId);
     view = root.querySelector<HTMLElement>('.scan-view')!;
+    scanView = new OcrView(view, scanPage, view.querySelector<HTMLImageElement>('.scan-frame img')!, {
+      copyText,
+      saveImage: saveScanImage,
+    });
     bindScanViewer(view);
   }
   const sheet = view.querySelector<HTMLElement>('.scan-sheet')!;
@@ -1397,13 +1754,14 @@ function paintScan(page: ScanPage, hit: string): void {
   body.innerHTML = scanSheet === 'closed' ? '' : hit;
   view.querySelector<HTMLElement>('.scan-toast')!.innerHTML = toastHtml();
   bindLexiconPane();
+  showSenseFigures();
   bindWikiReader();
 }
 
 /** Keep the looked-up words highlighted after the system selection goes away. */
 function markScanPick(): void {
   const sel = window.getSelection();
-  const layer = root.querySelector('.scan-layer');
+  const layer = root.querySelector('.scan-view .ocr-layer, .scan-view .ocr-text');
   if (!sel || !sel.rangeCount || !layer || !layer.contains(sel.getRangeAt(0).commonAncestorContainer)) return;
   const reg = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights;
   const Hl = (window as unknown as { Highlight?: new (r: Range) => unknown }).Highlight;
@@ -1425,18 +1783,27 @@ function lookupInPlace(text: string): void {
   void lookup(q);
 }
 
-/** Fit each invisible word over its box: font size from the box height, width by scaleX. */
-function fitScanWords(frame: HTMLElement): void {
-  const width = frame.clientWidth;
-  frame.querySelectorAll<HTMLElement>('.scan-word').forEach((el) => {
-    const h = el.offsetHeight;
-    el.style.fontSize = `${Math.max(4, h * 0.82)}px`;
-    el.style.lineHeight = `${h}px`;
-    el.style.transform = '';
-    const natural = el.offsetWidth;
-    const target = Number(el.dataset.w || 0) * width;
-    if (natural > 0 && target > 0) el.style.transform = `scaleX(${target / natural})`;
-  });
+/** Save the scanned picture with its edits as a PNG. */
+async function saveScanImage(png: Blob): Promise<void> {
+  const bytes = new Uint8Array(await png.arrayBuffer());
+  const name = 'Scanned text.png';
+  try {
+    if (hasNativeBridge()) {
+      let bin = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      await nativeCall('saveFile', { name, mime: 'image/png', b64: btoa(bin) });
+    } else {
+      const url = URL.createObjectURL(png);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    if (msg !== 'Cancelled') toast('Could not save');
+  }
 }
 
 /**
@@ -1463,7 +1830,7 @@ function bindScanViewer(view: HTMLElement): void {
     const fw = Math.min(W, H * ratio);
     frame.style.width = `${fw}px`;
     frame.style.height = `${fw / ratio}px`;
-    fitScanWords(frame);
+    scanView?.fit();
     clamp();
     apply();
   };
@@ -1490,7 +1857,7 @@ function bindScanViewer(view: HTMLElement): void {
   stage.addEventListener('pointerdown', (e) => {
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pts.size === 2) { pinch = { d: dist(), s }; pan = null; }
-    else if (pts.size === 1) pan = { x: e.clientX, y: e.clientY, ox: x, oy: y, moved: false };
+    else if (pts.size === 1 && !(e.target as HTMLElement | null)?.closest?.('[contenteditable]')) pan = { x: e.clientX, y: e.clientY, ox: x, oy: y, moved: false };
   });
   stage.addEventListener('pointermove', (e) => {
     if (!pts.has(e.pointerId)) return;
@@ -1513,7 +1880,9 @@ function bindScanViewer(view: HTMLElement): void {
     pts.delete(e.pointerId);
     if (pts.size < 2) pinch = null;
     if (pts.size === 0) {
-      if (!wasPan && e.type === 'pointerup') {
+      // A tap inside a line being edited places the caret or selects a word; it never zooms.
+      const inField = !!(e.target as HTMLElement | null)?.closest?.('[contenteditable]');
+      if (!wasPan && e.type === 'pointerup' && !inField) {
         const now = Date.now();
         if (now - lastTap.t < 300 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 24) {
           window.clearTimeout(tapTimer);
@@ -1589,23 +1958,35 @@ async function runOcr(): Promise<void> {
       toast('No picture');
       return;
     }
-    scanId += 1;
-    scanSheet = 'closed';
-    clearScanPick();
-    scan = {
-      jpeg: res.jpeg,
-      width: Number(res.width) || 0,
-      height: Number(res.height) || 0,
-      words: Array.isArray(res.words) ? res.words : [],
-    };
-    tab = 'lookup';
-    postOsNotify('ocr', 'Scan finished', scan.words.length ? `${scan.words.length} words` : 'No text');
-    paint();
+    showScan(res);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Could not scan';
     if (msg === 'Cancelled' || msg === 'No photo' || msg === 'No image') return;
     toast(msg);
   }
+}
+
+function showScan(res: ScanPage): void {
+  scanId += 1;
+  scanSheet = 'closed';
+  clearScanPick();
+  scan = {
+    jpeg: res.jpeg,
+    width: Number(res.width) || 0,
+    height: Number(res.height) || 0,
+    words: Array.isArray(res.words) ? res.words : [],
+    lines: Array.isArray(res.lines) ? res.lines : undefined,
+    engine: typeof res.engine === 'string' ? res.engine : undefined,
+  };
+  tab = 'lookup';
+  const words = pageLines(scanOcrPage(scan)).reduce((n, l) => n + l.words.length, 0);
+  postOsNotify('ocr', 'Scan finished', words ? `${words} words` : 'No text');
+  paint();
+}
+
+// Browser preview only: show a saved scan, since there is no camera bridge to make one.
+if (typeof __PHEVERE_DEV__ !== 'undefined' && __PHEVERE_DEV__) {
+  (window as unknown as { __phevereShowScan?: (p: ScanPage) => void }).__phevereShowScan = showScan;
 }
 
 /**
@@ -1640,7 +2021,7 @@ function openSensePicture(frame: HTMLElement): void {
   const d = frame.dataset;
   const dlg = document.createElement('dialog');
   dlg.className = 'pic-view';
-  dlg.innerHTML = `<img class="pic-view__img" src="${esc(d.thumb || '')}" alt="${esc(d.title || '')}" referrerpolicy="no-referrer" tabindex="-1" autofocus />
+  dlg.innerHTML = `<img class="pic-view__img" src="${esc(pictureSrc(d.thumb || '') || d.thumb || '')}" alt="${esc(d.title || '')}" referrerpolicy="no-referrer" tabindex="-1" autofocus />
     <p class="pic-view__cap"><span>${esc(d.title || '')}</span>${d.page ? `<button type="button" class="pic-view__credit" data-pic-credit="${esc(d.page)}">${esc(d.credit || 'Wikimedia Commons')}</button>` : ''}</p>
     ${d.page ? '<button type="button" class="pic-view__hide" data-pic-hide>Hide picture</button>' : ''}`;
   // The thumbnail shows at once; the larger rendering replaces it when it has arrived.
@@ -1872,14 +2253,7 @@ function watchVoice(): void {
 
 /** Desktop lookup trail: same word replaces the current entry; capped at 40. */
 function rememberLookup(q: string): void {
-  // "ob-" and "ob" are two pages: the marks of a word part stay in the key.
-  const fold = (v: string) => {
-    const t = v.trim();
-    const lead = /^[*-]/.test(t) ? t[0] : '';
-    const trail = t.length > 1 && t.endsWith('-') ? '-' : '';
-    return lead + t.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase() + trail;
-  };
-  if (histIndex >= 0 && fold(history[histIndex] || '') === fold(q)) {
+  if (histIndex >= 0 && foldQuery(history[histIndex] || '') === foldQuery(q)) {
     history[histIndex] = q;
     return;
   }
@@ -1920,7 +2294,9 @@ function bindPullToRefresh(): void {
   let pulled = 0;
   const indicator = () => document.querySelector<HTMLElement>('.ptr');
   document.addEventListener('touchstart', (e) => {
-    startY = tab === 'notebook' && window.scrollY <= 0 && e.touches.length === 1 ? e.touches[0].clientY : null;
+    // A drag on the map turns the map; it must not pull the list down to reload it.
+    const onMap = !!(e.target as Element | null)?.closest?.('.nbv-map');
+    startY = tab === 'notebook' && !onMap && window.scrollY <= 0 && e.touches.length === 1 ? e.touches[0].clientY : null;
     pulled = 0;
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
@@ -2021,7 +2397,7 @@ function onSelectionSettled(): void {
   if (!raw || raw.length > 200) return;
   const anchor = sel?.anchorNode;
   const el = anchor && (anchor.nodeType === 1 ? (anchor as Element) : anchor.parentElement);
-  if (el?.closest('input, textarea, [contenteditable="true"]')) return;
+  if (el?.closest('input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"]')) return;
   const q = extractLookupQuery(raw);
   if (!q || q === query) return;
   if (scan) {
@@ -2317,15 +2693,10 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'tab':
-      lookupFrom = null;
       tab = (['notebook', 'learn', 'settings'] as const).find((id) => id === t.dataset.tab) || 'lookup';
-      if (tab === 'notebook' || tab === 'learn') await refreshNotebook();
-      // Learn and every Words view but the list work on the whole notebook, not the first page of it.
-      if (tab === 'learn' || (tab === 'notebook' && (nbState.view !== 'list' || wordsState.scope !== 'mine'))) {
-        await loadReviewPool();
-        rebuildWordsContext();
-      }
-      if (tab === 'settings') await refreshPacks();
+      // A bar tab is not a step: the history starts afresh from it (see notePlace).
+      barTab = tab;
+      await loadTab(tab);
       paint();
       return;
     case 'settings-section': {
@@ -2405,6 +2776,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'scan-close':
+      scanView?.destroy();
+      scanView = null;
       scan = null;
       scanSheet = 'closed';
       clearScanPick();
@@ -2418,7 +2791,11 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       }
       if (histIndex > 0) {
         histIndex -= 1;
-        await lookup(history[histIndex], true, trailTab());
+        // A step back along the trail, not a new step: Back afterwards goes on further back.
+        navMove = 'trail';
+        const going = lookup(history[histIndex], true, trailTab());
+        navMove = null;
+        await going;
       }
       return;
     case 'fwd':
@@ -2430,9 +2807,13 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'lookup': {
       // A word in running text that was selected, not tapped, stays selected.
       if (t.classList.contains('lx-w') && String(window.getSelection?.() || '').trim()) return;
-      const from = tab;
-      if (t.dataset.q) await lookup(t.dataset.q);
-      if (from !== 'lookup' && tab === 'lookup') lookupFrom = { tab: from, at: histIndex };
+      // data-lang: a word saved in another language opens in it (the Danish "give").
+      if (t.dataset.q) await lookup(t.dataset.q, false, undefined, t.dataset.lang || undefined);
+      return;
+    }
+    case 'lookup-lang': {
+      // The same word in another of its languages: no new history step.
+      if (t.dataset.q && t.dataset.lang) await lookup(t.dataset.q, true, 'lexicon', t.dataset.lang);
       return;
     }
     case 'lex-pos': {
@@ -2708,15 +3089,6 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'learn-use-goal': {
       // The start card's suggested number of new words a day.
       const goal = parseGoal(t.dataset.goal);
-      if (goal == null) return;
-      await setLearnGoal(t.dataset.book || '', goal);
-      paint();
-      return;
-    }
-    case 'learn-goal': {
-      // A preset in Settings → Learn; the radio's own click, not its label's.
-      if (!(t instanceof HTMLInputElement)) return;
-      const goal = parseGoal(t.value);
       if (goal == null) return;
       await setLearnGoal(t.dataset.book || '', goal);
       paint();
@@ -3137,15 +3509,16 @@ function onChange(e: Event): void {
     keepDraft(nbState.review, (el as HTMLInputElement).value);
     return;
   }
-  // Settings → Learn: a typed goal counts once the field is left or Enter is pressed.
-  if (el.dataset.act === 'learn-goal-input') {
+  // Settings → Learn: a number wheel sends change once it settles. It already shows the value, so
+  // saving it does not repaint (a repaint would take the wheel away from a finger or the keyboard).
+  if (el.dataset.act === 'learn-goal') {
     if (e.type !== 'change') return;
-    const goal = parseGoal((el as HTMLInputElement).value);
-    if (goal != null) void setLearnGoal(el.dataset.book || '', goal).then(paint);
+    const goal = parseGoal(el.dataset.value);
+    if (goal != null) void setLearnGoal(el.dataset.book || '', goal);
     return;
   }
   if (el.dataset.act === 'learn-countdown') {
-    if (e.type === 'change') saveLearnPrefs({ countdown: Number((el as HTMLSelectElement).value) || 0 });
+    if (e.type === 'change') saveLearnPrefs({ countdown: Number(el.dataset.value) || 0 });
     return;
   }
   if (el.id === 'account-delete-email') {
@@ -3232,46 +3605,17 @@ export async function startApp(): Promise<void> {
     if (tab === 'notebook') paint();
   }));
   // The floating pop-up's own selection bar sends its Phevere item here.
-  // Android Back (button or gesture): the page steps back first; native leaves the app only
-  // when this returns false.
-  // It does what the page's own back or close control would, innermost first.
-  (window as unknown as { __pvBack?: () => boolean }).__pvBack = () => {
-    if (closeTreeInspector()) return true;
-    const sheet = document.querySelector<HTMLDialogElement>('dialog[open]');
-    if (sheet) {
-      sheet.dispatchEvent(new Event('cancel'));
-      if (sheet.open) sheet.close();
-      return true;
-    }
-    if (accountOpen) { accountOpen = false; accountDeleting = false; paint(); return true; }
-    if (langMenu) { langMenu = ''; paint(); return true; }
-    if (lib.inspecting) { lib.inspecting = null; paint(); return true; }
-    if (scan) {
-      if (scanSheet !== 'closed') setScanSheet('closed');
-      else { scan = null; clearScanPick(); paint(); }
-      return true;
-    }
-    if (tab === 'learn' && nbState.review) {
-      const r = nbState.review;
-      void (r.answer ? commitReview() : Promise.resolve()).then(() => {
-        nbState.review = null;
-        paint();
-      });
-      return true;
-    }
-    if (tab === 'notebook' && wordsState.library) { wordsState.library = false; paint(); return true; }
-    if (tab !== 'lookup') { tab = 'lookup'; paint(); return true; }
-    // Lookup: the same as its back arrow, the Wikipedia reader first, then the word before.
-    if (wikiArticle && wikiCanBack()) { void handleAct('back', root, new Event('back')); return true; }
-    if (lookupFrom && histIndex <= lookupFrom.at) {
-      tab = lookupFrom.tab;
-      lookupFrom = null;
-      paint();
-      return true;
-    }
-    if (histIndex > 0) { void handleAct('back', root, new Event('back')); return true; }
-    return false;
-  };
+  // Android's Back and the iPhone's edge swipe: the page steps back first; native leaves the
+  // app only when this returns false.
+  (window as unknown as { __pvBack?: () => boolean }).__pvBack = goBack;
+  // Back returns to where a place was left on the page.
+  window.addEventListener('scroll', () => {
+    if (here) here.scroll = document.scrollingElement?.scrollTop || 0;
+  }, { passive: true });
+  // Menus, sheets and suggestions open outside paint; the shell hears of them as they appear.
+  if (typeof MutationObserver === 'function' && document.body) {
+    new MutationObserver(syncBack).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open'] });
+  }
   const hooks = window as unknown as {
     __pvLookupText?: (text: string) => void;
     __pvSelectionAction?: () => { text: string; inPlace: boolean; rect: Record<string, number> | null } | null;
@@ -3319,6 +3663,7 @@ export async function startApp(): Promise<void> {
   root.addEventListener('submit', onSubmit);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onChange);
+  wireNumberWheels(root);
   root.addEventListener('focusin', (e) => {
     if ((e.target as HTMLElement).id === 'q' && (e.target as HTMLInputElement).value.trim() && !suggestHeld) onQueryInput();
   });
@@ -3509,15 +3854,19 @@ async function fillEmptyCards(): Promise<void> {
   const rows = [...(await listEmptyDefinitions(40)), ...(await listEmptyReadings(40))];
   const seen = new Set<string>();
   for (const row of rows) {
-    const key = row.lemma.toLowerCase();
+    const key = vocabLangKey(row);
     if (seen.has(key)) continue;
     seen.add(key);
     try {
+      // A word saved in another language (the Danish "give") is filled from that language's entry.
+      const lang = vocabLookupLang(row) || undefined;
       const next = await dictionaryService.lookup(row.lemma, prefs.targetLang, undefined, {
         skipEtymology: true,
+        ...(lang ? { sourceLanguage: lang } : {}),
       });
       const payload = vocabPayloadFromResult(next, row.lemma);
       await fillEmptyDefinitions([row.lemma], {
+        sourceLang: lang || payload.sourceLang,
         definition: payload.definition,
         reading: payload.reading,
         partOfSpeech: payload.partOfSpeech,

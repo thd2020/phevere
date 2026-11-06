@@ -9,6 +9,7 @@ import { bookFileName, encodeBookFile, type BookPayload, type BookWord } from '.
 import { getVocabDb } from './runtime';
 import { addVocab, listVocab, type VocabEntry } from './vocab-store';
 import { WORDBOOK_CATALOG } from './wordbook-catalog';
+import { vocabLangKey } from './vocab-lang';
 import { loadWordbook } from './wordbooks';
 import {
   bookWordKey,
@@ -178,9 +179,10 @@ export async function importBookPayload(payload: BookPayload, mode: 'replace' | 
   let added = 0;
   if (b.kind === 'mine') {
     // A word already saved is left alone (no new save time to sync) unless the file fills a gap.
-    const have = new Map((await listVocab(1_000_000)).map((e) => [e.lemma.toLowerCase(), e]));
+    // By spelling and language: a Danish "give" in the file is new beside a saved English "give".
+    const have = new Map((await listVocab(1_000_000)).map((e) => [vocabLangKey(e), e]));
     for (const w of words) {
-      const e = have.get(w.lemma.trim().toLowerCase());
+      const e = have.get(vocabLangKey({ lemma: w.lemma, sourceLang: w.sourceLang }));
       if (e && !fillsGap(e, w)) continue;
       if (!e) added += 1;
       await addVocab({

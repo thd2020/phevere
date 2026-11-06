@@ -398,10 +398,30 @@ function stubHttp(log, opts = {}) {
         const pages = q.get('titles').split('|').map((t) => (fx.wiktionary[t] ? fx.wiktionary[t].query.pages[0] : { title: t, missing: true }));
         return { query: { pages } };
       }
+      if (u.hostname === 'en.wikipedia.org' && q.get('generator') === 'search') {
+        // The search for a card no source had a picture for: an article on the word, then one about a band.
+        if (opts.search === 'none') return { batchcomplete: true };
+        const word = q.get('gsrsearch');
+        const name = word.charAt(0).toUpperCase() + word.slice(1);
+        const page = (title, description, image, index) => ({ title, index, description, pageimage: image, thumbnail: { source: `https://upload.wikimedia.org/x/330px-${image}`, width: 330, height: 220 } });
+        if (opts.search === 'commons') return { query: { pages: [page(`${name} (band)`, 'American rock band', `${name} live.jpg`, 1)] } };
+        return { query: { pages: [page(`${name} (band)`, 'American rock band', `${name} live.jpg`, 2), page(name, 'Small mechanical device', `${name} on a desk.jpg`, 1)] } };
+      }
       if (u.hostname === 'en.wikipedia.org') {
         const t = q.get('titles');
         const name = t.charAt(0).toUpperCase() + t.slice(1);
         return fx.wikipediaTitle[name] ? JSON.parse(JSON.stringify({ query: { ...fx.wikipediaTitle[name].query, normalized: [{ from: t, to: name }] } })) : { query: { pages: [{ title: t, missing: true }] } };
+      }
+      if (u.hostname === 'commons.wikimedia.org' && q.get('generator') === 'search') {
+        // The search for a card no source had a picture for: a sound, then two pictures.
+        if (opts.search === 'none') return { batchcomplete: true };
+        const word = q.get('gsrsearch');
+        const file = (title, mime, i) => ({
+          title,
+          index: i + 1,
+          imageinfo: [{ url: `https://upload.wikimedia.org/x/${title}`, thumburl: `https://upload.wikimedia.org/x/330px-${title}`, thumbwidth: 330, thumbheight: 220, width: 900, mime, descriptionurl: `https://commons.wikimedia.org/wiki/${title.replace(/ /g, '_')}`, extmetadata: {} }],
+        });
+        return { query: { pages: [file(`File:En-us-${word}.ogg`, 'audio/ogg', 0), file('File:Street scene.jpg', 'image/jpeg', 1), file(`File:${word} in a garden.jpg`, 'image/jpeg', 2)] } };
       }
       if (u.hostname === 'commons.wikimedia.org') {
         const pages = q.get('titles').split('|').map((t) => {
@@ -453,7 +473,9 @@ function memoryStore() {
   assert.strictEqual((await again.fetchSenseImages('crane', craneSenses, { lang: 'en' }))[2], null, 'hidden');
   const third = load({ isCoreConfigured: () => true, getHttp: () => ({ requestJson: async () => { throw new Error('should not fetch'); } }), getLookupCache: () => store });
   assert.strictEqual((await third.fetchSenseImages('crane', craneSenses, { lang: 'en' }))[2], null, 'still hidden after a restart');
-  assert.ok(await third.fetchWordImage('crane', { lang: 'en', gloss: 'A mechanical lifting machine or device, often used for lifting heavy loads.' }) === null, 'hidden on a card saved with that sense');
+  // A card saved with that sense shows the word's other picture instead, never the hidden one.
+  const hiddenCard = await third.fetchWordImage('crane', { lang: 'en', gloss: 'A mechanical lifting machine or device, often used for lifting heavy loads.' });
+  assert.ok(hiddenCard && hiddenCard.pageUrl !== imgs[2].pageUrl, 'hidden on a card saved with that sense');
   // The same file on another sense (a gloss that only this picture fits) still shows.
   const other = [{ meaning: 'A machine for lifting loads, with a mechanical arm.', partOfSpeech: 'noun' }];
   assert.ok((await third.fetchSenseImages('crane', other, { lang: 'en' }))[0], 'shown on another sense');
@@ -463,6 +485,44 @@ function memoryStore() {
   assert.ok((await third.fetchSenseImages('crane', craneSenses, { lang: 'en' }))[2], 'back after Undo');
   const fourth = load({ isCoreConfigured: () => true, getHttp: () => ({ requestJson: async () => { throw new Error('should not fetch'); } }), getLookupCache: () => store });
   assert.ok((await fourth.fetchSenseImages('crane', craneSenses, { lang: 'en' }))[2], 'Undo is saved');
+
+  // A card always shows a picture when the word has one. A sense no picture fits takes the
+  // word's best one (the picture on its Wiktionary entry before a Wikidata lexeme's), while a
+  // lookup of that sense still shows none.
+  {
+    const verb = [{ meaning: 'To stretch out the neck to see better.', partOfSpeech: 'verb' }];
+    same(await mod.fetchSenseImages('crane', verb, { lang: 'en' }), [null], 'lookup: no picture on the verb');
+    const n = log.length;
+    const card = await mod.fetchWordImage('crane', { lang: 'en', gloss: verb[0].meaning, pos: 'verb' });
+    assert.strictEqual(card && card.title, 'Common crane (1)', 'card: the best picture of the word');
+    assert.strictEqual(log.length, n, 'from the pool, no request');
+  }
+
+  // A word no source has a picture for is searched once: Wikipedia's article named with the word
+  // comes first (not the band), then a Commons file named with the word (not a sound or a street
+  // scene). A lookup never searches, and the search is kept with the pool.
+  {
+    const log9 = [];
+    const s9 = memoryStore();
+    const m9 = load({ isCoreConfigured: () => true, getHttp: () => stubHttp(log9), getLookupCache: () => s9 });
+    same(await m9.fetchSenseImages('gizmo', [{ meaning: 'A small gadget.', partOfSpeech: 'noun' }], { lang: 'en' }), [null], 'lookup: none');
+    assert.ok(!log9.some((r) => r.url.includes('generator=search')), 'a lookup never searches');
+    const card = await m9.fetchWordImage('gizmo', { lang: 'en', gloss: 'A small gadget.' });
+    assert.strictEqual(card && card.title, 'Gizmo', 'card: the lead image of the article on the word');
+    const searches = () => log9.filter((r) => r.url.includes('generator=search')).length;
+    assert.strictEqual(searches(), 2, 'one search on each site');
+    await m9.fetchWordImage('gizmo', { lang: 'en', gloss: 'A small gadget.' });
+    assert.strictEqual(searches(), 2, 'not searched again');
+    const later = load({ isCoreConfigured: () => true, getHttp: () => ({ requestJson: async () => { throw new Error('should not fetch'); } }), getLookupCache: () => s9 });
+    assert.ok(await later.fetchWordImage('gizmo', { lang: 'en' }), 'the search is saved with the pool');
+    // Only an article about something else: a Commons file named with the word.
+    const m11 = load({ isCoreConfigured: () => true, getHttp: () => stubHttp([], { search: 'commons' }), getLookupCache: () => null });
+    const file = await m11.fetchWordImage('gizmo', { lang: 'en', gloss: 'A small gadget.' });
+    assert.strictEqual(file && file.title, 'gizmo in a garden', 'card: the Commons file named with the word');
+    // Nothing anywhere: the card keeps its letter.
+    const m10 = load({ isCoreConfigured: () => true, getHttp: () => stubHttp([], { search: 'none' }), getLookupCache: () => null });
+    assert.strictEqual(await m10.fetchWordImage('gizmo', { lang: 'en', gloss: 'A small gadget.' }), null, 'no picture anywhere');
+  }
 
   // Offline: no picture, nothing saved.
   {

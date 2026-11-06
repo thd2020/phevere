@@ -221,7 +221,8 @@ a { color: var(--md-sys-color-tertiary); }
 /* IPA row spans under both the headword and its buttons, so chips sit side by side. */
 .head > .ipa-chips,
 .head > .ipa-line,
-.head > .lx-formline { grid-column: 1 / -1; }
+.head > .lx-formline,
+.head > .lx-langs { grid-column: 1 / -1; }
 .head .word {
   flex: 1;
   min-width: 0;
@@ -329,6 +330,16 @@ html:not([data-mode="strip"]) .shell-lexicon .lexicon-pos-layout {
   mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
 }
 .shell-lexicon .head > .ipa-chips::-webkit-scrollbar { display: none; }
+/* The word's languages: one row that scrolls sideways, like the pronunciations. */
+.head > .lx-langs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  padding-right: 20px;
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+.head > .lx-langs::-webkit-scrollbar { display: none; }
 .shell-lexicon .head > .ipa-chips .ipa-chip { flex: none; }
 .lookup-flow {
   min-height: 0;
@@ -527,8 +538,8 @@ html:not([data-mode="strip"]) .shell-lexicon .lexicon-pos-layout {
   border: 0;
   border-radius: 8px;
   overflow: hidden;
-  background: var(--md-sys-color-surface-container-low);
-  box-shadow: inset 0 0 0 1px rgb(28 25 23 / 0.08);
+  /* Blank until the picture has loaded: no empty grey or dark box while it is on its way. */
+  background: transparent;
 }
 .sense-figure__frame img {
   display: block;
@@ -538,6 +549,7 @@ html:not([data-mode="strip"]) .shell-lexicon .lexicon-pos-layout {
   opacity: 0;
   transition: opacity 0.32s var(--md-sys-motion);
 }
+.sense-figure__frame.is-loaded { box-shadow: inset 0 0 0 1px rgb(28 25 23 / 0.08); }
 .sense-figure__frame.is-loaded img { opacity: 1; }
 .sense-figure.is-pending .sense-figure__frame { display: block; }
 .sense-figure__credit {
@@ -1394,11 +1406,16 @@ select, .field {
   background: #141210;
   overflow: hidden;
 }
-/* The picture takes whatever the panel leaves; the two always split the screen. */
-.scan-stage {
+/* The picture (or its text) takes whatever the panel leaves; the two always split the screen. */
+.scan-main {
   position: relative;
   flex: 1;
   min-height: 96px;
+  display: flex;
+}
+.scan-stage {
+  position: relative;
+  flex: 1;
   overflow: hidden;
   touch-action: none;
 }
@@ -1411,34 +1428,44 @@ select, .field {
   transform-origin: 0 0;
   will-change: transform;
 }
-.scan-frame { position: relative; flex-shrink: 0; }
-.scan-frame img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-  pointer-events: none;
-}
-.scan-layer {
+.scan-frame { flex-shrink: 0; }
+::highlight(scan-pick) { background-color: color-mix(in srgb, var(--md-sys-color-primary) 42%, transparent); color: transparent; }
+.scan-view .ocr-text::highlight(scan-pick) { color: inherit; }
+.scan-view[data-mode="text"] .scan-stage { visibility: hidden; }
+.scan-text {
   position: absolute;
   inset: 0;
-  font-size: 0;
-  color: transparent;
-  -webkit-user-select: text;
-  user-select: text;
+  overflow-y: auto;
+  padding: calc(112px + var(--pv-inset-top)) 20px 24px;
+  background: var(--md-sys-color-surface-container-lowest);
+  overscroll-behavior: contain;
 }
-.scan-word {
+/* View switch and actions over the picture, right of Back. */
+.scan-bar {
   position: absolute;
-  white-space: pre;
-  color: transparent;
-  font-family: var(--md-font-ui);
-  transform-origin: 0 0;
-  cursor: text;
+  z-index: 4;
+  top: calc(8px + var(--pv-inset-top));
+  left: calc(60px + var(--pv-inset-left));
+  right: calc(8px + var(--pv-inset-right));
 }
-.scan-layer ::selection { background: color-mix(in srgb, var(--md-sys-color-primary) 42%, transparent); color: transparent; }
-::highlight(scan-pick) { background-color: color-mix(in srgb, var(--md-sys-color-primary) 42%, transparent); color: transparent; }
+.scan-bar .ocr-bar { justify-content: flex-end; row-gap: 8px; }
+.scan-bar .ocr-bar__gap { display: none; }
+.scan-view[data-mode="picture"] .scan-bar .ocr-seg,
+.scan-view[data-mode="picture"] .scan-bar .ocr-btn,
+.scan-view[data-mode="picture"] .scan-bar .ocr-bar__status {
+  background: rgb(20 18 16 / 0.55);
+  color: #fff;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.scan-view[data-mode="picture"] .scan-bar .ocr-seg button { color: #fff; }
+.scan-view[data-mode="picture"] .scan-bar .ocr-seg button[aria-checked="true"] { background: rgb(255 255 255 / 0.22); box-shadow: none; }
+.scan-view[data-mode="picture"] .scan-bar .ocr-btn[aria-pressed="true"] { background: var(--md-sys-color-primary); }
+.scan-view[data-mode="picture"] .scan-bar .ocr-bar__status { border-radius: 999px; padding: 8px 14px; }
+.scan-view .ocr-seg button,
+.scan-view .ocr-btn { min-height: 36px; }
+.scan-view.is-editing .scan-hint,
+.scan-view[data-mode="text"] .scan-hint { opacity: 0; }
 .scan-close {
   position: absolute;
   z-index: 4;

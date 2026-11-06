@@ -153,8 +153,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('selection-changed');
     ipcRenderer.on('selection-changed', (_event: any, text: string) => callback(text));
   },
-  onPopupText: (callback: (text: string, timestamp?: number) => void) => {
-    ipcRenderer.on('popup-text', (_event: any, text: string, timestamp?: number) => callback(text, timestamp));
+  onPopupText: (callback: (text: string, timestamp?: number, lang?: string) => void) => {
+    ipcRenderer.on('popup-text', (_event: any, text: string, timestamp?: number, lang?: string) => callback(text, timestamp, lang));
   },
   onPopupAppCommand: (callback: (cmd: string) => void) => {
     ipcRenderer.removeAllListeners('popup-app-command');
@@ -423,19 +423,31 @@ contextBridge.exposeInMainWorld('dictionaryAPI', {
   senseImages: (
     lemma: string,
     senses: Array<{ meaning: string; partOfSpeech?: string }>,
-    opts?: { max?: number; lang?: string },
+    opts?: { max?: number; lang?: string; again?: boolean; wordPicture?: boolean },
     onUpdate?: (list: Array<SenseImage | null>) => void,
+    /**
+     * Called with a function that stops the search (a card that scrolled away). An AbortSignal
+     * does not cross the context bridge; a function does.
+     */
+    onCancel?: (cancel: () => void) => void,
   ): Promise<Array<SenseImage | null>> => {
-    if (!onUpdate) return ipcRenderer.invoke('dictionary-sense-images', lemma, senses, opts);
+    if (!onUpdate && !onCancel) return ipcRenderer.invoke('dictionary-sense-images', lemma, senses, opts);
     // The first pictures arrive while slower sources still answer.
     const updateId = `si-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const listener = (_event: unknown, id: string, list: Array<SenseImage | null>) => {
-      if (id === updateId) onUpdate(list);
+      if (id === updateId && onUpdate) onUpdate(list);
     };
-    ipcRenderer.on('dictionary-sense-images-update', listener);
+    let over = false;
+    if (onUpdate) ipcRenderer.on('dictionary-sense-images-update', listener);
+    onCancel?.(() => {
+      if (!over) ipcRenderer.send('dictionary-sense-images-cancel', updateId);
+    });
     return ipcRenderer
-      .invoke('dictionary-sense-images', lemma, senses, { ...(opts || {}), updateId })
-      .finally(() => ipcRenderer.removeListener('dictionary-sense-images-update', listener));
+      .invoke('dictionary-sense-images', lemma, senses, { ...(opts || {}), updateId, cancellable: !!onCancel })
+      .finally(() => {
+        over = true;
+        ipcRenderer.removeListener('dictionary-sense-images-update', listener);
+      });
   },
   /** Starts gathering a word's pictures when it is submitted, before its senses are known. */
   prefetchSenseImages: (lemma: string, lang?: string): void => {
@@ -477,7 +489,8 @@ contextBridge.exposeInMainWorld('vocabAPI', {
   /** Export the book being viewed as .pvbook, or for Anki. */
   exportNotebook: (req?: { scope?: { kind: 'mine' } | { kind: 'user' | 'catalog'; id: string }; anki?: boolean }) => ipcRenderer.invoke('vocab-export', req),
   importNotebook: () => ipcRenderer.invoke('vocab-import'),
-  find: (lemma: string) => ipcRenderer.invoke('vocab-find', lemma),
+  /** `lang`: the language of the entry shown; "give" in Danish is not the saved English "give". */
+  find: (lemma: string, lang?: string) => ipcRenderer.invoke('vocab-find', lemma, lang),
   add: async (payload: Record<string, unknown>) => {
     try {
       return await ipcRenderer.invoke('vocab-add', payload);
@@ -605,7 +618,7 @@ declare global {
     electronAPI: {
       platform?: NodeJS.Platform;
       onSelectionChange: (callback: (text: string) => void) => void;
-      onPopupText: (callback: (text: string, timestamp?: number) => void) => void;
+      onPopupText: (callback: (text: string, timestamp?: number, lang?: string) => void) => void;
       onPopupAppCommand?: (callback: (cmd: string) => void) => void;
       onPopupProgress?: (callback: (payload: {
         title?: string;
@@ -713,8 +726,9 @@ declare global {
       senseImages?: (
         lemma: string,
         senses: Array<{ meaning: string; partOfSpeech?: string }>,
-        opts?: { max?: number; lang?: string },
+        opts?: { max?: number; lang?: string; again?: boolean; wordPicture?: boolean },
         onUpdate?: (list: Array<SenseImage | null>) => void,
+        onCancel?: (cancel: () => void) => void,
       ) => Promise<Array<SenseImage | null>>;
       prefetchSenseImages?: (lemma: string, lang?: string) => void;
       setOxfordCredentials?: (appId: string, appKey: string) => Promise<{ success: boolean }>;
@@ -753,7 +767,7 @@ declare global {
       list: (limit?: number) => Promise<any[]>;
       exportNotebook: (req?: { scope?: { kind: 'mine' } | { kind: 'user' | 'catalog'; id: string }; anki?: boolean }) => Promise<{ cancelled?: boolean; path?: string; count?: number }>;
       importNotebook: () => Promise<{ cancelled?: boolean; kind?: string; bookId?: string; title?: string; words?: number }>;
-      find: (lemma: string) => Promise<any | null>;
+      find: (lemma: string, lang?: string) => Promise<any | null>;
       add: (payload: Record<string, unknown>) => Promise<any>;
       remove: (id: string) => Promise<boolean>;
       updateNote: (id: string, note: string) => Promise<any>;

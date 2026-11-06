@@ -51,6 +51,8 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
   /// Bumped by every speak and stop, so a Neural render that finishes late is dropped.
   private var speakToken = 0
   private var authSession: ASWebAuthenticationSession?
+  /** A swipe in from the left edge goes back one step in the page, as in a navigation stack. */
+  private var edgeBack: UIScreenEdgePanGestureRecognizer?
 
   override func viewDidLoad() {
     super.viewDidLoad()
@@ -81,6 +83,17 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
     web.navigationDelegate = self
     web.scrollView.contentInsetAdjustmentBehavior = .never
     view.addSubview(web)
+    if !stripMode {
+      let pan = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(edgeSwipe(_:)))
+      pan.edges = .left
+      // Off until the page says it has a step to go back to (setBackEnabled).
+      pan.isEnabled = false
+      web.addGestureRecognizer(pan)
+      // A touch that starts at the edge belongs to Back, not to the page's scroller; anywhere
+      // else the edge pan fails at once and scrolling starts as usual.
+      web.scrollView.panGestureRecognizer.require(toFail: pan)
+      edgeBack = pan
+    }
     let page = stripMode ? "app://localhost/index.html?mode=strip" : "app://localhost/index.html"
     web.load(URLRequest(url: URL(string: page)!))
     synth.delegate = self
@@ -110,6 +123,18 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
             out["inPlace"] as? Bool != true else { return }
       self.openPopup(text, rect: Self.rect(out["rect"] as? [String: Any]))
     }
+  }
+
+  /**
+   * The left-edge swipe: once the finger has come a third of the way across, or flicks
+   * across, the page goes back one step, as Android's Back does.
+   */
+  @objc private func edgeSwipe(_ pan: UIScreenEdgePanGestureRecognizer) {
+    guard pan.state == .ended else { return }
+    let moved = pan.translation(in: view).x
+    let speed = pan.velocity(in: view).x
+    guard moved > view.bounds.width / 3 || (moved > 40 && speed > 500) else { return }
+    web.evaluateJavaScript("window.__pvBack ? window.__pvBack() : false", completionHandler: nil)
   }
 
   /** Page rectangle in CSS px, which WKWebView lays out 1:1 in points. */
@@ -236,7 +261,12 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
       exportingFile = true
       let name = params["name"] as? String ?? "phevere.txt"
       let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(name)
-      try? pendingSaveText.write(to: tmp, atomically: true, encoding: .utf8)
+      // Binary files (a scanned picture) come as base64; text files as text.
+      if let b64 = params["b64"] as? String, let data = Data(base64Encoded: b64) {
+        try? data.write(to: tmp, options: .atomic)
+      } else {
+        try? pendingSaveText.write(to: tmp, atomically: true, encoding: .utf8)
+      }
       let picker = UIDocumentPickerViewController(forExporting: [tmp])
       picker.delegate = self
       present(picker, animated: true)
@@ -319,6 +349,9 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
       resolve(id, ["ok": true])
     case "notify":
       Notify.post(title: params["title"] as? String ?? "Phevere", body: params["body"] as? String ?? "")
+      resolve(id, ["ok": true])
+    case "setBackEnabled":
+      edgeBack?.isEnabled = params["on"] as? Bool ?? false
       resolve(id, ["ok": true])
     case "closeStrip":
       dismiss(animated: true)
@@ -442,6 +475,12 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
       }
       let obs = (request.results as? [VNRecognizedTextObservation]) ?? []
       var words: [[String: Any]] = []
+      // Lines for the in-place text view: corners from the top-left, clockwise, as fractions of
+      // the picture with y down; each word's corners likewise, punctuation kept with its word.
+      var lines: [[String: Any]] = []
+      func corners(_ r: VNRectangleObservation) -> [Double] {
+        return [r.topLeft, r.topRight, r.bottomRight, r.bottomLeft].flatMap { [Double($0.x), Double(1 - $0.y)] }
+      }
       // Vision reports lines; split each into words with their own boxes, as ML Kit does,
       // and number the lines so the page can rebuild spaces and line breaks.
       for (lineNo, o) in obs.enumerated() {
@@ -454,6 +493,13 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
                         "w": box.width, "h": box.height, "l": lineNo])
           found = true
         }
+        var lineWords: [[String: Any]] = []
+        for token in line.split(whereSeparator: { $0.isWhitespace }) {
+          if let b = try? candidate.boundingBox(for: token.startIndex..<token.endIndex) {
+            lineWords.append(["t": String(token), "q": corners(b), "c": Double(candidate.confidence)])
+          }
+        }
+        lines.append(["t": line, "q": corners(o), "c": Double(candidate.confidence), "w": lineWords])
         let whole = line.trimmingCharacters(in: .whitespacesAndNewlines)
         if !found && !whole.isEmpty {
           let b = o.boundingBox
@@ -465,7 +511,9 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
         "jpeg": jpeg,
         "width": Int(work.size.width),
         "height": Int(work.size.height),
-        "words": words
+        "words": words,
+        "lines": lines,
+        "engine": "vision"
       ])
     }
     req.recognitionLevel = .accurate

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Scanned text</title>
+</head>
+<body>
+  <main class="ocr-view ocr-window" data-mode="picture">
+    <div class="ocr-window__bar"></div>
+    <div class="ocr-window__body">
+      <div class="ocr-window__stage">
+        <div class="ocr-frame">
+          <img alt="Scanned picture" draggable="false" />
+          <div class="ocr-layer"></div>
+        </div>
+      </div>
+      <div class="ocr-text" hidden></div>
+    </div>
+    <div class="ocr-window__toast" role="status" aria-live="polite"></div>
+  </main>
+</body>
+</html>

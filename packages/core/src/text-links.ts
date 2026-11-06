@@ -12,6 +12,7 @@
  */
 import { LANGUAGE_NAMES } from './etymology';
 import type { LexiconLinks } from './lexicon-parts';
+import { stripSisterProjects } from './lookup-policy';
 
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -177,7 +178,7 @@ export function pruneGlossLinks(html: string): string {
   // to note …”)"); only the target, outside that gloss, keeps its link.
   const stack: Array<{ name: string; target: boolean; gloss: boolean }> = [];
   const openAnchors: boolean[] = [];
-  const out = String(html || '')
+  const out = stripSisterProjects(String(html || ''))
     .split(/(<[^>]+>)/g)
     .map((part) => {
       const tag = /^<\s*(\/)?\s*([a-z0-9]+)([^>]*?)(\/)?\s*>$/i.exec(part);

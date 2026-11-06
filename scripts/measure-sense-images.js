@@ -419,13 +419,19 @@ async function main() {
   const run = async (warm, which) => {
     // One module for each pass, as in the app; each word is still cold in it the first time.
     const si = load(store);
-    const times = { cards: [], lookup: [], lookupAll: [], pictured: [], picturedAll: [], defs: [], afterDefs: [] };
+    const times = { cards: [], cardFirst: [], lookup: [], lookupAll: [], pictured: [], picturedAll: [], defs: [], afterDefs: [] };
     await pool(words, parallel, async (w, i) => {
       const row = rows[i] || (rows[i] = { lemma: w.lemma, lang: w.lang });
       if (which === 'cards') {
         const t0 = Date.now();
-        const img = await si.fetchWordImage(w.lemma, { lang: w.lang, gloss: w.gloss || undefined });
+        // A card shows its picture as soon as the first source finds it (`onUpdate`).
+        let first = 0;
+        const onUpdate = (pic) => {
+          if (pic && !first) first = Date.now() - t0;
+        };
+        const img = await si.fetchWordImage(w.lemma, { lang: w.lang, gloss: w.gloss || undefined, onUpdate });
         times.cards.push(Date.now() - t0);
+        if (img) times.cardFirst.push(first || Date.now() - t0);
         if (!warm) row.card = img ? { title: img.title, thumb: img.thumb, credit: img.credit } : null;
       }
       if (which === 'lookup') {
@@ -491,12 +497,13 @@ async function main() {
 
   // Cards and lookup each get their own cold module, so one does not warm the other.
   const passes = mode === 'both' ? ['cards', 'lookup'] : [mode];
-  const cold = { cards: [], lookup: [], lookupAll: [], pictured: [], picturedAll: [], defs: [], afterDefs: [] };
+  const cold = { cards: [], cardFirst: [], lookup: [], lookupAll: [], pictured: [], picturedAll: [], defs: [], afterDefs: [] };
   const warm = { cards: [], lookup: [], lookupAll: [] };
   const t0 = Date.now();
   for (const p of passes) {
     const t = await run(false, p);
     cold[p] = t[p];
+    if (p === 'cards') cold.cardFirst = t.cardFirst;
     if (p === 'lookup') Object.assign(cold, { lookupAll: t.lookupAll, pictured: t.pictured, picturedAll: t.picturedAll, defs: t.defs, afterDefs: t.afterDefs });
   }
   const coldWall = Date.now() - t0;
@@ -511,6 +518,7 @@ async function main() {
     const withCard = rows.filter((r) => r.card).length;
     report.push(`cards: ${withCard}/${words.length} words have a picture (${pct(withCard, words.length)})`);
     report.push(`cards time, cold: median ${quantile(cold.cards, 0.5)} ms, p90 ${quantile(cold.cards, 0.9)} ms; warm (persistent store): median ${quantile(warm.cards, 0.5)} ms, p90 ${quantile(warm.cards, 0.9)} ms`);
+    report.push(`cards with a picture (${cold.cardFirst.length}), cold, until the picture is chosen: median ${quantile(cold.cardFirst, 0.5)} ms, p90 ${quantile(cold.cardFirst, 0.9)} ms`);
   }
   if (mode !== 'cards') {
     const looked = rows.filter((r) => r.senses && r.senses.length);
