@@ -324,7 +324,6 @@ export default {
   'notebook.view.families': 'Гнёзда',
   'notebook.view.map': 'Связи',
   'notebook.view.cards': 'Карточки',
-  'notebook.cards.pictureCredit': 'Автор изображения',
 
   'notebook.cards.empty': 'Нет сохранённых слов.',
   'notebook.cards.expandAll': 'Разложить все',

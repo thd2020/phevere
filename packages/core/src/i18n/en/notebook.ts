@@ -294,7 +294,6 @@ export default {
   'notebook.view.map': 'Map',
   /** Words as picture cards. */
   'notebook.view.cards': 'Cards',
-  'notebook.cards.pictureCredit': 'Picture credit',
 
   // Cards (notebook-cards.ts)
   'notebook.cards.empty': 'No saved words.',

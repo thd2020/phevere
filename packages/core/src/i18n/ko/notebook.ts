@@ -215,7 +215,6 @@ export default {
   'notebook.view.families': '단어족',
   'notebook.view.map': '단어 맵',
   'notebook.view.cards': '카드',
-  'notebook.cards.pictureCredit': '그림 출처',
 
   'notebook.cards.empty': '저장한 단어가 없습니다.',
   'notebook.cards.expandAll': '모두 펼치기',

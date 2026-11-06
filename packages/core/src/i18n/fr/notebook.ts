@@ -221,7 +221,6 @@ export default {
   'notebook.view.families': 'Familles',
   'notebook.view.map': 'Carte',
   'notebook.view.cards': 'Fiches',
-  'notebook.cards.pictureCredit': 'Crédit de l’image',
 
   'notebook.cards.empty': 'Aucun mot enregistré.',
   'notebook.cards.expandAll': 'Tout étaler',

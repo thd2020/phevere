@@ -228,7 +228,6 @@ export default {
   'notebook.view.families': '字族',
   'notebook.view.map': '關聯圖',
   'notebook.view.cards': '字卡',
-  'notebook.cards.pictureCredit': '圖片來源',
 
   // Cards (notebook-cards.ts)
   'notebook.cards.empty': '沒有已存的單字。',

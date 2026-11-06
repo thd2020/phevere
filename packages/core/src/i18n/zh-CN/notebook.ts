@@ -228,7 +228,6 @@ export default {
   'notebook.view.families': '词族',
   'notebook.view.map': '关系图',
   'notebook.view.cards': '卡片',
-  'notebook.cards.pictureCredit': '图片来源',
 
   // Cards (notebook-cards.ts)
   'notebook.cards.empty': '还没有存下单词。',

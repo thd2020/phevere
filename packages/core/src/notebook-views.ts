@@ -224,27 +224,8 @@ function placePicture(box: any, img: NonNullable<Img>, src: string): void {
     box.appendChild(el);
   }
   el.src = src;
+  // The picture's credit, on hover; the phone's full-screen viewer shows it too.
   el.title = `${img.title} · ${img.credit}`;
-  // The credit shows when the picture is tapped (phones have no hover).
-  let credit = box.querySelector('.nbv-card__credit');
-  if (!credit) {
-    credit = box.ownerDocument.createElement('button');
-    credit.type = 'button';
-    credit.className = 'nbv-card__credit';
-    credit.setAttribute('aria-label', t('notebook.cards.pictureCredit'));
-    credit.textContent = 'i';
-    credit.addEventListener('click', (ev: any) => {
-      ev.stopPropagation();
-      ev.preventDefault();
-      box.classList.toggle('show-credit');
-    });
-    box.appendChild(credit);
-    const line = box.ownerDocument.createElement('span');
-    line.className = 'nbv-card__credit-line';
-    box.appendChild(line);
-  }
-  const line = box.querySelector('.nbv-card__credit-line');
-  if (line) line.textContent = img.credit;
 }
 
 /** Starts the next cards: on screen first, then the ones about to scroll in. */

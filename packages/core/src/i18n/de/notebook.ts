@@ -221,7 +221,6 @@ export default {
   'notebook.view.families': 'Familien',
   'notebook.view.map': 'Wortnetz',
   'notebook.view.cards': 'Karten',
-  'notebook.cards.pictureCredit': 'Bildnachweis',
 
   'notebook.cards.empty': 'Keine gespeicherten Wörter.',
   'notebook.cards.expandAll': 'Alle ausbreiten',

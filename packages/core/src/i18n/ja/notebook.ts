@@ -215,7 +215,6 @@ export default {
   'notebook.view.families': '同族語',
   'notebook.view.map': '単語マップ',
   'notebook.view.cards': 'カード',
-  'notebook.cards.pictureCredit': '画像のクレジット',
 
   'notebook.cards.empty': '保存した単語はありません。',
   'notebook.cards.expandAll': 'すべて広げる',
