@@ -4,6 +4,7 @@
  * with it, saved words, recent lookups, and the Settings page that holds a matching option. Arrow keys move through the
  * rows, Enter opens the highlighted one (looking the query up by default), Escape closes.
  */
+import { rawHtml, t, tHtml, type MessageKey } from '@phevere/core';
 
 export interface SearchEntry {
   id: string;
@@ -32,17 +33,20 @@ interface Row {
   run: () => void;
 }
 
-/** Settings pages and the words people use for what is on them. */
-const SETTINGS: Array<{ section: string; label: string; words: string[] }> = [
-  { section: 'shortcuts', label: 'Shortcuts', words: ['shortcut', 'hotkey', 'keyboard', 'accelerator', 'key binding'] },
-  { section: 'capture', label: 'Capture', words: ['selection', 'select', 'hover', 'ocr', 'scan', 'clipboard', 'popup', 'pop-up', 'region', 'screen', 'remember', 'source', 'where', 'page', 'pdf', 'book'] },
-  { section: 'learn', label: 'Learn', words: ['learn', 'new words', 'words a day', 'daily goal', 'goal', 'countdown', 'timer', 'speaking', 'microphone', 'review'] },
-  { section: 'notifications', label: 'Notifications', words: ['notification', 'toast', 'banner', 'tray', 'alert'] },
-  { section: 'sources', label: 'Sources', words: ['source', 'dictionary', 'wiktionary', 'datamuse', 'jisho', 'kaikki', 'translation engine', 'google translate', 'mymemory', 'youdao', 'deepl', 'images', 'pictures'] },
-  { section: 'offline', label: 'Offline', words: ['offline', 'pack', 'download', 'wordnet', 'cedict', 'jmdict', 'freedict', 'kengdic', 'webster'] },
-  { section: 'api', label: 'API keys', words: ['api', 'key', 'token', 'deepl', 'google cloud', 'youdao'] },
-  { section: 'audio', label: 'Audio', words: ['audio', 'voice', 'speech', 'speak', 'pronunciation', 'kokoro', 'espeak', 'tts', 'sound'] },
-  { section: 'about', label: 'About', words: ['about', 'version', 'star', 'github', 'source code', 'changelog', "what's new", 'report', 'bug', 'issue', 'licence', 'license', 'credits', 'privacy', 'author'] },
+/**
+ * Settings pages and the words people use for what is on them. The words are English search
+ * terms; the page's name, in the interface language, matches as well.
+ */
+const SETTINGS: Array<{ section: string; labelKey: MessageKey; words: string[] }> = [
+  { section: 'shortcuts', labelKey: 'settings.section.shortcuts', words: ['shortcut', 'hotkey', 'keyboard', 'accelerator', 'key binding'] },
+  { section: 'capture', labelKey: 'settings.section.capture', words: ['selection', 'select', 'hover', 'ocr', 'scan', 'clipboard', 'popup', 'pop-up', 'region', 'screen', 'remember', 'source', 'where', 'page', 'pdf', 'book'] },
+  { section: 'learn', labelKey: 'settings.section.learn', words: ['learn', 'new words', 'words a day', 'daily goal', 'goal', 'countdown', 'timer', 'speaking', 'microphone', 'review'] },
+  { section: 'notifications', labelKey: 'settings.section.notifications', words: ['notification', 'toast', 'banner', 'tray', 'alert'] },
+  { section: 'sources', labelKey: 'settings.section.sources', words: ['source', 'dictionary', 'wiktionary', 'datamuse', 'jisho', 'kaikki', 'translation engine', 'google translate', 'mymemory', 'youdao', 'deepl', 'images', 'pictures'] },
+  { section: 'offline', labelKey: 'settings.section.offline', words: ['offline', 'pack', 'download', 'wordnet', 'cedict', 'jmdict', 'freedict', 'kengdic', 'webster'] },
+  { section: 'api', labelKey: 'settings.section.api', words: ['api', 'key', 'token', 'deepl', 'google cloud', 'youdao'] },
+  { section: 'audio', labelKey: 'settings.section.audio', words: ['audio', 'voice', 'speech', 'speak', 'pronunciation', 'kokoro', 'espeak', 'tts', 'sound'] },
+  { section: 'about', labelKey: 'settings.section.about', words: ['about', 'version', 'star', 'github', 'source code', 'changelog', "what's new", 'report', 'bug', 'issue', 'licence', 'license', 'credits', 'privacy', 'author'] },
 ];
 
 function esc(s: unknown): string {
@@ -87,27 +91,27 @@ export function searchRows(q: string, src: GlobalSearchSources): Row[] {
   for (const w of words.slice(0, 5)) {
     rows.push({ kind: 'word', label: w.lemma, hint: firstSense(w.definition), run: () => src.lookup(w.lemma) });
   }
-  if (words.length > 5) rows.push({ kind: 'all', label: `All ${words.length} saved words`, run: () => src.showNotebook() });
+  if (words.length > 5) rows.push({ kind: 'all', label: t('desktop.search.allSaved', { count: words.length }), run: () => src.showNotebook() });
   const recent = src
     .recent()
     .filter((r) => r.q.toLowerCase().includes(lower) && !saved.has(r.q.toLowerCase()) && r.q.toLowerCase() !== lower)
     .slice(0, 3);
   for (const r of recent) rows.push({ kind: 'recent', label: r.q, run: () => src.lookup(r.q) });
   for (const s of SETTINGS) {
-    const hit = s.label.toLowerCase().includes(lower) || s.words.some((w) => w.includes(lower) || (lower.length > 3 && lower.includes(w)));
-    if (hit && lower.length >= 2) rows.push({ kind: 'setting', label: s.label, run: () => src.openSettings(s.section) });
+    const label = t(s.labelKey);
+    const hit = label.toLowerCase().includes(lower) || s.words.some((w) => w.includes(lower) || (lower.length > 3 && lower.includes(w)));
+    if (hit && lower.length >= 2) rows.push({ kind: 'setting', label, run: () => src.openSettings(s.section) });
   }
   return rows;
 }
 
-const HEADING: Record<Row['kind'], string> = {
-  lookup: '',
-  suggest: '',
-  word: 'My words',
-  all: 'My words',
-  recent: 'Recent',
-  setting: 'Settings',
-};
+/** The group heading above a kind of row, in the interface language; empty for the lookup rows. */
+function heading(kind: Row['kind']): string {
+  if (kind === 'word' || kind === 'all') return t('desktop.search.myWords');
+  if (kind === 'recent') return t('desktop.search.recent');
+  if (kind === 'setting') return t('common.settings');
+  return '';
+}
 
 const ICON: Record<Row['kind'], string> = {
   lookup: '<path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8"/>',
@@ -160,12 +164,12 @@ export function wireGlobalSearch(input: HTMLInputElement, src: GlobalSearchSourc
     let last = '';
     panel.innerHTML = rows
       .map((r, i) => {
-        const head = HEADING[r.kind];
-        const title = head && head !== last ? `<p class="gsearch__head">${head}</p>` : '';
+        const head = heading(r.kind);
+        const title = head && head !== last ? `<p class="gsearch__head">${esc(head)}</p>` : '';
         last = head || last;
         const label =
           r.kind === 'lookup'
-            ? `Look up <b>${esc(r.label)}</b>`
+            ? tHtml('desktop.search.lookUp', { word: rawHtml(`<b>${esc(r.label)}</b>`) })
             : r.kind === 'suggest'
               ? suggestLabel(r.label, input.value)
               : esc(r.label);
