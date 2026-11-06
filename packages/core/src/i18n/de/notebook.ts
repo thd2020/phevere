@@ -220,7 +220,7 @@ export default {
   'notebook.view.list': 'Liste',
   'notebook.view.families': 'Familien',
   'notebook.view.map': 'Karte',
-  'notebook.view.cards': 'Karten',
+  'notebook.view.cards': 'Kartei',
   'notebook.cards.pictureCredit': 'Bildnachweis',
 
   'notebook.cards.empty': 'Keine gespeicherten Wörter.',
