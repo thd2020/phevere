@@ -1840,7 +1840,9 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
 const createSettingsWindow = (section?: string): void => {
   const target = section && /^[a-z]+$/.test(section) ? section : '';
   if (settingsWindow && !settingsWindow.isDestroyed()) {
-    if (target) void settingsWindow.webContents.executeJavaScript(`location.hash = '#settings/${target}'`).catch((): void => undefined);
+    // Through #settings first: the hash may already name this page after the person moved to
+    // another one, and an unchanged hash fires no hashchange.
+    if (target) void settingsWindow.webContents.executeJavaScript(`location.hash = '#settings'; location.hash = '#settings/${target}'`).catch((): void => undefined);
     // A window that never painted stays hidden; focus() alone would leave the
     // gear doing nothing until restart.
     if (settingsWindow.isMinimized()) settingsWindow.restore();
