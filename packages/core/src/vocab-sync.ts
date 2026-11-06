@@ -24,7 +24,7 @@ import { normalizeVocabLemma, typoDistance } from './vocab-lemma';
 import { formOfGlossLemma, formOfLemmaFromGlosses, isRegularInflection, resolveFormOf, stripCitationLines } from './form-of';
 import { foldLookupKey, latinLemmasByPos } from './text-normalize';
 import { recordLemmaAliases } from './answer-history';
-import { vocabHeadwordLang } from './vocab-lang';
+import { vocabHeadwordLang, vocabLangKey } from './vocab-lang';
 import { normalizeSourceContext, sourceContextFromJson, sourceContextToJson } from './source-context';
 
 export const VOCAB_SYNC_NAMESPACE = 'phevere/vocab';
@@ -167,7 +167,8 @@ async function applyRemote(
     if (local) {
       // Another device folded this row into another id. Keep its progress for that row.
       const mine = rowToEntry(local);
-      const key = mine.lemma.trim().toLowerCase();
+      // Spelling and language: progress of a folded Danish "give" never lands on the English one.
+      const key = vocabLangKey(mine);
       const prev = carried.get(key);
       if (hasProgress(mine) && (!prev || Number(mine.reps) > Number(prev.reps))) carried.set(key, progressOf(mine));
       await db.runWrite(`DELETE FROM vocab WHERE id = ?`, [change.id]);
@@ -200,9 +201,10 @@ async function applyRemote(
 async function settleCarriedProgress(carried: Map<string, Partial<VocabEntry>>): Promise<void> {
   const db = getVocabDb();
   for (const [key, p] of carried) {
-    const row = await db.queryOne(`SELECT * FROM vocab WHERE lower(lemma) = ? ORDER BY id ASC LIMIT 1`, [key]);
-    if (!row) continue;
-    const mine = rowToEntry(row);
+    const lemma = key.slice(0, key.lastIndexOf('|'));
+    const rows = (await db.queryAll(`SELECT * FROM vocab WHERE lower(lemma) = ? ORDER BY id ASC`, [lemma])).map(rowToEntry);
+    const mine = rows.find((e) => vocabLangKey(e) === key);
+    if (!mine) continue;
     if (hasProgress(mine) && Number(mine.reps || 0) >= Number(p.reps || 0)) continue;
     await db.runWrite(
       `UPDATE vocab SET review_due = ?, review_interval = ?, ease = ?, reps = ?, stability = ?, difficulty = ?, state = ?, lapses = ?,

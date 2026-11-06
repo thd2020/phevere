@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A box such as "English Wikipedia has an article on: proposition" no longer appears inside a sense (2026-11-06). Wiktionary's links to Wikipedia, Wikimedia Commons, Wikispecies and its other sister projects are left out of definitions, including in words you looked up before this change.
 - "i.e." and other words whose letters look foreign now open in English when Wiktionary has an English entry for them (2026-11-06). "i.e." used to show only its Italian sense.
+- The heart on an entry opened in another language saves and removes that language's word (2026-11-06). On the Danish entry of "give", the heart used to show the English "give" as saved and remove it when tapped. Now the English and the Danish "give" are two words in My words, each marked with its language. Look up on a saved word, its card and its review question open it in its own language. Importing My words from another device adds a word saved in a second language instead of skipping it, sync keeps the two apart, and Learn asks both. "Add to word book" is not offered on an entry opened in another language when the word also has an English entry, because a word book keeps spellings only.
 
 ## [4.2.0] - 2026-11-06
 

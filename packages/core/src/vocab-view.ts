@@ -6,7 +6,7 @@
  * row, so both lists read alike. Buttons carry `data-act`, which each shell wires.
  */
 import { stripGlossText } from './lookup-policy';
-import { formatVocabLangPair } from './vocab-lang';
+import { formatVocabLangPair, vocabLookupLang } from './vocab-lang';
 import { findWordInSentence, siteOf, type SourceContext } from './source-context';
 import { bookName } from './book-names';
 
@@ -174,8 +174,9 @@ function playButton(lemma: string): string {
   return `<button type="button" class="vocab-play" data-act="nb-play" data-lemma="${esc(lemma)}" title="Play pronunciation" aria-label="Play ${esc(lemma)}">${ICON.play}</button>`;
 }
 
-function lookupButton(lemma: string): string {
-  return `<button type="button" class="vocab-open" data-act="lookup" data-q="${esc(lemma)}" data-lemma="${esc(lemma)}" title="Look up" aria-label="Look up ${esc(lemma)}">${ICON.lookup}</button>`;
+/** `lang`: the language to open the word in, for a word saved in another language than its letters suggest. */
+function lookupButton(lemma: string, lang = ''): string {
+  return `<button type="button" class="vocab-open" data-act="lookup" data-q="${esc(lemma)}" data-lemma="${esc(lemma)}"${lang ? ` data-lang="${esc(lang)}"` : ''} title="Look up" aria-label="Look up ${esc(lemma)}">${ICON.lookup}</button>`;
 }
 
 /** When the next review is, in words: "Due now", "Tomorrow", "In 5 days". */
@@ -285,7 +286,7 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
       <div class="vocab-row__main">${head}</div>
       <span class="vocab-row__end">
         ${play}
-        ${lookupButton(lemma)}
+        ${lookupButton(lemma, vocabLookupLang({ lemma, sourceLang: clean(e.sourceLang) }))}
         <time class="vocab-when" datetime="${t ? new Date(t).toISOString() : ''}">${esc(vocabWhen(t, now))}</time>
         <span class="vocab-chevron" aria-hidden="true">${ICON.chevron}</span>
       </span>

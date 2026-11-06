@@ -141,7 +141,7 @@ import {
   type BookSort,
 } from '@phevere/core';
 import { choiceRowHtml, enhanceSelect, keycapsHtml, rangeRowHtml, segRowHtml, switchRowHtml } from '@phevere/core';
-import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
+import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages, savedForSpelling } from '@phevere/core';
 import { learnSettingsHtml, microphoneAvailable, readLearnPrefs, watchMicrophone, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
 import { AZ_INDEX, compareAz, vocabAzLetter, wireIndexRail } from '@phevere/core';
@@ -3096,7 +3096,8 @@ function wireNotebookActions(root: HTMLElement): void {
         const q = el.dataset.q || el.dataset.lemma;
         if (q) {
           addToRecentSelections(q);
-          void openFullLookup(q);
+          // data-lang: a word saved in another language opens in it (the Danish "give").
+          void openFullLookup(q, el.dataset.lang || undefined);
         }
         return;
       }
@@ -3581,11 +3582,11 @@ async function importWords(): Promise<void> {
 
 setVocabSortMode(getVocabSortMode());
 
-async function openFullLookup(text: string): Promise<void> {
+async function openFullLookup(text: string, lang?: string): Promise<void> {
   try {
     // Open first; lookup runs inside the dictionary window. Awaiting recall here
     // froze history/saves behind a hung IPC with no visible window progress.
-    window.electronAPI?.send?.('open-full-lookup', text);
+    window.electronAPI?.send?.('open-full-lookup', text, lang);
   } catch (error) {
     console.error(error);
   }
@@ -3897,9 +3898,8 @@ function renderRecentLookups(): void {
     list.innerHTML = `<p class="empty-message">No recent lookups.</p>`;
     return;
   }
-  const saved = new Map<string, any>();
-  for (const e of vocabNotebookCache) saved.set(String(e.lemma || '').trim().toLowerCase(), e);
-  list.innerHTML = recentListHtml(items, (q) => saved.get(q.trim().toLowerCase()), Date.now(), { bookPick: hasOwnBooks() });
+  // A spelling saved in two languages: the row stands for the word a plain lookup opens.
+  list.innerHTML = recentListHtml(items, (q) => savedForSpelling(vocabNotebookCache, q), Date.now(), { bookPick: hasOwnBooks() });
 }
 
 function addToRecentSelections(text: string): void {

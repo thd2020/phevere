@@ -1650,7 +1650,8 @@
         void lookupText(t, { silent: !isExpanded });
       }
 
-      function applyIncomingSelection(text, ts) {
+      /** `lang`: open the word in that language, as My words does for a saved Danish "give". */
+      function applyIncomingSelection(text, ts, lang) {
         const next = String(text || '').trim();
         if (!next) return;
         // Untimestamped IPC uses watermark 1 so a later dated event always wins.
@@ -1673,7 +1674,7 @@
         if (isFullLookupWindow() || !settings.expandableMode) {
           activateTab('lexicon');
           if (!isExpanded) expandToolbar();
-          void lookupText(currentText, { fromHistory: true });
+          void lookupText(currentText, lang ? { fromHistory: true, sourceLanguage: lang } : { fromHistory: true });
           return;
         }
         // Main still saw a strip when this was sent (the resize lags expandToolbar).
@@ -1730,9 +1731,9 @@
         try {
           if (window.electronAPI && typeof window.electronAPI.onPopupText === 'function') {
             pvLog('[POPUP] Registering onPopupText listener');
-            window.electronAPI.onPopupText((text, ts) => {
-              pvLog('[POPUP] onPopupText:', text, ts);
-              applyIncomingSelection(text, ts);
+            window.electronAPI.onPopupText((text, ts, lang) => {
+              pvLog('[POPUP] onPopupText:', text, ts, lang);
+              applyIncomingSelection(text, ts, lang);
             });
           } else {
             pvLog('[POPUP] electronAPI.onPopupText not available');
@@ -3994,6 +3995,8 @@ function startAutoCloseTimeout() {
 
        let savedVocabId = null;
        let savedVocabLemma = null;
+       /** The entry the saved id belongs to: after the language switch it is another word. */
+       let savedVocabFor = null;
 
        /** The word the lookup opened instead of `text`: glean for "gleaned", receive for "recieve". */
        function openedAs(text) {
@@ -4108,6 +4111,7 @@ function startAutoCloseTimeout() {
          if (!btn) return;
          savedVocabId = saved ? (id || savedVocabId) : null;
          savedVocabLemma = saved ? (lemma || savedVocabLemma) : null;
+         savedVocabFor = saved ? currentResult : null;
          btn.classList.toggle('is-saved', !!saved);
          btn.setAttribute('aria-pressed', saved ? 'true' : 'false');
          btn.title = saved ? 'Remove from My words' : 'Save to My words';
@@ -4192,7 +4196,9 @@ function startAutoCloseTimeout() {
            const lemma = lemmaForSave();
            if (!lemma) { showToast('Nothing to save'); return; }
 
-           if (savedVocabId) {
+           // The id found for this entry only: a tap before the heart catches up with a new
+           // entry (Danish "give" after the English one) looks the word up again below.
+           if (savedVocabId && savedVocabFor === currentResult) {
              await window.vocabAPI.remove(savedVocabId);
              setVocabHeartSaved(false);
              showToast('Removed from My words');

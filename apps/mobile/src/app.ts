@@ -130,6 +130,9 @@ import {
   bookRemovalPrompt,
   bookPickItems,
   openMenu,
+  savedForSpelling,
+  vocabLangKey,
+  vocabLookupLang,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
 import { playClip, playRecorded, prefetchRecorded, recordedReady, recordedUrls, speakIpa, speakText, stopAudio } from './platform/audio';
@@ -590,7 +593,7 @@ function lookupPaneHtml(): string {
     query,
     error: lookupError,
     recent: recentLookups,
-    savedFor: (q) => notebook.find((e) => e.lemma.trim().toLowerCase() === q.trim().toLowerCase()),
+    savedFor: (q) => savedForSpelling(notebook, q),
     headTools: !stripMode,
     bookPick: wordsState.bookPick,
     saveWord: result ? saveLemma(result) : undefined,
@@ -2324,7 +2327,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       // A word in running text that was selected, not tapped, stays selected.
       if (t.classList.contains('lx-w') && String(window.getSelection?.() || '').trim()) return;
       const from = tab;
-      if (t.dataset.q) await lookup(t.dataset.q);
+      // data-lang: a word saved in another language opens in it (the Danish "give").
+      if (t.dataset.q) await lookup(t.dataset.q, false, undefined, t.dataset.lang || undefined);
       if (from !== 'lookup' && tab === 'lookup') lookupFrom = { tab: from, at: histIndex };
       return;
     }
@@ -3380,15 +3384,19 @@ async function fillEmptyCards(): Promise<void> {
   const rows = [...(await listEmptyDefinitions(40)), ...(await listEmptyReadings(40))];
   const seen = new Set<string>();
   for (const row of rows) {
-    const key = row.lemma.toLowerCase();
+    const key = vocabLangKey(row);
     if (seen.has(key)) continue;
     seen.add(key);
     try {
+      // A word saved in another language (the Danish "give") is filled from that language's entry.
+      const lang = vocabLookupLang(row) || undefined;
       const next = await dictionaryService.lookup(row.lemma, prefs.targetLang, undefined, {
         skipEtymology: true,
+        ...(lang ? { sourceLanguage: lang } : {}),
       });
       const payload = vocabPayloadFromResult(next, row.lemma);
       await fillEmptyDefinitions([row.lemma], {
+        sourceLang: lang || payload.sourceLang,
         definition: payload.definition,
         reading: payload.reading,
         partOfSpeech: payload.partOfSpeech,

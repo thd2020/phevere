@@ -49,7 +49,7 @@ export {
   type VocabEntry,
   type VocabAddInput,
 } from './vocab-store';
-export { inferVocabGlossLang, formatVocabLangPair, vocabHeadwordLang, vocabLanguages, filterVocabByLang, vocabLangChipsHtml, type VocabLanguages } from './vocab-lang';
+export { inferVocabGlossLang, formatVocabLangPair, vocabHeadwordLang, vocabLookupLang, vocabLangKey, savedForSpelling, vocabLanguages, filterVocabByLang, vocabLangChipsHtml, type VocabLanguages } from './vocab-lang';
 export {
   normalizeSourceContext,
   sourceContextFromJson,

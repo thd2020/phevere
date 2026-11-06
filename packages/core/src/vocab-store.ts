@@ -254,7 +254,8 @@ export async function fillEmptyDefinitions(
     const key = lemma.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    const existing = await findByLemma(lemma);
+    // The lookup's language only: an English entry never fills the saved Danish "give".
+    const existing = await findByLemma(lemma, input.sourceLang);
     if (!existing) continue;
     const needsDef = !existing.definition || !existing.definition.trim();
     const needsReading = !existing.reading || !existing.reading.trim();

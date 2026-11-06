@@ -153,8 +153,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('selection-changed');
     ipcRenderer.on('selection-changed', (_event: any, text: string) => callback(text));
   },
-  onPopupText: (callback: (text: string, timestamp?: number) => void) => {
-    ipcRenderer.on('popup-text', (_event: any, text: string, timestamp?: number) => callback(text, timestamp));
+  onPopupText: (callback: (text: string, timestamp?: number, lang?: string) => void) => {
+    ipcRenderer.on('popup-text', (_event: any, text: string, timestamp?: number, lang?: string) => callback(text, timestamp, lang));
   },
   onPopupAppCommand: (callback: (cmd: string) => void) => {
     ipcRenderer.removeAllListeners('popup-app-command');
@@ -604,7 +604,7 @@ declare global {
     electronAPI: {
       platform?: NodeJS.Platform;
       onSelectionChange: (callback: (text: string) => void) => void;
-      onPopupText: (callback: (text: string, timestamp?: number) => void) => void;
+      onPopupText: (callback: (text: string, timestamp?: number, lang?: string) => void) => void;
       onPopupAppCommand?: (callback: (cmd: string) => void) => void;
       onPopupProgress?: (callback: (payload: {
         title?: string;

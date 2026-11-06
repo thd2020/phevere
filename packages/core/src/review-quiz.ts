@@ -12,6 +12,9 @@ import { clean, dayStart, DAY, type NotebookEntry } from './notebook-shared';
 import { vocabSenses } from './vocab-view';
 import { isGrammaticalFormOfGloss } from './lookup-policy';
 import { predictedRecall, type ReviewGrade } from './review-schedule';
+import { vocabHeadwordLang } from './vocab-lang';
+
+const langOf = (e: NotebookEntry) => ({ lemma: clean(e.lemma), sourceLang: clean(e.sourceLang) || undefined });
 
 export type { ReviewGrade };
 
@@ -563,6 +566,8 @@ function contentWords(text: string): Set<string> {
  * never folded together; each book lists its own headwords.
  */
 export function sameWordEntries(a: NotebookEntry, b: NotebookEntry): boolean {
+  // The English and the Danish "give" are two words to learn.
+  if (vocabHeadwordLang(langOf(a)) !== vocabHeadwordLang(langOf(b))) return false;
   const x = clean(a.lemma).toLowerCase();
   const y = clean(b.lemma).toLowerCase();
   if (x === y) return true;
