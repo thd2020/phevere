@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Pictures on every card (2026-11-06): a card in Words → Cards and in Learn now shows a picture whenever the word has one anywhere, not only when a picture fits the meaning you saved. It takes the picture on the word's Wiktionary entry first, then the picture of the Wikipedia article on the word, then a picture tied to another meaning, and searches Wikipedia and Wikimedia Commons for the word when none of these has one. Only a word with no picture anywhere keeps its letter. On a 577-word notebook, 537 cards now have a picture instead of 131. A lookup still shows a picture only beside the meaning it fits.
 - Hints in typed questions (2026-11-06): a typed question now starts with the first letter only, however weakly you hold the word, instead of up to four letters for a long word; a word you hold weakly gets an easier kind of question instead. Each Hint gives one more letter and lowers the credit for your answer: any hint makes it Hard at most, and needing hints for more than a third of the hidden letters makes it Again. "I knew it" after such an answer makes it Hard.
 - "Almost" (2026-11-06): a typed answer one letter off now counts as a miss (Again) and gets the cross instead of the tick. "I knew it" makes it Hard, not Good.
 - README download section (2026-11-06): the table of download buttons is gone. The section links to the latest release and lists the system each platform needs.
