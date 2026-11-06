@@ -1237,7 +1237,9 @@ class CompositeOcrEngine implements OcrEngine {
     }
     const size = pngSize(png) || { width: 1, height: 1 };
     const page = buildOcrPage(raw || { width: size.width, height: size.height, engine: 'none', lines: [] });
-    const text = ocrPageText(page);
+    // One line goes to a lookup, which reads big letters boxed one by one ("S P A C E") as the
+    // region scan always has.
+    const text = pageLines(page).length === 1 ? glueSpacedLetters(ocrPageText(page)) : ocrPageText(page);
     return { page, text, engine: text ? engine : 'none' };
   }
 
