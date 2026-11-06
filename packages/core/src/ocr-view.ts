@@ -292,6 +292,9 @@ export class OcrView {
   /** Units already on screen, so only a newly arrived translation fades in. */
   private readonly seen = new Set<number>();
   private renderQueued = false;
+  /** The run the layer was last built for (null: the original), and units changed since. */
+  private drawn: PageTranslation | null = null;
+  private readonly arrived = new Set<number>();
 
   constructor(
     private readonly root: HTMLElement,
@@ -391,6 +394,8 @@ export class OcrView {
 
   render(): void {
     const shown = this.shown();
+    this.drawn = this.shownRun();
+    this.arrived.clear();
     const layer = this.layer;
     if (layer) layer.innerHTML = ocrLayerHtml(this.page, this.edits, this.editing && this.mode === 'picture', shown);
     const pane = this.textPane;
@@ -458,17 +463,80 @@ export class OcrView {
     if (retry) retry.hidden = !canRetry;
   }
 
-  /** Repaint once per frame while translations arrive. */
-  private queueRender(): void {
+  /**
+   * Show the translations that arrived, once per frame. Only the units that changed are
+   * repainted: rebuilding the whole layer for each arrival took 80 to 200 ms on a page of a
+   * hundred lines, which froze the view for as long as a page was translating.
+   */
+  private queueRender(index?: number): void {
+    if (index !== undefined) this.arrived.add(index);
     if (this.renderQueued) return;
     this.renderQueued = true;
+    let done = false;
     const go = () => {
+      if (done) return;
+      done = true;
       this.renderQueued = false;
-      this.render();
+      const run = this.shownRun();
+      if (run !== this.drawn) this.render();
+      else {
+        if (run) for (const i of this.arrived) if (!this.paintArrival(run, i)) return this.render();
+        this.arrived.clear();
+        this.renderTranslateBar();
+      }
     };
-    // A hidden window runs no frames; its translations are still placed, so Copy all and Save image see them.
+    // A frame, or a timer where frames do not run (a hidden or occluded window), whichever comes first.
     if (typeof requestAnimationFrame === 'function' && !document.hidden) requestAnimationFrame(go);
-    else setTimeout(go, 16);
+    setTimeout(go, 100);
+  }
+
+  /** Repaint one unit after its state changed; false when the layer is not as expected and needs a full render. */
+  private paintArrival(run: PageTranslation, i: number): boolean {
+    const layer = this.layer;
+    const unit = run.units[i];
+    const state = run.states[i];
+    if (!layer || !unit) return true;
+    if (layer.querySelector(`.ocr-tr[data-u="${i}"]`)) return state.status === 'done';
+    layer.querySelectorAll(`[data-u="${i}"]`).forEach((el) => el.remove());
+    if (state.status === 'done' || state.status === 'failed') {
+      const ids = new Set(unit.lineIds);
+      const els = Array.from(layer.children).filter((el) => ids.has(Number((el as HTMLElement).dataset.l)));
+      if (!els.length) return false;
+      const first = els[0], last = els[els.length - 1];
+      const make = (cls: string, text = '') => {
+        const el = document.createElement('span');
+        el.className = cls;
+        el.dataset.u = String(i);
+        if (text) el.textContent = text;
+        else el.setAttribute('aria-hidden', 'true');
+        return el;
+      };
+      if (state.status === 'failed') {
+        const miss = make('ocr-tr-miss');
+        first.before(miss);
+        this.fitUnit(miss);
+      } else {
+        // The unit's lines become one run, as ocrLayerHtml writes it, ending its own line in a copy.
+        const range = document.createRange();
+        range.setStartBefore(first);
+        range.setEndAfter(last);
+        range.deleteContents();
+        const tr = make('ocr-tr', state.text);
+        range.insertNode(tr);
+        const sep = tr.nextSibling;
+        if (sep && sep.nodeType === Node.TEXT_NODE) sep.textContent = '\n';
+        const bg = make('ocr-tr-bg');
+        layer.prepend(bg);
+        this.fitUnit(bg);
+        this.fitUnit(tr);
+      }
+    }
+    const p = this.textPane?.querySelector<HTMLElement>(`p[data-u="${i}"]`);
+    if (p) {
+      p.textContent = state.status === 'done' ? state.text : unit.text;
+      p.classList.toggle('ocr-tp', state.status === 'done');
+    }
+    return true;
   }
 
   /**
@@ -497,8 +565,8 @@ export class OcrView {
     this.run?.stop();
     this.flows.clear();
     this.seen.clear();
-    const run = new PageTranslation(units, to, (t, l) => tr.translate(t, l), () => {
-      if (this.run === run) this.queueRender();
+    const run = new PageTranslation(units, to, (t, l) => tr.translate(t, l), (i) => {
+      if (this.run === run) this.queueRender(i);
     });
     this.run = run;
     this.render();
