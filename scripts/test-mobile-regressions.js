@@ -88,7 +88,7 @@ async function startupAndGestures(floatingStrip) {
     './platform/configure-core': {}, '@phevere/core': core, './incoming-text': incoming,
     // Scan only: the in-place text view and its page model (test-ocr-layout.js covers them).
     '@phevere/core/ocr-view': { OcrView: class {} }, '@phevere/core/ocr-layout': { pageLines: () => [] },
-    './platform/audio': {}, './platform/native': native, './platform/notebook-io': {},
+    './platform/audio': { recordedUrls: () => [], prefetchRecorded: () => {} }, './platform/native': native, './platform/notebook-io': {},
     './platform/offline': { listCatalogStatus: async () => [], markInstalledPacksOnCore: async () => {} },
     './platform/prefs': { loadPrefs: () => prefs, savePrefs: () => {}, applyPrefsToCore: () => {} },
     // The pop-up never starts the updater; test-mobile-update.js covers it.
@@ -312,6 +312,10 @@ async function audioFallback() {
   await audio.playRecorded({ word: 'hello' }, prefs);
   assert.deepEqual(calls.map((c) => c.method), ['playUrl', 'speak']);
   assert.equal(calls[1].params.text, 'hello');
+  calls.length = 0;
+  // A clip stopped by a newer press ends quietly: no synthetic voice over the newer one.
+  await audio.playRecorded({ word: 'hello' }, prefs, undefined, () => false);
+  assert.deepEqual(calls.map((c) => c.method), ['playUrl']);
   calls.length = 0;
   // IPA chips voice their own IPA mechanically, even when the source sent a clip.
   await audio.speakIpa({ ipa: 'həˈləʊ', accent: 'uk', audioUrl: 'clip' }, prefs, 'hello');

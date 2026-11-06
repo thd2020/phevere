@@ -292,7 +292,18 @@ export {
   type StudyPace,
 } from './review-quiz';
 export { learnerModel, studyPace, suggestGoal } from './learn-adapt';
-export { singleVoice, type SingleVoice, type VoiceBackend, type VoiceOutcome } from './pronounce-once';
+export {
+  singleVoice,
+  awaitRecordings,
+  recordingPending,
+  recordingWaitMs,
+  RECORDING_WAIT_MS,
+  type SingleVoice,
+  type SayOptions,
+  type VoiceBackend,
+  type VoiceOutcome,
+  type RecordingSource,
+} from './pronounce-once';
 export { type ReviewRenderOptions } from './notebook-review';
 
 export { onVocabChanged } from './vocab-store';

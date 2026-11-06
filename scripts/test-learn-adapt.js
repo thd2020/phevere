@@ -167,21 +167,21 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
   assert.ok(core.hintReview(typing), 'Hint goes on from the kept box');
   assert.equal(typing.question.draft, 'harbo');
 
-  // "Almost" is a miss: Again, a cross over the question, and "I knew it" gives Hard at most.
+  // A typo counts as right, as on Duolingo: Good, a tick, and the right spelling with the slip marked.
   const near = core.startReview([firm], 10, now);
   near.started = true;
   core.ensureReviewQuestion(near, [firm, ...pool.slice(1)], { now });
   const na = core.answerReview(near, { typed: 'harbuor' }, now + 2000);
-  assert.equal(na.result, 'close');
-  assert.equal(na.grade, 1);
+  assert.equal(na.result, 'typo');
+  assert.equal(na.grade, 3);
   const nearHtml = core.reviewHtml([firm, ...pool.slice(1)], near, 10, { now: now + 2100 });
-  assert.match(nearHtml, /Almost: harbour/);
-  assert.match(nearHtml, /class="nbv-ink is-wrong"/, 'the wrong-answer mark');
-  assert.equal((nearHtml.match(/nbv-ink__reveal--/g) || []).length, 2, 'a cross, not a tick');
-  assert.match(nearHtml, />I knew it</);
-  assert.doesNotMatch(nearHtml, /Too easy/);
+  assert.match(nearHtml, /You have a typo<span class="nbv-fix">harb<mark>ou<\/mark>r<\/span>/);
+  assert.match(nearHtml, /class="nbv-ink is-right"/, 'the right-answer mark');
+  assert.equal((nearHtml.match(/nbv-ink__reveal--/g) || []).length, 1, 'a tick, not a cross');
+  assert.match(nearHtml, />I didn't know it</);
+  assert.doesNotMatch(nearHtml, /Too easy/, 'a typo cannot be marked too easy');
   core.overrideReview(near);
-  assert.equal(near.answer.grade, 2);
+  assert.equal(near.answer.grade, 1);
 
   // The stage tag is on every question.
   const tagState = core.startReview([firm], 10, now);
@@ -273,7 +273,7 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
   assert.equal(good.answer.result, 'right', 'placing the last tile answers');
   assert.equal(good.answer.grade, 3, 'tiles hand over the letters: Good, never Easy');
   const bad = build('lnatern');
-  assert.equal(bad.answer.result, 'wrong', 'a swapped pair is a misspelling, not "Almost"');
+  assert.equal(bad.answer.result, 'wrong', 'tiles hand over the letters, so a swapped pair is wrong, not a typo');
   const s7 = core.startReview([lantern], 10, now);
   s7.started = true;
   s7.question = { ...tiles, placed: [] };
@@ -540,6 +540,35 @@ const countdownChecks = async () => {
   pendingSynth.forEach((done) => done());
   assert.equal(await p3, 'stale');
   assert.deepEqual(log.filter((x) => x !== 'stop'), []);
+
+  // A press before the lookup has the word's pronunciation data waits for it: the first version
+  // has no clip and says more is coming, a later one brings the clip.
+  const clip = { ipa: '/ˈhɑːbə/', accent: 'uk', audioUrl: 'https://upload.wikimedia.org/x/En-uk-harbour.ogg' };
+  let push = null;
+  const early = core.awaitRecordings((onUpdate) => {
+    push = onUpdate;
+    return Promise.resolve({ pronunciations: [{ ipa: '/ˈhɑːbə/', accent: 'uk' }], metadata: { pendingPronunciation: true } });
+  }, 5000);
+  await new Promise((r) => setTimeout(r, 10));
+  push({ pronunciations: [clip], metadata: { pendingPronunciation: true } });
+  assert.equal((await early).length, 1, 'the recording that arrived after the press');
+  // A word with no recording: the version that says nothing more is coming ends the wait.
+  const none = core.awaitRecordings((onUpdate) => {
+    setTimeout(() => onUpdate({ pronunciations: [{ ipa: '/x/', accent: 'us' }], metadata: { pendingPronunciation: false } }), 10);
+    return Promise.resolve({ pronunciations: [], metadata: { pendingPronunciation: true } });
+  }, 5000);
+  const t0 = Date.now();
+  assert.deepEqual(await none, []);
+  assert.ok(Date.now() - t0 < 1000, 'no wait once the lookup says there is no recording');
+  // A lookup that never finishes: the wait runs out and the synthetic voice can speak.
+  assert.deepEqual(await core.awaitRecordings(() => Promise.resolve({ metadata: { pendingPronunciation: true } }), 30), []);
+  // A finished result plays at once, with or without a clip.
+  assert.deepEqual(await core.awaitRecordings(() => Promise.resolve({ pronunciations: [] }), 5000), []);
+  // The button shows loading only while the recordings are being found.
+  const states = [];
+  const loud = core.singleVoice({ ...backend, recordings: async () => { states.push('finding'); return ['clip:x']; } });
+  await loud('x', { onLoading: (on) => states.push(on ? 'loading' : 'ready') });
+  assert.deepEqual(states, ['loading', 'finding', 'ready']);
 
   simulate();
   console.log('test-learn-adapt: ok');

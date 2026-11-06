@@ -47,7 +47,8 @@ export type QuestionKind =
 /** Every kind, for checking a kind that comes from storage or another process. */
 export const QUESTION_KINDS: QuestionKind[] = ['meaning-choice', 'word-choice', 'listen-choice', 'cloze-choice', 'spell-tiles', 'recall', 'listen-type', 'cloze', 'flash'];
 
-export type AnswerResult = 'right' | 'close' | 'wrong';
+/** A typo is one slip in a word the learner otherwise spelt right (`checkTyped`); it counts as right. */
+export type AnswerResult = 'right' | 'typo' | 'wrong';
 
 export interface ReviewQuestion {
   id: string;
@@ -1290,7 +1291,86 @@ export function editDistance(a: string, b: string): number {
   return d[a.length][b.length];
 }
 
-/** Right, close (one slip in a word of five letters or more, two from ten), or wrong. */
+/** Words the app knows (word books and the learner's own words), so a slip that spells one of them is not a typo. */
+const listedWords = new Set<string>();
+const listedFrom = new WeakSet<object>();
+
+/** Adds words to the set `checkTyped` treats as real words: the word books and the learner's own words. */
+export function registerListedWords(words: Iterable<string>): void {
+  for (const w of words) {
+    const n = normalizeAnswer(w);
+    if (n) listedWords.add(n);
+  }
+}
+
+let listsLoading: Promise<void> | null = null;
+
+/**
+ * Loads every shipped word book into the real-word set, once, so a slip that spells a common word
+ * ("cat" for "cot") is not taken for a typo. Each book is its own chunk; a failed one is skipped.
+ */
+export function loadListedWords(): Promise<void> {
+  if (listsLoading) return listsLoading;
+  const books: Array<() => Promise<unknown>> = [
+    () => import('../wordbooks/starter.json'),
+    () => import('../wordbooks/zhongkao.json'),
+    () => import('../wordbooks/gaokao.json'),
+    () => import('../wordbooks/cet4.json'),
+    () => import('../wordbooks/cet6.json'),
+    () => import('../wordbooks/kaoyan.json'),
+    () => import('../wordbooks/ngsl.json'),
+    () => import('../wordbooks/nawl.json'),
+    () => import('../wordbooks/tsl.json'),
+    () => import('../wordbooks/bsl.json'),
+  ];
+  const one = async (load: () => Promise<unknown>): Promise<void> => {
+    try {
+      const mod = await load();
+      const file = ((mod as { default?: { words?: string[] } }).default || mod) as { words?: string[] };
+      registerListedWords(file.words || []);
+    } catch {
+      // A book that fails to load only leaves its words out of the check.
+    }
+  };
+  listsLoading = Promise.all(books.map(one)).then((): void => undefined);
+  return listsLoading;
+}
+
+function registerEntryWords(entries: NotebookEntry[]): void {
+  if (listedFrom.has(entries)) return;
+  listedFrom.add(entries);
+  registerListedWords(entries.map((e) => e.lemma));
+  void loadListedWords();
+}
+
+/** A real word the app knows, or the answer with an ending added (start, starts; use, used, user). */
+function isOtherWord(typed: string, answer: string): boolean {
+  if (listedWords.has(typed)) return true;
+  if (typed === `${answer}s`) return true;
+  return /e$/.test(answer) && (typed === `${answer}d` || typed === `${answer}r`);
+}
+
+/**
+ * The word's other national spelling (colour for color, centre for center, realise for realize),
+ * when the app lists it as a word. It is the same word, so it counts as right.
+ */
+function isOtherSpelling(typed: string, answer: string): boolean {
+  return [...answer].length >= 5 && listedWords.has(typed) && spellingKey(typed) === spellingKey(answer);
+}
+
+/**
+ * One word against the right one: the same, a typo, or wrong. A typo is one letter missing, one
+ * extra, one replaced, or two neighbours swapped, in a word of three letters or more, and the slip
+ * must not spell another word (Duolingo's rule: "te" passes for "the", "he" does not).
+ */
+function wordMatch(t: string, a: string): AnswerResult {
+  if (t === a || isOtherSpelling(t, a)) return 'right';
+  if ([...a].length < 3) return 'wrong';
+  if (editDistance(t, a) !== 1) return 'wrong';
+  return isOtherWord(t, a) ? 'wrong' : 'typo';
+}
+
+/** Right, a typo (`wordMatch` in any word of the answer, each word at most one slip), or wrong. */
 export function checkTyped(typed: string, answers: string[]): AnswerResult {
   const t = normalizeAnswer(typed);
   if (!t) return 'wrong';
@@ -1299,10 +1379,62 @@ export function checkTyped(typed: string, answers: string[]): AnswerResult {
     const a = normalizeAnswer(raw);
     if (!a) continue;
     if (t === a) return 'right';
-    const allowed = a.length >= 10 ? 2 : a.length >= 5 ? 1 : 0;
-    if (allowed && editDistance(t, a) <= allowed) best = 'close';
+    const tw = t.split(' ');
+    const aw = a.split(' ');
+    if (tw.length !== aw.length) {
+      // A space or hyphen missed or swapped inside a phrase or compound (icecream, ice-cream for
+      // ice cream). A one-word answer split in two ("a part" for apart) stays wrong.
+      if (/[ -]/.test(a) && t.replace(/[ -]/g, '') === a.replace(/[ -]/g, '')) best = 'typo';
+      continue;
+    }
+    const each = aw.map((w, i) => wordMatch(tw[i], w));
+    if (each.every((r) => r === 'right')) return 'right';
+    if (!each.includes('wrong')) best = 'typo';
   }
   return best;
+}
+
+/**
+ * Where a typo is, as the right spelling in pieces: `slip` marks the letters the learner got wrong
+ * (replaced, missing or swapped; for an extra letter, the letter it followed). Null when the typed
+ * answer is not a typo of `answer`.
+ */
+export function typoMarks(typed: string, answer: string): { text: string; slip: boolean }[] | null {
+  const t = normalizeAnswer(typed);
+  const shown = String(answer || '').trim();
+  const a = normalizeAnswer(shown);
+  // The marks are placed on the shown spelling, so it must line up letter for letter with its normal form.
+  if (!t || !a || [...a].length !== [...shown].length) return null;
+  const tw = t.split(' ');
+  const aw = a.split(' ');
+  if (tw.length !== aw.length) return null;
+  const marked = new Set<number>();
+  let offset = 0;
+  for (let k = 0; k < aw.length; k++) {
+    const x = [...tw[k]];
+    const y = [...aw[k]];
+    const match = wordMatch(tw[k], aw[k]);
+    if (match === 'wrong') return null;
+    if (match === 'typo') {
+      let i = 0;
+      while (i < x.length && i < y.length && x[i] === y[i]) i++;
+      if (x.length === y.length) {
+        // Replaced, or swapped with the next letter.
+        marked.add(offset + i);
+        if (x[i + 1] === y[i] && x[i] === y[i + 1]) marked.add(offset + i + 1);
+      } else if (x.length < y.length) marked.add(offset + i);
+      else marked.add(offset + Math.max(0, i - 1));
+    }
+    offset += y.length + 1;
+  }
+  const out: { text: string; slip: boolean }[] = [];
+  [...shown].forEach((c, i) => {
+    const slip = marked.has(i);
+    const last = out[out.length - 1];
+    if (last && last.slip === slip) last.text += c;
+    else out.push({ text: c, slip });
+  });
+  return out;
 }
 
 /**
@@ -1318,24 +1450,23 @@ export interface AnswerHelp {
 export const HINT_FAIL_SHARE = 1 / 3;
 
 /**
- * Grade from the outcome and the response time. A wrong answer is Again, and so is a near miss
- * ("Almost"): a typed question asks for the spelling, and Quizlet and Lingvist count a misspelt
- * answer as missed too. "I knew it" turns a near miss into Hard at most (`knewItGrade`). A right
- * choice is Good, or Hard after ten seconds; recognising a word never earns Easy. A right typed
- * answer is Easy when it came quickly (2.5 s plus a quarter second per letter), Hard when it took
- * more than 15 s plus that allowance, and Good otherwise. Hint lowers the credit with the letters
- * it gives: any hint makes the answer Hard at most, and an answer that needed hints for more than
- * a third of its hidden letters (HINT_FAIL_SHARE) is Again, since the learner was told the word
- * rather than recalled it.
+ * Grade from the outcome and the response time. A wrong answer is Again. A right choice is Good,
+ * or Hard after ten seconds; recognising a word never earns Easy. A right typed answer is Easy
+ * when it came quickly (2.5 s plus a quarter second per letter), Hard when it took more than 15 s
+ * plus that allowance, and Good otherwise. A typo counts as right, as on Duolingo, but is Good at
+ * most, since the spelling was not quite there. Hint lowers the credit with the letters it gives:
+ * any hint makes the answer Hard at most, and an answer that needed hints for more than a third
+ * of its hidden letters (HINT_FAIL_SHARE) is Again, since the learner was told the word rather
+ * than recalled it.
  */
 export function autoGrade(kind: QuestionKind, result: AnswerResult, ms: number, length = 0, help: AnswerHelp = {}): ReviewGrade {
-  if (result === 'wrong' || result === 'close') return 1;
+  if (result === 'wrong') return 1;
   if (TYPED_KINDS.includes(kind)) {
     const share = help.hintShare || 0;
     if (share > HINT_FAIL_SHARE + 1e-9) return 1;
     if (share > 0) return 2;
     const allowance = 250 * length;
-    if (ms <= 2500 + allowance) return help.extra ? 3 : 4;
+    if (ms <= 2500 + allowance) return help.extra || result === 'typo' ? 3 : 4;
     if (ms > 15000 + allowance) return 2;
     return 3;
   }
@@ -1375,6 +1506,7 @@ export function ensureReviewQuestion(state: ReviewState, entries: NotebookEntry[
   const asked = state.seen[id] || 0;
   const kinds = state.results.map((r) => r.kind);
   const learner = sessionLearner(opts.learner, state.results);
+  registerEntryWords(entries);
   state.question = buildQuestion(entry, entries, { ...opts, learner, asked: kinds, repeat: asked }, seededRandom(hash(`${id}:${state.seed}:${asked}`)));
   state.answer = null;
   state.revealed = false;
@@ -1509,7 +1641,7 @@ export function armCountdown(state: ReviewState | null | undefined, seconds: num
 
 /**
  * The grade "I knew it" gives an answer graded Again: Good after a miss, and Hard at most after a
- * near miss or a right answer that needed many hints.
+ * right answer or a typo that needed many hints.
  */
 export function knewItGrade(a: ReviewAnswer): ReviewGrade {
   return a.result === 'wrong' ? 3 : 2;

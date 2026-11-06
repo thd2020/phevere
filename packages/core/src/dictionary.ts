@@ -1325,9 +1325,9 @@ export class DictionaryService extends BaseService {
    * Whole-result cache is only final when every *expected* source has a terminal
    * ok/empty status. A Datamuse hit must not freeze a missing Wiktionary layer.
    */
-  /** Translation or etymology still on the way; the result will be updated. */
+  /** Translation, etymology or pronunciation still on the way; the result will be updated. */
   private isStillFilling(result?: DictionaryResult): boolean {
-    return !!(result?.metadata?.pendingEtymology || result?.metadata?.pendingTranslation);
+    return !!(result?.metadata?.pendingEtymology || result?.metadata?.pendingTranslation || result?.metadata?.pendingPronunciation);
   }
 
   /**
@@ -1470,7 +1470,8 @@ export class DictionaryService extends BaseService {
   private updateSignature(r: DictionaryResult): string {
     return [
       (r.definitions || []).length,
-      (r.pronunciations || []).map((p) => `${p.accent}:${p.ipa}`).join(','),
+      // A recording can arrive for IPA already shown, so the clips count as well.
+      (r.pronunciations || []).map((p) => `${p.accent}:${p.ipa}:${p.audioUrl || ''}`).join(','),
       (r.translations || []).map((t) => t.text).join('|'),
       (r.examples || []).length,
       (r.etymology || '').length,
@@ -1480,6 +1481,7 @@ export class DictionaryService extends BaseService {
       hasInflections(r.inflections) ? (r.inflections!.tables.length + r.inflections!.formOf.length) : 0,
       r.metadata?.pendingTranslation ? 1 : 0,
       r.metadata?.pendingEtymology ? 1 : 0,
+      r.metadata?.pendingPronunciation ? 1 : 0,
     ].join('#');
   }
 
@@ -1766,6 +1768,8 @@ export class DictionaryService extends BaseService {
     let entryLangs: EntryLanguage[] | undefined;
     let pendingEtymology = !skipEtymology;
     let pendingTranslation = true;
+    // The dictionaries and the US/UK top-up are still out, so a recording may yet arrive.
+    let pendingPronunciation = true;
 
     // For Chinese/Japanese/Korean or mixed CJK+ASCII, prioritize translation over dictionary lookup
     const hasCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(text);
@@ -2351,6 +2355,7 @@ export class DictionaryService extends BaseService {
           pendingEtymology,
           etymologyUnavailable: etymologyUnavailableSources,
           pendingTranslation,
+          pendingPronunciation,
           translationProvider: opts?.translationProvider || 'auto',
         },
       };
@@ -2406,7 +2411,10 @@ export class DictionaryService extends BaseService {
     }).catch((): undefined => undefined);
 
     for (const p of corePromises) void p.then(schedule);
-    void coreDone.then(schedule);
+    void coreDone.then(() => {
+      pendingPronunciation = false;
+      schedule();
+    });
     const translationDone = translationPromise.then(() => {
       pendingTranslation = false;
       schedule();
