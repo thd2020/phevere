@@ -45,6 +45,12 @@ export interface OcrUnit {
   pitch: number;
   /** Lines centred on a common axis rather than sharing a left edge. */
   align: 'start' | 'center';
+  /**
+   * For a one-line unit set across an unturned page: the free space beside it along the line,
+   * before and after, up to the nearest text in its row or the page edge. A translation that
+   * would otherwise shrink runs into it, as Google Lens lets a label's translation do.
+   */
+  room?: { before: number; after: number };
 }
 
 const median = (xs: number[]): number => {
@@ -199,7 +205,35 @@ export function translationUnits(page: OcrPage, edits?: OcrEdits): OcrUnit[] {
     if (onPage || onAxis) u.align = 'center';
   });
   trimBoxes(out);
+  roomBeside(out, page.width);
   return out;
+}
+
+/** The free space along the line on either side of each one-line unit (see OcrUnit.room). */
+function roomBeside(units: OcrUnit[], pageWidth: number): void {
+  const bounds = units.map((o) => {
+    const { x, y, w, h, angle } = o.area;
+    const ux = Math.cos(angle), uy = Math.sin(angle);
+    const xs = [x, x + w * ux, x - h * uy, x + w * ux - h * uy];
+    const ys = [y, y + w * uy, y + h * ux, y + w * uy + h * ux];
+    return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+  });
+  units.forEach((u, i) => {
+    if (u.lineIds.length !== 1 || u.vertical || Math.abs(u.area.angle) > 0.05) return;
+    const a = u.area;
+    let lo = 0, hi = pageWidth;
+    units.forEach((o, j) => {
+      const b = bounds[j];
+      if (j === i || Math.min(a.y + a.h, b.y1) - Math.max(a.y, b.y0) <= 0) return;
+      if (b.x1 <= a.x + 0.5) lo = Math.max(lo, b.x1);
+      else if (b.x0 >= a.x + a.w - 0.5) hi = Math.min(hi, b.x0);
+      else if (b.x0 + b.x1 < 2 * a.x + a.w) lo = Math.max(lo, a.x);
+      else hi = Math.min(hi, a.x + a.w);
+    });
+    // Half a letter's height of space is kept from the neighbour.
+    const gap = u.size * 0.5;
+    u.room = { before: Math.max(0, a.x - lo - gap), after: Math.max(0, hi - a.x - a.w - gap) };
+  });
 }
 
 /**
@@ -319,6 +353,12 @@ export interface OcrFlow {
   lines: string[];
   /** Set top to bottom, columns right to left. */
   vertical: boolean;
+  /**
+   * Along the lines, from the box's start: where the text begins and how long it may run. The
+   * box itself unless a one-line translation needed the room beside it (start may be negative).
+   */
+  start: number;
+  span: number;
 }
 
 const CJK_LANG = /^(zh|ja|ko)\b/i;
@@ -332,11 +372,13 @@ export function flowsVertically(unit: Pick<OcrUnit, 'vertical' | 'area'>, target
 /**
  * Fit a translation into a unit's area: the original's size and pitch when it fits, otherwise
  * the largest smaller size at which every line fits across and all lines fit down. Never larger
- * than the original.
+ * than the original. A one-line unit whose translation would shrink below WIDEN_BELOW of the
+ * original runs into the free space beside it instead (a Chinese label of two characters has
+ * no room for "Distribution" at a readable size).
  */
 export function reflow(
   text: string,
-  unit: Pick<OcrUnit, 'area' | 'size' | 'pitch' | 'vertical'> & { box?: OcrArea },
+  unit: Pick<OcrUnit, 'area' | 'size' | 'pitch' | 'vertical'> & Partial<Pick<OcrUnit, 'box' | 'room' | 'align'>>,
   target: string,
   measure: Measure,
 ): OcrFlow {
@@ -347,20 +389,42 @@ export function reflow(
   const across = vertical ? box.w : box.h;
   const ratio = unit.pitch / Math.max(0.01, unit.size);
   const floor = Math.min(unit.size, 4);
-  // Words stay whole down to half the original size; only below that may a word be cut.
-  const wrap = (s: number) => wrapText(text, along, s, measure, s < unit.size * 0.5);
-  let size = unit.size;
-  let lines = wrap(size);
-  for (let i = 0; i < 80 && size > floor; i++) {
-    // The last line needs only the font's height, not a full pitch.
-    const tall = (lines.length - 1) * size * ratio + size;
-    const wide = Math.max(0, ...lines.map((l) => measure(l, size)));
-    if (tall <= across + 0.5 && wide <= along + 0.5) break;
-    size = Math.max(floor, size * 0.94);
-    lines = wrap(size);
+  const fit = (width: number) => {
+    // Words stay whole; only at the smallest size may a word be cut between its letters.
+    const wrap = (s: number) => wrapText(text, width, s, measure, s <= floor);
+    let size = unit.size;
+    let lines = wrap(size);
+    for (let i = 0; i < 80 && size > floor; i++) {
+      // The last line needs only the font's height, not a full pitch.
+      const tall = (lines.length - 1) * size * ratio + size;
+      const wide = Math.max(0, ...lines.map((l) => measure(l, size)));
+      if (tall <= across + 0.5 && wide <= width + 0.5) break;
+      size = Math.max(floor, size * 0.94);
+      lines = wrap(size);
+    }
+    return { size, lines };
+  };
+  let { size, lines } = fit(along);
+  let start = 0, span = along;
+  // Text that shares a start with the lines around it (a list, a column of cells) keeps that
+  // start and runs on past its end only; centred text spreads both ways.
+  const centred = unit.align === 'center';
+  const room = !vertical && unit.room ? { before: centred ? unit.room.before : 0, after: unit.room.after } : null;
+  if (room && size < unit.size * WIDEN_BELOW && room.before + room.after > 0.5) {
+    const wide = fit(along + room.before + room.after);
+    if (wide.size > size) {
+      ({ size, lines } = wide);
+      // Only as far as the lines need: centred on the original's axis, or from its start.
+      span = Math.max(0, ...lines.map((l) => measure(l, size)));
+      const from = centred ? (along - span) / 2 : 0;
+      start = Math.max(-room.before, Math.min(from, along + room.after - span));
+    }
   }
-  return { size, pitch: size * ratio, lines, vertical };
+  return { size, pitch: size * ratio, lines, vertical, start, span };
 }
+
+/** A translation fitted at less than this share of the original's size may run into the room beside it. */
+const WIDEN_BELOW = 0.9;
 
 /** A measure without a font engine: CJK a full em, other characters about half. Tests and fallbacks use it. */
 export const roughMeasure: Measure = (text, size) => [...text].reduce((w, c) => w + (isCjkChar(c) ? size : c === ' ' ? size * 0.28 : size * 0.52), 0);

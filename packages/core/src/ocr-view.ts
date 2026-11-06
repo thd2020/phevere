@@ -855,12 +855,15 @@ export class OcrView {
     const state = run.states[i];
     if (state.status !== 'done' || el.classList.contains('ocr-tr-miss')) return;
     const look = this.lookFor(i);
+    const flow = this.flowFor(i, state.text, look);
     if (el.classList.contains('ocr-tr-bg')) {
-      // The paint reaches a little past the area, so no edge of the original shows.
+      // The paint reaches a little past the area, so no edge of the original shows, and under
+      // the whole translation where it ran into the room beside the area.
       const m = unit.size * PAD * s;
-      st.width = `${a.w * s + 2 * m}px`;
+      const [e0, e1] = paintSpan(unit, flow);
+      st.width = `${(e1 - e0) * s + 2 * m}px`;
       st.height = `${a.h * s + 2 * m}px`;
-      st.transform = `${a.angle ? `rotate(${a.angle}rad) ` : ''}translate(${-m}px, ${-m}px)`;
+      st.transform = `${a.angle ? `rotate(${a.angle}rad) ` : ''}translate(${e0 * s - m}px, ${-m}px)`;
       if (look.patch) {
         if (!look.patchUrl) look.patchUrl = look.patch.toDataURL();
         st.background = `${look.edge} url(${look.patchUrl}) 0 0 / 100% 100% no-repeat`;
@@ -868,11 +871,12 @@ export class OcrView {
       if (!this.seen.has(i)) el.classList.add('is-new');
       return;
     }
-    const flow = this.flowFor(i, state.text, look);
     const b = unit.box;
-    st.left = `${b.x * s}px`;
-    st.top = `${b.y * s}px`;
-    st.width = `${b.w * s}px`;
+    // Across: the box. Along: where the flow starts and how far it runs (the box, unless widened).
+    const off = flow.vertical ? 0 : flow.start;
+    st.left = `${(b.x + off * Math.cos(a.angle)) * s}px`;
+    st.top = `${(b.y + off * Math.sin(a.angle)) * s}px`;
+    st.width = `${(flow.vertical ? b.w : flow.span) * s}px`;
     st.height = `${b.h * s}px`;
     st.color = look.ink;
     st.fontFamily = look.family;
@@ -912,17 +916,18 @@ export class OcrView {
     ctx.translate(a.x, a.y);
     ctx.rotate(a.angle);
     if (pass === 'background') {
+      const [e0, e1] = paintSpan(unit, flow);
       ctx.fillStyle = look.edge;
-      ctx.fillRect(-m, -m, a.w + 2 * m, a.h + 2 * m);
+      ctx.fillRect(e0 - m, -m, e1 - e0 + 2 * m, a.h + 2 * m);
       if (look.patch) {
         ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(look.patch, -m, -m, a.w + 2 * m, a.h + 2 * m);
+        ctx.drawImage(look.patch, e0 - m, -m, e1 - e0 + 2 * m, a.h + 2 * m);
       } else if (look.top !== look.bottom) {
         const g = ctx.createLinearGradient(0, 0, 0, a.h);
         g.addColorStop(0, look.top);
         g.addColorStop(1, look.bottom);
         ctx.fillStyle = g;
-        ctx.fillRect(0, 0, a.w, a.h);
+        ctx.fillRect(e0, 0, e1 - e0, a.h);
       }
       ctx.restore();
       return;
@@ -938,7 +943,7 @@ export class OcrView {
       if (!flow.vertical) {
         const w = ctx.measureText(ln).width;
         ctx.textAlign = 'left';
-        ctx.fillText(ln, unit.align === 'center' ? (bw - w) / 2 : 0, mid);
+        ctx.fillText(ln, flow.start + (unit.align === 'center' ? (flow.span - w) / 2 : 0), mid);
         return;
       }
       // Columns right to left; CJK upright, other runs turned a quarter clockwise.
@@ -1026,6 +1031,13 @@ export class OcrView {
 
 /** How far a translation's background reaches past its area, as a share of the font size. */
 const PAD = 0.12;
+
+/** The stretch along the area, from its start, that a unit's paint covers: the area, and any room its translation ran into. */
+function paintSpan(unit: OcrUnit, flow: OcrFlow): [number, number] {
+  if (flow.vertical) return [0, unit.area.w];
+  const at = unit.box.x - unit.area.x + flow.start;
+  return [Math.min(0, at), Math.max(unit.area.w, at + flow.span)];
+}
 
 /** The commonest colour of a set of pixels, in buckets of 16 levels a channel, averaged within its bucket. */
 function commonest(pts: number[][]): number[] {

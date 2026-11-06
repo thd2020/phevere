@@ -251,6 +251,35 @@ for (const name of PAGES) for (const engine of ['ppocr', 'rapid']) units[`${name
     assert.ok(word.size < 14 && m('distributed', word.size) <= 60.5);
   });
 
+  await test('a one-line label runs into the free space beside it rather than shrinking or being cut', () => {
+    const m = T.roughMeasure;
+    // Infobox rows: a two-character label centred in its row, "[展开]" at the row's end, and a
+    // sidebar label with the article text to its right.
+    const rows = ['分布', '种类'].flatMap((t, i) => [box(t, 860, 140 + i * 44, 40, 24), box('[展开]', 1000, 140 + i * 44, 50, 24)]);
+    const side = [box('地理', 30, 244, 36, 24), box('河迹湖是由于河流的变迁或改道而形成的湖泊。', 180, 244, 440, 24)];
+    const us = T.translationUnits(L.buildOcrPage(raw([...rows, ...side])));
+    const label = us.find((u) => u.text === '分布');
+    assert.ok(label.room.after > 0 && label.room.before > 0);
+    assert.ok(label.area.x + label.area.w + label.room.after <= 1000, 'stops short of [展开]');
+    const f = T.reflow('Distribution', label, 'en', m);
+    assert.deepStrictEqual(f.lines, ['Distribution'], 'not cut between letters');
+    assert.ok(f.size >= label.size * 0.9, `readable: ${f.size} of ${label.size}`);
+    assert.strictEqual(f.start, 0, 'starts where the original did while the room after it suffices');
+    assert.ok(f.start + f.span <= label.area.w + label.room.after + 0.01);
+    // A centred unit stays on its axis.
+    const c = T.reflow('Distribution', { ...label, align: 'center' }, 'en', m);
+    assert.ok(Math.abs(c.start + c.span / 2 - label.area.w / 2) < 0.5, 'centred on the original');
+    const geo = us.find((u) => u.text === '地理');
+    const g = T.reflow('Geography', geo, 'en', m);
+    assert.ok(g.start >= -0.01 && g.start + g.span <= 180, 'runs right, short of the article text');
+    // A translation that fits keeps its box.
+    const fits = T.reflow('Map', geo, 'en', m);
+    assert.strictEqual(fits.start, 0);
+    assert.strictEqual(fits.span, geo.box.w);
+    // A unit of several lines does not widen.
+    for (const u of units['web.rapid'].filter((x) => x.lineIds.length > 1)) assert.strictEqual(u.room, undefined);
+  });
+
   await test('reflow fits every real paragraph translated to twice its length', () => {
     for (const [key, us] of Object.entries(units)) {
       for (const u of us) {
@@ -259,7 +288,11 @@ for (const name of PAGES) for (const engine of ['ppocr', 'rapid']) units[`${name
         const along = f.vertical ? u.area.h : u.area.w, across = f.vertical ? u.area.w : u.area.h;
         if (f.size > Math.min(u.size, 4)) {
           assert.ok((f.lines.length - 1) * f.pitch + f.size <= across + 0.5, `${key} unit ${u.index} too tall`);
-          assert.ok(f.lines.every((l) => T.roughMeasure(l, f.size) <= along + 0.5), `${key} unit ${u.index} too wide`);
+          // Along the area, or along the room beside it that a one-line translation ran into.
+          const room = !f.vertical && u.room ? u.room : { before: 0, after: 0 };
+          const span = f.vertical ? along : f.span;
+          assert.ok(f.lines.every((l) => T.roughMeasure(l, f.size) <= span + 0.5), `${key} unit ${u.index} too wide`);
+          assert.ok(f.start >= -room.before - 0.01 && f.start + span <= along + room.after + 0.5, `${key} unit ${u.index} past its room`);
         }
         assert.ok(f.size <= u.size);
       }
