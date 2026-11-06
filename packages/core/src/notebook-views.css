@@ -646,3 +646,4 @@
 .vocab-play.is-loading { cursor: progress; }
 .vocab-play.is-loading svg { opacity: 0.55; animation: nbv-speaker-wait 0.9s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
 @keyframes nbv-speaker-wait { from { opacity: 1; } to { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .vocab-play.is-loading svg { animation: none; } }
