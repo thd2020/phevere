@@ -289,7 +289,7 @@ assert.strictEqual(
 
 // 19. Repainted lines: serif type (thick stems, thin cross strokes) is told from sans.
 {
-  const V = load('packages/core/src/ocr-view.ts', { './ocr-layout': L });
+  const V = load('packages/core/src/ocr-view.ts', { './ocr-layout': L, './ocr-translate': load('packages/core/src/ocr-translate.ts', { './ocr-layout': L }) });
   // Letters drawn as a grid: stems `stem` px wide and cross bars `bar` px tall, 40 by 30 px.
   const glyphs = (stem, bar) => {
     const w = 40, h = 30, ink = new Array(w * h).fill(false);
