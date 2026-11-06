@@ -1347,12 +1347,6 @@
           <div class="settings-panel" id="settingsPanel">
         <div class="setting-item">
           <label class="setting-label">
-            <input type="checkbox" class="setting-checkbox" id="expandableMode">
-            <span>Open lookups as full pop-up</span>
-          </label>
-        </div>
-        <div class="setting-item">
-          <label class="setting-label">
             <input type="checkbox" class="setting-checkbox" id="preloadContent">
             <span>Look up before expanding</span>
           </label>
@@ -1777,7 +1771,7 @@
           settings = { ...settings, ...JSON.parse(savedSettings) };
         }
         // The app keeps how lookups open (Settings → Capture) and says it in the page address.
-        // This option used to live only here; a full pop-up chosen here becomes the app's.
+        // The pop-up's options used to have this switch; a full pop-up chosen there becomes the app's.
         if (lookupOpensParam === 'strip' || lookupOpensParam === 'panel') {
           var chosenHere = settings.expandableMode === false;
           settings.expandableMode = lookupOpensParam === 'strip';
@@ -1786,15 +1780,8 @@
             setAppLookupOpens('panel');
           }
           saveSettings();
-        } else if (window.electronAPI && typeof window.electronAPI.getMonitorState === 'function') {
-          // A full lookup opened from Words or History: the option still shows the app's choice.
-          window.electronAPI.getMonitorState().then(function (state) {
-            var box = document.getElementById('expandableMode');
-            if (box && state && state.lookupOpens) box.checked = state.lookupOpens === 'panel';
-          }).catch(function () {});
         }
 
-        document.getElementById('expandableMode').checked = !settings.expandableMode;
         document.getElementById('preloadContent').checked = settings.preloadContent;
         const openExternalLinks = document.getElementById('openExternalLinks');
         if (openExternalLinks) openExternalLinks.checked = settings.openExternal;
@@ -1856,15 +1843,6 @@
            });
 
         // Settings
-        document.getElementById('expandableMode').addEventListener('change', (e) => {
-          settings.expandableMode = !e.target.checked;
-          saveSettings();
-          setAppLookupOpens(settings.expandableMode ? 'strip' : 'panel');
-          setupToolbarBehavior();
-          if (!settings.expandableMode && currentText) {
-            void lookupText(currentText, { fromHistory: true });
-          }
-        });
         document.getElementById('preloadContent').addEventListener('change', (e) => {
           settings.preloadContent = e.target.checked;
           saveSettings();
