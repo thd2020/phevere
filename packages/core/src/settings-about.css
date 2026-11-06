@@ -1,0 +1,84 @@
+/* Settings → About (settings-about.ts). Tokens and shared controls: settings-kit.css. */
+
+.sv .sv-about__hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 2px 2px 18px;
+}
+.sv .sv-about__icon {
+  flex: none;
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
+  box-shadow: var(--sv-shadow);
+}
+.sv .sv-about__icon svg { display: block; width: 100%; height: 100%; }
+.sv .sv-about__title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sv .sv-about__name-big {
+  font-family: var(--sv-serif);
+  font-size: clamp(1.5rem, 1.25rem + 1vw, 1.85rem);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.025em;
+  color: var(--sv-ink);
+}
+.sv .sv-about__version {
+  font-family: var(--sv-mono);
+  font-size: 12.5px;
+  color: var(--sv-ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.sv .sv-about__hero .sv-btn.is-done { color: var(--sv-teal); border-color: var(--sv-teal); }
+
+.sv .sv-about__star { margin-bottom: 12px; border-color: rgb(156 61 0 / 0.28); }
+.sv .sv-about__star .sv-row { flex-wrap: wrap; row-gap: 10px; padding-top: 12px; padding-bottom: 12px; }
+.sv .sv-about__star .sv-row__text { flex: 1 1 180px; }
+.sv .sv-about__star .sv-btn { text-decoration: none; }
+.sv .sv-about__star .sv-btn svg { width: 16px; height: 16px; }
+
+.sv a.sv-nav { text-decoration: none; }
+.sv .sv-about__value {
+  flex-shrink: 0;
+  font-family: var(--sv-mono);
+  font-size: 12.5px;
+  color: var(--sv-ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+}
+.sv .sv-about__link .sv-nav__chev svg { width: 16px; height: 16px; }
+
+.sv .sv-about__credit { padding-top: 11px; padding-bottom: 11px; }
+.sv .sv-about__name {
+  font-family: var(--sv-serif);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--sv-ink);
+  text-decoration: none;
+}
+.sv a.sv-about__name:hover,
+.sv .sv-about__service:hover { text-decoration: underline; text-underline-offset: 3px; }
+.sv .sv-about__service { color: inherit; text-decoration: none; }
+.sv .sv-about__name:focus-visible,
+.sv .sv-about__service:focus-visible { outline: 2px solid var(--sv-rust); outline-offset: 2px; border-radius: 3px; }
+.sv .sv-about__end { display: flex; margin-top: 1px; }
+.sv .sv-about__end .sv-link { font-family: var(--sv-mono); font-weight: 500; }
+.sv .sv-about__licence {
+  font-family: var(--sv-mono);
+  font-size: 12px;
+  color: var(--sv-ink-soft);
+}
+
+@media (max-width: 600px) {
+  .sv .sv-about__hero { gap: 12px; }
+  .sv .sv-about__icon { width: 52px; height: 52px; border-radius: 12px; }
+}

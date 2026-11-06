@@ -280,6 +280,7 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
             CURRENT_PROJECT_VERSION="$(git rev-list --count HEAD)" \
+            MARKETING_VERSION="$(node -p "require('../../package.json').version")" \
             build
       - name: Package IPA
         working-directory: apps/mobile/ios/App

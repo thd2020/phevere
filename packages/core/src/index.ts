@@ -499,6 +499,22 @@ export {
 } from './settings-keys';
 export { GOAL_PRESETS, learnSettingsHtml, type LearnSettingsInput } from './settings-learn';
 export {
+  ABOUT_CREDITS,
+  ABOUT_SERVICES,
+  REPO_URL,
+  aboutCredits,
+  aboutIssueUrl,
+  aboutSettingsHtml,
+  aboutVersionLabel,
+  aboutVersionText,
+  flashAboutCopied,
+  systemFromUserAgent,
+  type AboutCredit,
+  type AboutInfo,
+  type AboutPlatform,
+} from './settings-about';
+export { ABOUT_STRINGS_EN, type AboutStrings } from './settings-about-strings';
+export {
   COUNTDOWN_CHOICES,
   DEFAULT_LEARN_PREFS,
   microphoneAvailable,
