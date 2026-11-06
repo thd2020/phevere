@@ -475,7 +475,8 @@ contextBridge.exposeInMainWorld('vocabAPI', {
   /** Export the book being viewed as .pvbook, or for Anki. */
   exportNotebook: (req?: { scope?: { kind: 'mine' } | { kind: 'user' | 'catalog'; id: string }; anki?: boolean }) => ipcRenderer.invoke('vocab-export', req),
   importNotebook: () => ipcRenderer.invoke('vocab-import'),
-  find: (lemma: string) => ipcRenderer.invoke('vocab-find', lemma),
+  /** `lang`: the language of the entry shown; "give" in Danish is not the saved English "give". */
+  find: (lemma: string, lang?: string) => ipcRenderer.invoke('vocab-find', lemma, lang),
   add: async (payload: Record<string, unknown>) => {
     try {
       return await ipcRenderer.invoke('vocab-add', payload);
@@ -750,7 +751,7 @@ declare global {
       list: (limit?: number) => Promise<any[]>;
       exportNotebook: (req?: { scope?: { kind: 'mine' } | { kind: 'user' | 'catalog'; id: string }; anki?: boolean }) => Promise<{ cancelled?: boolean; path?: string; count?: number }>;
       importNotebook: () => Promise<{ cancelled?: boolean; kind?: string; bookId?: string; title?: string; words?: number }>;
-      find: (lemma: string) => Promise<any | null>;
+      find: (lemma: string, lang?: string) => Promise<any | null>;
       add: (payload: Record<string, unknown>) => Promise<any>;
       remove: (id: string) => Promise<boolean>;
       updateNote: (id: string, note: string) => Promise<any>;

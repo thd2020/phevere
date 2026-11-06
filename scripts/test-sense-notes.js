@@ -250,4 +250,15 @@ assert.ok(danish.includes('afgive') && !danish.includes('give up') && !danish.in
 const swedish = words(buildWordFamily({ surface: 'give', wikitext: givePage, language: 'sv', definitions: [] }));
 assert.ok(!swedish.includes('give up') && !swedish.includes('afgive'), 'a language the page has no section for gets no family from it');
 
+// A word book keeps spellings only, so an entry opened in another language whose spelling has an
+// English entry (Danish "give") is not offered to one; a word with no English entry still is.
+{
+  const { canAddToWordBook } = load('vocab-payload');
+  const langs = [{ code: 'en', name: 'English' }, { code: 'da', name: 'Danish', current: true }];
+  assert.equal(canAddToWordBook({ detectedLanguage: 'da', languages: langs }), false);
+  assert.equal(canAddToWordBook({ detectedLanguage: 'en', languages: [{ ...langs[0], current: true }, { code: 'da', name: 'Danish' }] }), true);
+  assert.equal(canAddToWordBook({ detectedLanguage: 'fr', languages: [{ code: 'fr', name: 'French', current: true }, { code: 'it', name: 'Italian' }] }), true);
+  assert.equal(canAddToWordBook({ detectedLanguage: 'fr' }), true);
+}
+
 console.log('sense notes ok: labels sorted into grammar and usage, matched to glosses, sister boxes dropped, phrases and languages shown');

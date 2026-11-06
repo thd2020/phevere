@@ -24,6 +24,7 @@ import { normalizeVocabLemma, typoDistance } from './vocab-lemma';
 import { formOfGlossLemma, formOfLemmaFromGlosses, isRegularInflection, resolveFormOf, stripCitationLines } from './form-of';
 import { foldLookupKey, latinLemmasByPos } from './text-normalize';
 import { recordLemmaAliases } from './answer-history';
+import { vocabHeadwordLang } from './vocab-lang';
 import { normalizeSourceContext, sourceContextFromJson, sourceContextToJson } from './source-context';
 
 export const VOCAB_SYNC_NAMESPACE = 'phevere/vocab';
@@ -272,51 +273,56 @@ export async function mergeDuplicateLemmas(at: number): Promise<number> {
   const groups = await db.queryAll(`SELECT lower(lemma) AS k FROM vocab GROUP BY lower(lemma) HAVING COUNT(*) > 1`);
   let folded = 0;
   for (const g of groups) {
-    const entries = (await db.queryAll(`SELECT * FROM vocab WHERE lower(lemma) = ?`, [g.k])).map(rowToEntry);
-    if (entries.length < 2) continue;
-    entries.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-    const keep = entries[0];
-    const newest = [...entries].sort((a, b) => b.updatedAt - a.updatedAt || (a.id < b.id ? -1 : 1));
-    const pick = <K extends keyof VocabEntry>(key: K): VocabEntry[K] | undefined =>
-      newest.find((e) => typeof e[key] === 'string' && String(e[key]).trim())?.[key];
-    const union = (key: 'sources' | 'tags') => {
-      const all = entries.flatMap((e) => e[key] || []);
-      return all.length ? [...new Set(all)] : undefined;
-    };
-    const studied = [...newest].sort((a, b) => (b.reps || 0) - (a.reps || 0) || (b.lastReview || 0) - (a.lastReview || 0))[0];
-    await writeRow({
-      id: keep.id,
-      lemma: keep.lemma,
-      reading: pick('reading'),
-      definition: pick('definition'),
-      partOfSpeech: pick('partOfSpeech'),
-      sourceLang: pick('sourceLang'),
-      targetLang: pick('targetLang'),
-      // Notes are kept side by side; one that another already contains is not repeated.
-      note: joinNotes(entries),
-      sources: union('sources'),
-      tags: union('tags'),
-      createdAt: Math.min(...entries.map((e) => e.createdAt || at)),
-      updatedAt: at,
-      // A due date is never lost: the studied row's, else the earliest any copy has.
-      reviewDue: studied.reviewDue ?? entries.map((e) => e.reviewDue).filter((d): d is number => d != null).sort((a, b) => a - b)[0],
-      reviewInterval: studied.reviewInterval,
-      ease: studied.ease,
-      reps: studied.reps,
-      stability: studied.stability,
-      difficulty: studied.difficulty,
-      state: studied.state,
-      lapses: studied.lapses,
-      lastReview: studied.lastReview,
-      learningSteps: studied.learningSteps,
-      device: [...entries].sort((a, b) => a.createdAt - b.createdAt).find((x) => x.device)?.device,
-      // Where the word was first met: the earliest save that recorded one.
-      context: [...entries].sort((a, b) => a.createdAt - b.createdAt).find((x) => x.context)?.context,
-    });
-    for (const e of entries.slice(1)) {
-      await db.runWrite(`DELETE FROM vocab WHERE id = ?`, [e.id]);
-      await db.runWrite(`INSERT OR REPLACE INTO vocab_deleted (id, deleted_at) VALUES (?, ?)`, [e.id, at]);
-      folded += 1;
+    const all = (await db.queryAll(`SELECT * FROM vocab WHERE lower(lemma) = ?`, [g.k])).map(rowToEntry);
+    // The same spelling in two languages ("give" in English and in Danish) is two words.
+    const byLang = new Map<string, VocabEntry[]>();
+    for (const e of all) byLang.set(vocabHeadwordLang(e), [...(byLang.get(vocabHeadwordLang(e)) || []), e]);
+    for (const entries of byLang.values()) {
+      if (entries.length < 2) continue;
+      entries.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      const keep = entries[0];
+      const newest = [...entries].sort((a, b) => b.updatedAt - a.updatedAt || (a.id < b.id ? -1 : 1));
+      const pick = <K extends keyof VocabEntry>(key: K): VocabEntry[K] | undefined =>
+        newest.find((e) => typeof e[key] === 'string' && String(e[key]).trim())?.[key];
+      const union = (key: 'sources' | 'tags') => {
+        const all = entries.flatMap((e) => e[key] || []);
+        return all.length ? [...new Set(all)] : undefined;
+      };
+      const studied = [...newest].sort((a, b) => (b.reps || 0) - (a.reps || 0) || (b.lastReview || 0) - (a.lastReview || 0))[0];
+      await writeRow({
+        id: keep.id,
+        lemma: keep.lemma,
+        reading: pick('reading'),
+        definition: pick('definition'),
+        partOfSpeech: pick('partOfSpeech'),
+        sourceLang: pick('sourceLang'),
+        targetLang: pick('targetLang'),
+        // Notes are kept side by side; one that another already contains is not repeated.
+        note: joinNotes(entries),
+        sources: union('sources'),
+        tags: union('tags'),
+        createdAt: Math.min(...entries.map((e) => e.createdAt || at)),
+        updatedAt: at,
+        // A due date is never lost: the studied row's, else the earliest any copy has.
+        reviewDue: studied.reviewDue ?? entries.map((e) => e.reviewDue).filter((d): d is number => d != null).sort((a, b) => a - b)[0],
+        reviewInterval: studied.reviewInterval,
+        ease: studied.ease,
+        reps: studied.reps,
+        stability: studied.stability,
+        difficulty: studied.difficulty,
+        state: studied.state,
+        lapses: studied.lapses,
+        lastReview: studied.lastReview,
+        learningSteps: studied.learningSteps,
+        device: [...entries].sort((a, b) => a.createdAt - b.createdAt).find((x) => x.device)?.device,
+        // Where the word was first met: the earliest save that recorded one.
+        context: [...entries].sort((a, b) => a.createdAt - b.createdAt).find((x) => x.context)?.context,
+      });
+      for (const e of entries.slice(1)) {
+        await db.runWrite(`DELETE FROM vocab WHERE id = ?`, [e.id]);
+        await db.runWrite(`INSERT OR REPLACE INTO vocab_deleted (id, deleted_at) VALUES (?, ?)`, [e.id, at]);
+        folded += 1;
+      }
     }
   }
   return folded;

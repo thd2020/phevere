@@ -1226,7 +1226,8 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab, lang?:
     result = next;
     settled = true;
     prefetchRecorded(next);
-    const nextSaved = await findByLemma(saveLemma(next)).catch(() => null);
+    // The saved word in the language shown: "give" opened in Danish is not the English one.
+    const nextSaved = await findByLemma(saveLemma(next), next.detectedLanguage).catch(() => null);
     if (generation !== lookupGeneration) return;
     saved = nextSaved;
     void loadSenseImages(generation);

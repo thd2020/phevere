@@ -4127,7 +4127,11 @@ function startAutoCloseTimeout() {
          } catch (e) {
            popupUserBooks = [];
          }
-         btn.hidden = !popupUserBooks.length;
+         // An entry opened in another language whose spelling has an English entry is not
+         // offered: a book keeps spellings only (canAddToWordBook in vocab-payload.ts).
+         const lx = window.phevereLexicon;
+         const fits = !lx || !lx.canAddToWordBook || lx.canAddToWordBook(currentResult);
+         btn.hidden = !popupUserBooks.length || !fits;
        }
 
        function openBookAdd() {
@@ -4164,15 +4168,22 @@ function startAutoCloseTimeout() {
            return;
          }
          try {
-           let entry = await window.vocabAPI.find(word);
+           // The saved word in the language shown: "give" opened in Danish is not the English one.
+           const lang = shownEntryLang();
+           let entry = await window.vocabAPI.find(word, lang);
            if (!entry && currentText && String(currentText).trim().toLowerCase() !== word.toLowerCase()) {
-             entry = await window.vocabAPI.find(String(currentText).trim());
+             entry = await window.vocabAPI.find(String(currentText).trim(), lang);
            }
            setVocabHeartSaved(!!entry, entry && entry.id, entry && entry.lemma);
          } catch (e) {
            console.warn('vocab heart sync failed', e);
            setVocabHeartSaved(false);
          }
+       }
+
+       /** The language of the entry shown, so the heart saves and removes that language's word. */
+       function shownEntryLang() {
+         return (currentResult && currentResult.detectedLanguage) || undefined;
        }
 
        async function toggleVocabHeart() {
@@ -4188,7 +4199,7 @@ function startAutoCloseTimeout() {
              return;
            }
 
-           const existing = await window.vocabAPI.find(lemma);
+           const existing = await window.vocabAPI.find(lemma, shownEntryLang());
            if (existing && existing.id) {
              await window.vocabAPI.remove(existing.id);
              setVocabHeartSaved(false);

@@ -17,6 +17,7 @@ import {
   type WikipediaResult,
   vocabListHtml,
   addToBookButtonHtml,
+  canAddToWordBook,
   vocabAzLetter,
   AZ_INDEX,
   compareAz,
@@ -889,7 +890,7 @@ export function lookupBody(opts: {
         <button type="button" class="icon-btn" data-act="web-search" aria-label="Search the web" title="Search the web">${ICO.web}</button>` : ''}
         ${part ? '' : `<button type="button" class="tonal" data-act="speak" aria-label="Play pronunciation">${ICO.speaker}</button>
         <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Remove from My words' : 'Save to My words'}">${ICO.heart}</button>
-        ${opts.bookPick && opts.saveWord ? addToBookButtonHtml(opts.saveWord, 'tonal') : ''}`}
+        ${opts.bookPick && opts.saveWord && canAddToWordBook(opts.result) ? addToBookButtonHtml(opts.saveWord, 'tonal') : ''}`}
       </div>
       ${chips}
       ${languageSwitchHtml(opts.result, 'act', { fold: false })}

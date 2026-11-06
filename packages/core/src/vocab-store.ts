@@ -5,6 +5,7 @@
 
 import { getDeviceName, getNewId, getVocabDb } from './runtime';
 import { normalizeVocabLemma } from './vocab-lemma';
+import { vocabHeadwordLang } from './vocab-lang';
 import { scheduleReview, type ReviewGrade } from './review-schedule';
 import { sourceContextFromJson, sourceContextToJson, type SourceContext } from './source-context';
 import { logGradedAnswer, type AnswerDetails } from './answer-history';
@@ -174,10 +175,8 @@ export async function addVocab(raw: VocabAddInput): Promise<VocabEntry> {
   const lemma = normalizeVocabLemma(input.lemma || '', { pos: input.partOfSpeech, lang: input.sourceLang });
   if (!lemma) throw new Error('lemma required');
 
-  const existing = await db.queryOne(
-    `SELECT * FROM vocab WHERE lower(lemma) = lower(?) ORDER BY updated_at DESC LIMIT 1`,
-    [lemma],
-  );
+  // "give" saved from the Danish entry is a word of its own beside the English "give".
+  const existing = await rowFor(lemma, input.sourceLang);
   const now = Date.now();
 
   if (existing) {
@@ -298,14 +297,31 @@ export async function getVocab(id: string): Promise<VocabEntry | null> {
   return row ? rowToEntry(row) : null;
 }
 
-export async function findByLemma(lemma: string): Promise<VocabEntry | null> {
+/** A language code as rows keep it ("en" for "en-GB"); '' for none or "auto". */
+function langKey(code?: string): string {
+  const c = String(code || '').toLowerCase().split('-')[0].trim();
+  return c && c !== 'auto' ? c : '';
+}
+
+/**
+ * The newest row saved for `lemma`, in `lang` when one is given. A saved word is the word in one
+ * language, as a phrasebook or a deck keeps it: the English "give" and the Danish "give" are two
+ * rows. A row saved without a language counts as the language its letters suggest (English for
+ * Latin script), as the Words language chips read it.
+ */
+async function rowFor(lemma: string, lang?: string): Promise<Record<string, unknown> | null> {
+  const rows = await getVocabDb().queryAll(`SELECT * FROM vocab WHERE lower(lemma) = lower(?) ORDER BY updated_at DESC`, [lemma]);
+  const want = langKey(lang);
+  if (!want) return rows[0] || null;
+  return rows.find((r) => vocabHeadwordLang({ lemma: String(r.lemma || ''), sourceLang: String(r.source_lang || '') }) === want) || null;
+}
+
+/** The saved word `lemma`, in `lang` when given ("give" in Danish is not the English "give"). */
+export async function findByLemma(lemma: string, lang?: string): Promise<VocabEntry | null> {
   await ensureVocabReady();
   const q = (lemma || '').trim();
   if (!q) return null;
-  const row = await getVocabDb().queryOne(
-    `SELECT * FROM vocab WHERE lower(lemma) = lower(?) ORDER BY updated_at DESC LIMIT 1`,
-    [q],
-  );
+  const row = await rowFor(q, lang);
   return row ? rowToEntry(row) : null;
 }
 

@@ -30,6 +30,7 @@ import { loadWordbook } from '@phevere/core/wordbooks';
 import '@phevere/core/popover-menu.css';
 import { openMenu } from '@phevere/core/popover-menu';
 import { bookPickItems } from '@phevere/core/wordbook-views';
+import { canAddToWordBook } from '@phevere/core/vocab-payload';
 
 // The Lexicon's Forms, Word family and morpheme sections and its linked words, built by the
 // same code as the phone's.
@@ -55,6 +56,7 @@ import { bookPickItems } from '@phevere/core/wordbook-views';
   loadWordbook,
   openMenu,
   bookPickItems,
+  canAddToWordBook,
 };
 
 export {};

@@ -3283,9 +3283,9 @@ ipcMain.handle('vocab-import', async (e) => {
     throw error;
   }
 });
-ipcMain.handle('vocab-find', async (_e, lemma: string) => {
+ipcMain.handle('vocab-find', async (_e, lemma: string, lang?: string) => {
   try {
-    return await vocabStore.findByLemma(lemma);
+    return await vocabStore.findByLemma(lemma, lang);
   } catch (error) {
     log.error('main', 'vocab-find failed', { err: String(error) });
     throw error;

@@ -127,7 +127,7 @@ export {
   type CardLayout,
 } from './notebook-views';
 export { analyzeMorphemes, morphBreakdown, morphEntry, morphForms, wordOrigin, type Morph, type MorphEntry, type MorphEtymon, type MorphKind } from './morphology';
-export { vocabPayloadFromResult, examplesFromResult } from './vocab-payload';
+export { vocabPayloadFromResult, examplesFromResult, canAddToWordBook } from './vocab-payload';
 
 export {
   type ContextOrigin,
