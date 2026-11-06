@@ -121,9 +121,10 @@ async function tryBytes(url: string): Promise<string> {
 
 /**
  * Loads a picture and resolves with the `src` that shows it, or null when every try failed. Calls
- * for the same URL share one load.
+ * for the same URL share one load. `again`: a deliberate second ask (a card retrying), which
+ * does not wait out the minute a failed picture is otherwise left alone.
  */
-export function loadPicture(url: string): Promise<string | null> {
+export function loadPicture(url: string, opts?: { again?: boolean }): Promise<string | null> {
   const u = String(url || '');
   if (!u) return Promise.resolve(null);
   const hit = ready.get(u);
@@ -131,7 +132,7 @@ export function loadPicture(url: string): Promise<string | null> {
   const pending = loading.get(u);
   if (pending) return pending;
   const failed = failedAt.get(u);
-  if (failed && Date.now() - failed < FAILED_FOR_MS) return Promise.resolve(null);
+  if (!opts?.again && failed && Date.now() - failed < FAILED_FOR_MS) return Promise.resolve(null);
   const Ctor = imageCtor();
   // Without an image element (a test, a worker) there is nothing to load ahead: show the URL.
   if (!Ctor) return Promise.resolve(u);

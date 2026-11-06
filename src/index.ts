@@ -3041,7 +3041,7 @@ ipcMain.handle(
     event,
     lemma: string,
     senses: Array<{ meaning: string; partOfSpeech?: string }>,
-    opts?: { max?: number; lang?: string; updateId?: string; cancellable?: boolean },
+    opts?: { max?: number; lang?: string; updateId?: string; cancellable?: boolean; again?: boolean },
   ) => {
     const updateId = typeof opts?.updateId === 'string' ? opts.updateId : '';
     const ctl = updateId && opts?.cancellable ? new AbortController() : null;
@@ -3050,6 +3050,7 @@ ipcMain.handle(
       max: opts?.max,
       lang: opts?.lang,
       signal: ctl?.signal,
+      again: opts?.again === true,
       onUpdate: updateId
         ? (list) => {
             try {

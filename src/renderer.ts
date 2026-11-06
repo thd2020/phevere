@@ -2759,15 +2759,15 @@ function wordImageFetcher(): WordImageFetcher | null {
   // The card's picture shows as soon as the first source finds it, and a card that scrolls away
   // stops its search in the main process too.
   if (api?.senseImages) {
-    return (lemma, lang, gloss, pos, onPicture, signal) => {
+    return (lemma, lang, gloss, pos, onPicture, signal, again) => {
       const g = String(gloss || '').trim();
       const sense = g ? { meaning: g, partOfSpeech: pos || '' } : { meaning: '' };
       const onUpdate = onPicture ? (list: any[]) => onPicture((Array.isArray(list) && list[0]) || null) : undefined;
       const onCancel = signal ? (cancel: () => void) => signal.addEventListener('abort', cancel, { once: true }) : undefined;
-      return api.senseImages(lemma, [sense], { max: 1, lang }, onUpdate, onCancel).then((r: any[]) => (Array.isArray(r) && r[0]) || null);
+      return api.senseImages(lemma, [sense], { max: 1, lang, again }, onUpdate, onCancel).then((r: any[]) => (Array.isArray(r) && r[0]) || null);
     };
   }
-  return (lemma, lang, gloss, pos, onPicture, signal) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture, signal });
+  return (lemma, lang, gloss, pos, onPicture, signal, again) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture, signal, again });
 }
 
 function renderVocabNotebook(entries: any[]): void {

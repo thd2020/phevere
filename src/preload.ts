@@ -421,7 +421,7 @@ contextBridge.exposeInMainWorld('dictionaryAPI', {
   senseImages: (
     lemma: string,
     senses: Array<{ meaning: string; partOfSpeech?: string }>,
-    opts?: { max?: number; lang?: string },
+    opts?: { max?: number; lang?: string; again?: boolean },
     onUpdate?: (list: Array<SenseImage | null>) => void,
     /**
      * Called with a function that stops the search (a card that scrolled away). An AbortSignal
@@ -722,7 +722,7 @@ declare global {
       senseImages?: (
         lemma: string,
         senses: Array<{ meaning: string; partOfSpeech?: string }>,
-        opts?: { max?: number; lang?: string },
+        opts?: { max?: number; lang?: string; again?: boolean },
         onUpdate?: (list: Array<SenseImage | null>) => void,
         onCancel?: (cancel: () => void) => void,
       ) => Promise<Array<SenseImage | null>>;

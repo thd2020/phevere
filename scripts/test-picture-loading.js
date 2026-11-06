@@ -3,13 +3,13 @@
  *
  * - packages/core/src/picture-load.ts: a picture whose request fails is asked for again and shows
  *   once it loads; one that fails every try comes through the app's HTTP client as a blob URL;
- *   one that fails that too is reported as failed and not asked for again at once. At most 48
- *   blob URLs are kept; older ones are revoked.
+ *   one that fails that too is reported as failed and not asked for again at once, unless a
+ *   card asks again on purpose. At most 48 blob URLs are kept; older ones are revoked.
  * - packages/core/src/net.ts: a request still waiting for one of its host's slots is dropped when
  *   nobody wants it any more, holds no slot and leaves the host's round trips alone.
  * - packages/core/src/sense-images.ts: a card that scrolls away (its signal aborted) sends none of
  *   its queued requests, and the next card for that word asks again instead of reusing the
- *   cut-short result.
+ *   cut-short result. A card asking again after a failed search builds the failed pool again.
  *
  * Run: node scripts/test-picture-loading.js
  */
@@ -114,6 +114,9 @@ async function pictureRetries() {
   const before = tries.get(gone);
   assert.equal(await pl.loadPicture(gone), null);
   assert.equal(tries.get(gone), before, 'a picture that failed every try waits a minute before the next');
+  // A card asking again does not wait out that minute.
+  assert.equal(await pl.loadPicture(gone, { again: true }), null);
+  assert.equal(tries.get(gone), before + 3, 'a deliberate second ask reaches the network again');
 }
 
 async function blobsBounded() {
@@ -139,6 +142,30 @@ async function blobsBounded() {
   assert.equal(pl.pictureSrc(urls[59]), 'blob:p-60');
   pl.clearPictureLoads();
   assert.equal(revoked.size, 60, 'clearing revokes the rest');
+}
+
+async function failedPoolAskedAgain() {
+  const net = loadModule('net.ts', {});
+  const sent = [];
+  const inner = {
+    requestJson: (url) => {
+      sent.push(url);
+      return Promise.reject(Object.assign(new Error('Request failed'), { code: 'NETWORK_ERROR' }));
+    },
+    requestText: async () => ({ ok: false, status: 404, text: '' }),
+    requestBytes: async () => ({ ok: false, status: 404, bytes: new Uint8Array(), contentType: '' }),
+  };
+  const http = net.trackHttp(inner);
+  const runtime = { isCoreConfigured: () => true, getHttp: () => http, getLookupCache: () => null };
+  const si = loadModule('sense-images.ts', { './runtime': runtime, './net': net, './http': {} });
+  const ask = (again) => si.fetchWordImage('kettle', { gloss: 'A vessel for boiling water.', pos: 'noun', again });
+  assert.equal(await ask(false), null);
+  const first = sent.length;
+  assert.ok(first > 0);
+  assert.equal(await ask(false), null);
+  assert.equal(sent.length, first, 'a failed pool is reused for a few minutes');
+  assert.equal(await ask(true), null);
+  assert.ok(sent.length > first, 'a card asking again builds the failed pool again');
 }
 
 async function queuedRequestsDropped() {
@@ -232,7 +259,8 @@ async function cardScrolledAway() {
   await cardScrolledAway();
   await pictureRetries();
   await blobsBounded();
-  console.log('Picture loading passed: failed pictures are asked again and come through the HTTP client last, queued requests for cards scrolled away are dropped, the next card asks again, and blob URLs are bounded.');
+  await failedPoolAskedAgain();
+  console.log('Picture loading passed: failed pictures are asked again and come through the HTTP client last, queued requests for cards scrolled away are dropped, the next card asks again, blob URLs are bounded, and a card asking again reaches the network.');
 })().catch((e) => {
   console.error(e);
   process.exit(1);

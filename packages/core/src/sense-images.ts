@@ -2193,7 +2193,7 @@ async function addGlossArticles(
 /** Pools by word, in memory; `until` ends an empty or partial pool's life early. */
 const poolCache = new Map<
   string,
-  { p: Promise<PicturePool>; until: number; progress: Set<(pool: PicturePool) => void>; wants: Set<() => boolean> }
+  { p: Promise<PicturePool>; until: number; progress: Set<(pool: PicturePool) => void>; wants: Set<() => boolean>; failed?: boolean }
 >();
 
 /** Pools whose requests were dropped while nobody wanted them; never kept or saved. */
@@ -2242,10 +2242,13 @@ function getPool(
   hints: string[],
   progress?: (pool: PicturePool) => void,
   wanted?: Wanted,
+  again = false,
 ): Promise<PicturePool> {
   const key = poolKey(lemma, lang);
   const hit = poolCache.get(key);
-  if (hit && Date.now() < hit.until) {
+  // `again`: a deliberate second ask (a card retrying) builds a failed pool again rather than
+  // waiting out FAILED_MEMORY_MS.
+  if (hit && Date.now() < hit.until && !(again && hit.failed)) {
     if (progress) hit.progress.add(progress);
     hit.wants.add(wanted || ALWAYS);
     return hit.p;
@@ -2253,7 +2256,7 @@ function getPool(
   const listeners = new Set<(pool: PicturePool) => void>(progress ? [progress] : []);
   // The pool is wanted while any caller wants it: a lookup always, a card while it is on screen.
   const wants = new Set<() => boolean>([wanted || ALWAYS]);
-  const entry = { p: Promise.resolve(null as unknown as PicturePool), until: Infinity, progress: listeners, wants };
+  const entry = { p: Promise.resolve(null as unknown as PicturePool), until: Infinity, progress: listeners, wants, failed: false };
   // Set once nobody wanted the pool while it was built: some of its requests may have been dropped.
   let cut = false;
   const stillWanted = () => {
@@ -2287,6 +2290,7 @@ function getPool(
     const dropped = pool.failed && cut;
     if (dropped) cutPools.add(pool);
     const life = dropped ? 0 : pool.failed ? FAILED_MEMORY_MS : poolTtl(pool);
+    entry.failed = !!pool.failed;
     entry.until = Date.now() + life;
     if (!life && poolCache.get(key) === entry) poolCache.delete(key);
     writePool(key, pool);
@@ -2440,6 +2444,8 @@ export async function fetchSenseImages(
      * does), and the call resolves with what was found; a later call for the word starts again.
      */
     signal?: AbortSignal;
+    /** A deliberate second ask (a card retrying): a pool that failed a moment ago is built again. */
+    again?: boolean;
   },
 ): Promise<Array<SenseImage | null>> {
   const word = String(lemma || '').trim();
@@ -2473,7 +2479,7 @@ export async function fetchSenseImages(
     const signal = opts?.signal;
     const wanted: Wanted = signal ? () => !signal.aborted : undefined;
     if (signal && !signal.aborted) signal.addEventListener('abort', () => dropUnwanted(), { once: true });
-    let pool = await getPool(word, lang, hints, progress, wanted);
+    let pool = await getPool(word, lang, hints, progress, wanted, opts?.again === true);
     // Joined a pool whose requests were dropped while nobody wanted it: build it again (most of
     // its answers are kept, so this costs the dropped requests only).
     if (cutPools.has(pool) && !signal?.aborted) pool = await getPool(word, lang, hints, progress, wanted);
@@ -2496,7 +2502,7 @@ export async function fetchSenseImages(
  */
 export async function fetchWordImage(
   lemma: string,
-  opts?: { lang?: string; gloss?: string; pos?: string; onUpdate?: (img: SenseImage | null) => void; signal?: AbortSignal },
+  opts?: { lang?: string; gloss?: string; pos?: string; onUpdate?: (img: SenseImage | null) => void; signal?: AbortSignal; again?: boolean },
 ): Promise<SenseImage | null> {
   const gloss = String(opts?.gloss || '').trim();
   const update = opts?.onUpdate;
@@ -2505,6 +2511,7 @@ export async function fetchWordImage(
     lang: opts?.lang,
     onUpdate: update ? (list) => update(list[0] || null) : undefined,
     signal: opts?.signal,
+    again: opts?.again,
   });
   return img || null;
 }

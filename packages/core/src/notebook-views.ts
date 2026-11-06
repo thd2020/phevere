@@ -144,8 +144,10 @@ export function notebookViewSwitchHtml(view: NotebookView): string {
 type Img = { thumb: string; title: string; pageUrl: string; credit: string } | null;
 
 /**
- * How a card asks for its picture: word, language, saved sense, part of speech, early news, and a
- * signal that is aborted when the card scrolls away (its requests not sent yet are then dropped).
+ * How a card asks for its picture: word, language, saved sense, part of speech, early news, a
+ * signal that is aborted when the card scrolls away (its requests not sent yet are then dropped),
+ * and `again` when the card asks a second time after a search that found nothing (a pool that
+ * failed a moment ago is then built again instead of being reused).
  */
 export type WordImageFetcher = (
   lemma: string,
@@ -154,6 +156,7 @@ export type WordImageFetcher = (
   pos?: string,
   onPicture?: (img: Img) => void,
   signal?: AbortSignal,
+  again?: boolean,
 ) => Promise<Img>;
 
 /** Card pictures being chosen at once, across every list on the page. */
@@ -195,7 +198,9 @@ function showPicture(box: any, img: Img): void {
   if (!img || !img.thumb) return;
   if (box.getAttribute('data-img-want') === img.thumb) return;
   box.setAttribute('data-img-want', img.thumb);
-  void loadPicture(img.thumb).then((src) => {
+  // A card asking again does not wait out the minute a failed picture is otherwise left alone,
+  // or its retries 20 and 40 seconds later would never reach the network.
+  void loadPicture(img.thumb, { again: (cardTries.get(box) || 0) > 0 }).then((src) => {
     // A later picture for the card (a better fit found by a slower source) has taken its place.
     if (box.getAttribute('data-img-want') !== img.thumb) return;
     if (src) placePicture(box, img, src);
@@ -298,7 +303,7 @@ function startCard(box: any): void {
   const gloss = box.getAttribute('data-img-gloss') || undefined;
   const pos = box.getAttribute('data-img-pos') || undefined;
   void st
-    .fetch(lemma, box.getAttribute('data-img-lang') || undefined, gloss, pos, (img) => showPicture(box, img), ctl?.signal)
+    .fetch(lemma, box.getAttribute('data-img-lang') || undefined, gloss, pos, (img) => showPicture(box, img), ctl?.signal, (cardTries.get(box) || 0) > 0)
     .then((img) => {
       if (img && img.thumb) {
         showPicture(box, img);
