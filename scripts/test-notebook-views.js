@@ -389,21 +389,25 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
 {
   const { learnSettingsHtml } = load('settings-learn');
   const { readLearnPrefs, writeLearnPrefs, DEFAULT_LEARN_PREFS } = load('learn-prefs');
-  const input = { goal: 12, books: [{ id: 'cet4', title: 'CET-4', goal: 20 }], prefs: { countdown: 8, speaking: false }, microphone: false };
+  const now = new Date(2026, 10, 7, 12).getTime();
+  const input = { goal: 12, books: [{ id: 'cet4', title: 'CET-4', goal: 20, left: 400 }], prefs: { countdown: 8, speaking: false }, microphone: false, mineLeft: 30, now };
   const html = learnSettingsHtml(input);
-  // Every number is a spinbutton wheel with its range, its value and a name, not presets and a field.
-  assert.doesNotMatch(html, /type="radio"|<select|sv-num|Other/, 'no presets, no Other field, no menu');
-  assert.match(html, /id="learn-goal-mine" role="spinbutton" tabindex="0" aria-labelledby="learn-goal-mine-label" aria-valuemin="1" aria-valuemax="999" aria-valuenow="12"[^>]*data-value="12" data-act="learn-goal" data-book=""/);
+  // Presets to tap and a field for any other number, not a wheel.
+  assert.doesNotMatch(html, /role="spinbutton"|class="nw/, 'no wheels');
+  assert.match(html, /<input type="radio" name="learn-goal-mine" value="10" data-value="10" data-act="learn-goal" data-book="" \/>/);
+  assert.match(html, /class="sv-pick sv-pick--own is-on"><input type="number"[^>]*value="12"[^>]*data-act="learn-goal" data-book=""/, 'a goal that is not a preset shows in the field');
+  assert.match(html, /name="learn-goal-b0" value="20" data-value="20" data-act="learn-goal" data-book="cet4" checked/, 'a book keeps its own goal');
   assert.match(html, /id="learn-goal-mine-label">My words</);
-  assert.match(html, /aria-valuenow="20" aria-valuetext="20"[^>]*data-act="learn-goal" data-book="cet4"/, 'a book keeps its own goal');
-  assert.match(html, /id="learn-countdown" role="spinbutton"[^>]*aria-valuemin="0" aria-valuemax="30" aria-valuenow="8" aria-valuetext="8 seconds"[^>]*data-off=""/);
-  assert.match(learnSettingsHtml({ ...input, prefs: { countdown: 0, speaking: false } }), /class="nw is-off" id="learn-countdown"[^>]*aria-valuetext="Off"/, 'no countdown reads Off');
-  // The wheel draws the value in the middle with its neighbours, and nothing past either end.
-  assert.match(html, /class="nw__n is-centre"[^>]*>12</);
-  const mineWheel = html.slice(html.indexOf('id="learn-goal-mine"'), html.indexOf('</div>', html.indexOf('id="learn-goal-mine"')));
-  assert.deepEqual([...mineWheel.matchAll(/class="nw__n[^"]*"(?: hidden)? style="[^"]*">(\d*)</g)].map((m) => m[1]), ['9', '10', '11', '12', '13', '14', '15']);
-  const low = learnSettingsHtml({ ...input, goal: 1 });
-  assert.equal((low.slice(0, low.indexOf('learn-goal-b0')).match(/class="nw__n" hidden/g) || []).length, 3, 'nothing above 1');
+  assert.match(html, /30 not started/);
+  assert.match(html, /About 16 min a day · every word started by Nov 9/, 'the plan line: time a day and the date the last word starts');
+  assert.match(html, /About 27 min a day · every word started by Nov 26/);
+  assert.match(html, /name="learn-countdown" value="8" data-value="8" data-act="learn-countdown" checked/);
+  assert.match(learnSettingsHtml({ ...input, prefs: { countdown: 0, speaking: false } }), /value="0" data-value="0" data-act="learn-countdown" checked \/><span class="sv-pick__n">Off</, 'no countdown reads Off');
+  // The pace's number joins the presets, marked.
+  const pace = { answersPerDay: 90, accuracy: 0.9, firstDayAnswers: 2.5, reviewsPerNew: 7.5, suggested: 9, days: 5 };
+  const paced = learnSettingsHtml({ ...input, pace });
+  assert.match(paced, /class="sv-pick is-suggested"><input type="radio" name="learn-goal-mine" value="9"[^>]*\/><span class="sv-pick__n">9<\/span><span class="sv-pick__tag">Your pace</);
+  assert.doesNotMatch(learnSettingsHtml({ ...input, mineLeft: undefined, books: [{ id: 'cet4', title: 'CET-4', goal: 20 }] }), /not started|every word/, 'no count, no finish date');
   assert.doesNotMatch(html, /learn-speaking/, 'no speaking switch without a microphone');
   assert.doesNotMatch(learnSettingsHtml({ ...input, microphone: true, prefs: { countdown: 8, speaking: true } }), /learn-speaking|Speaking/, 'no speaking switch even with a microphone');
   assert.deepEqual(readLearnPrefs(null), DEFAULT_LEARN_PREFS);

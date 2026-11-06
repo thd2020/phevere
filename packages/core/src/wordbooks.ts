@@ -279,6 +279,19 @@ export function bookProgress(bookId: string, ctx: WordsContext, now = Date.now()
   };
 }
 
+/** Words not started yet in My words and in each subscribed book, for Settings → Learn's plan lines. */
+export function learnListsLeft(ctx: WordsContext, now = Date.now()): { mine: number; books: Map<string, number> } {
+  const mine = dedupeLemmas(
+    ctx.mine.filter((e) => isNewWord(e) && clean(e.lemma) && isLearnable(e) && !ctx.progress.get(bookWordKey(e.lemma))?.known),
+  ).length;
+  const books = new Map<string, number>();
+  for (const s of ctx.subs) {
+    const p = bookProgress(s.bookId, ctx, now);
+    books.set(s.bookId, Math.max(0, p.total - p.known - p.learning));
+  }
+  return { mine, books };
+}
+
 /* ------------------------------------------------------------------- review */
 
 export interface ScopeReviewOptions {

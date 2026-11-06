@@ -132,6 +132,7 @@ import {
   BOOK_LIST_PAGE,
   bookEntry,
   buildWordsContext,
+  learnListsLeft,
   dropCurrentReview,
   isBookOnlyId,
   loadWordbook,
@@ -154,7 +155,7 @@ import {
 import { choiceRowHtml, enhanceSelect, keycapsHtml, rangeRowHtml, segRowHtml, switchRowHtml } from '@phevere/core';
 import { filterVocabByLang, parseGoal, vocabLangChipsHtml, vocabLanguages, savedForSpelling } from '@phevere/core';
 import { aboutSettingsHtml, flashAboutCopied, type AboutPlatform } from '@phevere/core';
-import { learnSettingsHtml, microphoneAvailable, readLearnPrefs, watchMicrophone, wireNumberWheels, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
+import { learnPickValue, learnSettingsHtml, microphoneAvailable, readLearnPrefs, syncLearnPick, watchMicrophone, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
 import { AZ_INDEX, compareAz, followIndexRail, vocabAzLetter, wireIndexRail } from '@phevere/core';
 import { bookMenuItems, bookPickItems, bookRemovalPrompt, openMenu } from '@phevere/core';
@@ -589,30 +590,53 @@ function wireLearnSettings(): void {
   const host = document.getElementById('learn-settings-host');
   if (!host) return;
   let microphone = false;
-  let books: Array<{ id: string; title: string; goal: number }> = [];
+  let books: Array<{ id: string; title: string; goal: number; left?: number }> = [];
+  let mineLeft: number | undefined;
+  let pace: StudyPace | null = null;
   const paint = () => {
-    // A repaint (books reloaded on focus, a microphone plugged in) keeps keyboard focus on its wheel.
-    const focused = host.contains(document.activeElement) ? document.activeElement?.id : '';
+    // A repaint (books reloaded on focus, a microphone plugged in) keeps keyboard focus where it was.
+    const focused = document.activeElement as HTMLInputElement | null;
+    const key = host.contains(focused) && focused ? `${focused.name || ''}|${focused.dataset.book ?? ''}|${focused.dataset.value ?? 'field'}` : '';
     host.innerHTML = learnSettingsHtml({
       goal: Number(readPref(NB_GOAL_KEY, '10')) || 10,
       books,
       prefs: readLearnPrefs(readPref(LEARN_PREFS_KEY, '')),
       microphone,
+      mineLeft,
+      pace,
     });
-    if (focused) document.getElementById(focused)?.focus();
+    if (key) {
+      const [name, book, value] = key.split('|');
+      const back = [...host.querySelectorAll<HTMLInputElement>('input[data-act]')].find(
+        (el) => (el.name || '') === name && (el.dataset.book ?? '') === book && (el.dataset.value ?? 'field') === value,
+      );
+      back?.focus();
+    }
   };
-  wireNumberWheels(host);
-  const loadBooks = async () => {
+  // The plan lines need each list's words not started yet and the learner's pace; both load once
+  // and again when Settings comes forward, since words are learned in the main window meanwhile.
+  const loadLists = async () => {
     try {
-      const state = await wordbookApi()?.state?.();
+      const api = wordbookApi();
+      const vocab = (window as any).vocabAPI;
+      const [state, mine, history] = await Promise.all([api?.state?.(), vocab?.list?.(5000), vocab?.history?.()]);
       const made: Array<{ bookId: string; title: string }> = state?.userBooks || [];
-      books = (state?.subs || []).map((s: { bookId: string; dailyNew: number }) => ({
+      const subs: Array<{ bookId: string; dailyNew: number }> = state?.subs || [];
+      const loaded = new Map<string, string[]>();
+      for (const s of subs) if (!isUserBookId(s.bookId)) loaded.set(s.bookId, await loadWordbook(s.bookId));
+      const progress = new Map((state?.progress || []).map((p: any) => [p.lemma, p]));
+      const ctx = buildWordsContext(mine || [], progress as any, subs as any, loaded, made as any);
+      const left = learnListsLeft(ctx);
+      mineLeft = left.mine;
+      pace = studyPace(history || []);
+      books = subs.map((s) => ({
         id: s.bookId,
         title: wordbookMeta(s.bookId)?.title || made.find((b) => b.bookId === s.bookId)?.title || s.bookId,
         goal: s.dailyNew,
+        left: left.books.get(s.bookId),
       }));
     } catch {
-      books = [];
+      /* the choices still work; the plan lines leave out what they could not count */
     }
     paint();
   };
@@ -629,15 +653,24 @@ function wireLearnSettings(): void {
     const el = ev.target as HTMLElement;
     const act = el.dataset.act;
     if (act === 'learn-goal') {
-      const goal = parseGoal(el.dataset.value);
-      if (goal != null) void setGoal(el.dataset.book || '', goal);
+      const goal = parseGoal(learnPickValue(el));
+      if (goal == null) return;
+      syncLearnPick(el, goal);
+      void setGoal(el.dataset.book || '', goal);
     } else if (act === 'learn-countdown') {
+      const seconds = Number(learnPickValue(el)) || 0;
+      syncLearnPick(el, seconds);
       const prefs = readLearnPrefs(readPref(LEARN_PREFS_KEY, ''));
-      writePref(LEARN_PREFS_KEY, writeLearnPrefs({ ...prefs, countdown: Number(el.dataset.value) || 0 }));
+      writePref(LEARN_PREFS_KEY, writeLearnPrefs({ ...prefs, countdown: seconds }));
     } else if (act === 'learn-speaking') {
       const prefs = readLearnPrefs(readPref(LEARN_PREFS_KEY, ''));
       writePref(LEARN_PREFS_KEY, writeLearnPrefs({ ...prefs, speaking: (el as HTMLInputElement).checked }));
     }
+  });
+  // Enter in the number field saves it at once, as leaving the field does.
+  host.addEventListener('keydown', (ev) => {
+    const el = ev.target as HTMLInputElement;
+    if (ev.key === 'Enter' && el.classList?.contains('sv-pick__field')) el.blur();
   });
   const onMicrophone = (on: boolean) => {
     if (on === microphone) return;
@@ -645,11 +678,10 @@ function wireLearnSettings(): void {
     paint();
   };
   paint();
-  void loadBooks();
+  void loadLists();
   void microphoneAvailable().then(onMicrophone);
   watchMicrophone(onMicrophone);
-  // A book subscribed or dropped in the main window shows up when Settings comes forward again.
-  window.addEventListener('focus', () => void loadBooks());
+  window.addEventListener('focus', () => void loadLists());
   window.addEventListener('storage', (e) => {
     if (e.key === NB_GOAL_KEY) paint();
   });

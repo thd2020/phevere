@@ -130,10 +130,17 @@ export default {
   'settings.learn.questionsHead': 'Questions',
   'settings.learn.myWords': 'My words',
   'settings.learn.countdown': 'Countdown on choice questions',
+  'settings.learn.plan.minutes': { one: 'About {count} min a day', other: 'About {count} min a day' },
+  'settings.learn.plan.finish': 'every word started by {when}',
+  'settings.learn.plan.allStarted': 'every word started',
+  'settings.learn.suggested': 'Your pace',
+  'settings.learn.other': 'Other',
+  'settings.learn.otherLabel': 'New words a day for {list}',
+  'settings.learn.left': { one: '{count} not started', other: '{count} not started' },
+  'settings.learn.secondsShort': '{count} s',
+  'settings.learn.off': 'Off',
   /** The word under the countdown wheel's number. */
-  'settings.learn.seconds': 'seconds',
   /** Read by a screen reader for the countdown wheel's value. */
-  'settings.learn.secondsValue': { one: '{count} second', other: '{count} seconds' },
   'settings.learn.speaking': 'Speaking questions',
 
   // Settings → Sources

@@ -133,7 +133,9 @@ import {
   patchApiKeyCard,
   type ApiProviderId,
   parseGoal,
-  wireNumberWheels,
+  learnListsLeft,
+  learnPickValue,
+  syncLearnPick,
   microphoneAvailable,
   readLearnPrefs,
   watchMicrophone,
@@ -344,15 +346,19 @@ function saveLearnPrefs(next: Partial<LearnPrefs>): void {
 }
 
 function learnSettingsInput(): LearnSettingsInput {
+  const left = wordsState.ctx ? learnListsLeft(wordsState.ctx) : null;
   return {
     goal: nbState.goal,
     books: wbSubs.map((s) => ({
       id: s.bookId,
       title: wordbookMeta(s.bookId)?.title || wbUserBooks.find((b) => b.bookId === s.bookId)?.title || s.bookId,
       goal: s.dailyNew,
+      left: left?.books.get(s.bookId),
     })),
     prefs: learnPrefs,
     microphone,
+    mineLeft: left?.mine,
+    pace: learner?.pace ?? null,
   };
 }
 
@@ -3676,16 +3682,21 @@ function onChange(e: Event): void {
     keepDraft(nbState.review, (el as HTMLInputElement).value);
     return;
   }
-  // Settings → Learn: a number wheel sends change once it settles. It already shows the value, so
-  // saving it does not repaint (a repaint would take the wheel away from a finger or the keyboard).
+  // Settings → Learn: a preset or the number field. The row updates itself (syncLearnPick), so
+  // saving does not repaint and the keyboard stays open on the field.
   if (el.dataset.act === 'learn-goal') {
     if (e.type !== 'change') return;
-    const goal = parseGoal(el.dataset.value);
-    if (goal != null) void setLearnGoal(el.dataset.book || '', goal);
+    const goal = parseGoal(learnPickValue(el));
+    if (goal == null) return;
+    syncLearnPick(el, goal);
+    void setLearnGoal(el.dataset.book || '', goal);
     return;
   }
   if (el.dataset.act === 'learn-countdown') {
-    if (e.type === 'change') saveLearnPrefs({ countdown: Number(el.dataset.value) || 0 });
+    if (e.type !== 'change') return;
+    const seconds = Number(learnPickValue(el)) || 0;
+    syncLearnPick(el, seconds);
+    saveLearnPrefs({ countdown: seconds });
     return;
   }
   if (el.id === 'account-delete-email') {
@@ -3846,7 +3857,6 @@ export async function startApp(): Promise<void> {
   root.addEventListener('submit', onSubmit);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onChange);
-  wireNumberWheels(root);
   root.addEventListener('focusin', (e) => {
     if ((e.target as HTMLElement).id === 'q' && (e.target as HTMLInputElement).value.trim() && !suggestHeld) onQueryInput();
   });

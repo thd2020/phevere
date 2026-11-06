@@ -356,6 +356,7 @@ export {
   scopeEntries,
   learnScopeEntries,
   bookProgress,
+  learnListsLeft,
   scopeReviewQueue,
   startScopeReview,
   reviewNeedsMeaning,
@@ -539,7 +540,7 @@ export {
   type KeyCardState,
   type KeyStatus,
 } from './settings-keys';
-export { GOAL_MAX, GOAL_MIN, learnSettingsHtml, type LearnSettingsInput } from './settings-learn';
+export { GOAL_MAX, GOAL_MIN, learnPickValue, learnSettingsHtml, syncLearnPick, type LearnSettingsInput } from './settings-learn';
 export { numberWheelHtml, parseWheelEntry, wheelItemStyle, wireNumberWheels, type NumberWheelInput } from './number-wheel';
 export {
   ABOUT_CREDITS,
