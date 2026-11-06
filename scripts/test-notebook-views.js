@@ -364,17 +364,54 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   const { readLearnPrefs, writeLearnPrefs, DEFAULT_LEARN_PREFS } = load('learn-prefs');
   const input = { goal: 12, books: [{ id: 'cet4', title: 'CET-4', goal: 20 }], prefs: { countdown: 8, speaking: false }, microphone: false };
   const html = learnSettingsHtml(input);
-  assert.equal((html.match(/data-act="learn-goal" data-book=""/g) || []).length, 4, 'four presets for My words');
-  assert.match(html, /data-act="learn-goal-input" data-book="" aria-label="My words, other number a day"/);
-  assert.match(html, /class="sv-num is-on"[^>]*value="12"/, 'a goal off the presets fills the Other field');
-  assert.match(html, /data-book="cet4" value="20" checked/, 'a book keeps its own goal');
-  assert.match(html, /<option value="8" selected>8 seconds<\/option>/);
+  // Every number is a spinbutton wheel with its range, its value and a name, not presets and a field.
+  assert.doesNotMatch(html, /type="radio"|<select|sv-num|Other/, 'no presets, no Other field, no menu');
+  assert.match(html, /id="learn-goal-mine" role="spinbutton" tabindex="0" aria-labelledby="learn-goal-mine-label" aria-valuemin="1" aria-valuemax="999" aria-valuenow="12"[^>]*data-value="12" data-act="learn-goal" data-book=""/);
+  assert.match(html, /id="learn-goal-mine-label">My words</);
+  assert.match(html, /aria-valuenow="20" aria-valuetext="20"[^>]*data-act="learn-goal" data-book="cet4"/, 'a book keeps its own goal');
+  assert.match(html, /id="learn-countdown" role="spinbutton"[^>]*aria-valuemin="0" aria-valuemax="30" aria-valuenow="8" aria-valuetext="8 seconds"[^>]*data-off=""/);
+  assert.match(learnSettingsHtml({ ...input, prefs: { countdown: 0, speaking: false } }), /class="nw is-off" id="learn-countdown"[^>]*aria-valuetext="Off"/, 'no countdown reads Off');
+  // The wheel draws the value in the middle with its neighbours, and nothing past either end.
+  assert.match(html, /class="nw__n is-centre"[^>]*>12</);
+  const mineWheel = html.slice(html.indexOf('id="learn-goal-mine"'), html.indexOf('</div>', html.indexOf('id="learn-goal-mine"')));
+  assert.deepEqual([...mineWheel.matchAll(/class="nw__n[^"]*"(?: hidden)? style="[^"]*">(\d*)</g)].map((m) => m[1]), ['9', '10', '11', '12', '13', '14', '15']);
+  const low = learnSettingsHtml({ ...input, goal: 1 });
+  assert.equal((low.slice(0, low.indexOf('learn-goal-b0')).match(/class="nw__n" hidden/g) || []).length, 3, 'nothing above 1');
   assert.doesNotMatch(html, /learn-speaking/, 'no speaking switch without a microphone');
   assert.doesNotMatch(learnSettingsHtml({ ...input, microphone: true, prefs: { countdown: 8, speaking: true } }), /learn-speaking|Speaking/, 'no speaking switch even with a microphone');
   assert.deepEqual(readLearnPrefs(null), DEFAULT_LEARN_PREFS);
   assert.deepEqual(readLearnPrefs('{bad'), DEFAULT_LEARN_PREFS);
   assert.deepEqual(readLearnPrefs(writeLearnPrefs({ countdown: 10, speaking: false })), { countdown: 10, speaking: false });
   assert.equal(readLearnPrefs('{"countdown":-3}').countdown, 0);
+  assert.equal(readLearnPrefs('{"countdown":2}').countdown, 5, 'a countdown below the range is the shortest one');
+  assert.equal(readLearnPrefs('{"countdown":90}').countdown, 30, 'and above it the longest');
+}
+
+// Number wheel: typed entries, and neighbours that never overlap as the wheel turns.
+{
+  const { parseWheelEntry, wheelItemStyle } = load('number-wheel');
+  const goal = { min: 1, max: 999, off: false };
+  const countdown = { min: 5, max: 30, off: true };
+  assert.equal(parseWheelEntry('25', goal), 25);
+  assert.equal(parseWheelEntry(' 1500 ', goal), 999, 'a typed number past the end is the end');
+  assert.equal(parseWheelEntry('0', goal), 1);
+  assert.equal(parseWheelEntry('', goal), null, 'an empty field leaves the value');
+  assert.equal(parseWheelEntry('abc', goal), null);
+  assert.equal(parseWheelEntry('off', countdown), 0);
+  assert.equal(parseWheelEntry('0', countdown), 0, '0 is Off on a countdown');
+  assert.equal(parseWheelEntry('3', countdown), 5);
+  assert.equal(parseWheelEntry('45', countdown), 30);
+  const centre = wheelItemStyle(0);
+  assert.deepEqual([centre.y, centre.scale, centre.opacity], [0, 1, 1]);
+  assert.ok(wheelItemStyle(1).weight < centre.weight && wheelItemStyle(1).scale < 0.6, 'neighbours are smaller and lighter');
+  // A lining figure is about 0.68em tall: at every point of a turn, each pair of neighbours keeps a gap.
+  for (let f = 0; f < 1; f += 0.05) {
+    for (let k = -3; k < 3; k++) {
+      const a = wheelItemStyle(k - f);
+      const b = wheelItemStyle(k + 1 - f);
+      assert.ok(b.y - a.y - 0.34 * (a.scale + b.scale) > 0.03, `values ${k - f} and ${k + 1 - f} overlap`);
+    }
+  }
 }
 
 // Progress: today against the goal, the streak, memory, skills and families.

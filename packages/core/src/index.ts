@@ -491,9 +491,11 @@ export {
   type KeyCardState,
   type KeyStatus,
 } from './settings-keys';
-export { GOAL_PRESETS, learnSettingsHtml, type LearnSettingsInput } from './settings-learn';
+export { GOAL_MAX, GOAL_MIN, learnSettingsHtml, type LearnSettingsInput } from './settings-learn';
+export { numberWheelHtml, parseWheelEntry, wheelItemStyle, wireNumberWheels, type NumberWheelInput } from './number-wheel';
 export {
-  COUNTDOWN_CHOICES,
+  COUNTDOWN_MAX,
+  COUNTDOWN_MIN,
   DEFAULT_LEARN_PREFS,
   microphoneAvailable,
   readLearnPrefs,
