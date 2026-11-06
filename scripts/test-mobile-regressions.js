@@ -61,6 +61,12 @@ async function startupAndGestures(floatingStrip) {
     readLearnPrefs: () => ({ countdown: 0, speaking: true }), writeLearnPrefs: (p) => JSON.stringify(p),
     microphoneAvailable: async () => false, watchMicrophone: () => {},
   };
+  // The notebook file shared with the other page: a write there reaches this page.
+  const reloadListeners = [];
+  const notebookStore = {
+    flushNotebook: async () => {},
+    onNotebookReloaded: (fn) => { reloadListeners.push(fn); return () => {}; },
+  };
   const native = {
     hasNativeBridge: () => true, installNativeCallbacks: () => {}, applyInsets: () => {},
     nativeCall: async (method, params) => {
@@ -91,6 +97,7 @@ async function startupAndGestures(floatingStrip) {
       keyPresent: () => false,
     },
     './platform/account': account,
+    './platform/sqljs-vocab-db': notebookStore,
   }, globals);
   const boot = app.startApp();
   await tick();
@@ -112,6 +119,10 @@ async function startupAndGestures(floatingStrip) {
   assert.equal(lookups[2].q, 'third');
   releaseNotebook([]);
   await boot;
+  // The app saved a word while the pop-up was open: the pop-up shows it, and leaves syncing to the app.
+  assert.equal(reloadListeners.length, 1, 'the page listens for the other page’s writes');
+  reloadListeners[0]();
+  await tick();
   // The pop-up never starts the account or syncs; the full app does that.
   assert.deepEqual(accountCalls, [], 'the pop-up must not touch the Holarky account');
 }

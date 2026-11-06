@@ -132,6 +132,7 @@ import {
   openMenu,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
+import { flushNotebook, onNotebookReloaded } from './platform/sqljs-vocab-db';
 import { playClip, playRecorded, prefetchRecorded, recordedReady, recordedUrls, speakIpa, speakText, stopAudio } from './platform/audio';
 import {
   applyInsets,
@@ -1160,6 +1161,26 @@ async function refreshNotebook(): Promise<void> {
   await refreshWords();
 }
 
+/** The notebook changed under this page (a sync, or a save in the other page). */
+async function showNotebookChange(): Promise<void> {
+  await refreshNotebook();
+  if (tab === 'learn') {
+    await loadReviewPool();
+    rebuildWordsContext();
+  }
+  const shown = result;
+  if (shown) {
+    const now = await findByLemma(saveLemma(shown)).catch(() => saved);
+    // A newer lookup finds its own saved state.
+    if (result === shown) {
+      const changed = (now?.id || null) !== (saved?.id || null);
+      saved = now;
+      if (changed && tab === 'lookup') paint();
+    }
+  }
+  if (tab === 'notebook' || tab === 'learn') paint();
+}
+
 async function refreshPacks(): Promise<void> {
   try {
     packs = await listCatalogStatus();
@@ -1277,12 +1298,15 @@ async function saveCurrent(): Promise<void> {
   try {
     if (saved) {
       await removeVocab(saved.id);
+      await flushNotebook();
       saved = null;
       toast('Removed from My words');
     } else {
       // resolveForm: a tap before the page turns from "geese" to goose still saves goose.
       const payload = { ...vocabPayloadFromResult(result, lemma), context: sourceForSave(lemma), resolveForm: true };
       saved = await addVocab(payload);
+      // In the pop-up, the page may be closed a moment after this tap: write the word now.
+      await flushNotebook();
       toast('Saved to My words');
       postOsNotify('saved', 'Saved to My words', lemma);
     }
@@ -3281,17 +3305,15 @@ export async function startApp(): Promise<void> {
         if (accountOpen || (tab === 'learn' && plusBefore !== plusNoticeHtml(next, HOLARKY_ACCOUNT.plusUrl, 'learn'))) paint();
         else if (before !== accountBadgeKey(next)) refreshAccountButton();
       },
-      onNotebookChanged: () => {
-        void refreshNotebook().then(async () => {
-          if (tab === 'learn') {
-            await loadReviewPool();
-            rebuildWordsContext();
-          }
-          if (tab === 'notebook' || tab === 'learn') paint();
-        });
-      },
+      onNotebookChanged: () => void showNotebookChange(),
     });
   }
+  // The other page (the app, or the pop-up over another app) wrote the notebook: show its
+  // words here at once, and send them with the next sync.
+  onNotebookReloaded(() => {
+    void showNotebookChange();
+    if (!stripMode) accountPlatform.syncSoon();
+  });
   if (!stripMode && capture.platform === 'android') {
     void startPhoneUpdates({
       changed: showUpdateState,

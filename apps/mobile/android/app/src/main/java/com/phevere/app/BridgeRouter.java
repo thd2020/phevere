@@ -50,6 +50,8 @@ final class BridgeRouter {
     default String takePendingAuthUrl() {
       return null;
     }
+    /** The page finished writing its notebook after a close asked it to (NotebookClose). */
+    default void notebookFlushed() {}
   }
 
   private final Host host;
@@ -71,6 +73,19 @@ final class BridgeRouter {
             break;
           case "writeFile":
             NativeIo.writeFile(host.context(), p.optString("name"), p.optString("b64"));
+            resolve(id, new JSONObject().put("ok", true));
+            break;
+          case "notebookRead":
+            resolve(id, Notebook.read(host.context()));
+            break;
+          case "notebookWrite":
+            resolve(id, Notebook.write(host.context(), p.optString("b64"), p.optLong("base", -1), host));
+            break;
+          case "notebookVersion":
+            resolve(id, new JSONObject().put("version", Notebook.version()));
+            break;
+          case "notebookFlushed":
+            host.runUi(host::notebookFlushed);
             resolve(id, new JSONObject().put("ok", true));
             break;
           case "getPendingText": {

@@ -91,6 +91,8 @@ async function writeState(key: string, value: string): Promise<void> {
 
 async function runSync(account: VocabSyncAccount, now: () => number): Promise<VocabSyncResult> {
   await ensureVocabReady();
+  // A word the phone's pop-up saved a moment ago must be in this copy before "pushedAt" moves past it.
+  await getVocabDb().refresh?.();
   const user = await account.getUser();
   if (!user) throw new Error('Not signed in');
 
