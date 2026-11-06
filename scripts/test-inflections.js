@@ -208,6 +208,41 @@ assert.equal(wordFamilyHtml([], 'act'), '');
     { stem: 'bat', complete: false, freq: { batman: 4.1, batty: 1.2, batsman: 0.9 } },
   );
   assert.deepEqual(bat[0].items.map((i) => i.word), ['batty', 'batsman', 'Batman'], 'a name after the family words');
+
+  // Phrases by how common they are: Datamuse's answers for "give *" and "* give*" of 2026-11-06,
+  // shortened. Common two-word phrases by frequency, longer idioms by Datamuse's score, and the
+  // ones it does not list ("give dap") folded under All, however short.
+  const { fetchPhraseFrequencies } = load('word-family');
+  const phraseAsked = [];
+  const phraseHttp = {
+    requestJson: async (url) => {
+      phraseAsked.push(decodeURIComponent(url));
+      return /sp=give \*/.test(decodeURIComponent(url))
+        ? [
+            { word: 'give in', score: 11022, tags: ['f:2.872590'] },
+            { word: 'give up', score: 9035, tags: ['f:18.618104'] },
+            { word: 'give way', score: 5022, tags: ['f:3.804771'] },
+            { word: 'give up the ghost', score: 5021, tags: ['f:0.000000'] },
+            { word: 'give tongue', score: 3005, tags: ['f:0.000000'] },
+            { word: 'give suck', score: 1011, tags: ['f:0.019982'] },
+          ]
+        : [{ word: 'not give a damn', score: 7, tags: ['f:0.000000'] }, { word: 'givenness', score: 5, tags: ['f:0.01'] }];
+    },
+  };
+  const pf = await fetchPhraseFrequencies(phraseHttp, 'give');
+  assert.deepEqual(phraseAsked.map((u) => u.match(/sp=([^&]+)/)[1]), ['give *', '* give*'], 'two wildcard queries');
+  assert.equal(pf.score.givenness, undefined, 'single words are not phrases');
+  const shortFirst = ['give dap', 'give hat', 'give ale', 'give in', 'give up', 'give way', 'give suck', 'give tongue', 'give up the ghost', 'not give a damn', 'gie up'];
+  const ph = rankFamilyByFrequency([{ relation: 'phrases', items: shortFirst.map((word) => ({ word })) }], null, pf)[0].items;
+  assert.deepEqual(ph.map((i) => i.word), ['give up', 'give way', 'give in', 'give up the ghost', 'give tongue', 'give suck', 'not give a damn', 'gie up', 'give dap', 'give hat', 'give ale']);
+  assert.deepEqual(ph.filter((i) => i.rare).map((i) => i.word), ['give dap', 'give hat', 'give ale'], 'unlisted phrases with the word are rare');
+  const many = Array.from({ length: 60 }, (_, i) => ({ word: `give x${i}` }));
+  assert.equal(rankFamilyByFrequency([{ relation: 'phrases', items: many }], null, null)[0].items.length, 40, 'forty phrases without figures');
+  assert.equal(await fetchPhraseFrequencies(phraseHttp, 'give up'), null, 'a phrase has no phrases of its own to rank');
+  const { phrasesHtml } = load('lexicon-parts');
+  const phHtml = phrasesHtml([{ relation: 'phrases', items: ph }], 'act', 'give', false);
+  assert.doesNotMatch(phHtml.split('<details')[0], /give dap/, 'a rare phrase waits under All, even in a short list');
+  assert.match(phHtml, /<summary>All 11<\/summary>[\s\S]*give dap/);
 })().catch((err) => {
   console.error(err);
   process.exit(1);

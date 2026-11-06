@@ -116,9 +116,10 @@ function words(items: Array<{ word: string }>, links: LexiconLinks): string {
 type FamilyItem = { word: string; label?: string; rare?: boolean };
 
 /** One labelled line of links, the closest `shownMax` first and the rest folded under "All N". */
-function familyGroupHtml(label: string, items: FamilyItem[], shownMax: number, links: LexiconLinks): string {
-  // In a long list, words with no recorded use ("redundantant") wait under "All".
-  const common = items.length > shownMax ? items.filter((i) => !i.rare) : items;
+function familyGroupHtml(label: string, items: FamilyItem[], shownMax: number, links: LexiconLinks, foldRare = false): string {
+  // In a long list, words with no recorded use ("redundantant") wait under "All"; with
+  // `foldRare` they wait there in a short list too.
+  const common = items.length > shownMax || foldRare ? items.filter((i) => !i.rare) : items;
   const shown = (common.length ? common : items).slice(0, shownMax);
   const rest = items.filter((i) => !shown.includes(i));
   return `<div class="lx-fam">
@@ -182,9 +183,10 @@ export function phrasesHtml(groups: WordFamilyGroup[] | null | undefined, links:
     else other.push(it);
   }
   const out = [
-    phrasal.length ? familyGroupHtml('Phrasal verbs', phrasal, 12, links) : '',
-    idioms.length ? familyGroupHtml('Idioms', idioms, 10, links) : '',
-    other.length ? familyGroupHtml(phrasal.length || idioms.length ? 'Other phrases' : 'Phrases', other, 12, links) : '',
+    // Phrases nobody uses ("give dap", "give hat") wait under "All N" (rankFamilyByFrequency).
+    phrasal.length ? familyGroupHtml('Phrasal verbs', phrasal, 12, links, true) : '',
+    idioms.length ? familyGroupHtml('Idioms', idioms, 10, links, true) : '',
+    other.length ? familyGroupHtml(phrasal.length || idioms.length ? 'Other phrases' : 'Phrases', other, 12, links, true) : '',
   ].join('');
   return `<div class="lx-family lx-phrases">${out}</div>`;
 }

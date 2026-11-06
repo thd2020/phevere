@@ -121,9 +121,11 @@ import {
   familyFromEtymologyChain,
   familyFromKaikki,
   fetchFamilyFrequencies,
+  fetchPhraseFrequencies,
   familyStem,
   rankFamilyByFrequency,
   type FamilyFrequencies,
+  type PhraseFrequencies,
   type WordFamilyGroup,
 } from './word-family';
 import {
@@ -1970,6 +1972,17 @@ export class DictionaryService extends BaseService {
           .catch((): undefined => undefined),
       );
     }
+    // How common each phrase with the word is, so "give up" leads and "give dap" waits under All.
+    let phraseFrequencies: PhraseFrequencies | null = null;
+    if (stem && !/\s/.test(languageWord.trim())) {
+      auxPromises.push(
+        this.cachedSource('phraseFrequency', languageWord, () => fetchPhraseFrequencies(getHttp(), languageWord), (d) => !!d)
+          .then((r) => {
+            if (r.data) phraseFrequencies = r.data as PhraseFrequencies;
+          })
+          .catch((): undefined => undefined),
+      );
+    }
 
     if (preferLatinSources && !hasCJK && !chosenOther && isSourceEnabled('Datamuse')) {
       if (!this.isSourceDown('datamuse')) expectedSources.push('datamuse');
@@ -2304,7 +2317,7 @@ export class DictionaryService extends BaseService {
           language: sourceLanguage,
           definitions: mergedDefinitions,
         }),
-      ), familyFrequencies);
+      ), familyFrequencies, phraseFrequencies);
       return {
         word: headword,
         pronunciation: ipaLine,
