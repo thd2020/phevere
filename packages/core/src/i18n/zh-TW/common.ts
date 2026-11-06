@@ -1,0 +1,26 @@
+import type { Catalog } from '../runtime';
+
+export default {
+  'common.cancel': '取消',
+  'common.close': '關閉',
+  'common.copy': '複製',
+  'common.copied': '已複製',
+  'common.delete': '刪除',
+  'common.remove': '移除',
+  'common.undo': '復原',
+  'common.save': '儲存',
+  'common.loading': '載入中…',
+  'common.search': '搜尋',
+  'common.back': '返回',
+  'common.more': '更多',
+  'common.on': '開啟',
+  'common.off': '關閉',
+  'common.download': '下載',
+  'common.open': '開啟',
+  'common.settings': '設定',
+  'common.learn': '學習',
+  'common.lookup': '查詢',
+  'common.translate': '翻譯',
+  'common.edit': '編輯',
+  'common.ok': '確定',
+} satisfies Partial<Catalog>;
