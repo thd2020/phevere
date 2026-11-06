@@ -60,6 +60,7 @@ export default {
   'notebook.review.ask.listenChoice': 'Wählen Sie das gehörte Wort',
   'notebook.review.ask.clozeChoice': 'Wählen Sie das Wort für die Lücke',
   'notebook.review.ask.spellTiles': 'Buchstabieren Sie das Wort',
+  'notebook.review.ask.synonymChoice': 'Bedeutet am ehesten dasselbe',
   'notebook.review.ask.recall': 'Geben Sie das Wort ein',
   'notebook.review.ask.listenType': 'Geben Sie das gehörte Wort ein',
   'notebook.review.ask.cloze': 'Füllen Sie die Lücke',

@@ -61,6 +61,8 @@ export interface ReviewRenderOptions {
   started?: boolean;
   /** Example sentences for a word, for gap-fill questions (from its dictionary entry). */
   examples?: (lemma: string) => string[] | undefined;
+  /** Synonyms of a word from its dictionary entry, for "closest in meaning" questions. */
+  synonyms?: (lemma: string) => string[] | undefined;
   /** The learner model from the answer history (`learnerModel`), for choosing questions. */
   learner?: LearnerModel | null;
   /** How much the learner studies (`studyPace`); the start card offers its number of new words a day. */
@@ -291,6 +293,7 @@ const ASK: Record<ReviewQuestion['kind'], MessageKey> = {
   'listen-choice': 'notebook.review.ask.listenChoice',
   'cloze-choice': 'notebook.review.ask.clozeChoice',
   'spell-tiles': 'notebook.review.ask.spellTiles',
+  'synonym-choice': 'notebook.review.ask.synonymChoice',
   recall: 'notebook.review.ask.recall',
   'listen-type': 'notebook.review.ask.listenType',
   cloze: 'notebook.review.ask.cloze',
@@ -301,6 +304,7 @@ function promptHtml(q: ReviewQuestion, e: NotebookEntry): string {
   const reading = vocabReadings(e.reading)[0];
   switch (q.kind) {
     case 'meaning-choice':
+    case 'synonym-choice':
     case 'flash':
       return `<div class="nbv-quiz__word"><h3>${esc(q.lemma)}</h3>${reading ? `<p class="nbv-card__ipa">${esc(reading.ipa)}</p>` : ''}${playButton(q.lemma)}</div>`;
     case 'word-choice':
@@ -741,7 +745,7 @@ export function reviewHtml(all: NotebookEntry[], state: ReviewState, goal: numbe
   } else if (!state.started) {
     quiz = startHtml(entries, state, now, goal, opts);
   } else {
-    const q = ensureReviewQuestion(state, entries, { audio: opts.audio, now, examples: opts.examples, learner: opts.learner });
+    const q = ensureReviewQuestion(state, entries, { audio: opts.audio, now, examples: opts.examples, synonyms: opts.synonyms, learner: opts.learner });
     const e = q ? entries.find((x) => x.id === q.id) : undefined;
     quiz = q && e ? questionHtml(q, e, state, opts, now) : summaryHtml(entries, state, now);
   }

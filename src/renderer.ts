@@ -1629,6 +1629,7 @@ const wbMeaningInFlight = new Set<string>();
 const wbOpen = new Set<string>();
 /* Example sentences for the quiz's gap questions, looked up ahead for words already started. */
 const reviewExamples = new Map<string, string[]>();
+const reviewSynonyms = new Map<string, string[]>();
 const examplesInFlight = new Set<string>();
 
 async function prefetchExamples(wait = false): Promise<void> {
@@ -1647,8 +1648,9 @@ async function prefetchExamples(wait = false): Promise<void> {
     const key = lemma.toLowerCase();
     examplesInFlight.add(key);
     try {
-      const list = await api.examples(lemma);
-      reviewExamples.set(key, Array.isArray(list) ? list : []);
+      const res = await api.examples(lemma);
+      reviewExamples.set(key, Array.isArray(res) ? res : Array.isArray(res?.examples) ? res.examples : []);
+      reviewSynonyms.set(key, Array.isArray(res?.synonyms) ? res.synonyms : []);
     } catch {
       /* offline: no gap-fill from examples */
     } finally {
@@ -2244,6 +2246,7 @@ function renderLearn(): void {
       preview: (e, g) => previewReview(e, g),
       formatGap: formatReviewGap,
       examples: (lemma) => reviewExamples.get(lemma.toLowerCase()),
+      synonyms: (lemma) => reviewSynonyms.get(lemma.toLowerCase()),
       learner: learner?.model ?? null,
       pace,
       learnPrefs,

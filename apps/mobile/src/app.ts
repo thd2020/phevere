@@ -21,6 +21,7 @@ import {
   saveLemma,
   vocabPayloadFromResult,
   examplesFromResult,
+  synonymsFromResult,
   attachLearnCharts,
   revealQuestion,
   reviewArmed,
@@ -421,6 +422,7 @@ let wbProgress = new Map<string, BookWordProgress>();
 const wbBooks = new Map<string, string[]>();
 /* Example sentences for the quiz's gap questions, looked up ahead for words already started. */
 const reviewExamples = new Map<string, string[]>();
+const reviewSynonyms = new Map<string, string[]>();
 const examplesInFlight = new Set<string>();
 
 async function prefetchExamples(wait = false): Promise<void> {
@@ -440,6 +442,7 @@ async function prefetchExamples(wait = false): Promise<void> {
     try {
       const res = await dictionaryService.lookup(lemma, prefs.targetLang, dictionaryService.getEnabledSources(), { translationProvider: prefs.translationProvider });
       reviewExamples.set(key, examplesFromResult(res));
+      reviewSynonyms.set(key, synonymsFromResult(res));
     } catch {
       /* offline: no gap-fill from examples */
     } finally {
@@ -1239,6 +1242,7 @@ function learnViewState(): LearnState {
       preview: previewReview,
       formatGap: formatReviewGap,
       examples: (lemma) => reviewExamples.get(lemma.toLowerCase()),
+      synonyms: (lemma) => reviewSynonyms.get(lemma.toLowerCase()),
       learner: learner?.model ?? null,
       pace,
       learnPrefs,

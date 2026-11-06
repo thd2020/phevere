@@ -58,6 +58,7 @@ export default {
   'notebook.review.ask.listenChoice': '聞こえた単語を選んでください',
   'notebook.review.ask.clozeChoice': '空欄に入る単語を選んでください',
   'notebook.review.ask.spellTiles': '単語をつづってください',
+  'notebook.review.ask.synonymChoice': '意味が最も近い語を選ぶ',
   'notebook.review.ask.recall': '単語を入力してください',
   'notebook.review.ask.listenType': '聞こえた単語を入力してください',
   'notebook.review.ask.cloze': '空欄を埋めてください',

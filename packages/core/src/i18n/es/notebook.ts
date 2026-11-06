@@ -60,6 +60,7 @@ export default {
   'notebook.review.ask.listenChoice': 'Elige la palabra que oyes',
   'notebook.review.ask.clozeChoice': 'Elige la palabra del hueco',
   'notebook.review.ask.spellTiles': 'Forma la palabra',
+  'notebook.review.ask.synonymChoice': 'El más parecido en significado',
   'notebook.review.ask.recall': 'Escribe la palabra',
   'notebook.review.ask.listenType': 'Escribe la palabra que oyes',
   'notebook.review.ask.cloze': 'Completa el hueco',

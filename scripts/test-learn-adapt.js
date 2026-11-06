@@ -64,6 +64,50 @@ const now = new Date(2026, 10, 5, 9).getTime();
   assert.ok(q.options.concat(q.prompt).every((t) => !/[^.]…$/.test(t)), 'no option or prompt ends cut off');
 }
 
+/* ------------------------------------------------- closest in meaning */
+{
+  const v = (lemma, i, extra = {}) => ({ id: lemma, lemma, partOfSpeech: 'adjective', sourceLang: 'en', definition: `meaning ${i} of ${lemma}`, createdAt: now - 60 * DAY, ...extra });
+  const words = ['decrepit', 'lucid', 'brisk', 'somber', 'placid', 'frugal'].map((l, i) => v(l, i));
+  // A young word that has faded a little: recognising it beside a synonym fits, typing it would not.
+  const young = { ...words[0], reps: 4, state: 2, stability: 2, lastReview: now - 10 * DAY, reviewDue: now };
+  const synonyms = { decrepit: ['run-down', 'decrepitly', 'dilapidated', 'worn out', 'lucid'] };
+  assert.equal(core.pickSynonym('decrepit', synonyms.decrepit), 'run-down', 'a single word, hyphen allowed');
+  assert.equal(core.pickSynonym('run', ['running', 'sprint']), 'sprint', 'never a form of the word itself');
+  assert.equal(core.pickSynonym('run', ['go for a run']), '', 'phrases are not offered');
+  const kinds = new Set();
+  for (let s = 0; s < 60; s++) {
+    const q = core.buildQuestion(young, [young, ...words.slice(1)], { now, synonyms: (l) => synonyms[l] }, core.seededRandom(s));
+    kinds.add(q.kind);
+    if (q.kind !== 'synonym-choice') continue;
+    assert.equal(q.options.length, 4);
+    assert.equal(q.options[q.correct], 'run-down');
+    assert.ok(!q.options.includes('lucid'), 'a notebook word that is also a synonym is never a wrong option');
+    assert.ok(!q.options.includes('decrepit'), 'the word asked is not an option');
+  }
+  assert.ok(kinds.has('synonym-choice'), `asked as closest in meaning: ${[...kinds]}`);
+  // Wrong options look like the synonym, so the odd one out is not the answer.
+  const vagary = { ...v('vagary', 9, { partOfSpeech: 'noun' }), reps: 4, state: 2, stability: 2, lastReview: now - 10 * DAY, reviewDue: now };
+  const nouns = ['vinyl', 'vitrine', 'vintage', 'impasse', 'impetus', 'imprint', 'harbour'].map((l, i) => v(l, i, { partOfSpeech: 'noun' }));
+  let checked = 0;
+  let likeSynonym = 0;
+  let likeWord = 0;
+  for (let s = 0; s < 60; s++) {
+    const q = core.buildQuestion(vagary, [vagary, ...nouns], { now, synonyms: () => ['impulse', 'whim'] }, core.seededRandom(s));
+    if (q.kind !== 'synonym-choice') continue;
+    checked++;
+    const wrong = q.options.filter((_, i) => i !== q.correct);
+    assert.ok(!wrong.every((w) => w.startsWith('v')), `not every wrong option looks like the word asked: ${q.options}`);
+    likeSynonym += wrong.filter((w) => w.startsWith('im')).length;
+    likeWord += wrong.filter((w) => w.startsWith('v')).length;
+  }
+  assert.ok(checked > 0, 'vagary asked as closest in meaning');
+  assert.ok(likeSynonym > likeWord, `lures lean towards the synonym (${likeSynonym}) rather than the word (${likeWord})`);
+  const none = core.buildQuestion(young, [young, ...words.slice(1)], { now }, core.seededRandom(3));
+  assert.notEqual(none.kind, 'synonym-choice', 'no synonyms looked up, no synonym question');
+  const fresh = core.buildQuestion(words[1], words, { now, synonyms: () => ['clear'] }, core.seededRandom(1));
+  assert.notEqual(fresh.kind, 'synonym-choice', 'a new word is not asked for a synonym');
+}
+
 /* ------------------------------------------------- kinds, cues and hints */
 const vocab = (lemma, i, extra = {}) => ({ id: lemma, lemma, partOfSpeech: 'noun', sourceLang: 'en', definition: `the meaning of ${lemma} in plain words number ${i}`, createdAt: now - 60 * DAY, ...extra });
 const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thicket', 'umbrella', 'valley', 'willow'].map((l, i) => vocab(l, i));

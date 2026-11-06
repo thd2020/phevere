@@ -32,6 +32,9 @@ export type { ReviewGrade };
  *   example sentence).
  * - spell-tiles: the meaning is shown, build the word from its letters in a shuffled row (百词斩's
  *   spelling drill, Duolingo's word bank); a step between recognising a word and typing it.
+ * - synonym-choice: the word is shown, pick the word closest in meaning among four (TOEFL's
+ *   "closest in meaning to", the GRE's synonym items); the right one is a synonym from the word's
+ *   dictionary entry, the others are words from the notebook.
  * - flash: show the word, then the meaning, and the learner says whether they knew it; used only
  *   when nothing else can be asked (no meaning saved and too few other words).
  */
@@ -41,13 +44,14 @@ export type QuestionKind =
   | 'listen-choice'
   | 'cloze-choice'
   | 'spell-tiles'
+  | 'synonym-choice'
   | 'recall'
   | 'listen-type'
   | 'cloze'
   | 'flash';
 
 /** Every kind, for checking a kind that comes from storage or another process. */
-export const QUESTION_KINDS: QuestionKind[] = ['meaning-choice', 'word-choice', 'listen-choice', 'cloze-choice', 'spell-tiles', 'recall', 'listen-type', 'cloze', 'flash'];
+export const QUESTION_KINDS: QuestionKind[] = ['meaning-choice', 'word-choice', 'listen-choice', 'cloze-choice', 'spell-tiles', 'synonym-choice', 'recall', 'listen-type', 'cloze', 'flash'];
 
 /** A typo is one slip in a word the learner otherwise spelt right (`checkTyped`); it counts as right. */
 export type AnswerResult = 'right' | 'typo' | 'wrong';
@@ -157,6 +161,8 @@ export interface QuestionOptions {
   now?: number;
   /** Example sentences for a word (from its dictionary entry), for gap-fill questions. */
   examples?: (lemma: string) => string[] | undefined;
+  /** Synonyms of a word (from its dictionary entry), for "closest in meaning" questions. */
+  synonyms?: (lemma: string) => string[] | undefined;
   /** Kinds asked so far this session, oldest first, for the skill balance. */
   asked?: QuestionKind[];
   /** How often this word was asked earlier in this session. */
@@ -895,9 +901,9 @@ export function pickDistractors(
  */
 export const STAGE_KINDS: Record<number, QuestionKind[]> = {
   0: ['meaning-choice', 'word-choice', 'flash'],
-  1: ['word-choice', 'cloze-choice', 'meaning-choice', 'listen-choice', 'spell-tiles', 'recall', 'cloze', 'flash'],
-  2: ['recall', 'cloze-choice', 'word-choice', 'cloze', 'spell-tiles', 'listen-type', 'listen-choice', 'meaning-choice', 'flash'],
-  3: ['cloze', 'recall', 'listen-type', 'cloze-choice', 'word-choice', 'meaning-choice', 'flash'],
+  1: ['word-choice', 'cloze-choice', 'meaning-choice', 'listen-choice', 'spell-tiles', 'synonym-choice', 'recall', 'cloze', 'flash'],
+  2: ['recall', 'cloze-choice', 'synonym-choice', 'word-choice', 'cloze', 'spell-tiles', 'listen-type', 'listen-choice', 'meaning-choice', 'flash'],
+  3: ['cloze', 'recall', 'synonym-choice', 'listen-type', 'cloze-choice', 'word-choice', 'meaning-choice', 'flash'],
 };
 
 export type QuizSkill = 'meaning' | 'spelling' | 'listening';
@@ -906,6 +912,7 @@ const KIND_SKILL: Record<QuestionKind, QuizSkill> = {
   'meaning-choice': 'meaning',
   'word-choice': 'meaning',
   'cloze-choice': 'meaning',
+  'synonym-choice': 'meaning',
   flash: 'meaning',
   'spell-tiles': 'spelling',
   recall: 'spelling',
@@ -933,7 +940,8 @@ export const TARGET_SUCCESS = 0.85;
  * easiest, then recognising the word, then recalling it; dictation adds hearing to spelling.
  * Picking the word for a sentence's gap is recognition with the sentence as a cue, about as easy
  * as picking it from its meaning; building it from its own letters sits between recognising and
- * typing it. The learner model corrects each value for each learner.
+ * typing it. Picking a synonym asks the learner to know two words, so it is harder than either
+ * choice from a meaning. The learner model corrects each value for each learner.
  */
 export const KIND_EASE: Record<QuestionKind, number> = {
   'meaning-choice': 1.8,
@@ -942,6 +950,7 @@ export const KIND_EASE: Record<QuestionKind, number> = {
   'listen-choice': 1.1,
   flash: 1.0,
   'spell-tiles': 0.8,
+  'synonym-choice': 0.7,
   cloze: 0.1,
   recall: 0,
   'listen-type': -0.5,
@@ -959,6 +968,7 @@ export const LETTER_EASE = 0.45;
  */
 export const KIND_UNLOCK: Partial<Record<QuestionKind, { after: QuestionKind[]; right: number }>> = {
   'spell-tiles': { after: ['word-choice', 'meaning-choice', 'cloze-choice'], right: 3 },
+  'synonym-choice': { after: ['meaning-choice', 'word-choice', 'cloze-choice'], right: 5 },
   recall: { after: ['word-choice', 'meaning-choice'], right: 5 },
   cloze: { after: ['recall'], right: 3 },
   'listen-type': { after: ['listen-choice', 'recall', 'cloze'], right: 3 },
@@ -1154,6 +1164,34 @@ function gapOptions(target: NotebookEntry, form: string, lures: NotebookEntry[])
   return out;
 }
 
+/**
+ * The synonym a "closest in meaning" question asks for: the first single word (a hyphen allowed)
+ * that is not a form of the word itself, so "run" never offers "running".
+ */
+export function pickSynonym(lemma: string, synonyms: string[]): string {
+  const own = new Set(lemmaKeys(clean(lemma).toLowerCase()));
+  for (const raw of synonyms) {
+    const w = clean(raw);
+    if (!/^\p{L}[\p{L}'’-]*$/u.test(w)) continue;
+    if (lemmaKeys(w.toLowerCase()).some((k) => own.has(k))) continue;
+    return w;
+  }
+  return '';
+}
+
+/** Wrong options for a synonym question: other notebook words, none of them a synonym too or the synonym's own form. */
+function synonymLuresFor(lemma: string, synonym: string, synonyms: string[], lures: Array<{ lemma: string } | NotebookEntry>): Array<{ word: string; lemma: string }> {
+  const near = new Set([lemma, synonym, ...synonyms].flatMap((w) => lemmaKeys(clean(w).toLowerCase())));
+  const out: Array<{ word: string; lemma: string }> = [];
+  for (const l of lures) {
+    const w = clean(l.lemma);
+    if (!w || /\s/.test(w) || lemmaKeys(w.toLowerCase()).some((k) => near.has(k))) continue;
+    out.push({ word: w, lemma: w });
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
 /** Longest word offered as letter tiles; a longer one is typed instead. */
 export const MAX_TILES = 14;
 
@@ -1196,6 +1234,12 @@ export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts:
   const open = (k: QuestionKind) => kindUnlocked(k, learner) && (!TYPED_KINDS.includes(k) || typedOk);
   // The gap's options, each in the form the gap takes (`inflectLike`).
   const gapLures = cloze ? gapOptions(entry, cloze.form, wideLures) : [];
+  const synonym = pickSynonym(lemma, opts.synonyms?.(lemma) || []);
+  // Wrong options look like the synonym, not like the word asked, or the one option unlike the
+  // others ("impulse" among "vinyl", "vitrine", "vintage" for "vagary") would give the answer away.
+  const synonymLures = synonym
+    ? synonymLuresFor(lemma, synonym, opts.synonyms?.(lemma) || [], pickDistractors({ ...entry, lemma: synonym }, pool.filter((e) => e !== entry), 'word', 12, rand))
+    : [];
   const can: Record<QuestionKind, boolean> = {
     'meaning-choice': hasMeaning && meaningLures.length >= 2,
     'word-choice': hasMeaning && wordLures.length >= 2,
@@ -1204,6 +1248,7 @@ export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts:
     // Building the word from its letters is spelling too, so a learning word asked again the same
     // day waits for another day, as typing does; a leech may get it, as an easier way in.
     'spell-tiles': hasMeaning && tileable(lemma) && kindUnlocked('spell-tiles', learner) && !(repeat > 0 && stage <= 1),
+    'synonym-choice': !!synonym && synonymLures.length >= 3 && kindUnlocked('synonym-choice', learner),
     recall: hasMeaning && open('recall'),
     'listen-type': !!opts.audio && open('listen-type'),
     cloze: !!cloze && open('cloze'),
@@ -1251,6 +1296,11 @@ export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts:
     base.optionWords = all.map((o) => o.lemma);
     base.correct = all.findIndex((o) => o.lemma === lemma);
     base.answers = [cloze.form];
+  } else if (kind === 'synonym-choice' && synonym) {
+    const all = shuffle([{ word: synonym, lemma }, ...synonymLures.slice(0, 3)], rand);
+    base.options = all.map((o) => o.word);
+    base.optionWords = all.map((o) => o.lemma);
+    base.correct = all.findIndex((o) => o.word === synonym);
   } else if (kind === 'spell-tiles') {
     base.prompt = meaning;
     base.tiles = tileRow(lemma, rand);
@@ -1633,7 +1683,7 @@ export function answerReview(state: ReviewState, input: { choice?: number; typed
 }
 
 /** Kinds the countdown in Settings → Learn applies to: the questions answered by picking one of four. */
-export const COUNTDOWN_KINDS: QuestionKind[] = ['meaning-choice', 'word-choice', 'listen-choice', 'cloze-choice'];
+export const COUNTDOWN_KINDS: QuestionKind[] = ['meaning-choice', 'word-choice', 'listen-choice', 'cloze-choice', 'synonym-choice'];
 
 /** Milliseconds a question allows with a countdown of `seconds` (0 is off); 0 for kinds without one. */
 export function countdownMs(q: ReviewQuestion | null | undefined, seconds: number | null | undefined): number {

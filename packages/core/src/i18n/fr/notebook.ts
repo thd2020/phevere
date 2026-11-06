@@ -60,6 +60,7 @@ export default {
   'notebook.review.ask.listenChoice': 'Choisissez le mot entendu',
   'notebook.review.ask.clozeChoice': 'Choisissez le mot manquant',
   'notebook.review.ask.spellTiles': 'Épelez le mot',
+  'notebook.review.ask.synonymChoice': 'Le plus proche par le sens',
   'notebook.review.ask.recall': 'Saisissez le mot',
   'notebook.review.ask.listenType': 'Saisissez le mot entendu',
   'notebook.review.ask.cloze': 'Complétez la phrase',

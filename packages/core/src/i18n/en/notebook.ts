@@ -80,6 +80,7 @@ export default {
   'notebook.review.ask.listenChoice': 'Choose the word you hear',
   'notebook.review.ask.clozeChoice': 'Choose the word for the gap',
   'notebook.review.ask.spellTiles': 'Spell the word',
+  'notebook.review.ask.synonymChoice': 'Closest in meaning',
   'notebook.review.ask.recall': 'Type the word',
   'notebook.review.ask.listenType': 'Type the word you hear',
   'notebook.review.ask.cloze': 'Fill the gap',

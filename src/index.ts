@@ -76,6 +76,7 @@ import {
   unsubscribeWordbook,
   vocabPayloadFromResult,
   examplesFromResult,
+  synonymsFromResult,
   QUESTION_KINDS,
   type AnswerDetails,
 } from '@phevere/core';
@@ -3680,11 +3681,13 @@ ipcMain.handle('wordbook-meaning', async (_e, lemma: string) => {
   return payload ? { definition: payload.definition, reading: payload.reading, partOfSpeech: payload.partOfSpeech } : null;
 });
 /** Example sentences for a quiz word (its gap-fill question), from the cached lookup. */
+/** A word's example sentences and synonyms, for Learn's gap and "closest in meaning" questions. */
 ipcMain.handle('wordbook-examples', async (_e, lemma: string) => {
   try {
-    return examplesFromResult(await dictionaryService.lookup(String(lemma), 'auto'));
+    const result = await dictionaryService.lookup(String(lemma), 'auto');
+    return { examples: examplesFromResult(result), synonyms: synonymsFromResult(result) };
   } catch {
-    return [];
+    return { examples: [], synonyms: [] };
   }
 });
 ipcMain.handle('wordbook-save', async (_e, lemma: string, hasMeaning?: boolean) => {

@@ -65,6 +65,7 @@ export default {
   'notebook.review.ask.listenChoice': '选出你听到的单词',
   'notebook.review.ask.clozeChoice': '选出填入空格的单词',
   'notebook.review.ask.spellTiles': '拼出单词',
+  'notebook.review.ask.synonymChoice': '选出意思最接近的词',
   'notebook.review.ask.recall': '输入单词',
   'notebook.review.ask.listenType': '输入你听到的单词',
   'notebook.review.ask.cloze': '填空',

@@ -58,6 +58,7 @@ export default {
   'notebook.review.ask.listenChoice': '들리는 단어를 고르세요',
   'notebook.review.ask.clozeChoice': '빈칸에 들어갈 단어를 고르세요',
   'notebook.review.ask.spellTiles': '단어의 철자를 맞추세요',
+  'notebook.review.ask.synonymChoice': '뜻이 가장 가까운 단어 고르기',
   'notebook.review.ask.recall': '단어를 입력하세요',
   'notebook.review.ask.listenType': '들리는 단어를 입력하세요',
   'notebook.review.ask.cloze': '빈칸을 채우세요',

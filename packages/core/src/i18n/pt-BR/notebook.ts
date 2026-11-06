@@ -60,6 +60,7 @@ export default {
   'notebook.review.ask.listenChoice': 'Escolha a palavra que você ouve',
   'notebook.review.ask.clozeChoice': 'Escolha a palavra para a lacuna',
   'notebook.review.ask.spellTiles': 'Soletre a palavra',
+  'notebook.review.ask.synonymChoice': 'Mais próximo no sentido',
   'notebook.review.ask.recall': 'Digite a palavra',
   'notebook.review.ask.listenType': 'Digite a palavra que você ouve',
   'notebook.review.ask.cloze': 'Preencha a lacuna',

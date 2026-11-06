@@ -99,6 +99,7 @@ export default {
   'notebook.review.ask.listenChoice': 'Выберите слово, которое слышите',
   'notebook.review.ask.clozeChoice': 'Выберите слово для пропуска',
   'notebook.review.ask.spellTiles': 'Составьте слово',
+  'notebook.review.ask.synonymChoice': 'Ближайшее по значению',
   'notebook.review.ask.recall': 'Введите слово',
   'notebook.review.ask.listenType': 'Введите слово, которое слышите',
   'notebook.review.ask.cloze': 'Заполните пропуск',

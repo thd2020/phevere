@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- "Closest in meaning" questions (2026-11-07): Learn can now show a word and ask which of four words is closest to it in meaning, the vocabulary item of TOEFL reading and the GRE. The right answer is a synonym from the word's dictionary entry, under its main part of speech; the wrong ones are other words from your lists that look like that synonym, so the odd one out is never the answer, and a word that is itself a synonym is never offered as wrong. It comes up for words you are learning or hold for days, once you have answered a few meaning questions right, and like the other kinds it is picked by how likely you are to get it right. The countdown applies to it as to the other choice questions. Desktop and phone alike.
 - Learn more once today is done (2026-11-07): when Learn says "Nothing due today", it now offers "Learn 10 more words", which starts a round of the next new words past today's goal (the number is your daily goal, at least five), and "Review 20 words early", which asks the started words that are due soonest. Each shows only when it has words. They work on My words, a word book and All books, on the desktop and the phone.
 - Search shortcuts (2026-11-07): Ctrl+F and Ctrl+K (Cmd+F and Cmd+K on a Mac) put the cursor in the main window's search box from Words, Learn or Recent.
 
