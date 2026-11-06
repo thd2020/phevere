@@ -7,12 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Apps in Sources (2026-11-06): Words → Sources now also groups words saved from an app that shows no web address or document, such as a chat app, under the app's name. On Android the row shows the app's own icon; elsewhere it shows the app's first letter. Like a site or a PDF, an app's words can be made into a word book.
+
 ### Changed
 
 - Translating a sentence (2026-11-06): the Translation tab shows the first engine's translation as soon as it arrives, and a second engine's translation joins it when that one answers, instead of the tab waiting for every engine.
 
 ### Fixed
 
+- Saving from the Android pop-up (2026-11-06): a word saved from the pop-up over another app is now kept. Before, it did not show in My words while the app was open in the background, and the app's next save erased it, so only words saved again inside the app stayed. Now the word is written at once, appears in the open app's My words straight away, and goes out with the next sync. Closing the pop-up right after tapping Save no longer loses the word either.
+- Android notebook that cannot be read (2026-11-06): if the phone cannot read the notebook file, Phevere now reports an error instead of starting an empty notebook that the next save would write over your words.
 - Lookups without internet (2026-11-06): right after Phevere starts on a connection that reaches nothing (Wi-Fi without internet), a word in a downloaded offline dictionary shows in about 1.2 seconds instead of 7, and a word picked from a sentence, such as "hello,", in under 2 seconds instead of 13. A word in no offline dictionary ends on "No definitions found" in about 3.5 seconds. On a working network nothing changes.
 - After a slow connection drops (2026-11-06): when a VPN or a slow connection stops answering, the next lookup ends in about 3.5 seconds instead of 22 to 30.
 - Words Wiktionary cannot answer (2026-11-06): with Wiktionary unreachable, a word with a full stop that no dictionary knows ends on "No definitions found" in about 6 seconds instead of 22.
