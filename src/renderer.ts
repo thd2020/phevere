@@ -65,6 +65,7 @@ import {
   formatVocabLangPair,
   mapHtml,
   notebookViewSwitchHtml,
+  filterRecentLookups,
   recentListHtml,
   learnHtml,
   attachLearnCharts,
@@ -150,7 +151,7 @@ import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLa
 import { aboutSettingsHtml, flashAboutCopied, type AboutPlatform } from '@phevere/core';
 import { learnSettingsHtml, microphoneAvailable, readLearnPrefs, watchMicrophone, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
-import { AZ_INDEX, compareAz, vocabAzLetter, wireIndexRail } from '@phevere/core';
+import { AZ_INDEX, compareAz, followIndexRail, vocabAzLetter, wireIndexRail } from '@phevere/core';
 import { bookMenuItems, bookPickItems, bookRemovalPrompt, openMenu } from '@phevere/core';
 
 const rlog = (...args: unknown[]) => {
@@ -161,9 +162,39 @@ const rlog = (...args: unknown[]) => {
 rlog('🚀 Phevere renderer started');
 
 document.getElementById('clearSelectionsBtn')?.addEventListener('click', () => {
+  const before = loadRecentLookups();
   saveRecentLookups([]);
   renderRecentLookups();
+  showUndoToast('Recent lookups cleared', () => {
+    // Lookups made while the toast was up stay on top of the restored ones.
+    const now = loadRecentLookups();
+    const seen = new Set(now.map((e) => e.q.toLowerCase()));
+    saveRecentLookups([...now, ...before.filter((e) => !seen.has(e.q.toLowerCase()))]);
+    renderRecentLookups();
+  });
 });
+
+/** A snackbar with one Undo action, as Gmail and Material show after a destructive action. */
+function showUndoToast(message: string, undo: () => void): void {
+  document.querySelector('.undo-toast')?.remove();
+  const toast = document.createElement('div');
+  toast.className = 'undo-toast';
+  toast.setAttribute('role', 'status');
+  const text = document.createElement('span');
+  text.textContent = message;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'undo-toast__action';
+  button.textContent = 'Undo';
+  toast.append(text, button);
+  const timer = setTimeout(() => toast.remove(), 8000);
+  button.addEventListener('click', () => {
+    clearTimeout(timer);
+    toast.remove();
+    undo();
+  });
+  document.body.appendChild(toast);
+}
 
 // Wait for DOM to be ready
 document.addEventListener('DOMContentLoaded', () => {
@@ -2677,31 +2708,43 @@ function scrollVocabToTime(key: string): void {
 }
 
 /**
- * The rails are fixed to the window so they stay put while the list scrolls. Their top follows
- * the list's first row until the sticky header reaches it, so a rail never sits beside the
- * view switcher or the sort buttons.
+ * The rails are fixed to the window so they stay put while the list scrolls. Each one is kept
+ * inside the list's box on screen, below the sticky header and above the status bar, so it never
+ * sits beside the book row, the view switcher or the sort buttons, and never runs past a short
+ * list. The box is measured again whenever something can move it: the list or the rows above it
+ * change size (a book row filling in, fonts arriving late), the Words tab becomes visible after
+ * rendering while hidden, the window resizes, or the list scrolls. Before 2026-11-06 the top was
+ * measured once per render, which read a hidden or not yet laid out list as sitting right under
+ * the header, so the rail ran from the book row down past the sort switch.
  */
-function placeVocabRails(): void {
-  const list = document.getElementById('vocabList');
+const vocabRails = new Map<string, { place: () => void }>();
+
+function followVocabRail(nav: HTMLElement): void {
+  if (vocabRails.has(nav.id)) return;
+  const shell = document.querySelector<HTMLElement>('.main-shell');
   const head = document.querySelector<HTMLElement>('.ws-head');
-  if (!list || !head) return;
-  const top = Math.round(Math.max(list.getBoundingClientRect().top, head.getBoundingClientRect().bottom) + 8);
-  for (const id of ['vocabAz', 'vocabTimeline']) {
-    const nav = document.getElementById(id);
-    if (nav && !nav.hidden) nav.style.top = `${top}px`;
-  }
+  vocabRails.set(
+    nav.id,
+    followIndexRail(nav, {
+      list: () => document.getElementById('vocabList'),
+      clip: () => ({
+        top: head?.getBoundingClientRect().bottom ?? 0,
+        bottom: shell?.getBoundingClientRect().bottom ?? window.innerHeight,
+      }),
+      watch: [shell, head, document.getElementById('paneNotebook'), document.getElementById('vocabList')],
+      scroller: shell || window,
+    }),
+  );
 }
 
-let railFrame = 0;
 function schedulePlaceVocabRails(): void {
-  if (railFrame) return;
-  railFrame = requestAnimationFrame(() => {
-    railFrame = 0;
-    placeVocabRails();
-  });
+  for (const id of ['vocabAz', 'vocabTimeline']) {
+    const nav = document.getElementById(id);
+    if (!nav) continue;
+    followVocabRail(nav);
+    vocabRails.get(id)?.place();
+  }
 }
-document.querySelector('.main-shell')?.addEventListener('scroll', schedulePlaceVocabRails, { passive: true });
-window.addEventListener('resize', schedulePlaceVocabRails);
 
 function syncVocabTimeline(entries: any[]): void {
   const nav = document.getElementById('vocabTimeline');
@@ -2712,7 +2755,6 @@ function syncVocabTimeline(entries: any[]): void {
   nav.hidden = !on;
   wrap?.classList.toggle('is-timeline', on);
   if (!on) return;
-  schedulePlaceVocabRails();
   vocabTimeIndex = new Map(buckets.map((b) => [b.key, { id: b.id, label: b.label }]));
   let year = buckets[0].year;
   nav.innerHTML = buckets
@@ -2726,6 +2768,8 @@ function syncVocabTimeline(entries: any[]): void {
     nav.dataset.ready = '1';
     wireIndexRail(nav, { jump: scrollVocabToTime });
   }
+  // The entries changed, so the number that fit may have too.
+  schedulePlaceVocabRails();
 }
 
 function syncVocabAzAvailability(entries: any[]): void {
@@ -3538,7 +3582,6 @@ function setMainTab(tab: MainTab): void {
   if (nb) nb.hidden = tab !== 'notebook';
   if (learn) learn.hidden = tab !== 'learn';
   if (rc) rc.hidden = tab !== 'recent';
-  document.getElementById('recentTools')?.toggleAttribute('hidden', tab !== 'recent');
   document.querySelector('.main-shell')?.scrollTo({ top: 0 });
   if (tab === 'learn') renderLearn();
 }
@@ -3607,7 +3650,10 @@ function wireMainWorkspace(): void {
 let vocabSearchTimer: ReturnType<typeof setTimeout> | null = null;
 document.getElementById('vocabSearch')?.addEventListener('input', () => {
   if (vocabSearchTimer) clearTimeout(vocabSearchTimer);
-  vocabSearchTimer = setTimeout(rerenderNotebook, 120);
+  vocabSearchTimer = setTimeout(() => {
+    rerenderNotebook();
+    renderRecentLookups();
+  }, 120);
 });
 
 document.getElementById('vocabSortRecent')?.addEventListener('click', () => {
@@ -3965,11 +4011,13 @@ function saveRecentLookups(items: RecentLookup[]): void {
 function renderRecentLookups(): void {
   const list = document.getElementById('selectionsList');
   if (!list) return;
-  const items = loadRecentLookups();
+  const all = loadRecentLookups();
   const clear = document.getElementById('clearSelectionsBtn');
-  if (clear) clear.hidden = !items.length;
+  if (clear) clear.hidden = !all.length;
+  // The header search filters whichever tab is open, Recent included.
+  const items = filterRecentLookups(all, (document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '');
   if (!items.length) {
-    list.innerHTML = `<p class="empty-message">No recent lookups.</p>`;
+    list.innerHTML = `<p class="empty-message">${all.length ? 'No matching lookups.' : 'No recent lookups.'}</p>`;
     return;
   }
   const saved = new Map<string, any>();
