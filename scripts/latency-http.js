@@ -40,7 +40,9 @@ function makeError(errorClass, message, code, retryable) {
 /**
  * opts.delay: [min, max] in ms (default none); opts.hang: share of requests that hang (0 to 1);
  * opts.seed: changes the draws; opts.only: (url) => whether this request gets the delay at all;
- * opts.hangOnly: (url, attempt) => whether this request may hang; opts.defaultTimeoutMs: when the
+ * opts.hangOnly: (url, attempt) => whether this request may hang; opts.refuse: share of requests
+ * that fail at once without an answer (a refused connection, a name that does not resolve);
+ * opts.defaultTimeoutMs: when the
  * caller gives none; opts.errorClass: DictionaryError, so failures look like the app's.
  */
 function withLatency(inner, opts = {}) {
@@ -61,6 +63,7 @@ function withLatency(inner, opts = {}) {
     const timeoutMs = options && options.timeoutMs != null ? options.timeoutMs : opts.defaultTimeoutMs || 8000;
     const slow = !opts.only || opts.only(url);
     const hangs = slow && hang > 0 && (!opts.hangOnly || opts.hangOnly(url, n)) && unit(`${seed}|hang|${url}|${n}`) < hang;
+    const refused = Number(opts.refuse || 0) > 0 && unit(`${seed}|refuse|${url}|${n}`) < Number(opts.refuse);
     const delay = slow ? min + unit(`${seed}|delay|${url}|${n}`) * (max - min) : 0;
     stats.requests += 1;
     inFlight[host] = (inFlight[host] || 0) + 1;
@@ -69,6 +72,7 @@ function withLatency(inner, opts = {}) {
     const entry = { host, url, start: started - t0, attempt: n, hung: hangs };
     log.push(entry);
     try {
+      if (refused) throw makeError(opts.errorClass, 'Request failed: getaddrinfo ENOTFOUND', 'NETWORK_ERROR', true);
       if (hangs || delay >= timeoutMs) {
         if (hangs) stats.hung += 1;
         await new Promise((r) => setTimeout(r, timeoutMs));

@@ -1,6 +1,6 @@
 import { getHttp } from './runtime';
 import type { HttpRequestInit } from './http';
-import { budgetMs } from './net';
+import { budgetMs, onNetChange } from './net';
 
 export class DictionaryError extends Error {
   constructor(
@@ -52,36 +52,53 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, label = 'operati
  * round trip after it (net.ts); on a normal network that is still shorter than `base`.
  * When the budget runs out it is worked out again from the round trips seen meanwhile, so the
  * first lookup after an app start, which starts before any host has answered, gets the longer
- * budget too once the first answers show the connection is slow.
+ * budget too once the first answers show the connection is slow. It is also worked out again
+ * when the connection is found silent (net.ts): a budget stretched for a slow connection that has
+ * since died then ends at its normal-network length instead of the slow one's.
+ *
+ * `measured`: stretch only for round trips actually measured (typicalRtoMs in net.ts), for a step
+ * that holds back something already there to show.
  */
-export function withBudget<T>(promise: Promise<T>, base: number, on: string | string[] = [], trips = 1, label = 'operation'): Promise<T> {
+export function withBudget<T>(
+  promise: Promise<T>,
+  base: number,
+  on: string | string[] = [],
+  trips = 1,
+  label = 'operation',
+  measured = false,
+): Promise<T> {
   const started = Date.now();
   return new Promise<T>((resolve, reject) => {
     let settled = false;
     let timer: ReturnType<typeof setTimeout>;
     const check = () => {
       if (settled) return;
-      const budget = budgetMs(base, on, trips + 1);
+      clearTimeout(timer);
+      const budget = budgetMs(base, on, trips + 1, measured);
       const left = budget - (Date.now() - started);
       if (left > 0) {
         timer = setTimeout(check, left);
         return;
       }
       settled = true;
+      off();
       reject(new DictionaryError(`${label} timed out after ${budget}ms`, 'TIMEOUT', true));
     };
-    timer = setTimeout(check, budgetMs(base, on, trips + 1));
+    timer = setTimeout(check, budgetMs(base, on, trips + 1, measured));
+    const off = onNetChange(check);
     promise.then(
       (value) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        off();
         resolve(value);
       },
       (err) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        off();
         reject(err);
       },
     );

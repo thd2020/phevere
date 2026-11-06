@@ -22,8 +22,14 @@ const compiled = esbuild.buildSync({
 }).outputFiles[0].text;
 const script = new vm.Script(compiled);
 
-/** A fresh copy of core (an app start) on a fake network whose answers come from `rest` and `free`. */
-function app(net) {
+/**
+ * A fresh copy of core (an app start) on a fake network whose answers come from `rest` and `free`.
+ * `opts.pack`: an offline pack with these words. `opts.link`: `{ state }`, where state is 'up',
+ * 'silent' (nothing answers: each request runs out its timeout) or 'refused' (each request fails
+ * at once, as when no name resolves), or a function of the URL giving one of those. It is read
+ * when a request's delay is over, so it can change while the test runs.
+ */
+function app(net, opts = {}) {
   const mod = { exports: {} };
   script.runInContext(vm.createContext({
     module: mod, exports: mod.exports, console: { log() {}, info() {}, warn() {}, error() {}, debug() {} },
@@ -49,21 +55,42 @@ function app(net) {
       return [{ word: 'cat', defs: ['n\tA spiteful woman gossip.'] }];
     }
     if (u.hostname === 'api.datamuse.com') return [];
+    if (u.hostname === 'translate.googleapis.com' && u.pathname === '/translate_a/single') return [[['你好，世界', u.searchParams.get('q'), null, null]], null, 'en'];
+    if (u.hostname === 'translate.googleapis.com' && u.pathname === '/translate_a/t') return ['你好，世界'];
+    if (u.hostname === 'api.mymemory.translated.net') return { responseStatus: 200, responseData: { translatedText: '你好世界' } };
     throw notFound();
   };
+  const link = opts.link || { state: 'up' };
+  const stateOf = (url) => (typeof link.state === 'function' ? link.state(url) : link.state);
+  const reach = async (url, o) => {
+    const state = stateOf(url);
+    if (state === 'refused') throw new core.DictionaryError('Request failed: getaddrinfo ENOTFOUND', 'NETWORK_ERROR', true);
+    if (state === 'silent') {
+      await new Promise((r) => setTimeout(r, (o && o.timeoutMs) || 8000));
+      throw new core.DictionaryError('Request failed: timed out', 'NETWORK_ERROR', true);
+    }
+    return answer(new URL(url));
+  };
   const fake = {
-    requestJson: async (url) => answer(new URL(url)),
-    requestText: async (url) => {
+    requestJson: (url, o) => reach(url, o),
+    requestText: async (url, o) => {
       try {
-        return { ok: true, status: 200, text: JSON.stringify(answer(new URL(url))) };
-      } catch {
+        return { ok: true, status: 200, text: JSON.stringify(await reach(url, o)) };
+      } catch (e) {
+        if (e && e.code !== 'HTTP_404') throw e;
         return { ok: false, status: 404, text: '' };
       }
     },
     requestBytes: async () => ({ ok: false, status: 404, bytes: new Uint8Array(), contentType: '' }),
   };
   const slow = withLatency(fake, { ...net, errorClass: core.DictionaryError });
-  core.configureCore({ sha256Hex: (t) => t, http: slow.http, lookupCache: { get: () => null, set: () => {} } });
+  const pack = opts.pack || {};
+  core.configureCore({
+    sha256Hex: (t) => t,
+    http: slow.http,
+    lookupCache: { get: () => null, set: () => {} },
+    lookupOffline: async (hw) => (pack[hw] ? [{ headword: hw, language: 'en', pos: 'noun', definition: pack[hw], packId: 'wordnet', packName: 'WordNet' }] : []),
+  });
   return { core, service: new core.DictionaryService(), net: slow };
 }
 
@@ -237,11 +264,19 @@ dead['a slow host that falls silent'] = async () => {
   silent = true;
   await http.requestJson('https://silent.example.org/c', { hedge: false }).catch(() => {});
   const after = core.budgetMs(1500, 'silent.example.org', 2);
-  const unseen = core.budgetMs(1500, 'never-asked.example.org', 2);
+  // One host failing while the other has not been asked says nothing about the other: it is
+  // still slow, and a host never asked is taken to be like it (Wiktionary blocked, the rest slow).
+  const oneDown = core.budgetMs(1500, 'never-asked.example.org', 2);
   assert.ok(slow >= 15000, `two round trips to the slow host: ${slow} ms`);
   assert.ok(after <= 6000, `and once it falls silent: ${after} ms`);
-  // The host not asked since still holds the slow round trips, but they are not taken as typical.
+  assert.ok(oneDown >= 15000, `a host never asked, one host down: ${oneDown} ms`);
+  // A second host failing too, with nothing answering since: the connection is silent, and the
+  // slow round trips of the host not asked since are not taken as typical any more.
+  await http.requestJson('https://other.example.org/d', { hedge: false }).catch(() => {});
+  const unseen = core.budgetMs(1500, 'never-asked.example.org', 2);
+  assert.ok(core.connectionSilent(), 'the connection counts as silent');
   assert.ok(unseen <= 6000, `a host never asked, after the silence: ${unseen} ms`);
+  assert.ok(core.budgetMs(1500, 'not-asked.example.org', 2) <= 6000, 'nor the host that was slow before it');
 };
 // A request answered by its backup: the original answering late is not a round trip (Karn), or one
 // hung request would put the host's next backups six seconds out.
@@ -265,6 +300,133 @@ dead['a late answer after its backup'] = async () => {
   assert.ok(after <= before + 200, `the host's RTO stays ${before} ms (now ${after} ms)`);
 };
 
+// A connection that answers nothing at all (Wi-Fi without internet) right after the app starts,
+// with the word in a downloaded pack: the pack's senses show about as fast as on a normal network,
+// not after the waits a slow connection gets. The same for a word picked from a sentence ("hello,"),
+// whose exact-title check runs beside the lookup.
+const pack = { cat: 'A small feline (offline pack).', hello: 'A greeting (offline pack).', dog: 'A canine (offline pack).' };
+const timedLookup = async (service, word, opts = {}) => {
+  const started = Date.now();
+  let first = 0;
+  const seen = (r) => {
+    if (!first && senses(r).some((m) => !/timed out/i.test(m))) first = Date.now() - started;
+  };
+  const r = await service.lookup(word, 'zh', undefined, { ...opts, onUpdate: seen });
+  seen(r);
+  return { r, first, took: Date.now() - started };
+};
+dead['an offline pack on a dead connection'] = async () => {
+  const { r, first } = await timedLookup(app({}, { pack, link: { state: 'silent' } }).service, 'cat');
+  assert.ok(senses(r).some((m) => /offline pack/.test(m)), 'the pack sense shows');
+  assert.ok(first && first < 2500, `within two and a half seconds of an app start (${first} ms; 4.2.0 took 7 s)`);
+};
+dead['"hello," from a sentence, an offline pack, a dead connection'] = async () => {
+  const { r, first } = await timedLookup(app({}, { pack, link: { state: 'silent' } }).service, 'hello,');
+  assert.equal(r.word, 'hello', '"hello," opens hello');
+  assert.ok(first && first < 3000, `within three seconds (${first} ms; 4.2.0 took 13 s)`);
+};
+// No pack: "No definitions found" comes once the connection is known to answer nothing. Right
+// after an app start nothing has been measured, so that takes six seconds without an answer.
+dead['no pack, a dead connection'] = async () => {
+  const { r, took } = await timedLookup(app({}, { link: { state: 'silent' } }).service, 'cat');
+  assert.ok(!senses(r).length && !r.metadata.timedOut, 'no definitions, not "Lookup timed out"');
+  assert.ok(took < 8000, `within eight seconds (${took} ms; 4.2.0 took 16 s)`);
+};
+// A slow connection (two seconds a request) that then dies, as a VPN drops: the next lookup goes out
+// with the slow connection's long timeouts, but the waits end once nothing answers on two hosts.
+dead['the first lookup after a slow connection dies'] = async () => {
+  const link = { state: 'up' };
+  const { service } = app({ delay: [1900, 2100], seed: 'dies' }, { link });
+  await service.lookup('cat', 'zh');
+  await service.lookup('hello', 'zh');
+  link.state = 'silent';
+  const { took } = await timedLookup(service, 'dog');
+  assert.ok(took < 8000, `the next word ends within eight seconds (${took} ms; 4.2.0 took 22 to 27 s)`);
+};
+// Phone offline (requests fail at once), two lookups, then back online: the sources are not
+// skipped for minutes, so the next word has its definitions.
+dead['back online after two failed lookups'] = async () => {
+  const link = { state: 'refused' };
+  const { service } = app({}, { link });
+  await service.lookup('fish', 'zh');
+  await service.lookup('dog', 'zh');
+  link.state = 'up';
+  const { r } = await timedLookup(service, 'cat');
+  const all = senses(r);
+  assert.ok(all.some((m) => /mammal/.test(m)) && all.some((m) => /feline/.test(m)), `Wiktionary and the Free Dictionary both answer (${JSON.stringify(all)})`);
+};
+// A word with a full stop that no dictionary knows, Wiktionary answering nothing, the others fast.
+dead['"qwzxv." with Wiktionary down'] = async () => {
+  const link = { state: (u) => (u.includes('wiktionary.org') ? 'silent' : 'up') };
+  const { r, took } = await timedLookup(app({ delay: [150, 250], seed: 'qwzxv' }, { link }).service, 'qwzxv.');
+  assert.ok(!senses(r).length && !r.metadata.timedOut, 'no definitions');
+  assert.ok(took < 8000, `within eight seconds (${took} ms; 4.2.0 took 22 s)`);
+};
+// Quick translation with Google blocked (it answers nothing) and MyMemory two seconds away: the next
+// engine starts a round trip in, and the translation after that starts with MyMemory.
+dead['quick translation with Google blocked'] = async () => {
+  const link = { state: (u) => (u.includes('translate.googleapis.com') ? 'silent' : 'up') };
+  const { service } = app({ delay: [1900, 2100], seed: 'tx' }, { link });
+  for (const [i, text] of ['Hello there, world', 'See you tomorrow'].entries()) {
+    const started = Date.now();
+    const hit = await service.translateText(text, 'zh', 'en', 'auto');
+    const took = Date.now() - started;
+    assert.equal(hit && hit.source, 'MyMemory', `MyMemory translates (${i + 1})`);
+    assert.ok(took < (i ? 3000 : 6000), `translation ${i + 1} in ${took} ms (4.2.0: 17 s each)`);
+  }
+};
+dead['quick translation when the chosen engine is down'] = async () => {
+  const link = { state: (u) => (u.includes('mymemory') ? 'silent' : 'up') };
+  const { service } = app({ delay: [300, 500], seed: 'tx2' }, { link });
+  const hit = await service.translateText('Hello there, world', 'zh', 'en', 'mymemory');
+  assert.ok(hit && /Google/.test(hit.source), `another engine answers (${hit && hit.source}; 4.2.0 gave nothing after 11 s)`);
+};
+
+// These run last, on their own, so their lookups do not slow the timed cases above.
+const last = {};
+// A link whose first answers take five seconds (a satellite link, a VPN setting up) is slow, not
+// dead: right after an app start "etc." still opens etc. and "hello," keeps its sense.
+last['a five-second link right after an app start'] = async () => {
+  const net = (seed) => ({ delay: [4500, 5500], seed });
+  const etc = await app(net('sat-etc')).service.lookup('etc.', 'zh');
+  assert.equal(etc.word, 'etc.', '"etc." opens etc.');
+  let latest = null;
+  const hello = await app(net('sat-hello')).service.lookup('hello,', 'zh', undefined, { onUpdate: (r) => (latest = r) });
+  await new Promise((r) => setTimeout(r, 3000));
+  assert.equal(hello.word, 'hello', '"hello," opens hello');
+  assert.ok(senses(latest || hello).some((m) => /greeting/.test(m)), `and keeps its sense (${JSON.stringify(senses(latest || hello))})`);
+};
+// Right after an app start on a slow connection, a word with marks ("U.S.", "C++", "hello,") is
+// looked up beside its exact-title check. Wikimedia still never has more than three open at once.
+last['three requests at most to Wiktionary on a slow cold start'] = async () => {
+  for (const word of ['U.S.', 'C++', 'hello,', 'etc.']) {
+    const { service, net } = app({ delay: [1000, 3000], hang: 0.05, seed: `cap-${word}` });
+    await service.lookup(word, 'zh');
+    await new Promise((r) => setTimeout(r, 4000));
+    for (const [host, n] of Object.entries(net.maxInFlight)) assert.ok(n <= 3 || !/wik/.test(host), `${word}: ${host} had ${n} open`);
+  }
+};
+// A source skipped because it fails while others answer stays skipped when some other host falls
+// silent too (Google Translate blocked): only the whole connection answering again, or a network
+// change, ends the skip.
+last['a skip outlives another host falling silent'] = async () => {
+  const link = { state: (u) => (u.includes('wiktionary.org') ? 'refused' : 'up') };
+  const { core, service, net } = app({ delay: [100, 200], seed: 'skip' }, { link });
+  await service.lookup('fish', 'zh');
+  await service.lookup('dog', 'zh');
+  const hung = core.trackHttp({ requestJson: () => new Promise(() => {}), requestText: async () => ({}), requestBytes: async () => ({}) });
+  for (const p of ['a', 'b']) hung.requestJson(`https://blocked.example.org/${p}`, { hedge: false, timeoutMs: 60000 }).catch(() => {});
+  for (let i = 0; i < 80 && !core.hostSilent('blocked.example.org'); i += 1) await new Promise((r) => setTimeout(r, 100));
+  assert.ok(core.hostSilent('blocked.example.org'), 'the other host counts as silent');
+  const before = net.log.filter((r) => r.url.includes('wiktionary.org')).length;
+  await service.lookup('cat', 'zh');
+  const after = net.log.filter((r) => r.url.includes('wiktionary.org')).length;
+  assert.equal(after - before, 0, `Wiktionary is still skipped (${after - before} requests)`);
+  core.noteNetworkChange();
+  await service.lookup('cow', 'zh');
+  assert.ok(net.log.filter((r) => r.url.includes('wiktionary.org')).length > after, 'and asked again after a network change');
+};
+
 // "etc." is a title of its own; with Wiktionary two or three seconds away it is still opened as
 // typed, and so it is when the first request for its page never answers.
 const etcNets = {
@@ -285,7 +447,7 @@ for (const [label, net] of Object.entries(etcNets)) {
   const t0 = Date.now();
   // Each case runs in its own copy of core, all of a batch at once.
   const failed = [];
-  for (const batch of [cases, dead]) {
+  for (const batch of [cases, dead, last]) {
     const names = Object.keys(batch);
     const results = await Promise.allSettled(names.map((n) => batch[n]()));
     failed.push(...results.map((r, i) => [names[i], r]).filter(([, r]) => r.status === 'rejected'));
