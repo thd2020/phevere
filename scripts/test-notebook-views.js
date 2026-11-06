@@ -24,7 +24,7 @@ function load(name) {
 
 const { analyzeMorphemes, morphBreakdown } = load('morphology');
 const views = load('notebook-views');
-const { recentListHtml, vocabEntryHtml } = load('vocab-view');
+const { filterRecentLookups, recentListHtml, vocabEntryHtml } = load('vocab-view');
 
 const split = (w) => morphBreakdown(w).join('·');
 const labels = (w) => analyzeMorphemes(w).map((m) => `${m.kind}:${m.label}`);
@@ -516,6 +516,12 @@ const recBooks = recentListHtml([{ q: 'inspect', at: now }], () => undefined, no
 assert.match(recBooks, /data-act="ub-pick" data-q="inspect" aria-haspopup="menu"/);
 assert.match(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now, { bookPick: true }), /data-act="ub-pick" data-q="braid"[^>]*>.*Add to word book/);
 assert.doesNotMatch(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now), /ub-pick/);
+// The header search filters Recent too, and clearing it (empty or blank) brings every lookup back.
+const recentItems = [{ q: 'Inspect', at: 3 }, { q: 'gargantuan', at: 2 }, { q: 'spectacle', at: 1 }];
+assert.deepEqual(filterRecentLookups(recentItems, 'SPEC').map((r) => r.q), ['Inspect', 'spectacle']);
+assert.deepEqual(filterRecentLookups(recentItems, 'zzz'), []);
+assert.equal(filterRecentLookups(recentItems, ''), recentItems);
+assert.equal(filterRecentLookups(recentItems, '   '), recentItems);
 
 // A to Z: "#" (digits, symbols, other scripts) comes after Z in the rail and in the list.
 const { AZ_INDEX, compareAz } = load('vocab-view');

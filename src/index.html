@@ -70,9 +70,6 @@
         <div class="ws-search">
           <input type="search" id="vocabSearch" class="vocab-search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Search" />
         </div>
-        <div class="ws-tools" id="recentTools" hidden>
-          <button type="button" id="clearSelectionsBtn" class="btn btn-outlined btn-small" hidden>Clear</button>
-        </div>
       </div>
 
       <section id="paneNotebook" class="vocab-notebook nbv" role="tabpanel" aria-label="Words">
@@ -100,6 +97,9 @@
       <section id="paneLearn" class="nbv lrn" role="tabpanel" aria-label="Learn" hidden></section>
 
       <section id="paneRecent" class="recent-selections" role="tabpanel" aria-label="Recent lookups" hidden>
+        <div class="recent-bar">
+          <button type="button" id="clearSelectionsBtn" class="btn btn-outlined btn-small" hidden>Clear history</button>
+        </div>
         <div id="selectionsList" class="selections-list">
           <p class="empty-message">No recent lookups.</p>
         </div>

@@ -78,6 +78,7 @@ export {
   vocabEntryHtml,
   vocabListHtml,
   vocabEntryGroup,
+  filterRecentLookups,
   recentListHtml,
   vocabAzLetter,
   AZ_INDEX,

@@ -64,6 +64,7 @@ import {
   formatVocabLangPair,
   mapHtml,
   notebookViewSwitchHtml,
+  filterRecentLookups,
   recentListHtml,
   learnHtml,
   attachLearnCharts,
@@ -155,9 +156,39 @@ const rlog = (...args: unknown[]) => {
 rlog('🚀 Phevere renderer started');
 
 document.getElementById('clearSelectionsBtn')?.addEventListener('click', () => {
+  const before = loadRecentLookups();
   saveRecentLookups([]);
   renderRecentLookups();
+  showUndoToast('Recent lookups cleared', () => {
+    // Lookups made while the toast was up stay on top of the restored ones.
+    const now = loadRecentLookups();
+    const seen = new Set(now.map((e) => e.q.toLowerCase()));
+    saveRecentLookups([...now, ...before.filter((e) => !seen.has(e.q.toLowerCase()))]);
+    renderRecentLookups();
+  });
 });
+
+/** A snackbar with one Undo action, as Gmail and Material show after a destructive action. */
+function showUndoToast(message: string, undo: () => void): void {
+  document.querySelector('.undo-toast')?.remove();
+  const toast = document.createElement('div');
+  toast.className = 'undo-toast';
+  toast.setAttribute('role', 'status');
+  const text = document.createElement('span');
+  text.textContent = message;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'undo-toast__action';
+  button.textContent = 'Undo';
+  toast.append(text, button);
+  const timer = setTimeout(() => toast.remove(), 8000);
+  button.addEventListener('click', () => {
+    clearTimeout(timer);
+    toast.remove();
+    undo();
+  });
+  document.body.appendChild(toast);
+}
 
 // Wait for DOM to be ready
 document.addEventListener('DOMContentLoaded', () => {
@@ -3463,7 +3494,6 @@ function setMainTab(tab: MainTab): void {
   if (nb) nb.hidden = tab !== 'notebook';
   if (learn) learn.hidden = tab !== 'learn';
   if (rc) rc.hidden = tab !== 'recent';
-  document.getElementById('recentTools')?.toggleAttribute('hidden', tab !== 'recent');
   document.querySelector('.main-shell')?.scrollTo({ top: 0 });
   if (tab === 'learn') renderLearn();
 }
@@ -3532,7 +3562,10 @@ function wireMainWorkspace(): void {
 let vocabSearchTimer: ReturnType<typeof setTimeout> | null = null;
 document.getElementById('vocabSearch')?.addEventListener('input', () => {
   if (vocabSearchTimer) clearTimeout(vocabSearchTimer);
-  vocabSearchTimer = setTimeout(rerenderNotebook, 120);
+  vocabSearchTimer = setTimeout(() => {
+    rerenderNotebook();
+    renderRecentLookups();
+  }, 120);
 });
 
 document.getElementById('vocabSortRecent')?.addEventListener('click', () => {
@@ -3890,11 +3923,13 @@ function saveRecentLookups(items: RecentLookup[]): void {
 function renderRecentLookups(): void {
   const list = document.getElementById('selectionsList');
   if (!list) return;
-  const items = loadRecentLookups();
+  const all = loadRecentLookups();
   const clear = document.getElementById('clearSelectionsBtn');
-  if (clear) clear.hidden = !items.length;
+  if (clear) clear.hidden = !all.length;
+  // The header search filters whichever tab is open, Recent included.
+  const items = filterRecentLookups(all, (document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '');
   if (!items.length) {
-    list.innerHTML = `<p class="empty-message">No recent lookups.</p>`;
+    list.innerHTML = `<p class="empty-message">${all.length ? 'No matching lookups.' : 'No recent lookups.'}</p>`;
     return;
   }
   const saved = new Map<string, any>();
