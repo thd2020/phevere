@@ -684,6 +684,12 @@ export class DictionaryService extends BaseService {
             continue;
           }
           console.warn('Unofficial Google Translate path failed', { url: url.slice(0, 64), error });
+          // No answer at all (blocked, timed out): the other path is on the same host, so asking it
+          // too would only double the wait before the next engine is tried.
+          if (!/^HTTP_\d{3}$/.test(code)) {
+            this.noteTranslationDown('google');
+            return null;
+          }
         }
       }
       return null;
@@ -717,6 +723,7 @@ export class DictionaryService extends BaseService {
       };
     } catch (error) {
       console.warn('MyMemory translation failed:', error);
+      if (!(error instanceof DictionaryError && /^HTTP_\d{3}$/.test(error.code))) this.noteTranslationDown('mymemory');
       return null;
     }
   }
@@ -1823,19 +1830,43 @@ export class DictionaryService extends BaseService {
       translationPromises.push(this.translateWithProvider(provider, text, actualTargetLanguage, sourceLanguage));
     }
 
-    const translationResults = await Promise.allSettled(
-      translationPromises.map(
-        (p: Promise<Translation | null>): Promise<Translation | null> =>
-          withBudget(p, 5500, [], 1, 'translation').catch((): null => null),
-      ),
+    // The first engine to answer shows; the others get SENTENCE_GRACE_MS to join it, and any that
+    // answer later arrive as an update. Before, the page waited for every engine, so one that never
+    // answers (Google blocked) held the translation for its whole budget.
+    const answers: Array<Translation | null | undefined> = translationPromises.map((): undefined => undefined);
+    const settled = translationPromises.map((p, i) =>
+      withBudget(p, 5500, [], 1, 'translation')
+        .catch((): null => null)
+        .then((v) => {
+          answers[i] = v;
+          return v;
+        }),
     );
-
-    for (const result of translationResults) {
-      if (result.status === 'fulfilled' && result.value) {
-        translations.push(result.value);
-        sources.push(result.value.source || 'Translation API');
+    await new Promise<void>((resolve) => {
+      let left = settled.length;
+      let grace: ReturnType<typeof setTimeout> | undefined;
+      if (!left) resolve();
+      for (const p of settled) {
+        void p.then((v) => {
+          left -= 1;
+          if (!left) {
+            clearTimeout(grace);
+            resolve();
+          } else if (v && !grace) grace = setTimeout(resolve, SENTENCE_GRACE_MS);
+        });
       }
-    }
+    });
+    const collect = () => {
+      translations.length = 0;
+      sources.length = 0;
+      for (const t of answers) {
+        if (!t) continue;
+        translations.push(t);
+        sources.push(t.source || 'Translation API');
+      }
+    };
+    collect();
+    const late = answers.some((a) => a === undefined);
 
     if (!translations.length && provider !== 'auto') {
       const fallback = await this.getBestTranslation(text, actualTargetLanguage, sourceLanguage, 'auto');
@@ -1866,6 +1897,13 @@ export class DictionaryService extends BaseService {
       }
     };
 
+    if (late && opts?.onUpdate) {
+      void Promise.all(settled).then(() => {
+        const more = answers.filter((t): t is Translation => !!t);
+        if (more.length <= result.translations.length) return;
+        opts.onUpdate!({ ...result, translations: more, sources: more.map((t) => t.source || 'Translation API') });
+      });
+    }
     return result;
   }
 
@@ -4243,13 +4281,35 @@ export class DictionaryService extends BaseService {
     let target = this.resolveTargetLanguage(source, targetLanguage);
     // Text already in the target language goes the other way (Chinese with a Chinese target → English).
     if (target === source.toLowerCase().split('-')[0]) target = this.defaultTargetForSource(source);
-    const hit =
-      provider === 'auto'
-        ? await this.getBestTranslation(input, target, source, 'auto')
-        : await this.translateWithProvider(provider, input, target, source);
+    // The chosen engine first; when it cannot answer, the others, so a translation comes back
+    // whenever any engine can give one (getBestTranslation starts with the preferred engine).
+    const hit = await this.getBestTranslation(input, target, source, provider);
     return hit ? { ...hit, language: hit.language || target, detectedSourceLanguage: hit.detectedSourceLanguage || source } : null;
   }
 
+  /** The host each engine asks, for its round trip (net.ts). */
+  private static readonly TRANSLATION_HOSTS: Record<Exclude<TranslationProvider, 'auto'>, string> = {
+    google: 'translate.googleapis.com',
+    mymemory: 'api.mymemory.translated.net',
+    youdao: 'openapi.youdao.com',
+    deepl: 'api-free.deepl.com',
+  };
+
+  /** An engine that gave no answer at all goes last for a while (cleared when the network changes). */
+  private noteTranslationDown(provider: Exclude<TranslationProvider, 'auto'>): void {
+    this.translationDownUntil.set(provider, Date.now() + TRANSLATION_DOWN_MS);
+  }
+
+  /**
+   * The first translation any engine gives, the preferred engine first. The engines are started
+   * one after another the way Happy Eyeballs (RFC 8305) starts connection attempts: the next
+   * engine starts as soon as the one before it fails, or when it has not answered within its
+   * host's round trip (at least TRANSLATION_STAGGER_MS), or when its host stops answering while
+   * others answer. The first answer wins. Before, each engine was waited out in turn: with Google
+   * blocked, every translation waited out both of Google's requests (ten seconds or more) before
+   * MyMemory was asked. An engine that gave no answer at all also goes last for a while, so the
+   * next translation starts with one that works.
+   */
   private async getBestTranslation(
     text: string,
     targetLanguage: string,
@@ -4257,22 +4317,63 @@ export class DictionaryService extends BaseService {
     preferred: TranslationProvider = 'auto',
   ): Promise<Translation | null> {
     const freeFirst: Array<Exclude<TranslationProvider, 'auto'>> = ['google', 'mymemory', 'youdao', 'deepl'];
-    const order: Array<Exclude<TranslationProvider, 'auto'>> =
-      preferred === 'youdao'
-        ? ['youdao', 'google', 'mymemory', 'deepl']
-        : preferred === 'deepl'
-          ? ['deepl', 'google', 'mymemory', 'youdao']
-          : preferred === 'mymemory'
-            ? ['mymemory', 'google', 'youdao', 'deepl']
-            : preferred === 'google'
-              ? ['google', 'mymemory', 'youdao', 'deepl']
-              : freeFirst;
+    const preferredOrder = preferred === 'auto' ? freeFirst : [preferred, ...freeFirst.filter((p) => p !== preferred)];
+    const usable = preferredOrder.filter((p) => this.canTranslateWith(p));
+    const now = Date.now();
+    const down = (p: Exclude<TranslationProvider, 'auto'>) => (this.translationDownUntil.get(p) || 0) > now;
+    const order = [...usable.filter((p) => !down(p)), ...usable.filter(down)];
+    if (!order.length) return null;
 
-    for (const p of order) {
-      const hit = await this.translateWithProvider(p, text, targetLanguage, sourceLanguage);
-      if (hit) return hit;
-    }
-    return null;
+    return new Promise<Translation | null>((resolve) => {
+      let next = 0;
+      let running = 0;
+      let done = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let waitingOn = '';
+      const pending = new Set<Exclude<TranslationProvider, 'auto'>>();
+      const finish = (hit: Translation | null) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        off();
+        // An engine still silent when another one answered goes last next time, until it answers.
+        for (const slow of pending) this.noteTranslationDown(slow);
+        resolve(hit);
+      };
+      const startNext = () => {
+        if (done) return;
+        clearTimeout(timer);
+        if (next >= order.length) {
+          if (!running) finish(null);
+          return;
+        }
+        const p = order[next++];
+        running += 1;
+        pending.add(p);
+        waitingOn = DictionaryService.TRANSLATION_HOSTS[p];
+        void this.translateWithProvider(p, text, targetLanguage, sourceLanguage)
+          .catch((): null => null)
+          .then((hit) => {
+            running -= 1;
+            pending.delete(p);
+            if (hit) this.translationDownUntil.delete(p);
+            if (hit) finish(hit);
+            else startNext();
+          });
+        if (next < order.length) timer = setTimeout(startNext, budgetMs(TRANSLATION_STAGGER_MS, waitingOn));
+      };
+      const off = onNetChange(() => {
+        if (waitingOn && hostSilent(waitingOn)) startNext();
+      });
+      startNext();
+    });
+  }
+
+  /** Whether the engine can be asked at all (DeepL and Youdao need their keys). */
+  private canTranslateWith(provider: Exclude<TranslationProvider, 'auto'>): boolean {
+    if (provider === 'deepl') return !!this.deeplApiKey;
+    if (provider === 'youdao') return !!(this.youdaoAppKey && this.youdaoAppSecret);
+    return true;
   }
 
   /**
