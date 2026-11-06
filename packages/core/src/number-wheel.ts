@@ -147,6 +147,28 @@ interface State {
 const states = new WeakMap<HTMLElement, State>();
 const wiredRoots = new WeakSet<HTMLElement>();
 
+/**
+ * Wheel latching, as browsers do for nested scrollers: a run of wheel events belongs to whatever
+ * was under the pointer when the run began, until it pauses. A page scroll that passes over a
+ * wheel keeps scrolling the page; only a run that starts on a wheel turns it.
+ */
+const LATCH_MS = 300;
+const latch: { t: number; el: Element | null } = { t: 0, el: null };
+let latchWired = false;
+function wireLatch(): void {
+  if (latchWired || typeof document === 'undefined') return;
+  latchWired = true;
+  document.addEventListener(
+    'wheel',
+    (e) => {
+      const now = performance.now();
+      if (now - latch.t > LATCH_MS) latch.el = (e.target as Element | null)?.closest?.('.nw') ?? null;
+      latch.t = now;
+    },
+    { capture: true, passive: true },
+  );
+}
+
 const reduceMotion = () => !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 function stateOf(el: HTMLElement): State {
@@ -326,6 +348,7 @@ function openEntry(el: HTMLElement, st: State, first = ''): void {
 export function wireNumberWheels(root: HTMLElement): void {
   if (wiredRoots.has(root)) return;
   wiredRoots.add(root);
+  wireLatch();
   const wheelOf = (t: EventTarget | null) => {
     const el = (t as Element | null)?.closest?.('.nw') as HTMLElement | null;
     return el && root.contains(el) && !(t as Element).closest('.nw__entry') ? el : null;
@@ -393,7 +416,7 @@ export function wireNumberWheels(root: HTMLElement): void {
     'wheel',
     (e) => {
       const el = wheelOf(e.target);
-      if (!el || e.ctrlKey) return;
+      if (!el || e.ctrlKey || latch.el !== el) return;
       e.preventDefault();
       const st = stateOf(el);
       const delta = e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1);
