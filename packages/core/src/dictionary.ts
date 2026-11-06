@@ -1223,8 +1223,10 @@ export class DictionaryService extends BaseService {
     earlyForLocal?.catch((): undefined => undefined);
     const hasLocal = (r: DictionaryResult) => (r.definitions || []).some((d) => isLocalPackSource(d.source));
     let earlyAnswer: { lemma: string | null } | undefined;
+    /** Set when the page check failed (its budget ran out, the connection refused): there is nothing left to wait for. */
+    let earlyFailed = false;
     if (early) {
-      early.then((lemma) => (earlyAnswer = { lemma }), (): undefined => undefined);
+      early.then((lemma) => (earlyAnswer = { lemma }), (): void => void (earlyFailed = true));
       this.noteFormDecision(decisionKey, early);
     }
     let formCheck: Promise<DictionaryResult | null> | null = null;
@@ -1273,7 +1275,7 @@ export class DictionaryService extends BaseService {
       const local = hasLocal(r);
       const limit = formLike ? budgetMs(FORM_CHECK_MS, [KAIKKI, WIKTIONARY], 2, local) : budgetMs(FORM_HOLD_MS, [KAIKKI, WIKTIONARY], 1, local);
       const unsure = formLike || mayBeInflected || !wiktionarySenses(r).length;
-      if (!formCheck && early && !earlyAnswer && Date.now() - started < limit && unsure) {
+      if (!formCheck && early && !earlyAnswer && !earlyFailed && Date.now() - started < limit && unsure) {
         held = r;
         if (!releasing) {
           releasing = true;
