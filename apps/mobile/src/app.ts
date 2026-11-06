@@ -125,6 +125,7 @@ import {
   findBookConflict,
   importBookPayload,
   type BookScope,
+  followIndexRail,
   wireIndexRail,
   bookMenuItems,
   bookRemovalPrompt,
@@ -2021,10 +2022,27 @@ function legacyCopy(text: string): boolean {
  * Notebook A–Z rail (sort A–Z): tap a letter, or press and drag along the letters, to jump; a
  * large letter shows in the middle of the screen while dragging, as on desktop.
  */
+let azRailFollow: { stop: () => void } | null = null;
+
 function bindAzRail(): void {
+  // Every paint replaces the rail, so the last one's observers go first.
+  azRailFollow?.stop();
+  azRailFollow = null;
   const nav = document.querySelector<HTMLElement>('[data-az-rail]');
   const hud = document.querySelector<HTMLElement>('.vocab-az-hud');
   if (!nav || !hud) return;
+  // The rail stays beside the list, below the sticky top bar and above the tab bar, however
+  // tall the search, book and view rows above the list are.
+  const top = document.querySelector<HTMLElement>('.top');
+  const bar = document.querySelector<HTMLElement>('.nav');
+  azRailFollow = followIndexRail(nav, {
+    list: () => document.querySelector<HTMLElement>('.vocab-list'),
+    clip: () => ({
+      top: top?.getBoundingClientRect().bottom ?? 0,
+      bottom: bar?.getBoundingClientRect().top ?? window.innerHeight,
+    }),
+    watch: [document.querySelector('.page'), top, document.querySelector('.vocab-list')],
+  });
   wireIndexRail(nav, {
     jump: (letter) => document.querySelector<HTMLElement>(`.vocab-list [data-az="${letter}"]`)?.scrollIntoView({ block: 'start' }),
     hud: (letter) => {

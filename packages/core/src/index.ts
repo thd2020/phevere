@@ -88,7 +88,7 @@ export {
   type VocabViewEntry,
   type VocabListOptions,
 } from './vocab-view';
-export { wireIndexRail, type IndexRailOptions } from './index-rail';
+export { followIndexRail, placeIndexRail, railBox, railStride, wireIndexRail, type IndexRailOptions, type RailEdges } from './index-rail';
 export {
   analyzeNotebook,
   notebookViewSwitchHtml,

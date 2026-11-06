@@ -145,7 +145,7 @@ import { choiceRowHtml, enhanceSelect, keycapsHtml, rangeRowHtml, segRowHtml, sw
 import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
 import { learnSettingsHtml, microphoneAvailable, readLearnPrefs, watchMicrophone, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
-import { AZ_INDEX, compareAz, vocabAzLetter, wireIndexRail } from '@phevere/core';
+import { AZ_INDEX, compareAz, followIndexRail, vocabAzLetter, wireIndexRail } from '@phevere/core';
 import { bookMenuItems, bookPickItems, bookRemovalPrompt, openMenu } from '@phevere/core';
 
 const rlog = (...args: unknown[]) => {
@@ -2671,31 +2671,43 @@ function scrollVocabToTime(key: string): void {
 }
 
 /**
- * The rails are fixed to the window so they stay put while the list scrolls. Their top follows
- * the list's first row until the sticky header reaches it, so a rail never sits beside the
- * view switcher or the sort buttons.
+ * The rails are fixed to the window so they stay put while the list scrolls. Each one is kept
+ * inside the list's box on screen, below the sticky header and above the status bar, so it never
+ * sits beside the book row, the view switcher or the sort buttons, and never runs past a short
+ * list. The box is measured again whenever something can move it: the list or the rows above it
+ * change size (a book row filling in, fonts arriving late), the Words tab becomes visible after
+ * rendering while hidden, the window resizes, or the list scrolls. Before 2026-11-06 the top was
+ * measured once per render, which read a hidden or not yet laid out list as sitting right under
+ * the header, so the rail ran from the book row down past the sort switch.
  */
-function placeVocabRails(): void {
-  const list = document.getElementById('vocabList');
+const vocabRails = new Map<string, { place: () => void }>();
+
+function followVocabRail(nav: HTMLElement): void {
+  if (vocabRails.has(nav.id)) return;
+  const shell = document.querySelector<HTMLElement>('.main-shell');
   const head = document.querySelector<HTMLElement>('.ws-head');
-  if (!list || !head) return;
-  const top = Math.round(Math.max(list.getBoundingClientRect().top, head.getBoundingClientRect().bottom) + 8);
-  for (const id of ['vocabAz', 'vocabTimeline']) {
-    const nav = document.getElementById(id);
-    if (nav && !nav.hidden) nav.style.top = `${top}px`;
-  }
+  vocabRails.set(
+    nav.id,
+    followIndexRail(nav, {
+      list: () => document.getElementById('vocabList'),
+      clip: () => ({
+        top: head?.getBoundingClientRect().bottom ?? 0,
+        bottom: shell?.getBoundingClientRect().bottom ?? window.innerHeight,
+      }),
+      watch: [shell, head, document.getElementById('paneNotebook'), document.getElementById('vocabList')],
+      scroller: shell || window,
+    }),
+  );
 }
 
-let railFrame = 0;
 function schedulePlaceVocabRails(): void {
-  if (railFrame) return;
-  railFrame = requestAnimationFrame(() => {
-    railFrame = 0;
-    placeVocabRails();
-  });
+  for (const id of ['vocabAz', 'vocabTimeline']) {
+    const nav = document.getElementById(id);
+    if (!nav) continue;
+    followVocabRail(nav);
+    vocabRails.get(id)?.place();
+  }
 }
-document.querySelector('.main-shell')?.addEventListener('scroll', schedulePlaceVocabRails, { passive: true });
-window.addEventListener('resize', schedulePlaceVocabRails);
 
 function syncVocabTimeline(entries: any[]): void {
   const nav = document.getElementById('vocabTimeline');
@@ -2706,7 +2718,6 @@ function syncVocabTimeline(entries: any[]): void {
   nav.hidden = !on;
   wrap?.classList.toggle('is-timeline', on);
   if (!on) return;
-  schedulePlaceVocabRails();
   vocabTimeIndex = new Map(buckets.map((b) => [b.key, { id: b.id, label: b.label }]));
   let year = buckets[0].year;
   nav.innerHTML = buckets
@@ -2720,6 +2731,8 @@ function syncVocabTimeline(entries: any[]): void {
     nav.dataset.ready = '1';
     wireIndexRail(nav, { jump: scrollVocabToTime });
   }
+  // The entries changed, so the number that fit may have too.
+  schedulePlaceVocabRails();
 }
 
 function syncVocabAzAvailability(entries: any[]): void {

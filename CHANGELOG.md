@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Date and A–Z rails in Words (2026-11-06): the rail beside the list now always starts below the book row, the view switcher and the Recent and A–Z switch, and ends where the list ends or above the status bar, whichever comes first. Before, when Words had been drawn while another tab was open, the date rail started at the book row and ran over the switch. The rail now follows the list as rows above it change, as the window is resized and as you switch tabs. On a short window or a short list it shows every second or third date or letter so they never pile up, and dragging along it still reaches each one. A list of a row or two gets no rail. On the phone, the A–Z rail no longer starts behind the search and view rows.
 - Search and Clear on Recent (2026-11-06): on the desktop, the Clear button that wiped every recent lookup sat right where the search field's own clear button sits on the other tabs, so clearing the search could empty the Recent page. It is now called Clear history, sits above the list instead of beside the search field, and a bar at the bottom offers Undo for eight seconds. The search field now filters Recent as you type, as it filters Words, and clearing it brings the whole list back.
 
 ## [4.2.0] - 2026-11-06

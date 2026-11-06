@@ -516,6 +516,24 @@ const recBooks = recentListHtml([{ q: 'inspect', at: now }], () => undefined, no
 assert.match(recBooks, /data-act="ub-pick" data-q="inspect" aria-haspopup="menu"/);
 assert.match(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now, { bookPick: true }), /data-act="ub-pick" data-q="braid"[^>]*>.*Add to word book/);
 assert.doesNotMatch(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now), /ub-pick/);
+// Index rails stay inside the list as it shows on screen. A list rendered while its tab was
+// hidden measures as 0 by 0, which used to put the rail right under the header, beside the book
+// row and the sort switch.
+{
+  const { railBox, railStride } = load('index-rail');
+  const clip = { top: 103, bottom: 606 };
+  assert.deepEqual(railBox({ top: 163, bottom: 30000 }, clip), { top: 171, height: 427 }, 'below the sort row, above the status bar');
+  assert.deepEqual(railBox({ top: -5000, bottom: 30000 }, clip), { top: 111, height: 487 }, 'scrolled: under the sticky header');
+  assert.deepEqual(railBox({ top: 163, bottom: 400 }, clip), { top: 171, height: 221 }, 'a short list ends the rail');
+  assert.equal(railBox({ top: 0, bottom: 0 }, clip), null, 'a hidden list gets no rail');
+  assert.equal(railBox({ top: 163, bottom: 225 }, clip), null, 'one row has no room for a rail');
+  assert.equal(railBox({ top: 700, bottom: 3000 }, clip), null, 'list below the window');
+  assert.equal(railStride(13, 427, 16), 1, 'every date fits');
+  assert.equal(railStride(13, 144, 16), 2, 'a short window shows every other date');
+  assert.equal(railStride(27, 100, 13), 4);
+  assert.equal(railStride(0, 100, 13), 1);
+}
+
 // The header search filters Recent too, and clearing it (empty or blank) brings every lookup back.
 const recentItems = [{ q: 'Inspect', at: 3 }, { q: 'gargantuan', at: 2 }, { q: 'spectacle', at: 1 }];
 assert.deepEqual(filterRecentLookups(recentItems, 'SPEC').map((r) => r.q), ['Inspect', 'spectacle']);
