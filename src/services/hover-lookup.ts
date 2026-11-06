@@ -264,6 +264,8 @@ export class HoverLookupService {
         const nativePt =
           process.platform === 'win32' ? cursorToNative(x, y) : { x, y };
         const hit = await this.opts.getWordAtPoint(nativePt.x, nativePt.y);
+        // Phevere's own window or dialog: no OCR either, the page handles its own words.
+        if (hit?.own) return;
         if (hit && hit.text && !wordBoxHolds(hit, nativePt)) {
           console.log('UIA word is beside the cursor; reading pixels instead', hit.text);
         } else if (hit && hit.text && isLookupWorthy(hit.text)) {
@@ -412,7 +414,7 @@ async function ocrWordUnderCursor(x: number, y: number, halfW: number): Promise<
   return textNearPoint(pass.ocr, pass.px, pass.py).trim();
 }
 
-/** True when the OCR region overlay has focus (don't hover-OCR the overlay itself). */
+/** True when the OCR overlay has focus, or the pointer is over the focused Phevere window. */
 export function phevereWindowFocused(
   _main: BrowserWindow | null,
   _popups: BrowserWindow[],
@@ -422,5 +424,10 @@ export function phevereWindowFocused(
 ): boolean {
   const focused = BrowserWindow.getFocusedWindow();
   if (!focused) return false;
-  return !!(overlay && focused === overlay);
+  if (overlay && focused === overlay) return true;
+  // The pointer over the focused Phevere window: probing it would block the main thread that
+  // window's own input runs through, and the page looks up its own words.
+  const p = screen.getCursorScreenPoint();
+  const b = focused.getBounds();
+  return p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height;
 }

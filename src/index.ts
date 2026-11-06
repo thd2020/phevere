@@ -13,7 +13,7 @@ import { clipboardService } from './services/clipboard';
 import { dictionaryService } from './services/dictionary';
 import { wikipediaService } from './services/wikipedia';
 import { searchService } from './services/search';
-import { createNativeSelectionService, SelectionEvent, type NativeSelectionService } from './services/native-selection';
+import { createNativeSelectionService, screenReaderActive, SelectionEvent, type NativeSelectionService } from './services/native-selection';
 import {
   openMacAccessibilitySettings,
   promptOpenMacAccessibilitySettings,
@@ -205,6 +205,26 @@ try {
   }
 } catch (e) {
   /* ignore — path may be unavailable in odd launch contexts */
+}
+
+/**
+ * Chromium keeps a full accessibility tree of each page while any UI Automation or MSAA client
+ * listens, and serves every query on the UI thread. Tools that crawl windows (automation
+ * agents, some input helpers) then walk the word list hundreds of thousands of times a second
+ * and the window stops responding. Build the tree only for a screen reader, or when
+ * `%APPDATA%/phevere/.enable-accessibility` exists. Must run before ready.
+ */
+try {
+  if (
+    process.platform === 'win32' &&
+    !installerCommand &&
+    !fs.existsSync(path.join(app.getPath('userData'), '.enable-accessibility')) &&
+    !screenReaderActive()
+  ) {
+    app.commandLine.appendSwitch('disable-renderer-accessibility');
+  }
+} catch {
+  /* keep Chromium's default */
 }
 
 /** Only one packaged Phevere process. Dev/Forge must allow relaunch or the
