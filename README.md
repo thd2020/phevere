@@ -1,5 +1,7 @@
 <div align="center">
 
+**English** · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Русский](README.ru.md) · [Português (Brasil)](README.pt-BR.md)
+
 <img src="README.assets/phevere-icon.png" width="96" alt="The Phevere icon: a forward-leaning lowercase p with a plum stem and a hollow mint bowl">
 
 <h1>Phevere</h1>
@@ -55,15 +57,7 @@ Phevere is a dictionary that works wherever you read. Select a word in any app t
 
 ## Download
 
-Every download is on the [latest release](https://github.com/thd2020/phevere/releases/latest), with Arm builds for Linux too.
-
-| Platform | Download | Requires |
-|---|---|---|
-| Windows | <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="x64 Setup" src="https://img.shields.io/badge/x64-Setup-3d444d?style=for-the-badge&labelColor=1f2328&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wIDBoMTEuNHYxMS40SDB6TTEyLjYgMEgyNHYxMS40SDEyLjZ6TTAgMTIuNmgxMS40VjI0SDB6TTEyLjYgMTIuNkgyNFYyNEgxMi42eiIvPjwvc3ZnPg%3D%3D&logoColor=white"></a> <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="ARM64 Setup" src="https://img.shields.io/badge/ARM64-Setup-3d444d?style=for-the-badge&labelColor=1f2328&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wIDBoMTEuNHYxMS40SDB6TTEyLjYgMEgyNHYxMS40SDEyLjZ6TTAgMTIuNmgxMS40VjI0SDB6TTEyLjYgMTIuNkgyNFYyNEgxMi42eiIvPjwvc3ZnPg%3D%3D&logoColor=white"></a> | Windows 10 |
-| macOS | <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="Apple silicon DMG" src="https://img.shields.io/badge/Apple%20silicon-DMG-3d444d?style=for-the-badge&labelColor=1f2328&logo=apple&logoColor=white"></a> <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="Intel DMG" src="https://img.shields.io/badge/Intel-DMG-3d444d?style=for-the-badge&labelColor=1f2328&logo=apple&logoColor=white"></a> | macOS 11 |
-| Linux | <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="Debian, Ubuntu DEB" src="https://img.shields.io/badge/Debian%2C%20Ubuntu-DEB-3d444d?style=for-the-badge&labelColor=1f2328&logo=debian&logoColor=white"></a> <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="Fedora, openSUSE RPM" src="https://img.shields.io/badge/Fedora%2C%20openSUSE-RPM-3d444d?style=for-the-badge&labelColor=1f2328&logo=fedora&logoColor=white"></a> <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="Any distribution AppImage" src="https://img.shields.io/badge/Any%20distribution-AppImage-3d444d?style=for-the-badge&labelColor=1f2328&logo=linux&logoColor=white"></a> | Ubuntu 22.04, Fedora 36 |
-| Android | <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="Android APK" src="https://img.shields.io/badge/Android-APK-3d444d?style=for-the-badge&labelColor=1f2328&logo=android&logoColor=white"></a> | Android 7.0 |
-| iOS | <a href="https://github.com/thd2020/phevere/releases/latest"><img alt="iPhone, iPad IPA" src="https://img.shields.io/badge/iPhone%2C%20iPad-IPA-3d444d?style=for-the-badge&labelColor=1f2328&logo=ios&logoColor=white"></a> | iOS 15.1, sign it yourself |
+Get Phevere from the [latest release](https://github.com/thd2020/phevere/releases/latest). It needs Windows 10, macOS 11, Ubuntu 22.04 or Fedora 36, Android 7.0, or iOS 15.1 or later. The iOS app has to be signed with your own Apple account before it installs.
 
 Windows and macOS show a warning the first time you open Phevere; choose to run it anyway. Setup notes: [macOS](docs/MACOS_SELECTION.md), [Linux](docs/LINUX_SELECTION.md), [Android](apps/mobile/ANDROID.md).
 
@@ -74,6 +68,8 @@ Phevere updates itself. In **Settings → Updates**, choose Automatically, Ask f
 - Windows and AppImage install the update when you quit Phevere, and **Roll back** returns to the previous version.
 - macOS, deb and rpm open the download page of the new version.
 - Android downloads the update on Wi-Fi and asks you to confirm the install.
+
+**Settings → About** shows the version you have, what is new, and where to report a problem.
 
 ## Privacy
 
@@ -100,4 +96,6 @@ You need Node.js 18 or later, plus a C++ toolchain for the native module: Visual
 
 ## License
 
-[MIT](LICENSE). The names Phevere, Holarky and knowrld and their logos are not covered; see [TRADEMARKS.md](TRADEMARKS.md). The apps bundle eSpeak NG under GPL-3.0-or-later ([terms](apps/mobile/ANDROID.md)), and the sense-frequency table is derived from Princeton WordNet 3.1 under the WordNet licence.
+[MIT](LICENSE). The names Phevere, Holarky and knowrld and their logos are not covered; see [TRADEMARKS.md](TRADEMARKS.md). Dictionary text from Wiktionary and Wikipedia is under CC BY-SA 4.0. The apps bundle eSpeak NG under GPL-3.0-or-later ([terms](apps/mobile/ANDROID.md)), and the sense-frequency table is derived from Princeton WordNet 3.1 under the WordNet licence. **Settings → About** lists every data source and its licence.
+
+If Phevere helps you, a [star on GitHub](https://github.com/thd2020/phevere) helps other people find it.

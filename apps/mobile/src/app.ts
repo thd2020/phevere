@@ -2,6 +2,8 @@ import { scrollLexiconTo } from './lexicon-scroll';
 import './platform/configure-core';
 import {
   addVocab,
+  type AboutInfo,
+  systemFromUserAgent,
   morphemeOf,
   dictionaryService,
   fetchSenseImages,
@@ -498,6 +500,28 @@ let toastUndo: (() => void) | null = null;
 let capture: CaptureInfo = { platform: 'web', canDrawOverlays: false };
 /** The Android updater in the full app; null on iOS, in the pop-up and in the browser. */
 let phoneUpdates: PhoneUpdater | null = null;
+
+/** Settings → About; read when the page first opens. */
+let aboutInfo: AboutInfo | null = null;
+
+/**
+ * The installed version: Android asks the package manager (versionName and versionCode);
+ * iOS and the browser build use the version the app was built from (apps/mobile/package.json).
+ */
+async function loadAboutInfo(): Promise<void> {
+  let version = __PHEVERE_VERSION__;
+  let build = '';
+  if (capture.platform === 'android' && hasNativeBridge()) {
+    try {
+      const info = await nativeCall<{ versionName?: string; versionCode?: number }>('updateInfo', {});
+      version = info.versionName || version;
+      build = info.versionCode ? String(info.versionCode) : '';
+    } catch {
+      /* the built-in version stands */
+    }
+  }
+  aboutInfo = { version, build: build || undefined, platform: capture.platform, system: systemFromUserAgent(navigator.userAgent) };
+}
 let accountState: AccountState | null = null;
 /** The account sheet is open from the app bar. */
 let accountOpen = false;
@@ -734,6 +758,7 @@ function paint(): void {
   const deleteCaret = keepDelete ? deleteLive!.selectionStart : null;
   const entering = accountSheetEntering;
   accountSheetEntering = false;
+  const settingsTabsScroll = document.querySelector<HTMLElement>('.settings-tabs')?.scrollLeft ?? 0;
   const hit = lookupPaneHtml();
   if (tab === 'lookup' && scan) {
     paintScan(scan, hit);
@@ -756,6 +781,7 @@ function paint(): void {
             lib,
             phoneUpdates?.state() ?? null,
             learnSettingsInput(),
+            aboutInfo || { version: __PHEVERE_VERSION__, platform: capture.platform },
           )
         : hit;
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
@@ -799,6 +825,7 @@ function paint(): void {
   // A repaint replaces the map's element; release the old 3D renderer straight away.
   disposeNotebookMaps(true);
   if (tab === 'notebook' || tab === 'learn') revealWordsScope();
+  if (tab === 'settings') revealSettingsTab(settingsTabsScroll);
   if (tab === 'notebook') bindNotebookViews();
   if (tab === 'learn') bindLearn();
   lib.inspectorEntering = false;
@@ -905,6 +932,19 @@ function revealWordsScope(): void {
   if (!chip || !bar) return;
   const left = chip.offsetLeft - bar.offsetLeft;
   if (left < bar.scrollLeft || left + chip.offsetWidth > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = left - 16;
+}
+
+/** Settings tabs scroll on a narrow phone: keep where the row was, and bring the open tab into view. */
+function revealSettingsTab(scrollLeft: number): void {
+  const bar = document.querySelector<HTMLElement>('.settings-tabs');
+  const tab = bar?.querySelector<HTMLElement>('[aria-selected="true"]');
+  if (!bar || !tab) return;
+  bar.scrollLeft = scrollLeft;
+  const b = bar.getBoundingClientRect();
+  const t = tab.getBoundingClientRect();
+  const pad = 4;
+  if (t.left - pad < b.left) bar.scrollLeft -= b.left - t.left + pad;
+  else if (t.right + pad > b.right) bar.scrollLeft += t.right - b.right + pad;
 }
 
 /** After a Review paint: the answer box gets the cursor, a listening question plays once. */
@@ -2217,6 +2257,14 @@ function onQueryInput(): void {
 
 async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
   switch (act) {
+    case 'about-link':
+      // The system browser, not the app's WebView.
+      e.preventDefault();
+      if (t.dataset.url) openExternal(t.dataset.url);
+      return;
+    case 'about-copy':
+      await copyText(t.dataset.copy || '');
+      return;
     case 'toast-undo': {
       const undo = toastUndo;
       toastUndo = null;
@@ -2247,11 +2295,12 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'settings-section': {
       const next = t.dataset.section as SettingsSection | undefined;
-      if (next === 'capture' || next === 'learn' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio' || (next === 'updates' && phoneUpdates)) {
+      if (next === 'capture' || next === 'learn' || next === 'notifications' || next === 'sources' || next === 'offline' || next === 'api' || next === 'audio' || next === 'about' || (next === 'updates' && phoneUpdates)) {
         settingsSection = next;
         langMenu = '';
         if (next === 'offline') await refreshPacks();
         if (next === 'audio') await refreshVoice();
+        if (next === 'about' && !aboutInfo) await loadAboutInfo();
         paint();
       }
       return;
