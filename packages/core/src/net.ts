@@ -15,9 +15,13 @@
  *   answer wins: a hedged request, as in Dean and Barroso, "The Tail at Scale" (CACM, 2013). The
  *   backup goes out only for the slowest few per cent of requests, and it turns a request that
  *   hangs until its timeout into one that costs a round trip more than usual.
- * - Wikimedia asks API clients for at most three requests at a time to one host. A backup request
- *   waits for a free one of those three, and requests that ask for a slot (`slot`, the pictures'
- *   requests) queue for one, the `later` ones behind the rest. The lookup's own requests never
+ * - Wikimedia asks API clients for at most three requests at a time to one host. Requests that ask
+ *   for a slot (`slot`, the pictures' requests) queue for one, the `later` ones behind the rest.
+ *   A backup request takes over its first request's slot: the first, unanswered after a round
+ *   trip, is presumed lost and runs on without one, as a TCP sender leaves a segment it presumes
+ *   lost out of the data in flight (RFC 6675, section 4). Three requests that hang at the start
+ *   of a session would otherwise hold all three slots until their timeouts, and every picture
+ *   behind them would wait that long. The lookup's own requests never
  *   wait for a slot, so the first definitions are as fast as before.
  *   https://www.mediawiki.org/wiki/API:Etiquette, https://www.mediawiki.org/wiki/Wikimedia_APIs/Rate_limits
  * - A request waiting for a slot whose answer nobody wants any more (`wanted`: the cards it was
@@ -263,7 +267,14 @@ export function trackHttp(inner: HttpClient): HttpClient {
     // left out of the round trips, as Karn's algorithm leaves out a retransmitted segment's: a
     // request that hung for six seconds would otherwise raise the host's RTO to six seconds, and
     // the next hung request would wait that long for its backup.
-    const once = async (queued: boolean, took = false, onSend?: () => void, decided?: () => boolean): Promise<T> => {
+    // `lease.held`: the request still counts towards the host's slots. A backup takes it over.
+    const once = async (
+      queued: boolean,
+      took = false,
+      onSend?: () => void,
+      decided?: () => boolean,
+      lease: { held: boolean } = { held: true },
+    ): Promise<T> => {
       // A request dropped while it queued was never sent: it holds no slot and says nothing about
       // the host, so it leaves before the try below.
       if (queued && !took) await takeSlot(s, slot === 'later', wanted);
@@ -291,7 +302,10 @@ export function trackHttp(inner: HttpClient): HttpClient {
         throw err;
       } finally {
         waiting.delete(mark);
-        releaseSlot(s);
+        if (lease.held) {
+          lease.held = false;
+          releaseSlot(s);
+        }
       }
     };
     const method = String(rest.method || 'GET').toUpperCase();
@@ -350,11 +364,26 @@ export function trackHttp(inner: HttpClient): HttpClient {
         };
         s.onFirstAnswer.add(rearm);
       };
+      const send2 = () => {
+        pending += 1;
+        once(false, true, undefined, () => done).then(
+          (v) => settle(true, v),
+          (e) => settle(false, e),
+        );
+      };
       const backup = () => {
         unhook();
         if (done) return;
-        // The backup takes one of the host's three slots, waiting for one if all are open. One
-        // for an answer nobody wants any more is not sent; the first request runs on.
+        // One for an answer nobody wants any more is not sent; the first request runs on.
+        if (wanted && !wanted()) return;
+        // The first request, unanswered after a round trip, is presumed lost: the backup takes
+        // over its slot, and the first runs on without one.
+        if (firstLease.held) {
+          firstLease.held = false;
+          send2();
+          return;
+        }
+        // The first request let go of its slot some other way: the backup waits for a free one.
         backupWaiting = true;
         takeSlot(s, false, wanted).then(
           () => {
@@ -363,11 +392,7 @@ export function trackHttp(inner: HttpClient): HttpClient {
               releaseSlot(s);
               return;
             }
-            pending += 1;
-            once(false, true, undefined, () => done).then(
-              (v) => settle(true, v),
-              (e) => settle(false, e),
-            );
+            send2();
           },
           (err) => {
             backupWaiting = false;
@@ -379,7 +404,8 @@ export function trackHttp(inner: HttpClient): HttpClient {
           },
         );
       };
-      once(!!slot, false, arm, () => done).then(
+      const firstLease = { held: true };
+      once(!!slot, false, arm, () => done, firstLease).then(
         (v) => settle(true, v),
         (e) => {
           // A first request that failed outright before its backup was due is not hedged.

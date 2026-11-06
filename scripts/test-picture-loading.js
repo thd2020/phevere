@@ -6,7 +6,8 @@
  *   one that fails that too is reported as failed and not asked for again at once, unless a
  *   card asks again on purpose. At most 48 blob URLs are kept; older ones are revoked.
  * - packages/core/src/net.ts: a request still waiting for one of its host's slots is dropped when
- *   nobody wants it any more, holds no slot and leaves the host's round trips alone.
+ *   nobody wants it any more, holds no slot and leaves the host's round trips alone. A request
+ *   presumed lost hands its slot to its backup, so hung requests do not hold every slot.
  * - packages/core/src/sense-images.ts: a card that scrolls away (its signal aborted) sends none of
  *   its queued requests, and the next card for that word asks again instead of reusing the
  *   cut-short result. A card asking again after a failed search builds the failed pool again.
@@ -254,13 +255,48 @@ async function cardScrolledAway() {
   assert.ok(kettle(sent.slice(sentBefore)).length > 0, 'the word is asked for again');
 }
 
+/**
+ * Three requests that hang at the start of a session hold the host's three slots only until
+ * their backups go out: each backup takes over its request's slot, so a fourth request is not
+ * held up until the hung ones time out.
+ */
+async function hungRequestsLetGo() {
+  const net = loadModule('net.ts', {});
+  let n = 0;
+  const inner = {
+    requestJson: async (url, o) => {
+      n += 1;
+      const hung = n <= 3;
+      await new Promise((r) => setTimeout(r, hung ? (o && o.timeoutMs) || 8000 : 50));
+      if (hung) throw Object.assign(new Error('Request failed: timed out'), { code: 'TIMEOUT' });
+      return { url };
+    },
+    requestText: async () => ({ ok: false, status: 404, text: '' }),
+    requestBytes: async () => ({ ok: false, status: 404, bytes: new Uint8Array(), contentType: '' }),
+  };
+  const http = net.trackHttp(inner);
+  const host = 'https://commons.example/w/api.php?';
+  const t0 = Date.now();
+  const slow = [1, 2, 3].map((i) => http.requestJson(`${host}a=${i}`, { slot: 'first', timeoutMs: 8000 }));
+  await tick(20);
+  const fourth = http.requestJson(`${host}b=1`, { slot: 'first', timeoutMs: 8000 });
+  await fourth;
+  const took = Date.now() - t0;
+  assert.ok(took < 5000, `the fourth request answered after ${took} ms, not after the hung ones timed out`);
+  await Promise.all(slow);
+  assert.ok(net.inFlight('commons.example') <= 3, 'at most three requests count towards the slots');
+  await new Promise((r) => setTimeout(r, 8200));
+  assert.equal(net.inFlight('commons.example'), 0, 'no slot is left taken once the hung requests end');
+}
+
 (async () => {
+  await hungRequestsLetGo();
   await queuedRequestsDropped();
   await cardScrolledAway();
   await pictureRetries();
   await blobsBounded();
   await failedPoolAskedAgain();
-  console.log('Picture loading passed: failed pictures are asked again and come through the HTTP client last, queued requests for cards scrolled away are dropped, the next card asks again, blob URLs are bounded, and a card asking again reaches the network.');
+  console.log('Picture loading passed: hung requests hand their slots to their backups, failed pictures are asked again and come through the HTTP client last, queued requests for cards scrolled away are dropped, the next card asks again, blob URLs are bounded, and a card asking again reaches the network.');
 })().catch((e) => {
   console.error(e);
   process.exit(1);
