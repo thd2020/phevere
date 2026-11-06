@@ -43,7 +43,8 @@ async function start(): Promise<void> {
   let zoom = 1;
   const layout = () => {
     const avail = Math.max(120, stage.clientWidth - 32);
-    const w = Math.min(page.width, avail) * zoom;
+    // One picture pixel to one screen pixel at most, so a scanned region shows at the size it had on screen.
+    const w = Math.min(page.width / (window.devicePixelRatio || 1), avail) * zoom;
     frame.style.width = `${w}px`;
     frame.style.height = `${(w * page.height) / page.width}px`;
     view.fit();

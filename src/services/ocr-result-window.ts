@@ -45,11 +45,14 @@ export function openOcrResultWindow(opts: {
 }): BrowserWindow {
   wire();
   const point = opts.near || screen.getCursorScreenPoint();
-  const area = screen.getDisplayNearestPoint(point).workArea;
+  const display = screen.getDisplayNearestPoint(point);
+  const area = display.workArea;
   const barH = 56;
   const pad = 32;
-  const w = Math.round(Math.min(area.width * 0.9, Math.max(560, opts.page.width + pad + 16)));
-  const fitW = Math.min(opts.page.width, w - pad);
+  // The picture's pixels are screen pixels; the window is sized in DIPs.
+  const picW = opts.page.width / (display.scaleFactor || 1);
+  const w = Math.round(Math.min(area.width * 0.9, Math.max(560, picW + pad + 16)));
+  const fitW = Math.min(picW, w - pad);
   const h = Math.round(Math.min(area.height * 0.9, Math.max(420, (fitW * opts.page.height) / Math.max(1, opts.page.width) + barH + pad + 40)));
   const x = Math.round(Math.min(Math.max(area.x, point.x - w / 2), area.x + area.width - w));
   const y = Math.round(Math.min(Math.max(area.y, point.y - h / 2), area.y + area.height - h));
