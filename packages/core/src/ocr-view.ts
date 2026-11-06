@@ -777,6 +777,15 @@ export class OcrView {
     const topPts = [...some(above), ...some(half(left, true)), ...some(half(right, true)), ...inTop];
     const botPts = [...some(below), ...some(half(left, false)), ...some(half(right, false)), ...inBottom];
     if (!topPts.length || !botPts.length) return null;
+    // Between the letters of a screenshot is one colour, give or take JPEG noise. When most of
+    // the inside is one colour, that is the background, whatever a border, a neighbouring bar
+    // or the gap between table rows puts on the ring.
+    const inside = [...inTop, ...inBottom];
+    if (inside.length) {
+      const c = commonest(inside);
+      const close = (q: number[]) => Math.abs(q[0] - c[0]) + Math.abs(q[1] - c[1]) + Math.abs(q[2] - c[2]) < 24;
+      if (inside.filter(close).length >= inside.length * 0.55) return { top: c, bottom: c, patch: null };
+    }
     const top = commonest(topPts), bottom = commonest(botPts);
     // A screenshot's background is one exact colour; a photo's spreads over many shades.
     const all = [...topPts, ...botPts];
