@@ -1453,7 +1453,7 @@ function bindScanViewer(view: HTMLElement): void {
   stage.addEventListener('pointerdown', (e) => {
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pts.size === 2) { pinch = { d: dist(), s }; pan = null; }
-    else if (pts.size === 1) pan = { x: e.clientX, y: e.clientY, ox: x, oy: y, moved: false };
+    else if (pts.size === 1 && !(e.target as HTMLElement | null)?.closest?.('[contenteditable]')) pan = { x: e.clientX, y: e.clientY, ox: x, oy: y, moved: false };
   });
   stage.addEventListener('pointermove', (e) => {
     if (!pts.has(e.pointerId)) return;
@@ -1476,7 +1476,9 @@ function bindScanViewer(view: HTMLElement): void {
     pts.delete(e.pointerId);
     if (pts.size < 2) pinch = null;
     if (pts.size === 0) {
-      if (!wasPan && e.type === 'pointerup') {
+      // A tap inside a line being edited places the caret or selects a word; it never zooms.
+      const inField = !!(e.target as HTMLElement | null)?.closest?.('[contenteditable]');
+      if (!wasPan && e.type === 'pointerup' && !inField) {
         const now = Date.now();
         if (now - lastTap.t < 300 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 24) {
           window.clearTimeout(tapTimer);
