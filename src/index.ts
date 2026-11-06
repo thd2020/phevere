@@ -24,7 +24,8 @@ import {
 import { contextCaptureHub, ContextEvent, selectionToContext } from './services/context-capture';
 import { captureScreenRegion, captureAroundPoint, canCaptureWithoutPrompt } from './services/screen-capture';
 import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile, resetOcrEngine, recognizeOcrPage, ocrPageLineCount, type OcrPageResult } from './services/ocr-engine';
-import { openOcrResultWindow } from './services/ocr-result-window';
+import { configureOcrResultTranslate, openOcrResultWindow } from './services/ocr-result-window';
+import { pageTarget, translateUnit } from '@phevere/core/ocr-translate';
 import { isLookupWorthy } from './services/text-normalize';
 import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
 import { placePopupNearPoint, eventCoordSpace, physicalToDip, setWindowBounds, type ScreenCoordSpace } from './services/popup-placement';
@@ -814,6 +815,16 @@ ipcMain.handle('quick-translate-set', (_e, patch: Partial<QuickTranslatePrefs>) 
   if (quickPrefs.enabled && !registeredQuickReplaceAccelerator) inUse.push('replace');
   if (quickPrefs.enabled && !registeredQuickPanelAccelerator) inUse.push('panel');
   return { success: true, prefs: quickPrefs, taken: inUse };
+});
+
+// The scanned-text window translates into the quick-translation target, with the Translation engine from Settings.
+configureOcrResultTranslate({
+  languages: () => dictionaryService.getSupportedLanguages().map((l) => ({ code: l.code, name: l.name })),
+  target: (sample) => pageTarget(dictionaryService, sample, quickPrefs.to),
+  setTarget: (code) => {
+    if (code) quickPrefs = saveQuickTranslatePrefs({ to: code }, quickPrefs);
+  },
+  translate: (text, to) => translateUnit(dictionaryService, text, to, loadTranslationPrefs().provider),
 });
 
 function tryRegisterAccelerator(accelerator: string): boolean {

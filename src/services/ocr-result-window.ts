@@ -5,16 +5,34 @@
 import { BrowserWindow, clipboard, dialog, ipcMain, nativeImage, screen } from 'electron';
 import * as fs from 'fs';
 import type { OcrPage } from '@phevere/core/ocr-layout';
+import type { UnitResult } from '@phevere/core/ocr-translate';
 
 type Entry = { image: string; page: OcrPage };
 
+/** Translate in place: the main process owns the engines and the quick-translation target. */
+export interface OcrResultTranslate {
+  languages(): { code: string; name: string }[];
+  target(sample: string): Promise<string>;
+  setTarget(code: string): void;
+  translate(text: string, to: string): Promise<UnitResult>;
+}
+
 const pages = new Map<number, Entry>();
 let wired = false;
+let translate: OcrResultTranslate | null = null;
+
+export function configureOcrResultTranslate(t: OcrResultTranslate): void {
+  translate = t;
+}
 
 function wire(): void {
   if (wired) return;
   wired = true;
   ipcMain.handle('ocr-result-data', (e) => pages.get(e.sender.id) || null);
+  ipcMain.handle('ocr-result-tr-info', () => ({ languages: translate ? translate.languages() : [] }));
+  ipcMain.handle('ocr-result-tr-target', (_e, sample: string) => (translate ? translate.target(String(sample || '')) : 'en'));
+  ipcMain.handle('ocr-result-tr-set', (_e, code: string) => translate?.setTarget(String(code || '')));
+  ipcMain.handle('ocr-result-tr', (_e, text: string, to: string) => (translate ? translate.translate(String(text || ''), String(to || '')) : null));
   ipcMain.handle('ocr-result-copy-text', (_e, text: string) => {
     clipboard.writeText(String(text || ''));
   });

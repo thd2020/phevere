@@ -8,6 +8,7 @@ import '@phevere/core/ocr-view.css';
 import './ocr-result.css';
 import { OcrView, ocrBarHtml } from '@phevere/core/ocr-view';
 import type { OcrPage } from '@phevere/core/ocr-layout';
+import type { UnitResult } from '@phevere/core/ocr-translate';
 
 const api = (window as any).ocrResultAPI as {
   data: () => Promise<{ image: string; page: OcrPage } | null>;
@@ -15,6 +16,10 @@ const api = (window as any).ocrResultAPI as {
   copyImage: (png: ArrayBuffer) => Promise<void>;
   saveImage: (png: ArrayBuffer) => Promise<{ saved: boolean }>;
   lookup: (x: number, y: number, text: string) => void;
+  translateInfo: () => Promise<{ languages: { code: string; name: string }[] }>;
+  translateTarget: (sample: string) => Promise<string>;
+  setTranslateTarget: (code: string) => Promise<void>;
+  translate: (text: string, to: string) => Promise<UnitResult>;
 };
 
 const root = document.querySelector<HTMLElement>('.ocr-view')!;
@@ -36,7 +41,8 @@ async function start(): Promise<void> {
   if (!data) return;
   const page = data.page;
   const empty = !page.blocks.length;
-  root.querySelector('.ocr-window__bar')!.innerHTML = ocrBarHtml({ saveImage: true, copyImage: true, empty });
+  const { languages } = await api.translateInfo().catch(() => ({ languages: [] as { code: string; name: string }[] }));
+  root.querySelector('.ocr-window__bar')!.innerHTML = ocrBarHtml({ saveImage: true, copyImage: true, translate: languages.length > 0, empty });
   img.src = data.image;
   await img.decode().catch((): undefined => undefined);
 
@@ -62,6 +68,14 @@ async function start(): Promise<void> {
       const r = await api.saveImage(await png.arrayBuffer());
       if (r.saved) toast('Saved');
     },
+    translator: languages.length
+      ? {
+          languages,
+          target: (sample) => api.translateTarget(sample),
+          setTarget: (code) => void api.setTranslateTarget(code),
+          translate: (text, to) => api.translate(text, to),
+        }
+      : undefined,
   });
   layout();
   new ResizeObserver(layout).observe(stage);
@@ -99,7 +113,7 @@ async function start(): Promise<void> {
   // Select to look up, as in the main window: a short selection of words opens the pop-up.
   let timer = 0;
   document.addEventListener('mouseup', (e) => {
-    if ((e.target as HTMLElement).closest('button, [contenteditable]')) return;
+    if ((e.target as HTMLElement).closest('button, select, [contenteditable]')) return;
     const text = view.selectionText().trim();
     if (!text || text.length > 80 || !/[\p{L}\p{N}]/u.test(text)) return;
     window.clearTimeout(timer);
