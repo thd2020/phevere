@@ -1,6 +1,12 @@
 import type { Catalog } from '../runtime';
-import { EN } from '../en';
+import common from './common';
+import settings from './settings';
+import desktop from './desktop';
+import main from './main';
+import popup from './popup';
+import notebook from './notebook';
+import lexicon from './lexicon';
+import mobile from './mobile';
 
-// Placeholder until the translation lands.
-const messages: Catalog = { ...EN };
+const messages: Catalog = { ...common, ...settings, ...desktop, ...main, ...popup, ...notebook, ...lexicon, ...mobile };
 export default messages;
