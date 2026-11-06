@@ -548,12 +548,12 @@ let histIndex = -1;
  * The tabs inside a place (Lookup's Dictionary, Translation and Wikipedia, the Words views,
  * Learn's Today and Progress, the Settings sections) are views of it, not steps: Back leaves the
  * place from whichever was showing, as Android's navigation guidance has it for tabs and view
- * switches, and returns to the one last shown. Whatever is open over a place (a menu, a sheet, the language list,
- * the suggestions, a scan, a review, a Wikipedia article) closes first. The start screen, Lookup
- * with Recent, is the root: reaching it starts the history afresh, Back with no steps left goes
- * there, and only there does Back leave the app, as Android's predictive back asks. The native
- * shell is told when the page has nothing to go back to, so the system can show its
- * back-to-home preview.
+ * switches, and returns to the one last shown. Whatever is open over a place (a menu, a sheet,
+ * the language list, the suggestions, a scan, a review, a Wikipedia article, the map's word
+ * panel) closes first. The start screen, Lookup with Recent, is the root: reaching it starts the
+ * history afresh, Back with no steps left goes there, and only there does Back leave the app, as
+ * Android's predictive back asks. The native shell is told when the page has nothing to go back
+ * to, so the system can show its back-to-home preview.
  */
 interface Place {
   tab: Tab;
@@ -793,6 +793,12 @@ function goBack(): boolean {
   if (lib.inspecting) {
     lib.inspecting = null;
     paint();
+    return true;
+  }
+  // The map's word panel, as its own Close does.
+  const mapClose = document.querySelector<HTMLElement>('.nbv-map__panel:not([hidden]) [data-map-act="close"]');
+  if (mapClose) {
+    mapClose.click();
     return true;
   }
   if (scan) {
