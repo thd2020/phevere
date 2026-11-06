@@ -389,11 +389,18 @@ label.sv-row { cursor: pointer; }
 /*
  * Settings → Learn: each number on a card of its own, set as a wheel of large serif numerals
  * (number-wheel.ts). The centre value is heavy and full size; its neighbours turn away above and
- * below, smaller, lighter and fainter, and fade out at the edges. A soft band marks the centre and
- * warms to rust while the wheel is held, focused or typed into. The script moves the numerals frame
- * by frame, so they carry no transition of their own.
+ * below, smaller, lighter and fainter, and fade out at the edges. At rest the type alone marks the
+ * centre, as on the alarm and timer wheels of current phone clocks; a soft rust band appears only
+ * while the wheel is held, focused from the keyboard or typed into. The script moves the numerals
+ * frame by frame, so they carry no transition of their own. On a phone the cards fill the row
+ * (auto-fit), so a lone card spans the screen and its numeral grows with it; in a wider panel they
+ * keep one column width, so a lone countdown lines up with the goals above it.
  */
-.sv .sv-dials { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 164px), 1fr)); gap: 10px; }
+.sv.sv-learn { container-type: inline-size; }
+.sv .sv-dials { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 164px), 1fr)); gap: 10px; }
+@container (min-width: 520px) {
+  .sv .sv-dials { grid-template-columns: repeat(auto-fill, minmax(164px, 1fr)); }
+}
 .sv .sv-dial {
   container-type: inline-size;
   display: grid;
@@ -419,7 +426,7 @@ label.sv-row { cursor: pointer; }
 }
 
 .sv .nw {
-  --nw-size: clamp(52px, 46cqi, 80px);
+  --nw-size: clamp(56px, 44cqi, 96px);
   position: relative;
   display: grid;
   justify-items: center;
@@ -440,8 +447,7 @@ label.sv-row { cursor: pointer; }
   top: var(--nw-size);
   height: calc(var(--nw-size) * 0.94);
   border-radius: 14px;
-  background: var(--sv-paper);
-  box-shadow: inset 0 0 0 1px var(--sv-line-soft);
+  background: transparent;
   transform: translateY(-50%);
   transition: background-color 0.2s var(--sv-ease), box-shadow 0.2s var(--sv-ease), transform 0.16s var(--sv-ease-out);
 }
@@ -475,17 +481,15 @@ label.sv-row { cursor: pointer; }
 .sv .nw__unit { min-height: 1em; font: 600 10.5px/1 var(--sv-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--sv-ink-soft); }
 .sv .nw.is-off .nw__unit { visibility: hidden; }
 
-/* Held, focused from the keyboard or being typed into: the band and the centre number turn rust. */
+/* Held or typed into: a soft rust band behind the centre. Focused from the keyboard: a ring as well. */
 .sv .nw.is-held::before,
 .sv .nw:focus-visible::before,
-.sv .nw.is-typing::before { background: rgb(156 61 0 / 0.07); box-shadow: inset 0 0 0 1.5px rgb(156 61 0 / 0.42); }
+.sv .nw.is-typing::before { background: rgb(156 61 0 / 0.07); }
+.sv .nw:focus-visible::before { box-shadow: inset 0 0 0 1.5px rgb(156 61 0 / 0.42); }
 .sv .nw.is-held::before { transform: translateY(-50%) scale(0.985); }
 .sv .nw.is-held .nw__n.is-centre,
 .sv .nw:focus-visible .nw__n.is-centre { color: var(--sv-rust); }
 .sv .nw.is-dragging { cursor: grabbing; }
-@media (hover: hover) and (pointer: fine) {
-  .sv .nw:hover::before { box-shadow: inset 0 0 0 1px var(--sv-line); }
-}
 
 /* Typing a number: a field over the centre, in the same type. Three classes deep, so the shells'
    own text-field rules (borders, padding, a 14px size) do not reach it. */
