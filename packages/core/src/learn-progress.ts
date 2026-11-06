@@ -459,7 +459,7 @@ export function progressHtml(input: ProgressInput): string {
           const w = t.misses / Math.max(1, t.answers) / worst;
           return `<button type="button" class="lrp-tw${t.leech ? ' is-leech' : ''}" style="--w:${w.toFixed(2)}" data-act="lookup" data-q="${esc(t.lemma)}" title="${t.misses} of ${t.answers} missed, last ${esc(dayLabel(t.lastMiss))}">${esc(t.lemma)}<sup>${t.misses}/${t.answers}</sup></button>`;
         })
-        .join(' ')}</p><p class="lrp-key lrp-key--trouble"><sup>2/5</sup>Missed of answered${s.trouble.some((t) => t.leech) ? '<i class="lrp-key__leech"></i>Leech' : ''}</p>`
+        .join(' ')}</p><p class="lrp-key lrp-key--trouble"><sup>${s.trouble[0].misses}/${s.trouble[0].answers}</sup>Missed of answered${s.trouble.some((t) => t.leech) ? '<i class="lrp-key__leech"></i>Leech' : ''}</p>`
     : '<p class="lrp-none">No trouble words</p>';
 
   const biggest = Math.max(1, ...s.families.map((f) => f.size));
