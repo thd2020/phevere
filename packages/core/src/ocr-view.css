@@ -151,6 +151,7 @@
 .ocr-bar__tr[hidden],
 .ocr-btn[hidden] { display: none; }
 .ocr-bar__tr { color: var(--ocr-ink-soft); font-size: 0.875rem; padding: 6px 4px; font-variant-numeric: tabular-nums; }
+.ocr-bar__said { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* A translated paragraph, painted over its area in the original's colours; ocr-view.ts wraps it. */
 .ocr-tr {

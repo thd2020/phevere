@@ -82,7 +82,8 @@ export function ocrBarHtml(opts: { saveImage?: boolean; copyImage?: boolean; tra
     </div>
     ${opts.translate ? `<button type="button" class="ocr-btn" data-ocr-act="translate" aria-pressed="false">Translate</button>
     <select class="ocr-lang" data-ocr-lang aria-label="Translate to" hidden></select>
-    <span class="ocr-bar__tr" role="status" aria-live="polite"></span>
+    <span class="ocr-bar__tr" aria-hidden="true"></span>
+    <span class="ocr-bar__said" role="status"></span>
     <button type="button" class="ocr-btn" data-ocr-act="retry" hidden>Retry</button>` : ''}
     <span class="ocr-bar__gap"></span>
     <button type="button" class="ocr-btn" data-ocr-act="edit" aria-pressed="false">Edit</button>
@@ -460,7 +461,17 @@ export class OcrView {
       status.textContent = text;
       status.hidden = !text;
     }
-    if (retry) retry.hidden = !canRetry;
+    // A screen reader hears the start and the outcome, not every count in between.
+    const said = this.root.querySelector<HTMLElement>('.ocr-bar__said');
+    if (said) {
+      const say = !on ? '' : /^Translating/.test(text) ? 'Translating' : text || (run?.done ? 'Translated' : '');
+      if (said.textContent !== say) said.textContent = say;
+    }
+    if (retry) {
+      // Retry hides when it has done its work; keyboard focus moves to Translate rather than being lost.
+      if (!canRetry && !retry.hidden && document.activeElement === retry) btn.focus();
+      retry.hidden = !canRetry;
+    }
   }
 
   /**
