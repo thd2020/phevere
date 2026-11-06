@@ -590,6 +590,28 @@ const recBooks = recentListHtml([{ q: 'inspect', at: now }], () => undefined, no
 assert.match(recBooks, /data-act="ub-pick" data-q="inspect" aria-haspopup="menu"/);
 assert.match(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now, { bookPick: true }), /data-act="ub-pick" data-q="braid"[^>]*>.*Add to word book/);
 assert.doesNotMatch(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now), /ub-pick/);
+
+// Copy: every collapsed row copies the word as saved, between Play and Look up; an opened My
+// words row also copies the word with its meaning, keyed by the entry's id.
+{
+  const { vocabCopyText, copyButtonHtml } = load('vocab-view');
+  const order = (html) => ['nb-play', 'nb-copy', 'lookup'].map((a) => html.indexOf(`class="vocab-${a === 'nb-play' ? 'play' : a === 'nb-copy' ? 'open vocab-copy' : 'open'}" data-act="${a}"`));
+  const head = row.slice(0, row.indexOf('vocab-entry__details'));
+  assert.match(head, /data-act="nb-copy" data-q="inspect" title="Copy" aria-label="Copy inspect"/);
+  const at = order(head);
+  assert.ok(at.every((i) => i >= 0) && at[0] < at[1] && at[1] < at[2], 'Play, Copy, Look up');
+  assert.match(rec, /data-act="nb-copy" data-q="gargantuan"/);
+  assert.equal((rec.match(/data-act="nb-copy"/g) || []).length, 3, 'one Copy per recent row');
+  const opened = vocabEntryHtml({ id: 'c1', lemma: 'braid' }, true, now);
+  assert.match(opened, /data-act="nb-copy" data-id="c1">.*Copy with meaning/);
+  assert.match(copyButtonHtml(`rock 'n' roll`), /data-q="rock &#39;n&#39; roll"/);
+  assert.equal(
+    vocabCopyText({ lemma: 'braid', reading: 'US /bɹeɪd/ · UK /breɪd/', partOfSpeech: 'noun', definition: '1. A plait of hair.\n2. A <b>woven</b> band.\n2. A <b>woven</b> band.' }),
+    'braid /bɹeɪd/ n.\n1. A plait of hair.\n2. A woven band.',
+  );
+  assert.equal(vocabCopyText({ lemma: 'holon', definition: 'A whole that is part of a larger whole.' }), 'holon\nA whole that is part of a larger whole.');
+  assert.equal(vocabCopyText({ lemma: ' quark ', definition: '' }), 'quark', 'no meaning saved: the word alone');
+}
 // Index rails stay inside the list as it shows on screen. A list rendered while its tab was
 // hidden measures as 0 by 0, which used to put the rail right under the header, beside the book
 // row and the sort switch.
