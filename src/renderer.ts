@@ -85,6 +85,10 @@ import {
   learnerModel,
   studyPace,
   hintReview,
+  keepDraft,
+  placeTile,
+  returnTile,
+  tileKey,
   armCountdown,
   markHeard,
   singleVoice,
@@ -2425,7 +2429,7 @@ let wbAnalysis: { key: unknown; q: string; view: string; value: ReturnType<typeo
 const wbMeaningInFlight = new Set<string>();
 /** Book words opened on their brief definition, by lowercase headword. */
 const wbOpen = new Set<string>();
-/* Example sentences for the quiz's gap-fill questions, looked up ahead for words held for days. */
+/* Example sentences for the quiz's gap questions, looked up ahead for words already started. */
 const reviewExamples = new Map<string, string[]>();
 const examplesInFlight = new Set<string>();
 
@@ -2438,7 +2442,7 @@ async function prefetchExamples(wait = false): Promise<void> {
   for (let i = nbReview.index + (wait ? 0 : 1); i < nbReview.queue.length && lemmas.length < 3; i++) {
     const e: any = byId.get(nbReview.queue[i]);
     const key = String(e?.lemma || '').toLowerCase();
-    if (!e || !key || reviewExamples.has(key) || examplesInFlight.has(key) || memoryLevel(e) < 2) continue;
+    if (!e || !key || reviewExamples.has(key) || examplesInFlight.has(key) || memoryLevel(e) < 1) continue;
     lemmas.push(String(e.lemma));
   }
   const jobs = lemmas.map(async (lemma) => {
@@ -3096,6 +3100,16 @@ function focusReview(body: HTMLElement): void {
   }
 }
 
+/**
+ * After a letter tile is placed or taken back the row is redrawn; the focus goes to the next
+ * letter left (or the word built), so a keyboard or screen reader carries on from there.
+ */
+function refocusTile(root: ParentNode): void {
+  if (nbReview?.answer) return;
+  const next = root.querySelector<HTMLElement>('.nbv-tiles__bank button.nbv-tile') || root.querySelector<HTMLElement>('.nbv-tiles__built button.nbv-tile');
+  next?.focus({ preventScroll: true });
+}
+
 /** Saves the answered question's grade and moves to the next one. */
 async function commitReview(): Promise<void> {
   const api = (window as any).vocabAPI;
@@ -3127,6 +3141,8 @@ async function commitReview(): Promise<void> {
     console.error('review failed', error);
   }
   advanceReview(nbReview, updated);
+  // The word of the question just left stops, and one still loading never plays over the next.
+  sayLemma.cancel();
   // Today's answers count against the learner's usual day, so the next round plans fewer new words.
   if (learner?.pace) learner.pace.answersToday = (learner.pace.answersToday || 0) + 1;
   answerHistory = null;
@@ -3147,6 +3163,12 @@ function onReviewKey(ev: KeyboardEvent): void {
   const target = ev.target as HTMLElement | null;
   if (target && target.id !== 'nbv-answer' && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
   if (target?.id === 'nbv-answer') return;
+  // Letter tiles from the keyboard: a letter places a tile, Backspace takes the last one back.
+  if (body.querySelector('.nbv-tiles__bank') && !nbReview.answer && (ev.key === 'Backspace' || /^\p{L}$/u.test(ev.key))) {
+    ev.preventDefault();
+    if (reviewArmed(nbReview) && tileKey(nbReview, ev.key)) renderLearn();
+    return;
+  }
   if (ev.key === 'Enter') {
     const next = body.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-reveal"], [data-act="nb-round"]');
     if (!next) return;
@@ -3274,6 +3296,7 @@ function wireNotebookActions(root: HTMLElement): void {
       case 'nb-review-exit':
         // Back to the Learn page. An answer on screen is saved first, as Continue would.
         if (nbReview?.answer) await commitReview();
+        sayLemma.cancel();
         nbReview = null;
         renderLearn();
         document.querySelector('.main-shell')?.scrollTo({ top: 0 });
@@ -3462,9 +3485,22 @@ function wireNotebookActions(root: HTMLElement): void {
       case 'nb-skip':
         if (reviewArmed(nbReview)) answerCurrentReview({});
         return;
+      case 'nb-tile':
+        // Letter tiles: placing the last one answers the question.
+        if (nbReview && reviewArmed(nbReview) && placeTile(nbReview, Number(el.dataset.tile))) {
+          renderLearn();
+          refocusTile(root);
+        }
+        return;
+      case 'nb-tile-out':
+        if (nbReview && returnTile(nbReview, Number(el.dataset.pos))) {
+          renderLearn();
+          refocusTile(root);
+        }
+        return;
       case 'nb-hint':
-        // What is typed so far stays where it matches the answer; the next letter is added.
-        if (nbReview && hintReview(nbReview, root.querySelector<HTMLInputElement>('#nbv-answer')?.value || '')) renderLearn();
+        // One more letter; what is typed stays, and the letter is added when it is the start of the word.
+        if (nbReview && hintReview(nbReview, root.querySelector<HTMLInputElement>('#nbv-answer')?.value ?? undefined)) renderLearn();
         return;
       case 'nb-override':
         if (nbReview) overrideReview(nbReview, el.dataset.mode === 'easy' ? 'easy' : 'flip');
@@ -3480,6 +3516,12 @@ function wireNotebookActions(root: HTMLElement): void {
     const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-act]');
     if (!el || !root.contains(el)) return;
     void run(el, ev);
+  });
+  // The answer box is kept on every keystroke, so a repaint of Learn (a word that finished
+  // playing, a sync, a picture) puts back what was typed.
+  root.addEventListener('input', (ev) => {
+    const input = ev.target as HTMLElement;
+    if (input instanceof HTMLInputElement && input.id === 'nbv-answer') keepDraft(nbReview, input.value);
   });
   // A made book: rename on change of its title, add a word from its form.
   root.addEventListener('change', (ev) => {
@@ -4714,10 +4756,12 @@ const sayLemma = singleVoice({
     }
     return [];
   },
-  playRecording: (src) => playLemmaSrc(src, true),
-  speak: async (lemma) => {
+  playRecording: (src, alive) => (alive() ? playLemmaSrc(src, true) : Promise.resolve()),
+  speak: async (lemma, alive) => {
     const api = window.electronAPI as any;
     const speech = await api?.synthesizeSpeech?.({ text: lemma, lang: 'en' });
+    // A newer press (or the next question) came while the voice was being made: it stays silent.
+    if (!alive()) return;
     if (speech?.ok && speech.dataUrl) await playLemmaSrc(speech.dataUrl, false);
     else showNotification('Could not play pronunciation');
   },
@@ -4734,6 +4778,9 @@ const sayLemma = singleVoice({
 async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise<void> {
   try {
     const api = window.electronAPI as any;
+    // The press counts from now: anything still loading or playing for an earlier one stops, even
+    // while the audio settings are read.
+    sayLemma.cancel();
     lemmaAudioPrefs = (await api?.getAudioPrefs?.()) || { enabled: true, speed: 1, volume: 1 };
     if (lemmaAudioPrefs.enabled === false) return;
     btn?.classList.add('is-speaking');
