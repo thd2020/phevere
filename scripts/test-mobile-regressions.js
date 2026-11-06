@@ -130,9 +130,10 @@ async function startupAndGestures(floatingStrip) {
 }
 
 /**
- * One history for Back in the full app: from Recent, a lookup, a tab and a lookup from that tab
- * are three steps; Back retraces them to Recent and only there lets the app close, and the
- * native shell hears when Back would leave.
+ * One history for Back in the full app. A lookup opened from Recent or from a Words row is a
+ * step; a tab tapped in the bottom bar is not, and Back from it goes to Recent, as with
+ * Android's Navigation library. Only Recent lets the app close, and the native shell hears when
+ * Back would leave.
  */
 async function backHistory() {
   const backFlags = [];
@@ -230,7 +231,7 @@ async function backHistory() {
     steps.push(went ? where() : 'leave');
     if (!went) break;
   }
-  assert.deepEqual(steps, ['notebook', 'lookup apple', 'lookup', 'leave'], 'Back retraces every step to Recent, then leaves');
+  assert.deepEqual(steps, ['notebook', 'lookup', 'leave'], 'a word opened from Words goes back there; Words goes back to Recent, then the app leaves');
   assert.equal(backFlags.at(-1), false);
   // Recent is the root: a lookup from it and Back return to Recent, the next Back leaves.
   tap('lookup', { q: 'plum' });
@@ -239,6 +240,41 @@ async function backHistory() {
   await wait();
   assert.equal(where(), 'lookup');
   assert.equal(window.__pvBack(), false);
+  // Tabs tapped in the bar are not steps: from Learn and then Settings, Back goes to Recent.
+  tap('tab', { tab: 'learn' });
+  await wait();
+  tap('tab', { tab: 'settings' });
+  await wait();
+  assert.equal(where(), 'settings');
+  assert.equal(window.__pvBack(), true);
+  await wait();
+  assert.equal(where(), 'lookup', 'Back from a bar tab goes to Recent');
+  assert.equal(window.__pvBack(), false);
+  // A word left on Lookup, then Words, then Lookup from the bar: Back goes to Recent, not Words.
+  tap('lookup', { q: 'date' });
+  await wait();
+  tap('tab', { tab: 'notebook' });
+  await wait();
+  tap('tab', { tab: 'lookup' });
+  await wait();
+  assert.equal(where(), 'lookup date');
+  assert.equal(window.__pvBack(), true);
+  await wait();
+  assert.equal(where(), 'lookup');
+  // Re-tapping the tab already shown leaves nothing behind: a word opened from Words after it
+  // still goes back to Words.
+  tap('tab', { tab: 'notebook' });
+  await wait();
+  tap('tab', { tab: 'notebook' });
+  await wait();
+  tap('lookup', { q: 'lime' });
+  await wait();
+  assert.equal(window.__pvBack(), true);
+  await wait();
+  assert.equal(where(), 'notebook');
+  assert.equal(window.__pvBack(), true);
+  await wait();
+  assert.equal(where(), 'lookup');
   // The bar's back arrow takes back the step that led to the word, as Back would.
   tap('lookup', { q: 'fig' });
   await wait();

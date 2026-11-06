@@ -548,6 +548,10 @@ let histIndex = -1;
  * One history for the system Back (Android's button and gesture, the iPhone's edge swipe), as a
  * browser keeps one for its pages: every move to another place is a step, and Back retraces the
  * steps one at a time. A place is a tab of the bar, the word on Lookup, or the word-book library.
+ * Moving to a place from the content (a word opened from a Words row, a card, the map, Learn or
+ * a link) is a step; tapping a tab in the bar is not. As in Material's bottom navigation and
+ * Android's Navigation library, a bar tab starts the history afresh, so Back from Words, Learn
+ * or Settings goes to the start screen.
  * The tabs inside a place (Lookup's Dictionary, Translation and Wikipedia, the Words views,
  * Learn's Today and Progress, the Settings sections) are views of it, not steps: Back leaves the
  * place from whichever was showing, as Android's navigation guidance has it for tabs and view
@@ -580,6 +584,11 @@ let here: Place | null = null;
  * that led to the current word when it can.
  */
 let navMove: 'quiet' | 'trail' | null = null;
+/**
+ * The bar tab just tapped. As Android's Navigation library does for a bottom bar, choosing a
+ * tab drops the history: Back from it goes to the start screen, and from there leaves the app.
+ */
+let barTab: Tab | null = null;
 
 /** "ob-" and "ob" are two pages: the marks of a word part stay in the key. */
 function foldQuery(v: string): string {
@@ -627,14 +636,17 @@ function notePlace(): void {
     here = now;
     return;
   }
+  const chosen = barTab === now.tab;
+  barTab = null;
   if (samePlace(now, here)) {
     // A repaint, or another tab of the same place: Back returns to the tab last shown.
     here = { ...now, scroll: here.scroll };
     return;
   }
-  if (now.tab === 'lookup' && !now.query) {
+  if (chosen || (now.tab === 'lookup' && !now.query)) {
     // The start screen is the root of the history, as Android's start destination is: from
-    // there Back leaves the app, however it was reached.
+    // there Back leaves the app, however it was reached. A tab chosen in the bar starts afresh
+    // too; with no steps, Back goes from it to the start screen.
     backStack.length = 0;
   } else if (move === 'trail') {
     const top = backStack[backStack.length - 1];
@@ -2534,6 +2546,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     }
     case 'tab':
       tab = (['notebook', 'learn', 'settings'] as const).find((id) => id === t.dataset.tab) || 'lookup';
+      // A bar tab is not a step: the history starts afresh from it (see notePlace).
+      barTab = tab;
       await loadTab(tab);
       paint();
       return;
