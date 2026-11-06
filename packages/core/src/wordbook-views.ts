@@ -6,7 +6,8 @@
  *
  * Hooks: wb-scope (data-scope), wb-library, wb-sub and wb-unsub (data-book), wb-save and
  * wb-known (data-q, data-known), wb-more, wb-sort (data-sort: book, recent or az), wb-expand
- * (data-q) to open a row on its brief definition, and lookup (data-q).
+ * (data-q) to open a row on its brief definition, nb-copy (data-q) to copy the word, and
+ * lookup (data-q).
  * The open list's chip in the switcher carries wb-menu (data-scope), which opens the list's
  * own menu (`bookMenuItems`): Export, Export for Anki and, for a book, Remove or Delete, as
  * Anki's deck menu and Quizlet's set menu hold them. The library's wb-import imports a file,
@@ -34,7 +35,7 @@ import {
 } from './wordbooks';
 import { bookWordKey, type UserBook } from './wordbook-store';
 import { siteIconUrl, siteMonogram } from './source-context';
-import { addToBookButtonHtml, compareAz, vocabReadings, vocabSenses } from './vocab-view';
+import { addToBookButtonHtml, compareAz, copyButtonHtml, vocabReadings, vocabSenses } from './vocab-view';
 import type { MenuItem } from './popover-menu';
 
 const ICON = {
@@ -261,7 +262,7 @@ export function wordbookListHtml(
         <button type="button" class="wb-row__word" data-act="wb-expand" data-q="${q}" aria-expanded="${open}">${q}</button>
         ${badgesHtml(e.books, except)}
         <span class="wb-state wb-state--${st}">${STATUS_LABEL[st]}</span>
-        <span class="wb-row__acts"><button type="button" class="wb-act" data-act="lookup" data-q="${q}" title="Look up" aria-label="Look up ${q}">${ICON.lookup}</button>${known}${opts.bookPick ? addToBookButtonHtml(e.lemma, 'wb-act') : ''}${save}${
+        <span class="wb-row__acts">${copyButtonHtml(e.lemma, 'wb-act wb-copy')}<button type="button" class="wb-act" data-act="lookup" data-q="${q}" title="Look up" aria-label="Look up ${q}">${ICON.lookup}</button>${known}${opts.bookPick ? addToBookButtonHtml(e.lemma, 'wb-act') : ''}${save}${
           made
             ? `<button type="button" class="wb-act wb-act--drop" data-act="ub-drop" data-book="${esc(String(opts.scope))}" data-q="${q}" title="Remove from this book" aria-label="Remove ${q} from this book">${ICON.close}</button>`
             : ''
