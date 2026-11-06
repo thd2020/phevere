@@ -13,8 +13,9 @@ export interface LearnPrefs {
   speaking: boolean;
 }
 
-/** The countdowns Settings offers, in seconds; 0 is Off. */
-export const COUNTDOWN_CHOICES = [0, 5, 8, 10, 15, 20, 30] as const;
+/** The countdown Settings offers runs from 5 to 30 seconds; 0 is Off. */
+export const COUNTDOWN_MIN = 5;
+export const COUNTDOWN_MAX = 30;
 
 export const DEFAULT_LEARN_PREFS: LearnPrefs = { countdown: 0, speaking: true };
 
@@ -29,7 +30,7 @@ export function readLearnPrefs(raw: string | null | undefined): LearnPrefs {
   }
   const n = Math.round(Number(data.countdown));
   return {
-    countdown: Number.isFinite(n) && n > 0 ? Math.min(120, n) : 0,
+    countdown: Number.isFinite(n) && n > 0 ? Math.max(COUNTDOWN_MIN, Math.min(COUNTDOWN_MAX, n)) : 0,
     speaking: typeof data.speaking === 'boolean' ? data.speaking : DEFAULT_LEARN_PREFS.speaking,
   };
 }

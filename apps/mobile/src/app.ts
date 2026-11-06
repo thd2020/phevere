@@ -126,6 +126,7 @@ import {
   patchApiKeyCard,
   type ApiProviderId,
   parseGoal,
+  wireNumberWheels,
   microphoneAvailable,
   readLearnPrefs,
   watchMicrophone,
@@ -2800,15 +2801,6 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       paint();
       return;
     }
-    case 'learn-goal': {
-      // A preset in Settings → Learn; the radio's own click, not its label's.
-      if (!(t instanceof HTMLInputElement)) return;
-      const goal = parseGoal(t.value);
-      if (goal == null) return;
-      await setLearnGoal(t.dataset.book || '', goal);
-      paint();
-      return;
-    }
     case 'wb-expand': {
       const word = t.dataset.q || '';
       const key = word.toLowerCase();
@@ -3224,15 +3216,16 @@ function onChange(e: Event): void {
     keepDraft(nbState.review, (el as HTMLInputElement).value);
     return;
   }
-  // Settings → Learn: a typed goal counts once the field is left or Enter is pressed.
-  if (el.dataset.act === 'learn-goal-input') {
+  // Settings → Learn: a number wheel sends change once it settles. It already shows the value, so
+  // saving it does not repaint (a repaint would take the wheel away from a finger or the keyboard).
+  if (el.dataset.act === 'learn-goal') {
     if (e.type !== 'change') return;
-    const goal = parseGoal((el as HTMLInputElement).value);
-    if (goal != null) void setLearnGoal(el.dataset.book || '', goal).then(paint);
+    const goal = parseGoal(el.dataset.value);
+    if (goal != null) void setLearnGoal(el.dataset.book || '', goal);
     return;
   }
   if (el.dataset.act === 'learn-countdown') {
-    if (e.type === 'change') saveLearnPrefs({ countdown: Number((el as HTMLSelectElement).value) || 0 });
+    if (e.type === 'change') saveLearnPrefs({ countdown: Number(el.dataset.value) || 0 });
     return;
   }
   if (el.id === 'account-delete-email') {
@@ -3406,6 +3399,7 @@ export async function startApp(): Promise<void> {
   root.addEventListener('submit', onSubmit);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onChange);
+  wireNumberWheels(root);
   root.addEventListener('focusin', (e) => {
     if ((e.target as HTMLElement).id === 'q' && (e.target as HTMLInputElement).value.trim() && !suggestHeld) onQueryInput();
   });
