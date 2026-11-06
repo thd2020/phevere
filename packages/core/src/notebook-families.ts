@@ -11,7 +11,8 @@
  * grouping ends with the words it could not place, so the whole notebook is always reachable.
  */
 import type { Morph, MorphKind } from './morphology';
-import { cachedEtymon, cachedRootGloss, traceEtymons, traceRootGlosses, type WordEtymon } from './notebook-etymology';
+import { languageName } from './etymology';
+import { cachedEtymon, cachedRootGloss, sourcePageTitle, traceEtymons, traceRootGlosses, type WordEtymon } from './notebook-etymology';
 import { clean, esc, revealBelow, scrollerOf, type Family, type FamilyGrouping, type NotebookAnalysis, type TreeNode, type WordInfo } from './notebook-shared';
 
 const GROUP_LABEL: Record<FamilyGrouping, string> = {
@@ -215,6 +216,68 @@ export function deepRootFamilies(a: NotebookAnalysis, etymon: EtymonLookup = cac
     .sort((x, y) => y.ids.length - x.ids.length || x.label.localeCompare(y.label));
 }
 
+/* --------------------------------------------------------- shared sources */
+
+/** The language of a source word as the card names it: the stages of Latin and Greek are one. */
+function sourceOrigin(code: string): string {
+  const name = languageName(code) || '';
+  if (!name || name === code) return '';
+  if (/\bLatin$/.test(name)) return 'Latin';
+  if (/\bGreek$/.test(name)) return 'Greek';
+  return name;
+}
+
+/**
+ * Saved words that came from the same earlier word, which share its root whether or not the
+ * spelling shows one the morpheme tables know: "cortex" and "cortical" from Latin cortex,
+ * "gilt" and "gilded" from Old English gyldan, "attest" and "attested" from Latin attēstor.
+ * Each family is named after the oldest recorded word its members share. Families the
+ * spelling already groups (`morph`) are left to those, and a family that only repeats
+ * another one's words is dropped.
+ */
+export function sourceFamilies(a: NotebookAnalysis, etymon: EtymonLookup = cachedEtymon, morph: Family[] = []): Family[] {
+  const bySource = new Map<string, { code: string; term: string; ids: string[]; depth: number }>();
+  for (const w of a.words.values()) {
+    const sources = etymon(clean(w.entry.lemma))?.sources || [];
+    sources.forEach(([code, term], depth) => {
+      const bare = term.replace(/^\*/, '');
+      // Affixes and one- or two-letter words ("ex", "re-") join words that share only a prefix,
+      // and a list of spellings ("stutten, stoten") is not one word.
+      if (/^-|-$/.test(bare) || [...bare].length < 3 || /[,;]/.test(bare)) return;
+      const key = `${code}:${sourcePageTitle(code, term).toLowerCase() || bare.toLowerCase()}`;
+      let s = bySource.get(key);
+      if (!s) {
+        s = { code, term, ids: [], depth };
+        bySource.set(key, s);
+      }
+      if (!s.ids.includes(w.entry.id)) s.ids.push(w.entry.id);
+      s.depth = Math.max(s.depth, depth);
+    });
+  }
+  const sameIds = (x: string[]) => [...x].sort().join('\n');
+  const covered = morph.map((f) => new Set(f.ids));
+  // Of the sources a set of words shares, keep the oldest one that is recorded, not reconstructed.
+  const best = new Map<string, { code: string; term: string; ids: string[]; depth: number }>();
+  for (const s of bySource.values()) {
+    if (s.ids.length < 2) continue;
+    if (covered.some((c) => s.ids.every((id) => c.has(id)))) continue;
+    const k = sameIds(s.ids);
+    const had = best.get(k);
+    const rank = (x: typeof s) => (x.code.endsWith('-pro') ? -100 : 0) + x.depth;
+    if (!had || rank(s) > rank(had)) best.set(k, s);
+  }
+  return [...best.values()]
+    // Shown as dictionaries print it: Latin keeps its long marks, Greek drops the short marks.
+    .map((s): Family => ({ key: `src:${s.code}:${s.term}`, kind: 'root', label: s.term.normalize('NFD').replace(/̆/g, '').normalize('NFC'), gloss: '', origin: sourceOrigin(s.code), ids: s.ids }))
+    .sort((x, y) => y.ids.length - x.ids.length || x.label.localeCompare(y.label));
+}
+
+/** Roots: the classical roots the spelling shows, then the earlier words saved words share. */
+export function rootFamilies(a: NotebookAnalysis, etymon: EtymonLookup = cachedEtymon): Family[] {
+  const morph = a.families.filter((f) => f.kind === 'root');
+  return [...morph, ...sourceFamilies(a, etymon, morph)];
+}
+
 /* ---------------------------------------------------------------- origins */
 
 interface OriginGroup {
@@ -366,7 +429,7 @@ function collectIds(n: TreeNode, out: Set<string>): void {
 export function familyGroupings(a: NotebookAnalysis, etymon: EtymonLookup = cachedEtymon): FamilyGrouping[] {
   const has = (k: MorphKind) => a.families.some((f) => f.kind === k);
   const out: FamilyGrouping[] = [];
-  if (has('root')) out.push('root');
+  if (rootFamilies(a, etymon).length) out.push('root');
   if (deepRootFamilies(a, etymon).length) out.push('deep');
   if (has('prefix')) out.push('prefix');
   if (has('suffix')) out.push('suffix');
@@ -405,7 +468,7 @@ export function familiesHtml(a: NotebookAnalysis, grouping: FamilyGrouping, opts
     o.placed.forEach((id) => placed.add(id));
     rest = 'Origin not known yet';
   } else {
-    const fams = g === 'deep' ? deepRootFamilies(a, etymon) : a.families.filter((f) => f.kind === g);
+    const fams = g === 'deep' ? deepRootFamilies(a, etymon) : g === 'root' ? rootFamilies(a, etymon) : a.families.filter((f) => f.kind === g);
     const specs = fams.map((f): CardSpec => {
       f.ids.forEach((id) => placed.add(id));
       return {
@@ -414,7 +477,8 @@ export function familiesHtml(a: NotebookAnalysis, grouping: FamilyGrouping, opts
         gloss: g === 'deep' ? cachedRootGloss(f.label) : f.gloss,
         origin: g === 'deep' ? '' : f.origin,
         words: byLemma(a, f.ids),
-        highlight: g === 'deep' ? undefined : ({ kind: f.kind, label: f.label } as Morph),
+        // A shared earlier word is not a part of the spelling, so nothing in the words is marked.
+        highlight: g === 'deep' || f.key.startsWith('src:') ? undefined : ({ kind: f.kind, label: f.label } as Morph),
         forms: g === 'deep' ? undefined : formsOf(f as Family & { forms?: unknown }),
       };
     });

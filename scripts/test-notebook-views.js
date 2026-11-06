@@ -555,8 +555,43 @@ const ne = load('notebook-etymology');
 const chainOf = (wt) => ety.buildEtymology(`==English==\n===Etymology===\n${wt}\n`)?.chain;
 assert.deepEqual(
   ne.etymonFromChain(chainOf('From {{inh|en|enm|edifice}}, from {{der|en|fro|edifice}}, from {{der|en|la|aedificium}}. {{root|en|ine-pro|*dʰeh₁-}}')),
-  { origin: 'Latin', via: ['French'], roots: ['*dʰeh₁-'] },
+  { origin: 'Latin', via: ['French'], roots: ['*dʰeh₁-'], sources: [['enm', 'edifice'], ['fro', 'edifice'], ['la', 'aedificium']] },
 );
+// The pages of the words a word came from, and the root such a page names.
+assert.equal(ne.sourcePageTitle('la', 'attēstor'), 'attestor');
+assert.equal(ne.sourcePageTitle('ang', 'ġyldan'), 'gyldan');
+assert.equal(ne.sourcePageTitle('grc', 'σῠ́νᾰψῐς'), 'σύναψις');
+assert.equal(ne.sourcePageTitle('gem-pro', '*gulþą'), 'Reconstruction:Proto-Germanic/gulþą');
+assert.deepEqual(
+  ne.rootsOnSourcePage('==Latin==\n===Etymology===\nFrom {{af|la|cerebrum}}.\n{{root|la|ine-pro|*ḱerh₂-}}\n==Italian==\n{{root|it|ine-pro|*wrong-}}\n', 'la'),
+  ['*ḱerh₂-'],
+  'the Latin section only',
+);
+assert.deepEqual(ne.rootsOnSourcePage('===Etymology===\nFrom {{inh|gem-pro|ine-pro|*ǵʰelh₃-}}.', 'gem-pro'), ['*ǵʰelh₃-']);
+// Saved words from the same earlier word share its root, even when no spelled root shows it:
+// the family is named after the oldest recorded word they share.
+{
+  const shared = views.analyzeNotebook([
+    { id: 'c1', lemma: 'cortex' },
+    { id: 'c2', lemma: 'cortical' },
+    { id: 'g1', lemma: 'gilt' },
+    { id: 'g2', lemma: 'gilded' },
+    { id: 'x1', lemma: 'squash' },
+    { id: 'x2', lemma: 'allege' },
+  ], () => null);
+  const src = {
+    cortex: { origin: 'Latin', via: [], roots: [], sources: [['la', 'cortex']] },
+    cortical: { origin: 'Latin', via: [], roots: [], sources: [['la-new', 'corticalis'], ['la', 'cortex']] },
+    gilt: { origin: 'Old English', via: [], roots: [], sources: [['enm', 'gilden'], ['ang', 'gyldan'], ['gem-pro', '*gulþijaną']] },
+    gilded: { origin: 'Old English', via: [], roots: [], sources: [['enm', 'gilden'], ['ang', 'ġyldan'], ['gem-pro', '*gulþijaną']] },
+    squash: { origin: 'Latin', via: [], roots: [], sources: [['la', 'ex'], ['la', 'quassō']] },
+    allege: { origin: 'Latin', via: [], roots: [], sources: [['la', 'ex'], ['la', 'lītigō']] },
+  };
+  const fams = views.sourceFamilies(shared, (l) => src[l] || null);
+  assert.deepEqual(fams.map((f) => [f.label, f.origin, f.ids.length]), [['cortex', 'Latin', 2], ['gyldan', 'Old English', 2]], 'a shared prefix like "ex" is no family');
+  assert.ok(views.familyGroupings(shared, (l) => src[l] || null).includes('root'));
+  assert.match(views.familiesHtml(shared, 'root', { etymon: (l) => src[l] || null }), /<b>4<\/b> of 6 words grouped/);
+}
 assert.equal(ne.etymonFromChain(chainOf('{{inh|en|enm|chyrne}}, from {{inh|en|ang|ċyrn}}')).origin, 'Old English');
 // The newer {{ety}} and {{etymon}} templates, and {{ubor}}.
 assert.equal(ne.etymonFromChain(chainOf('{{ety|en|:bor|la:cortex<t:bark>|tree=1}}')).origin, 'Latin');
@@ -592,8 +627,8 @@ assert.strictEqual(views.parseGoal('abc'), null);
 (async () => {
   const now = Date.now();
   const saved = new Map([['phevere.etymons.v1', JSON.stringify({
-    inspect: { origin: 'Latin', via: [], roots: ['*spek-'], at: now },
-    spectator: { origin: 'Latin', via: [], roots: ['*spek-'], at: now },
+    inspect: { origin: 'Latin', via: [], roots: ['*spek-'], at: now, v: 2 },
+    spectator: { origin: 'Latin', via: [], roots: ['*spek-'], at: now, v: 2 },
   })]]);
   ne.setEtymonStore({ get: (k) => saved.get(k) ?? null, set: (k, v) => saved.set(k, v) });
   let requests = 0;
@@ -610,6 +645,27 @@ assert.strictEqual(views.parseGoal('abc'), null);
   await new Promise((r) => setTimeout(r, 500));
   assert.equal(requests, 1, 'the empty gloss is fetched once');
   assert.equal(paints, 1, 'one repaint for the new gloss, then the trace stops');
+
+  // A word whose own page names no root takes the root the page of the word it came from
+  // names; words traced before version 2 are traced again once.
+  const store2 = new Map([['phevere.etymons.v1', JSON.stringify({ cerebrate: { origin: 'Latin', via: [], roots: [], at: now } })]]);
+  ne.setEtymonStore({ get: (k) => store2.get(k) ?? null, set: (k, v) => store2.set(k, v) });
+  const pagesFor = {
+    cerebrate: '==English==\n===Etymology===\nFrom {{der|en|la|cerebrum}} + {{suffix|en||ate}}.\n',
+    cerebrum: '==English==\n===Etymology===\n{{bor|en|la|cerebrum}}\n==Latin==\n===Etymology===\n{{root|la|ine-pro|*ḱerh₂-}}\n',
+  };
+  const asked = [];
+  globalThis.fetch = async (url) => {
+    const titles = decodeURIComponent(String(url).split('&titles=')[1] || '').split('|');
+    asked.push(titles);
+    const pages = titles.map((t) => (pagesFor[t] ? { title: t, revisions: [{ slots: { main: { content: pagesFor[t] } } }] } : { title: t, missing: true }));
+    return { ok: true, text: async () => JSON.stringify({ query: { pages } }) };
+  };
+  await ne.traceEtymons(['cerebrate']);
+  assert.deepEqual(asked, [['cerebrate'], ['cerebrum']]);
+  assert.deepEqual(ne.cachedEtymon('cerebrate').roots, ['*ḱerh₂-']);
+  assert.deepEqual(ne.cachedEtymon('cerebrate').sources, [['la', 'cerebrum']]);
+  assert.equal(await ne.traceEtymons(['cerebrate']), 0, 'traced once');
   console.log('notebook-views: ok');
 })().catch((error) => {
   console.error(error);
