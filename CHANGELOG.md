@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Apps in Sources (2026-11-06): Words → Sources now also groups words saved from an app that shows no web address or document, such as a chat app, under the app's name. On Android the row shows the app's own icon; elsewhere it shows the app's first letter. Like a site or a PDF, an app's words can be made into a word book.
+
 ### Fixed
 
 - Saving from the Android pop-up (2026-11-06): a word saved from the pop-up over another app is now kept. Before, it did not show in My words while the app was open in the background, and the app's next save erased it, so only words saved again inside the app stayed. Now the word is written at once, appears in the open app's My words straight away, and goes out with the next sync. Closing the pop-up right after tapping Save no longer loses the word either.

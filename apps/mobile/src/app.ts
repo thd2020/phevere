@@ -130,8 +130,10 @@ import {
   bookRemovalPrompt,
   bookPickItems,
   openMenu,
+  setAppIconSource,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
+import { appIconSource } from './platform/app-icons';
 import { flushNotebook, onNotebookReloaded } from './platform/sqljs-vocab-db';
 import { playClip, playRecorded, prefetchRecorded, recordedReady, recordedUrls, speakIpa, speakText, stopAudio } from './platform/audio';
 import {
@@ -3120,6 +3122,9 @@ function onSubmit(e: Event): void {
 
 export async function startApp(): Promise<void> {
   installNativeCallbacks();
+  setAppIconSource(appIconSource(() => {
+    if (tab === 'notebook') paint();
+  }));
   // The floating pop-up's own selection bar sends its Phevere item here.
   // Android Back (button or gesture): the page steps back first; native leaves the app only
   // when this returns false.

@@ -60,6 +60,7 @@ async function startupAndGestures(floatingStrip) {
     // Settings → Learn: stored options and the microphone check.
     readLearnPrefs: () => ({ countdown: 0, speaking: true }), writeLearnPrefs: (p) => JSON.stringify(p),
     microphoneAvailable: async () => false, watchMicrophone: () => {},
+    setAppIconSource: () => {},
   };
   // The notebook file shared with the other page: a write there reaches this page.
   const reloadListeners = [];
@@ -97,6 +98,7 @@ async function startupAndGestures(floatingStrip) {
       keyPresent: () => false,
     },
     './platform/account': account,
+    './platform/app-icons': { appIconSource: () => () => '' },
     './platform/sqljs-vocab-db': notebookStore,
   }, globals);
   const boot = app.startApp();

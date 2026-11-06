@@ -143,7 +143,7 @@ export function wordbookHeaderHtml(scope: WordsScope, ctx: WordsContext, now = D
 
 /** A made book: its title can be edited in place and words added by name. */
 function madeBookHeaderHtml(bookId: string, title: string, sourceKey: string | undefined, p: BookProgress): string {
-  const from = sourceKey ? sourceKey.replace(/^(doc|site):/, '') : '';
+  const from = sourceKey ? sourceKey.replace(/^(doc|site|app):/, '') : '';
   const id = esc(bookId);
   return `<section class="wb-head wb-head--made">
     ${progressRingSvg(p.known, p.learning, p.total, 64)}
@@ -314,6 +314,27 @@ function siteIconHtml(host: string): string {
   }</span>`;
 }
 
+/** The shell's installed-app icons (a data URL, or '' while unknown); none on desktop. */
+let appIconSource: ((appId: string) => string) | null = null;
+
+export function setAppIconSource(source: ((appId: string) => string) | null): void {
+  appIconSource = source;
+}
+
+/** An app's tile: its first letter, covered by the app's own icon when the phone has it. */
+function appIconHtml(g: SourceGroup): string {
+  const letter = (g.label.match(/[\p{L}\p{N}]/u)?.[0] || '').toLocaleUpperCase('en');
+  const src = g.appId && appIconSource ? appIconSource(g.appId) : '';
+  return `<span class="wb-src__icon wb-src__icon--app" aria-hidden="true">${letter ? `<b>${esc(letter)}</b>` : ''}${
+    src ? `<img src="${esc(src)}" alt="" width="36" height="36" decoding="async" />` : ''
+  }</span>`;
+}
+
+function sourceIconHtml(g: SourceGroup): string {
+  if (g.kind === 'doc') return `<span class="wb-src__icon" aria-hidden="true">${ICON.book}</span>`;
+  return g.kind === 'app' ? appIconHtml(g) : siteIconHtml(g.label);
+}
+
 function sourceRowHtml(g: SourceGroup, ctx: WordsContext, now: number): string {
   const words = g.entries.map((e) => e.lemma);
   const shown = words.slice(-SOURCE_WORDS_SHOWN).reverse();
@@ -331,7 +352,7 @@ function sourceRowHtml(g: SourceGroup, ctx: WordsContext, now: number): string {
   } else action = `<button type="button" class="nbv-primary" data-act="src-book" data-source="${key}">Make a word book</button>`;
   const last = g.latest ? new Date(g.latest).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
   return `<li class="wb-src wb-src--${g.kind}">
-    ${g.kind === 'doc' ? `<span class="wb-src__icon" aria-hidden="true">${ICON.book}</span>` : siteIconHtml(g.label)}
+    ${sourceIconHtml(g)}
     <div class="wb-src__main">
       <h3 class="wb-src__name" title="${esc(g.label)}">${esc(g.label)}</h3>
       <p class="wb-src__meta"><span>${fmt(words.length)} ${words.length === 1 ? 'word' : 'words'}</span>${last ? `<span>${esc(last)}</span>` : ''}</p>
@@ -344,7 +365,7 @@ function sourceRowHtml(g: SourceGroup, ctx: WordsContext, now: number): string {
 /** My words grouped by the document or site they were saved from. */
 export function sourcesHtml(ctx: WordsContext, now = Date.now()): string {
   const groups = sourceGroups(ctx);
-  if (!groups.length) return '<p class="nbv-empty">Words saved from a PDF or a web page are grouped here.</p>';
+  if (!groups.length) return '<p class="nbv-empty">Words saved from a PDF, a web page or an app are grouped here.</p>';
   return `<section class="wb-sources"><ol class="wb-src-list">${groups.map((g) => sourceRowHtml(g, ctx, now)).join('')}</ol></section>`;
 }
 

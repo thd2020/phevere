@@ -344,6 +344,7 @@ export {
 export {
   wordsScopeSwitchHtml,
   sourcesHtml,
+  setAppIconSource,
   wordbookHeaderHtml,
   wordbookListHtml,
   sortBookEntries,

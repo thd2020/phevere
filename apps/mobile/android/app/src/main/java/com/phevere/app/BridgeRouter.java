@@ -88,6 +88,9 @@ final class BridgeRouter {
             host.runUi(host::notebookFlushed);
             resolve(id, new JSONObject().put("ok", true));
             break;
+          case "appIcon":
+            resolve(id, AppIcons.icon(host.context(), p.optString("id")));
+            break;
           case "getPendingText": {
             // This is the JS-ready handshake, serialized with incoming Android intents.
             host.runUi(() -> {
