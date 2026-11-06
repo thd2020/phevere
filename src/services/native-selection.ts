@@ -142,8 +142,9 @@ class AddonBackedNativeSelectionService implements NativeSelectionService {
     };
   }
 
+  // Start failures are thrown to startSelectionMonitoring in src/index.ts, which only logs them.
   protected startFailureMessage(): string {
-    return `Failed to start ${this.methodLabel} monitoring`;
+    return `Failed to start ${this.methodLabel} monitoring`; // i18n-ignore: log only
   }
 
   /** Platform hook: drop a selection before any filter runs. */
@@ -341,8 +342,9 @@ export class LinuxNativeSelectionService extends AddonBackedNativeSelectionServi
 
   protected startFailureMessage(): string {
     return (
+      // i18n-ignore: log only (see startFailureMessage above)
       'No selection source on this desktop. Select-to-look-up needs KDE Plasma, a wlroots compositor, or an X11 session. ' +
-      'On GNOME Wayland, bind "phevere --lookup-selection" to a keyboard shortcut.'
+      'On GNOME Wayland, bind "phevere --lookup-selection" to a keyboard shortcut.' // i18n-ignore: log only
     );
   }
 

@@ -5,6 +5,7 @@
 import { BrowserWindow, clipboard, dialog, ipcMain, nativeImage, screen } from 'electron';
 import * as fs from 'fs';
 import type { OcrPage } from '@phevere/core/ocr-layout';
+import { t } from '@phevere/core/i18n/runtime';
 import type { UnitResult } from '@phevere/core/ocr-translate';
 
 type Entry = { image: string; page: OcrPage };
@@ -54,7 +55,10 @@ function wire(): void {
   });
   ipcMain.handle('ocr-result-save-image', async (e, png: ArrayBuffer) => {
     const win = BrowserWindow.fromWebContents(e.sender);
-    const opts = { defaultPath: 'Scanned text.png', filters: [{ name: 'PNG image', extensions: ['png'] }] };
+    const opts = {
+      defaultPath: `${t('main.ocrResult.fileName')}.png`,
+      filters: [{ name: t('main.ocrResult.fileType.png'), extensions: ['png'] }],
+    };
     const r = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
     if (r.canceled || !r.filePath) return { saved: false };
     await fs.promises.writeFile(r.filePath, Buffer.from(png));
@@ -95,7 +99,7 @@ export function openOcrResultWindow(opts: {
     minWidth: 420,
     minHeight: 320,
     show: false,
-    title: 'Scanned text',
+    title: t('main.ocrResult.title'),
     autoHideMenuBar: true,
     backgroundColor: '#f4f0ea',
     ...(opts.icon ? { icon: opts.icon } : {}),

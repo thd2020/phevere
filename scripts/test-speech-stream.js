@@ -82,7 +82,18 @@ function fakeWorker() {
   w.kill = () => w.emit('exit');
   return w;
 }
+// The interface-text runtime speech.ts imports, bundled with the English catalogue it falls back to.
+const i18nRuntime = (() => {
+  const code = esbuild.buildSync({
+    entryPoints: [path.join(root, 'packages/core/src/i18n/runtime.ts')],
+    bundle: true, platform: 'node', format: 'cjs', write: false,
+  }).outputFiles[0].text;
+  const module = { exports: {} };
+  new Function('module', 'exports', 'require', code)(module, module.exports, require);
+  return module.exports;
+})();
 const speech = load('src/services/speech.ts', (name) => {
+  if (name === '@phevere/core/i18n/runtime') return i18nRuntime;
   if (name === 'electron') {
     return {
       app: { getPath: () => userData },

@@ -6,6 +6,17 @@ const vm = require('node:vm');
 const esbuild = require('esbuild');
 const { Writable } = require('node:stream');
 
+/** The interface-text runtime speech.ts imports, bundled with the English catalogue it falls back to. */
+function i18nRuntime() {
+  const code = esbuild.buildSync({
+    entryPoints: [path.join(__dirname, '../packages/core/src/i18n/runtime.ts')],
+    bundle: true, platform: 'node', format: 'cjs', write: false,
+  }).outputFiles[0].text;
+  const module = { exports: {} };
+  new Function('module', 'exports', 'require', code)(module, module.exports, require);
+  return module.exports;
+}
+
 (async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'phevere-installer-audio-'));
   const file = path.join(directory, 'install-options.json');
@@ -74,6 +85,7 @@ const { Writable } = require('node:stream');
           if (name === 'electron') return { app: { getPath: () => directory }, net: { fetch: (...args) => fetchModel(...args) } };
           if (name === '../logger') return { log: logger };
           if (name === '@phevere/core') return { ipaToEspeakPhonemes: () => '' };
+          if (name === '@phevere/core/i18n/runtime') return i18nRuntime();
           if (name === 'fs') return testFs;
           return require(name);
         } });

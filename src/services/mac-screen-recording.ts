@@ -3,6 +3,7 @@
  * Same one-click Settings jump as Accessibility — the OS will not grant it for us.
  */
 import { app, dialog, shell, systemPreferences } from 'electron';
+import { t } from '@phevere/core/i18n/runtime';
 import { log } from '../logger';
 
 export const MAC_SCREEN_RECORDING_SETTINGS_URL =
@@ -39,10 +40,10 @@ export async function promptOpenMacScreenRecordingSettings(): Promise<boolean> {
   const label = macScreenRecordingAppLabel();
   const r = await dialog.showMessageBox({
     type: 'info',
-    title: 'Screen Recording access required',
-    message: `${label} needs Screen Recording access to read text on screen.`,
-    detail: `In System Settings, open Privacy & Security, then Screen Recording, and turn on ${label}.`,
-    buttons: ['Open System Settings', 'Not Now'],
+    title: t('main.mac.screenRecording.title'),
+    message: t('main.mac.screenRecording.message', { app: label }),
+    detail: t('main.mac.screenRecording.detail', { app: label }),
+    buttons: [t('main.mac.openSystemSettings'), t('main.mac.notNow')],
     defaultId: 0,
     cancelId: 1,
   });

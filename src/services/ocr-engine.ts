@@ -19,8 +19,10 @@ import {
   OCR_PROFILES,
   OcrProfileMeta,
   OcrSettings,
+  ocrProfileLabel,
   saveOcrSettings,
 } from './ocr-settings-store';
+import { t } from '@phevere/core/i18n/runtime';
 import { finalizeOcrLines, glueSpacedLetters } from './ocr-text';
 import { createElectronImageRaw } from './ocr-image-electron';
 import { findOcrPackRoot, installedPackRoot } from './ocr-pack';
@@ -493,7 +495,7 @@ class OnnxNativeOcrEngine implements OcrEngine {
   listProfiles(): { id: string; label: string; kind: string; installed: boolean }[] {
     return OCR_PROFILES.map((p) => ({
       id: p.id,
-      label: p.label,
+      label: ocrProfileLabel(p),
       kind: p.kind,
       installed: this.isProfileInstalled(p),
     }));
@@ -517,13 +519,13 @@ class OnnxNativeOcrEngine implements OcrEngine {
 
   async setProfile(profileId: string, customPath?: string | null): Promise<{ ok: boolean; detail: string }> {
     const profile = findProfile(profileId);
-    if (!profile) return { ok: false, detail: 'Unknown OCR profile' };
+    if (!profile) return { ok: false, detail: t('main.ocr.unknownProfile') };
 
     if (profile.kind === 'custom') {
       if (!customPath || !listOnnxTriplet(customPath)) {
         return {
           ok: false,
-          detail: 'This folder does not contain an OCR model.',
+          detail: t('main.ocr.folderHasNoModel'),
         };
       }
       this.settings = { activeProfileId: 'custom', customModelsPath: customPath };
@@ -552,7 +554,7 @@ class OnnxNativeOcrEngine implements OcrEngine {
     try {
       await this.ensureReady();
       this.available = true;
-      return { ok: true, detail: `Using ${profile.label}` };
+      return { ok: true, detail: t('main.ocr.using', { model: ocrProfileLabel(profile) }) };
     } catch (error) {
       this.available = false;
       this.lastError = error instanceof Error ? error.message : String(error);
@@ -605,7 +607,7 @@ class OnnxNativeOcrEngine implements OcrEngine {
       const rec = path.join(root, profile.files.rec);
       const dict = path.join(root, profile.files.dict);
       if (!fs.existsSync(det) || !fs.existsSync(rec) || !fs.existsSync(dict)) {
-        throw new Error(`OCR pack not installed: ${profile.label}`);
+        throw new Error(`OCR pack not installed: ${ocrProfileLabel(profile)}`);
       }
       return { det, rec, dict, root };
     }
@@ -850,7 +852,7 @@ class RapidOcrWorkerEngine implements OcrEngine {
       }
       this.available = true;
       this.lastError = null;
-      return { ok: true, detail: 'RapidOCR ready' };
+      return { ok: true, detail: t('main.ocr.rapidReady') };
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
       return { ok: false, detail: this.lastError };
@@ -1170,12 +1172,12 @@ class CompositeOcrEngine implements OcrEngine {
     if (await this.native.isAvailable()) {
       this.preferred = 'onnx-native';
       await this.native.warmUp();
-      return { ok: true, detail: 'Embedded OCR ready' };
+      return { ok: true, detail: t('main.ocr.embeddedReady') };
     }
     const n = this.native.getStatus();
     return {
       ok: false,
-      detail: n.lastError || `Text recognition could not start (models: ${n.modelsPath})`,
+      detail: n.lastError || t('main.ocr.couldNotStart', { path: String(n.modelsPath) }),
     };
   }
 

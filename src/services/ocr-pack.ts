@@ -20,6 +20,7 @@ import fs from 'fs';
 import path from 'path';
 import { Readable } from 'stream';
 import { createGunzip } from 'zlib';
+import { t } from '@phevere/core/i18n/runtime';
 import { log } from '../logger';
 import { getOcrPackRoot } from './ocr-settings-store';
 
@@ -204,7 +205,7 @@ async function install(): Promise<string> {
     }
   }
   log.warn('ocr-pack', 'all sources failed', { failures });
-  throw new Error('Could not download the OCR pack. Check the connection and try again.');
+  throw new Error(t('main.ocrPack.downloadFailed'));
 }
 
 /** Download, verify and install the pack. Concurrent callers share one download. */

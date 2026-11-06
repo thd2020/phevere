@@ -21,6 +21,7 @@ import {
   type AccountState,
   type KeyValueStorage,
 } from '@phevere/core';
+import { t, tHtml, uiLocale, type MessageKey } from '@phevere/core/i18n/runtime';
 import { log } from '../logger';
 
 const FILE_NAME = 'holarky-account.json';
@@ -150,10 +151,10 @@ async function loopbackSignIn(account: HolarkyAccount): Promise<void> {
   const redirectUri = `http://127.0.0.1:${port}/callback`;
   try {
     const callback = new Promise<{ url: string; res: http.ServerResponse }>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Sign-in timed out. Try again.')), SIGN_IN_TIMEOUT_MS);
+      const timer = setTimeout(() => reject(new Error(t('main.account.timedOut'))), SIGN_IN_TIMEOUT_MS);
       abortSignIn = () => {
         clearTimeout(timer);
-        reject(new Error('Sign-in cancelled.'));
+        reject(new Error(t('main.account.cancelled')));
       };
       server.on('request', (req, res) => {
         const url = new URL(req.url || '/', redirectUri);
@@ -170,9 +171,9 @@ async function loopbackSignIn(account: HolarkyAccount): Promise<void> {
     const { url, res } = await callback;
     try {
       await account.completeSignIn(url);
-      respond(res, 'Signed in to phevere', 'You can close this tab and go back to phevere.');
+      respond(res, 'main.account.signedIn.title', 'main.account.signedIn.message');
     } catch (err) {
-      respond(res, 'Sign-in did not finish', 'Go back to phevere and try again.');
+      respond(res, 'main.account.signInFailed.title', 'main.account.signInFailed.message');
       throw err;
     }
   } finally {
@@ -190,12 +191,14 @@ async function listenOnFreePort(): Promise<{ server: http.Server; port: number }
     });
     if (ok) return { server, port };
   }
-  throw new Error(`Sign-in needs one of the local ports ${LOOPBACK_PORTS.join(', ')}, and all are in use. Close the program using them and try again.`);
+  throw new Error(t('main.account.portsBusy', { ports: LOOPBACK_PORTS.join(', ') }));
 }
 
-function respond(res: http.ServerResponse, title: string, message: string): void {
+function respond(res: http.ServerResponse, titleKey: MessageKey, messageKey: MessageKey): void {
+  const title = tHtml(titleKey);
+  const message = tHtml(messageKey);
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-  res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>
+  res.end(`<!doctype html><html lang="${uiLocale()}"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:16px/1.5 system-ui,sans-serif;background:#f6f3ee;color:#1c1917}
 main{max-width:360px;padding:28px;text-align:center}h1{font-size:1.3rem;margin:0 0 8px}p{margin:0;color:#57534e}
 @media (prefers-color-scheme: dark){body{background:#1c1917;color:#f5f5f4}p{color:#a8a29e}}</style>
