@@ -14,7 +14,7 @@ const js = ts.transpileModule(src, {
 }).outputText;
 const mod = { exports: {} };
 vm.runInNewContext(js, { module: mod, exports: mod.exports, require });
-const { formatVocabLangPair, inferVocabGlossLang, vocabLanguages, filterVocabByLang, vocabLangChipsHtml, vocabHeadwordLang } = mod.exports;
+const { formatVocabLangPair, inferVocabGlossLang, vocabLanguages, filterVocabByLang, vocabLangChipsHtml, vocabHeadwordLang, vocabLookupLang, vocabLangKey, savedForSpelling } = mod.exports;
 
 assert.strictEqual(
   formatVocabLangPair({
@@ -69,4 +69,17 @@ assert.strictEqual(filterVocabByLang(all, 'all', langs).length, all.length);
 assert.strictEqual(filterVocabByLang(all, 'ko', langs).length, all.length, 'a language without a chip shows everything');
 const html = vocabLangChipsHtml(langs, 'zh', all.length, (c) => ({ en: 'English', zh: 'Chinese' })[c]);
 assert.ok(html.includes('data-lang="all"') && html.includes('Chinese') && /data-lang="zh"[^>]*aria-selected="true"/.test(html));
+// The same spelling saved in two languages: a Recent row stands for the plain lookup's word, and the
+// Danish one opens in Danish.
+const giveEn = { id: 'e', lemma: 'give', sourceLang: 'en' };
+const giveDa = { id: 'd', lemma: 'give', sourceLang: 'da' };
+assert.strictEqual(savedForSpelling([giveDa, giveEn], 'Give'), giveEn);
+assert.strictEqual(savedForSpelling([giveDa], 'give'), giveDa, 'the only saved give is the one shown');
+assert.strictEqual(savedForSpelling([giveEn], 'take'), undefined);
+assert.strictEqual(vocabLookupLang(giveDa), 'da');
+assert.strictEqual(vocabLookupLang(giveEn), '');
+assert.strictEqual(vocabLookupLang({ lemma: 'give' }), '', 'a word saved without a language opens as before');
+assert.strictEqual(vocabLookupLang({ lemma: '食べる', sourceLang: 'ja' }), '');
+assert.notStrictEqual(vocabLangKey(giveEn), vocabLangKey(giveDa));
+assert.strictEqual(vocabLangKey({ lemma: 'Give ' }), vocabLangKey(giveEn), 'no language reads as the letters');
 console.log('vocab-lang ok');

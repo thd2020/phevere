@@ -77,6 +77,34 @@ export function vocabHeadwordLang(entry: { lemma?: string; sourceLang?: string }
   return 'en';
 }
 
+/**
+ * The language to open a saved word in: its own when that is not the one a plain lookup of its
+ * letters opens (the Danish "give"), else '' so the lookup goes as before.
+ */
+export function vocabLookupLang(entry: { lemma?: string; sourceLang?: string }): string {
+  const own = vocabHeadwordLang(entry);
+  return own === vocabHeadwordLang({ lemma: entry.lemma }) ? '' : own;
+}
+
+/** A saved word's key that keeps the same spelling in two languages apart. */
+export function vocabLangKey(entry: { lemma?: string; sourceLang?: string }): string {
+  return `${String(entry.lemma || '').trim().toLowerCase()}|${vocabHeadwordLang(entry)}`;
+}
+
+/**
+ * The saved word a plain lookup of `q` stands for, as a Recent row shows it: the only one with
+ * that spelling, or, when it is saved in two languages, the one in the language its letters read
+ * as (the English "give", not the Danish).
+ */
+export function savedForSpelling<T extends { lemma: string; sourceLang?: string | null }>(entries: T[], q: string): T | undefined {
+  const k = String(q || '').trim().toLowerCase();
+  if (!k) return undefined;
+  const same = entries.filter((e) => String(e.lemma || '').trim().toLowerCase() === k);
+  if (same.length < 2) return same[0];
+  const plain = vocabHeadwordLang({ lemma: q });
+  return same.find((e) => vocabHeadwordLang({ lemma: e.lemma, sourceLang: e.sourceLang || undefined }) === plain) || same[0];
+}
+
 export interface VocabLanguages {
   /** Languages with a chip, most words first. Empty when fewer than two qualify. */
   groups: Array<{ code: string; count: number }>;

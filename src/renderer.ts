@@ -62,6 +62,7 @@ import {
   traceNotebookFamilies,
   fetchWordImage,
   fillWordImages,
+  type WordImageFetcher,
   formatVocabLangPair,
   mapHtml,
   notebookViewSwitchHtml,
@@ -147,7 +148,7 @@ import {
   type BookSort,
 } from '@phevere/core';
 import { choiceRowHtml, enhanceSelect, keycapsHtml, rangeRowHtml, segRowHtml, switchRowHtml } from '@phevere/core';
-import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
+import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages, savedForSpelling } from '@phevere/core';
 import { aboutSettingsHtml, flashAboutCopied, type AboutPlatform } from '@phevere/core';
 import { learnSettingsHtml, microphoneAvailable, readLearnPrefs, watchMicrophone, wireNumberWheels, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
@@ -2830,7 +2831,7 @@ function filterVocabEntries(entries: any[]): any[] {
 }
 
 /** Card and review pictures follow the lookup pane's Images switch, stored by the pop-up. */
-function wordImageFetcher(): ((lemma: string, lang?: string, gloss?: string, pos?: string) => Promise<any>) | null {
+function wordImageFetcher(): WordImageFetcher | null {
   try {
     if (JSON.parse(localStorage.getItem('phevereSettings') || '{}').senseImages === false) return null;
   } catch {
@@ -2839,14 +2840,18 @@ function wordImageFetcher(): ((lemma: string, lang?: string, gloss?: string, pos
   // Through the main process: it identifies itself to Wikimedia (anonymous clients get about
   // ten requests a minute, a deck of cards needs several per card) and caches on disk.
   const api = (window as any).dictionaryAPI;
+  // The card's picture shows as soon as the first source finds it, and a card that scrolls away
+  // stops its search in the main process too.
   if (api?.senseImages) {
-    return (lemma, lang, gloss, pos) => {
+    return (lemma, lang, gloss, pos, onPicture, signal, again) => {
       const g = String(gloss || '').trim();
       const sense = g ? { meaning: g, partOfSpeech: pos || '' } : { meaning: '' };
-      return api.senseImages(lemma, [sense], { max: 1, lang }).then((r: any[]) => (Array.isArray(r) && r[0]) || null);
+      const onUpdate = onPicture ? (list: any[]) => onPicture((Array.isArray(list) && list[0]) || null) : undefined;
+      const onCancel = signal ? (cancel: () => void) => signal.addEventListener('abort', cancel, { once: true }) : undefined;
+      return api.senseImages(lemma, [sense], { max: 1, lang, again, wordPicture: true }, onUpdate, onCancel).then((r: any[]) => (Array.isArray(r) && r[0]) || null);
     };
   }
-  return (lemma, lang, gloss, pos) => fetchWordImage(lemma, { lang, gloss, pos });
+  return (lemma, lang, gloss, pos, onPicture, signal, again) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture, signal, again });
 }
 
 function renderVocabNotebook(entries: any[]): void {
@@ -3202,7 +3207,8 @@ function wireNotebookActions(root: HTMLElement): void {
         const q = el.dataset.q || el.dataset.lemma;
         if (q) {
           addToRecentSelections(q);
-          void openFullLookup(q);
+          // data-lang: a word saved in another language opens in it (the Danish "give").
+          void openFullLookup(q, el.dataset.lang || undefined);
         }
         return;
       }
@@ -3709,11 +3715,11 @@ async function importWords(): Promise<void> {
 
 setVocabSortMode(getVocabSortMode());
 
-async function openFullLookup(text: string): Promise<void> {
+async function openFullLookup(text: string, lang?: string): Promise<void> {
   try {
     // Open first; lookup runs inside the dictionary window. Awaiting recall here
     // froze history/saves behind a hung IPC with no visible window progress.
-    window.electronAPI?.send?.('open-full-lookup', text);
+    window.electronAPI?.send?.('open-full-lookup', text, lang);
   } catch (error) {
     console.error(error);
   }
@@ -4027,9 +4033,8 @@ function renderRecentLookups(): void {
     list.innerHTML = `<p class="empty-message">${all.length ? 'No matching lookups.' : 'No recent lookups.'}</p>`;
     return;
   }
-  const saved = new Map<string, any>();
-  for (const e of vocabNotebookCache) saved.set(String(e.lemma || '').trim().toLowerCase(), e);
-  list.innerHTML = recentListHtml(items, (q) => saved.get(q.trim().toLowerCase()), Date.now(), { bookPick: hasOwnBooks() });
+  // A spelling saved in two languages: the row stands for the word a plain lookup opens.
+  list.innerHTML = recentListHtml(items, (q) => savedForSpelling(vocabNotebookCache, q), Date.now(), { bookPick: hasOwnBooks() });
 }
 
 function addToRecentSelections(text: string): void {

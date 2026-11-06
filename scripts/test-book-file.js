@@ -208,6 +208,14 @@ async function makeDevice(SQL, name) {
   const meanings = new Map((await B.listBookProgress()).map((p) => [p.lemma, p.definition]));
   assert.strictEqual(meanings.get('abate'), 'to lessen in intensity', 'the card back is the quiz meaning');
 
+  // My words from a laptop that saved the Danish "give" go in beside the phone's English "give".
+  await A.addVocab({ lemma: 'give', definition: 'to yield', sourceLang: 'da' });
+  await B.addVocab({ lemma: 'give', definition: 'to transfer', sourceLang: 'en' });
+  const withDanish = await B.importBookPayload(await B.decodeBookFile((await A.exportBookFile({ kind: 'mine' })).bytes));
+  assert.strictEqual(withDanish.added, 1, 'the Danish give is new');
+  assert.strictEqual((await B.findByLemma('give', 'da'))?.definition, 'to yield');
+  assert.strictEqual((await B.findByLemma('give', 'en'))?.definition, 'to transfer', 'the English give is left alone');
+
   console.log('book-file: ok');
 })().catch((err) => {
   console.error(err);

@@ -23,7 +23,8 @@ import {
 } from './services/mac-screen-recording';
 import { contextCaptureHub, ContextEvent, selectionToContext } from './services/context-capture';
 import { captureScreenRegion, captureAroundPoint, canCaptureWithoutPrompt } from './services/screen-capture';
-import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile, resetOcrEngine } from './services/ocr-engine';
+import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile, resetOcrEngine, recognizeOcrPage, ocrPageLineCount, type OcrPageResult } from './services/ocr-engine';
+import { openOcrResultWindow } from './services/ocr-result-window';
 import { isLookupWorthy } from './services/text-normalize';
 import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
 import { placePopupNearPoint, eventCoordSpace, physicalToDip, setWindowBounds, type ScreenCoordSpace } from './services/popup-placement';
@@ -157,6 +158,8 @@ declare const OCR_OVERLAY_WEBPACK_ENTRY: string;
 declare const OCR_OVERLAY_PRELOAD_WEBPACK_ENTRY: string;
 declare const QUICK_PANEL_WEBPACK_ENTRY: string;
 declare const QUICK_PANEL_PRELOAD_WEBPACK_ENTRY: string;
+declare const OCR_RESULT_WEBPACK_ENTRY: string;
+declare const OCR_RESULT_PRELOAD_WEBPACK_ENTRY: string;
 
 const installerAudioModel = installerAudioModelArgument(process.argv);
 const installerOcrPack = process.argv.includes(INSTALL_OCR_PACK_FLAG);
@@ -2103,9 +2106,9 @@ async function handleOcrRegionSelected(region: {
     });
   }, 800);
 
-  let ocr;
+  let ocr: OcrPageResult;
   try {
-    ocr = await ocrEngine.recognize(capture.png);
+    ocr = await recognizeOcrPage(capture.png);
   } finally {
     clearInterval(tick);
   }
@@ -2116,7 +2119,6 @@ async function handleOcrRegionSelected(region: {
     closeWorkProgress();
     log.warn('main', 'OCR produced no lookup-worthy text', {
       engine: ocr.engine,
-      language: ocr.language,
       rawLen: (ocr.text || '').length,
     });
     const available = await ocrEngine.isAvailable().catch(() => false);
@@ -2139,6 +2141,13 @@ async function handleOcrRegionSelected(region: {
     return;
   }
 
+  // More than one line of text: the picture with its text in place. One line: look it up.
+  if (ocrPageLineCount(ocr) > 1) {
+    closeWorkProgress();
+    showOcrResult(capture.png, ocr, { x: progressX, y: progressY });
+    return;
+  }
+
   updateWorkProgress({
     title: 'Looking up…',
     subtitle: text.length > 48 ? text.slice(0, 48) + '…' : text,
@@ -2153,10 +2162,26 @@ async function handleOcrRegionSelected(region: {
     y: progressY,
     timestamp: Date.now(),
     origin: 'ocr',
-    confidence: ocr.confidence,
     bounds: screenRegion,
     imageHash: capture.imageHash,
   });
+}
+
+/** Open the scanned-text window: the picture with its recognised text in place. */
+function showOcrResult(png: Buffer, ocr: OcrPageResult, near: { x: number; y: number }): void {
+  try {
+    const icon = loadWindowIcon();
+    openOcrResultWindow({
+      png,
+      page: ocr.page,
+      entry: OCR_RESULT_WEBPACK_ENTRY,
+      preload: OCR_RESULT_PRELOAD_WEBPACK_ENTRY,
+      near,
+      ...(icon ? { icon } : {}),
+    });
+  } catch (error) {
+    log.error('main', 'Failed to open the scanned-text window', { err: String(error) });
+  }
 }
 
 ipcMain.on('ocr-overlay-complete', (_event, region) => {
@@ -2185,6 +2210,8 @@ async function emitOcrFromPng(opts: {
   origin: ContextEvent['origin'];
   progressTitle?: string;
   emptyMessage?: string;
+  /** Whole images open the scanned-text window: always, or when there is more than one line. */
+  view?: 'always' | 'multiline';
 }): Promise<void> {
   wireContextCaptureHubOnce();
   showWorkProgress(opts.x, opts.y, {
@@ -2201,14 +2228,21 @@ async function emitOcrFromPng(opts: {
     });
   }, 800);
 
-  let ocr;
+  let ocr: { text: string; confidence?: number };
+  let page: OcrPageResult | null = null;
   try {
-    ocr = await ocrEngine.recognize(opts.png);
+    if (opts.view) ocr = page = await recognizeOcrPage(opts.png);
+    else ocr = await ocrEngine.recognize(opts.png);
   } finally {
     clearInterval(tick);
   }
 
   const text = (ocr.text || '').trim();
+  if (page && text && (opts.view === 'always' || ocrPageLineCount(page) > 1)) {
+    closeWorkProgress();
+    showOcrResult(opts.png, page, { x: opts.x, y: opts.y });
+    return;
+  }
   if (!text || !isLookupWorthy(text)) {
     closeWorkProgress();
     const available = await ocrEngine.isAvailable().catch(() => false);
@@ -2312,6 +2346,7 @@ async function readForegroundWindowOcr(): Promise<void> {
     imageHash: capture.imageHash,
     origin: 'ocr',
     progressTitle: 'Scanning window…',
+    view: 'multiline',
   });
 }
 
@@ -2331,6 +2366,7 @@ async function ocrClipboardImage(): Promise<void> {
     imageHash: img.imageHash,
     origin: 'clipboard',
     progressTitle: 'Scanning clipboard image…',
+    view: 'always',
   });
 }
 
@@ -2384,7 +2420,8 @@ ipcMain.handle('ocr-image-file', async (_event, filePath: string) => {
     y: cur.y,
     imageHash: img.imageHash,
     origin: 'ocr',
-    progressTitle: 'OCR dropped image…',
+    progressTitle: 'Scanning image…',
+    view: 'always',
   });
   return { success: true };
 });
@@ -2399,7 +2436,8 @@ ipcMain.handle('ocr-image-data', async (_event, dataUrl: string) => {
     y: cur.y,
     imageHash: img.imageHash,
     origin: 'clipboard',
-    progressTitle: 'OCR pasted image…',
+    progressTitle: 'Scanning image…',
+    view: 'always',
   });
   return { success: true };
 });
@@ -3051,15 +3089,32 @@ ipcMain.handle('dictionary-get-supported-languages', () => {
   return dictionaryService.getSupportedLanguages();
 });
 
-// Pictures for the pop-up's senses, fetched in the main process (Node HTTP, shared cache).
-// With an `updateId`, the first pictures go to the pop-up while slower sources still answer.
+// Pictures for the pop-up's senses and the notebook's cards, fetched in the main process (Node
+// HTTP, shared cache). With an `updateId`, the first pictures go to the window while slower
+// sources still answer; a `cancellable` search (a card) stops when the card scrolls away.
+const senseImageSearches = new Map<string, AbortController>();
+
+ipcMain.on('dictionary-sense-images-cancel', (_event, updateId: string) => {
+  senseImageSearches.get(String(updateId || ''))?.abort();
+});
+
 ipcMain.handle(
   'dictionary-sense-images',
-  (event, lemma: string, senses: Array<{ meaning: string; partOfSpeech?: string }>, opts?: { max?: number; lang?: string; updateId?: string }) => {
+  (
+    event,
+    lemma: string,
+    senses: Array<{ meaning: string; partOfSpeech?: string }>,
+    opts?: { max?: number; lang?: string; updateId?: string; cancellable?: boolean; again?: boolean; wordPicture?: boolean },
+  ) => {
     const updateId = typeof opts?.updateId === 'string' ? opts.updateId : '';
+    const ctl = updateId && opts?.cancellable ? new AbortController() : null;
+    if (ctl) senseImageSearches.set(updateId, ctl);
     return fetchSenseImages(String(lemma || ''), Array.isArray(senses) ? senses.slice(0, 200) : [], {
       max: opts?.max,
       lang: opts?.lang,
+      signal: ctl?.signal,
+      again: opts?.again === true,
+      wordPicture: opts?.wordPicture === true,
       onUpdate: updateId
         ? (list) => {
             try {
@@ -3069,6 +3124,8 @@ ipcMain.handle(
             }
           }
         : undefined,
+    }).finally(() => {
+      if (ctl) senseImageSearches.delete(updateId);
     });
   },
 );
@@ -3308,9 +3365,9 @@ ipcMain.handle('vocab-import', async (e) => {
     throw error;
   }
 });
-ipcMain.handle('vocab-find', async (_e, lemma: string) => {
+ipcMain.handle('vocab-find', async (_e, lemma: string, lang?: string) => {
   try {
-    return await vocabStore.findByLemma(lemma);
+    return await vocabStore.findByLemma(lemma, lang);
   } catch (error) {
     log.error('main', 'vocab-find failed', { err: String(error) });
     throw error;
@@ -3877,9 +3934,9 @@ ipcMain.on('open-in-app', (_event, url: string) => {
 });
 
 // Open full dictionary window in-app for a given term
-ipcMain.on('open-full-lookup', (_event, term: string) => {
+ipcMain.on('open-full-lookup', (_event, term: string, lang?: string) => {
   try {
-    createDictionaryWindow(term);
+    createDictionaryWindow(term, typeof lang === 'string' ? lang : undefined);
   } catch (e) {
     log.error('main', 'Open full lookup failed', { err: String(e) });
   }
@@ -4122,7 +4179,8 @@ function createWebWindow(url: string): void {
 
 
 // Create a dedicated dictionary window that uses the same floating popup chrome
-function createDictionaryWindow(term: string): void {
+/** `lang`: open the word in that language (a saved Danish "give"), not the one its letters suggest. */
+function createDictionaryWindow(term: string, lang?: string): void {
   const popupWidth = 560;
   const popupHeight = 500;
   const mb = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : undefined;
@@ -4186,7 +4244,7 @@ function createDictionaryWindow(term: string): void {
   dictWindow.webContents.on('did-finish-load', () => {
     try {
       if (!dictWindow.isDestroyed() && term) {
-        dictWindow.webContents.send('popup-text', term, Date.now());
+        dictWindow.webContents.send('popup-text', term, Date.now(), lang);
       }
     } catch (e) {
       log.warn('main', 'History lookup send popup-text failed', { err: String(e) });
