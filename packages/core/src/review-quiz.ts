@@ -25,10 +25,27 @@ export type { ReviewGrade };
  * - recall: the meaning is shown with the first letter or more, type the word (active recall).
  * - listen-type: dictation; the word is played, type it.
  * - cloze: a sentence from the learner's note with the word blanked out, type it.
+ * - cloze-choice: the same kind of sentence, pick the word for the gap among four, each in the
+ *   form the gap needs (Duolingo's "Select the missing word"; 百词斩 starts a word from its
+ *   example sentence).
+ * - spell-tiles: the meaning is shown, build the word from its letters in a shuffled row (百词斩's
+ *   spelling drill, Duolingo's word bank); a step between recognising a word and typing it.
  * - flash: show the word, then the meaning, and the learner says whether they knew it; used only
  *   when nothing else can be asked (no meaning saved and too few other words).
  */
-export type QuestionKind = 'meaning-choice' | 'word-choice' | 'listen-choice' | 'recall' | 'listen-type' | 'cloze' | 'flash';
+export type QuestionKind =
+  | 'meaning-choice'
+  | 'word-choice'
+  | 'listen-choice'
+  | 'cloze-choice'
+  | 'spell-tiles'
+  | 'recall'
+  | 'listen-type'
+  | 'cloze'
+  | 'flash';
+
+/** Every kind, for checking a kind that comes from storage or another process. */
+export const QUESTION_KINDS: QuestionKind[] = ['meaning-choice', 'word-choice', 'listen-choice', 'cloze-choice', 'spell-tiles', 'recall', 'listen-type', 'cloze', 'flash'];
 
 export type AnswerResult = 'right' | 'close' | 'wrong';
 
@@ -47,11 +64,13 @@ export interface ReviewQuestion {
   answers: string[];
   /** The letters shown before typing (typed questions): the first `reveal` letters of the answer. */
   hint: string;
-  /** How many letters `hint` holds; more for a weaker word (diminishing cues), none for dictation of a firm word. */
+  /** How many letters `hint` holds: the first letter, none for dictation (`cueLetters`). */
   reveal?: number;
-  /** Letters revealed on request with Hint. */
+  /** How many times Hint gave a letter. */
   hinted?: number;
-  /** The answer box after a Hint: the letters shown so far, for the learner to finish. */
+  /** Leading letters of the answer shown so far, by the question and by Hint. */
+  shown?: number;
+  /** What the answer box holds, kept on every keystroke so a repaint never clears it. */
   draft?: string;
   shownAt: number;
   /** Missed LEECH_LAPSES times or more. */
@@ -64,6 +83,10 @@ export interface ReviewQuestion {
   countdownSpent?: number;
   /** A listening question's word has played, or could not be played (`markHeard`). */
   heard?: boolean;
+  /** Letter tiles (spell-tiles): the word's letters in a shuffled row. */
+  tiles?: string[];
+  /** Letter tiles placed so far, by their place in `tiles`, in the order tapped. */
+  placed?: number[];
 }
 
 export interface ReviewAnswer {
@@ -97,6 +120,8 @@ export interface ReviewResult {
   maturityAfter?: Maturity;
   /** Letters revealed with Hint. */
   hinted?: number;
+  /** Share of the hidden letters Hint gave away (`hintShare`), which lowers the answer's credit. */
+  hintShare?: number;
   /** The question's predicted chance of a right answer, for updating the learner model. */
   predicted?: number;
 }
@@ -459,26 +484,56 @@ const VOWELS = /[aeiouy]+/g;
  * (leader, forest, early).
  */
 export function regularForms(lemma: string): string[] {
+  const slots = regularFormSlots(lemma);
+  if (!slots) return [];
   const l = clean(lemma).toLowerCase();
-  if (!/^[a-z]{2,}$/.test(l)) return [];
-  const out = new Set<string>();
+  const out = new Set<string>([slots.s, slots.ed, slots.ing]);
+  out.delete(l);
+  return [...out];
+}
+
+/** The regular -s, -ed and -ing forms of an English word (`regularForms`), by ending; null when it has none. */
+export function regularFormSlots(lemma: string): { s: string; ed: string; ing: string } | null {
+  const l = clean(lemma).toLowerCase();
+  if (!/^[a-z]{2,}$/.test(l)) return null;
   const consY = /[^aeiou]y$/.test(l);
   // Plural and third person.
-  if (consY) out.add(`${l.slice(0, -1)}ies`);
-  else if (/(?:s|x|z|ch|sh|o)$/.test(l)) out.add(`${l}es`);
-  else out.add(`${l}s`);
+  const s = consY ? `${l.slice(0, -1)}ies` : /(?:s|x|z|ch|sh|o)$/.test(l) ? `${l}es` : `${l}s`;
   // Past.
   const oneSyllable = (l.match(VOWELS) || []).length === 1;
   const doubles = oneSyllable && /[^aeiou][aeiou][bdgklmnprtvz]$/.test(l);
-  if (/e$/.test(l)) out.add(`${l}d`);
-  else if (consY) out.add(`${l.slice(0, -1)}ied`);
-  else out.add(doubles ? `${l}${l.slice(-1)}ed` : `${l}ed`);
+  const ed = /e$/.test(l) ? `${l}d` : consY ? `${l.slice(0, -1)}ied` : doubles ? `${l}${l.slice(-1)}ed` : `${l}ed`;
   // Present participle.
-  if (/ie$/.test(l)) out.add(`${l.slice(0, -2)}ying`);
-  else if (/[^e]e$/.test(l) && l.length > 2) out.add(`${l.slice(0, -1)}ing`);
-  else out.add(doubles ? `${l}${l.slice(-1)}ing` : `${l}ing`);
-  out.delete(l);
-  return [...out];
+  const ing = /ie$/.test(l)
+    ? `${l.slice(0, -2)}ying`
+    : /[^e]e$/.test(l) && l.length > 2
+      ? `${l.slice(0, -1)}ing`
+      : doubles
+        ? `${l}${l.slice(-1)}ing`
+        : `${l}ing`;
+  return { s, ed, ing };
+}
+
+/**
+ * `other` in the form `form` takes of `lemma`, so every option of a gap question fits the gap's
+ * grammar alike: with `lemma` "ignore" and `form` "ignored", "notice" becomes "noticed". The case
+ * of the first letter follows `form` (a gap that starts the sentence). Null when `form` is a
+ * regular form that `other` cannot take, so the option is left out rather than given away by its
+ * ending.
+ */
+export function inflectLike(lemma: string, form: string, other: string): string | null {
+  const l = clean(lemma).toLowerCase();
+  const f = clean(form);
+  const o = clean(other);
+  if (!f || !o) return null;
+  const cap = (w: string) => (/^\p{Lu}/u.test(f) && !/^\p{Lu}/u.test(w) ? w.charAt(0).toUpperCase() + w.slice(1) : w);
+  if (f.toLowerCase() === l) return cap(o);
+  const mine = regularFormSlots(l);
+  const theirs = regularFormSlots(o);
+  if (!mine || !theirs) return null;
+  const low = f.toLowerCase();
+  const slot = (['s', 'ed', 'ing'] as const).find((k) => mine[k] === low);
+  return slot ? cap(theirs[slot]) : null;
 }
 
 /** Whether `form` is `lemma` or one of its regular inflections (glean: gleaned; not rat: rate). */
@@ -733,16 +788,17 @@ export function pickDistractors(
 
 /**
  * The kinds each stage may ask (docs/REVIEW.md), most fitting first. A new word is recognised; a
- * learning word is recognised, heard among four or typed; a young word is typed, filled into a
- * sentence or written from dictation; a mature word is mostly produced. Listening by choice
- * belongs to the early stages and dictation to the later ones. Within a stage the kind is chosen
- * by how likely the learner is to get it right (`chooseKind`).
+ * learning word is recognised, picked for a sentence's gap, heard among four, built from its
+ * letters or typed; a young word is typed, built from its letters, filled into a sentence or
+ * written from dictation; a mature word is mostly produced. Listening by choice belongs to the
+ * early stages and dictation to the later ones. Within a stage the kind is chosen by how likely
+ * the learner is to get it right (`chooseKind`).
  */
 export const STAGE_KINDS: Record<number, QuestionKind[]> = {
   0: ['meaning-choice', 'word-choice', 'flash'],
-  1: ['word-choice', 'meaning-choice', 'listen-choice', 'recall', 'cloze', 'flash'],
-  2: ['recall', 'word-choice', 'cloze', 'listen-type', 'listen-choice', 'meaning-choice', 'flash'],
-  3: ['cloze', 'recall', 'listen-type', 'word-choice', 'meaning-choice', 'flash'],
+  1: ['word-choice', 'cloze-choice', 'meaning-choice', 'listen-choice', 'spell-tiles', 'recall', 'cloze', 'flash'],
+  2: ['recall', 'cloze-choice', 'word-choice', 'cloze', 'spell-tiles', 'listen-type', 'listen-choice', 'meaning-choice', 'flash'],
+  3: ['cloze', 'recall', 'listen-type', 'cloze-choice', 'word-choice', 'meaning-choice', 'flash'],
 };
 
 export type QuizSkill = 'meaning' | 'spelling' | 'listening';
@@ -750,7 +806,9 @@ export type QuizSkill = 'meaning' | 'spelling' | 'listening';
 const KIND_SKILL: Record<QuestionKind, QuizSkill> = {
   'meaning-choice': 'meaning',
   'word-choice': 'meaning',
+  'cloze-choice': 'meaning',
   flash: 'meaning',
+  'spell-tiles': 'spelling',
   recall: 'spelling',
   cloze: 'spelling',
   'listen-choice': 'listening',
@@ -774,12 +832,17 @@ export const TARGET_SUCCESS = 0.85;
  * How much easier (+) or harder (-) each kind is than typing the word from its meaning with its
  * first letter, in log-odds. The order is Laufer and Goldstein's (2004): recognising a meaning is
  * easiest, then recognising the word, then recalling it; dictation adds hearing to spelling.
+ * Picking the word for a sentence's gap is recognition with the sentence as a cue, about as easy
+ * as picking it from its meaning; building it from its own letters sits between recognising and
+ * typing it. The learner model corrects each value for each learner.
  */
 export const KIND_EASE: Record<QuestionKind, number> = {
   'meaning-choice': 1.8,
   'word-choice': 1.4,
+  'cloze-choice': 1.3,
   'listen-choice': 1.1,
   flash: 1.0,
+  'spell-tiles': 0.8,
   cloze: 0.1,
   recall: 0,
   'listen-type': -0.5,
@@ -796,6 +859,7 @@ export const LETTER_EASE = 0.45;
  * mature would otherwise never reach it. Without a learner model every kind is open.
  */
 export const KIND_UNLOCK: Partial<Record<QuestionKind, { after: QuestionKind[]; right: number }>> = {
+  'spell-tiles': { after: ['word-choice', 'meaning-choice', 'cloze-choice'], right: 3 },
   recall: { after: ['word-choice', 'meaning-choice'], right: 5 },
   cloze: { after: ['recall'], right: 3 },
   'listen-type': { after: ['listen-choice', 'recall', 'cloze'], right: 3 },
@@ -855,17 +919,13 @@ export function successChance(kind: QuestionKind, strength: number, learner?: Le
 }
 
 /**
- * Letters to show for a typed answer, as diminishing cues (Finley et al. 2011, Fiechter and
- * Benjamin 2018): the usual cue, plus a letter at a time while the predicted chance stays below
- * TARGET_SUCCESS, never more than a third of the word.
+ * Letters shown before a typed answer: the first letter, none for dictation, whatever the word's
+ * strength. More help comes only from Hint, one letter a press, and each press lowers the
+ * answer's credit (`autoGrade`). A weak word gets an easier kind of question instead of a longer
+ * cue (`chooseKind`), so a typed answer is always mostly the learner's own.
  */
-export function cueLetters(kind: QuestionKind, answer: string, strength: number, learner?: LearnerModel | null): number {
-  const base = baseLetters(kind);
-  const len = [...answer].length;
-  const most = Math.max(0, Math.floor((len - 2) / 3));
-  let n = 0;
-  while (n < most && successChance(kind, strength, learner, base + n) < TARGET_SUCCESS) n += 1;
-  return Math.min(base + n, Math.max(0, len - 1));
+export function cueLetters(kind: QuestionKind, answer: string, _strength?: number, _learner?: LearnerModel | null): number {
+  return Math.min(baseLetters(kind), Math.max(0, [...answer].length - 1));
 }
 
 /**
@@ -940,6 +1000,7 @@ export function chooseKind(stage: number, can: Record<QuestionKind, boolean>, as
   if (best) return best;
   // Nothing in the stage's order can be asked (no usable meaning): a sentence, then the word
   // heard if the listening cap allows, then the plain card. Never listening past the cap.
+  if (can['cloze-choice']) return 'cloze-choice';
   if (can.cloze) return 'cloze';
   if (listenOk && can['listen-choice']) return 'listen-choice';
   if (listenOk && can['listen-type']) return 'listen-type';
@@ -956,6 +1017,60 @@ export function canAsk(entry: NotebookEntry, opts: QuestionOptions = {}): boolea
   if (!clean(entry.definition)) return true;
   if (questionMeaning(entry)) return true;
   return !!clozeFrom(entry, opts.examples?.(clean(entry.lemma)) || []);
+}
+
+/** Whether `text` uses `word` or one of its forms (`formPattern`). */
+function mentions(text: string, word: string): boolean {
+  const t = clean(text);
+  return !!t && !!word && formPattern(word).test(t);
+}
+
+/**
+ * Wrong options for a sentence's gap: other saved words (`pickDistractors`), each put in the form
+ * the gap takes, so no option stands out by its ending. Only words of the answer's part of speech
+ * are offered when both are known, and an inflected gap takes only words whose part of speech is
+ * known (a verb for -ed and -ing), so no option is a made-up form such as "appling". A word that
+ * either definition names (a synonym that could fill the gap too), one that cannot take the form,
+ * or one whose form is the answer's, is left out.
+ */
+function gapOptions(target: NotebookEntry, form: string, lures: NotebookEntry[]): Array<{ word: string; lemma: string }> {
+  const lemma = clean(target.lemma);
+  const pos = normPos(target.partOfSpeech);
+  const inflected = clean(form).toLowerCase() !== lemma.toLowerCase();
+  const slots = inflected ? regularFormSlots(lemma) : null;
+  const verbOnly = !!slots && (slots.ed === clean(form).toLowerCase() || slots.ing === clean(form).toLowerCase());
+  const out: Array<{ word: string; lemma: string }> = [];
+  const seen = new Set([form.toLowerCase()]);
+  for (const e of lures) {
+    const other = clean(e.lemma);
+    const epos = normPos(e.partOfSpeech);
+    if (pos && epos && epos !== pos) continue;
+    if (inflected && (!epos || (verbOnly && epos !== 'verb'))) continue;
+    if (mentions(target.definition || '', other) || mentions(e.definition || '', lemma)) continue;
+    const word = inflectLike(lemma, form, other);
+    if (!word || seen.has(word.toLowerCase())) continue;
+    seen.add(word.toLowerCase());
+    out.push({ word, lemma: other });
+  }
+  return out;
+}
+
+/** Longest word offered as letter tiles; a longer one is typed instead. */
+export const MAX_TILES = 14;
+
+/** A word that can be built from letter tiles: one word of letters (an apostrophe or hyphen allowed), 3 to MAX_TILES long. */
+export function tileable(lemma: string): boolean {
+  const w = clean(lemma);
+  const n = [...w].length;
+  return n >= 3 && n <= MAX_TILES && /^\p{L}[\p{L}'’-]*\p{L}$/u.test(w);
+}
+
+/** The word's letters in a shuffled row that does not spell the word already, when its letters allow that. */
+function tileRow(lemma: string, rand: () => number): string[] {
+  const letters = [...clean(lemma)];
+  let row = shuffle(letters, rand);
+  for (let i = 0; i < 6 && row.join('') === letters.join(''); i++) row = shuffle(letters, rand);
+  return row;
 }
 
 /**
@@ -975,13 +1090,21 @@ export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts:
   const hasMeaning = !!meaning && meaning !== '…';
   const cloze = clozeFrom(entry, opts.examples?.(clean(entry.lemma)) || []);
   const meaningLures = hasMeaning ? pickDistractors(entry, pool, 'meaning', 3, rand) : [];
-  const wordLures = pickDistractors(entry, pool, 'word', 3, rand);
+  // The gap question looks further down the same ranking, since its grammar rules many words out.
+  const wideLures = pickDistractors(entry, pool, 'word', 12, rand);
+  const wordLures = wideLures.slice(0, 3);
   const typedOk = !isLeech(entry) && !(repeat > 0 && stage <= 1);
   const open = (k: QuestionKind) => kindUnlocked(k, learner) && (!TYPED_KINDS.includes(k) || typedOk);
+  // The gap's options, each in the form the gap takes (`inflectLike`).
+  const gapLures = cloze ? gapOptions(entry, cloze.form, wideLures) : [];
   const can: Record<QuestionKind, boolean> = {
     'meaning-choice': hasMeaning && meaningLures.length >= 2,
     'word-choice': hasMeaning && wordLures.length >= 2,
     'listen-choice': !!opts.audio && wordLures.length >= 2,
+    'cloze-choice': !!cloze && gapLures.length >= 2,
+    // Building the word from its letters is spelling too, so a learning word asked again the same
+    // day waits for another day, as typing does; a leech may get it, as an easier way in.
+    'spell-tiles': hasMeaning && tileable(lemma) && kindUnlocked('spell-tiles', learner) && !(repeat > 0 && stage <= 1),
     recall: hasMeaning && open('recall'),
     'listen-type': !!opts.audio && open('listen-type'),
     cloze: !!cloze && open('cloze'),
@@ -1022,14 +1145,27 @@ export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts:
     base.optionWords = all.map((e) => (e === entry ? lemma : clean(e.lemma)));
     base.correct = all.indexOf(entry);
     if (kind === 'word-choice') base.prompt = meaning;
+  } else if (kind === 'cloze-choice' && cloze) {
+    const all = shuffle([{ word: cloze.form, lemma }, ...gapLures.slice(0, 3)], rand);
+    base.prompt = cloze.sentence;
+    base.options = all.map((o) => o.word);
+    base.optionWords = all.map((o) => o.lemma);
+    base.correct = all.findIndex((o) => o.lemma === lemma);
+    base.answers = [cloze.form];
+  } else if (kind === 'spell-tiles') {
+    base.prompt = meaning;
+    base.tiles = tileRow(lemma, rand);
+    base.placed = [];
   } else if (kind === 'recall' || kind === 'listen-type') {
     if (kind === 'recall') base.prompt = meaning;
     base.reveal = lettersFor(kind);
+    base.shown = base.reveal;
     base.hint = [...lemma].slice(0, base.reveal).join('');
   } else if (kind === 'cloze' && cloze) {
     base.prompt = cloze.sentence;
     base.answers = [...new Set([cloze.form, ...answers])];
     base.reveal = lettersFor(kind);
+    base.shown = base.reveal;
     base.hint = [...cloze.form].slice(0, base.reveal).join('');
   } else if (kind === 'flash') {
     base.prompt = meaning;
@@ -1037,31 +1173,93 @@ export function buildQuestion(entry: NotebookEntry, pool: NotebookEntry[], opts:
   return base;
 }
 
+/** Leading letters of the answer shown so far, by the question and by Hint. */
+export function shownLetters(q: ReviewQuestion): number {
+  return q.shown ?? (q.reveal || 0) + (q.hinted || 0);
+}
+
 /** Letters still hidden that Hint may reveal: all but the last one. */
 export function hintsLeft(q: ReviewQuestion): number {
   if (!TYPED_KINDS.includes(q.kind)) return 0;
   const len = [...(q.answers[0] || '')].length;
-  return Math.max(0, len - 1 - (q.reveal || 0) - (q.hinted || 0));
+  return Math.max(0, len - 1 - shownLetters(q));
 }
 
 /**
- * Hint: reveals the next letter of the answer into the answer box. What the learner typed (`typed`,
- * the box as it stands) is kept as far as it matches the answer, letter case aside, and the letter
- * after that is revealed; anything typed past the first wrong letter is dropped. The last letter
- * is never revealed. A right answer after a hint counts as Hard, as a near miss does.
+ * The share of the letters the learner had to supply that Hint gave instead. Each press gives
+ * one letter, so three presses on a word with twelve hidden letters give a quarter of it.
  */
-export function hintReview(state: ReviewState, typed = ''): boolean {
+export function hintShare(q: ReviewQuestion): number {
+  if (!q.hinted) return 0;
+  const hidden = Math.max(1, [...(q.answers[0] || '')].length - (q.reveal || 0));
+  return Math.min(1, q.hinted / hidden);
+}
+
+/**
+ * Hint gives one more letter: the one after the letters the learner already has right, or after
+ * the letters shown so far, whichever reaches further. `typed` is the answer box as it stands
+ * (by default the kept draft). The box is never cleared. When it holds the start of the answer,
+ * letter case aside, the new letter is added after it; when it holds anything else it stays as
+ * typed, and the letters shown appear under it. The last letter is never given. Each press lowers
+ * the answer's credit (`hintShare`, `autoGrade`).
+ */
+export function hintReview(state: ReviewState, typed?: string): boolean {
   const q = state.question;
   if (!q || state.answer || !TYPED_KINDS.includes(q.kind)) return false;
+  const box = typed ?? q.draft ?? '';
   const answer = [...(q.answers[0] || '')];
-  const mine = [...typed];
+  const mine = [...box];
   let right = 0;
   while (right < mine.length && right < answer.length && mine[right].toLowerCase() === answer[right].toLowerCase()) right += 1;
-  const shown = Math.max(right, (q.reveal || 0) + (q.hinted || 0));
-  if (shown + 1 > answer.length - 1) return false;
-  q.hinted = shown + 1 - (q.reveal || 0);
-  q.draft = mine.slice(0, Math.min(right, shown)).join('') + answer.slice(Math.min(right, shown), shown + 1).join('');
+  const known = Math.max(right, shownLetters(q));
+  if (known + 1 > answer.length - 1) return false;
+  q.shown = known + 1;
+  q.hinted = (q.hinted || 0) + 1;
+  q.draft = right === mine.length ? box + answer.slice(right, q.shown).join('') : box;
   return true;
+}
+
+/**
+ * Letter tiles: places tile `index` after the letters placed so far. Placing the last tile
+ * answers the question with the word built. True when something changed, so the shell repaints.
+ */
+export function placeTile(state: ReviewState, index: number, now = Date.now()): boolean {
+  const q = state.question;
+  if (!q || state.answer || q.kind !== 'spell-tiles' || !q.tiles) return false;
+  const placed = (q.placed ||= []);
+  if (!Number.isInteger(index) || index < 0 || index >= q.tiles.length || placed.includes(index)) return false;
+  placed.push(index);
+  if (placed.length === q.tiles.length) answerReview(state, { typed: placed.map((i) => q.tiles![i]).join('') }, now);
+  return true;
+}
+
+/** Letter tiles: takes back the letter at `pos` in the word built (the last one by default). */
+export function returnTile(state: ReviewState, pos?: number): boolean {
+  const q = state.question;
+  if (!q || state.answer || q.kind !== 'spell-tiles' || !q.placed?.length) return false;
+  const at = pos == null ? q.placed.length - 1 : pos;
+  if (!Number.isInteger(at) || at < 0 || at >= q.placed.length) return false;
+  q.placed.splice(at, 1);
+  return true;
+}
+
+/** Letter tiles from the keyboard: a letter places the first unused tile with it, Backspace takes the last one back. */
+export function tileKey(state: ReviewState, key: string, now = Date.now()): boolean {
+  const q = state.question;
+  if (!q || state.answer || q.kind !== 'spell-tiles' || !q.tiles) return false;
+  if (key === 'Backspace') return returnTile(state);
+  if ([...key].length !== 1) return false;
+  const k = key.toLowerCase();
+  const placed = q.placed || [];
+  const i = q.tiles.findIndex((t, n) => t.toLowerCase() === k && !placed.includes(n));
+  return i >= 0 && placeTile(state, i, now);
+}
+
+/** Keeps what the answer box holds on each keystroke, so a repaint puts it back. */
+export function keepDraft(state: ReviewState | null | undefined, typed: string): void {
+  const q = state?.question;
+  if (!q || state.answer) return;
+  q.draft = typed;
 }
 
 /* --------------------------------------------------------------- answers */
@@ -1107,29 +1305,42 @@ export function checkTyped(typed: string, answers: string[]): AnswerResult {
   return best;
 }
 
-/** How much help a typed answer had: letters shown beyond the usual cue, and letters asked for with Hint. */
+/**
+ * How much help a typed answer had: letters shown beyond the usual cue, and the share of the
+ * hidden letters asked for with Hint (`hintShare`).
+ */
 export interface AnswerHelp {
   extra?: number;
-  hinted?: number;
+  hintShare?: number;
 }
 
+/** A typed answer that needed Hint for more than this share of its hidden letters was not recalled. */
+export const HINT_FAIL_SHARE = 1 / 3;
+
 /**
- * Grade from the outcome and the response time. A wrong answer is Again and a near miss is Hard.
- * A right choice is Good, or Hard after ten seconds; recognising a word never earns Easy. A right
- * typed answer is Easy when it came quickly (2.5 s plus a quarter second per letter), Hard when
- * it took more than 15 s plus that allowance, and Good otherwise. A typed answer finished after a
- * Hint is Hard, and one given extra letters up front is at most Good.
+ * Grade from the outcome and the response time. A wrong answer is Again, and so is a near miss
+ * ("Almost"): a typed question asks for the spelling, and Quizlet and Lingvist count a misspelt
+ * answer as missed too. "I knew it" turns a near miss into Hard at most (`knewItGrade`). A right
+ * choice is Good, or Hard after ten seconds; recognising a word never earns Easy. A right typed
+ * answer is Easy when it came quickly (2.5 s plus a quarter second per letter), Hard when it took
+ * more than 15 s plus that allowance, and Good otherwise. Hint lowers the credit with the letters
+ * it gives: any hint makes the answer Hard at most, and an answer that needed hints for more than
+ * a third of its hidden letters (HINT_FAIL_SHARE) is Again, since the learner was told the word
+ * rather than recalled it.
  */
 export function autoGrade(kind: QuestionKind, result: AnswerResult, ms: number, length = 0, help: AnswerHelp = {}): ReviewGrade {
-  if (result === 'wrong') return 1;
-  if (result === 'close') return 2;
+  if (result === 'wrong' || result === 'close') return 1;
   if (TYPED_KINDS.includes(kind)) {
-    if (help.hinted) return 2;
+    const share = help.hintShare || 0;
+    if (share > HINT_FAIL_SHARE + 1e-9) return 1;
+    if (share > 0) return 2;
     const allowance = 250 * length;
     if (ms <= 2500 + allowance) return help.extra ? 3 : 4;
     if (ms > 15000 + allowance) return 2;
     return 3;
   }
+  // Letter tiles hand the learner the letters, so a quick build is Good, never Easy.
+  if (kind === 'spell-tiles') return ms > 15000 + 250 * length ? 2 : 3;
   return ms > 10000 ? 2 : 3;
 }
 
@@ -1143,7 +1354,9 @@ export function sessionLearner(learner: LearnerModel | null | undefined, results
   const offset = { ...learner.offset };
   for (const r of results) {
     if (r.grade > 1) right[r.kind] = (right[r.kind] || 0) + 1;
-    if (r.predicted != null) offset[r.kind] = eloStep(offset[r.kind] || 0, r.grade > 1 ? 1 : 0, r.predicted, 40);
+    // A hinted answer counts as only partly right, by the share of the word it was given.
+    const outcome = r.grade > 1 ? 1 - (r.hintShare || 0) : 0;
+    if (r.predicted != null) offset[r.kind] = eloStep(offset[r.kind] || 0, outcome, r.predicted, 40);
   }
   return { offset, right };
 }
@@ -1179,15 +1392,17 @@ export function answerReview(state: ReviewState, input: { choice?: number; typed
   let result: AnswerResult = 'wrong';
   if (q.kind === 'flash') result = input.knew ? 'right' : 'wrong';
   else if (q.correct >= 0) result = input.choice === q.correct ? 'right' : 'wrong';
+  // Tiles hold only the word's own letters, so any slip is a real misspelling.
+  else if (q.kind === 'spell-tiles') result = input.typed != null && normalizeAnswer(input.typed) === normalizeAnswer(q.lemma) ? 'right' : 'wrong';
   else if (input.typed != null) result = checkTyped(input.typed, q.answers);
-  const help: AnswerHelp = { extra: Math.max(0, (q.reveal || 0) - (q.kind === 'listen-type' ? 0 : 1)), hinted: q.hinted || 0 };
+  const help: AnswerHelp = { extra: Math.max(0, (q.reveal || 0) - (q.kind === 'listen-type' ? 0 : 1)), hintShare: hintShare(q) };
   const auto = q.kind === 'flash' ? (input.knew ? 3 : 1) : autoGrade(q.kind, result, ms, q.lemma.length, help);
   state.answer = { choice: input.choice ?? -1, typed: input.typed ?? '', result, auto, grade: auto, overridden: false, ms, at: now };
   return state.answer;
 }
 
 /** Kinds the countdown in Settings → Learn applies to: the questions answered by picking one of four. */
-export const COUNTDOWN_KINDS: QuestionKind[] = ['meaning-choice', 'word-choice', 'listen-choice'];
+export const COUNTDOWN_KINDS: QuestionKind[] = ['meaning-choice', 'word-choice', 'listen-choice', 'cloze-choice'];
 
 /** Milliseconds a question allows with a countdown of `seconds` (0 is off); 0 for kinds without one. */
 export function countdownMs(q: ReviewQuestion | null | undefined, seconds: number | null | undefined): number {
@@ -1215,7 +1430,9 @@ export function markHeard(state: ReviewState | null | undefined, lemma: string):
   const q = state?.question;
   if (!q || state.answer || q.heard || clean(q.lemma).toLowerCase() !== clean(lemma).toLowerCase()) return false;
   q.heard = true;
-  return true;
+  // Only a question with a countdown has anything to redraw. Repainting a dictation here would
+  // interrupt the learner typing while the word plays.
+  return COUNTDOWN_KINDS.includes(q.kind);
 }
 
 /**
@@ -1291,13 +1508,22 @@ export function armCountdown(state: ReviewState | null | undefined, seconds: num
 }
 
 /**
- * Overturns the automatic grade: "I knew it" after a miss (Good), "I didn't know it" after a hit
- * (Again), or `easy` for "Too easy" after a hit (Easy). Tapping the same one again undoes it.
+ * The grade "I knew it" gives an answer graded Again: Good after a miss, and Hard at most after a
+ * near miss or a right answer that needed many hints.
+ */
+export function knewItGrade(a: ReviewAnswer): ReviewGrade {
+  return a.result === 'wrong' ? 3 : 2;
+}
+
+/**
+ * Overturns the automatic grade: "I knew it" after an answer graded Again (`knewItGrade`), "I
+ * didn't know it" after one graded higher (Again), or `easy` for "Too easy" after a hit (Easy).
+ * Tapping the same one again undoes it.
  */
 export function overrideReview(state: ReviewState, mode: 'flip' | 'easy' = 'flip'): void {
   const a = state.answer;
   if (!a) return;
-  const target: ReviewGrade = mode === 'easy' ? 4 : a.result === 'wrong' ? 3 : 1;
+  const target: ReviewGrade = mode === 'easy' ? 4 : a.auto === 1 ? knewItGrade(a) : 1;
   if (a.overridden && a.grade === target) {
     a.grade = a.auto;
     a.overridden = false;
@@ -1330,6 +1556,7 @@ export function advanceReview(state: ReviewState, updated?: NotebookEntry | null
     maturityBefore: q.maturity,
     maturityAfter,
     hinted: q.hinted || 0,
+    hintShare: hintShare(q),
     predicted: q.predicted,
   });
   const asked = (state.seen[q.id] || 0) + 1;

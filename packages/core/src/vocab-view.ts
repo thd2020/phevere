@@ -332,6 +332,16 @@ export interface RecentLookup {
  * The row itself looks up. The heart saves with wb-save (data-q) and removes with nb-del
  * (data-id), as Google Translate's history rows star a word in place.
  */
+/**
+ * Recent lookups that contain the search text, in their stored order, the way a browser's
+ * history page filters as you type. An empty search keeps every entry.
+ */
+export function filterRecentLookups(items: RecentLookup[], query: string): RecentLookup[] {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return items;
+  return items.filter((item) => clean(item.q).toLowerCase().includes(q));
+}
+
 export function recentListHtml(
   items: RecentLookup[],
   saved: (q: string) => VocabViewEntry | undefined,
