@@ -398,6 +398,15 @@ function stubHttp(log, opts = {}) {
         const pages = q.get('titles').split('|').map((t) => (fx.wiktionary[t] ? fx.wiktionary[t].query.pages[0] : { title: t, missing: true }));
         return { query: { pages } };
       }
+      if (u.hostname === 'en.wikipedia.org' && q.get('generator') === 'search') {
+        // The search for a card no source had a picture for: an article on the word, then one about a band.
+        if (opts.search === 'none') return { batchcomplete: true };
+        const word = q.get('gsrsearch');
+        const name = word.charAt(0).toUpperCase() + word.slice(1);
+        const page = (title, description, image, index) => ({ title, index, description, pageimage: image, thumbnail: { source: `https://upload.wikimedia.org/x/330px-${image}`, width: 330, height: 220 } });
+        if (opts.search === 'commons') return { query: { pages: [page(`${name} (band)`, 'American rock band', `${name} live.jpg`, 1)] } };
+        return { query: { pages: [page(`${name} (band)`, 'American rock band', `${name} live.jpg`, 2), page(name, 'Small mechanical device', `${name} on a desk.jpg`, 1)] } };
+      }
       if (u.hostname === 'en.wikipedia.org') {
         const t = q.get('titles');
         const name = t.charAt(0).toUpperCase() + t.slice(1);
@@ -478,18 +487,20 @@ function memoryStore() {
   assert.ok((await fourth.fetchSenseImages('crane', craneSenses, { lang: 'en' }))[2], 'Undo is saved');
 
   // A card always shows a picture when the word has one. A sense no picture fits takes the
-  // word's best one (the lexeme's bird), while a lookup of that sense still shows none.
+  // word's best one (the picture on its Wiktionary entry before a Wikidata lexeme's), while a
+  // lookup of that sense still shows none.
   {
     const verb = [{ meaning: 'To stretch out the neck to see better.', partOfSpeech: 'verb' }];
     same(await mod.fetchSenseImages('crane', verb, { lang: 'en' }), [null], 'lookup: no picture on the verb');
     const n = log.length;
     const card = await mod.fetchWordImage('crane', { lang: 'en', gloss: verb[0].meaning, pos: 'verb' });
-    assert.strictEqual(card && card.title, 'Gruidae', 'card: the best picture of the word');
+    assert.strictEqual(card && card.title, 'Common crane (1)', 'card: the best picture of the word');
     assert.strictEqual(log.length, n, 'from the pool, no request');
   }
 
-  // A word no source has a picture for is searched on Commons once: a sound is skipped and the
-  // file named with the word wins. The search is kept with the pool.
+  // A word no source has a picture for is searched once: Wikipedia's article named with the word
+  // comes first (not the band), then a Commons file named with the word (not a sound or a street
+  // scene). A lookup never searches, and the search is kept with the pool.
   {
     const log9 = [];
     const s9 = memoryStore();
@@ -497,12 +508,17 @@ function memoryStore() {
     same(await m9.fetchSenseImages('gizmo', [{ meaning: 'A small gadget.', partOfSpeech: 'noun' }], { lang: 'en' }), [null], 'lookup: none');
     assert.ok(!log9.some((r) => r.url.includes('generator=search')), 'a lookup never searches');
     const card = await m9.fetchWordImage('gizmo', { lang: 'en', gloss: 'A small gadget.' });
-    assert.strictEqual(card && card.title, 'gizmo in a garden', 'card: the search picture named with the word');
-    assert.strictEqual(log9.filter((r) => r.url.includes('generator=search')).length, 1, 'one search');
+    assert.strictEqual(card && card.title, 'Gizmo', 'card: the lead image of the article on the word');
+    const searches = () => log9.filter((r) => r.url.includes('generator=search')).length;
+    assert.strictEqual(searches(), 2, 'one search on each site');
     await m9.fetchWordImage('gizmo', { lang: 'en', gloss: 'A small gadget.' });
-    assert.strictEqual(log9.filter((r) => r.url.includes('generator=search')).length, 1, 'not searched again');
+    assert.strictEqual(searches(), 2, 'not searched again');
     const later = load({ isCoreConfigured: () => true, getHttp: () => ({ requestJson: async () => { throw new Error('should not fetch'); } }), getLookupCache: () => s9 });
     assert.ok(await later.fetchWordImage('gizmo', { lang: 'en' }), 'the search is saved with the pool');
+    // Only an article about something else: a Commons file named with the word.
+    const m11 = load({ isCoreConfigured: () => true, getHttp: () => stubHttp([], { search: 'commons' }), getLookupCache: () => null });
+    const file = await m11.fetchWordImage('gizmo', { lang: 'en', gloss: 'A small gadget.' });
+    assert.strictEqual(file && file.title, 'gizmo in a garden', 'card: the Commons file named with the word');
     // Nothing anywhere: the card keeps its letter.
     const m10 = load({ isCoreConfigured: () => true, getHttp: () => stubHttp([], { search: 'none' }), getLookupCache: () => null });
     assert.strictEqual(await m10.fetchWordImage('gizmo', { lang: 'en', gloss: 'A small gadget.' }), null, 'no picture anywhere');

@@ -1504,7 +1504,7 @@ export function lexemeFit(l: LexemeSense, sense: SenseInput, lemma: string): num
  */
 export interface PoolPicture {
   file: string;
-  /** `search`: a Commons search for the word, made only for a card no other source had a picture for. */
+  /** `search`: a search for the word (`searchPictures`), made only for a card no source had a picture for. */
   source: 'wiktionary' | 'lexeme' | 'senseitem' | 'article' | 'search';
   /** Index into the pool's Wiktionary pictures or lexeme senses. */
   ref: number;
@@ -1535,7 +1535,7 @@ export interface PicturePool {
   complete: boolean;
   /** A request failed, so the pool may lack pictures it would otherwise have. */
   failed: boolean;
-  /** The Commons search for the word has been made (`cardPicture`), so it is not made again. */
+  /** The search for the word has been made (`searchPictures`), so it is not made again. */
   searched?: boolean;
 }
 
@@ -1806,25 +1806,40 @@ function wholeWordPicture(pool: PicturePool, hidden: Set<string>): SenseImage | 
 /**
  * A card always shows a picture when the word has one anywhere, the way flashcard apps put an
  * image on every card they can. When no picture fits the card's saved sense, the card takes the
- * word's best picture: one tied to another of its senses (a Wikidata lexeme sense, a Wiktionary
- * line's item, a picture on the Wiktionary page), then the word's own article (the article titled
- * with it, an article on its disambiguation page, a foreign word's gloss article), then a Commons
- * search for the word. A portrait of a named person, a map or a logo comes only after everything
- * else, and a hidden picture never. The lookup keeps its per-sense matching (`assignPictures`).
+ * word's best picture. Pictures editors placed on the word's Wiktionary entry come first (tied to
+ * a sense, then the entry's others, then a definition line's item), then the article titled with
+ * the word, then a Wikidata lexeme sense's picture (less curated: "popsicle" has a lone lexeme
+ * sense whose picture is of something else), then articles on the word's disambiguation page and
+ * a foreign word's gloss article, then a search for the word on Wikipedia and Commons
+ * (`searchPictures`). A sense labelled slang, vulgar, figurative and the like lends no picture.
+ * A portrait of a named person, a map or a logo comes only after everything else, and a hidden
+ * picture never. The lookup keeps its per-sense matching (`assignPictures`).
  */
 function poolFallback(pool: PicturePool, hidden: Set<string>, sense: string, loose: boolean): SenseImage | null {
   const off = (p: PoolPicture) => isHidden(hidden, p.file, sense) || (!sense && Array.from(hidden).some((h) => h.split(HIDDEN_SEP)[0] === p.file.toLowerCase()));
+  const labelled = (p: PoolPicture): boolean => {
+    const text =
+      p.source === 'lexeme'
+        ? pool.lexemes[p.ref]?.gloss
+        : p.source === 'senseitem'
+          ? pool.senseItems[p.ref]?.senseText
+          : p.source === 'wiktionary'
+            ? pool.wiktionary[p.ref]?.senseText
+            : '';
+    return BAD_LABELS.test(String(text || ''));
+  };
   const tier = (p: PoolPicture): number => {
-    if (p.source === 'lexeme') return 0;
-    if (p.source === 'senseitem') return 1;
-    if (p.source === 'wiktionary') return pool.wiktionary[p.ref]?.senseText ? 2 : 3;
-    if (p.source === 'article') return p.ref < 1000 ? 4 : p.ref >= 2000 ? 5 : 6;
+    if (p.source === 'wiktionary') return pool.wiktionary[p.ref]?.senseText ? 0 : 1;
+    if (p.source === 'senseitem') return 2;
+    if (p.source === 'article' && p.ref < 1000) return 3;
+    if (p.source === 'lexeme') return 4;
+    if (p.source === 'article') return p.ref >= 2000 ? 5 : 6;
     return 7;
   };
   const list = pool.pictures
-    .filter((p) => !!p.image && !off(p) && (loose || (!p.portrait && !p.chart)))
+    .filter((p) => !!p.image && !off(p) && !labelled(p) && (loose || (!p.portrait && !p.chart)))
     .map((p, i) => ({ p, i }))
-    .sort((a, b) => tier(a.p) - tier(b.p) || a.p.ref - b.p.ref || a.i - b.i);
+    .sort((x, y) => tier(x.p) - tier(y.p) || x.p.ref - y.p.ref || x.i - y.i);
   return list[0]?.p.image || null;
 }
 
@@ -1838,41 +1853,72 @@ export function buildCommonsSearchUrl(word: string): string {
   );
 }
 
+/** A Wikipedia search for articles about a word, with each article's free lead image. */
+export function buildWikipediaSearchUrl(word: string, lang = 'en'): string {
+  return (
+    `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&formatversion=2` +
+    `&generator=search&gsrnamespace=0&gsrlimit=5&gsrsearch=${encodeURIComponent(word)}` +
+    `&prop=pageimages|pageprops|description&piprop=name|thumbnail&pithumbsize=${THUMB_WIDTH}` +
+    '&pilicense=free&ppprop=disambiguation&origin=*'
+  );
+}
+
 /**
- * Adds the Commons search's pictures to the pool, best first: a file whose name has the word or a
- * word of the card's sense, in the order Commons ranks them. Sounds, documents, interface icons,
- * maps and logos drop out. False when the request failed (the search is made again later).
+ * Adds the pictures a search for the word finds to the pool, for a card no source had one for.
+ * First the lead images of the articles Wikipedia's search ranks for the word ("anonymity" gives
+ * the article Anonymity), when the article is named with the word and is about a concept rather
+ * than a person, a work or a place (`acceptConceptPage`). Then files from a Commons search whose
+ * name has the word, best fitting the card's sense first; sounds, documents, interface icons,
+ * maps, logos and files named for a person or a work drop out. False when a request failed (the
+ * search is made again later).
  */
 async function searchPictures(pool: PicturePool, gloss: string, wanted?: Wanted): Promise<boolean> {
   type Page = { title: string; index?: number; imageinfo?: ImageInfo[] };
-  const res = await getJson<{ query?: { pages?: Page[] } }>(buildCommonsSearchUrl(pool.lemma), TIMEOUT_MS, false, wanted);
-  if (!res) return false;
+  const lang = pool.lang === 'en' ? 'en' : pool.lang;
+  const [wiki, commons] = await Promise.all([
+    getJson<{ query?: { pages?: WikipediaPage[] } }>(buildWikipediaSearchUrl(pool.lemma, lang), TIMEOUT_MS, false, wanted),
+    getJson<{ query?: { pages?: Page[] } }>(buildCommonsSearchUrl(pool.lemma), TIMEOUT_MS, false, wanted),
+  ]);
+  if (!wiki || !commons) return false;
+  const articles = (wiki.query?.pages || [])
+    .slice()
+    .sort((x, y) => (x.index ?? 0) - (y.index ?? 0))
+    .filter((page) => sharesWord(titleParts(page.title).base, pool.lemma) && acceptConceptPage(page))
+    .slice(0, 2);
+  const infos = articles.length ? await imageInfos(articles.map((page) => String(page.pageimage)), wanted) : new Map<string, ImageInfo>();
+  const found: PoolPicture[] = [];
+  articles.forEach((page, k) => {
+    const file = String(page.pageimage).replace(/_/g, ' ');
+    const image = imageFromInfo(file, page.title, infos.get(file.toLowerCase()));
+    if (image) found.push({ file, source: 'search', ref: k, image });
+  });
   const senseWords = contentTokens(glossBody(gloss), pool.lemma);
-  const ranked = (res.query?.pages || [])
+  const named = (commons.query?.pages || [])
     .map((page, i) => {
       const file = String(page.title || '').replace(/^File:/i, '');
       const info = page.imageinfo?.[0];
       const name = commonsFileTitle(file);
-      if (!file || !info || CHROME_FILE.test(name) || badMatch(BAD_FILE, name, pool.lemma)) return null;
+      if (!file || !info || !sharesWord(name, pool.lemma) || CHROME_FILE.test(name) || badMatch(BAD_FILE, name, pool.lemma)) return null;
+      const categories = stripHtml(info.extmetadata?.Categories?.value || '');
+      // "Apathy rapper", an album cover: a picture of a person or a work named with the word.
+      if (badMatch(BAD_DESCRIPTION, `${name} ${categories}`, pool.lemma) || PERSON_CATEGORY.test(categories)) return null;
       const image = imageFromInfo(file, name, info);
       if (!image) return null;
-      const named = sharesWord(name, pool.lemma) ? 2 : 0;
-      const score = named + overlap(contentTokens(name, pool.lemma), senseWords) - (page.index ?? i) / 100;
-      const categories = stripHtml(info.extmetadata?.Categories?.value || '');
-      return { file, image, score, portrait: PERSON_CATEGORY.test(categories), chart: badMatch(BAD_CATEGORY, categories, pool.lemma) };
+      const score = overlap(contentTokens(name, pool.lemma), senseWords) - (page.index ?? i) / 100;
+      return { file, image, score, chart: badMatch(BAD_CATEGORY, categories, pool.lemma) };
     })
     .filter((x): x is NonNullable<typeof x> => !!x)
-    .sort((a, b) => b.score - a.score)
+    .sort((x, y) => y.score - x.score)
     .slice(0, 4);
-  pool.pictures = pool.pictures.filter((p) => p.source !== 'search');
-  ranked.forEach((x, k) => pool.pictures.push({ file: x.file, source: 'search', ref: k, image: x.image, portrait: x.portrait, chart: x.chart }));
+  named.forEach((x, k) => found.push({ file: x.file, source: 'search', ref: 10 + k, image: x.image, chart: x.chart }));
+  pool.pictures = pool.pictures.filter((p) => p.source !== 'search').concat(found);
   pool.searched = true;
   return true;
 }
 
 /**
  * The picture a card shows: the one its saved sense would show in a lookup, else the word's best
- * picture (`poolFallback`), searching Commons for the word when the pool has none.
+ * picture (`poolFallback`), searching for the word when the pool has none.
  */
 async function cardPicture(
   pool: PicturePool,
