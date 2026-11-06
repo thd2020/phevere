@@ -2826,6 +2826,18 @@ function wireMainWorkspace(): void {
       loadSuggestions: (q) => suggestWords(q),
     });
     search.addEventListener('focus', () => void warmSuggestions(), { once: true });
+    // Ctrl+F and Ctrl+K (Cmd on a Mac) go to the search box from anywhere in the window.
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+        if (e.key.toLowerCase() !== 'f' && e.key.toLowerCase() !== 'k') return;
+        e.preventDefault();
+        search.focus();
+        search.select();
+      },
+      true,
+    );
   }
   document.addEventListener('keydown', onReviewKey);
   // Links in Words, Learn and the account popover (sources, licences, Get Plus) open in the browser.

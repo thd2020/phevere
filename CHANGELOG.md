@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Search shortcuts (2026-11-07): Ctrl+F and Ctrl+K (Cmd+F and Cmd+K on a Mac) put the cursor in the main window's search box from Words, Learn or Recent.
+
 ### Fixed
 
 - Words list and export no longer freeze on Windows (2026-11-07): with another program reading windows through Windows accessibility, such as an automation or AI agent tool, Phevere's own accessibility tree was queried hundreds of thousands of times a second, and scrolling, hovering and clicking in Words stalled for seconds at a time. Phevere now builds that tree only while a screen reader such as Narrator, NVDA or JAWS is running; to keep it on for another assistive tool, create an empty file named `.enable-accessibility` in `%APPDATA%\phevere` and restart. Hover lookup also leaves Phevere's own windows and dialogs alone: resting the pointer on the Export or Export for Anki save dialog used to block the whole app for up to a minute.
