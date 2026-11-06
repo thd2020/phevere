@@ -49,6 +49,7 @@ Phevere ist ein Wörterbuch, das überall funktioniert, wo du liest. Markiere ei
 - Computer: Schlage markierten Text in jeder App oder Wörter in Bildern nach, und übersetze markierten Text direkt an Ort und Stelle
 - Android: Schlage über das Textauswahlmenü jeder App nach, und scanne Wörter aus Fotos
 - iOS: Schlage über das Teilen-Menü nach, und scanne Wörter aus Fotos
+- Die Oberfläche gibt es in den Sprachen English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch, Русский und Português (Brasil), sie folgt der Systemsprache, und du kannst sie oben in den **Einstellungen** umstellen
 
 <div align="center">
 <img src="README.assets/learning-overview.png" width="860" alt="Screenshots der Handy-App: eine Wiederholungsfrage, die Fortschrittsseite, die Vokabelbuch-Bibliothek und Wortfamilien">
@@ -63,13 +64,13 @@ Windows und macOS zeigen beim ersten Öffnen von Phevere eine Warnung; wähle, d
 
 ## Updates
 
-Phevere aktualisiert sich selbst. Unter **Settings → Updates** wählst du Automatically (automatisch), Ask first (vorher fragen) oder Off (aus).
+Phevere aktualisiert sich selbst. Unter **Einstellungen → Updates** wählst du Automatisch, Vorher fragen oder Aus.
 
-- Unter Windows und als AppImage wird das Update installiert, wenn du Phevere beendest, und **Roll back** kehrt zur vorherigen Version zurück.
+- Unter Windows und als AppImage wird das Update installiert, wenn du Phevere beendest, und mit **Zurück zu …** kehrst du zur vorherigen Version zurück.
 - Unter macOS sowie als deb und rpm öffnet Phevere die Downloadseite der neuen Version.
 - Unter Android wird das Update über WLAN geladen, und vor der Installation fragt Phevere nach deiner Bestätigung.
 
-Unter **Settings → About** siehst du deine Version, die Neuerungen und wo du ein Problem melden kannst.
+Unter **Einstellungen → Info** siehst du deine Version, die Neuerungen und wo du ein Problem melden kannst.
 
 ## Datenschutz
 
@@ -96,6 +97,6 @@ Du brauchst Node.js 18 oder neuer sowie eine C++-Toolchain für das native Modul
 
 ## Lizenz
 
-[MIT](LICENSE). Die Namen Phevere, Holarky und knowrld und ihre Logos sind davon ausgenommen; siehe [TRADEMARKS.md](TRADEMARKS.md). Wörterbuchtexte aus Wiktionary und Wikipedia stehen unter CC BY-SA 4.0. Die Apps enthalten eSpeak NG unter GPL-3.0-or-later ([Bedingungen](apps/mobile/ANDROID.md)), und die Tabelle der Bedeutungshäufigkeiten stammt aus Princeton WordNet 3.1 unter der WordNet-Lizenz. **Settings → About** listet alle Datenquellen und ihre Lizenzen auf.
+[MIT](LICENSE). Die Namen Phevere, Holarky und knowrld und ihre Logos sind davon ausgenommen; siehe [TRADEMARKS.md](TRADEMARKS.md). Wörterbuchtexte aus Wiktionary und Wikipedia stehen unter CC BY-SA 4.0. Die Apps enthalten eSpeak NG unter GPL-3.0-or-later ([Bedingungen](apps/mobile/ANDROID.md)), und die Tabelle der Bedeutungshäufigkeiten stammt aus Princeton WordNet 3.1 unter der WordNet-Lizenz. **Einstellungen → Info** listet alle Datenquellen und ihre Lizenzen auf.
 
 Wenn dir Phevere hilft, sorgt ein [Stern auf GitHub](https://github.com/thd2020/phevere) dafür, dass andere es leichter finden.

@@ -49,6 +49,7 @@ Phevere는 어디서 읽든 쓸 수 있는 사전입니다. 어떤 앱에서든 
 - 컴퓨터: 어떤 앱에서든 선택한 텍스트나 이미지 속 단어를 찾아보고, 선택한 텍스트를 그 자리에서 번역합니다
 - Android: 어떤 앱에서든 텍스트 선택 메뉴에서 찾아보고, 사진에서 단어를 스캔합니다
 - iOS: 공유 메뉴에서 찾아보고, 사진에서 단어를 스캔합니다
+- 인터페이스는 English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch, Русский, Português (Brasil) 10개 언어로 제공되며, 시스템 언어를 따르고 **설정** 맨 위에서 바꿀 수 있습니다
 
 <div align="center">
 <img src="README.assets/learning-overview.png" width="860" alt="휴대폰 앱 스크린샷: 복습 문제, 진도 페이지, 단어장 서재, 어휘 가족">
@@ -63,13 +64,13 @@ Phevere를 처음 열 때 Windows와 macOS에서 경고가 나타납니다. 그�
 
 ## 업데이트
 
-Phevere는 스스로 업데이트합니다. **Settings → Updates**에서 자동(Automatically), 먼저 묻기(Ask first), 끄기(Off) 중 하나를 고르세요.
+Phevere는 스스로 업데이트합니다. **설정 → 업데이트**에서 자동, 먼저 묻기, 끔 중 하나를 고르세요.
 
-- Windows와 AppImage 버전은 Phevere를 종료할 때 업데이트를 설치하며, **Roll back**으로 이전 버전으로 돌아갈 수 있습니다.
+- Windows와 AppImage 버전은 Phevere를 종료할 때 업데이트를 설치하며, **… 버전으로 되돌리기**를 누르면 이전 버전으로 돌아갈 수 있습니다.
 - macOS, deb, rpm 버전은 새 버전의 다운로드 페이지를 엽니다.
 - Android 버전은 Wi-Fi에서 업데이트를 내려받고, 설치 전에 확인을 요청합니다.
 
-**Settings → About**에서 현재 버전, 새로운 기능, 문제를 신고하는 곳을 볼 수 있습니다.
+**설정 → 정보**에서 현재 버전, 새로운 기능, 문제를 신고하는 곳을 볼 수 있습니다.
 
 ## 개인정보
 
@@ -88,7 +89,7 @@ Node.js 18 이상과 네이티브 모듈을 위한 C++ 툴체인이 필요합니
 
 | 경로 | 내용 |
 |---|---|
-| [`packages/core`](packages/core) | 사전 소스, 단어장, 동기화. 모든 플랫폼이 함께 씁니다 |
+| [`packages/core`](packages/core) | 사전 소스, 단어 노트, 동기화. 모든 플랫폼이 함께 씁니다 |
 | [`src`](src) | 데스크톱 앱(Electron) |
 | [`native-addon`](native-addon) | Windows, macOS, Linux에서 선택한 텍스트 가져오기 |
 | [`apps/mobile`](apps/mobile) | 휴대폰 앱과 그 Android 및 iOS 프로젝트 |
@@ -96,6 +97,6 @@ Node.js 18 이상과 네이티브 모듈을 위한 C++ 툴체인이 필요합니
 
 ## 라이선스
 
-[MIT](LICENSE). Phevere, Holarky, knowrld라는 이름과 로고는 포함되지 않습니다. [TRADEMARKS.md](TRADEMARKS.md)를 참고하세요. 위키낱말사전과 위키백과의 사전 텍스트는 CC BY-SA 4.0으로 제공됩니다. 앱에는 GPL-3.0-or-later인 eSpeak NG가 함께 들어 있으며([조건](apps/mobile/ANDROID.md)), 의미 빈도표는 WordNet 라이선스에 따라 Princeton WordNet 3.1에서 만들었습니다. 모든 데이터 출처와 라이선스는 **Settings → About**에 나와 있습니다.
+[MIT](LICENSE). Phevere, Holarky, knowrld라는 이름과 로고는 포함되지 않습니다. [TRADEMARKS.md](TRADEMARKS.md)를 참고하세요. 위키낱말사전과 위키백과의 사전 텍스트는 CC BY-SA 4.0으로 제공됩니다. 앱에는 GPL-3.0-or-later인 eSpeak NG가 함께 들어 있으며([조건](apps/mobile/ANDROID.md)), 의미 빈도표는 WordNet 라이선스에 따라 Princeton WordNet 3.1에서 만들었습니다. 모든 데이터 출처와 라이선스는 **설정 → 정보**에 나와 있습니다.
 
 Phevere가 도움이 되었다면 GitHub에서 [별표를 눌러](https://github.com/thd2020/phevere) 주세요. 더 많은 사람이 찾을 수 있게 됩니다.

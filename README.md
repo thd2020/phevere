@@ -49,6 +49,7 @@ Phevere is a dictionary that works wherever you read. Select a word in any app t
 - Computer: look up selected text in any app or words inside images, and translate selected text in place
 - Android: look up from the text-selection menu in any app, and scan words from photos
 - iOS: look up from the Share menu, and scan words from photos
+- The interface comes in English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch, Русский and Português (Brasil). It follows your system's language, and you can change it at the top of **Settings**.
 
 <div align="center">
 <img src="README.assets/learning-overview.png" width="860" alt="Screenshots of the phone app: a review question, the progress page, the word-book library and word families">
