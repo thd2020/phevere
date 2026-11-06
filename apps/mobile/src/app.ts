@@ -1169,7 +1169,11 @@ async function refreshPacks(): Promise<void> {
   }
 }
 
-async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promise<void> {
+/**
+ * Looks a word up. `lang` asks for one language's entry (the entry's language switch); without
+ * it the source language set in Settings, or detection, decides.
+ */
+async function lookup(raw: string, fromHist = false, keepTab?: ResultTab, lang?: string): Promise<void> {
   const q = extractLookupQuery(raw);
   if (!q) return;
   const generation = ++lookupGeneration;
@@ -1199,7 +1203,7 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
   paint();
   // The word's pictures are gathered while the dictionaries answer, apart from the senses.
   if (prefs.senseImages !== false) {
-    prefetchSenseImages(q, { lang: prefs.sourceLang === 'auto' ? 'en' : prefs.sourceLang });
+    prefetchSenseImages(q, { lang: lang || (prefs.sourceLang === 'auto' ? 'en' : prefs.sourceLang) });
     warmPictureHost();
   }
   const enabled = dictionaryService.getEnabledSources();
@@ -1207,7 +1211,7 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
   try {
     const next = await dictionaryService.lookup(q, prefs.targetLang, enabled, {
       translationProvider: prefs.translationProvider,
-      sourceLanguage: prefs.sourceLang === 'auto' ? undefined : prefs.sourceLang,
+      sourceLanguage: lang || (prefs.sourceLang === 'auto' ? undefined : prefs.sourceLang),
       onUpdate: (partial) => {
         if (generation !== lookupGeneration) return;
         result = partial;
@@ -2321,6 +2325,11 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       const from = tab;
       if (t.dataset.q) await lookup(t.dataset.q);
       if (from !== 'lookup' && tab === 'lookup') lookupFrom = { tab: from, at: histIndex };
+      return;
+    }
+    case 'lookup-lang': {
+      // The same word in another of its languages: no new history step.
+      if (t.dataset.q && t.dataset.lang) await lookup(t.dataset.q, true, 'lexicon', t.dataset.lang);
       return;
     }
     case 'lex-pos': {

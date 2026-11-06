@@ -1841,6 +1841,10 @@ export class DictionaryService extends BaseService {
     }
 
     const langForDict = sourceLanguage || 'en';
+    // A language the reader chose (the entry's language switch, or a set source language) gets
+    // that language's senses and pronunciation only; the English dictionaries would mix in the
+    // English word's.
+    const chosenOther = !!opts?.sourceLanguage && opts.sourceLanguage !== 'auto' && langForDict !== 'en';
     const isSourceEnabled = (sourceName: string) => {
       if (enabledSources) return enabledSources.includes(sourceName);
       const s = this.sources.find(s => s.name === sourceName);
@@ -1853,12 +1857,12 @@ export class DictionaryService extends BaseService {
     // Datamuse's pronunciation of a word CMUdict lacks, used only when CMUdict has nothing.
     let cmuIpa = '';
     let datamuseIpa = '';
-    if (preferLatinSources && !hasCJK) {
+    if (preferLatinSources && !hasCJK && !chosenOther) {
       pushCore(cmuIpaFor(lookupWord).then((ipa) => ({ type: 'cmu', data: ipa })));
     }
 
     // Free Dictionary + Datamuse: Latin/English path (CJK lemmas rarely have useful entries)
-    if (preferLatinSources && isSourceEnabled('Free Dictionary API')) {
+    if (preferLatinSources && !chosenOther && isSourceEnabled('Free Dictionary API')) {
       if (!this.isSourceDown('freeDictionary')) expectedSources.push('freeDictionary');
       primaryPromises.push(pushCore(
         this.cachedSource(
@@ -1881,7 +1885,9 @@ export class DictionaryService extends BaseService {
       primaryPromises.push(pushCore(
         this.cachedSource(
           'wiktionary',
-          wikiWord,
+          // One page answers every language, each from its own section: "i.e." in Italian is not
+          // the English entry kept from a moment ago.
+          wikiLang === 'en' ? wikiWord : `${wikiWord}@${wikiLang}`,
           () => this.getWiktionaryData(wikiWord, wikiLang),
           (data) =>
             (data.definitions?.length || 0) > 0
@@ -1950,7 +1956,7 @@ export class DictionaryService extends BaseService {
       );
     }
 
-    if (preferLatinSources && !hasCJK && isSourceEnabled('Datamuse')) {
+    if (preferLatinSources && !hasCJK && !chosenOther && isSourceEnabled('Datamuse')) {
       if (!this.isSourceDown('datamuse')) expectedSources.push('datamuse');
       pushCore(
         this.cachedSource(
@@ -2349,7 +2355,7 @@ export class DictionaryService extends BaseService {
 
     const coreDone = Promise.allSettled(corePromises).then(async () => {
       drain();
-      if (!preferLatinSources) return;
+      if (!preferLatinSources || chosenOther) return;
       const ipaWord = foldLatinHeadword(text);
       const haveUsUk =
         pronunciations.some((p) => p.accent === 'us' && p.ipa) && pronunciations.some((p) => p.accent === 'uk' && p.ipa);

@@ -135,6 +135,30 @@ configureCore({
   assert.equal((await exact.lookup('e.g.', 'zh')).word, 'e.g.', 'the last stop of e.g. belongs to it');
   assert.equal((await exact.lookup("'em", 'zh')).word, "'em", 'an apostrophe with a page of its own stays');
 
+  // "i.e." is detected as Italian, but Wiktionary has an English entry: that one opens, and the
+  // entry offers the other language, which opens on request (REST answer of 2026-11-06, shortened).
+  rest['i.e.'] = {
+    // The English key also holds Translingual entries (as for "run"); it is still called English.
+    en: [
+      { partOfSpeech: 'Adverb', language: 'English', definitions: [{ definition: 'That is, namely, in other words.' }] },
+      { partOfSpeech: 'Symbol', language: 'Translingual', definitions: [{ definition: 'A sign used in texts.' }] },
+      { partOfSpeech: 'Noun', language: 'English', definitions: [{ definition: 'An instance of saying “i.e.”.' }] },
+    ],
+    it: [{ partOfSpeech: 'Adverb', language: 'Italian', definitions: [{ definition: 'abbreviation of isto es' }] }],
+    other: [{ partOfSpeech: 'Adverb', language: 'Middle English', definitions: [{ definition: 'that is' }] }],
+  };
+  routes.json.unshift([(u) => u.hostname === 'translate.googleapis.com' && u.searchParams.get('q') === 'i.e.', () => [[['cioè', 'i.e.']], null, 'it']]);
+  const ie = await new DictionaryService().lookup('i.e.', 'zh');
+  assert.equal(ie.detectedLanguage, 'en', 'a word with an English entry opens in English');
+  assert.match(ie.definitions[0].meaning, /That is/);
+  const plain = (x) => JSON.parse(JSON.stringify(x));
+  assert.deepEqual(plain(ie.languages), [{ code: 'en', name: 'English', current: true }, { code: 'it', name: 'Italian' }], 'the other language is offered; "other" is not a language');
+  const ieIt = await new DictionaryService().lookup('i.e.', 'zh', undefined, { sourceLanguage: 'it' });
+  assert.equal(ieIt.detectedLanguage, 'it');
+  assert.match(ieIt.definitions[0].meaning, /isto es/, 'the Italian entry opens when asked for');
+  assert.ok(!ieIt.definitions.some((d) => /That is/.test(d.meaning)), 'without the English senses');
+  assert.deepEqual(plain(ieIt.languages.find((l) => l.current)), { code: 'it', name: 'Italian', current: true });
+
   // "savings": Wiktionary has only "plural of saving"; WordNet, through Datamuse, defines the plural
   // itself (both as answered on 2026-11-05). It keeps its own entry and its money sense comes first.
   rest.savings = { en: [{ partOfSpeech: 'Noun', language: 'English', definitions: [{ definition: '<span class="form-of-definition">plural of <a href="/wiki/saving">saving</a></span>' }] }] };
@@ -194,7 +218,7 @@ configureCore({
   rest.accommodate = { en: [{ partOfSpeech: 'Verb', language: 'English', definitions: [{ definition: 'To provide housing for.' }] }] };
   const fixed = await new DictionaryService().lookup('accomodate', 'zh');
   assert.equal(fixed.word, 'accommodate', 'a misspelling opens its word');
-  console.log('Lookup entry passed: "Did you mean" stays through later updates; "etc.", "e.g." and "C++" open as typed; "hello,", "no." and "it." open hello, no and it.');
+  console.log('Lookup entry passed: "Did you mean" stays through later updates; "etc.", "e.g." and "C++" open as typed; "hello,", "no." and "it." open hello, no and it; "i.e." opens in English and in Italian on request.');
   // The service keeps safety-net timers for lookups; they would hold the process open.
   process.exit(0);
 })().catch((err) => {

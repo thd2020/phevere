@@ -2544,6 +2544,8 @@ function startAutoCloseTimeout() {
                              const ipa = !!(result.pronunciation || (result.pronunciations && result.pronunciations.length));
                              return (defs.length ? 2 : 0) + (ipa ? 1 : 0);
                            }
+                           /** The language picked in the entry's language switch, or '' for the detected one. */
+                           var popupEntryLang = '';
                            async function lookupText(text, opts) {
           opts = opts || {};
           const silent = !!opts.silent;
@@ -2561,7 +2563,9 @@ function startAutoCloseTimeout() {
             folded &&
             currentResult &&
             foldLookupKey(currentResult.word || '') === folded &&
-            popupResultRank(currentResult) >= 2
+            popupResultRank(currentResult) >= 2 &&
+            // An entry opened in a picked language is not what a fresh lookup of the word shows.
+            (opts.sourceLanguage || '') === popupEntryLang
           ) {
             currentText = text;
             window['__popupCurrentText'] = text;
@@ -2591,6 +2595,7 @@ function startAutoCloseTimeout() {
           pvLog('[POPUP] lookupText called with:', text, 'currentTab:', currentTab, 'silent:', silent);
           const mySeq = ++lookupSeq;
           lookupFold = folded;
+          popupEntryLang = opts.sourceLanguage || '';
           if (!silent) {
             showLoading({
               title: 'Looking up…',
@@ -2603,8 +2608,9 @@ function startAutoCloseTimeout() {
             if (window.dictionaryAPI) {
               // Lexicon uses auto pairing. Translation tab honours From/To.
               let targetLang = 'auto';
-              let sourceLang;
-              if (currentTab === 'translation') {
+              // A language picked in the entry's language switch.
+              let sourceLang = opts.sourceLanguage || undefined;
+              if (!sourceLang && currentTab === 'translation') {
                 const targetSelect = document.getElementById('targetLanguage');
                 const sourceSelect = document.getElementById('sourceLanguage');
                 if (targetSelect) targetLang = targetSelect.value;
@@ -2641,7 +2647,8 @@ function startAutoCloseTimeout() {
                 return;
               }
               const sameLemma = currentResult && foldLookupKey(currentResult.word || '') === folded;
-              if (!sameLemma || popupResultRank(resolved) >= popupResultRank(currentResult)) {
+              // A language picked in the switch replaces the entry even when it has less (no IPA).
+              if (opts.sourceLanguage || !sameLemma || popupResultRank(resolved) >= popupResultRank(currentResult)) {
                 currentResult = resolved;
               }
               syncLanguageSelectsFromResult(currentResult);
@@ -2745,8 +2752,12 @@ function startAutoCloseTimeout() {
             updated.metadata && updated.metadata.originalSelection,
           ];
           if (!keys.some(function (k) { return k && norm(k) === cur; })) return;
+          // After a pick in the language switch, only that language's entry may land.
+          if (popupEntryLang && updated.detectedLanguage !== popupEntryLang) return;
           const sameLemma = currentResult && norm(currentResult.word) === cur;
-          if (sameLemma && popupResultRank(updated) < popupResultRank(currentResult)) return;
+          const sameLang = !currentResult || currentResult.detectedLanguage === updated.detectedLanguage;
+          if (sameLemma && !sameLang && !popupEntryLang) return;
+          if (sameLemma && sameLang && popupResultRank(updated) < popupResultRank(currentResult)) return;
           currentResult = updated;
           if (isExpanded) {
             if (currentTab === 'etymology') displayEtymologyResult(updated);
@@ -3869,6 +3880,7 @@ function startAutoCloseTimeout() {
                   <div class="result-word">${escapeHtml(result.word)}</div>
                   ${lexiconParts && lexiconParts.morphemeOfferHtml ? lexiconParts.morphemeOfferHtml(result, 'lookup') : ''}
                   ${formatPronunciationHtml(result)}
+                  ${lexiconParts && lexiconParts.languageSwitchHtml ? lexiconParts.languageSwitchHtml(result, 'lookup') : ''}
                 </div>
                 <div class="lexicon-block--senses">
                   ${body}
@@ -4579,6 +4591,19 @@ function startAutoCloseTimeout() {
                  e.preventDefault();
                  e.stopPropagation();
                  window.playAudio(playBtn.getAttribute('data-text') || '', playBtn.getAttribute('data-lang') || '', playBtn);
+                 return;
+               }
+               // The same word in another of its languages, from the switch under the headword.
+               var langBtn = t.closest('[data-lookup-lang]');
+               if (langBtn) {
+                 e.preventDefault();
+                 e.stopPropagation();
+                 activateTab('lexicon');
+                 lookupText(langBtn.getAttribute('data-q') || currentText, {
+                   force: true,
+                   fromHistory: true,
+                   sourceLanguage: langBtn.getAttribute('data-lookup-lang') || '',
+                 });
                  return;
                }
                var posTab = t.closest('.lexicon-pos-tab');

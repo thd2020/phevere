@@ -892,6 +892,7 @@ export function lookupBody(opts: {
         ${opts.bookPick && opts.saveWord ? addToBookButtonHtml(opts.saveWord, 'tonal') : ''}`}
       </div>
       ${chips}
+      ${languageSwitchHtml(opts.result, 'act', { fold: false })}
     </header>
     <div class="result-tabs" role="tablist">
       ${tabs.map((t) => `<button type="button" class="result-tab" role="tab" data-act="result-tab" data-tab="${t}" aria-selected="${resultTab === t}" aria-label="${labels[t]}" title="${labels[t]}">${icons[t]}</button>`).join('')}
