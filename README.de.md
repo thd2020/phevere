@@ -63,13 +63,13 @@ Windows und macOS zeigen beim ersten Öffnen von Phevere eine Warnung; wähle, d
 
 ## Updates
 
-Phevere aktualisiert sich selbst. Unter **Einstellungen → Updates** wählst du Automatisch, Vorher fragen oder Aus.
+Phevere aktualisiert sich selbst. Unter **Settings → Updates** wählst du Automatically (automatisch), Ask first (vorher fragen) oder Off (aus).
 
-- Unter Windows und als AppImage wird das Update installiert, wenn du Phevere beendest, und **Zurücksetzen** kehrt zur vorherigen Version zurück.
+- Unter Windows und als AppImage wird das Update installiert, wenn du Phevere beendest, und **Roll back** kehrt zur vorherigen Version zurück.
 - Unter macOS sowie als deb und rpm öffnet Phevere die Downloadseite der neuen Version.
 - Unter Android wird das Update über WLAN geladen, und vor der Installation fragt Phevere nach deiner Bestätigung.
 
-Unter **Einstellungen → Über** siehst du deine Version, die Neuerungen und wo du ein Problem melden kannst.
+Unter **Settings → About** siehst du deine Version, die Neuerungen und wo du ein Problem melden kannst.
 
 ## Datenschutz
 
@@ -96,6 +96,6 @@ Du brauchst Node.js 18 oder neuer sowie eine C++-Toolchain für das native Modul
 
 ## Lizenz
 
-[MIT](LICENSE). Die Namen Phevere, Holarky und knowrld und ihre Logos sind davon ausgenommen; siehe [TRADEMARKS.md](TRADEMARKS.md). Wörterbuchtexte aus Wiktionary und Wikipedia stehen unter CC BY-SA 4.0. Die Apps enthalten eSpeak NG unter GPL-3.0-or-later ([Bedingungen](apps/mobile/ANDROID.md)), und die Tabelle der Bedeutungshäufigkeiten stammt aus Princeton WordNet 3.1 unter der WordNet-Lizenz. **Einstellungen → Über** listet alle Datenquellen und ihre Lizenzen auf.
+[MIT](LICENSE). Die Namen Phevere, Holarky und knowrld und ihre Logos sind davon ausgenommen; siehe [TRADEMARKS.md](TRADEMARKS.md). Wörterbuchtexte aus Wiktionary und Wikipedia stehen unter CC BY-SA 4.0. Die Apps enthalten eSpeak NG unter GPL-3.0-or-later ([Bedingungen](apps/mobile/ANDROID.md)), und die Tabelle der Bedeutungshäufigkeiten stammt aus Princeton WordNet 3.1 unter der WordNet-Lizenz. **Settings → About** listet alle Datenquellen und ihre Lizenzen auf.
 
 Wenn dir Phevere hilft, sorgt ein [Stern auf GitHub](https://github.com/thd2020/phevere) dafür, dass andere es leichter finden.

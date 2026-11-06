@@ -63,13 +63,13 @@ Phevere를 처음 열 때 Windows와 macOS에서 경고가 나타납니다. 그�
 
 ## 업데이트
 
-Phevere는 스스로 업데이트합니다. **설정 → 업데이트**에서 자동, 먼저 묻기, 끄기 중 하나를 고르세요.
+Phevere는 스스로 업데이트합니다. **Settings → Updates**에서 자동(Automatically), 먼저 묻기(Ask first), 끄기(Off) 중 하나를 고르세요.
 
-- Windows와 AppImage 버전은 Phevere를 종료할 때 업데이트를 설치하며, **되돌리기**로 이전 버전으로 돌아갈 수 있습니다.
+- Windows와 AppImage 버전은 Phevere를 종료할 때 업데이트를 설치하며, **Roll back**으로 이전 버전으로 돌아갈 수 있습니다.
 - macOS, deb, rpm 버전은 새 버전의 다운로드 페이지를 엽니다.
 - Android 버전은 Wi-Fi에서 업데이트를 내려받고, 설치 전에 확인을 요청합니다.
 
-**설정 → 정보**에서 현재 버전, 새로운 기능, 문제를 신고하는 곳을 볼 수 있습니다.
+**Settings → About**에서 현재 버전, 새로운 기능, 문제를 신고하는 곳을 볼 수 있습니다.
 
 ## 개인정보
 
@@ -96,6 +96,6 @@ Node.js 18 이상과 네이티브 모듈을 위한 C++ 툴체인이 필요합니
 
 ## 라이선스
 
-[MIT](LICENSE). Phevere, Holarky, knowrld라는 이름과 로고는 포함되지 않습니다. [TRADEMARKS.md](TRADEMARKS.md)를 참고하세요. 위키낱말사전과 위키백과의 사전 텍스트는 CC BY-SA 4.0으로 제공됩니다. 앱에는 GPL-3.0-or-later인 eSpeak NG가 함께 들어 있으며([조건](apps/mobile/ANDROID.md)), 의미 빈도표는 WordNet 라이선스에 따라 Princeton WordNet 3.1에서 만들었습니다. 모든 데이터 출처와 라이선스는 **설정 → 정보**에 나와 있습니다.
+[MIT](LICENSE). Phevere, Holarky, knowrld라는 이름과 로고는 포함되지 않습니다. [TRADEMARKS.md](TRADEMARKS.md)를 참고하세요. 위키낱말사전과 위키백과의 사전 텍스트는 CC BY-SA 4.0으로 제공됩니다. 앱에는 GPL-3.0-or-later인 eSpeak NG가 함께 들어 있으며([조건](apps/mobile/ANDROID.md)), 의미 빈도표는 WordNet 라이선스에 따라 Princeton WordNet 3.1에서 만들었습니다. 모든 데이터 출처와 라이선스는 **Settings → About**에 나와 있습니다.
 
 Phevere가 도움이 되었다면 GitHub에서 [별표를 눌러](https://github.com/thd2020/phevere) 주세요. 더 많은 사람이 찾을 수 있게 됩니다.

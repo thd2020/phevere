@@ -63,13 +63,13 @@ O Windows e o macOS mostram um aviso na primeira vez que você abre o Phevere; e
 
 ## Atualizações
 
-O Phevere se atualiza sozinho. Em **Configurações → Atualizações**, escolha Automaticamente, Perguntar antes ou Desativado.
+O Phevere se atualiza sozinho. Em **Settings → Updates**, escolha Automatically (automaticamente), Ask first (perguntar antes) ou Off (desativado).
 
-- No Windows e no AppImage, a atualização é instalada quando você fecha o Phevere, e **Reverter** volta para a versão anterior.
+- No Windows e no AppImage, a atualização é instalada quando você fecha o Phevere, e **Roll back** volta para a versão anterior.
 - No macOS, deb e rpm, o Phevere abre a página de download da nova versão.
 - No Android, a atualização é baixada pelo Wi-Fi e pede sua confirmação antes da instalação.
 
-Em **Configurações → Sobre** você vê a sua versão, as novidades e onde relatar um problema.
+Em **Settings → About** você vê a sua versão, as novidades e onde relatar um problema.
 
 ## Privacidade
 
@@ -96,6 +96,6 @@ Você precisa do Node.js 18 ou mais recente e de um conjunto de ferramentas C++ 
 
 ## Licença
 
-[MIT](LICENSE). Os nomes Phevere, Holarky e knowrld e seus logotipos não estão incluídos; veja [TRADEMARKS.md](TRADEMARKS.md). O texto de dicionário vindo do Wikcionário e da Wikipédia está sob CC BY-SA 4.0. Os aplicativos incluem o eSpeak NG sob GPL-3.0-or-later ([termos](apps/mobile/ANDROID.md)), e a tabela de frequência de sentidos é derivada do Princeton WordNet 3.1 sob a licença do WordNet. **Configurações → Sobre** lista todas as fontes de dados e suas licenças.
+[MIT](LICENSE). Os nomes Phevere, Holarky e knowrld e seus logotipos não estão incluídos; veja [TRADEMARKS.md](TRADEMARKS.md). O texto de dicionário vindo do Wikcionário e da Wikipédia está sob CC BY-SA 4.0. Os aplicativos incluem o eSpeak NG sob GPL-3.0-or-later ([termos](apps/mobile/ANDROID.md)), e a tabela de frequência de sentidos é derivada do Princeton WordNet 3.1 sob a licença do WordNet. **Settings → About** lista todas as fontes de dados e suas licenças.
 
 Se o Phevere ajuda você, uma [estrela no GitHub](https://github.com/thd2020/phevere) ajuda outras pessoas a encontrá-lo.

@@ -63,13 +63,13 @@ Phevere は[最新リリース](https://github.com/thd2020/phevere/releases/late
 
 ## アップデート
 
-Phevere は自動でアップデートします。**設定 → アップデート** で、自動、事前に確認、オフのいずれかを選べます。
+Phevere は自動でアップデートします。**Settings → Updates** で、自動（Automatically）、事前に確認（Ask first）、オフ（Off）のいずれかを選べます。
 
-- Windows と AppImage 版は Phevere を終了したときにアップデートをインストールします。**ロールバック** で前のバージョンに戻せます。
+- Windows と AppImage 版は Phevere を終了したときにアップデートをインストールします。**Roll back** で前のバージョンに戻せます。
 - macOS、deb、rpm 版は新しいバージョンのダウンロードページを開きます。
 - Android 版は Wi-Fi 接続時にアップデートをダウンロードし、インストールの前に確認を求めます。
 
-**設定 → 情報** では、お使いのバージョン、新機能、問題の報告先を確認できます。
+**Settings → About** では、お使いのバージョン、新機能、問題の報告先を確認できます。
 
 ## プライバシー
 
@@ -96,6 +96,6 @@ Node.js 18 以降と、ネイティブモジュール用の C++ ツールチェ�
 
 ## ライセンス
 
-[MIT](LICENSE)。Phevere、Holarky、knowrld の名称とロゴは対象外です。[TRADEMARKS.md](TRADEMARKS.md) をご覧ください。Wiktionary と Wikipedia の辞書テキストは CC BY-SA 4.0 で提供されています。アプリには GPL-3.0-or-later の eSpeak NG が同梱されており（[条件](apps/mobile/ANDROID.md)）、語義の頻度表は WordNet ライセンスのもとで Princeton WordNet 3.1 から作成しています。すべてのデータソースとそのライセンスは **設定 → 情報** に一覧があります。
+[MIT](LICENSE)。Phevere、Holarky、knowrld の名称とロゴは対象外です。[TRADEMARKS.md](TRADEMARKS.md) をご覧ください。Wiktionary と Wikipedia の辞書テキストは CC BY-SA 4.0 で提供されています。アプリには GPL-3.0-or-later の eSpeak NG が同梱されており（[条件](apps/mobile/ANDROID.md)）、語義の頻度表は WordNet ライセンスのもとで Princeton WordNet 3.1 から作成しています。すべてのデータソースとそのライセンスは **Settings → About** に一覧があります。
 
 Phevere が役に立ったら、GitHub で[スターを付けて](https://github.com/thd2020/phevere)いただけると、ほかの人にも見つけてもらいやすくなります。

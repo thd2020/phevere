@@ -6,7 +6,7 @@
 
 <h1>Phevere</h1>
 
-<p>在任何应用里选中一个词，就地查词。存下来，再把它学会。</p>
+<p>在任何应用里选中一个词，就地查词。收进生词本，再把它学会。</p>
 
 [![Release](https://img.shields.io/github/v/release/thd2020/phevere?display_name=tag)](https://github.com/thd2020/phevere/releases/latest)
 [![CI](https://github.com/thd2020/phevere/actions/workflows/ci.yml/badge.svg)](https://github.com/thd2020/phevere/actions/workflows/ci.yml)
@@ -20,7 +20,7 @@
 
 ## 简介
 
-Phevere 是一部在哪里阅读都能用的词典。在任何应用里选中一个词，就能看到它的释义、发音、翻译和词源，然后把它存下来以后再学。Phevere 支持 Windows、macOS、Linux、Android 和 iOS。
+Phevere 是一部读到哪里就能查到哪里的词典。在任何应用里选中一个词，就能看到它的释义、发音、翻译和词源，还可以存进生词本以后再学。Phevere 支持 Windows、macOS、Linux、Android 和 iOS。
 
 ## 功能
 
@@ -30,15 +30,15 @@ Phevere 是一部在哪里阅读都能用的词典。在任何应用里选中一
 - 美式和英式发音，还可以下载更多语音
 - 用 Google 翻译、MyMemory、有道或 DeepL 翻译
 - 词形变化，以及前缀、后缀和词根的专页
-- 输入时给出联想
+- 输入时自动联想
 - 十六种语言的离线词典
 - 除英语外，还能查许多其他语言的单词（[语言列表](docs/MULTILINGUAL.md)）
 
 **学习**
 
 - 从小学到大学英语六级、考研、托业和商务英语的词书（[词书列表](docs/WORDBOOKS.md)）
-- 存下的单词会记住你是在哪里遇到它的
-- 词族、单词地图和抽认卡
+- 存下的单词会记住你是在哪里遇到它
+- 词族、单词地图和闪卡
 - 基于间隔重复的每日复习（[原理说明](docs/REVIEW.md)）
 - 学习进度图表
 - 与 Anki 互相导入导出（[文件格式](docs/BOOK_FORMAT.md)）
@@ -57,19 +57,19 @@ Phevere 是一部在哪里阅读都能用的词典。在任何应用里选中一
 
 ## 下载
 
-请到[最新版本](https://github.com/thd2020/phevere/releases/latest)下载 Phevere。系统要求为 Windows 10、macOS 11、Ubuntu 22.04 或 Fedora 36、Android 7.0、iOS 15.1 或更高版本。iOS 应用需要先用你自己的 Apple 账户签名才能安装。
+请到[最新版本](https://github.com/thd2020/phevere/releases/latest)下载 Phevere。支持 Windows 10、macOS 11、Ubuntu 22.04 或 Fedora 36、Android 7.0、iOS 15.1 及以上版本。iOS 应用需要先用你自己的 Apple 账户签名才能安装。
 
 第一次打开 Phevere 时，Windows 和 macOS 会弹出安全提示，选择仍然运行即可。安装说明：[macOS](docs/MACOS_SELECTION.md)、[Linux](docs/LINUX_SELECTION.md)、[Android](apps/mobile/ANDROID.md)。
 
 ## 更新
 
-Phevere 会自动更新。在 **设置 → 更新** 中可以选择自动、先询问或关闭。
+Phevere 会自动更新。在 **Settings → Updates** 中可以选择自动更新（Automatically）、先询问（Ask first）或关闭（Off）。
 
-- Windows 和 AppImage 版在你退出 Phevere 时安装更新，**回退** 可以回到上一个版本。
+- Windows 和 AppImage 版在你退出 Phevere 时安装更新，点 **Roll back** 可以回到上一个版本。
 - macOS、deb 和 rpm 版会打开新版本的下载页面。
 - Android 版在连接 Wi-Fi 时下载更新，安装前会请你确认。
 
-**设置 → 关于** 显示当前版本、更新内容，以及反馈问题的入口。
+**Settings → About** 页面显示当前版本和更新内容，也可以从这里反馈问题。
 
 ## 隐私
 
@@ -84,7 +84,7 @@ npm install
 npm start
 ```
 
-你需要 Node.js 18 或更高版本，以及编译原生模块用的 C++ 工具链：Windows 上是 Visual Studio 2022，macOS 上是 Xcode Command Line Tools，Linux 上是 `build-essential pkg-config libx11-dev libxfixes-dev libatspi2.0-dev libglib2.0-dev libwayland-dev`。`npm run make:*` 脚本用来打包安装程序（[打包说明](PACKAGING.md)），`npm run mobile:dev` 在浏览器里运行手机应用（[手机版说明](docs/MOBILE.md)）。向 `main` 推送新版本号会发布一个新版本（[发布说明](docs/RELEASE.md)）。
+你需要 Node.js 18 或更高版本，以及编译原生模块用的 C++ 工具链：Windows 上是 Visual Studio 2022，macOS 上是 Xcode Command Line Tools，Linux 上是 `build-essential pkg-config libx11-dev libxfixes-dev libatspi2.0-dev libglib2.0-dev libwayland-dev`。`npm run make:*` 脚本用来打包安装程序（[打包说明](PACKAGING.md)），`npm run mobile:dev` 在浏览器里运行手机应用（[手机版说明](docs/MOBILE.md)）。把新的版本号推送到 `main` 就会自动发布（[发布说明](docs/RELEASE.md)）。
 
 | 路径 | 内容 |
 |---|---|
@@ -96,6 +96,6 @@ npm start
 
 ## 许可证
 
-[MIT](LICENSE)。Phevere、Holarky、knowrld 这几个名称及其标志不在此许可范围内，详见 [TRADEMARKS.md](TRADEMARKS.md)。来自维基词典和维基百科的词典文本采用 CC BY-SA 4.0 许可。应用内置的 eSpeak NG 采用 GPL-3.0-or-later 许可（[条款](apps/mobile/ANDROID.md)），词义频率表取自 Princeton WordNet 3.1，遵循 WordNet 许可。**设置 → 关于** 列出了全部数据来源及其许可证。
+[MIT](LICENSE)。Phevere、Holarky、knowrld 这几个名称及其标志不在此许可范围内，详见 [TRADEMARKS.md](TRADEMARKS.md)。来自维基词典和维基百科的词典文本采用 CC BY-SA 4.0 许可。应用内置的 eSpeak NG 采用 GPL-3.0-or-later 许可（[条款](apps/mobile/ANDROID.md)），词义频率表取自 Princeton WordNet 3.1，遵循 WordNet 许可。**Settings → About** 列出了全部数据来源及其许可证。
 
 如果 Phevere 对你有帮助，欢迎在 GitHub 上[点个 Star](https://github.com/thd2020/phevere)，让更多人发现它。
