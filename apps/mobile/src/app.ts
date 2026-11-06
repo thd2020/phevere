@@ -210,6 +210,8 @@ const resultWaiters = new Set<(r: DictionaryResult) => void>();
 let prefetchedClip = '';
 /** The speaker waiting for its word's recording, as a selector, so a repaint draws it loading again. */
 let loadingSpeaker = '';
+/** Presses of the lookup's speaker, so an older press stays silent once a newer one comes. */
+let speakPress = 0;
 let result: DictionaryResult | null = null;
 let saved: VocabEntry | null = null;
 let status = '';
@@ -2565,17 +2567,25 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'speak': {
       if (soundOff()) return;
       const generation = lookupGeneration;
+      // Each press supersedes the one before, so two presses give one sound.
+      const press = ++speakPress;
+      const alive = () => press === speakPress && generation === lookupGeneration;
       // Pressed before the word's pronunciation data came: the speaker shows it is loading and
       // waits for the recording, and plays the synthetic voice only when there is none. A
       // recording not kept on the phone yet comes over the network, and the speaker stays loading.
       setSpeakerLoading(t, true);
       const played = (async () => {
         if (!recordedUrls(result).length && (recordingPending(result) || (looking && !result))) await openLookupRecordings();
-        if (generation !== lookupGeneration) return;
+        if (!alive()) return;
         // Native reports a clip only when it ends, so a clip kept on the phone ends the loading now.
-        if (await recordedReady(result)) setSpeakerLoading(t, false);
-        await playRecorded(result, prefs, () => setSpeakerLoading(t, false));
-      })().finally(() => setSpeakerLoading(t, false));
+        const ready = await recordedReady(result);
+        if (!alive()) return;
+        if (ready) setSpeakerLoading(t, false);
+        await playRecorded(result, prefs, () => setSpeakerLoading(t, false), alive);
+      })().finally(() => {
+        // A newer press owns the loading state until it plays.
+        if (press === speakPress) setSpeakerLoading(t, false);
+      });
       await pulseSpeak(t, played);
       return;
     }

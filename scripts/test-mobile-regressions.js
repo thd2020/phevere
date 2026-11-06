@@ -149,6 +149,10 @@ async function audioFallback() {
   assert.deepEqual(calls.map((c) => c.method), ['playUrl', 'speak']);
   assert.equal(calls[1].params.text, 'hello');
   calls.length = 0;
+  // A clip stopped by a newer press ends quietly: no synthetic voice over the newer one.
+  await audio.playRecorded({ word: 'hello' }, prefs, undefined, () => false);
+  assert.deepEqual(calls.map((c) => c.method), ['playUrl']);
+  calls.length = 0;
   // IPA chips voice their own IPA mechanically, even when the source sent a clip.
   await audio.speakIpa({ ipa: 'həˈləʊ', accent: 'uk', audioUrl: 'clip' }, prefs, 'hello');
   assert.deepEqual(calls.map((c) => c.method), ['speak']);

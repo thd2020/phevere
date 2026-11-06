@@ -79,10 +79,16 @@ async function playUrl(url: string, prefs: MobilePrefs, onStart?: () => void): P
   await ended;
 }
 
+/**
+ * The word's recording, or the synthetic voice when it has none or none plays. `alive` turns
+ * false once a newer press has come; a clip that newer press stopped then ends this one quietly,
+ * instead of trying the next clip or the synthetic voice over it.
+ */
 export async function playRecorded(
   result: DictionaryResult | null,
   prefs: MobilePrefs,
   onStart?: () => void,
+  alive: () => boolean = () => true,
 ): Promise<void> {
   if (!prefs.audioEnabled) return;
   const urls = recordedUrls(result);
@@ -96,9 +102,10 @@ export async function playRecorded(
       await playUrl(url, prefs, onStart);
       return;
     } catch {
-      /* try next */
+      if (!alive()) return;
     }
   }
+  if (!alive()) return;
   onStart?.();
   await speakText(result?.word || '', prefs);
 }
