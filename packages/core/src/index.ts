@@ -314,6 +314,7 @@ export {
   type RecordingSource,
 } from './pronounce-once';
 export { extraNewCount, type ReviewRenderOptions } from './notebook-review';
+export { wirePictureZoom, type PictureZoom } from './picture-zoom';
 
 export { onVocabChanged } from './vocab-store';
 export { syncVocab, mergeDuplicateLemmas, VOCAB_SYNC_NAMESPACE, type VocabSyncAccount, type VocabSyncResult } from './vocab-sync';

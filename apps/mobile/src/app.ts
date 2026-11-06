@@ -10,6 +10,7 @@ import {
   prefetchSenseImages,
   hydratePictures,
   pictureSrc,
+  wirePictureZoom,
   hideSenseImage,
   unhideSenseImage,
   fillEmptyDefinitions,
@@ -2071,12 +2072,15 @@ async function hideSensePicture(frame: HTMLElement): Promise<void> {
   });
 }
 
-/** A sense picture at its larger size over the page; a tap outside the credit, or Back, closes it. */
+/**
+ * A sense picture at its larger size over the page. A pinch, a double tap or a drag zooms and pans
+ * it (picture-zoom.ts); a tap beside the picture, or Back, closes it.
+ */
 function openSensePicture(frame: HTMLElement): void {
   const d = frame.dataset;
   const dlg = document.createElement('dialog');
   dlg.className = 'pic-view';
-  dlg.innerHTML = `<img class="pic-view__img" src="${esc(pictureSrc(d.thumb || '') || d.thumb || '')}" alt="${esc(d.title || '')}" referrerpolicy="no-referrer" tabindex="-1" autofocus />
+  dlg.innerHTML = `<div class="pic-view__stage"><img class="pic-view__img" src="${esc(pictureSrc(d.thumb || '') || d.thumb || '')}" alt="${esc(d.title || '')}" referrerpolicy="no-referrer" tabindex="0" autofocus draggable="false" /></div>
     <p class="pic-view__cap"><span>${esc(d.title || '')}</span>${d.page ? `<button type="button" class="pic-view__credit" data-pic-credit="${esc(d.page)}">${esc(d.credit || 'Wikimedia Commons')}</button>` : ''}</p>
     ${d.page ? `<button type="button" class="pic-view__hide" data-pic-hide>${tHtml('mobile.picture.hide')}</button>` : ''}`;
   // The thumbnail shows at once; the larger rendering replaces it when it has arrived.
@@ -2085,8 +2089,11 @@ function openSensePicture(frame: HTMLElement): void {
   full.referrerPolicy = 'no-referrer';
   full.onload = () => (img.src = full.src);
   full.src = d.full || '';
+  wirePictureZoom(img);
   dlg.addEventListener('click', (e) => {
     e.stopPropagation();
+    // The picture itself zooms and pans; only a tap beside it closes the viewer.
+    if (e.target === img) return;
     const link = (e.target as HTMLElement).closest<HTMLElement>('[data-pic-credit]');
     if (link) openExternal(link.dataset.picCredit || '');
     else if ((e.target as HTMLElement).closest('[data-pic-hide]')) {

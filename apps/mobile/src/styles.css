@@ -2255,8 +2255,11 @@ html[data-notify="ios"] .toast {
 .pic-view::backdrop { background: rgb(20 16 14 / 0.86); }
 .pic-view[open] { animation: pic-view-in 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
 @keyframes pic-view-in { from { opacity: 0; transform: scale(0.94); } }
+.pic-view__stage { overflow: hidden; width: fit-content; margin: 0 auto; border-radius: 10px; }
 .pic-view__img {
   display: block;
+  user-select: none;
+  -webkit-user-select: none;
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 120px);
   margin: 0 auto;

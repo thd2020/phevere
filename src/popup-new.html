@@ -627,8 +627,15 @@
       .pic-view::backdrop { background: rgb(20 16 14 / 0.82); }
       .pic-view[open] { animation: pic-view-in 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
       @keyframes pic-view-in { from { opacity: 0; transform: scale(0.94); } }
+      .pic-view__stage {
+        overflow: hidden;
+        width: fit-content;
+        margin: 0 auto;
+        border-radius: 8px;
+      }
       .pic-view__img {
         display: block;
+        user-select: none;
         max-width: calc(100vw - 24px);
         max-height: calc(100vh - 84px);
         margin: 0 auto;
@@ -3812,7 +3819,10 @@ function startAutoCloseTimeout() {
           }
         }
 
-        /** A sense picture at its larger size over the pop-up; a click outside the credit closes it. */
+        /**
+         * A sense picture at its larger size over the pop-up. The wheel, a double click or a drag
+         * zooms and pans it (picture-zoom.ts); a click outside the picture closes it.
+         */
         function openSensePicture(btn) {
           const dlg = document.createElement('dialog');
           dlg.className = 'pic-view';
@@ -3820,7 +3830,7 @@ function startAutoCloseTimeout() {
           const credit = btn.getAttribute('data-credit') || '';
           const page = btn.getAttribute('data-page') || '';
           dlg.innerHTML =
-            `<img class="pic-view__img" src="${escapeHtml(btn.getAttribute('data-thumb') || '')}" alt="${escapeHtml(title)}" referrerpolicy="no-referrer" tabindex="-1" autofocus>` +
+            `<div class="pic-view__stage"><img class="pic-view__img" src="${escapeHtml(btn.getAttribute('data-thumb') || '')}" alt="${escapeHtml(title)}" referrerpolicy="no-referrer" tabindex="0" autofocus draggable="false"></div>` +
             `<p class="pic-view__cap"><span>${escapeHtml(title)}</span>` +
             (page ? `<button type="button" class="pic-view__credit" data-pic-credit="${escapeHtml(page)}">${escapeHtml(credit || 'Wikimedia Commons')}</button>` : '') +
             `</p>`;
@@ -3830,7 +3840,11 @@ function startAutoCloseTimeout() {
           full.referrerPolicy = 'no-referrer';
           full.onload = function () { img.src = full.src; };
           full.src = btn.getAttribute('data-sense-view') || '';
+          const lx = window.phevereLexicon;
+          if (lx && lx.wirePictureZoom) lx.wirePictureZoom(img);
           dlg.addEventListener('click', function (e) {
+            // The picture itself zooms and pans; only a click beside it closes the viewer.
+            if (e.target === img) return;
             const link = e.target.closest && e.target.closest('[data-pic-credit]');
             if (link) {
               const url = link.getAttribute('data-pic-credit');
