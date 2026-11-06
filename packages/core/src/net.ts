@@ -84,6 +84,17 @@ let silentAt = 0;
 /** Requests sent after the last answer that have waited past their round trip or failed without an answer. */
 const unanswered = new Set<Mark>();
 const listeners = new Set<() => void>();
+/** Goes up each time the connection answers again after a silence or the platform reports a network change. */
+let epoch = 0;
+
+/**
+ * A count that goes up each time the connection answers again after a silence, or the platform
+ * reports a network change. A skip that began before it (dictionary.ts) says nothing about the
+ * sources now. One host falling silent while others answer (hostSilent) does not move it.
+ */
+export function networkEpoch(): number {
+  return epoch;
+}
 
 /**
  * Calls `f` whenever the connection is found silent, answers again after a silence, or the
@@ -134,6 +145,7 @@ function heard(host: string): void {
   }
   if (silent) {
     silent = false;
+    epoch += 1;
     changed();
   }
 }
@@ -210,6 +222,7 @@ export function noteNetworkChange(): void {
   }
   silent = false;
   unanswered.clear();
+  epoch += 1;
   changed();
 }
 

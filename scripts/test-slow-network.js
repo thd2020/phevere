@@ -373,6 +373,27 @@ last['three requests at most to Wiktionary on a slow cold start'] = async () => 
     for (const [host, n] of Object.entries(net.maxInFlight)) assert.ok(n <= 3 || !/wik/.test(host), `${word}: ${host} had ${n} open`);
   }
 };
+// A source skipped because it fails while others answer stays skipped when some other host falls
+// silent too (Google Translate blocked): only the whole connection answering again, or a network
+// change, ends the skip.
+last['a skip outlives another host falling silent'] = async () => {
+  const link = { state: (u) => (u.includes('wiktionary.org') ? 'refused' : 'up') };
+  const { core, service, net } = app({ delay: [100, 200], seed: 'skip' }, { link });
+  await service.lookup('fish', 'zh');
+  await service.lookup('dog', 'zh');
+  const hung = core.trackHttp({ requestJson: () => new Promise(() => {}), requestText: async () => ({}), requestBytes: async () => ({}) });
+  for (const p of ['a', 'b']) hung.requestJson(`https://blocked.example.org/${p}`, { hedge: false, timeoutMs: 60000 }).catch(() => {});
+  for (let i = 0; i < 80 && !core.hostSilent('blocked.example.org'); i += 1) await new Promise((r) => setTimeout(r, 100));
+  assert.ok(core.hostSilent('blocked.example.org'), 'the other host counts as silent');
+  const before = net.log.filter((r) => r.url.includes('wiktionary.org')).length;
+  await service.lookup('cat', 'zh');
+  const after = net.log.filter((r) => r.url.includes('wiktionary.org')).length;
+  assert.equal(after - before, 0, `Wiktionary is still skipped (${after - before} requests)`);
+  core.noteNetworkChange();
+  await service.lookup('cow', 'zh');
+  assert.ok(net.log.filter((r) => r.url.includes('wiktionary.org')).length > after, 'and asked again after a network change');
+};
+
 // "etc." is a title of its own; with Wiktionary two or three seconds away it is still opened as
 // typed, and so it is when the first request for its page never answers.
 const etcNets = {

@@ -70,7 +70,7 @@ export interface Definition {
 }
 
 import { BaseService, DictionaryError, withBudget, withTimeout } from './base';
-import { budgetMs, connectionSilent, hostSilent, onNetChange } from './net';
+import { budgetMs, connectionSilent, hostSilent, networkEpoch, onNetChange } from './net';
 import { registerWiktionaryWikitextSource } from './sense-images';
 import { checkApiKey, type ApiKeyCheck, type ApiProviderId } from './api-key-check';
 import { detectLanguageLocal, englishCandidateWords, isAmbiguousHan, remoteFitsScript } from './lang-detect';
@@ -414,9 +414,12 @@ export class DictionaryService extends BaseService {
     registerWiktionaryWikitextSource((word) => this.getWiktionaryWikitext(word));
     // The connection answering again after a silence, or the platform reporting a network change,
     // ends every skip: a skip that began while nothing could be reached says nothing about the
-    // sources now, and a phone back online gets its definitions on the first word.
+    // sources now, and a phone back online gets its definitions on the first word. One host
+    // falling silent while the others answer (Google blocked) ends none of them.
+    let seen = networkEpoch();
     onNetChange(() => {
-      if (connectionSilent()) return;
+      if (networkEpoch() === seen) return;
+      seen = networkEpoch();
       this.sourceHealth.clear();
       this.translationDownUntil.clear();
     });
