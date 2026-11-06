@@ -1297,26 +1297,28 @@ function sourceForSave(lemma: string): SourceContext | undefined {
 async function saveCurrent(): Promise<void> {
   if (!result) return;
   const lemma = saveLemma(result);
+  let changed = false;
   try {
     if (saved) {
       await removeVocab(saved.id);
-      await flushNotebook();
       saved = null;
       toast('Removed from My words');
     } else {
       // resolveForm: a tap before the page turns from "geese" to goose still saves goose.
       const payload = { ...vocabPayloadFromResult(result, lemma), context: sourceForSave(lemma), resolveForm: true };
       saved = await addVocab(payload);
-      // In the pop-up, the page may be closed a moment after this tap: write the word now.
-      await flushNotebook();
       toast('Saved to My words');
       postOsNotify('saved', 'Saved to My words', lemma);
     }
+    changed = true;
   } catch (err) {
     toast(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
   }
   await refreshNotebook();
   paint();
+  // In the pop-up, the page may be closed a moment after this tap: write the word now. The
+  // star and the toast do not wait for it (a notebook with packs is a large file).
+  if (changed) await flushNotebook().catch((err) => toast(`Could not save: ${err instanceof Error ? err.message : String(err)}`));
 }
 
 /**
