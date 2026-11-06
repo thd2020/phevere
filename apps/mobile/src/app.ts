@@ -1834,7 +1834,9 @@ function bindPullToRefresh(): void {
   let pulled = 0;
   const indicator = () => document.querySelector<HTMLElement>('.ptr');
   document.addEventListener('touchstart', (e) => {
-    startY = tab === 'notebook' && window.scrollY <= 0 && e.touches.length === 1 ? e.touches[0].clientY : null;
+    // A drag on the map turns the map; it must not pull the list down to reload it.
+    const onMap = !!(e.target as Element | null)?.closest?.('.nbv-map');
+    startY = tab === 'notebook' && !onMap && window.scrollY <= 0 && e.touches.length === 1 ? e.touches[0].clientY : null;
     pulled = 0;
   }, { passive: true });
   document.addEventListener('touchmove', (e) => {
