@@ -63,10 +63,12 @@ export function skillFor(kind: AnswerKind | null | undefined): Skill | null {
   switch (kind) {
     case 'meaning-choice':
     case 'word-choice':
+    case 'cloze-choice':
     case 'flash':
       return 'meaning';
     case 'recall':
     case 'cloze':
+    case 'spell-tiles':
       return 'spelling';
     case 'listen-choice':
     case 'listen-type':

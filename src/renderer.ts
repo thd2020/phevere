@@ -39,6 +39,7 @@ import '@phevere/core/popover-menu.css';
 import '@phevere/core/learn-views.css';
 import '@phevere/core/settings-kit.css';
 import '@phevere/core/settings-sources.css';
+import '@phevere/core/settings-about.css';
 import '@phevere/core/settings-offline.css';
 import '@phevere/core/settings-keys.css';
 import {
@@ -64,6 +65,7 @@ import {
   formatVocabLangPair,
   mapHtml,
   notebookViewSwitchHtml,
+  filterRecentLookups,
   recentListHtml,
   learnHtml,
   attachLearnCharts,
@@ -83,6 +85,10 @@ import {
   learnerModel,
   studyPace,
   hintReview,
+  keepDraft,
+  placeTile,
+  returnTile,
+  tileKey,
   armCountdown,
   markHeard,
   singleVoice,
@@ -142,9 +148,10 @@ import {
 } from '@phevere/core';
 import { choiceRowHtml, enhanceSelect, keycapsHtml, rangeRowHtml, segRowHtml, switchRowHtml } from '@phevere/core';
 import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
+import { aboutSettingsHtml, flashAboutCopied, type AboutPlatform } from '@phevere/core';
 import { learnSettingsHtml, microphoneAvailable, readLearnPrefs, watchMicrophone, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
-import { AZ_INDEX, compareAz, vocabAzLetter, wireIndexRail } from '@phevere/core';
+import { AZ_INDEX, compareAz, followIndexRail, vocabAzLetter, wireIndexRail } from '@phevere/core';
 import { bookMenuItems, bookPickItems, bookRemovalPrompt, openMenu } from '@phevere/core';
 
 const rlog = (...args: unknown[]) => {
@@ -155,9 +162,39 @@ const rlog = (...args: unknown[]) => {
 rlog('🚀 Phevere renderer started');
 
 document.getElementById('clearSelectionsBtn')?.addEventListener('click', () => {
+  const before = loadRecentLookups();
   saveRecentLookups([]);
   renderRecentLookups();
+  showUndoToast('Recent lookups cleared', () => {
+    // Lookups made while the toast was up stay on top of the restored ones.
+    const now = loadRecentLookups();
+    const seen = new Set(now.map((e) => e.q.toLowerCase()));
+    saveRecentLookups([...now, ...before.filter((e) => !seen.has(e.q.toLowerCase()))]);
+    renderRecentLookups();
+  });
 });
+
+/** A snackbar with one Undo action, as Gmail and Material show after a destructive action. */
+function showUndoToast(message: string, undo: () => void): void {
+  document.querySelector('.undo-toast')?.remove();
+  const toast = document.createElement('div');
+  toast.className = 'undo-toast';
+  toast.setAttribute('role', 'status');
+  const text = document.createElement('span');
+  text.textContent = message;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'undo-toast__action';
+  button.textContent = 'Undo';
+  toast.append(text, button);
+  const timer = setTimeout(() => toast.remove(), 8000);
+  button.addEventListener('click', () => {
+    clearTimeout(timer);
+    toast.remove();
+    undo();
+  });
+  document.body.appendChild(toast);
+}
 
 // Wait for DOM to be ready
 document.addEventListener('DOMContentLoaded', () => {
@@ -234,6 +271,7 @@ function initializeSettingsWindow() {
           <button type="button" class="settings-nav__item" data-section="api">API keys</button>
           <button type="button" class="settings-nav__item" data-section="audio">Audio</button>
           <button type="button" class="settings-nav__item" data-section="updates">Updates</button>
+          <button type="button" class="settings-nav__item" data-section="about">About</button>
         </nav>
         <main class="settings-main">
           <section class="settings-panel is-active" data-panel="shortcuts" aria-labelledby="settings-monitor-heading">
@@ -452,6 +490,13 @@ function initializeSettingsWindow() {
               </div>
             </div>
           </section>
+
+          <section class="settings-panel" data-panel="about" aria-labelledby="settings-about-heading">
+            <div class="settings-panel__intro">
+              <h2 id="settings-about-heading" class="settings-panel__title">About</h2>
+            </div>
+            <div id="about-host"></div>
+          </section>
         </main>
       </div>
       <div id="pack-inspector-host"></div>
@@ -476,6 +521,7 @@ function initializeSettingsWindow() {
   void wireSourcesPanel();
   void wireApiKeysPanel();
   wireLearnSettings();
+  void wireAboutSettings();
   wireInAppTextSelectionLookup();
   setupAudioSettings();
   void wireNotificationSettings();
@@ -492,6 +538,28 @@ function initializeSettingsWindow() {
     window.addEventListener('pagehide', () => stopCapture());
   });
   wireLiveResizeClass();
+}
+
+/** Settings → About: the version comes from the main process, so it is never out of date. */
+async function wireAboutSettings(): Promise<void> {
+  const host = document.getElementById('about-host');
+  if (!host) return;
+  const names: Record<string, AboutPlatform> = { win32: 'windows', darwin: 'macos', linux: 'linux' };
+  const systemNames: Record<string, string> = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
+  let info: { version: string; platform: string; arch: string; systemVersion: string } | null = null;
+  try {
+    info = (await window.electronAPI?.getAppInfo?.()) || null;
+  } catch {
+    info = null;
+  }
+  const platform = names[info?.platform || window.electronAPI?.platform || ''] || 'windows';
+  const system = info ? [systemNames[info.platform] || info.platform, info.systemVersion, info.arch].filter(Boolean).join(' ') : '';
+  host.innerHTML = aboutSettingsHtml({ version: info?.version || '', platform, system });
+  host.addEventListener('click', (ev) => {
+    const btn = (ev.target as HTMLElement).closest<HTMLElement>('[data-act="about-copy"]');
+    if (!btn) return;
+    void navigator.clipboard.writeText(btn.dataset.copy || '').then(() => flashAboutCopied(btn));
+  });
 }
 
 /**
@@ -2361,7 +2429,7 @@ let wbAnalysis: { key: unknown; q: string; view: string; value: ReturnType<typeo
 const wbMeaningInFlight = new Set<string>();
 /** Book words opened on their brief definition, by lowercase headword. */
 const wbOpen = new Set<string>();
-/* Example sentences for the quiz's gap-fill questions, looked up ahead for words held for days. */
+/* Example sentences for the quiz's gap questions, looked up ahead for words already started. */
 const reviewExamples = new Map<string, string[]>();
 const examplesInFlight = new Set<string>();
 
@@ -2374,7 +2442,7 @@ async function prefetchExamples(wait = false): Promise<void> {
   for (let i = nbReview.index + (wait ? 0 : 1); i < nbReview.queue.length && lemmas.length < 3; i++) {
     const e: any = byId.get(nbReview.queue[i]);
     const key = String(e?.lemma || '').toLowerCase();
-    if (!e || !key || reviewExamples.has(key) || examplesInFlight.has(key) || memoryLevel(e) < 2) continue;
+    if (!e || !key || reviewExamples.has(key) || examplesInFlight.has(key) || memoryLevel(e) < 1) continue;
     lemmas.push(String(e.lemma));
   }
   const jobs = lemmas.map(async (lemma) => {
@@ -2640,31 +2708,43 @@ function scrollVocabToTime(key: string): void {
 }
 
 /**
- * The rails are fixed to the window so they stay put while the list scrolls. Their top follows
- * the list's first row until the sticky header reaches it, so a rail never sits beside the
- * view switcher or the sort buttons.
+ * The rails are fixed to the window so they stay put while the list scrolls. Each one is kept
+ * inside the list's box on screen, below the sticky header and above the status bar, so it never
+ * sits beside the book row, the view switcher or the sort buttons, and never runs past a short
+ * list. The box is measured again whenever something can move it: the list or the rows above it
+ * change size (a book row filling in, fonts arriving late), the Words tab becomes visible after
+ * rendering while hidden, the window resizes, or the list scrolls. Before 2026-11-06 the top was
+ * measured once per render, which read a hidden or not yet laid out list as sitting right under
+ * the header, so the rail ran from the book row down past the sort switch.
  */
-function placeVocabRails(): void {
-  const list = document.getElementById('vocabList');
+const vocabRails = new Map<string, { place: () => void }>();
+
+function followVocabRail(nav: HTMLElement): void {
+  if (vocabRails.has(nav.id)) return;
+  const shell = document.querySelector<HTMLElement>('.main-shell');
   const head = document.querySelector<HTMLElement>('.ws-head');
-  if (!list || !head) return;
-  const top = Math.round(Math.max(list.getBoundingClientRect().top, head.getBoundingClientRect().bottom) + 8);
-  for (const id of ['vocabAz', 'vocabTimeline']) {
-    const nav = document.getElementById(id);
-    if (nav && !nav.hidden) nav.style.top = `${top}px`;
-  }
+  vocabRails.set(
+    nav.id,
+    followIndexRail(nav, {
+      list: () => document.getElementById('vocabList'),
+      clip: () => ({
+        top: head?.getBoundingClientRect().bottom ?? 0,
+        bottom: shell?.getBoundingClientRect().bottom ?? window.innerHeight,
+      }),
+      watch: [shell, head, document.getElementById('paneNotebook'), document.getElementById('vocabList')],
+      scroller: shell || window,
+    }),
+  );
 }
 
-let railFrame = 0;
 function schedulePlaceVocabRails(): void {
-  if (railFrame) return;
-  railFrame = requestAnimationFrame(() => {
-    railFrame = 0;
-    placeVocabRails();
-  });
+  for (const id of ['vocabAz', 'vocabTimeline']) {
+    const nav = document.getElementById(id);
+    if (!nav) continue;
+    followVocabRail(nav);
+    vocabRails.get(id)?.place();
+  }
 }
-document.querySelector('.main-shell')?.addEventListener('scroll', schedulePlaceVocabRails, { passive: true });
-window.addEventListener('resize', schedulePlaceVocabRails);
 
 function syncVocabTimeline(entries: any[]): void {
   const nav = document.getElementById('vocabTimeline');
@@ -2675,7 +2755,6 @@ function syncVocabTimeline(entries: any[]): void {
   nav.hidden = !on;
   wrap?.classList.toggle('is-timeline', on);
   if (!on) return;
-  schedulePlaceVocabRails();
   vocabTimeIndex = new Map(buckets.map((b) => [b.key, { id: b.id, label: b.label }]));
   let year = buckets[0].year;
   nav.innerHTML = buckets
@@ -2689,6 +2768,8 @@ function syncVocabTimeline(entries: any[]): void {
     nav.dataset.ready = '1';
     wireIndexRail(nav, { jump: scrollVocabToTime });
   }
+  // The entries changed, so the number that fit may have too.
+  schedulePlaceVocabRails();
 }
 
 function syncVocabAzAvailability(entries: any[]): void {
@@ -3019,6 +3100,16 @@ function focusReview(body: HTMLElement): void {
   }
 }
 
+/**
+ * After a letter tile is placed or taken back the row is redrawn; the focus goes to the next
+ * letter left (or the word built), so a keyboard or screen reader carries on from there.
+ */
+function refocusTile(root: ParentNode): void {
+  if (nbReview?.answer) return;
+  const next = root.querySelector<HTMLElement>('.nbv-tiles__bank button.nbv-tile') || root.querySelector<HTMLElement>('.nbv-tiles__built button.nbv-tile');
+  next?.focus({ preventScroll: true });
+}
+
 /** Saves the answered question's grade and moves to the next one. */
 async function commitReview(): Promise<void> {
   const api = (window as any).vocabAPI;
@@ -3050,6 +3141,8 @@ async function commitReview(): Promise<void> {
     console.error('review failed', error);
   }
   advanceReview(nbReview, updated);
+  // The word of the question just left stops, and one still loading never plays over the next.
+  sayLemma.cancel();
   // Today's answers count against the learner's usual day, so the next round plans fewer new words.
   if (learner?.pace) learner.pace.answersToday = (learner.pace.answersToday || 0) + 1;
   answerHistory = null;
@@ -3070,6 +3163,12 @@ function onReviewKey(ev: KeyboardEvent): void {
   const target = ev.target as HTMLElement | null;
   if (target && target.id !== 'nbv-answer' && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
   if (target?.id === 'nbv-answer') return;
+  // Letter tiles from the keyboard: a letter places a tile, Backspace takes the last one back.
+  if (body.querySelector('.nbv-tiles__bank') && !nbReview.answer && (ev.key === 'Backspace' || /^\p{L}$/u.test(ev.key))) {
+    ev.preventDefault();
+    if (reviewArmed(nbReview) && tileKey(nbReview, ev.key)) renderLearn();
+    return;
+  }
   if (ev.key === 'Enter') {
     const next = body.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-reveal"], [data-act="nb-round"]');
     if (!next) return;
@@ -3197,6 +3296,7 @@ function wireNotebookActions(root: HTMLElement): void {
       case 'nb-review-exit':
         // Back to the Learn page. An answer on screen is saved first, as Continue would.
         if (nbReview?.answer) await commitReview();
+        sayLemma.cancel();
         nbReview = null;
         renderLearn();
         document.querySelector('.main-shell')?.scrollTo({ top: 0 });
@@ -3385,9 +3485,22 @@ function wireNotebookActions(root: HTMLElement): void {
       case 'nb-skip':
         if (reviewArmed(nbReview)) answerCurrentReview({});
         return;
+      case 'nb-tile':
+        // Letter tiles: placing the last one answers the question.
+        if (nbReview && reviewArmed(nbReview) && placeTile(nbReview, Number(el.dataset.tile))) {
+          renderLearn();
+          refocusTile(root);
+        }
+        return;
+      case 'nb-tile-out':
+        if (nbReview && returnTile(nbReview, Number(el.dataset.pos))) {
+          renderLearn();
+          refocusTile(root);
+        }
+        return;
       case 'nb-hint':
-        // What is typed so far stays where it matches the answer; the next letter is added.
-        if (nbReview && hintReview(nbReview, root.querySelector<HTMLInputElement>('#nbv-answer')?.value || '')) renderLearn();
+        // One more letter; what is typed stays, and the letter is added when it is the start of the word.
+        if (nbReview && hintReview(nbReview, root.querySelector<HTMLInputElement>('#nbv-answer')?.value ?? undefined)) renderLearn();
         return;
       case 'nb-override':
         if (nbReview) overrideReview(nbReview, el.dataset.mode === 'easy' ? 'easy' : 'flip');
@@ -3403,6 +3516,12 @@ function wireNotebookActions(root: HTMLElement): void {
     const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-act]');
     if (!el || !root.contains(el)) return;
     void run(el, ev);
+  });
+  // The answer box is kept on every keystroke, so a repaint of Learn (a word that finished
+  // playing, a sync, a picture) puts back what was typed.
+  root.addEventListener('input', (ev) => {
+    const input = ev.target as HTMLElement;
+    if (input instanceof HTMLInputElement && input.id === 'nbv-answer') keepDraft(nbReview, input.value);
   });
   // A made book: rename on change of its title, add a word from its form.
   root.addEventListener('change', (ev) => {
@@ -3463,7 +3582,6 @@ function setMainTab(tab: MainTab): void {
   if (nb) nb.hidden = tab !== 'notebook';
   if (learn) learn.hidden = tab !== 'learn';
   if (rc) rc.hidden = tab !== 'recent';
-  document.getElementById('recentTools')?.toggleAttribute('hidden', tab !== 'recent');
   document.querySelector('.main-shell')?.scrollTo({ top: 0 });
   if (tab === 'learn') renderLearn();
 }
@@ -3532,7 +3650,10 @@ function wireMainWorkspace(): void {
 let vocabSearchTimer: ReturnType<typeof setTimeout> | null = null;
 document.getElementById('vocabSearch')?.addEventListener('input', () => {
   if (vocabSearchTimer) clearTimeout(vocabSearchTimer);
-  vocabSearchTimer = setTimeout(rerenderNotebook, 120);
+  vocabSearchTimer = setTimeout(() => {
+    rerenderNotebook();
+    renderRecentLookups();
+  }, 120);
 });
 
 document.getElementById('vocabSortRecent')?.addEventListener('click', () => {
@@ -3890,11 +4011,13 @@ function saveRecentLookups(items: RecentLookup[]): void {
 function renderRecentLookups(): void {
   const list = document.getElementById('selectionsList');
   if (!list) return;
-  const items = loadRecentLookups();
+  const all = loadRecentLookups();
   const clear = document.getElementById('clearSelectionsBtn');
-  if (clear) clear.hidden = !items.length;
+  if (clear) clear.hidden = !all.length;
+  // The header search filters whichever tab is open, Recent included.
+  const items = filterRecentLookups(all, (document.getElementById('vocabSearch') as HTMLInputElement | null)?.value || '');
   if (!items.length) {
-    list.innerHTML = `<p class="empty-message">No recent lookups.</p>`;
+    list.innerHTML = `<p class="empty-message">${all.length ? 'No matching lookups.' : 'No recent lookups.'}</p>`;
     return;
   }
   const saved = new Map<string, any>();
@@ -4633,10 +4756,12 @@ const sayLemma = singleVoice({
     }
     return [];
   },
-  playRecording: (src) => playLemmaSrc(src, true),
-  speak: async (lemma) => {
+  playRecording: (src, alive) => (alive() ? playLemmaSrc(src, true) : Promise.resolve()),
+  speak: async (lemma, alive) => {
     const api = window.electronAPI as any;
     const speech = await api?.synthesizeSpeech?.({ text: lemma, lang: 'en' });
+    // A newer press (or the next question) came while the voice was being made: it stays silent.
+    if (!alive()) return;
     if (speech?.ok && speech.dataUrl) await playLemmaSrc(speech.dataUrl, false);
     else showNotification('Could not play pronunciation');
   },
@@ -4653,6 +4778,9 @@ const sayLemma = singleVoice({
 async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise<void> {
   try {
     const api = window.electronAPI as any;
+    // The press counts from now: anything still loading or playing for an earlier one stops, even
+    // while the audio settings are read.
+    sayLemma.cancel();
     lemmaAudioPrefs = (await api?.getAudioPrefs?.()) || { enabled: true, speed: 1, volume: 1 };
     if (lemmaAudioPrefs.enabled === false) return;
     btn?.classList.add('is-speaking');
