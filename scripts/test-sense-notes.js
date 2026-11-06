@@ -211,4 +211,27 @@ assert.doesNotMatch(languageSwitchHtml({ word: 'a', languages: langs(10, 'en') }
 assert.match(languageSwitchHtml({ word: 'a', languages: langs(3, 'en') }, 'act'), /data-act="lookup-lang" data-q="a" data-lang="fr"/);
 assert.equal(languageSwitchHtml({ word: 'dog', languages: langs(1, 'en') }, 'act'), '', 'one language needs no switch');
 
+// A word opened in Danish from the switch reads the Danish section's family, never the English
+// one: "give" in Danish showed "give up" and "giver" from the English section (2026-11-06).
+const { buildWordFamily } = load('word-family');
+const givePage = `==English==
+===Verb===
+# To transfer.
+====Derived terms====
+* [[give up]]
+* [[giveaway]]
+
+==Danish==
+===Verb===
+# to give
+====Derived terms====
+* [[afgive]]
+`;
+const words = (groups) => groups.flatMap((g) => g.items.map((i) => i.word));
+assert.ok(words(buildWordFamily({ surface: 'give', wikitext: givePage, language: 'en', definitions: [] })).includes('give up'));
+const danish = words(buildWordFamily({ surface: 'give', wikitext: givePage, language: 'da', definitions: [] }));
+assert.ok(danish.includes('afgive') && !danish.includes('give up') && !danish.includes('giveaway'), danish.join(', '));
+const swedish = words(buildWordFamily({ surface: 'give', wikitext: givePage, language: 'sv', definitions: [] }));
+assert.ok(!swedish.includes('give up') && !swedish.includes('afgive'), 'a language the page has no section for gets no family from it');
+
 console.log('sense notes ok: labels sorted into grammar and usage, matched to glosses, sister boxes dropped, phrases and languages shown');

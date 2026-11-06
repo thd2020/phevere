@@ -15,7 +15,7 @@ import {
 } from './text-normalize';
 import { abbreviatePos } from './definition-merge';
 import { isGrammaticalFormOfGloss } from './lookup-policy';
-import { extractLanguageSection, scanTemplates, templateToLink, type EtymologyLink } from './etymology';
+import { extractLanguageSection, languageName, scanTemplates, templateToLink, type EtymologyLink } from './etymology';
 import { derivationalStems } from './pronunciation';
 import { cmuKnownSync } from './cmu-ipa';
 
@@ -110,9 +110,13 @@ const FORM_OF_TEMPLATES = new Set([
   'alternative spelling of', 'alt sp',
 ]);
 
+/**
+ * The page section a language's family is read from. A language with no known name gets no
+ * section, so the page's English family is never shown under a Danish or Swedish entry.
+ */
 function langSectionName(language?: string): string {
   const code = (language || 'en').toLowerCase().split('-')[0];
-  return LANG_SECTION[code] || 'English';
+  return LANG_SECTION[code] || languageName(code) || code;
 }
 
 function cleanTerm(raw: string): string {
