@@ -568,6 +568,24 @@ assert.deepEqual(
   'the Latin section only',
 );
 assert.deepEqual(ne.rootsOnSourcePage('===Etymology===\nFrom {{inh|gem-pro|ine-pro|*ǵʰelh₃-}}.', 'gem-pro'), ['*ǵʰelh₃-']);
+// A page of homographs: only the etymology that names the next older word counts, and none
+// when that is not known. Middle English "foul" is both foul (from fūl) and fowl (from fugol).
+{
+  const foulPage = '==Middle English==\n===Etymology 1===\nFrom {{inh|enm|ang|fūl}}, from {{inh|enm|ine-pro|*puH-}}.\n====Adjective====\n# dirty\n===Etymology 2===\nFrom {{inh|enm|ang|fugol}}.\n====Noun====\n# bird\n';
+  assert.deepEqual(ne.rootsOnSourcePage(foulPage, 'enm', 'fūl'), ['*puH-']);
+  assert.deepEqual(ne.rootsOnSourcePage(foulPage, 'enm', 'fugol'), [], 'fowl does not take the root of foul');
+  assert.deepEqual(ne.rootsOnSourcePage(foulPage, 'enm'), [], 'no older word: the homographs cannot be told apart');
+  // A preposition is the first part of a compound; its root is not the word's (squash, allege).
+  assert.deepEqual(ne.rootsOnSourcePage('==Latin==\n===Etymology===\nFrom {{inh|la|itc-pro|*eks}}, from {{inh|la|ine-pro|*h₁eǵʰs}}.\n===Preposition===\n# out of\n', 'la'), []);
+  assert.deepEqual(ne.rootsOnSourcePage('==Latin==\n===Etymology===\n{{root|la|ine-pro|*ḱerh₂-}}\n===Noun===\n# brain\n', 'la'), ['*ḱerh₂-']);
+  // Two words that reach one spelling from different older words are no family.
+  const homographs = views.analyzeNotebook([{ id: 'f1', lemma: 'fowl' }, { id: 'f2', lemma: 'foul' }], () => null);
+  const birds = {
+    fowl: { origin: 'Old English', via: [], roots: [], sources: [['enm', 'foul'], ['ang', 'fugol'], ['gem-pro', '*fuglaz']] },
+    foul: { origin: 'Old English', via: [], roots: [], sources: [['enm', 'foul'], ['ang', 'fūl'], ['gem-pro', '*fūlaz']] },
+  };
+  assert.deepEqual(views.sourceFamilies(homographs, (l) => birds[l] || null), []);
+}
 // Saved words from the same earlier word share its root, even when no spelled root shows it:
 // the family is named after the oldest recorded word they share.
 {

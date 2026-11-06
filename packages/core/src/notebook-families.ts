@@ -236,7 +236,8 @@ function sourceOrigin(code: string): string {
  * another one's words is dropped.
  */
 export function sourceFamilies(a: NotebookAnalysis, etymon: EtymonLookup = cachedEtymon, morph: Family[] = []): Family[] {
-  const bySource = new Map<string, { code: string; term: string; ids: string[]; depth: number }>();
+  const bySource = new Map<string, { code: string; term: string; ids: string[]; depth: number; older: Set<string> }>();
+  const keyOf = (code: string, term: string) => `${code}:${sourcePageTitle(code, term).toLowerCase() || term.replace(/^\*/, '').toLowerCase()}`;
   for (const w of a.words.values()) {
     const sources = etymon(clean(w.entry.lemma))?.sources || [];
     sources.forEach(([code, term], depth) => {
@@ -244,14 +245,16 @@ export function sourceFamilies(a: NotebookAnalysis, etymon: EtymonLookup = cache
       // Affixes and one- or two-letter words ("ex", "re-") join words that share only a prefix,
       // and a list of spellings ("stutten, stoten") is not one word.
       if (/^-|-$/.test(bare) || [...bare].length < 3 || /[,;]/.test(bare)) return;
-      const key = `${code}:${sourcePageTitle(code, term).toLowerCase() || bare.toLowerCase()}`;
+      const key = keyOf(code, term);
       let s = bySource.get(key);
       if (!s) {
-        s = { code, term, ids: [], depth };
+        s = { code, term, ids: [], depth, older: new Set() };
         bySource.set(key, s);
       }
       if (!s.ids.includes(w.entry.id)) s.ids.push(w.entry.id);
       s.depth = Math.max(s.depth, depth);
+      const next = sources[depth + 1];
+      if (next) s.older.add(keyOf(next[0], next[1]));
     });
   }
   const sameIds = (x: string[]) => [...x].sort().join('\n');
@@ -260,10 +263,13 @@ export function sourceFamilies(a: NotebookAnalysis, etymon: EtymonLookup = cache
   const best = new Map<string, { code: string; term: string; ids: string[]; depth: number }>();
   for (const s of bySource.values()) {
     if (s.ids.length < 2) continue;
+    // Words that reach one spelling from different older words met only at a homograph:
+    // Middle English "foul" is where fowl (Old English fugol) and foul (Old English fūl) meet.
+    if (s.older.size > 1) continue;
     if (covered.some((c) => s.ids.every((id) => c.has(id)))) continue;
     const k = sameIds(s.ids);
     const had = best.get(k);
-    const rank = (x: typeof s) => (x.code.endsWith('-pro') ? -100 : 0) + x.depth;
+    const rank = (x: { code: string; depth: number }) => (x.code.endsWith('-pro') ? -100 : 0) + x.depth;
     if (!had || rank(s) > rank(had)) best.set(k, s);
   }
   return [...best.values()]

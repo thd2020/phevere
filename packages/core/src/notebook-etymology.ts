@@ -148,10 +148,28 @@ export function sourcePageTitle(code: string, term: string): string {
   return t.normalize('NFC');
 }
 
-/** The Proto-Indo-European roots an earlier word's own entry names ({{root|la|ine-pro|*bʰer-}}). */
-export function rootsOnSourcePage(wikitext: string, code: string): string[] {
+/**
+ * The Proto-Indo-European roots an earlier word's own entry names ({{root|la|ine-pro|*bʰer-}}).
+ * `older` is the word that one came from in turn, as the saved word's chain writes it.
+ *
+ * A page with several numbered etymologies holds unrelated homographs (Middle English "foul"
+ * is both foul and fowl), so only the etymology that names `older` is read, and none when that
+ * does not pick out exactly one. A preposition or prefix (Latin "ex", "sub") is the first part
+ * of a compound, not its stem, so its root is not the word's.
+ */
+export function rootsOnSourcePage(wikitext: string, code: string, older?: string): string[] {
   const name = languageName(code) || '';
-  const section = code.endsWith('-pro') ? wikitext : extractLanguageSection(wikitext, name);
+  let section = code.endsWith('-pro') ? wikitext : extractLanguageSection(wikitext, name);
+  const heads = [...section.matchAll(/^(={3,})\s*Etymology\s+\d+\s*\1\s*$/gim)];
+  if (heads.length > 1) {
+    const blocks = heads.map((h, i) => section.slice(h.index, heads[i + 1]?.index));
+    const named = older ? blocks.filter((b) => b.includes(older)) : [];
+    if (named.length !== 1) return [];
+    section = named[0];
+  }
+  const pos = [...section.matchAll(/^={3,}\s*([A-Za-z ]+?)\s*={3,}\s*$/gm)].map((m) => m[1].toLowerCase());
+  const stem = pos.some((p) => /^(noun|proper noun|verb|adjective|participle|numeral)$/.test(p));
+  if (!stem && pos.some((p) => /^(preposition|prefix|conjunction|particle)$/.test(p))) return [];
   const roots: string[] = [];
   const add = (r: string | undefined) => {
     const root = String(r || '').replace(/<[^>]*>/g, '').trim();
@@ -390,7 +408,7 @@ export function traceEtymons(lemmas: string[], onProgress?: (p: TraceProgress) =
     for (const [hit, pageTitles] of wanted) {
       for (let k = 0; k < pageTitles.length; k++) {
         const text = sourcePages.get(pageTitles[k]);
-        const roots = text ? rootsOnSourcePage(text, hit.sources![k][0]) : [];
+        const roots = text ? rootsOnSourcePage(text, hit.sources![k][0], hit.sources![k + 1]?.[1]) : [];
         if (roots.length) {
           hit.roots = roots;
           break;
