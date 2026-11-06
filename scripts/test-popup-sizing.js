@@ -35,6 +35,8 @@ const mainContext = {
   log: { debug() {} },
   placePopupNearPoint: (x, y) => ({ x, y }),
   setWindowBounds: (target, rect) => target.setBounds(rect, false),
+  panelAnchors: new WeakMap(),
+  placePanelNearPoint: () => { throw Error('a pop-up the user expanded was moved'); },
 };
 vm.runInNewContext(mainSource.slice(handlerStart, handlerEnd), mainContext);
 

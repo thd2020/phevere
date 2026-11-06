@@ -4,6 +4,9 @@ import * as path from 'path';
 
 export type MonitorMode = 'off' | 'on' | 'shortcut';
 
+/** How a lookup from a selection, hover or the trigger shortcut opens on the desktop. */
+export type LookupOpens = 'strip' | 'panel';
+
 export interface MonitorSettings {
   mode: MonitorMode;
   cycleShortcut: string;
@@ -16,6 +19,8 @@ export interface MonitorSettings {
   hoverShortcut: string;
   /** Keep the app, page or document and sentence with each saved word (source-capture.ts). */
   rememberSources: boolean;
+  /** The icon strip first (expand it for the lookup), or the full pop-up straight away. */
+  lookupOpens: LookupOpens;
 }
 
 const FILE_NAME = 'monitor-settings.json';
@@ -29,7 +34,12 @@ export const monitorDefaults: MonitorSettings = {
   ocrShortcut: 'CommandOrControl+Shift+O',
   hoverShortcut: 'CommandOrControl+Shift+H',
   rememberSources: true,
+  lookupOpens: 'strip',
 };
+
+function pickLookupOpens(value: unknown, fallback: LookupOpens): LookupOpens {
+  return value === 'strip' || value === 'panel' ? value : fallback;
+}
 
 function resolvePath(): string {
   try {
@@ -59,6 +69,7 @@ export function loadMonitorSettings(): MonitorSettings {
       ocrShortcut: pickShortcut(data.ocrShortcut, monitorDefaults.ocrShortcut),
       hoverShortcut: pickShortcut(data.hoverShortcut, monitorDefaults.hoverShortcut),
       rememberSources: typeof data.rememberSources === 'boolean' ? data.rememberSources : monitorDefaults.rememberSources,
+      lookupOpens: pickLookupOpens(data.lookupOpens, monitorDefaults.lookupOpens),
     };
   } catch {
     return { ...monitorDefaults };
@@ -83,6 +94,7 @@ export function mergeMonitorSettings(partial: Partial<MonitorSettings>, current:
     ocrShortcut: partial.ocrShortcut !== undefined ? partial.ocrShortcut : current.ocrShortcut,
     hoverShortcut: partial.hoverShortcut !== undefined ? partial.hoverShortcut : current.hoverShortcut,
     rememberSources: partial.rememberSources !== undefined ? partial.rememberSources : current.rememberSources,
+    lookupOpens: pickLookupOpens(partial.lookupOpens, current.lookupOpens),
   };
   if (merged.mode !== 'off' && merged.mode !== 'on' && merged.mode !== 'shortcut') {
     merged.mode = current.mode;
