@@ -3041,7 +3041,7 @@ ipcMain.handle(
     event,
     lemma: string,
     senses: Array<{ meaning: string; partOfSpeech?: string }>,
-    opts?: { max?: number; lang?: string; updateId?: string; cancellable?: boolean; again?: boolean },
+    opts?: { max?: number; lang?: string; updateId?: string; cancellable?: boolean; again?: boolean; wordPicture?: boolean },
   ) => {
     const updateId = typeof opts?.updateId === 'string' ? opts.updateId : '';
     const ctl = updateId && opts?.cancellable ? new AbortController() : null;
@@ -3051,6 +3051,7 @@ ipcMain.handle(
       lang: opts?.lang,
       signal: ctl?.signal,
       again: opts?.again === true,
+      wordPicture: opts?.wordPicture === true,
       onUpdate: updateId
         ? (list) => {
             try {

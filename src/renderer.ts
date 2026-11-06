@@ -2764,7 +2764,7 @@ function wordImageFetcher(): WordImageFetcher | null {
       const sense = g ? { meaning: g, partOfSpeech: pos || '' } : { meaning: '' };
       const onUpdate = onPicture ? (list: any[]) => onPicture((Array.isArray(list) && list[0]) || null) : undefined;
       const onCancel = signal ? (cancel: () => void) => signal.addEventListener('abort', cancel, { once: true }) : undefined;
-      return api.senseImages(lemma, [sense], { max: 1, lang, again }, onUpdate, onCancel).then((r: any[]) => (Array.isArray(r) && r[0]) || null);
+      return api.senseImages(lemma, [sense], { max: 1, lang, again, wordPicture: true }, onUpdate, onCancel).then((r: any[]) => (Array.isArray(r) && r[0]) || null);
     };
   }
   return (lemma, lang, gloss, pos, onPicture, signal, again) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture, signal, again });

@@ -1504,7 +1504,8 @@ export function lexemeFit(l: LexemeSense, sense: SenseInput, lemma: string): num
  */
 export interface PoolPicture {
   file: string;
-  source: 'wiktionary' | 'lexeme' | 'senseitem' | 'article';
+  /** `search`: a Commons search for the word, made only for a card no other source had a picture for. */
+  source: 'wiktionary' | 'lexeme' | 'senseitem' | 'article' | 'search';
   /** Index into the pool's Wiktionary pictures or lexeme senses. */
   ref: number;
   image?: SenseImage;
@@ -1534,6 +1535,8 @@ export interface PicturePool {
   complete: boolean;
   /** A request failed, so the pool may lack pictures it would otherwise have. */
   failed: boolean;
+  /** The Commons search for the word has been made (`cardPicture`), so it is not made again. */
+  searched?: boolean;
 }
 
 /** Definition lines by etymology, from a Wiktionary language section with two etymologies or more. */
@@ -1798,6 +1801,97 @@ function wholeWordPicture(pool: PicturePool, hidden: Set<string>): SenseImage | 
     ...pool.pictures.filter((p) => p.source === 'wiktionary' && pool.wiktionary[p.ref]?.senseText),
   ];
   return order.find(ok)?.image || null;
+}
+
+/**
+ * A card always shows a picture when the word has one anywhere, the way flashcard apps put an
+ * image on every card they can. When no picture fits the card's saved sense, the card takes the
+ * word's best picture: one tied to another of its senses (a Wikidata lexeme sense, a Wiktionary
+ * line's item, a picture on the Wiktionary page), then the word's own article (the article titled
+ * with it, an article on its disambiguation page, a foreign word's gloss article), then a Commons
+ * search for the word. A portrait of a named person, a map or a logo comes only after everything
+ * else, and a hidden picture never. The lookup keeps its per-sense matching (`assignPictures`).
+ */
+function poolFallback(pool: PicturePool, hidden: Set<string>, sense: string, loose: boolean): SenseImage | null {
+  const off = (p: PoolPicture) => isHidden(hidden, p.file, sense) || (!sense && Array.from(hidden).some((h) => h.split(HIDDEN_SEP)[0] === p.file.toLowerCase()));
+  const tier = (p: PoolPicture): number => {
+    if (p.source === 'lexeme') return 0;
+    if (p.source === 'senseitem') return 1;
+    if (p.source === 'wiktionary') return pool.wiktionary[p.ref]?.senseText ? 2 : 3;
+    if (p.source === 'article') return p.ref < 1000 ? 4 : p.ref >= 2000 ? 5 : 6;
+    return 7;
+  };
+  const list = pool.pictures
+    .filter((p) => !!p.image && !off(p) && (loose || (!p.portrait && !p.chart)))
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => tier(a.p) - tier(b.p) || a.p.ref - b.p.ref || a.i - b.i);
+  return list[0]?.p.image || null;
+}
+
+/** A Commons search for files about a word, with each file's details, in one request. */
+export function buildCommonsSearchUrl(word: string): string {
+  return (
+    'https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2' +
+    `&generator=search&gsrnamespace=6&gsrlimit=12&gsrsearch=${encodeURIComponent(word)}` +
+    `&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=${THUMB_WIDTH}` +
+    '&iiextmetadatafilter=Artist|LicenseShortName|ImageDescription|Categories&iiextmetadatalanguage=en&origin=*'
+  );
+}
+
+/**
+ * Adds the Commons search's pictures to the pool, best first: a file whose name has the word or a
+ * word of the card's sense, in the order Commons ranks them. Sounds, documents, interface icons,
+ * maps and logos drop out. False when the request failed (the search is made again later).
+ */
+async function searchPictures(pool: PicturePool, gloss: string, wanted?: Wanted): Promise<boolean> {
+  type Page = { title: string; index?: number; imageinfo?: ImageInfo[] };
+  const res = await getJson<{ query?: { pages?: Page[] } }>(buildCommonsSearchUrl(pool.lemma), TIMEOUT_MS, false, wanted);
+  if (!res) return false;
+  const senseWords = contentTokens(glossBody(gloss), pool.lemma);
+  const ranked = (res.query?.pages || [])
+    .map((page, i) => {
+      const file = String(page.title || '').replace(/^File:/i, '');
+      const info = page.imageinfo?.[0];
+      const name = commonsFileTitle(file);
+      if (!file || !info || CHROME_FILE.test(name) || badMatch(BAD_FILE, name, pool.lemma)) return null;
+      const image = imageFromInfo(file, name, info);
+      if (!image) return null;
+      const named = sharesWord(name, pool.lemma) ? 2 : 0;
+      const score = named + overlap(contentTokens(name, pool.lemma), senseWords) - (page.index ?? i) / 100;
+      const categories = stripHtml(info.extmetadata?.Categories?.value || '');
+      return { file, image, score, portrait: PERSON_CATEGORY.test(categories), chart: badMatch(BAD_CATEGORY, categories, pool.lemma) };
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4);
+  pool.pictures = pool.pictures.filter((p) => p.source !== 'search');
+  ranked.forEach((x, k) => pool.pictures.push({ file: x.file, source: 'search', ref: k, image: x.image, portrait: x.portrait, chart: x.chart }));
+  pool.searched = true;
+  return true;
+}
+
+/**
+ * The picture a card shows: the one its saved sense would show in a lookup, else the word's best
+ * picture (`poolFallback`), searching Commons for the word when the pool has none.
+ */
+async function cardPicture(
+  pool: PicturePool,
+  key: string,
+  hidden: Set<string>,
+  sense: string,
+  matched: SenseImage | null,
+  wanted?: Wanted,
+): Promise<SenseImage | null> {
+  if (matched) return matched;
+  const clean = poolFallback(pool, hidden, sense, false);
+  if (clean) return clean;
+  // A pool missing answers may still have pictures to come (a card retries), so it is not searched.
+  if (!pool.searched && !pool.failed && !(wanted && !wanted()) && (await searchPictures(pool, sense, wanted))) {
+    writePool(key, pool);
+    const found = poolFallback(pool, hidden, sense, false);
+    if (found) return found;
+  }
+  return poolFallback(pool, hidden, sense, true);
 }
 
 // ---------------------------------------------------------------- building a pool
@@ -2446,6 +2540,11 @@ export async function fetchSenseImages(
     signal?: AbortSignal;
     /** A deliberate second ask (a card retrying): a pool that failed a moment ago is built again. */
     again?: boolean;
+    /**
+     * A card's one sense: when no picture fits it, the word's best picture is given instead
+     * (`cardPicture`). Only the final answer has it; `onUpdate` reports the sense's own picture.
+     */
+    wordPicture?: boolean;
   },
 ): Promise<Array<SenseImage | null>> {
   const word = String(lemma || '').trim();
@@ -2484,12 +2583,13 @@ export async function fetchSenseImages(
     // its answers are kept, so this costs the dropped requests only).
     if (cutPools.has(pool) && !signal?.aborted) pool = await getPool(word, lang, hints, progress, wanted);
     const usesWholeWord = !list.some((s) => stripHtml(s.meaning));
-    if (usesWholeWord) {
-      const out: Array<SenseImage | null> = list.map((): null => null);
-      out[0] = wholeWordPicture(pool, hidden);
-      return out;
+    const out: Array<SenseImage | null> = usesWholeWord ? list.map((): null => null) : assignPictures(pool, list, { max, hidden });
+    if (usesWholeWord) out[0] = wholeWordPicture(pool, hidden);
+    // A card that scrolled away keeps what fits its sense; it asks again when it comes back.
+    if (opts?.wordPicture && list.length === 1 && !signal?.aborted) {
+      out[0] = await cardPicture(pool, poolKey(word, lang), hidden, list[0].meaning, out[0], wanted);
     }
-    return assignPictures(pool, list, { max, hidden });
+    return out;
   } catch {
     return list.map((): null => null);
   }
@@ -2498,7 +2598,8 @@ export async function fetchSenseImages(
 /**
  * One picture for a word (the notebook's card): the one its saved sense would show in a lookup,
  * or, without a saved sense, the best picture for the word as a whole. The part of speech is
- * used when the card knows it; otherwise any part of speech may match.
+ * used when the card knows it; otherwise any part of speech may match. When nothing fits the
+ * sense, the word's best picture shows anyway (`cardPicture`); null only when the word has none.
  */
 export async function fetchWordImage(
   lemma: string,
@@ -2512,6 +2613,7 @@ export async function fetchWordImage(
     onUpdate: update ? (list) => update(list[0] || null) : undefined,
     signal: opts?.signal,
     again: opts?.again,
+    wordPicture: true,
   });
   return img || null;
 }
