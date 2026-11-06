@@ -746,9 +746,10 @@ export class DictionaryService extends BaseService {
 
     try {
       const hintedSource = (opts?.sourceLanguage || '').toLowerCase().split('-')[0];
-      const detectedLanguage =
-        hintedSource && hintedSource !== 'auto' ? hintedSource : await this.detectSourceLanguage(query.trimmed);
+      const hinted = !!hintedSource && hintedSource !== 'auto';
+      let detectedLanguage = hinted ? hintedSource : await this.detectSourceLanguage(query.trimmed);
       query = await this.withExactTitle(query, detectedLanguage);
+      if (!hinted && query.kind !== 'sentence') detectedLanguage = await this.englishFirst(query, detectedLanguage);
 
       // Auto pairing is zh↔en (and ja/ko→en). An explicit Translation-tab target is honoured.
       const resolvedTarget = this.resolveTargetLanguage(detectedLanguage, targetLanguage);
@@ -2661,6 +2662,41 @@ export class DictionaryService extends BaseService {
       if (!own.length || pointing * 3 < own.length) return decide(false);
     }
     return decide(true);
+  }
+
+  /**
+   * A word Wiktionary has an English entry for opens in English, whatever language its letters
+   * suggest: "i.e." is detected as Italian, but its reader means the English abbreviation. The
+   * entry's other languages stay one tap away in its language switch. A language the reader chose
+   * is never overridden (the caller passes only detected languages). The answer is saved like the
+   * exact-title check, so the next lookup of the word asks nothing.
+   */
+  private async englishFirst(query: NormalizedQuery, detected: string): Promise<string> {
+    const lang = (detected || 'en').toLowerCase().split('-')[0];
+    if (lang === 'en' || !/\p{Script=Latin}/u.test(query.trimmed) || !isCoreConfigured()) return detected;
+    const titles = Array.from(new Set([query.trimmed, foldLatinHeadword(query.trimmed)].filter(Boolean)));
+    const key = `english-entry:v1:${lang}:${titles.join('|')}`;
+    const store = getLookupCache();
+    try {
+      const saved = store ? await store.get(key) : null;
+      if (saved && Date.now() - saved.savedAt < EXACT_TITLE_TTL_MS && typeof (saved.value as any)?.english === 'boolean') {
+        return (saved.value as any).english ? 'en' : detected;
+      }
+    } catch {
+      /* asked again below */
+    }
+    if (this.isSourceDown('wiktionary')) return detected;
+    // The lookup reads the same pages next, so this adds no request; only a word detected as
+    // another language waits for the page here.
+    const pages = await withBudget(Promise.all(titles.map((t) => this.wiktionaryDefinitions(t))), EXACT_TITLE_MS, WIKTIONARY, 1, 'english-entry').catch(
+      (): null => null,
+    );
+    if (!pages) return detected;
+    const english = pages.some((p) => sectionSenses(p, 'en').some((d) => !isCitationGloss(String(d.definition || ''))));
+    if (store && !titles.some((t) => this.unansweredTitles.has(t))) {
+      void Promise.resolve(store.set(key, { english }, Date.now())).catch((): undefined => undefined);
+    }
+    return english ? 'en' : detected;
   }
 
   /** The query as typed, remembered so the sources ask for that title ("etc.", not "etc"). */
