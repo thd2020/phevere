@@ -55,6 +55,7 @@ import {
   fetchSenseImages,
   prefetchSenseImages,
   recordedPronunciationUrls,
+  awaitRecordings,
   cacheBookWordMeaning,
   listAnswerHistory,
   listBookProgress,
@@ -2886,6 +2887,19 @@ function prefetchRecordedPronunciation(result: { pronunciations?: Parameters<typ
 
 ipcMain.handle('fetch-pronunciation-audio', async (_event, url: string) => {
   return fetchPronunciationAudio(String(url || ''));
+});
+
+/**
+ * A word's recorded clips for Learn and the word lists. A press before the word's lookup has its
+ * pronunciation data waits for it (`awaitRecordings`) instead of settling for the synthetic voice.
+ */
+ipcMain.handle('dictionary-recordings', async (_event, word: string) => {
+  const translationProvider = parseTranslationProvider(loadTranslationPrefs().provider);
+  const urls = await awaitRecordings((onUpdate) =>
+    dictionaryService.lookup(String(word || ''), 'auto', undefined, { translationProvider, onUpdate }),
+  );
+  prefetchPronunciationUrls(urls);
+  return urls;
 });
 
 ipcMain.handle('dictionary-lookup', async (event, text: string, targetLanguage: string = 'auto', enabledSources?: string[], lookupOpts?: { translationProvider?: string; sourceLanguage?: string }) => {

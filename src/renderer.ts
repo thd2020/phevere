@@ -3051,6 +3051,7 @@ function renderLearn(): void {
     history: answerHistory,
     notice: learnNotice,
   });
+  markLoadingSpeakers(pane);
   pane.querySelector<HTMLElement>('.wb-scope.is-active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   const body = pane.querySelector<HTMLElement>('.lrn-body');
   if (!body) return;
@@ -3070,10 +3071,13 @@ function renderLearn(): void {
 function rerenderActive(): void {
   if (mainTab === 'learn') renderLearn();
   else rerenderNotebook();
+  markLoadingSpeakers();
 }
 
 /** After a Review render: put the cursor in the answer box, play a listening question once. */
 let nbAutoplayed = '';
+/** The word whose ▶ is waiting for its recording, so a repaint draws that button loading again. */
+let loadingSpeakerLemma = '';
 function focusReview(body: HTMLElement): void {
   // A new question starts with its progress bar and instruction below the sticky header.
   const header = [...document.querySelectorAll<HTMLElement>('.ws-head')].find((h) => h.offsetParent) || null;
@@ -4726,22 +4730,17 @@ function playLemmaSrc(src: string, recorded: boolean): Promise<void> {
 /**
  * Notebook and Learn ▶, same rule as the phone's playLemma: the recorded clip (US, UK, other)
  * from the word's lookup, usually cached, or else the voice chosen in Settings → Audio; never
- * both, and a newer press stops an older one (`singleVoice`). A clip is fetched before it counts
- * as the word's recording, so one that cannot be fetched leaves the synthetic voice.
+ * both, and a newer press stops an older one (`singleVoice`). A press before the lookup has the
+ * word's pronunciation data waits for it (`dictionary-recordings`), so an early press gets the
+ * recording too. A clip is fetched before it counts as the word's recording, so one that cannot
+ * be fetched leaves the synthetic voice.
  */
 const sayLemma = singleVoice({
   recordings: async (lemma) => {
     const api = window.electronAPI as any;
     let urls: string[] = [];
     try {
-      const result: any = await window.dictionaryAPI?.lookup(lemma, 'auto');
-      const list: any[] = (result && result.pronunciations) || [];
-      for (const accent of ['us', 'uk', 'other']) {
-        for (const p of list) {
-          const u = String(p?.audioUrl || '');
-          if ((p?.accent || 'other') === accent && u && !urls.includes(u)) urls.push(u);
-        }
-      }
+      urls = (await window.dictionaryAPI?.recordings?.(lemma)) || [];
     } catch {
       urls = [];
     }
@@ -4775,6 +4774,26 @@ const sayLemma = singleVoice({
   },
 });
 
+function markLoadingSpeakers(root: ParentNode = document): void {
+  root.querySelectorAll<HTMLElement>('.vocab-play[data-act="nb-play"]').forEach((el) => {
+    const on = !!loadingSpeakerLemma && el.dataset.lemma === loadingSpeakerLemma;
+    el.classList.toggle('is-loading', on);
+    if (on) el.setAttribute('aria-busy', 'true');
+    else el.removeAttribute('aria-busy');
+  });
+}
+
+function setSpeakerLoading(btn: HTMLElement | undefined, on: boolean): void {
+  if (!btn) return;
+  const lemma = btn.dataset.lemma || '';
+  if (on) loadingSpeakerLemma = lemma;
+  else if (loadingSpeakerLemma === lemma) loadingSpeakerLemma = '';
+  btn.classList.toggle('is-loading', on);
+  if (on) btn.setAttribute('aria-busy', 'true');
+  else btn.removeAttribute('aria-busy');
+  markLoadingSpeakers();
+}
+
 async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise<void> {
   try {
     const api = window.electronAPI as any;
@@ -4785,8 +4804,10 @@ async function playLemmaPronunciation(lemma: string, btn?: HTMLElement): Promise
     if (lemmaAudioPrefs.enabled === false) return;
     btn?.classList.add('is-speaking');
     try {
-      await sayLemma(lemma);
+      // While the word's recording is still being found the button shows it is loading.
+      await sayLemma(lemma, { onLoading: (on) => setSpeakerLoading(btn, on) });
     } finally {
+      setSpeakerLoading(btn, false);
       setTimeout(() => btn?.classList.remove('is-speaking'), 500);
     }
   } finally {
