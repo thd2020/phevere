@@ -130,6 +130,25 @@ const started = (lemma, extra = {}) => ({ lemma, known: false, reps: 2, state: 2
   assert.equal(core.scopeReviewPlan('mine', none, { now, mineGoal: 10, pace }).heldBack, 0);
 }
 
+/* Saved sentences and symbols stay in My words but never take a new-word slot or a review, in any scope. */
+{
+  const mine = [
+    { id: 'v-psi', lemma: '𝜓', partOfSpeech: 'symbol', definition: 'A wavefunction.', reps: 0, createdAt: now - 3 * DAY },
+    { id: 'v-line', lemma: '曹雪芹写贵重物品:金丝ハ宝攒珠', partOfSpeech: 'sentence', definition: 'Translation from JA to ZH', reps: 0, createdAt: now - 2 * DAY },
+    { id: 'v-lil', lemma: 'LIL', partOfSpeech: 'symbol', definition: 'ISO 639-3 language code for Lillooet.', reps: 3, state: 2, stability: 5, lastReview: now - 5 * DAY, reviewDue: now - DAY, createdAt: now - 9 * DAY },
+    { id: 'v-pm', lemma: 'papier-mâché', partOfSpeech: 'noun', definition: 'Torn-up paper mixed with paste.', reps: 0, createdAt: now - DAY },
+  ];
+  const ctx = core.buildWordsContext(mine, [], [sub('ngsl', 1)], new Map([['ngsl', ['apple']]]));
+  assert.equal(core.scopeEntries('mine', ctx).length, 4, 'My words still lists every entry');
+  for (const scope of ['mine', 'all']) {
+    const plan = core.scopeReviewPlan(scope, ctx, { now, mineGoal: 10 });
+    assert.ok(!plan.ids.some((id) => ['v-psi', 'v-line', 'v-lil'].includes(id)), `${scope}: ${plan.ids}`);
+    assert.equal(plan.due, 0, `${scope}: the due symbol is not a review`);
+  }
+  assert.deepEqual(core.scopeReviewPlan('mine', ctx, { now, mineGoal: 10 }).ids, ['v-pm']);
+  assert.deepEqual(core.scopeReviewPlan('all', ctx, { now, mineGoal: 10 }).ids.sort(), ['v-pm', 'wb:apple']);
+}
+
 /* "Already know it" on a saved new word keeps it out of today's new words. */
 {
   const mine = [

@@ -12,8 +12,8 @@ import { analyzeNotebook } from './notebook-views';
 import { deepRootFamilies } from './notebook-families';
 import { predictedRecall } from './review-schedule';
 import { SKILLS, historyByWord, skillMastery, type AnswerRecord, type Skill } from './answer-history';
-import { bookEntry, bookProgress, scopeEntries, wordStatus, wordbookMeta, type WordsContext, type WordsEntry, type WordsScope } from './wordbooks';
-import { LEECH_LAPSES, MATURITY_NAME, memoryLevel, wordMaturity, type Maturity } from './review-quiz';
+import { bookEntry, bookProgress, learnScopeEntries, wordStatus, wordbookMeta, type WordsContext, type WordsEntry, type WordsScope } from './wordbooks';
+import { isLearnable, LEECH_LAPSES, MATURITY_NAME, memoryLevel, wordMaturity, type Maturity } from './review-quiz';
 import { barChartHtml, dayLabel, memoryHtml, wordChips, type BarDatum, type RetentionWord } from './learn-charts';
 import { forecastChartHtml } from './notebook-review';
 
@@ -73,10 +73,11 @@ const fmt = (n: number) => n.toLocaleString('en-US');
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
 const key = (s: string) => clean(s).toLowerCase();
 
+/** The scope's words Learn studies (`isLearnable`): sentences and symbols saved to My words are not counted. */
 function scopeWords(input: ProgressInput): WordsEntry[] {
   const { scope, ctx, mine } = input;
-  if (!ctx) return mine.map((e) => ({ ...e, saved: true }));
-  return scopeEntries(scope, ctx);
+  if (!ctx) return mine.filter(isLearnable).map((e) => ({ ...e, saved: true }));
+  return learnScopeEntries(scope, ctx);
 }
 
 function streaks(days: Set<number>, today: number): { streak: number; best: number } {
@@ -134,7 +135,7 @@ export function progressSummary(input: ProgressInput): ProgressSummary {
 
   // Lists, and what each shares with the others.
   const lists: ProgressSummary['lists'] = [];
-  const mineWords = ctx ? scopeEntries('mine', ctx) : input.mine.map((e) => ({ ...e, saved: true }) as WordsEntry);
+  const mineWords = ctx ? learnScopeEntries('mine', ctx) : input.mine.filter(isLearnable).map((e) => ({ ...e, saved: true }) as WordsEntry);
   const count = (list: WordsEntry[]) => {
     let fresh = 0;
     let learning = 0;

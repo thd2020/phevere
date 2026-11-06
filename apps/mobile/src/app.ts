@@ -53,6 +53,8 @@ import {
   suggestWords,
   fetchWordImage,
   fillWordImages,
+  vocabCopyText,
+  flashCopied,
   startReview,
   answerReview,
   overrideReview,
@@ -2541,15 +2543,32 @@ function soundOff(): boolean {
 async function copyText(text: string): Promise<void> {
   const value = text.trim();
   if (!value) return;
+  toast((await writeClipboard(value)) ? 'Copied' : 'Could not copy');
+}
+
+/** Put text on the clipboard through the native bridge, or the browser's clipboard in the preview. */
+async function writeClipboard(value: string): Promise<boolean> {
   try {
     if (hasNativeBridge()) await nativeCall('copy', { text: value });
     else await navigator.clipboard.writeText(value).catch(() => {
       if (!legacyCopy(value)) throw new Error('copy');
     });
-    toast('Copied');
+    return true;
   } catch {
-    toast('Could not copy');
+    return false;
   }
+}
+
+/**
+ * Copy on a word row (data-q: the word as saved) or an opened row's "Copy with meaning" (data-id).
+ * The button shows the tick; only a failure raises a toast.
+ */
+async function copyRowWord(t: HTMLElement): Promise<void> {
+  const entry = t.dataset.id ? notebook.find((x) => x.id === t.dataset.id) : undefined;
+  const text = entry ? vocabCopyText(entry) : (t.dataset.q || '').trim();
+  if (!text) return;
+  if (await writeClipboard(text)) flashCopied(t);
+  else toast('Could not copy');
 }
 
 /** Browser preview without clipboard permission: copy through a hidden text area. */
@@ -3370,6 +3389,9 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     case 'nb-next':
       await commitReview();
+      return;
+    case 'nb-copy':
+      await copyRowWord(t);
       return;
     case 'nb-play':
       if (soundOff()) return;

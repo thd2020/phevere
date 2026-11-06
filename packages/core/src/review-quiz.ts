@@ -13,6 +13,7 @@ import { vocabSenses } from './vocab-view';
 import { isGrammaticalFormOfGloss } from './lookup-policy';
 import { predictedRecall, type ReviewGrade } from './review-schedule';
 import { vocabHeadwordLang } from './vocab-lang';
+import { classify, sanitize, trimEdges } from './text-normalize';
 
 const langOf = (e: NotebookEntry) => ({ lemma: clean(e.lemma), sourceLang: clean(e.sourceLang) || undefined });
 
@@ -227,6 +228,51 @@ export function isNewWord(e: NotebookEntry): boolean {
 
 const isNew = isNewWord;
 
+/**
+ * Parts of speech that name a sign rather than a word: Wiktionary files ISO codes ("LIL"),
+ * chemical and unit symbols and letters such as "𝜓" under Symbol or Letter, and the lookup marks
+ * a translated sentence as "sentence".
+ */
+const NOT_WORD_POS = new Set(['symbol', 'letter', 'punctuation', 'sentence']);
+/** LingQ's phrase limit: a saved phrase of up to nine words is still a phrase; longer is running text. */
+export const MAX_PHRASE_WORDS = 9;
+/** The line the lookup saves in place of a meaning when it translated a sentence (`dictionary.ts`). */
+const TRANSLATION_PLACEHOLDER = /^translation from [a-z-]{2,}\s+to\s+[a-z-]{2,}\.?$/i;
+const fold = (s: string) => s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+/**
+ * Whether Learn studies a saved entry. Like Language Reactor, which keeps saved sentences apart
+ * from saved words, and LingQ and Readlang, whose cards hold words and short phrases, Learn leaves
+ * out what is not a word or phrase: a headword without a letter (punctuation, digits, emoji); an
+ * entry the dictionary files as a symbol, letter or punctuation mark, or that was looked up as a
+ * sentence; a run of text without a part of speech that is longer than MAX_PHRASE_WORDS words or
+ * than the lookup's own sentence line (a long CJK line); and an entry whose saved meanings are
+ * only the lookup's translation placeholder or the headword repeated back. The entry stays in My
+ * words and everywhere else. Phrases, idioms and proverbs a dictionary lists ("cease and desist"),
+ * and words of any language with a real sense, stay in.
+ * A word with no meaning saved yet (a book word not looked up) stays in too.
+ */
+export function isLearnable(e: NotebookEntry): boolean {
+  const lemma = clean(e.lemma);
+  if (!/\p{L}/u.test(lemma)) return false;
+  if (NOT_WORD_POS.has(normPos(e.partOfSpeech))) return false;
+  // A long run of text is running text, unless a dictionary filed it under a part of speech (a proverb).
+  if (!normPos(e.partOfSpeech)) {
+    const text = trimEdges(sanitize(lemma));
+    const words = text.split(/\s+/).filter(Boolean).length;
+    if (words > MAX_PHRASE_WORDS) return false;
+    // The lookup sends a CJK line of more than twelve characters, or any text past 120 characters, to translation.
+    if (classify(text) === 'sentence' && (words === 1 || text.length > 120)) return false;
+  }
+  const def = clean(e.definition);
+  if (!def) return true;
+  const own = fold(lemma);
+  return vocabSenses(def).some((s) => {
+    const t = clean(s);
+    return !!t && !TRANSLATION_PLACEHOLDER.test(t) && fold(t) !== own;
+  });
+}
+
 /** A word missed often enough that more of the same drilling is not working (Anki calls it a leech). */
 export function isLeech(e: NotebookEntry): boolean {
   return Number(e.lapses) >= LEECH_LAPSES;
@@ -331,10 +377,12 @@ export interface QueuePlan {
 /**
  * Today's plan: words due by the end of today, most overdue first, and today's new words (oldest
  * saved first, up to the daily goal less those started today, fewer when many reviews are due,
- * `newWordsToday`) spread among them. One form of each word only.
+ * `newWordsToday`) spread among them. One form of each word only, and only what Learn studies
+ * (`isLearnable`).
  */
-export function reviewPlan(entries: NotebookEntry[], goal: number, now = Date.now(), startedToday = 0, pace?: StudyPace | null): QueuePlan {
+export function reviewPlan(all: NotebookEntry[], goal: number, now = Date.now(), startedToday = 0, pace?: StudyPace | null): QueuePlan {
   const end = dayStart(now) + DAY;
+  const entries = all.filter(isLearnable);
   const dueAll = entries.filter((e) => !isNew(e) && e.reviewDue != null && Number(e.reviewDue) < end).sort((x, y) => Number(x.reviewDue) - Number(y.reviewDue));
   const newAll = entries.filter((e) => isNew(e) && clean(e.lemma)).sort((x, y) => Number(x.createdAt || 0) - Number(y.createdAt || 0));
   const kept = new Set(dedupeLemmas([...dueAll, ...newAll]));
@@ -1498,8 +1546,9 @@ export function ensureReviewQuestion(state: ReviewState, entries: NotebookEntry[
   const id = state.queue[state.index];
   if (state.question && state.question.id === id) return state.question;
   const entry = entries.find((e) => e.id === id);
-  if (!entry || !canAsk(entry, opts)) {
-    // Deleted meanwhile, or nothing usable to ask (senses that are only citations): skip it.
+  if (!entry || !isLearnable(entry) || !canAsk(entry, opts)) {
+    // Deleted meanwhile, no longer a word to study (a re-lookup found it is a sentence or symbol),
+    // or nothing usable to ask (senses that are only citations): skip it.
     state.queue.splice(state.index, 1);
     return ensureReviewQuestion(state, entries, opts);
   }

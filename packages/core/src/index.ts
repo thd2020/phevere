@@ -88,10 +88,14 @@ export {
   AZ_INDEX,
   compareAz,
   addToBookButtonHtml,
+  copyButtonHtml,
+  vocabCopyText,
+  COPY_ICON,
   type RecentLookup,
   type VocabViewEntry,
   type VocabListOptions,
 } from './vocab-view';
+export { flashCopied, announceStatus, COPIED_MS } from './copy-feedback';
 export { followIndexRail, placeIndexRail, railBox, railStride, wireIndexRail, type IndexRailOptions, type RailEdges } from './index-rail';
 export {
   analyzeNotebook,
@@ -269,6 +273,8 @@ export {
   overrideReview,
   advanceReview,
   isNewWord,
+  isLearnable,
+  MAX_PHRASE_WORDS,
   memoryLevel,
   buildQuestion,
   sameLemma,
@@ -345,6 +351,7 @@ export {
   isBookOnlyId,
   wordStatus,
   scopeEntries,
+  learnScopeEntries,
   bookProgress,
   scopeReviewQueue,
   startScopeReview,

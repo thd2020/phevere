@@ -2,8 +2,12 @@
  * Notebook rows shared by the desktop window and the phone app. The notebook doubles as a memory
  * check, so a collapsed row shows the word, one pronunciation and the part of speech but never the
  * meaning; expanding it reveals the senses, every pronunciation, the note, sources and Remove.
- * Play and Look up sit at the end of every row, collapsed or not. Recent lookups use the same
- * row, so both lists read alike. Buttons carry `data-act`, which each shell wires.
+ * Play, Copy and Look up sit at the end of every row, collapsed or not. Recent lookups use the
+ * same row, so both lists read alike. Buttons carry `data-act`, which each shell wires.
+ *
+ * Copy (nb-copy, data-q) puts the word on the clipboard as saved, the way the copy icon in
+ * Google Translate and Reverso copies the text beside it. An opened row adds "Copy with
+ * meaning" (nb-copy, data-id), which copies `vocabCopyText` for that entry.
  */
 import { stripGlossText } from './lookup-policy';
 import { formatVocabLangPair, vocabLookupLang } from './vocab-lang';
@@ -50,6 +54,19 @@ const ICON = {
   bookAdd: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5H7.5A2.5 2.5 0 0 1 5 17V4.5h9.5A2.5 2.5 0 0 1 17 7v5M5 17a2.5 2.5 0 0 1 2.5-2.5H12M18 15v6M15 18h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>',
 };
+
+/** The usual copy glyph, two overlapping sheets, as Material's content_copy and SF Symbols' doc.on.doc draw it. */
+export const COPY_ICON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><path d="M15.5 8.5V6.2A2.2 2.2 0 0 0 13.3 4H6.2A2.2 2.2 0 0 0 4 6.2v7.1a2.2 2.2 0 0 0 2.2 2.2h2.3" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/**
+ * Copy on a word's row: the word itself goes on the clipboard (hook nb-copy, data-q). `cls` is the
+ * button's class in its row, so it takes the size and colour of the row's other icon buttons.
+ */
+export function copyButtonHtml(lemma: string, cls = 'vocab-open vocab-copy'): string {
+  const q = esc(clean(lemma));
+  return `<button type="button" class="${cls}" data-act="nb-copy" data-q="${q}" title="Copy" aria-label="Copy ${q}">${COPY_ICON}</button>`;
+}
 
 /**
  * "Add to word book": opens the list of the learner's own books (made or imported) with a tick
@@ -108,6 +125,21 @@ export function vocabSenses(definition: unknown): string[] {
     out.push(sense);
   }
   return out;
+}
+
+/**
+ * What "Copy with meaning" puts on the clipboard: the word with its first pronunciation and part
+ * of speech on one line, then the saved senses, numbered when there are several, the way a
+ * dictionary entry reads when pasted into notes.
+ */
+export function vocabCopyText(e: Pick<VocabViewEntry, 'lemma' | 'reading' | 'partOfSpeech' | 'definition'>): string {
+  const pos = clean(e.partOfSpeech);
+  const head = [clean(e.lemma), vocabReadings(e.reading)[0]?.ipa || '', pos ? POS_SHORT[pos.toLowerCase()] || pos : '']
+    .filter(Boolean)
+    .join(' ');
+  const senses = vocabSenses(e.definition);
+  if (senses.length < 2) return [head, ...senses].join('\n');
+  return [head, ...senses.map((s, i) => `${i + 1}. ${s}`)].join('\n');
 }
 
 /** When the word was saved. Reviews and sync bump updatedAt, which must not reorder the list. */
@@ -276,6 +308,7 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
       <div class="vocab-foot">
         ${factsHtml(e, t, now)}
         <span class="vocab-actions">
+          <button type="button" class="vocab-action vocab-copy-full" data-act="nb-copy" data-id="${id}">${COPY_ICON}<span>Copy with meaning</span></button>
           ${opts.bookPick ? `<button type="button" class="vocab-action vocab-tobook" data-act="ub-pick" data-q="${esc(lemma)}" aria-haspopup="menu" aria-expanded="false">${ICON.bookAdd}<span>Add to word book</span></button>` : ''}
           <button type="button" class="vocab-action vocab-remove" data-act="nb-del" data-id="${id}">${ICON.remove}<span>Remove</span></button>
         </span>
@@ -286,6 +319,7 @@ export function vocabEntryHtml(e: VocabViewEntry, open: boolean, now = Date.now(
       <div class="vocab-row__main">${head}</div>
       <span class="vocab-row__end">
         ${play}
+        ${copyButtonHtml(lemma)}
         ${lookupButton(lemma, vocabLookupLang({ lemma, sourceLang: clean(e.sourceLang) }))}
         <time class="vocab-when" datetime="${t ? new Date(t).toISOString() : ''}">${esc(vocabWhen(t, now))}</time>
         <span class="vocab-chevron" aria-hidden="true">${ICON.chevron}</span>
@@ -327,7 +361,7 @@ export interface RecentLookup {
 
 /**
  * Recent lookups as notebook rows: the word, and when it is in the notebook its first
- * pronunciation and part of speech, then Play, Look up, the same save control a lookup has
+ * pronunciation and part of speech, then Play, Copy, Look up, the same save control a lookup has
  * (the heart for My words and, with books of your own, "Add to word book"), and the time.
  * The row itself looks up. The heart saves with wb-save (data-q) and removes with nb-del
  * (data-id), as Google Translate's history rows star a word in place.
@@ -368,6 +402,7 @@ export function recentListHtml(
       </div></div>
       <span class="vocab-row__end">
         ${playButton(q)}
+        ${copyButtonHtml(q)}
         ${lookupButton(q)}
         ${e
           ? `<button type="button" class="vocab-open vocab-save is-on" data-act="nb-del" data-id="${esc(e.id)}" aria-pressed="true" title="Remove from My words" aria-label="Remove ${esc(q)} from My words">${ICON.heart}</button>`

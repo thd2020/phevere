@@ -13,6 +13,7 @@ import {
   countdownWaiting,
   ensureReviewQuestion,
   hintsLeft,
+  isLearnable,
   shownLetters,
   MATURITY_NAME,
   memoryLevel,
@@ -673,8 +674,10 @@ function summaryHtml(entries: NotebookEntry[], state: ReviewState, now: number):
   </section>`;
 }
 
-export function reviewHtml(entries: NotebookEntry[], state: ReviewState, goal: number, opts: ReviewRenderOptions = {}): string {
+export function reviewHtml(all: NotebookEntry[], state: ReviewState, goal: number, opts: ReviewRenderOptions = {}): string {
   const now = opts.now ?? Date.now();
+  // Sentences, symbols and placeholders stay in My words but are neither asked nor counted here.
+  const entries = all.filter(isLearnable);
   let quiz = '';
   if (!entries.length) {
     quiz = `<p class="nbv-empty">Save words to start reviewing.</p>`;

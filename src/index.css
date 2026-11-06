@@ -3115,6 +3115,8 @@ body.main-window :is(#vocabList, #selectionsList) .vocab-open {
 }
 body.main-window :is(#vocabList, #selectionsList) .vocab-open:hover { background: var(--pv-surface-container); }
 body.main-window :is(#vocabList, #selectionsList) .vocab-open svg { width: 16px; height: 16px; }
+body.main-window :is(#vocabList, #selectionsList) .vocab-copy svg { width: 15px; height: 15px; }
+body.main-window :is(#vocabList, #selectionsList) :is(.vocab-copy, .vocab-copy-full).is-copied { color: var(--pv-teal); }
 body.main-window #selectionsList .vocab-save.is-on { color: var(--pv-teal); }
 body.main-window #selectionsList .vocab-save.is-on svg path { fill: currentColor; }
 body.main-window :is(#vocabList, #selectionsList) .vocab-when { min-width: 64px; text-align: right; }

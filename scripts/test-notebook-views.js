@@ -499,6 +499,18 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   // Words by the stages Today and the question tags use.
   assert.deepEqual(s.strength.map((b) => b.label), ['New', 'Learning', 'Young', 'Mature']);
   assert.deepEqual(s.strength.map((b) => b.words), [['export'], ['transport'], [], ['portable']]);
+  // A saved symbol and a saved sentence, even one answered before and due today, change none of Progress's numbers.
+  const odd = [
+    { id: 'p4', lemma: 'LIL', partOfSpeech: 'symbol', definition: 'ISO 639-3 language code for Lillooet.', reps: 2, state: 2, stability: 3, lastReview: t0 - 3 * DAYMS, reviewDue: t0 - DAYMS, createdAt: t0 - 9 * DAYMS },
+    { id: 'p5', lemma: '曹雪芹写贵重物品:金丝ハ宝攒珠', partOfSpeech: 'sentence', definition: 'Translation from JA to ZH', reps: 0, createdAt: t0 - DAYMS },
+  ];
+  const withOdd = progressSummary({ history: [...history, rec('lil', t0 - 3000, 'meaning-choice', 'meaning', true)], scope: 'mine', ctx: null, mine: [...words, ...odd], goal: 10, now: t0 });
+  assert.deepEqual(withOdd.lists[0], s.lists[0]);
+  assert.equal(withOdd.dueLeft, s.dueLeft);
+  assert.equal(withOdd.reviewsToday, s.reviewsToday);
+  assert.deepEqual(withOdd.strength.map((b) => b.words), s.strength.map((b) => b.words));
+  const oddPage = progressHtml({ history, scope: 'mine', ctx: null, mine: [...words, ...odd], goal: 10, now: t0 });
+  assert.equal(oddPage.match(/data-lrc="due30"[\s\S]*?<\/svg>/)[0], page.match(/data-lrc="due30"[\s\S]*?<\/svg>/)[0], 'the forecast is unchanged');
   assert.match(page, /<b class="lrp-fig__n" style="--ch:1">1<\/b><p class="lrp-fig__cap"><span class="lrp-fig__label">Mature<\/span><span class="lrp-fig__sub">of 2 started<\/span>/);
   // Memory's number is a prediction: "Remembered", never "Recalled today", which reads as answers given today.
   assert.match(page, /<span class="lrp-fig__label">Remembered<\/span><span class="lrp-fig__sub">of 2 words<\/span><span class="lrp-fig__facts"><span><b>\d+<\/b> due<\/span>/);
@@ -590,6 +602,28 @@ const recBooks = recentListHtml([{ q: 'inspect', at: now }], () => undefined, no
 assert.match(recBooks, /data-act="ub-pick" data-q="inspect" aria-haspopup="menu"/);
 assert.match(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now, { bookPick: true }), /data-act="ub-pick" data-q="braid"[^>]*>.*Add to word book/);
 assert.doesNotMatch(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now), /ub-pick/);
+
+// Copy: every collapsed row copies the word as saved, between Play and Look up; an opened My
+// words row also copies the word with its meaning, keyed by the entry's id.
+{
+  const { vocabCopyText, copyButtonHtml } = load('vocab-view');
+  const order = (html) => ['nb-play', 'nb-copy', 'lookup'].map((a) => html.indexOf(`class="vocab-${a === 'nb-play' ? 'play' : a === 'nb-copy' ? 'open vocab-copy' : 'open'}" data-act="${a}"`));
+  const head = row.slice(0, row.indexOf('vocab-entry__details'));
+  assert.match(head, /data-act="nb-copy" data-q="inspect" title="Copy" aria-label="Copy inspect"/);
+  const at = order(head);
+  assert.ok(at.every((i) => i >= 0) && at[0] < at[1] && at[1] < at[2], 'Play, Copy, Look up');
+  assert.match(rec, /data-act="nb-copy" data-q="gargantuan"/);
+  assert.equal((rec.match(/data-act="nb-copy"/g) || []).length, 3, 'one Copy per recent row');
+  const opened = vocabEntryHtml({ id: 'c1', lemma: 'braid' }, true, now);
+  assert.match(opened, /data-act="nb-copy" data-id="c1">.*Copy with meaning/);
+  assert.match(copyButtonHtml(`rock 'n' roll`), /data-q="rock &#39;n&#39; roll"/);
+  assert.equal(
+    vocabCopyText({ lemma: 'braid', reading: 'US /bɹeɪd/ · UK /breɪd/', partOfSpeech: 'noun', definition: '1. A plait of hair.\n2. A <b>woven</b> band.\n2. A <b>woven</b> band.' }),
+    'braid /bɹeɪd/ n.\n1. A plait of hair.\n2. A woven band.',
+  );
+  assert.equal(vocabCopyText({ lemma: 'holon', definition: 'A whole that is part of a larger whole.' }), 'holon\nA whole that is part of a larger whole.');
+  assert.equal(vocabCopyText({ lemma: ' quark ', definition: '' }), 'quark', 'no meaning saved: the word alone');
+}
 // Index rails stay inside the list as it shows on screen. A list rendered while its tab was
 // hidden measures as 0 by 0, which used to put the rail right under the header, beside the book
 // row and the sort switch.

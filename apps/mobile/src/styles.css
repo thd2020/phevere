@@ -2177,6 +2177,25 @@ html[data-notify="ios"] .toast {
   background: transparent;
 }
 .vocab-list .vocab-open svg { width: 20px; height: 20px; }
+/*
+ * Copy on a word row (2026-11-06): a 44 px target that takes no more room than the icon buttons
+ * beside it, since the extra width lies over the gaps between them. A tick shows after a copy.
+ */
+.vocab-list .vocab-copy { width: 44px; height: 44px; margin: -2px; }
+.vocab-list .vocab-copy:active { background: var(--md-sys-color-surface-container); }
+.vocab-list :is(.vocab-copy, .vocab-copy-full).is-copied { color: var(--md-sys-color-tertiary); }
+.wb-row__acts .wb-copy { width: 44px; height: 44px; margin: -5px; }
+/*
+ * On a phone narrower than 400 px the row's clock time gives way, so a long word keeps its line
+ * beside Play, Copy and Look up. The day heading above still says when, and an opened row shows
+ * the full saved date. A book row drops its "New" chip for the same reason; Learning and Known
+ * still show, and a word without a chip is new.
+ */
+@media (max-width: 400px) {
+  .vocab-list .vocab-when { display: none; }
+  .wb-row .wb-state--new { display: none; }
+  .wb-row .wb-state--new + .wb-row__acts { margin-left: auto; }
+}
 .vocab-list .vocab-open:active,
 .vocab-list .vocab-play:active { background: var(--md-sys-color-surface-container); }
 /* Rows off screen skip layout and paint, so long notebooks scroll smoothly. */

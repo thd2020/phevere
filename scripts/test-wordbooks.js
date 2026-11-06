@@ -298,6 +298,10 @@ async function main() {
   assert.match(core.wordbookListHtml(met, { scope: 'all', limit: 10, sort: 'recent' }), /data-sort="recent" aria-pressed="true"/, 'All books keeps Recent');
   assert.match(core.wordbookListHtml(met, { scope: 'kaoyan', limit: 10, bookPick: true }), /data-act="ub-pick" data-q="state"/);
   assert.doesNotMatch(core.wordbookListHtml(met, { scope: 'kaoyan', limit: 10 }), /ub-pick/);
+  // Every book row copies its word, before Look up, and the word button stays the row's opener.
+  assert.equal((listHtml.match(/class="wb-act wb-copy" data-act="nb-copy"/g) || []).length, met.length);
+  assert.match(listHtml, /data-act="nb-copy" data-q="Abate" title="Copy" aria-label="Copy Abate">/);
+  assert.ok(listHtml.indexOf('data-act="nb-copy" data-q="Abate"') < listHtml.indexOf('data-act="lookup" data-q="Abate"'));
   assert.doesNotMatch(core.wordbookHeaderHtml('starter', ctx), /wb-goal|wb-unsub/, 'no goal chips or Remove link in a book header');
 
   console.log('test-wordbooks: all passed');
