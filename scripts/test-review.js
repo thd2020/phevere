@@ -68,6 +68,54 @@ const now = new Date(2026, 10, 3, 10, 0, 0).getTime();
   assert.equal(core.isNewWord({ reps: 0, reviewDue: now - DAY, createdAt: now - DAY }), true);
 }
 
+/* -------------------------------------------- what Learn leaves out */
+{
+  // Saved entries like those in a real notebook: a math sign, a Chinese line translated as a
+  // sentence, ISO codes filed under Symbol, and a translation that only echoes the headword.
+  const odd = [
+    { id: 'psi', lemma: '𝜓', partOfSpeech: 'symbol', sourceLang: 'en', definition: 'Psychology.\nPsychiatry.\nA wavefunction.', reps: 0, createdAt: now - 9 * DAY },
+    { id: 'line', lemma: '曹雪芹写贵重物品:金丝ハ宝攒珠', partOfSpeech: 'sentence', sourceLang: 'ja', definition: 'Translation from JA to ZH', reps: 0, createdAt: now - 8 * DAY },
+    { id: 'lil', lemma: 'LIL', partOfSpeech: 'symbol', sourceLang: 'en', definition: 'ISO 639-3 language code for Lillooet.\nA book.', reps: 0, createdAt: now - 7 * DAY },
+    { id: 'and', lemma: 'AND', partOfSpeech: 'symbol', sourceLang: 'en', definition: 'ISO 639-3 language code for Ansus.\nAs a coordinating conjunction.', reps: 0, createdAt: now - 6 * DAY },
+    { id: 'code', lemma: 't/cpcif', definition: 'tcpcif', reps: 0, createdAt: now - 5 * DAY },
+    { id: 'dots', lemma: '…?!', definition: 'punctuation', reps: 0, createdAt: now - 5 * DAY },
+    { id: 'long', lemma: 'the quick brown fox jumps over the lazy dog again and again', definition: 'a pangram', reps: 0, createdAt: now - 5 * DAY },
+    // Untagged, but the lookup would have sent it to translation: a CJK line of more than twelve characters.
+    { id: 'zh', lemma: '我昨天在图书馆借了三本关于历史的书', definition: 'Translation from ZH to EN', reps: 0, createdAt: now - 5 * DAY },
+  ];
+  const words = [
+    { id: 'pm', lemma: 'papier-mâché', partOfSpeech: 'noun', definition: 'Alternative spelling of papier-mâché. [Torn-up paper mixed with paste.]', reps: 0, createdAt: now - 4 * DAY },
+    { id: 'cd', lemma: 'cease and desist', partOfSpeech: 'verb', definition: 'To stop and not resume an action.', reps: 0, createdAt: now - 3 * DAY },
+    { id: 'gu', lemma: 'give up', partOfSpeech: 'verb', definition: 'To stop trying.', reps: 0, createdAt: now - 2 * DAY },
+    { id: 'zhw', lemma: '图书馆', sourceLang: 'zh', definition: 'library', reps: 0, createdAt: now - 2 * DAY },
+    { id: 'mustard', lemma: 'mustard yellow', definition: '芥末黄', reps: 0, createdAt: now - DAY },
+    { id: 'bird', lemma: 'a bird in the hand is worth two in the bush', partOfSpeech: 'proverb', definition: 'Something you have is worth more than something you might get.', reps: 0, createdAt: now - DAY },
+    // A book word not looked up yet has no meaning; it stays for the plain card.
+    { id: 'wb:abandon', lemma: 'abandon', reps: 0 },
+  ];
+  for (const e of odd) assert.equal(core.isLearnable(e), false, `${e.lemma} is not studied in Learn`);
+  for (const e of words) assert.equal(core.isLearnable(e), true, `${e.lemma} is studied in Learn`);
+
+  // Not in today's plan, its counts or the stages, however many new-word slots are free.
+  const plan = core.reviewPlan([...odd, ...words.slice(0, 2)], 20, now);
+  assert.deepEqual(plan.ids, ['pm', 'cd']);
+  assert.equal(plan.fresh, 2);
+  const html = core.reviewHtml([...odd, ...words.slice(0, 2)], core.startReview([...odd, ...words.slice(0, 2)], 20, now), 20, { now });
+  assert.match(html, /aria-label="0 mature, 0 young, 0 learning, 2 new"/);
+  // A reviewed one due today is not asked either.
+  const dueSign = { ...odd[0], reps: 3, state: 2, stability: 5, lastReview: now - 5 * DAY, reviewDue: now - DAY };
+  assert.equal(core.reviewPlan([dueSign, words[0]], 10, now).due, 0);
+  assert.match(core.reviewHtml([dueSign, words[0]], core.startReview([dueSign, words[0]], 10, now), 10, { now }), /aria-label="0 mature, 0 young, 0 learning, 1 new"/);
+
+  // Re-looked up as a sentence mid-round: skipped when its turn comes, never asked.
+  const round = core.startReview(words.slice(0, 3), 10, now);
+  round.started = true;
+  assert.equal(round.queue[0], 'pm');
+  const changed = [{ ...words[0], partOfSpeech: 'sentence', definition: 'Translation from FR to EN' }, ...words.slice(1, 3)];
+  assert.equal(core.ensureReviewQuestion(round, changed, { now }).id, 'cd');
+  assert.deepEqual(round.queue, ['cd', 'gu']);
+}
+
 /* -------------------------------------------------------------- strength */
 {
   assert.equal(core.memoryLevel({ reps: 0, createdAt: now }), 0);
