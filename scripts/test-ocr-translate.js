@@ -22,7 +22,7 @@ function load(file, extra = {}) {
 }
 
 const L = load('packages/core/src/ocr-layout.ts');
-const T = load('packages/core/src/ocr-translate.ts', { './ocr-layout': L });
+const T = load('packages/core/src/ocr-translate.ts', { './ocr-layout': L, './lang-detect': load('packages/core/src/lang-detect.ts') });
 const FIX = path.join(__dirname, 'fixtures', 'ocr-layout');
 const PAGES = ['web', 'columns', 'photo', 'slide', 'mixed', 'vertical'];
 
@@ -340,24 +340,33 @@ for (const name of PAGES) for (const engine of ['ppocr', 'rapid']) units[`${name
   });
 
   const fakeSvc = (log, answers = {}) => ({
-    detectLanguage: async (t) => (/[一-鿿]/.test(t) ? 'zh' : 'en'),
+    detectCalls: 0,
+    async detectLanguage(t) {
+      this.detectCalls++;
+      return /[一-鿿]/.test(t) ? 'zh' : 'en';
+    },
     resolveTargetLanguage: (src, req) => (req && req !== 'auto' ? req : src === 'en' ? 'zh' : 'en'),
-    translateText: async (t, to, from) => {
-      log.push({ t, to, from });
-      return t in answers ? answers[t] : { text: `[${to}] ${t}` };
+    translateText: async (t, to, from, provider, opts) => {
+      log.push({ t, to, from, background: !!(opts && opts.background) });
+      return t in answers ? answers[t] : { text: `[${to}] ${t}`, language: to, detectedSourceLanguage: 'en' };
     },
   });
 
   await test('a unit already in the target language, or without words, is left alone', async () => {
     const log = [];
-    const svc = fakeSvc(log, { 'Same here': { text: 'Same here' } });
+    const svc = fakeSvc(log, { 'Same here': { text: 'Same here', language: 'zh', detectedSourceLanguage: 'en' } });
     assert.deepStrictEqual(await T.translateUnit(svc, '光合作用', 'zh-CN'), { same: true, from: 'zh' });
     assert.deepStrictEqual(await T.translateUnit(svc, '₱160', 'zh'), { same: true, from: '' });
     assert.strictEqual(log.length, 0, 'no engine asked');
     assert.deepStrictEqual(await T.translateUnit(svc, 'Plain rice', 'zh'), { text: '[zh] Plain rice', from: 'en' });
-    assert.deepStrictEqual(log[0], { t: 'Plain rice', to: 'zh', from: 'en' });
+    // A short Latin label the letters cannot place goes to the engine as auto, which says what it read.
+    assert.deepStrictEqual(log[0], { t: 'Plain rice', to: 'zh', from: 'auto', background: true });
     assert.deepStrictEqual(await T.translateUnit(svc, 'Same here', 'zh'), { same: true, from: 'en' });
     assert.strictEqual(await T.translateUnit(fakeSvc([], { Lost: null }), 'Lost', 'zh'), null);
+    // translateText sends text already in the target the other way; that is not a translation into it.
+    const flipped = fakeSvc([], { Ramen: { text: 'Ramen', language: 'en', detectedSourceLanguage: 'zh' } });
+    assert.deepStrictEqual(await T.translateUnit(flipped, 'Ramen', 'zh'), { same: true, from: 'zh' });
+    assert.strictEqual(svc.detectCalls, 0, 'no language check is asked of the service for a scan');
   });
 
   await test('the page target: the setting, or the usual pairing for the page language', async () => {
@@ -367,27 +376,64 @@ for (const name of PAGES) for (const engine of ['ppocr', 'rapid']) units[`${name
     assert.strictEqual(await T.pageTarget(svc, '中文页面', 'ja'), 'ja');
   });
 
+  await test('passages go to the engine in one request where it takes lists, one at a time where the answer does not line up', async () => {
+    const log = [];
+    const batches = [];
+    const svc = fakeSvc(log);
+    svc.translateBatch = async (texts, to) => {
+      batches.push(texts);
+      return texts.map((t) => ({ text: `<${to}> ${t}`, from: 'en' }));
+    };
+    const texts = ['Office chairs', '₱160', 'Standing desks', '办公椅', 'def greet(name: str) -> str:'];
+    const r = await T.translateUnits(svc, texts, 'zh');
+    assert.deepStrictEqual(batches, [['Office chairs', 'Standing desks']], 'one request, only what needs an engine');
+    assert.deepStrictEqual(r, [
+      { text: '<zh> Office chairs', from: 'en' },
+      { same: true, from: '' },
+      { text: '<zh> Standing desks', from: 'en' },
+      { same: true, from: 'zh' },
+      { same: true, from: '' },
+    ]);
+    assert.strictEqual(log.length, 0);
+    // An engine that takes no lists (or an answer that did not line up): one at a time, behind lookups.
+    svc.translateBatch = async () => null;
+    const one = await T.translateUnits(svc, ['Office chairs', 'Standing desks'], 'de');
+    assert.deepStrictEqual(one.map((x) => x.text), ['[de] Office chairs', '[de] Standing desks']);
+    assert.ok(log.every((l) => l.background), 'a scan asks as background');
+    // A cancelled batch is not a failure: it rejects, and nothing more is asked.
+    svc.translateBatch = async () => {
+      throw Object.assign(new Error('Request cancelled'), { code: 'CANCELLED' });
+    };
+    const before = log.length;
+    await assert.rejects(T.translateUnits(svc, ['Desk lamps'], 'fr'), (e) => e.code === 'CANCELLED');
+    assert.strictEqual(log.length, before);
+  });
+
+  const unitsOf = (texts) => texts.map((text, index) => ({ index, text, lineIds: [index], area: { x: 0, y: 0, w: 1, h: 1, angle: 0 }, vertical: false, size: 1, pitch: 1, align: 'start' }));
+  const cancelled = () => Object.assign(new Error('Request cancelled'), { code: 'CANCELLED' });
+
   await test('a page translates a few units at a time, reports each, asks once per text, and retries failures', async () => {
-    let active = 0, peak = 0, calls = 0;
+    let active = 0, peak = 0;
+    const asked = [];
     const fail = new Set(['Gamma']);
-    const fn = async (text, to) => {
-      calls++;
+    const fn = async (texts, to) => {
+      asked.push(texts);
       active++;
       peak = Math.max(peak, active);
       await new Promise((r) => setTimeout(r, 5));
       active--;
-      if (fail.has(text)) return null;
-      if (text === 'Delta') return { same: true, from: to };
-      return { text: `${text}!`, from: 'en' };
+      return texts.map((text) => (fail.has(text) ? null : text === 'Delta' ? { same: true, from: to } : { text: `${text}!`, from: 'en' }));
     };
     const texts = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Alpha', 'Epsilon', 'Zeta', 'Eta', 'Theta', '42'];
-    const us = texts.map((text, index) => ({ index, text, lineIds: [index], area: { x: 0, y: 0, w: 1, h: 1, angle: 0 }, vertical: false, size: 1, pitch: 1, align: 'start' }));
+    const us = unitsOf(texts);
     const seen = [];
     const run = new T.PageTranslation(us, 'xx-test', fn, (i) => seen.push(i));
     assert.strictEqual(run.states[9].status, 'same', 'a number is never sent');
     await run.run();
     assert.ok(peak <= T.PARALLEL, `at most ${T.PARALLEL} at once (saw ${peak})`);
-    assert.strictEqual(calls, 8, 'Alpha asked once');
+    assert.strictEqual(asked.flat().filter((t) => t === 'Alpha').length, 1, 'Alpha asked once');
+    assert.strictEqual(asked.flat().length, 8);
+    assert.strictEqual(run.requests, asked.length);
     assert.strictEqual(run.pending, 0);
     assert.strictEqual(run.failed, 1);
     assert.strictEqual(run.states[2].status, 'failed');
@@ -396,23 +442,68 @@ for (const name of PAGES) for (const engine of ['ppocr', 'rapid']) units[`${name
     assert.strictEqual(new Set(seen).size, 9);
     assert.strictEqual(T.translatedPageText(us, run.states).split('\n')[2], 'Gamma', 'a failed unit copies as its original');
     fail.clear();
+    asked.length = 0;
     await run.retry();
+    assert.deepStrictEqual(asked, [['Gamma']], 'Retry asks only for what failed');
     assert.strictEqual(run.failed, 0);
     assert.deepStrictEqual(run.states[2], { status: 'done', text: 'Gamma!', from: 'en' });
     assert.strictEqual(T.translatedPageText(us, run.states), 'Alpha!\nBeta!\nGamma!\nDelta\nAlpha!\nEpsilon!\nZeta!\nEta!\nTheta!\n42');
   });
 
-  await test('stopping a run leaves the rest pending', async () => {
-    const us = ['One', 'Two', 'Three', 'Four', 'Five', 'Six'].map((text, index) => ({ index, text, lineIds: [index], area: { x: 0, y: 0, w: 1, h: 1, angle: 0 }, vertical: false, size: 1, pitch: 1, align: 'start' }));
-    let run;
-    const fn = async (text) => {
-      await new Promise((r) => setTimeout(r, 5));
-      return { text: text.toUpperCase(), from: 'en' };
+  await test('a page of 200 paragraphs takes a handful of requests, what is on screen first', async () => {
+    const texts = Array.from({ length: 200 }, (_, i) => `Paragraph ${i} of the long article, about rivers number ${i} and the valleys they carve.`);
+    const asked = [];
+    const fn = async (batch) => {
+      asked.push(batch);
+      await new Promise((r) => setTimeout(r, 2));
+      return batch.map((t) => ({ text: `~${t}`, from: 'en' }));
     };
-    run = new T.PageTranslation(us, 'stop-test', fn, () => run.stop(), 1);
+    const onScreen = (i) => i >= 120 && i < 128;
+    const run = new T.PageTranslation(unitsOf(texts), 'batch-test', fn, () => {}, { first: onScreen });
+    await run.run();
+    assert.strictEqual(run.done, 200);
+    const expected = Math.ceil(200 / Math.min(T.BATCH_ITEMS, Math.floor(T.BATCH_CHARS / texts[0].length)));
+    assert.ok(asked.length <= expected + 2, `${asked.length} requests for 200 paragraphs`);
+    assert.ok(asked.every((b) => b.length <= T.BATCH_ITEMS && (b.length === 1 || b.join('').length <= T.BATCH_CHARS)));
+    assert.ok(asked[0].every((t) => onScreen(texts.indexOf(t))), 'the first request holds what is on screen');
+    assert.ok(asked[0].join('').length <= T.FIRST_BATCH_CHARS);
+    console.log(`  200 paragraphs: ${asked.length} requests (one a paragraph before batching: 200, plus a language check for each short Latin one)`);
+  });
+
+  await test('stopping a run leaves the rest pending', async () => {
+    // Paragraphs long enough that each is a request of its own.
+    const texts = ['One', 'Two', 'Three', 'Four', 'Five', 'Six'].map((w) => `${w} ${'long paragraph '.repeat(Math.ceil(T.BATCH_CHARS / 15))}`);
+    let run;
+    let sent = 0;
+    // The host sends a request only while it is wanted, as net.ts drops a queued request that is not.
+    const fn = async (batch, to, wanted) => {
+      await new Promise((r) => setTimeout(r, 5));
+      if (!wanted()) throw cancelled();
+      sent++;
+      return batch.map((t) => ({ text: t.toUpperCase(), from: 'en' }));
+    };
+    run = new T.PageTranslation(unitsOf(texts), 'stop-test', fn, () => run.stop(), { parallel: 1 });
     await run.run();
     assert.strictEqual(run.done, 1);
     assert.strictEqual(run.pending, 5);
+    const sentAtStop = sent;
+    // A run stopped while its request waited (Translate turned off, the view closed, the language
+    // changed) sends nothing more, and its paragraphs stay pending rather than failed.
+    let late;
+    const slow = async (batch, to, wanted) => {
+      await new Promise((r) => setTimeout(r, 20));
+      if (!wanted()) throw cancelled();
+      return batch.map((t) => ({ text: `${t}?`, from: 'en' }));
+    };
+    late = new T.PageTranslation(unitsOf(['Seven', 'Eight', 'Nine']), 'stop-test-2', slow, () => {});
+    const going = late.run();
+    late.stop();
+    await going;
+    assert.strictEqual(late.pending, 3);
+    assert.strictEqual(late.failed, 0);
+    await late.resume();
+    assert.strictEqual(late.done, 3, 'resume() carries on');
+    assert.strictEqual(sent, sentAtStop);
   });
 
   if (failures) {

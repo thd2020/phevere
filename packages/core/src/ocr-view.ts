@@ -60,8 +60,12 @@ export interface OcrTranslator {
   target(sample: string): Promise<string>;
   /** Keep a language picked in the view as the new setting. */
   setTarget(code: string): void;
-  /** One paragraph into `to`; `{ same }` when it is already in `to`, null when no engine answered. */
-  translate(text: string, to: string): Promise<UnitResult>;
+  /**
+   * Paragraphs into `to`, one result each (translateUnits): `{ same }` when one is already in
+   * `to`, null when no engine answered. Rejects with a cancellation, sending nothing more, once
+   * `wanted` says no.
+   */
+  translate(texts: string[], to: string, wanted: () => boolean): Promise<UnitResult[]>;
 }
 
 /** What the layer needs to show translations: the units, their states, and which unit owns each line. */
@@ -571,18 +575,36 @@ export class OcrView {
     this.target = to;
     if (same) {
       this.render();
+      // Turned off part-way: carry on with what was not asked yet.
+      if (this.run!.isStopped) await this.run!.resume();
       return;
     }
     this.run?.stop();
     this.flows.clear();
     this.seen.clear();
-    const run = new PageTranslation(units, to, (t, l) => tr.translate(t, l), (i) => {
-      if (this.run === run) this.queueRender(i);
-    });
+    const run: PageTranslation = new PageTranslation(
+      units,
+      to,
+      (texts, l, wanted) => tr.translate(texts, l, wanted),
+      (i) => {
+        if (this.run === run) this.queueRender(i);
+      },
+      { first: (i): boolean => this.onScreen(units[i]) },
+    );
     this.run = run;
     this.render();
     await run.run();
     if (this.run === run) this.queueRender();
+  }
+
+  /** Whether any of a unit's area is in the window now (a zoomed or scrolled picture shows part of the page). */
+  private onScreen(unit: OcrUnit): boolean {
+    const r = this.img.getBoundingClientRect();
+    if (!r.width || !this.page.width) return false;
+    const k = r.width / this.page.width;
+    const { x, y, w, h } = unit.area;
+    const left = r.left + x * k, top = r.top + y * k;
+    return left < window.innerWidth && left + w * k > 0 && top < window.innerHeight && top + h * k > 0;
   }
 
   private scale(): number {
@@ -750,7 +772,9 @@ export class OcrView {
         return;
       case 'translate':
         if (this.translated && !this.editing) {
+          // Off: the requests not sent yet are dropped; on again resumes them.
           this.translated = false;
+          this.run?.stop();
           this.render();
         } else await this.translate();
         return;
@@ -759,7 +783,10 @@ export class OcrView {
         return;
       case 'edit':
         this.editing = !this.editing;
-        if (this.editing) this.translated = false;
+        if (this.editing) {
+          this.translated = false;
+          this.run?.stop();
+        }
         this.render();
         if (this.editing) {
           const first = this.root.querySelector<HTMLElement>(this.mode === 'text' ? '.ocr-tl[contenteditable]' : '.ocr-ln[contenteditable]');

@@ -19,8 +19,36 @@ const api = (window as any).ocrResultAPI as {
   translateInfo: () => Promise<{ languages: { code: string; name: string }[] }>;
   translateTarget: (sample: string) => Promise<string>;
   setTranslateTarget: (code: string) => Promise<void>;
-  translate: (text: string, to: string) => Promise<UnitResult>;
+  translate: (texts: string[], to: string, id: number) => Promise<UnitResult[]>;
+  cancelTranslate: (id: number) => void;
 };
+
+/**
+ * Translation goes through the main process, which cannot see the run's `wanted`. Each request
+ * has an id, and a request the page no longer wants is cancelled there, so its queued engine
+ * requests are dropped unsent.
+ */
+const asking = new Map<number, () => boolean>();
+let lastAsk = 0;
+let watch = 0;
+function translateAsked(texts: string[], to: string, wanted: () => boolean): Promise<UnitResult[]> {
+  const id = ++lastAsk;
+  asking.set(id, wanted);
+  if (!watch) {
+    watch = window.setInterval(() => {
+      for (const [k, w] of asking) {
+        if (w()) continue;
+        asking.delete(k);
+        api.cancelTranslate(k);
+      }
+      if (!asking.size) {
+        window.clearInterval(watch);
+        watch = 0;
+      }
+    }, 200);
+  }
+  return api.translate(texts, to, id).finally(() => asking.delete(id));
+}
 
 const root = document.querySelector<HTMLElement>('.ocr-view')!;
 const stage = root.querySelector<HTMLElement>('.ocr-window__stage')!;
@@ -73,7 +101,7 @@ async function start(): Promise<void> {
           languages,
           target: (sample) => api.translateTarget(sample),
           setTarget: (code) => void api.setTranslateTarget(code),
-          translate: (text, to) => api.translate(text, to),
+          translate: (texts, to, wanted) => translateAsked(texts, to, wanted),
         }
       : undefined,
   });

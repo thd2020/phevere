@@ -156,7 +156,7 @@ import {
 } from '@phevere/core';
 import { OcrView } from '@phevere/core/ocr-view';
 import { pageLines, type OcrPage } from '@phevere/core/ocr-layout';
-import { pageTarget, translateUnit } from '@phevere/core/ocr-translate';
+import { pageTarget, translateUnits } from '@phevere/core/ocr-translate';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
 import { appIconSource } from './platform/app-icons';
 import { flushNotebook, onNotebookReloaded } from './platform/sqljs-vocab-db';
@@ -1772,7 +1772,7 @@ function paintScan(page: ScanPage, hit: string): void {
           prefs.targetLang = code;
           persistPrefs();
         },
-        translate: (text, to) => translateUnit(dictionaryService, text, to, prefs.translationProvider),
+        translate: (texts, to, wanted) => translateUnits(dictionaryService, texts, to, { provider: prefs.translationProvider, wanted }),
       },
     });
     bindScanViewer(view);

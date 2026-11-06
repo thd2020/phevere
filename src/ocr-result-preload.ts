@@ -13,5 +13,6 @@ contextBridge.exposeInMainWorld('ocrResultAPI', {
   translateInfo: (): Promise<{ languages: { code: string; name: string }[] }> => ipcRenderer.invoke('ocr-result-tr-info'),
   translateTarget: (sample: string): Promise<string> => ipcRenderer.invoke('ocr-result-tr-target', sample),
   setTranslateTarget: (code: string): Promise<void> => ipcRenderer.invoke('ocr-result-tr-set', code),
-  translate: (text: string, to: string): Promise<unknown> => ipcRenderer.invoke('ocr-result-tr', text, to),
+  translate: (texts: string[], to: string, id: number): Promise<unknown> => ipcRenderer.invoke('ocr-result-tr', texts, to, id),
+  cancelTranslate: (id: number) => ipcRenderer.send('ocr-result-tr-cancel', id),
 });

@@ -17,6 +17,7 @@ import {
   type OcrLine,
   type OcrPage,
 } from './ocr-layout';
+import { detectLanguageLocal, isAmbiguousHan } from './lang-detect';
 
 /** The area a translation fills, in image pixels: top-left corner, size along and across the text, and turn. */
 export interface OcrArea {
@@ -472,25 +473,94 @@ export function looksLikeCode(text: string): boolean {
 /** What the engines need from the dictionary service. */
 export interface TranslateService {
   detectLanguage(text: string): Promise<string>;
-  translateText(text: string, to: string, from: string, provider?: any): Promise<{ text: string } | null>;
+  translateText(
+    text: string,
+    to: string,
+    from: string,
+    provider?: any,
+    opts?: { background?: boolean; wanted?: () => boolean },
+  ): Promise<{ text: string; language?: string; detectedSourceLanguage?: string } | null>;
+  /** Several passages in one request where the engine takes lists (DictionaryService.translateBatch). */
+  translateBatch?(texts: string[], to: string, opts?: { provider?: any; wanted?: () => boolean }): Promise<Array<{ text: string; from: string }> | null>;
   resolveTargetLanguage(source: string, requested?: string): string;
 }
 
 export type UnitResult = { text: string; from: string } | { same: true; from: string } | null;
 
 /**
- * Translate one paragraph into `to`. Text already in `to`, with no words in it, or program
- * code, is left alone; `null` means no engine answered.
+ * The language of a passage when its own letters settle it, or '' when only a server could:
+ * the dictionary's detector without its word list and remote check, so a scan never spends a
+ * request on the language of a label. A passage left undecided goes to the engine, whose answer
+ * says what it read.
  */
-export async function translateUnit(svc: TranslateService, text: string, to: string, provider?: string): Promise<UnitResult> {
+export function localLanguage(text: string): string {
+  const g = detectLanguageLocal(text);
+  return g.confident || isAmbiguousHan(text) ? g.lang : '';
+}
+
+/** A passage that needs no engine: no words, program code, or already in `to` by its letters. */
+function settled(text: string, to: string): UnitResult | undefined {
   if (!hasWords(text) || looksLikeCode(text)) return { same: true, from: '' };
-  const from = await svc.detectLanguage(text).catch(() => '');
-  if (from && sameLanguage(from, to)) return { same: true, from };
-  const hit = await svc.translateText(text, to, from || 'auto', provider || 'auto');
-  const out = (hit?.text || '').replace(/\s+/g, ' ').trim();
-  if (!out) return null;
-  if (out === text.trim()) return { same: true, from };
-  return { text: out, from };
+  const from = localLanguage(text);
+  return from && sameLanguage(from, to) ? { same: true, from } : undefined;
+}
+
+function answer(text: string, out: string, from: string, to: string): UnitResult {
+  const t = String(out || '').replace(/\s+/g, ' ').trim();
+  if (!t) return null;
+  return t === text.trim() || (from && sameLanguage(from, to)) ? { same: true, from } : { text: t, from };
+}
+
+const cancelledRun = (e: unknown) => (e as { code?: unknown } | null)?.code === 'CANCELLED';
+
+/**
+ * Translate passages into `to`, one result each, in order: text already in `to`, without words,
+ * or program code is left alone, and the rest goes to the engine in one request where it takes
+ * lists, one passage at a time where it does not or its answer did not line up. `null` means no
+ * engine answered. Rejects with a cancellation once `wanted` says no.
+ */
+export async function translateUnits(
+  svc: TranslateService,
+  texts: string[],
+  to: string,
+  opts: { provider?: string; wanted?: () => boolean } = {},
+): Promise<UnitResult[]> {
+  const out: UnitResult[] = [];
+  const ask: number[] = [];
+  texts.forEach((t, i) => {
+    const s = settled(t, to);
+    out[i] = s ?? null;
+    if (!s) ask.push(i);
+  });
+  if (!ask.length) return out;
+  const provider = opts.provider || 'auto';
+  const batch = svc.translateBatch
+    ? await svc.translateBatch(ask.map((i) => texts[i]), to, { provider, wanted: opts.wanted }).catch((e: unknown): null => {
+        if (cancelledRun(e)) throw e;
+        return null;
+      })
+    : null;
+  if (batch) {
+    ask.forEach((i, k) => (out[i] = answer(texts[i], batch[k].text, batch[k].from, to)));
+    return out;
+  }
+  for (const i of ask) {
+    const from = localLanguage(texts[i]);
+    const hit = await svc.translateText(texts[i], to, from || 'auto', provider, { background: true, wanted: opts.wanted }).catch((e: unknown): null => {
+      if (cancelledRun(e)) throw e;
+      return null;
+    });
+    const read = hit?.detectedSourceLanguage || from;
+    // translateText sends text already in the target the other way (Chinese into English for a
+    // Chinese target); that answer is not a translation into `to`, so the original stays.
+    out[i] = !hit ? null : hit.language && !sameLanguage(hit.language, to) ? { same: true, from: read } : answer(texts[i], hit.text, read, to);
+  }
+  return out;
+}
+
+/** One paragraph into `to` (see translateUnits). */
+export async function translateUnit(svc: TranslateService, text: string, to: string, provider?: string): Promise<UnitResult> {
+  return (await translateUnits(svc, [text], to, { provider }))[0];
 }
 
 /**
@@ -512,43 +582,47 @@ export type UnitState =
   | { status: 'same'; from: string }
   | { status: 'failed' };
 
-/** How the host translates one passage; the run never calls an engine itself. */
-export type TranslateFn = (text: string, to: string) => Promise<UnitResult>;
+/**
+ * How the host translates passages (translateUnits through its engine): one result each, in
+ * order. It rejects with a cancellation once `wanted` says no; the run never calls an engine.
+ */
+export type TranslateFn = (texts: string[], to: string, wanted: () => boolean) => Promise<UnitResult[]>;
 
-const cache = new Map<string, Promise<UnitResult>>();
-const CACHE_MAX = 600;
-
-function cached(fn: TranslateFn, text: string, to: string): Promise<UnitResult> {
-  const key = `${to}\u0001${text}`;
-  const hit = cache.get(key);
-  if (hit) return hit;
-  const p = fn(text, to).catch((): UnitResult => null);
-  cache.set(key, p);
-  // A failure is not remembered, so Retry asks again.
-  void p.then((r) => {
-    if (!r) cache.delete(key);
-  });
-  if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
-  return p;
-}
-
-/** Engines answer a few requests at once; more only queue behind rate limits. */
-export const PARALLEL = 4;
+/** Answers by language and text, shared by every run, so a page reopened or switched back costs nothing. */
+const cache = new Map<string, Promise<UnitResult | 'cancelled'>>();
+const CACHE_MAX = 2000;
+const cacheKey = (to: string, text: string) => to + '\u0001' + text;
 
 /**
- * Translates every unit of a page, `PARALLEL` at a time in reading order, and reports each
- * result as it arrives. Identical paragraphs (a menu's repeated headings) are asked once.
+ * Per request: at most this many paragraphs and characters. Page translators send a page in
+ * groups of paragraphs rather than whole (Google's Cloud API takes up to 128 segments and
+ * recommends 5,000 characters a request); smaller groups come back sooner and keep a failure to
+ * a few paragraphs. The first group is smaller still and holds what is on screen, so the first
+ * translations appear after one short round trip.
+ */
+export const BATCH_ITEMS = 25;
+export const BATCH_CHARS = 1500;
+export const FIRST_BATCH_CHARS = 400;
+/** Requests one page has open at once. */
+export const PARALLEL = 2;
+
+/**
+ * Translates every unit of a page in groups, what is on screen first and then in reading order,
+ * and reports each result as it arrives. Identical paragraphs (a menu's repeated headings) are
+ * asked once. stop() drops the requests not yet sent; resume() carries on where it stopped.
  */
 export class PageTranslation {
   readonly states: UnitState[];
   private stopped = false;
+  private sent = 0;
+  private readonly taken = new Set<number>();
 
   constructor(
     readonly units: OcrUnit[],
     readonly target: string,
     private readonly fn: TranslateFn,
     private readonly onChange: (index: number) => void,
-    private readonly parallel = PARALLEL,
+    private readonly opts: { parallel?: number; first?: (index: number) => boolean } = {},
   ) {
     this.states = units.map((u) => (hasWords(u.text) && !looksLikeCode(u.text) ? { status: 'pending' } : { status: 'same', from: '' }));
   }
@@ -565,25 +639,33 @@ export class PageTranslation {
     return this.states.filter((s) => s.status === 'done').length;
   }
 
+  get isStopped(): boolean {
+    return this.stopped;
+  }
+
+  /** Requests made so far, each a group of paragraphs. */
+  get requests(): number {
+    return this.sent;
+  }
+
+  /** Stop: requests not yet sent are dropped, and no more are made. */
   stop(): void {
     this.stopped = true;
   }
 
+  /** Carry on after stop(), with the units still pending. */
+  resume(): Promise<void> {
+    this.stopped = false;
+    return this.run();
+  }
+
   /** Translate every pending unit. */
   run(): Promise<void> {
-    const queue = this.states.map((s, i) => (s.status === 'pending' ? i : -1)).filter((i) => i >= 0);
     const worker = async (): Promise<void> => {
-      while (queue.length && !this.stopped) {
-        const i = queue.shift()!;
-        const r = await cached(this.fn, this.units[i].text, this.target);
-        if (this.stopped) return;
-        this.states[i] = !r ? { status: 'failed' } : 'same' in r ? { status: 'same', from: r.from } : { status: 'done', text: r.text, from: r.from };
-        this.onChange(i);
-      }
+      for (let group = this.take(); group.length && !this.stopped; group = this.take()) await this.ask(group);
     };
-    const workers: Promise<void>[] = [];
-    for (let k = 0; k < Math.min(this.parallel, queue.length); k++) workers.push(worker());
-    return Promise.all(workers).then((): void => undefined);
+    const n = Math.max(1, this.opts.parallel ?? PARALLEL);
+    return Promise.all(Array.from({ length: n }, worker)).then((): void => undefined);
   }
 
   /** Ask again for the units no engine answered. */
@@ -595,6 +677,67 @@ export class PageTranslation {
       }
     });
     return this.run();
+  }
+
+  /** The next group: pending units on screen first, then in reading order, up to the caps in new text. */
+  private take(): number[] {
+    if (this.stopped) return [];
+    const free = this.states.map((s, i) => (s.status === 'pending' && !this.taken.has(i) ? i : -1)).filter((i) => i >= 0);
+    const first = this.opts.first;
+    const order = first ? [...free.filter((i) => first(i)), ...free.filter((i) => !first(i))] : free;
+    const cap = this.sent === 0 && this.taken.size === 0 ? FIRST_BATCH_CHARS : BATCH_CHARS;
+    const group: number[] = [];
+    const fresh = new Set<string>();
+    let chars = 0;
+    for (const i of order) {
+      const text = this.units[i].text;
+      if (!cache.has(cacheKey(this.target, text)) && !fresh.has(text)) {
+        if (fresh.size >= BATCH_ITEMS || (fresh.size && chars + text.length > cap)) continue;
+        fresh.add(text);
+        chars += text.length;
+      }
+      group.push(i);
+      this.taken.add(i);
+    }
+    return group;
+  }
+
+  private async ask(group: number[]): Promise<void> {
+    const to = this.target;
+    const texts = [...new Set(group.map((i) => this.units[i].text))];
+    const asked = texts.filter((t) => !cache.has(cacheKey(to, t)));
+    if (asked.length) {
+      this.sent += 1;
+      const reply = this.fn(asked, to, () => !this.stopped).then(
+        (r): Array<UnitResult | 'cancelled'> => asked.map((_, k) => r[k] ?? null),
+        (e: unknown): Array<UnitResult | 'cancelled'> => asked.map(() => (cancelledRun(e) ? 'cancelled' : null)),
+      );
+      asked.forEach((t, k) => {
+        const key = cacheKey(to, t);
+        const p = reply.then((r) => r[k]);
+        cache.set(key, p);
+        // A failure or a cancellation is not remembered, so Retry or the next run asks again.
+        void p.then((r) => {
+          if ((!r || r === 'cancelled') && cache.get(key) === p) cache.delete(key);
+        });
+      });
+      while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
+    }
+    const results = new Map<string, UnitResult | 'cancelled'>();
+    await Promise.all(
+      texts.map(async (t) => {
+        const p = cache.get(cacheKey(to, t));
+        results.set(t, p ? await p : 'cancelled');
+      }),
+    );
+    for (const i of group) {
+      this.taken.delete(i);
+      const r = results.get(this.units[i].text);
+      // A cancelled request leaves its units pending, for resume() or the next run.
+      if (r === 'cancelled' || r === undefined) continue;
+      this.states[i] = !r ? { status: 'failed' } : 'same' in r ? { status: 'same', from: r.from } : { status: 'done', text: r.text, from: r.from };
+      this.onChange(i);
+    }
   }
 }
 
