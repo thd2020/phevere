@@ -143,13 +143,17 @@ export type PanelSide = 'below' | 'above' | 'right' | 'left';
  * above it when the room below is too short. When neither has the full height, the
  * pop-up takes the larger of the two and is made shorter to fit (its entry scrolls).
  * It stays inside the work area of the display the word is on.
+ *
+ * `prefer` keeps the side the pop-up already has while its entry changes height, as long
+ * as that side has room for the minimum height; otherwise a pop-up opened above a word
+ * jumped below it once a short entry loaded, and back on a longer tab.
  */
 export function placePanelNearPoint(
   x: number,
   y: number,
   width: number,
   height: number,
-  opts?: { space?: ScreenCoordSpace }
+  opts?: { space?: ScreenCoordSpace; prefer?: PanelSide }
 ): { x: number; y: number; height: number; displayId: number; side: PanelSide } {
   const { dip, display } = anchorOnScreen(x, y, opts?.space ?? 'physical');
   const wa = display.workArea;
@@ -165,6 +169,13 @@ export function placePanelNearPoint(
   const below = dip.y + PANEL_GAP_BELOW;
   const roomBelow = bottom - below;
   const roomAbove = dip.y - PANEL_GAP_ABOVE - top;
+  if (opts?.prefer === 'below' && Math.min(height, PANEL_MIN_HEIGHT) <= roomBelow) {
+    return at(across, below, Math.min(height, roomBelow), 'below');
+  }
+  if (opts?.prefer === 'above' && Math.min(height, PANEL_MIN_HEIGHT) <= roomAbove) {
+    const h = Math.min(height, roomAbove);
+    return at(across, dip.y - PANEL_GAP_ABOVE - h, h, 'above');
+  }
   if (height <= roomBelow) return at(across, below, height, 'below');
   if (height <= roomAbove) return at(across, dip.y - PANEL_GAP_ABOVE - height, height, 'above');
   if (Math.max(roomBelow, roomAbove) >= PANEL_MIN_HEIGHT) {

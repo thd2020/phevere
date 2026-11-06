@@ -66,7 +66,7 @@ const context = vm.createContext({
   rememberLookupSource: () => {},
   log: { debug() {}, warn() {}, error() {} }, setTimeout,
 });
-vm.runInContext(ts.transpileModule(['PANEL_OPEN_WIDTH', 'PANEL_OPEN_HEIGHT', 'applyPanelTarget', 'createPopupWindow', 'onTriggerShortcutAfterSelection']
+vm.runInContext(ts.transpileModule(['PANEL_OPEN_WIDTH', 'PANEL_OPEN_HEIGHT', 'placePanelWindow', 'applyPanelTarget', 'createPopupWindow', 'onTriggerShortcutAfterSelection']
   .map(declaration).join('\n'), {}).outputText, context);
 const tick = () => new Promise((resolve) => setTimeout(resolve, 80));
 async function loaded(window) {

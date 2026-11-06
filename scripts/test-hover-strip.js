@@ -190,7 +190,7 @@ function declaration(name) {
   return statement.getText(ast);
 }
 vm.runInContext(transpile([
-  'stripTargets', 'closingPopups', 'panelAnchors', 'PANEL_OPEN_WIDTH', 'PANEL_OPEN_HEIGHT', 'applyPanelTarget', 'setLastSelectionEvent', 'hoverYieldsToSelection',
+  'stripTargets', 'closingPopups', 'panelAnchors', 'PANEL_OPEN_WIDTH', 'PANEL_OPEN_HEIGHT', 'placePanelWindow', 'applyPanelTarget', 'setLastSelectionEvent', 'hoverYieldsToSelection',
   'onTriggerShortcutAfterSelection', 'createPopupWindow', 'wireContextCaptureHubOnce',
 ].map(declaration).join('\n') + '\nglobalThis.createPopupWindow = createPopupWindow;'), context);
 context.wireContextCaptureHubOnce();
@@ -490,8 +490,25 @@ function assertStripAt(win, word, message) {
   assert.ok(onScreen(pb) && pb.y >= 200 + 14, 'below the selection point (y 200 in DIP)');
   picked.close();
   picked.closed();
+  // A click releases the hold the selection above put on hover.
+  mouseDown = true;
+  await hover.tick();
+  mouseDown = false;
+  // The entry sets the height: a pop-up opened above a word stays above it when a short
+  // entry loads, instead of jumping below the word.
+  now += 3000;
+  await dwellOn(gamma);
+  const sticky = panels()[0];
+  sticky.finishLoad();
+  assert.ok(sticky.getBounds().y + sticky.getBounds().height <= gamma.y, 'opens above gamma');
+  vm.runInContext('placePanelWindow', context)(sticky, vm.runInContext('panelAnchors', context).get(sticky), 460, 250, true);
+  const sb = sticky.getBounds();
+  assert.equal(sb.height, 250);
+  assert.ok(sb.y + sb.height <= gamma.y, `a short entry keeps the pop-up above gamma ${JSON.stringify(sb)}`);
+  sticky.close();
+  sticky.closed();
   context.monitorSettings.lookupOpens = 'strip';
 
   hover.stop();
-  console.log('Hover strip passed: full pop-up beside the word, above it near the bottom, shorter on a short monitor, reused for the next word, kept where dragged, physical selection on 150%; trigger reads the word under the pointer, cooldown keeps the dwell, late reads dropped, same word elsewhere, closing strip skipped, load keeps its target, click-away stays shut, drag drops the trigger, clicked-away selection, mixed-DPI move.');
+  console.log('Hover strip passed: full pop-up beside the word, above it near the bottom, shorter on a short monitor, reused for the next word, kept where dragged, physical selection on 150%, keeps its side as the entry sets its height; trigger reads the word under the pointer, cooldown keeps the dwell, late reads dropped, same word elsewhere, closing strip skipped, load keeps its target, click-away stays shut, drag drops the trigger, clicked-away selection, mixed-DPI move.');
 })().catch((error) => { console.error(error); process.exit(1); });

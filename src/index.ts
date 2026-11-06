@@ -27,7 +27,7 @@ import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile, r
 import { openOcrResultWindow } from './services/ocr-result-window';
 import { isLookupWorthy } from './services/text-normalize';
 import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
-import { placePopupNearPoint, placePanelNearPoint, eventCoordSpace, physicalToDip, setWindowBounds, type ScreenCoordSpace } from './services/popup-placement';
+import { placePopupNearPoint, placePanelNearPoint, eventCoordSpace, physicalToDip, setWindowBounds, type ScreenCoordSpace, type PanelSide } from './services/popup-placement';
 import { popupSize } from './services/popup-size';
 import { showWorkProgress, updateWorkProgress, closeWorkProgress } from './services/work-progress';
 import { isAcceleratorPhysicallyHeld, isPrimaryMouseDown, primaryMousePressedSinceLastPoll } from './services/accelerator-key-state';
@@ -369,9 +369,17 @@ const closingPopups = new WeakSet<BrowserWindow>();
 /**
  * Full pop-ups that a lookup opened (Settings → Capture → Open lookups as → Full pop-up),
  * with the word's point they sit next to. `moved` is set once the user drags or resizes
- * the pop-up; from then on it stays where they put it.
+ * the pop-up; from then on it stays where they put it. `side` is the side of the word it
+ * took.
  */
-const panelAnchors = new WeakMap<BrowserWindow, { x: number; y: number; space: ScreenCoordSpace; moved: boolean }>();
+type PanelAnchor = {
+  x: number;
+  y: number;
+  space: ScreenCoordSpace;
+  moved: boolean;
+  side?: PanelSide;
+};
+const panelAnchors = new WeakMap<BrowserWindow, PanelAnchor>();
 let ocrOverlayWindow: BrowserWindow | null = null;
 let contextHubWired = false;
 let hoverLookup: HoverLookupService | null = null;
@@ -1613,6 +1621,18 @@ const PANEL_OPEN_WIDTH = 460;
 const PANEL_OPEN_HEIGHT = 500;
 
 /**
+ * Move a full pop-up beside its word; `keepSide` keeps the side it already has.
+ */
+function placePanelWindow(win: BrowserWindow, anchor: PanelAnchor, width: number, height: number, keepSide: boolean): void {
+  const placed = placePanelNearPoint(anchor.x, anchor.y, width, height, {
+    space: anchor.space,
+    ...(keepSide && anchor.side ? { prefer: anchor.side } : {}),
+  });
+  setWindowBounds(win, { x: placed.x, y: placed.y, width, height: placed.height });
+  anchor.side = placed.side;
+}
+
+/**
  * Show `text` in a full pop-up opened by a lookup, next to the word at (x, y). A pop-up the
  * user moved stays put, and so does one the word lies inside (a word selected in the pop-up).
  */
@@ -1632,9 +1652,10 @@ function applyPanelTarget(
     const pt = space === 'physical' ? physicalToDip(x, y) : { x, y };
     const wordInside = pt.x >= b.x && pt.x < b.x + b.width && pt.y >= b.y && pt.y < b.y + b.height;
     if (anchor && !anchor.moved && !wordInside) {
-      panelAnchors.set(win, { x, y, space, moved: false });
-      const placed = placePanelNearPoint(x, y, b.width, b.height, { space });
-      setWindowBounds(win, { x: placed.x, y: placed.y, width: b.width, height: placed.height });
+      anchor.x = x;
+      anchor.y = y;
+      anchor.space = space;
+      placePanelWindow(win, anchor, b.width, b.height, false);
     }
     if (showIfReady) {
       try {
@@ -1807,7 +1828,7 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
   inFlightPopup = newPopupWindow;
   stripTargets.set(newPopupWindow, { x, y, space, text: textForPopup });
   if (opensFull) {
-    panelAnchors.set(newPopupWindow, { x, y, space, moved: false });
+    panelAnchors.set(newPopupWindow, { x, y, space, moved: false, side: panelPlace?.side });
     // Only a drag or resize by hand fires these, never setBounds.
     const keepWhereUserPutIt = (): void => {
       const anchor = panelAnchors.get(newPopupWindow);
@@ -4077,8 +4098,7 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
               // height: one placed above the word keeps its lower edge clear of it.
               const anchor = panelAnchors.get(target);
               if (anchor && !anchor.moved && !size.strip) {
-                const placed = placePanelNearPoint(anchor.x, anchor.y, w, h, { space: anchor.space });
-                setWindowBounds(target, { x: placed.x, y: placed.y, width: w, height: placed.height });
+                placePanelWindow(target, anchor, w, h, true);
                 return;
               }
               target.setSize(w, h);
