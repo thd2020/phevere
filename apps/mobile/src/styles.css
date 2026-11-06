@@ -1405,11 +1405,16 @@ select, .field {
   background: #141210;
   overflow: hidden;
 }
-/* The picture takes whatever the panel leaves; the two always split the screen. */
-.scan-stage {
+/* The picture (or its text) takes whatever the panel leaves; the two always split the screen. */
+.scan-main {
   position: relative;
   flex: 1;
   min-height: 96px;
+  display: flex;
+}
+.scan-stage {
+  position: relative;
+  flex: 1;
   overflow: hidden;
   touch-action: none;
 }
@@ -1422,34 +1427,44 @@ select, .field {
   transform-origin: 0 0;
   will-change: transform;
 }
-.scan-frame { position: relative; flex-shrink: 0; }
-.scan-frame img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-  pointer-events: none;
-}
-.scan-layer {
+.scan-frame { flex-shrink: 0; }
+::highlight(scan-pick) { background-color: color-mix(in srgb, var(--md-sys-color-primary) 42%, transparent); color: transparent; }
+.scan-view .ocr-text::highlight(scan-pick) { color: inherit; }
+.scan-view[data-mode="text"] .scan-stage { visibility: hidden; }
+.scan-text {
   position: absolute;
   inset: 0;
-  font-size: 0;
-  color: transparent;
-  -webkit-user-select: text;
-  user-select: text;
+  overflow-y: auto;
+  padding: calc(112px + var(--pv-inset-top)) 20px 24px;
+  background: var(--md-sys-color-surface-container-lowest);
+  overscroll-behavior: contain;
 }
-.scan-word {
+/* View switch and actions over the picture, right of Back. */
+.scan-bar {
   position: absolute;
-  white-space: pre;
-  color: transparent;
-  font-family: var(--md-font-ui);
-  transform-origin: 0 0;
-  cursor: text;
+  z-index: 4;
+  top: calc(8px + var(--pv-inset-top));
+  left: calc(60px + var(--pv-inset-left));
+  right: calc(8px + var(--pv-inset-right));
 }
-.scan-layer ::selection { background: color-mix(in srgb, var(--md-sys-color-primary) 42%, transparent); color: transparent; }
-::highlight(scan-pick) { background-color: color-mix(in srgb, var(--md-sys-color-primary) 42%, transparent); color: transparent; }
+.scan-bar .ocr-bar { justify-content: flex-end; row-gap: 8px; }
+.scan-bar .ocr-bar__gap { display: none; }
+.scan-view[data-mode="picture"] .scan-bar .ocr-seg,
+.scan-view[data-mode="picture"] .scan-bar .ocr-btn,
+.scan-view[data-mode="picture"] .scan-bar .ocr-bar__status {
+  background: rgb(20 18 16 / 0.55);
+  color: #fff;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.scan-view[data-mode="picture"] .scan-bar .ocr-seg button { color: #fff; }
+.scan-view[data-mode="picture"] .scan-bar .ocr-seg button[aria-checked="true"] { background: rgb(255 255 255 / 0.22); box-shadow: none; }
+.scan-view[data-mode="picture"] .scan-bar .ocr-btn[aria-pressed="true"] { background: var(--md-sys-color-primary); }
+.scan-view[data-mode="picture"] .scan-bar .ocr-bar__status { border-radius: 999px; padding: 8px 14px; }
+.scan-view .ocr-seg button,
+.scan-view .ocr-btn { min-height: 36px; }
+.scan-view.is-editing .scan-hint,
+.scan-view[data-mode="text"] .scan-hint { opacity: 0; }
 .scan-close {
   position: absolute;
   z-index: 4;

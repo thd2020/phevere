@@ -1,0 +1,127 @@
+/* Scanned picture with its text in place (ocr-view.ts). Desktop and phone share it. */
+.ocr-view {
+  --ocr-accent: var(--md-sys-color-primary, var(--pv-ember, #9c3d00));
+  --ocr-ink: var(--md-sys-color-on-surface, var(--pv-ink, #1c1917));
+  --ocr-ink-soft: var(--md-sys-color-on-surface-variant, var(--pv-ink-soft, #5c534e));
+  --ocr-paper: var(--md-sys-color-surface, var(--pv-paper, #f4f0ea));
+  --ocr-panel: var(--md-sys-color-surface-container-lowest, var(--pv-panel, #fffdf9));
+  --ocr-line: var(--md-sys-color-outline-variant, var(--pv-line, #d7c3bb));
+  --ocr-unsure: #c77700;
+  --ocr-font: var(--md-font-ui, var(--pv-font-ui, Outfit, system-ui, sans-serif));
+  --ocr-motion: cubic-bezier(0.2, 0, 0, 1);
+}
+
+.ocr-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-family: var(--ocr-font);
+}
+.ocr-bar__gap { flex: 1; }
+.ocr-bar__status { color: var(--ocr-ink-soft); font-size: 0.875rem; padding: 6px 4px; }
+
+.ocr-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ocr-ink) 8%, transparent);
+}
+.ocr-seg button,
+.ocr-btn {
+  appearance: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ocr-ink);
+  transition: background-color 0.18s var(--ocr-motion), color 0.18s var(--ocr-motion);
+}
+.ocr-seg button {
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: transparent;
+}
+.ocr-seg button[aria-checked="true"] {
+  background: var(--ocr-panel);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.14);
+}
+.ocr-btn {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ocr-ink) 6%, transparent);
+}
+.ocr-btn:hover { background: color-mix(in srgb, var(--ocr-ink) 12%, transparent); }
+.ocr-btn[aria-pressed="true"] {
+  background: var(--ocr-accent);
+  color: #fff;
+}
+.ocr-btn:focus-visible,
+.ocr-seg button:focus-visible { outline: 2px solid var(--ocr-accent); outline-offset: 2px; }
+
+/* The picture and its layer. The frame is sized by the host; spans are fitted in pixels. */
+.ocr-frame { position: relative; }
+.ocr-frame > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  pointer-events: none;
+}
+.ocr-layer {
+  position: absolute;
+  inset: 0;
+  font-size: 0;
+  white-space: pre;
+  color: transparent;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.ocr-w,
+.ocr-ln {
+  position: absolute;
+  white-space: pre;
+  color: transparent;
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Noto Sans", "Microsoft YaHei", "PingFang SC", sans-serif;
+  transform-origin: 0 0;
+  cursor: text;
+}
+.ocr-w[data-v="1"],
+.ocr-ln[data-v="1"] { writing-mode: vertical-rl; }
+.ocr-layer ::selection { background: color-mix(in srgb, var(--ocr-accent) 40%, transparent); color: transparent; }
+.ocr-ln.is-painted { outline: none; }
+.ocr-ln.is-painted::selection,
+.ocr-ln.is-painted ::selection { color: inherit; }
+.ocr-view.is-editing .ocr-ln.is-painted { box-shadow: 0 0 0 1px color-mix(in srgb, var(--ocr-accent) 55%, transparent); }
+.ocr-view.is-editing .ocr-ln.is-painted:focus { box-shadow: 0 0 0 2px var(--ocr-accent); }
+
+/* Words the engine was unsure about. */
+.ocr-layer .is-unsure,
+.ocr-text .is-unsure {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--ocr-unsure);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.12em;
+}
+
+/* Text view. */
+.ocr-text {
+  font-family: var(--ocr-font);
+  color: var(--ocr-ink);
+  font-size: 1rem;
+  line-height: 1.6;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.ocr-text p { margin: 0 0 0.85em; }
+.ocr-text p:last-child { margin-bottom: 0; }
+.ocr-text .ocr-tl[contenteditable] {
+  outline: none;
+  border-radius: 3px;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ocr-accent) 45%, transparent);
+}
+.ocr-text .ocr-tl[contenteditable]:focus { background: color-mix(in srgb, var(--ocr-accent) 10%, transparent); }
+.ocr-text ::selection { background: color-mix(in srgb, var(--ocr-accent) 30%, transparent); }

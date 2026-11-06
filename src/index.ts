@@ -23,7 +23,8 @@ import {
 } from './services/mac-screen-recording';
 import { contextCaptureHub, ContextEvent, selectionToContext } from './services/context-capture';
 import { captureScreenRegion, captureAroundPoint, canCaptureWithoutPrompt } from './services/screen-capture';
-import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile, resetOcrEngine } from './services/ocr-engine';
+import { ocrEngine, textNearPoint, ensureOcrDeps, getOcrStatus, setOcrProfile, resetOcrEngine, recognizeOcrPage, ocrPageLineCount, type OcrPageResult } from './services/ocr-engine';
+import { openOcrResultWindow } from './services/ocr-result-window';
 import { isLookupWorthy } from './services/text-normalize';
 import { HoverLookupService, phevereWindowFocused } from './services/hover-lookup';
 import { placePopupNearPoint, eventCoordSpace, physicalToDip, setWindowBounds, type ScreenCoordSpace } from './services/popup-placement';
@@ -156,6 +157,8 @@ declare const OCR_OVERLAY_WEBPACK_ENTRY: string;
 declare const OCR_OVERLAY_PRELOAD_WEBPACK_ENTRY: string;
 declare const QUICK_PANEL_WEBPACK_ENTRY: string;
 declare const QUICK_PANEL_PRELOAD_WEBPACK_ENTRY: string;
+declare const OCR_RESULT_WEBPACK_ENTRY: string;
+declare const OCR_RESULT_PRELOAD_WEBPACK_ENTRY: string;
 
 const installerAudioModel = installerAudioModelArgument(process.argv);
 const installerOcrPack = process.argv.includes(INSTALL_OCR_PACK_FLAG);
@@ -2102,9 +2105,9 @@ async function handleOcrRegionSelected(region: {
     });
   }, 800);
 
-  let ocr;
+  let ocr: OcrPageResult;
   try {
-    ocr = await ocrEngine.recognize(capture.png);
+    ocr = await recognizeOcrPage(capture.png);
   } finally {
     clearInterval(tick);
   }
@@ -2115,7 +2118,6 @@ async function handleOcrRegionSelected(region: {
     closeWorkProgress();
     log.warn('main', 'OCR produced no lookup-worthy text', {
       engine: ocr.engine,
-      language: ocr.language,
       rawLen: (ocr.text || '').length,
     });
     const available = await ocrEngine.isAvailable().catch(() => false);
@@ -2138,6 +2140,13 @@ async function handleOcrRegionSelected(region: {
     return;
   }
 
+  // More than one line of text: the picture with its text in place. One line: look it up.
+  if (ocrPageLineCount(ocr) > 1) {
+    closeWorkProgress();
+    showOcrResult(capture.png, ocr, { x: progressX, y: progressY });
+    return;
+  }
+
   updateWorkProgress({
     title: 'Looking up…',
     subtitle: text.length > 48 ? text.slice(0, 48) + '…' : text,
@@ -2152,10 +2161,26 @@ async function handleOcrRegionSelected(region: {
     y: progressY,
     timestamp: Date.now(),
     origin: 'ocr',
-    confidence: ocr.confidence,
     bounds: screenRegion,
     imageHash: capture.imageHash,
   });
+}
+
+/** Open the scanned-text window: the picture with its recognised text in place. */
+function showOcrResult(png: Buffer, ocr: OcrPageResult, near: { x: number; y: number }): void {
+  try {
+    const icon = loadWindowIcon();
+    openOcrResultWindow({
+      png,
+      page: ocr.page,
+      entry: OCR_RESULT_WEBPACK_ENTRY,
+      preload: OCR_RESULT_PRELOAD_WEBPACK_ENTRY,
+      near,
+      ...(icon ? { icon } : {}),
+    });
+  } catch (error) {
+    log.error('main', 'Failed to open the scanned-text window', { err: String(error) });
+  }
 }
 
 ipcMain.on('ocr-overlay-complete', (_event, region) => {
@@ -2184,6 +2209,8 @@ async function emitOcrFromPng(opts: {
   origin: ContextEvent['origin'];
   progressTitle?: string;
   emptyMessage?: string;
+  /** Whole images open the scanned-text window: always, or when there is more than one line. */
+  view?: 'always' | 'multiline';
 }): Promise<void> {
   wireContextCaptureHubOnce();
   showWorkProgress(opts.x, opts.y, {
@@ -2200,14 +2227,21 @@ async function emitOcrFromPng(opts: {
     });
   }, 800);
 
-  let ocr;
+  let ocr: { text: string; confidence?: number };
+  let page: OcrPageResult | null = null;
   try {
-    ocr = await ocrEngine.recognize(opts.png);
+    if (opts.view) ocr = page = await recognizeOcrPage(opts.png);
+    else ocr = await ocrEngine.recognize(opts.png);
   } finally {
     clearInterval(tick);
   }
 
   const text = (ocr.text || '').trim();
+  if (page && text && (opts.view === 'always' || ocrPageLineCount(page) > 1)) {
+    closeWorkProgress();
+    showOcrResult(opts.png, page, { x: opts.x, y: opts.y });
+    return;
+  }
   if (!text || !isLookupWorthy(text)) {
     closeWorkProgress();
     const available = await ocrEngine.isAvailable().catch(() => false);
@@ -2311,6 +2345,7 @@ async function readForegroundWindowOcr(): Promise<void> {
     imageHash: capture.imageHash,
     origin: 'ocr',
     progressTitle: 'Scanning window…',
+    view: 'multiline',
   });
 }
 
@@ -2330,6 +2365,7 @@ async function ocrClipboardImage(): Promise<void> {
     imageHash: img.imageHash,
     origin: 'clipboard',
     progressTitle: 'Scanning clipboard image…',
+    view: 'always',
   });
 }
 
@@ -2383,7 +2419,8 @@ ipcMain.handle('ocr-image-file', async (_event, filePath: string) => {
     y: cur.y,
     imageHash: img.imageHash,
     origin: 'ocr',
-    progressTitle: 'OCR dropped image…',
+    progressTitle: 'Scanning image…',
+    view: 'always',
   });
   return { success: true };
 });
@@ -2398,7 +2435,8 @@ ipcMain.handle('ocr-image-data', async (_event, dataUrl: string) => {
     y: cur.y,
     imageHash: img.imageHash,
     origin: 'clipboard',
-    progressTitle: 'OCR pasted image…',
+    progressTitle: 'Scanning image…',
+    view: 'always',
   });
   return { success: true };
 });

@@ -85,6 +85,8 @@ async function startupAndGestures(floatingStrip) {
   const app = load('app.ts', {
     './lexicon-scroll': load('lexicon-scroll.ts', {}),
     './platform/configure-core': {}, '@phevere/core': core, './incoming-text': incoming,
+    // Scan only: the in-place text view and its page model (test-ocr-layout.js covers them).
+    '@phevere/core/ocr-view': { OcrView: class {} }, '@phevere/core/ocr-layout': { pageLines: () => [] },
     './platform/audio': {}, './platform/native': native, './platform/notebook-io': {},
     './platform/offline': { listCatalogStatus: async () => [], markInstalledPacksOnCore: async () => {} },
     './platform/prefs': { loadPrefs: () => prefs, savePrefs: () => {}, applyPrefsToCore: () => {} },
@@ -189,6 +191,7 @@ async function backHistory() {
   const app = load('app.ts', {
     './lexicon-scroll': load('lexicon-scroll.ts', {}),
     './platform/configure-core': {}, '@phevere/core': core, './incoming-text': incoming,
+    '@phevere/core/ocr-view': { OcrView: class {} }, '@phevere/core/ocr-layout': { pageLines: () => [] },
     './platform/audio': {}, './platform/native': native, './platform/notebook-io': {},
     './platform/offline': { listCatalogStatus: async () => [], markInstalledPacksOnCore: async () => {} },
     './platform/prefs': { loadPrefs: () => prefs, savePrefs: () => {}, applyPrefsToCore: () => {} },
