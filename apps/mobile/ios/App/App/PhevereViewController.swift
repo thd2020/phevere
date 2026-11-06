@@ -51,6 +51,8 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
   /// Bumped by every speak and stop, so a Neural render that finishes late is dropped.
   private var speakToken = 0
   private var authSession: ASWebAuthenticationSession?
+  /** A swipe in from the left edge goes back one step in the page, as in a navigation stack. */
+  private var edgeBack: UIScreenEdgePanGestureRecognizer?
 
   override func viewDidLoad() {
     super.viewDidLoad()
@@ -81,6 +83,17 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
     web.navigationDelegate = self
     web.scrollView.contentInsetAdjustmentBehavior = .never
     view.addSubview(web)
+    if !stripMode {
+      let pan = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(edgeSwipe(_:)))
+      pan.edges = .left
+      // Off until the page says it has a step to go back to (setBackEnabled).
+      pan.isEnabled = false
+      web.addGestureRecognizer(pan)
+      // A touch that starts at the edge belongs to Back, not to the page's scroller; anywhere
+      // else the edge pan fails at once and scrolling starts as usual.
+      web.scrollView.panGestureRecognizer.require(toFail: pan)
+      edgeBack = pan
+    }
     let page = stripMode ? "app://localhost/index.html?mode=strip" : "app://localhost/index.html"
     web.load(URLRequest(url: URL(string: page)!))
     synth.delegate = self
@@ -110,6 +123,18 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
             out["inPlace"] as? Bool != true else { return }
       self.openPopup(text, rect: Self.rect(out["rect"] as? [String: Any]))
     }
+  }
+
+  /**
+   * The left-edge swipe: once the finger has come a third of the way across, or flicks
+   * across, the page goes back one step, as Android's Back does.
+   */
+  @objc private func edgeSwipe(_ pan: UIScreenEdgePanGestureRecognizer) {
+    guard pan.state == .ended else { return }
+    let moved = pan.translation(in: view).x
+    let speed = pan.velocity(in: view).x
+    guard moved > view.bounds.width / 3 || (moved > 40 && speed > 500) else { return }
+    web.evaluateJavaScript("window.__pvBack ? window.__pvBack() : false", completionHandler: nil)
   }
 
   /** Page rectangle in CSS px, which WKWebView lays out 1:1 in points. */
@@ -324,6 +349,9 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
       resolve(id, ["ok": true])
     case "notify":
       Notify.post(title: params["title"] as? String ?? "Phevere", body: params["body"] as? String ?? "")
+      resolve(id, ["ok": true])
+    case "setBackEnabled":
+      edgeBack?.isEnabled = params["on"] as? Bool ?? false
       resolve(id, ["ok": true])
     case "closeStrip":
       dismiss(animated: true)

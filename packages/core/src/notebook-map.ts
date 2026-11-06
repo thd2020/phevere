@@ -1388,6 +1388,10 @@ function createFlatMap(stage: HTMLElement, data: FlatData, opts: MapRendererOpti
     }
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 2) {
+      // Two fingers carry the map with their midpoint, which moves half as far as one finger.
+      view.x -= ((e.clientX - prev.x) / 2 / r.width) * view.w;
+      view.y -= ((e.clientY - prev.y) / 2 / r.height) * view.h;
+      apply();
       const [a, b] = [...pointers.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
       if (pinch) {
