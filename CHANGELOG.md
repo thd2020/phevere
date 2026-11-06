@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Cards (2026-11-06): once a pile is poured out, clicking its first card again gathers the cards back onto the pile, as the pile's label already did. That card's picture still turns it over, and the Look up button on its back opens the lookup. Every other poured-out card works as before: its text opens the lookup.
+
+### Fixed
+
+- Back on the phone (2026-11-06): Android's Back button and gesture now go back one step at a time through everything you opened in Phevere: a lookup, the word you tapped inside it, the Dictionary, Translation or Wikipedia tab, Words, Learn and Settings and their tabs, the word-book library, and back to where you had scrolled. Menus, sheets, the language list, suggestions, a scan and a review close first. Looking up a word from Recent and pressing Back now returns to Recent instead of closing the app; Back closes Phevere only from Recent, and Android 15 and later show the back-to-home preview there. On the iPhone, a swipe in from the left edge does the same.
+- Double shake on Android (2026-11-06): shaking the phone twice on the Cards view now pours every pile out, or gathers them, as Expand all does. It used to need two long, hard shakes, and almost never fired: in a simulation of two ordinary 0.3-second shakes, it fired in none of the runs, and now fires in 99 of 100 for a shake that peaks at about 1.5 g. Shaking the phone up and down works as well as shaking it sideways, and walking, running or turning the phone over does not set it off.
+- Map on the phone (2026-11-06): dragging with two fingers now moves the map, while pinching zooms and twisting turns it, as in map apps. One finger still turns and tilts it. A drag that starts on the map no longer pulls the Words list down to reload it.
+
 ## [4.2.0] - 2026-11-06
 
 ### Added
