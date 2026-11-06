@@ -7,6 +7,7 @@ import android.media.audiofx.LoudnessEnhancer;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -31,11 +32,13 @@ final class Speak {
   private volatile int gen;
   private MediaPlayer player;
   /**
-   * The current player has started making sound. A clip that fails after that has been heard, so
-   * it ends as done rather than as an error; an error would make the page try the next clip or
-   * the synthetic voice, and the learner would hear the word twice.
+   * When the current player started making sound (uptime milliseconds), or 0 before it starts. A
+   * clip that fails after playing HEARD_MS has been heard, so it ends as done rather than as an
+   * error; an error would make the page try the next clip or the synthetic voice, and the learner
+   * would hear the word twice. One that fails sooner was not heard, and the page falls back.
    */
-  private boolean started;
+  private long startedAt;
+  private static final long HEARD_MS = 300;
   private LoudnessEnhancer boost;
   /**
    * Settings → Audio → Playback volume as a gain, 0–2: the slider's middle (50%) is the
@@ -197,7 +200,7 @@ final class Speak {
 
   private void startPlayer(String url, float rate, int token) {
     try {
-      started = false;
+      startedAt = 0;
       player = new MediaPlayer();
       player.setAudioAttributes(new AudioAttributes.Builder()
           .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -215,7 +218,7 @@ final class Speak {
         float level = Math.min(1f, volume);
         mp.setVolume(level, level);
         applyBoost(mp);
-        try { mp.start(); started = true; }
+        try { mp.start(); startedAt = SystemClock.uptimeMillis(); }
         catch (Exception e) { stopMedia(); finish("Could not start pronunciation recording."); }
       });
       player.setOnCompletionListener(mp -> {
@@ -223,7 +226,7 @@ final class Speak {
       });
       player.setOnErrorListener((mp, what, extra) -> {
         if (token != gen) return true;
-        boolean heard = started;
+        boolean heard = heard();
         stopMedia();
         if (heard) fireDone();
         else finish("Could not play pronunciation recording.");
@@ -235,7 +238,7 @@ final class Speak {
         if (token != gen || player != preparing || pendingDone == null || player.isPlaying()) return;
         // Still loading after 20 s: an error, so the page can try the next clip. A clip that
         // started and then stalled has been heard: it ends there.
-        boolean heard = started;
+        boolean heard = heard();
         stopMedia();
         if (heard) fireDone();
         else finish("Pronunciation recording timed out.");
@@ -244,6 +247,10 @@ final class Speak {
       stopMedia();
       finish("Could not load pronunciation recording.");
     }
+  }
+
+  private boolean heard() {
+    return startedAt > 0 && SystemClock.uptimeMillis() - startedAt >= HEARD_MS;
   }
 
   void stop() {
