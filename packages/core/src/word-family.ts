@@ -44,6 +44,8 @@ export interface WordFamilyGroup {
 }
 
 const FAMILY_CAP = 40;
+/** How many members a group takes in before the closest FAMILY_CAP are kept. */
+const FAMILY_INTAKE = 400;
 
 const LANG_SECTION: Record<string, string> = {
   en: 'English',
@@ -383,7 +385,7 @@ function addUniqueItems(
       buckets.set(dest, acc);
       continue;
     }
-    if (acc.length >= FAMILY_CAP) {
+    if (acc.length >= FAMILY_INTAKE) {
       buckets.set(dest, acc);
       continue;
     }
@@ -426,6 +428,12 @@ export function familyFromEtymologyChain(chain?: EtymologyLink[] | null, surface
   return groupsFromBuckets(buckets);
 }
 
+/** The adverbs and prepositions of a phrasal verb. */
+const PHRASAL_PARTICLES = new Set(
+  ('about above across after against ahead along apart around aside at away back behind by down for forth forward ' +
+    'from in into of off on onto out over past round through to together under up upon with without').split(' '),
+);
+
 /** How close a family member is to the headword: its derivatives first, proper names last. */
 function familyRank(word: string, surfaceKey: string, relation: WordFamilyRelation): number {
   const w = word.trim();
@@ -433,8 +441,11 @@ function familyRank(word: string, surfaceKey: string, relation: WordFamilyRelati
   let score = 0;
   if (/^\p{Lu}/u.test(w) && !/^\p{Lu}/u.test(surfaceKey)) score += 40;
   if (relation === 'phrases') {
-    score += Math.min(30, w.split(/\s+/).length * 4) + w.length / 10;
-    if (!k.split(/\s+/).includes(surfaceKey)) score += 8;
+    const words = k.split(/\s+/);
+    score += Math.min(30, words.length * 4) + w.length / 10;
+    if (!words.includes(surfaceKey)) score += 8;
+    // A phrasal verb ("give up", "give in") leads the phrases, as learner dictionaries list them first.
+    if (words.length > 1 && words[0] === surfaceKey && words.slice(1).every((x) => PHRASAL_PARTICLES.has(x))) score -= 6;
     return score;
   }
   // happy → happiness, happily: the stem drops a final y or e.
@@ -469,15 +480,16 @@ function groupsFromBuckets(buckets: FamilyBuckets, surfaceKey = ''): WordFamilyG
       }
       seen.add(k);
       unique.push({ word: it.word, label: it.label });
-      if (unique.length >= FAMILY_CAP) break;
     }
     if (!unique.length) continue;
+    // The closest members are kept when a long list is cut: "give up" is not lost behind
+    // forty alphabetically earlier phrases ("give a damn", "give a fig").
     if (relation === 'derived' || relation === 'phrases' || relation === 'related') {
       const indexed = unique.map((it, i) => ({ it, i, r: familyRank(it.word, surfaceKey, relation) }));
       indexed.sort((a, b) => a.r - b.r || a.i - b.i);
-      out.push({ relation, items: indexed.map((x) => x.it) });
+      out.push({ relation, items: indexed.slice(0, FAMILY_CAP).map((x) => x.it) });
     } else {
-      out.push({ relation, items: unique });
+      out.push({ relation, items: unique.slice(0, FAMILY_CAP) });
     }
   }
   return out;
