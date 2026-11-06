@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.0] - 2026-11-06
+
 ### Added
 
 - Phevere in your language (2026-11-06): the whole interface, on the computer and the phone, now comes in English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch, Русский and Português (Brasil). Settings opens with an App language menu: System, the default, follows your computer's or phone's language and falls back to English when Phevere does not have it; each language is listed by its own name so you can find yours whatever the screen shows. A new choice applies at once. On the phone everything repaints; on the computer the tray menu and the app menu change, and the main window, Settings, the lookup pop-up and the scan windows reload in the new language, except a region scan you are in the middle of, which changes in place. Counts, numbers, percentages, sizes and dates follow the language's own rules ("1 слово", "5 слов", "42 %"), and language names, such as a translation's target or an entry's language, are written in your language too. Definitions, examples, word history and anything else that comes from a dictionary stay as the dictionary wrote them, and so do your own words and notes. The Windows installer is still in English.
@@ -675,7 +677,8 @@ All six downloads were replaced on the existing 2.1.0 release; the git tag is un
 - **Windows x64**, **run elevated** when using UIAutomation across the desktop (see README).
 - Install from the release asset; no separate Node.js install required.
 
-[Unreleased]: https://github.com/thd2020/phevere/compare/v4.2.0...HEAD
+[Unreleased]: https://github.com/thd2020/phevere/compare/v4.3.0...HEAD
+[4.3.0]: https://github.com/thd2020/phevere/compare/v4.2.0...v4.3.0
 [4.2.0]: https://github.com/thd2020/phevere/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/thd2020/phevere/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/thd2020/phevere/compare/v3.0.0...v4.0.0
