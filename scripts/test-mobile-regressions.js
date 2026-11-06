@@ -197,6 +197,11 @@ async function backHistory() {
   await wait();
   assert.equal(where(), 'lookup apple');
   assert.equal(backFlags.at(-1), true, 'away from the start screen Back stays in the app');
+  // The lookup's own tabs are views of the word, not steps.
+  tap('result-tab', { tab: 'translation' });
+  await wait();
+  tap('result-tab', { tab: 'lexicon' });
+  await wait();
   tap('tab', { tab: 'notebook' });
   await wait();
   assert.equal(where(), 'notebook');

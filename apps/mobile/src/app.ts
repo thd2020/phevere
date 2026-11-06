@@ -544,9 +544,11 @@ let histIndex = -1;
 /**
  * One history for the system Back (Android's button and gesture, the iPhone's edge swipe), as a
  * browser keeps one for its pages: every move to another place is a step, and Back retraces the
- * steps one at a time. A place is a tab of the bar, the word on Lookup and its Dictionary,
- * Translation or Wikipedia tab, a Settings section, a Words view or the word-book library, and
- * Learn's Today or Progress. Whatever is open over a place (a menu, a sheet, the language list,
+ * steps one at a time. A place is a tab of the bar, the word on Lookup, or the word-book library.
+ * The tabs inside a place (Lookup's Dictionary, Translation and Wikipedia, the Words views,
+ * Learn's Today and Progress, the Settings sections) are views of it, not steps: Back leaves the
+ * place from whichever was showing, as Android's navigation guidance has it for tabs and view
+ * switches, and returns to the one last shown. Whatever is open over a place (a menu, a sheet, the language list,
  * the suggestions, a scan, a review, a Wikipedia article) closes first. The start screen, Lookup
  * with Recent, is the root: reaching it starts the history afresh, Back with no steps left goes
  * there, and only there does Back leave the app, as Android's predictive back asks. The native
@@ -599,12 +601,12 @@ function placeNow(): Place {
   };
 }
 
+/** The same place, whichever of its tabs is showing. */
 function samePlace(a: Place, b: Place): boolean {
   if (a.tab !== b.tab) return false;
-  if (a.tab === 'lookup') return foldQuery(a.query) === foldQuery(b.query) && (!a.query || a.resultTab === b.resultTab);
-  if (a.tab === 'settings') return a.settingsSection === b.settingsSection;
-  if (a.tab === 'notebook') return a.nbView === b.nbView && a.library === b.library;
-  return a.learnPage === b.learnPage;
+  if (a.tab === 'lookup') return foldQuery(a.query) === foldQuery(b.query);
+  if (a.tab === 'notebook') return a.library === b.library;
+  return true;
 }
 
 /** The start screen: Lookup with no word, which lists Recent. */
@@ -623,8 +625,8 @@ function notePlace(): void {
     return;
   }
   if (samePlace(now, here)) {
-    here.trail = now.trail;
-    here.at = now.at;
+    // A repaint, or another tab of the same place: Back returns to the tab last shown.
+    here = { ...now, scroll: here.scroll };
     return;
   }
   if (now.tab === 'lookup' && !now.query) {
