@@ -684,6 +684,20 @@ assert.strictEqual(views.parseGoal('abc'), null);
   assert.deepEqual(ne.cachedEtymon('cerebrate').roots, ['*ḱerh₂-']);
   assert.deepEqual(ne.cachedEtymon('cerebrate').sources, [['la', 'cerebrum']]);
   assert.equal(await ne.traceEtymons(['cerebrate']), 0, 'traced once');
+
+  // A run that stopped after the word's own page (saved with its earlier words, roots not yet
+  // read) reads the earlier words' pages next time, and only those.
+  const store3 = new Map([['phevere.etymons.v1', JSON.stringify({ attest: { origin: 'Latin', via: ['French'], roots: [], sources: [['frm', 'attester'], ['la', 'attēstor']], at: now, v: 2 } })]]);
+  ne.setEtymonStore({ get: (k) => store3.get(k) ?? null, set: (k, v) => store3.set(k, v) });
+  pagesFor.attester = '==Middle French==\n===Etymology===\nFrom {{inh|frm|la|attēstor}}.\n===Verb===\n# to attest\n';
+  pagesFor.attestor = '==Latin==\n===Etymology===\nFrom {{af|la|ad-|testor}}.\n{{root|la|ine-pro|*steh₂-}}\n===Verb===\n# to bear witness\n';
+  asked.length = 0;
+  await ne.traceEtymons(['attest']);
+  assert.deepEqual(asked, [['attester', 'attestor']]);
+  assert.deepEqual(ne.cachedEtymon('attest').roots, ['*steh₂-']);
+  asked.length = 0;
+  await ne.traceEtymons(['attest']);
+  assert.deepEqual(asked, [], 'read once');
   console.log('notebook-views: ok');
 })().catch((error) => {
   console.error(error);

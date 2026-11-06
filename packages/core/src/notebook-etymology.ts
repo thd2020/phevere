@@ -211,7 +211,13 @@ function localStore(): EtymonStore | null {
  */
 const ETYMON_VERSION = 2;
 
-type Cached = WordEtymon & { at: number; miss?: boolean; base?: string; v?: number };
+/** `src` marks a word whose earlier words' pages have been read for a root. */
+type Cached = WordEtymon & { at: number; miss?: boolean; base?: string; v?: number; src?: 1 };
+
+/** A traced word that names no root itself and whose earlier words' pages are still unread. */
+function wantsSourcePages(hit: Cached | undefined): hit is Cached {
+  return !!hit && !hit.miss && hit.v === ETYMON_VERSION && !hit.src && !hit.roots.length && !!hit.sources?.length;
+}
 
 let memo: Record<string, Cached> | null = null;
 let store: EtymonStore | null = null;
@@ -315,12 +321,15 @@ export function traceEtymons(lemmas: string[], onProgress?: (p: TraceProgress) =
   if (running) return running;
   const map = cacheMap();
   const now = Date.now();
-  const todo = [...new Set(lemmas.map((l) => l.trim().toLowerCase()))].filter((l) => {
+  const asked = [...new Set(lemmas.map((l) => l.trim().toLowerCase()))];
+  const todo = asked.filter((l) => {
     if (!/^[a-z][a-z' -]*$/.test(l)) return false;
     const hit = map[l];
     return !hit || (hit.miss && now - hit.at > MISS_RETRY_MS) || (!hit.miss && (hit.v || 1) < ETYMON_VERSION);
   });
-  if (!todo.length) return Promise.resolve(0);
+  // A run that stopped after the words' own pages (the app closed, the network dropped) left
+  // their earlier words' pages unread; those are read on the next call.
+  if (!todo.length && !asked.some((l) => wantsSourcePages(map[l]))) return Promise.resolve(0);
   running = (async () => {
     let done = 0;
     let recorded = 0;
@@ -375,13 +384,16 @@ export function traceEtymons(lemmas: string[], onProgress?: (p: TraceProgress) =
     // word they came from often does: "transfer" names *bʰer- itself, "cerebrate" leaves it to
     // Latin cerebrum. For each word traced in this run that has no root yet, read the pages of
     // the words it came from, nearest first, and take the first root named.
-    const traced = todo.map((l) => map[l]).filter((h): h is Cached => !!h && !h.miss && h.v === ETYMON_VERSION);
     const wanted = new Map<Cached, string[]>();
-    for (const hit of traced) {
-      if (hit.roots.length || !hit.sources?.length) continue;
-      const titles = hit.sources.map(([code, term]) => (code === 'ine-pro' ? '' : sourcePageTitle(code, term)));
+    for (const l of new Set([...asked, ...todo])) {
+      const hit = map[l];
+      if (!wantsSourcePages(hit)) continue;
+      const titles = hit.sources!.map(([code, term]) => (code === 'ine-pro' ? '' : sourcePageTitle(code, term)));
       if (titles.some(Boolean)) wanted.set(hit, titles);
+      else hit.src = 1;
     }
+    // The words' own pages could not be fetched, so neither can these; try them next time.
+    if (failures >= 5) wanted.clear();
     const titles = [...new Set([...wanted.values()].flat().filter(Boolean))];
     const sourcePages = new Map<string, string>();
     total += titles.length;
@@ -415,7 +427,7 @@ export function traceEtymons(lemmas: string[], onProgress?: (p: TraceProgress) =
         }
       }
       // Pages that never arrived are read again next time.
-      if (!complete && !hit.roots.length) hit.v = 1;
+      if (complete || hit.roots.length) hit.src = 1;
     }
     for (const hit of Object.values(map)) {
       const base = hit.base ? map[hit.base] : undefined;
