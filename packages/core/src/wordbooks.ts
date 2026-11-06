@@ -499,8 +499,7 @@ export interface SourceGroup extends SourceGroupKey {
 
 /**
  * My words grouped by where they were saved: one group per document, otherwise per web site,
- * most recently used first. Words saved with no page or document (the phone's app name alone)
- * are left out.
+ * otherwise per app, most recently used first.
  */
 export function sourceGroups(ctx: Pick<WordsContext, 'mine'> & Partial<WordsContext>): SourceGroup[] {
   const groups = new Map<string, SourceGroup>();
@@ -512,6 +511,7 @@ export function sourceGroups(ctx: Pick<WordsContext, 'mine'> & Partial<WordsCont
     if (g) {
       g.entries.push(e);
       g.latest = Math.max(g.latest, at);
+      if (!g.appId && key.appId) g.appId = key.appId;
     } else groups.set(key.key, { ...key, entries: [e], latest: at });
   }
   const made = new Map<string, string>();

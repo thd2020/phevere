@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - New Learn questions (2026-11-06): "Choose the word for the gap" shows a real example sentence for the word, from your note, the sentence you saved it from or the dictionary, with the word blanked out, and you pick it from four words of the same part of speech that all take the same form, so "Lanterns hung from every branch" offers only plurals. A word whose definition names the answer, or that the answer's definition names, is never one of the wrong options. "Spell the word" shows the meaning and the word's own letters shuffled in a row; tap them in order, tap a placed letter to take it back, or type the letters and use Backspace on a keyboard. Both come up for words you are learning or hold for days, when the word has a sentence or is a single word of 3 to 14 letters, and the quiz picks them like the other kinds, by how likely you are to get them right. Desktop and phone alike.
+- Apps in Sources (2026-11-06): Words → Sources now also groups words saved from an app that shows no web address or document, such as a chat app, under the app's name. On Android the row shows the app's own icon; elsewhere it shows the app's first letter. Like a site or a PDF, an app's words can be made into a word book.
 
 ### Changed
 
@@ -20,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Listening questions (2026-11-06): a word could still be heard twice, a few seconds apart. On the desktop, pressing play again while the synthetic voice was being made played both voices; on Android, a recording that hiccupped after it had started was followed by the next recording or the synthetic voice. Each press now gives one sound, and moving to the next question or leaving Learn stops a word that is still loading.
 - Typed answers (2026-11-06): the answer box no longer empties while you type, for example when a dictation's word finishes playing or a picture or sync redraws Learn, and Hint no longer deletes letters you typed after a mistake. The letters Hint shows appear under the box instead.
+- Saving from the Android pop-up (2026-11-06): a word saved from the pop-up over another app is now kept. Before, it did not show in My words while the app was open in the background, and the app's next save erased it, so only words saved again inside the app stayed. Now the word is written at once, appears in the open app's My words straight away, and goes out with the next sync. Closing the pop-up right after tapping Save no longer loses the word either.
+- Android notebook that cannot be read (2026-11-06): if the phone cannot read the notebook file, Phevere now reports an error instead of starting an empty notebook that the next save would write over your words.
 
 ## [4.2.0] - 2026-11-06
 
