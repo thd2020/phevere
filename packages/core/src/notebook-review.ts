@@ -29,6 +29,7 @@ import {
 } from './review-quiz';
 import { suggestGoal } from './learn-adapt';
 import { bookName } from './book-names';
+import { vocabLookupLang } from './vocab-lang';
 import { barChartHtml, dayLabel, heatmapHtml, wordChips, type BarDatum } from './learn-charts';
 import type { LearnPrefs } from './learn-prefs';
 
@@ -460,6 +461,12 @@ function overrideButtons(q: ReviewQuestion, state: ReviewState): string {
   return `<span class="nbv-quiz__links">${flip}${easy}</span>`;
 }
 
+/** A word saved from another language's entry (the Danish "give") opens in that language. */
+function lookupLangAttr(e: NotebookEntry): string {
+  const lang = vocabLookupLang({ lemma: clean(e.lemma), sourceLang: clean(e.sourceLang) });
+  return lang ? ` data-lang="${esc(lang)}"` : '';
+}
+
 function questionHtml(q: ReviewQuestion, e: NotebookEntry, state: ReviewState, opts: ReviewRenderOptions, now: number): string {
   const a = state.answer;
   const total = state.queue.length;
@@ -472,7 +479,7 @@ function questionHtml(q: ReviewQuestion, e: NotebookEntry, state: ReviewState, o
       body = `${answerCardHtml(e)}<div class="nbv-pair">
         <button type="button" class="nbv-secondary" data-act="nb-knew" data-knew="0"><kbd>1</kbd>I didn't know it</button>
         <button type="button" class="nbv-primary" data-act="nb-knew" data-knew="1"><kbd>2</kbd>I knew it</button>
-      </div>${shownSenses(e).length ? '' : `<button type="button" class="nbv-link" data-act="lookup" data-q="${esc(q.lemma)}">Open in lookup</button>`}`;
+      </div>${shownSenses(e).length ? '' : `<button type="button" class="nbv-link" data-act="lookup" data-q="${esc(q.lemma)}"${lookupLangAttr(e)}>Open in lookup</button>`}`;
     }
   } else {
     body = choice ? optionsHtml(q, state) : q.kind === 'spell-tiles' ? tilesHtml(q, state) : typedHtml(q, state);
@@ -492,7 +499,7 @@ function questionHtml(q: ReviewQuestion, e: NotebookEntry, state: ReviewState, o
     // Continue sits above the word card, so a picture loading below never moves it.
     feedback = `${verdictHtml(q, state)}
       <div class="nbv-quiz__actions">
-        <button type="button" class="nbv-secondary" data-act="lookup" data-q="${esc(q.lemma)}">Open in lookup</button>
+        <button type="button" class="nbv-secondary" data-act="lookup" data-q="${esc(q.lemma)}"${lookupLangAttr(e)}>Open in lookup</button>
         ${overrideButtons(q, state)}
         <button type="button" class="nbv-primary" data-act="nb-next" autofocus>Continue<kbd>Enter</kbd></button>
       </div>

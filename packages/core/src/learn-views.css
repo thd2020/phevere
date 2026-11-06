@@ -26,10 +26,13 @@
 
 /*
  * Progress, set like a printed spread rather than a grid of cards: a masthead with the streak as a
- * giant numeral and today in one sentence, then numbered sections on ink rules, each led by an
- * oversized number at a size of its own. Wide windows put the sections on twelve columns in uneven
- * pairs (seven and five); a phone stacks them. Numbers are Source Serif at its display optical size.
+ * giant numeral beside today's gauges, then numbered sections on ink rules, each led by an
+ * oversized number and a short label. Numbers stay below their rule and beside their label at every
+ * width: each giant number takes `--ch` (its length) and shrinks to fit its column. The page and
+ * each section are size containers, so the layout follows the width Progress actually has rather
+ * than the window's. Numbers are Source Serif at its display optical size.
  */
+.lrp-frame { container: lrp / inline-size; }
 .lrp {
   --lrp-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --lrp-display: 'opsz' 60;
@@ -37,63 +40,51 @@
   grid-template-columns: minmax(0, 1fr);
   padding-bottom: 28px;
 }
-@media (min-width: 760px) {
+@container lrp (min-width: 720px) {
   .lrp { grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 36px; }
   .lrp-mast, .lrp-sec--memory, .lrp-sec--answers, .lrp-sec--skills, .lrp-sec--fams { grid-column: 1 / -1; }
   .lrp-sec--ahead, .lrp-sec--lists { grid-column: 1 / span 7; }
   .lrp-sec--held, .lrp-sec--trouble { grid-column: 8 / -1; }
 }
-.lrp-none, .lrp-note { margin: 0; font: 500 12.5px/1.35 var(--nbv-ui); color: var(--nbv-soft); }
+.lrp-none { margin: 0; font: 500 12.5px/1.35 var(--nbv-ui); color: var(--nbv-soft); }
 
-/* Masthead: the date, the streak as a giant numeral, today in a sentence, two thin gauges. */
+/* Masthead: the date, the streak as a giant numeral with its label, and today's gauges. */
 .lrp-mast {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: 'kicker' 'streak' 'lede' 'gauges';
-  padding: 4px 0 44px;
+  grid-template-areas: 'kicker' 'streak' 'gauges';
+  padding: 4px 0 36px;
 }
-@media (min-width: 640px) {
+@container lrp (min-width: 560px) {
   .lrp-mast {
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas: 'kicker kicker' 'streak lede' 'gauges gauges';
-    column-gap: 28px;
+    grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+    grid-template-areas: 'kicker kicker' 'streak gauges';
+    column-gap: 36px;
     align-items: end;
   }
+  .lrp-mast .lrp-gauges { grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 0; padding-bottom: 8px; }
 }
 .lrp-kicker {
   grid-area: kicker;
-  margin: 0 0 6px;
+  margin: 0 0 14px;
   font: 600 11px/1 var(--nbv-ui);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--nbv-soft);
 }
-.lrp-mast__streak { grid-area: streak; display: flex; align-items: flex-end; gap: 12px; min-width: 0; }
+.lrp-mast__streak { grid-area: streak; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 16px; min-width: 0; }
 .lrp-giant {
-  margin-left: -0.05em;
-  font: 700 clamp(120px, 34vw, 210px)/0.76 var(--nbv-serif);
+  --ch: 1;
+  /* Line height 0.86 keeps the lining figures inside their own box, so nothing can run into them. */
+  font: 700 min(clamp(120px, 34cqi, 200px), calc(150cqi / var(--ch)))/0.86 var(--nbv-serif);
   font-variation-settings: var(--lrp-display);
-  font-variant-numeric: lining-nums;
-  letter-spacing: -0.07em;
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: -0.06em;
   color: var(--nbv-line);
 }
 .lrp-mast.is-on .lrp-giant { color: var(--nbv-ember); }
-.lrp-mast__cap { display: grid; gap: 6px; margin: 0 0 6px; }
-.lrp-mast__cap span { font: italic 500 19px/1 var(--nbv-serif); color: var(--nbv-ink); }
-.lrp-mast__cap small { font: 600 10.5px/1 var(--nbv-ui); letter-spacing: 0.12em; text-transform: uppercase; color: var(--nbv-soft); }
-.lrp-lede {
-  grid-area: lede;
-  max-width: 30ch;
-  margin: 18px 0 0;
-  font: 400 clamp(20px, 2.6vw, 28px)/1.2 var(--nbv-serif);
-  letter-spacing: -0.014em;
-  color: var(--nbv-ink);
-  text-wrap: pretty;
-}
-@media (min-width: 640px) { .lrp-lede { margin: 0 0 4px; } }
-.lrp-lede b { font-weight: 700; font-variant-numeric: lining-nums tabular-nums; color: var(--nbv-ember); }
-.lrp-gauges { grid-area: gauges; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-top: 22px; }
-.lrp-gauge { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 7px 8px; }
+.lrp-gauges { grid-area: gauges; display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 16px 24px; margin-top: 26px; }
+.lrp-gauge { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 7px 8px; min-width: 0; }
 .lrp-gauge__label { font: 600 10.5px/1 var(--nbv-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--nbv-soft); }
 .lrp-gauge__n { font: 500 12px/1 var(--nbv-ui); color: var(--nbv-soft); white-space: nowrap; }
 .lrp-gauge__n b { font: 700 17px/1 var(--nbv-serif); font-variant-numeric: lining-nums tabular-nums; color: var(--nbv-ink); }
@@ -101,36 +92,30 @@
 .lrp-gauge__bar i { display: block; height: 100%; background: #8fd3d5; transition: width 0.6s var(--lrp-ease); }
 .lrp-gauge.is-done .lrp-gauge__bar i { background: var(--nbv-teal); }
 
-/* Sections: a numbered label on an ink rule. The full-width ones carry a heavier rule. */
-.lrp-sec { display: grid; gap: 16px; align-content: start; min-width: 0; padding: 12px 0 34px; border-top: 1px solid var(--nbv-ink); }
+/* Sections: a numbered label on an ink rule, then the body below it. The full-width ones carry a heavier rule. */
+.lrp-sec { container: lrp-sec / inline-size; display: grid; gap: 18px; align-content: start; min-width: 0; padding: 12px 0 34px; border-top: 1px solid var(--nbv-ink); }
 .lrp-sec--memory, .lrp-sec--answers, .lrp-sec--skills { border-top-width: 3px; }
 .lrp-sec__label { display: flex; align-items: baseline; gap: 10px; margin: 0; font: 600 10.5px/1 var(--nbv-ui); letter-spacing: 0.16em; text-transform: uppercase; color: var(--nbv-ink); }
 .lrp-sec__label span { font: italic 600 14px/1 var(--nbv-serif); letter-spacing: 0; color: var(--nbv-ember); }
-/* Memory and Answers: the label moves to the right and the big number rises through the rule. */
-.lrp-sec--memory, .lrp-sec--answers { position: relative; }
-.lrp-sec--memory > .lrp-sec__label, .lrp-sec--answers > .lrp-sec__label { position: absolute; top: 14px; right: 0; }
-.lrp-sec--memory .lrc-mem__big, .lrp-sec--answers .lrp-fig__n { position: relative; margin-top: calc(-12px - 0.2em); }
-@media (max-width: 759px) {
-  .lrp-sec--answers .lrp-fig { flex-direction: column; align-items: flex-start; }
-  .lrp-sec--answers .lrp-fig__text { flex: none; }
-}
 
-/* An oversized number and the sentence that says what it counts. */
-.lrp-fig { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; min-width: 0; }
+/* An oversized number, and beside it a label that names it with one short line under the label. */
+.lrp-fig { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 16px; min-width: 0; }
 .lrp-fig__n {
-  font: 700 clamp(60px, 15vw, 96px)/0.8 var(--nbv-serif);
+  --ch: 1;
+  font: 700 min(clamp(60px, 15cqi, 96px), calc(150cqi / var(--ch)))/0.86 var(--nbv-serif);
   font-variation-settings: var(--lrp-display);
   font-variant-numeric: lining-nums tabular-nums;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.05em;
   color: var(--nbv-ink);
 }
-.lrp-fig__text { flex: 1 1 140px; max-width: 24ch; margin: 0; font: 400 16px/1.28 var(--nbv-serif); color: var(--nbv-soft); text-wrap: pretty; }
-.lrp-fig__text b { font-weight: 700; color: var(--nbv-ink); }
 .lrp-fig.is-teal .lrp-fig__n { color: var(--nbv-teal); }
-.lrp-fig.is-wide .lrp-fig__n { font-size: clamp(72px, 19vw, 136px); }
-/* The held count leans the other way: number on the right, its sentence on the left. */
-.lrp-sec--held .lrp-fig { flex-direction: row-reverse; justify-content: flex-end; text-align: right; }
-@media (min-width: 760px) { .lrp-sec--held .lrp-fig { justify-content: flex-start; } }
+.lrp-fig.is-wide .lrp-fig__n { font-size: min(clamp(72px, 19cqi, 136px), calc(150cqi / var(--ch))); }
+.lrp-fig__cap { display: grid; gap: 5px; min-width: 0; margin: 0; padding-bottom: 0.2em; }
+.lrp-fig__label { font: 600 10.5px/1.2 var(--nbv-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--nbv-ink); }
+.lrp-fig__sub { font: 400 15px/1.25 var(--nbv-serif); color: var(--nbv-soft); }
+.lrp-fig__sub b { font-weight: 700; font-variant-numeric: lining-nums tabular-nums; color: var(--nbv-ink); }
+.lrp-fig__facts { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 4px; font: 500 12px/1.3 var(--nbv-ui); color: var(--nbv-soft); }
+.lrp-fig__facts b { margin-right: 3px; font: 700 16px/1 var(--nbv-serif); font-variant-numeric: lining-nums tabular-nums; color: var(--nbv-ember); }
 
 /* Skills as three small multiples on one scale, divided by hairlines. */
 .lrp-skills { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -138,10 +123,10 @@
 .lrp-skill:first-child { padding-left: 0; border-left: 0; }
 .lrp-skill__name { font: 600 10.5px/1 var(--nbv-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--nbv-soft); }
 .lrp-skill__pct {
-  font: 700 clamp(44px, 12vw, 76px)/0.82 var(--nbv-serif);
+  font: 700 clamp(40px, 11cqi, 76px)/0.86 var(--nbv-serif);
   font-variation-settings: var(--lrp-display);
   font-variant-numeric: lining-nums tabular-nums;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.05em;
   color: var(--nbv-ink);
 }
 .lrp-skill__pct small { margin-left: 2px; font-size: 0.4em; letter-spacing: 0; color: var(--nbv-soft); }
@@ -149,17 +134,18 @@
 .lrp-skill__bar i { display: block; height: 100%; background: var(--nbv-teal); }
 .lrp-skill__n { font: 500 11.5px/1.3 var(--nbv-ui); color: var(--nbv-soft); }
 
-/* The mix of question kinds over the last week: a ribbon and the same numbers in a sentence. */
+/* The mix of question kinds over the last week: a ribbon and its key. */
 .lrp-mix { display: grid; gap: 10px; }
 .lrp-mix__bar { display: flex; gap: 2px; height: 10px; }
 .lrp-mix__bar i { display: block; min-width: 0; }
 .lrp-mix--meaning { background: var(--nbv-teal); }
 .lrp-mix--spelling { background: #8fd3d5; }
 .lrp-mix--listening { background: #d98a5c; }
-.lrp-mix__text { margin: 0; font: 400 15px/1.4 var(--nbv-serif); color: var(--nbv-soft); }
+.lrp-mix__text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin: 0; font: 500 12.5px/1.3 var(--nbv-ui); color: var(--nbv-soft); }
+.lrp-mix__head { font: 600 10.5px/1.2 var(--nbv-ui); letter-spacing: 0.14em; text-transform: uppercase; color: var(--nbv-ink); }
 .lrp-mix__k { white-space: nowrap; }
 .lrp-mix__k i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 2px; vertical-align: 0.05em; }
-.lrp-mix__k b { font-weight: 700; color: var(--nbv-ink); }
+.lrp-mix__k b { margin-right: 3px; font: 700 15px/1 var(--nbv-serif); color: var(--nbv-ink); }
 
 /* Each list: its name in serif, the known count large in teal, the bar, then the rest in a line. */
 .lrp-lists { display: grid; gap: 18px; margin: 0; padding: 0; list-style: none; }
@@ -170,12 +156,14 @@
 .lrp-list .lrp-bar { grid-column: 1 / -1; }
 .lrp-list__more { grid-column: 1 / -1; font: 500 11.5px/1.4 var(--nbv-ui); color: var(--nbv-soft); }
 .lrp-bar { height: 6px; min-width: 0; }
-.lrp-key { display: flex; align-items: center; gap: 6px; margin: 0; font: 500 11px/1 var(--nbv-ui); color: var(--nbv-soft); }
+.lrp-key { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font: 500 11px/1 var(--nbv-ui); color: var(--nbv-soft); }
 .lrp-key i { width: 10px; height: 10px; border-radius: 2.5px; margin-left: 6px; }
 .lrp-key i:first-child { margin-left: 0; }
 .lrp-key__known { background: var(--nbv-teal); }
 .lrp-key__learning { background: #8fd3d5; }
 .lrp-key__new { background: var(--nbv-paper-2); }
+.lrp-key__leech { background: var(--nbv-ember); }
+.lrp-key sup { font: 600 9.5px/1 var(--nbv-ui); color: var(--nbv-soft); }
 
 /* Trouble words as one run of type: the more often missed, the larger and darker; leeches in rust. */
 .lrp-trouble { margin: 0; line-height: 1.02; text-wrap: balance; }
@@ -188,7 +176,10 @@
   border: 0;
   background: none;
   color: color-mix(in srgb, var(--nbv-ink) calc(40% + var(--w) * 60%), var(--nbv-stone));
-  font: 600 calc(17px + var(--w) * 21px)/1 var(--nbv-serif);
+  /* A long word in a narrow column takes a smaller size, and breaks only as a last resort. */
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font: 600 min(calc(17px + var(--w) * 21px), 12cqi)/1 var(--nbv-serif);
   letter-spacing: -0.02em;
   cursor: pointer;
   text-decoration: underline;
@@ -197,7 +188,6 @@
   transition: text-decoration-color 0.18s var(--nbv-motion);
 }
 .lrp-tw:nth-child(3n + 2) { font-style: italic; font-weight: 400; }
-.lrp-tw:nth-child(4n + 3) { transform: translateY(0.14em); }
 .lrp-tw.is-leech { color: var(--nbv-ember); }
 .lrp-tw sup { margin-left: 2px; font: 600 9.5px/1 var(--nbv-ui); font-style: normal; letter-spacing: 0; color: var(--nbv-soft); }
 .lrp-tw:focus-visible { outline: 2px solid var(--nbv-teal); outline-offset: 2px; border-radius: 4px; }
@@ -305,27 +295,28 @@
 .lrc-heat-key { width: 10px; height: 10px; border-radius: 2.5px; }
 
 /*
- * Memory (learn-charts.ts): the number of words you would recall, a sentence with what changes,
+ * Memory (learn-charts.ts): the number of words you would recall with a short caption under it,
  * and a strip with one dot per word by its chance of recall, teal when held and rust once below
  * 90% (due). Today, In a week and In a month move the dots to where they would be.
  */
 .lrc--memory { display: grid; gap: 16px; }
-@media (min-width: 760px) {
+.lrc-mem__head { min-width: 0; }
+.lrc-mem__big {
+  --ch: 2;
+  margin: 0;
+  font: 700 min(clamp(96px, 30cqi, 184px), calc(150cqi / var(--ch)))/0.86 var(--nbv-serif);
+  font-variation-settings: 'opsz' 60;
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: -0.06em;
+  color: var(--nbv-teal);
+}
+@container lrp-sec (min-width: 640px) {
   .lrc--memory { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); column-gap: 36px; align-items: start; }
   .lrc-mem__head { grid-row: 1 / span 2; }
   .lrc--memory > .lrc-readout { grid-column: 2; }
+  .lrc-mem__big { font-size: min(184px, calc(70cqi / var(--ch))); }
 }
-.lrc-mem__head { min-width: 0; }
-.lrc-mem__big {
-  margin: 0;
-  font: 700 clamp(104px, 28vw, 184px)/0.76 var(--nbv-serif);
-  font-variation-settings: 'opsz' 60;
-  font-variant-numeric: lining-nums tabular-nums;
-  letter-spacing: -0.07em;
-  color: var(--nbv-teal);
-}
-.lrc-mem__lede { max-width: 28ch; margin: 14px 0 0; font: 400 18px/1.3 var(--nbv-serif); letter-spacing: -0.01em; color: var(--nbv-ink); text-wrap: pretty; }
-.lrc-mem__lede b { font-weight: 700; font-variant-numeric: lining-nums; color: var(--nbv-ember); }
+.lrc-mem__cap { display: grid; gap: 5px; margin: 16px 0 0; }
 .lrc-mem__chart { display: grid; gap: 8px; min-width: 0; }
 .lrc-mem__whens { display: inline-flex; justify-self: start; gap: 2px; padding: 3px; border-radius: 999px; background: var(--nbv-paper-2); }
 .lrc-mem__when {

@@ -24,6 +24,7 @@ import '@phevere/core/settings-kit.css';
 import '@phevere/core/settings-sources.css';
 import '@phevere/core/settings-offline.css';
 import '@phevere/core/settings-keys.css';
+import '@phevere/core/ocr-view.css';
 import '@phevere/core/settings-about.css';
 import './styles.css';
 import { startApp } from './app';

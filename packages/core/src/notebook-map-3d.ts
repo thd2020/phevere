@@ -18,8 +18,9 @@
  * The camera follows three.js OrbitControls and graph tools such as 3d-force-graph and
  * Obsidian's graph view. With a mouse, drag turns the map (left and right) and tilts it (up
  * and down), right-drag or Shift-drag pans, and the wheel or a trackpad pinch zooms. On a
- * touch screen one finger turns and tilts, and two fingers pinch to zoom, twist to turn and
- * move up or down together to tilt. A gesture may start on a word or a label; a press that
+ * touch screen one finger turns and tilts, and two fingers drag to pan, pinch to zoom and
+ * twist to turn, as OrbitControls' two-finger dolly-and-pan and map apps do. A gesture may
+ * start on a word or a label; a press that
  * barely moves and lifts quickly is a tap and picks what is under it.
  */
 import * as THREE from 'three';
@@ -473,9 +474,8 @@ export function createMapScene(stage: HTMLElement, laid: MapData, opts: MapRende
       let da = now.a - pair.a;
       da = Math.atan2(Math.sin(da), Math.cos(da));
       sph.theta -= da;
-      // Both fingers up or down together tilt the map.
-      sph.phi -= (now.my - pair.my) * turnPerPx();
-      place();
+      // Both fingers moving together carry the map with them.
+      panBy(now.mx - pair.mx, now.my - pair.my);
       pair = now;
     }
     wake();

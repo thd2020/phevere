@@ -62,6 +62,8 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
   private String pendingAuthUrl;
   private Uri captureUri;
   private boolean pageReady;
+  /** Sends Back to the page while it has somewhere to go back to. */
+  private OnBackPressedCallback pageBack;
   private Insets lastInsets;
 
   private final ActivityResultLauncher<String> notifyPerm =
@@ -183,9 +185,11 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
     Notebook.register(this);
 
     if (!isStrip()) {
-      // Back (button or gesture) goes to the page first: it closes the Scan panel, then Scan,
-      // then returns to Lookup. Only when the page has nothing to undo does Back leave the app.
-      getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+      // Back (button or gesture) goes to the page first: it closes what is open, then retraces
+      // the page's history one step at a time. The page switches this off on its start screen
+      // with nothing open (setBackEnabled), so the system shows its back-to-home preview there
+      // and leaves the app, as Android's predictive back guidance asks.
+      pageBack = new OnBackPressedCallback(true) {
         @Override
         public void handleOnBackPressed() {
           if (web == null || !pageReady) {
@@ -202,7 +206,8 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
           getOnBackPressedDispatcher().onBackPressed();
           setEnabled(true);
         }
-      });
+      };
+      getOnBackPressedDispatcher().addCallback(this, pageBack);
     }
 
     View root = findViewById(R.id.root);
@@ -260,6 +265,11 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
   @Override
   public void runUi(Runnable r) {
     runOnUiThread(r);
+  }
+
+  @Override
+  public void setBackEnabled(boolean on) {
+    if (pageBack != null) pageBack.setEnabled(on);
   }
 
   @Override
@@ -496,7 +506,9 @@ public class MainActivity extends AppCompatActivity implements NativeBridge.Targ
       boolean chinese = zh != null && zh.getText() != null && zh.getText().codePoints()
           .anyMatch(c -> Character.UnicodeScript.of(c) == Character.UnicodeScript.HAN);
       Ocr.addWords(words, chinese ? zh : latin, bmp.getWidth(), bmp.getHeight());
-      router.resolve(pendingJsId, Ocr.pack(bmp, words));
+      JSONArray lines = new JSONArray();
+      Ocr.addLines(lines, chinese ? zh : latin, bmp.getWidth(), bmp.getHeight());
+      router.resolve(pendingJsId, Ocr.pack(bmp, words, lines));
     } catch (Exception e) {
       failPending(e.getMessage());
     }

@@ -82,6 +82,20 @@ export function vocabPayloadFromResult(result: DictionaryResult | null, lemma: s
   };
 }
 
+/**
+ * Whether the word shown can go into a word book. A book holds plain spellings, with no language,
+ * and studies each as its plain lookup opens it. So an entry opened in another language through the
+ * language switch, when the same spelling has an English entry (Danish "give"), is not offered: its
+ * spelling in a book would stand for the English word. Its heart saves it to My words, which keeps
+ * the language.
+ */
+export function canAddToWordBook(result: DictionaryResult | null | undefined): boolean {
+  if (!result) return false;
+  const langs = Array.isArray(result.languages) ? result.languages : [];
+  const shown = langs.find((l) => l.current)?.code || String(result.detectedLanguage || '').toLowerCase().split('-')[0];
+  return !(shown && shown !== 'en' && langs.some((l) => l.code === 'en'));
+}
+
 /** Example sentences from a lookup, for the quiz's gap-fill questions: plain text, each once, at most eight. */
 export function examplesFromResult(result: DictionaryResult | null): string[] {
   const out: string[] = [];

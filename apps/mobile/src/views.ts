@@ -1,4 +1,6 @@
 import { langBarHtml, langSheetHtml, type LangSide } from './picker';
+import { buildOcrPage, rawFromLegacyWords, rawFromNativeLines, type LegacyScanWord, type NativeScanLine, type OcrPage } from '@phevere/core/ocr-layout';
+import { ocrBarHtml } from '@phevere/core/ocr-view';
 import {
   abbreviatePos,
   canonicalPos,
@@ -17,6 +19,7 @@ import {
   type WikipediaResult,
   vocabListHtml,
   addToBookButtonHtml,
+  canAddToWordBook,
   vocabAzLetter,
   AZ_INDEX,
   compareAz,
@@ -24,6 +27,10 @@ import {
   formLineHtml,
   didYouMeanHtml,
   senseLabelLead,
+  senseNotesHtml,
+  posGrammarHtml,
+  phrasesHtml,
+  languageSwitchHtml,
   definitionSourcesHtml,
   wordFamilyHtml,
   linkHtml,
@@ -257,8 +264,8 @@ function railBlock(sections: Array<{ id: string; label: string }>, active: strin
   return `<div class="lexicon-rail-block">${sections.map((s) => railTab(s.id, s.label, active)).join('')}</div>`;
 }
 
-function wrapGroup(id: string, label: string, inner: string): string {
-  const head = label ? `<div class="lexicon-pos-heading">${esc(label)}</div>` : '';
+function wrapGroup(id: string, label: string, inner: string, extraHead = ''): string {
+  const head = label ? `<div class="lexicon-pos-heading"><span>${esc(label)}</span>${extraHead}</div>` : '';
   return `<div class="lexicon-pos-group" data-pos="${esc(id)}">${head}${inner}</div>`;
 }
 
@@ -282,8 +289,8 @@ function linkLemmaRefs(escaped: string): string {
  * desktop); plain text links "plural of X" and the like. Every other word links to its own
  * lookup and looks like text until tapped.
  */
-function senseHtml(raw: string): string {
-  return linkHtml(senseLabelLead(senseMarkup(raw)), 'act');
+function senseHtml(d: Definition, hide: string[] = []): string {
+  return linkHtml(senseLabelLead(senseMarkup(d.meaning), d, hide), 'act');
 }
 
 function senseMarkup(raw: string): string {
@@ -362,6 +369,8 @@ function renderSenses(
   indexOf: Map<Definition, number>,
   images: Array<SenseImage | null> | null,
   reserve: Set<number> = new Set(),
+  hide: string[] = [],
+  headword = '',
 ): string {
   return senses
     .map((d, i) => {
@@ -379,8 +388,9 @@ function renderSenses(
           <div class="definition-sense-num">${i + 1}</div>
           <div class="definition-sense-body">
             ${img ? senseFigureHtml(img, at) : !images && reserve.has(at) ? senseFigurePlaceholder(at) : ''}
-            <div class="definition-text">${senseHtml(d.meaning)}</div>
+            <div class="definition-text">${senseHtml(d, hide)}</div>
             ${exHtml}
+            ${senseNotesHtml(d, 'act', headword)}
           </div>
         </div>
       </div>`;
@@ -420,7 +430,14 @@ function lexiconPane(
   const several = order.length > 1;
   const posSections = order.map((pos) => {
     const unknown = pos === 'unknown';
-    posInner += wrapGroup(pos, unknown ? (several ? 'other' : '') : pos, renderSenses(groups.get(pos) || [], shown, indexOf, images, reserve));
+    // "noun [uncountable]": a code every sense shares goes on the heading instead.
+    const code = posGrammarHtml(result.headGrammar?.[pos]);
+    posInner += wrapGroup(
+      pos,
+      unknown ? (several ? 'other' : '') : pos,
+      renderSenses(groups.get(pos) || [], shown, indexOf, images, reserve, code.hide, result.word || ''),
+      code.html,
+    );
     return { id: pos, label: unknown ? (several ? 'other' : 'senses') : abbreviatePos(pos) };
   });
   posInner += definitionSourcesHtml(defs.flatMap((d) => citeOf(d).map(sourceName)));
@@ -462,8 +479,16 @@ function lexiconPane(
   }
   if (relatedInner) allInner += wrapPane(relatedInner);
 
+  // Phrasal verbs, idioms and set phrases get a section of their own, as in learner dictionaries.
+  const phraseSections: Array<{ id: string; label: string }> = [];
+  const phraseHtml = phrasesHtml(result.wordFamily, 'act', result.word || '', groups.has('verb'));
+  if (phraseHtml) {
+    phraseSections.push({ id: 'phrases', label: 'phrases' });
+    allInner += wrapPane(wrapGroup('phrases', 'phrases', phraseHtml));
+  }
+
   const familySections: Array<{ id: string; label: string }> = [];
-  const familyHtml = wordFamilyHtml(result.wordFamily, 'act');
+  const familyHtml = wordFamilyHtml(result.wordFamily, 'act', { phrases: false });
   if (familyHtml) {
     familySections.push({ id: 'family', label: 'family' });
     allInner += wrapPane(wrapGroup('family', 'word family', familyHtml));
@@ -479,6 +504,7 @@ function lexiconPane(
     ...formsSections.map((s) => s.id),
     ...exampleSections.map((s) => s.id),
     ...relatedSections.map((s) => s.id),
+    ...phraseSections.map((s) => s.id),
     ...familySections.map((s) => s.id),
   ];
   const active = activePos && tocIds.includes(activePos) ? activePos : tocIds[0] || '';
@@ -488,6 +514,7 @@ function lexiconPane(
     railBlock(formsSections, active),
     railBlock(exampleSections, active),
     railBlock(relatedSections, active),
+    railBlock(phraseSections, active),
     railBlock(familySections, active),
   ].join('');
 
@@ -868,9 +895,10 @@ export function lookupBody(opts: {
         <button type="button" class="icon-btn" data-act="web-search" aria-label="Search the web" title="Search the web">${ICO.web}</button>` : ''}
         ${part ? '' : `<button type="button" class="tonal" data-act="speak" aria-label="Play pronunciation">${ICO.speaker}</button>
         <button type="button" class="tonal ${opts.saved ? 'saved' : ''}" data-act="save" aria-label="${opts.saved ? 'Remove from My words' : 'Save to My words'}">${ICO.heart}</button>
-        ${opts.bookPick && opts.saveWord ? addToBookButtonHtml(opts.saveWord, 'tonal') : ''}`}
+        ${opts.bookPick && opts.saveWord && canAddToWordBook(opts.result) ? addToBookButtonHtml(opts.saveWord, 'tonal') : ''}`}
       </div>
       ${chips}
+      ${languageSwitchHtml(opts.result, 'act', { fold: false })}
     </header>
     <div class="result-tabs" role="tablist">
       ${tabs.map((t) => `<button type="button" class="result-tab" role="tab" data-act="result-tab" data-tab="${t}" aria-selected="${resultTab === t}" aria-label="${labels[t]}" title="${labels[t]}">${icons[t]}</button>`).join('')}
@@ -1033,37 +1061,47 @@ function vocabAzRail(present: Set<string>): string {
     <div class="vocab-az-hud" hidden aria-hidden="true"></div>`;
 }
 
-/** One OCR word: text plus its box as fractions of the picture; l is its line on the page. */
-export type ScanWord = { t: string; x: number; y: number; w: number; h: number; l?: number };
-export type ScanPage = { jpeg: string; width: number; height: number; words: ScanWord[] };
+/** One OCR word from an older native build: its box as fractions of the picture; l is its line. */
+export type ScanWord = LegacyScanWord;
+/**
+ * What the native scanner returns: the picture, and its text as lines with quads (fractions of
+ * the picture), words and confidences; older builds send only `words`.
+ */
+export type ScanPage = { jpeg: string; width: number; height: number; words?: ScanWord[]; lines?: NativeScanLine[]; engine?: string };
+
+/** The page model of a scan, laid out for reading (packages/core/src/ocr-layout.ts). */
+export function scanOcrPage(scan: ScanPage): OcrPage {
+  const w = Number(scan.width) || 1, h = Number(scan.height) || 1;
+  const engine = scan.engine || 'phone';
+  const raw = Array.isArray(scan.lines) && scan.lines.length
+    ? rawFromNativeLines(scan.lines, w, h, engine)
+    : rawFromLegacyWords(scan.words || [], w, h, engine);
+  return buildOcrPage(raw);
+}
 
 /**
- * Scan: the picture fills the screen and carries its recognised text as an invisible, selectable
- * layer (like Live Text), so a long press selects a word and the selection stays visible.
- * Words on one line are joined by spaces and lines by newlines, so a selection copies as text.
- * The result opens in a bottom sheet over the picture.
+ * Scan: the picture fills the screen with its recognised text in place, real text over its own
+ * pixels like Live Text, so a long press selects a word. Text shows the recognised text alone;
+ * Edit changes it in place. The lookup opens in a bottom sheet over the picture.
  */
-export function scanHtml(scan: ScanPage, id: number): string {
-  const words = (scan.words || []).filter((w) => w.t && w.w > 0 && w.h > 0);
-  const parts: string[] = [];
-  words.forEach((w, i) => {
-    if (i > 0) parts.push(words[i - 1].l !== undefined && words[i - 1].l !== w.l ? '\n' : ' ');
-    parts.push(
-      `<span class="scan-word" data-w="${w.w}" style="left:${(w.x * 100).toFixed(3)}%;top:${(w.y * 100).toFixed(3)}%;height:${(w.h * 100).toFixed(3)}%">${esc(w.t)}</span>`,
-    );
-  });
+export function scanHtml(scan: ScanPage, page: OcrPage, id: number): string {
+  const empty = !page.blocks.length;
   return `
-    <div class="scan-view" data-scan-id="${id}">
-      <div class="scan-stage">
-        <div class="scan-canvas">
-          <div class="scan-frame" data-ratio="${scan.width && scan.height ? scan.width / scan.height : 0.75}">
-            <img src="data:image/jpeg;base64,${scan.jpeg}" alt="Scanned picture" draggable="false" />
-            <div class="scan-layer">${parts.join('')}</div>
+    <div class="scan-view ocr-view" data-scan-id="${id}" data-mode="picture">
+      <div class="scan-main">
+        <div class="scan-stage">
+          <div class="scan-canvas">
+            <div class="scan-frame ocr-frame" data-ratio="${scan.width && scan.height ? scan.width / scan.height : 0.75}">
+              <img src="data:image/jpeg;base64,${scan.jpeg}" alt="Scanned picture" draggable="false" />
+              <div class="ocr-layer"></div>
+            </div>
           </div>
         </div>
+        <div class="ocr-text scan-text" hidden></div>
       </div>
       <button type="button" class="icon-btn scan-close" data-act="scan-close" aria-label="Back">${ICO.back}</button>
-      <p class="scan-hint">${words.length ? 'Select text' : 'No text found'}</p>
+      <div class="scan-bar">${ocrBarHtml({ saveImage: true, empty })}</div>
+      ${empty ? '' : '<p class="scan-hint">Select text</p>'}
       <section class="scan-sheet" data-state="closed" aria-label="Lookup">
         <div class="scan-sheet__handle" data-drag="scan-sheet" role="button" tabindex="0" aria-label="Resize lookup"><span></span></div>
         <div class="scan-sheet__body"></div>

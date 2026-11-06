@@ -250,6 +250,26 @@ async function main() {
     assert.deepStrictEqual(row.context, ctx, `${d.name} keeps the context an older app did not send`);
   }
 
+  // 9. The same spelling saved from two languages' entries is two words: "give" in English and in
+  //    Danish. Each is found, saved and removed in its own language, and sync does not fold them.
+  const giveEn = await A.core.addVocab({ lemma: 'give', definition: 'to transfer', sourceLang: 'en' });
+  const giveDa = await A.core.addVocab({ lemma: 'give', definition: 'to yield', sourceLang: 'da' });
+  assert.notStrictEqual(giveDa.id, giveEn.id, 'the Danish save does not update the English word');
+  assert.strictEqual((await A.core.findByLemma('give', 'da'))?.id, giveDa.id);
+  assert.strictEqual((await A.core.findByLemma('give', 'en'))?.id, giveEn.id);
+  assert.strictEqual(await A.core.findByLemma('give', 'fr'), null, 'no French give is saved');
+  await both();
+  await B.sync();
+  for (const d of [A, B]) {
+    const rows = (await d.core.listVocab(2000)).filter((r) => r.lemma === 'give');
+    assert.strictEqual(rows.length, 2, `${d.name} keeps both languages' give`);
+  }
+  await A.core.removeVocab((await A.core.findByLemma('give', 'da')).id);
+  assert.strictEqual((await A.core.findByLemma('give', 'en'))?.id, giveEn.id, 'removing the Danish word keeps the English one');
+  // A word saved before languages were kept (no language) is found as the language of its letters.
+  const old = await A.core.addVocab({ lemma: 'brook2' });
+  assert.strictEqual((await A.core.findByLemma('brook2', 'en'))?.id, old.id);
+
   console.log(`test-vocab-sync: ok (${API && TOKEN ? 'live server' : 'in-memory server'})`);
 }
 

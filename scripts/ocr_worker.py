@@ -157,7 +157,14 @@ def main() -> int:
                 raise ValueError("missing path")
 
             ocr = ensure_engine()
-            result = ocr(path)
+            want_words = bool(req.get("words"))
+            if want_words:
+                try:
+                    result = ocr(path, return_word_box=True)
+                except TypeError:
+                    result = ocr(path)
+            else:
+                result = ocr(path)
 
             txts = list(getattr(result, "txts", None) or [])
             scores = [float(s) for s in (getattr(result, "scores", None) or [])]
@@ -170,6 +177,18 @@ def main() -> int:
                         pts.append([float(p[0]), float(p[1])])
                     boxes_out.append(pts)
 
+            # Per line: [[word, score, [[x, y] x4]], ...] when RapidOCR 3 gives word boxes.
+            words_out = []
+            if want_words:
+                for line_words in getattr(result, "word_results", None) or []:
+                    items = []
+                    for wd in line_words or []:
+                        try:
+                            items.append([str(wd[0]), float(wd[1]), [[float(p[0]), float(p[1])] for p in wd[2]]])
+                        except Exception:
+                            continue
+                    words_out.append(items)
+
             print(
                 json.dumps(
                     {
@@ -178,6 +197,7 @@ def main() -> int:
                         "txts": txts,
                         "scores": scores,
                         "boxes": boxes_out,
+                        "words": words_out,
                     },
                     ensure_ascii=False,
                 ),

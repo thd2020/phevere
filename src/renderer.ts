@@ -148,9 +148,9 @@ import {
   type BookSort,
 } from '@phevere/core';
 import { choiceRowHtml, enhanceSelect, keycapsHtml, rangeRowHtml, segRowHtml, switchRowHtml } from '@phevere/core';
-import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages } from '@phevere/core';
+import { filterVocabByLang, languageName, parseGoal, vocabLangChipsHtml, vocabLanguages, savedForSpelling } from '@phevere/core';
 import { aboutSettingsHtml, flashAboutCopied, type AboutPlatform } from '@phevere/core';
-import { learnSettingsHtml, microphoneAvailable, readLearnPrefs, watchMicrophone, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
+import { learnSettingsHtml, microphoneAvailable, readLearnPrefs, watchMicrophone, wireNumberWheels, writeLearnPrefs, type LearnPrefs } from '@phevere/core';
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
 import { AZ_INDEX, compareAz, followIndexRail, vocabAzLetter, wireIndexRail } from '@phevere/core';
 import { bookMenuItems, bookPickItems, bookRemovalPrompt, openMenu } from '@phevere/core';
@@ -565,9 +565,11 @@ async function wireAboutSettings(): Promise<void> {
 
 /**
  * Settings → Learn: new words a day for My words and each subscribed book, the countdown on choice
- * questions, and speaking questions once a microphone is there. My words' goal and the options go
- * to local storage, which the main window watches; a book's goal goes to the word-book store, and
- * a bump of LEARN_BOOKS_KEY tells the main window to reload the books.
+ * questions, and speaking questions once a microphone is there. Each number is a wheel
+ * (number-wheel.ts) that sends `change` once it settles. My words' goal and the options go to
+ * local storage, which the main window watches; a book's goal goes to the word-book store, and a
+ * bump of LEARN_BOOKS_KEY tells the main window to reload the books. A settled wheel already
+ * shows its value, so saving it does not repaint the panel.
  */
 function wireLearnSettings(): void {
   const host = document.getElementById('learn-settings-host');
@@ -575,15 +577,17 @@ function wireLearnSettings(): void {
   let microphone = false;
   let books: Array<{ id: string; title: string; goal: number }> = [];
   const paint = () => {
+    // A repaint (books reloaded on focus, a microphone plugged in) keeps keyboard focus on its wheel.
+    const focused = host.contains(document.activeElement) ? document.activeElement?.id : '';
     host.innerHTML = learnSettingsHtml({
       goal: Number(readPref(NB_GOAL_KEY, '10')) || 10,
       books,
       prefs: readLearnPrefs(readPref(LEARN_PREFS_KEY, '')),
       microphone,
     });
-    // This panel repaints after start-up, so its selects miss the pass that styles the others.
-    host.querySelectorAll<HTMLSelectElement>('select.sv-select').forEach(enhanceSelect);
+    if (focused) document.getElementById(focused)?.focus();
   };
+  wireNumberWheels(host);
   const loadBooks = async () => {
     try {
       const state = await wordbookApi()?.state?.();
@@ -602,21 +606,20 @@ function wireLearnSettings(): void {
     if (book) {
       await wordbookApi()?.setGoal?.(book, goal);
       writePref(LEARN_BOOKS_KEY, String(Date.now()));
-      await loadBooks();
+      books = books.map((b) => (b.id === book ? { ...b, goal } : b));
     } else {
       writePref(NB_GOAL_KEY, String(goal));
-      paint();
     }
   };
   host.addEventListener('change', (ev) => {
-    const el = ev.target as HTMLInputElement | HTMLSelectElement;
+    const el = ev.target as HTMLElement;
     const act = el.dataset.act;
-    if (act === 'learn-goal' || act === 'learn-goal-input') {
-      const goal = parseGoal(el.value);
+    if (act === 'learn-goal') {
+      const goal = parseGoal(el.dataset.value);
       if (goal != null) void setGoal(el.dataset.book || '', goal);
     } else if (act === 'learn-countdown') {
       const prefs = readLearnPrefs(readPref(LEARN_PREFS_KEY, ''));
-      writePref(LEARN_PREFS_KEY, writeLearnPrefs({ ...prefs, countdown: Number(el.value) || 0 }));
+      writePref(LEARN_PREFS_KEY, writeLearnPrefs({ ...prefs, countdown: Number(el.dataset.value) || 0 }));
     } else if (act === 'learn-speaking') {
       const prefs = readLearnPrefs(readPref(LEARN_PREFS_KEY, ''));
       writePref(LEARN_PREFS_KEY, writeLearnPrefs({ ...prefs, speaking: (el as HTMLInputElement).checked }));
@@ -3200,7 +3203,8 @@ function wireNotebookActions(root: HTMLElement): void {
         const q = el.dataset.q || el.dataset.lemma;
         if (q) {
           addToRecentSelections(q);
-          void openFullLookup(q);
+          // data-lang: a word saved in another language opens in it (the Danish "give").
+          void openFullLookup(q, el.dataset.lang || undefined);
         }
         return;
       }
@@ -3707,11 +3711,11 @@ async function importWords(): Promise<void> {
 
 setVocabSortMode(getVocabSortMode());
 
-async function openFullLookup(text: string): Promise<void> {
+async function openFullLookup(text: string, lang?: string): Promise<void> {
   try {
     // Open first; lookup runs inside the dictionary window. Awaiting recall here
     // froze history/saves behind a hung IPC with no visible window progress.
-    window.electronAPI?.send?.('open-full-lookup', text);
+    window.electronAPI?.send?.('open-full-lookup', text, lang);
   } catch (error) {
     console.error(error);
   }
@@ -4025,9 +4029,8 @@ function renderRecentLookups(): void {
     list.innerHTML = `<p class="empty-message">${all.length ? 'No matching lookups.' : 'No recent lookups.'}</p>`;
     return;
   }
-  const saved = new Map<string, any>();
-  for (const e of vocabNotebookCache) saved.set(String(e.lemma || '').trim().toLowerCase(), e);
-  list.innerHTML = recentListHtml(items, (q) => saved.get(q.trim().toLowerCase()), Date.now(), { bookPick: hasOwnBooks() });
+  // A spelling saved in two languages: the row stands for the word a plain lookup opens.
+  list.innerHTML = recentListHtml(items, (q) => savedForSpelling(vocabNotebookCache, q), Date.now(), { bookPick: hasOwnBooks() });
 }
 
 function addToRecentSelections(text: string): void {
