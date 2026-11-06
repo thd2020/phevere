@@ -11,6 +11,7 @@ import {
   buildEtymology,
   etymonTemplateLinks,
   extractEnglishEtymologySections,
+  extractLanguageSection,
   languageName,
   scanTemplates,
   templateToLink,
@@ -25,6 +26,12 @@ export interface WordEtymon {
   via: string[];
   /** Proto-Indo-European roots, as written on Wiktionary: "*bʰer-". */
   roots: string[];
+  /**
+   * The earlier words it came from, nearest first, as [Wiktionary language code, word as
+   * written]: attest has [["frm", "attester"], ["la", "attēstor"]]. Two saved words that came
+   * from the same word share its root, whether or not the spelling shows it.
+   */
+  sources?: Array<[string, string]>;
 }
 
 export interface EtymonStore {
@@ -100,6 +107,7 @@ export function baseWord(wikitext: string): string {
 export function etymonFromChain(chain: EtymologyLink[] | undefined): WordEtymon {
   const route: string[] = [];
   const roots: string[] = [];
+  const sources: Array<[string, string]> = [];
   for (const link of chain || []) {
     if (link.relation === 'root' && link.languageCode === 'ine-pro' && link.term) {
       if (!roots.includes(link.term)) roots.push(link.term);
@@ -110,6 +118,9 @@ export function etymonFromChain(chain: EtymologyLink[] | undefined): WordEtymon 
       roots.push(link.term);
       continue;
     }
+    const code = link.languageCode || '';
+    const term = (link.term || '').replace(/<[^>]*>/g, '').trim();
+    if (code && code !== 'en' && term && !sources.some(([c, t]) => c === code && t === term)) sources.push([code, term]);
     const b = bucket(link);
     if (b && route[route.length - 1] !== b) route.push(b);
   }
@@ -118,7 +129,58 @@ export function etymonFromChain(chain: EtymologyLink[] | undefined): WordEtymon 
   const foreign = route.filter((b) => b !== 'Old English');
   const origin = foreign.length ? foreign[foreign.length - 1] : route.length ? 'Old English' : '';
   const via = foreign.slice(0, -1).filter((b, i, all) => all.indexOf(b) === i && b !== origin).reverse();
-  return { origin, via, roots: roots.slice(0, 2) };
+  return { origin, via, roots: roots.slice(0, 2), sources: sources.slice(0, 6) };
+}
+
+/**
+ * The Wiktionary page of an earlier word: reconstructions live under "Reconstruction:", and
+ * Latin, Old English and Ancient Greek entries are titled without length marks (attēstor is
+ * at "attestor", ġyldan at "gyldan").
+ */
+export function sourcePageTitle(code: string, term: string): string {
+  const bare = term.replace(/^\*/, '');
+  if (code.endsWith('-pro')) {
+    const name = languageName(code);
+    return name && name !== code ? `Reconstruction:${name}/${bare}` : '';
+  }
+  let t = bare.normalize('NFD').replace(/[̄̆]/g, '');
+  if (/^(la|ang|enm)(-|$)/.test(code)) t = t.replace(/[̀́̇]/g, '');
+  return t.normalize('NFC');
+}
+
+/**
+ * The Proto-Indo-European roots an earlier word's own entry names ({{root|la|ine-pro|*bʰer-}}).
+ * `older` is the word that one came from in turn, as the saved word's chain writes it.
+ *
+ * A page with several numbered etymologies holds unrelated homographs (Middle English "foul"
+ * is both foul and fowl), so only the etymology that names `older` is read, and none when that
+ * does not pick out exactly one. A preposition or prefix (Latin "ex", "sub") is the first part
+ * of a compound, not its stem, so its root is not the word's.
+ */
+export function rootsOnSourcePage(wikitext: string, code: string, older?: string): string[] {
+  const name = languageName(code) || '';
+  let section = code.endsWith('-pro') ? wikitext : extractLanguageSection(wikitext, name);
+  const heads = [...section.matchAll(/^(={3,})\s*Etymology\s+\d+\s*\1\s*$/gim)];
+  if (heads.length > 1) {
+    const blocks = heads.map((h, i) => section.slice(h.index, heads[i + 1]?.index));
+    const named = older ? blocks.filter((b) => b.includes(older)) : [];
+    if (named.length !== 1) return [];
+    section = named[0];
+  }
+  const pos = [...section.matchAll(/^={3,}\s*([A-Za-z ]+?)\s*={3,}\s*$/gm)].map((m) => m[1].toLowerCase());
+  const stem = pos.some((p) => /^(noun|proper noun|verb|adjective|participle|numeral)$/.test(p));
+  if (!stem && pos.some((p) => /^(preposition|prefix|conjunction|particle)$/.test(p))) return [];
+  const roots: string[] = [];
+  const add = (r: string | undefined) => {
+    const root = String(r || '').replace(/<[^>]*>/g, '').trim();
+    if (root.startsWith('*') && !roots.includes(root)) roots.push(root);
+  };
+  for (const t of scanTemplates(section)) {
+    if (t.name === 'root' && t.positional[1] === 'ine-pro') t.positional.slice(2).forEach(add);
+    else if (/^(inh|der|uder)\+?$/.test(t.name) && t.positional[1] === 'ine-pro') add(t.positional[2]);
+    else if (t.name === 'etymon' || t.name === 'ety') for (const k of etymonTemplateLinks(t)) if (k.languageCode === 'ine-pro') add(k.term);
+  }
+  return roots.slice(0, 2);
 }
 
 function localStore(): EtymonStore | null {
@@ -142,7 +204,20 @@ function localStore(): EtymonStore | null {
   };
 }
 
-type Cached = WordEtymon & { at: number; miss?: boolean; base?: string };
+/**
+ * Version 2 (2026-11-06) records the words each word came from and reads their pages for a
+ * Proto-Indo-European root when the word's own page names none. Words traced by version 1 are
+ * traced again once.
+ */
+const ETYMON_VERSION = 2;
+
+/** `src` marks a word whose earlier words' pages have been read for a root. */
+type Cached = WordEtymon & { at: number; miss?: boolean; base?: string; v?: number; src?: 1 };
+
+/** A traced word that names no root itself and whose earlier words' pages are still unread. */
+function wantsSourcePages(hit: Cached | undefined): hit is Cached {
+  return !!hit && !hit.miss && hit.v === ETYMON_VERSION && !hit.src && !hit.roots.length && !!hit.sources?.length;
+}
 
 let memo: Record<string, Cached> | null = null;
 let store: EtymonStore | null = null;
@@ -246,17 +321,20 @@ export function traceEtymons(lemmas: string[], onProgress?: (p: TraceProgress) =
   if (running) return running;
   const map = cacheMap();
   const now = Date.now();
-  const todo = [...new Set(lemmas.map((l) => l.trim().toLowerCase()))].filter((l) => {
+  const asked = [...new Set(lemmas.map((l) => l.trim().toLowerCase()))];
+  const todo = asked.filter((l) => {
     if (!/^[a-z][a-z' -]*$/.test(l)) return false;
     const hit = map[l];
-    return !hit || (hit.miss && now - hit.at > MISS_RETRY_MS);
+    return !hit || (hit.miss && now - hit.at > MISS_RETRY_MS) || (!hit.miss && (hit.v || 1) < ETYMON_VERSION);
   });
-  if (!todo.length) return Promise.resolve(0);
+  // A run that stopped after the words' own pages (the app closed, the network dropped) left
+  // their earlier words' pages unread; those are read on the next call.
+  if (!todo.length && !asked.some((l) => wantsSourcePages(map[l]))) return Promise.resolve(0);
   running = (async () => {
     let done = 0;
     let recorded = 0;
     let failures = 0;
-    const total = todo.length;
+    let total = todo.length;
     const followed = new Set<string>();
     for (let i = 0; i < todo.length; ) {
       const batch = todo.slice(i, i + 20);
@@ -271,9 +349,13 @@ export function traceEtymons(lemmas: string[], onProgress?: (p: TraceProgress) =
         const text = pages.get(lemma) || '';
         const chain = text ? buildEtymology(text)?.chain : undefined;
         const e = etymonFromChain(chain);
+        // A word saved in another language ("juventas") has no English entry; the words its
+        // foreign entry came from, and the lemma it is a form of, say nothing about English roots.
+        const english = /^==\s*English\s*==\s*$/m.test(text);
+        if (!english) delete e.sources;
         const found = !!(e.origin || e.roots.length);
-        const base = found ? '' : baseWord(text).toLowerCase();
-        map[lemma] = { ...e, at: Date.now(), ...(found ? {} : { miss: true }), ...(base && base !== lemma ? { base } : {}) };
+        const base = found || !english ? '' : baseWord(text).toLowerCase();
+        map[lemma] = { ...e, at: Date.now(), v: ETYMON_VERSION, ...(found ? {} : { miss: true }), ...(base && base !== lemma ? { base } : {}) };
         recorded += 1;
         // Trace the base too (once), unless it is already known.
         if (base && base !== lemma && !followed.has(base) && (!map[base] || map[base].miss)) {
@@ -294,8 +376,62 @@ export function traceEtymons(lemmas: string[], onProgress?: (p: TraceProgress) =
         hit.origin = base.origin;
         hit.via = base.via;
         hit.roots = base.roots;
+        hit.sources = base.sources;
         delete hit.miss;
       }
+    }
+    // Most English entries name no Proto-Indo-European root, but the Latin, Greek or Old English
+    // word they came from often does: "transfer" names *bʰer- itself, "cerebrate" leaves it to
+    // Latin cerebrum. For each word traced in this run that has no root yet, read the pages of
+    // the words it came from, nearest first, and take the first root named.
+    const wanted = new Map<Cached, string[]>();
+    for (const l of new Set([...asked, ...todo])) {
+      const hit = map[l];
+      if (!wantsSourcePages(hit)) continue;
+      const titles = hit.sources!.map(([code, term]) => (code === 'ine-pro' ? '' : sourcePageTitle(code, term)));
+      if (titles.some(Boolean)) wanted.set(hit, titles);
+      else hit.src = 1;
+    }
+    // The words' own pages could not be fetched, so neither can these; try them next time.
+    if (failures >= 5) wanted.clear();
+    const titles = [...new Set([...wanted.values()].flat().filter(Boolean))];
+    const sourcePages = new Map<string, string>();
+    total += titles.length;
+    onProgress?.({ done, total });
+    let complete = true;
+    for (let i = 0; i < titles.length; ) {
+      const batch = titles.slice(i, i + 20);
+      const pages = await wikitexts(batch);
+      if (!pages) {
+        if (++failures >= 5) {
+          complete = false;
+          break;
+        }
+        await sleep(8000 * 2 ** (failures - 1));
+        continue;
+      }
+      failures = 0;
+      for (const [t, text] of pages) sourcePages.set(t, text);
+      i += batch.length;
+      done += batch.length;
+      onProgress?.({ done, total });
+      await sleep(700);
+    }
+    for (const [hit, pageTitles] of wanted) {
+      for (let k = 0; k < pageTitles.length; k++) {
+        const text = sourcePages.get(pageTitles[k]);
+        const roots = text ? rootsOnSourcePage(text, hit.sources![k][0], hit.sources![k + 1]?.[1]) : [];
+        if (roots.length) {
+          hit.roots = roots;
+          break;
+        }
+      }
+      // Pages that never arrived are read again next time.
+      if (complete || hit.roots.length) hit.src = 1;
+    }
+    for (const hit of Object.values(map)) {
+      const base = hit.base ? map[hit.base] : undefined;
+      if (base && !hit.roots.length && base.roots.length) hit.roots = base.roots;
     }
     saveNow();
     return recorded;

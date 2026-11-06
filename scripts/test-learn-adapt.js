@@ -75,31 +75,31 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
   assert.equal(q.reveal, 1);
   assert.equal(q.hint, 'h');
   assert.ok(q.predicted > 0.8 && q.predicted < 0.95, `predicted ${q.predicted}`);
-  // The same word overdue: recall is weaker, so it is typed with a second letter shown, or recognised.
+  // The same word overdue: recall is weaker, so it is recognised, or typed from its first letter
+  // only; a weak word gets an easier kind, never a longer cue.
   const late = { ...firm, lastReview: now - 70 * DAY };
   const lateKinds = new Set();
   for (let s = 0; s < 30; s++) {
     const lq = core.buildQuestion(late, pool, { now }, core.seededRandom(s));
     lateKinds.add(lq.kind);
     if (lq.kind === 'recall') {
-      assert.equal(lq.reveal, 2, 'a weaker word typed gets a second letter');
-      assert.equal(lq.hint, 'ha');
+      assert.equal(lq.reveal, 1, 'a weaker word typed still starts from one letter');
+      assert.equal(lq.hint, 'h');
     }
   }
-  assert.ok(lateKinds.has('recall') && [...lateKinds].every((k) => ['recall', 'word-choice'].includes(k)), `${[...lateKinds]}`);
+  assert.ok(lateKinds.has('word-choice') && [...lateKinds].every((k) => ['recall', 'word-choice', 'spell-tiles'].includes(k)), `${[...lateKinds]}`);
   // Long forgotten: it steps back to recognition.
   const lost = { ...firm, lastReview: now - 400 * DAY };
   const kinds = new Set();
   for (let s = 0; s < 30; s++) kinds.add(core.buildQuestion(lost, pool, { now }, core.seededRandom(s)).kind);
   assert.ok(kinds.has('word-choice'), `a long-forgotten word steps back to recognition: ${[...kinds]}`);
-  // Cues never give away more than a third of a word.
-  for (const lemma of ['cat', 'harbour', 'extraordinary']) {
-    const n = core.cueLetters('recall', lemma, -3, null);
-    assert.ok(n >= 1 && n <= 1 + Math.floor((lemma.length - 2) / 3), `${lemma}: ${n}`);
+  // A typed question starts from one letter, however weak the word; dictation from none.
+  for (const lemma of ['cat', 'harbour', 'extraordinary', 'idiosyncrasy']) {
+    for (const strength of [-3, 0, 3]) assert.equal(core.cueLetters('recall', lemma, strength, null), 1, `${lemma} at ${strength}`);
   }
-  assert.equal(core.cueLetters('listen-type', 'harbour', 3, null), 0, 'dictation of a firm word shows no letter');
+  assert.equal(core.cueLetters('listen-type', 'harbour', -3, null), 0, 'dictation shows no letter');
 
-  // Hint reveals a letter into the box, never the last one, and caps the grade at Hard.
+  // Hint reveals a letter into the box, one a press, never the last one.
   const state = core.startReview([firm], 10, now);
   state.started = true;
   const asked = core.ensureReviewQuestion(state, [firm, ...pool.slice(1)], { now });
@@ -110,13 +110,27 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
   assert.equal(core.typedPlaceholder(asked), 'ha·····');
   while (core.hintReview(state));
   assert.equal(asked.draft, 'harbou', 'the last letter stays hidden');
+  assert.equal(asked.hinted, 5, 'one letter a press');
   const html = core.reviewHtml([firm, ...pool.slice(1)], state, 10, { now });
   assert.match(html, /value="harbou"/);
   assert.match(html, /7 letters/);
+  assert.match(html, /class="nbv-type__cue"[^>]*>harbou·</, 'the letters shown stay in sight under the box');
   assert.doesNotMatch(html, /data-act="nb-hint"/, 'no Hint once only the last letter is hidden');
   const a = core.answerReview(state, { typed: 'harbour' }, now + 2000);
   assert.equal(a.result, 'right');
-  assert.equal(a.grade, 2, 'right after a hint is Hard');
+  assert.equal(a.grade, 1, 'hints that gave most of the word: Again, the word was told rather than recalled');
+  assert.match(core.reviewHtml([firm, ...pool.slice(1)], state, 10, { now: now + 2100 }), />I knew it</);
+  core.overrideReview(state);
+  assert.equal(state.answer.grade, 2, '"I knew it" after a hinted answer is Hard at most');
+  // Each hint lowers the credit: one letter of six is Hard, three of six Again.
+  const graded = (presses) => {
+    const s = core.startReview([firm], 10, now);
+    s.started = true;
+    const q = core.ensureReviewQuestion(s, [firm, ...pool.slice(1)], { now });
+    for (let i = 0; i < presses; i++) core.hintReview(s);
+    return core.answerReview(s, { typed: 'harbour' }, now + 2000).grade;
+  };
+  assert.deepEqual([0, 1, 2, 3].map(graded), [4, 2, 2, 1]);
   // Hint keeps what the learner typed as far as it matches, and reveals the letter after it.
   const hintAfter = (typed) => {
     const s = core.startReview([firm], 10, now);
@@ -125,8 +139,11 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
     return { ok: core.hintReview(s, typed), q };
   };
   assert.equal(hintAfter('harb').q.draft, 'harbo', 'four right letters kept, the fifth revealed');
+  assert.equal(hintAfter('harb').q.hinted, 1, 'letters the learner typed are not counted as hints');
   assert.equal(hintAfter('HARB').q.draft, 'HARBo', 'letter case aside, and as typed');
-  assert.equal(hintAfter('hax').q.draft, 'har', 'typing past the first wrong letter is dropped');
+  const wrongTyped = hintAfter('hax').q;
+  assert.equal(wrongTyped.draft, 'hax', 'what the learner typed is never cleared');
+  assert.equal(core.typedPlaceholder(wrongTyped), 'har····', 'the letters shown appear under the box instead');
   assert.equal(hintAfter('').q.draft, 'ha', 'an empty box gets the letter after the shown one');
   const nearlyDone = hintAfter('harbou');
   assert.equal(nearlyDone.ok, false, 'the last letter is never revealed');
@@ -136,11 +153,141 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
   assert.equal(core.hintsLeft(kept), 1);
   assert.equal(core.autoGrade('recall', 'right', 2000, 7, { extra: 1 }), 3, 'extra letters up front: at most Good');
   assert.equal(core.autoGrade('recall', 'right', 2000, 7, {}), 4);
+  assert.equal(core.autoGrade('recall', 'right', 2000, 12, { hintShare: 1 / 11 }), 2, 'one hint in a long word: Hard');
+  assert.equal(core.autoGrade('recall', 'right', 2000, 12, { hintShare: 3 / 11 }), 2);
+  assert.equal(core.autoGrade('recall', 'right', 2000, 12, { hintShare: 4 / 11 }), 1, 'more than a third of the word given: Again');
+  assert.equal(core.autoGrade('recall', 'right', 2000, 4, { hintShare: 1 / 3 }), 2, 'a third exactly is still Hard');
+
+  // What the learner typed survives any repaint: the box is kept on each keystroke.
+  const typing = core.startReview([firm], 10, now);
+  typing.started = true;
+  core.ensureReviewQuestion(typing, [firm, ...pool.slice(1)], { now });
+  core.keepDraft(typing, 'harb');
+  assert.match(core.reviewHtml([firm, ...pool.slice(1)], typing, 10, { now: now + 5000 }), /id="nbv-answer"[^>]*value="harb"/);
+  assert.ok(core.hintReview(typing), 'Hint goes on from the kept box');
+  assert.equal(typing.question.draft, 'harbo');
+
+  // "Almost" is a miss: Again, a cross over the question, and "I knew it" gives Hard at most.
+  const near = core.startReview([firm], 10, now);
+  near.started = true;
+  core.ensureReviewQuestion(near, [firm, ...pool.slice(1)], { now });
+  const na = core.answerReview(near, { typed: 'harbuor' }, now + 2000);
+  assert.equal(na.result, 'close');
+  assert.equal(na.grade, 1);
+  const nearHtml = core.reviewHtml([firm, ...pool.slice(1)], near, 10, { now: now + 2100 });
+  assert.match(nearHtml, /Almost: harbour/);
+  assert.match(nearHtml, /class="nbv-ink is-wrong"/, 'the wrong-answer mark');
+  assert.equal((nearHtml.match(/nbv-ink__reveal--/g) || []).length, 2, 'a cross, not a tick');
+  assert.match(nearHtml, />I knew it</);
+  assert.doesNotMatch(nearHtml, /Too easy/);
+  core.overrideReview(near);
+  assert.equal(near.answer.grade, 2);
 
   // The stage tag is on every question.
   const tagState = core.startReview([firm], 10, now);
   tagState.started = true;
   assert.match(core.reviewHtml([firm, ...pool.slice(1)], tagState, 10, { now }), /nbv-tag is-young">Young</);
+}
+
+/* ------------------------------------------- gap choice and letter tiles */
+{
+  // Every option of a gap question takes the gap's form.
+  assert.equal(core.inflectLike('ignore', 'ignored', 'notice'), 'noticed');
+  assert.equal(core.inflectLike('ignore', 'ignoring', 'stop'), 'stopping');
+  assert.equal(core.inflectLike('city', 'cities', 'harbour'), 'harbours');
+  assert.equal(core.inflectLike('harbour', 'Harbour', 'meadow'), 'Meadow', 'a gap at the start of a sentence');
+  assert.equal(core.inflectLike('ignore', 'ignored', 'make up'), null, 'a phrase that cannot take the form is left out');
+  assert.deepEqual(core.regularForms('rat'), ['rats', 'ratted', 'ratting'], 'regular forms unchanged');
+
+  const ready = { offset: {}, right: { 'word-choice': 6, 'meaning-choice': 6 } };
+  const learning = (e) => ({ ...e, reps: 1, state: 1, stability: 0.4, lastReview: now - 10 * 60_000, reviewDue: now });
+  const lantern = learning(pool[1]);
+  const examples = (l) => (l === 'lantern' ? ['They walked home by the light of a lantern.', 'Lanterns lined the street.'] : undefined);
+  const kindsOf = (entry, opts) => {
+    const seen = new Map();
+    for (let s = 0; s < 80; s++) {
+      const q = core.buildQuestion(entry, pool, { now, learner: ready, asked: s % 3 ? ['word-choice', 'meaning-choice', 'word-choice'] : [], ...opts }, core.seededRandom(s));
+      if (!seen.has(q.kind)) seen.set(q.kind, q);
+    }
+    return seen;
+  };
+  const withSentence = kindsOf(lantern, { examples });
+  const gap = withSentence.get('cloze-choice');
+  assert.ok(gap, `a learning word with an example sentence gets the gap among four: ${[...withSentence.keys()]}`);
+  assert.equal(gap.options.length, 4);
+  assert.equal(gap.options[gap.correct], 'lantern');
+  assert.match(gap.prompt, /_____/);
+  assert.doesNotMatch(gap.prompt, /lantern/i, 'the sentence never shows the word');
+  assert.equal(new Set(gap.options.map((o) => o.toLowerCase())).size, 4, 'four different options');
+  assert.ok(!kindsOf(lantern, {}).has('cloze-choice'), 'no sentence, no gap question');
+  // Answered like any choice, with the countdown of choice questions.
+  assert.ok(core.COUNTDOWN_KINDS.includes('cloze-choice'));
+  const gs = core.startReview([lantern], 10, now);
+  gs.started = true;
+  gs.question = gap;
+  assert.match(core.reviewHtml([lantern, ...pool.filter((e) => e.id !== 'lantern')], gs, 10, { now }), /Choose the word for the gap[\s\S]*class="nbv-gap"[\s\S]*data-act="nb-choose"/);
+  assert.equal(core.answerReview(gs, { choice: gap.correct }, now + 3000).grade, 3);
+
+  // A plural in the sentence: every option is a plural.
+  const inflected = core.buildQuestion(learning(pool[1]), pool, { now, learner: ready, examples: () => ['Lanterns hung from every branch of the old trees.'] }, core.seededRandom(3));
+  const pluralGap = inflected.kind === 'cloze-choice' ? inflected : [...kindsOf(learning(pool[1]), { examples: () => ['Lanterns hung from every branch of the old trees.'] }).values()].find((q) => q.kind === 'cloze-choice');
+  assert.ok(pluralGap);
+  assert.ok(pluralGap.options.every((o) => /^[A-Z].*s$/.test(o)), `${pluralGap.options}`);
+
+  // An -ing gap offers only verbs, so no option is a made-up form of a noun ("lanterning"), and a
+  // word that the answer's definition names (a synonym that could fill the gap) is never offered.
+  const verb = (lemma, def) => ({ id: lemma, lemma, partOfSpeech: 'verb', sourceLang: 'en', definition: def, createdAt: now - 60 * DAY });
+  const wander = learning(verb('wander', 'to walk or roam slowly without a fixed course'));
+  const verbs = [wander, verb('gather', 'to bring together'), verb('borrow', 'to take and give back later'), verb('polish', 'to make shiny'), verb('roam', 'to move about aimlessly')];
+  const mixed = [...verbs, ...pool];
+  const ingSentences = () => ['We spent the afternoon wandering through the old market streets.'];
+  let ingGap = null;
+  for (let s = 0; s < 80 && !ingGap; s++) {
+    const q = core.buildQuestion(wander, mixed, { now, learner: ready, examples: ingSentences }, core.seededRandom(s));
+    if (q.kind === 'cloze-choice') ingGap = q;
+  }
+  assert.ok(ingGap, 'a verb in an -ing gap gets the gap question');
+  assert.equal(ingGap.options[ingGap.correct], 'wandering');
+  assert.ok(ingGap.options.every((o) => /ing$/.test(o)), `${ingGap.options}`);
+  assert.ok(ingGap.optionWords.every((w) => verbs.some((v) => v.lemma === w)), `only verbs: ${ingGap.optionWords}`);
+  assert.ok(!ingGap.optionWords.includes('roam'), 'a synonym named in the definition is not offered');
+
+  // Letter tiles: the word's own letters, shuffled, for one word up to fourteen letters.
+  assert.ok(core.tileable('harbour') && core.tileable("o'clock") && !core.tileable('make up') && !core.tileable('ab') && !core.tileable('extraordinarily'));
+  const tiles = kindsOf(lantern, {}).get('spell-tiles');
+  assert.ok(tiles, 'a learning word can be built from its letters');
+  assert.deepEqual([...tiles.tiles].sort(), [...'lantern'].sort());
+  assert.notEqual(tiles.tiles.join(''), 'lantern', 'the row does not spell the word already');
+  assert.ok(!kindsOf(lantern, { learner: { offset: {}, right: {} } }).has('spell-tiles'), 'tiles open after a few words recognised');
+  const repeatKinds = new Set();
+  for (let s = 0; s < 40; s++) repeatKinds.add(core.buildQuestion(lantern, pool, { now, learner: ready, repeat: 1 }, core.seededRandom(s)).kind);
+  assert.ok(!repeatKinds.has('spell-tiles'), 'not for a learning word asked again the same day');
+  const build = (order) => {
+    const s = core.startReview([lantern], 10, now);
+    s.started = true;
+    s.question = { ...tiles, placed: [] };
+    for (const ch of order) assert.ok(core.tileKey(s, ch, now + 4000) || s.answer, `key ${ch}`);
+    return s;
+  };
+  const good = build('lantern');
+  assert.equal(good.answer.result, 'right', 'placing the last tile answers');
+  assert.equal(good.answer.grade, 3, 'tiles hand over the letters: Good, never Easy');
+  const bad = build('lnatern');
+  assert.equal(bad.answer.result, 'wrong', 'a swapped pair is a misspelling, not "Almost"');
+  const s7 = core.startReview([lantern], 10, now);
+  s7.started = true;
+  s7.question = { ...tiles, placed: [] };
+  core.placeTile(s7, 0, now);
+  core.placeTile(s7, 1, now);
+  assert.equal(core.placeTile(s7, 1, now), false, 'a tile is used once');
+  const html7 = core.reviewHtml([lantern, ...pool.filter((e) => e.id !== 'lantern')], s7, 10, { now });
+  assert.equal((html7.match(/data-act="nb-tile"/g) || []).length, 5);
+  assert.equal((html7.match(/data-act="nb-tile-out"/g) || []).length, 2);
+  assert.match(html7, /Spell the word/);
+  assert.ok(core.returnTile(s7, 0));
+  assert.deepEqual(s7.question.placed, [1]);
+  assert.ok(core.tileKey(s7, 'Backspace'));
+  assert.deepEqual(s7.question.placed, []);
 }
 
 /* ---------------------------------------------------------------- unlocks */
@@ -316,6 +463,13 @@ const countdownChecks = async () => {
   assert.equal(core.markHeard(s5, 'someotherword'), false, 'only the word on screen counts');
   assert.equal(core.markHeard(s5, q5.lemma.toUpperCase()), true);
   assert.equal(core.markHeard(s5, q5.lemma), false, 'once');
+  // A dictation has no countdown to redraw: the word finishing never repaints the box being typed in.
+  const s6 = core.startReview([fresh], 10, Date.now());
+  s6.started = true;
+  const q6 = core.ensureReviewQuestion(s6, [fresh, ...pool.slice(3)], { now: Date.now() });
+  q6.kind = 'listen-type';
+  assert.equal(core.markHeard(s6, q6.lemma), false);
+  assert.equal(q6.heard, true);
   core.armCountdown(s5, 0.3, () => true, () => (painted += 1));
   await new Promise((r) => setTimeout(r, 120));
   assert.equal(s5.answer, null, 'the countdown starts from the full time once heard');
@@ -357,6 +511,35 @@ const countdownChecks = async () => {
   const broken = core.singleVoice({ ...backend, recordings: async () => ['clip:broken'] });
   assert.equal(await broken('meadow'), 'speech');
   assert.deepEqual(log, ['stop', 'stop', 'voice:meadow']);
+  // The synthetic voice takes a while to make. A second press while the first is still being made
+  // gives one sound: the first stays silent once it is ready.
+  log.length = 0;
+  const pendingSynth = [];
+  const slowVoice = core.singleVoice({
+    ...backend,
+    recordings: async () => [],
+    speak: (w, alive) =>
+      new Promise((r) => pendingSynth.push(() => {
+        if (alive()) log.push(`voice:${w}`);
+        r();
+      })),
+  });
+  const p1 = slowVoice('ravine');
+  await new Promise((r) => setTimeout(r, 0));
+  const p2 = slowVoice('ravine');
+  await new Promise((r) => setTimeout(r, 0));
+  pendingSynth.forEach((done) => done());
+  assert.deepEqual([await p1, await p2], ['stale', 'speech']);
+  assert.deepEqual(log.filter((x) => x !== 'stop'), ['voice:ravine'], 'one sound for two presses');
+  // Moving on to the next question cancels a word still loading: it never plays.
+  log.length = 0;
+  const p3 = slowVoice('saddle');
+  await new Promise((r) => setTimeout(r, 0));
+  slowVoice.cancel();
+  pendingSynth.splice(0).forEach((done) => done());
+  pendingSynth.forEach((done) => done());
+  assert.equal(await p3, 'stale');
+  assert.deepEqual(log.filter((x) => x !== 'stop'), []);
 
   simulate();
   console.log('test-learn-adapt: ok');
@@ -492,8 +675,8 @@ function simulate() {
     assert.ok(asked.some((a) => a.kind === 'listen-type'), `${name}: dictation happens`);
     const listen = asked.filter((a) => core.kindSkill(a.kind) === 'listening').length / asked.length;
     assert.ok(listen <= core.LISTEN_CAP + 0.01, `${name}: listening ${listen}`);
-    // Cues stay within a third of the word.
-    assert.ok(asked.every((a) => a.reveal <= 1 + Math.floor(Math.max(0, a.len - 2) / 3)), `${name}: cue letters`);
+    // A typed question starts from one letter at most.
+    assert.ok(asked.every((a) => a.reveal <= 1), `${name}: cue letters`);
     // Answers land near the aim, neither trivial nor crushing.
     const late = asked.filter((a) => a.day >= 10);
     const acc = late.filter((a) => a.right).length / late.length;
@@ -512,7 +695,6 @@ function simulate() {
   const weakTyped = weak.asked.filter((a) => a.day >= 14 && (a.kind === 'recall' || a.kind === 'cloze'));
   const weakTypedAcc = weakTyped.filter((a) => a.right).length / Math.max(1, weakTyped.length);
   assert.ok(weakTypedAcc > 0.6, `weak speller's typed answers right ${weakTypedAcc.toFixed(2)} once the model knows them`);
-  assert.ok(weak.asked.some((a) => a.kind === 'recall' && a.reveal >= 2), 'a weak speller gets a second letter');
 
   // New words a day: the pace is learned after three days, and the count varies with the load.
   const withPace = avg.daily.filter((d) => d.pace);

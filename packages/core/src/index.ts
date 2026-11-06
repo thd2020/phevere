@@ -78,6 +78,7 @@ export {
   vocabEntryHtml,
   vocabListHtml,
   vocabEntryGroup,
+  filterRecentLookups,
   recentListHtml,
   vocabAzLetter,
   AZ_INDEX,
@@ -87,7 +88,7 @@ export {
   type VocabViewEntry,
   type VocabListOptions,
 } from './vocab-view';
-export { wireIndexRail, type IndexRailOptions } from './index-rail';
+export { followIndexRail, placeIndexRail, railBox, railStride, wireIndexRail, type IndexRailOptions, type RailEdges } from './index-rail';
 export {
   analyzeNotebook,
   notebookViewSwitchHtml,
@@ -268,6 +269,11 @@ export {
   sameLemma,
   reviewArmed,
   hintReview,
+  keepDraft,
+  placeTile,
+  returnTile,
+  tileKey,
+  QUESTION_KINDS,
   armCountdown,
   markHeard,
   wordMaturity,
@@ -281,7 +287,7 @@ export {
   type StudyPace,
 } from './review-quiz';
 export { learnerModel, studyPace, suggestGoal } from './learn-adapt';
-export { singleVoice, type VoiceBackend, type VoiceOutcome } from './pronounce-once';
+export { singleVoice, type SingleVoice, type VoiceBackend, type VoiceOutcome } from './pronounce-once';
 export { type ReviewRenderOptions } from './notebook-review';
 
 export { onVocabChanged } from './vocab-store';
@@ -493,9 +499,27 @@ export {
   type KeyCardState,
   type KeyStatus,
 } from './settings-keys';
-export { GOAL_PRESETS, learnSettingsHtml, type LearnSettingsInput } from './settings-learn';
+export { GOAL_MAX, GOAL_MIN, learnSettingsHtml, type LearnSettingsInput } from './settings-learn';
+export { numberWheelHtml, parseWheelEntry, wheelItemStyle, wireNumberWheels, type NumberWheelInput } from './number-wheel';
 export {
-  COUNTDOWN_CHOICES,
+  ABOUT_CREDITS,
+  ABOUT_SERVICES,
+  REPO_URL,
+  aboutCredits,
+  aboutIssueUrl,
+  aboutSettingsHtml,
+  aboutVersionLabel,
+  aboutVersionText,
+  flashAboutCopied,
+  systemFromUserAgent,
+  type AboutCredit,
+  type AboutInfo,
+  type AboutPlatform,
+} from './settings-about';
+export { ABOUT_STRINGS_EN, type AboutStrings } from './settings-about-strings';
+export {
+  COUNTDOWN_MAX,
+  COUNTDOWN_MIN,
   DEFAULT_LEARN_PREFS,
   microphoneAvailable,
   readLearnPrefs,

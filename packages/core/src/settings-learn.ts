@@ -1,16 +1,19 @@
 /**
  * Settings → Learn, desktop and phone: new words a day for My words and for each subscribed word
- * book and the countdown on choice questions. The Learn tab shows the settled goal and links here.
- * The speaking-question switch (shown only with a microphone, `microphoneAvailable` in
- * learn-prefs.ts) stays hidden until speaking questions exist (`SPEAKING_QUESTIONS`); its stored
- * preference is kept.
+ * book, and the countdown on choice questions. Each is a number wheel (number-wheel.ts) on its own
+ * card: drag or flick it, scroll it, step it with the arrow keys, or tap the number to type one.
+ * The Learn tab shows the settled goal and links here. The speaking-question switch (shown only
+ * with a microphone, `microphoneAvailable` in learn-prefs.ts) stays hidden until speaking
+ * questions exist (`SPEAKING_QUESTIONS`); its stored preference is kept.
  *
- * Hooks: learn-goal (a preset radio, data-book; empty for My words), learn-goal-input (the
- * "Other" field, same data-book; act on change), learn-countdown (select), learn-speaking (switch).
+ * Hooks: learn-goal (a wheel, data-book; empty for My words) and learn-countdown (a wheel; 0 is
+ * Off). Both send a bubbling `change` once the wheel settles, with the value in `data-value`;
+ * learn-speaking (switch). The host calls `wireNumberWheels` on a container that outlives repaints.
  * Styles: settings-kit.css.
  */
 import { esc, switchRowHtml } from './settings-kit';
-import { COUNTDOWN_CHOICES, type LearnPrefs } from './learn-prefs';
+import { COUNTDOWN_MAX, COUNTDOWN_MIN, type LearnPrefs } from './learn-prefs';
+import { numberWheelHtml } from './number-wheel';
 
 export interface LearnSettingsInput {
   /** My words' new words a day. */
@@ -22,45 +25,54 @@ export interface LearnSettingsInput {
   microphone: boolean;
 }
 
-export const GOAL_PRESETS = [5, 10, 20, 40];
+/** New words a day run from 1 to 999, as `parseGoal` allows. */
+export const GOAL_MIN = 1;
+export const GOAL_MAX = 999;
 
 /** Speaking questions are not built yet, so Settings does not offer the switch for them. */
 export const SPEAKING_QUESTIONS = false;
 
-function goalRow(key: string, book: string, label: string, goal: number): string {
-  const labelId = `learn-goal-${key}`;
-  const custom = !GOAL_PRESETS.includes(goal);
-  const radios = GOAL_PRESETS.map(
-    (g) =>
-      `<label class="sv-seg__item"><input type="radio" name="${labelId}" data-act="learn-goal" data-book="${esc(book)}" value="${g}"${g === goal ? ' checked' : ''} />${g}</label>`,
-  ).join('');
-  return `<div class="sv-row sv-row--goal">
-    <span class="sv-row__text"><span class="sv-row__label" id="${labelId}">${esc(label)}</span></span>
-    <span class="sv-goal" role="group" aria-labelledby="${labelId}">
-      <span class="sv-seg">${radios}</span>
-      <input type="number" class="sv-num${custom ? ' is-on' : ''}" inputmode="numeric" min="1" max="999" step="1" value="${custom ? goal : ''}" placeholder="Other" enterkeyhint="done" data-act="learn-goal-input" data-book="${esc(book)}" aria-label="${esc(`${label}, other number a day`)}" />
-    </span>
+function dial(key: string, label: string, wheel: string): string {
+  return `<div class="sv-dial">
+    <span class="sv-dial__label" id="${key}-label">${esc(label)}</span>
+    ${wheel}
   </div>`;
 }
 
-function countdownRow(seconds: number): string {
-  const options = COUNTDOWN_CHOICES.map((s) => `<option value="${s}"${s === seconds ? ' selected' : ''}>${s ? `${s} seconds` : 'Off'}</option>`).join('');
-  const extra = COUNTDOWN_CHOICES.includes(seconds as (typeof COUNTDOWN_CHOICES)[number]) ? '' : `<option value="${seconds}" selected>${seconds} seconds</option>`;
-  return `<div class="sv-row sv-row--select">
-    <span class="sv-row__text"><label for="learn-countdown" class="sv-row__label">Countdown on choice questions</label></span>
-    <select id="learn-countdown" class="sv-select" data-act="learn-countdown">${options}${extra}</select>
-  </div>`;
+function goalDial(key: string, book: string, label: string, goal: number): string {
+  const id = `learn-goal-${key}`;
+  return dial(
+    id,
+    label,
+    numberWheelHtml({ id, labelledBy: `${id}-label`, value: goal, min: GOAL_MIN, max: GOAL_MAX, page: 10, attrs: `data-act="learn-goal" data-book="${esc(book)}"` }),
+  );
 }
 
 export function learnSettingsHtml(input: LearnSettingsInput): string {
-  const goals = [goalRow('mine', '', 'My words', input.goal), ...input.books.map((b, i) => goalRow(`b${i}`, b.id, b.title, b.goal))].join('');
+  const goals = [goalDial('mine', '', 'My words', input.goal), ...input.books.map((b, i) => goalDial(`b${i}`, b.id, b.title, b.goal))].join('');
+  const countdown = dial(
+    'learn-countdown',
+    'Countdown on choice questions',
+    numberWheelHtml({
+      id: 'learn-countdown',
+      labelledBy: 'learn-countdown-label',
+      value: input.prefs.countdown,
+      min: COUNTDOWN_MIN,
+      max: COUNTDOWN_MAX,
+      off: true,
+      unit: 'seconds',
+      page: 5,
+      attrs: 'data-act="learn-countdown"',
+    }),
+  );
   const speaking = SPEAKING_QUESTIONS && input.microphone
-    ? switchRowHtml({ label: 'Speaking questions', on: input.prefs.speaking, attrs: 'data-act="learn-speaking" id="learn-speaking"' })
+    ? `<div class="sv-ledger">${switchRowHtml({ label: 'Speaking questions', on: input.prefs.speaking, attrs: 'data-act="learn-speaking" id="learn-speaking"' })}</div>`
     : '';
   return `<div class="sv sv-page sv-learn">
     <header class="sv-head"><h3 class="sv-head__title">New words a day</h3></header>
-    <div class="sv-ledger">${goals}</div>
+    <div class="sv-dials">${goals}</div>
     <header class="sv-head"><h3 class="sv-head__title">Questions</h3></header>
-    <div class="sv-ledger">${countdownRow(input.prefs.countdown)}${speaking}</div>
+    <div class="sv-dials">${countdown}</div>
+    ${speaking}
   </div>`;
 }
