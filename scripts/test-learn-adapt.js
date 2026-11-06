@@ -541,6 +541,35 @@ const countdownChecks = async () => {
   assert.equal(await p3, 'stale');
   assert.deepEqual(log.filter((x) => x !== 'stop'), []);
 
+  // A press before the lookup has the word's pronunciation data waits for it: the first version
+  // has no clip and says more is coming, a later one brings the clip.
+  const clip = { ipa: '/ˈhɑːbə/', accent: 'uk', audioUrl: 'https://upload.wikimedia.org/x/En-uk-harbour.ogg' };
+  let push = null;
+  const early = core.awaitRecordings((onUpdate) => {
+    push = onUpdate;
+    return Promise.resolve({ pronunciations: [{ ipa: '/ˈhɑːbə/', accent: 'uk' }], metadata: { pendingPronunciation: true } });
+  }, 5000);
+  await new Promise((r) => setTimeout(r, 10));
+  push({ pronunciations: [clip], metadata: { pendingPronunciation: true } });
+  assert.equal((await early).length, 1, 'the recording that arrived after the press');
+  // A word with no recording: the version that says nothing more is coming ends the wait.
+  const none = core.awaitRecordings((onUpdate) => {
+    setTimeout(() => onUpdate({ pronunciations: [{ ipa: '/x/', accent: 'us' }], metadata: { pendingPronunciation: false } }), 10);
+    return Promise.resolve({ pronunciations: [], metadata: { pendingPronunciation: true } });
+  }, 5000);
+  const t0 = Date.now();
+  assert.deepEqual(await none, []);
+  assert.ok(Date.now() - t0 < 1000, 'no wait once the lookup says there is no recording');
+  // A lookup that never finishes: the wait runs out and the synthetic voice can speak.
+  assert.deepEqual(await core.awaitRecordings(() => Promise.resolve({ metadata: { pendingPronunciation: true } }), 30), []);
+  // A finished result plays at once, with or without a clip.
+  assert.deepEqual(await core.awaitRecordings(() => Promise.resolve({ pronunciations: [] }), 5000), []);
+  // The button shows loading only while the recordings are being found.
+  const states = [];
+  const loud = core.singleVoice({ ...backend, recordings: async () => { states.push('finding'); return ['clip:x']; } });
+  await loud('x', { onLoading: (on) => states.push(on ? 'loading' : 'ready') });
+  assert.deepEqual(states, ['loading', 'finding', 'ready']);
+
   simulate();
   console.log('test-learn-adapt: ok');
 })().catch((e) => {
