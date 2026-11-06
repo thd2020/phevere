@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Pictures that vanished (2026-11-06): a sense picture no longer appears as an empty grey or dark box that then disappears. Its place stays blank until the picture has arrived, and then it fades in. A picture whose download fails is tried again after one second and again after three; on the phone a last try goes through the app's own connection, which gets through more often on a weak network. Only a picture that fails all of these is left out. A slow picture keeps loading for as long as it takes. This applies to the desktop pop-up, phone lookups and the cards in Words.
+- Card pictures on the desktop (2026-11-06): a card in Words → Cards shows its picture as soon as the first source finds it, as the phone already did, instead of waiting for every source. On 80 notebook words over a simulated normal connection, a card's picture is chosen after about 1.3 seconds instead of 2.1, and on a slow one (one to three seconds a request) after 5.6 seconds instead of 9.5.
+- Cards scrolled past (2026-11-06): when you scroll through Cards, the cards you scrolled past stop looking for their pictures, so the cards you stop at go first. In a test where four cards were passed and four came to rest, the resting cards' pictures were chosen after 1.8 seconds instead of 4.3 on a normal connection, and after 7.6 seconds instead of 18.5 on a slow one. A card that was passed, or whose search failed, looks again when it is back on screen.
+
 ## [4.2.0] - 2026-11-06
 
 ### Added
