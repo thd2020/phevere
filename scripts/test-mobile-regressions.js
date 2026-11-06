@@ -116,6 +116,123 @@ async function startupAndGestures(floatingStrip) {
   assert.deepEqual(accountCalls, [], 'the pop-up must not touch the Holarky account');
 }
 
+/**
+ * One history for Back in the full app: from Recent, a lookup, a tab and a lookup from that tab
+ * are three steps; Back retraces them to Recent and only there lets the app close, and the
+ * native shell hears when Back would leave.
+ */
+async function backHistory() {
+  const backFlags = [];
+  const lookups = [];
+  const events = {};
+  const root = { innerHTML: '', addEventListener: (name, handler) => { events[name] = handler; } };
+  const document = {
+    documentElement: { dataset: {}, classList: { toggle: () => {} } },
+    getElementById: (id) => (id === 'app' ? root : null),
+    querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {},
+  };
+  const window = {
+    location: { search: '', href: 'https://example.test/', origin: 'https://example.test' },
+    addEventListener: () => {}, setTimeout, clearTimeout, requestAnimationFrame: (f) => setTimeout(f, 0), scrollTo: () => {},
+  };
+  const globals = { window, document };
+  const incoming = load('incoming-text.ts', {}, globals);
+  const prefs = { floatingStrip: false, sources: {}, sourceLang: 'auto', targetLang: 'zh', wikiLang: 'en', senseImages: false };
+  const known = {
+    listVocab: async () => [], listEmptyDefinitions: async () => [], listEmptyReadings: async () => [],
+    findByLemma: async () => null, saveLemma: (result) => result.word, morphemeOf: () => null, primeBookLevels: async () => undefined,
+    dictionaryService: {
+      getSupportedLanguages: () => [], getEnabledSources: () => [], getSourceStats: () => ({ sources: [] }),
+      lookup: (q, lang, sources, options) => new Promise((resolve) => lookups.push({ q, options, resolve })),
+    },
+    wikipediaService: { search: async () => [] },
+    readNotebookView: (v) => ({ view: v === 'review' || !v ? 'list' : v, learn: v === 'review' }),
+    readCardLayouts: () => ({}), withCardLayout: (all) => all,
+    listWordbookSubs: async () => [], listUserBooks: async () => [], listBookProgress: async () => [],
+    buildWordsContext: () => ({ mine: [], progress: new Map(), subs: [], books: new Map(), index: new Map(), saved: new Map() }),
+    readLearnPrefs: () => ({ countdown: 0, speaking: true }), writeLearnPrefs: (p) => JSON.stringify(p),
+    microphoneAvailable: async () => false, watchMicrophone: () => {},
+    closeTreeInspector: () => false, treeInspectorOpen: () => false, menuOpen: () => false, closeMenu: () => {},
+    HOLARKY_ACCOUNT: {},
+  };
+  // Views and the rest of core only draw; they need to exist.
+  const core = new Proxy(known, { get: (t, name) => (name in t ? t[name] : () => '') });
+  const native = {
+    hasNativeBridge: () => true, installNativeCallbacks: () => {}, applyInsets: () => {},
+    nativeCall: async (method, params) => {
+      if (method === 'getCapturePrefs') return { platform: 'android', floatingStrip: false };
+      if (method === 'setBackEnabled') backFlags.push(params.on);
+      return {};
+    },
+  };
+  const views = new Proxy({
+    esc: (s) => s,
+    appBarHtml: (tab, q) => (tab === 'lookup' ? `[q:${q}]` : ''),
+    navHtml: (tab) => `[tab:${tab}]`,
+    emptyLibraryState: () => ({ openDetails: new Set(), packProgress: null, inspecting: null, inspectorEntering: false, packDetails: new Map() }),
+    keyPresent: () => false,
+  }, { get: (t, name) => (name in t ? t[name] : () => '') });
+  const app = load('app.ts', {
+    './lexicon-scroll': load('lexicon-scroll.ts', {}),
+    './platform/configure-core': {}, '@phevere/core': core, './incoming-text': incoming,
+    './platform/audio': {}, './platform/native': native, './platform/notebook-io': {},
+    './platform/offline': { listCatalogStatus: async () => [], markInstalledPacksOnCore: async () => {} },
+    './platform/prefs': { loadPrefs: () => prefs, savePrefs: () => {}, applyPrefsToCore: () => {} },
+    './platform/updates': { startPhoneUpdates: async () => ({ state: () => null, resume: () => {} }) },
+    './app-update': { updateStatusText: () => '' },
+    './views': views,
+    './platform/account': new Proxy({}, { get: () => () => {} }),
+  }, globals);
+  await app.startApp();
+  const wait = () => new Promise((resolve) => setTimeout(resolve, 5));
+  const where = () => `${/\[tab:(\w+)\]/.exec(root.innerHTML)[1]} ${/\[q:([^\]]*)\]/.exec(root.innerHTML)?.[1] ?? ''}`.trim();
+  const tap = (act, data = {}) => {
+    const el = { dataset: { act, ...data }, classList: { contains: () => false }, closest: () => null };
+    events.click({ target: { closest: (sel) => (sel === '[data-act]' ? el : null) } });
+  };
+  await wait();
+  assert.equal(where(), 'lookup', 'the app starts on Lookup with Recent');
+  assert.equal(backFlags.at(-1), false, 'on the start screen Back is left to the system');
+  tap('lookup', { q: 'apple' });
+  await wait();
+  assert.equal(where(), 'lookup apple');
+  assert.equal(backFlags.at(-1), true, 'away from the start screen Back stays in the app');
+  tap('tab', { tab: 'notebook' });
+  await wait();
+  assert.equal(where(), 'notebook');
+  tap('lookup', { q: 'pear' });
+  await wait();
+  assert.equal(where(), 'lookup pear');
+  const steps = [];
+  for (let i = 0; i < 5; i++) {
+    const went = window.__pvBack();
+    await wait();
+    steps.push(went ? where() : 'leave');
+    if (!went) break;
+  }
+  assert.deepEqual(steps, ['notebook', 'lookup apple', 'lookup', 'leave'], 'Back retraces every step to Recent, then leaves');
+  assert.equal(backFlags.at(-1), false);
+  // Recent is the root: a lookup from it and Back return to Recent, the next Back leaves.
+  tap('lookup', { q: 'plum' });
+  await wait();
+  assert.equal(window.__pvBack(), true);
+  await wait();
+  assert.equal(where(), 'lookup');
+  assert.equal(window.__pvBack(), false);
+  // The bar's back arrow takes back the step that led to the word, as Back would.
+  tap('lookup', { q: 'fig' });
+  await wait();
+  tap('lookup', { q: 'kiwi' });
+  await wait();
+  tap('back');
+  await wait();
+  assert.equal(where(), 'lookup fig');
+  assert.equal(window.__pvBack(), true);
+  await wait();
+  assert.equal(where(), 'lookup', 'after the arrow, Back goes on further back');
+  for (const l of lookups) l.resolve({ word: l.q });
+}
+
 async function audioFallback() {
   const calls = [];
   let failSpeech = false;
@@ -153,6 +270,7 @@ async function audioFallback() {
   await require('./test-notebook-csv')();
   await startupAndGestures(true);
   await startupAndGestures(false);
+  await backHistory();
   await audioFallback();
   // IPA chips: only mnemonics in eSpeak's English table, and one stressed vowel.
   const core = '../../../packages/core/src/';
@@ -181,5 +299,5 @@ async function audioFallback() {
   scrollLexiconTo(panel, target, true);
   assert.equal(panel.scrollTop, 434, 'only the definition column should scroll');
 
-  console.log('Mobile regressions passed: cold/warm share, stale lookup, no extra toolbar, independent definition scrolling, swipe expansion, audio fallback, eSpeak IPA mapping, Wiktionary IPA parsing.');
+  console.log('Mobile regressions passed: cold/warm share, stale lookup, Back history, no extra toolbar, independent definition scrolling, swipe expansion, audio fallback, eSpeak IPA mapping, Wiktionary IPA parsing.');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

@@ -39,6 +39,7 @@ import {
   attachNotebookMap,
   attachFamilies,
   closeTreeInspector,
+  treeInspectorOpen,
   traceNotebookFamilies,
   attachCardTable,
   readCardLayouts,
@@ -130,6 +131,8 @@ import {
   bookRemovalPrompt,
   bookPickItems,
   openMenu,
+  closeMenu,
+  menuOpen,
 } from '@phevere/core';
 import { extractLookupQuery, queryFromLocation, startIncomingText } from './incoming-text';
 import { playClip, playRecorded, prefetchRecorded, recordedReady, recordedUrls, speakIpa, speakText, stopAudio } from './platform/audio';
@@ -536,8 +539,292 @@ if (stripMode) document.documentElement.dataset.mode = 'strip';
 const history: string[] = [];
 const HISTORY_CAP = 40;
 let histIndex = -1;
-/** A lookup opened from Words or Learn: Back returns there once the trail is back at that word. */
-let lookupFrom: { tab: Tab; at: number } | null = null;
+/* ---------------------------------------------------------------- Back */
+
+/**
+ * One history for the system Back (Android's button and gesture, the iPhone's edge swipe), as a
+ * browser keeps one for its pages: every move to another place is a step, and Back retraces the
+ * steps one at a time. A place is a tab of the bar, the word on Lookup and its Dictionary,
+ * Translation or Wikipedia tab, a Settings section, a Words view or the word-book library, and
+ * Learn's Today or Progress. Whatever is open over a place (a menu, a sheet, the language list,
+ * the suggestions, a scan, a review, a Wikipedia article) closes first. The start screen, Lookup
+ * with Recent, is the root: reaching it starts the history afresh, Back with no steps left goes
+ * there, and only there does Back leave the app, as Android's predictive back asks. The native
+ * shell is told when the page has nothing to go back to, so the system can show its
+ * back-to-home preview.
+ */
+interface Place {
+  tab: Tab;
+  query: string;
+  resultTab: ResultTab;
+  settingsSection: SettingsSection;
+  nbView: NotebookView;
+  library: boolean;
+  learnPage: LearnPage;
+  /** The lookup trail of the arrows in the bar, and where in it the place was. */
+  trail: string[];
+  at: number;
+  scroll: number;
+}
+const backStack: Place[] = [];
+const BACK_CAP = 60;
+let here: Place | null = null;
+/**
+ * How the next repaint that moves to another place came about. 'quiet' is Back restoring a
+ * place, which is not a new step; 'trail' is the bar's back arrow, which takes back the step
+ * that led to the current word when it can.
+ */
+let navMove: 'quiet' | 'trail' | null = null;
+
+/** "ob-" and "ob" are two pages: the marks of a word part stay in the key. */
+function foldQuery(v: string): string {
+  const t = v.trim();
+  const lead = /^[*-]/.test(t) ? t[0] : '';
+  const trail = t.length > 1 && t.endsWith('-') ? '-' : '';
+  return lead + t.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase() + trail;
+}
+
+function placeNow(): Place {
+  return {
+    tab,
+    query: query.trim(),
+    resultTab,
+    settingsSection,
+    nbView: nbState.view,
+    library: !!wordsState.library,
+    learnPage,
+    trail: history.slice(),
+    at: histIndex,
+    scroll: document.scrollingElement?.scrollTop || 0,
+  };
+}
+
+function samePlace(a: Place, b: Place): boolean {
+  if (a.tab !== b.tab) return false;
+  if (a.tab === 'lookup') return foldQuery(a.query) === foldQuery(b.query) && (!a.query || a.resultTab === b.resultTab);
+  if (a.tab === 'settings') return a.settingsSection === b.settingsSection;
+  if (a.tab === 'notebook') return a.nbView === b.nbView && a.library === b.library;
+  return a.learnPage === b.learnPage;
+}
+
+/** The start screen: Lookup with no word, which lists Recent. */
+function atStart(): boolean {
+  return tab === 'lookup' && !scan && !query && !result && !looking;
+}
+
+/** Called after every paint: a move to another place becomes a step Back can retrace. */
+function notePlace(): void {
+  if (stripMode) return;
+  const move = navMove;
+  navMove = null;
+  const now = placeNow();
+  if (!here) {
+    here = now;
+    return;
+  }
+  if (samePlace(now, here)) {
+    here.trail = now.trail;
+    here.at = now.at;
+    return;
+  }
+  if (now.tab === 'lookup' && !now.query) {
+    // The start screen is the root of the history, as Android's start destination is: from
+    // there Back leaves the app, however it was reached.
+    backStack.length = 0;
+  } else if (move === 'trail') {
+    const top = backStack[backStack.length - 1];
+    if (top && samePlace(top, now)) backStack.pop();
+  } else if (move !== 'quiet') {
+    backStack.push(here);
+    if (backStack.length > BACK_CAP) backStack.shift();
+  }
+  here = now;
+}
+
+/** Clear Lookup back to its start: no word, Recent listed. Lookups still running are dropped. */
+function clearLookup(): void {
+  lookupGeneration += 1;
+  query = '';
+  draft = '';
+  looking = false;
+  status = '';
+  lookupError = '';
+  result = null;
+  saved = null;
+  wiki = [];
+  wikiArticle = null;
+  wikiStack = [];
+  wikiFetch += 1;
+  wikiError = '';
+  wikiListOnly = false;
+  wikiLoading = false;
+  resultTab = 'lexicon';
+  lexiconPos = '';
+  etymologySource = '';
+  lexiconWord = '';
+}
+
+/** What a tab needs loaded before it shows the latest words, packs or voices. */
+async function loadTab(next: Tab): Promise<void> {
+  if (next === 'notebook' || next === 'learn') await refreshNotebook();
+  // Learn and every Words view but the list work on the whole notebook, not the first page of it.
+  if (next === 'learn' || (next === 'notebook' && (nbState.view !== 'list' || wordsState.scope !== 'mine'))) {
+    await loadReviewPool();
+    rebuildWordsContext();
+  }
+  if (next === 'settings') {
+    await refreshPacks();
+    if (settingsSection === 'audio') await refreshVoice();
+  }
+}
+
+/** Go back to a place from the history, as it was left: its word, its tab and its scroll. */
+function restorePlace(p: Place): void {
+  // The trail of the bar's arrows: keep the words ahead (Forward) when the place's trail leads here.
+  const leads = p.at < history.length && p.trail.slice(0, p.at + 1).every((q, i) => history[i] === q);
+  if (!leads) history.splice(0, history.length, ...p.trail);
+  histIndex = Math.min(p.at, history.length - 1);
+  settingsSection = p.settingsSection;
+  wordsState.library = p.library;
+  if (nbState.view !== p.nbView) {
+    nbState.view = p.nbView;
+    writeStore(NB_VIEW_KEY, nbState.view);
+  }
+  if (learnPage !== p.learnPage) {
+    learnPage = p.learnPage;
+    writeStore(LEARN_PAGE_KEY, learnPage);
+  }
+  const scrollBack = () => {
+    if (here && samePlace(here, p)) window.requestAnimationFrame(() => window.scrollTo({ top: p.scroll }));
+  };
+  if (p.tab === 'lookup' && foldQuery(p.query) !== foldQuery(query)) {
+    navMove = 'quiet';
+    if (p.query) {
+      void lookup(p.query, true, p.resultTab).then(scrollBack);
+    } else {
+      tab = 'lookup';
+      clearLookup();
+      paint();
+      scrollBack();
+    }
+    navMove = null;
+    return;
+  }
+  tab = p.tab;
+  if (p.tab === 'lookup') resultTab = p.resultTab;
+  navMove = 'quiet';
+  paint();
+  navMove = null;
+  scrollBack();
+  if (p.tab !== 'lookup') {
+    // The tab shows what it had at once and the latest once loaded.
+    void loadTab(p.tab).then(() => {
+      if (here && samePlace(here, p)) paint();
+    });
+  }
+}
+
+/** Whether Back has anything to do in the page, or would leave the app. */
+function canGoBack(): boolean {
+  if (stripMode) return false;
+  return (
+    !atStart() ||
+    backStack.length > 0 ||
+    treeInspectorOpen() ||
+    menuOpen() ||
+    accountOpen ||
+    !!langMenu ||
+    !!document.querySelector('dialog[open], form.search .suggest')
+  );
+}
+
+let backShown: boolean | null = null;
+let backFrame = 0;
+/** Tell the native shell whether Back stays in the page, once the current change settles. */
+function syncBack(): void {
+  if (backFrame) return;
+  backFrame = window.setTimeout(() => {
+    backFrame = 0;
+    const on = canGoBack();
+    if (on === backShown) return;
+    backShown = on;
+    if (hasNativeBridge()) void nativeCall('setBackEnabled', { on }, 5000).catch(() => undefined);
+  }, 0);
+}
+
+/**
+ * One step back, innermost first; false when there is nothing left and Back should leave the
+ * app. It does what the page's own back or close control would.
+ */
+function goBack(): boolean {
+  if (closeTreeInspector()) return true;
+  if (menuOpen()) {
+    closeMenu();
+    return true;
+  }
+  const sheet = document.querySelector<HTMLDialogElement>('dialog[open]');
+  if (sheet) {
+    sheet.dispatchEvent(new Event('cancel'));
+    if (sheet.open) sheet.close();
+    return true;
+  }
+  if (accountOpen) {
+    accountOpen = false;
+    accountDeleting = false;
+    paint();
+    return true;
+  }
+  if (langMenu) {
+    langMenu = '';
+    paint();
+    return true;
+  }
+  if (document.querySelector('form.search .suggest')) {
+    suggestHeld = true;
+    suggestSeq++;
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    paintSuggest();
+    return true;
+  }
+  if (lib.inspecting) {
+    lib.inspecting = null;
+    paint();
+    return true;
+  }
+  if (scan) {
+    if (scanSheet !== 'closed') setScanSheet('closed');
+    else {
+      scan = null;
+      clearScanPick();
+      paint();
+    }
+    return true;
+  }
+  if (tab === 'learn' && nbState.review?.started) {
+    // As the review's own close: an answer on screen is saved first.
+    const r = nbState.review;
+    void (r.answer ? commitReview() : Promise.resolve()).then(() => {
+      nbState.review = null;
+      paint();
+    });
+    return true;
+  }
+  // Inside the Wikipedia reader, the article before, then the list of articles.
+  if (tab === 'lookup' && wikiCanBack()) {
+    void handleAct('wiki-back', root, new Event('back'));
+    return true;
+  }
+  const prev = backStack.pop();
+  if (prev) {
+    restorePlace(prev);
+    return true;
+  }
+  if (!atStart()) {
+    restorePlace({ ...placeNow(), tab: 'lookup', query: '', resultTab: 'lexicon', trail: [], at: -1, scroll: 0 });
+    return true;
+  }
+  return false;
+}
 
 function toast(msg: string, undo?: () => void): void {
   toastMsg = msg;
@@ -710,7 +997,14 @@ async function loadSenseImages(generation: number): Promise<void> {
   if (generation === lookupGeneration && result && senseKey(result) !== key) void loadSenseImages(generation);
 }
 
+/** Repaint the page, and note a move to another place for Back. */
 function paint(): void {
+  paintPage();
+  notePlace();
+  syncBack();
+}
+
+function paintPage(): void {
   document.documentElement.dataset.popup = prefs.floatingStrip ? 'floating' : 'half';
   document.documentElement.dataset.notify = capture.platform === 'ios' ? 'ios' : 'android';
   document.documentElement.dataset.platform = capture.platform;
@@ -1786,14 +2080,7 @@ function watchVoice(): void {
 
 /** Desktop lookup trail: same word replaces the current entry; capped at 40. */
 function rememberLookup(q: string): void {
-  // "ob-" and "ob" are two pages: the marks of a word part stay in the key.
-  const fold = (v: string) => {
-    const t = v.trim();
-    const lead = /^[*-]/.test(t) ? t[0] : '';
-    const trail = t.length > 1 && t.endsWith('-') ? '-' : '';
-    return lead + t.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase() + trail;
-  };
-  if (histIndex >= 0 && fold(history[histIndex] || '') === fold(q)) {
+  if (histIndex >= 0 && foldQuery(history[histIndex] || '') === foldQuery(q)) {
     history[histIndex] = q;
     return;
   }
@@ -2208,15 +2495,8 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       return;
     }
     case 'tab':
-      lookupFrom = null;
       tab = (['notebook', 'learn', 'settings'] as const).find((id) => id === t.dataset.tab) || 'lookup';
-      if (tab === 'notebook' || tab === 'learn') await refreshNotebook();
-      // Learn and every Words view but the list work on the whole notebook, not the first page of it.
-      if (tab === 'learn' || (tab === 'notebook' && (nbState.view !== 'list' || wordsState.scope !== 'mine'))) {
-        await loadReviewPool();
-        rebuildWordsContext();
-      }
-      if (tab === 'settings') await refreshPacks();
+      await loadTab(tab);
       paint();
       return;
     case 'settings-section': {
@@ -2308,7 +2588,11 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
       }
       if (histIndex > 0) {
         histIndex -= 1;
-        await lookup(history[histIndex], true, trailTab());
+        // A step back along the trail, not a new step: Back afterwards goes on further back.
+        navMove = 'trail';
+        const going = lookup(history[histIndex], true, trailTab());
+        navMove = null;
+        await going;
       }
       return;
     case 'fwd':
@@ -2320,9 +2604,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'lookup': {
       // A word in running text that was selected, not tapped, stays selected.
       if (t.classList.contains('lx-w') && String(window.getSelection?.() || '').trim()) return;
-      const from = tab;
       if (t.dataset.q) await lookup(t.dataset.q);
-      if (from !== 'lookup' && tab === 'lookup') lookupFrom = { tab: from, at: histIndex };
       return;
     }
     case 'lex-pos': {
@@ -3099,46 +3381,17 @@ function onSubmit(e: Event): void {
 export async function startApp(): Promise<void> {
   installNativeCallbacks();
   // The floating pop-up's own selection bar sends its Phevere item here.
-  // Android Back (button or gesture): the page steps back first; native leaves the app only
-  // when this returns false.
-  // It does what the page's own back or close control would, innermost first.
-  (window as unknown as { __pvBack?: () => boolean }).__pvBack = () => {
-    if (closeTreeInspector()) return true;
-    const sheet = document.querySelector<HTMLDialogElement>('dialog[open]');
-    if (sheet) {
-      sheet.dispatchEvent(new Event('cancel'));
-      if (sheet.open) sheet.close();
-      return true;
-    }
-    if (accountOpen) { accountOpen = false; accountDeleting = false; paint(); return true; }
-    if (langMenu) { langMenu = ''; paint(); return true; }
-    if (lib.inspecting) { lib.inspecting = null; paint(); return true; }
-    if (scan) {
-      if (scanSheet !== 'closed') setScanSheet('closed');
-      else { scan = null; clearScanPick(); paint(); }
-      return true;
-    }
-    if (tab === 'learn' && nbState.review) {
-      const r = nbState.review;
-      void (r.answer ? commitReview() : Promise.resolve()).then(() => {
-        nbState.review = null;
-        paint();
-      });
-      return true;
-    }
-    if (tab === 'notebook' && wordsState.library) { wordsState.library = false; paint(); return true; }
-    if (tab !== 'lookup') { tab = 'lookup'; paint(); return true; }
-    // Lookup: the same as its back arrow, the Wikipedia reader first, then the word before.
-    if (wikiArticle && wikiCanBack()) { void handleAct('back', root, new Event('back')); return true; }
-    if (lookupFrom && histIndex <= lookupFrom.at) {
-      tab = lookupFrom.tab;
-      lookupFrom = null;
-      paint();
-      return true;
-    }
-    if (histIndex > 0) { void handleAct('back', root, new Event('back')); return true; }
-    return false;
-  };
+  // Android's Back and the iPhone's edge swipe: the page steps back first; native leaves the
+  // app only when this returns false.
+  (window as unknown as { __pvBack?: () => boolean }).__pvBack = goBack;
+  // Back returns to where a place was left on the page.
+  window.addEventListener('scroll', () => {
+    if (here) here.scroll = document.scrollingElement?.scrollTop || 0;
+  }, { passive: true });
+  // Menus, sheets and suggestions open outside paint; the shell hears of them as they appear.
+  if (typeof MutationObserver === 'function' && document.body) {
+    new MutationObserver(syncBack).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open'] });
+  }
   const hooks = window as unknown as {
     __pvLookupText?: (text: string) => void;
     __pvSelectionAction?: () => { text: string; inPlace: boolean; rect: Record<string, number> | null } | null;
