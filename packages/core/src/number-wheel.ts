@@ -119,7 +119,8 @@ export function numberWheelHtml(w: NumberWheelInput): string {
 
 /** Reads what a typed number means on this wheel: a value in range, or null to leave it as it was. */
 export function parseWheelEntry(raw: string, r: WheelRange): number | null {
-  const t = raw.trim().toLowerCase();
+  // NFKC folds full-width digits from a Chinese or Japanese keyboard (１５) into ASCII ones.
+  const t = raw.normalize('NFKC').trim().toLowerCase();
   if (r.off && (t === 'off' || t === '0')) return 0;
   const digits = t.replace(/[^\d]/g, '');
   if (!digits) return null;
@@ -278,7 +279,8 @@ function openEntry(el: HTMLElement, st: State, first = ''): void {
   input.inputMode = 'numeric';
   input.autocomplete = 'off';
   input.enterKeyHint = 'done';
-  input.maxLength = String(st.r.max).length;
+  // Room for the largest number, and for the word "off" on a wheel that has it.
+  input.maxLength = Math.max(String(st.r.max).length, st.r.off ? 3 : 0);
   const name = document.getElementById(el.getAttribute('aria-labelledby') || '')?.textContent || '';
   input.setAttribute('aria-label', name);
   input.value = first || label(valueAt(st.r, Math.round(st.pos)));
@@ -303,6 +305,8 @@ function openEntry(el: HTMLElement, st: State, first = ''): void {
   };
   input.addEventListener('keydown', (e) => {
     e.stopPropagation();
+    // Enter or Escape that ends an IME composition belongs to the IME, not to the field.
+    if (e.isComposing || e.keyCode === 229) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       close(true, true);

@@ -399,6 +399,8 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.equal(parseWheelEntry('abc', goal), null);
   assert.equal(parseWheelEntry('off', countdown), 0);
   assert.equal(parseWheelEntry('0', countdown), 0, '0 is Off on a countdown');
+  assert.equal(parseWheelEntry('Off', countdown), 0);
+  assert.equal(parseWheelEntry('１５', goal), 15, 'full-width digits from a Chinese keyboard');
   assert.equal(parseWheelEntry('3', countdown), 5);
   assert.equal(parseWheelEntry('45', countdown), 30);
   const centre = wheelItemStyle(0);
