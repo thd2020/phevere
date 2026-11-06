@@ -193,7 +193,8 @@ type ListFormatCtor = new (locale: string, options: { type: 'conjunction' | 'dis
 export function formatList(items: string[], type: 'conjunction' | 'disjunction' | 'unit' = 'conjunction'): string {
   const ListFormat = (Intl as unknown as { ListFormat?: ListFormatCtor }).ListFormat;
   if (!ListFormat) return items.join(', ');
-  return new ListFormat(current, { type }).format(items);
+  // Phevere's English is British ("Licence"), which writes "A, B and C" without the serial comma.
+  return new ListFormat(current === 'en' ? 'en-GB' : current, { type }).format(items);
 }
 
 /** A language's name in the interface language ("French", "Französisch", "法语"). */

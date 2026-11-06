@@ -48,7 +48,6 @@ const SKIP_FILES = [
   /\.d\.ts$/,
   /wordbook-catalog\.ts$/,
   /sense-frequency-data\.ts$/,
-  /settings-about-strings\.ts$/,
   /[\\/]src[\\/]popup\.html$/, // the old pop-up, no longer built (forge.config.js loads popup-new.html)
   /[\\/]src[\\/]logger\.ts$/,
   /[\\/]src[\\/]services[\\/]local-db-worker\.cjs$/,

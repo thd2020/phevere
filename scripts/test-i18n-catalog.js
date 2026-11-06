@@ -64,7 +64,12 @@ for (const locale of UI_LOCALES.filter((l) => l !== 'en')) {
   const dir = path.join(i18nDir, locale);
   const index = fs.readFileSync(path.join(dir, 'index.ts'), 'utf8');
   assert.ok(!/from '\.\.\/en'/.test(index), `${locale}: translated, not a copy of English`);
-  const categories = new Intl.PluralRules(locale).resolvedOptions().pluralCategories.slice().sort();
+  // The forms a count of whole things can take (0 to 1000), plus `other`. A category the language
+  // only uses for decimals or millions (French and Spanish `many`) may be left to `other`.
+  const rules = new Intl.PluralRules(locale);
+  const allowed = new Set(rules.resolvedOptions().pluralCategories);
+  const needed = new Set(['other']);
+  for (let n = 0; n <= 1000; n++) needed.add(rules.select(n));
   const all = load(dir).default;
   let same = 0;
   let total = 0;
@@ -84,8 +89,9 @@ for (const locale of UI_LOCALES.filter((l) => l !== 'en')) {
       assert.ok(!/<[a-z/][^>]*>/i.test(forms(tr).join(' ')), `${locale} ${key} holds no markup`);
       const want = new Set(forms(en).flatMap((f) => [...placeholders(f)]));
       if (isPlural(tr)) {
-        const have = Object.keys(tr).filter((c) => c !== 'zero').sort();
-        assert.deepEqual(have, categories, `${locale} ${key}: plural forms ${categories.join(', ')}`);
+        const have = Object.keys(tr).filter((c) => c !== 'zero');
+        for (const c of needed) assert.ok(have.includes(c), `${locale} ${key}: needs the plural form "${c}"`);
+        for (const c of have) assert.ok(allowed.has(c), `${locale} ${key}: "${c}" is not a plural form in ${locale}`);
         for (const [cat, f] of Object.entries(tr)) {
           const got = placeholders(f);
           for (const p of want) {
@@ -136,7 +142,8 @@ for (const locale of UI_LOCALES.filter((l) => l !== 'en')) {
   }
   runtime.useUiCatalog('de', EN);
   assert.equal(runtime.formatNumber(1234.5), '1.234,5');
-  assert.equal(runtime.formatPercent(0.42), '42 %');
+  // German puts a no-break space before the percent sign.
+  assert.equal(runtime.formatPercent(0.42), '42 %');
   runtime.useUiCatalog('en', EN);
   assert.equal(runtime.tHtml('common.copy'), 'Copy');
   assert.equal(runtime.t('nope.missing'), 'nope.missing');
