@@ -9,7 +9,7 @@ const ALL = [
   'notebook-views', 'desktop-map-bundle', 'morphology', 'review', 'vocab-sync', 'wordbooks', 'vocab-lang', 'vocab-lemma', 'notebook-csv',
   'sense-images', 'sense-frequency', 'pronunciation', 'inflections', 'lang-detect', 'multilingual-sources',
   'etymology-sources', 'etymology-cache', 'etymology-availability', 'etymology-headword', 'etymology-popup',
-  'ocr-text', 'ocr-pack', 'speech-stream', 'hover-selection', 'hover-strip','native-selection-repeat',
+  'ocr-text', 'ocr-layout', 'ocr-pack', 'speech-stream', 'hover-selection', 'hover-strip','native-selection-repeat',
   'popup-opening', 'popup-retrigger', 'popup-sizing', 'popup-sense-pictures', 'mobile-regressions', 'desktop-diagnostics', 'installer-audio-cli',
   'word-sources', 'book-file', 'plural-forms', 'morpheme', 'word-suggest', 'learn-session', 'learn-adapt', 'word-forms', 'lookup-entry', 'slow-network',
   'installer-audio', 'native-lifecycle', 'android-candidate-workflow', 'updater', 'mobile-update',
