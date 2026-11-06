@@ -111,6 +111,22 @@ const aligned = alignSenseNotes(sections[0].senses, glosses);
 assert.deepEqual(aligned.map((n) => n && (n.grammar || n.labels || [])[0]), ['uncountable', 'countable', undefined, 'countable', 'countable', undefined]);
 assert.deepEqual(aligned[3], { grammar: ['countable'], labels: ['informal'] }, "a sub-sense keeps its own labels and takes the grammar of the sense above it");
 
+// "hold" heads groups of senses with {{lb|en|heading}}; "about" lists several collocations in one
+// {{co}}, set apart by "&emsp;" (both 2026-11-06).
+const holdText = `==English==
+===Verb===
+{{en-verb}}
+
+# {{lb|en|heading}} Senses relating to grasping.
+## {{lb|en|transitive}} To grasp.
+## To contain.
+##: {{co|en|walking '''about''';&emsp; rushing '''about''';&emsp; jumping '''about'''}}
+`;
+const holdSenses = wikiSenseSections(holdText, 'English')[0].senses;
+assert.deepEqual(holdSenses.map((s) => s.notes.labels || []), [[], [], []], '"heading" is no usage label and is not passed down');
+assert.deepEqual(holdSenses[1].notes.grammar, ['transitive']);
+assert.deepEqual(holdSenses[2].notes.collocations, ['walking about', 'rushing about', 'jumping about']);
+
 // A sense the API gives with its sub-senses nested in it ("go", 2026-11-06) matches its own line,
 // not the sub-sense's: the sub-sense's words are cut before matching. The API keeps an empty
 // usage-label-sense span where a label stood, and a match that disagrees with it gives nothing.

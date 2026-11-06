@@ -112,10 +112,26 @@ const PATTERN = /^(?:with|\+|followed by|construed with|used with|takes?|in the 
 /** Sister-project boxes and anchors that stand at the start of a sense line; they are not labels. */
 const SKIPPED_LEAD = /^(?:wp|wikipedia|pedia|slim-wikipedia|wiki|commons|commonscat|wikispecies|specieslite|wikiquote|wikisource|wikibooks|wikiversity|wikivoyage|wikinews|wikidata|senseid|sid|anchor|tcx|rfclarify|rfdef|rfv-sense|rfd-sense|attention|defdate|c|topics|top|cln|catlangname)$/i;
 
+/** Plain text of a wikitext fragment, with the character references wikiInline leaves ("&emsp;"). */
+function plain(raw: string): string {
+  return wikiInline(raw)
+    .replace(/&#(\d+);/g, (_m, n: string) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_m, n: string) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&(?:emsp|ensp|thinsp|nbsp);/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function display(raw: string): string {
-  const text = wikiInline(raw).replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  const text = plain(raw).replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
   return ALIASES[text.toLowerCase()] || text;
 }
+
+/**
+ * {{lb|en|heading}} marks a line that only heads its sub-senses ("Senses relating to
+ * grasping"); it says nothing about how the word is used, and the sub-senses do not take it.
+ */
+const STRUCTURAL = new Set(['heading']);
 
 /** Whether a label (or a joined one, "usually uncountable") belongs with the grammar codes. */
 export function isGrammarLabel(label: string): boolean {
@@ -153,6 +169,7 @@ export function labelTemplateNotes(params: string[]): { grammar: string[]; label
       continue;
     }
     const key = p.toLowerCase();
+    if (STRUCTURAL.has(key)) continue;
     // "ambitransitive" is printed as both.
     const texts = key === 'ambitransitive' || key === 'ambi' || key === 'ambitrans' ? ['transitive', 'intransitive'] : [display(p)];
     for (const text of texts) {
@@ -248,8 +265,9 @@ function subLine(line: string, sense: WikiSense): void {
     } else if (n === 'ant' || n === 'antonyms' || n === 'ant-lite') {
       pushUnique((sense.notes.antonyms ||= []), t.positional.slice(1).map(nymTerm));
     } else if (n === 'co' || n === 'coi' || n === 'collocation') {
-      const text = wikiInline(t.positional[1] || '');
-      if (text && text.length <= 80) pushUnique((sense.notes.collocations ||= []), [text]);
+      // One {{co}} may hold several, set apart by semicolons ("walking about;&emsp; rushing about").
+      const texts = plain(t.positional[1] || '').split(/\s*;\s*/).filter((x) => x && x.length <= 80);
+      if (texts.length) pushUnique((sense.notes.collocations ||= []), texts);
     }
   }
 }
