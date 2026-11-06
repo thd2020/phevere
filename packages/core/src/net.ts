@@ -20,6 +20,17 @@
  *   requests) queue for one, the `later` ones behind the rest. The lookup's own requests never
  *   wait for a slot, so the first definitions are as fast as before.
  *   https://www.mediawiki.org/wiki/API:Etiquette, https://www.mediawiki.org/wiki/Wikimedia_APIs/Rate_limits
+ * - A slow connection and a dead one look the same until something answers, so the connection
+ *   is also watched as a whole, as Chrome's network quality estimator and Firestore's online
+ *   state do. When requests to two or more hosts, all sent after the last answer from anywhere,
+ *   have each waited past their round trip with nothing answering, or have failed without an
+ *   answer (a refused connection, a name that does not resolve), the connection counts as silent:
+ *   every round trip measured before it is stale, budgets and timeouts go back to those of a
+ *   normal network, and the waits already running are told (`onNetChange`). The platform's own
+ *   word counts too: an `offline` event makes the connection silent at once, and an `online`
+ *   event is a network change, after which every host is measured afresh (Chrome clears its
+ *   estimates on a connection change the same way). The first answer after a silence tells the
+ *   waits again, so callers that stopped asking a failing host (dictionary.ts) try it again.
  */
 import type { HttpClient, HttpRequestInit } from './http';
 
@@ -51,9 +62,140 @@ interface HostState {
   onFirstAnswer: Set<() => void>;
   /** When it last answered (Date.now()). */
   answeredAt: number;
+  /** Its requests sent since its last answer that waited past their round trip or failed without one. */
+  overdue: Set<{ since: number }>;
+  /** Not answering while other hosts do (hostSilent). */
+  silent: boolean;
+  /** Its last request got no answer at all (forgetHost); cleared by its next answer. */
+  forgotten: boolean;
 }
 
 const hosts = new Map<string, HostState>();
+
+/** When any host last answered, with any status (Date.now()). */
+let lastAnswerAt = 0;
+/** Set while the connection as a whole is silent (see the top of this file); cleared by any answer. */
+let silent = false;
+/** When the connection was last found silent. Round trips measured before it are stale. */
+let silentAt = 0;
+/** Requests sent after the last answer that have waited past their round trip or failed without an answer. */
+const unanswered = new Set<{ since: number; host: string }>();
+const listeners = new Set<() => void>();
+
+/**
+ * Calls `f` whenever the connection is found silent, answers again after a silence, or the
+ * platform reports a network change. Returns a function that stops the calls.
+ */
+export function onNetChange(f: () => void): () => void {
+  listeners.add(f);
+  return () => {
+    listeners.delete(f);
+  };
+}
+
+function changed(): void {
+  for (const f of Array.from(listeners)) {
+    try {
+      f();
+    } catch {
+      /* a listener's failure is its own */
+    }
+  }
+}
+
+/** Whether the connection as a whole is silent right now. */
+export function connectionSilent(): boolean {
+  return silent;
+}
+
+/**
+ * Whether `host` (or a URL's host) has stopped answering while the connection works: two of its
+ * requests, sent since its last answer, waited past their round trip or failed without an answer
+ * (a hung request and its backup count as two), and other hosts answered meanwhile. A wait for
+ * that host's answer before showing anything (dictionary.ts) need not go on: its answer, if it
+ * comes, still arrives as an update.
+ */
+export function hostSilent(host: string): boolean {
+  const h = /\//.test(host) ? hostOf(host) : host.toLowerCase();
+  return !!hosts.get(h)?.silent;
+}
+
+/** Some host answered (a response of any status), so the connection works. */
+function heard(host: string): void {
+  lastAnswerAt = Date.now();
+  unanswered.clear();
+  const s = hosts.get(host);
+  if (s) {
+    s.overdue.clear();
+    s.silent = false;
+  }
+  if (silent) {
+    silent = false;
+    changed();
+  }
+}
+
+/** A request sent after the last answer has waited past its round trip, or failed without an answer. */
+function noAnswer(mark: { since: number; host: string }): void {
+  const s = state(mark.host);
+  if (!s.silent && mark.since >= s.answeredAt) {
+    s.overdue.add(mark);
+    let first = Infinity;
+    for (const m of s.overdue) first = Math.min(first, m.since);
+    if (s.overdue.size >= 2 && lastAnswerAt > first) {
+      s.silent = true;
+      changed();
+    }
+  }
+  if (silent || mark.since < lastAnswerAt) return;
+  unanswered.add(mark);
+  if (unanswered.size < 2 || new Set(Array.from(unanswered, (m) => m.host)).size < 2) return;
+  markSilent();
+}
+
+function markSilent(): void {
+  silent = true;
+  silentAt = Date.now();
+  unanswered.clear();
+  changed();
+}
+
+/**
+ * The platform says the network changed (it came back, or moved from Wi-Fi to mobile data):
+ * every host is measured afresh and the connection is no longer taken as silent.
+ */
+export function noteNetworkChange(): void {
+  for (const s of hosts.values()) {
+    s.srtt = 0;
+    s.rttvar = 0;
+    s.samples = 0;
+    s.overdue.clear();
+    s.silent = false;
+  }
+  silent = false;
+  unanswered.clear();
+  changed();
+}
+
+/** The platform says it is offline: the connection is silent until something answers. */
+export function noteOffline(): void {
+  if (!silent) markSilent();
+}
+
+// A WebView (the phone app) or a browser reports going offline and coming back, and whether it
+// is offline when the app starts.
+{
+  const g = globalThis as { addEventListener?: (type: string, f: () => void) => void; navigator?: { onLine?: boolean } };
+  if (typeof g.addEventListener === 'function') {
+    try {
+      g.addEventListener('offline', noteOffline);
+      g.addEventListener('online', noteNetworkChange);
+      if (g.navigator?.onLine === false) noteOffline();
+    } catch {
+      /* no events here */
+    }
+  }
+}
 
 export function hostOf(url: string): string {
   const m = String(url || '').match(/^[a-z]+:\/\/([^/?#]+)/i);
@@ -63,7 +205,7 @@ export function hostOf(url: string): string {
 function state(host: string): HostState {
   let s = hosts.get(host);
   if (!s) {
-    s = { srtt: 0, rttvar: 0, samples: 0, inFlight: 0, first: [], later: [], onFirstAnswer: new Set(), answeredAt: 0 };
+    s = { srtt: 0, rttvar: 0, samples: 0, inFlight: 0, first: [], later: [], onFirstAnswer: new Set(), answeredAt: 0, overdue: new Set(), silent: false, forgotten: false };
     hosts.set(host, s);
   }
   return s;
@@ -73,6 +215,8 @@ function state(host: string): HostState {
 export function noteRoundTrip(host: string, ms: number): void {
   if (!host || !(ms >= 0)) return;
   const s = state(host);
+  // Round trips from before the connection went silent are not blended into new ones.
+  if (silentAt && s.answeredAt <= silentAt) s.samples = 0;
   if (!s.samples) {
     s.srtt = ms;
     s.rttvar = ms / 2;
@@ -82,13 +226,18 @@ export function noteRoundTrip(host: string, ms: number): void {
   }
   s.samples += 1;
   s.answeredAt = Date.now();
+  s.forgotten = false;
   if (s.samples === 1) for (const f of Array.from(s.onFirstAnswer)) f();
 }
 
-/** The host's retransmission timeout, or 0 before it has answered once. */
+/**
+ * The host's retransmission timeout, or 0 before it has answered once, and 0 when its last answer
+ * came before the connection was last found silent: those round trips belong to a connection that
+ * may be gone (a VPN that dropped), and a silent connection says nothing about the next one.
+ */
 export function rtoMs(host: string): number {
   const s = hosts.get(host);
-  if (!s || !s.samples) return 0;
+  if (!s || !s.samples || (silentAt && s.answeredAt <= silentAt)) return 0;
   return Math.round(Math.min(MAX_RTO_MS, Math.max(MIN_RTO_MS, s.srtt + 4 * s.rttvar)));
 }
 
@@ -106,16 +255,23 @@ const waiting = new Set<{ since: number }>();
  * all (Wi-Fi without internet) look the same until the first answer, and an uncapped guess grows
  * with the wait itself: every budget asked again when it ran out was three times further away,
  * so on a dead connection no budget ever ran out before its requests did.
+ *
+ * `measured`: only round trips that were measured count, not the guess from waiting. A step that
+ * holds back something it could already show (senses from an offline pack) asks for this, so a
+ * connection that has not answered yet, slow or dead, does not keep them back. Once the
+ * connection is found silent the guess is dropped as well: nothing it would wait for is coming.
  */
-export function typicalRtoMs(): number {
-  // Only hosts that answered after the last request that got no answer at all: when the
-  // connection dies, hosts not asked since still hold the round trips of the slow connection.
-  const list = Array.from(hosts.entries())
-    .filter(([, s]) => s.answeredAt > lastSilentAt)
-    .map(([h]) => rtoMs(h))
+export function typicalRtoMs(measured = false): number {
+  // Round trips measured before the connection was last found silent do not count (rtoMs): when
+  // the connection dies, hosts not asked since still hold the round trips of the slow connection.
+  // One host that stops answering while others answer (Wiktionary blocked) says nothing about
+  // the others, so their round trips still count.
+  const list = Array.from(hosts.keys())
+    .map((h) => rtoMs(h))
     .filter(Boolean)
     .sort((a, b) => a - b);
   if (list.length) return list[Math.floor((list.length - 1) / 2)];
+  if (measured || silent) return 0;
   let oldest = 0;
   const now = Date.now();
   for (const w of waiting) oldest = Math.max(oldest, now - w.since);
@@ -125,11 +281,14 @@ export function typicalRtoMs(): number {
 /**
  * A step's budget: `base` ms, or `trips` round trips to the slowest of `on` (hosts or URLs) when
  * that is longer. A host that has not answered yet counts as typical (`typicalRtoMs`), and so does
- * an empty `on`. A budget set for a normal network then still holds on a slow one.
+ * an empty `on`. A budget set for a normal network then still holds on a slow one. `measured`:
+ * see typicalRtoMs.
  */
-export function budgetMs(base: number, on: string | string[] = [], trips = 1): number {
+export function budgetMs(base: number, on: string | string[] = [], trips = 1, measured = false): number {
   const list = (Array.isArray(on) ? on : [on]).map((h) => (/\//.test(h) ? hostOf(h) : h.toLowerCase()));
-  const rto = Math.max(0, ...(list.length ? list : ['']).map((h) => (h && rtoMs(h)) || typicalRtoMs()));
+  // A host whose last request got no answer at all is not stretched for: nothing says that
+  // waiting longer for it helps. A host not asked yet counts as typical.
+  const rto = Math.max(0, ...(list.length ? list : ['']).map((h) => (h && hosts.get(h)?.forgotten ? 0 : (h && rtoMs(h)) || typicalRtoMs(measured))));
   return Math.max(base, Math.min(MAX_BUDGET_MS, Math.round(trips * rto)));
 }
 
@@ -139,13 +298,10 @@ export function inFlight(host: string): number {
 }
 
 /** The host's round trips are forgotten; it counts as not yet answered. */
-/** When a request last got no answer at all (forgetHost). */
-let lastSilentAt = 0;
-
 function forgetHost(host: string): void {
-  lastSilentAt = Date.now();
   const s = hosts.get(host);
   if (!s) return;
+  s.forgotten = true;
   s.srtt = 0;
   s.rttvar = 0;
   s.samples = 0;
@@ -157,7 +313,14 @@ export function resetNetStats(): void {
     s.srtt = 0;
     s.rttvar = 0;
     s.samples = 0;
+    s.overdue.clear();
+    s.silent = false;
+    s.forgotten = false;
   }
+  silent = false;
+  silentAt = 0;
+  lastAnswerAt = 0;
+  unanswered.clear();
 }
 
 /** Waits for one of the host's slots; `later` waits behind every other request. */
@@ -216,13 +379,20 @@ export function trackHttp(inner: HttpClient): HttpClient {
       else if (!took) s.inFlight += 1;
       onSend?.();
       const started = Date.now();
-      const mark = { since: started };
+      const mark = { since: started, host };
+      // Past its round trip with no answer: one more sign that the whole connection may be silent.
+      const overdue = api ? setTimeout(() => noAnswer(mark), rtoMs(host) || FIRST_HEDGE_MS) : undefined;
       if (api) waiting.add(mark);
       try {
         const value = await (inner[kind] as (u: string, o?: HttpRequestInit) => Promise<T>).call(inner, url, init);
+        if (api) heard(host);
         if (api && !decided?.()) noteRoundTrip(host, Date.now() - started);
         return value;
       } catch (err) {
+        if (api) {
+          if (answered(err)) heard(host);
+          else noAnswer(mark);
+        }
         if (api && !decided?.()) {
           if (answered(err)) noteRoundTrip(host, Date.now() - started);
           // No answer at all (a timeout, a refused or reset connection): the host's round trips
@@ -236,6 +406,7 @@ export function trackHttp(inner: HttpClient): HttpClient {
         }
         throw err;
       } finally {
+        clearTimeout(overdue);
         waiting.delete(mark);
         releaseSlot(s);
       }

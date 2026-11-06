@@ -204,11 +204,19 @@ dead['a slow host that falls silent'] = async () => {
   silent = true;
   await http.requestJson('https://silent.example.org/c', { hedge: false }).catch(() => {});
   const after = core.budgetMs(1500, 'silent.example.org', 2);
-  const unseen = core.budgetMs(1500, 'never-asked.example.org', 2);
+  // One host failing while the other has not been asked says nothing about the other: it is
+  // still slow, and a host never asked is taken to be like it (Wiktionary blocked, the rest slow).
+  const oneDown = core.budgetMs(1500, 'never-asked.example.org', 2);
   assert.ok(slow >= 15000, `two round trips to the slow host: ${slow} ms`);
   assert.ok(after <= 6000, `and once it falls silent: ${after} ms`);
-  // The host not asked since still holds the slow round trips, but they are not taken as typical.
+  assert.ok(oneDown >= 15000, `a host never asked, one host down: ${oneDown} ms`);
+  // A second host failing too, with nothing answering since: the connection is silent, and the
+  // slow round trips of the host not asked since are not taken as typical any more.
+  await http.requestJson('https://other.example.org/d', { hedge: false }).catch(() => {});
+  const unseen = core.budgetMs(1500, 'never-asked.example.org', 2);
+  assert.ok(core.connectionSilent(), 'the connection counts as silent');
   assert.ok(unseen <= 6000, `a host never asked, after the silence: ${unseen} ms`);
+  assert.ok(core.budgetMs(1500, 'not-asked.example.org', 2) <= 6000, 'nor the host that was slow before it');
 };
 // A request answered by its backup: the original answering late is not a round trip (Karn), or one
 // hung request would put the host's next backups six seconds out.
