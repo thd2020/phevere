@@ -35,6 +35,7 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
   private String pendingJsId;
   private String pendingSaveText;
   private boolean pageReady;
+  private final NotebookClose closer = new NotebookClose();
 
   public static void show(Context ctx, String text) {
     show(ctx, text, null);
@@ -75,6 +76,11 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
     android.graphics.Rect anchor = repeat ? null : SelectionAnchor.from(intent);
     if (root == null) attach(anchor);
     else {
+      if (closer.waiting() && text != null && !text.isEmpty()) {
+        // A new selection while the last pop-up finished saving: keep this one open.
+        closer.cancel();
+        showWindow(true);
+      }
       if (anchor != null) {
         // Like desktop: each new selection brings the pop-up next to that word.
         WindowManager.LayoutParams lp = (WindowManager.LayoutParams) root.getLayoutParams();
@@ -106,6 +112,7 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
     WebViews.bind(web, WebViews.assets(this), this, true, () -> {
       // Incoming text stays pending until JS explicitly calls getPendingText.
     });
+    Notebook.register(this);
     try {
       wm.addView(root, lp);
       PopupLayout.draggable(root.findViewById(R.id.popup_handle), this,
@@ -222,7 +229,7 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
 
   @Override
   public void closeStrip() {
-    stopSelf();
+    closer.run(web, () -> showWindow(false), this::stopSelf);
   }
 
   @Override
@@ -231,7 +238,25 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
     if (query != null && !query.isEmpty()) i.putExtra(CapturePrefs.EXTRA_QUERY, query);
     i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
     startActivity(i);
-    stopSelf();
+    closer.run(web, () -> showWindow(false), this::stopSelf);
+  }
+
+  @Override
+  public void notebookFlushed() {
+    closer.flushed();
+  }
+
+  /** Hidden while a closing pop-up finishes saving: out of sight, and taps pass through. */
+  private void showWindow(boolean on) {
+    if (root == null || wm == null) return;
+    WindowManager.LayoutParams lp = (WindowManager.LayoutParams) root.getLayoutParams();
+    if (on) lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+    else lp.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+    root.setVisibility(on ? View.VISIBLE : View.INVISIBLE);
+    try {
+      wm.updateViewLayout(root, lp);
+    } catch (Exception ignored) {
+    }
   }
 
   @Override
@@ -262,6 +287,8 @@ public class OverlayService extends Service implements NativeBridge.Target, Brid
 
   @Override
   public void onDestroy() {
+    closer.cancel();
+    Notebook.unregister(this);
     if (wm != null && root != null) {
       try {
         wm.removeView(root);

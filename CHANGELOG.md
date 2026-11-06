@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - About page (2026-11-06): Settings has an About page on the desktop and on the phone. It shows the version you have installed, with a Copy button for bug reports, and links to the source code on GitHub, a button to star it, the changelog, a page for reporting a problem that already names your version and system, the privacy policy, the MIT licence and the author. It also credits every dictionary, word list, voice, model and font Phevere uses, each with its licence, so Wiktionary and the other CC BY-SA sources are properly attributed. On a Mac, Phevere → About Phevere opens this page.
 - README in other languages (2026-11-06): the README is now also in Simplified Chinese, Traditional Chinese, Japanese, Korean, Spanish, French, German, Russian and Brazilian Portuguese, with a language switcher at the top of each.
+- Apps in Sources (2026-11-06): Words → Sources now also groups words saved from an app that shows no web address or document, such as a chat app, under the app's name. On Android the row shows the app's own icon; elsewhere it shows the app's first letter. Like a site or a PDF, an app's words can be made into a word book.
 
 ### Changed
 
@@ -20,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - iOS version number (2026-11-06): the iOS app called itself 4.0.0 in the iPhone's Settings and in the IPA, whatever the release was. It now carries the same version as the rest of the release, as the Android app already did.
 - Settings tabs on a phone (2026-11-06): each tab is now at least 48 pixels wide, so it is easy to tap. When they do not all fit, as on a narrow Android phone with Updates and About, swipe the row sideways; the open tab always stays in view.
+- Saving from the Android pop-up (2026-11-06): a word saved from the pop-up over another app is now kept. Before, it did not show in My words while the app was open in the background, and the app's next save erased it, so only words saved again inside the app stayed. Now the word is written at once, appears in the open app's My words straight away, and goes out with the next sync. Closing the pop-up right after tapping Save no longer loses the word either.
+- Android notebook that cannot be read (2026-11-06): if the phone cannot read the notebook file, Phevere now reports an error instead of starting an empty notebook that the next save would write over your words.
 
 ## [4.2.0] - 2026-11-06
 
