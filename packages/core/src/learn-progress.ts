@@ -296,12 +296,12 @@ export function progressSummary(input: ProgressInput): ProgressSummary {
 
 /* ------------------------------------------------------------------- pieces */
 
-/** A thin rule that fills towards a target, with its count; teal when the target is met. */
-function gauge(label: string, value: number, target: number): string {
+/** A thin rule that fills towards a target, with its count (or `shown` in its place); teal when the target is met. */
+function gauge(label: string, value: number, target: number, shown = ''): string {
   const share = target ? Math.min(1, value / target) : value ? 1 : 0;
-  return `<div class="lrp-gauge${share >= 1 ? ' is-done' : ''}" role="img" aria-label="${esc(label)}: ${value} of ${target}">
+  return `<div class="lrp-gauge${share >= 1 ? ' is-done' : ''}" role="img" aria-label="${esc(label)}: ${shown || `${value} of ${target}`}">
     <span class="lrp-gauge__label">${esc(label)}</span>
-    <span class="lrp-gauge__n"><b>${fmt(value)}</b> of ${fmt(target)}</span>
+    <span class="lrp-gauge__n">${shown ? `<b>${shown}</b>` : `<b>${fmt(value)}</b> of ${fmt(target)}`}</span>
     <span class="lrp-gauge__bar"><i style="width:${(share * 100).toFixed(1)}%"></i></span>
   </div>`;
 }
@@ -317,9 +317,12 @@ function section(cls: string, n: number, label: string, body: string): string {
   return `<section class="lrp-sec ${cls}" aria-label="${esc(label)}"><h3 class="lrp-sec__label"><span>${String(n).padStart(2, '0')}</span>${esc(label)}</h3>${body}</section>`;
 }
 
-/** An oversized number with the sentence that says what it counts. */
-function figure(n: string, text: string, cls = ''): string {
-  return `<div class="lrp-fig${cls ? ` ${cls}` : ''}"><b class="lrp-fig__n">${n}</b><p class="lrp-fig__text">${text}</p></div>`;
+/**
+ * An oversized number with a label that names it and, under the label, one short line of context.
+ * `--ch` (the number's length) lets the CSS shrink a long number to its column instead of overflowing.
+ */
+function figure(n: string, label: string, sub = '', cls = ''): string {
+  return `<div class="lrp-fig${cls ? ` ${cls}` : ''}"><b class="lrp-fig__n" style="--ch:${n.length}">${n}</b><p class="lrp-fig__cap"><span class="lrp-fig__label">${esc(label)}</span>${sub ? `<span class="lrp-fig__sub">${sub}</span>` : ''}</p></div>`;
 }
 
 function perDayChart(perDay: ProgressSummary['perDay']): string {
@@ -364,7 +367,7 @@ function mixHtml(mix: Record<Skill, number>): string {
   const parts = SKILLS.map((k) => `<span class="lrp-mix__k"><i class="lrp-mix--${k}"></i><b>${pct(mix[k], total)}%</b> ${SKILL_LABEL[k].toLowerCase()}</span>`);
   return `<div class="lrp-mix">
     <div class="lrp-mix__bar" role="img" aria-label="${SKILLS.map((k) => `${SKILL_LABEL[k]} ${pct(mix[k], total)}%`).join(', ')}">${seg}</div>
-    <p class="lrp-mix__text">Last 7 days, ${fmt(total)} questions: ${parts[0]}, ${parts[1]} and ${parts[2]}</p>
+    <p class="lrp-mix__text"><span class="lrp-mix__head">Last 7 days · ${fmt(total)} ${total === 1 ? 'question' : 'questions'}</span>${parts.join('')}</p>
   </div>`;
 }
 
@@ -378,9 +381,10 @@ function dueWithin(words: WordsEntry[], now: number, days: number): number {
 
 /**
  * The page reads like a printed spread rather than a grid of cards: a masthead with the streak as
- * a giant numeral and today told in one sentence, then numbered sections on rules, each led by one
- * oversized number with what it counts, at sizes that differ from section to section. Wide windows
- * set the sections on a twelve-column grid in uneven pairs; a phone stacks them.
+ * a giant numeral beside today's gauges, then numbered sections on rules, each led by one oversized
+ * number with a short label, at sizes that differ from section to section. Every number sits below
+ * its rule and beside its label, never across them. Wide windows set the sections on a
+ * twelve-column grid in uneven pairs; a phone stacks them.
  */
 export function progressHtml(input: ProgressInput): string {
   const now = input.now ?? Date.now();
@@ -389,37 +393,34 @@ export function progressHtml(input: ProgressInput): string {
   const due = s.reviewsToday + s.dueLeft;
   const date = new Date(now).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  const lede = s.reviewsToday
-    ? `Today you started <b>${fmt(s.newToday)}</b> of <b>${fmt(s.newGoal)}</b> new words and answered <b>${fmt(s.reviewsToday)}</b> ${s.reviewsToday === 1 ? 'question' : 'questions'}, <b>${pct(s.correctToday, s.reviewsToday)}%</b> of them right. ${
-        s.dueLeft ? `<b>${fmt(s.dueLeft)}</b> ${s.dueLeft === 1 ? 'review is' : 'reviews are'} still due.` : 'Nothing else is due today.'
-      }`
-    : `Nothing answered yet today. ${s.dueLeft ? `<b>${fmt(s.dueLeft)}</b> ${s.dueLeft === 1 ? 'review is' : 'reviews are'} due` : 'Nothing is due'}, and the goal is <b>${fmt(s.newGoal)}</b> new ${s.newGoal === 1 ? 'word' : 'words'}.`;
+  const streak = fmt(s.streak);
   const mast = `<header class="lrp-mast${s.streak ? ' is-on' : ''}" aria-label="Today">
     <p class="lrp-kicker">${esc(date)}</p>
     <div class="lrp-mast__streak">
-      <b class="lrp-giant">${fmt(s.streak)}</b>
-      <p class="lrp-mast__cap"><span>${s.streak === 1 ? 'day' : 'days'} in a row</span><small>Streak · best ${fmt(s.bestStreak)}</small></p>
+      <b class="lrp-giant" style="--ch:${streak.length}">${streak}</b>
+      <p class="lrp-fig__cap"><span class="lrp-fig__label">Day streak</span><span class="lrp-fig__sub">Best ${fmt(s.bestStreak)}</span></p>
     </div>
-    <p class="lrp-lede">${lede}</p>
-    <div class="lrp-gauges">${gauge('New words', s.newToday, s.newGoal)}${gauge('Reviews', s.reviewsToday, due)}</div>
+    <div class="lrp-gauges">${gauge('New words', s.newToday, s.newGoal)}${gauge('Reviews', s.reviewsToday, due)}${
+      s.reviewsToday ? gauge('Right', s.correctToday, s.reviewsToday, `${pct(s.correctToday, s.reviewsToday)}%`) : ''
+    }</div>
   </header>`;
 
   const memory = s.inRotation ? memoryHtml({ id: 'memory', words: s.rotation, now }) : '<p class="lrp-none">No words in rotation yet</p>';
 
   const week = dueWithin(words, now, 7);
-  const ahead = `${figure(fmt(week), `${week === 1 ? 'review' : 'reviews'} in the next 7 days`)}${forecastChartHtml(words, now, 30, 'due30')}`;
+  const ahead = `${figure(fmt(week), 'Due in 7 days')}${forecastChartHtml(words, now, 30, 'due30')}`;
 
   const started = s.strength.slice(1).reduce((n, b) => n + b.words.length, 0);
   const held = s.strength[3].words.length;
   const heldBody = started
-    ? `${figure(fmt(held), `of ${fmt(started)} started ${started === 1 ? 'word is' : 'words are'} mature, held for 3 weeks or more`, 'is-teal')}${strengthChart(s.strength)}`
+    ? `${figure(fmt(held), 'Mature', `of ${fmt(started)} started`, 'is-teal')}${strengthChart(s.strength)}`
     : '<p class="lrp-none">No words started yet</p>';
 
   const answers30 = s.perDay.reduce((n, d) => n + d.right + d.wrong, 0);
   const right30 = s.perDay.reduce((n, d) => n + d.right, 0);
   const days30 = s.perDay.filter((d) => d.right + d.wrong).length;
   const answersBody = answers30
-    ? `${figure(fmt(answers30), `answers in 30 days, <b>${pct(right30, answers30)}%</b> right, on ${days30} ${days30 === 1 ? 'day' : 'days'}`, 'is-wide')}${perDayChart(s.perDay)}`
+    ? `${figure(fmt(answers30), 'Answers in 30 days', `<b>${pct(right30, answers30)}%</b> right · ${days30} ${days30 === 1 ? 'day' : 'days'}`, 'is-wide')}${perDayChart(s.perDay)}`
     : '<p class="lrp-none">No answers yet</p>';
 
   const skills = `<div class="lrp-skills">${SKILLS.map((k) => {
@@ -429,20 +430,22 @@ export function progressHtml(input: ProgressInput): string {
       <span class="lrp-skill__name">${SKILL_LABEL[k]}</span>
       <b class="lrp-skill__pct">${v.tested ? `${pct(v.mastered, v.tested)}<small>%</small>` : '–'}</b>
       <span class="lrp-skill__bar" role="img" aria-label="${v.mastered} of ${v.tested} mastered"><i style="width:${(share * 100).toFixed(1)}%"></i></span>
-      <span class="lrp-skill__n">${fmt(v.mastered)} of ${fmt(v.tested)} words mastered</span>
+      <span class="lrp-skill__n">${fmt(v.mastered)} of ${fmt(v.tested)} mastered</span>
     </div>`;
   }).join('')}</div>${mixHtml(s.mix)}`;
 
   const lists = `<ul class="lrp-lists">${s.lists
     .map((l) => {
       const o = s.overlaps[l.id];
-      const shared = o?.shared.slice(0, 3).map((x) => `${fmt(x.shared)} with ${esc(x.label)}`) || [];
-      const extra = [o?.elsewhere ? `${fmt(o.elsewhere)} started through other lists` : '', shared.length ? `Shares ${shared.join(', ')}` : ''].filter(Boolean);
+      const extra = [
+        o?.elsewhere ? `${fmt(o.elsewhere)} started elsewhere` : '',
+        ...(o?.shared.slice(0, 3).map((x) => `${fmt(x.shared)} shared with ${esc(x.label)}`) || []),
+      ].filter(Boolean);
       return `<li class="lrp-list">
         <span class="lrp-list__name">${esc(l.label)}</span>
         <span class="lrp-list__n"><b>${fmt(l.known)}</b> of ${fmt(l.total)} known</span>
         ${stackBar(l.known, l.learning, l.total, `${l.known} of ${l.total} known`)}
-        <span class="lrp-list__more">${fmt(l.learning)} learning, ${fmt(l.fresh)} new${extra.length ? `. ${extra.join('. ')}` : ''}</span>
+        <span class="lrp-list__more">${[`${fmt(l.learning)} learning`, `${fmt(l.fresh)} new`, ...extra].join(' · ')}</span>
       </li>`;
     })
     .join('')}</ul>
@@ -456,7 +459,7 @@ export function progressHtml(input: ProgressInput): string {
           const w = t.misses / Math.max(1, t.answers) / worst;
           return `<button type="button" class="lrp-tw${t.leech ? ' is-leech' : ''}" style="--w:${w.toFixed(2)}" data-act="lookup" data-q="${esc(t.lemma)}" title="${t.misses} of ${t.answers} missed, last ${esc(dayLabel(t.lastMiss))}">${esc(t.lemma)}<sup>${t.misses}/${t.answers}</sup></button>`;
         })
-        .join(' ')}</p><p class="lrp-note">Missed of answered${s.trouble.some((t) => t.leech) ? '; leeches in rust' : ''}</p>`
+        .join(' ')}</p><p class="lrp-key lrp-key--trouble"><sup>2/5</sup>Missed of answered${s.trouble.some((t) => t.leech) ? '<i class="lrp-key__leech"></i>Leech' : ''}</p>`
     : '<p class="lrp-none">No trouble words</p>';
 
   const biggest = Math.max(1, ...s.families.map((f) => f.size));
@@ -474,7 +477,7 @@ export function progressHtml(input: ProgressInput): string {
     : '<p class="lrp-none">No root families yet</p>';
 
   let n = 0;
-  return `<div class="lrp">
+  return `<div class="lrp-frame"><div class="lrp">
     ${mast}
     ${section('lrp-sec--memory', ++n, 'Memory', memory)}
     ${section('lrp-sec--ahead', ++n, 'Reviews ahead', ahead)}
@@ -484,5 +487,5 @@ export function progressHtml(input: ProgressInput): string {
     ${section('lrp-sec--lists', ++n, 'Words', lists)}
     ${section('lrp-sec--trouble', ++n, 'Trouble words', trouble)}
     ${section('lrp-sec--fams', ++n, 'Root families', fams)}
-  </div>`;
+  </div></div>`;
 }

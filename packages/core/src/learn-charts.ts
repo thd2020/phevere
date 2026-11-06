@@ -215,9 +215,9 @@ export function retentionAt(words: RetentionWord[], now: number, days: number, w
 
 /** Today, a week and a month without review: the three moments the memory strip shows. */
 export const MEMORY_HORIZONS = [
-  { days: 0, label: 'Today', phrase: 'today' },
-  { days: 7, label: 'In a week', phrase: 'in a week without review' },
-  { days: 30, label: 'In a month', phrase: 'in a month without review' },
+  { days: 0, label: 'Today' },
+  { days: 7, label: 'In a week' },
+  { days: 30, label: 'In a month' },
 ] as const;
 
 export interface MemoryAt {
@@ -316,19 +316,13 @@ export interface MemorySpec {
 /** Recall as a whole percent, rounded down, so a word just under the target never reads as 90%. */
 const recallPct = (r: number) => `${Math.floor(r * 100 + 1e-9)}%`;
 
+/** The caption under the number of words you would recall: what it counts, then the due and the loss as short figures. */
 function memoryLede(m: MemoryAt, total: number, today: MemoryAt, h: (typeof MEMORY_HORIZONS)[number]): string {
   const target = `${Math.round(DESIRED_RETENTION * 100)}%`;
   const lost = Math.round(today.recalled) - Math.round(m.recalled);
-  const loss = m.days && lost > 0 ? `, <b>${fmt(lost)}</b> fewer than today` : '';
-  let due: string;
-  if (!m.days) {
-    due = m.below ? `<b>${fmt(m.below)}</b> ${m.below === 1 ? 'is' : 'are'} below ${target} and due now.` : `Every one is above ${target}.`;
-  } else if (!m.below) {
-    due = `Every one would still be above ${target}.`;
-  } else {
-    due = m.below === total ? `All of them would be below ${target}.` : `<b>${fmt(m.below)}</b> would be below ${target}.`;
-  }
-  return `words you would ${m.days ? 'still ' : ''}recall ${h.phrase}, of ${fmt(total)} you are learning${loss}. ${due}`;
+  const facts = [`<span><b>${fmt(m.below)}</b> below ${target}</span>`];
+  if (m.days && lost > 0) facts.push(`<span><b>${fmt(lost)}</b> fewer than today</span>`);
+  return `<span class="lrp-fig__label">Recalled ${esc(h.label.toLowerCase())}</span><span class="lrp-fig__sub">of ${fmt(total)} learning</span><span class="lrp-fig__facts">${facts.join('')}</span>`;
 }
 
 function memoryReadout(words: RetentionWord[], m: MemoryAt, picked: number | null, now: number): string {
@@ -336,9 +330,9 @@ function memoryReadout(words: RetentionWord[], m: MemoryAt, picked: number | nul
   if (picked != null && words[picked]) {
     const w = words[picked];
     const slip = slipDate(w);
-    const when = slip <= now ? `Fell below ${target} on ${esc(dayLabel(slip))}, so it is due.` : `Falls below ${target} on ${esc(dayLabel(slip))}.`;
+    const when = `${slip <= now ? 'Due since' : 'Due'} ${esc(dayLabel(slip))}`;
     const at = m.days ? (MEMORY_HORIZONS.find((h) => h.days === m.days)?.label.toLowerCase() ?? '') : 'today';
-    return `<p class="lrc-read__head"><button type="button" class="lrc-chip" data-act="lookup" data-q="${esc(w.lemma)}">${esc(w.lemma)}</button> <b>${recallPct(m.recall[picked])}</b> recall ${esc(at)}</p><p class="lrc-read__sub">Last reviewed ${esc(dayLabel(w.lastReview))}. ${when}</p>`;
+    return `<p class="lrc-read__head"><button type="button" class="lrc-chip" data-act="lookup" data-q="${esc(w.lemma)}">${esc(w.lemma)}</button> <b>${recallPct(m.recall[picked])}</b> recall ${esc(at)}</p><p class="lrc-read__sub">Reviewed ${esc(dayLabel(w.lastReview))} · ${when}</p>`;
   }
   const order = m.recall.map((r, i) => ({ r, i })).sort((a, b) => a.r - b.r || words[a.i].lemma.localeCompare(words[b.i].lemma));
   const weak = order
@@ -380,8 +374,8 @@ export function memoryHtml(spec: MemorySpec): string {
   }).replace(/</g, '\\u003c');
   return `<div class="lrc lrc--memory" data-lrc="${esc(spec.id)}">
     <div class="lrc-mem__head">
-      <p class="lrc-mem__big" data-mem-big>${fmt(Math.round(today.recalled))}</p>
-      <p class="lrc-mem__lede" data-mem-lede>${memoryLede(today, words.length, today, MEMORY_HORIZONS[0])}</p>
+      <p class="lrc-mem__big" data-mem-big style="--ch:${fmt(Math.round(today.recalled)).length}">${fmt(Math.round(today.recalled))}</p>
+      <p class="lrc-mem__cap" data-mem-lede>${memoryLede(today, words.length, today, MEMORY_HORIZONS[0])}</p>
     </div>
     <div class="lrc-mem__chart">
       <div class="lrc-mem__whens" role="group" aria-label="Without review">${seg}</div>
@@ -479,7 +473,10 @@ function wireMemory(chart: HTMLElement): void {
       dot.style.transform = `translate(${p.x.toFixed(1)}px,${p.y.toFixed(1)}px)`;
       dot.classList.toggle('is-due', m.recall[i] < DESIRED_RETENTION - 1e-9);
     });
-    if (big) big.textContent = fmt(Math.round(m.recalled));
+    if (big) {
+      big.textContent = fmt(Math.round(m.recalled));
+      big.style.setProperty('--ch', String(big.textContent.length));
+    }
     if (lede) lede.innerHTML = memoryLede(m, words.length, states[0], MEMORY_HORIZONS[when]);
     chart.querySelectorAll<HTMLElement>('[data-lrc-when]').forEach((b) => {
       const on = Number(b.dataset.lrcWhen) === when;

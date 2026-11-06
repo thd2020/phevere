@@ -411,7 +411,7 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.equal(s.inRotation, 2);
   assert.ok(s.curve[0] > s.curve[30], 'recall falls without review');
   const page = progressHtml({ history, scope: 'mine', ctx: null, mine: words, goal: 10, now: t0 });
-  for (const label of ['New words', 'Reviews', 'Streak', 'Skills', 'Root families', 'Answers per day', 'Memory', 'Reviews ahead', 'How long words are held', 'Trouble words']) assert.match(page, new RegExp(label));
+  for (const label of ['New words', 'Reviews', 'Day streak', 'Skills', 'Root families', 'Answers per day', 'Memory', 'Reviews ahead', 'How long words are held', 'Trouble words']) assert.match(page, new RegExp(label));
   // Labels name things; no line tells the learner how to use a chart.
   assert.doesNotMatch(page, /Pick a|Tap a|to see its/, 'no instructions on Progress');
   assert.doesNotMatch(views.reviewHtml(rq, rs, 10, { now }), /Pick a|Tap a|to see its/, 'no instructions on Today');
@@ -422,14 +422,18 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   assert.equal((page.match(/data-lrc="due30"[\s\S]*?<\/svg>/)[0].match(/class="lrc-hit"/g) || []).length, 30, 'one bar a day');
   assert.match(page, /data-lrc="answers"[\s\S]*<template data-for="29"><p class="lrc-read__head"><b>[^<]+<\/b> · 2 answers, 50% right/);
   assert.match(page, /aria-label="Reviews: 2 of 3"/, 'the review gauge says what it counts');
-  assert.match(page, /Today you started <b>1<\/b> of <b>10<\/b> new words and answered <b>2<\/b> questions, <b>50%<\/b> of them right\. <b>1<\/b> review is still due\./);
-  assert.match(page, /class="lrp-giant">3</, 'the streak is the masthead numeral');
+  assert.match(page, /aria-label="New words: 1 of 10"/);
+  assert.match(page, /aria-label="Right: 50%"/, "today's share right is a gauge, not a sentence");
+  // Short labels, not sentences: no caption on Progress runs past four words.
+  for (const m of page.matchAll(/class="lrp-fig__label">([^<]*)</g)) assert.ok(m[1].split(/\s+/).length <= 4, `label too long: ${m[1]}`);
+  assert.doesNotMatch(page, /lrp-lede|Today you started|words you would/);
+  assert.match(page, /class="lrp-giant" style="--ch:1">3</, 'the streak is the masthead numeral');
   assert.doesNotMatch(page, /lrp-card|data-lrc-range/, 'no cards and no slider');
   assert.doesNotMatch(page, /at most 20%/);
   // Words by the stages Today and the question tags use.
   assert.deepEqual(s.strength.map((b) => b.label), ['New', 'Learning', 'Young', 'Mature']);
   assert.deepEqual(s.strength.map((b) => b.words), [['export'], ['transport'], [], ['portable']]);
-  assert.match(page, /<b class="lrp-fig__n">1<\/b><p class="lrp-fig__text">of 2 started words are mature/);
+  assert.match(page, /<b class="lrp-fig__n" style="--ch:1">1<\/b><p class="lrp-fig__cap"><span class="lrp-fig__label">Mature<\/span><span class="lrp-fig__sub">of 2 started<\/span>/);
   assert.doesNotMatch(page, /Under 1 wk|3 wk–3 mo/, 'no week buckets');
   assert.equal(s.mix.listening, 1);
   const charts = load('learn-charts');
@@ -458,7 +462,8 @@ assert.deepEqual(views.readNotebookView('bogus'), { view: 'list', learn: false }
   const empty = progressHtml({ history: [], scope: 'mine', ctx: null, mine: [], goal: 10, now: t0 });
   assert.match(empty, /No answers yet/);
   assert.match(empty, /No words in rotation yet/);
-  assert.match(empty, /Nothing answered yet today\. Nothing is due, and the goal is <b>10<\/b> new words\./);
+  assert.match(empty, /aria-label="New words: 0 of 10"[\s\S]*aria-label="Reviews: 0 of 0"/);
+  assert.doesNotMatch(empty, /aria-label="Right:/, 'no share right before any answer');
 }
 
 // Rows: Look up sits in the collapsed row, not only in the details.

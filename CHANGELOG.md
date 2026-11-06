@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Learn → Progress (2026-11-06): the large numbers no longer run into the rules, the labels or each other, at any window width and on the phone; a long number such as a four-digit streak shrinks to fit its column. The sentences are gone. Each number has a short label under it, such as "Day streak" with "Best 3", "Recalled today" with "of 37 learning" and "20 below 90%", "Due in 7 days" and "Mature" with "of 36 started". Today's new words and reviews sit beside the streak as two bars, with a third for the share answered right once you have answered something.
+
 ## [4.2.0] - 2026-11-06
 
 ### Added
