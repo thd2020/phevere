@@ -15,6 +15,7 @@
  */
 import { analyzeMorphemes, derivationStem, morphBreakdown, wordOrigin, type MorphEtymon } from './morphology';
 import { cachedEtymon } from './notebook-etymology';
+import { loadPicture } from './picture-load';
 import { clean, type Family, type NotebookAnalysis, type NotebookEntry, type NotebookView, type TreeNode, type WordInfo } from './notebook-shared';
 
 export * from './notebook-shared';
@@ -142,20 +143,35 @@ export function notebookViewSwitchHtml(view: NotebookView): string {
 
 type Img = { thumb: string; title: string; pageUrl: string; credit: string } | null;
 
-/** How a card asks for its picture: word, language, saved sense, part of speech, and early news. */
+/**
+ * How a card asks for its picture: word, language, saved sense, part of speech, early news, and a
+ * signal that is aborted when the card scrolls away (its requests not sent yet are then dropped).
+ */
 export type WordImageFetcher = (
   lemma: string,
   lang?: string,
   gloss?: string,
   pos?: string,
   onPicture?: (img: Img) => void,
+  signal?: AbortSignal,
 ) => Promise<Img>;
 
 /** Card pictures being chosen at once, across every list on the page. */
 const CARD_SLOTS = 4;
 let cardRunning = 0;
 const cardQueue = new Set<any>();
-const cardState = new WeakMap<any, { visible: boolean; near: boolean; fetch: WordImageFetcher }>();
+interface CardState {
+  visible: boolean;
+  near: boolean;
+  fetch: WordImageFetcher;
+  /** A card whose search ended without a picture waits until then before it asks again. */
+  retryAt?: number;
+  /** The running search for the card's picture, aborted when the card scrolls away. */
+  ctl?: AbortController | null;
+}
+const cardState = new WeakMap<any, CardState>();
+/** A card whose search found nothing is asked again when it comes back into view after this. */
+const CARD_RETRY_MS = 20_000;
 
 /**
  * A card behind the top card of a closed pile cannot be seen, so it waits until its pile opens
@@ -171,19 +187,37 @@ function coveredCard(box: any): boolean {
   return !(pile && pile.getAttribute('aria-expanded') === 'true');
 }
 
+/**
+ * Puts a card's picture in once its bytes are here (picture-load.ts: asked again after a failed
+ * request, never shown half-loaded); until then the card keeps its letter.
+ */
 function showPicture(box: any, img: Img): void {
   if (!img || !img.thumb) return;
+  if (box.getAttribute('data-img-want') === img.thumb) return;
+  box.setAttribute('data-img-want', img.thumb);
+  void loadPicture(img.thumb).then((src) => {
+    // A later picture for the card (a better fit found by a slower source) has taken its place.
+    if (box.getAttribute('data-img-want') !== img.thumb) return;
+    if (src) placePicture(box, img, src);
+    else if (!box.querySelector('img')) {
+      box.removeAttribute('data-img-want');
+      markRetry(box);
+    }
+  });
+}
+
+function placePicture(box: any, img: NonNullable<Img>, src: string): void {
   let el = box.querySelector('img');
-  if (el && el.getAttribute('src') === img.thumb) return;
+  if (el && el.getAttribute('src') === src) return;
   if (!el) {
     el = box.ownerDocument.createElement('img');
-    el.loading = 'lazy';
     el.decoding = 'async';
     el.alt = '';
+    el.referrerPolicy = 'no-referrer';
     el.addEventListener('load', () => box.classList.add('has-img'));
     box.appendChild(el);
   }
-  el.src = img.thumb;
+  el.src = src;
   el.title = `${img.title} · ${img.credit}`;
   // The credit shows when the picture is tapped (phones have no hover).
   let credit = box.querySelector('.nbv-card__credit');
@@ -210,7 +244,8 @@ function showPicture(box: any, img: Img): void {
 /** Starts the next cards: on screen first, then the ones about to scroll in. */
 function pumpCards(): void {
   while (cardRunning < CARD_SLOTS && cardQueue.size) {
-    const ready = Array.from(cardQueue).filter((b) => b.isConnected !== false && !coveredCard(b));
+    const now = Date.now();
+    const ready = Array.from(cardQueue).filter((b) => b.isConnected !== false && !coveredCard(b) && !((cardState.get(b)?.retryAt || 0) > now));
     const next = ready.find((b) => cardState.get(b)?.visible) || ready.find((b) => cardState.get(b)?.near);
     if (!next) return;
     cardQueue.delete(next);
@@ -218,37 +253,82 @@ function pumpCards(): void {
   }
 }
 
+/** Searches a card may make again after one ended without a picture while it stayed on screen. */
+const CARD_RETRIES = 2;
+const cardTries = new WeakMap<any, number>();
+
+/**
+ * Lets a card whose search ended without a picture ask again: at once when it comes back into
+ * view after being cut off, otherwise after CARD_RETRY_MS while it is on screen, twice at most.
+ */
+function markRetry(box: any, cutOff = false): void {
+  const st = cardState.get(box);
+  if (!st || box.querySelector('img')) return;
+  const tries = cardTries.get(box) || 0;
+  if (!cutOff && tries >= CARD_RETRIES) return;
+  if (!cutOff) cardTries.set(box, tries + 1);
+  box.removeAttribute('data-img-done');
+  st.retryAt = cutOff ? 0 : Date.now() + CARD_RETRY_MS;
+  if (cutOff) return;
+  setTimeout(() => {
+    if (box.isConnected === false || box.hasAttribute('data-img-done') || !(st.visible || st.near)) return;
+    cardQueue.add(box);
+    pumpCards();
+  }, CARD_RETRY_MS + 50);
+}
+
 function startCard(box: any): void {
   const st = cardState.get(box);
   if (!st) return;
   box.setAttribute('data-img-done', '1');
   cardRunning += 1;
+  const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+  st.ctl = ctl;
+  let released = false;
+  // The card's place among the four is given back when its search ends or it scrolls away.
+  const release = () => {
+    if (released) return;
+    released = true;
+    if (st.ctl === ctl) st.ctl = null;
+    cardRunning -= 1;
+    pumpCards();
+  };
+  cardRelease.set(box, release);
   const lemma = box.getAttribute('data-img-lemma') || '';
   const gloss = box.getAttribute('data-img-gloss') || undefined;
   const pos = box.getAttribute('data-img-pos') || undefined;
   void st
-    .fetch(lemma, box.getAttribute('data-img-lang') || undefined, gloss, pos, (img) => showPicture(box, img))
+    .fetch(lemma, box.getAttribute('data-img-lang') || undefined, gloss, pos, (img) => showPicture(box, img), ctl?.signal)
     .then((img) => {
-      if (!img || !img.thumb) {
-        if (!box.querySelector('img')) box.classList.add('is-empty');
+      if (img && img.thumb) {
+        showPicture(box, img);
         return;
       }
-      showPicture(box, img);
+      if (box.querySelector('img') || box.hasAttribute('data-img-want')) return;
+      box.classList.add('is-empty');
+      markRetry(box, !!ctl?.signal.aborted);
     })
-    .catch(() => {
-      if (!box.querySelector('img')) box.classList.add('is-empty');
-    })
-    .finally(() => {
-      cardRunning -= 1;
-      pumpCards();
-    });
+    .catch(() => markRetry(box, !!ctl?.signal.aborted))
+    .finally(release);
+}
+
+const cardRelease = new WeakMap<any, () => void>();
+
+/** A card that scrolled away stops its search: its requests not sent yet are dropped. */
+function stopCard(box: any): void {
+  const st = cardState.get(box);
+  if (!st?.ctl) return;
+  st.ctl.abort();
+  cardRelease.get(box)?.();
 }
 
 /**
  * Fill each `[data-img-lemma]` box with a picture: boxes on screen first, then those within
  * about a screen of it, four at a time. A box that scrolls away before its turn is dropped from
- * the queue (and asked for again when it returns), a card hidden in a closed pile waits, and a
- * picture shows as soon as the first source finds it. The word's saved sense and part of speech
+ * the queue, and one whose search is running stops it and gives its place to the next (its
+ * requests not sent yet are dropped); either is asked for again when it returns. A card hidden in
+ * a closed pile waits, and a picture shows as soon as the first source finds it and its bytes
+ * have loaded. The word's saved sense and part of speech
  * go along, so the picture is checked against what the word means.
  */
 export function fillWordImages(root: any, fetchImage: WordImageFetcher): void {
@@ -269,8 +349,11 @@ export function fillWordImages(root: any, fetchImage: WordImageFetcher): void {
   const track = (key: 'visible' | 'near') => (items: any[]) => {
     for (const it of items) {
       const st = cardState.get(it.target);
-      if (!st || it.target.hasAttribute('data-img-done')) continue;
+      if (!st) continue;
       st[key] = it.isIntersecting;
+      // A card more than a screen away stops its search, so the cards on screen go first.
+      if (!st.visible && !st.near) stopCard(it.target);
+      if (it.target.hasAttribute('data-img-done')) continue;
       if (st.visible || st.near) cardQueue.add(it.target);
       else cardQueue.delete(it.target);
     }

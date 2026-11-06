@@ -423,17 +423,29 @@ contextBridge.exposeInMainWorld('dictionaryAPI', {
     senses: Array<{ meaning: string; partOfSpeech?: string }>,
     opts?: { max?: number; lang?: string },
     onUpdate?: (list: Array<SenseImage | null>) => void,
+    /**
+     * Called with a function that stops the search (a card that scrolled away). An AbortSignal
+     * does not cross the context bridge; a function does.
+     */
+    onCancel?: (cancel: () => void) => void,
   ): Promise<Array<SenseImage | null>> => {
-    if (!onUpdate) return ipcRenderer.invoke('dictionary-sense-images', lemma, senses, opts);
+    if (!onUpdate && !onCancel) return ipcRenderer.invoke('dictionary-sense-images', lemma, senses, opts);
     // The first pictures arrive while slower sources still answer.
     const updateId = `si-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const listener = (_event: unknown, id: string, list: Array<SenseImage | null>) => {
-      if (id === updateId) onUpdate(list);
+      if (id === updateId && onUpdate) onUpdate(list);
     };
-    ipcRenderer.on('dictionary-sense-images-update', listener);
+    let over = false;
+    if (onUpdate) ipcRenderer.on('dictionary-sense-images-update', listener);
+    onCancel?.(() => {
+      if (!over) ipcRenderer.send('dictionary-sense-images-cancel', updateId);
+    });
     return ipcRenderer
-      .invoke('dictionary-sense-images', lemma, senses, { ...(opts || {}), updateId })
-      .finally(() => ipcRenderer.removeListener('dictionary-sense-images-update', listener));
+      .invoke('dictionary-sense-images', lemma, senses, { ...(opts || {}), updateId, cancellable: !!onCancel })
+      .finally(() => {
+        over = true;
+        ipcRenderer.removeListener('dictionary-sense-images-update', listener);
+      });
   },
   /** Starts gathering a word's pictures when it is submitted, before its senses are known. */
   prefetchSenseImages: (lemma: string, lang?: string): void => {
@@ -712,6 +724,7 @@ declare global {
         senses: Array<{ meaning: string; partOfSpeech?: string }>,
         opts?: { max?: number; lang?: string },
         onUpdate?: (list: Array<SenseImage | null>) => void,
+        onCancel?: (cancel: () => void) => void,
       ) => Promise<Array<SenseImage | null>>;
       prefetchSenseImages?: (lemma: string, lang?: string) => void;
       setOxfordCredentials?: (appId: string, appKey: string) => Promise<{ success: boolean }>;

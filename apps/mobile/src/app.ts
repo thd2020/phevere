@@ -874,7 +874,7 @@ function bindNotebookViews(): void {
   }
   const fillImages = () => {
     if (prefs.senseImages !== false) {
-      fillWordImages(page, (lemma, lang, gloss, pos, onPicture) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture }));
+      fillWordImages(page, (lemma, lang, gloss, pos, onPicture, signal) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture, signal }));
     }
   };
   attachCardTable(page, {
@@ -896,7 +896,7 @@ function bindLearn(): void {
     return;
   }
   if (prefs.senseImages !== false) {
-    fillWordImages(page, (lemma, lang, gloss, pos, onPicture) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture }));
+    fillWordImages(page, (lemma, lang, gloss, pos, onPicture, signal) => fetchWordImage(lemma, { lang, gloss, pos, onUpdate: onPicture, signal }));
   }
   focusReview(page);
   void prefetchMeanings();
