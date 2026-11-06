@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
-import { app, net } from 'electron';
+import { app, nativeImage, net } from 'electron';
 import { wrapConsole } from '../logger';
 import {
   findProfile,
@@ -364,6 +364,20 @@ function resolveModelRoot(): string {
   }
 }
 
+/** Pixel budget for reading a whole image, about 2048 by 2048. */
+const PAGE_PIXELS = 4_200_000;
+
+/** A page read from a scaled-down copy, with its boxes put back in the original's pixels. */
+function scaleRawPage(raw: OcrRawPage, width: number, height: number, f: number): OcrRawPage {
+  const q = (quad: OcrQuad): OcrQuad => quad.map(([x, y]) => [x * f, y * f]) as OcrQuad;
+  return {
+    ...raw,
+    width,
+    height,
+    lines: raw.lines.map((l) => ({ ...l, quad: q(l.quad), words: l.words?.map((w) => ({ ...w, quad: q(w.quad) })) })),
+  };
+}
+
 function pngSize(buf: Buffer): { width: number; height: number } | null {
   if (buf.length < 24 || buf[0] !== 0x89 || buf.toString('ascii', 1, 4) !== 'PNG') return null;
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
@@ -694,8 +708,13 @@ class OnnxNativeOcrEngine implements OcrEngine {
     }
     const tmp = path.join(os.tmpdir(), `phevere-onnx-page-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
     try {
-      fs.writeFileSync(tmp, png);
-      return await this.pageReader.read(tmp, size.width, size.height);
+      // A large photo is read at about four megapixels (RapidOCR caps the long side at 2000 px
+      // for the same reason); a pixel budget rather than a side cap keeps long screenshots legible.
+      const k = Math.min(1, Math.sqrt(PAGE_PIXELS / Math.max(1, size.width * size.height)));
+      const w = Math.max(1, Math.round(size.width * k)), h = Math.max(1, Math.round(size.height * k));
+      fs.writeFileSync(tmp, k < 1 ? nativeImage.createFromBuffer(png).resize({ width: w, height: h, quality: 'best' }).toPNG() : png);
+      const raw = await this.pageReader.read(tmp, w, h);
+      return k < 1 ? scaleRawPage(raw, size.width, size.height, 1 / k) : raw;
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
       console.warn('Native OCR page read failed', this.lastError);
