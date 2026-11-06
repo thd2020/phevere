@@ -22,10 +22,49 @@ const FAILED_FOR_MS = 60_000;
 /** The last try through the app's HTTP client may take this long. */
 const BYTES_TIMEOUT_MS = 30_000;
 
+/**
+ * Blob URLs kept at once. Each holds a thumbnail's bytes; older ones are revoked, so scrolling a
+ * book of thousands of cards on a weak connection does not keep every picture in memory. An
+ * `<img>` that already shows a revoked blob keeps showing it; a repaint loads the picture again.
+ */
+const BLOB_MAX = 48;
+/** Loaded pictures remembered at once (URLs only, apart from the blobs above). */
+const READY_MAX = 2000;
+
 /** Pictures that have loaded in this page: URL to the `src` that shows it (the URL or a blob URL). */
 const ready = new Map<string, string>();
+/** The URLs in `ready` whose `src` is a blob URL, oldest first. */
+const blobs: string[] = [];
 const loading = new Map<string, Promise<string | null>>();
 const failedAt = new Map<string, number>();
+
+const isBlob = (src: string) => src.startsWith('blob:');
+
+function revoke(src: string): void {
+  const g = globalThis as unknown as { URL?: { revokeObjectURL?: (u: string) => void } };
+  try {
+    g.URL?.revokeObjectURL?.(src);
+  } catch {
+    /* already gone */
+  }
+}
+
+function forget(url: string): void {
+  const src = ready.get(url);
+  ready.delete(url);
+  if (!src || !isBlob(src)) return;
+  revoke(src);
+  const i = blobs.indexOf(url);
+  if (i >= 0) blobs.splice(i, 1);
+}
+
+function remember(url: string, src: string): void {
+  if (ready.has(url)) forget(url);
+  ready.set(url, src);
+  if (isBlob(src)) blobs.push(url);
+  while (blobs.length > BLOB_MAX) forget(blobs[0]);
+  while (ready.size > READY_MAX) forget(ready.keys().next().value as string);
+}
 
 /** What to put in `src` for a picture that has already loaded here, or '' when it has not. */
 export function pictureSrc(url: string): string {
@@ -72,7 +111,9 @@ async function tryBytes(url: string): Promise<string> {
     const type = /^image\//.test(res.contentType || '') ? res.contentType : 'image/jpeg';
     const src = g.URL.createObjectURL(new g.Blob([res.bytes as BlobPart], { type }));
     const Ctor = imageCtor();
-    return !Ctor || (await tryImage(Ctor, src)) ? src : '';
+    if (!Ctor || (await tryImage(Ctor, src))) return src;
+    revoke(src);
+    return '';
   } catch {
     return '';
   }
@@ -103,7 +144,7 @@ export function loadPicture(url: string): Promise<string | null> {
   })().then((src) => {
     loading.delete(u);
     if (src) {
-      ready.set(u, src);
+      remember(u, src);
       failedAt.delete(u);
     } else failedAt.set(u, Date.now());
     return src;
@@ -144,7 +185,7 @@ export function hydratePictures(
 
 /** For tests: forget every loaded and failed picture. */
 export function clearPictureLoads(): void {
-  ready.clear();
+  for (const url of Array.from(ready.keys())) forget(url);
   loading.clear();
   failedAt.clear();
 }

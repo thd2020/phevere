@@ -3,7 +3,8 @@
  *
  * - packages/core/src/picture-load.ts: a picture whose request fails is asked for again and shows
  *   once it loads; one that fails every try comes through the app's HTTP client as a blob URL;
- *   one that fails that too is reported as failed and not asked for again at once.
+ *   one that fails that too is reported as failed and not asked for again at once. At most 48
+ *   blob URLs are kept; older ones are revoked.
  * - packages/core/src/net.ts: a request still waiting for one of its host's slots is dropped when
  *   nobody wants it any more, holds no slot and leaves the host's round trips alone.
  * - packages/core/src/sense-images.ts: a card that scrolls away (its signal aborted) sends none of
@@ -115,6 +116,31 @@ async function pictureRetries() {
   assert.equal(tries.get(gone), before, 'a picture that failed every try waits a minute before the next');
 }
 
+async function blobsBounded() {
+  const Image = fakeImage((url) => !url.startsWith('blob:'));
+  const runtime = {
+    isCoreConfigured: () => true,
+    getHttp: () => ({ requestBytes: async () => ({ ok: true, status: 200, bytes: new Uint8Array([1]), contentType: 'image/png' }) }),
+  };
+  let made = 0;
+  const revoked = new Set();
+  const URLWithBlobs = Object.assign(function () {}, {
+    createObjectURL: () => `blob:p-${++made}`,
+    revokeObjectURL: (u) => revoked.add(u),
+  });
+  // Retries wait 1 s and 3 s; a test of sixty pictures runs them all at once.
+  const pl = loadModule('picture-load.ts', { './runtime': runtime }, { Image, Blob: class {}, URL: URLWithBlobs });
+  const urls = Array.from({ length: 60 }, (_, i) => `https://upload.example/b${i}.jpg`);
+  const srcs = await Promise.all(urls.map((u) => pl.loadPicture(u)));
+  assert.equal(srcs[59], 'blob:p-60');
+  assert.equal(revoked.size, 60 - 48, 'only the newest 48 blob URLs are kept');
+  assert.ok(revoked.has('blob:p-1') && !revoked.has('blob:p-60'), 'the oldest are revoked first');
+  assert.equal(pl.pictureSrc(urls[0]), '', 'a revoked picture is loaded again on the next paint');
+  assert.equal(pl.pictureSrc(urls[59]), 'blob:p-60');
+  pl.clearPictureLoads();
+  assert.equal(revoked.size, 60, 'clearing revokes the rest');
+}
+
 async function queuedRequestsDropped() {
   const net = loadModule('net.ts', {});
   const pending = [];
@@ -205,7 +231,8 @@ async function cardScrolledAway() {
   await queuedRequestsDropped();
   await cardScrolledAway();
   await pictureRetries();
-  console.log('Picture loading passed: failed pictures are asked again and come through the HTTP client last, queued requests for cards scrolled away are dropped, and the next card asks again.');
+  await blobsBounded();
+  console.log('Picture loading passed: failed pictures are asked again and come through the HTTP client last, queued requests for cards scrolled away are dropped, the next card asks again, and blob URLs are bounded.');
 })().catch((e) => {
   console.error(e);
   process.exit(1);
