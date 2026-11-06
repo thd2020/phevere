@@ -438,6 +438,30 @@ last['a skip outlives another host falling silent'] = async () => {
   assert.ok(net.log.filter((r) => r.url.includes('wiktionary.org')).length > after, 'and asked again after a network change');
 };
 
+// Alone, after everything else: a lookup whose page check fails at once (Wiktionary and Kaikki
+// refused, as when they are blocked) leaves the event loop free. Before 2026-11-06 the lookup
+// re-checked its held result in a loop of microtasks until its budget ran out, so no timer, tap
+// or paint could run for up to 17 s.
+const alone = {};
+alone['a failed page check does not block the event loop'] = async () => {
+  const link = { state: (u) => (/wiktionary\.org|kaikki\.org/.test(u) ? 'refused' : 'up') };
+  const { service } = app({ delay: [100, 200], seed: 'spin' }, { link });
+  let last = Date.now();
+  let worst = 0;
+  const tick = setInterval(() => {
+    const now = Date.now();
+    worst = Math.max(worst, now - last);
+    last = now;
+  }, 20);
+  try {
+    for (const word of ['cats', 'walked', 'harbour']) await service.lookup(word, 'zh');
+  } finally {
+    clearInterval(tick);
+  }
+  measured.push(`longest timer delay during lookups with a refused page check: ${worst} ms`);
+  assert.ok(worst < 500, `timers kept running (longest gap ${worst} ms)`);
+};
+
 // "etc." is a title of its own; with Wiktionary two or three seconds away it is still opened as
 // typed, and so it is when the first request for its page never answers.
 const etcNets = {
@@ -458,7 +482,7 @@ for (const [label, net] of Object.entries(etcNets)) {
   const t0 = Date.now();
   // Each case runs in its own copy of core, all of a batch at once.
   const failed = [];
-  for (const batch of [cases, dead, last]) {
+  for (const batch of [cases, dead, last, alone]) {
     const names = Object.keys(batch);
     const results = await Promise.allSettled(names.map((n) => batch[n]()));
     failed.push(...results.map((r, i) => [names[i], r]).filter(([, r]) => r.status === 'rejected'));
