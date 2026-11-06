@@ -26,7 +26,7 @@ function load(name) {
   return mod.exports;
 }
 
-const { labelTemplateNotes, wikiSenseSections, alignSenseNotes, isGrammarLabel } = load('sense-notes');
+const { labelTemplateNotes, wikiSenseSections, alignSenseNotes, isGrammarLabel, glossOwnHtml, glossLabelMark } = load('sense-notes');
 const { stripSisterProjects, stripGlossText } = load('lookup-policy');
 const { pruneGlossLinks } = load('text-links');
 const { senseLabelLead, senseNotesHtml, posGrammarHtml, phrasesHtml, languageSwitchHtml, wordFamilyHtml } = load('lexicon-parts');
@@ -108,6 +108,32 @@ const glosses = [
 const aligned = alignSenseNotes(sections[0].senses, glosses);
 assert.deepEqual(aligned.map((n) => n && (n.grammar || n.labels || [])[0]), ['uncountable', 'countable', undefined, 'countable', 'countable', undefined]);
 assert.deepEqual(aligned[3], { grammar: ['countable'], labels: ['informal'] }, "a sub-sense keeps its own labels and takes the grammar of the sense above it");
+
+// A sense the API gives with its sub-senses nested in it ("go", 2026-11-06) matches its own line,
+// not the sub-sense's: the sub-sense's words are cut before matching. The API keeps an empty
+// usage-label-sense span where a label stood, and a match that disagrees with it gives nothing.
+const goText = `==English==
+===Verb===
+{{en-verb}}
+
+# To be authoritative, accepted, or valid:
+## {{lb|en|intransitive}} Of an opinion or instruction, to have (final) [[authority]]; to be authoritative.
+## {{lb|en|intransitive}} To be acceptable.
+# {{lb|en|transitive}} To wear down.
+`;
+const mark = '<span class="usage-label-sense" about="#mwt257" typeof="mw:Transclusion"></span> ';
+const goApi = [
+  'To be authoritative, accepted, or valid:\n<ol><li>' + mark + 'Of an opinion or instruction, to have (final) <a href="/wiki/authority">authority</a>; to be authoritative.</li><li>' + mark + 'To be acceptable.</li></ol>',
+  mark + 'Of an opinion or instruction, to have (final) <a href="/wiki/authority">authority</a>; to be authoritative.',
+  mark + 'To be acceptable.',
+  'To wear down.',
+];
+assert.equal(glossOwnHtml(goApi[0]), 'To be authoritative, accepted, or valid:\n');
+assert.deepEqual(goApi.map(glossLabelMark), [false, true, true, false]);
+assert.ok(glossLabelMark('<span class="mw-empty-elt" about="#mwt88" typeof="mw:Transclusion"><link rel="mw:PageProp/Category" href="./Category:en:Birds"/></span>' + mark + 'A coward.'), 'an empty category span before the mark');
+const goSenses = wikiSenseSections(goText, 'English')[0].senses;
+const goAligned = alignSenseNotes(goSenses, goApi.map((g) => stripGlossText(glossOwnHtml(g))), goApi.map(glossLabelMark));
+assert.deepEqual(goAligned.map((n) => n && n.grammar), [undefined, ['intransitive'], ['intransitive'], undefined], 'the parent sense gets no label, its sub-senses theirs; a gloss whose mark disagrees gets none');
 
 // Sister-project boxes ({{wp}}, {{commons}}) come out by their class, whatever their words.
 const box =

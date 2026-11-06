@@ -13,6 +13,7 @@
 import { extractLanguageSection, scanTemplates } from './etymology';
 import { wikiInline } from './morpheme-wiki';
 import { normalizeMeaningForMerge } from './definition-merge';
+import { stripSisterProjects } from './lookup-policy';
 
 /** The notes of one sense. Every list holds display text. */
 export interface SenseNotes {
@@ -184,6 +185,8 @@ export interface WikiSense {
   /** The gloss as plain text, for matching to the definitions API. */
   text: string;
   notes: SenseNotes;
+  /** Whether the line has an {{lb}} of its own (not one taken from the sense above it). */
+  labelled?: boolean;
 }
 
 export interface WikiPosSection {
@@ -212,6 +215,7 @@ function headGrammar(body: string): string[] {
 
 function senseLine(line: string): WikiSense {
   const notes: SenseNotes = {};
+  let labelled = false;
   let rest = line.trim();
   // Only the templates in front of the gloss label it; one later in the line ("…; {{lb|en|logic}}
   // a predicate…") labels a clause, not the sense.
@@ -223,6 +227,7 @@ function senseLine(line: string): WikiSense {
       const { grammar, labels } = labelTemplateNotes(t.positional.slice(1));
       if (grammar.length) pushUnique((notes.grammar ||= []), grammar);
       if (labels.length) pushUnique((notes.labels ||= []), labels);
+      labelled = true;
     } else if (name === 'q' || name === 'qual' || name === 'qualifier' || name === 'i' || name === 'qf') {
       const items = t.positional.map((p) => wikiInline(p)).filter(Boolean);
       if (items.length) pushUnique((notes.labels ||= []), items);
@@ -231,7 +236,7 @@ function senseLine(line: string): WikiSense {
     }
     rest = rest.slice(t.source.length).trimStart();
   }
-  return { text: wikiInline(rest), notes };
+  return { text: wikiInline(rest), notes, ...(labelled ? { labelled } : {}) };
 }
 
 function subLine(line: string, sense: WikiSense): void {
@@ -305,22 +310,60 @@ function likeness(a: string[], b: string[]): number {
 }
 
 /**
- * The notes for each gloss of one part of speech from the definitions API, matched in order
- * to the sense lines of the same section by their words. A gloss with no close line gets none.
+ * A definitions-API gloss without the sub-senses it carries as a nested list: "To be
+ * authoritative, accepted, or valid:" and not the "Of an opinion…" under it, whose words would
+ * otherwise match the sub-sense's line and give the sense its labels.
  */
-export function alignSenseNotes(senses: WikiSense[], glosses: string[]): Array<SenseNotes | undefined> {
+export function glossOwnHtml(html: string): string {
+  const s = String(html || '');
+  const at = s.search(/<(?:ol|ul|dl)\b/i);
+  return at < 0 ? s : s.slice(0, at);
+}
+
+/**
+ * Whether a definitions-API gloss had an {{lb}} label. The API drops the label's text but keeps
+ * its empty `usage-label-sense` span at the start of the gloss, so this says which glosses a
+ * label may go on. Empty spans and links before it (category links, anchors) are passed over.
+ */
+export function glossLabelMark(html: string): boolean {
+  let s = stripSisterProjects(glossOwnHtml(html));
+  for (let guard = 0; guard < 12; guard += 1) {
+    const m = /^\s*(?:<link\b[^>]*>|<(span|a|sup|div|b|i)\b[^>]*>(?:\s*<link\b[^>]*>)*\s*<\/\1>)/i.exec(s);
+    if (!m) return false;
+    if (/\busage-label-sense\b/.test(m[0])) return true;
+    s = s.slice(m[0].length);
+  }
+  return false;
+}
+
+/**
+ * The notes for each gloss of one part of speech from the definitions API, matched in order
+ * to the sense lines of the same section by their words: the closest line within the next few
+ * wins. `glosses` are plain text without their sub-senses (glossOwnHtml). `marks` (glossLabelMark)
+ * say which glosses had a label; a match that disagrees with it is taken as wrong and gives
+ * nothing, as does a gloss with no close line, since a label on the wrong sense is worse than none.
+ */
+export function alignSenseNotes(senses: WikiSense[], glosses: string[], marks?: Array<boolean | undefined>): Array<SenseNotes | undefined> {
   const wiki = senses.map((s) => tokens(s.text));
   let from = 0;
-  return glosses.map((gloss) => {
+  return glosses.map((gloss, gi) => {
     const g = tokens(gloss);
     if (!g.length) return undefined;
+    let best = -1;
+    let bestScore = 0.6;
     for (let i = from; i < Math.min(senses.length, from + 8); i += 1) {
-      if (likeness(g, wiki[i]) >= 0.6) {
-        from = i + 1;
-        return senses[i].notes;
+      const score = likeness(g, wiki[i]);
+      if (score > bestScore || (best < 0 && score >= bestScore)) {
+        best = i;
+        bestScore = score;
       }
+      if (score === 1) break;
     }
-    return undefined;
+    if (best < 0) return undefined;
+    const mark = marks?.[gi];
+    if (mark !== undefined && mark !== !!senses[best].labelled) return undefined;
+    from = best + 1;
+    return senses[best].notes;
   });
 }
 

@@ -98,7 +98,7 @@ import { getHttp, getLookupCache, getLookupOffline, getSha256Hex, isCoreConfigur
 import { registerHeadwordResolver } from './vocab-store';
 import { normalizeQuery, cacheKeyFor, trimEdges, sanitize, NormalizedQuery, foldLatinHeadword, foldLookupKey, exactQuery, exactLookupKey, hasEdgePunctuation } from './text-normalize';
 import { isGrammaticalFormOfGloss, splitSurfaceAndLemma, sameLookupFold, stripGlossText, stripSisterProjects } from './lookup-policy';
-import { alignSenseNotes, notesFields, wikiSenseSections } from './sense-notes';
+import { alignSenseNotes, glossLabelMark, glossOwnHtml, notesFields, wikiSenseSections } from './sense-notes';
 import { datamuseEntry, formLine, formOfGlossLemma, formOfLemmaFromGlosses, isCitationGloss, isOwnNounGloss, resolveFormOf } from './form-of';
 import { buildEtymology, EtymologyLink } from './etymology';
 import { lookupMorpheme, morphemeOffers, parseMorphemeQuery } from './morpheme';
@@ -773,7 +773,7 @@ export class DictionaryService extends BaseService {
       const txProvider = opts?.translationProvider || 'auto';
       // Switching on a Wiktionary edition must not be hidden by a result cached before it.
       const editionsOn = EDITIONS.filter((ed) => this.isNamedSourceOn(WIKTIONARY_EDITIONS[ed].source, enabledSources)).join(',');
-      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki|notes:1${editionsOn ? `|wikt:${editionsOn}` : ''}`);
+      const cacheKey = cacheKeyFor(query, `${detectedLanguage}->${resolvedTarget}|tx:${txProvider}|ety:attributed-v1:${opts?.skipEtymology ? 'skip' : 'full'}|fam:kaikki|notes:2${editionsOn ? `|wikt:${editionsOn}` : ''}`);
 
       const remember = (r: DictionaryResult) => {
         if (this.isUncacheableResult(r) || this.isStillFilling(r)) return;
@@ -4619,7 +4619,11 @@ function attachSenseNotes(wikitext: string, glossed: GlossedPart[], canonical: (
     if (at < 0) continue;
     lang.next = at + 1;
     const section = sections[at];
-    const notes = alignSenseNotes(section.senses, part.glosses.map((g) => stripGlossText(g)));
+    const notes = alignSenseNotes(
+      section.senses,
+      part.glosses.map((g) => stripGlossText(glossOwnHtml(g))),
+      part.glosses.map((g) => glossLabelMark(g)),
+    );
     notes.forEach((n, i) => {
       const sense = part.senses[i];
       if (sense && n) Object.assign(sense, notesFields(n));
