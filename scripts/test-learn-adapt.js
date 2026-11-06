@@ -87,7 +87,7 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
       assert.equal(lq.hint, 'h');
     }
   }
-  assert.ok(lateKinds.has('word-choice') && [...lateKinds].every((k) => ['recall', 'word-choice'].includes(k)), `${[...lateKinds]}`);
+  assert.ok(lateKinds.has('word-choice') && [...lateKinds].every((k) => ['recall', 'word-choice', 'spell-tiles'].includes(k)), `${[...lateKinds]}`);
   // Long forgotten: it steps back to recognition.
   const lost = { ...firm, lastReview: now - 400 * DAY };
   const kinds = new Set();
@@ -187,6 +187,89 @@ const pool = ['harbour', 'lantern', 'meadow', 'quarry', 'ravine', 'saddle', 'thi
   const tagState = core.startReview([firm], 10, now);
   tagState.started = true;
   assert.match(core.reviewHtml([firm, ...pool.slice(1)], tagState, 10, { now }), /nbv-tag is-young">Young</);
+}
+
+/* ------------------------------------------- gap choice and letter tiles */
+{
+  // Every option of a gap question takes the gap's form.
+  assert.equal(core.inflectLike('ignore', 'ignored', 'notice'), 'noticed');
+  assert.equal(core.inflectLike('ignore', 'ignoring', 'stop'), 'stopping');
+  assert.equal(core.inflectLike('city', 'cities', 'harbour'), 'harbours');
+  assert.equal(core.inflectLike('harbour', 'Harbour', 'meadow'), 'Meadow', 'a gap at the start of a sentence');
+  assert.equal(core.inflectLike('ignore', 'ignored', 'make up'), null, 'a phrase that cannot take the form is left out');
+  assert.deepEqual(core.regularForms('rat'), ['rats', 'ratted', 'ratting'], 'regular forms unchanged');
+
+  const ready = { offset: {}, right: { 'word-choice': 6, 'meaning-choice': 6 } };
+  const learning = (e) => ({ ...e, reps: 1, state: 1, stability: 0.4, lastReview: now - 10 * 60_000, reviewDue: now });
+  const lantern = learning(pool[1]);
+  const examples = (l) => (l === 'lantern' ? ['They walked home by the light of a lantern.', 'Lanterns lined the street.'] : undefined);
+  const kindsOf = (entry, opts) => {
+    const seen = new Map();
+    for (let s = 0; s < 80; s++) {
+      const q = core.buildQuestion(entry, pool, { now, learner: ready, asked: s % 3 ? ['word-choice', 'meaning-choice', 'word-choice'] : [], ...opts }, core.seededRandom(s));
+      if (!seen.has(q.kind)) seen.set(q.kind, q);
+    }
+    return seen;
+  };
+  const withSentence = kindsOf(lantern, { examples });
+  const gap = withSentence.get('cloze-choice');
+  assert.ok(gap, `a learning word with an example sentence gets the gap among four: ${[...withSentence.keys()]}`);
+  assert.equal(gap.options.length, 4);
+  assert.equal(gap.options[gap.correct], 'lantern');
+  assert.match(gap.prompt, /_____/);
+  assert.doesNotMatch(gap.prompt, /lantern/i, 'the sentence never shows the word');
+  assert.equal(new Set(gap.options.map((o) => o.toLowerCase())).size, 4, 'four different options');
+  assert.ok(!kindsOf(lantern, {}).has('cloze-choice'), 'no sentence, no gap question');
+  // Answered like any choice, with the countdown of choice questions.
+  assert.ok(core.COUNTDOWN_KINDS.includes('cloze-choice'));
+  const gs = core.startReview([lantern], 10, now);
+  gs.started = true;
+  gs.question = gap;
+  assert.match(core.reviewHtml([lantern, ...pool.filter((e) => e.id !== 'lantern')], gs, 10, { now }), /Choose the word for the gap[\s\S]*class="nbv-gap"[\s\S]*data-act="nb-choose"/);
+  assert.equal(core.answerReview(gs, { choice: gap.correct }, now + 3000).grade, 3);
+
+  // A plural in the sentence: every option is a plural.
+  const inflected = core.buildQuestion(learning(pool[1]), pool, { now, learner: ready, examples: () => ['Lanterns hung from every branch of the old trees.'] }, core.seededRandom(3));
+  const pluralGap = inflected.kind === 'cloze-choice' ? inflected : [...kindsOf(learning(pool[1]), { examples: () => ['Lanterns hung from every branch of the old trees.'] }).values()].find((q) => q.kind === 'cloze-choice');
+  assert.ok(pluralGap);
+  assert.ok(pluralGap.options.every((o) => /^[A-Z].*s$/.test(o)), `${pluralGap.options}`);
+
+  // Letter tiles: the word's own letters, shuffled, for one word up to fourteen letters.
+  assert.ok(core.tileable('harbour') && core.tileable("o'clock") && !core.tileable('make up') && !core.tileable('ab') && !core.tileable('extraordinarily'));
+  const tiles = kindsOf(lantern, {}).get('spell-tiles');
+  assert.ok(tiles, 'a learning word can be built from its letters');
+  assert.deepEqual([...tiles.tiles].sort(), [...'lantern'].sort());
+  assert.notEqual(tiles.tiles.join(''), 'lantern', 'the row does not spell the word already');
+  assert.ok(!kindsOf(lantern, { learner: { offset: {}, right: {} } }).has('spell-tiles'), 'tiles open after a few words recognised');
+  const repeatKinds = new Set();
+  for (let s = 0; s < 40; s++) repeatKinds.add(core.buildQuestion(lantern, pool, { now, learner: ready, repeat: 1 }, core.seededRandom(s)).kind);
+  assert.ok(!repeatKinds.has('spell-tiles'), 'not for a learning word asked again the same day');
+  const build = (order) => {
+    const s = core.startReview([lantern], 10, now);
+    s.started = true;
+    s.question = { ...tiles, placed: [] };
+    for (const ch of order) assert.ok(core.tileKey(s, ch, now + 4000) || s.answer, `key ${ch}`);
+    return s;
+  };
+  const good = build('lantern');
+  assert.equal(good.answer.result, 'right', 'placing the last tile answers');
+  assert.equal(good.answer.grade, 3, 'tiles hand over the letters: Good, never Easy');
+  const bad = build('lnatern');
+  assert.equal(bad.answer.result, 'wrong', 'a swapped pair is a misspelling, not "Almost"');
+  const s7 = core.startReview([lantern], 10, now);
+  s7.started = true;
+  s7.question = { ...tiles, placed: [] };
+  core.placeTile(s7, 0, now);
+  core.placeTile(s7, 1, now);
+  assert.equal(core.placeTile(s7, 1, now), false, 'a tile is used once');
+  const html7 = core.reviewHtml([lantern, ...pool.filter((e) => e.id !== 'lantern')], s7, 10, { now });
+  assert.equal((html7.match(/data-act="nb-tile"/g) || []).length, 5);
+  assert.equal((html7.match(/data-act="nb-tile-out"/g) || []).length, 2);
+  assert.match(html7, /Spell the word/);
+  assert.ok(core.returnTile(s7, 0));
+  assert.deepEqual(s7.question.placed, [1]);
+  assert.ok(core.tileKey(s7, 'Backspace'));
+  assert.deepEqual(s7.question.placed, []);
 }
 
 /* ---------------------------------------------------------------- unlocks */
@@ -593,9 +676,7 @@ function simulate() {
   // The learner model learns the weak speller: typed answers after a fortnight go right about as often as aimed.
   const weakTyped = weak.asked.filter((a) => a.day >= 14 && (a.kind === 'recall' || a.kind === 'cloze'));
   const weakTypedAcc = weakTyped.filter((a) => a.right).length / Math.max(1, weakTyped.length);
-  // With one starting letter a weak speller's typed answers go right less often (0.58 in this run).
-  assert.ok(weakTypedAcc > 0.55, `weak speller's typed answers right ${weakTypedAcc.toFixed(2)} once the model knows them`);
-
+  assert.ok(weakTypedAcc > 0.6, `weak speller's typed answers right ${weakTypedAcc.toFixed(2)} once the model knows them`);
 
   // New words a day: the pace is learned after three days, and the count varies with the load.
   const withPace = avg.daily.filter((d) => d.pace);

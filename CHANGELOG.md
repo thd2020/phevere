@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New Learn questions (2026-11-06): "Choose the word for the gap" shows a real example sentence for the word, from your note, the sentence you saved it from or the dictionary, with the word blanked out, and you pick it from four words that all take the same form, so "Lanterns hung from every branch" offers only plurals. "Spell the word" shows the meaning and the word's own letters shuffled in a row; tap them in order, tap a placed letter to take it back, or type the letters and use Backspace on a keyboard. Both come up for words you are learning or hold for days, when the word has a sentence or is a single word of 3 to 14 letters, and the quiz picks them like the other kinds, by how likely you are to get them right. Desktop and phone alike.
+
 ### Changed
 
 - Hints in typed questions (2026-11-06): a typed question now starts with the first letter only, however weakly you hold the word, instead of up to four letters for a long word; a word you hold weakly gets an easier kind of question instead. Each Hint gives one more letter and lowers the credit for your answer: any hint makes it Hard at most, and needing hints for more than a third of the hidden letters makes it Again. "I knew it" after such an answer makes it Hard.

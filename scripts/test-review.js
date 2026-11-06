@@ -150,7 +150,7 @@ const pool = [
   const kindsHeavy = new Set();
   for (let s = 0; s < 30; s++) kindsHeavy.add(core.buildQuestion(learning, pool, { audio: true, now, asked: heavy }, core.seededRandom(s)).kind);
   assert.ok(kindsHeavy.has('listen-choice'), 'a session full of meaning questions turns to listening');
-  assert.ok([...kindsHeavy].every((k) => ['listen-choice', 'recall'].includes(k)), `or to spelling: ${[...kindsHeavy]}`);
+  assert.ok([...kindsHeavy].every((k) => ['listen-choice', 'recall', 'spell-tiles'].includes(k)), `or to spelling: ${[...kindsHeavy]}`);
   const noAudio = new Set();
   for (let s = 0; s < 30; s++) noAudio.add(core.buildQuestion(learning, pool, { audio: false, now, asked: heavy }, core.seededRandom(s)).kind);
   assert.ok(!noAudio.has('listen-choice'), 'no listening question with sound off');

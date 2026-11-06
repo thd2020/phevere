@@ -252,6 +252,8 @@ const ASK: Record<ReviewQuestion['kind'], string> = {
   'meaning-choice': 'Choose the meaning',
   'word-choice': 'Choose the word',
   'listen-choice': 'Choose the word you hear',
+  'cloze-choice': 'Choose the word for the gap',
+  'spell-tiles': 'Spell the word',
   recall: 'Type the word',
   'listen-type': 'Type the word you hear',
   cloze: 'Fill the gap',
@@ -266,8 +268,10 @@ function promptHtml(q: ReviewQuestion, e: NotebookEntry): string {
       return `<div class="nbv-quiz__word"><h3>${esc(q.lemma)}</h3>${reading ? `<p class="nbv-card__ipa">${esc(reading.ipa)}</p>` : ''}${playButton(q.lemma)}</div>`;
     case 'word-choice':
     case 'recall':
+    case 'spell-tiles':
       return `<p class="nbv-quiz__meaning">${esc(q.prompt)}</p>${clean(e.partOfSpeech) ? `<p class="nbv-quiz__pos">${esc(clean(e.partOfSpeech))}</p>` : ''}`;
     case 'cloze':
+    case 'cloze-choice':
       return `<p class="nbv-quiz__meaning nbv-quiz__cloze">${esc(q.prompt).replace('_____', '<span class="nbv-gap" aria-label="gap"></span>')}</p>`;
     case 'listen-choice':
     case 'listen-type':
@@ -320,6 +324,29 @@ function typedHtml(q: ReviewQuestion, state: ReviewState): string {
     <input id="nbv-answer" class="nbv-type__input" type="text" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="${esc(typedPlaceholder(q))}" value="${esc(q.draft || '')}" aria-label="Answer, ${letterCount(q.answers[0] || '')}" />
     <button type="submit" class="nbv-primary">Check</button>
   </form>${q.hinted ? `<p class="nbv-type__cue" aria-label="Letters shown">${esc(typedPlaceholder(q))}</p>` : ''}`;
+}
+
+/**
+ * Letter tiles: the word being built, one slot per letter, over the row of shuffled letters. A
+ * placed letter is tapped to take it back; a used tile leaves its place empty, so the row never
+ * shifts under the finger. Hooks: nb-tile (data-tile) and nb-tile-out (data-pos).
+ */
+function tilesHtml(q: ReviewQuestion, state: ReviewState): string {
+  const a = state.answer;
+  if (a) return a.typed ? `<p class="nbv-typed nbv-typed--${a.result}"><span>${esc(a.typed)}</span></p>` : '';
+  const tiles = q.tiles || [];
+  const placed = q.placed || [];
+  const built = placed
+    .map((i, pos) => `<button type="button" class="nbv-tile is-placed" data-act="nb-tile-out" data-pos="${pos}" aria-label="Take back ${esc(tiles[i])}">${esc(tiles[i])}</button>`)
+    .join('');
+  const slots = Array.from({ length: tiles.length - placed.length }, () => '<span class="nbv-tile__slot" aria-hidden="true"></span>').join('');
+  const bank = tiles
+    .map((t, i) => (placed.includes(i) ? '<span class="nbv-tile is-used" aria-hidden="true"></span>' : `<button type="button" class="nbv-tile" data-act="nb-tile" data-tile="${i}">${esc(t)}</button>`))
+    .join('');
+  return `<div class="nbv-tiles">
+    <div class="nbv-tiles__built" role="group" aria-label="Your spelling, ${letterCount(q.lemma)}">${built}${slots}</div>
+    <div class="nbv-tiles__bank" role="group" aria-label="Letters">${bank}</div>
+  </div>`;
 }
 
 function verdictHtml(q: ReviewQuestion, state: ReviewState): string {
@@ -448,7 +475,7 @@ function questionHtml(q: ReviewQuestion, e: NotebookEntry, state: ReviewState, o
       </div>${shownSenses(e).length ? '' : `<button type="button" class="nbv-link" data-act="lookup" data-q="${esc(q.lemma)}">Open in lookup</button>`}`;
     }
   } else {
-    body = choice ? optionsHtml(q, state) : typedHtml(q, state);
+    body = choice ? optionsHtml(q, state) : q.kind === 'spell-tiles' ? tilesHtml(q, state) : typedHtml(q, state);
   }
   let below = '';
   if (!a && TYPED_KINDS.includes(q.kind)) {

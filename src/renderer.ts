@@ -84,6 +84,9 @@ import {
   studyPace,
   hintReview,
   keepDraft,
+  placeTile,
+  returnTile,
+  tileKey,
   armCountdown,
   markHeard,
   singleVoice,
@@ -2362,7 +2365,7 @@ let wbAnalysis: { key: unknown; q: string; view: string; value: ReturnType<typeo
 const wbMeaningInFlight = new Set<string>();
 /** Book words opened on their brief definition, by lowercase headword. */
 const wbOpen = new Set<string>();
-/* Example sentences for the quiz's gap-fill questions, looked up ahead for words held for days. */
+/* Example sentences for the quiz's gap questions, looked up ahead for words already started. */
 const reviewExamples = new Map<string, string[]>();
 const examplesInFlight = new Set<string>();
 
@@ -2375,7 +2378,7 @@ async function prefetchExamples(wait = false): Promise<void> {
   for (let i = nbReview.index + (wait ? 0 : 1); i < nbReview.queue.length && lemmas.length < 3; i++) {
     const e: any = byId.get(nbReview.queue[i]);
     const key = String(e?.lemma || '').toLowerCase();
-    if (!e || !key || reviewExamples.has(key) || examplesInFlight.has(key) || memoryLevel(e) < 2) continue;
+    if (!e || !key || reviewExamples.has(key) || examplesInFlight.has(key) || memoryLevel(e) < 1) continue;
     lemmas.push(String(e.lemma));
   }
   const jobs = lemmas.map(async (lemma) => {
@@ -3073,6 +3076,12 @@ function onReviewKey(ev: KeyboardEvent): void {
   const target = ev.target as HTMLElement | null;
   if (target && target.id !== 'nbv-answer' && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
   if (target?.id === 'nbv-answer') return;
+  // Letter tiles from the keyboard: a letter places a tile, Backspace takes the last one back.
+  if (body.querySelector('.nbv-tiles__bank') && !nbReview.answer && (ev.key === 'Backspace' || /^\p{L}$/u.test(ev.key))) {
+    ev.preventDefault();
+    if (reviewArmed(nbReview) && tileKey(nbReview, ev.key)) renderLearn();
+    return;
+  }
   if (ev.key === 'Enter') {
     const next = body.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-reveal"], [data-act="nb-round"]');
     if (!next) return;
@@ -3388,6 +3397,13 @@ function wireNotebookActions(root: HTMLElement): void {
         return;
       case 'nb-skip':
         if (reviewArmed(nbReview)) answerCurrentReview({});
+        return;
+      case 'nb-tile':
+        // Letter tiles: placing the last one answers the question.
+        if (nbReview && reviewArmed(nbReview) && placeTile(nbReview, Number(el.dataset.tile))) renderLearn();
+        return;
+      case 'nb-tile-out':
+        if (nbReview && returnTile(nbReview, Number(el.dataset.pos))) renderLearn();
         return;
       case 'nb-hint':
         // One more letter; what is typed stays, and the letter is added when it is the start of the word.

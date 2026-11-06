@@ -107,6 +107,9 @@ import {
   markHeard,
   singleVoice,
   keepDraft,
+  placeTile,
+  returnTile,
+  tileKey,
   type SingleVoice,
   type LearnerModel,
   type StudyPace,
@@ -366,7 +369,7 @@ let wbSubs: WordbookSub[] = [];
 let wbUserBooks: UserBook[] = [];
 let wbProgress = new Map<string, BookWordProgress>();
 const wbBooks = new Map<string, string[]>();
-/* Example sentences for the quiz's gap-fill questions, looked up ahead for words held for days. */
+/* Example sentences for the quiz's gap questions, looked up ahead for words already started. */
 const reviewExamples = new Map<string, string[]>();
 const examplesInFlight = new Set<string>();
 
@@ -378,7 +381,7 @@ async function prefetchExamples(wait = false): Promise<void> {
   for (let i = r.index + (wait ? 0 : 1); i < r.queue.length && lemmas.length < 3; i++) {
     const e = byId.get(r.queue[i]);
     const key = String(e?.lemma || '').toLowerCase();
-    if (!e || !key || reviewExamples.has(key) || examplesInFlight.has(key) || memoryLevel(e) < 2) continue;
+    if (!e || !key || reviewExamples.has(key) || examplesInFlight.has(key) || memoryLevel(e) < 1) continue;
     lemmas.push(String(e.lemma));
   }
   const jobs = lemmas.map(async (lemma) => {
@@ -2759,6 +2762,13 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'nb-skip':
       if (reviewArmed(nbState.review)) answerCurrentReview({});
       return;
+    case 'nb-tile':
+      // Letter tiles: placing the last one answers the question.
+      if (nbState.review && reviewArmed(nbState.review) && placeTile(nbState.review, Number(t.dataset.tile))) paint();
+      return;
+    case 'nb-tile-out':
+      if (nbState.review && returnTile(nbState.review, Number(t.dataset.pos))) paint();
+      return;
     case 'nb-hint':
       // One more letter; what is typed stays, and the letter is added when it is the start of the word.
       if (nbState.review && hintReview(nbState.review, document.querySelector<HTMLInputElement>('#nbv-answer')?.value ?? undefined)) paint();
@@ -3206,6 +3216,12 @@ export async function startApp(): Promise<void> {
     const page = document.querySelector<HTMLElement>('.lrn-body');
     const target = ev.target as HTMLElement | null;
     if (!page || (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+    // Letter tiles from a keyboard: a letter places a tile, Backspace takes the last one back.
+    if (page.querySelector('.nbv-tiles__bank') && !nbState.review.answer && (ev.key === 'Backspace' || /^\p{L}$/u.test(ev.key))) {
+      ev.preventDefault();
+      if (reviewArmed(nbState.review) && tileKey(nbState.review, ev.key)) paint();
+      return;
+    }
     if (ev.key === 'Enter') {
       const next = page.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-reveal"], [data-act="nb-round"]');
       if (!next) return;
