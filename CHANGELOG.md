@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A denser Progress page (2026-11-07): Learn → Progress no longer sets its figures as posters. The streak, Memory, Reviews ahead, Answers and Skills numbers are about a third of their old size, sections sit closer together, Answers per day and Skills share a row on a wide window as Reviews ahead and How long words are held do, and charts stop growing past a readable width. A desktop window now shows about two sections at once instead of one number.
 - Updates are on About (2026-11-07): Settings no longer has a separate Updates page. The update status, Install updates, Check now and, on the computer, Roll back now sit on Settings → About, right under the version, and opening About checks for an update. On the phone this shows on Android only, as before.
 - No "i" on card pictures (2026-11-07): pictures in Words → Cards and Learn no longer carry the small "i" button and its credit strip. On the computer the author and licence show when you hover the picture; on the phone they show in the full-screen picture. Settings → About still credits Wikimedia Commons.
 
