@@ -190,7 +190,7 @@ function declaration(name) {
   return statement.getText(ast);
 }
 vm.runInContext(transpile([
-  'stripTargets', 'closingPopups', 'panelAnchors', 'PANEL_OPEN_WIDTH', 'PANEL_OPEN_HEIGHT', 'placePanelWindow', 'applyPanelTarget', 'setLastSelectionEvent', 'hoverYieldsToSelection',
+  'stripTargets', 'closingPopups', 'panelAnchors', 'PANEL_OPEN_WIDTH', 'PANEL_OPEN_HEIGHT', 'placePanelWindow', 'hoverInsideFullPopup', 'applyPanelTarget', 'setLastSelectionEvent', 'hoverYieldsToSelection',
   'onTriggerShortcutAfterSelection', 'createPopupWindow', 'wireContextCaptureHubOnce',
 ].map(declaration).join('\n') + '\nglobalThis.createPopupWindow = createPopupWindow;'), context);
 context.wireContextCaptureHubOnce();
@@ -505,10 +505,27 @@ function assertStripAt(win, word, message) {
   const sb = sticky.getBounds();
   assert.equal(sb.height, 250);
   assert.ok(sb.y + sb.height <= gamma.y, `a short entry keeps the pop-up above gamma ${JSON.stringify(sb)}`);
+  // Resting the pointer on the pop-up's own text while reading leaves the entry alone;
+  // the trigger shortcut there still looks the word up.
+  const inner = { text: 'inner', x: sb.x + 40, y: sb.y + 60, width: 40, height: 20 };
+  words.push(inner);
+  now += 3000;
+  await dwellOn(inner);
+  assert.equal(sticky.text, 'gamma', 'hovering a word inside the pop-up does not replace its entry');
+  assert.deepEqual(sticky.getBounds(), sb);
+  now += 3000;
+  context.monitorSettings.mode = 'shortcut';
+  context.onTriggerShortcutAfterSelection();
+  await flush();
+  await hover.tick();
+  await flush();
+  assert.equal(sticky.text, 'inner', 'the trigger over a word in the pop-up looks it up there');
+  assert.deepEqual(sticky.getBounds(), sb, 'and the pop-up does not move');
+  words.pop();
   sticky.close();
   sticky.closed();
   context.monitorSettings.lookupOpens = 'strip';
 
   hover.stop();
-  console.log('Hover strip passed: full pop-up beside the word, above it near the bottom, shorter on a short monitor, reused for the next word, kept where dragged, physical selection on 150%, keeps its side as the entry sets its height; trigger reads the word under the pointer, cooldown keeps the dwell, late reads dropped, same word elsewhere, closing strip skipped, load keeps its target, click-away stays shut, drag drops the trigger, clicked-away selection, mixed-DPI move.');
+  console.log('Hover strip passed: full pop-up beside the word, above it near the bottom, shorter on a short monitor, reused for the next word, kept where dragged, physical selection on 150%, keeps its side as the entry sets its height, ignores hover over its own text but not the trigger; trigger reads the word under the pointer, cooldown keeps the dwell, late reads dropped, same word elsewhere, closing strip skipped, load keeps its target, click-away stays shut, drag drops the trigger, clicked-away selection, mixed-DPI move.');
 })().catch((error) => { console.error(error); process.exit(1); });

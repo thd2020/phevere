@@ -1632,6 +1632,17 @@ function placePanelWindow(win: BrowserWindow, anchor: PanelAnchor, width: number
   anchor.side = placed.side;
 }
 
+/** A hover over the text of an open full pop-up; reading the entry must not replace it. */
+function hoverInsideFullPopup(event: ContextEvent): boolean {
+  if (event.origin !== 'hover' || event.requested) return false;
+  const pt = eventCoordSpace(event) === 'physical' ? physicalToDip(event.x, event.y) : { x: event.x, y: event.y };
+  return popupWindows.some((win) => {
+    if (win.isDestroyed() || !panelAnchors.has(win) || !win.isVisible()) return false;
+    const b = win.getBounds();
+    return pt.x >= b.x && pt.x < b.x + b.width && pt.y >= b.y && pt.y < b.y + b.height;
+  });
+}
+
 /**
  * Show `text` in a full pop-up opened by a lookup, next to the word at (x, y). A pop-up the
  * user moved stays put, and so does one the word lies inside (a word selected in the pop-up).
@@ -2017,6 +2028,12 @@ function wireContextCaptureHubOnce(): void {
 
     // Hover must not replace the selected word, or the trigger and the strip show it instead.
     if (event.origin === 'hover' && hoverYieldsToSelection()) {
+      return;
+    }
+
+    // The pointer resting on a full pop-up's own text while reading it is not a new lookup.
+    // A word there is looked up by selecting it or with the trigger shortcut.
+    if (hoverInsideFullPopup(event)) {
       return;
     }
 
