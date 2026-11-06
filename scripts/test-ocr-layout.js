@@ -287,4 +287,19 @@ assert.strictEqual(
   assert.strictEqual(one(words([['于', 0, 16], ['2027', 17, 34], ['年', 52, 16]])), '于2027年');
 }
 
+// 19. Repainted lines: serif type (thick stems, thin cross strokes) is told from sans.
+{
+  const V = load('packages/core/src/ocr-view.ts', { './ocr-layout': L });
+  // Letters drawn as a grid: stems `stem` px wide and cross bars `bar` px tall, 40 by 30 px.
+  const glyphs = (stem, bar) => {
+    const w = 40, h = 30, ink = new Array(w * h).fill(false);
+    for (let y = 4; y < 26; y++) for (const x0 of [4, 20]) for (let x = x0; x < x0 + stem; x++) ink[y * w + x] = true;
+    for (const y0 of [4, 14, 26 - bar]) for (let y = y0; y < y0 + bar; y++) for (let x = 4; x < 36; x++) if (x % 16 < 12) ink[y * w + x] = true;
+    return [ink, w, h];
+  };
+  assert.ok(V.hasSerifs(...glyphs(4, 1)), 'thick stems and hairlines read as serif');
+  assert.ok(!V.hasSerifs(...glyphs(3, 3)), 'even strokes read as sans');
+  assert.ok(!V.hasSerifs(...glyphs(2, 1)), 'strokes too thin to tell stay sans');
+}
+
 console.log('test-ocr-layout: ok');

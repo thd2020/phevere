@@ -146,8 +146,8 @@ export function ocrTextHtml(page: OcrPage, edits: ReadonlyMap<number, string> = 
   return paras.join('');
 }
 
-/** Background and ink colours of a line, and the share of its box the ink covers. */
-type Paint = { bg: string; ink: string; cover: number };
+/** Background and ink colours of a line, the share of its box the ink covers, and whether its type has serifs. */
+type Paint = { bg: string; ink: string; cover: number; serif: boolean };
 
 /** Background and ink of a box: the median of its rim, and the pixels farthest from it. */
 export function sampleColours(data: Uint8ClampedArray, w: number, h: number): Paint {
@@ -172,16 +172,47 @@ export function sampleColours(data: Uint8ClampedArray, w: number, h: number): Pa
     .slice(0, Math.max(1, Math.round(all.length * 0.08)));
   const ink = [0, 1, 2].map((k) => Math.round(far.reduce((s, f) => s + f.p[k], 0) / far.length));
   const d2 = (p: number[], c: number[]) => (p[0] - c[0]) ** 2 + (p[1] - c[1]) ** 2 + (p[2] - c[2]) ** 2;
-  const cover = all.filter((p) => d2(p, ink) < d2(p, bg)).length / Math.max(1, all.length);
+  const isInk = all.map((p) => d2(p, ink) < d2(p, bg));
+  const cover = isInk.filter(Boolean).length / Math.max(1, all.length);
   // Too little contrast (an empty box): fall back to black or white on the background.
   const lum = (c: number[]) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
   const inkOk = Math.abs(lum(ink) - lum(bg)) > 40;
   const fallback = lum(bg) > 128 ? [20, 20, 20] : [245, 245, 245];
   const rgb = (c: number[]) => `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
-  return { bg: rgb(bg), ink: rgb(inkOk ? ink : fallback), cover };
+  return { bg: rgb(bg), ink: rgb(inkOk ? ink : fallback), cover, serif: inkOk && hasSerifs(isInk, w, h) };
+}
+
+/**
+ * Serif type has thick upright strokes and thin cross strokes (Times, Georgia, Song); sans type
+ * has strokes of one width. Compared by the commonest run of ink across the line (upright stroke
+ * width) and down it (cross stroke width). Only strokes at least 3 pixels wide can show the
+ * difference, so small text stays sans.
+ */
+export function hasSerifs(isInk: boolean[], w: number, h: number): boolean {
+  /** The commonest length of an unbroken run of ink along `lines` lines of `len` pixels each. */
+  const commonestRun = (lines: number, len: number, at: (line: number, i: number) => number): number => {
+    const counts = new Map<number, number>();
+    for (let a = 0; a < lines; a++) {
+      let run = 0;
+      for (let i = 0; i <= len; i++) {
+        if (i < len && isInk[at(a, i)]) run++;
+        else if (run) {
+          counts.set(run, (counts.get(run) || 0) + 1);
+          run = 0;
+        }
+      }
+    }
+    let best = 0, most = 0;
+    for (const [run, n] of counts) if (n > most) [best, most] = [run, n];
+    return best;
+  };
+  const stem = commonestRun(h, w, (y, x) => y * w + x);
+  const bar = commonestRun(w, h, (x, y) => y * w + x);
+  return stem >= 3 && bar > 0 && stem / bar >= 2;
 }
 
 const FONT = '"Segoe UI", system-ui, -apple-system, Roboto, "Noto Sans", "Microsoft YaHei", "PingFang SC", sans-serif';
+const SERIF = 'Georgia, "Times New Roman", "Noto Serif", "Songti SC", SimSun, "Noto Serif CJK SC", serif';
 
 /**
  * Wires a view: `root` holds `.ocr-bar`, a `.ocr-frame` with the picture and `.ocr-layer`, and
@@ -304,13 +335,14 @@ export class OcrView {
     const vertical = el.dataset.v === '1';
     const p = el.classList.contains('is-painted') ? this.paint(Number(el.dataset.l)) : null;
     const weight = p && this.bold(p) ? 700 : 400;
+    const family = p?.serif ? SERIF : FONT;
     const size = Math.max(4, th * 0.74);
     const st = el.style;
     st.left = `${x}px`;
     st.top = `${y}px`;
     st.fontSize = `${size}px`;
     st.lineHeight = `${th}px`;
-    const textLen = this.textWidth(el.textContent || '', size, vertical, weight);
+    const textLen = this.textWidth(el.textContent || '', size, vertical, weight, family);
     let stretch = textLen > 0 ? len / textLen : 1;
     let boxLen = textLen;
     if (p) {
@@ -318,7 +350,7 @@ export class OcrView {
       // pulled apart to the old length; a longer one narrows to stay inside the box. The paint
       // still covers the whole box, so none of the old text shows past a shorter edit.
       const line = this.lineById(Number(el.dataset.l));
-      const orig = line ? this.textWidth(line.text, size, vertical, weight) : 0;
+      const orig = line ? this.textWidth(line.text, size, vertical, weight, family) : 0;
       if (orig > 0 && textLen > 0) stretch = Math.min(len / orig, len / textLen);
       boxLen = len / stretch;
     }
@@ -335,15 +367,16 @@ export class OcrView {
       st.backgroundColor = p.bg;
       st.color = p.ink;
       st.fontWeight = String(weight);
+      st.fontFamily = family;
     }
   }
 
-  private textWidth(text: string, size: number, vertical: boolean, weight = 400): number {
+  private textWidth(text: string, size: number, vertical: boolean, weight = 400, family = FONT): number {
     const ctx = this.measure;
     if (!text) return 0;
     if (vertical) return [...text].length * size;
     if (!ctx) return text.length * size * 0.55;
-    ctx.font = `${weight === 700 ? '700 ' : ''}${size}px ${FONT}`;
+    ctx.font = `${weight === 700 ? '700 ' : ''}${size}px ${family}`;
     return ctx.measureText(text).width;
   }
 
@@ -480,7 +513,8 @@ export class OcrView {
     ctx.drawImage(this.img, 0, 0, c.width, c.height);
     for (const line of pageLines(this.page)) {
       if (!this.edits.has(line.id)) continue;
-      const p = this.paint(line.id) || { bg: '#fff', ink: '#111', cover: 0 };
+      const p = this.paint(line.id) || { bg: '#fff', ink: '#111', cover: 0, serif: false };
+      const family = p.serif ? SERIF : FONT;
       const t = lineText(line, this.edits);
       ctx.save();
       if (line.vertical) {
@@ -490,7 +524,7 @@ export class OcrView {
         const chars = [...t];
         const step = chars.length ? b.height / chars.length : 0;
         const size = Math.min(b.width * 0.8, step * 0.95);
-        ctx.font = `${size}px ${FONT}`;
+        ctx.font = `${size}px ${family}`;
         ctx.fillStyle = p.ink;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -503,7 +537,7 @@ export class OcrView {
         ctx.fillStyle = p.bg;
         ctx.fillRect(-1, -1, len + 2, th + 2);
         const size = th * 0.74;
-        ctx.font = `${this.bold(p) ? '700 ' : ''}${size}px ${FONT}`;
+        ctx.font = `${this.bold(p) ? '700 ' : ''}${size}px ${family}`;
         const w = ctx.measureText(t).width;
         const orig = ctx.measureText(line.text).width;
         // Same letter widths as the text it replaces; a longer edit narrows to fit the box.
