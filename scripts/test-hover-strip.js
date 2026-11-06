@@ -190,7 +190,7 @@ function declaration(name) {
   return statement.getText(ast);
 }
 vm.runInContext(transpile([
-  'stripTargets', 'closingPopups', 'panelAnchors', 'PANEL_OPEN_WIDTH', 'PANEL_OPEN_HEIGHT', 'placePanelWindow', 'hoverInsideFullPopup', 'applyPanelTarget', 'setLastSelectionEvent', 'hoverYieldsToSelection',
+  'stripTargets', 'closingPopups', 'panelAnchors', 'PANEL_OPEN_WIDTH', 'PANEL_OPEN_HEIGHT', 'placePanelWindow', 'panelMovedByHand', 'hoverInsideFullPopup', 'applyPanelTarget', 'setLastSelectionEvent', 'hoverYieldsToSelection',
   'onTriggerShortcutAfterSelection', 'createPopupWindow', 'wireContextCaptureHubOnce',
 ].map(declaration).join('\n') + '\nglobalThis.createPopupWindow = createPopupWindow;'), context);
 context.wireContextCaptureHubOnce();
@@ -494,6 +494,20 @@ function assertStripAt(win, word, message) {
   mouseDown = true;
   await hover.tick();
   mouseDown = false;
+  // Linux reports no will-move: a pop-up dragged there is recognised by its position.
+  now += 3000;
+  await dwellOn(alpha);
+  const linuxPanel = panels()[0];
+  linuxPanel.finishLoad();
+  assertPanelBeside(linuxPanel, alpha, 'alpha again');
+  linuxPanel.setBounds({ ...linuxPanel.getBounds(), x: 1300, y: 80 });
+  const draggedOnLinux = linuxPanel.getBounds();
+  now += 3000;
+  await dwellOn(gamma);
+  assert.deepEqual(linuxPanel.getBounds(), draggedOnLinux, 'a pop-up dragged without will-move stays where it was put');
+  assert.equal(linuxPanel.text, 'gamma');
+  linuxPanel.close();
+  linuxPanel.closed();
   // The entry sets the height: a pop-up opened above a word stays above it when a short
   // entry loads, instead of jumping below the word.
   now += 3000;
@@ -527,5 +541,5 @@ function assertStripAt(win, word, message) {
   context.monitorSettings.lookupOpens = 'strip';
 
   hover.stop();
-  console.log('Hover strip passed: full pop-up beside the word, above it near the bottom, shorter on a short monitor, reused for the next word, kept where dragged, physical selection on 150%, keeps its side as the entry sets its height, ignores hover over its own text but not the trigger; trigger reads the word under the pointer, cooldown keeps the dwell, late reads dropped, same word elsewhere, closing strip skipped, load keeps its target, click-away stays shut, drag drops the trigger, clicked-away selection, mixed-DPI move.');
+  console.log('Hover strip passed: full pop-up beside the word, above it near the bottom, shorter on a short monitor, reused for the next word, kept where dragged (also with no will-move, as on Linux), physical selection on 150%, keeps its side as the entry sets its height, ignores hover over its own text but not the trigger; trigger reads the word under the pointer, cooldown keeps the dwell, late reads dropped, same word elsewhere, closing strip skipped, load keeps its target, click-away stays shut, drag drops the trigger, clicked-away selection, mixed-DPI move.');
 })().catch((error) => { console.error(error); process.exit(1); });

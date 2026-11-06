@@ -370,7 +370,7 @@ const closingPopups = new WeakSet<BrowserWindow>();
  * Full pop-ups that a lookup opened (Settings → Capture → Open lookups as → Full pop-up),
  * with the word's point they sit next to. `moved` is set once the user drags or resizes
  * the pop-up; from then on it stays where they put it. `side` is the side of the word it
- * took.
+ * took, and `placed` the positions the app last gave it (see panelMovedByHand).
  */
 type PanelAnchor = {
   x: number;
@@ -378,6 +378,7 @@ type PanelAnchor = {
   space: ScreenCoordSpace;
   moved: boolean;
   side?: PanelSide;
+  placed?: Array<{ x: number; y: number }>;
 };
 const panelAnchors = new WeakMap<BrowserWindow, PanelAnchor>();
 let ocrOverlayWindow: BrowserWindow | null = null;
@@ -1621,7 +1622,9 @@ const PANEL_OPEN_WIDTH = 460;
 const PANEL_OPEN_HEIGHT = 500;
 
 /**
- * Move a full pop-up beside its word; `keepSide` keeps the side it already has.
+ * Move a full pop-up beside its word and note where the app put it. The position asked for
+ * and the one read back are both kept: Windows may shift a window moved across monitors with
+ * different scaling.
  */
 function placePanelWindow(win: BrowserWindow, anchor: PanelAnchor, width: number, height: number, keepSide: boolean): void {
   const placed = placePanelNearPoint(anchor.x, anchor.y, width, height, {
@@ -1630,6 +1633,23 @@ function placePanelWindow(win: BrowserWindow, anchor: PanelAnchor, width: number
   });
   setWindowBounds(win, { x: placed.x, y: placed.y, width, height: placed.height });
   anchor.side = placed.side;
+  const got = win.getBounds();
+  anchor.placed = [{ x: placed.x, y: placed.y }, { x: got.x, y: got.y }];
+}
+
+/**
+ * True once the user has dragged the pop-up away from where the app put it. Windows and
+ * macOS report a drag through will-move; Linux has no such event, so the position is also
+ * compared with the positions the app last set.
+ */
+function panelMovedByHand(win: BrowserWindow, anchor: PanelAnchor): boolean {
+  if (anchor.moved) return true;
+  if (!anchor.placed) return false;
+  const b = win.getBounds();
+  const TOLERANCE = 3;
+  const atPlaced = anchor.placed.some((p) => Math.abs(p.x - b.x) <= TOLERANCE && Math.abs(p.y - b.y) <= TOLERANCE);
+  if (!atPlaced) anchor.moved = true;
+  return anchor.moved;
 }
 
 /** A hover over the text of an open full pop-up; reading the entry must not replace it. */
@@ -1662,7 +1682,7 @@ function applyPanelTarget(
     const b = win.getBounds();
     const pt = space === 'physical' ? physicalToDip(x, y) : { x, y };
     const wordInside = pt.x >= b.x && pt.x < b.x + b.width && pt.y >= b.y && pt.y < b.y + b.height;
-    if (anchor && !anchor.moved && !wordInside) {
+    if (anchor && !panelMovedByHand(win, anchor) && !wordInside) {
       anchor.x = x;
       anchor.y = y;
       anchor.space = space;
@@ -1840,7 +1860,8 @@ const createPopupWindow = (x: number, y: number, space: ScreenCoordSpace = 'dip'
   stripTargets.set(newPopupWindow, { x, y, space, text: textForPopup });
   if (opensFull) {
     panelAnchors.set(newPopupWindow, { x, y, space, moved: false, side: panelPlace?.side });
-    // Only a drag or resize by hand fires these, never setBounds.
+    // Only a drag or resize by hand fires these, never setBounds (Windows and macOS only;
+    // panelMovedByHand covers Linux).
     const keepWhereUserPutIt = (): void => {
       const anchor = panelAnchors.get(newPopupWindow);
       if (anchor) anchor.moved = true;
@@ -4114,7 +4135,7 @@ ipcMain.on('search-wikipedia', (event, term: string) => {
               // A full pop-up opened by a lookup stays beside its word as the entry sets its
               // height: one placed above the word keeps its lower edge clear of it.
               const anchor = panelAnchors.get(target);
-              if (anchor && !anchor.moved && !size.strip) {
+              if (anchor && !size.strip && !panelMovedByHand(target, anchor)) {
                 placePanelWindow(target, anchor, w, h, true);
                 return;
               }
