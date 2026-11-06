@@ -89,6 +89,9 @@ final class PhevereViewController: UIViewController, WKScriptMessageHandler, WKU
       // Off until the page says it has a step to go back to (setBackEnabled).
       pan.isEnabled = false
       web.addGestureRecognizer(pan)
+      // A touch that starts at the edge belongs to Back, not to the page's scroller; anywhere
+      // else the edge pan fails at once and scrolling starts as usual.
+      web.scrollView.panGestureRecognizer.require(toFail: pan)
       edgeBack = pan
     }
     let page = stripMode ? "app://localhost/index.html?mode=strip" : "app://localhost/index.html"
