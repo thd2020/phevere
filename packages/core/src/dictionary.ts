@@ -104,6 +104,7 @@ import { datamuseEntry, formLine, formOfGlossLemma, formOfLemmaFromGlosses, isCi
 import { buildEtymology, EtymologyLink } from './etymology';
 import { lookupMorpheme, morphemeOffers, parseMorphemeQuery } from './morpheme';
 import { groupYoudaoEtymologies, sameHeadword, serializeEtymologySources } from './etymology-sources';
+import { languageDisplayName, t } from './i18n/runtime';
 import { mergeSimilarDefinitions, dedupeExamples, exampleKey, tidyExample, canonicalPos, sortDefinitionsByReadingOrder, stripCrossLemmaSenses, formOfSensesLast } from './definition-merge';
 import { orderSensesByFrequency, warmSenseFrequency } from './sense-frequency';
 import {
@@ -1069,6 +1070,7 @@ export class DictionaryService extends BaseService {
             definitions: [
               {
                 partOfSpeech: 'unknown',
+                // i18n-ignore: a sentinel other code matches; lookupNoticeText() shows it translated
                 meaning: 'Lookup timed out. Check your network or try again.',
                 source: 'Timeout',
               },
@@ -1933,6 +1935,7 @@ export class DictionaryService extends BaseService {
       word: text,
       definitions: [{
         partOfSpeech: 'sentence',
+        // i18n-ignore: saved as a sentence's definition in the notebook, and matched there
         meaning: `Translation from ${sourceLanguage.toUpperCase()} to ${actualTargetLanguage.toUpperCase()}`,
         source: 'Sentence'
       }],
@@ -2559,6 +2562,7 @@ export class DictionaryService extends BaseService {
         pronunciations: ipaList.length ? ipaList : undefined,
         definitions: mergedDefinitions.length > 0 ? mergedDefinitions : [{
           partOfSpeech: 'unknown',
+          // i18n-ignore: a sentinel other code matches; lookupNoticeText() shows it translated
           meaning: 'No definition available.',
           source: 'Fallback',
         }],
@@ -2737,6 +2741,7 @@ export class DictionaryService extends BaseService {
       pronunciation,
       definitions: definitions.length > 0 ? definitions : [{
         partOfSpeech: 'unknown',
+        // i18n-ignore: a sentinel other code matches; lookupNoticeText() shows it translated
         meaning: 'No definition available.',
         source: 'Fallback'
       }],
@@ -5067,25 +5072,27 @@ export class DictionaryService extends BaseService {
   }
 
   /**
-   * Get all supported languages
+   * Languages to look up from and translate into, named in the interface language (Intl's names);
+   * `nativeName` is each language's name for itself.
    */
   getSupportedLanguages(): { code: string; name: string; nativeName: string }[] {
-    return [
-      { code: 'auto', name: 'Auto-detect', nativeName: 'Auto-detect' },
-      { code: 'en', name: 'English', nativeName: 'English' },
-      { code: 'zh', name: 'Chinese', nativeName: '中文' },
-      { code: 'ja', name: 'Japanese', nativeName: '日本語' },
-      { code: 'ko', name: 'Korean', nativeName: '한국어' },
-      { code: 'es', name: 'Spanish', nativeName: 'Español' },
-      { code: 'fr', name: 'French', nativeName: 'Français' },
-      { code: 'de', name: 'German', nativeName: 'Deutsch' },
-      { code: 'it', name: 'Italian', nativeName: 'Italiano' },
-      { code: 'pt', name: 'Portuguese', nativeName: 'Português' },
-      { code: 'ru', name: 'Russian', nativeName: 'Русский' },
-      { code: 'ar', name: 'Arabic', nativeName: 'العربية' },
-      { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
-      { code: 'th', name: 'Thai', nativeName: 'ไทย' },
+    const native: Array<[string, string]> = [
+      ['en', 'English'],
+      ['zh', '中文'],
+      ['ja', '日本語'],
+      ['ko', '한국어'],
+      ['es', 'Español'],
+      ['fr', 'Français'],
+      ['de', 'Deutsch'],
+      ['it', 'Italiano'],
+      ['pt', 'Português'],
+      ['ru', 'Русский'],
+      ['ar', 'العربية'],
+      ['hi', 'हिन्दी'],
+      ['th', 'ไทย'],
     ];
+    const auto = t('lexicon.languages.autoDetect');
+    return [{ code: 'auto', name: auto, nativeName: auto }, ...native.map(([code, nativeName]) => ({ code, name: languageDisplayName(code), nativeName }))];
   }
 
   /**

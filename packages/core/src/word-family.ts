@@ -209,7 +209,7 @@ function phraseKindLabel(raw?: string): string | undefined {
   if (!t) return undefined;
   if (/idiom/.test(t)) return 'idiom';
   if (/proverb/.test(t)) return 'proverb';
-  if (/collocat/.test(t)) return 'colloc.';
+  if (/collocat/.test(t)) return 'colloc.'; // i18n-ignore: a kind tag phrasesHtml matches on, never shown
   if (/compound/.test(t)) return 'compound';
   return undefined;
 }

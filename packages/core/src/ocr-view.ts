@@ -39,6 +39,13 @@ import {
   type UnitResult,
   type UnitState,
 } from './ocr-translate';
+import { languageDisplayName, t, tHtml } from './i18n/runtime';
+
+/** A target language's name in the interface language; the host's name when Intl does not know the code. */
+function targetName(code: string, name: string): string {
+  const shown = languageDisplayName(code);
+  return shown && shown.toLowerCase() !== code.toLowerCase() ? shown : name;
+}
 
 export type OcrViewMode = 'picture' | 'text';
 
@@ -78,22 +85,23 @@ const n = (v: number) => Number(v.toFixed(2));
 
 /** The bar: view switch and actions. Labels name the action. */
 export function ocrBarHtml(opts: { saveImage?: boolean; copyImage?: boolean; translate?: boolean; empty?: boolean } = {}): string {
-  if (opts.empty) return '<div class="ocr-bar" role="toolbar" aria-label="Scanned text"><span class="ocr-bar__status">No text found</span></div>';
-  return `<div class="ocr-bar" role="toolbar" aria-label="Scanned text">
-    <div class="ocr-seg" role="radiogroup" aria-label="View">
-      <button type="button" role="radio" aria-checked="true" data-ocr-act="picture">Picture</button>
-      <button type="button" role="radio" aria-checked="false" data-ocr-act="text">Text</button>
+  const toolbar = tHtml('lexicon.ocr.toolbar');
+  if (opts.empty) return `<div class="ocr-bar" role="toolbar" aria-label="${toolbar}"><span class="ocr-bar__status">${tHtml('lexicon.ocr.noText')}</span></div>`;
+  return `<div class="ocr-bar" role="toolbar" aria-label="${toolbar}">
+    <div class="ocr-seg" role="radiogroup" aria-label="${tHtml('lexicon.ocr.view')}">
+      <button type="button" role="radio" aria-checked="true" data-ocr-act="picture">${tHtml('lexicon.ocr.picture')}</button>
+      <button type="button" role="radio" aria-checked="false" data-ocr-act="text">${tHtml('lexicon.ocr.text')}</button>
     </div>
-    ${opts.translate ? `<button type="button" class="ocr-btn" data-ocr-act="translate" aria-pressed="false">Translate</button>
-    <select class="ocr-lang" data-ocr-lang aria-label="Translate to" hidden></select>
+    ${opts.translate ? `<button type="button" class="ocr-btn" data-ocr-act="translate" aria-pressed="false">${tHtml('common.translate')}</button>
+    <select class="ocr-lang" data-ocr-lang aria-label="${tHtml('lexicon.ocr.translateTo')}" hidden></select>
     <span class="ocr-bar__tr" aria-hidden="true"></span>
     <span class="ocr-bar__said" role="status"></span>
-    <button type="button" class="ocr-btn" data-ocr-act="retry" hidden>Retry</button>` : ''}
+    <button type="button" class="ocr-btn" data-ocr-act="retry" hidden>${tHtml('lexicon.ocr.retry')}</button>` : ''}
     <span class="ocr-bar__gap"></span>
-    <button type="button" class="ocr-btn" data-ocr-act="edit" aria-pressed="false">Edit</button>
-    <button type="button" class="ocr-btn" data-ocr-act="copy-all">Copy all</button>
-    ${opts.copyImage ? '<button type="button" class="ocr-btn" data-ocr-act="copy-image">Copy image</button>' : ''}
-    ${opts.saveImage ? '<button type="button" class="ocr-btn" data-ocr-act="save-image">Save image</button>' : ''}
+    <button type="button" class="ocr-btn" data-ocr-act="edit" aria-pressed="false">${tHtml('common.edit')}</button>
+    <button type="button" class="ocr-btn" data-ocr-act="copy-all">${tHtml('lexicon.ocr.copyAll')}</button>
+    ${opts.copyImage ? `<button type="button" class="ocr-btn" data-ocr-act="copy-image">${tHtml('lexicon.ocr.copyImage')}</button>` : ''}
+    ${opts.saveImage ? `<button type="button" class="ocr-btn" data-ocr-act="save-image">${tHtml('lexicon.ocr.saveImage')}</button>` : ''}
   </div>`;
 }
 
@@ -101,7 +109,7 @@ function wordSpan(line: OcrLine, k: number): string {
   const w = line.words[k];
   const q = w.quad;
   const unsure = isUnsure(w.confidence);
-  return `<span class="ocr-w${unsure ? ' is-unsure' : ''}" data-l="${line.id}" data-w="${k}" ${geomAttrs(q, line.vertical)}${unsure ? ' title="Unsure"' : ''}>${esc(w.text)}</span>`;
+  return `<span class="ocr-w${unsure ? ' is-unsure' : ''}" data-l="${line.id}" data-w="${k}" ${geomAttrs(q, line.vertical)}${unsure ? ` title="${tHtml('lexicon.ocr.unsure')}"` : ''}>${esc(w.text)}</span>`;
 }
 
 function geomAttrs(q: OcrQuad, vertical: boolean): string {
@@ -196,7 +204,7 @@ export function ocrTextHtml(page: OcrPage, edits: ReadonlyMap<number, string> = 
         const body = edits.has(l.id) || editing
           ? esc(t)
           : l.words
-              .map((w, k) => (k ? esc(l.joins[k - 1] ?? ' ') : '') + (isUnsure(w.confidence) ? `<span class="is-unsure" title="Unsure">${esc(w.text)}</span>` : esc(w.text)))
+              .map((w, k) => (k ? esc(l.joins[k - 1] ?? ' ') : '') + (isUnsure(w.confidence) ? `<span class="is-unsure" title="${tHtml('lexicon.ocr.unsure')}">${esc(w.text)}</span>` : esc(w.text)))
               .join('');
         return `${lead}<span class="ocr-tl" data-l="${l.id}"${editing ? ' contenteditable="plaintext-only" spellcheck="false"' : ''}>${body}</span>`;
       });
@@ -436,7 +444,7 @@ export class OcrView {
     if (sel) {
       const langs = tr.languages.filter((l) => l.code && l.code !== 'auto');
       if (this.target && !langs.some((l) => l.code === this.target)) langs.push({ code: this.target, name: this.target });
-      const opts = langs.map((l) => `<option value="${esc(l.code)}">${esc(l.name)}</option>`).join('');
+      const opts = langs.map((l) => `<option value="${esc(l.code)}">${esc(targetName(l.code, l.name))}</option>`).join('');
       if (sel.dataset.opts !== opts) {
         sel.innerHTML = opts;
         sel.dataset.opts = opts;
@@ -448,17 +456,22 @@ export class OcrView {
     const retry = this.root.querySelector<HTMLElement>('[data-ocr-act="retry"]');
     const run = this.run;
     let text = '';
+    let translating = false;
     let canRetry = false;
     if (on) {
       const total = run?.units.length || 0;
-      if (!run || run.target !== this.target) text = 'Translating';
-      else if (run.pending) text = `Translating ${total - run.pending} of ${total}`;
-      else if (run.failed) {
-        text = `${run.failed} not translated`;
+      if (!run || run.target !== this.target) {
+        text = t('lexicon.ocr.translating');
+        translating = true;
+      } else if (run.pending) {
+        text = t('lexicon.ocr.translatingProgress', { done: total - run.pending, total });
+        translating = true;
+      } else if (run.failed) {
+        text = t('lexicon.ocr.notTranslated', { count: run.failed });
         canRetry = true;
       } else if (!run.done && total) {
-        const name = tr.languages.find((l) => l.code === run.target)?.name || run.target;
-        text = `Already in ${name}`;
+        const lang = tr.languages.find((l) => l.code === run.target);
+        text = t('lexicon.ocr.alreadyIn', { language: targetName(run.target, lang?.name || run.target) });
       }
     }
     if (status) {
@@ -468,7 +481,7 @@ export class OcrView {
     // A screen reader hears the start and the outcome, not every count in between.
     const said = this.root.querySelector<HTMLElement>('.ocr-bar__said');
     if (said) {
-      const say = !on ? '' : /^Translating/.test(text) ? 'Translating' : text || (run?.done ? 'Translated' : '');
+      const say = !on ? '' : translating ? t('lexicon.ocr.translating') : text || (run?.done ? t('lexicon.ocr.translated') : '');
       if (said.textContent !== say) said.textContent = say;
     }
     if (retry) {

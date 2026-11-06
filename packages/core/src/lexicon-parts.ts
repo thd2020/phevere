@@ -10,9 +10,105 @@ import type { InflectionTable, WordInflections } from './inflections';
 import type { WordFamilyGroup } from './word-family';
 import { linkHtml, wordLinkHtml } from './text-links';
 import { isGrammarLabel, type SenseNotes } from './sense-notes';
+import { formatList, formatNumber, languageDisplayName, rawHtml, t, tHtml, uiLocale, type MessageKey } from './i18n/runtime';
 
 /** How a word links: the phone's `data-act` targets, or the pop-up's `data-lookup` spans. */
 export type LexiconLinks = 'act' | 'lookup';
+
+/**
+ * Labels inflections.ts gives rows, grid captions, columns and grid rows, as English ids. The
+ * Forms section shows each in the interface language; a label not listed shows as it is.
+ */
+const FORM_LABELS: Record<string, MessageKey> = {
+  Present: 'lexicon.forms.present',
+  'Third-person singular': 'lexicon.forms.thirdPersonSingular',
+  'Present participle': 'lexicon.forms.presentParticiple',
+  Past: 'lexicon.forms.past',
+  'Past participle': 'lexicon.forms.pastParticiple',
+  Plural: 'lexicon.forms.plural',
+  Singular: 'lexicon.forms.singular',
+  Comparative: 'lexicon.forms.comparative',
+  Superlative: 'lexicon.forms.superlative',
+  Cases: 'lexicon.forms.cases',
+  Preterite: 'lexicon.forms.preterite',
+  Imperfect: 'lexicon.forms.imperfect',
+  Nominative: 'lexicon.forms.nominative',
+  Genitive: 'lexicon.forms.genitive',
+  Dative: 'lexicon.forms.dative',
+  Accusative: 'lexicon.forms.accusative',
+  Instrumental: 'lexicon.forms.instrumental',
+  Prepositional: 'lexicon.forms.prepositional',
+  Locative: 'lexicon.forms.locative',
+  Ablative: 'lexicon.forms.ablative',
+  Vocative: 'lexicon.forms.vocative',
+  '1st': 'lexicon.forms.person1',
+  '2nd': 'lexicon.forms.person2',
+  '3rd': 'lexicon.forms.person3',
+};
+
+/** A row, column or caption label of the Forms section in the interface language. */
+function formLabelText(label: string): string {
+  const key = FORM_LABELS[label];
+  if (key) return t(key);
+  const hint = /^Plural \((.+)\)$/.exec(label);
+  return hint ? t('lexicon.forms.pluralFor', { sense: hint[1] }) : label;
+}
+
+/**
+ * What kind of form a word is (form-of.ts and inflections.ts name them from Wiktionary's tags),
+ * in the interface language. A combination of tags not listed ("genitive plural") shows as it is.
+ */
+const FORM_KINDS: Record<string, MessageKey> = {
+  'past tense': 'lexicon.formKind.pastTense',
+  past: 'lexicon.formKind.past',
+  'past participle': 'lexicon.formKind.pastParticiple',
+  'present participle': 'lexicon.formKind.presentParticiple',
+  'present tense': 'lexicon.formKind.presentTense',
+  'third person singular': 'lexicon.formKind.thirdPersonSingular',
+  'third person singular present': 'lexicon.formKind.thirdPersonSingularPresent',
+  plural: 'lexicon.formKind.plural',
+  comparative: 'lexicon.formKind.comparative',
+  superlative: 'lexicon.formKind.superlative',
+  'alternative form': 'lexicon.formKind.alternativeForm',
+  'alternative spelling': 'lexicon.formKind.alternativeSpelling',
+  misspelling: 'lexicon.formKind.misspelling',
+};
+
+function formKindText(kind: string): string {
+  const key = FORM_KINDS[kind];
+  return key ? t(key) : kind;
+}
+
+/** A note beside a form: "less common" is Phevere's own; Wiktionary's (rare, dated) stay as they are. */
+function formNoteText(note: string): string {
+  return note === 'less common' ? t('lexicon.forms.lessCommon') : note;
+}
+
+/**
+ * The text of a sense that stands for no definition, in the interface language. dictionary.ts
+ * writes these two in English, since other code tells them apart by their text.
+ */
+export function lookupNoticeText(meaning: string): string {
+  const m = String(meaning || '');
+  if (m === 'No definition available.') return t('lexicon.lookup.noDefinition'); // i18n-ignore: the sentinel dictionary.ts writes
+  if (/^lookup timed out/i.test(m)) return t('lexicon.lookup.timedOut');
+  return m;
+}
+
+/**
+ * A language's name in the language switch. In English the dictionary's own name stays ("Ancient
+ * Greek", "Middle English"); in another interface language Intl names it when it knows the code.
+ */
+function languageName(code: string, name: string): string {
+  if (uiLocale() === 'en') return name;
+  // Intl names "xx-yy" after its region even when it does not know "xx"; Wiktionary's own codes
+  // ("ine-pro", "la-new") it cannot read at all. Both keep the dictionary's name.
+  const primary = code.split('-')[0];
+  const base = languageDisplayName(primary);
+  if (!base || base.toLowerCase() === primary.toLowerCase()) return name;
+  const shown = languageDisplayName(code);
+  return shown && shown.toLowerCase() !== code.toLowerCase() ? shown : name;
+}
 
 function esc(s: unknown): string {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -53,23 +149,23 @@ function formText(f: string): string {
 
 function tableHtml(t: InflectionTable, links: LexiconLinks): string {
   const head = t.lemma
-    ? `<h4 class="lx-infl__pos">${esc(t.pos)} <span class="lx-infl__of">· forms of ${link(t.lemma, links)}</span></h4>`
+    ? `<h4 class="lx-infl__pos">${esc(t.pos)} <span class="lx-infl__of">· ${tHtml('lexicon.forms.formsOf', { lemma: rawHtml(link(t.lemma, links)) })}</span></h4>`
     : `<h4 class="lx-infl__pos">${esc(t.pos)}</h4>`;
   const rows = t.rows.length
     ? `<dl class="lx-infl__rows">${t.rows
         .map((r) => {
-          const forms = r.forms.map((f, i) => (r.notes?.[i] ? `${formLink(f, links)} <span class="lx-note">${esc(r.notes[i])}</span>` : formLink(f, links)));
-          return `<div><dt>${esc(r.label)}</dt><dd>${forms.join('<span class="lx-comma">, </span>')}</dd></div>`;
+          const forms = r.forms.map((f, i) => (r.notes?.[i] ? `${formLink(f, links)} <span class="lx-note">${esc(formNoteText(r.notes[i]))}</span>` : formLink(f, links)));
+          return `<div><dt>${esc(formLabelText(r.label))}</dt><dd>${forms.join('<span class="lx-comma">, </span>')}</dd></div>`;
         })
         .join('')}</dl>`
     : '';
   const grids = t.grids
     .map(
       (g) => `<table class="lx-grid">
-        <caption>${esc(g.caption)}</caption>
-        <thead><tr><th scope="col"></th>${g.columns.map((c) => `<th scope="col">${esc(c)}</th>`).join('')}</tr></thead>
+        <caption>${esc(formLabelText(g.caption))}</caption>
+        <thead><tr><th scope="col"></th>${g.columns.map((c) => `<th scope="col">${esc(formLabelText(c))}</th>`).join('')}</tr></thead>
         <tbody>${g.rows
-          .map((r) => `<tr><th scope="row">${esc(r.label)}</th>${r.cells.map((c) => `<td>${c.map((f) => formLink(f, links)).join(', ') || '—'}</td>`).join('')}</tr>`)
+          .map((r) => `<tr><th scope="row">${esc(formLabelText(r.label))}</th>${r.cells.map((c) => `<td>${c.map((f) => formLink(f, links)).join(', ') || '—'}</td>`).join('')}</tr>`)
           .join('')}</tbody>
       </table>`,
     )
@@ -94,19 +190,20 @@ export function inflectionsHtml(infl: WordInflections | null | undefined, word: 
   if (!infl || (!infl.formOf.length && !infl.tables.length)) return '';
   const formOf = infl.formOf
     .map((f) => {
-      const label = f.label === 'form' ? 'a form' : `the ${esc(f.label)}`;
-      return `<p class="lx-formof"><i>${esc(word)}</i> is ${label} of ${lemmaLinks(f.lemma, links)}.</p>`;
+      const params = { word: rawHtml(`<i>${esc(word)}</i>`), lemma: rawHtml(lemmaLinks(f.lemma, links)) };
+      const text = f.label === 'form' ? tHtml('lexicon.forms.isFormOf', params) : tHtml('lexicon.forms.isKindOf', { ...params, form: formKindText(f.label) });
+      return `<p class="lx-formof">${text}</p>`;
     })
     .join('');
   return `<div class="lx-forms">${formOf}${infl.tables.map((t) => tableHtml(t, links)).join('')}</div>`;
 }
 
-const FAMILY: Array<{ relation: string; label: string; shown: number }> = [
-  { relation: 'derived', label: 'Derived words', shown: 12 },
-  { relation: 'related', label: 'Related words', shown: 10 },
-  { relation: 'alternatives', label: 'Other spellings', shown: 6 },
-  { relation: 'phrases', label: 'Phrases', shown: 8 },
-  { relation: 'seeAlso', label: 'See also', shown: 8 },
+const FAMILY: Array<{ relation: string; labelKey: MessageKey; shown: number }> = [
+  { relation: 'derived', labelKey: 'lexicon.family.derived', shown: 12 },
+  { relation: 'related', labelKey: 'lexicon.family.related', shown: 10 },
+  { relation: 'alternatives', labelKey: 'lexicon.family.alternatives', shown: 6 },
+  { relation: 'phrases', labelKey: 'lexicon.family.phrases', shown: 8 },
+  { relation: 'seeAlso', labelKey: 'lexicon.family.seeAlso', shown: 8 },
 ];
 
 function words(items: Array<{ word: string }>, links: LexiconLinks): string {
@@ -115,7 +212,10 @@ function words(items: Array<{ word: string }>, links: LexiconLinks): string {
 
 type FamilyItem = { word: string; label?: string; rare?: boolean };
 
-/** One labelled line of links, the closest `shownMax` first and the rest folded under "All N". */
+/**
+ * One labelled line of links, the closest `shownMax` first and the rest folded under "All N".
+ * `label` is markup: tHtml() output.
+ */
 function familyGroupHtml(label: string, items: FamilyItem[], shownMax: number, links: LexiconLinks, foldRare = false): string {
   // In a long list, words with no recorded use ("redundantant") wait under "All"; with
   // `foldRare` they wait there in a short list too.
@@ -123,9 +223,9 @@ function familyGroupHtml(label: string, items: FamilyItem[], shownMax: number, l
   const shown = (common.length ? common : items).slice(0, shownMax);
   const rest = items.filter((i) => !shown.includes(i));
   return `<div class="lx-fam">
-      <h4 class="lx-label">${label}${items.length > shownMax ? ` <span class="lx-count">${items.length}</span>` : ''}</h4>
+      <h4 class="lx-label">${label}${items.length > shownMax ? ` <span class="lx-count">${esc(formatNumber(items.length))}</span>` : ''}</h4>
       <p class="lx-words">${words(shown, links)}</p>
-      ${rest.length ? `<details class="lx-more"><summary>All ${items.length}</summary><p class="lx-words">${words(rest, links)}</p></details>` : ''}
+      ${rest.length ? `<details class="lx-more"><summary>${tHtml('lexicon.list.all', { count: items.length })}</summary><p class="lx-words">${words(rest, links)}</p></details>` : ''}
     </div>`;
 }
 
@@ -147,12 +247,12 @@ export function wordFamilyHtml(groups: WordFamilyGroup[] | null | undefined, lin
   const parts: string[] = [];
   const built = [...(byRel.get('affixes') || []), ...(byRel.get('roots') || [])];
   if (built.length) {
-    parts.push(`<p class="lx-built"><span class="lx-label">Built from</span> ${words(built.slice(0, 6), links)}</p>`);
+    parts.push(`<p class="lx-built"><span class="lx-label">${tHtml('lexicon.family.builtFrom')}</span> ${words(built.slice(0, 6), links)}</p>`);
   }
   for (const f of FAMILY) {
     if (f.relation === 'phrases' && opts.phrases === false) continue;
     const items = byRel.get(f.relation) || [];
-    if (items.length) parts.push(familyGroupHtml(f.label, items, f.shown, links));
+    if (items.length) parts.push(familyGroupHtml(tHtml(f.labelKey), items, f.shown, links));
   }
   return parts.length ? `<div class="lx-family">${parts.join('')}</div>` : '';
 }
@@ -184,9 +284,9 @@ export function phrasesHtml(groups: WordFamilyGroup[] | null | undefined, links:
   }
   const out = [
     // Phrases nobody uses ("give dap", "give hat") wait under "All N" (rankFamilyByFrequency).
-    phrasal.length ? familyGroupHtml('Phrasal verbs', phrasal, 12, links, true) : '',
-    idioms.length ? familyGroupHtml('Idioms', idioms, 10, links, true) : '',
-    other.length ? familyGroupHtml(phrasal.length || idioms.length ? 'Other phrases' : 'Phrases', other, 12, links, true) : '',
+    phrasal.length ? familyGroupHtml(tHtml('lexicon.family.phrasalVerbs'), phrasal, 12, links, true) : '',
+    idioms.length ? familyGroupHtml(tHtml('lexicon.family.idioms'), idioms, 10, links, true) : '',
+    other.length ? familyGroupHtml(tHtml(phrasal.length || idioms.length ? 'lexicon.family.otherPhrases' : 'lexicon.family.phrases'), other, 12, links, true) : '',
   ].join('');
   return `<div class="lx-family lx-phrases">${out}</div>`;
 }
@@ -276,9 +376,9 @@ export function senseNotesHtml(notes: SenseNoteFields | null | undefined, links:
       .map((w) => (stem && w.toLowerCase().replace(/[^\p{L}'-]/gu, '').startsWith(stem) ? `<b>${esc(w)}</b>` : esc(w)))
       .join('');
   const lines = [
-    syn.length ? line(syn.length > 1 ? 'Synonyms' : 'Synonym', words(syn.map((word) => ({ word })), links)) : '',
-    ant.length ? line(ant.length > 1 ? 'Opposites' : 'Opposite', words(ant.map((word) => ({ word })), links)) : '',
-    coll.length ? line('Collocations', coll.map((c) => `<span class="sense-notes__coll">${linkHtml(bold(c), links)}</span>`).join('<span class="lx-sep"> · </span>')) : '',
+    syn.length ? line(tHtml(syn.length > 1 ? 'lexicon.senseNotes.synonyms' : 'lexicon.senseNotes.synonym'), words(syn.map((word) => ({ word })), links)) : '',
+    ant.length ? line(tHtml(ant.length > 1 ? 'lexicon.senseNotes.opposites' : 'lexicon.senseNotes.opposite'), words(ant.map((word) => ({ word })), links)) : '',
+    coll.length ? line(tHtml('lexicon.senseNotes.collocations'), coll.map((c) => `<span class="sense-notes__coll">${linkHtml(bold(c), links)}</span>`).join('<span class="lx-sep"> · </span>')) : '',
   ].join('');
   return lines ? `<div class="sense-notes">${lines}</div>` : '';
 }
@@ -316,16 +416,17 @@ export function languageSwitchHtml(
     .map((x) => x.l);
   const word = esc(result?.word || '');
   const chip = (l: { code: string; name: string; current?: boolean }) => {
-    if (l.current) return `<span class="lx-lang is-current" aria-current="true">${esc(l.name)}</span>`;
+    const name = esc(languageName(l.code, l.name));
+    if (l.current) return `<span class="lx-lang is-current" aria-current="true">${name}</span>`;
     const target = links === 'act' ? `data-act="lookup-lang" data-q="${word}" data-lang="${esc(l.code)}"` : `data-lookup-lang="${esc(l.code)}" data-q="${word}"`;
-    return `<button type="button" class="lx-lang" ${target}>${esc(l.name)}</button>`;
+    return `<button type="button" class="lx-lang" ${target}>${name}</button>`;
   };
   const shown = opts.fold !== false && ordered.length > 8 ? ordered.slice(0, 7) : ordered;
   const rest = ordered.slice(shown.length);
   const more = rest.length
-    ? `<details class="lx-langs__all"><summary class="lx-lang">+${rest.length}</summary><div class="lx-langs__rest">${rest.map(chip).join('')}</div></details>`
+    ? `<details class="lx-langs__all"><summary class="lx-lang">+${esc(formatNumber(rest.length))}</summary><div class="lx-langs__rest">${rest.map(chip).join('')}</div></details>`
     : '';
-  return `<nav class="lx-langs" aria-label="Languages">${shown.map(chip).join('')}${more}</nav>`;
+  return `<nav class="lx-langs" aria-label="${tHtml('lexicon.languageSwitch.label')}">${shown.map(chip).join('')}${more}</nav>`;
 }
 
 /**
@@ -337,8 +438,7 @@ export function definitionSourcesHtml(names: string[]): string {
   const list: string[] = [];
   for (const n of names.map((x) => String(x || '').trim())) if (n && !list.includes(n)) list.push(n);
   if (!list.length) return '';
-  const joined = list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}` : list[0];
-  return `<p class="lx-sources">Definitions from ${esc(joined)}</p>`;
+  return `<p class="lx-sources">${tHtml('lexicon.sources.definitionsFrom', { sources: formatList(list) })}</p>`;
 }
 
 /**
@@ -357,8 +457,8 @@ export function didYouMeanHtml(result: { metadata?: Record<string, unknown> } | 
   }
   if (!words.length) return '';
   const linksHtml = words.map((w) => wordLinkHtml(w, esc(w), links, 'lx-link'));
-  const list = linksHtml.length > 1 ? `${linksHtml.slice(0, -1).join(', ')} or ${linksHtml[linksHtml.length - 1]}` : linksHtml[0];
-  return `<p class="lx-didyoumean">Did you mean ${list}?</p>`;
+  // Intl's separators ("or", commas) hold no markup, so the joined links go in as markup.
+  return `<p class="lx-didyoumean">${tHtml('lexicon.didYouMean', { words: rawHtml(formatList(linksHtml, 'disjunction')) })}</p>`;
 }
 
 /**
@@ -366,9 +466,14 @@ export function didYouMeanHtml(result: { metadata?: Record<string, unknown> } | 
  * give such forms a short entry of their own; here the line says the same and the entry follows.
  */
 export function formLineHtml(result: { metadata?: Record<string, unknown> } | null | undefined): string {
-  const line = result?.metadata?.formLine as { form?: string; ipa?: string; label?: string } | undefined;
+  const line = result?.metadata?.formLine as { form?: string; ipa?: string; label?: string; kinds?: string[]; lemma?: string } | undefined;
   if (!line?.form || !line.label) return '';
+  // A line saved before it carried its parts keeps the English label it was saved with.
+  const label =
+    line.kinds?.length && line.lemma
+      ? t('lexicon.forms.formLine', { forms: formatList(line.kinds.map(formKindText)), lemma: line.lemma })
+      : line.label;
   return `<p class="lx-formline"><span class="lx-formline__form">${esc(line.form)}</span>${
     line.ipa ? `<span class="lx-formline__ipa">${esc(line.ipa)}</span>` : ''
-  }<span class="lx-formline__label">${esc(line.label)}</span></p>`;
+  }<span class="lx-formline__label">${esc(label)}</span></p>`;
 }

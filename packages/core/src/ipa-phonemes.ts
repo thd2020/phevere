@@ -246,6 +246,7 @@ export function buildSapiPhonemeSsml(ipa: string, lang: string): string | null {
   const ph = ipaToSapiPhones(ipa);
   if (!ph) return null;
   const xmlLang = xmlEscapeAttr(lang);
+  // i18n-ignore: SSML for the speech engine, not shown
   return `<?xml version="1.0" encoding="UTF-8"?>
 <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${xmlLang}">
   <phoneme alphabet="sapi" ph="${xmlEscapeAttr(ph)}">&#x2060;</phoneme>
@@ -256,6 +257,7 @@ export function buildIpaPhonemeSsml(ipa: string, lang: string): string | null {
   const ph = phonemeIpa(ipa);
   if (!ph) return null;
   const xmlLang = xmlEscapeAttr(lang);
+  // i18n-ignore: SSML for the speech engine, not shown
   return `<?xml version="1.0" encoding="UTF-8"?>
 <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${xmlLang}">
   <phoneme alphabet="ipa" ph="${xmlEscapeAttr(ph)}">&#x2060;</phoneme>
