@@ -686,13 +686,15 @@ function restorePlace(p: Place): void {
   const leads = p.at < history.length && p.trail.slice(0, p.at + 1).every((q, i) => history[i] === q);
   if (!leads) history.splice(0, history.length, ...p.trail);
   histIndex = Math.min(p.at, history.length - 1);
-  settingsSection = p.settingsSection;
   wordsState.library = p.library;
-  if (nbState.view !== p.nbView) {
+  // Only the place's own tab comes back: the Words view and Learn's page are kept as settings,
+  // and going back to a lookup must not undo a change made on Words or Learn since.
+  if (p.tab === 'settings') settingsSection = p.settingsSection;
+  if (p.tab === 'notebook' && nbState.view !== p.nbView) {
     nbState.view = p.nbView;
     writeStore(NB_VIEW_KEY, nbState.view);
   }
-  if (learnPage !== p.learnPage) {
+  if (p.tab === 'learn' && learnPage !== p.learnPage) {
     learnPage = p.learnPage;
     writeStore(LEARN_PAGE_KEY, learnPage);
   }
