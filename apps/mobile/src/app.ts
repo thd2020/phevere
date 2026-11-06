@@ -514,12 +514,15 @@ let phoneUpdates: PhoneUpdater | null = null;
 /** Settings → About; read when the page first opens. */
 let aboutInfo: AboutInfo | null = null;
 
+/** The version the app was built from; the test harness bundles the app without it. */
+const BUILT_VERSION: string = typeof __PHEVERE_VERSION__ === 'string' ? __PHEVERE_VERSION__ : '';
+
 /**
  * The installed version: Android asks the package manager (versionName and versionCode);
  * iOS and the browser build use the version the app was built from (apps/mobile/package.json).
  */
 async function loadAboutInfo(): Promise<void> {
-  let version = __PHEVERE_VERSION__;
+  let version = BUILT_VERSION;
   let build = '';
   if (capture.platform === 'android' && hasNativeBridge()) {
     try {
@@ -1104,7 +1107,7 @@ function paintPage(): void {
             lib,
             phoneUpdates?.state() ?? null,
             learnSettingsInput(),
-            aboutInfo || { version: __PHEVERE_VERSION__, platform: capture.platform },
+            aboutInfo || { version: BUILT_VERSION, platform: capture.platform },
           )
         : hit;
   const lexiconFill = tab === 'lookup' && resultTab === 'lexicon' && !!result;
