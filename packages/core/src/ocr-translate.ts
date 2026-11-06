@@ -89,8 +89,11 @@ function centred(lines: OcrLine[], area: OcrArea, vertical: boolean): boolean {
 
 /** Ends a sentence, a heading's colon, or a quotation. */
 const SENTENCE_END = /[.!?:;…。！？：；」』”"')）]\s*$/u;
-/** Punctuation, which prose has and a list of names does not (engines misread some marks as symbols, so those count too). */
-const PROSE_MARK = /[\p{P}\p{S}]/u;
+/**
+ * Punctuation, which prose has and a list of names does not (engines misread some marks as
+ * symbols, so those count too, but not currency signs: a menu's prices are not punctuation).
+ */
+const PROSE_MARK = /[\p{P}\p{Sm}\p{Sk}\p{So}]/u;
 
 /**
  * The lines translated together, in reading order. Normally one paragraph each, with two
@@ -98,20 +101,28 @@ const PROSE_MARK = /[\p{P}\p{S}]/u;
  * - A paragraph that stops mid-sentence (no closing punctuation) is joined with the next
  *   paragraph of its block when that one starts in lower case: a centred slide or a short
  *   line can make the layout cut a sentence in two.
- * - A CJK paragraph of several lines with no punctuation at all is a list (a menu, a sign
- *   board), so each line is its own unit.
+ * - A paragraph of several lines is a list, and each line its own unit, when it is CJK with no
+ *   punctuation at all (a menu, a sign board), when one of its lines has no words (a column
+ *   of a table, or prices: sent whole, the numbers would be reflowed off their rows and could
+ *   come back changed), or when two of its lines read the same (a column of repeated cells).
  * - A group whose area would cover another group's text is split into its lines.
  */
 export function translationGroups(page: OcrPage, edits?: OcrEdits): OcrLine[][] {
   const out: OcrLine[][] = [];
   const text = (lines: OcrLine[]) => lines.map((l) => lineText(l, edits)).join(' ');
+  const list = (lines: OcrLine[], t: string) => {
+    if (lines.length < 2) return false;
+    const cjk = [...t].filter(isCjkChar).length > t.replace(/\s/g, '').length / 2;
+    if (cjk && !PROSE_MARK.test(t)) return true;
+    const each = lines.map((l) => lineText(l, edits).trim());
+    return each.some((s) => !hasWords(s)) || new Set(each).size < each.length;
+  };
   for (const b of page.blocks) {
     let prev: OcrLine[] | null = null;
     for (const p of b.paragraphs) {
       if (!p.lines.length) continue;
       const t = text(p.lines);
-      const cjk = [...t].filter(isCjkChar).length > t.replace(/\s/g, '').length / 2;
-      if (p.lines.length > 1 && cjk && !PROSE_MARK.test(t)) {
+      if (list(p.lines, t)) {
         for (const l of p.lines) out.push([l]);
         prev = null;
         continue;

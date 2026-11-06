@@ -98,6 +98,25 @@ for (const name of PAGES) for (const engine of ['ppocr', 'rapid']) units[`${name
     }
   });
 
+  await test('a table column with numbers, a column of repeated cells and a priced CJK list go line by line', () => {
+    // A heading over a column of figures, set at table row spacing.
+    const figures = ['Revenue', '$10,000', '$15,471', '$20,942', '$26,413'];
+    const growth = ['Growth', '-8%', '+1%', '+6%'];
+    const expand = ['[Expand]', '[Expand]', '[Expand]'];
+    for (const cells of [figures, growth, expand]) {
+      const pg = L.buildOcrPage(raw(cells.map((t, i) => box(t, 560, 76 + i * 34, t.length * 9, 22))));
+      const us = T.translationUnits(pg);
+      assert.deepStrictEqual(us.map((u) => u.text), cells, JSON.stringify(us.map((u) => u.text)));
+    }
+    // A dish and its price per line: the currency sign is not prose punctuation.
+    const dishes = ['宫保鸡丁 ¥28', '麻婆豆腐 ¥22', '鱼香肉丝 ¥26'];
+    const menu = L.buildOcrPage(raw(dishes.map((t, i) => box(t, 180, 566 + i * 32, 240, 26))));
+    assert.deepStrictEqual(T.translationUnits(menu).map((u) => u.text), dishes);
+    // A paragraph of prose with a number in it stays whole.
+    const prose = ['The river carried 1,200 tonnes of sand in the flood of', '1998, more than in the ten years before it.'];
+    assert.strictEqual(T.translationUnits(L.buildOcrPage(raw(prose.map((t, i) => box(t, 100, 100 + i * 30, t.length * 9, 22))))).length, 1);
+  });
+
   await test('a unit keeps the lines of one paragraph together (whole truth paragraphs come out as one unit)', () => {
     const truth = JSON.parse(fs.readFileSync(path.join(FIX, 'truth.json'), 'utf8'));
     const norm = (s) => s.replace(/\s+/g, '').toLowerCase();
