@@ -26,6 +26,10 @@ export interface MergeableDefinition {
    * WordNet, through Datamuse, defines "savings" as "a fund of money put by as a reserve".
    */
   ownSense?: boolean;
+  /** Grammar codes, usage labels and collocations (sense-notes.ts); a merge keeps them all. */
+  grammar?: string[];
+  labels?: string[];
+  collocations?: string[];
 }
 
 /** Strip sense numbers, parenthetical asides, and normalize for comparison. */
@@ -260,6 +264,17 @@ function areSimilar(a: MergeableDefinition, b: MergeableDefinition): boolean {
   return lev >= 0.88;
 }
 
+/** The grammar codes, labels and collocations of two merged senses, each listed once. */
+function notesUnion(a: MergeableDefinition, b: MergeableDefinition): Pick<MergeableDefinition, 'grammar' | 'labels' | 'collocations'> {
+  const out: Pick<MergeableDefinition, 'grammar' | 'labels' | 'collocations'> = {};
+  for (const k of ['grammar', 'labels', 'collocations'] as const) {
+    const list: string[] = [];
+    for (const x of [...(a[k] || []), ...(b[k] || [])]) if (x && !list.some((y) => y.toLowerCase() === x.toLowerCase())) list.push(x);
+    if (list.length) out[k] = list;
+  }
+  return out;
+}
+
 /**
  * Merge near-duplicate definitions across sources into single senses with multi-cites.
  */
@@ -307,6 +322,7 @@ export function mergeSimilarDefinitions(defs: MergeableDefinition[]): MergeableD
       source: formatSourceLabel(sources),
       senseOrder: Math.min(base.senseOrder ?? 80, incoming.senseOrder ?? 80),
       ...(base.ownSense || incoming.ownSense ? { ownSense: true } : {}),
+      ...notesUnion(base, incoming),
     };
   }
 

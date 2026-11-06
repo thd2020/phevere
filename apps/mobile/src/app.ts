@@ -140,6 +140,9 @@ import {
   bookRemovalPrompt,
   bookPickItems,
   openMenu,
+  savedForSpelling,
+  vocabLangKey,
+  vocabLookupLang,
   closeMenu,
   menuOpen,
   setAppIconSource,
@@ -944,7 +947,7 @@ function lookupPaneHtml(): string {
     query,
     error: lookupError,
     recent: recentLookups,
-    savedFor: (q) => notebook.find((e) => e.lemma.trim().toLowerCase() === q.trim().toLowerCase()),
+    savedFor: (q) => savedForSpelling(notebook, q),
     headTools: !stripMode,
     bookPick: wordsState.bookPick,
     saveWord: result ? saveLemma(result) : undefined,
@@ -1578,7 +1581,11 @@ async function refreshPacks(): Promise<void> {
   }
 }
 
-async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promise<void> {
+/**
+ * Looks a word up. `lang` asks for one language's entry (the entry's language switch); without
+ * it the source language set in Settings, or detection, decides.
+ */
+async function lookup(raw: string, fromHist = false, keepTab?: ResultTab, lang?: string): Promise<void> {
   const q = extractLookupQuery(raw);
   if (!q) return;
   const generation = ++lookupGeneration;
@@ -1608,7 +1615,7 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
   paint();
   // The word's pictures are gathered while the dictionaries answer, apart from the senses.
   if (prefs.senseImages !== false) {
-    prefetchSenseImages(q, { lang: prefs.sourceLang === 'auto' ? 'en' : prefs.sourceLang });
+    prefetchSenseImages(q, { lang: lang || (prefs.sourceLang === 'auto' ? 'en' : prefs.sourceLang) });
     warmPictureHost();
   }
   const enabled = dictionaryService.getEnabledSources();
@@ -1616,7 +1623,7 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
   try {
     const next = await dictionaryService.lookup(q, prefs.targetLang, enabled, {
       translationProvider: prefs.translationProvider,
-      sourceLanguage: prefs.sourceLang === 'auto' ? undefined : prefs.sourceLang,
+      sourceLanguage: lang || (prefs.sourceLang === 'auto' ? undefined : prefs.sourceLang),
       onUpdate: (partial) => {
         if (generation !== lookupGeneration) return;
         result = partial;
@@ -1631,7 +1638,8 @@ async function lookup(raw: string, fromHist = false, keepTab?: ResultTab): Promi
     result = next;
     settled = true;
     prefetchRecorded(next);
-    const nextSaved = await findByLemma(saveLemma(next)).catch(() => null);
+    // The saved word in the language shown: "give" opened in Danish is not the English one.
+    const nextSaved = await findByLemma(saveLemma(next), next.detectedLanguage).catch(() => null);
     if (generation !== lookupGeneration) return;
     saved = nextSaved;
     void loadSenseImages(generation);
@@ -2783,7 +2791,13 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'lookup': {
       // A word in running text that was selected, not tapped, stays selected.
       if (t.classList.contains('lx-w') && String(window.getSelection?.() || '').trim()) return;
-      if (t.dataset.q) await lookup(t.dataset.q);
+      // data-lang: a word saved in another language opens in it (the Danish "give").
+      if (t.dataset.q) await lookup(t.dataset.q, false, undefined, t.dataset.lang || undefined);
+      return;
+    }
+    case 'lookup-lang': {
+      // The same word in another of its languages: no new history step.
+      if (t.dataset.q && t.dataset.lang) await lookup(t.dataset.q, true, 'lexicon', t.dataset.lang);
       return;
     }
     case 'lex-pos': {
@@ -3824,15 +3838,19 @@ async function fillEmptyCards(): Promise<void> {
   const rows = [...(await listEmptyDefinitions(40)), ...(await listEmptyReadings(40))];
   const seen = new Set<string>();
   for (const row of rows) {
-    const key = row.lemma.toLowerCase();
+    const key = vocabLangKey(row);
     if (seen.has(key)) continue;
     seen.add(key);
     try {
+      // A word saved in another language (the Danish "give") is filled from that language's entry.
+      const lang = vocabLookupLang(row) || undefined;
       const next = await dictionaryService.lookup(row.lemma, prefs.targetLang, undefined, {
         skipEtymology: true,
+        ...(lang ? { sourceLanguage: lang } : {}),
       });
       const payload = vocabPayloadFromResult(next, row.lemma);
       await fillEmptyDefinitions([row.lemma], {
+        sourceLang: lang || payload.sourceLang,
         definition: payload.definition,
         reading: payload.reading,
         partOfSpeech: payload.partOfSpeech,

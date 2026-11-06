@@ -221,7 +221,8 @@ a { color: var(--md-sys-color-tertiary); }
 /* IPA row spans under both the headword and its buttons, so chips sit side by side. */
 .head > .ipa-chips,
 .head > .ipa-line,
-.head > .lx-formline { grid-column: 1 / -1; }
+.head > .lx-formline,
+.head > .lx-langs { grid-column: 1 / -1; }
 .head .word {
   flex: 1;
   min-width: 0;
@@ -329,6 +330,16 @@ html:not([data-mode="strip"]) .shell-lexicon .lexicon-pos-layout {
   mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
 }
 .shell-lexicon .head > .ipa-chips::-webkit-scrollbar { display: none; }
+/* The word's languages: one row that scrolls sideways, like the pronunciations. */
+.head > .lx-langs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  padding-right: 20px;
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+.head > .lx-langs::-webkit-scrollbar { display: none; }
 .shell-lexicon .head > .ipa-chips .ipa-chip { flex: none; }
 .lookup-flow {
   min-height: 0;

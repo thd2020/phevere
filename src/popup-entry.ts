@@ -11,7 +11,18 @@
  */
 import './fonts';
 import '@phevere/core/lexicon-parts.css';
-import { definitionSourcesHtml, didYouMeanHtml, formLineHtml, inflectionsHtml, senseLabelLead, wordFamilyHtml } from '@phevere/core/lexicon-parts';
+import {
+  definitionSourcesHtml,
+  didYouMeanHtml,
+  formLineHtml,
+  inflectionsHtml,
+  languageSwitchHtml,
+  phrasesHtml,
+  posGrammarHtml,
+  senseLabelLead,
+  senseNotesHtml,
+  wordFamilyHtml,
+} from '@phevere/core/lexicon-parts';
 import { linkHtml, linkText, pruneGlossLinks, wikiLinkLookup } from '@phevere/core/text-links';
 import { exampleKey, tidyExample } from '@phevere/core/example-text';
 import { morphemeOfferHtml, morphemeSections } from '@phevere/core/morpheme-view';
@@ -19,6 +30,7 @@ import { loadWordbook } from '@phevere/core/wordbooks';
 import '@phevere/core/popover-menu.css';
 import { openMenu } from '@phevere/core/popover-menu';
 import { bookPickItems } from '@phevere/core/wordbook-views';
+import { canAddToWordBook } from '@phevere/core/vocab-payload';
 
 // The Lexicon's Forms, Word family and morpheme sections and its linked words, built by the
 // same code as the phone's.
@@ -28,6 +40,10 @@ import { bookPickItems } from '@phevere/core/wordbook-views';
   formLineHtml,
   didYouMeanHtml,
   senseLabelLead,
+  senseNotesHtml,
+  posGrammarHtml,
+  phrasesHtml,
+  languageSwitchHtml,
   definitionSourcesHtml,
   exampleKey,
   tidyExample,
@@ -40,6 +56,7 @@ import { bookPickItems } from '@phevere/core/wordbook-views';
   loadWordbook,
   openMenu,
   bookPickItems,
+  canAddToWordBook,
 };
 
 export {};
