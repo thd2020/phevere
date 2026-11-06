@@ -156,6 +156,8 @@ import { learnSettingsHtml, microphoneAvailable, readLearnPrefs, watchMicrophone
 import { peekSuggestions, suggestWords, warmSuggestions } from '@phevere/core';
 import { AZ_INDEX, compareAz, followIndexRail, vocabAzLetter, wireIndexRail } from '@phevere/core';
 import { bookMenuItems, bookPickItems, bookRemovalPrompt, openMenu } from '@phevere/core';
+import { languageRowHtml, asUiLanguagePref, t, tHtml, UI_LANGUAGE_SELECT_ID } from '@phevere/core';
+import { setUiLanguagePref, uiLanguagePref, windowLanguageReady } from './ui-language';
 
 const rlog = (...args: unknown[]) => {
   if (!__PHEVERE_DEV__) return;
@@ -200,7 +202,10 @@ function showUndoToast(message: string, undo: () => void): void {
 }
 
 // Wait for DOM to be ready
-document.addEventListener('DOMContentLoaded', () => {
+// Each window loads its interface language before it builds any markup.
+document.addEventListener('DOMContentLoaded', () => void windowLanguageReady().then(startWindow));
+
+function startWindow(): void {
   const hash = window.location.hash;
   const path = window.location.pathname || '';
 
@@ -220,7 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Main window functionality
     initializeMainWindow();
   }
-});
+}
 
 // Also try immediate execution if DOM is already ready
 // IMPORTANT: Avoid double init. We rely solely on DOMContentLoaded above
@@ -282,6 +287,7 @@ function initializeSettingsWindow() {
               <h2 id="settings-monitor-heading" class="settings-panel__title">Shortcuts</h2>
             </div>
             <div class="sv sv-page">
+              ${languageRowHtml(asUiLanguagePref(uiLanguagePref()))}
               <div class="sv-ledger">
                 <div class="sv-row sv-row--keys">
                   <span class="sv-row__text"><span id="label-monitor-cycle" class="sv-row__label">Selection mode</span></span>
@@ -527,6 +533,10 @@ function initializeSettingsWindow() {
 
   // Native selects get the app's menu; their code keeps using the select.
   document.querySelectorAll<HTMLSelectElement>('.settings-main select.sv-select').forEach(enhanceSelect);
+  // Language: every window follows; this one reloads in the new language on the same page.
+  document.getElementById(UI_LANGUAGE_SELECT_ID)?.addEventListener('change', (e) => {
+    void setUiLanguagePref((e.target as HTMLSelectElement).value);
+  });
   wireSettingsLibraryLinks();
   void wireSourcesPanel();
   void wireApiKeysPanel();

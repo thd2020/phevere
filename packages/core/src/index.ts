@@ -575,3 +575,5 @@ export {
 } from './book-file';
 export { exportBookFile, findBookConflict, importBookPayload, type BookConflict, type BookImportResult, type BookScope } from './book-transfer';
 export { ankiFieldText, ankiTextFromBook, isZip, parseAnkiPackage, parseAnkiText, type OpenSqlite, type SqliteReader } from './anki-import';
+export * from './i18n';
+export { languageRowHtml, UI_LANGUAGE_SELECT_ID } from './settings-language';

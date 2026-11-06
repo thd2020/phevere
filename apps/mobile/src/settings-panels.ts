@@ -7,6 +7,7 @@ import {
   apiKeysPanelHtml,
   choiceRowHtml,
   groupCatalogByLanguage,
+  languageRowHtml,
   learnSettingsHtml,
   navRowHtml,
   rangeRowHtml,
@@ -259,8 +260,10 @@ function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
       : '';
   const scan = `<div class="sv-ledger">${navRowHtml({ icon: ICON.camera, label: 'Camera or photo', attrs: 'data-act="ocr"' })}</div>`;
   const scanHead = '<header class="sv-head"><h3 class="sv-head__title">Scan</h3></header>';
+  const language = languageRowHtml(prefs.uiLanguage);
   if (capture.platform === 'android') {
     return `<div class="sv sv-page">
+      ${language}
       <div class="sv-ledger">${floating}${overlay}</div>
       ${selectionBarSection(capture)}
       ${scanHead}
@@ -269,6 +272,7 @@ function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
   }
   if (capture.platform === 'ios') {
     return `<div class="sv sv-page">
+      ${language}
       <div class="sv-ledger">${floating}</div>
       <header class="sv-head"><h3 class="sv-head__title">Selection</h3></header>
       <div class="sv-ledger">${switchRowHtml({ label: 'Pop up on selection', on: !!capture.autoPopup, attrs: 'data-act="auto-popup"' })}</div>
@@ -276,7 +280,7 @@ function capturePanel(prefs: MobilePrefs, capture: CaptureInfo): string {
       ${scan}
     </div>`;
   }
-  return `<div class="sv sv-page">${scan}</div>`;
+  return `<div class="sv sv-page">${language}${scanHead}${scan}</div>`;
 }
 
 /** Pictures beside senses come from Wikimedia Commons, so their switch sits with the sources. */

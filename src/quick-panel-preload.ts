@@ -2,6 +2,9 @@
  * Preload for the quick translation panel.
  */
 import { contextBridge, ipcRenderer } from 'electron';
+import { exposeUiLanguage } from './ui-language-bridge';
+
+exposeUiLanguage();
 
 export interface QuickPanelOpen {
   text: string;

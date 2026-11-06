@@ -153,6 +153,11 @@ import {
   closeMenu,
   menuOpen,
   setAppIconSource,
+  enhanceSelect,
+  resolveUiLocale,
+  asUiLanguagePref,
+  setUiLocale,
+  UI_LANGUAGE_SELECT_ID,
 } from '@phevere/core';
 import { OcrView } from '@phevere/core/ocr-view';
 import { pageLines, type OcrPage } from '@phevere/core/ocr-layout';
@@ -1188,6 +1193,8 @@ function paintPage(): void {
   showSenseFigures();
   bindWikiReader();
   bindMockBar();
+  const uiLanguage = document.getElementById(UI_LANGUAGE_SELECT_ID) as HTMLSelectElement | null;
+  if (uiLanguage) enhanceSelect(uiLanguage);
   bindAzRail();
   // A repaint replaces the map's element; release the old 3D renderer straight away.
   disposeNotebookMaps(true);
@@ -3656,6 +3663,12 @@ function onChange(e: Event): void {
     if (confirm) confirm.disabled = accountDeleteBusy || !deleteEmailMatches(accountState, (el as HTMLInputElement).value);
     return;
   }
+  if (e.type === 'change' && el.id === UI_LANGUAGE_SELECT_ID) {
+    prefs.uiLanguage = asUiLanguagePref((el as HTMLSelectElement).value);
+    savePrefs(prefs);
+    void applyUiLanguage().then(() => paint());
+    return;
+  }
   if (el.id === 'lang-q') {
     // Filter in place so the search box keeps focus while typing.
     const needle = (el as HTMLInputElement).value.trim().toLowerCase();
@@ -3729,7 +3742,17 @@ function onSubmit(e: Event): void {
   if (input?.value) void lookup(input.value);
 }
 
+/** The interface language from the setting, or the phone's own languages for System. */
+function applyUiLanguage(): Promise<unknown> {
+  return setUiLocale(resolveUiLocale(prefs.uiLanguage, navigator.languages || [navigator.language]));
+}
+
 export async function startApp(): Promise<void> {
+  await applyUiLanguage();
+  // System follows a language change made while the app is open.
+  window.addEventListener('languagechange', () => {
+    if (prefs.uiLanguage === 'system') void applyUiLanguage().then(() => paint());
+  });
   installNativeCallbacks();
   setAppIconSource(appIconSource(() => {
     if (tab === 'notebook') paint();

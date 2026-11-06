@@ -130,6 +130,9 @@ import {
   startUpdater,
 } from './services/updater';
 import type { UpdateMode } from './services/update-prefs-store';
+import { loadUiLanguagePref, resolveDesktopLocale, saveUiLanguagePref } from './services/ui-language-store';
+import { setUiLocale } from '@phevere/core/i18n/runtime';
+import { asUiLanguagePref } from '@phevere/core/i18n/locales';
 import * as vocabStore from './services/vocab-store';
 import { clearLookupSources, disposeSourceCapture, noteLookupSource, sourceForSavedWord } from './services/source-capture';
 import { canSynthesizeKeys, focusWindowHandle, foregroundWindowHandle } from './services/key-synth';
@@ -3362,6 +3365,27 @@ function startUpdates(): void {
   });
 }
 
+// Interface language. Preloads read it synchronously so a window draws in its language from the
+// first paint; a change rebuilds the native menus and tells every window.
+ipcMain.on('ui-language-sync', (event) => {
+  const pref = loadUiLanguagePref();
+  event.returnValue = { pref, locale: resolveDesktopLocale(pref) };
+});
+ipcMain.handle('ui-language-set', async (_event, raw: unknown) => {
+  const pref = asUiLanguagePref(raw);
+  saveUiLanguagePref(pref);
+  const locale = await setUiLocale(resolveDesktopLocale(pref));
+  refreshLocalizedChrome();
+  broadcastToWindows('ui-language-changed', { pref, locale });
+  return { pref, locale };
+});
+
+/** Menus and the tray, which Electron draws natively, in the interface language. */
+function refreshLocalizedChrome(): void {
+  installDarwinAppMenu();
+  updateTrayContextMenu();
+}
+
 function broadcastToWindows(channel: string, payload: unknown): void {
   for (const w of BrowserWindow.getAllWindows()) {
     if (w.isDestroyed()) continue;
@@ -3995,6 +4019,7 @@ app.on('ready', () => {
     return;
   }
   if (!gotSingleInstanceLock) return;
+  void setUiLocale(resolveDesktopLocale()).then(refreshLocalizedChrome);
   // Settings → API keys saved in an earlier session (safeStorage needs the app ready).
   for (const [field, value] of loadApiKeys()) dictionaryService.setApiCredential(field, value);
   for (const [name, on] of Object.entries(loadSourcePrefs())) dictionaryService.setSourceEnabled(name, on);

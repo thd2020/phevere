@@ -64,6 +64,8 @@ export function enhanceSelect(select: HTMLSelectElement): void {
   const paintButton = () => {
     const chosen = select.selectedOptions[0];
     valueEl.textContent = chosen ? chosen.textContent || '' : '';
+    if (chosen?.lang) valueEl.lang = chosen.lang;
+    else valueEl.removeAttribute('lang');
     button.disabled = select.disabled;
   };
   const paintList = () => {
@@ -74,7 +76,11 @@ export function enhanceSelect(select: HTMLSelectElement): void {
         return `<div class="sv-menu__item${on ? ' is-on' : ''}" role="option" id="${list.id}-${i}" aria-selected="${on}" data-index="${i}"><span class="sv-menu__check">${on ? CHECK : ''}</span><span class="sv-menu__text"></span></div>`;
       })
       .join('');
-    list.querySelectorAll<HTMLElement>('.sv-menu__text').forEach((el, i) => (el.textContent = opts[i].textContent || ''));
+    list.querySelectorAll<HTMLElement>('.sv-menu__text').forEach((el, i) => {
+      el.textContent = opts[i].textContent || '';
+      // A language named in its own language keeps its lang, so CJK names get their own glyphs.
+      if (opts[i].lang) el.lang = opts[i].lang;
+    });
   };
   const setActive = (i: number) => {
     const items = list.querySelectorAll<HTMLElement>('.sv-menu__item');

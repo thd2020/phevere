@@ -1,8 +1,10 @@
-import { dictionaryService, type TranslationProvider } from '@phevere/core';
+import { asUiLanguagePref, dictionaryService, type TranslationProvider, type UiLanguagePref } from '@phevere/core';
 
 const KEY = 'phevere.mobile.prefs';
 
 export interface MobilePrefs {
+  /** Interface language: `system` follows the phone's languages. */
+  uiLanguage: UiLanguagePref;
   sources: Record<string, boolean>;
   translationProvider: TranslationProvider;
   sourceLang: string;
@@ -39,6 +41,7 @@ export interface MobilePrefs {
 }
 
 export const defaultPrefs = (): MobilePrefs => ({
+  uiLanguage: 'system',
   sources: {},
   translationProvider: 'auto',
   sourceLang: 'auto',
@@ -86,6 +89,7 @@ export function loadPrefs(): MobilePrefs {
     if (parsed.notifyOcr === undefined && parsed.notifyHoverToggle !== undefined) {
       merged.notifyOcr = parsed.notifyHoverToggle;
     }
+    merged.uiLanguage = asUiLanguagePref(parsed.uiLanguage);
     if (parsed.volumeScale !== 2) {
       // Old slider value was the gain itself; keep the same loudness on the new scale.
       const old = Number(parsed.audioVolume);

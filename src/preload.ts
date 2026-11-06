@@ -1,4 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import { exposeUiLanguage } from './ui-language-bridge';
+
+exposeUiLanguage();
 import type { SenseImage } from '@phevere/core';
 
 // Do NOT require('../native-addon') here. Webpack dlopen's the UIA .node into

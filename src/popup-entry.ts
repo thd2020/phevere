@@ -31,6 +31,35 @@ import '@phevere/core/popover-menu.css';
 import { openMenu } from '@phevere/core/popover-menu';
 import { bookPickItems } from '@phevere/core/wordbook-views';
 import { canAddToWordBook } from '@phevere/core/vocab-payload';
+import {
+  t,
+  tHtml,
+  formatNumber,
+  formatPercent,
+  formatDate,
+  formatRelativeTime,
+  formatList,
+  languageDisplayName,
+  translateDom,
+  uiLocale,
+} from '@phevere/core/i18n/runtime';
+import { windowLanguageReady } from './ui-language';
+
+// Interface strings for the page's own script (popup-new.html), which is not bundled. The page
+// waits for `phevereI18n.ready` before it builds text; a language change reloads the pop-up.
+(window as unknown as { phevereI18n: unknown }).phevereI18n = {
+  ready: windowLanguageReady(),
+  t,
+  tHtml,
+  formatNumber,
+  formatPercent,
+  formatDate,
+  formatRelativeTime,
+  formatList,
+  languageDisplayName,
+  translateDom,
+  locale: uiLocale,
+};
 
 // The Lexicon's Forms, Word family and morpheme sections and its linked words, built by the
 // same code as the phone's.
