@@ -23,7 +23,7 @@ const bundle = esbuild.buildSync({
       export * from './src/wordbook-store';
       export * from './src/wordbook-sync';
       export { buildWordsContext, sourceGroups, scopeEntries, bookProgress, wordbookMeta } from './src/wordbooks';
-      export { sourcesHtml, wordsScopeSwitchHtml, wordbookHeaderHtml, wordbookListHtml } from './src/wordbook-views';
+      export { sourcesHtml, setAppIconSource, wordsScopeSwitchHtml, wordbookHeaderHtml, wordbookListHtml } from './src/wordbook-views';
       export { listVocab, reviewVocab } from './src/vocab-store';
     `,
     resolveDir: path.join(root, 'packages', 'core'),
@@ -149,13 +149,19 @@ function normalizing() {
   assert.equal(core.sourceContextFromJson('not json'), undefined);
   assert.deepEqual(core.sourceGroupOf({ doc: 'GEB.pdf', url: 'https://x.org/GEB.pdf' }), { key: 'doc:geb.pdf', kind: 'doc', label: 'GEB.pdf' });
   assert.deepEqual(core.sourceGroupOf({ url: 'https://www.en.wikipedia.org/wiki/Braid' }), { key: 'site:en.wikipedia.org', kind: 'site', label: 'en.wikipedia.org' });
-  assert.equal(core.sourceGroupOf({ app: 'Kindle' }), null);
+  // A chat or reading app that shows no address groups by the app.
+  assert.deepEqual(core.sourceGroupOf({ app: 'Kindle' }), { key: 'app:Kindle', kind: 'app', label: 'Kindle' });
+  assert.deepEqual(core.sourceGroupOf({ app: 'Grok', appId: 'ai.x.grok' }), { key: 'app:Grok', kind: 'app', label: 'Grok', appId: 'ai.x.grok' });
+  assert.equal(core.sourceGroupOf({ title: 'Untitled' }), null);
+  assert.deepEqual(core.normalizeSourceContext({ app: 'Grok', appId: 'ai.x.grok' }), { app: 'Grok', appId: 'ai.x.grok' });
+  assert.deepEqual(core.normalizeSourceContext({ app: 'Grok', appId: 'not a package' }), { app: 'Grok' }, 'a malformed package name is dropped');
+  assert.equal(core.normalizeSourceContext({ appId: 'ai.x.grok' }), null, 'a package name needs the app it names');
   assert.equal(core.sourceBookTitle('GEB.pdf'), 'GEB');
   assert.equal(core.lookupTextMatches('braids', 'braid'), true);
   assert.equal(core.lookupTextMatches('running', 'run'), true);
   assert.equal(core.lookupTextMatches('ran', 'braid'), false);
   assert.equal(core.lookupTextMatches('ephemeral', 'apple'), false);
-  return 14;
+  return 19;
 }
 
 function sqlDb(db) {
@@ -230,10 +236,10 @@ async function sets(SQL) {
   const ctxOf = async () =>
     a.buildWordsContext(await a.listVocab(1000), await a.listBookProgress(), await a.listWordbookSubs(), new Map(), await a.listUserBooks(true));
 
-  // Sources: one group per document, otherwise per site; app-only and unsourced words are left out.
+  // Sources: one group per document, otherwise per site, otherwise per app; unsourced words are left out.
   let ctx = await ctxOf();
   const groups = a.sourceGroups(ctx);
-  assert.deepEqual(groups.map((g) => [g.label, g.entries.length]).sort(), [['GEB.pdf', 4], ['en.wikipedia.org', 2]]);
+  assert.deepEqual(groups.map((g) => [g.label, g.entries.length]).sort(), [['GEB.pdf', 4], ['Phone', 1], ['en.wikipedia.org', 2]]);
   assert.deepEqual(groups.find((g) => g.kind === 'doc').entries.map((e) => e.lemma), ['fugue', 'canon', 'isomorphism', 'recursion'], 'in saved order');
   assert.match(a.wordsScopeSwitchHtml('mine', ctx, false), /data-scope="sources"/, 'the switcher offers Sources');
   let html = a.sourcesHtml(ctx);
@@ -317,11 +323,41 @@ async function sets(SQL) {
   return 30;
 }
 
+/** Words saved from an app that shows no address (the phone's pop-up over a chat app). */
+async function appSources(SQL) {
+  const a = device(SQL, 'apps');
+  const ctxOf = async () =>
+    a.buildWordsContext(await a.listVocab(1000), await a.listBookProgress(), await a.listWordbookSubs(), new Map(), await a.listUserBooks(true));
+  // An older save knew only the app's name; later ones also carry its package name.
+  await a.addVocab({ lemma: 'gist', context: { app: 'Grok' } });
+  await a.addVocab({ lemma: 'nuance', context: { app: 'Grok', appId: 'ai.x.grok' } });
+  await a.addVocab({ lemma: 'braid', context: { app: 'Chrome', url: 'https://en.wikipedia.org/wiki/Braid' } });
+  assert.deepEqual((await a.findByLemma('nuance')).context, { app: 'Grok', appId: 'ai.x.grok' }, 'the package name is kept with the word');
+  const ctx = await ctxOf();
+  const grok = a.sourceGroups(ctx).find((g) => g.kind === 'app');
+  assert.deepEqual([grok.key, grok.label, grok.appId, grok.entries.map((e) => e.lemma)], ['app:Grok', 'Grok', 'ai.x.grok', ['gist', 'nuance']], 'one group for the app');
+  assert.match(a.wordsScopeSwitchHtml('mine', ctx, false), /data-scope="sources"/, 'the switcher offers Sources');
+  // Without an icon (desktop, or the app is not on this phone): the app's first letter.
+  a.setAppIconSource(null);
+  let html = a.sourcesHtml(ctx);
+  assert.match(html, /wb-src__icon--app" aria-hidden="true"><b>G<\/b><\/span>/);
+  assert.match(html, /data-act="src-book" data-source="app:Grok"/, 'an app can become a word book');
+  // On the phone: the app's launcher icon over the letter.
+  const asked = [];
+  a.setAppIconSource((id) => { asked.push(id); return 'data:image/png;base64,AAAA'; });
+  html = a.sourcesHtml(ctx);
+  assert.deepEqual(asked, ['ai.x.grok']);
+  assert.match(html, /<b>G<\/b><img src="data:image\/png;base64,AAAA"/);
+  a.setAppIconSource(null);
+  return 6;
+}
+
 (async () => {
   const SQL = await initSqlJs();
   let n = titles() + privateWindows() + sentences() + normalizing() + cloze();
   n += await storage(SQL);
   n += await sets(SQL);
+  n += await appSources(SQL);
   console.log(`test-word-sources: ok (${n} checks)`);
 })().catch((err) => {
   console.error(err);
