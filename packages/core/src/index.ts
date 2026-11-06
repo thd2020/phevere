@@ -267,6 +267,11 @@ export {
   sameLemma,
   reviewArmed,
   hintReview,
+  keepDraft,
+  placeTile,
+  returnTile,
+  tileKey,
+  QUESTION_KINDS,
   armCountdown,
   markHeard,
   wordMaturity,
@@ -280,7 +285,7 @@ export {
   type StudyPace,
 } from './review-quiz';
 export { learnerModel, studyPace, suggestGoal } from './learn-adapt';
-export { singleVoice, type VoiceBackend, type VoiceOutcome } from './pronounce-once';
+export { singleVoice, type SingleVoice, type VoiceBackend, type VoiceOutcome } from './pronounce-once';
 export { type ReviewRenderOptions } from './notebook-review';
 
 export { onVocabChanged } from './vocab-store';

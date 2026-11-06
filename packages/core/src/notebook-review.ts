@@ -13,6 +13,7 @@ import {
   countdownWaiting,
   ensureReviewQuestion,
   hintsLeft,
+  shownLetters,
   MATURITY_NAME,
   memoryLevel,
   ROUND_WORDS,
@@ -251,6 +252,8 @@ const ASK: Record<ReviewQuestion['kind'], string> = {
   'meaning-choice': 'Choose the meaning',
   'word-choice': 'Choose the word',
   'listen-choice': 'Choose the word you hear',
+  'cloze-choice': 'Choose the word for the gap',
+  'spell-tiles': 'Spell the word',
   recall: 'Type the word',
   'listen-type': 'Type the word you hear',
   cloze: 'Fill the gap',
@@ -265,8 +268,10 @@ function promptHtml(q: ReviewQuestion, e: NotebookEntry): string {
       return `<div class="nbv-quiz__word"><h3>${esc(q.lemma)}</h3>${reading ? `<p class="nbv-card__ipa">${esc(reading.ipa)}</p>` : ''}${playButton(q.lemma)}</div>`;
     case 'word-choice':
     case 'recall':
+    case 'spell-tiles':
       return `<p class="nbv-quiz__meaning">${esc(q.prompt)}</p>${clean(e.partOfSpeech) ? `<p class="nbv-quiz__pos">${esc(clean(e.partOfSpeech))}</p>` : ''}`;
     case 'cloze':
+    case 'cloze-choice':
       return `<p class="nbv-quiz__meaning nbv-quiz__cloze">${esc(q.prompt).replace('_____', '<span class="nbv-gap" aria-label="gap"></span>')}</p>`;
     case 'listen-choice':
     case 'listen-type':
@@ -300,7 +305,7 @@ function optionsHtml(q: ReviewQuestion, state: ReviewState): string {
 /** The answer box's placeholder: the letters shown, then a dot for each hidden letter, spaces kept. */
 export function typedPlaceholder(q: ReviewQuestion): string {
   const chars = [...(q.answers[0] || '')];
-  const shown = (q.reveal || 0) + (q.hinted || 0);
+  const shown = shownLetters(q);
   return chars.map((c, i) => (i < shown ? c : /\s/.test(c) ? ' ' : '·')).join('');
 }
 
@@ -318,7 +323,30 @@ function typedHtml(q: ReviewQuestion, state: ReviewState): string {
   return `<form class="nbv-type" data-act-form="nb-submit" autocomplete="off">
     <input id="nbv-answer" class="nbv-type__input" type="text" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="${esc(typedPlaceholder(q))}" value="${esc(q.draft || '')}" aria-label="Answer, ${letterCount(q.answers[0] || '')}" />
     <button type="submit" class="nbv-primary">Check</button>
-  </form>`;
+  </form>${q.hinted ? `<p class="nbv-type__cue" aria-label="Letters shown">${esc(typedPlaceholder(q))}</p>` : ''}`;
+}
+
+/**
+ * Letter tiles: the word being built, one slot per letter, over the row of shuffled letters. A
+ * placed letter is tapped to take it back; a used tile leaves its place empty, so the row never
+ * shifts under the finger. Hooks: nb-tile (data-tile) and nb-tile-out (data-pos).
+ */
+function tilesHtml(q: ReviewQuestion, state: ReviewState): string {
+  const a = state.answer;
+  if (a) return a.typed ? `<p class="nbv-typed nbv-typed--${a.result}"><span>${esc(a.typed)}</span></p>` : '';
+  const tiles = q.tiles || [];
+  const placed = q.placed || [];
+  const built = placed
+    .map((i, pos) => `<button type="button" class="nbv-tile is-placed" data-act="nb-tile-out" data-pos="${pos}" aria-label="Take back ${esc(tiles[i])}">${esc(tiles[i])}</button>`)
+    .join('');
+  const slots = Array.from({ length: tiles.length - placed.length }, () => '<span class="nbv-tile__slot" aria-hidden="true"></span>').join('');
+  const bank = tiles
+    .map((t, i) => (placed.includes(i) ? '<span class="nbv-tile is-used" aria-hidden="true"></span>' : `<button type="button" class="nbv-tile" data-act="nb-tile" data-tile="${i}">${esc(t)}</button>`))
+    .join('');
+  return `<div class="nbv-tiles">
+    <div class="nbv-tiles__built" role="group" aria-label="Your spelling, ${letterCount(q.lemma)}">${built}${slots}</div>
+    <div class="nbv-tiles__bank" role="group" aria-label="Letters">${bank}</div>
+  </div>`;
 }
 
 function verdictHtml(q: ReviewQuestion, state: ReviewState): string {
@@ -380,8 +408,10 @@ function markHtml(q: ReviewQuestion, state: ReviewState, now: number): string {
   const elapsed = a.at != null ? Math.max(0, now - a.at) : MARK_MS;
   if (elapsed >= MARK_MS) return '';
   const key = `nbv-ink-${state.index}-${String(q.id).replace(/[^\w-]/g, '').slice(-12)}`;
-  const strokes = a.result === 'wrong' ? CROSS.map((s, i) => inkStroke(`${key}-${i}`, s, i + 1)).join('') : inkStroke(`${key}-0`, TICK, 1);
-  return `<div class="nbv-wash is-${a.result}" aria-hidden="true"></div><div class="nbv-ink is-${a.result}" aria-hidden="true"><svg viewBox="0 0 240 200" preserveAspectRatio="xMidYMid meet">${strokes}</svg></div>`;
+  // A near miss is a miss: it gets the cross, as a wrong answer does.
+  const mark = a.result === 'right' ? 'right' : 'wrong';
+  const strokes = mark === 'wrong' ? CROSS.map((s, i) => inkStroke(`${key}-${i}`, s, i + 1)).join('') : inkStroke(`${key}-0`, TICK, 1);
+  return `<div class="nbv-wash is-${mark}" aria-hidden="true"></div><div class="nbv-ink is-${mark}" aria-hidden="true"><svg viewBox="0 0 240 200" preserveAspectRatio="xMidYMid meet">${strokes}</svg></div>`;
 }
 
 /** The senses an answer shows: the one the question used first, then other usable ones; never citations. */
@@ -424,8 +454,9 @@ function overrideButtons(q: ReviewQuestion, state: ReviewState): string {
   if (q.kind === 'flash') return '';
   const easyOn = a.overridden && a.grade === 4 && a.result !== 'wrong';
   const flipOn = a.overridden && !easyOn;
-  const flip = `<button type="button" class="nbv-link" data-act="nb-override" data-mode="flip" aria-pressed="${flipOn}">${flipOn ? 'Undo' : a.result === 'wrong' ? 'I knew it' : "I didn't know it"}</button>`;
-  const easy = a.result === 'right' ? `<button type="button" class="nbv-link" data-act="nb-override" data-mode="easy" aria-pressed="${easyOn}">${easyOn ? 'Undo' : 'Too easy'}</button>` : '';
+  const flip = `<button type="button" class="nbv-link" data-act="nb-override" data-mode="flip" aria-pressed="${flipOn}">${flipOn ? 'Undo' : a.auto === 1 ? 'I knew it' : "I didn't know it"}</button>`;
+  // An answer finished with Hint was helped, so it cannot be marked too easy.
+  const easy = a.result === 'right' && !q.hinted ? `<button type="button" class="nbv-link" data-act="nb-override" data-mode="easy" aria-pressed="${easyOn}">${easyOn ? 'Undo' : 'Too easy'}</button>` : '';
   return `<span class="nbv-quiz__links">${flip}${easy}</span>`;
 }
 
@@ -444,7 +475,7 @@ function questionHtml(q: ReviewQuestion, e: NotebookEntry, state: ReviewState, o
       </div>${shownSenses(e).length ? '' : `<button type="button" class="nbv-link" data-act="lookup" data-q="${esc(q.lemma)}">Open in lookup</button>`}`;
     }
   } else {
-    body = choice ? optionsHtml(q, state) : typedHtml(q, state);
+    body = choice ? optionsHtml(q, state) : q.kind === 'spell-tiles' ? tilesHtml(q, state) : typedHtml(q, state);
   }
   let below = '';
   if (!a && TYPED_KINDS.includes(q.kind)) {

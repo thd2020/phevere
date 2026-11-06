@@ -108,6 +108,11 @@ import {
   armCountdown,
   markHeard,
   singleVoice,
+  keepDraft,
+  placeTile,
+  returnTile,
+  tileKey,
+  type SingleVoice,
   type LearnerModel,
   type StudyPace,
   type AnswerRecord,
@@ -369,7 +374,7 @@ let wbSubs: WordbookSub[] = [];
 let wbUserBooks: UserBook[] = [];
 let wbProgress = new Map<string, BookWordProgress>();
 const wbBooks = new Map<string, string[]>();
-/* Example sentences for the quiz's gap-fill questions, looked up ahead for words held for days. */
+/* Example sentences for the quiz's gap questions, looked up ahead for words already started. */
 const reviewExamples = new Map<string, string[]>();
 const examplesInFlight = new Set<string>();
 
@@ -381,7 +386,7 @@ async function prefetchExamples(wait = false): Promise<void> {
   for (let i = r.index + (wait ? 0 : 1); i < r.queue.length && lemmas.length < 3; i++) {
     const e = byId.get(r.queue[i]);
     const key = String(e?.lemma || '').toLowerCase();
-    if (!e || !key || reviewExamples.has(key) || examplesInFlight.has(key) || memoryLevel(e) < 2) continue;
+    if (!e || !key || reviewExamples.has(key) || examplesInFlight.has(key) || memoryLevel(e) < 1) continue;
     lemmas.push(String(e.lemma));
   }
   const jobs = lemmas.map(async (lemma) => {
@@ -982,6 +987,16 @@ function answerCurrentReview(input: { choice?: number; typed?: string; knew?: bo
   paint();
 }
 
+/**
+ * After a letter tile is placed or taken back the row is redrawn; the focus goes to the next
+ * letter left (or the word built), so a keyboard or screen reader carries on from there.
+ */
+function refocusTile(): void {
+  if (nbState.review?.answer) return;
+  const next = document.querySelector<HTMLElement>('.nbv-tiles__bank button.nbv-tile') || document.querySelector<HTMLElement>('.nbv-tiles__built button.nbv-tile');
+  next?.focus({ preventScroll: true });
+}
+
 /** Saves the answered question's grade and moves to the next one. */
 async function commitReview(): Promise<void> {
   const r = nbState.review;
@@ -1015,6 +1030,8 @@ async function commitReview(): Promise<void> {
     toast(err instanceof Error ? err.message : String(err));
   }
   advanceReview(r, updated);
+  // The word of the question just left stops, and one still loading never plays over the next.
+  sayLemma?.cancel();
   // Today's answers count against the learner's usual day, so the next round plans fewer new words.
   if (learner?.pace) learner.pace.answersToday = (learner.pace.answersToday || 0) + 1;
   answerHistory = null;
@@ -2024,7 +2041,7 @@ function onSelectionSettled(): void {
  * Notebook and Learn ▶ play the same recorded human clip as the lookup headword button, or the
  * synthetic voice when the word has none; never both, and a newer press stops an older one.
  */
-let sayLemma: ((lemma: string) => Promise<unknown>) | null = null;
+let sayLemma: SingleVoice | null = null;
 
 const lemmaVoice = () => singleVoice({
   recordings: async (lemma) => {
@@ -2035,8 +2052,8 @@ const lemmaVoice = () => singleVoice({
       .catch(() => null);
     return recordedUrls(found);
   },
-  playRecording: (url) => playClip(url, prefs),
-  speak: (lemma) => speakText(lemma, prefs),
+  playRecording: (url, alive) => (alive() ? playClip(url, prefs) : Promise.resolve()),
+  speak: (lemma, alive) => (alive() ? speakText(lemma, prefs) : Promise.resolve()),
   stop: stopAudio,
 });
 
@@ -2802,6 +2819,7 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'nb-review-exit':
       // Back to the Learn page. An answer on screen is saved first, as Continue would.
       if (nbState.review?.answer) await commitReview();
+      sayLemma?.cancel();
       nbState.review = null;
       paint();
       return;
@@ -2831,9 +2849,22 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
     case 'nb-skip':
       if (reviewArmed(nbState.review)) answerCurrentReview({});
       return;
+    case 'nb-tile':
+      // Letter tiles: placing the last one answers the question.
+      if (nbState.review && reviewArmed(nbState.review) && placeTile(nbState.review, Number(t.dataset.tile))) {
+        paint();
+        refocusTile();
+      }
+      return;
+    case 'nb-tile-out':
+      if (nbState.review && returnTile(nbState.review, Number(t.dataset.pos))) {
+        paint();
+        refocusTile();
+      }
+      return;
     case 'nb-hint':
-      // What is typed so far stays where it matches the answer; the next letter is added.
-      if (nbState.review && hintReview(nbState.review, document.querySelector<HTMLInputElement>('#nbv-answer')?.value || '')) paint();
+      // One more letter; what is typed stays, and the letter is added when it is the start of the word.
+      if (nbState.review && hintReview(nbState.review, document.querySelector<HTMLInputElement>('#nbv-answer')?.value ?? undefined)) paint();
       return;
     case 'nb-override':
       if (nbState.review) overrideReview(nbState.review, t.dataset.mode === 'easy' ? 'easy' : 'flip');
@@ -3082,6 +3113,12 @@ async function handleAct(act: string, t: HTMLElement, e: Event): Promise<void> {
 function onChange(e: Event): void {
   const el = e.target as HTMLElement | null;
   if (!el) return;
+  // The answer box is kept on every keystroke, so a repaint of Learn (a word that finished
+  // playing, a sync, a picture) puts back what was typed.
+  if (el.id === 'nbv-answer') {
+    keepDraft(nbState.review, (el as HTMLInputElement).value);
+    return;
+  }
   // Settings → Learn: a typed goal counts once the field is left or Enter is pressed.
   if (el.dataset.act === 'learn-goal-input') {
     if (e.type !== 'change') return;
@@ -3275,6 +3312,12 @@ export async function startApp(): Promise<void> {
     const page = document.querySelector<HTMLElement>('.lrn-body');
     const target = ev.target as HTMLElement | null;
     if (!page || (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+    // Letter tiles from a keyboard: a letter places a tile, Backspace takes the last one back.
+    if (page.querySelector('.nbv-tiles__bank') && !nbState.review.answer && (ev.key === 'Backspace' || /^\p{L}$/u.test(ev.key))) {
+      ev.preventDefault();
+      if (reviewArmed(nbState.review) && tileKey(nbState.review, ev.key)) paint();
+      return;
+    }
     if (ev.key === 'Enter') {
       const next = page.querySelector<HTMLElement>('[data-act="nb-next"], [data-act="nb-start"], [data-act="nb-reveal"], [data-act="nb-round"]');
       if (!next) return;

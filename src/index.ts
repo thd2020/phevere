@@ -73,6 +73,7 @@ import {
   unsubscribeWordbook,
   vocabPayloadFromResult,
   examplesFromResult,
+  QUESTION_KINDS,
   type AnswerDetails,
 } from '@phevere/core';
 import {
@@ -3333,7 +3334,7 @@ ipcMain.handle('vocab-update-note', async (_e, id: string, note: string) => {
 /** The question facts the renderer sends with a grade, for the answer history; anything else is dropped. */
 function answerDetailsFrom(raw: unknown): AnswerDetails {
   const d = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-  const kinds = ['meaning-choice', 'word-choice', 'listen-choice', 'recall', 'listen-type', 'cloze', 'flash'];
+  const kinds: string[] = QUESTION_KINDS;
   return {
     kind: kinds.includes(String(d.kind)) ? (String(d.kind) as AnswerDetails['kind']) : undefined,
     correct: typeof d.correct === 'boolean' ? d.correct : undefined,
