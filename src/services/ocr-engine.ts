@@ -24,7 +24,7 @@ import {
 import { finalizeOcrLines, glueSpacedLetters } from './ocr-text';
 import { createElectronImageRaw } from './ocr-image-electron';
 import { findOcrPackRoot, installedPackRoot } from './ocr-pack';
-import { PpOcrPageReader } from './ocr-page-onnx';
+import { PpOcrPageReader, type PpOcrModels } from './ocr-page-onnx';
 import { buildOcrPage, ocrPageText, pageLines, type OcrPage, type OcrRawLine, type OcrRawPage, type OcrQuad } from '@phevere/core/ocr-layout';
 
 export { glueSpacedLetters } from './ocr-text';
@@ -460,6 +460,8 @@ class OnnxNativeOcrEngine implements OcrEngine {
   private modelFiles: { det: string; rec: string; dict: string } | null = null;
   private settings: OcrSettings = loadOcrSettings();
   private pageReader: PpOcrPageReader | null = null;
+  /** One detector and one recogniser, used for screen regions and whole images alike. */
+  private models: PpOcrModels | null = null;
 
   getActiveProfileId(): string {
     return this.settings.activeProfileId;
@@ -683,7 +685,13 @@ class OnnxNativeOcrEngine implements OcrEngine {
     }
     const size = pngSize(png);
     if (!size || !this.modelFiles) return null;
-    if (!this.pageReader) this.pageReader = new PpOcrPageReader(this.modelFiles, loadGutenModels);
+    if (!this.pageReader) {
+      this.pageReader = new PpOcrPageReader(this.modelFiles.dict, async () => {
+        await this.ensureReady();
+        if (!this.models) throw new Error('OCR models are not loaded');
+        return this.models;
+      });
+    }
     const tmp = path.join(os.tmpdir(), `phevere-onnx-page-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
     try {
       fs.writeFileSync(tmp, png);
@@ -728,13 +736,18 @@ class OnnxNativeOcrEngine implements OcrEngine {
         files: this.modelFiles,
         dictChars,
       });
-      this.ocr = await Ocr.create({
+      const opts = {
         models: {
           detectionPath: files.det,
           recognitionPath: files.rec,
           dictionaryPath: files.dict,
         },
-      });
+      };
+      const { Detection, Recognition } = await loadGutenModels();
+      const detection = await Detection.create(opts);
+      const recognition = await Recognition.create(opts);
+      this.models = { detection, recognition };
+      this.ocr = new (Ocr as unknown as new (m: PpOcrModels) => any)({ detection, recognition });
     })();
 
     try {
@@ -742,12 +755,14 @@ class OnnxNativeOcrEngine implements OcrEngine {
     } catch (error) {
       this.initPromise = null;
       this.ocr = null;
+      this.models = null;
       throw error;
     }
   }
 
   dispose(): void {
     this.ocr = null;
+    this.models = null;
     this.initPromise = null;
     this.pageReader = null;
   }

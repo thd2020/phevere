@@ -82,10 +82,8 @@ export function readingQuad(box: number[][]): { quad: OcrQuad; rotated: boolean 
   return { quad: [p[0], p[1], p[2], p[3]], rotated: false };
 }
 
-type Models = {
-  Detection: { create(opts: unknown): Promise<any> };
-  Recognition: { create(opts: unknown): Promise<any> };
-};
+/** The detector and recogniser sessions, shared with the engine that reads screen regions. */
+export type PpOcrModels = { detection: any; recognition: any };
 
 export class PpOcrPageReader {
   private det: any = null;
@@ -94,17 +92,17 @@ export class PpOcrPageReader {
   private ready: Promise<void> | null = null;
 
   constructor(
-    private readonly files: { det: string; rec: string; dict: string },
-    private readonly loadModels: () => Promise<Models>,
+    private readonly dictPath: string,
+    private readonly models: () => Promise<PpOcrModels>,
   ) {}
 
   private ensure(): Promise<void> {
     if (!this.ready) {
       this.ready = (async () => {
-        const m = await this.loadModels();
-        this.det = await m.Detection.create({ models: { detectionPath: this.files.det } });
-        this.rec = await m.Recognition.create({ models: { recognitionPath: this.files.rec, dictionaryPath: this.files.dict } });
-        this.dict = [...fs.readFileSync(this.files.dict, 'utf8').split('\n').map((s) => s.replace(/\r$/, '')), ' '];
+        const m = await this.models();
+        this.det = m.detection;
+        this.rec = m.recognition;
+        this.dict = [...fs.readFileSync(this.dictPath, 'utf8').split('\n').map((s) => s.replace(/\r$/, '')), ' '];
       })().catch((e) => {
         this.ready = null;
         throw e;
