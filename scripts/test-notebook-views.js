@@ -24,7 +24,7 @@ function load(name) {
 
 const { analyzeMorphemes, morphBreakdown } = load('morphology');
 const views = load('notebook-views');
-const { recentListHtml, vocabEntryHtml } = load('vocab-view');
+const { filterRecentLookups, recentListHtml, vocabEntryHtml } = load('vocab-view');
 
 const split = (w) => morphBreakdown(w).join('·');
 const labels = (w) => analyzeMorphemes(w).map((m) => `${m.kind}:${m.label}`);
@@ -563,6 +563,30 @@ const recBooks = recentListHtml([{ q: 'inspect', at: now }], () => undefined, no
 assert.match(recBooks, /data-act="ub-pick" data-q="inspect" aria-haspopup="menu"/);
 assert.match(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now, { bookPick: true }), /data-act="ub-pick" data-q="braid"[^>]*>.*Add to word book/);
 assert.doesNotMatch(vocabEntryHtml({ id: 'b1', lemma: 'braid' }, true, now), /ub-pick/);
+// Index rails stay inside the list as it shows on screen. A list rendered while its tab was
+// hidden measures as 0 by 0, which used to put the rail right under the header, beside the book
+// row and the sort switch.
+{
+  const { railBox, railStride } = load('index-rail');
+  const clip = { top: 103, bottom: 606 };
+  assert.deepEqual(railBox({ top: 163, bottom: 30000 }, clip), { top: 171, height: 427 }, 'below the sort row, above the status bar');
+  assert.deepEqual(railBox({ top: -5000, bottom: 30000 }, clip), { top: 111, height: 487 }, 'scrolled: under the sticky header');
+  assert.deepEqual(railBox({ top: 163, bottom: 400 }, clip), { top: 171, height: 221 }, 'a short list ends the rail');
+  assert.equal(railBox({ top: 0, bottom: 0 }, clip), null, 'a hidden list gets no rail');
+  assert.equal(railBox({ top: 163, bottom: 225 }, clip), null, 'one row has no room for a rail');
+  assert.equal(railBox({ top: 700, bottom: 3000 }, clip), null, 'list below the window');
+  assert.equal(railStride(13, 427, 16), 1, 'every date fits');
+  assert.equal(railStride(13, 144, 16), 2, 'a short window shows every other date');
+  assert.equal(railStride(27, 100, 13), 4);
+  assert.equal(railStride(0, 100, 13), 1);
+}
+
+// The header search filters Recent too, and clearing it (empty or blank) brings every lookup back.
+const recentItems = [{ q: 'Inspect', at: 3 }, { q: 'gargantuan', at: 2 }, { q: 'spectacle', at: 1 }];
+assert.deepEqual(filterRecentLookups(recentItems, 'SPEC').map((r) => r.q), ['Inspect', 'spectacle']);
+assert.deepEqual(filterRecentLookups(recentItems, 'zzz'), []);
+assert.equal(filterRecentLookups(recentItems, ''), recentItems);
+assert.equal(filterRecentLookups(recentItems, '   '), recentItems);
 
 // A to Z: "#" (digits, symbols, other scripts) comes after Z in the rail and in the list.
 const { AZ_INDEX, compareAz } = load('vocab-view');
@@ -578,8 +602,61 @@ const ne = load('notebook-etymology');
 const chainOf = (wt) => ety.buildEtymology(`==English==\n===Etymology===\n${wt}\n`)?.chain;
 assert.deepEqual(
   ne.etymonFromChain(chainOf('From {{inh|en|enm|edifice}}, from {{der|en|fro|edifice}}, from {{der|en|la|aedificium}}. {{root|en|ine-pro|*dʰeh₁-}}')),
-  { origin: 'Latin', via: ['French'], roots: ['*dʰeh₁-'] },
+  { origin: 'Latin', via: ['French'], roots: ['*dʰeh₁-'], sources: [['enm', 'edifice'], ['fro', 'edifice'], ['la', 'aedificium']] },
 );
+// The pages of the words a word came from, and the root such a page names.
+assert.equal(ne.sourcePageTitle('la', 'attēstor'), 'attestor');
+assert.equal(ne.sourcePageTitle('ang', 'ġyldan'), 'gyldan');
+assert.equal(ne.sourcePageTitle('grc', 'σῠ́νᾰψῐς'), 'σύναψις');
+assert.equal(ne.sourcePageTitle('gem-pro', '*gulþą'), 'Reconstruction:Proto-Germanic/gulþą');
+assert.deepEqual(
+  ne.rootsOnSourcePage('==Latin==\n===Etymology===\nFrom {{af|la|cerebrum}}.\n{{root|la|ine-pro|*ḱerh₂-}}\n==Italian==\n{{root|it|ine-pro|*wrong-}}\n', 'la'),
+  ['*ḱerh₂-'],
+  'the Latin section only',
+);
+assert.deepEqual(ne.rootsOnSourcePage('===Etymology===\nFrom {{inh|gem-pro|ine-pro|*ǵʰelh₃-}}.', 'gem-pro'), ['*ǵʰelh₃-']);
+// A page of homographs: only the etymology that names the next older word counts, and none
+// when that is not known. Middle English "foul" is both foul (from fūl) and fowl (from fugol).
+{
+  const foulPage = '==Middle English==\n===Etymology 1===\nFrom {{inh|enm|ang|fūl}}, from {{inh|enm|ine-pro|*puH-}}.\n====Adjective====\n# dirty\n===Etymology 2===\nFrom {{inh|enm|ang|fugol}}.\n====Noun====\n# bird\n';
+  assert.deepEqual(ne.rootsOnSourcePage(foulPage, 'enm', 'fūl'), ['*puH-']);
+  assert.deepEqual(ne.rootsOnSourcePage(foulPage, 'enm', 'fugol'), [], 'fowl does not take the root of foul');
+  assert.deepEqual(ne.rootsOnSourcePage(foulPage, 'enm'), [], 'no older word: the homographs cannot be told apart');
+  // A preposition is the first part of a compound; its root is not the word's (squash, allege).
+  assert.deepEqual(ne.rootsOnSourcePage('==Latin==\n===Etymology===\nFrom {{inh|la|itc-pro|*eks}}, from {{inh|la|ine-pro|*h₁eǵʰs}}.\n===Preposition===\n# out of\n', 'la'), []);
+  assert.deepEqual(ne.rootsOnSourcePage('==Latin==\n===Etymology===\n{{root|la|ine-pro|*ḱerh₂-}}\n===Noun===\n# brain\n', 'la'), ['*ḱerh₂-']);
+  // Two words that reach one spelling from different older words are no family.
+  const homographs = views.analyzeNotebook([{ id: 'f1', lemma: 'fowl' }, { id: 'f2', lemma: 'foul' }], () => null);
+  const birds = {
+    fowl: { origin: 'Old English', via: [], roots: [], sources: [['enm', 'foul'], ['ang', 'fugol'], ['gem-pro', '*fuglaz']] },
+    foul: { origin: 'Old English', via: [], roots: [], sources: [['enm', 'foul'], ['ang', 'fūl'], ['gem-pro', '*fūlaz']] },
+  };
+  assert.deepEqual(views.sourceFamilies(homographs, (l) => birds[l] || null), []);
+}
+// Saved words from the same earlier word share its root, even when no spelled root shows it:
+// the family is named after the oldest recorded word they share.
+{
+  const shared = views.analyzeNotebook([
+    { id: 'c1', lemma: 'cortex' },
+    { id: 'c2', lemma: 'cortical' },
+    { id: 'g1', lemma: 'gilt' },
+    { id: 'g2', lemma: 'gilded' },
+    { id: 'x1', lemma: 'squash' },
+    { id: 'x2', lemma: 'allege' },
+  ], () => null);
+  const src = {
+    cortex: { origin: 'Latin', via: [], roots: [], sources: [['la', 'cortex']] },
+    cortical: { origin: 'Latin', via: [], roots: [], sources: [['la-new', 'corticalis'], ['la', 'cortex']] },
+    gilt: { origin: 'Old English', via: [], roots: [], sources: [['enm', 'gilden'], ['ang', 'gyldan'], ['gem-pro', '*gulþijaną']] },
+    gilded: { origin: 'Old English', via: [], roots: [], sources: [['enm', 'gilden'], ['ang', 'ġyldan'], ['gem-pro', '*gulþijaną']] },
+    squash: { origin: 'Latin', via: [], roots: [], sources: [['la', 'ex'], ['la', 'quassō']] },
+    allege: { origin: 'Latin', via: [], roots: [], sources: [['la', 'ex'], ['la', 'lītigō']] },
+  };
+  const fams = views.sourceFamilies(shared, (l) => src[l] || null);
+  assert.deepEqual(fams.map((f) => [f.label, f.origin, f.ids.length]), [['cortex', 'Latin', 2], ['gyldan', 'Old English', 2]], 'a shared prefix like "ex" is no family');
+  assert.ok(views.familyGroupings(shared, (l) => src[l] || null).includes('root'));
+  assert.match(views.familiesHtml(shared, 'root', { etymon: (l) => src[l] || null }), /<b>4<\/b> of 6 words grouped/);
+}
 assert.equal(ne.etymonFromChain(chainOf('{{inh|en|enm|chyrne}}, from {{inh|en|ang|ċyrn}}')).origin, 'Old English');
 // The newer {{ety}} and {{etymon}} templates, and {{ubor}}.
 assert.equal(ne.etymonFromChain(chainOf('{{ety|en|:bor|la:cortex<t:bark>|tree=1}}')).origin, 'Latin');
@@ -615,8 +692,8 @@ assert.strictEqual(views.parseGoal('abc'), null);
 (async () => {
   const now = Date.now();
   const saved = new Map([['phevere.etymons.v1', JSON.stringify({
-    inspect: { origin: 'Latin', via: [], roots: ['*spek-'], at: now },
-    spectator: { origin: 'Latin', via: [], roots: ['*spek-'], at: now },
+    inspect: { origin: 'Latin', via: [], roots: ['*spek-'], at: now, v: 2 },
+    spectator: { origin: 'Latin', via: [], roots: ['*spek-'], at: now, v: 2 },
   })]]);
   ne.setEtymonStore({ get: (k) => saved.get(k) ?? null, set: (k, v) => saved.set(k, v) });
   let requests = 0;
@@ -633,6 +710,41 @@ assert.strictEqual(views.parseGoal('abc'), null);
   await new Promise((r) => setTimeout(r, 500));
   assert.equal(requests, 1, 'the empty gloss is fetched once');
   assert.equal(paints, 1, 'one repaint for the new gloss, then the trace stops');
+
+  // A word whose own page names no root takes the root the page of the word it came from
+  // names; words traced before version 2 are traced again once.
+  const store2 = new Map([['phevere.etymons.v1', JSON.stringify({ cerebrate: { origin: 'Latin', via: [], roots: [], at: now } })]]);
+  ne.setEtymonStore({ get: (k) => store2.get(k) ?? null, set: (k, v) => store2.set(k, v) });
+  const pagesFor = {
+    cerebrate: '==English==\n===Etymology===\nFrom {{der|en|la|cerebrum}} + {{suffix|en||ate}}.\n',
+    cerebrum: '==English==\n===Etymology===\n{{bor|en|la|cerebrum}}\n==Latin==\n===Etymology===\n{{root|la|ine-pro|*ḱerh₂-}}\n',
+  };
+  const asked = [];
+  globalThis.fetch = async (url) => {
+    const titles = decodeURIComponent(String(url).split('&titles=')[1] || '').split('|');
+    asked.push(titles);
+    const pages = titles.map((t) => (pagesFor[t] ? { title: t, revisions: [{ slots: { main: { content: pagesFor[t] } } }] } : { title: t, missing: true }));
+    return { ok: true, text: async () => JSON.stringify({ query: { pages } }) };
+  };
+  await ne.traceEtymons(['cerebrate']);
+  assert.deepEqual(asked, [['cerebrate'], ['cerebrum']]);
+  assert.deepEqual(ne.cachedEtymon('cerebrate').roots, ['*ḱerh₂-']);
+  assert.deepEqual(ne.cachedEtymon('cerebrate').sources, [['la', 'cerebrum']]);
+  assert.equal(await ne.traceEtymons(['cerebrate']), 0, 'traced once');
+
+  // A run that stopped after the word's own page (saved with its earlier words, roots not yet
+  // read) reads the earlier words' pages next time, and only those.
+  const store3 = new Map([['phevere.etymons.v1', JSON.stringify({ attest: { origin: 'Latin', via: ['French'], roots: [], sources: [['frm', 'attester'], ['la', 'attēstor']], at: now, v: 2 } })]]);
+  ne.setEtymonStore({ get: (k) => store3.get(k) ?? null, set: (k, v) => store3.set(k, v) });
+  pagesFor.attester = '==Middle French==\n===Etymology===\nFrom {{inh|frm|la|attēstor}}.\n===Verb===\n# to attest\n';
+  pagesFor.attestor = '==Latin==\n===Etymology===\nFrom {{af|la|ad-|testor}}.\n{{root|la|ine-pro|*steh₂-}}\n===Verb===\n# to bear witness\n';
+  asked.length = 0;
+  await ne.traceEtymons(['attest']);
+  assert.deepEqual(asked, [['attester', 'attestor']]);
+  assert.deepEqual(ne.cachedEtymon('attest').roots, ['*steh₂-']);
+  asked.length = 0;
+  await ne.traceEtymons(['attest']);
+  assert.deepEqual(asked, [], 'read once');
   console.log('notebook-views: ok');
 })().catch((error) => {
   console.error(error);

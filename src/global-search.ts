@@ -42,6 +42,7 @@ const SETTINGS: Array<{ section: string; label: string; words: string[] }> = [
   { section: 'offline', label: 'Offline', words: ['offline', 'pack', 'download', 'wordnet', 'cedict', 'jmdict', 'freedict', 'kengdic', 'webster'] },
   { section: 'api', label: 'API keys', words: ['api', 'key', 'token', 'deepl', 'google cloud', 'youdao'] },
   { section: 'audio', label: 'Audio', words: ['audio', 'voice', 'speech', 'speak', 'pronunciation', 'kokoro', 'espeak', 'tts', 'sound'] },
+  { section: 'about', label: 'About', words: ['about', 'version', 'star', 'github', 'source code', 'changelog', "what's new", 'report', 'bug', 'issue', 'licence', 'license', 'credits', 'privacy', 'author'] },
 ];
 
 function esc(s: unknown): string {
