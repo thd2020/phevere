@@ -232,6 +232,9 @@ assert.strictEqual(L.lineJoin('the', 'next').sep, ' ');
   const vert = P.readingQuad([[0, 0], [20, 0], [20, 100], [0, 100]]);
   assert.ok(vert.rotated);
   assert.ok(Math.abs(L.quadAngle(vert.quad) - Math.PI / 2) < 1e-6, 'a tall crop reads downwards');
+  // A one- or two-character guess over an icon or a texture is dropped; an unsure longer line stays.
+  assert.ok(P.isSpeck('贝', 0.25) && P.isSpeck('# ', 0.05));
+  assert.ok(!P.isSpeck('贝', 0.9) && !P.isSpeck('abilty t eproduce', 0.3) && !P.isSpeck('OK', undefined));
 }
 
 // 14. Text wrapping beside a picture and then below it is one paragraph; each line is measured

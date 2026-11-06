@@ -73,6 +73,15 @@ export function ctcWords(chars: CtcChar[], steps: number): { text: string; t0: n
   });
 }
 
+/**
+ * One or two characters read with little confidence: almost always an icon, a bullet or a
+ * texture taken for text. PaddleOCR drops every line under 0.5 (its drop_score); longer lines
+ * are kept here, because a whole line the reader is unsure about is still worth showing.
+ */
+export function isSpeck(text: string, confidence: number | undefined): boolean {
+  return typeof confidence === 'number' && confidence < 0.5 && [...text.replace(/\s/g, '')].length <= 2;
+}
+
 /** Reading-direction quad of a detected box; crops 1.5 times taller than wide are read top to bottom. */
 export function readingQuad(box: number[][]): { quad: OcrQuad; rotated: boolean } {
   const p = box.map((q) => [Number(q[0]), Number(q[1])] as [number, number]);
@@ -139,6 +148,7 @@ export class PpOcrPageReader {
         confidence: w.p,
       }));
       const confidence = chars.length ? chars.reduce((s, c) => s + c.p, 0) / chars.length : undefined;
+      if (isSpeck(text, confidence)) continue;
       const line: OcrRawLine & { ctc?: unknown } = { text, quad, confidence, words: words.length ? words : undefined };
       if (opts.keepCtc) line.ctc = { chars, steps: used };
       lines.push(line);
