@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - README download section (2026-11-06): the table of download buttons is gone. The section links to the latest release and lists the system each platform needs.
+
+### Fixed
+
+- iOS version number (2026-11-06): the iOS app called itself 4.0.0 in the iPhone's Settings and in the IPA, whatever the release was. It now carries the same version as the rest of the release, as the Android app already did.
+
 ## [4.2.0] - 2026-11-06
 
 ### Added

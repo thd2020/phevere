@@ -36,6 +36,17 @@ const { ABOUT_STRINGS_EN } = load('settings-about-strings');
   assert.equal(about.aboutVersionLabel({ version: '4.2.0', platform: 'windows' }), 'Version 4.2.0');
 }
 
+// The iOS app's own version (CFBundleShortVersionString) is apps/mobile/package.json's, as
+// Android's versionName is: every iOS build in CI passes it to xcodebuild.
+{
+  for (const wf of ['release.yml', 'ci.yml']) {
+    const yml = fs.readFileSync(path.join(root, '.github', 'workflows', wf), 'utf8').replace(/\r\n/g, '\n');
+    const builds = yml.split(/\n\s*xcodebuild \\\n/).slice(1).map((s) => s.slice(0, s.search(/\n\s+build\n/)));
+    assert.ok(builds.length > 0, `${wf} builds iOS`);
+    for (const b of builds) assert.match(b, /MARKETING_VERSION="\$\(node -p "require\('\.\.\/\.\.\/package\.json'\)\.version"\)"/, wf);
+  }
+}
+
 // The star invitation, the repository and the other links.
 {
   const html = about.aboutSettingsHtml({ version: '4.2.0', platform: 'windows', system: 'Windows 10.0.19044 x64' });
