@@ -292,7 +292,8 @@ assert.equal(bigPlan.cards.size, 5000);
 const shake = load('shake');
 const feed = (det, from, ms, strong) => {
   let hit = 0;
-  for (let t = from; t < from + ms; t += 16) if (det.push(t, strong ? ((t / 16) % 2 ? 15 : -15) : 0.2, 9.8, 0)) hit += 1;
+  let i = 0;
+  for (let t = from; t < from + ms; t += 16) if (det.push(t, strong ? (i++ % 2 ? 15 : -15) : 0.2, 9.8, 0)) hit += 1;
   return hit;
 };
 const one = shake.shakeDetector();
@@ -317,6 +318,32 @@ const walk = shake.doubleShakeDetector();
 let walked = 0;
 for (let i = 0; i < 600; i++) if (walk.push(i * 16, Math.sin(i / 4) * 2.5, 9.8 + Math.sin(i / 3) * 2, 0)) walked += 1;
 assert.equal(walked, 0);
+// Two short, ordinary shakes: 0.3 s each at five strokes a second, peaking at 15 m/s² (about
+// 1.5 g), a quarter second apart, sideways or up and down. Seismic's three-quarter rule on
+// acceleration with gravity needed each shake to last 0.6 s and peak near 2 g.
+const sine = (det, from, ms, peak, upDown) => {
+  let hit = 0;
+  for (let t = from; t < from + ms; t += 16.7) {
+    const a = peak * Math.sin((2 * Math.PI * 5 * t) / 1000);
+    if (upDown ? det.push(t, 0, 9.8 + a, 0) : det.push(t, a, 9.8, 0)) hit += 1;
+  }
+  return hit;
+};
+for (const upDown of [false, true]) {
+  const d2 = shake.doubleShakeDetector();
+  let fired = sine(d2, 0, 300, 0) + sine(d2, 300, 300, 15, upDown) + sine(d2, 600, 250, 0) + sine(d2, 850, 300, 15, upDown) + sine(d2, 1150, 500, 0);
+  assert.equal(fired, 1, `two short shakes ${upDown ? 'up and down' : 'sideways'} are a double shake`);
+}
+// Turning the phone between portrait and landscape, again and again, is not a shake.
+const turning = shake.doubleShakeDetector();
+let turned = 0;
+for (let t = 0; t < 20000; t += 16.7) {
+  const c = t % 1200;
+  const k = Math.min(1, c / 350);
+  const ang = ((Math.floor(t / 1200) % 2 ? 1 - k : k) * Math.PI) / 2;
+  if (turning.push(t, 9.8 * Math.sin(ang), 9.8 * Math.cos(ang), 0)) turned += 1;
+}
+assert.equal(turned, 0, 'turning the phone over is not a shake');
 
 // Review queue: due reviews first, then new words up to the goal.
 const rq = [
