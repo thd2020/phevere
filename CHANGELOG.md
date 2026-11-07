@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The trigger looks up the word under the pointer inside Phevere (2026-11-07): with Selection set to Shortcut, pressing the trigger over a word in Words, Learn, Recent or the clipboard window did nothing once the pointer had moved a little along the word or a minute had passed, because the screen reader check behind the trigger skips Phevere's own windows. The trigger now asks the Phevere page under the pointer for the word there.
+- The trigger looks up the word under the pointer inside Phevere (2026-11-07): with Selection set to Shortcut, pressing the trigger over a word in Words, Learn, Recent or the clipboard window did nothing once the pointer had moved a little along the word or a minute had passed, because the check that reads the word under the pointer in other apps skips Phevere's own windows. The trigger now asks the Phevere page under the pointer for the word there.
 - Saved words keep senses from another computer's dictionaries (2026-11-07): since 4.3.2, a lookup on a computer without an offline dictionary, such as Webster 1913, replaced a saved word's definition and dropped the senses that dictionary had given on the computer that saved it ("decrepit" lost "Broken down with age"). A row with senses from an offline dictionary or a keyed service that the lookup did not have is now left as it is.
 
 ## [4.3.2] - 2026-11-07
