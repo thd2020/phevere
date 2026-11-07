@@ -3,8 +3,10 @@
  */
 import { contextBridge, ipcRenderer } from 'electron';
 import { exposeUiLanguage } from './ui-language-bridge';
+import { installInPageHover } from './in-page-hover-bridge';
 
 exposeUiLanguage();
+installInPageHover();
 
 export interface QuickPanelOpen {
   text: string;

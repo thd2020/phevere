@@ -1,7 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { exposeUiLanguage } from './ui-language-bridge';
+import { installInPageHover } from './in-page-hover-bridge';
 
 exposeUiLanguage();
+installInPageHover();
 import type { SenseImage } from '@phevere/core';
 
 // Do NOT require('../native-addon') here. Webpack dlopen's the UIA .node into
@@ -181,15 +183,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   rememberSelection: (x: number, y: number, text: string) => {
     ipcRenderer.send('remember-selection', { x, y, text });
-  },
-  hoverWord: (x: number, y: number, text: string, requested?: boolean) => {
-    ipcRenderer.send('in-page-hover', { x, y, text, requested: requested === true });
-  },
-  onHoverWordRequest: (callback: (x: number, y: number, screenX: number, screenY: number) => void) => {
-    ipcRenderer.removeAllListeners('hover-word-request');
-    ipcRenderer.on('hover-word-request', (_event: any, p: { x: number; y: number; screenX: number; screenY: number }) =>
-      callback(p.x, p.y, p.screenX, p.screenY),
-    );
   },
   hidePopup: () => {
     ipcRenderer.send('hide-popup');
@@ -651,8 +644,6 @@ declare global {
       showPopup: (x: number, y: number, text: string) => void;
       rememberSelection?: (x: number, y: number, text: string) => void;
       /** A word the pointer rests on in a Phevere page, at a screen point in DIP. */
-      hoverWord?: (x: number, y: number, text: string, requested?: boolean) => void;
-      onHoverWordRequest?: (callback: (x: number, y: number, screenX: number, screenY: number) => void) => void;
       hidePopup: () => void;
       speakIpa?: (payload: { ipa: string; accent?: string }) => Promise<{ ok: boolean; error?: string }>;
       cancelIpaSpeak?: () => Promise<{ ok: boolean }>;

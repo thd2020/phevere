@@ -281,6 +281,13 @@ module.exports = {
               js: './src/ocr-result-preload.ts',
             },
           },
+          {
+            // Web pages opened in a Phevere window: hover lookup, nothing else.
+            name: 'web_window',
+            preload: {
+              js: './src/web-window-preload.ts',
+            },
+          },
         ],
       },
     }),

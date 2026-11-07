@@ -161,7 +161,6 @@ import { AZ_INDEX, compareAz, followIndexRail, vocabAzLetter, wireIndexRail } fr
 import { bookMenuItems, bookPickItems, bookRemovalPrompt, openMenu } from '@phevere/core';
 import { languageRowHtml, asUiLanguagePref, t, tHtml, formatNumber, formatPercent, formatMegabytes, formatDate, formatList, languageDisplayName, uiLocale, UI_LANGUAGE_SELECT_ID } from '@phevere/core';
 import { setUiLanguagePref, uiLanguagePref, windowLanguageReady } from './ui-language';
-import { wireInPageHover } from './in-page-hover';
 
 const rlog = (...args: unknown[]) => {
   if (!__PHEVERE_DEV__) return;
@@ -1496,7 +1495,6 @@ function initializeMainWindow() {
   wireAccountMenu();
   wireMainWindowImageIngest();
   wireInAppTextSelectionLookup();
-  wireInPageHover((x, y, word, requested) => window.electronAPI?.hoverWord?.(x, y, word, requested), window.electronAPI?.onHoverWordRequest);
   wireMainWorkspace();
   renderRecentLookups();
   void loadVocabNotebook();
@@ -1549,7 +1547,6 @@ function initializeClipboardWindow() {
   document.body.className = 'clipboard-window main-window';
   initializeMainWindowControls();
   wireInAppTextSelectionLookup();
-  wireInPageHover((x, y, word, requested) => window.electronAPI?.hoverWord?.(x, y, word, requested), window.electronAPI?.onHoverWordRequest);
   wireLiveResizeClass();
   void showClipboardHistory();
 }

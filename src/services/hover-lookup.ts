@@ -40,6 +40,8 @@ export interface HoverLookupOptions {
   staleTolerancePx?: number;
   /** UIA word-at-point; returns empty when unavailable. */
   getWordAtPoint?: (x: number, y: number) => WordAtPoint | Promise<WordAtPoint>;
+  /** A read asked for (requestNow) landed on a Phevere window, at this DIP point: that page reads its own word. */
+  onOwnWindow?: (x: number, y: number) => void;
   /**
    * Pointer in DIP. Default: Electron's. Plasma Wayland passes KWin's, because
    * Xwayland's copy freezes while the pointer is over a native Wayland window.
@@ -82,9 +84,9 @@ export class HoverLookupService {
   private heldAt = 0;
   private heldSawRelease = false;
   private readonly opts: Required<
-    Omit<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'skipOcr' | 'cursor' | 'isMouseDown'>
+    Omit<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'onOwnWindow' | 'skipOcr' | 'cursor' | 'isMouseDown'>
   > &
-    Pick<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'skipOcr' | 'cursor' | 'isMouseDown'>;
+    Pick<HoverLookupOptions, 'isBlocked' | 'getWordAtPoint' | 'onOwnWindow' | 'skipOcr' | 'cursor' | 'isMouseDown'>;
 
   constructor(options: HoverLookupOptions = {}) {
     this.opts = { ...DEFAULTS, ...options };
@@ -265,7 +267,10 @@ export class HoverLookupService {
           process.platform === 'win32' ? cursorToNative(x, y) : { x, y };
         const hit = await this.opts.getWordAtPoint(nativePt.x, nativePt.y);
         // Phevere's own window or dialog: no OCR either, the page handles its own words.
-        if (hit?.own) return;
+        if (hit?.own) {
+          if (forced) this.opts.onOwnWindow?.(x, y);
+          return;
+        }
         if (hit && hit.text && !wordBoxHolds(hit, nativePt)) {
           console.log('UIA word is beside the cursor; reading pixels instead', hit.text);
         } else if (hit && hit.text && isLookupWorthy(hit.text)) {
