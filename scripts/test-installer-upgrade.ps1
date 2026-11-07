@@ -391,7 +391,15 @@ function Assert-Payload {
     Assert-True ((Get-FileHash -LiteralPath $appExe).Hash -eq (Get-FileHash -LiteralPath (Join-Path (Split-Path (Split-Path $PackagedAsar -Parent) -Parent) 'Phevere.exe')).Hash) 'The installed executable differs from the current packaged application.'
 }
 function Invoke-OwnedUninstall {
+    # A reinstall that has just returned can still be writing its entry: the x64 gate once read it
+    # with no uninstall command yet (v4.3.2 rebuild). Wait for the command, as long as any other step.
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     $entry = Get-OwnedEntry
+    while (-not $entry.Uninstall) {
+        if ([DateTime]::UtcNow -ge $deadline) { throw 'The Phevere uninstall entry has no uninstall command.' }
+        Start-Sleep -Milliseconds 250
+        $entry = Get-OwnedEntry
+    }
     $uninstaller = $entry.Uninstall.Trim('"')
     Assert-True ([IO.Path]::GetFullPath($uninstaller).StartsWith($installRoot + '\', [StringComparison]::OrdinalIgnoreCase)) 'Refusing an uninstaller outside the confirmed fixture installation.'
     Invoke-Hidden $uninstaller '/S'
