@@ -400,8 +400,9 @@ export function posGrammarHtml(codes: string[] | null | undefined): { html: stri
  * word in another language, as Wiktionary's contents list leads to each language's section.
  * English comes first, then the rest in the page's order, so picking a language does not move
  * the chips; past the first seven the rest fold under "+N" (the language shown is brought into
- * the seven), unless `fold` is false (the phone's row scrolls sideways instead). '' for a word in
- * one language only.
+ * the seven), unless `fold` is false (the phone's row scrolls sideways instead). A word in one
+ * language other than English gets that language alone, as a label, so a reader knows the senses
+ * below are, say, Latin; '' for a word in English only.
  */
 export function languageSwitchHtml(
   result: { word?: string; languages?: Array<{ code: string; name: string; current?: boolean }> } | null | undefined,
