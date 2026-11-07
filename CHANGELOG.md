@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Two exam question types in Learn (2026-11-07). "Opposite in meaning" shows a word and asks for its antonym among four, as the GRE and TEM-4 do; one wrong option is a synonym of the word when its entry lists one, since mixing up the direction is the usual slip. Word formation shows a sentence with a gap and a related word in capitals ("DECREPITUDE" for "decrepit"), and you type the form that fits, as in Cambridge B2 First and C1 Advanced. Both come to words you hold for days or longer, after easier questions have gone right.
+- Hover inside Phevere (2026-11-07): resting the pointer on a word in the main window or the clipboard window now counts as hovering it, as in any other app. With Selection set to Shortcut, the trigger looks up the word you rest on; before, it fell back to the last thing you had selected.
+
+### Changed
+
+- A new Progress page (2026-11-07): Learn → Progress was rebuilt from scratch as plain panels that answer one question each. Today shows answers given and the share right, Reviews and New words as bars (a goal you passed reads "42 · goal 10" instead of "42 of 10"), and the week's study days as dots beside the streak. Words leads with the words learned (Young or Mature) of those started, the four stages as one bar whose key opens each stage's words, and how many were started and learned each day since you began. Memory shows the share remembered now, the share of reviews right over 30 days against the 90% aim, the average recall over the next month without review, and the words fading first. Reviews ahead covers two weeks, Study days is a 26-week calendar, and Skills, Trouble words and Lists follow. In a wide window the smaller panels pair up. Root families and the answers-per-day and hold-length charts left the page.
+- More typed questions (2026-11-07): Learn now asks you to type a word once you would get it right about three times in four (it aimed at 85% before), and spelling's share of a session rises from 35% to 40%. For a learner whose typed answers go wrong more often than expected, the aim moves back towards 85% and the share shrinks, so typing never turns into a run of misses.
+- Pronunciations as learner's dictionaries print them (2026-11-07): British first, then American, one each, and at most one more variant. Each accent leads with the transcription most dictionaries agree on, an unlabelled English transcription is filed under the accent its sounds show (ɒ and əʊ are British; ɚ, oʊ and an r before a consonant are American), and one that only repeats a shown one with syllable dots or length marks is dropped. "moratorium" shows UK and US instead of five chips. Saved words show their readings in the same order.
+- A word in one language other than English names it (2026-11-07): the lookup shows the language as a label under the headword ("German" for "tschüss"), as the language row does for words in several languages.
+- Saved words follow their lookup (2026-11-07): a saved word's definition, sources and pronunciations are replaced when a later lookup of the word has heard from every dictionary, and opening a row in Words looks the word up again in the background. A row no longer keeps senses from an early, partial lookup that the lookup itself does not show, English senses come before a gloss in another language, and its Dictionary line names sources as the lookup does ("Webster 1913").
+
+### Fixed
+
+- Symbols are read by name (2026-11-07): a saved mathematical letter such as 𝜓 was spelled out as "letter one D seven one three"; the voice now reads it as the plain letter, psi.
+- Saved sentences play (2026-11-07): the speaker on a saved sentence said "Could not play pronunciation" when the sentence had a stray kana in Chinese text, or was Japanese, which no bundled voice reads. Chinese with a stray kana is read as Chinese, the row's language is passed to the voice, and a language without a bundled voice uses an installed system voice or Google Translate's voice, as the Translation tab does. A sentence no longer waits for a dictionary lookup before it speaks.
+- Words in other languages sound human (2026-11-07): the pronunciation chip of a German, French or other non-English word read the transcription with English sounds, and the speaker fell back to the mechanical eSpeak voice. Both now play the word's recording, else a system voice or Google Translate's voice for its language, with eSpeak last.
+- "Closest in meaning" answers count for the Meaning skill on Progress; they were stored without a skill.
+
 ## [4.3.1] - 2026-11-07
 
 ### Added
